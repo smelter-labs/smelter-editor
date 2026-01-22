@@ -1,0 +1,246 @@
+'use client';
+
+import { useRef, useState } from 'react';
+import type { Input, Layout } from '@/app/actions/actions';
+import {
+    addTwitchInput,
+    addKickInput,
+    addMP4Input,
+    addImageInput,
+    addTextInput,
+    addCameraInput,
+    updateInput,
+    updateRoom,
+    removeInput,
+} from '@/app/actions/actions';
+import { Button } from '@/components/ui/button';
+import LoadingSpinner from '@/components/ui/spinner';
+import Accordion from '@/components/ui/accordion';
+import { Download, Upload } from 'lucide-react';
+import {
+    exportRoomConfig,
+    downloadRoomConfig,
+    parseRoomConfig,
+    type RoomConfig,
+    type RoomConfigInput,
+} from '@/lib/room-config';
+import { toast } from 'react-toastify';
+
+type ConfigurationSectionProps = {
+    inputs: Input[];
+    layout: Layout;
+    roomId: string;
+    refreshState: () => Promise<void>;
+    pendingWhipInputs: PendingWhipInput[];
+    setPendingWhipInputs: React.Dispatch<React.SetStateAction<PendingWhipInput[]>>;
+};
+
+export type PendingWhipInput = {
+  id: string;
+  title: string;
+  config: RoomConfigInput;
+  position: number;
+};
+
+export function ConfigurationSection({
+    inputs,
+    layout,
+    roomId,
+    refreshState,
+    pendingWhipInputs,
+    setPendingWhipInputs,
+}: ConfigurationSectionProps) {
+    const [isExporting, setIsExporting] = useState(false);
+    const [isImporting, setIsImporting] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleExport = async () => {
+        setIsExporting(true);
+        try {
+            const config = exportRoomConfig(inputs, layout);
+            downloadRoomConfig(config);
+            toast.success('Configuration exported successfully');
+        } catch (e: any) {
+            console.error('Export failed:', e);
+            toast.error(`Export failed: ${e?.message || e}`);
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
+    const handleImportClick = () => {
+        fileInputRef.current?.click();
+    };
+
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+
+        setIsImporting(true);
+        try {
+            const text = await file.text();
+            const config = parseRoomConfig(text);
+            await importConfig(config);
+            toast.success('Configuration imported successfully');
+        } catch (e: any) {
+            console.error('Import failed:', e);
+            toast.error(`Import failed: ${e?.message || e}`);
+        } finally {
+            setIsImporting(false);
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+        }
+    };
+
+    const importConfig = async (config: RoomConfig) => {
+      const oldInputIds = inputs.map((i) => i.inputId);
+      const newPendingWhipInputs: PendingWhipInput[] = [];
+      const createdInputIds: { inputId: string; config: RoomConfigInput; position: number }[] = [];
+
+      for (let i = 0; i < config.inputs.length; i++) {
+        const inputConfig = config.inputs[i];
+        try {
+          let inputId: string | null = null;
+
+          if (inputConfig.type === 'whip') {
+            newPendingWhipInputs.push({
+              id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              title: inputConfig.title,
+              config: inputConfig,
+              position: i,
+            });
+            continue;
+          }
+
+          switch (inputConfig.type) {
+            case 'twitch-channel':
+              if (inputConfig.channelId) {
+                const result = await addTwitchInput(roomId, inputConfig.channelId);
+                inputId = result.inputId;
+              }
+              break;
+            case 'kick-channel':
+              if (inputConfig.channelId) {
+                const result = await addKickInput(roomId, inputConfig.channelId);
+                inputId = result.inputId;
+              }
+              break;
+            case 'local-mp4':
+              if (inputConfig.mp4FileName) {
+                const result = await addMP4Input(roomId, inputConfig.mp4FileName);
+                inputId = result.inputId;
+              }
+              break;
+            case 'image':
+              if (inputConfig.imageId) {
+                const result = await addImageInput(roomId, inputConfig.imageId);
+                inputId = result.inputId;
+              }
+              break;
+            case 'text-input':
+              if (inputConfig.text) {
+                const result = await addTextInput(
+                  roomId,
+                  inputConfig.text,
+                  inputConfig.textAlign || 'left',
+                );
+                inputId = result.inputId;
+              }
+              break;
+          }
+
+          if (inputId) {
+            createdInputIds.push({ inputId, config: inputConfig, position: i });
+          }
+        } catch (e) {
+          console.warn(`Failed to add input ${inputConfig.title}:`, e);
+        }
+      }
+
+      await refreshState();
+
+      for (const { inputId, config: inputConfig } of createdInputIds) {
+        if (inputConfig.shaders.length > 0 || inputConfig.showTitle !== undefined) {
+          try {
+            await updateInput(roomId, inputId, {
+              volume: inputConfig.volume,
+              shaders: inputConfig.shaders,
+              showTitle: inputConfig.showTitle,
+              textColor: inputConfig.textColor,
+            });
+          } catch (e) {
+            console.warn(`Failed to update input ${inputId}:`, e);
+          }
+        }
+      }
+
+      for (const oldInputId of oldInputIds) {
+        try {
+          await removeInput(roomId, oldInputId);
+        } catch (e) {
+          console.warn(`Failed to remove old input ${oldInputId}:`, e);
+        }
+      }
+
+      setPendingWhipInputs(newPendingWhipInputs);
+
+      try {
+        await updateRoom(roomId, { layout: config.layout });
+      } catch (e) {
+        console.warn('Failed to set layout:', e);
+      }
+
+      await refreshState();
+    };
+
+    return (
+        <Accordion title='Configuration' defaultOpen data-accordion='true'>
+            <div className='flex flex-col gap-3'>
+                <Button
+                    size='lg'
+                    variant='default'
+                    className='bg-neutral-800 hover:bg-neutral-700 text-white font-medium cursor-pointer px-4 py-0 h-[48px] sm:h-[52px] text-sm sm:text-base sm:px-7 transition-all'
+                    disabled={isExporting}
+                    onClick={handleExport}>
+                    {isExporting ? (
+                        <span className='flex items-center gap-2'>
+                            <LoadingSpinner size='sm' variant='spinner' />
+                            Exporting...
+                        </span>
+                    ) : (
+                        <span className='flex items-center gap-2'>
+                            <Download className='w-4 h-4' />
+                            Export Configuration
+                        </span>
+                    )}
+                </Button>
+                <Button
+                    size='lg'
+                    variant='default'
+                    className='bg-neutral-800 hover:bg-neutral-700 text-white font-medium cursor-pointer px-4 py-0 h-[48px] sm:h-[52px] text-sm sm:text-base sm:px-7 transition-all'
+                    disabled={isImporting}
+                    onClick={handleImportClick}>
+                    {isImporting ? (
+                        <span className='flex items-center gap-2'>
+                            <LoadingSpinner size='sm' variant='spinner' />
+                            Importing...
+                        </span>
+                    ) : (
+                        <span className='flex items-center gap-2'>
+                            <Upload className='w-4 h-4' />
+                            Import Configuration
+                        </span>
+                    )}
+                </Button>
+                <input
+                    ref={fileInputRef}
+                    type='file'
+                    accept='.json,application/json'
+                    className='hidden'
+                    onChange={handleFileChange}
+                />
+            </div>
+        </Accordion>
+    );
+}

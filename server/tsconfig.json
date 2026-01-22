@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "moduleResolution": "NodeNext",
+    "module": "NodeNext",
+    "target": "es2019",
+    "strict": true,
+    "esModuleInterop": true,
+    "declaration": true,
+    "outDir": "dist",
+    "jsx": "react-jsx"
+  },
+  "exclude": ["workingdir", "dist"]
+}
