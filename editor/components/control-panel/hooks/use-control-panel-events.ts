@@ -1,12 +1,27 @@
 import { useEffect, useRef } from 'react';
 import type { InputWrapper } from './use-control-panel-state';
-import { removeInput } from '@/app/actions/actions';
+import type { Input, AvailableShader } from '@/app/actions/actions';
+import {
+  removeInput,
+  addTwitchInput,
+  addMP4Input,
+  addImageInput,
+  addTextInput,
+  addCameraInput,
+  updateInput,
+} from '@/app/actions/actions';
 import { stopCameraAndConnection } from '../whip-input/utils/preview';
 import {
   loadWhipSession,
   loadLastWhipInputId,
   clearWhipSessionFor,
+  saveWhipSession,
+  saveLastWhipInputId,
 } from '../whip-input/utils/whip-storage';
+import { startPublish } from '../whip-input/utils/whip-publisher';
+import { startScreensharePublish } from '../whip-input/utils/screenshare-publisher';
+import type { InputType } from '@/lib/voice/commandTypes';
+import { LAYOUT_CONFIGS, type Layout } from '@/components/layout-selector';
 
 type UseControlPanelEventsProps = {
   inputsRef: React.MutableRefObject<any[]>;
@@ -33,6 +48,12 @@ type UseControlPanelEventsProps = {
   setActiveScreenshareInputId: (id: string | null) => void;
   setIsScreenshareActive: (active: boolean) => void;
   setOpenFxInputId: (id: string | null) => void;
+  inputs: Input[];
+  availableShaders: AvailableShader[];
+  selectedInputId: string | null;
+  setSelectedInputId: (id: string | null) => void;
+  currentLayout: Layout;
+  changeLayout: (layout: Layout) => void;
 };
 
 export function useControlPanelEvents({
@@ -58,6 +79,12 @@ export function useControlPanelEvents({
   setActiveScreenshareInputId,
   setIsScreenshareActive,
   setOpenFxInputId,
+  inputs,
+  availableShaders,
+  selectedInputId,
+  setSelectedInputId,
+  currentLayout,
+  changeLayout,
 }: UseControlPanelEventsProps) {
   useEffect(() => {
     const onMove = (e: any) => {
@@ -82,11 +109,11 @@ export function useControlPanelEvents({
         nextIfComposing(0);
       } catch {}
     };
-    window.addEventListener('smelter:inputs:move', onMove as EventListener);
+    window.addEventListener('smelter:inputs:move', onMove as unknown as EventListener);
     return () => {
       window.removeEventListener(
         'smelter:inputs:move',
-        onMove as EventListener,
+        onMove as unknown as EventListener,
       );
     };
   }, [updateOrder, nextIfComposing, setInputWrappers, setListVersion]);
@@ -182,4 +209,566 @@ export function useControlPanelEvents({
     setIsScreenshareActive,
     setOpenFxInputId,
   ]);
+
+  useEffect(() => {
+    const onAddInput = async (e: CustomEvent<{ inputType: InputType }>) => {
+      try {
+        const { inputType } = e.detail;
+        switch (inputType) {
+          case 'stream':
+            await addTwitchInput(roomId, 'shroud');
+            break;
+          case 'mp4':
+            await addMP4Input(roomId, 'big_buck_bunny.mp4');
+            break;
+          case 'image':
+            await addImageInput(roomId, 'smelter.png');
+            break;
+          case 'text':
+            await addTextInput(roomId, '', 'center');
+            break;
+          case 'camera': {
+            const cameraName = `Camera-${Date.now()}`;
+            const cameraResponse = await addCameraInput(roomId, cameraName);
+            setActiveCameraInputId(cameraResponse.inputId);
+            setIsCameraActive(false);
+            const onCameraDisconnected = () => {
+              stopCameraAndConnection(cameraPcRef, cameraStreamRef);
+              setIsCameraActive(false);
+            };
+            const { location: cameraLocation } = await startPublish(
+              cameraResponse.inputId,
+              cameraResponse.bearerToken,
+              cameraResponse.whipUrl,
+              cameraPcRef,
+              cameraStreamRef,
+              onCameraDisconnected,
+            );
+            setIsCameraActive(true);
+            saveWhipSession({
+              roomId,
+              inputId: cameraResponse.inputId,
+              bearerToken: cameraResponse.bearerToken,
+              location: cameraLocation,
+              ts: Date.now(),
+            });
+            saveLastWhipInputId(roomId, cameraResponse.inputId);
+            break;
+          }
+          case 'screenshare': {
+            const screenName = `Screen-${Date.now()}`;
+            const screenResponse = await addCameraInput(roomId, screenName);
+            setActiveScreenshareInputId(screenResponse.inputId);
+            setIsScreenshareActive(false);
+            const onScreenDisconnected = () => {
+              stopCameraAndConnection(screensharePcRef, screenshareStreamRef);
+              setIsScreenshareActive(false);
+            };
+            const { location: screenLocation } = await startScreensharePublish(
+              screenResponse.inputId,
+              screenResponse.bearerToken,
+              screenResponse.whipUrl,
+              screensharePcRef,
+              screenshareStreamRef,
+              onScreenDisconnected,
+            );
+            setIsScreenshareActive(true);
+            saveWhipSession({
+              roomId,
+              inputId: screenResponse.inputId,
+              bearerToken: screenResponse.bearerToken,
+              location: screenLocation,
+              ts: Date.now(),
+            });
+            saveLastWhipInputId(roomId, screenResponse.inputId);
+            break;
+          }
+        }
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to add input', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:add-input',
+      onAddInput as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:add-input',
+        onAddInput as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState]);
+
+  useEffect(() => {
+    const onRemoveInput = async (e: CustomEvent<{ inputIndex: number }>) => {
+      try {
+        const { inputIndex } = e.detail;
+        const currentInputs = inputsRef.current || [];
+        const idx = inputIndex - 1;
+        if (idx < 0 || idx >= currentInputs.length) {
+          console.warn(`Voice: input ${inputIndex} does not exist`);
+          return;
+        }
+        const input = currentInputs[idx];
+        await removeInput(roomId, input.inputId);
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to remove input', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:remove-input',
+      onRemoveInput as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:remove-input',
+        onRemoveInput as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputsRef]);
+
+  useEffect(() => {
+    const onMoveByIndex = (
+      e: CustomEvent<{ inputIndex: number; direction: string; steps: number }>,
+    ) => {
+      try {
+        const { inputIndex, direction, steps } = e.detail;
+        const currentInputs = inputsRef.current || [];
+        const idx = inputIndex - 1;
+        if (idx < 0 || idx >= currentInputs.length) {
+          console.warn(`Voice: input ${inputIndex} does not exist`);
+          return;
+        }
+        const input = currentInputs[idx];
+        for (let i = 0; i < steps; i++) {
+          window.dispatchEvent(
+            new CustomEvent('smelter:inputs:move', {
+              detail: { inputId: input.inputId, direction },
+            }),
+          );
+        }
+      } catch (err) {
+        console.error('Voice: failed to move input', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:move-input',
+      onMoveByIndex as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:move-input',
+        onMoveByIndex as unknown as EventListener,
+      );
+    };
+  }, [inputsRef]);
+
+  useEffect(() => {
+    const hexToPackedInt = (hex: string): number => {
+      const cleanHex = hex.replace('#', '');
+      const fullHex =
+        cleanHex.length === 3
+          ? cleanHex
+              .split('')
+              .map((char) => char + char)
+              .join('')
+          : cleanHex;
+      return parseInt(fullHex, 16);
+    };
+
+    const onAddShader = async (
+      e: CustomEvent<{ inputIndex: number | null; shader: string; targetColor?: string }>,
+    ) => {
+      try {
+        const { inputIndex, shader: shaderId, targetColor } = e.detail;
+        const currentInputs = inputs || [];
+        
+        let input;
+        if (inputIndex !== null) {
+          const idx = inputIndex - 1;
+          if (idx < 0 || idx >= currentInputs.length) {
+            console.warn(`Voice: input ${inputIndex} does not exist`);
+            return;
+          }
+          input = currentInputs[idx];
+        } else if (selectedInputId) {
+          input = currentInputs.find((i) => i.inputId === selectedInputId);
+          if (!input) {
+            console.warn('Voice: selected input no longer exists');
+            return;
+          }
+        } else {
+          console.warn('Voice: no input specified and none selected');
+          return;
+        }
+        const shaderDef = availableShaders.find((s) => s.id === shaderId);
+        if (!shaderDef) {
+          console.warn(`Voice: shader ${shaderId} not found`);
+          return;
+        }
+        const existingShaders = input.shaders || [];
+        if (existingShaders.some((s) => s.shaderId === shaderId)) {
+          return;
+        }
+        const newShader = {
+          shaderName: shaderDef.name,
+          shaderId: shaderDef.id,
+          enabled: true,
+          params: (shaderDef.params || []).map((p) => {
+            if (p.type === 'color' && typeof p.defaultValue === 'string') {
+              const colorValue = (shaderId === 'remove-color' && p.name === 'target_color' && targetColor)
+                ? targetColor
+                : p.defaultValue;
+              return {
+                paramName: p.name,
+                paramValue: hexToPackedInt(colorValue),
+              };
+            }
+            return {
+              paramName: p.name,
+              paramValue:
+                typeof p.defaultValue === 'number' ? p.defaultValue : 0,
+            };
+          }),
+        };
+        await updateInput(roomId, input.inputId, {
+          shaders: [...existingShaders, newShader],
+          volume: input.volume,
+        });
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to add shader', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:add-shader',
+      onAddShader as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:add-shader',
+        onAddShader as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputs, availableShaders, selectedInputId]);
+
+  useEffect(() => {
+    const onRemoveShader = async (
+      e: CustomEvent<{ inputIndex: number | null; shader: string }>,
+    ) => {
+      try {
+        const { inputIndex, shader: shaderId } = e.detail;
+        const currentInputs = inputs || [];
+        
+        let input;
+        if (inputIndex !== null) {
+          const idx = inputIndex - 1;
+          if (idx < 0 || idx >= currentInputs.length) {
+            console.warn(`Voice: input ${inputIndex} does not exist`);
+            return;
+          }
+          input = currentInputs[idx];
+        } else if (selectedInputId) {
+          input = currentInputs.find((i) => i.inputId === selectedInputId);
+          if (!input) {
+            console.warn('Voice: selected input no longer exists');
+            return;
+          }
+        } else {
+          console.warn('Voice: no input specified and none selected');
+          return;
+        }
+        const existingShaders = input.shaders || [];
+        const updatedShaders = existingShaders.filter(
+          (s) => s.shaderId !== shaderId,
+        );
+        await updateInput(roomId, input.inputId, {
+          shaders: updatedShaders,
+          volume: input.volume,
+        });
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to remove shader', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:remove-shader',
+      onRemoveShader as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:remove-shader',
+        onRemoveShader as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputs, selectedInputId]);
+
+  useEffect(() => {
+    const onSelectInput = (e: CustomEvent<{ inputIndex: number }>) => {
+      try {
+        const { inputIndex } = e.detail;
+        const currentInputs = inputsRef.current || [];
+        const idx = inputIndex - 1;
+        if (idx < 0 || idx >= currentInputs.length) {
+          console.warn(`Voice: input ${inputIndex} does not exist`);
+          return;
+        }
+        const input = currentInputs[idx];
+        setSelectedInputId(input.inputId);
+      } catch (err) {
+        console.error('Voice: failed to select input', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:select-input',
+      onSelectInput as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:select-input',
+        onSelectInput as unknown as EventListener,
+      );
+    };
+  }, [inputsRef, setSelectedInputId]);
+
+  useEffect(() => {
+    const onDeselectInput = () => {
+      setSelectedInputId(null);
+    };
+
+    window.addEventListener(
+      'smelter:voice:deselect-input',
+      onDeselectInput as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:deselect-input',
+        onDeselectInput as unknown as EventListener,
+      );
+    };
+  }, [setSelectedInputId]);
+
+  const typingInputIdRef = useRef<string | null>(null);
+  const accumulatedTextRef = useRef<string>('');
+
+  useEffect(() => {
+    const onStartTyping = () => {
+      const currentInputs = inputs || [];
+      let input;
+
+      if (selectedInputId) {
+        input = currentInputs.find((i) => i.inputId === selectedInputId);
+      }
+
+      if (!input || input.type !== 'text-input') {
+        console.warn('Voice: no text input selected for typing mode');
+        return;
+      }
+
+      typingInputIdRef.current = input.inputId;
+      accumulatedTextRef.current = input.text || '';
+    };
+
+    const onStopTyping = async () => {
+      if (!typingInputIdRef.current) return;
+
+      const currentInputs = inputs || [];
+      const input = currentInputs.find(
+        (i) => i.inputId === typingInputIdRef.current,
+      );
+
+      if (input) {
+        try {
+          await updateInput(roomId, input.inputId, {
+            text: accumulatedTextRef.current,
+            volume: input.volume,
+          });
+          await handleRefreshState();
+        } catch (err) {
+          console.error('Voice: failed to save text', err);
+        }
+      }
+
+      typingInputIdRef.current = null;
+      accumulatedTextRef.current = '';
+    };
+
+    const onAppendText = async (e: CustomEvent<{ text: string }>) => {
+      if (!typingInputIdRef.current) return;
+
+      const { text } = e.detail;
+      const currentInputs = inputs || [];
+      const input = currentInputs.find(
+        (i) => i.inputId === typingInputIdRef.current,
+      );
+
+      if (!input) return;
+
+      accumulatedTextRef.current = accumulatedTextRef.current
+        ? `${accumulatedTextRef.current}\n${text}`
+        : text;
+
+      try {
+        await updateInput(roomId, input.inputId, {
+          text: accumulatedTextRef.current,
+          volume: input.volume,
+        });
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to append text', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:start-typing',
+      onStartTyping as unknown as EventListener,
+    );
+    window.addEventListener(
+      'smelter:voice:stop-typing',
+      onStopTyping as unknown as EventListener,
+    );
+    window.addEventListener(
+      'smelter:voice:append-text',
+      onAppendText as unknown as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:start-typing',
+        onStartTyping as unknown as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:voice:stop-typing',
+        onStopTyping as unknown as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:voice:append-text',
+        onAppendText as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputs, selectedInputId]);
+
+  useEffect(() => {
+    const onNextLayout = () => {
+      const currentIndex = LAYOUT_CONFIGS.findIndex((l) => l.id === currentLayout);
+      const nextIndex = (currentIndex + 1) % LAYOUT_CONFIGS.length;
+      changeLayout(LAYOUT_CONFIGS[nextIndex].id);
+    };
+
+    const onPreviousLayout = () => {
+      const currentIndex = LAYOUT_CONFIGS.findIndex((l) => l.id === currentLayout);
+      const prevIndex = (currentIndex - 1 + LAYOUT_CONFIGS.length) % LAYOUT_CONFIGS.length;
+      changeLayout(LAYOUT_CONFIGS[prevIndex].id);
+    };
+
+    window.addEventListener('smelter:voice:next-layout', onNextLayout);
+    window.addEventListener('smelter:voice:previous-layout', onPreviousLayout);
+
+    return () => {
+      window.removeEventListener('smelter:voice:next-layout', onNextLayout);
+      window.removeEventListener('smelter:voice:previous-layout', onPreviousLayout);
+    };
+  }, [currentLayout, changeLayout]);
+
+  useEffect(() => {
+    const onSetTextColor = async (e: CustomEvent<{ color: string }>) => {
+      try {
+        const { color } = e.detail;
+        const currentInputs = inputs || [];
+
+        let input;
+        if (selectedInputId) {
+          input = currentInputs.find((i) => i.inputId === selectedInputId);
+        }
+
+        if (!input || input.type !== 'text-input') {
+          console.warn('Voice: no text input selected for color change');
+          return;
+        }
+
+        await updateInput(roomId, input.inputId, {
+          textColor: color,
+          volume: input.volume,
+        });
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to set text color', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:set-text-color',
+      onSetTextColor as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:set-text-color',
+        onSetTextColor as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputs, selectedInputId]);
+
+  useEffect(() => {
+    const onSetTextMaxLines = async (e: CustomEvent<{ maxLines: number }>) => {
+      try {
+        const { maxLines } = e.detail;
+        const currentInputs = inputs || [];
+
+        let input;
+        if (selectedInputId) {
+          input = currentInputs.find((i) => i.inputId === selectedInputId);
+        }
+
+        if (!input || input.type !== 'text-input') {
+          console.warn('Voice: no text input selected for max lines change');
+          return;
+        }
+
+        await updateInput(roomId, input.inputId, {
+          textMaxLines: maxLines,
+          volume: input.volume,
+        });
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to set text max lines', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:set-text-max-lines',
+      onSetTextMaxLines as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:set-text-max-lines',
+        onSetTextMaxLines as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputs, selectedInputId]);
+
+  useEffect(() => {
+    const onExportConfiguration = () => {
+      window.dispatchEvent(new CustomEvent('smelter:export-configuration'));
+    };
+
+    window.addEventListener(
+      'smelter:voice:export-configuration',
+      onExportConfiguration as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:export-configuration',
+        onExportConfiguration as EventListener,
+      );
+    };
+  }, []);
 }

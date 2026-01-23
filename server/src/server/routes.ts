@@ -29,6 +29,8 @@ type InputState = {
   text?: string;
   textAlign?: 'left' | 'center' | 'right';
   textColor?: string;
+  textMaxLines?: number;
+  textScrollSpeed?: number;
 };
 
 export const routes = Fastify({
@@ -279,6 +281,8 @@ const UpdateInputSchema = Type.Object({
     Type.Literal('right'),
   ])),
   textColor: Type.Optional(Type.String()),
+  textMaxLines: Type.Optional(Type.Number()),
+  textScrollSpeed: Type.Optional(Type.Number()),
 });
 
 routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(
@@ -380,6 +384,8 @@ function publicInputState(input: RoomInputState): InputState {
         text: input.text,
         textAlign: input.textAlign,
         textColor: input.textColor,
+        textMaxLines: input.textMaxLines,
+        textScrollSpeed: input.textScrollSpeed,
       };
     default:
       throw new Error('Unknown input state');

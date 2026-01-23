@@ -163,6 +163,19 @@ export default function IntroView() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [router, basePath, pathname, twitchSuggestions, kickSuggestions]);
 
+    // Voice command: start new room
+    useEffect(() => {
+        const handleStartRoom = () => {
+            if (!loadingNew && !loadingImport) {
+                handleCreateRoom();
+            }
+        };
+        window.addEventListener('smelter:voice:start-room', handleStartRoom);
+        return () => {
+            window.removeEventListener('smelter:voice:start-room', handleStartRoom);
+        };
+    }, [handleCreateRoom, loadingNew, loadingImport]);
+
     const handleImportClick = () => {
         fileInputRef.current?.click();
     };

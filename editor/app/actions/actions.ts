@@ -56,6 +56,8 @@ export type Input = {
   text?: string;
   textAlign?: 'left' | 'center' | 'right';
   textColor?: string;
+  textMaxLines?: number;
+  textScrollSpeed?: number;
 };
 
 export type RegisterInputOptions =
@@ -285,6 +287,8 @@ export type UpdateInputOptions = {
   text?: string;
   textAlign?: 'left' | 'center' | 'right';
   textColor?: string;
+  textMaxLines?: number;
+  textScrollSpeed?: number;
 };
 
 export async function updateInput(

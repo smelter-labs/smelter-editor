@@ -15,7 +15,7 @@ const KickChannelMonitor_1 = require("../kick/KickChannelMonitor");
 const WhipInputMonitor_1 = require("../whip/WhipInputMonitor");
 const PLACEHOLDER_LOGO_FILE = 'logo_Smelter.png';
 class RoomState {
-    constructor(idPrefix, output, initInputs) {
+    constructor(idPrefix, output, initInputs, skipDefaultInputs = false) {
         this.layout = 'picture-in-picture';
         this.isPublic = false;
         this.mp4sDir = node_path_1.default.join(process.cwd(), 'mp4s');
@@ -26,7 +26,7 @@ class RoomState {
         this.lastReadTimestamp = Date.now();
         this.creationTimestamp = Date.now();
         void (async () => {
-            await this.getInitialInputState(idPrefix, initInputs);
+            await this.getInitialInputState(idPrefix, initInputs, skipDefaultInputs);
             const realThis = this;
             for (let i = 0; i < realThis.inputs.length; i++) {
                 const maybeInput = realThis.inputs[i];
@@ -36,13 +36,13 @@ class RoomState {
             }
         })();
     }
-    async getInitialInputState(idPrefix, initInputs) {
+    async getInitialInputState(idPrefix, initInputs, skipDefaultInputs = false) {
         if (initInputs.length > 0) {
             for (const input of initInputs) {
                 await this.addNewInput(input);
             }
         }
-        else {
+        else if (!skipDefaultInputs) {
             // Filter out files starting with "logo_" or "wrapped_" for default auto-add
             const eligibleMp4Files = this.mp4Files.filter(file => !isBlockedDefaultMp4(file));
             if (eligibleMp4Files.length > 0) {
@@ -156,7 +156,7 @@ class RoomState {
         return inputId;
     }
     async addNewInput(opts) {
-        var _a;
+        var _a, _b, _c, _d;
         // Remove placeholder if it exists
         await this.removePlaceholder();
         if (opts.type === 'whip') {
@@ -306,6 +306,9 @@ class RoomState {
                 volume: 0,
                 text: opts.text,
                 textAlign: (_a = opts.textAlign) !== null && _a !== void 0 ? _a : 'left',
+                textColor: (_b = opts.textColor) !== null && _b !== void 0 ? _b : '#ffffff',
+                textMaxLines: (_c = opts.textMaxLines) !== null && _c !== void 0 ? _c : 3,
+                textScrollSpeed: (_d = opts.textScrollSpeed) !== null && _d !== void 0 ? _d : 100,
             });
             this.updateStoreWithState();
             return inputId;
@@ -418,6 +421,15 @@ class RoomState {
             if (options.textAlign !== undefined) {
                 input.textAlign = options.textAlign;
             }
+            if (options.textColor !== undefined) {
+                input.textColor = options.textColor;
+            }
+            if (options.textMaxLines !== undefined) {
+                input.textMaxLines = options.textMaxLines;
+            }
+            if (options.textScrollSpeed !== undefined) {
+                input.textScrollSpeed = options.textScrollSpeed;
+            }
         }
         this.updateStoreWithState();
     }
@@ -489,6 +501,9 @@ class RoomState {
             imageId: input.type === 'image' ? input.imageId : undefined,
             text: input.type === 'text-input' ? input.text : undefined,
             textAlign: input.type === 'text-input' ? input.textAlign : undefined,
+            textColor: input.type === 'text-input' ? input.textColor : undefined,
+            textMaxLines: input.type === 'text-input' ? input.textMaxLines : undefined,
+            textScrollSpeed: input.type === 'text-input' ? input.textScrollSpeed : undefined,
         }));
         this.output.store.getState().updateState(inputs, this.layout);
     }

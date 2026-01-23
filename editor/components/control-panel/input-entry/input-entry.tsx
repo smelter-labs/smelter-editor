@@ -65,6 +65,8 @@ interface InputEntryProps {
   onToggleFx?: () => void;
   fxModeOnly?: boolean;
   showGrip?: boolean;
+  isSelected?: boolean;
+  index?: number;
 }
 
 export default function InputEntry({
@@ -82,6 +84,8 @@ export default function InputEntry({
   onToggleFx,
   fxModeOnly,
   showGrip = true,
+  isSelected = false,
+  index,
 }: InputEntryProps) {
   const [connectionStateLoading, setConnectionStateLoading] = useState(false);
   const [showSliders, setShowSliders] = useState(false);
@@ -93,6 +97,8 @@ export default function InputEntry({
   const [textValue, setTextValue] = useState(input.text || '');
   const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>(input.textAlign || 'left');
   const [textColor, setTextColor] = useState<string>(input.textColor || '#ffffff');
+  const [textMaxLines, setTextMaxLines] = useState<number>(input.textMaxLines ?? 10);
+  const [textScrollSpeed, setTextScrollSpeed] = useState<number>(input.textScrollSpeed ?? 100);
   const [isTextSaving, setIsTextSaving] = useState(false);
   const textSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isMobile = useIsMobile();
@@ -127,6 +133,22 @@ export default function InputEntry({
       setTextColor(input.textColor);
     }
   }, [input.textColor]);
+
+  useEffect(() => {
+    setTextValue(input.text || '');
+  }, [input.text]);
+
+  useEffect(() => {
+    if (input.textMaxLines !== undefined) {
+      setTextMaxLines(input.textMaxLines);
+    }
+  }, [input.textMaxLines]);
+
+  useEffect(() => {
+    if (input.textScrollSpeed !== undefined) {
+      setTextScrollSpeed(input.textScrollSpeed);
+    }
+  }, [input.textScrollSpeed]);
 
   const lastParamChangeRef = useRef<{ [key: string]: number }>({});
   const [sliderValues, setSliderValues] = useState<{ [key: string]: number }>(
@@ -217,6 +239,42 @@ export default function InputEntry({
       try {
         await updateInput(roomId, input.inputId, {
           textColor: newColor,
+          shaders: input.shaders,
+          volume: input.volume,
+        });
+        await refreshState();
+      } finally {
+        setIsTextSaving(false);
+      }
+    },
+    [roomId, input, refreshState],
+  );
+
+  const handleTextMaxLinesChange = useCallback(
+    async (newMaxLines: number) => {
+      setTextMaxLines(newMaxLines);
+      setIsTextSaving(true);
+      try {
+        await updateInput(roomId, input.inputId, {
+          textMaxLines: newMaxLines,
+          shaders: input.shaders,
+          volume: input.volume,
+        });
+        await refreshState();
+      } finally {
+        setIsTextSaving(false);
+      }
+    },
+    [roomId, input, refreshState],
+  );
+
+  const handleTextScrollSpeedChange = useCallback(
+    async (newSpeed: number) => {
+      setTextScrollSpeed(newSpeed);
+      setIsTextSaving(true);
+      try {
+        await updateInput(roomId, input.inputId, {
+          textScrollSpeed: newSpeed,
           shaders: input.shaders,
           volume: input.volume,
         });
@@ -558,7 +616,16 @@ export default function InputEntry({
     <>
       <div
         key={input.inputId}
-        className='group relative p-2 mb-2 last:mb-0 rounded-none bg-neutral-900 border-2 border-neutral-800 overflow-hidden'>
+        className={`group relative p-2 mb-2 last:mb-0 rounded-none bg-neutral-900 border-2 overflow-hidden ${
+          isSelected ? 'border-blue-500 ring-2 ring-blue-500/30' : 'border-neutral-800'
+        }`}>
+        {typeof index === 'number' && (
+          <div className='absolute top-2 right-2 pointer-events-none'>
+            <span className='text-xs font-medium text-neutral-400'>
+              {index + 1}
+            </span>
+          </div>
+        )}
         {!isMobile && showGrip && (
           <div className='absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none'>
             <GripVertical className='w-5 h-5 text-neutral-500' />
@@ -619,6 +686,34 @@ export default function InputEntry({
                   className='w-8 h-8 rounded cursor-pointer bg-neutral-800 border border-neutral-700'
                   style={{ cursor: 'pointer' }}
                 />
+              </div>
+            </div>
+            <div className='flex items-center gap-4 mt-2'>
+              <div className='flex items-center gap-2'>
+                <span className='text-xs text-neutral-400'>Max lines:</span>
+                <input
+                  data-no-dnd
+                  type='number'
+                  min={1}
+                  max={20}
+                  value={textMaxLines}
+                  onChange={(e) => handleTextMaxLinesChange(Math.max(0, Math.min(20, parseInt(e.target.value) || 10)))}
+                  onKeyDown={(e) => e.stopPropagation()}
+                  className='w-14 p-1 bg-neutral-800 border border-neutral-700 rounded text-white text-sm text-center focus:outline-none focus:border-neutral-500'
+                />
+              </div>
+              <div className='flex items-center gap-2'>
+                <span className='text-xs text-neutral-400'>Scroll speed:</span>
+                <input
+                  data-no-dnd
+                  type='range'
+                  min={20}
+                  max={500}
+                  value={textScrollSpeed}
+                  onChange={(e) => handleTextScrollSpeedChange(parseInt(e.target.value))}
+                  className='w-20 accent-white'
+                />
+                <span className='text-xs text-neutral-500 w-8'>{textScrollSpeed}</span>
               </div>
             </div>
           </div>

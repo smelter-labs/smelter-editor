@@ -10,10 +10,13 @@ export type InputConfig = {
     imageId?: string;
     text?: string;
     textAlign?: 'left' | 'center' | 'right';
+    textColor?: string;
+    textMaxLines?: number;
+    textScrollSpeed?: number;
     replaceWith?: InputConfig;
 };
-export declare const Layouts: readonly ["grid", "primary-on-left", "primary-on-top", "picture-in-picture", "wrapped", "wrapped-static", "transition"];
-export type Layout = 'grid' | 'primary-on-left' | 'primary-on-top' | 'picture-in-picture' | 'wrapped' | 'wrapped-static' | 'transition';
+export declare const Layouts: readonly ["grid", "primary-on-left", "primary-on-top", "picture-in-picture", "wrapped", "wrapped-static", "transition", "picture-on-picture"];
+export type Layout = 'grid' | 'primary-on-left' | 'primary-on-top' | 'picture-in-picture' | 'wrapped' | 'wrapped-static' | 'transition' | 'picture-on-picture';
 export type RoomStore = {
     inputs: InputConfig[];
     layout: Layout;

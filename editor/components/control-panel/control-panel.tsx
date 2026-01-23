@@ -62,6 +62,8 @@ export default function ControlPanel({
         changeLayout,
         openFxInputId,
         setOpenFxInputId,
+        selectedInputId,
+        setSelectedInputId,
         nextIfComposing,
     } = useControlPanelState(roomId, roomState, refreshState);
 
@@ -110,6 +112,12 @@ export default function ControlPanel({
         setActiveScreenshareInputId,
         setIsScreenshareActive,
         setOpenFxInputId,
+        inputs,
+        availableShaders,
+        selectedInputId,
+        setSelectedInputId,
+        currentLayout: roomState.layout,
+        changeLayout,
     });
 
     const handleWhipDisconnectedOrRemoved = (id: string) => {
@@ -206,6 +214,7 @@ export default function ControlPanel({
                         activeCameraInputId={activeCameraInputId}
                         activeScreenshareInputId={activeScreenshareInputId}
                         onWhipDisconnectedOrRemoved={handleWhipDisconnectedOrRemoved}
+                        selectedInputId={selectedInputId}
                     />
                     <QuickActionsSection
                         inputs={inputs}

@@ -29,7 +29,7 @@ type TypeSpecificState =
   | { type: 'kick-channel'; channelId: string; hlsUrl: string; monitor: KickChannelMonitor }
   | { type: 'whip'; whipUrl: string; monitor: WhipInputMonitor }
   | { type: 'image'; imageId: string }
-  | { type: 'text-input'; text: string; textAlign: 'left' | 'center' | 'right'; textColor: string };
+  | { type: 'text-input'; text: string; textAlign: 'left' | 'center' | 'right'; textColor: string; textMaxLines: number; textScrollSpeed: number };
 
 type UpdateInputOptions = {
   volume: number;
@@ -38,6 +38,8 @@ type UpdateInputOptions = {
   text: string;
   textAlign: 'left' | 'center' | 'right';
   textColor: string;
+  textMaxLines: number;
+  textScrollSpeed: number;
 };
 
 export type RegisterInputOptions =
@@ -69,6 +71,8 @@ export type RegisterInputOptions =
       text: string;
       textAlign?: 'left' | 'center' | 'right';
       textColor?: string;
+      textMaxLines?: number;
+      textScrollSpeed?: number;
     };
 
 const PLACEHOLDER_LOGO_FILE = 'logo_Smelter.png';
@@ -407,6 +411,8 @@ export class RoomState {
         text: opts.text,
         textAlign: opts.textAlign ?? 'left',
         textColor: opts.textColor ?? '#ffffff',
+        textMaxLines: opts.textMaxLines ?? 10,
+        textScrollSpeed: opts.textScrollSpeed ?? 100,
       });
       this.updateStoreWithState();
 
@@ -528,6 +534,12 @@ export class RoomState {
       if (options.textColor !== undefined) {
         input.textColor = options.textColor;
       }
+      if (options.textMaxLines !== undefined) {
+        input.textMaxLines = options.textMaxLines;
+      }
+      if (options.textScrollSpeed !== undefined) {
+        input.textScrollSpeed = options.textScrollSpeed;
+      }
     }
     this.updateStoreWithState();
   }
@@ -603,6 +615,8 @@ export class RoomState {
         text: input.type === 'text-input' ? input.text : undefined,
         textAlign: input.type === 'text-input' ? input.textAlign : undefined,
         textColor: input.type === 'text-input' ? input.textColor : undefined,
+        textMaxLines: input.type === 'text-input' ? input.textMaxLines : undefined,
+        textScrollSpeed: input.type === 'text-input' ? input.textScrollSpeed : undefined,
       }));
     this.output.store.getState().updateState(inputs, this.layout);
   }

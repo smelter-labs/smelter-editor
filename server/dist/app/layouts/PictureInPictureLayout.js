@@ -13,9 +13,6 @@ function PictureInPictureLayout() {
     const inputs = (0, zustand_1.useStore)(store, state => state.inputs);
     const firstInput = inputs[0];
     const secondInput = inputs[1];
-    if (!firstInput) {
-        return (0, jsx_runtime_1.jsx)(smelter_1.View, {});
-    }
     const [waveAmpPx, setWaveAmpPx] = (0, react_1.useState)(0);
     const [waveSpeed, setWaveSpeed] = (0, react_1.useState)(0);
     const [marqueeLeft, setMarqueeLeft] = (0, react_1.useState)(2560);
@@ -98,6 +95,9 @@ function PictureInPictureLayout() {
             }
         };
     }, []);
+    if (!firstInput) {
+        return (0, jsx_runtime_1.jsx)(smelter_1.View, { style: { backgroundColor: '#000000', width: 2560, height: 1440 } });
+    }
     return ((0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { direction: 'column' }, children: [(0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { transition: { durationMs: 300 }, style: {
                     rescaleMode: 'fill',
                     horizontalAlign: 'left',

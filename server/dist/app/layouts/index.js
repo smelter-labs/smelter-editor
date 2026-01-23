@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.TransitionLayout = exports.WrappedStaticLayout = exports.WrappedLayout = exports.PictureInPictureLayout = exports.PrimaryOnTopLayout = exports.PrimaryOnLeftLayout = exports.GridLayout = void 0;
+exports.PictureOnPictureLayout = exports.TransitionLayout = exports.WrappedStaticLayout = exports.WrappedLayout = exports.PictureInPictureLayout = exports.PrimaryOnTopLayout = exports.PrimaryOnLeftLayout = exports.GridLayout = void 0;
 var GridLayout_1 = require("./GridLayout");
 Object.defineProperty(exports, "GridLayout", { enumerable: true, get: function () { return GridLayout_1.GridLayout; } });
 var PrimaryOnLeftLayout_1 = require("./PrimaryOnLeftLayout");
@@ -15,3 +15,5 @@ var MultiplePicturesLayout_2 = require("./MultiplePicturesLayout");
 Object.defineProperty(exports, "WrappedStaticLayout", { enumerable: true, get: function () { return MultiplePicturesLayout_2.WrappedLayout; } });
 var TransitionLayout_1 = require("./TransitionLayout");
 Object.defineProperty(exports, "TransitionLayout", { enumerable: true, get: function () { return TransitionLayout_1.TransitionLayout; } });
+var PictureOnPictureLayout_1 = require("./PictureOnPictureLayout");
+Object.defineProperty(exports, "PictureOnPictureLayout", { enumerable: true, get: function () { return PictureOnPictureLayout_1.PictureOnPictureLayout; } });

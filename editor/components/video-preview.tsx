@@ -69,20 +69,7 @@ export default function VideoPreview({
                     size='lg'
                     asChild
                     variant='outline'
-                    className='max-md:h-8 max-md:px-3 max-md:text-xs text-black hover:bg-neutral-200 mr-2'>
-                    <Link
-                      href='https://www.smelter.dev/#contact'
-                      target='_blank'
-                      rel='noopener noreferrer'>
-                      <Mail className='w-4 h-4' />
-                      Contact Us
-                    </Link>
-                  </Button>
-                  <Button
-                    size='lg'
-                    asChild
-                    variant='outline'
-                    className='max-md:h-8 max-md:px-3 max-md:text-xs text-black hover:bg-neutral-200'>
+                    className='max-md:h-8 max-md:px-3 max-md:text-xs text-neutral-500 hover:bg-neutral-200'>
                     <Link
                       href={`/room-preview/${roomId}`}
                       target='_blank'

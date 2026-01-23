@@ -40,6 +40,9 @@ type TypeSpecificState = {
     type: 'text-input';
     text: string;
     textAlign: 'left' | 'center' | 'right';
+    textColor: string;
+    textMaxLines: number;
+    textScrollSpeed: number;
 };
 type UpdateInputOptions = {
     volume: number;
@@ -47,6 +50,9 @@ type UpdateInputOptions = {
     shaders: ShaderConfig[];
     text: string;
     textAlign: 'left' | 'center' | 'right';
+    textColor: string;
+    textMaxLines: number;
+    textScrollSpeed: number;
 };
 export type RegisterInputOptions = {
     type: 'twitch-channel';
@@ -70,6 +76,9 @@ export type RegisterInputOptions = {
     type: 'text-input';
     text: string;
     textAlign?: 'left' | 'center' | 'right';
+    textColor?: string;
+    textMaxLines?: number;
+    textScrollSpeed?: number;
 };
 export declare class RoomState {
     private inputs;
@@ -82,7 +91,7 @@ export declare class RoomState {
     creationTimestamp: number;
     pendingDelete?: boolean;
     isPublic: boolean;
-    constructor(idPrefix: string, output: SmelterOutput, initInputs: RegisterInputOptions[]);
+    constructor(idPrefix: string, output: SmelterOutput, initInputs: RegisterInputOptions[], skipDefaultInputs?: boolean);
     private getInitialInputState;
     getWhepUrl(): string;
     getState(): [RoomInputState[], Layout];

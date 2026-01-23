@@ -204,6 +204,7 @@ export function useControlPanelState(
   );
 
   const [openFxInputId, setOpenFxInputId] = useState<string | null>(null);
+  const [selectedInputId, setSelectedInputId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!openFxInputId) return;
@@ -211,6 +212,13 @@ export function useControlPanelState(
       setOpenFxInputId(null);
     }
   }, [inputs, openFxInputId]);
+
+  useEffect(() => {
+    if (!selectedInputId) return;
+    if (!inputs.some((i) => i.inputId === selectedInputId)) {
+      setSelectedInputId(null);
+    }
+  }, [inputs, selectedInputId]);
 
   return {
     userName,
@@ -234,6 +242,8 @@ export function useControlPanelState(
     changeLayout,
     openFxInputId,
     setOpenFxInputId,
+    selectedInputId,
+    setSelectedInputId,
     nextIfComposing,
   };
 }

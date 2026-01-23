@@ -276,25 +276,9 @@ const AVAILABLE_SHADERS = [
         shaderFile: 'remove-color.wgsl',
         params: [
             {
-                name: 'target_r',
-                type: 'number',
-                minValue: 0,
-                maxValue: 1,
-                defaultValue: 0,
-            },
-            {
-                name: 'target_g',
-                type: 'number',
-                minValue: 0,
-                maxValue: 1,
-                defaultValue: 1,
-            },
-            {
-                name: 'target_b',
-                type: 'number',
-                minValue: 0,
-                maxValue: 1,
-                defaultValue: 0,
+                name: 'target_color',
+                type: 'color',
+                defaultValue: '#00ff00' // green by default (was r=0, g=1, b=0)
             },
             {
                 name: 'tolerance',
@@ -493,6 +477,44 @@ const AVAILABLE_SHADERS = [
             { name: 'edge_glow_width', type: 'number', minValue: 0, maxValue: 0.5, defaultValue: 0.1 },
         ],
     },
+    {
+        id: 'perspective',
+        isActive: true,
+        isVisible: true,
+        name: 'Perspective',
+        description: 'Applies perspective transformation to the content, making it appear to recede into the distance (vanishing point at bottom).',
+        shaderFile: 'perspective.wgsl',
+        params: [
+            {
+                name: 'perspective',
+                type: 'number',
+                minValue: 0,
+                maxValue: 1,
+                defaultValue: 0.5,
+            },
+            {
+                name: 'scale',
+                type: 'number',
+                minValue: 0.1,
+                maxValue: 3,
+                defaultValue: 1.0,
+            },
+            {
+                name: 'rotation',
+                type: 'number',
+                minValue: -3.14159,
+                maxValue: 3.14159,
+                defaultValue: 0.0,
+            },
+            {
+                name: 'opacity',
+                type: 'number',
+                minValue: 0,
+                maxValue: 1,
+                defaultValue: 1.0,
+            },
+        ],
+    },
 ];
 class ShadersController {
     get shaders() {
@@ -509,6 +531,9 @@ class ShadersController {
             }
             return { ...shader, iconSvg };
         });
+    }
+    getShaderById(shaderId) {
+        return AVAILABLE_SHADERS.find(shader => shader.id === shaderId && shader.isActive);
     }
 }
 const shadersController = new ShadersController();

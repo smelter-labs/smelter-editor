@@ -23,6 +23,7 @@ type StreamsSectionProps = {
   activeCameraInputId: string | null;
   activeScreenshareInputId: string | null;
   onWhipDisconnectedOrRemoved: (id: string) => void;
+  selectedInputId: string | null;
 };
 
 export function StreamsSection({
@@ -41,6 +42,7 @@ export function StreamsSection({
   activeCameraInputId,
   activeScreenshareInputId,
   onWhipDisconnectedOrRemoved,
+  selectedInputId,
 }: StreamsSectionProps) {
   const [isWideScreen, setIsWideScreen] = useState(true);
 
@@ -92,6 +94,8 @@ export function StreamsSection({
                       onToggleFx={() => onToggleFx(input.inputId)}
                       onWhipDisconnectedOrRemoved={onWhipDisconnectedOrRemoved}
                       showGrip={isWideScreen}
+                      isSelected={selectedInputId === input.inputId}
+                      index={index}
                     />
                   )}
                 </SortableItem>

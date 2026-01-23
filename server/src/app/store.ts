@@ -14,6 +14,8 @@ export type InputConfig = {
   text?: string;
   textAlign?: 'left' | 'center' | 'right';
   textColor?: string;
+  textMaxLines?: number;
+  textScrollSpeed?: number;
   replaceWith?: InputConfig;
 };
 

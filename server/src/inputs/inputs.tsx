@@ -10,6 +10,7 @@ import {
   Shader,
 } from '@swmansion/smelter';
 
+import React, { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { ShaderConfig, ShaderParamConfig } from '../shaders/shaders';
 import shadersController from '../shaders/shaders';
@@ -64,20 +65,16 @@ function wrapWithShaders(
   
   const shaderParams: ShaderParamStructField[] = [];
   
-  if (Array.isArray(shader.params)) {
-    for (const param of shader.params) {
-      // Check if this param is a color type in the shader definition
-      const paramDef = shaderDef?.params?.find(p => p.name === param.paramName);
+  if (shaderDef?.params && Array.isArray(shader.params)) {
+    for (const paramDef of shaderDef.params) {
+      const param = shader.params.find(p => p.paramName === paramDef.name);
+      if (!param) continue;
       
-      if (paramDef?.type === 'color') {
-        // Convert color param to r, g, b values
-        // Remove '_color' suffix from param name if present, then add _r, _g, _b
-        // e.g., 'target_color' -> 'target_r', 'target_g', 'target_b'
+      if (paramDef.type === 'color') {
         const baseName = param.paramName;
         const colorValue = param.paramValue;
         const rgb = colorToRgb(colorValue);
         
-        // Add the three RGB components
         shaderParams.push({
           type: 'f32',
           fieldName: `${baseName}_r`,
@@ -94,7 +91,6 @@ function wrapWithShaders(
           value: rgb.b,
         } as ShaderParamStructField);
       } else {
-        // Regular param, pass through
         shaderParams.push({
           type: 'f32',
           fieldName: param.paramName,
@@ -121,6 +117,106 @@ function wrapWithShaders(
   );
 }
 
+type ScrollingTextProps = {
+  text: string;
+  maxLines: number;
+  scrollSpeed: number;
+  fontSize: number;
+  color: string;
+  align: 'left' | 'center' | 'right';
+  containerWidth: number;
+  containerHeight: number;
+};
+
+function ScrollingText({
+  text,
+  maxLines,
+  scrollSpeed,
+  fontSize,
+  color,
+  align,
+  containerWidth,
+  containerHeight,
+}: ScrollingTextProps) {
+  const lineHeight = fontSize * 1.2;
+  const visibleHeight = maxLines > 0 ? maxLines * lineHeight : containerHeight;
+  const lines = text.split('\n');
+  const totalTextHeight = lines.length * lineHeight;
+  
+  const shouldAnimate = maxLines > 0;
+  
+  const [scrollOffset, setScrollOffset] = useState(visibleHeight);
+  const targetOffsetRef = useRef(visibleHeight);
+  const isAnimatingRef = useRef(false);
+  const prevLinesCountRef = useRef(0);
+
+  useEffect(() => {
+    if (!shouldAnimate) {
+      return;
+    }
+
+    if (lines.length > prevLinesCountRef.current) {
+      const targetPosition = visibleHeight - totalTextHeight;
+      targetOffsetRef.current = targetPosition;
+      
+      if (!isAnimatingRef.current) {
+        isAnimatingRef.current = true;
+        const intervalMs = 16;
+        const pixelsPerFrame = (scrollSpeed / 1000) * intervalMs;
+        
+        const timer = setInterval(() => {
+          setScrollOffset(prev => {
+            const target = targetOffsetRef.current;
+            if (prev <= target) {
+              isAnimatingRef.current = false;
+              clearInterval(timer);
+              return target;
+            }
+            return prev - pixelsPerFrame;
+          });
+        }, intervalMs);
+        
+        return () => clearInterval(timer);
+      }
+    }
+    prevLinesCountRef.current = lines.length;
+  }, [lines.length, shouldAnimate, totalTextHeight, visibleHeight, scrollSpeed]);
+
+  useEffect(() => {
+    if (!shouldAnimate) {
+      setScrollOffset(0);
+      targetOffsetRef.current = 0;
+    }
+  }, [shouldAnimate]);
+
+  const textTopOffset = shouldAnimate ? scrollOffset : 0;
+
+  return (
+    <View style={{ 
+      width: containerWidth, 
+      height: visibleHeight, 
+      overflow: 'hidden',
+    }}>
+      <View style={{ 
+        width: containerWidth,
+        height: totalTextHeight,
+        top: textTopOffset,
+        left: 0,
+      }}>
+        <Text style={{ 
+          fontSize, 
+          width: containerWidth,
+          color, 
+          wrap: 'word',
+          align,
+        }}>
+          {text}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 export function Input({ input }: { input: InputConfig }) {
   const streams = useInputStreams();
   const isImage = !!input.imageId;
@@ -138,17 +234,16 @@ export function Input({ input }: { input: InputConfig }) {
             </Rescaler>
           ) : isTextInput ? (
             <View style={{ width: 1920, height: 1080, backgroundColor: '#1a1a2e', padding: 100 }}>
-              <Text style={{ 
-                fontSize: 80, 
-                width:resolution.width, 
-                height:resolution.height, 
-                maxHeight:resolution.height,
-                maxWidth:resolution.width,
-                color: input.textColor ?? 'white', 
-                wrap:'word',
-                align: input.textAlign ?? 'left' }}>
-                  {input.text}
-                </Text>
+              <ScrollingText
+                text={input.text!}
+                maxLines={input.textMaxLines ?? 10}
+                scrollSpeed={input.textScrollSpeed ?? 100}
+                fontSize={80}
+                color={input.textColor ?? 'white'}
+                align={input.textAlign ?? 'left'}
+                containerWidth={resolution.width - 200}
+                containerHeight={resolution.height - 200}
+              />
             </View>
           ) : (
             <Rescaler style={{ rescaleMode: 'fill' }}>
@@ -221,7 +316,16 @@ export function SmallInput({
         </Rescaler>
       ) : isTextInput ? (
         <View style={{ width: resolution.width, height: resolution.height, backgroundColor: '#1a1a2e', padding: 30 }}>
-          <Text style={{ fontSize: 30, color: input.textColor ?? 'white', align: input.textAlign ?? 'left' }}>{input.text}</Text>
+          <ScrollingText
+            text={input.text!}
+            maxLines={input.textMaxLines ?? 10}
+            scrollSpeed={input.textScrollSpeed ?? 100}
+            fontSize={30}
+            color={input.textColor ?? 'white'}
+            align={input.textAlign ?? 'left'}
+            containerWidth={resolution.width - 60}
+            containerHeight={resolution.height - 60}
+          />
         </View>
       ) : (
         <Rescaler style={{ rescaleMode: 'fill' }}>

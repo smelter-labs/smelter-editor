@@ -39,7 +39,8 @@ exports.routes.post('/room', async (_req, res) => {
         return res.status(400).send({ error: 'initInputs must be an array' });
     }
     const initInputs = (body === null || body === void 0 ? void 0 : body.initInputs) || [];
-    const { roomId, room } = await serverState_1.state.createRoom(initInputs);
+    const skipDefaultInputs = (body === null || body === void 0 ? void 0 : body.skipDefaultInputs) === true;
+    const { roomId, room } = await serverState_1.state.createRoom(initInputs, skipDefaultInputs);
     res.status(200).send({ roomId, whepUrl: room.getWhepUrl() });
 });
 exports.routes.get('/shaders', async (_req, res) => {
@@ -97,6 +98,7 @@ const UpdateRoomSchema = typebox_1.Type.Object({
         typebox_1.Type.Literal('wrapped'),
         typebox_1.Type.Literal('wrapped-static'),
         typebox_1.Type.Literal('transition'),
+        typebox_1.Type.Literal('picture-on-picture'),
     ])),
     isPublic: typebox_1.Type.Optional(typebox_1.Type.Boolean()),
 });
@@ -215,6 +217,9 @@ const UpdateInputSchema = typebox_1.Type.Object({
         typebox_1.Type.Literal('center'),
         typebox_1.Type.Literal('right'),
     ])),
+    textColor: typebox_1.Type.Optional(typebox_1.Type.String()),
+    textMaxLines: typebox_1.Type.Optional(typebox_1.Type.Number()),
+    textScrollSpeed: typebox_1.Type.Optional(typebox_1.Type.Number()),
 });
 exports.routes.post('/room/:roomId/input/:inputId', { schema: { body: UpdateInputSchema } }, async (req, res) => {
     const { roomId, inputId } = req.params;
@@ -241,6 +246,7 @@ function publicInputState(input) {
                 sourceState: 'always-live',
                 status: input.status,
                 volume: input.volume,
+                type: input.type,
                 shaders: input.shaders,
             };
         case 'image':
@@ -252,6 +258,7 @@ function publicInputState(input) {
                 sourceState: 'always-live',
                 status: input.status,
                 volume: input.volume,
+                type: input.type,
                 shaders: input.shaders,
                 imageId: input.imageId,
             };
@@ -264,6 +271,7 @@ function publicInputState(input) {
                 sourceState: input.monitor.isLive() ? 'live' : 'offline',
                 status: input.status,
                 volume: input.volume,
+                type: input.type,
                 shaders: input.shaders,
                 channelId: input.channelId,
             };
@@ -276,6 +284,7 @@ function publicInputState(input) {
                 sourceState: input.monitor.isLive() ? 'live' : 'offline',
                 status: input.status,
                 volume: input.volume,
+                type: input.type,
                 shaders: input.shaders,
                 channelId: input.channelId,
             };
@@ -288,6 +297,7 @@ function publicInputState(input) {
                 sourceState: input.monitor.isLive() ? 'live' : 'offline',
                 status: input.status,
                 volume: input.volume,
+                type: input.type,
                 shaders: input.shaders,
             };
         case 'text-input':
@@ -299,9 +309,13 @@ function publicInputState(input) {
                 sourceState: 'always-live',
                 status: input.status,
                 volume: input.volume,
+                type: input.type,
                 shaders: input.shaders,
                 text: input.text,
                 textAlign: input.textAlign,
+                textColor: input.textColor,
+                textMaxLines: input.textMaxLines,
+                textScrollSpeed: input.textScrollSpeed,
             };
         default:
             throw new Error('Unknown input state');

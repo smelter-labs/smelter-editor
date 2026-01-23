@@ -3,7 +3,7 @@ type ShaderParam = {
     type: string;
     minValue?: number;
     maxValue?: number;
-    defaultValue?: number;
+    defaultValue?: number | string;
 };
 type AvailableShader = {
     id: string;
@@ -29,6 +29,7 @@ export type ShaderConfig = {
 };
 declare class ShadersController {
     get shaders(): PublicShader[];
+    getShaderById(shaderId: string): AvailableShader | undefined;
 }
 declare const shadersController: ShadersController;
 export default shadersController;

@@ -12,6 +12,7 @@ exports.Layouts = [
     'wrapped',
     'wrapped-static',
     'transition',
+    'picture-on-picture',
 ];
 function createRoomStore() {
     return (0, zustand_1.createStore)(set => ({

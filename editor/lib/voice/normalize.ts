@@ -5,6 +5,7 @@ const NUMBER_WORDS: Record<string, string> = {
   second: '2',
   three: '3',
   third: '3',
+  free: '3',
   four: '4',
   fourth: '4',
   five: '5',
@@ -41,10 +42,14 @@ const PHRASE_ALIASES: [RegExp, string][] = [
   [/\bremove\s*colour\b/gi, 'remove color'],
   [/\bgr[ae]y\s*scale\b/gi, 'grayscale'],
   [/\bholo\b/gi, 'hologram'],
+  [/\btelegram\b/gi, 'hologram'],
+  [/\bphotogram\b/gi, 'hologram'],
   [/\beffect\b/gi, 'shader'],
+  [/\bthe\s*select\b/gi, 'deselect'],
+  [/\b(light|flight|slide)\b/gi, 'layout'],
 ];
 
-const INPUT_ALIASES = ['feed', 'source'];
+const INPUT_ALIASES = ['feed', 'source', 'inputs'];
 
 export function normalize(text: string): string {
   let result = text.toLowerCase();

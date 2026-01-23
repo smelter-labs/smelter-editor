@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
 import type { Input, Layout } from '@/app/actions/actions';
 import {
     addTwitchInput,
@@ -54,7 +54,7 @@ export function ConfigurationSection({
     const [isImporting, setIsImporting] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    const handleExport = async () => {
+    const handleExport = useCallback(async () => {
         setIsExporting(true);
         try {
             const config = exportRoomConfig(inputs, layout);
@@ -66,7 +66,17 @@ export function ConfigurationSection({
         } finally {
             setIsExporting(false);
         }
-    };
+    }, [inputs, layout]);
+
+    useEffect(() => {
+        const onVoiceExport = () => {
+            handleExport();
+        };
+        window.addEventListener('smelter:export-configuration', onVoiceExport);
+        return () => {
+            window.removeEventListener('smelter:export-configuration', onVoiceExport);
+        };
+    }, [handleExport]);
 
     const handleImportClick = () => {
         fileInputRef.current?.click();

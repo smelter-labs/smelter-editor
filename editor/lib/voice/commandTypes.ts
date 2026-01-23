@@ -1,13 +1,15 @@
 export const Shader = {
-  OPACITY: 'OPACITY',
-  GRAYSCALE: 'GRAYSCALE',
-  BRIGHTNESS: 'BRIGHTNESS',
-  CONTRAST: 'CONTRAST',
-  WRAPPED: 'WRAPPED',
-  REMOVE_COLOR: 'REMOVE_COLOR',
-  ORBITING: 'ORBITING',
-  HOLOGRAM: 'HOLOGRAM',
-  SHADOW: 'SHADOW',
+  ASCII: 'ascii-filter',
+  GRAYSCALE: 'grayscale',
+  OPACITY: 'opacity',
+  BRIGHTNESS_CONTRAST: 'brightness-contrast',
+  WRAPPED: 'circle-mask-outline',
+  REMOVE_COLOR: 'remove-color',
+  ORBITING: 'orbiting',
+  STAR_STREAKS: 'star-streaks',
+  SHADOW: 'soft-shadow',
+  HOLOGRAM: 'sw-hologram',
+  PERSPECTIVE: 'perspective',
 } as const;
 
 export type Shader = (typeof Shader)[keyof typeof Shader];
@@ -44,19 +46,63 @@ export type MoveInputCommand = {
 
 export type AddShaderCommand = {
   intent: 'ADD_SHADER';
-  inputIndex: number;
+  inputIndex: number | null;
   shader: Shader;
+  targetColor?: string;
 };
 
 export type RemoveShaderCommand = {
   intent: 'REMOVE_SHADER';
-  inputIndex: number;
+  inputIndex: number | null;
   shader: Shader;
 };
 
 export type RemoveInputCommand = {
   intent: 'REMOVE_INPUT';
   inputIndex: number;
+};
+
+export type SelectInputCommand = {
+  intent: 'SELECT_INPUT';
+  inputIndex: number;
+};
+
+export type DeselectInputCommand = {
+  intent: 'DESELECT_INPUT';
+};
+
+export type StartTypingCommand = {
+  intent: 'START_TYPING';
+};
+
+export type StopTypingCommand = {
+  intent: 'STOP_TYPING';
+};
+
+export type StartRoomCommand = {
+  intent: 'START_ROOM';
+};
+
+export type NextLayoutCommand = {
+  intent: 'NEXT_LAYOUT';
+};
+
+export type PreviousLayoutCommand = {
+  intent: 'PREVIOUS_LAYOUT';
+};
+
+export type SetTextColorCommand = {
+  intent: 'SET_TEXT_COLOR';
+  color: string;
+};
+
+export type SetTextMaxLinesCommand = {
+  intent: 'SET_TEXT_MAX_LINES';
+  maxLines: number;
+};
+
+export type ExportConfigurationCommand = {
+  intent: 'EXPORT_CONFIGURATION';
 };
 
 export type ClarifyCommand = {
@@ -71,6 +117,16 @@ export type VoiceCommand =
   | AddShaderCommand
   | RemoveShaderCommand
   | RemoveInputCommand
+  | SelectInputCommand
+  | DeselectInputCommand
+  | StartTypingCommand
+  | StopTypingCommand
+  | StartRoomCommand
+  | NextLayoutCommand
+  | PreviousLayoutCommand
+  | SetTextColorCommand
+  | SetTextMaxLinesCommand
+  | ExportConfigurationCommand
   | ClarifyCommand;
 
 export type VoiceInput = {
@@ -107,21 +163,25 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
 
     case 'ADD_SHADER':
       if (
-        typeof c.inputIndex === 'number' &&
+        (typeof c.inputIndex === 'number' || c.inputIndex === null) &&
         typeof c.shader === 'string' &&
         Object.values(Shader).includes(c.shader as Shader)
       ) {
-        return { intent: 'ADD_SHADER', inputIndex: c.inputIndex, shader: c.shader as Shader };
+        const result: AddShaderCommand = { intent: 'ADD_SHADER', inputIndex: c.inputIndex as number | null, shader: c.shader as Shader };
+        if (typeof c.targetColor === 'string') {
+          result.targetColor = c.targetColor;
+        }
+        return result;
       }
       return null;
 
     case 'REMOVE_SHADER':
       if (
-        typeof c.inputIndex === 'number' &&
+        (typeof c.inputIndex === 'number' || c.inputIndex === null) &&
         typeof c.shader === 'string' &&
         Object.values(Shader).includes(c.shader as Shader)
       ) {
-        return { intent: 'REMOVE_SHADER', inputIndex: c.inputIndex, shader: c.shader as Shader };
+        return { intent: 'REMOVE_SHADER', inputIndex: c.inputIndex as number | null, shader: c.shader as Shader };
       }
       return null;
 
@@ -130,6 +190,45 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
         return { intent: 'REMOVE_INPUT', inputIndex: c.inputIndex };
       }
       return null;
+
+    case 'SELECT_INPUT':
+      if (typeof c.inputIndex === 'number') {
+        return { intent: 'SELECT_INPUT', inputIndex: c.inputIndex };
+      }
+      return null;
+
+    case 'DESELECT_INPUT':
+      return { intent: 'DESELECT_INPUT' };
+
+    case 'START_TYPING':
+      return { intent: 'START_TYPING' };
+
+    case 'STOP_TYPING':
+      return { intent: 'STOP_TYPING' };
+
+    case 'START_ROOM':
+      return { intent: 'START_ROOM' };
+
+    case 'NEXT_LAYOUT':
+      return { intent: 'NEXT_LAYOUT' };
+
+    case 'PREVIOUS_LAYOUT':
+      return { intent: 'PREVIOUS_LAYOUT' };
+
+    case 'SET_TEXT_COLOR':
+      if (typeof c.color === 'string') {
+        return { intent: 'SET_TEXT_COLOR', color: c.color };
+      }
+      return null;
+
+    case 'SET_TEXT_MAX_LINES':
+      if (typeof c.maxLines === 'number') {
+        return { intent: 'SET_TEXT_MAX_LINES', maxLines: c.maxLines };
+      }
+      return null;
+
+    case 'EXPORT_CONFIGURATION':
+      return { intent: 'EXPORT_CONFIGURATION' };
 
     case 'CLARIFY':
       if (Array.isArray(c.missing) && typeof c.question === 'string') {

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react';
+import { useParams } from 'next/navigation';
 import useSpeechToText from 'react-hook-speech-to-text';
 import { Mic, MicOff, X, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -8,14 +9,17 @@ import { cn } from '@/lib/utils';
 import { useVoiceCommands } from '@/lib/voice';
 
 export function SpeechToTextWithCommands() {
+  const params = useParams();
+  const roomId = params?.roomId as string | undefined;
+
   const [isOpen, setIsOpen] = useState(false);
   const [manualInput, setManualInput] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastProcessedIndex = useRef(-1);
 
-  const { inputs, lastCommand, lastError, lastClarify, handleTranscript, setInputs } =
-    useVoiceCommands([]);
+  const { lastCommand, lastError, lastClarify, lastTranscript, isTypingMode, handleTranscript } =
+    useVoiceCommands();
 
   const {
     error,
@@ -84,6 +88,8 @@ export function SpeechToTextWithCommands() {
 
   const reversedResults = [...results].reverse();
 
+  const isIntroPage = !roomId;
+
   return (
     <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-3">
       {isOpen && (
@@ -91,16 +97,22 @@ export function SpeechToTextWithCommands() {
           <div className="flex items-center justify-between mb-3 border-b border-neutral-700 pb-3">
             <div className="flex items-center gap-2">
               {isRecording && (
-                <span className="size-2 rounded-full bg-red-500 animate-pulse" />
+                <span className={`size-2 rounded-full animate-pulse ${isTypingMode ? 'bg-purple-500' : 'bg-red-500'}`} />
               )}
               <span className="text-sm text-neutral-400">
-                {isRecording ? 'Listening...' : 'Voice Commands'}
+                {isTypingMode ? '✏️ Typing Mode' : isRecording ? 'Listening...' : isIntroPage ? 'Voice Commands (say "start new room")' : 'Voice Commands'}
               </span>
             </div>
             <Button variant="ghost" size="icon" className="size-6" onClick={handleClose}>
               <X className="size-4" />
             </Button>
           </div>
+
+          {lastTranscript && (
+            <p className="text-neutral-400 text-sm mb-2 font-mono">
+              &quot;{lastTranscript}&quot;
+            </p>
+          )}
 
           {error && (
             <p className="text-red-500 text-sm mb-2">
@@ -116,6 +128,12 @@ export function SpeechToTextWithCommands() {
             <p className="text-blue-400 text-sm mb-2">❓ {lastClarify}</p>
           )}
 
+          {isTypingMode && (
+            <p className="text-purple-400 text-sm mb-2 bg-purple-500/10 p-2 rounded">
+              🎤 Dictating text... Say &quot;stop typing&quot; to finish.
+            </p>
+          )}
+
           {lastCommand && lastCommand.intent !== 'CLARIFY' && (
             <p className="text-green-400 text-sm mb-2">
               ✓ {lastCommand.intent}
@@ -127,6 +145,7 @@ export function SpeechToTextWithCommands() {
                 ` → ${lastCommand.shader} from input ${lastCommand.inputIndex}`}
               {lastCommand.intent === 'MOVE_INPUT' &&
                 ` → input ${lastCommand.inputIndex} ${lastCommand.direction.toLowerCase()}${lastCommand.steps && lastCommand.steps > 1 ? ` by ${lastCommand.steps}` : ''}`}
+              {lastCommand.intent === 'START_ROOM' && ' → creating room...'}
             </p>
           )}
 
@@ -149,20 +168,6 @@ export function SpeechToTextWithCommands() {
             >
               <Send className="size-4" />
             </Button>
-          </div>
-
-          <div className="text-xs text-neutral-500 mb-2 space-y-1">
-            <div>Inputs: {inputs.length}</div>
-            {inputs.map((inp, i) => (
-              <div key={inp.id} className="ml-2">
-                [{i + 1}] {inp.type}
-                {inp.shaders.length > 0 && (
-                  <span className="text-neutral-400 ml-1">
-                    ({inp.shaders.map((s) => s.toLowerCase()).join(', ')})
-                  </span>
-                )}
-              </div>
-            ))}
           </div>
 
           <div ref={scrollRef} className="overflow-y-auto max-h-[200px] space-y-2">

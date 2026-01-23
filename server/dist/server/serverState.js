@@ -25,10 +25,10 @@ class ServerState {
             await this.monitorConnectedRooms();
         }, 1000);
     }
-    async createRoom(initInputs) {
+    async createRoom(initInputs, skipDefaultInputs = false) {
         const roomId = (0, uuid_1.v4)();
         const smelterOutput = await smelter_1.SmelterInstance.registerOutput(roomId);
-        const room = new roomState_1.RoomState(roomId, smelterOutput, initInputs);
+        const room = new roomState_1.RoomState(roomId, smelterOutput, initInputs, skipDefaultInputs);
         this.rooms[roomId] = room;
         return { roomId, room };
     }

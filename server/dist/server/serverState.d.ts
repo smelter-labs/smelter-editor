@@ -9,7 +9,7 @@ declare class ServerState {
     getRooms(): RoomState[];
     isChannelIdUsed(channelId: string): boolean;
     constructor();
-    createRoom(initInputs: RegisterInputOptions[]): Promise<CreateRoomResult>;
+    createRoom(initInputs: RegisterInputOptions[], skipDefaultInputs?: boolean): Promise<CreateRoomResult>;
     getRoom(roomId: string): RoomState;
     deleteRoom(roomId: string): Promise<void>;
     private monitorConnectedRooms;

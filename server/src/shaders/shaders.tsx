@@ -309,14 +309,14 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
       {
         name: 'target_color', 
         type: 'color', 
-        defaultValue: '#00ff00' // green by default (was r=0, g=1, b=0)
+        defaultValue: '#1c1c35' // green by default (was r=0, g=1, b=0)
       },
       {
         name: 'tolerance',
         type: 'number',
         minValue: 0,
         maxValue: 1,
-        defaultValue: 0.1,
+        defaultValue: 0.2,
       },
     ],
   },
@@ -510,6 +510,45 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
       { name: 'jitter_speed', type: 'number', minValue: 0, maxValue: 20, defaultValue: 5 },
       { name: 'glow_intensity', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.4 },
       { name: 'edge_glow_width', type: 'number', minValue: 0, maxValue: 0.5, defaultValue: 0.1 },
+    ],
+  },
+  {
+    id: 'perspective',
+    isActive: true,
+    isVisible: true,
+    name: 'Perspective',
+    description:
+      'Applies perspective transformation to the content, making it appear to recede into the distance (vanishing point at bottom).',
+    shaderFile: 'perspective.wgsl',
+    params: [
+      {
+        name: 'perspective',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.5,
+      },
+      {
+        name: 'scale',
+        type: 'number',
+        minValue: 0.1,
+        maxValue: 3,
+        defaultValue: 1.0,
+      },
+      {
+        name: 'rotation',
+        type: 'number',
+        minValue: -3.14159,
+        maxValue: 3.14159,
+        defaultValue: 0.0,
+      },
+      {
+        name: 'opacity',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 1.0,
+      },
     ],
   },
 ];
