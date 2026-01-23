@@ -233,7 +233,7 @@ export function Input({ input }: { input: InputConfig }) {
               <Image imageId={input.imageId!} />
             </Rescaler>
           ) : isTextInput ? (
-            <View style={{ width: 1920, height: 1080, backgroundColor: '#1a1a2e', padding: 100 }}>
+            <View style={{ width: 1920, height: 1080, backgroundColor: '#1a1a2e' }}>
               <ScrollingText
                 text={input.text!}
                 maxLines={input.textMaxLines ?? 10}
@@ -241,8 +241,8 @@ export function Input({ input }: { input: InputConfig }) {
                 fontSize={80}
                 color={input.textColor ?? 'white'}
                 align={input.textAlign ?? 'left'}
-                containerWidth={resolution.width - 200}
-                containerHeight={resolution.height - 200}
+                containerWidth={resolution.width}
+                containerHeight={resolution.height}
               />
             </View>
           ) : (
@@ -315,7 +315,7 @@ export function SmallInput({
           <Image imageId={input.imageId!} />
         </Rescaler>
       ) : isTextInput ? (
-        <View style={{ width: resolution.width, height: resolution.height, backgroundColor: '#1a1a2e', padding: 30 }}>
+        <View style={{ width: resolution.width, height: resolution.height, backgroundColor: '#1a1a2e' }}>
           <ScrollingText
             text={input.text!}
             maxLines={input.textMaxLines ?? 10}
@@ -323,8 +323,8 @@ export function SmallInput({
             fontSize={30}
             color={input.textColor ?? 'white'}
             align={input.textAlign ?? 'left'}
-            containerWidth={resolution.width - 60}
-            containerHeight={resolution.height - 60}
+            containerWidth={resolution.width}
+            containerHeight={resolution.height}
           />
         </View>
       ) : (

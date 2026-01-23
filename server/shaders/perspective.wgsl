@@ -84,10 +84,15 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     // Clamp to avoid division by zero
     let safe_perspective = max(perspective_scale, 0.1);
     
-    // Apply scale and perspective
+    // Auto-scale compensation: at the top (uv.y=0) perspective_scale = 1 - perspective_strength
+    // To make the top fill the full height, we need to scale up by 1/(1-perspective_strength)
+    let top_scale = 1.0 - perspective_strength;
+    let auto_scale_factor = 1.0 / max(top_scale, 0.1);
+    
+    // Apply scale, perspective, and auto-compensation
     // Smaller perspective_scale means content appears further away (smaller)
     // We divide UV by the scale to achieve this effect
-    let scaled_uv = centered_uv / (scale * safe_perspective);
+    let scaled_uv = centered_uv / (scale * safe_perspective * auto_scale_factor);
     
     // Apply rotation (tilt effect) around center
     let rotated_uv = rotate2D(scaled_uv, rotation);
