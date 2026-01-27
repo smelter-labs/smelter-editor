@@ -211,18 +211,22 @@ export function useControlPanelEvents({
   ]);
 
   useEffect(() => {
-    const onAddInput = async (e: CustomEvent<{ inputType: InputType }>) => {
+    const onAddInput = async (e: CustomEvent<{ inputType: InputType; mp4FileName?: string; imageFileName?: string }>) => {
       try {
-        const { inputType } = e.detail;
+        const { inputType, mp4FileName, imageFileName } = e.detail;
         switch (inputType) {
           case 'stream':
             await addTwitchInput(roomId, 'shroud');
             break;
           case 'mp4':
-            await addMP4Input(roomId, 'big_buck_bunny.mp4');
+            if (mp4FileName) {
+              await addMP4Input(roomId, mp4FileName);
+            }
             break;
           case 'image':
-            await addImageInput(roomId, 'smelter.png');
+            if (imageFileName) {
+              await addImageInput(roomId, imageFileName);
+            }
             break;
           case 'text':
             await addTextInput(roomId, '', 'center');

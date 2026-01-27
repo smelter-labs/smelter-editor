@@ -7,6 +7,7 @@ import { Mic, MicOff, X, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useVoiceCommands } from '@/lib/voice';
+import { getMP4Suggestions, getPictureSuggestions } from '@/app/actions/actions';
 
 export function SpeechToTextWithCommands() {
   const params = useParams();
@@ -14,12 +15,25 @@ export function SpeechToTextWithCommands() {
 
   const [isOpen, setIsOpen] = useState(false);
   const [manualInput, setManualInput] = useState('');
+  const [mp4Files, setMp4Files] = useState<string[]>([]);
+  const [imageFiles, setImageFiles] = useState<string[]>([]);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastProcessedIndex = useRef(-1);
 
+  useEffect(() => {
+    getMP4Suggestions().then((data) => {
+      console.log('[Voice] Loaded mp4 files:', data.mp4s);
+      setMp4Files(data.mp4s);
+    }).catch((e) => console.error('[Voice] Failed to load mp4s:', e));
+    getPictureSuggestions().then((data) => {
+      console.log('[Voice] Loaded image files:', data.pictures);
+      setImageFiles(data.pictures);
+    }).catch((e) => console.error('[Voice] Failed to load images:', e));
+  }, []);
+
   const { lastCommand, lastError, lastClarify, lastTranscript, isTypingMode, handleTranscript } =
-    useVoiceCommands();
+    useVoiceCommands({ mp4Files, imageFiles });
 
   const {
     error,
@@ -137,7 +151,23 @@ export function SpeechToTextWithCommands() {
           {lastCommand && lastCommand.intent !== 'CLARIFY' && (
             <p className="text-green-400 text-sm mb-2">
               ✓ {lastCommand.intent}
-              {lastCommand.intent === 'ADD_INPUT' && ` → ${lastCommand.inputType}`}
+              {lastCommand.intent === 'ADD_INPUT' && (
+                <>
+                  {` → ${lastCommand.inputType}`}
+                  {lastCommand.mp4MatchInfo && (
+                    <span className="block text-xs text-neutral-400 mt-1">
+                      szukano: &quot;{lastCommand.mp4MatchInfo.query}&quot; → znaleziono: &quot;{lastCommand.mp4MatchInfo.file}&quot; 
+                      ({lastCommand.mp4MatchInfo.matchType}, {(lastCommand.mp4MatchInfo.similarity * 100).toFixed(0)}%)
+                    </span>
+                  )}
+                  {lastCommand.imageMatchInfo && (
+                    <span className="block text-xs text-neutral-400 mt-1">
+                      szukano: &quot;{lastCommand.imageMatchInfo.query}&quot; → znaleziono: &quot;{lastCommand.imageMatchInfo.file}&quot; 
+                      ({lastCommand.imageMatchInfo.matchType}, {(lastCommand.imageMatchInfo.similarity * 100).toFixed(0)}%)
+                    </span>
+                  )}
+                </>
+              )}
               {lastCommand.intent === 'REMOVE_INPUT' && ` → input ${lastCommand.inputIndex}`}
               {lastCommand.intent === 'ADD_SHADER' &&
                 ` → ${lastCommand.shader} on input ${lastCommand.inputIndex}`}

@@ -32,9 +32,20 @@ export const Direction = {
 
 export type Direction = (typeof Direction)[keyof typeof Direction];
 
+export type FileMatchInfo = {
+  query: string;
+  file: string;
+  similarity: number;
+  matchType: 'substring' | 'fuzzy';
+};
+
 export type AddInputCommand = {
   intent: 'ADD_INPUT';
   inputType: InputType;
+  mp4FileName?: string;
+  mp4MatchInfo?: FileMatchInfo;
+  imageFileName?: string;
+  imageMatchInfo?: FileMatchInfo;
 };
 
 export type MoveInputCommand = {
@@ -142,7 +153,36 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
   switch (c.intent) {
     case 'ADD_INPUT':
       if (typeof c.inputType === 'string' && Object.values(InputType).includes(c.inputType as InputType)) {
-        return { intent: 'ADD_INPUT', inputType: c.inputType as InputType };
+        const result: AddInputCommand = { intent: 'ADD_INPUT', inputType: c.inputType as InputType };
+        if (typeof c.mp4FileName === 'string') {
+          result.mp4FileName = c.mp4FileName;
+        }
+        if (c.mp4MatchInfo && typeof c.mp4MatchInfo === 'object') {
+          const info = c.mp4MatchInfo as Record<string, unknown>;
+          if (typeof info.query === 'string' && typeof info.file === 'string' && typeof info.similarity === 'number') {
+            result.mp4MatchInfo = {
+              query: info.query,
+              file: info.file,
+              similarity: info.similarity,
+              matchType: info.matchType === 'substring' ? 'substring' : 'fuzzy',
+            };
+          }
+        }
+        if (typeof c.imageFileName === 'string') {
+          result.imageFileName = c.imageFileName;
+        }
+        if (c.imageMatchInfo && typeof c.imageMatchInfo === 'object') {
+          const info = c.imageMatchInfo as Record<string, unknown>;
+          if (typeof info.query === 'string' && typeof info.file === 'string' && typeof info.similarity === 'number') {
+            result.imageMatchInfo = {
+              query: info.query,
+              file: info.file,
+              similarity: info.similarity,
+              matchType: info.matchType === 'substring' ? 'substring' : 'fuzzy',
+            };
+          }
+        }
+        return result;
       }
       return null;
 

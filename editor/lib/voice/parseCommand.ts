@@ -1,6 +1,70 @@
 import { normalize } from './normalize';
 import type { VoiceCommand, Shader, InputType, Direction } from './commandTypes';
 
+function levenshtein(a: string, b: string): number {
+  const matrix: number[][] = [];
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i];
+  }
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j;
+  }
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+}
+
+export type FileMatchResult = {
+  file: string;
+  query: string;
+  similarity: number;
+  matchType: 'substring' | 'fuzzy';
+} | null;
+
+function findBestFileMatch(query: string, files: string[], extensionPattern: RegExp): FileMatchResult {
+  if (!query || files.length === 0) return null;
+  
+  const normalizedQuery = query.toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (!normalizedQuery) return null;
+
+  let bestMatch: FileMatchResult = null;
+  let bestScore = Infinity;
+
+  for (const file of files) {
+    const baseName = file.replace(extensionPattern, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    
+    if (baseName.includes(normalizedQuery) || normalizedQuery.includes(baseName)) {
+      const score = Math.abs(baseName.length - normalizedQuery.length);
+      if (score < bestScore) {
+        bestScore = score;
+        const similarity = 1 - score / Math.max(baseName.length, normalizedQuery.length);
+        bestMatch = { file, query: normalizedQuery, similarity, matchType: 'substring' };
+      }
+    } else {
+      const distance = levenshtein(normalizedQuery, baseName);
+      const maxLen = Math.max(normalizedQuery.length, baseName.length);
+      const similarity = 1 - distance / maxLen;
+      
+      if (similarity > 0.4 && distance < bestScore) {
+        bestScore = distance;
+        bestMatch = { file, query: normalizedQuery, similarity, matchType: 'fuzzy' };
+      }
+    }
+  }
+  return bestMatch;
+}
+
 const SHADER_MAP: Record<string, Shader> = {
   ascii: 'ascii-filter',
   'ascii filter': 'ascii-filter',
@@ -165,7 +229,13 @@ function clarify(missing: string[], question: string): VoiceCommand {
   return { intent: 'CLARIFY', missing, question };
 }
 
-export function parseCommand(rawText: string): VoiceCommand | null {
+export type ParseCommandOptions = {
+  mp4Files?: string[];
+  imageFiles?: string[];
+};
+
+export function parseCommand(rawText: string, options: ParseCommandOptions = {}): VoiceCommand | null {
+  const { mp4Files = [], imageFiles = [] } = options;
   const text = normalize(rawText);
 
   if (!text || text.length < 2) {
@@ -258,6 +328,50 @@ export function parseCommand(rawText: string): VoiceCommand | null {
   }
 
   if (hasAdd && inputType !== null) {
+    if (inputType === 'mp4') {
+      console.log('[Voice] Parsing mp4 command, available files:', mp4Files.length, mp4Files);
+      const mp4Match = text.match(/\bmp4\s+(?:(?:source|input|file|video|called|named)\s+)*(.+)$/);
+      console.log('[Voice] Regex match result:', mp4Match);
+      if (mp4Match && mp4Files.length > 0) {
+        const queryWord = mp4Match[1].trim();
+        console.log('[Voice] Query word:', queryWord);
+        const matchResult = findBestFileMatch(queryWord, mp4Files, /\.mp4$/i);
+        console.log('[Voice] Match result:', matchResult);
+        if (matchResult) {
+          return { 
+            intent: 'ADD_INPUT', 
+            inputType, 
+            mp4FileName: matchResult.file,
+            mp4MatchInfo: {
+              query: matchResult.query,
+              file: matchResult.file,
+              similarity: matchResult.similarity,
+              matchType: matchResult.matchType,
+            },
+          };
+        }
+      }
+    }
+    if (inputType === 'image' && imageFiles.length > 0) {
+      const imageMatch = text.match(/\bimage\s+(?:(?:source|input|file|picture|photo|called|named)\s+)*(.+)$/);
+      if (imageMatch) {
+        const queryWord = imageMatch[1].trim();
+        const matchResult = findBestFileMatch(queryWord, imageFiles, /\.(png|jpg|jpeg|gif|webp|svg)$/i);
+        if (matchResult) {
+          return { 
+            intent: 'ADD_INPUT', 
+            inputType, 
+            imageFileName: matchResult.file,
+            imageMatchInfo: {
+              query: matchResult.query,
+              file: matchResult.file,
+              similarity: matchResult.similarity,
+              matchType: matchResult.matchType,
+            },
+          };
+        }
+      }
+    }
     return { intent: 'ADD_INPUT', inputType };
   }
 

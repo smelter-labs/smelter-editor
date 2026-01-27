@@ -1,8 +1,13 @@
 'use client';
 
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { parseCommand } from './parseCommand';
 import { validateCommand, type VoiceCommand } from './commandTypes';
+
+export type UseVoiceCommandsOptions = {
+  mp4Files?: string[];
+  imageFiles?: string[];
+};
 
 export type UseVoiceCommandsResult = {
   lastCommand: VoiceCommand | null;
@@ -13,12 +18,21 @@ export type UseVoiceCommandsResult = {
   handleTranscript: (text: string) => void;
 };
 
-function emitVoiceEvent(command: VoiceCommand) {
+type EmitContext = {
+  mp4Files: string[];
+  imageFiles: string[];
+};
+
+function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
   switch (command.intent) {
     case 'ADD_INPUT':
       window.dispatchEvent(
         new CustomEvent('smelter:voice:add-input', {
-          detail: { inputType: command.inputType },
+          detail: { 
+            inputType: command.inputType, 
+            mp4FileName: command.mp4FileName || ctx.mp4Files[0],
+            imageFileName: command.imageFileName || ctx.imageFiles[0],
+          },
         }),
       );
       break;
@@ -101,13 +115,24 @@ function emitVoiceEvent(command: VoiceCommand) {
 
 const STOP_TYPING_PATTERN = /\b(stop typing|end typing|stop dictation|end dictation|finish typing)\b/i;
 
-export function useVoiceCommands(): UseVoiceCommandsResult {
+export function useVoiceCommands(options: UseVoiceCommandsOptions = {}): UseVoiceCommandsResult {
+  const { mp4Files = [], imageFiles = [] } = options;
   const [lastCommand, setLastCommand] = useState<VoiceCommand | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const [lastClarify, setLastClarify] = useState<string | null>(null);
   const [lastTranscript, setLastTranscript] = useState<string | null>(null);
   const [isTypingMode, setIsTypingMode] = useState(false);
   const isTypingModeRef = useRef(false);
+  const mp4FilesRef = useRef(mp4Files);
+  const imageFilesRef = useRef(imageFiles);
+
+  useEffect(() => {
+    mp4FilesRef.current = mp4Files;
+  }, [mp4Files]);
+
+  useEffect(() => {
+    imageFilesRef.current = imageFiles;
+  }, [imageFiles]);
 
   const handleTranscript = useCallback((text: string) => {
     setLastTranscript(text);
@@ -132,7 +157,7 @@ export function useVoiceCommands(): UseVoiceCommandsResult {
         return;
       }
 
-      const parsed = parseCommand(text);
+      const parsed = parseCommand(text, { mp4Files: mp4FilesRef.current, imageFiles: imageFilesRef.current });
 
       if (!parsed) {
         setLastError(`Could not understand: "${text}"`);
@@ -147,14 +172,15 @@ export function useVoiceCommands(): UseVoiceCommandsResult {
 
       setLastCommand(validated);
 
+      const emitCtx = { mp4Files: mp4FilesRef.current, imageFiles: imageFilesRef.current };
       if (validated.intent === 'CLARIFY') {
         setLastClarify(validated.question);
       } else if (validated.intent === 'START_TYPING') {
         isTypingModeRef.current = true;
         setIsTypingMode(true);
-        emitVoiceEvent(validated);
+        emitVoiceEvent(validated, emitCtx);
       } else {
-        emitVoiceEvent(validated);
+        emitVoiceEvent(validated, emitCtx);
       }
     } catch (err) {
       setLastError(err instanceof Error ? err.message : 'Unknown error');
