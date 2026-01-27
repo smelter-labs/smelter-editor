@@ -71,7 +71,8 @@ export type RegisterInputOptions = {
     };
 } | {
     type: 'image';
-    fileName: string;
+    fileName?: string;
+    imageId?: string;
 } | {
     type: 'text-input';
     text: string;

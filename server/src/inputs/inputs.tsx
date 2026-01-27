@@ -55,12 +55,16 @@ function wrapWithShaders(
   component: ReactElement,
   shaders: ShaderConfig[] | undefined,
   resolution: Resolution,
-  index: number = 0
+  index?: number
 ): ReactElement {
-  if (!shaders || index >= shaders.length) {
+  if (!shaders || shaders.length === 0) {
     return component;
   }
-  const shader = shaders[index];
+  const currentIndex = index ?? shaders.length - 1;
+  if (currentIndex < 0) {
+    return component;
+  }
+  const shader = shaders[currentIndex];
   const shaderDef = shadersController.getShaderById(shader.shaderId);
   
   const shaderParams: ShaderParamStructField[] = [];
@@ -112,7 +116,7 @@ function wrapWithShaders(
             }
           : undefined
       }>
-      {wrapWithShaders(component, shaders, resolution, index + 1)}
+      {wrapWithShaders(component, shaders, resolution, currentIndex - 1)}
     </Shader>
   );
 }
@@ -289,7 +293,7 @@ export function Input({ input }: { input: InputConfig }) {
 
   const activeShaders = input.shaders.filter(shader => shader.enabled);
 
-  return wrapWithShaders(inputComponent, activeShaders, resolution, 0);
+  return wrapWithShaders(inputComponent, activeShaders, resolution);
 }
 
 export function SmallInput({
@@ -352,7 +356,7 @@ export function SmallInput({
 
   if (activeShaders.length) {
     return (
-      <Rescaler>{wrapWithShaders(smallInputComponent, activeShaders, resolution, 0)}</Rescaler>
+      <Rescaler>{wrapWithShaders(smallInputComponent, activeShaders, resolution)}</Rescaler>
     );
   }
   return <Rescaler>{smallInputComponent}</Rescaler>;

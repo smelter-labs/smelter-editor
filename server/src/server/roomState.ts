@@ -64,7 +64,8 @@ export type RegisterInputOptions =
     }
   | {
       type: 'image';
-      fileName: string;
+      fileName?: string;
+      imageId?: string;
     }
   | {
       type: 'text-input';
@@ -349,18 +350,41 @@ export class RoomState {
     } else if (opts.type === 'image') {
       console.log('Adding image');
       const picturesDir = path.join(process.cwd(), 'pictures');
-      const imagePath = path.join(picturesDir, opts.fileName);
       const inputId = `${this.idPrefix}::image::${Date.now()}`;
+      const exts = ['.jpg', '.jpeg', '.png', '.gif', '.svg'];
+
+      let fileName = opts.fileName;
+      let imageId = opts.imageId;
+
+      // If imageId is provided but not fileName, find the file
+      if (imageId && !fileName) {
+        const baseName = imageId.replace(/^pictures::/, '');
+        const files = await readdir(picturesDir).catch(() => [] as string[]);
+        const found = files.find(f => {
+          const fBase = f.replace(/\.(jpg|jpeg|png|gif|svg)$/i, '');
+          return fBase === baseName;
+        });
+        if (found) {
+          fileName = found;
+        } else {
+          throw new Error(`Image file not found for imageId: ${imageId}`);
+        }
+      }
+
+      if (!fileName) {
+        throw new Error('Either fileName or imageId must be provided for image input');
+      }
+
+      const imagePath = path.join(picturesDir, fileName);
 
       if (await pathExists(imagePath)) {
-        const lower = opts.fileName.toLowerCase();
-        const exts = ['.jpg', '.jpeg', '.png', '.gif', '.svg'];
+        const lower = fileName.toLowerCase();
         const ext = exts.find(x => lower.endsWith(x));
         if (!ext) {
-          throw new Error(`Unsupported image format: ${opts.fileName}`);
+          throw new Error(`Unsupported image format: ${fileName}`);
         }
-        const baseName = opts.fileName.replace(/\.(jpg|jpeg|png|gif|svg)$/i, '');
-        const imageId = `pictures::${baseName}`;
+        const baseName = fileName.replace(/\.(jpg|jpeg|png|gif|svg)$/i, '');
+        imageId = `pictures::${baseName}`;
         const assetType =
           ext === '.png' ? 'png' : ext === '.gif' ? 'gif' : ext === '.svg' ? 'svg' : 'jpeg';
 
@@ -381,7 +405,7 @@ export class RoomState {
           showTitle: false,
           shaders: [],
           metadata: {
-            title: formatImageName(opts.fileName),
+            title: formatImageName(fileName),
             description: '',
           },
           volume: 0,
@@ -389,7 +413,7 @@ export class RoomState {
         });
         this.updateStoreWithState();
       } else {
-        throw new Error(`Image file not found: ${opts.fileName}`);
+        throw new Error(`Image file not found: ${fileName}`);
       }
 
       return inputId;

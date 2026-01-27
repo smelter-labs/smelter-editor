@@ -143,9 +143,14 @@ export function ConfigurationSection({
               }
               break;
             case 'image':
+              console.log('[Config] Loading image input:', inputConfig);
               if (inputConfig.imageId) {
+                console.log('[Config] Adding image with imageId:', inputConfig.imageId);
                 const result = await addImageInput(roomId, inputConfig.imageId);
+                console.log('[Config] Image add result:', result);
                 inputId = result.inputId;
+              } else {
+                console.warn('[Config] Image input has no imageId:', inputConfig);
               }
               break;
             case 'text-input':

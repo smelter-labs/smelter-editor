@@ -120,20 +120,20 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let flicker = 1.0 - shader_options.flicker_intensity * (flicker_noise - 0.5);
     holo_color = holo_color * flicker;
 
-    // Static noise overlay
+    // Static noise overlay (scaled by source alpha)
     let static_noise = noise(uv * res * 0.5 + vec2<f32>(t * 100.0, t * 73.0));
-    holo_color = holo_color + shader_options.noise_intensity * (static_noise - 0.5) * tint;
+    holo_color = holo_color + shader_options.noise_intensity * (static_noise - 0.5) * tint * color_a;
 
-    // Edge glow - brighter at the edges of visible content
+    // Edge glow - brighter at the edges of visible content (scaled by source alpha)
     let edge_x = smoothstep(0.0, shader_options.edge_glow_width, uv.x) * 
                  smoothstep(0.0, shader_options.edge_glow_width, 1.0 - uv.x);
     let edge_y = smoothstep(0.0, shader_options.edge_glow_width, uv.y) * 
                  smoothstep(0.0, shader_options.edge_glow_width, 1.0 - uv.y);
     let edge_factor = 1.0 - edge_x * edge_y;
-    holo_color = holo_color + shader_options.glow_intensity * edge_factor * tint * luminance;
+    holo_color = holo_color + shader_options.glow_intensity * edge_factor * tint * luminance * color_a;
 
-    // Overall glow boost based on luminance
-    holo_color = holo_color + shader_options.glow_intensity * 0.3 * luminance * tint;
+    // Overall glow boost based on luminance (scaled by source alpha)
+    holo_color = holo_color + shader_options.glow_intensity * 0.3 * luminance * tint * color_a;
 
     // Final alpha with opacity
     let final_alpha = color_a * shader_options.opacity;

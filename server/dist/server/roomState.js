@@ -248,17 +248,37 @@ class RoomState {
         else if (opts.type === 'image') {
             console.log('Adding image');
             const picturesDir = node_path_1.default.join(process.cwd(), 'pictures');
-            const imagePath = node_path_1.default.join(picturesDir, opts.fileName);
             const inputId = `${this.idPrefix}::image::${Date.now()}`;
+            const exts = ['.jpg', '.jpeg', '.png', '.gif', '.svg'];
+            let fileName = opts.fileName;
+            let imageId = opts.imageId;
+            // If imageId is provided but not fileName, find the file
+            if (imageId && !fileName) {
+                const baseName = imageId.replace(/^pictures::/, '');
+                const files = await (0, fs_extra_1.readdir)(picturesDir).catch(() => []);
+                const found = files.find(f => {
+                    const fBase = f.replace(/\.(jpg|jpeg|png|gif|svg)$/i, '');
+                    return fBase === baseName;
+                });
+                if (found) {
+                    fileName = found;
+                }
+                else {
+                    throw new Error(`Image file not found for imageId: ${imageId}`);
+                }
+            }
+            if (!fileName) {
+                throw new Error('Either fileName or imageId must be provided for image input');
+            }
+            const imagePath = node_path_1.default.join(picturesDir, fileName);
             if (await (0, fs_extra_1.pathExists)(imagePath)) {
-                const lower = opts.fileName.toLowerCase();
-                const exts = ['.jpg', '.jpeg', '.png', '.gif', '.svg'];
+                const lower = fileName.toLowerCase();
                 const ext = exts.find(x => lower.endsWith(x));
                 if (!ext) {
-                    throw new Error(`Unsupported image format: ${opts.fileName}`);
+                    throw new Error(`Unsupported image format: ${fileName}`);
                 }
-                const baseName = opts.fileName.replace(/\.(jpg|jpeg|png|gif|svg)$/i, '');
-                const imageId = `pictures::${baseName}`;
+                const baseName = fileName.replace(/\.(jpg|jpeg|png|gif|svg)$/i, '');
+                imageId = `pictures::${baseName}`;
                 const assetType = ext === '.png' ? 'png' : ext === '.gif' ? 'gif' : ext === '.svg' ? 'svg' : 'jpeg';
                 // Register image resource
                 try {
@@ -277,7 +297,7 @@ class RoomState {
                     showTitle: false,
                     shaders: [],
                     metadata: {
-                        title: formatImageName(opts.fileName),
+                        title: formatImageName(fileName),
                         description: '',
                     },
                     volume: 0,
@@ -286,7 +306,7 @@ class RoomState {
                 this.updateStoreWithState();
             }
             else {
-                throw new Error(`Image file not found: ${opts.fileName}`);
+                throw new Error(`Image file not found: ${fileName}`);
             }
             return inputId;
         }
@@ -307,7 +327,7 @@ class RoomState {
                 text: opts.text,
                 textAlign: (_a = opts.textAlign) !== null && _a !== void 0 ? _a : 'left',
                 textColor: (_b = opts.textColor) !== null && _b !== void 0 ? _b : '#ffffff',
-                textMaxLines: (_c = opts.textMaxLines) !== null && _c !== void 0 ? _c : 3,
+                textMaxLines: (_c = opts.textMaxLines) !== null && _c !== void 0 ? _c : 10,
                 textScrollSpeed: (_d = opts.textScrollSpeed) !== null && _d !== void 0 ? _d : 100,
             });
             this.updateStoreWithState();

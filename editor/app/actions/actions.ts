@@ -215,11 +215,14 @@ export async function addMP4Input(roomId: string, mp4FileName: string) {
   );
 }
 
-export async function addImageInput(roomId: string, imageFileName: string) {
+export async function addImageInput(roomId: string, imageFileNameOrId: string) {
+  const isImageId = imageFileNameOrId.startsWith('pictures::');
   return await sendSmelterRequest(
     'post',
     `/room/${encodeURIComponent(roomId)}/input`,
-    { type: 'image', fileName: imageFileName },
+    isImageId
+      ? { type: 'image', imageId: imageFileNameOrId }
+      : { type: 'image', fileName: imageFileNameOrId },
   );
 }
 

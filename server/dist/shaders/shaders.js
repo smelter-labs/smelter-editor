@@ -278,14 +278,14 @@ const AVAILABLE_SHADERS = [
             {
                 name: 'target_color',
                 type: 'color',
-                defaultValue: '#00ff00' // green by default (was r=0, g=1, b=0)
+                defaultValue: '#1c1c35' // green by default (was r=0, g=1, b=0)
             },
             {
                 name: 'tolerance',
                 type: 'number',
                 minValue: 0,
                 maxValue: 1,
-                defaultValue: 0.1,
+                defaultValue: 0.2,
             },
         ],
     },

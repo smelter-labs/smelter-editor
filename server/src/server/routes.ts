@@ -191,7 +191,8 @@ const AddInputSchema = Type.Union([
   }),
   Type.Object({
     type: Type.Literal('image'),
-    fileName: Type.String(),
+    fileName: Type.Optional(Type.String()),
+    imageId: Type.Optional(Type.String()),
   }),
   Type.Object({
     type: Type.Literal('text-input'),
