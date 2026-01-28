@@ -118,7 +118,7 @@ export function SpeechToTextWithCommands() {
               </span>
             </div>
             <Button variant="ghost" size="icon" className="size-6" onClick={handleClose}>
-              <X className="size-4" />
+              <X className="size-4 text-neutral-300" />
             </Button>
           </div>
 

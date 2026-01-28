@@ -46,6 +46,12 @@ struct ShaderOptions {
     glow_intensity: f32,
     // Edge glow width (0..1, fraction of output)
     edge_glow_width: f32,
+    // Overall brightness multiplier (1 = normal, >1 = brighter)
+    brightness: f32,
+    // Bloom/outer glow intensity (0..1)
+    bloom_intensity: f32,
+    // Bloom radius in pixels
+    bloom_radius: f32,
 }
 
 @group(0) @binding(0) var textures: binding_array<texture_2d<f32>, 16>;
@@ -135,8 +141,42 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     // Overall glow boost based on luminance (scaled by source alpha)
     holo_color = holo_color + shader_options.glow_intensity * 0.3 * luminance * tint * color_a;
 
-    // Final alpha with opacity
-    let final_alpha = color_a * shader_options.opacity;
+    // Apply brightness multiplier
+    holo_color = holo_color * shader_options.brightness;
+
+    // Bloom/outer glow effect - sample surrounding pixels and add glow
+    var bloom = vec3<f32>(0.0);
+    let bloom_samples = 8;
+    let bloom_radius_uv = shader_options.bloom_radius / res;
+    for (var i = 0; i < bloom_samples; i = i + 1) {
+        let angle = f32(i) * pi2 / f32(bloom_samples);
+        let offset = vec2<f32>(cos(angle), sin(angle)) * bloom_radius_uv;
+        let sample_uv = clamp(jittered_uv + offset, vec2<f32>(0.0), vec2<f32>(1.0));
+        let sample_color = textureSample(textures[0], sampler_, sample_uv);
+        let sample_lum = 0.299 * sample_color.r + 0.587 * sample_color.g + 0.114 * sample_color.b;
+        bloom = bloom + sample_lum * sample_color.a * tint;
+    }
+    bloom = bloom / f32(bloom_samples);
+    
+    // Add second ring for softer outer glow
+    var bloom_outer = vec3<f32>(0.0);
+    for (var i = 0; i < bloom_samples; i = i + 1) {
+        let angle = f32(i) * pi2 / f32(bloom_samples) + 0.39269908; // offset by pi/8
+        let offset = vec2<f32>(cos(angle), sin(angle)) * bloom_radius_uv * 2.0;
+        let sample_uv = clamp(jittered_uv + offset, vec2<f32>(0.0), vec2<f32>(1.0));
+        let sample_color = textureSample(textures[0], sampler_, sample_uv);
+        let sample_lum = 0.299 * sample_color.r + 0.587 * sample_color.g + 0.114 * sample_color.b;
+        bloom_outer = bloom_outer + sample_lum * sample_color.a * tint;
+    }
+    bloom_outer = bloom_outer / f32(bloom_samples);
+    
+    // Combine bloom layers
+    let total_bloom = (bloom * 0.6 + bloom_outer * 0.4) * shader_options.bloom_intensity * shader_options.brightness;
+    holo_color = holo_color + total_bloom;
+
+    // Final alpha with opacity (bloom extends alpha slightly)
+    let bloom_alpha = (bloom.r + bloom.g + bloom.b) / 3.0 * shader_options.bloom_intensity;
+    let final_alpha = min(1.0, color_a * shader_options.opacity + bloom_alpha * 0.3);
 
     return vec4<f32>(holo_color, final_alpha);
 }

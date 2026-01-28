@@ -475,6 +475,9 @@ const AVAILABLE_SHADERS = [
             { name: 'jitter_speed', type: 'number', minValue: 0, maxValue: 20, defaultValue: 5 },
             { name: 'glow_intensity', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.4 },
             { name: 'edge_glow_width', type: 'number', minValue: 0, maxValue: 0.5, defaultValue: 0.1 },
+            { name: 'brightness', type: 'number', minValue: 0.5, maxValue: 5, defaultValue: 1.5 },
+            { name: 'bloom_intensity', type: 'number', minValue: 0, maxValue: 2, defaultValue: 0.6 },
+            { name: 'bloom_radius', type: 'number', minValue: 1, maxValue: 50, defaultValue: 15 },
         ],
     },
     {
