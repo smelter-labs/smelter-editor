@@ -149,6 +149,7 @@ function ScrollingText({ text, maxLines, scrollSpeed, fontSize, color, align, co
                     color,
                     wrap: 'word',
                     align,
+                    fontFamily: 'Starjedi',
                 }, children: text }) }) }));
 }
 function Input({ input }) {
@@ -158,7 +159,7 @@ function Input({ input }) {
     const isTextInput = !!input.text;
     const streamState = isImage || isTextInput ? 'playing' : ((_b = (_a = streams[input.inputId]) === null || _a === void 0 ? void 0 : _a.videoState) !== null && _b !== void 0 ? _b : 'finished');
     const resolution = { width: 1920, height: 1080 };
-    const inputComponent = ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: resolution, children: (0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { ...resolution, direction: 'column' }, children: [streamState === 'playing' ? (isImage ? ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { rescaleMode: 'fit' }, children: (0, jsx_runtime_1.jsx)(smelter_1.Image, { imageId: input.imageId }) })) : isTextInput ? ((0, jsx_runtime_1.jsx)(smelter_1.View, { style: { width: 1920, height: 1080, backgroundColor: '#1a1a2e' }, children: (0, jsx_runtime_1.jsx)(ScrollingText, { text: input.text, maxLines: (_c = input.textMaxLines) !== null && _c !== void 0 ? _c : 10, scrollSpeed: (_d = input.textScrollSpeed) !== null && _d !== void 0 ? _d : 100, fontSize: 80, color: (_e = input.textColor) !== null && _e !== void 0 ? _e : 'white', align: (_f = input.textAlign) !== null && _f !== void 0 ? _f : 'left', containerWidth: resolution.width, containerHeight: resolution.height }) })) : ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { rescaleMode: 'fill' }, children: (0, jsx_runtime_1.jsx)(smelter_1.InputStream, { inputId: input.inputId, volume: input.volume }) }))) : streamState === 'ready' ? ((0, jsx_runtime_1.jsx)(smelter_1.View, { style: { padding: 300 }, children: (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { rescaleMode: 'fit' }, children: (0, jsx_runtime_1.jsx)(smelter_1.Image, { imageId: "spinner" }) }) })) : streamState === 'finished' ? ((0, jsx_runtime_1.jsx)(smelter_1.View, { style: { padding: 300 }, children: (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { rescaleMode: 'fit' }, children: (0, jsx_runtime_1.jsx)(smelter_1.Text, { style: { fontSize: 600 }, children: "Stream offline" }) }) })) : ((0, jsx_runtime_1.jsx)(smelter_1.View, {})), input.showTitle !== false && ((0, jsx_runtime_1.jsxs)(smelter_1.View, { style: {
+    const inputComponent = ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: resolution, children: (0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { ...resolution, direction: 'column' }, children: [streamState === 'playing' ? (isImage ? ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { rescaleMode: 'fit' }, children: (0, jsx_runtime_1.jsx)(smelter_1.Image, { imageId: input.imageId }) })) : isTextInput ? ((0, jsx_runtime_1.jsx)(smelter_1.View, { style: { width: 1920, height: 1080, backgroundColor: '#1a1a2e' }, children: (0, jsx_runtime_1.jsx)(ScrollingText, { text: input.text, maxLines: (_c = input.textMaxLines) !== null && _c !== void 0 ? _c : 10, scrollSpeed: (_d = input.textScrollSpeed) !== null && _d !== void 0 ? _d : 100, fontSize: 80, color: (_e = input.textColor) !== null && _e !== void 0 ? _e : 'white', align: (_f = input.textAlign) !== null && _f !== void 0 ? _f : 'left', containerWidth: resolution.width, containerHeight: resolution.height }) })) : ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { rescaleMode: 'fill' }, children: (0, jsx_runtime_1.jsx)(smelter_1.InputStream, { inputId: input.inputId, volume: input.volume }) }))) : streamState === 'ready' ? ((0, jsx_runtime_1.jsx)(smelter_1.View, { style: { padding: 300 }, children: (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { rescaleMode: 'fit' }, children: (0, jsx_runtime_1.jsx)(smelter_1.Image, { imageId: "spinner" }) }) })) : streamState === 'finished' ? ((0, jsx_runtime_1.jsx)(smelter_1.View, { style: { padding: 300 }, children: (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { rescaleMode: 'fit' }, children: (0, jsx_runtime_1.jsx)(smelter_1.Text, { style: { fontSize: 600, fontFamily: 'Starjedi' }, children: "Stream offline" }) }) })) : ((0, jsx_runtime_1.jsx)(smelter_1.View, {})), input.showTitle !== false && ((0, jsx_runtime_1.jsxs)(smelter_1.View, { style: {
                         backgroundColor: '#493880',
                         height: 90,
                         padding: 20,
@@ -167,7 +168,7 @@ function Input({ input }) {
                         overflow: 'visible',
                         bottom: 0,
                         left: 0,
-                    }, children: [(0, jsx_runtime_1.jsx)(smelter_1.Text, { style: { fontSize: 40, color: 'white' }, children: input === null || input === void 0 ? void 0 : input.title }), (0, jsx_runtime_1.jsx)(smelter_1.View, { style: { height: 10 } }), (0, jsx_runtime_1.jsx)(smelter_1.Text, { style: { fontSize: 25, color: 'white' }, children: input === null || input === void 0 ? void 0 : input.description })] }))] }) }));
+                    }, children: [(0, jsx_runtime_1.jsx)(smelter_1.Text, { style: { fontSize: 40, color: 'white', fontFamily: 'Starjedi' }, children: input === null || input === void 0 ? void 0 : input.title }), (0, jsx_runtime_1.jsx)(smelter_1.View, { style: { height: 10 } }), (0, jsx_runtime_1.jsx)(smelter_1.Text, { style: { fontSize: 25, color: 'white', fontFamily: 'Starjedi' }, children: input === null || input === void 0 ? void 0 : input.description })] }))] }) }));
     const activeShaders = input.shaders.filter(shader => shader.enabled);
     return wrapWithShaders(inputComponent, activeShaders, resolution);
 }
@@ -190,7 +191,7 @@ function SmallInput({ input, resolution = { width: 640, height: 360 }, }) {
                     overflow: 'visible',
                     bottom: 0,
                     left: 0,
-                }, children: (0, jsx_runtime_1.jsx)(smelter_1.Text, { style: { fontSize: 30, color: 'white' }, children: input.title }) }))] }));
+                }, children: (0, jsx_runtime_1.jsx)(smelter_1.Text, { style: { fontSize: 30, color: 'white', fontFamily: 'Starjedi' }, children: input.title }) }))] }));
     if (activeShaders.length) {
         return ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { children: wrapWithShaders(smallInputComponent, activeShaders, resolution) }));
     }

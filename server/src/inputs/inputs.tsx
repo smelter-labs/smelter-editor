@@ -213,6 +213,7 @@ function ScrollingText({
           color, 
           wrap: 'word',
           align,
+          fontFamily: 'Star Jedi',
         }}>
           {text}
         </Text>
@@ -263,7 +264,7 @@ export function Input({ input }: { input: InputConfig }) {
         ) : streamState === 'finished' ? (
           <View style={{ padding: 300 }}>
             <Rescaler style={{ rescaleMode: 'fit' }}>
-              <Text style={{ fontSize: 600 }}>Stream offline</Text>
+              <Text style={{ fontSize: 600, fontFamily: 'Star Jedi' }}>Stream offline</Text>
             </Rescaler>
           </View>
         ) : (
@@ -281,10 +282,10 @@ export function Input({ input }: { input: InputConfig }) {
               bottom: 0,
               left: 0,
             }}>
-            <Text style={{ fontSize: 40, color: 'white' }}>{input?.title}</Text>
+            <Text style={{ fontSize: 40, color: 'white', fontFamily: 'Star Jedi' }}>{input?.title}</Text>
             <View style={{ height: 10 }} />
 
-            <Text style={{ fontSize: 25, color: 'white' }}>{input?.description}</Text>
+            <Text style={{ fontSize: 25, color: 'white', fontFamily: 'Star Jedi' }}>{input?.description}</Text>
           </View>
         )}
       </View>
@@ -348,7 +349,7 @@ export function SmallInput({
             bottom: 0,
             left: 0,
           }}>
-          <Text style={{ fontSize: 30, color: 'white' }}>{input.title}</Text>
+          <Text style={{ fontSize: 30, color: 'white', fontFamily: 'Star Jedi' }}>{input.title}</Text>
         </View>
       )}
     </View>
