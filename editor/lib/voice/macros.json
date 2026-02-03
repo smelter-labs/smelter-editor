@@ -166,7 +166,7 @@
           "action": "ADD_INPUT",
           "params": {
             "inputType": "text",
-            "text": "A long time ago in a galaxy far, far away..."
+            "text": "A long time ago\nin a galaxy far, far away..."
           },
           "delayAfterMs": 2000
         },

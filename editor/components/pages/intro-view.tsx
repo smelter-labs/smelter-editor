@@ -21,6 +21,7 @@ import {
     updateInput,
     updateRoom,
 } from '@/app/actions/actions';
+import { RESOLUTION_PRESETS, type ResolutionPreset } from '@/lib/resolution';
 import Link from 'next/link';
 import { staggerContainer } from '@/utils/animations';
 import { parseRoomConfig, savePendingWhipInputs, type StoredPendingWhipInput } from '@/lib/room-config';
@@ -59,6 +60,7 @@ export default function IntroView() {
     const pathname = usePathname();
     const [loadingNew, setLoadingNew] = useState(false);
     const [loadingImport, setLoadingImport] = useState(false);
+    const [selectedResolution, setSelectedResolution] = useState<ResolutionPreset>('1440p');
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Suggestions state
@@ -144,7 +146,7 @@ export default function IntroView() {
                 // No initial inputs
                 initInputs = [];
             }
-            const room = await createNewRoom(initInputs);
+            const room = await createNewRoom(initInputs, false, selectedResolution);
             let hash = '';
             if (typeof window !== 'undefined') {
                 const h = (window.location.hash || '').toLowerCase();
@@ -161,7 +163,7 @@ export default function IntroView() {
             setLoadingNew(false);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [router, basePath, pathname, twitchSuggestions, kickSuggestions]);
+    }, [router, basePath, pathname, twitchSuggestions, kickSuggestions, selectedResolution]);
 
     // Voice command: start new room
     useEffect(() => {
@@ -325,6 +327,34 @@ export default function IntroView() {
                     </div>
 
                     <div className='mt-6 flex flex-col gap-3'>
+                        <div className='flex flex-col gap-2'>
+                            <label className='text-xs text-neutral-400 text-left'>Output Resolution</label>
+                            <select
+                                value={selectedResolution}
+                                onChange={(e) => setSelectedResolution(e.target.value as ResolutionPreset)}
+                                className='w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-white text-sm focus:outline-none focus:border-neutral-500'
+                                disabled={loadingNew || loadingImport}
+                            >
+                                <optgroup label='Landscape'>
+                                    {Object.entries(RESOLUTION_PRESETS)
+                                        .filter(([key]) => !key.includes('vertical'))
+                                        .map(([key, { width, height }]) => (
+                                            <option key={key} value={key}>
+                                                {key.toUpperCase()} ({width}×{height})
+                                            </option>
+                                        ))}
+                                </optgroup>
+                                <optgroup label='Portrait'>
+                                    {Object.entries(RESOLUTION_PRESETS)
+                                        .filter(([key]) => key.includes('vertical'))
+                                        .map(([key, { width, height }]) => (
+                                            <option key={key} value={key}>
+                                                {key.replace('-vertical', '').toUpperCase()} Vertical ({width}×{height})
+                                            </option>
+                                        ))}
+                                </optgroup>
+                            </select>
+                        </div>
                         <Button
                             size='lg'
                             variant='default'

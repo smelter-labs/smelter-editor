@@ -161,6 +161,10 @@ export class RoomState {
     return this.output.url;
   }
 
+  public getResolution(): { width: number; height: number } {
+    return this.output.resolution;
+  }
+
   public getState(): [RoomInputState[], Layout] {
     this.lastReadTimestamp = Date.now();
     return [this.inputs, this.layout];

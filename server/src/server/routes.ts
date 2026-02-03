@@ -10,6 +10,7 @@ import pictureSuggestionsMonitor from '../pictures/pictureSuggestionMonitor';
 import { KickChannelSuggestions } from '../kick/KickChannelMonitor';
 import type { ShaderConfig } from '../shaders/shaders';
 import shadersController from '../shaders/shaders';
+import { RESOLUTION_PRESETS, type Resolution, type ResolutionPreset } from '../smelter';
 
 type RoomIdParams = { Params: { roomId: string } };
 type RoomAndInputIdParams = { Params: { roomId: string; inputId: string } };
@@ -58,20 +59,55 @@ routes.get('/suggestions', async (_req, res) => {
   res.status(200).send({ twitch: TwitchChannelSuggestions.getTopStreams() });
 });
 
-routes.post('/room', async (_req, res) => {
-  console.log('[request] Create new room');
-  const body = _req.body as { initInputs?: unknown; skipDefaultInputs?: boolean } | undefined;
-
-  if (body?.initInputs !== undefined && !Array.isArray(body.initInputs)) {
-    return res.status(400).send({ error: 'initInputs must be an array' });
-  }
-
-  const initInputs = (body?.initInputs as RegisterInputOptions[]) || [];
-  const skipDefaultInputs = body?.skipDefaultInputs === true;
-
-  const { roomId, room } = await state.createRoom(initInputs, skipDefaultInputs);
-  res.status(200).send({ roomId, whepUrl: room.getWhepUrl() });
+const CreateRoomSchema = Type.Object({
+  initInputs: Type.Optional(Type.Array(Type.Any())),
+  skipDefaultInputs: Type.Optional(Type.Boolean()),
+  resolution: Type.Optional(
+    Type.Union([
+      Type.Object({
+        width: Type.Number({ minimum: 1 }),
+        height: Type.Number({ minimum: 1 }),
+      }),
+      Type.Union([
+        Type.Literal('720p'),
+        Type.Literal('1080p'),
+        Type.Literal('1440p'),
+        Type.Literal('4k'),
+        Type.Literal('720p-vertical'),
+        Type.Literal('1080p-vertical'),
+        Type.Literal('1440p-vertical'),
+        Type.Literal('4k-vertical'),
+      ]),
+    ])
+  ),
 });
+
+routes.post<{ Body: Static<typeof CreateRoomSchema> }>(
+  '/room',
+  { schema: { body: CreateRoomSchema } },
+  async (req, res) => {
+    console.log('[request] Create new room', { body: req.body });
+
+    const initInputs = (req.body.initInputs as RegisterInputOptions[]) || [];
+    const skipDefaultInputs = req.body.skipDefaultInputs === true;
+
+    let resolution: Resolution | undefined;
+    if (req.body.resolution) {
+      if (typeof req.body.resolution === 'string') {
+        resolution = RESOLUTION_PRESETS[req.body.resolution as ResolutionPreset];
+      } else {
+        resolution = req.body.resolution;
+      }
+    }
+
+    const { roomId, room } = await state.createRoom(initInputs, skipDefaultInputs, resolution);
+    res.status(200).send({
+      roomId,
+      whepUrl: room.getWhepUrl(),
+      resolution: room.getResolution(),
+    });
+  }
+);
 
 routes.get('/shaders', async (_req, res) => {
   const visible = shadersController.shaders.filter(s => s.isVisible);
@@ -89,6 +125,7 @@ routes.get<RoomIdParams>('/room/:roomId', async (req, res) => {
     whepUrl: room.getWhepUrl(),
     pendingDelete: room.pendingDelete,
     isPublic: room.isPublic,
+    resolution: room.getResolution(),
   });
 });
 

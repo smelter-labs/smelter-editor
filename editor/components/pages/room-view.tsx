@@ -95,6 +95,7 @@ export default function RoomView({
           roomId={roomId}
           isPublic={roomState.isPublic}
           onTogglePublic={handleTogglePublic}
+          resolution={roomState.resolution}
         />
         <motion.div className='col-span-1 w-full flex flex-col xl:gap-4 min-h-0 h-full max-h-full justify-start overflow-y-auto overflow-x-hidden md:pr-4 control-panel-container'>
           <div className='control-panel-wrapper'>

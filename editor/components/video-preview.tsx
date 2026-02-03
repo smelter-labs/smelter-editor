@@ -1,4 +1,4 @@
-import OutputStream from '@/components/output-stream';
+import OutputStream, { type OutputResolution } from '@/components/output-stream';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
@@ -15,6 +15,7 @@ export default function VideoPreview({
   roomId,
   isPublic,
   onTogglePublic,
+  resolution,
 }: {
   whepUrl: string;
   videoRef: RefObject<HTMLVideoElement | null>;
@@ -22,6 +23,7 @@ export default function VideoPreview({
   roomId?: string;
   isPublic?: boolean;
   onTogglePublic?: () => void;
+  resolution?: OutputResolution;
 }) {
   const activeStream = true;
 
@@ -35,7 +37,7 @@ export default function VideoPreview({
             <div className='rounded-none flex items-center justify-center bg-[#141414]'>
               {activeStream ? (
                 <div>
-                  <OutputStream videoRef={videoRef} whepUrl={whepUrl} />
+                  <OutputStream videoRef={videoRef} whepUrl={whepUrl} resolution={resolution} />
                 </div>
               ) : (
                 <div className='text-center'>

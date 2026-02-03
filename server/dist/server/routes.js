@@ -13,6 +13,7 @@ const mp4SuggestionMonitor_1 = __importDefault(require("../mp4/mp4SuggestionMoni
 const pictureSuggestionMonitor_1 = __importDefault(require("../pictures/pictureSuggestionMonitor"));
 const KickChannelMonitor_1 = require("../kick/KickChannelMonitor");
 const shaders_1 = __importDefault(require("../shaders/shaders"));
+const smelter_1 = require("../smelter");
 exports.routes = (0, fastify_1.default)({
     logger: config_1.config.logger,
 }).withTypeProvider();
@@ -32,16 +33,45 @@ exports.routes.get('/suggestions/kick', async (_req, res) => {
 exports.routes.get('/suggestions', async (_req, res) => {
     res.status(200).send({ twitch: TwitchChannelMonitor_1.TwitchChannelSuggestions.getTopStreams() });
 });
-exports.routes.post('/room', async (_req, res) => {
-    console.log('[request] Create new room');
-    const body = _req.body;
-    if ((body === null || body === void 0 ? void 0 : body.initInputs) !== undefined && !Array.isArray(body.initInputs)) {
-        return res.status(400).send({ error: 'initInputs must be an array' });
+const CreateRoomSchema = typebox_1.Type.Object({
+    initInputs: typebox_1.Type.Optional(typebox_1.Type.Array(typebox_1.Type.Any())),
+    skipDefaultInputs: typebox_1.Type.Optional(typebox_1.Type.Boolean()),
+    resolution: typebox_1.Type.Optional(typebox_1.Type.Union([
+        typebox_1.Type.Object({
+            width: typebox_1.Type.Number({ minimum: 1 }),
+            height: typebox_1.Type.Number({ minimum: 1 }),
+        }),
+        typebox_1.Type.Union([
+            typebox_1.Type.Literal('720p'),
+            typebox_1.Type.Literal('1080p'),
+            typebox_1.Type.Literal('1440p'),
+            typebox_1.Type.Literal('4k'),
+            typebox_1.Type.Literal('720p-vertical'),
+            typebox_1.Type.Literal('1080p-vertical'),
+            typebox_1.Type.Literal('1440p-vertical'),
+            typebox_1.Type.Literal('4k-vertical'),
+        ]),
+    ])),
+});
+exports.routes.post('/room', { schema: { body: CreateRoomSchema } }, async (req, res) => {
+    console.log('[request] Create new room', { body: req.body });
+    const initInputs = req.body.initInputs || [];
+    const skipDefaultInputs = req.body.skipDefaultInputs === true;
+    let resolution;
+    if (req.body.resolution) {
+        if (typeof req.body.resolution === 'string') {
+            resolution = smelter_1.RESOLUTION_PRESETS[req.body.resolution];
+        }
+        else {
+            resolution = req.body.resolution;
+        }
     }
-    const initInputs = (body === null || body === void 0 ? void 0 : body.initInputs) || [];
-    const skipDefaultInputs = (body === null || body === void 0 ? void 0 : body.skipDefaultInputs) === true;
-    const { roomId, room } = await serverState_1.state.createRoom(initInputs, skipDefaultInputs);
-    res.status(200).send({ roomId, whepUrl: room.getWhepUrl() });
+    const { roomId, room } = await serverState_1.state.createRoom(initInputs, skipDefaultInputs, resolution);
+    res.status(200).send({
+        roomId,
+        whepUrl: room.getWhepUrl(),
+        resolution: room.getResolution(),
+    });
 });
 exports.routes.get('/shaders', async (_req, res) => {
     const visible = shaders_1.default.shaders.filter(s => s.isVisible);
@@ -57,6 +87,7 @@ exports.routes.get('/room/:roomId', async (req, res) => {
         whepUrl: room.getWhepUrl(),
         pendingDelete: room.pendingDelete,
         isPublic: room.isPublic,
+        resolution: room.getResolution(),
     });
 });
 exports.routes.get('/rooms', async (_req, res) => {

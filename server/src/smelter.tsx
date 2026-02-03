@@ -9,10 +9,29 @@ import { config } from './config';
 import { readFile } from 'fs-extra';
 import shadersController from './shaders/shaders';
 
+export type Resolution = {
+  width: number;
+  height: number;
+};
+
+export const RESOLUTION_PRESETS = {
+  '720p': { width: 1280, height: 720 },
+  '1080p': { width: 1920, height: 1080 },
+  '1440p': { width: 2560, height: 1440 },
+  '4k': { width: 3840, height: 2160 },
+  '720p-vertical': { width: 720, height: 1280 },
+  '1080p-vertical': { width: 1080, height: 1920 },
+  '1440p-vertical': { width: 1440, height: 2560 },
+  '4k-vertical': { width: 2160, height: 3840 },
+} as const;
+
+export type ResolutionPreset = keyof typeof RESOLUTION_PRESETS;
+
 export type SmelterOutput = {
   id: string;
   url: string;
   store: StoreApi<RoomStore>;
+  resolution: Resolution;
 };
 
 export type RegisterSmelterInputOptions =
@@ -71,15 +90,15 @@ export class SmelterManager {
     }
   }
 
-  public async registerOutput(roomId: string): Promise<SmelterOutput> {
+  public async registerOutput(roomId: string, resolution: Resolution = RESOLUTION_PRESETS['1440p']): Promise<SmelterOutput> {
     let store = createRoomStore();
     await this.instance.registerOutput(roomId, <App store={store} />, {
       type: 'whep_server',
       video: {
         encoder: config.h264Encoder,
         resolution: {
-          width: 2560,
-          height: 1440,
+          width: resolution.width,
+          height: resolution.height,
         },
       },
       audio: {
@@ -89,7 +108,7 @@ export class SmelterManager {
       },
     });
 
-    return { id: roomId, url: `${config.whepBaseUrl}/${encodeURIComponent(roomId)}`, store };
+    return { id: roomId, url: `${config.whepBaseUrl}/${encodeURIComponent(roomId)}`, store, resolution };
   }
 
   public async unregisterOutput(roomId: string): Promise<void> {

@@ -22,13 +22,24 @@ function LoadingSpinner() {
   );
 }
 
+export type OutputResolution = {
+  width: number;
+  height: number;
+};
+
 export default function OutputStream({
   whepUrl,
   videoRef,
+  resolution,
 }: {
   whepUrl: string;
   videoRef: RefObject<HTMLVideoElement | null>;
+  resolution?: OutputResolution;
 }) {
+  const aspectRatio = resolution 
+    ? `${resolution.width}/${resolution.height}` 
+    : '16/9';
+  const isVertical = resolution ? resolution.height > resolution.width : false;
   const [playing, setPlaying] = useState(false);
   const [muted, setMuted] = useState(false);
   const [volume, setVolume] = useState(1);
@@ -231,10 +242,18 @@ export default function OutputStream({
   const slider =
     'h-1.5 rounded-none bg-gray-300 dark:bg-neutral-800 appearance-none transition w-full accent-neutral-400';
 
+  const maxWidth = isVertical ? 600 : 1920;
+  const maxHeight = isVertical ? 1080 : 1080;
+
   return (
     <div
-      className='relative w-full h-full bg-black rounded-none overflow-hidden border-[#2a2a2a] border-4 aspect-[16/9]'
-      style={{ maxWidth: 1920, maxHeight: 1080 }}>
+      className='relative w-full h-full bg-black rounded-none overflow-hidden border-[#2a2a2a] border-4'
+      style={{ 
+        aspectRatio,
+        maxWidth,
+        maxHeight,
+        margin: isVertical ? '0 auto' : undefined,
+      }}>
       {!videoLoaded && (
         <>
           <img src='/video-bg-placeholder.png' alt='Video placeholder' />

@@ -25,9 +25,10 @@ class ServerState {
             await this.monitorConnectedRooms();
         }, 1000);
     }
-    async createRoom(initInputs, skipDefaultInputs = false) {
+    async createRoom(initInputs, skipDefaultInputs = false, resolution) {
         const roomId = (0, uuid_1.v4)();
-        const smelterOutput = await smelter_1.SmelterInstance.registerOutput(roomId);
+        const resolvedResolution = resolution !== null && resolution !== void 0 ? resolution : smelter_1.RESOLUTION_PRESETS['1440p'];
+        const smelterOutput = await smelter_1.SmelterInstance.registerOutput(roomId, resolvedResolution);
         const room = new roomState_1.RoomState(roomId, smelterOutput, initInputs, skipDefaultInputs);
         this.rooms[roomId] = room;
         return { roomId, room };

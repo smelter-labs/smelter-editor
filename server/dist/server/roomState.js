@@ -72,6 +72,9 @@ class RoomState {
     getWhepUrl() {
         return this.output.url;
     }
+    getResolution() {
+        return this.output.resolution;
+    }
     getState() {
         this.lastReadTimestamp = Date.now();
         return [this.inputs, this.layout];

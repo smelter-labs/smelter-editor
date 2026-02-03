@@ -452,6 +452,20 @@ const AVAILABLE_SHADERS = [
         ],
     },
     {
+        id: 'alpha-stroke',
+        isActive: true,
+        isVisible: true,
+        name: 'Alpha Stroke',
+        description: 'Draws an outline wherever transparent and opaque pixels meet, with configurable width, softness, and color.',
+        shaderFile: 'alpha-stroke.wgsl',
+        params: [
+            { name: 'stroke_width_px', type: 'number', minValue: 0, maxValue: 100, defaultValue: 66 },
+            { name: 'softness_px', type: 'number', minValue: 0, maxValue: 50, defaultValue: 31.5 },
+            { name: 'opacity', type: 'number', minValue: 0, maxValue: 1, defaultValue: 1 },
+            { name: 'stroke_color', type: 'color', defaultValue: '#000000' },
+        ],
+    },
+    {
         id: 'sw-hologram',
         isActive: true,
         isVisible: true,

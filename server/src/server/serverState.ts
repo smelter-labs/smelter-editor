@@ -2,7 +2,7 @@ import type { RegisterInputOptions } from './roomState';
 import { RoomState } from './roomState';
 import { v4 as uuidv4 } from 'uuid';
 import { errorCodes } from 'fastify';
-import { SmelterInstance } from '../smelter';
+import { SmelterInstance, type Resolution, RESOLUTION_PRESETS } from '../smelter';
 
 export type CreateRoomResult = {
   roomId: string;
@@ -38,9 +38,14 @@ class ServerState {
     }, 1000);
   }
 
-  public async createRoom(initInputs: RegisterInputOptions[], skipDefaultInputs: boolean = false): Promise<CreateRoomResult> {
+  public async createRoom(
+    initInputs: RegisterInputOptions[],
+    skipDefaultInputs: boolean = false,
+    resolution?: Resolution
+  ): Promise<CreateRoomResult> {
     const roomId = uuidv4();
-    const smelterOutput = await SmelterInstance.registerOutput(roomId);
+    const resolvedResolution = resolution ?? RESOLUTION_PRESETS['1440p'];
+    const smelterOutput = await SmelterInstance.registerOutput(roomId, resolvedResolution);
     const room = new RoomState(roomId, smelterOutput, initInputs, skipDefaultInputs);
     this.rooms[roomId] = room;
     return { roomId, room };

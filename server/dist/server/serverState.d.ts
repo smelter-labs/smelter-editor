@@ -1,5 +1,6 @@
 import type { RegisterInputOptions } from './roomState';
 import { RoomState } from './roomState';
+import { type Resolution } from '../smelter';
 export type CreateRoomResult = {
     roomId: string;
     room: RoomState;
@@ -9,7 +10,7 @@ declare class ServerState {
     getRooms(): RoomState[];
     isChannelIdUsed(channelId: string): boolean;
     constructor();
-    createRoom(initInputs: RegisterInputOptions[], skipDefaultInputs?: boolean): Promise<CreateRoomResult>;
+    createRoom(initInputs: RegisterInputOptions[], skipDefaultInputs?: boolean, resolution?: Resolution): Promise<CreateRoomResult>;
     getRoom(roomId: string): RoomState;
     deleteRoom(roomId: string): Promise<void>;
     private monitorConnectedRooms;

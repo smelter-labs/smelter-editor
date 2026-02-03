@@ -98,6 +98,10 @@ export declare class RoomState {
     constructor(idPrefix: string, output: SmelterOutput, initInputs: RegisterInputOptions[], skipDefaultInputs?: boolean);
     private getInitialInputState;
     getWhepUrl(): string;
+    getResolution(): {
+        width: number;
+        height: number;
+    };
     getState(): [RoomInputState[], Layout];
     getInputs(): RoomInputState[];
     private getPlaceholderId;
