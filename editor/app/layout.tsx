@@ -1,11 +1,8 @@
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
-import { ToastContainer } from 'react-toastify';
-import { Analytics } from '@vercel/analytics/next';
 import './globals.css';
 import React from 'react';
-import { SpeechToText } from '@/components/speech-to-text';
-import { SpeechToTextWithCommands } from '@/components/speech-to-text-with-commands';
+import ClientLayoutAddons from '@/components/client-layout-addons';
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -32,9 +29,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#161127]`}>
         {children}
-        <SpeechToTextWithCommands />
-        <ToastContainer />
-        <Analytics />
+        <ClientLayoutAddons />
       </body>
     </html>
   );

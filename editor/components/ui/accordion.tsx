@@ -141,9 +141,7 @@ const Accordion = forwardRef<AccordionHandle, AccordionProps>(
               </svg>
             </span>
           )}
-          <h3 className='text-white text-sm font-medium'>
-            {title}
-          </h3>
+          <h3 className='text-white text-sm font-medium'>{title}</h3>
         </button>
         <AnimatePresence initial={false}>
           {open && (

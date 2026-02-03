@@ -71,7 +71,10 @@ export function normalize(text: string): string {
   }
 
   for (const alias of INPUT_ALIASES) {
-    result = result.replace(new RegExp(`\\b${alias}\\s+(\\d+)\\b`, 'gi'), 'input $1');
+    result = result.replace(
+      new RegExp(`\\b${alias}\\s+(\\d+)\\b`, 'gi'),
+      'input $1',
+    );
   }
 
   result = result.replace(/\binput\s+number\s+(\d+)\b/gi, 'input $1');

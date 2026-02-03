@@ -52,7 +52,7 @@ class SmelterManager {
         }
     }
     async registerOutput(roomId, resolution = exports.RESOLUTION_PRESETS['1440p']) {
-        let store = (0, store_1.createRoomStore)();
+        let store = (0, store_1.createRoomStore)(resolution);
         await this.instance.registerOutput(roomId, (0, jsx_runtime_1.jsx)(App_1.default, { store: store }), {
             type: 'whep_server',
             video: {

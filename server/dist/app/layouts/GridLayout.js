@@ -10,5 +10,10 @@ const inputs_1 = require("../../inputs/inputs");
 function GridLayout() {
     const store = (0, react_1.useContext)(store_1.StoreContext);
     const inputs = (0, zustand_1.useStore)(store, state => state.inputs);
-    return ((0, jsx_runtime_1.jsx)(smelter_1.Tiles, { transition: { durationMs: 300 }, style: { padding: 20, tileAspectRatio: '1920:1210' }, children: Object.values(inputs).map(input => ((0, jsx_runtime_1.jsx)(inputs_1.Input, { input: input }, input.inputId))) }));
+    const resolution = (0, store_1.useResolution)();
+    const isVertical = (0, store_1.useIsVertical)();
+    const tileAspectRatio = isVertical
+        ? `${resolution.width}:${Math.round(resolution.width * 0.63)}`
+        : `${resolution.width}:${Math.round(resolution.width * 0.63)}`;
+    return ((0, jsx_runtime_1.jsx)(smelter_1.Tiles, { transition: { durationMs: 300 }, style: { padding: 20, tileAspectRatio }, children: Object.values(inputs).map(input => ((0, jsx_runtime_1.jsx)(inputs_1.Input, { input: input }, input.inputId))) }));
 }

@@ -7,7 +7,10 @@ import { Mic, MicOff, X, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useVoiceCommands, type MacroStep } from '@/lib/voice';
-import { getMP4Suggestions, getPictureSuggestions } from '@/app/actions/actions';
+import {
+  getMP4Suggestions,
+  getPictureSuggestions,
+} from '@/app/actions/actions';
 
 type MacroStepInfo = {
   step: MacroStep;
@@ -23,7 +26,8 @@ export function SpeechToTextWithCommands() {
   const [manualInput, setManualInput] = useState('');
   const [mp4Files, setMp4Files] = useState<string[]>([]);
   const [imageFiles, setImageFiles] = useState<string[]>([]);
-  const [currentMacroStep, setCurrentMacroStep] = useState<MacroStepInfo | null>(null);
+  const [currentMacroStep, setCurrentMacroStep] =
+    useState<MacroStepInfo | null>(null);
   const [commandHistory, setCommandHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -43,18 +47,31 @@ export function SpeechToTextWithCommands() {
   }, []);
 
   useEffect(() => {
-    getMP4Suggestions().then((data) => {
-      console.log('[Voice] Loaded mp4 files:', data.mp4s);
-      setMp4Files(data.mp4s);
-    }).catch((e) => console.error('[Voice] Failed to load mp4s:', e));
-    getPictureSuggestions().then((data) => {
-      console.log('[Voice] Loaded image files:', data.pictures);
-      setImageFiles(data.pictures);
-    }).catch((e) => console.error('[Voice] Failed to load images:', e));
+    getMP4Suggestions()
+      .then((data) => {
+        console.log('[Voice] Loaded mp4 files:', data.mp4s);
+        setMp4Files(data.mp4s);
+      })
+      .catch((e) => console.error('[Voice] Failed to load mp4s:', e));
+    getPictureSuggestions()
+      .then((data) => {
+        console.log('[Voice] Loaded image files:', data.pictures);
+        setImageFiles(data.pictures);
+      })
+      .catch((e) => console.error('[Voice] Failed to load images:', e));
   }, []);
 
-  const { lastCommand, lastError, lastClarify, lastTranscript, isTypingMode, isMacroMode, isExecutingMacro, activeMacro, handleTranscript } =
-    useVoiceCommands({ mp4Files, imageFiles });
+  const {
+    lastCommand,
+    lastError,
+    lastClarify,
+    lastTranscript,
+    isTypingMode,
+    isMacroMode,
+    isExecutingMacro,
+    activeMacro,
+    handleTranscript,
+  } = useVoiceCommands({ mp4Files, imageFiles });
 
   const {
     error,
@@ -91,7 +108,9 @@ export function SpeechToTextWithCommands() {
   }, [results, interimResult]);
 
   useEffect(() => {
-    const onMacroStepStart = (e: CustomEvent<{ step: MacroStep; index: number; total: number }>) => {
+    const onMacroStepStart = (
+      e: CustomEvent<{ step: MacroStep; index: number; total: number }>,
+    ) => {
       setCurrentMacroStep({
         step: e.detail.step,
         index: e.detail.index,
@@ -107,14 +126,32 @@ export function SpeechToTextWithCommands() {
       setCurrentMacroStep(null);
     };
 
-    window.addEventListener('smelter:voice:macro-step-start', onMacroStepStart as EventListener);
-    window.addEventListener('smelter:voice:macro-complete', onMacroComplete as EventListener);
-    window.addEventListener('smelter:voice:macro-error', onMacroError as EventListener);
+    window.addEventListener(
+      'smelter:voice:macro-step-start',
+      onMacroStepStart as EventListener,
+    );
+    window.addEventListener(
+      'smelter:voice:macro-complete',
+      onMacroComplete as EventListener,
+    );
+    window.addEventListener(
+      'smelter:voice:macro-error',
+      onMacroError as EventListener,
+    );
 
     return () => {
-      window.removeEventListener('smelter:voice:macro-step-start', onMacroStepStart as EventListener);
-      window.removeEventListener('smelter:voice:macro-complete', onMacroComplete as EventListener);
-      window.removeEventListener('smelter:voice:macro-error', onMacroError as EventListener);
+      window.removeEventListener(
+        'smelter:voice:macro-step-start',
+        onMacroStepStart as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:voice:macro-complete',
+        onMacroComplete as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:voice:macro-error',
+        onMacroError as EventListener,
+      );
     };
   }, []);
 
@@ -138,11 +175,14 @@ export function SpeechToTextWithCommands() {
     const text = manualInput.trim();
     if (text) {
       handleTranscript(text);
-      
-      const newHistory = [text, ...commandHistory.filter(cmd => cmd !== text)].slice(0, MAX_HISTORY);
+
+      const newHistory = [
+        text,
+        ...commandHistory.filter((cmd) => cmd !== text),
+      ].slice(0, MAX_HISTORY);
       setCommandHistory(newHistory);
       localStorage.setItem(HISTORY_KEY, JSON.stringify(newHistory));
-      
+
       setManualInput('');
       setHistoryIndex(-1);
     }
@@ -177,79 +217,112 @@ export function SpeechToTextWithCommands() {
   const isIntroPage = !roomId;
 
   return (
-    <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-3">
+    <div className='fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-3'>
       {isOpen && (
-        <div className="bg-[#141414] border border-neutral-700 p-4 w-[400px] max-h-[400px]">
-          <div className="flex items-center justify-between mb-3 border-b border-neutral-700 pb-3">
-            <div className="flex items-center gap-2">
+        <div className='bg-[#141414] border border-neutral-700 p-4 w-[400px] max-h-[400px]'>
+          <div className='flex items-center justify-between mb-3 border-b border-neutral-700 pb-3'>
+            <div className='flex items-center gap-2'>
               {isRecording && (
-                <span className={`size-2 rounded-full animate-pulse ${isMacroMode ? 'bg-orange-500' : isTypingMode ? 'bg-purple-500' : 'bg-red-500'}`} />
+                <span
+                  className={`size-2 rounded-full animate-pulse ${isMacroMode ? 'bg-orange-500' : isTypingMode ? 'bg-purple-500' : 'bg-red-500'}`}
+                />
               )}
-              <span className="text-sm text-neutral-400">
-                {isMacroMode ? '🎬 Macro Mode' : isExecutingMacro ? '⚡ Executing Macro...' : isTypingMode ? '✏️ Typing Mode' : isRecording ? 'Listening...' : isIntroPage ? 'Voice Commands (say "start new room")' : 'Voice Commands'}
+              <span className='text-sm text-neutral-400'>
+                {isMacroMode
+                  ? '🎬 Macro Mode'
+                  : isExecutingMacro
+                    ? '⚡ Executing Macro...'
+                    : isTypingMode
+                      ? '✏️ Typing Mode'
+                      : isRecording
+                        ? 'Listening...'
+                        : isIntroPage
+                          ? 'Voice Commands (say "start new room")'
+                          : 'Voice Commands'}
               </span>
             </div>
-            <Button variant="ghost" size="icon" className="size-6" onClick={handleClose}>
-              <X className="size-4 text-neutral-300" />
+            <Button
+              variant='ghost'
+              size='icon'
+              className='size-6'
+              onClick={handleClose}>
+              <X className='size-4 text-neutral-300' />
             </Button>
           </div>
 
           {lastTranscript && (
-            <p className="text-neutral-400 text-sm mb-2 font-mono">
+            <p className='text-neutral-400 text-sm mb-2 font-mono'>
               &quot;{lastTranscript}&quot;
             </p>
           )}
 
           {error && (
-            <p className="text-red-500 text-sm mb-2">
+            <p className='text-red-500 text-sm mb-2'>
               Error: Web Speech API not available in this browser
             </p>
           )}
 
           {lastError && (
-            <p className="text-amber-500 text-sm mb-2">⚠ {lastError}</p>
+            <p className='text-amber-500 text-sm mb-2'>⚠ {lastError}</p>
           )}
 
           {lastClarify && (
-            <p className="text-blue-400 text-sm mb-2">❓ {lastClarify}</p>
+            <p className='text-blue-400 text-sm mb-2'>❓ {lastClarify}</p>
           )}
 
           {isTypingMode && (
-            <p className="text-purple-400 text-sm mb-2 bg-purple-500/10 p-2 rounded">
+            <p className='text-purple-400 text-sm mb-2 bg-purple-500/10 p-2 rounded'>
               🎤 Dictating text... Say &quot;stop typing&quot; to finish.
             </p>
           )}
 
           {isMacroMode && (
-            <p className="text-orange-400 text-sm mb-2 bg-orange-500/10 p-2 rounded">
+            <p className='text-orange-400 text-sm mb-2 bg-orange-500/10 p-2 rounded'>
               🎬 Say a macro trigger phrase or &quot;end macro&quot; to cancel.
             </p>
           )}
 
           {isExecutingMacro && activeMacro && (
-            <div className="text-sm mb-2 bg-cyan-500/10 p-3 rounded border border-cyan-500/30">
-              <p className="text-cyan-400 font-medium mb-2">
+            <div className='text-sm mb-2 bg-cyan-500/10 p-3 rounded border border-cyan-500/30'>
+              <p className='text-cyan-400 font-medium mb-2'>
                 ⚡ Executing: {activeMacro.description}
               </p>
               {currentMacroStep && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between text-xs text-cyan-300/70">
-                    <span>Step {currentMacroStep.index + 1} of {currentMacroStep.total}</span>
-                    <span className="font-mono">{Math.round(((currentMacroStep.index + 1) / currentMacroStep.total) * 100)}%</span>
+                <div className='space-y-2'>
+                  <div className='flex items-center justify-between text-xs text-cyan-300/70'>
+                    <span>
+                      Step {currentMacroStep.index + 1} of{' '}
+                      {currentMacroStep.total}
+                    </span>
+                    <span className='font-mono'>
+                      {Math.round(
+                        ((currentMacroStep.index + 1) /
+                          currentMacroStep.total) *
+                          100,
+                      )}
+                      %
+                    </span>
                   </div>
-                  <div className="w-full bg-cyan-900/30 rounded-full h-1.5">
-                    <div 
-                      className="bg-cyan-400 h-1.5 rounded-full transition-all duration-300"
-                      style={{ width: `${((currentMacroStep.index + 1) / currentMacroStep.total) * 100}%` }}
+                  <div className='w-full bg-cyan-900/30 rounded-full h-1.5'>
+                    <div
+                      className='bg-cyan-400 h-1.5 rounded-full transition-all duration-300'
+                      style={{
+                        width: `${((currentMacroStep.index + 1) / currentMacroStep.total) * 100}%`,
+                      }}
                     />
                   </div>
-                  <p className="text-cyan-200 text-xs font-mono bg-cyan-900/20 p-2 rounded">
+                  <p className='text-cyan-200 text-xs font-mono bg-cyan-900/20 p-2 rounded'>
                     → {currentMacroStep.step.action}
-                    {currentMacroStep.step.params?.inputType && ` (${currentMacroStep.step.params.inputType})`}
-                    {currentMacroStep.step.params?.shader && ` [${currentMacroStep.step.params.shader}]`}
-                    {currentMacroStep.step.params?.inputIndex && ` on input ${currentMacroStep.step.params.inputIndex}`}
-                    {currentMacroStep.step.params?.color && ` color: ${currentMacroStep.step.params.color}`}
-                    {currentMacroStep.step.params?.text && ` "${currentMacroStep.step.params.text.slice(0, 20)}..."`}
+                    {currentMacroStep.step.params?.inputType &&
+                      ` (${currentMacroStep.step.params.inputType})`}
+                    {currentMacroStep.step.params?.shader &&
+                      ` [${currentMacroStep.step.params.shader}]`}
+                    {currentMacroStep.step.params?.inputIndex &&
+                      ` on input ${currentMacroStep.step.params.inputIndex}`}
+                    {currentMacroStep.step.params?.color &&
+                      ` color: ${currentMacroStep.step.params.color}`}
+                    {currentMacroStep.step.params?.text &&
+                      ` "${currentMacroStep.step.params.text.slice(0, 20)}..."`}
                   </p>
                 </div>
               )}
@@ -257,26 +330,32 @@ export function SpeechToTextWithCommands() {
           )}
 
           {lastCommand && lastCommand.intent !== 'CLARIFY' && (
-            <p className="text-green-400 text-sm mb-2">
+            <p className='text-green-400 text-sm mb-2'>
               ✓ {lastCommand.intent}
               {lastCommand.intent === 'ADD_INPUT' && (
                 <>
                   {` → ${lastCommand.inputType}`}
                   {lastCommand.mp4MatchInfo && (
-                    <span className="block text-xs text-neutral-400 mt-1">
-                      szukano: &quot;{lastCommand.mp4MatchInfo.query}&quot; → znaleziono: &quot;{lastCommand.mp4MatchInfo.file}&quot; 
-                      ({lastCommand.mp4MatchInfo.matchType}, {(lastCommand.mp4MatchInfo.similarity * 100).toFixed(0)}%)
+                    <span className='block text-xs text-neutral-400 mt-1'>
+                      szukano: &quot;{lastCommand.mp4MatchInfo.query}&quot; →
+                      znaleziono: &quot;{lastCommand.mp4MatchInfo.file}&quot; (
+                      {lastCommand.mp4MatchInfo.matchType},{' '}
+                      {(lastCommand.mp4MatchInfo.similarity * 100).toFixed(0)}%)
                     </span>
                   )}
                   {lastCommand.imageMatchInfo && (
-                    <span className="block text-xs text-neutral-400 mt-1">
-                      szukano: &quot;{lastCommand.imageMatchInfo.query}&quot; → znaleziono: &quot;{lastCommand.imageMatchInfo.file}&quot; 
-                      ({lastCommand.imageMatchInfo.matchType}, {(lastCommand.imageMatchInfo.similarity * 100).toFixed(0)}%)
+                    <span className='block text-xs text-neutral-400 mt-1'>
+                      szukano: &quot;{lastCommand.imageMatchInfo.query}&quot; →
+                      znaleziono: &quot;{lastCommand.imageMatchInfo.file}&quot;
+                      ({lastCommand.imageMatchInfo.matchType},{' '}
+                      {(lastCommand.imageMatchInfo.similarity * 100).toFixed(0)}
+                      %)
                     </span>
                   )}
                 </>
               )}
-              {lastCommand.intent === 'REMOVE_INPUT' && ` → input ${lastCommand.inputIndex}`}
+              {lastCommand.intent === 'REMOVE_INPUT' &&
+                ` → input ${lastCommand.inputIndex}`}
               {lastCommand.intent === 'ADD_SHADER' &&
                 ` → ${lastCommand.shader} on input ${lastCommand.inputIndex}`}
               {lastCommand.intent === 'REMOVE_SHADER' &&
@@ -287,41 +366,41 @@ export function SpeechToTextWithCommands() {
             </p>
           )}
 
-          <div className="flex gap-2 mb-3">
+          <div className='flex gap-2 mb-3'>
             <input
               ref={inputRef}
-              type="text"
+              type='text'
               value={manualInput}
               onChange={(e) => setManualInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Type command..."
-              className="flex-1 bg-neutral-800 border border-neutral-600 rounded px-3 py-1.5 text-sm text-neutral-200 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-500"
+              placeholder='Type command...'
+              className='flex-1 bg-neutral-800 border border-neutral-600 rounded px-3 py-1.5 text-sm text-neutral-200 placeholder:text-neutral-500 focus:outline-none focus:border-neutral-500'
             />
             <Button
-              variant="ghost"
-              size="icon"
-              className="size-8 shrink-0"
+              variant='ghost'
+              size='icon'
+              className='size-8 shrink-0'
               onClick={handleManualSubmit}
-              disabled={!manualInput.trim()}
-            >
-              <Send className="size-4" />
+              disabled={!manualInput.trim()}>
+              <Send className='size-4' />
             </Button>
           </div>
 
-          <div ref={scrollRef} className="overflow-y-auto max-h-[200px] space-y-2">
+          <div
+            ref={scrollRef}
+            className='overflow-y-auto max-h-[200px] space-y-2'>
             {interimResult && (
-              <p className="text-neutral-500 text-sm italic">{interimResult}</p>
+              <p className='text-neutral-500 text-sm italic'>{interimResult}</p>
             )}
             {reversedResults.map((result) => (
               <p
                 key={(result as { timestamp: number }).timestamp}
-                className="text-neutral-200 text-sm"
-              >
+                className='text-neutral-200 text-sm'>
                 {(result as { transcript: string }).transcript}
               </p>
             ))}
             {results.length === 0 && !interimResult && !error && (
-              <p className="text-neutral-600 text-sm">
+              <p className='text-neutral-600 text-sm'>
                 {isRecording ? 'Say a command...' : 'Click mic to start'}
               </p>
             )}
@@ -331,15 +410,18 @@ export function SpeechToTextWithCommands() {
 
       <Button
         onClick={handleToggleRecording}
-        size="icon"
+        size='icon'
         className={cn(
           'size-12 border border-neutral-700 transition-all',
           isRecording
             ? 'bg-red-500 hover:bg-red-600 animate-pulse border-red-500'
             : 'bg-[#141414] hover:bg-[#1a1a1a]',
+        )}>
+        {isRecording ? (
+          <MicOff className='size-5' />
+        ) : (
+          <Mic className='size-5' />
         )}
-      >
-        {isRecording ? <MicOff className="size-5" /> : <Mic className="size-5" />}
       </Button>
     </div>
   );

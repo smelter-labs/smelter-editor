@@ -25,6 +25,7 @@ type InputState = {
   volume: number;
   type: 'local-mp4' | 'twitch-channel' | 'kick-channel' | 'whip' | 'image' | 'text-input';
   shaders: ShaderConfig[];
+  orientation: 'horizontal' | 'vertical';
   channelId?: string;
   imageId?: string;
   text?: string;
@@ -312,6 +313,10 @@ const UpdateInputSchema = Type.Object({
       })
     )
   ),
+  orientation: Type.Optional(Type.Union([
+    Type.Literal('horizontal'),
+    Type.Literal('vertical'),
+  ])),
   text: Type.Optional(Type.String()),
   textAlign: Type.Optional(Type.Union([
     Type.Literal('left'),
@@ -356,6 +361,7 @@ function publicInputState(input: RoomInputState): InputState {
         volume: input.volume,
         type: input.type,
         shaders: input.shaders,
+        orientation: input.orientation,
       };
     case 'image':
       return {
@@ -368,6 +374,7 @@ function publicInputState(input: RoomInputState): InputState {
         volume: input.volume,
         type: input.type,
         shaders: input.shaders,
+        orientation: input.orientation,
         imageId: input.imageId,
       };
     case 'twitch-channel':
@@ -381,6 +388,7 @@ function publicInputState(input: RoomInputState): InputState {
         volume: input.volume,
         type: input.type,
         shaders: input.shaders,
+        orientation: input.orientation,
         channelId: input.channelId,
       };
     case 'kick-channel':
@@ -394,6 +402,7 @@ function publicInputState(input: RoomInputState): InputState {
         volume: input.volume,
         type: input.type,
         shaders: input.shaders,
+        orientation: input.orientation,
         channelId: input.channelId,
       };
     case 'whip':
@@ -407,6 +416,7 @@ function publicInputState(input: RoomInputState): InputState {
         volume: input.volume,
         type: input.type,
         shaders: input.shaders,
+        orientation: input.orientation,
       };
     case 'text-input':
       return {
@@ -419,6 +429,7 @@ function publicInputState(input: RoomInputState): InputState {
         volume: input.volume,
         type: input.type,
         shaders: input.shaders,
+        orientation: input.orientation,
         text: input.text,
         textAlign: input.textAlign,
         textColor: input.textColor,

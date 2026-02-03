@@ -11,11 +11,14 @@ const NewsStripDecorated_1 = require("../NewsStripDecorated");
 function PictureInPictureLayout() {
     const store = (0, react_1.useContext)(store_1.StoreContext);
     const inputs = (0, zustand_1.useStore)(store, state => state.inputs);
+    const resolution = (0, store_1.useResolution)();
+    const isVertical = (0, store_1.useIsVertical)();
     const firstInput = inputs[0];
     const secondInput = inputs[1];
+    const { width, height } = resolution;
     const [waveAmpPx, setWaveAmpPx] = (0, react_1.useState)(0);
     const [waveSpeed, setWaveSpeed] = (0, react_1.useState)(0);
-    const [marqueeLeft, setMarqueeLeft] = (0, react_1.useState)(2560);
+    const [marqueeLeft, setMarqueeLeft] = (0, react_1.useState)(width);
     (0, react_1.useEffect)(() => {
         let mounted = true;
         let tweenId = null;
@@ -52,8 +55,8 @@ function PictureInPictureLayout() {
                 const pxPerSec = 240;
                 const intervalMs = 10;
                 const step = (pxPerSec * intervalMs) / 1000;
-                const resetRight = 2560;
-                const minLeft = -5620;
+                const resetRight = width;
+                const minLeft = -width * 2.2;
                 marqueeId = setInterval(() => {
                     if (!mounted) {
                         return;
@@ -94,72 +97,79 @@ function PictureInPictureLayout() {
                 clearTimeout(timerId);
             }
         };
-    }, []);
+    }, [width]);
     if (!firstInput) {
-        return (0, jsx_runtime_1.jsx)(smelter_1.View, { style: { backgroundColor: '#000000', width: 2560, height: 1440 } });
+        return (0, jsx_runtime_1.jsx)(smelter_1.View, { style: { backgroundColor: '#000000', width, height } });
     }
+    const pipWidth = isVertical ? Math.round(width * 0.8) : Math.round(width * 0.25);
+    const pipHeight = isVertical ? Math.round(height * 0.35) : Math.round(height * 0.75);
+    const pipTop = isVertical ? Math.round(height * 0.62) : 60;
+    const pipRight = isVertical ? Math.round((width - pipWidth) / 2) : 60;
+    const stripHeight = isVertical ? Math.round(height * 0.12) : Math.round(height * 0.31);
+    const stripTop = isVertical ? height - stripHeight : Math.round(height * 0.67);
+    const showStrip = !isVertical;
     return ((0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { direction: 'column' }, children: [(0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { transition: { durationMs: 300 }, style: {
                     rescaleMode: 'fill',
-                    horizontalAlign: 'left',
+                    horizontalAlign: isVertical ? 'center' : 'left',
                     verticalAlign: 'top',
-                    width: 2560,
-                    height: 1440,
+                    width,
+                    height,
                     top: 0,
                     left: 0,
-                }, children: (0, jsx_runtime_1.jsx)(inputs_1.Input, { input: firstInput }) }), secondInput ? ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { top: 60, right: 60, width: 640, height: 1080 }, children: (0, jsx_runtime_1.jsx)(smelter_1.View, { style: { direction: 'column' }, children: (0, jsx_runtime_1.jsx)(smelter_1.Tiles, { transition: { durationMs: 300 }, style: { padding: 10, verticalAlign: 'top' }, children: Object.values(inputs)
+                }, children: (0, jsx_runtime_1.jsx)(inputs_1.Input, { input: firstInput }) }), secondInput ? ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { top: pipTop, right: pipRight, width: pipWidth, height: pipHeight }, children: (0, jsx_runtime_1.jsx)(smelter_1.View, { style: { direction: 'column' }, children: (0, jsx_runtime_1.jsx)(smelter_1.Tiles, { transition: { durationMs: 300 }, style: { padding: 10, verticalAlign: 'top' }, children: Object.values(inputs)
                             .filter(input => input.inputId != firstInput.inputId)
-                            .map(input => ((0, jsx_runtime_1.jsx)(inputs_1.SmallInput, { input: input }, input.inputId))) }) }) })) : null, (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { transition: { durationMs: 300 }, style: {
+                            .map(input => ((0, jsx_runtime_1.jsx)(inputs_1.SmallInput, { input: input }, input.inputId))) }) }) })) : null, showStrip && (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { transition: { durationMs: 300 }, style: {
                     rescaleMode: 'fill',
                     horizontalAlign: 'left',
                     verticalAlign: 'top',
-                    width: 2560,
-                    height: 450,
-                    top: 960,
+                    width,
+                    height: stripHeight,
+                    top: stripTop,
                     left: 0,
-                }, children: (0, jsx_runtime_1.jsx)(NewsStripDecorated_1.NewsStripDecorated, { resolution: { width: 2560, height: 450 }, opacity: 1, amplitudePx: waveAmpPx, wavelengthPx: 800, speed: waveSpeed, phase: 0, removeColorTolerance: 0.4, children: (0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { width: 2560, height: 450, direction: 'column' }, children: [(0, jsx_runtime_1.jsx)(smelter_1.View, { style: {
-                                    width: 240,
-                                    height: 72,
-                                    top: 114,
+                }, children: (0, jsx_runtime_1.jsx)(NewsStripDecorated_1.NewsStripDecorated, { resolution: { width, height: stripHeight }, opacity: 1, amplitudePx: waveAmpPx, wavelengthPx: 800, speed: waveSpeed, phase: 0, removeColorTolerance: 0.4, children: (0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { width, height: stripHeight, direction: 'column' }, children: [(0, jsx_runtime_1.jsx)(smelter_1.View, { style: {
+                                    width: Math.round(width * 0.094),
+                                    height: Math.round(stripHeight * 0.16),
+                                    top: Math.round(stripHeight * 0.25),
                                     left: 0,
                                     direction: 'column',
                                     overflow: 'hidden',
                                     backgroundColor: '#F24664',
                                 }, children: (0, jsx_runtime_1.jsx)(smelter_1.Text, { style: {
-                                        fontSize: 40,
-                                        lineHeight: 72,
+                                        fontSize: Math.round(stripHeight * 0.09),
+                                        lineHeight: Math.round(stripHeight * 0.16),
                                         color: '#000000',
                                         fontFamily: 'Poppins',
                                         fontWeight: 'bold',
                                         align: 'center',
-                                        width: 240,
-                                        height: 72,
+                                        width: Math.round(width * 0.094),
+                                        height: Math.round(stripHeight * 0.16),
                                     }, children: "LIVE" }) }), (0, jsx_runtime_1.jsx)(smelter_1.View, { style: {
-                                    width: 240,
-                                    height: 192,
-                                    top: Math.round((450 - 80) / 2),
+                                    width: Math.round(width * 0.094),
+                                    height: Math.round(stripHeight * 0.43),
+                                    top: Math.round(stripHeight * 0.41),
                                     left: 0,
                                     direction: 'column',
                                     overflow: 'hidden',
                                     backgroundColor: '#ffffff',
-                                }, children: (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { rescaleMode: 'fill', width: 150, height: 72, top: 56, left: 50 }, children: (0, jsx_runtime_1.jsx)(smelter_1.Image, { imageId: "smelter_logo" }) }) }), (0, jsx_runtime_1.jsx)(smelter_1.View, { style: {
-                                    width: 2320,
-                                    height: 192,
-                                    top: Math.round((450 - 80) / 2),
-                                    left: 240,
+                                }, children: (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { rescaleMode: 'fill', width: Math.round(width * 0.059), height: Math.round(stripHeight * 0.16), top: Math.round(stripHeight * 0.12), left: Math.round(width * 0.02) }, children: (0, jsx_runtime_1.jsx)(smelter_1.Image, { imageId: "smelter_logo" }) }) }), (0, jsx_runtime_1.jsx)(smelter_1.View, { style: {
+                                    width: Math.round(width * 0.906),
+                                    height: Math.round(stripHeight * 0.43),
+                                    top: Math.round(stripHeight * 0.41),
+                                    left: Math.round(width * 0.094),
                                     direction: 'column',
                                     overflow: 'hidden',
                                     backgroundColor: '#342956',
                                 }, children: (0, jsx_runtime_1.jsx)(smelter_1.View, { style: {
                                         direction: 'column',
-                                        height: 192,
-                                        width: 3560,
+                                        height: Math.round(stripHeight * 0.43),
+                                        width: Math.round(width * 1.4),
                                         overflow: 'visible',
                                         padding: 10,
-                                        top: 48,
+                                        top: Math.round(stripHeight * 0.11),
                                         left: Math.round(marqueeLeft),
                                     }, children: (0, jsx_runtime_1.jsx)(smelter_1.Text, { style: {
-                                            fontSize: 72,
-                                            width: 6860,
+                                            fontSize: Math.round(stripHeight * 0.16),
+                                            width: Math.round(width * 2.7),
                                             color: '#ffffff',
                                             fontFamily: 'Poppins',
                                             fontWeight: 'normal',

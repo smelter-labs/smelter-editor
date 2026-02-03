@@ -56,6 +56,7 @@ class RoomState {
                         status: 'disconnected',
                         showTitle: false,
                         shaders: [],
+                        orientation: 'horizontal',
                         metadata: {
                             title: `[MP4] ${formatMp4Name(randomMp4)}`,
                             description: '[Static source] AI Generated',
@@ -121,6 +122,7 @@ class RoomState {
                 status: 'connected',
                 showTitle: false,
                 shaders: [],
+                orientation: 'horizontal',
                 metadata: {
                     title: 'Smelter',
                     description: '',
@@ -148,6 +150,7 @@ class RoomState {
             status: 'disconnected',
             showTitle: false,
             shaders: [],
+            orientation: 'horizontal',
             monitor: monitor,
             metadata: {
                 title: `[Camera] ${username}`,
@@ -179,6 +182,7 @@ class RoomState {
                 status: 'disconnected',
                 showTitle: false,
                 shaders: [],
+                orientation: 'horizontal',
                 metadata: {
                     title: '', // will be populated on update
                     description: '',
@@ -208,11 +212,12 @@ class RoomState {
                 type: `kick-channel`,
                 status: 'disconnected',
                 showTitle: false,
+                shaders: [],
+                orientation: 'horizontal',
                 metadata: {
                     title: '', // will be populated on update
                     description: '',
                 },
-                shaders: [],
                 volume: 0,
                 channelId: opts.channelId,
                 hlsUrl,
@@ -238,6 +243,7 @@ class RoomState {
                     status: 'disconnected',
                     showTitle: false,
                     shaders: [],
+                    orientation: 'horizontal',
                     metadata: {
                         title: `[MP4] ${formatMp4Name(mp4Name)}`,
                         description: '[Static source] AI Generated',
@@ -299,6 +305,7 @@ class RoomState {
                     status: 'connected',
                     showTitle: false,
                     shaders: [],
+                    orientation: 'horizontal',
                     metadata: {
                         title: formatImageName(fileName),
                         description: '',
@@ -322,6 +329,7 @@ class RoomState {
                 status: 'connected',
                 showTitle: false,
                 shaders: [],
+                orientation: 'horizontal',
                 metadata: {
                     title: 'Text',
                     description: '',
@@ -433,11 +441,12 @@ class RoomState {
         }
     }
     async updateInput(inputId, options) {
-        var _a, _b, _c;
+        var _a, _b, _c, _d;
         const input = this.getInput(inputId);
         input.volume = (_a = options.volume) !== null && _a !== void 0 ? _a : input.volume;
         input.shaders = (_b = options.shaders) !== null && _b !== void 0 ? _b : input.shaders;
         input.showTitle = (_c = options.showTitle) !== null && _c !== void 0 ? _c : input.showTitle;
+        input.orientation = (_d = options.orientation) !== null && _d !== void 0 ? _d : input.orientation;
         if (input.type === 'text-input') {
             if (options.text !== undefined) {
                 input.text = options.text;
@@ -525,6 +534,7 @@ class RoomState {
             showTitle: input.showTitle,
             volume: input.volume,
             shaders: input.shaders,
+            orientation: input.orientation,
             imageId: input.type === 'image' ? input.imageId : undefined,
             text: input.type === 'text-input' ? input.text : undefined,
             textAlign: input.type === 'text-input' ? input.textAlign : undefined,
@@ -586,6 +596,7 @@ class RoomState {
                 status: 'disconnected',
                 showTitle: false,
                 shaders: [],
+                orientation: 'horizontal',
                 metadata: {
                     title: `[MP4] ${formatMp4Name(fileName)}`,
                     description: '[Wrapped MP4]',
@@ -642,6 +653,7 @@ class RoomState {
                 status: 'connected',
                 showTitle: false,
                 shaders: [],
+                orientation: 'horizontal',
                 metadata: {
                     title: formatImageName(fileName),
                     description: '',

@@ -8,7 +8,17 @@ import {
   updateInput,
 } from '@/app/actions/actions';
 import { Button } from '@/components/ui/button';
-import { Type, ChevronUp, ChevronDown, GripVertical, AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
+import {
+  Type,
+  ChevronUp,
+  ChevronDown,
+  GripVertical,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  RectangleHorizontal,
+  RectangleVertical,
+} from 'lucide-react';
 import ShaderPanel from './shader-panel';
 import { StatusButton } from './status-button';
 import { MuteButton } from './mute-button';
@@ -34,9 +44,13 @@ import { useIsMobile } from '@/hooks/use-mobile';
  */
 function hexToPackedInt(hex: string): number {
   const cleanHex = hex.replace('#', '');
-  const fullHex = cleanHex.length === 3
-    ? cleanHex.split('').map(char => char + char).join('')
-    : cleanHex;
+  const fullHex =
+    cleanHex.length === 3
+      ? cleanHex
+          .split('')
+          .map((char) => char + char)
+          .join('')
+      : cleanHex;
   return parseInt(fullHex, 16);
 }
 
@@ -95,16 +109,27 @@ export default function InputEntry({
   }>({});
   const [isAddShaderModalOpen, setIsAddShaderModalOpen] = useState(false);
   const [textValue, setTextValue] = useState(input.text || '');
-  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>(input.textAlign || 'left');
-  const [textColor, setTextColor] = useState<string>(input.textColor || '#ffffff');
-  const [textMaxLines, setTextMaxLines] = useState<number>(input.textMaxLines ?? 10);
-  const [textScrollSpeed, setTextScrollSpeed] = useState<number>(input.textScrollSpeed ?? 100);
-  const [textScrollLoop, setTextScrollLoop] = useState<boolean>(input.textScrollLoop ?? true);
+  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>(
+    input.textAlign || 'left',
+  );
+  const [textColor, setTextColor] = useState<string>(
+    input.textColor || '#ffffff',
+  );
+  const [textMaxLines, setTextMaxLines] = useState<number>(
+    input.textMaxLines ?? 10,
+  );
+  const [textScrollSpeed, setTextScrollSpeed] = useState<number>(
+    input.textScrollSpeed ?? 100,
+  );
+  const [textScrollLoop, setTextScrollLoop] = useState<boolean>(
+    input.textScrollLoop ?? true,
+  );
   const [isTextSaving, setIsTextSaving] = useState(false);
   const textSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isMobile = useIsMobile();
   const muted = input.volume === 0;
   const showTitle = input.showTitle !== false;
+  const isVerticalOrientation = input.orientation === 'vertical';
 
   const isWhipInput = input.type === 'whip';
   const isTextInput = input.type === 'text-input';
@@ -197,6 +222,15 @@ export default function InputEntry({
     });
     await refreshState();
   }, [roomId, input, showTitle, refreshState]);
+
+  const handleOrientationToggle = useCallback(async () => {
+    await updateInput(roomId, input.inputId, {
+      orientation: isVerticalOrientation ? 'horizontal' : 'vertical',
+      shaders: input.shaders,
+      volume: input.volume,
+    });
+    await refreshState();
+  }, [roomId, input, isVerticalOrientation, refreshState]);
 
   const handleTextChange = useCallback(
     (newText: string) => {
@@ -404,10 +438,13 @@ export default function InputEntry({
               shaderName: shaderDef.name,
               shaderId: shaderDef.id,
               enabled: true,
-              params: (
-                shaderDef.params?.map((param): { paramName: string; paramValue: number } => {
+              params: (shaderDef.params?.map(
+                (param): { paramName: string; paramValue: number } => {
                   // Handle color params: convert hex string to packed integer
-                  if (param.type === 'color' && typeof param.defaultValue === 'string') {
+                  if (
+                    param.type === 'color' &&
+                    typeof param.defaultValue === 'string'
+                  ) {
                     return {
                       paramName: param.name,
                       paramValue: hexToPackedInt(param.defaultValue),
@@ -416,10 +453,13 @@ export default function InputEntry({
                   // Regular number param
                   return {
                     paramName: param.name,
-                    paramValue: (typeof param.defaultValue === 'number' ? param.defaultValue : 0),
+                    paramValue:
+                      typeof param.defaultValue === 'number'
+                        ? param.defaultValue
+                        : 0,
                   };
-                }) || []
-              ) as { paramName: string; paramValue: number }[],
+                },
+              ) || []) as { paramName: string; paramValue: number }[],
             },
           ];
         } else {
@@ -545,20 +585,28 @@ export default function InputEntry({
               shaderId: shaderDef.id,
               enabled: true,
               params:
-                shaderDef.params?.map((param): { paramName: string; paramValue: number } => {
-                  // Handle color params: convert hex string to packed integer
-                  if (param.type === 'color' && typeof param.defaultValue === 'string') {
+                shaderDef.params?.map(
+                  (param): { paramName: string; paramValue: number } => {
+                    // Handle color params: convert hex string to packed integer
+                    if (
+                      param.type === 'color' &&
+                      typeof param.defaultValue === 'string'
+                    ) {
+                      return {
+                        paramName: param.name,
+                        paramValue: hexToPackedInt(param.defaultValue),
+                      };
+                    }
+                    // Regular number param
                     return {
                       paramName: param.name,
-                      paramValue: hexToPackedInt(param.defaultValue),
+                      paramValue:
+                        typeof param.defaultValue === 'number'
+                          ? param.defaultValue
+                          : 0,
                     };
-                  }
-                  // Regular number param
-                  return {
-                    paramName: param.name,
-                    paramValue: (typeof param.defaultValue === 'number' ? param.defaultValue : 0),
-                  };
-                }) || [],
+                  },
+                ) || [],
             },
           ];
       setShaderLoading(shaderId);
@@ -642,7 +690,9 @@ export default function InputEntry({
       <div
         key={input.inputId}
         className={`group relative p-2 mb-2 last:mb-0 rounded-none bg-neutral-900 border-2 overflow-hidden ${
-          isSelected ? 'border-blue-500 ring-2 ring-blue-500/30' : 'border-neutral-800'
+          isSelected
+            ? 'border-blue-500 ring-2 ring-blue-500/30'
+            : 'border-neutral-800'
         }`}>
         {typeof index === 'number' && (
           <div className='absolute top-2 right-2 pointer-events-none'>
@@ -682,11 +732,20 @@ export default function InputEntry({
               <div className='flex items-center gap-2'>
                 <span className='text-xs text-neutral-400'>Align:</span>
                 <div className='flex gap-1'>
-                  {([
-                    { value: 'left' as const, icon: <AlignLeft className='w-3 h-3' /> },
-                    { value: 'center' as const, icon: <AlignCenter className='w-3 h-3' /> },
-                    { value: 'right' as const, icon: <AlignRight className='w-3 h-3' /> },
-                  ]).map((option) => (
+                  {[
+                    {
+                      value: 'left' as const,
+                      icon: <AlignLeft className='w-3 h-3' />,
+                    },
+                    {
+                      value: 'center' as const,
+                      icon: <AlignCenter className='w-3 h-3' />,
+                    },
+                    {
+                      value: 'right' as const,
+                      icon: <AlignRight className='w-3 h-3' />,
+                    },
+                  ].map((option) => (
                     <button
                       key={option.value}
                       type='button'
@@ -695,8 +754,7 @@ export default function InputEntry({
                         textAlign === option.value
                           ? 'bg-white text-black'
                           : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white'
-                      }`}
-                    >
+                      }`}>
                       {option.icon}
                     </button>
                   ))}
@@ -722,7 +780,11 @@ export default function InputEntry({
                   min={1}
                   max={20}
                   value={textMaxLines}
-                  onChange={(e) => handleTextMaxLinesChange(Math.max(0, Math.min(20, parseInt(e.target.value) || 10)))}
+                  onChange={(e) =>
+                    handleTextMaxLinesChange(
+                      Math.max(0, Math.min(20, parseInt(e.target.value) || 10)),
+                    )
+                  }
                   onKeyDown={(e) => e.stopPropagation()}
                   className='w-14 p-1 bg-neutral-800 border border-neutral-700 rounded text-white text-sm text-center focus:outline-none focus:border-neutral-500'
                 />
@@ -735,10 +797,14 @@ export default function InputEntry({
                   min={20}
                   max={500}
                   value={textScrollSpeed}
-                  onChange={(e) => handleTextScrollSpeedChange(parseInt(e.target.value))}
+                  onChange={(e) =>
+                    handleTextScrollSpeedChange(parseInt(e.target.value))
+                  }
                   className='w-20 accent-white'
                 />
-                <span className='text-xs text-neutral-500 w-8'>{textScrollSpeed}</span>
+                <span className='text-xs text-neutral-500 w-8'>
+                  {textScrollSpeed}
+                </span>
               </div>
               <label className='flex items-center gap-2 cursor-pointer'>
                 <input
@@ -778,9 +844,7 @@ export default function InputEntry({
               size='sm'
               variant='ghost'
               className={`transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer ${
-                canMoveUp
-                  ? 'text-white hover:text-white'
-                  : 'text-neutral-500'
+                canMoveUp ? 'text-white hover:text-white' : 'text-neutral-500'
               }`}
               disabled={!canMoveUp}
               aria-label='Move up'
@@ -804,9 +868,7 @@ export default function InputEntry({
               size='sm'
               variant='ghost'
               className={`transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer ${
-                canMoveDown
-                  ? 'text-white hover:text-white'
-                  : 'text-neutral-500'
+                canMoveDown ? 'text-white hover:text-white' : 'text-neutral-500'
               }`}
               disabled={!canMoveDown}
               aria-label='Move down'
@@ -824,6 +886,28 @@ export default function InputEntry({
                 } catch {}
               }}>
               <ChevronDown className='size-5' strokeWidth={3} />
+            </Button>
+            <Button
+              data-no-dnd
+              size='sm'
+              variant='ghost'
+              className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
+              onClick={handleOrientationToggle}
+              aria-label={
+                isVerticalOrientation
+                  ? 'Switch to horizontal'
+                  : 'Switch to vertical'
+              }
+              title={
+                isVerticalOrientation
+                  ? 'Vertical (click for horizontal)'
+                  : 'Horizontal (click for vertical)'
+              }>
+              {isVerticalOrientation ? (
+                <RectangleVertical className='text-white size-5' />
+              ) : (
+                <RectangleHorizontal className='text-neutral-400 size-5' />
+              )}
             </Button>
             <Button
               data-no-dnd

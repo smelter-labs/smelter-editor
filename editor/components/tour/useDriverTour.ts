@@ -1,10 +1,23 @@
 import { useEffect, useRef, useCallback } from 'react';
-import { driver, type Driver, type DriveStep } from 'driver.js';
-import 'driver.js/dist/driver.css';
+import type { Driver, DriveStep } from 'driver.js';
 
 import '@/components/tour/driver.tour.css';
 
-type UseDriverTourOptions = Parameters<typeof driver>[0];
+type DriverFn = typeof import('driver.js').driver;
+type UseDriverTourOptions = Parameters<DriverFn>[0];
+
+let driverModule: { driver: DriverFn } | null = null;
+let cssLoaded = false;
+const loadDriver = async () => {
+  if (!cssLoaded && typeof document !== 'undefined') {
+    // await import('driver.js/dist/driver.css');
+    cssLoaded = true;
+  }
+  if (!driverModule) {
+    driverModule = await import('driver.js');
+  }
+  return driverModule.driver;
+};
 
 export type DriverTourOptions = Omit<UseDriverTourOptions, 'steps'>;
 
@@ -378,16 +391,18 @@ export function useDriverTour(
       driverRef.current?.destroy?.();
     } catch {}
 
-    const d = driver(config);
-    driverRef.current = d;
-    try {
-      if (typeof window !== 'undefined') {
-        window.dispatchEvent(
-          new CustomEvent('smelter:tour:start', { detail: { id } }),
-        );
-      }
-    } catch {}
-    d.drive();
+    loadDriver().then((driver) => {
+      const d = driver(config);
+      driverRef.current = d;
+      try {
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(
+            new CustomEvent('smelter:tour:start', { detail: { id } }),
+          );
+        }
+      } catch {}
+      d.drive();
+    });
   }, [id, options, steps]);
 
   const reset = useCallback(() => {

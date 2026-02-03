@@ -150,8 +150,9 @@ function ScrollingText({
   const totalTextHeight = lines.length * lineHeight;
   
   const shouldAnimate = maxLines > 0;
+  const startPosition = containerHeight;
   
-  const [scrollOffset, setScrollOffset] = useState(0);
+  const [scrollOffset, setScrollOffset] = useState(startPosition);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const prevTextRef = useRef('');
   const initializedRef = useRef(false);
@@ -174,7 +175,7 @@ function ScrollingText({
     initializedRef.current = true;
 
     if (isFirstRun || textChanged) {
-      setScrollOffset(visibleHeight);
+      setScrollOffset(startPosition);
     }
 
     const targetPosition = -totalTextHeight;
@@ -185,7 +186,7 @@ function ScrollingText({
       setScrollOffset(prev => {
         if (prev <= targetPosition) {
           if (scrollLoop) {
-            return visibleHeight;
+            return startPosition;
           }
           if (timerRef.current) {
             clearInterval(timerRef.current);
@@ -203,7 +204,7 @@ function ScrollingText({
         timerRef.current = null;
       }
     };
-  }, [text, shouldAnimate, totalTextHeight, visibleHeight, scrollSpeed, scrollLoop]);
+  }, [text, shouldAnimate, totalTextHeight, startPosition, scrollSpeed, scrollLoop]);
 
   const textTopOffset = shouldAnimate ? scrollOffset : 0;
 
@@ -239,7 +240,8 @@ export function Input({ input }: { input: InputConfig }) {
   const isImage = !!input.imageId;
   const isTextInput = !!input.text;
   const streamState = isImage || isTextInput ? 'playing' : (streams[input.inputId]?.videoState ?? 'finished');
-  const resolution = { width: 1920, height: 1080 };
+  const isVerticalInput = input.orientation === 'vertical';
+  const resolution = isVerticalInput ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 };
 
   const inputComponent = (
     <Rescaler style={resolution}>
@@ -250,7 +252,7 @@ export function Input({ input }: { input: InputConfig }) {
               <Image imageId={input.imageId!} />
             </Rescaler>
           ) : isTextInput ? (
-            <View style={{ width: 1920, height: 1080, backgroundColor: '#1a1a2e' }}>
+            <View style={{ width: resolution.width, height: resolution.height, backgroundColor: '#1a1a2e' }}>
               <ScrollingText
                 text={input.text!}
                 maxLines={input.textMaxLines ?? 10}

@@ -26,10 +26,10 @@ function extractMp4FileName(title: string): string | undefined {
 }
 
 export type RoomConfig = {
-    version: 1;
-    layout: Layout;
-    inputs: RoomConfigInput[];
-    exportedAt: string;
+  version: 1;
+  layout: Layout;
+  inputs: RoomConfigInput[];
+  exportedAt: string;
 };
 
 export function exportRoomConfig(inputs: Input[], layout: Layout): RoomConfig {
@@ -45,7 +45,10 @@ export function exportRoomConfig(inputs: Input[], layout: Layout): RoomConfig {
       shaders: input.shaders,
       channelId: input.channelId,
       imageId: input.imageId,
-      mp4FileName: input.type === 'local-mp4' ? extractMp4FileName(input.title) : undefined,
+      mp4FileName:
+        input.type === 'local-mp4'
+          ? extractMp4FileName(input.title)
+          : undefined,
       text: input.text,
       textAlign: input.textAlign,
       textColor: input.textColor,
@@ -56,16 +59,16 @@ export function exportRoomConfig(inputs: Input[], layout: Layout): RoomConfig {
 }
 
 export function downloadRoomConfig(config: RoomConfig, filename?: string) {
-    const json = JSON.stringify(config, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename || `room-config-${Date.now()}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+  const json = JSON.stringify(config, null, 2);
+  const blob = new Blob([json], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename || `room-config-${Date.now()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 export function parseRoomConfig(json: string): RoomConfig {
@@ -88,19 +91,29 @@ export type StoredPendingWhipInput = {
   position: number;
 };
 
-export function savePendingWhipInputs(roomId: string, inputs: StoredPendingWhipInput[]) {
+export function savePendingWhipInputs(
+  roomId: string,
+  inputs: StoredPendingWhipInput[],
+) {
   if (typeof window === 'undefined') return;
   try {
-    sessionStorage.setItem(`${PENDING_WHIP_STORAGE_KEY}-${roomId}`, JSON.stringify(inputs));
+    sessionStorage.setItem(
+      `${PENDING_WHIP_STORAGE_KEY}-${roomId}`,
+      JSON.stringify(inputs),
+    );
   } catch (e) {
     console.warn('Failed to save pending WHIP inputs:', e);
   }
 }
 
-export function loadPendingWhipInputs(roomId: string): StoredPendingWhipInput[] {
+export function loadPendingWhipInputs(
+  roomId: string,
+): StoredPendingWhipInput[] {
   if (typeof window === 'undefined') return [];
   try {
-    const data = sessionStorage.getItem(`${PENDING_WHIP_STORAGE_KEY}-${roomId}`);
+    const data = sessionStorage.getItem(
+      `${PENDING_WHIP_STORAGE_KEY}-${roomId}`,
+    );
     if (data) {
       sessionStorage.removeItem(`${PENDING_WHIP_STORAGE_KEY}-${roomId}`);
       return JSON.parse(data);

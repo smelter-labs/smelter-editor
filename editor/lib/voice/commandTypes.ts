@@ -153,14 +153,24 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
 
   switch (c.intent) {
     case 'ADD_INPUT':
-      if (typeof c.inputType === 'string' && Object.values(InputType).includes(c.inputType as InputType)) {
-        const result: AddInputCommand = { intent: 'ADD_INPUT', inputType: c.inputType as InputType };
+      if (
+        typeof c.inputType === 'string' &&
+        Object.values(InputType).includes(c.inputType as InputType)
+      ) {
+        const result: AddInputCommand = {
+          intent: 'ADD_INPUT',
+          inputType: c.inputType as InputType,
+        };
         if (typeof c.mp4FileName === 'string') {
           result.mp4FileName = c.mp4FileName;
         }
         if (c.mp4MatchInfo && typeof c.mp4MatchInfo === 'object') {
           const info = c.mp4MatchInfo as Record<string, unknown>;
-          if (typeof info.query === 'string' && typeof info.file === 'string' && typeof info.similarity === 'number') {
+          if (
+            typeof info.query === 'string' &&
+            typeof info.file === 'string' &&
+            typeof info.similarity === 'number'
+          ) {
             result.mp4MatchInfo = {
               query: info.query,
               file: info.file,
@@ -174,7 +184,11 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
         }
         if (c.imageMatchInfo && typeof c.imageMatchInfo === 'object') {
           const info = c.imageMatchInfo as Record<string, unknown>;
-          if (typeof info.query === 'string' && typeof info.file === 'string' && typeof info.similarity === 'number') {
+          if (
+            typeof info.query === 'string' &&
+            typeof info.file === 'string' &&
+            typeof info.similarity === 'number'
+          ) {
             result.imageMatchInfo = {
               query: info.query,
               file: info.file,
@@ -208,7 +222,11 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
         typeof c.shader === 'string' &&
         Object.values(Shader).includes(c.shader as Shader)
       ) {
-        const result: AddShaderCommand = { intent: 'ADD_SHADER', inputIndex: c.inputIndex as number | null, shader: c.shader as Shader };
+        const result: AddShaderCommand = {
+          intent: 'ADD_SHADER',
+          inputIndex: c.inputIndex as number | null,
+          shader: c.shader as Shader,
+        };
         if (typeof c.targetColor === 'string') {
           result.targetColor = c.targetColor;
         }
@@ -222,7 +240,11 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
         typeof c.shader === 'string' &&
         Object.values(Shader).includes(c.shader as Shader)
       ) {
-        return { intent: 'REMOVE_SHADER', inputIndex: c.inputIndex as number | null, shader: c.shader as Shader };
+        return {
+          intent: 'REMOVE_SHADER',
+          inputIndex: c.inputIndex as number | null,
+          shader: c.shader as Shader,
+        };
       }
       return null;
 
@@ -273,7 +295,11 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
 
     case 'CLARIFY':
       if (Array.isArray(c.missing) && typeof c.question === 'string') {
-        return { intent: 'CLARIFY', missing: c.missing as string[], question: c.question };
+        return {
+          intent: 'CLARIFY',
+          missing: c.missing as string[],
+          question: c.question,
+        };
       }
       return null;
 

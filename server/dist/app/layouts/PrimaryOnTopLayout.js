@@ -10,11 +10,16 @@ const inputs_1 = require("../../inputs/inputs");
 function PrimaryOnTopLayout() {
     const store = (0, react_1.useContext)(store_1.StoreContext);
     const inputs = (0, zustand_1.useStore)(store, state => state.inputs);
+    const resolution = (0, store_1.useResolution)();
+    const isVertical = (0, store_1.useIsVertical)();
     const firstInput = inputs[0];
     if (!firstInput) {
         return (0, jsx_runtime_1.jsx)(smelter_1.View, {});
     }
-    return ((0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { direction: 'column' }, children: [(0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { height: 800 }, children: (0, jsx_runtime_1.jsx)(inputs_1.Input, { input: firstInput }) }), (0, jsx_runtime_1.jsx)(smelter_1.Tiles, { transition: { durationMs: 300 }, style: { padding: 10 }, children: Object.values(inputs)
+    const primaryHeight = isVertical
+        ? Math.round(resolution.height * 0.55)
+        : Math.round(resolution.height * 0.55);
+    return ((0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { direction: 'column' }, children: [(0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { height: primaryHeight }, children: (0, jsx_runtime_1.jsx)(inputs_1.Input, { input: firstInput }) }), (0, jsx_runtime_1.jsx)(smelter_1.Tiles, { transition: { durationMs: 300 }, style: { padding: 10 }, children: Object.values(inputs)
                     .filter(input => input.inputId != firstInput.inputId)
                     .map(input => ((0, jsx_runtime_1.jsx)(inputs_1.SmallInput, { input: input }, input.inputId))) })] }));
 }

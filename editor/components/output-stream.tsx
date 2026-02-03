@@ -36,8 +36,8 @@ export default function OutputStream({
   videoRef: RefObject<HTMLVideoElement | null>;
   resolution?: OutputResolution;
 }) {
-  const aspectRatio = resolution 
-    ? `${resolution.width}/${resolution.height}` 
+  const aspectRatio = resolution
+    ? `${resolution.width}/${resolution.height}`
     : '16/9';
   const isVertical = resolution ? resolution.height > resolution.width : false;
   const [playing, setPlaying] = useState(false);
@@ -248,7 +248,7 @@ export default function OutputStream({
   return (
     <div
       className='relative w-full h-full bg-black rounded-none overflow-hidden border-[#2a2a2a] border-4'
-      style={{ 
+      style={{
         aspectRatio,
         maxWidth,
         maxHeight,

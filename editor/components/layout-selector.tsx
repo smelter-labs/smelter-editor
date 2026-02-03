@@ -9,6 +9,8 @@ export type Layout =
   | 'primary-on-top'
   | 'picture-in-picture'
   | 'wrapped'
+  | 'wrapped-static'
+  | 'transition'
   | 'picture-on-picture';
 
 type LayoutConfig = {
@@ -34,7 +36,12 @@ export const LAYOUT_CONFIGS = [
     maxStreams: 4,
   },
   { id: 'wrapped', name: 'Wrapped', icon: Grid3X3, maxStreams: 4 },
-  { id: 'picture-on-picture', name: 'Picture on Picture', icon: Layers, maxStreams: 10 },
+  {
+    id: 'picture-on-picture',
+    name: 'Picture on Picture',
+    icon: Layers,
+    maxStreams: 10,
+  },
 ] as const satisfies LayoutConfig[];
 
 type LayoutSelectorProps = {
@@ -214,7 +221,9 @@ export default function LayoutSelector({
                 </div>
                 <div className='flex items-center justify-center gap-1'>
                   <Icon className='w-3 h-3 text-neutral-400' />
-                  <span className='text-xs text-neutral-400'>{layout.name}</span>
+                  <span className='text-xs text-neutral-400'>
+                    {layout.name}
+                  </span>
                 </div>
               </button>
             );

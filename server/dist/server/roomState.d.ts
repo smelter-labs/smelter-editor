@@ -4,6 +4,7 @@ import type { Layout } from '../app/store';
 import { KickChannelMonitor } from '../kick/KickChannelMonitor';
 import type { ShaderConfig } from '../shaders/shaders';
 import { WhipInputMonitor } from '../whip/WhipInputMonitor';
+export type InputOrientation = 'horizontal' | 'vertical';
 export type RoomInputState = {
     inputId: string;
     type: 'local-mp4' | 'twitch-channel' | 'kick-channel' | 'whip' | 'image' | 'text-input';
@@ -11,6 +12,7 @@ export type RoomInputState = {
     volume: number;
     showTitle: boolean;
     shaders: ShaderConfig[];
+    orientation: InputOrientation;
     metadata: {
         title: string;
         description: string;
@@ -49,6 +51,7 @@ type UpdateInputOptions = {
     volume: number;
     showTitle: boolean;
     shaders: ShaderConfig[];
+    orientation: InputOrientation;
     text: string;
     textAlign: 'left' | 'center' | 'right';
     textColor: string;

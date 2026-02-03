@@ -85,6 +85,9 @@ function wrapHue(hue) {
 function WrappedLayout() {
     const store = (0, react_1.useContext)(store_1.StoreContext);
     const inputs = (0, zustand_1.useStore)(store, state => state.inputs);
+    const resolution = (0, store_1.useResolution)();
+    const isVertical = (0, store_1.useIsVertical)();
+    const { width, height } = resolution;
     if (!inputs.length) {
         return (0, jsx_runtime_1.jsx)(smelter_1.View, {});
     }
@@ -342,15 +345,15 @@ function WrappedLayout() {
             }
         };
     }, [targetYOffsetById, targetXOffsetById, targetScaleById]);
-    return ((0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { direction: 'column', width: 2560, height: 1440 }, children: [(0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: {
+    return ((0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { direction: 'column', width, height }, children: [(0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: {
                     rescaleMode: 'fill',
                     horizontalAlign: 'left',
                     verticalAlign: 'top',
-                    width: 2560,
-                    height: 1440,
+                    width,
+                    height,
                     top: 0,
                     left: 0,
-                }, children: (0, jsx_runtime_1.jsx)(smelter_1.Shader, { shaderId: "star-streaks", resolution: { width: 2560, height: 1440 }, shaderParam: {
+                }, children: (0, jsx_runtime_1.jsx)(smelter_1.Shader, { shaderId: "star-streaks", resolution: { width, height }, shaderParam: {
                         type: 'struct',
                         value: [
                             { type: 'f32', fieldName: 'line_density', value: 18.91 },
@@ -362,7 +365,7 @@ function WrappedLayout() {
                             { type: 'f32', fieldName: 'dash_duty', value: 0.19 },
                             { type: 'f32', fieldName: 'brightness', value: 0.26 },
                         ],
-                    }, children: (0, jsx_runtime_1.jsx)(smelter_1.View, { style: { width: 2560, height: 1440, backgroundColor: '#000000', direction: 'column' } }) }) }), desiredIds.map((id, renderIdx) => {
+                    }, children: (0, jsx_runtime_1.jsx)(smelter_1.View, { style: { width, height, backgroundColor: '#000000', direction: 'column' } }) }) }), desiredIds.map((id, renderIdx) => {
                 var _a, _b, _c, _d, _e, _f, _g, _h;
                 const input = inputById[id];
                 if (!input) {
@@ -376,8 +379,8 @@ function WrappedLayout() {
                         rescaleMode: 'fill',
                         horizontalAlign: 'left',
                         verticalAlign: 'top',
-                        width: Math.round(2560),
-                        height: Math.round(1440),
+                        width,
+                        height,
                         top: 0,
                         left: 0,
                     }, children: (0, jsx_runtime_1.jsx)(smelter_1.Shader, { shaderId: "circle-mask-outline", resolution: { width: 1920, height: 1080 }, shaderParam: {

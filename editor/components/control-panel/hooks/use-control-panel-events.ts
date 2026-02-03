@@ -110,7 +110,10 @@ export function useControlPanelEvents({
         nextIfComposing(0);
       } catch {}
     };
-    window.addEventListener('smelter:inputs:move', onMove as unknown as EventListener);
+    window.addEventListener(
+      'smelter:inputs:move',
+      onMove as unknown as EventListener,
+    );
     return () => {
       window.removeEventListener(
         'smelter:inputs:move',
@@ -212,7 +215,13 @@ export function useControlPanelEvents({
   ]);
 
   useEffect(() => {
-    const onAddInput = async (e: CustomEvent<{ inputType: InputType; mp4FileName?: string; imageFileName?: string }>) => {
+    const onAddInput = async (
+      e: CustomEvent<{
+        inputType: InputType;
+        mp4FileName?: string;
+        imageFileName?: string;
+      }>,
+    ) => {
       try {
         const { inputType, mp4FileName, imageFileName } = e.detail;
         switch (inputType) {
@@ -222,7 +231,9 @@ export function useControlPanelEvents({
             if (firstStream?.streamId) {
               await addTwitchInput(roomId, firstStream.streamId);
             } else {
-              console.warn('Voice: no twitch streams available, using fallback');
+              console.warn(
+                'Voice: no twitch streams available, using fallback',
+              );
               await addTwitchInput(roomId, 'shroud');
             }
             break;
@@ -399,12 +410,16 @@ export function useControlPanelEvents({
     };
 
     const onAddShader = async (
-      e: CustomEvent<{ inputIndex: number | null; shader: string; targetColor?: string }>,
+      e: CustomEvent<{
+        inputIndex: number | null;
+        shader: string;
+        targetColor?: string;
+      }>,
     ) => {
       try {
         const { inputIndex, shader: shaderId, targetColor } = e.detail;
         const currentInputs = inputs || [];
-        
+
         let input;
         if (inputIndex !== null) {
           const idx = inputIndex - 1;
@@ -438,9 +453,12 @@ export function useControlPanelEvents({
           enabled: true,
           params: (shaderDef.params || []).map((p) => {
             if (p.type === 'color' && typeof p.defaultValue === 'string') {
-              const colorValue = (shaderId === 'remove-color' && p.name === 'target_color' && targetColor)
-                ? targetColor
-                : p.defaultValue;
+              const colorValue =
+                shaderId === 'remove-color' &&
+                p.name === 'target_color' &&
+                targetColor
+                  ? targetColor
+                  : p.defaultValue;
               return {
                 paramName: p.name,
                 paramValue: hexToPackedInt(colorValue),
@@ -482,7 +500,7 @@ export function useControlPanelEvents({
       try {
         const { inputIndex, shader: shaderId } = e.detail;
         const currentInputs = inputs || [];
-        
+
         let input;
         if (inputIndex !== null) {
           const idx = inputIndex - 1;
@@ -675,14 +693,19 @@ export function useControlPanelEvents({
 
   useEffect(() => {
     const onNextLayout = () => {
-      const currentIndex = LAYOUT_CONFIGS.findIndex((l) => l.id === currentLayout);
+      const currentIndex = LAYOUT_CONFIGS.findIndex(
+        (l) => l.id === currentLayout,
+      );
       const nextIndex = (currentIndex + 1) % LAYOUT_CONFIGS.length;
       changeLayout(LAYOUT_CONFIGS[nextIndex].id);
     };
 
     const onPreviousLayout = () => {
-      const currentIndex = LAYOUT_CONFIGS.findIndex((l) => l.id === currentLayout);
-      const prevIndex = (currentIndex - 1 + LAYOUT_CONFIGS.length) % LAYOUT_CONFIGS.length;
+      const currentIndex = LAYOUT_CONFIGS.findIndex(
+        (l) => l.id === currentLayout,
+      );
+      const prevIndex =
+        (currentIndex - 1 + LAYOUT_CONFIGS.length) % LAYOUT_CONFIGS.length;
       changeLayout(LAYOUT_CONFIGS[prevIndex].id);
     };
 
@@ -691,12 +714,17 @@ export function useControlPanelEvents({
 
     return () => {
       window.removeEventListener('smelter:voice:next-layout', onNextLayout);
-      window.removeEventListener('smelter:voice:previous-layout', onPreviousLayout);
+      window.removeEventListener(
+        'smelter:voice:previous-layout',
+        onPreviousLayout,
+      );
     };
   }, [currentLayout, changeLayout]);
 
   useEffect(() => {
-    const onSetTextColor = async (e: CustomEvent<{ color: string; inputIndex?: number }>) => {
+    const onSetTextColor = async (
+      e: CustomEvent<{ color: string; inputIndex?: number }>,
+    ) => {
       try {
         const { color, inputIndex } = e.detail;
         const currentInputs = inputsRef.current || [];
@@ -705,7 +733,9 @@ export function useControlPanelEvents({
         if (inputIndex !== undefined) {
           input = currentInputs[inputIndex - 1];
         } else if (selectedInputId) {
-          input = currentInputs.find((i: Input) => i.inputId === selectedInputId);
+          input = currentInputs.find(
+            (i: Input) => i.inputId === selectedInputId,
+          );
         }
 
         if (!input || input.type !== 'text-input') {
@@ -890,7 +920,9 @@ export function useControlPanelEvents({
   }, [changeLayout]);
 
   useEffect(() => {
-    const onSetText = async (e: CustomEvent<{ text: string; inputIndex?: number }>) => {
+    const onSetText = async (
+      e: CustomEvent<{ text: string; inputIndex?: number }>,
+    ) => {
       try {
         const { text, inputIndex } = e.detail;
         const currentInputs = inputsRef.current || [];
@@ -899,7 +931,9 @@ export function useControlPanelEvents({
         if (inputIndex !== undefined) {
           input = currentInputs[inputIndex - 1];
         } else if (selectedInputId) {
-          input = currentInputs.find((i: Input) => i.inputId === selectedInputId);
+          input = currentInputs.find(
+            (i: Input) => i.inputId === selectedInputId,
+          );
         }
 
         if (!input || input.type !== 'text-input') {

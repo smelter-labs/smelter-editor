@@ -1,7 +1,7 @@
 import { View, Rescaler, Shader, Text } from '@swmansion/smelter';
 import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useStore } from 'zustand';
-import { StoreContext, type InputConfig } from '../store';
+import { StoreContext, type InputConfig, useResolution, useIsVertical } from '../store';
 import { Input } from '../../inputs/inputs';
 
 // ----- Pure helpers (logic separated from React) -----
@@ -112,6 +112,10 @@ function wrapHue(hue: number): number {
 export function WrappedLayout() {
   const store = useContext(StoreContext);
   const inputs = useStore(store, state => state.inputs);
+  const resolution = useResolution();
+  const isVertical = useIsVertical();
+  const { width, height } = resolution;
+
   if (!inputs.length) {
     return <View />;
   }
@@ -397,20 +401,20 @@ export function WrappedLayout() {
   }, [targetYOffsetById, targetXOffsetById, targetScaleById]);
 
   return (
-    <View style={{ direction: 'column', width: 2560, height: 1440 }}>
+    <View style={{ direction: 'column', width, height }}>
       <Rescaler
         style={{
           rescaleMode: 'fill',
           horizontalAlign: 'left',
           verticalAlign: 'top',
-          width: 2560,
-          height: 1440,
+          width,
+          height,
           top: 0,
           left: 0,
         }}>
         <Shader
           shaderId="star-streaks"
-          resolution={{ width: 2560, height: 1440 }}
+          resolution={{ width, height }}
           shaderParam={{
             type: 'struct',
             value: [
@@ -425,7 +429,7 @@ export function WrappedLayout() {
             ],
           }}>
           <View
-            style={{ width: 2560, height: 1440, backgroundColor: '#000000', direction: 'column' }}
+            style={{ width, height, backgroundColor: '#000000', direction: 'column' }}
           />
         </Shader>
       </Rescaler>
@@ -449,8 +453,8 @@ export function WrappedLayout() {
               rescaleMode: 'fill',
               horizontalAlign: 'left',
               verticalAlign: 'top',
-              width: Math.round(2560),
-              height: Math.round(1440),
+              width,
+              height,
               top: 0,
               left: 0,
             }}>

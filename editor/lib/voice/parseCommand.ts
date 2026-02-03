@@ -1,5 +1,10 @@
 import { normalize } from './normalize';
-import type { VoiceCommand, Shader, InputType, Direction } from './commandTypes';
+import type {
+  VoiceCommand,
+  Shader,
+  InputType,
+  Direction,
+} from './commandTypes';
 
 function levenshtein(a: string, b: string): number {
   const matrix: number[][] = [];
@@ -17,7 +22,7 @@ function levenshtein(a: string, b: string): number {
         matrix[i][j] = Math.min(
           matrix[i - 1][j - 1] + 1,
           matrix[i][j - 1] + 1,
-          matrix[i - 1][j] + 1
+          matrix[i - 1][j] + 1,
         );
       }
     }
@@ -32,9 +37,13 @@ export type FileMatchResult = {
   matchType: 'substring' | 'fuzzy';
 } | null;
 
-function findBestFileMatch(query: string, files: string[], extensionPattern: RegExp): FileMatchResult {
+function findBestFileMatch(
+  query: string,
+  files: string[],
+  extensionPattern: RegExp,
+): FileMatchResult {
   if (!query || files.length === 0) return null;
-  
+
   const normalizedQuery = query.toLowerCase().replace(/[^a-z0-9]/g, '');
   if (!normalizedQuery) return null;
 
@@ -42,23 +51,40 @@ function findBestFileMatch(query: string, files: string[], extensionPattern: Reg
   let bestScore = Infinity;
 
   for (const file of files) {
-    const baseName = file.replace(extensionPattern, '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    
-    if (baseName.includes(normalizedQuery) || normalizedQuery.includes(baseName)) {
+    const baseName = file
+      .replace(extensionPattern, '')
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, '');
+
+    if (
+      baseName.includes(normalizedQuery) ||
+      normalizedQuery.includes(baseName)
+    ) {
       const score = Math.abs(baseName.length - normalizedQuery.length);
       if (score < bestScore) {
         bestScore = score;
-        const similarity = 1 - score / Math.max(baseName.length, normalizedQuery.length);
-        bestMatch = { file, query: normalizedQuery, similarity, matchType: 'substring' };
+        const similarity =
+          1 - score / Math.max(baseName.length, normalizedQuery.length);
+        bestMatch = {
+          file,
+          query: normalizedQuery,
+          similarity,
+          matchType: 'substring',
+        };
       }
     } else {
       const distance = levenshtein(normalizedQuery, baseName);
       const maxLen = Math.max(normalizedQuery.length, baseName.length);
       const similarity = 1 - distance / maxLen;
-      
+
       if (similarity > 0.4 && distance < bestScore) {
         bestScore = distance;
-        bestMatch = { file, query: normalizedQuery, similarity, matchType: 'fuzzy' };
+        bestMatch = {
+          file,
+          query: normalizedQuery,
+          similarity,
+          matchType: 'fuzzy',
+        };
       }
     }
   }
@@ -96,7 +122,9 @@ const SHADER_MAP: Record<string, Shader> = {
   outline: 'alpha-stroke',
 };
 
-const SHADER_TOKENS = Object.keys(SHADER_MAP).sort((a, b) => b.length - a.length);
+const SHADER_TOKENS = Object.keys(SHADER_MAP).sort(
+  (a, b) => b.length - a.length,
+);
 
 const INPUT_TYPE_MAP: Record<string, InputType> = {
   stream: 'stream',
@@ -124,14 +152,20 @@ const REMOVE_VERBS = /\b(remove|delete)\b/;
 const MOVE_VERBS = /\b(move|swap)\b/;
 const SELECT_VERBS = /\b(select|choose|pick|focus)\b/;
 const DESELECT_VERBS = /\b(deselect|unselect|clear|unfocus)\b/;
-const START_TYPING_PATTERN = /\b(start typing|begin typing|start dictation|begin dictation)\b/;
-const STOP_TYPING_PATTERN = /\b(stop typing|end typing|stop dictation|end dictation|finish typing)\b/;
-const START_ROOM_PATTERN = /\b(start|starts|open|create|new|starting)\s+(a\s+)?(new\s+)?(in\s+)?(your\s+)?room\b/;
+const START_TYPING_PATTERN =
+  /\b(start typing|begin typing|start dictation|begin dictation)\b/;
+const STOP_TYPING_PATTERN =
+  /\b(stop typing|end typing|stop dictation|end dictation|finish typing)\b/;
+const START_ROOM_PATTERN =
+  /\b(start|starts|open|create|new|starting)\s+(a\s+)?(new\s+)?(in\s+)?(your\s+)?room\b/;
 const NEXT_LAYOUT_PATTERN = /\b(next|forward)\s+(layout|view)\b/;
 const PREVIOUS_LAYOUT_PATTERN = /\b(previous|prev|back|last)\s+(layout|view)\b/;
-const SET_COLOR_PATTERN = /\b(?:set|change)\s+(?:text\s+)?colou?r\s+(?:to\s+)?(\w+)\b/;
-const SET_MAX_LINES_PATTERN = /\b(?:set|change)\s+(?:max(?:imum)?\s+)?lines?\s+(?:to\s+)?(\d+)\b/;
-const EXPORT_CONFIG_PATTERN = /\b(export|save|download)\s+(config(?:uration)?|settings)\b/;
+const SET_COLOR_PATTERN =
+  /\b(?:set|change)\s+(?:text\s+)?colou?r\s+(?:to\s+)?(\w+)\b/;
+const SET_MAX_LINES_PATTERN =
+  /\b(?:set|change)\s+(?:max(?:imum)?\s+)?lines?\s+(?:to\s+)?(\d+)\b/;
+const EXPORT_CONFIG_PATTERN =
+  /\b(export|save|download)\s+(config(?:uration)?|settings)\b/;
 
 const TEXT_COLOR_MAP: Record<string, string> = {
   white: '#ffffff',
@@ -149,8 +183,10 @@ const TEXT_COLOR_MAP: Record<string, string> = {
 };
 
 function isRemoveColorShaderContext(text: string): boolean {
-  return text.includes('remove color') && 
-    (ADD_VERBS.test(text) || /\bto\b/.test(text) || /\bon\b/.test(text));
+  return (
+    text.includes('remove color') &&
+    (ADD_VERBS.test(text) || /\bto\b/.test(text) || /\bon\b/.test(text))
+  );
 }
 
 const TARGET_COLOR_MAP: Record<string, string> = {
@@ -237,7 +273,10 @@ export type ParseCommandOptions = {
   imageFiles?: string[];
 };
 
-export function parseCommand(rawText: string, options: ParseCommandOptions = {}): VoiceCommand | null {
+export function parseCommand(
+  rawText: string,
+  options: ParseCommandOptions = {},
+): VoiceCommand | null {
   const { mp4Files = [], imageFiles = [] } = options;
   const text = normalize(rawText);
 
@@ -332,8 +371,14 @@ export function parseCommand(rawText: string, options: ParseCommandOptions = {})
 
   if (hasAdd && inputType !== null) {
     if (inputType === 'mp4') {
-      console.log('[Voice] Parsing mp4 command, available files:', mp4Files.length, mp4Files);
-      const mp4Match = text.match(/\bmp4\s+(?:(?:source|input|file|video|called|named)\s+)*(.+)$/);
+      console.log(
+        '[Voice] Parsing mp4 command, available files:',
+        mp4Files.length,
+        mp4Files,
+      );
+      const mp4Match = text.match(
+        /\bmp4\s+(?:(?:source|input|file|video|called|named)\s+)*(.+)$/,
+      );
       console.log('[Voice] Regex match result:', mp4Match);
       if (mp4Match && mp4Files.length > 0) {
         const queryWord = mp4Match[1].trim();
@@ -341,9 +386,9 @@ export function parseCommand(rawText: string, options: ParseCommandOptions = {})
         const matchResult = findBestFileMatch(queryWord, mp4Files, /\.mp4$/i);
         console.log('[Voice] Match result:', matchResult);
         if (matchResult) {
-          return { 
-            intent: 'ADD_INPUT', 
-            inputType, 
+          return {
+            intent: 'ADD_INPUT',
+            inputType,
             mp4FileName: matchResult.file,
             mp4MatchInfo: {
               query: matchResult.query,
@@ -356,14 +401,20 @@ export function parseCommand(rawText: string, options: ParseCommandOptions = {})
       }
     }
     if (inputType === 'image' && imageFiles.length > 0) {
-      const imageMatch = text.match(/\bimage\s+(?:(?:source|input|file|picture|photo|called|named)\s+)*(.+)$/);
+      const imageMatch = text.match(
+        /\bimage\s+(?:(?:source|input|file|picture|photo|called|named)\s+)*(.+)$/,
+      );
       if (imageMatch) {
         const queryWord = imageMatch[1].trim();
-        const matchResult = findBestFileMatch(queryWord, imageFiles, /\.(png|jpg|jpeg|gif|webp|svg)$/i);
+        const matchResult = findBestFileMatch(
+          queryWord,
+          imageFiles,
+          /\.(png|jpg|jpeg|gif|webp|svg)$/i,
+        );
         if (matchResult) {
-          return { 
-            intent: 'ADD_INPUT', 
-            inputType, 
+          return {
+            intent: 'ADD_INPUT',
+            inputType,
             imageFileName: matchResult.file,
             imageMatchInfo: {
               query: matchResult.query,
@@ -383,7 +434,10 @@ export function parseCommand(rawText: string, options: ParseCommandOptions = {})
   }
 
   if (hasAdd && hasInputKeyword && !hasShader && !inputType) {
-    return clarify(['inputType'], 'Which input type: stream, mp4, image, text, camera, screenshare?');
+    return clarify(
+      ['inputType'],
+      'Which input type: stream, mp4, image, text, camera, screenshare?',
+    );
   }
 
   if (STOP_TYPING_PATTERN.test(text)) {

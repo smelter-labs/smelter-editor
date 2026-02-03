@@ -18,7 +18,10 @@ export function findMatchingMacro(transcript: string): MacroDefinition | null {
   for (const macro of macrosConfig.macros) {
     for (const trigger of macro.triggers) {
       const normalizedTrigger = normalizeForMatch(trigger);
-      if (normalized.includes(normalizedTrigger) || normalizedTrigger.includes(normalized)) {
+      if (
+        normalized.includes(normalizedTrigger) ||
+        normalizedTrigger.includes(normalized)
+      ) {
         return macro;
       }
     }
@@ -48,7 +51,7 @@ function sleep(ms: number): Promise<void> {
 
 export async function executeMacro(
   macro: MacroDefinition,
-  callbacks: MacroExecutionCallbacks = {}
+  callbacks: MacroExecutionCallbacks = {},
 ): Promise<void> {
   const { steps } = macro;
   const total = steps.length;
@@ -82,14 +85,14 @@ function dispatchMacroStep(step: MacroStep): void {
     case 'ADD_INPUT':
       window.dispatchEvent(
         new CustomEvent('smelter:voice:add-input', {
-          detail: { 
-            inputType: params?.inputType, 
-            text: params?.text, 
+          detail: {
+            inputType: params?.inputType,
+            text: params?.text,
             textAlign: params?.textAlign,
             mp4FileName: params?.mp4Name,
             imageFileName: params?.imageName,
           },
-        })
+        }),
       );
       break;
 
@@ -97,7 +100,7 @@ function dispatchMacroStep(step: MacroStep): void {
       window.dispatchEvent(
         new CustomEvent('smelter:voice:remove-input', {
           detail: { inputIndex: params?.inputIndex },
-        })
+        }),
       );
       break;
 
@@ -113,7 +116,7 @@ function dispatchMacroStep(step: MacroStep): void {
             direction: params?.direction?.toLowerCase(),
             steps: params?.steps ?? 1,
           },
-        })
+        }),
       );
       break;
 
@@ -125,7 +128,7 @@ function dispatchMacroStep(step: MacroStep): void {
             shader: params?.shader,
             targetColor: params?.targetColor,
           },
-        })
+        }),
       );
       break;
 
@@ -133,7 +136,7 @@ function dispatchMacroStep(step: MacroStep): void {
       window.dispatchEvent(
         new CustomEvent('smelter:voice:remove-shader', {
           detail: { inputIndex: params?.inputIndex, shader: params?.shader },
-        })
+        }),
       );
       break;
 
@@ -141,7 +144,7 @@ function dispatchMacroStep(step: MacroStep): void {
       window.dispatchEvent(
         new CustomEvent('smelter:voice:select-input', {
           detail: { inputIndex: params?.inputIndex },
-        })
+        }),
       );
       break;
 
@@ -161,7 +164,7 @@ function dispatchMacroStep(step: MacroStep): void {
       window.dispatchEvent(
         new CustomEvent('smelter:voice:set-layout', {
           detail: { layout: params?.layout },
-        })
+        }),
       );
       break;
 
@@ -169,15 +172,18 @@ function dispatchMacroStep(step: MacroStep): void {
       window.dispatchEvent(
         new CustomEvent('smelter:voice:set-text-color', {
           detail: { color: params?.color, inputIndex: params?.inputIndex },
-        })
+        }),
       );
       break;
 
     case 'SET_TEXT_MAX_LINES':
       window.dispatchEvent(
         new CustomEvent('smelter:voice:set-text-max-lines', {
-          detail: { maxLines: params?.maxLines, inputIndex: params?.inputIndex },
-        })
+          detail: {
+            maxLines: params?.maxLines,
+            inputIndex: params?.inputIndex,
+          },
+        }),
       );
       break;
 
@@ -185,7 +191,7 @@ function dispatchMacroStep(step: MacroStep): void {
       window.dispatchEvent(
         new CustomEvent('smelter:voice:set-text', {
           detail: { text: params?.text, inputIndex: params?.inputIndex },
-        })
+        }),
       );
       break;
   }

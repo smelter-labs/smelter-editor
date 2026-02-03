@@ -3,7 +3,11 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { parseCommand } from './parseCommand';
 import { validateCommand, type VoiceCommand } from './commandTypes';
-import { findMatchingMacro, executeMacro, type MacroExecutionCallbacks } from './macroExecutor';
+import {
+  findMatchingMacro,
+  executeMacro,
+  type MacroExecutionCallbacks,
+} from './macroExecutor';
 import type { MacroDefinition } from './macroTypes';
 
 export type UseVoiceCommandsOptions = {
@@ -33,8 +37,8 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
     case 'ADD_INPUT':
       window.dispatchEvent(
         new CustomEvent('smelter:voice:add-input', {
-          detail: { 
-            inputType: command.inputType, 
+          detail: {
+            inputType: command.inputType,
             mp4FileName: command.mp4FileName || ctx.mp4Files[0],
             imageFileName: command.imageFileName || ctx.imageFiles[0],
           },
@@ -62,7 +66,11 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
     case 'ADD_SHADER':
       window.dispatchEvent(
         new CustomEvent('smelter:voice:add-shader', {
-          detail: { inputIndex: command.inputIndex, shader: command.shader, targetColor: command.targetColor },
+          detail: {
+            inputIndex: command.inputIndex,
+            shader: command.shader,
+            targetColor: command.targetColor,
+          },
         }),
       );
       break;
@@ -113,16 +121,21 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
       );
       break;
     case 'EXPORT_CONFIGURATION':
-      window.dispatchEvent(new CustomEvent('smelter:voice:export-configuration'));
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:export-configuration'),
+      );
       break;
   }
 }
 
-const STOP_TYPING_PATTERN = /\b(stop typing|end typing|stop dictation|end dictation|finish typing)\b/i;
+const STOP_TYPING_PATTERN =
+  /\b(stop typing|end typing|stop dictation|end dictation|finish typing)\b/i;
 const START_MACRO_PATTERN = /\b(start macro|begin macro|macro mode)\b/i;
 const END_MACRO_PATTERN = /\b(end macro|stop macro|cancel macro|exit macro)\b/i;
 
-export function useVoiceCommands(options: UseVoiceCommandsOptions = {}): UseVoiceCommandsResult {
+export function useVoiceCommands(
+  options: UseVoiceCommandsOptions = {},
+): UseVoiceCommandsResult {
   const { mp4Files = [], imageFiles = [] } = options;
   const [lastCommand, setLastCommand] = useState<VoiceCommand | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
@@ -172,7 +185,9 @@ export function useVoiceCommands(options: UseVoiceCommandsOptions = {}): UseVoic
         isMacroModeRef.current = true;
         setIsMacroMode(true);
         setActiveMacro(null);
-        window.dispatchEvent(new CustomEvent('smelter:voice:macro-mode-started'));
+        window.dispatchEvent(
+          new CustomEvent('smelter:voice:macro-mode-started'),
+        );
         return;
       }
 
@@ -181,7 +196,9 @@ export function useVoiceCommands(options: UseVoiceCommandsOptions = {}): UseVoic
           isMacroModeRef.current = false;
           setIsMacroMode(false);
           setActiveMacro(null);
-          window.dispatchEvent(new CustomEvent('smelter:voice:macro-mode-ended'));
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:macro-mode-ended'),
+          );
           return;
         }
 
@@ -197,14 +214,14 @@ export function useVoiceCommands(options: UseVoiceCommandsOptions = {}): UseVoic
               window.dispatchEvent(
                 new CustomEvent('smelter:voice:macro-step-start', {
                   detail: { step, index, total, macro: matchedMacro },
-                })
+                }),
               );
             },
             onStepComplete: (step, index, total) => {
               window.dispatchEvent(
                 new CustomEvent('smelter:voice:macro-step-complete', {
                   detail: { step, index, total, macro: matchedMacro },
-                })
+                }),
               );
             },
             onMacroComplete: (macro) => {
@@ -213,33 +230,47 @@ export function useVoiceCommands(options: UseVoiceCommandsOptions = {}): UseVoic
               window.dispatchEvent(
                 new CustomEvent('smelter:voice:macro-complete', {
                   detail: { macro },
-                })
+                }),
               );
             },
             onError: (error, step, index) => {
               setIsExecutingMacro(false);
-              setLastError(`Macro error at step ${index + 1}: ${error.message}`);
+              setLastError(
+                `Macro error at step ${index + 1}: ${error.message}`,
+              );
               window.dispatchEvent(
                 new CustomEvent('smelter:voice:macro-error', {
-                  detail: { error: error.message, step, index, macro: matchedMacro },
-                })
+                  detail: {
+                    error: error.message,
+                    step,
+                    index,
+                    macro: matchedMacro,
+                  },
+                }),
               );
             },
           };
 
           executeMacro(matchedMacro, callbacks).catch((err) => {
             setIsExecutingMacro(false);
-            setLastError(err instanceof Error ? err.message : 'Macro execution failed');
+            setLastError(
+              err instanceof Error ? err.message : 'Macro execution failed',
+            );
           });
 
           return;
         }
 
-        setLastError(`No macro found for: "${text}". Say the macro trigger or "end macro" to cancel.`);
+        setLastError(
+          `No macro found for: "${text}". Say the macro trigger or "end macro" to cancel.`,
+        );
         return;
       }
 
-      const parsed = parseCommand(text, { mp4Files: mp4FilesRef.current, imageFiles: imageFilesRef.current });
+      const parsed = parseCommand(text, {
+        mp4Files: mp4FilesRef.current,
+        imageFiles: imageFilesRef.current,
+      });
 
       if (!parsed) {
         setLastError(`Could not understand: "${text}"`);
@@ -254,7 +285,10 @@ export function useVoiceCommands(options: UseVoiceCommandsOptions = {}): UseVoic
 
       setLastCommand(validated);
 
-      const emitCtx = { mp4Files: mp4FilesRef.current, imageFiles: imageFilesRef.current };
+      const emitCtx = {
+        mp4Files: mp4FilesRef.current,
+        imageFiles: imageFilesRef.current,
+      };
       if (validated.intent === 'CLARIFY') {
         setLastClarify(validated.question);
       } else if (validated.intent === 'START_TYPING') {

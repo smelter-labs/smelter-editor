@@ -91,7 +91,7 @@ export class SmelterManager {
   }
 
   public async registerOutput(roomId: string, resolution: Resolution = RESOLUTION_PRESETS['1440p']): Promise<SmelterOutput> {
-    let store = createRoomStore();
+    let store = createRoomStore(resolution);
     await this.instance.registerOutput(roomId, <App store={store} />, {
       type: 'whep_server',
       video: {

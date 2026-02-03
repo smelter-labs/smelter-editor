@@ -33,7 +33,7 @@ export function loadWhipSession(): WhipSession | null {
 }
 export function clearWhipSession(roomId: string) {
   try {
-    window.sessionStorage.removeItem(lastIdKey(roomId));
+    getSafeSessionStorage()?.removeItem(lastIdKey(roomId));
     getSafeSessionStorage()?.removeItem(WHIP_SESSION_KEY);
   } catch {}
 }
@@ -62,7 +62,7 @@ export function clearLastWhipInputId(roomId: string) {
 
 export function clearWhipSessionFor(roomId: string, inputId: string) {
   try {
-    window.sessionStorage.removeItem(userNameKey(roomId));
+    getSafeSessionStorage()?.removeItem(userNameKey(roomId));
     const s = loadWhipSession();
     if (s && s.roomId === roomId && s.inputId === inputId) {
       clearWhipSession(roomId);

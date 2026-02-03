@@ -96,7 +96,8 @@ function ScrollingText({ text, maxLines, scrollSpeed, scrollLoop, fontSize, colo
     const lines = text.split('\n');
     const totalTextHeight = lines.length * lineHeight;
     const shouldAnimate = maxLines > 0;
-    const [scrollOffset, setScrollOffset] = (0, react_1.useState)(0);
+    const startPosition = containerHeight;
+    const [scrollOffset, setScrollOffset] = (0, react_1.useState)(startPosition);
     const timerRef = (0, react_1.useRef)(null);
     const prevTextRef = (0, react_1.useRef)('');
     const initializedRef = (0, react_1.useRef)(false);
@@ -114,7 +115,7 @@ function ScrollingText({ text, maxLines, scrollSpeed, scrollLoop, fontSize, colo
         prevTextRef.current = text;
         initializedRef.current = true;
         if (isFirstRun || textChanged) {
-            setScrollOffset(visibleHeight);
+            setScrollOffset(startPosition);
         }
         const targetPosition = -totalTextHeight;
         const intervalMs = 16;
@@ -123,7 +124,7 @@ function ScrollingText({ text, maxLines, scrollSpeed, scrollLoop, fontSize, colo
             setScrollOffset(prev => {
                 if (prev <= targetPosition) {
                     if (scrollLoop) {
-                        return visibleHeight;
+                        return startPosition;
                     }
                     if (timerRef.current) {
                         clearInterval(timerRef.current);
@@ -140,7 +141,7 @@ function ScrollingText({ text, maxLines, scrollSpeed, scrollLoop, fontSize, colo
                 timerRef.current = null;
             }
         };
-    }, [text, shouldAnimate, totalTextHeight, visibleHeight, scrollSpeed, scrollLoop]);
+    }, [text, shouldAnimate, totalTextHeight, startPosition, scrollSpeed, scrollLoop]);
     const textTopOffset = shouldAnimate ? scrollOffset : 0;
     return ((0, jsx_runtime_1.jsx)(smelter_1.View, { style: {
             width: containerWidth,
@@ -166,8 +167,9 @@ function Input({ input }) {
     const isImage = !!input.imageId;
     const isTextInput = !!input.text;
     const streamState = isImage || isTextInput ? 'playing' : ((_b = (_a = streams[input.inputId]) === null || _a === void 0 ? void 0 : _a.videoState) !== null && _b !== void 0 ? _b : 'finished');
-    const resolution = { width: 1920, height: 1080 };
-    const inputComponent = ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: resolution, children: (0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { ...resolution, direction: 'column' }, children: [streamState === 'playing' ? (isImage ? ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { rescaleMode: 'fit' }, children: (0, jsx_runtime_1.jsx)(smelter_1.Image, { imageId: input.imageId }) })) : isTextInput ? ((0, jsx_runtime_1.jsx)(smelter_1.View, { style: { width: 1920, height: 1080, backgroundColor: '#1a1a2e' }, children: (0, jsx_runtime_1.jsx)(ScrollingText, { text: input.text, maxLines: (_c = input.textMaxLines) !== null && _c !== void 0 ? _c : 10, scrollSpeed: (_d = input.textScrollSpeed) !== null && _d !== void 0 ? _d : 100, scrollLoop: (_e = input.textScrollLoop) !== null && _e !== void 0 ? _e : true, fontSize: 80, color: (_f = input.textColor) !== null && _f !== void 0 ? _f : 'white', align: (_g = input.textAlign) !== null && _g !== void 0 ? _g : 'left', containerWidth: resolution.width, containerHeight: resolution.height }) })) : ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { rescaleMode: 'fill' }, children: (0, jsx_runtime_1.jsx)(smelter_1.InputStream, { inputId: input.inputId, volume: input.volume }) }))) : streamState === 'ready' ? ((0, jsx_runtime_1.jsx)(smelter_1.View, { style: { padding: 300 }, children: (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { rescaleMode: 'fit' }, children: (0, jsx_runtime_1.jsx)(smelter_1.Image, { imageId: "spinner" }) }) })) : streamState === 'finished' ? ((0, jsx_runtime_1.jsx)(smelter_1.View, { style: { padding: 300 }, children: (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { rescaleMode: 'fit' }, children: (0, jsx_runtime_1.jsx)(smelter_1.Text, { style: { fontSize: 600, fontFamily: 'Star Jedi' }, children: "Stream offline" }) }) })) : ((0, jsx_runtime_1.jsx)(smelter_1.View, {})), input.showTitle !== false && ((0, jsx_runtime_1.jsxs)(smelter_1.View, { style: {
+    const isVerticalInput = input.orientation === 'vertical';
+    const resolution = isVerticalInput ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 };
+    const inputComponent = ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: resolution, children: (0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { ...resolution, direction: 'column' }, children: [streamState === 'playing' ? (isImage ? ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { rescaleMode: 'fit' }, children: (0, jsx_runtime_1.jsx)(smelter_1.Image, { imageId: input.imageId }) })) : isTextInput ? ((0, jsx_runtime_1.jsx)(smelter_1.View, { style: { width: resolution.width, height: resolution.height, backgroundColor: '#1a1a2e' }, children: (0, jsx_runtime_1.jsx)(ScrollingText, { text: input.text, maxLines: (_c = input.textMaxLines) !== null && _c !== void 0 ? _c : 10, scrollSpeed: (_d = input.textScrollSpeed) !== null && _d !== void 0 ? _d : 100, scrollLoop: (_e = input.textScrollLoop) !== null && _e !== void 0 ? _e : true, fontSize: 80, color: (_f = input.textColor) !== null && _f !== void 0 ? _f : 'white', align: (_g = input.textAlign) !== null && _g !== void 0 ? _g : 'left', containerWidth: resolution.width, containerHeight: resolution.height }) })) : ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { rescaleMode: 'fill' }, children: (0, jsx_runtime_1.jsx)(smelter_1.InputStream, { inputId: input.inputId, volume: input.volume }) }))) : streamState === 'ready' ? ((0, jsx_runtime_1.jsx)(smelter_1.View, { style: { padding: 300 }, children: (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { rescaleMode: 'fit' }, children: (0, jsx_runtime_1.jsx)(smelter_1.Image, { imageId: "spinner" }) }) })) : streamState === 'finished' ? ((0, jsx_runtime_1.jsx)(smelter_1.View, { style: { padding: 300 }, children: (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { rescaleMode: 'fit' }, children: (0, jsx_runtime_1.jsx)(smelter_1.Text, { style: { fontSize: 600, fontFamily: 'Star Jedi' }, children: "Stream offline" }) }) })) : ((0, jsx_runtime_1.jsx)(smelter_1.View, {})), input.showTitle !== false && ((0, jsx_runtime_1.jsxs)(smelter_1.View, { style: {
                         backgroundColor: '#493880',
                         height: 90,
                         padding: 20,
