@@ -91,6 +91,9 @@ const SHADER_MAP: Record<string, Shader> = {
   hologram: 'sw-hologram',
   'star wars': 'sw-hologram',
   perspective: 'perspective',
+  stroke: 'alpha-stroke',
+  'alpha stroke': 'alpha-stroke',
+  outline: 'alpha-stroke',
 };
 
 const SHADER_TOKENS = Object.keys(SHADER_MAP).sort((a, b) => b.length - a.length);

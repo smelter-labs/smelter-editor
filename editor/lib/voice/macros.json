@@ -198,6 +198,14 @@
           "action": "ADD_SHADER",
           "params": {
             "inputIndex": 3,
+            "shader": "alpha-stroke"
+          },
+          "delayAfterMs": 1500
+        },
+        {
+          "action": "ADD_SHADER",
+          "params": {
+            "inputIndex": 3,
             "shader": "perspective"
           },
           "delayAfterMs": 1500

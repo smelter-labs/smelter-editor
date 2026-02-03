@@ -10,6 +10,7 @@ export const Shader = {
   SHADOW: 'soft-shadow',
   HOLOGRAM: 'sw-hologram',
   PERSPECTIVE: 'perspective',
+  ALPHA_STROKE: 'alpha-stroke',
 } as const;
 
 export type Shader = (typeof Shader)[keyof typeof Shader];
