@@ -1,19 +1,23 @@
 import { View, Tiles, Rescaler, Image, Text } from '@swmansion/smelter';
 import React, { useContext, useEffect, useState } from 'react';
 import { useStore } from 'zustand';
-import { StoreContext } from '../store';
+import { StoreContext, useResolution, useIsVertical } from '../store';
 import { Input, SmallInput } from '../../inputs/inputs';
 import { NewsStripDecorated } from '../NewsStripDecorated';
 
 export function PictureInPictureLayout() {
   const store = useContext(StoreContext);
   const inputs = useStore(store, state => state.inputs);
+  const resolution = useResolution();
+  const isVertical = useIsVertical();
   const firstInput = inputs[0];
   const secondInput = inputs[1];
 
+  const { width, height } = resolution;
+
   const [waveAmpPx, setWaveAmpPx] = useState(0);
   const [waveSpeed, setWaveSpeed] = useState(0);
-  const [marqueeLeft, setMarqueeLeft] = useState(2560);
+  const [marqueeLeft, setMarqueeLeft] = useState(width);
   useEffect(() => {
     let mounted = true;
     let tweenId: ReturnType<typeof setInterval> | null = null;
@@ -50,8 +54,8 @@ export function PictureInPictureLayout() {
         const pxPerSec = 240;
         const intervalMs = 10;
         const step = (pxPerSec * intervalMs) / 1000;
-        const resetRight = 2560;
-        const minLeft = -5620;
+        const resetRight = width;
+        const minLeft = -width * 2.2;
         marqueeId = setInterval(() => {
           if (!mounted) {
             return;
@@ -92,11 +96,20 @@ export function PictureInPictureLayout() {
         clearTimeout(timerId);
       }
     };
-  }, []);
+  }, [width]);
 
   if (!firstInput) {
-    return <View style={{ backgroundColor: '#000000', width: 2560, height: 1440 }} />;
+    return <View style={{ backgroundColor: '#000000', width, height }} />;
   }
+
+  const pipWidth = isVertical ? Math.round(width * 0.8) : Math.round(width * 0.25);
+  const pipHeight = isVertical ? Math.round(height * 0.35) : Math.round(height * 0.75);
+  const pipTop = isVertical ? Math.round(height * 0.62) : 60;
+  const pipRight = isVertical ? Math.round((width - pipWidth) / 2) : 60;
+
+  const stripHeight = isVertical ? Math.round(height * 0.12) : Math.round(height * 0.31);
+  const stripTop = isVertical ? height - stripHeight : Math.round(height * 0.67);
+  const showStrip = !isVertical;
 
   return (
     <View style={{ direction: 'column' }}>
@@ -104,17 +117,17 @@ export function PictureInPictureLayout() {
         transition={{ durationMs: 300 }}
         style={{
           rescaleMode: 'fill',
-          horizontalAlign: 'left',
+          horizontalAlign: isVertical ? 'center' : 'left',
           verticalAlign: 'top',
-          width: 2560,
-          height: 1440,
+          width,
+          height,
           top: 0,
           left: 0,
         }}>
         <Input input={firstInput} />
       </Rescaler>
       {secondInput ? (
-        <Rescaler style={{ top: 60, right: 60, width: 640, height: 1080 }}>
+        <Rescaler style={{ top: pipTop, right: pipRight, width: pipWidth, height: pipHeight }}>
           <View style={{ direction: 'column' }}>
             <Tiles transition={{ durationMs: 300 }} style={{ padding: 10, verticalAlign: 'top' }}>
               {Object.values(inputs)
@@ -126,32 +139,32 @@ export function PictureInPictureLayout() {
           </View>
         </Rescaler>
       ) : null}
-      <Rescaler
+      {showStrip && <Rescaler
         transition={{ durationMs: 300 }}
         style={{
           rescaleMode: 'fill',
           horizontalAlign: 'left',
           verticalAlign: 'top',
-          width: 2560,
-          height: 450,
-          top: 960,
+          width,
+          height: stripHeight,
+          top: stripTop,
           left: 0,
         }}>
         <NewsStripDecorated
-          resolution={{ width: 2560, height: 450 }}
+          resolution={{ width, height: stripHeight }}
           opacity={1}
           amplitudePx={waveAmpPx}
           wavelengthPx={800}
           speed={waveSpeed}
           phase={0}
           removeColorTolerance={0.4}>
-          <View style={{ width: 2560, height: 450, direction: 'column' }}>
+          <View style={{ width, height: stripHeight, direction: 'column' }}>
             {/* left logo box */}
             <View
               style={{
-                width: 240,
-                height: 72,
-                top: 114,
+                width: Math.round(width * 0.094),
+                height: Math.round(stripHeight * 0.16),
+                top: Math.round(stripHeight * 0.25),
                 left: 0,
                 direction: 'column',
                 overflow: 'hidden',
@@ -159,38 +172,38 @@ export function PictureInPictureLayout() {
               }}>
               <Text
                 style={{
-                  fontSize: 40,
-                  lineHeight: 72,
+                  fontSize: Math.round(stripHeight * 0.09),
+                  lineHeight: Math.round(stripHeight * 0.16),
                   color: '#000000',
                   fontFamily: 'Poppins',
                   fontWeight: 'bold',
                   align: 'center',
-                  width: 240,
-                  height: 72,
+                  width: Math.round(width * 0.094),
+                  height: Math.round(stripHeight * 0.16),
                 }}>
                 LIVE
               </Text>
             </View>
             <View
               style={{
-                width: 240,
-                height: 192,
-                top: Math.round((450 - 80) / 2),
+                width: Math.round(width * 0.094),
+                height: Math.round(stripHeight * 0.43),
+                top: Math.round(stripHeight * 0.41),
                 left: 0,
                 direction: 'column',
                 overflow: 'hidden',
                 backgroundColor: '#ffffff',
               }}>
-              <Rescaler style={{ rescaleMode: 'fill', width: 150, height: 72, top: 56, left: 50 }}>
+              <Rescaler style={{ rescaleMode: 'fill', width: Math.round(width * 0.059), height: Math.round(stripHeight * 0.16), top: Math.round(stripHeight * 0.12), left: Math.round(width * 0.02) }}>
                 <Image imageId="smelter_logo" />
               </Rescaler>
             </View>
             <View
               style={{
-                width: 2320,
-                height: 192,
-                top: Math.round((450 - 80) / 2),
-                left: 240,
+                width: Math.round(width * 0.906),
+                height: Math.round(stripHeight * 0.43),
+                top: Math.round(stripHeight * 0.41),
+                left: Math.round(width * 0.094),
                 direction: 'column',
                 overflow: 'hidden',
                 backgroundColor: '#342956',
@@ -198,17 +211,17 @@ export function PictureInPictureLayout() {
               <View
                 style={{
                   direction: 'column',
-                  height: 192,
-                  width: 3560,
+                  height: Math.round(stripHeight * 0.43),
+                  width: Math.round(width * 1.4),
                   overflow: 'visible',
                   padding: 10,
-                  top: 48,
+                  top: Math.round(stripHeight * 0.11),
                   left: Math.round(marqueeLeft),
                 }}>
                 <Text
                   style={{
-                    fontSize: 72,
-                    width: 6860,
+                    fontSize: Math.round(stripHeight * 0.16),
+                    width: Math.round(width * 2.7),
                     color: '#ffffff',
                     fontFamily: 'Poppins',
                     fontWeight: 'normal',
@@ -219,7 +232,7 @@ export function PictureInPictureLayout() {
             </View>
           </View>
         </NewsStripDecorated>
-      </Rescaler>
+      </Rescaler>}
     </View>
   );
 }

@@ -1,4 +1,10 @@
-import type { VoiceCommand, VoiceInput, ClarifyCommand, Shader, InputType } from './commandTypes';
+import type {
+  VoiceCommand,
+  VoiceInput,
+  ClarifyCommand,
+  Shader,
+  InputType,
+} from './commandTypes';
 
 export type DispatchResult =
   | { success: true; inputs: VoiceInput[] }
@@ -77,6 +83,16 @@ export function dispatchCommand(
   }
 
   if (command.intent === 'ADD_SHADER') {
+    if (command.inputIndex == null) {
+      return {
+        success: false,
+        clarify: {
+          intent: 'CLARIFY',
+          missing: ['inputIndex'],
+          question: `Which input should receive the shader? Choose 1..${inputs.length}.`,
+        },
+      };
+    }
     const idx = command.inputIndex - 1;
     if (idx < 0 || idx >= inputs.length) {
       return {
@@ -100,6 +116,16 @@ export function dispatchCommand(
   }
 
   if (command.intent === 'REMOVE_SHADER') {
+    if (command.inputIndex == null) {
+      return {
+        success: false,
+        clarify: {
+          intent: 'CLARIFY',
+          missing: ['inputIndex'],
+          question: `Which input should have the shader removed? Choose 1..${inputs.length}.`,
+        },
+      };
+    }
     const idx = command.inputIndex - 1;
     if (idx < 0 || idx >= inputs.length) {
       return {

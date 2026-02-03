@@ -10,6 +10,8 @@ const inputs_1 = require("../../inputs/inputs");
 function TransitionLayout() {
     const store = (0, react_1.useContext)(store_1.StoreContext);
     const inputs = (0, zustand_1.useStore)(store, state => state.inputs);
+    const resolution = (0, store_1.useResolution)();
+    const { width, height } = resolution;
     const inputA = inputs[0];
     const inputB = inputs[1];
     const speedDefault = 0.25;
@@ -60,7 +62,7 @@ function TransitionLayout() {
     if (!inputA) {
         return (0, jsx_runtime_1.jsx)(smelter_1.View, {});
     }
-    const resolution = { width: 1920, height: 1080 };
+    const shaderResolution = { width, height };
     let showFirst, showSecond;
     if (progress < 0.5) {
         showFirst = inputA;
@@ -73,15 +75,15 @@ function TransitionLayout() {
     if (!showFirst) {
         return (0, jsx_runtime_1.jsx)(smelter_1.View, {});
     }
-    return ((0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { direction: 'column', width: 2560, height: 1440 }, children: [(0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: {
+    return ((0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { direction: 'column', width, height }, children: [(0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: {
                     rescaleMode: 'fill',
                     horizontalAlign: 'left',
                     verticalAlign: 'top',
-                    width: 2560,
-                    height: 1440,
+                    width,
+                    height,
                     top: 0,
                     left: 0,
-                }, children: (0, jsx_runtime_1.jsx)(smelter_1.Shader, { shaderId: "page-flip-1", resolution: resolution, shaderParam: {
+                }, children: (0, jsx_runtime_1.jsx)(smelter_1.Shader, { shaderId: "page-flip-1", resolution: shaderResolution, shaderParam: {
                         type: 'struct',
                         value: [
                             { type: 'f32', fieldName: 'progress', value: progress },
@@ -97,7 +99,7 @@ function TransitionLayout() {
                     verticalAlign: 'top',
                     top: 0,
                     left: 0,
-                }, children: (0, jsx_runtime_1.jsx)(smelter_1.Shader, { shaderId: "page-flip-1", resolution: resolution, shaderParam: {
+                }, children: (0, jsx_runtime_1.jsx)(smelter_1.Shader, { shaderId: "page-flip-1", resolution: shaderResolution, shaderParam: {
                         type: 'struct',
                         value: [
                             { type: 'f32', fieldName: 'progress', value: progress },

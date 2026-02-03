@@ -1,12 +1,14 @@
 import { View, Rescaler, Shader } from '@swmansion/smelter';
 import React, { useContext, useEffect, useRef, useState } from 'react';
 import { useStore } from 'zustand';
-import { StoreContext } from '../store';
+import { StoreContext, useResolution } from '../store';
 import { Input } from '../../inputs/inputs';
 
 export function TransitionLayout() {
   const store = useContext(StoreContext);
   const inputs = useStore(store, state => state.inputs);
+  const resolution = useResolution();
+  const { width, height } = resolution;
   const inputA = inputs[0];
   const inputB = inputs[1];
 
@@ -63,7 +65,7 @@ export function TransitionLayout() {
     return <View />;
   }
 
-  const resolution = { width: 1920, height: 1080 };
+  const shaderResolution = { width, height };
 
   let showFirst, showSecond;
   if (progress < 0.5) {
@@ -79,20 +81,20 @@ export function TransitionLayout() {
   }
 
   return (
-    <View style={{ direction: 'column', width: 2560, height: 1440 }}>
+    <View style={{ direction: 'column', width, height }}>
       <Rescaler
         style={{
           rescaleMode: 'fill',
           horizontalAlign: 'left',
           verticalAlign: 'top',
-          width: 2560,
-          height: 1440,
+          width,
+          height,
           top: 0,
           left: 0,
         }}>
         <Shader
           shaderId="page-flip-1"
-          resolution={resolution}
+          resolution={shaderResolution}
           shaderParam={{
             type: 'struct',
             value: [
@@ -118,7 +120,7 @@ export function TransitionLayout() {
           }}>
           <Shader
             shaderId="page-flip-1"
-            resolution={resolution}
+            resolution={shaderResolution}
             shaderParam={{
               type: 'struct',
               value: [

@@ -243,6 +243,10 @@ const UpdateInputSchema = typebox_1.Type.Object({
             paramValue: typebox_1.Type.Number(),
         })),
     }))),
+    orientation: typebox_1.Type.Optional(typebox_1.Type.Union([
+        typebox_1.Type.Literal('horizontal'),
+        typebox_1.Type.Literal('vertical'),
+    ])),
     text: typebox_1.Type.Optional(typebox_1.Type.String()),
     textAlign: typebox_1.Type.Optional(typebox_1.Type.Union([
         typebox_1.Type.Literal('left'),
@@ -280,6 +284,7 @@ function publicInputState(input) {
                 volume: input.volume,
                 type: input.type,
                 shaders: input.shaders,
+                orientation: input.orientation,
             };
         case 'image':
             return {
@@ -292,6 +297,7 @@ function publicInputState(input) {
                 volume: input.volume,
                 type: input.type,
                 shaders: input.shaders,
+                orientation: input.orientation,
                 imageId: input.imageId,
             };
         case 'twitch-channel':
@@ -305,6 +311,7 @@ function publicInputState(input) {
                 volume: input.volume,
                 type: input.type,
                 shaders: input.shaders,
+                orientation: input.orientation,
                 channelId: input.channelId,
             };
         case 'kick-channel':
@@ -318,6 +325,7 @@ function publicInputState(input) {
                 volume: input.volume,
                 type: input.type,
                 shaders: input.shaders,
+                orientation: input.orientation,
                 channelId: input.channelId,
             };
         case 'whip':
@@ -331,6 +339,7 @@ function publicInputState(input) {
                 volume: input.volume,
                 type: input.type,
                 shaders: input.shaders,
+                orientation: input.orientation,
             };
         case 'text-input':
             return {
@@ -343,6 +352,7 @@ function publicInputState(input) {
                 volume: input.volume,
                 type: input.type,
                 shaders: input.shaders,
+                orientation: input.orientation,
                 text: input.text,
                 textAlign: input.textAlign,
                 textColor: input.textColor,

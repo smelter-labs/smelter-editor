@@ -50,7 +50,11 @@ export default function RoomPreviewPage() {
               <LoadingSpinner size='lg' variant='spinner' />
             </div>
           ) : (
-            <OutputStream whepUrl={roomState.whepUrl} videoRef={videoRef} resolution={roomState.resolution} />
+            <OutputStream
+              whepUrl={roomState.whepUrl}
+              videoRef={videoRef}
+              resolution={roomState.resolution}
+            />
           )}
         </div>
         <div className='mt-4 flex items-center justify-end w-full max-w-[1920px] mx-auto'>

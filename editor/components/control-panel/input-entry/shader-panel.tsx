@@ -15,9 +15,13 @@ import { useState } from 'react';
  */
 function hexToPackedInt(hex: string): number {
   const cleanHex = hex.replace('#', '');
-  const fullHex = cleanHex.length === 3
-    ? cleanHex.split('').map(char => char + char).join('')
-    : cleanHex;
+  const fullHex =
+    cleanHex.length === 3
+      ? cleanHex
+          .split('')
+          .map((char) => char + char)
+          .join('')
+      : cleanHex;
   return parseInt(fullHex, 16);
 }
 
@@ -47,7 +51,7 @@ interface ShaderPanelProps {
   getShaderParamConfig: (
     shaderId: string,
     paramName: string,
-  ) => { paramName: string; paramValue: number } | undefined;
+  ) => { paramName: string; paramValue: number | string } | undefined;
   getShaderButtonClass: (enabled: boolean) => string;
   consolidated?: boolean;
 }
@@ -121,15 +125,22 @@ export default function ShaderPanel({
                       param.name,
                     );
                     const key = `${shader.id}:${param.name}`;
-                    
+
                     // Handle color params
                     if (param.type === 'color') {
-                      const colorValue =
+                      const rawValue =
                         key in sliderValues
                           ? sliderValues[key]
-                          : (paramConfig?.paramValue ?? (typeof param.defaultValue === 'string' ? hexToPackedInt(param.defaultValue) : 0));
+                          : (paramConfig?.paramValue ??
+                            (typeof param.defaultValue === 'string'
+                              ? hexToPackedInt(param.defaultValue)
+                              : 0));
+                      const colorValue =
+                        typeof rawValue === 'string'
+                          ? hexToPackedInt(rawValue)
+                          : rawValue;
                       const hexValue = packedIntToHex(colorValue);
-                      
+
                       return (
                         <ShaderParamColorPicker
                           key={param.name}
@@ -143,12 +154,17 @@ export default function ShaderPanel({
                         />
                       );
                     }
-                    
+
                     // Regular number param
-                    const paramValue =
+                    const rawParamValue =
                       key in sliderValues
                         ? sliderValues[key]
-                        : (paramConfig?.paramValue ?? (typeof param.defaultValue === 'number' ? param.defaultValue : 0));
+                        : (paramConfig?.paramValue ??
+                          (typeof param.defaultValue === 'number'
+                            ? param.defaultValue
+                            : 0));
+                    const paramValue =
+                      typeof rawParamValue === 'number' ? rawParamValue : 0;
                     return (
                       <ShaderParamSlider
                         key={param.name}
@@ -285,15 +301,22 @@ export default function ShaderPanel({
                     param.name,
                   );
                   const key = `${shader.id}:${param.name}`;
-                  
+
                   // Handle color params
                   if (param.type === 'color') {
-                    const colorValue =
+                    const rawColorValue =
                       key in sliderValues
                         ? sliderValues[key]
-                        : (paramConfig?.paramValue ?? (typeof param.defaultValue === 'string' ? hexToPackedInt(param.defaultValue) : 0));
+                        : (paramConfig?.paramValue ??
+                          (typeof param.defaultValue === 'string'
+                            ? hexToPackedInt(param.defaultValue)
+                            : 0));
+                    const colorValue =
+                      typeof rawColorValue === 'string'
+                        ? hexToPackedInt(rawColorValue)
+                        : rawColorValue;
                     const hexValue = packedIntToHex(colorValue);
-                    
+
                     return (
                       <ShaderParamColorPicker
                         key={param.name}
@@ -307,12 +330,17 @@ export default function ShaderPanel({
                       />
                     );
                   }
-                  
+
                   // Regular number param
-                  const paramValue =
+                  const rawParamValue =
                     key in sliderValues
                       ? sliderValues[key]
-                      : (paramConfig?.paramValue ?? (typeof param.defaultValue === 'number' ? param.defaultValue : 0));
+                      : (paramConfig?.paramValue ??
+                        (typeof param.defaultValue === 'number'
+                          ? param.defaultValue
+                          : 0));
+                  const paramValue =
+                    typeof rawParamValue === 'number' ? rawParamValue : 0;
                   return (
                     <ShaderParamSlider
                       key={param.name}
@@ -349,7 +377,7 @@ function ShaderParamSlider({
     name: string;
     minValue?: number;
     maxValue?: number;
-    defaultValue?: number;
+    defaultValue?: number | string;
   };
   paramValue: number;
   loading: boolean;

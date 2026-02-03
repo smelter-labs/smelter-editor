@@ -1,5 +1,7 @@
 import type { StoreApi } from 'zustand';
 import type { ShaderConfig } from '../shaders/shaders';
+import type { Resolution } from '../smelter';
+export type InputOrientation = 'horizontal' | 'vertical';
 export type InputConfig = {
     inputId: string;
     volume: number;
@@ -7,6 +9,7 @@ export type InputConfig = {
     description: string;
     showTitle?: boolean;
     shaders: ShaderConfig[];
+    orientation?: InputOrientation;
     imageId?: string;
     text?: string;
     textAlign?: 'left' | 'center' | 'right';
@@ -21,7 +24,10 @@ export type Layout = 'grid' | 'primary-on-left' | 'primary-on-top' | 'picture-in
 export type RoomStore = {
     inputs: InputConfig[];
     layout: Layout;
+    resolution: Resolution;
     updateState: (inputs: InputConfig[], layout: Layout) => void;
 };
-export declare function createRoomStore(): StoreApi<RoomStore>;
+export declare function createRoomStore(resolution?: Resolution): StoreApi<RoomStore>;
+export declare function useResolution(): Resolution;
+export declare function useIsVertical(): boolean;
 export declare const StoreContext: import("react").Context<StoreApi<RoomStore>>;

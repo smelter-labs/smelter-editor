@@ -1,4 +1,9 @@
-import type { InputType, Shader, Direction, VoiceCommand } from './commandTypes';
+import type {
+  InputType,
+  Shader,
+  Direction,
+  VoiceCommand,
+} from './commandTypes';
 
 export type MacroActionParams = {
   inputType?: InputType;
