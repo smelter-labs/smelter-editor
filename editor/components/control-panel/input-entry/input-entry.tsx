@@ -99,6 +99,7 @@ export default function InputEntry({
   const [textColor, setTextColor] = useState<string>(input.textColor || '#ffffff');
   const [textMaxLines, setTextMaxLines] = useState<number>(input.textMaxLines ?? 10);
   const [textScrollSpeed, setTextScrollSpeed] = useState<number>(input.textScrollSpeed ?? 100);
+  const [textScrollLoop, setTextScrollLoop] = useState<boolean>(input.textScrollLoop ?? true);
   const [isTextSaving, setIsTextSaving] = useState(false);
   const textSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isMobile = useIsMobile();
@@ -149,6 +150,12 @@ export default function InputEntry({
       setTextScrollSpeed(input.textScrollSpeed);
     }
   }, [input.textScrollSpeed]);
+
+  useEffect(() => {
+    if (input.textScrollLoop !== undefined) {
+      setTextScrollLoop(input.textScrollLoop);
+    }
+  }, [input.textScrollLoop]);
 
   const lastParamChangeRef = useRef<{ [key: string]: number }>({});
   const [sliderValues, setSliderValues] = useState<{ [key: string]: number }>(
@@ -275,6 +282,24 @@ export default function InputEntry({
       try {
         await updateInput(roomId, input.inputId, {
           textScrollSpeed: newSpeed,
+          shaders: input.shaders,
+          volume: input.volume,
+        });
+        await refreshState();
+      } finally {
+        setIsTextSaving(false);
+      }
+    },
+    [roomId, input, refreshState],
+  );
+
+  const handleTextScrollLoopChange = useCallback(
+    async (newLoop: boolean) => {
+      setTextScrollLoop(newLoop);
+      setIsTextSaving(true);
+      try {
+        await updateInput(roomId, input.inputId, {
+          textScrollLoop: newLoop,
           shaders: input.shaders,
           volume: input.volume,
         });
@@ -715,6 +740,16 @@ export default function InputEntry({
                 />
                 <span className='text-xs text-neutral-500 w-8'>{textScrollSpeed}</span>
               </div>
+              <label className='flex items-center gap-2 cursor-pointer'>
+                <input
+                  data-no-dnd
+                  type='checkbox'
+                  checked={textScrollLoop}
+                  onChange={(e) => handleTextScrollLoopChange(e.target.checked)}
+                  className='accent-white cursor-pointer'
+                />
+                <span className='text-xs text-neutral-400'>Loop</span>
+              </label>
             </div>
           </div>
         )}

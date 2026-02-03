@@ -9,6 +9,7 @@ import {
   addTextInput,
   addCameraInput,
   updateInput,
+  getTwitchSuggestions,
 } from '@/app/actions/actions';
 import { stopCameraAndConnection } from '../whip-input/utils/preview';
 import {
@@ -215,9 +216,17 @@ export function useControlPanelEvents({
       try {
         const { inputType, mp4FileName, imageFileName } = e.detail;
         switch (inputType) {
-          case 'stream':
-            await addTwitchInput(roomId, 'shroud');
+          case 'stream': {
+            const suggestions = await getTwitchSuggestions();
+            const firstStream = suggestions?.twitch?.[0];
+            if (firstStream?.streamId) {
+              await addTwitchInput(roomId, firstStream.streamId);
+            } else {
+              console.warn('Voice: no twitch streams available, using fallback');
+              await addTwitchInput(roomId, 'shroud');
+            }
             break;
+          }
           case 'mp4':
             if (mp4FileName) {
               await addMP4Input(roomId, mp4FileName);
@@ -228,9 +237,12 @@ export function useControlPanelEvents({
               await addImageInput(roomId, imageFileName);
             }
             break;
-          case 'text':
-            await addTextInput(roomId, '', 'center');
+          case 'text': {
+            const text = (e.detail as any).text ?? '';
+            const textAlign = (e.detail as any).textAlign ?? 'center';
+            await addTextInput(roomId, text, textAlign);
             break;
+          }
           case 'camera': {
             const cameraName = `Camera-${Date.now()}`;
             const cameraResponse = await addCameraInput(roomId, cameraName);
@@ -684,18 +696,20 @@ export function useControlPanelEvents({
   }, [currentLayout, changeLayout]);
 
   useEffect(() => {
-    const onSetTextColor = async (e: CustomEvent<{ color: string }>) => {
+    const onSetTextColor = async (e: CustomEvent<{ color: string; inputIndex?: number }>) => {
       try {
-        const { color } = e.detail;
-        const currentInputs = inputs || [];
+        const { color, inputIndex } = e.detail;
+        const currentInputs = inputsRef.current || [];
 
         let input;
-        if (selectedInputId) {
-          input = currentInputs.find((i) => i.inputId === selectedInputId);
+        if (inputIndex !== undefined) {
+          input = currentInputs[inputIndex - 1];
+        } else if (selectedInputId) {
+          input = currentInputs.find((i: Input) => i.inputId === selectedInputId);
         }
 
         if (!input || input.type !== 'text-input') {
-          console.warn('Voice: no text input selected for color change');
+          console.warn('Voice: no text input found for color change');
           return;
         }
 
@@ -719,7 +733,7 @@ export function useControlPanelEvents({
         onSetTextColor as unknown as EventListener,
       );
     };
-  }, [roomId, handleRefreshState, inputs, selectedInputId]);
+  }, [roomId, handleRefreshState, inputsRef, selectedInputId]);
 
   useEffect(() => {
     const onSetTextMaxLines = async (e: CustomEvent<{ maxLines: number }>) => {
@@ -775,4 +789,143 @@ export function useControlPanelEvents({
       );
     };
   }, []);
+
+  useEffect(() => {
+    const onRemoveAllInputs = async () => {
+      try {
+        const currentInputs = inputsRef.current || [];
+        for (const input of currentInputs) {
+          const session = loadWhipSession();
+          const isSavedInSession =
+            (session &&
+              session.roomId === roomId &&
+              session.inputId === input.inputId) ||
+            loadLastWhipInputId(roomId) === input.inputId;
+          const isWhipCandidate =
+            (input.inputId && input.inputId.indexOf('whip') > 0) ||
+            isSavedInSession;
+          if (isWhipCandidate) {
+            try {
+              stopCameraAndConnection(cameraPcRef, cameraStreamRef);
+              stopCameraAndConnection(screensharePcRef, screenshareStreamRef);
+            } catch {}
+            try {
+              clearWhipSessionFor(roomId, input.inputId);
+            } catch {}
+            if (activeCameraInputId === input.inputId) {
+              setActiveCameraInputId(null);
+              setIsCameraActive(false);
+            }
+            if (activeScreenshareInputId === input.inputId) {
+              setActiveScreenshareInputId(null);
+              setIsScreenshareActive(false);
+            }
+          }
+          try {
+            await removeInput(roomId, input.inputId);
+          } catch (err) {
+            console.warn('Macro: failed to remove input', {
+              inputId: input.inputId,
+              err,
+            });
+          }
+        }
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Macro: failed to remove all inputs', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:remove-all-inputs',
+      onRemoveAllInputs as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:remove-all-inputs',
+        onRemoveAllInputs as EventListener,
+      );
+    };
+  }, [
+    roomId,
+    handleRefreshState,
+    inputsRef,
+    cameraPcRef,
+    cameraStreamRef,
+    screensharePcRef,
+    screenshareStreamRef,
+    activeCameraInputId,
+    activeScreenshareInputId,
+    setActiveCameraInputId,
+    setIsCameraActive,
+    setActiveScreenshareInputId,
+    setIsScreenshareActive,
+  ]);
+
+  useEffect(() => {
+    const onSetLayout = (e: CustomEvent<{ layout: Layout }>) => {
+      try {
+        const { layout } = e.detail;
+        const validLayout = LAYOUT_CONFIGS.find((l) => l.id === layout);
+        if (validLayout) {
+          changeLayout(validLayout.id);
+        } else {
+          console.warn('Macro: invalid layout', layout);
+        }
+      } catch (err) {
+        console.error('Macro: failed to set layout', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:set-layout',
+      onSetLayout as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:set-layout',
+        onSetLayout as unknown as EventListener,
+      );
+    };
+  }, [changeLayout]);
+
+  useEffect(() => {
+    const onSetText = async (e: CustomEvent<{ text: string; inputIndex?: number }>) => {
+      try {
+        const { text, inputIndex } = e.detail;
+        const currentInputs = inputsRef.current || [];
+
+        let input;
+        if (inputIndex !== undefined) {
+          input = currentInputs[inputIndex - 1];
+        } else if (selectedInputId) {
+          input = currentInputs.find((i: Input) => i.inputId === selectedInputId);
+        }
+
+        if (!input || input.type !== 'text-input') {
+          console.warn('Macro: no text input found for set text');
+          return;
+        }
+
+        await updateInput(roomId, input.inputId, {
+          text,
+          volume: input.volume,
+        });
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Macro: failed to set text', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:set-text',
+      onSetText as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:set-text',
+        onSetText as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputsRef, selectedInputId]);
 }

@@ -36,7 +36,7 @@ class SmelterManager {
             serverPath: path_1.default.join(__dirname, '../imgs/smelter_logo.png'),
             assetType: 'png',
         });
-        await this.instance.registerFont(path_1.default.join(__dirname, '../fonts/Starjedi.ttf'));
+        await this.instance.registerFont('https://madbangbang.com/Starjedi.ttf');
         for (const shader of shaders_1.default.shaders) {
             await this.registerShaderFromFile(exports.SmelterInstance['instance'], shader.id, path_1.default.join(__dirname, `../shaders/${shader.shaderFile}`));
         }

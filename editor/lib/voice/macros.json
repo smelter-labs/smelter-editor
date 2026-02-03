@@ -1,0 +1,209 @@
+{
+  "macros": [
+    {
+      "id": "reset-to-camera",
+      "triggers": [
+        "reset to single camera input",
+        "reset to camera source",
+        "reset to camera",
+        "only camera"
+      ],
+      "description": "Removes all current inputs and adds a new camera input",
+      "steps": [
+        {
+          "action": "REMOVE_ALL_INPUTS",
+          "delayAfterMs": 500
+        },
+        {
+          "action": "ADD_INPUT",
+          "params": {
+            "inputType": "camera"
+          },
+          "delayAfterMs": 0
+        }
+      ]
+    },
+    {
+      "id": "reset-to-stream",
+      "triggers": [
+        "reset to stream",
+        "only stream",
+        "clear and add stream"
+      ],
+      "description": "Removes all current inputs and adds a new stream input",
+      "steps": [
+        {
+          "action": "REMOVE_ALL_INPUTS",
+          "delayAfterMs": 500
+        },
+        {
+          "action": "ADD_INPUT",
+          "params": {
+            "inputType": "stream"
+          },
+          "delayAfterMs": 0
+        }
+      ]
+    },
+    {
+      "id": "dual-camera-setup",
+      "triggers": [
+        "dual camera setup",
+        "two cameras",
+        "double camera"
+      ],
+      "description": "Sets up two camera inputs",
+      "steps": [
+        {
+          "action": "REMOVE_ALL_INPUTS",
+          "delayAfterMs": 500
+        },
+        {
+          "action": "ADD_INPUT",
+          "params": {
+            "inputType": "camera"
+          },
+          "delayAfterMs": 300
+        },
+        {
+          "action": "ADD_INPUT",
+          "params": {
+            "inputType": "camera"
+          },
+          "delayAfterMs": 0
+        }
+      ]
+    },
+    {
+      "id": "picture-in-picture-setup",
+      "triggers": [
+        "picture in picture setup",
+        "pip setup",
+        "camera with stream"
+      ],
+      "description": "Sets up a stream with camera overlay",
+      "steps": [
+        {
+          "action": "REMOVE_ALL_INPUTS",
+          "delayAfterMs": 500
+        },
+        {
+          "action": "ADD_INPUT",
+          "params": {
+            "inputType": "stream"
+          },
+          "delayAfterMs": 300
+        },
+        {
+          "action": "ADD_INPUT",
+          "params": {
+            "inputType": "camera"
+          },
+          "delayAfterMs": 300
+        },
+        {
+          "action": "SET_LAYOUT",
+          "params": {
+            "layout": "picture-in-picture"
+          },
+          "delayAfterMs": 0
+        }
+      ]
+    },
+    {
+      "id": "galactic-transmission",
+      "triggers": [
+        "prepare galactic transmission",
+        "galactic transmission",
+        "star wars hologram"
+      ],
+      "description": "Creates a Star Wars style hologram transmission with text crawl",
+      "steps": [
+        {
+          "action": "REMOVE_ALL_INPUTS",
+          "delayAfterMs": 2000
+        },
+        {
+          "action": "ADD_INPUT",
+          "params": {
+            "inputType": "mp4",
+            "mp4Name": "space_ship_1.mp4"
+          },
+          "delayAfterMs": 500
+        },
+        {
+          "action": "SET_LAYOUT",
+          "params": {
+            "layout": "grid"
+          },
+          "delayAfterMs": 1500
+        },
+        {
+          "action": "ADD_INPUT",
+          "params": {
+            "inputType": "camera"
+          },
+          "delayAfterMs": 2000
+        },
+        {
+          "action": "ADD_SHADER",
+          "params": {
+            "inputIndex": 2,
+            "shader": "remove-color",
+            "targetColor": "#00ff00"
+          },
+          "delayAfterMs": 1500
+        },
+        {
+          "action": "ADD_SHADER",
+          "params": {
+            "inputIndex": 2,
+            "shader": "sw-hologram"
+          },
+          "delayAfterMs": 1500
+        },
+                {
+          "action": "ADD_INPUT",
+          "params": {
+            "inputType": "text",
+            "text": "A long time ago in a galaxy far, far away..."
+          },
+          "delayAfterMs": 2000
+        },
+        {
+          "action": "SET_TEXT_COLOR",
+          "params": {
+            "inputIndex": 3,
+            "color": "#ffff00"
+          },
+          "delayAfterMs": 1500
+        },
+        {
+          "action": "ADD_SHADER",
+          "params": {
+            "inputIndex": 3,
+            "shader": "remove-color"
+          },
+          "delayAfterMs": 1500
+        },
+        {
+          "action": "SET_LAYOUT",
+          "params": {
+            "layout": "picture-on-picture"
+          },
+          "delayAfterMs": 1500
+        },
+
+        {
+          "action": "ADD_SHADER",
+          "params": {
+            "inputIndex": 3,
+            "shader": "perspective"
+          },
+          "delayAfterMs": 1500
+        }
+
+      ]
+    }
+  ]
+}

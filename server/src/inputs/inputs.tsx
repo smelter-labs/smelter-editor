@@ -125,6 +125,7 @@ type ScrollingTextProps = {
   text: string;
   maxLines: number;
   scrollSpeed: number;
+  scrollLoop: boolean;
   fontSize: number;
   color: string;
   align: 'left' | 'center' | 'right';
@@ -136,6 +137,7 @@ function ScrollingText({
   text,
   maxLines,
   scrollSpeed,
+  scrollLoop,
   fontSize,
   color,
   align,
@@ -149,49 +151,59 @@ function ScrollingText({
   
   const shouldAnimate = maxLines > 0;
   
-  const [scrollOffset, setScrollOffset] = useState(visibleHeight);
-  const targetOffsetRef = useRef(visibleHeight);
-  const isAnimatingRef = useRef(false);
-  const prevLinesCountRef = useRef(0);
+  const [scrollOffset, setScrollOffset] = useState(0);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const prevTextRef = useRef('');
+  const initializedRef = useRef(false);
 
   useEffect(() => {
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+      timerRef.current = null;
+    }
+
     if (!shouldAnimate) {
+      setScrollOffset(0);
       return;
     }
 
-    if (lines.length > prevLinesCountRef.current) {
-      const targetPosition = visibleHeight - totalTextHeight;
-      targetOffsetRef.current = targetPosition;
-      
-      if (!isAnimatingRef.current) {
-        isAnimatingRef.current = true;
-        const intervalMs = 16;
-        const pixelsPerFrame = (scrollSpeed / 1000) * intervalMs;
-        
-        const timer = setInterval(() => {
-          setScrollOffset(prev => {
-            const target = targetOffsetRef.current;
-            if (prev <= target) {
-              isAnimatingRef.current = false;
-              clearInterval(timer);
-              return target;
-            }
-            return prev - pixelsPerFrame;
-          });
-        }, intervalMs);
-        
-        return () => clearInterval(timer);
-      }
-    }
-    prevLinesCountRef.current = lines.length;
-  }, [lines.length, shouldAnimate, totalTextHeight, visibleHeight, scrollSpeed]);
+    const textChanged = text !== prevTextRef.current;
+    const isFirstRun = !initializedRef.current;
+    
+    prevTextRef.current = text;
+    initializedRef.current = true;
 
-  useEffect(() => {
-    if (!shouldAnimate) {
-      setScrollOffset(0);
-      targetOffsetRef.current = 0;
+    if (isFirstRun || textChanged) {
+      setScrollOffset(visibleHeight);
     }
-  }, [shouldAnimate]);
+
+    const targetPosition = -totalTextHeight;
+    const intervalMs = 16;
+    const pixelsPerFrame = (scrollSpeed / 1000) * intervalMs;
+
+    timerRef.current = setInterval(() => {
+      setScrollOffset(prev => {
+        if (prev <= targetPosition) {
+          if (scrollLoop) {
+            return visibleHeight;
+          }
+          if (timerRef.current) {
+            clearInterval(timerRef.current);
+            timerRef.current = null;
+          }
+          return targetPosition;
+        }
+        return prev - pixelsPerFrame;
+      });
+    }, intervalMs);
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, [text, shouldAnimate, totalTextHeight, visibleHeight, scrollSpeed, scrollLoop]);
 
   const textTopOffset = shouldAnimate ? scrollOffset : 0;
 
@@ -243,6 +255,7 @@ export function Input({ input }: { input: InputConfig }) {
                 text={input.text!}
                 maxLines={input.textMaxLines ?? 10}
                 scrollSpeed={input.textScrollSpeed ?? 100}
+                scrollLoop={input.textScrollLoop ?? true}
                 fontSize={80}
                 color={input.textColor ?? 'white'}
                 align={input.textAlign ?? 'left'}
@@ -325,6 +338,7 @@ export function SmallInput({
             text={input.text!}
             maxLines={input.textMaxLines ?? 10}
             scrollSpeed={input.textScrollSpeed ?? 100}
+            scrollLoop={input.textScrollLoop ?? true}
             fontSize={30}
             color={input.textColor ?? 'white'}
             align={input.textAlign ?? 'left'}

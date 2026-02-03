@@ -156,7 +156,7 @@ class RoomState {
         return inputId;
     }
     async addNewInput(opts) {
-        var _a, _b, _c, _d;
+        var _a, _b, _c, _d, _e;
         // Remove placeholder if it exists
         await this.removePlaceholder();
         if (opts.type === 'whip') {
@@ -329,6 +329,7 @@ class RoomState {
                 textColor: (_b = opts.textColor) !== null && _b !== void 0 ? _b : '#ffffff',
                 textMaxLines: (_c = opts.textMaxLines) !== null && _c !== void 0 ? _c : 10,
                 textScrollSpeed: (_d = opts.textScrollSpeed) !== null && _d !== void 0 ? _d : 100,
+                textScrollLoop: (_e = opts.textScrollLoop) !== null && _e !== void 0 ? _e : true,
             });
             this.updateStoreWithState();
             return inputId;
@@ -450,6 +451,9 @@ class RoomState {
             if (options.textScrollSpeed !== undefined) {
                 input.textScrollSpeed = options.textScrollSpeed;
             }
+            if (options.textScrollLoop !== undefined) {
+                input.textScrollLoop = options.textScrollLoop;
+            }
         }
         this.updateStoreWithState();
     }
@@ -524,6 +528,7 @@ class RoomState {
             textColor: input.type === 'text-input' ? input.textColor : undefined,
             textMaxLines: input.type === 'text-input' ? input.textMaxLines : undefined,
             textScrollSpeed: input.type === 'text-input' ? input.textScrollSpeed : undefined,
+            textScrollLoop: input.type === 'text-input' ? input.textScrollLoop : undefined,
         }));
         this.output.store.getState().updateState(inputs, this.layout);
     }

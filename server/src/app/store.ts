@@ -16,6 +16,7 @@ export type InputConfig = {
   textColor?: string;
   textMaxLines?: number;
   textScrollSpeed?: number;
+  textScrollLoop?: boolean;
   replaceWith?: InputConfig;
 };
 

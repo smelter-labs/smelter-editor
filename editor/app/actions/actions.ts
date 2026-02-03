@@ -58,6 +58,7 @@ export type Input = {
   textColor?: string;
   textMaxLines?: number;
   textScrollSpeed?: number;
+  textScrollLoop?: boolean;
 };
 
 export type RegisterInputOptions =
@@ -292,6 +293,7 @@ export type UpdateInputOptions = {
   textColor?: string;
   textMaxLines?: number;
   textScrollSpeed?: number;
+  textScrollLoop?: boolean;
 };
 
 export async function updateInput(

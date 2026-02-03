@@ -43,6 +43,7 @@ type TypeSpecificState = {
     textColor: string;
     textMaxLines: number;
     textScrollSpeed: number;
+    textScrollLoop: boolean;
 };
 type UpdateInputOptions = {
     volume: number;
@@ -53,6 +54,7 @@ type UpdateInputOptions = {
     textColor: string;
     textMaxLines: number;
     textScrollSpeed: number;
+    textScrollLoop: boolean;
 };
 export type RegisterInputOptions = {
     type: 'twitch-channel';
@@ -80,6 +82,7 @@ export type RegisterInputOptions = {
     textColor?: string;
     textMaxLines?: number;
     textScrollSpeed?: number;
+    textScrollLoop?: boolean;
 };
 export declare class RoomState {
     private inputs;

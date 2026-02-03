@@ -3,6 +3,8 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { parseCommand } from './parseCommand';
 import { validateCommand, type VoiceCommand } from './commandTypes';
+import { findMatchingMacro, executeMacro, type MacroExecutionCallbacks } from './macroExecutor';
+import type { MacroDefinition } from './macroTypes';
 
 export type UseVoiceCommandsOptions = {
   mp4Files?: string[];
@@ -15,6 +17,9 @@ export type UseVoiceCommandsResult = {
   lastClarify: string | null;
   lastTranscript: string | null;
   isTypingMode: boolean;
+  isMacroMode: boolean;
+  isExecutingMacro: boolean;
+  activeMacro: MacroDefinition | null;
   handleTranscript: (text: string) => void;
 };
 
@@ -114,6 +119,8 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
 }
 
 const STOP_TYPING_PATTERN = /\b(stop typing|end typing|stop dictation|end dictation|finish typing)\b/i;
+const START_MACRO_PATTERN = /\b(start macro|begin macro|macro mode)\b/i;
+const END_MACRO_PATTERN = /\b(end macro|stop macro|cancel macro|exit macro)\b/i;
 
 export function useVoiceCommands(options: UseVoiceCommandsOptions = {}): UseVoiceCommandsResult {
   const { mp4Files = [], imageFiles = [] } = options;
@@ -122,7 +129,11 @@ export function useVoiceCommands(options: UseVoiceCommandsOptions = {}): UseVoic
   const [lastClarify, setLastClarify] = useState<string | null>(null);
   const [lastTranscript, setLastTranscript] = useState<string | null>(null);
   const [isTypingMode, setIsTypingMode] = useState(false);
+  const [isMacroMode, setIsMacroMode] = useState(false);
+  const [isExecutingMacro, setIsExecutingMacro] = useState(false);
+  const [activeMacro, setActiveMacro] = useState<MacroDefinition | null>(null);
   const isTypingModeRef = useRef(false);
+  const isMacroModeRef = useRef(false);
   const mp4FilesRef = useRef(mp4Files);
   const imageFilesRef = useRef(imageFiles);
 
@@ -154,6 +165,77 @@ export function useVoiceCommands(options: UseVoiceCommandsOptions = {}): UseVoic
             detail: { text },
           }),
         );
+        return;
+      }
+
+      if (START_MACRO_PATTERN.test(text.toLowerCase())) {
+        isMacroModeRef.current = true;
+        setIsMacroMode(true);
+        setActiveMacro(null);
+        window.dispatchEvent(new CustomEvent('smelter:voice:macro-mode-started'));
+        return;
+      }
+
+      if (isMacroModeRef.current) {
+        if (END_MACRO_PATTERN.test(text.toLowerCase())) {
+          isMacroModeRef.current = false;
+          setIsMacroMode(false);
+          setActiveMacro(null);
+          window.dispatchEvent(new CustomEvent('smelter:voice:macro-mode-ended'));
+          return;
+        }
+
+        const matchedMacro = findMatchingMacro(text);
+        if (matchedMacro) {
+          isMacroModeRef.current = false;
+          setIsMacroMode(false);
+          setActiveMacro(matchedMacro);
+          setIsExecutingMacro(true);
+
+          const callbacks: MacroExecutionCallbacks = {
+            onStepStart: (step, index, total) => {
+              window.dispatchEvent(
+                new CustomEvent('smelter:voice:macro-step-start', {
+                  detail: { step, index, total, macro: matchedMacro },
+                })
+              );
+            },
+            onStepComplete: (step, index, total) => {
+              window.dispatchEvent(
+                new CustomEvent('smelter:voice:macro-step-complete', {
+                  detail: { step, index, total, macro: matchedMacro },
+                })
+              );
+            },
+            onMacroComplete: (macro) => {
+              setIsExecutingMacro(false);
+              setActiveMacro(null);
+              window.dispatchEvent(
+                new CustomEvent('smelter:voice:macro-complete', {
+                  detail: { macro },
+                })
+              );
+            },
+            onError: (error, step, index) => {
+              setIsExecutingMacro(false);
+              setLastError(`Macro error at step ${index + 1}: ${error.message}`);
+              window.dispatchEvent(
+                new CustomEvent('smelter:voice:macro-error', {
+                  detail: { error: error.message, step, index, macro: matchedMacro },
+                })
+              );
+            },
+          };
+
+          executeMacro(matchedMacro, callbacks).catch((err) => {
+            setIsExecutingMacro(false);
+            setLastError(err instanceof Error ? err.message : 'Macro execution failed');
+          });
+
+          return;
+        }
+
+        setLastError(`No macro found for: "${text}". Say the macro trigger or "end macro" to cancel.`);
         return;
       }
 
@@ -193,6 +275,9 @@ export function useVoiceCommands(options: UseVoiceCommandsOptions = {}): UseVoic
     lastClarify,
     lastTranscript,
     isTypingMode,
+    isMacroMode,
+    isExecutingMacro,
+    activeMacro,
     handleTranscript,
   };
 }

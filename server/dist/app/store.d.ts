@@ -13,6 +13,7 @@ export type InputConfig = {
     textColor?: string;
     textMaxLines?: number;
     textScrollSpeed?: number;
+    textScrollLoop?: boolean;
     replaceWith?: InputConfig;
 };
 export declare const Layouts: readonly ["grid", "primary-on-left", "primary-on-top", "picture-in-picture", "wrapped", "wrapped-static", "transition", "picture-on-picture"];

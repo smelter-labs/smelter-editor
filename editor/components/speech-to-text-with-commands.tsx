@@ -6,8 +6,14 @@ import useSpeechToText from 'react-hook-speech-to-text';
 import { Mic, MicOff, X, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { useVoiceCommands } from '@/lib/voice';
+import { useVoiceCommands, type MacroStep } from '@/lib/voice';
 import { getMP4Suggestions, getPictureSuggestions } from '@/app/actions/actions';
+
+type MacroStepInfo = {
+  step: MacroStep;
+  index: number;
+  total: number;
+};
 
 export function SpeechToTextWithCommands() {
   const params = useParams();
@@ -17,9 +23,24 @@ export function SpeechToTextWithCommands() {
   const [manualInput, setManualInput] = useState('');
   const [mp4Files, setMp4Files] = useState<string[]>([]);
   const [imageFiles, setImageFiles] = useState<string[]>([]);
+  const [currentMacroStep, setCurrentMacroStep] = useState<MacroStepInfo | null>(null);
+  const [commandHistory, setCommandHistory] = useState<string[]>([]);
+  const [historyIndex, setHistoryIndex] = useState(-1);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastProcessedIndex = useRef(-1);
+
+  const HISTORY_KEY = 'smelter:voice:command-history';
+  const MAX_HISTORY = 50;
+
+  useEffect(() => {
+    const stored = localStorage.getItem(HISTORY_KEY);
+    if (stored) {
+      try {
+        setCommandHistory(JSON.parse(stored));
+      } catch {}
+    }
+  }, []);
 
   useEffect(() => {
     getMP4Suggestions().then((data) => {
@@ -32,7 +53,7 @@ export function SpeechToTextWithCommands() {
     }).catch((e) => console.error('[Voice] Failed to load images:', e));
   }, []);
 
-  const { lastCommand, lastError, lastClarify, lastTranscript, isTypingMode, handleTranscript } =
+  const { lastCommand, lastError, lastClarify, lastTranscript, isTypingMode, isMacroMode, isExecutingMacro, activeMacro, handleTranscript } =
     useVoiceCommands({ mp4Files, imageFiles });
 
   const {
@@ -69,6 +90,34 @@ export function SpeechToTextWithCommands() {
     }
   }, [results, interimResult]);
 
+  useEffect(() => {
+    const onMacroStepStart = (e: CustomEvent<{ step: MacroStep; index: number; total: number }>) => {
+      setCurrentMacroStep({
+        step: e.detail.step,
+        index: e.detail.index,
+        total: e.detail.total,
+      });
+    };
+
+    const onMacroComplete = () => {
+      setCurrentMacroStep(null);
+    };
+
+    const onMacroError = () => {
+      setCurrentMacroStep(null);
+    };
+
+    window.addEventListener('smelter:voice:macro-step-start', onMacroStepStart as EventListener);
+    window.addEventListener('smelter:voice:macro-complete', onMacroComplete as EventListener);
+    window.addEventListener('smelter:voice:macro-error', onMacroError as EventListener);
+
+    return () => {
+      window.removeEventListener('smelter:voice:macro-step-start', onMacroStepStart as EventListener);
+      window.removeEventListener('smelter:voice:macro-complete', onMacroComplete as EventListener);
+      window.removeEventListener('smelter:voice:macro-error', onMacroError as EventListener);
+    };
+  }, []);
+
   const handleToggleRecording = () => {
     if (isRecording) {
       stopSpeechToText();
@@ -89,7 +138,13 @@ export function SpeechToTextWithCommands() {
     const text = manualInput.trim();
     if (text) {
       handleTranscript(text);
+      
+      const newHistory = [text, ...commandHistory.filter(cmd => cmd !== text)].slice(0, MAX_HISTORY);
+      setCommandHistory(newHistory);
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(newHistory));
+      
       setManualInput('');
+      setHistoryIndex(-1);
     }
   };
 
@@ -97,6 +152,23 @@ export function SpeechToTextWithCommands() {
     if (e.key === 'Enter') {
       e.preventDefault();
       handleManualSubmit();
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (commandHistory.length > 0) {
+        const newIndex = Math.min(historyIndex + 1, commandHistory.length - 1);
+        setHistoryIndex(newIndex);
+        setManualInput(commandHistory[newIndex]);
+      }
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (historyIndex > 0) {
+        const newIndex = historyIndex - 1;
+        setHistoryIndex(newIndex);
+        setManualInput(commandHistory[newIndex]);
+      } else if (historyIndex === 0) {
+        setHistoryIndex(-1);
+        setManualInput('');
+      }
     }
   };
 
@@ -111,10 +183,10 @@ export function SpeechToTextWithCommands() {
           <div className="flex items-center justify-between mb-3 border-b border-neutral-700 pb-3">
             <div className="flex items-center gap-2">
               {isRecording && (
-                <span className={`size-2 rounded-full animate-pulse ${isTypingMode ? 'bg-purple-500' : 'bg-red-500'}`} />
+                <span className={`size-2 rounded-full animate-pulse ${isMacroMode ? 'bg-orange-500' : isTypingMode ? 'bg-purple-500' : 'bg-red-500'}`} />
               )}
               <span className="text-sm text-neutral-400">
-                {isTypingMode ? '✏️ Typing Mode' : isRecording ? 'Listening...' : isIntroPage ? 'Voice Commands (say "start new room")' : 'Voice Commands'}
+                {isMacroMode ? '🎬 Macro Mode' : isExecutingMacro ? '⚡ Executing Macro...' : isTypingMode ? '✏️ Typing Mode' : isRecording ? 'Listening...' : isIntroPage ? 'Voice Commands (say "start new room")' : 'Voice Commands'}
               </span>
             </div>
             <Button variant="ghost" size="icon" className="size-6" onClick={handleClose}>
@@ -146,6 +218,42 @@ export function SpeechToTextWithCommands() {
             <p className="text-purple-400 text-sm mb-2 bg-purple-500/10 p-2 rounded">
               🎤 Dictating text... Say &quot;stop typing&quot; to finish.
             </p>
+          )}
+
+          {isMacroMode && (
+            <p className="text-orange-400 text-sm mb-2 bg-orange-500/10 p-2 rounded">
+              🎬 Say a macro trigger phrase or &quot;end macro&quot; to cancel.
+            </p>
+          )}
+
+          {isExecutingMacro && activeMacro && (
+            <div className="text-sm mb-2 bg-cyan-500/10 p-3 rounded border border-cyan-500/30">
+              <p className="text-cyan-400 font-medium mb-2">
+                ⚡ Executing: {activeMacro.description}
+              </p>
+              {currentMacroStep && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-xs text-cyan-300/70">
+                    <span>Step {currentMacroStep.index + 1} of {currentMacroStep.total}</span>
+                    <span className="font-mono">{Math.round(((currentMacroStep.index + 1) / currentMacroStep.total) * 100)}%</span>
+                  </div>
+                  <div className="w-full bg-cyan-900/30 rounded-full h-1.5">
+                    <div 
+                      className="bg-cyan-400 h-1.5 rounded-full transition-all duration-300"
+                      style={{ width: `${((currentMacroStep.index + 1) / currentMacroStep.total) * 100}%` }}
+                    />
+                  </div>
+                  <p className="text-cyan-200 text-xs font-mono bg-cyan-900/20 p-2 rounded">
+                    → {currentMacroStep.step.action}
+                    {currentMacroStep.step.params?.inputType && ` (${currentMacroStep.step.params.inputType})`}
+                    {currentMacroStep.step.params?.shader && ` [${currentMacroStep.step.params.shader}]`}
+                    {currentMacroStep.step.params?.inputIndex && ` on input ${currentMacroStep.step.params.inputIndex}`}
+                    {currentMacroStep.step.params?.color && ` color: ${currentMacroStep.step.params.color}`}
+                    {currentMacroStep.step.params?.text && ` "${currentMacroStep.step.params.text.slice(0, 20)}..."`}
+                  </p>
+                </div>
+              )}
+            </div>
           )}
 
           {lastCommand && lastCommand.intent !== 'CLARIFY' && (

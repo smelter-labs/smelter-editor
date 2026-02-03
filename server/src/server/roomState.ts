@@ -29,7 +29,7 @@ type TypeSpecificState =
   | { type: 'kick-channel'; channelId: string; hlsUrl: string; monitor: KickChannelMonitor }
   | { type: 'whip'; whipUrl: string; monitor: WhipInputMonitor }
   | { type: 'image'; imageId: string }
-  | { type: 'text-input'; text: string; textAlign: 'left' | 'center' | 'right'; textColor: string; textMaxLines: number; textScrollSpeed: number };
+  | { type: 'text-input'; text: string; textAlign: 'left' | 'center' | 'right'; textColor: string; textMaxLines: number; textScrollSpeed: number; textScrollLoop: boolean };
 
 type UpdateInputOptions = {
   volume: number;
@@ -40,6 +40,7 @@ type UpdateInputOptions = {
   textColor: string;
   textMaxLines: number;
   textScrollSpeed: number;
+  textScrollLoop: boolean;
 };
 
 export type RegisterInputOptions =
@@ -74,6 +75,7 @@ export type RegisterInputOptions =
       textColor?: string;
       textMaxLines?: number;
       textScrollSpeed?: number;
+      textScrollLoop?: boolean;
     };
 
 const PLACEHOLDER_LOGO_FILE = 'logo_Smelter.png';
@@ -437,6 +439,7 @@ export class RoomState {
         textColor: opts.textColor ?? '#ffffff',
         textMaxLines: opts.textMaxLines ?? 10,
         textScrollSpeed: opts.textScrollSpeed ?? 100,
+        textScrollLoop: opts.textScrollLoop ?? true,
       });
       this.updateStoreWithState();
 
@@ -564,6 +567,9 @@ export class RoomState {
       if (options.textScrollSpeed !== undefined) {
         input.textScrollSpeed = options.textScrollSpeed;
       }
+      if (options.textScrollLoop !== undefined) {
+        input.textScrollLoop = options.textScrollLoop;
+      }
     }
     this.updateStoreWithState();
   }
@@ -641,6 +647,7 @@ export class RoomState {
         textColor: input.type === 'text-input' ? input.textColor : undefined,
         textMaxLines: input.type === 'text-input' ? input.textMaxLines : undefined,
         textScrollSpeed: input.type === 'text-input' ? input.textScrollSpeed : undefined,
+        textScrollLoop: input.type === 'text-input' ? input.textScrollLoop : undefined,
       }));
     this.output.store.getState().updateState(inputs, this.layout);
   }
