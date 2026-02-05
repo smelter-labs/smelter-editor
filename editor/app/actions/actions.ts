@@ -8,6 +8,7 @@ import type { Resolution, ResolutionPreset } from '@/lib/resolution';
 
 const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
 
+
 assert(BASE_URL);
 
 type ShaderParam = {
