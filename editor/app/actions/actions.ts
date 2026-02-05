@@ -6,7 +6,7 @@ import { spawn as nodeSpawn } from 'node:child_process';
 import { assert } from 'node:console';
 import type { Resolution, ResolutionPreset } from '@/lib/resolution';
 
-const BASE_URL = process.env.SMELTER_DEMO_SERVER_URL;
+const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
 
 assert(BASE_URL);
 
