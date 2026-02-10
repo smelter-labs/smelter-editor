@@ -318,6 +318,7 @@ export type UpdateInputOptions = {
   textMaxLines?: number;
   textScrollSpeed?: number;
   textScrollLoop?: boolean;
+  textScrollNudge?: number;
 };
 
 export async function updateInput(

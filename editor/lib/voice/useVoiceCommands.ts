@@ -2,6 +2,7 @@
 
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { parseCommand } from './parseCommand';
+import { normalize } from './normalize';
 import { validateCommand, type VoiceCommand } from './commandTypes';
 import {
   findMatchingMacro,
@@ -20,6 +21,7 @@ export type UseVoiceCommandsResult = {
   lastError: string | null;
   lastClarify: string | null;
   lastTranscript: string | null;
+  lastNormalizedText: string | null;
   isTypingMode: boolean;
   isMacroMode: boolean;
   isExecutingMacro: boolean;
@@ -125,13 +127,28 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
         new CustomEvent('smelter:voice:export-configuration'),
       );
       break;
+    case 'SCROLL_TEXT':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:scroll-text', {
+          detail: {
+            direction: command.direction.toLowerCase(),
+            lines: command.lines,
+          },
+        }),
+      );
+      break;
   }
 }
 
 const STOP_TYPING_PATTERN =
   /\b(stop typing|end typing|stop dictation|end dictation|finish typing)\b/i;
-const START_MACRO_PATTERN = /\b(start macro|begin macro|macro mode)\b/i;
+const START_MACRO_PATTERN =
+  /\bstart\b.*\bmacro\b|\bbegin\b.*\bmacro\b|\bmacro\s+mode\b/i;
 const END_MACRO_PATTERN = /\b(end macro|stop macro|cancel macro|exit macro)\b/i;
+const TYPING_MODE_SCROLL_DOWN_PATTERN = /\bmove\s+(down(?:\s+down)*)\b/i;
+const TYPING_MODE_SCROLL_UP_PATTERN = /\bmove\s+(up(?:\s+up)*)\b/i;
+const SPEED_UP_PATTERN = /\bspeed\s+(up(?:\s+up)*)\b/i;
+const SPEED_DOWN_PATTERN = /\bspeed\s+(down(?:\s+down)*)\b/i;
 
 export function useVoiceCommands(
   options: UseVoiceCommandsOptions = {},
@@ -141,6 +158,9 @@ export function useVoiceCommands(
   const [lastError, setLastError] = useState<string | null>(null);
   const [lastClarify, setLastClarify] = useState<string | null>(null);
   const [lastTranscript, setLastTranscript] = useState<string | null>(null);
+  const [lastNormalizedText, setLastNormalizedText] = useState<string | null>(
+    null,
+  );
   const [isTypingMode, setIsTypingMode] = useState(false);
   const [isMacroMode, setIsMacroMode] = useState(false);
   const [isExecutingMacro, setIsExecutingMacro] = useState(false);
@@ -159,9 +179,14 @@ export function useVoiceCommands(
   }, [imageFiles]);
 
   const handleTranscript = useCallback((text: string) => {
-    setLastTranscript(text);
     setLastError(null);
     setLastClarify(null);
+    setLastCommand(null);
+
+    const normalizedText = normalize(text);
+
+    setLastTranscript(text);
+    setLastNormalizedText(normalizedText);
 
     try {
       if (isTypingModeRef.current) {
@@ -173,6 +198,58 @@ export function useVoiceCommands(
           return;
         }
 
+        const scrollDownMatch = text.match(TYPING_MODE_SCROLL_DOWN_PATTERN);
+        if (scrollDownMatch) {
+          const downWords = scrollDownMatch[1]
+            .split(/\s+/)
+            .filter((w) => w.toLowerCase() === 'down');
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:scroll-text', {
+              detail: { direction: 'down', lines: downWords.length },
+            }),
+          );
+          return;
+        }
+
+        const scrollUpMatch = text.match(TYPING_MODE_SCROLL_UP_PATTERN);
+        if (scrollUpMatch) {
+          const upWords = scrollUpMatch[1]
+            .split(/\s+/)
+            .filter((w) => w.toLowerCase() === 'up');
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:scroll-text', {
+              detail: { direction: 'up', lines: upWords.length },
+            }),
+          );
+          return;
+        }
+
+        const speedUpMatch = text.match(SPEED_UP_PATTERN);
+        if (speedUpMatch) {
+          const upWords = speedUpMatch[1]
+            .split(/\s+/)
+            .filter((w) => w.toLowerCase() === 'up');
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:change-scroll-speed', {
+              detail: { direction: 'up', steps: upWords.length },
+            }),
+          );
+          return;
+        }
+
+        const speedDownMatch = text.match(SPEED_DOWN_PATTERN);
+        if (speedDownMatch) {
+          const downWords = speedDownMatch[1]
+            .split(/\s+/)
+            .filter((w) => w.toLowerCase() === 'down');
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:change-scroll-speed', {
+              detail: { direction: 'down', steps: downWords.length },
+            }),
+          );
+          return;
+        }
+
         window.dispatchEvent(
           new CustomEvent('smelter:voice:append-text', {
             detail: { text },
@@ -181,7 +258,7 @@ export function useVoiceCommands(
         return;
       }
 
-      if (START_MACRO_PATTERN.test(text.toLowerCase())) {
+      if (START_MACRO_PATTERN.test(normalizedText)) {
         isMacroModeRef.current = true;
         setIsMacroMode(true);
         setActiveMacro(null);
@@ -308,6 +385,7 @@ export function useVoiceCommands(
     lastError,
     lastClarify,
     lastTranscript,
+    lastNormalizedText,
     isTypingMode,
     isMacroMode,
     isExecutingMacro,

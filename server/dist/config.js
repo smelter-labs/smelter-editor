@@ -7,8 +7,8 @@ exports.config = process.env.ENVIRONMENT === 'production'
         logger: {
             level: ((_a = process.env.SMELTER_DEMO_ROUTER_LOGGER_LEVEL) !== null && _a !== void 0 ? _a : 'warn'),
         },
-        whepBaseUrl: 'https://puffer.fishjam.io/smelter-editor-whep',
-        whipBaseUrl: 'https://puffer.fishjam.io/smelter-editor-webrtc',
+        whepBaseUrl: 'https://puffer.fishjam.io/smelter-editor-webrtc/whep',
+        whipBaseUrl: 'https://puffer.fishjam.io/smelter-editor-webrtc/whip',
         //h264Decoder: 'vulkan_h264',
         h264Decoder: 'ffmpeg_h264',
         h264Encoder: { type: 'vulkan_h264', bitrate: 20000000 },
@@ -28,8 +28,8 @@ exports.config = process.env.ENVIRONMENT === 'production'
             },
             level: ((_b = process.env.SMELTER_DEMO_ROUTER_LOGGER_LEVEL) !== null && _b !== void 0 ? _b : 'warn'),
         },
-        whepBaseUrl: 'https://puffer.fishjam.io/smelter-editor-whep',
-        whipBaseUrl: 'https://puffer.fishjam.io/smelter-editor-webrtc',
+        whepBaseUrl: 'http://127.0.0.1:9000/whep',
+        whipBaseUrl: 'http://127.0.0.1:9000/whip',
         h264Decoder: 'ffmpeg_h264',
         h264Encoder: {
             type: 'ffmpeg_h264',

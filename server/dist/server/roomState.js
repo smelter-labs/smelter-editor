@@ -339,8 +339,9 @@ class RoomState {
                 textAlign: (_a = opts.textAlign) !== null && _a !== void 0 ? _a : 'left',
                 textColor: (_b = opts.textColor) !== null && _b !== void 0 ? _b : '#ffffff',
                 textMaxLines: (_c = opts.textMaxLines) !== null && _c !== void 0 ? _c : 10,
-                textScrollSpeed: (_d = opts.textScrollSpeed) !== null && _d !== void 0 ? _d : 100,
+                textScrollSpeed: (_d = opts.textScrollSpeed) !== null && _d !== void 0 ? _d : 40,
                 textScrollLoop: (_e = opts.textScrollLoop) !== null && _e !== void 0 ? _e : true,
+                textScrollNudge: 0,
             });
             this.updateStoreWithState();
             return inputId;
@@ -466,6 +467,9 @@ class RoomState {
             if (options.textScrollLoop !== undefined) {
                 input.textScrollLoop = options.textScrollLoop;
             }
+            if (options.textScrollNudge !== undefined) {
+                input.textScrollNudge = options.textScrollNudge;
+            }
         }
         this.updateStoreWithState();
     }
@@ -542,6 +546,7 @@ class RoomState {
             textMaxLines: input.type === 'text-input' ? input.textMaxLines : undefined,
             textScrollSpeed: input.type === 'text-input' ? input.textScrollSpeed : undefined,
             textScrollLoop: input.type === 'text-input' ? input.textScrollLoop : undefined,
+            textScrollNudge: input.type === 'text-input' ? input.textScrollNudge : undefined,
         }));
         this.output.store.getState().updateState(inputs, this.layout);
     }

@@ -17,6 +17,7 @@ export type InputConfig = {
     textMaxLines?: number;
     textScrollSpeed?: number;
     textScrollLoop?: boolean;
+    textScrollNudge?: number;
     replaceWith?: InputConfig;
 };
 export declare const Layouts: readonly ["grid", "primary-on-left", "primary-on-top", "picture-in-picture", "wrapped", "wrapped-static", "transition", "picture-on-picture"];

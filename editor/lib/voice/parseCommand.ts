@@ -167,6 +167,9 @@ const SET_MAX_LINES_PATTERN =
 const EXPORT_CONFIG_PATTERN =
   /\b(export|save|download)\s+(config(?:uration)?|settings)\b/;
 
+const SCROLL_TEXT_DOWN_PATTERN = /\bmove\s+(down(?:\s+down)*)\b/;
+const SCROLL_TEXT_UP_PATTERN = /\bmove\s+(up(?:\s+up)*)\b/;
+
 const TEXT_COLOR_MAP: Record<string, string> = {
   white: '#ffffff',
   black: '#000000',
@@ -360,6 +363,28 @@ export function parseCommand(
       return clarify(['inputIndex'], 'Which input number?');
     }
     return { intent: 'REMOVE_INPUT', inputIndex };
+  }
+
+  const scrollDownMatch = text.match(SCROLL_TEXT_DOWN_PATTERN);
+  if (scrollDownMatch && !hasInputKeyword) {
+    const downWords = scrollDownMatch[1]
+      .split(/\s+/)
+      .filter((w) => w === 'down');
+    return {
+      intent: 'SCROLL_TEXT',
+      direction: 'DOWN' as Direction,
+      lines: downWords.length,
+    };
+  }
+
+  const scrollUpMatch = text.match(SCROLL_TEXT_UP_PATTERN);
+  if (scrollUpMatch && !hasInputKeyword) {
+    const upWords = scrollUpMatch[1].split(/\s+/).filter((w) => w === 'up');
+    return {
+      intent: 'SCROLL_TEXT',
+      direction: 'UP' as Direction,
+      lines: upWords.length,
+    };
   }
 
   if (hasMove && inputIndex !== null) {

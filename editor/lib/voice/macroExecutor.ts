@@ -1,23 +1,16 @@
 import type { MacroDefinition, MacroStep, MacrosConfig } from './macroTypes';
 import { macroStepToVoiceCommand } from './macroTypes';
+import { normalize } from './normalize';
 import macrosJson from './macros.json';
 
 const macrosConfig: MacrosConfig = macrosJson as MacrosConfig;
 
-function normalizeForMatch(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
 export function findMatchingMacro(transcript: string): MacroDefinition | null {
-  const normalized = normalizeForMatch(transcript);
+  const normalized = normalize(transcript);
 
   for (const macro of macrosConfig.macros) {
     for (const trigger of macro.triggers) {
-      const normalizedTrigger = normalizeForMatch(trigger);
+      const normalizedTrigger = normalize(trigger);
       if (
         normalized.includes(normalizedTrigger) ||
         normalizedTrigger.includes(normalized)

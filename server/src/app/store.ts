@@ -22,6 +22,7 @@ export type InputConfig = {
   textMaxLines?: number;
   textScrollSpeed?: number;
   textScrollLoop?: boolean;
+  textScrollNudge?: number;
   replaceWith?: InputConfig;
 };
 

@@ -604,8 +604,11 @@ export function useControlPanelEvents({
       }
 
       if (!input || input.type !== 'text-input') {
-        console.warn('Voice: no text input selected for typing mode');
-        return;
+        input = currentInputs.find((i) => i.type === 'text-input');
+        if (!input) {
+          console.warn('Voice: no text input available for typing mode');
+          return;
+        }
       }
 
       typingInputIdRef.current = input.inputId;
@@ -690,6 +693,56 @@ export function useControlPanelEvents({
       );
     };
   }, [roomId, handleRefreshState, inputs, selectedInputId]);
+
+  useEffect(() => {
+    const SPEED_STEP = 10;
+    const MIN_SPEED = 10;
+    const MAX_SPEED = 400;
+
+    const onChangeScrollSpeed = async (
+      e: CustomEvent<{ direction: 'up' | 'down'; steps: number }>,
+    ) => {
+      const { direction, steps } = e.detail;
+      if (!typingInputIdRef.current) return;
+
+      const currentInputs = inputs || [];
+      const input = currentInputs.find(
+        (i) => i.inputId === typingInputIdRef.current,
+      );
+
+      if (!input || input.type !== 'text-input') return;
+
+      const currentSpeed = input.textScrollSpeed ?? 40;
+      const delta =
+        direction === 'up' ? SPEED_STEP * steps : -SPEED_STEP * steps;
+      const newSpeed = Math.max(
+        MIN_SPEED,
+        Math.min(MAX_SPEED, currentSpeed + delta),
+      );
+
+      try {
+        await updateInput(roomId, input.inputId, {
+          textScrollSpeed: newSpeed,
+          volume: input.volume,
+        });
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to change scroll speed', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:change-scroll-speed',
+      onChangeScrollSpeed as unknown as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:change-scroll-speed',
+        onChangeScrollSpeed as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputs]);
 
   useEffect(() => {
     const onNextLayout = () => {
@@ -959,6 +1012,54 @@ export function useControlPanelEvents({
       window.removeEventListener(
         'smelter:voice:set-text',
         onSetText as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputsRef, selectedInputId]);
+
+  useEffect(() => {
+    const nudgeCounterRef = { current: 0 };
+
+    const onScrollText = async (
+      e: CustomEvent<{ direction: string; lines: number }>,
+    ) => {
+      try {
+        const { direction, lines } = e.detail;
+        const currentInputs = inputsRef.current || [];
+
+        const textInput = selectedInputId
+          ? currentInputs.find(
+              (i: Input) =>
+                i.inputId === selectedInputId && i.type === 'text-input',
+            )
+          : currentInputs.find((i: Input) => i.type === 'text-input');
+
+        if (!textInput) {
+          console.warn('Voice: no text input found for scroll');
+          return;
+        }
+
+        nudgeCounterRef.current += 1;
+        const nudgeValue = direction === 'down' ? lines : -lines;
+        const uniqueNudge = nudgeValue + nudgeCounterRef.current * 0.001;
+
+        await updateInput(roomId, textInput.inputId, {
+          textScrollNudge: uniqueNudge,
+          volume: textInput.volume,
+        });
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to scroll text', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:scroll-text',
+      onScrollText as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:scroll-text',
+        onScrollText as unknown as EventListener,
       );
     };
   }, [roomId, handleRefreshState, inputsRef, selectedInputId]);

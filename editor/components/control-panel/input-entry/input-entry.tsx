@@ -119,7 +119,7 @@ export default function InputEntry({
     input.textMaxLines ?? 10,
   );
   const [textScrollSpeed, setTextScrollSpeed] = useState<number>(
-    input.textScrollSpeed ?? 100,
+    input.textScrollSpeed ?? 40,
   );
   const [textScrollLoop, setTextScrollLoop] = useState<boolean>(
     input.textScrollLoop ?? true,

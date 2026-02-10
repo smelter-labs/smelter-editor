@@ -32,7 +32,7 @@ type TypeSpecificState =
   | { type: 'kick-channel'; channelId: string; hlsUrl: string; monitor: KickChannelMonitor }
   | { type: 'whip'; whipUrl: string; monitor: WhipInputMonitor }
   | { type: 'image'; imageId: string }
-  | { type: 'text-input'; text: string; textAlign: 'left' | 'center' | 'right'; textColor: string; textMaxLines: number; textScrollSpeed: number; textScrollLoop: boolean };
+  | { type: 'text-input'; text: string; textAlign: 'left' | 'center' | 'right'; textColor: string; textMaxLines: number; textScrollSpeed: number; textScrollLoop: boolean; textScrollNudge: number };
 
 type UpdateInputOptions = {
   volume: number;
@@ -45,6 +45,7 @@ type UpdateInputOptions = {
   textMaxLines: number;
   textScrollSpeed: number;
   textScrollLoop: boolean;
+  textScrollNudge: number;
 };
 
 export type RegisterInputOptions =
@@ -454,8 +455,9 @@ export class RoomState {
         textAlign: opts.textAlign ?? 'left',
         textColor: opts.textColor ?? '#ffffff',
         textMaxLines: opts.textMaxLines ?? 10,
-        textScrollSpeed: opts.textScrollSpeed ?? 100,
+        textScrollSpeed: opts.textScrollSpeed ?? 40,
         textScrollLoop: opts.textScrollLoop ?? true,
+        textScrollNudge: 0,
       });
       this.updateStoreWithState();
 
@@ -587,6 +589,9 @@ export class RoomState {
       if (options.textScrollLoop !== undefined) {
         input.textScrollLoop = options.textScrollLoop;
       }
+      if (options.textScrollNudge !== undefined) {
+        input.textScrollNudge = options.textScrollNudge;
+      }
     }
     this.updateStoreWithState();
   }
@@ -666,6 +671,7 @@ export class RoomState {
         textMaxLines: input.type === 'text-input' ? input.textMaxLines : undefined,
         textScrollSpeed: input.type === 'text-input' ? input.textScrollSpeed : undefined,
         textScrollLoop: input.type === 'text-input' ? input.textScrollLoop : undefined,
+        textScrollNudge: input.type === 'text-input' ? input.textScrollNudge : undefined,
       }));
     this.output.store.getState().updateState(inputs, this.layout);
   }

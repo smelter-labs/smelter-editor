@@ -117,6 +117,12 @@ export type ExportConfigurationCommand = {
   intent: 'EXPORT_CONFIGURATION';
 };
 
+export type ScrollTextCommand = {
+  intent: 'SCROLL_TEXT';
+  direction: Direction;
+  lines: number;
+};
+
 export type ClarifyCommand = {
   intent: 'CLARIFY';
   missing: string[];
@@ -139,6 +145,7 @@ export type VoiceCommand =
   | SetTextColorCommand
   | SetTextMaxLinesCommand
   | ExportConfigurationCommand
+  | ScrollTextCommand
   | ClarifyCommand;
 
 export type VoiceInput = {
@@ -292,6 +299,20 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
 
     case 'EXPORT_CONFIGURATION':
       return { intent: 'EXPORT_CONFIGURATION' };
+
+    case 'SCROLL_TEXT':
+      if (
+        typeof c.direction === 'string' &&
+        Object.values(Direction).includes(c.direction as Direction) &&
+        typeof c.lines === 'number'
+      ) {
+        return {
+          intent: 'SCROLL_TEXT',
+          direction: c.direction as Direction,
+          lines: c.lines,
+        };
+      }
+      return null;
 
     case 'CLARIFY':
       if (Array.isArray(c.missing) && typeof c.question === 'string') {

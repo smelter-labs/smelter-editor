@@ -7,6 +7,7 @@ import { Mic, MicOff, X, Send } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useVoiceCommands, type MacroStep } from '@/lib/voice';
+import { useSlotMachineText } from '@/hooks/useSlotMachineText';
 import {
   getMP4Suggestions,
   getPictureSuggestions,
@@ -16,6 +17,12 @@ type MacroStepInfo = {
   step: MacroStep;
   index: number;
   total: number;
+};
+
+type TranscriptEntry = {
+  transcript: string;
+  intent: string | null;
+  timestamp: number;
 };
 
 export function SpeechToTextWithCommands() {
@@ -30,6 +37,9 @@ export function SpeechToTextWithCommands() {
     useState<MacroStepInfo | null>(null);
   const [commandHistory, setCommandHistory] = useState<string[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [transcriptHistory, setTranscriptHistory] = useState<TranscriptEntry[]>(
+    [],
+  );
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastProcessedIndex = useRef(-1);
@@ -66,12 +76,21 @@ export function SpeechToTextWithCommands() {
     lastError,
     lastClarify,
     lastTranscript,
+    lastNormalizedText,
     isTypingMode,
     isMacroMode,
     isExecutingMacro,
     activeMacro,
     handleTranscript,
   } = useVoiceCommands({ mp4Files, imageFiles });
+
+  const SLOT_MACHINE_DELAY = 1500;
+  const { displayText: animatedTranscript, isAnimating } = useSlotMachineText(
+    lastTranscript ?? '',
+    lastNormalizedText ?? lastTranscript ?? '',
+    lastNormalizedText !== null && lastNormalizedText !== lastTranscript,
+    { delay: SLOT_MACHINE_DELAY },
+  );
 
   const {
     error,
@@ -102,10 +121,23 @@ export function SpeechToTextWithCommands() {
   }, [results, handleTranscript]);
 
   useEffect(() => {
+    if (lastTranscript) {
+      setTranscriptHistory((prev) => [
+        {
+          transcript: lastTranscript,
+          intent: lastCommand?.intent ?? null,
+          timestamp: Date.now(),
+        },
+        ...prev.slice(0, 49),
+      ]);
+    }
+  }, [lastTranscript, lastCommand]);
+
+  useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = 0;
     }
-  }, [results, interimResult]);
+  }, [transcriptHistory, interimResult]);
 
   useEffect(() => {
     const onMacroStepStart = (
@@ -120,10 +152,15 @@ export function SpeechToTextWithCommands() {
 
     const onMacroComplete = () => {
       setCurrentMacroStep(null);
+      // Restart speech recognition after macro execution
+      // The Web Speech API may have stopped during async macro execution
+      startSpeechToText();
     };
 
     const onMacroError = () => {
       setCurrentMacroStep(null);
+      // Restart speech recognition after macro error
+      startSpeechToText();
     };
 
     window.addEventListener(
@@ -153,7 +190,7 @@ export function SpeechToTextWithCommands() {
         onMacroError as EventListener,
       );
     };
-  }, []);
+  }, [startSpeechToText]);
 
   const handleToggleRecording = () => {
     if (isRecording) {
@@ -212,14 +249,12 @@ export function SpeechToTextWithCommands() {
     }
   };
 
-  const reversedResults = [...results].reverse();
-
   const isIntroPage = !roomId;
 
   return (
     <div className='fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-3'>
       {isOpen && (
-        <div className='bg-[#141414] border border-neutral-700 p-4 w-[400px] max-h-[400px]'>
+        <div className='bg-[#141414] border border-neutral-700 p-4 w-[600px] max-h-[400px]'>
           <div className='flex items-center justify-between mb-3 border-b border-neutral-700 pb-3'>
             <div className='flex items-center gap-2'>
               {isRecording && (
@@ -251,8 +286,18 @@ export function SpeechToTextWithCommands() {
           </div>
 
           {lastTranscript && (
-            <p className='text-neutral-400 text-sm mb-2 font-mono'>
-              &quot;{lastTranscript}&quot;
+            <p
+              className={cn(
+                'text-lg mb-2 font-mono overflow-hidden text-ellipsis whitespace-nowrap',
+                isAnimating ? 'text-cyan-400' : 'text-neutral-300',
+              )}
+              title={animatedTranscript}>
+              &quot;{animatedTranscript}&quot;
+              {lastCommand && !isAnimating && (
+                <span className='text-green-400 ml-2 font-semibold'>
+                  → {lastCommand.intent}
+                </span>
+              )}
             </p>
           )}
 
@@ -392,14 +437,17 @@ export function SpeechToTextWithCommands() {
             {interimResult && (
               <p className='text-neutral-500 text-sm italic'>{interimResult}</p>
             )}
-            {reversedResults.map((result) => (
+            {transcriptHistory.map((entry) => (
               <p
-                key={(result as { timestamp: number }).timestamp}
-                className='text-neutral-200 text-sm'>
-                {(result as { transcript: string }).transcript}
+                key={entry.timestamp}
+                className='text-neutral-200 text-sm font-mono overflow-hidden text-ellipsis whitespace-nowrap'>
+                &quot;{entry.transcript}&quot;
+                {entry.intent && (
+                  <span className='text-green-400 ml-2'>→ {entry.intent}</span>
+                )}
               </p>
             ))}
-            {results.length === 0 && !interimResult && !error && (
+            {transcriptHistory.length === 0 && !interimResult && !error && (
               <p className='text-neutral-600 text-sm'>
                 {isRecording ? 'Say a command...' : 'Click mic to start'}
               </p>

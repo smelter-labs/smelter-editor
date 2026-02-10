@@ -47,6 +47,8 @@ const PHRASE_ALIASES: [RegExp, string][] = [
   [/\beffect\b/gi, 'shader'],
   [/\bthe\s*select\b/gi, 'deselect'],
   [/\b(light|flight|slide)\b/gi, 'layout'],
+  [/\bstart\s+new\s+macro\b/gi, 'start macro'],
+  [/\bgalaxy\b/gi, 'galactic'],
 ];
 
 const INPUT_ALIASES = ['feed', 'source', 'inputs'];

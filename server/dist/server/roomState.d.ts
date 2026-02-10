@@ -46,6 +46,7 @@ type TypeSpecificState = {
     textMaxLines: number;
     textScrollSpeed: number;
     textScrollLoop: boolean;
+    textScrollNudge: number;
 };
 type UpdateInputOptions = {
     volume: number;
@@ -58,6 +59,7 @@ type UpdateInputOptions = {
     textMaxLines: number;
     textScrollSpeed: number;
     textScrollLoop: boolean;
+    textScrollNudge: number;
 };
 export type RegisterInputOptions = {
     type: 'twitch-channel';

@@ -326,6 +326,7 @@ const UpdateInputSchema = Type.Object({
   textColor: Type.Optional(Type.String()),
   textMaxLines: Type.Optional(Type.Number()),
   textScrollSpeed: Type.Optional(Type.Number()),
+  textScrollNudge: Type.Optional(Type.Number()),
 });
 
 routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(

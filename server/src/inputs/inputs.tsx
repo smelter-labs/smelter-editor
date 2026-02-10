@@ -131,6 +131,7 @@ type ScrollingTextProps = {
   align: 'left' | 'center' | 'right';
   containerWidth: number;
   containerHeight: number;
+  scrollNudge?: number;
 };
 
 function ScrollingText({
@@ -143,6 +144,7 @@ function ScrollingText({
   align,
   containerWidth,
   containerHeight,
+  scrollNudge = 0,
 }: ScrollingTextProps) {
   const lineHeight = fontSize * 1.2;
   const visibleHeight = maxLines > 0 ? maxLines * lineHeight : containerHeight;
@@ -153,9 +155,49 @@ function ScrollingText({
   const startPosition = containerHeight;
   
   const [scrollOffset, setScrollOffset] = useState(startPosition);
+  const [permanentNudgeOffset, setPermanentNudgeOffset] = useState(0);
+  const permanentNudgeRef = useRef(0);
+  const [animatingNudge, setAnimatingNudge] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const prevTextRef = useRef('');
+  const nudgeTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const prevLinesCountRef = useRef(0);
   const initializedRef = useRef(false);
+  const prevNudgeRef = useRef(0);
+
+  useEffect(() => {
+    if (scrollNudge !== 0 && scrollNudge !== prevNudgeRef.current) {
+      prevNudgeRef.current = scrollNudge;
+      const nudgeAmount = Math.floor(scrollNudge) * lineHeight;
+      const nudgeDuration = 500;
+      const intervalMs = 16;
+      const steps = nudgeDuration / intervalMs;
+      let currentStep = 0;
+
+      if (nudgeTimerRef.current) {
+        clearInterval(nudgeTimerRef.current);
+      }
+
+      nudgeTimerRef.current = setInterval(() => {
+        currentStep++;
+        const progress = currentStep / steps;
+        const eased = progress < 0.5 
+          ? 4 * progress * progress * progress 
+          : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+        
+        setAnimatingNudge(nudgeAmount * eased);
+
+        if (currentStep >= steps) {
+          if (nudgeTimerRef.current) {
+            clearInterval(nudgeTimerRef.current);
+            nudgeTimerRef.current = null;
+          }
+          permanentNudgeRef.current += nudgeAmount;
+          setPermanentNudgeOffset(permanentNudgeRef.current);
+          setAnimatingNudge(0);
+        }
+      }, intervalMs);
+    }
+  }, [scrollNudge, lineHeight]);
 
   useEffect(() => {
     if (timerRef.current) {
@@ -168,13 +210,14 @@ function ScrollingText({
       return;
     }
 
-    const textChanged = text !== prevTextRef.current;
+    const currentLinesCount = lines.length;
+    const prevLinesCount = prevLinesCountRef.current;
     const isFirstRun = !initializedRef.current;
     
-    prevTextRef.current = text;
+    prevLinesCountRef.current = currentLinesCount;
     initializedRef.current = true;
 
-    if (isFirstRun || textChanged) {
+    if (isFirstRun) {
       setScrollOffset(startPosition);
     }
 
@@ -184,15 +227,18 @@ function ScrollingText({
 
     timerRef.current = setInterval(() => {
       setScrollOffset(prev => {
-        if (prev <= targetPosition) {
+        const effectivePosition = prev + permanentNudgeRef.current;
+        if (effectivePosition <= targetPosition) {
           if (scrollLoop) {
+            permanentNudgeRef.current = 0;
+            setPermanentNudgeOffset(0);
             return startPosition;
           }
           if (timerRef.current) {
             clearInterval(timerRef.current);
             timerRef.current = null;
           }
-          return targetPosition;
+          return targetPosition - permanentNudgeRef.current;
         }
         return prev - pixelsPerFrame;
       });
@@ -204,9 +250,9 @@ function ScrollingText({
         timerRef.current = null;
       }
     };
-  }, [text, shouldAnimate, totalTextHeight, startPosition, scrollSpeed, scrollLoop]);
+  }, [text, shouldAnimate, totalTextHeight, startPosition, scrollSpeed, scrollLoop, lines.length]);
 
-  const textTopOffset = shouldAnimate ? scrollOffset : 0;
+  const textTopOffset = shouldAnimate ? scrollOffset + permanentNudgeOffset + animatingNudge : 0;
 
   return (
     <View style={{ 
@@ -256,13 +302,14 @@ export function Input({ input }: { input: InputConfig }) {
               <ScrollingText
                 text={input.text!}
                 maxLines={input.textMaxLines ?? 10}
-                scrollSpeed={input.textScrollSpeed ?? 100}
+                scrollSpeed={input.textScrollSpeed ?? 40}
                 scrollLoop={input.textScrollLoop ?? true}
                 fontSize={80}
                 color={input.textColor ?? 'white'}
                 align={input.textAlign ?? 'left'}
                 containerWidth={resolution.width}
                 containerHeight={resolution.height}
+                scrollNudge={input.textScrollNudge}
               />
             </View>
           ) : (
@@ -339,13 +386,14 @@ export function SmallInput({
           <ScrollingText
             text={input.text!}
             maxLines={input.textMaxLines ?? 10}
-            scrollSpeed={input.textScrollSpeed ?? 100}
+            scrollSpeed={input.textScrollSpeed ?? 40}
             scrollLoop={input.textScrollLoop ?? true}
             fontSize={30}
             color={input.textColor ?? 'white'}
             align={input.textAlign ?? 'left'}
             containerWidth={resolution.width}
             containerHeight={resolution.height}
+            scrollNudge={input.textScrollNudge}
           />
         </View>
       ) : (

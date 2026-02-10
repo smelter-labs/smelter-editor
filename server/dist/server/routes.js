@@ -256,6 +256,7 @@ const UpdateInputSchema = typebox_1.Type.Object({
     textColor: typebox_1.Type.Optional(typebox_1.Type.String()),
     textMaxLines: typebox_1.Type.Optional(typebox_1.Type.Number()),
     textScrollSpeed: typebox_1.Type.Optional(typebox_1.Type.Number()),
+    textScrollNudge: typebox_1.Type.Optional(typebox_1.Type.Number()),
 });
 exports.routes.post('/room/:roomId/input/:inputId', { schema: { body: UpdateInputSchema } }, async (req, res) => {
     const { roomId, inputId } = req.params;
