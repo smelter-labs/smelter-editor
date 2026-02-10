@@ -93,6 +93,7 @@ export type StopTypingCommand = {
 
 export type StartRoomCommand = {
   intent: 'START_ROOM';
+  vertical?: boolean;
 };
 
 export type NextLayoutCommand = {
@@ -111,6 +112,11 @@ export type SetTextColorCommand = {
 export type SetTextMaxLinesCommand = {
   intent: 'SET_TEXT_MAX_LINES';
   maxLines: number;
+};
+
+export type SetTextFontSizeCommand = {
+  intent: 'SET_TEXT_FONT_SIZE';
+  fontSize: number;
 };
 
 export type ExportConfigurationCommand = {
@@ -144,6 +150,7 @@ export type VoiceCommand =
   | PreviousLayoutCommand
   | SetTextColorCommand
   | SetTextMaxLinesCommand
+  | SetTextFontSizeCommand
   | ExportConfigurationCommand
   | ScrollTextCommand
   | ClarifyCommand;
@@ -277,7 +284,10 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
       return { intent: 'STOP_TYPING' };
 
     case 'START_ROOM':
-      return { intent: 'START_ROOM' };
+      return {
+        intent: 'START_ROOM',
+        vertical: c.vertical === true ? true : undefined,
+      };
 
     case 'NEXT_LAYOUT':
       return { intent: 'NEXT_LAYOUT' };
@@ -294,6 +304,12 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
     case 'SET_TEXT_MAX_LINES':
       if (typeof c.maxLines === 'number') {
         return { intent: 'SET_TEXT_MAX_LINES', maxLines: c.maxLines };
+      }
+      return null;
+
+    case 'SET_TEXT_FONT_SIZE':
+      if (typeof c.fontSize === 'number') {
+        return { intent: 'SET_TEXT_FONT_SIZE', fontSize: c.fontSize };
       }
       return null;
 

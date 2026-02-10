@@ -23,6 +23,7 @@ export type InputConfig = {
   textScrollSpeed?: number;
   textScrollLoop?: boolean;
   textScrollNudge?: number;
+  textFontSize?: number;
   replaceWith?: InputConfig;
 };
 

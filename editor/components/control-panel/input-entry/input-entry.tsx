@@ -124,6 +124,9 @@ export default function InputEntry({
   const [textScrollLoop, setTextScrollLoop] = useState<boolean>(
     input.textScrollLoop ?? true,
   );
+  const [textFontSize, setTextFontSize] = useState<number>(
+    input.textFontSize ?? 80,
+  );
   const [isTextSaving, setIsTextSaving] = useState(false);
   const textSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isMobile = useIsMobile();
@@ -181,6 +184,12 @@ export default function InputEntry({
       setTextScrollLoop(input.textScrollLoop);
     }
   }, [input.textScrollLoop]);
+
+  useEffect(() => {
+    if (input.textFontSize !== undefined) {
+      setTextFontSize(input.textFontSize);
+    }
+  }, [input.textFontSize]);
 
   const lastParamChangeRef = useRef<{ [key: string]: number }>({});
   const [sliderValues, setSliderValues] = useState<{ [key: string]: number }>(
@@ -334,6 +343,24 @@ export default function InputEntry({
       try {
         await updateInput(roomId, input.inputId, {
           textScrollLoop: newLoop,
+          shaders: input.shaders,
+          volume: input.volume,
+        });
+        await refreshState();
+      } finally {
+        setIsTextSaving(false);
+      }
+    },
+    [roomId, input, refreshState],
+  );
+
+  const handleTextFontSizeChange = useCallback(
+    async (newFontSize: number) => {
+      setTextFontSize(newFontSize);
+      setIsTextSaving(true);
+      try {
+        await updateInput(roomId, input.inputId, {
+          textFontSize: newFontSize,
           shaders: input.shaders,
           volume: input.volume,
         });
@@ -768,6 +795,26 @@ export default function InputEntry({
                   onChange={(e) => handleTextColorChange(e.target.value)}
                   className='w-8 h-8 rounded cursor-pointer bg-neutral-800 border border-neutral-700'
                   style={{ cursor: 'pointer' }}
+                />
+              </div>
+              <div className='flex items-center gap-2'>
+                <span className='text-xs text-neutral-400'>Font size:</span>
+                <input
+                  data-no-dnd
+                  type='number'
+                  min={20}
+                  max={200}
+                  value={textFontSize}
+                  onChange={(e) =>
+                    handleTextFontSizeChange(
+                      Math.max(
+                        20,
+                        Math.min(200, parseInt(e.target.value) || 80),
+                      ),
+                    )
+                  }
+                  onKeyDown={(e) => e.stopPropagation()}
+                  className='w-14 p-1 bg-neutral-800 border border-neutral-700 rounded text-white text-sm text-center focus:outline-none focus:border-neutral-500'
                 />
               </div>
             </div>

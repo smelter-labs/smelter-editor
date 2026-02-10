@@ -14,6 +14,7 @@ export type MacroActionParams = {
   layout?: string;
   color?: string;
   maxLines?: number;
+  fontSize?: number;
   targetColor?: string;
   text?: string;
   textAlign?: 'left' | 'center' | 'right';
@@ -41,6 +42,7 @@ export type MacroAction =
   | 'SET_LAYOUT'
   | 'SET_TEXT_COLOR'
   | 'SET_TEXT_MAX_LINES'
+  | 'SET_TEXT_FONT_SIZE'
   | 'SET_TEXT';
 
 export type MacroDefinition = {
@@ -133,6 +135,12 @@ export function macroStepToVoiceCommand(step: MacroStep): VoiceCommand | null {
     case 'SET_TEXT_MAX_LINES':
       if (params?.maxLines !== undefined) {
         return { intent: 'SET_TEXT_MAX_LINES', maxLines: params.maxLines };
+      }
+      return null;
+
+    case 'SET_TEXT_FONT_SIZE':
+      if (params?.fontSize !== undefined) {
+        return { intent: 'SET_TEXT_FONT_SIZE', fontSize: params.fontSize };
       }
       return null;
 

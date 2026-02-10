@@ -30,6 +30,7 @@ type ConfigurationSectionProps = {
   inputs: Input[];
   layout: Layout;
   roomId: string;
+  resolution?: { width: number; height: number };
   refreshState: () => Promise<void>;
   pendingWhipInputs: PendingWhipInput[];
   setPendingWhipInputs: React.Dispatch<
@@ -48,6 +49,7 @@ export function ConfigurationSection({
   inputs,
   layout,
   roomId,
+  resolution,
   refreshState,
   pendingWhipInputs,
   setPendingWhipInputs,
@@ -59,7 +61,7 @@ export function ConfigurationSection({
   const handleExport = useCallback(async () => {
     setIsExporting(true);
     try {
-      const config = exportRoomConfig(inputs, layout);
+      const config = exportRoomConfig(inputs, layout, resolution);
       downloadRoomConfig(config);
       toast.success('Configuration exported successfully');
     } catch (e: any) {
@@ -68,7 +70,7 @@ export function ConfigurationSection({
     } finally {
       setIsExporting(false);
     }
-  }, [inputs, layout]);
+  }, [inputs, layout, resolution]);
 
   useEffect(() => {
     const onVoiceExport = () => {
@@ -188,20 +190,20 @@ export function ConfigurationSection({
     await refreshState();
 
     for (const { inputId, config: inputConfig } of createdInputIds) {
-      if (
-        inputConfig.shaders.length > 0 ||
-        inputConfig.showTitle !== undefined
-      ) {
-        try {
-          await updateInput(roomId, inputId, {
-            volume: inputConfig.volume,
-            shaders: inputConfig.shaders,
-            showTitle: inputConfig.showTitle,
-            textColor: inputConfig.textColor,
-          });
-        } catch (e) {
-          console.warn(`Failed to update input ${inputId}:`, e);
-        }
+      try {
+        await updateInput(roomId, inputId, {
+          volume: inputConfig.volume,
+          shaders: inputConfig.shaders,
+          showTitle: inputConfig.showTitle,
+          textColor: inputConfig.textColor,
+          orientation: inputConfig.orientation,
+          textMaxLines: inputConfig.textMaxLines,
+          textScrollSpeed: inputConfig.textScrollSpeed,
+          textScrollLoop: inputConfig.textScrollLoop,
+          textFontSize: inputConfig.textFontSize,
+        });
+      } catch (e) {
+        console.warn(`Failed to update input ${inputId}:`, e);
       }
     }
 

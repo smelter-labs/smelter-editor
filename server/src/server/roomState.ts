@@ -32,7 +32,7 @@ type TypeSpecificState =
   | { type: 'kick-channel'; channelId: string; hlsUrl: string; monitor: KickChannelMonitor }
   | { type: 'whip'; whipUrl: string; monitor: WhipInputMonitor }
   | { type: 'image'; imageId: string }
-  | { type: 'text-input'; text: string; textAlign: 'left' | 'center' | 'right'; textColor: string; textMaxLines: number; textScrollSpeed: number; textScrollLoop: boolean; textScrollNudge: number };
+  | { type: 'text-input'; text: string; textAlign: 'left' | 'center' | 'right'; textColor: string; textMaxLines: number; textScrollSpeed: number; textScrollLoop: boolean; textScrollNudge: number; textFontSize: number };
 
 type UpdateInputOptions = {
   volume: number;
@@ -46,6 +46,7 @@ type UpdateInputOptions = {
   textScrollSpeed: number;
   textScrollLoop: boolean;
   textScrollNudge: number;
+  textFontSize: number;
 };
 
 export type RegisterInputOptions =
@@ -81,6 +82,7 @@ export type RegisterInputOptions =
       textMaxLines?: number;
       textScrollSpeed?: number;
       textScrollLoop?: boolean;
+      textFontSize?: number;
     };
 
 const PLACEHOLDER_LOGO_FILE = 'logo_Smelter.png';
@@ -458,6 +460,7 @@ export class RoomState {
         textScrollSpeed: opts.textScrollSpeed ?? 40,
         textScrollLoop: opts.textScrollLoop ?? true,
         textScrollNudge: 0,
+        textFontSize: opts.textFontSize ?? 80,
       });
       this.updateStoreWithState();
 
@@ -592,6 +595,9 @@ export class RoomState {
       if (options.textScrollNudge !== undefined) {
         input.textScrollNudge = options.textScrollNudge;
       }
+      if (options.textFontSize !== undefined) {
+        input.textFontSize = options.textFontSize;
+      }
     }
     this.updateStoreWithState();
   }
@@ -672,6 +678,7 @@ export class RoomState {
         textScrollSpeed: input.type === 'text-input' ? input.textScrollSpeed : undefined,
         textScrollLoop: input.type === 'text-input' ? input.textScrollLoop : undefined,
         textScrollNudge: input.type === 'text-input' ? input.textScrollNudge : undefined,
+        textFontSize: input.type === 'text-input' ? input.textFontSize : undefined,
       }));
     this.output.store.getState().updateState(inputs, this.layout);
   }

@@ -187,5 +187,16 @@ function dispatchMacroStep(step: MacroStep): void {
         }),
       );
       break;
+
+    case 'SET_TEXT_FONT_SIZE':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:set-text-font-size', {
+          detail: {
+            fontSize: params?.fontSize,
+            inputIndex: params?.inputIndex,
+          },
+        }),
+      );
+      break;
   }
 }

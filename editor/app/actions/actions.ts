@@ -69,6 +69,7 @@ export type Input = {
   textMaxLines?: number;
   textScrollSpeed?: number;
   textScrollLoop?: boolean;
+  textFontSize?: number;
 };
 
 export type RegisterInputOptions =
@@ -319,6 +320,7 @@ export type UpdateInputOptions = {
   textScrollSpeed?: number;
   textScrollLoop?: boolean;
   textScrollNudge?: number;
+  textFontSize?: number;
 };
 
 export async function updateInput(

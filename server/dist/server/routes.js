@@ -359,6 +359,7 @@ function publicInputState(input) {
                 textColor: input.textColor,
                 textMaxLines: input.textMaxLines,
                 textScrollSpeed: input.textScrollSpeed,
+                textFontSize: input.textFontSize,
             };
         default:
             throw new Error('Unknown input state');

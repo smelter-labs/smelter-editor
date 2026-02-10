@@ -857,6 +857,50 @@ export function useControlPanelEvents({
   }, [roomId, handleRefreshState, inputs, selectedInputId]);
 
   useEffect(() => {
+    const onSetTextFontSize = async (
+      e: CustomEvent<{ fontSize: number; inputIndex?: number }>,
+    ) => {
+      try {
+        const { fontSize, inputIndex } = e.detail;
+        const currentInputs = inputsRef.current || [];
+
+        let input;
+        if (inputIndex !== undefined) {
+          input = currentInputs[inputIndex - 1];
+        } else if (selectedInputId) {
+          input = currentInputs.find(
+            (i: Input) => i.inputId === selectedInputId,
+          );
+        }
+
+        if (!input || input.type !== 'text-input') {
+          console.warn('Voice: no text input found for font size change');
+          return;
+        }
+
+        await updateInput(roomId, input.inputId, {
+          textFontSize: fontSize,
+          volume: input.volume,
+        });
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to set text font size', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:set-text-font-size',
+      onSetTextFontSize as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:set-text-font-size',
+        onSetTextFontSize as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputsRef, selectedInputId]);
+
+  useEffect(() => {
     const onExportConfiguration = () => {
       window.dispatchEvent(new CustomEvent('smelter:export-configuration'));
     };

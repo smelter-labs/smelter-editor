@@ -162,7 +162,7 @@ class RoomState {
         return inputId;
     }
     async addNewInput(opts) {
-        var _a, _b, _c, _d, _e;
+        var _a, _b, _c, _d, _e, _f;
         // Remove placeholder if it exists
         await this.removePlaceholder();
         if (opts.type === 'whip') {
@@ -342,6 +342,7 @@ class RoomState {
                 textScrollSpeed: (_d = opts.textScrollSpeed) !== null && _d !== void 0 ? _d : 40,
                 textScrollLoop: (_e = opts.textScrollLoop) !== null && _e !== void 0 ? _e : true,
                 textScrollNudge: 0,
+                textFontSize: (_f = opts.textFontSize) !== null && _f !== void 0 ? _f : 80,
             });
             this.updateStoreWithState();
             return inputId;
@@ -469,6 +470,9 @@ class RoomState {
             }
             if (options.textScrollNudge !== undefined) {
                 input.textScrollNudge = options.textScrollNudge;
+            }
+            if (options.textFontSize !== undefined) {
+                input.textFontSize = options.textFontSize;
             }
         }
         this.updateStoreWithState();

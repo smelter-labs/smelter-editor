@@ -33,6 +33,7 @@ type InputState = {
   textColor?: string;
   textMaxLines?: number;
   textScrollSpeed?: number;
+  textFontSize?: number;
 };
 
 export const routes = Fastify({
@@ -436,6 +437,7 @@ function publicInputState(input: RoomInputState): InputState {
         textColor: input.textColor,
         textMaxLines: input.textMaxLines,
         textScrollSpeed: input.textScrollSpeed,
+        textFontSize: input.textFontSize,
       };
     default:
       throw new Error('Unknown input state');

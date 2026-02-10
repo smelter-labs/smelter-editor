@@ -157,13 +157,15 @@ const START_TYPING_PATTERN =
 const STOP_TYPING_PATTERN =
   /\b(stop typing|end typing|stop dictation|end dictation|finish typing)\b/;
 const START_ROOM_PATTERN =
-  /\b(start|starts|open|create|new|starting)\s+(a\s+)?(new\s+)?(in\s+)?(your\s+)?room\b/;
+  /\b(start|starts|open|create|new|starting)\s+(a\s+)?(new\s+)?(in\s+)?(your\s+)?(vertical\s+)?room\b/;
 const NEXT_LAYOUT_PATTERN = /\b(next|forward)\s+(layout|view)\b/;
 const PREVIOUS_LAYOUT_PATTERN = /\b(previous|prev|back|last)\s+(layout|view)\b/;
 const SET_COLOR_PATTERN =
   /\b(?:set|change)\s+(?:text\s+)?colou?r\s+(?:to\s+)?(\w+)\b/;
 const SET_MAX_LINES_PATTERN =
   /\b(?:set|change)\s+(?:max(?:imum)?\s+)?lines?\s+(?:to\s+)?(\d+)\b/;
+const SET_FONT_SIZE_PATTERN =
+  /\b(?:set|change)\s+(?:font\s+)?size\s+(?:to\s+)?(\d+)\b/;
 const EXPORT_CONFIG_PATTERN =
   /\b(export|save|download)\s+(config(?:uration)?|settings)\b/;
 
@@ -288,7 +290,8 @@ export function parseCommand(
   }
 
   if (START_ROOM_PATTERN.test(text)) {
-    return { intent: 'START_ROOM' };
+    const vertical = /\bvertical\b/.test(text);
+    return { intent: 'START_ROOM', vertical: vertical || undefined };
   }
 
   if (NEXT_LAYOUT_PATTERN.test(text)) {
@@ -317,6 +320,14 @@ export function parseCommand(
     const maxLines = parseInt(maxLinesMatch[1], 10);
     if (maxLines >= 1 && maxLines <= 20) {
       return { intent: 'SET_TEXT_MAX_LINES', maxLines };
+    }
+  }
+
+  const fontSizeMatch = text.match(SET_FONT_SIZE_PATTERN);
+  if (fontSizeMatch) {
+    const fontSize = parseInt(fontSizeMatch[1], 10);
+    if (fontSize >= 20 && fontSize <= 200) {
+      return { intent: 'SET_TEXT_FONT_SIZE', fontSize };
     }
   }
 

@@ -130,58 +130,65 @@ export default function IntroView() {
     return basePath ? `${basePath}/room/${roomId}` : `room/${roomId}`;
   };
 
-  const handleCreateRoom = useCallback(async () => {
-    setLoadingNew(true);
-    try {
-      let initInputs: RegisterInputOptions[] = [];
-      const lowerPath = pathname.toLowerCase();
-      if (lowerPath.includes('kick')) {
-        // Use first two kick suggestions if available
-        initInputs = (kickSuggestions.slice(0, 2) || []).map((s) => ({
-          type: 'kick-channel',
-          channelId: s.streamId,
-        }));
-      } else if (lowerPath.includes('twitch')) {
-        // Use first two twitch suggestions if available
-        initInputs = (twitchSuggestions.slice(0, 2) || []).map((s) => ({
-          type: 'twitch-channel',
-          channelId: s.streamId,
-        }));
-      } else {
-        // No initial inputs
-        initInputs = [];
-      }
-      const room = await createNewRoom(initInputs, false, selectedResolution);
-      let hash = '';
-      if (typeof window !== 'undefined') {
-        const h = (window.location.hash || '').toLowerCase();
-        if (
-          h.includes('tour-main') ||
-          h.includes('tour-composing') ||
-          h.includes('tour-shaders')
-        ) {
-          hash = h;
+  const handleCreateRoom = useCallback(
+    async (resolutionOverride?: ResolutionPreset) => {
+      setLoadingNew(true);
+      try {
+        let initInputs: RegisterInputOptions[] = [];
+        const lowerPath = pathname.toLowerCase();
+        if (lowerPath.includes('kick')) {
+          initInputs = (kickSuggestions.slice(0, 2) || []).map((s) => ({
+            type: 'kick-channel',
+            channelId: s.streamId,
+          }));
+        } else if (lowerPath.includes('twitch')) {
+          initInputs = (twitchSuggestions.slice(0, 2) || []).map((s) => ({
+            type: 'twitch-channel',
+            channelId: s.streamId,
+          }));
+        } else {
+          initInputs = [];
         }
+        const room = await createNewRoom(
+          initInputs,
+          false,
+          resolutionOverride ?? selectedResolution,
+        );
+        let hash = '';
+        if (typeof window !== 'undefined') {
+          const h = (window.location.hash || '').toLowerCase();
+          if (
+            h.includes('tour-main') ||
+            h.includes('tour-composing') ||
+            h.includes('tour-shaders')
+          ) {
+            hash = h;
+          }
+        }
+        router.push(getRoomRoute(room.roomId) + hash);
+      } finally {
+        setLoadingNew(false);
       }
-      router.push(getRoomRoute(room.roomId) + hash);
-    } finally {
-      setLoadingNew(false);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    router,
-    basePath,
-    pathname,
-    twitchSuggestions,
-    kickSuggestions,
-    selectedResolution,
-  ]);
+    },
+    [
+      router,
+      basePath,
+      pathname,
+      twitchSuggestions,
+      kickSuggestions,
+      selectedResolution,
+    ],
+  );
 
   // Voice command: start new room
   useEffect(() => {
-    const handleStartRoom = () => {
+    const handleStartRoom = (e: Event) => {
       if (!loadingNew && !loadingImport) {
-        handleCreateRoom();
+        const detail = (e as CustomEvent).detail;
+        const resolution = detail?.vertical
+          ? ('1440p-vertical' as ResolutionPreset)
+          : undefined;
+        handleCreateRoom(resolution);
       }
     };
     window.addEventListener('smelter:voice:start-room', handleStartRoom);
@@ -203,7 +210,7 @@ export default function IntroView() {
       const text = await file.text();
       const config = parseRoomConfig(text);
 
-      const room = await createNewRoom([], true);
+      const room = await createNewRoom([], true, config.resolution);
       const roomId = room.roomId;
 
       const createdInputIds: { inputId: string; configIndex: number }[] = [];
@@ -273,20 +280,19 @@ export default function IntroView() {
 
       for (const { inputId, configIndex } of createdInputIds) {
         const inputConfig = config.inputs[configIndex];
-        if (
-          inputConfig.shaders.length > 0 ||
-          inputConfig.showTitle !== undefined
-        ) {
-          try {
-            await updateInput(roomId, inputId, {
-              volume: inputConfig.volume,
-              shaders: inputConfig.shaders,
-              showTitle: inputConfig.showTitle,
-              textColor: inputConfig.textColor,
-            });
-          } catch (err) {
-            console.warn(`Failed to update input ${inputId}:`, err);
-          }
+        try {
+          await updateInput(roomId, inputId, {
+            volume: inputConfig.volume,
+            shaders: inputConfig.shaders,
+            showTitle: inputConfig.showTitle,
+            textColor: inputConfig.textColor,
+            orientation: inputConfig.orientation,
+            textMaxLines: inputConfig.textMaxLines,
+            textScrollSpeed: inputConfig.textScrollSpeed,
+            textScrollLoop: inputConfig.textScrollLoop,
+          });
+        } catch (err) {
+          console.warn(`Failed to update input ${inputId}:`, err);
         }
       }
 
@@ -389,7 +395,7 @@ export default function IntroView() {
               size='lg'
               variant='default'
               className='text-black font-medium w-full bg-white border-0 hover:bg-neutral-200 cursor-pointer'
-              onClick={handleCreateRoom}
+              onClick={() => handleCreateRoom()}
               disabled={loadingNew || loadingImport}>
               Let&apos;s go!
               {loadingNew && <LoadingSpinner size='sm' variant='spinner' />}

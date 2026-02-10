@@ -229,6 +229,7 @@ export default function ControlPanel({
           <ConfigurationSection
             inputs={inputs}
             layout={roomState.layout}
+            resolution={roomState.resolution}
             roomId={roomId}
             refreshState={handleRefreshState}
             pendingWhipInputs={pendingWhipInputs}

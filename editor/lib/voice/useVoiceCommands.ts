@@ -100,7 +100,11 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
       window.dispatchEvent(new CustomEvent('smelter:voice:stop-typing'));
       break;
     case 'START_ROOM':
-      window.dispatchEvent(new CustomEvent('smelter:voice:start-room'));
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:start-room', {
+          detail: { vertical: command.vertical },
+        }),
+      );
       break;
     case 'NEXT_LAYOUT':
       window.dispatchEvent(new CustomEvent('smelter:voice:next-layout'));
@@ -119,6 +123,13 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
       window.dispatchEvent(
         new CustomEvent('smelter:voice:set-text-max-lines', {
           detail: { maxLines: command.maxLines },
+        }),
+      );
+      break;
+    case 'SET_TEXT_FONT_SIZE':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:set-text-font-size', {
+          detail: { fontSize: command.fontSize },
         }),
       );
       break;

@@ -18,6 +18,7 @@ export type InputConfig = {
     textScrollSpeed?: number;
     textScrollLoop?: boolean;
     textScrollNudge?: number;
+    textFontSize?: number;
     replaceWith?: InputConfig;
 };
 export declare const Layouts: readonly ["grid", "primary-on-left", "primary-on-top", "picture-in-picture", "wrapped", "wrapped-static", "transition", "picture-on-picture"];

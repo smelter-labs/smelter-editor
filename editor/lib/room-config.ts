@@ -14,6 +14,11 @@ export type RoomConfigInput = {
   textAlign?: 'left' | 'center' | 'right';
   textColor?: string;
   needsConnection?: boolean;
+  orientation?: 'horizontal' | 'vertical';
+  textMaxLines?: number;
+  textScrollSpeed?: number;
+  textScrollLoop?: boolean;
+  textFontSize?: number;
 };
 
 function extractMp4FileName(title: string): string | undefined {
@@ -29,13 +34,19 @@ export type RoomConfig = {
   version: 1;
   layout: Layout;
   inputs: RoomConfigInput[];
+  resolution?: { width: number; height: number };
   exportedAt: string;
 };
 
-export function exportRoomConfig(inputs: Input[], layout: Layout): RoomConfig {
+export function exportRoomConfig(
+  inputs: Input[],
+  layout: Layout,
+  resolution?: { width: number; height: number },
+): RoomConfig {
   return {
     version: 1,
     layout,
+    resolution,
     inputs: inputs.map((input) => ({
       type: input.type,
       title: input.title,
@@ -53,6 +64,11 @@ export function exportRoomConfig(inputs: Input[], layout: Layout): RoomConfig {
       textAlign: input.textAlign,
       textColor: input.textColor,
       needsConnection: input.type === 'whip',
+      orientation: input.orientation,
+      textMaxLines: input.textMaxLines,
+      textScrollSpeed: input.textScrollSpeed,
+      textScrollLoop: input.textScrollLoop,
+      textFontSize: input.textFontSize,
     })),
     exportedAt: new Date().toISOString(),
   };

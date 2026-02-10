@@ -147,12 +147,12 @@ function ScrollingText({
   scrollNudge = 0,
 }: ScrollingTextProps) {
   const lineHeight = fontSize * 1.2;
-  const visibleHeight = maxLines > 0 ? maxLines * lineHeight : containerHeight;
+  const visibleHeight = containerHeight;
   const lines = text.split('\n');
   const totalTextHeight = lines.length * lineHeight;
   
   const shouldAnimate = maxLines > 0;
-  const startPosition = containerHeight;
+  const startPosition = visibleHeight;
   
   const [scrollOffset, setScrollOffset] = useState(startPosition);
   const [permanentNudgeOffset, setPermanentNudgeOffset] = useState(0);
@@ -298,17 +298,17 @@ export function Input({ input }: { input: InputConfig }) {
               <Image imageId={input.imageId!} />
             </Rescaler>
           ) : isTextInput ? (
-            <View style={{ width: resolution.width, height: resolution.height, backgroundColor: '#1a1a2e' }}>
+            <View style={{ width: resolution.width - 16, height: resolution.height - 16, backgroundColor: '#1a1a2e', borderWidth: 8, borderColor: '#ff0000' }}>
               <ScrollingText
                 text={input.text!}
                 maxLines={input.textMaxLines ?? 10}
                 scrollSpeed={input.textScrollSpeed ?? 40}
                 scrollLoop={input.textScrollLoop ?? true}
-                fontSize={80}
+                fontSize={input.textFontSize ?? 80}
                 color={input.textColor ?? 'white'}
                 align={input.textAlign ?? 'left'}
-                containerWidth={resolution.width}
-                containerHeight={resolution.height}
+                containerWidth={resolution.width - 16}
+                containerHeight={resolution.height - 16}
                 scrollNudge={input.textScrollNudge}
               />
             </View>
@@ -382,7 +382,7 @@ export function SmallInput({
           <Image imageId={input.imageId!} />
         </Rescaler>
       ) : isTextInput ? (
-        <View style={{ width: resolution.width, height: resolution.height, backgroundColor: '#1a1a2e' }}>
+        <View style={{ width: resolution.width - 8, height: resolution.height - 8, backgroundColor: '#1a1a2e', borderWidth: 4, borderColor: '#ff0000' }}>
           <ScrollingText
             text={input.text!}
             maxLines={input.textMaxLines ?? 10}
@@ -391,8 +391,8 @@ export function SmallInput({
             fontSize={30}
             color={input.textColor ?? 'white'}
             align={input.textAlign ?? 'left'}
-            containerWidth={resolution.width}
-            containerHeight={resolution.height}
+            containerWidth={resolution.width - 8}
+            containerHeight={resolution.height - 8}
             scrollNudge={input.textScrollNudge}
           />
         </View>
