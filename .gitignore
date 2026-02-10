@@ -47,4 +47,4 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-server/recordings/*/mp4
+server/recordings/*
