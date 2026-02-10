@@ -8,7 +8,8 @@ import { Share2, Mail, ToggleLeft, ToggleRight } from 'lucide-react';
 import { fadeInUp } from '@/utils/animations';
 import { motion } from 'framer-motion';
 import { VideoOff } from 'lucide-react';
-import { RefObject } from 'react';
+import { RefObject, useState } from 'react';
+import { startRecording, stopRecording } from '@/app/actions/actions';
 
 export default function VideoPreview({
   whepUrl,
@@ -28,6 +29,53 @@ export default function VideoPreview({
   resolution?: OutputResolution;
 }) {
   const activeStream = true;
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTogglingRecording, setIsTogglingRecording] = useState(false);
+  const [isWaitingForDownload, setIsWaitingForDownload] = useState(false);
+
+  const handleToggleRecording = async () => {
+    if (!roomId || isTogglingRecording || isWaitingForDownload) return;
+    setIsTogglingRecording(true);
+    try {
+      if (!isRecording) {
+        const res = await startRecording(roomId);
+        if (res.status === 'recording') {
+          setIsRecording(true);
+        } else {
+          console.error('Failed to start recording', res.message);
+        }
+      } else {
+        // Stop recording: switch to "Wait..." state until download starts
+        setIsWaitingForDownload(true);
+        const res = await stopRecording(roomId);
+        if (res.status === 'stopped') {
+          setIsRecording(false);
+          if (res.downloadUrl) {
+            setTimeout(() => {
+              if (typeof window === 'undefined') return;
+              const link = document.createElement('a');
+              link.href = res.downloadUrl!;
+              link.download = '';
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              setIsWaitingForDownload(false);
+            }, 1500);
+          } else {
+            setIsWaitingForDownload(false);
+          }
+        } else {
+          console.error('Failed to stop recording', res.message);
+          setIsWaitingForDownload(false);
+        }
+      }
+    } catch (err) {
+      console.error('Error while toggling recording', err);
+      setIsWaitingForDownload(false);
+    } finally {
+      setIsTogglingRecording(false);
+    }
+  };
 
   return (
     <motion.div
@@ -53,7 +101,7 @@ export default function VideoPreview({
               )}
             </div>
             {roomId && (
-              <div className='mt-3 flex justify-between items-center'>
+              <div className='mt-3 flex justify-between items-center gap-2'>
                 {onTogglePublic && (
                   <Button
                     size='lg'
@@ -72,7 +120,24 @@ export default function VideoPreview({
                     Public
                   </Button>
                 )}
-                <div className='flex'>
+                <div className='flex gap-2'>
+                  <Button
+                    size='lg'
+                    variant='outline'
+                    onClick={handleToggleRecording}
+                    disabled={isTogglingRecording || isWaitingForDownload}
+                    className='max-md:h-8 max-md:px-3 max-md:text-xs text-neutral-500 hover:bg-neutral-200'>
+                    {isWaitingForDownload ? (
+                      'Wait...'
+                    ) : isRecording ? (
+                      <span className='inline-flex items-center gap-1'>
+                        <span>Stop recording</span>
+                        <span className='animate-pulse'>...</span>
+                      </span>
+                    ) : (
+                      'Record'
+                    )}
+                  </Button>
                   <Button
                     size='lg'
                     asChild

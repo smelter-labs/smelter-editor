@@ -103,13 +103,12 @@ export function PendingWhipInputs({
       });
       saveLastWhipInputId(roomId, response.inputId);
 
-      if (pendingInput.config.shaders.length > 0) {
-        await updateInput(roomId, response.inputId, {
-          volume: pendingInput.config.volume,
-          shaders: pendingInput.config.shaders,
-          showTitle: pendingInput.config.showTitle,
-        });
-      }
+      await updateInput(roomId, response.inputId, {
+        volume: pendingInput.config.volume,
+        shaders: pendingInput.config.shaders,
+        showTitle: pendingInput.config.showTitle,
+        orientation: pendingInput.config.orientation,
+      });
 
       const roomInfo = await getRoomInfo(roomId);
       if (roomInfo !== 'not-found') {

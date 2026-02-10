@@ -1,4 +1,4 @@
-import { pathExists, readdir } from 'fs-extra';
+import { ensureDir, pathExists, readdir } from 'fs-extra';
 import path from 'node:path';
 import { SmelterInstance, type RegisterSmelterInputOptions, type SmelterOutput } from '../smelter';
 import { hlsUrlForKickChannel, hlsUrlForTwitchChannel } from '../streamlink';
@@ -96,6 +96,14 @@ export class RoomState {
   private mp4Files: string[];
   private output: SmelterOutput;
 
+  private recording?: {
+    outputId: string;
+    filePath: string;
+    fileName: string;
+    startedAt: number;
+    stoppedAt?: number;
+  };
+
   public lastReadTimestamp: number;
   public creationTimestamp: number;
 
@@ -171,6 +179,50 @@ export class RoomState {
 
   public getResolution(): { width: number; height: number } {
     return this.output.resolution;
+  }
+
+  public hasActiveRecording(): boolean {
+    return !!this.recording && !this.recording.stoppedAt;
+  }
+
+  public async startRecording(): Promise<{ fileName: string }> {
+    if (this.hasActiveRecording()) {
+      throw new Error('Recording is already in progress for this room');
+    }
+
+    const recordingsDir = path.join(process.cwd(), 'recordings');
+    await ensureDir(recordingsDir);
+
+    const timestamp = Date.now();
+    const recordingId = `${this.idPrefix}::recording::${timestamp}`;
+    const safeRoomId = this.idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const fileName = `recording-${safeRoomId}-${timestamp}.mp4`;
+    const filePath = path.join(recordingsDir, fileName);
+
+    await SmelterInstance.registerMp4Output(recordingId, this.output, filePath);
+
+    this.recording = {
+      outputId: recordingId,
+      filePath,
+      fileName,
+      startedAt: timestamp,
+    };
+
+    return { fileName };
+  }
+
+  public async stopRecording(): Promise<{ fileName: string }> {
+    if (!this.recording || this.recording.stoppedAt) {
+      throw new Error('No active recording to stop for this room');
+    }
+
+    try {
+      await SmelterInstance.unregisterOutput(this.recording.outputId);
+    } finally {
+      this.recording.stoppedAt = Date.now();
+    }
+
+    return { fileName: this.recording.fileName };
   }
 
   public getState(): [RoomInputState[], Layout] {
@@ -656,6 +708,14 @@ export class RoomState {
       await SmelterInstance.unregisterOutput(this.output.id);
     } catch (err: any) {
       console.error('Failed to remove output', err?.body ?? err);
+    }
+
+    if (this.recording && !this.recording.stoppedAt) {
+      try {
+        await SmelterInstance.unregisterOutput(this.recording.outputId);
+      } catch (err: any) {
+        console.error('Failed to remove recording output', err?.body ?? err);
+      }
     }
   }
 

@@ -194,6 +194,39 @@ export async function getRoomInfo(
   }
 }
 
+export type StartRecordingResponse = {
+  status: 'recording' | 'error';
+  fileName?: string;
+  message?: string;
+};
+
+export type StopRecordingResponse = {
+  status: 'stopped' | 'error';
+  fileName?: string;
+  downloadUrl?: string;
+  message?: string;
+};
+
+export async function startRecording(
+  roomId: string,
+): Promise<StartRecordingResponse> {
+  return await sendSmelterRequest(
+    'post',
+    `/room/${encodeURIComponent(roomId)}/record/start`,
+    {},
+  );
+}
+
+export async function stopRecording(
+  roomId: string,
+): Promise<StopRecordingResponse> {
+  return await sendSmelterRequest(
+    'post',
+    `/room/${encodeURIComponent(roomId)}/record/stop`,
+    {},
+  );
+}
+
 export async function getTwitchSuggestions(): Promise<InputSuggestions> {
   return await sendSmelterRequest('get', `/suggestions/twitch`);
 }

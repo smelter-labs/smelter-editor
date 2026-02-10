@@ -1,4 +1,6 @@
 import Fastify from 'fastify';
+import path from 'node:path';
+import { pathExists, readFile, stat } from 'fs-extra';
 import { Type } from '@sinclair/typebox';
 import type { Static, TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { state } from './serverState';
@@ -14,6 +16,7 @@ import { RESOLUTION_PRESETS, type Resolution, type ResolutionPreset } from '../s
 
 type RoomIdParams = { Params: { roomId: string } };
 type RoomAndInputIdParams = { Params: { roomId: string; inputId: string } };
+type RecordingFileParams = { Params: { fileName: string } };
 
 type InputState = {
   inputId: string;
@@ -163,6 +166,68 @@ routes.get('/rooms', async (_req, res) => {
     .status(200)
     .header('Content-Type', 'application/json')
     .send(JSON.stringify({ rooms: roomsInfo }, null, 2));
+});
+
+routes.post<RoomIdParams>('/room/:roomId/record/start', async (req, res) => {
+  const { roomId } = req.params;
+  console.log('[request] Start recording', { roomId });
+  try {
+    const room = state.getRoom(roomId);
+    const { fileName } = await room.startRecording();
+    res.status(200).send({ status: 'recording', fileName });
+  } catch (err: any) {
+    console.error('Failed to start recording', err?.body ?? err);
+    res
+      .status(400)
+      .send({ status: 'error', message: err?.message ?? 'Failed to start recording' });
+  }
+});
+
+routes.post<RoomIdParams>('/room/:roomId/record/stop', async (req, res) => {
+  const { roomId } = req.params;
+  console.log('[request] Stop recording', { roomId });
+  try {
+    const room = state.getRoom(roomId);
+    const { fileName } = await room.stopRecording();
+
+    const forwardedProto = (req.headers['x-forwarded-proto'] as string | undefined)?.split(
+      ','
+    )[0];
+    const protocol = forwardedProto || (req.protocol as string) || 'http';
+    const host = (req.headers['host'] as string) || 'localhost';
+    const baseUrl = `${protocol}://${host}`;
+    const downloadUrl = `${baseUrl}/recordings/${encodeURIComponent(fileName)}`;
+
+    res.status(200).send({ status: 'stopped', fileName, downloadUrl });
+  } catch (err: any) {
+    console.error('Failed to stop recording', err?.body ?? err);
+    res
+      .status(400)
+      .send({ status: 'error', message: err?.message ?? 'Failed to stop recording' });
+  }
+});
+
+routes.get<RecordingFileParams>('/recordings/:fileName', async (req, res) => {
+  const { fileName } = req.params;
+  const recordingsDir = path.join(process.cwd(), 'recordings');
+  const filePath = path.join(recordingsDir, fileName);
+
+  if (!(await pathExists(filePath))) {
+    return res.status(404).send({ error: 'Recording not found' });
+  }
+
+  try {
+    const fileStat = await stat(filePath);
+    const data = await readFile(filePath);
+
+    res.header('Content-Type', 'video/mp4');
+    res.header('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.header('Content-Length', fileStat.size.toString());
+    res.send(data);
+  } catch (err: any) {
+    console.error('Failed to read recording file', { filePath, err });
+    res.status(500).send({ error: 'Failed to read recording file' });
+  }
 });
 
 const UpdateRoomSchema = Type.Object({

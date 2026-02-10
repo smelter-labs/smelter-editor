@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { Share2 } from 'lucide-react';
 
 import { getRoomInfo, type RoomState } from '@/app/actions/actions';
@@ -11,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 
 export default function RoomPreviewPage() {
+  const router = useRouter();
   const { roomId } = useParams();
   const [loading, setLoading] = useState(true);
   const [roomState, setRoomState] = useState<RoomState>({
@@ -23,12 +24,23 @@ export default function RoomPreviewPage() {
   useEffect(() => {
     let mounted = true;
     const fetchState = async () => {
-      if (!roomId) return;
-      const state = await getRoomInfo(roomId as string);
-      if (state !== 'not-found' && mounted) {
-        setRoomState(state);
-        setLoading(false);
+      if (!roomId) {
+        if (mounted) {
+          router.replace('/');
+        }
+        return;
       }
+
+      const state = await getRoomInfo(roomId as string);
+      if (!mounted) return;
+
+      if (state === 'not-found') {
+        router.replace('/');
+        return;
+      }
+
+      setRoomState(state);
+      setLoading(false);
     };
     void fetchState();
     const interval = setInterval(fetchState, 3_000);
@@ -36,7 +48,7 @@ export default function RoomPreviewPage() {
       mounted = false;
       clearInterval(interval);
     };
-  }, [roomId]);
+  }, [roomId, router]);
 
   // Use relative path to avoid SSR/client mismatch
   const previewHref = `/room-preview/${roomId}/grid?cols=6&rows=4`;
