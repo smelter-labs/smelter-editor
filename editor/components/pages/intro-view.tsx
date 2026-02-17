@@ -296,10 +296,19 @@ export default function IntroView() {
         }
       }
 
+      // Ensure initial server input order matches positions from the imported config
+      const orderedCreatedIds = createdInputIds
+        .slice()
+        .sort((a, b) => a.configIndex - b.configIndex)
+        .map(({ inputId }) => inputId);
+
       try {
-        await updateRoom(roomId, { layout: config.layout });
+        await updateRoom(roomId, {
+          layout: config.layout,
+          ...(orderedCreatedIds.length > 0 ? { inputOrder: orderedCreatedIds } : {}),
+        });
       } catch (err) {
-        console.warn('Failed to set layout:', err);
+        console.warn('Failed to set layout or input order:', err);
       }
 
       const pendingWhipInputs: StoredPendingWhipInput[] = [];

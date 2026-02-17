@@ -217,10 +217,19 @@ export function ConfigurationSection({
 
     setPendingWhipInputs(newPendingWhipInputs);
 
+    // Ensure server input order matches positions from the imported config
+    const orderedCreatedIds = createdInputIds
+      .slice()
+      .sort((a, b) => a.position - b.position)
+      .map(({ inputId }) => inputId);
+
     try {
-      await updateRoom(roomId, { layout: config.layout });
+      await updateRoom(roomId, {
+        layout: config.layout,
+        ...(orderedCreatedIds.length > 0 ? { inputOrder: orderedCreatedIds } : {}),
+      });
     } catch (e) {
-      console.warn('Failed to set layout:', e);
+      console.warn('Failed to set layout or input order:', e);
     }
 
     await refreshState();

@@ -14,6 +14,7 @@ import {
   WrappedStaticLayout,
   TransitionLayout,
   PictureOnPictureLayout,
+  SoftuTvLayout,
 } from './layouts';
 
 export default function App({ store }: { store: StoreApi<RoomStore> }) {
@@ -46,6 +47,8 @@ function OutputScene() {
         <TransitionLayout />
       ) : layout === 'picture-on-picture' ? (
         <PictureOnPictureLayout />
+      ) : layout === 'softu-tv' ? (
+        <SoftuTvLayout />
       ) : null}
     </View>
   );

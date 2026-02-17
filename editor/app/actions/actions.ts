@@ -111,7 +111,8 @@ export type Layout =
   | 'wrapped'
   | 'wrapped-static'
   | 'transition'
-  | 'picture-on-picture';
+  | 'picture-on-picture'
+  | 'softu-tv';
 
 export interface ChannelSuggestion {
   streamId: string;

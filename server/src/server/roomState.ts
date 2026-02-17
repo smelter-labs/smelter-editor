@@ -1,4 +1,4 @@
-import { ensureDir, pathExists, readdir } from 'fs-extra';
+import { ensureDir, pathExists, readdir, remove } from 'fs-extra';
 import path from 'node:path';
 import { SmelterInstance, type RegisterSmelterInputOptions, type SmelterOutput } from '../smelter';
 import { hlsUrlForKickChannel, hlsUrlForTwitchChannel } from '../streamlink';
@@ -220,6 +220,15 @@ export class RoomState {
       await SmelterInstance.unregisterOutput(this.recording.outputId);
     } finally {
       this.recording.stoppedAt = Date.now();
+    }
+
+    // Enforce a global cap on stored recordings to avoid unbounded growth.
+    // Keep only the newest N recordings on disk and remove older ones.
+    try {
+      await pruneOldRecordings(10);
+    } catch (err) {
+      // Best-effort cleanup – log but don't fail the API if pruning fails.
+      console.error('Failed to prune old recordings', err);
     }
 
     return { fileName: this.recording.fileName };
@@ -915,4 +924,56 @@ function formatImageName(fileName: string): string {
 function isBlockedDefaultMp4(fileName: string): boolean {
   const lower = fileName.toLowerCase();
   return lower.startsWith('logo_') || lower.startsWith('wrapped_');
+}
+
+/**
+ * Keep at most `maxCount` newest MP4 recording files in the global
+ * recordings directory by deleting the oldest ones.
+ */
+async function pruneOldRecordings(maxCount: number): Promise<void> {
+  const recordingsDir = path.join(process.cwd(), 'recordings');
+  if (!(await pathExists(recordingsDir))) {
+    return;
+  }
+
+  let entries: string[] = [];
+  try {
+    entries = await readdir(recordingsDir);
+  } catch {
+    // If we can't read the directory, silently skip pruning.
+    return;
+  }
+
+  const mp4s = entries.filter(e => e.toLowerCase().endsWith('.mp4'));
+  if (mp4s.length <= maxCount) {
+    return;
+  }
+
+  type RecordingFile = { name: string; timestamp: number };
+  const parsed: RecordingFile[] = [];
+
+  for (const file of mp4s) {
+    // Expected pattern: recording-<safeRoomId>-<timestamp>.mp4
+    const match = file.match(/^recording-.*-(\d+)\.mp4$/);
+    const ts = match ? Number(match[1]) : NaN;
+    if (!Number.isFinite(ts)) {
+      // Fallback: treat unknown pattern as very old so it gets pruned first.
+      parsed.push({ name: file, timestamp: 0 });
+    } else {
+      parsed.push({ name: file, timestamp: ts });
+    }
+  }
+
+  parsed.sort((a, b) => a.timestamp - b.timestamp);
+
+  const toDelete = parsed.slice(0, Math.max(0, parsed.length - maxCount));
+  for (const file of toDelete) {
+    const fullPath = path.join(recordingsDir, file.name);
+    try {
+      await remove(fullPath);
+    } catch (err) {
+      // Ignore individual deletion errors – best-effort cleanup.
+      console.warn('Failed to remove old recording file', { file: fullPath, err });
+    }
+  }
 }

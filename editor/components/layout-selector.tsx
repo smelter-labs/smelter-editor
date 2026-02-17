@@ -11,7 +11,8 @@ export type Layout =
   | 'wrapped'
   | 'wrapped-static'
   | 'transition'
-  | 'picture-on-picture';
+  | 'picture-on-picture'
+  | 'softu-tv';
 
 type LayoutConfig = {
   id: Layout;
@@ -41,6 +42,12 @@ export const LAYOUT_CONFIGS = [
     name: 'Picture on Picture',
     icon: Layers,
     maxStreams: 10,
+  },
+  {
+    id: 'softu-tv',
+    name: 'Softu TV',
+    icon: LayoutGrid,
+    maxStreams: 4,
   },
 ] as const satisfies LayoutConfig[];
 
@@ -176,6 +183,30 @@ export default function LayoutSelector({
                   }}></div>
               ))}
             </div>
+          </div>
+        );
+      case 'softu-tv':
+        return (
+          <div className='w-full h-full relative'>
+            <div
+              className={`transition-all duration-300 ease-in-out w-full h-full rounded-none border border-neutral-700 ${streamCount > 0 ? 'bg-neutral-600' : 'bg-transparent'}`}
+            />
+            {Array.from({ length: Math.max(0, streamCount - 1) }).map(
+              (_, idx) => {
+                return (
+                  <div
+                    key={idx}
+                    className='transition-all duration-300 ease-in-out absolute border border-neutral-700 bg-neutral-600 rounded-none'
+                    style={{
+                      top: `${0.5 + idx * 1.7}rem`,
+                      right: '0.5rem',
+                      width: '25%',
+                      height: '25%',
+                      zIndex: 10 + idx,
+                    }}></div>
+                );
+              },
+            )}
           </div>
         );
       case 'picture-on-picture':

@@ -36,6 +36,7 @@ export const Layouts = [
   'wrapped-static',
   'transition',
   'picture-on-picture',
+  'softu-tv',
 ] as const;
 
 export type Layout =
@@ -46,7 +47,8 @@ export type Layout =
   | 'wrapped'
   | 'wrapped-static'
   | 'transition'
-  | 'picture-on-picture';
+  | 'picture-on-picture'
+  | 'softu-tv';
 
 export type RoomStore = {
   inputs: InputConfig[];
