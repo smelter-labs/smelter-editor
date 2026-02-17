@@ -37,6 +37,7 @@ type InputState = {
   textMaxLines?: number;
   textScrollSpeed?: number;
   textFontSize?: number;
+  attachedInputIds?: string[];
 };
 
 export const routes = Fastify({
@@ -85,6 +86,7 @@ const CreateRoomSchema = Type.Object({
       ]),
     ])
   ),
+  displayName: Type.Optional(Type.String()),
 });
 
 routes.post<{ Body: Static<typeof CreateRoomSchema> }>(
@@ -95,6 +97,7 @@ routes.post<{ Body: Static<typeof CreateRoomSchema> }>(
 
     const initInputs = (req.body.initInputs as RegisterInputOptions[]) || [];
     const skipDefaultInputs = req.body.skipDefaultInputs === true;
+    const displayName = req.body.displayName;
 
     let resolution: Resolution | undefined;
     if (req.body.resolution) {
@@ -105,7 +108,7 @@ routes.post<{ Body: Static<typeof CreateRoomSchema> }>(
       }
     }
 
-    const { roomId, room } = await state.createRoom(initInputs, skipDefaultInputs, resolution);
+    const { roomId, room } = await state.createRoom(initInputs, skipDefaultInputs, resolution, displayName);
     res.status(200).send({
       roomId,
       whepUrl: room.getWhepUrl(),
@@ -130,6 +133,7 @@ routes.get<RoomIdParams>('/room/:roomId', async (req, res) => {
     whepUrl: room.getWhepUrl(),
     pendingDelete: room.pendingDelete,
     isPublic: room.isPublic,
+    displayName: room.displayName,
     resolution: room.getResolution(),
   });
 });
@@ -394,6 +398,7 @@ const UpdateInputSchema = Type.Object({
   textMaxLines: Type.Optional(Type.Number()),
   textScrollSpeed: Type.Optional(Type.Number()),
   textScrollNudge: Type.Optional(Type.Number()),
+  attachedInputIds: Type.Optional(Type.Array(Type.String())),
 });
 
 routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(
@@ -430,6 +435,7 @@ function publicInputState(input: RoomInputState): InputState {
         type: input.type,
         shaders: input.shaders,
         orientation: input.orientation,
+        attachedInputIds: input.attachedInputIds,
       };
     case 'image':
       return {
@@ -444,6 +450,7 @@ function publicInputState(input: RoomInputState): InputState {
         shaders: input.shaders,
         orientation: input.orientation,
         imageId: input.imageId,
+        attachedInputIds: input.attachedInputIds,
       };
     case 'twitch-channel':
       return {
@@ -458,6 +465,7 @@ function publicInputState(input: RoomInputState): InputState {
         shaders: input.shaders,
         orientation: input.orientation,
         channelId: input.channelId,
+        attachedInputIds: input.attachedInputIds,
       };
     case 'kick-channel':
       return {
@@ -472,6 +480,7 @@ function publicInputState(input: RoomInputState): InputState {
         shaders: input.shaders,
         orientation: input.orientation,
         channelId: input.channelId,
+        attachedInputIds: input.attachedInputIds,
       };
     case 'whip':
       return {
@@ -485,6 +494,7 @@ function publicInputState(input: RoomInputState): InputState {
         type: input.type,
         shaders: input.shaders,
         orientation: input.orientation,
+        attachedInputIds: input.attachedInputIds,
       };
     case 'text-input':
       return {
@@ -504,6 +514,7 @@ function publicInputState(input: RoomInputState): InputState {
         textMaxLines: input.textMaxLines,
         textScrollSpeed: input.textScrollSpeed,
         textFontSize: input.textFontSize,
+        attachedInputIds: input.attachedInputIds,
       };
     default:
       throw new Error('Unknown input state');

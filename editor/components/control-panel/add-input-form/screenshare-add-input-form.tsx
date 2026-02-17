@@ -90,6 +90,7 @@ export function ScreenshareAddInputForm(props: {
       suggestions={[]}
       placeholder='Enter a username (e.g. John Smith)'
       initialValue={userName
+        .replace(/\s+Camera$/i, ' Screenshare')
         .replace(/^Camera\s+/i, 'Screenshare ')
         .replace(/^User\s+/i, 'Screenshare ')}
       onSubmit={async (whipUserName: string) => {

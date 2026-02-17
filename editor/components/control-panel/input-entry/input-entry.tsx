@@ -18,6 +18,7 @@ import {
   AlignRight,
   RectangleHorizontal,
   RectangleVertical,
+  Link,
 } from 'lucide-react';
 import ShaderPanel from './shader-panel';
 import { StatusButton } from './status-button';
@@ -64,6 +65,18 @@ function packedIntToHex(packed: number): string {
   return `#${r}${g}${b}`;
 }
 
+function isInputAttachedElsewhere(
+  targetInputId: string,
+  currentInputId: string,
+  allInputs: Input[],
+): boolean {
+  return allInputs.some(
+    (i) =>
+      i.inputId !== currentInputId &&
+      (i.attachedInputIds || []).includes(targetInputId),
+  );
+}
+
 interface InputEntryProps {
   roomId: string;
   input: Input;
@@ -81,6 +94,7 @@ interface InputEntryProps {
   showGrip?: boolean;
   isSelected?: boolean;
   index?: number;
+  allInputs?: Input[];
 }
 
 export default function InputEntry({
@@ -100,6 +114,7 @@ export default function InputEntry({
   showGrip = true,
   isSelected = false,
   index,
+  allInputs,
 }: InputEntryProps) {
   const [connectionStateLoading, setConnectionStateLoading] = useState(false);
   const [showSliders, setShowSliders] = useState(false);
@@ -129,6 +144,7 @@ export default function InputEntry({
   );
   const [isTextSaving, setIsTextSaving] = useState(false);
   const textSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
   const isMobile = useIsMobile();
   const muted = input.volume === 0;
   const showTitle = input.showTitle !== false;
@@ -240,6 +256,21 @@ export default function InputEntry({
     });
     await refreshState();
   }, [roomId, input, isVerticalOrientation, refreshState]);
+
+  const handleAttachToggle = useCallback(
+    async (targetInputId: string) => {
+      const currentAttached = input.attachedInputIds || [];
+      const newAttached = currentAttached.includes(targetInputId)
+        ? currentAttached.filter((id) => id !== targetInputId)
+        : [...currentAttached, targetInputId];
+      await updateInput(roomId, input.inputId, {
+        volume: input.volume,
+        attachedInputIds: newAttached,
+      });
+      await refreshState();
+    },
+    [roomId, input, refreshState],
+  );
 
   const handleTextChange = useCallback(
     (newText: string) => {
@@ -956,6 +987,57 @@ export default function InputEntry({
                 <RectangleHorizontal className='text-neutral-400 size-5' />
               )}
             </Button>
+            <div className='relative'>
+              <Button
+                data-no-dnd
+                size='sm'
+                variant='ghost'
+                className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
+                onClick={() => setShowAttachMenu(!showAttachMenu)}
+                aria-label='Attach inputs'
+                title='Attach inputs (render behind this input)'>
+                <Link
+                  className={`size-5 ${(input.attachedInputIds?.length ?? 0) > 0 ? 'text-blue-400' : 'text-neutral-400'}`}
+                />
+              </Button>
+              {showAttachMenu && (
+                <div className='absolute bottom-full right-0 mb-1 bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-2 z-50 min-w-48'>
+                  <div className='text-xs text-neutral-400 mb-1 px-1'>
+                    Attach inputs (render behind)
+                  </div>
+                  {(allInputs || [])
+                    .filter((i) => i.inputId !== input.inputId)
+                    .filter(
+                      (i) =>
+                        !isInputAttachedElsewhere(
+                          i.inputId,
+                          input.inputId,
+                          allInputs || [],
+                        ),
+                    )
+                    .map((i) => {
+                      const isAttached = (
+                        input.attachedInputIds || []
+                      ).includes(i.inputId);
+                      return (
+                        <label
+                          key={i.inputId}
+                          className='flex items-center gap-2 px-1 py-1 hover:bg-neutral-700 rounded cursor-pointer'>
+                          <input
+                            type='checkbox'
+                            checked={isAttached}
+                            onChange={() => handleAttachToggle(i.inputId)}
+                            className='accent-blue-500 cursor-pointer'
+                          />
+                          <span className='text-sm text-white truncate'>
+                            {i.title}
+                          </span>
+                        </label>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
             <Button
               data-no-dnd
               size='sm'

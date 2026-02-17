@@ -25,6 +25,7 @@ export type InputConfig = {
   textScrollNudge?: number;
   textFontSize?: number;
   replaceWith?: InputConfig;
+  attachedInputs?: InputConfig[];
 };
 
 export const Layouts = [

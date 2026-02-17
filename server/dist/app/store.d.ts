@@ -20,9 +20,10 @@ export type InputConfig = {
     textScrollNudge?: number;
     textFontSize?: number;
     replaceWith?: InputConfig;
+    attachedInputs?: InputConfig[];
 };
-export declare const Layouts: readonly ["grid", "primary-on-left", "primary-on-top", "picture-in-picture", "wrapped", "wrapped-static", "transition", "picture-on-picture"];
-export type Layout = 'grid' | 'primary-on-left' | 'primary-on-top' | 'picture-in-picture' | 'wrapped' | 'wrapped-static' | 'transition' | 'picture-on-picture';
+export declare const Layouts: readonly ["grid", "primary-on-left", "primary-on-top", "picture-in-picture", "wrapped", "wrapped-static", "transition", "picture-on-picture", "softu-tv"];
+export type Layout = 'grid' | 'primary-on-left' | 'primary-on-top' | 'picture-in-picture' | 'wrapped' | 'wrapped-static' | 'transition' | 'picture-on-picture' | 'softu-tv';
 export type RoomStore = {
     inputs: InputConfig[];
     layout: Layout;

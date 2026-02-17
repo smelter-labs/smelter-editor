@@ -16,6 +16,7 @@ exports.Layouts = [
     'wrapped-static',
     'transition',
     'picture-on-picture',
+    'softu-tv',
 ];
 function createRoomStore(resolution = { width: 2560, height: 1440 }) {
     return (0, zustand_1.createStore)(set => ({

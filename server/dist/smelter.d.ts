@@ -61,6 +61,11 @@ export declare class SmelterManager {
     constructor();
     init(): Promise<void>;
     registerOutput(roomId: string, resolution?: Resolution): Promise<SmelterOutput>;
+    /**
+     * Register an additional MP4 output for a given room that records the current view to a file.
+     * This reuses the existing room store so the recording matches the live WHEP output.
+     */
+    registerMp4Output(outputId: string, output: SmelterOutput, filePath: string): Promise<void>;
     unregisterOutput(roomId: string): Promise<void>;
     registerInput(inputId: string, opts: RegisterSmelterInputOptions): Promise<string>;
     unregisterInput(inputId: string): Promise<void>;

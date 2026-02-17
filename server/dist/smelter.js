@@ -70,6 +70,32 @@ class SmelterManager {
         });
         return { id: roomId, url: `${config_1.config.whepBaseUrl}/${encodeURIComponent(roomId)}`, store, resolution };
     }
+    /**
+     * Register an additional MP4 output for a given room that records the current view to a file.
+     * This reuses the existing room store so the recording matches the live WHEP output.
+     */
+    async registerMp4Output(outputId, output, filePath) {
+        await this.instance.registerOutput(outputId, (0, jsx_runtime_1.jsx)(App_1.default, { store: output.store }), {
+            type: 'mp4',
+            serverPath: filePath,
+            video: {
+                encoder: {
+                    type: 'ffmpeg_h264',
+                    preset: 'fast',
+                },
+                resolution: {
+                    width: output.resolution.width,
+                    height: output.resolution.height,
+                },
+            },
+            audio: {
+                encoder: {
+                    type: 'aac',
+                    channels: 'stereo',
+                },
+            },
+        });
+    }
     async unregisterOutput(roomId) {
         var _a;
         try {

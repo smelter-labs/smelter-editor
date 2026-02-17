@@ -20,6 +20,7 @@ export type RoomInputState = {
   showTitle: boolean;
   shaders: ShaderConfig[];
   orientation: InputOrientation;
+  attachedInputIds?: string[];
   metadata: {
     title: string;
     description: string;
@@ -39,6 +40,7 @@ type UpdateInputOptions = {
   showTitle: boolean;
   shaders: ShaderConfig[];
   orientation: InputOrientation;
+  attachedInputIds: string[];
   text: string;
   textAlign: 'left' | 'center' | 'right';
   textColor: string;
@@ -109,13 +111,15 @@ export class RoomState {
 
   public pendingDelete?: boolean;
   public isPublic: boolean = false;
+  public displayName?: string;
 
-  public constructor(idPrefix: string, output: SmelterOutput, initInputs: RegisterInputOptions[], skipDefaultInputs: boolean = false) {
+  public constructor(idPrefix: string, output: SmelterOutput, initInputs: RegisterInputOptions[], skipDefaultInputs: boolean = false, displayName?: string) {
     this.mp4sDir = path.join(process.cwd(), 'mp4s');
     this.mp4Files = mp4SuggestionsMonitor.mp4Files;
     this.inputs = [];
     this.idPrefix = idPrefix;
     this.output = output;
+    this.displayName = displayName;
 
     this.lastReadTimestamp = Date.now();
     this.creationTimestamp = Date.now();
@@ -660,6 +664,9 @@ export class RoomState {
         input.textFontSize = options.textFontSize;
       }
     }
+    if (options.attachedInputIds !== undefined) {
+      input.attachedInputIds = options.attachedInputIds;
+    }
     this.updateStoreWithState();
   }
 
@@ -729,26 +736,53 @@ export class RoomState {
   }
 
   private updateStoreWithState() {
-    const inputs: InputConfig[] = this.inputs
-      .filter(input => input.status === 'connected')
-      .map(input => ({
-        inputId: input.inputId,
-        title: input.metadata.title,
-        description: input.metadata.description,
-        showTitle: input.showTitle,
-        volume: input.volume,
-        shaders: input.shaders,
-        orientation: input.orientation,
-        imageId: input.type === 'image' ? input.imageId : undefined,
-        text: input.type === 'text-input' ? input.text : undefined,
-        textAlign: input.type === 'text-input' ? input.textAlign : undefined,
-        textColor: input.type === 'text-input' ? input.textColor : undefined,
-        textMaxLines: input.type === 'text-input' ? input.textMaxLines : undefined,
-        textScrollSpeed: input.type === 'text-input' ? input.textScrollSpeed : undefined,
-        textScrollLoop: input.type === 'text-input' ? input.textScrollLoop : undefined,
-        textScrollNudge: input.type === 'text-input' ? input.textScrollNudge : undefined,
-        textFontSize: input.type === 'text-input' ? input.textFontSize : undefined,
-      }));
+    const toInputConfig = (input: RoomInputState): InputConfig => ({
+      inputId: input.inputId,
+      title: input.metadata.title,
+      description: input.metadata.description,
+      showTitle: input.showTitle,
+      volume: input.volume,
+      shaders: input.shaders,
+      orientation: input.orientation,
+      imageId: input.type === 'image' ? input.imageId : undefined,
+      text: input.type === 'text-input' ? input.text : undefined,
+      textAlign: input.type === 'text-input' ? input.textAlign : undefined,
+      textColor: input.type === 'text-input' ? input.textColor : undefined,
+      textMaxLines: input.type === 'text-input' ? input.textMaxLines : undefined,
+      textScrollSpeed: input.type === 'text-input' ? input.textScrollSpeed : undefined,
+      textScrollLoop: input.type === 'text-input' ? input.textScrollLoop : undefined,
+      textScrollNudge: input.type === 'text-input' ? input.textScrollNudge : undefined,
+      textFontSize: input.type === 'text-input' ? input.textFontSize : undefined,
+    });
+
+    const connectedInputs = this.inputs.filter(input => input.status === 'connected');
+    const connectedMap = new Map<string, RoomInputState>();
+    for (const input of connectedInputs) {
+      connectedMap.set(input.inputId, input);
+    }
+
+    const attachedIds = new Set<string>();
+    for (const input of connectedInputs) {
+      if (input.attachedInputIds) {
+        for (const id of input.attachedInputIds) {
+          attachedIds.add(id);
+        }
+      }
+    }
+
+    const inputs: InputConfig[] = connectedInputs
+      .filter(input => !attachedIds.has(input.inputId))
+      .map(input => {
+        const config = toInputConfig(input);
+        if (input.attachedInputIds && input.attachedInputIds.length > 0) {
+          config.attachedInputs = input.attachedInputIds
+            .map(id => connectedMap.get(id))
+            .filter((i): i is RoomInputState => !!i)
+            .map(toInputConfig);
+        }
+        return config;
+      });
+
     this.output.store.getState().updateState(inputs, this.layout);
   }
 

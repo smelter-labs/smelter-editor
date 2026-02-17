@@ -5,6 +5,8 @@ var __importDefault = (this && this.__importDefault) || function (mod) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.routes = void 0;
 const fastify_1 = __importDefault(require("fastify"));
+const node_path_1 = __importDefault(require("node:path"));
+const fs_extra_1 = require("fs-extra");
 const typebox_1 = require("@sinclair/typebox");
 const serverState_1 = require("./serverState");
 const TwitchChannelMonitor_1 = require("../twitch/TwitchChannelMonitor");
@@ -52,11 +54,13 @@ const CreateRoomSchema = typebox_1.Type.Object({
             typebox_1.Type.Literal('4k-vertical'),
         ]),
     ])),
+    displayName: typebox_1.Type.Optional(typebox_1.Type.String()),
 });
 exports.routes.post('/room', { schema: { body: CreateRoomSchema } }, async (req, res) => {
     console.log('[request] Create new room', { body: req.body });
     const initInputs = req.body.initInputs || [];
     const skipDefaultInputs = req.body.skipDefaultInputs === true;
+    const displayName = req.body.displayName;
     let resolution;
     if (req.body.resolution) {
         if (typeof req.body.resolution === 'string') {
@@ -66,7 +70,7 @@ exports.routes.post('/room', { schema: { body: CreateRoomSchema } }, async (req,
             resolution = req.body.resolution;
         }
     }
-    const { roomId, room } = await serverState_1.state.createRoom(initInputs, skipDefaultInputs, resolution);
+    const { roomId, room } = await serverState_1.state.createRoom(initInputs, skipDefaultInputs, resolution, displayName);
     res.status(200).send({
         roomId,
         whepUrl: room.getWhepUrl(),
@@ -87,6 +91,7 @@ exports.routes.get('/room/:roomId', async (req, res) => {
         whepUrl: room.getWhepUrl(),
         pendingDelete: room.pendingDelete,
         isPublic: room.isPublic,
+        displayName: room.displayName,
         resolution: room.getResolution(),
     });
 });
@@ -119,6 +124,63 @@ exports.routes.get('/rooms', async (_req, res) => {
         .header('Content-Type', 'application/json')
         .send(JSON.stringify({ rooms: roomsInfo }, null, 2));
 });
+exports.routes.post('/room/:roomId/record/start', async (req, res) => {
+    var _a, _b;
+    const { roomId } = req.params;
+    console.log('[request] Start recording', { roomId });
+    try {
+        const room = serverState_1.state.getRoom(roomId);
+        const { fileName } = await room.startRecording();
+        res.status(200).send({ status: 'recording', fileName });
+    }
+    catch (err) {
+        console.error('Failed to start recording', (_a = err === null || err === void 0 ? void 0 : err.body) !== null && _a !== void 0 ? _a : err);
+        res
+            .status(400)
+            .send({ status: 'error', message: (_b = err === null || err === void 0 ? void 0 : err.message) !== null && _b !== void 0 ? _b : 'Failed to start recording' });
+    }
+});
+exports.routes.post('/room/:roomId/record/stop', async (req, res) => {
+    var _a, _b, _c;
+    const { roomId } = req.params;
+    console.log('[request] Stop recording', { roomId });
+    try {
+        const room = serverState_1.state.getRoom(roomId);
+        const { fileName } = await room.stopRecording();
+        const forwardedProto = (_a = req.headers['x-forwarded-proto']) === null || _a === void 0 ? void 0 : _a.split(',')[0];
+        const protocol = forwardedProto || req.protocol || 'http';
+        const host = req.headers['host'] || 'localhost';
+        const baseUrl = `${protocol}://${host}`;
+        const downloadUrl = `${baseUrl}/recordings/${encodeURIComponent(fileName)}`;
+        res.status(200).send({ status: 'stopped', fileName, downloadUrl });
+    }
+    catch (err) {
+        console.error('Failed to stop recording', (_b = err === null || err === void 0 ? void 0 : err.body) !== null && _b !== void 0 ? _b : err);
+        res
+            .status(400)
+            .send({ status: 'error', message: (_c = err === null || err === void 0 ? void 0 : err.message) !== null && _c !== void 0 ? _c : 'Failed to stop recording' });
+    }
+});
+exports.routes.get('/recordings/:fileName', async (req, res) => {
+    const { fileName } = req.params;
+    const recordingsDir = node_path_1.default.join(process.cwd(), 'recordings');
+    const filePath = node_path_1.default.join(recordingsDir, fileName);
+    if (!(await (0, fs_extra_1.pathExists)(filePath))) {
+        return res.status(404).send({ error: 'Recording not found' });
+    }
+    try {
+        const fileStat = await (0, fs_extra_1.stat)(filePath);
+        const data = await (0, fs_extra_1.readFile)(filePath);
+        res.header('Content-Type', 'video/mp4');
+        res.header('Content-Disposition', `attachment; filename="${fileName}"`);
+        res.header('Content-Length', fileStat.size.toString());
+        res.send(data);
+    }
+    catch (err) {
+        console.error('Failed to read recording file', { filePath, err });
+        res.status(500).send({ error: 'Failed to read recording file' });
+    }
+});
 const UpdateRoomSchema = typebox_1.Type.Object({
     inputOrder: typebox_1.Type.Optional(typebox_1.Type.Array(typebox_1.Type.String())),
     layout: typebox_1.Type.Optional(typebox_1.Type.Union([
@@ -130,6 +192,7 @@ const UpdateRoomSchema = typebox_1.Type.Object({
         typebox_1.Type.Literal('wrapped-static'),
         typebox_1.Type.Literal('transition'),
         typebox_1.Type.Literal('picture-on-picture'),
+        typebox_1.Type.Literal('softu-tv'),
     ])),
     isPublic: typebox_1.Type.Optional(typebox_1.Type.Boolean()),
 });
@@ -257,6 +320,7 @@ const UpdateInputSchema = typebox_1.Type.Object({
     textMaxLines: typebox_1.Type.Optional(typebox_1.Type.Number()),
     textScrollSpeed: typebox_1.Type.Optional(typebox_1.Type.Number()),
     textScrollNudge: typebox_1.Type.Optional(typebox_1.Type.Number()),
+    attachedInputIds: typebox_1.Type.Optional(typebox_1.Type.Array(typebox_1.Type.String())),
 });
 exports.routes.post('/room/:roomId/input/:inputId', { schema: { body: UpdateInputSchema } }, async (req, res) => {
     const { roomId, inputId } = req.params;
@@ -286,6 +350,7 @@ function publicInputState(input) {
                 type: input.type,
                 shaders: input.shaders,
                 orientation: input.orientation,
+                attachedInputIds: input.attachedInputIds,
             };
         case 'image':
             return {
@@ -300,6 +365,7 @@ function publicInputState(input) {
                 shaders: input.shaders,
                 orientation: input.orientation,
                 imageId: input.imageId,
+                attachedInputIds: input.attachedInputIds,
             };
         case 'twitch-channel':
             return {
@@ -314,6 +380,7 @@ function publicInputState(input) {
                 shaders: input.shaders,
                 orientation: input.orientation,
                 channelId: input.channelId,
+                attachedInputIds: input.attachedInputIds,
             };
         case 'kick-channel':
             return {
@@ -328,6 +395,7 @@ function publicInputState(input) {
                 shaders: input.shaders,
                 orientation: input.orientation,
                 channelId: input.channelId,
+                attachedInputIds: input.attachedInputIds,
             };
         case 'whip':
             return {
@@ -341,6 +409,7 @@ function publicInputState(input) {
                 type: input.type,
                 shaders: input.shaders,
                 orientation: input.orientation,
+                attachedInputIds: input.attachedInputIds,
             };
         case 'text-input':
             return {
@@ -360,6 +429,7 @@ function publicInputState(input) {
                 textMaxLines: input.textMaxLines,
                 textScrollSpeed: input.textScrollSpeed,
                 textFontSize: input.textFontSize,
+                attachedInputIds: input.attachedInputIds,
             };
         default:
             throw new Error('Unknown input state');

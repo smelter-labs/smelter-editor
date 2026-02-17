@@ -219,7 +219,11 @@ function Input({ input }) {
                         left: 0,
                     }, children: [(0, jsx_runtime_1.jsx)(smelter_1.Text, { style: { fontSize: 40, color: 'white', fontFamily: 'Star Jedi' }, children: input === null || input === void 0 ? void 0 : input.title }), (0, jsx_runtime_1.jsx)(smelter_1.View, { style: { height: 10 } }), (0, jsx_runtime_1.jsx)(smelter_1.Text, { style: { fontSize: 25, color: 'white', fontFamily: 'Star Jedi' }, children: input === null || input === void 0 ? void 0 : input.description })] }))] }) }));
     const activeShaders = input.shaders.filter(shader => shader.enabled);
-    return wrapWithShaders(inputComponent, activeShaders, resolution);
+    const mainRendered = wrapWithShaders(inputComponent, activeShaders, resolution);
+    if (input.attachedInputs && input.attachedInputs.length > 0) {
+        return ((0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { ...resolution, direction: 'column', overflow: 'visible' }, children: [input.attachedInputs.map(attached => ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { ...resolution, top: 0, left: 0 }, children: (0, jsx_runtime_1.jsx)(Input, { input: attached }) }, attached.inputId))), (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { ...resolution, top: 0, left: 0 }, children: mainRendered })] }));
+    }
+    return mainRendered;
 }
 function SmallInput({ input, resolution = { width: 640, height: 360 }, }) {
     var _a, _b, _c, _d, _e;
@@ -241,8 +245,11 @@ function SmallInput({ input, resolution = { width: 640, height: 360 }, }) {
                     bottom: 0,
                     left: 0,
                 }, children: (0, jsx_runtime_1.jsx)(smelter_1.Text, { style: { fontSize: 30, color: 'white', fontFamily: 'Star Jedi' }, children: input.title }) }))] }));
-    if (activeShaders.length) {
-        return ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { children: wrapWithShaders(smallInputComponent, activeShaders, resolution) }));
+    const mainRendered = activeShaders.length
+        ? wrapWithShaders(smallInputComponent, activeShaders, resolution)
+        : smallInputComponent;
+    if (input.attachedInputs && input.attachedInputs.length > 0) {
+        return ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { children: (0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { ...resolution, direction: 'column', overflow: 'visible' }, children: [input.attachedInputs.map(attached => ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { ...resolution, top: 0, left: 0 }, children: (0, jsx_runtime_1.jsx)(SmallInput, { input: attached, resolution: resolution }) }, attached.inputId))), (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { ...resolution, top: 0, left: 0 }, children: mainRendered })] }) }));
     }
-    return (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { children: smallInputComponent });
+    return (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { children: mainRendered });
 }

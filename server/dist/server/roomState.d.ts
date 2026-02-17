@@ -13,6 +13,7 @@ export type RoomInputState = {
     showTitle: boolean;
     shaders: ShaderConfig[];
     orientation: InputOrientation;
+    attachedInputIds?: string[];
     metadata: {
         title: string;
         description: string;
@@ -54,6 +55,7 @@ type UpdateInputOptions = {
     showTitle: boolean;
     shaders: ShaderConfig[];
     orientation: InputOrientation;
+    attachedInputIds: string[];
     text: string;
     textAlign: 'left' | 'center' | 'right';
     textColor: string;
@@ -99,17 +101,26 @@ export declare class RoomState {
     private mp4sDir;
     private mp4Files;
     private output;
+    private recording?;
     lastReadTimestamp: number;
     creationTimestamp: number;
     pendingDelete?: boolean;
     isPublic: boolean;
-    constructor(idPrefix: string, output: SmelterOutput, initInputs: RegisterInputOptions[], skipDefaultInputs?: boolean);
+    displayName?: string;
+    constructor(idPrefix: string, output: SmelterOutput, initInputs: RegisterInputOptions[], skipDefaultInputs?: boolean, displayName?: string);
     private getInitialInputState;
     getWhepUrl(): string;
     getResolution(): {
         width: number;
         height: number;
     };
+    hasActiveRecording(): boolean;
+    startRecording(): Promise<{
+        fileName: string;
+    }>;
+    stopRecording(): Promise<{
+        fileName: string;
+    }>;
     getState(): [RoomInputState[], Layout];
     getInputs(): RoomInputState[];
     private getPlaceholderId;

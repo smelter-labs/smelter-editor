@@ -66,6 +66,16 @@ export default function IntroView() {
   const [loadingImport, setLoadingImport] = useState(false);
   const [selectedResolution, setSelectedResolution] =
     useState<ResolutionPreset>('1440p');
+  const [displayName, setDisplayName] = useState(() => {
+    if (typeof window === 'undefined') return 'Mr Smelter';
+    return localStorage.getItem('smelter-display-name') || 'Mr Smelter';
+  });
+  const handleSetDisplayName = useCallback((name: string) => {
+    setDisplayName(name);
+    try {
+      localStorage.setItem('smelter-display-name', name);
+    } catch {}
+  }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Suggestions state
@@ -153,6 +163,7 @@ export default function IntroView() {
           initInputs,
           false,
           resolutionOverride ?? selectedResolution,
+          displayName,
         );
         let hash = '';
         if (typeof window !== 'undefined') {
@@ -177,6 +188,7 @@ export default function IntroView() {
       twitchSuggestions,
       kickSuggestions,
       selectedResolution,
+      displayName,
     ],
   );
 
@@ -210,7 +222,12 @@ export default function IntroView() {
       const text = await file.text();
       const config = parseRoomConfig(text);
 
-      const room = await createNewRoom([], true, config.resolution);
+      const room = await createNewRoom(
+        [],
+        true,
+        config.resolution,
+        displayName,
+      );
       const roomId = room.roomId;
 
       const createdInputIds: { inputId: string; configIndex: number }[] = [];
@@ -305,7 +322,9 @@ export default function IntroView() {
       try {
         await updateRoom(roomId, {
           layout: config.layout,
-          ...(orderedCreatedIds.length > 0 ? { inputOrder: orderedCreatedIds } : {}),
+          ...(orderedCreatedIds.length > 0
+            ? { inputOrder: orderedCreatedIds }
+            : {}),
         });
       } catch (err) {
         console.warn('Failed to set layout or input order:', err);
@@ -368,6 +387,19 @@ export default function IntroView() {
           </div>
 
           <div className='mt-6 flex flex-col gap-3'>
+            <div className='flex flex-col gap-2'>
+              <label className='text-xs text-neutral-400 text-left'>
+                Display Name
+              </label>
+              <input
+                type='text'
+                value={displayName}
+                onChange={(e) => handleSetDisplayName(e.target.value)}
+                placeholder='Mr Smelter'
+                className='w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-white text-sm focus:outline-none focus:border-neutral-500'
+                disabled={loadingNew || loadingImport}
+              />
+            </div>
             <div className='flex flex-col gap-2'>
               <label className='text-xs text-neutral-400 text-left'>
                 Output Resolution

@@ -226,7 +226,9 @@ export function ConfigurationSection({
     try {
       await updateRoom(roomId, {
         layout: config.layout,
-        ...(orderedCreatedIds.length > 0 ? { inputOrder: orderedCreatedIds } : {}),
+        ...(orderedCreatedIds.length > 0
+          ? { inputOrder: orderedCreatedIds }
+          : {}),
       });
     } catch (e) {
       console.warn('Failed to set layout or input order:', e);

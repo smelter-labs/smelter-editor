@@ -70,6 +70,7 @@ export type Input = {
   textScrollSpeed?: number;
   textScrollLoop?: boolean;
   textFontSize?: number;
+  attachedInputIds?: string[];
 };
 
 export type RegisterInputOptions =
@@ -101,6 +102,7 @@ export type RoomState = {
   pendingDelete?: boolean;
   isPublic?: boolean;
   resolution?: Resolution;
+  displayName?: string;
 };
 
 export type Layout =
@@ -147,6 +149,7 @@ export async function createNewRoom(
   initInputs: RegisterInputOptions[],
   skipDefaultInputs: boolean = false,
   resolution?: ResolutionPreset | Resolution,
+  displayName?: string,
 ): Promise<{
   roomId: string;
   whepUrl: string;
@@ -156,6 +159,7 @@ export async function createNewRoom(
     initInputs,
     skipDefaultInputs,
     resolution,
+    displayName,
   });
 }
 
@@ -355,6 +359,7 @@ export type UpdateInputOptions = {
   textScrollLoop?: boolean;
   textScrollNudge?: number;
   textFontSize?: number;
+  attachedInputIds?: string[];
 };
 
 export async function updateInput(

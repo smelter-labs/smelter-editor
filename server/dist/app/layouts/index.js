@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.PictureOnPictureLayout = exports.TransitionLayout = exports.WrappedStaticLayout = exports.WrappedLayout = exports.PictureInPictureLayout = exports.PrimaryOnTopLayout = exports.PrimaryOnLeftLayout = exports.GridLayout = void 0;
+exports.SoftuTvLayout = exports.PictureOnPictureLayout = exports.TransitionLayout = exports.WrappedStaticLayout = exports.WrappedLayout = exports.PictureInPictureLayout = exports.PrimaryOnTopLayout = exports.PrimaryOnLeftLayout = exports.GridLayout = void 0;
 var GridLayout_1 = require("./GridLayout");
 Object.defineProperty(exports, "GridLayout", { enumerable: true, get: function () { return GridLayout_1.GridLayout; } });
 var PrimaryOnLeftLayout_1 = require("./PrimaryOnLeftLayout");
@@ -17,3 +17,5 @@ var TransitionLayout_1 = require("./TransitionLayout");
 Object.defineProperty(exports, "TransitionLayout", { enumerable: true, get: function () { return TransitionLayout_1.TransitionLayout; } });
 var PictureOnPictureLayout_1 = require("./PictureOnPictureLayout");
 Object.defineProperty(exports, "PictureOnPictureLayout", { enumerable: true, get: function () { return PictureOnPictureLayout_1.PictureOnPictureLayout; } });
+var SoftuTvLayout_1 = require("./SoftuTvLayout");
+Object.defineProperty(exports, "SoftuTvLayout", { enumerable: true, get: function () { return SoftuTvLayout_1.SoftuTvLayout; } });
