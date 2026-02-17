@@ -344,7 +344,8 @@ export async function acknowledgeWhipInput(
       {},
     );
   } catch (err: any) {
-    const message = err?.body?.message ?? err?.message ?? 'Failed to acknowledge WHIP input';
+    const message =
+      err?.body?.message ?? err?.message ?? 'Failed to acknowledge WHIP input';
     console.warn('Failed to acknowledge WHIP input:', message);
     throw new Error(message);
   }
@@ -446,7 +447,8 @@ async function sendSmelterRequest(
     } catch {
       // body stays as text
     }
-    const message = body?.message ?? body?.error ?? `Request to Smelter server failed.`;
+    const message =
+      body?.message ?? body?.error ?? `Request to Smelter server failed.`;
     const err = new Error(message) as any;
     err.body = body;
     err.status = response.status;
