@@ -24,11 +24,11 @@ import {
 import { RESOLUTION_PRESETS, type ResolutionPreset } from '@/lib/resolution';
 import Link from 'next/link';
 import { staggerContainer } from '@/utils/animations';
+import { parseRoomConfig } from '@/lib/room-config';
 import {
-  parseRoomConfig,
-  savePendingWhipInputs,
-  type StoredPendingWhipInput,
-} from '@/lib/room-config';
+  setPendingWhipInputs as setPendingWhipInputsAction,
+  type PendingWhipInputData,
+} from '@/app/actions/actions';
 import { Upload } from 'lucide-react';
 import { toast } from 'react-toastify';
 
@@ -323,21 +323,26 @@ export default function IntroView() {
         console.warn('Failed to set layout or input order:', err);
       }
 
-      const pendingWhipInputs: StoredPendingWhipInput[] = [];
+      const pendingWhipInputs: PendingWhipInputData[] = [];
       for (let i = 0; i < config.inputs.length; i++) {
         const inputConfig = config.inputs[i];
         if (inputConfig.type === 'whip') {
           pendingWhipInputs.push({
             id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`,
             title: inputConfig.title,
-            config: inputConfig,
+            volume: inputConfig.volume,
+            showTitle: inputConfig.showTitle !== false,
+            shaders: inputConfig.shaders || [],
+            orientation: (inputConfig.orientation || 'horizontal') as
+              | 'horizontal'
+              | 'vertical',
             position: i,
           });
         }
       }
 
       if (pendingWhipInputs.length > 0) {
-        savePendingWhipInputs(roomId, pendingWhipInputs);
+        await setPendingWhipInputsAction(roomId, pendingWhipInputs);
         toast.info(
           `Room created. ${pendingWhipInputs.length} WHIP input(s) need to be connected manually.`,
         );

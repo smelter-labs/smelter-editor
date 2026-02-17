@@ -95,6 +95,16 @@ export type RegisterInputOptions =
       textAlign?: 'left' | 'center' | 'right';
     };
 
+export type PendingWhipInputData = {
+  id: string;
+  title: string;
+  volume: number;
+  showTitle: boolean;
+  shaders: ShaderConfig[];
+  orientation: InputOrientation;
+  position: number;
+};
+
 export type RoomState = {
   inputs: Input[];
   layout: Layout;
@@ -102,6 +112,7 @@ export type RoomState = {
   pendingDelete?: boolean;
   isPublic?: boolean;
   resolution?: Resolution;
+  pendingWhipInputs?: PendingWhipInputData[];
 };
 
 export type Layout =
@@ -336,6 +347,17 @@ export async function acknowledgeWhipInput(
     console.warn('Failed to acknowledge WHIP input:', err?.message ?? err);
     throw err;
   }
+}
+
+export async function setPendingWhipInputs(
+  roomId: string,
+  pendingWhipInputs: PendingWhipInputData[],
+): Promise<void> {
+  await sendSmelterRequest(
+    'post',
+    `/room/${encodeURIComponent(roomId)}/pending-whip-inputs`,
+    { pendingWhipInputs },
+  );
 }
 
 export async function getAllRooms(): Promise<any> {

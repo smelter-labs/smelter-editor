@@ -42,12 +42,11 @@ class ServerState {
     initInputs: RegisterInputOptions[],
     skipDefaultInputs: boolean = false,
     resolution?: Resolution,
-    displayName?: string
   ): Promise<CreateRoomResult> {
     const roomId = uuidv4();
     const resolvedResolution = resolution ?? RESOLUTION_PRESETS['1440p'];
     const smelterOutput = await SmelterInstance.registerOutput(roomId, resolvedResolution);
-    const room = new RoomState(roomId, smelterOutput, initInputs, skipDefaultInputs, displayName);
+    const room = new RoomState(roomId, smelterOutput, initInputs, skipDefaultInputs);
     this.rooms[roomId] = room;
     return { roomId, room };
   }

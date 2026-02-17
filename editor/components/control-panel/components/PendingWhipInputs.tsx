@@ -23,7 +23,7 @@ import type { PendingWhipInput } from './ConfigurationSection';
 type PendingWhipInputsProps = {
   roomId: string;
   pendingInputs: PendingWhipInput[];
-  setPendingInputs: React.Dispatch<React.SetStateAction<PendingWhipInput[]>>;
+  setPendingInputs: (inputs: PendingWhipInput[]) => void | Promise<void>;
   refreshState: () => Promise<void>;
   cameraPcRef: React.MutableRefObject<RTCPeerConnection | null>;
   cameraStreamRef: React.MutableRefObject<MediaStream | null>;
@@ -126,8 +126,9 @@ export function PendingWhipInputs({
         await updateRoom(roomId, { inputOrder: reordered });
       }
 
-      setPendingInputs((prev) => prev.filter((p) => p.id !== pendingInput.id));
-      await refreshState();
+      await setPendingInputs(
+        pendingInputs.filter((p) => p.id !== pendingInput.id),
+      );
 
       toast.success(
         `Connected ${type === 'camera' ? 'camera' : 'screenshare'}: ${pendingInput.title}`,
@@ -145,7 +146,7 @@ export function PendingWhipInputs({
   };
 
   const handleDismiss = (pendingInput: PendingWhipInput) => {
-    setPendingInputs((prev) => prev.filter((p) => p.id !== pendingInput.id));
+    setPendingInputs(pendingInputs.filter((p) => p.id !== pendingInput.id));
   };
 
   return (

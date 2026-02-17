@@ -35,6 +35,16 @@ type TypeSpecificState =
   | { type: 'image'; imageId: string }
   | { type: 'text-input'; text: string; textAlign: 'left' | 'center' | 'right'; textColor: string; textMaxLines: number; textScrollSpeed: number; textScrollLoop: boolean; textScrollNudge: number; textFontSize: number };
 
+export type PendingWhipInputData = {
+  id: string;
+  title: string;
+  volume: number;
+  showTitle: boolean;
+  shaders: ShaderConfig[];
+  orientation: InputOrientation;
+  position: number;
+};
+
 type UpdateInputOptions = {
   volume: number;
   showTitle: boolean;
@@ -111,15 +121,14 @@ export class RoomState {
 
   public pendingDelete?: boolean;
   public isPublic: boolean = false;
-  public displayName?: string;
+  public pendingWhipInputs: PendingWhipInputData[] = [];
 
-  public constructor(idPrefix: string, output: SmelterOutput, initInputs: RegisterInputOptions[], skipDefaultInputs: boolean = false, displayName?: string) {
+  public constructor(idPrefix: string, output: SmelterOutput, initInputs: RegisterInputOptions[], skipDefaultInputs: boolean = false) {
     this.mp4sDir = path.join(process.cwd(), 'mp4s');
     this.mp4Files = mp4SuggestionsMonitor.mp4Files;
     this.inputs = [];
     this.idPrefix = idPrefix;
     this.output = output;
-    this.displayName = displayName;
 
     this.lastReadTimestamp = Date.now();
     this.creationTimestamp = Date.now();

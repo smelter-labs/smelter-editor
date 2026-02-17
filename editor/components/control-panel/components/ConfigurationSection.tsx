@@ -33,9 +33,7 @@ type ConfigurationSectionProps = {
   resolution?: { width: number; height: number };
   refreshState: () => Promise<void>;
   pendingWhipInputs: PendingWhipInput[];
-  setPendingWhipInputs: React.Dispatch<
-    React.SetStateAction<PendingWhipInput[]>
-  >;
+  setPendingWhipInputs: (inputs: PendingWhipInput[]) => void | Promise<void>;
 };
 
 export type PendingWhipInput = {

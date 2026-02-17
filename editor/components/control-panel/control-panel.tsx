@@ -2,8 +2,12 @@
 
 import { fadeIn } from '@/utils/animations';
 import { motion } from 'framer-motion';
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useCallback } from 'react';
 import type { RoomState } from '@/app/actions/actions';
+import {
+  setPendingWhipInputs as setPendingWhipInputsAction,
+  type PendingWhipInputData,
+} from '@/app/actions/actions';
 import LayoutSelector from '@/components/layout-selector';
 import Accordion, { type AccordionHandle } from '@/components/ui/accordion';
 import { useControlPanelState } from './hooks/use-control-panel-state';
@@ -18,10 +22,6 @@ import {
   type PendingWhipInput,
 } from './components/ConfigurationSection';
 import { PendingWhipInputs } from './components/PendingWhipInputs';
-import {
-  loadPendingWhipInputs,
-  savePendingWhipInputs,
-} from '@/lib/room-config';
 
 export type ControlPanelProps = {
   roomId: string;
@@ -39,20 +39,23 @@ export default function ControlPanel({
   isGuest,
 }: ControlPanelProps) {
   const addVideoAccordionRef = useRef<AccordionHandle | null>(null);
-  const [pendingWhipInputs, setPendingWhipInputs] = useState<
-    PendingWhipInput[]
-  >([]);
 
-  useEffect(() => {
-    const stored = loadPendingWhipInputs(roomId);
-    if (stored.length > 0) {
-      setPendingWhipInputs(stored);
-    }
-  }, [roomId]);
-
-  useEffect(() => {
-    savePendingWhipInputs(roomId, pendingWhipInputs);
-  }, [roomId, pendingWhipInputs]);
+  const pendingWhipInputs: PendingWhipInput[] = (
+    roomState.pendingWhipInputs || []
+  ).map((p) => ({
+    id: p.id,
+    title: p.title,
+    config: {
+      type: 'whip',
+      title: p.title,
+      description: '',
+      volume: p.volume,
+      showTitle: p.showTitle,
+      shaders: p.shaders,
+      orientation: p.orientation,
+    },
+    position: p.position,
+  }));
 
   const {
     userName,
@@ -134,6 +137,25 @@ export default function ControlPanel({
     changeLayout,
   });
 
+  const handleSetPendingWhipInputs = useCallback(
+    async (newInputs: PendingWhipInput[]) => {
+      const serverData: PendingWhipInputData[] = newInputs.map((p) => ({
+        id: p.id,
+        title: p.title,
+        volume: p.config.volume,
+        showTitle: p.config.showTitle !== false,
+        shaders: p.config.shaders || [],
+        orientation: (p.config.orientation || 'horizontal') as
+          | 'horizontal'
+          | 'vertical',
+        position: p.position,
+      }));
+      await setPendingWhipInputsAction(roomId, serverData);
+      await handleRefreshState();
+    },
+    [roomId, handleRefreshState],
+  );
+
   const handleWhipDisconnectedOrRemoved = (id: string) => {
     if (activeCameraInputId === id) {
       setActiveCameraInputId(null);
@@ -207,7 +229,7 @@ export default function ControlPanel({
           <PendingWhipInputs
             roomId={roomId}
             pendingInputs={pendingWhipInputs}
-            setPendingInputs={setPendingWhipInputs}
+            setPendingInputs={handleSetPendingWhipInputs}
             refreshState={handleRefreshState}
             cameraPcRef={cameraPcRef}
             cameraStreamRef={cameraStreamRef}
@@ -252,7 +274,7 @@ export default function ControlPanel({
                 roomId={roomId}
                 refreshState={handleRefreshState}
                 pendingWhipInputs={pendingWhipInputs}
-                setPendingWhipInputs={setPendingWhipInputs}
+                setPendingWhipInputs={handleSetPendingWhipInputs}
               />
               <Accordion
                 title='Layouts'

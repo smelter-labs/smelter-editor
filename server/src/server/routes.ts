@@ -5,7 +5,7 @@ import { Type } from '@sinclair/typebox';
 import type { Static, TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { state } from './serverState';
 import { TwitchChannelSuggestions } from '../twitch/TwitchChannelMonitor';
-import type { RoomInputState, RegisterInputOptions } from './roomState';
+import type { RoomInputState, RegisterInputOptions, PendingWhipInputData } from './roomState';
 import { config } from '../config';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
 import pictureSuggestionsMonitor from '../pictures/pictureSuggestionMonitor';
@@ -86,7 +86,6 @@ const CreateRoomSchema = Type.Object({
       ]),
     ])
   ),
-  displayName: Type.Optional(Type.String()),
 });
 
 routes.post<{ Body: Static<typeof CreateRoomSchema> }>(
@@ -97,7 +96,6 @@ routes.post<{ Body: Static<typeof CreateRoomSchema> }>(
 
     const initInputs = (req.body.initInputs as RegisterInputOptions[]) || [];
     const skipDefaultInputs = req.body.skipDefaultInputs === true;
-    const displayName = req.body.displayName;
 
     let resolution: Resolution | undefined;
     if (req.body.resolution) {
@@ -108,7 +106,7 @@ routes.post<{ Body: Static<typeof CreateRoomSchema> }>(
       }
     }
 
-    const { roomId, room } = await state.createRoom(initInputs, skipDefaultInputs, resolution, displayName);
+    const { roomId, room } = await state.createRoom(initInputs, skipDefaultInputs, resolution);
     res.status(200).send({
       roomId,
       whepUrl: room.getWhepUrl(),
@@ -133,8 +131,8 @@ routes.get<RoomIdParams>('/room/:roomId', async (req, res) => {
     whepUrl: room.getWhepUrl(),
     pendingDelete: room.pendingDelete,
     isPublic: room.isPublic,
-    displayName: room.displayName,
     resolution: room.getResolution(),
+    pendingWhipInputs: room.pendingWhipInputs,
   });
 });
 
@@ -272,6 +270,31 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
       room.isPublic = req.body.isPublic;
     }
 
+    res.status(200).send({ status: 'ok' });
+  }
+);
+
+const PendingWhipInputSchema = Type.Object({
+  id: Type.String(),
+  title: Type.String(),
+  volume: Type.Number(),
+  showTitle: Type.Boolean(),
+  shaders: Type.Array(Type.Any()),
+  orientation: Type.Union([Type.Literal('horizontal'), Type.Literal('vertical')]),
+  position: Type.Number(),
+});
+
+const SetPendingWhipInputsSchema = Type.Object({
+  pendingWhipInputs: Type.Array(PendingWhipInputSchema),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof SetPendingWhipInputsSchema> }>(
+  '/room/:roomId/pending-whip-inputs',
+  { schema: { body: SetPendingWhipInputsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    const room = state.getRoom(roomId);
+    room.pendingWhipInputs = req.body.pendingWhipInputs;
     res.status(200).send({ status: 'ok' });
   }
 );
