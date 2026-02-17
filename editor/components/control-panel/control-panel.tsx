@@ -113,12 +113,7 @@ export default function ControlPanel({
     const stream =
       cameraStreamRef.current || screenshareStreamRef.current || null;
     onGuestStreamChange(stream);
-  }, [
-    isGuest,
-    onGuestStreamChange,
-    isCameraActive,
-    isScreenshareActive,
-  ]);
+  }, [isGuest, onGuestStreamChange, isCameraActive, isScreenshareActive]);
 
   useControlPanelEvents({
     inputsRef,
