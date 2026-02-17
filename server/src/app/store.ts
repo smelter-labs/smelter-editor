@@ -55,7 +55,8 @@ export type RoomStore = {
   inputs: InputConfig[];
   layout: Layout;
   resolution: Resolution;
-  updateState: (inputs: InputConfig[], layout: Layout) => void;
+  swapDurationMs: number;
+  updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number) => void;
 };
 
 export function createRoomStore(resolution: Resolution = { width: 2560, height: 1440 }): StoreApi<RoomStore> {
@@ -63,8 +64,9 @@ export function createRoomStore(resolution: Resolution = { width: 2560, height: 
     inputs: [],
     layout: 'grid',
     resolution,
-    updateState: (inputs: InputConfig[], layout: Layout) => {
-      set(_state => ({ inputs, layout }));
+    swapDurationMs: 500,
+    updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number) => {
+      set(_state => ({ inputs, layout, swapDurationMs }));
     },
   }));
 }
@@ -77,6 +79,11 @@ export function useResolution() {
 export function useIsVertical() {
   const resolution = useResolution();
   return resolution.height > resolution.width;
+}
+
+export function useSwapDurationMs() {
+  const store = useContext(StoreContext);
+  return useStore(store, state => state.swapDurationMs);
 }
 
 export const StoreContext = createContext<StoreApi<RoomStore>>(createRoomStore());

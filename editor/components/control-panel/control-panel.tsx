@@ -6,6 +6,7 @@ import { useRef, useCallback } from 'react';
 import type { RoomState } from '@/app/actions/actions';
 import {
   setPendingWhipInputs as setPendingWhipInputsAction,
+  updateRoom as updateRoomAction,
   type PendingWhipInputData,
 } from '@/app/actions/actions';
 import LayoutSelector from '@/components/layout-selector';
@@ -279,6 +280,11 @@ export default function ControlPanel({
                   changeLayout={changeLayout}
                   activeLayoutId={roomState.layout}
                   connectedStreamsLength={roomState.inputs.length}
+                  swapDurationMs={roomState.swapDurationMs ?? 500}
+                  onSwapDurationChange={async (value) => {
+                    await updateRoomAction(roomId, { swapDurationMs: value });
+                    await handleRefreshState();
+                  }}
                 />
               </Accordion>
             </>

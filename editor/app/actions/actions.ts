@@ -112,6 +112,7 @@ export type RoomState = {
   pendingDelete?: boolean;
   isPublic?: boolean;
   resolution?: Resolution;
+  swapDurationMs?: number;
   pendingWhipInputs?: PendingWhipInputData[];
 };
 
@@ -175,6 +176,7 @@ export type UpdateRoomOptions = {
   inputOrder?: string[];
   layout?: Layout;
   isPublic?: boolean;
+  swapDurationMs?: number;
 };
 
 export async function updateRoom(

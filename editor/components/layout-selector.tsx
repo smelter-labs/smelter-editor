@@ -2,6 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { fadeIn2 } from '@/utils/animations';
 import { motion } from 'framer-motion';
 import { Grid3X3, Layers, LayoutGrid, LucideIcon, Square } from 'lucide-react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 
 export type Layout =
   | 'grid'
@@ -55,13 +56,44 @@ type LayoutSelectorProps = {
   changeLayout: (layout: Layout) => void;
   activeLayoutId: string;
   connectedStreamsLength: number;
+  swapDurationMs: number;
+  onSwapDurationChange: (value: number) => void;
 };
 
 export default function LayoutSelector({
   changeLayout,
   activeLayoutId,
   connectedStreamsLength,
+  swapDurationMs,
+  onSwapDurationChange,
 }: LayoutSelectorProps) {
+  const [localSwapDuration, setLocalSwapDuration] = useState(swapDurationMs);
+  const lastEnabledValueRef = useRef(swapDurationMs > 0 ? swapDurationMs : 500);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    setLocalSwapDuration(swapDurationMs);
+    if (swapDurationMs > 0) {
+      lastEnabledValueRef.current = swapDurationMs;
+    }
+  }, [swapDurationMs]);
+
+  const handleSwapDurationChange = useCallback(
+    (value: number) => {
+      setLocalSwapDuration(value);
+      if (value > 0) {
+        lastEnabledValueRef.current = value;
+      }
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+      debounceRef.current = setTimeout(() => {
+        onSwapDurationChange(value);
+      }, 300);
+    },
+    [onSwapDurationChange],
+  );
+
   const renderLayoutPreview = (layoutId: string) => {
     const config = LAYOUT_CONFIGS.find((l) => l.id === layoutId);
     if (!config) return null;
@@ -259,6 +291,44 @@ export default function LayoutSelector({
               </button>
             );
           })}
+        </div>
+        <div className='mt-4 px-1'>
+          <label className='flex items-center gap-2 cursor-pointer mb-2'>
+            <input
+              type='checkbox'
+              checked={localSwapDuration > 0}
+              onChange={(e) => {
+                if (e.target.checked) {
+                  handleSwapDurationChange(lastEnabledValueRef.current);
+                } else {
+                  handleSwapDurationChange(0);
+                }
+              }}
+              className='accent-white'
+            />
+            <span className='text-xs text-neutral-400'>Swap Transition</span>
+          </label>
+          {localSwapDuration > 0 && (
+            <>
+              <div className='flex items-center justify-between mb-2'>
+                <span className='text-xs text-neutral-400'>Duration</span>
+                <span className='text-xs text-neutral-400'>
+                  {localSwapDuration}ms
+                </span>
+              </div>
+              <input
+                type='range'
+                min={100}
+                max={2000}
+                step={50}
+                value={localSwapDuration}
+                onChange={(e) =>
+                  handleSwapDurationChange(Number(e.target.value))
+                }
+                className='w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-white'
+              />
+            </>
+          )}
         </div>
       </div>
     </motion.div>

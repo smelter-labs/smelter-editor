@@ -123,7 +123,7 @@ routes.get('/shaders', async (_req, res) => {
 routes.get<RoomIdParams>('/room/:roomId', async (req, res) => {
   const { roomId } = req.params;
   const room = state.getRoom(roomId);
-  const [inputs, layout] = room.getState();
+  const [inputs, layout, swapDurationMs] = room.getState();
 
   res.status(200).send({
     inputs: inputs.map(publicInputState),
@@ -133,6 +133,7 @@ routes.get<RoomIdParams>('/room/:roomId', async (req, res) => {
     isPublic: room.isPublic,
     resolution: room.getResolution(),
     pendingWhipInputs: room.pendingWhipInputs,
+    swapDurationMs,
   });
 });
 
@@ -151,7 +152,7 @@ routes.get('/rooms', async (_req, res) => {
       if (!room) {
         return undefined;
       }
-      const [inputs, layout] = room.getState();
+      const [inputs, layout, swapDurationMs] = room.getState();
       return {
         roomId: room.idPrefix,
         inputs: inputs.map(publicInputState),
@@ -160,6 +161,7 @@ routes.get('/rooms', async (_req, res) => {
         pendingDelete: room.pendingDelete,
         createdAt: room.creationTimestamp,
         isPublic: room.isPublic,
+        swapDurationMs,
       };
     })
     .filter(Boolean);
@@ -248,6 +250,7 @@ const UpdateRoomSchema = Type.Object({
     ])
   ),
   isPublic: Type.Optional(Type.Boolean()),
+  swapDurationMs: Type.Optional(Type.Number({ minimum: 0, maximum: 5000 })),
 });
 
 // No multiple-pictures shader defaults API - kept local in layout
@@ -268,6 +271,9 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
     }
     if (req.body.isPublic !== undefined) {
       room.isPublic = req.body.isPublic;
+    }
+    if (req.body.swapDurationMs !== undefined) {
+      room.setSwapDurationMs(req.body.swapDurationMs);
     }
 
     res.status(200).send({ status: 'ok' });

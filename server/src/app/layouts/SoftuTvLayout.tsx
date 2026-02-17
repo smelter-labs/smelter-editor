@@ -1,9 +1,10 @@
 import { View, Tiles, Rescaler, Image, Text } from '@swmansion/smelter';
 import React, { useContext, useEffect, useState } from 'react';
 import { useStore } from 'zustand';
-import { StoreContext, useResolution, useIsVertical } from '../store';
+import { StoreContext, useResolution, useIsVertical, useSwapDurationMs } from '../store';
 import { Input, SmallInput } from '../../inputs/inputs';
 import { NewsStripDecorated } from '../NewsStripDecorated';
+import { usePrimarySwapTransition } from './usePrimarySwapTransition';
 
 const SOFTU_TV_THEME = {
   liveBadgeBg: '#0052A5',
@@ -18,8 +19,10 @@ export function SoftuTvLayout() {
   const inputs = useStore(store, state => state.inputs);
   const resolution = useResolution();
   const isVertical = useIsVertical();
+  const swapDurationMs = useSwapDurationMs();
   const firstInput = inputs[0];
   const secondInput = inputs[1];
+  const swap = usePrimarySwapTransition(inputs, swapDurationMs);
 
   const { width, height } = resolution;
 
@@ -114,10 +117,19 @@ export function SoftuTvLayout() {
   const pipHeight = isVertical ? Math.round(height * 0.35) : Math.round(height * 0.75);
   const pipTop = isVertical ? Math.round(height * 0.62) : 60;
   const pipRight = isVertical ? Math.round((width - pipWidth) / 2) : 60;
+  const pipLeft = width - pipRight - pipWidth;
 
   const stripHeight = isVertical ? Math.round(height * 0.12) : Math.round(height * 0.31);
   const stripTop = isVertical ? height - stripHeight : Math.round(height * 0.67);
   const showStrip = !isVertical;
+
+  // Approximate tile positions within the PIP area
+  const tilePadding = 10;
+  const prevTileCount = Math.max(1, swap.prevSecondaryCount);
+  const tileW = pipWidth - tilePadding * 2;
+  const tileH = Math.round((pipHeight - tilePadding * (prevTileCount + 1)) / prevTileCount);
+  const tileAbsTop = pipTop + tilePadding + swap.incomingPrevIndex * (tileH + tilePadding);
+  const tileAbsLeft = pipLeft + tilePadding;
 
   return (
     <View style={{ direction: 'column' }}>
@@ -134,10 +146,23 @@ export function SoftuTvLayout() {
         }}>
         <Input input={firstInput} />
       </Rescaler>
+      {swap.isTransitioning && swap.outgoingInput && (
+        <Rescaler style={{
+          rescaleMode: 'fill',
+          horizontalAlign: isVertical ? 'center' : 'left',
+          verticalAlign: 'top',
+          top: 0,
+          left: 0,
+          width: width - swap.progress * (width - tileW),
+          height: height - swap.progress * (height - tileH),
+        }}>
+          <Input input={swap.outgoingInput} />
+        </Rescaler>
+      )}
       {secondInput ? (
         <Rescaler style={{ top: pipTop, right: pipRight, width: pipWidth, height: pipHeight }}>
           <View style={{ direction: 'column' }}>
-            <Tiles transition={{ durationMs: 300 }} style={{ padding: 10, verticalAlign: 'top' }}>
+            <Tiles transition={{ durationMs: 300 }} style={{ padding: tilePadding, verticalAlign: 'top' }}>
               {Object.values(inputs)
                 .filter(input => input.inputId != firstInput.inputId)
                 .map(input => (
@@ -147,6 +172,16 @@ export function SoftuTvLayout() {
           </View>
         </Rescaler>
       ) : null}
+      {swap.isTransitioning && swap.incomingInput && (
+        <Rescaler style={{
+          top: tileAbsTop + swap.progress * (0 - tileAbsTop),
+          left: tileAbsLeft + swap.progress * (0 - tileAbsLeft),
+          width: tileW + swap.progress * (width - tileW),
+          height: tileH + swap.progress * (height - tileH),
+        }}>
+          <Input input={swap.incomingInput} />
+        </Rescaler>
+      )}
       {showStrip && <Rescaler
         transition={{ durationMs: 300 }}
         style={{

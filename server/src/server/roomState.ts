@@ -102,6 +102,7 @@ const PLACEHOLDER_LOGO_FILE = 'logo_Smelter.png';
 export class RoomState {
   private inputs: RoomInputState[];
   private layout: Layout = 'picture-in-picture';
+  private swapDurationMs: number = 500;
   public idPrefix: string;
 
   private mp4sDir: string;
@@ -247,9 +248,18 @@ export class RoomState {
     return { fileName: this.recording.fileName };
   }
 
-  public getState(): [RoomInputState[], Layout] {
+  public getState(): [RoomInputState[], Layout, number] {
     this.lastReadTimestamp = Date.now();
-    return [this.inputs, this.layout];
+    return [this.inputs, this.layout, this.swapDurationMs];
+  }
+
+  public getSwapDurationMs(): number {
+    return this.swapDurationMs;
+  }
+
+  public setSwapDurationMs(value: number) {
+    this.swapDurationMs = value;
+    this.updateStoreWithState();
   }
   public getInputs(): RoomInputState[] {
     return this.inputs;
@@ -797,7 +807,7 @@ export class RoomState {
         return config;
       });
 
-    this.output.store.getState().updateState(inputs, this.layout);
+    this.output.store.getState().updateState(inputs, this.layout, this.swapDurationMs);
   }
 
   private getInput(inputId: string): RoomInputState {
