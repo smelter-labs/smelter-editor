@@ -81,7 +81,6 @@ export default function ControlPanel({
     setOpenFxInputId,
     selectedInputId,
     setSelectedInputId,
-    nextIfComposing,
   } = useControlPanelState(roomId, roomState, refreshState);
 
   const whipConnections = useWhipConnections(
@@ -112,7 +111,6 @@ export default function ControlPanel({
     setInputWrappers,
     setListVersion,
     updateOrder,
-    nextIfComposing,
     setAddInputActiveTab,
     setStreamActiveTab,
     addVideoAccordionRef,
@@ -276,10 +274,7 @@ export default function ControlPanel({
                 pendingWhipInputs={pendingWhipInputs}
                 setPendingWhipInputs={handleSetPendingWhipInputs}
               />
-              <Accordion
-                title='Layouts'
-                defaultOpen
-                data-tour='layout-selector-container'>
+              <Accordion title='Layouts' defaultOpen>
                 <LayoutSelector
                   changeLayout={changeLayout}
                   activeLayoutId={roomState.layout}

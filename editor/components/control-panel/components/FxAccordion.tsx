@@ -33,7 +33,6 @@ export function FxAccordion({
   return (
     <Accordion
       title={fxInput.title}
-      data-tour='fx-accordion-container'
       defaultOpen
       headerIcon={<ArrowLeft width={18} height={18} />}
       onHeaderClick={onClose}>

@@ -1,4 +1,3 @@
-import { useDriverTourControls } from '@/components/tour/DriverTourContext';
 import { AnimatePresence, motion } from 'framer-motion';
 
 export type SuggestionBoxProps<T> = {
@@ -30,7 +29,6 @@ export function SuggestionBox<T>({
   renderSuggestion,
   id,
 }: SuggestionBoxProps<T>) {
-  const { next } = useDriverTourControls('room');
   return (
     <AnimatePresence>
       {show && suggestions.length > 0 && (

@@ -237,7 +237,7 @@ export default function LayoutSelector({
     <motion.div
       {...(fadeIn2 as any)}
       className='text-card-foreground flex-col gap-1 rounded-none py-6 shadow-sm flex flex-1 bg-[#0a0a0a]'>
-      <div data-tour='layout-selector-container'>
+      <div>
         <div className='grid grid-cols-2 gap-2'>
           {LAYOUT_CONFIGS.map((layout) => {
             const Icon = layout.icon;

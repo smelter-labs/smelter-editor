@@ -164,18 +164,7 @@ export default function IntroView() {
           false,
           resolutionOverride ?? selectedResolution,
         );
-        let hash = '';
-        if (typeof window !== 'undefined') {
-          const h = (window.location.hash || '').toLowerCase();
-          if (
-            h.includes('tour-main') ||
-            h.includes('tour-composing') ||
-            h.includes('tour-shaders')
-          ) {
-            hash = h;
-          }
-        }
-        router.push(getRoomRoute(room.roomId) + hash);
+        router.push(getRoomRoute(room.roomId));
       } finally {
         setLoadingNew(false);
       }

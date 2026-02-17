@@ -128,7 +128,7 @@ export function AddVideoSection({
                 </button>
               </div>
               {streamActiveTab === 'twitch' && (
-                <div data-tour='twitch-add-input-form-container'>
+                <div>
                   <TwitchAddInputForm
                     inputs={inputs}
                     roomId={roomId}
@@ -137,7 +137,7 @@ export function AddVideoSection({
                 </div>
               )}
               {streamActiveTab === 'kick' && (
-                <div data-tour='kick-add-input-form-container'>
+                <div>
                   <KickAddInputForm
                     inputs={inputs}
                     roomId={roomId}
@@ -148,7 +148,7 @@ export function AddVideoSection({
             </div>
           )}
           {effectiveActiveTab === 'mp4' && (
-            <div data-tour='mp4-add-input-form-container'>
+            <div>
               <Mp4AddInputForm
                 inputs={inputs}
                 roomId={roomId}
@@ -157,7 +157,7 @@ export function AddVideoSection({
             </div>
           )}
           {effectiveActiveTab === 'image' && (
-            <div data-tour='image-add-input-form-container'>
+            <div>
               <ImageAddInputForm
                 inputs={inputs}
                 roomId={roomId}
@@ -166,7 +166,7 @@ export function AddVideoSection({
             </div>
           )}
           {effectiveActiveTab === 'text' && (
-            <div data-tour='text-add-input-form-container'>
+            <div>
               <TextAddInputForm
                 inputs={inputs}
                 roomId={roomId}

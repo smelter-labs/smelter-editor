@@ -75,7 +75,7 @@ export function StreamsSection({
   );
 
   return (
-    <Accordion title='Streams' defaultOpen data-tour='streams-list-container'>
+    <Accordion title='Streams' defaultOpen>
       <div className='flex-1 overflow-y-auto overflow-x-hidden relative'>
         <div className='pointer-events-none absolute top-0 left-0 right-0 h-2 z-40' />
         {showStreamsSpinner ? (

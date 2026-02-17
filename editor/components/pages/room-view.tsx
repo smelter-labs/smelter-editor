@@ -22,7 +22,6 @@ export default function RoomView({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [showAutoplayPopup, setShowAutoplayPopup] = useState(true);
   const [played, setPlayed] = useState(false);
-  const [isAutoTourStarting, setIsAutoTourStarting] = useState(false);
 
   const handleAutoplayPermission = useCallback((allow: boolean) => {
     if (allow) {
@@ -50,38 +49,21 @@ export default function RoomView({
     setupVideoEventListeners();
   }, [setupVideoEventListeners]);
 
-  // Check if tour is auto-starting via hash
-  useEffect(() => {
-    if (typeof window === 'undefined') return;
-    const h = (window.location.hash || '').toLowerCase();
-    if (
-      h.includes('tour-main') ||
-      h.includes('tour-composing') ||
-      h.includes('tour-shaders')
-    ) {
-      setIsAutoTourStarting(true);
-      setShowAutoplayPopup(false);
-    }
-  }, []);
-
   useEffect(() => {
     const attemptAutoplay = async () => {
       if (!videoRef.current) return;
       try {
         await videoRef.current.play();
       } catch (error) {
-        // Only show autoplay popup if tour is not auto-starting
-        if (!isAutoTourStarting) {
-          setShowAutoplayPopup(true);
-        }
+        setShowAutoplayPopup(true);
       }
     };
     attemptAutoplay();
-  }, [isAutoTourStarting]);
+  }, []);
 
   return (
     <>
-      {showAutoplayPopup && !played && !isAutoTourStarting && (
+      {showAutoplayPopup && !played && (
         <AutoplayModal
           onAllow={() => handleAutoplayPermission(true)}
           onDeny={() => handleAutoplayPermission(false)}

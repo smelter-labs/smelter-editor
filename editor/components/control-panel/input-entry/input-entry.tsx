@@ -37,7 +37,6 @@ import {
   loadLastWhipInputId,
   loadWhipSession,
 } from '../whip-input/utils/whip-storage';
-import { useDriverTourControls } from '@/components/tour/DriverTourContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 /**
@@ -154,26 +153,6 @@ export default function InputEntry({
 
   const isWhipInput = input.type === 'whip';
   const isTextInput = input.type === 'text-input';
-
-  const [isComposingTourActive, setIsComposingTourActive] = useState(false);
-  useEffect(() => {
-    const onStart = (e: any) => {
-      try {
-        if (e?.detail?.id === 'composing') setIsComposingTourActive(true);
-      } catch {}
-    };
-    const onStop = (e: any) => {
-      try {
-        if (e?.detail?.id === 'composing') setIsComposingTourActive(false);
-      } catch {}
-    };
-    window.addEventListener('smelter:tour:start', onStart);
-    window.addEventListener('smelter:tour:stop', onStop);
-    return () => {
-      window.removeEventListener('smelter:tour:start', onStart);
-      window.removeEventListener('smelter:tour:stop', onStop);
-    };
-  }, []);
 
   useEffect(() => {
     if (input.textColor !== undefined) {
@@ -467,16 +446,13 @@ export default function InputEntry({
     onWhipDisconnectedOrRemoved,
   ]);
 
-  const { nextIf: shadersTourNextIf } = useDriverTourControls('shaders');
-
   const handleSlidersToggle = useCallback(() => {
-    setTimeout(() => shadersTourNextIf(0), 50);
     if (onToggleFx) {
       onToggleFx();
     } else {
       setShowSliders((prev) => !prev);
     }
-  }, [shadersTourNextIf, onToggleFx]);
+  }, [onToggleFx]);
 
   const handleShaderToggle = useCallback(
     async (shaderId: string) => {
@@ -529,7 +505,6 @@ export default function InputEntry({
               : shader,
           );
         }
-        setTimeout(() => shadersTourNextIf(1), 500);
         await updateInput(roomId, input.inputId, {
           shaders: newShadersConfig,
           volume: input.volume,
@@ -539,7 +514,7 @@ export default function InputEntry({
         setShaderLoading(null);
       }
     },
-    [roomId, input, refreshState, shadersTourNextIf],
+    [roomId, input, refreshState],
   );
 
   const handleSliderChange = useCallback(
@@ -902,22 +877,12 @@ export default function InputEntry({
         {!readOnly && (
           <div className='flex flex-row items-center min-w-0'>
             <div className='flex-1 flex md:pl-7 min-w-0'>
-              {(() => {
-                const installedCountForHide = (input.shaders || []).length;
-                const hideAddEffectsButton =
-                  isComposingTourActive &&
-                  !effectiveShowSliders &&
-                  installedCountForHide === 0;
-                if (hideAddEffectsButton) return null;
-                return (
-                  <StatusButton
-                    input={input}
-                    loading={connectionStateLoading}
-                    showSliders={effectiveShowSliders}
-                    onClick={handleSlidersToggle}
-                  />
-                );
-              })()}
+              <StatusButton
+                input={input}
+                loading={connectionStateLoading}
+                showSliders={effectiveShowSliders}
+                onClick={handleSlidersToggle}
+              />
             </div>
             <div className='flex flex-row items-center justify-end flex-1 gap-0.5 pr-1'>
               <Button
