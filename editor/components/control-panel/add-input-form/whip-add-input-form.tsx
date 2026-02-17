@@ -10,6 +10,10 @@ import {
 import { startPublish } from '../whip-input/utils/whip-publisher';
 import { toast } from 'react-toastify';
 import type React from 'react';
+import { useState } from 'react';
+import { useIsMobileDevice } from '@/hooks/use-mobile';
+import { Button } from '@/components/ui/button';
+import { SwitchCamera } from 'lucide-react';
 
 export function WHIPAddInputForm(props: {
   inputs: Input[];
@@ -33,6 +37,9 @@ export function WHIPAddInputForm(props: {
     setActiveWhipInputId,
     setIsWhipActive,
   } = props;
+
+  const isMobileDevice = useIsMobileDevice();
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
 
   const handleAddWhip = async (whipUserName: string) => {
     const cleanedName = whipUserName.trim();
@@ -59,6 +66,7 @@ export function WHIPAddInputForm(props: {
         pcRef,
         streamRef,
         onDisconnected,
+        isMobileDevice ? facingMode : undefined,
       );
 
       setIsWhipActive(true);
@@ -82,25 +90,59 @@ export function WHIPAddInputForm(props: {
   };
 
   return (
-    <GenericAddInputForm<string>
-      showArrow={false}
-      forceShowButton
-      inputs={inputs}
-      refreshState={refreshState}
-      suggestions={[]}
-      placeholder='Enter a username (e.g. John Smith)'
-      initialValue={userName}
-      onSubmit={async (whipUserName: string) => {
-        await handleAddWhip(whipUserName);
-        setUserName(whipUserName);
-      }}
-      renderSuggestion={(suggestion: string) => suggestion}
-      getSuggestionValue={(v) => v}
-      buttonText='Add Camera'
-      loadingText='Adding...'
-      validateInput={(value) =>
-        !value ? 'Please enter a username.' : undefined
-      }
-    />
+    <div className='flex flex-col gap-2'>
+      {isMobileDevice && (
+        <div className='flex items-center gap-2 px-1'>
+          <span className='text-sm text-neutral-400'>Camera:</span>
+          <div className='flex rounded-md overflow-hidden border border-neutral-700'>
+            <Button
+              size='sm'
+              variant='ghost'
+              type='button'
+              onClick={() => setFacingMode('user')}
+              className={`cursor-pointer rounded-none text-xs px-3 ${
+                facingMode === 'user'
+                  ? 'bg-neutral-700 text-white'
+                  : 'text-neutral-500'
+              }`}>
+              Front
+            </Button>
+            <Button
+              size='sm'
+              variant='ghost'
+              type='button'
+              onClick={() => setFacingMode('environment')}
+              className={`cursor-pointer rounded-none text-xs px-3 ${
+                facingMode === 'environment'
+                  ? 'bg-neutral-700 text-white'
+                  : 'text-neutral-500'
+              }`}>
+              <SwitchCamera className='w-3.5 h-3.5' />
+              Back
+            </Button>
+          </div>
+        </div>
+      )}
+      <GenericAddInputForm<string>
+        showArrow={false}
+        forceShowButton
+        inputs={inputs}
+        refreshState={refreshState}
+        suggestions={[]}
+        placeholder='Enter a username (e.g. John Smith)'
+        initialValue={userName}
+        onSubmit={async (whipUserName: string) => {
+          await handleAddWhip(whipUserName);
+          setUserName(whipUserName);
+        }}
+        renderSuggestion={(suggestion: string) => suggestion}
+        getSuggestionValue={(v) => v}
+        buttonText='Add Camera'
+        loadingText='Adding...'
+        validateInput={(value) =>
+          !value ? 'Please enter a username.' : undefined
+        }
+      />
+    </div>
   );
 }

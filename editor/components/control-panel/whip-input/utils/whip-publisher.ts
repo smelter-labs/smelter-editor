@@ -14,9 +14,10 @@ export async function startPublish(
   pcRef: React.MutableRefObject<RTCPeerConnection | null>,
   streamRef: React.MutableRefObject<MediaStream | null>,
   onDisconnected?: () => void,
+  facingMode?: 'user' | 'environment',
 ): Promise<{ location: string | null }> {
   const stream = await navigator.mediaDevices.getUserMedia({
-    video: true,
+    video: facingMode ? { facingMode } : true,
     audio: {
       echoCancellation: true,
       noiseSuppression: true,

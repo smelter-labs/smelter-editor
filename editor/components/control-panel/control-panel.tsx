@@ -2,7 +2,7 @@
 
 import { fadeIn } from '@/utils/animations';
 import { motion } from 'framer-motion';
-import { useRef, useCallback } from 'react';
+import { useRef, useCallback, useEffect } from 'react';
 import type { RoomState } from '@/app/actions/actions';
 import {
   setPendingWhipInputs as setPendingWhipInputsAction,
@@ -29,6 +29,7 @@ export type ControlPanelProps = {
   roomState: RoomState;
   refreshState: () => Promise<void>;
   isGuest?: boolean;
+  onGuestStreamChange?: (stream: MediaStream | null) => void;
 };
 
 export type { InputWrapper } from './hooks/use-control-panel-state';
@@ -38,6 +39,7 @@ export default function ControlPanel({
   roomId,
   roomState,
   isGuest,
+  onGuestStreamChange,
 }: ControlPanelProps) {
   const addVideoAccordionRef = useRef<AccordionHandle | null>(null);
 
@@ -105,6 +107,18 @@ export default function ControlPanel({
     isScreenshareActive,
     setIsScreenshareActive,
   } = whipConnections;
+
+  useEffect(() => {
+    if (!isGuest || !onGuestStreamChange) return;
+    const stream =
+      cameraStreamRef.current || screenshareStreamRef.current || null;
+    onGuestStreamChange(stream);
+  }, [
+    isGuest,
+    onGuestStreamChange,
+    isCameraActive,
+    isScreenshareActive,
+  ]);
 
   useControlPanelEvents({
     inputsRef,

@@ -22,6 +22,7 @@ export default function RoomView({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [showAutoplayPopup, setShowAutoplayPopup] = useState(true);
   const [played, setPlayed] = useState(false);
+  const [guestStream, setGuestStream] = useState<MediaStream | null>(null);
 
   const handleAutoplayPermission = useCallback((allow: boolean) => {
     if (allow) {
@@ -81,6 +82,7 @@ export default function RoomView({
           onTogglePublic={handleTogglePublic}
           resolution={roomState.resolution}
           isGuest={isGuest}
+          guestStream={guestStream}
         />
         <motion.div className='col-span-1 w-full flex flex-col xl:gap-4 min-h-0 h-full max-h-full justify-start overflow-y-auto overflow-x-hidden md:pr-4 control-panel-container'>
           <div className='control-panel-wrapper'>
@@ -89,6 +91,7 @@ export default function RoomView({
               roomId={roomId}
               refreshState={refreshState}
               isGuest={isGuest}
+              onGuestStreamChange={setGuestStream}
             />
           </div>
         </motion.div>
