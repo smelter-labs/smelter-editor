@@ -102,7 +102,6 @@ export type RoomState = {
   pendingDelete?: boolean;
   isPublic?: boolean;
   resolution?: Resolution;
-  displayName?: string;
 };
 
 export type Layout =
@@ -149,7 +148,6 @@ export async function createNewRoom(
   initInputs: RegisterInputOptions[],
   skipDefaultInputs: boolean = false,
   resolution?: ResolutionPreset | Resolution,
-  displayName?: string,
 ): Promise<{
   roomId: string;
   whepUrl: string;
@@ -159,7 +157,6 @@ export async function createNewRoom(
     initInputs,
     skipDefaultInputs,
     resolution,
-    displayName,
   });
 }
 

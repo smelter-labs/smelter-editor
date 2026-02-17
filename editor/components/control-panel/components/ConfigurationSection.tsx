@@ -189,7 +189,16 @@ export function ConfigurationSection({
 
     await refreshState();
 
+    const positionToInputId = new Map<number, string>();
+    for (const { inputId, position } of createdInputIds) {
+      positionToInputId.set(position, inputId);
+    }
+
     for (const { inputId, config: inputConfig } of createdInputIds) {
+      const attachedInputIds = inputConfig.attachedInputIndices
+        ?.map((idx) => positionToInputId.get(idx))
+        .filter((id): id is string => !!id);
+
       try {
         await updateInput(roomId, inputId, {
           volume: inputConfig.volume,
@@ -201,6 +210,10 @@ export function ConfigurationSection({
           textScrollSpeed: inputConfig.textScrollSpeed,
           textScrollLoop: inputConfig.textScrollLoop,
           textFontSize: inputConfig.textFontSize,
+          attachedInputIds:
+            attachedInputIds && attachedInputIds.length > 0
+              ? attachedInputIds
+              : undefined,
         });
       } catch (e) {
         console.warn(`Failed to update input ${inputId}:`, e);

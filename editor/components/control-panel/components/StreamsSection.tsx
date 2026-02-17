@@ -24,6 +24,8 @@ type StreamsSectionProps = {
   activeScreenshareInputId: string | null;
   onWhipDisconnectedOrRemoved: (id: string) => void;
   selectedInputId: string | null;
+  isGuest?: boolean;
+  guestInputId?: string | null;
 };
 
 export function StreamsSection({
@@ -43,6 +45,8 @@ export function StreamsSection({
   activeScreenshareInputId,
   onWhipDisconnectedOrRemoved,
   selectedInputId,
+  isGuest,
+  guestInputId,
 }: StreamsSectionProps) {
   const [isWideScreen, setIsWideScreen] = useState(true);
 
@@ -82,7 +86,7 @@ export function StreamsSection({
           <SortableList
             items={visibleWrappers}
             resetVersion={listVersion}
-            disableDrag={!isWideScreen}
+            disableDrag={isGuest || !isWideScreen}
             renderItem={(item, index, orderedItems) => {
               const input = inputs.find(
                 (input) => input.inputId === item.inputId,
@@ -97,7 +101,7 @@ export function StreamsSection({
                 <SortableItem
                   key={item.inputId}
                   id={item.id}
-                  disableDrag={!isWideScreen}>
+                  disableDrag={isGuest || !isWideScreen}>
                   {input && (
                     <>
                       <InputEntry
@@ -105,9 +109,13 @@ export function StreamsSection({
                         refreshState={refreshState}
                         roomId={roomId}
                         availableShaders={availableShaders}
-                        canRemove={visibleWrappers.length > 1}
-                        canMoveUp={!isFirst}
-                        canMoveDown={!isLast}
+                        canRemove={
+                          isGuest
+                            ? input.inputId === guestInputId
+                            : visibleWrappers.length > 1
+                        }
+                        canMoveUp={isGuest ? false : !isFirst}
+                        canMoveDown={isGuest ? false : !isLast}
                         pcRef={cameraPcRef}
                         streamRef={cameraStreamRef}
                         isFxOpen={openFxInputId === input.inputId}
@@ -115,10 +123,11 @@ export function StreamsSection({
                         onWhipDisconnectedOrRemoved={
                           onWhipDisconnectedOrRemoved
                         }
-                        showGrip={isWideScreen}
+                        showGrip={isGuest ? false : isWideScreen}
                         isSelected={selectedInputId === input.inputId}
                         index={index}
                         allInputs={inputs}
+                        readOnly={isGuest && input.inputId !== guestInputId}
                       />
                       {attachedChildren.map((child) => (
                         <div
@@ -142,6 +151,7 @@ export function StreamsSection({
                             showGrip={false}
                             isSelected={selectedInputId === child.inputId}
                             allInputs={inputs}
+                            readOnly={isGuest && child.inputId !== guestInputId}
                           />
                         </div>
                       ))}

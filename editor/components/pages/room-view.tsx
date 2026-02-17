@@ -10,12 +10,14 @@ interface RoomViewProps {
   roomId: string;
   roomState: RoomState;
   refreshState: () => Promise<void>;
+  isGuest?: boolean;
 }
 
 export default function RoomView({
   roomId,
   roomState,
   refreshState,
+  isGuest,
 }: RoomViewProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [showAutoplayPopup, setShowAutoplayPopup] = useState(true);
@@ -96,6 +98,7 @@ export default function RoomView({
           isPublic={roomState.isPublic}
           onTogglePublic={handleTogglePublic}
           resolution={roomState.resolution}
+          isGuest={isGuest}
         />
         <motion.div className='col-span-1 w-full flex flex-col xl:gap-4 min-h-0 h-full max-h-full justify-start overflow-y-auto overflow-x-hidden md:pr-4 control-panel-container'>
           <div className='control-panel-wrapper'>
@@ -103,6 +106,7 @@ export default function RoomView({
               roomState={roomState}
               roomId={roomId}
               refreshState={refreshState}
+              isGuest={isGuest}
             />
           </div>
         </motion.div>

@@ -19,6 +19,7 @@ export default function VideoPreview({
   isPublic,
   onTogglePublic,
   resolution,
+  isGuest,
 }: {
   whepUrl: string;
   videoRef: RefObject<HTMLVideoElement | null>;
@@ -27,6 +28,7 @@ export default function VideoPreview({
   isPublic?: boolean;
   onTogglePublic?: () => void;
   resolution?: OutputResolution;
+  isGuest?: boolean;
 }) {
   const activeStream = true;
   const [isRecording, setIsRecording] = useState(false);
@@ -100,7 +102,7 @@ export default function VideoPreview({
                 </div>
               )}
             </div>
-            {roomId && (
+            {roomId && !isGuest && (
               <div className='mt-3 flex justify-between items-center gap-2'>
                 {onTogglePublic && (
                   <Button

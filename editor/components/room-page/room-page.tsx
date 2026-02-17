@@ -1,7 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useParams, useRouter, usePathname } from 'next/navigation';
+import {
+  useParams,
+  useRouter,
+  usePathname,
+  useSearchParams,
+} from 'next/navigation';
 import { motion } from 'framer-motion';
 import { toast } from 'react-toastify';
 import Link from 'next/link';
@@ -32,6 +37,8 @@ export default function RoomPage() {
   const router = useRouter();
   const { roomId } = useParams();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const isGuest = searchParams.get('guest') === 'true';
 
   const [loading, setLoading] = useState(true);
   const isMobile = useIsMobile();
@@ -231,6 +238,7 @@ export default function RoomPage() {
                     roomState={roomState}
                     roomId={roomId as string}
                     refreshState={refreshState}
+                    isGuest={isGuest}
                   />
                 )}
               </motion.div>

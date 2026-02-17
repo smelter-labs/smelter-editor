@@ -26,7 +26,10 @@ export function useControlPanelState(
   const [userName, setUserName] = useState<string>(() => {
     const saved = loadUserName(roomId);
     if (saved) return saved;
-    if (roomState.displayName) return `${roomState.displayName} Camera`;
+    if (typeof window !== 'undefined') {
+      const storedName = localStorage.getItem('smelter-display-name');
+      if (storedName) return `${storedName} Camera`;
+    }
     const random = Math.floor(1000 + Math.random() * 9000);
     return `User ${random}`;
   });

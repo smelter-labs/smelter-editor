@@ -163,7 +163,6 @@ export default function IntroView() {
           initInputs,
           false,
           resolutionOverride ?? selectedResolution,
-          displayName,
         );
         let hash = '';
         if (typeof window !== 'undefined') {
@@ -188,7 +187,6 @@ export default function IntroView() {
       twitchSuggestions,
       kickSuggestions,
       selectedResolution,
-      displayName,
     ],
   );
 
@@ -222,12 +220,7 @@ export default function IntroView() {
       const text = await file.text();
       const config = parseRoomConfig(text);
 
-      const room = await createNewRoom(
-        [],
-        true,
-        config.resolution,
-        displayName,
-      );
+      const room = await createNewRoom([], true, config.resolution);
       const roomId = room.roomId;
 
       const createdInputIds: { inputId: string; configIndex: number }[] = [];
@@ -478,19 +471,30 @@ export default function IntroView() {
                   .filter((r) => r.isPublic)
                   .map((room) => (
                     <li key={room.roomId}>
-                      <Link
-                        href={getRoomRoute(room.roomId)}
-                        className='flex items-center justify-between px-4 py-3 rounded-none bg-neutral-900 hover:bg-neutral-800 transition-colors text-white text-sm'>
-                        <span className='font-mono truncate'>
-                          {room.roomId}
-                        </span>
-                        {room.createdAt && (
-                          <span className='text-xs text-neutral-500 ml-4 whitespace-nowrap'>
-                            {new Date(room.createdAt).toLocaleTimeString()} ·{' '}
-                            {formatDuration(Date.now() - room.createdAt)}
+                      <div className='flex items-center justify-between px-4 py-3 rounded-none bg-neutral-900 text-white text-sm'>
+                        <div className='flex items-center gap-3 min-w-0'>
+                          <span className='font-mono truncate'>
+                            {room.roomId}
                           </span>
-                        )}
-                      </Link>
+                          {room.createdAt && (
+                            <span className='text-xs text-neutral-500 whitespace-nowrap'>
+                              {new Date(room.createdAt).toLocaleTimeString()} ·{' '}
+                              {formatDuration(Date.now() - room.createdAt)}
+                            </span>
+                          )}
+                        </div>
+                        <Button
+                          size='sm'
+                          variant='default'
+                          className='bg-white text-black hover:bg-neutral-200 cursor-pointer ml-4 shrink-0'
+                          onClick={() =>
+                            router.push(
+                              getRoomRoute(room.roomId) + '?guest=true',
+                            )
+                          }>
+                          Join as Guest
+                        </Button>
+                      </div>
                     </li>
                   ))}
               </ul>

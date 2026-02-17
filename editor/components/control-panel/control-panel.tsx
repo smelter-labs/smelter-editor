@@ -18,12 +18,16 @@ import {
   type PendingWhipInput,
 } from './components/ConfigurationSection';
 import { PendingWhipInputs } from './components/PendingWhipInputs';
-import { loadPendingWhipInputs } from '@/lib/room-config';
+import {
+  loadPendingWhipInputs,
+  savePendingWhipInputs,
+} from '@/lib/room-config';
 
 export type ControlPanelProps = {
   roomId: string;
   roomState: RoomState;
   refreshState: () => Promise<void>;
+  isGuest?: boolean;
 };
 
 export type { InputWrapper } from './hooks/use-control-panel-state';
@@ -32,6 +36,7 @@ export default function ControlPanel({
   refreshState,
   roomId,
   roomState,
+  isGuest,
 }: ControlPanelProps) {
   const addVideoAccordionRef = useRef<AccordionHandle | null>(null);
   const [pendingWhipInputs, setPendingWhipInputs] = useState<
@@ -44,6 +49,10 @@ export default function ControlPanel({
       setPendingWhipInputs(stored);
     }
   }, [roomId]);
+
+  useEffect(() => {
+    savePendingWhipInputs(roomId, pendingWhipInputs);
+  }, [roomId, pendingWhipInputs]);
 
   const {
     userName,
@@ -188,6 +197,12 @@ export default function ControlPanel({
             setActiveScreenshareInputId={setActiveScreenshareInputId}
             setIsScreenshareActive={setIsScreenshareActive}
             addVideoAccordionRef={addVideoAccordionRef}
+            isGuest={isGuest}
+            hasGuestInput={
+              isGuest
+                ? !!(activeCameraInputId || activeScreenshareInputId)
+                : false
+            }
           />
           <PendingWhipInputs
             roomId={roomId}
@@ -220,31 +235,37 @@ export default function ControlPanel({
             activeScreenshareInputId={activeScreenshareInputId}
             onWhipDisconnectedOrRemoved={handleWhipDisconnectedOrRemoved}
             selectedInputId={selectedInputId}
+            isGuest={isGuest}
+            guestInputId={activeCameraInputId || activeScreenshareInputId}
           />
-          <QuickActionsSection
-            inputs={inputs}
-            roomId={roomId}
-            refreshState={handleRefreshState}
-          />
-          <ConfigurationSection
-            inputs={inputs}
-            layout={roomState.layout}
-            resolution={roomState.resolution}
-            roomId={roomId}
-            refreshState={handleRefreshState}
-            pendingWhipInputs={pendingWhipInputs}
-            setPendingWhipInputs={setPendingWhipInputs}
-          />
-          <Accordion
-            title='Layouts'
-            defaultOpen
-            data-tour='layout-selector-container'>
-            <LayoutSelector
-              changeLayout={changeLayout}
-              activeLayoutId={roomState.layout}
-              connectedStreamsLength={roomState.inputs.length}
-            />
-          </Accordion>
+          {!isGuest && (
+            <>
+              <QuickActionsSection
+                inputs={inputs}
+                roomId={roomId}
+                refreshState={handleRefreshState}
+              />
+              <ConfigurationSection
+                inputs={inputs}
+                layout={roomState.layout}
+                resolution={roomState.resolution}
+                roomId={roomId}
+                refreshState={handleRefreshState}
+                pendingWhipInputs={pendingWhipInputs}
+                setPendingWhipInputs={setPendingWhipInputs}
+              />
+              <Accordion
+                title='Layouts'
+                defaultOpen
+                data-tour='layout-selector-container'>
+                <LayoutSelector
+                  changeLayout={changeLayout}
+                  activeLayoutId={roomState.layout}
+                  connectedStreamsLength={roomState.inputs.length}
+                />
+              </Accordion>
+            </>
+          )}
         </>
       )}
     </motion.div>

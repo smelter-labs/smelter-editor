@@ -95,6 +95,7 @@ interface InputEntryProps {
   isSelected?: boolean;
   index?: number;
   allInputs?: Input[];
+  readOnly?: boolean;
 }
 
 export default function InputEntry({
@@ -115,6 +116,7 @@ export default function InputEntry({
   isSelected = false,
   index,
   allInputs,
+  readOnly = false,
 }: InputEntryProps) {
   const [connectionStateLoading, setConnectionStateLoading] = useState(false);
   const [showSliders, setShowSliders] = useState(false);
@@ -776,7 +778,7 @@ export default function InputEntry({
             <span className='ml-2 text-xs text-neutral-400'>Saving...</span>
           )}
         </div>
-        {isTextInput && (
+        {isTextInput && !readOnly && (
           <div className='mb-3 md:pl-7'>
             <textarea
               data-no-dnd
@@ -897,231 +899,237 @@ export default function InputEntry({
             </div>
           </div>
         )}
-        <div className='flex flex-row items-center min-w-0'>
-          <div className='flex-1 flex md:pl-7 min-w-0'>
-            {(() => {
-              const installedCountForHide = (input.shaders || []).length;
-              const hideAddEffectsButton =
-                isComposingTourActive &&
-                !effectiveShowSliders &&
-                installedCountForHide === 0;
-              if (hideAddEffectsButton) return null;
-              return (
-                <StatusButton
-                  input={input}
-                  loading={connectionStateLoading}
-                  showSliders={effectiveShowSliders}
-                  onClick={handleSlidersToggle}
-                />
-              );
-            })()}
-          </div>
-          <div className='flex flex-row items-center justify-end flex-1 gap-0.5 pr-1'>
-            <Button
-              data-no-dnd
-              size='sm'
-              variant='ghost'
-              className={`transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer ${
-                canMoveUp ? 'text-white hover:text-white' : 'text-neutral-500'
-              }`}
-              disabled={!canMoveUp}
-              aria-label='Move up'
-              onClick={() => {
-                try {
-                  window.dispatchEvent(
-                    new CustomEvent('smelter:inputs:move', {
-                      detail: {
-                        roomId,
-                        inputId: input.inputId,
-                        direction: 'up',
-                      },
-                    }),
-                  );
-                } catch {}
-              }}>
-              <ChevronUp className='size-5' strokeWidth={3} />
-            </Button>
-            <Button
-              data-no-dnd
-              size='sm'
-              variant='ghost'
-              className={`transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer ${
-                canMoveDown ? 'text-white hover:text-white' : 'text-neutral-500'
-              }`}
-              disabled={!canMoveDown}
-              aria-label='Move down'
-              onClick={() => {
-                try {
-                  window.dispatchEvent(
-                    new CustomEvent('smelter:inputs:move', {
-                      detail: {
-                        roomId,
-                        inputId: input.inputId,
-                        direction: 'down',
-                      },
-                    }),
-                  );
-                } catch {}
-              }}>
-              <ChevronDown className='size-5' strokeWidth={3} />
-            </Button>
-            <Button
-              data-no-dnd
-              size='sm'
-              variant='ghost'
-              className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
-              onClick={handleOrientationToggle}
-              aria-label={
-                isVerticalOrientation
-                  ? 'Switch to horizontal'
-                  : 'Switch to vertical'
-              }
-              title={
-                isVerticalOrientation
-                  ? 'Vertical (click for horizontal)'
-                  : 'Horizontal (click for vertical)'
-              }>
-              {isVerticalOrientation ? (
-                <RectangleVertical className='text-white size-5' />
-              ) : (
-                <RectangleHorizontal className='text-neutral-400 size-5' />
-              )}
-            </Button>
-            <div className='relative'>
+        {!readOnly && (
+          <div className='flex flex-row items-center min-w-0'>
+            <div className='flex-1 flex md:pl-7 min-w-0'>
+              {(() => {
+                const installedCountForHide = (input.shaders || []).length;
+                const hideAddEffectsButton =
+                  isComposingTourActive &&
+                  !effectiveShowSliders &&
+                  installedCountForHide === 0;
+                if (hideAddEffectsButton) return null;
+                return (
+                  <StatusButton
+                    input={input}
+                    loading={connectionStateLoading}
+                    showSliders={effectiveShowSliders}
+                    onClick={handleSlidersToggle}
+                  />
+                );
+              })()}
+            </div>
+            <div className='flex flex-row items-center justify-end flex-1 gap-0.5 pr-1'>
+              <Button
+                data-no-dnd
+                size='sm'
+                variant='ghost'
+                className={`transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer ${
+                  canMoveUp ? 'text-white hover:text-white' : 'text-neutral-500'
+                }`}
+                disabled={!canMoveUp}
+                aria-label='Move up'
+                onClick={() => {
+                  try {
+                    window.dispatchEvent(
+                      new CustomEvent('smelter:inputs:move', {
+                        detail: {
+                          roomId,
+                          inputId: input.inputId,
+                          direction: 'up',
+                        },
+                      }),
+                    );
+                  } catch {}
+                }}>
+                <ChevronUp className='size-5' strokeWidth={3} />
+              </Button>
+              <Button
+                data-no-dnd
+                size='sm'
+                variant='ghost'
+                className={`transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer ${
+                  canMoveDown
+                    ? 'text-white hover:text-white'
+                    : 'text-neutral-500'
+                }`}
+                disabled={!canMoveDown}
+                aria-label='Move down'
+                onClick={() => {
+                  try {
+                    window.dispatchEvent(
+                      new CustomEvent('smelter:inputs:move', {
+                        detail: {
+                          roomId,
+                          inputId: input.inputId,
+                          direction: 'down',
+                        },
+                      }),
+                    );
+                  } catch {}
+                }}>
+                <ChevronDown className='size-5' strokeWidth={3} />
+              </Button>
               <Button
                 data-no-dnd
                 size='sm'
                 variant='ghost'
                 className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
-                onClick={() => setShowAttachMenu(!showAttachMenu)}
-                aria-label='Attach inputs'
-                title='Attach inputs (render behind this input)'>
-                <Link
-                  className={`size-5 ${(input.attachedInputIds?.length ?? 0) > 0 ? 'text-blue-400' : 'text-neutral-400'}`}
-                />
-              </Button>
-              {showAttachMenu && (
-                <div className='absolute bottom-full right-0 mb-1 bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-2 z-50 min-w-48'>
-                  <div className='text-xs text-neutral-400 mb-1 px-1'>
-                    Attach inputs (render behind)
-                  </div>
-                  {(allInputs || [])
-                    .filter((i) => i.inputId !== input.inputId)
-                    .filter(
-                      (i) =>
-                        !isInputAttachedElsewhere(
-                          i.inputId,
-                          input.inputId,
-                          allInputs || [],
-                        ),
-                    )
-                    .map((i) => {
-                      const isAttached = (
-                        input.attachedInputIds || []
-                      ).includes(i.inputId);
-                      return (
-                        <label
-                          key={i.inputId}
-                          className='flex items-center gap-2 px-1 py-1 hover:bg-neutral-700 rounded cursor-pointer'>
-                          <input
-                            type='checkbox'
-                            checked={isAttached}
-                            onChange={() => handleAttachToggle(i.inputId)}
-                            className='accent-blue-500 cursor-pointer'
-                          />
-                          <span className='text-sm text-white truncate'>
-                            {i.title}
-                          </span>
-                        </label>
-                      );
-                    })}
-                </div>
-              )}
-            </div>
-            <Button
-              data-no-dnd
-              size='sm'
-              variant='ghost'
-              className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
-              onClick={handleShowTitleToggle}
-              aria-label={showTitle ? 'Hide title' : 'Show title'}>
-              <span className='relative inline-flex items-center justify-center'>
-                <Type
-                  className={`${showTitle ? 'text-white' : 'text-neutral-400'} size-5`}
-                />
-                {!showTitle && (
-                  <span className='absolute inset-0 flex items-center justify-center pointer-events-none'>
-                    <svg
-                      width='20'
-                      height='20'
-                      viewBox='0 0 20 20'
-                      fill='none'
-                      className='text-neutral-400'>
-                      <line
-                        x1='4'
-                        y1='4'
-                        x2='16'
-                        y2='16'
-                        stroke='currentColor'
-                        strokeWidth='2'
-                        strokeLinecap='round'
-                      />
-                    </svg>
-                  </span>
+                onClick={handleOrientationToggle}
+                aria-label={
+                  isVerticalOrientation
+                    ? 'Switch to horizontal'
+                    : 'Switch to vertical'
+                }
+                title={
+                  isVerticalOrientation
+                    ? 'Vertical (click for horizontal)'
+                    : 'Horizontal (click for vertical)'
+                }>
+                {isVerticalOrientation ? (
+                  <RectangleVertical className='text-white size-5' />
+                ) : (
+                  <RectangleHorizontal className='text-neutral-400 size-5' />
                 )}
-              </span>
-            </Button>
-            <MuteButton
-              muted={muted}
-              disabled={input.sourceState === 'offline'}
-              onClick={handleMuteToggle}
-            />
-            {canRemove && <DeleteButton onClick={handleDelete} />}
-          </div>
-        </div>
-        <div
-          className={
-            shaderPanelBase +
-            ' ' +
-            (effectiveShowSliders ? shaderPanelShow : shaderPanelHide)
-          }
-          aria-hidden={!effectiveShowSliders}
-          style={{
-            maxHeight: effectiveShowSliders ? '500px' : 0,
-            height: effectiveShowSliders ? '100%' : 0,
-            transitionProperty: 'opacity, transform, height, max-height',
-          }}
-          onDragOver={handleShaderDragOver}
-          onDrop={(e) =>
-            handleShaderDrop({
-              e,
-              input,
-              availableShaders,
-              onShaderToggle: handleShaderToggle,
-              onAddShader: addShaderConfig,
-            })
-          }>
-          {(() => {
-            const shadersForPanel = effectiveShowSliders
-              ? availableShaders
-              : visibleShaders;
-            return (
-              <ShaderPanel
-                input={input}
-                availableShaders={shadersForPanel}
-                sliderValues={sliderValues}
-                paramLoading={paramLoading}
-                shaderLoading={shaderLoading}
-                onShaderToggle={handleShaderToggle}
-                onShaderRemove={handleShaderRemove}
-                onSliderChange={handleSliderChange}
-                getShaderParamConfig={getShaderParamConfig}
-                getShaderButtonClass={getShaderButtonClass}
-                consolidated={effectiveShowSliders}
+              </Button>
+              <div className='relative'>
+                <Button
+                  data-no-dnd
+                  size='sm'
+                  variant='ghost'
+                  className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
+                  onClick={() => setShowAttachMenu(!showAttachMenu)}
+                  aria-label='Attach inputs'
+                  title='Attach inputs (render behind this input)'>
+                  <Link
+                    className={`size-5 ${(input.attachedInputIds?.length ?? 0) > 0 ? 'text-blue-400' : 'text-neutral-400'}`}
+                  />
+                </Button>
+                {showAttachMenu && (
+                  <div className='absolute bottom-full right-0 mb-1 bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-2 z-50 min-w-48'>
+                    <div className='text-xs text-neutral-400 mb-1 px-1'>
+                      Attach inputs (render behind)
+                    </div>
+                    {(allInputs || [])
+                      .filter((i) => i.inputId !== input.inputId)
+                      .filter(
+                        (i) =>
+                          !isInputAttachedElsewhere(
+                            i.inputId,
+                            input.inputId,
+                            allInputs || [],
+                          ),
+                      )
+                      .map((i) => {
+                        const isAttached = (
+                          input.attachedInputIds || []
+                        ).includes(i.inputId);
+                        return (
+                          <label
+                            key={i.inputId}
+                            className='flex items-center gap-2 px-1 py-1 hover:bg-neutral-700 rounded cursor-pointer'>
+                            <input
+                              type='checkbox'
+                              checked={isAttached}
+                              onChange={() => handleAttachToggle(i.inputId)}
+                              className='accent-blue-500 cursor-pointer'
+                            />
+                            <span className='text-sm text-white truncate'>
+                              {i.title}
+                            </span>
+                          </label>
+                        );
+                      })}
+                  </div>
+                )}
+              </div>
+              <Button
+                data-no-dnd
+                size='sm'
+                variant='ghost'
+                className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
+                onClick={handleShowTitleToggle}
+                aria-label={showTitle ? 'Hide title' : 'Show title'}>
+                <span className='relative inline-flex items-center justify-center'>
+                  <Type
+                    className={`${showTitle ? 'text-white' : 'text-neutral-400'} size-5`}
+                  />
+                  {!showTitle && (
+                    <span className='absolute inset-0 flex items-center justify-center pointer-events-none'>
+                      <svg
+                        width='20'
+                        height='20'
+                        viewBox='0 0 20 20'
+                        fill='none'
+                        className='text-neutral-400'>
+                        <line
+                          x1='4'
+                          y1='4'
+                          x2='16'
+                          y2='16'
+                          stroke='currentColor'
+                          strokeWidth='2'
+                          strokeLinecap='round'
+                        />
+                      </svg>
+                    </span>
+                  )}
+                </span>
+              </Button>
+              <MuteButton
+                muted={muted}
+                disabled={input.sourceState === 'offline'}
+                onClick={handleMuteToggle}
               />
-            );
-          })()}
-        </div>
+              {canRemove && <DeleteButton onClick={handleDelete} />}
+            </div>
+          </div>
+        )}
+        {!readOnly && (
+          <div
+            className={
+              shaderPanelBase +
+              ' ' +
+              (effectiveShowSliders ? shaderPanelShow : shaderPanelHide)
+            }
+            aria-hidden={!effectiveShowSliders}
+            style={{
+              maxHeight: effectiveShowSliders ? '500px' : 0,
+              height: effectiveShowSliders ? '100%' : 0,
+              transitionProperty: 'opacity, transform, height, max-height',
+            }}
+            onDragOver={handleShaderDragOver}
+            onDrop={(e) =>
+              handleShaderDrop({
+                e,
+                input,
+                availableShaders,
+                onShaderToggle: handleShaderToggle,
+                onAddShader: addShaderConfig,
+              })
+            }>
+            {(() => {
+              const shadersForPanel = effectiveShowSliders
+                ? availableShaders
+                : visibleShaders;
+              return (
+                <ShaderPanel
+                  input={input}
+                  availableShaders={shadersForPanel}
+                  sliderValues={sliderValues}
+                  paramLoading={paramLoading}
+                  shaderLoading={shaderLoading}
+                  onShaderToggle={handleShaderToggle}
+                  onShaderRemove={handleShaderRemove}
+                  onSliderChange={handleSliderChange}
+                  getShaderParamConfig={getShaderParamConfig}
+                  getShaderButtonClass={getShaderButtonClass}
+                  consolidated={effectiveShowSliders}
+                />
+              );
+            })()}
+          </div>
+        )}
       </div>
 
       <AddShaderModal

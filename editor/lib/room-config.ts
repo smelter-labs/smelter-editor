@@ -19,6 +19,7 @@ export type RoomConfigInput = {
   textScrollSpeed?: number;
   textScrollLoop?: boolean;
   textFontSize?: number;
+  attachedInputIndices?: number[];
 };
 
 function extractMp4FileName(title: string): string | undefined {
@@ -43,6 +44,9 @@ export function exportRoomConfig(
   layout: Layout,
   resolution?: { width: number; height: number },
 ): RoomConfig {
+  const inputIdToIndex = new Map<string, number>();
+  inputs.forEach((input, idx) => inputIdToIndex.set(input.inputId, idx));
+
   return {
     version: 1,
     layout,
@@ -69,6 +73,9 @@ export function exportRoomConfig(
       textScrollSpeed: input.textScrollSpeed,
       textScrollLoop: input.textScrollLoop,
       textFontSize: input.textFontSize,
+      attachedInputIndices: input.attachedInputIds
+        ?.map((id) => inputIdToIndex.get(id))
+        .filter((idx): idx is number => idx !== undefined),
     })),
     exportedAt: new Date().toISOString(),
   };
@@ -112,11 +119,13 @@ export function savePendingWhipInputs(
   inputs: StoredPendingWhipInput[],
 ) {
   if (typeof window === 'undefined') return;
+  const key = `${PENDING_WHIP_STORAGE_KEY}-${roomId}`;
   try {
-    sessionStorage.setItem(
-      `${PENDING_WHIP_STORAGE_KEY}-${roomId}`,
-      JSON.stringify(inputs),
-    );
+    if (inputs.length === 0) {
+      localStorage.removeItem(key);
+    } else {
+      localStorage.setItem(key, JSON.stringify(inputs));
+    }
   } catch (e) {
     console.warn('Failed to save pending WHIP inputs:', e);
   }
@@ -126,12 +135,10 @@ export function loadPendingWhipInputs(
   roomId: string,
 ): StoredPendingWhipInput[] {
   if (typeof window === 'undefined') return [];
+  const key = `${PENDING_WHIP_STORAGE_KEY}-${roomId}`;
   try {
-    const data = sessionStorage.getItem(
-      `${PENDING_WHIP_STORAGE_KEY}-${roomId}`,
-    );
+    const data = localStorage.getItem(key);
     if (data) {
-      sessionStorage.removeItem(`${PENDING_WHIP_STORAGE_KEY}-${roomId}`);
       return JSON.parse(data);
     }
   } catch (e) {
