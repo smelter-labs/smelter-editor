@@ -157,6 +157,9 @@ export function useControlPanelState(
     })();
   }, [roomState.layout, availableShaders, roomId, handleRefreshState]);
 
+  const [isSwapping, setIsSwapping] = useState(false);
+  const swapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const updateOrder = useCallback(
     async (newInputWrappers: InputWrapper[]) => {
       try {
@@ -244,5 +247,8 @@ export function useControlPanelState(
     setOpenFxInputId,
     selectedInputId,
     setSelectedInputId,
+    isSwapping,
+    setIsSwapping,
+    swapTimerRef,
   };
 }

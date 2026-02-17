@@ -18,9 +18,10 @@ function PrimaryOnLeftLayout() {
     const swapDurationMs = (0, store_1.useSwapDurationMs)();
     const swapOutgoingEnabled = (0, store_1.useSwapOutgoingEnabled)();
     const swapFadeInDurationMs = (0, store_1.useSwapFadeInDurationMs)();
+    const swapFadeOutDurationMs = (0, store_1.useSwapFadeOutDurationMs)();
     const firstInput = inputs[0];
     const swap = (0, usePrimarySwapTransition_1.usePrimarySwapTransition)(inputs, swapDurationMs);
-    const fadeOpacity = (0, usePostSwapFadeIn_1.usePostSwapFadeIn)(swap.isTransitioning, swapFadeInDurationMs);
+    const fadeOpacity = (0, usePostSwapFadeIn_1.usePostSwapFadeIn)(swap.isTransitioning, swapFadeInDurationMs, swapFadeOutDurationMs);
     if (!firstInput) {
         return (0, jsx_runtime_1.jsx)(smelter_1.View, {});
     }
@@ -63,7 +64,7 @@ function PrimaryOnLeftLayout() {
                                             ? primaryHeight - swap.progress * (primaryHeight - tileH)
                                             : resolution.height - swap.progress * (resolution.height - tileH))
                                         : (isVertical ? primaryHeight : resolution.height),
-                                }, children: (0, jsx_runtime_1.jsx)(inputs_1.Input, { input: swap.outgoingInput }) }))] }), (0, jsx_runtime_1.jsx)(smelter_1.Shader, { shaderId: "opacity", resolution: { width: secondaryWidth, height: secondaryHeight }, shaderParam: { type: 'struct', value: [{ type: 'f32', fieldName: 'opacity', value: fadeOpacity }] }, children: (0, jsx_runtime_1.jsx)(smelter_1.View, { style: { width: secondaryWidth, height: secondaryHeight }, children: (0, jsx_runtime_1.jsx)(smelter_1.Tiles, { transition: { durationMs: 300 }, style: { padding: TILES_PADDING }, children: smallInputs.map(input => ((0, jsx_runtime_1.jsx)(inputs_1.SmallInput, { input: input }, input.inputId))) }) }) })] }), swap.isTransitioning && swap.incomingInput && ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: {
+                                }, children: (0, jsx_runtime_1.jsx)(inputs_1.Input, { input: swap.outgoingInput }) }))] }), (0, jsx_runtime_1.jsx)(smelter_1.Shader, { shaderId: "opacity", resolution: { width: secondaryWidth, height: secondaryHeight }, shaderParam: { type: 'struct', value: [{ type: 'f32', fieldName: 'opacity', value: fadeOpacity }] }, children: (0, jsx_runtime_1.jsx)(smelter_1.View, { style: { width: secondaryWidth, height: secondaryHeight }, children: (0, jsx_runtime_1.jsx)(smelter_1.Tiles, { transition: { durationMs: swapFadeOutDurationMs > 0 ? swapFadeOutDurationMs : 300 }, style: { padding: TILES_PADDING }, children: smallInputs.map(input => ((0, jsx_runtime_1.jsx)(inputs_1.SmallInput, { input: input }, input.inputId))) }) }) })] }), swap.isTransitioning && swap.incomingInput && ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: {
                     top: incomingStartTop + swap.progress * (0 - incomingStartTop),
                     left: incomingStartLeft + swap.progress * (0 - incomingStartLeft),
                     width: tileW + swap.progress * ((isVertical ? resolution.width : primaryWidth) - tileW),

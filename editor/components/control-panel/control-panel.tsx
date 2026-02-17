@@ -2,7 +2,7 @@
 
 import { fadeIn } from '@/utils/animations';
 import { motion } from 'framer-motion';
-import { useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect, useMemo } from 'react';
 import type { RoomState } from '@/app/actions/actions';
 import {
   setPendingWhipInputs as setPendingWhipInputsAction,
@@ -11,7 +11,10 @@ import {
 } from '@/app/actions/actions';
 import LayoutSelector from '@/components/layout-selector';
 import Accordion, { type AccordionHandle } from '@/components/ui/accordion';
-import { useControlPanelState } from './hooks/use-control-panel-state';
+import {
+  useControlPanelState,
+  type InputWrapper,
+} from './hooks/use-control-panel-state';
 import { useWhipConnections } from './hooks/use-whip-connections';
 import { useControlPanelEvents } from './hooks/use-control-panel-events';
 import { FxAccordion } from './components/FxAccordion';
@@ -84,7 +87,30 @@ export default function ControlPanel({
     setOpenFxInputId,
     selectedInputId,
     setSelectedInputId,
+    isSwapping,
+    setIsSwapping,
+    swapTimerRef,
   } = useControlPanelState(roomId, roomState, refreshState);
+
+  const totalSwapMs = useMemo(() => {
+    const swap = roomState.swapDurationMs ?? 500;
+    const fadeIn = roomState.swapFadeInDurationMs ?? 500;
+    return swap + fadeIn + 200;
+  }, [roomState.swapDurationMs, roomState.swapFadeInDurationMs]);
+
+  const updateOrderWithLock = useCallback(
+    async (wrappers: InputWrapper[]) => {
+      if (isSwapping) return;
+      setIsSwapping(true);
+      if (swapTimerRef.current) clearTimeout(swapTimerRef.current);
+      await updateOrder(wrappers);
+      swapTimerRef.current = setTimeout(() => {
+        setIsSwapping(false);
+        swapTimerRef.current = null;
+      }, totalSwapMs);
+    },
+    [isSwapping, updateOrder, totalSwapMs, setIsSwapping, swapTimerRef],
+  );
 
   const whipConnections = useWhipConnections(
     roomId,
@@ -120,7 +146,7 @@ export default function ControlPanel({
     inputWrappers,
     setInputWrappers,
     setListVersion,
-    updateOrder,
+    updateOrder: updateOrderWithLock,
     setAddInputActiveTab,
     setStreamActiveTab,
     addVideoAccordionRef,
@@ -256,9 +282,10 @@ export default function ControlPanel({
             roomId={roomId}
             refreshState={handleRefreshState}
             availableShaders={availableShaders}
-            updateOrder={updateOrder}
+            updateOrder={updateOrderWithLock}
             openFxInputId={openFxInputId}
             onToggleFx={handleToggleFx}
+            isSwapping={isSwapping}
             cameraPcRef={cameraPcRef}
             cameraStreamRef={cameraStreamRef}
             activeCameraInputId={activeCameraInputId}
@@ -283,6 +310,7 @@ export default function ControlPanel({
                   swapDurationMs: roomState.swapDurationMs,
                   swapOutgoingEnabled: roomState.swapOutgoingEnabled,
                   swapFadeInDurationMs: roomState.swapFadeInDurationMs,
+                  swapFadeOutDurationMs: roomState.swapFadeOutDurationMs,
                   newsStripFadeDuringSwap: roomState.newsStripFadeDuringSwap,
                 }}
                 roomId={roomId}
@@ -311,6 +339,13 @@ export default function ControlPanel({
                   onSwapFadeInDurationChange={async (value) => {
                     await updateRoomAction(roomId, {
                       swapFadeInDurationMs: value,
+                    });
+                    await handleRefreshState();
+                  }}
+                  swapFadeOutDurationMs={roomState.swapFadeOutDurationMs ?? 500}
+                  onSwapFadeOutDurationChange={async (value) => {
+                    await updateRoomAction(roomId, {
+                      swapFadeOutDurationMs: value,
                     });
                     await handleRefreshState();
                   }}

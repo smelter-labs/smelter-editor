@@ -35,6 +35,7 @@ export type RoomConfigTransitionSettings = {
   swapDurationMs?: number;
   swapOutgoingEnabled?: boolean;
   swapFadeInDurationMs?: number;
+  swapFadeOutDurationMs?: number;
   newsStripFadeDuringSwap?: boolean;
 };
 

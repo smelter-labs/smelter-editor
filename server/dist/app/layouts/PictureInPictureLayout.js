@@ -18,11 +18,12 @@ function PictureInPictureLayout() {
     const swapDurationMs = (0, store_1.useSwapDurationMs)();
     const swapOutgoingEnabled = (0, store_1.useSwapOutgoingEnabled)();
     const swapFadeInDurationMs = (0, store_1.useSwapFadeInDurationMs)();
+    const swapFadeOutDurationMs = (0, store_1.useSwapFadeOutDurationMs)();
     const newsStripFadeDuringSwap = (0, store_1.useNewsStripFadeDuringSwap)();
     const firstInput = inputs[0];
     const secondInput = inputs[1];
     const swap = (0, usePrimarySwapTransition_1.usePrimarySwapTransition)(inputs, swapDurationMs);
-    const fadeOpacity = (0, usePostSwapFadeIn_1.usePostSwapFadeIn)(swap.isTransitioning, swapFadeInDurationMs);
+    const fadeOpacity = (0, usePostSwapFadeIn_1.usePostSwapFadeIn)(swap.isTransitioning, swapFadeInDurationMs, swapFadeOutDurationMs);
     const { width, height } = resolution;
     const [waveAmpPx, setWaveAmpPx] = (0, react_1.useState)(0);
     const [waveSpeed, setWaveSpeed] = (0, react_1.useState)(0);
@@ -117,14 +118,13 @@ function PictureInPictureLayout() {
     const stripHeight = isVertical ? Math.round(height * 0.12) : Math.round(height * 0.31);
     const stripTop = isVertical ? height - stripHeight : Math.round(height * 0.67);
     const showStrip = !isVertical;
-    // Approximate tile positions within the PIP area
+    // Tile positions within the PIP area
+    // Tiles component applies `padding` around each tile (2*padding between adjacent tiles)
     const tilePadding = 10;
     const prevTileCount = Math.max(1, swap.prevSecondaryCount);
-    // PIP tiles stack vertically
     const tileW = pipWidth - tilePadding * 2;
-    const tileH = Math.round((pipHeight - tilePadding * (prevTileCount + 1)) / prevTileCount);
-    // Tile position in absolute (full layout) coordinates
-    const tileAbsTop = pipTop + tilePadding + swap.incomingPrevIndex * (tileH + tilePadding);
+    const tileH = Math.round(pipHeight / prevTileCount - tilePadding * 2);
+    const tileAbsTop = pipTop + tilePadding + swap.incomingPrevIndex * (tileH + tilePadding * 2);
     const tileAbsLeft = pipLeft + tilePadding;
     return ((0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { width, height, overflow: 'visible' }, children: [(0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { direction: 'column', width, height, top: 0, left: 0 }, children: [(0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { transition: { durationMs: 300 }, style: {
                             rescaleMode: 'fill',
@@ -142,7 +142,7 @@ function PictureInPictureLayout() {
                             left: 0,
                             width: swapOutgoingEnabled ? width - swap.progress * (width - tileW) : width,
                             height: swapOutgoingEnabled ? height - swap.progress * (height - tileH) : height,
-                        }, children: (0, jsx_runtime_1.jsx)(inputs_1.Input, { input: swap.outgoingInput }) })), secondInput ? ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { top: pipTop, right: pipRight, width: pipWidth, height: pipHeight }, children: (0, jsx_runtime_1.jsx)(smelter_1.Shader, { shaderId: "opacity", resolution: { width: pipWidth, height: pipHeight }, shaderParam: { type: 'struct', value: [{ type: 'f32', fieldName: 'opacity', value: fadeOpacity }] }, children: (0, jsx_runtime_1.jsx)(smelter_1.View, { style: { width: pipWidth, height: pipHeight, direction: 'column' }, children: (0, jsx_runtime_1.jsx)(smelter_1.Tiles, { transition: { durationMs: 300 }, style: { padding: tilePadding, verticalAlign: 'top' }, children: Object.values(inputs)
+                        }, children: (0, jsx_runtime_1.jsx)(inputs_1.Input, { input: swap.outgoingInput }) })), secondInput ? ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { top: pipTop, right: pipRight, width: pipWidth, height: pipHeight }, children: (0, jsx_runtime_1.jsx)(smelter_1.Shader, { shaderId: "opacity", resolution: { width: pipWidth, height: pipHeight }, shaderParam: { type: 'struct', value: [{ type: 'f32', fieldName: 'opacity', value: fadeOpacity }] }, children: (0, jsx_runtime_1.jsx)(smelter_1.View, { style: { width: pipWidth, height: pipHeight, direction: 'column' }, children: (0, jsx_runtime_1.jsx)(smelter_1.Tiles, { transition: { durationMs: swapFadeOutDurationMs > 0 ? swapFadeOutDurationMs : 300 }, style: { padding: tilePadding, verticalAlign: 'top' }, children: Object.values(inputs)
                                         .filter(input => input.inputId != firstInput.inputId)
                                         .map(input => ((0, jsx_runtime_1.jsx)(inputs_1.SmallInput, { input: input }, input.inputId))) }) }) }) })) : null, showStrip && (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { transition: { durationMs: 300 }, style: {
                             rescaleMode: 'fill',

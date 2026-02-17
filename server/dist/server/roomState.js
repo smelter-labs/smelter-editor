@@ -20,6 +20,7 @@ class RoomState {
         this.swapDurationMs = 500;
         this.swapOutgoingEnabled = true;
         this.swapFadeInDurationMs = 500;
+        this.swapFadeOutDurationMs = 500;
         this.newsStripFadeDuringSwap = true;
         this.isPublic = false;
         this.pendingWhipInputs = [];
@@ -127,7 +128,7 @@ class RoomState {
     }
     getState() {
         this.lastReadTimestamp = Date.now();
-        return [this.inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap];
+        return [this.inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap, this.swapFadeOutDurationMs];
     }
     getSwapDurationMs() {
         return this.swapDurationMs;
@@ -148,6 +149,13 @@ class RoomState {
     }
     setSwapFadeInDurationMs(value) {
         this.swapFadeInDurationMs = value;
+        this.updateStoreWithState();
+    }
+    getSwapFadeOutDurationMs() {
+        return this.swapFadeOutDurationMs;
+    }
+    setSwapFadeOutDurationMs(value) {
+        this.swapFadeOutDurationMs = value;
         this.updateStoreWithState();
     }
     getNewsStripFadeDuringSwap() {
@@ -669,7 +677,7 @@ class RoomState {
             }
             return config;
         });
-        this.output.store.getState().updateState(inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap);
+        this.output.store.getState().updateState(inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap, this.swapFadeOutDurationMs);
     }
     getInput(inputId) {
         const input = this.inputs.find(input => input.inputId === inputId);

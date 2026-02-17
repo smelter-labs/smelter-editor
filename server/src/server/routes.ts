@@ -123,7 +123,7 @@ routes.get('/shaders', async (_req, res) => {
 routes.get<RoomIdParams>('/room/:roomId', async (req, res) => {
   const { roomId } = req.params;
   const room = state.getRoom(roomId);
-  const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap] = room.getState();
+  const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs] = room.getState();
 
   res.status(200).send({
     inputs: inputs.map(publicInputState),
@@ -137,6 +137,7 @@ routes.get<RoomIdParams>('/room/:roomId', async (req, res) => {
     swapOutgoingEnabled,
     swapFadeInDurationMs,
     newsStripFadeDuringSwap,
+    swapFadeOutDurationMs,
   });
 });
 
@@ -155,7 +156,7 @@ routes.get('/rooms', async (_req, res) => {
       if (!room) {
         return undefined;
       }
-      const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap] = room.getState();
+      const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs] = room.getState();
       return {
         roomId: room.idPrefix,
         inputs: inputs.map(publicInputState),
@@ -168,6 +169,7 @@ routes.get('/rooms', async (_req, res) => {
         swapOutgoingEnabled,
         swapFadeInDurationMs,
         newsStripFadeDuringSwap,
+        swapFadeOutDurationMs,
       };
     })
     .filter(Boolean);
@@ -259,6 +261,7 @@ const UpdateRoomSchema = Type.Object({
   swapDurationMs: Type.Optional(Type.Number({ minimum: 0, maximum: 5000 })),
   swapOutgoingEnabled: Type.Optional(Type.Boolean()),
   swapFadeInDurationMs: Type.Optional(Type.Number({ minimum: 0, maximum: 5000 })),
+  swapFadeOutDurationMs: Type.Optional(Type.Number({ minimum: 0, maximum: 5000 })),
   newsStripFadeDuringSwap: Type.Optional(Type.Boolean()),
 });
 
@@ -289,6 +292,9 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
     }
     if (req.body.swapFadeInDurationMs !== undefined) {
       room.setSwapFadeInDurationMs(req.body.swapFadeInDurationMs);
+    }
+    if (req.body.swapFadeOutDurationMs !== undefined) {
+      room.setSwapFadeOutDurationMs(req.body.swapFadeOutDurationMs);
     }
     if (req.body.newsStripFadeDuringSwap !== undefined) {
       room.setNewsStripFadeDuringSwap(req.body.newsStripFadeDuringSwap);

@@ -82,7 +82,7 @@ exports.routes.get('/shaders', async (_req, res) => {
 exports.routes.get('/room/:roomId', async (req, res) => {
     const { roomId } = req.params;
     const room = serverState_1.state.getRoom(roomId);
-    const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap] = room.getState();
+    const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs] = room.getState();
     res.status(200).send({
         inputs: inputs.map(publicInputState),
         layout,
@@ -95,6 +95,7 @@ exports.routes.get('/room/:roomId', async (req, res) => {
         swapOutgoingEnabled,
         swapFadeInDurationMs,
         newsStripFadeDuringSwap,
+        swapFadeOutDurationMs,
     });
 });
 exports.routes.get('/rooms', async (_req, res) => {
@@ -109,7 +110,7 @@ exports.routes.get('/rooms', async (_req, res) => {
         if (!room) {
             return undefined;
         }
-        const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap] = room.getState();
+        const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs] = room.getState();
         return {
             roomId: room.idPrefix,
             inputs: inputs.map(publicInputState),
@@ -122,6 +123,7 @@ exports.routes.get('/rooms', async (_req, res) => {
             swapOutgoingEnabled,
             swapFadeInDurationMs,
             newsStripFadeDuringSwap,
+            swapFadeOutDurationMs,
         };
     })
         .filter(Boolean);
@@ -204,6 +206,7 @@ const UpdateRoomSchema = typebox_1.Type.Object({
     swapDurationMs: typebox_1.Type.Optional(typebox_1.Type.Number({ minimum: 0, maximum: 5000 })),
     swapOutgoingEnabled: typebox_1.Type.Optional(typebox_1.Type.Boolean()),
     swapFadeInDurationMs: typebox_1.Type.Optional(typebox_1.Type.Number({ minimum: 0, maximum: 5000 })),
+    swapFadeOutDurationMs: typebox_1.Type.Optional(typebox_1.Type.Number({ minimum: 0, maximum: 5000 })),
     newsStripFadeDuringSwap: typebox_1.Type.Optional(typebox_1.Type.Boolean()),
 });
 // No multiple-pictures shader defaults API - kept local in layout
@@ -228,6 +231,9 @@ exports.routes.post('/room/:roomId', { schema: { body: UpdateRoomSchema } }, asy
     }
     if (req.body.swapFadeInDurationMs !== undefined) {
         room.setSwapFadeInDurationMs(req.body.swapFadeInDurationMs);
+    }
+    if (req.body.swapFadeOutDurationMs !== undefined) {
+        room.setSwapFadeOutDurationMs(req.body.swapFadeOutDurationMs);
     }
     if (req.body.newsStripFadeDuringSwap !== undefined) {
         room.setNewsStripFadeDuringSwap(req.body.newsStripFadeDuringSwap);

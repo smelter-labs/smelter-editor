@@ -105,6 +105,7 @@ export class RoomState {
   private swapDurationMs: number = 500;
   private swapOutgoingEnabled: boolean = true;
   private swapFadeInDurationMs: number = 500;
+  private swapFadeOutDurationMs: number = 500;
   private newsStripFadeDuringSwap: boolean = true;
   public idPrefix: string;
 
@@ -251,9 +252,9 @@ export class RoomState {
     return { fileName: this.recording.fileName };
   }
 
-  public getState(): [RoomInputState[], Layout, number, boolean, number, boolean] {
+  public getState(): [RoomInputState[], Layout, number, boolean, number, boolean, number] {
     this.lastReadTimestamp = Date.now();
-    return [this.inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap];
+    return [this.inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap, this.swapFadeOutDurationMs];
   }
 
   public getSwapDurationMs(): number {
@@ -280,6 +281,15 @@ export class RoomState {
 
   public setSwapFadeInDurationMs(value: number) {
     this.swapFadeInDurationMs = value;
+    this.updateStoreWithState();
+  }
+
+  public getSwapFadeOutDurationMs(): number {
+    return this.swapFadeOutDurationMs;
+  }
+
+  public setSwapFadeOutDurationMs(value: number) {
+    this.swapFadeOutDurationMs = value;
     this.updateStoreWithState();
   }
 
@@ -838,7 +848,7 @@ export class RoomState {
         return config;
       });
 
-    this.output.store.getState().updateState(inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap);
+    this.output.store.getState().updateState(inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap, this.swapFadeOutDurationMs);
   }
 
   private getInput(inputId: string): RoomInputState {

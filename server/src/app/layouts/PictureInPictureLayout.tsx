@@ -1,7 +1,7 @@
 import { View, Tiles, Rescaler, Image, Text, Shader } from '@swmansion/smelter';
 import React, { useContext, useEffect, useState } from 'react';
 import { useStore } from 'zustand';
-import { StoreContext, useResolution, useIsVertical, useSwapDurationMs, useSwapOutgoingEnabled, useSwapFadeInDurationMs, useNewsStripFadeDuringSwap } from '../store';
+import { StoreContext, useResolution, useIsVertical, useSwapDurationMs, useSwapOutgoingEnabled, useSwapFadeInDurationMs, useSwapFadeOutDurationMs, useNewsStripFadeDuringSwap } from '../store';
 import { Input, SmallInput } from '../../inputs/inputs';
 import { NewsStripDecorated } from '../NewsStripDecorated';
 import { usePrimarySwapTransition } from './usePrimarySwapTransition';
@@ -15,11 +15,12 @@ export function PictureInPictureLayout() {
   const swapDurationMs = useSwapDurationMs();
   const swapOutgoingEnabled = useSwapOutgoingEnabled();
   const swapFadeInDurationMs = useSwapFadeInDurationMs();
+  const swapFadeOutDurationMs = useSwapFadeOutDurationMs();
   const newsStripFadeDuringSwap = useNewsStripFadeDuringSwap();
   const firstInput = inputs[0];
   const secondInput = inputs[1];
   const swap = usePrimarySwapTransition(inputs, swapDurationMs);
-  const fadeOpacity = usePostSwapFadeIn(swap.isTransitioning, swapFadeInDurationMs);
+  const fadeOpacity = usePostSwapFadeIn(swap.isTransitioning, swapFadeInDurationMs, swapFadeOutDurationMs);
 
   const { width, height } = resolution;
 
@@ -120,14 +121,13 @@ export function PictureInPictureLayout() {
   const stripTop = isVertical ? height - stripHeight : Math.round(height * 0.67);
   const showStrip = !isVertical;
 
-  // Approximate tile positions within the PIP area
+  // Tile positions within the PIP area
+  // Tiles component applies `padding` around each tile (2*padding between adjacent tiles)
   const tilePadding = 10;
   const prevTileCount = Math.max(1, swap.prevSecondaryCount);
-  // PIP tiles stack vertically
   const tileW = pipWidth - tilePadding * 2;
-  const tileH = Math.round((pipHeight - tilePadding * (prevTileCount + 1)) / prevTileCount);
-  // Tile position in absolute (full layout) coordinates
-  const tileAbsTop = pipTop + tilePadding + swap.incomingPrevIndex * (tileH + tilePadding);
+  const tileH = Math.round(pipHeight / prevTileCount - tilePadding * 2);
+  const tileAbsTop = pipTop + tilePadding + swap.incomingPrevIndex * (tileH + tilePadding * 2);
   const tileAbsLeft = pipLeft + tilePadding;
 
   return (
@@ -166,7 +166,7 @@ export function PictureInPictureLayout() {
             resolution={{ width: pipWidth, height: pipHeight }}
             shaderParam={{ type: 'struct', value: [{ type: 'f32', fieldName: 'opacity', value: fadeOpacity }] }}>
             <View style={{ width: pipWidth, height: pipHeight, direction: 'column' }}>
-              <Tiles transition={{ durationMs: 300 }} style={{ padding: tilePadding, verticalAlign: 'top' }}>
+              <Tiles transition={{ durationMs: swapFadeOutDurationMs > 0 ? swapFadeOutDurationMs : 300 }} style={{ padding: tilePadding, verticalAlign: 'top' }}>
                 {Object.values(inputs)
                   .filter(input => input.inputId != firstInput.inputId)
                   .map(input => (
@@ -177,7 +177,7 @@ export function PictureInPictureLayout() {
           </Shader>
         </Rescaler>
       ) : null}
-      {showStrip && <Rescaler
+      {showStrip && newsStripFadeDuringSwap && <Rescaler
         transition={{ durationMs: 300 }}
         style={{
           rescaleMode: 'fill',
@@ -191,7 +191,7 @@ export function PictureInPictureLayout() {
         <Shader
           shaderId="opacity"
           resolution={{ width, height: stripHeight }}
-          shaderParam={{ type: 'struct', value: [{ type: 'f32', fieldName: 'opacity', value: newsStripFadeDuringSwap ? fadeOpacity : 1 }] }}>
+          shaderParam={{ type: 'struct', value: [{ type: 'f32', fieldName: 'opacity', value: fadeOpacity }] }}>
           <View style={{ width, height: stripHeight }}>
         <NewsStripDecorated
           resolution={{ width, height: stripHeight }}
@@ -289,6 +289,102 @@ export function PictureInPictureLayout() {
           <Input input={swap.incomingInput} />
         </Rescaler>
       )}
+      {showStrip && !newsStripFadeDuringSwap && <Rescaler
+        transition={{ durationMs: 300 }}
+        style={{
+          rescaleMode: 'fill',
+          horizontalAlign: 'left',
+          verticalAlign: 'top',
+          width,
+          height: stripHeight,
+          top: stripTop,
+          left: 0,
+        }}>
+          <View style={{ width, height: stripHeight }}>
+        <NewsStripDecorated
+          resolution={{ width, height: stripHeight }}
+          opacity={1}
+          amplitudePx={waveAmpPx}
+          wavelengthPx={800}
+          speed={waveSpeed}
+          phase={0}
+          removeColorTolerance={0.4}>
+          <View style={{ width, height: stripHeight, direction: 'column' }}>
+            {/* left logo box */}
+            <View
+              style={{
+                width: Math.round(width * 0.094),
+                height: Math.round(stripHeight * 0.16),
+                top: Math.round(stripHeight * 0.25),
+                left: 0,
+                direction: 'column',
+                overflow: 'hidden',
+                backgroundColor: '#F24664',
+              }}>
+              <Text
+                style={{
+                  fontSize: Math.round(stripHeight * 0.09),
+                  lineHeight: Math.round(stripHeight * 0.16),
+                  color: '#000000',
+                  fontFamily: 'Poppins',
+                  fontWeight: 'bold',
+                  align: 'center',
+                  width: Math.round(width * 0.094),
+                  height: Math.round(stripHeight * 0.16),
+                }}>
+                LIVE
+              </Text>
+            </View>
+            <View
+              style={{
+                width: Math.round(width * 0.094),
+                height: Math.round(stripHeight * 0.43),
+                top: Math.round(stripHeight * 0.41),
+                left: 0,
+                direction: 'column',
+                overflow: 'hidden',
+                backgroundColor: '#ffffff',
+              }}>
+              <Rescaler style={{ rescaleMode: 'fill', width: Math.round(width * 0.059), height: Math.round(stripHeight * 0.16), top: Math.round(stripHeight * 0.12), left: Math.round(width * 0.02) }}>
+                <Image imageId="smelter_logo" />
+              </Rescaler>
+            </View>
+            <View
+              style={{
+                width: Math.round(width * 0.906),
+                height: Math.round(stripHeight * 0.43),
+                top: Math.round(stripHeight * 0.41),
+                left: Math.round(width * 0.094),
+                direction: 'column',
+                overflow: 'hidden',
+                backgroundColor: '#342956',
+              }}>
+              <View
+                style={{
+                  direction: 'column',
+                  height: Math.round(stripHeight * 0.43),
+                  width: Math.round(width * 1.4),
+                  overflow: 'visible',
+                  padding: 10,
+                  top: Math.round(stripHeight * 0.11),
+                  left: Math.round(marqueeLeft),
+                }}>
+                <Text
+                  style={{
+                    fontSize: Math.round(stripHeight * 0.16),
+                    width: Math.round(width * 2.7),
+                    color: '#ffffff',
+                    fontFamily: 'Poppins',
+                    fontWeight: 'normal',
+                  }}>
+                  {'This video is composed of multiple videos and overlays in real time using smelter. Want to learn more? Reach out at contact@smelter.dev.'.toUpperCase()}
+                </Text>
+              </View>
+            </View>
+          </View>
+        </NewsStripDecorated>
+          </View>
+      </Rescaler>}
     </View>
   );
 }

@@ -62,6 +62,8 @@ type LayoutSelectorProps = {
   onSwapOutgoingEnabledChange: (value: boolean) => void;
   swapFadeInDurationMs: number;
   onSwapFadeInDurationChange: (value: number) => void;
+  swapFadeOutDurationMs: number;
+  onSwapFadeOutDurationChange: (value: number) => void;
   newsStripFadeDuringSwap: boolean;
   onNewsStripFadeDuringSwapChange: (value: boolean) => void;
 };
@@ -76,6 +78,8 @@ export default function LayoutSelector({
   onSwapOutgoingEnabledChange,
   swapFadeInDurationMs,
   onSwapFadeInDurationChange,
+  swapFadeOutDurationMs,
+  onSwapFadeOutDurationChange,
   newsStripFadeDuringSwap,
   onNewsStripFadeDuringSwapChange,
 }: LayoutSelectorProps) {
@@ -90,6 +94,14 @@ export default function LayoutSelector({
   );
   const fadeInDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const [localFadeOutDuration, setLocalFadeOutDuration] = useState(
+    swapFadeOutDurationMs,
+  );
+  const lastEnabledFadeOutValueRef = useRef(
+    swapFadeOutDurationMs > 0 ? swapFadeOutDurationMs : 500,
+  );
+  const fadeOutDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   useEffect(() => {
     setLocalSwapDuration(swapDurationMs);
     if (swapDurationMs > 0) {
@@ -103,6 +115,13 @@ export default function LayoutSelector({
       lastEnabledFadeInValueRef.current = swapFadeInDurationMs;
     }
   }, [swapFadeInDurationMs]);
+
+  useEffect(() => {
+    setLocalFadeOutDuration(swapFadeOutDurationMs);
+    if (swapFadeOutDurationMs > 0) {
+      lastEnabledFadeOutValueRef.current = swapFadeOutDurationMs;
+    }
+  }, [swapFadeOutDurationMs]);
 
   const handleSwapDurationChange = useCallback(
     (value: number) => {
@@ -134,6 +153,22 @@ export default function LayoutSelector({
       }, 300);
     },
     [onSwapFadeInDurationChange],
+  );
+
+  const handleFadeOutDurationChange = useCallback(
+    (value: number) => {
+      setLocalFadeOutDuration(value);
+      if (value > 0) {
+        lastEnabledFadeOutValueRef.current = value;
+      }
+      if (fadeOutDebounceRef.current) {
+        clearTimeout(fadeOutDebounceRef.current);
+      }
+      fadeOutDebounceRef.current = setTimeout(() => {
+        onSwapFadeOutDurationChange(value);
+      }, 300);
+    },
+    [onSwapFadeOutDurationChange],
   );
 
   const renderLayoutPreview = (layoutId: string) => {
@@ -382,6 +417,48 @@ export default function LayoutSelector({
                   Outgoing Transition
                 </span>
               </label>
+              <label className='flex items-center gap-2 cursor-pointer mt-3'>
+                <input
+                  type='checkbox'
+                  checked={localFadeOutDuration > 0}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      handleFadeOutDurationChange(
+                        lastEnabledFadeOutValueRef.current,
+                      );
+                    } else {
+                      handleFadeOutDurationChange(0);
+                    }
+                  }}
+                  className='accent-white'
+                />
+                <span className='text-xs text-neutral-400'>
+                  Fade Out During Swap
+                </span>
+              </label>
+              {localFadeOutDuration > 0 && (
+                <>
+                  <div className='flex items-center justify-between mb-2 mt-2'>
+                    <span className='text-xs text-neutral-400'>
+                      Fade Out Duration
+                    </span>
+                    <span className='text-xs text-neutral-400'>
+                      {localFadeOutDuration}ms
+                    </span>
+                  </div>
+                  <input
+                    type='range'
+                    min={100}
+                    max={2000}
+                    step={50}
+                    value={localFadeOutDuration}
+                    onChange={(e) =>
+                      handleFadeOutDurationChange(Number(e.target.value))
+                    }
+                    className='w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-white'
+                  />
+                </>
+              )}
               <label className='flex items-center gap-2 cursor-pointer mt-3'>
                 <input
                   type='checkbox'

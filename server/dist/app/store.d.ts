@@ -31,8 +31,9 @@ export type RoomStore = {
     swapDurationMs: number;
     swapOutgoingEnabled: boolean;
     swapFadeInDurationMs: number;
+    swapFadeOutDurationMs: number;
     newsStripFadeDuringSwap: boolean;
-    updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number, swapOutgoingEnabled: boolean, swapFadeInDurationMs: number, newsStripFadeDuringSwap: boolean) => void;
+    updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number, swapOutgoingEnabled: boolean, swapFadeInDurationMs: number, newsStripFadeDuringSwap: boolean, swapFadeOutDurationMs: number) => void;
 };
 export declare function createRoomStore(resolution?: Resolution): StoreApi<RoomStore>;
 export declare function useResolution(): Resolution;
@@ -40,5 +41,6 @@ export declare function useIsVertical(): boolean;
 export declare function useSwapDurationMs(): number;
 export declare function useSwapOutgoingEnabled(): boolean;
 export declare function useSwapFadeInDurationMs(): number;
+export declare function useSwapFadeOutDurationMs(): number;
 export declare function useNewsStripFadeDuringSwap(): boolean;
 export declare const StoreContext: import("react").Context<StoreApi<RoomStore>>;

@@ -1,7 +1,7 @@
 import { View, Rescaler, Tiles, Shader } from '@swmansion/smelter';
 import React, { useContext } from 'react';
 import { useStore } from 'zustand';
-import { StoreContext, useResolution, useIsVertical, useSwapDurationMs, useSwapOutgoingEnabled, useSwapFadeInDurationMs } from '../store';
+import { StoreContext, useResolution, useIsVertical, useSwapDurationMs, useSwapOutgoingEnabled, useSwapFadeInDurationMs, useSwapFadeOutDurationMs } from '../store';
 import { Input, SmallInput } from '../../inputs/inputs';
 import { usePrimarySwapTransition } from './usePrimarySwapTransition';
 import { usePostSwapFadeIn } from './usePostSwapFadeIn';
@@ -16,9 +16,10 @@ export function PrimaryOnLeftLayout() {
   const swapDurationMs = useSwapDurationMs();
   const swapOutgoingEnabled = useSwapOutgoingEnabled();
   const swapFadeInDurationMs = useSwapFadeInDurationMs();
+  const swapFadeOutDurationMs = useSwapFadeOutDurationMs();
   const firstInput = inputs[0];
   const swap = usePrimarySwapTransition(inputs, swapDurationMs);
-  const fadeOpacity = usePostSwapFadeIn(swap.isTransitioning, swapFadeInDurationMs);
+  const fadeOpacity = usePostSwapFadeIn(swap.isTransitioning, swapFadeInDurationMs, swapFadeOutDurationMs);
 
   if (!firstInput) {
     return <View />;
@@ -85,7 +86,7 @@ export function PrimaryOnLeftLayout() {
           resolution={{ width: secondaryWidth, height: secondaryHeight }}
           shaderParam={{ type: 'struct', value: [{ type: 'f32', fieldName: 'opacity', value: fadeOpacity }] }}>
           <View style={{ width: secondaryWidth, height: secondaryHeight }}>
-            <Tiles transition={{ durationMs: 300 }} style={{ padding: TILES_PADDING }}>
+            <Tiles transition={{ durationMs: swapFadeOutDurationMs > 0 ? swapFadeOutDurationMs : 300 }} style={{ padding: TILES_PADDING }}>
               {smallInputs.map(input => (
                 <SmallInput key={input.inputId} input={input} />
               ))}

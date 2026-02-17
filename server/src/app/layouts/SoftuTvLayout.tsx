@@ -1,7 +1,7 @@
 import { View, Tiles, Rescaler, Image, Text, Shader } from '@swmansion/smelter';
 import React, { useContext, useEffect, useState } from 'react';
 import { useStore } from 'zustand';
-import { StoreContext, useResolution, useIsVertical, useSwapDurationMs, useSwapOutgoingEnabled, useSwapFadeInDurationMs, useNewsStripFadeDuringSwap } from '../store';
+import { StoreContext, useResolution, useIsVertical, useSwapDurationMs, useSwapOutgoingEnabled, useSwapFadeInDurationMs, useSwapFadeOutDurationMs, useNewsStripFadeDuringSwap } from '../store';
 import { Input, SmallInput } from '../../inputs/inputs';
 import { NewsStripDecorated } from '../NewsStripDecorated';
 import { usePrimarySwapTransition } from './usePrimarySwapTransition';
@@ -23,11 +23,12 @@ export function SoftuTvLayout() {
   const swapDurationMs = useSwapDurationMs();
   const swapOutgoingEnabled = useSwapOutgoingEnabled();
   const swapFadeInDurationMs = useSwapFadeInDurationMs();
+  const swapFadeOutDurationMs = useSwapFadeOutDurationMs();
   const newsStripFadeDuringSwap = useNewsStripFadeDuringSwap();
   const firstInput = inputs[0];
   const secondInput = inputs[1];
   const swap = usePrimarySwapTransition(inputs, swapDurationMs);
-  const fadeOpacity = usePostSwapFadeIn(swap.isTransitioning, swapFadeInDurationMs);
+  const fadeOpacity = usePostSwapFadeIn(swap.isTransitioning, swapFadeInDurationMs, swapFadeOutDurationMs);
 
   const { width, height } = resolution;
 
@@ -128,12 +129,13 @@ export function SoftuTvLayout() {
   const stripTop = isVertical ? height - stripHeight : Math.round(height * 0.67);
   const showStrip = !isVertical;
 
-  // Approximate tile positions within the PIP area
+  // Tile positions within the PIP area
+  // Tiles component applies `padding` around each tile (2*padding between adjacent tiles)
   const tilePadding = 10;
   const prevTileCount = Math.max(1, swap.prevSecondaryCount);
   const tileW = pipWidth - tilePadding * 2;
-  const tileH = Math.round((pipHeight - tilePadding * (prevTileCount + 1)) / prevTileCount);
-  const tileAbsTop = pipTop + tilePadding + swap.incomingPrevIndex * (tileH + tilePadding);
+  const tileH = Math.round(pipHeight / prevTileCount - tilePadding * 2);
+  const tileAbsTop = pipTop + tilePadding + swap.incomingPrevIndex * (tileH + tilePadding * 2);
   const tileAbsLeft = pipLeft + tilePadding;
 
   return (
@@ -172,7 +174,7 @@ export function SoftuTvLayout() {
             resolution={{ width: pipWidth, height: pipHeight }}
             shaderParam={{ type: 'struct', value: [{ type: 'f32', fieldName: 'opacity', value: fadeOpacity }] }}>
             <View style={{ width: pipWidth, height: pipHeight, direction: 'column' }}>
-              <Tiles transition={{ durationMs: 300 }} style={{ padding: tilePadding, verticalAlign: 'top' }}>
+              <Tiles transition={{ durationMs: swapFadeOutDurationMs > 0 ? swapFadeOutDurationMs : 300 }} style={{ padding: tilePadding, verticalAlign: 'top' }}>
                 {Object.values(inputs)
                   .filter(input => input.inputId != firstInput.inputId)
                   .map(input => (

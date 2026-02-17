@@ -5,40 +5,72 @@ function easeInOutCubic(t: number): number {
 }
 
 /**
- * Animates opacity from 0 to 1 after a swap transition completes.
+ * Animates opacity for secondary content during swap transitions.
  *
- * - While `isTransitioning` is true, fadeOpacity is 0.
- * - When `isTransitioning` transitions from true to false, fadeOpacity
- *   animates from 0 to 1 over `durationMs` milliseconds.
- * - When no transition has occurred yet, fadeOpacity is 1 (default).
- * - If `durationMs <= 0`, fadeOpacity is always 1.
- *
- * @param isTransitioning - whether a swap transition is currently in progress
- * @param durationMs - fade-in duration in ms (e.g. 500)
+ * - Default (no transition yet): opacity = 1
+ * - When transition starts: animates 1→0 over `fadeOutDurationMs`
+ * - When transition ends: animates 0→1 over `fadeInDurationMs`
+ * - If both durations are <= 0, opacity is always 1.
  */
 export function usePostSwapFadeIn(
   isTransitioning: boolean,
-  durationMs: number
+  fadeInDurationMs: number,
+  fadeOutDurationMs: number = 0
 ): number {
   const [fadeOpacity, setFadeOpacity] = useState(1);
   const wasTransitioningRef = useRef(false);
   const animRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
-    if (durationMs <= 0) {
+    if (fadeInDurationMs <= 0 && fadeOutDurationMs <= 0) {
       setFadeOpacity(1);
       wasTransitioningRef.current = isTransitioning;
       return;
     }
 
-    if (isTransitioning) {
-      // While transitioning, hold opacity at 0
+    if (isTransitioning && !wasTransitioningRef.current) {
+      // Transition just started — fade out
+      wasTransitioningRef.current = true;
+
       if (animRef.current) {
         clearInterval(animRef.current);
         animRef.current = null;
       }
-      setFadeOpacity(0);
-      wasTransitioningRef.current = true;
+
+      if (fadeOutDurationMs <= 0) {
+        setFadeOpacity(0);
+        return;
+      }
+
+      const startTime = Date.now();
+      setFadeOpacity(1);
+
+      animRef.current = setInterval(() => {
+        const elapsed = Date.now() - startTime;
+        const rawT = Math.min(1, elapsed / fadeOutDurationMs);
+        const easedT = easeInOutCubic(rawT);
+
+        if (rawT >= 1) {
+          if (animRef.current) {
+            clearInterval(animRef.current);
+            animRef.current = null;
+          }
+          setFadeOpacity(0);
+        } else {
+          setFadeOpacity(1 - easedT);
+        }
+      }, 16);
+
+      return () => {
+        if (animRef.current) {
+          clearInterval(animRef.current);
+          animRef.current = null;
+        }
+      };
+    }
+
+    if (isTransitioning) {
+      // Still transitioning (after fade-out already started), keep current state
       return;
     }
 
@@ -48,11 +80,17 @@ export function usePostSwapFadeIn(
       return;
     }
 
-    // Transition just ended — start fade-in animation
+    // Transition just ended — fade in
     wasTransitioningRef.current = false;
 
     if (animRef.current) {
       clearInterval(animRef.current);
+      animRef.current = null;
+    }
+
+    if (fadeInDurationMs <= 0) {
+      setFadeOpacity(1);
+      return;
     }
 
     const startTime = Date.now();
@@ -60,7 +98,7 @@ export function usePostSwapFadeIn(
 
     animRef.current = setInterval(() => {
       const elapsed = Date.now() - startTime;
-      const rawT = Math.min(1, elapsed / durationMs);
+      const rawT = Math.min(1, elapsed / fadeInDurationMs);
       const easedT = easeInOutCubic(rawT);
 
       if (rawT >= 1) {
@@ -80,7 +118,7 @@ export function usePostSwapFadeIn(
         animRef.current = null;
       }
     };
-  }, [isTransitioning, durationMs]);
+  }, [isTransitioning, fadeInDurationMs, fadeOutDurationMs]);
 
   // Cleanup on unmount
   useEffect(() => {

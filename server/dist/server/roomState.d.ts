@@ -109,6 +109,7 @@ export declare class RoomState {
     private swapDurationMs;
     private swapOutgoingEnabled;
     private swapFadeInDurationMs;
+    private swapFadeOutDurationMs;
     private newsStripFadeDuringSwap;
     idPrefix: string;
     private mp4sDir;
@@ -134,13 +135,15 @@ export declare class RoomState {
     stopRecording(): Promise<{
         fileName: string;
     }>;
-    getState(): [RoomInputState[], Layout, number, boolean, number, boolean];
+    getState(): [RoomInputState[], Layout, number, boolean, number, boolean, number];
     getSwapDurationMs(): number;
     setSwapDurationMs(value: number): void;
     getSwapOutgoingEnabled(): boolean;
     setSwapOutgoingEnabled(value: boolean): void;
     getSwapFadeInDurationMs(): number;
     setSwapFadeInDurationMs(value: number): void;
+    getSwapFadeOutDurationMs(): number;
+    setSwapFadeOutDurationMs(value: number): void;
     getNewsStripFadeDuringSwap(): boolean;
     setNewsStripFadeDuringSwap(value: boolean): void;
     getInputs(): RoomInputState[];

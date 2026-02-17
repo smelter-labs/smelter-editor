@@ -58,8 +58,9 @@ export type RoomStore = {
   swapDurationMs: number;
   swapOutgoingEnabled: boolean;
   swapFadeInDurationMs: number;
+  swapFadeOutDurationMs: number;
   newsStripFadeDuringSwap: boolean;
-  updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number, swapOutgoingEnabled: boolean, swapFadeInDurationMs: number, newsStripFadeDuringSwap: boolean) => void;
+  updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number, swapOutgoingEnabled: boolean, swapFadeInDurationMs: number, newsStripFadeDuringSwap: boolean, swapFadeOutDurationMs: number) => void;
 };
 
 export function createRoomStore(resolution: Resolution = { width: 2560, height: 1440 }): StoreApi<RoomStore> {
@@ -70,9 +71,10 @@ export function createRoomStore(resolution: Resolution = { width: 2560, height: 
     swapDurationMs: 500,
     swapOutgoingEnabled: true,
     swapFadeInDurationMs: 500,
+    swapFadeOutDurationMs: 500,
     newsStripFadeDuringSwap: true,
-    updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number, swapOutgoingEnabled: boolean, swapFadeInDurationMs: number, newsStripFadeDuringSwap: boolean) => {
-      set(_state => ({ inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap }));
+    updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number, swapOutgoingEnabled: boolean, swapFadeInDurationMs: number, newsStripFadeDuringSwap: boolean, swapFadeOutDurationMs: number) => {
+      set(_state => ({ inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs }));
     },
   }));
 }
@@ -100,6 +102,11 @@ export function useSwapOutgoingEnabled() {
 export function useSwapFadeInDurationMs() {
   const store = useContext(StoreContext);
   return useStore(store, state => state.swapFadeInDurationMs);
+}
+
+export function useSwapFadeOutDurationMs() {
+  const store = useContext(StoreContext);
+  return useStore(store, state => state.swapFadeOutDurationMs);
 }
 
 export function useNewsStripFadeDuringSwap() {

@@ -1,10 +1,4 @@
-import {
-  useState,
-  useRef,
-  useCallback,
-  useMemo,
-  useEffect,
-} from 'react';
+import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import {
   AvailableShader,
@@ -977,8 +971,7 @@ export default function InputEntry({
                 className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
                 onClick={() => {
                   if (!showAttachMenu && attachBtnRef.current) {
-                    const rect =
-                      attachBtnRef.current.getBoundingClientRect();
+                    const rect = attachBtnRef.current.getBoundingClientRect();
                     setAttachMenuPos({
                       top: rect.top,
                       left: rect.right,
