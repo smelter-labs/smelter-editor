@@ -1,4 +1,11 @@
-import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import {
+  useState,
+  useRef,
+  useCallback,
+  useMemo,
+  useEffect,
+} from 'react';
+import { createPortal } from 'react-dom';
 import {
   AvailableShader,
   connectInput,
@@ -146,6 +153,11 @@ export default function InputEntry({
   const [isTextSaving, setIsTextSaving] = useState(false);
   const textSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const attachBtnRef = useRef<HTMLButtonElement>(null);
+  const [attachMenuPos, setAttachMenuPos] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
   const isMobile = useIsMobile();
   const muted = input.volume === 0;
   const showTitle = input.showTitle !== false;
@@ -957,57 +969,81 @@ export default function InputEntry({
                   <RectangleHorizontal className='text-neutral-400 size-5' />
                 )}
               </Button>
-              <div className='relative'>
-                <Button
-                  data-no-dnd
-                  size='sm'
-                  variant='ghost'
-                  className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
-                  onClick={() => setShowAttachMenu(!showAttachMenu)}
-                  aria-label='Attach inputs'
-                  title='Attach inputs (render behind this input)'>
-                  <Link
-                    className={`size-5 ${(input.attachedInputIds?.length ?? 0) > 0 ? 'text-blue-400' : 'text-neutral-400'}`}
-                  />
-                </Button>
-                {showAttachMenu && (
-                  <div className='absolute bottom-full right-0 mb-1 bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-2 z-50 min-w-48'>
-                    <div className='text-xs text-neutral-400 mb-1 px-1'>
-                      Attach inputs (render behind)
+              <Button
+                ref={attachBtnRef}
+                data-no-dnd
+                size='sm'
+                variant='ghost'
+                className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
+                onClick={() => {
+                  if (!showAttachMenu && attachBtnRef.current) {
+                    const rect =
+                      attachBtnRef.current.getBoundingClientRect();
+                    setAttachMenuPos({
+                      top: rect.top,
+                      left: rect.right,
+                    });
+                  }
+                  setShowAttachMenu(!showAttachMenu);
+                }}
+                aria-label='Attach inputs'
+                title='Attach inputs (render behind this input)'>
+                <Link
+                  className={`size-5 ${(input.attachedInputIds?.length ?? 0) > 0 ? 'text-blue-400' : 'text-neutral-400'}`}
+                />
+              </Button>
+              {showAttachMenu &&
+                attachMenuPos &&
+                createPortal(
+                  <>
+                    <div
+                      className='fixed inset-0 z-[99]'
+                      onClick={() => setShowAttachMenu(false)}
+                    />
+                    <div
+                      className='fixed bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-2 z-[100] min-w-48'
+                      style={{
+                        top: attachMenuPos.top,
+                        left: attachMenuPos.left,
+                        transform: 'translate(-100%, -100%)',
+                      }}>
+                      <div className='text-xs text-neutral-400 mb-1 px-1'>
+                        Attach inputs (render behind)
+                      </div>
+                      {(allInputs || [])
+                        .filter((i) => i.inputId !== input.inputId)
+                        .filter(
+                          (i) =>
+                            !isInputAttachedElsewhere(
+                              i.inputId,
+                              input.inputId,
+                              allInputs || [],
+                            ),
+                        )
+                        .map((i) => {
+                          const isAttached = (
+                            input.attachedInputIds || []
+                          ).includes(i.inputId);
+                          return (
+                            <label
+                              key={i.inputId}
+                              className='flex items-center gap-2 px-1 py-1 hover:bg-neutral-700 rounded cursor-pointer'>
+                              <input
+                                type='checkbox'
+                                checked={isAttached}
+                                onChange={() => handleAttachToggle(i.inputId)}
+                                className='accent-blue-500 cursor-pointer'
+                              />
+                              <span className='text-sm text-white truncate'>
+                                {i.title}
+                              </span>
+                            </label>
+                          );
+                        })}
                     </div>
-                    {(allInputs || [])
-                      .filter((i) => i.inputId !== input.inputId)
-                      .filter(
-                        (i) =>
-                          !isInputAttachedElsewhere(
-                            i.inputId,
-                            input.inputId,
-                            allInputs || [],
-                          ),
-                      )
-                      .map((i) => {
-                        const isAttached = (
-                          input.attachedInputIds || []
-                        ).includes(i.inputId);
-                        return (
-                          <label
-                            key={i.inputId}
-                            className='flex items-center gap-2 px-1 py-1 hover:bg-neutral-700 rounded cursor-pointer'>
-                            <input
-                              type='checkbox'
-                              checked={isAttached}
-                              onChange={() => handleAttachToggle(i.inputId)}
-                              className='accent-blue-500 cursor-pointer'
-                            />
-                            <span className='text-sm text-white truncate'>
-                              {i.title}
-                            </span>
-                          </label>
-                        );
-                      })}
-                  </div>
+                  </>,
+                  document.body,
                 )}
-              </div>
               <Button
                 data-no-dnd
                 size='sm'
