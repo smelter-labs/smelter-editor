@@ -54,13 +54,11 @@ const CreateRoomSchema = typebox_1.Type.Object({
             typebox_1.Type.Literal('4k-vertical'),
         ]),
     ])),
-    displayName: typebox_1.Type.Optional(typebox_1.Type.String()),
 });
 exports.routes.post('/room', { schema: { body: CreateRoomSchema } }, async (req, res) => {
     console.log('[request] Create new room', { body: req.body });
     const initInputs = req.body.initInputs || [];
     const skipDefaultInputs = req.body.skipDefaultInputs === true;
-    const displayName = req.body.displayName;
     let resolution;
     if (req.body.resolution) {
         if (typeof req.body.resolution === 'string') {
@@ -70,7 +68,7 @@ exports.routes.post('/room', { schema: { body: CreateRoomSchema } }, async (req,
             resolution = req.body.resolution;
         }
     }
-    const { roomId, room } = await serverState_1.state.createRoom(initInputs, skipDefaultInputs, resolution, displayName);
+    const { roomId, room } = await serverState_1.state.createRoom(initInputs, skipDefaultInputs, resolution);
     res.status(200).send({
         roomId,
         whepUrl: room.getWhepUrl(),
@@ -84,15 +82,19 @@ exports.routes.get('/shaders', async (_req, res) => {
 exports.routes.get('/room/:roomId', async (req, res) => {
     const { roomId } = req.params;
     const room = serverState_1.state.getRoom(roomId);
-    const [inputs, layout] = room.getState();
+    const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap] = room.getState();
     res.status(200).send({
         inputs: inputs.map(publicInputState),
         layout,
         whepUrl: room.getWhepUrl(),
         pendingDelete: room.pendingDelete,
         isPublic: room.isPublic,
-        displayName: room.displayName,
         resolution: room.getResolution(),
+        pendingWhipInputs: room.pendingWhipInputs,
+        swapDurationMs,
+        swapOutgoingEnabled,
+        swapFadeInDurationMs,
+        newsStripFadeDuringSwap,
     });
 });
 exports.routes.get('/rooms', async (_req, res) => {
@@ -107,7 +109,7 @@ exports.routes.get('/rooms', async (_req, res) => {
         if (!room) {
             return undefined;
         }
-        const [inputs, layout] = room.getState();
+        const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap] = room.getState();
         return {
             roomId: room.idPrefix,
             inputs: inputs.map(publicInputState),
@@ -116,6 +118,10 @@ exports.routes.get('/rooms', async (_req, res) => {
             pendingDelete: room.pendingDelete,
             createdAt: room.creationTimestamp,
             isPublic: room.isPublic,
+            swapDurationMs,
+            swapOutgoingEnabled,
+            swapFadeInDurationMs,
+            newsStripFadeDuringSwap,
         };
     })
         .filter(Boolean);
@@ -195,6 +201,10 @@ const UpdateRoomSchema = typebox_1.Type.Object({
         typebox_1.Type.Literal('softu-tv'),
     ])),
     isPublic: typebox_1.Type.Optional(typebox_1.Type.Boolean()),
+    swapDurationMs: typebox_1.Type.Optional(typebox_1.Type.Number({ minimum: 0, maximum: 5000 })),
+    swapOutgoingEnabled: typebox_1.Type.Optional(typebox_1.Type.Boolean()),
+    swapFadeInDurationMs: typebox_1.Type.Optional(typebox_1.Type.Number({ minimum: 0, maximum: 5000 })),
+    newsStripFadeDuringSwap: typebox_1.Type.Optional(typebox_1.Type.Boolean()),
 });
 // No multiple-pictures shader defaults API - kept local in layout
 exports.routes.post('/room/:roomId', { schema: { body: UpdateRoomSchema } }, async (req, res) => {
@@ -210,6 +220,36 @@ exports.routes.post('/room/:roomId', { schema: { body: UpdateRoomSchema } }, asy
     if (req.body.isPublic !== undefined) {
         room.isPublic = req.body.isPublic;
     }
+    if (req.body.swapDurationMs !== undefined) {
+        room.setSwapDurationMs(req.body.swapDurationMs);
+    }
+    if (req.body.swapOutgoingEnabled !== undefined) {
+        room.setSwapOutgoingEnabled(req.body.swapOutgoingEnabled);
+    }
+    if (req.body.swapFadeInDurationMs !== undefined) {
+        room.setSwapFadeInDurationMs(req.body.swapFadeInDurationMs);
+    }
+    if (req.body.newsStripFadeDuringSwap !== undefined) {
+        room.setNewsStripFadeDuringSwap(req.body.newsStripFadeDuringSwap);
+    }
+    res.status(200).send({ status: 'ok' });
+});
+const PendingWhipInputSchema = typebox_1.Type.Object({
+    id: typebox_1.Type.String(),
+    title: typebox_1.Type.String(),
+    volume: typebox_1.Type.Number(),
+    showTitle: typebox_1.Type.Boolean(),
+    shaders: typebox_1.Type.Array(typebox_1.Type.Any()),
+    orientation: typebox_1.Type.Union([typebox_1.Type.Literal('horizontal'), typebox_1.Type.Literal('vertical')]),
+    position: typebox_1.Type.Number(),
+});
+const SetPendingWhipInputsSchema = typebox_1.Type.Object({
+    pendingWhipInputs: typebox_1.Type.Array(PendingWhipInputSchema),
+});
+exports.routes.post('/room/:roomId/pending-whip-inputs', { schema: { body: SetPendingWhipInputsSchema } }, async (req, res) => {
+    const { roomId } = req.params;
+    const room = serverState_1.state.getRoom(roomId);
+    room.pendingWhipInputs = req.body.pendingWhipInputs;
     res.status(200).send({ status: 'ok' });
 });
 // (Removed endpoints for multiple-pictures shader defaults)

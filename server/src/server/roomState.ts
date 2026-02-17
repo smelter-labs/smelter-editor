@@ -103,6 +103,9 @@ export class RoomState {
   private inputs: RoomInputState[];
   private layout: Layout = 'picture-in-picture';
   private swapDurationMs: number = 500;
+  private swapOutgoingEnabled: boolean = true;
+  private swapFadeInDurationMs: number = 500;
+  private newsStripFadeDuringSwap: boolean = true;
   public idPrefix: string;
 
   private mp4sDir: string;
@@ -248,9 +251,9 @@ export class RoomState {
     return { fileName: this.recording.fileName };
   }
 
-  public getState(): [RoomInputState[], Layout, number] {
+  public getState(): [RoomInputState[], Layout, number, boolean, number, boolean] {
     this.lastReadTimestamp = Date.now();
-    return [this.inputs, this.layout, this.swapDurationMs];
+    return [this.inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap];
   }
 
   public getSwapDurationMs(): number {
@@ -261,6 +264,34 @@ export class RoomState {
     this.swapDurationMs = value;
     this.updateStoreWithState();
   }
+
+  public getSwapOutgoingEnabled(): boolean {
+    return this.swapOutgoingEnabled;
+  }
+
+  public setSwapOutgoingEnabled(value: boolean) {
+    this.swapOutgoingEnabled = value;
+    this.updateStoreWithState();
+  }
+
+  public getSwapFadeInDurationMs(): number {
+    return this.swapFadeInDurationMs;
+  }
+
+  public setSwapFadeInDurationMs(value: number) {
+    this.swapFadeInDurationMs = value;
+    this.updateStoreWithState();
+  }
+
+  public getNewsStripFadeDuringSwap(): boolean {
+    return this.newsStripFadeDuringSwap;
+  }
+
+  public setNewsStripFadeDuringSwap(value: boolean) {
+    this.newsStripFadeDuringSwap = value;
+    this.updateStoreWithState();
+  }
+
   public getInputs(): RoomInputState[] {
     return this.inputs;
   }
@@ -807,7 +838,7 @@ export class RoomState {
         return config;
       });
 
-    this.output.store.getState().updateState(inputs, this.layout, this.swapDurationMs);
+    this.output.store.getState().updateState(inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap);
   }
 
   private getInput(inputId: string): RoomInputState {

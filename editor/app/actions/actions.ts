@@ -113,6 +113,9 @@ export type RoomState = {
   isPublic?: boolean;
   resolution?: Resolution;
   swapDurationMs?: number;
+  swapOutgoingEnabled?: boolean;
+  swapFadeInDurationMs?: number;
+  newsStripFadeDuringSwap?: boolean;
   pendingWhipInputs?: PendingWhipInputData[];
 };
 
@@ -177,6 +180,9 @@ export type UpdateRoomOptions = {
   layout?: Layout;
   isPublic?: boolean;
   swapDurationMs?: number;
+  swapOutgoingEnabled?: boolean;
+  swapFadeInDurationMs?: number;
+  newsStripFadeDuringSwap?: boolean;
 };
 
 export async function updateRoom(

@@ -56,7 +56,10 @@ export type RoomStore = {
   layout: Layout;
   resolution: Resolution;
   swapDurationMs: number;
-  updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number) => void;
+  swapOutgoingEnabled: boolean;
+  swapFadeInDurationMs: number;
+  newsStripFadeDuringSwap: boolean;
+  updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number, swapOutgoingEnabled: boolean, swapFadeInDurationMs: number, newsStripFadeDuringSwap: boolean) => void;
 };
 
 export function createRoomStore(resolution: Resolution = { width: 2560, height: 1440 }): StoreApi<RoomStore> {
@@ -65,8 +68,11 @@ export function createRoomStore(resolution: Resolution = { width: 2560, height: 
     layout: 'grid',
     resolution,
     swapDurationMs: 500,
-    updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number) => {
-      set(_state => ({ inputs, layout, swapDurationMs }));
+    swapOutgoingEnabled: true,
+    swapFadeInDurationMs: 500,
+    newsStripFadeDuringSwap: true,
+    updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number, swapOutgoingEnabled: boolean, swapFadeInDurationMs: number, newsStripFadeDuringSwap: boolean) => {
+      set(_state => ({ inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap }));
     },
   }));
 }
@@ -84,6 +90,21 @@ export function useIsVertical() {
 export function useSwapDurationMs() {
   const store = useContext(StoreContext);
   return useStore(store, state => state.swapDurationMs);
+}
+
+export function useSwapOutgoingEnabled() {
+  const store = useContext(StoreContext);
+  return useStore(store, state => state.swapOutgoingEnabled);
+}
+
+export function useSwapFadeInDurationMs() {
+  const store = useContext(StoreContext);
+  return useStore(store, state => state.swapFadeInDurationMs);
+}
+
+export function useNewsStripFadeDuringSwap() {
+  const store = useContext(StoreContext);
+  return useStore(store, state => state.newsStripFadeDuringSwap);
 }
 
 export const StoreContext = createContext<StoreApi<RoomStore>>(createRoomStore());

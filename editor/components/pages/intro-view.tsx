@@ -307,6 +307,7 @@ export default function IntroView() {
           ...(orderedCreatedIds.length > 0
             ? { inputOrder: orderedCreatedIds }
             : {}),
+          ...config.transitionSettings,
         });
       } catch (err) {
         console.warn('Failed to set layout or input order:', err);

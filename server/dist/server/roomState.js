@@ -15,15 +15,19 @@ const KickChannelMonitor_1 = require("../kick/KickChannelMonitor");
 const WhipInputMonitor_1 = require("../whip/WhipInputMonitor");
 const PLACEHOLDER_LOGO_FILE = 'logo_Smelter.png';
 class RoomState {
-    constructor(idPrefix, output, initInputs, skipDefaultInputs = false, displayName) {
+    constructor(idPrefix, output, initInputs, skipDefaultInputs = false) {
         this.layout = 'picture-in-picture';
+        this.swapDurationMs = 500;
+        this.swapOutgoingEnabled = true;
+        this.swapFadeInDurationMs = 500;
+        this.newsStripFadeDuringSwap = true;
         this.isPublic = false;
+        this.pendingWhipInputs = [];
         this.mp4sDir = node_path_1.default.join(process.cwd(), 'mp4s');
         this.mp4Files = mp4SuggestionMonitor_1.default.mp4Files;
         this.inputs = [];
         this.idPrefix = idPrefix;
         this.output = output;
-        this.displayName = displayName;
         this.lastReadTimestamp = Date.now();
         this.creationTimestamp = Date.now();
         void (async () => {
@@ -123,7 +127,35 @@ class RoomState {
     }
     getState() {
         this.lastReadTimestamp = Date.now();
-        return [this.inputs, this.layout];
+        return [this.inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap];
+    }
+    getSwapDurationMs() {
+        return this.swapDurationMs;
+    }
+    setSwapDurationMs(value) {
+        this.swapDurationMs = value;
+        this.updateStoreWithState();
+    }
+    getSwapOutgoingEnabled() {
+        return this.swapOutgoingEnabled;
+    }
+    setSwapOutgoingEnabled(value) {
+        this.swapOutgoingEnabled = value;
+        this.updateStoreWithState();
+    }
+    getSwapFadeInDurationMs() {
+        return this.swapFadeInDurationMs;
+    }
+    setSwapFadeInDurationMs(value) {
+        this.swapFadeInDurationMs = value;
+        this.updateStoreWithState();
+    }
+    getNewsStripFadeDuringSwap() {
+        return this.newsStripFadeDuringSwap;
+    }
+    setNewsStripFadeDuringSwap(value) {
+        this.newsStripFadeDuringSwap = value;
+        this.updateStoreWithState();
     }
     getInputs() {
         return this.inputs;
@@ -403,6 +435,11 @@ class RoomState {
             await this.ensurePlaceholder();
         }
         this.inputs = this.inputs.filter(input => input.inputId !== inputId);
+        for (const other of this.inputs) {
+            if (other.attachedInputIds) {
+                other.attachedInputIds = other.attachedInputIds.filter(id => id !== inputId);
+            }
+        }
         this.updateStoreWithState();
         if (input.type === 'twitch-channel' || input.type === 'kick-channel') {
             input.monitor.stop();
@@ -607,7 +644,7 @@ class RoomState {
             textScrollNudge: input.type === 'text-input' ? input.textScrollNudge : undefined,
             textFontSize: input.type === 'text-input' ? input.textFontSize : undefined,
         });
-        const connectedInputs = this.inputs.filter(input => input.status === 'connected');
+        const connectedInputs = this.inputs.filter(input => input.status === 'connected' || input.status === 'pending');
         const connectedMap = new Map();
         for (const input of connectedInputs) {
             connectedMap.set(input.inputId, input);
@@ -632,7 +669,7 @@ class RoomState {
             }
             return config;
         });
-        this.output.store.getState().updateState(inputs, this.layout);
+        this.output.store.getState().updateState(inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap);
     }
     getInput(inputId) {
         const input = this.inputs.find(input => input.inputId === inputId);

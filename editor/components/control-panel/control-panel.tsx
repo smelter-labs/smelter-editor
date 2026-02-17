@@ -270,6 +270,12 @@ export default function ControlPanel({
                 inputs={inputs}
                 layout={roomState.layout}
                 resolution={roomState.resolution}
+                transitionSettings={{
+                  swapDurationMs: roomState.swapDurationMs,
+                  swapOutgoingEnabled: roomState.swapOutgoingEnabled,
+                  swapFadeInDurationMs: roomState.swapFadeInDurationMs,
+                  newsStripFadeDuringSwap: roomState.newsStripFadeDuringSwap,
+                }}
                 roomId={roomId}
                 refreshState={handleRefreshState}
                 pendingWhipInputs={pendingWhipInputs}
@@ -283,6 +289,29 @@ export default function ControlPanel({
                   swapDurationMs={roomState.swapDurationMs ?? 500}
                   onSwapDurationChange={async (value) => {
                     await updateRoomAction(roomId, { swapDurationMs: value });
+                    await handleRefreshState();
+                  }}
+                  swapOutgoingEnabled={roomState.swapOutgoingEnabled ?? true}
+                  onSwapOutgoingEnabledChange={async (value) => {
+                    await updateRoomAction(roomId, {
+                      swapOutgoingEnabled: value,
+                    });
+                    await handleRefreshState();
+                  }}
+                  swapFadeInDurationMs={roomState.swapFadeInDurationMs ?? 500}
+                  onSwapFadeInDurationChange={async (value) => {
+                    await updateRoomAction(roomId, {
+                      swapFadeInDurationMs: value,
+                    });
+                    await handleRefreshState();
+                  }}
+                  newsStripFadeDuringSwap={
+                    roomState.newsStripFadeDuringSwap ?? true
+                  }
+                  onNewsStripFadeDuringSwapChange={async (value) => {
+                    await updateRoomAction(roomId, {
+                      newsStripFadeDuringSwap: value,
+                    });
                     await handleRefreshState();
                   }}
                 />

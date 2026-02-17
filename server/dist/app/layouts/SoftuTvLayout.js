@@ -8,6 +8,8 @@ const zustand_1 = require("zustand");
 const store_1 = require("../store");
 const inputs_1 = require("../../inputs/inputs");
 const NewsStripDecorated_1 = require("../NewsStripDecorated");
+const usePrimarySwapTransition_1 = require("./usePrimarySwapTransition");
+const usePostSwapFadeIn_1 = require("./usePostSwapFadeIn");
 const SOFTU_TV_THEME = {
     liveBadgeBg: '#0052A5',
     liveBadgeText: '#FFFFFF',
@@ -20,8 +22,14 @@ function SoftuTvLayout() {
     const inputs = (0, zustand_1.useStore)(store, state => state.inputs);
     const resolution = (0, store_1.useResolution)();
     const isVertical = (0, store_1.useIsVertical)();
+    const swapDurationMs = (0, store_1.useSwapDurationMs)();
+    const swapOutgoingEnabled = (0, store_1.useSwapOutgoingEnabled)();
+    const swapFadeInDurationMs = (0, store_1.useSwapFadeInDurationMs)();
+    const newsStripFadeDuringSwap = (0, store_1.useNewsStripFadeDuringSwap)();
     const firstInput = inputs[0];
     const secondInput = inputs[1];
+    const swap = (0, usePrimarySwapTransition_1.usePrimarySwapTransition)(inputs, swapDurationMs);
+    const fadeOpacity = (0, usePostSwapFadeIn_1.usePostSwapFadeIn)(swap.isTransitioning, swapFadeInDurationMs);
     const { width, height } = resolution;
     const [waveAmpPx, setWaveAmpPx] = (0, react_1.useState)(0);
     const [waveSpeed, setWaveSpeed] = (0, react_1.useState)(0);
@@ -112,73 +120,94 @@ function SoftuTvLayout() {
     const pipHeight = isVertical ? Math.round(height * 0.35) : Math.round(height * 0.75);
     const pipTop = isVertical ? Math.round(height * 0.62) : 60;
     const pipRight = isVertical ? Math.round((width - pipWidth) / 2) : 60;
+    const pipLeft = width - pipRight - pipWidth;
     const stripHeight = isVertical ? Math.round(height * 0.12) : Math.round(height * 0.31);
     const stripTop = isVertical ? height - stripHeight : Math.round(height * 0.67);
     const showStrip = !isVertical;
-    return ((0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { direction: 'column' }, children: [(0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { transition: { durationMs: 300 }, style: {
-                    rescaleMode: 'fill',
-                    horizontalAlign: isVertical ? 'center' : 'left',
-                    verticalAlign: 'top',
-                    width,
-                    height,
-                    top: 0,
-                    left: 0,
-                }, children: (0, jsx_runtime_1.jsx)(inputs_1.Input, { input: firstInput }) }), secondInput ? ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { top: pipTop, right: pipRight, width: pipWidth, height: pipHeight }, children: (0, jsx_runtime_1.jsx)(smelter_1.View, { style: { direction: 'column' }, children: (0, jsx_runtime_1.jsx)(smelter_1.Tiles, { transition: { durationMs: 300 }, style: { padding: 10, verticalAlign: 'top' }, children: Object.values(inputs)
-                            .filter(input => input.inputId != firstInput.inputId)
-                            .map(input => ((0, jsx_runtime_1.jsx)(inputs_1.SmallInput, { input: input }, input.inputId))) }) }) })) : null, showStrip && (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { transition: { durationMs: 300 }, style: {
-                    rescaleMode: 'fill',
-                    horizontalAlign: 'left',
-                    verticalAlign: 'top',
-                    width,
-                    height: stripHeight,
-                    top: stripTop,
-                    left: 0,
-                }, children: (0, jsx_runtime_1.jsx)(NewsStripDecorated_1.NewsStripDecorated, { resolution: { width, height: stripHeight }, opacity: 1, amplitudePx: waveAmpPx, wavelengthPx: 800, speed: waveSpeed, phase: 0, removeColorTolerance: 0.4, children: (0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { width, height: stripHeight, direction: 'column' }, children: [(0, jsx_runtime_1.jsx)(smelter_1.View, { style: {
-                                    width: Math.round(width * 0.094),
-                                    height: Math.round(stripHeight * 0.16),
-                                    top: Math.round(stripHeight * 0.25),
-                                    left: 0,
-                                    direction: 'column',
-                                    overflow: 'hidden',
-                                    backgroundColor: SOFTU_TV_THEME.liveBadgeBg,
-                                }, children: (0, jsx_runtime_1.jsx)(smelter_1.Text, { style: {
-                                        fontSize: Math.round(stripHeight * 0.09),
-                                        lineHeight: Math.round(stripHeight * 0.16),
-                                        color: SOFTU_TV_THEME.liveBadgeText,
-                                        fontFamily: 'Poppins',
-                                        fontWeight: 'bold',
-                                        align: 'center',
-                                        width: Math.round(width * 0.094),
-                                        height: Math.round(stripHeight * 0.16),
-                                    }, children: "LIVE" }) }), (0, jsx_runtime_1.jsx)(smelter_1.View, { style: {
-                                    width: Math.round(width * 0.094),
-                                    height: Math.round(stripHeight * 0.43),
-                                    top: Math.round(stripHeight * 0.41),
-                                    left: 0,
-                                    direction: 'column',
-                                    overflow: 'hidden',
-                                    backgroundColor: SOFTU_TV_THEME.logoBoxBg,
-                                }, children: (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { rescaleMode: 'fill', width: Math.round(width * 0.059), height: Math.round(stripHeight * 0.16), top: Math.round(stripHeight * 0.12), left: Math.round(width * 0.02) }, children: (0, jsx_runtime_1.jsx)(smelter_1.Image, { imageId: "smelter_logo" }) }) }), (0, jsx_runtime_1.jsx)(smelter_1.View, { style: {
-                                    width: Math.round(width * 0.906),
-                                    height: Math.round(stripHeight * 0.43),
-                                    top: Math.round(stripHeight * 0.41),
-                                    left: Math.round(width * 0.094),
-                                    direction: 'column',
-                                    overflow: 'hidden',
-                                    backgroundColor: SOFTU_TV_THEME.marqueeBg,
-                                }, children: (0, jsx_runtime_1.jsx)(smelter_1.View, { style: {
-                                        direction: 'column',
-                                        height: Math.round(stripHeight * 0.43),
-                                        width: Math.round(width * 1.4),
-                                        overflow: 'visible',
-                                        padding: 10,
-                                        top: Math.round(stripHeight * 0.11),
-                                        left: Math.round(marqueeLeft),
-                                    }, children: (0, jsx_runtime_1.jsx)(smelter_1.Text, { style: {
-                                            fontSize: Math.round(stripHeight * 0.16),
-                                            width: Math.round(width * 2.7),
-                                            color: SOFTU_TV_THEME.marqueeText,
-                                            fontFamily: 'Poppins',
-                                            fontWeight: 'normal',
-                                        }, children: 'This video is composed of multiple videos and overlays in real time using smelter. Want to learn more? Reach out at contact@smelter.dev.'.toUpperCase() }) }) })] }) }) })] }));
+    // Approximate tile positions within the PIP area
+    const tilePadding = 10;
+    const prevTileCount = Math.max(1, swap.prevSecondaryCount);
+    const tileW = pipWidth - tilePadding * 2;
+    const tileH = Math.round((pipHeight - tilePadding * (prevTileCount + 1)) / prevTileCount);
+    const tileAbsTop = pipTop + tilePadding + swap.incomingPrevIndex * (tileH + tilePadding);
+    const tileAbsLeft = pipLeft + tilePadding;
+    return ((0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { width, height, overflow: 'visible' }, children: [(0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { direction: 'column', width, height, top: 0, left: 0 }, children: [(0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { transition: { durationMs: 300 }, style: {
+                            rescaleMode: 'fill',
+                            horizontalAlign: isVertical ? 'center' : 'left',
+                            verticalAlign: 'top',
+                            width,
+                            height,
+                            top: 0,
+                            left: 0,
+                        }, children: (0, jsx_runtime_1.jsx)(inputs_1.Input, { input: firstInput }) }), swap.isTransitioning && swap.outgoingInput && ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: {
+                            rescaleMode: 'fill',
+                            horizontalAlign: isVertical ? 'center' : 'left',
+                            verticalAlign: 'top',
+                            top: 0,
+                            left: 0,
+                            width: swapOutgoingEnabled ? width - swap.progress * (width - tileW) : width,
+                            height: swapOutgoingEnabled ? height - swap.progress * (height - tileH) : height,
+                        }, children: (0, jsx_runtime_1.jsx)(inputs_1.Input, { input: swap.outgoingInput }) })), secondInput ? ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { top: pipTop, right: pipRight, width: pipWidth, height: pipHeight }, children: (0, jsx_runtime_1.jsx)(smelter_1.Shader, { shaderId: "opacity", resolution: { width: pipWidth, height: pipHeight }, shaderParam: { type: 'struct', value: [{ type: 'f32', fieldName: 'opacity', value: fadeOpacity }] }, children: (0, jsx_runtime_1.jsx)(smelter_1.View, { style: { width: pipWidth, height: pipHeight, direction: 'column' }, children: (0, jsx_runtime_1.jsx)(smelter_1.Tiles, { transition: { durationMs: 300 }, style: { padding: tilePadding, verticalAlign: 'top' }, children: Object.values(inputs)
+                                        .filter(input => input.inputId != firstInput.inputId)
+                                        .map(input => ((0, jsx_runtime_1.jsx)(inputs_1.SmallInput, { input: input }, input.inputId))) }) }) }) })) : null, showStrip && (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { transition: { durationMs: 300 }, style: {
+                            rescaleMode: 'fill',
+                            horizontalAlign: 'left',
+                            verticalAlign: 'top',
+                            width,
+                            height: stripHeight,
+                            top: stripTop,
+                            left: 0,
+                        }, children: (0, jsx_runtime_1.jsx)(smelter_1.Shader, { shaderId: "opacity", resolution: { width, height: stripHeight }, shaderParam: { type: 'struct', value: [{ type: 'f32', fieldName: 'opacity', value: newsStripFadeDuringSwap ? fadeOpacity : 1 }] }, children: (0, jsx_runtime_1.jsx)(smelter_1.View, { style: { width, height: stripHeight }, children: (0, jsx_runtime_1.jsx)(NewsStripDecorated_1.NewsStripDecorated, { resolution: { width, height: stripHeight }, opacity: 1, amplitudePx: waveAmpPx, wavelengthPx: 800, speed: waveSpeed, phase: 0, removeColorTolerance: 0.4, children: (0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { width, height: stripHeight, direction: 'column' }, children: [(0, jsx_runtime_1.jsx)(smelter_1.View, { style: {
+                                                    width: Math.round(width * 0.094),
+                                                    height: Math.round(stripHeight * 0.16),
+                                                    top: Math.round(stripHeight * 0.25),
+                                                    left: 0,
+                                                    direction: 'column',
+                                                    overflow: 'hidden',
+                                                    backgroundColor: SOFTU_TV_THEME.liveBadgeBg,
+                                                }, children: (0, jsx_runtime_1.jsx)(smelter_1.Text, { style: {
+                                                        fontSize: Math.round(stripHeight * 0.09),
+                                                        lineHeight: Math.round(stripHeight * 0.16),
+                                                        color: SOFTU_TV_THEME.liveBadgeText,
+                                                        fontFamily: 'Poppins',
+                                                        fontWeight: 'bold',
+                                                        align: 'center',
+                                                        width: Math.round(width * 0.094),
+                                                        height: Math.round(stripHeight * 0.16),
+                                                    }, children: "LIVE" }) }), (0, jsx_runtime_1.jsx)(smelter_1.View, { style: {
+                                                    width: Math.round(width * 0.094),
+                                                    height: Math.round(stripHeight * 0.43),
+                                                    top: Math.round(stripHeight * 0.41),
+                                                    left: 0,
+                                                    direction: 'column',
+                                                    overflow: 'hidden',
+                                                    backgroundColor: SOFTU_TV_THEME.logoBoxBg,
+                                                }, children: (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { rescaleMode: 'fill', width: Math.round(width * 0.059), height: Math.round(stripHeight * 0.16), top: Math.round(stripHeight * 0.12), left: Math.round(width * 0.02) }, children: (0, jsx_runtime_1.jsx)(smelter_1.Image, { imageId: "smelter_logo" }) }) }), (0, jsx_runtime_1.jsx)(smelter_1.View, { style: {
+                                                    width: Math.round(width * 0.906),
+                                                    height: Math.round(stripHeight * 0.43),
+                                                    top: Math.round(stripHeight * 0.41),
+                                                    left: Math.round(width * 0.094),
+                                                    direction: 'column',
+                                                    overflow: 'hidden',
+                                                    backgroundColor: SOFTU_TV_THEME.marqueeBg,
+                                                }, children: (0, jsx_runtime_1.jsx)(smelter_1.View, { style: {
+                                                        direction: 'column',
+                                                        height: Math.round(stripHeight * 0.43),
+                                                        width: Math.round(width * 1.4),
+                                                        overflow: 'visible',
+                                                        padding: 10,
+                                                        top: Math.round(stripHeight * 0.11),
+                                                        left: Math.round(marqueeLeft),
+                                                    }, children: (0, jsx_runtime_1.jsx)(smelter_1.Text, { style: {
+                                                            fontSize: Math.round(stripHeight * 0.16),
+                                                            width: Math.round(width * 2.7),
+                                                            color: SOFTU_TV_THEME.marqueeText,
+                                                            fontFamily: 'Poppins',
+                                                            fontWeight: 'normal',
+                                                        }, children: 'This video is composed of multiple videos and overlays in real time using smelter. Want to learn more? Reach out at contact@smelter.dev.'.toUpperCase() }) }) })] }) }) }) }) })] }), swap.isTransitioning && swap.incomingInput && ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: {
+                    top: tileAbsTop + swap.progress * (0 - tileAbsTop),
+                    left: tileAbsLeft + swap.progress * (0 - tileAbsLeft),
+                    width: tileW + swap.progress * (width - tileW),
+                    height: tileH + swap.progress * (height - tileH),
+                }, children: (0, jsx_runtime_1.jsx)(inputs_1.Input, { input: swap.incomingInput }) }))] }));
 }

@@ -31,11 +31,19 @@ function extractMp4FileName(title: string): string | undefined {
   return undefined;
 }
 
+export type RoomConfigTransitionSettings = {
+  swapDurationMs?: number;
+  swapOutgoingEnabled?: boolean;
+  swapFadeInDurationMs?: number;
+  newsStripFadeDuringSwap?: boolean;
+};
+
 export type RoomConfig = {
   version: 1;
   layout: Layout;
   inputs: RoomConfigInput[];
   resolution?: { width: number; height: number };
+  transitionSettings?: RoomConfigTransitionSettings;
   exportedAt: string;
 };
 
@@ -43,6 +51,7 @@ export function exportRoomConfig(
   inputs: Input[],
   layout: Layout,
   resolution?: { width: number; height: number },
+  transitionSettings?: RoomConfigTransitionSettings,
 ): RoomConfig {
   const inputIdToIndex = new Map<string, number>();
   inputs.forEach((input, idx) => inputIdToIndex.set(input.inputId, idx));
@@ -51,6 +60,7 @@ export function exportRoomConfig(
     version: 1,
     layout,
     resolution,
+    transitionSettings,
     inputs: inputs.map((input) => ({
       type: input.type,
       title: input.title,

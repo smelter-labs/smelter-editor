@@ -123,7 +123,7 @@ routes.get('/shaders', async (_req, res) => {
 routes.get<RoomIdParams>('/room/:roomId', async (req, res) => {
   const { roomId } = req.params;
   const room = state.getRoom(roomId);
-  const [inputs, layout, swapDurationMs] = room.getState();
+  const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap] = room.getState();
 
   res.status(200).send({
     inputs: inputs.map(publicInputState),
@@ -134,6 +134,9 @@ routes.get<RoomIdParams>('/room/:roomId', async (req, res) => {
     resolution: room.getResolution(),
     pendingWhipInputs: room.pendingWhipInputs,
     swapDurationMs,
+    swapOutgoingEnabled,
+    swapFadeInDurationMs,
+    newsStripFadeDuringSwap,
   });
 });
 
@@ -152,7 +155,7 @@ routes.get('/rooms', async (_req, res) => {
       if (!room) {
         return undefined;
       }
-      const [inputs, layout, swapDurationMs] = room.getState();
+      const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap] = room.getState();
       return {
         roomId: room.idPrefix,
         inputs: inputs.map(publicInputState),
@@ -162,6 +165,9 @@ routes.get('/rooms', async (_req, res) => {
         createdAt: room.creationTimestamp,
         isPublic: room.isPublic,
         swapDurationMs,
+        swapOutgoingEnabled,
+        swapFadeInDurationMs,
+        newsStripFadeDuringSwap,
       };
     })
     .filter(Boolean);
@@ -251,6 +257,9 @@ const UpdateRoomSchema = Type.Object({
   ),
   isPublic: Type.Optional(Type.Boolean()),
   swapDurationMs: Type.Optional(Type.Number({ minimum: 0, maximum: 5000 })),
+  swapOutgoingEnabled: Type.Optional(Type.Boolean()),
+  swapFadeInDurationMs: Type.Optional(Type.Number({ minimum: 0, maximum: 5000 })),
+  newsStripFadeDuringSwap: Type.Optional(Type.Boolean()),
 });
 
 // No multiple-pictures shader defaults API - kept local in layout
@@ -274,6 +283,15 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
     }
     if (req.body.swapDurationMs !== undefined) {
       room.setSwapDurationMs(req.body.swapDurationMs);
+    }
+    if (req.body.swapOutgoingEnabled !== undefined) {
+      room.setSwapOutgoingEnabled(req.body.swapOutgoingEnabled);
+    }
+    if (req.body.swapFadeInDurationMs !== undefined) {
+      room.setSwapFadeInDurationMs(req.body.swapFadeInDurationMs);
+    }
+    if (req.body.newsStripFadeDuringSwap !== undefined) {
+      room.setNewsStripFadeDuringSwap(req.body.newsStripFadeDuringSwap);
     }
 
     res.status(200).send({ status: 'ok' });

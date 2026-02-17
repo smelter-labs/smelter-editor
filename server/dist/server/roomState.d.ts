@@ -50,6 +50,15 @@ type TypeSpecificState = {
     textScrollNudge: number;
     textFontSize: number;
 };
+export type PendingWhipInputData = {
+    id: string;
+    title: string;
+    volume: number;
+    showTitle: boolean;
+    shaders: ShaderConfig[];
+    orientation: InputOrientation;
+    position: number;
+};
 type UpdateInputOptions = {
     volume: number;
     showTitle: boolean;
@@ -97,6 +106,10 @@ export type RegisterInputOptions = {
 export declare class RoomState {
     private inputs;
     private layout;
+    private swapDurationMs;
+    private swapOutgoingEnabled;
+    private swapFadeInDurationMs;
+    private newsStripFadeDuringSwap;
     idPrefix: string;
     private mp4sDir;
     private mp4Files;
@@ -106,8 +119,8 @@ export declare class RoomState {
     creationTimestamp: number;
     pendingDelete?: boolean;
     isPublic: boolean;
-    displayName?: string;
-    constructor(idPrefix: string, output: SmelterOutput, initInputs: RegisterInputOptions[], skipDefaultInputs?: boolean, displayName?: string);
+    pendingWhipInputs: PendingWhipInputData[];
+    constructor(idPrefix: string, output: SmelterOutput, initInputs: RegisterInputOptions[], skipDefaultInputs?: boolean);
     private getInitialInputState;
     getWhepUrl(): string;
     getResolution(): {
@@ -121,7 +134,15 @@ export declare class RoomState {
     stopRecording(): Promise<{
         fileName: string;
     }>;
-    getState(): [RoomInputState[], Layout];
+    getState(): [RoomInputState[], Layout, number, boolean, number, boolean];
+    getSwapDurationMs(): number;
+    setSwapDurationMs(value: number): void;
+    getSwapOutgoingEnabled(): boolean;
+    setSwapOutgoingEnabled(value: boolean): void;
+    getSwapFadeInDurationMs(): number;
+    setSwapFadeInDurationMs(value: number): void;
+    getNewsStripFadeDuringSwap(): boolean;
+    setNewsStripFadeDuringSwap(value: boolean): void;
     getInputs(): RoomInputState[];
     private getPlaceholderId;
     private isPlaceholder;

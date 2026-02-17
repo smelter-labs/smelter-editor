@@ -23,6 +23,7 @@ import {
   parseRoomConfig,
   type RoomConfig,
   type RoomConfigInput,
+  type RoomConfigTransitionSettings,
 } from '@/lib/room-config';
 import { toast } from 'react-toastify';
 
@@ -31,6 +32,7 @@ type ConfigurationSectionProps = {
   layout: Layout;
   roomId: string;
   resolution?: { width: number; height: number };
+  transitionSettings: RoomConfigTransitionSettings;
   refreshState: () => Promise<void>;
   pendingWhipInputs: PendingWhipInput[];
   setPendingWhipInputs: (inputs: PendingWhipInput[]) => void | Promise<void>;
@@ -48,6 +50,7 @@ export function ConfigurationSection({
   layout,
   roomId,
   resolution,
+  transitionSettings,
   refreshState,
   pendingWhipInputs,
   setPendingWhipInputs,
@@ -59,7 +62,12 @@ export function ConfigurationSection({
   const handleExport = useCallback(async () => {
     setIsExporting(true);
     try {
-      const config = exportRoomConfig(inputs, layout, resolution);
+      const config = exportRoomConfig(
+        inputs,
+        layout,
+        resolution,
+        transitionSettings,
+      );
       downloadRoomConfig(config);
       toast.success('Configuration exported successfully');
     } catch (e: any) {
@@ -68,7 +76,7 @@ export function ConfigurationSection({
     } finally {
       setIsExporting(false);
     }
-  }, [inputs, layout, resolution]);
+  }, [inputs, layout, resolution, transitionSettings]);
 
   useEffect(() => {
     const onVoiceExport = () => {
@@ -240,6 +248,7 @@ export function ConfigurationSection({
         ...(orderedCreatedIds.length > 0
           ? { inputOrder: orderedCreatedIds }
           : {}),
+        ...config.transitionSettings,
       });
     } catch (e) {
       console.warn('Failed to set layout or input order:', e);

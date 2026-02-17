@@ -58,6 +58,12 @@ type LayoutSelectorProps = {
   connectedStreamsLength: number;
   swapDurationMs: number;
   onSwapDurationChange: (value: number) => void;
+  swapOutgoingEnabled: boolean;
+  onSwapOutgoingEnabledChange: (value: boolean) => void;
+  swapFadeInDurationMs: number;
+  onSwapFadeInDurationChange: (value: number) => void;
+  newsStripFadeDuringSwap: boolean;
+  onNewsStripFadeDuringSwapChange: (value: boolean) => void;
 };
 
 export default function LayoutSelector({
@@ -66,10 +72,23 @@ export default function LayoutSelector({
   connectedStreamsLength,
   swapDurationMs,
   onSwapDurationChange,
+  swapOutgoingEnabled,
+  onSwapOutgoingEnabledChange,
+  swapFadeInDurationMs,
+  onSwapFadeInDurationChange,
+  newsStripFadeDuringSwap,
+  onNewsStripFadeDuringSwapChange,
 }: LayoutSelectorProps) {
   const [localSwapDuration, setLocalSwapDuration] = useState(swapDurationMs);
   const lastEnabledValueRef = useRef(swapDurationMs > 0 ? swapDurationMs : 500);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const [localFadeInDuration, setLocalFadeInDuration] =
+    useState(swapFadeInDurationMs);
+  const lastEnabledFadeInValueRef = useRef(
+    swapFadeInDurationMs > 0 ? swapFadeInDurationMs : 500,
+  );
+  const fadeInDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setLocalSwapDuration(swapDurationMs);
@@ -77,6 +96,13 @@ export default function LayoutSelector({
       lastEnabledValueRef.current = swapDurationMs;
     }
   }, [swapDurationMs]);
+
+  useEffect(() => {
+    setLocalFadeInDuration(swapFadeInDurationMs);
+    if (swapFadeInDurationMs > 0) {
+      lastEnabledFadeInValueRef.current = swapFadeInDurationMs;
+    }
+  }, [swapFadeInDurationMs]);
 
   const handleSwapDurationChange = useCallback(
     (value: number) => {
@@ -92,6 +118,22 @@ export default function LayoutSelector({
       }, 300);
     },
     [onSwapDurationChange],
+  );
+
+  const handleFadeInDurationChange = useCallback(
+    (value: number) => {
+      setLocalFadeInDuration(value);
+      if (value > 0) {
+        lastEnabledFadeInValueRef.current = value;
+      }
+      if (fadeInDebounceRef.current) {
+        clearTimeout(fadeInDebounceRef.current);
+      }
+      fadeInDebounceRef.current = setTimeout(() => {
+        onSwapFadeInDurationChange(value);
+      }, 300);
+    },
+    [onSwapFadeInDurationChange],
   );
 
   const renderLayoutPreview = (layoutId: string) => {
@@ -327,6 +369,74 @@ export default function LayoutSelector({
                 }
                 className='w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-white'
               />
+              <label className='flex items-center gap-2 cursor-pointer mt-3'>
+                <input
+                  type='checkbox'
+                  checked={swapOutgoingEnabled}
+                  onChange={(e) =>
+                    onSwapOutgoingEnabledChange(e.target.checked)
+                  }
+                  className='accent-white'
+                />
+                <span className='text-xs text-neutral-400'>
+                  Outgoing Transition
+                </span>
+              </label>
+              <label className='flex items-center gap-2 cursor-pointer mt-3'>
+                <input
+                  type='checkbox'
+                  checked={localFadeInDuration > 0}
+                  onChange={(e) => {
+                    if (e.target.checked) {
+                      handleFadeInDurationChange(
+                        lastEnabledFadeInValueRef.current,
+                      );
+                    } else {
+                      handleFadeInDurationChange(0);
+                    }
+                  }}
+                  className='accent-white'
+                />
+                <span className='text-xs text-neutral-400'>
+                  Fade In After Swap
+                </span>
+              </label>
+              {localFadeInDuration > 0 && (
+                <>
+                  <div className='flex items-center justify-between mb-2 mt-2'>
+                    <span className='text-xs text-neutral-400'>
+                      Fade In Duration
+                    </span>
+                    <span className='text-xs text-neutral-400'>
+                      {localFadeInDuration}ms
+                    </span>
+                  </div>
+                  <input
+                    type='range'
+                    min={100}
+                    max={2000}
+                    step={50}
+                    value={localFadeInDuration}
+                    onChange={(e) =>
+                      handleFadeInDurationChange(Number(e.target.value))
+                    }
+                    className='w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-white'
+                  />
+                  <label className='flex items-center gap-2 cursor-pointer mt-3'>
+                    <input
+                      type='checkbox'
+                      checked={newsStripFadeDuringSwap}
+                      onChange={(e) =>
+                        onNewsStripFadeDuringSwapChange(e.target.checked)
+                      }
+                      className='accent-white'
+                    />
+                    <span className='text-xs text-neutral-400'>
+                      News Strip Fades
+                    </span>
+                  </label>
+                </>
+              )}
             </>
           )}
         </div>

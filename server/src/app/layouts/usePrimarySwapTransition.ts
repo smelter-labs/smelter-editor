@@ -44,62 +44,69 @@ export function usePrimarySwapTransition(
   const animRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const currentPrimary = inputs[0] ?? null;
+  // Track whether we need to start an interval (set during render, consumed by effect)
+  const needsAnimStartRef = useRef(false);
 
-  useEffect(() => {
-    const prevPrimary = prevPrimaryRef.current;
-    const prevInputs = prevInputsRef.current;
+  // ── Synchronous detection during render ──
+  // Detect primary change immediately so the outgoing overlay is present
+  // on the very first frame — avoids a one-frame "blink".
+  if (
+    prevPrimaryRef.current &&
+    currentPrimary &&
+    prevPrimaryRef.current.inputId !== currentPrimary.inputId &&
+    !state.isTransitioning &&
+    durationMs > 0 &&
+    inputs.some(i => i.inputId === prevPrimaryRef.current!.inputId)
+  ) {
+    const prevSecondary = prevInputsRef.current.filter(
+      i => i.inputId !== prevPrimaryRef.current!.inputId
+    );
+    const idx = prevSecondary.findIndex(i => i.inputId === currentPrimary.inputId);
 
-    // Update refs for next render
-    prevInputsRef.current = inputs;
+    // setState during render: React discards current output and re-renders
+    // immediately before painting, so the outgoing overlay is never missing.
+    setState({
+      isTransitioning: true,
+      incomingInput: currentPrimary,
+      outgoingInput: prevPrimaryRef.current,
+      progress: 0,
+      incomingPrevIndex: Math.max(0, idx),
+      prevSecondaryCount: prevSecondary.length,
+    });
 
-    // On first render or when there's no previous primary, just record and skip
-    if (!prevPrimary || !currentPrimary) {
-      prevPrimaryRef.current = currentPrimary;
-      return;
-    }
-
-    // If primary didn't change, no transition needed
-    if (prevPrimary.inputId === currentPrimary.inputId) {
-      return;
-    }
-
-    // If duration is 0, transition is disabled
-    if (durationMs <= 0) {
-      prevPrimaryRef.current = currentPrimary;
-      return;
-    }
-
-    // Check that the old primary is still in the inputs list (it moved to secondary)
-    const oldPrimaryStillExists = inputs.some(i => i.inputId === prevPrimary.inputId);
-    if (!oldPrimaryStillExists) {
-      // Input was removed, not swapped - no transition
-      prevPrimaryRef.current = currentPrimary;
-      return;
-    }
-
-    // Find where the incoming input was in the previous secondary list
-    const prevSecondary = prevInputs.filter(i => i.inputId !== prevPrimary.inputId);
-    const incomingPrevIndex = prevSecondary.findIndex(i => i.inputId === currentPrimary.inputId);
-
-    // Start swap transition
-    const outgoing = prevPrimary;
-    const incoming = currentPrimary;
     prevPrimaryRef.current = currentPrimary;
+    prevInputsRef.current = inputs;
+    needsAnimStartRef.current = true;
+  }
+
+  // ── Effect: start / manage the animation interval ──
+  useEffect(() => {
+    // First render or no previous primary — just record
+    if (!prevPrimaryRef.current) {
+      prevPrimaryRef.current = currentPrimary;
+      prevInputsRef.current = inputs;
+      return;
+    }
+
+    // Refs already updated during render if a swap was detected.
+    // If not a swap render, keep refs in sync.
+    if (!needsAnimStartRef.current) {
+      prevInputsRef.current = inputs;
+      if (currentPrimary) {
+        prevPrimaryRef.current = currentPrimary;
+      }
+      return;
+    }
+
+    // A swap was detected during render — start the animation interval.
+    needsAnimStartRef.current = false;
 
     if (animRef.current) {
       clearInterval(animRef.current);
     }
 
     const startTime = Date.now();
-    const initState: SwapTransitionState = {
-      isTransitioning: true,
-      incomingInput: incoming,
-      outgoingInput: outgoing,
-      progress: 0,
-      incomingPrevIndex: Math.max(0, incomingPrevIndex),
-      prevSecondaryCount: prevSecondary.length,
-    };
-    setState(initState);
+    const initState = state; // already set synchronously above
 
     animRef.current = setInterval(() => {
       const elapsed = Date.now() - startTime;
