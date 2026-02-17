@@ -52,12 +52,12 @@ export default function VideoPreview({
         const res = await stopRecording(roomId);
         if (res.status === 'stopped') {
           setIsRecording(false);
-          if (res.downloadUrl) {
+          if (res.fileName) {
             setTimeout(() => {
               if (typeof window === 'undefined') return;
               const link = document.createElement('a');
-              link.href = res.downloadUrl!;
-              link.download = '';
+              link.href = `/api/recordings/${encodeURIComponent(res.fileName!)}`;
+              link.download = res.fileName!;
               document.body.appendChild(link);
               link.click();
               document.body.removeChild(link);
