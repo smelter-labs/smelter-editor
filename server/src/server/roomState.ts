@@ -556,6 +556,11 @@ export class RoomState {
     }
 
     this.inputs = this.inputs.filter(input => input.inputId !== inputId);
+    for (const other of this.inputs) {
+      if (other.attachedInputIds) {
+        other.attachedInputIds = other.attachedInputIds.filter(id => id !== inputId);
+      }
+    }
     this.updateStoreWithState();
     if (input.type === 'twitch-channel' || input.type === 'kick-channel') {
       input.monitor.stop();
@@ -764,7 +769,7 @@ export class RoomState {
       textFontSize: input.type === 'text-input' ? input.textFontSize : undefined,
     });
 
-    const connectedInputs = this.inputs.filter(input => input.status === 'connected');
+    const connectedInputs = this.inputs.filter(input => input.status === 'connected' || input.status === 'pending');
     const connectedMap = new Map<string, RoomInputState>();
     for (const input of connectedInputs) {
       connectedMap.set(input.inputId, input);
