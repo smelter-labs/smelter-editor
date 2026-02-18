@@ -512,9 +512,7 @@ export default function LayoutSelector({
                       }
                       className='accent-white'
                     />
-                    <span className='text-xs text-neutral-400'>
-                      News Strip
-                    </span>
+                    <span className='text-xs text-neutral-400'>News Strip</span>
                   </label>
                   <label className='flex items-center gap-2 cursor-pointer mt-3'>
                     <input
