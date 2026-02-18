@@ -1,4 +1,5 @@
 import { attachLocalPreview } from './preview';
+import { createRotated90Stream } from './rotate-stream';
 import {
   buildIceServers,
   forceH264,
@@ -6,6 +7,13 @@ import {
   wireDebug,
 } from './webRTC-helpers';
 import { sendWhipOfferLocal } from './whip-api';
+
+let rotateCleanup: (() => void) | null = null;
+
+export function cleanupRotation() {
+  rotateCleanup?.();
+  rotateCleanup = null;
+}
 
 export async function startPublish(
   inputId: string,
@@ -15,8 +23,9 @@ export async function startPublish(
   streamRef: React.MutableRefObject<MediaStream | null>,
   onDisconnected?: () => void,
   facingMode?: 'user' | 'environment',
+  rotate90?: boolean,
 ): Promise<{ location: string | null }> {
-  const stream = await navigator.mediaDevices.getUserMedia({
+  const rawStream = await navigator.mediaDevices.getUserMedia({
     video: facingMode ? { facingMode } : true,
     audio: {
       echoCancellation: true,
@@ -24,8 +33,20 @@ export async function startPublish(
       autoGainControl: true,
     },
   });
-  streamRef.current = stream;
-  attachLocalPreview(stream);
+
+  cleanupRotation();
+
+  let stream: MediaStream;
+  if (rotate90) {
+    const rotated = createRotated90Stream(rawStream);
+    stream = rotated.stream;
+    rotateCleanup = rotated.cleanup;
+  } else {
+    stream = rawStream;
+  }
+
+  streamRef.current = rawStream;
+  attachLocalPreview(rawStream);
 
   const pc = new RTCPeerConnection({
     iceServers: buildIceServers(),

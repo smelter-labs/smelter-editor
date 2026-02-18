@@ -13,7 +13,7 @@ import type React from 'react';
 import { useState } from 'react';
 import { useIsMobileDevice } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
-import { SwitchCamera } from 'lucide-react';
+import { SwitchCamera, RotateCw } from 'lucide-react';
 
 export function WHIPAddInputForm(props: {
   inputs: Input[];
@@ -40,6 +40,7 @@ export function WHIPAddInputForm(props: {
 
   const isMobileDevice = useIsMobileDevice();
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  const [rotate90, setRotate90] = useState(false);
 
   const handleAddWhip = async (whipUserName: string) => {
     const cleanedName = whipUserName.trim();
@@ -67,6 +68,7 @@ export function WHIPAddInputForm(props: {
         streamRef,
         onDisconnected,
         isMobileDevice ? facingMode : undefined,
+        rotate90,
       );
 
       setIsWhipActive(true);
@@ -91,38 +93,53 @@ export function WHIPAddInputForm(props: {
 
   return (
     <div className='flex flex-col gap-2'>
-      {isMobileDevice && (
-        <div className='flex items-center gap-2 px-1'>
-          <span className='text-sm text-neutral-400'>Camera:</span>
-          <div className='flex rounded-md overflow-hidden border border-neutral-700'>
-            <Button
-              size='sm'
-              variant='ghost'
-              type='button'
-              onClick={() => setFacingMode('user')}
-              className={`cursor-pointer rounded-none text-xs px-3 ${
-                facingMode === 'user'
-                  ? 'bg-neutral-700 text-white'
-                  : 'text-neutral-500'
-              }`}>
-              Front
-            </Button>
-            <Button
-              size='sm'
-              variant='ghost'
-              type='button'
-              onClick={() => setFacingMode('environment')}
-              className={`cursor-pointer rounded-none text-xs px-3 ${
-                facingMode === 'environment'
-                  ? 'bg-neutral-700 text-white'
-                  : 'text-neutral-500'
-              }`}>
-              <SwitchCamera className='w-3.5 h-3.5' />
-              Back
-            </Button>
-          </div>
-        </div>
-      )}
+      <div className='flex items-center gap-2 px-1 flex-wrap'>
+        {isMobileDevice && (
+          <>
+            <span className='text-sm text-neutral-400'>Camera:</span>
+            <div className='flex rounded-md overflow-hidden border border-neutral-700'>
+              <Button
+                size='sm'
+                variant='ghost'
+                type='button'
+                onClick={() => setFacingMode('user')}
+                className={`cursor-pointer rounded-none text-xs px-3 ${
+                  facingMode === 'user'
+                    ? 'bg-neutral-700 text-white'
+                    : 'text-neutral-500'
+                }`}>
+                Front
+              </Button>
+              <Button
+                size='sm'
+                variant='ghost'
+                type='button'
+                onClick={() => setFacingMode('environment')}
+                className={`cursor-pointer rounded-none text-xs px-3 ${
+                  facingMode === 'environment'
+                    ? 'bg-neutral-700 text-white'
+                    : 'text-neutral-500'
+                }`}>
+                <SwitchCamera className='w-3.5 h-3.5' />
+                Back
+              </Button>
+            </div>
+          </>
+        )}
+        <Button
+          size='sm'
+          variant='ghost'
+          type='button'
+          onClick={() => setRotate90((v) => !v)}
+          className={`cursor-pointer text-xs px-3 border ${
+            rotate90
+              ? 'bg-neutral-700 text-white border-neutral-600'
+              : 'text-neutral-500 border-neutral-700'
+          }`}>
+          <RotateCw className='w-3.5 h-3.5' />
+          Rotate 90°
+        </Button>
+      </div>
       <GenericAddInputForm<string>
         showArrow={false}
         forceShowButton

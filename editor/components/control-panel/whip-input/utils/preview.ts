@@ -32,4 +32,6 @@ export function stopCameraAndConnection(
   attachLocalPreview(null);
   pcRef.current = null;
   streamRef.current = null;
+  // Lazy import to avoid circular deps
+  import('./whip-publisher').then((m) => m.cleanupRotation()).catch(() => {});
 }
