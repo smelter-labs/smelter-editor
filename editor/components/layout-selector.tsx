@@ -66,6 +66,8 @@ type LayoutSelectorProps = {
   onSwapFadeOutDurationChange: (value: number) => void;
   newsStripFadeDuringSwap: boolean;
   onNewsStripFadeDuringSwapChange: (value: boolean) => void;
+  newsStripEnabled: boolean;
+  onNewsStripEnabledChange: (value: boolean) => void;
 };
 
 export default function LayoutSelector({
@@ -82,6 +84,8 @@ export default function LayoutSelector({
   onSwapFadeOutDurationChange,
   newsStripFadeDuringSwap,
   onNewsStripFadeDuringSwapChange,
+  newsStripEnabled,
+  onNewsStripEnabledChange,
 }: LayoutSelectorProps) {
   const [localSwapDuration, setLocalSwapDuration] = useState(swapDurationMs);
   const lastEnabledValueRef = useRef(swapDurationMs > 0 ? swapDurationMs : 500);
@@ -499,6 +503,19 @@ export default function LayoutSelector({
                     }
                     className='w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-white'
                   />
+                  <label className='flex items-center gap-2 cursor-pointer mt-3'>
+                    <input
+                      type='checkbox'
+                      checked={newsStripEnabled}
+                      onChange={(e) =>
+                        onNewsStripEnabledChange(e.target.checked)
+                      }
+                      className='accent-white'
+                    />
+                    <span className='text-xs text-neutral-400'>
+                      News Strip
+                    </span>
+                  </label>
                   <label className='flex items-center gap-2 cursor-pointer mt-3'>
                     <input
                       type='checkbox'

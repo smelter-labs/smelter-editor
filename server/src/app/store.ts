@@ -60,7 +60,8 @@ export type RoomStore = {
   swapFadeInDurationMs: number;
   swapFadeOutDurationMs: number;
   newsStripFadeDuringSwap: boolean;
-  updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number, swapOutgoingEnabled: boolean, swapFadeInDurationMs: number, newsStripFadeDuringSwap: boolean, swapFadeOutDurationMs: number) => void;
+  newsStripEnabled: boolean;
+  updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number, swapOutgoingEnabled: boolean, swapFadeInDurationMs: number, newsStripFadeDuringSwap: boolean, swapFadeOutDurationMs: number, newsStripEnabled: boolean) => void;
 };
 
 export function createRoomStore(resolution: Resolution = { width: 2560, height: 1440 }): StoreApi<RoomStore> {
@@ -73,8 +74,9 @@ export function createRoomStore(resolution: Resolution = { width: 2560, height: 
     swapFadeInDurationMs: 500,
     swapFadeOutDurationMs: 500,
     newsStripFadeDuringSwap: true,
-    updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number, swapOutgoingEnabled: boolean, swapFadeInDurationMs: number, newsStripFadeDuringSwap: boolean, swapFadeOutDurationMs: number) => {
-      set(_state => ({ inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs }));
+    newsStripEnabled: true,
+    updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number, swapOutgoingEnabled: boolean, swapFadeInDurationMs: number, newsStripFadeDuringSwap: boolean, swapFadeOutDurationMs: number, newsStripEnabled: boolean) => {
+      set(_state => ({ inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs, newsStripEnabled }));
     },
   }));
 }
@@ -112,6 +114,11 @@ export function useSwapFadeOutDurationMs() {
 export function useNewsStripFadeDuringSwap() {
   const store = useContext(StoreContext);
   return useStore(store, state => state.newsStripFadeDuringSwap);
+}
+
+export function useNewsStripEnabled() {
+  const store = useContext(StoreContext);
+  return useStore(store, state => state.newsStripEnabled);
 }
 
 export const StoreContext = createContext<StoreApi<RoomStore>>(createRoomStore());

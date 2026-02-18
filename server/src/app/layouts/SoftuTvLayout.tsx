@@ -1,7 +1,7 @@
 import { View, Tiles, Rescaler, Image, Text, Shader } from '@swmansion/smelter';
 import React, { useContext, useEffect, useState } from 'react';
 import { useStore } from 'zustand';
-import { StoreContext, useResolution, useIsVertical, useSwapDurationMs, useSwapOutgoingEnabled, useSwapFadeInDurationMs, useSwapFadeOutDurationMs, useNewsStripFadeDuringSwap } from '../store';
+import { StoreContext, useResolution, useIsVertical, useSwapDurationMs, useSwapOutgoingEnabled, useSwapFadeInDurationMs, useSwapFadeOutDurationMs, useNewsStripFadeDuringSwap, useNewsStripEnabled } from '../store';
 import { Input, SmallInput } from '../../inputs/inputs';
 import { NewsStripDecorated } from '../NewsStripDecorated';
 import { usePrimarySwapTransition } from './usePrimarySwapTransition';
@@ -25,6 +25,7 @@ export function SoftuTvLayout() {
   const swapFadeInDurationMs = useSwapFadeInDurationMs();
   const swapFadeOutDurationMs = useSwapFadeOutDurationMs();
   const newsStripFadeDuringSwap = useNewsStripFadeDuringSwap();
+  const newsStripEnabled = useNewsStripEnabled();
   const firstInput = inputs[0];
   const secondInput = inputs[1];
   const swap = usePrimarySwapTransition(inputs, swapDurationMs);
@@ -127,7 +128,7 @@ export function SoftuTvLayout() {
 
   const stripHeight = isVertical ? Math.round(height * 0.12) : Math.round(height * 0.31);
   const stripTop = isVertical ? height - stripHeight : Math.round(height * 0.67);
-  const showStrip = !isVertical;
+  const showStrip = !isVertical && newsStripEnabled;
 
   // Tile positions within the PIP area
   // Tiles component applies `padding` around each tile (2*padding between adjacent tiles)

@@ -117,6 +117,7 @@ export type RoomState = {
   swapFadeInDurationMs?: number;
   swapFadeOutDurationMs?: number;
   newsStripFadeDuringSwap?: boolean;
+  newsStripEnabled?: boolean;
   pendingWhipInputs?: PendingWhipInputData[];
 };
 
@@ -185,6 +186,7 @@ export type UpdateRoomOptions = {
   swapFadeInDurationMs?: number;
   swapFadeOutDurationMs?: number;
   newsStripFadeDuringSwap?: boolean;
+  newsStripEnabled?: boolean;
 };
 
 export async function updateRoom(

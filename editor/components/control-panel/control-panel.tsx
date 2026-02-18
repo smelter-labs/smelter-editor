@@ -312,6 +312,7 @@ export default function ControlPanel({
                   swapFadeInDurationMs: roomState.swapFadeInDurationMs,
                   swapFadeOutDurationMs: roomState.swapFadeOutDurationMs,
                   newsStripFadeDuringSwap: roomState.newsStripFadeDuringSwap,
+                  newsStripEnabled: roomState.newsStripEnabled,
                 }}
                 roomId={roomId}
                 refreshState={handleRefreshState}
@@ -355,6 +356,13 @@ export default function ControlPanel({
                   onNewsStripFadeDuringSwapChange={async (value) => {
                     await updateRoomAction(roomId, {
                       newsStripFadeDuringSwap: value,
+                    });
+                    await handleRefreshState();
+                  }}
+                  newsStripEnabled={roomState.newsStripEnabled ?? true}
+                  onNewsStripEnabledChange={async (value) => {
+                    await updateRoomAction(roomId, {
+                      newsStripEnabled: value,
                     });
                     await handleRefreshState();
                   }}
