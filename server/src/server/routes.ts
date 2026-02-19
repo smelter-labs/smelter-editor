@@ -1,6 +1,6 @@
 import Fastify from 'fastify';
 import path from 'node:path';
-import { pathExists, readFile, stat } from 'fs-extra';
+import { pathExists, readdir, readFile, stat } from 'fs-extra';
 import { Type } from '@sinclair/typebox';
 import type { Static, TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { state } from './serverState';
@@ -221,9 +221,76 @@ routes.post<RoomIdParams>('/room/:roomId/record/stop', async (req, res) => {
   }
 });
 
+const RECORDINGS_DIR = path.join(__dirname, '../../recordings');
+
+routes.get('/recordings', async (_req, res) => {
+  const recordingsDir = RECORDINGS_DIR;
+
+  if (!(await pathExists(recordingsDir))) {
+    return res.status(200).send({ recordings: [] });
+  }
+
+  try {
+    const files = await readdir(recordingsDir);
+    const mp4Files = files.filter(f => f.endsWith('.mp4'));
+    const recordings = [];
+    for (const fileName of mp4Files) {
+      const filePath = path.join(recordingsDir, fileName);
+      const fileStat = await stat(filePath);
+      const match = fileName.match(/^recording-(.+)-(\d+)\.mp4$/);
+      recordings.push({
+        fileName,
+        roomId: match ? match[1] : null,
+        createdAt: match ? Number(match[2]) : fileStat.mtimeMs,
+        size: fileStat.size,
+      });
+    }
+    recordings.sort((a, b) => b.createdAt - a.createdAt);
+    res.status(200).send({ recordings });
+  } catch (err: any) {
+    console.error('Failed to list recordings', err);
+    res.status(500).send({ error: 'Failed to list recordings' });
+  }
+});
+
+routes.get<RoomIdParams>('/room/:roomId/recordings', async (req, res) => {
+  const { roomId } = req.params;
+  const safeRoomId = roomId.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const recordingsDir = RECORDINGS_DIR;
+
+  if (!(await pathExists(recordingsDir))) {
+    return res.status(200).send({ recordings: [] });
+  }
+
+  try {
+    const files = await readdir(recordingsDir);
+    const mp4Files = files.filter(f => f.endsWith('.mp4'));
+    const recordings = [];
+    for (const fileName of mp4Files) {
+      const match = fileName.match(/^recording-(.+)-(\d+)\.mp4$/);
+      if (!match || match[1] !== safeRoomId) {
+        continue;
+      }
+      const filePath = path.join(recordingsDir, fileName);
+      const fileStat = await stat(filePath);
+      recordings.push({
+        fileName,
+        roomId: match[1],
+        createdAt: Number(match[2]),
+        size: fileStat.size,
+      });
+    }
+    recordings.sort((a, b) => b.createdAt - a.createdAt);
+    res.status(200).send({ recordings });
+  } catch (err: any) {
+    console.error('Failed to list recordings for room', { roomId, err });
+    res.status(500).send({ error: 'Failed to list recordings' });
+  }
+});
+
 routes.get<RecordingFileParams>('/recordings/:fileName', async (req, res) => {
   const { fileName } = req.params;
-  const recordingsDir = path.join(process.cwd(), 'recordings');
+  const recordingsDir = RECORDINGS_DIR;
   const filePath = path.join(recordingsDir, fileName);
 
   if (!(await pathExists(filePath))) {

@@ -5,6 +5,9 @@ import { motion } from 'framer-motion';
 import { staggerContainer } from '@/utils/animations';
 import VideoPreview from '@/components/video-preview';
 import ControlPanel from '@/components/control-panel/control-panel';
+import RecordingsList from '@/components/recordings-list';
+import { Button } from '@/components/ui/button';
+import { FolderDown } from 'lucide-react';
 
 interface RoomViewProps {
   roomId: string;
@@ -23,6 +26,7 @@ export default function RoomView({
   const [showAutoplayPopup, setShowAutoplayPopup] = useState(true);
   const [played, setPlayed] = useState(false);
   const [guestStream, setGuestStream] = useState<MediaStream | null>(null);
+  const [showRecordings, setShowRecordings] = useState(false);
 
   const handleAutoplayPermission = useCallback((allow: boolean) => {
     if (allow) {
@@ -70,6 +74,23 @@ export default function RoomView({
           onDeny={() => handleAutoplayPermission(false)}
         />
       )}
+
+      <RecordingsList
+        open={showRecordings}
+        onClose={() => setShowRecordings(false)}
+        roomId={roomId}
+      />
+
+      <div className='flex justify-end gap-2 mb-1'>
+        <Button
+          size='sm'
+          variant='ghost'
+          className='text-neutral-400 hover:text-white cursor-pointer'
+          onClick={() => setShowRecordings(true)}>
+          <FolderDown className='w-4 h-4 mr-1' />
+          Recordings
+        </Button>
+      </div>
 
       <motion.div
         variants={staggerContainer}

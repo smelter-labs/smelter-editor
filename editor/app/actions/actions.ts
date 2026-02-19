@@ -252,6 +252,28 @@ export async function stopRecording(
   );
 }
 
+export type RecordingInfo = {
+  fileName: string;
+  roomId: string;
+  createdAt: number;
+  size: number;
+};
+
+export async function getRecordings(): Promise<RecordingInfo[]> {
+  const data = await sendSmelterRequest('get', '/recordings');
+  return data.recordings ?? [];
+}
+
+export async function getRoomRecordings(
+  roomId: string,
+): Promise<RecordingInfo[]> {
+  const data = await sendSmelterRequest(
+    'get',
+    `/room/${encodeURIComponent(roomId)}/recordings`,
+  );
+  return data.recordings ?? [];
+}
+
 export async function getTwitchSuggestions(): Promise<InputSuggestions> {
   return await sendSmelterRequest('get', `/suggestions/twitch`);
 }

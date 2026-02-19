@@ -144,7 +144,7 @@ function PictureInPictureLayout() {
                             height: swapOutgoingEnabled ? height - swap.progress * (height - tileH) : height,
                         }, children: (0, jsx_runtime_1.jsx)(inputs_1.Input, { input: swap.outgoingInput }) })), secondInput ? ((0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { top: pipTop, right: pipRight, width: pipWidth, height: pipHeight }, children: (0, jsx_runtime_1.jsx)(smelter_1.Shader, { shaderId: "opacity", resolution: { width: pipWidth, height: pipHeight }, shaderParam: { type: 'struct', value: [{ type: 'f32', fieldName: 'opacity', value: fadeOpacity }] }, children: (0, jsx_runtime_1.jsx)(smelter_1.View, { style: { width: pipWidth, height: pipHeight, direction: 'column' }, children: (0, jsx_runtime_1.jsx)(smelter_1.Tiles, { transition: { durationMs: swapFadeOutDurationMs > 0 ? swapFadeOutDurationMs : 300 }, style: { padding: tilePadding, verticalAlign: 'top' }, children: Object.values(inputs)
                                         .filter(input => input.inputId != firstInput.inputId)
-                                        .map(input => ((0, jsx_runtime_1.jsx)(inputs_1.SmallInput, { input: input }, input.inputId))) }) }) }) })) : null, showStrip && (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { transition: { durationMs: 300 }, style: {
+                                        .map(input => ((0, jsx_runtime_1.jsx)(inputs_1.SmallInput, { input: input }, input.inputId))) }) }) }) })) : null, showStrip && newsStripFadeDuringSwap && (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { transition: { durationMs: 300 }, style: {
                             rescaleMode: 'fill',
                             horizontalAlign: 'left',
                             verticalAlign: 'top',
@@ -152,7 +152,7 @@ function PictureInPictureLayout() {
                             height: stripHeight,
                             top: stripTop,
                             left: 0,
-                        }, children: (0, jsx_runtime_1.jsx)(smelter_1.Shader, { shaderId: "opacity", resolution: { width, height: stripHeight }, shaderParam: { type: 'struct', value: [{ type: 'f32', fieldName: 'opacity', value: newsStripFadeDuringSwap ? fadeOpacity : 1 }] }, children: (0, jsx_runtime_1.jsx)(smelter_1.View, { style: { width, height: stripHeight }, children: (0, jsx_runtime_1.jsx)(NewsStripDecorated_1.NewsStripDecorated, { resolution: { width, height: stripHeight }, opacity: 1, amplitudePx: waveAmpPx, wavelengthPx: 800, speed: waveSpeed, phase: 0, removeColorTolerance: 0.4, children: (0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { width, height: stripHeight, direction: 'column' }, children: [(0, jsx_runtime_1.jsx)(smelter_1.View, { style: {
+                        }, children: (0, jsx_runtime_1.jsx)(smelter_1.Shader, { shaderId: "opacity", resolution: { width, height: stripHeight }, shaderParam: { type: 'struct', value: [{ type: 'f32', fieldName: 'opacity', value: fadeOpacity }] }, children: (0, jsx_runtime_1.jsx)(smelter_1.View, { style: { width, height: stripHeight }, children: (0, jsx_runtime_1.jsx)(NewsStripDecorated_1.NewsStripDecorated, { resolution: { width, height: stripHeight }, opacity: 1, amplitudePx: waveAmpPx, wavelengthPx: 800, speed: waveSpeed, phase: 0, removeColorTolerance: 0.4, children: (0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { width, height: stripHeight, direction: 'column' }, children: [(0, jsx_runtime_1.jsx)(smelter_1.View, { style: {
                                                     width: Math.round(width * 0.094),
                                                     height: Math.round(stripHeight * 0.16),
                                                     top: Math.round(stripHeight * 0.25),
@@ -204,5 +204,60 @@ function PictureInPictureLayout() {
                     left: tileAbsLeft + swap.progress * (0 - tileAbsLeft),
                     width: tileW + swap.progress * (width - tileW),
                     height: tileH + swap.progress * (height - tileH),
-                }, children: (0, jsx_runtime_1.jsx)(inputs_1.Input, { input: swap.incomingInput }) }))] }));
+                }, children: (0, jsx_runtime_1.jsx)(inputs_1.Input, { input: swap.incomingInput }) })), showStrip && !newsStripFadeDuringSwap && (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { transition: { durationMs: 300 }, style: {
+                    rescaleMode: 'fill',
+                    horizontalAlign: 'left',
+                    verticalAlign: 'top',
+                    width,
+                    height: stripHeight,
+                    top: stripTop,
+                    left: 0,
+                }, children: (0, jsx_runtime_1.jsx)(smelter_1.View, { style: { width, height: stripHeight }, children: (0, jsx_runtime_1.jsx)(NewsStripDecorated_1.NewsStripDecorated, { resolution: { width, height: stripHeight }, opacity: 1, amplitudePx: waveAmpPx, wavelengthPx: 800, speed: waveSpeed, phase: 0, removeColorTolerance: 0.4, children: (0, jsx_runtime_1.jsxs)(smelter_1.View, { style: { width, height: stripHeight, direction: 'column' }, children: [(0, jsx_runtime_1.jsx)(smelter_1.View, { style: {
+                                        width: Math.round(width * 0.094),
+                                        height: Math.round(stripHeight * 0.16),
+                                        top: Math.round(stripHeight * 0.25),
+                                        left: 0,
+                                        direction: 'column',
+                                        overflow: 'hidden',
+                                        backgroundColor: '#F24664',
+                                    }, children: (0, jsx_runtime_1.jsx)(smelter_1.Text, { style: {
+                                            fontSize: Math.round(stripHeight * 0.09),
+                                            lineHeight: Math.round(stripHeight * 0.16),
+                                            color: '#000000',
+                                            fontFamily: 'Poppins',
+                                            fontWeight: 'bold',
+                                            align: 'center',
+                                            width: Math.round(width * 0.094),
+                                            height: Math.round(stripHeight * 0.16),
+                                        }, children: "LIVE" }) }), (0, jsx_runtime_1.jsx)(smelter_1.View, { style: {
+                                        width: Math.round(width * 0.094),
+                                        height: Math.round(stripHeight * 0.43),
+                                        top: Math.round(stripHeight * 0.41),
+                                        left: 0,
+                                        direction: 'column',
+                                        overflow: 'hidden',
+                                        backgroundColor: '#ffffff',
+                                    }, children: (0, jsx_runtime_1.jsx)(smelter_1.Rescaler, { style: { rescaleMode: 'fill', width: Math.round(width * 0.059), height: Math.round(stripHeight * 0.16), top: Math.round(stripHeight * 0.12), left: Math.round(width * 0.02) }, children: (0, jsx_runtime_1.jsx)(smelter_1.Image, { imageId: "smelter_logo" }) }) }), (0, jsx_runtime_1.jsx)(smelter_1.View, { style: {
+                                        width: Math.round(width * 0.906),
+                                        height: Math.round(stripHeight * 0.43),
+                                        top: Math.round(stripHeight * 0.41),
+                                        left: Math.round(width * 0.094),
+                                        direction: 'column',
+                                        overflow: 'hidden',
+                                        backgroundColor: '#342956',
+                                    }, children: (0, jsx_runtime_1.jsx)(smelter_1.View, { style: {
+                                            direction: 'column',
+                                            height: Math.round(stripHeight * 0.43),
+                                            width: Math.round(width * 1.4),
+                                            overflow: 'visible',
+                                            padding: 10,
+                                            top: Math.round(stripHeight * 0.11),
+                                            left: Math.round(marqueeLeft),
+                                        }, children: (0, jsx_runtime_1.jsx)(smelter_1.Text, { style: {
+                                                fontSize: Math.round(stripHeight * 0.16),
+                                                width: Math.round(width * 2.7),
+                                                color: '#ffffff',
+                                                fontFamily: 'Poppins',
+                                                fontWeight: 'normal',
+                                            }, children: 'This video is composed of multiple videos and overlays in real time using smelter. Want to learn more? Reach out at contact@smelter.dev.'.toUpperCase() }) }) })] }) }) }) })] }));
 }

@@ -82,7 +82,7 @@ exports.routes.get('/shaders', async (_req, res) => {
 exports.routes.get('/room/:roomId', async (req, res) => {
     const { roomId } = req.params;
     const room = serverState_1.state.getRoom(roomId);
-    const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs] = room.getState();
+    const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs, newsStripEnabled] = room.getState();
     res.status(200).send({
         inputs: inputs.map(publicInputState),
         layout,
@@ -96,6 +96,7 @@ exports.routes.get('/room/:roomId', async (req, res) => {
         swapFadeInDurationMs,
         newsStripFadeDuringSwap,
         swapFadeOutDurationMs,
+        newsStripEnabled,
     });
 });
 exports.routes.get('/rooms', async (_req, res) => {
@@ -110,7 +111,7 @@ exports.routes.get('/rooms', async (_req, res) => {
         if (!room) {
             return undefined;
         }
-        const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs] = room.getState();
+        const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs, newsStripEnabled] = room.getState();
         return {
             roomId: room.idPrefix,
             inputs: inputs.map(publicInputState),
@@ -124,6 +125,7 @@ exports.routes.get('/rooms', async (_req, res) => {
             swapFadeInDurationMs,
             newsStripFadeDuringSwap,
             swapFadeOutDurationMs,
+            newsStripEnabled,
         };
     })
         .filter(Boolean);
@@ -169,6 +171,65 @@ exports.routes.post('/room/:roomId/record/stop', async (req, res) => {
             .send({ status: 'error', message: (_c = err === null || err === void 0 ? void 0 : err.message) !== null && _c !== void 0 ? _c : 'Failed to stop recording' });
     }
 });
+exports.routes.get('/recordings', async (_req, res) => {
+    const recordingsDir = node_path_1.default.join(process.cwd(), 'recordings');
+    if (!(await (0, fs_extra_1.pathExists)(recordingsDir))) {
+        return res.status(200).send({ recordings: [] });
+    }
+    try {
+        const files = await (0, fs_extra_1.readdir)(recordingsDir);
+        const mp4Files = files.filter(f => f.endsWith('.mp4'));
+        const recordings = await Promise.all(mp4Files.map(async (fileName) => {
+            const filePath = node_path_1.default.join(recordingsDir, fileName);
+            const fileStat = await (0, fs_extra_1.stat)(filePath);
+            const match = fileName.match(/^recording-(.+)-(\d+)\.mp4$/);
+            return {
+                fileName,
+                roomId: match ? match[1] : null,
+                createdAt: match ? Number(match[2]) : fileStat.mtimeMs,
+                size: fileStat.size,
+            };
+        }));
+        recordings.sort((a, b) => b.createdAt - a.createdAt);
+        res.status(200).send({ recordings });
+    }
+    catch (err) {
+        console.error('Failed to list recordings', err);
+        res.status(500).send({ error: 'Failed to list recordings' });
+    }
+});
+exports.routes.get('/room/:roomId/recordings', async (req, res) => {
+    const { roomId } = req.params;
+    const safeRoomId = roomId.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const recordingsDir = node_path_1.default.join(process.cwd(), 'recordings');
+    if (!(await (0, fs_extra_1.pathExists)(recordingsDir))) {
+        return res.status(200).send({ recordings: [] });
+    }
+    try {
+        const files = await (0, fs_extra_1.readdir)(recordingsDir);
+        const mp4Files = files.filter(f => f.endsWith('.mp4'));
+        const recordings = (await Promise.all(mp4Files.map(async (fileName) => {
+            const match = fileName.match(/^recording-(.+)-(\d+)\.mp4$/);
+            if (!match || match[1] !== safeRoomId) {
+                return null;
+            }
+            const filePath = node_path_1.default.join(recordingsDir, fileName);
+            const fileStat = await (0, fs_extra_1.stat)(filePath);
+            return {
+                fileName,
+                roomId: match[1],
+                createdAt: Number(match[2]),
+                size: fileStat.size,
+            };
+        }))).filter(Boolean);
+        recordings.sort((a, b) => b.createdAt - a.createdAt);
+        res.status(200).send({ recordings });
+    }
+    catch (err) {
+        console.error('Failed to list recordings for room', { roomId, err });
+        res.status(500).send({ error: 'Failed to list recordings' });
+    }
+});
 exports.routes.get('/recordings/:fileName', async (req, res) => {
     const { fileName } = req.params;
     const recordingsDir = node_path_1.default.join(process.cwd(), 'recordings');
@@ -208,6 +269,7 @@ const UpdateRoomSchema = typebox_1.Type.Object({
     swapFadeInDurationMs: typebox_1.Type.Optional(typebox_1.Type.Number({ minimum: 0, maximum: 5000 })),
     swapFadeOutDurationMs: typebox_1.Type.Optional(typebox_1.Type.Number({ minimum: 0, maximum: 5000 })),
     newsStripFadeDuringSwap: typebox_1.Type.Optional(typebox_1.Type.Boolean()),
+    newsStripEnabled: typebox_1.Type.Optional(typebox_1.Type.Boolean()),
 });
 // No multiple-pictures shader defaults API - kept local in layout
 exports.routes.post('/room/:roomId', { schema: { body: UpdateRoomSchema } }, async (req, res) => {
@@ -237,6 +299,9 @@ exports.routes.post('/room/:roomId', { schema: { body: UpdateRoomSchema } }, asy
     }
     if (req.body.newsStripFadeDuringSwap !== undefined) {
         room.setNewsStripFadeDuringSwap(req.body.newsStripFadeDuringSwap);
+    }
+    if (req.body.newsStripEnabled !== undefined) {
+        room.setNewsStripEnabled(req.body.newsStripEnabled);
     }
     res.status(200).send({ status: 'ok' });
 });

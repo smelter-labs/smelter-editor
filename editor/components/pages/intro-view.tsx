@@ -29,7 +29,8 @@ import {
   setPendingWhipInputs as setPendingWhipInputsAction,
   type PendingWhipInputData,
 } from '@/app/actions/actions';
-import { Upload } from 'lucide-react';
+import { Upload, FolderDown } from 'lucide-react';
+import RecordingsList from '@/components/recordings-list';
 import { toast } from 'react-toastify';
 
 function formatDuration(ms: number): string {
@@ -64,6 +65,7 @@ export default function IntroView() {
   const pathname = usePathname();
   const [loadingNew, setLoadingNew] = useState(false);
   const [loadingImport, setLoadingImport] = useState(false);
+  const [showRecordings, setShowRecordings] = useState(false);
   const [selectedResolution, setSelectedResolution] =
     useState<ResolutionPreset>('1440p');
   const [displayName, setDisplayName] = useState(() => {
@@ -453,6 +455,19 @@ export default function IntroView() {
               accept='.json,application/json'
               className='hidden'
               onChange={handleFileChange}
+            />
+            <Button
+              size='lg'
+              variant='default'
+              className='font-medium w-full bg-neutral-800 hover:bg-neutral-700 text-white cursor-pointer'
+              onClick={() => setShowRecordings(true)}
+              disabled={loadingNew || loadingImport}>
+              <FolderDown className='w-4 h-4 mr-2' />
+              Recordings
+            </Button>
+            <RecordingsList
+              open={showRecordings}
+              onClose={() => setShowRecordings(false)}
             />
           </div>
 

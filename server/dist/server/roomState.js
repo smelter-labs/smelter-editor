@@ -22,6 +22,7 @@ class RoomState {
         this.swapFadeInDurationMs = 500;
         this.swapFadeOutDurationMs = 500;
         this.newsStripFadeDuringSwap = true;
+        this.newsStripEnabled = true;
         this.isPublic = false;
         this.pendingWhipInputs = [];
         this.mp4sDir = node_path_1.default.join(process.cwd(), 'mp4s');
@@ -128,7 +129,7 @@ class RoomState {
     }
     getState() {
         this.lastReadTimestamp = Date.now();
-        return [this.inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap, this.swapFadeOutDurationMs];
+        return [this.inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap, this.swapFadeOutDurationMs, this.newsStripEnabled];
     }
     getSwapDurationMs() {
         return this.swapDurationMs;
@@ -163,6 +164,13 @@ class RoomState {
     }
     setNewsStripFadeDuringSwap(value) {
         this.newsStripFadeDuringSwap = value;
+        this.updateStoreWithState();
+    }
+    getNewsStripEnabled() {
+        return this.newsStripEnabled;
+    }
+    setNewsStripEnabled(value) {
+        this.newsStripEnabled = value;
         this.updateStoreWithState();
     }
     getInputs() {
@@ -677,7 +685,7 @@ class RoomState {
             }
             return config;
         });
-        this.output.store.getState().updateState(inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap, this.swapFadeOutDurationMs);
+        this.output.store.getState().updateState(inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap, this.swapFadeOutDurationMs, this.newsStripEnabled);
     }
     getInput(inputId) {
         const input = this.inputs.find(input => input.inputId === inputId);

@@ -9,6 +9,7 @@ exports.useSwapOutgoingEnabled = useSwapOutgoingEnabled;
 exports.useSwapFadeInDurationMs = useSwapFadeInDurationMs;
 exports.useSwapFadeOutDurationMs = useSwapFadeOutDurationMs;
 exports.useNewsStripFadeDuringSwap = useNewsStripFadeDuringSwap;
+exports.useNewsStripEnabled = useNewsStripEnabled;
 const zustand_1 = require("zustand");
 const react_1 = require("react");
 const zustand_2 = require("zustand");
@@ -33,8 +34,9 @@ function createRoomStore(resolution = { width: 2560, height: 1440 }) {
         swapFadeInDurationMs: 500,
         swapFadeOutDurationMs: 500,
         newsStripFadeDuringSwap: true,
-        updateState: (inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs) => {
-            set(_state => ({ inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs }));
+        newsStripEnabled: true,
+        updateState: (inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs, newsStripEnabled) => {
+            set(_state => ({ inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs, newsStripEnabled }));
         },
     }));
 }
@@ -65,5 +67,9 @@ function useSwapFadeOutDurationMs() {
 function useNewsStripFadeDuringSwap() {
     const store = (0, react_1.useContext)(exports.StoreContext);
     return (0, zustand_2.useStore)(store, state => state.newsStripFadeDuringSwap);
+}
+function useNewsStripEnabled() {
+    const store = (0, react_1.useContext)(exports.StoreContext);
+    return (0, zustand_2.useStore)(store, state => state.newsStripEnabled);
 }
 exports.StoreContext = (0, react_1.createContext)(createRoomStore());

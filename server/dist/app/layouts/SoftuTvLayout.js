@@ -27,6 +27,7 @@ function SoftuTvLayout() {
     const swapFadeInDurationMs = (0, store_1.useSwapFadeInDurationMs)();
     const swapFadeOutDurationMs = (0, store_1.useSwapFadeOutDurationMs)();
     const newsStripFadeDuringSwap = (0, store_1.useNewsStripFadeDuringSwap)();
+    const newsStripEnabled = (0, store_1.useNewsStripEnabled)();
     const firstInput = inputs[0];
     const secondInput = inputs[1];
     const swap = (0, usePrimarySwapTransition_1.usePrimarySwapTransition)(inputs, swapDurationMs);
@@ -124,7 +125,7 @@ function SoftuTvLayout() {
     const pipLeft = width - pipRight - pipWidth;
     const stripHeight = isVertical ? Math.round(height * 0.12) : Math.round(height * 0.31);
     const stripTop = isVertical ? height - stripHeight : Math.round(height * 0.67);
-    const showStrip = !isVertical;
+    const showStrip = !isVertical && newsStripEnabled;
     // Tile positions within the PIP area
     // Tiles component applies `padding` around each tile (2*padding between adjacent tiles)
     const tilePadding = 10;
