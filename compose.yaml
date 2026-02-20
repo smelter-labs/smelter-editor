@@ -10,6 +10,8 @@ services:
       SMELTER_LOGGER_LEVEL: info 
       SMELTER_SERVER_LOGGER_LEVEL: "debug,smelter_core=info,naga=info,cosmic_text=info,wgpu_hal=trace,smelter_core::pipeline::instance=warn"
       ENVIRONMENT: production
+    volumes:
+      - ./recordings:/home/smelter/demo/server/recordings
     ports:
       - 9071:9071
       - 9072:9072
