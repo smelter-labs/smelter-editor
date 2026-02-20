@@ -132,6 +132,7 @@ export default function ControlPanel({
     inputs,
     inputsRef,
     handleRefreshState,
+    isGuest,
   );
   const {
     cameraPcRef,
