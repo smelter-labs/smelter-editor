@@ -1,13 +1,12 @@
 import { RoomState, updateRoom } from '@/app/actions/actions';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import AutoplayModal from '@/components/ui/autoplay-modal';
 import { motion } from 'framer-motion';
 import { staggerContainer } from '@/utils/animations';
 import VideoPreview from '@/components/video-preview';
 import ControlPanel from '@/components/control-panel/control-panel';
-import RecordingsList from '@/components/recordings-list';
 import { Button } from '@/components/ui/button';
-import { FolderDown } from 'lucide-react';
+import { RotateCw } from 'lucide-react';
 
 interface RoomViewProps {
   roomId: string;
@@ -26,7 +25,19 @@ export default function RoomView({
   const [showAutoplayPopup, setShowAutoplayPopup] = useState(true);
   const [played, setPlayed] = useState(false);
   const [guestStream, setGuestStream] = useState<MediaStream | null>(null);
-  const [showRecordings, setShowRecordings] = useState(false);
+  const [layoutSection, setLayoutSection] = useState<React.ReactNode>(null);
+  const [panelExpanded, setPanelExpanded] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return localStorage.getItem('control-panel-expanded') === 'true';
+  });
+
+  const togglePanelExpanded = useCallback(() => {
+    setPanelExpanded((prev) => {
+      const next = !prev;
+      localStorage.setItem('control-panel-expanded', String(next));
+      return next;
+    });
+  }, []);
 
   const handleAutoplayPermission = useCallback((allow: boolean) => {
     if (allow) {
@@ -51,10 +62,12 @@ export default function RoomView({
   }, []);
 
   useEffect(() => {
+    if (isGuest) return;
     setupVideoEventListeners();
-  }, [setupVideoEventListeners]);
+  }, [setupVideoEventListeners, isGuest]);
 
   useEffect(() => {
+    if (isGuest) return;
     const attemptAutoplay = async () => {
       if (!videoRef.current) return;
       try {
@@ -64,7 +77,91 @@ export default function RoomView({
       }
     };
     attemptAutoplay();
-  }, []);
+  }, [isGuest]);
+
+  const guestVideoRef = useRef<HTMLVideoElement | null>(null);
+  const [guestRotation, setGuestRotation] = useState<0 | 90 | 180 | 270>(0);
+  const guestRotateRef = useRef<(() => Promise<0 | 90 | 180 | 270>) | null>(
+    null,
+  );
+  const [guestInputId, setGuestInputId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!guestVideoRef.current) return;
+    if (guestStream) {
+      guestVideoRef.current.srcObject = guestStream;
+      guestVideoRef.current.play().catch(() => {});
+    } else {
+      guestVideoRef.current.srcObject = null;
+    }
+  }, [guestStream]);
+
+  // Sync guest rotation when host changes orientation via server
+  useEffect(() => {
+    if (!isGuest || !guestInputId) return;
+    const guestInput = roomState.inputs.find((i) => i.inputId === guestInputId);
+    if (!guestInput) return;
+    const serverVertical = guestInput.orientation === 'vertical';
+    const localVertical = guestRotation % 180 !== 0;
+    if (serverVertical !== localVertical && guestRotateRef.current) {
+      guestRotateRef.current().then(setGuestRotation);
+    }
+  }, [isGuest, guestInputId, roomState.inputs]);
+
+  if (isGuest) {
+    return (
+      <motion.div
+        variants={staggerContainer}
+        className='flex-1 flex flex-col min-h-0 h-full items-center justify-start overflow-hidden'>
+        <div className='w-full max-w-xl'>
+          {guestStream && (
+            <div className='mb-4'>
+              <div
+                className='rounded-md overflow-hidden border border-neutral-800 bg-black'
+                style={{
+                  aspectRatio: guestRotation % 180 !== 0 ? '9/16' : '16/9',
+                  maxHeight: guestRotation % 180 !== 0 ? '70vh' : undefined,
+                  margin: '0 auto',
+                  width: guestRotation % 180 !== 0 ? 'auto' : '100%',
+                }}>
+                <video
+                  ref={guestVideoRef}
+                  muted
+                  playsInline
+                  autoPlay
+                  className='w-full h-full object-contain'
+                />
+              </div>
+              <div className='flex justify-center mt-2'>
+                <Button
+                  size='sm'
+                  variant='ghost'
+                  onClick={async () => {
+                    if (guestRotateRef.current) {
+                      const angle = await guestRotateRef.current();
+                      setGuestRotation(angle);
+                    }
+                  }}
+                  className='cursor-pointer text-neutral-400 hover:text-white border border-neutral-700'>
+                  <RotateCw className='w-4 h-4 mr-1' />
+                  Rotate 90°
+                </Button>
+              </div>
+            </div>
+          )}
+          <ControlPanel
+            roomState={roomState}
+            roomId={roomId}
+            refreshState={refreshState}
+            isGuest={isGuest}
+            onGuestStreamChange={setGuestStream}
+            onGuestInputIdChange={setGuestInputId}
+            onGuestRotateRef={guestRotateRef}
+          />
+        </div>
+      </motion.div>
+    );
+  }
 
   return (
     <>
@@ -75,44 +172,30 @@ export default function RoomView({
         />
       )}
 
-      <RecordingsList
-        open={showRecordings}
-        onClose={() => setShowRecordings(false)}
-        roomId={roomId}
-      />
-
-      <div className='flex justify-end gap-2 mb-1'>
-        <Button
-          size='sm'
-          variant='ghost'
-          className='text-neutral-400 hover:text-white cursor-pointer'
-          onClick={() => setShowRecordings(true)}>
-          <FolderDown className='w-4 h-4 mr-1' />
-          Recordings
-        </Button>
-      </div>
-
       <motion.div
         variants={staggerContainer}
-        className='flex-1 grid grid-cols-1 grid-rows-[auto,1fr] gap-0 xl:grid-cols-4 xl:grid-rows-none xl:gap-4 min-h-0 h-full items-start overflow-hidden'>
-        <VideoPreview
-          videoRef={videoRef}
-          whepUrl={roomState.whepUrl}
-          roomId={roomId}
-          isPublic={roomState.isPublic}
-          onTogglePublic={handleTogglePublic}
-          resolution={roomState.resolution}
-          isGuest={isGuest}
-          guestStream={guestStream}
-        />
+        className={`flex-1 grid grid-cols-1 grid-rows-[auto,1fr] gap-0 xl:grid-rows-none xl:gap-4 min-h-0 h-full items-start overflow-hidden ${panelExpanded ? 'xl:grid-cols-2' : 'xl:grid-cols-4'}`}>
+        <div
+          className={`${panelExpanded ? 'xl:col-span-1' : 'xl:col-span-3'} flex flex-col gap-4`}>
+          <VideoPreview
+            videoRef={videoRef}
+            whepUrl={roomState.whepUrl}
+            roomId={roomId}
+            isPublic={roomState.isPublic}
+            onTogglePublic={handleTogglePublic}
+            resolution={roomState.resolution}
+            panelExpanded={panelExpanded}
+            onTogglePanelExpanded={togglePanelExpanded}
+          />
+          {layoutSection}
+        </div>
         <motion.div className='col-span-1 w-full flex flex-col xl:gap-4 min-h-0 h-full max-h-full justify-start overflow-y-auto overflow-x-hidden md:pr-4 control-panel-container'>
           <div className='control-panel-wrapper'>
             <ControlPanel
               roomState={roomState}
               roomId={roomId}
               refreshState={refreshState}
-              isGuest={isGuest}
-              onGuestStreamChange={setGuestStream}
+              onLayoutSection={setLayoutSection}
             />
           </div>
         </motion.div>

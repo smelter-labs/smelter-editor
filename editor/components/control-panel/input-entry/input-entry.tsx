@@ -19,6 +19,7 @@ import {
   AlignRight,
   RectangleHorizontal,
   RectangleVertical,
+  RotateCw,
   Link,
 } from 'lucide-react';
 import ShaderPanel from './shader-panel';
@@ -33,6 +34,7 @@ import {
 } from './utils';
 import { handleShaderDrop, handleShaderDragOver } from './shader-drop-handler';
 import { stopCameraAndConnection } from '../whip-input/utils/preview';
+import { rotateBy90 } from '../whip-input/utils/whip-publisher';
 import {
   clearWhipSessionFor,
   loadLastWhipInputId,
@@ -96,6 +98,7 @@ interface InputEntryProps {
   index?: number;
   allInputs?: Input[];
   readOnly?: boolean;
+  isLocalWhipInput?: boolean;
 }
 
 export default function InputEntry({
@@ -117,6 +120,7 @@ export default function InputEntry({
   index,
   allInputs,
   readOnly = false,
+  isLocalWhipInput = false,
 }: InputEntryProps) {
   const [connectionStateLoading, setConnectionStateLoading] = useState(false);
   const [showSliders, setShowSliders] = useState(false);
@@ -243,6 +247,32 @@ export default function InputEntry({
     });
     await refreshState();
   }, [roomId, input, isVerticalOrientation, refreshState]);
+
+  const handleRotate90 = useCallback(async () => {
+    if (isLocalWhipInput && pcRef && streamRef) {
+      const angle = await rotateBy90(pcRef, streamRef);
+      await updateInput(roomId, input.inputId, {
+        orientation: angle % 180 !== 0 ? 'vertical' : 'horizontal',
+        shaders: input.shaders,
+        volume: input.volume,
+      });
+    } else {
+      await updateInput(roomId, input.inputId, {
+        orientation: isVerticalOrientation ? 'horizontal' : 'vertical',
+        shaders: input.shaders,
+        volume: input.volume,
+      });
+    }
+    await refreshState();
+  }, [
+    roomId,
+    input,
+    isVerticalOrientation,
+    refreshState,
+    isLocalWhipInput,
+    pcRef,
+    streamRef,
+  ]);
 
   const handleAttachToggle = useCallback(
     async (targetInputId: string) => {
@@ -963,6 +993,18 @@ export default function InputEntry({
                   <RectangleHorizontal className='text-neutral-400 size-5' />
                 )}
               </Button>
+              {isWhipInput && (
+                <Button
+                  data-no-dnd
+                  size='sm'
+                  variant='ghost'
+                  className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
+                  onClick={handleRotate90}
+                  aria-label='Rotate 90°'
+                  title='Rotate 90°'>
+                  <RotateCw className='text-neutral-400 size-5' />
+                </Button>
+              )}
               <Button
                 ref={attachBtnRef}
                 data-no-dnd

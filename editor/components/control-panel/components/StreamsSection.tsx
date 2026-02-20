@@ -145,6 +145,10 @@ export function StreamsSection({
                         canMoveDown={isGuest ? false : !isLast}
                         pcRef={cameraPcRef}
                         streamRef={cameraStreamRef}
+                        isLocalWhipInput={
+                          input.inputId === activeCameraInputId ||
+                          input.inputId === activeScreenshareInputId
+                        }
                         isFxOpen={openFxInputId === input.inputId}
                         onToggleFx={() => onToggleFx(input.inputId)}
                         onWhipDisconnectedOrRemoved={

@@ -1,14 +1,16 @@
 /**
- * Creates a new MediaStream whose video track is the original rotated 90° clockwise.
+ * Creates a new MediaStream whose video track is the original rotated by the given angle.
+ * Supported angles: 0, 90, 180, 270 (clockwise).
  * Audio tracks are passed through unchanged.
  * Returns a cleanup function that stops the rendering loop and releases the canvas.
  */
-export function createRotated90Stream(
+export function createRotatedStream(
   source: MediaStream,
+  angleDeg: 0 | 90 | 180 | 270,
   fps = 30,
 ): { stream: MediaStream; cleanup: () => void } {
   const videoTrack = source.getVideoTracks()[0];
-  if (!videoTrack) {
+  if (!videoTrack || angleDeg === 0) {
     return { stream: source, cleanup: () => {} };
   }
 
@@ -16,12 +18,13 @@ export function createRotated90Stream(
   const srcW = settings.width || 640;
   const srcH = settings.height || 480;
 
-  // After 90° CW rotation: output dimensions are swapped
+  const swapped = angleDeg === 90 || angleDeg === 270;
   const canvas = document.createElement('canvas');
-  canvas.width = srcH;
-  canvas.height = srcW;
+  canvas.width = swapped ? srcH : srcW;
+  canvas.height = swapped ? srcW : srcH;
 
   const ctx = canvas.getContext('2d')!;
+  const rad = (angleDeg * Math.PI) / 180;
 
   const video = document.createElement('video');
   video.srcObject = new MediaStream([videoTrack]);
@@ -36,10 +39,9 @@ export function createRotated90Stream(
     if (stopped) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     ctx.save();
-    // Rotate 90° CW: translate to (canvasW, 0), then rotate 90°
-    ctx.translate(canvas.width, 0);
-    ctx.rotate(Math.PI / 2);
-    ctx.drawImage(video, 0, 0, srcW, srcH);
+    ctx.translate(canvas.width / 2, canvas.height / 2);
+    ctx.rotate(rad);
+    ctx.drawImage(video, -srcW / 2, -srcH / 2, srcW, srcH);
     ctx.restore();
     rafId = requestAnimationFrame(draw);
   };
@@ -47,7 +49,6 @@ export function createRotated90Stream(
 
   const canvasStream = canvas.captureStream(fps);
 
-  // Combine rotated video with original audio tracks
   const output = new MediaStream();
   for (const track of canvasStream.getVideoTracks()) {
     output.addTrack(track);
@@ -69,4 +70,12 @@ export function createRotated90Stream(
   };
 
   return { stream: output, cleanup };
+}
+
+/** @deprecated Use createRotatedStream(source, 90) instead */
+export function createRotated90Stream(
+  source: MediaStream,
+  fps = 30,
+): { stream: MediaStream; cleanup: () => void } {
+  return createRotatedStream(source, 90, fps);
 }

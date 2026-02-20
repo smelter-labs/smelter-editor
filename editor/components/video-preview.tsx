@@ -4,7 +4,14 @@ import OutputStream, {
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
-import { Share2, Mail, ToggleLeft, ToggleRight } from 'lucide-react';
+import {
+  Share2,
+  Mail,
+  ToggleLeft,
+  ToggleRight,
+  PanelRightClose,
+  PanelRightOpen,
+} from 'lucide-react';
 import { fadeInUp } from '@/utils/animations';
 import { motion } from 'framer-motion';
 import { VideoOff, Eye, EyeOff, Monitor, Camera } from 'lucide-react';
@@ -21,6 +28,9 @@ export default function VideoPreview({
   resolution,
   isGuest,
   guestStream,
+  className,
+  panelExpanded,
+  onTogglePanelExpanded,
 }: {
   whepUrl: string;
   videoRef: RefObject<HTMLVideoElement | null>;
@@ -31,6 +41,9 @@ export default function VideoPreview({
   resolution?: OutputResolution;
   isGuest?: boolean;
   guestStream?: MediaStream | null;
+  className?: string;
+  panelExpanded?: boolean;
+  onTogglePanelExpanded?: () => void;
 }) {
   const activeStream = true;
   const [showPreview, setShowPreview] = useState(!isGuest);
@@ -96,7 +109,7 @@ export default function VideoPreview({
 
   return (
     <motion.div
-      className='col-span-1 xl:col-span-3 sticky top-0 self-start z-10 w-full'
+      className={`${className ?? ''} sticky top-0 self-start z-10 w-full`}
       {...(fadeInUp as any)}>
       <Card className='flex flex-col bg-[#0a0a0a] border-0'>
         <CardContent className='flex flex-col'>
@@ -213,6 +226,20 @@ export default function VideoPreview({
                       'Record'
                     )}
                   </Button>
+                  {onTogglePanelExpanded && (
+                    <Button
+                      size='lg'
+                      variant='outline'
+                      onClick={onTogglePanelExpanded}
+                      className='max-md:h-8 max-md:px-3 max-md:text-xs text-neutral-500 hover:bg-neutral-200'>
+                      {panelExpanded ? (
+                        <PanelRightClose className='w-4 h-4 mr-1' />
+                      ) : (
+                        <PanelRightOpen className='w-4 h-4 mr-1' />
+                      )}
+                      {panelExpanded ? 'Collapse panel' : 'Expand panel'}
+                    </Button>
+                  )}
                   <Button
                     size='lg'
                     asChild

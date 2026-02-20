@@ -493,17 +493,28 @@ export default function IntroView() {
                             </span>
                           )}
                         </div>
-                        <Button
-                          size='sm'
-                          variant='default'
-                          className='bg-white text-black hover:bg-neutral-200 cursor-pointer ml-4 shrink-0'
-                          onClick={() =>
-                            router.push(
-                              getRoomRoute(room.roomId) + '?guest=true',
-                            )
-                          }>
-                          Join as Guest
-                        </Button>
+                        <div className='flex gap-2 ml-4 shrink-0'>
+                          <Button
+                            size='sm'
+                            variant='default'
+                            className='bg-white text-black hover:bg-neutral-200 cursor-pointer'
+                            onClick={() =>
+                              router.push(getRoomRoute(room.roomId))
+                            }>
+                            Join
+                          </Button>
+                          <Button
+                            size='sm'
+                            variant='default'
+                            className='bg-neutral-700 text-white hover:bg-neutral-600 cursor-pointer'
+                            onClick={() =>
+                              router.push(
+                                getRoomRoute(room.roomId) + '?guest=true',
+                              )
+                            }>
+                            Join as Guest
+                          </Button>
+                        </div>
                       </div>
                     </li>
                   ))}
