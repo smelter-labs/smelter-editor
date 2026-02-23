@@ -1,35 +1,51 @@
+import { useCallback } from 'react';
 import { ArrowLeft } from 'lucide-react';
-import type { Input, AvailableShader } from '@/app/actions/actions';
+import type { Input } from '@/app/actions/actions';
 import InputEntry from '@/components/control-panel/input-entry/input-entry';
 import Accordion from '@/components/ui/accordion';
+import { useControlPanelContext } from '../contexts/control-panel-context';
+import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
 
 type FxAccordionProps = {
   fxInput: Input;
   onClose: () => void;
-  roomId: string;
-  refreshState: () => Promise<void>;
-  availableShaders: AvailableShader[];
-  inputs: Input[];
-  cameraPcRef: React.MutableRefObject<RTCPeerConnection | null>;
-  cameraStreamRef: React.MutableRefObject<MediaStream | null>;
-  activeCameraInputId: string | null;
-  activeScreenshareInputId: string | null;
-  onWhipDisconnectedOrRemoved: (id: string) => void;
 };
 
-export function FxAccordion({
-  fxInput,
-  onClose,
-  roomId,
-  refreshState,
-  availableShaders,
-  inputs,
-  cameraPcRef,
-  cameraStreamRef,
-  activeCameraInputId,
-  activeScreenshareInputId,
-  onWhipDisconnectedOrRemoved,
-}: FxAccordionProps) {
+export function FxAccordion({ fxInput, onClose }: FxAccordionProps) {
+  const { roomId, refreshState, availableShaders, inputs } =
+    useControlPanelContext();
+  const {
+    cameraPcRef,
+    cameraStreamRef,
+    activeCameraInputId,
+    activeScreenshareInputId,
+    setActiveCameraInputId,
+    setIsCameraActive,
+    setActiveScreenshareInputId,
+    setIsScreenshareActive,
+  } = useWhipConnectionsContext();
+
+  const onWhipDisconnectedOrRemoved = useCallback(
+    (id: string) => {
+      if (activeCameraInputId === id) {
+        setActiveCameraInputId(null);
+        setIsCameraActive(false);
+      }
+      if (activeScreenshareInputId === id) {
+        setActiveScreenshareInputId(null);
+        setIsScreenshareActive(false);
+      }
+    },
+    [
+      activeCameraInputId,
+      activeScreenshareInputId,
+      setActiveCameraInputId,
+      setIsCameraActive,
+      setActiveScreenshareInputId,
+      setIsScreenshareActive,
+    ],
+  );
+
   return (
     <Accordion
       title={fxInput.title}

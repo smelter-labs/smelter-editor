@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { usePathname } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type {
   Input,
   RoomState,
@@ -13,7 +12,6 @@ import {
 } from '@/app/actions/actions';
 import { useStreamsSpinner } from '../whip-input/hooks/use-streams-spinner';
 import { loadUserName, saveUserName } from '../whip-input/utils/whip-storage';
-import type { AddTab } from '../components/AddVideoSection';
 
 export type InputWrapper = { id: number; inputId: string };
 
@@ -43,19 +41,6 @@ export function useControlPanelState(
   const { showStreamsSpinner, onInputsChange } = useStreamsSpinner(
     roomState.inputs,
   );
-
-  const pathname = usePathname();
-  const isKick = pathname?.toLowerCase().includes('kick');
-
-  const [addInputActiveTab, setAddInputActiveTab] = useState<AddTab>('stream');
-
-  type StreamTab = 'twitch' | 'kick';
-  const [streamActiveTab, setStreamActiveTab] = useState<StreamTab>(
-    isKick ? 'kick' : 'twitch',
-  );
-
-  type InputsTab = 'camera' | 'screenshare';
-  const [inputsActiveTab, setInputsActiveTab] = useState<InputsTab>('camera');
 
   const getInputWrappers = useCallback(
     (inputsArg: Input[] = inputsRef.current): InputWrapper[] =>
@@ -229,12 +214,6 @@ export function useControlPanelState(
     inputs,
     inputsRef,
     showStreamsSpinner,
-    addInputActiveTab,
-    setAddInputActiveTab,
-    streamActiveTab,
-    setStreamActiveTab,
-    inputsActiveTab,
-    setInputsActiveTab,
     inputWrappers,
     setInputWrappers,
     listVersion,

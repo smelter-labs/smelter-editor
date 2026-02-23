@@ -2,7 +2,8 @@
 
 import { fadeIn } from '@/utils/animations';
 import { motion } from 'framer-motion';
-import { useRef, useCallback, useEffect, useMemo } from 'react';
+import { createPortal } from 'react-dom';
+import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import type { RoomState } from '@/app/actions/actions';
 import {
   setPendingWhipInputs as setPendingWhipInputsAction,
@@ -10,7 +11,14 @@ import {
   type PendingWhipInputData,
 } from '@/app/actions/actions';
 import LayoutSelector, { type Layout } from '@/components/layout-selector';
-import Accordion, { type AccordionHandle } from '@/components/ui/accordion';
+import type { AccordionHandle } from '@/components/ui/accordion';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import { Grid3X3, SlidersHorizontal, Zap, Settings } from 'lucide-react';
 import {
   useControlPanelState,
   type InputWrapper,
@@ -20,6 +28,7 @@ import { useControlPanelEvents } from './hooks/use-control-panel-events';
 import { FxAccordion } from './components/FxAccordion';
 import { AddVideoSection } from './components/AddVideoSection';
 import { StreamsSection } from './components/StreamsSection';
+import { TimelinePanel } from './components/TimelinePanel';
 import { QuickActionsSection } from './components/QuickActionsSection';
 import {
   ConfigurationSection,
@@ -32,6 +41,8 @@ import {
   type RotationAngle,
 } from './whip-input/utils/whip-publisher';
 import { updateInput as updateInputAction } from '@/app/actions/actions';
+import { ControlPanelProvider } from './contexts/control-panel-context';
+import { WhipConnectionsProvider } from './contexts/whip-connections-context';
 
 export type ControlPanelProps = {
   roomId: string;
@@ -44,6 +55,7 @@ export type ControlPanelProps = {
     (() => Promise<RotationAngle>) | null
   >;
   renderStreamsOutside?: boolean;
+  timelinePortalRef?: React.RefObject<HTMLDivElement | null>;
 };
 
 export type { InputWrapper } from './hooks/use-control-panel-state';
@@ -57,6 +69,7 @@ export default function ControlPanel({
   onGuestInputIdChange,
   onGuestRotateRef,
   renderStreamsOutside,
+  timelinePortalRef,
 }: ControlPanelProps) {
   const addVideoAccordionRef = useRef<AccordionHandle | null>(null);
 
@@ -79,16 +92,9 @@ export default function ControlPanel({
 
   const {
     userName,
-    setUserName,
     inputs,
     inputsRef,
     showStreamsSpinner,
-    addInputActiveTab,
-    setAddInputActiveTab,
-    streamActiveTab,
-    setStreamActiveTab,
-    inputsActiveTab,
-    setInputsActiveTab,
     inputWrappers,
     setInputWrappers,
     listVersion,
@@ -221,8 +227,6 @@ export default function ControlPanel({
     setInputWrappers,
     setListVersion,
     updateOrder: updateOrderWithLock,
-    setAddInputActiveTab,
-    setStreamActiveTab,
     addVideoAccordionRef,
     roomId,
     handleRefreshState,
@@ -264,20 +268,20 @@ export default function ControlPanel({
     [roomId, handleRefreshState],
   );
 
-  const handleWhipDisconnectedOrRemoved = (id: string) => {
-    if (activeCameraInputId === id) {
-      setActiveCameraInputId(null);
-      setIsCameraActive(false);
-    }
-    if (activeScreenshareInputId === id) {
-      setActiveScreenshareInputId(null);
-      setIsScreenshareActive(false);
-    }
-  };
-
   const handleToggleFx = (inputId: string) => {
     setOpenFxInputId((prev) => (prev === inputId ? null : inputId));
   };
+
+  const controlPanelCtx = useMemo(
+    () => ({
+      roomId,
+      refreshState: handleRefreshState,
+      inputs,
+      inputsRef,
+      availableShaders,
+    }),
+    [roomId, handleRefreshState, inputs, inputsRef, availableShaders],
+  );
 
   const fxInput =
     openFxInputId && inputs.find((i) => i.inputId === openFxInputId)
@@ -286,22 +290,28 @@ export default function ControlPanel({
 
   const streamsSection = !fxInput ? (
     <StreamsSection
-      inputs={inputs}
       inputWrappers={inputWrappers}
       listVersion={listVersion}
       showStreamsSpinner={showStreamsSpinner}
-      roomId={roomId}
-      refreshState={handleRefreshState}
-      availableShaders={availableShaders}
       updateOrder={updateOrderWithLock}
       openFxInputId={openFxInputId}
       onToggleFx={handleToggleFx}
       isSwapping={isSwapping}
-      cameraPcRef={cameraPcRef}
-      cameraStreamRef={cameraStreamRef}
-      activeCameraInputId={activeCameraInputId}
-      activeScreenshareInputId={activeScreenshareInputId}
-      onWhipDisconnectedOrRemoved={handleWhipDisconnectedOrRemoved}
+      selectedInputId={selectedInputId}
+      isGuest={isGuest}
+      guestInputId={activeCameraInputId || activeScreenshareInputId}
+    />
+  ) : null;
+
+  const timelineSection = !fxInput ? (
+    <TimelinePanel
+      inputWrappers={inputWrappers}
+      listVersion={listVersion}
+      showStreamsSpinner={showStreamsSpinner}
+      updateOrder={updateOrderWithLock}
+      openFxInputId={openFxInputId}
+      onToggleFx={handleToggleFx}
+      isSwapping={isSwapping}
       selectedInputId={selectedInputId}
       isGuest={isGuest}
       guestInputId={activeCameraInputId || activeScreenshareInputId}
@@ -311,45 +321,14 @@ export default function ControlPanel({
   const mainPanel = (
     <motion.div
       {...(fadeIn as any)}
-      className={`flex flex-col flex-1 min-h-0 gap-3 rounded-none bg-neutral-950 mt-6 ${renderStreamsOutside ? 'col-span-1 row-span-1 overflow-y-auto overflow-x-hidden md:pr-4' : ''}`}>
+      className={`flex flex-col flex-1 min-h-0 gap-3 rounded-none bg-neutral-950 mt-6`}>
       <video id='local-preview' muted playsInline autoPlay className='hidden' />
 
       {fxInput ? (
-        <FxAccordion
-          fxInput={fxInput}
-          onClose={() => setOpenFxInputId(null)}
-          roomId={roomId}
-          refreshState={handleRefreshState}
-          availableShaders={availableShaders}
-          inputs={inputs}
-          cameraPcRef={cameraPcRef}
-          cameraStreamRef={cameraStreamRef}
-          activeCameraInputId={activeCameraInputId}
-          activeScreenshareInputId={activeScreenshareInputId}
-          onWhipDisconnectedOrRemoved={handleWhipDisconnectedOrRemoved}
-        />
+        <FxAccordion fxInput={fxInput} onClose={() => setOpenFxInputId(null)} />
       ) : (
         <>
           <AddVideoSection
-            inputs={inputs}
-            roomId={roomId}
-            refreshState={handleRefreshState}
-            addInputActiveTab={addInputActiveTab}
-            setAddInputActiveTab={setAddInputActiveTab}
-            streamActiveTab={streamActiveTab}
-            setStreamActiveTab={setStreamActiveTab}
-            inputsActiveTab={inputsActiveTab}
-            setInputsActiveTab={setInputsActiveTab}
-            userName={userName}
-            setUserName={setUserName}
-            cameraPcRef={cameraPcRef}
-            cameraStreamRef={cameraStreamRef}
-            screensharePcRef={screensharePcRef}
-            screenshareStreamRef={screenshareStreamRef}
-            setActiveCameraInputId={setActiveCameraInputId}
-            setIsCameraActive={setIsCameraActive}
-            setActiveScreenshareInputId={setActiveScreenshareInputId}
-            setIsScreenshareActive={setIsScreenshareActive}
             addVideoAccordionRef={addVideoAccordionRef}
             isGuest={isGuest}
             hasGuestInput={
@@ -359,36 +338,19 @@ export default function ControlPanel({
             }
           />
           <PendingWhipInputs
-            roomId={roomId}
             pendingInputs={pendingWhipInputs}
             setPendingInputs={handleSetPendingWhipInputs}
-            refreshState={handleRefreshState}
-            cameraPcRef={cameraPcRef}
-            cameraStreamRef={cameraStreamRef}
-            screensharePcRef={screensharePcRef}
-            screenshareStreamRef={screenshareStreamRef}
-            setActiveCameraInputId={setActiveCameraInputId}
-            setIsCameraActive={setIsCameraActive}
-            setActiveScreenshareInputId={setActiveScreenshareInputId}
-            setIsScreenshareActive={setIsScreenshareActive}
           />
           {!renderStreamsOutside && streamsSection}
           {!isGuest && (
-            <>
-              <QuickActionsSection
-                inputs={inputs}
-                roomId={roomId}
-                refreshState={handleRefreshState}
-              />
-              <LayoutAndTransitions
-                changeLayout={changeLayout}
-                roomState={roomState}
-                roomId={roomId}
-                handleRefreshState={handleRefreshState}
-                pendingWhipInputs={pendingWhipInputs}
-                setPendingWhipInputs={handleSetPendingWhipInputs}
-              />
-            </>
+            <SettingsBar
+              changeLayout={changeLayout}
+              roomState={roomState}
+              roomId={roomId}
+              handleRefreshState={handleRefreshState}
+              pendingWhipInputs={pendingWhipInputs}
+              setPendingWhipInputs={handleSetPendingWhipInputs}
+            />
           )}
         </>
       )}
@@ -397,19 +359,29 @@ export default function ControlPanel({
 
   if (renderStreamsOutside) {
     return (
-      <>
-        {mainPanel}
-        {streamsSection && (
-          <div className='col-span-full row-start-2'>{streamsSection}</div>
-        )}
-      </>
+      <ControlPanelProvider value={controlPanelCtx}>
+        <WhipConnectionsProvider value={whipConnections}>
+          {mainPanel}
+          {timelineSection &&
+            timelinePortalRef?.current &&
+            createPortal(timelineSection, timelinePortalRef.current)}
+        </WhipConnectionsProvider>
+      </ControlPanelProvider>
     );
   }
 
-  return mainPanel;
+  return (
+    <ControlPanelProvider value={controlPanelCtx}>
+      <WhipConnectionsProvider value={whipConnections}>
+        {mainPanel}
+      </WhipConnectionsProvider>
+    </ControlPanelProvider>
+  );
 }
 
-function LayoutAndTransitions({
+type ModalId = 'quickActions' | 'layouts' | 'transitions' | 'configuration';
+
+function SettingsBar({
   changeLayout,
   roomState,
   roomId,
@@ -424,76 +396,141 @@ function LayoutAndTransitions({
   pendingWhipInputs: PendingWhipInput[];
   setPendingWhipInputs: (inputs: PendingWhipInput[]) => void | Promise<void>;
 }) {
+  const [openModal, setOpenModal] = useState<ModalId | null>(null);
+
+  const buttons: { id: ModalId; label: string; icon: React.ReactNode }[] = [
+    {
+      id: 'quickActions',
+      label: 'Quick Actions',
+      icon: <Zap className='w-4 h-4' />,
+    },
+    { id: 'layouts', label: 'Layouts', icon: <Grid3X3 className='w-4 h-4' /> },
+    {
+      id: 'transitions',
+      label: 'Transitions',
+      icon: <SlidersHorizontal className='w-4 h-4' />,
+    },
+    {
+      id: 'configuration',
+      label: 'Config',
+      icon: <Settings className='w-4 h-4' />,
+    },
+  ];
+
   return (
     <>
-      <Accordion title='Layouts' defaultOpen>
-        <LayoutSelector
-          changeLayout={changeLayout}
-          activeLayoutId={roomState.layout}
-          connectedStreamsLength={roomState.inputs.length}
-        />
-      </Accordion>
-      <Accordion title='Transitions' defaultOpen>
-        <TransitionSettings
-          swapDurationMs={roomState.swapDurationMs ?? 500}
-          onSwapDurationChange={async (value) => {
-            await updateRoomAction(roomId, { swapDurationMs: value });
-            await handleRefreshState();
-          }}
-          swapOutgoingEnabled={roomState.swapOutgoingEnabled ?? true}
-          onSwapOutgoingEnabledChange={async (value) => {
-            await updateRoomAction(roomId, {
-              swapOutgoingEnabled: value,
-            });
-            await handleRefreshState();
-          }}
-          swapFadeInDurationMs={roomState.swapFadeInDurationMs ?? 500}
-          onSwapFadeInDurationChange={async (value) => {
-            await updateRoomAction(roomId, {
-              swapFadeInDurationMs: value,
-            });
-            await handleRefreshState();
-          }}
-          swapFadeOutDurationMs={roomState.swapFadeOutDurationMs ?? 500}
-          onSwapFadeOutDurationChange={async (value) => {
-            await updateRoomAction(roomId, {
-              swapFadeOutDurationMs: value,
-            });
-            await handleRefreshState();
-          }}
-          newsStripFadeDuringSwap={roomState.newsStripFadeDuringSwap ?? true}
-          onNewsStripFadeDuringSwapChange={async (value) => {
-            await updateRoomAction(roomId, {
-              newsStripFadeDuringSwap: value,
-            });
-            await handleRefreshState();
-          }}
-          newsStripEnabled={roomState.newsStripEnabled ?? true}
-          onNewsStripEnabledChange={async (value) => {
-            await updateRoomAction(roomId, {
-              newsStripEnabled: value,
-            });
-            await handleRefreshState();
-          }}
-        />
-      </Accordion>
-      <ConfigurationSection
-        inputs={roomState.inputs}
-        layout={roomState.layout}
-        resolution={roomState.resolution}
-        transitionSettings={{
-          swapDurationMs: roomState.swapDurationMs,
-          swapOutgoingEnabled: roomState.swapOutgoingEnabled,
-          swapFadeInDurationMs: roomState.swapFadeInDurationMs,
-          swapFadeOutDurationMs: roomState.swapFadeOutDurationMs,
-          newsStripFadeDuringSwap: roomState.newsStripFadeDuringSwap,
-          newsStripEnabled: roomState.newsStripEnabled,
-        }}
-        roomId={roomId}
-        refreshState={handleRefreshState}
-        pendingWhipInputs={pendingWhipInputs}
-        setPendingWhipInputs={setPendingWhipInputs}
-      />
+      <div className='grid grid-cols-4 gap-2'>
+        {buttons.map((btn) => (
+          <button
+            key={btn.id}
+            onClick={() => setOpenModal(btn.id)}
+            className='flex flex-col items-center gap-1.5 px-2 py-3 rounded-md border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 hover:border-neutral-600 transition-all cursor-pointer group'>
+            <span className='text-neutral-400 group-hover:text-white transition-colors'>
+              {btn.icon}
+            </span>
+            <span className='text-[11px] font-medium text-neutral-400 group-hover:text-white transition-colors leading-tight text-center'>
+              {btn.label}
+            </span>
+          </button>
+        ))}
+      </div>
+
+      <Dialog
+        open={openModal === 'quickActions'}
+        onOpenChange={(open) => !open && setOpenModal(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Quick Actions</DialogTitle>
+          </DialogHeader>
+          <QuickActionsSection />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={openModal === 'layouts'}
+        onOpenChange={(open) => !open && setOpenModal(null)}>
+        <DialogContent className='max-w-xl'>
+          <DialogHeader>
+            <DialogTitle>Layouts</DialogTitle>
+          </DialogHeader>
+          <LayoutSelector
+            changeLayout={changeLayout}
+            activeLayoutId={roomState.layout}
+            connectedStreamsLength={roomState.inputs.length}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={openModal === 'transitions'}
+        onOpenChange={(open) => !open && setOpenModal(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Transitions</DialogTitle>
+          </DialogHeader>
+          <TransitionSettings
+            swapDurationMs={roomState.swapDurationMs ?? 500}
+            onSwapDurationChange={async (value) => {
+              await updateRoomAction(roomId, { swapDurationMs: value });
+              await handleRefreshState();
+            }}
+            swapOutgoingEnabled={roomState.swapOutgoingEnabled ?? true}
+            onSwapOutgoingEnabledChange={async (value) => {
+              await updateRoomAction(roomId, { swapOutgoingEnabled: value });
+              await handleRefreshState();
+            }}
+            swapFadeInDurationMs={roomState.swapFadeInDurationMs ?? 500}
+            onSwapFadeInDurationChange={async (value) => {
+              await updateRoomAction(roomId, { swapFadeInDurationMs: value });
+              await handleRefreshState();
+            }}
+            swapFadeOutDurationMs={roomState.swapFadeOutDurationMs ?? 500}
+            onSwapFadeOutDurationChange={async (value) => {
+              await updateRoomAction(roomId, { swapFadeOutDurationMs: value });
+              await handleRefreshState();
+            }}
+            newsStripFadeDuringSwap={roomState.newsStripFadeDuringSwap ?? true}
+            onNewsStripFadeDuringSwapChange={async (value) => {
+              await updateRoomAction(roomId, {
+                newsStripFadeDuringSwap: value,
+              });
+              await handleRefreshState();
+            }}
+            newsStripEnabled={roomState.newsStripEnabled ?? true}
+            onNewsStripEnabledChange={async (value) => {
+              await updateRoomAction(roomId, { newsStripEnabled: value });
+              await handleRefreshState();
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={openModal === 'configuration'}
+        onOpenChange={(open) => !open && setOpenModal(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Configuration</DialogTitle>
+          </DialogHeader>
+          <ConfigurationSection
+            inputs={roomState.inputs}
+            layout={roomState.layout}
+            resolution={roomState.resolution}
+            transitionSettings={{
+              swapDurationMs: roomState.swapDurationMs,
+              swapOutgoingEnabled: roomState.swapOutgoingEnabled,
+              swapFadeInDurationMs: roomState.swapFadeInDurationMs,
+              swapFadeOutDurationMs: roomState.swapFadeOutDurationMs,
+              newsStripFadeDuringSwap: roomState.newsStripFadeDuringSwap,
+              newsStripEnabled: roomState.newsStripEnabled,
+            }}
+            roomId={roomId}
+            refreshState={handleRefreshState}
+            pendingWhipInputs={pendingWhipInputs}
+            setPendingWhipInputs={setPendingWhipInputs}
+          />
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

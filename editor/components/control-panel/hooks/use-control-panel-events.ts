@@ -26,15 +26,13 @@ import type { InputType } from '@/lib/voice/commandTypes';
 import { LAYOUT_CONFIGS, type Layout } from '@/components/layout-selector';
 
 type UseControlPanelEventsProps = {
-  inputsRef: React.MutableRefObject<any[]>;
+  inputsRef: React.MutableRefObject<Input[]>;
   inputWrappers: InputWrapper[];
   setInputWrappers: (
     wrappers: InputWrapper[] | ((prev: InputWrapper[]) => InputWrapper[]),
   ) => void;
   setListVersion: (v: number | ((prev: number) => number)) => void;
   updateOrder: (wrappers: InputWrapper[]) => Promise<void>;
-  setAddInputActiveTab: (tab: 'stream' | 'mp4' | 'image' | 'inputs') => void;
-  setStreamActiveTab: (tab: 'twitch' | 'kick') => void;
   addVideoAccordionRef: React.MutableRefObject<any>;
   roomId: string;
   handleRefreshState: () => Promise<void>;
@@ -63,8 +61,6 @@ export function useControlPanelEvents({
   setInputWrappers,
   setListVersion,
   updateOrder,
-  setAddInputActiveTab,
-  setStreamActiveTab,
   addVideoAccordionRef,
   roomId,
   handleRefreshState,
@@ -91,6 +87,89 @@ export function useControlPanelEvents({
     setListVersion,
     updateOrder,
   });
+
+  useEffect(() => {
+    const onSelect = (e: CustomEvent<{ inputId: string }>) => {
+      setSelectedInputId(e.detail.inputId);
+    };
+    window.addEventListener(
+      'smelter:inputs:select',
+      onSelect as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:inputs:select',
+        onSelect as unknown as EventListener,
+      );
+    };
+  }, [setSelectedInputId]);
+
+  useEffect(() => {
+    const onToggleMute = async (e: CustomEvent<{ inputId: string }>) => {
+      const input = inputsRef.current.find(
+        (i) => i.inputId === e.detail.inputId,
+      );
+      if (!input) return;
+      await updateInput(roomId, input.inputId, {
+        volume: input.volume === 0 ? 1 : 0,
+        shaders: input.shaders,
+      });
+      await handleRefreshState();
+    };
+    window.addEventListener(
+      'smelter:inputs:toggle-mute',
+      onToggleMute as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:inputs:toggle-mute',
+        onToggleMute as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputsRef]);
+
+  useEffect(() => {
+    const onRemove = async (e: CustomEvent<{ inputId: string }>) => {
+      const { inputId } = e.detail;
+      if (activeCameraInputId === inputId) {
+        stopCameraAndConnection(cameraPcRef, cameraStreamRef);
+        setActiveCameraInputId(null);
+        setIsCameraActive(false);
+        clearWhipSessionFor(roomId, inputId);
+      }
+      if (activeScreenshareInputId === inputId) {
+        stopCameraAndConnection(screensharePcRef, screenshareStreamRef);
+        setActiveScreenshareInputId(null);
+        setIsScreenshareActive(false);
+        clearWhipSessionFor(roomId, inputId);
+      }
+      await removeInput(roomId, inputId);
+      await handleRefreshState();
+    };
+    window.addEventListener(
+      'smelter:inputs:remove',
+      onRemove as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:inputs:remove',
+        onRemove as unknown as EventListener,
+      );
+    };
+  }, [
+    roomId,
+    handleRefreshState,
+    activeCameraInputId,
+    activeScreenshareInputId,
+    cameraPcRef,
+    cameraStreamRef,
+    screensharePcRef,
+    screenshareStreamRef,
+    setActiveCameraInputId,
+    setIsCameraActive,
+    setActiveScreenshareInputId,
+    setIsScreenshareActive,
+  ]);
 
   useEffect(() => {
     const onAddInput = async (

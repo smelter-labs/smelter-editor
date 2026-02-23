@@ -84,6 +84,12 @@ export default function RoomView({
     null,
   );
   const [guestInputId, setGuestInputId] = useState<string | null>(null);
+  const timelinePortalRef = useRef<HTMLDivElement | null>(null);
+  const [, setPortalReady] = useState(false);
+
+  useEffect(() => {
+    if (timelinePortalRef.current) setPortalReady(true);
+  }, []);
 
   useEffect(() => {
     if (!guestVideoRef.current) return;
@@ -173,31 +179,33 @@ export default function RoomView({
 
       <motion.div
         variants={staggerContainer}
-        className={`flex-1 grid min-h-0 h-full overflow-hidden gap-4 ${panelExpanded ? 'xl:grid-cols-2' : 'xl:grid-cols-4'}`}
-        style={{ gridTemplateRows: 'minmax(0, 1fr) auto' }}>
+        className='flex-1 flex flex-col min-h-0 h-full overflow-hidden'>
         <div
-          className={`${panelExpanded ? 'xl:col-span-1' : 'xl:col-span-3'} flex flex-col gap-4 min-h-0`}>
-          <VideoPreview
-            videoRef={videoRef}
-            whepUrl={roomState.whepUrl}
-            roomId={roomId}
-            isPublic={roomState.isPublic}
-            onTogglePublic={handleTogglePublic}
-            resolution={roomState.resolution}
-            panelExpanded={panelExpanded}
-            onTogglePanelExpanded={togglePanelExpanded}
-          />
+          className={`flex-1 grid min-h-0 overflow-hidden gap-4 ${panelExpanded ? 'xl:grid-cols-2' : 'xl:grid-cols-4'}`}>
+          <div
+            className={`${panelExpanded ? 'xl:col-span-1' : 'xl:col-span-3'} flex flex-col gap-4 min-h-0`}>
+            <VideoPreview
+              videoRef={videoRef}
+              whepUrl={roomState.whepUrl}
+              roomId={roomId}
+              isPublic={roomState.isPublic}
+              onTogglePublic={handleTogglePublic}
+              resolution={roomState.resolution}
+              panelExpanded={panelExpanded}
+              onTogglePanelExpanded={togglePanelExpanded}
+            />
+          </div>
+          <div className='col-span-1 flex flex-col min-h-0 h-full overflow-y-auto overflow-x-hidden md:pr-4'>
+            <ControlPanel
+              roomState={roomState}
+              roomId={roomId}
+              refreshState={refreshState}
+              renderStreamsOutside
+              timelinePortalRef={timelinePortalRef}
+            />
+          </div>
         </div>
-        <div
-          className='col-span-1 row-span-1 w-full flex flex-col min-h-0 h-full max-h-full justify-start overflow-x-hidden md:pr-4 control-panel-container'
-          style={{ display: 'contents' }}>
-          <ControlPanel
-            roomState={roomState}
-            roomId={roomId}
-            refreshState={refreshState}
-            renderStreamsOutside
-          />
-        </div>
+        <div ref={timelinePortalRef} className='shrink-0' />
       </motion.div>
     </>
   );

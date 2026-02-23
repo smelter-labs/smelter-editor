@@ -19,36 +19,29 @@ import {
 } from '../whip-input/utils/whip-storage';
 import { toast } from 'react-toastify';
 import type { PendingWhipInput } from './ConfigurationSection';
+import { useControlPanelContext } from '../contexts/control-panel-context';
+import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
 
 type PendingWhipInputsProps = {
-  roomId: string;
   pendingInputs: PendingWhipInput[];
   setPendingInputs: (inputs: PendingWhipInput[]) => void | Promise<void>;
-  refreshState: () => Promise<void>;
-  cameraPcRef: React.MutableRefObject<RTCPeerConnection | null>;
-  cameraStreamRef: React.MutableRefObject<MediaStream | null>;
-  screensharePcRef: React.MutableRefObject<RTCPeerConnection | null>;
-  screenshareStreamRef: React.MutableRefObject<MediaStream | null>;
-  setActiveCameraInputId: (id: string | null) => void;
-  setIsCameraActive: (active: boolean) => void;
-  setActiveScreenshareInputId: (id: string | null) => void;
-  setIsScreenshareActive: (active: boolean) => void;
 };
 
 export function PendingWhipInputs({
-  roomId,
   pendingInputs,
   setPendingInputs,
-  refreshState,
-  cameraPcRef,
-  cameraStreamRef,
-  screensharePcRef,
-  screenshareStreamRef,
-  setActiveCameraInputId,
-  setIsCameraActive,
-  setActiveScreenshareInputId,
-  setIsScreenshareActive,
 }: PendingWhipInputsProps) {
+  const { roomId, refreshState } = useControlPanelContext();
+  const {
+    cameraPcRef,
+    cameraStreamRef,
+    screensharePcRef,
+    screenshareStreamRef,
+    setActiveCameraInputId,
+    setIsCameraActive,
+    setActiveScreenshareInputId,
+    setIsScreenshareActive,
+  } = useWhipConnectionsContext();
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [connectType, setConnectType] = useState<
     'camera' | 'screenshare' | null

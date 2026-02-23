@@ -1,55 +1,73 @@
-import { useState, useEffect, useMemo } from 'react';
-import type { Input, AvailableShader } from '@/app/actions/actions';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import type { Input } from '@/app/actions/actions';
 import type { InputWrapper } from '../hooks/use-control-panel-state';
 import InputEntry from '@/components/control-panel/input-entry/input-entry';
 import { SortableItem } from '@/components/control-panel/sortable-list/sortable-item';
 import { SortableList } from '@/components/control-panel/sortable-list/sortable-list';
 import Accordion from '@/components/ui/accordion';
 import LoadingSpinner from '@/components/ui/spinner';
+import { useControlPanelContext } from '../contexts/control-panel-context';
+import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
 
 type StreamsSectionProps = {
-  inputs: Input[];
   inputWrappers: InputWrapper[];
   listVersion: number;
   showStreamsSpinner: boolean;
-  roomId: string;
-  refreshState: () => Promise<void>;
-  availableShaders: AvailableShader[];
   updateOrder: (wrappers: InputWrapper[]) => Promise<void>;
   openFxInputId: string | null;
   onToggleFx: (inputId: string) => void;
-  cameraPcRef: React.MutableRefObject<RTCPeerConnection | null>;
-  cameraStreamRef: React.MutableRefObject<MediaStream | null>;
-  activeCameraInputId: string | null;
-  activeScreenshareInputId: string | null;
-  onWhipDisconnectedOrRemoved: (id: string) => void;
+  isSwapping?: boolean;
   selectedInputId: string | null;
   isGuest?: boolean;
   guestInputId?: string | null;
-  isSwapping?: boolean;
 };
 
 export function StreamsSection({
-  inputs,
   inputWrappers,
   listVersion,
   showStreamsSpinner,
-  roomId,
-  refreshState,
-  availableShaders,
   updateOrder,
   openFxInputId,
   onToggleFx,
-  cameraPcRef,
-  cameraStreamRef,
-  activeCameraInputId,
-  activeScreenshareInputId,
-  onWhipDisconnectedOrRemoved,
+  isSwapping,
   selectedInputId,
   isGuest,
   guestInputId,
-  isSwapping,
 }: StreamsSectionProps) {
+  const { inputs, roomId, refreshState, availableShaders } =
+    useControlPanelContext();
+  const {
+    cameraPcRef,
+    cameraStreamRef,
+    activeCameraInputId,
+    setActiveCameraInputId,
+    setIsCameraActive,
+    activeScreenshareInputId,
+    setActiveScreenshareInputId,
+    setIsScreenshareActive,
+  } = useWhipConnectionsContext();
+
+  const onWhipDisconnectedOrRemoved = useCallback(
+    (id: string) => {
+      if (activeCameraInputId === id) {
+        setActiveCameraInputId(null);
+        setIsCameraActive(false);
+      }
+      if (activeScreenshareInputId === id) {
+        setActiveScreenshareInputId(null);
+        setIsScreenshareActive(false);
+      }
+    },
+    [
+      activeCameraInputId,
+      activeScreenshareInputId,
+      setActiveCameraInputId,
+      setIsCameraActive,
+      setActiveScreenshareInputId,
+      setIsScreenshareActive,
+    ],
+  );
+
   const [isWideScreen, setIsWideScreen] = useState(true);
 
   useEffect(() => {
