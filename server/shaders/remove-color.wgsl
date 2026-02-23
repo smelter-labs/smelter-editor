@@ -88,23 +88,21 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let target_rgb = vec3<f32>(shader_options.target_color_r, 
                                shader_options.target_color_g, 
                                shader_options.target_color_b);
-    
-    let hsv_pixel = rgb_to_hsv(vec3<f32>(c.r, c.g, c.b));
-    let hsv_target = rgb_to_hsv(target_rgb);
-    
-    let hue_diff = hue_distance(hsv_pixel.x, hsv_target.x);
-    let sat_diff = abs(hsv_pixel.y - hsv_target.y);
-    let val_diff = abs(hsv_pixel.z - hsv_target.z);
-    
-    let min_saturation = 0.2;
-    let is_saturated = hsv_pixel.y > min_saturation && hsv_target.y > min_saturation;
-    
+
+    // Compare in YCbCr-like chroma space — ignores brightness entirely.
+    // Cb = B - Y, Cr = R - Y  (simplified, unnormalized)
+    let pixel_y  = 0.299 * c.r + 0.587 * c.g + 0.114 * c.b;
+    let pixel_cb = c.b - pixel_y;
+    let pixel_cr = c.r - pixel_y;
+
+    let target_y  = 0.299 * target_rgb.r + 0.587 * target_rgb.g + 0.114 * target_rgb.b;
+    let target_cb = target_rgb.b - target_y;
+    let target_cr = target_rgb.r - target_y;
+
+    let dist = length(vec2<f32>(pixel_cb - target_cb, pixel_cr - target_cr));
+
     let tolerance = shader_options.tolerance;
-    let hue_match = hue_diff < tolerance * 0.5;
-    let sat_match = sat_diff < tolerance * 1.5;
-    let val_match = val_diff < tolerance * 1.5;
-    
-    if (is_saturated && hue_match && sat_match && val_match) {
+    if (dist < tolerance) {
         return vec4<f32>(0.0, 0.0, 0.0, 0.0);
     }
 

@@ -23,7 +23,6 @@ import {
 
 import './sortable-list.css';
 import { SortableOverlay } from '@/components/control-panel/sortable-list/sortable-overlay';
-import { useDriverTourControls } from '@/components/tour/DriverTourContext';
 
 interface BaseItem {
   id: UniqueIdentifier;
@@ -46,7 +45,6 @@ export function SortableList<T extends BaseItem>({
 }: Props<T>) {
   const [orderedItems, setOrderedItems] = useState<T[]>(items);
   const [active, setActive] = useState<Active | null>(null);
-  const { nextIf } = useDriverTourControls('composing');
   useEffect(() => {
     setOrderedItems((prev) => {
       if (
@@ -111,7 +109,6 @@ export function SortableList<T extends BaseItem>({
   const handleDragEnd = ({ active, over }: DragEndEvent) => {
     onOrderChange(orderedItems);
     setActive(null);
-    nextIf(0);
   };
 
   const handleDragOver = ({ active, over }: DragOverEvent) => {
@@ -137,7 +134,6 @@ export function SortableList<T extends BaseItem>({
       }}>
       <SortableContext items={orderedItems}>
         <ul
-          data-tour='inputs-list-container'
           className='SortableList'
           role='application'
           style={{

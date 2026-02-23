@@ -91,7 +91,7 @@ export default function TwitchAddInputForm({
         }
       }}
       renderSuggestion={(suggestion, idx, highlighted) => (
-        <div data-tour='twitch-suggestion-item-container'>
+        <div>
           <span className='font-semibold break-all'>{suggestion.streamId}</span>
           <br />
           <span className='font-bold text-neutral-400 break-words'>

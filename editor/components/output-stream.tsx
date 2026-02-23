@@ -264,7 +264,6 @@ export default function OutputStream({
       )}
       <video
         id='videoPlayer'
-        data-tour='video-player-container'
         ref={videoRef}
         className='w-full h-full rounded-none object-contain pointer-events-auto select-none bg-black'
         autoPlay

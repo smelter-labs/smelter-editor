@@ -1,11 +1,11 @@
 import Fastify from 'fastify';
 import path from 'node:path';
-import { pathExists, readFile, stat } from 'fs-extra';
+import { pathExists, readdir, readFile, stat } from 'fs-extra';
 import { Type } from '@sinclair/typebox';
 import type { Static, TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { state } from './serverState';
 import { TwitchChannelSuggestions } from '../twitch/TwitchChannelMonitor';
-import type { RoomInputState, RegisterInputOptions } from './roomState';
+import type { RoomInputState, RegisterInputOptions, PendingWhipInputData } from './roomState';
 import { config } from '../config';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
 import pictureSuggestionsMonitor from '../pictures/pictureSuggestionMonitor';
@@ -37,6 +37,7 @@ type InputState = {
   textMaxLines?: number;
   textScrollSpeed?: number;
   textFontSize?: number;
+  attachedInputIds?: string[];
 };
 
 export const routes = Fastify({
@@ -122,7 +123,7 @@ routes.get('/shaders', async (_req, res) => {
 routes.get<RoomIdParams>('/room/:roomId', async (req, res) => {
   const { roomId } = req.params;
   const room = state.getRoom(roomId);
-  const [inputs, layout] = room.getState();
+  const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs, newsStripEnabled] = room.getState();
 
   res.status(200).send({
     inputs: inputs.map(publicInputState),
@@ -131,6 +132,13 @@ routes.get<RoomIdParams>('/room/:roomId', async (req, res) => {
     pendingDelete: room.pendingDelete,
     isPublic: room.isPublic,
     resolution: room.getResolution(),
+    pendingWhipInputs: room.pendingWhipInputs,
+    swapDurationMs,
+    swapOutgoingEnabled,
+    swapFadeInDurationMs,
+    newsStripFadeDuringSwap,
+    swapFadeOutDurationMs,
+    newsStripEnabled,
   });
 });
 
@@ -149,7 +157,7 @@ routes.get('/rooms', async (_req, res) => {
       if (!room) {
         return undefined;
       }
-      const [inputs, layout] = room.getState();
+      const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs, newsStripEnabled] = room.getState();
       return {
         roomId: room.idPrefix,
         inputs: inputs.map(publicInputState),
@@ -158,6 +166,12 @@ routes.get('/rooms', async (_req, res) => {
         pendingDelete: room.pendingDelete,
         createdAt: room.creationTimestamp,
         isPublic: room.isPublic,
+        swapDurationMs,
+        swapOutgoingEnabled,
+        swapFadeInDurationMs,
+        newsStripFadeDuringSwap,
+        swapFadeOutDurationMs,
+        newsStripEnabled,
       };
     })
     .filter(Boolean);
@@ -207,9 +221,76 @@ routes.post<RoomIdParams>('/room/:roomId/record/stop', async (req, res) => {
   }
 });
 
+const RECORDINGS_DIR = path.join(__dirname, '../../recordings');
+
+routes.get('/recordings', async (_req, res) => {
+  const recordingsDir = RECORDINGS_DIR;
+
+  if (!(await pathExists(recordingsDir))) {
+    return res.status(200).send({ recordings: [] });
+  }
+
+  try {
+    const files = await readdir(recordingsDir);
+    const mp4Files = files.filter(f => f.endsWith('.mp4'));
+    const recordings = [];
+    for (const fileName of mp4Files) {
+      const filePath = path.join(recordingsDir, fileName);
+      const fileStat = await stat(filePath);
+      const match = fileName.match(/^recording-(.+)-(\d+)\.mp4$/);
+      recordings.push({
+        fileName,
+        roomId: match ? match[1] : null,
+        createdAt: match ? Number(match[2]) : fileStat.mtimeMs,
+        size: fileStat.size,
+      });
+    }
+    recordings.sort((a, b) => b.createdAt - a.createdAt);
+    res.status(200).send({ recordings });
+  } catch (err: any) {
+    console.error('Failed to list recordings', err);
+    res.status(500).send({ error: 'Failed to list recordings' });
+  }
+});
+
+routes.get<RoomIdParams>('/room/:roomId/recordings', async (req, res) => {
+  const { roomId } = req.params;
+  const safeRoomId = roomId.replace(/[^a-zA-Z0-9_-]/g, '_');
+  const recordingsDir = RECORDINGS_DIR;
+
+  if (!(await pathExists(recordingsDir))) {
+    return res.status(200).send({ recordings: [] });
+  }
+
+  try {
+    const files = await readdir(recordingsDir);
+    const mp4Files = files.filter(f => f.endsWith('.mp4'));
+    const recordings = [];
+    for (const fileName of mp4Files) {
+      const match = fileName.match(/^recording-(.+)-(\d+)\.mp4$/);
+      if (!match || match[1] !== safeRoomId) {
+        continue;
+      }
+      const filePath = path.join(recordingsDir, fileName);
+      const fileStat = await stat(filePath);
+      recordings.push({
+        fileName,
+        roomId: match[1],
+        createdAt: Number(match[2]),
+        size: fileStat.size,
+      });
+    }
+    recordings.sort((a, b) => b.createdAt - a.createdAt);
+    res.status(200).send({ recordings });
+  } catch (err: any) {
+    console.error('Failed to list recordings for room', { roomId, err });
+    res.status(500).send({ error: 'Failed to list recordings' });
+  }
+});
+
 routes.get<RecordingFileParams>('/recordings/:fileName', async (req, res) => {
   const { fileName } = req.params;
-  const recordingsDir = path.join(process.cwd(), 'recordings');
+  const recordingsDir = RECORDINGS_DIR;
   const filePath = path.join(recordingsDir, fileName);
 
   if (!(await pathExists(filePath))) {
@@ -246,6 +327,12 @@ const UpdateRoomSchema = Type.Object({
     ])
   ),
   isPublic: Type.Optional(Type.Boolean()),
+  swapDurationMs: Type.Optional(Type.Number({ minimum: 0, maximum: 5000 })),
+  swapOutgoingEnabled: Type.Optional(Type.Boolean()),
+  swapFadeInDurationMs: Type.Optional(Type.Number({ minimum: 0, maximum: 5000 })),
+  swapFadeOutDurationMs: Type.Optional(Type.Number({ minimum: 0, maximum: 5000 })),
+  newsStripFadeDuringSwap: Type.Optional(Type.Boolean()),
+  newsStripEnabled: Type.Optional(Type.Boolean()),
 });
 
 // No multiple-pictures shader defaults API - kept local in layout
@@ -267,7 +354,50 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
     if (req.body.isPublic !== undefined) {
       room.isPublic = req.body.isPublic;
     }
+    if (req.body.swapDurationMs !== undefined) {
+      room.setSwapDurationMs(req.body.swapDurationMs);
+    }
+    if (req.body.swapOutgoingEnabled !== undefined) {
+      room.setSwapOutgoingEnabled(req.body.swapOutgoingEnabled);
+    }
+    if (req.body.swapFadeInDurationMs !== undefined) {
+      room.setSwapFadeInDurationMs(req.body.swapFadeInDurationMs);
+    }
+    if (req.body.swapFadeOutDurationMs !== undefined) {
+      room.setSwapFadeOutDurationMs(req.body.swapFadeOutDurationMs);
+    }
+    if (req.body.newsStripFadeDuringSwap !== undefined) {
+      room.setNewsStripFadeDuringSwap(req.body.newsStripFadeDuringSwap);
+    }
+    if (req.body.newsStripEnabled !== undefined) {
+      room.setNewsStripEnabled(req.body.newsStripEnabled);
+    }
 
+    res.status(200).send({ status: 'ok' });
+  }
+);
+
+const PendingWhipInputSchema = Type.Object({
+  id: Type.String(),
+  title: Type.String(),
+  volume: Type.Number(),
+  showTitle: Type.Boolean(),
+  shaders: Type.Array(Type.Any()),
+  orientation: Type.Union([Type.Literal('horizontal'), Type.Literal('vertical')]),
+  position: Type.Number(),
+});
+
+const SetPendingWhipInputsSchema = Type.Object({
+  pendingWhipInputs: Type.Array(PendingWhipInputSchema),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof SetPendingWhipInputsSchema> }>(
+  '/room/:roomId/pending-whip-inputs',
+  { schema: { body: SetPendingWhipInputsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    const room = state.getRoom(roomId);
+    room.pendingWhipInputs = req.body.pendingWhipInputs;
     res.status(200).send({ status: 'ok' });
   }
 );
@@ -394,6 +524,7 @@ const UpdateInputSchema = Type.Object({
   textMaxLines: Type.Optional(Type.Number()),
   textScrollSpeed: Type.Optional(Type.Number()),
   textScrollNudge: Type.Optional(Type.Number()),
+  attachedInputIds: Type.Optional(Type.Array(Type.String())),
 });
 
 routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(
@@ -430,6 +561,7 @@ function publicInputState(input: RoomInputState): InputState {
         type: input.type,
         shaders: input.shaders,
         orientation: input.orientation,
+        attachedInputIds: input.attachedInputIds,
       };
     case 'image':
       return {
@@ -444,6 +576,7 @@ function publicInputState(input: RoomInputState): InputState {
         shaders: input.shaders,
         orientation: input.orientation,
         imageId: input.imageId,
+        attachedInputIds: input.attachedInputIds,
       };
     case 'twitch-channel':
       return {
@@ -458,6 +591,7 @@ function publicInputState(input: RoomInputState): InputState {
         shaders: input.shaders,
         orientation: input.orientation,
         channelId: input.channelId,
+        attachedInputIds: input.attachedInputIds,
       };
     case 'kick-channel':
       return {
@@ -472,6 +606,7 @@ function publicInputState(input: RoomInputState): InputState {
         shaders: input.shaders,
         orientation: input.orientation,
         channelId: input.channelId,
+        attachedInputIds: input.attachedInputIds,
       };
     case 'whip':
       return {
@@ -485,6 +620,7 @@ function publicInputState(input: RoomInputState): InputState {
         type: input.type,
         shaders: input.shaders,
         orientation: input.orientation,
+        attachedInputIds: input.attachedInputIds,
       };
     case 'text-input':
       return {
@@ -504,6 +640,7 @@ function publicInputState(input: RoomInputState): InputState {
         textMaxLines: input.textMaxLines,
         textScrollSpeed: input.textScrollSpeed,
         textFontSize: input.textFontSize,
+        attachedInputIds: input.attachedInputIds,
       };
     default:
       throw new Error('Unknown input state');

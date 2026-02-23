@@ -34,6 +34,8 @@ type AddVideoSectionProps = {
   setActiveScreenshareInputId: (id: string | null) => void;
   setIsScreenshareActive: (active: boolean) => void;
   addVideoAccordionRef: React.MutableRefObject<AccordionHandle | null>;
+  isGuest?: boolean;
+  hasGuestInput?: boolean;
 };
 
 export function AddVideoSection({
@@ -57,26 +59,37 @@ export function AddVideoSection({
   setActiveScreenshareInputId,
   setIsScreenshareActive,
   addVideoAccordionRef,
+  isGuest,
+  hasGuestInput,
 }: AddVideoSectionProps) {
   const isMobile = useIsMobile();
-  const tabs: { id: AddTab; label: string }[] = [
-    { id: 'stream', label: 'Stream' },
-    { id: 'mp4', label: 'MP4' },
-    { id: 'image', label: 'Image' },
-    { id: 'text', label: 'Text' },
-    { id: 'inputs', label: 'Inputs' },
-  ];
+
+  if (isGuest && hasGuestInput) {
+    return null;
+  }
+
+  const tabs: { id: AddTab; label: string }[] = isGuest
+    ? [{ id: 'inputs', label: 'Connect Input' }]
+    : [
+        { id: 'stream', label: 'Stream' },
+        { id: 'mp4', label: 'MP4' },
+        { id: 'image', label: 'Image' },
+        { id: 'text', label: 'Text' },
+        { id: 'inputs', label: 'Inputs' },
+      ];
+
+  const effectiveActiveTab = isGuest ? 'inputs' : addInputActiveTab;
 
   return (
     <Accordion
       ref={addVideoAccordionRef}
-      title='Add Video'
+      title={isGuest ? 'Connect Your Input' : 'Add Video'}
       defaultOpen
       data-accordion='true'>
       <div className=''>
         <div className='flex gap-2 sm:gap-3 md:gap-4 lg:gap-4 xl:gap-4 2xl:gap-5 border-b border-neutral-800 -mx-4 px-4 justify-center'>
           {tabs.map((t) => {
-            const isActive = addInputActiveTab === t.id;
+            const isActive = effectiveActiveTab === t.id;
             return (
               <button
                 key={t.id}
@@ -92,7 +105,7 @@ export function AddVideoSection({
           })}
         </div>
         <div className='pt-3'>
-          {addInputActiveTab === 'stream' && (
+          {effectiveActiveTab === 'stream' && (
             <div>
               <div className='flex gap-2 sm:gap-3 md:gap-4 lg:gap-4 xl:gap-4 2xl:gap-5 border-b border-neutral-800 -mx-4 px-4 mb-3 justify-center'>
                 <button
@@ -115,7 +128,7 @@ export function AddVideoSection({
                 </button>
               </div>
               {streamActiveTab === 'twitch' && (
-                <div data-tour='twitch-add-input-form-container'>
+                <div>
                   <TwitchAddInputForm
                     inputs={inputs}
                     roomId={roomId}
@@ -124,7 +137,7 @@ export function AddVideoSection({
                 </div>
               )}
               {streamActiveTab === 'kick' && (
-                <div data-tour='kick-add-input-form-container'>
+                <div>
                   <KickAddInputForm
                     inputs={inputs}
                     roomId={roomId}
@@ -134,8 +147,8 @@ export function AddVideoSection({
               )}
             </div>
           )}
-          {addInputActiveTab === 'mp4' && (
-            <div data-tour='mp4-add-input-form-container'>
+          {effectiveActiveTab === 'mp4' && (
+            <div>
               <Mp4AddInputForm
                 inputs={inputs}
                 roomId={roomId}
@@ -143,8 +156,8 @@ export function AddVideoSection({
               />
             </div>
           )}
-          {addInputActiveTab === 'image' && (
-            <div data-tour='image-add-input-form-container'>
+          {effectiveActiveTab === 'image' && (
+            <div>
               <ImageAddInputForm
                 inputs={inputs}
                 roomId={roomId}
@@ -152,8 +165,8 @@ export function AddVideoSection({
               />
             </div>
           )}
-          {addInputActiveTab === 'text' && (
-            <div data-tour='text-add-input-form-container'>
+          {effectiveActiveTab === 'text' && (
+            <div>
               <TextAddInputForm
                 inputs={inputs}
                 roomId={roomId}
@@ -161,7 +174,7 @@ export function AddVideoSection({
               />
             </div>
           )}
-          {addInputActiveTab === 'inputs' && (
+          {effectiveActiveTab === 'inputs' && (
             <div>
               {!isMobile && (
                 <div className='flex gap-2 sm:gap-3 md:gap-4 lg:gap-4 xl:gap-4 2xl:gap-5 border-b border-neutral-800 -mx-4 px-4 mb-3 justify-center'>

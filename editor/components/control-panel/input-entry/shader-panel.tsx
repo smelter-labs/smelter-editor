@@ -73,10 +73,7 @@ export default function ShaderPanel({
 
   if (consolidated) {
     return (
-      <div
-        className='mt-2 cursor-default'
-        data-no-dnd
-        data-tour='shader-params-container'>
+      <div className='mt-2 cursor-default' data-no-dnd>
         {availableShaders.map((shader) => {
           const enabled =
             input.shaders?.find((s) => s.shaderId === shader.id)?.enabled ??
@@ -281,9 +278,7 @@ export default function ShaderPanel({
                 <XIcon className='size-4' />
               </button>
             </div>
-            <div
-              className='max-h-[70vh] overflow-auto p-4 space-y-5'
-              data-tour='shader-params-container'>
+            <div className='max-h-[70vh] overflow-auto p-4 space-y-5'>
               {(() => {
                 const shader = availableShaders.find(
                   (s) => s.id === openShaderId,

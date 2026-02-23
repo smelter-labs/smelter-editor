@@ -70,6 +70,7 @@ export type Input = {
   textScrollSpeed?: number;
   textScrollLoop?: boolean;
   textFontSize?: number;
+  attachedInputIds?: string[];
 };
 
 export type RegisterInputOptions =
@@ -94,6 +95,16 @@ export type RegisterInputOptions =
       textAlign?: 'left' | 'center' | 'right';
     };
 
+export type PendingWhipInputData = {
+  id: string;
+  title: string;
+  volume: number;
+  showTitle: boolean;
+  shaders: ShaderConfig[];
+  orientation: InputOrientation;
+  position: number;
+};
+
 export type RoomState = {
   inputs: Input[];
   layout: Layout;
@@ -101,6 +112,13 @@ export type RoomState = {
   pendingDelete?: boolean;
   isPublic?: boolean;
   resolution?: Resolution;
+  swapDurationMs?: number;
+  swapOutgoingEnabled?: boolean;
+  swapFadeInDurationMs?: number;
+  swapFadeOutDurationMs?: number;
+  newsStripFadeDuringSwap?: boolean;
+  newsStripEnabled?: boolean;
+  pendingWhipInputs?: PendingWhipInputData[];
 };
 
 export type Layout =
@@ -163,6 +181,12 @@ export type UpdateRoomOptions = {
   inputOrder?: string[];
   layout?: Layout;
   isPublic?: boolean;
+  swapDurationMs?: number;
+  swapOutgoingEnabled?: boolean;
+  swapFadeInDurationMs?: number;
+  swapFadeOutDurationMs?: number;
+  newsStripFadeDuringSwap?: boolean;
+  newsStripEnabled?: boolean;
 };
 
 export async function updateRoom(
@@ -226,6 +250,28 @@ export async function stopRecording(
     `/room/${encodeURIComponent(roomId)}/record/stop`,
     {},
   );
+}
+
+export type RecordingInfo = {
+  fileName: string;
+  roomId: string;
+  createdAt: number;
+  size: number;
+};
+
+export async function getRecordings(): Promise<RecordingInfo[]> {
+  const data = await sendSmelterRequest('get', '/recordings');
+  return data.recordings ?? [];
+}
+
+export async function getRoomRecordings(
+  roomId: string,
+): Promise<RecordingInfo[]> {
+  const data = await sendSmelterRequest(
+    'get',
+    `/room/${encodeURIComponent(roomId)}/recordings`,
+  );
+  return data.recordings ?? [];
 }
 
 export async function getTwitchSuggestions(): Promise<InputSuggestions> {
@@ -332,9 +378,22 @@ export async function acknowledgeWhipInput(
       {},
     );
   } catch (err: any) {
-    console.warn('Failed to acknowledge WHIP input:', err?.message ?? err);
-    throw err;
+    const message =
+      err?.body?.message ?? err?.message ?? 'Failed to acknowledge WHIP input';
+    console.warn('Failed to acknowledge WHIP input:', message);
+    throw new Error(message);
   }
+}
+
+export async function setPendingWhipInputs(
+  roomId: string,
+  pendingWhipInputs: PendingWhipInputData[],
+): Promise<void> {
+  await sendSmelterRequest(
+    'post',
+    `/room/${encodeURIComponent(roomId)}/pending-whip-inputs`,
+    { pendingWhipInputs },
+  );
 }
 
 export async function getAllRooms(): Promise<any> {
@@ -355,6 +414,7 @@ export type UpdateInputOptions = {
   textScrollLoop?: boolean;
   textScrollNudge?: number;
   textFontSize?: number;
+  attachedInputIds?: string[];
 };
 
 export async function updateInput(
@@ -415,15 +475,17 @@ async function sendSmelterRequest(
   });
 
   if (response.status >= 400) {
-    const err = new Error(`Request to Smelter server failed.`) as any;
-    err.response = response;
-    err.body = await response.text();
+    let body: any = await response.text();
     try {
-      err.body = JSON.parse(err.body);
-      err.status = response.status;
-    } catch (err) {
-      console.error('Failed to parse response');
+      body = JSON.parse(body);
+    } catch {
+      // body stays as text
     }
+    const message =
+      body?.message ?? body?.error ?? `Request to Smelter server failed.`;
+    const err = new Error(message) as any;
+    err.body = body;
+    err.status = response.status;
     throw err;
   }
   return (await response.json()) as object;

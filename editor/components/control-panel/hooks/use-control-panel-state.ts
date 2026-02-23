@@ -12,7 +12,6 @@ import {
   updateInput,
 } from '@/app/actions/actions';
 import { useStreamsSpinner } from '../whip-input/hooks/use-streams-spinner';
-import { useDriverTourControls } from '../../tour/DriverTourContext';
 import { loadUserName, saveUserName } from '../whip-input/utils/whip-storage';
 import type { AddTab } from '../components/AddVideoSection';
 
@@ -26,6 +25,10 @@ export function useControlPanelState(
   const [userName, setUserName] = useState<string>(() => {
     const saved = loadUserName(roomId);
     if (saved) return saved;
+    if (typeof window !== 'undefined') {
+      const storedName = localStorage.getItem('smelter-display-name');
+      if (storedName) return `${storedName} Camera`;
+    }
     const random = Math.floor(1000 + Math.random() * 9000);
     return `User ${random}`;
   });
@@ -36,7 +39,6 @@ export function useControlPanelState(
 
   const inputsRef = useRef<Input[]>(roomState.inputs);
   const [inputs, setInputs] = useState<Input[]>(roomState.inputs);
-  const { nextIf: nextIfComposing } = useDriverTourControls('composing');
 
   const { showStreamsSpinner, onInputsChange } = useStreamsSpinner(
     roomState.inputs,
@@ -155,6 +157,9 @@ export function useControlPanelState(
     })();
   }, [roomState.layout, availableShaders, roomId, handleRefreshState]);
 
+  const [isSwapping, setIsSwapping] = useState(false);
+  const swapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const updateOrder = useCallback(
     async (newInputWrappers: InputWrapper[]) => {
       try {
@@ -173,8 +178,6 @@ export function useControlPanelState(
       try {
         await updateRoomAction(roomId, { layout });
         await refreshState();
-        nextIfComposing(2);
-
         if (layout === 'wrapped' && typeof window !== 'undefined') {
           setTimeout(async () => {
             try {
@@ -200,7 +203,7 @@ export function useControlPanelState(
         alert('Failed to change layout.');
       }
     },
-    [roomId, refreshState, nextIfComposing, getInputWrappers, updateOrder],
+    [roomId, refreshState, getInputWrappers, updateOrder],
   );
 
   const [openFxInputId, setOpenFxInputId] = useState<string | null>(null);
@@ -244,6 +247,8 @@ export function useControlPanelState(
     setOpenFxInputId,
     selectedInputId,
     setSelectedInputId,
-    nextIfComposing,
+    isSwapping,
+    setIsSwapping,
+    swapTimerRef,
   };
 }

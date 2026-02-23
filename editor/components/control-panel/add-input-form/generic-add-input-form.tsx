@@ -4,7 +4,6 @@ import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/spinner';
 import { SuggestionBox } from './suggestion-box';
 import type { Input } from '@/app/actions/actions';
-import { useDriverTourControls } from '@/components/tour/DriverTourContext';
 
 export type GenericAddInputFormProps<T> = {
   inputs: Input[];
@@ -63,11 +62,8 @@ export function GenericAddInputForm<T>({
   const [showSuggestions, setShowSuggestions] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
   const [windowWidth, setWindowWidth] = useState<number | undefined>(undefined);
-  const { nextIf, next, reset } = useDriverTourControls('room');
   const inputRef = useRef<HTMLInputElement | null>(null);
   const suggestionBoxRef = useRef<HTMLDivElement | null>(null);
-  const [isRoomTourActive, setIsRoomTourActive] = useState(false);
-  const [hasSelectedDuringTour, setHasSelectedDuringTour] = useState(false);
 
   useEffect(() => {
     setCurrentSuggestion(initialValue);
@@ -105,31 +101,6 @@ export function GenericAddInputForm<T>({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showSuggestions]);
 
-  useEffect(() => {
-    const onStart = (e: any) => {
-      try {
-        if (e?.detail?.id === 'room') {
-          setIsRoomTourActive(true);
-          setHasSelectedDuringTour(false);
-        }
-      } catch {}
-    };
-    const onStop = (e: any) => {
-      try {
-        if (e?.detail?.id === 'room') {
-          setIsRoomTourActive(false);
-          setHasSelectedDuringTour(false);
-        }
-      } catch {}
-    };
-    window.addEventListener('smelter:tour:start', onStart);
-    window.addEventListener('smelter:tour:stop', onStop);
-    return () => {
-      window.removeEventListener('smelter:tour:start', onStart);
-      window.removeEventListener('smelter:tour:stop', onStop);
-    };
-  }, []);
-
   const handleInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (inputDisabled) {
       if (
@@ -159,16 +130,6 @@ export function GenericAddInputForm<T>({
         highlightedIndex < filteredSuggestions.length
       ) {
         e.preventDefault();
-        const shouldLock =
-          isRoomTourActive &&
-          !hasSelectedDuringTour &&
-          !!suggestionBoxRef.current?.querySelector(
-            '[data-tour="twitch-suggestion-item-container"]',
-          );
-        if (shouldLock && submitOnItem) {
-          void handleSuggestionSelect(filteredSuggestions[highlightedIndex]);
-          return;
-        }
         setCurrentSuggestion(
           getSuggestionValue(filteredSuggestions[highlightedIndex]),
         );
@@ -229,17 +190,12 @@ export function GenericAddInputForm<T>({
     setCurrentSuggestion(value);
     setUserTyped(false);
     setShowSuggestions(false);
-    if (isRoomTourActive) {
-      setHasSelectedDuringTour(true);
-    }
 
     if (submitOnItem) {
-      next();
       await handleSubmitOnItem(value);
 
       await new Promise((resolve) => setTimeout(resolve, 200));
       setShowSuggestions(false);
-      next();
       inputRef.current?.blur();
     }
   };
@@ -266,7 +222,6 @@ export function GenericAddInputForm<T>({
           readOnly={inputDisabled}
           onClick={() => {
             setShowSuggestions(true);
-            setTimeout(() => next(), 200);
           }}
         />
         {showArrow && !loading && (

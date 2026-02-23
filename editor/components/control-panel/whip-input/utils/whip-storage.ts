@@ -77,7 +77,11 @@ export function clearWhipSessionFor(roomId: string, inputId: string) {
 export function loadUserName(roomId: string): string {
   try {
     if (typeof window === 'undefined') return '';
-    return window.sessionStorage.getItem(userNameKey(roomId)) || '';
+    return (
+      window.localStorage.getItem(userNameKey(roomId)) ||
+      window.sessionStorage.getItem(userNameKey(roomId)) ||
+      ''
+    );
   } catch {
     return '';
   }
@@ -85,7 +89,7 @@ export function loadUserName(roomId: string): string {
 export function saveUserName(roomId: string, name: string) {
   try {
     if (typeof window === 'undefined') return;
-    window.sessionStorage.setItem(userNameKey(roomId), name);
+    window.localStorage.setItem(userNameKey(roomId), name);
   } catch {}
 }
 

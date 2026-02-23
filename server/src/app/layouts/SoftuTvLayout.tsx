@@ -1,9 +1,11 @@
-import { View, Tiles, Rescaler, Image, Text } from '@swmansion/smelter';
+import { View, Tiles, Rescaler, Image, Text, Shader } from '@swmansion/smelter';
 import React, { useContext, useEffect, useState } from 'react';
 import { useStore } from 'zustand';
-import { StoreContext, useResolution, useIsVertical } from '../store';
+import { StoreContext, useResolution, useIsVertical, useSwapDurationMs, useSwapOutgoingEnabled, useSwapFadeInDurationMs, useSwapFadeOutDurationMs, useNewsStripFadeDuringSwap, useNewsStripEnabled } from '../store';
 import { Input, SmallInput } from '../../inputs/inputs';
 import { NewsStripDecorated } from '../NewsStripDecorated';
+import { usePrimarySwapTransition } from './usePrimarySwapTransition';
+import { usePostSwapFadeIn } from './usePostSwapFadeIn';
 
 const SOFTU_TV_THEME = {
   liveBadgeBg: '#0052A5',
@@ -18,8 +20,16 @@ export function SoftuTvLayout() {
   const inputs = useStore(store, state => state.inputs);
   const resolution = useResolution();
   const isVertical = useIsVertical();
+  const swapDurationMs = useSwapDurationMs();
+  const swapOutgoingEnabled = useSwapOutgoingEnabled();
+  const swapFadeInDurationMs = useSwapFadeInDurationMs();
+  const swapFadeOutDurationMs = useSwapFadeOutDurationMs();
+  const newsStripFadeDuringSwap = useNewsStripFadeDuringSwap();
+  const newsStripEnabled = useNewsStripEnabled();
   const firstInput = inputs[0];
   const secondInput = inputs[1];
+  const swap = usePrimarySwapTransition(inputs, swapDurationMs);
+  const fadeOpacity = usePostSwapFadeIn(swap.isTransitioning, swapFadeInDurationMs, swapFadeOutDurationMs);
 
   const { width, height } = resolution;
 
@@ -114,13 +124,24 @@ export function SoftuTvLayout() {
   const pipHeight = isVertical ? Math.round(height * 0.35) : Math.round(height * 0.75);
   const pipTop = isVertical ? Math.round(height * 0.62) : 60;
   const pipRight = isVertical ? Math.round((width - pipWidth) / 2) : 60;
+  const pipLeft = width - pipRight - pipWidth;
 
   const stripHeight = isVertical ? Math.round(height * 0.12) : Math.round(height * 0.31);
   const stripTop = isVertical ? height - stripHeight : Math.round(height * 0.67);
-  const showStrip = !isVertical;
+  const showStrip = !isVertical && newsStripEnabled;
+
+  // Tile positions within the PIP area
+  // Tiles component applies `padding` around each tile (2*padding between adjacent tiles)
+  const tilePadding = 10;
+  const prevTileCount = Math.max(1, swap.prevSecondaryCount);
+  const tileW = pipWidth - tilePadding * 2;
+  const tileH = Math.round(pipHeight / prevTileCount - tilePadding * 2);
+  const tileAbsTop = pipTop + tilePadding + swap.incomingPrevIndex * (tileH + tilePadding * 2);
+  const tileAbsLeft = pipLeft + tilePadding;
 
   return (
-    <View style={{ direction: 'column' }}>
+    <View style={{ width, height, overflow: 'visible' }}>
+      <View style={{ direction: 'column', width, height, top: 0, left: 0 }}>
       <Rescaler
         transition={{ durationMs: 300 }}
         style={{
@@ -134,17 +155,35 @@ export function SoftuTvLayout() {
         }}>
         <Input input={firstInput} />
       </Rescaler>
+      {swap.isTransitioning && swap.outgoingInput && (
+        <Rescaler style={{
+          rescaleMode: 'fill',
+          horizontalAlign: isVertical ? 'center' : 'left',
+          verticalAlign: 'top',
+          top: 0,
+          left: 0,
+          width: swapOutgoingEnabled ? width - swap.progress * (width - tileW) : width,
+          height: swapOutgoingEnabled ? height - swap.progress * (height - tileH) : height,
+        }}>
+          <Input input={swap.outgoingInput} />
+        </Rescaler>
+      )}
       {secondInput ? (
         <Rescaler style={{ top: pipTop, right: pipRight, width: pipWidth, height: pipHeight }}>
-          <View style={{ direction: 'column' }}>
-            <Tiles transition={{ durationMs: 300 }} style={{ padding: 10, verticalAlign: 'top' }}>
-              {Object.values(inputs)
-                .filter(input => input.inputId != firstInput.inputId)
-                .map(input => (
-                  <SmallInput key={input.inputId} input={input} />
-                ))}
-            </Tiles>
-          </View>
+          <Shader
+            shaderId="opacity"
+            resolution={{ width: pipWidth, height: pipHeight }}
+            shaderParam={{ type: 'struct', value: [{ type: 'f32', fieldName: 'opacity', value: fadeOpacity }] }}>
+            <View style={{ width: pipWidth, height: pipHeight, direction: 'column' }}>
+              <Tiles transition={{ durationMs: swapFadeOutDurationMs > 0 ? swapFadeOutDurationMs : 300 }} style={{ padding: tilePadding, verticalAlign: 'top' }}>
+                {Object.values(inputs)
+                  .filter(input => input.inputId != firstInput.inputId)
+                  .map(input => (
+                    <SmallInput key={input.inputId} input={input} />
+                  ))}
+              </Tiles>
+            </View>
+          </Shader>
         </Rescaler>
       ) : null}
       {showStrip && <Rescaler
@@ -158,6 +197,11 @@ export function SoftuTvLayout() {
           top: stripTop,
           left: 0,
         }}>
+        <Shader
+          shaderId="opacity"
+          resolution={{ width, height: stripHeight }}
+          shaderParam={{ type: 'struct', value: [{ type: 'f32', fieldName: 'opacity', value: newsStripFadeDuringSwap ? fadeOpacity : 1 }] }}>
+          <View style={{ width, height: stripHeight }}>
         <NewsStripDecorated
           resolution={{ width, height: stripHeight }}
           opacity={1}
@@ -240,7 +284,20 @@ export function SoftuTvLayout() {
             </View>
           </View>
         </NewsStripDecorated>
+          </View>
+        </Shader>
       </Rescaler>}
+      </View>
+      {swap.isTransitioning && swap.incomingInput && (
+        <Rescaler style={{
+          top: tileAbsTop + swap.progress * (0 - tileAbsTop),
+          left: tileAbsLeft + swap.progress * (0 - tileAbsLeft),
+          width: tileW + swap.progress * (width - tileW),
+          height: tileH + swap.progress * (height - tileH),
+        }}>
+          <Input input={swap.incomingInput} />
+        </Rescaler>
+      )}
     </View>
   );
 }

@@ -41,7 +41,7 @@ class ServerState {
   public async createRoom(
     initInputs: RegisterInputOptions[],
     skipDefaultInputs: boolean = false,
-    resolution?: Resolution
+    resolution?: Resolution,
   ): Promise<CreateRoomResult> {
     const roomId = uuidv4();
     const resolvedResolution = resolution ?? RESOLUTION_PRESETS['1440p'];

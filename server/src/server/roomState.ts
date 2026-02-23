@@ -20,6 +20,7 @@ export type RoomInputState = {
   showTitle: boolean;
   shaders: ShaderConfig[];
   orientation: InputOrientation;
+  attachedInputIds?: string[];
   metadata: {
     title: string;
     description: string;
@@ -34,11 +35,22 @@ type TypeSpecificState =
   | { type: 'image'; imageId: string }
   | { type: 'text-input'; text: string; textAlign: 'left' | 'center' | 'right'; textColor: string; textMaxLines: number; textScrollSpeed: number; textScrollLoop: boolean; textScrollNudge: number; textFontSize: number };
 
+export type PendingWhipInputData = {
+  id: string;
+  title: string;
+  volume: number;
+  showTitle: boolean;
+  shaders: ShaderConfig[];
+  orientation: InputOrientation;
+  position: number;
+};
+
 type UpdateInputOptions = {
   volume: number;
   showTitle: boolean;
   shaders: ShaderConfig[];
   orientation: InputOrientation;
+  attachedInputIds: string[];
   text: string;
   textAlign: 'left' | 'center' | 'right';
   textColor: string;
@@ -90,6 +102,12 @@ const PLACEHOLDER_LOGO_FILE = 'logo_Smelter.png';
 export class RoomState {
   private inputs: RoomInputState[];
   private layout: Layout = 'picture-in-picture';
+  private swapDurationMs: number = 500;
+  private swapOutgoingEnabled: boolean = true;
+  private swapFadeInDurationMs: number = 500;
+  private swapFadeOutDurationMs: number = 500;
+  private newsStripFadeDuringSwap: boolean = true;
+  private newsStripEnabled: boolean = true;
   public idPrefix: string;
 
   private mp4sDir: string;
@@ -109,6 +127,7 @@ export class RoomState {
 
   public pendingDelete?: boolean;
   public isPublic: boolean = false;
+  public pendingWhipInputs: PendingWhipInputData[] = [];
 
   public constructor(idPrefix: string, output: SmelterOutput, initInputs: RegisterInputOptions[], skipDefaultInputs: boolean = false) {
     this.mp4sDir = path.join(process.cwd(), 'mp4s');
@@ -234,10 +253,65 @@ export class RoomState {
     return { fileName: this.recording.fileName };
   }
 
-  public getState(): [RoomInputState[], Layout] {
+  public getState(): [RoomInputState[], Layout, number, boolean, number, boolean, number, boolean] {
     this.lastReadTimestamp = Date.now();
-    return [this.inputs, this.layout];
+    return [this.inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap, this.swapFadeOutDurationMs, this.newsStripEnabled];
   }
+
+  public getSwapDurationMs(): number {
+    return this.swapDurationMs;
+  }
+
+  public setSwapDurationMs(value: number) {
+    this.swapDurationMs = value;
+    this.updateStoreWithState();
+  }
+
+  public getSwapOutgoingEnabled(): boolean {
+    return this.swapOutgoingEnabled;
+  }
+
+  public setSwapOutgoingEnabled(value: boolean) {
+    this.swapOutgoingEnabled = value;
+    this.updateStoreWithState();
+  }
+
+  public getSwapFadeInDurationMs(): number {
+    return this.swapFadeInDurationMs;
+  }
+
+  public setSwapFadeInDurationMs(value: number) {
+    this.swapFadeInDurationMs = value;
+    this.updateStoreWithState();
+  }
+
+  public getSwapFadeOutDurationMs(): number {
+    return this.swapFadeOutDurationMs;
+  }
+
+  public setSwapFadeOutDurationMs(value: number) {
+    this.swapFadeOutDurationMs = value;
+    this.updateStoreWithState();
+  }
+
+  public getNewsStripFadeDuringSwap(): boolean {
+    return this.newsStripFadeDuringSwap;
+  }
+
+  public setNewsStripFadeDuringSwap(value: boolean) {
+    this.newsStripFadeDuringSwap = value;
+    this.updateStoreWithState();
+  }
+
+  public getNewsStripEnabled(): boolean {
+    return this.newsStripEnabled;
+  }
+
+  public setNewsStripEnabled(value: boolean) {
+    this.newsStripEnabled = value;
+    this.updateStoreWithState();
+  }
+
   public getInputs(): RoomInputState[] {
     return this.inputs;
   }
@@ -543,6 +617,11 @@ export class RoomState {
     }
 
     this.inputs = this.inputs.filter(input => input.inputId !== inputId);
+    for (const other of this.inputs) {
+      if (other.attachedInputIds) {
+        other.attachedInputIds = other.attachedInputIds.filter(id => id !== inputId);
+      }
+    }
     this.updateStoreWithState();
     if (input.type === 'twitch-channel' || input.type === 'kick-channel') {
       input.monitor.stop();
@@ -660,6 +739,9 @@ export class RoomState {
         input.textFontSize = options.textFontSize;
       }
     }
+    if (options.attachedInputIds !== undefined) {
+      input.attachedInputIds = options.attachedInputIds;
+    }
     this.updateStoreWithState();
   }
 
@@ -729,27 +811,54 @@ export class RoomState {
   }
 
   private updateStoreWithState() {
-    const inputs: InputConfig[] = this.inputs
-      .filter(input => input.status === 'connected')
-      .map(input => ({
-        inputId: input.inputId,
-        title: input.metadata.title,
-        description: input.metadata.description,
-        showTitle: input.showTitle,
-        volume: input.volume,
-        shaders: input.shaders,
-        orientation: input.orientation,
-        imageId: input.type === 'image' ? input.imageId : undefined,
-        text: input.type === 'text-input' ? input.text : undefined,
-        textAlign: input.type === 'text-input' ? input.textAlign : undefined,
-        textColor: input.type === 'text-input' ? input.textColor : undefined,
-        textMaxLines: input.type === 'text-input' ? input.textMaxLines : undefined,
-        textScrollSpeed: input.type === 'text-input' ? input.textScrollSpeed : undefined,
-        textScrollLoop: input.type === 'text-input' ? input.textScrollLoop : undefined,
-        textScrollNudge: input.type === 'text-input' ? input.textScrollNudge : undefined,
-        textFontSize: input.type === 'text-input' ? input.textFontSize : undefined,
-      }));
-    this.output.store.getState().updateState(inputs, this.layout);
+    const toInputConfig = (input: RoomInputState): InputConfig => ({
+      inputId: input.inputId,
+      title: input.metadata.title,
+      description: input.metadata.description,
+      showTitle: input.showTitle,
+      volume: input.volume,
+      shaders: input.shaders,
+      orientation: input.orientation,
+      imageId: input.type === 'image' ? input.imageId : undefined,
+      text: input.type === 'text-input' ? input.text : undefined,
+      textAlign: input.type === 'text-input' ? input.textAlign : undefined,
+      textColor: input.type === 'text-input' ? input.textColor : undefined,
+      textMaxLines: input.type === 'text-input' ? input.textMaxLines : undefined,
+      textScrollSpeed: input.type === 'text-input' ? input.textScrollSpeed : undefined,
+      textScrollLoop: input.type === 'text-input' ? input.textScrollLoop : undefined,
+      textScrollNudge: input.type === 'text-input' ? input.textScrollNudge : undefined,
+      textFontSize: input.type === 'text-input' ? input.textFontSize : undefined,
+    });
+
+    const connectedInputs = this.inputs.filter(input => input.status === 'connected' || input.status === 'pending');
+    const connectedMap = new Map<string, RoomInputState>();
+    for (const input of connectedInputs) {
+      connectedMap.set(input.inputId, input);
+    }
+
+    const attachedIds = new Set<string>();
+    for (const input of connectedInputs) {
+      if (input.attachedInputIds) {
+        for (const id of input.attachedInputIds) {
+          attachedIds.add(id);
+        }
+      }
+    }
+
+    const inputs: InputConfig[] = connectedInputs
+      .filter(input => !attachedIds.has(input.inputId))
+      .map(input => {
+        const config = toInputConfig(input);
+        if (input.attachedInputIds && input.attachedInputIds.length > 0) {
+          config.attachedInputs = input.attachedInputIds
+            .map(id => connectedMap.get(id))
+            .filter((i): i is RoomInputState => !!i)
+            .map(toInputConfig);
+        }
+        return config;
+      });
+
+    this.output.store.getState().updateState(inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap, this.swapFadeOutDurationMs, this.newsStripEnabled);
   }
 
   private getInput(inputId: string): RoomInputState {

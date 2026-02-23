@@ -9,6 +9,7 @@ import {
   clearWhipSession,
   clearLastWhipInputId,
 } from '../whip-input/utils/whip-storage';
+import { toast } from 'react-toastify';
 
 export function useWhipConnections(
   roomId: string,
@@ -16,6 +17,7 @@ export function useWhipConnections(
   inputs: Input[],
   inputsRef: React.MutableRefObject<Input[]>,
   handleRefreshState: () => Promise<void>,
+  isGuest?: boolean,
 ) {
   const cameraPcRef = useRef<RTCPeerConnection | null>(null);
   const cameraStreamRef = useRef<MediaStream | null>(null);
@@ -53,7 +55,7 @@ export function useWhipConnections(
     const stillExists = inputs.some((i) => i.inputId === activeCameraInputId);
     if (stillExists) return;
 
-    const timeout = setTimeout(() => {
+    const cleanupCamera = () => {
       const existsNow = inputsRef.current.some(
         (i) => i.inputId === activeCameraInputId,
       );
@@ -67,13 +69,22 @@ export function useWhipConnections(
         }
         const lastId = loadLastWhipInputId(roomId);
         if (lastId === activeCameraInputId) clearLastWhipInputId(roomId);
+        if (isGuest) {
+          toast.info('Your input was disconnected. You can reconnect below.');
+        }
       } finally {
         setActiveCameraInputId(null);
       }
-    }, 10000);
+    };
 
+    if (isGuest) {
+      cleanupCamera();
+      return;
+    }
+
+    const timeout = setTimeout(cleanupCamera, 10000);
     return () => clearTimeout(timeout);
-  }, [inputs, activeCameraInputId, roomId, inputsRef]);
+  }, [inputs, activeCameraInputId, roomId, inputsRef, isGuest]);
 
   useEffect(() => {
     if (!activeScreenshareInputId) return;
@@ -82,7 +93,7 @@ export function useWhipConnections(
     );
     if (stillExists) return;
 
-    const timeout = setTimeout(() => {
+    const cleanupScreenshare = () => {
       const existsNow = inputsRef.current.some(
         (i) => i.inputId === activeScreenshareInputId,
       );
@@ -90,13 +101,22 @@ export function useWhipConnections(
       try {
         stopCameraAndConnection(screensharePcRef, screenshareStreamRef);
         setIsScreenshareActive(false);
+        if (isGuest) {
+          toast.info('Your input was disconnected. You can reconnect below.');
+        }
       } finally {
         setActiveScreenshareInputId(null);
       }
-    }, 10000);
+    };
 
+    if (isGuest) {
+      cleanupScreenshare();
+      return;
+    }
+
+    const timeout = setTimeout(cleanupScreenshare, 10000);
     return () => clearTimeout(timeout);
-  }, [inputs, activeScreenshareInputId, inputsRef]);
+  }, [inputs, activeScreenshareInputId, inputsRef, isGuest]);
 
   useEffect(() => {
     const onUnload = () => {

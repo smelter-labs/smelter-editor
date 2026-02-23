@@ -24,12 +24,13 @@ import {
 import { RESOLUTION_PRESETS, type ResolutionPreset } from '@/lib/resolution';
 import Link from 'next/link';
 import { staggerContainer } from '@/utils/animations';
+import { parseRoomConfig } from '@/lib/room-config';
 import {
-  parseRoomConfig,
-  savePendingWhipInputs,
-  type StoredPendingWhipInput,
-} from '@/lib/room-config';
-import { Upload } from 'lucide-react';
+  setPendingWhipInputs as setPendingWhipInputsAction,
+  type PendingWhipInputData,
+} from '@/app/actions/actions';
+import { Upload, FolderDown } from 'lucide-react';
+import RecordingsList from '@/components/recordings-list';
 import { toast } from 'react-toastify';
 
 function formatDuration(ms: number): string {
@@ -64,8 +65,19 @@ export default function IntroView() {
   const pathname = usePathname();
   const [loadingNew, setLoadingNew] = useState(false);
   const [loadingImport, setLoadingImport] = useState(false);
+  const [showRecordings, setShowRecordings] = useState(false);
   const [selectedResolution, setSelectedResolution] =
     useState<ResolutionPreset>('1440p');
+  const [displayName, setDisplayName] = useState(() => {
+    if (typeof window === 'undefined') return 'Mr Smelter';
+    return localStorage.getItem('smelter-display-name') || 'Mr Smelter';
+  });
+  const handleSetDisplayName = useCallback((name: string) => {
+    setDisplayName(name);
+    try {
+      localStorage.setItem('smelter-display-name', name);
+    } catch {}
+  }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Suggestions state
@@ -154,18 +166,7 @@ export default function IntroView() {
           false,
           resolutionOverride ?? selectedResolution,
         );
-        let hash = '';
-        if (typeof window !== 'undefined') {
-          const h = (window.location.hash || '').toLowerCase();
-          if (
-            h.includes('tour-main') ||
-            h.includes('tour-composing') ||
-            h.includes('tour-shaders')
-          ) {
-            hash = h;
-          }
-        }
-        router.push(getRoomRoute(room.roomId) + hash);
+        router.push(getRoomRoute(room.roomId));
       } finally {
         setLoadingNew(false);
       }
@@ -305,27 +306,35 @@ export default function IntroView() {
       try {
         await updateRoom(roomId, {
           layout: config.layout,
-          ...(orderedCreatedIds.length > 0 ? { inputOrder: orderedCreatedIds } : {}),
+          ...(orderedCreatedIds.length > 0
+            ? { inputOrder: orderedCreatedIds }
+            : {}),
+          ...config.transitionSettings,
         });
       } catch (err) {
         console.warn('Failed to set layout or input order:', err);
       }
 
-      const pendingWhipInputs: StoredPendingWhipInput[] = [];
+      const pendingWhipInputs: PendingWhipInputData[] = [];
       for (let i = 0; i < config.inputs.length; i++) {
         const inputConfig = config.inputs[i];
         if (inputConfig.type === 'whip') {
           pendingWhipInputs.push({
             id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`,
             title: inputConfig.title,
-            config: inputConfig,
+            volume: inputConfig.volume,
+            showTitle: inputConfig.showTitle !== false,
+            shaders: inputConfig.shaders || [],
+            orientation: (inputConfig.orientation || 'horizontal') as
+              | 'horizontal'
+              | 'vertical',
             position: i,
           });
         }
       }
 
       if (pendingWhipInputs.length > 0) {
-        savePendingWhipInputs(roomId, pendingWhipInputs);
+        await setPendingWhipInputsAction(roomId, pendingWhipInputs);
         toast.info(
           `Room created. ${pendingWhipInputs.length} WHIP input(s) need to be connected manually.`,
         );
@@ -368,6 +377,19 @@ export default function IntroView() {
           </div>
 
           <div className='mt-6 flex flex-col gap-3'>
+            <div className='flex flex-col gap-2'>
+              <label className='text-xs text-neutral-400 text-left'>
+                Display Name
+              </label>
+              <input
+                type='text'
+                value={displayName}
+                onChange={(e) => handleSetDisplayName(e.target.value)}
+                placeholder='Mr Smelter'
+                className='w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-white text-sm focus:outline-none focus:border-neutral-500'
+                disabled={loadingNew || loadingImport}
+              />
+            </div>
             <div className='flex flex-col gap-2'>
               <label className='text-xs text-neutral-400 text-left'>
                 Output Resolution
@@ -434,6 +456,19 @@ export default function IntroView() {
               className='hidden'
               onChange={handleFileChange}
             />
+            <Button
+              size='lg'
+              variant='default'
+              className='font-medium w-full bg-neutral-800 hover:bg-neutral-700 text-white cursor-pointer'
+              onClick={() => setShowRecordings(true)}
+              disabled={loadingNew || loadingImport}>
+              <FolderDown className='w-4 h-4 mr-2' />
+              Recordings
+            </Button>
+            <RecordingsList
+              open={showRecordings}
+              onClose={() => setShowRecordings(false)}
+            />
           </div>
 
           {!loadingRooms && rooms.filter((r) => r.isPublic).length > 0 && (
@@ -446,19 +481,41 @@ export default function IntroView() {
                   .filter((r) => r.isPublic)
                   .map((room) => (
                     <li key={room.roomId}>
-                      <Link
-                        href={getRoomRoute(room.roomId)}
-                        className='flex items-center justify-between px-4 py-3 rounded-none bg-neutral-900 hover:bg-neutral-800 transition-colors text-white text-sm'>
-                        <span className='font-mono truncate'>
-                          {room.roomId}
-                        </span>
-                        {room.createdAt && (
-                          <span className='text-xs text-neutral-500 ml-4 whitespace-nowrap'>
-                            {new Date(room.createdAt).toLocaleTimeString()} ·{' '}
-                            {formatDuration(Date.now() - room.createdAt)}
+                      <div className='flex items-center justify-between px-4 py-3 rounded-none bg-neutral-900 text-white text-sm'>
+                        <div className='flex items-center gap-3 min-w-0'>
+                          <span className='font-mono truncate'>
+                            {room.roomId}
                           </span>
-                        )}
-                      </Link>
+                          {room.createdAt && (
+                            <span className='text-xs text-neutral-500 whitespace-nowrap'>
+                              {new Date(room.createdAt).toLocaleTimeString()} ·{' '}
+                              {formatDuration(Date.now() - room.createdAt)}
+                            </span>
+                          )}
+                        </div>
+                        <div className='flex gap-2 ml-4 shrink-0'>
+                          <Button
+                            size='sm'
+                            variant='default'
+                            className='bg-white text-black hover:bg-neutral-200 cursor-pointer'
+                            onClick={() =>
+                              router.push(getRoomRoute(room.roomId))
+                            }>
+                            Join
+                          </Button>
+                          <Button
+                            size='sm'
+                            variant='default'
+                            className='bg-neutral-700 text-white hover:bg-neutral-600 cursor-pointer'
+                            onClick={() =>
+                              router.push(
+                                getRoomRoute(room.roomId) + '?guest=true',
+                              )
+                            }>
+                            Join as Guest
+                          </Button>
+                        </div>
+                      </div>
                     </li>
                   ))}
               </ul>

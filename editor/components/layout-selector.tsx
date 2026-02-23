@@ -1,4 +1,3 @@
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { fadeIn2 } from '@/utils/animations';
 import { motion } from 'framer-motion';
 import { Grid3X3, Layers, LayoutGrid, LucideIcon, Square } from 'lucide-react';
@@ -121,7 +120,7 @@ export default function LayoutSelector({
         );
       case 'picture-in-picture':
         return (
-          <div className='w-full h-full relative'>
+          <div className='w-full h-full relative overflow-hidden'>
             <div
               className={`transition-all duration-300 ease-in-out w-full h-full rounded-none border border-neutral-700 ${streamCount > 0 ? 'bg-neutral-600' : 'bg-transparent'}`}
             />
@@ -132,8 +131,8 @@ export default function LayoutSelector({
                     key={idx}
                     className='transition-all duration-300 ease-in-out absolute border border-neutral-700 bg-neutral-600 rounded-none'
                     style={{
-                      top: `${0.5 + idx * 1.7}rem`,
-                      right: '0.5rem',
+                      top: `${8 + idx * 28}%`,
+                      right: '8%',
                       width: '25%',
                       height: '25%',
                       zIndex: 10 + idx,
@@ -187,7 +186,7 @@ export default function LayoutSelector({
         );
       case 'softu-tv':
         return (
-          <div className='w-full h-full relative'>
+          <div className='w-full h-full relative overflow-hidden'>
             <div
               className={`transition-all duration-300 ease-in-out w-full h-full rounded-none border border-neutral-700 ${streamCount > 0 ? 'bg-neutral-600' : 'bg-transparent'}`}
             />
@@ -198,8 +197,8 @@ export default function LayoutSelector({
                     key={idx}
                     className='transition-all duration-300 ease-in-out absolute border border-neutral-700 bg-neutral-600 rounded-none'
                     style={{
-                      top: `${0.5 + idx * 1.7}rem`,
-                      right: '0.5rem',
+                      top: `${8 + idx * 28}%`,
+                      right: '8%',
                       width: '25%',
                       height: '25%',
                       zIndex: 10 + idx,
@@ -237,24 +236,19 @@ export default function LayoutSelector({
     <motion.div
       {...(fadeIn2 as any)}
       className='text-card-foreground flex-col gap-1 rounded-none py-6 shadow-sm flex flex-1 bg-[#0a0a0a]'>
-      <div data-tour='layout-selector-container'>
-        <div className='grid grid-cols-2 gap-2'>
+      <div>
+        <div className='grid grid-cols-2 xl:grid-cols-3 gap-2'>
           {LAYOUT_CONFIGS.map((layout) => {
             const Icon = layout.icon;
             const isActive = activeLayoutId === layout.id;
             return (
               <button
                 key={layout.id}
+                title={layout.name}
                 onClick={() => changeLayout(layout.id)}
                 className={`duration-300 ease-in-out p-2 rounded-none border transition-colors cursor-pointer ${isActive ? 'bg-neutral-800 border-white' : 'bg-[#141414] border-[#2a2a2a] hover:bg-neutral-800/50'}`}>
-                <div className='aspect-video mb-1 text-xs'>
+                <div className='aspect-video text-xs'>
                   {renderLayoutPreview(layout.id)}
-                </div>
-                <div className='flex items-center justify-center gap-1'>
-                  <Icon className='w-3 h-3 text-neutral-400' />
-                  <span className='text-xs text-neutral-400'>
-                    {layout.name}
-                  </span>
                 </div>
               </button>
             );

@@ -25,6 +25,7 @@ export type InputConfig = {
   textScrollNudge?: number;
   textFontSize?: number;
   replaceWith?: InputConfig;
+  attachedInputs?: InputConfig[];
 };
 
 export const Layouts = [
@@ -54,7 +55,13 @@ export type RoomStore = {
   inputs: InputConfig[];
   layout: Layout;
   resolution: Resolution;
-  updateState: (inputs: InputConfig[], layout: Layout) => void;
+  swapDurationMs: number;
+  swapOutgoingEnabled: boolean;
+  swapFadeInDurationMs: number;
+  swapFadeOutDurationMs: number;
+  newsStripFadeDuringSwap: boolean;
+  newsStripEnabled: boolean;
+  updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number, swapOutgoingEnabled: boolean, swapFadeInDurationMs: number, newsStripFadeDuringSwap: boolean, swapFadeOutDurationMs: number, newsStripEnabled: boolean) => void;
 };
 
 export function createRoomStore(resolution: Resolution = { width: 2560, height: 1440 }): StoreApi<RoomStore> {
@@ -62,8 +69,14 @@ export function createRoomStore(resolution: Resolution = { width: 2560, height: 
     inputs: [],
     layout: 'grid',
     resolution,
-    updateState: (inputs: InputConfig[], layout: Layout) => {
-      set(_state => ({ inputs, layout }));
+    swapDurationMs: 500,
+    swapOutgoingEnabled: true,
+    swapFadeInDurationMs: 500,
+    swapFadeOutDurationMs: 500,
+    newsStripFadeDuringSwap: true,
+    newsStripEnabled: true,
+    updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number, swapOutgoingEnabled: boolean, swapFadeInDurationMs: number, newsStripFadeDuringSwap: boolean, swapFadeOutDurationMs: number, newsStripEnabled: boolean) => {
+      set(_state => ({ inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs, newsStripEnabled }));
     },
   }));
 }
@@ -76,6 +89,36 @@ export function useResolution() {
 export function useIsVertical() {
   const resolution = useResolution();
   return resolution.height > resolution.width;
+}
+
+export function useSwapDurationMs() {
+  const store = useContext(StoreContext);
+  return useStore(store, state => state.swapDurationMs);
+}
+
+export function useSwapOutgoingEnabled() {
+  const store = useContext(StoreContext);
+  return useStore(store, state => state.swapOutgoingEnabled);
+}
+
+export function useSwapFadeInDurationMs() {
+  const store = useContext(StoreContext);
+  return useStore(store, state => state.swapFadeInDurationMs);
+}
+
+export function useSwapFadeOutDurationMs() {
+  const store = useContext(StoreContext);
+  return useStore(store, state => state.swapFadeOutDurationMs);
+}
+
+export function useNewsStripFadeDuringSwap() {
+  const store = useContext(StoreContext);
+  return useStore(store, state => state.newsStripFadeDuringSwap);
+}
+
+export function useNewsStripEnabled() {
+  const store = useContext(StoreContext);
+  return useStore(store, state => state.newsStripEnabled);
 }
 
 export const StoreContext = createContext<StoreApi<RoomStore>>(createRoomStore());

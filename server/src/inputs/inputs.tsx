@@ -356,7 +356,24 @@ export function Input({ input }: { input: InputConfig }) {
 
   const activeShaders = input.shaders.filter(shader => shader.enabled);
 
-  return wrapWithShaders(inputComponent, activeShaders, resolution);
+  const mainRendered = wrapWithShaders(inputComponent, activeShaders, resolution);
+
+  if (input.attachedInputs && input.attachedInputs.length > 0) {
+    return (
+      <View style={{ ...resolution, direction: 'column', overflow: 'visible' }}>
+        {input.attachedInputs.map(attached => (
+          <Rescaler key={attached.inputId} style={{ ...resolution, top: 0, left: 0 }}>
+            <Input input={attached} />
+          </Rescaler>
+        ))}
+        <Rescaler style={{ ...resolution, top: 0, left: 0 }}>
+          {mainRendered}
+        </Rescaler>
+      </View>
+    );
+  }
+
+  return mainRendered;
 }
 
 export function SmallInput({
@@ -419,10 +436,26 @@ export function SmallInput({
     </View>
   );
 
-  if (activeShaders.length) {
+  const mainRendered = activeShaders.length
+    ? wrapWithShaders(smallInputComponent, activeShaders, resolution)
+    : smallInputComponent;
+
+  if (input.attachedInputs && input.attachedInputs.length > 0) {
     return (
-      <Rescaler>{wrapWithShaders(smallInputComponent, activeShaders, resolution)}</Rescaler>
+      <Rescaler>
+        <View style={{ ...resolution, direction: 'column', overflow: 'visible' }}>
+          {input.attachedInputs.map(attached => (
+            <Rescaler key={attached.inputId} style={{ ...resolution, top: 0, left: 0 }}>
+              <SmallInput input={attached} resolution={resolution} />
+            </Rescaler>
+          ))}
+          <Rescaler style={{ ...resolution, top: 0, left: 0 }}>
+            {mainRendered}
+          </Rescaler>
+        </View>
+      </Rescaler>
     );
   }
-  return <Rescaler>{smallInputComponent}</Rescaler>;
+
+  return <Rescaler>{mainRendered}</Rescaler>;
 }

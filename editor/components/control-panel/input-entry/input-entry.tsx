@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   AvailableShader,
   connectInput,
@@ -18,6 +19,8 @@ import {
   AlignRight,
   RectangleHorizontal,
   RectangleVertical,
+  RotateCw,
+  Link,
 } from 'lucide-react';
 import ShaderPanel from './shader-panel';
 import { StatusButton } from './status-button';
@@ -31,12 +34,12 @@ import {
 } from './utils';
 import { handleShaderDrop, handleShaderDragOver } from './shader-drop-handler';
 import { stopCameraAndConnection } from '../whip-input/utils/preview';
+import { rotateBy90 } from '../whip-input/utils/whip-publisher';
 import {
   clearWhipSessionFor,
   loadLastWhipInputId,
   loadWhipSession,
 } from '../whip-input/utils/whip-storage';
-import { useDriverTourControls } from '@/components/tour/DriverTourContext';
 import { useIsMobile } from '@/hooks/use-mobile';
 
 /**
@@ -64,6 +67,18 @@ function packedIntToHex(packed: number): string {
   return `#${r}${g}${b}`;
 }
 
+function isInputAttachedElsewhere(
+  targetInputId: string,
+  currentInputId: string,
+  allInputs: Input[],
+): boolean {
+  return allInputs.some(
+    (i) =>
+      i.inputId !== currentInputId &&
+      (i.attachedInputIds || []).includes(targetInputId),
+  );
+}
+
 interface InputEntryProps {
   roomId: string;
   input: Input;
@@ -81,6 +96,9 @@ interface InputEntryProps {
   showGrip?: boolean;
   isSelected?: boolean;
   index?: number;
+  allInputs?: Input[];
+  readOnly?: boolean;
+  isLocalWhipInput?: boolean;
 }
 
 export default function InputEntry({
@@ -100,6 +118,9 @@ export default function InputEntry({
   showGrip = true,
   isSelected = false,
   index,
+  allInputs,
+  readOnly = false,
+  isLocalWhipInput = false,
 }: InputEntryProps) {
   const [connectionStateLoading, setConnectionStateLoading] = useState(false);
   const [showSliders, setShowSliders] = useState(false);
@@ -129,6 +150,12 @@ export default function InputEntry({
   );
   const [isTextSaving, setIsTextSaving] = useState(false);
   const textSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const attachBtnRef = useRef<HTMLButtonElement>(null);
+  const [attachMenuPos, setAttachMenuPos] = useState<{
+    top: number;
+    left: number;
+  } | null>(null);
   const isMobile = useIsMobile();
   const muted = input.volume === 0;
   const showTitle = input.showTitle !== false;
@@ -136,26 +163,6 @@ export default function InputEntry({
 
   const isWhipInput = input.type === 'whip';
   const isTextInput = input.type === 'text-input';
-
-  const [isComposingTourActive, setIsComposingTourActive] = useState(false);
-  useEffect(() => {
-    const onStart = (e: any) => {
-      try {
-        if (e?.detail?.id === 'composing') setIsComposingTourActive(true);
-      } catch {}
-    };
-    const onStop = (e: any) => {
-      try {
-        if (e?.detail?.id === 'composing') setIsComposingTourActive(false);
-      } catch {}
-    };
-    window.addEventListener('smelter:tour:start', onStart);
-    window.addEventListener('smelter:tour:stop', onStop);
-    return () => {
-      window.removeEventListener('smelter:tour:start', onStart);
-      window.removeEventListener('smelter:tour:stop', onStop);
-    };
-  }, []);
 
   useEffect(() => {
     if (input.textColor !== undefined) {
@@ -240,6 +247,47 @@ export default function InputEntry({
     });
     await refreshState();
   }, [roomId, input, isVerticalOrientation, refreshState]);
+
+  const handleRotate90 = useCallback(async () => {
+    if (isLocalWhipInput && pcRef && streamRef) {
+      const angle = await rotateBy90(pcRef, streamRef);
+      await updateInput(roomId, input.inputId, {
+        orientation: angle % 180 !== 0 ? 'vertical' : 'horizontal',
+        shaders: input.shaders,
+        volume: input.volume,
+      });
+    } else {
+      await updateInput(roomId, input.inputId, {
+        orientation: isVerticalOrientation ? 'horizontal' : 'vertical',
+        shaders: input.shaders,
+        volume: input.volume,
+      });
+    }
+    await refreshState();
+  }, [
+    roomId,
+    input,
+    isVerticalOrientation,
+    refreshState,
+    isLocalWhipInput,
+    pcRef,
+    streamRef,
+  ]);
+
+  const handleAttachToggle = useCallback(
+    async (targetInputId: string) => {
+      const currentAttached = input.attachedInputIds || [];
+      const newAttached = currentAttached.includes(targetInputId)
+        ? currentAttached.filter((id) => id !== targetInputId)
+        : [...currentAttached, targetInputId];
+      await updateInput(roomId, input.inputId, {
+        volume: input.volume,
+        attachedInputIds: newAttached,
+      });
+      await refreshState();
+    },
+    [roomId, input, refreshState],
+  );
 
   const handleTextChange = useCallback(
     (newText: string) => {
@@ -434,16 +482,13 @@ export default function InputEntry({
     onWhipDisconnectedOrRemoved,
   ]);
 
-  const { nextIf: shadersTourNextIf } = useDriverTourControls('shaders');
-
   const handleSlidersToggle = useCallback(() => {
-    setTimeout(() => shadersTourNextIf(0), 50);
     if (onToggleFx) {
       onToggleFx();
     } else {
       setShowSliders((prev) => !prev);
     }
-  }, [shadersTourNextIf, onToggleFx]);
+  }, [onToggleFx]);
 
   const handleShaderToggle = useCallback(
     async (shaderId: string) => {
@@ -496,7 +541,6 @@ export default function InputEntry({
               : shader,
           );
         }
-        setTimeout(() => shadersTourNextIf(1), 500);
         await updateInput(roomId, input.inputId, {
           shaders: newShadersConfig,
           volume: input.volume,
@@ -506,7 +550,7 @@ export default function InputEntry({
         setShaderLoading(null);
       }
     },
-    [roomId, input, refreshState, shadersTourNextIf],
+    [roomId, input, refreshState],
   );
 
   const handleSliderChange = useCallback(
@@ -745,7 +789,7 @@ export default function InputEntry({
             <span className='ml-2 text-xs text-neutral-400'>Saving...</span>
           )}
         </div>
-        {isTextInput && (
+        {isTextInput && !readOnly && (
           <div className='mb-3 md:pl-7'>
             <textarea
               data-no-dnd
@@ -866,180 +910,262 @@ export default function InputEntry({
             </div>
           </div>
         )}
-        <div className='flex flex-row items-center min-w-0'>
-          <div className='flex-1 flex md:pl-7 min-w-0'>
+        {!readOnly && (
+          <div className='flex flex-row items-center min-w-0'>
+            <div className='flex-1 flex md:pl-7 min-w-0'>
+              <StatusButton
+                input={input}
+                loading={connectionStateLoading}
+                showSliders={effectiveShowSliders}
+                onClick={handleSlidersToggle}
+              />
+            </div>
+            <div className='flex flex-row items-center justify-end flex-1 gap-0.5 pr-1'>
+              <Button
+                data-no-dnd
+                size='sm'
+                variant='ghost'
+                className={`transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer ${
+                  canMoveUp ? 'text-white hover:text-white' : 'text-neutral-500'
+                }`}
+                disabled={!canMoveUp}
+                aria-label='Move up'
+                onClick={() => {
+                  try {
+                    window.dispatchEvent(
+                      new CustomEvent('smelter:inputs:move', {
+                        detail: {
+                          roomId,
+                          inputId: input.inputId,
+                          direction: 'up',
+                        },
+                      }),
+                    );
+                  } catch {}
+                }}>
+                <ChevronUp className='size-5' strokeWidth={3} />
+              </Button>
+              <Button
+                data-no-dnd
+                size='sm'
+                variant='ghost'
+                className={`transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer ${
+                  canMoveDown
+                    ? 'text-white hover:text-white'
+                    : 'text-neutral-500'
+                }`}
+                disabled={!canMoveDown}
+                aria-label='Move down'
+                onClick={() => {
+                  try {
+                    window.dispatchEvent(
+                      new CustomEvent('smelter:inputs:move', {
+                        detail: {
+                          roomId,
+                          inputId: input.inputId,
+                          direction: 'down',
+                        },
+                      }),
+                    );
+                  } catch {}
+                }}>
+                <ChevronDown className='size-5' strokeWidth={3} />
+              </Button>
+              <Button
+                data-no-dnd
+                size='sm'
+                variant='ghost'
+                className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
+                onClick={handleOrientationToggle}
+                aria-label={
+                  isVerticalOrientation
+                    ? 'Switch to horizontal'
+                    : 'Switch to vertical'
+                }
+                title={
+                  isVerticalOrientation
+                    ? 'Vertical (click for horizontal)'
+                    : 'Horizontal (click for vertical)'
+                }>
+                {isVerticalOrientation ? (
+                  <RectangleVertical className='text-white size-5' />
+                ) : (
+                  <RectangleHorizontal className='text-neutral-400 size-5' />
+                )}
+              </Button>
+              {isWhipInput && (
+                <Button
+                  data-no-dnd
+                  size='sm'
+                  variant='ghost'
+                  className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
+                  onClick={handleRotate90}
+                  aria-label='Rotate 90°'
+                  title='Rotate 90°'>
+                  <RotateCw className='text-neutral-400 size-5' />
+                </Button>
+              )}
+              <Button
+                ref={attachBtnRef}
+                data-no-dnd
+                size='sm'
+                variant='ghost'
+                className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
+                onClick={() => {
+                  if (!showAttachMenu && attachBtnRef.current) {
+                    const rect = attachBtnRef.current.getBoundingClientRect();
+                    setAttachMenuPos({
+                      top: rect.top,
+                      left: rect.right,
+                    });
+                  }
+                  setShowAttachMenu(!showAttachMenu);
+                }}
+                aria-label='Attach inputs'
+                title='Attach inputs (render behind this input)'>
+                <Link
+                  className={`size-5 ${(input.attachedInputIds?.length ?? 0) > 0 ? 'text-blue-400' : 'text-neutral-400'}`}
+                />
+              </Button>
+              {showAttachMenu &&
+                attachMenuPos &&
+                createPortal(
+                  <>
+                    <div
+                      className='fixed inset-0 z-[99]'
+                      onClick={() => setShowAttachMenu(false)}
+                    />
+                    <div
+                      className='fixed bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-2 z-[100] min-w-48'
+                      style={{
+                        top: attachMenuPos.top,
+                        left: attachMenuPos.left,
+                        transform: 'translate(-100%, -100%)',
+                      }}>
+                      <div className='text-xs text-neutral-400 mb-1 px-1'>
+                        Attach inputs (render behind)
+                      </div>
+                      {(allInputs || [])
+                        .filter((i) => i.inputId !== input.inputId)
+                        .filter(
+                          (i) =>
+                            !isInputAttachedElsewhere(
+                              i.inputId,
+                              input.inputId,
+                              allInputs || [],
+                            ),
+                        )
+                        .map((i) => {
+                          const isAttached = (
+                            input.attachedInputIds || []
+                          ).includes(i.inputId);
+                          return (
+                            <label
+                              key={i.inputId}
+                              className='flex items-center gap-2 px-1 py-1 hover:bg-neutral-700 rounded cursor-pointer'>
+                              <input
+                                type='checkbox'
+                                checked={isAttached}
+                                onChange={() => handleAttachToggle(i.inputId)}
+                                className='accent-blue-500 cursor-pointer'
+                              />
+                              <span className='text-sm text-white truncate'>
+                                {i.title}
+                              </span>
+                            </label>
+                          );
+                        })}
+                    </div>
+                  </>,
+                  document.body,
+                )}
+              <Button
+                data-no-dnd
+                size='sm'
+                variant='ghost'
+                className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
+                onClick={handleShowTitleToggle}
+                aria-label={showTitle ? 'Hide title' : 'Show title'}>
+                <span className='relative inline-flex items-center justify-center'>
+                  <Type
+                    className={`${showTitle ? 'text-white' : 'text-neutral-400'} size-5`}
+                  />
+                  {!showTitle && (
+                    <span className='absolute inset-0 flex items-center justify-center pointer-events-none'>
+                      <svg
+                        width='20'
+                        height='20'
+                        viewBox='0 0 20 20'
+                        fill='none'
+                        className='text-neutral-400'>
+                        <line
+                          x1='4'
+                          y1='4'
+                          x2='16'
+                          y2='16'
+                          stroke='currentColor'
+                          strokeWidth='2'
+                          strokeLinecap='round'
+                        />
+                      </svg>
+                    </span>
+                  )}
+                </span>
+              </Button>
+              <MuteButton
+                muted={muted}
+                disabled={input.sourceState === 'offline'}
+                onClick={handleMuteToggle}
+              />
+              {canRemove && <DeleteButton onClick={handleDelete} />}
+            </div>
+          </div>
+        )}
+        {!readOnly && (
+          <div
+            className={
+              shaderPanelBase +
+              ' ' +
+              (effectiveShowSliders ? shaderPanelShow : shaderPanelHide)
+            }
+            aria-hidden={!effectiveShowSliders}
+            style={{
+              maxHeight: effectiveShowSliders ? '500px' : 0,
+              height: effectiveShowSliders ? '100%' : 0,
+              transitionProperty: 'opacity, transform, height, max-height',
+            }}
+            onDragOver={handleShaderDragOver}
+            onDrop={(e) =>
+              handleShaderDrop({
+                e,
+                input,
+                availableShaders,
+                onShaderToggle: handleShaderToggle,
+                onAddShader: addShaderConfig,
+              })
+            }>
             {(() => {
-              const installedCountForHide = (input.shaders || []).length;
-              const hideAddEffectsButton =
-                isComposingTourActive &&
-                !effectiveShowSliders &&
-                installedCountForHide === 0;
-              if (hideAddEffectsButton) return null;
+              const shadersForPanel = effectiveShowSliders
+                ? availableShaders
+                : visibleShaders;
               return (
-                <StatusButton
+                <ShaderPanel
                   input={input}
-                  loading={connectionStateLoading}
-                  showSliders={effectiveShowSliders}
-                  onClick={handleSlidersToggle}
+                  availableShaders={shadersForPanel}
+                  sliderValues={sliderValues}
+                  paramLoading={paramLoading}
+                  shaderLoading={shaderLoading}
+                  onShaderToggle={handleShaderToggle}
+                  onShaderRemove={handleShaderRemove}
+                  onSliderChange={handleSliderChange}
+                  getShaderParamConfig={getShaderParamConfig}
+                  getShaderButtonClass={getShaderButtonClass}
+                  consolidated={effectiveShowSliders}
                 />
               );
             })()}
           </div>
-          <div className='flex flex-row items-center justify-end flex-1 gap-0.5 pr-1'>
-            <Button
-              data-no-dnd
-              size='sm'
-              variant='ghost'
-              className={`transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer ${
-                canMoveUp ? 'text-white hover:text-white' : 'text-neutral-500'
-              }`}
-              disabled={!canMoveUp}
-              aria-label='Move up'
-              onClick={() => {
-                try {
-                  window.dispatchEvent(
-                    new CustomEvent('smelter:inputs:move', {
-                      detail: {
-                        roomId,
-                        inputId: input.inputId,
-                        direction: 'up',
-                      },
-                    }),
-                  );
-                } catch {}
-              }}>
-              <ChevronUp className='size-5' strokeWidth={3} />
-            </Button>
-            <Button
-              data-no-dnd
-              size='sm'
-              variant='ghost'
-              className={`transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer ${
-                canMoveDown ? 'text-white hover:text-white' : 'text-neutral-500'
-              }`}
-              disabled={!canMoveDown}
-              aria-label='Move down'
-              onClick={() => {
-                try {
-                  window.dispatchEvent(
-                    new CustomEvent('smelter:inputs:move', {
-                      detail: {
-                        roomId,
-                        inputId: input.inputId,
-                        direction: 'down',
-                      },
-                    }),
-                  );
-                } catch {}
-              }}>
-              <ChevronDown className='size-5' strokeWidth={3} />
-            </Button>
-            <Button
-              data-no-dnd
-              size='sm'
-              variant='ghost'
-              className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
-              onClick={handleOrientationToggle}
-              aria-label={
-                isVerticalOrientation
-                  ? 'Switch to horizontal'
-                  : 'Switch to vertical'
-              }
-              title={
-                isVerticalOrientation
-                  ? 'Vertical (click for horizontal)'
-                  : 'Horizontal (click for vertical)'
-              }>
-              {isVerticalOrientation ? (
-                <RectangleVertical className='text-white size-5' />
-              ) : (
-                <RectangleHorizontal className='text-neutral-400 size-5' />
-              )}
-            </Button>
-            <Button
-              data-no-dnd
-              size='sm'
-              variant='ghost'
-              className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
-              onClick={handleShowTitleToggle}
-              aria-label={showTitle ? 'Hide title' : 'Show title'}>
-              <span className='relative inline-flex items-center justify-center'>
-                <Type
-                  className={`${showTitle ? 'text-white' : 'text-neutral-400'} size-5`}
-                />
-                {!showTitle && (
-                  <span className='absolute inset-0 flex items-center justify-center pointer-events-none'>
-                    <svg
-                      width='20'
-                      height='20'
-                      viewBox='0 0 20 20'
-                      fill='none'
-                      className='text-neutral-400'>
-                      <line
-                        x1='4'
-                        y1='4'
-                        x2='16'
-                        y2='16'
-                        stroke='currentColor'
-                        strokeWidth='2'
-                        strokeLinecap='round'
-                      />
-                    </svg>
-                  </span>
-                )}
-              </span>
-            </Button>
-            <MuteButton
-              muted={muted}
-              disabled={input.sourceState === 'offline'}
-              onClick={handleMuteToggle}
-            />
-            {canRemove && <DeleteButton onClick={handleDelete} />}
-          </div>
-        </div>
-        <div
-          className={
-            shaderPanelBase +
-            ' ' +
-            (effectiveShowSliders ? shaderPanelShow : shaderPanelHide)
-          }
-          aria-hidden={!effectiveShowSliders}
-          style={{
-            maxHeight: effectiveShowSliders ? '500px' : 0,
-            height: effectiveShowSliders ? '100%' : 0,
-            transitionProperty: 'opacity, transform, height, max-height',
-          }}
-          onDragOver={handleShaderDragOver}
-          onDrop={(e) =>
-            handleShaderDrop({
-              e,
-              input,
-              availableShaders,
-              onShaderToggle: handleShaderToggle,
-              onAddShader: addShaderConfig,
-            })
-          }>
-          {(() => {
-            const shadersForPanel = effectiveShowSliders
-              ? availableShaders
-              : visibleShaders;
-            return (
-              <ShaderPanel
-                input={input}
-                availableShaders={shadersForPanel}
-                sliderValues={sliderValues}
-                paramLoading={paramLoading}
-                shaderLoading={shaderLoading}
-                onShaderToggle={handleShaderToggle}
-                onShaderRemove={handleShaderRemove}
-                onSliderChange={handleSliderChange}
-                getShaderParamConfig={getShaderParamConfig}
-                getShaderButtonClass={getShaderButtonClass}
-                consolidated={effectiveShowSliders}
-              />
-            );
-          })()}
-        </div>
+        )}
       </div>
 
       <AddShaderModal

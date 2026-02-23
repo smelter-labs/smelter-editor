@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { Input, AvailableShader } from '@/app/actions/actions';
 import type { InputWrapper } from '../hooks/use-control-panel-state';
 import InputEntry from '@/components/control-panel/input-entry/input-entry';
@@ -24,6 +24,9 @@ type StreamsSectionProps = {
   activeScreenshareInputId: string | null;
   onWhipDisconnectedOrRemoved: (id: string) => void;
   selectedInputId: string | null;
+  isGuest?: boolean;
+  guestInputId?: string | null;
+  isSwapping?: boolean;
 };
 
 export function StreamsSection({
@@ -43,6 +46,9 @@ export function StreamsSection({
   activeScreenshareInputId,
   onWhipDisconnectedOrRemoved,
   selectedInputId,
+  isGuest,
+  guestInputId,
+  isSwapping,
 }: StreamsSectionProps) {
   const [isWideScreen, setIsWideScreen] = useState(true);
 
@@ -55,48 +61,132 @@ export function StreamsSection({
     return () => window.removeEventListener('resize', checkWidth);
   }, []);
 
+  const attachedInputIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const input of inputs) {
+      for (const id of input.attachedInputIds || []) {
+        ids.add(id);
+      }
+    }
+    return ids;
+  }, [inputs]);
+
+  const visibleWrappers = useMemo(
+    () => inputWrappers.filter((w) => !attachedInputIds.has(w.inputId)),
+    [inputWrappers, attachedInputIds],
+  );
+
   return (
-    <Accordion title='Streams' defaultOpen data-tour='streams-list-container'>
+    <Accordion title='Streams' defaultOpen>
       <div className='flex-1 overflow-y-auto overflow-x-hidden relative'>
         <div className='pointer-events-none absolute top-0 left-0 right-0 h-2 z-40' />
+        {isSwapping && (
+          <div className='absolute inset-0 z-50 flex items-center justify-center bg-black/60 rounded-md backdrop-blur-sm'>
+            <div className='flex items-center gap-2 text-neutral-300 text-sm'>
+              <svg
+                className='animate-spin h-5 w-5'
+                viewBox='0 0 24 24'
+                fill='none'>
+                <circle
+                  className='opacity-25'
+                  cx='12'
+                  cy='12'
+                  r='10'
+                  stroke='currentColor'
+                  strokeWidth='4'
+                />
+                <path
+                  className='opacity-75'
+                  fill='currentColor'
+                  d='M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z'
+                />
+              </svg>
+              <span>Transitioning…</span>
+            </div>
+          </div>
+        )}
         {showStreamsSpinner ? (
           <div className='flex items-center justify-center h-32'>
             <LoadingSpinner size='lg' variant='spinner' />
           </div>
         ) : (
           <SortableList
-            items={inputWrappers}
+            items={visibleWrappers}
             resetVersion={listVersion}
-            disableDrag={!isWideScreen}
+            disableDrag={isGuest || !isWideScreen}
             renderItem={(item, index, orderedItems) => {
               const input = inputs.find(
                 (input) => input.inputId === item.inputId,
               );
               const isFirst = index === 0;
               const isLast = index === orderedItems.length - 1;
+              const attachedChildren =
+                input?.attachedInputIds
+                  ?.map((id) => inputs.find((i) => i.inputId === id))
+                  .filter((i): i is Input => !!i) || [];
               return (
                 <SortableItem
                   key={item.inputId}
                   id={item.id}
-                  disableDrag={!isWideScreen}>
+                  disableDrag={isGuest || !isWideScreen}>
                   {input && (
-                    <InputEntry
-                      input={input}
-                      refreshState={refreshState}
-                      roomId={roomId}
-                      availableShaders={availableShaders}
-                      canRemove={inputs.length > 1}
-                      canMoveUp={!isFirst}
-                      canMoveDown={!isLast}
-                      pcRef={cameraPcRef}
-                      streamRef={cameraStreamRef}
-                      isFxOpen={openFxInputId === input.inputId}
-                      onToggleFx={() => onToggleFx(input.inputId)}
-                      onWhipDisconnectedOrRemoved={onWhipDisconnectedOrRemoved}
-                      showGrip={isWideScreen}
-                      isSelected={selectedInputId === input.inputId}
-                      index={index}
-                    />
+                    <>
+                      <InputEntry
+                        input={input}
+                        refreshState={refreshState}
+                        roomId={roomId}
+                        availableShaders={availableShaders}
+                        canRemove={
+                          isGuest
+                            ? input.inputId === guestInputId
+                            : visibleWrappers.length > 1
+                        }
+                        canMoveUp={isGuest ? false : !isFirst}
+                        canMoveDown={isGuest ? false : !isLast}
+                        pcRef={cameraPcRef}
+                        streamRef={cameraStreamRef}
+                        isLocalWhipInput={
+                          input.inputId === activeCameraInputId ||
+                          input.inputId === activeScreenshareInputId
+                        }
+                        isFxOpen={openFxInputId === input.inputId}
+                        onToggleFx={() => onToggleFx(input.inputId)}
+                        onWhipDisconnectedOrRemoved={
+                          onWhipDisconnectedOrRemoved
+                        }
+                        showGrip={isGuest ? false : isWideScreen}
+                        isSelected={selectedInputId === input.inputId}
+                        index={index}
+                        allInputs={inputs}
+                        readOnly={isGuest && input.inputId !== guestInputId}
+                      />
+                      {attachedChildren.map((child) => (
+                        <div
+                          key={child.inputId}
+                          className='ml-6 mt-1 border-l-2 border-blue-500/30 pl-2'>
+                          <InputEntry
+                            input={child}
+                            refreshState={refreshState}
+                            roomId={roomId}
+                            availableShaders={availableShaders}
+                            canRemove={false}
+                            canMoveUp={false}
+                            canMoveDown={false}
+                            pcRef={cameraPcRef}
+                            streamRef={cameraStreamRef}
+                            isFxOpen={openFxInputId === child.inputId}
+                            onToggleFx={() => onToggleFx(child.inputId)}
+                            onWhipDisconnectedOrRemoved={
+                              onWhipDisconnectedOrRemoved
+                            }
+                            showGrip={false}
+                            isSelected={selectedInputId === child.inputId}
+                            allInputs={inputs}
+                            readOnly={isGuest && child.inputId !== guestInputId}
+                          />
+                        </div>
+                      ))}
+                    </>
                   )}
                 </SortableItem>
               );
