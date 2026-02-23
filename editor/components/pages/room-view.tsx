@@ -25,7 +25,6 @@ export default function RoomView({
   const [showAutoplayPopup, setShowAutoplayPopup] = useState(true);
   const [played, setPlayed] = useState(false);
   const [guestStream, setGuestStream] = useState<MediaStream | null>(null);
-  const [layoutSection, setLayoutSection] = useState<React.ReactNode>(null);
   const [panelExpanded, setPanelExpanded] = useState(() => {
     if (typeof window === 'undefined') return false;
     return localStorage.getItem('control-panel-expanded') === 'true';
@@ -174,9 +173,10 @@ export default function RoomView({
 
       <motion.div
         variants={staggerContainer}
-        className={`flex-1 grid grid-cols-1 grid-rows-[auto,1fr] gap-0 xl:grid-rows-none xl:gap-4 min-h-0 h-full items-start overflow-hidden ${panelExpanded ? 'xl:grid-cols-2' : 'xl:grid-cols-4'}`}>
+        className={`flex-1 grid min-h-0 h-full overflow-hidden gap-4 ${panelExpanded ? 'xl:grid-cols-2' : 'xl:grid-cols-4'}`}
+        style={{ gridTemplateRows: 'minmax(0, 1fr) auto' }}>
         <div
-          className={`${panelExpanded ? 'xl:col-span-1' : 'xl:col-span-3'} flex flex-col gap-4`}>
+          className={`${panelExpanded ? 'xl:col-span-1' : 'xl:col-span-3'} flex flex-col gap-4 min-h-0`}>
           <VideoPreview
             videoRef={videoRef}
             whepUrl={roomState.whepUrl}
@@ -187,18 +187,17 @@ export default function RoomView({
             panelExpanded={panelExpanded}
             onTogglePanelExpanded={togglePanelExpanded}
           />
-          {layoutSection}
         </div>
-        <motion.div className='col-span-1 w-full flex flex-col xl:gap-4 min-h-0 h-full max-h-full justify-start overflow-y-auto overflow-x-hidden md:pr-4 control-panel-container'>
-          <div className='control-panel-wrapper'>
-            <ControlPanel
-              roomState={roomState}
-              roomId={roomId}
-              refreshState={refreshState}
-              onLayoutSection={setLayoutSection}
-            />
-          </div>
-        </motion.div>
+        <div
+          className='col-span-1 row-span-1 w-full flex flex-col min-h-0 h-full max-h-full justify-start overflow-x-hidden md:pr-4 control-panel-container'
+          style={{ display: 'contents' }}>
+          <ControlPanel
+            roomState={roomState}
+            roomId={roomId}
+            refreshState={refreshState}
+            renderStreamsOutside
+          />
+        </div>
       </motion.div>
     </>
   );

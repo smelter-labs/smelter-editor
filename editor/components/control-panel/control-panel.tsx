@@ -43,7 +43,7 @@ export type ControlPanelProps = {
   onGuestRotateRef?: React.MutableRefObject<
     (() => Promise<RotationAngle>) | null
   >;
-  onLayoutSection?: (layoutSection: React.ReactNode) => void;
+  renderStreamsOutside?: boolean;
 };
 
 export type { InputWrapper } from './hooks/use-control-panel-state';
@@ -56,7 +56,7 @@ export default function ControlPanel({
   onGuestStreamChange,
   onGuestInputIdChange,
   onGuestRotateRef,
-  onLayoutSection,
+  renderStreamsOutside,
 }: ControlPanelProps) {
   const addVideoAccordionRef = useRef<AccordionHandle | null>(null);
 
@@ -284,10 +284,34 @@ export default function ControlPanel({
       ? inputs.find((i) => i.inputId === openFxInputId)!
       : null;
 
-  return (
+  const streamsSection = !fxInput ? (
+    <StreamsSection
+      inputs={inputs}
+      inputWrappers={inputWrappers}
+      listVersion={listVersion}
+      showStreamsSpinner={showStreamsSpinner}
+      roomId={roomId}
+      refreshState={handleRefreshState}
+      availableShaders={availableShaders}
+      updateOrder={updateOrderWithLock}
+      openFxInputId={openFxInputId}
+      onToggleFx={handleToggleFx}
+      isSwapping={isSwapping}
+      cameraPcRef={cameraPcRef}
+      cameraStreamRef={cameraStreamRef}
+      activeCameraInputId={activeCameraInputId}
+      activeScreenshareInputId={activeScreenshareInputId}
+      onWhipDisconnectedOrRemoved={handleWhipDisconnectedOrRemoved}
+      selectedInputId={selectedInputId}
+      isGuest={isGuest}
+      guestInputId={activeCameraInputId || activeScreenshareInputId}
+    />
+  ) : null;
+
+  const mainPanel = (
     <motion.div
       {...(fadeIn as any)}
-      className='flex flex-col flex-1 min-h-0 gap-3 rounded-none bg-neutral-950 mt-6'>
+      className={`flex flex-col flex-1 min-h-0 gap-3 rounded-none bg-neutral-950 mt-6 ${renderStreamsOutside ? 'col-span-1 row-span-1 overflow-y-auto overflow-x-hidden md:pr-4' : ''}`}>
       <video id='local-preview' muted playsInline autoPlay className='hidden' />
 
       {fxInput ? (
@@ -348,27 +372,7 @@ export default function ControlPanel({
             setActiveScreenshareInputId={setActiveScreenshareInputId}
             setIsScreenshareActive={setIsScreenshareActive}
           />
-          <StreamsSection
-            inputs={inputs}
-            inputWrappers={inputWrappers}
-            listVersion={listVersion}
-            showStreamsSpinner={showStreamsSpinner}
-            roomId={roomId}
-            refreshState={handleRefreshState}
-            availableShaders={availableShaders}
-            updateOrder={updateOrderWithLock}
-            openFxInputId={openFxInputId}
-            onToggleFx={handleToggleFx}
-            isSwapping={isSwapping}
-            cameraPcRef={cameraPcRef}
-            cameraStreamRef={cameraStreamRef}
-            activeCameraInputId={activeCameraInputId}
-            activeScreenshareInputId={activeScreenshareInputId}
-            onWhipDisconnectedOrRemoved={handleWhipDisconnectedOrRemoved}
-            selectedInputId={selectedInputId}
-            isGuest={isGuest}
-            guestInputId={activeCameraInputId || activeScreenshareInputId}
-          />
+          {!renderStreamsOutside && streamsSection}
           {!isGuest && (
             <>
               <QuickActionsSection
@@ -381,7 +385,6 @@ export default function ControlPanel({
                 roomState={roomState}
                 roomId={roomId}
                 handleRefreshState={handleRefreshState}
-                onLayoutSection={onLayoutSection}
                 pendingWhipInputs={pendingWhipInputs}
                 setPendingWhipInputs={handleSetPendingWhipInputs}
               />
@@ -391,6 +394,19 @@ export default function ControlPanel({
       )}
     </motion.div>
   );
+
+  if (renderStreamsOutside) {
+    return (
+      <>
+        {mainPanel}
+        {streamsSection && (
+          <div className='col-span-full row-start-2'>{streamsSection}</div>
+        )}
+      </>
+    );
+  }
+
+  return mainPanel;
 }
 
 function LayoutAndTransitions({
@@ -398,7 +414,6 @@ function LayoutAndTransitions({
   roomState,
   roomId,
   handleRefreshState,
-  onLayoutSection,
   pendingWhipInputs,
   setPendingWhipInputs,
 }: {
@@ -406,12 +421,11 @@ function LayoutAndTransitions({
   roomState: RoomState;
   roomId: string;
   handleRefreshState: () => Promise<void>;
-  onLayoutSection?: (node: React.ReactNode) => void;
   pendingWhipInputs: PendingWhipInput[];
   setPendingWhipInputs: (inputs: PendingWhipInput[]) => void | Promise<void>;
 }) {
-  const content = (
-    <div className='grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-start'>
+  return (
+    <>
       <Accordion title='Layouts' defaultOpen>
         <LayoutSelector
           changeLayout={changeLayout}
@@ -480,13 +494,6 @@ function LayoutAndTransitions({
         pendingWhipInputs={pendingWhipInputs}
         setPendingWhipInputs={setPendingWhipInputs}
       />
-    </div>
+    </>
   );
-
-  useEffect(() => {
-    onLayoutSection?.(content);
-  });
-
-  if (onLayoutSection) return null;
-  return content;
 }
