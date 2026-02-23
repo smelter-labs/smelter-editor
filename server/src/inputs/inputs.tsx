@@ -95,10 +95,11 @@ function wrapWithShaders(
           value: rgb.b,
         } as ShaderParamStructField);
       } else {
+        const numValue = typeof param.paramValue === 'string' ? Number(param.paramValue) : param.paramValue;
         shaderParams.push({
           type: 'f32',
           fieldName: param.paramName,
-          value: param.paramValue,
+          value: numValue,
         } as ShaderParamStructField);
       }
     }

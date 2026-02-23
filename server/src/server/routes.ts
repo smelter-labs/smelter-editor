@@ -1,11 +1,13 @@
 import Fastify from 'fastify';
+import { STATUS_CODES } from 'node:http';
 import path from 'node:path';
 import { pathExists, readdir, readFile, stat } from 'fs-extra';
 import { Type } from '@sinclair/typebox';
 import type { Static, TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { state } from './serverState';
 import { TwitchChannelSuggestions } from '../twitch/TwitchChannelMonitor';
-import type { RoomInputState, RegisterInputOptions, PendingWhipInputData } from './roomState';
+import type { RegisterInputOptions, PendingWhipInputData } from './roomState';
+import { toPublicInputState } from './publicInputState';
 import { config } from '../config';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
 import pictureSuggestionsMonitor from '../pictures/pictureSuggestionMonitor';
@@ -18,31 +20,22 @@ type RoomIdParams = { Params: { roomId: string } };
 type RoomAndInputIdParams = { Params: { roomId: string; inputId: string } };
 type RecordingFileParams = { Params: { fileName: string } };
 
-type InputState = {
-  inputId: string;
-  title: string;
-  description: string;
-  showTitle: boolean;
-  sourceState: 'live' | 'offline' | 'unknown' | 'always-live';
-  status: 'disconnected' | 'pending' | 'connected';
-  volume: number;
-  type: 'local-mp4' | 'twitch-channel' | 'kick-channel' | 'whip' | 'image' | 'text-input';
-  shaders: ShaderConfig[];
-  orientation: 'horizontal' | 'vertical';
-  channelId?: string;
-  imageId?: string;
-  text?: string;
-  textAlign?: 'left' | 'center' | 'right';
-  textColor?: string;
-  textMaxLines?: number;
-  textScrollSpeed?: number;
-  textFontSize?: number;
-  attachedInputIds?: string[];
-};
-
 export const routes = Fastify({
   logger: config.logger,
 }).withTypeProvider<TypeBoxTypeProvider>();
+
+routes.setErrorHandler((err: unknown, _req, res) => {
+  const e = err as { statusCode?: number; status?: number; code?: string; message?: string };
+  const statusCode = e.statusCode ?? e.status ?? 500;
+  const code = e.code ?? 'INTERNAL_ERROR';
+  const message = e.message ?? 'Internal server error';
+  res.status(statusCode).send({
+    statusCode,
+    code,
+    error: STATUS_CODES[statusCode] ?? 'Unknown Error',
+    message,
+  });
+});
 
 routes.get('/suggestions/mp4s', async (_req, res) => {
   res.status(200).send({ mp4s: mp4SuggestionsMonitor.mp4Files });
@@ -65,8 +58,53 @@ routes.get('/suggestions', async (_req, res) => {
   res.status(200).send({ twitch: TwitchChannelSuggestions.getTopStreams() });
 });
 
+const RoomIdParamsSchema = Type.Object({
+  roomId: Type.String({ maxLength: 64, minLength: 1 }),
+});
+
+const RoomAndInputIdParamsSchema = Type.Object({
+  roomId: Type.String({ maxLength: 64, minLength: 1 }),
+  inputId: Type.String({ maxLength: 512, minLength: 1 }),
+});
+
+const InputSchema = Type.Union([
+  Type.Object({
+    type: Type.Literal('twitch-channel'),
+    channelId: Type.String(),
+  }),
+  Type.Object({
+    type: Type.Literal('kick-channel'),
+    channelId: Type.String(),
+  }),
+  Type.Object({
+    type: Type.Literal('whip'),
+    username: Type.String(),
+  }),
+  Type.Object({
+    type: Type.Literal('local-mp4'),
+    source: Type.Union([
+      Type.Object({ fileName: Type.String() }),
+      Type.Object({ url: Type.String() }),
+    ]),
+  }),
+  Type.Object({
+    type: Type.Literal('image'),
+    fileName: Type.Optional(Type.String()),
+    imageId: Type.Optional(Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal('text-input'),
+    text: Type.String(),
+    textAlign: Type.Optional(Type.Union([
+      Type.Literal('left'),
+      Type.Literal('center'),
+      Type.Literal('right'),
+    ])),
+  }),
+]);
+
 const CreateRoomSchema = Type.Object({
-  initInputs: Type.Optional(Type.Array(Type.Any())),
+  initInputs: Type.Optional(Type.Array(InputSchema)),
   skipDefaultInputs: Type.Optional(Type.Boolean()),
   resolution: Type.Optional(
     Type.Union([
@@ -120,13 +158,13 @@ routes.get('/shaders', async (_req, res) => {
   res.status(200).send({ shaders: visible });
 });
 
-routes.get<RoomIdParams>('/room/:roomId', async (req, res) => {
+routes.get<RoomIdParams>('/room/:roomId', { schema: { params: RoomIdParamsSchema } }, async (req, res) => {
   const { roomId } = req.params;
   const room = state.getRoom(roomId);
   const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs, newsStripEnabled] = room.getState();
 
   res.status(200).send({
-    inputs: inputs.map(publicInputState),
+    inputs: inputs.map(toPublicInputState),
     layout,
     whepUrl: room.getWhepUrl(),
     pendingDelete: room.pendingDelete,
@@ -160,7 +198,7 @@ routes.get('/rooms', async (_req, res) => {
       const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs, newsStripEnabled] = room.getState();
       return {
         roomId: room.idPrefix,
-        inputs: inputs.map(publicInputState),
+        inputs: inputs.map(toPublicInputState),
         layout,
         whepUrl: room.getWhepUrl(),
         pendingDelete: room.pendingDelete,
@@ -182,7 +220,7 @@ routes.get('/rooms', async (_req, res) => {
     .send(JSON.stringify({ rooms: roomsInfo }, null, 2));
 });
 
-routes.post<RoomIdParams>('/room/:roomId/record/start', async (req, res) => {
+routes.post<RoomIdParams>('/room/:roomId/record/start', { schema: { params: RoomIdParamsSchema } }, async (req, res) => {
   const { roomId } = req.params;
   console.log('[request] Start recording', { roomId });
   try {
@@ -197,7 +235,7 @@ routes.post<RoomIdParams>('/room/:roomId/record/start', async (req, res) => {
   }
 });
 
-routes.post<RoomIdParams>('/room/:roomId/record/stop', async (req, res) => {
+routes.post<RoomIdParams>('/room/:roomId/record/stop', { schema: { params: RoomIdParamsSchema } }, async (req, res) => {
   const { roomId } = req.params;
   console.log('[request] Stop recording', { roomId });
   try {
@@ -253,7 +291,7 @@ routes.get('/recordings', async (_req, res) => {
   }
 });
 
-routes.get<RoomIdParams>('/room/:roomId/recordings', async (req, res) => {
+routes.get<RoomIdParams>('/room/:roomId/recordings', { schema: { params: RoomIdParamsSchema } }, async (req, res) => {
   const { roomId } = req.params;
   const safeRoomId = roomId.replace(/[^a-zA-Z0-9_-]/g, '_');
   const recordingsDir = RECORDINGS_DIR;
@@ -339,7 +377,7 @@ const UpdateRoomSchema = Type.Object({
 
 routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
   '/room/:roomId',
-  { schema: { body: UpdateRoomSchema } },
+  { schema: { params: RoomIdParamsSchema, body: UpdateRoomSchema } },
   async (req, res) => {
     const { roomId } = req.params;
     console.log('[request] Update room', { body: req.body, roomId });
@@ -393,7 +431,7 @@ const SetPendingWhipInputsSchema = Type.Object({
 
 routes.post<RoomIdParams & { Body: Static<typeof SetPendingWhipInputsSchema> }>(
   '/room/:roomId/pending-whip-inputs',
-  { schema: { body: SetPendingWhipInputsSchema } },
+  { schema: { params: RoomIdParamsSchema, body: SetPendingWhipInputsSchema } },
   async (req, res) => {
     const { roomId } = req.params;
     const room = state.getRoom(roomId);
@@ -404,45 +442,9 @@ routes.post<RoomIdParams & { Body: Static<typeof SetPendingWhipInputsSchema> }>(
 
 // (Removed endpoints for multiple-pictures shader defaults)
 
-const AddInputSchema = Type.Union([
-  Type.Object({
-    type: Type.Literal('twitch-channel'),
-    channelId: Type.String(),
-  }),
-  Type.Object({
-    type: Type.Literal('kick-channel'),
-    channelId: Type.String(),
-  }),
-  Type.Object({
-    type: Type.Literal('whip'),
-    username: Type.String(),
-  }),
-  Type.Object({
-    type: Type.Literal('local-mp4'),
-    source: Type.Union([
-      Type.Object({ fileName: Type.String() }),
-      Type.Object({ url: Type.String() }),
-    ]),
-  }),
-  Type.Object({
-    type: Type.Literal('image'),
-    fileName: Type.Optional(Type.String()),
-    imageId: Type.Optional(Type.String()),
-  }),
-  Type.Object({
-    type: Type.Literal('text-input'),
-    text: Type.String(),
-    textAlign: Type.Optional(Type.Union([
-      Type.Literal('left'),
-      Type.Literal('center'),
-      Type.Literal('right'),
-    ])),
-  }),
-]);
-
-routes.post<RoomIdParams & { Body: Static<typeof AddInputSchema> }>(
+routes.post<RoomIdParams & { Body: Static<typeof InputSchema> }>(
   '/room/:roomId/input',
-  { schema: { body: AddInputSchema } },
+  { schema: { params: RoomIdParamsSchema, body: InputSchema } },
   async (req, res) => {
     const { roomId } = req.params;
     console.log('[request] Create input', { body: req.body, roomId });
@@ -458,7 +460,7 @@ routes.post<RoomIdParams & { Body: Static<typeof AddInputSchema> }>(
   }
 );
 
-routes.post<RoomAndInputIdParams>('/room/:roomId/input/:inputId/whip/ack', async (req, res) => {
+routes.post<RoomAndInputIdParams>('/room/:roomId/input/:inputId/whip/ack', { schema: { params: RoomAndInputIdParamsSchema } }, async (req, res) => {
   const { roomId, inputId } = req.params;
   console.log('[request] WHIP ack', { roomId, inputId });
   try {
@@ -476,7 +478,7 @@ routes.post<RoomAndInputIdParams>('/room/:roomId/input/:inputId/whip/ack', async
   }
 });
 
-routes.post<RoomAndInputIdParams>('/room/:roomId/input/:inputId/connect', async (req, res) => {
+routes.post<RoomAndInputIdParams>('/room/:roomId/input/:inputId/connect', { schema: { params: RoomAndInputIdParamsSchema } }, async (req, res) => {
   const { roomId, inputId } = req.params;
   console.log('[request] Connect input', { roomId, inputId });
   const room = state.getRoom(roomId);
@@ -484,7 +486,7 @@ routes.post<RoomAndInputIdParams>('/room/:roomId/input/:inputId/connect', async 
   res.status(200).send({ status: 'ok' });
 });
 
-routes.post<RoomAndInputIdParams>('/room/:roomId/input/:inputId/disconnect', async (req, res) => {
+routes.post<RoomAndInputIdParams>('/room/:roomId/input/:inputId/disconnect', { schema: { params: RoomAndInputIdParamsSchema } }, async (req, res) => {
   const { roomId, inputId } = req.params;
   console.log('[request] Disconnect input', { roomId, inputId });
   const room = state.getRoom(roomId);
@@ -504,7 +506,7 @@ const UpdateInputSchema = Type.Object({
         params: Type.Array(
           Type.Object({
             paramName: Type.String(),
-            paramValue: Type.Number(),
+            paramValue: Type.Union([Type.Number(), Type.String()]),
           })
         ),
       })
@@ -529,7 +531,7 @@ const UpdateInputSchema = Type.Object({
 
 routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(
   '/room/:roomId/input/:inputId',
-  { schema: { body: UpdateInputSchema } },
+  { schema: { params: RoomAndInputIdParamsSchema, body: UpdateInputSchema } },
   async (req, res) => {
     const { roomId, inputId } = req.params;
     console.log('[request] Update input', { roomId, inputId, body: JSON.stringify(req.body) });
@@ -539,110 +541,10 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(
   }
 );
 
-routes.delete<RoomAndInputIdParams>('/room/:roomId/input/:inputId', async (req, res) => {
+routes.delete<RoomAndInputIdParams>('/room/:roomId/input/:inputId', { schema: { params: RoomAndInputIdParamsSchema } }, async (req, res) => {
   const { roomId, inputId } = req.params;
   console.log('[request] Remove input', { roomId, inputId });
   const room = state.getRoom(roomId);
   await room.removeInput(inputId);
   res.status(200).send({ status: 'ok' });
 });
-
-function publicInputState(input: RoomInputState): InputState {
-  switch (input.type) {
-    case 'local-mp4':
-      return {
-        inputId: input.inputId,
-        title: input.metadata.title,
-        description: input.metadata.description,
-        showTitle: input.showTitle,
-        sourceState: 'always-live',
-        status: input.status,
-        volume: input.volume,
-        type: input.type,
-        shaders: input.shaders,
-        orientation: input.orientation,
-        attachedInputIds: input.attachedInputIds,
-      };
-    case 'image':
-      return {
-        inputId: input.inputId,
-        title: input.metadata.title,
-        description: input.metadata.description,
-        showTitle: input.showTitle,
-        sourceState: 'always-live',
-        status: input.status,
-        volume: input.volume,
-        type: input.type,
-        shaders: input.shaders,
-        orientation: input.orientation,
-        imageId: input.imageId,
-        attachedInputIds: input.attachedInputIds,
-      };
-    case 'twitch-channel':
-      return {
-        inputId: input.inputId,
-        title: input.metadata.title,
-        description: input.metadata.description,
-        showTitle: input.showTitle,
-        sourceState: input.monitor.isLive() ? 'live' : 'offline',
-        status: input.status,
-        volume: input.volume,
-        type: input.type,
-        shaders: input.shaders,
-        orientation: input.orientation,
-        channelId: input.channelId,
-        attachedInputIds: input.attachedInputIds,
-      };
-    case 'kick-channel':
-      return {
-        inputId: input.inputId,
-        title: input.metadata.title,
-        description: input.metadata.description,
-        showTitle: input.showTitle,
-        sourceState: input.monitor.isLive() ? 'live' : 'offline',
-        status: input.status,
-        volume: input.volume,
-        type: input.type,
-        shaders: input.shaders,
-        orientation: input.orientation,
-        channelId: input.channelId,
-        attachedInputIds: input.attachedInputIds,
-      };
-    case 'whip':
-      return {
-        inputId: input.inputId,
-        title: input.metadata.title,
-        description: input.metadata.description,
-        showTitle: input.showTitle,
-        sourceState: input.monitor.isLive() ? 'live' : 'offline',
-        status: input.status,
-        volume: input.volume,
-        type: input.type,
-        shaders: input.shaders,
-        orientation: input.orientation,
-        attachedInputIds: input.attachedInputIds,
-      };
-    case 'text-input':
-      return {
-        inputId: input.inputId,
-        title: input.metadata.title,
-        description: input.metadata.description,
-        showTitle: input.showTitle,
-        sourceState: 'always-live',
-        status: input.status,
-        volume: input.volume,
-        type: input.type,
-        shaders: input.shaders,
-        orientation: input.orientation,
-        text: input.text,
-        textAlign: input.textAlign,
-        textColor: input.textColor,
-        textMaxLines: input.textMaxLines,
-        textScrollSpeed: input.textScrollSpeed,
-        textFontSize: input.textFontSize,
-        attachedInputIds: input.attachedInputIds,
-      };
-    default:
-      throw new Error('Unknown input state');
-  }
-}

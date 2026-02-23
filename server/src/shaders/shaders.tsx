@@ -25,7 +25,8 @@ export type PublicShader = AvailableShader & {
 
 export type ShaderParamConfig = {
   paramName: string;
-  paramValue: number;
+  /** number for numeric params, string (e.g. hex) for color params */
+  paramValue: number | string;
 };
 
 export type ShaderConfig = {

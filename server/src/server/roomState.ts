@@ -3,6 +3,7 @@ import path from 'node:path';
 import { SmelterInstance, type RegisterSmelterInputOptions, type SmelterOutput } from '../smelter';
 import { hlsUrlForKickChannel, hlsUrlForTwitchChannel } from '../streamlink';
 import { TwitchChannelMonitor } from '../twitch/TwitchChannelMonitor';
+import type { TwitchStreamInfo } from '../twitch/TwitchApi';
 import { sleep } from '../utils';
 import type { InputConfig, Layout } from '../app/store';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
@@ -404,6 +405,58 @@ export class RoomState {
     return inputId;
   }
 
+  private async addHlsChannelInput(
+    platform: 'twitch-channel' | 'kick-channel',
+    channelId: string
+  ): Promise<string> {
+    const inputId =
+      platform === 'twitch-channel'
+        ? inputIdForTwitchInput(this.idPrefix, channelId)
+        : inputIdForKickInput(this.idPrefix, channelId);
+    const platformLabel = platform === 'twitch-channel' ? 'Twitch' : 'Kick';
+    if (this.inputs.find(input => input.inputId === inputId)) {
+      throw new Error(`Input for ${platformLabel} channel ${channelId} already exists.`);
+    }
+
+    const hlsUrl =
+      platform === 'twitch-channel'
+        ? await hlsUrlForTwitchChannel(channelId)
+        : await hlsUrlForKickChannel(channelId);
+
+    const baseState = {
+      inputId,
+      status: 'disconnected' as const,
+      showTitle: false,
+      shaders: [] as ShaderConfig[],
+      orientation: 'horizontal' as InputOrientation,
+      metadata: { title: '', description: '' },
+      volume: 0,
+      channelId,
+      hlsUrl,
+    };
+
+    let inputState: RoomInputState;
+    let monitor: TwitchChannelMonitor | KickChannelMonitor;
+    if (platform === 'twitch-channel') {
+      const twitchMonitor = await TwitchChannelMonitor.startMonitor(channelId);
+      monitor = twitchMonitor;
+      inputState = { ...baseState, type: 'twitch-channel', monitor: twitchMonitor };
+    } else {
+      const kickMonitor = await KickChannelMonitor.startMonitor(channelId);
+      monitor = kickMonitor;
+      inputState = { ...baseState, type: 'kick-channel', monitor: kickMonitor };
+    }
+    monitor.onUpdate((streamInfo: TwitchStreamInfo, _isLive: boolean) => {
+      inputState.metadata.title = platform === 'twitch-channel'
+        ? `[Twitch.tv/${streamInfo.category}] ${streamInfo.displayName}`
+        : `[Kick.com] ${streamInfo.displayName}`;
+      inputState.metadata.description = streamInfo.title;
+      this.updateStoreWithState();
+    });
+    this.inputs.push(inputState);
+    return inputId;
+  }
+
   public async addNewInput(opts: RegisterInputOptions) {
     // Remove placeholder if it exists
     await this.removePlaceholder();
@@ -411,95 +464,37 @@ export class RoomState {
     if (opts.type === 'whip') {
       const inputId = await this.addNewWhipInput(opts.username);
       return inputId;
-    } else if (opts.type === 'twitch-channel') {
-      const inputId = inputIdForTwitchInput(this.idPrefix, opts.channelId);
-      if (this.inputs.find(input => input.inputId === inputId)) {
-        throw new Error(`Input for Twitch channel ${opts.channelId} already exists.`);
+    } else if (opts.type === 'twitch-channel' || opts.type === 'kick-channel') {
+      return this.addHlsChannelInput(opts.type, opts.channelId);
+    } else if (opts.type === 'local-mp4') {
+      if (!opts.source?.fileName) {
+        throw new Error(
+          'local-mp4 requires source.fileName. Only URL is not supported; provide a file name from the mp4s directory.'
+        );
       }
-
-      const hlsUrl = await hlsUrlForTwitchChannel(opts.channelId);
-      const monitor = await TwitchChannelMonitor.startMonitor(opts.channelId);
-
-      const inputState: RoomInputState = {
-        inputId,
-        type: `twitch-channel`,
-        status: 'disconnected',
-        showTitle: false,
-        shaders: [],
-        orientation: 'horizontal',
-        metadata: {
-          title: '', // will be populated on update
-          description: '',
-        },
-        volume: 0,
-        channelId: opts.channelId,
-        hlsUrl,
-        monitor,
-      };
-      monitor.onUpdate((streamInfo, _isLive) => {
-        inputState.metadata.title = `[Twitch.tv/${streamInfo.category}] ${streamInfo.displayName}`;
-        inputState.metadata.description = streamInfo.title;
-        this.updateStoreWithState();
-      });
-      this.inputs.push(inputState);
-      return inputId;
-    } else if (opts.type === 'kick-channel') {
-      const inputId = inputIdForKickInput(this.idPrefix, opts.channelId);
-      if (this.inputs.find(input => input.inputId === inputId)) {
-        throw new Error(`Input for Kick channel ${opts.channelId} already exists.`);
-      }
-
-      const hlsUrl = await hlsUrlForKickChannel(opts.channelId);
-      const monitor = await KickChannelMonitor.startMonitor(opts.channelId);
-
-      const inputState: RoomInputState = {
-        inputId,
-        type: `kick-channel`,
-        status: 'disconnected',
-        showTitle: false,
-        shaders: [],
-        orientation: 'horizontal',
-        metadata: {
-          title: '', // will be populated on update
-          description: '',
-        },
-        volume: 0,
-        channelId: opts.channelId,
-        hlsUrl,
-        monitor,
-      };
-
-      monitor.onUpdate((streamInfo, _isLive) => {
-        inputState.metadata.title = `[Kick.com] ${streamInfo.displayName}`;
-        inputState.metadata.description = streamInfo.title;
-        this.updateStoreWithState();
-      });
-
-      this.inputs.push(inputState);
-      return inputId;
-    } else if (opts.type === 'local-mp4' && opts.source.fileName) {
       console.log('Adding local mp4');
-      let mp4Path = path.join(process.cwd(), 'mp4s', opts.source.fileName);
-      let mp4Name = opts.source.fileName;
+      const mp4Path = path.join(process.cwd(), 'mp4s', opts.source.fileName);
+      const mp4Name = opts.source.fileName;
       const inputId = `${this.idPrefix}::local::sample_streamer::${Date.now()}`;
 
-      if (await pathExists(mp4Path)) {
-        this.inputs.push({
-          inputId,
-          type: 'local-mp4',
-          status: 'disconnected',
-          showTitle: false,
-          shaders: [],
-          orientation: 'horizontal',
-          metadata: {
-            title: `[MP4] ${formatMp4Name(mp4Name)}`,
-            description: '[Static source] AI Generated',
-          },
-          mp4FilePath: mp4Path,
-          volume: 0,
-        });
+      if (!(await pathExists(mp4Path))) {
+        throw new Error(`MP4 file not found: ${opts.source.fileName}`);
       }
 
+      this.inputs.push({
+        inputId,
+        type: 'local-mp4',
+        status: 'disconnected',
+        showTitle: false,
+        shaders: [],
+        orientation: 'horizontal',
+        metadata: {
+          title: `[MP4] ${formatMp4Name(mp4Name)}`,
+          description: '[Static source] AI Generated',
+        },
+        mp4FilePath: mp4Path,
+        volume: 0,
+      });
       return inputId;
     } else if (opts.type === 'image') {
       console.log('Adding image');
@@ -776,7 +771,7 @@ export class RoomState {
     // When switching to wrapped-static layout, remove wrapped MP4 inputs and add wrapped images
     if (layout === 'wrapped-static') {
       await this.removeWrappedMp4Inputs();
-      void this.ensureWrappedImageInputs();
+      await this.ensureWrappedImageInputs();
     }
     this.updateStoreWithState();
   }

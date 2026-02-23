@@ -54,7 +54,7 @@ class ServerState {
   public getRoom(roomId: string): RoomState {
     const room = this.rooms[roomId];
     if (!room) {
-      throw new errorCodes.FST_ERR_NOT_FOUND(`Room ${roomId} does not exists.`);
+      throw new errorCodes.FST_ERR_NOT_FOUND(`Room ${roomId} does not exist.`);
     }
     return room;
   }
@@ -63,7 +63,7 @@ class ServerState {
     const room = this.rooms[roomId];
     delete this.rooms[roomId];
     if (!room) {
-      throw new Error(`Room ${roomId} does not exists.`);
+      throw new Error(`Room ${roomId} does not exist.`);
     }
     await room.deleteRoom();
   }

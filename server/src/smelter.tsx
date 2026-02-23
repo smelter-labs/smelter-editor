@@ -49,7 +49,7 @@ export type RegisterSmelterInputOptions =
       url: string;
     };
 
-// TODO: optional based on env
+/** MP4 decoder: driven by config.h264Decoder (which depends on ENVIRONMENT). Override via config for env-specific decoders. */
 const MP4_DECODER_MAP = {
   h264: config.h264Decoder,
 };

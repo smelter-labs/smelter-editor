@@ -37,6 +37,13 @@ export const LAYOUT_CONFIGS = [
   },
   { id: 'wrapped', name: 'Wrapped', icon: Grid3X3, maxStreams: 4 },
   {
+    id: 'wrapped-static',
+    name: 'Wrapped Static',
+    icon: Grid3X3,
+    maxStreams: 4,
+  },
+  { id: 'transition', name: 'Transition', icon: Layers, maxStreams: 4 },
+  {
     id: 'picture-on-picture',
     name: 'Picture on Picture',
     icon: Layers,
