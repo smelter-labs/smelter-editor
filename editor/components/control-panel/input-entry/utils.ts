@@ -16,12 +16,3 @@ export function getSourceStateLabel(input: Input): string {
   if (input.sourceState === 'offline') return 'Offline';
   return 'Unknown';
 }
-
-export function getShaderButtonClass(enabled: boolean): string {
-  return (
-    'ml-4 cursor-pointer transition-all duration-300 ' +
-    (enabled
-      ? 'bg-neutral-800 text-white hover:bg-neutral-700'
-      : 'bg-neutral-700 text-neutral-300 hover:bg-neutral-600')
-  );
-}

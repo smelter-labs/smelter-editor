@@ -9,7 +9,12 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { removeInput, type Input } from '@/app/actions/actions';
+import {
+  removeInput,
+  startRecording,
+  stopRecording,
+  type Input,
+} from '@/app/actions/actions';
 import type { InputWrapper } from '../hooks/use-control-panel-state';
 import LoadingSpinner from '@/components/ui/spinner';
 import { useControlPanelContext } from '../contexts/control-panel-context';
@@ -207,6 +212,7 @@ export function TimelinePanel({
     deleteTrack,
     replaceInputId,
     updateClipSettings,
+    purgeInputId,
     undo,
     redo,
     canUndo,
@@ -294,6 +300,63 @@ export function TimelinePanel({
     refreshState,
     structureRevision,
   );
+
+  const [isRecording, setIsRecording] = useState(false);
+  const [isTogglingRecording, setIsTogglingRecording] = useState(false);
+  const wasPlayingRef = useRef(false);
+
+  const stopRecordingAndDownload = useCallback(async () => {
+    setIsTogglingRecording(true);
+    try {
+      const res = await stopRecording(roomId);
+      if (res.status === 'stopped' && res.fileName) {
+        setTimeout(() => {
+          if (typeof window === 'undefined') return;
+          const link = document.createElement('a');
+          link.href = `/api/recordings/${encodeURIComponent(res.fileName!)}`;
+          link.download = res.fileName!;
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        }, 1500);
+      }
+    } catch (err) {
+      console.error('Failed to stop recording', err);
+    } finally {
+      setIsRecording(false);
+      setIsTogglingRecording(false);
+    }
+  }, [roomId]);
+
+  const handleRecordAndPlay = useCallback(async () => {
+    if (isTogglingRecording) return;
+    if (isRecording) {
+      stop();
+      await stopRecordingAndDownload();
+      return;
+    }
+    setIsTogglingRecording(true);
+    try {
+      const res = await startRecording(roomId);
+      if (res.status === 'recording') {
+        setIsRecording(true);
+        play();
+      } else {
+        console.error('Failed to start recording', res.message);
+      }
+    } catch (err) {
+      console.error('Failed to start recording', err);
+    } finally {
+      setIsTogglingRecording(false);
+    }
+  }, [isRecording, isTogglingRecording, roomId, play, stop, stopRecordingAndDownload]);
+
+  useEffect(() => {
+    if (wasPlayingRef.current && !state.isPlaying && isRecording) {
+      void stopRecordingAndDownload();
+    }
+    wasPlayingRef.current = state.isPlaying;
+  }, [state.isPlaying, isRecording, stopRecordingAndDownload]);
 
   const [panelHeight, setPanelHeight] = useState(DEFAULT_HEIGHT);
   const resizingRef = useRef(false);
@@ -1059,9 +1122,10 @@ export function TimelinePanel({
     );
     if (!confirmed) return;
     closeContextMenu();
+    purgeInputId(contextMenu.inputId);
     await removeInput(roomId, contextMenu.inputId);
     await refreshState();
-  }, [contextMenu, inputs, roomId, refreshState, closeContextMenu]);
+  }, [contextMenu, inputs, roomId, refreshState, closeContextMenu, purgeInputId]);
 
   const handleSplitHere = useCallback(() => {
     if (contextMenu?.clipId && contextMenu.splitAtMs !== undefined) {
@@ -1083,7 +1147,18 @@ export function TimelinePanel({
     (track: import('../hooks/use-timeline-state').Track) => {
       return track.clips.map((clip) => {
         const input = inputs.find((i) => i.inputId === clip.inputId);
+        const isDisconnected =
+          !input && !clip.inputId.startsWith('__pending-whip-');
         const colors = inputColorMap.get(clip.inputId);
+        const disconnectedBg = isDisconnected
+          ? 'hsla(0, 0%, 45%, 0.25)'
+          : undefined;
+        const disconnectedBorder = isDisconnected
+          ? 'hsla(0, 0%, 55%, 0.4)'
+          : undefined;
+        const disconnectedRing = isDisconnected
+          ? 'hsla(0, 0%, 60%, 0.5)'
+          : undefined;
         const leftPx = (clip.startMs / 1000) * state.pixelsPerSecond;
         const widthPx =
           ((clip.endMs - clip.startMs) / 1000) * state.pixelsPerSecond;
@@ -1097,18 +1172,33 @@ export function TimelinePanel({
           <div
             key={clip.id}
             data-no-dnd='true'
-            className={`absolute top-1 bottom-1 rounded-sm border ${isClipSelected ? 'ring-2 brightness-125' : ''} flex items-center overflow-hidden touch-none`}
+            className={`absolute top-1 bottom-1 rounded-sm border ${isClipSelected ? 'ring-2 brightness-125' : ''} ${isDisconnected ? 'opacity-60' : ''} flex items-center overflow-hidden touch-none`}
             style={{
               left: leftPx,
               width: Math.max(widthPx, 2),
               cursor: 'grab',
-              backgroundColor: colors?.segBg,
-              borderColor: colors?.segBorder,
+              backgroundColor:
+                colors?.segBg ?? disconnectedBg,
+              borderColor:
+                colors?.segBorder ?? disconnectedBorder,
+              borderStyle: isDisconnected ? 'dashed' : undefined,
               ...(isClipSelected
-                ? { boxShadow: `0 0 0 2px ${colors?.ring ?? 'transparent'}` }
+                ? {
+                    boxShadow: `0 0 0 2px ${colors?.ring ?? disconnectedRing ?? 'transparent'}`,
+                  }
+                : {}),
+              ...(isDisconnected
+                ? {
+                    backgroundImage:
+                      'repeating-linear-gradient(135deg, transparent, transparent 4px, hsla(0,0%,50%,0.15) 4px, hsla(0,0%,50%,0.15) 8px)',
+                  }
                 : {}),
             }}
-            title={`${clipLabel}: ${formatMs(clip.startMs)} → ${formatMs(clip.endMs)} (${formatMs(durationMs)})`}
+            title={
+              isDisconnected
+                ? `[Disconnected] ${clipLabel}: ${formatMs(clip.startMs)} → ${formatMs(clip.endMs)} (${formatMs(durationMs)})`
+                : `${clipLabel}: ${formatMs(clip.startMs)} → ${formatMs(clip.endMs)} (${formatMs(durationMs)})`
+            }
             onPointerDown={(e) =>
               handleClipPointerDown(
                 e,
@@ -1129,8 +1219,9 @@ export function TimelinePanel({
             <div className='absolute right-0 top-0 bottom-0 w-[5px] cursor-col-resize z-10' />
             {/* Label */}
             {widthPx > 40 && (
-              <span className='text-[10px] text-neutral-300/80 truncate px-2 select-none pointer-events-none'>
-                {clipLabel}
+              <span
+                className={`text-[10px] truncate px-2 select-none pointer-events-none ${isDisconnected ? 'text-neutral-400/70 italic' : 'text-neutral-300/80'}`}>
+                {isDisconnected ? `[Disconnected] ${clipLabel}` : clipLabel}
               </span>
             )}
           </div>
@@ -1179,6 +1270,19 @@ export function TimelinePanel({
           disabled={!state.isPlaying}
           title='Stop'>
           <Square className='w-3.5 h-3.5' />
+        </button>
+        <button
+          className={`p-1 rounded hover:bg-neutral-700 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${isRecording ? 'animate-pulse' : ''}`}
+          onClick={handleRecordAndPlay}
+          disabled={isTogglingRecording}
+          title={isRecording ? 'Stop recording' : 'Record & Play'}>
+          <div className='w-3.5 h-3.5 flex items-center justify-center'>
+            {isRecording ? (
+              <div className='w-2.5 h-2.5 rounded-full bg-red-500' />
+            ) : (
+              <div className='w-2.5 h-2.5 rounded-full border-2 border-red-400/70' />
+            )}
+          </div>
         </button>
         <button
           className='p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed'
@@ -1336,8 +1440,11 @@ export function TimelinePanel({
             const firstClipInput = firstClipInputId
               ? inputs.find((i) => i.inputId === firstClipInputId)
               : undefined;
+            const trackHasDisconnected =
+              firstClipInputId && !firstClipInput;
             const trackDotColor = firstClipInputId
-              ? inputColorMap.get(firstClipInputId)?.dot
+              ? (inputColorMap.get(firstClipInputId)?.dot ??
+                (trackHasDisconnected ? '#6b7280' : undefined))
               : undefined;
             const isEditing = editingTrackId === track.id;
 

@@ -103,7 +103,8 @@ type TimelineAction =
       trackId: string;
       clipId: string;
       patch: Partial<BlockSettings>;
-    };
+    }
+  | { type: 'PURGE_INPUT_ID'; inputId: string };
 
 // ── Constants ────────────────────────────────────────────
 
@@ -171,6 +172,16 @@ function ensureClipBlockSettings(
     ...clip,
     blockSettings: createBlockSettingsFromInput(input),
   };
+}
+
+function inferTypeFromInputId(inputId: string): string | null {
+  if (inputId.includes('::twitch::')) return 'twitch-channel';
+  if (inputId.includes('::kick::')) return 'kick-channel';
+  if (inputId.includes('::whip::')) return 'whip';
+  if (inputId.includes('::local::')) return 'local-mp4';
+  if (inputId.includes('::image::')) return 'image';
+  if (inputId.includes('::text::')) return 'text-input';
+  return null;
 }
 
 function normalizeTracks(
@@ -281,32 +292,55 @@ function timelineReducer(
         }
       }
 
-      // Update existing tracks: remove clips for inputs that no longer exist,
-      // but keep clips with pending WHIP placeholder inputIds
+      // Find disconnected inputIds (referenced in clips but missing from
+      // the current inputs list, excluding pending-whip placeholders).
+      const disconnectedInputIds = new Set<string>();
+      for (const track of state.tracks) {
+        for (const clip of track.clips) {
+          if (
+            !currentInputIds.has(clip.inputId) &&
+            !clip.inputId.startsWith('__pending-whip-')
+          ) {
+            disconnectedInputIds.add(clip.inputId);
+          }
+        }
+      }
+
+      // Inputs present on the server but not covered by any clip yet.
+      const uncoveredInputs = action.inputs.filter(
+        (input) => !coveredInputIds.has(input.inputId),
+      );
+
+      // Try to re-attach disconnected placeholder clips to new inputs of the
+      // same type (e.g. a WHIP input that reconnected with a new ID).
+      const replacementMap = new Map<string, string>();
+      const usedDisconnected = new Set<string>();
+      for (const input of uncoveredInputs) {
+        for (const disconnectedId of disconnectedInputIds) {
+          if (usedDisconnected.has(disconnectedId)) continue;
+          if (inferTypeFromInputId(disconnectedId) === input.type) {
+            replacementMap.set(disconnectedId, input.inputId);
+            usedDisconnected.add(disconnectedId);
+            break;
+          }
+        }
+      }
+
+      // Keep ALL clips on existing tracks. Disconnected clips that have a
+      // replacement get their inputId swapped; the rest stay as placeholders.
       const newTracks: Track[] = state.tracks
         .map((track) => ({
           ...track,
-          clips: track.clips
-            .filter(
-              (c) =>
-                currentInputIds.has(c.inputId) ||
-                c.inputId.startsWith('__pending-whip-'),
-            )
-            .map((clip) =>
-              ensureClipBlockSettings(clip, inputById.get(clip.inputId)),
-            )
-            .filter(
-              (c) =>
-                currentInputIds.has(c.inputId) ||
-                c.inputId.startsWith('__pending-whip-'),
-            ),
+          clips: track.clips.map((clip) => {
+            const replacement = replacementMap.get(clip.inputId);
+            const resolvedId = replacement ?? clip.inputId;
+            return ensureClipBlockSettings(
+              replacement ? { ...clip, inputId: resolvedId } : clip,
+              inputById.get(resolvedId),
+            );
+          }),
         }))
-        .filter((track) => {
-          // Keep track if it still has clips
-          if (track.clips.length > 0) return true;
-          // Remove empty tracks whose original inputs no longer exist
-          return false;
-        });
+        .filter((track) => track.clips.length > 0);
 
       // For each input that has no clips on any existing track, create a new track
       const nowCoveredInputIds = new Set<string>();
@@ -665,6 +699,16 @@ function timelineReducer(
       };
     }
 
+    case 'PURGE_INPUT_ID': {
+      const newTracks = state.tracks
+        .map((track) => ({
+          ...track,
+          clips: track.clips.filter((c) => c.inputId !== action.inputId),
+        }))
+        .filter((track) => track.clips.length > 0);
+      return { ...state, tracks: newTracks };
+    }
+
     case 'LOAD':
       return action.state;
 
@@ -695,6 +739,7 @@ const UNDOABLE_ACTIONS = new Set<TimelineAction['type']>([
   'DELETE_TRACK',
   'RESET',
   'UPDATE_CLIP_SETTINGS',
+  'PURGE_INPUT_ID',
 ]);
 
 type UndoableAction = TimelineAction | { type: 'UNDO' } | { type: 'REDO' };
@@ -936,6 +981,11 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     [],
   );
 
+  const purgeInputId = useCallback((inputId: string) => {
+    dispatch({ type: 'PURGE_INPUT_ID', inputId });
+    setStructureRevision((rev) => rev + 1);
+  }, []);
+
   const undo = useCallback(() => dispatch({ type: 'UNDO' }), []);
   const redo = useCallback(() => dispatch({ type: 'REDO' }), []);
   const canUndo = undoable.past.length > 0;
@@ -960,6 +1010,7 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     deleteTrack,
     replaceInputId,
     updateClipSettings,
+    purgeInputId,
     undo,
     redo,
     canUndo,

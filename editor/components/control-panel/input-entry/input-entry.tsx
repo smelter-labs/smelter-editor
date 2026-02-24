@@ -29,11 +29,7 @@ import { StatusButton } from './status-button';
 import { MuteButton } from './mute-button';
 import { DeleteButton } from './delete-button';
 import { AddShaderModal } from './add-shader-modal';
-import {
-  getSourceStateColor,
-  getSourceStateLabel,
-  getShaderButtonClass,
-} from './utils';
+import { getSourceStateColor, getSourceStateLabel } from './utils';
 import { handleShaderDrop, handleShaderDragOver } from './shader-drop-handler';
 import { stopCameraAndConnection } from '../whip-input/utils/preview';
 import { rotateBy90 } from '../whip-input/utils/whip-publisher';
@@ -210,14 +206,6 @@ export default function InputEntry({
 
   const effectiveShowSliders =
     typeof isFxOpen === 'boolean' ? isFxOpen : showSliders;
-
-  const visibleShaders = useMemo(
-    () =>
-      availableShaders.filter((availableShader) =>
-        (input.shaders || []).some((s) => s.shaderId === availableShader.id),
-      ),
-    [availableShaders, input.shaders],
-  );
 
   const addedShaderIds = useMemo(
     () => new Set((input.shaders || []).map((s) => s.shaderId)),
@@ -744,7 +732,6 @@ export default function InputEntry({
   );
 
   if (fxModeOnly && effectiveShowSliders) {
-    const shadersForPanel = availableShaders;
     return (
       <>
         <div
@@ -761,7 +748,7 @@ export default function InputEntry({
           }>
           <ShaderPanel
             input={input}
-            availableShaders={shadersForPanel}
+            availableShaders={availableShaders}
             sliderValues={sliderValues}
             paramLoading={paramLoading}
             shaderLoading={shaderLoading}
@@ -769,8 +756,7 @@ export default function InputEntry({
             onShaderRemove={handleShaderRemove}
             onSliderChange={handleSliderChange}
             getShaderParamConfig={getShaderParamConfig}
-            getShaderButtonClass={getShaderButtonClass}
-            consolidated={true}
+            onOpenAddShader={() => setIsAddShaderModalOpen(true)}
           />
         </div>
 
@@ -1086,26 +1072,18 @@ export default function InputEntry({
                 onAddShader: addShaderConfig,
               })
             }>
-            {(() => {
-              const shadersForPanel = effectiveShowSliders
-                ? availableShaders
-                : visibleShaders;
-              return (
-                <ShaderPanel
-                  input={input}
-                  availableShaders={shadersForPanel}
-                  sliderValues={sliderValues}
-                  paramLoading={paramLoading}
-                  shaderLoading={shaderLoading}
-                  onShaderToggle={handleShaderToggle}
-                  onShaderRemove={handleShaderRemove}
-                  onSliderChange={handleSliderChange}
-                  getShaderParamConfig={getShaderParamConfig}
-                  getShaderButtonClass={getShaderButtonClass}
-                  consolidated={effectiveShowSliders}
-                />
-              );
-            })()}
+            <ShaderPanel
+              input={input}
+              availableShaders={availableShaders}
+              sliderValues={sliderValues}
+              paramLoading={paramLoading}
+              shaderLoading={shaderLoading}
+              onShaderToggle={handleShaderToggle}
+              onShaderRemove={handleShaderRemove}
+              onSliderChange={handleSliderChange}
+              getShaderParamConfig={getShaderParamConfig}
+              onOpenAddShader={() => setIsAddShaderModalOpen(true)}
+            />
           </div>
         )}
       </div>
