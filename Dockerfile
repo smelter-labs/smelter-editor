@@ -46,6 +46,7 @@ ENV PATH=/home/smelter/.local/bin:$PATH
 
 COPY --chown=$USERNAME:$USERNAME  . /home/$USERNAME/demo
 WORKDIR /home/$USERNAME/demo/server
+RUN mkdir -p /home/$USERNAME/demo/server/recordings /home/$USERNAME/demo/server/configs
 RUN CI=1 pnpm install && pnpm build
 
-ENTRYPOINT ["node", "./dist/index.js"]
+ENTRYPOINT ["/home/smelter/demo/entrypoint.sh"]
