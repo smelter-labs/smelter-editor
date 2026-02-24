@@ -2,8 +2,6 @@
 
 import { useCallback, useRef, useEffect } from 'react';
 import {
-  connectInput,
-  disconnectInput,
   hideInput,
   showInput,
   updateRoom,
@@ -13,7 +11,7 @@ import type { TimelineState } from './use-timeline-state';
 
 // ── Types ────────────────────────────────────────────────
 
-type DesiredState = Map<string, boolean>; // inputId → should be connected
+type DesiredState = Map<string, boolean>; // inputId → should be visible
 
 type PlaybackEvent = {
   timeMs: number;
@@ -89,6 +87,7 @@ export function useTimelinePlayback(
   setPlayhead: (ms: number) => void,
   setPlaying: (playing: boolean) => void,
   refreshState: () => Promise<void>,
+  structureRevision: number,
 ) {
   const appliedStateRef = useRef<DesiredState>(new Map());
   const rafRef = useRef<number | null>(null);
@@ -96,7 +95,6 @@ export function useTimelinePlayback(
     null,
   );
   const prePlayStateRef = useRef<{
-    connectedInputIds: Set<string>;
     hiddenInputIds: Set<string>;
     inputOrder: string[];
   } | null>(null);
@@ -118,54 +116,37 @@ export function useTimelinePlayback(
     };
   }, []);
 
-  /** Apply connect/disconnect for a desired state map — only sends commands for changed inputs. */
+  /** Apply visibility for a desired state map — only sends commands for changed inputs. */
   const applyDesiredState = useCallback(
     async (desired: DesiredState) => {
       const promises: Promise<void>[] = [];
 
-      for (const [inputId, shouldBeConnected] of desired) {
-        const wasConnected = appliedStateRef.current.get(inputId);
-        if (wasConnected === shouldBeConnected) continue;
+      for (const [inputId, shouldBeVisible] of desired) {
+        const wasVisible = appliedStateRef.current.get(inputId);
+        if (wasVisible === shouldBeVisible) continue;
 
-        const input = inputs.find((i) => i.inputId === inputId);
+        const input = inputsRef.current.find((i) => i.inputId === inputId);
         if (!input) continue;
 
-        const isWhip = input.type === 'whip';
+        const isCurrentlyVisible =
+          (input.status === 'connected' || input.status === 'pending') &&
+          !input.hidden;
 
-        if (isWhip) {
-          const isCurrentlyVisible =
-            input.status === 'connected' && !input.hidden;
-          if (shouldBeConnected && !isCurrentlyVisible) {
-            promises.push(
-              showInput(roomId, inputId).catch((err) =>
-                console.warn(`Timeline: failed to show ${inputId}`, err),
-              ),
-            );
-          } else if (!shouldBeConnected && isCurrentlyVisible) {
-            promises.push(
-              hideInput(roomId, inputId).catch((err) =>
-                console.warn(`Timeline: failed to hide ${inputId}`, err),
-              ),
-            );
-          }
-        } else {
-          const isCurrentlyConnected = input.status === 'connected';
-          if (shouldBeConnected && !isCurrentlyConnected) {
-            promises.push(
-              connectInput(roomId, inputId).catch((err) =>
-                console.warn(`Timeline: failed to connect ${inputId}`, err),
-              ),
-            );
-          } else if (!shouldBeConnected && isCurrentlyConnected) {
-            promises.push(
-              disconnectInput(roomId, inputId).catch((err) =>
-                console.warn(`Timeline: failed to disconnect ${inputId}`, err),
-              ),
-            );
-          }
+        if (shouldBeVisible && !isCurrentlyVisible) {
+          promises.push(
+            showInput(roomId, inputId).catch((err) =>
+              console.warn(`Timeline: failed to show ${inputId}`, err),
+            ),
+          );
+        } else if (!shouldBeVisible && isCurrentlyVisible) {
+          promises.push(
+            hideInput(roomId, inputId).catch((err) =>
+              console.warn(`Timeline: failed to hide ${inputId}`, err),
+            ),
+          );
         }
 
-        appliedStateRef.current.set(inputId, shouldBeConnected);
+        appliedStateRef.current.set(inputId, shouldBeVisible);
       }
 
       if (promises.length > 0) {
@@ -173,26 +154,22 @@ export function useTimelinePlayback(
         await refreshState();
       }
     },
-    [inputs, roomId, refreshState],
+    [roomId, refreshState],
   );
 
   /** Snapshot current server state before playing. */
   const snapshotPrePlayState = useCallback(() => {
-    const connectedInputIds = new Set<string>();
     const hiddenInputIds = new Set<string>();
     const inputOrder: string[] = [];
     for (const input of inputs) {
       inputOrder.push(input.inputId);
-      if (input.status === 'connected') {
-        connectedInputIds.add(input.inputId);
-      }
       if (input.hidden) {
         hiddenInputIds.add(input.inputId);
       }
     }
-    prePlayStateRef.current = { connectedInputIds, hiddenInputIds, inputOrder };
+    prePlayStateRef.current = { hiddenInputIds, inputOrder };
     appliedStateRef.current = new Map(
-      inputs.map((i) => [i.inputId, i.status === 'connected']),
+      inputs.map((i) => [i.inputId, !i.hidden]),
     );
   }, [inputs]);
 
@@ -203,24 +180,11 @@ export function useTimelinePlayback(
 
     const promises: Promise<unknown>[] = [];
     for (const input of inputs) {
-      const isWhip = input.type === 'whip';
-
-      if (isWhip) {
-        const shouldBeHidden = snapshot.hiddenInputIds.has(input.inputId);
-        if (shouldBeHidden && !input.hidden) {
-          promises.push(hideInput(roomId, input.inputId).catch(() => {}));
-        } else if (!shouldBeHidden && input.hidden) {
-          promises.push(showInput(roomId, input.inputId).catch(() => {}));
-        }
-      } else {
-        const shouldBeConnected = snapshot.connectedInputIds.has(input.inputId);
-        const isCurrentlyConnected = input.status === 'connected';
-
-        if (shouldBeConnected && !isCurrentlyConnected) {
-          promises.push(connectInput(roomId, input.inputId).catch(() => {}));
-        } else if (!shouldBeConnected && isCurrentlyConnected) {
-          promises.push(disconnectInput(roomId, input.inputId).catch(() => {}));
-        }
+      const shouldBeHidden = snapshot.hiddenInputIds.has(input.inputId);
+      if (shouldBeHidden && !input.hidden) {
+        promises.push(hideInput(roomId, input.inputId).catch(() => {}));
+      } else if (!shouldBeHidden && input.hidden) {
+        promises.push(showInput(roomId, input.inputId).catch(() => {}));
       }
     }
 
@@ -278,36 +242,15 @@ export function useTimelinePlayback(
       nextEventIndexRef.current = idx + 1;
 
       if (event.type === 'connect' && event.inputId) {
-        const input = inputsRef.current.find(
-          (i) => i.inputId === event.inputId,
-        );
         appliedStateRef.current.set(event.inputId, true);
-        if (input?.type === 'whip') {
-          showInput(roomId, event.inputId).catch((err) =>
-            console.warn(`Timeline: failed to show ${event.inputId}`, err),
-          );
-        } else {
-          connectInput(roomId, event.inputId).catch((err) =>
-            console.warn(`Timeline: failed to connect ${event.inputId}`, err),
-          );
-        }
-      } else if (event.type === 'disconnect' && event.inputId) {
-        const input = inputsRef.current.find(
-          (i) => i.inputId === event.inputId,
+        showInput(roomId, event.inputId).catch((err) =>
+          console.warn(`Timeline: failed to show ${event.inputId}`, err),
         );
+      } else if (event.type === 'disconnect' && event.inputId) {
         appliedStateRef.current.set(event.inputId, false);
-        if (input?.type === 'whip') {
-          hideInput(roomId, event.inputId).catch((err) =>
-            console.warn(`Timeline: failed to hide ${event.inputId}`, err),
-          );
-        } else {
-          disconnectInput(roomId, event.inputId).catch((err) =>
-            console.warn(
-              `Timeline: failed to disconnect ${event.inputId}`,
-              err,
-            ),
-          );
-        }
+        hideInput(roomId, event.inputId).catch((err) =>
+          console.warn(`Timeline: failed to hide ${event.inputId}`, err),
+        );
       } else if (event.type === 'order' && event.inputOrder) {
         updateRoom(roomId, { inputOrder: event.inputOrder }).catch((err) =>
           console.warn('Timeline: failed to apply order', err),
@@ -380,7 +323,7 @@ export function useTimelinePlayback(
   /** Apply state at current playhead without starting playback. */
   const applyAtPlayhead = useCallback(async () => {
     appliedStateRef.current = new Map(
-      inputs.map((i) => [i.inputId, i.status === 'connected']),
+      inputs.map((i) => [i.inputId, !i.hidden]),
     );
     const desired = computeDesiredState(state);
     await applyDesiredState(desired);
@@ -394,6 +337,22 @@ export function useTimelinePlayback(
       }
     }
   }, [inputs, state, roomId, applyDesiredState]);
+
+  // Recompute events when the timeline structure changes during playback
+  useEffect(() => {
+    if (!state.isPlaying) return;
+    if (!playStartRef.current) return;
+
+    eventsRef.current = compileEvents(state, state.playheadMs);
+    nextEventIndexRef.current = 0;
+
+    if (eventTimerRef.current) {
+      clearTimeout(eventTimerRef.current);
+      eventTimerRef.current = null;
+    }
+
+    scheduleNextEvent();
+  }, [structureRevision, state, scheduleNextEvent]);
 
   return {
     play,

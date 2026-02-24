@@ -17,14 +17,17 @@ export function QuickActionsSection() {
     addLogos: boolean;
     addTeam: boolean;
     removeAll: boolean;
+    deleteAll: boolean;
   }>({
     addLogos: false,
     addTeam: false,
     removeAll: false,
+    deleteAll: false,
   });
 
   return (
     <div className='flex flex-col gap-3'>
+      {/* Add logos */}
       <Button
         size='lg'
         variant='default'
@@ -63,6 +66,7 @@ export function QuickActionsSection() {
           'Add Logos'
         )}
       </Button>
+      {/* Add wrapped team MP4s */}
       <Button
         size='lg'
         variant='default'
@@ -99,6 +103,7 @@ export function QuickActionsSection() {
           'Add Team'
         )}
       </Button>
+      {/* Soft clear: hide all inputs and show Smelter logo */}
       <Button
         size='lg'
         variant='default'
@@ -125,12 +130,12 @@ export function QuickActionsSection() {
               try {
                 await hideInput(roomId, input.inputId);
               } catch (e) {
-                console.warn(`Failed to remove input ${input.inputId}:`, e);
+                console.warn(`Failed to hide input ${input.inputId}:`, e);
               }
             }
             await refreshState();
           } catch (e) {
-            console.error('Failed to remove all:', e);
+            console.error('Failed to hide all inputs:', e);
           } finally {
             setLoadingActions((prev) => ({
               ...prev,
@@ -141,10 +146,53 @@ export function QuickActionsSection() {
         {loadingActions.removeAll ? (
           <span className='flex items-center gap-2'>
             <LoadingSpinner size='sm' variant='spinner' />
-            Removing...
+            Hiding...
           </span>
         ) : (
-          'Remove All'
+          'Hide All'
+        )}
+      </Button>
+      {/* Hard delete: remove all inputs with confirmation */}
+      <Button
+        size='lg'
+        variant='destructive'
+        className='font-medium cursor-pointer px-4 py-0 h-[48px] sm:h-[52px] text-sm sm:text-base sm:px-7 transition-all'
+        disabled={loadingActions.deleteAll}
+        onClick={async () => {
+          const confirmed = window.confirm(
+            'Delete ALL inputs permanently? This will also remove their timeline segments.',
+          );
+          if (!confirmed) return;
+          setLoadingActions((prev) => ({ ...prev, deleteAll: true }));
+          try {
+            const currentInputs = [...inputs];
+            for (const input of currentInputs) {
+              try {
+                try {
+                  await hideInput(roomId, input.inputId);
+                } catch {}
+                await removeInput(roomId, input.inputId);
+              } catch (e) {
+                console.warn(`Failed to delete input ${input.inputId}:`, e);
+              }
+            }
+            await refreshState();
+          } catch (e) {
+            console.error('Failed to delete all inputs:', e);
+          } finally {
+            setLoadingActions((prev) => ({
+              ...prev,
+              deleteAll: false,
+            }));
+          }
+        }}>
+        {loadingActions.deleteAll ? (
+          <span className='flex items-center gap-2'>
+            <LoadingSpinner size='sm' variant='spinner' />
+            Deleting...
+          </span>
+        ) : (
+          'Delete All Inputs'
         )}
       </Button>
     </div>

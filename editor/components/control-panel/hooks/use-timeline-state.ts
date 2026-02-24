@@ -1,7 +1,8 @@
 'use client';
 
-import { useReducer, useEffect, useCallback, useRef } from 'react';
+import { useReducer, useEffect, useCallback, useRef, useState } from 'react';
 import type { Input } from '@/app/actions/actions';
+import { loadTimeline, saveTimeline } from '@/lib/timeline-storage';
 
 // ── Types ────────────────────────────────────────────────
 
@@ -485,52 +486,24 @@ function undoableReducer(
   return { ...state, current: newCurrent };
 }
 
-// ── LocalStorage persistence ─────────────────────────────
-
-const STORAGE_KEY_PREFIX = 'smelter-timeline-';
-
-function loadFromStorage(roomId: string): TimelineState | null {
-  try {
-    const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}${roomId}`);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    // Basic validation
-    if (
-      parsed &&
-      typeof parsed.totalDurationMs === 'number' &&
-      typeof parsed.tracks === 'object'
-    ) {
-      return {
-        ...parsed,
-        isPlaying: false, // never restore playing state
-        playheadMs: 0,
-      } as TimelineState;
-    }
-  } catch {
-    // corrupt data
-  }
-  return null;
-}
-
-function saveToStorage(roomId: string, state: TimelineState): void {
-  try {
-    const { isPlaying: _, ...rest } = state;
-    localStorage.setItem(
-      `${STORAGE_KEY_PREFIX}${roomId}`,
-      JSON.stringify(rest),
-    );
-  } catch {
-    // storage full or unavailable
-  }
-}
-
 // ── Hook ─────────────────────────────────────────────────
 
 export function useTimelineState(roomId: string, inputs: Input[]) {
   const [undoable, dispatch] = useReducer(undoableReducer, null, () => {
-    const stored = loadFromStorage(roomId);
+    const stored = loadTimeline(roomId);
+    const initial: TimelineState =
+      stored != null
+        ? {
+            tracks: stored.tracks,
+            orderKeyframes: stored.orderKeyframes,
+            totalDurationMs: stored.totalDurationMs,
+            playheadMs: 0,
+            isPlaying: false,
+            pixelsPerSecond: stored.pixelsPerSecond,
+          }
+        : createInitialState();
     return {
-      current: stored ?? createInitialState(),
+      current: initial,
       past: [],
       future: [],
     };
@@ -539,6 +512,7 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
   const state = undoable.current;
 
   const initializedRef = useRef(false);
+  const [structureRevision, setStructureRevision] = useState(0);
 
   // Sync tracks when inputs change
   useEffect(() => {
@@ -553,7 +527,15 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     if (!initializedRef.current) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      saveToStorage(roomId, state);
+      const { tracks, orderKeyframes, totalDurationMs, playheadMs, pixelsPerSecond } =
+        state;
+      saveTimeline(roomId, {
+        tracks,
+        orderKeyframes,
+        totalDurationMs,
+        playheadMs,
+        pixelsPerSecond,
+      });
     }, 500);
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
@@ -583,13 +565,18 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
   );
 
   const reset = useCallback(
-    () => dispatch({ type: 'RESET', inputs }),
+    () => {
+      dispatch({ type: 'RESET', inputs });
+      setStructureRevision((rev) => rev + 1);
+    },
     [inputs],
   );
 
   const moveSegment = useCallback(
-    (inputId: string, segmentId: string, newStartMs: number) =>
-      dispatch({ type: 'MOVE_SEGMENT', inputId, segmentId, newStartMs }),
+    (inputId: string, segmentId: string, newStartMs: number) => {
+      dispatch({ type: 'MOVE_SEGMENT', inputId, segmentId, newStartMs });
+      setStructureRevision((rev) => rev + 1);
+    },
     [],
   );
 
@@ -599,42 +586,58 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
       segmentId: string,
       edge: 'left' | 'right',
       newMs: number,
-    ) => dispatch({ type: 'RESIZE_SEGMENT', inputId, segmentId, edge, newMs }),
+    ) => {
+      dispatch({ type: 'RESIZE_SEGMENT', inputId, segmentId, edge, newMs });
+      setStructureRevision((rev) => rev + 1);
+    },
     [],
   );
 
   const splitSegment = useCallback(
-    (inputId: string, segmentId: string, atMs: number) =>
-      dispatch({ type: 'SPLIT_SEGMENT', inputId, segmentId, atMs }),
+    (inputId: string, segmentId: string, atMs: number) => {
+      dispatch({ type: 'SPLIT_SEGMENT', inputId, segmentId, atMs });
+      setStructureRevision((rev) => rev + 1);
+    },
     [],
   );
 
   const deleteSegment = useCallback(
-    (inputId: string, segmentId: string) =>
-      dispatch({ type: 'DELETE_SEGMENT', inputId, segmentId }),
+    (inputId: string, segmentId: string) => {
+      dispatch({ type: 'DELETE_SEGMENT', inputId, segmentId });
+      setStructureRevision((rev) => rev + 1);
+    },
     [],
   );
 
   const duplicateSegment = useCallback(
-    (inputId: string, segmentId: string) =>
-      dispatch({ type: 'DUPLICATE_SEGMENT', inputId, segmentId }),
+    (inputId: string, segmentId: string) => {
+      dispatch({ type: 'DUPLICATE_SEGMENT', inputId, segmentId });
+      setStructureRevision((rev) => rev + 1);
+    },
     [],
   );
 
   const addOrderKeyframe = useCallback(
-    (timeMs: number, inputOrder: string[]) =>
-      dispatch({ type: 'ADD_ORDER_KEYFRAME', timeMs, inputOrder }),
+    (timeMs: number, inputOrder: string[]) => {
+      dispatch({ type: 'ADD_ORDER_KEYFRAME', timeMs, inputOrder });
+      setStructureRevision((rev) => rev + 1);
+    },
     [],
   );
 
   const updateOrderKeyframe = useCallback(
-    (id: string, inputOrder: string[]) =>
-      dispatch({ type: 'UPDATE_ORDER_KEYFRAME', id, inputOrder }),
+    (id: string, inputOrder: string[]) => {
+      dispatch({ type: 'UPDATE_ORDER_KEYFRAME', id, inputOrder });
+      setStructureRevision((rev) => rev + 1);
+    },
     [],
   );
 
   const removeOrderKeyframe = useCallback(
-    (id: string) => dispatch({ type: 'REMOVE_ORDER_KEYFRAME', id }),
+    (id: string) => {
+      dispatch({ type: 'REMOVE_ORDER_KEYFRAME', id });
+      setStructureRevision((rev) => rev + 1);
+    },
     [],
   );
 
@@ -663,5 +666,6 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     redo,
     canUndo,
     canRedo,
+    structureRevision,
   };
 }

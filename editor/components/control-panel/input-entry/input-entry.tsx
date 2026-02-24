@@ -20,6 +20,8 @@ import {
   RectangleVertical,
   RotateCw,
   Link,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import ShaderPanel from './shader-panel';
 import { InputEntryTextSection } from './input-entry-text-section';
@@ -421,21 +423,66 @@ export default function InputEntry({
   );
 
   const handleDelete = useCallback(async () => {
-    await hideInput(roomId, input.inputId);
+    const confirmed = window.confirm(
+      'Delete this input permanently? This will remove it from the room and from the timeline.',
+    );
+    if (!confirmed) return;
+
+    const session = loadWhipSession();
+    const isSavedInSession =
+      (session &&
+        session.roomId === roomId &&
+        session.inputId === input.inputId) ||
+      loadLastWhipInputId(roomId) === input.inputId;
+    const isWhipCandidate =
+      input.inputId.indexOf('whip') > 0 || isSavedInSession;
+
+    // Hide first so it disappears from the program immediately
+    try {
+      await hideInput(roomId, input.inputId);
+    } catch {
+      // non-fatal
+    }
+
+    if (isWhipCandidate && pcRef && streamRef) {
+      stopCameraAndConnection(pcRef, streamRef);
+    }
+
+    if (isWhipCandidate) {
+      try {
+        clearWhipSessionFor(roomId, input.inputId);
+      } catch {}
+      try {
+        onWhipDisconnectedOrRemoved?.(input.inputId);
+      } catch {}
+    }
+
+    await removeInput(roomId, input.inputId);
     await refreshState();
   }, [
     roomId,
     input,
     refreshState,
+    pcRef,
+    streamRef,
+    onWhipDisconnectedOrRemoved,
   ]);
 
   const handleConnectionToggle = useCallback(async () => {
     setConnectionStateLoading(true);
     try {
-      if (input.hidden) {
-        await showInput(roomId, input.inputId);
-      } else {
-        await hideInput(roomId, input.inputId);
+      if (input.status === 'connected') {
+        if (isWhipInput && pcRef && streamRef) {
+          stopCameraAndConnection(pcRef, streamRef);
+        }
+        await disconnectInput(roomId, input.inputId);
+        if (isWhipInput) {
+          try {
+            onWhipDisconnectedOrRemoved?.(input.inputId);
+          } catch {}
+        }
+      } else if (input.status === 'disconnected') {
+        await connectInput(roomId, input.inputId);
       }
       await refreshState();
     } finally {
@@ -445,6 +492,10 @@ export default function InputEntry({
     roomId,
     input,
     refreshState,
+    isWhipInput,
+    pcRef,
+    streamRef,
+    onWhipDisconnectedOrRemoved,
   ]);
 
   const handleSlidersToggle = useCallback(() => {
@@ -454,6 +505,19 @@ export default function InputEntry({
       setShowSliders((prev) => !prev);
     }
   }, [onToggleFx]);
+
+  const handleVisibilityToggle = useCallback(async () => {
+    try {
+      if (input.hidden) {
+        await showInput(roomId, input.inputId);
+      } else {
+        await hideInput(roomId, input.inputId);
+      }
+      await refreshState();
+    } finally {
+      // no-op
+    }
+  }, [roomId, input, refreshState]);
 
   const handleShaderToggle = useCallback(
     async (shaderId: string) => {
@@ -941,6 +1005,24 @@ export default function InputEntry({
                   </>,
                   document.body,
                 )}
+              <Button
+                data-no-dnd
+                size='sm'
+                variant='ghost'
+                className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
+                onClick={handleVisibilityToggle}
+                aria-label={
+                  input.hidden ? 'Show in program' : 'Hide from program'
+                }
+                title={
+                  input.hidden ? 'Show in program' : 'Hide from program'
+                }>
+                {input.hidden ? (
+                  <EyeOff className='text-neutral-400 size-5' />
+                ) : (
+                  <Eye className='text-white size-5' />
+                )}
+              </Button>
               <Button
                 data-no-dnd
                 size='sm'

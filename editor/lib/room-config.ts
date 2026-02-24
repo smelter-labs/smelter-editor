@@ -3,6 +3,7 @@ import type {
   Segment,
   OrderKeyframe,
 } from '@/components/control-panel/hooks/use-timeline-state';
+import { loadTimeline, saveTimeline } from '@/lib/timeline-storage';
 
 export type RoomConfigInput = {
   type: Input['type'];
@@ -173,8 +174,6 @@ export function parseRoomConfig(json: string): RoomConfig {
   return config as RoomConfig;
 }
 
-const TIMELINE_STORAGE_KEY_PREFIX = 'smelter-timeline-';
-
 export function loadTimelineFromStorage(roomId: string): {
   tracks: Record<string, { inputId: string; segments: Segment[] }>;
   orderKeyframes: OrderKeyframe[];
@@ -182,21 +181,14 @@ export function loadTimelineFromStorage(roomId: string): {
   pixelsPerSecond: number;
 } | null {
   if (typeof window === 'undefined') return null;
-  try {
-    const raw = localStorage.getItem(`${TIMELINE_STORAGE_KEY_PREFIX}${roomId}`);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (
-      parsed &&
-      typeof parsed.totalDurationMs === 'number' &&
-      typeof parsed.tracks === 'object'
-    ) {
-      return parsed;
-    }
-  } catch {
-    // corrupt data
-  }
-  return null;
+  const stored = loadTimeline(roomId);
+  if (!stored) return null;
+  return {
+    tracks: stored.tracks,
+    orderKeyframes: stored.orderKeyframes,
+    totalDurationMs: stored.totalDurationMs,
+    pixelsPerSecond: stored.pixelsPerSecond,
+  };
 }
 
 export function restoreTimelineToStorage(
@@ -237,10 +229,7 @@ export function restoreTimelineToStorage(
   };
 
   try {
-    localStorage.setItem(
-      `${TIMELINE_STORAGE_KEY_PREFIX}${roomId}`,
-      JSON.stringify(state),
-    );
+    saveTimeline(roomId, state);
   } catch {
     console.warn('Failed to save imported timeline to localStorage');
   }

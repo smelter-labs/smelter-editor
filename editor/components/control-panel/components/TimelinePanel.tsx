@@ -185,6 +185,7 @@ export function TimelinePanel({
     redo,
     canUndo,
     canRedo,
+    structureRevision,
   } = useTimelineState(roomId, inputs);
 
   const { play, stop, applyAtPlayhead } = useTimelinePlayback(
@@ -194,6 +195,7 @@ export function TimelinePanel({
     setPlayhead,
     setPlaying,
     refreshState,
+    structureRevision,
   );
 
   const [panelHeight, setPanelHeight] = useState(DEFAULT_HEIGHT);
