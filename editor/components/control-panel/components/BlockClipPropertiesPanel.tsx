@@ -666,7 +666,7 @@ export function BlockClipPropertiesPanel({
           Shaders (block-level)
         </div>
         <div className='text-[11px] text-neutral-500 mb-2'>
-          Edit this block's shaders independently from other blocks.
+          Edit this block&apos;s shaders independently from other blocks.
         </div>
         <ShaderPanel
           input={shaderInput}
