@@ -15,62 +15,80 @@ type DesiredState = Map<string, boolean>; // inputId → should be visible
 
 type PlaybackEvent = {
   timeMs: number;
-  type: 'connect' | 'disconnect' | 'order';
-  inputId?: string;
-  inputOrder?: string[];
+  type: 'connect' | 'disconnect';
+  inputId: string;
 };
 
 // ── Helpers ──────────────────────────────────────────────
 
-/** For a given time, determine which inputs should be connected based on their segments. */
+/** For a given time, determine which inputs should be connected based on active clips. */
 export function computeDesiredState(state: TimelineState): DesiredState {
   const desired = new Map<string, boolean>();
   const t = state.playheadMs;
-  for (const [inputId, track] of Object.entries(state.tracks)) {
-    const isActive = track.segments.some(
-      (seg) => t >= seg.startMs && t < seg.endMs,
-    );
-    desired.set(inputId, isActive);
+
+  // First pass: set all known inputIds to false
+  for (const track of state.tracks) {
+    for (const clip of track.clips) {
+      if (!desired.has(clip.inputId)) {
+        desired.set(clip.inputId, false);
+      }
+    }
   }
+
+  // Second pass: if any clip is active, set its inputId to true
+  for (const track of state.tracks) {
+    for (const clip of track.clips) {
+      if (t >= clip.startMs && t < clip.endMs) {
+        desired.set(clip.inputId, true);
+      }
+    }
+  }
+
   return desired;
 }
 
-/** Find the order keyframe active at a given time. */
-export function getActiveOrder(state: TimelineState): string[] | null {
-  const sorted = [...state.orderKeyframes].sort((a, b) => a.timeMs - b.timeMs);
-  let active: string[] | null = null;
-  for (const kf of sorted) {
-    if (kf.timeMs <= state.playheadMs) {
-      active = kf.inputOrder;
-    } else {
-      break;
+/**
+ * Compute the input order at the current playhead based on track order.
+ * Returns inputIds ordered by their track position (top track = first),
+ * only for inputs that have an active clip at the playhead.
+ */
+export function getActiveOrder(state: TimelineState): string[] {
+  const t = state.playheadMs;
+  const order: string[] = [];
+  const seen = new Set<string>();
+
+  for (const track of state.tracks) {
+    for (const clip of track.clips) {
+      if (t >= clip.startMs && t < clip.endMs && !seen.has(clip.inputId)) {
+        order.push(clip.inputId);
+        seen.add(clip.inputId);
+      }
     }
   }
-  return active;
+
+  return order;
 }
 
 /** Compile a sorted list of playback events from timeline state, starting after `fromMs`. */
 function compileEvents(state: TimelineState, fromMs: number): PlaybackEvent[] {
   const events: PlaybackEvent[] = [];
 
-  for (const [inputId, track] of Object.entries(state.tracks)) {
-    for (const seg of track.segments) {
-      if (seg.startMs > fromMs) {
-        events.push({ timeMs: seg.startMs, type: 'connect', inputId });
+  for (const track of state.tracks) {
+    for (const clip of track.clips) {
+      if (clip.startMs > fromMs) {
+        events.push({
+          timeMs: clip.startMs,
+          type: 'connect',
+          inputId: clip.inputId,
+        });
       }
-      if (seg.endMs > fromMs) {
-        events.push({ timeMs: seg.endMs, type: 'disconnect', inputId });
+      if (clip.endMs > fromMs) {
+        events.push({
+          timeMs: clip.endMs,
+          type: 'disconnect',
+          inputId: clip.inputId,
+        });
       }
-    }
-  }
-
-  for (const kf of state.orderKeyframes) {
-    if (kf.timeMs > fromMs) {
-      events.push({
-        timeMs: kf.timeMs,
-        type: 'order',
-        inputOrder: kf.inputOrder,
-      });
     }
   }
 
@@ -107,6 +125,11 @@ export function useTimelinePlayback(
   useEffect(() => {
     inputsRef.current = inputs;
   }, [inputs]);
+
+  const stateRef = useRef(state);
+  useEffect(() => {
+    stateRef.current = state;
+  }, [state]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -247,14 +270,21 @@ export function useTimelinePlayback(
           console.warn(`Timeline: failed to show ${event.inputId}`, err),
         );
       } else if (event.type === 'disconnect' && event.inputId) {
-        appliedStateRef.current.set(event.inputId, false);
-        hideInput(roomId, event.inputId).catch((err) =>
-          console.warn(`Timeline: failed to hide ${event.inputId}`, err),
+        // Check if the same input has another active clip at this time
+        const stillActive = stateRef.current.tracks.some((track) =>
+          track.clips.some(
+            (clip) =>
+              clip.inputId === event.inputId &&
+              event.timeMs >= clip.startMs &&
+              event.timeMs < clip.endMs,
+          ),
         );
-      } else if (event.type === 'order' && event.inputOrder) {
-        updateRoom(roomId, { inputOrder: event.inputOrder }).catch((err) =>
-          console.warn('Timeline: failed to apply order', err),
-        );
+        if (!stillActive) {
+          appliedStateRef.current.set(event.inputId, false);
+          hideInput(roomId, event.inputId).catch((err) =>
+            console.warn(`Timeline: failed to hide ${event.inputId}`, err),
+          );
+        }
       }
 
       scheduleNextEvent();
@@ -263,7 +293,7 @@ export function useTimelinePlayback(
     eventTimerRef.current = setTimeout(fire, Math.max(0, delayMs));
   }, [roomId]);
 
-  /** Start playback — animate playhead and fire events at segment edges. */
+  /** Start playback — animate playhead and fire events at clip edges. */
   const play = useCallback(() => {
     if (state.isPlaying) return;
 
@@ -283,8 +313,9 @@ export function useTimelinePlayback(
     const desired = computeDesiredState(state);
     void applyDesiredState(desired);
 
+    // Apply input order based on track order
     const order = getActiveOrder(state);
-    if (order && order.length > 0) {
+    if (order.length > 0) {
       updateRoom(roomId, { inputOrder: order }).catch((err) =>
         console.warn('Timeline: failed to apply initial order', err),
       );
@@ -329,7 +360,7 @@ export function useTimelinePlayback(
     await applyDesiredState(desired);
 
     const order = getActiveOrder(state);
-    if (order && order.length > 0) {
+    if (order.length > 0) {
       try {
         await updateRoom(roomId, { inputOrder: order });
       } catch (err) {
@@ -338,21 +369,28 @@ export function useTimelinePlayback(
     }
   }, [inputs, state, roomId, applyDesiredState]);
 
-  // Recompute events when the timeline structure changes during playback
+  // Recompute events when the timeline structure changes during playback,
+  // or re-apply desired state when structure changes while paused.
   useEffect(() => {
-    if (!state.isPlaying) return;
-    if (!playStartRef.current) return;
+    if (structureRevision === 0) return;
 
-    eventsRef.current = compileEvents(state, state.playheadMs);
-    nextEventIndexRef.current = 0;
+    if (state.isPlaying && playStartRef.current) {
+      eventsRef.current = compileEvents(state, state.playheadMs);
+      nextEventIndexRef.current = 0;
 
-    if (eventTimerRef.current) {
-      clearTimeout(eventTimerRef.current);
-      eventTimerRef.current = null;
+      if (eventTimerRef.current) {
+        clearTimeout(eventTimerRef.current);
+        eventTimerRef.current = null;
+      }
+
+      scheduleNextEvent();
+    } else if (!state.isPlaying) {
+      // When not playing, re-apply visibility so the preview stays in sync
+      // with the current playhead after timeline edits.
+      const desired = computeDesiredState(state);
+      void applyDesiredState(desired);
     }
-
-    scheduleNextEvent();
-  }, [structureRevision, state, scheduleNextEvent]);
+  }, [structureRevision, state, scheduleNextEvent, applyDesiredState]);
 
   return {
     play,

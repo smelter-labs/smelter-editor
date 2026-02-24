@@ -1014,9 +1014,7 @@ export default function InputEntry({
                 aria-label={
                   input.hidden ? 'Show in program' : 'Hide from program'
                 }
-                title={
-                  input.hidden ? 'Show in program' : 'Hide from program'
-                }>
+                title={input.hidden ? 'Show in program' : 'Hide from program'}>
                 {input.hidden ? (
                   <EyeOff className='text-neutral-400 size-5' />
                 ) : (

@@ -11,8 +11,6 @@ import {
 import { createPortal } from 'react-dom';
 import type { Input } from '@/app/actions/actions';
 import type { InputWrapper } from '../hooks/use-control-panel-state';
-import { SortableItem } from '@/components/control-panel/sortable-list/sortable-item';
-import { SortableList } from '@/components/control-panel/sortable-list/sortable-list';
 import LoadingSpinner from '@/components/ui/spinner';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useTimelineState, DEFAULT_PPS } from '../hooks/use-timeline-state';
@@ -28,6 +26,10 @@ import {
   X,
   Undo2,
   Redo2,
+  Plus,
+  Trash2,
+  Pencil,
+  Check,
 } from 'lucide-react';
 
 // ── Props ────────────────────────────────────────────────
@@ -122,15 +124,15 @@ function computeRulerTicks(
 // ── Snap helpers ─────────────────────────────────────────
 
 function computeSnapTargets(
-  tracks: Record<string, import('../hooks/use-timeline-state').TrackTimeline>,
-  excludeSegmentId: string,
+  tracks: import('../hooks/use-timeline-state').Track[],
+  excludeClipId: string,
   playheadMs: number,
 ): number[] {
   const targets: number[] = [0, playheadMs];
-  for (const track of Object.values(tracks)) {
-    for (const seg of track.segments) {
-      if (seg.id === excludeSegmentId) continue;
-      targets.push(seg.startMs, seg.endMs);
+  for (const track of tracks) {
+    for (const clip of track.clips) {
+      if (clip.id === excludeClipId) continue;
+      targets.push(clip.startMs, clip.endMs);
     }
   }
   return targets;
@@ -174,13 +176,15 @@ export function TimelinePanel({
     setPlaying,
     setZoom,
     reset,
-    moveSegment,
-    resizeSegment,
-    splitSegment,
-    deleteSegment,
-    duplicateSegment,
-    addOrderKeyframe,
-    removeOrderKeyframe,
+    moveClip,
+    resizeClip,
+    splitClip,
+    deleteClip,
+    duplicateClip,
+    moveClipToTrack,
+    renameTrack,
+    addTrack,
+    deleteTrack,
     undo,
     redo,
     canUndo,
@@ -206,64 +210,34 @@ export function TimelinePanel({
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
+    trackId: string;
     inputId: string;
     isMuted: boolean;
-    segmentId?: string;
+    clipId?: string;
     splitAtMs?: number;
   } | null>(null);
 
-  const [keyframeMenu, setKeyframeMenu] = useState<{
-    x: number;
-    y: number;
-    keyframeId: string;
-  } | null>(null);
-
-  const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(
-    null,
-  );
-
-  const [selectedSegmentId, setSelectedSegmentId] = useState<{
-    inputId: string;
-    segmentId: string;
+  const [selectedClipId, setSelectedClipId] = useState<{
+    trackId: string;
+    clipId: string;
   } | null>(null);
 
   const [showHelp, setShowHelp] = useState(false);
-
-  const [isWideScreen, setIsWideScreen] = useState(true);
+  const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
+  const [editingTrackLabel, setEditingTrackLabel] = useState('');
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const rulerRef = useRef<HTMLDivElement>(null);
 
-  // ── Segment interaction refs ─────────────────────────
+  // ── Clip interaction refs ─────────────────────────
   const dragRef = useRef<{
     type: 'move' | 'resize-left' | 'resize-right';
-    inputId: string;
-    segmentId: string;
+    trackId: string;
+    clipId: string;
     originX: number;
+    originY: number;
     originStartMs: number;
     originEndMs: number;
   } | null>(null);
-
-  useEffect(() => {
-    const checkWidth = () => setIsWideScreen(window.innerWidth >= 1600);
-    checkWidth();
-    window.addEventListener('resize', checkWidth);
-    return () => window.removeEventListener('resize', checkWidth);
-  }, []);
-
-  const attachedInputIds = useMemo(() => {
-    const ids = new Set<string>();
-    for (const input of inputs) {
-      for (const id of input.attachedInputIds || []) {
-        ids.add(id);
-      }
-    }
-    return ids;
-  }, [inputs]);
-
-  const visibleWrappers = useMemo(
-    () => inputWrappers.filter((w) => !attachedInputIds.has(w.inputId)),
-    [inputWrappers, attachedInputIds],
-  );
 
   // ── Sync ruler scroll with tracks scroll ──────────────
   useEffect(() => {
@@ -344,11 +318,20 @@ export function TimelinePanel({
 
   // ── Track click ──────────────────────────────────────
 
-  const handleTrackClick = useCallback((inputId: string) => {
-    window.dispatchEvent(
-      new CustomEvent('smelter:inputs:select', { detail: { inputId } }),
-    );
-  }, []);
+  const handleTrackClick = useCallback(
+    (trackId: string) => {
+      // Find the first clip on this track to select its input
+      const track = state.tracks.find((t) => t.id === trackId);
+      if (track && track.clips.length > 0) {
+        window.dispatchEvent(
+          new CustomEvent('smelter:inputs:select', {
+            detail: { inputId: track.clips[0].inputId },
+          }),
+        );
+      }
+    },
+    [state.tracks],
+  );
 
   // ── Ruler scrub (pointer drag to move playhead) ───────
 
@@ -413,15 +396,15 @@ export function TimelinePanel({
     el.scrollLeft = Math.max(0, phPx - viewportWidth / 2);
   }, [state.playheadMs, state.pixelsPerSecond]);
 
-  // ── Find segment at playhead for selected track ──────
+  // ── Find clip at playhead for selected track ──────
 
-  const findSegmentAtPlayhead = useCallback(
-    (inputId: string): string | null => {
-      const track = state.tracks[inputId];
+  const findClipAtPlayhead = useCallback(
+    (trackId: string): string | null => {
+      const track = state.tracks.find((t) => t.id === trackId);
       if (!track) return null;
-      for (const seg of track.segments) {
-        if (state.playheadMs >= seg.startMs && state.playheadMs < seg.endMs) {
-          return seg.id;
+      for (const clip of track.clips) {
+        if (state.playheadMs >= clip.startMs && state.playheadMs < clip.endMs) {
+          return clip.id;
         }
       }
       return null;
@@ -436,10 +419,10 @@ export function TimelinePanel({
       const edges = new Set<number>();
       edges.add(0);
       edges.add(state.totalDurationMs);
-      for (const track of Object.values(state.tracks)) {
-        for (const seg of track.segments) {
-          edges.add(seg.startMs);
-          edges.add(seg.endMs);
+      for (const track of state.tracks) {
+        for (const clip of track.clips) {
+          edges.add(clip.startMs);
+          edges.add(clip.endMs);
         }
       }
       const sorted = [...edges].sort((a, b) => a - b);
@@ -458,49 +441,70 @@ export function TimelinePanel({
 
   const navigateTrack = useCallback(
     (direction: 'up' | 'down') => {
-      const ids = visibleWrappers.map((w) => w.inputId);
-      if (ids.length === 0) return;
-      const currentIdx = selectedInputId ? ids.indexOf(selectedInputId) : -1;
+      const trackIds = state.tracks.map((t) => t.id);
+      if (trackIds.length === 0) return;
+      // Find current track index based on selectedClipId or selectedInputId
+      let currentIdx = -1;
+      if (selectedClipId) {
+        currentIdx = trackIds.indexOf(selectedClipId.trackId);
+      } else if (selectedInputId) {
+        currentIdx = state.tracks.findIndex((t) =>
+          t.clips.some((c) => c.inputId === selectedInputId),
+        );
+      }
       let nextIdx: number;
       if (direction === 'down') {
-        nextIdx = currentIdx < ids.length - 1 ? currentIdx + 1 : 0;
+        nextIdx = currentIdx < trackIds.length - 1 ? currentIdx + 1 : 0;
       } else {
-        nextIdx = currentIdx > 0 ? currentIdx - 1 : ids.length - 1;
+        nextIdx = currentIdx > 0 ? currentIdx - 1 : trackIds.length - 1;
       }
-      window.dispatchEvent(
-        new CustomEvent('smelter:inputs:select', {
-          detail: { inputId: ids[nextIdx] },
-        }),
-      );
+      const nextTrack = state.tracks[nextIdx];
+      if (nextTrack && nextTrack.clips.length > 0) {
+        window.dispatchEvent(
+          new CustomEvent('smelter:inputs:select', {
+            detail: { inputId: nextTrack.clips[0].inputId },
+          }),
+        );
+      }
     },
-    [visibleWrappers, selectedInputId],
+    [state.tracks, selectedInputId, selectedClipId],
   );
 
-  // ── Tab to next segment on current track ────────────
+  // ── Tab to next clip on current track ────────────
 
-  const tabToNextSegment = useCallback(
+  const tabToNextClip = useCallback(
     (reverse: boolean) => {
-      if (!selectedInputId) return;
-      const track = state.tracks[selectedInputId];
-      if (!track || track.segments.length === 0) return;
-      const segments = track.segments;
-      const currentSegIdx = selectedSegmentId
-        ? segments.findIndex((s) => s.id === selectedSegmentId.segmentId)
+      // Find the track to tab within
+      let trackId: string | null = null;
+      if (selectedClipId) {
+        trackId = selectedClipId.trackId;
+      } else if (selectedInputId) {
+        const t = state.tracks.find((t) =>
+          t.clips.some((c) => c.inputId === selectedInputId),
+        );
+        if (t) trackId = t.id;
+      }
+      if (!trackId) return;
+      const track = state.tracks.find((t) => t.id === trackId);
+      if (!track || track.clips.length === 0) return;
+      const clips = track.clips;
+      const currentIdx = selectedClipId
+        ? clips.findIndex((c) => c.id === selectedClipId.clipId)
         : -1;
       let nextIdx: number;
       if (reverse) {
-        nextIdx = currentSegIdx > 0 ? currentSegIdx - 1 : segments.length - 1;
+        nextIdx = currentIdx > 0 ? currentIdx - 1 : clips.length - 1;
       } else {
-        nextIdx = currentSegIdx < segments.length - 1 ? currentSegIdx + 1 : 0;
+        nextIdx = currentIdx < clips.length - 1 ? currentIdx + 1 : 0;
       }
-      const seg = segments[nextIdx];
-      setSelectedSegmentId({
-        inputId: selectedInputId,
-        segmentId: seg.id,
+      const clip = clips[nextIdx];
+      setSelectedClipId({
+        trackId: track.id,
+        clipId: clip.id,
       });
-      setPlayhead(seg.startMs);
+      setPlayhead(clip.startMs);
     },
-    [selectedInputId, state.tracks, selectedSegmentId, setPlayhead],
+    [selectedInputId, selectedClipId, state.tracks, setPlayhead],
   );
 
   // ── Keyboard shortcuts ──────────────────────────────
@@ -624,9 +628,10 @@ export function TimelinePanel({
         case 'S': {
           if (ctrl) break;
           e.preventDefault();
-          if (selectedInputId) {
-            const segId = findSegmentAtPlayhead(selectedInputId);
-            if (segId) splitSegment(selectedInputId, segId, state.playheadMs);
+          if (selectedClipId) {
+            const clipId = findClipAtPlayhead(selectedClipId.trackId);
+            if (clipId)
+              splitClip(selectedClipId.trackId, clipId, state.playheadMs);
           }
           break;
         }
@@ -634,11 +639,8 @@ export function TimelinePanel({
         case 'D': {
           if (ctrl) break;
           e.preventDefault();
-          if (selectedSegmentId) {
-            duplicateSegment(
-              selectedSegmentId.inputId,
-              selectedSegmentId.segmentId,
-            );
+          if (selectedClipId) {
+            duplicateClip(selectedClipId.trackId, selectedClipId.clipId);
           }
           break;
         }
@@ -657,23 +659,20 @@ export function TimelinePanel({
         }
         case 'Delete':
         case 'Backspace': {
-          if (selectedSegmentId) {
+          if (selectedClipId) {
             e.preventDefault();
-            deleteSegment(
-              selectedSegmentId.inputId,
-              selectedSegmentId.segmentId,
-            );
-            setSelectedSegmentId(null);
+            deleteClip(selectedClipId.trackId, selectedClipId.clipId);
+            setSelectedClipId(null);
           }
           break;
         }
         case 'Tab': {
           e.preventDefault();
-          tabToNextSegment(shift);
+          tabToNextClip(shift);
           break;
         }
         case 'Escape': {
-          setSelectedSegmentId(null);
+          setSelectedClipId(null);
           setShowHelp(false);
           break;
         }
@@ -699,18 +698,18 @@ export function TimelinePanel({
     scrollToPlayhead,
     jumpToEdge,
     navigateTrack,
-    tabToNextSegment,
-    findSegmentAtPlayhead,
-    splitSegment,
-    deleteSegment,
-    duplicateSegment,
+    tabToNextClip,
+    findClipAtPlayhead,
+    splitClip,
+    deleteClip,
+    duplicateClip,
     undo,
     redo,
     selectedInputId,
-    selectedSegmentId,
+    selectedClipId,
   ]);
 
-  // ── Segment pointer interactions ─────────────────────
+  // ── Clip pointer interactions ─────────────────────
 
   const pxToMs = useCallback(
     (px: number) => (px / state.pixelsPerSecond) * 1000,
@@ -719,84 +718,90 @@ export function TimelinePanel({
 
   const snapThresholdMs = useMemo(() => pxToMs(SNAP_THRESHOLD_PX), [pxToMs]);
 
-  const handleSegmentPointerDown = useCallback(
+  // ── Determine which track the pointer is over ────
+  const getTrackIdAtY = useCallback(
+    (clientY: number): string | null => {
+      const container = scrollContainerRef.current;
+      if (!container) return null;
+      const containerRect = container.getBoundingClientRect();
+      const scrollTop = container.scrollTop;
+      const relativeY = clientY - containerRect.top + scrollTop;
+      const trackIndex = Math.floor(relativeY / TRACK_HEIGHT);
+      if (trackIndex >= 0 && trackIndex < state.tracks.length) {
+        return state.tracks[trackIndex].id;
+      }
+      return null;
+    },
+    [state.tracks],
+  );
+
+  const handleClipPointerDown = useCallback(
     (
       e: React.PointerEvent<HTMLDivElement>,
-      inputId: string,
-      segmentId: string,
-      segStartMs: number,
-      segEndMs: number,
+      trackId: string,
+      clipId: string,
+      clipStartMs: number,
+      clipEndMs: number,
     ) => {
       // Alt+Click = split
       if (e.altKey) {
         const rect = e.currentTarget.parentElement!.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const atMs = Math.round(pxToMs(x));
-        splitSegment(inputId, segmentId, atMs);
+        splitClip(trackId, clipId, atMs);
         return;
       }
 
       e.preventDefault();
       e.stopPropagation();
 
-      // Track segment selection
-      setSelectedSegmentId({ inputId, segmentId });
+      // Track clip selection
+      setSelectedClipId({ trackId, clipId });
 
       const rect = e.currentTarget.getBoundingClientRect();
       const localX = e.clientX - rect.left;
-      const segWidthPx = rect.width;
+      const clipWidthPx = rect.width;
 
       let type: 'move' | 'resize-left' | 'resize-right' = 'move';
       if (localX <= RESIZE_HANDLE_PX) {
         type = 'resize-left';
-      } else if (localX >= segWidthPx - RESIZE_HANDLE_PX) {
+      } else if (localX >= clipWidthPx - RESIZE_HANDLE_PX) {
         type = 'resize-right';
       }
 
       dragRef.current = {
         type,
-        inputId,
-        segmentId,
+        trackId,
+        clipId,
         originX: e.clientX,
-        originStartMs: segStartMs,
-        originEndMs: segEndMs,
+        originY: e.clientY,
+        originStartMs: clipStartMs,
+        originEndMs: clipEndMs,
       };
 
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       document.body.style.userSelect = 'none';
     },
-    [pxToMs, splitSegment],
+    [pxToMs, splitClip],
   );
 
-  const handleSegmentPointerMove = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
+  // Use document-level listeners for drag so we can detect cross-track movement
+  useEffect(() => {
+    const handlePointerMove = (e: PointerEvent) => {
       const drag = dragRef.current;
-      if (!drag) {
-        // Update cursor based on position
-        const rect = e.currentTarget.getBoundingClientRect();
-        const localX = e.clientX - rect.left;
-        const w = rect.width;
-        if (localX <= RESIZE_HANDLE_PX || localX >= w - RESIZE_HANDLE_PX) {
-          e.currentTarget.style.cursor = 'col-resize';
-        } else {
-          e.currentTarget.style.cursor = 'grab';
-        }
-        return;
-      }
+      if (!drag) return;
 
       const deltaX = e.clientX - drag.originX;
       const deltaMs = pxToMs(deltaX);
 
       const snapTargets = computeSnapTargets(
         state.tracks,
-        drag.segmentId,
+        drag.clipId,
         state.playheadMs,
       );
 
       if (drag.type === 'move') {
         let newStart = Math.round(drag.originStartMs + deltaMs);
         newStart = snapToNearest(newStart, snapTargets, snapThresholdMs);
-        // Also snap the end
         const duration = drag.originEndMs - drag.originStartMs;
         const snappedEnd = snapToNearest(
           newStart + duration,
@@ -806,33 +811,60 @@ export function TimelinePanel({
         if (snappedEnd !== newStart + duration) {
           newStart = snappedEnd - duration;
         }
-        moveSegment(drag.inputId, drag.segmentId, newStart);
+
+        // Detect cross-track movement
+        const targetTrackId = getTrackIdAtY(e.clientY);
+        if (targetTrackId && targetTrackId !== drag.trackId) {
+          moveClipToTrack(drag.trackId, drag.clipId, targetTrackId, newStart);
+          drag.trackId = targetTrackId;
+        } else {
+          moveClip(drag.trackId, drag.clipId, newStart);
+        }
       } else if (drag.type === 'resize-left') {
         let newStart = Math.round(drag.originStartMs + deltaMs);
         newStart = snapToNearest(newStart, snapTargets, snapThresholdMs);
-        resizeSegment(drag.inputId, drag.segmentId, 'left', newStart);
+        resizeClip(drag.trackId, drag.clipId, 'left', newStart);
       } else {
         let newEnd = Math.round(drag.originEndMs + deltaMs);
         newEnd = snapToNearest(newEnd, snapTargets, snapThresholdMs);
-        resizeSegment(drag.inputId, drag.segmentId, 'right', newEnd);
+        resizeClip(drag.trackId, drag.clipId, 'right', newEnd);
       }
-    },
-    [
-      pxToMs,
-      state.tracks,
-      state.playheadMs,
-      snapThresholdMs,
-      moveSegment,
-      resizeSegment,
-    ],
-  );
+    };
 
-  const handleSegmentPointerUp = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
+    const handlePointerUp = () => {
       if (dragRef.current) {
         dragRef.current = null;
-        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
         document.body.style.userSelect = '';
+      }
+    };
+
+    document.addEventListener('pointermove', handlePointerMove);
+    document.addEventListener('pointerup', handlePointerUp);
+    return () => {
+      document.removeEventListener('pointermove', handlePointerMove);
+      document.removeEventListener('pointerup', handlePointerUp);
+    };
+  }, [
+    pxToMs,
+    state.tracks,
+    state.playheadMs,
+    snapThresholdMs,
+    moveClip,
+    resizeClip,
+    moveClipToTrack,
+    getTrackIdAtY,
+  ]);
+
+  const handleClipHover = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (dragRef.current) return;
+      const rect = e.currentTarget.getBoundingClientRect();
+      const localX = e.clientX - rect.left;
+      const w = rect.width;
+      if (localX <= RESIZE_HANDLE_PX || localX >= w - RESIZE_HANDLE_PX) {
+        e.currentTarget.style.cursor = 'col-resize';
+      } else {
+        e.currentTarget.style.cursor = 'grab';
       }
     },
     [],
@@ -841,12 +873,12 @@ export function TimelinePanel({
   // ── Context menu ─────────────────────────────────────
 
   const handleContextMenu = useCallback(
-    (e: ReactMouseEvent, inputId: string, segmentId?: string) => {
+    (e: ReactMouseEvent, trackId: string, inputId: string, clipId?: string) => {
       e.preventDefault();
       const input = inputs.find((i) => i.inputId === inputId);
 
       let splitAtMs: number | undefined;
-      if (segmentId) {
+      if (clipId) {
         const trackEl = (e.target as HTMLElement).closest(
           '[data-no-dnd]',
         )?.parentElement;
@@ -860,9 +892,10 @@ export function TimelinePanel({
       setContextMenu({
         x: e.clientX,
         y: e.clientY,
+        trackId,
         inputId,
         isMuted: input ? input.volume === 0 : false,
-        segmentId,
+        clipId,
         splitAtMs,
       });
     },
@@ -918,134 +951,59 @@ export function TimelinePanel({
   }, [contextMenu, closeContextMenu]);
 
   const handleSplitHere = useCallback(() => {
-    if (contextMenu?.segmentId && contextMenu.splitAtMs !== undefined) {
-      splitSegment(
-        contextMenu.inputId,
-        contextMenu.segmentId,
-        contextMenu.splitAtMs,
-      );
+    if (contextMenu?.clipId && contextMenu.splitAtMs !== undefined) {
+      splitClip(contextMenu.trackId, contextMenu.clipId, contextMenu.splitAtMs);
     }
     closeContextMenu();
-  }, [contextMenu, splitSegment, closeContextMenu]);
+  }, [contextMenu, splitClip, closeContextMenu]);
 
-  const handleDeleteSegment = useCallback(() => {
-    if (contextMenu?.segmentId) {
-      deleteSegment(contextMenu.inputId, contextMenu.segmentId);
+  const handleDeleteClip = useCallback(() => {
+    if (contextMenu?.clipId) {
+      deleteClip(contextMenu.trackId, contextMenu.clipId);
     }
     closeContextMenu();
-  }, [contextMenu, deleteSegment, closeContextMenu]);
-
-  // ── Order keyframe handlers ──────────────────────────
-
-  const handleOrderChange = useCallback(
-    async (wrappers: InputWrapper[]) => {
-      addOrderKeyframe(
-        state.playheadMs,
-        wrappers.map((w) => w.inputId),
-      );
-      await updateOrder(wrappers);
-    },
-    [state.playheadMs, addOrderKeyframe, updateOrder],
-  );
-
-  const handleAddOrderKeyframe = useCallback(() => {
-    const order = visibleWrappers.map((w) => w.inputId);
-    addOrderKeyframe(state.playheadMs, order);
-    closeContextMenu();
-  }, [visibleWrappers, state.playheadMs, addOrderKeyframe, closeContextMenu]);
-
-  const handleKeyframeClick = useCallback(
-    (e: ReactMouseEvent, keyframeId: string) => {
-      e.stopPropagation();
-      setSelectedKeyframeId((prev) =>
-        prev === keyframeId ? null : keyframeId,
-      );
-    },
-    [],
-  );
-
-  const handleKeyframeContextMenu = useCallback(
-    (e: ReactMouseEvent, keyframeId: string) => {
-      e.preventDefault();
-      e.stopPropagation();
-      setKeyframeMenu({ x: e.clientX, y: e.clientY, keyframeId });
-    },
-    [],
-  );
-
-  const closeKeyframeMenu = useCallback(() => setKeyframeMenu(null), []);
-
-  useEffect(() => {
-    if (!keyframeMenu) return;
-    const handleClick = () => closeKeyframeMenu();
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeKeyframeMenu();
-    };
-    window.addEventListener('click', handleClick);
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.removeEventListener('click', handleClick);
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [keyframeMenu, closeKeyframeMenu]);
-
-  const handleRemoveKeyframe = useCallback(() => {
-    if (keyframeMenu) {
-      removeOrderKeyframe(keyframeMenu.keyframeId);
-      if (selectedKeyframeId === keyframeMenu.keyframeId) {
-        setSelectedKeyframeId(null);
-      }
-    }
-    closeKeyframeMenu();
-  }, [
-    keyframeMenu,
-    removeOrderKeyframe,
-    selectedKeyframeId,
-    closeKeyframeMenu,
-  ]);
+  }, [contextMenu, deleteClip, closeContextMenu]);
 
   // ── Render helpers ───────────────────────────────────
 
-  const renderSegments = useCallback(
-    (inputId: string, inputType: Input['type'], isSelected: boolean) => {
-      const track = state.tracks[inputId];
-      if (!track) return null;
-
-      return track.segments.map((seg) => {
-        const leftPx = (seg.startMs / 1000) * state.pixelsPerSecond;
+  const renderClips = useCallback(
+    (track: import('../hooks/use-timeline-state').Track) => {
+      return track.clips.map((clip) => {
+        const input = inputs.find((i) => i.inputId === clip.inputId);
+        const inputType: Input['type'] = input?.type ?? 'whip';
+        const leftPx = (clip.startMs / 1000) * state.pixelsPerSecond;
         const widthPx =
-          ((seg.endMs - seg.startMs) / 1000) * state.pixelsPerSecond;
-        const isSegSelected =
-          selectedSegmentId?.inputId === inputId &&
-          selectedSegmentId?.segmentId === seg.id;
-        const durationMs = seg.endMs - seg.startMs;
+          ((clip.endMs - clip.startMs) / 1000) * state.pixelsPerSecond;
+        const isClipSelected =
+          selectedClipId?.trackId === track.id &&
+          selectedClipId?.clipId === clip.id;
+        const durationMs = clip.endMs - clip.startMs;
+        const clipLabel = input?.title ?? clip.inputId;
 
         return (
           <div
-            key={seg.id}
+            key={clip.id}
             data-no-dnd='true'
-            className={`absolute top-1 bottom-1 rounded-sm border ${SEGMENT_COLORS[inputType]} ${isSelected || isSegSelected ? SEGMENT_SELECTED[inputType] : ''} ${isSegSelected ? 'ring-2 brightness-125' : ''} flex items-center overflow-hidden touch-none`}
+            className={`absolute top-1 bottom-1 rounded-sm border ${SEGMENT_COLORS[inputType]} ${isClipSelected ? SEGMENT_SELECTED[inputType] : ''} ${isClipSelected ? 'ring-2 brightness-125' : ''} flex items-center overflow-hidden touch-none`}
             style={{
               left: leftPx,
               width: Math.max(widthPx, 2),
               cursor: 'grab',
             }}
-            title={`${formatMs(seg.startMs)} → ${formatMs(seg.endMs)} (${formatMs(durationMs)})`}
+            title={`${clipLabel}: ${formatMs(clip.startMs)} → ${formatMs(clip.endMs)} (${formatMs(durationMs)})`}
             onPointerDown={(e) =>
-              handleSegmentPointerDown(
+              handleClipPointerDown(
                 e,
-                inputId,
-                seg.id,
-                seg.startMs,
-                seg.endMs,
+                track.id,
+                clip.id,
+                clip.startMs,
+                clip.endMs,
               )
             }
-            onPointerMove={handleSegmentPointerMove}
-            onPointerUp={handleSegmentPointerUp}
-            onPointerCancel={handleSegmentPointerUp}
+            onPointerMove={handleClipHover}
             onContextMenu={(e) => {
               e.stopPropagation();
-              handleContextMenu(e, inputId, seg.id);
+              handleContextMenu(e, track.id, clip.inputId, clip.id);
             }}>
             {/* Left resize handle */}
             <div className='absolute left-0 top-0 bottom-0 w-[5px] cursor-col-resize z-10' />
@@ -1054,7 +1012,7 @@ export function TimelinePanel({
             {/* Label */}
             {widthPx > 40 && (
               <span className='text-[10px] text-neutral-300/80 truncate px-2 select-none pointer-events-none'>
-                {formatMs(seg.startMs)}
+                {clipLabel}
               </span>
             )}
           </div>
@@ -1062,12 +1020,11 @@ export function TimelinePanel({
       });
     },
     [
-      state.tracks,
+      inputs,
       state.pixelsPerSecond,
-      selectedSegmentId,
-      handleSegmentPointerDown,
-      handleSegmentPointerMove,
-      handleSegmentPointerUp,
+      selectedClipId,
+      handleClipPointerDown,
+      handleClipHover,
       handleContextMenu,
     ],
   );
@@ -1202,26 +1159,6 @@ export function TimelinePanel({
                 </div>
               );
             })}
-            {/* Order keyframe diamond markers */}
-            {state.orderKeyframes.map((kf) => {
-              const x = (kf.timeMs / 1000) * state.pixelsPerSecond;
-              const isSelected = selectedKeyframeId === kf.id;
-              return (
-                <div
-                  key={kf.id}
-                  className={`absolute top-1/2 -translate-y-1/2 w-2.5 h-2.5 rotate-45 border cursor-pointer pointer-events-auto z-20 ${
-                    isSelected
-                      ? 'bg-amber-400 border-amber-300'
-                      : 'bg-amber-500/70 border-amber-400/50 hover:bg-amber-400 hover:border-amber-300'
-                  }`}
-                  style={{ left: x - 5 }}
-                  data-no-dnd='true'
-                  onClick={(e) => handleKeyframeClick(e, kf.id)}
-                  onContextMenu={(e) => handleKeyframeContextMenu(e, kf.id)}
-                  title={`Order keyframe at ${formatMs(kf.timeMs)}`}
-                />
-              );
-            })}
             {/* Playhead marker on ruler */}
             <div
               className='absolute top-0 bottom-0 w-px bg-red-500 z-10 pointer-events-none'
@@ -1266,62 +1203,127 @@ export function TimelinePanel({
             <LoadingSpinner size='lg' variant='spinner' />
           </div>
         ) : (
-          <SortableList
-            items={visibleWrappers}
-            resetVersion={listVersion}
-            disableDrag={isGuest || !isWideScreen}
-            renderItem={(item) => {
-              const input = inputs.find((i) => i.inputId === item.inputId);
-              if (!input) return null;
-              const isSelected = selectedInputId === input.inputId;
-              const isLive =
-                input.sourceState === 'live' ||
-                input.sourceState === 'always-live';
+          state.tracks.map((track) => {
+            // Determine a representative input for the track label color
+            const firstClipInput =
+              track.clips.length > 0
+                ? inputs.find((i) => i.inputId === track.clips[0].inputId)
+                : undefined;
+            const trackColor = firstClipInput
+              ? TYPE_COLORS[firstClipInput.type]
+              : 'bg-neutral-500';
+            const isEditing = editingTrackId === track.id;
 
-              return (
-                <SortableItem
-                  key={item.inputId}
-                  id={item.id}
-                  disableDrag={isGuest || !isWideScreen}>
+            return (
+              <div
+                key={track.id}
+                className='flex border-b border-neutral-800/50 cursor-pointer group/track'
+                style={{ height: TRACK_HEIGHT }}
+                onClick={() => handleTrackClick(track.id)}
+                onContextMenu={(e) => {
+                  const inputId = firstClipInput?.inputId ?? '';
+                  handleContextMenu(e, track.id, inputId);
+                }}>
+                {/* Track label (sticky left) */}
+                <div
+                  className='shrink-0 bg-neutral-900 flex items-center gap-1.5 px-2 sticky left-0 z-10'
+                  style={{ width: SOURCES_WIDTH }}>
                   <div
-                    className='flex border-b border-neutral-800/50 cursor-pointer'
-                    style={{ height: TRACK_HEIGHT }}
-                    onClick={() => handleTrackClick(input.inputId)}
-                    onContextMenu={(e) => handleContextMenu(e, input.inputId)}>
-                    {/* Source label (sticky left) */}
-                    <div
-                      className='shrink-0 bg-neutral-900 flex items-center gap-2 px-3 sticky left-0 z-10'
-                      style={{ width: SOURCES_WIDTH }}>
-                      <div
-                        className={`w-2.5 h-2.5 rounded-full shrink-0 ${TYPE_COLORS[input.type]}`}
-                      />
-                      <span className='text-sm text-neutral-200 truncate flex-1'>
-                        {input.title}
-                      </span>
-                      <div
-                        className={`w-1.5 h-1.5 rounded-full shrink-0 ${isLive ? 'bg-green-500' : 'bg-neutral-500'}`}
-                      />
-                    </div>
-                    {/* Track timeline area */}
-                    <div
-                      className='relative'
-                      style={{
-                        width: timelineWidthPx,
-                        minWidth: `calc(100% - ${SOURCES_WIDTH}px)`,
+                    className={`w-2.5 h-2.5 rounded-full shrink-0 ${trackColor}`}
+                  />
+                  {isEditing ? (
+                    <input
+                      autoFocus
+                      className='text-sm text-neutral-200 bg-neutral-800 border border-neutral-600 rounded px-1 py-0.5 flex-1 min-w-0 outline-none focus:border-blue-500'
+                      value={editingTrackLabel}
+                      onChange={(e) => setEditingTrackLabel(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          const trimmed = editingTrackLabel.trim();
+                          if (trimmed) renameTrack(track.id, trimmed);
+                          setEditingTrackId(null);
+                        } else if (e.key === 'Escape') {
+                          setEditingTrackId(null);
+                        }
+                      }}
+                      onBlur={() => {
+                        const trimmed = editingTrackLabel.trim();
+                        if (trimmed) renameTrack(track.id, trimmed);
+                        setEditingTrackId(null);
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ) : (
+                    <span
+                      className='text-sm text-neutral-200 truncate flex-1'
+                      onDoubleClick={(e) => {
+                        e.stopPropagation();
+                        setEditingTrackId(track.id);
+                        setEditingTrackLabel(track.label);
                       }}>
-                      {renderSegments(input.inputId, input.type, isSelected)}
-                      {/* Playhead line on track */}
-                      <div
-                        className='absolute top-0 bottom-0 w-px bg-red-500/50 z-10 pointer-events-none'
-                        style={{ left: playheadPx }}
-                      />
+                      {track.label}
+                    </span>
+                  )}
+                  {!isEditing && (
+                    <div className='flex items-center gap-0.5 opacity-0 group-hover/track:opacity-100 transition-opacity'>
+                      <button
+                        className='p-0.5 rounded hover:bg-neutral-700 text-neutral-500 hover:text-neutral-300 cursor-pointer'
+                        title='Rename track'
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingTrackId(track.id);
+                          setEditingTrackLabel(track.label);
+                        }}>
+                        <Pencil className='w-3 h-3' />
+                      </button>
+                      <button
+                        className='p-0.5 rounded hover:bg-neutral-700 text-neutral-500 hover:text-red-400 cursor-pointer'
+                        title='Delete track'
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          deleteTrack(track.id);
+                        }}>
+                        <Trash2 className='w-3 h-3' />
+                      </button>
                     </div>
-                  </div>
-                </SortableItem>
-              );
-            }}
-            onOrderChange={handleOrderChange}
-          />
+                  )}
+                </div>
+                {/* Track timeline area */}
+                <div
+                  className='relative'
+                  style={{
+                    width: timelineWidthPx,
+                    minWidth: `calc(100% - ${SOURCES_WIDTH}px)`,
+                  }}>
+                  {renderClips(track)}
+                  {/* Playhead line on track */}
+                  <div
+                    className='absolute top-0 bottom-0 w-px bg-red-500/50 z-10 pointer-events-none'
+                    style={{ left: playheadPx }}
+                  />
+                </div>
+              </div>
+            );
+          })
+        )}
+
+        {/* Add Track button */}
+        {!showStreamsSpinner && (
+          <div
+            className='flex border-b border-neutral-800/50'
+            style={{ height: TRACK_HEIGHT }}>
+            <div
+              className='shrink-0 bg-neutral-900 flex items-center px-2 sticky left-0 z-10'
+              style={{ width: SOURCES_WIDTH }}>
+              <button
+                className='flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded px-2 py-1 cursor-pointer transition-colors'
+                onClick={() => addTrack()}
+                title='Add empty track'>
+                <Plus className='w-3 h-3' />
+                <span>Add Track</span>
+              </button>
+            </div>
+          </div>
         )}
       </div>
 
@@ -1346,7 +1348,7 @@ export function TimelinePanel({
               onClick={handleDelete}>
               Delete
             </button>
-            {contextMenu.segmentId && (
+            {contextMenu.clipId && (
               <>
                 <div className='h-px bg-neutral-700 my-1' />
                 <button
@@ -1356,31 +1358,31 @@ export function TimelinePanel({
                 </button>
                 <button
                   className='w-full text-left py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer text-red-400 hover:text-red-300'
-                  onClick={handleDeleteSegment}>
-                  Delete Segment
+                  onClick={handleDeleteClip}>
+                  Delete Clip
                 </button>
               </>
             )}
             <div className='h-px bg-neutral-700 my-1' />
             <button
               className='w-full text-left py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer'
-              onClick={handleAddOrderKeyframe}>
-              Add Order Keyframe
+              onClick={() => {
+                setEditingTrackId(contextMenu.trackId);
+                const track = state.tracks.find(
+                  (t) => t.id === contextMenu.trackId,
+                );
+                setEditingTrackLabel(track?.label ?? '');
+                closeContextMenu();
+              }}>
+              Rename Track
             </button>
-          </div>,
-          document.body,
-        )}
-
-      {/* Keyframe context menu */}
-      {keyframeMenu &&
-        createPortal(
-          <div
-            className='fixed z-[9999] bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl py-1 min-w-[160px]'
-            style={{ left: keyframeMenu.x, top: keyframeMenu.y }}>
             <button
               className='w-full text-left py-1.5 px-3 text-sm text-red-400 hover:bg-neutral-700 hover:text-red-300 cursor-pointer'
-              onClick={handleRemoveKeyframe}>
-              Remove Keyframe
+              onClick={() => {
+                deleteTrack(contextMenu.trackId);
+                closeContextMenu();
+              }}>
+              Delete Track
             </button>
           </div>,
           document.body,

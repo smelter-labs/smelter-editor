@@ -6,26 +6,37 @@ import { loadTimeline, saveTimeline } from '@/lib/timeline-storage';
 
 // ── Types ────────────────────────────────────────────────
 
-export type Segment = {
+export type Clip = {
   id: string;
+  inputId: string;
   startMs: number;
   endMs: number;
 };
 
-export type TrackTimeline = {
-  inputId: string;
-  segments: Segment[];
+export type Track = {
+  id: string;
+  label: string;
+  clips: Clip[];
 };
 
+/** @deprecated Use `Clip` instead. Kept for backwards compat with room-config. */
+export type Segment = Clip;
+
+/** @deprecated Kept for backwards compat with room-config imports. Will be removed. */
 export type OrderKeyframe = {
   id: string;
   timeMs: number;
   inputOrder: string[];
 };
 
+/** @deprecated Use `Track` instead. */
+export type TrackTimeline = {
+  inputId: string;
+  segments: Segment[];
+};
+
 export type TimelineState = {
-  tracks: Record<string, TrackTimeline>;
-  orderKeyframes: OrderKeyframe[];
+  tracks: Track[];
   totalDurationMs: number;
   playheadMs: number;
   isPlaying: boolean;
@@ -43,24 +54,31 @@ type TimelineAction =
   | { type: 'RESET'; inputs: Input[] }
   | { type: 'LOAD'; state: TimelineState }
   | {
-      type: 'MOVE_SEGMENT';
-      inputId: string;
-      segmentId: string;
+      type: 'MOVE_CLIP';
+      trackId: string;
+      clipId: string;
       newStartMs: number;
     }
   | {
-      type: 'RESIZE_SEGMENT';
-      inputId: string;
-      segmentId: string;
+      type: 'RESIZE_CLIP';
+      trackId: string;
+      clipId: string;
       edge: 'left' | 'right';
       newMs: number;
     }
-  | { type: 'SPLIT_SEGMENT'; inputId: string; segmentId: string; atMs: number }
-  | { type: 'DELETE_SEGMENT'; inputId: string; segmentId: string }
-  | { type: 'ADD_ORDER_KEYFRAME'; timeMs: number; inputOrder: string[] }
-  | { type: 'UPDATE_ORDER_KEYFRAME'; id: string; inputOrder: string[] }
-  | { type: 'REMOVE_ORDER_KEYFRAME'; id: string }
-  | { type: 'DUPLICATE_SEGMENT'; inputId: string; segmentId: string };
+  | { type: 'SPLIT_CLIP'; trackId: string; clipId: string; atMs: number }
+  | { type: 'DELETE_CLIP'; trackId: string; clipId: string }
+  | { type: 'DUPLICATE_CLIP'; trackId: string; clipId: string }
+  | {
+      type: 'MOVE_CLIP_TO_TRACK';
+      sourceTrackId: string;
+      clipId: string;
+      targetTrackId: string;
+      newStartMs: number;
+    }
+  | { type: 'RENAME_TRACK'; trackId: string; newLabel: string }
+  | { type: 'ADD_TRACK'; label: string }
+  | { type: 'DELETE_TRACK'; trackId: string };
 
 // ── Constants ────────────────────────────────────────────
 
@@ -68,7 +86,9 @@ const DEFAULT_DURATION_MS = 60_000; // 1 minute
 const DEFAULT_PPS = 15; // pixels per second (60s × 15 = 900px at default)
 const MIN_PPS = 2;
 const MAX_PPS = 100;
-export const MIN_SEGMENT_MS = 1000;
+export const MIN_CLIP_MS = 1000;
+/** @deprecated Use MIN_CLIP_MS instead */
+export const MIN_SEGMENT_MS = MIN_CLIP_MS;
 
 export { DEFAULT_DURATION_MS, DEFAULT_PPS, MIN_PPS, MAX_PPS };
 
@@ -78,14 +98,13 @@ function genId(): string {
   return crypto.randomUUID();
 }
 
-function makeFullSegment(totalDurationMs: number): Segment {
-  return { id: genId(), startMs: 0, endMs: totalDurationMs };
+function makeFullClip(inputId: string, totalDurationMs: number): Clip {
+  return { id: genId(), inputId, startMs: 0, endMs: totalDurationMs };
 }
 
 function createInitialState(): TimelineState {
   return {
-    tracks: {},
-    orderKeyframes: [],
+    tracks: [],
     totalDurationMs: DEFAULT_DURATION_MS,
     playheadMs: 0,
     isPlaying: false,
@@ -97,22 +116,47 @@ function clampZoom(pps: number): number {
   return Math.min(MAX_PPS, Math.max(MIN_PPS, pps));
 }
 
-/** Sort segments by startMs and clamp to [0, totalDurationMs]. Does NOT merge overlaps — segments should not overlap. */
-function clampSegments(
-  segments: Segment[],
-  totalDurationMs: number,
-): Segment[] {
-  return segments
-    .map((s) => ({
-      ...s,
-      startMs: Math.max(
-        0,
-        Math.min(s.startMs, totalDurationMs - MIN_SEGMENT_MS),
-      ),
-      endMs: Math.max(MIN_SEGMENT_MS, Math.min(s.endMs, totalDurationMs)),
+/** Sort clips by startMs and clamp to [0, totalDurationMs]. Does NOT merge overlaps — clips should not overlap. */
+function clampClips(clips: Clip[], totalDurationMs: number): Clip[] {
+  return clips
+    .map((c) => ({
+      ...c,
+      startMs: Math.max(0, Math.min(c.startMs, totalDurationMs - MIN_CLIP_MS)),
+      endMs: Math.max(MIN_CLIP_MS, Math.min(c.endMs, totalDurationMs)),
     }))
-    .filter((s) => s.endMs - s.startMs >= MIN_SEGMENT_MS)
+    .filter((c) => c.endMs - c.startMs >= MIN_CLIP_MS)
     .sort((a, b) => a.startMs - b.startMs);
+}
+
+/**
+ * Migrate V1 stored format (tracks as Record<string, TrackTimeline>, orderKeyframes)
+ * to V2 format (tracks as Track[]).
+ */
+function migrateV1ToV2(stored: Record<string, unknown>): TimelineState | null {
+  const tracks = stored.tracks;
+  if (!tracks || Array.isArray(tracks)) return null;
+
+  // It's V1 format — tracks is a Record<string, TrackTimeline>
+  const v1Tracks = tracks as Record<string, TrackTimeline>;
+  const newTracks: Track[] = [];
+  for (const [inputId, trackTimeline] of Object.entries(v1Tracks)) {
+    newTracks.push({
+      id: genId(),
+      label: inputId,
+      clips: (trackTimeline.segments || []).map((s) => ({
+        ...s,
+        inputId: trackTimeline.inputId || inputId,
+      })),
+    });
+  }
+
+  return {
+    tracks: newTracks,
+    totalDurationMs: (stored.totalDurationMs as number) || DEFAULT_DURATION_MS,
+    playheadMs: 0,
+    isPlaying: false,
+    pixelsPerSecond: (stored.pixelsPerSecond as number) || DEFAULT_PPS,
+  };
 }
 
 // ── Reducer ──────────────────────────────────────────────
@@ -123,34 +167,53 @@ function timelineReducer(
 ): TimelineState {
   switch (action.type) {
     case 'SYNC_TRACKS': {
-      const newTracks: Record<string, TrackTimeline> = {};
       const currentInputIds = new Set(action.inputs.map((i) => i.inputId));
+      const inputTitleMap = new Map(
+        action.inputs.map((i) => [i.inputId, i.title]),
+      );
 
-      // Keep existing tracks for inputs that still exist
-      for (const inputId of currentInputIds) {
-        if (state.tracks[inputId]) {
-          newTracks[inputId] = state.tracks[inputId];
-        } else {
-          // New input → full-width segment
-          newTracks[inputId] = {
-            inputId,
-            segments: [makeFullSegment(state.totalDurationMs)],
-          };
+      // Collect all inputIds that already have clips on some track
+      const coveredInputIds = new Set<string>();
+      for (const track of state.tracks) {
+        for (const clip of track.clips) {
+          coveredInputIds.add(clip.inputId);
         }
       }
-      // Removed inputs are dropped (not in newTracks)
 
-      // Ensure t=0 order keyframe exists
-      const orderKeyframes = [...state.orderKeyframes];
-      if (orderKeyframes.length === 0 || orderKeyframes[0].timeMs !== 0) {
-        orderKeyframes.unshift({
-          id: genId(),
-          timeMs: 0,
-          inputOrder: action.inputs.map((i) => i.inputId),
+      // Update existing tracks: remove clips for inputs that no longer exist
+      const newTracks: Track[] = state.tracks
+        .map((track) => ({
+          ...track,
+          clips: track.clips.filter((c) => currentInputIds.has(c.inputId)),
+        }))
+        .filter((track) => {
+          // Keep track if it still has clips
+          if (track.clips.length > 0) return true;
+          // Remove empty tracks whose original inputs no longer exist
+          // (We check if any of the track's original clips' inputIds are gone)
+          return false;
         });
+
+      // For each input that has no clips on any existing track, create a new track
+      const nowCoveredInputIds = new Set<string>();
+      for (const track of newTracks) {
+        for (const clip of track.clips) {
+          nowCoveredInputIds.add(clip.inputId);
+        }
+      }
+      let nextTrackNumber = newTracks.length + 1;
+      for (const input of action.inputs) {
+        if (!nowCoveredInputIds.has(input.inputId)) {
+          newTracks.push({
+            id: genId(),
+            label: `Track ${nextTrackNumber}`,
+            clips: [makeFullClip(input.inputId, state.totalDurationMs)],
+          });
+          nextTrackNumber++;
+        }
       }
 
-      return { ...state, tracks: newTracks, orderKeyframes };
+      return { ...state, tracks: newTracks };
     }
 
     case 'SET_PLAYHEAD':
@@ -175,234 +238,266 @@ function timelineReducer(
     }
 
     case 'RESET': {
-      const tracks: Record<string, TrackTimeline> = {};
-      for (const input of action.inputs) {
-        tracks[input.inputId] = {
-          inputId: input.inputId,
-          segments: [makeFullSegment(state.totalDurationMs)],
-        };
-      }
+      const tracks: Track[] = action.inputs.map((input, idx) => ({
+        id: genId(),
+        label: `Track ${idx + 1}`,
+        clips: [makeFullClip(input.inputId, state.totalDurationMs)],
+      }));
       return {
         ...state,
         tracks,
-        orderKeyframes: [
-          {
-            id: genId(),
-            timeMs: 0,
-            inputOrder: action.inputs.map((i) => i.inputId),
-          },
-        ],
         playheadMs: 0,
         isPlaying: false,
       };
     }
 
-    case 'MOVE_SEGMENT': {
-      const track = state.tracks[action.inputId];
+    case 'MOVE_CLIP': {
+      const track = state.tracks.find((t) => t.id === action.trackId);
       if (!track) return state;
-      const segIdx = track.segments.findIndex((s) => s.id === action.segmentId);
-      if (segIdx < 0) return state;
-      const seg = track.segments[segIdx];
-      const duration = seg.endMs - seg.startMs;
-      let newStart = Math.max(
-        0,
-        Math.min(action.newStartMs, state.totalDurationMs - duration),
-      );
+      const clipIdx = track.clips.findIndex((c) => c.id === action.clipId);
+      if (clipIdx < 0) return state;
+      const clip = track.clips[clipIdx];
+      const duration = clip.endMs - clip.startMs;
+      let newStart = Math.max(0, action.newStartMs);
 
-      // Prevent overlap with previous segment
-      const prev = track.segments[segIdx - 1];
+      // Prevent overlap with previous clip
+      const prev = track.clips[clipIdx - 1];
       if (prev && newStart < prev.endMs) {
         newStart = prev.endMs;
       }
-      // Prevent overlap with next segment
-      const next = track.segments[segIdx + 1];
+      // Prevent overlap with next clip
+      const next = track.clips[clipIdx + 1];
       if (next && newStart + duration > next.startMs) {
         newStart = next.startMs - duration;
       }
 
       if (newStart < 0) newStart = 0;
 
-      const newSegments = [...track.segments];
-      newSegments[segIdx] = {
-        ...seg,
-        startMs: newStart,
-        endMs: newStart + duration,
-      };
-      return {
-        ...state,
-        tracks: {
-          ...state.tracks,
-          [action.inputId]: {
-            ...track,
-            segments: clampSegments(newSegments, state.totalDurationMs),
-          },
-        },
-      };
-    }
+      const newEnd = newStart + duration;
 
-    case 'RESIZE_SEGMENT': {
-      const track = state.tracks[action.inputId];
-      if (!track) return state;
-      const segIdx = track.segments.findIndex((s) => s.id === action.segmentId);
-      if (segIdx < 0) return state;
-      const seg = track.segments[segIdx];
-      const newSegments = [...track.segments];
-
-      if (action.edge === 'left') {
-        let newStart = Math.max(0, action.newMs);
-        // Don't overlap previous segment
-        const prev = track.segments[segIdx - 1];
-        if (prev && newStart < prev.endMs) newStart = prev.endMs;
-        // Enforce min duration
-        if (seg.endMs - newStart < MIN_SEGMENT_MS)
-          newStart = seg.endMs - MIN_SEGMENT_MS;
-        newSegments[segIdx] = { ...seg, startMs: newStart };
-      } else {
-        let newEnd = Math.min(state.totalDurationMs, action.newMs);
-        // Don't overlap next segment
-        const next = track.segments[segIdx + 1];
-        if (next && newEnd > next.startMs) newEnd = next.startMs;
-        // Enforce min duration
-        if (newEnd - seg.startMs < MIN_SEGMENT_MS)
-          newEnd = seg.startMs + MIN_SEGMENT_MS;
-        newSegments[segIdx] = { ...seg, endMs: newEnd };
+      // Auto-extend total duration if clip moves past current end
+      let newTotalDuration = state.totalDurationMs;
+      if (newEnd > newTotalDuration) {
+        newTotalDuration = newEnd + 5000; // add 5s padding
       }
 
-      return {
-        ...state,
-        tracks: {
-          ...state.tracks,
-          [action.inputId]: {
-            ...track,
-            segments: clampSegments(newSegments, state.totalDurationMs),
-          },
-        },
-      };
-    }
-
-    case 'SPLIT_SEGMENT': {
-      const track = state.tracks[action.inputId];
-      if (!track) return state;
-      const segIdx = track.segments.findIndex((s) => s.id === action.segmentId);
-      if (segIdx < 0) return state;
-      const seg = track.segments[segIdx];
-
-      // Must have enough room for two MIN_SEGMENT_MS segments
-      if (action.atMs - seg.startMs < MIN_SEGMENT_MS) return state;
-      if (seg.endMs - action.atMs < MIN_SEGMENT_MS) return state;
-
-      const left: Segment = {
-        id: seg.id,
-        startMs: seg.startMs,
-        endMs: action.atMs,
-      };
-      const right: Segment = {
-        id: genId(),
-        startMs: action.atMs,
-        endMs: seg.endMs,
-      };
-
-      const newSegments = [...track.segments];
-      newSegments.splice(segIdx, 1, left, right);
-
-      return {
-        ...state,
-        tracks: {
-          ...state.tracks,
-          [action.inputId]: { ...track, segments: newSegments },
-        },
-      };
-    }
-
-    case 'DELETE_SEGMENT': {
-      const track = state.tracks[action.inputId];
-      if (!track) return state;
-      const newSegments = track.segments.filter(
-        (s) => s.id !== action.segmentId,
-      );
-      return {
-        ...state,
-        tracks: {
-          ...state.tracks,
-          [action.inputId]: { ...track, segments: newSegments },
-        },
-      };
-    }
-
-    case 'DUPLICATE_SEGMENT': {
-      const track = state.tracks[action.inputId];
-      if (!track) return state;
-      const seg = track.segments.find((s) => s.id === action.segmentId);
-      if (!seg) return state;
-      const duration = seg.endMs - seg.startMs;
-      const newStart = seg.endMs;
-      const newEnd = newStart + duration;
-      if (newEnd > state.totalDurationMs) return state;
-      // Check for overlap with next segment
-      const segIdx = track.segments.indexOf(seg);
-      const next = track.segments[segIdx + 1];
-      if (next && newEnd > next.startMs) return state;
-      const duplicate: Segment = {
-        id: genId(),
+      const newClips = [...track.clips];
+      newClips[clipIdx] = {
+        ...clip,
         startMs: newStart,
         endMs: newEnd,
       };
-      const newSegments = [...track.segments];
-      newSegments.splice(segIdx + 1, 0, duplicate);
       return {
         ...state,
-        tracks: {
-          ...state.tracks,
-          [action.inputId]: { ...track, segments: newSegments },
-        },
-      };
-    }
-
-    case 'ADD_ORDER_KEYFRAME': {
-      const EPSILON_MS = 50;
-      const existing = state.orderKeyframes.find(
-        (kf) => Math.abs(kf.timeMs - action.timeMs) <= EPSILON_MS,
-      );
-      if (existing) {
-        return {
-          ...state,
-          orderKeyframes: state.orderKeyframes
-            .map((kf) =>
-              kf.id === existing.id
-                ? { ...kf, inputOrder: action.inputOrder }
-                : kf,
-            )
-            .sort((a, b) => a.timeMs - b.timeMs),
-        };
-      }
-      return {
-        ...state,
-        orderKeyframes: [
-          ...state.orderKeyframes,
-          {
-            id: genId(),
-            timeMs: action.timeMs,
-            inputOrder: action.inputOrder,
-          },
-        ].sort((a, b) => a.timeMs - b.timeMs),
-      };
-    }
-
-    case 'UPDATE_ORDER_KEYFRAME': {
-      return {
-        ...state,
-        orderKeyframes: state.orderKeyframes.map((kf) =>
-          kf.id === action.id ? { ...kf, inputOrder: action.inputOrder } : kf,
+        totalDurationMs: newTotalDuration,
+        tracks: state.tracks.map((t) =>
+          t.id === action.trackId
+            ? { ...t, clips: clampClips(newClips, newTotalDuration) }
+            : t,
         ),
       };
     }
 
-    case 'REMOVE_ORDER_KEYFRAME': {
-      const kf = state.orderKeyframes.find((k) => k.id === action.id);
-      if (!kf || kf.timeMs === 0) return state;
+    case 'RESIZE_CLIP': {
+      const track = state.tracks.find((t) => t.id === action.trackId);
+      if (!track) return state;
+      const clipIdx = track.clips.findIndex((c) => c.id === action.clipId);
+      if (clipIdx < 0) return state;
+      const clip = track.clips[clipIdx];
+      const newClips = [...track.clips];
+      let newTotalDuration = state.totalDurationMs;
+
+      if (action.edge === 'left') {
+        let newStart = Math.max(0, action.newMs);
+        // Don't overlap previous clip
+        const prev = track.clips[clipIdx - 1];
+        if (prev && newStart < prev.endMs) newStart = prev.endMs;
+        // Enforce min duration
+        if (clip.endMs - newStart < MIN_CLIP_MS)
+          newStart = clip.endMs - MIN_CLIP_MS;
+        newClips[clipIdx] = { ...clip, startMs: newStart };
+      } else {
+        let newEnd = Math.max(clip.startMs + MIN_CLIP_MS, action.newMs);
+        // Don't overlap next clip
+        const next = track.clips[clipIdx + 1];
+        if (next && newEnd > next.startMs) newEnd = next.startMs;
+        // Auto-extend total duration if resizing past the end
+        if (newEnd > newTotalDuration) {
+          newTotalDuration = newEnd + 5000;
+        }
+        newClips[clipIdx] = { ...clip, endMs: newEnd };
+      }
+
       return {
         ...state,
-        orderKeyframes: state.orderKeyframes.filter((k) => k.id !== action.id),
+        totalDurationMs: newTotalDuration,
+        tracks: state.tracks.map((t) =>
+          t.id === action.trackId
+            ? { ...t, clips: clampClips(newClips, newTotalDuration) }
+            : t,
+        ),
+      };
+    }
+
+    case 'SPLIT_CLIP': {
+      const track = state.tracks.find((t) => t.id === action.trackId);
+      if (!track) return state;
+      const clipIdx = track.clips.findIndex((c) => c.id === action.clipId);
+      if (clipIdx < 0) return state;
+      const clip = track.clips[clipIdx];
+
+      // Must have enough room for two MIN_CLIP_MS clips
+      if (action.atMs - clip.startMs < MIN_CLIP_MS) return state;
+      if (clip.endMs - action.atMs < MIN_CLIP_MS) return state;
+
+      const left: Clip = {
+        id: clip.id,
+        inputId: clip.inputId,
+        startMs: clip.startMs,
+        endMs: action.atMs,
+      };
+      const right: Clip = {
+        id: genId(),
+        inputId: clip.inputId,
+        startMs: action.atMs,
+        endMs: clip.endMs,
+      };
+
+      const newClips = [...track.clips];
+      newClips.splice(clipIdx, 1, left, right);
+
+      return {
+        ...state,
+        tracks: state.tracks.map((t) =>
+          t.id === action.trackId ? { ...t, clips: newClips } : t,
+        ),
+      };
+    }
+
+    case 'DELETE_CLIP': {
+      const track = state.tracks.find((t) => t.id === action.trackId);
+      if (!track) return state;
+      const newClips = track.clips.filter((c) => c.id !== action.clipId);
+      return {
+        ...state,
+        tracks: state.tracks.map((t) =>
+          t.id === action.trackId ? { ...t, clips: newClips } : t,
+        ),
+      };
+    }
+
+    case 'DUPLICATE_CLIP': {
+      const track = state.tracks.find((t) => t.id === action.trackId);
+      if (!track) return state;
+      const clip = track.clips.find((c) => c.id === action.clipId);
+      if (!clip) return state;
+      const duration = clip.endMs - clip.startMs;
+      const newStart = clip.endMs;
+      const newEnd = newStart + duration;
+      if (newEnd > state.totalDurationMs) return state;
+      // Check for overlap with next clip
+      const clipIdx = track.clips.indexOf(clip);
+      const next = track.clips[clipIdx + 1];
+      if (next && newEnd > next.startMs) return state;
+      const duplicate: Clip = {
+        id: genId(),
+        inputId: clip.inputId,
+        startMs: newStart,
+        endMs: newEnd,
+      };
+      const newClips = [...track.clips];
+      newClips.splice(clipIdx + 1, 0, duplicate);
+      return {
+        ...state,
+        tracks: state.tracks.map((t) =>
+          t.id === action.trackId ? { ...t, clips: newClips } : t,
+        ),
+      };
+    }
+
+    case 'MOVE_CLIP_TO_TRACK': {
+      const sourceTrack = state.tracks.find(
+        (t) => t.id === action.sourceTrackId,
+      );
+      const targetTrack = state.tracks.find(
+        (t) => t.id === action.targetTrackId,
+      );
+      if (!sourceTrack || !targetTrack) return state;
+      const clip = sourceTrack.clips.find((c) => c.id === action.clipId);
+      if (!clip) return state;
+
+      const duration = clip.endMs - clip.startMs;
+      let newStart = Math.max(
+        0,
+        Math.min(action.newStartMs, state.totalDurationMs - duration),
+      );
+      let newEnd = newStart + duration;
+
+      // Clamp to not overlap existing clips on target track
+      const sortedTarget = [...targetTrack.clips].sort(
+        (a, b) => a.startMs - b.startMs,
+      );
+      for (const existing of sortedTarget) {
+        if (newStart < existing.endMs && newEnd > existing.startMs) {
+          // Overlap detected — try to place after this clip
+          newStart = existing.endMs;
+          newEnd = newStart + duration;
+        }
+      }
+      if (newEnd > state.totalDurationMs) return state;
+
+      const movedClip: Clip = {
+        ...clip,
+        startMs: newStart,
+        endMs: newEnd,
+      };
+
+      return {
+        ...state,
+        tracks: state.tracks.map((t) => {
+          if (t.id === action.sourceTrackId) {
+            return {
+              ...t,
+              clips: t.clips.filter((c) => c.id !== action.clipId),
+            };
+          }
+          if (t.id === action.targetTrackId) {
+            return {
+              ...t,
+              clips: clampClips([...t.clips, movedClip], state.totalDurationMs),
+            };
+          }
+          return t;
+        }),
+      };
+    }
+
+    case 'RENAME_TRACK': {
+      return {
+        ...state,
+        tracks: state.tracks.map((t) =>
+          t.id === action.trackId ? { ...t, label: action.newLabel } : t,
+        ),
+      };
+    }
+
+    case 'ADD_TRACK': {
+      const label = action.label || `Track ${state.tracks.length + 1}`;
+      const newTrack: Track = {
+        id: genId(),
+        label,
+        clips: [],
+      };
+      return {
+        ...state,
+        tracks: [...state.tracks, newTrack],
+      };
+    }
+
+    case 'DELETE_TRACK': {
+      return {
+        ...state,
+        tracks: state.tracks.filter((t) => t.id !== action.trackId),
       };
     }
 
@@ -425,14 +520,15 @@ type UndoableState = {
 };
 
 const UNDOABLE_ACTIONS = new Set<TimelineAction['type']>([
-  'MOVE_SEGMENT',
-  'RESIZE_SEGMENT',
-  'SPLIT_SEGMENT',
-  'DELETE_SEGMENT',
-  'DUPLICATE_SEGMENT',
-  'ADD_ORDER_KEYFRAME',
-  'UPDATE_ORDER_KEYFRAME',
-  'REMOVE_ORDER_KEYFRAME',
+  'MOVE_CLIP',
+  'RESIZE_CLIP',
+  'SPLIT_CLIP',
+  'DELETE_CLIP',
+  'DUPLICATE_CLIP',
+  'MOVE_CLIP_TO_TRACK',
+  'RENAME_TRACK',
+  'ADD_TRACK',
+  'DELETE_TRACK',
   'RESET',
 ]);
 
@@ -491,17 +587,25 @@ function undoableReducer(
 export function useTimelineState(roomId: string, inputs: Input[]) {
   const [undoable, dispatch] = useReducer(undoableReducer, null, () => {
     const stored = loadTimeline(roomId);
-    const initial: TimelineState =
-      stored != null
-        ? {
-            tracks: stored.tracks,
-            orderKeyframes: stored.orderKeyframes,
-            totalDurationMs: stored.totalDurationMs,
-            playheadMs: 0,
-            isPlaying: false,
-            pixelsPerSecond: stored.pixelsPerSecond,
-          }
-        : createInitialState();
+    let initial: TimelineState;
+    if (stored != null) {
+      // Check if stored data is V1 format (tracks as Record) or V2 (tracks as Array)
+      if (stored.tracks && !Array.isArray(stored.tracks)) {
+        // V1 → V2 migration
+        const migrated = migrateV1ToV2(stored as Record<string, unknown>);
+        initial = migrated || createInitialState();
+      } else {
+        initial = {
+          tracks: (stored.tracks as Track[]) || [],
+          totalDurationMs: stored.totalDurationMs,
+          playheadMs: 0,
+          isPlaying: false,
+          pixelsPerSecond: stored.pixelsPerSecond,
+        };
+      }
+    } else {
+      initial = createInitialState();
+    }
     return {
       current: initial,
       past: [],
@@ -527,11 +631,9 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     if (!initializedRef.current) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      const { tracks, orderKeyframes, totalDurationMs, playheadMs, pixelsPerSecond } =
-        state;
+      const { tracks, totalDurationMs, playheadMs, pixelsPerSecond } = state;
       saveTimeline(roomId, {
         tracks,
-        orderKeyframes,
         totalDurationMs,
         playheadMs,
         pixelsPerSecond,
@@ -564,82 +666,83 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     [],
   );
 
-  const reset = useCallback(
-    () => {
-      dispatch({ type: 'RESET', inputs });
-      setStructureRevision((rev) => rev + 1);
-    },
-    [inputs],
-  );
+  const reset = useCallback(() => {
+    dispatch({ type: 'RESET', inputs });
+    setStructureRevision((rev) => rev + 1);
+  }, [inputs]);
 
-  const moveSegment = useCallback(
-    (inputId: string, segmentId: string, newStartMs: number) => {
-      dispatch({ type: 'MOVE_SEGMENT', inputId, segmentId, newStartMs });
+  const moveClip = useCallback(
+    (trackId: string, clipId: string, newStartMs: number) => {
+      dispatch({ type: 'MOVE_CLIP', trackId, clipId, newStartMs });
       setStructureRevision((rev) => rev + 1);
     },
     [],
   );
 
-  const resizeSegment = useCallback(
+  const resizeClip = useCallback(
     (
-      inputId: string,
-      segmentId: string,
+      trackId: string,
+      clipId: string,
       edge: 'left' | 'right',
       newMs: number,
     ) => {
-      dispatch({ type: 'RESIZE_SEGMENT', inputId, segmentId, edge, newMs });
+      dispatch({ type: 'RESIZE_CLIP', trackId, clipId, edge, newMs });
       setStructureRevision((rev) => rev + 1);
     },
     [],
   );
 
-  const splitSegment = useCallback(
-    (inputId: string, segmentId: string, atMs: number) => {
-      dispatch({ type: 'SPLIT_SEGMENT', inputId, segmentId, atMs });
+  const splitClip = useCallback(
+    (trackId: string, clipId: string, atMs: number) => {
+      dispatch({ type: 'SPLIT_CLIP', trackId, clipId, atMs });
       setStructureRevision((rev) => rev + 1);
     },
     [],
   );
 
-  const deleteSegment = useCallback(
-    (inputId: string, segmentId: string) => {
-      dispatch({ type: 'DELETE_SEGMENT', inputId, segmentId });
+  const deleteClip = useCallback((trackId: string, clipId: string) => {
+    dispatch({ type: 'DELETE_CLIP', trackId, clipId });
+    setStructureRevision((rev) => rev + 1);
+  }, []);
+
+  const duplicateClip = useCallback((trackId: string, clipId: string) => {
+    dispatch({ type: 'DUPLICATE_CLIP', trackId, clipId });
+    setStructureRevision((rev) => rev + 1);
+  }, []);
+
+  const moveClipToTrack = useCallback(
+    (
+      sourceTrackId: string,
+      clipId: string,
+      targetTrackId: string,
+      newStartMs: number,
+    ) => {
+      dispatch({
+        type: 'MOVE_CLIP_TO_TRACK',
+        sourceTrackId,
+        clipId,
+        targetTrackId,
+        newStartMs,
+      });
       setStructureRevision((rev) => rev + 1);
     },
     [],
   );
 
-  const duplicateSegment = useCallback(
-    (inputId: string, segmentId: string) => {
-      dispatch({ type: 'DUPLICATE_SEGMENT', inputId, segmentId });
-      setStructureRevision((rev) => rev + 1);
-    },
-    [],
-  );
+  const renameTrack = useCallback((trackId: string, newLabel: string) => {
+    dispatch({ type: 'RENAME_TRACK', trackId, newLabel });
+    setStructureRevision((rev) => rev + 1);
+  }, []);
 
-  const addOrderKeyframe = useCallback(
-    (timeMs: number, inputOrder: string[]) => {
-      dispatch({ type: 'ADD_ORDER_KEYFRAME', timeMs, inputOrder });
-      setStructureRevision((rev) => rev + 1);
-    },
-    [],
-  );
+  const addTrack = useCallback((label?: string) => {
+    dispatch({ type: 'ADD_TRACK', label: label ?? '' });
+    setStructureRevision((rev) => rev + 1);
+  }, []);
 
-  const updateOrderKeyframe = useCallback(
-    (id: string, inputOrder: string[]) => {
-      dispatch({ type: 'UPDATE_ORDER_KEYFRAME', id, inputOrder });
-      setStructureRevision((rev) => rev + 1);
-    },
-    [],
-  );
-
-  const removeOrderKeyframe = useCallback(
-    (id: string) => {
-      dispatch({ type: 'REMOVE_ORDER_KEYFRAME', id });
-      setStructureRevision((rev) => rev + 1);
-    },
-    [],
-  );
+  const deleteTrack = useCallback((trackId: string) => {
+    dispatch({ type: 'DELETE_TRACK', trackId });
+    setStructureRevision((rev) => rev + 1);
+  }, []);
 
   const undo = useCallback(() => dispatch({ type: 'UNDO' }), []);
   const redo = useCallback(() => dispatch({ type: 'REDO' }), []);
@@ -654,14 +757,15 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     setZoom,
     setTotalDuration,
     reset,
-    moveSegment,
-    resizeSegment,
-    splitSegment,
-    deleteSegment,
-    duplicateSegment,
-    addOrderKeyframe,
-    updateOrderKeyframe,
-    removeOrderKeyframe,
+    moveClip,
+    resizeClip,
+    splitClip,
+    deleteClip,
+    duplicateClip,
+    moveClipToTrack,
+    renameTrack,
+    addTrack,
+    deleteTrack,
     undo,
     redo,
     canUndo,

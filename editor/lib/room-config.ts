@@ -1,7 +1,7 @@
 import type { Input, Layout, ShaderConfig } from '@/app/actions/actions';
 import type {
-  Segment,
-  OrderKeyframe,
+  Clip,
+  Track,
 } from '@/components/control-panel/hooks/use-timeline-state';
 import { loadTimeline, saveTimeline } from '@/lib/timeline-storage';
 
@@ -45,21 +45,21 @@ export type RoomConfigTransitionSettings = {
   newsStripEnabled?: boolean;
 };
 
-export type RoomConfigTrackTimeline = {
+export type RoomConfigClip = {
   inputIndex: number;
-  segments: { startMs: number; endMs: number }[];
+  startMs: number;
+  endMs: number;
 };
 
-export type RoomConfigOrderKeyframe = {
-  timeMs: number;
-  inputOrderIndices: number[];
+export type RoomConfigTrack = {
+  label: string;
+  clips: RoomConfigClip[];
 };
 
 export type RoomConfigTimeline = {
   totalDurationMs: number;
   pixelsPerSecond: number;
-  tracks: RoomConfigTrackTimeline[];
-  orderKeyframes: RoomConfigOrderKeyframe[];
+  tracks: RoomConfigTrack[];
 };
 
 export type RoomConfig = {
@@ -78,8 +78,7 @@ export function exportRoomConfig(
   resolution?: { width: number; height: number },
   transitionSettings?: RoomConfigTransitionSettings,
   timelineState?: {
-    tracks: Record<string, { inputId: string; segments: Segment[] }>;
-    orderKeyframes: OrderKeyframe[];
+    tracks: Track[];
     totalDurationMs: number;
     pixelsPerSecond: number;
   },
@@ -89,28 +88,20 @@ export function exportRoomConfig(
 
   let timeline: RoomConfigTimeline | undefined;
   if (timelineState) {
-    const tracks: RoomConfigTrackTimeline[] = [];
-    for (const [inputId, track] of Object.entries(timelineState.tracks)) {
-      const idx = inputIdToIndex.get(inputId);
-      if (idx === undefined) continue;
-      tracks.push({
-        inputIndex: idx,
-        segments: track.segments.map((s) => ({
-          startMs: s.startMs,
-          endMs: s.endMs,
-        })),
-      });
-    }
+    const tracks: RoomConfigTrack[] = timelineState.tracks.map((track) => ({
+      label: track.label,
+      clips: track.clips
+        .map((clip) => {
+          const idx = inputIdToIndex.get(clip.inputId);
+          if (idx === undefined) return null;
+          return { inputIndex: idx, startMs: clip.startMs, endMs: clip.endMs };
+        })
+        .filter((c): c is RoomConfigClip => c !== null),
+    }));
     timeline = {
       totalDurationMs: timelineState.totalDurationMs,
       pixelsPerSecond: timelineState.pixelsPerSecond,
       tracks,
-      orderKeyframes: timelineState.orderKeyframes.map((kf) => ({
-        timeMs: kf.timeMs,
-        inputOrderIndices: kf.inputOrder
-          .map((id) => inputIdToIndex.get(id))
-          .filter((idx): idx is number => idx !== undefined),
-      })),
     };
   }
 
@@ -175,8 +166,7 @@ export function parseRoomConfig(json: string): RoomConfig {
 }
 
 export function loadTimelineFromStorage(roomId: string): {
-  tracks: Record<string, { inputId: string; segments: Segment[] }>;
-  orderKeyframes: OrderKeyframe[];
+  tracks: Track[];
   totalDurationMs: number;
   pixelsPerSecond: number;
 } | null {
@@ -184,8 +174,16 @@ export function loadTimelineFromStorage(roomId: string): {
   const stored = loadTimeline(roomId);
   if (!stored) return null;
   return {
-    tracks: stored.tracks,
-    orderKeyframes: stored.orderKeyframes,
+    tracks: stored.tracks.map((t) => ({
+      id: t.id,
+      label: t.label,
+      clips: t.clips.map((c) => ({
+        id: c.id,
+        inputId: c.inputId,
+        startMs: c.startMs,
+        endMs: c.endMs,
+      })),
+    })),
     totalDurationMs: stored.totalDurationMs,
     pixelsPerSecond: stored.pixelsPerSecond,
   };
@@ -198,31 +196,25 @@ export function restoreTimelineToStorage(
 ): void {
   if (typeof window === 'undefined') return;
 
-  const tracks: Record<string, { inputId: string; segments: Segment[] }> = {};
-  for (const track of timeline.tracks) {
-    const inputId = indexToInputId.get(track.inputIndex);
-    if (!inputId) continue;
-    tracks[inputId] = {
-      inputId,
-      segments: track.segments.map((s) => ({
-        id: crypto.randomUUID(),
-        startMs: s.startMs,
-        endMs: s.endMs,
-      })),
-    };
-  }
-
-  const orderKeyframes: OrderKeyframe[] = timeline.orderKeyframes.map((kf) => ({
+  const tracks = timeline.tracks.map((track) => ({
     id: crypto.randomUUID(),
-    timeMs: kf.timeMs,
-    inputOrder: kf.inputOrderIndices
-      .map((idx) => indexToInputId.get(idx))
-      .filter((id): id is string => !!id),
+    label: track.label,
+    clips: track.clips
+      .map((clip) => {
+        const inputId = indexToInputId.get(clip.inputIndex);
+        if (!inputId) return null;
+        return {
+          id: crypto.randomUUID(),
+          inputId,
+          startMs: clip.startMs,
+          endMs: clip.endMs,
+        };
+      })
+      .filter((c): c is NonNullable<typeof c> => c !== null),
   }));
 
   const state = {
     tracks,
-    orderKeyframes,
     totalDurationMs: timeline.totalDurationMs,
     playheadMs: 0,
     pixelsPerSecond: timeline.pixelsPerSecond,

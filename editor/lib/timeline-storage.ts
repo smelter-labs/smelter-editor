@@ -1,14 +1,41 @@
 'use client';
 
-export type StoredSegment = {
+// ─── V2 types (current) ───────────────────────────────────────────────
+
+export type StoredClip = {
+  id: string;
+  inputId: string;
+  startMs: number;
+  endMs: number;
+};
+
+export type StoredSegment = StoredClip;
+
+export type StoredTrack = {
+  id: string;
+  label: string;
+  clips: StoredClip[];
+};
+
+export type StoredTimelineStateV2 = {
+  schemaVersion: 2;
+  tracks: StoredTrack[];
+  totalDurationMs: number;
+  playheadMs: number;
+  pixelsPerSecond: number;
+};
+
+// ─── V1 types (kept for migration) ───────────────────────────────────
+
+type StoredSegmentV1 = {
   id: string;
   startMs: number;
   endMs: number;
 };
 
-export type StoredTrackTimeline = {
+type StoredTrackTimeline = {
   inputId: string;
-  segments: StoredSegment[];
+  segments: StoredSegmentV1[];
 };
 
 export type StoredOrderKeyframe = {
@@ -17,7 +44,7 @@ export type StoredOrderKeyframe = {
   inputOrder: string[];
 };
 
-export type StoredTimelineStateV1 = {
+type StoredTimelineStateV1 = {
   schemaVersion: 1;
   tracks: Record<string, StoredTrackTimeline>;
   orderKeyframes: StoredOrderKeyframe[];
@@ -26,41 +53,77 @@ export type StoredTimelineStateV1 = {
   pixelsPerSecond: number;
 };
 
+// ─── Helpers ──────────────────────────────────────────────────────────
+
 const STORAGE_KEY_PREFIX = 'smelter-timeline-';
 
-export function loadTimeline(roomId: string): StoredTimelineStateV1 | null {
+function migrateV1toV2(v1: StoredTimelineStateV1): StoredTimelineStateV2 {
+  const tracks: StoredTrack[] = Object.entries(v1.tracks).map(
+    ([inputId, track]) => ({
+      id: crypto.randomUUID(),
+      label: inputId,
+      clips: track.segments.map((s) => ({
+        ...s,
+        inputId,
+      })),
+    }),
+  );
+
+  return {
+    schemaVersion: 2,
+    tracks,
+    totalDurationMs: v1.totalDurationMs,
+    playheadMs: v1.playheadMs,
+    pixelsPerSecond: v1.pixelsPerSecond,
+  };
+}
+
+// ─── Public API ───────────────────────────────────────────────────────
+
+export function loadTimeline(roomId: string): StoredTimelineStateV2 | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}${roomId}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
 
-    // v1 with explicit schemaVersion
+    // V2 — return directly
+    if (
+      parsed &&
+      parsed.schemaVersion === 2 &&
+      typeof parsed.totalDurationMs === 'number' &&
+      Array.isArray(parsed.tracks)
+    ) {
+      return parsed as StoredTimelineStateV2;
+    }
+
+    // V1 with explicit schemaVersion — migrate
     if (
       parsed &&
       parsed.schemaVersion === 1 &&
       typeof parsed.totalDurationMs === 'number' &&
       typeof parsed.tracks === 'object'
     ) {
-      return parsed as StoredTimelineStateV1;
+      return migrateV1toV2(parsed as StoredTimelineStateV1);
     }
 
-    // Backwards compatibility: old shape without schemaVersion
+    // Old shape without schemaVersion — build V1, then migrate
     if (
       parsed &&
       parsed.schemaVersion === undefined &&
       typeof parsed.totalDurationMs === 'number' &&
       typeof parsed.tracks === 'object'
     ) {
-      const migrated: StoredTimelineStateV1 = {
+      const asV1: StoredTimelineStateV1 = {
         schemaVersion: 1,
         tracks: parsed.tracks,
         orderKeyframes: parsed.orderKeyframes ?? [],
         totalDurationMs: parsed.totalDurationMs,
-        playheadMs: typeof parsed.playheadMs === 'number' ? parsed.playheadMs : 0,
+        playheadMs:
+          typeof parsed.playheadMs === 'number' ? parsed.playheadMs : 0,
         pixelsPerSecond: parsed.pixelsPerSecond ?? 15,
       };
-      return migrated;
+      return migrateV1toV2(asV1);
     }
   } catch {
     // corrupt data
@@ -70,12 +133,12 @@ export function loadTimeline(roomId: string): StoredTimelineStateV1 | null {
 
 export function saveTimeline(
   roomId: string,
-  state: Omit<StoredTimelineStateV1, 'schemaVersion'>,
+  state: Omit<StoredTimelineStateV2, 'schemaVersion'>,
 ): void {
   if (typeof window === 'undefined') return;
   try {
-    const payload: StoredTimelineStateV1 = {
-      schemaVersion: 1,
+    const payload: StoredTimelineStateV2 = {
+      schemaVersion: 2,
       ...state,
     };
     localStorage.setItem(
@@ -86,4 +149,3 @@ export function saveTimeline(
     // storage full or unavailable
   }
 }
-
