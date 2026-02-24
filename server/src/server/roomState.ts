@@ -21,6 +21,8 @@ export type RoomInputState = {
   showTitle: boolean;
   shaders: ShaderConfig[];
   orientation: InputOrientation;
+  borderColor: string;
+  borderWidth: number;
   hidden: boolean;
   attachedInputIds?: string[];
   metadata: {
@@ -61,6 +63,8 @@ type UpdateInputOptions = {
   textScrollLoop: boolean;
   textScrollNudge: number;
   textFontSize: number;
+  borderColor: string;
+  borderWidth: number;
 };
 
 export type RegisterInputOptions =
@@ -179,6 +183,8 @@ export class RoomState {
             showTitle: false,
             shaders: [],
             orientation: 'horizontal',
+            borderColor: '#ff0000',
+            borderWidth: 0,
             hidden: false,
             metadata: {
               title: `[MP4] ${formatMp4Name(randomMp4)}`,
@@ -365,6 +371,8 @@ export class RoomState {
         showTitle: false,
         shaders: [],
         orientation: 'horizontal',
+            borderColor: '#ff0000',
+            borderWidth: 0,
         hidden: false,
         metadata: {
           title: 'Smelter',
@@ -397,6 +405,8 @@ export class RoomState {
       showTitle: false,
       shaders: [],
       orientation: 'horizontal',
+      borderColor: '#ff0000',
+      borderWidth: 0,
       hidden: false,
       monitor: monitor,
       metadata: {
@@ -434,6 +444,8 @@ export class RoomState {
       showTitle: false,
       shaders: [] as ShaderConfig[],
       orientation: 'horizontal' as InputOrientation,
+      borderColor: '#ff0000',
+      borderWidth: 0,
       hidden: false,
       metadata: { title: '', description: '' },
       volume: 0,
@@ -494,6 +506,8 @@ export class RoomState {
         showTitle: false,
         shaders: [],
         orientation: 'horizontal',
+        borderColor: '#ff0000',
+        borderWidth: 0,
         hidden: false,
         metadata: {
           title: `[MP4] ${formatMp4Name(mp4Name)}`,
@@ -561,6 +575,8 @@ export class RoomState {
           showTitle: false,
           shaders: [],
           orientation: 'horizontal',
+          borderColor: '#ff0000',
+          borderWidth: 0,
           hidden: false,
           metadata: {
             title: formatImageName(fileName),
@@ -586,6 +602,8 @@ export class RoomState {
         showTitle: false,
         shaders: [],
         orientation: 'horizontal',
+        borderColor: '#ff0000',
+        borderWidth: 8,
         hidden: false,
         metadata: {
           title: 'Text',
@@ -731,6 +749,8 @@ export class RoomState {
     input.shaders = options.shaders ?? input.shaders;
     input.showTitle = options.showTitle ?? input.showTitle;
     input.orientation = options.orientation ?? input.orientation;
+    input.borderColor = options.borderColor ?? input.borderColor;
+    input.borderWidth = options.borderWidth ?? input.borderWidth;
     if (input.type === 'text-input') {
       if (options.text !== undefined) {
         input.text = options.text;
@@ -837,6 +857,8 @@ export class RoomState {
       volume: input.volume,
       shaders: input.shaders,
       orientation: input.orientation,
+      borderColor: input.borderColor,
+      borderWidth: input.borderWidth,
       imageId: input.type === 'image' ? input.imageId : undefined,
       text: input.type === 'text-input' ? input.text : undefined,
       textAlign: input.type === 'text-input' ? input.textAlign : undefined,
@@ -950,6 +972,8 @@ export class RoomState {
         showTitle: false,
         shaders: [],
         orientation: 'horizontal',
+        borderColor: '#ff0000',
+        borderWidth: 0,
         hidden: false,
         metadata: {
           title: `[MP4] ${formatMp4Name(fileName)}`,
@@ -1010,6 +1034,8 @@ export class RoomState {
         showTitle: false,
         shaders: [],
         orientation: 'horizontal',
+        borderColor: '#ff0000',
+        borderWidth: 0,
         hidden: false,
         metadata: {
           title: formatImageName(fileName),

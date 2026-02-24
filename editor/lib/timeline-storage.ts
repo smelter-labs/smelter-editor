@@ -7,6 +7,25 @@ export type StoredClip = {
   inputId: string;
   startMs: number;
   endMs: number;
+  blockSettings?: {
+    volume: number;
+    showTitle: boolean;
+    shaders: {
+      shaderName: string;
+      shaderId: string;
+      enabled: boolean;
+      params: { paramName: string; paramValue: number | string }[];
+    }[];
+    orientation: 'horizontal' | 'vertical';
+    text?: string;
+    textAlign?: 'left' | 'center' | 'right';
+    textColor?: string;
+    textMaxLines?: number;
+    textScrollSpeed?: number;
+    textScrollLoop?: boolean;
+    textFontSize?: number;
+    attachedInputIds?: string[];
+  };
 };
 
 export type StoredSegment = StoredClip;

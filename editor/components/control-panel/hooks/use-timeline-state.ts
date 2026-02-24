@@ -11,12 +11,30 @@ export type Clip = {
   inputId: string;
   startMs: number;
   endMs: number;
+  blockSettings: BlockSettings;
 };
 
 export type Track = {
   id: string;
   label: string;
   clips: Clip[];
+};
+
+export type BlockSettings = {
+  volume: number;
+  showTitle: boolean;
+  shaders: Input['shaders'];
+  orientation: Input['orientation'];
+  text?: string;
+  textAlign?: Input['textAlign'];
+  textColor?: string;
+  textMaxLines?: number;
+  textScrollSpeed?: number;
+  textScrollLoop?: boolean;
+  textFontSize?: number;
+  borderColor?: string;
+  borderWidth?: number;
+  attachedInputIds?: string[];
 };
 
 /** @deprecated Use `Clip` instead. Kept for backwards compat with room-config. */
@@ -79,7 +97,13 @@ type TimelineAction =
   | { type: 'RENAME_TRACK'; trackId: string; newLabel: string }
   | { type: 'ADD_TRACK'; label: string }
   | { type: 'DELETE_TRACK'; trackId: string }
-  | { type: 'REPLACE_INPUT_ID'; oldInputId: string; newInputId: string };
+  | { type: 'REPLACE_INPUT_ID'; oldInputId: string; newInputId: string }
+  | {
+      type: 'UPDATE_CLIP_SETTINGS';
+      trackId: string;
+      clipId: string;
+      patch: Partial<BlockSettings>;
+    };
 
 // ── Constants ────────────────────────────────────────────
 
@@ -99,8 +123,85 @@ function genId(): string {
   return crypto.randomUUID();
 }
 
-function makeFullClip(inputId: string, totalDurationMs: number): Clip {
-  return { id: genId(), inputId, startMs: 0, endMs: totalDurationMs };
+function cloneBlockSettings(settings: BlockSettings): BlockSettings {
+  return {
+    ...settings,
+    shaders: (settings.shaders || []).map((shader) => ({
+      ...shader,
+      params: (shader.params || []).map((param) => ({ ...param })),
+    })),
+    attachedInputIds: settings.attachedInputIds
+      ? [...settings.attachedInputIds]
+      : undefined,
+  };
+}
+
+export function createBlockSettingsFromInput(input?: Input): BlockSettings {
+  return {
+    volume: input?.volume ?? 1,
+    showTitle: input?.showTitle !== false,
+    shaders: (input?.shaders || []).map((shader) => ({
+      ...shader,
+      params: (shader.params || []).map((param) => ({ ...param })),
+    })),
+    orientation: input?.orientation ?? 'horizontal',
+    text: input?.text,
+    textAlign: input?.textAlign,
+    textColor: input?.textColor,
+    textMaxLines: input?.textMaxLines,
+    textScrollSpeed: input?.textScrollSpeed,
+    textScrollLoop: input?.textScrollLoop,
+    textFontSize: input?.textFontSize,
+    borderColor: input?.borderColor,
+    borderWidth: input?.borderWidth,
+    attachedInputIds: input?.attachedInputIds
+      ? [...input.attachedInputIds]
+      : undefined,
+  };
+}
+
+function ensureClipBlockSettings(
+  clip: Omit<Clip, 'blockSettings'> & Partial<Pick<Clip, 'blockSettings'>>,
+  input?: Input,
+): Clip {
+  if (clip.blockSettings) {
+    return { ...clip, blockSettings: cloneBlockSettings(clip.blockSettings) };
+  }
+  return {
+    ...clip,
+    blockSettings: createBlockSettingsFromInput(input),
+  };
+}
+
+function normalizeTracks(
+  tracks: Track[],
+  inputs: Input[],
+  totalDurationMs: number,
+): Track[] {
+  const inputById = new Map(inputs.map((input) => [input.inputId, input]));
+  return tracks.map((track) => ({
+    ...track,
+    clips: clampClips(
+      track.clips.map((clip) =>
+        ensureClipBlockSettings(clip, inputById.get(clip.inputId)),
+      ),
+      totalDurationMs,
+    ),
+  }));
+}
+
+function makeFullClip(
+  inputId: string,
+  totalDurationMs: number,
+  input?: Input,
+): Clip {
+  return {
+    id: genId(),
+    inputId,
+    startMs: 0,
+    endMs: totalDurationMs,
+    blockSettings: createBlockSettingsFromInput(input),
+  };
 }
 
 function createInitialState(): TimelineState {
@@ -147,6 +248,7 @@ function migrateV1ToV2(stored: Record<string, unknown>): TimelineState | null {
       clips: (trackTimeline.segments || []).map((s) => ({
         ...s,
         inputId: trackTimeline.inputId || inputId,
+        blockSettings: createBlockSettingsFromInput(undefined),
       })),
     });
   }
@@ -169,9 +271,7 @@ function timelineReducer(
   switch (action.type) {
     case 'SYNC_TRACKS': {
       const currentInputIds = new Set(action.inputs.map((i) => i.inputId));
-      const inputTitleMap = new Map(
-        action.inputs.map((i) => [i.inputId, i.title]),
-      );
+      const inputById = new Map(action.inputs.map((i) => [i.inputId, i]));
 
       // Collect all inputIds that already have clips on some track
       const coveredInputIds = new Set<string>();
@@ -186,11 +286,20 @@ function timelineReducer(
       const newTracks: Track[] = state.tracks
         .map((track) => ({
           ...track,
-          clips: track.clips.filter(
-            (c) =>
-              currentInputIds.has(c.inputId) ||
-              c.inputId.startsWith('__pending-whip-'),
-          ),
+          clips: track.clips
+            .filter(
+              (c) =>
+                currentInputIds.has(c.inputId) ||
+                c.inputId.startsWith('__pending-whip-'),
+            )
+            .map((clip) =>
+              ensureClipBlockSettings(clip, inputById.get(clip.inputId)),
+            )
+            .filter(
+              (c) =>
+                currentInputIds.has(c.inputId) ||
+                c.inputId.startsWith('__pending-whip-'),
+            ),
         }))
         .filter((track) => {
           // Keep track if it still has clips
@@ -212,7 +321,7 @@ function timelineReducer(
           newTracks.push({
             id: genId(),
             label: `Track ${nextTrackNumber}`,
-            clips: [makeFullClip(input.inputId, state.totalDurationMs)],
+            clips: [makeFullClip(input.inputId, state.totalDurationMs, input)],
           });
           nextTrackNumber++;
         }
@@ -246,7 +355,7 @@ function timelineReducer(
       const tracks: Track[] = action.inputs.map((input, idx) => ({
         id: genId(),
         label: `Track ${idx + 1}`,
-        clips: [makeFullClip(input.inputId, state.totalDurationMs)],
+        clips: [makeFullClip(input.inputId, state.totalDurationMs, input)],
       }));
       return {
         ...state,
@@ -360,12 +469,14 @@ function timelineReducer(
         inputId: clip.inputId,
         startMs: clip.startMs,
         endMs: action.atMs,
+        blockSettings: cloneBlockSettings(clip.blockSettings),
       };
       const right: Clip = {
         id: genId(),
         inputId: clip.inputId,
         startMs: action.atMs,
         endMs: clip.endMs,
+        blockSettings: cloneBlockSettings(clip.blockSettings),
       };
 
       const newClips = [...track.clips];
@@ -409,6 +520,7 @@ function timelineReducer(
         inputId: clip.inputId,
         startMs: newStart,
         endMs: newEnd,
+        blockSettings: cloneBlockSettings(clip.blockSettings),
       };
       const newClips = [...track.clips];
       newClips.splice(clipIdx + 1, 0, duplicate);
@@ -518,6 +630,41 @@ function timelineReducer(
       return { ...state, tracks };
     }
 
+    case 'UPDATE_CLIP_SETTINGS': {
+      return {
+        ...state,
+        tracks: state.tracks.map((track) => {
+          if (track.id !== action.trackId) return track;
+          return {
+            ...track,
+            clips: track.clips.map((clip) => {
+              if (clip.id !== action.clipId) return clip;
+              return {
+                ...clip,
+                blockSettings: {
+                  ...clip.blockSettings,
+                  ...action.patch,
+                  shaders:
+                    action.patch.shaders !== undefined
+                      ? action.patch.shaders.map((shader) => ({
+                          ...shader,
+                          params: (shader.params || []).map((param) => ({
+                            ...param,
+                          })),
+                        }))
+                      : clip.blockSettings.shaders,
+                  attachedInputIds:
+                    action.patch.attachedInputIds !== undefined
+                      ? [...action.patch.attachedInputIds]
+                      : clip.blockSettings.attachedInputIds,
+                },
+              };
+            }),
+          };
+        }),
+      };
+    }
+
     case 'LOAD':
       return action.state;
 
@@ -547,6 +694,7 @@ const UNDOABLE_ACTIONS = new Set<TimelineAction['type']>([
   'ADD_TRACK',
   'DELETE_TRACK',
   'RESET',
+  'UPDATE_CLIP_SETTINGS',
 ]);
 
 type UndoableAction = TimelineAction | { type: 'UNDO' } | { type: 'REDO' };
@@ -612,17 +760,28 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
         const migrated = migrateV1ToV2(stored as Record<string, unknown>);
         initial = migrated || createInitialState();
       } else {
+        const totalDurationMs =
+          (stored.totalDurationMs as number) || DEFAULT_DURATION_MS;
         initial = {
-          tracks: (stored.tracks as Track[]) || [],
-          totalDurationMs: stored.totalDurationMs,
+          tracks: normalizeTracks(
+            ((stored.tracks as Track[]) || []) as Track[],
+            inputs,
+            totalDurationMs,
+          ),
+          totalDurationMs,
           playheadMs: 0,
           isPlaying: false,
-          pixelsPerSecond: stored.pixelsPerSecond,
+          pixelsPerSecond: stored.pixelsPerSecond || DEFAULT_PPS,
         };
       }
     } else {
       initial = createInitialState();
     }
+    initial.tracks = normalizeTracks(
+      initial.tracks,
+      inputs,
+      initial.totalDurationMs,
+    );
     return {
       current: initial,
       past: [],
@@ -769,6 +928,14 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     [],
   );
 
+  const updateClipSettings = useCallback(
+    (trackId: string, clipId: string, patch: Partial<BlockSettings>) => {
+      dispatch({ type: 'UPDATE_CLIP_SETTINGS', trackId, clipId, patch });
+      setStructureRevision((rev) => rev + 1);
+    },
+    [],
+  );
+
   const undo = useCallback(() => dispatch({ type: 'UNDO' }), []);
   const redo = useCallback(() => dispatch({ type: 'REDO' }), []);
   const canUndo = undoable.past.length > 0;
@@ -792,6 +959,7 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     addTrack,
     deleteTrack,
     replaceInputId,
+    updateClipSettings,
     undo,
     redo,
     canUndo,

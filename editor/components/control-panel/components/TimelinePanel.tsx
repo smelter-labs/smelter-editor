@@ -9,7 +9,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
-import type { Input } from '@/app/actions/actions';
+import { removeInput, type Input } from '@/app/actions/actions';
 import type { InputWrapper } from '../hooks/use-control-panel-state';
 import LoadingSpinner from '@/components/ui/spinner';
 import { useControlPanelContext } from '../contexts/control-panel-context';
@@ -53,11 +53,11 @@ type TimelinePanelProps = {
 /** Base HSL values per input type: [hue, saturation%, lightness%] */
 const TYPE_HSL: Record<Input['type'], [number, number, number]> = {
   'twitch-channel': [271, 81, 56], // purple-500
-  'kick-channel': [142, 71, 45],   // green-500
-  whip: [217, 91, 60],             // blue-500
-  'local-mp4': [25, 95, 53],       // orange-500
-  image: [48, 96, 53],             // yellow-500
-  'text-input': [330, 81, 60],     // pink-500
+  'kick-channel': [142, 71, 45], // green-500
+  whip: [217, 91, 60], // blue-500
+  'local-mp4': [25, 95, 53], // orange-500
+  image: [48, 96, 53], // yellow-500
+  'text-input': [330, 81, 60], // pink-500
 };
 
 const LIGHTNESS_STEP = 10;
@@ -78,7 +78,13 @@ function buildInputColorMap(inputs: Input[]) {
     countByType.set(input.type, idx + 1);
 
     const [h, s, baseL] = TYPE_HSL[input.type];
-    const l = Math.min(85, Math.max(25, baseL + (idx % 2 === 0 ? 1 : -1) * Math.ceil(idx / 2) * LIGHTNESS_STEP));
+    const l = Math.min(
+      85,
+      Math.max(
+        25,
+        baseL + (idx % 2 === 0 ? 1 : -1) * Math.ceil(idx / 2) * LIGHTNESS_STEP,
+      ),
+    );
 
     map.set(input.inputId, {
       dot: `hsl(${h} ${s}% ${l}%)`,
@@ -200,12 +206,71 @@ export function TimelinePanel({
     addTrack,
     deleteTrack,
     replaceInputId,
+    updateClipSettings,
     undo,
     redo,
     canUndo,
     canRedo,
     structureRevision,
   } = useTimelineState(roomId, inputs);
+
+  const [selectedClipId, setSelectedClipId] = useState<{
+    trackId: string;
+    clipId: string;
+  } | null>(null);
+
+  useEffect(() => {
+    const selected = selectedClipId
+      ? state.tracks
+          .find((track) => track.id === selectedClipId.trackId)
+          ?.clips.find((clip) => clip.id === selectedClipId.clipId)
+      : null;
+    if (!selectedClipId || !selected) {
+      window.dispatchEvent(
+        new CustomEvent('smelter:timeline:selected-clip', {
+          detail: { clip: null },
+        }),
+      );
+      return;
+    }
+    window.dispatchEvent(
+      new CustomEvent('smelter:timeline:selected-clip', {
+        detail: {
+          clip: {
+            trackId: selectedClipId.trackId,
+            clipId: selected.id,
+            inputId: selected.inputId,
+            startMs: selected.startMs,
+            endMs: selected.endMs,
+            blockSettings: selected.blockSettings,
+          },
+        },
+      }),
+    );
+  }, [selectedClipId, state.tracks]);
+
+  useEffect(() => {
+    const handler = (
+      e: CustomEvent<{
+        trackId: string;
+        clipId: string;
+        patch: Partial<import('../hooks/use-timeline-state').BlockSettings>;
+      }>,
+    ) => {
+      const { trackId, clipId, patch } = e.detail;
+      updateClipSettings(trackId, clipId, patch);
+    };
+    window.addEventListener(
+      'smelter:timeline:update-clip-settings',
+      handler as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:timeline:update-clip-settings',
+        handler as unknown as EventListener,
+      );
+    };
+  }, [updateClipSettings]);
 
   // Listen for WHIP input connections to replace placeholder inputIds
   useEffect(() => {
@@ -220,7 +285,7 @@ export function TimelinePanel({
 
   const inputColorMap = useMemo(() => buildInputColorMap(inputs), [inputs]);
 
-  const { play, stop, applyAtPlayhead } = useTimelinePlayback(
+  const { play, stop, seek, applyAtPlayhead } = useTimelinePlayback(
     roomId,
     inputs,
     state,
@@ -243,11 +308,6 @@ export function TimelinePanel({
     isMuted: boolean;
     clipId?: string;
     splitAtMs?: number;
-  } | null>(null);
-
-  const [selectedClipId, setSelectedClipId] = useState<{
-    trackId: string;
-    clipId: string;
   } | null>(null);
 
   const [showHelp, setShowHelp] = useState(false);
@@ -380,17 +440,27 @@ export function TimelinePanel({
       rulerScrubRef.current = true;
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       document.body.style.userSelect = 'none';
-      setPlayhead(rulerPxToMs(e.clientX, e.currentTarget));
+      const ms = rulerPxToMs(e.clientX, e.currentTarget);
+      if (state.isPlaying) {
+        seek(ms);
+      } else {
+        setPlayhead(ms);
+      }
     },
-    [setPlayhead, rulerPxToMs],
+    [setPlayhead, rulerPxToMs, state.isPlaying, seek],
   );
 
   const handleRulerPointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (!rulerScrubRef.current) return;
-      setPlayhead(rulerPxToMs(e.clientX, e.currentTarget));
+      const ms = rulerPxToMs(e.clientX, e.currentTarget);
+      if (state.isPlaying) {
+        seek(ms);
+      } else {
+        setPlayhead(ms);
+      }
     },
-    [setPlayhead, rulerPxToMs],
+    [setPlayhead, rulerPxToMs, state.isPlaying, seek],
   );
 
   const handleRulerPointerUp = useCallback(
@@ -399,9 +469,11 @@ export function TimelinePanel({
       rulerScrubRef.current = false;
       (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
       document.body.style.userSelect = '';
-      void applyAtPlayhead();
+      if (!state.isPlaying) {
+        void applyAtPlayhead();
+      }
     },
-    [applyAtPlayhead],
+    [applyAtPlayhead, state.isPlaying],
   );
 
   // ── Zoom ─────────────────────────────────────────────
@@ -978,6 +1050,19 @@ export function TimelinePanel({
     closeContextMenu();
   }, [contextMenu, closeContextMenu]);
 
+  const handleHardDelete = useCallback(async () => {
+    if (!contextMenu) return;
+    const input = inputs.find((i) => i.inputId === contextMenu.inputId);
+    const label = input?.title ?? contextMenu.inputId;
+    const confirmed = window.confirm(
+      `Permanently delete input "${label}"? This will remove it from the server and all timeline tracks.`,
+    );
+    if (!confirmed) return;
+    closeContextMenu();
+    await removeInput(roomId, contextMenu.inputId);
+    await refreshState();
+  }, [contextMenu, inputs, roomId, refreshState, closeContextMenu]);
+
   const handleSplitHere = useCallback(() => {
     if (contextMenu?.clipId && contextMenu.splitAtMs !== undefined) {
       splitClip(contextMenu.trackId, contextMenu.clipId, contextMenu.splitAtMs);
@@ -1390,6 +1475,11 @@ export function TimelinePanel({
               className='w-full text-left py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer text-red-400 hover:text-red-300'
               onClick={handleDelete}>
               Delete
+            </button>
+            <button
+              className='w-full text-left py-1.5 px-3 text-sm hover:bg-neutral-700 cursor-pointer text-red-500 hover:text-red-400 font-semibold'
+              onClick={handleHardDelete}>
+              Hard Delete (remove input)
             </button>
             {contextMenu.clipId && (
               <>

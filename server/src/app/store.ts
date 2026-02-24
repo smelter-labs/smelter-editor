@@ -24,6 +24,8 @@ export type InputConfig = {
   textScrollLoop?: boolean;
   textScrollNudge?: number;
   textFontSize?: number;
+  borderColor?: string;
+  borderWidth?: number;
   replaceWith?: InputConfig;
   attachedInputs?: InputConfig[];
 };

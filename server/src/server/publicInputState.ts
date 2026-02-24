@@ -22,6 +22,8 @@ export type PublicInputState = {
   textScrollSpeed?: number;
   textScrollLoop?: boolean;
   textFontSize?: number;
+  borderColor?: string;
+  borderWidth?: number;
   attachedInputIds?: string[];
   hidden?: boolean;
 };
@@ -37,6 +39,8 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
     type: input.type,
     shaders: input.shaders,
     orientation: input.orientation,
+    borderColor: input.borderColor,
+    borderWidth: input.borderWidth,
     attachedInputIds: input.attachedInputIds,
     hidden: input.hidden,
   };

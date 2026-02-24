@@ -4,6 +4,7 @@ import { useCallback, useRef, useEffect } from 'react';
 import {
   hideInput,
   showInput,
+  updateInput,
   updateRoom,
   type Input,
 } from '@/app/actions/actions';
@@ -96,6 +97,25 @@ function compileEvents(state: TimelineState, fromMs: number): PlaybackEvent[] {
   return events;
 }
 
+function getActiveClipsByInputAt(
+  state: TimelineState,
+  timeMs: number,
+): Map<string, import('./use-timeline-state').Clip> {
+  const active = new Map<string, import('./use-timeline-state').Clip>();
+  for (const track of state.tracks) {
+    for (const clip of track.clips) {
+      if (
+        timeMs >= clip.startMs &&
+        timeMs < clip.endMs &&
+        !active.has(clip.inputId)
+      ) {
+        active.set(clip.inputId, clip);
+      }
+    }
+  }
+  return active;
+}
+
 // ── Hook ─────────────────────────────────────────────────
 
 export function useTimelinePlayback(
@@ -120,6 +140,7 @@ export function useTimelinePlayback(
   const eventsRef = useRef<PlaybackEvent[]>([]);
   const nextEventIndexRef = useRef(0);
   const eventTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const appliedBlockSettingsRef = useRef<Map<string, string>>(new Map());
 
   const inputsRef = useRef(inputs);
   useEffect(() => {
@@ -180,6 +201,47 @@ export function useTimelinePlayback(
     [roomId, refreshState],
   );
 
+  const applyBlockSettingsAtTime = useCallback(
+    async (timeMs: number) => {
+      const active = getActiveClipsByInputAt(stateRef.current, timeMs);
+      const updates: Promise<unknown>[] = [];
+      for (const [inputId, clip] of active.entries()) {
+        const serialized = JSON.stringify(clip.blockSettings);
+        if (appliedBlockSettingsRef.current.get(inputId) === serialized)
+          continue;
+        appliedBlockSettingsRef.current.set(inputId, serialized);
+        updates.push(
+          updateInput(roomId, inputId, {
+            volume: clip.blockSettings.volume,
+            shaders: clip.blockSettings.shaders,
+            showTitle: clip.blockSettings.showTitle,
+            orientation: clip.blockSettings.orientation,
+            text: clip.blockSettings.text,
+            textAlign: clip.blockSettings.textAlign,
+            textColor: clip.blockSettings.textColor,
+            textMaxLines: clip.blockSettings.textMaxLines,
+            textScrollSpeed: clip.blockSettings.textScrollSpeed,
+            textScrollLoop: clip.blockSettings.textScrollLoop,
+            textFontSize: clip.blockSettings.textFontSize,
+            borderColor: clip.blockSettings.borderColor,
+            borderWidth: clip.blockSettings.borderWidth,
+            attachedInputIds: clip.blockSettings.attachedInputIds,
+          }).catch((err) =>
+            console.warn(
+              `Timeline: failed to apply block settings for ${inputId}`,
+              err,
+            ),
+          ),
+        );
+      }
+      if (updates.length > 0) {
+        await Promise.allSettled(updates);
+        await refreshState();
+      }
+    },
+    [roomId, refreshState],
+  );
+
   /** Snapshot current server state before playing. */
   const snapshotPrePlayState = useCallback(() => {
     const hiddenInputIds = new Set<string>();
@@ -194,6 +256,7 @@ export function useTimelinePlayback(
     appliedStateRef.current = new Map(
       inputs.map((i) => [i.inputId, !i.hidden]),
     );
+    appliedBlockSettingsRef.current = new Map();
   }, [inputs]);
 
   /** Restore server state to pre-play snapshot. */
@@ -287,11 +350,13 @@ export function useTimelinePlayback(
         }
       }
 
+      void applyBlockSettingsAtTime(event.timeMs);
+
       scheduleNextEvent();
     };
 
     eventTimerRef.current = setTimeout(fire, Math.max(0, delayMs));
-  }, [roomId]);
+  }, [roomId, applyBlockSettingsAtTime]);
 
   /** Start playback — animate playhead and fire events at clip edges. */
   const play = useCallback(() => {
@@ -312,6 +377,7 @@ export function useTimelinePlayback(
     // Apply initial state immediately at current playhead
     const desired = computeDesiredState(state);
     void applyDesiredState(desired);
+    void applyBlockSettingsAtTime(state.playheadMs);
 
     // Apply input order based on track order
     const order = getActiveOrder(state);
@@ -347,9 +413,58 @@ export function useTimelinePlayback(
     setPlaying,
     setPlayhead,
     applyDesiredState,
+    applyBlockSettingsAtTime,
     roomId,
     scheduleNextEvent,
   ]);
+
+  /** Seek to a new position during playback — rebase rAF loop and recompile events. */
+  const seek = useCallback(
+    (ms: number) => {
+      if (!playStartRef.current) return;
+
+      // Rebase the rAF reference so tick() calculates from the new position
+      playStartRef.current = {
+        wallMs: performance.now(),
+        playheadMs: ms,
+      };
+
+      setPlayhead(ms);
+
+      // Cancel pending event timer and recompile events from new position
+      if (eventTimerRef.current) {
+        clearTimeout(eventTimerRef.current);
+        eventTimerRef.current = null;
+      }
+
+      // Build a temporary state snapshot with the new playhead for helpers
+      const snap = { ...stateRef.current, playheadMs: ms };
+
+      eventsRef.current = compileEvents(snap, ms);
+      nextEventIndexRef.current = 0;
+
+      // Apply desired visibility + block settings + order at new position
+      const desired = computeDesiredState(snap);
+      void applyDesiredState(desired);
+      void applyBlockSettingsAtTime(ms);
+
+      const order = getActiveOrder(snap);
+      if (order.length > 0) {
+        updateRoom(roomId, { inputOrder: order }).catch((err) =>
+          console.warn('Timeline: failed to apply order after seek', err),
+        );
+      }
+
+      scheduleNextEvent();
+    },
+    [
+      setPlayhead,
+      applyDesiredState,
+      applyBlockSettingsAtTime,
+      roomId,
+      scheduleNextEvent,
+    ],
+  );
 
   /** Apply state at current playhead without starting playback. */
   const applyAtPlayhead = useCallback(async () => {
@@ -358,6 +473,7 @@ export function useTimelinePlayback(
     );
     const desired = computeDesiredState(state);
     await applyDesiredState(desired);
+    await applyBlockSettingsAtTime(state.playheadMs);
 
     const order = getActiveOrder(state);
     if (order.length > 0) {
@@ -367,7 +483,7 @@ export function useTimelinePlayback(
         console.warn('Timeline: failed to apply order', err);
       }
     }
-  }, [inputs, state, roomId, applyDesiredState]);
+  }, [inputs, state, roomId, applyDesiredState, applyBlockSettingsAtTime]);
 
   // Recompute events when the timeline structure changes during playback,
   // or re-apply desired state when structure changes while paused.
@@ -389,12 +505,20 @@ export function useTimelinePlayback(
       // with the current playhead after timeline edits.
       const desired = computeDesiredState(state);
       void applyDesiredState(desired);
+      void applyBlockSettingsAtTime(state.playheadMs);
     }
-  }, [structureRevision, state, scheduleNextEvent, applyDesiredState]);
+  }, [
+    structureRevision,
+    state,
+    scheduleNextEvent,
+    applyDesiredState,
+    applyBlockSettingsAtTime,
+  ]);
 
   return {
     play,
     stop,
+    seek,
     applyAtPlayhead,
   };
 }

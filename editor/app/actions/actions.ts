@@ -70,6 +70,8 @@ export type Input = {
   textScrollSpeed?: number;
   textScrollLoop?: boolean;
   textFontSize?: number;
+  borderColor?: string;
+  borderWidth?: number;
   attachedInputIds?: string[];
   hidden?: boolean;
 };
@@ -415,6 +417,8 @@ export type UpdateInputOptions = {
   textScrollLoop?: boolean;
   textScrollNudge?: number;
   textFontSize?: number;
+  borderColor?: string;
+  borderWidth?: number;
   attachedInputIds?: string[];
 };
 

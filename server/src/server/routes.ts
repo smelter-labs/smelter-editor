@@ -541,7 +541,11 @@ const UpdateInputSchema = Type.Object({
   textColor: Type.Optional(Type.String()),
   textMaxLines: Type.Optional(Type.Number()),
   textScrollSpeed: Type.Optional(Type.Number()),
+  textScrollLoop: Type.Optional(Type.Boolean()),
   textScrollNudge: Type.Optional(Type.Number()),
+  textFontSize: Type.Optional(Type.Number()),
+  borderColor: Type.Optional(Type.String()),
+  borderWidth: Type.Optional(Type.Number({ minimum: 0 })),
   attachedInputIds: Type.Optional(Type.Array(Type.String())),
 });
 

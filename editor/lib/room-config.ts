@@ -3,6 +3,7 @@ import type {
   Clip,
   Track,
 } from '@/components/control-panel/hooks/use-timeline-state';
+import { createBlockSettingsFromInput } from '@/components/control-panel/hooks/use-timeline-state';
 import { loadTimeline, saveTimeline } from '@/lib/timeline-storage';
 
 export type RoomConfigInput = {
@@ -24,6 +25,8 @@ export type RoomConfigInput = {
   textScrollSpeed?: number;
   textScrollLoop?: boolean;
   textFontSize?: number;
+  borderColor?: string;
+  borderWidth?: number;
   attachedInputIndices?: number[];
 };
 
@@ -49,6 +52,7 @@ export type RoomConfigClip = {
   inputIndex: number;
   startMs: number;
   endMs: number;
+  blockSettings?: Clip['blockSettings'];
 };
 
 export type RoomConfigTrack = {
@@ -94,7 +98,12 @@ export function exportRoomConfig(
         .map((clip) => {
           const idx = inputIdToIndex.get(clip.inputId);
           if (idx === undefined) return null;
-          return { inputIndex: idx, startMs: clip.startMs, endMs: clip.endMs };
+          return {
+            inputIndex: idx,
+            startMs: clip.startMs,
+            endMs: clip.endMs,
+            blockSettings: clip.blockSettings,
+          } as RoomConfigClip;
         })
         .filter((c): c is RoomConfigClip => c !== null),
     }));
@@ -133,6 +142,8 @@ export function exportRoomConfig(
       textScrollSpeed: input.textScrollSpeed,
       textScrollLoop: input.textScrollLoop,
       textFontSize: input.textFontSize,
+      borderColor: input.borderColor,
+      borderWidth: input.borderWidth,
       attachedInputIndices: input.attachedInputIds
         ?.map((id) => inputIdToIndex.get(id))
         .filter((idx): idx is number => idx !== undefined),
@@ -182,6 +193,8 @@ export function loadTimelineFromStorage(roomId: string): {
         inputId: c.inputId,
         startMs: c.startMs,
         endMs: c.endMs,
+        blockSettings:
+          c.blockSettings ?? createBlockSettingsFromInput(undefined),
       })),
     })),
     totalDurationMs: stored.totalDurationMs,
@@ -208,6 +221,7 @@ export function restoreTimelineToStorage(
           inputId,
           startMs: clip.startMs,
           endMs: clip.endMs,
+          blockSettings: clip.blockSettings,
         };
       })
       .filter((c): c is NonNullable<typeof c> => c !== null),

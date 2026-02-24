@@ -219,6 +219,8 @@ export function ConfigurationSection({
           textScrollSpeed: inputConfig.textScrollSpeed,
           textScrollLoop: inputConfig.textScrollLoop,
           textFontSize: inputConfig.textFontSize,
+          borderColor: inputConfig.borderColor,
+          borderWidth: inputConfig.borderWidth,
           attachedInputIds:
             attachedInputIds && attachedInputIds.length > 0
               ? attachedInputIds

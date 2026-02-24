@@ -51,6 +51,13 @@ function colorToRgb(colorValue: number | string): { r: number; g: number; b: num
   return { r, g, b };
 }
 
+function normalizeBorderWidth(borderWidth: number | undefined): number {
+  if (borderWidth === undefined || Number.isNaN(borderWidth)) {
+    return 0;
+  }
+  return Math.max(0, Math.round(borderWidth));
+}
+
 function wrapWithShaders(
   component: ReactElement,
   shaders: ShaderConfig[] | undefined,
@@ -289,17 +296,30 @@ export function Input({ input }: { input: InputConfig }) {
   const streamState = isImage || isTextInput ? 'playing' : (streams[input.inputId]?.videoState ?? 'finished');
   const isVerticalInput = input.orientation === 'vertical';
   const resolution = isVerticalInput ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 };
+  const borderWidth = normalizeBorderWidth(
+    input.borderWidth ?? (isTextInput ? 8 : 0),
+  );
+  const borderColor = input.borderColor ?? '#ff0000';
+  const contentWidth = Math.max(1, resolution.width - borderWidth * 2);
+  const contentHeight = Math.max(1, resolution.height - borderWidth * 2);
 
   const inputComponent = (
     <Rescaler style={resolution}>
       <View style={{ ...resolution, direction: 'column' }}>
         {streamState === 'playing' ? (
-          isImage ? (
-            <Rescaler style={{ rescaleMode: 'fit' }}>
-              <Image imageId={input.imageId!} />
-            </Rescaler>
-          ) : isTextInput ? (
-            <View style={{ width: resolution.width - 16, height: resolution.height - 16, backgroundColor: '#1a1a2e', borderWidth: 8, borderColor: '#ff0000' }}>
+          <View
+            style={{
+              width: contentWidth,
+              height: contentHeight,
+              borderWidth,
+              borderColor,
+              backgroundColor: isTextInput ? '#1a1a2e' : undefined,
+            }}>
+            {isImage ? (
+              <Rescaler style={{ rescaleMode: 'fit' }}>
+                <Image imageId={input.imageId!} />
+              </Rescaler>
+            ) : isTextInput ? (
               <ScrollingText
                 text={input.text!}
                 maxLines={input.textMaxLines ?? 10}
@@ -308,16 +328,16 @@ export function Input({ input }: { input: InputConfig }) {
                 fontSize={input.textFontSize ?? 80}
                 color={input.textColor ?? 'white'}
                 align={input.textAlign ?? 'left'}
-                containerWidth={resolution.width - 16}
-                containerHeight={resolution.height - 16}
+                containerWidth={contentWidth}
+                containerHeight={contentHeight}
                 scrollNudge={input.textScrollNudge}
               />
-            </View>
-          ) : (
-            <Rescaler style={{ rescaleMode: 'fill' }}>
-              <InputStream inputId={input.inputId} volume={input.volume} />
-            </Rescaler>
-          )
+            ) : (
+              <Rescaler style={{ rescaleMode: 'fill' }}>
+                <InputStream inputId={input.inputId} volume={input.volume} />
+              </Rescaler>
+            )}
+          </View>
         ) : streamState === 'ready' ? (
           <View style={{ padding: 300 }}>
             <Rescaler style={{ rescaleMode: 'fit' }}>
@@ -387,6 +407,12 @@ export function SmallInput({
   const activeShaders = input.shaders.filter(shader => shader.enabled);
   const isImage = !!input.imageId;
   const isTextInput = !!input.text;
+  const borderWidth = normalizeBorderWidth(
+    input.borderWidth ?? (isTextInput ? 4 : 0),
+  );
+  const borderColor = input.borderColor ?? '#ff0000';
+  const contentWidth = Math.max(1, resolution.width - borderWidth * 2);
+  const contentHeight = Math.max(1, resolution.height - borderWidth * 2);
   const smallInputComponent = (
     <View
       style={{
@@ -395,12 +421,19 @@ export function SmallInput({
         direction: 'column',
         overflow: 'visible',
       }}>
-      {isImage ? (
-        <Rescaler style={{ rescaleMode: 'fit' }}>
-          <Image imageId={input.imageId!} />
-        </Rescaler>
-      ) : isTextInput ? (
-        <View style={{ width: resolution.width - 8, height: resolution.height - 8, backgroundColor: '#1a1a2e', borderWidth: 4, borderColor: '#ff0000' }}>
+      <View
+        style={{
+          width: contentWidth,
+          height: contentHeight,
+          borderWidth,
+          borderColor,
+          backgroundColor: isTextInput ? '#1a1a2e' : undefined,
+        }}>
+        {isImage ? (
+          <Rescaler style={{ rescaleMode: 'fit' }}>
+            <Image imageId={input.imageId!} />
+          </Rescaler>
+        ) : isTextInput ? (
           <ScrollingText
             text={input.text!}
             maxLines={input.textMaxLines ?? 10}
@@ -409,16 +442,16 @@ export function SmallInput({
             fontSize={30}
             color={input.textColor ?? 'white'}
             align={input.textAlign ?? 'left'}
-            containerWidth={resolution.width - 8}
-            containerHeight={resolution.height - 8}
+            containerWidth={contentWidth}
+            containerHeight={contentHeight}
             scrollNudge={input.textScrollNudge}
           />
-        </View>
-      ) : (
-        <Rescaler style={{ rescaleMode: 'fill' }}>
-          <InputStream inputId={input.inputId} volume={input.volume} />
-        </Rescaler>
-      )}
+        ) : (
+          <Rescaler style={{ rescaleMode: 'fill' }}>
+            <InputStream inputId={input.inputId} volume={input.volume} />
+          </Rescaler>
+        )}
+      </View>
       {input.showTitle !== false && (
         <View
           style={{
