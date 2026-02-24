@@ -10,7 +10,6 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import {
-  saveRemoteConfig,
   listRemoteConfigs,
   loadRemoteConfig,
   deleteRemoteConfig,
@@ -21,8 +20,6 @@ import {
   HardDrive,
   Cloud,
   Trash2,
-  Download,
-  Upload,
   Loader2,
   FileJson,
   ArrowLeft,
@@ -32,7 +29,7 @@ type SaveConfigModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onSaveLocal: () => void;
-  onSaveRemote: (name: string) => Promise<void>;
+  onSaveRemote: (name: string) => Promise<string | null>;
   isExporting: boolean;
 };
 
@@ -46,6 +43,7 @@ export function SaveConfigModal({
   const [mode, setMode] = useState<'choose' | 'remote'>('choose');
   const [configName, setConfigName] = useState('');
   const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -53,6 +51,7 @@ export function SaveConfigModal({
       setMode('choose');
       setConfigName('');
       setIsSaving(false);
+      setError(null);
     }
   }, [open]);
 
@@ -65,13 +64,13 @@ export function SaveConfigModal({
   const handleSaveRemote = useCallback(async () => {
     if (!configName.trim()) return;
     setIsSaving(true);
-    try {
-      await onSaveRemote(configName.trim());
+    setError(null);
+    const err = await onSaveRemote(configName.trim());
+    setIsSaving(false);
+    if (err) {
+      setError(err);
+    } else {
       onOpenChange(false);
-    } catch (e) {
-      console.error('Remote save failed:', e);
-    } finally {
-      setIsSaving(false);
     }
   }, [configName, onSaveRemote, onOpenChange]);
 
@@ -128,7 +127,10 @@ export function SaveConfigModal({
         ) : (
           <div className='flex flex-col gap-3'>
             <button
-              onClick={() => setMode('choose')}
+              onClick={() => {
+                setMode('choose');
+                setError(null);
+              }}
               className='flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-300 transition-colors self-start cursor-pointer'>
               <ArrowLeft className='w-3 h-3' />
               Back
@@ -144,6 +146,7 @@ export function SaveConfigModal({
               }}
               className='w-full px-3 py-2 rounded-md border border-neutral-700 bg-neutral-900 text-sm text-white placeholder:text-neutral-500 focus:outline-none focus:border-neutral-500 transition-colors'
             />
+            {error && <p className='text-xs text-red-400'>{error}</p>}
             <Button
               onClick={handleSaveRemote}
               disabled={!configName.trim() || isSaving}
@@ -187,6 +190,7 @@ export function LoadConfigModal({
   const [isLoadingList, setIsLoadingList] = useState(false);
   const [loadingFile, setLoadingFile] = useState<string | null>(null);
   const [deletingFile, setDeletingFile] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) {
@@ -194,19 +198,20 @@ export function LoadConfigModal({
       setConfigs([]);
       setLoadingFile(null);
       setDeletingFile(null);
+      setError(null);
     }
   }, [open]);
 
   const fetchConfigs = useCallback(async () => {
     setIsLoadingList(true);
-    try {
-      const list = await listRemoteConfigs();
-      setConfigs(list);
-    } catch (e) {
-      console.error('Failed to list configs:', e);
-    } finally {
-      setIsLoadingList(false);
+    setError(null);
+    const result = await listRemoteConfigs();
+    if (result.ok) {
+      setConfigs(result.configs);
+    } else {
+      setError(result.error);
     }
+    setIsLoadingList(false);
   }, []);
 
   const handleGoToRemote = useCallback(() => {
@@ -217,15 +222,15 @@ export function LoadConfigModal({
   const handleLoadRemote = useCallback(
     async (fileName: string) => {
       setLoadingFile(fileName);
-      try {
-        const data = await loadRemoteConfig(fileName);
-        await onLoadRemote(data.config as RoomConfig);
+      setError(null);
+      const result = await loadRemoteConfig(fileName);
+      if (result.ok) {
+        await onLoadRemote(result.config as RoomConfig);
         onOpenChange(false);
-      } catch (e) {
-        console.error('Failed to load remote config:', e);
-      } finally {
-        setLoadingFile(null);
+      } else {
+        setError(result.error);
       }
+      setLoadingFile(null);
     },
     [onLoadRemote, onOpenChange],
   );
@@ -234,14 +239,13 @@ export function LoadConfigModal({
     async (fileName: string, e: React.MouseEvent) => {
       e.stopPropagation();
       setDeletingFile(fileName);
-      try {
-        await deleteRemoteConfig(fileName);
+      const result = await deleteRemoteConfig(fileName);
+      if (result.ok) {
         setConfigs((prev) => prev.filter((c) => c.fileName !== fileName));
-      } catch (err) {
-        console.error('Failed to delete config:', err);
-      } finally {
-        setDeletingFile(null);
+      } else {
+        setError(result.error);
       }
+      setDeletingFile(null);
     },
     [],
   );
@@ -307,17 +311,22 @@ export function LoadConfigModal({
         ) : (
           <div className='flex flex-col gap-3'>
             <button
-              onClick={() => setMode('choose')}
+              onClick={() => {
+                setMode('choose');
+                setError(null);
+              }}
               className='flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-300 transition-colors self-start cursor-pointer'>
               <ArrowLeft className='w-3 h-3' />
               Back
             </button>
 
+            {error && <p className='text-xs text-red-400'>{error}</p>}
+
             {isLoadingList ? (
               <div className='flex items-center justify-center py-8'>
                 <Loader2 className='w-5 h-5 animate-spin text-neutral-500' />
               </div>
-            ) : configs.length === 0 ? (
+            ) : configs.length === 0 && !error ? (
               <div className='text-center py-8 text-sm text-neutral-500'>
                 No saved configurations found.
               </div>

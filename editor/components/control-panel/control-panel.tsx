@@ -484,9 +484,13 @@ function SettingsBar({
   }, [buildConfig]);
 
   const handleExportRemote = useCallback(
-    async (name: string) => {
+    async (name: string): Promise<string | null> => {
       const config = buildConfig();
-      await saveRemoteConfig(name, config);
+      const result = await saveRemoteConfig(name, config);
+      if (!result.ok) {
+        return result.error;
+      }
+      return null;
     },
     [buildConfig],
   );
