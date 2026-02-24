@@ -387,7 +387,8 @@ export class RoomState {
 
   public async addNewWhipInput(username: string) {
     const inputId = `${this.idPrefix}::whip::${Date.now()}`;
-    const monitor = await WhipInputMonitor.startMonitor(username);
+    const cleanUsername = username.replace(/\[Camera\]\s*/g, '').trim();
+    const monitor = await WhipInputMonitor.startMonitor(cleanUsername);
     monitor.touch();
     this.inputs.push({
       inputId,
@@ -399,7 +400,7 @@ export class RoomState {
       hidden: false,
       monitor: monitor,
       metadata: {
-        title: `[Camera] ${username}`,
+        title: `[Camera] ${cleanUsername}`,
         description: `Whip Input for ${username}`,
       },
       volume: 0,
@@ -630,7 +631,14 @@ export class RoomState {
       input.monitor.stop();
     }
 
+    const PENDING_WAIT_TIMEOUT_MS = 30_000;
+    const waitStart = Date.now();
     while (input.status === 'pending') {
+      if (Date.now() - waitStart > PENDING_WAIT_TIMEOUT_MS) {
+        console.warn(`[roomState] Timed out waiting for pending input ${inputId}, forcing disconnected`);
+        input.status = 'disconnected';
+        break;
+      }
       await sleep(500);
     }
     if (input.status === 'connected') {
@@ -658,11 +666,18 @@ export class RoomState {
     const options = registerOptionsFromInput(input);
     let response = '';
     try {
-      const res = await SmelterInstance.registerInput(inputId, options);
+      const CONNECT_TIMEOUT_MS = 30_000;
+      const res = await Promise.race([
+        SmelterInstance.registerInput(inputId, options),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`Timeout connecting input ${inputId}`)), CONNECT_TIMEOUT_MS)
+        ),
+      ]);
       response = res;
     } catch (err: any) {
       response = err.body?.url;
       input.status = 'disconnected';
+      this.updateStoreWithState();
       throw err;
     }
     input.status = 'connected';
@@ -833,7 +848,7 @@ export class RoomState {
       textFontSize: input.type === 'text-input' ? input.textFontSize : undefined,
     });
 
-    const connectedInputs = this.inputs.filter(input => (input.status === 'connected' || input.status === 'pending') && !input.hidden);
+    const connectedInputs = this.inputs.filter(input => input.status === 'connected' && !input.hidden);
     const connectedMap = new Map<string, RoomInputState>();
     for (const input of connectedInputs) {
       connectedMap.set(input.inputId, input);

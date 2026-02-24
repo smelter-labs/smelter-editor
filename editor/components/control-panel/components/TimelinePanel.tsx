@@ -18,6 +18,7 @@ import { useTimelinePlayback } from '../hooks/use-timeline-playback';
 import {
   Play,
   Square,
+  SkipBack,
   RotateCcw,
   ZoomIn,
   ZoomOut,
@@ -49,32 +50,45 @@ type TimelinePanelProps = {
 
 // ── Color maps ───────────────────────────────────────────
 
-const TYPE_COLORS: Record<Input['type'], string> = {
-  'twitch-channel': 'bg-purple-500',
-  'kick-channel': 'bg-green-500',
-  whip: 'bg-blue-500',
-  'local-mp4': 'bg-orange-500',
-  image: 'bg-yellow-500',
-  'text-input': 'bg-pink-500',
+/** Base HSL values per input type: [hue, saturation%, lightness%] */
+const TYPE_HSL: Record<Input['type'], [number, number, number]> = {
+  'twitch-channel': [271, 81, 56], // purple-500
+  'kick-channel': [142, 71, 45],   // green-500
+  whip: [217, 91, 60],             // blue-500
+  'local-mp4': [25, 95, 53],       // orange-500
+  image: [48, 96, 53],             // yellow-500
+  'text-input': [330, 81, 60],     // pink-500
 };
 
-const SEGMENT_COLORS: Record<Input['type'], string> = {
-  'twitch-channel': 'bg-purple-500/40 border-purple-500/60',
-  'kick-channel': 'bg-green-500/40 border-green-500/60',
-  whip: 'bg-blue-500/40 border-blue-500/60',
-  'local-mp4': 'bg-orange-500/40 border-orange-500/60',
-  image: 'bg-yellow-500/40 border-yellow-500/60',
-  'text-input': 'bg-pink-500/40 border-pink-500/60',
-};
+const LIGHTNESS_STEP = 10;
 
-const SEGMENT_SELECTED: Record<Input['type'], string> = {
-  'twitch-channel': 'ring-1 ring-purple-400/70',
-  'kick-channel': 'ring-1 ring-green-400/70',
-  whip: 'ring-1 ring-blue-400/70',
-  'local-mp4': 'ring-1 ring-orange-400/70',
-  image: 'ring-1 ring-yellow-400/70',
-  'text-input': 'ring-1 ring-pink-400/70',
-};
+/**
+ * Build a per-inputId color map: inputs of the same type get the same hue
+ * but shifted lightness so they are visually distinguishable.
+ */
+function buildInputColorMap(inputs: Input[]) {
+  const countByType = new Map<Input['type'], number>();
+  const map = new Map<
+    string,
+    { dot: string; segBg: string; segBorder: string; ring: string }
+  >();
+
+  for (const input of inputs) {
+    const idx = countByType.get(input.type) ?? 0;
+    countByType.set(input.type, idx + 1);
+
+    const [h, s, baseL] = TYPE_HSL[input.type];
+    const l = Math.min(85, Math.max(25, baseL + (idx % 2 === 0 ? 1 : -1) * Math.ceil(idx / 2) * LIGHTNESS_STEP));
+
+    map.set(input.inputId, {
+      dot: `hsl(${h} ${s}% ${l}%)`,
+      segBg: `hsla(${h}, ${s}%, ${l}%, 0.4)`,
+      segBorder: `hsla(${h}, ${s}%, ${l}%, 0.6)`,
+      ring: `hsla(${h}, ${s}%, ${Math.min(90, l + 10)}%, 0.7)`,
+    });
+  }
+  return map;
+}
 
 // ── Constants ────────────────────────────────────────────
 
@@ -185,12 +199,26 @@ export function TimelinePanel({
     renameTrack,
     addTrack,
     deleteTrack,
+    replaceInputId,
     undo,
     redo,
     canUndo,
     canRedo,
     structureRevision,
   } = useTimelineState(roomId, inputs);
+
+  // Listen for WHIP input connections to replace placeholder inputIds
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { oldInputId, newInputId } = (e as CustomEvent).detail;
+      replaceInputId(oldInputId, newInputId);
+    };
+    window.addEventListener('smelter:timeline-input-replaced', handler);
+    return () =>
+      window.removeEventListener('smelter:timeline-input-replaced', handler);
+  }, [replaceInputId]);
+
+  const inputColorMap = useMemo(() => buildInputColorMap(inputs), [inputs]);
 
   const { play, stop, applyAtPlayhead } = useTimelinePlayback(
     roomId,
@@ -970,7 +998,7 @@ export function TimelinePanel({
     (track: import('../hooks/use-timeline-state').Track) => {
       return track.clips.map((clip) => {
         const input = inputs.find((i) => i.inputId === clip.inputId);
-        const inputType: Input['type'] = input?.type ?? 'whip';
+        const colors = inputColorMap.get(clip.inputId);
         const leftPx = (clip.startMs / 1000) * state.pixelsPerSecond;
         const widthPx =
           ((clip.endMs - clip.startMs) / 1000) * state.pixelsPerSecond;
@@ -984,11 +1012,16 @@ export function TimelinePanel({
           <div
             key={clip.id}
             data-no-dnd='true'
-            className={`absolute top-1 bottom-1 rounded-sm border ${SEGMENT_COLORS[inputType]} ${isClipSelected ? SEGMENT_SELECTED[inputType] : ''} ${isClipSelected ? 'ring-2 brightness-125' : ''} flex items-center overflow-hidden touch-none`}
+            className={`absolute top-1 bottom-1 rounded-sm border ${isClipSelected ? 'ring-2 brightness-125' : ''} flex items-center overflow-hidden touch-none`}
             style={{
               left: leftPx,
               width: Math.max(widthPx, 2),
               cursor: 'grab',
+              backgroundColor: colors?.segBg,
+              borderColor: colors?.segBorder,
+              ...(isClipSelected
+                ? { boxShadow: `0 0 0 2px ${colors?.ring ?? 'transparent'}` }
+                : {}),
             }}
             title={`${clipLabel}: ${formatMs(clip.startMs)} → ${formatMs(clip.endMs)} (${formatMs(durationMs)})`}
             onPointerDown={(e) =>
@@ -1021,6 +1054,7 @@ export function TimelinePanel({
     },
     [
       inputs,
+      inputColorMap,
       state.pixelsPerSecond,
       selectedClipId,
       handleClipPointerDown,
@@ -1041,6 +1075,13 @@ export function TimelinePanel({
 
       {/* Transport bar */}
       <div className='flex items-center gap-2 px-3 h-8 bg-neutral-900 border-b border-neutral-800 shrink-0'>
+        <button
+          className='p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed'
+          onClick={() => setPlayhead(0)}
+          disabled={state.isPlaying}
+          title='Skip to beginning'>
+          <SkipBack className='w-3.5 h-3.5' />
+        </button>
         <button
           className={`p-1 rounded hover:bg-neutral-700 transition-colors cursor-pointer ${state.isPlaying ? 'text-green-400' : 'text-neutral-400 hover:text-white'}`}
           onClick={play}
@@ -1205,13 +1246,14 @@ export function TimelinePanel({
         ) : (
           state.tracks.map((track) => {
             // Determine a representative input for the track label color
-            const firstClipInput =
-              track.clips.length > 0
-                ? inputs.find((i) => i.inputId === track.clips[0].inputId)
-                : undefined;
-            const trackColor = firstClipInput
-              ? TYPE_COLORS[firstClipInput.type]
-              : 'bg-neutral-500';
+            const firstClipInputId =
+              track.clips.length > 0 ? track.clips[0].inputId : undefined;
+            const firstClipInput = firstClipInputId
+              ? inputs.find((i) => i.inputId === firstClipInputId)
+              : undefined;
+            const trackDotColor = firstClipInputId
+              ? inputColorMap.get(firstClipInputId)?.dot
+              : undefined;
             const isEditing = editingTrackId === track.id;
 
             return (
@@ -1229,7 +1271,8 @@ export function TimelinePanel({
                   className='shrink-0 bg-neutral-900 flex items-center gap-1.5 px-2 sticky left-0 z-10'
                   style={{ width: SOURCES_WIDTH }}>
                   <div
-                    className={`w-2.5 h-2.5 rounded-full shrink-0 ${trackColor}`}
+                    className='w-2.5 h-2.5 rounded-full shrink-0'
+                    style={{ backgroundColor: trackDotColor ?? '#737373' }}
                   />
                   {isEditing ? (
                     <input

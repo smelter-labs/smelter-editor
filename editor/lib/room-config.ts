@@ -227,6 +227,33 @@ export function restoreTimelineToStorage(
   }
 }
 
+export function updateTimelineInputId(
+  roomId: string,
+  oldInputId: string,
+  newInputId: string,
+): boolean {
+  if (typeof window === 'undefined') return false;
+  const stored = loadTimeline(roomId);
+  if (!stored) return false;
+
+  let changed = false;
+  const tracks = stored.tracks.map((track) => ({
+    ...track,
+    clips: track.clips.map((clip) => {
+      if (clip.inputId === oldInputId) {
+        changed = true;
+        return { ...clip, inputId: newInputId };
+      }
+      return clip;
+    }),
+  }));
+
+  if (changed) {
+    saveTimeline(roomId, { ...stored, tracks });
+  }
+  return changed;
+}
+
 const PENDING_WHIP_STORAGE_KEY = 'smelter-pending-whip-inputs';
 
 export type StoredPendingWhipInput = {

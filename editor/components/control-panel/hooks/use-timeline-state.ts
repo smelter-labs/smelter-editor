@@ -78,7 +78,8 @@ type TimelineAction =
     }
   | { type: 'RENAME_TRACK'; trackId: string; newLabel: string }
   | { type: 'ADD_TRACK'; label: string }
-  | { type: 'DELETE_TRACK'; trackId: string };
+  | { type: 'DELETE_TRACK'; trackId: string }
+  | { type: 'REPLACE_INPUT_ID'; oldInputId: string; newInputId: string };
 
 // ── Constants ────────────────────────────────────────────
 
@@ -180,17 +181,21 @@ function timelineReducer(
         }
       }
 
-      // Update existing tracks: remove clips for inputs that no longer exist
+      // Update existing tracks: remove clips for inputs that no longer exist,
+      // but keep clips with pending WHIP placeholder inputIds
       const newTracks: Track[] = state.tracks
         .map((track) => ({
           ...track,
-          clips: track.clips.filter((c) => currentInputIds.has(c.inputId)),
+          clips: track.clips.filter(
+            (c) =>
+              currentInputIds.has(c.inputId) ||
+              c.inputId.startsWith('__pending-whip-'),
+          ),
         }))
         .filter((track) => {
           // Keep track if it still has clips
           if (track.clips.length > 0) return true;
           // Remove empty tracks whose original inputs no longer exist
-          // (We check if any of the track's original clips' inputIds are gone)
           return false;
         });
 
@@ -501,6 +506,18 @@ function timelineReducer(
       };
     }
 
+    case 'REPLACE_INPUT_ID': {
+      const tracks = state.tracks.map((track) => ({
+        ...track,
+        clips: track.clips.map((clip) =>
+          clip.inputId === action.oldInputId
+            ? { ...clip, inputId: action.newInputId }
+            : clip,
+        ),
+      }));
+      return { ...state, tracks };
+    }
+
     case 'LOAD':
       return action.state;
 
@@ -744,6 +761,14 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     setStructureRevision((rev) => rev + 1);
   }, []);
 
+  const replaceInputId = useCallback(
+    (oldInputId: string, newInputId: string) => {
+      dispatch({ type: 'REPLACE_INPUT_ID', oldInputId, newInputId });
+      setStructureRevision((rev) => rev + 1);
+    },
+    [],
+  );
+
   const undo = useCallback(() => dispatch({ type: 'UNDO' }), []);
   const redo = useCallback(() => dispatch({ type: 'REDO' }), []);
   const canUndo = undoable.past.length > 0;
@@ -766,6 +791,7 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     renameTrack,
     addTrack,
     deleteTrack,
+    replaceInputId,
     undo,
     redo,
     canUndo,

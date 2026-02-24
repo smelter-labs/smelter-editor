@@ -339,6 +339,13 @@ export default function IntroView() {
         for (const { inputId, configIndex } of createdInputIds) {
           indexToInputId.set(configIndex, inputId);
         }
+        // Use placeholder inputIds for pending WHIP inputs so their clips are preserved
+        for (const pending of pendingWhipInputs) {
+          indexToInputId.set(
+            pending.position,
+            `__pending-whip-${pending.position}__`,
+          );
+        }
         restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
       }
 

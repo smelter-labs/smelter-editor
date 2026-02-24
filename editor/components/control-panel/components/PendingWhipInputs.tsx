@@ -19,6 +19,7 @@ import {
 } from '../whip-input/utils/whip-storage';
 import { toast } from 'react-toastify';
 import type { PendingWhipInput } from './ConfigurationSection';
+import { updateTimelineInputId } from '@/lib/room-config';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
 
@@ -102,6 +103,24 @@ export function PendingWhipInputs({
         showTitle: pendingInput.config.showTitle,
         orientation: pendingInput.config.orientation,
       });
+
+      // Update timeline clips: replace placeholder inputId with real one
+      const placeholderId = `__pending-whip-${pendingInput.position}__`;
+      const timelineUpdated = updateTimelineInputId(
+        roomId,
+        placeholderId,
+        response.inputId,
+      );
+      if (timelineUpdated) {
+        window.dispatchEvent(
+          new CustomEvent('smelter:timeline-input-replaced', {
+            detail: {
+              oldInputId: placeholderId,
+              newInputId: response.inputId,
+            },
+          }),
+        );
+      }
 
       const roomInfo = await getRoomInfo(roomId);
       if (roomInfo !== 'not-found') {

@@ -245,6 +245,13 @@ export function ConfigurationSection({
       for (const { inputId, position } of createdInputIds) {
         indexToInputId.set(position, inputId);
       }
+      // Use placeholder inputIds for pending WHIP inputs so their clips are preserved
+      for (const pending of newPendingWhipInputs) {
+        indexToInputId.set(
+          pending.position,
+          `__pending-whip-${pending.position}__`,
+        );
+      }
       restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
     }
 
