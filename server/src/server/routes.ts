@@ -1,7 +1,7 @@
 import Fastify from 'fastify';
 import { STATUS_CODES } from 'node:http';
 import path from 'node:path';
-import { pathExists, readdir, readFile, stat } from 'fs-extra';
+import { ensureDir, pathExists, readdir, readFile, remove, stat, writeFile } from 'fs-extra';
 import { Type } from '@sinclair/typebox';
 import type { Static, TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { state } from './serverState';
@@ -346,6 +346,105 @@ routes.get<RecordingFileParams>('/recordings/:fileName', async (req, res) => {
   } catch (err: any) {
     console.error('Failed to read recording file', { filePath, err });
     res.status(500).send({ error: 'Failed to read recording file' });
+  }
+});
+
+const CONFIGS_DIR = path.join(__dirname, '../../configs');
+
+const SaveConfigSchema = Type.Object({
+  name: Type.String({ minLength: 1, maxLength: 200 }),
+  config: Type.Any(),
+});
+
+routes.post<{ Body: Static<typeof SaveConfigSchema> }>(
+  '/configs',
+  { schema: { body: SaveConfigSchema } },
+  async (req, res) => {
+    const { name, config } = req.body;
+    const safeName = name.replace(/[^a-zA-Z0-9_\-.\s]/g, '_').trim();
+    const timestamp = Date.now();
+    const fileName = `config-${safeName}-${timestamp}.json`;
+
+    await ensureDir(CONFIGS_DIR);
+    const filePath = path.join(CONFIGS_DIR, fileName);
+    await writeFile(filePath, JSON.stringify({ name, config, savedAt: new Date().toISOString() }, null, 2));
+
+    console.log('[request] Save config', { name, fileName });
+    res.status(200).send({ status: 'ok', fileName, name });
+  }
+);
+
+routes.get('/configs', async (_req, res) => {
+  if (!(await pathExists(CONFIGS_DIR))) {
+    return res.status(200).send({ configs: [] });
+  }
+
+  try {
+    const files = await readdir(CONFIGS_DIR);
+    const jsonFiles = files.filter(f => f.endsWith('.json'));
+    const configs = [];
+    for (const fileName of jsonFiles) {
+      const filePath = path.join(CONFIGS_DIR, fileName);
+      try {
+        const content = await readFile(filePath, 'utf-8');
+        const parsed = JSON.parse(content);
+        const fileStat = await stat(filePath);
+        configs.push({
+          fileName,
+          name: parsed.name ?? fileName,
+          savedAt: parsed.savedAt ?? fileStat.mtimeMs,
+          size: fileStat.size,
+        });
+      } catch {
+        continue;
+      }
+    }
+    configs.sort((a, b) => {
+      const aTime = typeof a.savedAt === 'string' ? new Date(a.savedAt).getTime() : a.savedAt;
+      const bTime = typeof b.savedAt === 'string' ? new Date(b.savedAt).getTime() : b.savedAt;
+      return bTime - aTime;
+    });
+    res.status(200).send({ configs });
+  } catch (err: any) {
+    console.error('Failed to list configs', err);
+    res.status(500).send({ error: 'Failed to list configs' });
+  }
+});
+
+type ConfigFileParams = { Params: { fileName: string } };
+
+routes.get<ConfigFileParams>('/configs/:fileName', async (req, res) => {
+  const { fileName } = req.params;
+  const filePath = path.join(CONFIGS_DIR, fileName);
+
+  if (!(await pathExists(filePath))) {
+    return res.status(404).send({ error: 'Config not found' });
+  }
+
+  try {
+    const content = await readFile(filePath, 'utf-8');
+    const parsed = JSON.parse(content);
+    res.status(200).send(parsed);
+  } catch (err: any) {
+    console.error('Failed to read config file', { filePath, err });
+    res.status(500).send({ error: 'Failed to read config file' });
+  }
+});
+
+routes.delete<ConfigFileParams>('/configs/:fileName', async (req, res) => {
+  const { fileName } = req.params;
+  const filePath = path.join(CONFIGS_DIR, fileName);
+
+  if (!(await pathExists(filePath))) {
+    return res.status(404).send({ error: 'Config not found' });
+  }
+
+  try {
+    await remove(filePath);
+    res.status(200).send({ status: 'ok' });
+  } catch (err: any) {
+    console.error('Failed to delete config', { filePath, err });
+    res.status(500).send({ error: 'Failed to delete config' });
   }
 });
 

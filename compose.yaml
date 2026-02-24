@@ -12,6 +12,7 @@ services:
       ENVIRONMENT: production
     volumes:
       - ./recordings:/home/smelter/demo/server/recordings
+      - ./configs:/home/smelter/demo/server/configs
     ports:
       - 9071:9071
       - 9072:9072

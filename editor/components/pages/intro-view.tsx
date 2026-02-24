@@ -32,6 +32,8 @@ import {
 import { Upload, FolderDown } from 'lucide-react';
 import RecordingsList from '@/components/recordings-list';
 import { toast } from 'react-toastify';
+import { LoadConfigModal } from '@/components/control-panel/components/ConfigModals';
+import type { RoomConfig } from '@/lib/room-config';
 
 function formatDuration(ms: number): string {
   const seconds = Math.floor(ms / 1000);
@@ -198,177 +200,191 @@ export default function IntroView() {
     };
   }, [handleCreateRoom, loadingNew, loadingImport]);
 
-  const handleImportClick = () => {
-    fileInputRef.current?.click();
-  };
+  const [showLoadModal, setShowLoadModal] = useState(false);
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  const importConfig = useCallback(
+    async (config: RoomConfig) => {
+      setLoadingImport(true);
+      try {
+        const room = await createNewRoom([], true, config.resolution);
+        const roomId = room.roomId;
 
-    setLoadingImport(true);
-    try {
-      const text = await file.text();
-      const config = parseRoomConfig(text);
+        const createdInputIds: { inputId: string; configIndex: number }[] = [];
 
-      const room = await createNewRoom([], true, config.resolution);
-      const roomId = room.roomId;
+        for (let i = 0; i < config.inputs.length; i++) {
+          const inputConfig = config.inputs[i];
+          try {
+            let inputId: string | null = null;
 
-      const createdInputIds: { inputId: string; configIndex: number }[] = [];
+            if (inputConfig.type === 'whip') {
+              continue;
+            }
 
-      for (let i = 0; i < config.inputs.length; i++) {
-        const inputConfig = config.inputs[i];
-        try {
-          let inputId: string | null = null;
+            switch (inputConfig.type) {
+              case 'twitch-channel':
+                if (inputConfig.channelId) {
+                  const result = await addTwitchInput(
+                    roomId,
+                    inputConfig.channelId,
+                  );
+                  inputId = result.inputId;
+                }
+                break;
+              case 'kick-channel':
+                if (inputConfig.channelId) {
+                  const result = await addKickInput(
+                    roomId,
+                    inputConfig.channelId,
+                  );
+                  inputId = result.inputId;
+                }
+                break;
+              case 'local-mp4':
+                if (inputConfig.mp4FileName) {
+                  const result = await addMP4Input(
+                    roomId,
+                    inputConfig.mp4FileName,
+                  );
+                  inputId = result.inputId;
+                }
+                break;
+              case 'image':
+                if (inputConfig.imageId) {
+                  const result = await addImageInput(
+                    roomId,
+                    inputConfig.imageId,
+                  );
+                  inputId = result.inputId;
+                }
+                break;
+              case 'text-input':
+                if (inputConfig.text) {
+                  const result = await addTextInput(
+                    roomId,
+                    inputConfig.text,
+                    inputConfig.textAlign || 'left',
+                  );
+                  inputId = result.inputId;
+                }
+                break;
+            }
 
-          if (inputConfig.type === 'whip') {
-            continue;
+            if (inputId) {
+              createdInputIds.push({ inputId, configIndex: i });
+            }
+          } catch (err) {
+            console.warn(`Failed to add input ${inputConfig.title}:`, err);
           }
-
-          switch (inputConfig.type) {
-            case 'twitch-channel':
-              if (inputConfig.channelId) {
-                const result = await addTwitchInput(
-                  roomId,
-                  inputConfig.channelId,
-                );
-                inputId = result.inputId;
-              }
-              break;
-            case 'kick-channel':
-              if (inputConfig.channelId) {
-                const result = await addKickInput(
-                  roomId,
-                  inputConfig.channelId,
-                );
-                inputId = result.inputId;
-              }
-              break;
-            case 'local-mp4':
-              if (inputConfig.mp4FileName) {
-                const result = await addMP4Input(
-                  roomId,
-                  inputConfig.mp4FileName,
-                );
-                inputId = result.inputId;
-              }
-              break;
-            case 'image':
-              if (inputConfig.imageId) {
-                const result = await addImageInput(roomId, inputConfig.imageId);
-                inputId = result.inputId;
-              }
-              break;
-            case 'text-input':
-              if (inputConfig.text) {
-                const result = await addTextInput(
-                  roomId,
-                  inputConfig.text,
-                  inputConfig.textAlign || 'left',
-                );
-                inputId = result.inputId;
-              }
-              break;
-          }
-
-          if (inputId) {
-            createdInputIds.push({ inputId, configIndex: i });
-          }
-        } catch (err) {
-          console.warn(`Failed to add input ${inputConfig.title}:`, err);
         }
-      }
 
-      for (const { inputId, configIndex } of createdInputIds) {
-        const inputConfig = config.inputs[configIndex];
+        for (const { inputId, configIndex } of createdInputIds) {
+          const inputConfig = config.inputs[configIndex];
+          try {
+            await updateInput(roomId, inputId, {
+              volume: inputConfig.volume,
+              shaders: inputConfig.shaders,
+              showTitle: inputConfig.showTitle,
+              textColor: inputConfig.textColor,
+              orientation: inputConfig.orientation,
+              textMaxLines: inputConfig.textMaxLines,
+              textScrollSpeed: inputConfig.textScrollSpeed,
+              textScrollLoop: inputConfig.textScrollLoop,
+            });
+          } catch (err) {
+            console.warn(`Failed to update input ${inputId}:`, err);
+          }
+        }
+
+        const orderedCreatedIds = createdInputIds
+          .slice()
+          .sort((a, b) => a.configIndex - b.configIndex)
+          .map(({ inputId }) => inputId);
+
         try {
-          await updateInput(roomId, inputId, {
-            volume: inputConfig.volume,
-            shaders: inputConfig.shaders,
-            showTitle: inputConfig.showTitle,
-            textColor: inputConfig.textColor,
-            orientation: inputConfig.orientation,
-            textMaxLines: inputConfig.textMaxLines,
-            textScrollSpeed: inputConfig.textScrollSpeed,
-            textScrollLoop: inputConfig.textScrollLoop,
+          await updateRoom(roomId, {
+            layout: config.layout,
+            ...(orderedCreatedIds.length > 0
+              ? { inputOrder: orderedCreatedIds }
+              : {}),
+            ...config.transitionSettings,
           });
         } catch (err) {
-          console.warn(`Failed to update input ${inputId}:`, err);
+          console.warn('Failed to set layout or input order:', err);
         }
-      }
 
-      // Ensure initial server input order matches positions from the imported config
-      const orderedCreatedIds = createdInputIds
-        .slice()
-        .sort((a, b) => a.configIndex - b.configIndex)
-        .map(({ inputId }) => inputId);
+        const pendingWhipInputs: PendingWhipInputData[] = [];
+        for (let i = 0; i < config.inputs.length; i++) {
+          const inputConfig = config.inputs[i];
+          if (inputConfig.type === 'whip') {
+            pendingWhipInputs.push({
+              id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              title: inputConfig.title,
+              volume: inputConfig.volume,
+              showTitle: inputConfig.showTitle !== false,
+              shaders: inputConfig.shaders || [],
+              orientation: (inputConfig.orientation || 'horizontal') as
+                | 'horizontal'
+                | 'vertical',
+              position: i,
+            });
+          }
+        }
+
+        if (config.timeline) {
+          const indexToInputId = new Map<number, string>();
+          for (const { inputId, configIndex } of createdInputIds) {
+            indexToInputId.set(configIndex, inputId);
+          }
+          for (const pending of pendingWhipInputs) {
+            indexToInputId.set(
+              pending.position,
+              `__pending-whip-${pending.position}__`,
+            );
+          }
+          restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
+        }
+
+        if (pendingWhipInputs.length > 0) {
+          await setPendingWhipInputsAction(roomId, pendingWhipInputs);
+          toast.info(
+            `Room created. ${pendingWhipInputs.length} WHIP input(s) need to be connected manually.`,
+          );
+        } else {
+          toast.success('Room created from configuration');
+        }
+
+        router.push(getRoomRoute(roomId));
+      } catch (err: any) {
+        console.error('Import failed:', err);
+        toast.error(`Import failed: ${err?.message || err}`);
+      } finally {
+        setLoadingImport(false);
+      }
+    },
+    [router, basePath, selectedResolution],
+  );
+
+  const handleFileChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
 
       try {
-        await updateRoom(roomId, {
-          layout: config.layout,
-          ...(orderedCreatedIds.length > 0
-            ? { inputOrder: orderedCreatedIds }
-            : {}),
-          ...config.transitionSettings,
-        });
-      } catch (err) {
-        console.warn('Failed to set layout or input order:', err);
-      }
-
-      const pendingWhipInputs: PendingWhipInputData[] = [];
-      for (let i = 0; i < config.inputs.length; i++) {
-        const inputConfig = config.inputs[i];
-        if (inputConfig.type === 'whip') {
-          pendingWhipInputs.push({
-            id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-            title: inputConfig.title,
-            volume: inputConfig.volume,
-            showTitle: inputConfig.showTitle !== false,
-            shaders: inputConfig.shaders || [],
-            orientation: (inputConfig.orientation || 'horizontal') as
-              | 'horizontal'
-              | 'vertical',
-            position: i,
-          });
+        const text = await file.text();
+        const config = parseRoomConfig(text);
+        await importConfig(config);
+      } catch (err: any) {
+        console.error('Import failed:', err);
+        toast.error(`Import failed: ${err?.message || err}`);
+        setLoadingImport(false);
+      } finally {
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
         }
       }
-
-      // Restore timeline state if present in config
-      if (config.timeline) {
-        const indexToInputId = new Map<number, string>();
-        for (const { inputId, configIndex } of createdInputIds) {
-          indexToInputId.set(configIndex, inputId);
-        }
-        // Use placeholder inputIds for pending WHIP inputs so their clips are preserved
-        for (const pending of pendingWhipInputs) {
-          indexToInputId.set(
-            pending.position,
-            `__pending-whip-${pending.position}__`,
-          );
-        }
-        restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
-      }
-
-      if (pendingWhipInputs.length > 0) {
-        await setPendingWhipInputsAction(roomId, pendingWhipInputs);
-        toast.info(
-          `Room created. ${pendingWhipInputs.length} WHIP input(s) need to be connected manually.`,
-        );
-      } else {
-        toast.success('Room created from configuration');
-      }
-
-      router.push(getRoomRoute(roomId));
-    } catch (err: any) {
-      console.error('Import failed:', err);
-      toast.error(`Import failed: ${err?.message || err}`);
-    } finally {
-      setLoadingImport(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-    }
-  };
+    },
+    [importConfig],
+  );
 
   return (
     <motion.div
@@ -451,7 +467,7 @@ export default function IntroView() {
               size='lg'
               variant='default'
               className='font-medium w-full bg-neutral-800 hover:bg-neutral-700 text-white cursor-pointer'
-              onClick={handleImportClick}
+              onClick={() => setShowLoadModal(true)}
               disabled={loadingNew || loadingImport}>
               {loadingImport ? (
                 <>
@@ -471,6 +487,16 @@ export default function IntroView() {
               accept='.json,application/json'
               className='hidden'
               onChange={handleFileChange}
+            />
+            <LoadConfigModal
+              open={showLoadModal}
+              onOpenChange={setShowLoadModal}
+              onLoadLocal={() => {
+                setShowLoadModal(false);
+                fileInputRef.current?.click();
+              }}
+              onLoadRemote={importConfig}
+              isImporting={loadingImport}
             />
             <Button
               size='lg'

@@ -48,5 +48,7 @@ yarn-error.log*
 next-env.d.ts
 
 server/recordings/*
+server/configs/*
 server/dist/
 recordings/
+configs/

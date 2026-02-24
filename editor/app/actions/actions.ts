@@ -399,6 +399,42 @@ export async function setPendingWhipInputs(
   );
 }
 
+export type SavedConfigInfo = {
+  fileName: string;
+  name: string;
+  savedAt: string;
+  size: number;
+};
+
+export async function saveRemoteConfig(
+  name: string,
+  config: object,
+): Promise<{ fileName: string; name: string }> {
+  return await sendSmelterRequest('post', '/configs', { name, config });
+}
+
+export async function listRemoteConfigs(): Promise<SavedConfigInfo[]> {
+  const data = await sendSmelterRequest('get', '/configs');
+  return data.configs ?? [];
+}
+
+export async function loadRemoteConfig(
+  fileName: string,
+): Promise<{ name: string; config: any; savedAt: string }> {
+  return await sendSmelterRequest(
+    'get',
+    `/configs/${encodeURIComponent(fileName)}`,
+  );
+}
+
+export async function deleteRemoteConfig(fileName: string): Promise<void> {
+  await sendSmelterRequest(
+    'delete',
+    `/configs/${encodeURIComponent(fileName)}`,
+    {},
+  );
+}
+
 export async function getAllRooms(): Promise<any> {
   const rooms = await sendSmelterRequest('get', `/rooms`);
   return rooms;

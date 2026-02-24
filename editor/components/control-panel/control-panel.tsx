@@ -8,6 +8,13 @@ import type { RoomState, Input, AvailableShader } from '@/app/actions/actions';
 import {
   setPendingWhipInputs as setPendingWhipInputsAction,
   updateRoom as updateRoomAction,
+  updateInput as updateInputAction,
+  addTwitchInput,
+  addKickInput,
+  addMP4Input,
+  addImageInput,
+  addTextInput,
+  removeInput,
   type PendingWhipInputData,
 } from '@/app/actions/actions';
 import LayoutSelector, { type Layout } from '@/components/layout-selector';
@@ -18,7 +25,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Grid3X3, SlidersHorizontal, Zap, Settings } from 'lucide-react';
+import {
+  Grid3X3,
+  SlidersHorizontal,
+  Zap,
+  Download,
+  Upload,
+} from 'lucide-react';
 import {
   useControlPanelState,
   type InputWrapper,
@@ -30,17 +43,24 @@ import { AddVideoSection } from './components/AddVideoSection';
 import { StreamsSection } from './components/StreamsSection';
 import { TimelinePanel } from './components/TimelinePanel';
 import { QuickActionsSection } from './components/QuickActionsSection';
+import { type PendingWhipInput } from './components/ConfigurationSection';
 import {
-  ConfigurationSection,
-  type PendingWhipInput,
-} from './components/ConfigurationSection';
+  exportRoomConfig,
+  downloadRoomConfig,
+  parseRoomConfig,
+  loadTimelineFromStorage,
+  restoreTimelineToStorage,
+  type RoomConfig,
+  type RoomConfigInput,
+} from '@/lib/room-config';
+import { saveRemoteConfig } from '@/app/actions/actions';
+import { SaveConfigModal, LoadConfigModal } from './components/ConfigModals';
 import { PendingWhipInputs } from './components/PendingWhipInputs';
 import { TransitionSettings } from './components/TransitionSettings';
 import {
   rotateBy90,
   type RotationAngle,
 } from './whip-input/utils/whip-publisher';
-import { updateInput as updateInputAction } from '@/app/actions/actions';
 import { ControlPanelProvider } from './contexts/control-panel-context';
 import { WhipConnectionsProvider } from './contexts/whip-connections-context';
 import {
@@ -401,7 +421,7 @@ export default function ControlPanel({
   );
 }
 
-type ModalId = 'quickActions' | 'layouts' | 'transitions' | 'configuration';
+type ModalId = 'quickActions' | 'layouts' | 'transitions';
 
 function SettingsBar({
   changeLayout,
@@ -427,34 +447,276 @@ function SettingsBar({
   availableShaders: AvailableShader[];
 }) {
   const [openModal, setOpenModal] = useState<ModalId | null>(null);
+  const [isExporting, setIsExporting] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showLoadModal, setShowLoadModal] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const buttons: { id: ModalId; label: string; icon: React.ReactNode }[] = [
-    {
-      id: 'quickActions',
-      label: 'Quick Actions',
-      icon: <Zap className='w-4 h-4' />,
+  const buildConfig = useCallback(() => {
+    const timelineState = loadTimelineFromStorage(roomId);
+    return exportRoomConfig(
+      roomState.inputs,
+      roomState.layout,
+      roomState.resolution,
+      {
+        swapDurationMs: roomState.swapDurationMs,
+        swapOutgoingEnabled: roomState.swapOutgoingEnabled,
+        swapFadeInDurationMs: roomState.swapFadeInDurationMs,
+        swapFadeOutDurationMs: roomState.swapFadeOutDurationMs,
+        newsStripFadeDuringSwap: roomState.newsStripFadeDuringSwap,
+        newsStripEnabled: roomState.newsStripEnabled,
+      },
+      timelineState ?? undefined,
+    );
+  }, [roomState, roomId]);
+
+  const handleExportLocal = useCallback(() => {
+    setIsExporting(true);
+    try {
+      const config = buildConfig();
+      downloadRoomConfig(config);
+    } catch (e: any) {
+      console.error('Export failed:', e);
+    } finally {
+      setIsExporting(false);
+    }
+  }, [buildConfig]);
+
+  const handleExportRemote = useCallback(
+    async (name: string) => {
+      const config = buildConfig();
+      await saveRemoteConfig(name, config);
     },
-    { id: 'layouts', label: 'Layouts', icon: <Grid3X3 className='w-4 h-4' /> },
-    {
-      id: 'transitions',
-      label: 'Transitions',
-      icon: <SlidersHorizontal className='w-4 h-4' />,
+    [buildConfig],
+  );
+
+  useEffect(() => {
+    const onVoiceExport = () => {
+      handleExportLocal();
+    };
+    window.addEventListener('smelter:export-configuration', onVoiceExport);
+    return () => {
+      window.removeEventListener('smelter:export-configuration', onVoiceExport);
+    };
+  }, [handleExportLocal]);
+
+  const importConfig = useCallback(
+    async (config: RoomConfig) => {
+      const oldInputIds = roomState.inputs.map((i) => i.inputId);
+      const newPendingWhipInputs: PendingWhipInput[] = [];
+      const createdInputIds: {
+        inputId: string;
+        config: RoomConfigInput;
+        position: number;
+      }[] = [];
+
+      for (let i = 0; i < config.inputs.length; i++) {
+        const inputConfig = config.inputs[i];
+        try {
+          let inputId: string | null = null;
+
+          if (inputConfig.type === 'whip') {
+            newPendingWhipInputs.push({
+              id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              title: inputConfig.title,
+              config: inputConfig,
+              position: i,
+            });
+            continue;
+          }
+
+          switch (inputConfig.type) {
+            case 'twitch-channel':
+              if (inputConfig.channelId) {
+                const result = await addTwitchInput(
+                  roomId,
+                  inputConfig.channelId,
+                );
+                inputId = result.inputId;
+              }
+              break;
+            case 'kick-channel':
+              if (inputConfig.channelId) {
+                const result = await addKickInput(
+                  roomId,
+                  inputConfig.channelId,
+                );
+                inputId = result.inputId;
+              }
+              break;
+            case 'local-mp4':
+              if (inputConfig.mp4FileName) {
+                const result = await addMP4Input(
+                  roomId,
+                  inputConfig.mp4FileName,
+                );
+                inputId = result.inputId;
+              }
+              break;
+            case 'image':
+              if (inputConfig.imageId) {
+                const result = await addImageInput(roomId, inputConfig.imageId);
+                inputId = result.inputId;
+              }
+              break;
+            case 'text-input':
+              if (inputConfig.text) {
+                const result = await addTextInput(
+                  roomId,
+                  inputConfig.text,
+                  inputConfig.textAlign || 'left',
+                );
+                inputId = result.inputId;
+              }
+              break;
+          }
+
+          if (inputId) {
+            createdInputIds.push({
+              inputId,
+              config: inputConfig,
+              position: i,
+            });
+          }
+        } catch (e) {
+          console.warn(`Failed to add input ${inputConfig.title}:`, e);
+        }
+      }
+
+      await handleRefreshState();
+
+      const positionToInputId = new Map<number, string>();
+      for (const { inputId, position } of createdInputIds) {
+        positionToInputId.set(position, inputId);
+      }
+
+      for (const { inputId, config: inputConfig } of createdInputIds) {
+        const attachedInputIds = inputConfig.attachedInputIndices
+          ?.map((idx) => positionToInputId.get(idx))
+          .filter((id): id is string => !!id);
+
+        try {
+          await updateInputAction(roomId, inputId, {
+            volume: inputConfig.volume,
+            shaders: inputConfig.shaders,
+            showTitle: inputConfig.showTitle,
+            textColor: inputConfig.textColor,
+            orientation: inputConfig.orientation,
+            textMaxLines: inputConfig.textMaxLines,
+            textScrollSpeed: inputConfig.textScrollSpeed,
+            textScrollLoop: inputConfig.textScrollLoop,
+            textFontSize: inputConfig.textFontSize,
+            borderColor: inputConfig.borderColor,
+            borderWidth: inputConfig.borderWidth,
+            attachedInputIds:
+              attachedInputIds && attachedInputIds.length > 0
+                ? attachedInputIds
+                : undefined,
+          });
+        } catch (e) {
+          console.warn(`Failed to update input ${inputId}:`, e);
+        }
+      }
+
+      for (const oldInputId of oldInputIds) {
+        try {
+          await removeInput(roomId, oldInputId);
+        } catch (e) {
+          console.warn(`Failed to remove old input ${oldInputId}:`, e);
+        }
+      }
+
+      setPendingWhipInputs(newPendingWhipInputs);
+
+      if (config.timeline) {
+        const indexToInputId = new Map<number, string>();
+        for (const { inputId, position } of createdInputIds) {
+          indexToInputId.set(position, inputId);
+        }
+        for (const pending of newPendingWhipInputs) {
+          indexToInputId.set(
+            pending.position,
+            `__pending-whip-${pending.position}__`,
+          );
+        }
+        restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
+      }
+
+      const orderedCreatedIds = createdInputIds
+        .slice()
+        .sort((a, b) => a.position - b.position)
+        .map(({ inputId }) => inputId);
+
+      try {
+        await updateRoomAction(roomId, {
+          layout: config.layout,
+          ...(orderedCreatedIds.length > 0
+            ? { inputOrder: orderedCreatedIds }
+            : {}),
+          ...config.transitionSettings,
+        });
+      } catch (e) {
+        console.warn('Failed to set layout or input order:', e);
+      }
+
+      await handleRefreshState();
     },
-    {
-      id: 'configuration',
-      label: 'Config',
-      icon: <Settings className='w-4 h-4' />,
+    [roomId, roomState.inputs, handleRefreshState, setPendingWhipInputs],
+  );
+
+  const handleFileChange = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      setIsImporting(true);
+      try {
+        const text = await file.text();
+        const config = parseRoomConfig(text);
+        await importConfig(config);
+      } catch (e: any) {
+        console.error('Import failed:', e);
+      } finally {
+        setIsImporting(false);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+      }
     },
-  ];
+    [importConfig],
+  );
+
+  const modalButtons: { id: ModalId; label: string; icon: React.ReactNode }[] =
+    [
+      {
+        id: 'quickActions',
+        label: 'Quick Actions',
+        icon: <Zap className='w-4 h-4' />,
+      },
+      {
+        id: 'layouts',
+        label: 'Layouts',
+        icon: <Grid3X3 className='w-4 h-4' />,
+      },
+      {
+        id: 'transitions',
+        label: 'Transitions',
+        icon: <SlidersHorizontal className='w-4 h-4' />,
+      },
+    ];
+
+  const btnClass =
+    'flex flex-col items-center gap-1.5 px-2 py-3 rounded-md border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 hover:border-neutral-600 transition-all cursor-pointer group';
 
   return (
     <>
-      <div className='grid grid-cols-4 gap-2'>
-        {buttons.map((btn) => (
+      <div className='grid grid-cols-5 gap-2'>
+        {modalButtons.map((btn) => (
           <button
             key={btn.id}
             onClick={() => setOpenModal(btn.id)}
-            className='flex flex-col items-center gap-1.5 px-2 py-3 rounded-md border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 hover:border-neutral-600 transition-all cursor-pointer group'>
+            className={btnClass}>
             <span className='text-neutral-400 group-hover:text-white transition-colors'>
               {btn.icon}
             </span>
@@ -463,7 +725,36 @@ function SettingsBar({
             </span>
           </button>
         ))}
+        <button
+          onClick={() => setShowSaveModal(true)}
+          disabled={isExporting}
+          className={btnClass}>
+          <span className='text-neutral-400 group-hover:text-white transition-colors'>
+            <Download className='w-4 h-4' />
+          </span>
+          <span className='text-[11px] font-medium text-neutral-400 group-hover:text-white transition-colors leading-tight text-center'>
+            {isExporting ? 'Saving...' : 'Save'}
+          </span>
+        </button>
+        <button
+          onClick={() => setShowLoadModal(true)}
+          disabled={isImporting}
+          className={btnClass}>
+          <span className='text-neutral-400 group-hover:text-white transition-colors'>
+            <Upload className='w-4 h-4' />
+          </span>
+          <span className='text-[11px] font-medium text-neutral-400 group-hover:text-white transition-colors leading-tight text-center'>
+            {isImporting ? 'Loading...' : 'Load'}
+          </span>
+        </button>
       </div>
+      <input
+        ref={fileInputRef}
+        type='file'
+        accept='.json,application/json'
+        className='hidden'
+        onChange={handleFileChange}
+      />
       <BlockClipPropertiesPanel
         roomId={roomId}
         selectedTimelineClip={selectedTimelineClip}
@@ -543,32 +834,21 @@ function SettingsBar({
         </DialogContent>
       </Dialog>
 
-      <Dialog
-        open={openModal === 'configuration'}
-        onOpenChange={(open) => !open && setOpenModal(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Configuration</DialogTitle>
-          </DialogHeader>
-          <ConfigurationSection
-            inputs={roomState.inputs}
-            layout={roomState.layout}
-            resolution={roomState.resolution}
-            transitionSettings={{
-              swapDurationMs: roomState.swapDurationMs,
-              swapOutgoingEnabled: roomState.swapOutgoingEnabled,
-              swapFadeInDurationMs: roomState.swapFadeInDurationMs,
-              swapFadeOutDurationMs: roomState.swapFadeOutDurationMs,
-              newsStripFadeDuringSwap: roomState.newsStripFadeDuringSwap,
-              newsStripEnabled: roomState.newsStripEnabled,
-            }}
-            roomId={roomId}
-            refreshState={handleRefreshState}
-            pendingWhipInputs={pendingWhipInputs}
-            setPendingWhipInputs={setPendingWhipInputs}
-          />
-        </DialogContent>
-      </Dialog>
+      <SaveConfigModal
+        open={showSaveModal}
+        onOpenChange={setShowSaveModal}
+        onSaveLocal={handleExportLocal}
+        onSaveRemote={handleExportRemote}
+        isExporting={isExporting}
+      />
+
+      <LoadConfigModal
+        open={showLoadModal}
+        onOpenChange={setShowLoadModal}
+        onLoadLocal={() => fileInputRef.current?.click()}
+        onLoadRemote={importConfig}
+        isImporting={isImporting}
+      />
     </>
   );
 }
