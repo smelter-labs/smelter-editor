@@ -24,7 +24,7 @@ import {
 import { RESOLUTION_PRESETS, type ResolutionPreset } from '@/lib/resolution';
 import Link from 'next/link';
 import { staggerContainer } from '@/utils/animations';
-import { parseRoomConfig } from '@/lib/room-config';
+import { parseRoomConfig, restoreTimelineToStorage } from '@/lib/room-config';
 import {
   setPendingWhipInputs as setPendingWhipInputsAction,
   type PendingWhipInputData,
@@ -331,6 +331,15 @@ export default function IntroView() {
             position: i,
           });
         }
+      }
+
+      // Restore timeline state if present in config
+      if (config.timeline) {
+        const indexToInputId = new Map<number, string>();
+        for (const { inputId, configIndex } of createdInputIds) {
+          indexToInputId.set(configIndex, inputId);
+        }
+        restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
       }
 
       if (pendingWhipInputs.length > 0) {

@@ -4,6 +4,8 @@ import {
   AvailableShader,
   connectInput,
   disconnectInput,
+  hideInput,
+  showInput,
   Input,
   removeInput,
   updateInput,
@@ -419,52 +421,21 @@ export default function InputEntry({
   );
 
   const handleDelete = useCallback(async () => {
-    const session = loadWhipSession();
-    const isSavedInSession =
-      (session &&
-        session.roomId === roomId &&
-        session.inputId === input.inputId) ||
-      loadLastWhipInputId(roomId) === input.inputId;
-    const isWhipCandidate =
-      input.inputId.indexOf('whip') > 0 || isSavedInSession;
-    if (isWhipCandidate && pcRef && streamRef) {
-      stopCameraAndConnection(pcRef, streamRef);
-    }
-
-    if (isWhipCandidate) {
-      try {
-        clearWhipSessionFor(roomId, input.inputId);
-      } catch {}
-      try {
-        onWhipDisconnectedOrRemoved?.(input.inputId);
-      } catch {}
-    }
-    await removeInput(roomId, input.inputId);
+    await hideInput(roomId, input.inputId);
     await refreshState();
   }, [
     roomId,
     input,
     refreshState,
-    pcRef,
-    streamRef,
-    onWhipDisconnectedOrRemoved,
   ]);
 
   const handleConnectionToggle = useCallback(async () => {
     setConnectionStateLoading(true);
     try {
-      if (input.status === 'connected') {
-        if (isWhipInput && pcRef && streamRef) {
-          stopCameraAndConnection(pcRef, streamRef);
-        }
-        await disconnectInput(roomId, input.inputId);
-        if (isWhipInput) {
-          try {
-            onWhipDisconnectedOrRemoved?.(input.inputId);
-          } catch {}
-        }
-      } else if (input.status === 'disconnected') {
-        await connectInput(roomId, input.inputId);
+      if (input.hidden) {
+        await showInput(roomId, input.inputId);
+      } else {
+        await hideInput(roomId, input.inputId);
       }
       await refreshState();
     } finally {
@@ -474,10 +445,6 @@ export default function InputEntry({
     roomId,
     input,
     refreshState,
-    isWhipInput,
-    pcRef,
-    streamRef,
-    onWhipDisconnectedOrRemoved,
   ]);
 
   const handleSlidersToggle = useCallback(() => {

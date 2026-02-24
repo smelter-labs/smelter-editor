@@ -494,6 +494,22 @@ routes.post<RoomAndInputIdParams>('/room/:roomId/input/:inputId/disconnect', { s
   res.status(200).send({ status: 'ok' });
 });
 
+routes.post<RoomAndInputIdParams>('/room/:roomId/input/:inputId/hide', { schema: { params: RoomAndInputIdParamsSchema } }, async (req, res) => {
+  const { roomId, inputId } = req.params;
+  console.log('[request] Hide input', { roomId, inputId });
+  const room = state.getRoom(roomId);
+  room.hideInput(inputId);
+  res.status(200).send({ status: 'ok' });
+});
+
+routes.post<RoomAndInputIdParams>('/room/:roomId/input/:inputId/show', { schema: { params: RoomAndInputIdParamsSchema } }, async (req, res) => {
+  const { roomId, inputId } = req.params;
+  console.log('[request] Show input', { roomId, inputId });
+  const room = state.getRoom(roomId);
+  room.showInput(inputId);
+  res.status(200).send({ status: 'ok' });
+});
+
 const UpdateInputSchema = Type.Object({
   volume: Type.Number({ maximum: 1, minimum: 0 }),
   showTitle: Type.Optional(Type.Boolean()),

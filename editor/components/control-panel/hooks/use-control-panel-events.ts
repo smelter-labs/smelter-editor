@@ -4,6 +4,7 @@ import { useControlPanelInputOrderEvents } from './use-control-panel-input-order
 import type { Input, AvailableShader } from '@/app/actions/actions';
 import {
   removeInput,
+  hideInput,
   addTwitchInput,
   addMP4Input,
   addImageInput,
@@ -143,7 +144,7 @@ export function useControlPanelEvents({
         setIsScreenshareActive(false);
         clearWhipSessionFor(roomId, inputId);
       }
-      await removeInput(roomId, inputId);
+      await hideInput(roomId, inputId);
       await handleRefreshState();
     };
     window.addEventListener(
@@ -297,7 +298,7 @@ export function useControlPanelEvents({
           return;
         }
         const input = currentInputs[idx];
-        await removeInput(roomId, input.inputId);
+        await hideInput(roomId, input.inputId);
         await handleRefreshState();
       } catch (err) {
         console.error('Voice: failed to remove input', err);
@@ -906,7 +907,7 @@ export function useControlPanelEvents({
             }
           }
           try {
-            await removeInput(roomId, input.inputId);
+            await hideInput(roomId, input.inputId);
           } catch (err) {
             console.warn('Macro: failed to remove input', {
               inputId: input.inputId,

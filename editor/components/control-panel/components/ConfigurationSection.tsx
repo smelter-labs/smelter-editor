@@ -20,6 +20,8 @@ import {
   exportRoomConfig,
   downloadRoomConfig,
   parseRoomConfig,
+  loadTimelineFromStorage,
+  restoreTimelineToStorage,
   type RoomConfig,
   type RoomConfigInput,
   type RoomConfigTransitionSettings,
@@ -61,11 +63,13 @@ export function ConfigurationSection({
   const handleExport = useCallback(async () => {
     setIsExporting(true);
     try {
+      const timelineState = loadTimelineFromStorage(roomId);
       const config = exportRoomConfig(
         inputs,
         layout,
         resolution,
         transitionSettings,
+        timelineState ?? undefined,
       );
       downloadRoomConfig(config);
       toast.success('Configuration exported successfully');
@@ -75,7 +79,7 @@ export function ConfigurationSection({
     } finally {
       setIsExporting(false);
     }
-  }, [inputs, layout, resolution, transitionSettings]);
+  }, [inputs, layout, resolution, transitionSettings, roomId]);
 
   useEffect(() => {
     const onVoiceExport = () => {
@@ -234,6 +238,15 @@ export function ConfigurationSection({
     }
 
     setPendingWhipInputs(newPendingWhipInputs);
+
+    // Restore timeline state if present in config
+    if (config.timeline) {
+      const indexToInputId = new Map<number, string>();
+      for (const { inputId, position } of createdInputIds) {
+        indexToInputId.set(position, inputId);
+      }
+      restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
+    }
 
     // Ensure server input order matches positions from the imported config
     const orderedCreatedIds = createdInputIds

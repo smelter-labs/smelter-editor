@@ -7,6 +7,7 @@ import {
   addImageInput,
   addMP4Input,
   removeInput,
+  hideInput,
 } from '@/app/actions/actions';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 
@@ -122,7 +123,7 @@ export function QuickActionsSection() {
             const currentInputs = [...inputs];
             for (const input of currentInputs) {
               try {
-                await removeInput(roomId, input.inputId);
+                await hideInput(roomId, input.inputId);
               } catch (e) {
                 console.warn(`Failed to remove input ${input.inputId}:`, e);
               }

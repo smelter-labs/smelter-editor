@@ -23,6 +23,7 @@ export type PublicInputState = {
   textScrollLoop?: boolean;
   textFontSize?: number;
   attachedInputIds?: string[];
+  hidden?: boolean;
 };
 
 export function toPublicInputState(input: RoomInputState): PublicInputState {
@@ -37,6 +38,7 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
     shaders: input.shaders,
     orientation: input.orientation,
     attachedInputIds: input.attachedInputIds,
+    hidden: input.hidden,
   };
   switch (input.type) {
     case 'local-mp4':

@@ -1,4 +1,8 @@
 import type { Input, Layout, ShaderConfig } from '@/app/actions/actions';
+import type {
+  Segment,
+  OrderKeyframe,
+} from '@/components/control-panel/hooks/use-timeline-state';
 
 export type RoomConfigInput = {
   type: Input['type'];
@@ -40,12 +44,30 @@ export type RoomConfigTransitionSettings = {
   newsStripEnabled?: boolean;
 };
 
+export type RoomConfigTrackTimeline = {
+  inputIndex: number;
+  segments: { startMs: number; endMs: number }[];
+};
+
+export type RoomConfigOrderKeyframe = {
+  timeMs: number;
+  inputOrderIndices: number[];
+};
+
+export type RoomConfigTimeline = {
+  totalDurationMs: number;
+  pixelsPerSecond: number;
+  tracks: RoomConfigTrackTimeline[];
+  orderKeyframes: RoomConfigOrderKeyframe[];
+};
+
 export type RoomConfig = {
   version: 1;
   layout: Layout;
   inputs: RoomConfigInput[];
   resolution?: { width: number; height: number };
   transitionSettings?: RoomConfigTransitionSettings;
+  timeline?: RoomConfigTimeline;
   exportedAt: string;
 };
 
@@ -54,15 +76,49 @@ export function exportRoomConfig(
   layout: Layout,
   resolution?: { width: number; height: number },
   transitionSettings?: RoomConfigTransitionSettings,
+  timelineState?: {
+    tracks: Record<string, { inputId: string; segments: Segment[] }>;
+    orderKeyframes: OrderKeyframe[];
+    totalDurationMs: number;
+    pixelsPerSecond: number;
+  },
 ): RoomConfig {
   const inputIdToIndex = new Map<string, number>();
   inputs.forEach((input, idx) => inputIdToIndex.set(input.inputId, idx));
+
+  let timeline: RoomConfigTimeline | undefined;
+  if (timelineState) {
+    const tracks: RoomConfigTrackTimeline[] = [];
+    for (const [inputId, track] of Object.entries(timelineState.tracks)) {
+      const idx = inputIdToIndex.get(inputId);
+      if (idx === undefined) continue;
+      tracks.push({
+        inputIndex: idx,
+        segments: track.segments.map((s) => ({
+          startMs: s.startMs,
+          endMs: s.endMs,
+        })),
+      });
+    }
+    timeline = {
+      totalDurationMs: timelineState.totalDurationMs,
+      pixelsPerSecond: timelineState.pixelsPerSecond,
+      tracks,
+      orderKeyframes: timelineState.orderKeyframes.map((kf) => ({
+        timeMs: kf.timeMs,
+        inputOrderIndices: kf.inputOrder
+          .map((id) => inputIdToIndex.get(id))
+          .filter((idx): idx is number => idx !== undefined),
+      })),
+    };
+  }
 
   return {
     version: 1,
     layout,
     resolution,
     transitionSettings,
+    timeline,
     inputs: inputs.map((input) => ({
       type: input.type,
       title: input.title,
@@ -115,6 +171,79 @@ export function parseRoomConfig(json: string): RoomConfig {
     throw new Error('Invalid config format');
   }
   return config as RoomConfig;
+}
+
+const TIMELINE_STORAGE_KEY_PREFIX = 'smelter-timeline-';
+
+export function loadTimelineFromStorage(roomId: string): {
+  tracks: Record<string, { inputId: string; segments: Segment[] }>;
+  orderKeyframes: OrderKeyframe[];
+  totalDurationMs: number;
+  pixelsPerSecond: number;
+} | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(`${TIMELINE_STORAGE_KEY_PREFIX}${roomId}`);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed.totalDurationMs === 'number' &&
+      typeof parsed.tracks === 'object'
+    ) {
+      return parsed;
+    }
+  } catch {
+    // corrupt data
+  }
+  return null;
+}
+
+export function restoreTimelineToStorage(
+  roomId: string,
+  timeline: RoomConfigTimeline,
+  indexToInputId: Map<number, string>,
+): void {
+  if (typeof window === 'undefined') return;
+
+  const tracks: Record<string, { inputId: string; segments: Segment[] }> = {};
+  for (const track of timeline.tracks) {
+    const inputId = indexToInputId.get(track.inputIndex);
+    if (!inputId) continue;
+    tracks[inputId] = {
+      inputId,
+      segments: track.segments.map((s) => ({
+        id: crypto.randomUUID(),
+        startMs: s.startMs,
+        endMs: s.endMs,
+      })),
+    };
+  }
+
+  const orderKeyframes: OrderKeyframe[] = timeline.orderKeyframes.map((kf) => ({
+    id: crypto.randomUUID(),
+    timeMs: kf.timeMs,
+    inputOrder: kf.inputOrderIndices
+      .map((idx) => indexToInputId.get(idx))
+      .filter((id): id is string => !!id),
+  }));
+
+  const state = {
+    tracks,
+    orderKeyframes,
+    totalDurationMs: timeline.totalDurationMs,
+    playheadMs: 0,
+    pixelsPerSecond: timeline.pixelsPerSecond,
+  };
+
+  try {
+    localStorage.setItem(
+      `${TIMELINE_STORAGE_KEY_PREFIX}${roomId}`,
+      JSON.stringify(state),
+    );
+  } catch {
+    console.warn('Failed to save imported timeline to localStorage');
+  }
 }
 
 const PENDING_WHIP_STORAGE_KEY = 'smelter-pending-whip-inputs';

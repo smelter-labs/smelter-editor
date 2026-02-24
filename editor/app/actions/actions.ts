@@ -71,6 +71,7 @@ export type Input = {
   textScrollLoop?: boolean;
   textFontSize?: number;
   attachedInputIds?: string[];
+  hidden?: boolean;
 };
 
 export type RegisterInputOptions =
@@ -441,6 +442,22 @@ export async function connectInput(roomId: string, inputId: string) {
   return await sendSmelterRequest(
     'post',
     `/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}/connect`,
+    {},
+  );
+}
+
+export async function hideInput(roomId: string, inputId: string) {
+  return await sendSmelterRequest(
+    'post',
+    `/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}/hide`,
+    {},
+  );
+}
+
+export async function showInput(roomId: string, inputId: string) {
+  return await sendSmelterRequest(
+    'post',
+    `/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}/show`,
     {},
   );
 }

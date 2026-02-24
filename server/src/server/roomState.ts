@@ -21,6 +21,7 @@ export type RoomInputState = {
   showTitle: boolean;
   shaders: ShaderConfig[];
   orientation: InputOrientation;
+  hidden: boolean;
   attachedInputIds?: string[];
   metadata: {
     title: string;
@@ -178,6 +179,7 @@ export class RoomState {
             showTitle: false,
             shaders: [],
             orientation: 'horizontal',
+            hidden: false,
             metadata: {
               title: `[MP4] ${formatMp4Name(randomMp4)}`,
               description: '[Static source] AI Generated',
@@ -363,6 +365,7 @@ export class RoomState {
         showTitle: false,
         shaders: [],
         orientation: 'horizontal',
+        hidden: false,
         metadata: {
           title: 'Smelter',
           description: '',
@@ -393,6 +396,7 @@ export class RoomState {
       showTitle: false,
       shaders: [],
       orientation: 'horizontal',
+      hidden: false,
       monitor: monitor,
       metadata: {
         title: `[Camera] ${username}`,
@@ -429,6 +433,7 @@ export class RoomState {
       showTitle: false,
       shaders: [] as ShaderConfig[],
       orientation: 'horizontal' as InputOrientation,
+      hidden: false,
       metadata: { title: '', description: '' },
       volume: 0,
       channelId,
@@ -488,6 +493,7 @@ export class RoomState {
         showTitle: false,
         shaders: [],
         orientation: 'horizontal',
+        hidden: false,
         metadata: {
           title: `[MP4] ${formatMp4Name(mp4Name)}`,
           description: '[Static source] AI Generated',
@@ -554,6 +560,7 @@ export class RoomState {
           showTitle: false,
           shaders: [],
           orientation: 'horizontal',
+          hidden: false,
           metadata: {
             title: formatImageName(fileName),
             description: '',
@@ -578,6 +585,7 @@ export class RoomState {
         showTitle: false,
         shaders: [],
         orientation: 'horizontal',
+        hidden: false,
         metadata: {
           title: 'Text',
           description: '',
@@ -825,7 +833,7 @@ export class RoomState {
       textFontSize: input.type === 'text-input' ? input.textFontSize : undefined,
     });
 
-    const connectedInputs = this.inputs.filter(input => input.status === 'connected' || input.status === 'pending');
+    const connectedInputs = this.inputs.filter(input => (input.status === 'connected' || input.status === 'pending') && !input.hidden);
     const connectedMap = new Map<string, RoomInputState>();
     for (const input of connectedInputs) {
       connectedMap.set(input.inputId, input);
@@ -854,6 +862,18 @@ export class RoomState {
       });
 
     this.output.store.getState().updateState(inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap, this.swapFadeOutDurationMs, this.newsStripEnabled);
+  }
+
+  public hideInput(inputId: string) {
+    const input = this.getInput(inputId);
+    input.hidden = true;
+    this.updateStoreWithState();
+  }
+
+  public showInput(inputId: string) {
+    const input = this.getInput(inputId);
+    input.hidden = false;
+    this.updateStoreWithState();
   }
 
   private getInput(inputId: string): RoomInputState {
@@ -915,6 +935,7 @@ export class RoomState {
         showTitle: false,
         shaders: [],
         orientation: 'horizontal',
+        hidden: false,
         metadata: {
           title: `[MP4] ${formatMp4Name(fileName)}`,
           description: '[Wrapped MP4]',
@@ -974,6 +995,7 @@ export class RoomState {
         showTitle: false,
         shaders: [],
         orientation: 'horizontal',
+        hidden: false,
         metadata: {
           title: formatImageName(fileName),
           description: '',
