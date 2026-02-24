@@ -349,7 +349,14 @@ export function TimelinePanel({
     } finally {
       setIsTogglingRecording(false);
     }
-  }, [isRecording, isTogglingRecording, roomId, play, stop, stopRecordingAndDownload]);
+  }, [
+    isRecording,
+    isTogglingRecording,
+    roomId,
+    play,
+    stop,
+    stopRecordingAndDownload,
+  ]);
 
   useEffect(() => {
     if (wasPlayingRef.current && !state.isPlaying && isRecording) {
@@ -1125,7 +1132,14 @@ export function TimelinePanel({
     purgeInputId(contextMenu.inputId);
     await removeInput(roomId, contextMenu.inputId);
     await refreshState();
-  }, [contextMenu, inputs, roomId, refreshState, closeContextMenu, purgeInputId]);
+  }, [
+    contextMenu,
+    inputs,
+    roomId,
+    refreshState,
+    closeContextMenu,
+    purgeInputId,
+  ]);
 
   const handleSplitHere = useCallback(() => {
     if (contextMenu?.clipId && contextMenu.splitAtMs !== undefined) {
@@ -1177,10 +1191,8 @@ export function TimelinePanel({
               left: leftPx,
               width: Math.max(widthPx, 2),
               cursor: 'grab',
-              backgroundColor:
-                colors?.segBg ?? disconnectedBg,
-              borderColor:
-                colors?.segBorder ?? disconnectedBorder,
+              backgroundColor: colors?.segBg ?? disconnectedBg,
+              borderColor: colors?.segBorder ?? disconnectedBorder,
               borderStyle: isDisconnected ? 'dashed' : undefined,
               ...(isClipSelected
                 ? {
@@ -1440,8 +1452,7 @@ export function TimelinePanel({
             const firstClipInput = firstClipInputId
               ? inputs.find((i) => i.inputId === firstClipInputId)
               : undefined;
-            const trackHasDisconnected =
-              firstClipInputId && !firstClipInput;
+            const trackHasDisconnected = firstClipInputId && !firstClipInput;
             const trackDotColor = firstClipInputId
               ? (inputColorMap.get(firstClipInputId)?.dot ??
                 (trackHasDisconnected ? '#6b7280' : undefined))

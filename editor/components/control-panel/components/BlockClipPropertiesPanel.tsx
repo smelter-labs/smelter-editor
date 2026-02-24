@@ -108,9 +108,7 @@ export function BlockClipPropertiesPanel({
 
       try {
         const title =
-          type === 'camera'
-            ? `Camera-${Date.now()}`
-            : `Screen-${Date.now()}`;
+          type === 'camera' ? `Camera-${Date.now()}` : `Screen-${Date.now()}`;
         const response = await addCameraInput(roomId, title);
         setActiveInputId(response.inputId);
         setIsActive(false);
@@ -494,7 +492,8 @@ export function BlockClipPropertiesPanel({
             className={`w-3.5 h-3.5 ${(selectedTimelineClip.blockSettings.attachedInputIds?.length ?? 0) > 0 ? 'text-blue-400' : 'text-neutral-400'}`}
           />
           <span className='text-neutral-300'>
-            {(selectedTimelineClip.blockSettings.attachedInputIds?.length ?? 0) > 0
+            {(selectedTimelineClip.blockSettings.attachedInputIds?.length ??
+              0) > 0
               ? `${selectedTimelineClip.blockSettings.attachedInputIds!.length} attached`
               : 'None'}
           </span>
