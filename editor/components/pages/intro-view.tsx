@@ -389,12 +389,12 @@ export default function IntroView() {
   return (
     <motion.div
       variants={staggerContainer}
-      className='h-screen flex flex-col p-2 py-4 md:p-4 bg-[#0a0a0a]'>
+      className='min-h-screen flex flex-col p-2 py-4 md:p-4 bg-[#0a0a0a] overflow-y-auto'>
       <motion.div
         variants={staggerContainer}
-        className='flex-1 flex justify-center min-h-0 h-full items-center'>
+        className='flex-1 flex justify-center min-h-0 h-full items-start md:items-center w-full'>
         <motion.div
-          className='border-1 rounded-none border-neutral-800 text-center justify-center items-center w-[600px] p-8'
+          className='border-1 rounded-none border-neutral-800 text-center justify-center items-center w-full max-w-[600px] p-4 sm:p-8'
           layout>
           <div>
             <StatusLabel />
@@ -523,23 +523,23 @@ export default function IntroView() {
                   .filter((r) => r.isPublic)
                   .map((room) => (
                     <li key={room.roomId}>
-                      <div className='flex items-center justify-between px-4 py-3 rounded-none bg-neutral-900 text-white text-sm'>
-                        <div className='flex items-center gap-3 min-w-0'>
-                          <span className='font-mono truncate'>
+                      <div className='flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between px-4 py-3 rounded-none bg-neutral-900 text-white text-sm'>
+                        <div className='flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-3'>
+                          <span className='font-mono truncate max-w-full'>
                             {room.roomId}
                           </span>
                           {room.createdAt && (
-                            <span className='text-xs text-neutral-500 whitespace-nowrap'>
+                            <span className='text-xs text-neutral-500'>
                               {new Date(room.createdAt).toLocaleTimeString()} ·{' '}
                               {formatDuration(Date.now() - room.createdAt)}
                             </span>
                           )}
                         </div>
-                        <div className='flex gap-2 ml-4 shrink-0'>
+                        <div className='flex w-full gap-2 sm:w-auto sm:ml-4 shrink-0'>
                           <Button
                             size='sm'
                             variant='default'
-                            className='bg-white text-black hover:bg-neutral-200 cursor-pointer'
+                            className='bg-white text-black hover:bg-neutral-200 cursor-pointer flex-1 sm:flex-none'
                             onClick={() =>
                               router.push(getRoomRoute(room.roomId))
                             }>
@@ -548,7 +548,7 @@ export default function IntroView() {
                           <Button
                             size='sm'
                             variant='default'
-                            className='bg-neutral-700 text-white hover:bg-neutral-600 cursor-pointer'
+                            className='bg-neutral-700 text-white hover:bg-neutral-600 cursor-pointer flex-1 sm:flex-none'
                             onClick={() =>
                               router.push(
                                 getRoomRoute(room.roomId) + '?guest=true',

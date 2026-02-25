@@ -100,28 +100,45 @@ export async function startPublish(
   pcRef.current = pc;
   wireDebug(pc);
 
-  // Monitor connection state to detect disconnections
+  // Monitor connection state to detect disconnections.
+  // Mobile browsers transiently report "disconnected" when the network
+  // briefly flaps (e.g. screen off, cell handover). Only treat "failed" and
+  // "closed" as terminal; for "disconnected" wait a grace period before
+  // firing, and cancel if the connection recovers.
+  let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  const DISCONNECT_GRACE_MS = 15_000;
+
+  const clearDisconnectTimer = () => {
+    if (disconnectTimer) {
+      clearTimeout(disconnectTimer);
+      disconnectTimer = null;
+    }
+  };
+
   pc.onconnectionstatechange = () => {
-    if (
-      pc.connectionState === 'failed' ||
-      pc.connectionState === 'disconnected' ||
-      pc.connectionState === 'closed'
-    ) {
-      if (onDisconnected) {
-        onDisconnected();
-      }
+    const state = pc.connectionState;
+    if (state === 'connected') {
+      clearDisconnectTimer();
+    } else if (state === 'failed' || state === 'closed') {
+      clearDisconnectTimer();
+      onDisconnected?.();
+    } else if (state === 'disconnected' && !disconnectTimer) {
+      disconnectTimer = setTimeout(() => {
+        disconnectTimer = null;
+        if (pc.connectionState !== 'connected') {
+          onDisconnected?.();
+        }
+      }, DISCONNECT_GRACE_MS);
     }
   };
 
   pc.oniceconnectionstatechange = () => {
-    if (
-      pc.iceConnectionState === 'failed' ||
-      pc.iceConnectionState === 'disconnected' ||
-      pc.iceConnectionState === 'closed'
-    ) {
-      if (onDisconnected) {
-        onDisconnected();
-      }
+    const state = pc.iceConnectionState;
+    if (state === 'connected' || state === 'completed') {
+      clearDisconnectTimer();
+    } else if (state === 'failed' || state === 'closed') {
+      clearDisconnectTimer();
+      onDisconnected?.();
     }
   };
 

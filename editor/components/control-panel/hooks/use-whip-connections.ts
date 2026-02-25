@@ -144,16 +144,14 @@ export function useWhipConnections(
     const pc = cameraPcRef.current;
     if (!pc) return;
 
+    // Mobile browsers transiently report "disconnected" — don't immediately
+    // mark the camera as inactive; only react to terminal states.
     const handleConnectionStateChange = () => {
       const state = pc.connectionState;
 
       if (state === 'connected') {
         setIsCameraActive(true);
-      } else if (
-        state === 'failed' ||
-        state === 'disconnected' ||
-        state === 'closed'
-      ) {
+      } else if (state === 'failed' || state === 'closed') {
         setIsCameraActive(false);
       }
     };
@@ -179,11 +177,7 @@ export function useWhipConnections(
 
       if (state === 'connected') {
         setIsScreenshareActive(true);
-      } else if (
-        state === 'failed' ||
-        state === 'disconnected' ||
-        state === 'closed'
-      ) {
+      } else if (state === 'failed' || state === 'closed') {
         setIsScreenshareActive(false);
       }
     };
