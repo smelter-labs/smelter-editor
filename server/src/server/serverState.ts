@@ -40,6 +40,41 @@ class ServerState {
     setInterval(async () => {
       await this.monitorConnectedRooms();
     }, 1000);
+
+    // Listen for Smelter engine events to auto-touch WHIP monitors.
+    // When the engine reports VIDEO_INPUT_DELIVERED or VIDEO_INPUT_PLAYING
+    // it means RTP packets are still flowing — the connection is alive
+    // regardless of whether the client JS heartbeat is paused (e.g. mobile
+    // browser backgrounded).
+    SmelterInstance.registerEventListener((event: any) => {
+      if (
+        event?.type === 'VIDEO_INPUT_DELIVERED' ||
+        event?.type === 'VIDEO_INPUT_PLAYING'
+      ) {
+        const inputId: string | undefined = event.input_id;
+        if (!inputId) return;
+        this.touchWhipMonitorByInputId(inputId);
+      }
+    });
+  }
+
+  /**
+   * Find the WHIP monitor for a given inputId across all rooms and touch it.
+   * Called from the Smelter event listener to keep the monitor alive as long
+   * as the engine is still receiving media frames.
+   */
+  private touchWhipMonitorByInputId(inputId: string): void {
+    for (const room of Object.values(this.rooms)) {
+      try {
+        const input = room.getInputs().find(i => i.inputId === inputId);
+        if (input?.type === 'whip') {
+          input.monitor.touch();
+          return;
+        }
+      } catch {
+        // room may have been deleted concurrently
+      }
+    }
   }
 
   public async createRoom(

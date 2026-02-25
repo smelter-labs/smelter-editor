@@ -63,6 +63,21 @@ export class SmelterManager {
     this.instance = new Smelter();
   }
 
+  /**
+   * Register a listener for raw Smelter engine events (e.g. VIDEO_INPUT_DELIVERED).
+   * Must be called before `init()` so the listener is wired before the engine starts.
+   */
+  public registerEventListener(cb: (event: unknown) => void): void {
+    // Access the underlying core smelter manager to receive raw WebSocket events.
+    // The smelter-node Smelter wraps smelter-core Smelter which stores the manager
+    // as a public property. We use bracket notation because `coreSmelter` is private
+    // on the TS wrapper but accessible at runtime.
+    const coreSmelter = (this.instance as any).coreSmelter;
+    if (coreSmelter?.manager?.registerEventListener) {
+      coreSmelter.manager.registerEventListener(cb);
+    }
+  }
+
   public async init() {
     await SmelterInstance['instance'].init();
     await SmelterInstance['instance'].start();
