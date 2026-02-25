@@ -63,27 +63,7 @@ export class SmelterManager {
     this.instance = new Smelter();
   }
 
-  /**
-   * Query the Smelter engine /stats endpoint for live input statistics.
-   * Returns per-input RTP packet counts useful for detecting whether
-   * WHIP inputs are still receiving media.
-   */
-  public async getStats(): Promise<any> {
-    const coreSmelter = (this.instance as any).coreSmelter;
-    const manager = coreSmelter?.manager;
-    console.log('[whip][stats-debug]', {
-      hasCoreSmelter: !!coreSmelter,
-      hasManager: !!manager,
-      managerKeys: manager ? Object.keys(manager) : [],
-      managerConstructor: manager?.constructor?.name,
-      port: manager?.port,
-    });
-    const port = manager?.port;
-    if (!port) return null;
-    const res = await fetch(`http://127.0.0.1:${port}/api/stats`);
-    if (!res.ok) return null;
-    return res.json();
-  }
+  
 
   public async init() {
     await SmelterInstance['instance'].init();

@@ -17,8 +17,6 @@ const WHIP_STALE_TTL_MS =
   Number.isFinite(whipStaleTtlFromEnv) && whipStaleTtlFromEnv > 0
     ? whipStaleTtlFromEnv
     : 15_000;
-const WHIP_STATS_POLL_INTERVAL_MS = 5_000;
-
 class ServerState {
   private rooms: Record<string, RoomState> = {};
   public getRooms(): RoomState[] {
@@ -41,51 +39,6 @@ class ServerState {
     setInterval(async () => {
       await this.monitorConnectedRooms();
     }, 1000);
-
-    // Periodically poll the Smelter engine /stats endpoint to detect whether
-    // WHIP inputs are still receiving RTP packets. If packets are flowing, we
-    // touch the WhipInputMonitor so the stale-TTL timer resets — even when the
-    // client JS heartbeat is paused (mobile browser backgrounded / screen off).
-    setInterval(async () => {
-      await this.autoTouchWhipFromStats();
-    }, WHIP_STATS_POLL_INTERVAL_MS);
-  }
-
-  /**
-   * Query Smelter engine stats and touch WHIP monitors that are still
-   * receiving RTP packets (packets_received > 0 in the last 10 s window).
-   */
-  private async autoTouchWhipFromStats(): Promise<void> {
-    try {
-      const stats = await SmelterInstance.getStats();
-      console.log('[whip][stats-poll] raw stats:', JSON.stringify(stats, null, 2));
-      if (!stats?.inputs) {
-        console.log('[whip][stats-poll] no stats.inputs found');
-        return;
-      }
-
-      for (const room of Object.values(this.rooms)) {
-        for (const input of room.getInputs()) {
-          if (input.type !== 'whip') continue;
-          const inputStats = stats.inputs[input.inputId];
-          console.log('[whip][stats-poll] lookup', {
-            inputId: input.inputId,
-            found: !!inputStats,
-            availableKeys: Object.keys(stats.inputs),
-          });
-          const whip = inputStats?.whip;
-          if (!whip) continue;
-          const videoRecv = whip.video_rtp?.last_10_secs?.packets_received ?? 0;
-          const audioRecv = whip.audio_rtp?.last_10_secs?.packets_received ?? 0;
-          if (videoRecv > 0 || audioRecv > 0) {
-            console.log('[whip][stats-poll] touch', { inputId: input.inputId, videoRecv, audioRecv });
-            input.monitor.touch();
-          }
-        }
-      }
-    } catch (err: any) {
-      console.log('[whip][stats-poll] error:', err?.message ?? err);
-    }
   }
 
   public async createRoom(

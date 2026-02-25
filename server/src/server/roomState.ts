@@ -752,6 +752,20 @@ export class RoomState {
           });
         }
         if (ageMs > staleTtlMs) {
+          // If the input is still connected (WebRTC media flowing), don't
+          // remove it — the client heartbeat may be paused (mobile browser
+          // backgrounded / screen off) but the connection is alive.
+          if (input.status === 'connected') {
+            console.log('[whip][stale] Skipping removal — input still connected', {
+              roomId: this.idPrefix,
+              inputId: input.inputId,
+              username: input.monitor.getUsername(),
+              ageMs,
+              staleTtlMs,
+              inputStatus: input.status,
+            });
+            continue;
+          }
           try {
             console.log('[whip][stale] Removing stale WHIP input', {
               roomId: this.idPrefix,
