@@ -23,17 +23,17 @@ export const config: Config =
         whipBaseUrl: 'https://puffer.fishjam.io/smelter-editor-webrtc/whip',
         //h264Decoder: 'vulkan_h264',
         h264Decoder: 'ffmpeg_h264',
-      //  h264Encoder: { type: 'vulkan_h264', bitrate: 20_000_000 },
-        h264Encoder: {
-         type: 'ffmpeg_h264',
-         preset: 'veryfast',
-         ffmpegOptions: {
-           qmin: '4',
-           qmax: '4',
-           tune: 'zerolatency',
-           thread_type: 'slice',
-         },
-        },
+        h264Encoder: { type: 'vulkan_h264', bitrate: 50_000_000 },
+        // h264Encoder: {
+        //  type: 'ffmpeg_h264',
+        //  preset: 'veryfast',
+        //  ffmpegOptions: {
+        //    qmin: '4',
+        //    qmax: '4',
+        //    tune: 'zerolatency',
+        //    thread_type: 'slice',
+        //  },
+       // },
       }
     : {
         logger: {

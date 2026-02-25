@@ -708,7 +708,15 @@ export class RoomState {
     if (input.type !== 'whip') {
       throw new Error('Input is not a Whip input');
     }
-    input.monitor.touch();
+    const { previousAckTimestamp, currentAckTimestamp } = input.monitor.touch();
+    const ageBeforeAckMs = currentAckTimestamp - previousAckTimestamp;
+    console.log('[whip][ack]', {
+      roomId: this.idPrefix,
+      inputId,
+      username: input.monitor.getUsername(),
+      ageBeforeAckMs,
+      inputStatus: input.status,
+    });
   }
 
   public async disconnectInput(inputId: string) {
@@ -731,9 +739,29 @@ export class RoomState {
     for (const input of this.getInputs()) {
       if (input.type === 'whip') {
         const last = input.monitor.getLastAckTimestamp() || 0;
-        if (now - last > staleTtlMs) {
+        const ageMs = now - last;
+        if (ageMs > staleTtlMs * 0.7 && ageMs <= staleTtlMs) {
+          console.log('[whip][health] ACK delayed', {
+            roomId: this.idPrefix,
+            inputId: input.inputId,
+            username: input.monitor.getUsername(),
+            ageMs,
+            staleTtlMs,
+            remainingMs: staleTtlMs - ageMs,
+            inputStatus: input.status,
+          });
+        }
+        if (ageMs > staleTtlMs) {
           try {
-            console.log('[monitor] Removing stale WHIP input', { inputId: input.inputId });
+            console.log('[whip][stale] Removing stale WHIP input', {
+              roomId: this.idPrefix,
+              inputId: input.inputId,
+              username: input.monitor.getUsername(),
+              ageMs,
+              staleTtlMs,
+              overdueMs: ageMs - staleTtlMs,
+              inputStatus: input.status,
+            });
             await this.removeInput(input.inputId);
           } catch (err: any) {
             console.log(err, 'Failed to remove stale WHIP input');
