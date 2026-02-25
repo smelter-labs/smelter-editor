@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { usePathname } from 'next/navigation';
 import type { AccordionHandle } from '@/components/ui/accordion';
 import Accordion from '@/components/ui/accordion';
@@ -12,7 +12,16 @@ import { ScreenshareAddInputForm } from '../add-input-form/screenshare-add-input
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
-import { loadUserName, saveUserName } from '../whip-input/utils/whip-storage';
+import {
+  loadUserName,
+  saveUserName,
+  clearWhipSessionFor,
+  loadLastWhipInputId,
+} from '../whip-input/utils/whip-storage';
+import { stopCameraAndConnection } from '../whip-input/utils/preview';
+import { removeInput } from '@/app/actions/actions';
+import { Button } from '@/components/ui/button';
+import { PhoneOff } from 'lucide-react';
 
 export type AddTab = 'stream' | 'mp4' | 'image' | 'text' | 'inputs';
 type StreamTab = 'twitch' | 'kick';
@@ -35,8 +44,10 @@ export function AddVideoSection({
     cameraStreamRef,
     screensharePcRef,
     screenshareStreamRef,
+    activeCameraInputId,
     setActiveCameraInputId,
     setIsCameraActive,
+    activeScreenshareInputId,
     setActiveScreenshareInputId,
     setIsScreenshareActive,
   } = useWhipConnectionsContext();
@@ -94,8 +105,69 @@ export function AddVideoSection({
     };
   }, []);
 
+  const guestInputId =
+    activeCameraInputId ||
+    activeScreenshareInputId ||
+    loadLastWhipInputId(roomId);
+  const guestPcRef = activeCameraInputId ? cameraPcRef : screensharePcRef;
+  const guestStreamRef = activeCameraInputId
+    ? cameraStreamRef
+    : screenshareStreamRef;
+
+  const [isDisconnecting, setIsDisconnecting] = useState(false);
+
+  const handleGuestDisconnect = useCallback(async () => {
+    if (!guestInputId) return;
+    setIsDisconnecting(true);
+    try {
+      stopCameraAndConnection(guestPcRef, guestStreamRef);
+      clearWhipSessionFor(roomId, guestInputId);
+      if (activeCameraInputId) {
+        setActiveCameraInputId(null);
+        setIsCameraActive(false);
+      }
+      if (activeScreenshareInputId) {
+        setActiveScreenshareInputId(null);
+        setIsScreenshareActive(false);
+      }
+      await removeInput(roomId, guestInputId);
+      await refreshState();
+    } catch (e) {
+      console.error('Guest disconnect failed:', e);
+    } finally {
+      setIsDisconnecting(false);
+    }
+  }, [
+    guestInputId,
+    guestPcRef,
+    guestStreamRef,
+    roomId,
+    activeCameraInputId,
+    activeScreenshareInputId,
+    setActiveCameraInputId,
+    setIsCameraActive,
+    setActiveScreenshareInputId,
+    setIsScreenshareActive,
+    refreshState,
+  ]);
+
   if (isGuest && hasGuestInput) {
-    return null;
+    return (
+      <Accordion title='Connected' defaultOpen>
+        <div className='flex flex-col items-center gap-3 py-2'>
+          <p className='text-sm text-neutral-400'>Your input is connected</p>
+          <Button
+            variant='destructive'
+            size='sm'
+            onClick={handleGuestDisconnect}
+            disabled={isDisconnecting}
+            className='cursor-pointer'>
+            <PhoneOff className='w-4 h-4 mr-1' />
+            {isDisconnecting ? 'Disconnecting...' : 'Disconnect'}
+          </Button>
+        </div>
+      </Accordion>
+    );
   }
 
   const tabs: { id: AddTab; label: string }[] = isGuest

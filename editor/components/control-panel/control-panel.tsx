@@ -61,6 +61,7 @@ import {
   rotateBy90,
   type RotationAngle,
 } from './whip-input/utils/whip-publisher';
+import { loadLastWhipInputId } from './whip-input/utils/whip-storage';
 import { ControlPanelProvider } from './contexts/control-panel-context';
 import { WhipConnectionsProvider } from './contexts/whip-connections-context';
 import {
@@ -371,15 +372,21 @@ export default function ControlPanel({
             isGuest={isGuest}
             hasGuestInput={
               isGuest
-                ? !!(activeCameraInputId || activeScreenshareInputId)
+                ? !!(activeCameraInputId || activeScreenshareInputId) ||
+                  (!!loadLastWhipInputId(roomId) &&
+                    inputs.some(
+                      (i) => i.inputId === loadLastWhipInputId(roomId),
+                    ))
                 : false
             }
           />
-          <PendingWhipInputs
-            pendingInputs={pendingWhipInputs}
-            setPendingInputs={handleSetPendingWhipInputs}
-          />
-          {!renderStreamsOutside && streamsSection}
+          {!isGuest && (
+            <PendingWhipInputs
+              pendingInputs={pendingWhipInputs}
+              setPendingInputs={handleSetPendingWhipInputs}
+            />
+          )}
+          {!isGuest && !renderStreamsOutside && streamsSection}
           {!isGuest && (
             <SettingsBar
               changeLayout={changeLayout}
