@@ -12,7 +12,11 @@ export type CreateRoomResult = {
 const ROOM_COUNT_SOFT_LIMIT = 3;
 const ROOM_COUNT_HARD_LIMIT = 5;
 const SOFT_LIMIT_ROOM_DELETE_DELAY = 20_000;
-const WHIP_STALE_TTL_MS = 15_000;
+const whipStaleTtlFromEnv = Number(process.env.WHIP_STALE_TTL_MS);
+const WHIP_STALE_TTL_MS =
+  Number.isFinite(whipStaleTtlFromEnv) && whipStaleTtlFromEnv > 0
+    ? whipStaleTtlFromEnv
+    : 45_000;
 
 class ServerState {
   private rooms: Record<string, RoomState> = {};
@@ -71,7 +75,7 @@ class ServerState {
   private async monitorConnectedRooms() {
     let rooms = Object.entries(this.rooms);
     rooms.sort(([_aId, aRoom], [_bId, bRoom]) => bRoom.creationTimestamp - aRoom.creationTimestamp);
-    // Remove WHIP inputs that haven't acked within 15 s
+    // Remove WHIP inputs that haven't acked within configured TTL.
     for (const [_roomId, room] of rooms) {
       await room.removeStaleWhipInputs(WHIP_STALE_TTL_MS);
     }
