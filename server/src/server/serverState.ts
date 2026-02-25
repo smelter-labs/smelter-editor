@@ -17,6 +17,7 @@ const WHIP_STALE_TTL_MS =
   Number.isFinite(whipStaleTtlFromEnv) && whipStaleTtlFromEnv > 0
     ? whipStaleTtlFromEnv
     : 15_000;
+const WHIP_STATS_POLL_INTERVAL_MS = 5_000;
 
 class ServerState {
   private rooms: Record<string, RoomState> = {};
@@ -41,39 +42,39 @@ class ServerState {
       await this.monitorConnectedRooms();
     }, 1000);
 
-    // Listen for Smelter engine events to auto-touch WHIP monitors.
-    // When the engine reports VIDEO_INPUT_DELIVERED or VIDEO_INPUT_PLAYING
-    // it means RTP packets are still flowing — the connection is alive
-    // regardless of whether the client JS heartbeat is paused (e.g. mobile
-    // browser backgrounded).
-    SmelterInstance.registerEventListener((event: any) => {
-      if (
-        event?.type === 'VIDEO_INPUT_DELIVERED' ||
-        event?.type === 'VIDEO_INPUT_PLAYING'
-      ) {
-        const inputId: string | undefined = event.input_id;
-        if (!inputId) return;
-        this.touchWhipMonitorByInputId(inputId);
-      }
-    });
+    // Periodically poll the Smelter engine /stats endpoint to detect whether
+    // WHIP inputs are still receiving RTP packets. If packets are flowing, we
+    // touch the WhipInputMonitor so the stale-TTL timer resets — even when the
+    // client JS heartbeat is paused (mobile browser backgrounded / screen off).
+    setInterval(async () => {
+      await this.autoTouchWhipFromStats();
+    }, WHIP_STATS_POLL_INTERVAL_MS);
   }
 
   /**
-   * Find the WHIP monitor for a given inputId across all rooms and touch it.
-   * Called from the Smelter event listener to keep the monitor alive as long
-   * as the engine is still receiving media frames.
+   * Query Smelter engine stats and touch WHIP monitors that are still
+   * receiving RTP packets (packets_received > 0 in the last 10 s window).
    */
-  private touchWhipMonitorByInputId(inputId: string): void {
-    for (const room of Object.values(this.rooms)) {
-      try {
-        const input = room.getInputs().find(i => i.inputId === inputId);
-        if (input?.type === 'whip') {
-          input.monitor.touch();
-          return;
+  private async autoTouchWhipFromStats(): Promise<void> {
+    try {
+      const stats = await SmelterInstance.getStats();
+      if (!stats?.inputs) return;
+
+      for (const room of Object.values(this.rooms)) {
+        for (const input of room.getInputs()) {
+          if (input.type !== 'whip') continue;
+          const inputStats = stats.inputs[input.inputId];
+          const whip = inputStats?.whip;
+          if (!whip) continue;
+          const videoRecv = whip.video_rtp?.last_10_secs?.packets_received ?? 0;
+          const audioRecv = whip.audio_rtp?.last_10_secs?.packets_received ?? 0;
+          if (videoRecv > 0 || audioRecv > 0) {
+            input.monitor.touch();
+          }
         }
-      } catch {
-        // room may have been deleted concurrently
       }
+    } catch {
+      // stats endpoint unavailable — rely on client heartbeat
     }
   }
 
