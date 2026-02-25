@@ -58,23 +58,33 @@ class ServerState {
   private async autoTouchWhipFromStats(): Promise<void> {
     try {
       const stats = await SmelterInstance.getStats();
-      if (!stats?.inputs) return;
+      console.log('[whip][stats-poll] raw stats:', JSON.stringify(stats, null, 2));
+      if (!stats?.inputs) {
+        console.log('[whip][stats-poll] no stats.inputs found');
+        return;
+      }
 
       for (const room of Object.values(this.rooms)) {
         for (const input of room.getInputs()) {
           if (input.type !== 'whip') continue;
           const inputStats = stats.inputs[input.inputId];
+          console.log('[whip][stats-poll] lookup', {
+            inputId: input.inputId,
+            found: !!inputStats,
+            availableKeys: Object.keys(stats.inputs),
+          });
           const whip = inputStats?.whip;
           if (!whip) continue;
           const videoRecv = whip.video_rtp?.last_10_secs?.packets_received ?? 0;
           const audioRecv = whip.audio_rtp?.last_10_secs?.packets_received ?? 0;
           if (videoRecv > 0 || audioRecv > 0) {
+            console.log('[whip][stats-poll] touch', { inputId: input.inputId, videoRecv, audioRecv });
             input.monitor.touch();
           }
         }
       }
-    } catch {
-      // stats endpoint unavailable — rely on client heartbeat
+    } catch (err: any) {
+      console.log('[whip][stats-poll] error:', err?.message ?? err);
     }
   }
 
