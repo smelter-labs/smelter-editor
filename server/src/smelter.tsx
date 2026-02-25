@@ -70,8 +70,11 @@ export class SmelterManager {
    */
   public async getStats(): Promise<any> {
     const manager = (this.instance as any).coreSmelter?.manager;
-    if (!manager?.sendRequest) return null;
-    return manager.sendRequest({ method: 'GET', route: '/api/stats' });
+    const port = manager?.port;
+    if (!port) return null;
+    const res = await fetch(`http://127.0.0.1:${port}/api/stats`);
+    if (!res.ok) return null;
+    return res.json();
   }
 
   public async init() {
