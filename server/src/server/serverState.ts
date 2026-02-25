@@ -16,7 +16,7 @@ const whipStaleTtlFromEnv = Number(process.env.WHIP_STALE_TTL_MS);
 const WHIP_STALE_TTL_MS =
   Number.isFinite(whipStaleTtlFromEnv) && whipStaleTtlFromEnv > 0
     ? whipStaleTtlFromEnv
-    : 120_000;
+    : 15_000;
 
 class ServerState {
   private rooms: Record<string, RoomState> = {};
