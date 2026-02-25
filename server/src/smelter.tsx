@@ -69,7 +69,15 @@ export class SmelterManager {
    * WHIP inputs are still receiving media.
    */
   public async getStats(): Promise<any> {
-    const manager = (this.instance as any).coreSmelter?.manager;
+    const coreSmelter = (this.instance as any).coreSmelter;
+    const manager = coreSmelter?.manager;
+    console.log('[whip][stats-debug]', {
+      hasCoreSmelter: !!coreSmelter,
+      hasManager: !!manager,
+      managerKeys: manager ? Object.keys(manager) : [],
+      managerConstructor: manager?.constructor?.name,
+      port: manager?.port,
+    });
     const port = manager?.port;
     if (!port) return null;
     const res = await fetch(`http://127.0.0.1:${port}/api/stats`);
