@@ -28,6 +28,8 @@ export const config: Config =
          type: 'ffmpeg_h264',
          preset: 'veryfast',
          ffmpegOptions: {
+           qmin: '4',
+           qmax: '4',
            tune: 'zerolatency',
            thread_type: 'slice',
          },
