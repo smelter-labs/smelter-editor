@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import { acknowledgeWhipInput } from '@/app/actions/actions';
 
 const HEARTBEAT_INTERVAL_MS = 5000;
 
@@ -23,13 +22,29 @@ export function useWhipHeartbeat(
     // Keep server-side WHIP input alive even when WebRTC state briefly flaps.
     // Mobile browsers can transiently report disconnected/hidden states.
     const sendAck = () => {
-      acknowledgeWhipInput(roomId, inputId).catch((err) => {
-        console.warn('[WHIP Heartbeat] Failed to send ack:', err, {
-          roomId,
-          inputId,
-          isActive,
+      void fetch('/api/whip-ack', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ roomId, inputId }),
+        keepalive: true,
+      })
+        .then(async (res) => {
+          if (!res.ok) {
+            const errBody = await res.text().catch(() => '');
+            throw new Error(
+              `ACK failed (${res.status}): ${errBody || 'No details'}`,
+            );
+          }
+        })
+        .catch((err) => {
+          console.warn('[WHIP Heartbeat] Failed to send ack:', err, {
+            roomId,
+            inputId,
+            isActive,
+          });
         });
-      });
     };
 
     // Do not wait for first interval tick; send an ack immediately.
