@@ -7,7 +7,8 @@ export function useWhipHeartbeat(
   inputId: string | null,
   isActive: boolean,
 ) {
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const workerRef = useRef<Worker | null>(null);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const inputIdRef = useRef(inputId);
   inputIdRef.current = inputId;
 
@@ -16,60 +17,76 @@ export function useWhipHeartbeat(
     if (!id) return;
     void fetch('/api/whip-ack', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ roomId, inputId: id }),
       keepalive: true,
-    })
-      .then(async (res) => {
-        if (!res.ok) {
-          const errBody = await res.text().catch(() => '');
-          throw new Error(
-            `ACK failed (${res.status}): ${errBody || 'No details'}`,
-          );
-        }
-      })
-      .catch((err) => {
-        console.warn('[WHIP Heartbeat] Failed to send ack:', err, {
-          roomId,
-          inputId: id,
-          isActive,
-        });
-      });
-  }, [roomId, isActive]);
+    }).catch((err) => {
+      console.warn('[WHIP Heartbeat] Fallback ACK failed:', err);
+    });
+  }, [roomId]);
 
   useEffect(() => {
-    if (intervalRef.current) {
-      clearInterval(intervalRef.current);
-      intervalRef.current = null;
+    if (!inputId) return;
+
+    // --- Web Worker heartbeat (survives background/screen-off on mobile) ---
+    let worker: Worker | null = null;
+    try {
+      worker = new Worker('/whip-heartbeat-worker.js');
+      workerRef.current = worker;
+      worker.postMessage({
+        type: 'start',
+        url: `/api/whip-ack-worker?roomId=${encodeURIComponent(roomId)}&inputId=${encodeURIComponent(inputId)}`,
+        intervalMs: HEARTBEAT_INTERVAL_MS,
+      });
+      worker.onmessage = (e) => {
+        if (e.data?.type === 'ack-result' && !e.data.ok) {
+          console.warn('[WHIP Heartbeat Worker] ACK failed:', e.data);
+        }
+      };
+    } catch {
+      console.warn('[WHIP Heartbeat] Worker not available, using fallback');
     }
 
-    if (!inputId) {
-      return;
-    }
-
-    // Keep server-side WHIP input alive even when WebRTC state briefly flaps.
-    // Mobile browsers can transiently report disconnected/hidden states.
-
-    // Do not wait for first interval tick; send an ack immediately.
+    // --- Fallback: main-thread interval (for browsers that block workers too) ---
     sendAck();
-    intervalRef.current = setInterval(sendAck, HEARTBEAT_INTERVAL_MS);
+    const fallbackInterval = setInterval(sendAck, HEARTBEAT_INTERVAL_MS);
 
-    // Mobile browsers aggressively throttle/pause setInterval when the page
-    // is backgrounded or the screen is off. Send an immediate ACK when the
-    // page becomes visible again so the server doesn't consider us stale.
+    // --- Wake Lock: prevents screen/CPU sleep on mobile ---
+    let wakeLock: WakeLockSentinel | null = null;
+    const acquireWakeLock = async () => {
+      try {
+        if ('wakeLock' in navigator) {
+          wakeLock = await navigator.wakeLock.request('screen');
+          wakeLockRef.current = wakeLock;
+          wakeLock.addEventListener('release', () => {
+            wakeLockRef.current = null;
+          });
+        }
+      } catch {
+        // Wake Lock not supported or denied — not critical
+      }
+    };
+    void acquireWakeLock();
+
+    // --- visibilitychange: re-acquire wake lock + immediate ACK ---
     const onVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         sendAck();
+        void acquireWakeLock();
       }
     };
     document.addEventListener('visibilitychange', onVisibilityChange);
 
     return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
+      clearInterval(fallbackInterval);
+      if (worker) {
+        worker.postMessage({ type: 'stop' });
+        worker.terminate();
+        workerRef.current = null;
+      }
+      if (wakeLockRef.current) {
+        void wakeLockRef.current.release();
+        wakeLockRef.current = null;
       }
       document.removeEventListener('visibilitychange', onVisibilityChange);
     };
