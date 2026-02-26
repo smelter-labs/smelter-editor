@@ -698,12 +698,12 @@ export class RoomState {
           boardHeight: 20,
           cellSize: 1,
           cells: [],
-          backgroundColor: '#1a1a2e',
-          cellGap: 1,
+          backgroundColor: '#0a0a1a',
+          cellGap: 2,
           boardBorderColor: '#ffffff',
           boardBorderWidth: 4,
-          gridLineColor: '#737373',
-          gridLineAlpha: 0.15,
+          gridLineColor: '#232323',
+          gridLineAlpha: 0.35,
         },
         snakeEventShaders: { ...DEFAULT_SNAKE_EVENT_SHADERS },
         activeEffects: [],
@@ -1069,7 +1069,7 @@ export class RoomState {
     this.updateStoreWithState();
   }
 
-  public updateGameState(inputId: string, gameState: { board: { width: number; height: number; cellSize: number; cellGap?: number }; cells: { x: number; y: number; color: string; size?: number; isHead?: boolean; direction?: 'up' | 'down' | 'left' | 'right'; progress?: number }[]; backgroundColor: string }) {
+  public updateGameState(inputId: string, gameState: { board: { width: number; height: number; cellSize: number; cellGap?: number }; cells: { x: number; y: number; color: string; size?: number; isHead?: boolean; direction?: 'up' | 'down' | 'left' | 'right'; progress?: number }[]; backgroundColor: string; gameOverData?: { winnerName: string; reason: string; players: { name: string; score: number; eaten: number; cuts: number; color: string }[] } }) {
     const input = this.getInput(inputId);
     if (input.type !== 'game') {
       throw new Error(`Input ${inputId} is not a game input`);
@@ -1083,8 +1083,9 @@ export class RoomState {
       cellGap: input.gameState.cellGap || gameState.board.cellGap || 0,
       boardBorderColor: input.gameState.boardBorderColor ?? '#ffffff',
       boardBorderWidth: input.gameState.boardBorderWidth ?? 4,
-      gridLineColor: input.gameState.gridLineColor ?? '#737373',
+      gridLineColor: input.gameState.gridLineColor ?? '#232323',
       gridLineAlpha: input.gameState.gridLineAlpha ?? 0.15,
+      gameOverData: gameState.gameOverData,
     };
     console.log(`[game] Updated snake board: ${gameState.cells.length} cells on ${gameState.board.width}x${gameState.board.height}`);
     this.updateStoreWithState();

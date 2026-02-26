@@ -132,6 +132,8 @@ const COLOR_MAP: Record<string, string> = {
   '#f59e0b': 'yellow',
   '#a855f7': 'magenta',
   '#ffffff': 'white',
+  '#0a0a1a': 'black',
+  '#1a1a2e': 'blue',
 };
 
 function hexToColorName(hex: string): string {
@@ -166,11 +168,41 @@ function hexToColorName(hex: string): string {
 }
 
 function renderSnakeBoard(gameState: GameState): string {
-  const { boardWidth, boardHeight, cells } = gameState;
+  const { boardWidth, boardHeight, cells, backgroundColor, gridLineColor } = gameState;
 
-  const cellMap = new Map<string, { color: string; isHead?: boolean }>();
+  const bgCol = hexToColorName(backgroundColor);
+  const gridCol = hexToColorName(gridLineColor);
+
+  // Build a 2D grid: each cell can hold multiple snake parts (interpolation can place
+  // a snake between two grid positions). We pick the "strongest" one per cell.
+  // With interpolation, a cell with progress < 1 also occupies its previous position.
+  type CellInfo = { color: string; isHead?: boolean; strength: number };
+  const cellMap = new Map<string, CellInfo>();
+
+  const placeCell = (x: number, y: number, color: string, isHead: boolean | undefined, strength: number) => {
+    if (x < 0 || x >= boardWidth || y < 0 || y >= boardHeight) return;
+    const key = `${x},${y}`;
+    const existing = cellMap.get(key);
+    if (!existing || strength > existing.strength) {
+      cellMap.set(key, { color, isHead, strength });
+    }
+  };
+
   for (const cell of cells) {
-    cellMap.set(`${cell.x},${cell.y}`, { color: cell.color, isHead: cell.isHead });
+    const progress = cell.progress ?? 1;
+
+    // Current position — full strength
+    placeCell(cell.x, cell.y, cell.color, cell.isHead, 1);
+
+    // Previous position (trail) — only if still interpolating
+    if (progress < 1 && cell.direction) {
+      const dx = cell.direction === 'left' ? 1 : cell.direction === 'right' ? -1 : 0;
+      const dy = cell.direction === 'up' ? 1 : cell.direction === 'down' ? -1 : 0;
+      const prevX = cell.x + dx;
+      const prevY = cell.y + dy;
+      // Trail fades as progress approaches 1
+      placeCell(prevX, prevY, cell.color, false, 1 - progress);
+    }
   }
 
   const lines: string[] = [];
@@ -183,9 +215,17 @@ function renderSnakeBoard(gameState: GameState): string {
       const cell = cellMap.get(`${x},${y}`);
       if (cell) {
         const col = hexToColorName(cell.color);
-        row += cell.isHead ? `{${col}-fg}◆{/}` : `{${col}-fg}█{/}`;
+        if (cell.isHead) {
+          row += `{${col}-fg}◆{/}`;
+        } else if (cell.strength < 0.5) {
+          // Fading trail — use lighter block
+          row += `{${col}-fg}░{/}`;
+        } else {
+          row += `{${col}-fg}█{/}`;
+        }
       } else {
-        row += ' ';
+        // Empty cell — show grid dot or background
+        row += `{${gridCol}-fg}·{/}`;
       }
     }
     row += '│';
@@ -193,6 +233,9 @@ function renderSnakeBoard(gameState: GameState): string {
   }
 
   lines.push('└' + '─'.repeat(boardWidth) + '┘');
+
+  // Info line: bg + grid colors
+  lines.push(`{${bgCol}-fg}■{/} bg  {${gridCol}-fg}·{/} grid`);
 
   // Player scores
   const playerMap = new Map<string, { color: string; count: number }>();
@@ -449,6 +492,6 @@ export function initDashboard() {
     process.exit(0);
   });
 
-  setInterval(updateDashboard, 1000);
+  setInterval(updateDashboard, 200);
   updateDashboard();
 }

@@ -471,7 +471,7 @@ function GameBoard({ gameState, resolution }: { gameState: GameState; resolution
 
   const borderW = gameState.boardBorderWidth ?? 4;
   const borderC = gameState.boardBorderColor ?? '#ffffff';
-  const gridColor = hexToRgb(gameState.gridLineColor ?? '#737373');
+  const gridColor = hexToRgb(gameState.gridLineColor ?? '#232323');
 
   // During game-over removal animation, slice cells from the end
   const isRemoving = !!gameState.gameOverData && removedCount > 0;

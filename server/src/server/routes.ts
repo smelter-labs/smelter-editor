@@ -763,8 +763,8 @@ routes.post<{ Body: Static<typeof GameStateSchema> }>(
       backgroundColor: gs.backgroundColor,
       boardBorderColor: '#ffffff',
       boardBorderWidth: 4,
-      gridLineColor: '#737373',
-      gridLineAlpha: 0.15,
+      gridLineColor: '#232323',
+      gridLineAlpha: 0.35,
       gameOverData: gs.gameOverData,
     });
 
