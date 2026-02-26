@@ -70,6 +70,8 @@ type UpdateInputOptions = {
   gameCellGap: number;
   gameBoardBorderColor: string;
   gameBoardBorderWidth: number;
+  gameGridLineColor: string;
+  gameGridLineAlpha: number;
 };
 
 export type RegisterInputOptions =
@@ -141,7 +143,7 @@ export class RoomState {
   public creationTimestamp: number;
 
   public pendingDelete?: boolean;
-  public isPublic: boolean = false;
+  public isPublic: boolean = true;
   public pendingWhipInputs: PendingWhipInputData[] = [];
 
   public constructor(idPrefix: string, output: SmelterOutput, initInputs: RegisterInputOptions[], skipDefaultInputs: boolean = false) {
@@ -659,6 +661,8 @@ export class RoomState {
           cellGap: 1,
           boardBorderColor: '#ffffff',
           boardBorderWidth: 4,
+          gridLineColor: '#737373',
+          gridLineAlpha: 0.15,
         },
       });
       this.updateStoreWithState();
@@ -873,6 +877,12 @@ export class RoomState {
       if (options.gameBoardBorderWidth !== undefined) {
         input.gameState.boardBorderWidth = options.gameBoardBorderWidth;
       }
+      if (options.gameGridLineColor !== undefined) {
+        input.gameState.gridLineColor = options.gameGridLineColor;
+      }
+      if (options.gameGridLineAlpha !== undefined) {
+        input.gameState.gridLineAlpha = options.gameGridLineAlpha;
+      }
     }
     if (options.attachedInputIds !== undefined) {
       input.attachedInputIds = options.attachedInputIds;
@@ -1011,7 +1021,7 @@ export class RoomState {
     this.updateStoreWithState();
   }
 
-  public updateGameState(inputId: string, gameState: { board: { width: number; height: number; cellSize: number; cellGap?: number }; cells: { x: number; y: number; color: string; size?: number; isHead?: boolean; direction?: 'up' | 'down' | 'left' | 'right' }[]; backgroundColor: string }) {
+  public updateGameState(inputId: string, gameState: { board: { width: number; height: number; cellSize: number; cellGap?: number }; cells: { x: number; y: number; color: string; size?: number; isHead?: boolean; direction?: 'up' | 'down' | 'left' | 'right'; progress?: number }[]; backgroundColor: string }) {
     const input = this.getInput(inputId);
     if (input.type !== 'game') {
       throw new Error(`Input ${inputId} is not a game input`);
@@ -1025,6 +1035,8 @@ export class RoomState {
       cellGap: input.gameState.cellGap || gameState.board.cellGap || 0,
       boardBorderColor: input.gameState.boardBorderColor ?? '#ffffff',
       boardBorderWidth: input.gameState.boardBorderWidth ?? 4,
+      gridLineColor: input.gameState.gridLineColor ?? '#737373',
+      gridLineAlpha: input.gameState.gridLineAlpha ?? 0.15,
     };
     console.log(`[game] Updated snake board: ${gameState.cells.length} cells on ${gameState.board.width}x${gameState.board.height}`);
     this.updateStoreWithState();

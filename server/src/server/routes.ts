@@ -22,6 +22,8 @@ type RoomIdParams = { Params: { roomId: string } };
 type RoomAndInputIdParams = { Params: { roomId: string; inputId: string } };
 type RecordingFileParams = { Params: { fileName: string } };
 
+let gameRoomCreationInProgress: Promise<void> | null = null;
+
 export const routes = Fastify({
   logger: config.logger,
 }).withTypeProvider<TypeBoxTypeProvider>();
@@ -662,6 +664,8 @@ const UpdateInputSchema = Type.Object({
   gameCellGap: Type.Optional(Type.Number({ minimum: 0 })),
   gameBoardBorderColor: Type.Optional(Type.String()),
   gameBoardBorderWidth: Type.Optional(Type.Number({ minimum: 0 })),
+  gameGridLineColor: Type.Optional(Type.String()),
+  gameGridLineAlpha: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
   attachedInputIds: Type.Optional(Type.Array(Type.String())),
 });
 
@@ -697,6 +701,7 @@ const GameStateSchema = Type.Object({
         Type.Literal('left'),
         Type.Literal('right'),
       ])),
+      progress: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
     })
   ),
   backgroundColor: Type.String(),
@@ -728,7 +733,14 @@ routes.post<{ Body: Static<typeof GameStateSchema> }>(
       backgroundColor: gs.backgroundColor,
       boardBorderColor: '#ffffff',
       boardBorderWidth: 4,
+      gridLineColor: '#737373',
+      gridLineAlpha: 0.15,
     });
+
+    // Wait for any in-progress game room creation to finish before checking
+    if (gameRoomCreationInProgress) {
+      await gameRoomCreationInProgress;
+    }
 
     // Check if any room has a game input
     const roomsWithGame = state.getRooms().filter(room =>
@@ -739,18 +751,26 @@ routes.post<{ Body: Static<typeof GameStateSchema> }>(
 
     if (roomsWithGame.length === 0) {
       // Auto-create a room with a single game input and picture-in-picture layout
-      const { roomId, room } = await state.createRoom(
-        [{ type: 'game', title: 'Snake' }],
-        true,
-      );
-      createdRoomId = roomId;
-      await room.updateLayout('picture-in-picture');
-      // Wait briefly for async init to register the game input
-      await new Promise(resolve => setTimeout(resolve, 200));
-      for (const input of room.getInputs()) {
-        if (input.type === 'game') {
-          room.updateGameState(input.inputId, gs);
+      const createPromise = (async () => {
+        const { roomId, room } = await state.createRoom(
+          [{ type: 'game', title: 'Snake' }],
+          true,
+        );
+        createdRoomId = roomId;
+        await room.updateLayout('softu-tv');
+        // Wait briefly for async init to register the game input
+        await new Promise(resolve => setTimeout(resolve, 200));
+        for (const input of room.getInputs()) {
+          if (input.type === 'game') {
+            room.updateGameState(input.inputId, gs);
+          }
         }
+      })();
+      gameRoomCreationInProgress = createPromise;
+      try {
+        await createPromise;
+      } finally {
+        gameRoomCreationInProgress = null;
       }
     } else {
       // Broadcast to all rooms that have game inputs
@@ -772,5 +792,12 @@ routes.delete<RoomAndInputIdParams>('/room/:roomId/input/:inputId', { schema: { 
   console.log('[request] Remove input', { roomId, inputId });
   const room = state.getRoom(roomId);
   await room.removeInput(inputId);
+  res.status(200).send({ status: 'ok' });
+});
+
+routes.delete<RoomIdParams>('/room/:roomId', { schema: { params: RoomIdParamsSchema } }, async (req, res) => {
+  const { roomId } = req.params;
+  console.log('[request] Delete room', { roomId });
+  await state.deleteRoom(roomId);
   res.status(200).send({ status: 'ok' });
 });

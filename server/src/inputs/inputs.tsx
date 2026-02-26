@@ -305,6 +305,20 @@ function GameBoard({ gameState, resolution }: { gameState: GameState; resolution
 
   const borderW = gameState.boardBorderWidth ?? 4;
   const borderC = gameState.boardBorderColor ?? '#ffffff';
+  const gridColor = hexToRgb(gameState.gridLineColor ?? '#737373');
+
+  // Smelter engine has a hard limit of 100 layout nodes.
+  // Budget: ~15 for Input wrappers + 3 fixed GameBoard nodes (wrapper, border, grid).
+  // Each head cell = 5 Views (cell + 2 eyes + 2 pupils), normal cell = 1 View.
+  const MAX_LAYOUT_NODES = 80;
+  let nodesBudget = MAX_LAYOUT_NODES;
+  const visibleCells: typeof gameState.cells = [];
+  for (const cell of gameState.cells) {
+    const cost = cell.isHead ? 5 : 1;
+    if (nodesBudget - cost < 0) break;
+    nodesBudget -= cost;
+    visibleCells.push(cell);
+  }
 
   return (
     <View style={{ width: resolution.width, height: resolution.height, backgroundColor: gameState.backgroundColor }}>
@@ -319,30 +333,48 @@ function GameBoard({ gameState, resolution }: { gameState: GameState; resolution
           borderColor: borderC,
         }} />
       )}
-      {gameState.cells.map((cell, i) => {
+      {visibleCells.map((cell, i) => {
         const size = cell.size ?? gameState.cellSize;
         const w = cellPixel * size;
         const h = cellPixel * size;
-        const x = offsetX + cell.x * (cellPixel + gap);
-        const y = offsetY + cell.y * (cellPixel + gap);
+        const progress = cell.progress ?? 1;
+        // Compute direction offset for interpolation
+        let dx = 0, dy = 0;
+        if (progress < 1 && cell.direction) {
+          // direction tells us where the cell is moving TO, so previous position is opposite
+          switch (cell.direction) {
+            case 'right': dx = -1; break;
+            case 'left':  dx = 1;  break;
+            case 'down':  dy = -1; break;
+            case 'up':    dy = 1;  break;
+          }
+        }
+        const step = cellPixel + gap;
+        const x = offsetX + cell.x * step + dx * (1 - progress) * step;
+        const y = offsetY + cell.y * step + dy * (1 - progress) * step;
 
         // Determine snake direction: prefer explicit `direction` field, fallback to body inference
         let eyePositions: { eye1Top: number; eye1Left: number; eye2Top: number; eye2Left: number;
           pupil1Top: number; pupil1Left: number; pupil2Top: number; pupil2Left: number } | undefined;
         if (cell.isHead) {
-          let dir: 'up' | 'down' | 'left' | 'right' = cell.direction ?? 'right';
-          if (!cell.direction) {
-            const nextBody = gameState.cells.find(c => !c.isHead && c.color === cell.color);
-            if (nextBody) {
-              let dx = cell.x - nextBody.x;
-              let dy = cell.y - nextBody.y;
-              if (Math.abs(dx) > 1) dx = -Math.sign(dx);
-              if (Math.abs(dy) > 1) dy = -Math.sign(dy);
-              if (dx === 1 && dy === 0) dir = 'right';
-              else if (dx === -1 && dy === 0) dir = 'left';
-              else if (dx === 0 && dy === -1) dir = 'up';
-              else dir = 'down';
-            }
+          let dir: 'up' | 'down' | 'left' | 'right' = 'right';
+          // Infer direction from the NEXT body segment (head position relative to body).
+          // This is more reliable than cell.direction which may lag by one tick
+          // and use the opposite convention.
+          const nextBody = gameState.cells.find(c => !c.isHead && c.color === cell.color);
+          if (nextBody) {
+            let dx = cell.x - nextBody.x;
+            let dy = cell.y - nextBody.y;
+            if (Math.abs(dx) > 1) dx = -Math.sign(dx);
+            if (Math.abs(dy) > 1) dy = -Math.sign(dy);
+            if (dx === 1 && dy === 0) dir = 'right';
+            else if (dx === -1 && dy === 0) dir = 'left';
+            else if (dx === 0 && dy === -1) dir = 'up';
+            else dir = 'down';
+          } else if (cell.direction) {
+            // Flip the provided direction — game engine sends the opposite convention
+            const flipMap = { up: 'down', down: 'up', left: 'right', right: 'left' } as const;
+            dir = flipMap[cell.direction];
           }
           const eyeSize = w * 0.28;
           const pupilSize = w * 0.14;
@@ -420,10 +452,10 @@ function GameBoard({ gameState, resolution }: { gameState: GameState; resolution
               { type: 'f32', fieldName: 'cells_x', value: gameState.boardWidth },
               { type: 'f32', fieldName: 'cells_y', value: gameState.boardHeight },
               { type: 'f32', fieldName: 'gap', value: gap },
-              { type: 'f32', fieldName: 'line_r', value: 0.45 },
-              { type: 'f32', fieldName: 'line_g', value: 0.45 },
-              { type: 'f32', fieldName: 'line_b', value: 0.45 },
-              { type: 'f32', fieldName: 'line_a', value: 0.15 },
+              { type: 'f32', fieldName: 'line_r', value: gridColor.r },
+              { type: 'f32', fieldName: 'line_g', value: gridColor.g },
+              { type: 'f32', fieldName: 'line_b', value: gridColor.b },
+              { type: 'f32', fieldName: 'line_a', value: gameState.gridLineAlpha ?? 0.15 },
             ],
           }}
         />

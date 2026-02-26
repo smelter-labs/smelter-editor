@@ -21,6 +21,7 @@ import {
   addTextInput,
   updateInput,
   updateRoom,
+  deleteRoom,
 } from '@/app/actions/actions';
 import { RESOLUTION_PRESETS, type ResolutionPreset } from '@/lib/resolution';
 import Link from 'next/link';
@@ -30,7 +31,7 @@ import {
   setPendingWhipInputs as setPendingWhipInputsAction,
   type PendingWhipInputData,
 } from '@/app/actions/actions';
-import { Upload, FolderDown } from 'lucide-react';
+import { Upload, FolderDown, LogIn, UserPlus, Eye, Trash2 } from 'lucide-react';
 import RecordingsList from '@/components/recordings-list';
 import { toast } from 'react-toastify';
 import { LoadConfigModal } from '@/components/control-panel/components/ConfigModals';
@@ -299,6 +300,8 @@ export default function IntroView() {
               gameCellGap: inputConfig.gameCellGap,
               gameBoardBorderColor: inputConfig.gameBoardBorderColor,
               gameBoardBorderWidth: inputConfig.gameBoardBorderWidth,
+              gameGridLineColor: inputConfig.gameGridLineColor,
+              gameGridLineAlpha: inputConfig.gameGridLineAlpha,
             });
           } catch (err) {
             console.warn(`Failed to update input ${inputId}:`, err);
@@ -545,38 +548,58 @@ export default function IntroView() {
                             </span>
                           )}
                         </div>
-                        <div className='flex w-full gap-2 sm:w-auto sm:ml-4 shrink-0'>
+                        <div className='flex w-full gap-1 sm:w-auto sm:ml-4 shrink-0'>
                           <Button
                             size='sm'
                             variant='default'
                             className='bg-white text-black hover:bg-neutral-200 cursor-pointer flex-1 sm:flex-none'
+                            title='Join'
                             onClick={() =>
                               router.push(getRoomRoute(room.roomId))
                             }>
-                            Join
+                            <LogIn className='w-4 h-4' />
                           </Button>
                           <Button
                             size='sm'
                             variant='default'
                             className='bg-neutral-700 text-white hover:bg-neutral-600 cursor-pointer flex-1 sm:flex-none'
+                            title='Join as Guest'
                             onClick={() =>
                               router.push(
                                 getRoomRoute(room.roomId) + '?guest=true',
                               )
                             }>
-                            Join as Guest
+                            <UserPlus className='w-4 h-4' />
                           </Button>
                           <Button
                             size='sm'
                             variant='default'
                             className='bg-neutral-800 text-neutral-300 hover:bg-neutral-700 cursor-pointer flex-1 sm:flex-none'
+                            title='Spectate'
                             onClick={() =>
                               window.open(
                                 `/room-preview/${room.roomId}`,
                                 '_blank',
                               )
                             }>
-                            Spectate
+                            <Eye className='w-4 h-4' />
+                          </Button>
+                          <Button
+                            size='sm'
+                            variant='default'
+                            className='bg-red-900/50 text-red-400 hover:bg-red-900 cursor-pointer flex-1 sm:flex-none'
+                            title='Delete Room'
+                            onClick={async () => {
+                              try {
+                                await deleteRoom(room.roomId);
+                                setRooms((prev) =>
+                                  prev.filter((r) => r.roomId !== room.roomId),
+                                );
+                              } catch (err) {
+                                console.error('Failed to delete room:', err);
+                              }
+                            }}>
+                            <Trash2 className='w-4 h-4' />
                           </Button>
                         </div>
                       </div>

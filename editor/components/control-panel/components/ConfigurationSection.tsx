@@ -231,6 +231,8 @@ export function ConfigurationSection({
           gameCellGap: inputConfig.gameCellGap,
           gameBoardBorderColor: inputConfig.gameBoardBorderColor,
           gameBoardBorderWidth: inputConfig.gameBoardBorderWidth,
+          gameGridLineColor: inputConfig.gameGridLineColor,
+          gameGridLineAlpha: inputConfig.gameGridLineAlpha,
           attachedInputIds:
             attachedInputIds && attachedInputIds.length > 0
               ? attachedInputIds

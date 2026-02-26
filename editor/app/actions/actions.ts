@@ -79,6 +79,8 @@ export type Input = {
   gameCellGap?: number;
   gameBoardBorderColor?: string;
   gameBoardBorderWidth?: number;
+  gameGridLineColor?: string;
+  gameGridLineAlpha?: number;
 };
 
 export type RegisterInputOptions =
@@ -371,6 +373,14 @@ export async function removeInput(roomId: string, inputId: string) {
   );
 }
 
+export async function deleteRoom(roomId: string) {
+  return await sendSmelterRequest(
+    'delete',
+    `/room/${encodeURIComponent(roomId)}`,
+    {},
+  );
+}
+
 export async function addCameraInput(
   roomId: string,
   username?: string,
@@ -521,6 +531,8 @@ export type UpdateInputOptions = {
   gameCellGap?: number;
   gameBoardBorderColor?: string;
   gameBoardBorderWidth?: number;
+  gameGridLineColor?: string;
+  gameGridLineAlpha?: number;
 };
 
 export async function updateInput(

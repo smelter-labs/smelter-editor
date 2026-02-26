@@ -871,6 +871,35 @@ export default function InputEntry({
                 }}
               />
             </div>
+            <div className='flex items-center gap-1'>
+              <label className='text-xs text-neutral-400'>Grid</label>
+              <input
+                type='color'
+                className='w-6 h-6 bg-transparent border-0 cursor-pointer'
+                value={input.gameGridLineColor ?? '#737373'}
+                onChange={(e) => {
+                  void updateInput(roomId, input.inputId, {
+                    gameGridLineColor: e.target.value,
+                  });
+                }}
+              />
+            </div>
+            <div className='flex items-center gap-1'>
+              <label className='text-xs text-neutral-400'>α</label>
+              <input
+                type='range'
+                min={0}
+                max={1}
+                step={0.01}
+                className='w-16'
+                value={input.gameGridLineAlpha ?? 0.15}
+                onChange={(e) => {
+                  void updateInput(roomId, input.inputId, {
+                    gameGridLineAlpha: Number(e.target.value),
+                  });
+                }}
+              />
+            </div>
           </div>
         )}
         {!readOnly && (

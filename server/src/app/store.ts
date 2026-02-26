@@ -14,6 +14,8 @@ export type GameCell = {
   size?: number;
   isHead?: boolean;
   direction?: 'up' | 'down' | 'left' | 'right';
+  /** Interpolation progress 0→1 from previous grid position to current (x,y). */
+  progress?: number;
 };
 
 export type GameState = {
@@ -25,6 +27,8 @@ export type GameState = {
   cellGap: number;
   boardBorderColor: string;
   boardBorderWidth: number;
+  gridLineColor: string;
+  gridLineAlpha: number;
 };
 
 export type InputConfig = {

@@ -31,6 +31,8 @@ export type RoomConfigInput = {
   gameCellGap?: number;
   gameBoardBorderColor?: string;
   gameBoardBorderWidth?: number;
+  gameGridLineColor?: string;
+  gameGridLineAlpha?: number;
   attachedInputIndices?: number[];
 };
 
@@ -152,6 +154,8 @@ export function exportRoomConfig(
       gameCellGap: input.gameCellGap,
       gameBoardBorderColor: input.gameBoardBorderColor,
       gameBoardBorderWidth: input.gameBoardBorderWidth,
+      gameGridLineColor: input.gameGridLineColor,
+      gameGridLineAlpha: input.gameGridLineAlpha,
       attachedInputIndices: input.attachedInputIds
         ?.map((id) => inputIdToIndex.get(id))
         .filter((idx): idx is number => idx !== undefined),

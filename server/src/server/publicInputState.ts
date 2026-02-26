@@ -30,6 +30,8 @@ export type PublicInputState = {
   gameCellGap?: number;
   gameBoardBorderColor?: string;
   gameBoardBorderWidth?: number;
+  gameGridLineColor?: string;
+  gameGridLineAlpha?: number;
 };
 
 export function toPublicInputState(input: RoomInputState): PublicInputState {
@@ -78,7 +80,7 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
         textFontSize: input.textFontSize,
       };
     case 'game':
-      return { ...base, sourceState: 'always-live' as const, gameBackgroundColor: input.gameState.backgroundColor, gameCellGap: input.gameState.cellGap, gameBoardBorderColor: input.gameState.boardBorderColor, gameBoardBorderWidth: input.gameState.boardBorderWidth };
+      return { ...base, sourceState: 'always-live' as const, gameBackgroundColor: input.gameState.backgroundColor, gameCellGap: input.gameState.cellGap, gameBoardBorderColor: input.gameState.boardBorderColor, gameBoardBorderWidth: input.gameState.boardBorderWidth, gameGridLineColor: input.gameState.gridLineColor, gameGridLineAlpha: input.gameState.gridLineAlpha };
     default:
       throw new Error('Unknown input state');
   }

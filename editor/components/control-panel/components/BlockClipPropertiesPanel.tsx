@@ -60,6 +60,10 @@ export function BlockClipPropertiesPanel({
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [gameBgColor, setGameBgColor] = useState<string | null>(null);
   const gameBgDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [gameGridColor, setGameGridColor] = useState<string | null>(null);
+  const gameGridDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const attachBtnRef = useRef<HTMLButtonElement>(null);
   const [attachMenuPos, setAttachMenuPos] = useState<{
     top: number;
@@ -232,6 +236,8 @@ export function BlockClipPropertiesPanel({
           gameCellGap: patch.gameCellGap,
           gameBoardBorderColor: patch.gameBoardBorderColor,
           gameBoardBorderWidth: patch.gameBoardBorderWidth,
+          gameGridLineColor: patch.gameGridLineColor,
+          gameGridLineAlpha: patch.gameGridLineAlpha,
         });
         await handleRefreshState();
       } catch (err) {
@@ -522,6 +528,51 @@ export function BlockClipPropertiesPanel({
               onChange={(e) =>
                 void applyClipPatch({
                   gameCellGap: Math.max(0, Number(e.target.value) || 0),
+                })
+              }
+            />
+          </div>
+          <div>
+            <label className='text-xs text-neutral-400 block mb-1'>
+              Grid line color
+            </label>
+            <input
+              type='color'
+              className='w-full h-8 bg-neutral-800 border border-neutral-700'
+              value={
+                gameGridColor ??
+                selectedTimelineClip.blockSettings.gameGridLineColor ??
+                '#737373'
+              }
+              onChange={(e) => {
+                const value = e.target.value;
+                setGameGridColor(value);
+                if (gameGridDebounceRef.current) {
+                  clearTimeout(gameGridDebounceRef.current);
+                }
+                gameGridDebounceRef.current = setTimeout(() => {
+                  void applyClipPatch({ gameGridLineColor: value });
+                  setGameGridColor(null);
+                }, 200);
+              }}
+            />
+          </div>
+          <div>
+            <label className='text-xs text-neutral-400 block mb-1'>
+              Grid opacity
+            </label>
+            <input
+              type='range'
+              min={0}
+              max={1}
+              step={0.01}
+              className='w-full'
+              value={
+                selectedTimelineClip.blockSettings.gameGridLineAlpha ?? 0.15
+              }
+              onChange={(e) =>
+                void applyClipPatch({
+                  gameGridLineAlpha: Number(e.target.value),
                 })
               }
             />

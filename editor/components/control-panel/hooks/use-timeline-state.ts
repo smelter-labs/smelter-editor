@@ -39,6 +39,8 @@ export type BlockSettings = {
   gameCellGap?: number;
   gameBoardBorderColor?: string;
   gameBoardBorderWidth?: number;
+  gameGridLineColor?: string;
+  gameGridLineAlpha?: number;
 };
 
 /** @deprecated Use `Clip` instead. Kept for backwards compat with room-config. */
@@ -166,6 +168,8 @@ export function createBlockSettingsFromInput(input?: Input): BlockSettings {
     gameCellGap: input?.gameCellGap,
     gameBoardBorderColor: input?.gameBoardBorderColor,
     gameBoardBorderWidth: input?.gameBoardBorderWidth,
+    gameGridLineColor: input?.gameGridLineColor,
+    gameGridLineAlpha: input?.gameGridLineAlpha,
   };
 }
 
