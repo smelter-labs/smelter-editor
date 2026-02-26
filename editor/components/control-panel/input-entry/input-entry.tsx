@@ -640,7 +640,6 @@ export default function InputEntry({
           shaders: newShadersConfig,
           volume: input.volume,
         });
-        await refreshState();
       } finally {
       }
     },

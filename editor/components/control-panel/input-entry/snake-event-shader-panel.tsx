@@ -96,7 +96,7 @@ export default function SnakeEventShaderPanel({
       } else {
         await updateInput(roomId, inputId, { snakeEventShaders: updated });
       }
-      await onUpdate();
+      void onUpdate();
     },
     [roomId, inputId, onUpdate, onConfigChange],
   );

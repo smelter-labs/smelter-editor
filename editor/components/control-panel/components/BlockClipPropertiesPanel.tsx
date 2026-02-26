@@ -43,7 +43,7 @@ function SnakeShaderSection({
   label: string;
   shaders: ShaderConfig[];
   availableShaders: AvailableShaderType[];
-  onPatch: (shaders: ShaderConfig[]) => void;
+  onPatch: (shaders: ShaderConfig[], options?: { refresh?: boolean }) => void;
   onOpenShaderInline?: (shaderId: string) => void;
 }) {
   const handleRandomPreset = useCallback(() => {
@@ -139,7 +139,7 @@ function SnakeShaderSection({
             ),
           };
         });
-        onPatch(updated);
+        onPatch(updated, { refresh: false });
         setParamLoading((prev) => ({ ...prev, [shaderId]: null }));
         setSliderValues((prev) => {
           const next = { ...prev };
@@ -397,8 +397,9 @@ export function BlockClipPropertiesPanel({
   );
 
   const applyClipPatch = useCallback(
-    async (patch: Partial<BlockSettings>) => {
+    async (patch: Partial<BlockSettings>, options?: { refresh?: boolean }) => {
       if (!selectedTimelineClip) return;
+      const shouldRefresh = options?.refresh ?? true;
       const nextClip: SelectedTimelineClip = {
         ...selectedTimelineClip,
         blockSettings: {
@@ -445,7 +446,9 @@ export function BlockClipPropertiesPanel({
           snake2Shaders:
             patch.snake2Shaders ?? nextClip.blockSettings.snake2Shaders,
         });
-        await handleRefreshState();
+        if (shouldRefresh) {
+          await handleRefreshState();
+        }
       } catch (err) {
         console.warn('Failed to apply clip settings', err);
       }
@@ -535,7 +538,7 @@ export function BlockClipPropertiesPanel({
             ),
           };
         });
-        void applyClipPatch({ shaders }).finally(() => {
+        void applyClipPatch({ shaders }, { refresh: false }).finally(() => {
           setParamLoading((prev) => ({ ...prev, [shaderId]: null }));
           setSliderValues((prev) => {
             const next = { ...prev };
@@ -651,18 +654,21 @@ export function BlockClipPropertiesPanel({
       }
       shaderSliderTimersRef.current[key] = setTimeout(() => {
         const current = selectedTimelineClip.blockSettings.snake1Shaders ?? [];
-        void applyClipPatch({
-          snake1Shaders: current.map((s) =>
-            s.shaderId !== sid
-              ? s
-              : {
-                  ...s,
-                  params: s.params.map((p) =>
-                    p.paramName === paramName ? { ...p, paramValue: val } : p,
-                  ),
-                },
-          ),
-        }).finally(() => {
+        void applyClipPatch(
+          {
+            snake1Shaders: current.map((s) =>
+              s.shaderId !== sid
+                ? s
+                : {
+                    ...s,
+                    params: s.params.map((p) =>
+                      p.paramName === paramName ? { ...p, paramValue: val } : p,
+                    ),
+                  },
+            ),
+          },
+          { refresh: false },
+        ).finally(() => {
           setParamLoading((prev) => ({ ...prev, [sid]: null }));
           setSliderValues((prev) => {
             const next = { ...prev };
@@ -681,18 +687,21 @@ export function BlockClipPropertiesPanel({
       }
       shaderSliderTimersRef.current[key] = setTimeout(() => {
         const current = selectedTimelineClip.blockSettings.snake2Shaders ?? [];
-        void applyClipPatch({
-          snake2Shaders: current.map((s) =>
-            s.shaderId !== sid
-              ? s
-              : {
-                  ...s,
-                  params: s.params.map((p) =>
-                    p.paramName === paramName ? { ...p, paramValue: val } : p,
-                  ),
-                },
-          ),
-        }).finally(() => {
+        void applyClipPatch(
+          {
+            snake2Shaders: current.map((s) =>
+              s.shaderId !== sid
+                ? s
+                : {
+                    ...s,
+                    params: s.params.map((p) =>
+                      p.paramName === paramName ? { ...p, paramValue: val } : p,
+                    ),
+                  },
+            ),
+          },
+          { refresh: false },
+        ).finally(() => {
           setParamLoading((prev) => ({ ...prev, [sid]: null }));
           setSliderValues((prev) => {
             const next = { ...prev };
@@ -946,11 +955,12 @@ export function BlockClipPropertiesPanel({
           config={selectedTimelineClip.blockSettings.snakeEventShaders}
           availableShaders={availableShaders}
           onConfigChange={(updated) => {
-            void applyClipPatch({ snakeEventShaders: updated });
+            void applyClipPatch(
+              { snakeEventShaders: updated },
+              { refresh: false },
+            );
           }}
-          onUpdate={async () => {
-            await handleRefreshState();
-          }}
+          onUpdate={async () => {}}
         />
       )}
       {selectedInput?.type === 'game' && (
