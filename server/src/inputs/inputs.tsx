@@ -52,6 +52,22 @@ function colorToRgb(colorValue: number | string): { r: number; g: number; b: num
   return { r, g, b };
 }
 
+function darkenHexColor(color: string, factor = 0.75): string {
+  const cleanHex = color.replace('#', '');
+  const fullHex = cleanHex.length === 3
+    ? cleanHex.split('').map(char => char + char).join('')
+    : cleanHex;
+  if (!/^[0-9a-fA-F]{6}$/.test(fullHex)) {
+    return color;
+  }
+  const clamp = (value: number) => Math.max(0, Math.min(255, Math.round(value)));
+  const toHex = (value: number) => clamp(value).toString(16).padStart(2, '0');
+  const r = parseInt(fullHex.substring(0, 2), 16);
+  const g = parseInt(fullHex.substring(2, 4), 16);
+  const b = parseInt(fullHex.substring(4, 6), 16);
+  return `#${toHex(r * factor)}${toHex(g * factor)}${toHex(b * factor)}`;
+}
+
 function normalizeBorderWidth(borderWidth: number | undefined): number {
   if (borderWidth === undefined || Number.isNaN(borderWidth)) {
     return 0;
@@ -649,11 +665,15 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
   const orderSnakeIndices = (
     cells: (typeof gameState.cells),
     indices: number[],
-  ) => {
-    if (indices.length <= 1) return [...indices];
+  ): { ordered: number[]; connectedCount: number } => {
+    if (indices.length <= 1) {
+      return { ordered: [...indices], connectedCount: indices.length };
+    }
 
     const headIdx = indices.find(i => cells[i].isHead);
-    if (headIdx === undefined) return [...indices];
+    if (headIdx === undefined) {
+      return { ordered: [...indices], connectedCount: 0 };
+    }
 
     const ordered = [headIdx];
     const remaining = new Set(indices.filter(i => i !== headIdx));
@@ -676,9 +696,11 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
       remaining.delete(closest);
     }
 
+    const connectedCount = ordered.length;
+
     // Deterministic fallback for disconnected leftovers.
     ordered.push(...[...remaining].sort((a, b) => a - b));
-    return ordered;
+    return { ordered, connectedCount };
   };
 
   const currentSnakeIndicesByColor = new Map<string, number[]>();
@@ -702,12 +724,17 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
   });
 
   const orderedCurrentByColor = new Map<string, number[]>();
+  const detachedTailIndices = new Set<number>();
   for (const [color, indices] of currentSnakeIndicesByColor) {
-    orderedCurrentByColor.set(color, orderSnakeIndices(gameState.cells, indices));
+    const orderedResult = orderSnakeIndices(gameState.cells, indices);
+    orderedCurrentByColor.set(color, orderedResult.ordered);
+    for (let i = orderedResult.connectedCount; i < orderedResult.ordered.length; i++) {
+      detachedTailIndices.add(orderedResult.ordered[i]);
+    }
   }
   const orderedPrevByColor = new Map<string, number[]>();
   for (const [color, indices] of prevSnakeIndicesByColor) {
-    orderedPrevByColor.set(color, orderSnakeIndices(prevCells, indices));
+    orderedPrevByColor.set(color, orderSnakeIndices(prevCells, indices).ordered);
   }
 
   // Build segment index from head for swallow wave (head=0, next body=1, ...)
@@ -1002,9 +1029,10 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
       {/* All cells — per-snake shaders applied to individual cells */}
       {visibleCells.map(({ cell, origIdx }, i) => {
         const { sw, sh, sx, sy } = computeCellGeometry(cell, origIdx);
+        const renderedColor = detachedTailIndices.has(origIdx) ? darkenHexColor(cell.color) : cell.color;
         const cellShaders = snakeShaderMap.get(cell.color);
         const cellView = (
-          <View style={{ width: sw, height: sh, backgroundColor: cell.color }} />
+          <View style={{ width: sw, height: sh, backgroundColor: renderedColor }} />
         );
         if (cellShaders && cellShaders.length > 0) {
           const pad = sw;
@@ -1012,7 +1040,7 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
           const outerH = sh + pad * 2;
           const innerCell = (
             <View style={{ width: outerW, height: outerH }}>
-              <View style={{ width: sw, height: sh, top: pad, left: pad, backgroundColor: cell.color }} />
+              <View style={{ width: sw, height: sh, top: pad, left: pad, backgroundColor: renderedColor }} />
             </View>
           );
           return (
@@ -1022,7 +1050,7 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
           );
         }
         return (
-          <View key={`cell-${i}`} style={{ width: sw, height: sh, top: sy, left: sx, backgroundColor: cell.color }} />
+          <View key={`cell-${i}`} style={{ width: sw, height: sh, top: sy, left: sx, backgroundColor: renderedColor }} />
         );
       })}
       {/* Grid overlay */}
