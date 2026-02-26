@@ -62,7 +62,7 @@ function wrapWithShaders(
   component: ReactElement,
   shaders: ShaderConfig[] | undefined,
   resolution: Resolution,
-  index?: number
+  index?: number,
 ): ReactElement {
   if (!shaders || shaders.length === 0) {
     return component;
@@ -612,7 +612,7 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     }
   }
 
-  // Map snake color → its active shaders (for overlay rendering)
+  // Map snake color → its active shaders
   const snakeShaderMap = new Map<string, ShaderConfig[]>();
   if (activeSnake1Shaders.length > 0 && snakeColorOrder[0]) {
     snakeShaderMap.set(snakeColorOrder[0], activeSnake1Shaders);
@@ -620,6 +620,171 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
   if (activeSnake2Shaders.length > 0 && snakeColorOrder[1]) {
     snakeShaderMap.set(snakeColorOrder[1], activeSnake2Shaders);
   }
+
+  // Helper: compute cell position & scale for a visible cell
+  const computeCellGeometry = (cell: (typeof gameState.cells)[number], origIdx: number) => {
+    const size = cell.size ?? gameState.cellSize;
+    const w = cellPixel * size;
+    const h = cellPixel * size;
+    const progress = cell.progress ?? 1;
+    let dx = 0, dy = 0;
+    if (progress < 1 && cell.direction) {
+      switch (cell.direction) {
+        case 'right': dx = -1; break;
+        case 'left':  dx = 1;  break;
+        case 'down':  dy = -1; break;
+        case 'up':    dy = 1;  break;
+      }
+    }
+    const step = cellPixel + gap;
+    const x = offsetX + cell.x * step + dx * (1 - progress) * step;
+    const y = offsetY + cell.y * step + dy * (1 - progress) * step;
+
+    const cellKey = `${cell.x},${cell.y},${cell.color}`;
+    const isFood = !cell.isHead && !snakeColors.has(cell.color);
+    const spawnTime = isFood ? spawnTimesRef.current.get(cellKey) : undefined;
+    let scale = 1;
+    if (spawnTime !== undefined) {
+      const elapsed = Date.now() - spawnTime;
+      const t = Math.min(1, elapsed / SPAWN_DURATION_MS);
+      if (t < 0.5) {
+        scale = 1.25 * (t / 0.5);
+      } else {
+        scale = 1.25 - 0.25 * ((t - 0.5) / 0.5);
+      }
+    }
+
+    if ((cell.isHead || snakeColors.has(cell.color)) && swallowWavesRef.current.has(cell.color)) {
+      const waveStart = swallowWavesRef.current.get(cell.color)!;
+      const segIdx = segmentIndexMap.get(origIdx) ?? 0;
+      const segDelay = segIdx * SWALLOW_DURATION_PER_SEGMENT_MS;
+      const elapsed = Date.now() - waveStart - segDelay;
+      if (elapsed > 0 && elapsed < SWALLOW_BULGE_MS) {
+        const t = elapsed / SWALLOW_BULGE_MS;
+        const bump = Math.sin(t * Math.PI);
+        scale = 1 + 0.3 * bump;
+      }
+    }
+    const sw = w * scale;
+    const sh = h * scale;
+    const sx = x - (sw - w) / 2;
+    const sy = y - (sh - h) / 2;
+    return { w, h, x, y, sw, sh, sx, sy };
+  };
+
+  // Helper: render eyes for a head cell
+  const renderEyes = (cell: (typeof gameState.cells)[number], keyPrefix: string) => {
+    const size = cell.size ?? gameState.cellSize;
+    const w = cellPixel * size;
+    const h = cellPixel * size;
+    const progress = cell.progress ?? 1;
+    let dx = 0, dy = 0;
+    if (progress < 1 && cell.direction) {
+      switch (cell.direction) {
+        case 'right': dx = -1; break;
+        case 'left':  dx = 1;  break;
+        case 'down':  dy = -1; break;
+        case 'up':    dy = 1;  break;
+      }
+    }
+    const step = cellPixel + gap;
+    const headX = offsetX + cell.x * step + dx * (1 - progress) * step;
+    const headY = offsetY + cell.y * step + dy * (1 - progress) * step;
+
+    let dir: 'up' | 'down' | 'left' | 'right' = 'right';
+    let closestBody: (typeof gameState.cells)[number] | undefined;
+    let closestDist = Infinity;
+    for (const c of gameState.cells) {
+      if (c.isHead || c.color !== cell.color) continue;
+      const dist = Math.abs(c.x - cell.x) + Math.abs(c.y - cell.y);
+      if (dist < closestDist) {
+        closestDist = dist;
+        closestBody = c;
+      }
+    }
+    if (closestBody) {
+      let bdx = cell.x - closestBody.x;
+      let bdy = cell.y - closestBody.y;
+      if (Math.abs(bdx) > 1) bdx = -Math.sign(bdx);
+      if (Math.abs(bdy) > 1) bdy = -Math.sign(bdy);
+      if (Math.abs(bdx) >= Math.abs(bdy)) {
+        dir = bdx > 0 ? 'right' : 'left';
+      } else {
+        dir = bdy > 0 ? 'down' : 'up';
+      }
+    } else if (cell.direction) {
+      dir = cell.direction;
+    }
+
+    const eSize = w * 0.38;
+    const eBorder = Math.max(1, w * 0.04);
+    const pSize = w * 0.18;
+    const pupilOffset = w * 0.05;
+    const outerSize = eSize + eBorder * 2;
+
+    let eye1Top: number, eye1Left: number, eye2Top: number, eye2Left: number;
+    let p1Top: number, p1Left: number, p2Top: number, p2Left: number;
+    if (dir === 'right') {
+      eye1Top = h * 0.08; eye1Left = w * 0.55;
+      eye2Top = h * 0.54; eye2Left = w * 0.55;
+      p1Top = pupilOffset; p1Left = eSize - pSize - pupilOffset;
+      p2Top = pupilOffset; p2Left = eSize - pSize - pupilOffset;
+    } else if (dir === 'left') {
+      eye1Top = h * 0.08; eye1Left = w * 0.07;
+      eye2Top = h * 0.54; eye2Left = w * 0.07;
+      p1Top = pupilOffset; p1Left = pupilOffset;
+      p2Top = pupilOffset; p2Left = pupilOffset;
+    } else if (dir === 'up') {
+      eye1Top = h * 0.07; eye1Left = w * 0.08;
+      eye2Top = h * 0.07; eye2Left = w * 0.54;
+      p1Top = pupilOffset; p1Left = pupilOffset;
+      p2Top = pupilOffset; p2Left = pupilOffset;
+    } else {
+      eye1Top = h * 0.55; eye1Left = w * 0.08;
+      eye2Top = h * 0.55; eye2Left = w * 0.54;
+      p1Top = eSize - pSize - pupilOffset; p1Left = pupilOffset;
+      p2Top = eSize - pSize - pupilOffset; p2Left = pupilOffset;
+    }
+
+    return (
+      <React.Fragment key={`eyes-${keyPrefix}`}>
+        <View style={{
+          width: outerSize, height: outerSize,
+          top: headY + eye1Top - eBorder, left: headX + eye1Left - eBorder,
+          backgroundColor: '#000000', borderRadius: outerSize / 2,
+        }}>
+          <View style={{
+            width: eSize, height: eSize,
+            top: eBorder, left: eBorder,
+            backgroundColor: '#ffffff', borderRadius: eSize / 2,
+          }}>
+            <View style={{
+              width: pSize, height: pSize,
+              top: p1Top, left: p1Left,
+              backgroundColor: '#000000', borderRadius: pSize / 2,
+            }} />
+          </View>
+        </View>
+        <View style={{
+          width: outerSize, height: outerSize,
+          top: headY + eye2Top - eBorder, left: headX + eye2Left - eBorder,
+          backgroundColor: '#000000', borderRadius: outerSize / 2,
+        }}>
+          <View style={{
+            width: eSize, height: eSize,
+            top: eBorder, left: eBorder,
+            backgroundColor: '#ffffff', borderRadius: eSize / 2,
+          }}>
+            <View style={{
+              width: pSize, height: pSize,
+              top: p2Top, left: p2Left,
+              backgroundColor: '#000000', borderRadius: pSize / 2,
+            }} />
+          </View>
+        </View>
+      </React.Fragment>
+    );
+  };
 
   const boardContent = (
     <View style={{ width: resolution.width, height: resolution.height, backgroundColor: gameState.backgroundColor }}>
@@ -634,71 +799,22 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
           borderColor: borderC,
         }} />
       )}
+      {/* All cells — per-snake shaders applied to individual cells */}
       {visibleCells.map(({ cell, origIdx }, i) => {
-        const size = cell.size ?? gameState.cellSize;
-        const w = cellPixel * size;
-        const h = cellPixel * size;
-        const progress = cell.progress ?? 1;
-        let dx = 0, dy = 0;
-        if (progress < 1 && cell.direction) {
-          switch (cell.direction) {
-            case 'right': dx = -1; break;
-            case 'left':  dx = 1;  break;
-            case 'down':  dy = -1; break;
-            case 'up':    dy = 1;  break;
-          }
-        }
-        const step = cellPixel + gap;
-        const x = offsetX + cell.x * step + dx * (1 - progress) * step;
-        const y = offsetY + cell.y * step + dy * (1 - progress) * step;
-
-        const cellKey = `${cell.x},${cell.y},${cell.color}`;
-        const isFood = !cell.isHead && !snakeColors.has(cell.color);
-        const spawnTime = isFood ? spawnTimesRef.current.get(cellKey) : undefined;
-        let scale = 1;
-        if (spawnTime !== undefined) {
-          const elapsed = Date.now() - spawnTime;
-          const t = Math.min(1, elapsed / SPAWN_DURATION_MS);
-          if (t < 0.5) {
-            scale = 1.25 * (t / 0.5);
-          } else {
-            scale = 1.25 - 0.25 * ((t - 0.5) / 0.5);
-          }
-        }
-
-        if ((cell.isHead || snakeColors.has(cell.color)) && swallowWavesRef.current.has(cell.color)) {
-          const waveStart = swallowWavesRef.current.get(cell.color)!;
-          const segIdx = segmentIndexMap.get(origIdx) ?? 0;
-          const segDelay = segIdx * SWALLOW_DURATION_PER_SEGMENT_MS;
-          const elapsed = Date.now() - waveStart - segDelay;
-          if (elapsed > 0 && elapsed < SWALLOW_BULGE_MS) {
-            const t = elapsed / SWALLOW_BULGE_MS;
-            const bump = Math.sin(t * Math.PI);
-            scale = 1 + 0.3 * bump;
-          }
-        }
-        const sw = w * scale;
-        const sh = h * scale;
-        const sx = x - (sw - w) / 2;
-        const sy = y - (sh - h) / 2;
-
-        // If this snake has per-snake shaders, wrap the cell
+        const { sw, sh, sx, sy } = computeCellGeometry(cell, origIdx);
         const cellShaders = snakeShaderMap.get(cell.color);
+        const cellView = (
+          <View style={{ width: sw, height: sh, backgroundColor: cell.color }} />
+        );
         if (cellShaders && cellShaders.length > 0) {
-          const cellRes = { width: Math.round(sw), height: Math.round(sh) };
           return (
-            <View key={i} style={{ width: Math.round(sw), height: Math.round(sh), top: sy, left: sx }}>
-              {wrapWithShaders(
-                <View style={{ width: Math.round(sw), height: Math.round(sh), backgroundColor: cell.color }} />,
-                cellShaders,
-                cellRes,
-              )}
+            <View key={`cell-${i}`} style={{ width: sw, height: sh, top: sy, left: sx }}>
+              {wrapWithShaders(cellView, cellShaders, { width: Math.round(sw), height: Math.round(sh) })}
             </View>
           );
         }
-
         return (
-          <View key={i} style={{ width: sw, height: sh, top: sy, left: sx, backgroundColor: cell.color }} />
+          <View key={`cell-${i}`} style={{ width: sw, height: sh, top: sy, left: sx, backgroundColor: cell.color }} />
         );
       })}
       {/* Grid overlay */}
@@ -720,119 +836,8 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
           }}
         />
       </View>
-      {/* Eyes rendered on top of everything (after grid) so they're never covered */}
-      {visibleCells.filter(({ cell }) => cell.isHead).map(({ cell }, i) => {
-        const size = cell.size ?? gameState.cellSize;
-        const w = cellPixel * size;
-        const h = cellPixel * size;
-        const progress = cell.progress ?? 1;
-        let dx = 0, dy = 0;
-        if (progress < 1 && cell.direction) {
-          switch (cell.direction) {
-            case 'right': dx = -1; break;
-            case 'left':  dx = 1;  break;
-            case 'down':  dy = -1; break;
-            case 'up':    dy = 1;  break;
-          }
-        }
-        const step = cellPixel + gap;
-        const headX = offsetX + cell.x * step + dx * (1 - progress) * step;
-        const headY = offsetY + cell.y * step + dy * (1 - progress) * step;
-
-        let dir: 'up' | 'down' | 'left' | 'right' = 'right';
-        let closestBody: (typeof gameState.cells)[number] | undefined;
-        let closestDist = Infinity;
-        for (const c of gameState.cells) {
-          if (c.isHead || c.color !== cell.color) continue;
-          const dist = Math.abs(c.x - cell.x) + Math.abs(c.y - cell.y);
-          if (dist < closestDist) {
-            closestDist = dist;
-            closestBody = c;
-          }
-        }
-        if (closestBody) {
-          let bdx = cell.x - closestBody.x;
-          let bdy = cell.y - closestBody.y;
-          if (Math.abs(bdx) > 1) bdx = -Math.sign(bdx);
-          if (Math.abs(bdy) > 1) bdy = -Math.sign(bdy);
-          if (Math.abs(bdx) >= Math.abs(bdy)) {
-            dir = bdx > 0 ? 'right' : 'left';
-          } else {
-            dir = bdy > 0 ? 'down' : 'up';
-          }
-        } else if (cell.direction) {
-          dir = cell.direction;
-        }
-
-        const eSize = w * 0.38;
-        const eBorder = Math.max(1, w * 0.04);
-        const pSize = w * 0.18;
-        const pupilOffset = w * 0.05;
-        const outerSize = eSize + eBorder * 2;
-
-        let eye1Top: number, eye1Left: number, eye2Top: number, eye2Left: number;
-        let p1Top: number, p1Left: number, p2Top: number, p2Left: number;
-        if (dir === 'right') {
-          eye1Top = h * 0.08; eye1Left = w * 0.55;
-          eye2Top = h * 0.54; eye2Left = w * 0.55;
-          p1Top = pupilOffset; p1Left = eSize - pSize - pupilOffset;
-          p2Top = pupilOffset; p2Left = eSize - pSize - pupilOffset;
-        } else if (dir === 'left') {
-          eye1Top = h * 0.08; eye1Left = w * 0.07;
-          eye2Top = h * 0.54; eye2Left = w * 0.07;
-          p1Top = pupilOffset; p1Left = pupilOffset;
-          p2Top = pupilOffset; p2Left = pupilOffset;
-        } else if (dir === 'up') {
-          eye1Top = h * 0.07; eye1Left = w * 0.08;
-          eye2Top = h * 0.07; eye2Left = w * 0.54;
-          p1Top = pupilOffset; p1Left = pupilOffset;
-          p2Top = pupilOffset; p2Left = pupilOffset;
-        } else {
-          eye1Top = h * 0.55; eye1Left = w * 0.08;
-          eye2Top = h * 0.55; eye2Left = w * 0.54;
-          p1Top = eSize - pSize - pupilOffset; p1Left = pupilOffset;
-          p2Top = eSize - pSize - pupilOffset; p2Left = pupilOffset;
-        }
-
-        return (
-          <React.Fragment key={`eyes-${i}`}>
-            <View style={{
-              width: outerSize, height: outerSize,
-              top: headY + eye1Top - eBorder, left: headX + eye1Left - eBorder,
-              backgroundColor: '#000000', borderRadius: outerSize / 2,
-            }}>
-              <View style={{
-                width: eSize, height: eSize,
-                top: eBorder, left: eBorder,
-                backgroundColor: '#ffffff', borderRadius: eSize / 2,
-              }}>
-                <View style={{
-                  width: pSize, height: pSize,
-                  top: p1Top, left: p1Left,
-                  backgroundColor: '#000000', borderRadius: pSize / 2,
-                }} />
-              </View>
-            </View>
-            <View style={{
-              width: outerSize, height: outerSize,
-              top: headY + eye2Top - eBorder, left: headX + eye2Left - eBorder,
-              backgroundColor: '#000000', borderRadius: outerSize / 2,
-            }}>
-              <View style={{
-                width: eSize, height: eSize,
-                top: eBorder, left: eBorder,
-                backgroundColor: '#ffffff', borderRadius: eSize / 2,
-              }}>
-                <View style={{
-                  width: pSize, height: pSize,
-                  top: p2Top, left: p2Left,
-                  backgroundColor: '#000000', borderRadius: pSize / 2,
-                }} />
-              </View>
-            </View>
-          </React.Fragment>
-        );
-      })}
+      {/* Eyes on top of all cells */}
+      {visibleCells.filter(({ cell }) => cell.isHead).map(({ cell }, i) => renderEyes(cell, `top-${i}`))}
     </View>
   );
 

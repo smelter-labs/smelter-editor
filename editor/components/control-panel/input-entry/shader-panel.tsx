@@ -55,6 +55,8 @@ interface ShaderPanelProps {
     paramName: string,
   ) => { paramName: string; paramValue: number | string } | undefined;
   onOpenAddShader: () => void;
+  /** When set, clicking a shader name calls this instead of opening a dialog */
+  onOpenShaderInline?: (shaderId: string) => void;
 }
 
 export default function ShaderPanel({
@@ -68,6 +70,7 @@ export default function ShaderPanel({
   onSliderChange,
   getShaderParamConfig,
   onOpenAddShader,
+  onOpenShaderInline,
 }: ShaderPanelProps) {
   const [openShaderId, setOpenShaderId] = useState<string | null>(null);
 
@@ -78,6 +81,14 @@ export default function ShaderPanel({
   const openShaderConfig = openShaderId
     ? appliedShaders.find((s) => s.shaderId === openShaderId)
     : null;
+
+  const handleShaderClick = (shaderId: string) => {
+    if (onOpenShaderInline) {
+      onOpenShaderInline(shaderId);
+    } else {
+      setOpenShaderId(shaderId);
+    }
+  };
 
   return (
     <div className='mt-1 cursor-default' data-no-dnd>
@@ -103,7 +114,7 @@ export default function ShaderPanel({
                   type='button'
                   className='flex-1 text-left text-sm text-white truncate cursor-pointer hover:underline'
                   onClick={() =>
-                    hasParams && setOpenShaderId(shaderConfig.shaderId)
+                    hasParams && handleShaderClick(shaderConfig.shaderId)
                   }
                   title={hasParams ? 'Configure shader' : name}>
                   {name}
@@ -151,123 +162,271 @@ export default function ShaderPanel({
         Add shader
       </Button>
 
-      <Dialog
-        open={!!openShaderId}
-        onOpenChange={(open) => {
-          if (!open) setOpenShaderId(null);
-        }}>
-        <DialogContent className='max-w-xl'>
-          <DialogHeader>
-            <DialogTitle>{openShaderDef?.name ?? 'Shader'}</DialogTitle>
-            {openShaderDef?.description && (
-              <DialogDescription>{openShaderDef.description}</DialogDescription>
+      {/* Fallback dialog for non-inline mode */}
+      {!onOpenShaderInline && (
+        <Dialog
+          open={!!openShaderId}
+          onOpenChange={(open) => {
+            if (!open) setOpenShaderId(null);
+          }}>
+          <DialogContent className='max-w-xl'>
+            <DialogHeader>
+              <DialogTitle>{openShaderDef?.name ?? 'Shader'}</DialogTitle>
+              {openShaderDef?.description && (
+                <DialogDescription>
+                  {openShaderDef.description}
+                </DialogDescription>
+              )}
+            </DialogHeader>
+
+            {openShaderConfig && (
+              <div className='flex items-center justify-between py-2 border-b border-neutral-800'>
+                <span className='text-sm text-neutral-300'>Enabled</span>
+                <Button
+                  data-no-dnd
+                  size='sm'
+                  variant='ghost'
+                  className='h-8 w-8 p-1 cursor-pointer'
+                  onClick={() => onShaderToggle(openShaderConfig.shaderId)}>
+                  {openShaderConfig.enabled ? (
+                    <ToggleRight className='text-white size-5' />
+                  ) : (
+                    <ToggleLeft className='text-neutral-500 size-5' />
+                  )}
+                </Button>
+              </div>
             )}
-          </DialogHeader>
 
-          {openShaderConfig && (
-            <div className='flex items-center justify-between py-2 border-b border-neutral-800'>
-              <span className='text-sm text-neutral-300'>Enabled</span>
-              <Button
-                data-no-dnd
-                size='sm'
-                variant='ghost'
-                className='h-8 w-8 p-1 cursor-pointer'
-                onClick={() => onShaderToggle(openShaderConfig.shaderId)}>
-                {openShaderConfig.enabled ? (
-                  <ToggleRight className='text-white size-5' />
-                ) : (
-                  <ToggleLeft className='text-neutral-500 size-5' />
-                )}
-              </Button>
-            </div>
-          )}
+            <div className='space-y-5 max-h-[60vh] overflow-auto py-2'>
+              {(() => {
+                if (
+                  !openShaderDef?.params ||
+                  openShaderDef.params.length === 0
+                ) {
+                  return (
+                    <div className='text-sm text-neutral-500'>
+                      No configurable parameters.
+                    </div>
+                  );
+                }
+                return openShaderDef.params.map((param) => {
+                  const paramConfig = getShaderParamConfig(
+                    openShaderDef.id,
+                    param.name,
+                  );
+                  const key = `${openShaderDef.id}:${param.name}`;
 
-          <div className='space-y-5 max-h-[60vh] overflow-auto py-2'>
-            {(() => {
-              if (!openShaderDef?.params || openShaderDef.params.length === 0) {
-                return (
-                  <div className='text-sm text-neutral-500'>
-                    No configurable parameters.
-                  </div>
-                );
-              }
-              return openShaderDef.params.map((param) => {
-                const paramConfig = getShaderParamConfig(
-                  openShaderDef.id,
-                  param.name,
-                );
-                const key = `${openShaderDef.id}:${param.name}`;
+                  if (param.type === 'color') {
+                    const rawColorValue =
+                      key in sliderValues
+                        ? sliderValues[key]
+                        : (paramConfig?.paramValue ??
+                          (typeof param.defaultValue === 'string'
+                            ? hexToPackedInt(param.defaultValue)
+                            : 0));
+                    const colorValue =
+                      typeof rawColorValue === 'string'
+                        ? hexToPackedInt(rawColorValue)
+                        : rawColorValue;
+                    const hexValue = packedIntToHex(colorValue);
 
-                if (param.type === 'color') {
-                  const rawColorValue =
+                    return (
+                      <ShaderParamColorPicker
+                        key={param.name}
+                        param={param}
+                        colorValue={hexValue}
+                        loading={paramLoading[openShaderDef.id] === param.name}
+                        onChange={(hexColor) => {
+                          const packed = hexToPackedInt(hexColor);
+                          onSliderChange(openShaderDef.id, param.name, packed);
+                        }}
+                      />
+                    );
+                  }
+
+                  const rawParamValue =
                     key in sliderValues
                       ? sliderValues[key]
                       : (paramConfig?.paramValue ??
-                        (typeof param.defaultValue === 'string'
-                          ? hexToPackedInt(param.defaultValue)
+                        (typeof param.defaultValue === 'number'
+                          ? param.defaultValue
                           : 0));
-                  const colorValue =
-                    typeof rawColorValue === 'string'
-                      ? hexToPackedInt(rawColorValue)
-                      : rawColorValue;
-                  const hexValue = packedIntToHex(colorValue);
-
+                  const paramValue =
+                    typeof rawParamValue === 'number' ? rawParamValue : 0;
                   return (
-                    <ShaderParamColorPicker
+                    <ShaderParamSlider
                       key={param.name}
                       param={param}
-                      colorValue={hexValue}
+                      paramValue={paramValue}
                       loading={paramLoading[openShaderDef.id] === param.name}
-                      onChange={(hexColor) => {
-                        const packed = hexToPackedInt(hexColor);
-                        onSliderChange(openShaderDef.id, param.name, packed);
-                      }}
+                      onChange={(value) =>
+                        onSliderChange(openShaderDef.id, param.name, value)
+                      }
                     />
                   );
-                }
-
-                const rawParamValue =
-                  key in sliderValues
-                    ? sliderValues[key]
-                    : (paramConfig?.paramValue ??
-                      (typeof param.defaultValue === 'number'
-                        ? param.defaultValue
-                        : 0));
-                const paramValue =
-                  typeof rawParamValue === 'number' ? rawParamValue : 0;
-                return (
-                  <ShaderParamSlider
-                    key={param.name}
-                    param={param}
-                    paramValue={paramValue}
-                    loading={paramLoading[openShaderDef.id] === param.name}
-                    onChange={(value) =>
-                      onSliderChange(openShaderDef.id, param.name, value)
-                    }
-                  />
-                );
-              });
-            })()}
-          </div>
-
-          {openShaderConfig && (
-            <div className='pt-3 border-t border-neutral-800'>
-              <Button
-                data-no-dnd
-                size='sm'
-                variant='ghost'
-                className='h-8 px-3 text-red-400 hover:text-red-300 hover:bg-red-950/30 cursor-pointer gap-1.5'
-                onClick={() => {
-                  onShaderRemove(openShaderConfig.shaderId);
-                  setOpenShaderId(null);
-                }}>
-                <Trash2 className='size-3.5' />
-                Remove shader
-              </Button>
+                });
+              })()}
             </div>
+
+            {openShaderConfig && (
+              <div className='pt-3 border-t border-neutral-800'>
+                <Button
+                  data-no-dnd
+                  size='sm'
+                  variant='ghost'
+                  className='h-8 px-3 text-red-400 hover:text-red-300 hover:bg-red-950/30 cursor-pointer gap-1.5'
+                  onClick={() => {
+                    onShaderRemove(openShaderConfig.shaderId);
+                    setOpenShaderId(null);
+                  }}>
+                  <Trash2 className='size-3.5' />
+                  Remove shader
+                </Button>
+              </div>
+            )}
+          </DialogContent>
+        </Dialog>
+      )}
+    </div>
+  );
+}
+
+export function InlineShaderParams({
+  shaderId,
+  availableShaders,
+  shaders,
+  sliderValues,
+  paramLoading,
+  onShaderToggle,
+  onShaderRemove,
+  onSliderChange,
+  getShaderParamConfig,
+  onBack,
+}: {
+  shaderId: string;
+  availableShaders: AvailableShader[];
+  shaders: { shaderId: string; shaderName: string; enabled: boolean; params: { paramName: string; paramValue: number | string }[] }[];
+  sliderValues: { [key: string]: number };
+  paramLoading: { [shaderId: string]: string | null };
+  onShaderToggle: (shaderId: string) => void;
+  onShaderRemove: (shaderId: string) => void;
+  onSliderChange: (shaderId: string, paramName: string, newValue: number) => void;
+  getShaderParamConfig: (shaderId: string, paramName: string) => { paramName: string; paramValue: number | string } | undefined;
+  onBack: () => void;
+}) {
+  const shaderDef = availableShaders.find((s) => s.id === shaderId);
+  const shaderConfig = shaders.find((s) => s.shaderId === shaderId);
+
+  if (!shaderDef || !shaderConfig) {
+    onBack();
+    return null;
+  }
+
+  return (
+    <div data-no-dnd>
+      <button
+        type='button'
+        className='flex items-center gap-1.5 text-xs text-neutral-400 hover:text-white cursor-pointer mb-3 transition-colors'
+        onClick={onBack}>
+        <ArrowLeft className='size-3.5' />
+        Back to block properties
+      </button>
+
+      <div className='text-sm text-white font-medium mb-1'>{shaderDef.name}</div>
+      {shaderDef.description && (
+        <div className='text-xs text-neutral-500 mb-3'>{shaderDef.description}</div>
+      )}
+
+      <div className='flex items-center justify-between py-2 border-b border-neutral-800 mb-3'>
+        <span className='text-sm text-neutral-300'>Enabled</span>
+        <Button
+          data-no-dnd
+          size='sm'
+          variant='ghost'
+          className='h-8 w-8 p-1 cursor-pointer'
+          onClick={() => onShaderToggle(shaderConfig.shaderId)}>
+          {shaderConfig.enabled ? (
+            <ToggleRight className='text-white size-5' />
+          ) : (
+            <ToggleLeft className='text-neutral-500 size-5' />
           )}
-        </DialogContent>
-      </Dialog>
+        </Button>
+      </div>
+
+      <div className='space-y-5 py-2'>
+        {(!shaderDef.params || shaderDef.params.length === 0) ? (
+          <div className='text-sm text-neutral-500'>No configurable parameters.</div>
+        ) : (
+          shaderDef.params.map((param) => {
+            const paramConfig = getShaderParamConfig(shaderDef.id, param.name);
+            const key = `${shaderDef.id}:${param.name}`;
+
+            if (param.type === 'color') {
+              const rawColorValue =
+                key in sliderValues
+                  ? sliderValues[key]
+                  : (paramConfig?.paramValue ??
+                    (typeof param.defaultValue === 'string'
+                      ? hexToPackedInt(param.defaultValue)
+                      : 0));
+              const colorValue =
+                typeof rawColorValue === 'string'
+                  ? hexToPackedInt(rawColorValue)
+                  : rawColorValue;
+              const hexValue = packedIntToHex(colorValue);
+
+              return (
+                <ShaderParamColorPicker
+                  key={param.name}
+                  param={param}
+                  colorValue={hexValue}
+                  loading={paramLoading[shaderDef.id] === param.name}
+                  onChange={(hexColor) => {
+                    const packed = hexToPackedInt(hexColor);
+                    onSliderChange(shaderDef.id, param.name, packed);
+                  }}
+                />
+              );
+            }
+
+            const rawParamValue =
+              key in sliderValues
+                ? sliderValues[key]
+                : (paramConfig?.paramValue ??
+                  (typeof param.defaultValue === 'number'
+                    ? param.defaultValue
+                    : 0));
+            const paramValue =
+              typeof rawParamValue === 'number' ? rawParamValue : 0;
+            return (
+              <ShaderParamSlider
+                key={param.name}
+                param={param}
+                paramValue={paramValue}
+                loading={paramLoading[shaderDef.id] === param.name}
+                onChange={(value) =>
+                  onSliderChange(shaderDef.id, param.name, value)
+                }
+              />
+            );
+          })
+        )}
+      </div>
+
+      <div className='pt-3 border-t border-neutral-800'>
+        <Button
+          data-no-dnd
+          size='sm'
+          variant='ghost'
+          className='h-8 px-3 text-red-400 hover:text-red-300 hover:bg-red-950/30 cursor-pointer gap-1.5'
+          onClick={() => {
+            onShaderRemove(shaderConfig.shaderId);
+            onBack();
+          }}>
+          <Trash2 className='size-3.5' />
+          Remove shader
+        </Button>
+      </div>
     </div>
   );
 }

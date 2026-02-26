@@ -7,11 +7,11 @@ import {
   updateInput as updateInputAction,
   addCameraInput,
 } from '@/app/actions/actions';
-import ShaderPanel from '../input-entry/shader-panel';
+import ShaderPanel, { InlineShaderParams } from '../input-entry/shader-panel';
 import { AddShaderModal } from '../input-entry/add-shader-modal';
 import SnakeEventShaderPanel from '../input-entry/snake-event-shader-panel';
 import type { BlockSettings } from '../hooks/use-timeline-state';
-import { Link, Video, Monitor } from 'lucide-react';
+import { Link, Video, Monitor, Dices } from 'lucide-react';
 import { startPublish } from '../whip-input/utils/whip-publisher';
 import { startScreensharePublish } from '../whip-input/utils/screenshare-publisher';
 import { stopCameraAndConnection } from '../whip-input/utils/preview';
@@ -25,19 +25,30 @@ import { useControlPanelContext } from '../contexts/control-panel-context';
 import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/spinner';
 import { toast } from 'react-toastify';
-import type { ShaderConfig, AvailableShader as AvailableShaderType } from '@/app/actions/actions';
+import type {
+  ShaderConfig,
+  AvailableShader as AvailableShaderType,
+} from '@/app/actions/actions';
+import { getRandomSnakeShaderPreset } from '@/lib/snake-shader-presets';
 
 function SnakeShaderSection({
   label,
   shaders,
   availableShaders,
   onPatch,
+  onOpenShaderInline,
 }: {
   label: string;
   shaders: ShaderConfig[];
   availableShaders: AvailableShaderType[];
   onPatch: (shaders: ShaderConfig[]) => void;
+  onOpenShaderInline?: (shaderId: string) => void;
 }) {
+  const handleRandomPreset = useCallback(() => {
+    const preset = getRandomSnakeShaderPreset();
+    onPatch(preset.shaders);
+    toast.info(`🎲 ${preset.name}`, { autoClose: 1500 });
+  }, [onPatch]);
   const [sliderValues, setSliderValues] = useState<{ [key: string]: number }>(
     {},
   );
@@ -136,7 +147,16 @@ function SnakeShaderSection({
 
   return (
     <div className='mt-2 border-t border-neutral-800 pt-2'>
-      <div className='text-xs text-neutral-400 mb-1'>{label}</div>
+      <div className='flex items-center justify-between mb-1'>
+        <span className='text-xs text-neutral-400'>{label}</span>
+        <button
+          type='button'
+          title='Random shader preset'
+          onClick={handleRandomPreset}
+          className='p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors cursor-pointer'>
+          <Dices className='size-3.5' />
+        </button>
+      </div>
       <ShaderPanel
         input={fakeInput}
         availableShaders={availableShaders}
@@ -148,6 +168,7 @@ function SnakeShaderSection({
         onSliderChange={handleSlider}
         getShaderParamConfig={getParamConfig}
         onOpenAddShader={() => setIsAddModalOpen(true)}
+        onOpenShaderInline={onOpenShaderInline}
       />
       <AddShaderModal
         isOpen={isAddModalOpen}
@@ -192,6 +213,10 @@ export function BlockClipPropertiesPanel({
     [shaderId: string]: string | null;
   }>({});
   const [isAddShaderModalOpen, setIsAddShaderModalOpen] = useState(false);
+  const [inlineShaderView, setInlineShaderView] = useState<{
+    shaderId: string;
+    source: 'block' | 'snake1' | 'snake2';
+  } | null>(null);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
   const [gameBgColor, setGameBgColor] = useState<string | null>(null);
   const gameBgDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -374,8 +399,10 @@ export function BlockClipPropertiesPanel({
           gameGridLineColor: patch.gameGridLineColor,
           gameGridLineAlpha: patch.gameGridLineAlpha,
           snakeEventShaders: patch.snakeEventShaders,
-          snake1Shaders: patch.snake1Shaders ?? nextClip.blockSettings.snake1Shaders,
-          snake2Shaders: patch.snake2Shaders ?? nextClip.blockSettings.snake2Shaders,
+          snake1Shaders:
+            patch.snake1Shaders ?? nextClip.blockSettings.snake1Shaders,
+          snake2Shaders:
+            patch.snake2Shaders ?? nextClip.blockSettings.snake2Shaders,
         });
         await handleRefreshState();
       } catch (err) {
@@ -509,6 +536,116 @@ export function BlockClipPropertiesPanel({
     borderWidth: selectedTimelineClip.blockSettings.borderWidth,
   };
   shaderInput.shaders = selectedTimelineClip.blockSettings.shaders;
+
+  const inlineShaders =
+    inlineShaderView?.source === 'snake1'
+      ? (selectedTimelineClip.blockSettings.snake1Shaders ?? [])
+      : inlineShaderView?.source === 'snake2'
+        ? (selectedTimelineClip.blockSettings.snake2Shaders ?? [])
+        : (selectedTimelineClip.blockSettings.shaders ?? []);
+
+  const inlineShaderToggle = (sid: string) => {
+    if (inlineShaderView?.source === 'snake1') {
+      const current = selectedTimelineClip.blockSettings.snake1Shaders ?? [];
+      const existing = current.find((s) => s.shaderId === sid);
+      if (!existing) return;
+      void applyClipPatch({
+        snake1Shaders: current.map((s) =>
+          s.shaderId === sid ? { ...s, enabled: !s.enabled } : s,
+        ),
+      });
+    } else if (inlineShaderView?.source === 'snake2') {
+      const current = selectedTimelineClip.blockSettings.snake2Shaders ?? [];
+      const existing = current.find((s) => s.shaderId === sid);
+      if (!existing) return;
+      void applyClipPatch({
+        snake2Shaders: current.map((s) =>
+          s.shaderId === sid ? { ...s, enabled: !s.enabled } : s,
+        ),
+      });
+    } else {
+      handleShaderToggle(sid);
+    }
+  };
+
+  const inlineShaderRemove = (sid: string) => {
+    if (inlineShaderView?.source === 'snake1') {
+      void applyClipPatch({
+        snake1Shaders: (
+          selectedTimelineClip.blockSettings.snake1Shaders ?? []
+        ).filter((s) => s.shaderId !== sid),
+      });
+    } else if (inlineShaderView?.source === 'snake2') {
+      void applyClipPatch({
+        snake2Shaders: (
+          selectedTimelineClip.blockSettings.snake2Shaders ?? []
+        ).filter((s) => s.shaderId !== sid),
+      });
+    } else {
+      handleShaderRemove(sid);
+    }
+  };
+
+  const inlineShaderSlider = (sid: string, paramName: string, val: number) => {
+    if (inlineShaderView?.source === 'snake1') {
+      setSliderValues((prev) => ({ ...prev, [`${sid}:${paramName}`]: val }));
+      const current = selectedTimelineClip.blockSettings.snake1Shaders ?? [];
+      void applyClipPatch({
+        snake1Shaders: current.map((s) =>
+          s.shaderId !== sid
+            ? s
+            : {
+                ...s,
+                params: s.params.map((p) =>
+                  p.paramName === paramName ? { ...p, paramValue: val } : p,
+                ),
+              },
+        ),
+      });
+    } else if (inlineShaderView?.source === 'snake2') {
+      setSliderValues((prev) => ({ ...prev, [`${sid}:${paramName}`]: val }));
+      const current = selectedTimelineClip.blockSettings.snake2Shaders ?? [];
+      void applyClipPatch({
+        snake2Shaders: current.map((s) =>
+          s.shaderId !== sid
+            ? s
+            : {
+                ...s,
+                params: s.params.map((p) =>
+                  p.paramName === paramName ? { ...p, paramValue: val } : p,
+                ),
+              },
+        ),
+      });
+    } else {
+      handleSliderChange(sid, paramName, val);
+    }
+  };
+
+  const inlineShaderParamConfig = (sid: string, paramName: string) => {
+    return inlineShaders
+      .find((s) => s.shaderId === sid)
+      ?.params.find((p) => p.paramName === paramName);
+  };
+
+  if (inlineShaderView) {
+    return (
+      <div className='mt-3 p-3 rounded-md border border-neutral-800 bg-neutral-900'>
+        <InlineShaderParams
+          shaderId={inlineShaderView.shaderId}
+          availableShaders={availableShaders}
+          shaders={inlineShaders}
+          sliderValues={sliderValues}
+          paramLoading={paramLoading}
+          onShaderToggle={inlineShaderToggle}
+          onShaderRemove={inlineShaderRemove}
+          onSliderChange={inlineShaderSlider}
+          getShaderParamConfig={inlineShaderParamConfig}
+          onBack={() => setInlineShaderView(null)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className='mt-3 p-3 rounded-md border border-neutral-800 bg-neutral-900'>
@@ -740,6 +877,9 @@ export function BlockClipPropertiesPanel({
             onPatch={(shaders) =>
               void applyClipPatch({ snake1Shaders: shaders })
             }
+            onOpenShaderInline={(shaderId) =>
+              setInlineShaderView({ shaderId, source: 'snake1' })
+            }
           />
           <SnakeShaderSection
             label='🐍 Snake 2 Shaders'
@@ -747,6 +887,9 @@ export function BlockClipPropertiesPanel({
             availableShaders={availableShaders}
             onPatch={(shaders) =>
               void applyClipPatch({ snake2Shaders: shaders })
+            }
+            onOpenShaderInline={(shaderId) =>
+              setInlineShaderView({ shaderId, source: 'snake2' })
             }
           />
         </>
@@ -954,6 +1097,9 @@ export function BlockClipPropertiesPanel({
           onSliderChange={handleSliderChange}
           getShaderParamConfig={getShaderParamConfig}
           onOpenAddShader={() => setIsAddShaderModalOpen(true)}
+          onOpenShaderInline={(shaderId) =>
+            setInlineShaderView({ shaderId, source: 'block' })
+          }
         />
       </div>
       <AddShaderModal
