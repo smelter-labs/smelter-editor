@@ -432,10 +432,14 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
 
   const getSmoothedProgress = (rawProgress: number) => {
     const clampedRaw = Math.max(0, Math.min(1, rawProgress));
-    const clampedLocal = Math.max(0, Math.min(1, localProgress));
+    const unboundedLocal = Math.max(0, localProgress);
+    const clampedLocal = Math.max(0, Math.min(1, unboundedLocal));
     // Blend backend progress with local tick progress to keep motion smooth,
     // with both acceleration and deceleration phases.
-    return clampedRaw + (1 - clampedRaw) * easeInOutCubic(clampedLocal);
+    const blended = clampedRaw + (1 - clampedRaw) * easeInOutCubic(clampedLocal);
+    // Continue moving after the first cell step, so sparse updates still look continuous.
+    if (unboundedLocal <= 1) return blended;
+    return blended + (unboundedLocal - 1);
   };
 
   useLayoutEffect(() => {
@@ -453,15 +457,15 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     prevCellsRef.current = gameState.cells;
     setLocalProgress(0);
 
-    // Animate progress 0→1 and update position every 10ms.
+    // Animate progress continuously; when no new server tick arrives,
+    // keep moving forward locally with the last known direction.
     const startTime = now;
     const duration = Math.max(120, Math.min(1200, tickIntervalRef.current));
     let raf: ReturnType<typeof setInterval>;
     raf = setInterval(() => {
       const elapsed = Date.now() - startTime;
-      const t = Math.min(1, elapsed / duration);
+      const t = elapsed / duration;
       setLocalProgress(t);
-      if (t >= 1) clearInterval(raf);
     }, 10);
     return () => clearInterval(raf);
   }, [gameState.cells]);
@@ -737,6 +741,11 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     return delta;
   };
 
+  const wrapCoord = (value: number, boardSize: number) => {
+    if (boardSize <= 0) return value;
+    return ((value % boardSize) + boardSize) % boardSize;
+  };
+
   const getRawProgress = (
     cell: (typeof gameState.cells)[number],
     prevCell?: (typeof gameState.cells)[number],
@@ -778,8 +787,10 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
         case 'up':    boardY = cell.y + (1 - progress); break;
       }
     }
-    const x = offsetX + boardX * step;
-    const y = offsetY + boardY * step;
+    const wrappedBoardX = wrapCoord(boardX, gameState.boardWidth);
+    const wrappedBoardY = wrapCoord(boardY, gameState.boardHeight);
+    const x = offsetX + wrappedBoardX * step;
+    const y = offsetY + wrappedBoardY * step;
 
     const cellKey = `${cell.x},${cell.y},${cell.color}`;
     const isFood = !cell.isHead && !snakeColors.has(cell.color);
@@ -838,8 +849,10 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
         case 'up':    boardY = cell.y + (1 - progress); break;
       }
     }
-    const headX = offsetX + boardX * step;
-    const headY = offsetY + boardY * step;
+    const wrappedBoardX = wrapCoord(boardX, gameState.boardWidth);
+    const wrappedBoardY = wrapCoord(boardY, gameState.boardHeight);
+    const headX = offsetX + wrappedBoardX * step;
+    const headY = offsetY + wrappedBoardY * step;
 
     let dir: 'up' | 'down' | 'left' | 'right' = 'right';
     let closestBody: (typeof gameState.cells)[number] | undefined;
