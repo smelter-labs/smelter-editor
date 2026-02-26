@@ -705,7 +705,7 @@ export class RoomState {
           cells: [],
           smoothMove: false,
           smoothMoveSpeed: 1,
-          backgroundColor: '#0a0f1a',
+          backgroundColor: '#1e222c',
           cellGap: 2,
           boardBorderColor: '#ffffff',
           boardBorderWidth: 4,
