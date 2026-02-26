@@ -10,7 +10,7 @@ import {
   Shader,
 } from '@swmansion/smelter';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { ShaderConfig, ShaderParamConfig } from '../shaders/shaders';
 import shadersController from '../shaders/shaders';
@@ -420,28 +420,49 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
   // --- Smooth client-side interpolation between game state ticks ---
   const lastUpdateRef = useRef(Date.now());
   const tickIntervalRef = useRef(150); // estimated ms between server updates
+  const prevCellsRef = useRef<(typeof gameState.cells)>(gameState.cells);
+  const interpolationFromCellsRef = useRef<(typeof gameState.cells)>(gameState.cells);
   const [localProgress, setLocalProgress] = useState(1);
 
-  useEffect(() => {
+  const easeInOutCubic = (t: number) => (
+    t < 0.5
+      ? 4 * t * t * t
+      : 1 - Math.pow(-2 * t + 2, 3) / 2
+  );
+
+  const getSmoothedProgress = (rawProgress: number) => {
+    const clampedRaw = Math.max(0, Math.min(1, rawProgress));
+    const clampedLocal = Math.max(0, Math.min(1, localProgress));
+    // Blend backend progress with local tick progress to keep motion smooth,
+    // with both acceleration and deceleration phases.
+    return clampedRaw + (1 - clampedRaw) * easeInOutCubic(clampedLocal);
+  };
+
+  useLayoutEffect(() => {
     const now = Date.now();
     const delta = now - lastUpdateRef.current;
-    // Update estimated tick interval (exponential moving average)
+    // Ticks are expected to be uniform, so keep a direct interval estimate.
     if (delta > 30 && delta < 2000) {
-      tickIntervalRef.current = tickIntervalRef.current * 0.7 + delta * 0.3;
+      tickIntervalRef.current = delta;
     }
     lastUpdateRef.current = now;
+
+    // Freeze interpolation source for the whole tick window,
+    // then advance previous snapshot for the next server update.
+    interpolationFromCellsRef.current = prevCellsRef.current;
+    prevCellsRef.current = gameState.cells;
     setLocalProgress(0);
 
-    // Animate progress 0→1 over the estimated tick interval
+    // Animate progress 0→1 and update position every 10ms.
     const startTime = now;
-    const duration = tickIntervalRef.current;
+    const duration = Math.max(120, Math.min(1200, tickIntervalRef.current));
     let raf: ReturnType<typeof setInterval>;
     raf = setInterval(() => {
       const elapsed = Date.now() - startTime;
       const t = Math.min(1, elapsed / duration);
       setLocalProgress(t);
       if (t >= 1) clearInterval(raf);
-    }, 16);
+    }, 10);
     return () => clearInterval(raf);
   }, [gameState.cells]);
 
@@ -671,26 +692,94 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     snakeShaderMap.set(snakeColorOrder[1], activeSnake2Shaders);
   }
 
+  const prevCells = interpolationFromCellsRef.current;
+  const prevPoolsByKey = new Map<string, (typeof gameState.cells)>();
+  for (const prevCell of prevCells) {
+    const poolKey = `${prevCell.color}|${prevCell.isHead ? 'head' : 'body'}`;
+    const pool = prevPoolsByKey.get(poolKey) ?? [];
+    pool.push(prevCell);
+    prevPoolsByKey.set(poolKey, pool);
+  }
+
+  const prevCellByCurrentIndex = new Map<number, (typeof gameState.cells)[number]>();
+  for (let i = 0; i < gameState.cells.length; i++) {
+    const currentCell = gameState.cells[i];
+    if (!(currentCell.isHead || snakeColors.has(currentCell.color))) continue;
+
+    const exactPoolKey = `${currentCell.color}|${currentCell.isHead ? 'head' : 'body'}`;
+    const fallbackPoolKey = `${currentCell.color}|body`;
+    const exactPool = prevPoolsByKey.get(exactPoolKey) ?? [];
+    const fallbackPool = prevPoolsByKey.get(fallbackPoolKey) ?? [];
+    const candidatePool = exactPool.length > 0 ? exactPool : fallbackPool;
+    if (candidatePool.length === 0) continue;
+
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    for (let ci = 0; ci < candidatePool.length; ci++) {
+      const candidate = candidatePool[ci];
+      const dist = Math.abs(candidate.x - currentCell.x) + Math.abs(candidate.y - currentCell.y);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIdx = ci;
+      }
+    }
+    const [matchedPrev] = candidatePool.splice(bestIdx, 1);
+    if (matchedPrev) {
+      prevCellByCurrentIndex.set(i, matchedPrev);
+    }
+  }
+
+  const shortestWrappedDelta = (from: number, to: number, boardSize: number) => {
+    let delta = to - from;
+    if (Math.abs(delta) > boardSize / 2) {
+      delta -= Math.sign(delta) * boardSize;
+    }
+    return delta;
+  };
+
+  const getRawProgress = (
+    cell: (typeof gameState.cells)[number],
+    prevCell?: (typeof gameState.cells)[number],
+  ) => {
+    if (typeof cell.progress === 'number') return cell.progress;
+
+    if (prevCell) {
+      const movedX = shortestWrappedDelta(prevCell.x, cell.x, gameState.boardWidth) !== 0;
+      const movedY = shortestWrappedDelta(prevCell.y, cell.y, gameState.boardHeight) !== 0;
+      return movedX || movedY ? 0 : 1;
+    }
+
+    // Fallback for sparse backend payloads.
+    return cell.direction ? 0 : 1;
+  };
+
   // Helper: compute cell position & scale for a visible cell
   const computeCellGeometry = (cell: (typeof gameState.cells)[number], origIdx: number) => {
     const size = cell.size ?? gameState.cellSize;
     const w = cellPixel * size;
     const h = cellPixel * size;
     // Use local interpolation: blend from cell's raw progress toward 1
-    const rawProgress = cell.progress ?? 1;
-    const progress = rawProgress + (1 - rawProgress) * localProgress;
-    let dx = 0, dy = 0;
-    if (progress < 1 && cell.direction) {
+    const prevCell = prevCellByCurrentIndex.get(origIdx);
+    const rawProgress = getRawProgress(cell, prevCell);
+    const progress = getSmoothedProgress(rawProgress);
+    const step = cellPixel + gap;
+    let boardX = cell.x;
+    let boardY = cell.y;
+    if (prevCell) {
+      const dx = shortestWrappedDelta(prevCell.x, cell.x, gameState.boardWidth);
+      const dy = shortestWrappedDelta(prevCell.y, cell.y, gameState.boardHeight);
+      boardX = prevCell.x + dx * progress;
+      boardY = prevCell.y + dy * progress;
+    } else if (progress < 1 && cell.direction) {
       switch (cell.direction) {
-        case 'right': dx = -1; break;
-        case 'left':  dx = 1;  break;
-        case 'down':  dy = -1; break;
-        case 'up':    dy = 1;  break;
+        case 'right': boardX = cell.x - (1 - progress); break;
+        case 'left':  boardX = cell.x + (1 - progress); break;
+        case 'down':  boardY = cell.y - (1 - progress); break;
+        case 'up':    boardY = cell.y + (1 - progress); break;
       }
     }
-    const step = cellPixel + gap;
-    const x = offsetX + cell.x * step + dx * (1 - progress) * step;
-    const y = offsetY + cell.y * step + dy * (1 - progress) * step;
+    const x = offsetX + boardX * step;
+    const y = offsetY + boardY * step;
 
     const cellKey = `${cell.x},${cell.y},${cell.color}`;
     const isFood = !cell.isHead && !snakeColors.has(cell.color);
@@ -729,20 +818,28 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     const size = cell.size ?? gameState.cellSize;
     const w = cellPixel * size;
     const h = cellPixel * size;
-    const rawProgress = cell.progress ?? 1;
-    const progress = rawProgress + (1 - rawProgress) * localProgress;
-    let dx = 0, dy = 0;
-    if (progress < 1 && cell.direction) {
+    const headIndex = gameState.cells.findIndex(c => c === cell);
+    const prevCell = headIndex >= 0 ? prevCellByCurrentIndex.get(headIndex) : undefined;
+    const rawProgress = getRawProgress(cell, prevCell);
+    const progress = getSmoothedProgress(rawProgress);
+    const step = cellPixel + gap;
+    let boardX = cell.x;
+    let boardY = cell.y;
+    if (prevCell) {
+      const dx = shortestWrappedDelta(prevCell.x, cell.x, gameState.boardWidth);
+      const dy = shortestWrappedDelta(prevCell.y, cell.y, gameState.boardHeight);
+      boardX = prevCell.x + dx * progress;
+      boardY = prevCell.y + dy * progress;
+    } else if (progress < 1 && cell.direction) {
       switch (cell.direction) {
-        case 'right': dx = -1; break;
-        case 'left':  dx = 1;  break;
-        case 'down':  dy = -1; break;
-        case 'up':    dy = 1;  break;
+        case 'right': boardX = cell.x - (1 - progress); break;
+        case 'left':  boardX = cell.x + (1 - progress); break;
+        case 'down':  boardY = cell.y - (1 - progress); break;
+        case 'up':    boardY = cell.y + (1 - progress); break;
       }
     }
-    const step = cellPixel + gap;
-    const headX = offsetX + cell.x * step + dx * (1 - progress) * step;
-    const headY = offsetY + cell.y * step + dy * (1 - progress) * step;
+    const headX = offsetX + boardX * step;
+    const headY = offsetY + boardY * step;
 
     let dir: 'up' | 'down' | 'left' | 'right' = 'right';
     let closestBody: (typeof gameState.cells)[number] | undefined;

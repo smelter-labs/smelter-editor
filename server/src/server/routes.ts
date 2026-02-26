@@ -23,6 +23,61 @@ type RoomAndInputIdParams = { Params: { roomId: string; inputId: string } };
 type RecordingFileParams = { Params: { fileName: string } };
 
 let gameRoomCreationInProgress: Promise<void> | null = null;
+const gameInputOwnerMap = new Map<string, string>(); // "<roomId>::<inputId>" -> source key
+const gameSourceRouteMap = new Map<string, { roomId: string; inputId: string }>();
+
+function firstHeaderValue(value: string | string[] | undefined): string | undefined {
+  if (!value) return undefined;
+  return Array.isArray(value) ? value[0] : value;
+}
+
+function resolveGameSourceKey(
+  req: { headers: Record<string, unknown>; ip: string },
+  bodyGameId?: string,
+): string {
+  const fromBody = typeof bodyGameId === 'string' ? bodyGameId.trim() : '';
+  if (fromBody) return `game-id:${fromBody}`;
+
+  const headerGameId = firstHeaderValue(req.headers['x-game-id'] as string | string[] | undefined)?.trim();
+  if (headerGameId) return `game-id:${headerGameId}`;
+
+  const forwardedFor = firstHeaderValue(req.headers['x-forwarded-for'] as string | string[] | undefined);
+  const ip = forwardedFor?.split(',')[0]?.trim() || req.ip || 'unknown';
+  const userAgent =
+    firstHeaderValue(req.headers['user-agent'] as string | string[] | undefined)?.trim() || 'unknown';
+
+  return `ip:${ip}|ua:${userAgent}`;
+}
+
+function findGameInputId(roomId: string): string | undefined {
+  try {
+    const room = state.getRoom(roomId);
+    return room.getInputs().find(input => input.type === 'game')?.inputId;
+  } catch {
+    return undefined;
+  }
+}
+
+async function createDedicatedGameRoom(
+  gs: Static<typeof GameStateSchema>,
+): Promise<{ roomId: string; inputId: string }> {
+  const { roomId, room } = await state.createRoom([{ type: 'game', title: 'Snake' }], true);
+  // Keep historical behavior for auto-created game rooms.
+  await room.updateLayout('softu-tv');
+  await new Promise(resolve => setTimeout(resolve, 200));
+
+  const inputId = room.getInputs().find(input => input.type === 'game')?.inputId;
+  if (!inputId) {
+    throw new Error('Failed to create game input in new room');
+  }
+
+  room.updateGameState(inputId, gs);
+  if (gs.events && gs.events.length > 0) {
+    room.ingestGameEvents(inputId, gs.events);
+  }
+
+  return { roomId, inputId };
+}
 
 export const routes = Fastify({
   logger: config.logger,
@@ -690,6 +745,7 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(
 );
 
 const GameStateSchema = Type.Object({
+  gameId: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
   board: Type.Object({
     width: Type.Number({ minimum: 1 }),
     height: Type.Number({ minimum: 1 }),
@@ -745,13 +801,37 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof GameStateSchema> }>(
   { schema: { params: RoomAndInputIdParamsSchema, body: GameStateSchema } },
   async (req, res) => {
     const { roomId, inputId } = req.params;
-    const room = state.getRoom(roomId);
     const gs = req.body;
+    const sourceKey = resolveGameSourceKey(req, gs.gameId);
+    const targetKey = `${roomId}::${inputId}`;
+    const currentOwner = gameInputOwnerMap.get(targetKey);
+
+    if (currentOwner && currentOwner !== sourceKey) {
+      // Another game stream is trying to update the same input.
+      // Route this stream into a dedicated room with a single game input.
+      const { roomId: newRoomId, inputId: newInputId } = await createDedicatedGameRoom(gs);
+      const newTargetKey = `${newRoomId}::${newInputId}`;
+      gameInputOwnerMap.set(newTargetKey, sourceKey);
+      gameSourceRouteMap.set(sourceKey, { roomId: newRoomId, inputId: newInputId });
+      res.status(200).send({
+        status: 'ok',
+        rerouted: true,
+        roomId: newRoomId,
+        inputId: newInputId,
+        roomUrl: `/room/${newRoomId}`,
+      });
+      return;
+    }
+
+    gameInputOwnerMap.set(targetKey, sourceKey);
+    gameSourceRouteMap.set(sourceKey, { roomId, inputId });
+
+    const room = state.getRoom(roomId);
     room.updateGameState(inputId, gs);
     if (gs.events && gs.events.length > 0) {
       room.ingestGameEvents(inputId, gs.events);
     }
-    res.status(200).send({ status: 'ok' });
+    res.status(200).send({ status: 'ok', roomId, inputId, roomUrl: `/room/${roomId}` });
   }
 );
 
@@ -761,6 +841,7 @@ routes.post<{ Body: Static<typeof GameStateSchema> }>(
   { schema: { body: GameStateSchema } },
   async (req, res) => {
     const gs = req.body;
+    const sourceKey = resolveGameSourceKey(req, gs.gameId);
     setGlobalGameState({
       boardWidth: gs.board.width,
       boardHeight: gs.board.height,
@@ -780,56 +861,46 @@ routes.post<{ Body: Static<typeof GameStateSchema> }>(
       await gameRoomCreationInProgress;
     }
 
-    // Check if any room has a game input
-    const roomsWithGame = state.getRooms().filter(room =>
-      room.getInputs().some(input => input.type === 'game')
-    );
+    let target = gameSourceRouteMap.get(sourceKey);
+    let targetRoomId = target?.roomId;
+    let targetInputId = target?.inputId;
 
-    let gameRoomId: string | undefined;
+    // If route became stale (room deleted/input removed), rebuild it.
+    if (targetRoomId && targetInputId) {
+      const existingInputId = findGameInputId(targetRoomId);
+      if (existingInputId !== targetInputId) {
+        targetRoomId = undefined;
+        targetInputId = undefined;
+        gameSourceRouteMap.delete(sourceKey);
+      }
+    }
 
-    if (roomsWithGame.length === 0) {
-      // Auto-create a room with a single game input and picture-in-picture layout
+    if (!targetRoomId || !targetInputId) {
       const createPromise = (async () => {
-        const { roomId, room } = await state.createRoom(
-          [{ type: 'game', title: 'Snake' }],
-          true,
-        );
-        gameRoomId = roomId;
-        await room.updateLayout('softu-tv');
-        // Wait briefly for async init to register the game input
-        await new Promise(resolve => setTimeout(resolve, 200));
-        for (const input of room.getInputs()) {
-          if (input.type === 'game') {
-            room.updateGameState(input.inputId, gs);
-            if (gs.events && gs.events.length > 0) {
-              room.ingestGameEvents(input.inputId, gs.events);
-            }
-          }
-        }
+        const created = await createDedicatedGameRoom(gs);
+        gameSourceRouteMap.set(sourceKey, created);
+        gameInputOwnerMap.set(`${created.roomId}::${created.inputId}`, sourceKey);
+        return created;
       })();
-      gameRoomCreationInProgress = createPromise;
+
+      gameRoomCreationInProgress = createPromise.then(() => {});
       try {
-        await createPromise;
+        const created = await createPromise;
+        targetRoomId = created.roomId;
+        targetInputId = created.inputId;
       } finally {
         gameRoomCreationInProgress = null;
       }
     } else {
-      // Broadcast to all rooms that have game inputs
-      for (const room of roomsWithGame) {
-        for (const input of room.getInputs()) {
-          if (input.type === 'game') {
-            room.updateGameState(input.inputId, gs);
-            if (gs.events && gs.events.length > 0) {
-              room.ingestGameEvents(input.inputId, gs.events);
-            }
-          }
-        }
+      const room = state.getRoom(targetRoomId);
+      room.updateGameState(targetInputId, gs);
+      if (gs.events && gs.events.length > 0) {
+        room.ingestGameEvents(targetInputId, gs.events);
       }
-      gameRoomId = roomsWithGame[0].idPrefix;
     }
 
-    const roomUrl = gameRoomId ? `/room/${gameRoomId}` : undefined;
-    res.status(200).send({ status: 'ok', roomId: gameRoomId, roomUrl });
+    const roomUrl = targetRoomId ? `/room/${targetRoomId}` : undefined;
+    res.status(200).send({ status: 'ok', roomId: targetRoomId, inputId: targetInputId, roomUrl });
   }
 );
 
