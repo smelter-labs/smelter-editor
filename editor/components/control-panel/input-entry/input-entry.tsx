@@ -877,7 +877,7 @@ export default function InputEntry({
               <input
                 type='color'
                 className='w-6 h-6 bg-transparent border-0 cursor-pointer'
-                value={input.gameGridLineColor ?? '#232323'}
+                value={input.gameGridLineColor ?? '#333333'}
                 onChange={(e) => {
                   void updateInput(roomId, input.inputId, {
                     gameGridLineColor: e.target.value,
@@ -893,7 +893,7 @@ export default function InputEntry({
                 max={1}
                 step={0.01}
                 className='w-16'
-                value={input.gameGridLineAlpha ?? 0.15}
+                value={input.gameGridLineAlpha ?? 1.0}
                 onChange={(e) => {
                   void updateInput(roomId, input.inputId, {
                     gameGridLineAlpha: Number(e.target.value),

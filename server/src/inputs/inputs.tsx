@@ -558,7 +558,7 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
 
   const borderW = gameState.boardBorderWidth ?? 4;
   const borderC = gameState.boardBorderColor ?? '#ffffff';
-  const gridColor = hexToRgb(gameState.gridLineColor ?? '#232323');
+  const gridColor = hexToRgb(gameState.gridLineColor ?? '#333333');
 
   // Build segment index from head for swallow wave (head=0, next body=1, ...)
   const segmentIndexMap = new Map<number, number>(); // cellArrayIndex → segmentIndex

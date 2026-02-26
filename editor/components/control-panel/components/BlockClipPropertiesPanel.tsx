@@ -775,7 +775,7 @@ export function BlockClipPropertiesPanel({
               value={
                 gameBgColor ??
                 selectedTimelineClip.blockSettings.gameBackgroundColor ??
-                '#000000'
+                '#484858'
               }
               onChange={(e) => {
                 const value = e.target.value;
@@ -817,7 +817,7 @@ export function BlockClipPropertiesPanel({
               value={
                 gameGridColor ??
                 selectedTimelineClip.blockSettings.gameGridLineColor ??
-                '#232323'
+                '#333333'
               }
               onChange={(e) => {
                 const value = e.target.value;
@@ -843,7 +843,7 @@ export function BlockClipPropertiesPanel({
               step={0.01}
               className='w-full'
               value={
-                selectedTimelineClip.blockSettings.gameGridLineAlpha ?? 0.15
+                selectedTimelineClip.blockSettings.gameGridLineAlpha ?? 1.0
               }
               onChange={(e) =>
                 void applyClipPatch({
