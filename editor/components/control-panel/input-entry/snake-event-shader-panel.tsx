@@ -11,6 +11,7 @@ import {
   updateInput,
 } from '@/app/actions/actions';
 import { SNAKE_EVENT_TYPES } from '@/lib/snake-events';
+import { getRandomSnakeEventEffectPreset } from '@/lib/snake-event-effect-presets';
 import { ChevronDown, ChevronRight, Dices } from 'lucide-react';
 import { toast } from 'react-toastify';
 
@@ -230,13 +231,49 @@ export default function SnakeEventShaderPanel({
     setMapping(eventType, { ...existing, params }, true);
   };
 
-  const handleRandomizeEventShader = (eventType: SnakeEventType) => {
-    const existing = getMapping(eventType) ?? buildDefaultMapping(eventType);
+  const buildRandomizedMapping = (
+    eventType: SnakeEventType,
+    existing: SnakeEventShaderMapping,
+  ): { mapping: SnakeEventShaderMapping; presetName?: string } | null => {
     const shaderDef = availableShaders.find((s) => s.id === existing.shaderId);
     if (!shaderDef || !shaderDef.params || shaderDef.params.length === 0) {
-      return;
+      return null;
     }
 
+    // Curated preset flow for the default snake event shader.
+    if (existing.shaderId === DEFAULT_EFFECT_TYPES[eventType].shaderId) {
+      const preset = getRandomSnakeEventEffectPreset(eventType);
+      const curatedParams: ShaderParamConfig[] = shaderDef.params.map(
+        (param) => {
+          const existingParam = existing.params.find(
+            (p) => p.paramName === param.name,
+          );
+          const existingValue =
+            existingParam?.paramValue ?? param.defaultValue ?? 0;
+          if (param.name === 'effect_type') {
+            return { paramName: param.name, paramValue: existingValue };
+          }
+          const presetValue = preset.paramOverrides[param.name];
+          if (presetValue !== undefined) {
+            return { paramName: param.name, paramValue: presetValue };
+          }
+          return { paramName: param.name, paramValue: existingValue };
+        },
+      );
+
+      return {
+        mapping: {
+          ...existing,
+          enabled: true,
+          params: curatedParams,
+          application: preset.application,
+          effectDurationMs: preset.effectDurationMs,
+        },
+        presetName: preset.name,
+      };
+    }
+
+    // Fallback for custom shaders selected by the user.
     const randomizedParams: ShaderParamConfig[] = shaderDef.params.map(
       (param) => {
         const existingParam = existing.params.find(
@@ -266,16 +303,29 @@ export default function SnakeEventShaderPanel({
       },
     );
 
+    return {
+      mapping: {
+        ...existing,
+        enabled: true,
+        params: randomizedParams,
+      },
+    };
+  };
+
+  const handleRandomizeEventShader = (eventType: SnakeEventType) => {
+    const existing = getMapping(eventType) ?? buildDefaultMapping(eventType);
+    const randomized = buildRandomizedMapping(eventType, existing);
+    if (!randomized) {
+      return;
+    }
+
     setExpandedEvents((prev) => new Set(prev).add(eventType));
-    setMapping(eventType, {
-      ...existing,
-      enabled: true,
-      params: randomizedParams,
-    });
+    setMapping(eventType, randomized.mapping);
     const eventLabel =
       SNAKE_EVENT_TYPES.find((eventMeta) => eventMeta.type === eventType)
         ?.label ?? eventType;
-    toast.info(`🎲 ${eventLabel}`, { autoClose: 1200 });
+    const suffix = randomized.presetName ? ` · ${randomized.presetName}` : '';
+    toast.info(`🎲 ${eventLabel}${suffix}`, { autoClose: 1200 });
   };
 
   const handleRandomizeAllEnabledEvents = () => {
@@ -291,47 +341,11 @@ export default function SnakeEventShaderPanel({
     const updated = { ...config } as SnakeEventShaderConfig;
     for (const eventType of enabledEvents) {
       const existing = updated[eventType] ?? buildDefaultMapping(eventType);
-      const shaderDef = availableShaders.find(
-        (s) => s.id === existing.shaderId,
-      );
-      if (!shaderDef || !shaderDef.params || shaderDef.params.length === 0) {
+      const randomized = buildRandomizedMapping(eventType, existing);
+      if (!randomized) {
         continue;
       }
-
-      const randomizedParams: ShaderParamConfig[] = shaderDef.params.map(
-        (param) => {
-          const existingParam = existing.params.find(
-            (p) => p.paramName === param.name,
-          );
-          const existingValue =
-            existingParam?.paramValue ?? param.defaultValue ?? 0;
-
-          if (param.name === 'effect_type') {
-            return { paramName: param.name, paramValue: existingValue };
-          }
-
-          if (param.type === 'color') {
-            const randomColor = Math.floor(Math.random() * 0x1000000);
-            return { paramName: param.name, paramValue: randomColor };
-          }
-
-          const min = param.minValue ?? 0;
-          const max = param.maxValue ?? 1;
-          const lower = Math.min(min, max);
-          const upper = Math.max(min, max);
-          const randomValue = lower + Math.random() * (upper - lower);
-          return {
-            paramName: param.name,
-            paramValue: Number(randomValue.toFixed(3)),
-          };
-        },
-      );
-
-      updated[eventType] = {
-        ...existing,
-        enabled: true,
-        params: randomizedParams,
-      };
+      updated[eventType] = randomized.mapping;
     }
 
     setExpandedEvents((prev) => {
