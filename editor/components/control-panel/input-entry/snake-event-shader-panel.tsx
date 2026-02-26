@@ -180,13 +180,15 @@ export default function SnakeEventShaderPanel({
 
   const handleApplicationModeChange = (
     eventType: SnakeEventType,
-    mode: 'all' | 'first_n' | 'sequential',
+    mode: 'all' | 'snake_cells' | 'first_n' | 'sequential',
   ) => {
     const existing = getMapping(eventType);
     if (!existing) return;
     let application: SnakeEventApplicationMode;
     if (mode === 'all') {
       application = { mode: 'all' };
+    } else if (mode === 'snake_cells') {
+      application = { mode: 'snake_cells' };
     } else if (mode === 'first_n') {
       application = { mode: 'first_n', n: 3 };
     } else {
@@ -325,11 +327,12 @@ export default function SnakeEventShaderPanel({
                         onChange={(e) =>
                           handleApplicationModeChange(
                             type,
-                            e.target.value as 'all' | 'first_n' | 'sequential',
+                            e.target.value as 'all' | 'snake_cells' | 'first_n' | 'sequential',
                           )
                         }
                         className='w-full text-xs bg-neutral-900 text-white border border-neutral-700 rounded px-2 py-1 focus:outline-none focus:border-neutral-500 cursor-pointer'>
                         <option value='all'>All Cells</option>
+                        <option value='snake_cells'>Snake Cells</option>
                         <option value='first_n'>First N Cells</option>
                         <option value='sequential'>Sequential</option>
                       </select>

@@ -4,7 +4,7 @@ const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Methods': 'GET, OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type',
 };
 
@@ -12,7 +12,7 @@ export async function OPTIONS() {
   return new NextResponse(null, { status: 204, headers: corsHeaders });
 }
 
-export async function POST(request: Request) {
+export async function GET() {
   if (!BASE_URL) {
     return NextResponse.json(
       { error: 'SMELTER_EDITOR_SERVER_URL is not configured' },
@@ -21,13 +21,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const body = await request.json();
-
-    const response = await fetch(`${BASE_URL}/game-state`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
-    });
+    const response = await fetch(`${BASE_URL}/active-rooms`);
 
     if (!response.ok) {
       const text = await response.text().catch(() => '');

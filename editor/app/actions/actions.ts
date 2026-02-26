@@ -53,6 +53,7 @@ export type SnakeEventType =
 
 export type SnakeEventApplicationMode =
   | { mode: 'all' }
+  | { mode: 'snake_cells' }
   | { mode: 'first_n'; n: number }
   | { mode: 'sequential'; durationMs: number; delayMs: number };
 

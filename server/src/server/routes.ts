@@ -69,6 +69,13 @@ routes.get('/suggestions', async (_req, res) => {
   res.status(200).send({ twitch: TwitchChannelSuggestions.getTopStreams() });
 });
 
+routes.get('/active-rooms', async (_req, res) => {
+  const rooms = state.getRooms()
+    .filter(room => !room.pendingDelete)
+    .map(room => ({ roomId: room.idPrefix }));
+  res.status(200).send({ rooms });
+});
+
 const RoomIdParamsSchema = Type.Object({
   roomId: Type.String({ maxLength: 64, minLength: 1 }),
 });
@@ -778,7 +785,7 @@ routes.post<{ Body: Static<typeof GameStateSchema> }>(
       room.getInputs().some(input => input.type === 'game')
     );
 
-    let createdRoomId: string | undefined;
+    let gameRoomId: string | undefined;
 
     if (roomsWithGame.length === 0) {
       // Auto-create a room with a single game input and picture-in-picture layout
@@ -787,7 +794,7 @@ routes.post<{ Body: Static<typeof GameStateSchema> }>(
           [{ type: 'game', title: 'Snake' }],
           true,
         );
-        createdRoomId = roomId;
+        gameRoomId = roomId;
         await room.updateLayout('softu-tv');
         // Wait briefly for async init to register the game input
         await new Promise(resolve => setTimeout(resolve, 200));
@@ -818,9 +825,11 @@ routes.post<{ Body: Static<typeof GameStateSchema> }>(
           }
         }
       }
+      gameRoomId = roomsWithGame[0].idPrefix;
     }
 
-    res.status(200).send({ status: 'ok', roomId: createdRoomId });
+    const roomUrl = gameRoomId ? `/room/${gameRoomId}` : undefined;
+    res.status(200).send({ status: 'ok', roomId: gameRoomId, roomUrl });
   }
 );
 

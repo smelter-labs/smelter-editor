@@ -1118,15 +1118,27 @@ export class RoomState {
       const effectDurationMs = mapping.effectDurationMs || 600;
 
       let affectedCellIndices: number[] = [];
-      const totalCells = input.gameState.cells.length;
+      const cells = input.gameState.cells;
+      const totalCells = cells.length;
+
+      // Build snake cell indices (cells belonging to a snake, identified by sharing color with a head)
+      const snakeColorsSet = new Set<string>();
+      for (const cell of cells) {
+        if (cell.isHead) snakeColorsSet.add(cell.color);
+      }
+      const snakeCellIndices = cells
+        .map((cell, i) => (cell.isHead || snakeColorsSet.has(cell.color)) ? i : -1)
+        .filter(i => i !== -1);
 
       if (mapping.application.mode === 'all') {
         affectedCellIndices = Array.from({ length: totalCells }, (_, i) => i);
+      } else if (mapping.application.mode === 'snake_cells') {
+        affectedCellIndices = snakeCellIndices;
       } else if (mapping.application.mode === 'first_n') {
-        const n = Math.min(mapping.application.n, totalCells);
-        affectedCellIndices = Array.from({ length: n }, (_, i) => i);
+        const n = Math.min(mapping.application.n, snakeCellIndices.length);
+        affectedCellIndices = snakeCellIndices.slice(0, n);
       } else if (mapping.application.mode === 'sequential') {
-        affectedCellIndices = totalCells > 0 ? [0] : [];
+        affectedCellIndices = snakeCellIndices.length > 0 ? [snakeCellIndices[0]] : [];
       }
 
       const effect: ActiveSnakeEffect = {
@@ -1150,14 +1162,14 @@ export class RoomState {
       }, effectDurationMs);
       input.effectTimers.push(cleanupTimer);
 
-      // For sequential mode, set up progression timers
+      // For sequential mode, set up progression timers through snake cells
       if (mapping.application.mode === 'sequential') {
         const { durationMs, delayMs } = mapping.application;
         const stepMs = durationMs + delayMs;
-        for (let i = 1; i < totalCells; i++) {
+        for (let i = 1; i < snakeCellIndices.length; i++) {
           const timer = setTimeout(() => {
             if (input.activeEffects.includes(effect)) {
-              effect.affectedCellIndices = [i];
+              effect.affectedCellIndices = [snakeCellIndices[i]];
               input.gameState.activeEffects = [...input.activeEffects];
               this.updateStoreWithState();
             }
