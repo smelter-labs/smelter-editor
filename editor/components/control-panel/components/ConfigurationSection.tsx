@@ -15,12 +15,13 @@ import {
 } from '@/app/actions/actions';
 import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/spinner';
-import Accordion from '@/components/ui/accordion';
 import { Download, Upload } from 'lucide-react';
 import {
   exportRoomConfig,
   downloadRoomConfig,
   parseRoomConfig,
+  loadTimelineFromStorage,
+  restoreTimelineToStorage,
   type RoomConfig,
   type RoomConfigInput,
   type RoomConfigTransitionSettings,
@@ -62,11 +63,13 @@ export function ConfigurationSection({
   const handleExport = useCallback(async () => {
     setIsExporting(true);
     try {
+      const timelineState = loadTimelineFromStorage(roomId);
       const config = exportRoomConfig(
         inputs,
         layout,
         resolution,
         transitionSettings,
+        timelineState ?? undefined,
       );
       downloadRoomConfig(config);
       toast.success('Configuration exported successfully');
@@ -76,7 +79,7 @@ export function ConfigurationSection({
     } finally {
       setIsExporting(false);
     }
-  }, [inputs, layout, resolution, transitionSettings]);
+  }, [inputs, layout, resolution, transitionSettings, roomId]);
 
   useEffect(() => {
     const onVoiceExport = () => {
@@ -216,6 +219,8 @@ export function ConfigurationSection({
           textScrollSpeed: inputConfig.textScrollSpeed,
           textScrollLoop: inputConfig.textScrollLoop,
           textFontSize: inputConfig.textFontSize,
+          borderColor: inputConfig.borderColor,
+          borderWidth: inputConfig.borderWidth,
           attachedInputIds:
             attachedInputIds && attachedInputIds.length > 0
               ? attachedInputIds
@@ -235,6 +240,22 @@ export function ConfigurationSection({
     }
 
     setPendingWhipInputs(newPendingWhipInputs);
+
+    // Restore timeline state if present in config
+    if (config.timeline) {
+      const indexToInputId = new Map<number, string>();
+      for (const { inputId, position } of createdInputIds) {
+        indexToInputId.set(position, inputId);
+      }
+      // Use placeholder inputIds for pending WHIP inputs so their clips are preserved
+      for (const pending of newPendingWhipInputs) {
+        indexToInputId.set(
+          pending.position,
+          `__pending-whip-${pending.position}__`,
+        );
+      }
+      restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
+    }
 
     // Ensure server input order matches positions from the imported config
     const orderedCreatedIds = createdInputIds
@@ -258,52 +279,50 @@ export function ConfigurationSection({
   };
 
   return (
-    <Accordion title='Configuration' defaultOpen data-accordion='true'>
-      <div className='flex flex-col gap-3'>
-        <Button
-          size='lg'
-          variant='default'
-          className='bg-neutral-800 hover:bg-neutral-700 text-white font-medium cursor-pointer px-4 py-0 h-[48px] sm:h-[52px] text-sm sm:text-base sm:px-7 transition-all'
-          disabled={isExporting}
-          onClick={handleExport}>
-          {isExporting ? (
-            <span className='flex items-center gap-2'>
-              <LoadingSpinner size='sm' variant='spinner' />
-              Exporting...
-            </span>
-          ) : (
-            <span className='flex items-center gap-2'>
-              <Download className='w-4 h-4' />
-              Export Configuration
-            </span>
-          )}
-        </Button>
-        <Button
-          size='lg'
-          variant='default'
-          className='bg-neutral-800 hover:bg-neutral-700 text-white font-medium cursor-pointer px-4 py-0 h-[48px] sm:h-[52px] text-sm sm:text-base sm:px-7 transition-all'
-          disabled={isImporting}
-          onClick={handleImportClick}>
-          {isImporting ? (
-            <span className='flex items-center gap-2'>
-              <LoadingSpinner size='sm' variant='spinner' />
-              Importing...
-            </span>
-          ) : (
-            <span className='flex items-center gap-2'>
-              <Upload className='w-4 h-4' />
-              Import Configuration
-            </span>
-          )}
-        </Button>
-        <input
-          ref={fileInputRef}
-          type='file'
-          accept='.json,application/json'
-          className='hidden'
-          onChange={handleFileChange}
-        />
-      </div>
-    </Accordion>
+    <div className='flex flex-col gap-3'>
+      <Button
+        size='lg'
+        variant='default'
+        className='bg-neutral-800 hover:bg-neutral-700 text-white font-medium cursor-pointer px-4 py-0 h-[48px] sm:h-[52px] text-sm sm:text-base sm:px-7 transition-all'
+        disabled={isExporting}
+        onClick={handleExport}>
+        {isExporting ? (
+          <span className='flex items-center gap-2'>
+            <LoadingSpinner size='sm' variant='spinner' />
+            Exporting...
+          </span>
+        ) : (
+          <span className='flex items-center gap-2'>
+            <Download className='w-4 h-4' />
+            Export Configuration
+          </span>
+        )}
+      </Button>
+      <Button
+        size='lg'
+        variant='default'
+        className='bg-neutral-800 hover:bg-neutral-700 text-white font-medium cursor-pointer px-4 py-0 h-[48px] sm:h-[52px] text-sm sm:text-base sm:px-7 transition-all'
+        disabled={isImporting}
+        onClick={handleImportClick}>
+        {isImporting ? (
+          <span className='flex items-center gap-2'>
+            <LoadingSpinner size='sm' variant='spinner' />
+            Importing...
+          </span>
+        ) : (
+          <span className='flex items-center gap-2'>
+            <Upload className='w-4 h-4' />
+            Import Configuration
+          </span>
+        )}
+      </Button>
+      <input
+        ref={fileInputRef}
+        type='file'
+        accept='.json,application/json'
+        className='hidden'
+        onChange={handleFileChange}
+      />
+    </div>
   );
 }

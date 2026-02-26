@@ -70,7 +70,10 @@ export type Input = {
   textScrollSpeed?: number;
   textScrollLoop?: boolean;
   textFontSize?: number;
+  borderColor?: string;
+  borderWidth?: number;
   attachedInputIds?: string[];
+  hidden?: boolean;
 };
 
 export type RegisterInputOptions =
@@ -396,6 +399,86 @@ export async function setPendingWhipInputs(
   );
 }
 
+export type SavedConfigInfo = {
+  fileName: string;
+  name: string;
+  savedAt: string;
+  size: number;
+};
+
+export async function saveRemoteConfig(
+  name: string,
+  config: object,
+): Promise<
+  { ok: true; fileName: string; name: string } | { ok: false; error: string }
+> {
+  try {
+    const result = await sendSmelterRequest('post', '/configs', {
+      name,
+      config,
+    });
+    return { ok: true, fileName: result.fileName, name: result.name };
+  } catch (e: any) {
+    const msg = e?.message ?? 'Failed to save config';
+    console.error('[saveRemoteConfig]', msg);
+    return { ok: false, error: msg };
+  }
+}
+
+export async function listRemoteConfigs(): Promise<
+  { ok: true; configs: SavedConfigInfo[] } | { ok: false; error: string }
+> {
+  try {
+    const data = await sendSmelterRequest('get', '/configs');
+    return { ok: true, configs: data.configs ?? [] };
+  } catch (e: any) {
+    const msg = e?.message ?? 'Failed to list configs';
+    console.error('[listRemoteConfigs]', msg);
+    return { ok: false, error: msg };
+  }
+}
+
+export async function loadRemoteConfig(
+  fileName: string,
+): Promise<
+  | { ok: true; name: string; config: any; savedAt: string }
+  | { ok: false; error: string }
+> {
+  try {
+    const data = await sendSmelterRequest(
+      'get',
+      `/configs/${encodeURIComponent(fileName)}`,
+    );
+    return {
+      ok: true,
+      name: data.name,
+      config: data.config,
+      savedAt: data.savedAt,
+    };
+  } catch (e: any) {
+    const msg = e?.message ?? 'Failed to load config';
+    console.error('[loadRemoteConfig]', msg);
+    return { ok: false, error: msg };
+  }
+}
+
+export async function deleteRemoteConfig(
+  fileName: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  try {
+    await sendSmelterRequest(
+      'delete',
+      `/configs/${encodeURIComponent(fileName)}`,
+      {},
+    );
+    return { ok: true };
+  } catch (e: any) {
+    const msg = e?.message ?? 'Failed to delete config';
+    console.error('[deleteRemoteConfig]', msg);
+    return { ok: false, error: msg };
+  }
+}
+
 export async function getAllRooms(): Promise<any> {
   const rooms = await sendSmelterRequest('get', `/rooms`);
   return rooms;
@@ -414,6 +497,8 @@ export type UpdateInputOptions = {
   textScrollLoop?: boolean;
   textScrollNudge?: number;
   textFontSize?: number;
+  borderColor?: string;
+  borderWidth?: number;
   attachedInputIds?: string[];
 };
 
@@ -441,6 +526,22 @@ export async function connectInput(roomId: string, inputId: string) {
   return await sendSmelterRequest(
     'post',
     `/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}/connect`,
+    {},
+  );
+}
+
+export async function hideInput(roomId: string, inputId: string) {
+  return await sendSmelterRequest(
+    'post',
+    `/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}/hide`,
+    {},
+  );
+}
+
+export async function showInput(roomId: string, inputId: string) {
+  return await sendSmelterRequest(
+    'post',
+    `/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}/show`,
     {},
   );
 }

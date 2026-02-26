@@ -59,7 +59,7 @@ export function SpeechToText() {
                 <span className='size-2 rounded-full bg-red-500 animate-pulse' />
               )}
               <span className='text-sm text-neutral-400'>
-                {isRecording ? 'Nagrywanie...' : 'Rozpoznawanie mowy'}
+                {isRecording ? 'Recording...' : 'Speech recognition'}
               </span>
             </div>
             <Button
@@ -73,7 +73,7 @@ export function SpeechToText() {
 
           {error && (
             <p className='text-red-500 text-sm mb-2'>
-              Błąd: Web Speech API nie jest dostępne w tej przeglądarce
+              Error: Web Speech API is not available in this browser
             </p>
           )}
 
@@ -93,8 +93,8 @@ export function SpeechToText() {
             {results.length === 0 && !interimResult && !error && (
               <p className='text-neutral-600 text-sm'>
                 {isRecording
-                  ? 'Mów coś...'
-                  : 'Kliknij mikrofon, aby rozpocząć nagrywanie'}
+                  ? 'Say something...'
+                  : 'Click the microphone to start recording'}
               </p>
             )}
           </div>

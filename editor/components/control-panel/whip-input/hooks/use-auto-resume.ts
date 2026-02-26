@@ -10,6 +10,7 @@ import {
 import type { AddInputResponse } from '../utils/types';
 import { startPublish } from '../utils/whip-publisher';
 import { stopCameraAndConnection } from '../utils/preview';
+import { updateTimelineInputId } from '@/lib/room-config';
 
 export function useAutoResume(
   roomId: string,
@@ -62,6 +63,24 @@ export function useAutoResume(
 
         if (setActiveWhipInputId) setActiveWhipInputId(resp.inputId);
         if (setIsWhipActive) setIsWhipActive(false);
+
+        if (lastInputId && resp.inputId !== lastInputId) {
+          const timelineUpdated = updateTimelineInputId(
+            roomId,
+            lastInputId,
+            resp.inputId,
+          );
+          if (timelineUpdated) {
+            window.dispatchEvent(
+              new CustomEvent('smelter:timeline-input-replaced', {
+                detail: {
+                  oldInputId: lastInputId,
+                  newInputId: resp.inputId,
+                },
+              }),
+            );
+          }
+        }
 
         // Ensure UI reflects the newly added input as soon as possible
         if (refreshState) {

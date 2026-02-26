@@ -1,8 +1,10 @@
 import { useEffect, useRef } from 'react';
 import type { InputWrapper } from './use-control-panel-state';
+import { useControlPanelInputOrderEvents } from './use-control-panel-input-order-events';
 import type { Input, AvailableShader } from '@/app/actions/actions';
 import {
   removeInput,
+  hideInput,
   addTwitchInput,
   addMP4Input,
   addImageInput,
@@ -25,15 +27,13 @@ import type { InputType } from '@/lib/voice/commandTypes';
 import { LAYOUT_CONFIGS, type Layout } from '@/components/layout-selector';
 
 type UseControlPanelEventsProps = {
-  inputsRef: React.MutableRefObject<any[]>;
+  inputsRef: React.MutableRefObject<Input[]>;
   inputWrappers: InputWrapper[];
   setInputWrappers: (
     wrappers: InputWrapper[] | ((prev: InputWrapper[]) => InputWrapper[]),
   ) => void;
   setListVersion: (v: number | ((prev: number) => number)) => void;
   updateOrder: (wrappers: InputWrapper[]) => Promise<void>;
-  setAddInputActiveTab: (tab: 'stream' | 'mp4' | 'image' | 'inputs') => void;
-  setStreamActiveTab: (tab: 'twitch' | 'kick') => void;
   addVideoAccordionRef: React.MutableRefObject<any>;
   roomId: string;
   handleRefreshState: () => Promise<void>;
@@ -62,8 +62,6 @@ export function useControlPanelEvents({
   setInputWrappers,
   setListVersion,
   updateOrder,
-  setAddInputActiveTab,
-  setStreamActiveTab,
   addVideoAccordionRef,
   roomId,
   handleRefreshState,
@@ -85,39 +83,94 @@ export function useControlPanelEvents({
   currentLayout,
   changeLayout,
 }: UseControlPanelEventsProps) {
+  useControlPanelInputOrderEvents({
+    setInputWrappers,
+    setListVersion,
+    updateOrder,
+  });
+
   useEffect(() => {
-    const onMove = (e: any) => {
-      try {
-        const { inputId, direction } = e?.detail || {};
-        if (!inputId || !direction) return;
-        setInputWrappers((prev) => {
-          const current = [...prev];
-          const idx = current.findIndex((it) => it.inputId === inputId);
-          if (idx < 0) return prev;
-          const target =
-            direction === 'up'
-              ? Math.max(0, idx - 1)
-              : Math.min(current.length - 1, idx + 1);
-          if (target === idx) return prev;
-          const [item] = current.splice(idx, 1);
-          current.splice(target, 0, item);
-          void updateOrder(current);
-          return current;
-        });
-        setListVersion((v) => v + 1);
-      } catch {}
+    const onSelect = (e: CustomEvent<{ inputId: string }>) => {
+      setSelectedInputId(e.detail.inputId);
     };
     window.addEventListener(
-      'smelter:inputs:move',
-      onMove as unknown as EventListener,
+      'smelter:inputs:select',
+      onSelect as unknown as EventListener,
     );
     return () => {
       window.removeEventListener(
-        'smelter:inputs:move',
-        onMove as unknown as EventListener,
+        'smelter:inputs:select',
+        onSelect as unknown as EventListener,
       );
     };
-  }, [updateOrder, setInputWrappers, setListVersion]);
+  }, [setSelectedInputId]);
+
+  useEffect(() => {
+    const onToggleMute = async (e: CustomEvent<{ inputId: string }>) => {
+      const input = inputsRef.current.find(
+        (i) => i.inputId === e.detail.inputId,
+      );
+      if (!input) return;
+      await updateInput(roomId, input.inputId, {
+        volume: input.volume === 0 ? 1 : 0,
+        shaders: input.shaders,
+      });
+      await handleRefreshState();
+    };
+    window.addEventListener(
+      'smelter:inputs:toggle-mute',
+      onToggleMute as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:inputs:toggle-mute',
+        onToggleMute as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputsRef]);
+
+  useEffect(() => {
+    const onRemove = async (e: CustomEvent<{ inputId: string }>) => {
+      const { inputId } = e.detail;
+      if (activeCameraInputId === inputId) {
+        stopCameraAndConnection(cameraPcRef, cameraStreamRef);
+        setActiveCameraInputId(null);
+        setIsCameraActive(false);
+        clearWhipSessionFor(roomId, inputId);
+      }
+      if (activeScreenshareInputId === inputId) {
+        stopCameraAndConnection(screensharePcRef, screenshareStreamRef);
+        setActiveScreenshareInputId(null);
+        setIsScreenshareActive(false);
+        clearWhipSessionFor(roomId, inputId);
+      }
+      await hideInput(roomId, inputId);
+      await handleRefreshState();
+    };
+    window.addEventListener(
+      'smelter:inputs:remove',
+      onRemove as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:inputs:remove',
+        onRemove as unknown as EventListener,
+      );
+    };
+  }, [
+    roomId,
+    handleRefreshState,
+    activeCameraInputId,
+    activeScreenshareInputId,
+    cameraPcRef,
+    cameraStreamRef,
+    screensharePcRef,
+    screenshareStreamRef,
+    setActiveCameraInputId,
+    setIsCameraActive,
+    setActiveScreenshareInputId,
+    setIsScreenshareActive,
+  ]);
 
   useEffect(() => {
     const onAddInput = async (
@@ -245,7 +298,7 @@ export function useControlPanelEvents({
           return;
         }
         const input = currentInputs[idx];
-        await removeInput(roomId, input.inputId);
+        await hideInput(roomId, input.inputId);
         await handleRefreshState();
       } catch (err) {
         console.error('Voice: failed to remove input', err);
@@ -854,7 +907,7 @@ export function useControlPanelEvents({
             }
           }
           try {
-            await removeInput(roomId, input.inputId);
+            await hideInput(roomId, input.inputId);
           } catch (err) {
             console.warn('Macro: failed to remove input', {
               inputId: input.inputId,

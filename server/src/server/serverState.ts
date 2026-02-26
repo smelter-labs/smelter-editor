@@ -12,8 +12,11 @@ export type CreateRoomResult = {
 const ROOM_COUNT_SOFT_LIMIT = 3;
 const ROOM_COUNT_HARD_LIMIT = 5;
 const SOFT_LIMIT_ROOM_DELETE_DELAY = 20_000;
-const WHIP_STALE_TTL_MS = 15_000;
-
+const whipStaleTtlFromEnv = Number(process.env.WHIP_STALE_TTL_MS);
+const WHIP_STALE_TTL_MS =
+  Number.isFinite(whipStaleTtlFromEnv) && whipStaleTtlFromEnv > 0
+    ? whipStaleTtlFromEnv
+    : 15_000;
 class ServerState {
   private rooms: Record<string, RoomState> = {};
   public getRooms(): RoomState[] {
@@ -54,7 +57,7 @@ class ServerState {
   public getRoom(roomId: string): RoomState {
     const room = this.rooms[roomId];
     if (!room) {
-      throw new errorCodes.FST_ERR_NOT_FOUND(`Room ${roomId} does not exists.`);
+      throw new errorCodes.FST_ERR_NOT_FOUND(`Room ${roomId} does not exist.`);
     }
     return room;
   }
@@ -63,7 +66,7 @@ class ServerState {
     const room = this.rooms[roomId];
     delete this.rooms[roomId];
     if (!room) {
-      throw new Error(`Room ${roomId} does not exists.`);
+      throw new Error(`Room ${roomId} does not exist.`);
     }
     await room.deleteRoom();
   }
@@ -71,7 +74,7 @@ class ServerState {
   private async monitorConnectedRooms() {
     let rooms = Object.entries(this.rooms);
     rooms.sort(([_aId, aRoom], [_bId, bRoom]) => bRoom.creationTimestamp - aRoom.creationTimestamp);
-    // Remove WHIP inputs that haven't acked within 15 s
+    // Remove WHIP inputs that haven't acked within configured TTL.
     for (const [_roomId, room] of rooms) {
       await room.removeStaleWhipInputs(WHIP_STALE_TTL_MS);
     }

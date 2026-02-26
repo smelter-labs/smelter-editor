@@ -19,8 +19,14 @@ export class WhipInputMonitor {
     return this.isStreamLive;
   }
 
-  public touch(): void {
-    this.lastAckTimestamp = Date.now();
-    console.log(`[whip] Touch ${this.username}`);
+  public getUsername(): string {
+    return this.username;
+  }
+
+  public touch(): { previousAckTimestamp: number; currentAckTimestamp: number } {
+    const previousAckTimestamp = this.lastAckTimestamp;
+    const currentAckTimestamp = Date.now();
+    this.lastAckTimestamp = currentAckTimestamp;
+    return { previousAckTimestamp, currentAckTimestamp };
   }
 }

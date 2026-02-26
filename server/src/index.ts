@@ -15,4 +15,7 @@ async function run() {
   await routes.listen({ port, host: '0.0.0.0' });
 }
 
-void run();
+run().catch(err => {
+  console.error('Startup failed:', err);
+  process.exit(1);
+});

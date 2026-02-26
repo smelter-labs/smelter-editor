@@ -1,4 +1,10 @@
 import type { Input, Layout, ShaderConfig } from '@/app/actions/actions';
+import type {
+  Clip,
+  Track,
+} from '@/components/control-panel/hooks/use-timeline-state';
+import { createBlockSettingsFromInput } from '@/components/control-panel/hooks/use-timeline-state';
+import { loadTimeline, saveTimeline } from '@/lib/timeline-storage';
 
 export type RoomConfigInput = {
   type: Input['type'];
@@ -19,6 +25,8 @@ export type RoomConfigInput = {
   textScrollSpeed?: number;
   textScrollLoop?: boolean;
   textFontSize?: number;
+  borderColor?: string;
+  borderWidth?: number;
   attachedInputIndices?: number[];
 };
 
@@ -40,12 +48,31 @@ export type RoomConfigTransitionSettings = {
   newsStripEnabled?: boolean;
 };
 
+export type RoomConfigClip = {
+  inputIndex: number;
+  startMs: number;
+  endMs: number;
+  blockSettings?: Clip['blockSettings'];
+};
+
+export type RoomConfigTrack = {
+  label: string;
+  clips: RoomConfigClip[];
+};
+
+export type RoomConfigTimeline = {
+  totalDurationMs: number;
+  pixelsPerSecond: number;
+  tracks: RoomConfigTrack[];
+};
+
 export type RoomConfig = {
   version: 1;
   layout: Layout;
   inputs: RoomConfigInput[];
   resolution?: { width: number; height: number };
   transitionSettings?: RoomConfigTransitionSettings;
+  timeline?: RoomConfigTimeline;
   exportedAt: string;
 };
 
@@ -54,15 +81,45 @@ export function exportRoomConfig(
   layout: Layout,
   resolution?: { width: number; height: number },
   transitionSettings?: RoomConfigTransitionSettings,
+  timelineState?: {
+    tracks: Track[];
+    totalDurationMs: number;
+    pixelsPerSecond: number;
+  },
 ): RoomConfig {
   const inputIdToIndex = new Map<string, number>();
   inputs.forEach((input, idx) => inputIdToIndex.set(input.inputId, idx));
+
+  let timeline: RoomConfigTimeline | undefined;
+  if (timelineState) {
+    const tracks: RoomConfigTrack[] = timelineState.tracks.map((track) => ({
+      label: track.label,
+      clips: track.clips
+        .map((clip) => {
+          const idx = inputIdToIndex.get(clip.inputId);
+          if (idx === undefined) return null;
+          return {
+            inputIndex: idx,
+            startMs: clip.startMs,
+            endMs: clip.endMs,
+            blockSettings: clip.blockSettings,
+          } as RoomConfigClip;
+        })
+        .filter((c): c is RoomConfigClip => c !== null),
+    }));
+    timeline = {
+      totalDurationMs: timelineState.totalDurationMs,
+      pixelsPerSecond: timelineState.pixelsPerSecond,
+      tracks,
+    };
+  }
 
   return {
     version: 1,
     layout,
     resolution,
     transitionSettings,
+    timeline,
     inputs: inputs.map((input) => ({
       type: input.type,
       title: input.title,
@@ -85,6 +142,8 @@ export function exportRoomConfig(
       textScrollSpeed: input.textScrollSpeed,
       textScrollLoop: input.textScrollLoop,
       textFontSize: input.textFontSize,
+      borderColor: input.borderColor,
+      borderWidth: input.borderWidth,
       attachedInputIndices: input.attachedInputIds
         ?.map((id) => inputIdToIndex.get(id))
         .filter((idx): idx is number => idx !== undefined),
@@ -115,6 +174,98 @@ export function parseRoomConfig(json: string): RoomConfig {
     throw new Error('Invalid config format');
   }
   return config as RoomConfig;
+}
+
+export function loadTimelineFromStorage(roomId: string): {
+  tracks: Track[];
+  totalDurationMs: number;
+  pixelsPerSecond: number;
+} | null {
+  if (typeof window === 'undefined') return null;
+  const stored = loadTimeline(roomId);
+  if (!stored) return null;
+  return {
+    tracks: stored.tracks.map((t) => ({
+      id: t.id,
+      label: t.label,
+      clips: t.clips.map((c) => ({
+        id: c.id,
+        inputId: c.inputId,
+        startMs: c.startMs,
+        endMs: c.endMs,
+        blockSettings:
+          c.blockSettings ?? createBlockSettingsFromInput(undefined),
+      })),
+    })),
+    totalDurationMs: stored.totalDurationMs,
+    pixelsPerSecond: stored.pixelsPerSecond,
+  };
+}
+
+export function restoreTimelineToStorage(
+  roomId: string,
+  timeline: RoomConfigTimeline,
+  indexToInputId: Map<number, string>,
+): void {
+  if (typeof window === 'undefined') return;
+
+  const tracks = timeline.tracks.map((track) => ({
+    id: crypto.randomUUID(),
+    label: track.label,
+    clips: track.clips
+      .map((clip) => {
+        const inputId = indexToInputId.get(clip.inputIndex);
+        if (!inputId) return null;
+        return {
+          id: crypto.randomUUID(),
+          inputId,
+          startMs: clip.startMs,
+          endMs: clip.endMs,
+          blockSettings: clip.blockSettings,
+        };
+      })
+      .filter((c): c is NonNullable<typeof c> => c !== null),
+  }));
+
+  const state = {
+    tracks,
+    totalDurationMs: timeline.totalDurationMs,
+    playheadMs: 0,
+    pixelsPerSecond: timeline.pixelsPerSecond,
+  };
+
+  try {
+    saveTimeline(roomId, state);
+  } catch {
+    console.warn('Failed to save imported timeline to localStorage');
+  }
+}
+
+export function updateTimelineInputId(
+  roomId: string,
+  oldInputId: string,
+  newInputId: string,
+): boolean {
+  if (typeof window === 'undefined') return false;
+  const stored = loadTimeline(roomId);
+  if (!stored) return false;
+
+  let changed = false;
+  const tracks = stored.tracks.map((track) => ({
+    ...track,
+    clips: track.clips.map((clip) => {
+      if (clip.inputId === oldInputId) {
+        changed = true;
+        return { ...clip, inputId: newInputId };
+      }
+      return clip;
+    }),
+  }));
+
+  if (changed) {
+    saveTimeline(roomId, { ...stored, tracks });
+  }
+  return changed;
 }
 
 const PENDING_WHIP_STORAGE_KEY = 'smelter-pending-whip-inputs';

@@ -3,6 +3,7 @@ import path from 'node:path';
 import { SmelterInstance, type RegisterSmelterInputOptions, type SmelterOutput } from '../smelter';
 import { hlsUrlForKickChannel, hlsUrlForTwitchChannel } from '../streamlink';
 import { TwitchChannelMonitor } from '../twitch/TwitchChannelMonitor';
+import type { TwitchStreamInfo } from '../twitch/TwitchApi';
 import { sleep } from '../utils';
 import type { InputConfig, Layout } from '../app/store';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
@@ -20,6 +21,9 @@ export type RoomInputState = {
   showTitle: boolean;
   shaders: ShaderConfig[];
   orientation: InputOrientation;
+  borderColor: string;
+  borderWidth: number;
+  hidden: boolean;
   attachedInputIds?: string[];
   metadata: {
     title: string;
@@ -59,6 +63,8 @@ type UpdateInputOptions = {
   textScrollLoop: boolean;
   textScrollNudge: number;
   textFontSize: number;
+  borderColor: string;
+  borderWidth: number;
 };
 
 export type RegisterInputOptions =
@@ -177,6 +183,9 @@ export class RoomState {
             showTitle: false,
             shaders: [],
             orientation: 'horizontal',
+            borderColor: '#ff0000',
+            borderWidth: 0,
+            hidden: false,
             metadata: {
               title: `[MP4] ${formatMp4Name(randomMp4)}`,
               description: '[Static source] AI Generated',
@@ -362,6 +371,9 @@ export class RoomState {
         showTitle: false,
         shaders: [],
         orientation: 'horizontal',
+            borderColor: '#ff0000',
+            borderWidth: 0,
+        hidden: false,
         metadata: {
           title: 'Smelter',
           description: '',
@@ -383,7 +395,8 @@ export class RoomState {
 
   public async addNewWhipInput(username: string) {
     const inputId = `${this.idPrefix}::whip::${Date.now()}`;
-    const monitor = await WhipInputMonitor.startMonitor(username);
+    const cleanUsername = username.replace(/\[Camera\]\s*/g, '').trim();
+    const monitor = await WhipInputMonitor.startMonitor(cleanUsername);
     monitor.touch();
     this.inputs.push({
       inputId,
@@ -392,15 +405,73 @@ export class RoomState {
       showTitle: false,
       shaders: [],
       orientation: 'horizontal',
+      borderColor: '#ff0000',
+      borderWidth: 0,
+      hidden: false,
       monitor: monitor,
       metadata: {
-        title: `[Camera] ${username}`,
+        title: `[Camera] ${cleanUsername}`,
         description: `Whip Input for ${username}`,
       },
       volume: 0,
       whipUrl: '',
     });
 
+    return inputId;
+  }
+
+  private async addHlsChannelInput(
+    platform: 'twitch-channel' | 'kick-channel',
+    channelId: string
+  ): Promise<string> {
+    const inputId =
+      platform === 'twitch-channel'
+        ? inputIdForTwitchInput(this.idPrefix, channelId)
+        : inputIdForKickInput(this.idPrefix, channelId);
+    const platformLabel = platform === 'twitch-channel' ? 'Twitch' : 'Kick';
+    if (this.inputs.find(input => input.inputId === inputId)) {
+      throw new Error(`Input for ${platformLabel} channel ${channelId} already exists.`);
+    }
+
+    const hlsUrl =
+      platform === 'twitch-channel'
+        ? await hlsUrlForTwitchChannel(channelId)
+        : await hlsUrlForKickChannel(channelId);
+
+    const baseState = {
+      inputId,
+      status: 'disconnected' as const,
+      showTitle: false,
+      shaders: [] as ShaderConfig[],
+      orientation: 'horizontal' as InputOrientation,
+      borderColor: '#ff0000',
+      borderWidth: 0,
+      hidden: false,
+      metadata: { title: '', description: '' },
+      volume: 0,
+      channelId,
+      hlsUrl,
+    };
+
+    let inputState: RoomInputState;
+    let monitor: TwitchChannelMonitor | KickChannelMonitor;
+    if (platform === 'twitch-channel') {
+      const twitchMonitor = await TwitchChannelMonitor.startMonitor(channelId);
+      monitor = twitchMonitor;
+      inputState = { ...baseState, type: 'twitch-channel', monitor: twitchMonitor };
+    } else {
+      const kickMonitor = await KickChannelMonitor.startMonitor(channelId);
+      monitor = kickMonitor;
+      inputState = { ...baseState, type: 'kick-channel', monitor: kickMonitor };
+    }
+    monitor.onUpdate((streamInfo: TwitchStreamInfo, _isLive: boolean) => {
+      inputState.metadata.title = platform === 'twitch-channel'
+        ? `[Twitch.tv/${streamInfo.category}] ${streamInfo.displayName}`
+        : `[Kick.com] ${streamInfo.displayName}`;
+      inputState.metadata.description = streamInfo.title;
+      this.updateStoreWithState();
+    });
+    this.inputs.push(inputState);
     return inputId;
   }
 
@@ -411,95 +482,40 @@ export class RoomState {
     if (opts.type === 'whip') {
       const inputId = await this.addNewWhipInput(opts.username);
       return inputId;
-    } else if (opts.type === 'twitch-channel') {
-      const inputId = inputIdForTwitchInput(this.idPrefix, opts.channelId);
-      if (this.inputs.find(input => input.inputId === inputId)) {
-        throw new Error(`Input for Twitch channel ${opts.channelId} already exists.`);
+    } else if (opts.type === 'twitch-channel' || opts.type === 'kick-channel') {
+      return this.addHlsChannelInput(opts.type, opts.channelId);
+    } else if (opts.type === 'local-mp4') {
+      if (!opts.source?.fileName) {
+        throw new Error(
+          'local-mp4 requires source.fileName. Only URL is not supported; provide a file name from the mp4s directory.'
+        );
       }
-
-      const hlsUrl = await hlsUrlForTwitchChannel(opts.channelId);
-      const monitor = await TwitchChannelMonitor.startMonitor(opts.channelId);
-
-      const inputState: RoomInputState = {
-        inputId,
-        type: `twitch-channel`,
-        status: 'disconnected',
-        showTitle: false,
-        shaders: [],
-        orientation: 'horizontal',
-        metadata: {
-          title: '', // will be populated on update
-          description: '',
-        },
-        volume: 0,
-        channelId: opts.channelId,
-        hlsUrl,
-        monitor,
-      };
-      monitor.onUpdate((streamInfo, _isLive) => {
-        inputState.metadata.title = `[Twitch.tv/${streamInfo.category}] ${streamInfo.displayName}`;
-        inputState.metadata.description = streamInfo.title;
-        this.updateStoreWithState();
-      });
-      this.inputs.push(inputState);
-      return inputId;
-    } else if (opts.type === 'kick-channel') {
-      const inputId = inputIdForKickInput(this.idPrefix, opts.channelId);
-      if (this.inputs.find(input => input.inputId === inputId)) {
-        throw new Error(`Input for Kick channel ${opts.channelId} already exists.`);
-      }
-
-      const hlsUrl = await hlsUrlForKickChannel(opts.channelId);
-      const monitor = await KickChannelMonitor.startMonitor(opts.channelId);
-
-      const inputState: RoomInputState = {
-        inputId,
-        type: `kick-channel`,
-        status: 'disconnected',
-        showTitle: false,
-        shaders: [],
-        orientation: 'horizontal',
-        metadata: {
-          title: '', // will be populated on update
-          description: '',
-        },
-        volume: 0,
-        channelId: opts.channelId,
-        hlsUrl,
-        monitor,
-      };
-
-      monitor.onUpdate((streamInfo, _isLive) => {
-        inputState.metadata.title = `[Kick.com] ${streamInfo.displayName}`;
-        inputState.metadata.description = streamInfo.title;
-        this.updateStoreWithState();
-      });
-
-      this.inputs.push(inputState);
-      return inputId;
-    } else if (opts.type === 'local-mp4' && opts.source.fileName) {
       console.log('Adding local mp4');
-      let mp4Path = path.join(process.cwd(), 'mp4s', opts.source.fileName);
-      let mp4Name = opts.source.fileName;
+      const mp4Path = path.join(process.cwd(), 'mp4s', opts.source.fileName);
+      const mp4Name = opts.source.fileName;
       const inputId = `${this.idPrefix}::local::sample_streamer::${Date.now()}`;
 
-      if (await pathExists(mp4Path)) {
-        this.inputs.push({
-          inputId,
-          type: 'local-mp4',
-          status: 'disconnected',
-          showTitle: false,
-          shaders: [],
-          orientation: 'horizontal',
-          metadata: {
-            title: `[MP4] ${formatMp4Name(mp4Name)}`,
-            description: '[Static source] AI Generated',
-          },
-          mp4FilePath: mp4Path,
-          volume: 0,
-        });
+      if (!(await pathExists(mp4Path))) {
+        throw new Error(`MP4 file not found: ${opts.source.fileName}`);
       }
 
+      this.inputs.push({
+        inputId,
+        type: 'local-mp4',
+        status: 'disconnected',
+        showTitle: false,
+        shaders: [],
+        orientation: 'horizontal',
+        borderColor: '#ff0000',
+        borderWidth: 0,
+        hidden: false,
+        metadata: {
+          title: `[MP4] ${formatMp4Name(mp4Name)}`,
+          description: '[Static source] AI Generated',
+        },
+        mp4FilePath: mp4Path,
+        volume: 0,
+      });
       return inputId;
     } else if (opts.type === 'image') {
       console.log('Adding image');
@@ -559,6 +575,9 @@ export class RoomState {
           showTitle: false,
           shaders: [],
           orientation: 'horizontal',
+          borderColor: '#ff0000',
+          borderWidth: 0,
+          hidden: false,
           metadata: {
             title: formatImageName(fileName),
             description: '',
@@ -583,6 +602,9 @@ export class RoomState {
         showTitle: false,
         shaders: [],
         orientation: 'horizontal',
+        borderColor: '#ff0000',
+        borderWidth: 8,
+        hidden: false,
         metadata: {
           title: 'Text',
           description: '',
@@ -627,7 +649,14 @@ export class RoomState {
       input.monitor.stop();
     }
 
+    const PENDING_WAIT_TIMEOUT_MS = 30_000;
+    const waitStart = Date.now();
     while (input.status === 'pending') {
+      if (Date.now() - waitStart > PENDING_WAIT_TIMEOUT_MS) {
+        console.warn(`[roomState] Timed out waiting for pending input ${inputId}, forcing disconnected`);
+        input.status = 'disconnected';
+        break;
+      }
       await sleep(500);
     }
     if (input.status === 'connected') {
@@ -655,11 +684,18 @@ export class RoomState {
     const options = registerOptionsFromInput(input);
     let response = '';
     try {
-      const res = await SmelterInstance.registerInput(inputId, options);
+      const CONNECT_TIMEOUT_MS = 30_000;
+      const res = await Promise.race([
+        SmelterInstance.registerInput(inputId, options),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error(`Timeout connecting input ${inputId}`)), CONNECT_TIMEOUT_MS)
+        ),
+      ]);
       response = res;
     } catch (err: any) {
       response = err.body?.url;
       input.status = 'disconnected';
+      this.updateStoreWithState();
       throw err;
     }
     input.status = 'connected';
@@ -672,7 +708,15 @@ export class RoomState {
     if (input.type !== 'whip') {
       throw new Error('Input is not a Whip input');
     }
-    input.monitor.touch();
+    const { previousAckTimestamp, currentAckTimestamp } = input.monitor.touch();
+    const ageBeforeAckMs = currentAckTimestamp - previousAckTimestamp;
+    console.log('[whip][ack]', {
+      roomId: this.idPrefix,
+      inputId,
+      username: input.monitor.getUsername(),
+      ageBeforeAckMs,
+      inputStatus: input.status,
+    });
   }
 
   public async disconnectInput(inputId: string) {
@@ -695,9 +739,43 @@ export class RoomState {
     for (const input of this.getInputs()) {
       if (input.type === 'whip') {
         const last = input.monitor.getLastAckTimestamp() || 0;
-        if (now - last > staleTtlMs) {
+        const ageMs = now - last;
+        if (ageMs > staleTtlMs * 0.7 && ageMs <= staleTtlMs) {
+          console.log('[whip][health] ACK delayed', {
+            roomId: this.idPrefix,
+            inputId: input.inputId,
+            username: input.monitor.getUsername(),
+            ageMs,
+            staleTtlMs,
+            remainingMs: staleTtlMs - ageMs,
+            inputStatus: input.status,
+          });
+        }
+        if (ageMs > staleTtlMs) {
+          // If the input is still connected (WebRTC media flowing), don't
+          // remove it — the client heartbeat may be paused (mobile browser
+          // backgrounded / screen off) but the connection is alive.
+          if (input.status === 'connected') {
+            console.log('[whip][stale] Skipping removal — input still connected', {
+              roomId: this.idPrefix,
+              inputId: input.inputId,
+              username: input.monitor.getUsername(),
+              ageMs,
+              staleTtlMs,
+              inputStatus: input.status,
+            });
+            continue;
+          }
           try {
-            console.log('[monitor] Removing stale WHIP input', { inputId: input.inputId });
+            console.log('[whip][stale] Removing stale WHIP input', {
+              roomId: this.idPrefix,
+              inputId: input.inputId,
+              username: input.monitor.getUsername(),
+              ageMs,
+              staleTtlMs,
+              overdueMs: ageMs - staleTtlMs,
+              inputStatus: input.status,
+            });
             await this.removeInput(input.inputId);
           } catch (err: any) {
             console.log(err, 'Failed to remove stale WHIP input');
@@ -713,6 +791,8 @@ export class RoomState {
     input.shaders = options.shaders ?? input.shaders;
     input.showTitle = options.showTitle ?? input.showTitle;
     input.orientation = options.orientation ?? input.orientation;
+    input.borderColor = options.borderColor ?? input.borderColor;
+    input.borderWidth = options.borderWidth ?? input.borderWidth;
     if (input.type === 'text-input') {
       if (options.text !== undefined) {
         input.text = options.text;
@@ -776,7 +856,7 @@ export class RoomState {
     // When switching to wrapped-static layout, remove wrapped MP4 inputs and add wrapped images
     if (layout === 'wrapped-static') {
       await this.removeWrappedMp4Inputs();
-      void this.ensureWrappedImageInputs();
+      await this.ensureWrappedImageInputs();
     }
     this.updateStoreWithState();
   }
@@ -819,6 +899,8 @@ export class RoomState {
       volume: input.volume,
       shaders: input.shaders,
       orientation: input.orientation,
+      borderColor: input.borderColor,
+      borderWidth: input.borderWidth,
       imageId: input.type === 'image' ? input.imageId : undefined,
       text: input.type === 'text-input' ? input.text : undefined,
       textAlign: input.type === 'text-input' ? input.textAlign : undefined,
@@ -830,7 +912,7 @@ export class RoomState {
       textFontSize: input.type === 'text-input' ? input.textFontSize : undefined,
     });
 
-    const connectedInputs = this.inputs.filter(input => input.status === 'connected' || input.status === 'pending');
+    const connectedInputs = this.inputs.filter(input => input.status === 'connected' && !input.hidden);
     const connectedMap = new Map<string, RoomInputState>();
     for (const input of connectedInputs) {
       connectedMap.set(input.inputId, input);
@@ -859,6 +941,18 @@ export class RoomState {
       });
 
     this.output.store.getState().updateState(inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap, this.swapFadeOutDurationMs, this.newsStripEnabled);
+  }
+
+  public hideInput(inputId: string) {
+    const input = this.getInput(inputId);
+    input.hidden = true;
+    this.updateStoreWithState();
+  }
+
+  public showInput(inputId: string) {
+    const input = this.getInput(inputId);
+    input.hidden = false;
+    this.updateStoreWithState();
   }
 
   private getInput(inputId: string): RoomInputState {
@@ -920,6 +1014,9 @@ export class RoomState {
         showTitle: false,
         shaders: [],
         orientation: 'horizontal',
+        borderColor: '#ff0000',
+        borderWidth: 0,
+        hidden: false,
         metadata: {
           title: `[MP4] ${formatMp4Name(fileName)}`,
           description: '[Wrapped MP4]',
@@ -979,6 +1076,9 @@ export class RoomState {
         showTitle: false,
         shaders: [],
         orientation: 'horizontal',
+        borderColor: '#ff0000',
+        borderWidth: 0,
+        hidden: false,
         metadata: {
           title: formatImageName(fileName),
           description: '',
