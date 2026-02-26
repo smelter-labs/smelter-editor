@@ -448,13 +448,25 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     gameState.smoothMoveSpeed > 0
       ? gameState.smoothMoveSpeed
       : 1;
+  const smoothMoveAccel =
+    typeof gameState.smoothMoveAccel === 'number' &&
+    Number.isFinite(gameState.smoothMoveAccel) &&
+    gameState.smoothMoveAccel > 0
+      ? gameState.smoothMoveAccel
+      : 3.2;
+  const smoothMoveDecel =
+    typeof gameState.smoothMoveDecel === 'number' &&
+    Number.isFinite(gameState.smoothMoveDecel) &&
+    gameState.smoothMoveDecel > 0
+      ? gameState.smoothMoveDecel
+      : 1.18;
   const effectiveSmoothSpeedMultiplier =
     LOCAL_VISUAL_SPEED_MULTIPLIER * smoothMoveSpeed;
 
-  const easeInOutCubic = (t: number) => (
-    t < 0.5
-      ? 4 * t * t * t
-      : 1 - Math.pow(-2 * t + 2, 3) / 2
+  // Fast acceleration with slower deceleration tail:
+  // movement starts quickly but eases out near tile boundaries.
+  const easeOutPower = (t: number, power: number) => (
+    1 - Math.pow(1 - Math.max(0, Math.min(1, t)), power)
   );
 
   const getSmoothedProgress = (
@@ -472,9 +484,9 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
       // Backend already drives sub-tick movement; avoid double interpolation.
       return clampedRaw;
     }
-    // Blend backend progress with local tick progress to keep motion smooth,
-    // with both acceleration and deceleration phases.
-    const blended = clampedRaw + (1 - clampedRaw) * easeInOutCubic(clampedLocal);
+    // Asymmetric smoothing: accelerate quickly, decelerate more gradually.
+    const easedLocal = easeOutPower(clampedLocal, smoothMoveAccel);
+    const blended = clampedRaw + (1 - clampedRaw) * easedLocal;
     return Math.max(0, Math.min(1, blended));
   };
 
@@ -501,7 +513,9 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     const startTime = now;
     const duration = Math.max(
       80,
-      Math.min(900, tickIntervalRef.current / effectiveSmoothSpeedMultiplier),
+      // Keep interpolation window slightly longer than one nominal tick.
+      // This reduces "full stop" artifacts before the next update arrives.
+      Math.min(900, (tickIntervalRef.current / effectiveSmoothSpeedMultiplier) * smoothMoveDecel),
     );
     let raf: ReturnType<typeof setInterval>;
     raf = setInterval(() => {
@@ -514,7 +528,7 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
       }
     }, 16);
     return () => clearInterval(raf);
-  }, [gameState.cells, smoothMoveEnabled, effectiveSmoothSpeedMultiplier]);
+  }, [gameState.cells, smoothMoveEnabled, effectiveSmoothSpeedMultiplier, smoothMoveDecel]);
 
   // Game over: remove cells one by one, then show modal
   const [removedCount, setRemovedCount] = useState(0);

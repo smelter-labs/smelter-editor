@@ -935,6 +935,8 @@ const GameStateSchema = Type.Object({
   seq: Type.Integer({ minimum: 1 }),
   smoothMove: Type.Optional(Type.Boolean()),
   smoothMoveSpeed: Type.Optional(Type.Number({ exclusiveMinimum: 0 })),
+  smoothMoveAccel: Type.Optional(Type.Number({ exclusiveMinimum: 0 })),
+  smoothMoveDecel: Type.Optional(Type.Number({ exclusiveMinimum: 0 })),
   board: Type.Object({
     width: Type.Number({ minimum: 1 }),
     height: Type.Number({ minimum: 1 }),
@@ -1094,6 +1096,8 @@ routes.post<{ Body: Static<typeof GameStateSchema> }>(
       cells: gs.cells,
       smoothMove: gs.smoothMove === true,
       smoothMoveSpeed: gs.smoothMoveSpeed ?? 1,
+      smoothMoveAccel: gs.smoothMoveAccel ?? 3.2,
+      smoothMoveDecel: gs.smoothMoveDecel ?? 1.18,
       backgroundColor: gs.backgroundColor,
       boardBorderColor: '#111111',
       boardBorderWidth: 4,

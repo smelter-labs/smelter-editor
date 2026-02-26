@@ -705,6 +705,8 @@ export class RoomState {
           cells: [],
           smoothMove: false,
           smoothMoveSpeed: 1,
+          smoothMoveAccel: 3.2,
+          smoothMoveDecel: 1.18,
           backgroundColor: '#1e222c',
           cellGap: 2,
           boardBorderColor: '#000000',
@@ -1084,7 +1086,7 @@ export class RoomState {
     this.updateStoreWithState();
   }
 
-  public updateGameState(inputId: string, gameState: { board: { width: number; height: number; cellSize: number; cellGap?: number }; cells: { x: number; y: number; color: string; size?: number; isHead?: boolean; direction?: 'up' | 'down' | 'left' | 'right'; progress?: number }[]; smoothMove?: boolean; smoothMoveSpeed?: number; backgroundColor: string; gameOverData?: { winnerName: string; reason: string; players: { name: string; score: number; eaten: number; cuts: number; color: string }[] } }) {
+  public updateGameState(inputId: string, gameState: { board: { width: number; height: number; cellSize: number; cellGap?: number }; cells: { x: number; y: number; color: string; size?: number; isHead?: boolean; direction?: 'up' | 'down' | 'left' | 'right'; progress?: number }[]; smoothMove?: boolean; smoothMoveSpeed?: number; smoothMoveAccel?: number; smoothMoveDecel?: number; backgroundColor: string; gameOverData?: { winnerName: string; reason: string; players: { name: string; score: number; eaten: number; cuts: number; color: string }[] } }) {
     const input = this.getInput(inputId);
     if (input.type !== 'game') {
       throw new Error(`Input ${inputId} is not a game input`);
@@ -1101,6 +1103,18 @@ export class RoomState {
         gameState.smoothMoveSpeed > 0
           ? gameState.smoothMoveSpeed
           : 1,
+      smoothMoveAccel:
+        typeof gameState.smoothMoveAccel === 'number' &&
+        Number.isFinite(gameState.smoothMoveAccel) &&
+        gameState.smoothMoveAccel > 0
+          ? gameState.smoothMoveAccel
+          : 3.2,
+      smoothMoveDecel:
+        typeof gameState.smoothMoveDecel === 'number' &&
+        Number.isFinite(gameState.smoothMoveDecel) &&
+        gameState.smoothMoveDecel > 0
+          ? gameState.smoothMoveDecel
+          : 1.18,
       backgroundColor: input.gameState.backgroundColor || gameState.backgroundColor,
       cellGap: input.gameState.cellGap || gameState.board.cellGap || 0,
       boardBorderColor: input.gameState.boardBorderColor ?? input.gameState.gridLineColor ?? '#000000',
