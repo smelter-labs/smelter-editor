@@ -305,13 +305,25 @@ export function InlineShaderParams({
 }: {
   shaderId: string;
   availableShaders: AvailableShader[];
-  shaders: { shaderId: string; shaderName: string; enabled: boolean; params: { paramName: string; paramValue: number | string }[] }[];
+  shaders: {
+    shaderId: string;
+    shaderName: string;
+    enabled: boolean;
+    params: { paramName: string; paramValue: number | string }[];
+  }[];
   sliderValues: { [key: string]: number };
   paramLoading: { [shaderId: string]: string | null };
   onShaderToggle: (shaderId: string) => void;
   onShaderRemove: (shaderId: string) => void;
-  onSliderChange: (shaderId: string, paramName: string, newValue: number) => void;
-  getShaderParamConfig: (shaderId: string, paramName: string) => { paramName: string; paramValue: number | string } | undefined;
+  onSliderChange: (
+    shaderId: string,
+    paramName: string,
+    newValue: number,
+  ) => void;
+  getShaderParamConfig: (
+    shaderId: string,
+    paramName: string,
+  ) => { paramName: string; paramValue: number | string } | undefined;
   onBack: () => void;
 }) {
   const shaderDef = availableShaders.find((s) => s.id === shaderId);
@@ -332,9 +344,13 @@ export function InlineShaderParams({
         Back to block properties
       </button>
 
-      <div className='text-sm text-white font-medium mb-1'>{shaderDef.name}</div>
+      <div className='text-sm text-white font-medium mb-1'>
+        {shaderDef.name}
+      </div>
       {shaderDef.description && (
-        <div className='text-xs text-neutral-500 mb-3'>{shaderDef.description}</div>
+        <div className='text-xs text-neutral-500 mb-3'>
+          {shaderDef.description}
+        </div>
       )}
 
       <div className='flex items-center justify-between py-2 border-b border-neutral-800 mb-3'>
@@ -354,8 +370,10 @@ export function InlineShaderParams({
       </div>
 
       <div className='space-y-5 py-2'>
-        {(!shaderDef.params || shaderDef.params.length === 0) ? (
-          <div className='text-sm text-neutral-500'>No configurable parameters.</div>
+        {!shaderDef.params || shaderDef.params.length === 0 ? (
+          <div className='text-sm text-neutral-500'>
+            No configurable parameters.
+          </div>
         ) : (
           shaderDef.params.map((param) => {
             const paramConfig = getShaderParamConfig(shaderDef.id, param.name);

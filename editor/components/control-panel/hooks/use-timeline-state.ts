@@ -1,7 +1,11 @@
 'use client';
 
 import { useReducer, useEffect, useCallback, useRef, useState } from 'react';
-import type { Input, ShaderConfig, SnakeEventShaderConfig } from '@/app/actions/actions';
+import type {
+  Input,
+  ShaderConfig,
+  SnakeEventShaderConfig,
+} from '@/app/actions/actions';
 import { loadTimeline, saveTimeline } from '@/lib/timeline-storage';
 
 // ── Types ────────────────────────────────────────────────
@@ -175,10 +179,16 @@ export function createBlockSettingsFromInput(input?: Input): BlockSettings {
     gameGridLineAlpha: input?.gameGridLineAlpha,
     snakeEventShaders: input?.snakeEventShaders,
     snake1Shaders: input?.snake1Shaders
-      ? input.snake1Shaders.map((s) => ({ ...s, params: (s.params || []).map((p) => ({ ...p })) }))
+      ? input.snake1Shaders.map((s) => ({
+          ...s,
+          params: (s.params || []).map((p) => ({ ...p })),
+        }))
       : undefined,
     snake2Shaders: input?.snake2Shaders
-      ? input.snake2Shaders.map((s) => ({ ...s, params: (s.params || []).map((p) => ({ ...p })) }))
+      ? input.snake2Shaders.map((s) => ({
+          ...s,
+          params: (s.params || []).map((p) => ({ ...p })),
+        }))
       : undefined,
   };
 }

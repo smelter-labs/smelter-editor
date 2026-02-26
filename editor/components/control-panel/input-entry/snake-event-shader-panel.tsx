@@ -327,7 +327,11 @@ export default function SnakeEventShaderPanel({
                         onChange={(e) =>
                           handleApplicationModeChange(
                             type,
-                            e.target.value as 'all' | 'snake_cells' | 'first_n' | 'sequential',
+                            e.target.value as
+                              | 'all'
+                              | 'snake_cells'
+                              | 'first_n'
+                              | 'sequential',
                           )
                         }
                         className='w-full text-xs bg-neutral-900 text-white border border-neutral-700 rounded px-2 py-1 focus:outline-none focus:border-neutral-500 cursor-pointer'>
