@@ -106,7 +106,7 @@ function buildInputColorMap(inputs: Input[]) {
 
 const MIN_HEIGHT = 120;
 const MAX_HEIGHT_VH = 0.6;
-const DEFAULT_HEIGHT = 350;
+const DEFAULT_HEIGHT = 250;
 const TRACK_HEIGHT = 40;
 const SOURCES_WIDTH = 180;
 const SNAP_THRESHOLD_PX = 8;

@@ -197,7 +197,7 @@ export function AddVideoSection({
             return (
               <button
                 key={t.id}
-                className={`py-2 px-2 md:px-3 -mb-[1px] cursor-pointer text-base font-bold transition-colors ${
+                className={`py-2 px-2 md:px-3 -mb-[1px] cursor-pointer text-sm font-bold transition-colors ${
                   isActive
                     ? 'border-b-[3px] border-white text-white'
                     : 'border-b-[3px] border-transparent text-neutral-400 hover:text-white'

@@ -322,6 +322,9 @@ export default function ControlPanel({
       const detail = (e as CustomEvent<{ clip: SelectedTimelineClip | null }>)
         .detail;
       setSelectedTimelineClip(detail?.clip ?? null);
+      if (detail?.clip) {
+        addVideoAccordionRef.current?.close();
+      }
     };
     window.addEventListener('smelter:timeline:selected-clip', handler);
     return () =>
