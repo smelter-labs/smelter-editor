@@ -184,9 +184,14 @@ function evaluateGameSequence(sourceKey: string, seq: number): GameSeqDecision {
 
   if (seq === 1) {
     if (lastSeq !== undefined) {
-      console.info('[game-state] New game sequence started, resetting state', { sourceKey, lastSeq });
-      cleanupGameTrackingForSourceKey(sourceKey);
-      gameLastSeenAtMap.set(sourceKey, now);
+      console.info('[game-state] New game sequence started, keeping routed room', {
+        sourceKey,
+        lastSeq,
+      });
+      // Keep route ownership so "play again" continues in the same room/input.
+      // Reset only sequence/movement tracking for the fresh run.
+      gameLastBoardSignatureMap.delete(sourceKey);
+      gameLastMovementAtMap.set(sourceKey, now);
     }
     gameLastSeqMap.set(sourceKey, 1);
     return { shouldProcess: true, outOfOrder: false };
