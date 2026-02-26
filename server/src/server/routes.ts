@@ -974,6 +974,30 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof GameStateSchema> }>(
     const currentOwner = gameInputOwnerMap.get(targetKey);
 
     if (currentOwner && currentOwner !== sourceKey) {
+      const ownerRoute = gameSourceRouteMap.get(currentOwner);
+      const ownerRouteMatchesTarget =
+        ownerRoute?.roomId === roomId && ownerRoute?.inputId === inputId;
+      const ownerLastSeenAt = gameLastSeenAtMap.get(currentOwner);
+      const ownerTimedOut =
+        ownerLastSeenAt !== undefined &&
+        Date.now() - ownerLastSeenAt > GAME_STATE_TIMEOUT_MS;
+      const shouldTakeOverOwner =
+        gs.seq === 1 || !ownerRouteMatchesTarget || ownerTimedOut;
+
+      if (shouldTakeOverOwner) {
+        console.info('[game-state] Taking over explicit room input ownership', {
+          roomId,
+          inputId,
+          previousOwner: currentOwner,
+          sourceKey,
+          reason: gs.seq === 1
+            ? 'new_sequence'
+            : !ownerRouteMatchesTarget
+              ? 'stale_owner_route'
+              : 'owner_timed_out',
+        });
+        cleanupGameTrackingForSourceKey(currentOwner);
+      } else {
       // Another game stream is trying to update the same input.
       // Route this stream into a dedicated room with a single game input.
       const { roomId: newRoomId, inputId: newInputId } = await createDedicatedGameRoom(gs);
@@ -989,6 +1013,7 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof GameStateSchema> }>(
         roomUrl: `/room/${newRoomId}`,
       });
       return;
+      }
     }
 
     gameInputOwnerMap.set(targetKey, sourceKey);
