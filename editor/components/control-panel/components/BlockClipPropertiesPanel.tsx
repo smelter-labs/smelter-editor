@@ -25,6 +25,140 @@ import { useControlPanelContext } from '../contexts/control-panel-context';
 import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/spinner';
 import { toast } from 'react-toastify';
+import type { ShaderConfig, AvailableShader as AvailableShaderType } from '@/app/actions/actions';
+
+function SnakeShaderSection({
+  label,
+  shaders,
+  availableShaders,
+  onPatch,
+}: {
+  label: string;
+  shaders: ShaderConfig[];
+  availableShaders: AvailableShaderType[];
+  onPatch: (shaders: ShaderConfig[]) => void;
+}) {
+  const [sliderValues, setSliderValues] = useState<{ [key: string]: number }>(
+    {},
+  );
+  const [paramLoading, setParamLoading] = useState<{
+    [shaderId: string]: string | null;
+  }>({});
+  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+
+  const handleToggle = useCallback(
+    (shaderId: string) => {
+      const current = shaders;
+      const existing = current.find((s) => s.shaderId === shaderId);
+      if (!existing) {
+        const shaderDef = availableShaders.find((s) => s.id === shaderId);
+        if (!shaderDef) return;
+        onPatch([
+          ...current,
+          {
+            shaderName: shaderDef.name,
+            shaderId: shaderDef.id,
+            enabled: true,
+            params:
+              shaderDef.params?.map((param) => ({
+                paramName: param.name,
+                paramValue:
+                  typeof param.defaultValue === 'number'
+                    ? param.defaultValue
+                    : 0,
+              })) || [],
+          },
+        ]);
+        return;
+      }
+      onPatch(
+        current.map((shader) =>
+          shader.shaderId === shaderId
+            ? { ...shader, enabled: !shader.enabled }
+            : shader,
+        ),
+      );
+    },
+    [shaders, availableShaders, onPatch],
+  );
+
+  const handleRemove = useCallback(
+    (shaderId: string) => {
+      onPatch(shaders.filter((shader) => shader.shaderId !== shaderId));
+    },
+    [shaders, onPatch],
+  );
+
+  const handleSlider = useCallback(
+    (shaderId: string, paramName: string, newValue: number) => {
+      setSliderValues((prev) => ({
+        ...prev,
+        [`${shaderId}:${paramName}`]: newValue,
+      }));
+      setParamLoading((prev) => ({ ...prev, [shaderId]: paramName }));
+      const updated = shaders.map((shader) => {
+        if (shader.shaderId !== shaderId) return shader;
+        return {
+          ...shader,
+          params: shader.params.map((param) =>
+            param.paramName === paramName
+              ? { ...param, paramValue: newValue }
+              : param,
+          ),
+        };
+      });
+      onPatch(updated);
+      setParamLoading((prev) => ({ ...prev, [shaderId]: null }));
+    },
+    [shaders, onPatch],
+  );
+
+  const getParamConfig = useCallback(
+    (shaderId: string, paramName: string) =>
+      shaders
+        ?.find((shader) => shader.shaderId === shaderId)
+        ?.params.find((param) => param.paramName === paramName),
+    [shaders],
+  );
+
+  const fakeInput: Input = {
+    id: -1,
+    inputId: '',
+    title: '',
+    description: '',
+    volume: 0,
+    type: 'local-mp4',
+    sourceState: 'unknown',
+    status: 'connected',
+    shaders,
+    orientation: 'horizontal',
+  };
+
+  return (
+    <div className='mt-2 border-t border-neutral-800 pt-2'>
+      <div className='text-xs text-neutral-400 mb-1'>{label}</div>
+      <ShaderPanel
+        input={fakeInput}
+        availableShaders={availableShaders}
+        sliderValues={sliderValues}
+        paramLoading={paramLoading}
+        shaderLoading={null}
+        onShaderToggle={handleToggle}
+        onShaderRemove={handleRemove}
+        onSliderChange={handleSlider}
+        getShaderParamConfig={getParamConfig}
+        onOpenAddShader={() => setIsAddModalOpen(true)}
+      />
+      <AddShaderModal
+        isOpen={isAddModalOpen}
+        onClose={() => setIsAddModalOpen(false)}
+        availableShaders={availableShaders}
+        addedShaderIds={new Set(shaders.map((s) => s.shaderId))}
+        onAddShader={handleToggle}
+      />
+    </div>
+  );
+}
 
 export type SelectedTimelineClip = {
   trackId: string;
@@ -240,6 +374,8 @@ export function BlockClipPropertiesPanel({
           gameGridLineColor: patch.gameGridLineColor,
           gameGridLineAlpha: patch.gameGridLineAlpha,
           snakeEventShaders: patch.snakeEventShaders,
+          snake1Shaders: patch.snake1Shaders ?? nextClip.blockSettings.snake1Shaders,
+          snake2Shaders: patch.snake2Shaders ?? nextClip.blockSettings.snake2Shaders,
         });
         await handleRefreshState();
       } catch (err) {
@@ -587,10 +723,33 @@ export function BlockClipPropertiesPanel({
           inputId={selectedTimelineClip.inputId}
           config={selectedTimelineClip.blockSettings.snakeEventShaders}
           availableShaders={availableShaders}
+          onConfigChange={(updated) => {
+            void applyClipPatch({ snakeEventShaders: updated });
+          }}
           onUpdate={async () => {
             await handleRefreshState();
           }}
         />
+      )}
+      {selectedInput?.type === 'game' && (
+        <>
+          <SnakeShaderSection
+            label='🐍 Snake 1 Shaders'
+            shaders={selectedTimelineClip.blockSettings.snake1Shaders ?? []}
+            availableShaders={availableShaders}
+            onPatch={(shaders) =>
+              void applyClipPatch({ snake1Shaders: shaders })
+            }
+          />
+          <SnakeShaderSection
+            label='🐍 Snake 2 Shaders'
+            shaders={selectedTimelineClip.blockSettings.snake2Shaders ?? []}
+            availableShaders={availableShaders}
+            onPatch={(shaders) =>
+              void applyClipPatch({ snake2Shaders: shaders })
+            }
+          />
+        </>
       )}
       <div className='flex items-center justify-between mb-2'>
         <span className='text-xs text-neutral-400'>Attached inputs</span>

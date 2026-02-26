@@ -1,7 +1,7 @@
 'use client';
 
 import { useReducer, useEffect, useCallback, useRef, useState } from 'react';
-import type { Input, SnakeEventShaderConfig } from '@/app/actions/actions';
+import type { Input, ShaderConfig, SnakeEventShaderConfig } from '@/app/actions/actions';
 import { loadTimeline, saveTimeline } from '@/lib/timeline-storage';
 
 // ── Types ────────────────────────────────────────────────
@@ -42,6 +42,8 @@ export type BlockSettings = {
   gameGridLineColor?: string;
   gameGridLineAlpha?: number;
   snakeEventShaders?: SnakeEventShaderConfig;
+  snake1Shaders?: ShaderConfig[];
+  snake2Shaders?: ShaderConfig[];
 };
 
 /** @deprecated Use `Clip` instead. Kept for backwards compat with room-config. */
@@ -172,6 +174,12 @@ export function createBlockSettingsFromInput(input?: Input): BlockSettings {
     gameGridLineColor: input?.gameGridLineColor,
     gameGridLineAlpha: input?.gameGridLineAlpha,
     snakeEventShaders: input?.snakeEventShaders,
+    snake1Shaders: input?.snake1Shaders
+      ? input.snake1Shaders.map((s) => ({ ...s, params: (s.params || []).map((p) => ({ ...p })) }))
+      : undefined,
+    snake2Shaders: input?.snake2Shaders
+      ? input.snake2Shaders.map((s) => ({ ...s, params: (s.params || []).map((p) => ({ ...p })) }))
+      : undefined,
   };
 }
 

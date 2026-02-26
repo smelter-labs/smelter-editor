@@ -38,7 +38,7 @@ type TypeSpecificState =
   | { type: 'whip'; whipUrl: string; monitor: WhipInputMonitor }
   | { type: 'image'; imageId: string }
   | { type: 'text-input'; text: string; textAlign: 'left' | 'center' | 'right'; textColor: string; textMaxLines: number; textScrollSpeed: number; textScrollLoop: boolean; textScrollNudge: number; textFontSize: number }
-  | { type: 'game'; gameState: GameState; snakeEventShaders?: SnakeEventShaderConfig; activeEffects: ActiveSnakeEffect[]; effectTimers: NodeJS.Timeout[] };
+  | { type: 'game'; gameState: GameState; snakeEventShaders?: SnakeEventShaderConfig; snake1Shaders?: ShaderConfig[]; snake2Shaders?: ShaderConfig[]; activeEffects: ActiveSnakeEffect[]; effectTimers: NodeJS.Timeout[] };
 
 export type PendingWhipInputData = {
   id: string;
@@ -73,6 +73,8 @@ type UpdateInputOptions = {
   gameGridLineColor: string;
   gameGridLineAlpha: number;
   snakeEventShaders: SnakeEventShaderConfig;
+  snake1Shaders: ShaderConfig[];
+  snake2Shaders: ShaderConfig[];
 };
 
 export type RegisterInputOptions =
@@ -930,6 +932,12 @@ export class RoomState {
       if (options.snakeEventShaders !== undefined) {
         input.snakeEventShaders = options.snakeEventShaders;
       }
+      if (options.snake1Shaders !== undefined) {
+        input.snake1Shaders = options.snake1Shaders;
+      }
+      if (options.snake2Shaders !== undefined) {
+        input.snake2Shaders = options.snake2Shaders;
+      }
     }
     if (options.attachedInputIds !== undefined) {
       input.attachedInputIds = options.attachedInputIds;
@@ -1024,6 +1032,8 @@ export class RoomState {
       textFontSize: input.type === 'text-input' ? input.textFontSize : undefined,
       gameState: input.type === 'game' ? input.gameState : undefined,
       snakeEventShaders: input.type === 'game' ? input.snakeEventShaders : undefined,
+      snake1Shaders: input.type === 'game' ? input.snake1Shaders : undefined,
+      snake2Shaders: input.type === 'game' ? input.snake2Shaders : undefined,
     });
 
     const connectedInputs = this.inputs.filter(input => input.status === 'connected' && !input.hidden);

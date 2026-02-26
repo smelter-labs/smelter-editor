@@ -397,7 +397,7 @@ function GameOverModal({ data, resolution }: { data: GameOverData; resolution: R
   );
 }
 
-function GameBoard({ gameState, resolution }: { gameState: GameState; resolution: Resolution }) {
+function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { gameState: GameState; resolution: Resolution; snake1Shaders?: ShaderConfig[]; snake2Shaders?: ShaderConfig[] }) {
   const activeEffect = gameState.activeEffects?.[0];
 
   const [effectProgress, setEffectProgress] = useState(0);
@@ -457,6 +457,93 @@ function GameBoard({ gameState, resolution }: { gameState: GameState; resolution
     }
   }, [!!gameState.gameOverData]);
 
+  // --- Spawn zoom animation for new food cells ---
+  const SPAWN_DURATION_MS = 300;
+  const prevFoodKeysRef = useRef<Set<string>>(new Set());
+  const spawnTimesRef = useRef<Map<string, number>>(new Map());
+  const [, forceRender] = useState(0);
+
+  // --- Swallow wave animation (bulge traveling head → tail) ---
+  const SWALLOW_DURATION_PER_SEGMENT_MS = 80;
+  const SWALLOW_BULGE_MS = 200;
+  // Map: snakeColor → swallow start timestamp
+  const swallowWavesRef = useRef<Map<string, number>>(new Map());
+
+  // Build set of snake colors (colors that have a head) to reliably distinguish body from food.
+  // Body segments may lack `direction` when not actively interpolating, so we can't rely on it.
+  const snakeColors = new Set<string>();
+  for (const cell of gameState.cells) {
+    if (cell.isHead) snakeColors.add(cell.color);
+  }
+
+  useEffect(() => {
+    const now = Date.now();
+
+    // Build snake colors inside the effect too for food detection
+    const headColors = new Set<string>();
+    for (const cell of gameState.cells) {
+      if (cell.isHead) headColors.add(cell.color);
+    }
+
+    // Track food cells for spawn animation & detect eaten food
+    // A food cell is one whose color doesn't match any snake head
+    const currentFoodKeys = new Set<string>();
+    for (const cell of gameState.cells) {
+      if (cell.isHead || headColors.has(cell.color)) continue;
+      const key = `${cell.x},${cell.y},${cell.color}`;
+      currentFoodKeys.add(key);
+      if (!prevFoodKeysRef.current.has(key)) {
+        spawnTimesRef.current.set(key, now);
+      }
+    }
+
+    // Detect eaten food → trigger swallow wave on nearest snake
+    for (const oldKey of prevFoodKeysRef.current) {
+      if (!currentFoodKeys.has(oldKey)) {
+        // Food disappeared — find which snake head is closest
+        const [fx, fy] = oldKey.split(',').map(Number);
+        let closestColor: string | null = null;
+        let closestDist = Infinity;
+        for (const cell of gameState.cells) {
+          if (cell.isHead) {
+            const dist = Math.abs(cell.x - fx) + Math.abs(cell.y - fy);
+            if (dist < closestDist) {
+              closestDist = dist;
+              closestColor = cell.color;
+            }
+          }
+        }
+        if (closestColor) {
+          swallowWavesRef.current.set(closestColor, now);
+        }
+      }
+    }
+
+    // Clean up old spawn times
+    for (const key of spawnTimesRef.current.keys()) {
+      if (!currentFoodKeys.has(key) || now - spawnTimesRef.current.get(key)! > SPAWN_DURATION_MS) {
+        spawnTimesRef.current.delete(key);
+      }
+    }
+    prevFoodKeysRef.current = currentFoodKeys;
+
+    // Clean up finished swallow waves
+    const snakeSegmentCount = gameState.cells.filter(c => c.isHead || headColors.has(c.color)).length;
+    const maxSwallowMs = snakeSegmentCount * SWALLOW_DURATION_PER_SEGMENT_MS + SWALLOW_BULGE_MS;
+    for (const [color, startTime] of swallowWavesRef.current) {
+      if (now - startTime > maxSwallowMs) {
+        swallowWavesRef.current.delete(color);
+      }
+    }
+
+    const hasActiveAnimations = spawnTimesRef.current.size > 0 || swallowWavesRef.current.size > 0;
+    if (hasActiveAnimations) {
+      const interval = setInterval(() => forceRender(n => n + 1), 16);
+      const timeout = setTimeout(() => clearInterval(interval), Math.max(SPAWN_DURATION_MS, maxSwallowMs) + 50);
+      return () => { clearInterval(interval); clearTimeout(timeout); };
+    }
+  }, [gameState.cells]);
+
   const gap = gameState.cellGap ?? 1;
   const totalGapX = gap * (gameState.boardWidth - 1);
   const totalGapY = gap * (gameState.boardHeight - 1);
@@ -473,6 +560,27 @@ function GameBoard({ gameState, resolution }: { gameState: GameState; resolution
   const borderC = gameState.boardBorderColor ?? '#ffffff';
   const gridColor = hexToRgb(gameState.gridLineColor ?? '#232323');
 
+  // Build segment index from head for swallow wave (head=0, next body=1, ...)
+  const segmentIndexMap = new Map<number, number>(); // cellArrayIndex → segmentIndex
+  const snakesByColor = new Map<string, number[]>();
+  gameState.cells.forEach((cell, i) => {
+    if (cell.isHead || snakeColors.has(cell.color)) {
+      const arr = snakesByColor.get(cell.color) ?? [];
+      arr.push(i);
+      snakesByColor.set(cell.color, arr);
+    }
+  });
+  for (const indices of snakesByColor.values()) {
+    // Head first (isHead), then body segments in array order
+    const sorted = indices.sort((a, b) => {
+      const ca = gameState.cells[a], cb = gameState.cells[b];
+      if (ca.isHead && !cb.isHead) return -1;
+      if (!ca.isHead && cb.isHead) return 1;
+      return a - b;
+    });
+    sorted.forEach((cellIdx, segIdx) => segmentIndexMap.set(cellIdx, segIdx));
+  }
+
   // During game-over removal animation, slice cells from the end
   const isRemoving = !!gameState.gameOverData && removedCount > 0;
   const cellsAfterRemoval = isRemoving
@@ -481,15 +589,36 @@ function GameBoard({ gameState, resolution }: { gameState: GameState; resolution
 
   // Smelter engine has a hard limit of 100 layout nodes.
   // Budget: ~15 for Input wrappers + 3 fixed GameBoard nodes (wrapper, border, grid).
-  // Each head cell = 5 Views (cell + 2 eyes + 2 pupils), normal cell = 1 View.
-  const MAX_LAYOUT_NODES = showModal ? 20 : 80;
-  let nodesBudget = MAX_LAYOUT_NODES;
-  const visibleCells: typeof gameState.cells = [];
-  for (const cell of cellsAfterRemoval) {
-    const cost = cell.isHead ? 5 : 1;
+  // Each head = 1 View + 6 eye Views rendered separately (2×border+eye+pupil). Normal cell = 1.
+    const MAX_LAYOUT_NODES = showModal ? 20 : 80;
+    let nodesBudget = MAX_LAYOUT_NODES;
+    const visibleCells: { cell: (typeof gameState.cells)[number]; origIdx: number }[] = [];
+    for (let ci = 0; ci < cellsAfterRemoval.length; ci++) {
+      const cell = cellsAfterRemoval[ci];
+      const cost = cell.isHead ? 7 : 1;
     if (nodesBudget - cost < 0) break;
     nodesBudget -= cost;
-    visibleCells.push(cell);
+    visibleCells.push({ cell, origIdx: ci });
+  }
+
+  const activeSnake1Shaders = (snake1Shaders ?? []).filter(s => s.enabled);
+  const activeSnake2Shaders = (snake2Shaders ?? []).filter(s => s.enabled);
+
+  // Ordered list of snake colors (by first head appearance)
+  const snakeColorOrder: string[] = [];
+  for (const cell of gameState.cells) {
+    if (cell.isHead && !snakeColorOrder.includes(cell.color)) {
+      snakeColorOrder.push(cell.color);
+    }
+  }
+
+  // Map snake color → its active shaders (for overlay rendering)
+  const snakeShaderMap = new Map<string, ShaderConfig[]>();
+  if (activeSnake1Shaders.length > 0 && snakeColorOrder[0]) {
+    snakeShaderMap.set(snakeColorOrder[0], activeSnake1Shaders);
+  }
+  if (activeSnake2Shaders.length > 0 && snakeColorOrder[1]) {
+    snakeShaderMap.set(snakeColorOrder[1], activeSnake2Shaders);
   }
 
   const boardContent = (
@@ -505,15 +634,13 @@ function GameBoard({ gameState, resolution }: { gameState: GameState; resolution
           borderColor: borderC,
         }} />
       )}
-      {visibleCells.map((cell, i) => {
+      {visibleCells.map(({ cell, origIdx }, i) => {
         const size = cell.size ?? gameState.cellSize;
         const w = cellPixel * size;
         const h = cellPixel * size;
         const progress = cell.progress ?? 1;
-        // Compute direction offset for interpolation
         let dx = 0, dy = 0;
         if (progress < 1 && cell.direction) {
-          // direction tells us where the cell is moving TO, so previous position is opposite
           switch (cell.direction) {
             case 'right': dx = -1; break;
             case 'left':  dx = 1;  break;
@@ -525,95 +652,56 @@ function GameBoard({ gameState, resolution }: { gameState: GameState; resolution
         const x = offsetX + cell.x * step + dx * (1 - progress) * step;
         const y = offsetY + cell.y * step + dy * (1 - progress) * step;
 
-        // Determine snake direction: prefer explicit `direction` field, fallback to body inference
-        let eyePositions: { eye1Top: number; eye1Left: number; eye2Top: number; eye2Left: number;
-          pupil1Top: number; pupil1Left: number; pupil2Top: number; pupil2Left: number } | undefined;
-        if (cell.isHead) {
-          let dir: 'up' | 'down' | 'left' | 'right' = 'right';
-          // Infer direction from the NEXT body segment (head position relative to body).
-          // This is more reliable than cell.direction which may lag by one tick
-          // and use the opposite convention.
-          const nextBody = gameState.cells.find(c => !c.isHead && c.color === cell.color);
-          if (nextBody) {
-            let dx = cell.x - nextBody.x;
-            let dy = cell.y - nextBody.y;
-            if (Math.abs(dx) > 1) dx = -Math.sign(dx);
-            if (Math.abs(dy) > 1) dy = -Math.sign(dy);
-            if (dx === 1 && dy === 0) dir = 'right';
-            else if (dx === -1 && dy === 0) dir = 'left';
-            else if (dx === 0 && dy === -1) dir = 'up';
-            else dir = 'down';
-          } else if (cell.direction) {
-            // Flip the provided direction — game engine sends the opposite convention
-            const flipMap = { up: 'down', down: 'up', left: 'right', right: 'left' } as const;
-            dir = flipMap[cell.direction];
-          }
-          const eyeSize = w * 0.28;
-          const pupilSize = w * 0.14;
-          const pupilOffset = w * 0.07;
-          if (dir === 'right') {
-            eyePositions = {
-              eye1Top: h * 0.15, eye1Left: w * 0.57,
-              eye2Top: h * 0.57, eye2Left: w * 0.57,
-              pupil1Top: pupilOffset, pupil1Left: eyeSize - pupilSize - pupilOffset,
-              pupil2Top: pupilOffset, pupil2Left: eyeSize - pupilSize - pupilOffset,
-            };
-          } else if (dir === 'left') {
-            eyePositions = {
-              eye1Top: h * 0.15, eye1Left: w * 0.15,
-              eye2Top: h * 0.57, eye2Left: w * 0.15,
-              pupil1Top: pupilOffset, pupil1Left: 0,
-              pupil2Top: pupilOffset, pupil2Left: 0,
-            };
-          } else if (dir === 'up') {
-            eyePositions = {
-              eye1Top: h * 0.15, eye1Left: w * 0.15,
-              eye2Top: h * 0.15, eye2Left: w * 0.57,
-              pupil1Top: 0, pupil1Left: pupilOffset,
-              pupil2Top: 0, pupil2Left: pupilOffset,
-            };
+        const cellKey = `${cell.x},${cell.y},${cell.color}`;
+        const isFood = !cell.isHead && !snakeColors.has(cell.color);
+        const spawnTime = isFood ? spawnTimesRef.current.get(cellKey) : undefined;
+        let scale = 1;
+        if (spawnTime !== undefined) {
+          const elapsed = Date.now() - spawnTime;
+          const t = Math.min(1, elapsed / SPAWN_DURATION_MS);
+          if (t < 0.5) {
+            scale = 1.25 * (t / 0.5);
           } else {
-            eyePositions = {
-              eye1Top: h * 0.57, eye1Left: w * 0.15,
-              eye2Top: h * 0.57, eye2Left: w * 0.57,
-              pupil1Top: eyeSize - pupilSize, pupil1Left: pupilOffset,
-              pupil2Top: eyeSize - pupilSize, pupil2Left: pupilOffset,
-            };
+            scale = 1.25 - 0.25 * ((t - 0.5) / 0.5);
           }
         }
 
+        if ((cell.isHead || snakeColors.has(cell.color)) && swallowWavesRef.current.has(cell.color)) {
+          const waveStart = swallowWavesRef.current.get(cell.color)!;
+          const segIdx = segmentIndexMap.get(origIdx) ?? 0;
+          const segDelay = segIdx * SWALLOW_DURATION_PER_SEGMENT_MS;
+          const elapsed = Date.now() - waveStart - segDelay;
+          if (elapsed > 0 && elapsed < SWALLOW_BULGE_MS) {
+            const t = elapsed / SWALLOW_BULGE_MS;
+            const bump = Math.sin(t * Math.PI);
+            scale = 1 + 0.3 * bump;
+          }
+        }
+        const sw = w * scale;
+        const sh = h * scale;
+        const sx = x - (sw - w) / 2;
+        const sy = y - (sh - h) / 2;
+
+        // If this snake has per-snake shaders, wrap the cell
+        const cellShaders = snakeShaderMap.get(cell.color);
+        if (cellShaders && cellShaders.length > 0) {
+          const cellRes = { width: Math.round(sw), height: Math.round(sh) };
+          return (
+            <View key={i} style={{ width: Math.round(sw), height: Math.round(sh), top: sy, left: sx }}>
+              {wrapWithShaders(
+                <View style={{ width: Math.round(sw), height: Math.round(sh), backgroundColor: cell.color }} />,
+                cellShaders,
+                cellRes,
+              )}
+            </View>
+          );
+        }
+
         return (
-          <View key={i} style={{ width: w, height: h, top: y, left: x, backgroundColor: cell.color }}>
-            {cell.isHead && eyePositions && (
-              <>
-                <View style={{
-                  width: w * 0.28, height: w * 0.28,
-                  top: eyePositions.eye1Top, left: eyePositions.eye1Left,
-                  backgroundColor: '#ffffff', borderRadius: w * 0.14,
-                }}>
-                  <View style={{
-                    width: w * 0.14, height: w * 0.14,
-                    top: eyePositions.pupil1Top, left: eyePositions.pupil1Left,
-                    backgroundColor: '#000000', borderRadius: w * 0.07,
-                  }} />
-                </View>
-                <View style={{
-                  width: w * 0.28, height: w * 0.28,
-                  top: eyePositions.eye2Top, left: eyePositions.eye2Left,
-                  backgroundColor: '#ffffff', borderRadius: w * 0.14,
-                }}>
-                  <View style={{
-                    width: w * 0.14, height: w * 0.14,
-                    top: eyePositions.pupil2Top, left: eyePositions.pupil2Left,
-                    backgroundColor: '#000000', borderRadius: w * 0.07,
-                  }} />
-                </View>
-              </>
-            )}
-          </View>
+          <View key={i} style={{ width: sw, height: sh, top: sy, left: sx, backgroundColor: cell.color }} />
         );
       })}
-      {/* Grid overlay: procedural shader generating light gray grid lines */}
+      {/* Grid overlay */}
       <View style={{ width: boardW, height: boardH, top: offsetY, left: offsetX }}>
         <Shader
           shaderId="grid-overlay"
@@ -632,6 +720,119 @@ function GameBoard({ gameState, resolution }: { gameState: GameState; resolution
           }}
         />
       </View>
+      {/* Eyes rendered on top of everything (after grid) so they're never covered */}
+      {visibleCells.filter(({ cell }) => cell.isHead).map(({ cell }, i) => {
+        const size = cell.size ?? gameState.cellSize;
+        const w = cellPixel * size;
+        const h = cellPixel * size;
+        const progress = cell.progress ?? 1;
+        let dx = 0, dy = 0;
+        if (progress < 1 && cell.direction) {
+          switch (cell.direction) {
+            case 'right': dx = -1; break;
+            case 'left':  dx = 1;  break;
+            case 'down':  dy = -1; break;
+            case 'up':    dy = 1;  break;
+          }
+        }
+        const step = cellPixel + gap;
+        const headX = offsetX + cell.x * step + dx * (1 - progress) * step;
+        const headY = offsetY + cell.y * step + dy * (1 - progress) * step;
+
+        let dir: 'up' | 'down' | 'left' | 'right' = 'right';
+        let closestBody: (typeof gameState.cells)[number] | undefined;
+        let closestDist = Infinity;
+        for (const c of gameState.cells) {
+          if (c.isHead || c.color !== cell.color) continue;
+          const dist = Math.abs(c.x - cell.x) + Math.abs(c.y - cell.y);
+          if (dist < closestDist) {
+            closestDist = dist;
+            closestBody = c;
+          }
+        }
+        if (closestBody) {
+          let bdx = cell.x - closestBody.x;
+          let bdy = cell.y - closestBody.y;
+          if (Math.abs(bdx) > 1) bdx = -Math.sign(bdx);
+          if (Math.abs(bdy) > 1) bdy = -Math.sign(bdy);
+          if (Math.abs(bdx) >= Math.abs(bdy)) {
+            dir = bdx > 0 ? 'right' : 'left';
+          } else {
+            dir = bdy > 0 ? 'down' : 'up';
+          }
+        } else if (cell.direction) {
+          dir = cell.direction;
+        }
+
+        const eSize = w * 0.38;
+        const eBorder = Math.max(1, w * 0.04);
+        const pSize = w * 0.18;
+        const pupilOffset = w * 0.05;
+        const outerSize = eSize + eBorder * 2;
+
+        let eye1Top: number, eye1Left: number, eye2Top: number, eye2Left: number;
+        let p1Top: number, p1Left: number, p2Top: number, p2Left: number;
+        if (dir === 'right') {
+          eye1Top = h * 0.08; eye1Left = w * 0.55;
+          eye2Top = h * 0.54; eye2Left = w * 0.55;
+          p1Top = pupilOffset; p1Left = eSize - pSize - pupilOffset;
+          p2Top = pupilOffset; p2Left = eSize - pSize - pupilOffset;
+        } else if (dir === 'left') {
+          eye1Top = h * 0.08; eye1Left = w * 0.07;
+          eye2Top = h * 0.54; eye2Left = w * 0.07;
+          p1Top = pupilOffset; p1Left = pupilOffset;
+          p2Top = pupilOffset; p2Left = pupilOffset;
+        } else if (dir === 'up') {
+          eye1Top = h * 0.07; eye1Left = w * 0.08;
+          eye2Top = h * 0.07; eye2Left = w * 0.54;
+          p1Top = pupilOffset; p1Left = pupilOffset;
+          p2Top = pupilOffset; p2Left = pupilOffset;
+        } else {
+          eye1Top = h * 0.55; eye1Left = w * 0.08;
+          eye2Top = h * 0.55; eye2Left = w * 0.54;
+          p1Top = eSize - pSize - pupilOffset; p1Left = pupilOffset;
+          p2Top = eSize - pSize - pupilOffset; p2Left = pupilOffset;
+        }
+
+        return (
+          <React.Fragment key={`eyes-${i}`}>
+            <View style={{
+              width: outerSize, height: outerSize,
+              top: headY + eye1Top - eBorder, left: headX + eye1Left - eBorder,
+              backgroundColor: '#000000', borderRadius: outerSize / 2,
+            }}>
+              <View style={{
+                width: eSize, height: eSize,
+                top: eBorder, left: eBorder,
+                backgroundColor: '#ffffff', borderRadius: eSize / 2,
+              }}>
+                <View style={{
+                  width: pSize, height: pSize,
+                  top: p1Top, left: p1Left,
+                  backgroundColor: '#000000', borderRadius: pSize / 2,
+                }} />
+              </View>
+            </View>
+            <View style={{
+              width: outerSize, height: outerSize,
+              top: headY + eye2Top - eBorder, left: headX + eye2Left - eBorder,
+              backgroundColor: '#000000', borderRadius: outerSize / 2,
+            }}>
+              <View style={{
+                width: eSize, height: eSize,
+                top: eBorder, left: eBorder,
+                backgroundColor: '#ffffff', borderRadius: eSize / 2,
+              }}>
+                <View style={{
+                  width: pSize, height: pSize,
+                  top: p2Top, left: p2Left,
+                  backgroundColor: '#000000', borderRadius: pSize / 2,
+                }} />
+              </View>
+            </View>
+          </React.Fragment>
+        );
+      })}
     </View>
   );
 
@@ -713,7 +914,7 @@ export function Input({ input }: { input: InputConfig }) {
               backgroundColor: isTextInput ? '#1a1a2e' : undefined,
             }}>
             {isGame ? (
-              <GameBoard gameState={input.gameState!} resolution={{ width: contentWidth, height: contentHeight }} />
+              <GameBoard gameState={input.gameState!} resolution={{ width: contentWidth, height: contentHeight }} snake1Shaders={input.snake1Shaders} snake2Shaders={input.snake2Shaders} />
             ) : isImage ? (
               <Rescaler style={{ rescaleMode: 'fit' }}>
                 <Image imageId={input.imageId!} />

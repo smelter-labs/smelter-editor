@@ -54,6 +54,7 @@ interface SnakeEventShaderPanelProps {
   config: SnakeEventShaderConfig | undefined;
   availableShaders: AvailableShader[];
   onUpdate: () => Promise<void>;
+  onConfigChange?: (updated: SnakeEventShaderConfig) => void;
 }
 
 export default function SnakeEventShaderPanel({
@@ -62,6 +63,7 @@ export default function SnakeEventShaderPanel({
   config,
   availableShaders,
   onUpdate,
+  onConfigChange,
 }: SnakeEventShaderPanelProps) {
   const [panelOpen, setPanelOpen] = useState(false);
   const [expandedEvents, setExpandedEvents] = useState<Set<SnakeEventType>>(
@@ -87,10 +89,14 @@ export default function SnakeEventShaderPanel({
 
   const persistConfig = useCallback(
     async (updated: SnakeEventShaderConfig) => {
-      await updateInput(roomId, inputId, { snakeEventShaders: updated });
+      if (onConfigChange) {
+        onConfigChange(updated);
+      } else {
+        await updateInput(roomId, inputId, { snakeEventShaders: updated });
+      }
       await onUpdate();
     },
-    [roomId, inputId, onUpdate],
+    [roomId, inputId, onUpdate, onConfigChange],
   );
 
   const debouncedPersist = useCallback(

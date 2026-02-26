@@ -100,6 +100,8 @@ export type InputConfig = {
   textFontSize?: number;
   gameState?: GameState;
   snakeEventShaders?: SnakeEventShaderConfig;
+  snake1Shaders?: ShaderConfig[];
+  snake2Shaders?: ShaderConfig[];
   borderColor?: string;
   borderWidth?: number;
   replaceWith?: InputConfig;

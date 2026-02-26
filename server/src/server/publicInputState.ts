@@ -34,6 +34,8 @@ export type PublicInputState = {
   gameGridLineColor?: string;
   gameGridLineAlpha?: number;
   snakeEventShaders?: SnakeEventShaderConfig;
+  snake1Shaders?: ShaderConfig[];
+  snake2Shaders?: ShaderConfig[];
 };
 
 export function toPublicInputState(input: RoomInputState): PublicInputState {
@@ -82,7 +84,7 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
         textFontSize: input.textFontSize,
       };
     case 'game':
-      return { ...base, sourceState: 'always-live' as const, gameBackgroundColor: input.gameState.backgroundColor, gameCellGap: input.gameState.cellGap, gameBoardBorderColor: input.gameState.boardBorderColor, gameBoardBorderWidth: input.gameState.boardBorderWidth, gameGridLineColor: input.gameState.gridLineColor, gameGridLineAlpha: input.gameState.gridLineAlpha, snakeEventShaders: input.snakeEventShaders };
+      return { ...base, sourceState: 'always-live' as const, gameBackgroundColor: input.gameState.backgroundColor, gameCellGap: input.gameState.cellGap, gameBoardBorderColor: input.gameState.boardBorderColor, gameBoardBorderWidth: input.gameState.boardBorderWidth, gameGridLineColor: input.gameState.gridLineColor, gameGridLineAlpha: input.gameState.gridLineAlpha, snakeEventShaders: input.snakeEventShaders, snake1Shaders: input.snake1Shaders, snake2Shaders: input.snake2Shaders };
     default:
       throw new Error('Unknown input state');
   }

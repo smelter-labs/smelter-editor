@@ -109,6 +109,8 @@ export type Input = {
   gameGridLineColor?: string;
   gameGridLineAlpha?: number;
   snakeEventShaders?: SnakeEventShaderConfig;
+  snake1Shaders?: ShaderConfig[];
+  snake2Shaders?: ShaderConfig[];
 };
 
 export type RegisterInputOptions =
@@ -562,6 +564,8 @@ export type UpdateInputOptions = {
   gameGridLineColor?: string;
   gameGridLineAlpha?: number;
   snakeEventShaders?: SnakeEventShaderConfig;
+  snake1Shaders?: ShaderConfig[];
+  snake2Shaders?: ShaderConfig[];
 };
 
 export async function updateInput(
