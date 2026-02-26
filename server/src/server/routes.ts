@@ -666,6 +666,7 @@ const UpdateInputSchema = Type.Object({
   gameBoardBorderWidth: Type.Optional(Type.Number({ minimum: 0 })),
   gameGridLineColor: Type.Optional(Type.String()),
   gameGridLineAlpha: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
+  snakeEventShaders: Type.Optional(Type.Any()),
   attachedInputIds: Type.Optional(Type.Array(Type.String())),
 });
 
@@ -705,6 +706,31 @@ const GameStateSchema = Type.Object({
     })
   ),
   backgroundColor: Type.String(),
+  events: Type.Optional(Type.Array(
+    Type.Object({
+      type: Type.Union([
+        Type.Literal('speed_up'),
+        Type.Literal('cut_opponent'),
+        Type.Literal('got_cut'),
+        Type.Literal('cut_self'),
+        Type.Literal('eat_block'),
+        Type.Literal('bounce_block'),
+        Type.Literal('no_moves'),
+        Type.Literal('game_over'),
+      ]),
+    })
+  )),
+  gameOverData: Type.Optional(Type.Object({
+    winnerName: Type.String(),
+    reason: Type.String(),
+    players: Type.Array(Type.Object({
+      name: Type.String(),
+      score: Type.Number(),
+      eaten: Type.Number(),
+      cuts: Type.Number(),
+      color: Type.String(),
+    })),
+  })),
 });
 
 routes.post<RoomAndInputIdParams & { Body: Static<typeof GameStateSchema> }>(
@@ -713,7 +739,11 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof GameStateSchema> }>(
   async (req, res) => {
     const { roomId, inputId } = req.params;
     const room = state.getRoom(roomId);
-    room.updateGameState(inputId, req.body);
+    const gs = req.body;
+    room.updateGameState(inputId, gs);
+    if (gs.events && gs.events.length > 0) {
+      room.ingestGameEvents(inputId, gs.events);
+    }
     res.status(200).send({ status: 'ok' });
   }
 );
@@ -735,6 +765,7 @@ routes.post<{ Body: Static<typeof GameStateSchema> }>(
       boardBorderWidth: 4,
       gridLineColor: '#737373',
       gridLineAlpha: 0.15,
+      gameOverData: gs.gameOverData,
     });
 
     // Wait for any in-progress game room creation to finish before checking
@@ -763,6 +794,9 @@ routes.post<{ Body: Static<typeof GameStateSchema> }>(
         for (const input of room.getInputs()) {
           if (input.type === 'game') {
             room.updateGameState(input.inputId, gs);
+            if (gs.events && gs.events.length > 0) {
+              room.ingestGameEvents(input.inputId, gs.events);
+            }
           }
         }
       })();
@@ -778,6 +812,9 @@ routes.post<{ Body: Static<typeof GameStateSchema> }>(
         for (const input of room.getInputs()) {
           if (input.type === 'game') {
             room.updateGameState(input.inputId, gs);
+            if (gs.events && gs.events.length > 0) {
+              room.ingestGameEvents(input.inputId, gs.events);
+            }
           }
         }
       }

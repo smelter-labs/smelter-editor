@@ -1,6 +1,6 @@
 import type { StoreApi } from 'zustand';
 import { createStore } from 'zustand';
-import type { ShaderConfig } from '../shaders/shaders';
+import type { ShaderConfig, ShaderParamConfig } from '../shaders/shaders';
 import { createContext, useContext } from 'react';
 import { useStore } from 'zustand';
 import type { Resolution } from '../smelter';
@@ -18,6 +18,40 @@ export type GameCell = {
   progress?: number;
 };
 
+export type SnakeEventType =
+  | 'speed_up'
+  | 'cut_opponent'
+  | 'got_cut'
+  | 'cut_self'
+  | 'eat_block'
+  | 'bounce_block'
+  | 'no_moves'
+  | 'game_over';
+
+export type SnakeEventApplicationMode =
+  | { mode: 'all' }
+  | { mode: 'first_n'; n: number }
+  | { mode: 'sequential'; durationMs: number; delayMs: number };
+
+export type SnakeEventShaderMapping = {
+  enabled: boolean;
+  shaderId: string;
+  params: ShaderParamConfig[];
+  application: SnakeEventApplicationMode;
+  effectDurationMs: number;
+};
+
+export type SnakeEventShaderConfig = Partial<Record<SnakeEventType, SnakeEventShaderMapping>>;
+
+export type ActiveSnakeEffect = {
+  eventType: SnakeEventType;
+  shaderId: string;
+  params: ShaderParamConfig[];
+  affectedCellIndices: number[];
+  startedAtMs: number;
+  endsAtMs: number;
+};
+
 export type GameState = {
   boardWidth: number;
   boardHeight: number;
@@ -29,6 +63,22 @@ export type GameState = {
   boardBorderWidth: number;
   gridLineColor: string;
   gridLineAlpha: number;
+  activeEffects?: ActiveSnakeEffect[];
+  gameOverData?: GameOverData;
+};
+
+export type GameOverPlayer = {
+  name: string;
+  score: number;
+  eaten: number;
+  cuts: number;
+  color: string;
+};
+
+export type GameOverData = {
+  winnerName: string;
+  reason: string;
+  players: GameOverPlayer[];
 };
 
 export type InputConfig = {
@@ -49,6 +99,7 @@ export type InputConfig = {
   textScrollNudge?: number;
   textFontSize?: number;
   gameState?: GameState;
+  snakeEventShaders?: SnakeEventShaderConfig;
   borderColor?: string;
   borderWidth?: number;
   replaceWith?: InputConfig;

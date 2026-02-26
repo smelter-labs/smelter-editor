@@ -1,4 +1,9 @@
-import type { Input, Layout, ShaderConfig } from '@/app/actions/actions';
+import type {
+  Input,
+  Layout,
+  ShaderConfig,
+  SnakeEventShaderConfig,
+} from '@/app/actions/actions';
 import type {
   Clip,
   Track,
@@ -33,6 +38,7 @@ export type RoomConfigInput = {
   gameBoardBorderWidth?: number;
   gameGridLineColor?: string;
   gameGridLineAlpha?: number;
+  snakeEventShaders?: SnakeEventShaderConfig;
   attachedInputIndices?: number[];
 };
 
@@ -156,6 +162,7 @@ export function exportRoomConfig(
       gameBoardBorderWidth: input.gameBoardBorderWidth,
       gameGridLineColor: input.gameGridLineColor,
       gameGridLineAlpha: input.gameGridLineAlpha,
+      snakeEventShaders: input.snakeEventShaders,
       attachedInputIndices: input.attachedInputIds
         ?.map((id) => inputIdToIndex.get(id))
         .filter((idx): idx is number => idx !== undefined),

@@ -59,6 +59,10 @@ function pushSysLog(level: string, args: unknown[]) {
 const origStdoutWrite = process.stdout.write.bind(process.stdout);
 const origStderrWrite = process.stderr.write.bind(process.stderr);
 
+// Matches blessed/TUI cursor-control sequences (move, clear, show/hide cursor, scroll region)
+// but NOT simple SGR color codes like \x1b[32m that pino-pretty uses.
+const BLESSED_CSI_RE = /\x1b\[\??[\d;]*[A-HJKSTfhlmnsu]|\x1b\(|\x1b\[\d*[ABCDEFGHIJKLMPXZ@`ade]/;
+
 function interceptStream(
   stream: NodeJS.WriteStream,
   origWrite: typeof process.stdout.write,
@@ -66,12 +70,14 @@ function interceptStream(
 ) {
   stream.write = ((chunk: any, encodingOrCb?: any, cb?: any): boolean => {
     const str = typeof chunk === 'string' ? chunk : chunk.toString();
-    // Let ANSI escape sequences through — that's blessed rendering the TUI
-    if (str.includes('\x1b[') || str.includes('\x1b(')) {
+    // Let blessed TUI control sequences through (cursor moves, screen clears, etc.)
+    // but capture everything else (including pino-pretty colored logs) into the sys log panel.
+    if (BLESSED_CSI_RE.test(str)) {
       return origWrite(chunk, encodingOrCb, cb);
     }
-    // Everything else → capture into sys log panel
-    for (const line of str.split('\n')) {
+    // Strip ANSI color codes before pushing to sys log
+    const stripped = str.replace(/\x1b\[[\d;]*m/g, '');
+    for (const line of stripped.split('\n')) {
       const trimmed = line.trim();
       if (trimmed) pushSysLog(level, [trimmed]);
     }
@@ -162,47 +168,46 @@ function hexToColorName(hex: string): string {
 function renderSnakeBoard(gameState: GameState): string {
   const { boardWidth, boardHeight, cells } = gameState;
 
-  // Build a lookup: "x,y" → cell
   const cellMap = new Map<string, { color: string; isHead?: boolean }>();
   for (const cell of cells) {
     cellMap.set(`${cell.x},${cell.y}`, { color: cell.color, isHead: cell.isHead });
   }
 
-  // Use 2 chars per cell for squarer proportions
   const lines: string[] = [];
 
-  // Top border
-  lines.push('  ┌' + '──'.repeat(boardWidth) + '┐');
+  lines.push('┌' + '─'.repeat(boardWidth) + '┐');
 
   for (let y = 0; y < boardHeight; y++) {
-    const rowNum = String(y).padStart(2, ' ');
-    let row = `${rowNum}│`;
+    let row = '│';
     for (let x = 0; x < boardWidth; x++) {
       const cell = cellMap.get(`${x},${y}`);
       if (cell) {
         const col = hexToColorName(cell.color);
-        if (cell.isHead) {
-          row += `{${col}-fg}◆◆{/}`;
-        } else {
-          row += `{${col}-fg}██{/}`;
-        }
+        row += cell.isHead ? `{${col}-fg}◆{/}` : `{${col}-fg}█{/}`;
       } else {
-        row += '  ';
+        row += ' ';
       }
     }
     row += '│';
     lines.push(row);
   }
 
-  // Bottom border
-  lines.push('  └' + '──'.repeat(boardWidth) + '┘');
+  lines.push('└' + '─'.repeat(boardWidth) + '┘');
 
-  // Column numbers
-  let colNums = '   ';
-  for (let x = 0; x < boardWidth; x++) {
-    colNums += String(x).padStart(2, ' ');
+  // Player scores
+  const playerMap = new Map<string, { color: string; count: number }>();
+  for (const cell of cells) {
+    const existing = playerMap.get(cell.color);
+    if (existing) {
+      existing.count++;
+    } else {
+      playerMap.set(cell.color, { color: cell.color, count: cell.isHead ? 0 : 1 });
+    }
   }
-  lines.push(`{white-fg}${colNums}{/}`);
+  for (const [hex, info] of playerMap) {
+    const col = hexToColorName(hex);
+    lines.push(`{${col}-fg}█{/} ${info.count}`);
+  }
 
   return lines.join('\n');
 }
@@ -336,13 +341,13 @@ export function initDashboard() {
   });
 
   // Layout (12×6 grid):
-  //  Row 0-3:  Server Info (2 cols) | Rooms (4 cols)
-  //  Row 4-7:  🐍 Snake (2 cols)   | Inputs (4 cols)
+  //  Row 0-2:  Server Info (2 cols) | Rooms (4 cols)
+  //  Row 3-7:  🐍 Snake (3 cols)   | Inputs (3 cols)
   //  Row 8-11: Requests (3 cols)   | System Logs (3 cols)
   grid = new contrib.grid({ rows: 12, cols: 6, screen });
 
   // Top-left: Server Info
-  serverBox = grid.set(0, 0, 4, 2, blessed.box, {
+  serverBox = grid.set(0, 0, 3, 2, blessed.box, {
     label: ' ⚙ Server ',
     tags: true,
     border: { type: 'line' },
@@ -354,7 +359,7 @@ export function initDashboard() {
   });
 
   // Top-right: Rooms
-  roomsTable = grid.set(0, 2, 4, 4, contrib.table, {
+  roomsTable = grid.set(0, 2, 3, 4, contrib.table, {
     label: ' 🏠 Rooms ',
     tags: true,
     keys: true,
@@ -370,8 +375,8 @@ export function initDashboard() {
     columnWidth: [10, 10, 18, 12, 7, 7, 10],
   });
 
-  // Middle-left: Snake Board
-  snakeBox = grid.set(4, 0, 4, 2, blessed.box, {
+  // Middle-left: Snake Board (wider + taller)
+  snakeBox = grid.set(3, 0, 5, 3, blessed.box, {
     label: ' 🐍 Snake ',
     tags: true,
     border: { type: 'line' },
@@ -383,7 +388,7 @@ export function initDashboard() {
   });
 
   // Middle-right: Inputs
-  inputsTable = grid.set(4, 2, 4, 4, contrib.table, {
+  inputsTable = grid.set(3, 3, 5, 3, contrib.table, {
     label: ' 📺 Inputs ',
     tags: true,
     keys: true,
@@ -396,7 +401,7 @@ export function initDashboard() {
       cell: { fg: 'white' },
     },
     columnSpacing: 2,
-    columnWidth: [10, 10, 4, 42, 8, 6],
+    columnWidth: [10, 10, 4, 30, 8, 6],
   });
 
   // Bottom-left: Request Log

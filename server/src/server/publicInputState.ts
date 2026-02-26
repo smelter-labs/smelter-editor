@@ -1,5 +1,6 @@
 import type { RoomInputState, InputOrientation } from './roomState';
 import type { ShaderConfig } from '../shaders/shaders';
+import type { SnakeEventShaderConfig } from '../app/store';
 
 /** API DTO for a single input; single source of truth for RoomInputState → response mapping */
 export type PublicInputState = {
@@ -32,6 +33,7 @@ export type PublicInputState = {
   gameBoardBorderWidth?: number;
   gameGridLineColor?: string;
   gameGridLineAlpha?: number;
+  snakeEventShaders?: SnakeEventShaderConfig;
 };
 
 export function toPublicInputState(input: RoomInputState): PublicInputState {
@@ -80,7 +82,7 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
         textFontSize: input.textFontSize,
       };
     case 'game':
-      return { ...base, sourceState: 'always-live' as const, gameBackgroundColor: input.gameState.backgroundColor, gameCellGap: input.gameState.cellGap, gameBoardBorderColor: input.gameState.boardBorderColor, gameBoardBorderWidth: input.gameState.boardBorderWidth, gameGridLineColor: input.gameState.gridLineColor, gameGridLineAlpha: input.gameState.gridLineAlpha };
+      return { ...base, sourceState: 'always-live' as const, gameBackgroundColor: input.gameState.backgroundColor, gameCellGap: input.gameState.cellGap, gameBoardBorderColor: input.gameState.boardBorderColor, gameBoardBorderWidth: input.gameState.boardBorderWidth, gameGridLineColor: input.gameState.gridLineColor, gameGridLineAlpha: input.gameState.gridLineAlpha, snakeEventShaders: input.snakeEventShaders };
     default:
       throw new Error('Unknown input state');
   }

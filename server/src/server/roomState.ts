@@ -5,7 +5,7 @@ import { hlsUrlForKickChannel, hlsUrlForTwitchChannel } from '../streamlink';
 import { TwitchChannelMonitor } from '../twitch/TwitchChannelMonitor';
 import type { TwitchStreamInfo } from '../twitch/TwitchApi';
 import { sleep } from '../utils';
-import type { GameState, InputConfig, Layout } from '../app/store';
+import type { GameState, InputConfig, Layout, SnakeEventShaderConfig, SnakeEventShaderMapping, ActiveSnakeEffect, SnakeEventType } from '../app/store';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
 import { KickChannelMonitor } from '../kick/KickChannelMonitor';
 import type { ShaderConfig } from '../shaders/shaders';
@@ -38,7 +38,7 @@ type TypeSpecificState =
   | { type: 'whip'; whipUrl: string; monitor: WhipInputMonitor }
   | { type: 'image'; imageId: string }
   | { type: 'text-input'; text: string; textAlign: 'left' | 'center' | 'right'; textColor: string; textMaxLines: number; textScrollSpeed: number; textScrollLoop: boolean; textScrollNudge: number; textFontSize: number }
-  | { type: 'game'; gameState: GameState };
+  | { type: 'game'; gameState: GameState; snakeEventShaders?: SnakeEventShaderConfig; activeEffects: ActiveSnakeEffect[]; effectTimers: NodeJS.Timeout[] };
 
 export type PendingWhipInputData = {
   id: string;
@@ -72,6 +72,7 @@ type UpdateInputOptions = {
   gameBoardBorderWidth: number;
   gameGridLineColor: string;
   gameGridLineAlpha: number;
+  snakeEventShaders: SnakeEventShaderConfig;
 };
 
 export type RegisterInputOptions =
@@ -115,6 +116,46 @@ export type RegisterInputOptions =
     };
 
 const PLACEHOLDER_LOGO_FILE = 'logo_Smelter.png';
+
+function makeSnakeEffectMapping(
+  effectType: number,
+  color: string,
+  intensity: number,
+  durationMs: number,
+  application: SnakeEventShaderMapping['application'] = { mode: 'all' },
+): SnakeEventShaderMapping {
+  return {
+    enabled: true,
+    shaderId: 'snake-event-highlight',
+    params: [
+      { paramName: 'effect_type', paramValue: effectType },
+      { paramName: 'intensity', paramValue: intensity },
+      { paramName: 'effect_color', paramValue: color },
+      { paramName: 'progress', paramValue: 0 },
+    ],
+    application,
+    effectDurationMs: durationMs,
+  };
+}
+
+const DEFAULT_SNAKE_EVENT_SHADERS: SnakeEventShaderConfig = {
+  // speed_up: quick shake to convey acceleration
+  speed_up: makeSnakeEffectMapping(3, '#00ccff', 0.5, 400),
+  // cut_opponent: dramatic chromatic burst in red-orange
+  cut_opponent: makeSnakeEffectMapping(7, '#ff4400', 0.8, 500),
+  // got_cut: bright red flash — you got hit
+  got_cut: makeSnakeEffectMapping(2, '#ff0000', 0.9, 600),
+  // cut_self: dark vignette pulse in purple — self-harm
+  cut_self: makeSnakeEffectMapping(6, '#8800ff', 0.7, 700),
+  // eat_block: green pulse glow — reward feedback
+  eat_block: makeSnakeEffectMapping(1, '#00ff66', 0.6, 350),
+  // bounce_block: ripple distortion in yellow
+  bounce_block: makeSnakeEffectMapping(5, '#ffcc00', 0.5, 400),
+  // no_moves: slow pixelation fade in gray
+  no_moves: makeSnakeEffectMapping(8, '#888888', 0.6, 800),
+  // game_over: heavy dark vignette in deep red, long duration
+  game_over: makeSnakeEffectMapping(6, '#cc0000', 1.0, 1500),
+};
 
 export class RoomState {
   private inputs: RoomInputState[];
@@ -664,6 +705,9 @@ export class RoomState {
           gridLineColor: '#737373',
           gridLineAlpha: 0.15,
         },
+        snakeEventShaders: { ...DEFAULT_SNAKE_EVENT_SHADERS },
+        activeEffects: [],
+        effectTimers: [],
       });
       this.updateStoreWithState();
       return inputId;
@@ -883,6 +927,9 @@ export class RoomState {
       if (options.gameGridLineAlpha !== undefined) {
         input.gameState.gridLineAlpha = options.gameGridLineAlpha;
       }
+      if (options.snakeEventShaders !== undefined) {
+        input.snakeEventShaders = options.snakeEventShaders;
+      }
     }
     if (options.attachedInputIds !== undefined) {
       input.attachedInputIds = options.attachedInputIds;
@@ -976,6 +1023,7 @@ export class RoomState {
       textScrollNudge: input.type === 'text-input' ? input.textScrollNudge : undefined,
       textFontSize: input.type === 'text-input' ? input.textFontSize : undefined,
       gameState: input.type === 'game' ? input.gameState : undefined,
+      snakeEventShaders: input.type === 'game' ? input.snakeEventShaders : undefined,
     });
 
     const connectedInputs = this.inputs.filter(input => input.status === 'connected' && !input.hidden);
@@ -1039,6 +1087,77 @@ export class RoomState {
       gridLineAlpha: input.gameState.gridLineAlpha ?? 0.15,
     };
     console.log(`[game] Updated snake board: ${gameState.cells.length} cells on ${gameState.board.width}x${gameState.board.height}`);
+    this.updateStoreWithState();
+  }
+
+  public ingestGameEvents(inputId: string, events: { type: SnakeEventType }[]) {
+    const input = this.getInput(inputId);
+    if (input.type !== 'game') return;
+    if (!events || events.length === 0) return;
+
+    const config = input.snakeEventShaders;
+    if (!config) return;
+
+    const now = Date.now();
+
+    for (const event of events) {
+      const mapping = config[event.type];
+      if (!mapping || !mapping.enabled) continue;
+
+      const effectDurationMs = mapping.effectDurationMs || 600;
+
+      let affectedCellIndices: number[] = [];
+      const totalCells = input.gameState.cells.length;
+
+      if (mapping.application.mode === 'all') {
+        affectedCellIndices = Array.from({ length: totalCells }, (_, i) => i);
+      } else if (mapping.application.mode === 'first_n') {
+        const n = Math.min(mapping.application.n, totalCells);
+        affectedCellIndices = Array.from({ length: n }, (_, i) => i);
+      } else if (mapping.application.mode === 'sequential') {
+        affectedCellIndices = totalCells > 0 ? [0] : [];
+      }
+
+      const effect: ActiveSnakeEffect = {
+        eventType: event.type,
+        shaderId: mapping.shaderId,
+        params: mapping.params,
+        affectedCellIndices,
+        startedAtMs: now,
+        endsAtMs: now + effectDurationMs,
+      };
+
+      // Remove any existing effect of the same type
+      input.activeEffects = input.activeEffects.filter(e => e.eventType !== event.type);
+      input.activeEffects.push(effect);
+
+      // Set cleanup timer
+      const cleanupTimer = setTimeout(() => {
+        input.activeEffects = input.activeEffects.filter(e => e !== effect);
+        input.gameState.activeEffects = input.activeEffects.length > 0 ? [...input.activeEffects] : undefined;
+        this.updateStoreWithState();
+      }, effectDurationMs);
+      input.effectTimers.push(cleanupTimer);
+
+      // For sequential mode, set up progression timers
+      if (mapping.application.mode === 'sequential') {
+        const { durationMs, delayMs } = mapping.application;
+        const stepMs = durationMs + delayMs;
+        for (let i = 1; i < totalCells; i++) {
+          const timer = setTimeout(() => {
+            if (input.activeEffects.includes(effect)) {
+              effect.affectedCellIndices = [i];
+              input.gameState.activeEffects = [...input.activeEffects];
+              this.updateStoreWithState();
+            }
+          }, stepMs * i);
+          input.effectTimers.push(timer);
+        }
+      }
+    }
+
+    // Update game state with active effects
+    input.gameState.activeEffects = input.activeEffects.length > 0 ? [...input.activeEffects] : undefined;
     this.updateStoreWithState();
   }
 

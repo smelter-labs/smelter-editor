@@ -9,6 +9,7 @@ import {
 } from '@/app/actions/actions';
 import ShaderPanel from '../input-entry/shader-panel';
 import { AddShaderModal } from '../input-entry/add-shader-modal';
+import SnakeEventShaderPanel from '../input-entry/snake-event-shader-panel';
 import type { BlockSettings } from '../hooks/use-timeline-state';
 import { Link, Video, Monitor } from 'lucide-react';
 import { startPublish } from '../whip-input/utils/whip-publisher';
@@ -238,6 +239,7 @@ export function BlockClipPropertiesPanel({
           gameBoardBorderWidth: patch.gameBoardBorderWidth,
           gameGridLineColor: patch.gameGridLineColor,
           gameGridLineAlpha: patch.gameGridLineAlpha,
+          snakeEventShaders: patch.snakeEventShaders,
         });
         await handleRefreshState();
       } catch (err) {
@@ -578,6 +580,17 @@ export function BlockClipPropertiesPanel({
             />
           </div>
         </div>
+      )}
+      {selectedInput?.type === 'game' && (
+        <SnakeEventShaderPanel
+          roomId={roomId}
+          inputId={selectedTimelineClip.inputId}
+          config={selectedTimelineClip.blockSettings.snakeEventShaders}
+          availableShaders={availableShaders}
+          onUpdate={async () => {
+            await handleRefreshState();
+          }}
+        />
       )}
       <div className='flex items-center justify-between mb-2'>
         <span className='text-xs text-neutral-400'>Attached inputs</span>

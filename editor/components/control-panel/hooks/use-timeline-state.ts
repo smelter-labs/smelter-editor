@@ -1,7 +1,7 @@
 'use client';
 
 import { useReducer, useEffect, useCallback, useRef, useState } from 'react';
-import type { Input } from '@/app/actions/actions';
+import type { Input, SnakeEventShaderConfig } from '@/app/actions/actions';
 import { loadTimeline, saveTimeline } from '@/lib/timeline-storage';
 
 // ── Types ────────────────────────────────────────────────
@@ -41,6 +41,7 @@ export type BlockSettings = {
   gameBoardBorderWidth?: number;
   gameGridLineColor?: string;
   gameGridLineAlpha?: number;
+  snakeEventShaders?: SnakeEventShaderConfig;
 };
 
 /** @deprecated Use `Clip` instead. Kept for backwards compat with room-config. */
@@ -170,6 +171,7 @@ export function createBlockSettingsFromInput(input?: Input): BlockSettings {
     gameBoardBorderWidth: input?.gameBoardBorderWidth,
     gameGridLineColor: input?.gameGridLineColor,
     gameGridLineAlpha: input?.gameGridLineAlpha,
+    snakeEventShaders: input?.snakeEventShaders,
   };
 }
 

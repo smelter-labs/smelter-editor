@@ -587,6 +587,21 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
       { name: 'line_a', type: 'number', minValue: 0, maxValue: 1, defaultValue: 1.0 },
     ],
   },
+  {
+    id: 'snake-event-highlight',
+    isActive: true,
+    isVisible: true,
+    name: 'Snake Event Highlight',
+    description:
+      'Visual effect overlay for snake game events. Supports pulse glow, flash, shake, color shift, ripple, vignette, chromatic burst, and pixelate effects.',
+    shaderFile: 'snake-event-highlight.wgsl',
+    params: [
+      { name: 'effect_type', type: 'number', minValue: 0, maxValue: 8, defaultValue: 1 },
+      { name: 'intensity', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.7 },
+      { name: 'effect_color', type: 'color', defaultValue: '#ff4400' },
+      { name: 'progress', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0 },
+    ],
+  },
 ];
 
 class ShadersController {

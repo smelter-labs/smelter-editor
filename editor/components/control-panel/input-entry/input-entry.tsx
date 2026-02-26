@@ -24,6 +24,7 @@ import {
   EyeOff,
 } from 'lucide-react';
 import ShaderPanel from './shader-panel';
+import SnakeEventShaderPanel from './snake-event-shader-panel';
 import { InputEntryTextSection } from './input-entry-text-section';
 import { StatusButton } from './status-button';
 import { MuteButton } from './mute-button';
@@ -901,6 +902,15 @@ export default function InputEntry({
               />
             </div>
           </div>
+        )}
+        {input.type === 'game' && !readOnly && (
+          <SnakeEventShaderPanel
+            roomId={roomId}
+            inputId={input.inputId}
+            config={input.snakeEventShaders}
+            availableShaders={availableShaders}
+            onUpdate={refreshState}
+          />
         )}
         {!readOnly && (
           <div className='flex flex-row items-center min-w-0'>

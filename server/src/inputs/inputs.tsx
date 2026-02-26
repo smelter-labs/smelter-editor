@@ -1,4 +1,4 @@
-import type { GameState, InputConfig } from '../app/store';
+import type { GameState, GameOverData, InputConfig } from '../app/store';
 import type { ShaderParamStructField } from '@swmansion/smelter';
 import {
   Text,
@@ -290,7 +290,173 @@ function ScrollingText({
 }
 
 
+function GameOverModal({ data, resolution }: { data: GameOverData; resolution: Resolution }) {
+  const w = resolution.width;
+  const h = resolution.height;
+  const modalW = w * 0.45;
+  const modalH = h * 0.75;
+  const modalX = (w - modalW) / 2;
+  const modalY = (h - modalH) / 2;
+
+  const winnerPlayer = data.players.find(p => p.name === data.winnerName);
+  const winnerColor = winnerPlayer?.color ?? '#4ade80';
+
+  const sorted = [...data.players].sort((a, b) => b.score - a.score);
+  const p1 = sorted[0];
+  const p2 = sorted[1];
+
+  return (
+    <View style={{ width: w, height: h, backgroundColor: '#00000099' }}>
+      <View style={{
+        width: modalW, height: modalH,
+        top: modalY, left: modalX,
+        backgroundColor: '#1a1a2e',
+        borderWidth: 2, borderColor: '#333333',
+        borderRadius: 16,
+      }}>
+        {/* Winner name */}
+        <View style={{ width: modalW, height: modalH * 0.15, top: modalH * 0.06, left: 0 }}>
+          <Text style={{
+            fontSize: modalW * 0.09,
+            color: winnerColor,
+            fontFamily: 'Star Jedi',
+            align: 'center',
+            width: modalW,
+          }}>
+            {data.winnerName} WINS!
+          </Text>
+        </View>
+        {/* Reason */}
+        <View style={{ width: modalW, height: modalH * 0.08, top: modalH * 0.2, left: 0 }}>
+          <Text style={{
+            fontSize: modalW * 0.045,
+            color: '#9ca3af',
+            align: 'center',
+            width: modalW,
+          }}>
+            {data.reason}
+          </Text>
+        </View>
+        {/* Score */}
+        {p1 && p2 && (
+          <View style={{ width: modalW, height: modalH * 0.18, top: modalH * 0.3, left: 0 }}>
+            <View style={{ width: modalW * 0.4, height: modalH * 0.18, left: modalW * 0.02, top: 0 }}>
+              <Text style={{
+                fontSize: modalW * 0.14,
+                color: p1.color,
+                fontFamily: 'Star Jedi',
+                align: 'center',
+                width: modalW * 0.4,
+              }}>
+                {String(p1.score)}
+              </Text>
+            </View>
+            <View style={{ width: modalW * 0.16, height: modalH * 0.18, left: modalW * 0.42, top: 0 }}>
+              <Text style={{
+                fontSize: modalW * 0.08,
+                color: '#ffffff',
+                fontFamily: 'Star Jedi',
+                align: 'center',
+                width: modalW * 0.16,
+              }}>
+                :
+              </Text>
+            </View>
+            <View style={{ width: modalW * 0.4, height: modalH * 0.18, left: modalW * 0.58, top: 0 }}>
+              <Text style={{
+                fontSize: modalW * 0.14,
+                color: p2.color,
+                fontFamily: 'Star Jedi',
+                align: 'center',
+                width: modalW * 0.4,
+              }}>
+                {String(p2.score)}
+              </Text>
+            </View>
+          </View>
+        )}
+        {/* Player stats */}
+        {sorted.map((player, i) => (
+          <View key={i} style={{
+            width: modalW * 0.8, height: modalH * 0.07,
+            top: modalH * 0.52 + i * modalH * 0.09,
+            left: modalW * 0.1,
+          }}>
+            <Text style={{
+              fontSize: modalW * 0.04,
+              color: '#9ca3af',
+              width: modalW * 0.8,
+              align: 'center',
+            }}>
+              {player.name}: {String(player.eaten)} eaten, {String(player.cuts)} cuts
+            </Text>
+          </View>
+        ))}
+      </View>
+    </View>
+  );
+}
+
 function GameBoard({ gameState, resolution }: { gameState: GameState; resolution: Resolution }) {
+  const activeEffect = gameState.activeEffects?.[0];
+
+  const [effectProgress, setEffectProgress] = useState(0);
+  useEffect(() => {
+    if (!activeEffect) {
+      setEffectProgress(0);
+      return;
+    }
+    const update = () => {
+      const now = Date.now();
+      const total = activeEffect.endsAtMs - activeEffect.startedAtMs;
+      const elapsed = now - activeEffect.startedAtMs;
+      setEffectProgress(Math.min(1, Math.max(0, elapsed / total)));
+    };
+    update();
+    const interval = setInterval(update, 33);
+    return () => clearInterval(interval);
+  }, [activeEffect?.startedAtMs, activeEffect?.endsAtMs]);
+
+  // Game over: remove cells one by one, then show modal
+  const [removedCount, setRemovedCount] = useState(0);
+  const [showModal, setShowModal] = useState(false);
+  const prevGameOverRef = useRef<GameOverData | undefined>(undefined);
+  const totalCellsAtGameOver = useRef(0);
+
+  useEffect(() => {
+    if (gameState.gameOverData && !prevGameOverRef.current) {
+      // Game just ended — start removal animation
+      prevGameOverRef.current = gameState.gameOverData;
+      totalCellsAtGameOver.current = gameState.cells.length;
+      setRemovedCount(0);
+      setShowModal(false);
+
+      const total = gameState.cells.length;
+      if (total === 0) {
+        setShowModal(true);
+        return;
+      }
+
+      const delayPerCell = Math.min(100, 2000 / total);
+      let count = 0;
+      const timer = setInterval(() => {
+        count++;
+        setRemovedCount(count);
+        if (count >= total) {
+          clearInterval(timer);
+          setTimeout(() => setShowModal(true), 300);
+        }
+      }, delayPerCell);
+
+      return () => clearInterval(timer);
+    } else if (!gameState.gameOverData && prevGameOverRef.current) {
+      // Game restarted — reset
+      prevGameOverRef.current = undefined;
+      setRemovedCount(0);
+      setShowModal(false);
+    }
+  }, [!!gameState.gameOverData]);
+
   const gap = gameState.cellGap ?? 1;
   const totalGapX = gap * (gameState.boardWidth - 1);
   const totalGapY = gap * (gameState.boardHeight - 1);
@@ -307,20 +473,26 @@ function GameBoard({ gameState, resolution }: { gameState: GameState; resolution
   const borderC = gameState.boardBorderColor ?? '#ffffff';
   const gridColor = hexToRgb(gameState.gridLineColor ?? '#737373');
 
+  // During game-over removal animation, slice cells from the end
+  const isRemoving = !!gameState.gameOverData && removedCount > 0;
+  const cellsAfterRemoval = isRemoving
+    ? gameState.cells.slice(0, Math.max(0, gameState.cells.length - removedCount))
+    : gameState.cells;
+
   // Smelter engine has a hard limit of 100 layout nodes.
   // Budget: ~15 for Input wrappers + 3 fixed GameBoard nodes (wrapper, border, grid).
   // Each head cell = 5 Views (cell + 2 eyes + 2 pupils), normal cell = 1 View.
-  const MAX_LAYOUT_NODES = 80;
+  const MAX_LAYOUT_NODES = showModal ? 20 : 80;
   let nodesBudget = MAX_LAYOUT_NODES;
   const visibleCells: typeof gameState.cells = [];
-  for (const cell of gameState.cells) {
+  for (const cell of cellsAfterRemoval) {
     const cost = cell.isHead ? 5 : 1;
     if (nodesBudget - cost < 0) break;
     nodesBudget -= cost;
     visibleCells.push(cell);
   }
 
-  return (
+  const boardContent = (
     <View style={{ width: resolution.width, height: resolution.height, backgroundColor: gameState.backgroundColor }}>
       {/* Board border */}
       {borderW > 0 && (
@@ -462,6 +634,55 @@ function GameBoard({ gameState, resolution }: { gameState: GameState; resolution
       </View>
     </View>
   );
+
+  let rendered = boardContent;
+
+  if (activeEffect && effectProgress < 1) {
+    const shaderParams: ShaderParamStructField[] = [];
+
+    if (activeEffect.params) {
+      for (const param of activeEffect.params) {
+        if (typeof param.paramValue === 'string' && param.paramValue.startsWith('#')) {
+          const rgb = hexToRgb(param.paramValue);
+          shaderParams.push({ type: 'f32', fieldName: `${param.paramName}_r`, value: rgb.r } as ShaderParamStructField);
+          shaderParams.push({ type: 'f32', fieldName: `${param.paramName}_g`, value: rgb.g } as ShaderParamStructField);
+          shaderParams.push({ type: 'f32', fieldName: `${param.paramName}_b`, value: rgb.b } as ShaderParamStructField);
+        } else {
+          const numValue = typeof param.paramValue === 'string' ? Number(param.paramValue) : param.paramValue;
+          shaderParams.push({ type: 'f32', fieldName: param.paramName, value: numValue } as ShaderParamStructField);
+        }
+      }
+    }
+
+    const hasProgress = shaderParams.findIndex(p => p.fieldName === 'progress');
+    if (hasProgress >= 0) {
+      shaderParams[hasProgress] = { type: 'f32', fieldName: 'progress', value: effectProgress } as ShaderParamStructField;
+    } else {
+      shaderParams.push({ type: 'f32', fieldName: 'progress', value: effectProgress } as ShaderParamStructField);
+    }
+
+    rendered = (
+      <Shader
+        shaderId={activeEffect.shaderId}
+        resolution={resolution}
+        shaderParam={shaderParams.length > 0 ? { type: 'struct', value: shaderParams } : undefined}
+      >
+        {boardContent}
+      </Shader>
+    );
+  }
+
+  if (showModal && (gameState.gameOverData || prevGameOverRef.current)) {
+    const modalData = gameState.gameOverData ?? prevGameOverRef.current!;
+    return (
+      <View style={{ width: resolution.width, height: resolution.height }}>
+        {rendered}
+        <GameOverModal data={modalData} resolution={resolution} />
+      </View>
+    );
+  }
+
+  return rendered;
 }
 
 export function Input({ input }: { input: InputConfig }) {
