@@ -618,47 +618,85 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
   const borderC = gameState.boardBorderColor ?? '#ffffff';
   const gridColor = hexToRgb(gameState.gridLineColor ?? '#000000');
 
-  // Build segment index from head for swallow wave (head=0, next body=1, ...)
-  const segmentIndexMap = new Map<number, number>(); // cellArrayIndex → segmentIndex
-  const snakesByColor = new Map<string, number[]>();
-  gameState.cells.forEach((cell, i) => {
-    if (cell.isHead || snakeColors.has(cell.color)) {
-      const arr = snakesByColor.get(cell.color) ?? [];
-      arr.push(i);
-      snakesByColor.set(cell.color, arr);
-    }
-  });
-  for (const indices of snakesByColor.values()) {
-    // Find head, then order body segments by distance from head (BFS-like chain walk)
-    const headIdx = indices.find(i => gameState.cells[i].isHead);
-    if (headIdx === undefined) {
-      indices.forEach((cellIdx, segIdx) => segmentIndexMap.set(cellIdx, segIdx));
-      continue;
-    }
-    segmentIndexMap.set(headIdx, 0);
+  const prevCells = interpolationFromCellsRef.current;
+  const wrappedDistance = (
+    a: (typeof gameState.cells)[number],
+    b: (typeof gameState.cells)[number],
+  ) => {
+    const rawDx = Math.abs(a.x - b.x);
+    const rawDy = Math.abs(a.y - b.y);
+    const dx = Math.min(rawDx, gameState.boardWidth - rawDx);
+    const dy = Math.min(rawDy, gameState.boardHeight - rawDy);
+    return dx + dy;
+  };
+  const orderSnakeIndices = (
+    cells: (typeof gameState.cells),
+    indices: number[],
+  ) => {
+    if (indices.length <= 1) return [...indices];
+
+    const headIdx = indices.find(i => cells[i].isHead);
+    if (headIdx === undefined) return [...indices];
+
+    const ordered = [headIdx];
     const remaining = new Set(indices.filter(i => i !== headIdx));
-    let current = gameState.cells[headIdx];
-    let segIdx = 1;
+    let current = cells[headIdx];
+
     while (remaining.size > 0) {
       let closest: number | null = null;
       let closestDist = Infinity;
       for (const ri of remaining) {
-        const rc = gameState.cells[ri];
-        const dist = Math.abs(rc.x - current.x) + Math.abs(rc.y - current.y);
+        const dist = wrappedDistance(current, cells[ri]);
         if (dist < closestDist) {
           closestDist = dist;
           closest = ri;
         }
       }
+      // Adjacent segments on toroidal board should still be local neighbors.
       if (closest === null || closestDist > 2) break;
-      segmentIndexMap.set(closest, segIdx++);
-      current = gameState.cells[closest];
+      ordered.push(closest);
+      current = cells[closest];
       remaining.delete(closest);
     }
-    // Any remaining disconnected segments
-    for (const ri of remaining) {
-      segmentIndexMap.set(ri, segIdx++);
-    }
+
+    // Deterministic fallback for disconnected leftovers.
+    ordered.push(...[...remaining].sort((a, b) => a - b));
+    return ordered;
+  };
+
+  const currentSnakeIndicesByColor = new Map<string, number[]>();
+  gameState.cells.forEach((cell, i) => {
+    if (!(cell.isHead || snakeColors.has(cell.color))) return;
+    const arr = currentSnakeIndicesByColor.get(cell.color) ?? [];
+    arr.push(i);
+    currentSnakeIndicesByColor.set(cell.color, arr);
+  });
+
+  const prevSnakeColors = new Set<string>();
+  for (const cell of prevCells) {
+    if (cell.isHead) prevSnakeColors.add(cell.color);
+  }
+  const prevSnakeIndicesByColor = new Map<string, number[]>();
+  prevCells.forEach((cell, i) => {
+    if (!(cell.isHead || prevSnakeColors.has(cell.color))) return;
+    const arr = prevSnakeIndicesByColor.get(cell.color) ?? [];
+    arr.push(i);
+    prevSnakeIndicesByColor.set(cell.color, arr);
+  });
+
+  const orderedCurrentByColor = new Map<string, number[]>();
+  for (const [color, indices] of currentSnakeIndicesByColor) {
+    orderedCurrentByColor.set(color, orderSnakeIndices(gameState.cells, indices));
+  }
+  const orderedPrevByColor = new Map<string, number[]>();
+  for (const [color, indices] of prevSnakeIndicesByColor) {
+    orderedPrevByColor.set(color, orderSnakeIndices(prevCells, indices));
+  }
+
+  // Build segment index from head for swallow wave (head=0, next body=1, ...)
+  const segmentIndexMap = new Map<number, number>(); // cellArrayIndex → segmentIndex
+  for (const ordered of orderedCurrentByColor.values()) {
+    ordered.forEach((cellIdx, segIdx) => segmentIndexMap.set(cellIdx, segIdx));
   }
 
   // During game-over removal animation, slice cells from the end
@@ -701,40 +739,17 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     snakeShaderMap.set(snakeColorOrder[1], activeSnake2Shaders);
   }
 
-  const prevCells = interpolationFromCellsRef.current;
-  const prevPoolsByKey = new Map<string, (typeof gameState.cells)>();
-  for (const prevCell of prevCells) {
-    const poolKey = `${prevCell.color}|${prevCell.isHead ? 'head' : 'body'}`;
-    const pool = prevPoolsByKey.get(poolKey) ?? [];
-    pool.push(prevCell);
-    prevPoolsByKey.set(poolKey, pool);
-  }
-
   const prevCellByCurrentIndex = new Map<number, (typeof gameState.cells)[number]>();
-  for (let i = 0; i < gameState.cells.length; i++) {
-    const currentCell = gameState.cells[i];
-    if (!(currentCell.isHead || snakeColors.has(currentCell.color))) continue;
-
-    const exactPoolKey = `${currentCell.color}|${currentCell.isHead ? 'head' : 'body'}`;
-    const fallbackPoolKey = `${currentCell.color}|body`;
-    const exactPool = prevPoolsByKey.get(exactPoolKey) ?? [];
-    const fallbackPool = prevPoolsByKey.get(fallbackPoolKey) ?? [];
-    const candidatePool = exactPool.length > 0 ? exactPool : fallbackPool;
-    if (candidatePool.length === 0) continue;
-
-    let bestIdx = 0;
-    let bestDist = Infinity;
-    for (let ci = 0; ci < candidatePool.length; ci++) {
-      const candidate = candidatePool[ci];
-      const dist = Math.abs(candidate.x - currentCell.x) + Math.abs(candidate.y - currentCell.y);
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestIdx = ci;
+  for (const [color, orderedCurrent] of orderedCurrentByColor) {
+    const orderedPrev = orderedPrevByColor.get(color) ?? [];
+    const pairsCount = Math.min(orderedCurrent.length, orderedPrev.length);
+    for (let i = 0; i < pairsCount; i++) {
+      const currentIdx = orderedCurrent[i];
+      const prevIdx = orderedPrev[i];
+      const prevCell = prevCells[prevIdx];
+      if (prevCell) {
+        prevCellByCurrentIndex.set(currentIdx, prevCell);
       }
-    }
-    const [matchedPrev] = candidatePool.splice(bestIdx, 1);
-    if (matchedPrev) {
-      prevCellByCurrentIndex.set(i, matchedPrev);
     }
   }
 
