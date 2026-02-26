@@ -14,6 +14,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { ShaderConfig, ShaderParamConfig } from '../shaders/shaders';
 import shadersController from '../shaders/shaders';
+import { config } from '../config';
 
 type Resolution = { width: number; height: number };
 
@@ -423,6 +424,7 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
   const prevCellsRef = useRef<(typeof gameState.cells)>(gameState.cells);
   const interpolationFromCellsRef = useRef<(typeof gameState.cells)>(gameState.cells);
   const [localProgress, setLocalProgress] = useState(1);
+  const LOCAL_VISUAL_SPEED_MULTIPLIER = config.snakeVisualSpeedMultiplier;
 
   const easeInOutCubic = (t: number) => (
     t < 0.5
@@ -460,7 +462,10 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     // Animate progress continuously; when no new server tick arrives,
     // keep moving forward locally with the last known direction.
     const startTime = now;
-    const duration = Math.max(120, Math.min(1200, tickIntervalRef.current));
+    const duration = Math.max(
+      80,
+      Math.min(900, tickIntervalRef.current / LOCAL_VISUAL_SPEED_MULTIPLIER),
+    );
     let raf: ReturnType<typeof setInterval>;
     raf = setInterval(() => {
       const elapsed = Date.now() - startTime;
