@@ -570,6 +570,23 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
       },
     ],
   },
+  {
+    id: 'grid-overlay',
+    isActive: true,
+    isVisible: false,
+    name: 'Grid Overlay',
+    description: 'Procedurally generates a grid overlay with configurable cell count, gap size and line color.',
+    shaderFile: 'grid-overlay.wgsl',
+    params: [
+      { name: 'cells_x', type: 'number', minValue: 1, maxValue: 200, defaultValue: 20 },
+      { name: 'cells_y', type: 'number', minValue: 1, maxValue: 200, defaultValue: 20 },
+      { name: 'gap', type: 'number', minValue: 0, maxValue: 20, defaultValue: 1 },
+      { name: 'line_r', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.75 },
+      { name: 'line_g', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.75 },
+      { name: 'line_b', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.75 },
+      { name: 'line_a', type: 'number', minValue: 0, maxValue: 1, defaultValue: 1.0 },
+    ],
+  },
 ];
 
 class ShadersController {

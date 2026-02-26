@@ -35,6 +35,10 @@ export type BlockSettings = {
   borderColor?: string;
   borderWidth?: number;
   attachedInputIds?: string[];
+  gameBackgroundColor?: string;
+  gameCellGap?: number;
+  gameBoardBorderColor?: string;
+  gameBoardBorderWidth?: number;
 };
 
 /** @deprecated Use `Clip` instead. Kept for backwards compat with room-config. */
@@ -158,6 +162,10 @@ export function createBlockSettingsFromInput(input?: Input): BlockSettings {
     attachedInputIds: input?.attachedInputIds
       ? [...input.attachedInputIds]
       : undefined,
+    gameBackgroundColor: input?.gameBackgroundColor,
+    gameCellGap: input?.gameCellGap,
+    gameBoardBorderColor: input?.gameBoardBorderColor,
+    gameBoardBorderWidth: input?.gameBoardBorderWidth,
   };
 }
 

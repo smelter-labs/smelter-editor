@@ -58,6 +58,8 @@ export function BlockClipPropertiesPanel({
   }>({});
   const [isAddShaderModalOpen, setIsAddShaderModalOpen] = useState(false);
   const [showAttachMenu, setShowAttachMenu] = useState(false);
+  const [gameBgColor, setGameBgColor] = useState<string | null>(null);
+  const gameBgDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const attachBtnRef = useRef<HTMLButtonElement>(null);
   const [attachMenuPos, setAttachMenuPos] = useState<{
     top: number;
@@ -226,6 +228,10 @@ export function BlockClipPropertiesPanel({
           borderColor: patch.borderColor,
           borderWidth: patch.borderWidth,
           attachedInputIds: patch.attachedInputIds,
+          gameBackgroundColor: patch.gameBackgroundColor,
+          gameCellGap: patch.gameCellGap,
+          gameBoardBorderColor: patch.gameBoardBorderColor,
+          gameBoardBorderWidth: patch.gameBoardBorderWidth,
         });
         await handleRefreshState();
       } catch (err) {
@@ -476,6 +482,52 @@ export function BlockClipPropertiesPanel({
           />
         </div>
       </div>
+      {selectedInput?.type === 'game' && (
+        <div className='grid grid-cols-2 gap-2 mb-2'>
+          <div>
+            <label className='text-xs text-neutral-400 block mb-1'>
+              BG color
+            </label>
+            <input
+              type='color'
+              className='w-full h-8 bg-neutral-800 border border-neutral-700'
+              value={
+                gameBgColor ??
+                selectedTimelineClip.blockSettings.gameBackgroundColor ??
+                '#000000'
+              }
+              onChange={(e) => {
+                const value = e.target.value;
+                setGameBgColor(value);
+                if (gameBgDebounceRef.current) {
+                  clearTimeout(gameBgDebounceRef.current);
+                }
+                gameBgDebounceRef.current = setTimeout(() => {
+                  void applyClipPatch({ gameBackgroundColor: value });
+                  setGameBgColor(null);
+                }, 200);
+              }}
+            />
+          </div>
+          <div>
+            <label className='text-xs text-neutral-400 block mb-1'>
+              Cell gap
+            </label>
+            <input
+              type='number'
+              min={0}
+              max={20}
+              className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
+              value={selectedTimelineClip.blockSettings.gameCellGap ?? 1}
+              onChange={(e) =>
+                void applyClipPatch({
+                  gameCellGap: Math.max(0, Number(e.target.value) || 0),
+                })
+              }
+            />
+          </div>
+        </div>
+      )}
       <div className='flex items-center justify-between mb-2'>
         <span className='text-xs text-neutral-400'>Attached inputs</span>
         <button

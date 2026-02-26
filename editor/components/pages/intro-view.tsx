@@ -16,6 +16,7 @@ import {
   addTwitchInput,
   addKickInput,
   addMP4Input,
+  addGameInput,
   addImageInput,
   addTextInput,
   updateInput,
@@ -267,6 +268,11 @@ export default function IntroView() {
                   inputId = result.inputId;
                 }
                 break;
+              case 'game': {
+                const result = await addGameInput(roomId, inputConfig.title);
+                inputId = result.inputId;
+                break;
+              }
             }
 
             if (inputId) {
@@ -289,6 +295,10 @@ export default function IntroView() {
               textMaxLines: inputConfig.textMaxLines,
               textScrollSpeed: inputConfig.textScrollSpeed,
               textScrollLoop: inputConfig.textScrollLoop,
+              gameBackgroundColor: inputConfig.gameBackgroundColor,
+              gameCellGap: inputConfig.gameCellGap,
+              gameBoardBorderColor: inputConfig.gameBoardBorderColor,
+              gameBoardBorderWidth: inputConfig.gameBoardBorderWidth,
             });
           } catch (err) {
             console.warn(`Failed to update input ${inputId}:`, err);
@@ -555,6 +565,18 @@ export default function IntroView() {
                               )
                             }>
                             Join as Guest
+                          </Button>
+                          <Button
+                            size='sm'
+                            variant='default'
+                            className='bg-neutral-800 text-neutral-300 hover:bg-neutral-700 cursor-pointer flex-1 sm:flex-none'
+                            onClick={() =>
+                              window.open(
+                                `/room-preview/${room.roomId}`,
+                                '_blank',
+                              )
+                            }>
+                            Spectate
                           </Button>
                         </div>
                       </div>

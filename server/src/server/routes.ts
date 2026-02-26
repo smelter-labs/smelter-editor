@@ -1,10 +1,12 @@
 import Fastify from 'fastify';
+import cors from '@fastify/cors';
 import { STATUS_CODES } from 'node:http';
 import path from 'node:path';
 import { ensureDir, pathExists, readdir, readFile, remove, stat, writeFile } from 'fs-extra';
 import { Type } from '@sinclair/typebox';
 import type { Static, TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { state } from './serverState';
+import { logRequest, setGlobalGameState } from '../dashboard';
 import { TwitchChannelSuggestions } from '../twitch/TwitchChannelMonitor';
 import type { RegisterInputOptions, PendingWhipInputData } from './roomState';
 import { toPublicInputState } from './publicInputState';
@@ -23,6 +25,13 @@ type RecordingFileParams = { Params: { fileName: string } };
 export const routes = Fastify({
   logger: config.logger,
 }).withTypeProvider<TypeBoxTypeProvider>();
+
+routes.register(cors, { origin: true });
+
+routes.addHook('onResponse', (req, reply, done) => {
+  logRequest(req.method, req.url, reply.statusCode);
+  done();
+});
 
 routes.setErrorHandler((err: unknown, _req, res) => {
   const e = err as { statusCode?: number; status?: number; code?: string; message?: string };
@@ -100,6 +109,10 @@ const InputSchema = Type.Union([
       Type.Literal('center'),
       Type.Literal('right'),
     ])),
+  }),
+  Type.Object({
+    type: Type.Literal('game'),
+    title: Type.Optional(Type.String()),
   }),
 ]);
 
@@ -645,6 +658,10 @@ const UpdateInputSchema = Type.Object({
   textFontSize: Type.Optional(Type.Number()),
   borderColor: Type.Optional(Type.String()),
   borderWidth: Type.Optional(Type.Number({ minimum: 0 })),
+  gameBackgroundColor: Type.Optional(Type.String()),
+  gameCellGap: Type.Optional(Type.Number({ minimum: 0 })),
+  gameBoardBorderColor: Type.Optional(Type.String()),
+  gameBoardBorderWidth: Type.Optional(Type.Number({ minimum: 0 })),
   attachedInputIds: Type.Optional(Type.Array(Type.String())),
 });
 
@@ -657,6 +674,96 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(
     const room = state.getRoom(roomId);
     await room.updateInput(inputId, req.body);
     res.status(200).send({ status: 'ok' });
+  }
+);
+
+const GameStateSchema = Type.Object({
+  board: Type.Object({
+    width: Type.Number({ minimum: 1 }),
+    height: Type.Number({ minimum: 1 }),
+    cellSize: Type.Number({ minimum: 1 }),
+    cellGap: Type.Optional(Type.Number({ minimum: 0 })),
+  }),
+  cells: Type.Array(
+    Type.Object({
+      x: Type.Number(),
+      y: Type.Number(),
+      color: Type.String(),
+      size: Type.Optional(Type.Number({ minimum: 1 })),
+      isHead: Type.Optional(Type.Boolean()),
+      direction: Type.Optional(Type.Union([
+        Type.Literal('up'),
+        Type.Literal('down'),
+        Type.Literal('left'),
+        Type.Literal('right'),
+      ])),
+    })
+  ),
+  backgroundColor: Type.String(),
+});
+
+routes.post<RoomAndInputIdParams & { Body: Static<typeof GameStateSchema> }>(
+  '/room/:roomId/input/:inputId/game-state',
+  { schema: { params: RoomAndInputIdParamsSchema, body: GameStateSchema } },
+  async (req, res) => {
+    const { roomId, inputId } = req.params;
+    const room = state.getRoom(roomId);
+    room.updateGameState(inputId, req.body);
+    res.status(200).send({ status: 'ok' });
+  }
+);
+
+// Global game state — no room needed, broadcasts to all game inputs
+routes.post<{ Body: Static<typeof GameStateSchema> }>(
+  '/game-state',
+  { schema: { body: GameStateSchema } },
+  async (req, res) => {
+    const gs = req.body;
+    setGlobalGameState({
+      boardWidth: gs.board.width,
+      boardHeight: gs.board.height,
+      cellSize: gs.board.cellSize,
+      cellGap: gs.board.cellGap ?? 0,
+      cells: gs.cells,
+      backgroundColor: gs.backgroundColor,
+      boardBorderColor: '#ffffff',
+      boardBorderWidth: 4,
+    });
+
+    // Check if any room has a game input
+    const roomsWithGame = state.getRooms().filter(room =>
+      room.getInputs().some(input => input.type === 'game')
+    );
+
+    let createdRoomId: string | undefined;
+
+    if (roomsWithGame.length === 0) {
+      // Auto-create a room with a single game input and picture-in-picture layout
+      const { roomId, room } = await state.createRoom(
+        [{ type: 'game', title: 'Snake' }],
+        true,
+      );
+      createdRoomId = roomId;
+      await room.updateLayout('picture-in-picture');
+      // Wait briefly for async init to register the game input
+      await new Promise(resolve => setTimeout(resolve, 200));
+      for (const input of room.getInputs()) {
+        if (input.type === 'game') {
+          room.updateGameState(input.inputId, gs);
+        }
+      }
+    } else {
+      // Broadcast to all rooms that have game inputs
+      for (const room of roomsWithGame) {
+        for (const input of room.getInputs()) {
+          if (input.type === 'game') {
+            room.updateGameState(input.inputId, gs);
+          }
+        }
+      }
+    }
+
+    res.status(200).send({ status: 'ok', roomId: createdRoomId });
   }
 );
 

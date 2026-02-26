@@ -27,6 +27,10 @@ export type RoomConfigInput = {
   textFontSize?: number;
   borderColor?: string;
   borderWidth?: number;
+  gameBackgroundColor?: string;
+  gameCellGap?: number;
+  gameBoardBorderColor?: string;
+  gameBoardBorderWidth?: number;
   attachedInputIndices?: number[];
 };
 
@@ -144,6 +148,10 @@ export function exportRoomConfig(
       textFontSize: input.textFontSize,
       borderColor: input.borderColor,
       borderWidth: input.borderWidth,
+      gameBackgroundColor: input.gameBackgroundColor,
+      gameCellGap: input.gameCellGap,
+      gameBoardBorderColor: input.gameBoardBorderColor,
+      gameBoardBorderWidth: input.gameBoardBorderWidth,
       attachedInputIndices: input.attachedInputIds
         ?.map((id) => inputIdToIndex.get(id))
         .filter((idx): idx is number => idx !== undefined),

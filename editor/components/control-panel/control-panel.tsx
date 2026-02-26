@@ -12,6 +12,7 @@ import {
   addTwitchInput,
   addKickInput,
   addMP4Input,
+  addGameInput,
   addImageInput,
   addTextInput,
   removeInput,
@@ -581,6 +582,11 @@ function SettingsBar({
                 inputId = result.inputId;
               }
               break;
+            case 'game': {
+              const result = await addGameInput(roomId, inputConfig.title);
+              inputId = result.inputId;
+              break;
+            }
           }
 
           if (inputId) {
@@ -620,6 +626,10 @@ function SettingsBar({
             textFontSize: inputConfig.textFontSize,
             borderColor: inputConfig.borderColor,
             borderWidth: inputConfig.borderWidth,
+            gameBackgroundColor: inputConfig.gameBackgroundColor,
+            gameCellGap: inputConfig.gameCellGap,
+            gameBoardBorderColor: inputConfig.gameBoardBorderColor,
+            gameBoardBorderWidth: inputConfig.gameBoardBorderWidth,
             attachedInputIds:
               attachedInputIds && attachedInputIds.length > 0
                 ? attachedInputIds

@@ -161,7 +161,12 @@ export function useControlPanelState(
   const changeLayout = useCallback(
     async (layout: Layout) => {
       try {
-        await updateRoomAction(roomId, { layout });
+        const disableNewsStrip =
+          layout === 'softu-tv' || layout === 'picture-in-picture';
+        await updateRoomAction(roomId, {
+          layout,
+          ...(disableNewsStrip && { newsStripEnabled: false }),
+        });
         await refreshState();
         if (layout === 'wrapped' && typeof window !== 'undefined') {
           setTimeout(async () => {

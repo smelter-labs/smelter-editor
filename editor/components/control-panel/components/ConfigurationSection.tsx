@@ -8,6 +8,7 @@ import {
   addMP4Input,
   addImageInput,
   addTextInput,
+  addGameInput,
   addCameraInput,
   updateInput,
   updateRoom,
@@ -186,6 +187,11 @@ export function ConfigurationSection({
               inputId = result.inputId;
             }
             break;
+          case 'game': {
+            const result = await addGameInput(roomId, inputConfig.title);
+            inputId = result.inputId;
+            break;
+          }
         }
 
         if (inputId) {
@@ -221,6 +227,10 @@ export function ConfigurationSection({
           textFontSize: inputConfig.textFontSize,
           borderColor: inputConfig.borderColor,
           borderWidth: inputConfig.borderWidth,
+          gameBackgroundColor: inputConfig.gameBackgroundColor,
+          gameCellGap: inputConfig.gameCellGap,
+          gameBoardBorderColor: inputConfig.gameBoardBorderColor,
+          gameBoardBorderWidth: inputConfig.gameBoardBorderWidth,
           attachedInputIds:
             attachedInputIds && attachedInputIds.length > 0
               ? attachedInputIds

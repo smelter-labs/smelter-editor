@@ -63,6 +63,7 @@ const TYPE_HSL: Record<Input['type'], [number, number, number]> = {
   'local-mp4': [25, 95, 53], // orange-500
   image: [48, 96, 53], // yellow-500
   'text-input': [330, 81, 60], // pink-500
+  game: [0, 72, 51], // red-500
 };
 
 const LIGHTNESS_STEP = 10;

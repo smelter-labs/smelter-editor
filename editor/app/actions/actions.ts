@@ -56,7 +56,8 @@ export type Input = {
     | 'kick-channel'
     | 'whip'
     | 'image'
-    | 'text-input';
+    | 'text-input'
+    | 'game';
   sourceState: 'live' | 'offline' | 'unknown' | 'always-live';
   status: 'disconnected' | 'pending' | 'connected';
   channelId?: string;
@@ -74,6 +75,10 @@ export type Input = {
   borderWidth?: number;
   attachedInputIds?: string[];
   hidden?: boolean;
+  gameBackgroundColor?: string;
+  gameCellGap?: number;
+  gameBoardBorderColor?: string;
+  gameBoardBorderWidth?: number;
 };
 
 export type RegisterInputOptions =
@@ -96,6 +101,10 @@ export type RegisterInputOptions =
       type: 'text-input';
       text: string;
       textAlign?: 'left' | 'center' | 'right';
+    }
+  | {
+      type: 'game';
+      title?: string;
     };
 
 export type PendingWhipInputData = {
@@ -346,6 +355,14 @@ export async function addTextInput(
   );
 }
 
+export async function addGameInput(roomId: string, title?: string) {
+  return await sendSmelterRequest(
+    'post',
+    `/room/${encodeURIComponent(roomId)}/input`,
+    { type: 'game', title },
+  );
+}
+
 export async function removeInput(roomId: string, inputId: string) {
   return await sendSmelterRequest(
     'delete',
@@ -500,6 +517,10 @@ export type UpdateInputOptions = {
   borderColor?: string;
   borderWidth?: number;
   attachedInputIds?: string[];
+  gameBackgroundColor?: string;
+  gameCellGap?: number;
+  gameBoardBorderColor?: string;
+  gameBoardBorderWidth?: number;
 };
 
 export async function updateInput(
@@ -589,7 +610,8 @@ async function sendSmelterRequest(
     err.status = response.status;
     throw err;
   }
-  return (await response.json()) as object;
+  const data = (await response.json()) as object;
+  return data;
 }
 
 function spawn(

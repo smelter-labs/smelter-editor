@@ -822,6 +822,57 @@ export default function InputEntry({
             onTextFontSizeChange={handleTextFontSizeChange}
           />
         )}
+        {input.type === 'game' && !readOnly && (
+          <div className='flex items-center gap-3 px-2 py-1'>
+            <div className='flex items-center gap-1'>
+              <label className='text-xs text-neutral-400'>Gap</label>
+              <input
+                type='number'
+                min={0}
+                max={20}
+                className='w-14 bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-0.5 rounded'
+                value={input.gameCellGap ?? 1}
+                onChange={(e) => {
+                  void updateInput(roomId, input.inputId, {
+                    gameCellGap: Math.max(0, Number(e.target.value) || 0),
+                  });
+                }}
+              />
+              <span className='text-xs text-neutral-500'>px</span>
+            </div>
+            <div className='flex items-center gap-1'>
+              <label className='text-xs text-neutral-400'>Border</label>
+              <input
+                type='number'
+                min={0}
+                max={20}
+                className='w-14 bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-0.5 rounded'
+                value={input.gameBoardBorderWidth ?? 4}
+                onChange={(e) => {
+                  void updateInput(roomId, input.inputId, {
+                    gameBoardBorderWidth: Math.max(
+                      0,
+                      Number(e.target.value) || 0,
+                    ),
+                  });
+                }}
+              />
+              <span className='text-xs text-neutral-500'>px</span>
+            </div>
+            <div className='flex items-center gap-1'>
+              <input
+                type='color'
+                className='w-6 h-6 bg-transparent border-0 cursor-pointer'
+                value={input.gameBoardBorderColor ?? '#ffffff'}
+                onChange={(e) => {
+                  void updateInput(roomId, input.inputId, {
+                    gameBoardBorderColor: e.target.value,
+                  });
+                }}
+              />
+            </div>
+          </div>
+        )}
         {!readOnly && (
           <div className='flex flex-row items-center min-w-0'>
             <div className='flex-1 flex md:pl-7 min-w-0'>

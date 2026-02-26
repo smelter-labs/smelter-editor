@@ -7,6 +7,26 @@ import type { Resolution } from '../smelter';
 
 export type InputOrientation = 'horizontal' | 'vertical';
 
+export type GameCell = {
+  x: number;
+  y: number;
+  color: string;
+  size?: number;
+  isHead?: boolean;
+  direction?: 'up' | 'down' | 'left' | 'right';
+};
+
+export type GameState = {
+  boardWidth: number;
+  boardHeight: number;
+  cellSize: number;
+  cells: GameCell[];
+  backgroundColor: string;
+  cellGap: number;
+  boardBorderColor: string;
+  boardBorderWidth: number;
+};
+
 export type InputConfig = {
   inputId: string;
   volume: number;
@@ -24,6 +44,7 @@ export type InputConfig = {
   textScrollLoop?: boolean;
   textScrollNudge?: number;
   textFontSize?: number;
+  gameState?: GameState;
   borderColor?: string;
   borderWidth?: number;
   replaceWith?: InputConfig;
@@ -76,7 +97,7 @@ export function createRoomStore(resolution: Resolution = { width: 2560, height: 
     swapFadeInDurationMs: 500,
     swapFadeOutDurationMs: 500,
     newsStripFadeDuringSwap: true,
-    newsStripEnabled: true,
+    newsStripEnabled: false,
     updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number, swapOutgoingEnabled: boolean, swapFadeInDurationMs: number, newsStripFadeDuringSwap: boolean, swapFadeOutDurationMs: number, newsStripEnabled: boolean) => {
       set(_state => ({ inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs, newsStripEnabled }));
     },
