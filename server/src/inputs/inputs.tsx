@@ -446,8 +446,8 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     const unboundedLocal = Math.max(0, localProgress);
     const clampedLocal = Math.max(0, Math.min(1, unboundedLocal));
     if (!smoothMoveEnabled) {
-      // Classic mode: interpolate only within the current tick, then stop.
-      return clampedRaw + (1 - clampedRaw) * clampedLocal;
+      // Hard snap mode: disable local interpolation entirely.
+      return 1;
     }
     // Blend backend progress with local tick progress to keep motion smooth,
     // with both acceleration and deceleration phases.
@@ -470,6 +470,10 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     // then advance previous snapshot for the next server update.
     interpolationFromCellsRef.current = prevCellsRef.current;
     prevCellsRef.current = gameState.cells;
+    if (!smoothMoveEnabled) {
+      setLocalProgress(1);
+      return;
+    }
     setLocalProgress(0);
 
     // Animate progress continuously; when no new server tick arrives,
@@ -486,7 +490,7 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
       setLocalProgress(t);
     }, 10);
     return () => clearInterval(raf);
-  }, [gameState.cells]);
+  }, [gameState.cells, smoothMoveEnabled, effectiveSmoothSpeedMultiplier]);
 
   // Game over: remove cells one by one, then show modal
   const [removedCount, setRemovedCount] = useState(0);
