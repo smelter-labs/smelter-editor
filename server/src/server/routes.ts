@@ -1095,7 +1095,7 @@ routes.post<{ Body: Static<typeof GameStateSchema> }>(
       smoothMove: gs.smoothMove === true,
       smoothMoveSpeed: gs.smoothMoveSpeed ?? 1,
       backgroundColor: gs.backgroundColor,
-      boardBorderColor: '#ffffff',
+      boardBorderColor: '#111111',
       boardBorderWidth: 4,
       gridLineColor: '#111111',
       gridLineAlpha: 0.15,

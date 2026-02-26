@@ -457,7 +457,10 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
       : 1 - Math.pow(-2 * t + 2, 3) / 2
   );
 
-  const getSmoothedProgress = (rawProgress: number) => {
+  const getSmoothedProgress = (
+    rawProgress: number,
+    hasBackendProgress: boolean,
+  ) => {
     const clampedRaw = Math.max(0, Math.min(1, rawProgress));
     const unboundedLocal = Math.max(0, localProgress);
     const clampedLocal = Math.max(0, Math.min(1, unboundedLocal));
@@ -465,20 +468,22 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
       // Hard snap mode: disable local interpolation entirely.
       return 1;
     }
+    if (hasBackendProgress) {
+      // Backend already drives sub-tick movement; avoid double interpolation.
+      return clampedRaw;
+    }
     // Blend backend progress with local tick progress to keep motion smooth,
     // with both acceleration and deceleration phases.
     const blended = clampedRaw + (1 - clampedRaw) * easeInOutCubic(clampedLocal);
-    // Continue moving after the first cell step, so sparse updates still look continuous.
-    if (unboundedLocal <= 1) return blended;
-    return blended + (unboundedLocal - 1);
+    return Math.max(0, Math.min(1, blended));
   };
 
   useLayoutEffect(() => {
     const now = Date.now();
     const delta = now - lastUpdateRef.current;
-    // Ticks are expected to be uniform, so keep a direct interval estimate.
+    // Ticks can jitter slightly; smooth the interval estimate to prevent visible stutter.
     if (delta > 30 && delta < 2000) {
-      tickIntervalRef.current = delta;
+      tickIntervalRef.current = tickIntervalRef.current * 0.75 + delta * 0.25;
     }
     lastUpdateRef.current = now;
 
@@ -492,8 +497,7 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     }
     setLocalProgress(0);
 
-    // Animate progress continuously; when no new server tick arrives,
-    // keep moving forward locally with the last known direction.
+    // Animate progress continuously inside a single tick window.
     const startTime = now;
     const duration = Math.max(
       80,
@@ -503,8 +507,12 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     raf = setInterval(() => {
       const elapsed = Date.now() - startTime;
       const t = elapsed / duration;
-      setLocalProgress(t);
-    }, 10);
+      const clamped = Math.max(0, Math.min(1, t));
+      setLocalProgress(clamped);
+      if (clamped >= 1) {
+        clearInterval(raf);
+      }
+    }, 16);
     return () => clearInterval(raf);
   }, [gameState.cells, smoothMoveEnabled, effectiveSmoothSpeedMultiplier]);
 
@@ -648,7 +656,7 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
   const offsetY = (resolution.height - boardH) / 2;
 
   const borderW = gameState.boardBorderWidth ?? 4;
-  const borderC = gameState.boardBorderColor ?? '#ffffff';
+  const borderC = gameState.boardBorderColor ?? gameState.gridLineColor ?? '#000000';
   const gridColor = hexToRgb(gameState.gridLineColor ?? '#000000');
 
   const prevCells = interpolationFromCellsRef.current;
@@ -834,7 +842,7 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     // Use local interpolation: blend from cell's raw progress toward 1
     const prevCell = prevCellByCurrentIndex.get(origIdx);
     const rawProgress = getRawProgress(cell, prevCell);
-    const progress = getSmoothedProgress(rawProgress);
+    const progress = getSmoothedProgress(rawProgress, typeof cell.progress === 'number');
     const step = cellPixel + gap;
     let boardX = cell.x;
     let boardY = cell.y;
@@ -896,7 +904,7 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     const headIndex = gameState.cells.findIndex(c => c === cell);
     const prevCell = headIndex >= 0 ? prevCellByCurrentIndex.get(headIndex) : undefined;
     const rawProgress = getRawProgress(cell, prevCell);
-    const progress = getSmoothedProgress(rawProgress);
+    const progress = getSmoothedProgress(rawProgress, typeof cell.progress === 'number');
     const step = cellPixel + gap;
     let boardX = cell.x;
     let boardY = cell.y;
