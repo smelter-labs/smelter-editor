@@ -877,7 +877,7 @@ export default function InputEntry({
               <input
                 type='color'
                 className='w-6 h-6 bg-transparent border-0 cursor-pointer'
-                value={input.gameGridLineColor ?? '#333333'}
+                value={input.gameGridLineColor ?? '#000000'}
                 onChange={(e) => {
                   void updateInput(roomId, input.inputId, {
                     gameGridLineColor: e.target.value,

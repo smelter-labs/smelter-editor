@@ -775,7 +775,7 @@ export function BlockClipPropertiesPanel({
               value={
                 gameBgColor ??
                 selectedTimelineClip.blockSettings.gameBackgroundColor ??
-                '#484858'
+                '#0a0f1a'
               }
               onChange={(e) => {
                 const value = e.target.value;
@@ -817,7 +817,7 @@ export function BlockClipPropertiesPanel({
               value={
                 gameGridColor ??
                 selectedTimelineClip.blockSettings.gameGridLineColor ??
-                '#333333'
+                '#000000'
               }
               onChange={(e) => {
                 const value = e.target.value;
