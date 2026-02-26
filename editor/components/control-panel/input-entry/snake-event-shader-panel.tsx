@@ -11,7 +11,8 @@ import {
   updateInput,
 } from '@/app/actions/actions';
 import { SNAKE_EVENT_TYPES } from '@/lib/snake-events';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, Dices } from 'lucide-react';
+import { toast } from 'react-toastify';
 
 function hexToPackedInt(hex: string): number {
   const cleanHex = hex.replace('#', '');
@@ -228,28 +229,157 @@ export default function SnakeEventShaderPanel({
     setMapping(eventType, { ...existing, params }, true);
   };
 
+  const handleRandomizeEventShader = (eventType: SnakeEventType) => {
+    const existing = getMapping(eventType) ?? buildDefaultMapping(eventType);
+    const shaderDef = availableShaders.find((s) => s.id === existing.shaderId);
+    if (!shaderDef || !shaderDef.params || shaderDef.params.length === 0) {
+      return;
+    }
+
+    const randomizedParams: ShaderParamConfig[] = shaderDef.params.map(
+      (param) => {
+        const existingParam = existing.params.find(
+          (p) => p.paramName === param.name,
+        );
+        const existingValue =
+          existingParam?.paramValue ?? param.defaultValue ?? 0;
+
+        if (param.name === 'effect_type') {
+          return { paramName: param.name, paramValue: existingValue };
+        }
+
+        if (param.type === 'color') {
+          const randomColor = Math.floor(Math.random() * 0x1000000);
+          return { paramName: param.name, paramValue: randomColor };
+        }
+
+        const min = param.minValue ?? 0;
+        const max = param.maxValue ?? 1;
+        const lower = Math.min(min, max);
+        const upper = Math.max(min, max);
+        const randomValue = lower + Math.random() * (upper - lower);
+        return {
+          paramName: param.name,
+          paramValue: Number(randomValue.toFixed(3)),
+        };
+      },
+    );
+
+    setExpandedEvents((prev) => new Set(prev).add(eventType));
+    setMapping(eventType, {
+      ...existing,
+      enabled: true,
+      params: randomizedParams,
+    });
+    const eventLabel =
+      SNAKE_EVENT_TYPES.find((eventMeta) => eventMeta.type === eventType)
+        ?.label ?? eventType;
+    toast.info(`🎲 ${eventLabel}`, { autoClose: 1200 });
+  };
+
+  const handleRandomizeAllEnabledEvents = () => {
+    const enabledEvents = SNAKE_EVENT_TYPES.map(
+      (eventMeta) => eventMeta.type,
+    ).filter((eventType) => getMapping(eventType)?.enabled);
+
+    if (enabledEvents.length === 0) {
+      toast.info('🎲 No active snake event effects', { autoClose: 1200 });
+      return;
+    }
+
+    const updated = { ...config } as SnakeEventShaderConfig;
+    for (const eventType of enabledEvents) {
+      const existing = updated[eventType] ?? buildDefaultMapping(eventType);
+      const shaderDef = availableShaders.find(
+        (s) => s.id === existing.shaderId,
+      );
+      if (!shaderDef || !shaderDef.params || shaderDef.params.length === 0) {
+        continue;
+      }
+
+      const randomizedParams: ShaderParamConfig[] = shaderDef.params.map(
+        (param) => {
+          const existingParam = existing.params.find(
+            (p) => p.paramName === param.name,
+          );
+          const existingValue =
+            existingParam?.paramValue ?? param.defaultValue ?? 0;
+
+          if (param.name === 'effect_type') {
+            return { paramName: param.name, paramValue: existingValue };
+          }
+
+          if (param.type === 'color') {
+            const randomColor = Math.floor(Math.random() * 0x1000000);
+            return { paramName: param.name, paramValue: randomColor };
+          }
+
+          const min = param.minValue ?? 0;
+          const max = param.maxValue ?? 1;
+          const lower = Math.min(min, max);
+          const upper = Math.max(min, max);
+          const randomValue = lower + Math.random() * (upper - lower);
+          return {
+            paramName: param.name,
+            paramValue: Number(randomValue.toFixed(3)),
+          };
+        },
+      );
+
+      updated[eventType] = {
+        ...existing,
+        enabled: true,
+        params: randomizedParams,
+      };
+    }
+
+    setExpandedEvents((prev) => {
+      const next = new Set(prev);
+      for (const eventType of enabledEvents) {
+        next.add(eventType);
+      }
+      return next;
+    });
+    void persistConfig(updated);
+    toast.info(
+      `🎲 Randomized ${enabledEvents.length} event${enabledEvents.length === 1 ? '' : 's'}`,
+      {
+        autoClose: 1200,
+      },
+    );
+  };
+
   const enabledCount = SNAKE_EVENT_TYPES.filter(
     (e) => getMapping(e.type)?.enabled,
   ).length;
 
   return (
     <div className='mt-2' data-no-dnd>
-      <button
-        type='button'
-        className='flex items-center gap-1.5 w-full text-left text-sm font-medium text-neutral-300 hover:text-white transition-colors py-1 cursor-pointer'
-        onClick={() => setPanelOpen(!panelOpen)}>
-        {panelOpen ? (
-          <ChevronDown className='size-3.5' />
-        ) : (
-          <ChevronRight className='size-3.5' />
-        )}
-        <span>🐍 Snake Event Effects</span>
-        {enabledCount > 0 && (
-          <span className='ml-auto text-xs text-neutral-500'>
-            {enabledCount} active
-          </span>
-        )}
-      </button>
+      <div className='flex items-center gap-1'>
+        <button
+          type='button'
+          className='flex items-center gap-1.5 flex-1 text-left text-sm font-medium text-neutral-300 hover:text-white transition-colors py-1 cursor-pointer'
+          onClick={() => setPanelOpen(!panelOpen)}>
+          {panelOpen ? (
+            <ChevronDown className='size-3.5' />
+          ) : (
+            <ChevronRight className='size-3.5' />
+          )}
+          <span>🐍 Snake Event Effects</span>
+          {enabledCount > 0 && (
+            <span className='ml-auto text-xs text-neutral-500'>
+              {enabledCount} active
+            </span>
+          )}
+        </button>
+        <button
+          type='button'
+          title='Randomize all active snake event effects'
+          className='p-1 rounded text-neutral-500 hover:text-white hover:bg-neutral-700/70 transition-colors cursor-pointer'
+          onClick={handleRandomizeAllEnabledEvents}>
+          <Dices className='size-3.5' />
+        </button>
+      </div>
 
       {panelOpen && (
         <div className='mt-1 flex flex-col gap-0.5'>
@@ -283,6 +413,15 @@ export default function SnakeEventShaderPanel({
                     <span className='text-xs text-neutral-500 truncate max-w-24'>
                       {shaderDef?.name ?? mapping?.shaderId}
                     </span>
+                  )}
+                  {isEnabled && (
+                    <button
+                      type='button'
+                      className='text-neutral-500 hover:text-white cursor-pointer'
+                      title='Randomize shader settings for this event'
+                      onClick={() => handleRandomizeEventShader(type)}>
+                      <Dices className='size-3.5' />
+                    </button>
                   )}
                   {isEnabled && (
                     <button
