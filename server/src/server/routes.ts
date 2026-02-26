@@ -25,6 +25,12 @@ type RecordingFileParams = { Params: { fileName: string } };
 let gameRoomCreationInProgress: Promise<void> | null = null;
 const gameInputOwnerMap = new Map<string, string>(); // "<roomId>::<inputId>" -> source key
 const gameSourceRouteMap = new Map<string, { roomId: string; inputId: string }>();
+const gameLastSeqMap = new Map<string, number>();
+const gameLastSeenAtMap = new Map<string, number>();
+const gameLastMovementAtMap = new Map<string, number>();
+const gameLastBoardSignatureMap = new Map<string, string>();
+const GAME_STATE_TIMEOUT_MS = 5_000;
+const GAME_MOVEMENT_TIMEOUT_MS = 60_000;
 
 function firstHeaderValue(value: string | string[] | undefined): string | undefined {
   if (!value) return undefined;
@@ -56,6 +62,159 @@ function findGameInputId(roomId: string): string | undefined {
   } catch {
     return undefined;
   }
+}
+
+function cleanupGameTrackingForSourceKey(sourceKey: string): void {
+  const target = gameSourceRouteMap.get(sourceKey);
+  if (target) {
+    gameInputOwnerMap.delete(`${target.roomId}::${target.inputId}`);
+  }
+  gameSourceRouteMap.delete(sourceKey);
+  gameLastSeqMap.delete(sourceKey);
+  gameLastSeenAtMap.delete(sourceKey);
+  gameLastMovementAtMap.delete(sourceKey);
+  gameLastBoardSignatureMap.delete(sourceKey);
+}
+
+type GameMovementPayload = {
+  board: {
+    width: number;
+    height: number;
+    cellSize: number;
+    cellGap?: number;
+  };
+  cells: Array<{
+    x: number;
+    y: number;
+    color: string;
+    size?: number;
+    isHead?: boolean;
+    direction?: 'up' | 'down' | 'left' | 'right';
+    progress?: number;
+  }>;
+};
+
+function buildGameBoardSignature(payload: GameMovementPayload): string {
+  const sortedCells = payload.cells
+    .map(cell =>
+      [
+        cell.x,
+        cell.y,
+        cell.color,
+        cell.size ?? '',
+        cell.isHead ? 1 : 0,
+        cell.direction ?? '',
+        cell.progress ?? '',
+      ].join(':')
+    )
+    .sort();
+
+  return [
+    payload.board.width,
+    payload.board.height,
+    payload.board.cellSize,
+    payload.board.cellGap ?? '',
+    sortedCells.join('|'),
+  ].join('#');
+}
+
+function evaluateGameMovement(sourceKey: string, payload: GameMovementPayload): { movementTimedOut: boolean; idleMs: number } {
+  const now = Date.now();
+  const signature = buildGameBoardSignature(payload);
+  const lastSignature = gameLastBoardSignatureMap.get(sourceKey);
+
+  if (lastSignature === undefined || lastSignature !== signature) {
+    gameLastBoardSignatureMap.set(sourceKey, signature);
+    gameLastMovementAtMap.set(sourceKey, now);
+    return { movementTimedOut: false, idleMs: 0 };
+  }
+
+  const lastMovementAt = gameLastMovementAtMap.get(sourceKey) ?? now;
+  const idleMs = now - lastMovementAt;
+  return { movementTimedOut: idleMs > GAME_MOVEMENT_TIMEOUT_MS, idleMs };
+}
+
+async function closeInactiveGameRoomForSourceKey(sourceKey: string, idleMs: number): Promise<string | undefined> {
+  const target = gameSourceRouteMap.get(sourceKey);
+  if (!target) {
+    cleanupGameTrackingForSourceKey(sourceKey);
+    return undefined;
+  }
+
+  console.info('[game-state] Closing inactive game room', {
+    sourceKey,
+    roomId: target.roomId,
+    inputId: target.inputId,
+    idleMs,
+  });
+
+  try {
+    await state.deleteRoom(target.roomId);
+  } catch (err) {
+    console.warn('[game-state] Failed to close inactive game room', {
+      sourceKey,
+      roomId: target.roomId,
+      error: err,
+    });
+  } finally {
+    cleanupGameTrackingForSourceKey(sourceKey);
+  }
+
+  return target.roomId;
+}
+
+type GameSeqDecision = {
+  shouldProcess: boolean;
+  outOfOrder: boolean;
+};
+
+function evaluateGameSequence(sourceKey: string, seq: number): GameSeqDecision {
+  const now = Date.now();
+  const lastSeenAt = gameLastSeenAtMap.get(sourceKey);
+  if (lastSeenAt && now - lastSeenAt > GAME_STATE_TIMEOUT_MS) {
+    console.info('[game-state] Source timed out, marking disconnected', {
+      sourceKey,
+      idleMs: now - lastSeenAt,
+    });
+    cleanupGameTrackingForSourceKey(sourceKey);
+  }
+
+  const lastSeq = gameLastSeqMap.get(sourceKey);
+  gameLastSeenAtMap.set(sourceKey, now);
+
+  if (seq === 1) {
+    if (lastSeq !== undefined) {
+      console.info('[game-state] New game sequence started, resetting state', { sourceKey, lastSeq });
+      cleanupGameTrackingForSourceKey(sourceKey);
+      gameLastSeenAtMap.set(sourceKey, now);
+    }
+    gameLastSeqMap.set(sourceKey, 1);
+    return { shouldProcess: true, outOfOrder: false };
+  }
+
+  if (lastSeq === undefined) {
+    // Allow processing to avoid dropping first packet from a late/reconnected sender.
+    gameLastSeqMap.set(sourceKey, seq);
+    if (seq > 1) {
+      console.warn('[game-state] First packet has non-initial seq', { sourceKey, seq });
+      return { shouldProcess: true, outOfOrder: true };
+    }
+    return { shouldProcess: true, outOfOrder: false };
+  }
+
+  if (seq <= lastSeq) {
+    console.info('[game-state] Ignoring stale/duplicate packet', { sourceKey, seq, lastSeq });
+    return { shouldProcess: false, outOfOrder: false };
+  }
+
+  if (seq > lastSeq + 1) {
+    console.warn('[game-state] Sequence gap detected', { sourceKey, lastSeq, seq, missed: seq - lastSeq - 1 });
+    gameLastSeqMap.set(sourceKey, seq);
+    return { shouldProcess: true, outOfOrder: true };
+  }
+
+  gameLastSeqMap.set(sourceKey, seq);
+  return { shouldProcess: true, outOfOrder: false };
 }
 
 async function createDedicatedGameRoom(
@@ -746,6 +905,7 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(
 
 const GameStateSchema = Type.Object({
   gameId: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
+  seq: Type.Integer({ minimum: 1 }),
   board: Type.Object({
     width: Type.Number({ minimum: 1 }),
     height: Type.Number({ minimum: 1 }),
@@ -803,6 +963,11 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof GameStateSchema> }>(
     const { roomId, inputId } = req.params;
     const gs = req.body;
     const sourceKey = resolveGameSourceKey(req, gs.gameId);
+    const seqDecision = evaluateGameSequence(sourceKey, gs.seq);
+    if (!seqDecision.shouldProcess) {
+      res.status(200).send({ status: 'ignored', reason: 'stale_or_duplicate', roomId, inputId });
+      return;
+    }
     const targetKey = `${roomId}::${inputId}`;
     const currentOwner = gameInputOwnerMap.get(targetKey);
 
@@ -816,6 +981,7 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof GameStateSchema> }>(
       res.status(200).send({
         status: 'ok',
         rerouted: true,
+        outOfOrder: seqDecision.outOfOrder,
         roomId: newRoomId,
         inputId: newInputId,
         roomUrl: `/room/${newRoomId}`,
@@ -825,13 +991,30 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof GameStateSchema> }>(
 
     gameInputOwnerMap.set(targetKey, sourceKey);
     gameSourceRouteMap.set(sourceKey, { roomId, inputId });
+    const movement = evaluateGameMovement(sourceKey, gs);
+    if (movement.movementTimedOut) {
+      const closedRoomId = await closeInactiveGameRoomForSourceKey(sourceKey, movement.idleMs);
+      res.status(200).send({
+        status: 'room_closed_inactive',
+        idleMs: movement.idleMs,
+        roomId: closedRoomId,
+        inputId,
+      });
+      return;
+    }
 
     const room = state.getRoom(roomId);
     room.updateGameState(inputId, gs);
     if (gs.events && gs.events.length > 0) {
       room.ingestGameEvents(inputId, gs.events);
     }
-    res.status(200).send({ status: 'ok', roomId, inputId, roomUrl: `/room/${roomId}` });
+    res.status(200).send({
+      status: 'ok',
+      outOfOrder: seqDecision.outOfOrder,
+      roomId,
+      inputId,
+      roomUrl: `/room/${roomId}`,
+    });
   }
 );
 
@@ -842,6 +1025,11 @@ routes.post<{ Body: Static<typeof GameStateSchema> }>(
   async (req, res) => {
     const gs = req.body;
     const sourceKey = resolveGameSourceKey(req, gs.gameId);
+    const seqDecision = evaluateGameSequence(sourceKey, gs.seq);
+    if (!seqDecision.shouldProcess) {
+      res.status(200).send({ status: 'ignored', reason: 'stale_or_duplicate' });
+      return;
+    }
     setGlobalGameState({
       boardWidth: gs.board.width,
       boardHeight: gs.board.height,
@@ -864,6 +1052,16 @@ routes.post<{ Body: Static<typeof GameStateSchema> }>(
     let target = gameSourceRouteMap.get(sourceKey);
     let targetRoomId = target?.roomId;
     let targetInputId = target?.inputId;
+    const movement = evaluateGameMovement(sourceKey, gs);
+    if (movement.movementTimedOut) {
+      const closedRoomId = await closeInactiveGameRoomForSourceKey(sourceKey, movement.idleMs);
+      res.status(200).send({
+        status: 'room_closed_inactive',
+        idleMs: movement.idleMs,
+        roomId: closedRoomId,
+      });
+      return;
+    }
 
     // If route became stale (room deleted/input removed), rebuild it.
     if (targetRoomId && targetInputId) {
@@ -900,7 +1098,13 @@ routes.post<{ Body: Static<typeof GameStateSchema> }>(
     }
 
     const roomUrl = targetRoomId ? `/room/${targetRoomId}` : undefined;
-    res.status(200).send({ status: 'ok', roomId: targetRoomId, inputId: targetInputId, roomUrl });
+    res.status(200).send({
+      status: 'ok',
+      outOfOrder: seqDecision.outOfOrder,
+      roomId: targetRoomId,
+      inputId: targetInputId,
+      roomUrl,
+    });
   }
 );
 
