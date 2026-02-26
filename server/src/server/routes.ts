@@ -224,9 +224,8 @@ function evaluateGameSequence(sourceKey: string, seq: number): GameSeqDecision {
 
 async function createDedicatedGameRoom(
   gs: Static<typeof GameStateSchema>,
-): Promise<{ roomId: string; inputId: string }> {
-  const { roomId, room } = await state.createRoom([{ type: 'game', title: 'Snake' }], true);
-  // Keep historical behavior for auto-created game rooms.
+): Promise<{ roomId: string; roomName: { pl: string; en: string }; inputId: string }> {
+  const { roomId, roomName, room } = await state.createRoom([{ type: 'game', title: 'Snake' }], true);
   await room.updateLayout('softu-tv');
   await new Promise(resolve => setTimeout(resolve, 200));
 
@@ -240,7 +239,7 @@ async function createDedicatedGameRoom(
     room.ingestGameEvents(inputId, gs.events);
   }
 
-  return { roomId, inputId };
+  return { roomId, roomName, inputId };
 }
 
 export const routes = Fastify({
@@ -291,7 +290,7 @@ routes.get('/suggestions', async (_req, res) => {
 routes.get('/active-rooms', async (_req, res) => {
   const rooms = state.getRooms()
     .filter(room => !room.pendingDelete)
-    .map(room => ({ roomId: room.idPrefix }));
+    .map(room => ({ roomId: room.idPrefix, roomName: room.roomName }));
   res.status(200).send({ rooms });
 });
 
@@ -385,9 +384,10 @@ routes.post<{ Body: Static<typeof CreateRoomSchema> }>(
       }
     }
 
-    const { roomId, room } = await state.createRoom(initInputs, skipDefaultInputs, resolution);
+    const { roomId, roomName, room } = await state.createRoom(initInputs, skipDefaultInputs, resolution);
     res.status(200).send({
       roomId,
+      roomName,
       whepUrl: room.getWhepUrl(),
       resolution: room.getResolution(),
     });
@@ -405,6 +405,7 @@ routes.get<RoomIdParams>('/room/:roomId', { schema: { params: RoomIdParamsSchema
   const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs, newsStripEnabled] = room.getState();
 
   res.status(200).send({
+    roomName: room.roomName,
     inputs: inputs.map(toPublicInputState),
     layout,
     whepUrl: room.getWhepUrl(),
@@ -439,6 +440,7 @@ routes.get('/rooms', async (_req, res) => {
       const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs, newsStripEnabled] = room.getState();
       return {
         roomId: room.idPrefix,
+        roomName: room.roomName,
         inputs: inputs.map(toPublicInputState),
         layout,
         whepUrl: room.getWhepUrl(),
@@ -1005,7 +1007,7 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof GameStateSchema> }>(
       } else {
       // Another game stream is trying to update the same input.
       // Route this stream into a dedicated room with a single game input.
-      const { roomId: newRoomId, inputId: newInputId } = await createDedicatedGameRoom(gs);
+      const { roomId: newRoomId, roomName: newRoomName, inputId: newInputId } = await createDedicatedGameRoom(gs);
       const newTargetKey = `${newRoomId}::${newInputId}`;
       gameInputOwnerMap.set(newTargetKey, sourceKey);
       gameSourceRouteMap.set(sourceKey, { roomId: newRoomId, inputId: newInputId });
@@ -1014,6 +1016,7 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof GameStateSchema> }>(
         rerouted: true,
         outOfOrder: seqDecision.outOfOrder,
         roomId: newRoomId,
+        roomName: newRoomName,
         inputId: newInputId,
         roomUrl: `/room/${newRoomId}`,
       });
@@ -1044,6 +1047,7 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof GameStateSchema> }>(
       status: 'ok',
       outOfOrder: seqDecision.outOfOrder,
       roomId,
+      roomName: room.roomName,
       inputId,
       roomUrl: `/room/${roomId}`,
     });
@@ -1132,10 +1136,17 @@ routes.post<{ Body: Static<typeof GameStateSchema> }>(
     }
 
     const roomUrl = targetRoomId ? `/room/${targetRoomId}` : undefined;
+    let targetRoomName: { pl: string; en: string } | undefined;
+    if (targetRoomId) {
+      try {
+        targetRoomName = state.getRoom(targetRoomId).roomName;
+      } catch { /* room may have been deleted */ }
+    }
     res.status(200).send({
       status: 'ok',
       outOfOrder: seqDecision.outOfOrder,
       roomId: targetRoomId,
+      roomName: targetRoomName,
       inputId: targetInputId,
       roomUrl,
     });

@@ -89,7 +89,12 @@ export default function IntroView() {
   const [kickSuggestions, setKickSuggestions] = useState<any[]>([]);
 
   // Active rooms state
-  type Room = { roomId: string; createdAt?: number; isPublic?: boolean };
+  type Room = {
+    roomId: string;
+    roomName?: { pl: string; en: string };
+    createdAt?: number;
+    isPublic?: boolean;
+  };
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
 
@@ -539,7 +544,9 @@ export default function IntroView() {
                       <div className='flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between px-4 py-3 rounded-none bg-neutral-900 text-white text-sm'>
                         <div className='flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-3'>
                           <span className='font-mono truncate max-w-full'>
-                            {room.roomId}
+                            {room.roomName
+                              ? `${room.roomName.pl} / ${room.roomName.en}`
+                              : room.roomId}
                           </span>
                           {room.createdAt && (
                             <span className='text-xs text-neutral-500'>

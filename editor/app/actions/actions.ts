@@ -150,10 +150,16 @@ export type PendingWhipInputData = {
   position: number;
 };
 
+export type RoomNameEntry = {
+  pl: string;
+  en: string;
+};
+
 export type RoomState = {
   inputs: Input[];
   layout: Layout;
   whepUrl: string;
+  roomName?: RoomNameEntry;
   pendingDelete?: boolean;
   isPublic?: boolean;
   resolution?: Resolution;
@@ -212,6 +218,7 @@ export async function createNewRoom(
   resolution?: ResolutionPreset | Resolution,
 ): Promise<{
   roomId: string;
+  roomName: RoomNameEntry;
   whepUrl: string;
   resolution: Resolution;
 }> {

@@ -10,6 +10,7 @@ import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
 import { KickChannelMonitor } from '../kick/KickChannelMonitor';
 import type { ShaderConfig } from '../shaders/shaders';
 import { WhipInputMonitor } from '../whip/WhipInputMonitor';
+import type { RoomNameEntry } from './roomNames';
 
 export type InputOrientation = 'horizontal' | 'vertical';
 
@@ -188,13 +189,15 @@ export class RoomState {
   public pendingDelete?: boolean;
   public isPublic: boolean = true;
   public pendingWhipInputs: PendingWhipInputData[] = [];
+  public roomName: RoomNameEntry;
 
-  public constructor(idPrefix: string, output: SmelterOutput, initInputs: RegisterInputOptions[], skipDefaultInputs: boolean = false) {
+  public constructor(idPrefix: string, output: SmelterOutput, initInputs: RegisterInputOptions[], skipDefaultInputs: boolean = false, roomName?: RoomNameEntry) {
     this.mp4sDir = path.join(process.cwd(), 'mp4s');
     this.mp4Files = mp4SuggestionsMonitor.mp4Files;
     this.inputs = [];
     this.idPrefix = idPrefix;
     this.output = output;
+    this.roomName = roomName ?? { pl: `Pokój ${idPrefix.slice(0, 6)}`, en: `Room ${idPrefix.slice(0, 6)}` };
 
     this.lastReadTimestamp = Date.now();
     this.creationTimestamp = Date.now();
