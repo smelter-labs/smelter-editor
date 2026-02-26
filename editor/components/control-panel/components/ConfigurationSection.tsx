@@ -234,6 +234,8 @@ export function ConfigurationSection({
           gameGridLineColor: inputConfig.gameGridLineColor,
           gameGridLineAlpha: inputConfig.gameGridLineAlpha,
           snakeEventShaders: inputConfig.snakeEventShaders,
+          snake1Shaders: inputConfig.snake1Shaders,
+          snake2Shaders: inputConfig.snake2Shaders,
           attachedInputIds:
             attachedInputIds && attachedInputIds.length > 0
               ? attachedInputIds

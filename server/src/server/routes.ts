@@ -30,8 +30,6 @@ const gameLastSeenAtMap = new Map<string, number>();
 const gameLastMovementAtMap = new Map<string, number>();
 const gameLastBoardSignatureMap = new Map<string, string>();
 const GAME_STATE_TIMEOUT_MS = 5_000;
-const GAME_MOVEMENT_TIMEOUT_MS = 60_000;
-const GAME_ROOM_INACTIVITY_TIMEOUT_MS = 120_000;
 const gameRoomInactivityTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function firstHeaderValue(value: string | string[] | undefined): string | undefined {
@@ -88,37 +86,9 @@ function clearGameRoomInactivityTimer(roomId: string): void {
 }
 
 function resetGameRoomInactivityTimer(roomId: string): void {
+  // Sticky snake rooms: do not auto-delete on inactivity.
+  // Keep only one explicit timer state by clearing any previous timer.
   clearGameRoomInactivityTimer(roomId);
-
-  let room: ReturnType<typeof state.getRoom>;
-  try {
-    room = state.getRoom(roomId);
-  } catch {
-    return;
-  }
-
-  const inputs = room.getInputs().filter(i => !i.hidden);
-  const isSingleGameRoom = inputs.length === 1 && inputs[0].type === 'game';
-  if (!isSingleGameRoom) return;
-
-  const timer = setTimeout(async () => {
-    gameRoomInactivityTimers.delete(roomId);
-    console.info('[game-room-inactivity] Timer expired, deleting room', { roomId, timeoutMs: GAME_ROOM_INACTIVITY_TIMEOUT_MS });
-
-    for (const [sk, route] of gameSourceRouteMap.entries()) {
-      if (route.roomId === roomId) {
-        cleanupGameTrackingForSourceKey(sk);
-      }
-    }
-
-    try {
-      await state.deleteRoom(roomId);
-    } catch (err) {
-      console.warn('[game-room-inactivity] Failed to delete room', { roomId, error: err });
-    }
-  }, GAME_ROOM_INACTIVITY_TIMEOUT_MS);
-
-  gameRoomInactivityTimers.set(roomId, timer);
 }
 
 type GameMovementPayload = {
@@ -176,7 +146,8 @@ function evaluateGameMovement(sourceKey: string, payload: GameMovementPayload): 
 
   const lastMovementAt = gameLastMovementAtMap.get(sourceKey) ?? now;
   const idleMs = now - lastMovementAt;
-  return { movementTimedOut: idleMs > GAME_MOVEMENT_TIMEOUT_MS, idleMs };
+  // Sticky snake rooms: movement idling should not close/recreate rooms.
+  return { movementTimedOut: false, idleMs };
 }
 
 async function closeInactiveGameRoomForSourceKey(sourceKey: string, idleMs: number): Promise<string | undefined> {
@@ -217,11 +188,15 @@ function evaluateGameSequence(sourceKey: string, seq: number): GameSeqDecision {
   const now = Date.now();
   const lastSeenAt = gameLastSeenAtMap.get(sourceKey);
   if (lastSeenAt && now - lastSeenAt > GAME_STATE_TIMEOUT_MS) {
-    console.info('[game-state] Source timed out, marking disconnected', {
+    console.info('[game-state] Source timed out, resetting sequence state', {
       sourceKey,
       idleMs: now - lastSeenAt,
     });
-    cleanupGameTrackingForSourceKey(sourceKey);
+    // Keep source->room route ownership so the next game continues in the same room.
+    // Reset only transient sequencing/movement state.
+    gameLastSeqMap.delete(sourceKey);
+    gameLastMovementAtMap.delete(sourceKey);
+    gameLastBoardSignatureMap.delete(sourceKey);
   }
 
   const lastSeq = gameLastSeqMap.get(sourceKey);
@@ -1033,8 +1008,9 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof GameStateSchema> }>(
       const ownerTimedOut =
         ownerLastSeenAt !== undefined &&
         Date.now() - ownerLastSeenAt > GAME_STATE_TIMEOUT_MS;
-      const shouldTakeOverOwner =
-        gs.seq === 1 || !ownerRouteMatchesTarget || ownerTimedOut;
+      // Never allow two active game sources to write into the same input.
+      // New sequence alone (seq=1) is not enough to take ownership.
+      const shouldTakeOverOwner = !ownerRouteMatchesTarget || ownerTimedOut;
 
       if (shouldTakeOverOwner) {
         console.info('[game-state] Taking over explicit room input ownership', {
@@ -1042,11 +1018,9 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof GameStateSchema> }>(
           inputId,
           previousOwner: currentOwner,
           sourceKey,
-          reason: gs.seq === 1
-            ? 'new_sequence'
-            : !ownerRouteMatchesTarget
-              ? 'stale_owner_route'
-              : 'owner_timed_out',
+          reason: !ownerRouteMatchesTarget
+            ? 'stale_owner_route'
+            : 'owner_timed_out',
         });
         cleanupGameTrackingForSourceKey(currentOwner);
       } else {
@@ -1154,6 +1128,19 @@ routes.post<{ Body: Static<typeof GameStateSchema> }>(
         targetRoomId = undefined;
         targetInputId = undefined;
         gameSourceRouteMap.delete(sourceKey);
+      }
+    }
+
+    // Safety guard: never allow two different sources to write into one input.
+    if (targetRoomId && targetInputId) {
+      const targetKey = `${targetRoomId}::${targetInputId}`;
+      const owner = gameInputOwnerMap.get(targetKey);
+      if (owner && owner !== sourceKey) {
+        targetRoomId = undefined;
+        targetInputId = undefined;
+        gameSourceRouteMap.delete(sourceKey);
+      } else {
+        gameInputOwnerMap.set(targetKey, sourceKey);
       }
     }
 

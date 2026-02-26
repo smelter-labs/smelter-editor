@@ -39,6 +39,8 @@ export type RoomConfigInput = {
   gameGridLineColor?: string;
   gameGridLineAlpha?: number;
   snakeEventShaders?: SnakeEventShaderConfig;
+  snake1Shaders?: ShaderConfig[];
+  snake2Shaders?: ShaderConfig[];
   attachedInputIndices?: number[];
 };
 
@@ -163,6 +165,8 @@ export function exportRoomConfig(
       gameGridLineColor: input.gameGridLineColor,
       gameGridLineAlpha: input.gameGridLineAlpha,
       snakeEventShaders: input.snakeEventShaders,
+      snake1Shaders: input.snake1Shaders,
+      snake2Shaders: input.snake2Shaders,
       attachedInputIndices: input.attachedInputIds
         ?.map((id) => inputIdToIndex.get(id))
         .filter((idx): idx is number => idx !== undefined),
