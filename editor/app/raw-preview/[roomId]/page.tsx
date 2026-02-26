@@ -49,7 +49,7 @@ export default function RawPreviewPage() {
   }, [whepUrl]);
 
   return (
-    <div className='fixed inset-0 bg-black'>
+    <div className='fixed inset-0 bg-[#0a0f1a]'>
       <video
         ref={videoRef}
         className='w-full h-full object-contain'
