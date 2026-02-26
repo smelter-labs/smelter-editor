@@ -112,6 +112,7 @@ export type Input = {
   snakeEventShaders?: SnakeEventShaderConfig;
   snake1Shaders?: ShaderConfig[];
   snake2Shaders?: ShaderConfig[];
+  snakePlayerColors?: string[];
 };
 
 export type RegisterInputOptions =

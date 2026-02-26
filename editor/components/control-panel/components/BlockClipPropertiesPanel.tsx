@@ -36,21 +36,23 @@ const SHADER_SETTINGS_DEBOUNCE_MS = 200;
 function SnakeShaderSection({
   label,
   shaders,
+  playerColor,
   availableShaders,
   onPatch,
   onOpenShaderInline,
 }: {
   label: string;
   shaders: ShaderConfig[];
+  playerColor?: string;
   availableShaders: AvailableShaderType[];
   onPatch: (shaders: ShaderConfig[], options?: { refresh?: boolean }) => void;
   onOpenShaderInline?: (shaderId: string) => void;
 }) {
   const handleRandomPreset = useCallback(() => {
-    const preset = getRandomSnakeShaderPreset();
+    const preset = getRandomSnakeShaderPreset(playerColor);
     onPatch(preset.shaders);
     toast.info(`🎲 ${preset.name}`, { autoClose: 1500 });
-  }, [onPatch]);
+  }, [onPatch, playerColor]);
   const [sliderValues, setSliderValues] = useState<{ [key: string]: number }>(
     {},
   );
@@ -968,6 +970,7 @@ export function BlockClipPropertiesPanel({
           <SnakeShaderSection
             label='🐍 Snake 1 Shaders'
             shaders={selectedTimelineClip.blockSettings.snake1Shaders ?? []}
+            playerColor={selectedInput?.snakePlayerColors?.[0]}
             availableShaders={availableShaders}
             onPatch={(shaders) =>
               void applyClipPatch({ snake1Shaders: shaders })
@@ -979,6 +982,7 @@ export function BlockClipPropertiesPanel({
           <SnakeShaderSection
             label='🐍 Snake 2 Shaders'
             shaders={selectedTimelineClip.blockSettings.snake2Shaders ?? []}
+            playerColor={selectedInput?.snakePlayerColors?.[1]}
             availableShaders={availableShaders}
             onPatch={(shaders) =>
               void applyClipPatch({ snake2Shaders: shaders })
