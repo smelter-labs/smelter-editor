@@ -48,6 +48,7 @@ const DEFAULT_EFFECT_TYPES: Record<
 };
 
 const DEFAULT_EFFECT_DURATION_MS = 600;
+const SHADER_SETTINGS_DEBOUNCE_MS = 200;
 
 interface SnakeEventShaderPanelProps {
   roomId: string;
@@ -108,7 +109,7 @@ export default function SnakeEventShaderPanel({
       debounceTimers.current[key] = setTimeout(() => {
         persistConfig(updated);
         debounceTimers.current[key] = null;
-      }, 300);
+      }, SHADER_SETTINGS_DEBOUNCE_MS);
     },
     [persistConfig],
   );

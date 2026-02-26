@@ -41,6 +41,8 @@ import {
 } from '../whip-input/utils/whip-storage';
 import { useIsMobile } from '@/hooks/use-mobile';
 
+const SHADER_SETTINGS_DEBOUNCE_MS = 200;
+
 /**
  * Converts a hex color string to a packed integer (0xRRGGBB)
  */
@@ -204,6 +206,16 @@ export default function InputEntry({
   const sliderTimers = useRef<{
     [key: string]: NodeJS.Timeout | number | null;
   }>({});
+
+  useEffect(() => {
+    return () => {
+      Object.values(sliderTimers.current).forEach((timer) => {
+        if (timer) {
+          clearTimeout(timer as number);
+        }
+      });
+    };
+  }, []);
 
   const effectiveShowSliders =
     typeof isFxOpen === 'boolean' ? isFxOpen : showSliders;
@@ -595,9 +607,9 @@ export default function InputEntry({
             return newVals;
           });
         }
-      }, 500);
+      }, SHADER_SETTINGS_DEBOUNCE_MS);
     },
-    [roomId, input, refreshState],
+    [handleParamChange],
   );
 
   const handleParamChange = useCallback(

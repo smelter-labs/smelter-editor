@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Input, AvailableShader } from '@/app/actions/actions';
 import {
@@ -31,6 +31,8 @@ import type {
 } from '@/app/actions/actions';
 import { getRandomSnakeShaderPreset } from '@/lib/snake-shader-presets';
 
+const SHADER_SETTINGS_DEBOUNCE_MS = 200;
+
 function SnakeShaderSection({
   label,
   shaders,
@@ -56,6 +58,19 @@ function SnakeShaderSection({
     [shaderId: string]: string | null;
   }>({});
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const sliderTimersRef = useRef<
+    Record<string, ReturnType<typeof setTimeout> | null>
+  >({});
+
+  useEffect(() => {
+    return () => {
+      Object.values(sliderTimersRef.current).forEach((timer) => {
+        if (timer) {
+          clearTimeout(timer);
+        }
+      });
+    };
+  }, []);
 
   const handleToggle = useCallback(
     (shaderId: string) => {
@@ -102,24 +117,37 @@ function SnakeShaderSection({
 
   const handleSlider = useCallback(
     (shaderId: string, paramName: string, newValue: number) => {
+      const key = `${shaderId}:${paramName}`;
       setSliderValues((prev) => ({
         ...prev,
-        [`${shaderId}:${paramName}`]: newValue,
+        [key]: newValue,
       }));
       setParamLoading((prev) => ({ ...prev, [shaderId]: paramName }));
-      const updated = shaders.map((shader) => {
-        if (shader.shaderId !== shaderId) return shader;
-        return {
-          ...shader,
-          params: shader.params.map((param) =>
-            param.paramName === paramName
-              ? { ...param, paramValue: newValue }
-              : param,
-          ),
-        };
-      });
-      onPatch(updated);
-      setParamLoading((prev) => ({ ...prev, [shaderId]: null }));
+      const timer = sliderTimersRef.current[key];
+      if (timer) {
+        clearTimeout(timer);
+      }
+      sliderTimersRef.current[key] = setTimeout(() => {
+        const updated = shaders.map((shader) => {
+          if (shader.shaderId !== shaderId) return shader;
+          return {
+            ...shader,
+            params: shader.params.map((param) =>
+              param.paramName === paramName
+                ? { ...param, paramValue: newValue }
+                : param,
+            ),
+          };
+        });
+        onPatch(updated);
+        setParamLoading((prev) => ({ ...prev, [shaderId]: null }));
+        setSliderValues((prev) => {
+          const next = { ...prev };
+          delete next[key];
+          return next;
+        });
+        sliderTimersRef.current[key] = null;
+      }, SHADER_SETTINGS_DEBOUNCE_MS);
     },
     [shaders, onPatch],
   );
@@ -212,6 +240,9 @@ export function BlockClipPropertiesPanel({
   const [paramLoading, setParamLoading] = useState<{
     [shaderId: string]: string | null;
   }>({});
+  const shaderSliderTimersRef = useRef<
+    Record<string, ReturnType<typeof setTimeout> | null>
+  >({});
   const [isAddShaderModalOpen, setIsAddShaderModalOpen] = useState(false);
   const [inlineShaderView, setInlineShaderView] = useState<{
     shaderId: string;
@@ -229,6 +260,16 @@ export function BlockClipPropertiesPanel({
     top: number;
     left: number;
   } | null>(null);
+
+  useEffect(() => {
+    return () => {
+      Object.values(shaderSliderTimersRef.current).forEach((timer) => {
+        if (timer) {
+          clearTimeout(timer);
+        }
+      });
+    };
+  }, []);
 
   const {
     cameraPcRef,
@@ -471,26 +512,39 @@ export function BlockClipPropertiesPanel({
   const handleSliderChange = useCallback(
     (shaderId: string, paramName: string, newValue: number) => {
       if (!selectedTimelineClip) return;
+      const key = `${shaderId}:${paramName}`;
       setSliderValues((prev) => ({
         ...prev,
-        [`${shaderId}:${paramName}`]: newValue,
+        [key]: newValue,
       }));
       setParamLoading((prev) => ({ ...prev, [shaderId]: paramName }));
-      const current = selectedTimelineClip.blockSettings.shaders || [];
-      const shaders = current.map((shader) => {
-        if (shader.shaderId !== shaderId) return shader;
-        return {
-          ...shader,
-          params: shader.params.map((param) =>
-            param.paramName === paramName
-              ? { ...param, paramValue: newValue }
-              : param,
-          ),
-        };
-      });
-      void applyClipPatch({ shaders }).finally(() =>
-        setParamLoading((prev) => ({ ...prev, [shaderId]: null })),
-      );
+      const timer = shaderSliderTimersRef.current[key];
+      if (timer) {
+        clearTimeout(timer);
+      }
+      shaderSliderTimersRef.current[key] = setTimeout(() => {
+        const current = selectedTimelineClip.blockSettings.shaders || [];
+        const shaders = current.map((shader) => {
+          if (shader.shaderId !== shaderId) return shader;
+          return {
+            ...shader,
+            params: shader.params.map((param) =>
+              param.paramName === paramName
+                ? { ...param, paramValue: newValue }
+                : param,
+            ),
+          };
+        });
+        void applyClipPatch({ shaders }).finally(() => {
+          setParamLoading((prev) => ({ ...prev, [shaderId]: null }));
+          setSliderValues((prev) => {
+            const next = { ...prev };
+            delete next[key];
+            return next;
+          });
+          shaderSliderTimersRef.current[key] = null;
+        });
+      }, SHADER_SETTINGS_DEBOUNCE_MS);
     },
     [selectedTimelineClip, applyClipPatch],
   );
@@ -587,36 +641,67 @@ export function BlockClipPropertiesPanel({
   };
 
   const inlineShaderSlider = (sid: string, paramName: string, val: number) => {
+    const key = `${sid}:${paramName}`;
     if (inlineShaderView?.source === 'snake1') {
-      setSliderValues((prev) => ({ ...prev, [`${sid}:${paramName}`]: val }));
-      const current = selectedTimelineClip.blockSettings.snake1Shaders ?? [];
-      void applyClipPatch({
-        snake1Shaders: current.map((s) =>
-          s.shaderId !== sid
-            ? s
-            : {
-                ...s,
-                params: s.params.map((p) =>
-                  p.paramName === paramName ? { ...p, paramValue: val } : p,
-                ),
-              },
-        ),
-      });
+      setSliderValues((prev) => ({ ...prev, [key]: val }));
+      setParamLoading((prev) => ({ ...prev, [sid]: paramName }));
+      const timer = shaderSliderTimersRef.current[key];
+      if (timer) {
+        clearTimeout(timer);
+      }
+      shaderSliderTimersRef.current[key] = setTimeout(() => {
+        const current = selectedTimelineClip.blockSettings.snake1Shaders ?? [];
+        void applyClipPatch({
+          snake1Shaders: current.map((s) =>
+            s.shaderId !== sid
+              ? s
+              : {
+                  ...s,
+                  params: s.params.map((p) =>
+                    p.paramName === paramName ? { ...p, paramValue: val } : p,
+                  ),
+                },
+          ),
+        }).finally(() => {
+          setParamLoading((prev) => ({ ...prev, [sid]: null }));
+          setSliderValues((prev) => {
+            const next = { ...prev };
+            delete next[key];
+            return next;
+          });
+          shaderSliderTimersRef.current[key] = null;
+        });
+      }, SHADER_SETTINGS_DEBOUNCE_MS);
     } else if (inlineShaderView?.source === 'snake2') {
-      setSliderValues((prev) => ({ ...prev, [`${sid}:${paramName}`]: val }));
-      const current = selectedTimelineClip.blockSettings.snake2Shaders ?? [];
-      void applyClipPatch({
-        snake2Shaders: current.map((s) =>
-          s.shaderId !== sid
-            ? s
-            : {
-                ...s,
-                params: s.params.map((p) =>
-                  p.paramName === paramName ? { ...p, paramValue: val } : p,
-                ),
-              },
-        ),
-      });
+      setSliderValues((prev) => ({ ...prev, [key]: val }));
+      setParamLoading((prev) => ({ ...prev, [sid]: paramName }));
+      const timer = shaderSliderTimersRef.current[key];
+      if (timer) {
+        clearTimeout(timer);
+      }
+      shaderSliderTimersRef.current[key] = setTimeout(() => {
+        const current = selectedTimelineClip.blockSettings.snake2Shaders ?? [];
+        void applyClipPatch({
+          snake2Shaders: current.map((s) =>
+            s.shaderId !== sid
+              ? s
+              : {
+                  ...s,
+                  params: s.params.map((p) =>
+                    p.paramName === paramName ? { ...p, paramValue: val } : p,
+                  ),
+                },
+          ),
+        }).finally(() => {
+          setParamLoading((prev) => ({ ...prev, [sid]: null }));
+          setSliderValues((prev) => {
+            const next = { ...prev };
+            delete next[key];
+            return next;
+          });
+          shaderSliderTimersRef.current[key] = null;
+        });
+      }, SHADER_SETTINGS_DEBOUNCE_MS);
     } else {
       handleSliderChange(sid, paramName, val);
     }
