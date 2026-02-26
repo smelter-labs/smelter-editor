@@ -700,6 +700,8 @@ export class RoomState {
           boardHeight: 20,
           cellSize: 1,
           cells: [],
+          smoothMove: false,
+          smoothMoveSpeed: 1,
           backgroundColor: '#0a0f1a',
           cellGap: 2,
           boardBorderColor: '#ffffff',
@@ -1079,7 +1081,7 @@ export class RoomState {
     this.updateStoreWithState();
   }
 
-  public updateGameState(inputId: string, gameState: { board: { width: number; height: number; cellSize: number; cellGap?: number }; cells: { x: number; y: number; color: string; size?: number; isHead?: boolean; direction?: 'up' | 'down' | 'left' | 'right'; progress?: number }[]; backgroundColor: string; gameOverData?: { winnerName: string; reason: string; players: { name: string; score: number; eaten: number; cuts: number; color: string }[] } }) {
+  public updateGameState(inputId: string, gameState: { board: { width: number; height: number; cellSize: number; cellGap?: number }; cells: { x: number; y: number; color: string; size?: number; isHead?: boolean; direction?: 'up' | 'down' | 'left' | 'right'; progress?: number }[]; smoothMove?: boolean; smoothMoveSpeed?: number; backgroundColor: string; gameOverData?: { winnerName: string; reason: string; players: { name: string; score: number; eaten: number; cuts: number; color: string }[] } }) {
     const input = this.getInput(inputId);
     if (input.type !== 'game') {
       throw new Error(`Input ${inputId} is not a game input`);
@@ -1089,6 +1091,13 @@ export class RoomState {
       boardHeight: gameState.board.height,
       cellSize: gameState.board.cellSize,
       cells: gameState.cells,
+      smoothMove: gameState.smoothMove === true,
+      smoothMoveSpeed:
+        typeof gameState.smoothMoveSpeed === 'number' &&
+        Number.isFinite(gameState.smoothMoveSpeed) &&
+        gameState.smoothMoveSpeed > 0
+          ? gameState.smoothMoveSpeed
+          : 1,
       backgroundColor: input.gameState.backgroundColor || gameState.backgroundColor,
       cellGap: input.gameState.cellGap || gameState.board.cellGap || 0,
       boardBorderColor: input.gameState.boardBorderColor ?? '#ffffff',

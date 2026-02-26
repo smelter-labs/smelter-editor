@@ -58,6 +58,8 @@ export type GameState = {
   boardHeight: number;
   cellSize: number;
   cells: GameCell[];
+  smoothMove?: boolean;
+  smoothMoveSpeed?: number;
   backgroundColor: string;
   cellGap: number;
   boardBorderColor: string;

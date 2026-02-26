@@ -425,6 +425,15 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
   const interpolationFromCellsRef = useRef<(typeof gameState.cells)>(gameState.cells);
   const [localProgress, setLocalProgress] = useState(1);
   const LOCAL_VISUAL_SPEED_MULTIPLIER = config.snakeVisualSpeedMultiplier;
+  const smoothMoveEnabled = gameState.smoothMove === true;
+  const smoothMoveSpeed =
+    typeof gameState.smoothMoveSpeed === 'number' &&
+    Number.isFinite(gameState.smoothMoveSpeed) &&
+    gameState.smoothMoveSpeed > 0
+      ? gameState.smoothMoveSpeed
+      : 1;
+  const effectiveSmoothSpeedMultiplier =
+    LOCAL_VISUAL_SPEED_MULTIPLIER * smoothMoveSpeed;
 
   const easeInOutCubic = (t: number) => (
     t < 0.5
@@ -436,6 +445,10 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     const clampedRaw = Math.max(0, Math.min(1, rawProgress));
     const unboundedLocal = Math.max(0, localProgress);
     const clampedLocal = Math.max(0, Math.min(1, unboundedLocal));
+    if (!smoothMoveEnabled) {
+      // Classic mode: interpolate only within the current tick, then stop.
+      return clampedRaw + (1 - clampedRaw) * clampedLocal;
+    }
     // Blend backend progress with local tick progress to keep motion smooth,
     // with both acceleration and deceleration phases.
     const blended = clampedRaw + (1 - clampedRaw) * easeInOutCubic(clampedLocal);
@@ -464,7 +477,7 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     const startTime = now;
     const duration = Math.max(
       80,
-      Math.min(900, tickIntervalRef.current / LOCAL_VISUAL_SPEED_MULTIPLIER),
+      Math.min(900, tickIntervalRef.current / effectiveSmoothSpeedMultiplier),
     );
     let raf: ReturnType<typeof setInterval>;
     raf = setInterval(() => {

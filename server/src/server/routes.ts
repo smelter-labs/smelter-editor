@@ -906,6 +906,8 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(
 const GameStateSchema = Type.Object({
   gameId: Type.Optional(Type.String({ minLength: 1, maxLength: 256 })),
   seq: Type.Integer({ minimum: 1 }),
+  smoothMove: Type.Optional(Type.Boolean()),
+  smoothMoveSpeed: Type.Optional(Type.Number({ exclusiveMinimum: 0 })),
   board: Type.Object({
     width: Type.Number({ minimum: 1 }),
     height: Type.Number({ minimum: 1 }),
@@ -1036,6 +1038,8 @@ routes.post<{ Body: Static<typeof GameStateSchema> }>(
       cellSize: gs.board.cellSize,
       cellGap: gs.board.cellGap ?? 0,
       cells: gs.cells,
+      smoothMove: gs.smoothMove === true,
+      smoothMoveSpeed: gs.smoothMoveSpeed ?? 1,
       backgroundColor: gs.backgroundColor,
       boardBorderColor: '#ffffff',
       boardBorderWidth: 4,
