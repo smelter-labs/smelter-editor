@@ -440,6 +440,7 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
   const prevCellsRef = useRef<(typeof gameState.cells)>(gameState.cells);
   const interpolationFromCellsRef = useRef<(typeof gameState.cells)>(gameState.cells);
   const [localProgress, setLocalProgress] = useState(1);
+  const MAX_INTERPOLATED_CELL_DISTANCE = 1.25;
   const LOCAL_VISUAL_SPEED_MULTIPLIER = config.snakeVisualSpeedMultiplier;
   const smoothMoveEnabled = gameState.smoothMove === true;
   const smoothMoveSpeed =
@@ -495,7 +496,11 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     const delta = now - lastUpdateRef.current;
     // Ticks can jitter slightly; smooth the interval estimate to prevent visible stutter.
     if (delta > 30 && delta < 2000) {
-      tickIntervalRef.current = tickIntervalRef.current * 0.75 + delta * 0.25;
+      const current = tickIntervalRef.current;
+      // Recover quickly when updates slow down again after speed-up bursts.
+      // Adapt more conservatively when updates get faster to avoid jitter.
+      const alpha = delta > current ? 0.45 : 0.2;
+      tickIntervalRef.current = current * (1 - alpha) + delta * alpha;
     }
     lastUpdateRef.current = now;
 
@@ -827,6 +832,15 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     return delta;
   };
 
+  const wrappedStepDistance = (
+    from: (typeof gameState.cells)[number],
+    to: (typeof gameState.cells)[number],
+  ) => {
+    const dx = Math.abs(shortestWrappedDelta(from.x, to.x, gameState.boardWidth));
+    const dy = Math.abs(shortestWrappedDelta(from.y, to.y, gameState.boardHeight));
+    return dx + dy;
+  };
+
   const wrapCoord = (value: number, boardSize: number) => {
     if (boardSize <= 0) return value;
     return ((value % boardSize) + boardSize) % boardSize;
@@ -839,9 +853,9 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     if (typeof cell.progress === 'number') return cell.progress;
 
     if (prevCell) {
-      const movedX = shortestWrappedDelta(prevCell.x, cell.x, gameState.boardWidth) !== 0;
-      const movedY = shortestWrappedDelta(prevCell.y, cell.y, gameState.boardHeight) !== 0;
-      return movedX || movedY ? 0 : 1;
+      const stepDistance = wrappedStepDistance(prevCell, cell);
+      if (stepDistance > 1) return 1;
+      return stepDistance > 0 ? 0 : 1;
     }
 
     // Fallback for sparse backend payloads.
@@ -863,8 +877,11 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     if (prevCell) {
       const dx = shortestWrappedDelta(prevCell.x, cell.x, gameState.boardWidth);
       const dy = shortestWrappedDelta(prevCell.y, cell.y, gameState.boardHeight);
-      boardX = prevCell.x + dx * progress;
-      boardY = prevCell.y + dy * progress;
+      const stepDistance = Math.abs(dx) + Math.abs(dy);
+      const effectiveProgress =
+        stepDistance > MAX_INTERPOLATED_CELL_DISTANCE ? 1 : progress;
+      boardX = prevCell.x + dx * effectiveProgress;
+      boardY = prevCell.y + dy * effectiveProgress;
     } else if (progress < 1 && cell.direction) {
       switch (cell.direction) {
         case 'right': boardX = cell.x - (1 - progress); break;
@@ -925,8 +942,11 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     if (prevCell) {
       const dx = shortestWrappedDelta(prevCell.x, cell.x, gameState.boardWidth);
       const dy = shortestWrappedDelta(prevCell.y, cell.y, gameState.boardHeight);
-      boardX = prevCell.x + dx * progress;
-      boardY = prevCell.y + dy * progress;
+      const stepDistance = Math.abs(dx) + Math.abs(dy);
+      const effectiveProgress =
+        stepDistance > MAX_INTERPOLATED_CELL_DISTANCE ? 1 : progress;
+      boardX = prevCell.x + dx * effectiveProgress;
+      boardY = prevCell.y + dy * effectiveProgress;
     } else if (progress < 1 && cell.direction) {
       switch (cell.direction) {
         case 'right': boardX = cell.x - (1 - progress); break;
