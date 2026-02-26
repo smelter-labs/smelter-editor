@@ -417,6 +417,34 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     return () => clearInterval(interval);
   }, [activeEffect?.startedAtMs, activeEffect?.endsAtMs]);
 
+  // --- Smooth client-side interpolation between game state ticks ---
+  const lastUpdateRef = useRef(Date.now());
+  const tickIntervalRef = useRef(150); // estimated ms between server updates
+  const [localProgress, setLocalProgress] = useState(1);
+
+  useEffect(() => {
+    const now = Date.now();
+    const delta = now - lastUpdateRef.current;
+    // Update estimated tick interval (exponential moving average)
+    if (delta > 30 && delta < 2000) {
+      tickIntervalRef.current = tickIntervalRef.current * 0.7 + delta * 0.3;
+    }
+    lastUpdateRef.current = now;
+    setLocalProgress(0);
+
+    // Animate progress 0→1 over the estimated tick interval
+    const startTime = now;
+    const duration = tickIntervalRef.current;
+    let raf: ReturnType<typeof setInterval>;
+    raf = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const t = Math.min(1, elapsed / duration);
+      setLocalProgress(t);
+      if (t >= 1) clearInterval(raf);
+    }, 16);
+    return () => clearInterval(raf);
+  }, [gameState.cells]);
+
   // Game over: remove cells one by one, then show modal
   const [removedCount, setRemovedCount] = useState(0);
   const [showModal, setShowModal] = useState(false);
@@ -571,14 +599,36 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     }
   });
   for (const indices of snakesByColor.values()) {
-    // Head first (isHead), then body segments in array order
-    const sorted = indices.sort((a, b) => {
-      const ca = gameState.cells[a], cb = gameState.cells[b];
-      if (ca.isHead && !cb.isHead) return -1;
-      if (!ca.isHead && cb.isHead) return 1;
-      return a - b;
-    });
-    sorted.forEach((cellIdx, segIdx) => segmentIndexMap.set(cellIdx, segIdx));
+    // Find head, then order body segments by distance from head (BFS-like chain walk)
+    const headIdx = indices.find(i => gameState.cells[i].isHead);
+    if (headIdx === undefined) {
+      indices.forEach((cellIdx, segIdx) => segmentIndexMap.set(cellIdx, segIdx));
+      continue;
+    }
+    segmentIndexMap.set(headIdx, 0);
+    const remaining = new Set(indices.filter(i => i !== headIdx));
+    let current = gameState.cells[headIdx];
+    let segIdx = 1;
+    while (remaining.size > 0) {
+      let closest: number | null = null;
+      let closestDist = Infinity;
+      for (const ri of remaining) {
+        const rc = gameState.cells[ri];
+        const dist = Math.abs(rc.x - current.x) + Math.abs(rc.y - current.y);
+        if (dist < closestDist) {
+          closestDist = dist;
+          closest = ri;
+        }
+      }
+      if (closest === null || closestDist > 2) break;
+      segmentIndexMap.set(closest, segIdx++);
+      current = gameState.cells[closest];
+      remaining.delete(closest);
+    }
+    // Any remaining disconnected segments
+    for (const ri of remaining) {
+      segmentIndexMap.set(ri, segIdx++);
+    }
   }
 
   // During game-over removal animation, slice cells from the end
@@ -626,7 +676,9 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     const size = cell.size ?? gameState.cellSize;
     const w = cellPixel * size;
     const h = cellPixel * size;
-    const progress = cell.progress ?? 1;
+    // Use local interpolation: blend from cell's raw progress toward 1
+    const rawProgress = cell.progress ?? 1;
+    const progress = rawProgress + (1 - rawProgress) * localProgress;
     let dx = 0, dy = 0;
     if (progress < 1 && cell.direction) {
       switch (cell.direction) {
@@ -677,7 +729,8 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
     const size = cell.size ?? gameState.cellSize;
     const w = cellPixel * size;
     const h = cellPixel * size;
-    const progress = cell.progress ?? 1;
+    const rawProgress = cell.progress ?? 1;
+    const progress = rawProgress + (1 - rawProgress) * localProgress;
     let dx = 0, dy = 0;
     if (progress < 1 && cell.direction) {
       switch (cell.direction) {
@@ -839,7 +892,7 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
               { type: 'f32', fieldName: 'line_r', value: gridColor.r },
               { type: 'f32', fieldName: 'line_g', value: gridColor.g },
               { type: 'f32', fieldName: 'line_b', value: gridColor.b },
-              { type: 'f32', fieldName: 'line_a', value: gameState.gridLineAlpha ?? 0.15 },
+              { type: 'f32', fieldName: 'line_a', value: gameState.gridLineAlpha ?? 1.0 },
             ],
           }}
         />
