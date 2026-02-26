@@ -807,9 +807,17 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
           <View style={{ width: sw, height: sh, backgroundColor: cell.color }} />
         );
         if (cellShaders && cellShaders.length > 0) {
+          const pad = sw;
+          const outerW = sw + pad * 2;
+          const outerH = sh + pad * 2;
+          const innerCell = (
+            <View style={{ width: outerW, height: outerH }}>
+              <View style={{ width: sw, height: sh, top: pad, left: pad, backgroundColor: cell.color }} />
+            </View>
+          );
           return (
-            <View key={`cell-${i}`} style={{ width: sw, height: sh, top: sy, left: sx }}>
-              {wrapWithShaders(cellView, cellShaders, { width: Math.round(sw), height: Math.round(sh) })}
+            <View key={`cell-${i}`} style={{ width: outerW, height: outerH, top: sy - pad, left: sx - pad }}>
+              {wrapWithShaders(innerCell, cellShaders, { width: Math.round(outerW), height: Math.round(outerH) })}
             </View>
           );
         }
@@ -860,11 +868,15 @@ function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { ga
       }
     }
 
-    const hasProgress = shaderParams.findIndex(p => p.fieldName === 'progress');
-    if (hasProgress >= 0) {
-      shaderParams[hasProgress] = { type: 'f32', fieldName: 'progress', value: effectProgress } as ShaderParamStructField;
-    } else {
-      shaderParams.push({ type: 'f32', fieldName: 'progress', value: effectProgress } as ShaderParamStructField);
+    const shaderDef = shadersController.getShaderById(activeEffect.shaderId);
+    const shaderDefinesProgress = shaderDef?.params?.some(p => p.name === 'progress');
+    if (shaderDefinesProgress) {
+      const hasProgress = shaderParams.findIndex(p => p.fieldName === 'progress');
+      if (hasProgress >= 0) {
+        shaderParams[hasProgress] = { type: 'f32', fieldName: 'progress', value: effectProgress } as ShaderParamStructField;
+      } else {
+        shaderParams.push({ type: 'f32', fieldName: 'progress', value: effectProgress } as ShaderParamStructField);
+      }
     }
 
     rendered = (

@@ -704,7 +704,7 @@ export class RoomState {
           cellGap: 2,
           boardBorderColor: '#ffffff',
           boardBorderWidth: 4,
-          gridLineColor: '#232323',
+          gridLineColor: '#141414',
           gridLineAlpha: 0.35,
         },
         snakeEventShaders: { ...DEFAULT_SNAKE_EVENT_SHADERS },
@@ -1093,7 +1093,7 @@ export class RoomState {
       cellGap: input.gameState.cellGap || gameState.board.cellGap || 0,
       boardBorderColor: input.gameState.boardBorderColor ?? '#ffffff',
       boardBorderWidth: input.gameState.boardBorderWidth ?? 4,
-      gridLineColor: input.gameState.gridLineColor ?? '#232323',
+      gridLineColor: input.gameState.gridLineColor ?? '#141414',
       gridLineAlpha: input.gameState.gridLineAlpha ?? 0.15,
       gameOverData: gameState.gameOverData,
     };
