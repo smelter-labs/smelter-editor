@@ -31,6 +31,8 @@ const gameLastMovementAtMap = new Map<string, number>();
 const gameLastBoardSignatureMap = new Map<string, string>();
 const GAME_STATE_TIMEOUT_MS = 5_000;
 const GAME_MOVEMENT_TIMEOUT_MS = 60_000;
+const GAME_ROOM_INACTIVITY_TIMEOUT_MS = 120_000;
+const gameRoomInactivityTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
 function firstHeaderValue(value: string | string[] | undefined): string | undefined {
   if (!value) return undefined;
@@ -68,12 +70,55 @@ function cleanupGameTrackingForSourceKey(sourceKey: string): void {
   const target = gameSourceRouteMap.get(sourceKey);
   if (target) {
     gameInputOwnerMap.delete(`${target.roomId}::${target.inputId}`);
+    clearGameRoomInactivityTimer(target.roomId);
   }
   gameSourceRouteMap.delete(sourceKey);
   gameLastSeqMap.delete(sourceKey);
   gameLastSeenAtMap.delete(sourceKey);
   gameLastMovementAtMap.delete(sourceKey);
   gameLastBoardSignatureMap.delete(sourceKey);
+}
+
+function clearGameRoomInactivityTimer(roomId: string): void {
+  const existing = gameRoomInactivityTimers.get(roomId);
+  if (existing) {
+    clearTimeout(existing);
+    gameRoomInactivityTimers.delete(roomId);
+  }
+}
+
+function resetGameRoomInactivityTimer(roomId: string): void {
+  clearGameRoomInactivityTimer(roomId);
+
+  let room: ReturnType<typeof state.getRoom>;
+  try {
+    room = state.getRoom(roomId);
+  } catch {
+    return;
+  }
+
+  const inputs = room.getInputs().filter(i => !i.hidden);
+  const isSingleGameRoom = inputs.length === 1 && inputs[0].type === 'game';
+  if (!isSingleGameRoom) return;
+
+  const timer = setTimeout(async () => {
+    gameRoomInactivityTimers.delete(roomId);
+    console.info('[game-room-inactivity] Timer expired, deleting room', { roomId, timeoutMs: GAME_ROOM_INACTIVITY_TIMEOUT_MS });
+
+    for (const [sk, route] of gameSourceRouteMap.entries()) {
+      if (route.roomId === roomId) {
+        cleanupGameTrackingForSourceKey(sk);
+      }
+    }
+
+    try {
+      await state.deleteRoom(roomId);
+    } catch (err) {
+      console.warn('[game-room-inactivity] Failed to delete room', { roomId, error: err });
+    }
+  }, GAME_ROOM_INACTIVITY_TIMEOUT_MS);
+
+  gameRoomInactivityTimers.set(roomId, timer);
 }
 
 type GameMovementPayload = {
@@ -1043,6 +1088,7 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof GameStateSchema> }>(
     if (gs.events && gs.events.length > 0) {
       room.ingestGameEvents(inputId, gs.events);
     }
+    resetGameRoomInactivityTimer(roomId);
     res.status(200).send({
       status: 'ok',
       outOfOrder: seqDecision.outOfOrder,
@@ -1135,6 +1181,10 @@ routes.post<{ Body: Static<typeof GameStateSchema> }>(
       }
     }
 
+    if (targetRoomId) {
+      resetGameRoomInactivityTimer(targetRoomId);
+    }
+
     const roomUrl = targetRoomId ? `/room/${targetRoomId}` : undefined;
     let targetRoomName: { pl: string; en: string } | undefined;
     if (targetRoomId) {
@@ -1164,6 +1214,7 @@ routes.delete<RoomAndInputIdParams>('/room/:roomId/input/:inputId', { schema: { 
 routes.delete<RoomIdParams>('/room/:roomId', { schema: { params: RoomIdParamsSchema } }, async (req, res) => {
   const { roomId } = req.params;
   console.log('[request] Delete room', { roomId });
+  clearGameRoomInactivityTimer(roomId);
   await state.deleteRoom(roomId);
   res.status(200).send({ status: 'ok' });
 });

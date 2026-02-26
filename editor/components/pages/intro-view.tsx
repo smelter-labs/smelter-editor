@@ -531,87 +531,85 @@ export default function IntroView() {
             />
           </div>
 
-          {!loadingRooms && rooms.filter((r) => r.isPublic).length > 0 && (
+          {!loadingRooms && rooms.length > 0 && (
             <div className='mt-8 text-center'>
               <h3 className='text-lg font-semibold text-white mb-3'>
                 Active Rooms
               </h3>
               <ul className='space-y-2'>
-                {rooms
-                  .filter((r) => r.isPublic)
-                  .map((room) => (
-                    <li key={room.roomId}>
-                      <div className='flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between px-4 py-3 rounded-none bg-neutral-900 text-white text-sm'>
-                        <div className='flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-3'>
-                          <span className='font-mono truncate max-w-full'>
-                            {room.roomName
-                              ? `${room.roomName.pl} / ${room.roomName.en}`
-                              : room.roomId}
+                {rooms.map((room) => (
+                  <li key={room.roomId}>
+                    <div className='flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between px-4 py-3 rounded-none bg-neutral-900 text-white text-sm'>
+                      <div className='flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-3'>
+                        <span className='font-mono truncate max-w-full'>
+                          {room.roomName
+                            ? `${room.roomName.pl} / ${room.roomName.en}`
+                            : room.roomId}
+                        </span>
+                        {room.createdAt && (
+                          <span className='text-xs text-neutral-500'>
+                            {new Date(room.createdAt).toLocaleTimeString()} ·{' '}
+                            {formatDuration(Date.now() - room.createdAt)}
                           </span>
-                          {room.createdAt && (
-                            <span className='text-xs text-neutral-500'>
-                              {new Date(room.createdAt).toLocaleTimeString()} ·{' '}
-                              {formatDuration(Date.now() - room.createdAt)}
-                            </span>
-                          )}
-                        </div>
-                        <div className='flex w-full gap-1 sm:w-auto sm:ml-4 shrink-0'>
-                          <Button
-                            size='sm'
-                            variant='default'
-                            className='bg-white text-black hover:bg-neutral-200 cursor-pointer flex-1 sm:flex-none'
-                            title='Join'
-                            onClick={() =>
-                              router.push(getRoomRoute(room.roomId))
-                            }>
-                            <LogIn className='w-4 h-4' />
-                          </Button>
-                          <Button
-                            size='sm'
-                            variant='default'
-                            className='bg-neutral-700 text-white hover:bg-neutral-600 cursor-pointer flex-1 sm:flex-none'
-                            title='Join as Guest'
-                            onClick={() =>
-                              router.push(
-                                getRoomRoute(room.roomId) + '?guest=true',
-                              )
-                            }>
-                            <UserPlus className='w-4 h-4' />
-                          </Button>
-                          <Button
-                            size='sm'
-                            variant='default'
-                            className='bg-neutral-800 text-neutral-300 hover:bg-neutral-700 cursor-pointer flex-1 sm:flex-none'
-                            title='Spectate'
-                            onClick={() =>
-                              window.open(
-                                `/room-preview/${room.roomId}`,
-                                '_blank',
-                              )
-                            }>
-                            <Eye className='w-4 h-4' />
-                          </Button>
-                          <Button
-                            size='sm'
-                            variant='default'
-                            className='bg-red-900/50 text-red-400 hover:bg-red-900 cursor-pointer flex-1 sm:flex-none'
-                            title='Delete Room'
-                            onClick={async () => {
-                              try {
-                                await deleteRoom(room.roomId);
-                                setRooms((prev) =>
-                                  prev.filter((r) => r.roomId !== room.roomId),
-                                );
-                              } catch (err) {
-                                console.error('Failed to delete room:', err);
-                              }
-                            }}>
-                            <Trash2 className='w-4 h-4' />
-                          </Button>
-                        </div>
+                        )}
                       </div>
-                    </li>
-                  ))}
+                      <div className='flex w-full gap-1 sm:w-auto sm:ml-4 shrink-0'>
+                        <Button
+                          size='sm'
+                          variant='default'
+                          className='bg-white text-black hover:bg-neutral-200 cursor-pointer flex-1 sm:flex-none'
+                          title='Join'
+                          onClick={() =>
+                            router.push(getRoomRoute(room.roomId))
+                          }>
+                          <LogIn className='w-4 h-4' />
+                        </Button>
+                        <Button
+                          size='sm'
+                          variant='default'
+                          className='bg-neutral-700 text-white hover:bg-neutral-600 cursor-pointer flex-1 sm:flex-none'
+                          title='Join as Guest'
+                          onClick={() =>
+                            router.push(
+                              getRoomRoute(room.roomId) + '?guest=true',
+                            )
+                          }>
+                          <UserPlus className='w-4 h-4' />
+                        </Button>
+                        <Button
+                          size='sm'
+                          variant='default'
+                          className='bg-neutral-800 text-neutral-300 hover:bg-neutral-700 cursor-pointer flex-1 sm:flex-none'
+                          title='Spectate'
+                          onClick={() =>
+                            window.open(
+                              `/room-preview/${room.roomId}`,
+                              '_blank',
+                            )
+                          }>
+                          <Eye className='w-4 h-4' />
+                        </Button>
+                        <Button
+                          size='sm'
+                          variant='default'
+                          className='bg-red-900/50 text-red-400 hover:bg-red-900 cursor-pointer flex-1 sm:flex-none'
+                          title='Delete Room'
+                          onClick={async () => {
+                            try {
+                              await deleteRoom(room.roomId);
+                              setRooms((prev) =>
+                                prev.filter((r) => r.roomId !== room.roomId),
+                              );
+                            } catch (err) {
+                              console.error('Failed to delete room:', err);
+                            }
+                          }}>
+                          <Trash2 className='w-4 h-4' />
+                        </Button>
+                      </div>
+                    </div>
+                  </li>
+                ))}
               </ul>
             </div>
           )}
