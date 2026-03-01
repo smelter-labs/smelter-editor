@@ -1,6 +1,7 @@
 import type { RoomInputState, InputOrientation } from './roomState';
 import type { ShaderConfig } from '../shaders/shaders';
-import type { SnakeEventShaderConfig } from '../app/store';
+import type { SnakeEventShaderConfig } from '../game/types';
+import { toPublicGameInputState } from '../game/publicGameState';
 
 /** API DTO for a single input; single source of truth for RoomInputState → response mapping */
 export type PublicInputState = {
@@ -38,30 +39,6 @@ export type PublicInputState = {
   snake2Shaders?: ShaderConfig[];
   snakePlayerColors?: string[];
 };
-
-function extractSnakePlayerColors(
-  cells: Array<{ color: string; isHead?: boolean }>,
-): string[] {
-  const orderedHeadColors: string[] = [];
-  for (const cell of cells) {
-    if (!cell.isHead) continue;
-    if (!orderedHeadColors.includes(cell.color)) {
-      orderedHeadColors.push(cell.color);
-    }
-  }
-
-  if (orderedHeadColors.length > 0) {
-    return orderedHeadColors;
-  }
-
-  const fallbackUniqueColors: string[] = [];
-  for (const cell of cells) {
-    if (!fallbackUniqueColors.includes(cell.color)) {
-      fallbackUniqueColors.push(cell.color);
-    }
-  }
-  return fallbackUniqueColors;
-}
 
 export function toPublicInputState(input: RoomInputState): PublicInputState {
   const base = {
@@ -112,16 +89,7 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
       return {
         ...base,
         sourceState: 'always-live' as const,
-        gameBackgroundColor: input.gameState.backgroundColor,
-        gameCellGap: input.gameState.cellGap,
-        gameBoardBorderColor: input.gameState.boardBorderColor,
-        gameBoardBorderWidth: input.gameState.boardBorderWidth,
-        gameGridLineColor: input.gameState.gridLineColor,
-        gameGridLineAlpha: input.gameState.gridLineAlpha,
-        snakeEventShaders: input.snakeEventShaders,
-        snake1Shaders: input.snake1Shaders,
-        snake2Shaders: input.snake2Shaders,
-        snakePlayerColors: extractSnakePlayerColors(input.gameState.cells),
+        ...toPublicGameInputState(input),
       };
     default:
       throw new Error('Unknown input state');

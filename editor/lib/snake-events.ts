@@ -1,4 +1,4 @@
-import type { SnakeEventType } from '@/app/actions/actions';
+import type { SnakeEventType } from '@/lib/game-types';
 
 export const SNAKE_EVENT_TYPES: {
   type: SnakeEventType;

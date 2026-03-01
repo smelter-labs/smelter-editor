@@ -1,11 +1,8 @@
 'use client';
 
 import { useReducer, useEffect, useCallback, useRef, useState } from 'react';
-import type {
-  Input,
-  ShaderConfig,
-  SnakeEventShaderConfig,
-} from '@/app/actions/actions';
+import type { Input, ShaderConfig } from '@/app/actions/actions';
+import type { SnakeEventShaderConfig } from '@/lib/game-types';
 import { loadTimeline, saveTimeline } from '@/lib/timeline-storage';
 
 // ── Types ────────────────────────────────────────────────

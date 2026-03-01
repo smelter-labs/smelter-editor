@@ -1,13 +1,15 @@
 'use client';
 
 import { useState, useRef, useCallback } from 'react';
-import {
+import type {
   SnakeEventType,
   SnakeEventShaderConfig,
   SnakeEventShaderMapping,
   SnakeEventApplicationMode,
-  AvailableShader,
-  ShaderParamConfig,
+} from '@/lib/game-types';
+import {
+  type AvailableShader,
+  type ShaderParamConfig,
   updateInput,
 } from '@/app/actions/actions';
 import { SNAKE_EVENT_TYPES } from '@/lib/snake-events';

@@ -1,9 +1,5 @@
-import type {
-  Input,
-  Layout,
-  ShaderConfig,
-  SnakeEventShaderConfig,
-} from '@/app/actions/actions';
+import type { Input, Layout, ShaderConfig } from '@/app/actions/actions';
+import type { SnakeEventShaderConfig } from '@/lib/game-types';
 import type {
   Clip,
   Track,
