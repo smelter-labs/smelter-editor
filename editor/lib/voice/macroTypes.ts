@@ -62,6 +62,14 @@ export type MacroState = {
   activeMacro: MacroDefinition | null;
   isExecuting: boolean;
   currentStepIndex: number;
+  autoPlay: boolean;
+  executionStatus:
+    | 'idle'
+    | 'running'
+    | 'paused'
+    | 'completed'
+    | 'stopped'
+    | 'error';
 };
 
 export function macroStepToVoiceCommand(step: MacroStep): VoiceCommand | null {

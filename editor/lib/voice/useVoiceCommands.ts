@@ -6,10 +6,17 @@ import { normalize } from './normalize';
 import { validateCommand, type VoiceCommand } from './commandTypes';
 import {
   findMatchingMacro,
-  executeMacro,
+  createMacroExecutionController,
+  type MacroExecutionController,
+  type MacroExecutionStatus,
   type MacroExecutionCallbacks,
 } from './macroExecutor';
 import type { MacroDefinition } from './macroTypes';
+import {
+  getAutoPlayMacroSetting,
+  setAutoPlayMacroSetting,
+  subscribeToAutoPlayMacroSetting,
+} from './macroSettings';
 
 export type UseVoiceCommandsOptions = {
   mp4Files?: string[];
@@ -25,7 +32,13 @@ export type UseVoiceCommandsResult = {
   isTypingMode: boolean;
   isMacroMode: boolean;
   isExecutingMacro: boolean;
+  autoPlayMacro: boolean;
+  macroExecutionStatus: MacroExecutionStatus;
   activeMacro: MacroDefinition | null;
+  setAutoPlayMacro: (value: boolean) => void;
+  executeNextMacroStep: () => Promise<void>;
+  playMacro: () => Promise<void>;
+  stopMacro: () => void;
   handleTranscript: (text: string) => void;
 };
 
@@ -175,9 +188,16 @@ export function useVoiceCommands(
   const [isTypingMode, setIsTypingMode] = useState(false);
   const [isMacroMode, setIsMacroMode] = useState(false);
   const [isExecutingMacro, setIsExecutingMacro] = useState(false);
+  const [autoPlayMacro, setAutoPlayMacroState] = useState<boolean>(() =>
+    getAutoPlayMacroSetting(),
+  );
+  const [macroExecutionStatus, setMacroExecutionStatus] =
+    useState<MacroExecutionStatus>('idle');
   const [activeMacro, setActiveMacro] = useState<MacroDefinition | null>(null);
   const isTypingModeRef = useRef(false);
   const isMacroModeRef = useRef(false);
+  const autoPlayMacroRef = useRef(autoPlayMacro);
+  const macroControllerRef = useRef<MacroExecutionController | null>(null);
   const mp4FilesRef = useRef(mp4Files);
   const imageFilesRef = useRef(imageFiles);
 
@@ -188,6 +208,43 @@ export function useVoiceCommands(
   useEffect(() => {
     imageFilesRef.current = imageFiles;
   }, [imageFiles]);
+
+  useEffect(() => {
+    autoPlayMacroRef.current = autoPlayMacro;
+  }, [autoPlayMacro]);
+
+  useEffect(() => {
+    setAutoPlayMacroState(getAutoPlayMacroSetting());
+    return subscribeToAutoPlayMacroSetting((value) => {
+      setAutoPlayMacroState(value);
+    });
+  }, []);
+
+  const setAutoPlayMacro = useCallback((value: boolean) => {
+    setAutoPlayMacroSetting(value);
+    setAutoPlayMacroState(value);
+  }, []);
+
+  const stopMacro = useCallback(() => {
+    macroControllerRef.current?.stop();
+    macroControllerRef.current = null;
+    setMacroExecutionStatus('stopped');
+    setIsExecutingMacro(false);
+    setActiveMacro(null);
+    window.dispatchEvent(new CustomEvent('smelter:voice:macro-stopped'));
+  }, []);
+
+  const executeNextMacroStep = useCallback(async () => {
+    const controller = macroControllerRef.current;
+    if (!controller) return;
+    await controller.nextStep();
+  }, []);
+
+  const playMacro = useCallback(async () => {
+    const controller = macroControllerRef.current;
+    if (!controller) return;
+    await controller.play();
+  }, []);
 
   const handleTranscript = useCallback((text: string) => {
     setLastError(null);
@@ -292,10 +349,12 @@ export function useVoiceCommands(
 
         const matchedMacro = findMatchingMacro(text);
         if (matchedMacro) {
+          macroControllerRef.current?.stop();
           isMacroModeRef.current = false;
           setIsMacroMode(false);
           setActiveMacro(matchedMacro);
           setIsExecutingMacro(true);
+          setMacroExecutionStatus('idle');
 
           const callbacks: MacroExecutionCallbacks = {
             onStepStart: (step, index, total) => {
@@ -313,7 +372,9 @@ export function useVoiceCommands(
               );
             },
             onMacroComplete: (macro) => {
+              macroControllerRef.current = null;
               setIsExecutingMacro(false);
+              setMacroExecutionStatus('completed');
               setActiveMacro(null);
               window.dispatchEvent(
                 new CustomEvent('smelter:voice:macro-complete', {
@@ -321,8 +382,20 @@ export function useVoiceCommands(
                 }),
               );
             },
-            onError: (error, step, index) => {
+            onMacroStopped: () => {
+              macroControllerRef.current = null;
               setIsExecutingMacro(false);
+              setMacroExecutionStatus('stopped');
+              setActiveMacro(null);
+            },
+            onStatusChange: (status) => {
+              setMacroExecutionStatus(status);
+            },
+            onError: (error, step, index) => {
+              macroControllerRef.current = null;
+              setIsExecutingMacro(false);
+              setMacroExecutionStatus('error');
+              setActiveMacro(null);
               setLastError(
                 `Macro error at step ${index + 1}: ${error.message}`,
               );
@@ -339,8 +412,17 @@ export function useVoiceCommands(
             },
           };
 
-          executeMacro(matchedMacro, callbacks).catch((err) => {
+          const controller = createMacroExecutionController(
+            matchedMacro,
+            callbacks,
+            { autoPlay: autoPlayMacroRef.current },
+          );
+          macroControllerRef.current = controller;
+          controller.start().catch((err) => {
+            macroControllerRef.current = null;
             setIsExecutingMacro(false);
+            setMacroExecutionStatus('error');
+            setActiveMacro(null);
             setLastError(
               err instanceof Error ? err.message : 'Macro execution failed',
             );
@@ -400,7 +482,13 @@ export function useVoiceCommands(
     isTypingMode,
     isMacroMode,
     isExecutingMacro,
+    autoPlayMacro,
+    macroExecutionStatus,
     activeMacro,
+    setAutoPlayMacro,
+    executeNextMacroStep,
+    playMacro,
+    stopMacro,
     handleTranscript,
   };
 }

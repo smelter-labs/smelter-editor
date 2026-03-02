@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, type KeyboardEvent } from 'react';
 import { useParams } from 'next/navigation';
 import useSpeechToText from 'react-hook-speech-to-text';
-import { Mic, MicOff, X, Send } from 'lucide-react';
+import { Mic, MicOff, X, Send, SkipForward, Play, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useVoiceCommands, type MacroStep } from '@/lib/voice';
@@ -24,6 +24,18 @@ type TranscriptEntry = {
   intent: string | null;
   timestamp: number;
 };
+
+function formatMacroStepLabel(step: MacroStep): string {
+  const parts: string[] = [step.action];
+  if (step.params?.inputType) parts.push(`(${step.params.inputType})`);
+  if (step.params?.shader) parts.push(`[${step.params.shader}]`);
+  if (step.params?.inputIndex) parts.push(`on input ${step.params.inputIndex}`);
+  if (step.params?.color) parts.push(`color: ${step.params.color}`);
+  if (step.params?.text) {
+    parts.push(`"${step.params.text.slice(0, 20)}..."`);
+  }
+  return parts.join(' ');
+}
 
 export function SpeechToTextWithCommands() {
   const params = useParams();
@@ -80,7 +92,12 @@ export function SpeechToTextWithCommands() {
     isTypingMode,
     isMacroMode,
     isExecutingMacro,
+    autoPlayMacro,
+    macroExecutionStatus,
     activeMacro,
+    executeNextMacroStep,
+    playMacro,
+    stopMacro,
     handleTranscript,
   } = useVoiceCommands({ mp4Files, imageFiles });
 
@@ -163,6 +180,11 @@ export function SpeechToTextWithCommands() {
       startSpeechToText();
     };
 
+    const onMacroStopped = () => {
+      setCurrentMacroStep(null);
+      startSpeechToText();
+    };
+
     window.addEventListener(
       'smelter:voice:macro-step-start',
       onMacroStepStart as EventListener,
@@ -174,6 +196,10 @@ export function SpeechToTextWithCommands() {
     window.addEventListener(
       'smelter:voice:macro-error',
       onMacroError as EventListener,
+    );
+    window.addEventListener(
+      'smelter:voice:macro-stopped',
+      onMacroStopped as EventListener,
     );
 
     return () => {
@@ -188,6 +214,10 @@ export function SpeechToTextWithCommands() {
       window.removeEventListener(
         'smelter:voice:macro-error',
         onMacroError as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:voice:macro-stopped',
+        onMacroStopped as EventListener,
       );
     };
   }, [startSpeechToText]);
@@ -250,6 +280,9 @@ export function SpeechToTextWithCommands() {
   };
 
   const isIntroPage = !roomId;
+  const nextMacroStepIndex =
+    currentMacroStep?.index !== undefined ? currentMacroStep.index + 1 : 0;
+  const nextMacroStep = activeMacro?.steps?.[nextMacroStepIndex] ?? null;
 
   return (
     <div className='fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-3'>
@@ -332,6 +365,9 @@ export function SpeechToTextWithCommands() {
               <p className='text-cyan-400 font-medium mb-2'>
                 ⚡ Executing: {activeMacro.description}
               </p>
+              <p className='text-cyan-300/70 text-xs mb-2'>
+                Mode: {autoPlayMacro ? 'Auto Play' : 'Step By Step'}
+              </p>
               {currentMacroStep && (
                 <div className='space-y-2'>
                   <div className='flex items-center justify-between text-xs text-cyan-300/70'>
@@ -357,18 +393,60 @@ export function SpeechToTextWithCommands() {
                     />
                   </div>
                   <p className='text-cyan-200 text-xs font-mono bg-cyan-900/20 p-2 rounded'>
-                    → {currentMacroStep.step.action}
-                    {currentMacroStep.step.params?.inputType &&
-                      ` (${currentMacroStep.step.params.inputType})`}
-                    {currentMacroStep.step.params?.shader &&
-                      ` [${currentMacroStep.step.params.shader}]`}
-                    {currentMacroStep.step.params?.inputIndex &&
-                      ` on input ${currentMacroStep.step.params.inputIndex}`}
-                    {currentMacroStep.step.params?.color &&
-                      ` color: ${currentMacroStep.step.params.color}`}
-                    {currentMacroStep.step.params?.text &&
-                      ` "${currentMacroStep.step.params.text.slice(0, 20)}..."`}
+                    → {formatMacroStepLabel(currentMacroStep.step)}
                   </p>
+                  <p className='text-cyan-300/80 text-xs font-mono bg-cyan-900/10 p-2 rounded'>
+                    Next:{' '}
+                    {nextMacroStep
+                      ? formatMacroStepLabel(nextMacroStep)
+                      : 'complete'}
+                  </p>
+                </div>
+              )}
+              {!currentMacroStep && (
+                <p className='text-cyan-300/80 text-xs font-mono bg-cyan-900/10 p-2 rounded'>
+                  Next:{' '}
+                  {nextMacroStep ? formatMacroStepLabel(nextMacroStep) : 'complete'}
+                </p>
+              )}
+              {!autoPlayMacro && (
+                <div className='mt-3 flex items-center gap-2'>
+                  <Button
+                    size='icon'
+                    variant='secondary'
+                    className='size-8 cursor-pointer'
+                    aria-label='Next step'
+                    title='Next step'
+                    onClick={() => void executeNextMacroStep()}
+                    disabled={
+                      macroExecutionStatus !== 'paused' || !nextMacroStep
+                    }>
+                    <SkipForward className='size-4' />
+                  </Button>
+                  <Button
+                    size='icon'
+                    variant='secondary'
+                    className='size-8 cursor-pointer'
+                    aria-label='Play remaining steps'
+                    title='Play remaining steps'
+                    onClick={() => void playMacro()}
+                    disabled={macroExecutionStatus === 'running'}>
+                    <Play className='size-4' />
+                  </Button>
+                  <Button
+                    size='icon'
+                    variant='destructive'
+                    className='size-8 cursor-pointer'
+                    aria-label='Stop macro'
+                    title='Stop macro'
+                    onClick={stopMacro}
+                    disabled={
+                      macroExecutionStatus === 'completed' ||
+                      macroExecutionStatus === 'stopped' ||
+                      macroExecutionStatus === 'error'
+                    }>
+                    <Square className='size-4' />
+                  </Button>
                 </div>
               )}
             </div>

@@ -66,6 +66,11 @@ import { loadLastWhipInputId } from './whip-input/utils/whip-storage';
 import { ControlPanelProvider } from './contexts/control-panel-context';
 import { WhipConnectionsProvider } from './contexts/whip-connections-context';
 import {
+  getAutoPlayMacroSetting,
+  setAutoPlayMacroSetting,
+  subscribeToAutoPlayMacroSetting,
+} from '@/lib/voice/macroSettings';
+import {
   BlockClipPropertiesPanel,
   type SelectedTimelineClip,
 } from './components/BlockClipPropertiesPanel';
@@ -432,7 +437,7 @@ export default function ControlPanel({
   );
 }
 
-type ModalId = 'quickActions' | 'layouts' | 'transitions';
+type ModalId = 'quickActions' | 'layouts' | 'settings';
 
 function SettingsBar({
   changeLayout,
@@ -462,7 +467,17 @@ function SettingsBar({
   const [isImporting, setIsImporting] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showLoadModal, setShowLoadModal] = useState(false);
+  const [autoPlayMacro, setAutoPlayMacro] = useState<boolean>(() =>
+    getAutoPlayMacroSetting(),
+  );
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    setAutoPlayMacro(getAutoPlayMacroSetting());
+    return subscribeToAutoPlayMacroSetting((value) => {
+      setAutoPlayMacro(value);
+    });
+  }, []);
 
   const buildConfig = useCallback(() => {
     const timelineState = loadTimelineFromStorage(roomId);
@@ -726,8 +741,8 @@ function SettingsBar({
         icon: <Grid3X3 className='w-4 h-4' />,
       },
       {
-        id: 'transitions',
-        label: 'Transitions',
+        id: 'settings',
+        label: 'Settings',
         icon: <SlidersHorizontal className='w-4 h-4' />,
       },
     ];
@@ -817,46 +832,82 @@ function SettingsBar({
       </Dialog>
 
       <Dialog
-        open={openModal === 'transitions'}
+        open={openModal === 'settings'}
         onOpenChange={(open) => !open && setOpenModal(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Transitions</DialogTitle>
+            <DialogTitle>Settings</DialogTitle>
           </DialogHeader>
-          <TransitionSettings
-            swapDurationMs={roomState.swapDurationMs ?? 500}
-            onSwapDurationChange={async (value) => {
-              await updateRoomAction(roomId, { swapDurationMs: value });
-              await handleRefreshState();
-            }}
-            swapOutgoingEnabled={roomState.swapOutgoingEnabled ?? true}
-            onSwapOutgoingEnabledChange={async (value) => {
-              await updateRoomAction(roomId, { swapOutgoingEnabled: value });
-              await handleRefreshState();
-            }}
-            swapFadeInDurationMs={roomState.swapFadeInDurationMs ?? 500}
-            onSwapFadeInDurationChange={async (value) => {
-              await updateRoomAction(roomId, { swapFadeInDurationMs: value });
-              await handleRefreshState();
-            }}
-            swapFadeOutDurationMs={roomState.swapFadeOutDurationMs ?? 500}
-            onSwapFadeOutDurationChange={async (value) => {
-              await updateRoomAction(roomId, { swapFadeOutDurationMs: value });
-              await handleRefreshState();
-            }}
-            newsStripFadeDuringSwap={roomState.newsStripFadeDuringSwap ?? true}
-            onNewsStripFadeDuringSwapChange={async (value) => {
-              await updateRoomAction(roomId, {
-                newsStripFadeDuringSwap: value,
-              });
-              await handleRefreshState();
-            }}
-            newsStripEnabled={roomState.newsStripEnabled ?? true}
-            onNewsStripEnabledChange={async (value) => {
-              await updateRoomAction(roomId, { newsStripEnabled: value });
-              await handleRefreshState();
-            }}
-          />
+          <div className='space-y-4'>
+            <section className='space-y-2'>
+              <h4 className='text-sm font-medium text-white'>
+                Transition Settings
+              </h4>
+              <TransitionSettings
+                swapDurationMs={roomState.swapDurationMs ?? 500}
+                onSwapDurationChange={async (value) => {
+                  await updateRoomAction(roomId, { swapDurationMs: value });
+                  await handleRefreshState();
+                }}
+                swapOutgoingEnabled={roomState.swapOutgoingEnabled ?? true}
+                onSwapOutgoingEnabledChange={async (value) => {
+                  await updateRoomAction(roomId, {
+                    swapOutgoingEnabled: value,
+                  });
+                  await handleRefreshState();
+                }}
+                swapFadeInDurationMs={roomState.swapFadeInDurationMs ?? 500}
+                onSwapFadeInDurationChange={async (value) => {
+                  await updateRoomAction(roomId, {
+                    swapFadeInDurationMs: value,
+                  });
+                  await handleRefreshState();
+                }}
+                swapFadeOutDurationMs={roomState.swapFadeOutDurationMs ?? 500}
+                onSwapFadeOutDurationChange={async (value) => {
+                  await updateRoomAction(roomId, {
+                    swapFadeOutDurationMs: value,
+                  });
+                  await handleRefreshState();
+                }}
+                newsStripFadeDuringSwap={
+                  roomState.newsStripFadeDuringSwap ?? true
+                }
+                onNewsStripFadeDuringSwapChange={async (value) => {
+                  await updateRoomAction(roomId, {
+                    newsStripFadeDuringSwap: value,
+                  });
+                  await handleRefreshState();
+                }}
+                newsStripEnabled={roomState.newsStripEnabled ?? true}
+                onNewsStripEnabledChange={async (value) => {
+                  await updateRoomAction(roomId, { newsStripEnabled: value });
+                  await handleRefreshState();
+                }}
+              />
+            </section>
+            <div className='h-px bg-neutral-800' />
+            <section className='space-y-2 px-1'>
+              <h4 className='text-sm font-medium text-white'>
+                Macros Settings
+              </h4>
+              <label className='flex items-center gap-2 cursor-pointer'>
+                <input
+                  type='checkbox'
+                  checked={autoPlayMacro}
+                  onChange={(e) => {
+                    const value = e.target.checked;
+                    setAutoPlayMacro(value);
+                    setAutoPlayMacroSetting(value);
+                  }}
+                  className='accent-white'
+                />
+                <span className='text-xs text-neutral-400'>
+                  Auto Play Macro
+                </span>
+              </label>
+            </section>
+          </div>
         </DialogContent>
       </Dialog>
 

@@ -56,6 +56,58 @@ type UseControlPanelEventsProps = {
   changeLayout: (layout: Layout) => void;
 };
 
+type ApplyTextColorFromVoiceParams = {
+  color: string;
+  inputIndex?: number;
+  inputs: Input[];
+  selectedInputId: string | null;
+  roomId: string;
+  handleRefreshState: () => Promise<void>;
+  dispatchEvent: (event: Event) => boolean;
+  updateInputFn: typeof updateInput;
+};
+
+export async function applyTextColorFromVoice({
+  color,
+  inputIndex,
+  inputs,
+  selectedInputId,
+  roomId,
+  handleRefreshState,
+  dispatchEvent,
+  updateInputFn,
+}: ApplyTextColorFromVoiceParams): Promise<boolean> {
+  const visibleInputs = inputs.filter((i) => !i.hidden);
+
+  let input;
+  if (inputIndex !== undefined) {
+    input = visibleInputs[inputIndex - 1];
+  } else if (selectedInputId) {
+    input = inputs.find((i: Input) => i.inputId === selectedInputId);
+  }
+
+  if (!input || input.type !== 'text-input') {
+    return false;
+  }
+
+  await updateInputFn(roomId, input.inputId, {
+    textColor: color,
+    volume: input.volume,
+  });
+
+  dispatchEvent(
+    new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
+      detail: {
+        inputId: input.inputId,
+        patch: { textColor: color },
+      },
+    }),
+  );
+
+  await handleRefreshState();
+  return true;
+}
+
 export function useControlPanelEvents({
   inputsRef,
   inputWrappers,
@@ -926,28 +978,19 @@ export function useControlPanelEvents({
     ) => {
       try {
         const { color, inputIndex } = e.detail;
-        const currentInputs = inputsRef.current || [];
-        const visibleInputs = currentInputs.filter((i) => !i.hidden);
-
-        let input;
-        if (inputIndex !== undefined) {
-          input = visibleInputs[inputIndex - 1];
-        } else if (selectedInputId) {
-          input = currentInputs.find(
-            (i: Input) => i.inputId === selectedInputId,
-          );
-        }
-
-        if (!input || input.type !== 'text-input') {
-          console.warn('Voice: no text input found for color change');
-          return;
-        }
-
-        await updateInput(roomId, input.inputId, {
-          textColor: color,
-          volume: input.volume,
+        const didApply = await applyTextColorFromVoice({
+          color,
+          inputIndex,
+          inputs: inputsRef.current || [],
+          selectedInputId,
+          roomId,
+          handleRefreshState,
+          dispatchEvent: (event) => window.dispatchEvent(event),
+          updateInputFn: updateInput,
         });
-        await handleRefreshState();
+        if (!didApply) {
+          console.warn('Voice: no text input found for color change');
+        }
       } catch (err) {
         console.error('Voice: failed to set text color', err);
       }
