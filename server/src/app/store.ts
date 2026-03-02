@@ -5,6 +5,9 @@ import { createContext, useContext } from 'react';
 import { useStore } from 'zustand';
 import type { Resolution } from '../smelter';
 
+export type { GameCell, SnakeEventType, SnakeEventApplicationMode, SnakeEventShaderMapping, SnakeEventShaderConfig, ActiveSnakeEffect, GameState, GameOverPlayer, GameOverData } from '../game/types';
+import type { GameState, SnakeEventShaderConfig } from '../game/types';
+
 export type InputOrientation = 'horizontal' | 'vertical';
 
 export type InputConfig = {
@@ -24,6 +27,10 @@ export type InputConfig = {
   textScrollLoop?: boolean;
   textScrollNudge?: number;
   textFontSize?: number;
+  gameState?: GameState;
+  snakeEventShaders?: SnakeEventShaderConfig;
+  snake1Shaders?: ShaderConfig[];
+  snake2Shaders?: ShaderConfig[];
   borderColor?: string;
   borderWidth?: number;
   replaceWith?: InputConfig;
@@ -76,7 +83,7 @@ export function createRoomStore(resolution: Resolution = { width: 2560, height: 
     swapFadeInDurationMs: 500,
     swapFadeOutDurationMs: 500,
     newsStripFadeDuringSwap: true,
-    newsStripEnabled: true,
+    newsStripEnabled: false,
     updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number, swapOutgoingEnabled: boolean, swapFadeInDurationMs: number, newsStripFadeDuringSwap: boolean, swapFadeOutDurationMs: number, newsStripEnabled: boolean) => {
       set(_state => ({ inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs, newsStripEnabled }));
     },

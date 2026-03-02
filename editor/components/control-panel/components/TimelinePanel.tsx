@@ -63,6 +63,7 @@ const TYPE_HSL: Record<Input['type'], [number, number, number]> = {
   'local-mp4': [25, 95, 53], // orange-500
   image: [48, 96, 53], // yellow-500
   'text-input': [330, 81, 60], // pink-500
+  game: [0, 72, 51], // red-500
 };
 
 const LIGHTNESS_STEP = 10;
@@ -105,7 +106,7 @@ function buildInputColorMap(inputs: Input[]) {
 
 const MIN_HEIGHT = 120;
 const MAX_HEIGHT_VH = 0.6;
-const DEFAULT_HEIGHT = 350;
+const DEFAULT_HEIGHT = 250;
 const TRACK_HEIGHT = 40;
 const SOURCES_WIDTH = 180;
 const SNAP_THRESHOLD_PX = 8;

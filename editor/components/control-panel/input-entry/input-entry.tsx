@@ -24,6 +24,7 @@ import {
   EyeOff,
 } from 'lucide-react';
 import ShaderPanel from './shader-panel';
+import SnakeEventShaderPanel from './snake-event-shader-panel';
 import { InputEntryTextSection } from './input-entry-text-section';
 import { StatusButton } from './status-button';
 import { MuteButton } from './mute-button';
@@ -39,6 +40,8 @@ import {
   loadWhipSession,
 } from '../whip-input/utils/whip-storage';
 import { useIsMobile } from '@/hooks/use-mobile';
+
+const SHADER_SETTINGS_DEBOUNCE_MS = 200;
 
 /**
  * Converts a hex color string to a packed integer (0xRRGGBB)
@@ -203,6 +206,16 @@ export default function InputEntry({
   const sliderTimers = useRef<{
     [key: string]: NodeJS.Timeout | number | null;
   }>({});
+
+  useEffect(() => {
+    return () => {
+      Object.values(sliderTimers.current).forEach((timer) => {
+        if (timer) {
+          clearTimeout(timer as number);
+        }
+      });
+    };
+  }, []);
 
   const effectiveShowSliders =
     typeof isFxOpen === 'boolean' ? isFxOpen : showSliders;
@@ -570,35 +583,6 @@ export default function InputEntry({
     [roomId, input, refreshState],
   );
 
-  const handleSliderChange = useCallback(
-    (shaderId: string, paramName: string, newValue: number) => {
-      const key = `${shaderId}:${paramName}`;
-      setSliderValues((prev) => ({
-        ...prev,
-        [key]: newValue,
-      }));
-
-      if (sliderTimers.current[key]) {
-        clearTimeout(sliderTimers.current[key] as number);
-      }
-
-      sliderTimers.current[key] = setTimeout(async () => {
-        setParamLoading((prev) => ({ ...prev, [shaderId]: paramName }));
-        try {
-          await handleParamChange(shaderId, paramName, newValue);
-        } finally {
-          setParamLoading((prev) => ({ ...prev, [shaderId]: null }));
-          setSliderValues((prev) => {
-            const newVals = { ...prev };
-            delete newVals[key];
-            return newVals;
-          });
-        }
-      }, 500);
-    },
-    [roomId, input, refreshState],
-  );
-
   const handleParamChange = useCallback(
     async (shaderId: string, paramName: string, newValue: number) => {
       if (!input.shaders) return;
@@ -627,11 +611,39 @@ export default function InputEntry({
           shaders: newShadersConfig,
           volume: input.volume,
         });
-        await refreshState();
       } finally {
       }
     },
     [roomId, input, refreshState],
+  );
+
+  const handleSliderChange = useCallback(
+    (shaderId: string, paramName: string, newValue: number) => {
+      const key = `${shaderId}:${paramName}`;
+      setSliderValues((prev) => ({
+        ...prev,
+        [key]: newValue,
+      }));
+
+      if (sliderTimers.current[key]) {
+        clearTimeout(sliderTimers.current[key] as number);
+      }
+
+      sliderTimers.current[key] = setTimeout(async () => {
+        setParamLoading((prev) => ({ ...prev, [shaderId]: paramName }));
+        try {
+          await handleParamChange(shaderId, paramName, newValue);
+        } finally {
+          setParamLoading((prev) => ({ ...prev, [shaderId]: null }));
+          setSliderValues((prev) => {
+            const newVals = { ...prev };
+            delete newVals[key];
+            return newVals;
+          });
+        }
+      }, SHADER_SETTINGS_DEBOUNCE_MS);
+    },
+    [handleParamChange],
   );
 
   const getShaderParamConfig = useCallback(
@@ -820,6 +832,95 @@ export default function InputEntry({
             onTextScrollSpeedChange={handleTextScrollSpeedChange}
             onTextScrollLoopChange={handleTextScrollLoopChange}
             onTextFontSizeChange={handleTextFontSizeChange}
+          />
+        )}
+        {input.type === 'game' && !readOnly && (
+          <div className='flex items-center gap-3 px-2 py-1'>
+            <div className='flex items-center gap-1'>
+              <label className='text-xs text-neutral-400'>Gap</label>
+              <input
+                type='number'
+                min={0}
+                max={20}
+                className='w-14 bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-0.5 rounded'
+                value={input.gameCellGap ?? 1}
+                onChange={(e) => {
+                  void updateInput(roomId, input.inputId, {
+                    gameCellGap: Math.max(0, Number(e.target.value) || 0),
+                  });
+                }}
+              />
+              <span className='text-xs text-neutral-500'>px</span>
+            </div>
+            <div className='flex items-center gap-1'>
+              <label className='text-xs text-neutral-400'>Border</label>
+              <input
+                type='number'
+                min={0}
+                max={20}
+                className='w-14 bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-0.5 rounded'
+                value={input.gameBoardBorderWidth ?? 4}
+                onChange={(e) => {
+                  void updateInput(roomId, input.inputId, {
+                    gameBoardBorderWidth: Math.max(
+                      0,
+                      Number(e.target.value) || 0,
+                    ),
+                  });
+                }}
+              />
+              <span className='text-xs text-neutral-500'>px</span>
+            </div>
+            <div className='flex items-center gap-1'>
+              <input
+                type='color'
+                className='w-6 h-6 bg-transparent border-0 cursor-pointer'
+                value={input.gameBoardBorderColor ?? '#ffffff'}
+                onChange={(e) => {
+                  void updateInput(roomId, input.inputId, {
+                    gameBoardBorderColor: e.target.value,
+                  });
+                }}
+              />
+            </div>
+            <div className='flex items-center gap-1'>
+              <label className='text-xs text-neutral-400'>Grid</label>
+              <input
+                type='color'
+                className='w-6 h-6 bg-transparent border-0 cursor-pointer'
+                value={input.gameGridLineColor ?? '#000000'}
+                onChange={(e) => {
+                  void updateInput(roomId, input.inputId, {
+                    gameGridLineColor: e.target.value,
+                  });
+                }}
+              />
+            </div>
+            <div className='flex items-center gap-1'>
+              <label className='text-xs text-neutral-400'>α</label>
+              <input
+                type='range'
+                min={0}
+                max={1}
+                step={0.01}
+                className='w-16'
+                value={input.gameGridLineAlpha ?? 1.0}
+                onChange={(e) => {
+                  void updateInput(roomId, input.inputId, {
+                    gameGridLineAlpha: Number(e.target.value),
+                  });
+                }}
+              />
+            </div>
+          </div>
+        )}
+        {input.type === 'game' && !readOnly && (
+          <SnakeEventShaderPanel
+            roomId={roomId}
+            inputId={input.inputId}
+            config={input.snakeEventShaders}
+            availableShaders={availableShaders}
+            onUpdate={refreshState}
           />
         )}
         {!readOnly && (

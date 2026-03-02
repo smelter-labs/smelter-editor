@@ -16,10 +16,12 @@ import {
   addTwitchInput,
   addKickInput,
   addMP4Input,
+  addGameInput,
   addImageInput,
   addTextInput,
   updateInput,
   updateRoom,
+  deleteRoom,
 } from '@/app/actions/actions';
 import { RESOLUTION_PRESETS, type ResolutionPreset } from '@/lib/resolution';
 import Link from 'next/link';
@@ -29,7 +31,7 @@ import {
   setPendingWhipInputs as setPendingWhipInputsAction,
   type PendingWhipInputData,
 } from '@/app/actions/actions';
-import { Upload, FolderDown } from 'lucide-react';
+import { Upload, FolderDown, LogIn, UserPlus, Eye, Trash2 } from 'lucide-react';
 import RecordingsList from '@/components/recordings-list';
 import { toast } from 'react-toastify';
 import { LoadConfigModal } from '@/components/control-panel/components/ConfigModals';
@@ -87,7 +89,12 @@ export default function IntroView() {
   const [kickSuggestions, setKickSuggestions] = useState<any[]>([]);
 
   // Active rooms state
-  type Room = { roomId: string; createdAt?: number; isPublic?: boolean };
+  type Room = {
+    roomId: string;
+    roomName?: { pl: string; en: string };
+    createdAt?: number;
+    isPublic?: boolean;
+  };
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
 
@@ -267,6 +274,11 @@ export default function IntroView() {
                   inputId = result.inputId;
                 }
                 break;
+              case 'game': {
+                const result = await addGameInput(roomId, inputConfig.title);
+                inputId = result.inputId;
+                break;
+              }
             }
 
             if (inputId) {
@@ -289,6 +301,12 @@ export default function IntroView() {
               textMaxLines: inputConfig.textMaxLines,
               textScrollSpeed: inputConfig.textScrollSpeed,
               textScrollLoop: inputConfig.textScrollLoop,
+              gameBackgroundColor: inputConfig.gameBackgroundColor,
+              gameCellGap: inputConfig.gameCellGap,
+              gameBoardBorderColor: inputConfig.gameBoardBorderColor,
+              gameBoardBorderWidth: inputConfig.gameBoardBorderWidth,
+              gameGridLineColor: inputConfig.gameGridLineColor,
+              gameGridLineAlpha: inputConfig.gameGridLineAlpha,
             });
           } catch (err) {
             console.warn(`Failed to update input ${inputId}:`, err);
@@ -513,53 +531,85 @@ export default function IntroView() {
             />
           </div>
 
-          {!loadingRooms && rooms.filter((r) => r.isPublic).length > 0 && (
+          {!loadingRooms && rooms.length > 0 && (
             <div className='mt-8 text-center'>
               <h3 className='text-lg font-semibold text-white mb-3'>
                 Active Rooms
               </h3>
               <ul className='space-y-2'>
-                {rooms
-                  .filter((r) => r.isPublic)
-                  .map((room) => (
-                    <li key={room.roomId}>
-                      <div className='flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between px-4 py-3 rounded-none bg-neutral-900 text-white text-sm'>
-                        <div className='flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-3'>
-                          <span className='font-mono truncate max-w-full'>
-                            {room.roomId}
+                {rooms.map((room) => (
+                  <li key={room.roomId}>
+                    <div className='flex flex-col items-stretch gap-3 sm:flex-row sm:items-center sm:justify-between px-4 py-3 rounded-none bg-neutral-900 text-white text-sm'>
+                      <div className='flex min-w-0 flex-col items-start gap-1 sm:flex-row sm:items-center sm:gap-3'>
+                        <span className='font-mono truncate max-w-full'>
+                          {room.roomName
+                            ? `${room.roomName.pl} / ${room.roomName.en}`
+                            : room.roomId}
+                        </span>
+                        {room.createdAt && (
+                          <span className='text-xs text-neutral-500'>
+                            {new Date(room.createdAt).toLocaleTimeString()} ·{' '}
+                            {formatDuration(Date.now() - room.createdAt)}
                           </span>
-                          {room.createdAt && (
-                            <span className='text-xs text-neutral-500'>
-                              {new Date(room.createdAt).toLocaleTimeString()} ·{' '}
-                              {formatDuration(Date.now() - room.createdAt)}
-                            </span>
-                          )}
-                        </div>
-                        <div className='flex w-full gap-2 sm:w-auto sm:ml-4 shrink-0'>
-                          <Button
-                            size='sm'
-                            variant='default'
-                            className='bg-white text-black hover:bg-neutral-200 cursor-pointer flex-1 sm:flex-none'
-                            onClick={() =>
-                              router.push(getRoomRoute(room.roomId))
-                            }>
-                            Join
-                          </Button>
-                          <Button
-                            size='sm'
-                            variant='default'
-                            className='bg-neutral-700 text-white hover:bg-neutral-600 cursor-pointer flex-1 sm:flex-none'
-                            onClick={() =>
-                              router.push(
-                                getRoomRoute(room.roomId) + '?guest=true',
-                              )
-                            }>
-                            Join as Guest
-                          </Button>
-                        </div>
+                        )}
                       </div>
-                    </li>
-                  ))}
+                      <div className='flex w-full gap-1 sm:w-auto sm:ml-4 shrink-0'>
+                        <Button
+                          size='sm'
+                          variant='default'
+                          className='bg-white text-black hover:bg-neutral-200 cursor-pointer flex-1 sm:flex-none'
+                          title='Join'
+                          onClick={() =>
+                            router.push(getRoomRoute(room.roomId))
+                          }>
+                          <LogIn className='w-4 h-4' />
+                        </Button>
+                        <Button
+                          size='sm'
+                          variant='default'
+                          className='bg-neutral-700 text-white hover:bg-neutral-600 cursor-pointer flex-1 sm:flex-none'
+                          title='Join as Guest'
+                          onClick={() =>
+                            router.push(
+                              getRoomRoute(room.roomId) + '?guest=true',
+                            )
+                          }>
+                          <UserPlus className='w-4 h-4' />
+                        </Button>
+                        <Button
+                          size='sm'
+                          variant='default'
+                          className='bg-neutral-800 text-neutral-300 hover:bg-neutral-700 cursor-pointer flex-1 sm:flex-none'
+                          title='Spectate'
+                          onClick={() =>
+                            window.open(
+                              `/room-preview/${room.roomId}`,
+                              '_blank',
+                            )
+                          }>
+                          <Eye className='w-4 h-4' />
+                        </Button>
+                        <Button
+                          size='sm'
+                          variant='default'
+                          className='bg-red-900/50 text-red-400 hover:bg-red-900 cursor-pointer flex-1 sm:flex-none'
+                          title='Delete Room'
+                          onClick={async () => {
+                            try {
+                              await deleteRoom(room.roomId);
+                              setRooms((prev) =>
+                                prev.filter((r) => r.roomId !== room.roomId),
+                              );
+                            } catch (err) {
+                              console.error('Failed to delete room:', err);
+                            }
+                          }}>
+                          <Trash2 className='w-4 h-4' />
+                        </Button>
+                      </div>
+                    </div>
+                  </li>
+                ))}
               </ul>
             </div>
           )}

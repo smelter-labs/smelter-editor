@@ -9,6 +9,7 @@ import { ImageAddInputForm } from '../add-input-form/image-add-input-form';
 import { TextAddInputForm } from '../add-input-form/text-add-input-form';
 import { WHIPAddInputForm } from '../add-input-form/whip-add-input-form';
 import { ScreenshareAddInputForm } from '../add-input-form/screenshare-add-input-form';
+import { GameAddInputForm } from '../add-input-form/game-add-input-form';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
@@ -23,7 +24,7 @@ import { removeInput } from '@/app/actions/actions';
 import { Button } from '@/components/ui/button';
 import { PhoneOff } from 'lucide-react';
 
-export type AddTab = 'stream' | 'mp4' | 'image' | 'text' | 'inputs';
+export type AddTab = 'stream' | 'mp4' | 'image' | 'text' | 'game' | 'inputs';
 type StreamTab = 'twitch' | 'kick';
 type InputsTab = 'camera' | 'screenshare';
 
@@ -177,6 +178,7 @@ export function AddVideoSection({
         { id: 'mp4', label: 'MP4' },
         { id: 'image', label: 'Image' },
         { id: 'text', label: 'Text' },
+        { id: 'game', label: 'Game' },
         { id: 'inputs', label: 'Inputs' },
       ];
 
@@ -195,7 +197,7 @@ export function AddVideoSection({
             return (
               <button
                 key={t.id}
-                className={`py-2 px-2 md:px-3 -mb-[1px] cursor-pointer text-base font-bold transition-colors ${
+                className={`py-2 px-2 md:px-3 -mb-[1px] cursor-pointer text-sm font-bold transition-colors ${
                   isActive
                     ? 'border-b-[3px] border-white text-white'
                     : 'border-b-[3px] border-transparent text-neutral-400 hover:text-white'
@@ -270,6 +272,15 @@ export function AddVideoSection({
           {effectiveActiveTab === 'text' && (
             <div>
               <TextAddInputForm
+                inputs={inputs}
+                roomId={roomId}
+                refreshState={refreshState}
+              />
+            </div>
+          )}
+          {effectiveActiveTab === 'game' && (
+            <div>
+              <GameAddInputForm
                 inputs={inputs}
                 roomId={roomId}
                 refreshState={refreshState}

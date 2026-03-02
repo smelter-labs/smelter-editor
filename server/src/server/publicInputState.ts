@@ -1,5 +1,7 @@
 import type { RoomInputState, InputOrientation } from './roomState';
 import type { ShaderConfig } from '../shaders/shaders';
+import type { SnakeEventShaderConfig } from '../game/types';
+import { toPublicGameInputState } from '../game/publicGameState';
 
 /** API DTO for a single input; single source of truth for RoomInputState → response mapping */
 export type PublicInputState = {
@@ -26,6 +28,16 @@ export type PublicInputState = {
   borderWidth?: number;
   attachedInputIds?: string[];
   hidden?: boolean;
+  gameBackgroundColor?: string;
+  gameCellGap?: number;
+  gameBoardBorderColor?: string;
+  gameBoardBorderWidth?: number;
+  gameGridLineColor?: string;
+  gameGridLineAlpha?: number;
+  snakeEventShaders?: SnakeEventShaderConfig;
+  snake1Shaders?: ShaderConfig[];
+  snake2Shaders?: ShaderConfig[];
+  snakePlayerColors?: string[];
 };
 
 export function toPublicInputState(input: RoomInputState): PublicInputState {
@@ -72,6 +84,12 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
         textScrollSpeed: input.textScrollSpeed,
         textScrollLoop: input.textScrollLoop,
         textFontSize: input.textFontSize,
+      };
+    case 'game':
+      return {
+        ...base,
+        sourceState: 'always-live' as const,
+        ...toPublicGameInputState(input),
       };
     default:
       throw new Error('Unknown input state');

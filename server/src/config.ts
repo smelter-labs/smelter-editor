@@ -11,7 +11,18 @@ type Config = {
   whipBaseUrl: string;
   h264Decoder: 'ffmpeg_h264' | 'vulkan_h264';
   h264Encoder: Outputs.WhepVideoEncoderOptions;
+  snakeVisualSpeedMultiplier: number;
 };
+
+const defaultSnakeVisualSpeedMultiplier = 1.25;
+const parsedSnakeVisualSpeedMultiplier = Number(
+  process.env.SMELTER_SNAKE_VISUAL_SPEED_MULTIPLIER,
+);
+const snakeVisualSpeedMultiplier =
+  Number.isFinite(parsedSnakeVisualSpeedMultiplier) &&
+  parsedSnakeVisualSpeedMultiplier > 0
+    ? parsedSnakeVisualSpeedMultiplier
+    : defaultSnakeVisualSpeedMultiplier;
 
 export const config: Config =
   process.env.ENVIRONMENT === 'production'
@@ -34,6 +45,7 @@ export const config: Config =
         //    thread_type: 'slice',
         //  },
        // },
+        snakeVisualSpeedMultiplier,
       }
     : {
         logger: {
@@ -55,4 +67,5 @@ export const config: Config =
             bitrate: '20000000',
           },
         },
+        snakeVisualSpeedMultiplier,
       };

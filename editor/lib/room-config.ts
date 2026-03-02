@@ -1,4 +1,5 @@
 import type { Input, Layout, ShaderConfig } from '@/app/actions/actions';
+import type { SnakeEventShaderConfig } from '@/lib/game-types';
 import type {
   Clip,
   Track,
@@ -27,6 +28,15 @@ export type RoomConfigInput = {
   textFontSize?: number;
   borderColor?: string;
   borderWidth?: number;
+  gameBackgroundColor?: string;
+  gameCellGap?: number;
+  gameBoardBorderColor?: string;
+  gameBoardBorderWidth?: number;
+  gameGridLineColor?: string;
+  gameGridLineAlpha?: number;
+  snakeEventShaders?: SnakeEventShaderConfig;
+  snake1Shaders?: ShaderConfig[];
+  snake2Shaders?: ShaderConfig[];
   attachedInputIndices?: number[];
 };
 
@@ -144,6 +154,15 @@ export function exportRoomConfig(
       textFontSize: input.textFontSize,
       borderColor: input.borderColor,
       borderWidth: input.borderWidth,
+      gameBackgroundColor: input.gameBackgroundColor,
+      gameCellGap: input.gameCellGap,
+      gameBoardBorderColor: input.gameBoardBorderColor,
+      gameBoardBorderWidth: input.gameBoardBorderWidth,
+      gameGridLineColor: input.gameGridLineColor,
+      gameGridLineAlpha: input.gameGridLineAlpha,
+      snakeEventShaders: input.snakeEventShaders,
+      snake1Shaders: input.snake1Shaders,
+      snake2Shaders: input.snake2Shaders,
       attachedInputIndices: input.attachedInputIds
         ?.map((id) => inputIdToIndex.get(id))
         .filter((idx): idx is number => idx !== undefined),

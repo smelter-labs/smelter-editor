@@ -12,6 +12,7 @@ import {
   addTwitchInput,
   addKickInput,
   addMP4Input,
+  addGameInput,
   addImageInput,
   addTextInput,
   removeInput,
@@ -321,6 +322,9 @@ export default function ControlPanel({
       const detail = (e as CustomEvent<{ clip: SelectedTimelineClip | null }>)
         .detail;
       setSelectedTimelineClip(detail?.clip ?? null);
+      if (detail?.clip) {
+        addVideoAccordionRef.current?.close();
+      }
     };
     window.addEventListener('smelter:timeline:selected-clip', handler);
     return () =>
@@ -581,6 +585,11 @@ function SettingsBar({
                 inputId = result.inputId;
               }
               break;
+            case 'game': {
+              const result = await addGameInput(roomId, inputConfig.title);
+              inputId = result.inputId;
+              break;
+            }
           }
 
           if (inputId) {
@@ -620,6 +629,12 @@ function SettingsBar({
             textFontSize: inputConfig.textFontSize,
             borderColor: inputConfig.borderColor,
             borderWidth: inputConfig.borderWidth,
+            gameBackgroundColor: inputConfig.gameBackgroundColor,
+            gameCellGap: inputConfig.gameCellGap,
+            gameBoardBorderColor: inputConfig.gameBoardBorderColor,
+            gameBoardBorderWidth: inputConfig.gameBoardBorderWidth,
+            gameGridLineColor: inputConfig.gameGridLineColor,
+            gameGridLineAlpha: inputConfig.gameGridLineAlpha,
             attachedInputIds:
               attachedInputIds && attachedInputIds.length > 0
                 ? attachedInputIds

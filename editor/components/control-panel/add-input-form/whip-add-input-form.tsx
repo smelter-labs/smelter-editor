@@ -13,7 +13,7 @@ import type React from 'react';
 import { useState } from 'react';
 import { useIsMobileDevice } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
-import { SwitchCamera, RotateCw } from 'lucide-react';
+import { SwitchCamera } from 'lucide-react';
 
 export function WHIPAddInputForm(props: {
   inputs: Input[];
@@ -40,7 +40,6 @@ export function WHIPAddInputForm(props: {
 
   const isMobileDevice = useIsMobileDevice();
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
-  const [rotate90, setRotate90] = useState(false);
 
   const handleAddWhip = async (whipUserName: string) => {
     const cleanedName = whipUserName.trim();
@@ -68,7 +67,7 @@ export function WHIPAddInputForm(props: {
         streamRef,
         onDisconnected,
         isMobileDevice ? facingMode : undefined,
-        rotate90,
+        false,
       );
 
       setIsWhipActive(true);
@@ -126,19 +125,6 @@ export function WHIPAddInputForm(props: {
             </div>
           </>
         )}
-        <Button
-          size='sm'
-          variant='ghost'
-          type='button'
-          onClick={() => setRotate90((v) => !v)}
-          className={`cursor-pointer text-xs px-3 border ${
-            rotate90
-              ? 'bg-neutral-700 text-white border-neutral-600'
-              : 'text-neutral-500 border-neutral-700'
-          }`}>
-          <RotateCw className='w-3.5 h-3.5' />
-          Rotate 90°
-        </Button>
       </div>
       <GenericAddInputForm<string>
         showArrow={false}
