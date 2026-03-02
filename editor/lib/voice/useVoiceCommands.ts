@@ -326,6 +326,8 @@ export function useVoiceCommands(
 
         const matchedMacro = findMatchingMacro(text);
         if (matchedMacro) {
+          // Stop any running controller first — stop() is sync so onMacroStopped
+          // fires and nulls macroControllerRef before we assign the new one below.
           macroControllerRef.current?.stop();
           isMacroModeRef.current = false;
           setIsMacroMode(false);

@@ -280,6 +280,7 @@ export function SpeechToTextWithCommands() {
   };
 
   const isIntroPage = !roomId;
+  // Falls back to index 0 when no step has started yet, so the UI can preview the first step.
   const nextMacroStepIndex =
     currentMacroStep?.index !== undefined ? currentMacroStep.index + 1 : 0;
   const nextMacroStep = activeMacro?.steps?.[nextMacroStepIndex] ?? null;
@@ -406,7 +407,9 @@ export function SpeechToTextWithCommands() {
               {!currentMacroStep && (
                 <p className='text-cyan-300/80 text-xs font-mono bg-cyan-900/10 p-2 rounded'>
                   Next:{' '}
-                  {nextMacroStep ? formatMacroStepLabel(nextMacroStep) : 'complete'}
+                  {nextMacroStep
+                    ? formatMacroStepLabel(nextMacroStep)
+                    : 'complete'}
                 </p>
               )}
               {!autoPlayMacro && (

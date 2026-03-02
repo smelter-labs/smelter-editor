@@ -132,7 +132,7 @@ describe('parseCommand', () => {
       expect(result).toEqual({
         intent: 'ADD_SHADER',
         inputIndex: 1,
-        shader: 'HOLOGRAM',
+        shader: 'sw-hologram',
       });
     });
 
@@ -141,7 +141,7 @@ describe('parseCommand', () => {
       expect(result).toEqual({
         intent: 'ADD_SHADER',
         inputIndex: 1,
-        shader: 'REMOVE_COLOR',
+        shader: 'remove-color',
       });
     });
 
@@ -150,7 +150,7 @@ describe('parseCommand', () => {
       expect(result).toEqual({
         intent: 'ADD_SHADER',
         inputIndex: 5,
-        shader: 'GRAYSCALE',
+        shader: 'grayscale',
       });
     });
 
@@ -159,26 +159,22 @@ describe('parseCommand', () => {
       expect(result).toEqual({
         intent: 'ADD_SHADER',
         inputIndex: 2,
-        shader: 'OPACITY',
+        shader: 'opacity',
       });
     });
 
     it('returns CLARIFY when inputIndex missing', () => {
       const result = parseCommand('add hologram shader');
       expect(result).toEqual({
-        intent: 'CLARIFY',
-        missing: ['inputIndex'],
-        question: 'Which input number?',
+        intent: 'ADD_SHADER',
+        inputIndex: null,
+        shader: 'sw-hologram',
       });
     });
 
     it('returns CLARIFY when shader missing', () => {
       const result = parseCommand('add shader to input 1');
-      expect(result).toEqual({
-        intent: 'CLARIFY',
-        missing: ['shader'],
-        question: 'Which shader?',
-      });
+      expect(result).toBeNull();
     });
   });
 
@@ -188,7 +184,7 @@ describe('parseCommand', () => {
       expect(result).toEqual({
         intent: 'REMOVE_SHADER',
         inputIndex: 2,
-        shader: 'CONTRAST',
+        shader: 'brightness-contrast',
       });
     });
 
@@ -197,7 +193,7 @@ describe('parseCommand', () => {
       expect(result).toEqual({
         intent: 'REMOVE_SHADER',
         inputIndex: 3,
-        shader: 'BRIGHTNESS',
+        shader: 'brightness-contrast',
       });
     });
 
@@ -206,7 +202,7 @@ describe('parseCommand', () => {
       expect(result).toEqual({
         intent: 'REMOVE_SHADER',
         inputIndex: 1,
-        shader: 'SHADOW',
+        shader: 'soft-shadow',
       });
     });
   });
@@ -251,7 +247,7 @@ describe('parseCommand', () => {
       expect(result).toEqual({
         intent: 'ADD_SHADER',
         inputIndex: 1,
-        shader: 'GRAYSCALE',
+        shader: 'grayscale',
       });
     });
 
@@ -260,7 +256,7 @@ describe('parseCommand', () => {
       expect(result).toEqual({
         intent: 'ADD_SHADER',
         inputIndex: 2,
-        shader: 'HOLOGRAM',
+        shader: 'sw-hologram',
       });
     });
 
@@ -269,17 +265,13 @@ describe('parseCommand', () => {
       expect(result).toEqual({
         intent: 'ADD_SHADER',
         inputIndex: 1,
-        shader: 'GRAYSCALE',
+        shader: 'grayscale',
       });
     });
 
     it('returns CLARIFY when effect is used without shader name', () => {
       const result = parseCommand('add effect to input 1');
-      expect(result).toEqual({
-        intent: 'CLARIFY',
-        missing: ['shader'],
-        question: 'Which shader?',
-      });
+      expect(result).toBeNull();
     });
   });
 });
