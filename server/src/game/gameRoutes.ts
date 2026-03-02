@@ -293,10 +293,7 @@ async function createDedicatedGameRoom(
     throw new Error('Failed to create game input in new room');
   }
 
-  room.updateGameState(inputId, gs);
-  if (gs.events && gs.events.length > 0) {
-    room.ingestGameEvents(inputId, gs.events);
-  }
+  room.updateGameState(inputId, gs, gs.events);
 
   return { roomId, roomName, inputId };
 }
@@ -382,10 +379,7 @@ export function registerGameRoutes(routes: FastifyInstance): void {
       }
 
       const room = state.getRoom(roomId);
-      room.updateGameState(inputId, gs);
-      if (gs.events && gs.events.length > 0) {
-        room.ingestGameEvents(inputId, gs.events);
-      }
+      room.updateGameState(inputId, gs, gs.events);
       resetGameRoomInactivityTimer(roomId);
       res.status(200).send({
         status: 'ok',
@@ -488,10 +482,7 @@ export function registerGameRoutes(routes: FastifyInstance): void {
         }
       } else {
         const room = state.getRoom(targetRoomId);
-        room.updateGameState(targetInputId, gs);
-        if (gs.events && gs.events.length > 0) {
-          room.ingestGameEvents(targetInputId, gs.events);
-        }
+        room.updateGameState(targetInputId, gs, gs.events);
       }
 
       if (targetRoomId) {

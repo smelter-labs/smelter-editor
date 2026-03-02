@@ -42,13 +42,6 @@ export type ShaderConfig = {
   params: ShaderParamConfig[];
 };
 
-export type {
-  SnakeEventType,
-  SnakeEventApplicationMode,
-  SnakeEventShaderMapping,
-  SnakeEventShaderConfig,
-} from '@/lib/game-types';
-
 export type InputOrientation = 'horizontal' | 'vertical';
 
 export type Input = {

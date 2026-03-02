@@ -117,6 +117,7 @@ export function buildUpdatedGameState(
     boardBorderWidth: currentGameState.boardBorderWidth ?? 4,
     gridLineColor: currentGameState.gridLineColor ?? '#000000',
     gridLineAlpha: currentGameState.gridLineAlpha ?? 1.0,
+    activeEffects: currentGameState.activeEffects,
     gameOverData: incomingGameState.gameOverData,
   };
 }

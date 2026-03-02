@@ -1,20 +1,24 @@
-import blessed from 'blessed';
-import contrib from 'blessed-contrib';
 import { state } from './server/serverState';
 import { config } from './config';
 import { renderSnakeBoard, findFirstGameState } from './game/gameDashboard';
 export { setGlobalGameState, getGlobalGameState } from './game/gameDashboard';
 
+const isBoxed = process.env.LAYOUT === 'boxed';
+
+// Lazy-loaded blessed modules — only imported when LAYOUT=boxed
+let blessed: any;
+let contrib: any;
+
 const MAX_LOG_LINES = 500;
 
-let screen: blessed.Widgets.Screen;
+let screen: any;
 let grid: any;
-let serverBox: blessed.Widgets.BoxElement;
+let serverBox: any;
 let roomsTable: any;
 let inputsTable: any;
-let logBox: blessed.Widgets.Log;
-let sysLogBox: blessed.Widgets.Log;
-let snakeBox: blessed.Widgets.BoxElement;
+let logBox: any;
+let sysLogBox: any;
+let snakeBox: any;
 
 const requestLog: string[] = [];
 const sysLog: string[] = [];
@@ -78,6 +82,8 @@ function interceptStream(
 }
 
 export function hijackConsole() {
+  if (!isBoxed) return;
+
   console.log = (...args: unknown[]) => {
     pushSysLog('LOG', args);
   };
@@ -94,6 +100,14 @@ export function hijackConsole() {
 
 export function logRequest(method: string, route: string, status: number) {
   requestCount++;
+
+  if (!isBoxed) {
+    const time = new Date().toLocaleTimeString('pl-PL', { hour12: false });
+    const statusStr = status < 400 ? `${status}` : `${status} !!`;
+    console.log(`${time}  ${statusStr}  ${method.padEnd(6)} ${route}`);
+    return;
+  }
+
   const time = new Date().toLocaleTimeString('pl-PL', { hour12: false });
   const statusColor = status < 400 ? '{green-fg}' : '{red-fg}';
   const line = `${time}  ${statusColor}${status}{/}  ${method.padEnd(6)} ${route}`;
@@ -217,6 +231,11 @@ function updateDashboard() {
 
 export function initDashboard() {
   startTime = Date.now();
+
+  if (!isBoxed) return;
+
+  blessed = require('blessed');
+  contrib = require('blessed-contrib');
 
   screen = blessed.screen({
     smartCSR: true,

@@ -1,5 +1,3 @@
-import type { ShaderParamConfig } from '@/app/actions/actions';
-
 export type SnakeEventType =
   | 'speed_up'
   | 'cut_opponent'
@@ -19,7 +17,7 @@ export type SnakeEventApplicationMode =
 export type SnakeEventShaderMapping = {
   enabled: boolean;
   shaderId: string;
-  params: ShaderParamConfig[];
+  params: { paramName: string; paramValue: number | string }[];
   application: SnakeEventApplicationMode;
   effectDurationMs: number;
 };

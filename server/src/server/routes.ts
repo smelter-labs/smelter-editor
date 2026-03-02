@@ -634,7 +634,7 @@ routes.post<RoomAndInputIdParams>('/room/:roomId/input/:inputId/show', { schema:
 });
 
 const UpdateInputSchema = Type.Object({
-  volume: Type.Number({ maximum: 1, minimum: 0 }),
+  volume: Type.Optional(Type.Number({ maximum: 1, minimum: 0 })),
   showTitle: Type.Optional(Type.Boolean()),
   shaders: Type.Optional(
     Type.Array(
@@ -676,6 +676,8 @@ const UpdateInputSchema = Type.Object({
   gameGridLineColor: Type.Optional(Type.String()),
   gameGridLineAlpha: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
   snakeEventShaders: Type.Optional(Type.Any()),
+  snake1Shaders: Type.Optional(Type.Any()),
+  snake2Shaders: Type.Optional(Type.Any()),
   attachedInputIds: Type.Optional(Type.Array(Type.String())),
 });
 

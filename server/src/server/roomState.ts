@@ -1027,17 +1027,22 @@ export class RoomState {
     this.updateStoreWithState();
   }
 
-  public updateGameState(inputId: string, gameState: { board: { width: number; height: number; cellSize: number; cellGap?: number }; cells: { x: number; y: number; color: string; size?: number; isHead?: boolean; direction?: 'up' | 'down' | 'left' | 'right'; progress?: number }[]; smoothMove?: boolean; smoothMoveSpeed?: number; smoothMoveAccel?: number; smoothMoveDecel?: number; backgroundColor: string; gameOverData?: { winnerName: string; reason: string; players: { name: string; score: number; eaten: number; cuts: number; color: string }[] } }) {
+  public updateGameState(inputId: string, gameState: { board: { width: number; height: number; cellSize: number; cellGap?: number }; cells: { x: number; y: number; color: string; size?: number; isHead?: boolean; direction?: 'up' | 'down' | 'left' | 'right'; progress?: number }[]; smoothMove?: boolean; smoothMoveSpeed?: number; smoothMoveAccel?: number; smoothMoveDecel?: number; backgroundColor: string; gameOverData?: { winnerName: string; reason: string; players: { name: string; score: number; eaten: number; cuts: number; color: string }[] } }, events?: { type: SnakeEventType }[]) {
     const input = this.getInput(inputId);
     if (input.type !== 'game') {
       throw new Error(`Input ${inputId} is not a game input`);
     }
     input.gameState = buildUpdatedGameState(input.gameState, gameState);
     console.log(`[game] Updated snake board: ${gameState.cells.length} cells on ${gameState.board.width}x${gameState.board.height}`);
-    this.updateStoreWithState();
+
+    if (events && events.length > 0) {
+      this.ingestGameEvents(inputId, events);
+    } else {
+      this.updateStoreWithState();
+    }
   }
 
-  public ingestGameEvents(inputId: string, events: { type: SnakeEventType }[]) {
+  private ingestGameEvents(inputId: string, events: { type: SnakeEventType }[]) {
     const input = this.getInput(inputId);
     if (input.type !== 'game') return;
     if (!events || events.length === 0) return;

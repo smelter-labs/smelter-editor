@@ -94,10 +94,15 @@ export default function SnakeEventShaderPanel({
 
   const persistConfig = useCallback(
     async (updated: SnakeEventShaderConfig) => {
-      if (onConfigChange) {
-        onConfigChange(updated);
-      } else {
-        await updateInput(roomId, inputId, { snakeEventShaders: updated });
+      try {
+        if (onConfigChange) {
+          onConfigChange(updated);
+        } else {
+          await updateInput(roomId, inputId, { snakeEventShaders: updated });
+        }
+      } catch (err: any) {
+        console.error('[SnakeEventShaderPanel] Failed to persist config', err);
+        toast.error('Failed to update shader config');
       }
       void onUpdate();
     },
@@ -110,7 +115,7 @@ export default function SnakeEventShaderPanel({
         clearTimeout(debounceTimers.current[key]!);
       }
       debounceTimers.current[key] = setTimeout(() => {
-        persistConfig(updated);
+        void persistConfig(updated);
         debounceTimers.current[key] = null;
       }, SHADER_SETTINGS_DEBOUNCE_MS);
     },
