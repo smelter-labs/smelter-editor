@@ -1,10 +1,13 @@
 import Fastify from 'fastify';
+import cors from '@fastify/cors';
 import { STATUS_CODES } from 'node:http';
 import path from 'node:path';
 import { ensureDir, pathExists, readdir, readFile, remove, stat, writeFile } from 'fs-extra';
 import { Type } from '@sinclair/typebox';
 import type { Static, TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { state } from './serverState';
+import { logRequest } from '../dashboard';
+import { registerGameRoutes, clearGameRoomInactivityTimer } from '../game/gameRoutes';
 import { TwitchChannelSuggestions } from '../twitch/TwitchChannelMonitor';
 import type { RegisterInputOptions, PendingWhipInputData } from './roomState';
 import { toPublicInputState } from './publicInputState';
@@ -23,6 +26,13 @@ type RecordingFileParams = { Params: { fileName: string } };
 export const routes = Fastify({
   logger: config.logger,
 }).withTypeProvider<TypeBoxTypeProvider>();
+
+routes.register(cors, { origin: true });
+
+routes.addHook('onResponse', (req, reply, done) => {
+  logRequest(req.method, req.url, reply.statusCode);
+  done();
+});
 
 routes.setErrorHandler((err: unknown, _req, res) => {
   const e = err as { statusCode?: number; status?: number; code?: string; message?: string };
@@ -56,6 +66,13 @@ routes.get('/suggestions/kick', async (_req, res) => {
 
 routes.get('/suggestions', async (_req, res) => {
   res.status(200).send({ twitch: TwitchChannelSuggestions.getTopStreams() });
+});
+
+routes.get('/active-rooms', async (_req, res) => {
+  const rooms = state.getRooms()
+    .filter(room => !room.pendingDelete)
+    .map(room => ({ roomId: room.idPrefix, roomName: room.roomName }));
+  res.status(200).send({ rooms });
 });
 
 const RoomIdParamsSchema = Type.Object({
@@ -101,6 +118,10 @@ const InputSchema = Type.Union([
       Type.Literal('right'),
     ])),
   }),
+  Type.Object({
+    type: Type.Literal('game'),
+    title: Type.Optional(Type.String()),
+  }),
 ]);
 
 const CreateRoomSchema = Type.Object({
@@ -144,9 +165,10 @@ routes.post<{ Body: Static<typeof CreateRoomSchema> }>(
       }
     }
 
-    const { roomId, room } = await state.createRoom(initInputs, skipDefaultInputs, resolution);
+    const { roomId, roomName, room } = await state.createRoom(initInputs, skipDefaultInputs, resolution);
     res.status(200).send({
       roomId,
+      roomName,
       whepUrl: room.getWhepUrl(),
       resolution: room.getResolution(),
     });
@@ -164,6 +186,7 @@ routes.get<RoomIdParams>('/room/:roomId', { schema: { params: RoomIdParamsSchema
   const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs, newsStripEnabled] = room.getState();
 
   res.status(200).send({
+    roomName: room.roomName,
     inputs: inputs.map(toPublicInputState),
     layout,
     whepUrl: room.getWhepUrl(),
@@ -198,6 +221,7 @@ routes.get('/rooms', async (_req, res) => {
       const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs, newsStripEnabled] = room.getState();
       return {
         roomId: room.idPrefix,
+        roomName: room.roomName,
         inputs: inputs.map(toPublicInputState),
         layout,
         whepUrl: room.getWhepUrl(),
@@ -645,6 +669,13 @@ const UpdateInputSchema = Type.Object({
   textFontSize: Type.Optional(Type.Number()),
   borderColor: Type.Optional(Type.String()),
   borderWidth: Type.Optional(Type.Number({ minimum: 0 })),
+  gameBackgroundColor: Type.Optional(Type.String()),
+  gameCellGap: Type.Optional(Type.Number({ minimum: 0 })),
+  gameBoardBorderColor: Type.Optional(Type.String()),
+  gameBoardBorderWidth: Type.Optional(Type.Number({ minimum: 0 })),
+  gameGridLineColor: Type.Optional(Type.String()),
+  gameGridLineAlpha: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
+  snakeEventShaders: Type.Optional(Type.Any()),
   attachedInputIds: Type.Optional(Type.Array(Type.String())),
 });
 
@@ -660,10 +691,20 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(
   }
 );
 
+registerGameRoutes(routes);
+
 routes.delete<RoomAndInputIdParams>('/room/:roomId/input/:inputId', { schema: { params: RoomAndInputIdParamsSchema } }, async (req, res) => {
   const { roomId, inputId } = req.params;
   console.log('[request] Remove input', { roomId, inputId });
   const room = state.getRoom(roomId);
   await room.removeInput(inputId);
+  res.status(200).send({ status: 'ok' });
+});
+
+routes.delete<RoomIdParams>('/room/:roomId', { schema: { params: RoomIdParamsSchema } }, async (req, res) => {
+  const { roomId } = req.params;
+  console.log('[request] Delete room', { roomId });
+  clearGameRoomInactivityTimer(roomId);
+  await state.deleteRoom(roomId);
   res.status(200).send({ status: 'ok' });
 });

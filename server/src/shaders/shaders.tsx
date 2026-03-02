@@ -570,6 +570,38 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
       },
     ],
   },
+  {
+    id: 'grid-overlay',
+    isActive: true,
+    isVisible: false,
+    name: 'Grid Overlay',
+    description: 'Procedurally generates a grid overlay with configurable cell count, gap size and line color.',
+    shaderFile: 'grid-overlay.wgsl',
+    params: [
+      { name: 'cells_x', type: 'number', minValue: 1, maxValue: 200, defaultValue: 20 },
+      { name: 'cells_y', type: 'number', minValue: 1, maxValue: 200, defaultValue: 20 },
+      { name: 'gap', type: 'number', minValue: 0, maxValue: 20, defaultValue: 1 },
+      { name: 'line_r', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.75 },
+      { name: 'line_g', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.75 },
+      { name: 'line_b', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.75 },
+      { name: 'line_a', type: 'number', minValue: 0, maxValue: 1, defaultValue: 1.0 },
+    ],
+  },
+  {
+    id: 'snake-event-highlight',
+    isActive: true,
+    isVisible: true,
+    name: 'Snake Event Highlight',
+    description:
+      'Visual effect overlay for snake game events. Supports pulse glow, flash, shake, color shift, ripple, vignette, chromatic burst, and pixelate effects.',
+    shaderFile: 'snake-event-highlight.wgsl',
+    params: [
+      { name: 'effect_type', type: 'number', minValue: 0, maxValue: 8, defaultValue: 1 },
+      { name: 'intensity', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.7 },
+      { name: 'effect_color', type: 'color', defaultValue: '#ff4400' },
+      { name: 'progress', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0 },
+    ],
+  },
 ];
 
 class ShadersController {

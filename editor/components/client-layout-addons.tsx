@@ -1,6 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import { usePathname } from 'next/navigation';
 
 const SpeechToTextWithCommands = dynamic(
   () =>
@@ -21,15 +22,20 @@ const Analytics = dynamic(
   { ssr: false },
 );
 
+const PREVIEW_PREFIXES = ['/raw-preview', '/room-preview'];
+
 /**
  * Wraps browser-only layout addons (toast, analytics, voice UI).
  * All are loaded with ssr: false so their code never runs during prerender,
  * avoiding "window is not defined" when they or their deps access window at load time.
  */
 export default function ClientLayoutAddons() {
+  const pathname = usePathname();
+  const isPreview = PREVIEW_PREFIXES.some((p) => pathname.startsWith(p));
+
   return (
     <>
-      <SpeechToTextWithCommands />
+      {!isPreview && <SpeechToTextWithCommands />}
       <ToastContainer />
       <Analytics />
     </>

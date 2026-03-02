@@ -5,6 +5,7 @@ import type { SpawnOptions } from 'node:child_process';
 import { spawn as nodeSpawn } from 'node:child_process';
 import { assert } from 'node:console';
 import type { Resolution, ResolutionPreset } from '@/lib/resolution';
+import type { SnakeEventShaderConfig } from '@/lib/game-types';
 
 const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
 
@@ -41,6 +42,13 @@ export type ShaderConfig = {
   params: ShaderParamConfig[];
 };
 
+export type {
+  SnakeEventType,
+  SnakeEventApplicationMode,
+  SnakeEventShaderMapping,
+  SnakeEventShaderConfig,
+} from '@/lib/game-types';
+
 export type InputOrientation = 'horizontal' | 'vertical';
 
 export type Input = {
@@ -56,7 +64,8 @@ export type Input = {
     | 'kick-channel'
     | 'whip'
     | 'image'
-    | 'text-input';
+    | 'text-input'
+    | 'game';
   sourceState: 'live' | 'offline' | 'unknown' | 'always-live';
   status: 'disconnected' | 'pending' | 'connected';
   channelId?: string;
@@ -74,6 +83,16 @@ export type Input = {
   borderWidth?: number;
   attachedInputIds?: string[];
   hidden?: boolean;
+  gameBackgroundColor?: string;
+  gameCellGap?: number;
+  gameBoardBorderColor?: string;
+  gameBoardBorderWidth?: number;
+  gameGridLineColor?: string;
+  gameGridLineAlpha?: number;
+  snakeEventShaders?: SnakeEventShaderConfig;
+  snake1Shaders?: ShaderConfig[];
+  snake2Shaders?: ShaderConfig[];
+  snakePlayerColors?: string[];
 };
 
 export type RegisterInputOptions =
@@ -96,6 +115,10 @@ export type RegisterInputOptions =
       type: 'text-input';
       text: string;
       textAlign?: 'left' | 'center' | 'right';
+    }
+  | {
+      type: 'game';
+      title?: string;
     };
 
 export type PendingWhipInputData = {
@@ -108,10 +131,16 @@ export type PendingWhipInputData = {
   position: number;
 };
 
+export type RoomNameEntry = {
+  pl: string;
+  en: string;
+};
+
 export type RoomState = {
   inputs: Input[];
   layout: Layout;
   whepUrl: string;
+  roomName?: RoomNameEntry;
   pendingDelete?: boolean;
   isPublic?: boolean;
   resolution?: Resolution;
@@ -170,6 +199,7 @@ export async function createNewRoom(
   resolution?: ResolutionPreset | Resolution,
 ): Promise<{
   roomId: string;
+  roomName: RoomNameEntry;
   whepUrl: string;
   resolution: Resolution;
 }> {
@@ -346,10 +376,26 @@ export async function addTextInput(
   );
 }
 
+export async function addGameInput(roomId: string, title?: string) {
+  return await sendSmelterRequest(
+    'post',
+    `/room/${encodeURIComponent(roomId)}/input`,
+    { type: 'game', title },
+  );
+}
+
 export async function removeInput(roomId: string, inputId: string) {
   return await sendSmelterRequest(
     'delete',
     `/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}`,
+    {},
+  );
+}
+
+export async function deleteRoom(roomId: string) {
+  return await sendSmelterRequest(
+    'delete',
+    `/room/${encodeURIComponent(roomId)}`,
     {},
   );
 }
@@ -500,6 +546,15 @@ export type UpdateInputOptions = {
   borderColor?: string;
   borderWidth?: number;
   attachedInputIds?: string[];
+  gameBackgroundColor?: string;
+  gameCellGap?: number;
+  gameBoardBorderColor?: string;
+  gameBoardBorderWidth?: number;
+  gameGridLineColor?: string;
+  gameGridLineAlpha?: number;
+  snakeEventShaders?: SnakeEventShaderConfig;
+  snake1Shaders?: ShaderConfig[];
+  snake2Shaders?: ShaderConfig[];
 };
 
 export async function updateInput(
@@ -589,7 +644,8 @@ async function sendSmelterRequest(
     err.status = response.status;
     throw err;
   }
-  return (await response.json()) as object;
+  const data = (await response.json()) as object;
+  return data;
 }
 
 function spawn(

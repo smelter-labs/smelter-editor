@@ -14,6 +14,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { ShaderConfig, ShaderParamConfig } from '../shaders/shaders';
 import shadersController from '../shaders/shaders';
+import { GameBoard } from '../game/GameBoard';
 
 type Resolution = { width: number; height: number };
 
@@ -51,6 +52,22 @@ function colorToRgb(colorValue: number | string): { r: number; g: number; b: num
   return { r, g, b };
 }
 
+function darkenHexColor(color: string, factor = 0.75): string {
+  const cleanHex = color.replace('#', '');
+  const fullHex = cleanHex.length === 3
+    ? cleanHex.split('').map(char => char + char).join('')
+    : cleanHex;
+  if (!/^[0-9a-fA-F]{6}$/.test(fullHex)) {
+    return color;
+  }
+  const clamp = (value: number) => Math.max(0, Math.min(255, Math.round(value)));
+  const toHex = (value: number) => clamp(value).toString(16).padStart(2, '0');
+  const r = parseInt(fullHex.substring(0, 2), 16);
+  const g = parseInt(fullHex.substring(2, 4), 16);
+  const b = parseInt(fullHex.substring(4, 6), 16);
+  return `#${toHex(r * factor)}${toHex(g * factor)}${toHex(b * factor)}`;
+}
+
 function normalizeBorderWidth(borderWidth: number | undefined): number {
   if (borderWidth === undefined || Number.isNaN(borderWidth)) {
     return 0;
@@ -62,7 +79,7 @@ function wrapWithShaders(
   component: ReactElement,
   shaders: ShaderConfig[] | undefined,
   resolution: Resolution,
-  index?: number
+  index?: number,
 ): ReactElement {
   if (!shaders || shaders.length === 0) {
     return component;
@@ -293,7 +310,8 @@ export function Input({ input }: { input: InputConfig }) {
   const streams = useInputStreams();
   const isImage = !!input.imageId;
   const isTextInput = !!input.text;
-  const streamState = isImage || isTextInput ? 'playing' : (streams[input.inputId]?.videoState ?? 'finished');
+  const isGame = !!input.gameState;
+  const streamState = isImage || isTextInput || isGame ? 'playing' : (streams[input.inputId]?.videoState ?? 'finished');
   const isVerticalInput = input.orientation === 'vertical';
   const resolution = isVerticalInput ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 };
   const borderWidth = normalizeBorderWidth(
@@ -315,7 +333,9 @@ export function Input({ input }: { input: InputConfig }) {
               borderColor,
               backgroundColor: isTextInput ? '#1a1a2e' : undefined,
             }}>
-            {isImage ? (
+            {isGame ? (
+              <GameBoard gameState={input.gameState!} resolution={{ width: contentWidth, height: contentHeight }} snake1Shaders={input.snake1Shaders} snake2Shaders={input.snake2Shaders} />
+            ) : isImage ? (
               <Rescaler style={{ rescaleMode: 'fit' }}>
                 <Image imageId={input.imageId!} />
               </Rescaler>
@@ -407,6 +427,7 @@ export function SmallInput({
   const activeShaders = input.shaders.filter(shader => shader.enabled);
   const isImage = !!input.imageId;
   const isTextInput = !!input.text;
+  const isGame = !!input.gameState;
   const borderWidth = normalizeBorderWidth(
     input.borderWidth ?? (isTextInput ? 4 : 0),
   );
@@ -429,7 +450,9 @@ export function SmallInput({
           borderColor,
           backgroundColor: isTextInput ? '#1a1a2e' : undefined,
         }}>
-        {isImage ? (
+        {isGame ? (
+          <GameBoard gameState={input.gameState!} resolution={{ width: contentWidth, height: contentHeight }} />
+        ) : isImage ? (
           <Rescaler style={{ rescaleMode: 'fit' }}>
             <Image imageId={input.imageId!} />
           </Rescaler>

@@ -81,6 +81,7 @@ export class SmelterManager {
       assetType: 'png',
     });
 
+
     await this.instance.registerFont('https://madbangbang.com/Starjedi.ttf');
 
     for (const shader of shadersController.shaders) {
@@ -224,6 +225,10 @@ export class SmelterManager {
       url: opts.url,
       assetType: opts.assetType,
     });
+  }
+
+  public async unregisterImage(imageId: string): Promise<void> {
+    await this.instance.unregisterImage(imageId);
   }
 
   private async registerShaderFromFile(smelter: Smelter, shaderId: string, file: string) {

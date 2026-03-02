@@ -5,17 +5,20 @@ import { hlsUrlForKickChannel, hlsUrlForTwitchChannel } from '../streamlink';
 import { TwitchChannelMonitor } from '../twitch/TwitchChannelMonitor';
 import type { TwitchStreamInfo } from '../twitch/TwitchApi';
 import { sleep } from '../utils';
+import type { GameState, SnakeEventShaderConfig, ActiveSnakeEffect, SnakeEventType } from '../game/types';
 import type { InputConfig, Layout } from '../app/store';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
+import { createDefaultGameInputState, DEFAULT_SNAKE_EVENT_SHADERS, buildUpdatedGameState, processGameEvents } from '../game/gameState';
 import { KickChannelMonitor } from '../kick/KickChannelMonitor';
 import type { ShaderConfig } from '../shaders/shaders';
 import { WhipInputMonitor } from '../whip/WhipInputMonitor';
+import type { RoomNameEntry } from './roomNames';
 
 export type InputOrientation = 'horizontal' | 'vertical';
 
 export type RoomInputState = {
   inputId: string;
-  type: 'local-mp4' | 'twitch-channel' | 'kick-channel' | 'whip' | 'image' | 'text-input';
+  type: 'local-mp4' | 'twitch-channel' | 'kick-channel' | 'whip' | 'image' | 'text-input' | 'game';
   status: 'disconnected' | 'pending' | 'connected';
   volume: number;
   showTitle: boolean;
@@ -37,7 +40,8 @@ type TypeSpecificState =
   | { type: 'kick-channel'; channelId: string; hlsUrl: string; monitor: KickChannelMonitor }
   | { type: 'whip'; whipUrl: string; monitor: WhipInputMonitor }
   | { type: 'image'; imageId: string }
-  | { type: 'text-input'; text: string; textAlign: 'left' | 'center' | 'right'; textColor: string; textMaxLines: number; textScrollSpeed: number; textScrollLoop: boolean; textScrollNudge: number; textFontSize: number };
+  | { type: 'text-input'; text: string; textAlign: 'left' | 'center' | 'right'; textColor: string; textMaxLines: number; textScrollSpeed: number; textScrollLoop: boolean; textScrollNudge: number; textFontSize: number }
+  | { type: 'game'; gameState: GameState; snakeEventShaders?: SnakeEventShaderConfig; snake1Shaders?: ShaderConfig[]; snake2Shaders?: ShaderConfig[]; activeEffects: ActiveSnakeEffect[]; effectTimers: NodeJS.Timeout[] };
 
 export type PendingWhipInputData = {
   id: string;
@@ -65,6 +69,15 @@ type UpdateInputOptions = {
   textFontSize: number;
   borderColor: string;
   borderWidth: number;
+  gameBackgroundColor: string;
+  gameCellGap: number;
+  gameBoardBorderColor: string;
+  gameBoardBorderWidth: number;
+  gameGridLineColor: string;
+  gameGridLineAlpha: number;
+  snakeEventShaders: SnakeEventShaderConfig;
+  snake1Shaders: ShaderConfig[];
+  snake2Shaders: ShaderConfig[];
 };
 
 export type RegisterInputOptions =
@@ -101,6 +114,10 @@ export type RegisterInputOptions =
       textScrollSpeed?: number;
       textScrollLoop?: boolean;
       textFontSize?: number;
+    }
+  | {
+      type: 'game';
+      title?: string;
     };
 
 const PLACEHOLDER_LOGO_FILE = 'logo_Smelter.png';
@@ -113,7 +130,7 @@ export class RoomState {
   private swapFadeInDurationMs: number = 500;
   private swapFadeOutDurationMs: number = 500;
   private newsStripFadeDuringSwap: boolean = true;
-  private newsStripEnabled: boolean = true;
+  private newsStripEnabled: boolean = false;
   public idPrefix: string;
 
   private mp4sDir: string;
@@ -132,15 +149,17 @@ export class RoomState {
   public creationTimestamp: number;
 
   public pendingDelete?: boolean;
-  public isPublic: boolean = false;
+  public isPublic: boolean = true;
   public pendingWhipInputs: PendingWhipInputData[] = [];
+  public roomName: RoomNameEntry;
 
-  public constructor(idPrefix: string, output: SmelterOutput, initInputs: RegisterInputOptions[], skipDefaultInputs: boolean = false) {
+  public constructor(idPrefix: string, output: SmelterOutput, initInputs: RegisterInputOptions[], skipDefaultInputs: boolean = false, roomName?: RoomNameEntry) {
     this.mp4sDir = path.join(process.cwd(), 'mp4s');
     this.mp4Files = mp4SuggestionsMonitor.mp4Files;
     this.inputs = [];
     this.idPrefix = idPrefix;
     this.output = output;
+    this.roomName = roomName ?? { pl: `Pokój ${idPrefix.slice(0, 6)}`, en: `Room ${idPrefix.slice(0, 6)}` };
 
     this.lastReadTimestamp = Date.now();
     this.creationTimestamp = Date.now();
@@ -622,6 +641,26 @@ export class RoomState {
       this.updateStoreWithState();
 
       return inputId;
+    } else if (opts.type === 'game') {
+      console.log('Adding game input');
+      const inputId = `${this.idPrefix}::game::${Date.now()}`;
+      const defaults = createDefaultGameInputState(opts.title);
+
+      this.inputs.push({
+        inputId,
+        type: 'game',
+        status: 'connected',
+        showTitle: false,
+        shaders: [],
+        orientation: 'horizontal',
+        borderColor: '#ff0000',
+        borderWidth: 0,
+        hidden: false,
+        volume: 0,
+        ...defaults,
+      });
+      this.updateStoreWithState();
+      return inputId;
     }
   }
 
@@ -674,8 +713,8 @@ export class RoomState {
     if (input.status !== 'disconnected') {
       return '';
     }
-    // Images are static resources, they don't need to be connected as stream inputs
-    if (input.type === 'image') {
+    // Images, text-inputs, and games are static resources, they don't need to be connected as stream inputs
+    if (input.type === 'image' || input.type === 'game') {
       input.status = 'connected';
       this.updateStoreWithState();
       return '';
@@ -819,6 +858,35 @@ export class RoomState {
         input.textFontSize = options.textFontSize;
       }
     }
+    if (input.type === 'game') {
+      if (options.gameBackgroundColor !== undefined) {
+        input.gameState.backgroundColor = options.gameBackgroundColor;
+      }
+      if (options.gameCellGap !== undefined) {
+        input.gameState.cellGap = options.gameCellGap;
+      }
+      if (options.gameBoardBorderColor !== undefined) {
+        input.gameState.boardBorderColor = options.gameBoardBorderColor;
+      }
+      if (options.gameBoardBorderWidth !== undefined) {
+        input.gameState.boardBorderWidth = options.gameBoardBorderWidth;
+      }
+      if (options.gameGridLineColor !== undefined) {
+        input.gameState.gridLineColor = options.gameGridLineColor;
+      }
+      if (options.gameGridLineAlpha !== undefined) {
+        input.gameState.gridLineAlpha = options.gameGridLineAlpha;
+      }
+      if (options.snakeEventShaders !== undefined) {
+        input.snakeEventShaders = options.snakeEventShaders;
+      }
+      if (options.snake1Shaders !== undefined) {
+        input.snake1Shaders = options.snake1Shaders;
+      }
+      if (options.snake2Shaders !== undefined) {
+        input.snake2Shaders = options.snake2Shaders;
+      }
+    }
     if (options.attachedInputIds !== undefined) {
       input.attachedInputIds = options.attachedInputIds;
     }
@@ -910,6 +978,10 @@ export class RoomState {
       textScrollLoop: input.type === 'text-input' ? input.textScrollLoop : undefined,
       textScrollNudge: input.type === 'text-input' ? input.textScrollNudge : undefined,
       textFontSize: input.type === 'text-input' ? input.textFontSize : undefined,
+      gameState: input.type === 'game' ? input.gameState : undefined,
+      snakeEventShaders: input.type === 'game' ? input.snakeEventShaders : undefined,
+      snake1Shaders: input.type === 'game' ? input.snake1Shaders : undefined,
+      snake2Shaders: input.type === 'game' ? input.snake2Shaders : undefined,
     });
 
     const connectedInputs = this.inputs.filter(input => input.status === 'connected' && !input.hidden);
@@ -953,6 +1025,36 @@ export class RoomState {
     const input = this.getInput(inputId);
     input.hidden = false;
     this.updateStoreWithState();
+  }
+
+  public updateGameState(inputId: string, gameState: { board: { width: number; height: number; cellSize: number; cellGap?: number }; cells: { x: number; y: number; color: string; size?: number; isHead?: boolean; direction?: 'up' | 'down' | 'left' | 'right'; progress?: number }[]; smoothMove?: boolean; smoothMoveSpeed?: number; smoothMoveAccel?: number; smoothMoveDecel?: number; backgroundColor: string; gameOverData?: { winnerName: string; reason: string; players: { name: string; score: number; eaten: number; cuts: number; color: string }[] } }) {
+    const input = this.getInput(inputId);
+    if (input.type !== 'game') {
+      throw new Error(`Input ${inputId} is not a game input`);
+    }
+    input.gameState = buildUpdatedGameState(input.gameState, gameState);
+    console.log(`[game] Updated snake board: ${gameState.cells.length} cells on ${gameState.board.width}x${gameState.board.height}`);
+    this.updateStoreWithState();
+  }
+
+  public ingestGameEvents(inputId: string, events: { type: SnakeEventType }[]) {
+    const input = this.getInput(inputId);
+    if (input.type !== 'game') return;
+    if (!events || events.length === 0) return;
+
+    const result = processGameEvents(
+      events,
+      input.gameState,
+      input.activeEffects,
+      input.snakeEventShaders,
+      () => this.updateStoreWithState(),
+    );
+
+    if (result.needsStoreUpdate) {
+      input.activeEffects = result.updatedActiveEffects;
+      input.effectTimers.push(...result.newTimers);
+      this.updateStoreWithState();
+    }
   }
 
   private getInput(inputId: string): RoomInputState {
@@ -1101,6 +1203,8 @@ function registerOptionsFromInput(input: RoomInputState): RegisterSmelterInputOp
     // Images are static resources, they don't need to be registered as inputs
     // They are already registered via registerImage and used directly in layouts
     throw Error('Images cannot be connected as stream inputs');
+  } else if (input.type === 'game') {
+    throw Error('Game inputs do not need stream registration');
   } else {
     throw Error('Unknown type');
   }

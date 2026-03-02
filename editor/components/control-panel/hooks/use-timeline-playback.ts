@@ -226,6 +226,8 @@ export function useTimelinePlayback(
             borderColor: clip.blockSettings.borderColor,
             borderWidth: clip.blockSettings.borderWidth,
             attachedInputIds: clip.blockSettings.attachedInputIds,
+            snake1Shaders: clip.blockSettings.snake1Shaders,
+            snake2Shaders: clip.blockSettings.snake2Shaders,
           }).catch((err) =>
             console.warn(
               `Timeline: failed to apply block settings for ${inputId}`,

@@ -3,9 +3,11 @@ import { RoomState } from './roomState';
 import { v4 as uuidv4 } from 'uuid';
 import { errorCodes } from 'fastify';
 import { SmelterInstance, type Resolution, RESOLUTION_PRESETS } from '../smelter';
+import { pickUniqueRoomName, type RoomNameEntry } from './roomNames';
 
 export type CreateRoomResult = {
   roomId: string;
+  roomName: RoomNameEntry;
   room: RoomState;
 };
 
@@ -41,17 +43,28 @@ class ServerState {
     }, 1000);
   }
 
+  private getUsedRoomNames(): Set<string> {
+    const used = new Set<string>();
+    for (const room of Object.values(this.rooms)) {
+      if (room.roomName) {
+        used.add(room.roomName.pl);
+      }
+    }
+    return used;
+  }
+
   public async createRoom(
     initInputs: RegisterInputOptions[],
     skipDefaultInputs: boolean = false,
     resolution?: Resolution,
   ): Promise<CreateRoomResult> {
     const roomId = uuidv4();
+    const roomName = pickUniqueRoomName(this.getUsedRoomNames());
     const resolvedResolution = resolution ?? RESOLUTION_PRESETS['1440p'];
     const smelterOutput = await SmelterInstance.registerOutput(roomId, resolvedResolution);
-    const room = new RoomState(roomId, smelterOutput, initInputs, skipDefaultInputs);
+    const room = new RoomState(roomId, smelterOutput, initInputs, skipDefaultInputs, roomName);
     this.rooms[roomId] = room;
-    return { roomId, room };
+    return { roomId, roomName, room };
   }
 
   public getRoom(roomId: string): RoomState {
