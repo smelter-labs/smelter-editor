@@ -129,6 +129,10 @@ function formatUptime(ms: number): string {
   return `${h}h ${m}m ${sec}s`;
 }
 
+function sanitizeTableCell(value: string): string {
+  return value.replace(/\{/g, '\\{').replace(/\}/g, '\\}');
+}
+
 function updateDashboard() {
   if (!screen) return;
 
@@ -159,23 +163,23 @@ function updateDashboard() {
     const inputs = room.getInputs();
     const [, layout] = room.getState();
     const res = room.getResolution();
-    const recording = room.hasActiveRecording() ? '{red-fg}● REC{/}' : '{green-fg}—{/}';
+    const recording = room.hasActiveRecording() ? 'REC' : '-';
     const age = formatUptime(Date.now() - room.creationTimestamp);
-    const roomStatus = room.pendingDelete ? '{red-fg}DELETING{/}' : '{green-fg}ACTIVE{/}';
+    const roomStatus = room.pendingDelete ? 'DELETING' : 'ACTIVE';
     return [
       room.idPrefix.slice(0, 8),
       roomStatus,
-      String(layout),
-      `${res.width}×${res.height}`,
+      String(layout).slice(0, 14),
+      `${res.width}x${res.height}`,
       String(inputs.length),
       recording,
-      age,
+      age.slice(0, 8),
     ];
   });
 
   roomsTable.setData({
     headers: ['Room ID', 'Status', 'Layout', 'Resolution', 'Inputs', 'Rec', 'Age'],
-    data: roomRows.length > 0 ? roomRows : [['—', '—', '—', '—', '—', '—', '—']],
+    data: roomRows.length > 0 ? roomRows : [['-', '-', '-', '-', '-', '-', '-']],
   });
 
   // ── Panel 3: Snake Board ──
@@ -197,33 +201,33 @@ function updateDashboard() {
   const inputRows: string[][] = [];
   for (const room of rooms) {
     for (const input of room.getInputs()) {
-      const typeColors: Record<string, string> = {
-        'twitch-channel': '{magenta-fg}twitch{/}',
-        'kick-channel': '{green-fg}kick{/}',
-        'whip': '{cyan-fg}whip{/}',
-        'local-mp4': '{blue-fg}mp4{/}',
-        'image': '{yellow-fg}image{/}',
-        'text-input': '{white-fg}text{/}',
-        'game': '{red-fg}game{/}',
+      const typeLabels: Record<string, string> = {
+        'twitch-channel': 'twitch',
+        'kick-channel': 'kick',
+        'whip': 'whip',
+        'local-mp4': 'mp4',
+        'image': 'image',
+        'text-input': 'text',
+        'game': 'game',
       };
-      const statusIcon =
-        input.status === 'connected' ? '{green-fg}●{/}' :
-        input.status === 'pending' ? '{yellow-fg}◌{/}' :
-        '{red-fg}○{/}';
+      const statusLabel =
+        input.status === 'connected' ? 'ON' :
+        input.status === 'pending' ? 'PND' :
+        'OFF';
       inputRows.push([
         room.idPrefix.slice(0, 8),
-        typeColors[input.type] ?? input.type,
-        statusIcon,
-        input.metadata.title.slice(0, 40),
-        input.hidden ? '{red-fg}hidden{/}' : '{green-fg}visible{/}',
-        `${Math.round(input.volume * 100)}%`,
+        (typeLabels[input.type] ?? input.type).slice(0, 8),
+        statusLabel,
+        sanitizeTableCell(input.metadata.title).slice(0, 18),
+        input.hidden ? 'hid' : 'vis',
+        `${Math.round(input.volume * 100)}%`.slice(0, 4),
       ]);
     }
   }
 
   inputsTable.setData({
     headers: ['Room', 'Type', 'St', 'Title', 'Vis', 'Vol'],
-    data: inputRows.length > 0 ? inputRows : [['—', '—', '—', '—', '—', '—']],
+    data: inputRows.length > 0 ? inputRows : [['-', '-', '-', '-', '-', '-']],
   });
 
   screen.render();
@@ -274,8 +278,8 @@ export function initDashboard() {
       header: { fg: 'white', bold: true },
       cell: { fg: 'white' },
     },
-    columnSpacing: 2,
-    columnWidth: [10, 10, 18, 12, 7, 7, 10],
+    columnSpacing: 1,
+    columnWidth: [8, 8, 14, 11, 6, 5, 8],
   });
 
   // Middle-left: Snake Board (wider + taller)
@@ -303,8 +307,8 @@ export function initDashboard() {
       header: { fg: 'white', bold: true },
       cell: { fg: 'white' },
     },
-    columnSpacing: 2,
-    columnWidth: [10, 10, 4, 30, 8, 6],
+    columnSpacing: 1,
+    columnWidth: [8, 8, 4, 18, 5, 4],
   });
 
   // Bottom-left: Request Log

@@ -42,6 +42,50 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function createMacroRequestId(): string {
+  return `macro-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+async function dispatchAndWaitForCompletion(
+  dispatch: (requestId: string) => void,
+  timeoutMs = 30_000,
+): Promise<void> {
+  const requestId = createMacroRequestId();
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      window.removeEventListener(
+        'smelter:voice:macro-step-complete',
+        onComplete as EventListener,
+      );
+      reject(new Error(`Macro step timed out for requestId=${requestId}`));
+    }, timeoutMs);
+
+    const onComplete = (
+      e: CustomEvent<{ requestId?: string; error?: string }>,
+    ) => {
+      if (e.detail?.requestId !== requestId) {
+        return;
+      }
+      clearTimeout(timeout);
+      window.removeEventListener(
+        'smelter:voice:macro-step-complete',
+        onComplete as EventListener,
+      );
+      if (e.detail?.error) {
+        reject(new Error(e.detail.error));
+        return;
+      }
+      resolve();
+    };
+
+    window.addEventListener(
+      'smelter:voice:macro-step-complete',
+      onComplete as EventListener,
+    );
+    dispatch(requestId);
+  });
+}
+
 export async function executeMacro(
   macro: MacroDefinition,
   callbacks: MacroExecutionCallbacks = {},
@@ -55,7 +99,7 @@ export async function executeMacro(
     try {
       callbacks.onStepStart?.(step, i, total);
 
-      dispatchMacroStep(step);
+      await dispatchMacroStep(step);
 
       callbacks.onStepComplete?.(step, i, total);
 
@@ -71,7 +115,7 @@ export async function executeMacro(
   callbacks.onMacroComplete?.(macro);
 }
 
-function dispatchMacroStep(step: MacroStep): void {
+async function dispatchMacroStep(step: MacroStep): Promise<void> {
   const { action, params } = step;
 
   switch (action) {
@@ -90,15 +134,36 @@ function dispatchMacroStep(step: MacroStep): void {
       break;
 
     case 'REMOVE_INPUT':
-      window.dispatchEvent(
-        new CustomEvent('smelter:voice:remove-input', {
-          detail: { inputIndex: params?.inputIndex },
-        }),
+      await dispatchAndWaitForCompletion((requestId) =>
+        window.dispatchEvent(
+          new CustomEvent('smelter:voice:remove-input', {
+            detail: {
+              inputIndex: params?.inputIndex,
+              requestId,
+            },
+          }),
+        ),
+      );
+      break;
+
+    case 'HIDE_ALL_INPUTS':
+      await dispatchAndWaitForCompletion((requestId) =>
+        window.dispatchEvent(
+          new CustomEvent('smelter:voice:hide-all-inputs', {
+            detail: { requestId },
+          }),
+        ),
       );
       break;
 
     case 'REMOVE_ALL_INPUTS':
-      window.dispatchEvent(new CustomEvent('smelter:voice:remove-all-inputs'));
+      await dispatchAndWaitForCompletion((requestId) =>
+        window.dispatchEvent(
+          new CustomEvent('smelter:voice:remove-all-inputs', {
+            detail: { requestId },
+          }),
+        ),
+      );
       break;
 
     case 'MOVE_INPUT':

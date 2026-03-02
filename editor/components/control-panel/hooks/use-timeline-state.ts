@@ -304,12 +304,16 @@ function migrateV1ToV2(stored: Record<string, unknown>): TimelineState | null {
 
 // ── Reducer ──────────────────────────────────────────────
 
-function timelineReducer(
+export function timelineReducer(
   state: TimelineState,
   action: TimelineAction,
 ): TimelineState {
   switch (action.type) {
     case 'SYNC_TRACKS': {
+      if (action.inputs.length === 0) {
+        return { ...state, tracks: [] };
+      }
+
       const currentInputIds = new Set(action.inputs.map((i) => i.inputId));
       const inputById = new Map(action.inputs.map((i) => [i.inputId, i]));
 
@@ -870,7 +874,6 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
 
   // Sync tracks when inputs change
   useEffect(() => {
-    if (inputs.length === 0) return;
     dispatch({ type: 'SYNC_TRACKS', inputs });
     initializedRef.current = true;
   }, [inputs]);

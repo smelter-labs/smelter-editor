@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { InputWrapper } from './use-control-panel-state';
 import { useControlPanelInputOrderEvents } from './use-control-panel-input-order-events';
 import type { Input, AvailableShader } from '@/app/actions/actions';
@@ -89,6 +89,63 @@ export function useControlPanelEvents({
     updateOrder,
   });
 
+  const emitMacroStepComplete = (requestId?: string, error?: unknown) => {
+    if (!requestId) return;
+    window.dispatchEvent(
+      new CustomEvent('smelter:voice:macro-step-complete', {
+        detail: {
+          requestId,
+          error:
+            error instanceof Error
+              ? error.message
+              : typeof error === 'string'
+                ? error
+                : undefined,
+        },
+      }),
+    );
+  };
+
+  const cleanupWhipIfNeeded = useCallback(
+    (inputId: string) => {
+      const session = loadWhipSession();
+      const isSavedInSession =
+        (session && session.roomId === roomId && session.inputId === inputId) ||
+        loadLastWhipInputId(roomId) === inputId;
+      const isWhipCandidate = inputId.includes('whip') || isSavedInSession;
+      if (!isWhipCandidate) return;
+
+      try {
+        stopCameraAndConnection(cameraPcRef, cameraStreamRef);
+        stopCameraAndConnection(screensharePcRef, screenshareStreamRef);
+      } catch {}
+      try {
+        clearWhipSessionFor(roomId, inputId);
+      } catch {}
+      if (activeCameraInputId === inputId) {
+        setActiveCameraInputId(null);
+        setIsCameraActive(false);
+      }
+      if (activeScreenshareInputId === inputId) {
+        setActiveScreenshareInputId(null);
+        setIsScreenshareActive(false);
+      }
+    },
+    [
+      roomId,
+      cameraPcRef,
+      cameraStreamRef,
+      screensharePcRef,
+      screenshareStreamRef,
+      activeCameraInputId,
+      activeScreenshareInputId,
+      setActiveCameraInputId,
+      setIsCameraActive,
+      setActiveScreenshareInputId,
+      setIsScreenshareActive,
+    ],
+  );
+
   useEffect(() => {
     const onSelect = (e: CustomEvent<{ inputId: string }>) => {
       setSelectedInputId(e.detail.inputId);
@@ -130,22 +187,22 @@ export function useControlPanelEvents({
   }, [roomId, handleRefreshState, inputsRef]);
 
   useEffect(() => {
-    const onRemove = async (e: CustomEvent<{ inputId: string }>) => {
-      const { inputId } = e.detail;
-      if (activeCameraInputId === inputId) {
-        stopCameraAndConnection(cameraPcRef, cameraStreamRef);
-        setActiveCameraInputId(null);
-        setIsCameraActive(false);
-        clearWhipSessionFor(roomId, inputId);
+    const onRemove = async (
+      e: CustomEvent<{ inputId: string; requestId?: string }>,
+    ) => {
+      const { inputId, requestId } = e.detail;
+      try {
+        cleanupWhipIfNeeded(inputId);
+        try {
+          await hideInput(roomId, inputId);
+        } catch {}
+        await removeInput(roomId, inputId);
+        await handleRefreshState();
+        emitMacroStepComplete(requestId);
+      } catch (err) {
+        emitMacroStepComplete(requestId, err);
+        console.error('Failed to remove input', err);
       }
-      if (activeScreenshareInputId === inputId) {
-        stopCameraAndConnection(screensharePcRef, screenshareStreamRef);
-        setActiveScreenshareInputId(null);
-        setIsScreenshareActive(false);
-        clearWhipSessionFor(roomId, inputId);
-      }
-      await hideInput(roomId, inputId);
-      await handleRefreshState();
     };
     window.addEventListener(
       'smelter:inputs:remove',
@@ -157,20 +214,197 @@ export function useControlPanelEvents({
         onRemove as unknown as EventListener,
       );
     };
-  }, [
-    roomId,
-    handleRefreshState,
-    activeCameraInputId,
-    activeScreenshareInputId,
-    cameraPcRef,
-    cameraStreamRef,
-    screensharePcRef,
-    screenshareStreamRef,
-    setActiveCameraInputId,
-    setIsCameraActive,
-    setActiveScreenshareInputId,
-    setIsScreenshareActive,
-  ]);
+  }, [roomId, handleRefreshState, cleanupWhipIfNeeded]);
+
+  useEffect(() => {
+    const onHide = async (e: CustomEvent<{ inputId: string }>) => {
+      const { inputId } = e.detail;
+      await hideInput(roomId, inputId);
+      await handleRefreshState();
+    };
+    window.addEventListener(
+      'smelter:inputs:hide',
+      onHide as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:inputs:hide',
+        onHide as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState]);
+
+  useEffect(() => {
+    const onHideAllInputs = async (e: CustomEvent<{ requestId?: string }>) => {
+      const requestId = e.detail?.requestId;
+      try {
+        const currentInputs = [...(inputsRef.current || [])];
+        for (const input of currentInputs) {
+          try {
+            await hideInput(roomId, input.inputId);
+          } catch (err) {
+            console.warn('Macro: failed to hide input', {
+              inputId: input.inputId,
+              err,
+            });
+          }
+        }
+        await handleRefreshState();
+        emitMacroStepComplete(requestId);
+      } catch (err) {
+        emitMacroStepComplete(requestId, err);
+        console.error('Macro: failed to hide all inputs', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:hide-all-inputs',
+      onHideAllInputs as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:hide-all-inputs',
+        onHideAllInputs as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputsRef]);
+
+  useEffect(() => {
+    const onRemoveAllInputs = async (
+      e: CustomEvent<{ requestId?: string }>,
+    ) => {
+      const requestId = e.detail?.requestId;
+      try {
+        const currentInputs = [...(inputsRef.current || [])];
+        const failures: string[] = [];
+        const removedInputIds: string[] = [];
+        for (const input of currentInputs) {
+          cleanupWhipIfNeeded(input.inputId);
+          try {
+            try {
+              await hideInput(roomId, input.inputId);
+            } catch {}
+            await removeInput(roomId, input.inputId);
+            removedInputIds.push(input.inputId);
+          } catch (err) {
+            failures.push(input.inputId);
+            console.warn('Macro: failed to remove input', {
+              inputId: input.inputId,
+              err,
+            });
+          }
+        }
+        if (removedInputIds.length > 0) {
+          window.dispatchEvent(
+            new CustomEvent('smelter:timeline:purge-input-ids', {
+              detail: { inputIds: removedInputIds },
+            }),
+          );
+        }
+        await handleRefreshState();
+        if (failures.length > 0) {
+          throw new Error(`Failed to remove inputs: ${failures.join(', ')}`);
+        }
+        emitMacroStepComplete(requestId);
+      } catch (err) {
+        emitMacroStepComplete(requestId, err);
+        console.error('Macro: failed to remove all inputs', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:remove-all-inputs',
+      onRemoveAllInputs as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:remove-all-inputs',
+        onRemoveAllInputs as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputsRef, cleanupWhipIfNeeded]);
+
+  useEffect(() => {
+    const onRemoveInput = async (
+      e: CustomEvent<{ inputIndex: number; requestId?: string }>,
+    ) => {
+      const requestId = e.detail?.requestId;
+      try {
+        const { inputIndex } = e.detail;
+        const visibleInputs = (inputsRef.current || []).filter(
+          (i) => !i.hidden,
+        );
+        const idx = inputIndex - 1;
+        if (idx < 0 || idx >= visibleInputs.length) {
+          const error = new Error(`Voice: input ${inputIndex} does not exist`);
+          console.warn(error.message);
+          emitMacroStepComplete(requestId, error);
+          return;
+        }
+        const input = visibleInputs[idx];
+        cleanupWhipIfNeeded(input.inputId);
+        try {
+          await hideInput(roomId, input.inputId);
+        } catch {}
+        await removeInput(roomId, input.inputId);
+        await handleRefreshState();
+        emitMacroStepComplete(requestId);
+      } catch (err) {
+        emitMacroStepComplete(requestId, err);
+        console.error('Voice: failed to remove input', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:remove-input',
+      onRemoveInput as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:remove-input',
+        onRemoveInput as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputsRef, cleanupWhipIfNeeded]);
+
+  useEffect(() => {
+    const onMoveByIndex = (
+      e: CustomEvent<{ inputIndex: number; direction: string; steps: number }>,
+    ) => {
+      try {
+        const { inputIndex, direction, steps } = e.detail;
+        const visibleInputs = (inputsRef.current || []).filter(
+          (i) => !i.hidden,
+        );
+        const idx = inputIndex - 1;
+        if (idx < 0 || idx >= visibleInputs.length) {
+          console.warn(`Voice: input ${inputIndex} does not exist`);
+          return;
+        }
+        const input = visibleInputs[idx];
+        for (let i = 0; i < steps; i++) {
+          window.dispatchEvent(
+            new CustomEvent('smelter:inputs:move', {
+              detail: { inputId: input.inputId, direction },
+            }),
+          );
+        }
+      } catch (err) {
+        console.error('Voice: failed to move input', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:move-input',
+      onMoveByIndex as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:move-input',
+        onMoveByIndex as unknown as EventListener,
+      );
+    };
+  }, [inputsRef]);
 
   useEffect(() => {
     const onAddInput = async (
@@ -288,73 +522,6 @@ export function useControlPanelEvents({
   }, [roomId, handleRefreshState]);
 
   useEffect(() => {
-    const onRemoveInput = async (e: CustomEvent<{ inputIndex: number }>) => {
-      try {
-        const { inputIndex } = e.detail;
-        const currentInputs = inputsRef.current || [];
-        const idx = inputIndex - 1;
-        if (idx < 0 || idx >= currentInputs.length) {
-          console.warn(`Voice: input ${inputIndex} does not exist`);
-          return;
-        }
-        const input = currentInputs[idx];
-        await hideInput(roomId, input.inputId);
-        await handleRefreshState();
-      } catch (err) {
-        console.error('Voice: failed to remove input', err);
-      }
-    };
-
-    window.addEventListener(
-      'smelter:voice:remove-input',
-      onRemoveInput as unknown as EventListener,
-    );
-    return () => {
-      window.removeEventListener(
-        'smelter:voice:remove-input',
-        onRemoveInput as unknown as EventListener,
-      );
-    };
-  }, [roomId, handleRefreshState, inputsRef]);
-
-  useEffect(() => {
-    const onMoveByIndex = (
-      e: CustomEvent<{ inputIndex: number; direction: string; steps: number }>,
-    ) => {
-      try {
-        const { inputIndex, direction, steps } = e.detail;
-        const currentInputs = inputsRef.current || [];
-        const idx = inputIndex - 1;
-        if (idx < 0 || idx >= currentInputs.length) {
-          console.warn(`Voice: input ${inputIndex} does not exist`);
-          return;
-        }
-        const input = currentInputs[idx];
-        for (let i = 0; i < steps; i++) {
-          window.dispatchEvent(
-            new CustomEvent('smelter:inputs:move', {
-              detail: { inputId: input.inputId, direction },
-            }),
-          );
-        }
-      } catch (err) {
-        console.error('Voice: failed to move input', err);
-      }
-    };
-
-    window.addEventListener(
-      'smelter:voice:move-input',
-      onMoveByIndex as unknown as EventListener,
-    );
-    return () => {
-      window.removeEventListener(
-        'smelter:voice:move-input',
-        onMoveByIndex as unknown as EventListener,
-      );
-    };
-  }, [inputsRef]);
-
-  useEffect(() => {
     const hexToPackedInt = (hex: string): number => {
       const cleanHex = hex.replace('#', '');
       const fullHex =
@@ -377,15 +544,16 @@ export function useControlPanelEvents({
       try {
         const { inputIndex, shader: shaderId, targetColor } = e.detail;
         const currentInputs = inputs || [];
+        const visibleInputs = currentInputs.filter((i) => !i.hidden);
 
         let input;
         if (inputIndex !== null) {
           const idx = inputIndex - 1;
-          if (idx < 0 || idx >= currentInputs.length) {
+          if (idx < 0 || idx >= visibleInputs.length) {
             console.warn(`Voice: input ${inputIndex} does not exist`);
             return;
           }
-          input = currentInputs[idx];
+          input = visibleInputs[idx];
         } else if (selectedInputId) {
           input = currentInputs.find((i) => i.inputId === selectedInputId);
           if (!input) {
@@ -429,10 +597,19 @@ export function useControlPanelEvents({
             };
           }),
         };
+        const updatedShaders = [...existingShaders, newShader];
         await updateInput(roomId, input.inputId, {
-          shaders: [...existingShaders, newShader],
+          shaders: updatedShaders,
           volume: input.volume,
         });
+        window.dispatchEvent(
+          new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
+            detail: {
+              inputId: input.inputId,
+              patch: { shaders: updatedShaders },
+            },
+          }),
+        );
         await handleRefreshState();
       } catch (err) {
         console.error('Voice: failed to add shader', err);
@@ -458,15 +635,16 @@ export function useControlPanelEvents({
       try {
         const { inputIndex, shader: shaderId } = e.detail;
         const currentInputs = inputs || [];
+        const visibleInputs = currentInputs.filter((i) => !i.hidden);
 
         let input;
         if (inputIndex !== null) {
           const idx = inputIndex - 1;
-          if (idx < 0 || idx >= currentInputs.length) {
+          if (idx < 0 || idx >= visibleInputs.length) {
             console.warn(`Voice: input ${inputIndex} does not exist`);
             return;
           }
-          input = currentInputs[idx];
+          input = visibleInputs[idx];
         } else if (selectedInputId) {
           input = currentInputs.find((i) => i.inputId === selectedInputId);
           if (!input) {
@@ -485,6 +663,14 @@ export function useControlPanelEvents({
           shaders: updatedShaders,
           volume: input.volume,
         });
+        window.dispatchEvent(
+          new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
+            detail: {
+              inputId: input.inputId,
+              patch: { shaders: updatedShaders },
+            },
+          }),
+        );
         await handleRefreshState();
       } catch (err) {
         console.error('Voice: failed to remove shader', err);
@@ -507,13 +693,15 @@ export function useControlPanelEvents({
     const onSelectInput = (e: CustomEvent<{ inputIndex: number }>) => {
       try {
         const { inputIndex } = e.detail;
-        const currentInputs = inputsRef.current || [];
+        const visibleInputs = (inputsRef.current || []).filter(
+          (i) => !i.hidden,
+        );
         const idx = inputIndex - 1;
-        if (idx < 0 || idx >= currentInputs.length) {
+        if (idx < 0 || idx >= visibleInputs.length) {
           console.warn(`Voice: input ${inputIndex} does not exist`);
           return;
         }
-        const input = currentInputs[idx];
+        const input = visibleInputs[idx];
         setSelectedInputId(input.inputId);
       } catch (err) {
         console.error('Voice: failed to select input', err);
@@ -739,10 +927,11 @@ export function useControlPanelEvents({
       try {
         const { color, inputIndex } = e.detail;
         const currentInputs = inputsRef.current || [];
+        const visibleInputs = currentInputs.filter((i) => !i.hidden);
 
         let input;
         if (inputIndex !== undefined) {
-          input = currentInputs[inputIndex - 1];
+          input = visibleInputs[inputIndex - 1];
         } else if (selectedInputId) {
           input = currentInputs.find(
             (i: Input) => i.inputId === selectedInputId,
@@ -821,10 +1010,11 @@ export function useControlPanelEvents({
       try {
         const { fontSize, inputIndex } = e.detail;
         const currentInputs = inputsRef.current || [];
+        const visibleInputs = currentInputs.filter((i) => !i.hidden);
 
         let input;
         if (inputIndex !== undefined) {
-          input = currentInputs[inputIndex - 1];
+          input = visibleInputs[inputIndex - 1];
         } else if (selectedInputId) {
           input = currentInputs.find(
             (i: Input) => i.inputId === selectedInputId,
@@ -874,78 +1064,6 @@ export function useControlPanelEvents({
       );
     };
   }, []);
-
-  useEffect(() => {
-    const onRemoveAllInputs = async () => {
-      try {
-        const currentInputs = inputsRef.current || [];
-        for (const input of currentInputs) {
-          const session = loadWhipSession();
-          const isSavedInSession =
-            (session &&
-              session.roomId === roomId &&
-              session.inputId === input.inputId) ||
-            loadLastWhipInputId(roomId) === input.inputId;
-          const isWhipCandidate =
-            (input.inputId && input.inputId.indexOf('whip') > 0) ||
-            isSavedInSession;
-          if (isWhipCandidate) {
-            try {
-              stopCameraAndConnection(cameraPcRef, cameraStreamRef);
-              stopCameraAndConnection(screensharePcRef, screenshareStreamRef);
-            } catch {}
-            try {
-              clearWhipSessionFor(roomId, input.inputId);
-            } catch {}
-            if (activeCameraInputId === input.inputId) {
-              setActiveCameraInputId(null);
-              setIsCameraActive(false);
-            }
-            if (activeScreenshareInputId === input.inputId) {
-              setActiveScreenshareInputId(null);
-              setIsScreenshareActive(false);
-            }
-          }
-          try {
-            await hideInput(roomId, input.inputId);
-          } catch (err) {
-            console.warn('Macro: failed to remove input', {
-              inputId: input.inputId,
-              err,
-            });
-          }
-        }
-        await handleRefreshState();
-      } catch (err) {
-        console.error('Macro: failed to remove all inputs', err);
-      }
-    };
-
-    window.addEventListener(
-      'smelter:voice:remove-all-inputs',
-      onRemoveAllInputs as EventListener,
-    );
-    return () => {
-      window.removeEventListener(
-        'smelter:voice:remove-all-inputs',
-        onRemoveAllInputs as EventListener,
-      );
-    };
-  }, [
-    roomId,
-    handleRefreshState,
-    inputsRef,
-    cameraPcRef,
-    cameraStreamRef,
-    screensharePcRef,
-    screenshareStreamRef,
-    activeCameraInputId,
-    activeScreenshareInputId,
-    setActiveCameraInputId,
-    setIsCameraActive,
-    setActiveScreenshareInputId,
-    setIsScreenshareActive,
-  ]);
 
   useEffect(() => {
     const onSetLayout = (e: CustomEvent<{ layout: Layout }>) => {

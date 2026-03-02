@@ -31,6 +31,7 @@ export type MacroStep = {
 export type MacroAction =
   | 'ADD_INPUT'
   | 'REMOVE_INPUT'
+  | 'HIDE_ALL_INPUTS'
   | 'REMOVE_ALL_INPUTS'
   | 'MOVE_INPUT'
   | 'ADD_SHADER'

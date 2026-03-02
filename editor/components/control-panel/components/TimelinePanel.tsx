@@ -279,6 +279,56 @@ export function TimelinePanel({
     };
   }, [updateClipSettings]);
 
+  // Listen for input-level clip settings updates (e.g. from voice macros)
+  useEffect(() => {
+    const handler = (
+      e: CustomEvent<{
+        inputId: string;
+        patch: Partial<import('../hooks/use-timeline-state').BlockSettings>;
+      }>,
+    ) => {
+      const { inputId, patch } = e.detail;
+      for (const track of state.tracks) {
+        for (const clip of track.clips) {
+          if (clip.inputId === inputId) {
+            updateClipSettings(track.id, clip.id, patch);
+          }
+        }
+      }
+    };
+    window.addEventListener(
+      'smelter:timeline:update-clip-settings-for-input',
+      handler as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:timeline:update-clip-settings-for-input',
+        handler as unknown as EventListener,
+      );
+    };
+  }, [state.tracks, updateClipSettings]);
+
+  // Listen for bulk hard-deletes and purge all related clips from timeline.
+  useEffect(() => {
+    const handler = (e: CustomEvent<{ inputIds?: string[] }>) => {
+      const ids = e.detail?.inputIds ?? [];
+      const uniqueIds = [...new Set(ids.filter(Boolean))];
+      for (const inputId of uniqueIds) {
+        purgeInputId(inputId);
+      }
+    };
+    window.addEventListener(
+      'smelter:timeline:purge-input-ids',
+      handler as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:timeline:purge-input-ids',
+        handler as unknown as EventListener,
+      );
+    };
+  }, [purgeInputId]);
+
   // Listen for WHIP input connections to replace placeholder inputIds
   useEffect(() => {
     const handler = (e: Event) => {
@@ -1113,7 +1163,7 @@ export function TimelinePanel({
   const handleDelete = useCallback(() => {
     if (contextMenu) {
       window.dispatchEvent(
-        new CustomEvent('smelter:inputs:remove', {
+        new CustomEvent('smelter:inputs:hide', {
           detail: { inputId: contextMenu.inputId },
         }),
       );
@@ -1130,8 +1180,8 @@ export function TimelinePanel({
     );
     if (!confirmed) return;
     closeContextMenu();
-    purgeInputId(contextMenu.inputId);
     await removeInput(roomId, contextMenu.inputId);
+    purgeInputId(contextMenu.inputId);
     await refreshState();
   }, [
     contextMenu,

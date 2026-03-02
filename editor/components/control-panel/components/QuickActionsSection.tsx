@@ -166,17 +166,33 @@ export function QuickActionsSection() {
           setLoadingActions((prev) => ({ ...prev, deleteAll: true }));
           try {
             const currentInputs = [...inputs];
+            const failedInputIds: string[] = [];
+            const deletedInputIds: string[] = [];
             for (const input of currentInputs) {
               try {
                 try {
                   await hideInput(roomId, input.inputId);
                 } catch {}
                 await removeInput(roomId, input.inputId);
+                deletedInputIds.push(input.inputId);
               } catch (e) {
+                failedInputIds.push(input.inputId);
                 console.warn(`Failed to delete input ${input.inputId}:`, e);
               }
             }
+            if (deletedInputIds.length > 0) {
+              window.dispatchEvent(
+                new CustomEvent('smelter:timeline:purge-input-ids', {
+                  detail: { inputIds: deletedInputIds },
+                }),
+              );
+            }
             await refreshState();
+            if (failedInputIds.length > 0) {
+              throw new Error(
+                `Failed to delete ${failedInputIds.length} input(s): ${failedInputIds.join(', ')}`,
+              );
+            }
           } catch (e) {
             console.error('Failed to delete all inputs:', e);
           } finally {
