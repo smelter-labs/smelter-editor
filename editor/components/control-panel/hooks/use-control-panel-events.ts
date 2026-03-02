@@ -259,12 +259,12 @@ export function useControlPanelEvents({
 
     window.addEventListener(
       'smelter:voice:hide-all-inputs',
-      onHideAllInputs as EventListener,
+      onHideAllInputs as unknown as EventListener,
     );
     return () => {
       window.removeEventListener(
         'smelter:voice:hide-all-inputs',
-        onHideAllInputs as EventListener,
+        onHideAllInputs as unknown as EventListener,
       );
     };
   }, [roomId, handleRefreshState, inputsRef]);
@@ -314,12 +314,12 @@ export function useControlPanelEvents({
 
     window.addEventListener(
       'smelter:voice:remove-all-inputs',
-      onRemoveAllInputs as EventListener,
+      onRemoveAllInputs as unknown as EventListener,
     );
     return () => {
       window.removeEventListener(
         'smelter:voice:remove-all-inputs',
-        onRemoveAllInputs as EventListener,
+        onRemoveAllInputs as unknown as EventListener,
       );
     };
   }, [roomId, handleRefreshState, inputsRef, cleanupWhipIfNeeded]);
@@ -1055,12 +1055,12 @@ export function useControlPanelEvents({
 
     window.addEventListener(
       'smelter:voice:export-configuration',
-      onExportConfiguration as EventListener,
+      onExportConfiguration as unknown as EventListener,
     );
     return () => {
       window.removeEventListener(
         'smelter:voice:export-configuration',
-        onExportConfiguration as EventListener,
+        onExportConfiguration as unknown as EventListener,
       );
     };
   }, []);
