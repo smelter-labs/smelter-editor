@@ -1,5 +1,7 @@
 'use client';
 
+import { useState, useEffect, useCallback } from 'react';
+
 export const AUTO_PLAY_MACRO_STORAGE_KEY = 'smelter:voice:auto-play-macro';
 export const AUTO_PLAY_MACRO_CHANGED_EVENT =
   'smelter:voice:auto-play-macro-changed';
@@ -49,4 +51,20 @@ export function subscribeToAutoPlayMacroSetting(
   return () => {
     window.removeEventListener(AUTO_PLAY_MACRO_CHANGED_EVENT, onChanged);
   };
+}
+
+export function useAutoPlayMacroSetting(): [boolean, (value: boolean) => void] {
+  const [value, setValue] = useState<boolean>(() => getAutoPlayMacroSetting());
+
+  useEffect(() => {
+    setValue(getAutoPlayMacroSetting());
+    return subscribeToAutoPlayMacroSetting(setValue);
+  }, []);
+
+  const setAutoPlay = useCallback((next: boolean) => {
+    setAutoPlayMacroSetting(next);
+    setValue(next);
+  }, []);
+
+  return [value, setAutoPlay];
 }

@@ -12,11 +12,7 @@ import {
   type MacroExecutionCallbacks,
 } from './macroExecutor';
 import type { MacroDefinition } from './macroTypes';
-import {
-  getAutoPlayMacroSetting,
-  setAutoPlayMacroSetting,
-  subscribeToAutoPlayMacroSetting,
-} from './macroSettings';
+import { useAutoPlayMacroSetting } from './macroSettings';
 
 export type UseVoiceCommandsOptions = {
   mp4Files?: string[];
@@ -188,9 +184,7 @@ export function useVoiceCommands(
   const [isTypingMode, setIsTypingMode] = useState(false);
   const [isMacroMode, setIsMacroMode] = useState(false);
   const [isExecutingMacro, setIsExecutingMacro] = useState(false);
-  const [autoPlayMacro, setAutoPlayMacroState] = useState<boolean>(() =>
-    getAutoPlayMacroSetting(),
-  );
+  const [autoPlayMacro, setAutoPlayMacro] = useAutoPlayMacroSetting();
   const [macroExecutionStatus, setMacroExecutionStatus] =
     useState<MacroExecutionStatus>('idle');
   const [activeMacro, setActiveMacro] = useState<MacroDefinition | null>(null);
@@ -213,25 +207,8 @@ export function useVoiceCommands(
     autoPlayMacroRef.current = autoPlayMacro;
   }, [autoPlayMacro]);
 
-  useEffect(() => {
-    setAutoPlayMacroState(getAutoPlayMacroSetting());
-    return subscribeToAutoPlayMacroSetting((value) => {
-      setAutoPlayMacroState(value);
-    });
-  }, []);
-
-  const setAutoPlayMacro = useCallback((value: boolean) => {
-    setAutoPlayMacroSetting(value);
-    setAutoPlayMacroState(value);
-  }, []);
-
   const stopMacro = useCallback(() => {
     macroControllerRef.current?.stop();
-    macroControllerRef.current = null;
-    setMacroExecutionStatus('stopped');
-    setIsExecutingMacro(false);
-    setActiveMacro(null);
-    window.dispatchEvent(new CustomEvent('smelter:voice:macro-stopped'));
   }, []);
 
   const executeNextMacroStep = useCallback(async () => {
@@ -387,6 +364,9 @@ export function useVoiceCommands(
               setIsExecutingMacro(false);
               setMacroExecutionStatus('stopped');
               setActiveMacro(null);
+              window.dispatchEvent(
+                new CustomEvent('smelter:voice:macro-stopped'),
+              );
             },
             onStatusChange: (status) => {
               setMacroExecutionStatus(status);

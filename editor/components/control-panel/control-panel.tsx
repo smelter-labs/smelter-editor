@@ -65,11 +65,7 @@ import {
 import { loadLastWhipInputId } from './whip-input/utils/whip-storage';
 import { ControlPanelProvider } from './contexts/control-panel-context';
 import { WhipConnectionsProvider } from './contexts/whip-connections-context';
-import {
-  getAutoPlayMacroSetting,
-  setAutoPlayMacroSetting,
-  subscribeToAutoPlayMacroSetting,
-} from '@/lib/voice/macroSettings';
+import { useAutoPlayMacroSetting } from '@/lib/voice/macroSettings';
 import {
   BlockClipPropertiesPanel,
   type SelectedTimelineClip,
@@ -467,17 +463,8 @@ function SettingsBar({
   const [isImporting, setIsImporting] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showLoadModal, setShowLoadModal] = useState(false);
-  const [autoPlayMacro, setAutoPlayMacro] = useState<boolean>(() =>
-    getAutoPlayMacroSetting(),
-  );
+  const [autoPlayMacro, setAutoPlayMacro] = useAutoPlayMacroSetting();
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    setAutoPlayMacro(getAutoPlayMacroSetting());
-    return subscribeToAutoPlayMacroSetting((value) => {
-      setAutoPlayMacro(value);
-    });
-  }, []);
 
   const buildConfig = useCallback(() => {
     const timelineState = loadTimelineFromStorage(roomId);
@@ -896,9 +883,7 @@ function SettingsBar({
                   type='checkbox'
                   checked={autoPlayMacro}
                   onChange={(e) => {
-                    const value = e.target.checked;
-                    setAutoPlayMacro(value);
-                    setAutoPlayMacroSetting(value);
+                    setAutoPlayMacro(e.target.checked);
                   }}
                   className='accent-white'
                 />
