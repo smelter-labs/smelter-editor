@@ -583,35 +583,6 @@ export default function InputEntry({
     [roomId, input, refreshState],
   );
 
-  const handleSliderChange = useCallback(
-    (shaderId: string, paramName: string, newValue: number) => {
-      const key = `${shaderId}:${paramName}`;
-      setSliderValues((prev) => ({
-        ...prev,
-        [key]: newValue,
-      }));
-
-      if (sliderTimers.current[key]) {
-        clearTimeout(sliderTimers.current[key] as number);
-      }
-
-      sliderTimers.current[key] = setTimeout(async () => {
-        setParamLoading((prev) => ({ ...prev, [shaderId]: paramName }));
-        try {
-          await handleParamChange(shaderId, paramName, newValue);
-        } finally {
-          setParamLoading((prev) => ({ ...prev, [shaderId]: null }));
-          setSliderValues((prev) => {
-            const newVals = { ...prev };
-            delete newVals[key];
-            return newVals;
-          });
-        }
-      }, SHADER_SETTINGS_DEBOUNCE_MS);
-    },
-    [handleParamChange],
-  );
-
   const handleParamChange = useCallback(
     async (shaderId: string, paramName: string, newValue: number) => {
       if (!input.shaders) return;
@@ -644,6 +615,35 @@ export default function InputEntry({
       }
     },
     [roomId, input, refreshState],
+  );
+
+  const handleSliderChange = useCallback(
+    (shaderId: string, paramName: string, newValue: number) => {
+      const key = `${shaderId}:${paramName}`;
+      setSliderValues((prev) => ({
+        ...prev,
+        [key]: newValue,
+      }));
+
+      if (sliderTimers.current[key]) {
+        clearTimeout(sliderTimers.current[key] as number);
+      }
+
+      sliderTimers.current[key] = setTimeout(async () => {
+        setParamLoading((prev) => ({ ...prev, [shaderId]: paramName }));
+        try {
+          await handleParamChange(shaderId, paramName, newValue);
+        } finally {
+          setParamLoading((prev) => ({ ...prev, [shaderId]: null }));
+          setSliderValues((prev) => {
+            const newVals = { ...prev };
+            delete newVals[key];
+            return newVals;
+          });
+        }
+      }, SHADER_SETTINGS_DEBOUNCE_MS);
+    },
+    [handleParamChange],
   );
 
   const getShaderParamConfig = useCallback(
