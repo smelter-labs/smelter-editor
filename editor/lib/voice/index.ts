@@ -6,3 +6,4 @@ export * from './useVoiceCommands';
 export * from './macroTypes';
 export * from './macroExecutor';
 export * from './macroSettings';
+export * from './feedbackEvents';

@@ -622,7 +622,7 @@ export class RoomState {
         shaders: [],
         orientation: 'horizontal',
         borderColor: '#ff0000',
-        borderWidth: 8,
+        borderWidth: 0,
         hidden: false,
         metadata: {
           title: 'Text',

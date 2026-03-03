@@ -13,6 +13,7 @@ import {
 } from './macroExecutor';
 import type { MacroDefinition } from './macroTypes';
 import { useAutoPlayMacroSetting } from './macroSettings';
+import { emitActionFeedback } from './feedbackEvents';
 
 export type UseVoiceCommandsOptions = {
   mp4Files?: string[];
@@ -97,6 +98,11 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
           },
         }),
       );
+      emitActionFeedback({
+        type: 'action',
+        label: `Add Input`,
+        description: command.inputType,
+      });
       break;
     case 'REMOVE_INPUT':
       window.dispatchEvent(
@@ -104,6 +110,10 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
           detail: { inputIndex: command.inputIndex },
         }),
       );
+      emitActionFeedback({
+        type: 'action',
+        label: `Remove Input #${command.inputIndex}`,
+      });
       break;
     case 'MOVE_INPUT':
       window.dispatchEvent(
@@ -115,6 +125,11 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
           },
         }),
       );
+      emitActionFeedback({
+        type: 'action',
+        label: `Move Input #${command.inputIndex}`,
+        description: `${command.direction.toLowerCase()} ${command.steps ?? 1} step(s)`,
+      });
       break;
     case 'ADD_SHADER':
       window.dispatchEvent(
@@ -126,6 +141,11 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
           },
         }),
       );
+      emitActionFeedback({
+        type: 'action',
+        label: `Add Shader`,
+        description: `${command.shader} on input ${command.inputIndex ?? 'selected'}`,
+      });
       break;
     case 'REMOVE_SHADER':
       window.dispatchEvent(
@@ -133,6 +153,11 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
           detail: { inputIndex: command.inputIndex, shader: command.shader },
         }),
       );
+      emitActionFeedback({
+        type: 'action',
+        label: `Remove Shader`,
+        description: `${command.shader} from input ${command.inputIndex ?? 'selected'}`,
+      });
       break;
     case 'SELECT_INPUT':
       window.dispatchEvent(
@@ -140,15 +165,34 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
           detail: { inputIndex: command.inputIndex },
         }),
       );
+      emitActionFeedback({
+        type: 'select',
+        label: 'Select Input',
+        value: `Input #${command.inputIndex}`,
+      });
       break;
     case 'DESELECT_INPUT':
       window.dispatchEvent(new CustomEvent('smelter:voice:deselect-input'));
+      emitActionFeedback({
+        type: 'action',
+        label: 'Deselect Input',
+      });
       break;
     case 'START_TYPING':
       window.dispatchEvent(new CustomEvent('smelter:voice:start-typing'));
+      emitActionFeedback({
+        type: 'mode',
+        label: 'Typing Mode',
+        active: true,
+      });
       break;
     case 'STOP_TYPING':
       window.dispatchEvent(new CustomEvent('smelter:voice:stop-typing'));
+      emitActionFeedback({
+        type: 'mode',
+        label: 'Typing Mode',
+        active: false,
+      });
       break;
     case 'START_ROOM':
       window.dispatchEvent(
@@ -156,12 +200,25 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
           detail: { vertical: command.vertical },
         }),
       );
+      emitActionFeedback({
+        type: 'action',
+        label: 'Start Room',
+        description: command.vertical ? 'vertical' : 'horizontal',
+      });
       break;
     case 'NEXT_LAYOUT':
       window.dispatchEvent(new CustomEvent('smelter:voice:next-layout'));
+      emitActionFeedback({
+        type: 'action',
+        label: 'Next Layout',
+      });
       break;
     case 'PREVIOUS_LAYOUT':
       window.dispatchEvent(new CustomEvent('smelter:voice:previous-layout'));
+      emitActionFeedback({
+        type: 'action',
+        label: 'Previous Layout',
+      });
       break;
     case 'SET_LAYOUT':
       window.dispatchEvent(
@@ -169,6 +226,11 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
           detail: { layout: command.layout },
         }),
       );
+      emitActionFeedback({
+        type: 'select',
+        label: 'Layout',
+        value: command.layout,
+      });
       break;
     case 'SET_TEXT_COLOR':
       window.dispatchEvent(
@@ -176,6 +238,11 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
           detail: { color: command.color },
         }),
       );
+      emitActionFeedback({
+        type: 'value',
+        label: 'Text Color',
+        to: command.color,
+      });
       break;
     case 'SET_TEXT_MAX_LINES':
       window.dispatchEvent(
@@ -183,6 +250,11 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
           detail: { maxLines: command.maxLines },
         }),
       );
+      emitActionFeedback({
+        type: 'value',
+        label: 'Text Max Lines',
+        to: command.maxLines,
+      });
       break;
     case 'SET_TEXT_FONT_SIZE':
       window.dispatchEvent(
@@ -190,11 +262,21 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
           detail: { fontSize: command.fontSize },
         }),
       );
+      emitActionFeedback({
+        type: 'value',
+        label: 'Font Size',
+        to: command.fontSize,
+        unit: 'px',
+      });
       break;
     case 'EXPORT_CONFIGURATION':
       window.dispatchEvent(
         new CustomEvent('smelter:voice:export-configuration'),
       );
+      emitActionFeedback({
+        type: 'action',
+        label: 'Export Configuration',
+      });
       break;
     case 'SCROLL_TEXT':
       window.dispatchEvent(
@@ -205,18 +287,41 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
           },
         }),
       );
+      emitActionFeedback({
+        type: 'action',
+        label: 'Scroll Text',
+        description: `${command.direction.toLowerCase()} ${command.lines} line(s)`,
+      });
       break;
     case 'HIDE_ALL_INPUTS':
       window.dispatchEvent(new CustomEvent('smelter:voice:hide-all-inputs'));
+      emitActionFeedback({
+        type: 'action',
+        label: 'Hide All Inputs',
+      });
       break;
     case 'REMOVE_ALL_INPUTS':
       window.dispatchEvent(new CustomEvent('smelter:voice:remove-all-inputs'));
+      emitActionFeedback({
+        type: 'action',
+        label: 'Remove All Inputs',
+      });
       break;
     case 'START_RECORDING':
       window.dispatchEvent(new CustomEvent('smelter:voice:start-recording'));
+      emitActionFeedback({
+        type: 'toggle',
+        label: 'Recording',
+        value: true,
+      });
       break;
     case 'STOP_RECORDING':
       window.dispatchEvent(new CustomEvent('smelter:voice:stop-recording'));
+      emitActionFeedback({
+        type: 'toggle',
+        label: 'Recording',
+        value: false,
+      });
       break;
     case 'SET_SWAP_DURATION':
       window.dispatchEvent(
@@ -224,6 +329,12 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
           detail: { durationMs: command.durationMs },
         }),
       );
+      emitActionFeedback({
+        type: 'value',
+        label: 'Swap Duration',
+        to: command.durationMs,
+        unit: 'ms',
+      });
       break;
     case 'SET_SWAP_FADE_IN_DURATION':
       window.dispatchEvent(
@@ -231,6 +342,12 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
           detail: { durationMs: command.durationMs },
         }),
       );
+      emitActionFeedback({
+        type: 'value',
+        label: 'Swap Fade In',
+        to: command.durationMs,
+        unit: 'ms',
+      });
       break;
     case 'SET_SWAP_FADE_OUT_DURATION':
       window.dispatchEvent(
@@ -238,6 +355,12 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
           detail: { durationMs: command.durationMs },
         }),
       );
+      emitActionFeedback({
+        type: 'value',
+        label: 'Swap Fade Out',
+        to: command.durationMs,
+        unit: 'ms',
+      });
       break;
     case 'SET_SWAP_OUTGOING_ENABLED':
       window.dispatchEvent(
@@ -245,6 +368,11 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
           detail: { enabled: command.enabled },
         }),
       );
+      emitActionFeedback({
+        type: 'toggle',
+        label: 'Swap Outgoing',
+        value: command.enabled,
+      });
       break;
     case 'SET_NEWS_STRIP_ENABLED':
       window.dispatchEvent(
@@ -252,6 +380,11 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
           detail: { enabled: command.enabled },
         }),
       );
+      emitActionFeedback({
+        type: 'toggle',
+        label: 'News Strip',
+        value: command.enabled,
+      });
       break;
     case 'SET_NEWS_STRIP_FADE_DURING_SWAP':
       window.dispatchEvent(
@@ -259,6 +392,11 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
           detail: { enabled: command.enabled },
         }),
       );
+      emitActionFeedback({
+        type: 'toggle',
+        label: 'News Strip Fade During Swap',
+        value: command.enabled,
+      });
       break;
   }
 }
@@ -420,6 +558,11 @@ export function useVoiceCommands(
         window.dispatchEvent(
           new CustomEvent('smelter:voice:macro-mode-started'),
         );
+        emitActionFeedback({
+          type: 'mode',
+          label: 'Macro Mode',
+          active: true,
+        });
         return;
       }
 
@@ -427,11 +570,21 @@ export function useVoiceCommands(
       if (macroControl === 'ENABLE_AUTO_PLAY') {
         setAutoPlayMacro(true);
         setLastSuccess('AUTO_PLAY_MACRO -> enabled');
+        emitActionFeedback({
+          type: 'toggle',
+          label: 'Macro Auto Play',
+          value: true,
+        });
         return;
       }
       if (macroControl === 'DISABLE_AUTO_PLAY') {
         setAutoPlayMacro(false);
         setLastSuccess('AUTO_PLAY_MACRO -> disabled');
+        emitActionFeedback({
+          type: 'toggle',
+          label: 'Macro Auto Play',
+          value: false,
+        });
         return;
       }
 

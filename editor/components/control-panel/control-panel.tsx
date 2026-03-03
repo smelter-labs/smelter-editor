@@ -65,7 +65,14 @@ import {
 import { loadLastWhipInputId } from './whip-input/utils/whip-storage';
 import { ControlPanelProvider } from './contexts/control-panel-context';
 import { WhipConnectionsProvider } from './contexts/whip-connections-context';
-import { useAutoPlayMacroSetting } from '@/lib/voice/macroSettings';
+import {
+  useAutoPlayMacroSetting,
+  useFeedbackPositionSetting,
+  useFeedbackEnabledSetting,
+  useFeedbackSizeSetting,
+  useFeedbackDurationSetting,
+} from '@/lib/voice/macroSettings';
+import { FeedbackPositionPicker } from '@/components/voice-action-feedback/FeedbackPositionPicker';
 import {
   BlockClipPropertiesPanel,
   type SelectedTimelineClip,
@@ -464,6 +471,10 @@ function SettingsBar({
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showLoadModal, setShowLoadModal] = useState(false);
   const [autoPlayMacro, setAutoPlayMacro] = useAutoPlayMacroSetting();
+  const [feedbackPosition, setFeedbackPosition] = useFeedbackPositionSetting();
+  const [feedbackEnabled, setFeedbackEnabled] = useFeedbackEnabledSetting();
+  const [feedbackSize, setFeedbackSize] = useFeedbackSizeSetting();
+  const [feedbackDuration, setFeedbackDuration] = useFeedbackDurationSetting();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const buildConfig = useCallback(() => {
@@ -821,11 +832,11 @@ function SettingsBar({
       <Dialog
         open={openModal === 'settings'}
         onOpenChange={(open) => !open && setOpenModal(null)}>
-        <DialogContent>
+        <DialogContent className='max-w-2xl'>
           <DialogHeader>
             <DialogTitle>Settings</DialogTitle>
           </DialogHeader>
-          <div className='space-y-4'>
+          <div className='grid grid-cols-2 gap-6'>
             <section className='space-y-2'>
               <h4 className='text-sm font-medium text-white'>
                 Transition Settings
@@ -873,25 +884,42 @@ function SettingsBar({
                 }}
               />
             </section>
-            <div className='h-px bg-neutral-800' />
-            <section className='space-y-2 px-1'>
-              <h4 className='text-sm font-medium text-white'>
-                Macros Settings
-              </h4>
-              <label className='flex items-center gap-2 cursor-pointer'>
-                <input
-                  type='checkbox'
-                  checked={autoPlayMacro}
-                  onChange={(e) => {
-                    setAutoPlayMacro(e.target.checked);
-                  }}
-                  className='accent-white'
+            <div className='space-y-4'>
+              <section className='space-y-2 px-1'>
+                <h4 className='text-sm font-medium text-white'>
+                  Macros Settings
+                </h4>
+                <label className='flex items-center gap-2 cursor-pointer'>
+                  <input
+                    type='checkbox'
+                    checked={autoPlayMacro}
+                    onChange={(e) => {
+                      setAutoPlayMacro(e.target.checked);
+                    }}
+                    className='accent-white'
+                  />
+                  <span className='text-xs text-neutral-400'>
+                    Auto Play Macro
+                  </span>
+                </label>
+              </section>
+              <div className='h-px bg-neutral-800' />
+              <section className='space-y-2 px-1'>
+                <h4 className='text-sm font-medium text-white'>
+                  Toast Notifications
+                </h4>
+                <FeedbackPositionPicker
+                  enabled={feedbackEnabled}
+                  onEnabledChange={setFeedbackEnabled}
+                  position={feedbackPosition}
+                  onPositionChange={setFeedbackPosition}
+                  size={feedbackSize}
+                  onSizeChange={setFeedbackSize}
+                  duration={feedbackDuration}
+                  onDurationChange={setFeedbackDuration}
                 />
-                <span className='text-xs text-neutral-400'>
-                  Auto Play Macro
-                </span>
-              </label>
-            </section>
+              </section>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

@@ -16,6 +16,14 @@ const ToastContainer = dynamic(
   { ssr: false },
 );
 
+const VoiceActionFeedback = dynamic(
+  () =>
+    import('@/components/voice-action-feedback/VoiceActionFeedback').then(
+      (m) => ({ default: m.VoiceActionFeedback }),
+    ),
+  { ssr: false },
+);
+
 const Analytics = dynamic(
   () =>
     import('@vercel/analytics/next').then((m) => ({ default: m.Analytics })),
@@ -36,6 +44,7 @@ export default function ClientLayoutAddons() {
   return (
     <>
       {!isPreview && <SpeechToTextWithCommands />}
+      {!isPreview && <VoiceActionFeedback />}
       <ToastContainer />
       <Analytics />
     </>
