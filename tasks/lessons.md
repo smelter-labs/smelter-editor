@@ -110,6 +110,11 @@
 - **Session:** a43f4a5e
 - **Rule:** When extending shared logic after a switch/if-else, ensure EVERY branch sets the shared variable. Or centralize post-add logic after the switch.
 
+### 5.5 Add homophone aliases for STT confusion
+- **Pattern:** Speech-to-text produced "truck" instead of "track", so `select second truck` did not select a track.
+- **Session:** current
+- **Rule:** For voice command nouns (`track`, `layout`, etc.), include common homophone aliases in normalization and add regression tests for the spoken phrase.
+
 ---
 
 ## 6. Macro Execution

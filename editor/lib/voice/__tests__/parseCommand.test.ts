@@ -35,6 +35,7 @@ describe('normalize', () => {
     expect(normalize('lane 2')).toBe('track 2');
     expect(normalize('path 1')).toBe('track 1');
     expect(normalize('row 3')).toBe('track 3');
+    expect(normalize('second truck')).toBe('track 2');
     expect(normalize('track number 4')).toBe('track 4');
     expect(normalize('3 track')).toBe('track 3');
   });
@@ -308,6 +309,13 @@ describe('parseCommand', () => {
       expect(parseCommand('focus lane 3')).toEqual({
         intent: 'SELECT_TRACK',
         trackIndex: 3,
+      });
+    });
+
+    it('parses "select second truck" via alias', () => {
+      expect(parseCommand('select second truck')).toEqual({
+        intent: 'SELECT_TRACK',
+        trackIndex: 2,
       });
     });
 
