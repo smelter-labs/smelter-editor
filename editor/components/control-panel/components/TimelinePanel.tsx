@@ -340,6 +340,62 @@ export function TimelinePanel({
       window.removeEventListener('smelter:timeline-input-replaced', handler);
   }, [replaceInputId]);
 
+  // Inward event: external code (voice, control-panel) can request a clip selection
+  useEffect(() => {
+    const handler = (
+      e: CustomEvent<{
+        inputId?: string;
+        trackIndex?: number;
+        trackId?: string;
+        clipId?: string;
+      } | null>,
+    ) => {
+      const detail = e.detail;
+      if (!detail) {
+        setSelectedClipId(null);
+        return;
+      }
+
+      if (detail.trackId && detail.clipId) {
+        setSelectedClipId({ trackId: detail.trackId, clipId: detail.clipId });
+        return;
+      }
+
+      if (detail.trackIndex != null) {
+        const idx = detail.trackIndex - 1;
+        if (idx < 0 || idx >= state.tracks.length) return;
+        const track = state.tracks[idx];
+        if (track.clips.length > 0) {
+          setSelectedClipId({ trackId: track.id, clipId: track.clips[0].id });
+          setPlayhead(track.clips[0].startMs);
+        }
+        return;
+      }
+
+      if (detail.inputId) {
+        for (const track of state.tracks) {
+          for (const clip of track.clips) {
+            if (clip.inputId === detail.inputId) {
+              setSelectedClipId({ trackId: track.id, clipId: clip.id });
+              setPlayhead(clip.startMs);
+              return;
+            }
+          }
+        }
+      }
+    };
+    window.addEventListener(
+      'smelter:timeline:select-clip',
+      handler as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:timeline:select-clip',
+        handler as unknown as EventListener,
+      );
+    };
+  }, [state.tracks, setPlayhead]);
+
   const inputColorMap = useMemo(() => buildInputColorMap(inputs), [inputs]);
 
   const { play, stop, seek, applyAtPlayhead } = useTimelinePlayback(
@@ -727,6 +783,64 @@ export function TimelinePanel({
     },
     [selectedInputId, selectedClipId, state.tracks, setPlayhead],
   );
+
+  // ── Voice: select track / remove track / next-prev block ──────────
+
+  useEffect(() => {
+    const onSelectTrack = (e: CustomEvent<{ trackIndex: number }>) => {
+      const idx = e.detail.trackIndex - 1;
+      if (idx < 0 || idx >= state.tracks.length) {
+        console.warn(`Voice: track ${e.detail.trackIndex} does not exist`);
+        return;
+      }
+      const track = state.tracks[idx];
+      if (track.clips.length > 0) {
+        setSelectedClipId({ trackId: track.id, clipId: track.clips[0].id });
+        setPlayhead(track.clips[0].startMs);
+        window.dispatchEvent(
+          new CustomEvent('smelter:inputs:select', {
+            detail: { inputId: track.clips[0].inputId },
+          }),
+        );
+      }
+    };
+
+    const onRemoveTrack = (e: CustomEvent<{ trackIndex: number }>) => {
+      const idx = e.detail.trackIndex - 1;
+      if (idx < 0 || idx >= state.tracks.length) {
+        console.warn(`Voice: track ${e.detail.trackIndex} does not exist`);
+        return;
+      }
+      deleteTrack(state.tracks[idx].id);
+    };
+
+    const onNextBlock = () => tabToNextClip(false);
+    const onPrevBlock = () => tabToNextClip(true);
+
+    window.addEventListener(
+      'smelter:voice:select-track',
+      onSelectTrack as unknown as EventListener,
+    );
+    window.addEventListener(
+      'smelter:voice:remove-track',
+      onRemoveTrack as unknown as EventListener,
+    );
+    window.addEventListener('smelter:voice:next-block', onNextBlock);
+    window.addEventListener('smelter:voice:prev-block', onPrevBlock);
+
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:select-track',
+        onSelectTrack as unknown as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:voice:remove-track',
+        onRemoveTrack as unknown as EventListener,
+      );
+      window.removeEventListener('smelter:voice:next-block', onNextBlock);
+      window.removeEventListener('smelter:voice:prev-block', onPrevBlock);
+    };
+  }, [state.tracks, setPlayhead, tabToNextClip, deleteTrack]);
 
   // ── Keyboard shortcuts ──────────────────────────────
 

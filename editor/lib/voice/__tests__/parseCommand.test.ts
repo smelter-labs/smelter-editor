@@ -30,6 +30,20 @@ describe('normalize', () => {
     expect(normalize('source 1')).toBe('input 1');
     expect(normalize('effect')).toBe('shader');
   });
+
+  it('normalizes track aliases', () => {
+    expect(normalize('lane 2')).toBe('track 2');
+    expect(normalize('path 1')).toBe('track 1');
+    expect(normalize('row 3')).toBe('track 3');
+    expect(normalize('track number 4')).toBe('track 4');
+    expect(normalize('3 track')).toBe('track 3');
+  });
+
+  it('normalizes block aliases', () => {
+    expect(normalize('next clip')).toBe('next block');
+    expect(normalize('previous segment')).toBe('previous block');
+    expect(normalize('next blocks')).toBe('next block');
+  });
 });
 
 describe('parseCommand', () => {
@@ -275,6 +289,107 @@ describe('parseCommand', () => {
     });
   });
 
+  describe('SELECT_TRACK', () => {
+    it('parses "select track 2"', () => {
+      expect(parseCommand('select track 2')).toEqual({
+        intent: 'SELECT_TRACK',
+        trackIndex: 2,
+      });
+    });
+
+    it('parses "pick track one"', () => {
+      expect(parseCommand('pick track one')).toEqual({
+        intent: 'SELECT_TRACK',
+        trackIndex: 1,
+      });
+    });
+
+    it('parses "focus lane 3" via alias', () => {
+      expect(parseCommand('focus lane 3')).toEqual({
+        intent: 'SELECT_TRACK',
+        trackIndex: 3,
+      });
+    });
+
+    it('parses "select path 1" via alias', () => {
+      expect(parseCommand('select path 1')).toEqual({
+        intent: 'SELECT_TRACK',
+        trackIndex: 1,
+      });
+    });
+
+    it('returns CLARIFY when track number missing', () => {
+      expect(parseCommand('select track')).toEqual({
+        intent: 'CLARIFY',
+        missing: ['trackIndex'],
+        question: 'Which track number?',
+      });
+    });
+  });
+
+  describe('REMOVE_TRACK', () => {
+    it('parses "remove track 2"', () => {
+      expect(parseCommand('remove track 2')).toEqual({
+        intent: 'REMOVE_TRACK',
+        trackIndex: 2,
+      });
+    });
+
+    it('parses "delete track one"', () => {
+      expect(parseCommand('delete track one')).toEqual({
+        intent: 'REMOVE_TRACK',
+        trackIndex: 1,
+      });
+    });
+
+    it('parses "delete lane 3" via alias', () => {
+      expect(parseCommand('delete lane 3')).toEqual({
+        intent: 'REMOVE_TRACK',
+        trackIndex: 3,
+      });
+    });
+
+    it('returns CLARIFY when track number missing', () => {
+      expect(parseCommand('remove track')).toEqual({
+        intent: 'CLARIFY',
+        missing: ['trackIndex'],
+        question: 'Which track number?',
+      });
+    });
+  });
+
+  describe('NEXT_BLOCK / PREV_BLOCK', () => {
+    it('parses "next block"', () => {
+      expect(parseCommand('next block')).toEqual({ intent: 'NEXT_BLOCK' });
+    });
+
+    it('parses "forward block"', () => {
+      expect(parseCommand('forward block')).toEqual({ intent: 'NEXT_BLOCK' });
+    });
+
+    it('parses "previous block"', () => {
+      expect(parseCommand('previous block')).toEqual({ intent: 'PREV_BLOCK' });
+    });
+
+    it('parses "prev block"', () => {
+      expect(parseCommand('prev block')).toEqual({ intent: 'PREV_BLOCK' });
+    });
+
+    it('parses "back block"', () => {
+      expect(parseCommand('back block')).toEqual({ intent: 'PREV_BLOCK' });
+    });
+
+    it('parses "next clip" via alias', () => {
+      expect(parseCommand('next clip')).toEqual({ intent: 'NEXT_BLOCK' });
+    });
+
+    it('parses "previous segment" via alias', () => {
+      expect(parseCommand('previous segment')).toEqual({
+        intent: 'PREV_BLOCK',
+      });
+    });
+  });
+
   describe('New live operations commands', () => {
     it('parses set layout by name', () => {
       expect(parseCommand('set layout to picture in picture')).toEqual({
@@ -320,6 +435,17 @@ describe('parseCommand', () => {
       });
     });
 
+    it('parses text scroll speed commands', () => {
+      expect(parseCommand('set scroll speed to 120')).toEqual({
+        intent: 'SET_TEXT_SCROLL_SPEED',
+        scrollSpeed: 120,
+      });
+      expect(parseCommand('change text scrolling speed to 95')).toEqual({
+        intent: 'SET_TEXT_SCROLL_SPEED',
+        scrollSpeed: 95,
+      });
+    });
+
     it('parses outgoing transition and news strip toggles', () => {
       expect(parseCommand('enable outgoing transition')).toEqual({
         intent: 'SET_SWAP_OUTGOING_ENABLED',
@@ -344,6 +470,142 @@ describe('parseCommand', () => {
       expect(parseCommand('turn off news strip fade')).toEqual({
         intent: 'SET_NEWS_STRIP_FADE_DURING_SWAP',
         enabled: false,
+      });
+    });
+
+    it('parses text align commands', () => {
+      expect(parseCommand('set align left')).toEqual({
+        intent: 'SET_TEXT_ALIGN',
+        textAlign: 'left',
+      });
+      expect(parseCommand('set text alignment center')).toEqual({
+        intent: 'SET_TEXT_ALIGN',
+        textAlign: 'center',
+      });
+      expect(parseCommand('align right')).toEqual({
+        intent: 'SET_TEXT_ALIGN',
+        textAlign: 'right',
+      });
+      expect(parseCommand('change alignment to centre')).toEqual({
+        intent: 'SET_TEXT_ALIGN',
+        textAlign: 'center',
+      });
+      expect(parseCommand('align text left')).toEqual({
+        intent: 'SET_TEXT_ALIGN',
+        textAlign: 'left',
+      });
+    });
+  });
+
+  describe('SET_ORIENTATION', () => {
+    it('parses "set vertical"', () => {
+      expect(parseCommand('set vertical')).toEqual({
+        intent: 'SET_ORIENTATION',
+        orientation: 'vertical',
+      });
+    });
+
+    it('parses "set horizontal"', () => {
+      expect(parseCommand('set horizontal')).toEqual({
+        intent: 'SET_ORIENTATION',
+        orientation: 'horizontal',
+      });
+    });
+
+    it('parses "set input 2 horizontal"', () => {
+      expect(parseCommand('set input 2 horizontal')).toEqual({
+        intent: 'SET_ORIENTATION',
+        orientation: 'horizontal',
+        inputIndex: 2,
+      });
+    });
+
+    it('parses "flip input"', () => {
+      expect(parseCommand('flip input')).toEqual({
+        intent: 'SET_ORIENTATION',
+      });
+    });
+
+    it('parses "flip input 3 vertical"', () => {
+      expect(parseCommand('flip input 3 vertical')).toEqual({
+        intent: 'SET_ORIENTATION',
+        orientation: 'vertical',
+        inputIndex: 3,
+      });
+    });
+
+    it('parses "flip input to horizontal"', () => {
+      expect(parseCommand('flip input to horizontal')).toEqual({
+        intent: 'SET_ORIENTATION',
+        orientation: 'horizontal',
+      });
+    });
+
+    it('normalizes portrait to vertical', () => {
+      expect(normalize('set portrait')).toBe('set vertical');
+      expect(parseCommand('set portrait')).toEqual({
+        intent: 'SET_ORIENTATION',
+        orientation: 'vertical',
+      });
+    });
+
+    it('normalizes landscape to horizontal', () => {
+      expect(normalize('set landscape')).toBe('set horizontal');
+      expect(parseCommand('set landscape')).toEqual({
+        intent: 'SET_ORIENTATION',
+        orientation: 'horizontal',
+      });
+    });
+
+    it('parses "set orientation vertical"', () => {
+      expect(parseCommand('set orientation vertical')).toEqual({
+        intent: 'SET_ORIENTATION',
+        orientation: 'vertical',
+      });
+    });
+
+    it('parses "change input 1 to vertical"', () => {
+      expect(parseCommand('change input 1 vertical')).toEqual({
+        intent: 'SET_ORIENTATION',
+        orientation: 'vertical',
+        inputIndex: 1,
+      });
+    });
+  });
+
+  describe('SET_DEFAULT_ORIENTATION', () => {
+    it('parses "set default vertical"', () => {
+      expect(parseCommand('set default vertical')).toEqual({
+        intent: 'SET_DEFAULT_ORIENTATION',
+        orientation: 'vertical',
+      });
+    });
+
+    it('parses "set default horizontal"', () => {
+      expect(parseCommand('set default horizontal')).toEqual({
+        intent: 'SET_DEFAULT_ORIENTATION',
+        orientation: 'horizontal',
+      });
+    });
+
+    it('parses "default orientation vertical"', () => {
+      expect(parseCommand('default orientation vertical')).toEqual({
+        intent: 'SET_DEFAULT_ORIENTATION',
+        orientation: 'vertical',
+      });
+    });
+
+    it('parses "default orientation horizontal"', () => {
+      expect(parseCommand('default orientation horizontal')).toEqual({
+        intent: 'SET_DEFAULT_ORIENTATION',
+        orientation: 'horizontal',
+      });
+    });
+
+    it('parses "set default orientation to vertical"', () => {
+      expect(parseCommand('set default orientation to vertical')).toEqual({
+        intent: 'SET_DEFAULT_ORIENTATION',
+        orientation: 'vertical',
       });
     });
   });

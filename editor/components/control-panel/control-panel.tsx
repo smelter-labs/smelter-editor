@@ -71,6 +71,7 @@ import {
   useFeedbackEnabledSetting,
   useFeedbackSizeSetting,
   useFeedbackDurationSetting,
+  useDefaultOrientationSetting,
 } from '@/lib/voice/macroSettings';
 import { FeedbackPositionPicker } from '@/components/voice-action-feedback/FeedbackPositionPicker';
 import {
@@ -475,6 +476,8 @@ function SettingsBar({
   const [feedbackEnabled, setFeedbackEnabled] = useFeedbackEnabledSetting();
   const [feedbackSize, setFeedbackSize] = useFeedbackSizeSetting();
   const [feedbackDuration, setFeedbackDuration] = useFeedbackDurationSetting();
+  const [defaultOrientation, setDefaultOrientation] =
+    useDefaultOrientationSetting();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const buildConfig = useCallback(() => {
@@ -902,6 +905,28 @@ function SettingsBar({
                     Auto Play Macro
                   </span>
                 </label>
+              </section>
+              <div className='h-px bg-neutral-800' />
+              <section className='space-y-2 px-1'>
+                <h4 className='text-sm font-medium text-white'>
+                  Input Defaults
+                </h4>
+                <div className='flex items-center justify-between'>
+                  <span className='text-xs text-neutral-400'>
+                    Default Orientation
+                  </span>
+                  <select
+                    className='bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1 rounded'
+                    value={defaultOrientation}
+                    onChange={(e) =>
+                      setDefaultOrientation(
+                        e.target.value as 'horizontal' | 'vertical',
+                      )
+                    }>
+                    <option value='horizontal'>Horizontal</option>
+                    <option value='vertical'>Vertical</option>
+                  </select>
+                </div>
               </section>
               <div className='h-px bg-neutral-800' />
               <section className='space-y-2 px-1'>

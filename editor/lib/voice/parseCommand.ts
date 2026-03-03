@@ -168,6 +168,12 @@ const SET_MAX_LINES_PATTERN =
   /\b(?:set|change)\s+(?:max(?:imum)?\s+)?lines?\s+(?:to\s+)?(\d+)\b/;
 const SET_FONT_SIZE_PATTERN =
   /\b(?:set|change)\s+(?:font\s+)?size\s+(?:to\s+)?(\d+)\b/;
+const SET_SCROLL_SPEED_PATTERN =
+  /\b(?:set|change)\s+(?:text\s+)?(?:scroll(?:ing)?\s+)?speed\s+(?:to\s+)?(\d+)\b/;
+const SET_TEXT_ALIGN_PATTERN =
+  /\b(?:set|change)\s+(?:text\s+)?align(?:ment)?\s+(?:to\s+)?(left|center|centre|right)\b/;
+const SHORT_TEXT_ALIGN_PATTERN =
+  /\balign\s+(?:text\s+)?(left|center|centre|right)\b/;
 const EXPORT_CONFIG_PATTERN =
   /\b(export|save|download)\s+(config(?:uration)?|settings)\b/;
 const HIDE_ALL_INPUTS_PATTERN =
@@ -195,6 +201,18 @@ const ENABLE_NEWS_STRIP_FADE_PATTERN =
   /\b(enable|turn on)\s+(?:the\s+)?news\s+strip\s+fade(?:s)?\b/;
 const DISABLE_NEWS_STRIP_FADE_PATTERN =
   /\b(disable|turn off)\s+(?:the\s+)?news\s+strip\s+fade(?:s)?\b/;
+
+const NEXT_BLOCK_PATTERN = /\b(next|forward)\s+block\b/;
+const PREV_BLOCK_PATTERN = /\b(previous|prev|back|last)\s+block\b/;
+
+const SET_DEFAULT_ORIENTATION_PATTERN =
+  /\b(?:set\s+)?default\s+(?:orientation\s+)?(?:to\s+)?(horizontal|vertical)\b/;
+const DEFAULT_ORIENTATION_ALT_PATTERN =
+  /\bdefault\s+(?:input\s+)?orientation\s+(?:to\s+)?(horizontal|vertical)\b/;
+const SET_ORIENTATION_PATTERN =
+  /\b(?:set|change)\s+(?:(?:input\s+(\d+)\s+)?(?:orientation\s+)?(?:to\s+)?)?(horizontal|vertical)\b/;
+const FLIP_INPUT_PATTERN =
+  /\bflip\s+(?:input\s+)?(?:(\d+)\s+)?(?:to\s+)?(horizontal|vertical)?\b/;
 
 const SCROLL_TEXT_DOWN_PATTERN = /\bmove\s+(down(?:\s+down)*)\b/;
 const SCROLL_TEXT_UP_PATTERN = /\bmove\s+(up(?:\s+up)*)\b/;
@@ -323,6 +341,14 @@ function findInputType(text: string): InputType | null {
 
 function findInputIndex(text: string): number | null {
   const match = text.match(/\binput\s+(\d+)\b/);
+  if (match) {
+    return parseInt(match[1], 10);
+  }
+  return null;
+}
+
+function findTrackIndex(text: string): number | null {
+  const match = text.match(/\btrack\s+(\d+)\b/);
   if (match) {
     return parseInt(match[1], 10);
   }
@@ -469,6 +495,51 @@ export function parseCommand(
     return { intent: 'SET_NEWS_STRIP_ENABLED', enabled: false };
   }
 
+  const defaultOrientationMatch =
+    text.match(SET_DEFAULT_ORIENTATION_PATTERN) ||
+    text.match(DEFAULT_ORIENTATION_ALT_PATTERN);
+  if (defaultOrientationMatch) {
+    return {
+      intent: 'SET_DEFAULT_ORIENTATION',
+      orientation: defaultOrientationMatch[1] as 'horizontal' | 'vertical',
+    };
+  }
+
+  const flipMatch = text.match(FLIP_INPUT_PATTERN);
+  if (flipMatch) {
+    const result: import('./commandTypes').SetOrientationCommand = {
+      intent: 'SET_ORIENTATION',
+    };
+    if (flipMatch[1]) {
+      result.inputIndex = parseInt(flipMatch[1], 10);
+    }
+    if (flipMatch[2]) {
+      result.orientation = flipMatch[2] as 'horizontal' | 'vertical';
+    }
+    return result;
+  }
+
+  const setOrientationMatch = text.match(SET_ORIENTATION_PATTERN);
+  if (setOrientationMatch) {
+    const orientationValue = setOrientationMatch[2] as
+      | 'horizontal'
+      | 'vertical';
+    if (
+      !/\b(text\s+)?colou?r\b/.test(text) &&
+      !/\bfont\b/.test(text) &&
+      !/\bsize\b/.test(text)
+    ) {
+      const result: import('./commandTypes').SetOrientationCommand = {
+        intent: 'SET_ORIENTATION',
+        orientation: orientationValue,
+      };
+      if (setOrientationMatch[1]) {
+        result.inputIndex = parseInt(setOrientationMatch[1], 10);
+      }
+      return result;
+    }
+  }
+
   const colorMatch = text.match(SET_COLOR_PATTERN);
   if (colorMatch) {
     const colorName = colorMatch[1].toLowerCase();
@@ -492,6 +563,25 @@ export function parseCommand(
     if (fontSize >= 20 && fontSize <= 200) {
       return { intent: 'SET_TEXT_FONT_SIZE', fontSize };
     }
+  }
+
+  const scrollSpeedMatch = text.match(SET_SCROLL_SPEED_PATTERN);
+  if (scrollSpeedMatch) {
+    const scrollSpeed = parseInt(scrollSpeedMatch[1], 10);
+    if (!isNaN(scrollSpeed)) {
+      return { intent: 'SET_TEXT_SCROLL_SPEED', scrollSpeed };
+    }
+  }
+
+  const textAlignMatch =
+    text.match(SET_TEXT_ALIGN_PATTERN) || text.match(SHORT_TEXT_ALIGN_PATTERN);
+  if (textAlignMatch) {
+    const raw = textAlignMatch[1].toLowerCase();
+    const textAlign = raw === 'centre' ? 'center' : raw;
+    return {
+      intent: 'SET_TEXT_ALIGN',
+      textAlign: textAlign as 'left' | 'center' | 'right',
+    };
   }
 
   const hasRemove = REMOVE_VERBS.test(text);
@@ -647,8 +737,33 @@ export function parseCommand(
     return { intent: 'START_TYPING' };
   }
 
+  if (NEXT_BLOCK_PATTERN.test(text)) {
+    return { intent: 'NEXT_BLOCK' };
+  }
+
+  if (PREV_BLOCK_PATTERN.test(text)) {
+    return { intent: 'PREV_BLOCK' };
+  }
+
   if (hasDeselect) {
     return { intent: 'DESELECT_INPUT' };
+  }
+
+  const hasTrackKeyword = /\btrack\b/.test(text);
+  const trackIndex = findTrackIndex(text);
+
+  if (hasRemove && hasTrackKeyword) {
+    if (trackIndex === null) {
+      return clarify(['trackIndex'], 'Which track number?');
+    }
+    return { intent: 'REMOVE_TRACK', trackIndex };
+  }
+
+  if (hasSelect && hasTrackKeyword) {
+    if (trackIndex === null) {
+      return clarify(['trackIndex'], 'Which track number?');
+    }
+    return { intent: 'SELECT_TRACK', trackIndex };
   }
 
   if (hasSelect && hasInputKeyword) {

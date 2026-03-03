@@ -27,6 +27,8 @@ import {
 import { startPublish } from '../whip-input/utils/whip-publisher';
 import { startScreensharePublish } from '../whip-input/utils/screenshare-publisher';
 import type { InputType } from '@/lib/voice/commandTypes';
+import { emitActionFeedback } from '@/lib/voice/feedbackEvents';
+import { getDefaultOrientationSetting } from '@/lib/voice/macroSettings';
 import { LAYOUT_CONFIGS, type Layout } from '@/components/layout-selector';
 
 type UseControlPanelEventsProps = {
@@ -471,34 +473,40 @@ export function useControlPanelEvents({
     ) => {
       try {
         const { inputType, mp4FileName, imageFileName } = e.detail;
+        let addedInputId: string | undefined;
         switch (inputType) {
           case 'stream': {
             const suggestions = await getTwitchSuggestions();
             const firstStream = suggestions?.twitch?.[0];
             if (firstStream?.streamId) {
-              await addTwitchInput(roomId, firstStream.streamId);
+              const res = await addTwitchInput(roomId, firstStream.streamId);
+              addedInputId = res?.inputId;
             } else {
               console.warn(
                 'Voice: no twitch streams available, using fallback',
               );
-              await addTwitchInput(roomId, 'shroud');
+              const res = await addTwitchInput(roomId, 'shroud');
+              addedInputId = res?.inputId;
             }
             break;
           }
           case 'mp4':
             if (mp4FileName) {
-              await addMP4Input(roomId, mp4FileName);
+              const res = await addMP4Input(roomId, mp4FileName);
+              addedInputId = res?.inputId;
             }
             break;
           case 'image':
             if (imageFileName) {
-              await addImageInput(roomId, imageFileName);
+              const res = await addImageInput(roomId, imageFileName);
+              addedInputId = res?.inputId;
             }
             break;
           case 'text': {
             const text = (e.detail as any).text ?? '';
             const textAlign = (e.detail as any).textAlign ?? 'center';
-            await addTextInput(roomId, text, textAlign);
+            const res = await addTextInput(roomId, text, textAlign);
+            addedInputId = res?.inputId;
             break;
           }
           case 'camera': {
@@ -558,6 +566,17 @@ export function useControlPanelEvents({
             break;
           }
         }
+
+        if (addedInputId) {
+          const defaultOrientation = getDefaultOrientationSetting();
+          if (defaultOrientation === 'vertical') {
+            await updateInput(roomId, addedInputId, {
+              orientation: 'vertical',
+              volume: 1,
+            });
+          }
+        }
+
         await handleRefreshState();
       } catch (err) {
         console.error('Voice: failed to add input', err);
@@ -758,6 +777,11 @@ export function useControlPanelEvents({
         }
         const input = visibleInputs[idx];
         setSelectedInputId(input.inputId);
+        window.dispatchEvent(
+          new CustomEvent('smelter:timeline:select-clip', {
+            detail: { inputId: input.inputId },
+          }),
+        );
       } catch (err) {
         console.error('Voice: failed to select input', err);
       }
@@ -913,7 +937,7 @@ export function useControlPanelEvents({
 
       if (!input || input.type !== 'text-input') return;
 
-      const currentSpeed = input.textScrollSpeed ?? 40;
+      const currentSpeed = input.textScrollSpeed ?? 80;
       const delta =
         direction === 'up' ? SPEED_STEP * steps : -SPEED_STEP * steps;
       const newSpeed = Math.max(
@@ -992,7 +1016,11 @@ export function useControlPanelEvents({
           updateInputFn: updateInput,
         });
         if (!didApply) {
-          console.warn('Voice: no text input found for color change');
+          emitActionFeedback({
+            type: 'error',
+            label: 'Text input required',
+            description: 'Select a text input first',
+          });
         }
       } catch (err) {
         console.error('Voice: failed to set text color', err);
@@ -1023,7 +1051,11 @@ export function useControlPanelEvents({
         }
 
         if (!input || input.type !== 'text-input') {
-          console.warn('Voice: no text input selected for max lines change');
+          emitActionFeedback({
+            type: 'error',
+            label: 'Text input required',
+            description: 'Select a text input first',
+          });
           return;
         }
 
@@ -1068,7 +1100,11 @@ export function useControlPanelEvents({
         }
 
         if (!input || input.type !== 'text-input') {
-          console.warn('Voice: no text input found for font size change');
+          emitActionFeedback({
+            type: 'error',
+            label: 'Text input required',
+            description: 'Select a text input first',
+          });
           return;
         }
 
@@ -1090,6 +1126,134 @@ export function useControlPanelEvents({
       window.removeEventListener(
         'smelter:voice:set-text-font-size',
         onSetTextFontSize as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputsRef, selectedInputId]);
+
+  useEffect(() => {
+    const MIN_SPEED = 10;
+    const MAX_SPEED = 400;
+
+    const onSetTextScrollSpeed = async (
+      e: CustomEvent<{ scrollSpeed: number; inputIndex?: number }>,
+    ) => {
+      try {
+        const { scrollSpeed, inputIndex } = e.detail;
+        const currentInputs = inputsRef.current || [];
+        const visibleInputs = currentInputs.filter((i) => !i.hidden);
+
+        let input;
+        if (inputIndex !== undefined) {
+          input = visibleInputs[inputIndex - 1];
+        } else if (selectedInputId) {
+          input = currentInputs.find(
+            (i: Input) => i.inputId === selectedInputId,
+          );
+        }
+
+        if (!input || input.type !== 'text-input') {
+          emitActionFeedback({
+            type: 'error',
+            label: 'Text input required',
+            description: 'Select a text input first',
+          });
+          return;
+        }
+
+        const nextSpeed = Math.max(
+          MIN_SPEED,
+          Math.min(MAX_SPEED, Math.round(scrollSpeed)),
+        );
+        await updateInput(roomId, input.inputId, {
+          textScrollSpeed: nextSpeed,
+          volume: input.volume,
+        });
+
+        window.dispatchEvent(
+          new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
+            detail: {
+              inputId: input.inputId,
+              patch: { textScrollSpeed: nextSpeed },
+            },
+          }),
+        );
+
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to set text scroll speed', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:set-text-scroll-speed',
+      onSetTextScrollSpeed as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:set-text-scroll-speed',
+        onSetTextScrollSpeed as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputsRef, selectedInputId]);
+
+  useEffect(() => {
+    const onSetTextAlign = async (
+      e: CustomEvent<{
+        textAlign: 'left' | 'center' | 'right';
+        inputIndex?: number;
+      }>,
+    ) => {
+      try {
+        const { textAlign, inputIndex } = e.detail;
+        const currentInputs = inputsRef.current || [];
+        const visibleInputs = currentInputs.filter((i) => !i.hidden);
+
+        let input;
+        if (inputIndex !== undefined) {
+          input = visibleInputs[inputIndex - 1];
+        } else if (selectedInputId) {
+          input = currentInputs.find(
+            (i: Input) => i.inputId === selectedInputId,
+          );
+        }
+
+        if (!input || input.type !== 'text-input') {
+          emitActionFeedback({
+            type: 'error',
+            label: 'Text input required',
+            description: 'Select a text input first',
+          });
+          return;
+        }
+
+        await updateInput(roomId, input.inputId, {
+          textAlign,
+          volume: input.volume,
+        });
+
+        window.dispatchEvent(
+          new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
+            detail: {
+              inputId: input.inputId,
+              patch: { textAlign },
+            },
+          }),
+        );
+
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to set text align', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:set-text-align',
+      onSetTextAlign as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:set-text-align',
+        onSetTextAlign as unknown as EventListener,
       );
     };
   }, [roomId, handleRefreshState, inputsRef, selectedInputId]);
@@ -1316,7 +1480,11 @@ export function useControlPanelEvents({
         }
 
         if (!input || input.type !== 'text-input') {
-          console.warn('Macro: no text input found for set text');
+          emitActionFeedback({
+            type: 'error',
+            label: 'Text input required',
+            description: 'Select a text input first',
+          });
           return;
         }
 
@@ -1360,7 +1528,11 @@ export function useControlPanelEvents({
           : currentInputs.find((i: Input) => i.type === 'text-input');
 
         if (!textInput) {
-          console.warn('Voice: no text input found for scroll');
+          emitActionFeedback({
+            type: 'error',
+            label: 'Text input required',
+            description: 'Select a text input first',
+          });
           return;
         }
 
@@ -1386,6 +1558,78 @@ export function useControlPanelEvents({
       window.removeEventListener(
         'smelter:voice:scroll-text',
         onScrollText as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputsRef, selectedInputId]);
+
+  useEffect(() => {
+    const onSetOrientation = async (
+      e: CustomEvent<{
+        orientation?: 'horizontal' | 'vertical';
+        inputIndex?: number;
+      }>,
+    ) => {
+      try {
+        const { orientation, inputIndex } = e.detail;
+        const currentInputs = inputsRef.current || [];
+        const visibleInputs = currentInputs.filter((i) => !i.hidden);
+
+        let input;
+        if (inputIndex !== undefined && inputIndex !== null) {
+          const idx = inputIndex - 1;
+          if (idx < 0 || idx >= visibleInputs.length) {
+            console.warn(`Voice: input ${inputIndex} does not exist`);
+            return;
+          }
+          input = visibleInputs[idx];
+        } else if (selectedInputId) {
+          input = currentInputs.find((i) => i.inputId === selectedInputId);
+        }
+
+        if (!input) {
+          emitActionFeedback({
+            type: 'error',
+            label: 'No input selected',
+            description: 'Select an input or specify input number',
+          });
+          return;
+        }
+
+        const newOrientation = orientation
+          ? orientation
+          : input.orientation === 'vertical'
+            ? 'horizontal'
+            : 'vertical';
+
+        await updateInput(roomId, input.inputId, {
+          orientation: newOrientation,
+          shaders: input.shaders,
+          volume: input.volume,
+        });
+
+        window.dispatchEvent(
+          new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
+            detail: {
+              inputId: input.inputId,
+              patch: { orientation: newOrientation },
+            },
+          }),
+        );
+
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to set orientation', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:set-orientation',
+      onSetOrientation as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:set-orientation',
+        onSetOrientation as unknown as EventListener,
       );
     };
   }, [roomId, handleRefreshState, inputsRef, selectedInputId]);

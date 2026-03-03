@@ -1,5 +1,6 @@
 import type { MacroDefinition, MacroStep, MacrosConfig } from './macroTypes';
 import { normalize } from './normalize';
+import { setDefaultOrientationSetting } from './macroSettings';
 import macrosJson from './macros.json';
 
 const macrosConfig: MacrosConfig = macrosJson as MacrosConfig;
@@ -222,6 +223,30 @@ async function dispatchMacroStep(step: MacroStep): Promise<void> {
       window.dispatchEvent(new CustomEvent('smelter:voice:deselect-input'));
       break;
 
+    case 'SELECT_TRACK':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:select-track', {
+          detail: { trackIndex: params?.trackIndex },
+        }),
+      );
+      break;
+
+    case 'REMOVE_TRACK':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:remove-track', {
+          detail: { trackIndex: params?.trackIndex },
+        }),
+      );
+      break;
+
+    case 'NEXT_BLOCK':
+      window.dispatchEvent(new CustomEvent('smelter:voice:next-block'));
+      break;
+
+    case 'PREV_BLOCK':
+      window.dispatchEvent(new CustomEvent('smelter:voice:prev-block'));
+      break;
+
     case 'NEXT_LAYOUT':
       window.dispatchEvent(new CustomEvent('smelter:voice:next-layout'));
       break;
@@ -270,6 +295,28 @@ async function dispatchMacroStep(step: MacroStep): Promise<void> {
         new CustomEvent('smelter:voice:set-text-font-size', {
           detail: {
             fontSize: params?.fontSize,
+            inputIndex: params?.inputIndex,
+          },
+        }),
+      );
+      break;
+
+    case 'SET_TEXT_SCROLL_SPEED':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:set-text-scroll-speed', {
+          detail: {
+            scrollSpeed: params?.scrollSpeed,
+            inputIndex: params?.inputIndex,
+          },
+        }),
+      );
+      break;
+
+    case 'SET_TEXT_ALIGN':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:set-text-align', {
+          detail: {
+            textAlign: params?.textAlign,
             inputIndex: params?.inputIndex,
           },
         }),
@@ -330,6 +377,23 @@ async function dispatchMacroStep(step: MacroStep): Promise<void> {
           detail: { enabled: params?.enabled },
         }),
       );
+      break;
+
+    case 'SET_ORIENTATION':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:set-orientation', {
+          detail: {
+            orientation: params?.orientation,
+            inputIndex: params?.inputIndex,
+          },
+        }),
+      );
+      break;
+
+    case 'SET_DEFAULT_ORIENTATION':
+      if (params?.orientation) {
+        setDefaultOrientationSetting(params.orientation);
+      }
       break;
   }
 }

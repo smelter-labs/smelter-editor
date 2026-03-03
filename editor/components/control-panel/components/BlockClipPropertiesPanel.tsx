@@ -1151,18 +1151,24 @@ export function BlockClipPropertiesPanel({
             <label className='text-xs text-neutral-400 block mb-1'>
               Scroll speed
             </label>
-            <input
-              type='range'
-              min={1}
-              max={400}
-              step={1}
-              value={selectedTimelineClip.blockSettings.textScrollSpeed ?? 40}
-              onChange={(e) =>
-                void applyClipPatch({
-                  textScrollSpeed: Number(e.target.value) || 40,
-                })
-              }
-            />
+            <div className='flex items-center gap-2'>
+              <input
+                type='range'
+                min={1}
+                max={400}
+                step={1}
+                className='flex-1'
+                value={selectedTimelineClip.blockSettings.textScrollSpeed ?? 80}
+                onChange={(e) =>
+                  void applyClipPatch({
+                    textScrollSpeed: Number(e.target.value) || 80,
+                  })
+                }
+              />
+              <span className='text-xs text-neutral-500 w-8 text-right'>
+                {selectedTimelineClip.blockSettings.textScrollSpeed ?? 80}
+              </span>
+            </div>
           </div>
           <div className='flex items-center justify-between'>
             <span className='text-xs text-neutral-400'>Scroll loop</span>

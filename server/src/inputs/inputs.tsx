@@ -343,7 +343,7 @@ export function Input({ input }: { input: InputConfig }) {
               <ScrollingText
                 text={input.text!}
                 maxLines={input.textMaxLines ?? 10}
-                scrollSpeed={input.textScrollSpeed ?? 40}
+                scrollSpeed={input.textScrollSpeed ?? 80}
                 scrollLoop={input.textScrollLoop ?? true}
                 fontSize={input.textFontSize ?? 80}
                 color={input.textColor ?? 'white'}
@@ -460,7 +460,7 @@ export function SmallInput({
           <ScrollingText
             text={input.text!}
             maxLines={input.textMaxLines ?? 10}
-            scrollSpeed={input.textScrollSpeed ?? 40}
+            scrollSpeed={input.textScrollSpeed ?? 80}
             scrollLoop={input.textScrollLoop ?? true}
             fontSize={30}
             color={input.textColor ?? 'white'}

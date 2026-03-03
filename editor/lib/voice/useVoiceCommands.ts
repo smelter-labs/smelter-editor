@@ -12,7 +12,10 @@ import {
   type MacroExecutionCallbacks,
 } from './macroExecutor';
 import type { MacroDefinition } from './macroTypes';
-import { useAutoPlayMacroSetting } from './macroSettings';
+import {
+  useAutoPlayMacroSetting,
+  setDefaultOrientationSetting,
+} from './macroSettings';
 import { emitActionFeedback } from './feedbackEvents';
 
 export type UseVoiceCommandsOptions = {
@@ -178,6 +181,43 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
         label: 'Deselect Input',
       });
       break;
+    case 'SELECT_TRACK':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:select-track', {
+          detail: { trackIndex: command.trackIndex },
+        }),
+      );
+      emitActionFeedback({
+        type: 'select',
+        label: 'Select Track',
+        value: `Track #${command.trackIndex}`,
+      });
+      break;
+    case 'REMOVE_TRACK':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:remove-track', {
+          detail: { trackIndex: command.trackIndex },
+        }),
+      );
+      emitActionFeedback({
+        type: 'action',
+        label: `Remove Track #${command.trackIndex}`,
+      });
+      break;
+    case 'NEXT_BLOCK':
+      window.dispatchEvent(new CustomEvent('smelter:voice:next-block'));
+      emitActionFeedback({
+        type: 'action',
+        label: 'Next Block',
+      });
+      break;
+    case 'PREV_BLOCK':
+      window.dispatchEvent(new CustomEvent('smelter:voice:prev-block'));
+      emitActionFeedback({
+        type: 'action',
+        label: 'Previous Block',
+      });
+      break;
     case 'START_TYPING':
       window.dispatchEvent(new CustomEvent('smelter:voice:start-typing'));
       emitActionFeedback({
@@ -267,6 +307,30 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
         label: 'Font Size',
         to: command.fontSize,
         unit: 'px',
+      });
+      break;
+    case 'SET_TEXT_SCROLL_SPEED':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:set-text-scroll-speed', {
+          detail: { scrollSpeed: command.scrollSpeed },
+        }),
+      );
+      emitActionFeedback({
+        type: 'value',
+        label: 'Text Scroll Speed',
+        to: command.scrollSpeed,
+      });
+      break;
+    case 'SET_TEXT_ALIGN':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:set-text-align', {
+          detail: { textAlign: command.textAlign },
+        }),
+      );
+      emitActionFeedback({
+        type: 'select',
+        label: 'Text Align',
+        value: command.textAlign,
       });
       break;
     case 'EXPORT_CONFIGURATION':
@@ -396,6 +460,29 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
         type: 'toggle',
         label: 'News Strip Fade During Swap',
         value: command.enabled,
+      });
+      break;
+    case 'SET_ORIENTATION':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:set-orientation', {
+          detail: {
+            orientation: command.orientation,
+            inputIndex: command.inputIndex,
+          },
+        }),
+      );
+      emitActionFeedback({
+        type: 'select',
+        label: 'Orientation',
+        value: command.orientation ?? 'toggle',
+      });
+      break;
+    case 'SET_DEFAULT_ORIENTATION':
+      setDefaultOrientationSetting(command.orientation);
+      emitActionFeedback({
+        type: 'select',
+        label: 'Default Orientation',
+        value: command.orientation,
       });
       break;
   }

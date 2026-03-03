@@ -179,6 +179,14 @@
           "delayAfterMs": 1500
         },
         {
+          "action": "SET_TEXT_SCROLL_SPEED",
+          "params": {
+            "inputIndex": 3,
+            "scrollSpeed": 80
+          },
+          "delayAfterMs": 1500
+        },
+        {
           "action": "ADD_SHADER",
           "params": {
             "inputIndex": 3,

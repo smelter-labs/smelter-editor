@@ -40,11 +40,14 @@ const PHRASE_ALIASES: [RegExp, string][] = [
   [/\bscreen\s*share\b/gi, 'screenshare'],
   [/\bshare\s*screen\b/gi, 'screenshare'],
   [/\bremove\s*colour\b/gi, 'remove color'],
+  [/\bcentre\b/gi, 'center'],
   [/\bgr[ae]y\s*scale\b/gi, 'grayscale'],
   [/\bholo\b/gi, 'hologram'],
   [/\btelegram\b/gi, 'hologram'],
   [/\bphotogram\b/gi, 'hologram'],
   [/\beffect\b/gi, 'shader'],
+  [/\bportrait\b/gi, 'vertical'],
+  [/\blandscape\b/gi, 'horizontal'],
   [/\bthe\s*select\b/gi, 'deselect'],
   [/\b(light|flight|slide)\b/gi, 'layout'],
   [/\bstart\s+new\s+macro\b/gi, 'start macro'],
@@ -52,6 +55,16 @@ const PHRASE_ALIASES: [RegExp, string][] = [
 ];
 
 const INPUT_ALIASES = ['feed', 'source', 'inputs'];
+const TRACK_ALIASES = [
+  'tracks',
+  'lane',
+  'lanes',
+  'path',
+  'paths',
+  'row',
+  'rows',
+];
+const BLOCK_ALIASES = ['blocks', 'clip', 'clips', 'segment', 'segments'];
 
 export function normalize(text: string): string {
   let result = text.toLowerCase();
@@ -82,6 +95,20 @@ export function normalize(text: string): string {
   result = result.replace(/\binput\s+number\s+(\d+)\b/gi, 'input $1');
 
   result = result.replace(/\b(\d+)\s+input\b/gi, 'input $1');
+
+  for (const alias of TRACK_ALIASES) {
+    result = result.replace(
+      new RegExp(`\\b${alias}\\s+(\\d+)\\b`, 'gi'),
+      'track $1',
+    );
+  }
+
+  result = result.replace(/\btrack\s+number\s+(\d+)\b/gi, 'track $1');
+  result = result.replace(/\b(\d+)\s+track\b/gi, 'track $1');
+
+  for (const alias of BLOCK_ALIASES) {
+    result = result.replace(new RegExp(`\\b${alias}\\b`, 'gi'), 'block');
+  }
 
   result = result.replace(/\s+/g, ' ').trim();
 

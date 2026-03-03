@@ -83,6 +83,24 @@ export type DeselectInputCommand = {
   intent: 'DESELECT_INPUT';
 };
 
+export type SelectTrackCommand = {
+  intent: 'SELECT_TRACK';
+  trackIndex: number;
+};
+
+export type RemoveTrackCommand = {
+  intent: 'REMOVE_TRACK';
+  trackIndex: number;
+};
+
+export type NextBlockCommand = {
+  intent: 'NEXT_BLOCK';
+};
+
+export type PrevBlockCommand = {
+  intent: 'PREV_BLOCK';
+};
+
 export type StartTypingCommand = {
   intent: 'START_TYPING';
 };
@@ -131,6 +149,16 @@ export type SetTextMaxLinesCommand = {
 export type SetTextFontSizeCommand = {
   intent: 'SET_TEXT_FONT_SIZE';
   fontSize: number;
+};
+
+export type SetTextScrollSpeedCommand = {
+  intent: 'SET_TEXT_SCROLL_SPEED';
+  scrollSpeed: number;
+};
+
+export type SetTextAlignCommand = {
+  intent: 'SET_TEXT_ALIGN';
+  textAlign: 'left' | 'center' | 'right';
 };
 
 export type ExportConfigurationCommand = {
@@ -189,6 +217,19 @@ export type SetNewsStripFadeDuringSwapCommand = {
   enabled: boolean;
 };
 
+export type InputOrientation = 'horizontal' | 'vertical';
+
+export type SetOrientationCommand = {
+  intent: 'SET_ORIENTATION';
+  orientation?: InputOrientation;
+  inputIndex?: number;
+};
+
+export type SetDefaultOrientationCommand = {
+  intent: 'SET_DEFAULT_ORIENTATION';
+  orientation: InputOrientation;
+};
+
 export type ClarifyCommand = {
   intent: 'CLARIFY';
   missing: string[];
@@ -203,6 +244,10 @@ export type VoiceCommand =
   | RemoveInputCommand
   | SelectInputCommand
   | DeselectInputCommand
+  | SelectTrackCommand
+  | RemoveTrackCommand
+  | NextBlockCommand
+  | PrevBlockCommand
   | StartTypingCommand
   | StopTypingCommand
   | StartRoomCommand
@@ -212,6 +257,8 @@ export type VoiceCommand =
   | SetTextColorCommand
   | SetTextMaxLinesCommand
   | SetTextFontSizeCommand
+  | SetTextScrollSpeedCommand
+  | SetTextAlignCommand
   | ExportConfigurationCommand
   | ScrollTextCommand
   | HideAllInputsCommand
@@ -224,6 +271,8 @@ export type VoiceCommand =
   | SetSwapOutgoingEnabledCommand
   | SetNewsStripEnabledCommand
   | SetNewsStripFadeDuringSwapCommand
+  | SetOrientationCommand
+  | SetDefaultOrientationCommand
   | ClarifyCommand;
 
 export type VoiceInput = {
@@ -348,6 +397,24 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
     case 'DESELECT_INPUT':
       return { intent: 'DESELECT_INPUT' };
 
+    case 'SELECT_TRACK':
+      if (typeof c.trackIndex === 'number') {
+        return { intent: 'SELECT_TRACK', trackIndex: c.trackIndex };
+      }
+      return null;
+
+    case 'REMOVE_TRACK':
+      if (typeof c.trackIndex === 'number') {
+        return { intent: 'REMOVE_TRACK', trackIndex: c.trackIndex };
+      }
+      return null;
+
+    case 'NEXT_BLOCK':
+      return { intent: 'NEXT_BLOCK' };
+
+    case 'PREV_BLOCK':
+      return { intent: 'PREV_BLOCK' };
+
     case 'START_TYPING':
       return { intent: 'START_TYPING' };
 
@@ -390,6 +457,24 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
     case 'SET_TEXT_FONT_SIZE':
       if (typeof c.fontSize === 'number') {
         return { intent: 'SET_TEXT_FONT_SIZE', fontSize: c.fontSize };
+      }
+      return null;
+
+    case 'SET_TEXT_SCROLL_SPEED':
+      if (typeof c.scrollSpeed === 'number') {
+        return { intent: 'SET_TEXT_SCROLL_SPEED', scrollSpeed: c.scrollSpeed };
+      }
+      return null;
+
+    case 'SET_TEXT_ALIGN':
+      if (
+        typeof c.textAlign === 'string' &&
+        ['left', 'center', 'right'].includes(c.textAlign)
+      ) {
+        return {
+          intent: 'SET_TEXT_ALIGN',
+          textAlign: c.textAlign as 'left' | 'center' | 'right',
+        };
       }
       return null;
 
@@ -463,6 +548,26 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
         return {
           intent: 'SET_NEWS_STRIP_FADE_DURING_SWAP',
           enabled: c.enabled,
+        };
+      }
+      return null;
+
+    case 'SET_ORIENTATION': {
+      const result: SetOrientationCommand = { intent: 'SET_ORIENTATION' };
+      if (c.orientation === 'horizontal' || c.orientation === 'vertical') {
+        result.orientation = c.orientation;
+      }
+      if (typeof c.inputIndex === 'number') {
+        result.inputIndex = c.inputIndex;
+      }
+      return result;
+    }
+
+    case 'SET_DEFAULT_ORIENTATION':
+      if (c.orientation === 'horizontal' || c.orientation === 'vertical') {
+        return {
+          intent: 'SET_DEFAULT_ORIENTATION',
+          orientation: c.orientation,
         };
       }
       return null;

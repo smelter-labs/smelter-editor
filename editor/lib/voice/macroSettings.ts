@@ -2,6 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
+import type { InputOrientation } from './commandTypes';
+
 export const AUTO_PLAY_MACRO_STORAGE_KEY = 'smelter:voice:auto-play-macro';
 export const AUTO_PLAY_MACRO_CHANGED_EVENT =
   'smelter:voice:auto-play-macro-changed';
@@ -314,4 +316,61 @@ export function useFeedbackDurationSetting(): [
   }, []);
 
   return [value, setDuration];
+}
+
+const DEFAULT_ORIENTATION_STORAGE_KEY = 'smelter:voice:default-orientation';
+const DEFAULT_ORIENTATION_CHANGED_EVENT =
+  'smelter:voice:default-orientation-changed';
+const DEFAULT_ORIENTATION: InputOrientation = 'horizontal';
+
+export function getDefaultOrientationSetting(): InputOrientation {
+  if (typeof window === 'undefined') {
+    return DEFAULT_ORIENTATION;
+  }
+  const stored = window.localStorage.getItem(DEFAULT_ORIENTATION_STORAGE_KEY);
+  if (stored === 'horizontal' || stored === 'vertical') {
+    return stored;
+  }
+  return DEFAULT_ORIENTATION;
+}
+
+export function setDefaultOrientationSetting(value: InputOrientation): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  window.localStorage.setItem(DEFAULT_ORIENTATION_STORAGE_KEY, value);
+  window.dispatchEvent(
+    new CustomEvent<{ value: InputOrientation }>(
+      DEFAULT_ORIENTATION_CHANGED_EVENT,
+      { detail: { value } },
+    ),
+  );
+}
+
+export function useDefaultOrientationSetting(): [
+  InputOrientation,
+  (value: InputOrientation) => void,
+] {
+  const [value, setValue] = useState<InputOrientation>(() =>
+    getDefaultOrientationSetting(),
+  );
+
+  useEffect(() => {
+    setValue(getDefaultOrientationSetting());
+    const onChanged = (event: Event) => {
+      const customEvent = event as CustomEvent<{ value: InputOrientation }>;
+      setValue(customEvent.detail?.value ?? DEFAULT_ORIENTATION);
+    };
+    window.addEventListener(DEFAULT_ORIENTATION_CHANGED_EVENT, onChanged);
+    return () => {
+      window.removeEventListener(DEFAULT_ORIENTATION_CHANGED_EVENT, onChanged);
+    };
+  }, []);
+
+  const setOrientation = useCallback((next: InputOrientation) => {
+    setDefaultOrientationSetting(next);
+    setValue(next);
+  }, []);
+
+  return [value, setOrientation];
 }

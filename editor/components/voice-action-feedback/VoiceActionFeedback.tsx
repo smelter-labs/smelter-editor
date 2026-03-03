@@ -135,7 +135,8 @@ export function VoiceActionFeedback() {
       )}>
       <div
         className={cn(
-          'pointer-events-auto rounded-xl border border-neutral-700 bg-neutral-900/95 backdrop-blur-sm shadow-2xl',
+          'pointer-events-auto rounded-xl border bg-neutral-900/95 backdrop-blur-sm shadow-2xl',
+          active.type === 'error' ? 'border-red-700' : 'border-neutral-700',
           SIZE_CLASSES[size],
           'transition-all duration-[400ms] ease-out',
           phase === 'enter' && ENTER_CLASSES[position],
@@ -185,6 +186,14 @@ function FeedbackContent({
     case 'mode':
       return (
         <ModeVisual label={detail.label} active={detail.active} size={size} />
+      );
+    case 'error':
+      return (
+        <ErrorVisual
+          label={detail.label}
+          description={detail.description}
+          size={size}
+        />
       );
   }
 }
@@ -393,6 +402,38 @@ function ActionVisual({
       </div>
       <div>
         <p className={cn('text-neutral-200 font-medium', TEXT_SIZE[size])}>
+          {label}
+        </p>
+        {description && (
+          <p className={cn('text-neutral-500 mt-0.5', LABEL_SIZE[size])}>
+            {description}
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ErrorVisual({
+  label,
+  description,
+  size,
+}: {
+  label: string;
+  description?: string;
+  size: FeedbackSize;
+}) {
+  return (
+    <div className='flex items-center gap-3'>
+      <div
+        className={cn(
+          'flex items-center justify-center rounded-full bg-red-500/20 text-red-400 shrink-0',
+          ICON_SIZE[size],
+        )}>
+        ✕
+      </div>
+      <div>
+        <p className={cn('text-red-300 font-medium', TEXT_SIZE[size])}>
           {label}
         </p>
         {description && (

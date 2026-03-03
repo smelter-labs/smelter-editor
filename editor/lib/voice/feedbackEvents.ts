@@ -30,12 +30,19 @@ export type ModeFeedback = {
   active: boolean;
 };
 
+export type ErrorFeedback = {
+  type: 'error';
+  label: string;
+  description?: string;
+};
+
 export type ActionFeedbackDetail =
   | ToggleFeedback
   | ValueFeedback
   | SelectFeedback
   | ActionFeedback
-  | ModeFeedback;
+  | ModeFeedback
+  | ErrorFeedback;
 
 export const ACTION_FEEDBACK_EVENT = 'smelter:voice:action-feedback' as const;
 

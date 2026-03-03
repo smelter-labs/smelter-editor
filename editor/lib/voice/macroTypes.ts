@@ -1,8 +1,14 @@
-import type { InputType, Shader, Direction } from './commandTypes';
+import type {
+  InputType,
+  Shader,
+  Direction,
+  InputOrientation,
+} from './commandTypes';
 
 export type MacroActionParams = {
   inputType?: InputType;
   inputIndex?: number;
+  trackIndex?: number;
   shader?: Shader;
   direction?: Direction;
   steps?: number;
@@ -10,6 +16,7 @@ export type MacroActionParams = {
   color?: string;
   maxLines?: number;
   fontSize?: number;
+  scrollSpeed?: number;
   targetColor?: string;
   text?: string;
   textAlign?: 'left' | 'center' | 'right';
@@ -17,6 +24,7 @@ export type MacroActionParams = {
   imageName?: string;
   enabled?: boolean;
   durationMs?: number;
+  orientation?: InputOrientation;
 };
 
 export type MacroStep = {
@@ -35,12 +43,18 @@ export type MacroAction =
   | 'REMOVE_SHADER'
   | 'SELECT_INPUT'
   | 'DESELECT_INPUT'
+  | 'SELECT_TRACK'
+  | 'REMOVE_TRACK'
+  | 'NEXT_BLOCK'
+  | 'PREV_BLOCK'
   | 'NEXT_LAYOUT'
   | 'PREVIOUS_LAYOUT'
   | 'SET_LAYOUT'
   | 'SET_TEXT_COLOR'
   | 'SET_TEXT_MAX_LINES'
   | 'SET_TEXT_FONT_SIZE'
+  | 'SET_TEXT_SCROLL_SPEED'
+  | 'SET_TEXT_ALIGN'
   | 'SET_TEXT'
   | 'START_RECORDING'
   | 'STOP_RECORDING'
@@ -49,7 +63,9 @@ export type MacroAction =
   | 'SET_SWAP_FADE_OUT_DURATION'
   | 'SET_SWAP_OUTGOING_ENABLED'
   | 'SET_NEWS_STRIP_ENABLED'
-  | 'SET_NEWS_STRIP_FADE_DURING_SWAP';
+  | 'SET_NEWS_STRIP_FADE_DURING_SWAP'
+  | 'SET_ORIENTATION'
+  | 'SET_DEFAULT_ORIENTATION';
 
 export type MacroDefinition = {
   id: string;
