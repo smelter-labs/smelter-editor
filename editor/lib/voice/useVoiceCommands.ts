@@ -23,6 +23,7 @@ export type UseVoiceCommandsResult = {
   lastCommand: VoiceCommand | null;
   lastError: string | null;
   lastClarify: string | null;
+  lastSuccess: string | null;
   lastTranscript: string | null;
   lastNormalizedText: string | null;
   isTypingMode: boolean;
@@ -42,6 +43,47 @@ type EmitContext = {
   mp4Files: string[];
   imageFiles: string[];
 };
+
+export type MacroControlCommand =
+  | 'ENABLE_AUTO_PLAY'
+  | 'DISABLE_AUTO_PLAY'
+  | 'NEXT_STEP'
+  | 'PLAY_MACRO'
+  | 'STOP_EXECUTION';
+
+const ENABLE_AUTO_PLAY_PATTERN =
+  /\b(enable|turn on)\s+(?:macro\s+)?auto\s*play\b/i;
+const DISABLE_AUTO_PLAY_PATTERN =
+  /\b(disable|turn off)\s+(?:macro\s+)?auto\s*play\b/i;
+const NEXT_STEP_PATTERN =
+  /\b(next step|run next step|continue step|step forward)\b/i;
+const PLAY_MACRO_PATTERN = /\b(play macro|resume macro|continue macro)\b/i;
+const STOP_EXECUTION_PATTERN =
+  /\b(stop macro(?: now)?|cancel macro(?: execution)?|abort macro)\b/i;
+
+export function parseMacroControlCommand(
+  text: string,
+): MacroControlCommand | null {
+  const normalized = normalize(text);
+
+  if (ENABLE_AUTO_PLAY_PATTERN.test(normalized)) {
+    return 'ENABLE_AUTO_PLAY';
+  }
+  if (DISABLE_AUTO_PLAY_PATTERN.test(normalized)) {
+    return 'DISABLE_AUTO_PLAY';
+  }
+  if (NEXT_STEP_PATTERN.test(normalized)) {
+    return 'NEXT_STEP';
+  }
+  if (PLAY_MACRO_PATTERN.test(normalized)) {
+    return 'PLAY_MACRO';
+  }
+  if (STOP_EXECUTION_PATTERN.test(normalized)) {
+    return 'STOP_EXECUTION';
+  }
+
+  return null;
+}
 
 function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
   switch (command.intent) {
@@ -238,6 +280,7 @@ export function useVoiceCommands(
   const [lastCommand, setLastCommand] = useState<VoiceCommand | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const [lastClarify, setLastClarify] = useState<string | null>(null);
+  const [lastSuccess, setLastSuccess] = useState<string | null>(null);
   const [lastTranscript, setLastTranscript] = useState<string | null>(null);
   const [lastNormalizedText, setLastNormalizedText] = useState<string | null>(
     null,
@@ -251,6 +294,7 @@ export function useVoiceCommands(
   const [activeMacro, setActiveMacro] = useState<MacroDefinition | null>(null);
   const isTypingModeRef = useRef(false);
   const isMacroModeRef = useRef(false);
+  const isExecutingMacroRef = useRef(false);
   const autoPlayMacroRef = useRef(autoPlayMacro);
   const macroControllerRef = useRef<MacroExecutionController | null>(null);
   const mp4FilesRef = useRef(mp4Files);
@@ -267,6 +311,10 @@ export function useVoiceCommands(
   useEffect(() => {
     autoPlayMacroRef.current = autoPlayMacro;
   }, [autoPlayMacro]);
+
+  useEffect(() => {
+    isExecutingMacroRef.current = isExecutingMacro;
+  }, [isExecutingMacro]);
 
   const stopMacro = useCallback(() => {
     macroControllerRef.current?.stop();
@@ -287,6 +335,7 @@ export function useVoiceCommands(
   const handleTranscript = useCallback((text: string) => {
     setLastError(null);
     setLastClarify(null);
+    setLastSuccess(null);
     setLastCommand(null);
 
     const normalizedText = normalize(text);
@@ -374,6 +423,71 @@ export function useVoiceCommands(
         return;
       }
 
+      const macroControl = parseMacroControlCommand(text);
+      if (macroControl === 'ENABLE_AUTO_PLAY') {
+        setAutoPlayMacro(true);
+        setLastSuccess('AUTO_PLAY_MACRO -> enabled');
+        return;
+      }
+      if (macroControl === 'DISABLE_AUTO_PLAY') {
+        setAutoPlayMacro(false);
+        setLastSuccess('AUTO_PLAY_MACRO -> disabled');
+        return;
+      }
+
+      if (
+        macroControl &&
+        (isMacroModeRef.current || isExecutingMacroRef.current)
+      ) {
+        const controller = macroControllerRef.current;
+        switch (macroControl) {
+          case 'NEXT_STEP':
+            if (!controller || !isExecutingMacroRef.current) {
+              setLastError('No active macro execution for "next step".');
+              return;
+            }
+            controller.nextStep().catch((err) => {
+              setLastError(
+                err instanceof Error
+                  ? err.message
+                  : 'Failed to execute next macro step',
+              );
+            });
+            setLastSuccess('MACRO_CONTROL -> next step');
+            return;
+          case 'PLAY_MACRO':
+            if (!controller || !isExecutingMacroRef.current) {
+              setLastError('No active macro execution to resume.');
+              return;
+            }
+            controller.play().catch((err) => {
+              setLastError(
+                err instanceof Error
+                  ? err.message
+                  : 'Failed to resume macro execution',
+              );
+            });
+            setLastSuccess('MACRO_CONTROL -> play/resume');
+            return;
+          case 'STOP_EXECUTION':
+            if (controller && isExecutingMacroRef.current) {
+              controller.stop();
+              setLastSuccess('MACRO_CONTROL -> stop');
+            } else if (isMacroModeRef.current) {
+              isMacroModeRef.current = false;
+              setIsMacroMode(false);
+              setActiveMacro(null);
+              window.dispatchEvent(
+                new CustomEvent('smelter:voice:macro-mode-ended'),
+              );
+              setLastSuccess('MACRO_MODE -> ended');
+            } else {
+              setLastError('No active macro execution to stop.');
+            }
+            return;
+        }
+      }
+
       if (isMacroModeRef.current) {
         if (END_MACRO_PATTERN.test(text.toLowerCase())) {
           isMacroModeRef.current = false;
@@ -394,6 +508,7 @@ export function useVoiceCommands(
           setIsMacroMode(false);
           setActiveMacro(matchedMacro);
           setIsExecutingMacro(true);
+          isExecutingMacroRef.current = true;
           setMacroExecutionStatus('idle');
 
           const callbacks: MacroExecutionCallbacks = {
@@ -414,6 +529,7 @@ export function useVoiceCommands(
             onMacroComplete: (macro) => {
               macroControllerRef.current = null;
               setIsExecutingMacro(false);
+              isExecutingMacroRef.current = false;
               setMacroExecutionStatus('completed');
               setActiveMacro(null);
               window.dispatchEvent(
@@ -425,6 +541,7 @@ export function useVoiceCommands(
             onMacroStopped: () => {
               macroControllerRef.current = null;
               setIsExecutingMacro(false);
+              isExecutingMacroRef.current = false;
               setMacroExecutionStatus('stopped');
               setActiveMacro(null);
               window.dispatchEvent(
@@ -437,6 +554,7 @@ export function useVoiceCommands(
             onError: (error, step, index) => {
               macroControllerRef.current = null;
               setIsExecutingMacro(false);
+              isExecutingMacroRef.current = false;
               setMacroExecutionStatus('error');
               setActiveMacro(null);
               setLastError(
@@ -464,6 +582,7 @@ export function useVoiceCommands(
           controller.start().catch((err) => {
             macroControllerRef.current = null;
             setIsExecutingMacro(false);
+            isExecutingMacroRef.current = false;
             setMacroExecutionStatus('error');
             setActiveMacro(null);
             setLastError(
@@ -520,6 +639,7 @@ export function useVoiceCommands(
     lastCommand,
     lastError,
     lastClarify,
+    lastSuccess,
     lastTranscript,
     lastNormalizedText,
     isTypingMode,

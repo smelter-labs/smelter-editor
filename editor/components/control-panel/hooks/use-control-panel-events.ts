@@ -1139,7 +1139,9 @@ export function useControlPanelEvents({
   }, [changeLayout]);
 
   useEffect(() => {
-    const onSetSwapDuration = async (e: CustomEvent<{ durationMs: number }>) => {
+    const onSetSwapDuration = async (
+      e: CustomEvent<{ durationMs: number }>,
+    ) => {
       try {
         await updateRoom(roomId, { swapDurationMs: e.detail.durationMs });
         await handleRefreshState();
@@ -1163,7 +1165,9 @@ export function useControlPanelEvents({
       e: CustomEvent<{ durationMs: number }>,
     ) => {
       try {
-        await updateRoom(roomId, { swapFadeOutDurationMs: e.detail.durationMs });
+        await updateRoom(roomId, {
+          swapFadeOutDurationMs: e.detail.durationMs,
+        });
         await handleRefreshState();
       } catch (err) {
         console.error('Voice: failed to set swap fade out duration', err);

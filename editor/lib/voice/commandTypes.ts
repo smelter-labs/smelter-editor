@@ -430,13 +430,19 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
 
     case 'SET_SWAP_FADE_IN_DURATION':
       if (typeof c.durationMs === 'number') {
-        return { intent: 'SET_SWAP_FADE_IN_DURATION', durationMs: c.durationMs };
+        return {
+          intent: 'SET_SWAP_FADE_IN_DURATION',
+          durationMs: c.durationMs,
+        };
       }
       return null;
 
     case 'SET_SWAP_FADE_OUT_DURATION':
       if (typeof c.durationMs === 'number') {
-        return { intent: 'SET_SWAP_FADE_OUT_DURATION', durationMs: c.durationMs };
+        return {
+          intent: 'SET_SWAP_FADE_OUT_DURATION',
+          durationMs: c.durationMs,
+        };
       }
       return null;
 

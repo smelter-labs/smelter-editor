@@ -87,6 +87,7 @@ export function SpeechToTextWithCommands() {
     lastCommand,
     lastError,
     lastClarify,
+    lastSuccess,
     lastTranscript,
     lastNormalizedText,
     isTypingMode,
@@ -490,6 +491,10 @@ export function SpeechToTextWithCommands() {
                 ` → input ${lastCommand.inputIndex} ${lastCommand.direction.toLowerCase()}${lastCommand.steps && lastCommand.steps > 1 ? ` by ${lastCommand.steps}` : ''}`}
               {lastCommand.intent === 'START_ROOM' && ' → creating room...'}
             </p>
+          )}
+
+          {lastSuccess && (
+            <p className='text-green-400 text-sm mb-2'>✓ {lastSuccess}</p>
           )}
 
           <div className='flex gap-2 mb-3'>
