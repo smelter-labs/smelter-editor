@@ -145,12 +145,7 @@
   border: 2px dashed #3b82f6;
 }
 
-.react-grid-item > .react-resizable-handle {
-  opacity: 0;
-  transition: opacity 0.2s ease;
-}
-
-/* Fallback for nested handle structure used by react-grid-layout v2. */
+/* react-grid-layout v2 renders handles nested via react-resizable. */
 .react-grid-item .react-resizable-handle {
   position: absolute;
   width: 22px;
@@ -236,19 +231,9 @@
   );
 }
 
-.react-grid-item:hover > .react-resizable-handle {
-  opacity: 0.9;
-  transform: scale(1);
-}
-
 .react-grid-item:hover .react-resizable-handle {
   opacity: 0.9;
   transform: scale(1);
-}
-
-.react-grid-item > .react-resizable-handle:hover,
-.react-grid-item > .react-resizable-handle:active {
-  opacity: 1;
 }
 
 .react-grid-item .react-resizable-handle:hover,
@@ -256,11 +241,6 @@
   opacity: 1;
   border-color: rgba(125, 211, 252, 0.95);
   background: rgba(15, 23, 42, 0.92);
-  transform: scale(1);
-}
-
-.react-grid-item.react-resizable-resizing > .react-resizable-handle {
-  opacity: 1;
   transform: scale(1);
 }
 
