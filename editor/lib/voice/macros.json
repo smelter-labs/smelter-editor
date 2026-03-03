@@ -166,7 +166,7 @@
           "action": "ADD_INPUT",
           "params": {
             "inputType": "text",
-            "text": "A long time ago\nin a galaxy far, far away..."
+            "text": "A long time ago\nin a galaxy far, far away...\n"
           },
           "delayAfterMs": 2000
         },
@@ -182,7 +182,7 @@
           "action": "SET_TEXT_SCROLL_SPEED",
           "params": {
             "inputIndex": 3,
-            "scrollSpeed": 80
+            "scrollSpeed": 160
           },
           "delayAfterMs": 1500
         },
@@ -201,15 +201,6 @@
           },
           "delayAfterMs": 1500
         },
-
-        {
-          "action": "ADD_SHADER",
-          "params": {
-            "inputIndex": 3,
-            "shader": "alpha-stroke"
-          },
-          "delayAfterMs": 1500
-        },
         {
           "action": "ADD_SHADER",
           "params": {
@@ -217,7 +208,16 @@
             "shader": "perspective"
           },
           "delayAfterMs": 1500
+        },
+        {
+          "action": "ADD_SHADER",
+          "params": {
+            "inputIndex": 3,
+            "shader": "alpha-stroke"
+          },
+          "delayAfterMs": 1500
         }
+ 
 
       ]
     },

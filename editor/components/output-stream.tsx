@@ -242,15 +242,12 @@ export default function OutputStream({
   const slider =
     'h-1.5 rounded-none bg-gray-300 dark:bg-neutral-800 appearance-none transition w-full accent-neutral-400';
 
-  const maxWidth = isVertical ? 600 : 1920;
-  const maxHeight = isVertical ? 1080 : 1080;
-
   return (
     <div
       className='relative bg-black rounded-none overflow-hidden border-[#2a2a2a] border-4'
       style={{
         aspectRatio,
-        maxWidth,
+        maxWidth: '100%',
         maxHeight: '100%',
         width: '100%',
         margin: isVertical ? '0 auto' : undefined,
