@@ -66,6 +66,15 @@ import { loadLastWhipInputId } from './whip-input/utils/whip-storage';
 import { ControlPanelProvider } from './contexts/control-panel-context';
 import { WhipConnectionsProvider } from './contexts/whip-connections-context';
 import {
+  useAutoPlayMacroSetting,
+  useFeedbackPositionSetting,
+  useFeedbackEnabledSetting,
+  useFeedbackSizeSetting,
+  useFeedbackDurationSetting,
+  useDefaultOrientationSetting,
+} from '@/lib/voice/macroSettings';
+import { FeedbackPositionPicker } from '@/components/voice-action-feedback/FeedbackPositionPicker';
+import {
   BlockClipPropertiesPanel,
   type SelectedTimelineClip,
 } from './components/BlockClipPropertiesPanel';
@@ -432,7 +441,7 @@ export default function ControlPanel({
   );
 }
 
-type ModalId = 'quickActions' | 'layouts' | 'transitions';
+type ModalId = 'quickActions' | 'layouts' | 'settings';
 
 function SettingsBar({
   changeLayout,
@@ -462,6 +471,13 @@ function SettingsBar({
   const [isImporting, setIsImporting] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showLoadModal, setShowLoadModal] = useState(false);
+  const [autoPlayMacro, setAutoPlayMacro] = useAutoPlayMacroSetting();
+  const [feedbackPosition, setFeedbackPosition] = useFeedbackPositionSetting();
+  const [feedbackEnabled, setFeedbackEnabled] = useFeedbackEnabledSetting();
+  const [feedbackSize, setFeedbackSize] = useFeedbackSizeSetting();
+  const [feedbackDuration, setFeedbackDuration] = useFeedbackDurationSetting();
+  const [defaultOrientation, setDefaultOrientation] =
+    useDefaultOrientationSetting();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const buildConfig = useCallback(() => {
@@ -726,8 +742,8 @@ function SettingsBar({
         icon: <Grid3X3 className='w-4 h-4' />,
       },
       {
-        id: 'transitions',
-        label: 'Transitions',
+        id: 'settings',
+        label: 'Settings',
         icon: <SlidersHorizontal className='w-4 h-4' />,
       },
     ];
@@ -817,46 +833,119 @@ function SettingsBar({
       </Dialog>
 
       <Dialog
-        open={openModal === 'transitions'}
+        open={openModal === 'settings'}
         onOpenChange={(open) => !open && setOpenModal(null)}>
-        <DialogContent>
+        <DialogContent className='max-w-2xl'>
           <DialogHeader>
-            <DialogTitle>Transitions</DialogTitle>
+            <DialogTitle>Settings</DialogTitle>
           </DialogHeader>
-          <TransitionSettings
-            swapDurationMs={roomState.swapDurationMs ?? 500}
-            onSwapDurationChange={async (value) => {
-              await updateRoomAction(roomId, { swapDurationMs: value });
-              await handleRefreshState();
-            }}
-            swapOutgoingEnabled={roomState.swapOutgoingEnabled ?? true}
-            onSwapOutgoingEnabledChange={async (value) => {
-              await updateRoomAction(roomId, { swapOutgoingEnabled: value });
-              await handleRefreshState();
-            }}
-            swapFadeInDurationMs={roomState.swapFadeInDurationMs ?? 500}
-            onSwapFadeInDurationChange={async (value) => {
-              await updateRoomAction(roomId, { swapFadeInDurationMs: value });
-              await handleRefreshState();
-            }}
-            swapFadeOutDurationMs={roomState.swapFadeOutDurationMs ?? 500}
-            onSwapFadeOutDurationChange={async (value) => {
-              await updateRoomAction(roomId, { swapFadeOutDurationMs: value });
-              await handleRefreshState();
-            }}
-            newsStripFadeDuringSwap={roomState.newsStripFadeDuringSwap ?? true}
-            onNewsStripFadeDuringSwapChange={async (value) => {
-              await updateRoomAction(roomId, {
-                newsStripFadeDuringSwap: value,
-              });
-              await handleRefreshState();
-            }}
-            newsStripEnabled={roomState.newsStripEnabled ?? true}
-            onNewsStripEnabledChange={async (value) => {
-              await updateRoomAction(roomId, { newsStripEnabled: value });
-              await handleRefreshState();
-            }}
-          />
+          <div className='grid grid-cols-2 gap-6'>
+            <section className='space-y-2'>
+              <h4 className='text-sm font-medium text-white'>
+                Transition Settings
+              </h4>
+              <TransitionSettings
+                swapDurationMs={roomState.swapDurationMs ?? 500}
+                onSwapDurationChange={async (value) => {
+                  await updateRoomAction(roomId, { swapDurationMs: value });
+                  await handleRefreshState();
+                }}
+                swapOutgoingEnabled={roomState.swapOutgoingEnabled ?? true}
+                onSwapOutgoingEnabledChange={async (value) => {
+                  await updateRoomAction(roomId, {
+                    swapOutgoingEnabled: value,
+                  });
+                  await handleRefreshState();
+                }}
+                swapFadeInDurationMs={roomState.swapFadeInDurationMs ?? 500}
+                onSwapFadeInDurationChange={async (value) => {
+                  await updateRoomAction(roomId, {
+                    swapFadeInDurationMs: value,
+                  });
+                  await handleRefreshState();
+                }}
+                swapFadeOutDurationMs={roomState.swapFadeOutDurationMs ?? 500}
+                onSwapFadeOutDurationChange={async (value) => {
+                  await updateRoomAction(roomId, {
+                    swapFadeOutDurationMs: value,
+                  });
+                  await handleRefreshState();
+                }}
+                newsStripFadeDuringSwap={
+                  roomState.newsStripFadeDuringSwap ?? true
+                }
+                onNewsStripFadeDuringSwapChange={async (value) => {
+                  await updateRoomAction(roomId, {
+                    newsStripFadeDuringSwap: value,
+                  });
+                  await handleRefreshState();
+                }}
+                newsStripEnabled={roomState.newsStripEnabled ?? true}
+                onNewsStripEnabledChange={async (value) => {
+                  await updateRoomAction(roomId, { newsStripEnabled: value });
+                  await handleRefreshState();
+                }}
+              />
+            </section>
+            <div className='space-y-4'>
+              <section className='space-y-2 px-1'>
+                <h4 className='text-sm font-medium text-white'>
+                  Macros Settings
+                </h4>
+                <label className='flex items-center gap-2 cursor-pointer'>
+                  <input
+                    type='checkbox'
+                    checked={autoPlayMacro}
+                    onChange={(e) => {
+                      setAutoPlayMacro(e.target.checked);
+                    }}
+                    className='accent-white'
+                  />
+                  <span className='text-xs text-neutral-400'>
+                    Auto Play Macro
+                  </span>
+                </label>
+              </section>
+              <div className='h-px bg-neutral-800' />
+              <section className='space-y-2 px-1'>
+                <h4 className='text-sm font-medium text-white'>
+                  Input Defaults
+                </h4>
+                <div className='flex items-center justify-between'>
+                  <span className='text-xs text-neutral-400'>
+                    Default Orientation
+                  </span>
+                  <select
+                    className='bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1 rounded'
+                    value={defaultOrientation}
+                    onChange={(e) =>
+                      setDefaultOrientation(
+                        e.target.value as 'horizontal' | 'vertical',
+                      )
+                    }>
+                    <option value='horizontal'>Horizontal</option>
+                    <option value='vertical'>Vertical</option>
+                  </select>
+                </div>
+              </section>
+              <div className='h-px bg-neutral-800' />
+              <section className='space-y-2 px-1'>
+                <h4 className='text-sm font-medium text-white'>
+                  Toast Notifications
+                </h4>
+                <FeedbackPositionPicker
+                  enabled={feedbackEnabled}
+                  onEnabledChange={setFeedbackEnabled}
+                  position={feedbackPosition}
+                  onPositionChange={setFeedbackPosition}
+                  size={feedbackSize}
+                  onSizeChange={setFeedbackSize}
+                  duration={feedbackDuration}
+                  onDurationChange={setFeedbackDuration}
+                />
+              </section>
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

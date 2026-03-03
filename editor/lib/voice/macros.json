@@ -179,6 +179,14 @@
           "delayAfterMs": 1500
         },
         {
+          "action": "SET_TEXT_SCROLL_SPEED",
+          "params": {
+            "inputIndex": 3,
+            "scrollSpeed": 80
+          },
+          "delayAfterMs": 1500
+        },
+        {
           "action": "ADD_SHADER",
           "params": {
             "inputIndex": 3,
@@ -211,6 +219,168 @@
           "delayAfterMs": 1500
         }
 
+      ]
+    },
+    {
+      "id": "clean-stage",
+      "triggers": [
+        "clean stage",
+        "hide all sources",
+        "hide everything now"
+      ],
+      "description": "Hides all inputs without removing them",
+      "steps": [
+        {
+          "action": "HIDE_ALL_INPUTS",
+          "delayAfterMs": 0
+        }
+      ]
+    },
+    {
+      "id": "hard-reset-stage",
+      "triggers": [
+        "hard reset stage",
+        "delete all sources",
+        "wipe all inputs"
+      ],
+      "description": "Removes all inputs and clears timeline references",
+      "steps": [
+        {
+          "action": "REMOVE_ALL_INPUTS",
+          "delayAfterMs": 0
+        }
+      ]
+    },
+    {
+      "id": "fast-transition-mode",
+      "triggers": [
+        "fast transition mode",
+        "quick cuts mode",
+        "speed up transitions"
+      ],
+      "description": "Applies short transition timings for snappy scene changes",
+      "steps": [
+        {
+          "action": "SET_SWAP_DURATION",
+          "params": {
+            "durationMs": 250
+          },
+          "delayAfterMs": 200
+        },
+        {
+          "action": "SET_SWAP_OUTGOING_ENABLED",
+          "params": {
+            "enabled": true
+          },
+          "delayAfterMs": 200
+        },
+        {
+          "action": "SET_SWAP_FADE_OUT_DURATION",
+          "params": {
+            "durationMs": 150
+          },
+          "delayAfterMs": 200
+        },
+        {
+          "action": "SET_SWAP_FADE_IN_DURATION",
+          "params": {
+            "durationMs": 200
+          },
+          "delayAfterMs": 0
+        }
+      ]
+    },
+    {
+      "id": "cinematic-transition-mode",
+      "triggers": [
+        "cinematic transition mode",
+        "slow transition mode",
+        "smooth fades mode"
+      ],
+      "description": "Applies slower fades for cinematic transitions",
+      "steps": [
+        {
+          "action": "SET_SWAP_DURATION",
+          "params": {
+            "durationMs": 900
+          },
+          "delayAfterMs": 200
+        },
+        {
+          "action": "SET_SWAP_OUTGOING_ENABLED",
+          "params": {
+            "enabled": true
+          },
+          "delayAfterMs": 200
+        },
+        {
+          "action": "SET_SWAP_FADE_OUT_DURATION",
+          "params": {
+            "durationMs": 650
+          },
+          "delayAfterMs": 200
+        },
+        {
+          "action": "SET_SWAP_FADE_IN_DURATION",
+          "params": {
+            "durationMs": 700
+          },
+          "delayAfterMs": 0
+        }
+      ]
+    },
+    {
+      "id": "news-strip-focus",
+      "triggers": [
+        "news strip mode",
+        "enable ticker mode",
+        "focus on news strip"
+      ],
+      "description": "Enables news strip and fading behavior during swaps",
+      "steps": [
+        {
+          "action": "SET_NEWS_STRIP_ENABLED",
+          "params": {
+            "enabled": true
+          },
+          "delayAfterMs": 150
+        },
+        {
+          "action": "SET_NEWS_STRIP_FADE_DURING_SWAP",
+          "params": {
+            "enabled": true
+          },
+          "delayAfterMs": 0
+        }
+      ]
+    },
+    {
+      "id": "recording-on-air",
+      "triggers": [
+        "recording on air",
+        "start show recording",
+        "go live recording"
+      ],
+      "description": "Starts recording and switches to picture-in-picture commentary layout",
+      "steps": [
+        {
+          "action": "SET_LAYOUT",
+          "params": {
+            "layout": "picture-in-picture"
+          },
+          "delayAfterMs": 300
+        },
+        {
+          "action": "SET_SWAP_DURATION",
+          "params": {
+            "durationMs": 500
+          },
+          "delayAfterMs": 200
+        },
+        {
+          "action": "START_RECORDING",
+          "delayAfterMs": 0
+        }
       ]
     }
   ]

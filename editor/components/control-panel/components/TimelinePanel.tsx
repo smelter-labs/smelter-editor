@@ -279,6 +279,56 @@ export function TimelinePanel({
     };
   }, [updateClipSettings]);
 
+  // Listen for input-level clip settings updates (e.g. from voice macros)
+  useEffect(() => {
+    const handler = (
+      e: CustomEvent<{
+        inputId: string;
+        patch: Partial<import('../hooks/use-timeline-state').BlockSettings>;
+      }>,
+    ) => {
+      const { inputId, patch } = e.detail;
+      for (const track of state.tracks) {
+        for (const clip of track.clips) {
+          if (clip.inputId === inputId) {
+            updateClipSettings(track.id, clip.id, patch);
+          }
+        }
+      }
+    };
+    window.addEventListener(
+      'smelter:timeline:update-clip-settings-for-input',
+      handler as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:timeline:update-clip-settings-for-input',
+        handler as unknown as EventListener,
+      );
+    };
+  }, [state.tracks, updateClipSettings]);
+
+  // Listen for bulk hard-deletes and purge all related clips from timeline.
+  useEffect(() => {
+    const handler = (e: CustomEvent<{ inputIds?: string[] }>) => {
+      const ids = e.detail?.inputIds ?? [];
+      const uniqueIds = [...new Set(ids.filter(Boolean))];
+      for (const inputId of uniqueIds) {
+        purgeInputId(inputId);
+      }
+    };
+    window.addEventListener(
+      'smelter:timeline:purge-input-ids',
+      handler as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:timeline:purge-input-ids',
+        handler as unknown as EventListener,
+      );
+    };
+  }, [purgeInputId]);
+
   // Listen for WHIP input connections to replace placeholder inputIds
   useEffect(() => {
     const handler = (e: Event) => {
@@ -289,6 +339,62 @@ export function TimelinePanel({
     return () =>
       window.removeEventListener('smelter:timeline-input-replaced', handler);
   }, [replaceInputId]);
+
+  // Inward event: external code (voice, control-panel) can request a clip selection
+  useEffect(() => {
+    const handler = (
+      e: CustomEvent<{
+        inputId?: string;
+        trackIndex?: number;
+        trackId?: string;
+        clipId?: string;
+      } | null>,
+    ) => {
+      const detail = e.detail;
+      if (!detail) {
+        setSelectedClipId(null);
+        return;
+      }
+
+      if (detail.trackId && detail.clipId) {
+        setSelectedClipId({ trackId: detail.trackId, clipId: detail.clipId });
+        return;
+      }
+
+      if (detail.trackIndex != null) {
+        const idx = detail.trackIndex - 1;
+        if (idx < 0 || idx >= state.tracks.length) return;
+        const track = state.tracks[idx];
+        if (track.clips.length > 0) {
+          setSelectedClipId({ trackId: track.id, clipId: track.clips[0].id });
+          setPlayhead(track.clips[0].startMs);
+        }
+        return;
+      }
+
+      if (detail.inputId) {
+        for (const track of state.tracks) {
+          for (const clip of track.clips) {
+            if (clip.inputId === detail.inputId) {
+              setSelectedClipId({ trackId: track.id, clipId: clip.id });
+              setPlayhead(clip.startMs);
+              return;
+            }
+          }
+        }
+      }
+    };
+    window.addEventListener(
+      'smelter:timeline:select-clip',
+      handler as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:timeline:select-clip',
+        handler as unknown as EventListener,
+      );
+    };
+  }, [state.tracks, setPlayhead]);
 
   const inputColorMap = useMemo(() => buildInputColorMap(inputs), [inputs]);
 
@@ -677,6 +783,64 @@ export function TimelinePanel({
     },
     [selectedInputId, selectedClipId, state.tracks, setPlayhead],
   );
+
+  // ── Voice: select track / remove track / next-prev block ──────────
+
+  useEffect(() => {
+    const onSelectTrack = (e: CustomEvent<{ trackIndex: number }>) => {
+      const idx = e.detail.trackIndex - 1;
+      if (idx < 0 || idx >= state.tracks.length) {
+        console.warn(`Voice: track ${e.detail.trackIndex} does not exist`);
+        return;
+      }
+      const track = state.tracks[idx];
+      if (track.clips.length > 0) {
+        setSelectedClipId({ trackId: track.id, clipId: track.clips[0].id });
+        setPlayhead(track.clips[0].startMs);
+        window.dispatchEvent(
+          new CustomEvent('smelter:inputs:select', {
+            detail: { inputId: track.clips[0].inputId },
+          }),
+        );
+      }
+    };
+
+    const onRemoveTrack = (e: CustomEvent<{ trackIndex: number }>) => {
+      const idx = e.detail.trackIndex - 1;
+      if (idx < 0 || idx >= state.tracks.length) {
+        console.warn(`Voice: track ${e.detail.trackIndex} does not exist`);
+        return;
+      }
+      deleteTrack(state.tracks[idx].id);
+    };
+
+    const onNextBlock = () => tabToNextClip(false);
+    const onPrevBlock = () => tabToNextClip(true);
+
+    window.addEventListener(
+      'smelter:voice:select-track',
+      onSelectTrack as unknown as EventListener,
+    );
+    window.addEventListener(
+      'smelter:voice:remove-track',
+      onRemoveTrack as unknown as EventListener,
+    );
+    window.addEventListener('smelter:voice:next-block', onNextBlock);
+    window.addEventListener('smelter:voice:prev-block', onPrevBlock);
+
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:select-track',
+        onSelectTrack as unknown as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:voice:remove-track',
+        onRemoveTrack as unknown as EventListener,
+      );
+      window.removeEventListener('smelter:voice:next-block', onNextBlock);
+      window.removeEventListener('smelter:voice:prev-block', onPrevBlock);
+    };
+  }, [state.tracks, setPlayhead, tabToNextClip, deleteTrack]);
 
   // ── Keyboard shortcuts ──────────────────────────────
 
@@ -1113,7 +1277,7 @@ export function TimelinePanel({
   const handleDelete = useCallback(() => {
     if (contextMenu) {
       window.dispatchEvent(
-        new CustomEvent('smelter:inputs:remove', {
+        new CustomEvent('smelter:inputs:hide', {
           detail: { inputId: contextMenu.inputId },
         }),
       );
@@ -1130,8 +1294,8 @@ export function TimelinePanel({
     );
     if (!confirmed) return;
     closeContextMenu();
-    purgeInputId(contextMenu.inputId);
     await removeInput(roomId, contextMenu.inputId);
+    purgeInputId(contextMenu.inputId);
     await refreshState();
   }, [
     contextMenu,

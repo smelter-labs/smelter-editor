@@ -1,15 +1,18 @@
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import type { InputWrapper } from './use-control-panel-state';
 import { useControlPanelInputOrderEvents } from './use-control-panel-input-order-events';
 import type { Input, AvailableShader } from '@/app/actions/actions';
 import {
   removeInput,
   hideInput,
+  updateRoom,
   addTwitchInput,
   addMP4Input,
   addImageInput,
   addTextInput,
   addCameraInput,
+  startRecording,
+  stopRecording,
   updateInput,
   getTwitchSuggestions,
 } from '@/app/actions/actions';
@@ -24,6 +27,8 @@ import {
 import { startPublish } from '../whip-input/utils/whip-publisher';
 import { startScreensharePublish } from '../whip-input/utils/screenshare-publisher';
 import type { InputType } from '@/lib/voice/commandTypes';
+import { emitActionFeedback } from '@/lib/voice/feedbackEvents';
+import { getDefaultOrientationSetting } from '@/lib/voice/macroSettings';
 import { LAYOUT_CONFIGS, type Layout } from '@/components/layout-selector';
 
 type UseControlPanelEventsProps = {
@@ -55,6 +60,58 @@ type UseControlPanelEventsProps = {
   currentLayout: Layout;
   changeLayout: (layout: Layout) => void;
 };
+
+type ApplyTextColorFromVoiceParams = {
+  color: string;
+  inputIndex?: number;
+  inputs: Input[];
+  selectedInputId: string | null;
+  roomId: string;
+  handleRefreshState: () => Promise<void>;
+  dispatchEvent: (event: Event) => boolean;
+  updateInputFn: typeof updateInput;
+};
+
+export async function applyTextColorFromVoice({
+  color,
+  inputIndex,
+  inputs,
+  selectedInputId,
+  roomId,
+  handleRefreshState,
+  dispatchEvent,
+  updateInputFn,
+}: ApplyTextColorFromVoiceParams): Promise<boolean> {
+  const visibleInputs = inputs.filter((i) => !i.hidden);
+
+  let input;
+  if (inputIndex !== undefined) {
+    input = visibleInputs[inputIndex - 1];
+  } else if (selectedInputId) {
+    input = inputs.find((i: Input) => i.inputId === selectedInputId);
+  }
+
+  if (!input || input.type !== 'text-input') {
+    return false;
+  }
+
+  await updateInputFn(roomId, input.inputId, {
+    textColor: color,
+    volume: input.volume,
+  });
+
+  dispatchEvent(
+    new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
+      detail: {
+        inputId: input.inputId,
+        patch: { textColor: color },
+      },
+    }),
+  );
+
+  await handleRefreshState();
+  return true;
+}
 
 export function useControlPanelEvents({
   inputsRef,
@@ -88,6 +145,63 @@ export function useControlPanelEvents({
     setListVersion,
     updateOrder,
   });
+
+  const emitMacroStepComplete = (requestId?: string, error?: unknown) => {
+    if (!requestId) return;
+    window.dispatchEvent(
+      new CustomEvent('smelter:voice:macro-step-complete', {
+        detail: {
+          requestId,
+          error:
+            error instanceof Error
+              ? error.message
+              : typeof error === 'string'
+                ? error
+                : undefined,
+        },
+      }),
+    );
+  };
+
+  const cleanupWhipIfNeeded = useCallback(
+    (inputId: string) => {
+      const session = loadWhipSession();
+      const isSavedInSession =
+        (session && session.roomId === roomId && session.inputId === inputId) ||
+        loadLastWhipInputId(roomId) === inputId;
+      const isWhipCandidate = inputId.includes('whip') || isSavedInSession;
+      if (!isWhipCandidate) return;
+
+      try {
+        stopCameraAndConnection(cameraPcRef, cameraStreamRef);
+        stopCameraAndConnection(screensharePcRef, screenshareStreamRef);
+      } catch {}
+      try {
+        clearWhipSessionFor(roomId, inputId);
+      } catch {}
+      if (activeCameraInputId === inputId) {
+        setActiveCameraInputId(null);
+        setIsCameraActive(false);
+      }
+      if (activeScreenshareInputId === inputId) {
+        setActiveScreenshareInputId(null);
+        setIsScreenshareActive(false);
+      }
+    },
+    [
+      roomId,
+      cameraPcRef,
+      cameraStreamRef,
+      screensharePcRef,
+      screenshareStreamRef,
+      activeCameraInputId,
+      activeScreenshareInputId,
+      setActiveCameraInputId,
+      setIsCameraActive,
+      setActiveScreenshareInputId,
+      setIsScreenshareActive,
+    ],
+  );
 
   useEffect(() => {
     const onSelect = (e: CustomEvent<{ inputId: string }>) => {
@@ -130,22 +244,22 @@ export function useControlPanelEvents({
   }, [roomId, handleRefreshState, inputsRef]);
 
   useEffect(() => {
-    const onRemove = async (e: CustomEvent<{ inputId: string }>) => {
-      const { inputId } = e.detail;
-      if (activeCameraInputId === inputId) {
-        stopCameraAndConnection(cameraPcRef, cameraStreamRef);
-        setActiveCameraInputId(null);
-        setIsCameraActive(false);
-        clearWhipSessionFor(roomId, inputId);
+    const onRemove = async (
+      e: CustomEvent<{ inputId: string; requestId?: string }>,
+    ) => {
+      const { inputId, requestId } = e.detail;
+      try {
+        cleanupWhipIfNeeded(inputId);
+        try {
+          await hideInput(roomId, inputId);
+        } catch {}
+        await removeInput(roomId, inputId);
+        await handleRefreshState();
+        emitMacroStepComplete(requestId);
+      } catch (err) {
+        emitMacroStepComplete(requestId, err);
+        console.error('Failed to remove input', err);
       }
-      if (activeScreenshareInputId === inputId) {
-        stopCameraAndConnection(screensharePcRef, screenshareStreamRef);
-        setActiveScreenshareInputId(null);
-        setIsScreenshareActive(false);
-        clearWhipSessionFor(roomId, inputId);
-      }
-      await hideInput(roomId, inputId);
-      await handleRefreshState();
     };
     window.addEventListener(
       'smelter:inputs:remove',
@@ -157,20 +271,197 @@ export function useControlPanelEvents({
         onRemove as unknown as EventListener,
       );
     };
-  }, [
-    roomId,
-    handleRefreshState,
-    activeCameraInputId,
-    activeScreenshareInputId,
-    cameraPcRef,
-    cameraStreamRef,
-    screensharePcRef,
-    screenshareStreamRef,
-    setActiveCameraInputId,
-    setIsCameraActive,
-    setActiveScreenshareInputId,
-    setIsScreenshareActive,
-  ]);
+  }, [roomId, handleRefreshState, cleanupWhipIfNeeded]);
+
+  useEffect(() => {
+    const onHide = async (e: CustomEvent<{ inputId: string }>) => {
+      const { inputId } = e.detail;
+      await hideInput(roomId, inputId);
+      await handleRefreshState();
+    };
+    window.addEventListener(
+      'smelter:inputs:hide',
+      onHide as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:inputs:hide',
+        onHide as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState]);
+
+  useEffect(() => {
+    const onHideAllInputs = async (e: CustomEvent<{ requestId?: string }>) => {
+      const requestId = e.detail?.requestId;
+      try {
+        const currentInputs = [...(inputsRef.current || [])];
+        for (const input of currentInputs) {
+          try {
+            await hideInput(roomId, input.inputId);
+          } catch (err) {
+            console.warn('Macro: failed to hide input', {
+              inputId: input.inputId,
+              err,
+            });
+          }
+        }
+        await handleRefreshState();
+        emitMacroStepComplete(requestId);
+      } catch (err) {
+        emitMacroStepComplete(requestId, err);
+        console.error('Macro: failed to hide all inputs', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:hide-all-inputs',
+      onHideAllInputs as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:hide-all-inputs',
+        onHideAllInputs as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputsRef]);
+
+  useEffect(() => {
+    const onRemoveAllInputs = async (
+      e: CustomEvent<{ requestId?: string }>,
+    ) => {
+      const requestId = e.detail?.requestId;
+      try {
+        const currentInputs = [...(inputsRef.current || [])];
+        const failures: string[] = [];
+        const removedInputIds: string[] = [];
+        for (const input of currentInputs) {
+          cleanupWhipIfNeeded(input.inputId);
+          try {
+            try {
+              await hideInput(roomId, input.inputId);
+            } catch {}
+            await removeInput(roomId, input.inputId);
+            removedInputIds.push(input.inputId);
+          } catch (err) {
+            failures.push(input.inputId);
+            console.warn('Macro: failed to remove input', {
+              inputId: input.inputId,
+              err,
+            });
+          }
+        }
+        if (removedInputIds.length > 0) {
+          window.dispatchEvent(
+            new CustomEvent('smelter:timeline:purge-input-ids', {
+              detail: { inputIds: removedInputIds },
+            }),
+          );
+        }
+        await handleRefreshState();
+        if (failures.length > 0) {
+          throw new Error(`Failed to remove inputs: ${failures.join(', ')}`);
+        }
+        emitMacroStepComplete(requestId);
+      } catch (err) {
+        emitMacroStepComplete(requestId, err);
+        console.error('Macro: failed to remove all inputs', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:remove-all-inputs',
+      onRemoveAllInputs as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:remove-all-inputs',
+        onRemoveAllInputs as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputsRef, cleanupWhipIfNeeded]);
+
+  useEffect(() => {
+    const onRemoveInput = async (
+      e: CustomEvent<{ inputIndex: number; requestId?: string }>,
+    ) => {
+      const requestId = e.detail?.requestId;
+      try {
+        const { inputIndex } = e.detail;
+        const visibleInputs = (inputsRef.current || []).filter(
+          (i) => !i.hidden,
+        );
+        const idx = inputIndex - 1;
+        if (idx < 0 || idx >= visibleInputs.length) {
+          const error = new Error(`Voice: input ${inputIndex} does not exist`);
+          console.warn(error.message);
+          emitMacroStepComplete(requestId, error);
+          return;
+        }
+        const input = visibleInputs[idx];
+        cleanupWhipIfNeeded(input.inputId);
+        try {
+          await hideInput(roomId, input.inputId);
+        } catch {}
+        await removeInput(roomId, input.inputId);
+        await handleRefreshState();
+        emitMacroStepComplete(requestId);
+      } catch (err) {
+        emitMacroStepComplete(requestId, err);
+        console.error('Voice: failed to remove input', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:remove-input',
+      onRemoveInput as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:remove-input',
+        onRemoveInput as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputsRef, cleanupWhipIfNeeded]);
+
+  useEffect(() => {
+    const onMoveByIndex = (
+      e: CustomEvent<{ inputIndex: number; direction: string; steps: number }>,
+    ) => {
+      try {
+        const { inputIndex, direction, steps } = e.detail;
+        const visibleInputs = (inputsRef.current || []).filter(
+          (i) => !i.hidden,
+        );
+        const idx = inputIndex - 1;
+        if (idx < 0 || idx >= visibleInputs.length) {
+          console.warn(`Voice: input ${inputIndex} does not exist`);
+          return;
+        }
+        const input = visibleInputs[idx];
+        for (let i = 0; i < steps; i++) {
+          window.dispatchEvent(
+            new CustomEvent('smelter:inputs:move', {
+              detail: { inputId: input.inputId, direction },
+            }),
+          );
+        }
+      } catch (err) {
+        console.error('Voice: failed to move input', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:move-input',
+      onMoveByIndex as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:move-input',
+        onMoveByIndex as unknown as EventListener,
+      );
+    };
+  }, [inputsRef]);
 
   useEffect(() => {
     const onAddInput = async (
@@ -182,39 +473,46 @@ export function useControlPanelEvents({
     ) => {
       try {
         const { inputType, mp4FileName, imageFileName } = e.detail;
+        let addedInputId: string | undefined;
         switch (inputType) {
           case 'stream': {
             const suggestions = await getTwitchSuggestions();
             const firstStream = suggestions?.twitch?.[0];
             if (firstStream?.streamId) {
-              await addTwitchInput(roomId, firstStream.streamId);
+              const res = await addTwitchInput(roomId, firstStream.streamId);
+              addedInputId = res?.inputId;
             } else {
               console.warn(
                 'Voice: no twitch streams available, using fallback',
               );
-              await addTwitchInput(roomId, 'shroud');
+              const res = await addTwitchInput(roomId, 'shroud');
+              addedInputId = res?.inputId;
             }
             break;
           }
           case 'mp4':
             if (mp4FileName) {
-              await addMP4Input(roomId, mp4FileName);
+              const res = await addMP4Input(roomId, mp4FileName);
+              addedInputId = res?.inputId;
             }
             break;
           case 'image':
             if (imageFileName) {
-              await addImageInput(roomId, imageFileName);
+              const res = await addImageInput(roomId, imageFileName);
+              addedInputId = res?.inputId;
             }
             break;
           case 'text': {
             const text = (e.detail as any).text ?? '';
             const textAlign = (e.detail as any).textAlign ?? 'center';
-            await addTextInput(roomId, text, textAlign);
+            const res = await addTextInput(roomId, text, textAlign);
+            addedInputId = res?.inputId;
             break;
           }
           case 'camera': {
             const cameraName = `Camera-${Date.now()}`;
             const cameraResponse = await addCameraInput(roomId, cameraName);
+            addedInputId = cameraResponse.inputId;
             setActiveCameraInputId(cameraResponse.inputId);
             setIsCameraActive(false);
             const onCameraDisconnected = () => {
@@ -243,6 +541,7 @@ export function useControlPanelEvents({
           case 'screenshare': {
             const screenName = `Screen-${Date.now()}`;
             const screenResponse = await addCameraInput(roomId, screenName);
+            addedInputId = screenResponse.inputId;
             setActiveScreenshareInputId(screenResponse.inputId);
             setIsScreenshareActive(false);
             const onScreenDisconnected = () => {
@@ -269,6 +568,17 @@ export function useControlPanelEvents({
             break;
           }
         }
+
+        if (addedInputId) {
+          const defaultOrientation = getDefaultOrientationSetting();
+          if (defaultOrientation === 'vertical') {
+            await updateInput(roomId, addedInputId, {
+              orientation: 'vertical',
+              volume: 1,
+            });
+          }
+        }
+
         await handleRefreshState();
       } catch (err) {
         console.error('Voice: failed to add input', err);
@@ -286,73 +596,6 @@ export function useControlPanelEvents({
       );
     };
   }, [roomId, handleRefreshState]);
-
-  useEffect(() => {
-    const onRemoveInput = async (e: CustomEvent<{ inputIndex: number }>) => {
-      try {
-        const { inputIndex } = e.detail;
-        const currentInputs = inputsRef.current || [];
-        const idx = inputIndex - 1;
-        if (idx < 0 || idx >= currentInputs.length) {
-          console.warn(`Voice: input ${inputIndex} does not exist`);
-          return;
-        }
-        const input = currentInputs[idx];
-        await hideInput(roomId, input.inputId);
-        await handleRefreshState();
-      } catch (err) {
-        console.error('Voice: failed to remove input', err);
-      }
-    };
-
-    window.addEventListener(
-      'smelter:voice:remove-input',
-      onRemoveInput as unknown as EventListener,
-    );
-    return () => {
-      window.removeEventListener(
-        'smelter:voice:remove-input',
-        onRemoveInput as unknown as EventListener,
-      );
-    };
-  }, [roomId, handleRefreshState, inputsRef]);
-
-  useEffect(() => {
-    const onMoveByIndex = (
-      e: CustomEvent<{ inputIndex: number; direction: string; steps: number }>,
-    ) => {
-      try {
-        const { inputIndex, direction, steps } = e.detail;
-        const currentInputs = inputsRef.current || [];
-        const idx = inputIndex - 1;
-        if (idx < 0 || idx >= currentInputs.length) {
-          console.warn(`Voice: input ${inputIndex} does not exist`);
-          return;
-        }
-        const input = currentInputs[idx];
-        for (let i = 0; i < steps; i++) {
-          window.dispatchEvent(
-            new CustomEvent('smelter:inputs:move', {
-              detail: { inputId: input.inputId, direction },
-            }),
-          );
-        }
-      } catch (err) {
-        console.error('Voice: failed to move input', err);
-      }
-    };
-
-    window.addEventListener(
-      'smelter:voice:move-input',
-      onMoveByIndex as unknown as EventListener,
-    );
-    return () => {
-      window.removeEventListener(
-        'smelter:voice:move-input',
-        onMoveByIndex as unknown as EventListener,
-      );
-    };
-  }, [inputsRef]);
 
   useEffect(() => {
     const hexToPackedInt = (hex: string): number => {
@@ -377,15 +620,16 @@ export function useControlPanelEvents({
       try {
         const { inputIndex, shader: shaderId, targetColor } = e.detail;
         const currentInputs = inputs || [];
+        const visibleInputs = currentInputs.filter((i) => !i.hidden);
 
         let input;
         if (inputIndex !== null) {
           const idx = inputIndex - 1;
-          if (idx < 0 || idx >= currentInputs.length) {
+          if (idx < 0 || idx >= visibleInputs.length) {
             console.warn(`Voice: input ${inputIndex} does not exist`);
             return;
           }
-          input = currentInputs[idx];
+          input = visibleInputs[idx];
         } else if (selectedInputId) {
           input = currentInputs.find((i) => i.inputId === selectedInputId);
           if (!input) {
@@ -429,10 +673,19 @@ export function useControlPanelEvents({
             };
           }),
         };
+        const updatedShaders = [...existingShaders, newShader];
         await updateInput(roomId, input.inputId, {
-          shaders: [...existingShaders, newShader],
+          shaders: updatedShaders,
           volume: input.volume,
         });
+        window.dispatchEvent(
+          new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
+            detail: {
+              inputId: input.inputId,
+              patch: { shaders: updatedShaders },
+            },
+          }),
+        );
         await handleRefreshState();
       } catch (err) {
         console.error('Voice: failed to add shader', err);
@@ -458,15 +711,16 @@ export function useControlPanelEvents({
       try {
         const { inputIndex, shader: shaderId } = e.detail;
         const currentInputs = inputs || [];
+        const visibleInputs = currentInputs.filter((i) => !i.hidden);
 
         let input;
         if (inputIndex !== null) {
           const idx = inputIndex - 1;
-          if (idx < 0 || idx >= currentInputs.length) {
+          if (idx < 0 || idx >= visibleInputs.length) {
             console.warn(`Voice: input ${inputIndex} does not exist`);
             return;
           }
-          input = currentInputs[idx];
+          input = visibleInputs[idx];
         } else if (selectedInputId) {
           input = currentInputs.find((i) => i.inputId === selectedInputId);
           if (!input) {
@@ -485,6 +739,14 @@ export function useControlPanelEvents({
           shaders: updatedShaders,
           volume: input.volume,
         });
+        window.dispatchEvent(
+          new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
+            detail: {
+              inputId: input.inputId,
+              patch: { shaders: updatedShaders },
+            },
+          }),
+        );
         await handleRefreshState();
       } catch (err) {
         console.error('Voice: failed to remove shader', err);
@@ -507,14 +769,21 @@ export function useControlPanelEvents({
     const onSelectInput = (e: CustomEvent<{ inputIndex: number }>) => {
       try {
         const { inputIndex } = e.detail;
-        const currentInputs = inputsRef.current || [];
+        const visibleInputs = (inputsRef.current || []).filter(
+          (i) => !i.hidden,
+        );
         const idx = inputIndex - 1;
-        if (idx < 0 || idx >= currentInputs.length) {
+        if (idx < 0 || idx >= visibleInputs.length) {
           console.warn(`Voice: input ${inputIndex} does not exist`);
           return;
         }
-        const input = currentInputs[idx];
+        const input = visibleInputs[idx];
         setSelectedInputId(input.inputId);
+        window.dispatchEvent(
+          new CustomEvent('smelter:timeline:select-clip', {
+            detail: { inputId: input.inputId },
+          }),
+        );
       } catch (err) {
         console.error('Voice: failed to select input', err);
       }
@@ -670,7 +939,7 @@ export function useControlPanelEvents({
 
       if (!input || input.type !== 'text-input') return;
 
-      const currentSpeed = input.textScrollSpeed ?? 40;
+      const currentSpeed = input.textScrollSpeed ?? 80;
       const delta =
         direction === 'up' ? SPEED_STEP * steps : -SPEED_STEP * steps;
       const newSpeed = Math.max(
@@ -738,27 +1007,23 @@ export function useControlPanelEvents({
     ) => {
       try {
         const { color, inputIndex } = e.detail;
-        const currentInputs = inputsRef.current || [];
-
-        let input;
-        if (inputIndex !== undefined) {
-          input = currentInputs[inputIndex - 1];
-        } else if (selectedInputId) {
-          input = currentInputs.find(
-            (i: Input) => i.inputId === selectedInputId,
-          );
-        }
-
-        if (!input || input.type !== 'text-input') {
-          console.warn('Voice: no text input found for color change');
-          return;
-        }
-
-        await updateInput(roomId, input.inputId, {
-          textColor: color,
-          volume: input.volume,
+        const didApply = await applyTextColorFromVoice({
+          color,
+          inputIndex,
+          inputs: inputsRef.current || [],
+          selectedInputId,
+          roomId,
+          handleRefreshState,
+          dispatchEvent: (event) => window.dispatchEvent(event),
+          updateInputFn: updateInput,
         });
-        await handleRefreshState();
+        if (!didApply) {
+          emitActionFeedback({
+            type: 'error',
+            label: 'Text input required',
+            description: 'Select a text input first',
+          });
+        }
       } catch (err) {
         console.error('Voice: failed to set text color', err);
       }
@@ -788,7 +1053,11 @@ export function useControlPanelEvents({
         }
 
         if (!input || input.type !== 'text-input') {
-          console.warn('Voice: no text input selected for max lines change');
+          emitActionFeedback({
+            type: 'error',
+            label: 'Text input required',
+            description: 'Select a text input first',
+          });
           return;
         }
 
@@ -821,10 +1090,11 @@ export function useControlPanelEvents({
       try {
         const { fontSize, inputIndex } = e.detail;
         const currentInputs = inputsRef.current || [];
+        const visibleInputs = currentInputs.filter((i) => !i.hidden);
 
         let input;
         if (inputIndex !== undefined) {
-          input = currentInputs[inputIndex - 1];
+          input = visibleInputs[inputIndex - 1];
         } else if (selectedInputId) {
           input = currentInputs.find(
             (i: Input) => i.inputId === selectedInputId,
@@ -832,7 +1102,11 @@ export function useControlPanelEvents({
         }
 
         if (!input || input.type !== 'text-input') {
-          console.warn('Voice: no text input found for font size change');
+          emitActionFeedback({
+            type: 'error',
+            label: 'Text input required',
+            description: 'Select a text input first',
+          });
           return;
         }
 
@@ -859,93 +1133,149 @@ export function useControlPanelEvents({
   }, [roomId, handleRefreshState, inputsRef, selectedInputId]);
 
   useEffect(() => {
+    const MIN_SPEED = 10;
+    const MAX_SPEED = 400;
+
+    const onSetTextScrollSpeed = async (
+      e: CustomEvent<{ scrollSpeed: number; inputIndex?: number }>,
+    ) => {
+      try {
+        const { scrollSpeed, inputIndex } = e.detail;
+        const currentInputs = inputsRef.current || [];
+        const visibleInputs = currentInputs.filter((i) => !i.hidden);
+
+        let input;
+        if (inputIndex !== undefined) {
+          input = visibleInputs[inputIndex - 1];
+        } else if (selectedInputId) {
+          input = currentInputs.find(
+            (i: Input) => i.inputId === selectedInputId,
+          );
+        }
+
+        if (!input || input.type !== 'text-input') {
+          emitActionFeedback({
+            type: 'error',
+            label: 'Text input required',
+            description: 'Select a text input first',
+          });
+          return;
+        }
+
+        const nextSpeed = Math.max(
+          MIN_SPEED,
+          Math.min(MAX_SPEED, Math.round(scrollSpeed)),
+        );
+        await updateInput(roomId, input.inputId, {
+          textScrollSpeed: nextSpeed,
+          volume: input.volume,
+        });
+
+        window.dispatchEvent(
+          new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
+            detail: {
+              inputId: input.inputId,
+              patch: { textScrollSpeed: nextSpeed },
+            },
+          }),
+        );
+
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to set text scroll speed', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:set-text-scroll-speed',
+      onSetTextScrollSpeed as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:set-text-scroll-speed',
+        onSetTextScrollSpeed as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputsRef, selectedInputId]);
+
+  useEffect(() => {
+    const onSetTextAlign = async (
+      e: CustomEvent<{
+        textAlign: 'left' | 'center' | 'right';
+        inputIndex?: number;
+      }>,
+    ) => {
+      try {
+        const { textAlign, inputIndex } = e.detail;
+        const currentInputs = inputsRef.current || [];
+        const visibleInputs = currentInputs.filter((i) => !i.hidden);
+
+        let input;
+        if (inputIndex !== undefined) {
+          input = visibleInputs[inputIndex - 1];
+        } else if (selectedInputId) {
+          input = currentInputs.find(
+            (i: Input) => i.inputId === selectedInputId,
+          );
+        }
+
+        if (!input || input.type !== 'text-input') {
+          emitActionFeedback({
+            type: 'error',
+            label: 'Text input required',
+            description: 'Select a text input first',
+          });
+          return;
+        }
+
+        await updateInput(roomId, input.inputId, {
+          textAlign,
+          volume: input.volume,
+        });
+
+        window.dispatchEvent(
+          new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
+            detail: {
+              inputId: input.inputId,
+              patch: { textAlign },
+            },
+          }),
+        );
+
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to set text align', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:set-text-align',
+      onSetTextAlign as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:set-text-align',
+        onSetTextAlign as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputsRef, selectedInputId]);
+
+  useEffect(() => {
     const onExportConfiguration = () => {
       window.dispatchEvent(new CustomEvent('smelter:export-configuration'));
     };
 
     window.addEventListener(
       'smelter:voice:export-configuration',
-      onExportConfiguration as EventListener,
+      onExportConfiguration as unknown as EventListener,
     );
     return () => {
       window.removeEventListener(
         'smelter:voice:export-configuration',
-        onExportConfiguration as EventListener,
+        onExportConfiguration as unknown as EventListener,
       );
     };
   }, []);
-
-  useEffect(() => {
-    const onRemoveAllInputs = async () => {
-      try {
-        const currentInputs = inputsRef.current || [];
-        for (const input of currentInputs) {
-          const session = loadWhipSession();
-          const isSavedInSession =
-            (session &&
-              session.roomId === roomId &&
-              session.inputId === input.inputId) ||
-            loadLastWhipInputId(roomId) === input.inputId;
-          const isWhipCandidate =
-            (input.inputId && input.inputId.indexOf('whip') > 0) ||
-            isSavedInSession;
-          if (isWhipCandidate) {
-            try {
-              stopCameraAndConnection(cameraPcRef, cameraStreamRef);
-              stopCameraAndConnection(screensharePcRef, screenshareStreamRef);
-            } catch {}
-            try {
-              clearWhipSessionFor(roomId, input.inputId);
-            } catch {}
-            if (activeCameraInputId === input.inputId) {
-              setActiveCameraInputId(null);
-              setIsCameraActive(false);
-            }
-            if (activeScreenshareInputId === input.inputId) {
-              setActiveScreenshareInputId(null);
-              setIsScreenshareActive(false);
-            }
-          }
-          try {
-            await hideInput(roomId, input.inputId);
-          } catch (err) {
-            console.warn('Macro: failed to remove input', {
-              inputId: input.inputId,
-              err,
-            });
-          }
-        }
-        await handleRefreshState();
-      } catch (err) {
-        console.error('Macro: failed to remove all inputs', err);
-      }
-    };
-
-    window.addEventListener(
-      'smelter:voice:remove-all-inputs',
-      onRemoveAllInputs as EventListener,
-    );
-    return () => {
-      window.removeEventListener(
-        'smelter:voice:remove-all-inputs',
-        onRemoveAllInputs as EventListener,
-      );
-    };
-  }, [
-    roomId,
-    handleRefreshState,
-    inputsRef,
-    cameraPcRef,
-    cameraStreamRef,
-    screensharePcRef,
-    screenshareStreamRef,
-    activeCameraInputId,
-    activeScreenshareInputId,
-    setActiveCameraInputId,
-    setIsCameraActive,
-    setActiveScreenshareInputId,
-    setIsScreenshareActive,
-  ]);
 
   useEffect(() => {
     const onSetLayout = (e: CustomEvent<{ layout: Layout }>) => {
@@ -975,6 +1305,166 @@ export function useControlPanelEvents({
   }, [changeLayout]);
 
   useEffect(() => {
+    const onSetSwapDuration = async (
+      e: CustomEvent<{ durationMs: number }>,
+    ) => {
+      try {
+        await updateRoom(roomId, { swapDurationMs: e.detail.durationMs });
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to set swap duration', err);
+      }
+    };
+
+    const onSetSwapFadeInDuration = async (
+      e: CustomEvent<{ durationMs: number }>,
+    ) => {
+      try {
+        await updateRoom(roomId, { swapFadeInDurationMs: e.detail.durationMs });
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to set swap fade in duration', err);
+      }
+    };
+
+    const onSetSwapFadeOutDuration = async (
+      e: CustomEvent<{ durationMs: number }>,
+    ) => {
+      try {
+        await updateRoom(roomId, {
+          swapFadeOutDurationMs: e.detail.durationMs,
+        });
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to set swap fade out duration', err);
+      }
+    };
+
+    const onSetSwapOutgoingEnabled = async (
+      e: CustomEvent<{ enabled: boolean }>,
+    ) => {
+      try {
+        await updateRoom(roomId, { swapOutgoingEnabled: e.detail.enabled });
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to set outgoing transition', err);
+      }
+    };
+
+    const onSetNewsStripEnabled = async (
+      e: CustomEvent<{ enabled: boolean }>,
+    ) => {
+      try {
+        await updateRoom(roomId, { newsStripEnabled: e.detail.enabled });
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to set news strip enabled', err);
+      }
+    };
+
+    const onSetNewsStripFadeDuringSwap = async (
+      e: CustomEvent<{ enabled: boolean }>,
+    ) => {
+      try {
+        await updateRoom(roomId, { newsStripFadeDuringSwap: e.detail.enabled });
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to set news strip fade', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:set-swap-duration',
+      onSetSwapDuration as unknown as EventListener,
+    );
+    window.addEventListener(
+      'smelter:voice:set-swap-fade-in-duration',
+      onSetSwapFadeInDuration as unknown as EventListener,
+    );
+    window.addEventListener(
+      'smelter:voice:set-swap-fade-out-duration',
+      onSetSwapFadeOutDuration as unknown as EventListener,
+    );
+    window.addEventListener(
+      'smelter:voice:set-swap-outgoing-enabled',
+      onSetSwapOutgoingEnabled as unknown as EventListener,
+    );
+    window.addEventListener(
+      'smelter:voice:set-news-strip-enabled',
+      onSetNewsStripEnabled as unknown as EventListener,
+    );
+    window.addEventListener(
+      'smelter:voice:set-news-strip-fade-during-swap',
+      onSetNewsStripFadeDuringSwap as unknown as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:set-swap-duration',
+        onSetSwapDuration as unknown as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:voice:set-swap-fade-in-duration',
+        onSetSwapFadeInDuration as unknown as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:voice:set-swap-fade-out-duration',
+        onSetSwapFadeOutDuration as unknown as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:voice:set-swap-outgoing-enabled',
+        onSetSwapOutgoingEnabled as unknown as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:voice:set-news-strip-enabled',
+        onSetNewsStripEnabled as unknown as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:voice:set-news-strip-fade-during-swap',
+        onSetNewsStripFadeDuringSwap as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState]);
+
+  useEffect(() => {
+    const onStartRecording = async () => {
+      try {
+        await startRecording(roomId);
+      } catch (err) {
+        console.error('Voice: failed to start recording', err);
+      }
+    };
+
+    const onStopRecording = async () => {
+      try {
+        await stopRecording(roomId);
+      } catch (err) {
+        console.error('Voice: failed to stop recording', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:start-recording',
+      onStartRecording as unknown as EventListener,
+    );
+    window.addEventListener(
+      'smelter:voice:stop-recording',
+      onStopRecording as unknown as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:start-recording',
+        onStartRecording as unknown as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:voice:stop-recording',
+        onStopRecording as unknown as EventListener,
+      );
+    };
+  }, [roomId]);
+
+  useEffect(() => {
     const onSetText = async (
       e: CustomEvent<{ text: string; inputIndex?: number }>,
     ) => {
@@ -992,7 +1482,11 @@ export function useControlPanelEvents({
         }
 
         if (!input || input.type !== 'text-input') {
-          console.warn('Macro: no text input found for set text');
+          emitActionFeedback({
+            type: 'error',
+            label: 'Text input required',
+            description: 'Select a text input first',
+          });
           return;
         }
 
@@ -1036,7 +1530,11 @@ export function useControlPanelEvents({
           : currentInputs.find((i: Input) => i.type === 'text-input');
 
         if (!textInput) {
-          console.warn('Voice: no text input found for scroll');
+          emitActionFeedback({
+            type: 'error',
+            label: 'Text input required',
+            description: 'Select a text input first',
+          });
           return;
         }
 
@@ -1062,6 +1560,78 @@ export function useControlPanelEvents({
       window.removeEventListener(
         'smelter:voice:scroll-text',
         onScrollText as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState, inputsRef, selectedInputId]);
+
+  useEffect(() => {
+    const onSetOrientation = async (
+      e: CustomEvent<{
+        orientation?: 'horizontal' | 'vertical';
+        inputIndex?: number;
+      }>,
+    ) => {
+      try {
+        const { orientation, inputIndex } = e.detail;
+        const currentInputs = inputsRef.current || [];
+        const visibleInputs = currentInputs.filter((i) => !i.hidden);
+
+        let input;
+        if (inputIndex !== undefined && inputIndex !== null) {
+          const idx = inputIndex - 1;
+          if (idx < 0 || idx >= visibleInputs.length) {
+            console.warn(`Voice: input ${inputIndex} does not exist`);
+            return;
+          }
+          input = visibleInputs[idx];
+        } else if (selectedInputId) {
+          input = currentInputs.find((i) => i.inputId === selectedInputId);
+        }
+
+        if (!input) {
+          emitActionFeedback({
+            type: 'error',
+            label: 'No input selected',
+            description: 'Select an input or specify input number',
+          });
+          return;
+        }
+
+        const newOrientation = orientation
+          ? orientation
+          : input.orientation === 'vertical'
+            ? 'horizontal'
+            : 'vertical';
+
+        await updateInput(roomId, input.inputId, {
+          orientation: newOrientation,
+          shaders: input.shaders,
+          volume: input.volume,
+        });
+
+        window.dispatchEvent(
+          new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
+            detail: {
+              inputId: input.inputId,
+              patch: { orientation: newOrientation },
+            },
+          }),
+        );
+
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to set orientation', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:set-orientation',
+      onSetOrientation as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:set-orientation',
+        onSetOrientation as unknown as EventListener,
       );
     };
   }, [roomId, handleRefreshState, inputsRef, selectedInputId]);

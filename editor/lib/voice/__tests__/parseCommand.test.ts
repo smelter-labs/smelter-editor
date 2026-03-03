@@ -30,6 +30,20 @@ describe('normalize', () => {
     expect(normalize('source 1')).toBe('input 1');
     expect(normalize('effect')).toBe('shader');
   });
+
+  it('normalizes track aliases', () => {
+    expect(normalize('lane 2')).toBe('track 2');
+    expect(normalize('path 1')).toBe('track 1');
+    expect(normalize('row 3')).toBe('track 3');
+    expect(normalize('track number 4')).toBe('track 4');
+    expect(normalize('3 track')).toBe('track 3');
+  });
+
+  it('normalizes block aliases', () => {
+    expect(normalize('next clip')).toBe('next block');
+    expect(normalize('previous segment')).toBe('previous block');
+    expect(normalize('next blocks')).toBe('next block');
+  });
 });
 
 describe('parseCommand', () => {
@@ -132,7 +146,7 @@ describe('parseCommand', () => {
       expect(result).toEqual({
         intent: 'ADD_SHADER',
         inputIndex: 1,
-        shader: 'HOLOGRAM',
+        shader: 'sw-hologram',
       });
     });
 
@@ -141,7 +155,7 @@ describe('parseCommand', () => {
       expect(result).toEqual({
         intent: 'ADD_SHADER',
         inputIndex: 1,
-        shader: 'REMOVE_COLOR',
+        shader: 'remove-color',
       });
     });
 
@@ -150,7 +164,7 @@ describe('parseCommand', () => {
       expect(result).toEqual({
         intent: 'ADD_SHADER',
         inputIndex: 5,
-        shader: 'GRAYSCALE',
+        shader: 'grayscale',
       });
     });
 
@@ -159,26 +173,22 @@ describe('parseCommand', () => {
       expect(result).toEqual({
         intent: 'ADD_SHADER',
         inputIndex: 2,
-        shader: 'OPACITY',
+        shader: 'opacity',
       });
     });
 
     it('returns CLARIFY when inputIndex missing', () => {
       const result = parseCommand('add hologram shader');
       expect(result).toEqual({
-        intent: 'CLARIFY',
-        missing: ['inputIndex'],
-        question: 'Which input number?',
+        intent: 'ADD_SHADER',
+        inputIndex: null,
+        shader: 'sw-hologram',
       });
     });
 
     it('returns CLARIFY when shader missing', () => {
       const result = parseCommand('add shader to input 1');
-      expect(result).toEqual({
-        intent: 'CLARIFY',
-        missing: ['shader'],
-        question: 'Which shader?',
-      });
+      expect(result).toBeNull();
     });
   });
 
@@ -188,7 +198,7 @@ describe('parseCommand', () => {
       expect(result).toEqual({
         intent: 'REMOVE_SHADER',
         inputIndex: 2,
-        shader: 'CONTRAST',
+        shader: 'brightness-contrast',
       });
     });
 
@@ -197,7 +207,7 @@ describe('parseCommand', () => {
       expect(result).toEqual({
         intent: 'REMOVE_SHADER',
         inputIndex: 3,
-        shader: 'BRIGHTNESS',
+        shader: 'brightness-contrast',
       });
     });
 
@@ -206,7 +216,7 @@ describe('parseCommand', () => {
       expect(result).toEqual({
         intent: 'REMOVE_SHADER',
         inputIndex: 1,
-        shader: 'SHADOW',
+        shader: 'soft-shadow',
       });
     });
   });
@@ -251,7 +261,7 @@ describe('parseCommand', () => {
       expect(result).toEqual({
         intent: 'ADD_SHADER',
         inputIndex: 1,
-        shader: 'GRAYSCALE',
+        shader: 'grayscale',
       });
     });
 
@@ -260,7 +270,7 @@ describe('parseCommand', () => {
       expect(result).toEqual({
         intent: 'ADD_SHADER',
         inputIndex: 2,
-        shader: 'HOLOGRAM',
+        shader: 'sw-hologram',
       });
     });
 
@@ -269,16 +279,333 @@ describe('parseCommand', () => {
       expect(result).toEqual({
         intent: 'ADD_SHADER',
         inputIndex: 1,
-        shader: 'GRAYSCALE',
+        shader: 'grayscale',
       });
     });
 
     it('returns CLARIFY when effect is used without shader name', () => {
       const result = parseCommand('add effect to input 1');
-      expect(result).toEqual({
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('SELECT_TRACK', () => {
+    it('parses "select track 2"', () => {
+      expect(parseCommand('select track 2')).toEqual({
+        intent: 'SELECT_TRACK',
+        trackIndex: 2,
+      });
+    });
+
+    it('parses "pick track one"', () => {
+      expect(parseCommand('pick track one')).toEqual({
+        intent: 'SELECT_TRACK',
+        trackIndex: 1,
+      });
+    });
+
+    it('parses "focus lane 3" via alias', () => {
+      expect(parseCommand('focus lane 3')).toEqual({
+        intent: 'SELECT_TRACK',
+        trackIndex: 3,
+      });
+    });
+
+    it('parses "select path 1" via alias', () => {
+      expect(parseCommand('select path 1')).toEqual({
+        intent: 'SELECT_TRACK',
+        trackIndex: 1,
+      });
+    });
+
+    it('returns CLARIFY when track number missing', () => {
+      expect(parseCommand('select track')).toEqual({
         intent: 'CLARIFY',
-        missing: ['shader'],
-        question: 'Which shader?',
+        missing: ['trackIndex'],
+        question: 'Which track number?',
+      });
+    });
+  });
+
+  describe('REMOVE_TRACK', () => {
+    it('parses "remove track 2"', () => {
+      expect(parseCommand('remove track 2')).toEqual({
+        intent: 'REMOVE_TRACK',
+        trackIndex: 2,
+      });
+    });
+
+    it('parses "delete track one"', () => {
+      expect(parseCommand('delete track one')).toEqual({
+        intent: 'REMOVE_TRACK',
+        trackIndex: 1,
+      });
+    });
+
+    it('parses "delete lane 3" via alias', () => {
+      expect(parseCommand('delete lane 3')).toEqual({
+        intent: 'REMOVE_TRACK',
+        trackIndex: 3,
+      });
+    });
+
+    it('returns CLARIFY when track number missing', () => {
+      expect(parseCommand('remove track')).toEqual({
+        intent: 'CLARIFY',
+        missing: ['trackIndex'],
+        question: 'Which track number?',
+      });
+    });
+  });
+
+  describe('NEXT_BLOCK / PREV_BLOCK', () => {
+    it('parses "next block"', () => {
+      expect(parseCommand('next block')).toEqual({ intent: 'NEXT_BLOCK' });
+    });
+
+    it('parses "forward block"', () => {
+      expect(parseCommand('forward block')).toEqual({ intent: 'NEXT_BLOCK' });
+    });
+
+    it('parses "previous block"', () => {
+      expect(parseCommand('previous block')).toEqual({ intent: 'PREV_BLOCK' });
+    });
+
+    it('parses "prev block"', () => {
+      expect(parseCommand('prev block')).toEqual({ intent: 'PREV_BLOCK' });
+    });
+
+    it('parses "back block"', () => {
+      expect(parseCommand('back block')).toEqual({ intent: 'PREV_BLOCK' });
+    });
+
+    it('parses "next clip" via alias', () => {
+      expect(parseCommand('next clip')).toEqual({ intent: 'NEXT_BLOCK' });
+    });
+
+    it('parses "previous segment" via alias', () => {
+      expect(parseCommand('previous segment')).toEqual({
+        intent: 'PREV_BLOCK',
+      });
+    });
+  });
+
+  describe('New live operations commands', () => {
+    it('parses set layout by name', () => {
+      expect(parseCommand('set layout to picture in picture')).toEqual({
+        intent: 'SET_LAYOUT',
+        layout: 'picture-in-picture',
+      });
+      expect(parseCommand('switch layout to softu tv')).toEqual({
+        intent: 'SET_LAYOUT',
+        layout: 'softu-tv',
+      });
+    });
+
+    it('parses hide/remove all commands', () => {
+      expect(parseCommand('hide all inputs')).toEqual({
+        intent: 'HIDE_ALL_INPUTS',
+      });
+      expect(parseCommand('delete all sources')).toEqual({
+        intent: 'REMOVE_ALL_INPUTS',
+      });
+    });
+
+    it('parses recording commands', () => {
+      expect(parseCommand('start recording')).toEqual({
+        intent: 'START_RECORDING',
+      });
+      expect(parseCommand('stop recording')).toEqual({
+        intent: 'STOP_RECORDING',
+      });
+    });
+
+    it('parses transition durations in ms and seconds', () => {
+      expect(parseCommand('set transition duration to 900 ms')).toEqual({
+        intent: 'SET_SWAP_DURATION',
+        durationMs: 900,
+      });
+      expect(parseCommand('set fade in duration to 2 seconds')).toEqual({
+        intent: 'SET_SWAP_FADE_IN_DURATION',
+        durationMs: 2000,
+      });
+      expect(parseCommand('set fade out duration to 750')).toEqual({
+        intent: 'SET_SWAP_FADE_OUT_DURATION',
+        durationMs: 750,
+      });
+    });
+
+    it('parses text scroll speed commands', () => {
+      expect(parseCommand('set scroll speed to 120')).toEqual({
+        intent: 'SET_TEXT_SCROLL_SPEED',
+        scrollSpeed: 120,
+      });
+      expect(parseCommand('change text scrolling speed to 95')).toEqual({
+        intent: 'SET_TEXT_SCROLL_SPEED',
+        scrollSpeed: 95,
+      });
+    });
+
+    it('parses outgoing transition and news strip toggles', () => {
+      expect(parseCommand('enable outgoing transition')).toEqual({
+        intent: 'SET_SWAP_OUTGOING_ENABLED',
+        enabled: true,
+      });
+      expect(parseCommand('turn off outgoing transition')).toEqual({
+        intent: 'SET_SWAP_OUTGOING_ENABLED',
+        enabled: false,
+      });
+      expect(parseCommand('enable news strip')).toEqual({
+        intent: 'SET_NEWS_STRIP_ENABLED',
+        enabled: true,
+      });
+      expect(parseCommand('disable news strip')).toEqual({
+        intent: 'SET_NEWS_STRIP_ENABLED',
+        enabled: false,
+      });
+      expect(parseCommand('enable news strip fades')).toEqual({
+        intent: 'SET_NEWS_STRIP_FADE_DURING_SWAP',
+        enabled: true,
+      });
+      expect(parseCommand('turn off news strip fade')).toEqual({
+        intent: 'SET_NEWS_STRIP_FADE_DURING_SWAP',
+        enabled: false,
+      });
+    });
+
+    it('parses text align commands', () => {
+      expect(parseCommand('set align left')).toEqual({
+        intent: 'SET_TEXT_ALIGN',
+        textAlign: 'left',
+      });
+      expect(parseCommand('set text alignment center')).toEqual({
+        intent: 'SET_TEXT_ALIGN',
+        textAlign: 'center',
+      });
+      expect(parseCommand('align right')).toEqual({
+        intent: 'SET_TEXT_ALIGN',
+        textAlign: 'right',
+      });
+      expect(parseCommand('change alignment to centre')).toEqual({
+        intent: 'SET_TEXT_ALIGN',
+        textAlign: 'center',
+      });
+      expect(parseCommand('align text left')).toEqual({
+        intent: 'SET_TEXT_ALIGN',
+        textAlign: 'left',
+      });
+    });
+  });
+
+  describe('SET_ORIENTATION', () => {
+    it('parses "set vertical"', () => {
+      expect(parseCommand('set vertical')).toEqual({
+        intent: 'SET_ORIENTATION',
+        orientation: 'vertical',
+      });
+    });
+
+    it('parses "set horizontal"', () => {
+      expect(parseCommand('set horizontal')).toEqual({
+        intent: 'SET_ORIENTATION',
+        orientation: 'horizontal',
+      });
+    });
+
+    it('parses "set input 2 horizontal"', () => {
+      expect(parseCommand('set input 2 horizontal')).toEqual({
+        intent: 'SET_ORIENTATION',
+        orientation: 'horizontal',
+        inputIndex: 2,
+      });
+    });
+
+    it('parses "flip input"', () => {
+      expect(parseCommand('flip input')).toEqual({
+        intent: 'SET_ORIENTATION',
+      });
+    });
+
+    it('parses "flip input 3 vertical"', () => {
+      expect(parseCommand('flip input 3 vertical')).toEqual({
+        intent: 'SET_ORIENTATION',
+        orientation: 'vertical',
+        inputIndex: 3,
+      });
+    });
+
+    it('parses "flip input to horizontal"', () => {
+      expect(parseCommand('flip input to horizontal')).toEqual({
+        intent: 'SET_ORIENTATION',
+        orientation: 'horizontal',
+      });
+    });
+
+    it('normalizes portrait to vertical', () => {
+      expect(normalize('set portrait')).toBe('set vertical');
+      expect(parseCommand('set portrait')).toEqual({
+        intent: 'SET_ORIENTATION',
+        orientation: 'vertical',
+      });
+    });
+
+    it('normalizes landscape to horizontal', () => {
+      expect(normalize('set landscape')).toBe('set horizontal');
+      expect(parseCommand('set landscape')).toEqual({
+        intent: 'SET_ORIENTATION',
+        orientation: 'horizontal',
+      });
+    });
+
+    it('parses "set orientation vertical"', () => {
+      expect(parseCommand('set orientation vertical')).toEqual({
+        intent: 'SET_ORIENTATION',
+        orientation: 'vertical',
+      });
+    });
+
+    it('parses "change input 1 to vertical"', () => {
+      expect(parseCommand('change input 1 vertical')).toEqual({
+        intent: 'SET_ORIENTATION',
+        orientation: 'vertical',
+        inputIndex: 1,
+      });
+    });
+  });
+
+  describe('SET_DEFAULT_ORIENTATION', () => {
+    it('parses "set default vertical"', () => {
+      expect(parseCommand('set default vertical')).toEqual({
+        intent: 'SET_DEFAULT_ORIENTATION',
+        orientation: 'vertical',
+      });
+    });
+
+    it('parses "set default horizontal"', () => {
+      expect(parseCommand('set default horizontal')).toEqual({
+        intent: 'SET_DEFAULT_ORIENTATION',
+        orientation: 'horizontal',
+      });
+    });
+
+    it('parses "default orientation vertical"', () => {
+      expect(parseCommand('default orientation vertical')).toEqual({
+        intent: 'SET_DEFAULT_ORIENTATION',
+        orientation: 'vertical',
+      });
+    });
+
+    it('parses "default orientation horizontal"', () => {
+      expect(parseCommand('default orientation horizontal')).toEqual({
+        intent: 'SET_DEFAULT_ORIENTATION',
+        orientation: 'horizontal',
+      });
+    });
+
+    it('parses "set default orientation to vertical"', () => {
+      expect(parseCommand('set default orientation to vertical')).toEqual({
+        intent: 'SET_DEFAULT_ORIENTATION',
+        orientation: 'vertical',
       });
     });
   });

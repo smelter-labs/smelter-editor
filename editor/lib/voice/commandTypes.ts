@@ -83,6 +83,24 @@ export type DeselectInputCommand = {
   intent: 'DESELECT_INPUT';
 };
 
+export type SelectTrackCommand = {
+  intent: 'SELECT_TRACK';
+  trackIndex: number;
+};
+
+export type RemoveTrackCommand = {
+  intent: 'REMOVE_TRACK';
+  trackIndex: number;
+};
+
+export type NextBlockCommand = {
+  intent: 'NEXT_BLOCK';
+};
+
+export type PrevBlockCommand = {
+  intent: 'PREV_BLOCK';
+};
+
 export type StartTypingCommand = {
   intent: 'START_TYPING';
 };
@@ -104,6 +122,20 @@ export type PreviousLayoutCommand = {
   intent: 'PREVIOUS_LAYOUT';
 };
 
+export type SetLayoutCommand = {
+  intent: 'SET_LAYOUT';
+  layout:
+    | 'grid'
+    | 'primary-on-left'
+    | 'primary-on-top'
+    | 'picture-in-picture'
+    | 'wrapped'
+    | 'wrapped-static'
+    | 'transition'
+    | 'picture-on-picture'
+    | 'softu-tv';
+};
+
 export type SetTextColorCommand = {
   intent: 'SET_TEXT_COLOR';
   color: string;
@@ -119,6 +151,16 @@ export type SetTextFontSizeCommand = {
   fontSize: number;
 };
 
+export type SetTextScrollSpeedCommand = {
+  intent: 'SET_TEXT_SCROLL_SPEED';
+  scrollSpeed: number;
+};
+
+export type SetTextAlignCommand = {
+  intent: 'SET_TEXT_ALIGN';
+  textAlign: 'left' | 'center' | 'right';
+};
+
 export type ExportConfigurationCommand = {
   intent: 'EXPORT_CONFIGURATION';
 };
@@ -127,6 +169,65 @@ export type ScrollTextCommand = {
   intent: 'SCROLL_TEXT';
   direction: Direction;
   lines: number;
+};
+
+export type HideAllInputsCommand = {
+  intent: 'HIDE_ALL_INPUTS';
+};
+
+export type RemoveAllInputsCommand = {
+  intent: 'REMOVE_ALL_INPUTS';
+};
+
+export type StartRecordingCommand = {
+  intent: 'START_RECORDING';
+};
+
+export type StopRecordingCommand = {
+  intent: 'STOP_RECORDING';
+};
+
+export type SetSwapDurationCommand = {
+  intent: 'SET_SWAP_DURATION';
+  durationMs: number;
+};
+
+export type SetSwapFadeInDurationCommand = {
+  intent: 'SET_SWAP_FADE_IN_DURATION';
+  durationMs: number;
+};
+
+export type SetSwapFadeOutDurationCommand = {
+  intent: 'SET_SWAP_FADE_OUT_DURATION';
+  durationMs: number;
+};
+
+export type SetSwapOutgoingEnabledCommand = {
+  intent: 'SET_SWAP_OUTGOING_ENABLED';
+  enabled: boolean;
+};
+
+export type SetNewsStripEnabledCommand = {
+  intent: 'SET_NEWS_STRIP_ENABLED';
+  enabled: boolean;
+};
+
+export type SetNewsStripFadeDuringSwapCommand = {
+  intent: 'SET_NEWS_STRIP_FADE_DURING_SWAP';
+  enabled: boolean;
+};
+
+export type InputOrientation = 'horizontal' | 'vertical';
+
+export type SetOrientationCommand = {
+  intent: 'SET_ORIENTATION';
+  orientation?: InputOrientation;
+  inputIndex?: number;
+};
+
+export type SetDefaultOrientationCommand = {
+  intent: 'SET_DEFAULT_ORIENTATION';
+  orientation: InputOrientation;
 };
 
 export type ClarifyCommand = {
@@ -143,16 +244,35 @@ export type VoiceCommand =
   | RemoveInputCommand
   | SelectInputCommand
   | DeselectInputCommand
+  | SelectTrackCommand
+  | RemoveTrackCommand
+  | NextBlockCommand
+  | PrevBlockCommand
   | StartTypingCommand
   | StopTypingCommand
   | StartRoomCommand
   | NextLayoutCommand
   | PreviousLayoutCommand
+  | SetLayoutCommand
   | SetTextColorCommand
   | SetTextMaxLinesCommand
   | SetTextFontSizeCommand
+  | SetTextScrollSpeedCommand
+  | SetTextAlignCommand
   | ExportConfigurationCommand
   | ScrollTextCommand
+  | HideAllInputsCommand
+  | RemoveAllInputsCommand
+  | StartRecordingCommand
+  | StopRecordingCommand
+  | SetSwapDurationCommand
+  | SetSwapFadeInDurationCommand
+  | SetSwapFadeOutDurationCommand
+  | SetSwapOutgoingEnabledCommand
+  | SetNewsStripEnabledCommand
+  | SetNewsStripFadeDuringSwapCommand
+  | SetOrientationCommand
+  | SetDefaultOrientationCommand
   | ClarifyCommand;
 
 export type VoiceInput = {
@@ -277,6 +397,24 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
     case 'DESELECT_INPUT':
       return { intent: 'DESELECT_INPUT' };
 
+    case 'SELECT_TRACK':
+      if (typeof c.trackIndex === 'number') {
+        return { intent: 'SELECT_TRACK', trackIndex: c.trackIndex };
+      }
+      return null;
+
+    case 'REMOVE_TRACK':
+      if (typeof c.trackIndex === 'number') {
+        return { intent: 'REMOVE_TRACK', trackIndex: c.trackIndex };
+      }
+      return null;
+
+    case 'NEXT_BLOCK':
+      return { intent: 'NEXT_BLOCK' };
+
+    case 'PREV_BLOCK':
+      return { intent: 'PREV_BLOCK' };
+
     case 'START_TYPING':
       return { intent: 'START_TYPING' };
 
@@ -294,6 +432,15 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
 
     case 'PREVIOUS_LAYOUT':
       return { intent: 'PREVIOUS_LAYOUT' };
+
+    case 'SET_LAYOUT':
+      if (typeof c.layout === 'string') {
+        return {
+          intent: 'SET_LAYOUT',
+          layout: c.layout as SetLayoutCommand['layout'],
+        };
+      }
+      return null;
 
     case 'SET_TEXT_COLOR':
       if (typeof c.color === 'string') {
@@ -313,6 +460,24 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
       }
       return null;
 
+    case 'SET_TEXT_SCROLL_SPEED':
+      if (typeof c.scrollSpeed === 'number') {
+        return { intent: 'SET_TEXT_SCROLL_SPEED', scrollSpeed: c.scrollSpeed };
+      }
+      return null;
+
+    case 'SET_TEXT_ALIGN':
+      if (
+        typeof c.textAlign === 'string' &&
+        ['left', 'center', 'right'].includes(c.textAlign)
+      ) {
+        return {
+          intent: 'SET_TEXT_ALIGN',
+          textAlign: c.textAlign as 'left' | 'center' | 'right',
+        };
+      }
+      return null;
+
     case 'EXPORT_CONFIGURATION':
       return { intent: 'EXPORT_CONFIGURATION' };
 
@@ -326,6 +491,83 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
           intent: 'SCROLL_TEXT',
           direction: c.direction as Direction,
           lines: c.lines,
+        };
+      }
+      return null;
+
+    case 'HIDE_ALL_INPUTS':
+      return { intent: 'HIDE_ALL_INPUTS' };
+
+    case 'REMOVE_ALL_INPUTS':
+      return { intent: 'REMOVE_ALL_INPUTS' };
+
+    case 'START_RECORDING':
+      return { intent: 'START_RECORDING' };
+
+    case 'STOP_RECORDING':
+      return { intent: 'STOP_RECORDING' };
+
+    case 'SET_SWAP_DURATION':
+      if (typeof c.durationMs === 'number') {
+        return { intent: 'SET_SWAP_DURATION', durationMs: c.durationMs };
+      }
+      return null;
+
+    case 'SET_SWAP_FADE_IN_DURATION':
+      if (typeof c.durationMs === 'number') {
+        return {
+          intent: 'SET_SWAP_FADE_IN_DURATION',
+          durationMs: c.durationMs,
+        };
+      }
+      return null;
+
+    case 'SET_SWAP_FADE_OUT_DURATION':
+      if (typeof c.durationMs === 'number') {
+        return {
+          intent: 'SET_SWAP_FADE_OUT_DURATION',
+          durationMs: c.durationMs,
+        };
+      }
+      return null;
+
+    case 'SET_SWAP_OUTGOING_ENABLED':
+      if (typeof c.enabled === 'boolean') {
+        return { intent: 'SET_SWAP_OUTGOING_ENABLED', enabled: c.enabled };
+      }
+      return null;
+
+    case 'SET_NEWS_STRIP_ENABLED':
+      if (typeof c.enabled === 'boolean') {
+        return { intent: 'SET_NEWS_STRIP_ENABLED', enabled: c.enabled };
+      }
+      return null;
+
+    case 'SET_NEWS_STRIP_FADE_DURING_SWAP':
+      if (typeof c.enabled === 'boolean') {
+        return {
+          intent: 'SET_NEWS_STRIP_FADE_DURING_SWAP',
+          enabled: c.enabled,
+        };
+      }
+      return null;
+
+    case 'SET_ORIENTATION': {
+      const result: SetOrientationCommand = { intent: 'SET_ORIENTATION' };
+      if (c.orientation === 'horizontal' || c.orientation === 'vertical') {
+        result.orientation = c.orientation;
+      }
+      if (typeof c.inputIndex === 'number') {
+        result.inputIndex = c.inputIndex;
+      }
+      return result;
+    }
+
+    case 'SET_DEFAULT_ORIENTATION':
+      if (c.orientation === 'horizontal' || c.orientation === 'vertical') {
+        return {
+          intent: 'SET_DEFAULT_ORIENTATION',
+          orientation: c.orientation,
         };
       }
       return null;

@@ -622,7 +622,7 @@ export class RoomState {
         shaders: [],
         orientation: 'horizontal',
         borderColor: '#ff0000',
-        borderWidth: 8,
+        borderWidth: 0,
         hidden: false,
         metadata: {
           title: 'Text',
@@ -633,7 +633,7 @@ export class RoomState {
         textAlign: opts.textAlign ?? 'left',
         textColor: opts.textColor ?? '#ffffff',
         textMaxLines: opts.textMaxLines ?? 10,
-        textScrollSpeed: opts.textScrollSpeed ?? 40,
+        textScrollSpeed: opts.textScrollSpeed ?? 80,
         textScrollLoop: opts.textScrollLoop ?? true,
         textScrollNudge: 0,
         textFontSize: opts.textFontSize ?? 80,

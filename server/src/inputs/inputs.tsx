@@ -315,7 +315,7 @@ export function Input({ input }: { input: InputConfig }) {
   const isVerticalInput = input.orientation === 'vertical';
   const resolution = isVerticalInput ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 };
   const borderWidth = normalizeBorderWidth(
-    input.borderWidth ?? (isTextInput ? 8 : 0),
+    input.borderWidth ?? 0,
   );
   const borderColor = input.borderColor ?? '#ff0000';
   const contentWidth = Math.max(1, resolution.width - borderWidth * 2);
@@ -343,7 +343,7 @@ export function Input({ input }: { input: InputConfig }) {
               <ScrollingText
                 text={input.text!}
                 maxLines={input.textMaxLines ?? 10}
-                scrollSpeed={input.textScrollSpeed ?? 40}
+                scrollSpeed={input.textScrollSpeed ?? 80}
                 scrollLoop={input.textScrollLoop ?? true}
                 fontSize={input.textFontSize ?? 80}
                 color={input.textColor ?? 'white'}
@@ -429,7 +429,7 @@ export function SmallInput({
   const isTextInput = !!input.text;
   const isGame = !!input.gameState;
   const borderWidth = normalizeBorderWidth(
-    input.borderWidth ?? (isTextInput ? 4 : 0),
+    input.borderWidth ?? 0,
   );
   const borderColor = input.borderColor ?? '#ff0000';
   const contentWidth = Math.max(1, resolution.width - borderWidth * 2);
@@ -460,7 +460,7 @@ export function SmallInput({
           <ScrollingText
             text={input.text!}
             maxLines={input.textMaxLines ?? 10}
-            scrollSpeed={input.textScrollSpeed ?? 40}
+            scrollSpeed={input.textScrollSpeed ?? 80}
             scrollLoop={input.textScrollLoop ?? true}
             fontSize={30}
             color={input.textColor ?? 'white'}
