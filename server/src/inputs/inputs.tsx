@@ -172,12 +172,14 @@ function ScrollingText({
   scrollNudge = 0,
 }: ScrollingTextProps) {
   const lineHeight = fontSize * 1.2;
+  const textVerticalPadding = Math.max(2, Math.round(fontSize * 0.12));
   const visibleHeight = containerHeight;
   const lines = text.split('\n');
-  const totalTextHeight = lines.length * lineHeight;
+  const measuredTextHeight = Math.max(lineHeight, lines.length * lineHeight);
+  const totalTextHeight = measuredTextHeight + textVerticalPadding * 2;
   
   const shouldAnimate = maxLines > 0;
-  const startPosition = visibleHeight;
+  const startPosition = visibleHeight - textVerticalPadding;
   
   const [scrollOffset, setScrollOffset] = useState(startPosition);
   const [permanentNudgeOffset, setPermanentNudgeOffset] = useState(0);
@@ -246,7 +248,7 @@ function ScrollingText({
       setScrollOffset(startPosition);
     }
 
-    const targetPosition = -totalTextHeight;
+    const targetPosition = -(totalTextHeight - textVerticalPadding);
     const intervalMs = 16;
     const pixelsPerFrame = (scrollSpeed / 1000) * intervalMs;
 
@@ -291,16 +293,25 @@ function ScrollingText({
         top: textTopOffset,
         left: 0,
       }}>
-        <Text style={{ 
-          fontSize, 
-          width: containerWidth,
-          color, 
-          wrap: 'word',
-          align,
-          fontFamily: 'Star Jedi',
-        }}>
-          {text}
-        </Text>
+        <View
+          style={{
+            width: containerWidth,
+            height: measuredTextHeight,
+            top: textVerticalPadding,
+            left: 0,
+          }}>
+          <Text style={{ 
+            fontSize, 
+            lineHeight,
+            width: containerWidth,
+            color, 
+            wrap: 'word',
+            align,
+            fontFamily: 'Star Jedi',
+          }}>
+            {text}
+          </Text>
+        </View>
       </View>
     </View>
   );

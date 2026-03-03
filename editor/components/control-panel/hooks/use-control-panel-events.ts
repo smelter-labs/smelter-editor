@@ -854,6 +854,19 @@ export function useControlPanelEvents({
             text: accumulatedTextRef.current,
             volume: input.volume,
           });
+
+          window.dispatchEvent(
+            new CustomEvent(
+              'smelter:timeline:update-clip-settings-for-input',
+              {
+                detail: {
+                  inputId: input.inputId,
+                  patch: { text: accumulatedTextRef.current },
+                },
+              },
+            ),
+          );
+
           await handleRefreshState();
         } catch (err) {
           console.error('Voice: failed to save text', err);
@@ -884,6 +897,19 @@ export function useControlPanelEvents({
           text: accumulatedTextRef.current,
           volume: input.volume,
         });
+
+        window.dispatchEvent(
+          new CustomEvent(
+            'smelter:timeline:update-clip-settings-for-input',
+            {
+              detail: {
+                inputId: input.inputId,
+                patch: { text: accumulatedTextRef.current },
+              },
+            },
+          ),
+        );
+
         await handleRefreshState();
       } catch (err) {
         console.error('Voice: failed to append text', err);

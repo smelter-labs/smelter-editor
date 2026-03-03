@@ -71,6 +71,7 @@ import {
   useFeedbackSizeSetting,
   useFeedbackDurationSetting,
   useDefaultOrientationSetting,
+  useVoicePanelSizeSetting,
 } from '@/lib/voice/macroSettings';
 import { FeedbackPositionPicker } from '@/components/voice-action-feedback/FeedbackPositionPicker';
 import {
@@ -582,6 +583,7 @@ function SettingsBar({
   const [feedbackDuration, setFeedbackDuration] = useFeedbackDurationSetting();
   const [defaultOrientation, setDefaultOrientation] =
     useDefaultOrientationSetting();
+  const [voicePanelSize, setVoicePanelSize] = useVoicePanelSizeSetting();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const buildConfig = useCallback(() => {
@@ -998,6 +1000,19 @@ function SettingsBar({
                   />
                   <span className='text-xs text-neutral-400'>
                     Auto Play Macro
+                  </span>
+                </label>
+                <label className='flex items-center gap-2 cursor-pointer'>
+                  <input
+                    type='checkbox'
+                    checked={voicePanelSize === 's'}
+                    onChange={(e) =>
+                      setVoicePanelSize(e.target.checked ? 's' : 'l')
+                    }
+                    className='accent-white'
+                  />
+                  <span className='text-xs text-neutral-400'>
+                    Compact Voice Panel
                   </span>
                 </label>
               </section>

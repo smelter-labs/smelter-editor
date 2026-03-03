@@ -89,10 +89,15 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let top_scale = 1.0 - perspective_strength;
     let auto_scale_factor = 1.0 / max(top_scale, 0.1);
     
-    // Apply scale, perspective, and auto-compensation
-    // Smaller perspective_scale means content appears further away (smaller)
-    // We divide UV by the scale to achieve this effect
-    let scaled_uv = centered_uv / (scale * safe_perspective * auto_scale_factor);
+    // Keep vertical anchoring independent from user scale:
+    // - Y stays controlled by perspective (top+bottom remain glued to frame)
+    // - X receives user scale so shrinking mostly narrows horizontally
+    let scale_x = max(scale, 0.001) * safe_perspective * auto_scale_factor;
+    let scale_y = safe_perspective * auto_scale_factor;
+    let scaled_uv = vec2<f32>(
+        centered_uv.x / scale_x,
+        centered_uv.y / scale_y
+    );
     
     // Apply rotation (tilt effect) around center
     let rotated_uv = rotate2D(scaled_uv, rotation);
