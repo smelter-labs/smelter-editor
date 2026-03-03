@@ -274,4 +274,77 @@ describe('parseCommand', () => {
       expect(result).toBeNull();
     });
   });
+
+  describe('New live operations commands', () => {
+    it('parses set layout by name', () => {
+      expect(parseCommand('set layout to picture in picture')).toEqual({
+        intent: 'SET_LAYOUT',
+        layout: 'picture-in-picture',
+      });
+      expect(parseCommand('switch layout to softu tv')).toEqual({
+        intent: 'SET_LAYOUT',
+        layout: 'softu-tv',
+      });
+    });
+
+    it('parses hide/remove all commands', () => {
+      expect(parseCommand('hide all inputs')).toEqual({
+        intent: 'HIDE_ALL_INPUTS',
+      });
+      expect(parseCommand('delete all sources')).toEqual({
+        intent: 'REMOVE_ALL_INPUTS',
+      });
+    });
+
+    it('parses recording commands', () => {
+      expect(parseCommand('start recording')).toEqual({
+        intent: 'START_RECORDING',
+      });
+      expect(parseCommand('stop recording')).toEqual({
+        intent: 'STOP_RECORDING',
+      });
+    });
+
+    it('parses transition durations in ms and seconds', () => {
+      expect(parseCommand('set transition duration to 900 ms')).toEqual({
+        intent: 'SET_SWAP_DURATION',
+        durationMs: 900,
+      });
+      expect(parseCommand('set fade in duration to 2 seconds')).toEqual({
+        intent: 'SET_SWAP_FADE_IN_DURATION',
+        durationMs: 2000,
+      });
+      expect(parseCommand('set fade out duration to 750')).toEqual({
+        intent: 'SET_SWAP_FADE_OUT_DURATION',
+        durationMs: 750,
+      });
+    });
+
+    it('parses outgoing transition and news strip toggles', () => {
+      expect(parseCommand('enable outgoing transition')).toEqual({
+        intent: 'SET_SWAP_OUTGOING_ENABLED',
+        enabled: true,
+      });
+      expect(parseCommand('turn off outgoing transition')).toEqual({
+        intent: 'SET_SWAP_OUTGOING_ENABLED',
+        enabled: false,
+      });
+      expect(parseCommand('enable news strip')).toEqual({
+        intent: 'SET_NEWS_STRIP_ENABLED',
+        enabled: true,
+      });
+      expect(parseCommand('disable news strip')).toEqual({
+        intent: 'SET_NEWS_STRIP_ENABLED',
+        enabled: false,
+      });
+      expect(parseCommand('enable news strip fades')).toEqual({
+        intent: 'SET_NEWS_STRIP_FADE_DURING_SWAP',
+        enabled: true,
+      });
+      expect(parseCommand('turn off news strip fade')).toEqual({
+        intent: 'SET_NEWS_STRIP_FADE_DURING_SWAP',
+        enabled: false,
+      });
+    });
+  });
 });

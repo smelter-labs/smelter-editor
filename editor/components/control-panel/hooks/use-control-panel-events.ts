@@ -5,11 +5,14 @@ import type { Input, AvailableShader } from '@/app/actions/actions';
 import {
   removeInput,
   hideInput,
+  updateRoom,
   addTwitchInput,
   addMP4Input,
   addImageInput,
   addTextInput,
   addCameraInput,
+  startRecording,
+  stopRecording,
   updateInput,
   getTwitchSuggestions,
 } from '@/app/actions/actions';
@@ -1134,6 +1137,162 @@ export function useControlPanelEvents({
       );
     };
   }, [changeLayout]);
+
+  useEffect(() => {
+    const onSetSwapDuration = async (e: CustomEvent<{ durationMs: number }>) => {
+      try {
+        await updateRoom(roomId, { swapDurationMs: e.detail.durationMs });
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to set swap duration', err);
+      }
+    };
+
+    const onSetSwapFadeInDuration = async (
+      e: CustomEvent<{ durationMs: number }>,
+    ) => {
+      try {
+        await updateRoom(roomId, { swapFadeInDurationMs: e.detail.durationMs });
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to set swap fade in duration', err);
+      }
+    };
+
+    const onSetSwapFadeOutDuration = async (
+      e: CustomEvent<{ durationMs: number }>,
+    ) => {
+      try {
+        await updateRoom(roomId, { swapFadeOutDurationMs: e.detail.durationMs });
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to set swap fade out duration', err);
+      }
+    };
+
+    const onSetSwapOutgoingEnabled = async (
+      e: CustomEvent<{ enabled: boolean }>,
+    ) => {
+      try {
+        await updateRoom(roomId, { swapOutgoingEnabled: e.detail.enabled });
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to set outgoing transition', err);
+      }
+    };
+
+    const onSetNewsStripEnabled = async (
+      e: CustomEvent<{ enabled: boolean }>,
+    ) => {
+      try {
+        await updateRoom(roomId, { newsStripEnabled: e.detail.enabled });
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to set news strip enabled', err);
+      }
+    };
+
+    const onSetNewsStripFadeDuringSwap = async (
+      e: CustomEvent<{ enabled: boolean }>,
+    ) => {
+      try {
+        await updateRoom(roomId, { newsStripFadeDuringSwap: e.detail.enabled });
+        await handleRefreshState();
+      } catch (err) {
+        console.error('Voice: failed to set news strip fade', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:set-swap-duration',
+      onSetSwapDuration as unknown as EventListener,
+    );
+    window.addEventListener(
+      'smelter:voice:set-swap-fade-in-duration',
+      onSetSwapFadeInDuration as unknown as EventListener,
+    );
+    window.addEventListener(
+      'smelter:voice:set-swap-fade-out-duration',
+      onSetSwapFadeOutDuration as unknown as EventListener,
+    );
+    window.addEventListener(
+      'smelter:voice:set-swap-outgoing-enabled',
+      onSetSwapOutgoingEnabled as unknown as EventListener,
+    );
+    window.addEventListener(
+      'smelter:voice:set-news-strip-enabled',
+      onSetNewsStripEnabled as unknown as EventListener,
+    );
+    window.addEventListener(
+      'smelter:voice:set-news-strip-fade-during-swap',
+      onSetNewsStripFadeDuringSwap as unknown as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:set-swap-duration',
+        onSetSwapDuration as unknown as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:voice:set-swap-fade-in-duration',
+        onSetSwapFadeInDuration as unknown as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:voice:set-swap-fade-out-duration',
+        onSetSwapFadeOutDuration as unknown as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:voice:set-swap-outgoing-enabled',
+        onSetSwapOutgoingEnabled as unknown as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:voice:set-news-strip-enabled',
+        onSetNewsStripEnabled as unknown as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:voice:set-news-strip-fade-during-swap',
+        onSetNewsStripFadeDuringSwap as unknown as EventListener,
+      );
+    };
+  }, [roomId, handleRefreshState]);
+
+  useEffect(() => {
+    const onStartRecording = async () => {
+      try {
+        await startRecording(roomId);
+      } catch (err) {
+        console.error('Voice: failed to start recording', err);
+      }
+    };
+
+    const onStopRecording = async () => {
+      try {
+        await stopRecording(roomId);
+      } catch (err) {
+        console.error('Voice: failed to stop recording', err);
+      }
+    };
+
+    window.addEventListener(
+      'smelter:voice:start-recording',
+      onStartRecording as unknown as EventListener,
+    );
+    window.addEventListener(
+      'smelter:voice:stop-recording',
+      onStopRecording as unknown as EventListener,
+    );
+
+    return () => {
+      window.removeEventListener(
+        'smelter:voice:start-recording',
+        onStartRecording as unknown as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:voice:stop-recording',
+        onStopRecording as unknown as EventListener,
+      );
+    };
+  }, [roomId]);
 
   useEffect(() => {
     const onSetText = async (

@@ -160,6 +160,8 @@ const START_ROOM_PATTERN =
   /\b(start|starts|open|create|new|starting)\s+(a\s+)?(new\s+)?(in\s+)?(your\s+)?(vertical\s+)?room\b/;
 const NEXT_LAYOUT_PATTERN = /\b(next|forward)\s+(layout|view)\b/;
 const PREVIOUS_LAYOUT_PATTERN = /\b(previous|prev|back|last)\s+(layout|view)\b/;
+const SET_LAYOUT_PATTERN =
+  /\b(?:set|switch|change)\s+(?:the\s+)?layout\s+(?:to\s+)?([\w-]+(?:\s+[\w-]+)*)\b/;
 const SET_COLOR_PATTERN =
   /\b(?:set|change)\s+(?:text\s+)?colou?r\s+(?:to\s+)?(\w+)\b/;
 const SET_MAX_LINES_PATTERN =
@@ -168,6 +170,31 @@ const SET_FONT_SIZE_PATTERN =
   /\b(?:set|change)\s+(?:font\s+)?size\s+(?:to\s+)?(\d+)\b/;
 const EXPORT_CONFIG_PATTERN =
   /\b(export|save|download)\s+(config(?:uration)?|settings)\b/;
+const HIDE_ALL_INPUTS_PATTERN =
+  /\b(hide|clear)\s+all\s+(?:inputs|sources|feeds)\b/;
+const REMOVE_ALL_INPUTS_PATTERN =
+  /\b(remove|delete)\s+all\s+(?:inputs|sources|feeds)\b/;
+const START_RECORDING_PATTERN =
+  /\b(start|begin)\s+(recording|record|capture)\b/;
+const STOP_RECORDING_PATTERN = /\b(stop|end|finish)\s+(recording|record)\b/;
+const SET_SWAP_DURATION_PATTERN =
+  /\b(?:set|change)\s+(?:swap|transition)\s+duration\s+(?:to\s+)?(\d+)(?:\s*(ms|milliseconds?|s|sec|seconds?))?\b/;
+const SET_FADE_IN_DURATION_PATTERN =
+  /\b(?:set|change)\s+(?:swap\s+)?fade\s+in\s+duration\s+(?:to\s+)?(\d+)(?:\s*(ms|milliseconds?|s|sec|seconds?))?\b/;
+const SET_FADE_OUT_DURATION_PATTERN =
+  /\b(?:set|change)\s+(?:swap\s+)?fade\s+out\s+duration\s+(?:to\s+)?(\d+)(?:\s*(ms|milliseconds?|s|sec|seconds?))?\b/;
+const ENABLE_OUTGOING_TRANSITION_PATTERN =
+  /\b(enable|turn on)\s+(?:the\s+)?outgoing(?:\s+swap)?\s+transition\b/;
+const DISABLE_OUTGOING_TRANSITION_PATTERN =
+  /\b(disable|turn off)\s+(?:the\s+)?outgoing(?:\s+swap)?\s+transition\b/;
+const ENABLE_NEWS_STRIP_PATTERN =
+  /\b(enable|turn on)\s+(?:the\s+)?news\s+strip\b/;
+const DISABLE_NEWS_STRIP_PATTERN =
+  /\b(disable|turn off)\s+(?:the\s+)?news\s+strip\b/;
+const ENABLE_NEWS_STRIP_FADE_PATTERN =
+  /\b(enable|turn on)\s+(?:the\s+)?news\s+strip\s+fade(?:s)?\b/;
+const DISABLE_NEWS_STRIP_FADE_PATTERN =
+  /\b(disable|turn off)\s+(?:the\s+)?news\s+strip\s+fade(?:s)?\b/;
 
 const SCROLL_TEXT_DOWN_PATTERN = /\bmove\s+(down(?:\s+down)*)\b/;
 const SCROLL_TEXT_UP_PATTERN = /\bmove\s+(up(?:\s+up)*)\b/;
@@ -185,6 +212,35 @@ const TEXT_COLOR_MAP: Record<string, string> = {
   cyan: '#00ffff',
   gray: '#808080',
   grey: '#808080',
+};
+
+const LAYOUT_ALIASES: Record<
+  string,
+  | 'grid'
+  | 'primary-on-left'
+  | 'primary-on-top'
+  | 'picture-in-picture'
+  | 'wrapped'
+  | 'wrapped-static'
+  | 'transition'
+  | 'picture-on-picture'
+  | 'softu-tv'
+> = {
+  grid: 'grid',
+  'primary left': 'primary-on-left',
+  'left primary': 'primary-on-left',
+  'primary on left': 'primary-on-left',
+  'primary top': 'primary-on-top',
+  'top primary': 'primary-on-top',
+  'primary on top': 'primary-on-top',
+  'picture in picture': 'picture-in-picture',
+  pip: 'picture-in-picture',
+  wrapped: 'wrapped',
+  'wrapped static': 'wrapped-static',
+  transition: 'transition',
+  'picture on picture': 'picture-on-picture',
+  pop: 'picture-on-picture',
+  'softu tv': 'softu-tv',
 };
 
 function isRemoveColorShaderContext(text: string): boolean {
@@ -222,6 +278,38 @@ function findShader(text: string): Shader | null {
     }
   }
   return null;
+}
+
+function findLayoutId(
+  text: string,
+):
+  | 'grid'
+  | 'primary-on-left'
+  | 'primary-on-top'
+  | 'picture-in-picture'
+  | 'wrapped'
+  | 'wrapped-static'
+  | 'transition'
+  | 'picture-on-picture'
+  | 'softu-tv'
+  | null {
+  for (const [token, layoutId] of Object.entries(LAYOUT_ALIASES)) {
+    if (new RegExp(`\\b${token}\\b`).test(text)) {
+      return layoutId;
+    }
+  }
+  return null;
+}
+
+function parseDurationToMs(value: string, unit?: string): number {
+  const parsed = parseInt(value, 10);
+  if (isNaN(parsed) || parsed < 0) {
+    return 0;
+  }
+  if (!unit || unit.startsWith('ms') || unit.startsWith('millisecond')) {
+    return parsed;
+  }
+  return parsed * 1000;
 }
 
 function findInputType(text: string): InputType | null {
@@ -302,8 +390,83 @@ export function parseCommand(
     return { intent: 'PREVIOUS_LAYOUT' };
   }
 
+  const setLayoutMatch = text.match(SET_LAYOUT_PATTERN);
+  if (setLayoutMatch) {
+    const layout = findLayoutId(setLayoutMatch[1]);
+    if (layout) {
+      return { intent: 'SET_LAYOUT', layout };
+    }
+  }
+
   if (EXPORT_CONFIG_PATTERN.test(text)) {
     return { intent: 'EXPORT_CONFIGURATION' };
+  }
+
+  if (HIDE_ALL_INPUTS_PATTERN.test(text)) {
+    return { intent: 'HIDE_ALL_INPUTS' };
+  }
+
+  if (REMOVE_ALL_INPUTS_PATTERN.test(text)) {
+    return { intent: 'REMOVE_ALL_INPUTS' };
+  }
+
+  if (START_RECORDING_PATTERN.test(text)) {
+    return { intent: 'START_RECORDING' };
+  }
+
+  if (STOP_RECORDING_PATTERN.test(text)) {
+    return { intent: 'STOP_RECORDING' };
+  }
+
+  const swapDurationMatch = text.match(SET_SWAP_DURATION_PATTERN);
+  if (swapDurationMatch) {
+    return {
+      intent: 'SET_SWAP_DURATION',
+      durationMs: parseDurationToMs(swapDurationMatch[1], swapDurationMatch[2]),
+    };
+  }
+
+  const fadeInDurationMatch = text.match(SET_FADE_IN_DURATION_PATTERN);
+  if (fadeInDurationMatch) {
+    return {
+      intent: 'SET_SWAP_FADE_IN_DURATION',
+      durationMs: parseDurationToMs(
+        fadeInDurationMatch[1],
+        fadeInDurationMatch[2],
+      ),
+    };
+  }
+
+  const fadeOutDurationMatch = text.match(SET_FADE_OUT_DURATION_PATTERN);
+  if (fadeOutDurationMatch) {
+    return {
+      intent: 'SET_SWAP_FADE_OUT_DURATION',
+      durationMs: parseDurationToMs(
+        fadeOutDurationMatch[1],
+        fadeOutDurationMatch[2],
+      ),
+    };
+  }
+
+  if (ENABLE_OUTGOING_TRANSITION_PATTERN.test(text)) {
+    return { intent: 'SET_SWAP_OUTGOING_ENABLED', enabled: true };
+  }
+  if (DISABLE_OUTGOING_TRANSITION_PATTERN.test(text)) {
+    return { intent: 'SET_SWAP_OUTGOING_ENABLED', enabled: false };
+  }
+
+  if (ENABLE_NEWS_STRIP_FADE_PATTERN.test(text)) {
+    return { intent: 'SET_NEWS_STRIP_FADE_DURING_SWAP', enabled: true };
+  }
+  if (DISABLE_NEWS_STRIP_FADE_PATTERN.test(text)) {
+    return { intent: 'SET_NEWS_STRIP_FADE_DURING_SWAP', enabled: false };
+  }
+
+  if (ENABLE_NEWS_STRIP_PATTERN.test(text)) {
+    return { intent: 'SET_NEWS_STRIP_ENABLED', enabled: true };
+  }
+  if (DISABLE_NEWS_STRIP_PATTERN.test(text)) {
+    return { intent: 'SET_NEWS_STRIP_ENABLED', enabled: false };
   }
 
   const colorMatch = text.match(SET_COLOR_PATTERN);

@@ -104,6 +104,20 @@ export type PreviousLayoutCommand = {
   intent: 'PREVIOUS_LAYOUT';
 };
 
+export type SetLayoutCommand = {
+  intent: 'SET_LAYOUT';
+  layout:
+    | 'grid'
+    | 'primary-on-left'
+    | 'primary-on-top'
+    | 'picture-in-picture'
+    | 'wrapped'
+    | 'wrapped-static'
+    | 'transition'
+    | 'picture-on-picture'
+    | 'softu-tv';
+};
+
 export type SetTextColorCommand = {
   intent: 'SET_TEXT_COLOR';
   color: string;
@@ -129,6 +143,52 @@ export type ScrollTextCommand = {
   lines: number;
 };
 
+export type HideAllInputsCommand = {
+  intent: 'HIDE_ALL_INPUTS';
+};
+
+export type RemoveAllInputsCommand = {
+  intent: 'REMOVE_ALL_INPUTS';
+};
+
+export type StartRecordingCommand = {
+  intent: 'START_RECORDING';
+};
+
+export type StopRecordingCommand = {
+  intent: 'STOP_RECORDING';
+};
+
+export type SetSwapDurationCommand = {
+  intent: 'SET_SWAP_DURATION';
+  durationMs: number;
+};
+
+export type SetSwapFadeInDurationCommand = {
+  intent: 'SET_SWAP_FADE_IN_DURATION';
+  durationMs: number;
+};
+
+export type SetSwapFadeOutDurationCommand = {
+  intent: 'SET_SWAP_FADE_OUT_DURATION';
+  durationMs: number;
+};
+
+export type SetSwapOutgoingEnabledCommand = {
+  intent: 'SET_SWAP_OUTGOING_ENABLED';
+  enabled: boolean;
+};
+
+export type SetNewsStripEnabledCommand = {
+  intent: 'SET_NEWS_STRIP_ENABLED';
+  enabled: boolean;
+};
+
+export type SetNewsStripFadeDuringSwapCommand = {
+  intent: 'SET_NEWS_STRIP_FADE_DURING_SWAP';
+  enabled: boolean;
+};
+
 export type ClarifyCommand = {
   intent: 'CLARIFY';
   missing: string[];
@@ -148,11 +208,22 @@ export type VoiceCommand =
   | StartRoomCommand
   | NextLayoutCommand
   | PreviousLayoutCommand
+  | SetLayoutCommand
   | SetTextColorCommand
   | SetTextMaxLinesCommand
   | SetTextFontSizeCommand
   | ExportConfigurationCommand
   | ScrollTextCommand
+  | HideAllInputsCommand
+  | RemoveAllInputsCommand
+  | StartRecordingCommand
+  | StopRecordingCommand
+  | SetSwapDurationCommand
+  | SetSwapFadeInDurationCommand
+  | SetSwapFadeOutDurationCommand
+  | SetSwapOutgoingEnabledCommand
+  | SetNewsStripEnabledCommand
+  | SetNewsStripFadeDuringSwapCommand
   | ClarifyCommand;
 
 export type VoiceInput = {
@@ -295,6 +366,15 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
     case 'PREVIOUS_LAYOUT':
       return { intent: 'PREVIOUS_LAYOUT' };
 
+    case 'SET_LAYOUT':
+      if (typeof c.layout === 'string') {
+        return {
+          intent: 'SET_LAYOUT',
+          layout: c.layout as SetLayoutCommand['layout'],
+        };
+      }
+      return null;
+
     case 'SET_TEXT_COLOR':
       if (typeof c.color === 'string') {
         return { intent: 'SET_TEXT_COLOR', color: c.color };
@@ -326,6 +406,57 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
           intent: 'SCROLL_TEXT',
           direction: c.direction as Direction,
           lines: c.lines,
+        };
+      }
+      return null;
+
+    case 'HIDE_ALL_INPUTS':
+      return { intent: 'HIDE_ALL_INPUTS' };
+
+    case 'REMOVE_ALL_INPUTS':
+      return { intent: 'REMOVE_ALL_INPUTS' };
+
+    case 'START_RECORDING':
+      return { intent: 'START_RECORDING' };
+
+    case 'STOP_RECORDING':
+      return { intent: 'STOP_RECORDING' };
+
+    case 'SET_SWAP_DURATION':
+      if (typeof c.durationMs === 'number') {
+        return { intent: 'SET_SWAP_DURATION', durationMs: c.durationMs };
+      }
+      return null;
+
+    case 'SET_SWAP_FADE_IN_DURATION':
+      if (typeof c.durationMs === 'number') {
+        return { intent: 'SET_SWAP_FADE_IN_DURATION', durationMs: c.durationMs };
+      }
+      return null;
+
+    case 'SET_SWAP_FADE_OUT_DURATION':
+      if (typeof c.durationMs === 'number') {
+        return { intent: 'SET_SWAP_FADE_OUT_DURATION', durationMs: c.durationMs };
+      }
+      return null;
+
+    case 'SET_SWAP_OUTGOING_ENABLED':
+      if (typeof c.enabled === 'boolean') {
+        return { intent: 'SET_SWAP_OUTGOING_ENABLED', enabled: c.enabled };
+      }
+      return null;
+
+    case 'SET_NEWS_STRIP_ENABLED':
+      if (typeof c.enabled === 'boolean') {
+        return { intent: 'SET_NEWS_STRIP_ENABLED', enabled: c.enabled };
+      }
+      return null;
+
+    case 'SET_NEWS_STRIP_FADE_DURING_SWAP':
+      if (typeof c.enabled === 'boolean') {
+        return {
+          intent: 'SET_NEWS_STRIP_FADE_DURING_SWAP',
+          enabled: c.enabled,
         };
       }
       return null;

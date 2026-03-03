@@ -121,6 +121,13 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
     case 'PREVIOUS_LAYOUT':
       window.dispatchEvent(new CustomEvent('smelter:voice:previous-layout'));
       break;
+    case 'SET_LAYOUT':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:set-layout', {
+          detail: { layout: command.layout },
+        }),
+      );
+      break;
     case 'SET_TEXT_COLOR':
       window.dispatchEvent(
         new CustomEvent('smelter:voice:set-text-color', {
@@ -154,6 +161,60 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
             direction: command.direction.toLowerCase(),
             lines: command.lines,
           },
+        }),
+      );
+      break;
+    case 'HIDE_ALL_INPUTS':
+      window.dispatchEvent(new CustomEvent('smelter:voice:hide-all-inputs'));
+      break;
+    case 'REMOVE_ALL_INPUTS':
+      window.dispatchEvent(new CustomEvent('smelter:voice:remove-all-inputs'));
+      break;
+    case 'START_RECORDING':
+      window.dispatchEvent(new CustomEvent('smelter:voice:start-recording'));
+      break;
+    case 'STOP_RECORDING':
+      window.dispatchEvent(new CustomEvent('smelter:voice:stop-recording'));
+      break;
+    case 'SET_SWAP_DURATION':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:set-swap-duration', {
+          detail: { durationMs: command.durationMs },
+        }),
+      );
+      break;
+    case 'SET_SWAP_FADE_IN_DURATION':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:set-swap-fade-in-duration', {
+          detail: { durationMs: command.durationMs },
+        }),
+      );
+      break;
+    case 'SET_SWAP_FADE_OUT_DURATION':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:set-swap-fade-out-duration', {
+          detail: { durationMs: command.durationMs },
+        }),
+      );
+      break;
+    case 'SET_SWAP_OUTGOING_ENABLED':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:set-swap-outgoing-enabled', {
+          detail: { enabled: command.enabled },
+        }),
+      );
+      break;
+    case 'SET_NEWS_STRIP_ENABLED':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:set-news-strip-enabled', {
+          detail: { enabled: command.enabled },
+        }),
+      );
+      break;
+    case 'SET_NEWS_STRIP_FADE_DURING_SWAP':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:set-news-strip-fade-during-swap', {
+          detail: { enabled: command.enabled },
         }),
       );
       break;

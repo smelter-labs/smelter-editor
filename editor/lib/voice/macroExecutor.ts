@@ -275,6 +275,62 @@ async function dispatchMacroStep(step: MacroStep): Promise<void> {
         }),
       );
       break;
+
+    case 'START_RECORDING':
+      window.dispatchEvent(new CustomEvent('smelter:voice:start-recording'));
+      break;
+
+    case 'STOP_RECORDING':
+      window.dispatchEvent(new CustomEvent('smelter:voice:stop-recording'));
+      break;
+
+    case 'SET_SWAP_DURATION':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:set-swap-duration', {
+          detail: { durationMs: params?.durationMs },
+        }),
+      );
+      break;
+
+    case 'SET_SWAP_FADE_IN_DURATION':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:set-swap-fade-in-duration', {
+          detail: { durationMs: params?.durationMs },
+        }),
+      );
+      break;
+
+    case 'SET_SWAP_FADE_OUT_DURATION':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:set-swap-fade-out-duration', {
+          detail: { durationMs: params?.durationMs },
+        }),
+      );
+      break;
+
+    case 'SET_SWAP_OUTGOING_ENABLED':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:set-swap-outgoing-enabled', {
+          detail: { enabled: params?.enabled },
+        }),
+      );
+      break;
+
+    case 'SET_NEWS_STRIP_ENABLED':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:set-news-strip-enabled', {
+          detail: { enabled: params?.enabled },
+        }),
+      );
+      break;
+
+    case 'SET_NEWS_STRIP_FADE_DURING_SWAP':
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:set-news-strip-fade-during-swap', {
+          detail: { enabled: params?.enabled },
+        }),
+      );
+      break;
   }
 }
 

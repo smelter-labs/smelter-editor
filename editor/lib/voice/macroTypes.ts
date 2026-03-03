@@ -15,6 +15,8 @@ export type MacroActionParams = {
   textAlign?: 'left' | 'center' | 'right';
   mp4Name?: string;
   imageName?: string;
+  enabled?: boolean;
+  durationMs?: number;
 };
 
 export type MacroStep = {
@@ -39,7 +41,15 @@ export type MacroAction =
   | 'SET_TEXT_COLOR'
   | 'SET_TEXT_MAX_LINES'
   | 'SET_TEXT_FONT_SIZE'
-  | 'SET_TEXT';
+  | 'SET_TEXT'
+  | 'START_RECORDING'
+  | 'STOP_RECORDING'
+  | 'SET_SWAP_DURATION'
+  | 'SET_SWAP_FADE_IN_DURATION'
+  | 'SET_SWAP_FADE_OUT_DURATION'
+  | 'SET_SWAP_OUTGOING_ENABLED'
+  | 'SET_NEWS_STRIP_ENABLED'
+  | 'SET_NEWS_STRIP_FADE_DURING_SWAP';
 
 export type MacroDefinition = {
   id: string;
