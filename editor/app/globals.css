@@ -153,75 +153,97 @@
 /* Fallback for nested handle structure used by react-grid-layout v2. */
 .react-grid-item .react-resizable-handle {
   position: absolute;
-  width: 20px;
-  height: 20px;
+  width: 22px;
+  height: 22px;
   opacity: 0;
-  transition: opacity 0.2s ease;
+  transform: scale(0.92);
+  transition:
+    opacity 0.18s ease,
+    transform 0.18s ease,
+    border-color 0.18s ease,
+    background-color 0.18s ease;
   box-sizing: border-box;
-  padding: 0 3px 3px 0;
-  background-repeat: no-repeat;
-  background-origin: content-box;
-  background-position: bottom right;
-  background-image: url("data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCA2IDYiIHN0eWxlPSJiYWNrZ3JvdW5kLWNvbG9yOiNmZmZmZmYwMCIgeD0iMHB4IiB5PSIwcHgiIHdpZHRoPSI2cHgiIGhlaWdodD0iNnB4Ij48ZyBvcGFjaXR5PSIwLjMwMiI+PHBhdGggZD0iTSA2IDYgTCAwIDYgTCAwIDQuMiBMIDQgNC4yIEwgNC4yIDQuMiBMIDQuMiAwIEwgNiAwIEwgNiA2IEwgNiA2IFoiIGZpbGw9IiMwMDAwMDAiLz48L2c+PC9zdmc+");
+  border-radius: 5px;
+  border: 1px solid rgba(163, 163, 163, 0.55);
+  background: rgba(10, 10, 10, 0.75);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
 }
 
 .react-grid-item .react-resizable-handle::after {
   content: '';
   position: absolute;
   pointer-events: none;
+  opacity: 0.95;
 }
 
 .react-grid-item .react-resizable-handle-se {
-  right: 0;
-  bottom: 0;
+  right: 2px;
+  bottom: 2px;
   cursor: se-resize;
 }
 
 .react-grid-item .react-resizable-handle-se::after {
   right: 4px;
   bottom: 4px;
-  width: 8px;
-  height: 8px;
-  border-right: 2px solid rgba(229, 229, 229, 0.95);
-  border-bottom: 2px solid rgba(229, 229, 229, 0.95);
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid rgba(229, 229, 229, 0.96);
+  border-bottom: 2px solid rgba(229, 229, 229, 0.96);
+  box-shadow: -3px -3px 0 -2px rgba(229, 229, 229, 0.78);
 }
 
 .react-grid-item .react-resizable-handle-s {
+  width: 40px;
+  height: 12px;
   left: 50%;
-  bottom: 0;
-  margin-left: -10px;
+  bottom: 2px;
+  margin-left: -20px;
   cursor: ns-resize;
 }
 
 .react-grid-item .react-resizable-handle-s::after {
-  left: 4px;
-  right: 4px;
-  bottom: 4px;
+  left: 7px;
+  right: 7px;
+  top: 50%;
   height: 2px;
-  background: rgba(229, 229, 229, 0.95);
+  transform: translateY(-50%);
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(229, 229, 229, 0.96) 0 5px,
+    transparent 5px 8px
+  );
 }
 
 .react-grid-item .react-resizable-handle-e {
-  right: 0;
+  width: 12px;
+  height: 40px;
+  right: 2px;
   top: 50%;
-  margin-top: -10px;
+  margin-top: -20px;
   cursor: ew-resize;
 }
 
 .react-grid-item .react-resizable-handle-e::after {
-  top: 4px;
-  bottom: 4px;
-  right: 4px;
+  top: 7px;
+  bottom: 7px;
+  left: 50%;
   width: 2px;
-  background: rgba(229, 229, 229, 0.95);
+  transform: translateX(-50%);
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(229, 229, 229, 0.96) 0 5px,
+    transparent 5px 8px
+  );
 }
 
 .react-grid-item:hover > .react-resizable-handle {
   opacity: 0.9;
+  transform: scale(1);
 }
 
 .react-grid-item:hover .react-resizable-handle {
   opacity: 0.9;
+  transform: scale(1);
 }
 
 .react-grid-item > .react-resizable-handle:hover,
@@ -232,34 +254,21 @@
 .react-grid-item .react-resizable-handle:hover,
 .react-grid-item .react-resizable-handle:active {
   opacity: 1;
-}
-
-.react-grid-item > .react-resizable-handle::after {
-  border-right-color: rgba(163, 163, 163, 0.7);
-  border-bottom-color: rgba(163, 163, 163, 0.7);
-}
-
-.react-grid-item .react-resizable-handle::after {
-  border-right-color: rgba(163, 163, 163, 0.7);
-  border-bottom-color: rgba(163, 163, 163, 0.7);
+  border-color: rgba(125, 211, 252, 0.95);
+  background: rgba(15, 23, 42, 0.92);
+  transform: scale(1);
 }
 
 .react-grid-item.react-resizable-resizing > .react-resizable-handle {
   opacity: 1;
+  transform: scale(1);
 }
 
 .react-grid-item.react-resizable-resizing .react-resizable-handle {
   opacity: 1;
-}
-
-.react-grid-item.react-resizable-resizing > .react-resizable-handle::after {
-  border-right-color: rgba(96, 165, 250, 0.9);
-  border-bottom-color: rgba(96, 165, 250, 0.9);
-}
-
-.react-grid-item.react-resizable-resizing .react-resizable-handle::after {
-  border-right-color: rgba(96, 165, 250, 0.9);
-  border-bottom-color: rgba(96, 165, 250, 0.9);
+  transform: scale(1);
+  border-color: rgba(96, 165, 250, 0.95);
+  background: rgba(15, 23, 42, 0.95);
 }
 
 .react-grid-item.react-draggable-dragging {
