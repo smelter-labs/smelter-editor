@@ -30,8 +30,8 @@ interface DashboardLayoutProps {
 }
 
 const BREAKPOINTS = { lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 } as const;
-const COLS = { lg: 12, md: 10, sm: 6, xs: 4, xxs: 2 } as const;
-const ROW_HEIGHT = 60;
+const COLS = { lg: 24, md: 20, sm: 12, xs: 8, xxs: 4 } as const;
+const ROW_HEIGHT = 30;
 
 function toMutable(layout: Layout): MutableLayout {
   return layout.map((item) => ({
@@ -141,8 +141,8 @@ export default function DashboardLayout({ panels }: DashboardLayoutProps) {
               i: panelId,
               x: 0,
               y: maxY,
-              w: def.minW + 2,
-              h: def.minH + 1,
+              w: def.minW + 4,
+              h: def.minH + 2,
               minW: def.minW,
               minH: def.minH,
             };

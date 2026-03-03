@@ -31,7 +31,7 @@ const PanelWrapper = forwardRef<HTMLDivElement, PanelWrapperProps>(
         className={`${className ?? ''} flex flex-col rounded-lg overflow-visible transition-colors ${
           isEditMode
             ? 'border border-neutral-600 ring-1 ring-neutral-700/50'
-            : 'border border-neutral-800/60 hover:border-neutral-700/80'
+            : ''
         }`}
         {...rest}>
         {isEditMode && (

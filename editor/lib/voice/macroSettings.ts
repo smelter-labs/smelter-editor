@@ -399,10 +399,9 @@ export function setVoicePanelSizeSetting(value: VoicePanelSize): void {
   }
   window.localStorage.setItem(VOICE_PANEL_SIZE_STORAGE_KEY, value);
   window.dispatchEvent(
-    new CustomEvent<{ value: VoicePanelSize }>(
-      VOICE_PANEL_SIZE_CHANGED_EVENT,
-      { detail: { value } },
-    ),
+    new CustomEvent<{ value: VoicePanelSize }>(VOICE_PANEL_SIZE_CHANGED_EVENT, {
+      detail: { value },
+    }),
   );
 }
 

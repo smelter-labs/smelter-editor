@@ -856,15 +856,12 @@ export function useControlPanelEvents({
           });
 
           window.dispatchEvent(
-            new CustomEvent(
-              'smelter:timeline:update-clip-settings-for-input',
-              {
-                detail: {
-                  inputId: input.inputId,
-                  patch: { text: accumulatedTextRef.current },
-                },
+            new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
+              detail: {
+                inputId: input.inputId,
+                patch: { text: accumulatedTextRef.current },
               },
-            ),
+            }),
           );
 
           await handleRefreshState();
@@ -899,15 +896,12 @@ export function useControlPanelEvents({
         });
 
         window.dispatchEvent(
-          new CustomEvent(
-            'smelter:timeline:update-clip-settings-for-input',
-            {
-              detail: {
-                inputId: input.inputId,
-                patch: { text: accumulatedTextRef.current },
-              },
+          new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
+            detail: {
+              inputId: input.inputId,
+              patch: { text: accumulatedTextRef.current },
             },
-          ),
+          }),
         );
 
         await handleRefreshState();

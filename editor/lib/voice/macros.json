@@ -182,7 +182,7 @@
           "action": "SET_TEXT_SCROLL_SPEED",
           "params": {
             "inputIndex": 3,
-            "scrollSpeed": 160
+            "scrollSpeed": 80
           },
           "delayAfterMs": 1500
         },
@@ -315,7 +315,7 @@
           "action": "SET_TEXT_SCROLL_SPEED",
           "params": {
             "inputIndex": 3,
-            "scrollSpeed": 160
+            "scrollSpeed": 80
           },
           "delayAfterMs": 1500
         },
