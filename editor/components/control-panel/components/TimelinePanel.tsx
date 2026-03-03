@@ -51,6 +51,7 @@ type TimelinePanelProps = {
   selectedInputId: string | null;
   isGuest?: boolean;
   guestInputId?: string | null;
+  fillContainer?: boolean;
 };
 
 // ── Color maps ───────────────────────────────────────────
@@ -194,6 +195,7 @@ export function TimelinePanel({
   selectedInputId,
   isGuest,
   guestInputId,
+  fillContainer,
 }: TimelinePanelProps) {
   const { inputs, roomId, refreshState } = useControlPanelContext();
   const {
@@ -1418,13 +1420,14 @@ export function TimelinePanel({
 
   return (
     <div
-      className='relative flex flex-col bg-neutral-950 border-t border-neutral-800'
-      style={{ height: panelHeight }}>
-      {/* Resize handle */}
-      <div
-        className='h-1 w-full cursor-ns-resize hover:bg-neutral-700 transition-colors shrink-0'
-        onMouseDown={handleResizeStart}
-      />
+      className={`relative flex flex-col bg-neutral-950 ${fillContainer ? 'h-full' : 'border-t border-neutral-800'}`}
+      style={fillContainer ? undefined : { height: panelHeight }}>
+      {!fillContainer && (
+        <div
+          className='h-1 w-full cursor-ns-resize hover:bg-neutral-700 transition-colors shrink-0'
+          onMouseDown={handleResizeStart}
+        />
+      )}
 
       {/* Transport bar */}
       <div className='flex items-center gap-2 px-3 h-8 bg-neutral-900 border-b border-neutral-800 shrink-0'>

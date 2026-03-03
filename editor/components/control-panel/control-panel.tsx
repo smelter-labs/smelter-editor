@@ -91,6 +91,13 @@ export type ControlPanelProps = {
   >;
   renderStreamsOutside?: boolean;
   timelinePortalRef?: React.RefObject<HTMLDivElement | null>;
+  renderDashboard?: (panels: {
+    addVideoSection: React.ReactNode;
+    buttonsSection: React.ReactNode;
+    streamsSection: React.ReactNode;
+    fxSection: React.ReactNode;
+    timelineSection: React.ReactNode;
+  }) => React.ReactNode;
 };
 
 export type { InputWrapper } from './hooks/use-control-panel-state';
@@ -105,6 +112,7 @@ export default function ControlPanel({
   onGuestRotateRef,
   renderStreamsOutside,
   timelinePortalRef,
+  renderDashboard,
 }: ControlPanelProps) {
   const addVideoAccordionRef = useRef<AccordionHandle | null>(null);
 
@@ -340,7 +348,112 @@ export default function ControlPanel({
       window.removeEventListener('smelter:timeline:selected-clip', handler);
   }, []);
 
-  const streamsSection = !fxInput ? (
+  if (renderDashboard) {
+    const addVideoSection = (
+      <div className='h-full overflow-y-auto flex flex-col gap-3 bg-neutral-950 p-1'>
+        <AddVideoSection
+          addVideoAccordionRef={addVideoAccordionRef}
+          isGuest={isGuest}
+          hasGuestInput={
+            isGuest
+              ? !!(activeCameraInputId || activeScreenshareInputId) ||
+                (!!loadLastWhipInputId(roomId) &&
+                  inputs.some((i) => i.inputId === loadLastWhipInputId(roomId)))
+              : false
+          }
+        />
+        {!isGuest && (
+          <PendingWhipInputs
+            pendingInputs={pendingWhipInputs}
+            setPendingInputs={handleSetPendingWhipInputs}
+          />
+        )}
+      </div>
+    );
+
+    const buttonsSection = (
+      <div className='h-full overflow-y-auto bg-neutral-950 p-1'>
+        <SettingsBar
+          changeLayout={changeLayout}
+          roomState={roomState}
+          roomId={roomId}
+          handleRefreshState={handleRefreshState}
+          pendingWhipInputs={pendingWhipInputs}
+          setPendingWhipInputs={handleSetPendingWhipInputs}
+          selectedTimelineClip={selectedTimelineClip}
+          inputs={inputs}
+          availableShaders={availableShaders}
+          onSelectedTimelineClipChange={setSelectedTimelineClip}
+        />
+      </div>
+    );
+
+    const streamsSection = (
+      <div className='h-full overflow-y-auto'>
+        <StreamsSection
+          inputWrappers={inputWrappers}
+          listVersion={listVersion}
+          showStreamsSpinner={showStreamsSpinner}
+          updateOrder={updateOrderWithLock}
+          openFxInputId={openFxInputId}
+          onToggleFx={handleToggleFx}
+          isSwapping={isSwapping}
+          selectedInputId={selectedInputId}
+          isGuest={isGuest}
+          guestInputId={activeCameraInputId || activeScreenshareInputId}
+        />
+      </div>
+    );
+
+    const fxSection = fxInput ? (
+      <div className='h-full overflow-y-auto bg-neutral-950 p-1'>
+        <FxAccordion fxInput={fxInput} onClose={() => setOpenFxInputId(null)} />
+      </div>
+    ) : (
+      <div className='h-full flex items-center justify-center text-neutral-500 text-sm'>
+        Select a stream to edit FX
+      </div>
+    );
+
+    const timelineSection = (
+      <TimelinePanel
+        inputWrappers={inputWrappers}
+        listVersion={listVersion}
+        showStreamsSpinner={showStreamsSpinner}
+        updateOrder={updateOrderWithLock}
+        openFxInputId={openFxInputId}
+        onToggleFx={handleToggleFx}
+        isSwapping={isSwapping}
+        selectedInputId={selectedInputId}
+        isGuest={isGuest}
+        guestInputId={activeCameraInputId || activeScreenshareInputId}
+        fillContainer
+      />
+    );
+
+    return (
+      <ControlPanelProvider value={controlPanelCtx}>
+        <WhipConnectionsProvider value={whipConnections}>
+          <video
+            id='local-preview'
+            muted
+            playsInline
+            autoPlay
+            className='hidden'
+          />
+          {renderDashboard({
+            addVideoSection,
+            buttonsSection,
+            streamsSection,
+            fxSection,
+            timelineSection,
+          })}
+        </WhipConnectionsProvider>
+      </ControlPanelProvider>
+    );
+  }
+
+  const streamsSectionContent = !fxInput ? (
     <StreamsSection
       inputWrappers={inputWrappers}
       listVersion={listVersion}
@@ -367,13 +480,14 @@ export default function ControlPanel({
       selectedInputId={selectedInputId}
       isGuest={isGuest}
       guestInputId={activeCameraInputId || activeScreenshareInputId}
+      fillContainer={false}
     />
   ) : null;
 
   const mainPanel = (
     <motion.div
       {...(fadeIn as any)}
-      className={`flex flex-col flex-1 min-h-0 gap-3 rounded-none bg-neutral-950 mt-6`}>
+      className='flex flex-col flex-1 mt-6 min-h-0 gap-3 rounded-none bg-neutral-950'>
       <video id='local-preview' muted playsInline autoPlay className='hidden' />
 
       {fxInput ? (
@@ -399,7 +513,7 @@ export default function ControlPanel({
               setPendingInputs={handleSetPendingWhipInputs}
             />
           )}
-          {!isGuest && !renderStreamsOutside && streamsSection}
+          {!isGuest && !renderStreamsOutside && streamsSectionContent}
           {!isGuest && (
             <SettingsBar
               changeLayout={changeLayout}

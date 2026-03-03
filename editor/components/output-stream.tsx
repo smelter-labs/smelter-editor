@@ -247,11 +247,12 @@ export default function OutputStream({
 
   return (
     <div
-      className='relative w-full h-full bg-black rounded-none overflow-hidden border-[#2a2a2a] border-4'
+      className='relative bg-black rounded-none overflow-hidden border-[#2a2a2a] border-4'
       style={{
         aspectRatio,
         maxWidth,
-        maxHeight,
+        maxHeight: '100%',
+        width: '100%',
         margin: isVertical ? '0 auto' : undefined,
       }}>
       {!videoLoaded && (

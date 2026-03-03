@@ -109,11 +109,11 @@ export default function VideoPreview({
 
   return (
     <motion.div
-      className={`${className ?? ''} sticky top-0 self-start z-10 w-full`}
+      className={`${className ?? ''} w-full h-full`}
       {...(fadeInUp as any)}>
-      <Card className='flex flex-col bg-[#0a0a0a] border-0'>
-        <CardContent className='flex flex-col'>
-          <div className='w-full max-w-[1920px] mx-auto'>
+      <Card className='flex flex-col bg-[#0a0a0a] border-0 h-full'>
+        <CardContent className='flex flex-col flex-1 min-h-0 h-full'>
+          <div className='w-full max-w-[1920px] mx-auto flex flex-col flex-1 min-h-0'>
             {isGuest && (
               <div className='flex justify-end gap-2 mb-2'>
                 {guestStream && showPreview && (
@@ -159,11 +159,16 @@ export default function VideoPreview({
               </div>
             )}
             {showPreview && (
-              <div className='rounded-none flex items-center justify-center bg-[#141414]'>
+              <div className='rounded-none flex items-center justify-center bg-[#141414] flex-1 min-h-0'>
                 {isGuest && guestStream && previewMode === 'input' ? (
                   <div
-                    className='relative w-full bg-black rounded-none overflow-hidden border-[#2a2a2a] border-4'
-                    style={{ aspectRatio: '16/9', maxWidth: 1920 }}>
+                    className='relative bg-black rounded-none overflow-hidden border-[#2a2a2a] border-4'
+                    style={{
+                      aspectRatio: '16/9',
+                      maxWidth: 1920,
+                      maxHeight: '100%',
+                      width: '100%',
+                    }}>
                     <video
                       ref={guestVideoRef}
                       muted
@@ -173,7 +178,7 @@ export default function VideoPreview({
                     />
                   </div>
                 ) : activeStream ? (
-                  <div>
+                  <div className='w-full h-full flex items-center justify-center'>
                     <OutputStream
                       videoRef={videoRef}
                       whepUrl={whepUrl}
