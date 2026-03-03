@@ -512,6 +512,7 @@ export function useControlPanelEvents({
           case 'camera': {
             const cameraName = `Camera-${Date.now()}`;
             const cameraResponse = await addCameraInput(roomId, cameraName);
+            addedInputId = cameraResponse.inputId;
             setActiveCameraInputId(cameraResponse.inputId);
             setIsCameraActive(false);
             const onCameraDisconnected = () => {
@@ -540,6 +541,7 @@ export function useControlPanelEvents({
           case 'screenshare': {
             const screenName = `Screen-${Date.now()}`;
             const screenResponse = await addCameraInput(roomId, screenName);
+            addedInputId = screenResponse.inputId;
             setActiveScreenshareInputId(screenResponse.inputId);
             setIsScreenshareActive(false);
             const onScreenDisconnected = () => {

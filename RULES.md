@@ -88,3 +88,13 @@
 ## Refactoring Hygiene
 - **Don't leave dead variables** — if a variable is only used in one branch of an if/else, either use it consistently or inline the value.
 - **When extracting shared logic, preserve type safety** — merging two typed code paths into one generic function must not lose type information (e.g. via `as any`).
+
+---
+
+# Testing
+
+## Keep Tests Green
+- After any meaningful code change, run the relevant test command before finishing.
+- If tests fail because of your change, fix either implementation or tests to match intended behavior.
+- Do not leave known failing tests behind without explicit user approval.
+- Prefer the narrowest test command first, then run broader suite when requested.
