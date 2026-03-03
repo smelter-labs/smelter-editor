@@ -9,6 +9,7 @@ interface PanelWrapperProps {
   panelId: PanelId;
   isEditMode: boolean;
   children: ReactNode;
+  panelContent: ReactNode;
   style?: React.CSSProperties;
   className?: string;
   onMouseDown?: React.MouseEventHandler;
@@ -18,7 +19,7 @@ interface PanelWrapperProps {
 
 const PanelWrapper = forwardRef<HTMLDivElement, PanelWrapperProps>(
   function PanelWrapper(
-    { panelId, isEditMode, children, style, className, ...rest },
+    { panelId, isEditMode, children, panelContent, style, className, ...rest },
     ref,
   ) {
     const def = PANEL_DEFINITIONS[panelId];
@@ -27,10 +28,10 @@ const PanelWrapper = forwardRef<HTMLDivElement, PanelWrapperProps>(
       <div
         ref={ref}
         style={style}
-        className={`${className ?? ''} flex flex-col rounded-lg overflow-hidden ${
+        className={`${className ?? ''} flex flex-col rounded-lg overflow-visible transition-colors ${
           isEditMode
             ? 'border border-neutral-600 ring-1 ring-neutral-700/50'
-            : 'border border-neutral-800/60'
+            : 'border border-neutral-800/60 hover:border-neutral-700/80'
         }`}
         {...rest}>
         {isEditMode && (
@@ -42,8 +43,9 @@ const PanelWrapper = forwardRef<HTMLDivElement, PanelWrapperProps>(
           </div>
         )}
         <div className='flex-1 min-h-0 overflow-hidden bg-neutral-950'>
-          {children}
+          {panelContent}
         </div>
+        {children}
       </div>
     );
   },

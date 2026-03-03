@@ -170,6 +170,7 @@ export default function RoomView({
           streamsSection,
           fxSection,
           timelineSection,
+          blockPropertiesSection,
         }) => (
           <DashboardLayout
             panels={{
@@ -188,6 +189,7 @@ export default function RoomView({
               streams: streamsSection,
               fx: fxSection,
               timeline: timelineSection,
+              'block-properties': blockPropertiesSection,
             }}
           />
         )}

@@ -39,7 +39,6 @@ type UseControlPanelEventsProps = {
   ) => void;
   setListVersion: (v: number | ((prev: number) => number)) => void;
   updateOrder: (wrappers: InputWrapper[]) => Promise<void>;
-  addVideoAccordionRef: React.MutableRefObject<any>;
   roomId: string;
   handleRefreshState: () => Promise<void>;
   cameraPcRef: React.MutableRefObject<RTCPeerConnection | null>;
@@ -119,7 +118,6 @@ export function useControlPanelEvents({
   setInputWrappers,
   setListVersion,
   updateOrder,
-  addVideoAccordionRef,
   roomId,
   handleRefreshState,
   cameraPcRef,

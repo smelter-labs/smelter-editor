@@ -19,7 +19,6 @@ import {
   type PendingWhipInputData,
 } from '@/app/actions/actions';
 import LayoutSelector, { type Layout } from '@/components/layout-selector';
-import type { AccordionHandle } from '@/components/ui/accordion';
 import {
   Dialog,
   DialogContent,
@@ -97,6 +96,7 @@ export type ControlPanelProps = {
     streamsSection: React.ReactNode;
     fxSection: React.ReactNode;
     timelineSection: React.ReactNode;
+    blockPropertiesSection: React.ReactNode;
   }) => React.ReactNode;
 };
 
@@ -114,8 +114,6 @@ export default function ControlPanel({
   timelinePortalRef,
   renderDashboard,
 }: ControlPanelProps) {
-  const addVideoAccordionRef = useRef<AccordionHandle | null>(null);
-
   const pendingWhipInputs: PendingWhipInput[] = (
     roomState.pendingWhipInputs || []
   ).map((p) => ({
@@ -270,7 +268,6 @@ export default function ControlPanel({
     setInputWrappers,
     setListVersion,
     updateOrder: updateOrderWithLock,
-    addVideoAccordionRef,
     roomId,
     handleRefreshState,
     cameraPcRef,
@@ -339,9 +336,6 @@ export default function ControlPanel({
       const detail = (e as CustomEvent<{ clip: SelectedTimelineClip | null }>)
         .detail;
       setSelectedTimelineClip(detail?.clip ?? null);
-      if (detail?.clip) {
-        addVideoAccordionRef.current?.close();
-      }
     };
     window.addEventListener('smelter:timeline:selected-clip', handler);
     return () =>
@@ -352,7 +346,6 @@ export default function ControlPanel({
     const addVideoSection = (
       <div className='h-full overflow-y-auto flex flex-col gap-3 bg-neutral-950 p-1'>
         <AddVideoSection
-          addVideoAccordionRef={addVideoAccordionRef}
           isGuest={isGuest}
           hasGuestInput={
             isGuest
@@ -380,10 +373,6 @@ export default function ControlPanel({
           handleRefreshState={handleRefreshState}
           pendingWhipInputs={pendingWhipInputs}
           setPendingWhipInputs={handleSetPendingWhipInputs}
-          selectedTimelineClip={selectedTimelineClip}
-          inputs={inputs}
-          availableShaders={availableShaders}
-          onSelectedTimelineClipChange={setSelectedTimelineClip}
         />
       </div>
     );
@@ -431,6 +420,19 @@ export default function ControlPanel({
       />
     );
 
+    const blockPropertiesSection = (
+      <div className='h-full overflow-y-auto bg-neutral-950 p-1'>
+        <BlockClipPropertiesPanel
+          roomId={roomId}
+          selectedTimelineClip={selectedTimelineClip}
+          onSelectedTimelineClipChange={setSelectedTimelineClip}
+          inputs={inputs}
+          availableShaders={availableShaders}
+          handleRefreshState={handleRefreshState}
+        />
+      </div>
+    );
+
     return (
       <ControlPanelProvider value={controlPanelCtx}>
         <WhipConnectionsProvider value={whipConnections}>
@@ -447,6 +449,7 @@ export default function ControlPanel({
             streamsSection,
             fxSection,
             timelineSection,
+            blockPropertiesSection,
           })}
         </WhipConnectionsProvider>
       </ControlPanelProvider>
@@ -495,7 +498,6 @@ export default function ControlPanel({
       ) : (
         <>
           <AddVideoSection
-            addVideoAccordionRef={addVideoAccordionRef}
             isGuest={isGuest}
             hasGuestInput={
               isGuest
@@ -522,10 +524,6 @@ export default function ControlPanel({
               handleRefreshState={handleRefreshState}
               pendingWhipInputs={pendingWhipInputs}
               setPendingWhipInputs={handleSetPendingWhipInputs}
-              selectedTimelineClip={selectedTimelineClip}
-              inputs={inputs}
-              availableShaders={availableShaders}
-              onSelectedTimelineClipChange={setSelectedTimelineClip}
             />
           )}
         </>
@@ -564,10 +562,6 @@ function SettingsBar({
   handleRefreshState,
   pendingWhipInputs,
   setPendingWhipInputs,
-  selectedTimelineClip,
-  onSelectedTimelineClipChange,
-  inputs,
-  availableShaders,
 }: {
   changeLayout: (layout: Layout) => void;
   roomState: RoomState;
@@ -575,10 +569,6 @@ function SettingsBar({
   handleRefreshState: () => Promise<void>;
   pendingWhipInputs: PendingWhipInput[];
   setPendingWhipInputs: (inputs: PendingWhipInput[]) => void | Promise<void>;
-  selectedTimelineClip: SelectedTimelineClip | null;
-  onSelectedTimelineClipChange: (clip: SelectedTimelineClip | null) => void;
-  inputs: Input[];
-  availableShaders: AvailableShader[];
 }) {
   const [openModal, setOpenModal] = useState<ModalId | null>(null);
   const [isExporting, setIsExporting] = useState(false);
@@ -911,15 +901,6 @@ function SettingsBar({
         className='hidden'
         onChange={handleFileChange}
       />
-      <BlockClipPropertiesPanel
-        roomId={roomId}
-        selectedTimelineClip={selectedTimelineClip}
-        onSelectedTimelineClipChange={onSelectedTimelineClipChange}
-        inputs={inputs}
-        availableShaders={availableShaders}
-        handleRefreshState={handleRefreshState}
-      />
-
       <Dialog
         open={openModal === 'quickActions'}
         onOpenChange={(open) => !open && setOpenModal(null)}>
