@@ -718,6 +718,55 @@ export function parseCommand(
     return { intent: 'ADD_INPUT', inputType };
   }
 
+  if (hasAdd && inputType === null && !hasShader) {
+    const queryText = text
+      .replace(
+        /\b(add|create|new|apply|put|insert|at|of|input|source|file|video|background|the|a|an)\b/g,
+        '',
+      )
+      .trim();
+
+    if (queryText) {
+      if (mp4Files.length > 0) {
+        const mp4Match = findBestFileMatch(queryText, mp4Files, /\.mp4$/i);
+        if (mp4Match) {
+          return {
+            intent: 'ADD_INPUT',
+            inputType: 'mp4',
+            mp4FileName: mp4Match.file,
+            mp4MatchInfo: {
+              query: mp4Match.query,
+              file: mp4Match.file,
+              similarity: mp4Match.similarity,
+              matchType: mp4Match.matchType,
+            },
+          };
+        }
+      }
+
+      if (imageFiles.length > 0) {
+        const imageMatch = findBestFileMatch(
+          queryText,
+          imageFiles,
+          /\.(png|jpg|jpeg|gif|webp|svg)$/i,
+        );
+        if (imageMatch) {
+          return {
+            intent: 'ADD_INPUT',
+            inputType: 'image',
+            imageFileName: imageMatch.file,
+            imageMatchInfo: {
+              query: imageMatch.query,
+              file: imageMatch.file,
+              similarity: imageMatch.similarity,
+              matchType: imageMatch.matchType,
+            },
+          };
+        }
+      }
+    }
+  }
+
   if (hasShaderKeyword && !hasShader && inputIndex !== null) {
     return clarify(['shader'], 'Which shader?');
   }

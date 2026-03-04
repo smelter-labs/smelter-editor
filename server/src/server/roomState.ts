@@ -186,34 +186,11 @@ export class RoomState {
         await this.addNewInput(input);
       }
     } else if (!skipDefaultInputs) {
-      // Filter out files starting with "logo_" or "wrapped_" for default auto-add
-      const eligibleMp4Files = this.mp4Files.filter(file => !isBlockedDefaultMp4(file));
-
-      if (eligibleMp4Files.length > 0) {
-        const randomIndex = Math.floor(Math.random() * eligibleMp4Files.length);
-        for (let i = 0; i < 2; i++) {
-          const randomMp4 = eligibleMp4Files[(randomIndex + i) % eligibleMp4Files.length];
-          const mp4FilePath = path.join(this.mp4sDir, randomMp4);
-
-          this.inputs.push({
-            inputId: `${idPrefix}::local::sample_streamer::${i}`,
-            type: 'local-mp4',
-            status: 'disconnected',
-            showTitle: false,
-            shaders: [],
-            orientation: 'horizontal',
-            borderColor: '#ff0000',
-            borderWidth: 0,
-            hidden: false,
-            metadata: {
-              title: `[MP4] ${formatMp4Name(randomMp4)}`,
-              description: '[Static source] AI Generated',
-            },
-            mp4FilePath,
-            volume: 0,
-          });
-        }
+      const eclipseMp4 = this.mp4Files.find(f => f.toLowerCase().startsWith('eclipse'));
+      if (eclipseMp4) {
+        await this.addNewInput({ type: 'local-mp4', source: { fileName: eclipseMp4 } });
       }
+      await this.addNewInput({ type: 'image', fileName: 'logo_Smelter.png' });
     }
 
     // Ensure placeholder is added if no inputs exist

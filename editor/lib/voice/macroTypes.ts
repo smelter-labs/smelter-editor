@@ -72,6 +72,7 @@ export type MacroDefinition = {
   triggers: string[];
   description: string;
   steps: MacroStep[];
+  continueListening?: boolean;
 };
 
 export type MacrosConfig = {

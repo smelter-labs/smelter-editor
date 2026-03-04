@@ -111,6 +111,19 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'block-properties', x: 16, y: 14, w: 8, h: 8, minW: 4, minH: 6 },
     ],
   },
+  {
+    id: 'vertical-video',
+    label: 'Vertical Video',
+    layout: [
+      { i: 'video-preview', x: 0, y: 0, w: 8, h: 28, minW: 6, minH: 6 },
+      { i: 'add-video', x: 8, y: 0, w: 8, h: 8, minW: 4, minH: 4 },
+      { i: 'buttons', x: 16, y: 0, w: 8, h: 8, minW: 4, minH: 4 },
+      { i: 'streams', x: 8, y: 8, w: 8, h: 8, minW: 4, minH: 4 },
+      { i: 'fx', x: 16, y: 8, w: 8, h: 8, minW: 4, minH: 4 },
+      { i: 'timeline', x: 8, y: 16, w: 16, h: 6, minW: 8, minH: 4 },
+      { i: 'block-properties', x: 8, y: 22, w: 8, h: 6, minW: 4, minH: 6 },
+    ],
+  },
 ];
 
 export const DEFAULT_LAYOUT: MutableLayout = LAYOUT_PRESETS[0].layout;
