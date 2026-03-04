@@ -317,7 +317,7 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
         type: 'number',
         minValue: 0,
         maxValue: 1,
-        defaultValue: 0.17,
+        defaultValue: 0.31,
       },
     ],
   },

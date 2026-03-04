@@ -150,7 +150,7 @@
           "params": {
             "inputIndex": 2,
             "shader": "remove-color",
-            "targetColor": "#529480"
+            "targetColor": "#40bb58"
           },
           "delayAfterMs": 1500
         },
@@ -276,14 +276,14 @@
           "params": {
             "inputType": "camera"
           },
-          "delayAfterMs": 2000
+          "delayAfterMs": 4000
         },
         {
           "action": "ADD_SHADER",
           "params": {
             "inputIndex": 2,
             "shader": "remove-color",
-            "targetColor": "#529480"
+            "targetColor": "#40bb58"
           },
           "delayAfterMs": 1500
         },
@@ -315,7 +315,7 @@
           "action": "ADD_INPUT",
           "params": {
             "inputType": "text",
-            "text": "A long time ago\nin a galaxy far, far away...\n"
+            "text": "A long time ago\nin a galaxy far,\nfar away...\n"
           },
           "delayAfterMs": 2000
         },

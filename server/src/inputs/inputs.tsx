@@ -174,7 +174,16 @@ function ScrollingText({
   const lineHeight = fontSize * 1.2;
   const textVerticalPadding = Math.max(2, Math.round(fontSize * 0.12));
   const visibleHeight = containerHeight;
-  const lines = text.split('\n');
+  const rawLines = text.split('\n');
+  const paddedLines: string[] = [];
+  for (let i = 0; i < rawLines.length; i++) {
+    paddedLines.push(rawLines[i]);
+    if ((i + 1) % 5 === 0 && i < rawLines.length - 1) {
+      paddedLines.push('');
+    }
+  }
+  const paddedText = paddedLines.join('\n');
+  const lines = paddedLines;
   const measuredTextHeight = Math.max(lineHeight, lines.length * lineHeight);
   const totalTextHeight = measuredTextHeight + textVerticalPadding * 2;
   
@@ -309,7 +318,7 @@ function ScrollingText({
             align,
             fontFamily: 'Star Jedi',
           }}>
-            {text}
+            {paddedText}
           </Text>
         </View>
       </View>
