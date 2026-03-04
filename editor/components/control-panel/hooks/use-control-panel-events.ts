@@ -469,9 +469,9 @@ export function useControlPanelEvents({
         imageFileName?: string;
       }>,
     ) => {
+      let addedInputId: string | undefined;
       try {
         const { inputType, mp4FileName, imageFileName } = e.detail;
-        let addedInputId: string | undefined;
         switch (inputType) {
           case 'stream': {
             const suggestions = await getTwitchSuggestions();
@@ -566,7 +566,11 @@ export function useControlPanelEvents({
             break;
           }
         }
+      } catch (err) {
+        console.error('Voice: failed to add input', err);
+      }
 
+      try {
         if (addedInputId) {
           const defaultOrientation = getDefaultOrientationSetting();
           if (defaultOrientation === 'vertical') {
@@ -579,7 +583,7 @@ export function useControlPanelEvents({
 
         await handleRefreshState();
       } catch (err) {
-        console.error('Voice: failed to add input', err);
+        console.error('Voice: failed to apply default orientation', err);
       }
     };
 

@@ -317,7 +317,7 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
         type: 'number',
         minValue: 0,
         maxValue: 1,
-        defaultValue: 0.2,
+        defaultValue: 0.17,
       },
     ],
   },
@@ -495,10 +495,10 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
       'Draws an outline wherever transparent and opaque pixels meet, with configurable width, softness, and color.',
     shaderFile: 'alpha-stroke.wgsl',
     params: [
-      { name: 'stroke_width_px', type: 'number', minValue: 0, maxValue: 100, defaultValue: 66 },
-      { name: 'softness_px', type: 'number', minValue: 0, maxValue: 50, defaultValue: 31.5 },
-      { name: 'opacity', type: 'number', minValue: 0, maxValue: 1, defaultValue: 1 },
-      { name: 'stroke_color', type: 'color', defaultValue: '#000000' },
+      { name: 'stroke_width_px', type: 'number', minValue: 0, maxValue: 100, defaultValue: 39 },
+      { name: 'softness_px', type: 'number', minValue: 0, maxValue: 50, defaultValue: 11.5 },
+      { name: 'opacity', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.4 },
+      { name: 'stroke_color', type: 'color', defaultValue: '#E63900' },
     ],
   },
   {

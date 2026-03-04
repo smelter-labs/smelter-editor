@@ -1,9 +1,12 @@
 import type { MacroDefinition, MacroStep, MacrosConfig } from './macroTypes';
 import { normalize } from './normalize';
+import { levenshteinSimilarity } from './levenshtein';
 import { setDefaultOrientationSetting } from './macroSettings';
 import macrosJson from './macros.json';
 
 const macrosConfig: MacrosConfig = macrosJson as MacrosConfig;
+
+const FUZZY_MATCH_THRESHOLD = 0.8;
 
 export function findMatchingMacro(transcript: string): MacroDefinition | null {
   const normalized = normalize(transcript);
@@ -18,6 +21,24 @@ export function findMatchingMacro(transcript: string): MacroDefinition | null {
         return macro;
       }
     }
+  }
+
+  let bestMatch: MacroDefinition | null = null;
+  let bestSimilarity = 0;
+
+  for (const macro of macrosConfig.macros) {
+    for (const trigger of macro.triggers) {
+      const normalizedTrigger = normalize(trigger);
+      const similarity = levenshteinSimilarity(normalized, normalizedTrigger);
+      if (similarity > bestSimilarity) {
+        bestSimilarity = similarity;
+        bestMatch = macro;
+      }
+    }
+  }
+
+  if (bestSimilarity >= FUZZY_MATCH_THRESHOLD) {
+    return bestMatch;
   }
 
   return null;

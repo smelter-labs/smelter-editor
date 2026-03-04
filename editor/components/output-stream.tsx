@@ -41,7 +41,7 @@ export default function OutputStream({
     : '16/9';
   const isVertical = resolution ? resolution.height > resolution.width : false;
   const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState(false);
+  const [muted, setMuted] = useState(true);
   const [volume, setVolume] = useState(1);
   const [current, setCurrent] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -267,6 +267,7 @@ export default function OutputStream({
         autoPlay
         autoFocus
         playsInline
+        muted
         controls={isMobile}
         style={{ width: '100%', height: '100%', background: 'black' }}
         tabIndex={-1}

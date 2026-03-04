@@ -299,14 +299,15 @@
     },
     {
       "id": "galactic-text",
+      "continueListening": true,
       "triggers": [
         "galactic text",
         "star wars text",
         "galactic crawl",
-        "insert scrolling text",
-        "add scrolling text",
-        "add new scrolling text"
-
+        "insert yelllow scrolling text",
+        "add yellow scrolling text",
+        "add new yellow scrolling text",
+        "add new scrolling text yellow"
       ],
       "description": "Adds scrolling text with perspective and effects",
       "steps": [
@@ -338,7 +339,7 @@
           "action": "SET_TEXT_SCROLL_SPEED",
           "params": {
             "inputIndex": 3,
-            "scrollSpeed": 80
+            "scrollSpeed": 40
           },
           "delayAfterMs": 1000
         },
@@ -365,7 +366,19 @@
             "shader": "alpha-stroke"
           },
           "delayAfterMs": 0
-        },
+        }
+      ]
+    },
+    {
+      "id": "galactic-text",
+      "triggers": [
+        "change layout to picture on picture",
+        "change layout to pop",
+        "pop layout"
+
+      ],
+      "description": "Changes the layout to picture on picture",
+      "steps": [
         {
           "action": "SET_LAYOUT",
           "params": {
