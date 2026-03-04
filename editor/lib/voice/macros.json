@@ -171,6 +171,14 @@
           "delayAfterMs": 2000
         },
         {
+          "action": "SET_TEXT_FONT_SIZE",
+          "params": {
+            "inputIndex": 3,
+            "fontSize": 40
+          },
+          "delayAfterMs": 1500
+        },
+        {
           "action": "SET_TEXT_COLOR",
           "params": {
             "inputIndex": 3,
@@ -223,6 +231,7 @@
     },
     {
       "id": "galactic-spaceship",
+      "continueListening": true,
       "triggers": [
         "galactic spaceship",
         "add spaceship",
@@ -253,10 +262,12 @@
     },
     {
       "id": "galactic-camera",
+      "continueListening": true,
       "triggers": [
         "galactic camera",
         "hologram camera",
-        "star wars camera"
+        "star wars camera",
+        "add new hologram camera input"
       ],
       "description": "Adds a camera input with chroma key and hologram shader",
       "steps": [
@@ -291,9 +302,13 @@
       "triggers": [
         "galactic text",
         "star wars text",
-        "galactic crawl"
+        "galactic crawl",
+        "insert scrolling text",
+        "add scrolling text",
+        "add new scrolling text"
+
       ],
-      "description": "Adds Star Wars style scrolling text with perspective and effects",
+      "description": "Adds scrolling text with perspective and effects",
       "steps": [
         {
           "action": "ADD_INPUT",
@@ -304,12 +319,20 @@
           "delayAfterMs": 2000
         },
         {
+          "action": "SET_TEXT_FONT_SIZE",
+          "params": {
+            "inputIndex": 3,
+            "fontSize": 40
+          },
+          "delayAfterMs": 1000
+        },
+        {
           "action": "SET_TEXT_COLOR",
           "params": {
             "inputIndex": 3,
             "color": "#ffff00"
           },
-          "delayAfterMs": 1500
+          "delayAfterMs": 1000
         },
         {
           "action": "SET_TEXT_SCROLL_SPEED",
@@ -317,7 +340,7 @@
             "inputIndex": 3,
             "scrollSpeed": 80
           },
-          "delayAfterMs": 1500
+          "delayAfterMs": 1000
         },
         {
           "action": "ADD_SHADER",
@@ -325,14 +348,7 @@
             "inputIndex": 3,
             "shader": "remove-color"
           },
-          "delayAfterMs": 1500
-        },
-        {
-          "action": "SET_LAYOUT",
-          "params": {
-            "layout": "picture-on-picture"
-          },
-          "delayAfterMs": 1500
+          "delayAfterMs": 500
         },
         {
           "action": "ADD_SHADER",
@@ -340,7 +356,7 @@
             "inputIndex": 3,
             "shader": "perspective"
           },
-          "delayAfterMs": 1500
+          "delayAfterMs": 500
         },
         {
           "action": "ADD_SHADER",
@@ -349,6 +365,13 @@
             "shader": "alpha-stroke"
           },
           "delayAfterMs": 0
+        },
+        {
+          "action": "SET_LAYOUT",
+          "params": {
+            "layout": "picture-on-picture"
+          },
+          "delayAfterMs": 1500
         }
       ]
     },

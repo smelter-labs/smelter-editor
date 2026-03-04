@@ -760,7 +760,7 @@ export function BlockClipPropertiesPanel({
 
   if (inlineShaderView) {
     return (
-      <div className='mt-3 p-3 rounded-md border border-neutral-800 bg-neutral-900'>
+      <div>
         <InlineShaderParams
           shaderId={inlineShaderView.shaderId}
           availableShaders={availableShaders}
@@ -778,7 +778,7 @@ export function BlockClipPropertiesPanel({
   }
 
   return (
-    <div className='mt-3 p-3 rounded-md border border-neutral-800 bg-neutral-900'>
+    <div>
       <div className='text-xs text-neutral-500 mb-2'>
         Selected block properties
       </div>

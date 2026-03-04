@@ -16,6 +16,8 @@ import {
   addImageInput,
   addTextInput,
   removeInput,
+  startRecording,
+  stopRecording,
   type PendingWhipInputData,
 } from '@/app/actions/actions';
 import LayoutSelector, { type Layout } from '@/components/layout-selector';
@@ -31,6 +33,9 @@ import {
   Zap,
   Download,
   Upload,
+  ToggleLeft,
+  ToggleRight,
+  Circle,
 } from 'lucide-react';
 import {
   useControlPanelState,
@@ -72,6 +77,7 @@ import {
   useFeedbackDurationSetting,
   useDefaultOrientationSetting,
   useVoicePanelSizeSetting,
+  useVoicePanelOpacitySetting,
 } from '@/lib/voice/macroSettings';
 import { FeedbackPositionPicker } from '@/components/voice-action-feedback/FeedbackPositionPicker';
 import {
@@ -313,6 +319,8 @@ export default function ControlPanel({
     setOpenFxInputId((prev) => (prev === inputId ? null : inputId));
   };
 
+  const isRecordingFromServer = roomState.isRecording ?? false;
+
   const controlPanelCtx = useMemo(
     () => ({
       roomId,
@@ -320,8 +328,9 @@ export default function ControlPanel({
       inputs,
       inputsRef,
       availableShaders,
+      isRecording: isRecordingFromServer,
     }),
-    [roomId, handleRefreshState, inputs, inputsRef, availableShaders],
+    [roomId, handleRefreshState, inputs, inputsRef, availableShaders, isRecordingFromServer],
   );
 
   const fxInput =
@@ -345,7 +354,7 @@ export default function ControlPanel({
 
   if (renderDashboard) {
     const addVideoSection = (
-      <div className='h-full overflow-y-auto flex flex-col gap-3 bg-neutral-950 p-1'>
+      <div className='h-full overflow-y-auto flex flex-col gap-3 p-3'>
         <AddVideoSection
           isGuest={isGuest}
           hasGuestInput={
@@ -366,7 +375,7 @@ export default function ControlPanel({
     );
 
     const buttonsSection = (
-      <div className='h-full overflow-y-auto bg-neutral-950 p-1'>
+      <div className='h-full overflow-y-auto p-3'>
         <SettingsBar
           changeLayout={changeLayout}
           roomState={roomState}
@@ -379,7 +388,7 @@ export default function ControlPanel({
     );
 
     const streamsSection = (
-      <div className='h-full overflow-y-auto'>
+      <div className='h-full overflow-y-auto p-3'>
         <StreamsSection
           inputWrappers={inputWrappers}
           listVersion={listVersion}
@@ -396,7 +405,7 @@ export default function ControlPanel({
     );
 
     const fxSection = fxInput ? (
-      <div className='h-full overflow-y-auto bg-neutral-950 p-1'>
+      <div className='h-full overflow-y-auto p-3'>
         <FxAccordion fxInput={fxInput} onClose={() => setOpenFxInputId(null)} />
       </div>
     ) : (
@@ -422,7 +431,7 @@ export default function ControlPanel({
     );
 
     const blockPropertiesSection = (
-      <div className='h-full overflow-y-auto bg-neutral-950 p-1'>
+      <div className='h-full overflow-y-auto p-3'>
         <BlockClipPropertiesPanel
           roomId={roomId}
           selectedTimelineClip={selectedTimelineClip}
@@ -584,7 +593,60 @@ function SettingsBar({
   const [defaultOrientation, setDefaultOrientation] =
     useDefaultOrientationSetting();
   const [voicePanelSize, setVoicePanelSize] = useVoicePanelSizeSetting();
+  const [voicePanelOpacity, setVoicePanelOpacity] = useVoicePanelOpacitySetting();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const isRecording = roomState.isRecording ?? false;
+  const [isTogglingRecording, setIsTogglingRecording] = useState(false);
+  const [isWaitingForDownload, setIsWaitingForDownload] = useState(false);
+
+  const handleToggleRecording = useCallback(async () => {
+    if (isTogglingRecording || isWaitingForDownload) return;
+    setIsTogglingRecording(true);
+    try {
+      if (!isRecording) {
+        const res = await startRecording(roomId);
+        if (res.status === 'recording') {
+          await handleRefreshState();
+        } else {
+          console.error('Failed to start recording', res.message);
+        }
+      } else {
+        setIsWaitingForDownload(true);
+        const res = await stopRecording(roomId);
+        if (res.status === 'stopped') {
+          await handleRefreshState();
+          if (res.fileName) {
+            setTimeout(() => {
+              if (typeof window === 'undefined') return;
+              const link = document.createElement('a');
+              link.href = `/api/recordings/${encodeURIComponent(res.fileName!)}`;
+              link.download = res.fileName!;
+              document.body.appendChild(link);
+              link.click();
+              document.body.removeChild(link);
+              setIsWaitingForDownload(false);
+            }, 1500);
+          } else {
+            setIsWaitingForDownload(false);
+          }
+        } else {
+          console.error('Failed to stop recording', res.message);
+          setIsWaitingForDownload(false);
+        }
+      }
+    } catch (err) {
+      console.error('Error while toggling recording', err);
+      setIsWaitingForDownload(false);
+    } finally {
+      setIsTogglingRecording(false);
+    }
+  }, [roomId, isRecording, isTogglingRecording, isWaitingForDownload, handleRefreshState]);
+
+  const handleTogglePublic = useCallback(async () => {
+    await updateRoomAction(roomId, { isPublic: !roomState.isPublic });
+    await handleRefreshState();
+  }, [roomId, roomState.isPublic, handleRefreshState]);
 
   const buildConfig = useCallback(() => {
     const timelineState = loadTimelineFromStorage(roomId);
@@ -839,7 +901,7 @@ function SettingsBar({
     [
       {
         id: 'quickActions',
-        label: 'Quick Actions',
+        label: 'Actions',
         icon: <Zap className='w-4 h-4' />,
       },
       {
@@ -857,9 +919,15 @@ function SettingsBar({
   const btnClass =
     'flex flex-col items-center gap-1.5 px-2 py-3 rounded-md border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 hover:border-neutral-600 transition-all cursor-pointer group';
 
+  const recordLabel = isWaitingForDownload
+    ? 'Wait...'
+    : isRecording
+      ? 'Stop Rec'
+      : 'Record';
+
   return (
     <>
-      <div className='grid grid-cols-5 gap-2'>
+      <div className='grid grid-cols-7 gap-2'>
         {modalButtons.map((btn) => (
           <button
             key={btn.id}
@@ -893,6 +961,31 @@ function SettingsBar({
           </span>
           <span className='text-[11px] font-medium text-neutral-400 group-hover:text-white transition-colors leading-tight text-center'>
             {isImporting ? 'Loading...' : 'Load'}
+          </span>
+        </button>
+        <button
+          onClick={handleTogglePublic}
+          className={`${btnClass} ${roomState.isPublic ? 'border-white/20 bg-neutral-700' : ''}`}>
+          <span className={`transition-colors ${roomState.isPublic ? 'text-white' : 'text-neutral-400 group-hover:text-white'}`}>
+            {roomState.isPublic ? (
+              <ToggleRight className='w-4 h-4' />
+            ) : (
+              <ToggleLeft className='w-4 h-4' />
+            )}
+          </span>
+          <span className={`text-[11px] font-medium transition-colors leading-tight text-center ${roomState.isPublic ? 'text-neutral-200' : 'text-neutral-400 group-hover:text-white'}`}>
+            Public
+          </span>
+        </button>
+        <button
+          onClick={handleToggleRecording}
+          disabled={isTogglingRecording || isWaitingForDownload}
+          className={`${btnClass} ${isRecording ? 'border-red-500/50 bg-red-950/30' : ''}`}>
+          <span className={`transition-colors ${isRecording ? 'text-red-400 group-hover:text-red-300' : 'text-neutral-400 group-hover:text-white'}`}>
+            <Circle className='w-4 h-4' />
+          </span>
+          <span className='text-[11px] font-medium text-neutral-400 group-hover:text-white transition-colors leading-tight text-center'>
+            {recordLabel}
           </span>
         </button>
       </div>
@@ -1015,6 +1108,23 @@ function SettingsBar({
                     Compact Voice Panel
                   </span>
                 </label>
+                <div className='flex items-center justify-between gap-3'>
+                  <span className='text-xs text-neutral-400 shrink-0'>
+                    Panel Opacity
+                  </span>
+                  <input
+                    type='range'
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={voicePanelOpacity}
+                    onChange={(e) => setVoicePanelOpacity(Number(e.target.value))}
+                    className='flex-1 accent-white h-1'
+                  />
+                  <span className='text-xs text-neutral-500 w-8 text-right tabular-nums'>
+                    {voicePanelOpacity}%
+                  </span>
+                </div>
               </section>
               <div className='h-px bg-neutral-800' />
               <section className='space-y-2 px-1'>

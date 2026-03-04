@@ -410,7 +410,7 @@ export function TimelinePanel({
     structureRevision,
   );
 
-  const [isRecording, setIsRecording] = useState(false);
+  const { isRecording } = useControlPanelContext();
   const [isTogglingRecording, setIsTogglingRecording] = useState(false);
   const wasPlayingRef = useRef(false);
 
@@ -418,6 +418,7 @@ export function TimelinePanel({
     setIsTogglingRecording(true);
     try {
       const res = await stopRecording(roomId);
+      await refreshState();
       if (res.status === 'stopped' && res.fileName) {
         setTimeout(() => {
           if (typeof window === 'undefined') return;
@@ -432,10 +433,9 @@ export function TimelinePanel({
     } catch (err) {
       console.error('Failed to stop recording', err);
     } finally {
-      setIsRecording(false);
       setIsTogglingRecording(false);
     }
-  }, [roomId]);
+  }, [roomId, refreshState]);
 
   const handleRecordAndPlay = useCallback(async () => {
     if (isTogglingRecording) return;
@@ -448,7 +448,7 @@ export function TimelinePanel({
     try {
       const res = await startRecording(roomId);
       if (res.status === 'recording') {
-        setIsRecording(true);
+        await refreshState();
         play();
       } else {
         console.error('Failed to start recording', res.message);
@@ -465,6 +465,7 @@ export function TimelinePanel({
     play,
     stop,
     stopRecordingAndDownload,
+    refreshState,
   ]);
 
   useEffect(() => {

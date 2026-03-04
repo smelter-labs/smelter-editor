@@ -432,3 +432,62 @@ export function useVoicePanelSizeSetting(): [
 
   return [value, setSize];
 }
+
+const VOICE_PANEL_OPACITY_STORAGE_KEY = 'smelter:voice:panel-opacity';
+const VOICE_PANEL_OPACITY_CHANGED_EVENT = 'smelter:voice:panel-opacity-changed';
+const DEFAULT_VOICE_PANEL_OPACITY = 100;
+
+export function getVoicePanelOpacitySetting(): number {
+  if (typeof window === 'undefined') {
+    return DEFAULT_VOICE_PANEL_OPACITY;
+  }
+  const stored = window.localStorage.getItem(VOICE_PANEL_OPACITY_STORAGE_KEY);
+  if (stored !== null) {
+    const parsed = Number(stored);
+    if (!isNaN(parsed) && parsed >= 0 && parsed <= 100) {
+      return parsed;
+    }
+  }
+  return DEFAULT_VOICE_PANEL_OPACITY;
+}
+
+export function setVoicePanelOpacitySetting(value: number): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  const clamped = Math.max(0, Math.min(100, Math.round(value)));
+  window.localStorage.setItem(VOICE_PANEL_OPACITY_STORAGE_KEY, String(clamped));
+  window.dispatchEvent(
+    new CustomEvent<{ value: number }>(VOICE_PANEL_OPACITY_CHANGED_EVENT, {
+      detail: { value: clamped },
+    }),
+  );
+}
+
+export function useVoicePanelOpacitySetting(): [
+  number,
+  (value: number) => void,
+] {
+  const [value, setValue] = useState<number>(() =>
+    getVoicePanelOpacitySetting(),
+  );
+
+  useEffect(() => {
+    setValue(getVoicePanelOpacitySetting());
+    const onChanged = (event: Event) => {
+      const customEvent = event as CustomEvent<{ value: number }>;
+      setValue(customEvent.detail?.value ?? DEFAULT_VOICE_PANEL_OPACITY);
+    };
+    window.addEventListener(VOICE_PANEL_OPACITY_CHANGED_EVENT, onChanged);
+    return () => {
+      window.removeEventListener(VOICE_PANEL_OPACITY_CHANGED_EVENT, onChanged);
+    };
+  }, []);
+
+  const setOpacity = useCallback((next: number) => {
+    setVoicePanelOpacitySetting(next);
+    setValue(next);
+  }, []);
+
+  return [value, setOpacity];
+}

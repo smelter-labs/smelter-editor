@@ -31,7 +31,7 @@ const PanelWrapper = forwardRef<HTMLDivElement, PanelWrapperProps>(
         className={`${className ?? ''} flex flex-col rounded-lg overflow-visible transition-colors ${
           isEditMode
             ? 'border border-neutral-600 ring-1 ring-neutral-700/50'
-            : ''
+            : 'bg-neutral-900 border border-neutral-800'
         }`}
         {...rest}>
         {isEditMode && (
@@ -42,7 +42,7 @@ const PanelWrapper = forwardRef<HTMLDivElement, PanelWrapperProps>(
             </span>
           </div>
         )}
-        <div className='flex-1 min-h-0 overflow-hidden bg-neutral-950'>
+        <div className='flex-1 min-h-0 overflow-hidden'>
           {panelContent}
         </div>
         {children}

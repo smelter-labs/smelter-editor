@@ -1,4 +1,4 @@
-import { RoomState, updateRoom } from '@/app/actions/actions';
+import { RoomState } from '@/app/actions/actions';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AutoplayModal from '@/components/ui/autoplay-modal';
 import { motion } from 'framer-motion';
@@ -33,11 +33,6 @@ export default function RoomView({
     }
     setShowAutoplayPopup(false);
   }, []);
-
-  const handleTogglePublic = useCallback(async () => {
-    await updateRoom(roomId, { isPublic: !roomState.isPublic });
-    await refreshState();
-  }, [roomId, roomState.isPublic, refreshState]);
 
   const setupVideoEventListeners = useCallback(() => {
     if (!videoRef.current) {
@@ -178,9 +173,6 @@ export default function RoomView({
                 <VideoPreview
                   videoRef={videoRef}
                   whepUrl={roomState.whepUrl}
-                  roomId={roomId}
-                  isPublic={roomState.isPublic}
-                  onTogglePublic={handleTogglePublic}
                   resolution={roomState.resolution}
                 />
               ),

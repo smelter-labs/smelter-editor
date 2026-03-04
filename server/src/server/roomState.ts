@@ -122,6 +122,18 @@ export type RegisterInputOptions =
 
 const PLACEHOLDER_LOGO_FILE = 'logo_Smelter.png';
 
+const DEFAULT_LOGO_SHADERS: ShaderConfig[] = [
+  {
+    shaderName: 'Remove Color',
+    shaderId: 'remove-color',
+    enabled: true,
+    params: [
+      { paramName: 'target_color', paramValue: '#1c1c35' },
+      { paramName: 'tolerance', paramValue: 0.2 },
+    ],
+  },
+];
+
 export class RoomState {
   private inputs: RoomInputState[];
   private layout: Layout = 'picture-in-picture';
@@ -190,7 +202,12 @@ export class RoomState {
       if (eclipseMp4) {
         await this.addNewInput({ type: 'local-mp4', source: { fileName: eclipseMp4 } });
       }
-      await this.addNewInput({ type: 'image', fileName: 'logo_Smelter.png' });
+      const logoInputId = await this.addNewInput({ type: 'image', fileName: 'logo_Smelter.png' });
+      const logoInput = this.inputs.find(inp => inp.inputId === logoInputId);
+      if (logoInput) {
+        logoInput.shaders = DEFAULT_LOGO_SHADERS;
+        this.updateStoreWithState();
+      }
     }
 
     // Ensure placeholder is added if no inputs exist
@@ -365,10 +382,10 @@ export class RoomState {
         type: 'image',
         status: 'connected',
         showTitle: false,
-        shaders: [],
+        shaders: DEFAULT_LOGO_SHADERS,
         orientation: 'horizontal',
-            borderColor: '#ff0000',
-            borderWidth: 0,
+        borderColor: '#ff0000',
+        borderWidth: 0,
         hidden: false,
         metadata: {
           title: 'Smelter',

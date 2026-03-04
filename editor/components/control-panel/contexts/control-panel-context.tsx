@@ -9,6 +9,7 @@ type ControlPanelContextValue = {
   inputs: Input[];
   inputsRef: React.MutableRefObject<Input[]>;
   availableShaders: AvailableShader[];
+  isRecording: boolean;
 };
 
 const ControlPanelContext = createContext<ControlPanelContextValue | null>(

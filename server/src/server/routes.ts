@@ -200,6 +200,7 @@ routes.get<RoomIdParams>('/room/:roomId', { schema: { params: RoomIdParamsSchema
     newsStripFadeDuringSwap,
     swapFadeOutDurationMs,
     newsStripEnabled,
+    isRecording: room.hasActiveRecording(),
   });
 });
 
@@ -234,6 +235,7 @@ routes.get('/rooms', async (_req, res) => {
         newsStripFadeDuringSwap,
         swapFadeOutDurationMs,
         newsStripEnabled,
+        isRecording: room.hasActiveRecording(),
       };
     })
     .filter(Boolean);

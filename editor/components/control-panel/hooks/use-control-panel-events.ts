@@ -1132,6 +1132,16 @@ export function useControlPanelEvents({
           textFontSize: fontSize,
           volume: input.volume,
         });
+
+        window.dispatchEvent(
+          new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
+            detail: {
+              inputId: input.inputId,
+              patch: { textFontSize: fontSize },
+            },
+          }),
+        );
+
         await handleRefreshState();
       } catch (err) {
         console.error('Voice: failed to set text font size', err);
@@ -1448,6 +1458,7 @@ export function useControlPanelEvents({
     const onStartRecording = async () => {
       try {
         await startRecording(roomId);
+        await handleRefreshState();
       } catch (err) {
         console.error('Voice: failed to start recording', err);
       }
@@ -1455,7 +1466,19 @@ export function useControlPanelEvents({
 
     const onStopRecording = async () => {
       try {
-        await stopRecording(roomId);
+        const res = await stopRecording(roomId);
+        await handleRefreshState();
+        if (res.status === 'stopped' && res.fileName) {
+          setTimeout(() => {
+            if (typeof window === 'undefined') return;
+            const link = document.createElement('a');
+            link.href = `/api/recordings/${encodeURIComponent(res.fileName!)}`;
+            link.download = res.fileName!;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          }, 1500);
+        }
       } catch (err) {
         console.error('Voice: failed to stop recording', err);
       }
@@ -1480,7 +1503,7 @@ export function useControlPanelEvents({
         onStopRecording as unknown as EventListener,
       );
     };
-  }, [roomId]);
+  }, [roomId, handleRefreshState]);
 
   useEffect(() => {
     const onSetText = async (

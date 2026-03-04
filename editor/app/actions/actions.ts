@@ -144,6 +144,7 @@ export type RoomState = {
   newsStripFadeDuringSwap?: boolean;
   newsStripEnabled?: boolean;
   pendingWhipInputs?: PendingWhipInputData[];
+  isRecording?: boolean;
 };
 
 export type Layout =

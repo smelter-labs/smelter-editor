@@ -1,49 +1,29 @@
 import OutputStream, {
   type OutputResolution,
 } from '@/components/output-stream';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import Link from 'next/link';
-import {
-  Share2,
-  Mail,
-  ToggleLeft,
-  ToggleRight,
-  PanelRightClose,
-  PanelRightOpen,
-} from 'lucide-react';
 import { fadeInUp } from '@/utils/animations';
 import { motion } from 'framer-motion';
 import { VideoOff, Eye, EyeOff, Monitor, Camera } from 'lucide-react';
 import { RefObject, useEffect, useRef, useState } from 'react';
-import { startRecording, stopRecording } from '@/app/actions/actions';
 
 export default function VideoPreview({
   whepUrl,
   videoRef,
   tryToPlay,
-  roomId,
-  isPublic,
-  onTogglePublic,
   resolution,
   isGuest,
   guestStream,
   className,
-  panelExpanded,
-  onTogglePanelExpanded,
 }: {
   whepUrl: string;
   videoRef: RefObject<HTMLVideoElement | null>;
   tryToPlay?(): void;
-  roomId?: string;
-  isPublic?: boolean;
-  onTogglePublic?: () => void;
   resolution?: OutputResolution;
   isGuest?: boolean;
   guestStream?: MediaStream | null;
   className?: string;
-  panelExpanded?: boolean;
-  onTogglePanelExpanded?: () => void;
 }) {
   const activeStream = true;
   const [showPreview, setShowPreview] = useState(!isGuest);
@@ -59,59 +39,12 @@ export default function VideoPreview({
       guestVideoRef.current.srcObject = null;
     }
   }, [guestStream]);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isTogglingRecording, setIsTogglingRecording] = useState(false);
-  const [isWaitingForDownload, setIsWaitingForDownload] = useState(false);
-
-  const handleToggleRecording = async () => {
-    if (!roomId || isTogglingRecording || isWaitingForDownload) return;
-    setIsTogglingRecording(true);
-    try {
-      if (!isRecording) {
-        const res = await startRecording(roomId);
-        if (res.status === 'recording') {
-          setIsRecording(true);
-        } else {
-          console.error('Failed to start recording', res.message);
-        }
-      } else {
-        // Stop recording: switch to "Wait..." state until download starts
-        setIsWaitingForDownload(true);
-        const res = await stopRecording(roomId);
-        if (res.status === 'stopped') {
-          setIsRecording(false);
-          if (res.fileName) {
-            setTimeout(() => {
-              if (typeof window === 'undefined') return;
-              const link = document.createElement('a');
-              link.href = `/api/recordings/${encodeURIComponent(res.fileName!)}`;
-              link.download = res.fileName!;
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-              setIsWaitingForDownload(false);
-            }, 1500);
-          } else {
-            setIsWaitingForDownload(false);
-          }
-        } else {
-          console.error('Failed to stop recording', res.message);
-          setIsWaitingForDownload(false);
-        }
-      }
-    } catch (err) {
-      console.error('Error while toggling recording', err);
-      setIsWaitingForDownload(false);
-    } finally {
-      setIsTogglingRecording(false);
-    }
-  };
 
   return (
     <motion.div
       className={`${className ?? ''} w-full h-full`}
       {...(fadeInUp as any)}>
-      <Card className='flex flex-col bg-[#0a0a0a] border-0 h-full'>
+      <Card className='flex flex-col bg-transparent border-0 h-full py-0'>
         <CardContent className='flex flex-col flex-1 min-h-0 h-full'>
           <div className='w-full max-w-[1920px] mx-auto flex flex-col flex-1 min-h-0'>
             {isGuest && (
@@ -191,74 +124,6 @@ export default function VideoPreview({
                     <p className='text-sm text-neutral-600'>No active stream</p>
                   </div>
                 )}
-              </div>
-            )}
-            {roomId && !isGuest && (
-              <div className='mt-3 flex justify-between items-center gap-2'>
-                {onTogglePublic && (
-                  <Button
-                    size='lg'
-                    variant='outline'
-                    onClick={onTogglePublic}
-                    className={`cursor-pointer max-md:h-8 max-md:px-3 max-md:text-xs ${
-                      isPublic
-                        ? 'text-black bg-white hover:bg-neutral-200'
-                        : 'border-2 border-neutral-700 text-neutral-500 bg-transparent hover:bg-neutral-200'
-                    }`}>
-                    {isPublic ? (
-                      <ToggleRight className='w-4 h-4' />
-                    ) : (
-                      <ToggleLeft className='w-4 h-4' />
-                    )}
-                    Public
-                  </Button>
-                )}
-                <div className='flex gap-2'>
-                  <Button
-                    size='lg'
-                    variant='outline'
-                    onClick={handleToggleRecording}
-                    disabled={isTogglingRecording || isWaitingForDownload}
-                    className='max-md:h-8 max-md:px-3 max-md:text-xs text-neutral-500 hover:bg-neutral-200'>
-                    {isWaitingForDownload ? (
-                      'Wait...'
-                    ) : isRecording ? (
-                      <span className='inline-flex items-center gap-1'>
-                        <span>Stop recording</span>
-                        <span className='animate-pulse'>...</span>
-                      </span>
-                    ) : (
-                      'Record'
-                    )}
-                  </Button>
-                  {onTogglePanelExpanded && (
-                    <Button
-                      size='lg'
-                      variant='outline'
-                      onClick={onTogglePanelExpanded}
-                      className='max-md:h-8 max-md:px-3 max-md:text-xs text-neutral-500 hover:bg-neutral-200'>
-                      {panelExpanded ? (
-                        <PanelRightClose className='w-4 h-4 mr-1' />
-                      ) : (
-                        <PanelRightOpen className='w-4 h-4 mr-1' />
-                      )}
-                      {panelExpanded ? 'Collapse panel' : 'Expand panel'}
-                    </Button>
-                  )}
-                  <Button
-                    size='lg'
-                    asChild
-                    variant='outline'
-                    className='max-md:h-8 max-md:px-3 max-md:text-xs text-neutral-500 hover:bg-neutral-200'>
-                    <Link
-                      href={`/room-preview/${roomId}`}
-                      target='_blank'
-                      rel='noopener noreferrer'>
-                      <Share2 className='w-4 h-4' />
-                      Prove Me
-                    </Link>
-                  </Button>
-                </div>
               </div>
             )}
           </div>

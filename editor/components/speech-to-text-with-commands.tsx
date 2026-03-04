@@ -12,7 +12,7 @@ import {
   getMP4Suggestions,
   getPictureSuggestions,
 } from '@/app/actions/actions';
-import { useVoicePanelSizeSetting } from '@/lib/voice/macroSettings';
+import { useVoicePanelSizeSetting, useVoicePanelOpacitySetting } from '@/lib/voice/macroSettings';
 
 type MacroStepInfo = {
   step: MacroStep;
@@ -281,6 +281,25 @@ export function SpeechToTextWithCommands() {
     }
   };
 
+  useEffect(() => {
+    const handleKeyboard = (e: globalThis.KeyboardEvent) => {
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setIsOpen((prev) => {
+          if (prev) {
+            if (isRecording) stopSpeechToText();
+            return false;
+          }
+          startSpeechToText();
+          setTimeout(() => inputRef.current?.focus(), 0);
+          return true;
+        });
+      }
+    };
+    window.addEventListener('keydown', handleKeyboard);
+    return () => window.removeEventListener('keydown', handleKeyboard);
+  }, [isRecording, startSpeechToText, stopSpeechToText]);
+
   const isIntroPage = !roomId;
   // Falls back to index 0 when no step has started yet, so the UI can preview the first step.
   const nextMacroStepIndex =
@@ -288,14 +307,16 @@ export function SpeechToTextWithCommands() {
   const nextMacroStep = activeMacro?.steps?.[nextMacroStepIndex] ?? null;
 
   const [panelSize] = useVoicePanelSizeSetting();
+  const [panelOpacity] = useVoicePanelOpacitySetting();
   const isCompact = panelSize === 's';
 
   return (
     <div className='fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-3'>
       {isOpen && (
         <div
+          style={{ opacity: panelOpacity / 100 }}
           className={cn(
-            'bg-[#141414] border border-neutral-700 p-4',
+            'bg-[#141414] border border-neutral-700 p-4 overflow-hidden',
             isCompact ? 'w-[360px] max-h-[200px]' : 'w-[600px] max-h-[400px]',
           )}>
           <div
@@ -539,7 +560,7 @@ export function SpeechToTextWithCommands() {
                   {interimResult}
                 </p>
               )}
-              {transcriptHistory.map((entry) => (
+              {transcriptHistory.slice(0, 4).map((entry) => (
                 <p
                   key={entry.timestamp}
                   className='text-neutral-200 text-sm font-mono overflow-hidden text-ellipsis whitespace-nowrap'>
