@@ -228,7 +228,6 @@ export class RoomState {
         const logoInput = this.inputs.find(inp => inp.inputId === logoInputId);
         if (logoInput) {
           logoInput.shaders = cloneDefaultLogoShaders();
-          this.updateStoreWithState();
         }
       }
     }

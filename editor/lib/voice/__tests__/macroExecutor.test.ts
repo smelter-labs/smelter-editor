@@ -156,10 +156,16 @@ describe('macro execution controller', () => {
     }) as EventListener);
 
     window.addEventListener('smelter:voice:add-shader', ((event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
       events.push({
         type: 'smelter:voice:add-shader',
-        detail: (event as CustomEvent<Record<string, unknown>>).detail,
+        detail,
       });
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:macro-step-complete', {
+          detail: { requestId: detail.requestId },
+        }),
+      );
     }) as EventListener);
 
     await executeMacro(
@@ -193,7 +199,7 @@ describe('macro execution controller', () => {
         type: 'smelter:voice:add-shader',
         detail: expect.objectContaining({
           shader: 'sw-hologram',
-          inputIndex: undefined,
+          requestId: expect.any(String),
         }),
       },
     ]);

@@ -21,6 +21,15 @@ export const DASHBOARD_BREAKPOINTS: DashboardBreakpoint[] = [
   'xxs',
 ];
 
+export const DASHBOARD_BREAKPOINT_WIDTHS: Record<DashboardBreakpoint, number> =
+  {
+    lg: 1200,
+    md: 996,
+    sm: 768,
+    xs: 480,
+    xxs: 0,
+  };
+
 export const DASHBOARD_COLS: Record<DashboardBreakpoint, number> = {
   lg: 24,
   md: 20,

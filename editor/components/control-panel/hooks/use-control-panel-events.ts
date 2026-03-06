@@ -632,12 +632,14 @@ export function useControlPanelEvents({
 
     const onAddShader = async (
       e: CustomEvent<{
+        requestId?: string;
         inputIndex: number | null;
         shader: string;
         targetColor?: string;
         shaderParams?: Record<string, number | string>;
       }>,
     ) => {
+      const requestId = e.detail?.requestId;
       try {
         const {
           inputIndex,
@@ -653,6 +655,7 @@ export function useControlPanelEvents({
           const idx = inputIndex - 1;
           if (idx < 0 || idx >= visibleInputs.length) {
             console.warn(`Voice: input ${inputIndex} does not exist`);
+            emitMacroStepComplete(requestId);
             return;
           }
           input = visibleInputs[idx];
@@ -660,19 +663,23 @@ export function useControlPanelEvents({
           input = currentInputs.find((i) => i.inputId === selectedInputId);
           if (!input) {
             console.warn('Voice: selected input no longer exists');
+            emitMacroStepComplete(requestId);
             return;
           }
         } else {
           console.warn('Voice: no input specified and none selected');
+          emitMacroStepComplete(requestId);
           return;
         }
         const shaderDef = availableShaders.find((s) => s.id === shaderId);
         if (!shaderDef) {
           console.warn(`Voice: shader ${shaderId} not found`);
+          emitMacroStepComplete(requestId);
           return;
         }
         const existingShaders = input.shaders || [];
         if (existingShaders.some((s) => s.shaderId === shaderId)) {
+          emitMacroStepComplete(requestId);
           return;
         }
         const newShader = {
@@ -726,7 +733,9 @@ export function useControlPanelEvents({
           }),
         );
         await handleRefreshState();
+        emitMacroStepComplete(requestId);
       } catch (err) {
+        emitMacroStepComplete(requestId, err);
         console.error('Voice: failed to add shader', err);
       }
     };

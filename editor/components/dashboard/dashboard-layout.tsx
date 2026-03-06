@@ -17,6 +17,7 @@ import {
   PANEL_DEFINITIONS,
   ALL_PANEL_IDS,
   DASHBOARD_BREAKPOINTS,
+  DASHBOARD_BREAKPOINT_WIDTHS,
   DASHBOARD_COLS,
   DEFAULT_RESPONSIVE_LAYOUTS,
   createResponsiveLayoutsFromLg,
@@ -32,7 +33,7 @@ interface DashboardLayoutProps {
   panels: Record<PanelId, ReactNode>;
 }
 
-const BREAKPOINTS = { lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 } as const;
+const BREAKPOINTS = DASHBOARD_BREAKPOINT_WIDTHS;
 const COLS = DASHBOARD_COLS;
 const ROW_HEIGHT = 30;
 
@@ -151,39 +152,40 @@ export default function DashboardLayout({ panels }: DashboardLayoutProps) {
         next.delete(panelId);
       } else {
         next.add(panelId);
-        const def = PANEL_DEFINITIONS[panelId];
-        setCurrentLayouts((prevLayouts) => {
-          const alreadyInLayout = DASHBOARD_BREAKPOINTS.some((bp) =>
-            prevLayouts[bp].some((item) => item.i === panelId),
-          );
-          if (alreadyInLayout) return prevLayouts;
-
-          const updated = { ...prevLayouts } as DashboardLayouts;
-          for (const breakpoint of DASHBOARD_BREAKPOINTS) {
-            const breakpointLayout = prevLayouts[breakpoint];
-            const maxY = breakpointLayout.reduce(
-              (max, item) => Math.max(max, item.y + item.h),
-              0,
-            );
-            updated[breakpoint] = [
-              ...breakpointLayout,
-              {
-                i: panelId,
-                x: 0,
-                y: maxY,
-                w: Math.min(COLS[breakpoint], def.minW + 4),
-                h: def.minH + 2,
-                minW: Math.min(COLS[breakpoint], def.minW),
-                minH: def.minH,
-              },
-            ];
-          }
-          saveLayouts(updated);
-          return updated;
-        });
       }
       saveVisiblePanels(next);
       return next;
+    });
+
+    setCurrentLayouts((prevLayouts) => {
+      const alreadyInLayout = DASHBOARD_BREAKPOINTS.some((bp) =>
+        prevLayouts[bp].some((item) => item.i === panelId),
+      );
+      if (alreadyInLayout) return prevLayouts;
+
+      const def = PANEL_DEFINITIONS[panelId];
+      const updated = { ...prevLayouts } as DashboardLayouts;
+      for (const breakpoint of DASHBOARD_BREAKPOINTS) {
+        const breakpointLayout = prevLayouts[breakpoint];
+        const maxY = breakpointLayout.reduce(
+          (max, item) => Math.max(max, item.y + item.h),
+          0,
+        );
+        updated[breakpoint] = [
+          ...breakpointLayout,
+          {
+            i: panelId,
+            x: 0,
+            y: maxY,
+            w: Math.min(COLS[breakpoint], def.minW + 4),
+            h: def.minH + 2,
+            minW: Math.min(COLS[breakpoint], def.minW),
+            minH: def.minH,
+          },
+        ];
+      }
+      saveLayouts(updated);
+      return updated;
     });
   }, []);
 
@@ -239,6 +241,7 @@ export default function DashboardLayout({ panels }: DashboardLayoutProps) {
             }}
             onLayoutChange={handleLayoutChange}
             autoSize>
+            {/* react-grid-layout injects resize handles via cloneElement into children */}
             {visibleIds.map((panelId) => (
               <PanelWrapper
                 key={panelId}

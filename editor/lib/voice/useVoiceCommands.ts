@@ -807,6 +807,8 @@ export function useVoiceCommands(
               macroControllerRef.current = null;
               setIsExecutingMacro(false);
               isExecutingMacroRef.current = false;
+              isMacroModeRef.current = false;
+              setIsMacroMode(false);
               setMacroExecutionStatus('error');
               setActiveMacro(null);
               setLastError(

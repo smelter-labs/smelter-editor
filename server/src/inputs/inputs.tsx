@@ -10,7 +10,7 @@ import {
   Shader,
 } from '@swmansion/smelter';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { ShaderConfig, ShaderParamConfig } from '../shaders/shaders';
 import shadersController from '../shaders/shaders';
@@ -177,16 +177,20 @@ function ScrollingText({
   const lineHeight = fontSize * 1.2;
   const textVerticalPadding = Math.max(2, Math.round(fontSize * 0.12));
   const visibleHeight = containerHeight;
-  const rawLines = text.split('\n');
-  const paddedLines: string[] = [];
-  for (let i = 0; i < rawLines.length; i++) {
-    paddedLines.push(rawLines[i]);
-    if (linePaddingInterval > 0 && (i + 1) % linePaddingInterval === 0 && i < rawLines.length - 1) {
-      paddedLines.push('');
+  const { paddedText, lines } = useMemo(() => {
+    const rawLines = text.split('\n');
+    if (linePaddingInterval <= 0) {
+      return { paddedText: text, lines: rawLines };
     }
-  }
-  const paddedText = linePaddingInterval > 0 ? paddedLines.join('\n') : text;
-  const lines = linePaddingInterval > 0 ? paddedLines : rawLines;
+    const padded: string[] = [];
+    for (let i = 0; i < rawLines.length; i++) {
+      padded.push(rawLines[i]);
+      if ((i + 1) % linePaddingInterval === 0 && i < rawLines.length - 1) {
+        padded.push('');
+      }
+    }
+    return { paddedText: padded.join('\n'), lines: padded };
+  }, [text, linePaddingInterval]);
   const measuredTextHeight = Math.max(lineHeight, lines.length * lineHeight);
   const totalTextHeight = measuredTextHeight + textVerticalPadding * 2;
   

@@ -15,9 +15,12 @@ export function findMatchingMacro(transcript: string): MacroDefinition | null {
   for (const macro of macrosConfig.macros) {
     for (const trigger of macro.triggers) {
       const normalizedTrigger = normalize(trigger);
+      if (normalized.includes(normalizedTrigger)) {
+        return macro;
+      }
       if (
-        normalized.includes(normalizedTrigger) ||
-        normalizedTrigger.includes(normalized)
+        normalizedTrigger.includes(normalized) &&
+        normalized.length >= Math.max(10, normalizedTrigger.length * 0.6)
       ) {
         return macro;
       }
@@ -255,15 +258,18 @@ async function dispatchMacroStep(step: MacroStep): Promise<void> {
       break;
 
     case 'ADD_SHADER':
-      window.dispatchEvent(
-        new CustomEvent('smelter:voice:add-shader', {
-          detail: {
-            inputIndex: params?.inputIndex,
-            shader: params?.shader,
-            targetColor: params?.targetColor,
-            shaderParams: params?.shaderParams,
-          },
-        }),
+      await dispatchAndWaitForCompletion((requestId) =>
+        window.dispatchEvent(
+          new CustomEvent('smelter:voice:add-shader', {
+            detail: {
+              requestId,
+              inputIndex: params?.inputIndex,
+              shader: params?.shader,
+              targetColor: params?.targetColor,
+              shaderParams: params?.shaderParams,
+            },
+          }),
+        ),
       );
       break;
 

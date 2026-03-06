@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { startRecording, stopRecording } from '@/app/actions/actions';
 
 const DOWNLOAD_DELAY_MS = 1500;
@@ -38,6 +38,14 @@ export function useRecordingControls(
   const downloadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const effectiveIsRecording = optimisticRecording ?? serverIsRecording;
+
+  useEffect(() => {
+    return () => {
+      if (downloadTimerRef.current) {
+        clearTimeout(downloadTimerRef.current);
+      }
+    };
+  }, []);
 
   const start = useCallback(async (): Promise<boolean> => {
     setIsTogglingRecording(true);

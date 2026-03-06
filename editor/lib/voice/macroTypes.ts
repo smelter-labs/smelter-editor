@@ -18,6 +18,7 @@ export type MacroActionParams = {
   fontSize?: number;
   scrollSpeed?: number;
   targetColor?: string;
+  shaderParams?: Record<string, number | string>;
   text?: string;
   textAlign?: 'left' | 'center' | 'right';
   mp4Name?: string;
