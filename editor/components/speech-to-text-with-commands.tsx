@@ -12,7 +12,10 @@ import {
   getMP4Suggestions,
   getPictureSuggestions,
 } from '@/app/actions/actions';
-import { useVoicePanelSizeSetting, useVoicePanelOpacitySetting } from '@/lib/voice/macroSettings';
+import {
+  useVoicePanelSizeSetting,
+  useVoicePanelOpacitySetting,
+} from '@/lib/voice/macroSettings';
 import { shouldIgnoreGlobalShortcut } from '@/lib/keyboard';
 
 type MacroStepInfo = {

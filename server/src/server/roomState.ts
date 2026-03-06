@@ -183,14 +183,18 @@ export class RoomState {
     this.lastReadTimestamp = Date.now();
     this.creationTimestamp = Date.now();
 
+    const self = this;
     void (async () => {
-      await this.getInitialInputState(idPrefix, initInputs, skipDefaultInputs);
-      const realThis = this;
-      for (let i = 0; i < realThis.inputs.length; i++) {
-        const maybeInput = realThis.inputs[i];
-        if (maybeInput) {
-          await this.connectInput(maybeInput.inputId);
+      try {
+        await self.getInitialInputState(idPrefix, initInputs, skipDefaultInputs);
+        for (let i = 0; i < self.inputs.length; i++) {
+          const maybeInput = self.inputs[i];
+          if (maybeInput) {
+            await self.connectInput(maybeInput.inputId);
+          }
         }
+      } catch (err) {
+        console.error(`[roomState] Failed to initialize room ${idPrefix}:`, err);
       }
     })();
   }

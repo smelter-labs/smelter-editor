@@ -28,6 +28,7 @@ import { startPublish } from '../whip-input/utils/whip-publisher';
 import { startScreensharePublish } from '../whip-input/utils/screenshare-publisher';
 import type { InputType } from '@/lib/voice/commandTypes';
 import { emitActionFeedback } from '@/lib/voice/feedbackEvents';
+import { triggerRecordingDownload } from './use-recording-controls';
 import { getDefaultOrientationSetting } from '@/lib/voice/macroSettings';
 import { LAYOUT_CONFIGS, type Layout } from '@/components/layout-selector';
 
@@ -638,7 +639,12 @@ export function useControlPanelEvents({
       }>,
     ) => {
       try {
-        const { inputIndex, shader: shaderId, targetColor, shaderParams } = e.detail;
+        const {
+          inputIndex,
+          shader: shaderId,
+          targetColor,
+          shaderParams,
+        } = e.detail;
         const currentInputs = inputs || [];
         const visibleInputs = currentInputs.filter((i) => !i.hidden);
 
@@ -677,9 +683,15 @@ export function useControlPanelEvents({
             if (shaderParams && p.name in shaderParams) {
               const override = shaderParams[p.name];
               if (p.type === 'color' && typeof override === 'string') {
-                return { paramName: p.name, paramValue: hexToPackedInt(override) };
+                return {
+                  paramName: p.name,
+                  paramValue: hexToPackedInt(override),
+                };
               }
-              return { paramName: p.name, paramValue: typeof override === 'number' ? override : 0 };
+              return {
+                paramName: p.name,
+                paramValue: typeof override === 'number' ? override : 0,
+              };
             }
             if (p.type === 'color' && typeof p.defaultValue === 'string') {
               const colorValue =
@@ -1505,15 +1517,10 @@ export function useControlPanelEvents({
         const res = await stopRecording(roomId);
         await handleRefreshState();
         if (res.status === 'stopped' && res.fileName) {
+          const fileName = res.fileName;
           recDownloadTimer = setTimeout(() => {
             recDownloadTimer = null;
-            if (typeof window === 'undefined') return;
-            const link = document.createElement('a');
-            link.href = `/api/recordings/${encodeURIComponent(res.fileName!)}`;
-            link.download = res.fileName!;
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
+            triggerRecordingDownload(fileName);
           }, 1500);
         }
       } catch (err) {

@@ -49,7 +49,10 @@ function installMacroStepAck(
 
 beforeEach(() => {
   vi.stubGlobal('window', new EventTarget());
-  vi.stubGlobal('CustomEvent', TestCustomEvent as unknown as typeof CustomEvent);
+  vi.stubGlobal(
+    'CustomEvent',
+    TestCustomEvent as unknown as typeof CustomEvent,
+  );
 });
 
 afterEach(() => {
@@ -132,41 +135,32 @@ describe('macro execution controller', () => {
   it('waits for add-input completion and selects the newly created input', async () => {
     const events: Array<{ type: string; detail: Record<string, unknown> }> = [];
 
-    window.addEventListener(
-      'smelter:voice:add-input',
-      ((event: Event) => {
-        const detail = (event as CustomEvent<Record<string, unknown>>).detail;
-        events.push({ type: 'smelter:voice:add-input', detail });
-        window.dispatchEvent(
-          new CustomEvent('smelter:voice:macro-step-complete', {
-            detail: {
-              requestId: detail.requestId,
-              inputId: 'input-42',
-            },
-          }),
-        );
-      }) as EventListener,
-    );
+    window.addEventListener('smelter:voice:add-input', ((event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+      events.push({ type: 'smelter:voice:add-input', detail });
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:macro-step-complete', {
+          detail: {
+            requestId: detail.requestId,
+            inputId: 'input-42',
+          },
+        }),
+      );
+    }) as EventListener);
 
-    window.addEventListener(
-      'smelter:inputs:select',
-      ((event: Event) => {
-        events.push({
-          type: 'smelter:inputs:select',
-          detail: (event as CustomEvent<Record<string, unknown>>).detail,
-        });
-      }) as EventListener,
-    );
+    window.addEventListener('smelter:inputs:select', ((event: Event) => {
+      events.push({
+        type: 'smelter:inputs:select',
+        detail: (event as CustomEvent<Record<string, unknown>>).detail,
+      });
+    }) as EventListener);
 
-    window.addEventListener(
-      'smelter:voice:add-shader',
-      ((event: Event) => {
-        events.push({
-          type: 'smelter:voice:add-shader',
-          detail: (event as CustomEvent<Record<string, unknown>>).detail,
-        });
-      }) as EventListener,
-    );
+    window.addEventListener('smelter:voice:add-shader', ((event: Event) => {
+      events.push({
+        type: 'smelter:voice:add-shader',
+        detail: (event as CustomEvent<Record<string, unknown>>).detail,
+      });
+    }) as EventListener);
 
     await executeMacro(
       createMacro([
@@ -284,17 +278,21 @@ describe('galactic macro definitions', () => {
     const macro = getMacroById('galactic-camera');
 
     expect(macro?.continueListening).toBe(true);
-    expect(macro?.steps.slice(1).every((step) => step.params?.inputIndex === undefined)).toBe(
-      true,
-    );
+    expect(
+      macro?.steps
+        .slice(1)
+        .every((step) => step.params?.inputIndex === undefined),
+    ).toBe(true);
   });
 
   it('uses selection context instead of hard-coded indices for galactic text', () => {
     const macro = getMacroById('galactic-text');
 
     expect(macro?.continueListening).toBe(true);
-    expect(macro?.steps.slice(1).every((step) => step.params?.inputIndex === undefined)).toBe(
-      true,
-    );
+    expect(
+      macro?.steps
+        .slice(1)
+        .every((step) => step.params?.inputIndex === undefined),
+    ).toBe(true);
   });
 });

@@ -93,7 +93,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     // - Y stays controlled by perspective (top+bottom remain glued to frame)
     // - X receives user scale so shrinking mostly narrows horizontally
     let scale_x = max(scale, 0.001) * safe_perspective * auto_scale_factor;
-    let scale_y = safe_perspective * auto_scale_factor;
+    let scale_y = max(safe_perspective * auto_scale_factor, 0.001);
     let scaled_uv = vec2<f32>(
         centered_uv.x / scale_x,
         centered_uv.y / scale_y

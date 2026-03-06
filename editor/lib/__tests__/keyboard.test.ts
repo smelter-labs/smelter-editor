@@ -3,9 +3,9 @@ import { shouldIgnoreGlobalShortcut } from '../keyboard';
 
 describe('shouldIgnoreGlobalShortcut', () => {
   it('ignores native editable elements', () => {
-    expect(shouldIgnoreGlobalShortcut({ tagName: 'input' } as EventTarget)).toBe(
-      true,
-    );
+    expect(
+      shouldIgnoreGlobalShortcut({ tagName: 'input' } as EventTarget),
+    ).toBe(true);
     expect(
       shouldIgnoreGlobalShortcut({ tagName: 'textarea' } as EventTarget),
     ).toBe(true);
@@ -18,9 +18,9 @@ describe('shouldIgnoreGlobalShortcut', () => {
   });
 
   it('does not ignore non-editable targets', () => {
-    expect(shouldIgnoreGlobalShortcut({ tagName: 'button' } as EventTarget)).toBe(
-      false,
-    );
+    expect(
+      shouldIgnoreGlobalShortcut({ tagName: 'button' } as EventTarget),
+    ).toBe(false);
     expect(shouldIgnoreGlobalShortcut(null)).toBe(false);
   });
 });

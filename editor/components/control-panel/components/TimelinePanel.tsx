@@ -9,12 +9,8 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
-import {
-  removeInput,
-  startRecording,
-  stopRecording,
-  type Input,
-} from '@/app/actions/actions';
+import { removeInput, type Input } from '@/app/actions/actions';
+import { useRecordingControls } from '../hooks/use-recording-controls';
 import type { InputWrapper } from '../hooks/use-control-panel-state';
 import LoadingSpinner from '@/components/ui/spinner';
 import { useControlPanelContext } from '../contexts/control-panel-context';
@@ -410,70 +406,34 @@ export function TimelinePanel({
     structureRevision,
   );
 
-  const { isRecording } = useControlPanelContext();
-  const [isTogglingRecording, setIsTogglingRecording] = useState(false);
+  const { isRecording: serverIsRecording } = useControlPanelContext();
+  const {
+    isTogglingRecording,
+    effectiveIsRecording: isRecording,
+    start: startRec,
+    stopAndDownload,
+  } = useRecordingControls(roomId, serverIsRecording, refreshState);
   const wasPlayingRef = useRef(false);
-
-  const stopRecordingAndDownload = useCallback(async () => {
-    setIsTogglingRecording(true);
-    try {
-      const res = await stopRecording(roomId);
-      await refreshState();
-      if (res.status === 'stopped' && res.fileName) {
-        setTimeout(() => {
-          if (typeof window === 'undefined') return;
-          const link = document.createElement('a');
-          link.href = `/api/recordings/${encodeURIComponent(res.fileName!)}`;
-          link.download = res.fileName!;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        }, 1500);
-      }
-    } catch (err) {
-      console.error('Failed to stop recording', err);
-    } finally {
-      setIsTogglingRecording(false);
-    }
-  }, [roomId, refreshState]);
 
   const handleRecordAndPlay = useCallback(async () => {
     if (isTogglingRecording) return;
     if (isRecording) {
       stop();
-      await stopRecordingAndDownload();
+      await stopAndDownload();
       return;
     }
-    setIsTogglingRecording(true);
-    try {
-      const res = await startRecording(roomId);
-      if (res.status === 'recording') {
-        await refreshState();
-        play();
-      } else {
-        console.error('Failed to start recording', res.message);
-      }
-    } catch (err) {
-      console.error('Failed to start recording', err);
-    } finally {
-      setIsTogglingRecording(false);
+    const started = await startRec();
+    if (started) {
+      play();
     }
-  }, [
-    isRecording,
-    isTogglingRecording,
-    roomId,
-    play,
-    stop,
-    stopRecordingAndDownload,
-    refreshState,
-  ]);
+  }, [isRecording, isTogglingRecording, play, stop, startRec, stopAndDownload]);
 
   useEffect(() => {
     if (wasPlayingRef.current && !state.isPlaying && isRecording) {
-      void stopRecordingAndDownload();
+      void stopAndDownload();
     }
     wasPlayingRef.current = state.isPlaying;
-  }, [state.isPlaying, isRecording, stopRecordingAndDownload]);
+  }, [state.isPlaying, isRecording, stopAndDownload]);
 
   const [panelHeight, setPanelHeight] = useState(DEFAULT_HEIGHT);
   const resizingRef = useRef(false);

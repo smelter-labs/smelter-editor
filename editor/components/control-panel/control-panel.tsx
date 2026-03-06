@@ -16,10 +16,9 @@ import {
   addImageInput,
   addTextInput,
   removeInput,
-  startRecording,
-  stopRecording,
   type PendingWhipInputData,
 } from '@/app/actions/actions';
+import { useRecordingControls } from './hooks/use-recording-controls';
 import LayoutSelector, { type Layout } from '@/components/layout-selector';
 import {
   Dialog,
@@ -330,7 +329,14 @@ export default function ControlPanel({
       availableShaders,
       isRecording: isRecordingFromServer,
     }),
-    [roomId, handleRefreshState, inputs, inputsRef, availableShaders, isRecordingFromServer],
+    [
+      roomId,
+      handleRefreshState,
+      inputs,
+      inputsRef,
+      availableShaders,
+      isRecordingFromServer,
+    ],
   );
 
   const fxInput =
@@ -593,60 +599,31 @@ function SettingsBar({
   const [defaultOrientation, setDefaultOrientation] =
     useDefaultOrientationSetting();
   const [voicePanelSize, setVoicePanelSize] = useVoicePanelSizeSetting();
-  const [voicePanelOpacity, setVoicePanelOpacity] = useVoicePanelOpacitySetting();
+  const [voicePanelOpacity, setVoicePanelOpacity] =
+    useVoicePanelOpacitySetting();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const isRecording = roomState.isRecording ?? false;
-  const [isTogglingRecording, setIsTogglingRecording] = useState(false);
-  const [isWaitingForDownload, setIsWaitingForDownload] = useState(false);
+  const serverIsRecording = roomState.isRecording ?? false;
+  const {
+    isTogglingRecording,
+    isWaitingForDownload,
+    effectiveIsRecording: isRecording,
+    toggle: handleToggleRecording,
+  } = useRecordingControls(roomId, serverIsRecording, handleRefreshState);
 
-  const handleToggleRecording = useCallback(async () => {
-    if (isTogglingRecording || isWaitingForDownload) return;
-    setIsTogglingRecording(true);
-    try {
-      if (!isRecording) {
-        const res = await startRecording(roomId);
-        if (res.status === 'recording') {
-          await handleRefreshState();
-        } else {
-          console.error('Failed to start recording', res.message);
-        }
-      } else {
-        setIsWaitingForDownload(true);
-        const res = await stopRecording(roomId);
-        if (res.status === 'stopped') {
-          await handleRefreshState();
-          if (res.fileName) {
-            setTimeout(() => {
-              if (typeof window === 'undefined') return;
-              const link = document.createElement('a');
-              link.href = `/api/recordings/${encodeURIComponent(res.fileName!)}`;
-              link.download = res.fileName!;
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-              setIsWaitingForDownload(false);
-            }, 1500);
-          } else {
-            setIsWaitingForDownload(false);
-          }
-        } else {
-          console.error('Failed to stop recording', res.message);
-          setIsWaitingForDownload(false);
-        }
-      }
-    } catch (err) {
-      console.error('Error while toggling recording', err);
-      setIsWaitingForDownload(false);
-    } finally {
-      setIsTogglingRecording(false);
-    }
-  }, [roomId, isRecording, isTogglingRecording, isWaitingForDownload, handleRefreshState]);
-
+  const [isTogglingPublic, setIsTogglingPublic] = useState(false);
   const handleTogglePublic = useCallback(async () => {
-    await updateRoomAction(roomId, { isPublic: !roomState.isPublic });
-    await handleRefreshState();
-  }, [roomId, roomState.isPublic, handleRefreshState]);
+    if (isTogglingPublic) return;
+    setIsTogglingPublic(true);
+    try {
+      await updateRoomAction(roomId, { isPublic: !roomState.isPublic });
+      await handleRefreshState();
+    } catch (err) {
+      console.error('Failed to toggle public state', err);
+    } finally {
+      setIsTogglingPublic(false);
+    }
+  }, [roomId, roomState.isPublic, handleRefreshState, isTogglingPublic]);
 
   const buildConfig = useCallback(() => {
     const timelineState = loadTimelineFromStorage(roomId);
@@ -965,15 +942,18 @@ function SettingsBar({
         </button>
         <button
           onClick={handleTogglePublic}
+          disabled={isTogglingPublic}
           className={`${btnClass} ${roomState.isPublic ? 'border-white/20 bg-neutral-700' : ''}`}>
-          <span className={`transition-colors ${roomState.isPublic ? 'text-white' : 'text-neutral-400 group-hover:text-white'}`}>
+          <span
+            className={`transition-colors ${roomState.isPublic ? 'text-white' : 'text-neutral-400 group-hover:text-white'}`}>
             {roomState.isPublic ? (
               <ToggleRight className='w-4 h-4' />
             ) : (
               <ToggleLeft className='w-4 h-4' />
             )}
           </span>
-          <span className={`text-[11px] font-medium transition-colors leading-tight text-center ${roomState.isPublic ? 'text-neutral-200' : 'text-neutral-400 group-hover:text-white'}`}>
+          <span
+            className={`text-[11px] font-medium transition-colors leading-tight text-center ${roomState.isPublic ? 'text-neutral-200' : 'text-neutral-400 group-hover:text-white'}`}>
             Public
           </span>
         </button>
@@ -981,7 +961,8 @@ function SettingsBar({
           onClick={handleToggleRecording}
           disabled={isTogglingRecording || isWaitingForDownload}
           className={`${btnClass} ${isRecording ? 'border-red-500/50 bg-red-950/30' : ''}`}>
-          <span className={`transition-colors ${isRecording ? 'text-red-400 group-hover:text-red-300' : 'text-neutral-400 group-hover:text-white'}`}>
+          <span
+            className={`transition-colors ${isRecording ? 'text-red-400 group-hover:text-red-300' : 'text-neutral-400 group-hover:text-white'}`}>
             <Circle className='w-4 h-4' />
           </span>
           <span className='text-[11px] font-medium text-neutral-400 group-hover:text-white transition-colors leading-tight text-center'>
@@ -1118,7 +1099,9 @@ function SettingsBar({
                     max={100}
                     step={5}
                     value={voicePanelOpacity}
-                    onChange={(e) => setVoicePanelOpacity(Number(e.target.value))}
+                    onChange={(e) =>
+                      setVoicePanelOpacity(Number(e.target.value))
+                    }
                     className='flex-1 accent-white h-1'
                   />
                   <span className='text-xs text-neutral-500 w-8 text-right tabular-nums'>

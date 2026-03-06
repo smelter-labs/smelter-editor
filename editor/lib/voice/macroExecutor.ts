@@ -7,6 +7,7 @@ import macrosJson from './macros.json';
 const macrosConfig: MacrosConfig = macrosJson as MacrosConfig;
 
 const FUZZY_MATCH_THRESHOLD = 0.8;
+const MIN_TRIGGER_LENGTH_FOR_FUZZY = 8;
 
 export function findMatchingMacro(transcript: string): MacroDefinition | null {
   const normalized = normalize(transcript);
@@ -30,6 +31,9 @@ export function findMatchingMacro(transcript: string): MacroDefinition | null {
   for (const macro of macrosConfig.macros) {
     for (const trigger of macro.triggers) {
       const normalizedTrigger = normalize(trigger);
+      if (normalizedTrigger.length < MIN_TRIGGER_LENGTH_FOR_FUZZY) {
+        continue;
+      }
       const triggerWords = normalizedTrigger.split(/\s+/);
       const windowSize = triggerWords.length;
 

@@ -44,7 +44,10 @@ describe('panel-registry layout persistence', () => {
   });
 
   it('migrates legacy single-layout storage into responsive layouts', () => {
-    localStorage.setItem('smelter-dashboard-layout', JSON.stringify(DEFAULT_LAYOUT));
+    localStorage.setItem(
+      'smelter-dashboard-layout',
+      JSON.stringify(DEFAULT_LAYOUT),
+    );
 
     const restored = loadLayouts();
 
@@ -86,10 +89,7 @@ describe('panel-registry layout persistence', () => {
       ...DEFAULT_LAYOUT,
       { i: 'obsolete-panel', x: 0, y: 50, w: 4, h: 4, minW: 2, minH: 2 },
     ];
-    localStorage.setItem(
-      'smelter-dashboard-layout',
-      JSON.stringify(withExtra),
-    );
+    localStorage.setItem('smelter-dashboard-layout', JSON.stringify(withExtra));
 
     const restored = loadLayouts();
 

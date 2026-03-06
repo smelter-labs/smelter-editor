@@ -83,7 +83,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
     layout: [
       { i: 'video-preview', x: 0, y: 0, w: 16, h: 20, minW: 6, minH: 6 },
       { i: 'add-video', x: 16, y: 0, w: 8, h: 8, minW: 4, minH: 4 },
-      { i: 'buttons', x: 16, y: 8, w: 8, h: 6, minW: 4, minH: 2},
+      { i: 'buttons', x: 16, y: 8, w: 8, h: 6, minW: 4, minH: 2 },
       { i: 'streams', x: 16, y: 14, w: 8, h: 6, minW: 4, minH: 4 },
       { i: 'fx', x: 16, y: 20, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'timeline', x: 0, y: 20, w: 16, h: 8, minW: 8, minH: 4 },
@@ -227,9 +227,7 @@ function isLayoutArray(layout: unknown): layout is MutableLayout {
   return (
     Array.isArray(layout) &&
     layout.length > 0 &&
-    layout.every(
-      (item) => item && typeof item === 'object' && 'i' in item,
-    )
+    layout.every((item) => item && typeof item === 'object' && 'i' in item)
   );
 }
 
@@ -252,9 +250,7 @@ function ensureAllPanels(layout: MutableLayout, cols: number): MutableLayout {
     }
   }
 
-  return layout.filter((item) =>
-    ALL_PANEL_IDS.includes(item.i as PanelId),
-  );
+  return layout.filter((item) => ALL_PANEL_IDS.includes(item.i as PanelId));
 }
 
 export function loadLayouts(): DashboardLayouts | null {
@@ -265,7 +261,10 @@ export function loadLayouts(): DashboardLayouts | null {
     const parsed = JSON.parse(stored) as DashboardLayouts | MutableLayout;
 
     if (Array.isArray(parsed) && isLayoutArray(parsed)) {
-      const patched = ensureAllPanels(normalizeLayout(parsed), DASHBOARD_COLS.lg);
+      const patched = ensureAllPanels(
+        normalizeLayout(parsed),
+        DASHBOARD_COLS.lg,
+      );
       return createResponsiveLayoutsFromLg(patched);
     }
 

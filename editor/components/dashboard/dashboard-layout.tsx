@@ -128,7 +128,9 @@ export default function DashboardLayout({ panels }: DashboardLayoutProps) {
   }, []);
 
   const handleApplyPreset = useCallback((presetLayout: MutableLayout) => {
-    const nextLayouts = createResponsiveLayoutsFromLg(cloneLayout(presetLayout));
+    const nextLayouts = createResponsiveLayoutsFromLg(
+      cloneLayout(presetLayout),
+    );
     setCurrentLayouts(nextLayouts);
     saveLayouts(nextLayouts);
   }, []);
@@ -141,52 +143,49 @@ export default function DashboardLayout({ panels }: DashboardLayoutProps) {
     saveVisiblePanels(allVisible);
   }, []);
 
-  const handleTogglePanel = useCallback(
-    (panelId: PanelId) => {
-      setVisiblePanels((prev) => {
-        const next = new Set(prev);
-        if (next.has(panelId)) {
-          if (next.size <= 1) return prev;
-          next.delete(panelId);
-        } else {
-          next.add(panelId);
-          const def = PANEL_DEFINITIONS[panelId];
-          setCurrentLayouts((prevLayouts) => {
-            const alreadyInLayout = DASHBOARD_BREAKPOINTS.some((bp) =>
-              prevLayouts[bp].some((item) => item.i === panelId),
-            );
-            if (alreadyInLayout) return prevLayouts;
+  const handleTogglePanel = useCallback((panelId: PanelId) => {
+    setVisiblePanels((prev) => {
+      const next = new Set(prev);
+      if (next.has(panelId)) {
+        if (next.size <= 1) return prev;
+        next.delete(panelId);
+      } else {
+        next.add(panelId);
+        const def = PANEL_DEFINITIONS[panelId];
+        setCurrentLayouts((prevLayouts) => {
+          const alreadyInLayout = DASHBOARD_BREAKPOINTS.some((bp) =>
+            prevLayouts[bp].some((item) => item.i === panelId),
+          );
+          if (alreadyInLayout) return prevLayouts;
 
-            const updated = { ...prevLayouts } as DashboardLayouts;
-            for (const breakpoint of DASHBOARD_BREAKPOINTS) {
-              const breakpointLayout = prevLayouts[breakpoint];
-              const maxY = breakpointLayout.reduce(
-                (max, item) => Math.max(max, item.y + item.h),
-                0,
-              );
-              updated[breakpoint] = [
-                ...breakpointLayout,
-                {
-                  i: panelId,
-                  x: 0,
-                  y: maxY,
-                  w: Math.min(COLS[breakpoint], def.minW + 4),
-                  h: def.minH + 2,
-                  minW: Math.min(COLS[breakpoint], def.minW),
-                  minH: def.minH,
-                },
-              ];
-            }
-            saveLayouts(updated);
-            return updated;
-          });
-        }
-        saveVisiblePanels(next);
-        return next;
-      });
-    },
-    [],
-  );
+          const updated = { ...prevLayouts } as DashboardLayouts;
+          for (const breakpoint of DASHBOARD_BREAKPOINTS) {
+            const breakpointLayout = prevLayouts[breakpoint];
+            const maxY = breakpointLayout.reduce(
+              (max, item) => Math.max(max, item.y + item.h),
+              0,
+            );
+            updated[breakpoint] = [
+              ...breakpointLayout,
+              {
+                i: panelId,
+                x: 0,
+                y: maxY,
+                w: Math.min(COLS[breakpoint], def.minW + 4),
+                h: def.minH + 2,
+                minW: Math.min(COLS[breakpoint], def.minW),
+                minH: def.minH,
+              },
+            ];
+          }
+          saveLayouts(updated);
+          return updated;
+        });
+      }
+      saveVisiblePanels(next);
+      return next;
+    });
+  }, []);
 
   const visibleIds = useMemo(
     () => ALL_PANEL_IDS.filter((id) => visiblePanels.has(id)),

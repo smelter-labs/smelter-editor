@@ -1,4 +1,6 @@
-export function shouldIgnoreGlobalShortcut(target: EventTarget | null): boolean {
+export function shouldIgnoreGlobalShortcut(
+  target: EventTarget | null,
+): boolean {
   if (!target || typeof target !== 'object') {
     return false;
   }

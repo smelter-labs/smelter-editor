@@ -157,6 +157,8 @@ type ScrollingTextProps = {
   containerWidth: number;
   containerHeight: number;
   scrollNudge?: number;
+  /** Insert a blank line every N lines (0 = disabled) */
+  linePaddingInterval?: number;
 };
 
 function ScrollingText({
@@ -170,6 +172,7 @@ function ScrollingText({
   containerWidth,
   containerHeight,
   scrollNudge = 0,
+  linePaddingInterval = 0,
 }: ScrollingTextProps) {
   const lineHeight = fontSize * 1.2;
   const textVerticalPadding = Math.max(2, Math.round(fontSize * 0.12));
@@ -178,12 +181,12 @@ function ScrollingText({
   const paddedLines: string[] = [];
   for (let i = 0; i < rawLines.length; i++) {
     paddedLines.push(rawLines[i]);
-    if ((i + 1) % 5 === 0 && i < rawLines.length - 1) {
+    if (linePaddingInterval > 0 && (i + 1) % linePaddingInterval === 0 && i < rawLines.length - 1) {
       paddedLines.push('');
     }
   }
-  const paddedText = paddedLines.join('\n');
-  const lines = paddedLines;
+  const paddedText = linePaddingInterval > 0 ? paddedLines.join('\n') : text;
+  const lines = linePaddingInterval > 0 ? paddedLines : rawLines;
   const measuredTextHeight = Math.max(lineHeight, lines.length * lineHeight);
   const totalTextHeight = measuredTextHeight + textVerticalPadding * 2;
   
