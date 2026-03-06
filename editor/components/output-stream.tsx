@@ -1,6 +1,6 @@
 'use client';
 
-import { RefObject, useEffect, useRef, useState, useCallback } from 'react';
+import { RefObject, useEffect, useState } from 'react';
 
 import { useIsMobileDevice } from '@/hooks/use-mobile';
 import {
@@ -10,7 +10,6 @@ import {
   VolumeX as MutedIcon,
   Maximize2 as FullscreenIcon,
   Minimize2 as MinimizeIcon,
-  RotateCcw as ReplayIcon,
 } from 'lucide-react';
 import { buildIceServers } from '@/components/control-panel/whip-input/utils/webRTC-helpers';
 
@@ -27,6 +26,11 @@ export type OutputResolution = {
   height: number;
 };
 
+type OutputStreamConnection = {
+  stream: MediaStream;
+  close: () => void;
+};
+
 export default function OutputStream({
   whepUrl,
   videoRef,
@@ -41,26 +45,61 @@ export default function OutputStream({
     : '16/9';
   const isVertical = resolution ? resolution.height > resolution.width : false;
   const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState(false);
+  const [muted, setMuted] = useState(true);
   const [volume, setVolume] = useState(1);
   const [current, setCurrent] = useState(0);
-  const [duration, setDuration] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [videoLoaded, setVideoLoaded] = useState(false);
   const isMobile = useIsMobileDevice();
 
   useEffect(() => {
-    connect(whepUrl).then((stream) => {
-      const vid = videoRef.current;
-      if (vid && vid.srcObject !== stream) {
-        vid.srcObject = stream;
-        vid.play().then(
-          () => setPlaying(true),
-          () => setPlaying(false),
-        );
-      }
-    });
+    let cancelled = false;
+    let closeConnection = () => {};
+
+    void connect(whepUrl)
+      .then(({ stream, close }) => {
+        closeConnection = () => {
+          close();
+          const vid = videoRef.current;
+          if (vid?.srcObject === stream) {
+            vid.srcObject = null;
+          }
+        };
+
+        if (cancelled) {
+          closeConnection();
+          return;
+        }
+
+        const vid = videoRef.current;
+        if (vid && vid.srcObject !== stream) {
+          vid.srcObject = stream;
+          vid.play().then(
+            () => setPlaying(true),
+            () => setPlaying(false),
+          );
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          console.error('Failed to connect output stream', error);
+          setPlaying(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      closeConnection();
+      setVideoLoaded(false);
+      setPlaying(false);
+    };
   }, [whepUrl, videoRef]);
+
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid) return;
+    vid.muted = muted;
+  }, [muted, videoRef]);
 
   useEffect(() => {
     const vid = videoRef.current;
@@ -68,7 +107,6 @@ export default function OutputStream({
 
     const onTimeUpdate = () => setCurrent(vid.currentTime);
     const onLoadedMetadata = () => {
-      setDuration(vid.duration || 0);
       setVideoLoaded(true);
       setPlaying(!vid.paused && !vid.ended);
     };
@@ -183,13 +221,6 @@ export default function OutputStream({
     setMuted(vid.muted);
   };
 
-  const handleSeek = (value: number) => {
-    const vid = videoRef.current;
-    if (!vid || !isFinite(vid.duration)) return;
-    vid.currentTime = value;
-    setCurrent(value);
-  };
-
   const handleFullscreen = () => {
     const vid = videoRef.current;
     if (!vid) return;
@@ -221,13 +252,6 @@ export default function OutputStream({
     }
   };
 
-  const handleReplay = () => {
-    const vid = videoRef.current;
-    if (!vid) return;
-    vid.currentTime = 0;
-    vid.play();
-  };
-
   const formatTime = (s: number) => {
     if (!isFinite(s)) return '--:--';
     const m = Math.floor(s / 60);
@@ -242,16 +266,14 @@ export default function OutputStream({
   const slider =
     'h-1.5 rounded-none bg-gray-300 dark:bg-neutral-800 appearance-none transition w-full accent-neutral-400';
 
-  const maxWidth = isVertical ? 600 : 1920;
-  const maxHeight = isVertical ? 1080 : 1080;
-
   return (
     <div
-      className='relative w-full h-full bg-black rounded-none overflow-hidden border-[#2a2a2a] border-4'
+      className='relative bg-black rounded-none overflow-hidden border-[#2a2a2a] border-4'
       style={{
         aspectRatio,
-        maxWidth,
-        maxHeight,
+        maxWidth: '100%',
+        maxHeight: '100%',
+        width: '100%',
         margin: isVertical ? '0 auto' : undefined,
       }}>
       {!videoLoaded && (
@@ -269,6 +291,7 @@ export default function OutputStream({
         autoPlay
         autoFocus
         playsInline
+        muted={muted}
         controls={isMobile}
         style={{ width: '100%', height: '100%', background: 'black' }}
         tabIndex={-1}
@@ -334,7 +357,7 @@ export default function OutputStream({
   );
 }
 
-async function connect(endpointUrl: string): Promise<MediaStream> {
+async function connect(endpointUrl: string): Promise<OutputStreamConnection> {
   const pc = new RTCPeerConnection({
     iceServers: buildIceServers(),
     bundlePolicy: 'max-bundle',
@@ -369,7 +392,13 @@ async function connect(endpointUrl: string): Promise<MediaStream> {
   const stream = new MediaStream();
   stream.addTrack(tracks.video);
   stream.addTrack(tracks.audio);
-  return stream;
+  return {
+    stream,
+    close: () => {
+      stream.getTracks().forEach((track) => track.stop());
+      pc.close();
+    },
+  };
 }
 
 async function establishWhipConnection(

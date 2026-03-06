@@ -12,6 +12,11 @@ import {
   getMP4Suggestions,
   getPictureSuggestions,
 } from '@/app/actions/actions';
+import {
+  useVoicePanelSizeSetting,
+  useVoicePanelOpacitySetting,
+} from '@/lib/voice/macroSettings';
+import { shouldIgnoreGlobalShortcut } from '@/lib/keyboard';
 
 type MacroStepInfo = {
   step: MacroStep;
@@ -280,17 +285,52 @@ export function SpeechToTextWithCommands() {
     }
   };
 
+  useEffect(() => {
+    const handleKeyboard = (e: globalThis.KeyboardEvent) => {
+      if (shouldIgnoreGlobalShortcut(e.target)) {
+        return;
+      }
+      if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
+        e.preventDefault();
+        setIsOpen((prev) => {
+          if (prev) {
+            if (isRecording) stopSpeechToText();
+            return false;
+          }
+          startSpeechToText();
+          setTimeout(() => inputRef.current?.focus(), 0);
+          return true;
+        });
+      }
+    };
+    window.addEventListener('keydown', handleKeyboard);
+    return () => window.removeEventListener('keydown', handleKeyboard);
+  }, [isRecording, startSpeechToText, stopSpeechToText]);
+
   const isIntroPage = !roomId;
   // Falls back to index 0 when no step has started yet, so the UI can preview the first step.
   const nextMacroStepIndex =
     currentMacroStep?.index !== undefined ? currentMacroStep.index + 1 : 0;
   const nextMacroStep = activeMacro?.steps?.[nextMacroStepIndex] ?? null;
 
+  const [panelSize] = useVoicePanelSizeSetting();
+  const [panelOpacity] = useVoicePanelOpacitySetting();
+  const isCompact = panelSize === 's';
+
   return (
     <div className='fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex flex-col items-center gap-3'>
       {isOpen && (
-        <div className='bg-[#141414] border border-neutral-700 p-4 w-[600px] max-h-[400px]'>
-          <div className='flex items-center justify-between mb-3 border-b border-neutral-700 pb-3'>
+        <div
+          style={{ opacity: panelOpacity / 100 }}
+          className={cn(
+            'bg-[#141414] border border-neutral-700 p-4 overflow-hidden',
+            isCompact ? 'w-[360px] max-h-[200px]' : 'w-[600px] max-h-[400px]',
+          )}>
+          <div
+            className={cn(
+              'flex items-center justify-between border-b border-neutral-700',
+              isCompact ? 'mb-2 pb-2' : 'mb-3 pb-3',
+            )}>
             <div className='flex items-center gap-2'>
               {isRecording && (
                 <span
@@ -323,7 +363,8 @@ export function SpeechToTextWithCommands() {
           {lastTranscript && (
             <p
               className={cn(
-                'text-lg mb-2 font-mono overflow-hidden text-ellipsis whitespace-nowrap',
+                'mb-2 font-mono overflow-hidden text-ellipsis whitespace-nowrap',
+                isCompact ? 'text-sm' : 'text-lg',
                 isAnimating ? 'text-cyan-400' : 'text-neutral-300',
               )}
               title={animatedTranscript}>
@@ -350,19 +391,19 @@ export function SpeechToTextWithCommands() {
             <p className='text-blue-400 text-sm mb-2'>❓ {lastClarify}</p>
           )}
 
-          {isTypingMode && (
+          {!isCompact && isTypingMode && (
             <p className='text-purple-400 text-sm mb-2 bg-purple-500/10 p-2 rounded'>
               🎤 Dictating text... Say &quot;stop typing&quot; to finish.
             </p>
           )}
 
-          {isMacroMode && (
+          {!isCompact && isMacroMode && (
             <p className='text-orange-400 text-sm mb-2 bg-orange-500/10 p-2 rounded'>
               🎬 Say a macro trigger phrase or &quot;end macro&quot; to cancel.
             </p>
           )}
 
-          {isExecutingMacro && activeMacro && (
+          {!isCompact && isExecutingMacro && activeMacro && (
             <div className='text-sm mb-2 bg-cyan-500/10 p-3 rounded border border-cyan-500/30'>
               <p className='text-cyan-400 font-medium mb-2'>
                 ⚡ Executing: {activeMacro.description}
@@ -456,7 +497,7 @@ export function SpeechToTextWithCommands() {
             </div>
           )}
 
-          {lastCommand && lastCommand.intent !== 'CLARIFY' && (
+          {!isCompact && lastCommand && lastCommand.intent !== 'CLARIFY' && (
             <p className='text-green-400 text-sm mb-2'>
               ✓ {lastCommand.intent}
               {lastCommand.intent === 'ADD_INPUT' && (
@@ -493,7 +534,7 @@ export function SpeechToTextWithCommands() {
             </p>
           )}
 
-          {lastSuccess && (
+          {!isCompact && lastSuccess && (
             <p className='text-green-400 text-sm mb-2'>✓ {lastSuccess}</p>
           )}
 
@@ -517,28 +558,40 @@ export function SpeechToTextWithCommands() {
             </Button>
           </div>
 
-          <div
-            ref={scrollRef}
-            className='overflow-y-auto max-h-[200px] space-y-2'>
-            {interimResult && (
-              <p className='text-neutral-500 text-sm italic'>{interimResult}</p>
-            )}
-            {transcriptHistory.map((entry) => (
-              <p
-                key={entry.timestamp}
-                className='text-neutral-200 text-sm font-mono overflow-hidden text-ellipsis whitespace-nowrap'>
-                &quot;{entry.transcript}&quot;
-                {entry.intent && (
-                  <span className='text-green-400 ml-2'>→ {entry.intent}</span>
-                )}
-              </p>
-            ))}
-            {transcriptHistory.length === 0 && !interimResult && !error && (
-              <p className='text-neutral-600 text-sm'>
-                {isRecording ? 'Say a command...' : 'Click mic to start'}
-              </p>
-            )}
-          </div>
+          {!isCompact && (
+            <div
+              ref={scrollRef}
+              className='overflow-y-auto max-h-[200px] space-y-2'>
+              {interimResult && (
+                <p className='text-neutral-500 text-sm italic'>
+                  {interimResult}
+                </p>
+              )}
+              {transcriptHistory.slice(0, 4).map((entry) => (
+                <p
+                  key={entry.timestamp}
+                  className='text-neutral-200 text-sm font-mono overflow-hidden text-ellipsis whitespace-nowrap'>
+                  &quot;{entry.transcript}&quot;
+                  {entry.intent && (
+                    <span className='text-green-400 ml-2'>
+                      → {entry.intent}
+                    </span>
+                  )}
+                </p>
+              ))}
+              {transcriptHistory.length === 0 && !interimResult && !error && (
+                <p className='text-neutral-600 text-sm'>
+                  {isRecording ? 'Say a command...' : 'Click mic to start'}
+                </p>
+              )}
+            </div>
+          )}
+
+          {isCompact && interimResult && (
+            <p className='text-neutral-500 text-xs italic truncate'>
+              {interimResult}
+            </p>
+          )}
         </div>
       )}
 

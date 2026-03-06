@@ -1,10 +1,11 @@
-import { RoomState, updateRoom } from '@/app/actions/actions';
+import { RoomState } from '@/app/actions/actions';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AutoplayModal from '@/components/ui/autoplay-modal';
 import { motion } from 'framer-motion';
 import { staggerContainer } from '@/utils/animations';
 import VideoPreview from '@/components/video-preview';
 import ControlPanel from '@/components/control-panel/control-panel';
+import DashboardLayout from '@/components/dashboard/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { RotateCw } from 'lucide-react';
 
@@ -25,18 +26,6 @@ export default function RoomView({
   const [showAutoplayPopup, setShowAutoplayPopup] = useState(true);
   const [played, setPlayed] = useState(false);
   const [guestStream, setGuestStream] = useState<MediaStream | null>(null);
-  const [panelExpanded, setPanelExpanded] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    return localStorage.getItem('control-panel-expanded') === 'true';
-  });
-
-  const togglePanelExpanded = useCallback(() => {
-    setPanelExpanded((prev) => {
-      const next = !prev;
-      localStorage.setItem('control-panel-expanded', String(next));
-      return next;
-    });
-  }, []);
 
   const handleAutoplayPermission = useCallback((allow: boolean) => {
     if (allow) {
@@ -44,11 +33,6 @@ export default function RoomView({
     }
     setShowAutoplayPopup(false);
   }, []);
-
-  const handleTogglePublic = useCallback(async () => {
-    await updateRoom(roomId, { isPublic: !roomState.isPublic });
-    await refreshState();
-  }, [roomId, roomState.isPublic, refreshState]);
 
   const setupVideoEventListeners = useCallback(() => {
     if (!videoRef.current) {
@@ -84,12 +68,6 @@ export default function RoomView({
     null,
   );
   const [guestInputId, setGuestInputId] = useState<string | null>(null);
-  const timelinePortalRef = useRef<HTMLDivElement | null>(null);
-  const [, setPortalReady] = useState(false);
-
-  useEffect(() => {
-    if (timelinePortalRef.current) setPortalReady(true);
-  }, []);
 
   useEffect(() => {
     if (!guestVideoRef.current) return;
@@ -177,36 +155,37 @@ export default function RoomView({
         />
       )}
 
-      <motion.div
-        variants={staggerContainer}
-        className='flex-1 flex flex-col min-h-0 h-full overflow-hidden'>
-        <div
-          className={`flex-1 grid min-h-0 overflow-hidden gap-4 ${panelExpanded ? 'xl:grid-cols-2' : 'xl:grid-cols-4'}`}>
-          <div
-            className={`${panelExpanded ? 'xl:col-span-1' : 'xl:col-span-3'} flex flex-col gap-4 min-h-0`}>
-            <VideoPreview
-              videoRef={videoRef}
-              whepUrl={roomState.whepUrl}
-              roomId={roomId}
-              isPublic={roomState.isPublic}
-              onTogglePublic={handleTogglePublic}
-              resolution={roomState.resolution}
-              panelExpanded={panelExpanded}
-              onTogglePanelExpanded={togglePanelExpanded}
-            />
-          </div>
-          <div className='col-span-1 flex flex-col min-h-0 h-full overflow-y-auto overflow-x-hidden md:pr-4'>
-            <ControlPanel
-              roomState={roomState}
-              roomId={roomId}
-              refreshState={refreshState}
-              renderStreamsOutside
-              timelinePortalRef={timelinePortalRef}
-            />
-          </div>
-        </div>
-        <div ref={timelinePortalRef} className='shrink-0' />
-      </motion.div>
+      <ControlPanel
+        roomState={roomState}
+        roomId={roomId}
+        refreshState={refreshState}
+        renderDashboard={({
+          addVideoSection,
+          buttonsSection,
+          streamsSection,
+          fxSection,
+          timelineSection,
+          blockPropertiesSection,
+        }) => (
+          <DashboardLayout
+            panels={{
+              'video-preview': (
+                <VideoPreview
+                  videoRef={videoRef}
+                  whepUrl={roomState.whepUrl}
+                  resolution={roomState.resolution}
+                />
+              ),
+              'add-video': addVideoSection,
+              buttons: buttonsSection,
+              streams: streamsSection,
+              fx: fxSection,
+              timeline: timelineSection,
+              'block-properties': blockPropertiesSection,
+            }}
+          />
+        )}
+      />
     </>
   );
 }

@@ -1,34 +1,11 @@
 import { normalize } from './normalize';
+import { levenshtein } from './levenshtein';
 import type {
   VoiceCommand,
   Shader,
   InputType,
   Direction,
 } from './commandTypes';
-
-function levenshtein(a: string, b: string): number {
-  const matrix: number[][] = [];
-  for (let i = 0; i <= b.length; i++) {
-    matrix[i] = [i];
-  }
-  for (let j = 0; j <= a.length; j++) {
-    matrix[0][j] = j;
-  }
-  for (let i = 1; i <= b.length; i++) {
-    for (let j = 1; j <= a.length; j++) {
-      if (b.charAt(i - 1) === a.charAt(j - 1)) {
-        matrix[i][j] = matrix[i - 1][j - 1];
-      } else {
-        matrix[i][j] = Math.min(
-          matrix[i - 1][j - 1] + 1,
-          matrix[i][j - 1] + 1,
-          matrix[i - 1][j] + 1,
-        );
-      }
-    }
-  }
-  return matrix[b.length][a.length];
-}
 
 export type FileMatchResult = {
   file: string;
@@ -716,6 +693,55 @@ export function parseCommand(
       }
     }
     return { intent: 'ADD_INPUT', inputType };
+  }
+
+  if (hasAdd && inputType === null && !hasShader) {
+    const queryText = text
+      .replace(
+        /\b(add|create|new|apply|put|insert|at|of|input|source|file|video|background|the|a|an)\b/g,
+        '',
+      )
+      .trim();
+
+    if (queryText) {
+      if (mp4Files.length > 0) {
+        const mp4Match = findBestFileMatch(queryText, mp4Files, /\.mp4$/i);
+        if (mp4Match) {
+          return {
+            intent: 'ADD_INPUT',
+            inputType: 'mp4',
+            mp4FileName: mp4Match.file,
+            mp4MatchInfo: {
+              query: mp4Match.query,
+              file: mp4Match.file,
+              similarity: mp4Match.similarity,
+              matchType: mp4Match.matchType,
+            },
+          };
+        }
+      }
+
+      if (imageFiles.length > 0) {
+        const imageMatch = findBestFileMatch(
+          queryText,
+          imageFiles,
+          /\.(png|jpg|jpeg|gif|webp|svg)$/i,
+        );
+        if (imageMatch) {
+          return {
+            intent: 'ADD_INPUT',
+            inputType: 'image',
+            imageFileName: imageMatch.file,
+            imageMatchInfo: {
+              query: imageMatch.query,
+              file: imageMatch.file,
+              similarity: imageMatch.similarity,
+              matchType: imageMatch.matchType,
+            },
+          };
+        }
+      }
+    }
   }
 
   if (hasShaderKeyword && !hasShader && inputIndex !== null) {

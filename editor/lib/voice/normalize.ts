@@ -50,6 +50,7 @@ const PHRASE_ALIASES: [RegExp, string][] = [
   [/\blandscape\b/gi, 'horizontal'],
   [/\bthe\s*select\b/gi, 'deselect'],
   [/\b(light|flight|slide)\b/gi, 'layout'],
+  [/\btrucks?\b/gi, 'track'],
   [/\bstart\s+new\s+macro\b/gi, 'start macro'],
   [/\bgalaxy\b/gi, 'galactic'],
 ];

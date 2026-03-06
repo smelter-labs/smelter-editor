@@ -257,6 +257,12 @@ export function BlockClipPropertiesPanel({
   const gameGridDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const [textScrollSpeedDraft, setTextScrollSpeedDraft] = useState<
+    number | null
+  >(null);
+  const textScrollSpeedDebounceRef = useRef<ReturnType<
+    typeof setTimeout
+  > | null>(null);
   const attachBtnRef = useRef<HTMLButtonElement>(null);
   const [attachMenuPos, setAttachMenuPos] = useState<{
     top: number;
@@ -270,8 +276,19 @@ export function BlockClipPropertiesPanel({
           clearTimeout(timer);
         }
       });
+      if (textScrollSpeedDebounceRef.current) {
+        clearTimeout(textScrollSpeedDebounceRef.current);
+      }
     };
   }, []);
+
+  useEffect(() => {
+    setTextScrollSpeedDraft(null);
+    if (textScrollSpeedDebounceRef.current) {
+      clearTimeout(textScrollSpeedDebounceRef.current);
+      textScrollSpeedDebounceRef.current = null;
+    }
+  }, [selectedTimelineClip?.clipId]);
 
   const {
     cameraPcRef,
@@ -574,6 +591,23 @@ export function BlockClipPropertiesPanel({
     [selectedTimelineClip, applyClipPatch],
   );
 
+  const handleTextScrollSpeedChange = useCallback(
+    (newValue: number) => {
+      const nextValue = Math.min(400, Math.max(1, Math.round(newValue)));
+      setTextScrollSpeedDraft(nextValue);
+      if (textScrollSpeedDebounceRef.current) {
+        clearTimeout(textScrollSpeedDebounceRef.current);
+      }
+      textScrollSpeedDebounceRef.current = setTimeout(() => {
+        void applyClipPatch({ textScrollSpeed: nextValue }).finally(() => {
+          setTextScrollSpeedDraft(null);
+          textScrollSpeedDebounceRef.current = null;
+        });
+      }, SHADER_SETTINGS_DEBOUNCE_MS);
+    },
+    [applyClipPatch],
+  );
+
   if (!selectedTimelineClip) {
     return null;
   }
@@ -726,7 +760,7 @@ export function BlockClipPropertiesPanel({
 
   if (inlineShaderView) {
     return (
-      <div className='mt-3 p-3 rounded-md border border-neutral-800 bg-neutral-900'>
+      <div>
         <InlineShaderParams
           shaderId={inlineShaderView.shaderId}
           availableShaders={availableShaders}
@@ -744,7 +778,7 @@ export function BlockClipPropertiesPanel({
   }
 
   return (
-    <div className='mt-3 p-3 rounded-md border border-neutral-800 bg-neutral-900'>
+    <div>
       <div className='text-xs text-neutral-500 mb-2'>
         Selected block properties
       </div>
@@ -1158,15 +1192,19 @@ export function BlockClipPropertiesPanel({
                 max={400}
                 step={1}
                 className='flex-1'
-                value={selectedTimelineClip.blockSettings.textScrollSpeed ?? 80}
+                value={
+                  textScrollSpeedDraft ??
+                  selectedTimelineClip.blockSettings.textScrollSpeed ??
+                  80
+                }
                 onChange={(e) =>
-                  void applyClipPatch({
-                    textScrollSpeed: Number(e.target.value) || 80,
-                  })
+                  handleTextScrollSpeedChange(Number(e.target.value) || 80)
                 }
               />
               <span className='text-xs text-neutral-500 w-8 text-right'>
-                {selectedTimelineClip.blockSettings.textScrollSpeed ?? 80}
+                {textScrollSpeedDraft ??
+                  selectedTimelineClip.blockSettings.textScrollSpeed ??
+                  80}
               </span>
             </div>
           </div>

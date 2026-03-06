@@ -18,8 +18,8 @@ import {
   removeInput,
   type PendingWhipInputData,
 } from '@/app/actions/actions';
+import { useRecordingControls } from './hooks/use-recording-controls';
 import LayoutSelector, { type Layout } from '@/components/layout-selector';
-import type { AccordionHandle } from '@/components/ui/accordion';
 import {
   Dialog,
   DialogContent,
@@ -32,6 +32,9 @@ import {
   Zap,
   Download,
   Upload,
+  ToggleLeft,
+  ToggleRight,
+  Circle,
 } from 'lucide-react';
 import {
   useControlPanelState,
@@ -72,6 +75,8 @@ import {
   useFeedbackSizeSetting,
   useFeedbackDurationSetting,
   useDefaultOrientationSetting,
+  useVoicePanelSizeSetting,
+  useVoicePanelOpacitySetting,
 } from '@/lib/voice/macroSettings';
 import { FeedbackPositionPicker } from '@/components/voice-action-feedback/FeedbackPositionPicker';
 import {
@@ -91,6 +96,14 @@ export type ControlPanelProps = {
   >;
   renderStreamsOutside?: boolean;
   timelinePortalRef?: React.RefObject<HTMLDivElement | null>;
+  renderDashboard?: (panels: {
+    addVideoSection: React.ReactNode;
+    buttonsSection: React.ReactNode;
+    streamsSection: React.ReactNode;
+    fxSection: React.ReactNode;
+    timelineSection: React.ReactNode;
+    blockPropertiesSection: React.ReactNode;
+  }) => React.ReactNode;
 };
 
 export type { InputWrapper } from './hooks/use-control-panel-state';
@@ -105,9 +118,8 @@ export default function ControlPanel({
   onGuestRotateRef,
   renderStreamsOutside,
   timelinePortalRef,
+  renderDashboard,
 }: ControlPanelProps) {
-  const addVideoAccordionRef = useRef<AccordionHandle | null>(null);
-
   const pendingWhipInputs: PendingWhipInput[] = (
     roomState.pendingWhipInputs || []
   ).map((p) => ({
@@ -262,7 +274,6 @@ export default function ControlPanel({
     setInputWrappers,
     setListVersion,
     updateOrder: updateOrderWithLock,
-    addVideoAccordionRef,
     roomId,
     handleRefreshState,
     cameraPcRef,
@@ -307,6 +318,8 @@ export default function ControlPanel({
     setOpenFxInputId((prev) => (prev === inputId ? null : inputId));
   };
 
+  const isRecordingFromServer = roomState.isRecording ?? false;
+
   const controlPanelCtx = useMemo(
     () => ({
       roomId,
@@ -314,8 +327,16 @@ export default function ControlPanel({
       inputs,
       inputsRef,
       availableShaders,
+      isRecording: isRecordingFromServer,
     }),
-    [roomId, handleRefreshState, inputs, inputsRef, availableShaders],
+    [
+      roomId,
+      handleRefreshState,
+      inputs,
+      inputsRef,
+      availableShaders,
+      isRecordingFromServer,
+    ],
   );
 
   const fxInput =
@@ -331,16 +352,127 @@ export default function ControlPanel({
       const detail = (e as CustomEvent<{ clip: SelectedTimelineClip | null }>)
         .detail;
       setSelectedTimelineClip(detail?.clip ?? null);
-      if (detail?.clip) {
-        addVideoAccordionRef.current?.close();
-      }
     };
     window.addEventListener('smelter:timeline:selected-clip', handler);
     return () =>
       window.removeEventListener('smelter:timeline:selected-clip', handler);
   }, []);
 
-  const streamsSection = !fxInput ? (
+  if (renderDashboard) {
+    const addVideoSection = (
+      <div className='h-full overflow-y-auto flex flex-col gap-3 p-3'>
+        <AddVideoSection
+          isGuest={isGuest}
+          hasGuestInput={
+            isGuest
+              ? !!(activeCameraInputId || activeScreenshareInputId) ||
+                (!!loadLastWhipInputId(roomId) &&
+                  inputs.some((i) => i.inputId === loadLastWhipInputId(roomId)))
+              : false
+          }
+        />
+        {!isGuest && (
+          <PendingWhipInputs
+            pendingInputs={pendingWhipInputs}
+            setPendingInputs={handleSetPendingWhipInputs}
+          />
+        )}
+      </div>
+    );
+
+    const buttonsSection = (
+      <div className='h-full overflow-y-auto p-3'>
+        <SettingsBar
+          changeLayout={changeLayout}
+          roomState={roomState}
+          roomId={roomId}
+          handleRefreshState={handleRefreshState}
+          pendingWhipInputs={pendingWhipInputs}
+          setPendingWhipInputs={handleSetPendingWhipInputs}
+        />
+      </div>
+    );
+
+    const streamsSection = (
+      <div className='h-full overflow-y-auto p-3'>
+        <StreamsSection
+          inputWrappers={inputWrappers}
+          listVersion={listVersion}
+          showStreamsSpinner={showStreamsSpinner}
+          updateOrder={updateOrderWithLock}
+          openFxInputId={openFxInputId}
+          onToggleFx={handleToggleFx}
+          isSwapping={isSwapping}
+          selectedInputId={selectedInputId}
+          isGuest={isGuest}
+          guestInputId={activeCameraInputId || activeScreenshareInputId}
+        />
+      </div>
+    );
+
+    const fxSection = fxInput ? (
+      <div className='h-full overflow-y-auto p-3'>
+        <FxAccordion fxInput={fxInput} onClose={() => setOpenFxInputId(null)} />
+      </div>
+    ) : (
+      <div className='h-full flex items-center justify-center text-neutral-500 text-sm'>
+        Select a stream to edit FX
+      </div>
+    );
+
+    const timelineSection = (
+      <TimelinePanel
+        inputWrappers={inputWrappers}
+        listVersion={listVersion}
+        showStreamsSpinner={showStreamsSpinner}
+        updateOrder={updateOrderWithLock}
+        openFxInputId={openFxInputId}
+        onToggleFx={handleToggleFx}
+        isSwapping={isSwapping}
+        selectedInputId={selectedInputId}
+        isGuest={isGuest}
+        guestInputId={activeCameraInputId || activeScreenshareInputId}
+        fillContainer
+      />
+    );
+
+    const blockPropertiesSection = (
+      <div className='h-full overflow-y-auto p-3'>
+        <BlockClipPropertiesPanel
+          roomId={roomId}
+          selectedTimelineClip={selectedTimelineClip}
+          onSelectedTimelineClipChange={setSelectedTimelineClip}
+          inputs={inputs}
+          availableShaders={availableShaders}
+          handleRefreshState={handleRefreshState}
+        />
+      </div>
+    );
+
+    return (
+      <ControlPanelProvider value={controlPanelCtx}>
+        <WhipConnectionsProvider value={whipConnections}>
+          <video
+            id='local-preview'
+            muted
+            playsInline
+            autoPlay
+            className='hidden'
+          />
+          {renderDashboard({
+            addVideoSection,
+            buttonsSection,
+            streamsSection,
+            fxSection,
+            timelineSection,
+            blockPropertiesSection,
+          })}
+        </WhipConnectionsProvider>
+      </ControlPanelProvider>
+    );
+  }
+
+  const streamsSectionContent = !fxInput ? (
     <StreamsSection
       inputWrappers={inputWrappers}
       listVersion={listVersion}
@@ -367,13 +499,14 @@ export default function ControlPanel({
       selectedInputId={selectedInputId}
       isGuest={isGuest}
       guestInputId={activeCameraInputId || activeScreenshareInputId}
+      fillContainer={false}
     />
   ) : null;
 
   const mainPanel = (
     <motion.div
       {...(fadeIn as any)}
-      className={`flex flex-col flex-1 min-h-0 gap-3 rounded-none bg-neutral-950 mt-6`}>
+      className='flex flex-col flex-1 mt-6 min-h-0 gap-3 rounded-none bg-neutral-950'>
       <video id='local-preview' muted playsInline autoPlay className='hidden' />
 
       {fxInput ? (
@@ -381,7 +514,6 @@ export default function ControlPanel({
       ) : (
         <>
           <AddVideoSection
-            addVideoAccordionRef={addVideoAccordionRef}
             isGuest={isGuest}
             hasGuestInput={
               isGuest
@@ -399,7 +531,7 @@ export default function ControlPanel({
               setPendingInputs={handleSetPendingWhipInputs}
             />
           )}
-          {!isGuest && !renderStreamsOutside && streamsSection}
+          {!isGuest && !renderStreamsOutside && streamsSectionContent}
           {!isGuest && (
             <SettingsBar
               changeLayout={changeLayout}
@@ -408,10 +540,6 @@ export default function ControlPanel({
               handleRefreshState={handleRefreshState}
               pendingWhipInputs={pendingWhipInputs}
               setPendingWhipInputs={handleSetPendingWhipInputs}
-              selectedTimelineClip={selectedTimelineClip}
-              inputs={inputs}
-              availableShaders={availableShaders}
-              onSelectedTimelineClipChange={setSelectedTimelineClip}
             />
           )}
         </>
@@ -450,10 +578,6 @@ function SettingsBar({
   handleRefreshState,
   pendingWhipInputs,
   setPendingWhipInputs,
-  selectedTimelineClip,
-  onSelectedTimelineClipChange,
-  inputs,
-  availableShaders,
 }: {
   changeLayout: (layout: Layout) => void;
   roomState: RoomState;
@@ -461,10 +585,6 @@ function SettingsBar({
   handleRefreshState: () => Promise<void>;
   pendingWhipInputs: PendingWhipInput[];
   setPendingWhipInputs: (inputs: PendingWhipInput[]) => void | Promise<void>;
-  selectedTimelineClip: SelectedTimelineClip | null;
-  onSelectedTimelineClipChange: (clip: SelectedTimelineClip | null) => void;
-  inputs: Input[];
-  availableShaders: AvailableShader[];
 }) {
   const [openModal, setOpenModal] = useState<ModalId | null>(null);
   const [isExporting, setIsExporting] = useState(false);
@@ -478,7 +598,32 @@ function SettingsBar({
   const [feedbackDuration, setFeedbackDuration] = useFeedbackDurationSetting();
   const [defaultOrientation, setDefaultOrientation] =
     useDefaultOrientationSetting();
+  const [voicePanelSize, setVoicePanelSize] = useVoicePanelSizeSetting();
+  const [voicePanelOpacity, setVoicePanelOpacity] =
+    useVoicePanelOpacitySetting();
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const serverIsRecording = roomState.isRecording ?? false;
+  const {
+    isTogglingRecording,
+    isWaitingForDownload,
+    effectiveIsRecording: isRecording,
+    toggle: handleToggleRecording,
+  } = useRecordingControls(roomId, serverIsRecording, handleRefreshState);
+
+  const [isTogglingPublic, setIsTogglingPublic] = useState(false);
+  const handleTogglePublic = useCallback(async () => {
+    if (isTogglingPublic) return;
+    setIsTogglingPublic(true);
+    try {
+      await updateRoomAction(roomId, { isPublic: !roomState.isPublic });
+      await handleRefreshState();
+    } catch (err) {
+      console.error('Failed to toggle public state', err);
+    } finally {
+      setIsTogglingPublic(false);
+    }
+  }, [roomId, roomState.isPublic, handleRefreshState, isTogglingPublic]);
 
   const buildConfig = useCallback(() => {
     const timelineState = loadTimelineFromStorage(roomId);
@@ -733,7 +878,7 @@ function SettingsBar({
     [
       {
         id: 'quickActions',
-        label: 'Quick Actions',
+        label: 'Actions',
         icon: <Zap className='w-4 h-4' />,
       },
       {
@@ -751,9 +896,15 @@ function SettingsBar({
   const btnClass =
     'flex flex-col items-center gap-1.5 px-2 py-3 rounded-md border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 hover:border-neutral-600 transition-all cursor-pointer group';
 
+  const recordLabel = isWaitingForDownload
+    ? 'Wait...'
+    : isRecording
+      ? 'Stop Rec'
+      : 'Record';
+
   return (
     <>
-      <div className='grid grid-cols-5 gap-2'>
+      <div className='grid grid-cols-7 gap-2'>
         {modalButtons.map((btn) => (
           <button
             key={btn.id}
@@ -789,6 +940,35 @@ function SettingsBar({
             {isImporting ? 'Loading...' : 'Load'}
           </span>
         </button>
+        <button
+          onClick={handleTogglePublic}
+          disabled={isTogglingPublic}
+          className={`${btnClass} ${roomState.isPublic ? 'border-white/20 bg-neutral-700' : ''}`}>
+          <span
+            className={`transition-colors ${roomState.isPublic ? 'text-white' : 'text-neutral-400 group-hover:text-white'}`}>
+            {roomState.isPublic ? (
+              <ToggleRight className='w-4 h-4' />
+            ) : (
+              <ToggleLeft className='w-4 h-4' />
+            )}
+          </span>
+          <span
+            className={`text-[11px] font-medium transition-colors leading-tight text-center ${roomState.isPublic ? 'text-neutral-200' : 'text-neutral-400 group-hover:text-white'}`}>
+            Public
+          </span>
+        </button>
+        <button
+          onClick={handleToggleRecording}
+          disabled={isTogglingRecording || isWaitingForDownload}
+          className={`${btnClass} ${isRecording ? 'border-red-500/50 bg-red-950/30' : ''}`}>
+          <span
+            className={`transition-colors ${isRecording ? 'text-red-400 group-hover:text-red-300' : 'text-neutral-400 group-hover:text-white'}`}>
+            <Circle className='w-4 h-4' />
+          </span>
+          <span className='text-[11px] font-medium text-neutral-400 group-hover:text-white transition-colors leading-tight text-center'>
+            {recordLabel}
+          </span>
+        </button>
       </div>
       <input
         ref={fileInputRef}
@@ -797,15 +977,6 @@ function SettingsBar({
         className='hidden'
         onChange={handleFileChange}
       />
-      <BlockClipPropertiesPanel
-        roomId={roomId}
-        selectedTimelineClip={selectedTimelineClip}
-        onSelectedTimelineClipChange={onSelectedTimelineClipChange}
-        inputs={inputs}
-        availableShaders={availableShaders}
-        handleRefreshState={handleRefreshState}
-      />
-
       <Dialog
         open={openModal === 'quickActions'}
         onOpenChange={(open) => !open && setOpenModal(null)}>
@@ -905,6 +1076,38 @@ function SettingsBar({
                     Auto Play Macro
                   </span>
                 </label>
+                <label className='flex items-center gap-2 cursor-pointer'>
+                  <input
+                    type='checkbox'
+                    checked={voicePanelSize === 's'}
+                    onChange={(e) =>
+                      setVoicePanelSize(e.target.checked ? 's' : 'l')
+                    }
+                    className='accent-white'
+                  />
+                  <span className='text-xs text-neutral-400'>
+                    Compact Voice Panel
+                  </span>
+                </label>
+                <div className='flex items-center justify-between gap-3'>
+                  <span className='text-xs text-neutral-400 shrink-0'>
+                    Panel Opacity
+                  </span>
+                  <input
+                    type='range'
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={voicePanelOpacity}
+                    onChange={(e) =>
+                      setVoicePanelOpacity(Number(e.target.value))
+                    }
+                    className='flex-1 accent-white h-1'
+                  />
+                  <span className='text-xs text-neutral-500 w-8 text-right tabular-nums'>
+                    {voicePanelOpacity}%
+                  </span>
+                </div>
               </section>
               <div className='h-px bg-neutral-800' />
               <section className='space-y-2 px-1'>

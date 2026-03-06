@@ -9,12 +9,8 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
-import {
-  removeInput,
-  startRecording,
-  stopRecording,
-  type Input,
-} from '@/app/actions/actions';
+import { removeInput, type Input } from '@/app/actions/actions';
+import { useRecordingControls } from '../hooks/use-recording-controls';
 import type { InputWrapper } from '../hooks/use-control-panel-state';
 import LoadingSpinner from '@/components/ui/spinner';
 import { useControlPanelContext } from '../contexts/control-panel-context';
@@ -51,6 +47,7 @@ type TimelinePanelProps = {
   selectedInputId: string | null;
   isGuest?: boolean;
   guestInputId?: string | null;
+  fillContainer?: boolean;
 };
 
 // ── Color maps ───────────────────────────────────────────
@@ -194,6 +191,7 @@ export function TimelinePanel({
   selectedInputId,
   isGuest,
   guestInputId,
+  fillContainer,
 }: TimelinePanelProps) {
   const { inputs, roomId, refreshState } = useControlPanelContext();
   const {
@@ -408,69 +406,34 @@ export function TimelinePanel({
     structureRevision,
   );
 
-  const [isRecording, setIsRecording] = useState(false);
-  const [isTogglingRecording, setIsTogglingRecording] = useState(false);
+  const { isRecording: serverIsRecording } = useControlPanelContext();
+  const {
+    isTogglingRecording,
+    effectiveIsRecording: isRecording,
+    start: startRec,
+    stopAndDownload,
+  } = useRecordingControls(roomId, serverIsRecording, refreshState);
   const wasPlayingRef = useRef(false);
-
-  const stopRecordingAndDownload = useCallback(async () => {
-    setIsTogglingRecording(true);
-    try {
-      const res = await stopRecording(roomId);
-      if (res.status === 'stopped' && res.fileName) {
-        setTimeout(() => {
-          if (typeof window === 'undefined') return;
-          const link = document.createElement('a');
-          link.href = `/api/recordings/${encodeURIComponent(res.fileName!)}`;
-          link.download = res.fileName!;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-        }, 1500);
-      }
-    } catch (err) {
-      console.error('Failed to stop recording', err);
-    } finally {
-      setIsRecording(false);
-      setIsTogglingRecording(false);
-    }
-  }, [roomId]);
 
   const handleRecordAndPlay = useCallback(async () => {
     if (isTogglingRecording) return;
     if (isRecording) {
       stop();
-      await stopRecordingAndDownload();
+      await stopAndDownload();
       return;
     }
-    setIsTogglingRecording(true);
-    try {
-      const res = await startRecording(roomId);
-      if (res.status === 'recording') {
-        setIsRecording(true);
-        play();
-      } else {
-        console.error('Failed to start recording', res.message);
-      }
-    } catch (err) {
-      console.error('Failed to start recording', err);
-    } finally {
-      setIsTogglingRecording(false);
+    const started = await startRec();
+    if (started) {
+      play();
     }
-  }, [
-    isRecording,
-    isTogglingRecording,
-    roomId,
-    play,
-    stop,
-    stopRecordingAndDownload,
-  ]);
+  }, [isRecording, isTogglingRecording, play, stop, startRec, stopAndDownload]);
 
   useEffect(() => {
     if (wasPlayingRef.current && !state.isPlaying && isRecording) {
-      void stopRecordingAndDownload();
+      void stopAndDownload();
     }
     wasPlayingRef.current = state.isPlaying;
-  }, [state.isPlaying, isRecording, stopRecordingAndDownload]);
+  }, [state.isPlaying, isRecording, stopAndDownload]);
 
   const [panelHeight, setPanelHeight] = useState(DEFAULT_HEIGHT);
   const resizingRef = useRef(false);
@@ -1418,13 +1381,14 @@ export function TimelinePanel({
 
   return (
     <div
-      className='relative flex flex-col bg-neutral-950 border-t border-neutral-800'
-      style={{ height: panelHeight }}>
-      {/* Resize handle */}
-      <div
-        className='h-1 w-full cursor-ns-resize hover:bg-neutral-700 transition-colors shrink-0'
-        onMouseDown={handleResizeStart}
-      />
+      className={`relative flex flex-col bg-neutral-950 ${fillContainer ? 'h-full' : 'border-t border-neutral-800'}`}
+      style={fillContainer ? undefined : { height: panelHeight }}>
+      {!fillContainer && (
+        <div
+          className='h-1 w-full cursor-ns-resize hover:bg-neutral-700 transition-colors shrink-0'
+          onMouseDown={handleResizeStart}
+        />
+      )}
 
       {/* Transport bar */}
       <div className='flex items-center gap-2 px-3 h-8 bg-neutral-900 border-b border-neutral-800 shrink-0'>

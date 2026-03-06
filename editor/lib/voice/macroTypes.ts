@@ -8,6 +8,7 @@ import type {
 export type MacroActionParams = {
   inputType?: InputType;
   inputIndex?: number;
+  inputId?: string;
   trackIndex?: number;
   shader?: Shader;
   direction?: Direction;
@@ -18,6 +19,7 @@ export type MacroActionParams = {
   fontSize?: number;
   scrollSpeed?: number;
   targetColor?: string;
+  shaderParams?: Record<string, number | string>;
   text?: string;
   textAlign?: 'left' | 'center' | 'right';
   mp4Name?: string;
@@ -72,6 +74,7 @@ export type MacroDefinition = {
   triggers: string[];
   description: string;
   steps: MacroStep[];
+  continueListening?: boolean;
 };
 
 export type MacrosConfig = {

@@ -122,6 +122,25 @@ export type RegisterInputOptions =
 
 const PLACEHOLDER_LOGO_FILE = 'logo_Smelter.png';
 
+const DEFAULT_LOGO_SHADERS: ShaderConfig[] = [
+  {
+    shaderName: 'Remove Color',
+    shaderId: 'remove-color',
+    enabled: true,
+    params: [
+      { paramName: 'target_color', paramValue: '#1c1c35' },
+      { paramName: 'tolerance', paramValue: 0.2 },
+    ],
+  },
+];
+
+function cloneDefaultLogoShaders(): ShaderConfig[] {
+  return DEFAULT_LOGO_SHADERS.map((shader) => ({
+    ...shader,
+    params: shader.params.map((param) => ({ ...param })),
+  }));
+}
+
 export class RoomState {
   private inputs: RoomInputState[];
   private layout: Layout = 'picture-in-picture';
@@ -152,6 +171,8 @@ export class RoomState {
   public isPublic: boolean = true;
   public pendingWhipInputs: PendingWhipInputData[] = [];
   public roomName: RoomNameEntry;
+  private readonly initInputs: RegisterInputOptions[];
+  private readonly skipDefaultInputs: boolean;
 
   public constructor(idPrefix: string, output: SmelterOutput, initInputs: RegisterInputOptions[], skipDefaultInputs: boolean = false, roomName?: RoomNameEntry) {
     this.mp4sDir = path.join(process.cwd(), 'mp4s');
@@ -160,20 +181,25 @@ export class RoomState {
     this.idPrefix = idPrefix;
     this.output = output;
     this.roomName = roomName ?? { pl: `Pokój ${idPrefix.slice(0, 6)}`, en: `Room ${idPrefix.slice(0, 6)}` };
+    this.initInputs = initInputs;
+    this.skipDefaultInputs = skipDefaultInputs;
 
     this.lastReadTimestamp = Date.now();
     this.creationTimestamp = Date.now();
+  }
 
-    void (async () => {
-      await this.getInitialInputState(idPrefix, initInputs, skipDefaultInputs);
-      const realThis = this;
-      for (let i = 0; i < realThis.inputs.length; i++) {
-        const maybeInput = realThis.inputs[i];
-        if (maybeInput) {
-          await this.connectInput(maybeInput.inputId);
-        }
+  public async init(): Promise<void> {
+    await this.getInitialInputState(
+      this.idPrefix,
+      this.initInputs,
+      this.skipDefaultInputs,
+    );
+    for (let i = 0; i < this.inputs.length; i++) {
+      const maybeInput = this.inputs[i];
+      if (maybeInput) {
+        await this.connectInput(maybeInput.inputId);
       }
-    })();
+    }
   }
 
   private async getInitialInputState(
@@ -186,32 +212,26 @@ export class RoomState {
         await this.addNewInput(input);
       }
     } else if (!skipDefaultInputs) {
-      // Filter out files starting with "logo_" or "wrapped_" for default auto-add
-      const eligibleMp4Files = this.mp4Files.filter(file => !isBlockedDefaultMp4(file));
+      const preferredMp4 =
+        this.mp4Files.find((f) => f.toLowerCase().startsWith('eclipse')) ??
+        this.mp4Files.find((file) => !isBlockedDefaultMp4(file));
+      if (preferredMp4) {
+        await this.addNewInput({
+          type: 'local-mp4',
+          source: { fileName: preferredMp4 },
+        });
+      }
 
-      if (eligibleMp4Files.length > 0) {
-        const randomIndex = Math.floor(Math.random() * eligibleMp4Files.length);
-        for (let i = 0; i < 2; i++) {
-          const randomMp4 = eligibleMp4Files[(randomIndex + i) % eligibleMp4Files.length];
-          const mp4FilePath = path.join(this.mp4sDir, randomMp4);
-
-          this.inputs.push({
-            inputId: `${idPrefix}::local::sample_streamer::${i}`,
-            type: 'local-mp4',
-            status: 'disconnected',
-            showTitle: false,
-            shaders: [],
-            orientation: 'horizontal',
-            borderColor: '#ff0000',
-            borderWidth: 0,
-            hidden: false,
-            metadata: {
-              title: `[MP4] ${formatMp4Name(randomMp4)}`,
-              description: '[Static source] AI Generated',
-            },
-            mp4FilePath,
-            volume: 0,
-          });
+      const logoPath = path.join(process.cwd(), 'pictures', PLACEHOLDER_LOGO_FILE);
+      if (await pathExists(logoPath)) {
+        const logoInputId = await this.addNewInput({
+          type: 'image',
+          fileName: PLACEHOLDER_LOGO_FILE,
+        });
+        const logoInput = this.inputs.find(inp => inp.inputId === logoInputId);
+        if (logoInput) {
+          logoInput.shaders = cloneDefaultLogoShaders();
+          this.updateStoreWithState();
         }
       }
     }
@@ -388,10 +408,10 @@ export class RoomState {
         type: 'image',
         status: 'connected',
         showTitle: false,
-        shaders: [],
+        shaders: cloneDefaultLogoShaders(),
         orientation: 'horizontal',
-            borderColor: '#ff0000',
-            borderWidth: 0,
+        borderColor: '#ff0000',
+        borderWidth: 0,
         hidden: false,
         metadata: {
           title: 'Smelter',

@@ -1,5 +1,11 @@
-import { beforeEach, describe, expect, it } from 'vitest';
-import { createMacroExecutionController, executeMacro } from '../macroExecutor';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  createMacroExecutionController,
+  executeMacro,
+  findMatchingMacro,
+  getMacroById,
+  type MacroExecutionStatus,
+} from '../macroExecutor';
 import type { MacroDefinition } from '../macroTypes';
 
 class TestCustomEvent<T = unknown> extends Event {
@@ -11,205 +17,382 @@ class TestCustomEvent<T = unknown> extends Event {
   }
 }
 
-describe('macroExecutor', () => {
-  beforeEach(() => {
-    if (typeof globalThis.CustomEvent === 'undefined') {
-      (globalThis as { CustomEvent: typeof CustomEvent }).CustomEvent =
-        TestCustomEvent as unknown as typeof CustomEvent;
-    }
-    (globalThis as { window: EventTarget }).window = new EventTarget();
-  });
+function createMacro(
+  steps: MacroDefinition['steps'],
+  overrides: Partial<MacroDefinition> = {},
+): MacroDefinition {
+  return {
+    id: 'test-macro',
+    description: 'test macro',
+    triggers: ['test macro'],
+    steps,
+    ...overrides,
+  };
+}
 
-  it('waits for HIDE_ALL_INPUTS completion before next step', async () => {
-    const order: string[] = [];
-    let capturedRequestId: string | undefined;
-
-    window.addEventListener('smelter:voice:hide-all-inputs', (event) => {
-      order.push('hide-all');
-      const detail = (event as CustomEvent<{ requestId?: string }>).detail;
-      capturedRequestId = detail?.requestId;
-      setTimeout(() => {
-        window.dispatchEvent(
-          new CustomEvent('smelter:voice:macro-step-complete', {
-            detail: { requestId: capturedRequestId },
-          }),
-        );
-      }, 0);
-    });
-    window.addEventListener('smelter:voice:add-input', () => {
-      order.push('add-input');
-    });
-
-    const macro: MacroDefinition = {
-      id: 'hide-then-add',
-      triggers: ['hide then add'],
-      description: 'Hides all and then adds an input',
-      steps: [
-        { action: 'HIDE_ALL_INPUTS', delayAfterMs: 0 },
-        {
-          action: 'ADD_INPUT',
-          params: { inputType: 'camera' },
-          delayAfterMs: 0,
+function installMacroStepAck(
+  eventType: string,
+  onDispatch?: (detail: Record<string, unknown>) => void,
+) {
+  window.addEventListener(eventType, ((event: Event) => {
+    const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+    onDispatch?.(detail);
+    window.dispatchEvent(
+      new CustomEvent('smelter:voice:macro-step-complete', {
+        detail: {
+          requestId: detail.requestId,
         },
-      ],
-    };
+      }),
+    );
+  }) as EventListener);
+}
 
-    await executeMacro(macro);
+beforeEach(() => {
+  vi.stubGlobal('window', new EventTarget());
+  vi.stubGlobal(
+    'CustomEvent',
+    TestCustomEvent as unknown as typeof CustomEvent,
+  );
+});
 
-    expect(capturedRequestId).toBeTypeOf('string');
-    expect(order).toEqual(['hide-all', 'add-input']);
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
+
+describe('findMatchingMacro', () => {
+  describe('exact substring matching', () => {
+    it('matches an exact trigger string', () => {
+      const result = findMatchingMacro('galactic spaceship');
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('galactic-spaceship');
+    });
+
+    it('matches when transcript contains the trigger', () => {
+      const result = findMatchingMacro('please do galactic spaceship now');
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('galactic-spaceship');
+    });
+
+    it('matches when trigger contains the transcript', () => {
+      const result = findMatchingMacro('two cameras');
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('dual-camera-setup');
+    });
   });
 
-  it('passes requestId for REMOVE_ALL_INPUTS and resolves after completion', async () => {
-    let capturedRequestId: string | undefined;
+  describe('fuzzy matching (Levenshtein fallback)', () => {
+    it('matches a trigger with a small typo', () => {
+      const result = findMatchingMacro('galactic spaceships');
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('galactic-spaceship');
+    });
 
-    window.addEventListener('smelter:voice:remove-all-inputs', (event) => {
-      const detail = (event as CustomEvent<{ requestId?: string }>).detail;
-      capturedRequestId = detail?.requestId;
+    it('matches a trigger with a missing letter', () => {
+      const result = findMatchingMacro('cinematic transiton mode');
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('cinematic-transition-mode');
+    });
+
+    it('matches a trigger with a substitution', () => {
+      const result = findMatchingMacro('galactic camara');
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('galactic-camera');
+    });
+
+    it('does not match completely unrelated text', () => {
+      const result = findMatchingMacro('the weather is nice today');
+      expect(result).toBeNull();
+    });
+
+    it('does not match short gibberish', () => {
+      const result = findMatchingMacro('xyz abc');
+      expect(result).toBeNull();
+    });
+
+    it('fuzzy matches a trigger surrounded by extra words', () => {
+      const result = findMatchingMacro('please do galactic spaceships now');
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('galactic-spaceship');
+    });
+
+    it('fuzzy matches a typo inside a longer sentence', () => {
+      const result = findMatchingMacro('can you run galactic camara please');
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('galactic-camera');
+    });
+
+    it('does not fuzzy match destructive macros for similar but different phrases', () => {
+      const result = findMatchingMacro('galactic transition');
+      expect(result).toBeNull();
+    });
+  });
+
+  describe('exact match takes priority over fuzzy', () => {
+    it('prefers exact substring over a closer fuzzy match', () => {
+      const result = findMatchingMacro('reset to camera');
+      expect(result).not.toBeNull();
+      expect(result!.id).toBe('reset-to-camera');
+    });
+  });
+});
+
+describe('macro execution controller', () => {
+  it('waits for add-input completion and selects the newly created input', async () => {
+    const events: Array<{ type: string; detail: Record<string, unknown> }> = [];
+
+    window.addEventListener('smelter:voice:add-input', ((event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+      events.push({ type: 'smelter:voice:add-input', detail });
       window.dispatchEvent(
         new CustomEvent('smelter:voice:macro-step-complete', {
-          detail: { requestId: capturedRequestId },
+          detail: {
+            requestId: detail.requestId,
+            inputId: 'input-42',
+          },
         }),
       );
-    });
+    }) as EventListener);
 
-    const macro: MacroDefinition = {
-      id: 'remove-all',
-      triggers: ['remove all'],
-      description: 'Removes all',
-      steps: [{ action: 'REMOVE_ALL_INPUTS', delayAfterMs: 0 }],
-    };
+    window.addEventListener('smelter:inputs:select', ((event: Event) => {
+      events.push({
+        type: 'smelter:inputs:select',
+        detail: (event as CustomEvent<Record<string, unknown>>).detail,
+      });
+    }) as EventListener);
 
-    await executeMacro(macro);
+    window.addEventListener('smelter:voice:add-shader', ((event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+      events.push({
+        type: 'smelter:voice:add-shader',
+        detail,
+      });
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:macro-step-complete', {
+          detail: { requestId: detail.requestId },
+        }),
+      );
+    }) as EventListener);
 
-    expect(capturedRequestId).toBeTypeOf('string');
-  });
-
-  it('runs one step at a time in step mode', async () => {
-    const order: string[] = [];
-
-    window.addEventListener('smelter:voice:add-input', (event) => {
-      const detail = (
-        event as CustomEvent<{ inputType?: string; mp4FileName?: string }>
-      ).detail;
-      order.push(`add-${detail?.inputType ?? 'unknown'}`);
-    });
-
-    const macro: MacroDefinition = {
-      id: 'step-mode',
-      triggers: ['step mode'],
-      description: 'Step mode',
-      steps: [
+    await executeMacro(
+      createMacro([
         {
           action: 'ADD_INPUT',
-          params: { inputType: 'camera' },
           delayAfterMs: 0,
+          params: { inputType: 'camera' },
         },
-        { action: 'ADD_INPUT', params: { inputType: 'mp4' }, delayAfterMs: 0 },
-      ],
-    };
-
-    const controller = createMacroExecutionController(
-      macro,
-      {},
-      { autoPlay: false },
+        {
+          action: 'ADD_SHADER',
+          delayAfterMs: 0,
+          params: { shader: 'sw-hologram' },
+        },
+      ]),
     );
-    await controller.start();
 
-    expect(controller.getStatus()).toBe('paused');
-    expect(order).toEqual([]);
-
-    await controller.nextStep();
-    expect(order).toEqual(['add-camera']);
-    expect(controller.getStatus()).toBe('paused');
-
-    await controller.nextStep();
-    expect(order).toEqual(['add-camera', 'add-mp4']);
-    expect(controller.getStatus()).toBe('completed');
-  });
-
-  it('plays remaining steps after pause', async () => {
-    const order: string[] = [];
-
-    window.addEventListener('smelter:voice:add-input', (event) => {
-      const detail = (
-        event as CustomEvent<{ inputType?: string; mp4FileName?: string }>
-      ).detail;
-      order.push(`add-${detail?.inputType ?? 'unknown'}`);
-    });
-
-    const macro: MacroDefinition = {
-      id: 'step-play',
-      triggers: ['step play'],
-      description: 'Step play',
-      steps: [
-        {
-          action: 'ADD_INPUT',
-          params: { inputType: 'camera' },
-          delayAfterMs: 0,
-        },
-        { action: 'ADD_INPUT', params: { inputType: 'mp4' }, delayAfterMs: 0 },
-        {
-          action: 'ADD_INPUT',
-          params: { inputType: 'image' },
-          delayAfterMs: 0,
-        },
-      ],
-    };
-
-    const controller = createMacroExecutionController(
-      macro,
-      {},
-      { autoPlay: false },
-    );
-    await controller.start();
-    await controller.nextStep();
-    await controller.play();
-
-    expect(order).toEqual(['add-camera', 'add-mp4', 'add-image']);
-    expect(controller.getStatus()).toBe('completed');
-  });
-
-  it('stops macro and does not execute further steps', async () => {
-    const order: string[] = [];
-    let stoppedAt = -1;
-
-    window.addEventListener('smelter:voice:add-input', (event) => {
-      const detail = (
-        event as CustomEvent<{ inputType?: string; mp4FileName?: string }>
-      ).detail;
-      order.push(`add-${detail?.inputType ?? 'unknown'}`);
-    });
-
-    const macro: MacroDefinition = {
-      id: 'step-stop',
-      triggers: ['step stop'],
-      description: 'Step stop',
-      steps: [
-        {
-          action: 'ADD_INPUT',
-          params: { inputType: 'camera' },
-          delayAfterMs: 0,
-        },
-        { action: 'ADD_INPUT', params: { inputType: 'mp4' }, delayAfterMs: 0 },
-      ],
-    };
-
-    const controller = createMacroExecutionController(
-      macro,
+    expect(events).toEqual([
       {
-        onMacroStopped: (_macro, index) => {
-          stoppedAt = index;
+        type: 'smelter:voice:add-input',
+        detail: expect.objectContaining({
+          inputType: 'camera',
+          requestId: expect.any(String),
+        }),
+      },
+      {
+        type: 'smelter:inputs:select',
+        detail: { inputId: 'input-42' },
+      },
+      {
+        type: 'smelter:voice:add-shader',
+        detail: expect.objectContaining({
+          shader: 'sw-hologram',
+          inputId: 'input-42',
+          requestId: expect.any(String),
+        }),
+      },
+    ]);
+  });
+
+  it('supports step-by-step execution, play, and requestId propagation', async () => {
+    const statuses: MacroExecutionStatus[] = [];
+    const requestIds: string[] = [];
+
+    installMacroStepAck('smelter:voice:remove-input', (detail) => {
+      requestIds.push(String(detail.requestId));
+    });
+
+    const controller = createMacroExecutionController(
+      createMacro([
+        {
+          action: 'REMOVE_INPUT',
+          delayAfterMs: 0,
+          params: { inputIndex: 1 },
         },
+        {
+          action: 'REMOVE_INPUT',
+          delayAfterMs: 0,
+          params: { inputIndex: 2 },
+        },
+      ]),
+      {
+        onStatusChange: (status) => statuses.push(status),
       },
       { autoPlay: false },
     );
+
+    await controller.start();
+    expect(controller.getStatus()).toBe('paused');
+
+    await controller.nextStep();
+    expect(controller.getCurrentStepIndex()).toBe(1);
+    expect(controller.getStatus()).toBe('paused');
+
+    await controller.play();
+    expect(controller.getStatus()).toBe('completed');
+    expect(requestIds).toHaveLength(2);
+    expect(requestIds.every(Boolean)).toBe(true);
+    expect(statuses).toContain('paused');
+    expect(statuses.at(-1)).toBe('completed');
+  });
+
+  it('waits for async room updates and forwards runtime inputId', async () => {
+    const seenEvents: Array<{ type: string; detail: Record<string, unknown> }> =
+      [];
+
+    window.addEventListener('smelter:voice:add-input', ((event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+      seenEvents.push({ type: 'smelter:voice:add-input', detail });
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:macro-step-complete', {
+          detail: {
+            requestId: detail.requestId,
+            inputId: 'text-input-7',
+          },
+        }),
+      );
+    }) as EventListener);
+
+    window.addEventListener('smelter:voice:set-text-color', ((event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+      seenEvents.push({ type: 'smelter:voice:set-text-color', detail });
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:macro-step-complete', {
+          detail: {
+            requestId: detail.requestId,
+            inputId: detail.inputId,
+          },
+        }),
+      );
+    }) as EventListener);
+
+    window.addEventListener('smelter:voice:set-layout', ((event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+      seenEvents.push({ type: 'smelter:voice:set-layout', detail });
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:macro-step-complete', {
+          detail: {
+            requestId: detail.requestId,
+          },
+        }),
+      );
+    }) as EventListener);
+
+    await executeMacro(
+      createMacro([
+        {
+          action: 'ADD_INPUT',
+          delayAfterMs: 0,
+          params: { inputType: 'text', text: 'hello' },
+        },
+        {
+          action: 'SET_TEXT_COLOR',
+          delayAfterMs: 0,
+          params: { color: '#ffff00' },
+        },
+        {
+          action: 'SET_LAYOUT',
+          delayAfterMs: 0,
+          params: { layout: 'grid' },
+        },
+      ]),
+    );
+
+    expect(seenEvents).toEqual([
+      {
+        type: 'smelter:voice:add-input',
+        detail: expect.objectContaining({
+          inputType: 'text',
+          requestId: expect.any(String),
+        }),
+      },
+      {
+        type: 'smelter:voice:set-text-color',
+        detail: expect.objectContaining({
+          color: '#ffff00',
+          inputId: 'text-input-7',
+          requestId: expect.any(String),
+        }),
+      },
+      {
+        type: 'smelter:voice:set-layout',
+        detail: expect.objectContaining({
+          layout: 'grid',
+          requestId: expect.any(String),
+        }),
+      },
+    ]);
+  });
+
+  it('stops paused execution without dispatching more steps', async () => {
+    let dispatchedSteps = 0;
+    installMacroStepAck('smelter:voice:remove-input', () => {
+      dispatchedSteps += 1;
+    });
+
+    const stopped = vi.fn();
+    const controller = createMacroExecutionController(
+      createMacro([
+        {
+          action: 'REMOVE_INPUT',
+          delayAfterMs: 0,
+          params: { inputIndex: 1 },
+        },
+      ]),
+      {
+        onMacroStopped: stopped,
+      },
+      { autoPlay: false },
+    );
+
     await controller.start();
     controller.stop();
     await controller.nextStep();
 
-    expect(order).toEqual([]);
     expect(controller.getStatus()).toBe('stopped');
-    expect(stoppedAt).toBe(0);
+    expect(controller.isDone()).toBe(true);
+    expect(dispatchedSteps).toBe(0);
+    expect(stopped).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('galactic macro definitions', () => {
+  it('uses selection context instead of hard-coded indices for galactic camera', () => {
+    const macro = getMacroById('galactic-camera');
+
+    expect(macro?.continueListening).toBe(true);
+    expect(
+      macro?.steps
+        .slice(1)
+        .every((step) => step.params?.inputIndex === undefined),
+    ).toBe(true);
+  });
+
+  it('uses selection context instead of hard-coded indices for galactic text', () => {
+    const macro = getMacroById('galactic-text');
+
+    expect(macro?.continueListening).toBe(true);
+    expect(
+      macro?.steps
+        .slice(1)
+        .every((step) => step.params?.inputIndex === undefined),
+    ).toBe(true);
   });
 });

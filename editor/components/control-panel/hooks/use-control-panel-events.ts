@@ -28,6 +28,7 @@ import { startPublish } from '../whip-input/utils/whip-publisher';
 import { startScreensharePublish } from '../whip-input/utils/screenshare-publisher';
 import type { InputType } from '@/lib/voice/commandTypes';
 import { emitActionFeedback } from '@/lib/voice/feedbackEvents';
+import { triggerRecordingDownload } from './use-recording-controls';
 import { getDefaultOrientationSetting } from '@/lib/voice/macroSettings';
 import { LAYOUT_CONFIGS, type Layout } from '@/components/layout-selector';
 
@@ -39,7 +40,6 @@ type UseControlPanelEventsProps = {
   ) => void;
   setListVersion: (v: number | ((prev: number) => number)) => void;
   updateOrder: (wrappers: InputWrapper[]) => Promise<void>;
-  addVideoAccordionRef: React.MutableRefObject<any>;
   roomId: string;
   handleRefreshState: () => Promise<void>;
   cameraPcRef: React.MutableRefObject<RTCPeerConnection | null>;
@@ -64,6 +64,7 @@ type UseControlPanelEventsProps = {
 type ApplyTextColorFromVoiceParams = {
   color: string;
   inputIndex?: number;
+  inputId?: string;
   inputs: Input[];
   selectedInputId: string | null;
   roomId: string;
@@ -72,9 +73,43 @@ type ApplyTextColorFromVoiceParams = {
   updateInputFn: typeof updateInput;
 };
 
+type ResolveVoiceInputTargetParams = {
+  inputs: Input[];
+  inputIndex?: number | null;
+  inputId?: string | null;
+  selectedInputId?: string | null;
+  visibleOnly?: boolean;
+};
+
+function resolveVoiceInputTarget({
+  inputs,
+  inputIndex,
+  inputId,
+  selectedInputId,
+  visibleOnly = true,
+}: ResolveVoiceInputTargetParams): Input | undefined {
+  if (inputId) {
+    return inputs.find((input) => input.inputId === inputId);
+  }
+
+  const selectableInputs = visibleOnly
+    ? inputs.filter((input) => !input.hidden)
+    : inputs;
+  if (inputIndex !== undefined && inputIndex !== null) {
+    return selectableInputs[inputIndex - 1];
+  }
+
+  if (selectedInputId) {
+    return inputs.find((input) => input.inputId === selectedInputId);
+  }
+
+  return undefined;
+}
+
 export async function applyTextColorFromVoice({
   color,
   inputIndex,
+  inputId,
   inputs,
   selectedInputId,
   roomId,
@@ -82,14 +117,12 @@ export async function applyTextColorFromVoice({
   dispatchEvent,
   updateInputFn,
 }: ApplyTextColorFromVoiceParams): Promise<boolean> {
-  const visibleInputs = inputs.filter((i) => !i.hidden);
-
-  let input;
-  if (inputIndex !== undefined) {
-    input = visibleInputs[inputIndex - 1];
-  } else if (selectedInputId) {
-    input = inputs.find((i: Input) => i.inputId === selectedInputId);
-  }
+  const input = resolveVoiceInputTarget({
+    inputs,
+    inputIndex,
+    inputId,
+    selectedInputId,
+  });
 
   if (!input || input.type !== 'text-input') {
     return false;
@@ -119,7 +152,6 @@ export function useControlPanelEvents({
   setInputWrappers,
   setListVersion,
   updateOrder,
-  addVideoAccordionRef,
   roomId,
   handleRefreshState,
   cameraPcRef,
@@ -146,7 +178,21 @@ export function useControlPanelEvents({
     updateOrder,
   });
 
+  const selectedInputIdRef = useRef<string | null>(selectedInputId);
+
+  useEffect(() => {
+    selectedInputIdRef.current = selectedInputId;
+  }, [selectedInputId]);
+
   const emitMacroStepComplete = (requestId?: string, error?: unknown) => {
+    emitMacroStepCompleteWithDetail(requestId, error);
+  };
+
+  const emitMacroStepCompleteWithDetail = (
+    requestId?: string,
+    error?: unknown,
+    detail?: Record<string, unknown>,
+  ) => {
     if (!requestId) return;
     window.dispatchEvent(
       new CustomEvent('smelter:voice:macro-step-complete', {
@@ -158,6 +204,7 @@ export function useControlPanelEvents({
               : typeof error === 'string'
                 ? error
                 : undefined,
+          ...detail,
         },
       }),
     );
@@ -205,6 +252,7 @@ export function useControlPanelEvents({
 
   useEffect(() => {
     const onSelect = (e: CustomEvent<{ inputId: string }>) => {
+      selectedInputIdRef.current = e.detail.inputId;
       setSelectedInputId(e.detail.inputId);
     };
     window.addEventListener(
@@ -383,27 +431,39 @@ export function useControlPanelEvents({
 
   useEffect(() => {
     const onRemoveInput = async (
-      e: CustomEvent<{ inputIndex: number; requestId?: string }>,
+      e: CustomEvent<{
+        inputIndex?: number;
+        inputId?: string;
+        requestId?: string;
+      }>,
     ) => {
       const requestId = e.detail?.requestId;
       try {
-        const { inputIndex } = e.detail;
-        const visibleInputs = (inputsRef.current || []).filter(
-          (i) => !i.hidden,
-        );
-        const idx = inputIndex - 1;
-        if (idx < 0 || idx >= visibleInputs.length) {
-          const error = new Error(`Voice: input ${inputIndex} does not exist`);
+        const currentInputs = inputsRef.current || [];
+        const input = resolveVoiceInputTarget({
+          inputs: currentInputs,
+          inputIndex: e.detail.inputIndex,
+          inputId: e.detail.inputId,
+          selectedInputId: selectedInputIdRef.current,
+        });
+        if (!input) {
+          const requestedTarget = e.detail.inputId ?? e.detail.inputIndex;
+          const error = new Error(
+            `Voice: input ${requestedTarget} does not exist`,
+          );
           console.warn(error.message);
           emitMacroStepComplete(requestId, error);
           return;
         }
-        const input = visibleInputs[idx];
         cleanupWhipIfNeeded(input.inputId);
         try {
           await hideInput(roomId, input.inputId);
         } catch {}
         await removeInput(roomId, input.inputId);
+        if (selectedInputIdRef.current === input.inputId) {
+          selectedInputIdRef.current = null;
+          setSelectedInputId(null);
+        }
         await handleRefreshState();
         emitMacroStepComplete(requestId);
       } catch (err) {
@@ -422,7 +482,13 @@ export function useControlPanelEvents({
         onRemoveInput as unknown as EventListener,
       );
     };
-  }, [roomId, handleRefreshState, inputsRef, cleanupWhipIfNeeded]);
+  }, [
+    roomId,
+    handleRefreshState,
+    inputsRef,
+    cleanupWhipIfNeeded,
+    setSelectedInputId,
+  ]);
 
   useEffect(() => {
     const onMoveByIndex = (
@@ -466,14 +532,18 @@ export function useControlPanelEvents({
   useEffect(() => {
     const onAddInput = async (
       e: CustomEvent<{
+        requestId?: string;
         inputType: InputType;
         mp4FileName?: string;
         imageFileName?: string;
+        text?: string;
+        textAlign?: 'left' | 'center' | 'right';
       }>,
     ) => {
+      let addedInputId: string | undefined;
+      const requestId = e.detail?.requestId;
       try {
         const { inputType, mp4FileName, imageFileName } = e.detail;
-        let addedInputId: string | undefined;
         switch (inputType) {
           case 'stream': {
             const suggestions = await getTwitchSuggestions();
@@ -503,8 +573,8 @@ export function useControlPanelEvents({
             }
             break;
           case 'text': {
-            const text = (e.detail as any).text ?? '';
-            const textAlign = (e.detail as any).textAlign ?? 'center';
+            const text = e.detail.text ?? '';
+            const textAlign = e.detail.textAlign ?? 'center';
             const res = await addTextInput(roomId, text, textAlign);
             addedInputId = res?.inputId;
             break;
@@ -568,8 +638,15 @@ export function useControlPanelEvents({
             break;
           }
         }
+      } catch (err) {
+        emitMacroStepComplete(requestId, err);
+        console.error('Voice: failed to add input', err);
+        return;
+      }
 
+      try {
         if (addedInputId) {
+          selectedInputIdRef.current = addedInputId;
           const defaultOrientation = getDefaultOrientationSetting();
           if (defaultOrientation === 'vertical') {
             await updateInput(roomId, addedInputId, {
@@ -580,8 +657,12 @@ export function useControlPanelEvents({
         }
 
         await handleRefreshState();
+        emitMacroStepCompleteWithDetail(requestId, undefined, {
+          inputId: addedInputId,
+        });
       } catch (err) {
-        console.error('Voice: failed to add input', err);
+        emitMacroStepComplete(requestId, err);
+        console.error('Voice: failed to apply default orientation', err);
       }
     };
 
@@ -612,41 +693,44 @@ export function useControlPanelEvents({
 
     const onAddShader = async (
       e: CustomEvent<{
+        requestId?: string;
         inputIndex: number | null;
+        inputId?: string;
         shader: string;
         targetColor?: string;
+        shaderParams?: Record<string, number | string>;
       }>,
     ) => {
+      const requestId = e.detail?.requestId;
       try {
-        const { inputIndex, shader: shaderId, targetColor } = e.detail;
-        const currentInputs = inputs || [];
-        const visibleInputs = currentInputs.filter((i) => !i.hidden);
-
-        let input;
-        if (inputIndex !== null) {
-          const idx = inputIndex - 1;
-          if (idx < 0 || idx >= visibleInputs.length) {
-            console.warn(`Voice: input ${inputIndex} does not exist`);
-            return;
-          }
-          input = visibleInputs[idx];
-        } else if (selectedInputId) {
-          input = currentInputs.find((i) => i.inputId === selectedInputId);
-          if (!input) {
-            console.warn('Voice: selected input no longer exists');
-            return;
-          }
-        } else {
+        const {
+          inputIndex,
+          inputId,
+          shader: shaderId,
+          targetColor,
+          shaderParams,
+        } = e.detail;
+        const currentInputs = inputsRef.current || [];
+        const input = resolveVoiceInputTarget({
+          inputs: currentInputs,
+          inputIndex,
+          inputId,
+          selectedInputId: selectedInputIdRef.current,
+        });
+        if (!input) {
           console.warn('Voice: no input specified and none selected');
+          emitMacroStepComplete(requestId);
           return;
         }
         const shaderDef = availableShaders.find((s) => s.id === shaderId);
         if (!shaderDef) {
           console.warn(`Voice: shader ${shaderId} not found`);
+          emitMacroStepComplete(requestId);
           return;
         }
         const existingShaders = input.shaders || [];
         if (existingShaders.some((s) => s.shaderId === shaderId)) {
+          emitMacroStepComplete(requestId);
           return;
         }
         const newShader = {
@@ -654,6 +738,19 @@ export function useControlPanelEvents({
           shaderId: shaderDef.id,
           enabled: true,
           params: (shaderDef.params || []).map((p) => {
+            if (shaderParams && p.name in shaderParams) {
+              const override = shaderParams[p.name];
+              if (p.type === 'color' && typeof override === 'string') {
+                return {
+                  paramName: p.name,
+                  paramValue: hexToPackedInt(override),
+                };
+              }
+              return {
+                paramName: p.name,
+                paramValue: typeof override === 'number' ? override : 0,
+              };
+            }
             if (p.type === 'color' && typeof p.defaultValue === 'string') {
               const colorValue =
                 shaderId === 'remove-color' &&
@@ -687,7 +784,11 @@ export function useControlPanelEvents({
           }),
         );
         await handleRefreshState();
+        emitMacroStepCompleteWithDetail(requestId, undefined, {
+          inputId: input.inputId,
+        });
       } catch (err) {
+        emitMacroStepComplete(requestId, err);
         console.error('Voice: failed to add shader', err);
       }
     };
@@ -702,7 +803,7 @@ export function useControlPanelEvents({
         onAddShader as unknown as EventListener,
       );
     };
-  }, [roomId, handleRefreshState, inputs, availableShaders, selectedInputId]);
+  }, [roomId, handleRefreshState, inputsRef, availableShaders]);
 
   useEffect(() => {
     const onRemoveShader = async (
@@ -768,16 +869,19 @@ export function useControlPanelEvents({
   useEffect(() => {
     const onSelectInput = (e: CustomEvent<{ inputIndex: number }>) => {
       try {
-        const { inputIndex } = e.detail;
-        const visibleInputs = (inputsRef.current || []).filter(
-          (i) => !i.hidden,
-        );
-        const idx = inputIndex - 1;
-        if (idx < 0 || idx >= visibleInputs.length) {
-          console.warn(`Voice: input ${inputIndex} does not exist`);
+        const input = resolveVoiceInputTarget({
+          inputs: inputsRef.current || [],
+          inputIndex: e.detail.inputIndex,
+          inputId: (e.detail as { inputId?: string }).inputId,
+          selectedInputId: selectedInputIdRef.current,
+        });
+        if (!input) {
+          console.warn(
+            `Voice: input ${(e.detail as { inputId?: string; inputIndex?: number }).inputId ?? e.detail.inputIndex} does not exist`,
+          );
           return;
         }
-        const input = visibleInputs[idx];
+        selectedInputIdRef.current = input.inputId;
         setSelectedInputId(input.inputId);
         window.dispatchEvent(
           new CustomEvent('smelter:timeline:select-clip', {
@@ -803,6 +907,7 @@ export function useControlPanelEvents({
 
   useEffect(() => {
     const onDeselectInput = () => {
+      selectedInputIdRef.current = null;
       setSelectedInputId(null);
     };
 
@@ -856,6 +961,16 @@ export function useControlPanelEvents({
             text: accumulatedTextRef.current,
             volume: input.volume,
           });
+
+          window.dispatchEvent(
+            new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
+              detail: {
+                inputId: input.inputId,
+                patch: { text: accumulatedTextRef.current },
+              },
+            }),
+          );
+
           await handleRefreshState();
         } catch (err) {
           console.error('Voice: failed to save text', err);
@@ -886,6 +1001,16 @@ export function useControlPanelEvents({
           text: accumulatedTextRef.current,
           volume: input.volume,
         });
+
+        window.dispatchEvent(
+          new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
+            detail: {
+              inputId: input.inputId,
+              patch: { text: accumulatedTextRef.current },
+            },
+          }),
+        );
+
         await handleRefreshState();
       } catch (err) {
         console.error('Voice: failed to append text', err);
@@ -1003,28 +1128,40 @@ export function useControlPanelEvents({
 
   useEffect(() => {
     const onSetTextColor = async (
-      e: CustomEvent<{ color: string; inputIndex?: number }>,
+      e: CustomEvent<{
+        color: string;
+        inputIndex?: number;
+        inputId?: string;
+        requestId?: string;
+      }>,
     ) => {
+      const requestId = e.detail?.requestId;
       try {
-        const { color, inputIndex } = e.detail;
+        const { color, inputIndex, inputId } = e.detail;
         const didApply = await applyTextColorFromVoice({
           color,
           inputIndex,
+          inputId,
           inputs: inputsRef.current || [],
-          selectedInputId,
+          selectedInputId: selectedInputIdRef.current,
           roomId,
           handleRefreshState,
           dispatchEvent: (event) => window.dispatchEvent(event),
           updateInputFn: updateInput,
         });
         if (!didApply) {
+          const error = new Error('Text input required');
           emitActionFeedback({
             type: 'error',
             label: 'Text input required',
             description: 'Select a text input first',
           });
+          emitMacroStepComplete(requestId, error);
+          return;
         }
+        emitMacroStepCompleteWithDetail(requestId, undefined, { inputId });
       } catch (err) {
+        emitMacroStepComplete(requestId, err);
         console.error('Voice: failed to set text color', err);
       }
     };
@@ -1039,25 +1176,36 @@ export function useControlPanelEvents({
         onSetTextColor as unknown as EventListener,
       );
     };
-  }, [roomId, handleRefreshState, inputsRef, selectedInputId]);
+  }, [roomId, handleRefreshState, inputsRef]);
 
   useEffect(() => {
-    const onSetTextMaxLines = async (e: CustomEvent<{ maxLines: number }>) => {
+    const onSetTextMaxLines = async (
+      e: CustomEvent<{
+        maxLines: number;
+        inputIndex?: number;
+        inputId?: string;
+        requestId?: string;
+      }>,
+    ) => {
+      const requestId = e.detail?.requestId;
       try {
-        const { maxLines } = e.detail;
-        const currentInputs = inputs || [];
-
-        let input;
-        if (selectedInputId) {
-          input = currentInputs.find((i) => i.inputId === selectedInputId);
-        }
+        const { maxLines, inputIndex, inputId } = e.detail;
+        const currentInputs = inputsRef.current || [];
+        const input = resolveVoiceInputTarget({
+          inputs: currentInputs,
+          inputIndex,
+          inputId,
+          selectedInputId: selectedInputIdRef.current,
+        });
 
         if (!input || input.type !== 'text-input') {
+          const error = new Error('Text input required');
           emitActionFeedback({
             type: 'error',
             label: 'Text input required',
             description: 'Select a text input first',
           });
+          emitMacroStepComplete(requestId, error);
           return;
         }
 
@@ -1066,7 +1214,11 @@ export function useControlPanelEvents({
           volume: input.volume,
         });
         await handleRefreshState();
+        emitMacroStepCompleteWithDetail(requestId, undefined, {
+          inputId: input.inputId,
+        });
       } catch (err) {
+        emitMacroStepComplete(requestId, err);
         console.error('Voice: failed to set text max lines', err);
       }
     };
@@ -1081,32 +1233,36 @@ export function useControlPanelEvents({
         onSetTextMaxLines as unknown as EventListener,
       );
     };
-  }, [roomId, handleRefreshState, inputs, selectedInputId]);
+  }, [roomId, handleRefreshState, inputsRef]);
 
   useEffect(() => {
     const onSetTextFontSize = async (
-      e: CustomEvent<{ fontSize: number; inputIndex?: number }>,
+      e: CustomEvent<{
+        fontSize: number;
+        inputIndex?: number;
+        inputId?: string;
+        requestId?: string;
+      }>,
     ) => {
+      const requestId = e.detail?.requestId;
       try {
-        const { fontSize, inputIndex } = e.detail;
+        const { fontSize, inputIndex, inputId } = e.detail;
         const currentInputs = inputsRef.current || [];
-        const visibleInputs = currentInputs.filter((i) => !i.hidden);
-
-        let input;
-        if (inputIndex !== undefined) {
-          input = visibleInputs[inputIndex - 1];
-        } else if (selectedInputId) {
-          input = currentInputs.find(
-            (i: Input) => i.inputId === selectedInputId,
-          );
-        }
+        const input = resolveVoiceInputTarget({
+          inputs: currentInputs,
+          inputIndex,
+          inputId,
+          selectedInputId: selectedInputIdRef.current,
+        });
 
         if (!input || input.type !== 'text-input') {
+          const error = new Error('Text input required');
           emitActionFeedback({
             type: 'error',
             label: 'Text input required',
             description: 'Select a text input first',
           });
+          emitMacroStepComplete(requestId, error);
           return;
         }
 
@@ -1114,8 +1270,22 @@ export function useControlPanelEvents({
           textFontSize: fontSize,
           volume: input.volume,
         });
+
+        window.dispatchEvent(
+          new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
+            detail: {
+              inputId: input.inputId,
+              patch: { textFontSize: fontSize },
+            },
+          }),
+        );
+
         await handleRefreshState();
+        emitMacroStepCompleteWithDetail(requestId, undefined, {
+          inputId: input.inputId,
+        });
       } catch (err) {
+        emitMacroStepComplete(requestId, err);
         console.error('Voice: failed to set text font size', err);
       }
     };
@@ -1130,35 +1300,39 @@ export function useControlPanelEvents({
         onSetTextFontSize as unknown as EventListener,
       );
     };
-  }, [roomId, handleRefreshState, inputsRef, selectedInputId]);
+  }, [roomId, handleRefreshState, inputsRef]);
 
   useEffect(() => {
     const MIN_SPEED = 10;
     const MAX_SPEED = 400;
 
     const onSetTextScrollSpeed = async (
-      e: CustomEvent<{ scrollSpeed: number; inputIndex?: number }>,
+      e: CustomEvent<{
+        scrollSpeed: number;
+        inputIndex?: number;
+        inputId?: string;
+        requestId?: string;
+      }>,
     ) => {
+      const requestId = e.detail?.requestId;
       try {
-        const { scrollSpeed, inputIndex } = e.detail;
+        const { scrollSpeed, inputIndex, inputId } = e.detail;
         const currentInputs = inputsRef.current || [];
-        const visibleInputs = currentInputs.filter((i) => !i.hidden);
-
-        let input;
-        if (inputIndex !== undefined) {
-          input = visibleInputs[inputIndex - 1];
-        } else if (selectedInputId) {
-          input = currentInputs.find(
-            (i: Input) => i.inputId === selectedInputId,
-          );
-        }
+        const input = resolveVoiceInputTarget({
+          inputs: currentInputs,
+          inputIndex,
+          inputId,
+          selectedInputId: selectedInputIdRef.current,
+        });
 
         if (!input || input.type !== 'text-input') {
+          const error = new Error('Text input required');
           emitActionFeedback({
             type: 'error',
             label: 'Text input required',
             description: 'Select a text input first',
           });
+          emitMacroStepComplete(requestId, error);
           return;
         }
 
@@ -1181,7 +1355,11 @@ export function useControlPanelEvents({
         );
 
         await handleRefreshState();
+        emitMacroStepCompleteWithDetail(requestId, undefined, {
+          inputId: input.inputId,
+        });
       } catch (err) {
+        emitMacroStepComplete(requestId, err);
         console.error('Voice: failed to set text scroll speed', err);
       }
     };
@@ -1196,35 +1374,36 @@ export function useControlPanelEvents({
         onSetTextScrollSpeed as unknown as EventListener,
       );
     };
-  }, [roomId, handleRefreshState, inputsRef, selectedInputId]);
+  }, [roomId, handleRefreshState, inputsRef]);
 
   useEffect(() => {
     const onSetTextAlign = async (
       e: CustomEvent<{
         textAlign: 'left' | 'center' | 'right';
         inputIndex?: number;
+        inputId?: string;
+        requestId?: string;
       }>,
     ) => {
+      const requestId = e.detail?.requestId;
       try {
-        const { textAlign, inputIndex } = e.detail;
+        const { textAlign, inputIndex, inputId } = e.detail;
         const currentInputs = inputsRef.current || [];
-        const visibleInputs = currentInputs.filter((i) => !i.hidden);
-
-        let input;
-        if (inputIndex !== undefined) {
-          input = visibleInputs[inputIndex - 1];
-        } else if (selectedInputId) {
-          input = currentInputs.find(
-            (i: Input) => i.inputId === selectedInputId,
-          );
-        }
+        const input = resolveVoiceInputTarget({
+          inputs: currentInputs,
+          inputIndex,
+          inputId,
+          selectedInputId: selectedInputIdRef.current,
+        });
 
         if (!input || input.type !== 'text-input') {
+          const error = new Error('Text input required');
           emitActionFeedback({
             type: 'error',
             label: 'Text input required',
             description: 'Select a text input first',
           });
+          emitMacroStepComplete(requestId, error);
           return;
         }
 
@@ -1243,7 +1422,11 @@ export function useControlPanelEvents({
         );
 
         await handleRefreshState();
+        emitMacroStepCompleteWithDetail(requestId, undefined, {
+          inputId: input.inputId,
+        });
       } catch (err) {
+        emitMacroStepComplete(requestId, err);
         console.error('Voice: failed to set text align', err);
       }
     };
@@ -1258,7 +1441,7 @@ export function useControlPanelEvents({
         onSetTextAlign as unknown as EventListener,
       );
     };
-  }, [roomId, handleRefreshState, inputsRef, selectedInputId]);
+  }, [roomId, handleRefreshState, inputsRef]);
 
   useEffect(() => {
     const onExportConfiguration = () => {
@@ -1278,16 +1461,23 @@ export function useControlPanelEvents({
   }, []);
 
   useEffect(() => {
-    const onSetLayout = (e: CustomEvent<{ layout: Layout }>) => {
+    const onSetLayout = async (
+      e: CustomEvent<{ layout: Layout; requestId?: string }>,
+    ) => {
+      const requestId = e.detail?.requestId;
       try {
         const { layout } = e.detail;
         const validLayout = LAYOUT_CONFIGS.find((l) => l.id === layout);
         if (validLayout) {
-          changeLayout(validLayout.id);
+          await Promise.resolve(changeLayout(validLayout.id));
+          emitMacroStepComplete(requestId);
         } else {
+          const error = new Error(`Invalid layout: ${layout}`);
           console.warn('Macro: invalid layout', layout);
+          emitMacroStepComplete(requestId, error);
         }
       } catch (err) {
+        emitMacroStepComplete(requestId, err);
         console.error('Macro: failed to set layout', err);
       }
     };
@@ -1306,69 +1496,87 @@ export function useControlPanelEvents({
 
   useEffect(() => {
     const onSetSwapDuration = async (
-      e: CustomEvent<{ durationMs: number }>,
+      e: CustomEvent<{ durationMs: number; requestId?: string }>,
     ) => {
+      const requestId = e.detail?.requestId;
       try {
         await updateRoom(roomId, { swapDurationMs: e.detail.durationMs });
         await handleRefreshState();
+        emitMacroStepComplete(requestId);
       } catch (err) {
+        emitMacroStepComplete(requestId, err);
         console.error('Voice: failed to set swap duration', err);
       }
     };
 
     const onSetSwapFadeInDuration = async (
-      e: CustomEvent<{ durationMs: number }>,
+      e: CustomEvent<{ durationMs: number; requestId?: string }>,
     ) => {
+      const requestId = e.detail?.requestId;
       try {
         await updateRoom(roomId, { swapFadeInDurationMs: e.detail.durationMs });
         await handleRefreshState();
+        emitMacroStepComplete(requestId);
       } catch (err) {
+        emitMacroStepComplete(requestId, err);
         console.error('Voice: failed to set swap fade in duration', err);
       }
     };
 
     const onSetSwapFadeOutDuration = async (
-      e: CustomEvent<{ durationMs: number }>,
+      e: CustomEvent<{ durationMs: number; requestId?: string }>,
     ) => {
+      const requestId = e.detail?.requestId;
       try {
         await updateRoom(roomId, {
           swapFadeOutDurationMs: e.detail.durationMs,
         });
         await handleRefreshState();
+        emitMacroStepComplete(requestId);
       } catch (err) {
+        emitMacroStepComplete(requestId, err);
         console.error('Voice: failed to set swap fade out duration', err);
       }
     };
 
     const onSetSwapOutgoingEnabled = async (
-      e: CustomEvent<{ enabled: boolean }>,
+      e: CustomEvent<{ enabled: boolean; requestId?: string }>,
     ) => {
+      const requestId = e.detail?.requestId;
       try {
         await updateRoom(roomId, { swapOutgoingEnabled: e.detail.enabled });
         await handleRefreshState();
+        emitMacroStepComplete(requestId);
       } catch (err) {
+        emitMacroStepComplete(requestId, err);
         console.error('Voice: failed to set outgoing transition', err);
       }
     };
 
     const onSetNewsStripEnabled = async (
-      e: CustomEvent<{ enabled: boolean }>,
+      e: CustomEvent<{ enabled: boolean; requestId?: string }>,
     ) => {
+      const requestId = e.detail?.requestId;
       try {
         await updateRoom(roomId, { newsStripEnabled: e.detail.enabled });
         await handleRefreshState();
+        emitMacroStepComplete(requestId);
       } catch (err) {
+        emitMacroStepComplete(requestId, err);
         console.error('Voice: failed to set news strip enabled', err);
       }
     };
 
     const onSetNewsStripFadeDuringSwap = async (
-      e: CustomEvent<{ enabled: boolean }>,
+      e: CustomEvent<{ enabled: boolean; requestId?: string }>,
     ) => {
+      const requestId = e.detail?.requestId;
       try {
         await updateRoom(roomId, { newsStripFadeDuringSwap: e.detail.enabled });
         await handleRefreshState();
+        emitMacroStepComplete(requestId);
       } catch (err) {
+        emitMacroStepComplete(requestId, err);
         console.error('Voice: failed to set news strip fade', err);
       }
     };
@@ -1427,18 +1635,35 @@ export function useControlPanelEvents({
   }, [roomId, handleRefreshState]);
 
   useEffect(() => {
-    const onStartRecording = async () => {
+    const onStartRecording = async (e: CustomEvent<{ requestId?: string }>) => {
+      const requestId = e.detail?.requestId;
       try {
         await startRecording(roomId);
+        await handleRefreshState();
+        emitMacroStepComplete(requestId);
       } catch (err) {
+        emitMacroStepComplete(requestId, err);
         console.error('Voice: failed to start recording', err);
       }
     };
 
-    const onStopRecording = async () => {
+    let recDownloadTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const onStopRecording = async (e: CustomEvent<{ requestId?: string }>) => {
+      const requestId = e.detail?.requestId;
       try {
-        await stopRecording(roomId);
+        const res = await stopRecording(roomId);
+        await handleRefreshState();
+        if (res.status === 'stopped' && res.fileName) {
+          const fileName = res.fileName;
+          recDownloadTimer = setTimeout(() => {
+            recDownloadTimer = null;
+            triggerRecordingDownload(fileName);
+          }, 1500);
+        }
+        emitMacroStepComplete(requestId);
       } catch (err) {
+        emitMacroStepComplete(requestId, err);
         console.error('Voice: failed to stop recording', err);
       }
     };
@@ -1453,6 +1678,7 @@ export function useControlPanelEvents({
     );
 
     return () => {
+      if (recDownloadTimer) clearTimeout(recDownloadTimer);
       window.removeEventListener(
         'smelter:voice:start-recording',
         onStartRecording as unknown as EventListener,
@@ -1462,31 +1688,36 @@ export function useControlPanelEvents({
         onStopRecording as unknown as EventListener,
       );
     };
-  }, [roomId]);
+  }, [roomId, handleRefreshState]);
 
   useEffect(() => {
     const onSetText = async (
-      e: CustomEvent<{ text: string; inputIndex?: number }>,
+      e: CustomEvent<{
+        text: string;
+        inputIndex?: number;
+        inputId?: string;
+        requestId?: string;
+      }>,
     ) => {
+      const requestId = e.detail?.requestId;
       try {
-        const { text, inputIndex } = e.detail;
+        const { text, inputIndex, inputId } = e.detail;
         const currentInputs = inputsRef.current || [];
-
-        let input;
-        if (inputIndex !== undefined) {
-          input = currentInputs[inputIndex - 1];
-        } else if (selectedInputId) {
-          input = currentInputs.find(
-            (i: Input) => i.inputId === selectedInputId,
-          );
-        }
+        const input = resolveVoiceInputTarget({
+          inputs: currentInputs,
+          inputIndex,
+          inputId,
+          selectedInputId: selectedInputIdRef.current,
+        });
 
         if (!input || input.type !== 'text-input') {
+          const error = new Error('Text input required');
           emitActionFeedback({
             type: 'error',
             label: 'Text input required',
             description: 'Select a text input first',
           });
+          emitMacroStepComplete(requestId, error);
           return;
         }
 
@@ -1495,7 +1726,11 @@ export function useControlPanelEvents({
           volume: input.volume,
         });
         await handleRefreshState();
+        emitMacroStepCompleteWithDetail(requestId, undefined, {
+          inputId: input.inputId,
+        });
       } catch (err) {
+        emitMacroStepComplete(requestId, err);
         console.error('Macro: failed to set text', err);
       }
     };
@@ -1510,7 +1745,7 @@ export function useControlPanelEvents({
         onSetText as unknown as EventListener,
       );
     };
-  }, [roomId, handleRefreshState, inputsRef, selectedInputId]);
+  }, [roomId, handleRefreshState, inputsRef]);
 
   useEffect(() => {
     const nudgeCounterRef = { current: 0 };
@@ -1569,31 +1804,29 @@ export function useControlPanelEvents({
       e: CustomEvent<{
         orientation?: 'horizontal' | 'vertical';
         inputIndex?: number;
+        inputId?: string;
+        requestId?: string;
       }>,
     ) => {
+      const requestId = e.detail?.requestId;
       try {
-        const { orientation, inputIndex } = e.detail;
+        const { orientation, inputIndex, inputId } = e.detail;
         const currentInputs = inputsRef.current || [];
-        const visibleInputs = currentInputs.filter((i) => !i.hidden);
-
-        let input;
-        if (inputIndex !== undefined && inputIndex !== null) {
-          const idx = inputIndex - 1;
-          if (idx < 0 || idx >= visibleInputs.length) {
-            console.warn(`Voice: input ${inputIndex} does not exist`);
-            return;
-          }
-          input = visibleInputs[idx];
-        } else if (selectedInputId) {
-          input = currentInputs.find((i) => i.inputId === selectedInputId);
-        }
+        const input = resolveVoiceInputTarget({
+          inputs: currentInputs,
+          inputIndex,
+          inputId,
+          selectedInputId: selectedInputIdRef.current,
+        });
 
         if (!input) {
+          const error = new Error('No input selected');
           emitActionFeedback({
             type: 'error',
             label: 'No input selected',
             description: 'Select an input or specify input number',
           });
+          emitMacroStepComplete(requestId, error);
           return;
         }
 
@@ -1619,7 +1852,11 @@ export function useControlPanelEvents({
         );
 
         await handleRefreshState();
+        emitMacroStepCompleteWithDetail(requestId, undefined, {
+          inputId: input.inputId,
+        });
       } catch (err) {
+        emitMacroStepComplete(requestId, err);
         console.error('Voice: failed to set orientation', err);
       }
     };
@@ -1634,5 +1871,5 @@ export function useControlPanelEvents({
         onSetOrientation as unknown as EventListener,
       );
     };
-  }, [roomId, handleRefreshState, inputsRef, selectedInputId]);
+  }, [roomId, handleRefreshState, inputsRef]);
 }

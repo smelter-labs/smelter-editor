@@ -2,16 +2,15 @@ import { useCallback } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import type { Input } from '@/app/actions/actions';
 import InputEntry from '@/components/control-panel/input-entry/input-entry';
-import Accordion from '@/components/ui/accordion';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
 
-type FxAccordionProps = {
+type FxPanelProps = {
   fxInput: Input;
   onClose: () => void;
 };
 
-export function FxAccordion({ fxInput, onClose }: FxAccordionProps) {
+export function FxAccordion({ fxInput, onClose }: FxPanelProps) {
   const { roomId, refreshState, availableShaders, inputs } =
     useControlPanelContext();
   const {
@@ -47,11 +46,14 @@ export function FxAccordion({ fxInput, onClose }: FxAccordionProps) {
   );
 
   return (
-    <Accordion
-      title={fxInput.title}
-      defaultOpen
-      headerIcon={<ArrowLeft width={18} height={18} />}
-      onHeaderClick={onClose}>
+    <div>
+      <button
+        type='button'
+        onClick={onClose}
+        className='flex items-center gap-2 px-2 py-1.5 mb-1 text-sm text-neutral-400 hover:text-white transition-colors cursor-pointer'>
+        <ArrowLeft className='w-4 h-4' />
+        <span className='font-medium'>{fxInput.title}</span>
+      </button>
       <div className='px-0 py-1'>
         <InputEntry
           input={fxInput}
@@ -69,6 +71,6 @@ export function FxAccordion({ fxInput, onClose }: FxAccordionProps) {
           onWhipDisconnectedOrRemoved={onWhipDisconnectedOrRemoved}
         />
       </div>
-    </Accordion>
+    </div>
   );
 }

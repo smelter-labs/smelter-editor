@@ -10,7 +10,7 @@ import {
   Shader,
 } from '@swmansion/smelter';
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
 import type { ShaderConfig, ShaderParamConfig } from '../shaders/shaders';
 import shadersController from '../shaders/shaders';
@@ -157,6 +157,8 @@ type ScrollingTextProps = {
   containerWidth: number;
   containerHeight: number;
   scrollNudge?: number;
+  /** Insert a blank line every N lines (0 = disabled) */
+  linePaddingInterval?: number;
 };
 
 function ScrollingText({
@@ -170,14 +172,30 @@ function ScrollingText({
   containerWidth,
   containerHeight,
   scrollNudge = 0,
+  linePaddingInterval = 0,
 }: ScrollingTextProps) {
   const lineHeight = fontSize * 1.2;
+  const textVerticalPadding = Math.max(2, Math.round(fontSize * 0.12));
   const visibleHeight = containerHeight;
-  const lines = text.split('\n');
-  const totalTextHeight = lines.length * lineHeight;
+  const { paddedText, lines } = useMemo(() => {
+    const rawLines = text.split('\n');
+    if (linePaddingInterval <= 0) {
+      return { paddedText: text, lines: rawLines };
+    }
+    const padded: string[] = [];
+    for (let i = 0; i < rawLines.length; i++) {
+      padded.push(rawLines[i]);
+      if ((i + 1) % linePaddingInterval === 0 && i < rawLines.length - 1) {
+        padded.push('');
+      }
+    }
+    return { paddedText: padded.join('\n'), lines: padded };
+  }, [text, linePaddingInterval]);
+  const measuredTextHeight = Math.max(lineHeight, lines.length * lineHeight);
+  const totalTextHeight = measuredTextHeight + textVerticalPadding * 2;
   
   const shouldAnimate = maxLines > 0;
-  const startPosition = visibleHeight;
+  const startPosition = visibleHeight - textVerticalPadding;
   
   const [scrollOffset, setScrollOffset] = useState(startPosition);
   const [permanentNudgeOffset, setPermanentNudgeOffset] = useState(0);
@@ -246,7 +264,7 @@ function ScrollingText({
       setScrollOffset(startPosition);
     }
 
-    const targetPosition = -totalTextHeight;
+    const targetPosition = -(totalTextHeight - textVerticalPadding);
     const intervalMs = 16;
     const pixelsPerFrame = (scrollSpeed / 1000) * intervalMs;
 
@@ -291,16 +309,25 @@ function ScrollingText({
         top: textTopOffset,
         left: 0,
       }}>
-        <Text style={{ 
-          fontSize, 
-          width: containerWidth,
-          color, 
-          wrap: 'word',
-          align,
-          fontFamily: 'Star Jedi',
-        }}>
-          {text}
-        </Text>
+        <View
+          style={{
+            width: containerWidth,
+            height: measuredTextHeight,
+            top: textVerticalPadding,
+            left: 0,
+          }}>
+          <Text style={{ 
+            fontSize, 
+            lineHeight,
+            width: containerWidth,
+            color, 
+            wrap: 'word',
+            align,
+            fontFamily: 'Star Jedi',
+          }}>
+            {paddedText}
+          </Text>
+        </View>
       </View>
     </View>
   );

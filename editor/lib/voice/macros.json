@@ -148,32 +148,44 @@
         {
           "action": "ADD_SHADER",
           "params": {
-            "inputIndex": 2,
             "shader": "remove-color",
-            "targetColor": "#00ff00"
+            "targetColor": "#40bb58",
+            "shaderParams": { "tolerance": 0.31 }
           },
           "delayAfterMs": 1500
         },
         {
           "action": "ADD_SHADER",
           "params": {
-            "inputIndex": 2,
-            "shader": "sw-hologram"
+            "shader": "sw-hologram",
+            "shaderParams": {
+              "tint_r": 0.15, "tint_g": 0.44, "tint_b": 1.0,
+              "opacity": 0.79, "scanline_speed": 8.5,
+              "jitter_x_px": 3.4, "glow_intensity": 0.19,
+              "edge_glow_width": 0.09, "brightness": 3.47,
+              "bloom_radius": 31.38
+            }
           },
           "delayAfterMs": 1500
         },
-                {
+        {
           "action": "ADD_INPUT",
           "params": {
             "inputType": "text",
-            "text": "A long time ago\nin a galaxy far, far away..."
+            "text": "A long time ago\nin a galaxy far, far away...\n"
           },
           "delayAfterMs": 2000
         },
         {
+          "action": "SET_TEXT_FONT_SIZE",
+          "params": {
+            "fontSize": 40
+          },
+          "delayAfterMs": 1500
+        },
+        {
           "action": "SET_TEXT_COLOR",
           "params": {
-            "inputIndex": 3,
             "color": "#ffff00"
           },
           "delayAfterMs": 1500
@@ -181,7 +193,6 @@
         {
           "action": "SET_TEXT_SCROLL_SPEED",
           "params": {
-            "inputIndex": 3,
             "scrollSpeed": 80
           },
           "delayAfterMs": 1500
@@ -189,8 +200,8 @@
         {
           "action": "ADD_SHADER",
           "params": {
-            "inputIndex": 3,
-            "shader": "remove-color"
+            "shader": "remove-color",
+            "shaderParams": { "tolerance": 0.31 }
           },
           "delayAfterMs": 1500
         },
@@ -201,24 +212,194 @@
           },
           "delayAfterMs": 1500
         },
-
         {
           "action": "ADD_SHADER",
           "params": {
-            "inputIndex": 3,
-            "shader": "alpha-stroke"
+            "shader": "perspective"
           },
           "delayAfterMs": 1500
         },
         {
           "action": "ADD_SHADER",
           "params": {
-            "inputIndex": 3,
-            "shader": "perspective"
+            "shader": "alpha-stroke",
+            "shaderParams": {
+              "stroke_width_px": 39, "softness_px": 11.5,
+              "opacity": 0.4, "stroke_color": "#E63900"
+            }
           },
           "delayAfterMs": 1500
         }
-
+      ]
+    },
+    {
+      "id": "galactic-spaceship",
+      "continueListening": true,
+      "triggers": [
+        "galactic spaceship",
+        "add spaceship",
+        "space ship background"
+      ],
+      "description": "Clears inputs and adds the space ship MP4 background",
+      "steps": [
+        {
+          "action": "REMOVE_ALL_INPUTS",
+          "delayAfterMs": 2000
+        },
+        {
+          "action": "ADD_INPUT",
+          "params": {
+            "inputType": "mp4",
+            "mp4Name": "space_ship_1.mp4"
+          },
+          "delayAfterMs": 500
+        },
+        {
+          "action": "SET_LAYOUT",
+          "params": {
+            "layout": "grid"
+          },
+          "delayAfterMs": 0
+        }
+      ]
+    },
+    {
+      "id": "galactic-camera",
+      "continueListening": true,
+      "triggers": [
+        "galactic camera",
+        "hologram camera",
+        "star wars camera",
+        "add new hologram camera input"
+      ],
+      "description": "Adds a camera input with chroma key and hologram shader",
+      "steps": [
+        {
+          "action": "ADD_INPUT",
+          "params": {
+            "inputType": "camera"
+          },
+          "delayAfterMs": 4000
+        },
+        {
+          "action": "ADD_SHADER",
+          "params": {
+            "shader": "remove-color",
+            "targetColor": "#40bb58",
+            "shaderParams": { "tolerance": 0.31 }
+          },
+          "delayAfterMs": 1500
+        },
+        {
+          "action": "ADD_SHADER",
+          "params": {
+            "shader": "sw-hologram",
+            "shaderParams": {
+              "tint_r": 0.15, "tint_g": 0.44, "tint_b": 1.0,
+              "opacity": 0.79, "scanline_speed": 8.5,
+              "jitter_x_px": 3.4, "glow_intensity": 0.19,
+              "edge_glow_width": 0.09, "brightness": 3.47,
+              "bloom_radius": 31.38
+            }
+          },
+          "delayAfterMs": 0
+        }
+      ]
+    },
+    {
+      "id": "galactic-text",
+      "continueListening": true,
+      "triggers": [
+        "galactic text",
+        "star wars text",
+        "galactic crawl",
+        "insert yelllow scrolling text",
+        "add yellow scrolling text",
+        "add new yellow scrolling text",
+        "add new scrolling text yellow"
+      ],
+      "description": "Adds scrolling text with perspective and effects",
+      "steps": [
+        {
+          "action": "ADD_INPUT",
+          "params": {
+            "inputType": "text",
+            "text": "A long time ago\nin a galaxy far,\nfar away...\n"
+          },
+          "delayAfterMs": 2000
+        },
+        {
+          "action": "SET_TEXT_FONT_SIZE",
+          "params": {
+            "fontSize": 40
+          },
+          "delayAfterMs": 1000
+        },
+        {
+          "action": "SET_TEXT_COLOR",
+          "params": {
+            "color": "#ffff00"
+          },
+          "delayAfterMs": 1000
+        },
+        {
+          "action": "SET_TEXT_SCROLL_SPEED",
+          "params": {
+            "scrollSpeed": 40
+          },
+          "delayAfterMs": 1000
+        },
+        {
+          "action": "ADD_SHADER",
+          "params": {
+            "shader": "remove-color",
+            "shaderParams": { "tolerance": 0.31 }
+          },
+          "delayAfterMs": 500
+        },
+        {
+          "action": "ADD_SHADER",
+          "params": {
+            "shader": "perspective"
+          },
+          "delayAfterMs": 500
+        },
+        {
+          "action": "ADD_SHADER",
+          "params": {
+            "shader": "alpha-stroke",
+            "shaderParams": {
+              "stroke_width_px": 39, "softness_px": 11.5,
+              "opacity": 0.4, "stroke_color": "#E63900"
+            }
+          },
+          "delayAfterMs": 500
+        }
+      ]
+    },
+    {
+      "id": "pop-layout",
+      "triggers": [
+        "change layout to picture on picture",
+        "change layout to pop",
+        "pop layout",
+        "popeye layout",
+        "pop light",
+        "tought layout",
+        "pop lay",
+        "transmission layout",
+        "full screen mode",
+        "fullscreen mode"
+      ],
+      "description": "Changes the layout to picture on picture",
+      "steps": [
+        {
+          "action": "SET_LAYOUT",
+          "params": {
+            "layout": "picture-on-picture"
+          },
+          "delayAfterMs": 1500
+        }
       ]
     },
     {

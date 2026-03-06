@@ -777,6 +777,18 @@ export function useVoiceCommands(
                   detail: { macro },
                 }),
               );
+              if (macro.continueListening) {
+                isMacroModeRef.current = true;
+                setIsMacroMode(true);
+                window.dispatchEvent(
+                  new CustomEvent('smelter:voice:macro-mode-started'),
+                );
+                emitActionFeedback({
+                  type: 'mode',
+                  label: 'Macro Mode',
+                  active: true,
+                });
+              }
             },
             onMacroStopped: () => {
               macroControllerRef.current = null;
@@ -795,6 +807,8 @@ export function useVoiceCommands(
               macroControllerRef.current = null;
               setIsExecutingMacro(false);
               isExecutingMacroRef.current = false;
+              isMacroModeRef.current = false;
+              setIsMacroMode(false);
               setMacroExecutionStatus('error');
               setActiveMacro(null);
               setLastError(
