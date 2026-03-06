@@ -15,9 +15,8 @@ import { config } from '../config';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
 import pictureSuggestionsMonitor from '../pictures/pictureSuggestionMonitor';
 import { KickChannelSuggestions } from '../kick/KickChannelMonitor';
-import type { ShaderConfig } from '../shaders/shaders';
 import shadersController from '../shaders/shaders';
-import { RESOLUTION_PRESETS, type Resolution, type ResolutionPreset } from '../smelter';
+import { RESOLUTION_PRESETS, type Resolution, type ResolutionPreset, type ShaderConfig } from '../types';
 
 type RoomIdParams = { Params: { roomId: string } };
 type RoomAndInputIdParams = { Params: { roomId: string; inputId: string } };

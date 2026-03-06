@@ -1,9 +1,5 @@
-import {
-  addMP4Input,
-  getMP4Suggestions,
-  Input,
-  MP4Suggestions,
-} from '@/app/actions/actions';
+import type { Input, MP4Suggestions } from '@/lib/types';
+import { useActions } from '../contexts/actions-context';
 import { useEffect, useState } from 'react';
 import { GenericAddInputForm } from './generic-add-input-form';
 import { toast } from 'react-toastify';
@@ -17,6 +13,7 @@ export function Mp4AddInputForm({
   roomId: string;
   refreshState: () => Promise<void>;
 }) {
+  const { addMP4Input, getMP4Suggestions } = useActions();
   const [mp4Suggestions, setMp4Suggestions] = useState<MP4Suggestions>({
     mp4s: [],
   });

@@ -1,12 +1,15 @@
 import path from 'path';
 import fs from 'fs';
+import type { ShaderParamConfig, ShaderConfig } from '../types';
+
+export type { ShaderParamConfig, ShaderConfig };
 
 type ShaderParam = {
   name: string;
   type: string;
   minValue?: number;
   maxValue?: number;
-  defaultValue?: number | string; // number for 'number' type, string (hex) for 'color' type
+  defaultValue?: number | string;
 };
 
 type AvailableShader = {
@@ -21,19 +24,6 @@ type AvailableShader = {
 
 export type PublicShader = AvailableShader & {
   iconSvg: string;
-};
-
-export type ShaderParamConfig = {
-  paramName: string;
-  /** number for numeric params, string (e.g. hex) for color params */
-  paramValue: number | string;
-};
-
-export type ShaderConfig = {
-  shaderName: string;
-  shaderId: string;
-  enabled: boolean;
-  params: ShaderParamConfig[];
 };
 
 const AVAILABLE_SHADERS: AvailableShader[] = [

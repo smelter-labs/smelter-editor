@@ -6,11 +6,11 @@ import { TwitchChannelMonitor } from '../twitch/TwitchChannelMonitor';
 import type { TwitchStreamInfo } from '../twitch/TwitchApi';
 import { sleep } from '../utils';
 import type { GameState, SnakeEventShaderConfig, ActiveSnakeEffect, SnakeEventType } from '../game/types';
-import type { InputConfig, Layout } from '../app/store';
+import type { InputConfig } from '../app/store';
+import type { Layout, ShaderConfig, StreamMonitor, WhipMonitor } from '../types';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
 import { createDefaultGameInputState, DEFAULT_SNAKE_EVENT_SHADERS, buildUpdatedGameState, processGameEvents } from '../game/gameState';
 import { KickChannelMonitor } from '../kick/KickChannelMonitor';
-import type { ShaderConfig } from '../shaders/shaders';
 import { WhipInputMonitor } from '../whip/WhipInputMonitor';
 import type { RoomNameEntry } from './roomNames';
 
@@ -36,9 +36,9 @@ export type RoomInputState = {
 
 type TypeSpecificState =
   | { type: 'local-mp4'; mp4FilePath: string }
-  | { type: 'twitch-channel'; channelId: string; hlsUrl: string; monitor: TwitchChannelMonitor }
-  | { type: 'kick-channel'; channelId: string; hlsUrl: string; monitor: KickChannelMonitor }
-  | { type: 'whip'; whipUrl: string; monitor: WhipInputMonitor }
+  | { type: 'twitch-channel'; channelId: string; hlsUrl: string; monitor: StreamMonitor & { onUpdate(fn: (streamInfo: TwitchStreamInfo, isLive: boolean) => void): void } }
+  | { type: 'kick-channel'; channelId: string; hlsUrl: string; monitor: StreamMonitor & { onUpdate(fn: (streamInfo: any, isLive: boolean) => void): void } }
+  | { type: 'whip'; whipUrl: string; monitor: WhipMonitor }
   | { type: 'image'; imageId: string }
   | { type: 'text-input'; text: string; textAlign: 'left' | 'center' | 'right'; textColor: string; textMaxLines: number; textScrollSpeed: number; textScrollLoop: boolean; textScrollNudge: number; textFontSize: number }
   | { type: 'game'; gameState: GameState; snakeEventShaders?: SnakeEventShaderConfig; snake1Shaders?: ShaderConfig[]; snake2Shaders?: ShaderConfig[]; activeEffects: ActiveSnakeEffect[]; effectTimers: NodeJS.Timeout[] };

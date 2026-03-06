@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
-import type { Input } from '@/app/actions/actions';
+import type { Input } from '@/lib/types';
 import type { InputWrapper } from '../hooks/use-control-panel-state';
 import InputEntry from '@/components/control-panel/input-entry/input-entry';
 import { SortableItem } from '@/components/control-panel/sortable-list/sortable-item';

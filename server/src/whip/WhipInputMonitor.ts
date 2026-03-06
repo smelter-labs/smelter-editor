@@ -1,4 +1,6 @@
-export class WhipInputMonitor {
+import type { WhipMonitor } from '../types';
+
+export class WhipInputMonitor implements WhipMonitor {
   private username: string;
   private isStreamLive: boolean = true;
   private onUpdateFn?: () => void;

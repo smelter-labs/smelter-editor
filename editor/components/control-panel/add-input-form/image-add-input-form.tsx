@@ -1,9 +1,5 @@
-import {
-  addImageInput,
-  getPictureSuggestions,
-  Input,
-  PictureSuggestions,
-} from '@/app/actions/actions';
+import type { Input, PictureSuggestions } from '@/lib/types';
+import { useActions } from '../contexts/actions-context';
 import { useEffect, useState } from 'react';
 import { GenericAddInputForm } from './generic-add-input-form';
 import { toast } from 'react-toastify';
@@ -17,6 +13,7 @@ export function ImageAddInputForm({
   roomId: string;
   refreshState: () => Promise<void>;
 }) {
+  const { addImageInput, getPictureSuggestions } = useActions();
   const [pictureSuggestions, setPictureSuggestions] =
     useState<PictureSuggestions>({
       pictures: [],

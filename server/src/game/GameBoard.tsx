@@ -7,7 +7,7 @@ import {
 } from '@swmansion/smelter';
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { ShaderConfig, ShaderParamConfig } from '../shaders/shaders';
+import type { ShaderConfig, ShaderParamConfig } from '../types';
 import shadersController from '../shaders/shaders';
 import { config } from '../config';
 

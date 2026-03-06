@@ -3,6 +3,7 @@ import { routes } from './server/routes';
 import { TwitchChannelSuggestions } from './twitch/TwitchChannelMonitor';
 import { KickChannelSuggestions } from './kick/KickChannelMonitor';
 import { initDashboard, hijackConsole } from './dashboard';
+import './game/registerGameRenderer';
 
 hijackConsole();
 

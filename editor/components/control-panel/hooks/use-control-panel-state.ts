@@ -4,12 +4,8 @@ import type {
   RoomState,
   AvailableShader,
   Layout,
-} from '@/app/actions/actions';
-import {
-  getAvailableShaders,
-  updateRoom as updateRoomAction,
-  updateInput,
-} from '@/app/actions/actions';
+} from '@/lib/types';
+import { useActions } from '../contexts/actions-context';
 import { useStreamsSpinner } from '../whip-input/hooks/use-streams-spinner';
 import { loadUserName, saveUserName } from '../whip-input/utils/whip-storage';
 
@@ -20,6 +16,7 @@ export function useControlPanelState(
   roomState: RoomState,
   refreshState: () => Promise<void>,
 ) {
+  const { getAvailableShaders, updateRoom: updateRoomAction, updateInput } = useActions();
   const [userName, setUserName] = useState<string>(() => {
     const saved = loadUserName(roomId);
     if (saved) return saved;

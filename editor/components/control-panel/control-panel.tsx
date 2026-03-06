@@ -4,20 +4,10 @@ import { fadeIn } from '@/utils/animations';
 import { motion } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
-import type { RoomState, Input, AvailableShader } from '@/app/actions/actions';
-import {
-  setPendingWhipInputs as setPendingWhipInputsAction,
-  updateRoom as updateRoomAction,
-  updateInput as updateInputAction,
-  addTwitchInput,
-  addKickInput,
-  addMP4Input,
-  addGameInput,
-  addImageInput,
-  addTextInput,
-  removeInput,
-  type PendingWhipInputData,
-} from '@/app/actions/actions';
+import type { RoomState, Input, AvailableShader, PendingWhipInputData } from '@/lib/types';
+import { useActions } from './contexts/actions-context';
+import { ActionsProvider } from './contexts/actions-context';
+import { defaultActions } from './contexts/default-actions';
 import { useRecordingControls } from './hooks/use-recording-controls';
 import LayoutSelector, { type Layout } from '@/components/layout-selector';
 import {
@@ -57,7 +47,6 @@ import {
   type RoomConfig,
   type RoomConfigInput,
 } from '@/lib/room-config';
-import { saveRemoteConfig } from '@/app/actions/actions';
 import { SaveConfigModal, LoadConfigModal } from './components/ConfigModals';
 import { PendingWhipInputs } from './components/PendingWhipInputs';
 import { TransitionSettings } from './components/TransitionSettings';
@@ -114,7 +103,15 @@ export type ControlPanelProps = {
 
 export type { InputWrapper } from './hooks/use-control-panel-state';
 
-export default function ControlPanel({
+export default function ControlPanel(props: ControlPanelProps) {
+  return (
+    <ActionsProvider actions={defaultActions}>
+      <ControlPanelWithActions {...props} />
+    </ActionsProvider>
+  );
+}
+
+function ControlPanelWithActions({
   refreshState,
   roomId,
   roomState,
@@ -237,7 +234,7 @@ export default function ControlPanel({
       ? async () => {
           const angle = await rotateBy90(pcRef, streamRef);
           const currentInput = inputs.find((i) => i.inputId === guestInputId);
-          await updateInputAction(roomId, guestInputId, {
+          await defaultActions.updateInput(roomId, guestInputId, {
             orientation: angle % 180 !== 0 ? 'vertical' : 'horizontal',
             volume: currentInput?.volume ?? 1,
             shaders: currentInput?.shaders ?? [],
@@ -287,7 +284,7 @@ export default function ControlPanel({
           | 'vertical',
         position: p.position,
       }));
-      await setPendingWhipInputsAction(roomId, serverData);
+      await defaultActions.setPendingWhipInputs(roomId, serverData);
       await handleRefreshState();
     },
     [roomId, handleRefreshState],
@@ -396,6 +393,10 @@ function ControlPanelInner({
   } = useControlPanelContext();
   const { activeCameraInputId, activeScreenshareInputId } =
     useWhipConnectionsContext();
+  const actions = useActions();
+  const updateRoomAction = actions.updateRoom;
+  const updateInputAction = actions.updateInput;
+  const saveRemoteConfig = actions.saveRemoteConfig;
 
   useControlPanelEvents({
     inputWrappers,
@@ -642,6 +643,17 @@ function SettingsBar({
   setPendingWhipInputs: (inputs: PendingWhipInput[]) => void | Promise<void>;
 }) {
   const { roomId, refreshState: handleRefreshState } = useControlPanelContext();
+  const actions = useActions();
+  const updateRoomAction = actions.updateRoom;
+  const updateInputAction = actions.updateInput;
+  const saveRemoteConfig = actions.saveRemoteConfig;
+  const addTwitchInput = actions.addTwitchInput;
+  const addKickInput = actions.addKickInput;
+  const addMP4Input = actions.addMP4Input;
+  const addImageInput = actions.addImageInput;
+  const addTextInput = actions.addTextInput;
+  const addGameInput = actions.addGameInput;
+  const removeInput = actions.removeInput;
   const [openModal, setOpenModal] = useState<ModalId | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);

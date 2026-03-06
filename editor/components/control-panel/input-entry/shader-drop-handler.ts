@@ -1,4 +1,4 @@
-import { AvailableShader, Input } from '@/app/actions/actions';
+import type { AvailableShader, Input } from '@/lib/types';
 
 interface HandleShaderDropParams {
   e: React.DragEvent<HTMLDivElement>;

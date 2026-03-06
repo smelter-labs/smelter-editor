@@ -1,5 +1,5 @@
-import type { Input } from '@/app/actions/actions';
-import { addCameraInput } from '@/app/actions/actions';
+import type { Input } from '@/lib/types';
+import { useActions } from '../contexts/actions-context';
 import { GenericAddInputForm } from './generic-add-input-form';
 import { stopCameraAndConnection } from '../whip-input/utils/preview';
 import {
@@ -38,6 +38,7 @@ export function WHIPAddInputForm(props: {
     setIsWhipActive,
   } = props;
 
+  const { addCameraInput } = useActions();
   const isMobileDevice = useIsMobileDevice();
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
 

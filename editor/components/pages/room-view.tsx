@@ -1,4 +1,4 @@
-import { RoomState } from '@/app/actions/actions';
+import type { RoomState } from '@/lib/types';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import AutoplayModal from '@/components/ui/autoplay-modal';
 import { motion } from 'framer-motion';

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Input } from '@/app/actions/actions';
+import type { Input } from '@/lib/types';
 
 export function useStreamsSpinner(initialInputs: Input[]) {
   const [showStreamsSpinner, setShowStreamsSpinner] = useState(
