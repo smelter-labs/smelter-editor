@@ -145,6 +145,14 @@ export function useControlPanelEvents({
   });
 
   const emitMacroStepComplete = (requestId?: string, error?: unknown) => {
+    emitMacroStepCompleteWithDetail(requestId, error);
+  };
+
+  const emitMacroStepCompleteWithDetail = (
+    requestId?: string,
+    error?: unknown,
+    detail?: Record<string, unknown>,
+  ) => {
     if (!requestId) return;
     window.dispatchEvent(
       new CustomEvent('smelter:voice:macro-step-complete', {
@@ -156,6 +164,7 @@ export function useControlPanelEvents({
               : typeof error === 'string'
                 ? error
                 : undefined,
+          ...detail,
         },
       }),
     );
@@ -464,12 +473,14 @@ export function useControlPanelEvents({
   useEffect(() => {
     const onAddInput = async (
       e: CustomEvent<{
+        requestId?: string;
         inputType: InputType;
         mp4FileName?: string;
         imageFileName?: string;
       }>,
     ) => {
       let addedInputId: string | undefined;
+      const requestId = e.detail?.requestId;
       try {
         const { inputType, mp4FileName, imageFileName } = e.detail;
         switch (inputType) {
@@ -567,7 +578,9 @@ export function useControlPanelEvents({
           }
         }
       } catch (err) {
+        emitMacroStepComplete(requestId, err);
         console.error('Voice: failed to add input', err);
+        return;
       }
 
       try {
@@ -582,7 +595,11 @@ export function useControlPanelEvents({
         }
 
         await handleRefreshState();
+        emitMacroStepCompleteWithDetail(requestId, undefined, {
+          inputId: addedInputId,
+        });
       } catch (err) {
+        emitMacroStepComplete(requestId, err);
         console.error('Voice: failed to apply default orientation', err);
       }
     };
@@ -617,10 +634,11 @@ export function useControlPanelEvents({
         inputIndex: number | null;
         shader: string;
         targetColor?: string;
+        shaderParams?: Record<string, number | string>;
       }>,
     ) => {
       try {
-        const { inputIndex, shader: shaderId, targetColor } = e.detail;
+        const { inputIndex, shader: shaderId, targetColor, shaderParams } = e.detail;
         const currentInputs = inputs || [];
         const visibleInputs = currentInputs.filter((i) => !i.hidden);
 
@@ -656,6 +674,13 @@ export function useControlPanelEvents({
           shaderId: shaderDef.id,
           enabled: true,
           params: (shaderDef.params || []).map((p) => {
+            if (shaderParams && p.name in shaderParams) {
+              const override = shaderParams[p.name];
+              if (p.type === 'color' && typeof override === 'string') {
+                return { paramName: p.name, paramValue: hexToPackedInt(override) };
+              }
+              return { paramName: p.name, paramValue: typeof override === 'number' ? override : 0 };
+            }
             if (p.type === 'color' && typeof p.defaultValue === 'string') {
               const colorValue =
                 shaderId === 'remove-color' &&
@@ -1064,13 +1089,18 @@ export function useControlPanelEvents({
   }, [roomId, handleRefreshState, inputsRef, selectedInputId]);
 
   useEffect(() => {
-    const onSetTextMaxLines = async (e: CustomEvent<{ maxLines: number }>) => {
+    const onSetTextMaxLines = async (
+      e: CustomEvent<{ maxLines: number; inputIndex?: number }>,
+    ) => {
       try {
-        const { maxLines } = e.detail;
-        const currentInputs = inputs || [];
+        const { maxLines, inputIndex } = e.detail;
+        const currentInputs = inputsRef.current || [];
+        const visibleInputs = currentInputs.filter((i) => !i.hidden);
 
         let input;
-        if (selectedInputId) {
+        if (inputIndex !== undefined) {
+          input = visibleInputs[inputIndex - 1];
+        } else if (selectedInputId) {
           input = currentInputs.find((i) => i.inputId === selectedInputId);
         }
 
@@ -1103,7 +1133,7 @@ export function useControlPanelEvents({
         onSetTextMaxLines as unknown as EventListener,
       );
     };
-  }, [roomId, handleRefreshState, inputs, selectedInputId]);
+  }, [roomId, handleRefreshState, inputsRef, selectedInputId]);
 
   useEffect(() => {
     const onSetTextFontSize = async (
@@ -1468,12 +1498,15 @@ export function useControlPanelEvents({
       }
     };
 
+    let recDownloadTimer: ReturnType<typeof setTimeout> | null = null;
+
     const onStopRecording = async () => {
       try {
         const res = await stopRecording(roomId);
         await handleRefreshState();
         if (res.status === 'stopped' && res.fileName) {
-          setTimeout(() => {
+          recDownloadTimer = setTimeout(() => {
+            recDownloadTimer = null;
             if (typeof window === 'undefined') return;
             const link = document.createElement('a');
             link.href = `/api/recordings/${encodeURIComponent(res.fileName!)}`;
@@ -1498,6 +1531,7 @@ export function useControlPanelEvents({
     );
 
     return () => {
+      if (recDownloadTimer) clearTimeout(recDownloadTimer);
       window.removeEventListener(
         'smelter:voice:start-recording',
         onStartRecording as unknown as EventListener,
@@ -1516,10 +1550,11 @@ export function useControlPanelEvents({
       try {
         const { text, inputIndex } = e.detail;
         const currentInputs = inputsRef.current || [];
+        const visibleInputs = currentInputs.filter((i) => !i.hidden);
 
         let input;
         if (inputIndex !== undefined) {
-          input = currentInputs[inputIndex - 1];
+          input = visibleInputs[inputIndex - 1];
         } else if (selectedInputId) {
           input = currentInputs.find(
             (i: Input) => i.inputId === selectedInputId,

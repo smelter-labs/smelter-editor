@@ -10,6 +10,24 @@ export type PanelId =
   | 'block-properties';
 
 export type MutableLayout = LayoutItem[];
+export type DashboardBreakpoint = 'lg' | 'md' | 'sm' | 'xs' | 'xxs';
+export type DashboardLayouts = Record<DashboardBreakpoint, MutableLayout>;
+
+export const DASHBOARD_BREAKPOINTS: DashboardBreakpoint[] = [
+  'lg',
+  'md',
+  'sm',
+  'xs',
+  'xxs',
+];
+
+export const DASHBOARD_COLS: Record<DashboardBreakpoint, number> = {
+  lg: 24,
+  md: 20,
+  sm: 12,
+  xs: 8,
+  xxs: 4,
+};
 
 export interface PanelDefinition {
   id: PanelId;
@@ -158,26 +176,132 @@ function normalizeLayout(layout: MutableLayout): MutableLayout {
   return layout.map(normalizeLayoutItem);
 }
 
-export function loadLayout(): MutableLayout | null {
+function scaleLayoutToCols(layout: MutableLayout, cols: number): MutableLayout {
+  const baseCols = DASHBOARD_COLS.lg;
+
+  return normalizeLayout(
+    layout.map((item) => {
+      const scaledMinW = Math.min(
+        cols,
+        Math.max(1, Math.round(((item.minW ?? 1) / baseCols) * cols)),
+      );
+      const scaledW = Math.min(
+        cols,
+        Math.max(
+          scaledMinW,
+          Math.round((item.w / baseCols) * cols) || scaledMinW,
+        ),
+      );
+      const scaledX = Math.min(
+        Math.max(0, Math.round((item.x / baseCols) * cols)),
+        Math.max(0, cols - scaledW),
+      );
+
+      return {
+        ...item,
+        x: scaledX,
+        w: scaledW,
+        minW: scaledMinW,
+        maxW: item.maxW ? Math.min(cols, item.maxW) : undefined,
+      };
+    }),
+  );
+}
+
+export function createResponsiveLayoutsFromLg(
+  lgLayout: MutableLayout,
+): DashboardLayouts {
+  return {
+    lg: normalizeLayout(lgLayout),
+    md: scaleLayoutToCols(lgLayout, DASHBOARD_COLS.md),
+    sm: scaleLayoutToCols(SMALL_LAYOUT, DASHBOARD_COLS.sm),
+    xs: scaleLayoutToCols(SMALL_LAYOUT, DASHBOARD_COLS.xs),
+    xxs: scaleLayoutToCols(SMALL_LAYOUT, DASHBOARD_COLS.xxs),
+  };
+}
+
+export const DEFAULT_RESPONSIVE_LAYOUTS: DashboardLayouts =
+  createResponsiveLayoutsFromLg(DEFAULT_LAYOUT);
+
+function isLayoutArray(layout: unknown): layout is MutableLayout {
+  return (
+    Array.isArray(layout) &&
+    layout.length > 0 &&
+    layout.every(
+      (item) => item && typeof item === 'object' && 'i' in item,
+    )
+  );
+}
+
+function ensureAllPanels(layout: MutableLayout, cols: number): MutableLayout {
+  const ids = new Set(layout.map((item) => item.i));
+  const maxY = layout.reduce((max, item) => Math.max(max, item.y + item.h), 0);
+
+  for (const panelId of ALL_PANEL_IDS) {
+    if (!ids.has(panelId)) {
+      const def = PANEL_DEFINITIONS[panelId];
+      layout.push({
+        i: panelId,
+        x: 0,
+        y: maxY,
+        w: Math.min(cols, def.minW + 4),
+        h: def.minH + 2,
+        minW: Math.min(cols, def.minW),
+        minH: def.minH,
+      });
+    }
+  }
+
+  return layout.filter((item) =>
+    ALL_PANEL_IDS.includes(item.i as PanelId),
+  );
+}
+
+export function loadLayouts(): DashboardLayouts | null {
   if (typeof window === 'undefined') return null;
   try {
     const stored = localStorage.getItem(STORAGE_KEY);
     if (!stored) return null;
-    const parsed = JSON.parse(stored) as MutableLayout;
-    if (!Array.isArray(parsed) || parsed.length === 0) return null;
-    const ids = new Set(parsed.map((item) => item.i));
-    const allPresent = ALL_PANEL_IDS.every((id) => ids.has(id));
-    if (!allPresent) return null;
-    return normalizeLayout(parsed);
+    const parsed = JSON.parse(stored) as DashboardLayouts | MutableLayout;
+
+    if (Array.isArray(parsed) && isLayoutArray(parsed)) {
+      const patched = ensureAllPanels(normalizeLayout(parsed), DASHBOARD_COLS.lg);
+      return createResponsiveLayoutsFromLg(patched);
+    }
+
+    if (!parsed || typeof parsed !== 'object') {
+      return null;
+    }
+
+    const layouts = {} as DashboardLayouts;
+    let anyValid = false;
+    for (const breakpoint of DASHBOARD_BREAKPOINTS) {
+      const layout = parsed[breakpoint as keyof typeof parsed];
+      if (!isLayoutArray(layout)) {
+        return null;
+      }
+      layouts[breakpoint] = ensureAllPanels(
+        normalizeLayout(layout),
+        DASHBOARD_COLS[breakpoint],
+      );
+      anyValid = true;
+    }
+
+    return anyValid ? layouts : null;
   } catch {
     return null;
   }
 }
 
-export function saveLayout(layout: MutableLayout): void {
+export function saveLayouts(layouts: DashboardLayouts): void {
   if (typeof window === 'undefined') return;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalizeLayout(layout)));
+    const normalized = DASHBOARD_BREAKPOINTS.reduce((acc, breakpoint) => {
+      acc[breakpoint] = normalizeLayout(layouts[breakpoint]);
+      return acc;
+    }, {} as DashboardLayouts);
+
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(normalized));
   } catch {
     // localStorage full or unavailable
   }

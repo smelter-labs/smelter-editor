@@ -13,6 +13,7 @@ import {
   getPictureSuggestions,
 } from '@/app/actions/actions';
 import { useVoicePanelSizeSetting, useVoicePanelOpacitySetting } from '@/lib/voice/macroSettings';
+import { shouldIgnoreGlobalShortcut } from '@/lib/keyboard';
 
 type MacroStepInfo = {
   step: MacroStep;
@@ -283,6 +284,9 @@ export function SpeechToTextWithCommands() {
 
   useEffect(() => {
     const handleKeyboard = (e: globalThis.KeyboardEvent) => {
+      if (shouldIgnoreGlobalShortcut(e.target)) {
+        return;
+      }
       if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
         e.preventDefault();
         setIsOpen((prev) => {

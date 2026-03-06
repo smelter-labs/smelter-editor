@@ -25,14 +25,29 @@ export function findMatchingMacro(transcript: string): MacroDefinition | null {
 
   let bestMatch: MacroDefinition | null = null;
   let bestSimilarity = 0;
+  const transcriptWords = normalized.split(/\s+/);
 
   for (const macro of macrosConfig.macros) {
     for (const trigger of macro.triggers) {
       const normalizedTrigger = normalize(trigger);
-      const similarity = levenshteinSimilarity(normalized, normalizedTrigger);
-      if (similarity > bestSimilarity) {
-        bestSimilarity = similarity;
-        bestMatch = macro;
+      const triggerWords = normalizedTrigger.split(/\s+/);
+      const windowSize = triggerWords.length;
+
+      for (let i = 0; i <= transcriptWords.length - windowSize; i++) {
+        const segment = transcriptWords.slice(i, i + windowSize).join(' ');
+        const similarity = levenshteinSimilarity(segment, normalizedTrigger);
+        if (similarity > bestSimilarity) {
+          bestSimilarity = similarity;
+          bestMatch = macro;
+        }
+      }
+
+      if (transcriptWords.length < windowSize) {
+        const similarity = levenshteinSimilarity(normalized, normalizedTrigger);
+        if (similarity > bestSimilarity) {
+          bestSimilarity = similarity;
+          bestMatch = macro;
+        }
       }
     }
   }
@@ -99,12 +114,25 @@ function createMacroRequestId(): string {
   return `macro-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
+type MacroStepCompletionDetail = {
+  requestId?: string;
+  error?: string;
+  inputId?: string;
+};
+
 async function dispatchAndWaitForCompletion(
   dispatch: (requestId: string) => void,
   timeoutMs = 30_000,
 ): Promise<void> {
+  await dispatchAndWaitForCompletionDetail(dispatch, timeoutMs);
+}
+
+async function dispatchAndWaitForCompletionDetail(
+  dispatch: (requestId: string) => void,
+  timeoutMs = 30_000,
+): Promise<MacroStepCompletionDetail> {
   const requestId = createMacroRequestId();
-  await new Promise<void>((resolve, reject) => {
+  return new Promise<MacroStepCompletionDetail>((resolve, reject) => {
     const timeout = setTimeout(() => {
       window.removeEventListener(
         'smelter:voice:macro-step-complete',
@@ -113,9 +141,7 @@ async function dispatchAndWaitForCompletion(
       reject(new Error(`Macro step timed out for requestId=${requestId}`));
     }, timeoutMs);
 
-    const onComplete = (
-      e: CustomEvent<{ requestId?: string; error?: string }>,
-    ) => {
+    const onComplete = (e: CustomEvent<MacroStepCompletionDetail>) => {
       if (e.detail?.requestId !== requestId) {
         return;
       }
@@ -128,7 +154,7 @@ async function dispatchAndWaitForCompletion(
         reject(new Error(e.detail.error));
         return;
       }
-      resolve();
+      resolve(e.detail ?? {});
     };
 
     window.addEventListener(
@@ -154,17 +180,29 @@ async function dispatchMacroStep(step: MacroStep): Promise<void> {
 
   switch (action) {
     case 'ADD_INPUT':
-      window.dispatchEvent(
-        new CustomEvent('smelter:voice:add-input', {
-          detail: {
-            inputType: params?.inputType,
-            text: params?.text,
-            textAlign: params?.textAlign,
-            mp4FileName: params?.mp4Name,
-            imageFileName: params?.imageName,
-          },
-        }),
-      );
+      {
+        const detail = await dispatchAndWaitForCompletionDetail((requestId) =>
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:add-input', {
+              detail: {
+                requestId,
+                inputType: params?.inputType,
+                text: params?.text,
+                textAlign: params?.textAlign,
+                mp4FileName: params?.mp4Name,
+                imageFileName: params?.imageName,
+              },
+            }),
+          ),
+        );
+        if (detail.inputId) {
+          window.dispatchEvent(
+            new CustomEvent('smelter:inputs:select', {
+              detail: { inputId: detail.inputId },
+            }),
+          );
+        }
+      }
       break;
 
     case 'REMOVE_INPUT':
@@ -219,6 +257,7 @@ async function dispatchMacroStep(step: MacroStep): Promise<void> {
             inputIndex: params?.inputIndex,
             shader: params?.shader,
             targetColor: params?.targetColor,
+            shaderParams: params?.shaderParams,
           },
         }),
       );

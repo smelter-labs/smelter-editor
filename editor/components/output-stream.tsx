@@ -65,6 +65,12 @@ export default function OutputStream({
   useEffect(() => {
     const vid = videoRef.current;
     if (!vid) return;
+    vid.muted = muted;
+  }, [muted, videoRef]);
+
+  useEffect(() => {
+    const vid = videoRef.current;
+    if (!vid) return;
 
     const onTimeUpdate = () => setCurrent(vid.currentTime);
     const onLoadedMetadata = () => {
@@ -267,7 +273,7 @@ export default function OutputStream({
         autoPlay
         autoFocus
         playsInline
-        muted
+        muted={muted}
         controls={isMobile}
         style={{ width: '100%', height: '100%', background: 'black' }}
         tabIndex={-1}

@@ -13,12 +13,15 @@ import LayoutToolbar from './layout-toolbar';
 import {
   type PanelId,
   type MutableLayout,
-  ALL_PANEL_IDS,
-  DEFAULT_LAYOUT,
-  SMALL_LAYOUT,
+  type DashboardLayouts,
   PANEL_DEFINITIONS,
-  loadLayout,
-  saveLayout,
+  ALL_PANEL_IDS,
+  DASHBOARD_BREAKPOINTS,
+  DASHBOARD_COLS,
+  DEFAULT_RESPONSIVE_LAYOUTS,
+  createResponsiveLayoutsFromLg,
+  loadLayouts,
+  saveLayouts,
   clearLayout,
   loadVisiblePanels,
   saveVisiblePanels,
@@ -30,7 +33,7 @@ interface DashboardLayoutProps {
 }
 
 const BREAKPOINTS = { lg: 1200, md: 996, sm: 768, xs: 480, xxs: 0 } as const;
-const COLS = { lg: 24, md: 20, sm: 12, xs: 8, xxs: 4 } as const;
+const COLS = DASHBOARD_COLS;
 const ROW_HEIGHT = 30;
 
 function toMutable(layout: Layout): MutableLayout {
@@ -61,6 +64,13 @@ function cloneLayout(layout: MutableLayout): MutableLayout {
   }));
 }
 
+function cloneResponsiveLayouts(layouts: DashboardLayouts): DashboardLayouts {
+  return DASHBOARD_BREAKPOINTS.reduce((acc, breakpoint) => {
+    acc[breakpoint] = cloneLayout(layouts[breakpoint]);
+    return acc;
+  }, {} as DashboardLayouts);
+}
+
 function filterLayout(
   layout: MutableLayout,
   visible: Set<PanelId>,
@@ -73,8 +83,8 @@ export default function DashboardLayout({ panels }: DashboardLayoutProps) {
     initialWidth: 1280,
   });
 
-  const [currentLayout, setCurrentLayout] = useState<MutableLayout>(() => {
-    return loadLayout() ?? cloneLayout(DEFAULT_LAYOUT);
+  const [currentLayouts, setCurrentLayouts] = useState<DashboardLayouts>(() => {
+    return loadLayouts() ?? cloneResponsiveLayouts(DEFAULT_RESPONSIVE_LAYOUTS);
   });
 
   const [visiblePanels, setVisiblePanels] = useState<Set<PanelId>>(() => {
@@ -83,22 +93,34 @@ export default function DashboardLayout({ panels }: DashboardLayoutProps) {
 
   const [isEditMode, setIsEditMode] = useState(false);
 
-  const handleLayoutChange = useCallback(
-    (_layout: Layout, allLayouts: ResponsiveLayouts) => {
-      const lgLayout = allLayouts.lg;
-      if (lgLayout) {
-        const mutable = toMutable(lgLayout);
-        setCurrentLayout((prev) => {
-          const hiddenItems = prev.filter(
-            (item) => !lgLayout.some((l) => l.i === item.i),
-          );
-          const merged = [...mutable, ...hiddenItems];
-          saveLayout(merged);
-          return merged;
-        });
-      }
+  const mergeHiddenItems = useCallback(
+    (layout: Layout, previousLayout: MutableLayout): MutableLayout => {
+      const mutable = toMutable(layout);
+      const hiddenItems = previousLayout.filter(
+        (item) => !layout.some((nextItem) => nextItem.i === item.i),
+      );
+      return [...mutable, ...hiddenItems];
     },
     [],
+  );
+
+  const handleLayoutChange = useCallback(
+    (_layout: Layout, allLayouts: ResponsiveLayouts) => {
+      setCurrentLayouts((prev) => {
+        const next = { ...prev } as DashboardLayouts;
+
+        for (const breakpoint of DASHBOARD_BREAKPOINTS) {
+          const nextLayout = allLayouts[breakpoint];
+          if (nextLayout) {
+            next[breakpoint] = mergeHiddenItems(nextLayout, prev[breakpoint]);
+          }
+        }
+
+        saveLayouts(next);
+        return next;
+      });
+    },
+    [mergeHiddenItems],
   );
 
   const handleToggleEditMode = useCallback(() => {
@@ -106,14 +128,14 @@ export default function DashboardLayout({ panels }: DashboardLayoutProps) {
   }, []);
 
   const handleApplyPreset = useCallback((presetLayout: MutableLayout) => {
-    const copy = cloneLayout(presetLayout);
-    setCurrentLayout(copy);
-    saveLayout(copy);
+    const nextLayouts = createResponsiveLayoutsFromLg(cloneLayout(presetLayout));
+    setCurrentLayouts(nextLayouts);
+    saveLayouts(nextLayouts);
   }, []);
 
   const handleReset = useCallback(() => {
     clearLayout();
-    setCurrentLayout(cloneLayout(DEFAULT_LAYOUT));
+    setCurrentLayouts(cloneResponsiveLayouts(DEFAULT_RESPONSIVE_LAYOUTS));
     const allVisible = new Set(ALL_PANEL_IDS);
     setVisiblePanels(allVisible);
     saveVisiblePanels(allVisible);
@@ -128,36 +150,42 @@ export default function DashboardLayout({ panels }: DashboardLayoutProps) {
           next.delete(panelId);
         } else {
           next.add(panelId);
-          const alreadyInLayout = currentLayout.some(
-            (item) => item.i === panelId,
-          );
-          if (!alreadyInLayout) {
-            const def = PANEL_DEFINITIONS[panelId];
-            const maxY = currentLayout.reduce(
-              (max, item) => Math.max(max, item.y + item.h),
-              0,
+          const def = PANEL_DEFINITIONS[panelId];
+          setCurrentLayouts((prevLayouts) => {
+            const alreadyInLayout = DASHBOARD_BREAKPOINTS.some((bp) =>
+              prevLayouts[bp].some((item) => item.i === panelId),
             );
-            const newItem = {
-              i: panelId,
-              x: 0,
-              y: maxY,
-              w: def.minW + 4,
-              h: def.minH + 2,
-              minW: def.minW,
-              minH: def.minH,
-            };
-            setCurrentLayout((prevLayout) => {
-              const updated = [...prevLayout, newItem];
-              saveLayout(updated);
-              return updated;
-            });
-          }
+            if (alreadyInLayout) return prevLayouts;
+
+            const updated = { ...prevLayouts } as DashboardLayouts;
+            for (const breakpoint of DASHBOARD_BREAKPOINTS) {
+              const breakpointLayout = prevLayouts[breakpoint];
+              const maxY = breakpointLayout.reduce(
+                (max, item) => Math.max(max, item.y + item.h),
+                0,
+              );
+              updated[breakpoint] = [
+                ...breakpointLayout,
+                {
+                  i: panelId,
+                  x: 0,
+                  y: maxY,
+                  w: Math.min(COLS[breakpoint], def.minW + 4),
+                  h: def.minH + 2,
+                  minW: Math.min(COLS[breakpoint], def.minW),
+                  minH: def.minH,
+                },
+              ];
+            }
+            saveLayouts(updated);
+            return updated;
+          });
         }
         saveVisiblePanels(next);
         return next;
       });
     },
-    [currentLayout],
+    [],
   );
 
   const visibleIds = useMemo(
@@ -166,13 +194,15 @@ export default function DashboardLayout({ panels }: DashboardLayoutProps) {
   );
 
   const layouts = useMemo<ResponsiveLayouts>(
-    () => ({
-      lg: filterLayout(cloneLayout(currentLayout), visiblePanels),
-      sm: filterLayout(cloneLayout(SMALL_LAYOUT), visiblePanels),
-      xs: filterLayout(cloneLayout(SMALL_LAYOUT), visiblePanels),
-      xxs: filterLayout(cloneLayout(SMALL_LAYOUT), visiblePanels),
-    }),
-    [currentLayout, visiblePanels],
+    () =>
+      DASHBOARD_BREAKPOINTS.reduce((acc, breakpoint) => {
+        acc[breakpoint] = filterLayout(
+          cloneLayout(currentLayouts[breakpoint]),
+          visiblePanels,
+        );
+        return acc;
+      }, {} as ResponsiveLayouts),
+    [currentLayouts, visiblePanels],
   );
 
   return (

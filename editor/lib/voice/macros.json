@@ -148,21 +148,27 @@
         {
           "action": "ADD_SHADER",
           "params": {
-            "inputIndex": 2,
             "shader": "remove-color",
-            "targetColor": "#40bb58"
+            "targetColor": "#40bb58",
+            "shaderParams": { "tolerance": 0.31 }
           },
           "delayAfterMs": 1500
         },
         {
           "action": "ADD_SHADER",
           "params": {
-            "inputIndex": 2,
-            "shader": "sw-hologram"
+            "shader": "sw-hologram",
+            "shaderParams": {
+              "tint_r": 0.15, "tint_g": 0.44, "tint_b": 1.0,
+              "opacity": 0.79, "scanline_speed": 8.5,
+              "jitter_x_px": 3.4, "glow_intensity": 0.19,
+              "edge_glow_width": 0.09, "brightness": 3.47,
+              "bloom_radius": 31.38
+            }
           },
           "delayAfterMs": 1500
         },
-                {
+        {
           "action": "ADD_INPUT",
           "params": {
             "inputType": "text",
@@ -173,7 +179,6 @@
         {
           "action": "SET_TEXT_FONT_SIZE",
           "params": {
-            "inputIndex": 3,
             "fontSize": 40
           },
           "delayAfterMs": 1500
@@ -181,7 +186,6 @@
         {
           "action": "SET_TEXT_COLOR",
           "params": {
-            "inputIndex": 3,
             "color": "#ffff00"
           },
           "delayAfterMs": 1500
@@ -189,7 +193,6 @@
         {
           "action": "SET_TEXT_SCROLL_SPEED",
           "params": {
-            "inputIndex": 3,
             "scrollSpeed": 80
           },
           "delayAfterMs": 1500
@@ -197,8 +200,8 @@
         {
           "action": "ADD_SHADER",
           "params": {
-            "inputIndex": 3,
-            "shader": "remove-color"
+            "shader": "remove-color",
+            "shaderParams": { "tolerance": 0.31 }
           },
           "delayAfterMs": 1500
         },
@@ -212,7 +215,6 @@
         {
           "action": "ADD_SHADER",
           "params": {
-            "inputIndex": 3,
             "shader": "perspective"
           },
           "delayAfterMs": 1500
@@ -220,13 +222,14 @@
         {
           "action": "ADD_SHADER",
           "params": {
-            "inputIndex": 3,
-            "shader": "alpha-stroke"
+            "shader": "alpha-stroke",
+            "shaderParams": {
+              "stroke_width_px": 39, "softness_px": 11.5,
+              "opacity": 0.4, "stroke_color": "#E63900"
+            }
           },
           "delayAfterMs": 1500
         }
- 
-
       ]
     },
     {
@@ -281,17 +284,23 @@
         {
           "action": "ADD_SHADER",
           "params": {
-            "inputIndex": 2,
             "shader": "remove-color",
-            "targetColor": "#40bb58"
+            "targetColor": "#40bb58",
+            "shaderParams": { "tolerance": 0.31 }
           },
           "delayAfterMs": 1500
         },
         {
           "action": "ADD_SHADER",
           "params": {
-            "inputIndex": 2,
-            "shader": "sw-hologram"
+            "shader": "sw-hologram",
+            "shaderParams": {
+              "tint_r": 0.15, "tint_g": 0.44, "tint_b": 1.0,
+              "opacity": 0.79, "scanline_speed": 8.5,
+              "jitter_x_px": 3.4, "glow_intensity": 0.19,
+              "edge_glow_width": 0.09, "brightness": 3.47,
+              "bloom_radius": 31.38
+            }
           },
           "delayAfterMs": 0
         }
@@ -322,7 +331,6 @@
         {
           "action": "SET_TEXT_FONT_SIZE",
           "params": {
-            "inputIndex": 3,
             "fontSize": 40
           },
           "delayAfterMs": 1000
@@ -330,7 +338,6 @@
         {
           "action": "SET_TEXT_COLOR",
           "params": {
-            "inputIndex": 3,
             "color": "#ffff00"
           },
           "delayAfterMs": 1000
@@ -338,7 +345,6 @@
         {
           "action": "SET_TEXT_SCROLL_SPEED",
           "params": {
-            "inputIndex": 3,
             "scrollSpeed": 40
           },
           "delayAfterMs": 1000
@@ -346,15 +352,14 @@
         {
           "action": "ADD_SHADER",
           "params": {
-            "inputIndex": 3,
-            "shader": "remove-color"
+            "shader": "remove-color",
+            "shaderParams": { "tolerance": 0.31 }
           },
           "delayAfterMs": 500
         },
         {
           "action": "ADD_SHADER",
           "params": {
-            "inputIndex": 3,
             "shader": "perspective"
           },
           "delayAfterMs": 500
@@ -362,8 +367,11 @@
         {
           "action": "ADD_SHADER",
           "params": {
-            "inputIndex": 3,
-            "shader": "alpha-stroke"
+            "shader": "alpha-stroke",
+            "shaderParams": {
+              "stroke_width_px": 39, "softness_px": 11.5,
+              "opacity": 0.4, "stroke_color": "#E63900"
+            }
           },
           "delayAfterMs": 500
         }
