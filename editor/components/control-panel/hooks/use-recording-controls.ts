@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { startRecording, stopRecording } from '@/app/actions/actions';
+import { useActions } from '../contexts/actions-context';
 
 const DOWNLOAD_DELAY_MS = 1500;
 
@@ -30,6 +30,7 @@ export function useRecordingControls(
   serverIsRecording: boolean,
   refreshState: () => Promise<void>,
 ): RecordingControls {
+  const { startRecording, stopRecording } = useActions();
   const [isTogglingRecording, setIsTogglingRecording] = useState(false);
   const [isWaitingForDownload, setIsWaitingForDownload] = useState(false);
   const [optimisticRecording, setOptimisticRecording] = useState<

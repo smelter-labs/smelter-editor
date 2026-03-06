@@ -1,4 +1,4 @@
-import { Input } from '@/app/actions/actions';
+import type { Input } from '@/lib/types';
 
 export function hasEnabledShader(input: Input): boolean {
   if (!input.shaders) return false;

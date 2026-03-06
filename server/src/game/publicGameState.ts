@@ -1,4 +1,4 @@
-import type { ShaderConfig } from '../shaders/shaders';
+import type { ShaderConfig } from '../types';
 import type { SnakeEventShaderConfig, GameState } from './types';
 
 export type GameInputState = {

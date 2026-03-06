@@ -1,17 +1,9 @@
 import { fadeIn2 } from '@/utils/animations';
 import { motion } from 'framer-motion';
 import { Grid3X3, Layers, LayoutGrid, LucideIcon, Square } from 'lucide-react';
+import type { Layout } from '@/lib/types';
 
-export type Layout =
-  | 'grid'
-  | 'primary-on-left'
-  | 'primary-on-top'
-  | 'picture-in-picture'
-  | 'wrapped'
-  | 'wrapped-static'
-  | 'transition'
-  | 'picture-on-picture'
-  | 'softu-tv';
+export type { Layout };
 
 type LayoutConfig = {
   id: Layout;

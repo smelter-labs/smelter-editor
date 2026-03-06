@@ -1,4 +1,5 @@
-import { addTextInput, Input } from '@/app/actions/actions';
+import type { Input } from '@/lib/types';
+import { useActions } from '../contexts/actions-context';
 import { useState } from 'react';
 import { toast } from 'react-toastify';
 import { Button } from '@/components/ui/button';
@@ -16,6 +17,7 @@ export function TextAddInputForm({
   roomId: string;
   refreshState: () => Promise<void>;
 }) {
+  const { addTextInput } = useActions();
   const [text, setText] = useState('');
   const [textAlign, setTextAlign] = useState<TextAlign>('left');
   const [isLoading, setIsLoading] = useState(false);

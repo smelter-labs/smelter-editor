@@ -2,7 +2,8 @@ import type { RegisterInputOptions } from './roomState';
 import { RoomState } from './roomState';
 import { v4 as uuidv4 } from 'uuid';
 import { errorCodes } from 'fastify';
-import { SmelterInstance, type Resolution, RESOLUTION_PRESETS } from '../smelter';
+import { SmelterInstance } from '../smelter';
+import { type Resolution, RESOLUTION_PRESETS } from '../types';
 import { pickUniqueRoomName, type RoomNameEntry } from './roomNames';
 
 export type CreateRoomResult = {

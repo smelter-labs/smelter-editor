@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { Share2 } from 'lucide-react';
 
-import { getRoomInfo, type RoomState } from '@/app/actions/actions';
+import type { RoomState } from '@/lib/types';
+import { getRoomInfo } from '@/app/actions/actions';
 import OutputStream from '@/components/output-stream';
 import LoadingSpinner from '@/components/ui/spinner';
 import { Button } from '@/components/ui/button';

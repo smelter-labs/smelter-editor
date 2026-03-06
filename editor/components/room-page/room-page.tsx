@@ -11,7 +11,8 @@ import { motion } from 'framer-motion';
 import { toast } from 'react-toastify';
 import Link from 'next/link';
 
-import { getRoomInfo, RoomState } from '@/app/actions/actions';
+import type { RoomState } from '@/lib/types';
+import { getRoomInfo } from '@/app/actions/actions';
 import LoadingSpinner from '@/components/ui/spinner';
 import { WarningBanner } from '@/components/warning-banner';
 import SmelterLogo from '@/components/ui/smelter-logo';

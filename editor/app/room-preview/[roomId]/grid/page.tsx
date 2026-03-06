@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { getRoomInfo, type RoomState } from '@/app/actions/actions';
+import type { RoomState } from '@/lib/types';
+import { getRoomInfo } from '@/app/actions/actions';
 import LoadingSpinner from '@/components/ui/spinner';
 import OutputStreamGrid from '@/components/output-stream-grid';
 

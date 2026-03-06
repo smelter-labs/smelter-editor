@@ -2,11 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { Input, AvailableShader } from '@/app/actions/actions';
-import {
-  updateInput as updateInputAction,
-  addCameraInput,
-} from '@/app/actions/actions';
+import type {
+  Input,
+  AvailableShader,
+  ShaderConfig,
+} from '@/lib/types';
+import { useActions } from '../contexts/actions-context';
 import ShaderPanel, { InlineShaderParams } from '../input-entry/shader-panel';
 import { AddShaderModal } from '../input-entry/add-shader-modal';
 import SnakeEventShaderPanel from '../input-entry/snake-event-shader-panel';
@@ -25,10 +26,6 @@ import { useControlPanelContext } from '../contexts/control-panel-context';
 import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/spinner';
 import { toast } from 'react-toastify';
-import type {
-  ShaderConfig,
-  AvailableShader as AvailableShaderType,
-} from '@/app/actions/actions';
 import { getRandomSnakeShaderPreset } from '@/lib/snake-shader-presets';
 
 const SHADER_SETTINGS_DEBOUNCE_MS = 200;
@@ -44,7 +41,7 @@ function SnakeShaderSection({
   label: string;
   shaders: ShaderConfig[];
   playerColor?: string;
-  availableShaders: AvailableShaderType[];
+  availableShaders: AvailableShader[];
   onPatch: (shaders: ShaderConfig[], options?: { refresh?: boolean }) => void;
   onOpenShaderInline?: (shaderId: string) => void;
 }) {
@@ -235,6 +232,7 @@ export function BlockClipPropertiesPanel({
   availableShaders: AvailableShader[];
   handleRefreshState: () => Promise<void>;
 }) {
+  const { updateInput: updateInputAction, addCameraInput } = useActions();
   const [sliderValues, setSliderValues] = useState<{ [key: string]: number }>(
     {},
   );

@@ -1,13 +1,8 @@
 'use client';
 
 import { useCallback, useRef, useEffect } from 'react';
-import {
-  hideInput,
-  showInput,
-  updateInput,
-  updateRoom,
-  type Input,
-} from '@/app/actions/actions';
+import type { Input } from '@/lib/types';
+import { useActions } from '../contexts/actions-context';
 import type { TimelineState } from './use-timeline-state';
 
 // ── Types ────────────────────────────────────────────────
@@ -127,6 +122,7 @@ export function useTimelinePlayback(
   refreshState: () => Promise<void>,
   structureRevision: number,
 ) {
+  const { hideInput, showInput, updateInput, updateRoom } = useActions();
   const appliedStateRef = useRef<DesiredState>(new Map());
   const rafRef = useRef<number | null>(null);
   const playStartRef = useRef<{ wallMs: number; playheadMs: number } | null>(

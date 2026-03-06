@@ -3,7 +3,7 @@ import { toast } from 'react-toastify';
 import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/spinner';
 import { SuggestionBox } from './suggestion-box';
-import type { Input } from '@/app/actions/actions';
+import type { Input } from '@/lib/types';
 
 export type GenericAddInputFormProps<T> = {
   inputs: Input[];

@@ -1,10 +1,5 @@
-import {
-  addTwitchInput,
-  connectInput,
-  getTwitchSuggestions,
-  Input,
-  InputSuggestions,
-} from '@/app/actions/actions';
+import type { Input, InputSuggestions } from '@/lib/types';
+import { useActions } from '../contexts/actions-context';
 import { useCallback, useEffect, useState } from 'react';
 import { GenericAddInputForm } from './generic-add-input-form';
 import { toast } from 'react-toastify';
@@ -19,7 +14,7 @@ export default function TwitchAddInputForm({
   roomId: string;
   refreshState: () => Promise<void>;
 }) {
-  // Move suggestions logic here
+  const { addTwitchInput, connectInput, getTwitchSuggestions } = useActions();
   const [suggestions, setSuggestions] = useState<InputSuggestions>({
     twitch: [],
   });

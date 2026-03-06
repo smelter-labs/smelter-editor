@@ -1,4 +1,5 @@
-import { addGameInput, Input } from '@/app/actions/actions';
+import type { Input } from '@/lib/types';
+import { useActions } from '../contexts/actions-context';
 import { useState } from 'react';
 import { toast } from 'react-toastify';
 import { Button } from '@/components/ui/button';
@@ -13,6 +14,7 @@ export function GameAddInputForm({
   roomId: string;
   refreshState: () => Promise<void>;
 }) {
+  const { addGameInput } = useActions();
   const [title, setTitle] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 

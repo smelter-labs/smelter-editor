@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Input } from '@/app/actions/actions';
+import type { Input } from '@/lib/types';
 import { useAutoResume } from '../whip-input/hooks/use-auto-resume';
 import { useWhipHeartbeat } from '../whip-input/hooks/use-whip-heartbeat';
 import { stopCameraAndConnection } from '../whip-input/utils/preview';

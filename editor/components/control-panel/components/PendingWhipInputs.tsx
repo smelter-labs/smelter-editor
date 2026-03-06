@@ -4,12 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/spinner';
 import { Video, Monitor, X } from 'lucide-react';
-import {
-  addCameraInput,
-  updateInput,
-  updateRoom,
-  getRoomInfo,
-} from '@/app/actions/actions';
+import { useActions } from '../contexts/actions-context';
 import { startPublish } from '../whip-input/utils/whip-publisher';
 import { startScreensharePublish } from '../whip-input/utils/screenshare-publisher';
 import { stopCameraAndConnection } from '../whip-input/utils/preview';
@@ -32,6 +27,7 @@ export function PendingWhipInputs({
   pendingInputs,
   setPendingInputs,
 }: PendingWhipInputsProps) {
+  const { addCameraInput, updateInput, updateRoom, getRoomInfo } = useActions();
   const { roomId, refreshState } = useControlPanelContext();
   const {
     cameraPcRef,

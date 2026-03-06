@@ -11,7 +11,7 @@ import {
   Maximize2 as FullscreenIcon,
   Minimize2 as MinimizeIcon,
 } from 'lucide-react';
-import { buildIceServers } from '@/components/control-panel/whip-input/utils/webRTC-helpers';
+import { buildIceServers } from '@/lib/webrtc';
 
 function LoadingSpinner() {
   return (

@@ -1,6 +1,7 @@
 import type { KickStreamInfo } from '../kick/KickApi';
 import { getKickStreamInfo, getKickTopStreamsFromCategory } from '../kick/KickApi';
 import { sleep } from '../utils';
+import type { StreamMonitor } from '../types';
 
 const CHOSEN_KICK_CATEGORY = '5'; // Gaming: LOL
 const KICK_CATEGORIES = [CHOSEN_KICK_CATEGORY];
@@ -34,7 +35,7 @@ class KickChannelSuggestionsMonitor {
   }
 }
 
-export class KickChannelMonitor {
+export class KickChannelMonitor implements StreamMonitor {
   private channelId: string;
   private streamInfo: KickStreamInfo;
   private isStreamLive: boolean = true;

@@ -1,11 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import {
-  getRecordings,
-  getRoomRecordings,
-  type RecordingInfo,
-} from '@/app/actions/actions';
+import type { RecordingInfo } from '@/lib/types';
+import { getRecordings, getRoomRecordings } from '@/app/actions/actions';
 import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/spinner';
 import { Download, X } from 'lucide-react';

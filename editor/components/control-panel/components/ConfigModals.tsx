@@ -9,12 +9,8 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import {
-  listRemoteConfigs,
-  loadRemoteConfig,
-  deleteRemoteConfig,
-  type SavedConfigInfo,
-} from '@/app/actions/actions';
+import type { SavedConfigInfo } from '@/lib/types';
+import { useActions } from '../contexts/actions-context';
 import type { RoomConfig } from '@/lib/room-config';
 import {
   HardDrive,
@@ -185,6 +181,7 @@ export function LoadConfigModal({
   onLoadRemote,
   isImporting,
 }: LoadConfigModalProps) {
+  const { listRemoteConfigs, loadRemoteConfig, deleteRemoteConfig } = useActions();
   const [mode, setMode] = useState<'choose' | 'remote'>('choose');
   const [configs, setConfigs] = useState<SavedConfigInfo[]>([]);
   const [isLoadingList, setIsLoadingList] = useState(false);
