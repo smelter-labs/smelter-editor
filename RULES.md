@@ -106,6 +106,19 @@
 ## Refactoring Hygiene
 - **Don't leave dead variables** — if a variable is only used in one branch of an if/else, either use it consistently or inline the value.
 - **When extracting shared logic, preserve type safety** — merging two typed code paths into one generic function must not lose type information (e.g. via `as any`).
+- **Check existing conventions before replacing** — before swapping a component/pattern for "consistency", grep ALL instances. If the "old" pattern is dominant, it IS the convention.
+
+## Layout Libraries
+- **Understand element injection** — libraries like `react-grid-layout`/`react-resizable` inject children via `cloneElement`. Before debugging, read how the library inserts handles/overlays. Don't iterate CSS-only fixes when the problem is structural nesting.
+- **Never `overflow: hidden` on grid items** — absolutely-positioned resize handles get clipped.
+
+## Ref-Based Async
+- **Always reset gating refs** — when using a ref to gate an async process (timers, queues), reset it to `null` in the final callback. Otherwise the gate locks permanently.
+- **Read latest state in queue processors** — use refs or setState callbacks, not closure captures.
+
+## Dual-State Systems
+- **Sync server ↔ local state** — when updating server state programmatically (macros, voice), also update corresponding local state (timeline `blockSettings`). Otherwise playback reverts changes.
+- **Filter hidden elements before indexing** — in soft-delete/hide systems, always filter for visibility before applying positional indices.
 
 ## UI Defaults
 - **No opinionated invisible defaults** — use zero/neutral defaults for styling (e.g. `borderWidth: 0`). All visual properties must be user-configurable.

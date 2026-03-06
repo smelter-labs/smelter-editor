@@ -365,16 +365,23 @@
             "inputIndex": 3,
             "shader": "alpha-stroke"
           },
-          "delayAfterMs": 0
+          "delayAfterMs": 500
         }
       ]
     },
     {
-      "id": "galactic-text",
+      "id": "pop-layout",
       "triggers": [
         "change layout to picture on picture",
         "change layout to pop",
-        "pop layout"
+        "pop layout",
+        "popeye layout",
+        "pop light",
+        "tought layout",
+        "pop lay",
+        "transmission layout",
+        "full screen mode",
+        "fullscreen mode"
 
       ],
       "description": "Changes the layout to picture on picture",

@@ -1,6 +1,6 @@
 # Lessons Learned
 
-> Auto-generated from analysis of 69 agent sessions (Feb 20 – Mar 3, 2026).
+> Auto-generated from analysis of 75 agent sessions (Feb 20 – Mar 4, 2026).
 > Updated by the self-improvement loop per RULES.md §3.
 
 ---
@@ -193,6 +193,73 @@
 
 ---
 
+## 11. Component Wrapping & Layout Libraries
+
+### 11.1 Understand how layout libraries inject children
+- **Pattern:** `react-grid-layout` uses `react-resizable` which clones child and appends resize handles via `cloneElement`. When `PanelWrapper` rendered `{children}` inside a nested div with `overflow: hidden`, resize handles were clipped/unreachable. Multiple CSS-only fixes failed.
+- **Session:** T-019cb4b5 (Mar 3)
+- **Rule:** Before debugging layout-library issues, read how the library injects elements (handles, drag overlays). Trace where `{children}` is rendered relative to `overflow` boundaries. Don't iterate CSS-only fixes when the problem is structural nesting.
+
+### 11.2 CSS `overflow: hidden` on grid items clips resize handles
+- **Pattern:** `.react-grid-item` in `globals.css` had `overflow: hidden`, making absolutely-positioned resize handles invisible.
+- **Rule:** Never set `overflow: hidden` on `react-grid-layout` items without explicitly ensuring resize handles remain outside the clipped area.
+
+---
+
+## 12. Ref-Based Async State Management
+
+### 12.1 Reset refs after async cycles complete
+- **Pattern:** `VoiceActionFeedback` toast appeared only once. `timerRef.current` was never reset to `null` after the animation cycle, so the queue-processing check (`if (!timerRef.current)`) always short-circuited.
+- **Session:** T-019cb2d6 (Mar 3)
+- **Rule:** When using a ref to gate an async process (timers, animations), ALWAYS reset the ref in the final cleanup/callback. Otherwise the gate stays locked permanently.
+
+### 12.2 Don't use closure state in queue processors
+- **Pattern:** `showNext` function captured a stale `rest` array from closure instead of reading current queue state.
+- **Rule:** Queue-processing functions must read the latest state (via ref or setState callback), not rely on closure captures.
+
+---
+
+## 13. Dual-State Synchronization
+
+### 13.1 Server state vs timeline state must stay in sync
+- **Pattern:** Macro applied shader via `updateInput` (server API), but timeline's `blockSettings` was empty. During playback, `applyBlockSettingsAtTime` overwrote server state with empty timeline state, reverting the shader.
+- **Session:** T-019cae54 (Mar 2)
+- **Rule:** In a dual-state system (Server API + Local Timeline), updates to one MUST be synchronized to the other. When updating server state programmatically, also update corresponding local state.
+
+### 13.2 Filter hidden elements before indexing
+- **Pattern:** `REMOVE_ALL_INPUTS` macro hides inputs (`hidden: true`) but doesn't delete them. `ADD_SHADER` macro targeted inputs by index into the full array (including hidden ones), applying shaders to wrong inputs.
+- **Session:** T-019cae54 (Mar 2)
+- **Rule:** When targeting elements by index in a system with soft-delete/hide, ALWAYS filter for visibility before applying the index.
+
+---
+
+## 14. Build & Lint Coverage
+
+### 14.1 Suppress warnings across ALL environments
+- **Pattern:** Agent suppressed lint warnings in CLI (`--quiet`) and VS Code (`eslint.quiet`) but missed that `next build` also runs linting and still showed warnings.
+- **Session:** T-019cb2dd (Mar 3)
+- **Rule:** When configuring lint suppression, cover all three surfaces: CLI script, editor integration, AND build configuration (`eslint.ignoreDuringBuilds` in `next.config.ts`).
+
+---
+
+## 15. Convention Verification
+
+### 15.1 Check existing conventions before "fixing" inconsistency
+- **Pattern:** User asked to replace native `<input type='checkbox'>` with shadcn/ui component for "consistency". Agent found 13 instances of native checkboxes across the codebase — the native pattern WAS the convention. Replacing one would introduce inconsistency.
+- **Session:** T-019cafad (Mar 2)
+- **Rule:** Before replacing a component for "consistency", grep for ALL instances of both the old and proposed new pattern. If the "old" pattern is dominant, it's the convention — don't break it.
+
+---
+
+## 16. Formatting Tool Reliability
+
+### 16.1 Use project formatter when edit tools produce inconsistent output
+- **Pattern:** `edit_file` + `format_file` introduced mixed indentation (2-space vs 4-space). Build failed with Prettier errors. Had to fall back to `npx prettier --write`.
+- **Session:** T-019cae54 (Mar 2)
+- **Rule:** After complex multi-edit operations, run the project's own formatter (`npx prettier --write` or `pnpm lint --fix`) rather than relying solely on tool-based formatting. Verify with build before declaring done.
+
+---
+
 ## Severity Summary
 
 | Category | Critical | High | Medium |
@@ -207,3 +274,9 @@
 | Infrastructure | 1 | 1 | 1 |
 | UI Defaults | — | 1 | 1 |
 | Code Quality | — | — | 3 |
+| Component Wrapping | — | 1 | 1 |
+| Ref-Based Async | — | 1 | 1 |
+| Dual-State Sync | — | 2 | — |
+| Build & Lint Coverage | — | — | 1 |
+| Convention Verification | — | — | 1 |
+| Formatting Tools | — | — | 1 |
