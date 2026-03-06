@@ -171,6 +171,8 @@ export class RoomState {
   public isPublic: boolean = true;
   public pendingWhipInputs: PendingWhipInputData[] = [];
   public roomName: RoomNameEntry;
+  private readonly initInputs: RegisterInputOptions[];
+  private readonly skipDefaultInputs: boolean;
 
   public constructor(idPrefix: string, output: SmelterOutput, initInputs: RegisterInputOptions[], skipDefaultInputs: boolean = false, roomName?: RoomNameEntry) {
     this.mp4sDir = path.join(process.cwd(), 'mp4s');
@@ -179,24 +181,25 @@ export class RoomState {
     this.idPrefix = idPrefix;
     this.output = output;
     this.roomName = roomName ?? { pl: `Pokój ${idPrefix.slice(0, 6)}`, en: `Room ${idPrefix.slice(0, 6)}` };
+    this.initInputs = initInputs;
+    this.skipDefaultInputs = skipDefaultInputs;
 
     this.lastReadTimestamp = Date.now();
     this.creationTimestamp = Date.now();
+  }
 
-    const self = this;
-    void (async () => {
-      try {
-        await self.getInitialInputState(idPrefix, initInputs, skipDefaultInputs);
-        for (let i = 0; i < self.inputs.length; i++) {
-          const maybeInput = self.inputs[i];
-          if (maybeInput) {
-            await self.connectInput(maybeInput.inputId);
-          }
-        }
-      } catch (err) {
-        console.error(`[roomState] Failed to initialize room ${idPrefix}:`, err);
+  public async init(): Promise<void> {
+    await this.getInitialInputState(
+      this.idPrefix,
+      this.initInputs,
+      this.skipDefaultInputs,
+    );
+    for (let i = 0; i < this.inputs.length; i++) {
+      const maybeInput = this.inputs[i];
+      if (maybeInput) {
+        await this.connectInput(maybeInput.inputId);
       }
-    })();
+    }
   }
 
   private async getInitialInputState(
@@ -228,6 +231,7 @@ export class RoomState {
         const logoInput = this.inputs.find(inp => inp.inputId === logoInputId);
         if (logoInput) {
           logoInput.shaders = cloneDefaultLogoShaders();
+          this.updateStoreWithState();
         }
       }
     }

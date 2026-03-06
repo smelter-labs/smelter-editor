@@ -88,9 +88,9 @@ describe('findMatchingMacro', () => {
     });
 
     it('matches a trigger with a missing letter', () => {
-      const result = findMatchingMacro('galactic spachip');
+      const result = findMatchingMacro('cinematic transiton mode');
       expect(result).not.toBeNull();
-      expect(result!.id).toBe('galactic-spaceship');
+      expect(result!.id).toBe('cinematic-transition-mode');
     });
 
     it('matches a trigger with a substitution', () => {
@@ -119,6 +119,11 @@ describe('findMatchingMacro', () => {
       const result = findMatchingMacro('can you run galactic camara please');
       expect(result).not.toBeNull();
       expect(result!.id).toBe('galactic-camera');
+    });
+
+    it('does not fuzzy match destructive macros for similar but different phrases', () => {
+      const result = findMatchingMacro('galactic transition');
+      expect(result).toBeNull();
     });
   });
 
@@ -199,6 +204,7 @@ describe('macro execution controller', () => {
         type: 'smelter:voice:add-shader',
         detail: expect.objectContaining({
           shader: 'sw-hologram',
+          inputId: 'input-42',
           requestId: expect.any(String),
         }),
       },
@@ -245,6 +251,94 @@ describe('macro execution controller', () => {
     expect(requestIds.every(Boolean)).toBe(true);
     expect(statuses).toContain('paused');
     expect(statuses.at(-1)).toBe('completed');
+  });
+
+  it('waits for async room updates and forwards runtime inputId', async () => {
+    const seenEvents: Array<{ type: string; detail: Record<string, unknown> }> =
+      [];
+
+    window.addEventListener('smelter:voice:add-input', ((event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+      seenEvents.push({ type: 'smelter:voice:add-input', detail });
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:macro-step-complete', {
+          detail: {
+            requestId: detail.requestId,
+            inputId: 'text-input-7',
+          },
+        }),
+      );
+    }) as EventListener);
+
+    window.addEventListener('smelter:voice:set-text-color', ((event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+      seenEvents.push({ type: 'smelter:voice:set-text-color', detail });
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:macro-step-complete', {
+          detail: {
+            requestId: detail.requestId,
+            inputId: detail.inputId,
+          },
+        }),
+      );
+    }) as EventListener);
+
+    window.addEventListener('smelter:voice:set-layout', ((event: Event) => {
+      const detail = (event as CustomEvent<Record<string, unknown>>).detail;
+      seenEvents.push({ type: 'smelter:voice:set-layout', detail });
+      window.dispatchEvent(
+        new CustomEvent('smelter:voice:macro-step-complete', {
+          detail: {
+            requestId: detail.requestId,
+          },
+        }),
+      );
+    }) as EventListener);
+
+    await executeMacro(
+      createMacro([
+        {
+          action: 'ADD_INPUT',
+          delayAfterMs: 0,
+          params: { inputType: 'text', text: 'hello' },
+        },
+        {
+          action: 'SET_TEXT_COLOR',
+          delayAfterMs: 0,
+          params: { color: '#ffff00' },
+        },
+        {
+          action: 'SET_LAYOUT',
+          delayAfterMs: 0,
+          params: { layout: 'grid' },
+        },
+      ]),
+    );
+
+    expect(seenEvents).toEqual([
+      {
+        type: 'smelter:voice:add-input',
+        detail: expect.objectContaining({
+          inputType: 'text',
+          requestId: expect.any(String),
+        }),
+      },
+      {
+        type: 'smelter:voice:set-text-color',
+        detail: expect.objectContaining({
+          color: '#ffff00',
+          inputId: 'text-input-7',
+          requestId: expect.any(String),
+        }),
+      },
+      {
+        type: 'smelter:voice:set-layout',
+        detail: expect.objectContaining({
+          layout: 'grid',
+          requestId: expect.any(String),
+        }),
+      },
+    ]);
   });
 
   it('stops paused execution without dispatching more steps', async () => {

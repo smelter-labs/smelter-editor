@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_LAYOUT,
   ALL_PANEL_IDS,
+  LAYOUT_PRESETS,
   createResponsiveLayoutsFromLg,
   loadLayouts,
   saveLayouts,
@@ -57,6 +58,24 @@ describe('panel-registry layout persistence', () => {
     expect(restored?.sm.length).toBeGreaterThan(0);
   });
 
+  it('generates small breakpoints from the selected preset instead of a shared fallback', () => {
+    const verticalLayout = LAYOUT_PRESETS.find(
+      (preset) => preset.id === 'vertical-video',
+    )!.layout;
+
+    const responsive = createResponsiveLayoutsFromLg(verticalLayout);
+
+    expect(responsive.sm[0].h).not.toEqual(
+      createResponsiveLayoutsFromLg(DEFAULT_LAYOUT).sm[0].h,
+    );
+    expect(responsive.xs[0].h).not.toEqual(
+      createResponsiveLayoutsFromLg(DEFAULT_LAYOUT).xs[0].h,
+    );
+    expect(responsive.xxs[0].h).not.toEqual(
+      createResponsiveLayoutsFromLg(DEFAULT_LAYOUT).xxs[0].h,
+    );
+  });
+
   it('clears persisted layouts', () => {
     saveLayouts(createResponsiveLayoutsFromLg(DEFAULT_LAYOUT));
 
@@ -82,6 +101,25 @@ describe('panel-registry layout persistence', () => {
     for (const id of ALL_PANEL_IDS) {
       expect(lgIds.has(id)).toBe(true);
     }
+  });
+
+  it('stacks multiple missing panels instead of overlapping them', () => {
+    const incomplete = DEFAULT_LAYOUT.filter(
+      (item) => item.i !== 'fx' && item.i !== 'timeline',
+    );
+    localStorage.setItem(
+      'smelter-dashboard-layout',
+      JSON.stringify(incomplete),
+    );
+
+    const restored = loadLayouts();
+
+    expect(restored).not.toBeNull();
+    const fx = restored!.lg.find((item) => item.i === 'fx');
+    const timeline = restored!.lg.find((item) => item.i === 'timeline');
+    expect(fx).toBeDefined();
+    expect(timeline).toBeDefined();
+    expect(fx?.y).not.toEqual(timeline?.y);
   });
 
   it('removes panels that no longer exist in the registry', () => {

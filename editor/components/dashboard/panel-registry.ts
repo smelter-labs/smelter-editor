@@ -223,9 +223,9 @@ export function createResponsiveLayoutsFromLg(
   return {
     lg: normalizeLayout(lgLayout),
     md: scaleLayoutToCols(lgLayout, DASHBOARD_COLS.md),
-    sm: scaleLayoutToCols(SMALL_LAYOUT, DASHBOARD_COLS.sm),
-    xs: scaleLayoutToCols(SMALL_LAYOUT, DASHBOARD_COLS.xs),
-    xxs: scaleLayoutToCols(SMALL_LAYOUT, DASHBOARD_COLS.xxs),
+    sm: scaleLayoutToCols(lgLayout, DASHBOARD_COLS.sm),
+    xs: scaleLayoutToCols(lgLayout, DASHBOARD_COLS.xs),
+    xxs: scaleLayoutToCols(lgLayout, DASHBOARD_COLS.xxs),
   };
 }
 
@@ -242,20 +242,23 @@ function isLayoutArray(layout: unknown): layout is MutableLayout {
 
 function ensureAllPanels(layout: MutableLayout, cols: number): MutableLayout {
   const ids = new Set(layout.map((item) => item.i));
-  const maxY = layout.reduce((max, item) => Math.max(max, item.y + item.h), 0);
+  let nextY = layout.reduce((max, item) => Math.max(max, item.y + item.h), 0);
 
   for (const panelId of ALL_PANEL_IDS) {
     if (!ids.has(panelId)) {
       const def = PANEL_DEFINITIONS[panelId];
-      layout.push({
+      const nextItem = {
         i: panelId,
         x: 0,
-        y: maxY,
+        y: nextY,
         w: Math.min(cols, def.minW + 4),
         h: def.minH + 2,
         minW: Math.min(cols, def.minW),
         minH: def.minH,
-      });
+      };
+      layout.push(nextItem);
+      ids.add(panelId);
+      nextY += nextItem.h;
     }
   }
 

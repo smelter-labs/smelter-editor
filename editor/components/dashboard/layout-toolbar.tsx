@@ -49,6 +49,7 @@ export default function LayoutToolbar({
         size='sm'
         variant='outline'
         onClick={onToggleEditMode}
+        aria-pressed={isEditMode}
         className={`cursor-pointer gap-1.5 text-xs ${
           isEditMode
             ? 'border-amber-600/60 text-amber-400 hover:bg-amber-950/40'
@@ -80,19 +81,28 @@ export default function LayoutToolbar({
               size='sm'
               variant='outline'
               onClick={() => setShowPanelMenu((prev) => !prev)}
+              aria-expanded={showPanelMenu}
+              aria-haspopup='menu'
+              aria-controls='dashboard-panel-menu'
               className='cursor-pointer text-xs text-neutral-500 hover:bg-neutral-200 gap-1.5'>
               <PanelTop className='w-3.5 h-3.5' />
               Panels
             </Button>
             {showPanelMenu && (
-              <div className='absolute right-0 top-full mt-1 z-50 w-48 rounded-md border border-neutral-700 bg-neutral-900 shadow-lg py-1'>
+              <div
+                id='dashboard-panel-menu'
+                role='menu'
+                className='absolute right-0 top-full mt-1 z-50 w-48 rounded-md border border-neutral-700 bg-neutral-900 shadow-lg py-1'>
                 {ALL_PANEL_IDS.map((panelId) => {
                   const def = PANEL_DEFINITIONS[panelId];
                   const isVisible = visiblePanels.has(panelId);
                   return (
                     <button
+                      type='button'
                       key={panelId}
                       onClick={() => onTogglePanel(panelId)}
+                      role='menuitemcheckbox'
+                      aria-checked={isVisible}
                       className='flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-800 transition-colors cursor-pointer'>
                       <span
                         className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center shrink-0 ${

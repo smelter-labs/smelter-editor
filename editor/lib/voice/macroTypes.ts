@@ -8,6 +8,7 @@ import type {
 export type MacroActionParams = {
   inputType?: InputType;
   inputIndex?: number;
+  inputId?: string;
   trackIndex?: number;
   shader?: Shader;
   direction?: Direction;

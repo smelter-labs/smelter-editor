@@ -63,6 +63,14 @@ class ServerState {
     const resolvedResolution = resolution ?? RESOLUTION_PRESETS['1440p'];
     const smelterOutput = await SmelterInstance.registerOutput(roomId, resolvedResolution);
     const room = new RoomState(roomId, smelterOutput, initInputs, skipDefaultInputs, roomName);
+    try {
+      await room.init();
+    } catch (error) {
+      await room.deleteRoom().catch((cleanupError) => {
+        console.error(`Failed to cleanup room ${roomId} after init error`, cleanupError);
+      });
+      throw error;
+    }
     this.rooms[roomId] = room;
     return { roomId, roomName, room };
   }

@@ -9,6 +9,13 @@ const macrosConfig: MacrosConfig = macrosJson as MacrosConfig;
 const FUZZY_MATCH_THRESHOLD = 0.8;
 const MIN_TRIGGER_LENGTH_FOR_FUZZY = 8;
 
+function isDestructiveMacro(macro: MacroDefinition): boolean {
+  return macro.steps.some(
+    (step) =>
+      step.action === 'REMOVE_ALL_INPUTS' || step.action === 'HIDE_ALL_INPUTS',
+  );
+}
+
 export function findMatchingMacro(transcript: string): MacroDefinition | null {
   const normalized = normalize(transcript);
 
@@ -32,6 +39,9 @@ export function findMatchingMacro(transcript: string): MacroDefinition | null {
   const transcriptWords = normalized.split(/\s+/);
 
   for (const macro of macrosConfig.macros) {
+    if (isDestructiveMacro(macro)) {
+      continue;
+    }
     for (const trigger of macro.triggers) {
       const normalizedTrigger = normalize(trigger);
       if (normalizedTrigger.length < MIN_TRIGGER_LENGTH_FOR_FUZZY) {
@@ -127,12 +137,14 @@ type MacroStepCompletionDetail = {
   inputId?: string;
 };
 
-async function dispatchAndWaitForCompletion(
-  dispatch: (requestId: string) => void,
-  timeoutMs = 30_000,
-): Promise<void> {
-  await dispatchAndWaitForCompletionDetail(dispatch, timeoutMs);
-}
+type MacroExecutionContext = {
+  currentInputId?: string;
+};
+
+type MacroStepDispatchResult = {
+  detail: MacroStepCompletionDetail;
+  resolvedParams?: MacroStep['params'];
+};
 
 async function dispatchAndWaitForCompletionDetail(
   dispatch: (requestId: string) => void,
@@ -182,68 +194,124 @@ export async function executeMacro(
   await controller.start();
 }
 
-async function dispatchMacroStep(step: MacroStep): Promise<void> {
-  const { action, params } = step;
+function resolveStepParams(
+  step: MacroStep,
+  context: MacroExecutionContext,
+): MacroStep['params'] {
+  const params = step.params;
+  if (!params) {
+    return undefined;
+  }
+
+  if (params.inputId || params.inputIndex !== undefined) {
+    return params;
+  }
+
+  if (!context.currentInputId) {
+    return params;
+  }
+
+  return {
+    ...params,
+    inputId: context.currentInputId,
+  };
+}
+
+function updateMacroExecutionContext(
+  action: MacroStep['action'],
+  context: MacroExecutionContext,
+  detail: MacroStepCompletionDetail,
+  params?: MacroStep['params'],
+) {
+  const resolvedInputId = detail.inputId ?? params?.inputId;
+
+  if (action === 'DESELECT_INPUT' || action === 'REMOVE_ALL_INPUTS') {
+    context.currentInputId = undefined;
+    return;
+  }
+
+  if (action === 'REMOVE_INPUT' && resolvedInputId === context.currentInputId) {
+    context.currentInputId = undefined;
+    return;
+  }
+
+  if (resolvedInputId) {
+    context.currentInputId = resolvedInputId;
+  }
+}
+
+async function dispatchMacroStep(
+  step: MacroStep,
+  context: MacroExecutionContext,
+): Promise<MacroStepDispatchResult> {
+  const { action } = step;
+  const params = resolveStepParams(step, context);
 
   switch (action) {
-    case 'ADD_INPUT':
-      {
-        const detail = await dispatchAndWaitForCompletionDetail((requestId) =>
-          window.dispatchEvent(
-            new CustomEvent('smelter:voice:add-input', {
-              detail: {
-                requestId,
-                inputType: params?.inputType,
-                text: params?.text,
-                textAlign: params?.textAlign,
-                mp4FileName: params?.mp4Name,
-                imageFileName: params?.imageName,
-              },
-            }),
-          ),
-        );
-        if (detail.inputId) {
-          window.dispatchEvent(
-            new CustomEvent('smelter:inputs:select', {
-              detail: { inputId: detail.inputId },
-            }),
-          );
-        }
-      }
-      break;
-
-    case 'REMOVE_INPUT':
-      await dispatchAndWaitForCompletion((requestId) =>
+    case 'ADD_INPUT': {
+      const detail = await dispatchAndWaitForCompletionDetail((requestId) =>
         window.dispatchEvent(
-          new CustomEvent('smelter:voice:remove-input', {
+          new CustomEvent('smelter:voice:add-input', {
             detail: {
-              inputIndex: params?.inputIndex,
               requestId,
+              inputType: params?.inputType,
+              text: params?.text,
+              textAlign: params?.textAlign,
+              mp4FileName: params?.mp4Name,
+              imageFileName: params?.imageName,
             },
           }),
         ),
       );
-      break;
+      if (detail.inputId) {
+        window.dispatchEvent(
+          new CustomEvent('smelter:inputs:select', {
+            detail: { inputId: detail.inputId },
+          }),
+        );
+      }
+      return { detail, resolvedParams: params };
+    }
+
+    case 'REMOVE_INPUT':
+      return {
+        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:remove-input', {
+              detail: {
+                inputIndex: params?.inputIndex,
+                inputId: params?.inputId,
+                requestId,
+              },
+            }),
+          ),
+        ),
+        resolvedParams: params,
+      };
 
     case 'HIDE_ALL_INPUTS':
-      await dispatchAndWaitForCompletion((requestId) =>
-        window.dispatchEvent(
-          new CustomEvent('smelter:voice:hide-all-inputs', {
-            detail: { requestId },
-          }),
+      return {
+        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:hide-all-inputs', {
+              detail: { requestId },
+            }),
+          ),
         ),
-      );
-      break;
+        resolvedParams: params,
+      };
 
     case 'REMOVE_ALL_INPUTS':
-      await dispatchAndWaitForCompletion((requestId) =>
-        window.dispatchEvent(
-          new CustomEvent('smelter:voice:remove-all-inputs', {
-            detail: { requestId },
-          }),
+      return {
+        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:remove-all-inputs', {
+              detail: { requestId },
+            }),
+          ),
         ),
-      );
-      break;
+        resolvedParams: params,
+      };
 
     case 'MOVE_INPUT':
       window.dispatchEvent(
@@ -255,43 +323,50 @@ async function dispatchMacroStep(step: MacroStep): Promise<void> {
           },
         }),
       );
-      break;
+      return { detail: {}, resolvedParams: params };
 
     case 'ADD_SHADER':
-      await dispatchAndWaitForCompletion((requestId) =>
-        window.dispatchEvent(
-          new CustomEvent('smelter:voice:add-shader', {
-            detail: {
-              requestId,
-              inputIndex: params?.inputIndex,
-              shader: params?.shader,
-              targetColor: params?.targetColor,
-              shaderParams: params?.shaderParams,
-            },
-          }),
+      return {
+        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:add-shader', {
+              detail: {
+                requestId,
+                inputIndex: params?.inputIndex,
+                inputId: params?.inputId,
+                shader: params?.shader,
+                targetColor: params?.targetColor,
+                shaderParams: params?.shaderParams,
+              },
+            }),
+          ),
         ),
-      );
-      break;
+        resolvedParams: params,
+      };
 
     case 'REMOVE_SHADER':
       window.dispatchEvent(
         new CustomEvent('smelter:voice:remove-shader', {
-          detail: { inputIndex: params?.inputIndex, shader: params?.shader },
+          detail: {
+            inputIndex: params?.inputIndex,
+            inputId: params?.inputId,
+            shader: params?.shader,
+          },
         }),
       );
-      break;
+      return { detail: {}, resolvedParams: params };
 
     case 'SELECT_INPUT':
       window.dispatchEvent(
         new CustomEvent('smelter:voice:select-input', {
-          detail: { inputIndex: params?.inputIndex },
+          detail: { inputIndex: params?.inputIndex, inputId: params?.inputId },
         }),
       );
-      break;
+      return { detail: {}, resolvedParams: params };
 
     case 'DESELECT_INPUT':
       window.dispatchEvent(new CustomEvent('smelter:voice:deselect-input'));
-      break;
+      return { detail: {}, resolvedParams: params };
 
     case 'SELECT_TRACK':
       window.dispatchEvent(
@@ -299,7 +374,7 @@ async function dispatchMacroStep(step: MacroStep): Promise<void> {
           detail: { trackIndex: params?.trackIndex },
         }),
       );
-      break;
+      return { detail: {}, resolvedParams: params };
 
     case 'REMOVE_TRACK':
       window.dispatchEvent(
@@ -307,164 +382,256 @@ async function dispatchMacroStep(step: MacroStep): Promise<void> {
           detail: { trackIndex: params?.trackIndex },
         }),
       );
-      break;
+      return { detail: {}, resolvedParams: params };
 
     case 'NEXT_BLOCK':
       window.dispatchEvent(new CustomEvent('smelter:voice:next-block'));
-      break;
+      return { detail: {}, resolvedParams: params };
 
     case 'PREV_BLOCK':
       window.dispatchEvent(new CustomEvent('smelter:voice:prev-block'));
-      break;
+      return { detail: {}, resolvedParams: params };
 
     case 'NEXT_LAYOUT':
       window.dispatchEvent(new CustomEvent('smelter:voice:next-layout'));
-      break;
+      return { detail: {}, resolvedParams: params };
 
     case 'PREVIOUS_LAYOUT':
       window.dispatchEvent(new CustomEvent('smelter:voice:previous-layout'));
-      break;
+      return { detail: {}, resolvedParams: params };
 
     case 'SET_LAYOUT':
-      window.dispatchEvent(
-        new CustomEvent('smelter:voice:set-layout', {
-          detail: { layout: params?.layout },
-        }),
-      );
-      break;
+      return {
+        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:set-layout', {
+              detail: { layout: params?.layout, requestId },
+            }),
+          ),
+        ),
+        resolvedParams: params,
+      };
 
     case 'SET_TEXT_COLOR':
-      window.dispatchEvent(
-        new CustomEvent('smelter:voice:set-text-color', {
-          detail: { color: params?.color, inputIndex: params?.inputIndex },
-        }),
-      );
-      break;
+      return {
+        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:set-text-color', {
+              detail: {
+                color: params?.color,
+                inputIndex: params?.inputIndex,
+                inputId: params?.inputId,
+                requestId,
+              },
+            }),
+          ),
+        ),
+        resolvedParams: params,
+      };
 
     case 'SET_TEXT_MAX_LINES':
-      window.dispatchEvent(
-        new CustomEvent('smelter:voice:set-text-max-lines', {
-          detail: {
-            maxLines: params?.maxLines,
-            inputIndex: params?.inputIndex,
-          },
-        }),
-      );
-      break;
+      return {
+        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:set-text-max-lines', {
+              detail: {
+                maxLines: params?.maxLines,
+                inputIndex: params?.inputIndex,
+                inputId: params?.inputId,
+                requestId,
+              },
+            }),
+          ),
+        ),
+        resolvedParams: params,
+      };
 
     case 'SET_TEXT':
-      window.dispatchEvent(
-        new CustomEvent('smelter:voice:set-text', {
-          detail: { text: params?.text, inputIndex: params?.inputIndex },
-        }),
-      );
-      break;
+      return {
+        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:set-text', {
+              detail: {
+                text: params?.text,
+                inputIndex: params?.inputIndex,
+                inputId: params?.inputId,
+                requestId,
+              },
+            }),
+          ),
+        ),
+        resolvedParams: params,
+      };
 
     case 'SET_TEXT_FONT_SIZE':
-      window.dispatchEvent(
-        new CustomEvent('smelter:voice:set-text-font-size', {
-          detail: {
-            fontSize: params?.fontSize,
-            inputIndex: params?.inputIndex,
-          },
-        }),
-      );
-      break;
+      return {
+        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:set-text-font-size', {
+              detail: {
+                fontSize: params?.fontSize,
+                inputIndex: params?.inputIndex,
+                inputId: params?.inputId,
+                requestId,
+              },
+            }),
+          ),
+        ),
+        resolvedParams: params,
+      };
 
     case 'SET_TEXT_SCROLL_SPEED':
-      window.dispatchEvent(
-        new CustomEvent('smelter:voice:set-text-scroll-speed', {
-          detail: {
-            scrollSpeed: params?.scrollSpeed,
-            inputIndex: params?.inputIndex,
-          },
-        }),
-      );
-      break;
+      return {
+        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:set-text-scroll-speed', {
+              detail: {
+                scrollSpeed: params?.scrollSpeed,
+                inputIndex: params?.inputIndex,
+                inputId: params?.inputId,
+                requestId,
+              },
+            }),
+          ),
+        ),
+        resolvedParams: params,
+      };
 
     case 'SET_TEXT_ALIGN':
-      window.dispatchEvent(
-        new CustomEvent('smelter:voice:set-text-align', {
-          detail: {
-            textAlign: params?.textAlign,
-            inputIndex: params?.inputIndex,
-          },
-        }),
-      );
-      break;
+      return {
+        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:set-text-align', {
+              detail: {
+                textAlign: params?.textAlign,
+                inputIndex: params?.inputIndex,
+                inputId: params?.inputId,
+                requestId,
+              },
+            }),
+          ),
+        ),
+        resolvedParams: params,
+      };
 
     case 'START_RECORDING':
-      window.dispatchEvent(new CustomEvent('smelter:voice:start-recording'));
-      break;
+      return {
+        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:start-recording', {
+              detail: { requestId },
+            }),
+          ),
+        ),
+        resolvedParams: params,
+      };
 
     case 'STOP_RECORDING':
-      window.dispatchEvent(new CustomEvent('smelter:voice:stop-recording'));
-      break;
+      return {
+        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:stop-recording', {
+              detail: { requestId },
+            }),
+          ),
+        ),
+        resolvedParams: params,
+      };
 
     case 'SET_SWAP_DURATION':
-      window.dispatchEvent(
-        new CustomEvent('smelter:voice:set-swap-duration', {
-          detail: { durationMs: params?.durationMs },
-        }),
-      );
-      break;
+      return {
+        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:set-swap-duration', {
+              detail: { durationMs: params?.durationMs, requestId },
+            }),
+          ),
+        ),
+        resolvedParams: params,
+      };
 
     case 'SET_SWAP_FADE_IN_DURATION':
-      window.dispatchEvent(
-        new CustomEvent('smelter:voice:set-swap-fade-in-duration', {
-          detail: { durationMs: params?.durationMs },
-        }),
-      );
-      break;
+      return {
+        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:set-swap-fade-in-duration', {
+              detail: { durationMs: params?.durationMs, requestId },
+            }),
+          ),
+        ),
+        resolvedParams: params,
+      };
 
     case 'SET_SWAP_FADE_OUT_DURATION':
-      window.dispatchEvent(
-        new CustomEvent('smelter:voice:set-swap-fade-out-duration', {
-          detail: { durationMs: params?.durationMs },
-        }),
-      );
-      break;
+      return {
+        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:set-swap-fade-out-duration', {
+              detail: { durationMs: params?.durationMs, requestId },
+            }),
+          ),
+        ),
+        resolvedParams: params,
+      };
 
     case 'SET_SWAP_OUTGOING_ENABLED':
-      window.dispatchEvent(
-        new CustomEvent('smelter:voice:set-swap-outgoing-enabled', {
-          detail: { enabled: params?.enabled },
-        }),
-      );
-      break;
+      return {
+        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:set-swap-outgoing-enabled', {
+              detail: { enabled: params?.enabled, requestId },
+            }),
+          ),
+        ),
+        resolvedParams: params,
+      };
 
     case 'SET_NEWS_STRIP_ENABLED':
-      window.dispatchEvent(
-        new CustomEvent('smelter:voice:set-news-strip-enabled', {
-          detail: { enabled: params?.enabled },
-        }),
-      );
-      break;
+      return {
+        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:set-news-strip-enabled', {
+              detail: { enabled: params?.enabled, requestId },
+            }),
+          ),
+        ),
+        resolvedParams: params,
+      };
 
     case 'SET_NEWS_STRIP_FADE_DURING_SWAP':
-      window.dispatchEvent(
-        new CustomEvent('smelter:voice:set-news-strip-fade-during-swap', {
-          detail: { enabled: params?.enabled },
-        }),
-      );
-      break;
+      return {
+        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:set-news-strip-fade-during-swap', {
+              detail: { enabled: params?.enabled, requestId },
+            }),
+          ),
+        ),
+        resolvedParams: params,
+      };
 
     case 'SET_ORIENTATION':
-      window.dispatchEvent(
-        new CustomEvent('smelter:voice:set-orientation', {
-          detail: {
-            orientation: params?.orientation,
-            inputIndex: params?.inputIndex,
-          },
-        }),
-      );
-      break;
+      return {
+        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
+          window.dispatchEvent(
+            new CustomEvent('smelter:voice:set-orientation', {
+              detail: {
+                orientation: params?.orientation,
+                inputIndex: params?.inputIndex,
+                inputId: params?.inputId,
+                requestId,
+              },
+            }),
+          ),
+        ),
+        resolvedParams: params,
+      };
 
     case 'SET_DEFAULT_ORIENTATION':
       if (params?.orientation) {
         setDefaultOrientationSetting(params.orientation);
       }
-      break;
+      return { detail: {}, resolvedParams: params };
   }
 }
 
@@ -481,6 +648,7 @@ export function createMacroExecutionController(
   let currentStepIndex = 0;
   let stopRequested = false;
   let operationChain = Promise.resolve();
+  const executionContext: MacroExecutionContext = {};
 
   const setStatus = (nextStatus: MacroExecutionStatus) => {
     if (status === nextStatus) return;
@@ -500,7 +668,13 @@ export function createMacroExecutionController(
     callbacks.onStepStart?.(step, index, total);
 
     try {
-      await dispatchMacroStep(step);
+      const dispatchResult = await dispatchMacroStep(step, executionContext);
+      updateMacroExecutionContext(
+        step.action,
+        executionContext,
+        dispatchResult.detail,
+        dispatchResult.resolvedParams,
+      );
       callbacks.onStepComplete?.(step, index, total);
       currentStepIndex = index + 1;
 
