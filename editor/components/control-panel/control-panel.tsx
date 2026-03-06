@@ -66,8 +66,14 @@ import {
   type RotationAngle,
 } from './whip-input/utils/whip-publisher';
 import { loadLastWhipInputId } from './whip-input/utils/whip-storage';
-import { ControlPanelProvider } from './contexts/control-panel-context';
-import { WhipConnectionsProvider } from './contexts/whip-connections-context';
+import {
+  ControlPanelProvider,
+  useControlPanelContext,
+} from './contexts/control-panel-context';
+import {
+  WhipConnectionsProvider,
+  useWhipConnectionsContext,
+} from './contexts/whip-connections-context';
 import {
   useAutoPlayMacroSetting,
   useFeedbackPositionSetting,
@@ -268,33 +274,6 @@ export default function ControlPanel({
     handleRefreshState,
   ]);
 
-  useControlPanelEvents({
-    inputsRef,
-    inputWrappers,
-    setInputWrappers,
-    setListVersion,
-    updateOrder: updateOrderWithLock,
-    roomId,
-    handleRefreshState,
-    cameraPcRef,
-    cameraStreamRef,
-    screensharePcRef,
-    screenshareStreamRef,
-    activeCameraInputId,
-    activeScreenshareInputId,
-    setActiveCameraInputId,
-    setIsCameraActive,
-    setActiveScreenshareInputId,
-    setIsScreenshareActive,
-    setOpenFxInputId,
-    inputs,
-    availableShaders,
-    selectedInputId,
-    setSelectedInputId,
-    currentLayout: roomState.layout,
-    changeLayout,
-  });
-
   const handleSetPendingWhipInputs = useCallback(
     async (newInputs: PendingWhipInput[]) => {
       const serverData: PendingWhipInputData[] = newInputs.map((p) => ({
@@ -313,10 +292,6 @@ export default function ControlPanel({
     },
     [roomId, handleRefreshState],
   );
-
-  const handleToggleFx = (inputId: string) => {
-    setOpenFxInputId((prev) => (prev === inputId ? null : inputId));
-  };
 
   const isRecordingFromServer = roomState.isRecording ?? false;
 
@@ -338,6 +313,104 @@ export default function ControlPanel({
       isRecordingFromServer,
     ],
   );
+
+  return (
+    <ControlPanelProvider value={controlPanelCtx}>
+      <WhipConnectionsProvider value={whipConnections}>
+        <ControlPanelInner
+          roomState={roomState}
+          inputWrappers={inputWrappers}
+          setInputWrappers={setInputWrappers}
+          listVersion={listVersion}
+          setListVersion={setListVersion}
+          showStreamsSpinner={showStreamsSpinner}
+          changeLayout={changeLayout}
+          updateOrderWithLock={updateOrderWithLock}
+          openFxInputId={openFxInputId}
+          setOpenFxInputId={setOpenFxInputId}
+          selectedInputId={selectedInputId}
+          setSelectedInputId={setSelectedInputId}
+          isSwapping={isSwapping}
+          pendingWhipInputs={pendingWhipInputs}
+          handleSetPendingWhipInputs={handleSetPendingWhipInputs}
+          isGuest={isGuest}
+          renderStreamsOutside={renderStreamsOutside}
+          timelinePortalRef={timelinePortalRef}
+          renderDashboard={renderDashboard}
+        />
+      </WhipConnectionsProvider>
+    </ControlPanelProvider>
+  );
+}
+
+type ControlPanelInnerProps = {
+  roomState: RoomState;
+  inputWrappers: InputWrapper[];
+  setInputWrappers: (
+    wrappers: InputWrapper[] | ((prev: InputWrapper[]) => InputWrapper[]),
+  ) => void;
+  listVersion: number;
+  setListVersion: (v: number | ((prev: number) => number)) => void;
+  showStreamsSpinner: boolean;
+  changeLayout: (layout: Layout) => void;
+  updateOrderWithLock: (wrappers: InputWrapper[]) => Promise<void>;
+  openFxInputId: string | null;
+  setOpenFxInputId: React.Dispatch<React.SetStateAction<string | null>>;
+  selectedInputId: string | null;
+  setSelectedInputId: (id: string | null) => void;
+  isSwapping: boolean;
+  pendingWhipInputs: PendingWhipInput[];
+  handleSetPendingWhipInputs: (inputs: PendingWhipInput[]) => Promise<void>;
+  isGuest?: boolean;
+  renderStreamsOutside?: boolean;
+  timelinePortalRef?: React.RefObject<HTMLDivElement | null>;
+  renderDashboard?: ControlPanelProps['renderDashboard'];
+};
+
+function ControlPanelInner({
+  roomState,
+  inputWrappers,
+  setInputWrappers,
+  listVersion,
+  setListVersion,
+  showStreamsSpinner,
+  changeLayout,
+  updateOrderWithLock,
+  openFxInputId,
+  setOpenFxInputId,
+  selectedInputId,
+  setSelectedInputId,
+  isSwapping,
+  pendingWhipInputs,
+  handleSetPendingWhipInputs,
+  isGuest,
+  renderStreamsOutside,
+  timelinePortalRef,
+  renderDashboard,
+}: ControlPanelInnerProps) {
+  const {
+    roomId,
+    refreshState: handleRefreshState,
+    inputs,
+    availableShaders,
+  } = useControlPanelContext();
+  const { activeCameraInputId, activeScreenshareInputId } =
+    useWhipConnectionsContext();
+
+  useControlPanelEvents({
+    inputWrappers,
+    setInputWrappers,
+    setListVersion,
+    updateOrder: updateOrderWithLock,
+    selectedInputId,
+    setSelectedInputId,
+    currentLayout: roomState.layout,
+    changeLayout,
+  });
+
+  const handleToggleFx = (inputId: string) => {
+    setOpenFxInputId((prev) => (prev === inputId ? null : inputId));
+  };
 
   const fxInput =
     openFxInputId && inputs.find((i) => i.inputId === openFxInputId)
@@ -385,8 +458,6 @@ export default function ControlPanel({
         <SettingsBar
           changeLayout={changeLayout}
           roomState={roomState}
-          roomId={roomId}
-          handleRefreshState={handleRefreshState}
           pendingWhipInputs={pendingWhipInputs}
           setPendingWhipInputs={handleSetPendingWhipInputs}
         />
@@ -450,25 +521,23 @@ export default function ControlPanel({
     );
 
     return (
-      <ControlPanelProvider value={controlPanelCtx}>
-        <WhipConnectionsProvider value={whipConnections}>
-          <video
-            id='local-preview'
-            muted
-            playsInline
-            autoPlay
-            className='hidden'
-          />
-          {renderDashboard({
-            addVideoSection,
-            buttonsSection,
-            streamsSection,
-            fxSection,
-            timelineSection,
-            blockPropertiesSection,
-          })}
-        </WhipConnectionsProvider>
-      </ControlPanelProvider>
+      <>
+        <video
+          id='local-preview'
+          muted
+          playsInline
+          autoPlay
+          className='hidden'
+        />
+        {renderDashboard({
+          addVideoSection,
+          buttonsSection,
+          streamsSection,
+          fxSection,
+          timelineSection,
+          blockPropertiesSection,
+        })}
+      </>
     );
   }
 
@@ -536,8 +605,6 @@ export default function ControlPanel({
             <SettingsBar
               changeLayout={changeLayout}
               roomState={roomState}
-              roomId={roomId}
-              handleRefreshState={handleRefreshState}
               pendingWhipInputs={pendingWhipInputs}
               setPendingWhipInputs={handleSetPendingWhipInputs}
             />
@@ -549,24 +616,16 @@ export default function ControlPanel({
 
   if (renderStreamsOutside) {
     return (
-      <ControlPanelProvider value={controlPanelCtx}>
-        <WhipConnectionsProvider value={whipConnections}>
-          {mainPanel}
-          {timelineSection &&
-            timelinePortalRef?.current &&
-            createPortal(timelineSection, timelinePortalRef.current)}
-        </WhipConnectionsProvider>
-      </ControlPanelProvider>
+      <>
+        {mainPanel}
+        {timelineSection &&
+          timelinePortalRef?.current &&
+          createPortal(timelineSection, timelinePortalRef.current)}
+      </>
     );
   }
 
-  return (
-    <ControlPanelProvider value={controlPanelCtx}>
-      <WhipConnectionsProvider value={whipConnections}>
-        {mainPanel}
-      </WhipConnectionsProvider>
-    </ControlPanelProvider>
-  );
+  return mainPanel;
 }
 
 type ModalId = 'quickActions' | 'layouts' | 'settings';
@@ -574,18 +633,15 @@ type ModalId = 'quickActions' | 'layouts' | 'settings';
 function SettingsBar({
   changeLayout,
   roomState,
-  roomId,
-  handleRefreshState,
   pendingWhipInputs,
   setPendingWhipInputs,
 }: {
   changeLayout: (layout: Layout) => void;
   roomState: RoomState;
-  roomId: string;
-  handleRefreshState: () => Promise<void>;
   pendingWhipInputs: PendingWhipInput[];
   setPendingWhipInputs: (inputs: PendingWhipInput[]) => void | Promise<void>;
 }) {
+  const { roomId, refreshState: handleRefreshState } = useControlPanelContext();
   const [openModal, setOpenModal] = useState<ModalId | null>(null);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);

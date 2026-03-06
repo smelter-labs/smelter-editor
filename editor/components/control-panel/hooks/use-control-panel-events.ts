@@ -31,30 +31,16 @@ import { emitActionFeedback } from '@/lib/voice/feedbackEvents';
 import { triggerRecordingDownload } from './use-recording-controls';
 import { getDefaultOrientationSetting } from '@/lib/voice/macroSettings';
 import { LAYOUT_CONFIGS, type Layout } from '@/components/layout-selector';
+import { useControlPanelContext } from '../contexts/control-panel-context';
+import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
 
 type UseControlPanelEventsProps = {
-  inputsRef: React.MutableRefObject<Input[]>;
   inputWrappers: InputWrapper[];
   setInputWrappers: (
     wrappers: InputWrapper[] | ((prev: InputWrapper[]) => InputWrapper[]),
   ) => void;
   setListVersion: (v: number | ((prev: number) => number)) => void;
   updateOrder: (wrappers: InputWrapper[]) => Promise<void>;
-  roomId: string;
-  handleRefreshState: () => Promise<void>;
-  cameraPcRef: React.MutableRefObject<RTCPeerConnection | null>;
-  cameraStreamRef: React.MutableRefObject<MediaStream | null>;
-  screensharePcRef: React.MutableRefObject<RTCPeerConnection | null>;
-  screenshareStreamRef: React.MutableRefObject<MediaStream | null>;
-  activeCameraInputId: string | null;
-  activeScreenshareInputId: string | null;
-  setActiveCameraInputId: (id: string | null) => void;
-  setIsCameraActive: (active: boolean) => void;
-  setActiveScreenshareInputId: (id: string | null) => void;
-  setIsScreenshareActive: (active: boolean) => void;
-  setOpenFxInputId: (id: string | null) => void;
-  inputs: Input[];
-  availableShaders: AvailableShader[];
   selectedInputId: string | null;
   setSelectedInputId: (id: string | null) => void;
   currentLayout: Layout;
@@ -147,31 +133,34 @@ export async function applyTextColorFromVoice({
 }
 
 export function useControlPanelEvents({
-  inputsRef,
   inputWrappers,
   setInputWrappers,
   setListVersion,
   updateOrder,
-  roomId,
-  handleRefreshState,
-  cameraPcRef,
-  cameraStreamRef,
-  screensharePcRef,
-  screenshareStreamRef,
-  activeCameraInputId,
-  activeScreenshareInputId,
-  setActiveCameraInputId,
-  setIsCameraActive,
-  setActiveScreenshareInputId,
-  setIsScreenshareActive,
-  setOpenFxInputId,
-  inputs,
-  availableShaders,
   selectedInputId,
   setSelectedInputId,
   currentLayout,
   changeLayout,
 }: UseControlPanelEventsProps) {
+  const {
+    roomId,
+    refreshState: handleRefreshState,
+    inputs,
+    inputsRef,
+    availableShaders,
+  } = useControlPanelContext();
+  const {
+    cameraPcRef,
+    cameraStreamRef,
+    screensharePcRef,
+    screenshareStreamRef,
+    activeCameraInputId,
+    activeScreenshareInputId,
+    setActiveCameraInputId,
+    setIsCameraActive,
+    setActiveScreenshareInputId,
+    setIsScreenshareActive,
+  } = useWhipConnectionsContext();
   useControlPanelInputOrderEvents({
     setInputWrappers,
     setListVersion,
@@ -811,24 +800,13 @@ export function useControlPanelEvents({
     ) => {
       try {
         const { inputIndex, shader: shaderId } = e.detail;
-        const currentInputs = inputs || [];
-        const visibleInputs = currentInputs.filter((i) => !i.hidden);
-
-        let input;
-        if (inputIndex !== null) {
-          const idx = inputIndex - 1;
-          if (idx < 0 || idx >= visibleInputs.length) {
-            console.warn(`Voice: input ${inputIndex} does not exist`);
-            return;
-          }
-          input = visibleInputs[idx];
-        } else if (selectedInputId) {
-          input = currentInputs.find((i) => i.inputId === selectedInputId);
-          if (!input) {
-            console.warn('Voice: selected input no longer exists');
-            return;
-          }
-        } else {
+        const currentInputs = inputsRef.current || [];
+        const input = resolveVoiceInputTarget({
+          inputs: currentInputs,
+          inputIndex,
+          selectedInputId: selectedInputIdRef.current,
+        });
+        if (!input) {
           console.warn('Voice: no input specified and none selected');
           return;
         }
@@ -864,7 +842,7 @@ export function useControlPanelEvents({
         onRemoveShader as unknown as EventListener,
       );
     };
-  }, [roomId, handleRefreshState, inputs, selectedInputId]);
+  }, [roomId, handleRefreshState, inputsRef]);
 
   useEffect(() => {
     const onSelectInput = (e: CustomEvent<{ inputIndex: number }>) => {
@@ -928,11 +906,13 @@ export function useControlPanelEvents({
 
   useEffect(() => {
     const onStartTyping = () => {
-      const currentInputs = inputs || [];
+      const currentInputs = inputsRef.current || [];
       let input;
 
-      if (selectedInputId) {
-        input = currentInputs.find((i) => i.inputId === selectedInputId);
+      if (selectedInputIdRef.current) {
+        input = currentInputs.find(
+          (i) => i.inputId === selectedInputIdRef.current,
+        );
       }
 
       if (!input || input.type !== 'text-input') {
@@ -950,7 +930,7 @@ export function useControlPanelEvents({
     const onStopTyping = async () => {
       if (!typingInputIdRef.current) return;
 
-      const currentInputs = inputs || [];
+      const currentInputs = inputsRef.current || [];
       const input = currentInputs.find(
         (i) => i.inputId === typingInputIdRef.current,
       );
@@ -985,7 +965,7 @@ export function useControlPanelEvents({
       if (!typingInputIdRef.current) return;
 
       const { text } = e.detail;
-      const currentInputs = inputs || [];
+      const currentInputs = inputsRef.current || [];
       const input = currentInputs.find(
         (i) => i.inputId === typingInputIdRef.current,
       );
@@ -1044,7 +1024,7 @@ export function useControlPanelEvents({
         onAppendText as unknown as EventListener,
       );
     };
-  }, [roomId, handleRefreshState, inputs, selectedInputId]);
+  }, [roomId, handleRefreshState, inputsRef]);
 
   useEffect(() => {
     const SPEED_STEP = 10;
@@ -1057,7 +1037,7 @@ export function useControlPanelEvents({
       const { direction, steps } = e.detail;
       if (!typingInputIdRef.current) return;
 
-      const currentInputs = inputs || [];
+      const currentInputs = inputsRef.current || [];
       const input = currentInputs.find(
         (i) => i.inputId === typingInputIdRef.current,
       );
@@ -1094,7 +1074,7 @@ export function useControlPanelEvents({
         onChangeScrollSpeed as unknown as EventListener,
       );
     };
-  }, [roomId, handleRefreshState, inputs]);
+  }, [roomId, handleRefreshState, inputsRef]);
 
   useEffect(() => {
     const onNextLayout = () => {
@@ -1756,11 +1736,12 @@ export function useControlPanelEvents({
       try {
         const { direction, lines } = e.detail;
         const currentInputs = inputsRef.current || [];
+        const currentSelectedId = selectedInputIdRef.current;
 
-        const textInput = selectedInputId
+        const textInput = currentSelectedId
           ? currentInputs.find(
               (i: Input) =>
-                i.inputId === selectedInputId && i.type === 'text-input',
+                i.inputId === currentSelectedId && i.type === 'text-input',
             )
           : currentInputs.find((i: Input) => i.type === 'text-input');
 
@@ -1797,7 +1778,7 @@ export function useControlPanelEvents({
         onScrollText as unknown as EventListener,
       );
     };
-  }, [roomId, handleRefreshState, inputsRef, selectedInputId]);
+  }, [roomId, handleRefreshState, inputsRef]);
 
   useEffect(() => {
     const onSetOrientation = async (
