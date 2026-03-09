@@ -45,6 +45,13 @@ export type BlockSettings = {
   snakeEventShaders?: SnakeEventShaderConfig;
   snake1Shaders?: ShaderConfig[];
   snake2Shaders?: ShaderConfig[];
+  absolutePosition?: boolean;
+  absoluteTop?: number;
+  absoluteLeft?: number;
+  absoluteWidth?: number;
+  absoluteHeight?: number;
+  absoluteTransitionDurationMs?: number;
+  absoluteTransitionEasing?: string;
 };
 
 /** @deprecated Use `Clip` instead. Kept for backwards compat with room-config. */
@@ -187,6 +194,13 @@ export function createBlockSettingsFromInput(input?: Input): BlockSettings {
           params: (s.params || []).map((p) => ({ ...p })),
         }))
       : undefined,
+    absolutePosition: input?.absolutePosition,
+    absoluteTop: input?.absoluteTop,
+    absoluteLeft: input?.absoluteLeft,
+    absoluteWidth: input?.absoluteWidth,
+    absoluteHeight: input?.absoluteHeight,
+    absoluteTransitionDurationMs: input?.absoluteTransitionDurationMs,
+    absoluteTransitionEasing: input?.absoluteTransitionEasing,
   };
 }
 

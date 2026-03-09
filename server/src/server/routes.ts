@@ -678,6 +678,13 @@ const UpdateInputSchema = Type.Object({
   snake1Shaders: Type.Optional(Type.Any()),
   snake2Shaders: Type.Optional(Type.Any()),
   attachedInputIds: Type.Optional(Type.Array(Type.String())),
+  absolutePosition: Type.Optional(Type.Boolean()),
+  absoluteTop: Type.Optional(Type.Number()),
+  absoluteLeft: Type.Optional(Type.Number()),
+  absoluteWidth: Type.Optional(Type.Number({ minimum: 0 })),
+  absoluteHeight: Type.Optional(Type.Number({ minimum: 0 })),
+  absoluteTransitionDurationMs: Type.Optional(Type.Number({ minimum: 0 })),
+  absoluteTransitionEasing: Type.Optional(Type.String()),
 });
 
 routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(

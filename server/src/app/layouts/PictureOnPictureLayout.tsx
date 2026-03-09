@@ -1,12 +1,10 @@
 import { View, Rescaler } from '@swmansion/smelter';
-import React, { useContext } from 'react';
-import { useStore } from 'zustand';
-import { StoreContext, useResolution } from '../store';
+import React from 'react';
+import { useResolution, useLayoutInputs } from '../store';
 import { Input } from '../../inputs/inputs';
 
 export function PictureOnPictureLayout() {
-  const store = useContext(StoreContext);
-  const inputs = useStore(store, state => state.inputs);
+  const inputs = useLayoutInputs();
   const resolution = useResolution();
   const { width, height } = resolution;
 

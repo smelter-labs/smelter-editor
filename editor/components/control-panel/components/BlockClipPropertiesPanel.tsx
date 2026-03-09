@@ -12,6 +12,8 @@ import ShaderPanel, { InlineShaderParams } from '../input-entry/shader-panel';
 import { AddShaderModal } from '../input-entry/add-shader-modal';
 import SnakeEventShaderPanel from '../input-entry/snake-event-shader-panel';
 import type { BlockSettings } from '../hooks/use-timeline-state';
+import { PendingWhipInputs } from './PendingWhipInputs';
+import type { PendingWhipInput } from './ConfigurationSection';
 import { Link, Video, Monitor, Dices } from 'lucide-react';
 import { startPublish } from '../whip-input/utils/whip-publisher';
 import { startScreensharePublish } from '../whip-input/utils/screenshare-publisher';
@@ -27,6 +29,7 @@ import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/spinner';
 import { toast } from 'react-toastify';
 import { getRandomSnakeShaderPreset } from '@/lib/snake-shader-presets';
+import { AbsolutePositionController } from './AbsolutePositionController';
 
 const SHADER_SETTINGS_DEBOUNCE_MS = 200;
 
@@ -224,6 +227,9 @@ export function BlockClipPropertiesPanel({
   inputs,
   availableShaders,
   handleRefreshState,
+  resolution,
+  pendingWhipInputs,
+  setPendingWhipInputs,
 }: {
   roomId: string;
   selectedTimelineClip: SelectedTimelineClip | null;
@@ -231,6 +237,9 @@ export function BlockClipPropertiesPanel({
   inputs: Input[];
   availableShaders: AvailableShader[];
   handleRefreshState: () => Promise<void>;
+  resolution?: { width: number; height: number };
+  pendingWhipInputs?: PendingWhipInput[];
+  setPendingWhipInputs?: (inputs: PendingWhipInput[]) => void | Promise<void>;
 }) {
   const { updateInput: updateInputAction, addCameraInput } = useActions();
   const [sliderValues, setSliderValues] = useState<{ [key: string]: number }>(
@@ -462,6 +471,13 @@ export function BlockClipPropertiesPanel({
             patch.snake1Shaders ?? nextClip.blockSettings.snake1Shaders,
           snake2Shaders:
             patch.snake2Shaders ?? nextClip.blockSettings.snake2Shaders,
+          absolutePosition: patch.absolutePosition,
+          absoluteTop: patch.absoluteTop,
+          absoluteLeft: patch.absoluteLeft,
+          absoluteWidth: patch.absoluteWidth,
+          absoluteHeight: patch.absoluteHeight,
+          absoluteTransitionDurationMs: patch.absoluteTransitionDurationMs,
+          absoluteTransitionEasing: patch.absoluteTransitionEasing,
         });
         if (shouldRefresh) {
           await handleRefreshState();
@@ -606,8 +622,16 @@ export function BlockClipPropertiesPanel({
     [applyClipPatch],
   );
 
+  const pendingSection =
+    pendingWhipInputs && pendingWhipInputs.length > 0 && setPendingWhipInputs ? (
+      <PendingWhipInputs
+        pendingInputs={pendingWhipInputs}
+        setPendingInputs={setPendingWhipInputs}
+      />
+    ) : null;
+
   if (!selectedTimelineClip) {
-    return null;
+    return pendingSection;
   }
 
   const shaderInput: Input = selectedInput ?? {
@@ -777,6 +801,7 @@ export function BlockClipPropertiesPanel({
 
   return (
     <div>
+      {pendingSection}
       <div className='text-xs text-neutral-500 mb-2'>
         Selected block properties
       </div>
@@ -858,6 +883,108 @@ export function BlockClipPropertiesPanel({
           <option value='horizontal'>Horizontal</option>
           <option value='vertical'>Vertical</option>
         </select>
+      </div>
+      <div className='border border-neutral-700 rounded p-2 mb-3 mt-1'>
+        <div className='text-xs text-neutral-400 font-medium mb-2'>Position</div>
+        <div className='flex items-center justify-between mb-2'>
+          <span className='text-xs text-neutral-400'>Absolute position</span>
+          <input
+            type='checkbox'
+            checked={selectedTimelineClip.blockSettings.absolutePosition ?? false}
+            onChange={(e) => {
+              const enabled = e.target.checked;
+              if (enabled && resolution) {
+                const isVert =
+                  selectedTimelineClip.blockSettings.orientation === 'vertical';
+                const w = Math.round(resolution.width * 0.5);
+                const h = isVert
+                  ? Math.round(w * (16 / 9))
+                  : Math.round(w * (9 / 16));
+                void applyClipPatch({
+                  absolutePosition: true,
+                  absoluteWidth: w,
+                  absoluteHeight: h,
+                  absoluteTop: Math.round((resolution.height - h) / 2),
+                  absoluteLeft: Math.round((resolution.width - w) / 2),
+                  absoluteTransitionDurationMs: 300,
+                  absoluteTransitionEasing: 'linear',
+                });
+              } else {
+                void applyClipPatch({ absolutePosition: false });
+              }
+            }}
+          />
+        </div>
+        {selectedTimelineClip.blockSettings.absolutePosition && resolution && (
+          <>
+            <AbsolutePositionController
+              resolution={resolution}
+              top={selectedTimelineClip.blockSettings.absoluteTop ?? 0}
+              left={selectedTimelineClip.blockSettings.absoluteLeft ?? 0}
+              width={
+                selectedTimelineClip.blockSettings.absoluteWidth ??
+                Math.round(resolution.width * 0.5)
+              }
+              height={
+                selectedTimelineClip.blockSettings.absoluteHeight ??
+                Math.round(resolution.height * 0.5)
+              }
+              onChange={(pos) =>
+                void applyClipPatch({
+                  absoluteTop: pos.top,
+                  absoluteLeft: pos.left,
+                  absoluteWidth: pos.width,
+                  absoluteHeight: pos.height,
+                })
+              }
+            />
+            <div className='grid grid-cols-2 gap-2'>
+              <div>
+                <label className='text-xs text-neutral-400 block mb-1'>
+                  Duration (ms)
+                </label>
+                <input
+                  type='number'
+                  min={0}
+                  step={50}
+                  className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
+                  value={
+                    selectedTimelineClip.blockSettings
+                      .absoluteTransitionDurationMs ?? 300
+                  }
+                  onChange={(e) =>
+                    void applyClipPatch({
+                      absoluteTransitionDurationMs: Math.max(
+                        0,
+                        Number(e.target.value) || 0,
+                      ),
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label className='text-xs text-neutral-400 block mb-1'>
+                  Easing
+                </label>
+                <select
+                  className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
+                  value={
+                    selectedTimelineClip.blockSettings
+                      .absoluteTransitionEasing ?? 'linear'
+                  }
+                  onChange={(e) =>
+                    void applyClipPatch({
+                      absoluteTransitionEasing: e.target.value,
+                    })
+                  }>
+                  <option value='linear'>Linear</option>
+                  <option value='bounce'>Bounce</option>
+                  <option value='cubic_bezier_ease_in_out'>Ease in-out</option>
+                </select>
+              </div>
+            </div>
+          </>
+        )}
       </div>
       <div className='grid grid-cols-2 gap-2 mb-2'>
         <div>

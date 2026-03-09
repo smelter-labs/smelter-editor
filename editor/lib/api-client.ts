@@ -120,6 +120,7 @@ async function sendRequest(
   route: string,
   body?: object,
 ): Promise<any> {
+  console.log(`[smelter] ${method.toUpperCase()} ${route}`, body ?? '');
   const response = await fetch(`${baseUrl}${route}`, {
     method,
     body: body && JSON.stringify(body),

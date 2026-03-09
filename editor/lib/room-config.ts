@@ -38,6 +38,13 @@ export type RoomConfigInput = {
   snake1Shaders?: ShaderConfig[];
   snake2Shaders?: ShaderConfig[];
   attachedInputIndices?: number[];
+  absolutePosition?: boolean;
+  absoluteTop?: number;
+  absoluteLeft?: number;
+  absoluteWidth?: number;
+  absoluteHeight?: number;
+  absoluteTransitionDurationMs?: number;
+  absoluteTransitionEasing?: string;
 };
 
 function extractMp4FileName(title: string): string | undefined {
@@ -163,6 +170,13 @@ export function exportRoomConfig(
       snakeEventShaders: input.snakeEventShaders,
       snake1Shaders: input.snake1Shaders,
       snake2Shaders: input.snake2Shaders,
+      absolutePosition: input.absolutePosition,
+      absoluteTop: input.absoluteTop,
+      absoluteLeft: input.absoluteLeft,
+      absoluteWidth: input.absoluteWidth,
+      absoluteHeight: input.absoluteHeight,
+      absoluteTransitionDurationMs: input.absoluteTransitionDurationMs,
+      absoluteTransitionEasing: input.absoluteTransitionEasing,
       attachedInputIndices: input.attachedInputIds
         ?.map((id) => inputIdToIndex.get(id))
         .filter((idx): idx is number => idx !== undefined),

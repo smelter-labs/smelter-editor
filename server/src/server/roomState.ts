@@ -28,6 +28,13 @@ export type RoomInputState = {
   borderWidth: number;
   hidden: boolean;
   attachedInputIds?: string[];
+  absolutePosition?: boolean;
+  absoluteTop?: number;
+  absoluteLeft?: number;
+  absoluteWidth?: number;
+  absoluteHeight?: number;
+  absoluteTransitionDurationMs?: number;
+  absoluteTransitionEasing?: string;
   metadata: {
     title: string;
     description: string;
@@ -78,6 +85,13 @@ type UpdateInputOptions = {
   snakeEventShaders: SnakeEventShaderConfig;
   snake1Shaders: ShaderConfig[];
   snake2Shaders: ShaderConfig[];
+  absolutePosition: boolean;
+  absoluteTop: number;
+  absoluteLeft: number;
+  absoluteWidth: number;
+  absoluteHeight: number;
+  absoluteTransitionDurationMs: number;
+  absoluteTransitionEasing: string;
 };
 
 export type RegisterInputOptions =
@@ -910,6 +924,27 @@ export class RoomState {
     if (options.attachedInputIds !== undefined) {
       input.attachedInputIds = options.attachedInputIds;
     }
+    if (options.absolutePosition !== undefined) {
+      input.absolutePosition = options.absolutePosition;
+    }
+    if (options.absoluteTop !== undefined) {
+      input.absoluteTop = options.absoluteTop;
+    }
+    if (options.absoluteLeft !== undefined) {
+      input.absoluteLeft = options.absoluteLeft;
+    }
+    if (options.absoluteWidth !== undefined) {
+      input.absoluteWidth = options.absoluteWidth;
+    }
+    if (options.absoluteHeight !== undefined) {
+      input.absoluteHeight = options.absoluteHeight;
+    }
+    if (options.absoluteTransitionDurationMs !== undefined) {
+      input.absoluteTransitionDurationMs = options.absoluteTransitionDurationMs;
+    }
+    if (options.absoluteTransitionEasing !== undefined) {
+      input.absoluteTransitionEasing = options.absoluteTransitionEasing;
+    }
     this.updateStoreWithState();
   }
 
@@ -1002,6 +1037,13 @@ export class RoomState {
       snakeEventShaders: input.type === 'game' ? input.snakeEventShaders : undefined,
       snake1Shaders: input.type === 'game' ? input.snake1Shaders : undefined,
       snake2Shaders: input.type === 'game' ? input.snake2Shaders : undefined,
+      absolutePosition: input.absolutePosition,
+      absoluteTop: input.absoluteTop,
+      absoluteLeft: input.absoluteLeft,
+      absoluteWidth: input.absoluteWidth,
+      absoluteHeight: input.absoluteHeight,
+      absoluteTransitionDurationMs: input.absoluteTransitionDurationMs,
+      absoluteTransitionEasing: input.absoluteTransitionEasing,
     });
 
     const connectedInputs = this.inputs.filter(input => input.status === 'connected' && !input.hidden);

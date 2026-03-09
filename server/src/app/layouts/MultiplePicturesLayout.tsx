@@ -1,7 +1,6 @@
 import { View, Rescaler, Shader, Text } from '@swmansion/smelter';
-import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
-import { useStore } from 'zustand';
-import { StoreContext, type InputConfig, useResolution, useIsVertical } from '../store';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { type InputConfig, useResolution, useIsVertical, useLayoutInputs } from '../store';
 import { Input } from '../../inputs/inputs';
 
 // ----- Pure helpers (logic separated from React) -----
@@ -110,8 +109,7 @@ function wrapHue(hue: number): number {
 }
 
 export function WrappedLayout() {
-  const store = useContext(StoreContext);
-  const inputs = useStore(store, state => state.inputs);
+  const inputs = useLayoutInputs();
   const resolution = useResolution();
   const isVertical = useIsVertical();
   const { width, height } = resolution;

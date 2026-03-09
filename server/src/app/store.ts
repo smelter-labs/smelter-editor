@@ -37,6 +37,13 @@ export type InputConfig = {
   borderWidth?: number;
   replaceWith?: InputConfig;
   attachedInputs?: InputConfig[];
+  absolutePosition?: boolean;
+  absoluteTop?: number;
+  absoluteLeft?: number;
+  absoluteWidth?: number;
+  absoluteHeight?: number;
+  absoluteTransitionDurationMs?: number;
+  absoluteTransitionEasing?: string;
 };
 
 export type RoomStore = {
@@ -107,6 +114,16 @@ export function useNewsStripFadeDuringSwap() {
 export function useNewsStripEnabled() {
   const store = useContext(StoreContext);
   return useStore(store, state => state.newsStripEnabled);
+}
+
+export function useLayoutInputs() {
+  const store = useContext(StoreContext);
+  return useStore(store, state => state.inputs.filter(i => !i.absolutePosition));
+}
+
+export function useAbsoluteInputs() {
+  const store = useContext(StoreContext);
+  return useStore(store, state => state.inputs.filter(i => i.absolutePosition));
 }
 
 export const StoreContext = createContext<StoreApi<RoomStore>>(createRoomStore());

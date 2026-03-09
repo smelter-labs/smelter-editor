@@ -45,6 +45,13 @@ export type Input = {
   snake1Shaders?: ShaderConfig[];
   snake2Shaders?: ShaderConfig[];
   snakePlayerColors?: string[];
+  absolutePosition?: boolean;
+  absoluteTop?: number;
+  absoluteLeft?: number;
+  absoluteWidth?: number;
+  absoluteHeight?: number;
+  absoluteTransitionDurationMs?: number;
+  absoluteTransitionEasing?: string;
 };
 
 export type RegisterInputOptions =
@@ -98,4 +105,11 @@ export type UpdateInputOptions = {
   snakeEventShaders?: SnakeEventShaderConfig;
   snake1Shaders?: ShaderConfig[];
   snake2Shaders?: ShaderConfig[];
+  absolutePosition?: boolean;
+  absoluteTop?: number;
+  absoluteLeft?: number;
+  absoluteWidth?: number;
+  absoluteHeight?: number;
+  absoluteTransitionDurationMs?: number;
+  absoluteTransitionEasing?: string;
 };

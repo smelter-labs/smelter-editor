@@ -38,6 +38,13 @@ export type PublicInputState = {
   snake1Shaders?: ShaderConfig[];
   snake2Shaders?: ShaderConfig[];
   snakePlayerColors?: string[];
+  absolutePosition?: boolean;
+  absoluteTop?: number;
+  absoluteLeft?: number;
+  absoluteWidth?: number;
+  absoluteHeight?: number;
+  absoluteTransitionDurationMs?: number;
+  absoluteTransitionEasing?: string;
 };
 
 export function toPublicInputState(input: RoomInputState): PublicInputState {
@@ -55,6 +62,13 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
     borderWidth: input.borderWidth,
     attachedInputIds: input.attachedInputIds,
     hidden: input.hidden,
+    absolutePosition: input.absolutePosition,
+    absoluteTop: input.absoluteTop,
+    absoluteLeft: input.absoluteLeft,
+    absoluteWidth: input.absoluteWidth,
+    absoluteHeight: input.absoluteHeight,
+    absoluteTransitionDurationMs: input.absoluteTransitionDurationMs,
+    absoluteTransitionEasing: input.absoluteTransitionEasing,
   };
   switch (input.type) {
     case 'local-mp4':

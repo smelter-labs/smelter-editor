@@ -48,7 +48,6 @@ import {
   type RoomConfigInput,
 } from '@/lib/room-config';
 import { SaveConfigModal, LoadConfigModal } from './components/ConfigModals';
-import { PendingWhipInputs } from './components/PendingWhipInputs';
 import { TransitionSettings } from './components/TransitionSettings';
 import {
   rotateBy90,
@@ -445,12 +444,6 @@ function ControlPanelInner({
               : false
           }
         />
-        {!isGuest && (
-          <PendingWhipInputs
-            pendingInputs={pendingWhipInputs}
-            setPendingInputs={handleSetPendingWhipInputs}
-          />
-        )}
       </div>
     );
 
@@ -517,6 +510,9 @@ function ControlPanelInner({
           inputs={inputs}
           availableShaders={availableShaders}
           handleRefreshState={handleRefreshState}
+          resolution={roomState.resolution}
+          pendingWhipInputs={isGuest ? undefined : pendingWhipInputs}
+          setPendingWhipInputs={isGuest ? undefined : handleSetPendingWhipInputs}
         />
       </div>
     );
@@ -595,12 +591,6 @@ function ControlPanelInner({
                 : false
             }
           />
-          {!isGuest && (
-            <PendingWhipInputs
-              pendingInputs={pendingWhipInputs}
-              setPendingInputs={handleSetPendingWhipInputs}
-            />
-          )}
           {!isGuest && !renderStreamsOutside && streamsSectionContent}
           {!isGuest && (
             <SettingsBar
@@ -864,6 +854,16 @@ function SettingsBar({
             gameBoardBorderWidth: inputConfig.gameBoardBorderWidth,
             gameGridLineColor: inputConfig.gameGridLineColor,
             gameGridLineAlpha: inputConfig.gameGridLineAlpha,
+            snakeEventShaders: inputConfig.snakeEventShaders,
+            snake1Shaders: inputConfig.snake1Shaders,
+            snake2Shaders: inputConfig.snake2Shaders,
+            absolutePosition: inputConfig.absolutePosition,
+            absoluteTop: inputConfig.absoluteTop,
+            absoluteLeft: inputConfig.absoluteLeft,
+            absoluteWidth: inputConfig.absoluteWidth,
+            absoluteHeight: inputConfig.absoluteHeight,
+            absoluteTransitionDurationMs: inputConfig.absoluteTransitionDurationMs,
+            absoluteTransitionEasing: inputConfig.absoluteTransitionEasing,
             attachedInputIds:
               attachedInputIds && attachedInputIds.length > 0
                 ? attachedInputIds
