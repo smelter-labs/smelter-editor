@@ -122,8 +122,8 @@ export async function addTextInput(
   return client.addTextInput(roomId, text, textAlign);
 }
 
-export async function addGameInput(roomId: string, title?: string) {
-  return client.addGameInput(roomId, title);
+export async function addSnakeGameInput(roomId: string, title?: string) {
+  return client.addSnakeGameInput(roomId, title);
 }
 
 export async function removeInput(roomId: string, inputId: string) {

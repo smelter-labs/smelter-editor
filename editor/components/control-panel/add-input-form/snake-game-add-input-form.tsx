@@ -5,7 +5,7 @@ import { toast } from 'react-toastify';
 import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/spinner';
 
-export function GameAddInputForm({
+export function SnakeGameAddInputForm({
   inputs,
   roomId,
   refreshState,
@@ -14,7 +14,7 @@ export function GameAddInputForm({
   roomId: string;
   refreshState: () => Promise<void>;
 }) {
-  const { addGameInput } = useActions();
+  const { addSnakeGameInput } = useActions();
   const [title, setTitle] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -23,12 +23,12 @@ export function GameAddInputForm({
 
     setIsLoading(true);
     try {
-      await addGameInput(roomId, title.trim() || undefined);
+      await addSnakeGameInput(roomId, title.trim() || undefined);
       await refreshState();
       setTitle('');
-      toast.success('Game input added!');
+      toast.success('Snake game input added!');
     } catch (err) {
-      toast.error('Failed to add game input.');
+      toast.error('Failed to add snake game input.');
     } finally {
       setIsLoading(false);
     }
@@ -40,7 +40,7 @@ export function GameAddInputForm({
         type='text'
         value={title}
         onChange={(e) => setTitle(e.target.value)}
-        placeholder='Game title (optional)'
+        placeholder='Snake game title (optional)'
         className='w-full p-3 bg-neutral-900 border border-neutral-700 rounded text-white text-sm focus:outline-none focus:border-neutral-500'
       />
       <Button
@@ -53,7 +53,7 @@ export function GameAddInputForm({
             <LoadingSpinner size='sm' variant='spinner' />
           </>
         ) : (
-          'Add Game'
+          'Add Snake Game'
         )}
       </Button>
     </form>

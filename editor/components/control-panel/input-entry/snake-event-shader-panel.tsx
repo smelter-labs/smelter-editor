@@ -6,7 +6,7 @@ import type {
   SnakeEventShaderConfig,
   SnakeEventShaderMapping,
   SnakeEventApplicationMode,
-} from '@/lib/game-types';
+} from '@/lib/snake-game-types';
 import type { AvailableShader, ShaderParamConfig } from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
 import { SNAKE_EVENT_TYPES } from '@/lib/snake-events';

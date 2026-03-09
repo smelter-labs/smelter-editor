@@ -44,7 +44,7 @@ export interface ControlPanelActions {
     text: string,
     textAlign?: 'left' | 'center' | 'right',
   ): Promise<any>;
-  addGameInput(roomId: string, title?: string): Promise<any>;
+  addSnakeGameInput(roomId: string, title?: string): Promise<any>;
   addCameraInput(
     roomId: string,
     username?: string,

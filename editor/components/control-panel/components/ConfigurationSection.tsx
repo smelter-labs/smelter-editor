@@ -46,7 +46,7 @@ export function ConfigurationSection({
   pendingWhipInputs,
   setPendingWhipInputs,
 }: ConfigurationSectionProps) {
-  const { addTwitchInput, addKickInput, addMP4Input, addImageInput, addTextInput, addGameInput, addCameraInput, updateInput, updateRoom, removeInput } = useActions();
+  const { addTwitchInput, addKickInput, addMP4Input, addImageInput, addTextInput, addSnakeGameInput, addCameraInput, updateInput, updateRoom, removeInput } = useActions();
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -178,7 +178,7 @@ export function ConfigurationSection({
             }
             break;
           case 'game': {
-            const result = await addGameInput(roomId, inputConfig.title);
+            const result = await addSnakeGameInput(roomId, inputConfig.title);
             inputId = result.inputId;
             break;
           }

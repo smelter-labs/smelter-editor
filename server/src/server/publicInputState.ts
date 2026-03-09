@@ -1,7 +1,7 @@
 import type { RoomInputState, InputOrientation } from './roomState';
 import type { ShaderConfig } from '../types';
-import type { SnakeEventShaderConfig } from '../game/types';
-import { toPublicGameInputState } from '../game/publicGameState';
+import type { SnakeEventShaderConfig } from '../snakeGame/types';
+import { toPublicSnakeGameInputState } from '../snakeGame/publicSnakeGameState';
 
 /** API DTO for a single input; single source of truth for RoomInputState → response mapping */
 export type PublicInputState = {
@@ -89,7 +89,7 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
       return {
         ...base,
         sourceState: 'always-live' as const,
-        ...toPublicGameInputState(input),
+        ...toPublicSnakeGameInputState(input),
       };
     default:
       throw new Error('Unknown input state');

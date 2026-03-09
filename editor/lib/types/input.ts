@@ -1,5 +1,5 @@
 import type { ShaderConfig } from './shader';
-import type { SnakeEventShaderConfig } from '../game-types';
+import type { SnakeEventShaderConfig } from '../snake-game-types';
 
 export type InputOrientation = 'horizontal' | 'vertical';
 

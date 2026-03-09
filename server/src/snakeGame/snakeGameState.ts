@@ -1,10 +1,10 @@
 import type {
-  GameState,
+  SnakeGameState,
   SnakeEventShaderConfig,
   SnakeEventShaderMapping,
   SnakeEventType,
   ActiveSnakeEffect,
-} from '../game/types';
+} from './types';
 
 function makeSnakeEffectMapping(
   effectType: number,
@@ -46,9 +46,9 @@ export const DEFAULT_SNAKE_EVENT_SHADERS: SnakeEventShaderConfig = {
   game_over: makeSnakeEffectMapping(6, '#cc0000', 1.0, 1500),
 };
 
-export function createDefaultGameInputState(title?: string) {
+export function createDefaultSnakeGameInputState(title?: string) {
   return {
-    gameState: {
+    snakeGameState: {
       boardWidth: 20,
       boardHeight: 20,
       cellSize: 1,
@@ -63,7 +63,7 @@ export function createDefaultGameInputState(title?: string) {
       boardBorderWidth: 4,
       gridLineColor: '#000000',
       gridLineAlpha: 1.0,
-    } satisfies GameState,
+    } satisfies SnakeGameState,
     snakeEventShaders: { ...DEFAULT_SNAKE_EVENT_SHADERS } as SnakeEventShaderConfig,
     activeEffects: [] as ActiveSnakeEffect[],
     effectTimers: [] as NodeJS.Timeout[],
@@ -74,8 +74,8 @@ export function createDefaultGameInputState(title?: string) {
   };
 }
 
-export function buildUpdatedGameState(
-  currentGameState: GameState,
+export function buildUpdatedSnakeGameState(
+  currentGameState: SnakeGameState,
   incomingGameState: {
     board: { width: number; height: number; cellSize: number; cellGap?: number };
     cells: { x: number; y: number; color: string; size?: number; isHead?: boolean; direction?: 'up' | 'down' | 'left' | 'right'; progress?: number }[];
@@ -86,7 +86,7 @@ export function buildUpdatedGameState(
     backgroundColor: string;
     gameOverData?: { winnerName: string; reason: string; players: { name: string; score: number; eaten: number; cuts: number; color: string }[] };
   },
-): GameState {
+): SnakeGameState {
   return {
     boardWidth: incomingGameState.board.width,
     boardHeight: incomingGameState.board.height,
@@ -122,19 +122,19 @@ export function buildUpdatedGameState(
   };
 }
 
-export type ProcessGameEventsResult = {
+export type ProcessSnakeGameEventsResult = {
   updatedActiveEffects: ActiveSnakeEffect[];
   newTimers: NodeJS.Timeout[];
   needsStoreUpdate: boolean;
 };
 
-export function processGameEvents(
+export function processSnakeGameEvents(
   events: { type: SnakeEventType }[],
-  gameState: GameState,
+  snakeGameState: SnakeGameState,
   activeEffects: ActiveSnakeEffect[],
   config: SnakeEventShaderConfig | undefined,
   onStoreUpdate: () => void,
-): ProcessGameEventsResult {
+): ProcessSnakeGameEventsResult {
   if (!config) return { updatedActiveEffects: activeEffects, newTimers: [], needsStoreUpdate: false };
 
   const now = Date.now();
@@ -148,7 +148,7 @@ export function processGameEvents(
     const effectDurationMs = mapping.effectDurationMs || 600;
 
     let affectedCellIndices: number[] = [];
-    const cells = gameState.cells;
+    const cells = snakeGameState.cells;
     const totalCells = cells.length;
 
     // Build snake cell indices (cells belonging to a snake, identified by sharing color with a head)
@@ -187,7 +187,7 @@ export function processGameEvents(
     // Set cleanup timer
     const cleanupTimer = setTimeout(() => {
       currentEffects = currentEffects.filter(e => e !== effect);
-      gameState.activeEffects = currentEffects.length > 0 ? [...currentEffects] : undefined;
+      snakeGameState.activeEffects = currentEffects.length > 0 ? [...currentEffects] : undefined;
       onStoreUpdate();
     }, effectDurationMs);
     newTimers.push(cleanupTimer);
@@ -200,7 +200,7 @@ export function processGameEvents(
         const timer = setTimeout(() => {
           if (currentEffects.includes(effect)) {
             effect.affectedCellIndices = [snakeCellIndices[i]];
-            gameState.activeEffects = [...currentEffects];
+            snakeGameState.activeEffects = [...currentEffects];
             onStoreUpdate();
           }
         }, stepMs * i);
@@ -210,7 +210,7 @@ export function processGameEvents(
   }
 
   // Update game state with active effects
-  gameState.activeEffects = currentEffects.length > 0 ? [...currentEffects] : undefined;
+  snakeGameState.activeEffects = currentEffects.length > 0 ? [...currentEffects] : undefined;
 
   return {
     updatedActiveEffects: currentEffects,

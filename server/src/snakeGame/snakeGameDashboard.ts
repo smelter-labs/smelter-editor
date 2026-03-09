@@ -1,14 +1,14 @@
-import type { GameState } from './types';
+import type { SnakeGameState } from './types';
 import { state } from '../server/serverState';
 
-let globalGameState: GameState | null = null;
+let globalSnakeGameState: SnakeGameState | null = null;
 
-export function setGlobalGameState(gs: GameState) {
-  globalGameState = gs;
+export function setGlobalSnakeGameState(gs: SnakeGameState) {
+  globalSnakeGameState = gs;
 }
 
-export function getGlobalGameState(): GameState | null {
-  return globalGameState;
+export function getGlobalSnakeGameState(): SnakeGameState | null {
+  return globalSnakeGameState;
 }
 
 // ── Map hex color → blessed color name for {<color>-bg} tags ──
@@ -55,8 +55,8 @@ function hexToColorName(hex: string): string {
   return best;
 }
 
-export function renderSnakeBoard(gameState: GameState): string {
-  const { boardWidth, boardHeight, cells, backgroundColor, gridLineColor } = gameState;
+export function renderSnakeBoard(snakeGameState: SnakeGameState): string {
+  const { boardWidth, boardHeight, cells, backgroundColor, gridLineColor } = snakeGameState;
 
   const bgCol = hexToColorName(backgroundColor);
   const gridCol = hexToColorName(gridLineColor);
@@ -143,16 +143,16 @@ export function renderSnakeBoard(gameState: GameState): string {
   return lines.join('\n');
 }
 
-export function findFirstGameState(): GameState | null {
+export function findFirstSnakeGameState(): SnakeGameState | null {
   // Prefer global game state (from POST /game-state)
-  if (globalGameState && globalGameState.cells.length > 0) {
-    return globalGameState;
+  if (globalSnakeGameState && globalSnakeGameState.cells.length > 0) {
+    return globalSnakeGameState;
   }
   // Fallback: scan room inputs
   for (const room of state.getRooms()) {
     for (const input of room.getInputs()) {
       if (input.type === 'game') {
-        const gs = (input as any).gameState as GameState | undefined;
+        const gs = (input as any).snakeGameState as SnakeGameState | undefined;
         if (gs && gs.cells && gs.cells.length > 0) {
           return gs;
         }

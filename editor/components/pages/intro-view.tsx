@@ -16,7 +16,7 @@ import {
   addTwitchInput,
   addKickInput,
   addMP4Input,
-  addGameInput,
+  addSnakeGameInput,
   addImageInput,
   addTextInput,
   updateInput,
@@ -274,7 +274,7 @@ export default function IntroView() {
                 }
                 break;
               case 'game': {
-                const result = await addGameInput(roomId, inputConfig.title);
+                const result = await addSnakeGameInput(roomId, inputConfig.title);
                 inputId = result.inputId;
                 break;
               }

@@ -652,7 +652,7 @@ function SettingsBar({
   const addMP4Input = actions.addMP4Input;
   const addImageInput = actions.addImageInput;
   const addTextInput = actions.addTextInput;
-  const addGameInput = actions.addGameInput;
+  const addSnakeGameInput = actions.addSnakeGameInput;
   const removeInput = actions.removeInput;
   const [openModal, setOpenModal] = useState<ModalId | null>(null);
   const [isExporting, setIsExporting] = useState(false);
@@ -815,7 +815,7 @@ function SettingsBar({
               }
               break;
             case 'game': {
-              const result = await addGameInput(roomId, inputConfig.title);
+              const result = await addSnakeGameInput(roomId, inputConfig.title);
               inputId = result.inputId;
               break;
             }
