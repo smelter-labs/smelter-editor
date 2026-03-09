@@ -6,13 +6,28 @@ motion scores, and outputs JSON lines to stdout.
 
 import argparse
 import json
+import os
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 
 import cv2
 import numpy as np
+
+
+def create_sdp(port: int) -> str:
+    """Generate an SDP file telling ffmpeg to expect H.264 RTP on the given port."""
+    return (
+        "v=0\n"
+        "o=- 0 0 IN IP4 127.0.0.1\n"
+        "s=MotionDetect\n"
+        "c=IN IP4 127.0.0.1\n"
+        "t=0 0\n"
+        f"m=video {port} RTP/AVP 96\n"
+        "a=rtpmap:96 H264/90000\n"
+    )
 
 
 def main():
@@ -25,59 +40,69 @@ def main():
 
     frame_size = args.width * args.height * 3
 
-    ffmpeg_cmd = [
-        "ffmpeg",
-        "-protocol_whitelist", "file,udp,rtp",
-        "-f", "rtp",
-        "-i", f"rtp://127.0.0.1:{args.port}",
-        "-f", "rawvideo",
-        "-pix_fmt", "bgr24",
-        "-s", f"{args.width}x{args.height}",
-        "-an",
-        "pipe:1",
-    ]
-
-    proc = subprocess.Popen(
-        ffmpeg_cmd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-    )
-
-    def handle_signal(_sig, _frame):
-        proc.kill()
-        proc.wait()
-        sys.exit(0)
-
-    signal.signal(signal.SIGTERM, handle_signal)
-    signal.signal(signal.SIGINT, handle_signal)
-
-    prev_gray = None
-    last_output_time = 0.0
-
+    # Write a temporary SDP file so ffmpeg knows to expect H.264 RTP
+    sdp_fd, sdp_path = tempfile.mkstemp(suffix=".sdp", prefix="motion_")
     try:
-        while True:
-            raw = proc.stdout.read(frame_size)
-            if len(raw) != frame_size:
-                break
+        with os.fdopen(sdp_fd, "w") as f:
+            f.write(create_sdp(args.port))
 
-            now = time.time()
-            frame = np.frombuffer(raw, dtype=np.uint8).reshape((args.height, args.width, 3))
-            gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        ffmpeg_cmd = [
+            "ffmpeg",
+            "-protocol_whitelist", "file,udp,rtp",
+            "-i", sdp_path,
+            "-f", "rawvideo",
+            "-pix_fmt", "bgr24",
+            "-s", f"{args.width}x{args.height}",
+            "-an",
+            "pipe:1",
+        ]
 
-            if prev_gray is not None and (now - last_output_time) >= args.interval:
-                diff = cv2.absdiff(prev_gray, gray)
-                score = round(float(diff.mean() / 255.0), 4)
-                line = json.dumps({"score": score, "ts": now})
-                sys.stdout.write(line + "\n")
-                sys.stdout.flush()
-                last_output_time = now
+        proc = subprocess.Popen(
+            ffmpeg_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
 
-            prev_gray = gray
-    except (BrokenPipeError, IOError):
-        pass
+        def handle_signal(_sig, _frame):
+            proc.kill()
+            proc.wait()
+            sys.exit(0)
+
+        signal.signal(signal.SIGTERM, handle_signal)
+        signal.signal(signal.SIGINT, handle_signal)
+
+        prev_gray = None
+        last_output_time = 0.0
+
+        try:
+            while True:
+                raw = proc.stdout.read(frame_size)
+                if len(raw) != frame_size:
+                    break
+
+                now = time.time()
+                frame = np.frombuffer(raw, dtype=np.uint8).reshape((args.height, args.width, 3))
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+
+                if prev_gray is not None and (now - last_output_time) >= args.interval:
+                    diff = cv2.absdiff(prev_gray, gray)
+                    score = round(float(diff.mean() / 255.0), 4)
+                    line = json.dumps({"score": score, "ts": now})
+                    sys.stdout.write(line + "\n")
+                    sys.stdout.flush()
+                    last_output_time = now
+
+                prev_gray = gray
+        except (BrokenPipeError, IOError):
+            pass
+        finally:
+            proc.kill()
+            proc.wait()
     finally:
-        proc.kill()
-        proc.wait()
+        try:
+            os.unlink(sdp_path)
+        except OSError:
+            pass
 
 
 if __name__ == "__main__":

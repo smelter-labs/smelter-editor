@@ -51,4 +51,4 @@ server/recordings/*
 server/configs/*
 server/dist/
 recordings/
-configs/
+configs/server/motion/.venv/

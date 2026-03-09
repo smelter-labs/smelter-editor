@@ -110,8 +110,14 @@ export class MotionManager {
     await SmelterInstance.registerMotionOutput(outputId, inputId, port);
 
     const pythonPath = getPythonPath();
+    console.log(`[motion] Starting detection for ${inputId} on port ${port} using ${pythonPath}`);
     const child = spawn(pythonPath, [SCRIPT_PATH, '--port', String(port)], {
-      stdio: ['ignore', 'pipe', 'ignore'],
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    const stderrRl = createInterface({ input: child.stderr! });
+    stderrRl.on('line', (line) => {
+      console.log(`[motion][${inputId}] ${line}`);
     });
 
     const rl = createInterface({ input: child.stdout! });
