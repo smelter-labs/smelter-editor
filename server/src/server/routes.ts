@@ -483,9 +483,7 @@ const UpdateRoomSchema = Type.Object({
       Type.Literal('picture-in-picture'),
       Type.Literal('wrapped'),
       Type.Literal('wrapped-static'),
-      Type.Literal('transition'),
       Type.Literal('picture-on-picture'),
-      Type.Literal('softu-tv'),
     ])
   ),
   isPublic: Type.Optional(Type.Boolean()),

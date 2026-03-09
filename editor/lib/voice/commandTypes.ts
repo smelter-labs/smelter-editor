@@ -131,9 +131,7 @@ export type SetLayoutCommand = {
     | 'picture-in-picture'
     | 'wrapped'
     | 'wrapped-static'
-    | 'transition'
-    | 'picture-on-picture'
-    | 'softu-tv';
+    | 'picture-on-picture';
 };
 
 export type SetTextColorCommand = {
