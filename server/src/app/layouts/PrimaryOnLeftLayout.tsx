@@ -3,8 +3,8 @@ import React, { useContext } from 'react';
 import { useStore } from 'zustand';
 import { StoreContext, useResolution, useIsVertical, useSwapDurationMs, useSwapOutgoingEnabled, useSwapFadeInDurationMs, useSwapFadeOutDurationMs } from '../store';
 import { Input, SmallInput } from '../../inputs/inputs';
-import { usePrimarySwapTransition } from './usePrimarySwapTransition';
-import { usePostSwapFadeIn } from './usePostSwapFadeIn';
+import { usePrimarySwapTransition } from '../transitions/usePrimarySwapTransition';
+import { usePostSwapFadeIn } from '../transitions/usePostSwapFadeIn';
 
 const TILES_PADDING = 10;
 

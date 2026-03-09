@@ -4,7 +4,7 @@ import type { RoomStore } from './store';
 import type { StoreApi } from 'zustand';
 import { useStore } from 'zustand';
 import { useContext } from 'react';
-import { StoreContext } from './store';
+import { StoreContext, useResolution } from './store';
 import {
   GridLayout,
   PrimaryOnTopLayout,
@@ -12,10 +12,11 @@ import {
   PictureInPictureLayout,
   WrappedLayout,
   WrappedStaticLayout,
-  TransitionLayout,
   PictureOnPictureLayout,
   SoftuTvLayout,
 } from './layouts';
+import { TransitionLayout } from './transitions';
+import { NewsStripOverlay, SOFTU_TV_THEME } from './news-strip';
 
 export default function App({ store }: { store: StoreApi<RoomStore> }) {
   return (
@@ -28,9 +29,11 @@ export default function App({ store }: { store: StoreApi<RoomStore> }) {
 function OutputScene() {
   const store = useContext(StoreContext);
   const layout = useStore(store, state => state.layout);
+  const resolution = useResolution();
+  const { width, height } = resolution;
 
   return (
-    <View style={{ backgroundColor: '#000000', padding: 0 }}>
+    <View style={{ backgroundColor: '#000000', padding: 0, width, height, overflow: 'visible' }}>
       {layout === 'grid' ? (
         <GridLayout />
       ) : layout === 'primary-on-top' ? (
@@ -50,6 +53,7 @@ function OutputScene() {
       ) : layout === 'softu-tv' ? (
         <SoftuTvLayout />
       ) : null}
+      <NewsStripOverlay theme={layout === 'softu-tv' ? SOFTU_TV_THEME : undefined} />
     </View>
   );
 }

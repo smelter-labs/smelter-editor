@@ -4,6 +4,5 @@ export { PrimaryOnTopLayout } from './PrimaryOnTopLayout';
 export { PictureInPictureLayout } from './PictureInPictureLayout';
 export { WrappedLayout } from './MultiplePicturesLayout';
 export { WrappedLayout as WrappedStaticLayout } from './MultiplePicturesLayout';
-export { TransitionLayout } from './TransitionLayout';
 export { PictureOnPictureLayout } from './PictureOnPictureLayout';
 export { SoftuTvLayout } from './SoftuTvLayout';
