@@ -34,18 +34,11 @@ export const LAYOUT_CONFIGS = [
     icon: Grid3X3,
     maxStreams: 4,
   },
-  { id: 'transition', name: 'Transition', icon: Layers, maxStreams: 4 },
   {
     id: 'picture-on-picture',
     name: 'Picture on Picture',
     icon: Layers,
     maxStreams: 10,
-  },
-  {
-    id: 'softu-tv',
-    name: 'Softu TV',
-    icon: LayoutGrid,
-    maxStreams: 4,
   },
 ] as const satisfies LayoutConfig[];
 
@@ -181,30 +174,6 @@ export default function LayoutSelector({
                   }}></div>
               ))}
             </div>
-          </div>
-        );
-      case 'softu-tv':
-        return (
-          <div className='w-full h-full relative overflow-hidden'>
-            <div
-              className={`transition-all duration-300 ease-in-out w-full h-full rounded-none border border-neutral-700 ${streamCount > 0 ? 'bg-neutral-600' : 'bg-transparent'}`}
-            />
-            {Array.from({ length: Math.max(0, streamCount - 1) }).map(
-              (_, idx) => {
-                return (
-                  <div
-                    key={idx}
-                    className='transition-all duration-300 ease-in-out absolute border border-neutral-700 bg-neutral-600 rounded-none'
-                    style={{
-                      top: `${8 + idx * 28}%`,
-                      right: '8%',
-                      width: '25%',
-                      height: '25%',
-                      zIndex: 10 + idx,
-                    }}></div>
-                );
-              },
-            )}
           </div>
         );
       case 'picture-on-picture':

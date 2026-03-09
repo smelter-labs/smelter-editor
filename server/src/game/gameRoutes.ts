@@ -285,7 +285,7 @@ async function createDedicatedGameRoom(
   gs: Static<typeof GameStateSchema>,
 ): Promise<{ roomId: string; roomName: { pl: string; en: string }; inputId: string }> {
   const { roomId, roomName, room } = await state.createRoom([{ type: 'game', title: 'Snake' }], true);
-  await room.updateLayout('softu-tv');
+  await room.updateLayout('picture-in-picture');
   await new Promise(resolve => setTimeout(resolve, 200));
 
   const inputId = room.getInputs().find(input => input.type === 'game')?.inputId;

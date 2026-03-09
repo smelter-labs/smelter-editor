@@ -5,4 +5,3 @@ export { PictureInPictureLayout } from './PictureInPictureLayout';
 export { WrappedLayout } from './MultiplePicturesLayout';
 export { WrappedLayout as WrappedStaticLayout } from './MultiplePicturesLayout';
 export { PictureOnPictureLayout } from './PictureOnPictureLayout';
-export { SoftuTvLayout } from './SoftuTvLayout';

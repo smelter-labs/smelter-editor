@@ -217,9 +217,7 @@ const LAYOUT_ALIASES: Record<
   | 'picture-in-picture'
   | 'wrapped'
   | 'wrapped-static'
-  | 'transition'
   | 'picture-on-picture'
-  | 'softu-tv'
 > = {
   grid: 'grid',
   'primary left': 'primary-on-left',
@@ -232,10 +230,8 @@ const LAYOUT_ALIASES: Record<
   pip: 'picture-in-picture',
   wrapped: 'wrapped',
   'wrapped static': 'wrapped-static',
-  transition: 'transition',
   'picture on picture': 'picture-on-picture',
   pop: 'picture-on-picture',
-  'softu tv': 'softu-tv',
 };
 
 function isRemoveColorShaderContext(text: string): boolean {
@@ -284,9 +280,7 @@ function findLayoutId(
   | 'picture-in-picture'
   | 'wrapped'
   | 'wrapped-static'
-  | 'transition'
   | 'picture-on-picture'
-  | 'softu-tv'
   | null {
   for (const [token, layoutId] of Object.entries(LAYOUT_ALIASES)) {
     if (new RegExp(`\\b${token}\\b`).test(text)) {

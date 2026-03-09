@@ -159,7 +159,7 @@ export function useControlPanelState(
     async (layout: Layout) => {
       try {
         const disableNewsStrip =
-          layout === 'softu-tv' || layout === 'picture-in-picture';
+          layout === 'picture-in-picture';
         await updateRoomAction(roomId, {
           layout,
           ...(disableNewsStrip && { newsStripEnabled: false }),

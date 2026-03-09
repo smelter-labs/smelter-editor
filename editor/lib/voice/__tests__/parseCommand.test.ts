@@ -404,10 +404,6 @@ describe('parseCommand', () => {
         intent: 'SET_LAYOUT',
         layout: 'picture-in-picture',
       });
-      expect(parseCommand('switch layout to softu tv')).toEqual({
-        intent: 'SET_LAYOUT',
-        layout: 'softu-tv',
-      });
     });
 
     it('parses hide/remove all commands', () => {

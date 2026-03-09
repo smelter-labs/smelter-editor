@@ -13,10 +13,8 @@ import {
   WrappedLayout,
   WrappedStaticLayout,
   PictureOnPictureLayout,
-  SoftuTvLayout,
 } from './layouts';
-import { TransitionLayout } from './transitions';
-import { NewsStripOverlay, SOFTU_TV_THEME } from './news-strip';
+import { NewsStripOverlay } from './news-strip';
 
 export default function App({ store }: { store: StoreApi<RoomStore> }) {
   return (
@@ -46,14 +44,10 @@ function OutputScene() {
         <WrappedLayout />
       ) : layout === 'wrapped-static' ? (
         <WrappedStaticLayout />
-      ) : layout === 'transition' ? (
-        <TransitionLayout />
       ) : layout === 'picture-on-picture' ? (
         <PictureOnPictureLayout />
-      ) : layout === 'softu-tv' ? (
-        <SoftuTvLayout />
       ) : null}
-      <NewsStripOverlay theme={layout === 'softu-tv' ? SOFTU_TV_THEME : undefined} />
+      <NewsStripOverlay />
     </View>
   );
 }

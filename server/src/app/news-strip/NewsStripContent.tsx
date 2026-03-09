@@ -17,14 +17,6 @@ export const DEFAULT_THEME: NewsStripTheme = {
   marqueeText: '#ffffff',
 };
 
-export const SOFTU_TV_THEME: NewsStripTheme = {
-  liveBadgeBg: '#0052A5',
-  liveBadgeText: '#FFFFFF',
-  logoBoxBg: '#E0E8F0',
-  marqueeBg: '#0B1D3A',
-  marqueeText: '#CFD8E6',
-};
-
 type NewsStripContentProps = {
   width: number;
   stripHeight: number;
