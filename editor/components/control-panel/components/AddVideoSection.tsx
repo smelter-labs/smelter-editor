@@ -7,7 +7,7 @@ import { ImageAddInputForm } from '../add-input-form/image-add-input-form';
 import { TextAddInputForm } from '../add-input-form/text-add-input-form';
 import { WHIPAddInputForm } from '../add-input-form/whip-add-input-form';
 import { ScreenshareAddInputForm } from '../add-input-form/screenshare-add-input-form';
-import { GameAddInputForm } from '../add-input-form/game-add-input-form';
+import { SnakeGameAddInputForm } from '../add-input-form/snake-game-add-input-form';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
@@ -270,7 +270,7 @@ export function AddVideoSection({
         )}
         {effectiveActiveTab === 'game' && (
           <div>
-            <GameAddInputForm
+            <SnakeGameAddInputForm
               inputs={inputs}
               roomId={roomId}
               refreshState={refreshState}

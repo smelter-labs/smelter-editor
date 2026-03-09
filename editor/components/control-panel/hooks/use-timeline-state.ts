@@ -2,7 +2,7 @@
 
 import { useReducer, useEffect, useCallback, useRef, useState } from 'react';
 import type { Input, ShaderConfig } from '@/lib/types';
-import type { SnakeEventShaderConfig } from '@/lib/game-types';
+import type { SnakeEventShaderConfig } from '@/lib/snake-game-types';
 import { loadTimeline, saveTimeline } from '@/lib/timeline-storage';
 
 // ── Types ────────────────────────────────────────────────

@@ -5,11 +5,11 @@ import { hlsUrlForKickChannel, hlsUrlForTwitchChannel } from '../streamlink';
 import { TwitchChannelMonitor } from '../twitch/TwitchChannelMonitor';
 import type { TwitchStreamInfo } from '../twitch/TwitchApi';
 import { sleep } from '../utils';
-import type { GameState, SnakeEventShaderConfig, ActiveSnakeEffect, SnakeEventType } from '../game/types';
+import type { SnakeGameState, SnakeEventShaderConfig, ActiveSnakeEffect, SnakeEventType } from '../snakeGame/types';
 import type { InputConfig } from '../app/store';
 import type { Layout, ShaderConfig, StreamMonitor, WhipMonitor } from '../types';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
-import { createDefaultGameInputState, DEFAULT_SNAKE_EVENT_SHADERS, buildUpdatedGameState, processGameEvents } from '../game/gameState';
+import { createDefaultSnakeGameInputState, DEFAULT_SNAKE_EVENT_SHADERS, buildUpdatedSnakeGameState, processSnakeGameEvents } from '../snakeGame/snakeGameState';
 import { KickChannelMonitor } from '../kick/KickChannelMonitor';
 import { WhipInputMonitor } from '../whip/WhipInputMonitor';
 import type { RoomNameEntry } from './roomNames';
@@ -41,7 +41,7 @@ type TypeSpecificState =
   | { type: 'whip'; whipUrl: string; monitor: WhipMonitor }
   | { type: 'image'; imageId: string }
   | { type: 'text-input'; text: string; textAlign: 'left' | 'center' | 'right'; textColor: string; textMaxLines: number; textScrollSpeed: number; textScrollLoop: boolean; textScrollNudge: number; textFontSize: number }
-  | { type: 'game'; gameState: GameState; snakeEventShaders?: SnakeEventShaderConfig; snake1Shaders?: ShaderConfig[]; snake2Shaders?: ShaderConfig[]; activeEffects: ActiveSnakeEffect[]; effectTimers: NodeJS.Timeout[] };
+  | { type: 'game'; snakeGameState: SnakeGameState; snakeEventShaders?: SnakeEventShaderConfig; snake1Shaders?: ShaderConfig[]; snake2Shaders?: ShaderConfig[]; activeEffects: ActiveSnakeEffect[]; effectTimers: NodeJS.Timeout[] };
 
 export type PendingWhipInputData = {
   id: string;
@@ -664,7 +664,7 @@ export class RoomState {
     } else if (opts.type === 'game') {
       console.log('Adding game input');
       const inputId = `${this.idPrefix}::game::${Date.now()}`;
-      const defaults = createDefaultGameInputState(opts.title);
+      const defaults = createDefaultSnakeGameInputState(opts.title);
 
       this.inputs.push({
         inputId,
@@ -880,22 +880,22 @@ export class RoomState {
     }
     if (input.type === 'game') {
       if (options.gameBackgroundColor !== undefined) {
-        input.gameState.backgroundColor = options.gameBackgroundColor;
+        input.snakeGameState.backgroundColor = options.gameBackgroundColor;
       }
       if (options.gameCellGap !== undefined) {
-        input.gameState.cellGap = options.gameCellGap;
+        input.snakeGameState.cellGap = options.gameCellGap;
       }
       if (options.gameBoardBorderColor !== undefined) {
-        input.gameState.boardBorderColor = options.gameBoardBorderColor;
+        input.snakeGameState.boardBorderColor = options.gameBoardBorderColor;
       }
       if (options.gameBoardBorderWidth !== undefined) {
-        input.gameState.boardBorderWidth = options.gameBoardBorderWidth;
+        input.snakeGameState.boardBorderWidth = options.gameBoardBorderWidth;
       }
       if (options.gameGridLineColor !== undefined) {
-        input.gameState.gridLineColor = options.gameGridLineColor;
+        input.snakeGameState.gridLineColor = options.gameGridLineColor;
       }
       if (options.gameGridLineAlpha !== undefined) {
-        input.gameState.gridLineAlpha = options.gameGridLineAlpha;
+        input.snakeGameState.gridLineAlpha = options.gameGridLineAlpha;
       }
       if (options.snakeEventShaders !== undefined) {
         input.snakeEventShaders = options.snakeEventShaders;
@@ -998,7 +998,7 @@ export class RoomState {
       textScrollLoop: input.type === 'text-input' ? input.textScrollLoop : undefined,
       textScrollNudge: input.type === 'text-input' ? input.textScrollNudge : undefined,
       textFontSize: input.type === 'text-input' ? input.textFontSize : undefined,
-      gameState: input.type === 'game' ? input.gameState : undefined,
+      snakeGameState: input.type === 'game' ? input.snakeGameState : undefined,
       snakeEventShaders: input.type === 'game' ? input.snakeEventShaders : undefined,
       snake1Shaders: input.type === 'game' ? input.snake1Shaders : undefined,
       snake2Shaders: input.type === 'game' ? input.snake2Shaders : undefined,
@@ -1047,29 +1047,29 @@ export class RoomState {
     this.updateStoreWithState();
   }
 
-  public updateGameState(inputId: string, gameState: { board: { width: number; height: number; cellSize: number; cellGap?: number }; cells: { x: number; y: number; color: string; size?: number; isHead?: boolean; direction?: 'up' | 'down' | 'left' | 'right'; progress?: number }[]; smoothMove?: boolean; smoothMoveSpeed?: number; smoothMoveAccel?: number; smoothMoveDecel?: number; backgroundColor: string; gameOverData?: { winnerName: string; reason: string; players: { name: string; score: number; eaten: number; cuts: number; color: string }[] } }, events?: { type: SnakeEventType }[]) {
+  public updateSnakeGameState(inputId: string, incomingState: { board: { width: number; height: number; cellSize: number; cellGap?: number }; cells: { x: number; y: number; color: string; size?: number; isHead?: boolean; direction?: 'up' | 'down' | 'left' | 'right'; progress?: number }[]; smoothMove?: boolean; smoothMoveSpeed?: number; smoothMoveAccel?: number; smoothMoveDecel?: number; backgroundColor: string; gameOverData?: { winnerName: string; reason: string; players: { name: string; score: number; eaten: number; cuts: number; color: string }[] } }, events?: { type: SnakeEventType }[]) {
     const input = this.getInput(inputId);
     if (input.type !== 'game') {
       throw new Error(`Input ${inputId} is not a game input`);
     }
-    input.gameState = buildUpdatedGameState(input.gameState, gameState);
-    console.log(`[game] Updated snake board: ${gameState.cells.length} cells on ${gameState.board.width}x${gameState.board.height}`);
+    input.snakeGameState = buildUpdatedSnakeGameState(input.snakeGameState, incomingState);
+    console.log(`[game] Updated snake board: ${incomingState.cells.length} cells on ${incomingState.board.width}x${incomingState.board.height}`);
 
     if (events && events.length > 0) {
-      this.ingestGameEvents(inputId, events);
+      this.ingestSnakeGameEvents(inputId, events);
     } else {
       this.updateStoreWithState();
     }
   }
 
-  private ingestGameEvents(inputId: string, events: { type: SnakeEventType }[]) {
+  private ingestSnakeGameEvents(inputId: string, events: { type: SnakeEventType }[]) {
     const input = this.getInput(inputId);
     if (input.type !== 'game') return;
     if (!events || events.length === 0) return;
 
-    const result = processGameEvents(
+    const result = processSnakeGameEvents(
       events,
-      input.gameState,
+      input.snakeGameState,
       input.activeEffects,
       input.snakeEventShaders,
       () => this.updateStoreWithState(),
@@ -1229,7 +1229,7 @@ function registerOptionsFromInput(input: RoomInputState): RegisterSmelterInputOp
     // They are already registered via registerImage and used directly in layouts
     throw Error('Images cannot be connected as stream inputs');
   } else if (input.type === 'game') {
-    throw Error('Game inputs do not need stream registration');
+    throw Error('Snake game inputs do not need stream registration');
   } else {
     throw Error('Unknown type');
   }

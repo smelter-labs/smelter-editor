@@ -5,10 +5,10 @@ import { Layouts } from '../types';
 import { createContext, useContext } from 'react';
 import { useStore } from 'zustand';
 
-export type { GameCell, SnakeEventType, SnakeEventApplicationMode, SnakeEventShaderMapping, SnakeEventShaderConfig, ActiveSnakeEffect, GameState, GameOverPlayer, GameOverData } from '../game/types';
+export type { SnakeGameCell, SnakeEventType, SnakeEventApplicationMode, SnakeEventShaderMapping, SnakeEventShaderConfig, ActiveSnakeEffect, SnakeGameState, SnakeGameOverPlayer, SnakeGameOverData } from '../snakeGame/types';
 export { Layouts };
 export type { Layout };
-import type { GameState, SnakeEventShaderConfig } from '../game/types';
+import type { SnakeGameState, SnakeEventShaderConfig } from '../snakeGame/types';
 
 export type InputOrientation = 'horizontal' | 'vertical';
 
@@ -29,7 +29,7 @@ export type InputConfig = {
   textScrollLoop?: boolean;
   textScrollNudge?: number;
   textFontSize?: number;
-  gameState?: GameState;
+  snakeGameState?: SnakeGameState;
   snakeEventShaders?: SnakeEventShaderConfig;
   snake1Shaders?: ShaderConfig[];
   snake2Shaders?: ShaderConfig[];

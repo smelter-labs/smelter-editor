@@ -1,8 +1,8 @@
 import type { ShaderConfig } from '../types';
-import type { SnakeEventShaderConfig, GameState } from './types';
+import type { SnakeEventShaderConfig, SnakeGameState } from './types';
 
-export type GameInputState = {
-  gameState: GameState;
+export type SnakeGameInputState = {
+  snakeGameState: SnakeGameState;
   snakeEventShaders?: SnakeEventShaderConfig;
   snake1Shaders?: ShaderConfig[];
   snake2Shaders?: ShaderConfig[];
@@ -32,17 +32,17 @@ export function extractSnakePlayerColors(
   return fallbackUniqueColors;
 }
 
-export function toPublicGameInputState(input: GameInputState) {
+export function toPublicSnakeGameInputState(input: SnakeGameInputState) {
   return {
-    gameBackgroundColor: input.gameState.backgroundColor,
-    gameCellGap: input.gameState.cellGap,
-    gameBoardBorderColor: input.gameState.boardBorderColor,
-    gameBoardBorderWidth: input.gameState.boardBorderWidth,
-    gameGridLineColor: input.gameState.gridLineColor,
-    gameGridLineAlpha: input.gameState.gridLineAlpha,
+    gameBackgroundColor: input.snakeGameState.backgroundColor,
+    gameCellGap: input.snakeGameState.cellGap,
+    gameBoardBorderColor: input.snakeGameState.boardBorderColor,
+    gameBoardBorderWidth: input.snakeGameState.boardBorderWidth,
+    gameGridLineColor: input.snakeGameState.gridLineColor,
+    gameGridLineAlpha: input.snakeGameState.gridLineAlpha,
     snakeEventShaders: input.snakeEventShaders,
     snake1Shaders: input.snake1Shaders,
     snake2Shaders: input.snake2Shaders,
-    snakePlayerColors: extractSnakePlayerColors(input.gameState.cells),
+    snakePlayerColors: extractSnakePlayerColors(input.snakeGameState.cells),
   };
 }

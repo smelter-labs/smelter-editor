@@ -1,7 +1,7 @@
 import { state } from './server/serverState';
 import { config } from './config';
-import { renderSnakeBoard, findFirstGameState } from './game/gameDashboard';
-export { setGlobalGameState, getGlobalGameState } from './game/gameDashboard';
+import { renderSnakeBoard, findFirstSnakeGameState } from './snakeGame/snakeGameDashboard';
+export { setGlobalSnakeGameState, getGlobalSnakeGameState } from './snakeGame/snakeGameDashboard';
 
 const isBoxed = process.env.LAYOUT === 'boxed';
 
@@ -183,18 +183,18 @@ function updateDashboard() {
   });
 
   // ── Panel 3: Snake Board ──
-  const gameState = findFirstGameState();
-  if (gameState) {
-    snakeBox.setContent(renderSnakeBoard(gameState));
+  const snakeGameState = findFirstSnakeGameState();
+  if (snakeGameState) {
+    snakeBox.setContent(renderSnakeBoard(snakeGameState));
   } else {
     // Show diagnostic: how many game inputs exist (even without cells)
-    let gameInputCount = 0;
+    let snakeGameInputCount = 0;
     for (const room of rooms) {
       for (const input of room.getInputs()) {
-        if (input.type === 'game') gameInputCount++;
+        if (input.type === 'game') snakeGameInputCount++;
       }
     }
-    snakeBox.setContent(`\n  {white-fg}No active game{/}\n  {white-fg}Game inputs: ${gameInputCount}{/}`);
+    snakeBox.setContent(`\n  {white-fg}No active game{/}\n  {white-fg}Game inputs: ${snakeGameInputCount}{/}`);
   }
 
   // ── Panel 4: Inputs ──

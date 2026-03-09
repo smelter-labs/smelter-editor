@@ -26,7 +26,7 @@ export function Input({ input }: { input: InputConfig }) {
   const streams = useInputStreams();
   const isImage = !!input.imageId;
   const isTextInput = !!input.text;
-  const isGame = !!input.gameState;
+  const isGame = !!input.snakeGameState;
   const streamState = isImage || isTextInput || isGame ? 'playing' : (streams[input.inputId]?.videoState ?? 'finished');
   const isVerticalInput = input.orientation === 'vertical';
   const resolution = isVerticalInput ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 };
@@ -143,7 +143,7 @@ export function SmallInput({
   const activeShaders = input.shaders.filter(shader => shader.enabled);
   const isImage = !!input.imageId;
   const isTextInput = !!input.text;
-  const isGame = !!input.gameState;
+  const isGame = !!input.snakeGameState;
   const borderWidth = normalizeBorderWidth(
     input.borderWidth ?? 0,
   );

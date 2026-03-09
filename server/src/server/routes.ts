@@ -7,7 +7,7 @@ import { Type } from '@sinclair/typebox';
 import type { Static, TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { state } from './serverState';
 import { logRequest } from '../dashboard';
-import { registerGameRoutes, clearGameRoomInactivityTimer } from '../game/gameRoutes';
+import { registerSnakeGameRoutes, clearSnakeGameRoomInactivityTimer } from '../snakeGame/snakeGameRoutes';
 import { TwitchChannelSuggestions } from '../twitch/TwitchChannelMonitor';
 import type { RegisterInputOptions, PendingWhipInputData } from './roomState';
 import { toPublicInputState } from './publicInputState';
@@ -692,7 +692,7 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(
   }
 );
 
-registerGameRoutes(routes);
+registerSnakeGameRoutes(routes);
 
 routes.delete<RoomAndInputIdParams>('/room/:roomId/input/:inputId', { schema: { params: RoomAndInputIdParamsSchema } }, async (req, res) => {
   const { roomId, inputId } = req.params;
@@ -705,7 +705,7 @@ routes.delete<RoomAndInputIdParams>('/room/:roomId/input/:inputId', { schema: { 
 routes.delete<RoomIdParams>('/room/:roomId', { schema: { params: RoomIdParamsSchema } }, async (req, res) => {
   const { roomId } = req.params;
   console.log('[request] Delete room', { roomId });
-  clearGameRoomInactivityTimer(roomId);
+  clearSnakeGameRoomInactivityTimer(roomId);
   await state.deleteRoom(roomId);
   res.status(200).send({ status: 'ok' });
 });

@@ -1,6 +1,6 @@
 import type { ShaderParamConfig } from '../types';
 
-export type GameCell = {
+export type SnakeGameCell = {
   x: number;
   y: number;
   color: string;
@@ -46,11 +46,11 @@ export type ActiveSnakeEffect = {
   endsAtMs: number;
 };
 
-export type GameState = {
+export type SnakeGameState = {
   boardWidth: number;
   boardHeight: number;
   cellSize: number;
-  cells: GameCell[];
+  cells: SnakeGameCell[];
   smoothMove?: boolean;
   smoothMoveSpeed?: number;
   smoothMoveAccel?: number;
@@ -62,10 +62,10 @@ export type GameState = {
   gridLineColor: string;
   gridLineAlpha: number;
   activeEffects?: ActiveSnakeEffect[];
-  gameOverData?: GameOverData;
+  gameOverData?: SnakeGameOverData;
 };
 
-export type GameOverPlayer = {
+export type SnakeGameOverPlayer = {
   name: string;
   score: number;
   eaten: number;
@@ -73,8 +73,8 @@ export type GameOverPlayer = {
   color: string;
 };
 
-export type GameOverData = {
+export type SnakeGameOverData = {
   winnerName: string;
   reason: string;
-  players: GameOverPlayer[];
+  players: SnakeGameOverPlayer[];
 };

@@ -1,4 +1,4 @@
-import type { GameState, GameOverData } from './types';
+import type { SnakeGameState, SnakeGameOverData } from './types';
 import type { ShaderParamStructField } from '@swmansion/smelter';
 import {
   Text,
@@ -14,7 +14,7 @@ import { hexToRgb, colorToRgb, darkenHexColor, wrapWithShaders } from '../utils/
 
 type Resolution = { width: number; height: number };
 
-function GameOverModal({ data, resolution }: { data: GameOverData; resolution: Resolution }) {
+function SnakeGameOverModal({ data, resolution }: { data: SnakeGameOverData; resolution: Resolution }) {
   const w = resolution.width;
   const h = resolution.height;
   const modalW = w * 0.45;
@@ -121,7 +121,8 @@ function GameOverModal({ data, resolution }: { data: GameOverData; resolution: R
   );
 }
 
-export function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders }: { gameState: GameState; resolution: Resolution; snake1Shaders?: ShaderConfig[]; snake2Shaders?: ShaderConfig[] }) {
+export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snake2Shaders }: { snakeGameState: SnakeGameState; resolution: Resolution; snake1Shaders?: ShaderConfig[]; snake2Shaders?: ShaderConfig[] }) {
+  const gameState = snakeGameState;
   const activeEffect = gameState.activeEffects?.[0];
 
   const [effectProgress, setEffectProgress] = useState(0);
@@ -245,7 +246,7 @@ export function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders 
   // Game over: remove cells one by one, then show modal
   const [removedCount, setRemovedCount] = useState(0);
   const [showModal, setShowModal] = useState(false);
-  const prevGameOverRef = useRef<GameOverData | undefined>(undefined);
+  const prevGameOverRef = useRef<SnakeGameOverData | undefined>(undefined);
   const totalCellsAtGameOver = useRef(0);
 
   useEffect(() => {
@@ -872,7 +873,7 @@ export function GameBoard({ gameState, resolution, snake1Shaders, snake2Shaders 
     return (
       <View style={{ width: resolution.width, height: resolution.height }}>
         {rendered}
-        <GameOverModal data={modalData} resolution={resolution} />
+        <SnakeGameOverModal data={modalData} resolution={resolution} />
       </View>
     );
   }

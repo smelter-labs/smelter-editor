@@ -1,5 +1,5 @@
 import type { Input, Layout, ShaderConfig } from '@/lib/types';
-import type { SnakeEventShaderConfig } from '@/lib/game-types';
+import type { SnakeEventShaderConfig } from '@/lib/snake-game-types';
 import type {
   Clip,
   Track,

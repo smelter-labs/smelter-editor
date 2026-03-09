@@ -1,7 +1,7 @@
 import type {
   SnakeEventApplicationMode,
   SnakeEventType,
-} from '@/lib/game-types';
+} from '@/lib/snake-game-types';
 
 export type SnakeEventEffectPreset = {
   name: string;
