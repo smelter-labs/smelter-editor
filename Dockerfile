@@ -13,7 +13,7 @@ WORKDIR /tmp
 
 RUN apt-get update -y -qq && \
   apt-get install -y \
-    sudo build-essential curl ffmpeg pipx \
+    sudo build-essential curl ffmpeg pipx python3-pip \
     libegl1-mesa-dev libgl1-mesa-dri libxcb-xfixes0-dev mesa-vulkan-drivers && \
   rm -rf /var/lib/apt/lists/*
 
