@@ -57,10 +57,7 @@ export interface SmelterApiClient {
     textAlign?: 'left' | 'center' | 'right',
   ): Promise<any>;
   addSnakeGameInput(roomId: string, title?: string): Promise<any>;
-  addCameraInput(
-    roomId: string,
-    username?: string,
-  ): Promise<AddInputResponse>;
+  addCameraInput(roomId: string, username?: string): Promise<AddInputResponse>;
 
   removeInput(roomId: string, inputId: string): Promise<any>;
   deleteRoom(roomId: string): Promise<any>;
@@ -74,6 +71,11 @@ export interface SmelterApiClient {
   connectInput(roomId: string, inputId: string): Promise<any>;
   hideInput(roomId: string, inputId: string): Promise<any>;
   showInput(roomId: string, inputId: string): Promise<any>;
+  toggleMotionDetection(
+    roomId: string,
+    inputId: string,
+    enabled: boolean,
+  ): Promise<void>;
 
   acknowledgeWhipInput(roomId: string, inputId: string): Promise<void>;
   setPendingWhipInputs(
@@ -268,7 +270,11 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
     },
 
     async removeInput(roomId, inputId) {
-      return await req('delete', `/room/${enc(roomId)}/input/${enc(inputId)}`, {});
+      return await req(
+        'delete',
+        `/room/${enc(roomId)}/input/${enc(inputId)}`,
+        {},
+      );
     },
 
     async deleteRoom(roomId) {
@@ -312,6 +318,14 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
         'post',
         `/room/${enc(roomId)}/input/${enc(inputId)}/show`,
         {},
+      );
+    },
+
+    async toggleMotionDetection(roomId, inputId, enabled) {
+      await req(
+        'post',
+        `/room/${enc(roomId)}/input/${enc(inputId)}/motion-detection`,
+        { enabled },
       );
     },
 

@@ -2,11 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type {
-  Input,
-  AvailableShader,
-  ShaderConfig,
-} from '@/lib/types';
+import type { Input, AvailableShader, ShaderConfig } from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
 import ShaderPanel, { InlineShaderParams } from '../input-entry/shader-panel';
 import { AddShaderModal } from '../input-entry/add-shader-modal';
@@ -623,7 +619,9 @@ export function BlockClipPropertiesPanel({
   );
 
   const pendingSection =
-    pendingWhipInputs && pendingWhipInputs.length > 0 && setPendingWhipInputs ? (
+    pendingWhipInputs &&
+    pendingWhipInputs.length > 0 &&
+    setPendingWhipInputs ? (
       <PendingWhipInputs
         pendingInputs={pendingWhipInputs}
         setPendingInputs={setPendingWhipInputs}
@@ -885,12 +883,16 @@ export function BlockClipPropertiesPanel({
         </select>
       </div>
       <div className='border border-neutral-700 rounded p-2 mb-3 mt-1'>
-        <div className='text-xs text-neutral-400 font-medium mb-2'>Position</div>
+        <div className='text-xs text-neutral-400 font-medium mb-2'>
+          Position
+        </div>
         <div className='flex items-center justify-between mb-2'>
           <span className='text-xs text-neutral-400'>Absolute position</span>
           <input
             type='checkbox'
-            checked={selectedTimelineClip.blockSettings.absolutePosition ?? false}
+            checked={
+              selectedTimelineClip.blockSettings.absolutePosition ?? false
+            }
             onChange={(e) => {
               const enabled = e.target.checked;
               if (enabled && resolution) {

@@ -42,6 +42,7 @@ ENV SMELTER_PATH=/home/smelter/smelter/main_process
 RUN sudo npm install -g pnpm
 
 RUN pipx install streamlink
+RUN pip3 install --break-system-packages opencv-python-headless numpy
 ENV PATH=/home/smelter/.local/bin:$PATH
 
 COPY --chown=$USERNAME:$USERNAME  . /home/$USERNAME/demo

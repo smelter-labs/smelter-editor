@@ -24,7 +24,6 @@ import type {
   SavedConfigInfo,
 } from '@/lib/types';
 
-
 const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
 
 assert(BASE_URL);
@@ -107,10 +106,7 @@ export async function addMP4Input(roomId: string, mp4FileName: string) {
   return client.addMP4Input(roomId, mp4FileName);
 }
 
-export async function addImageInput(
-  roomId: string,
-  imageFileNameOrId: string,
-) {
+export async function addImageInput(roomId: string, imageFileNameOrId: string) {
   return client.addImageInput(roomId, imageFileNameOrId);
 }
 
@@ -211,6 +207,14 @@ export async function hideInput(roomId: string, inputId: string) {
 
 export async function showInput(roomId: string, inputId: string) {
   return client.showInput(roomId, inputId);
+}
+
+export async function toggleMotionDetection(
+  roomId: string,
+  inputId: string,
+  enabled: boolean,
+): Promise<void> {
+  return client.toggleMotionDetection(roomId, inputId, enabled);
 }
 
 export async function restartService(): Promise<void> {

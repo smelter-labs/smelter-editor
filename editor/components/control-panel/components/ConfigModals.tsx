@@ -181,7 +181,8 @@ export function LoadConfigModal({
   onLoadRemote,
   isImporting,
 }: LoadConfigModalProps) {
-  const { listRemoteConfigs, loadRemoteConfig, deleteRemoteConfig } = useActions();
+  const { listRemoteConfigs, loadRemoteConfig, deleteRemoteConfig } =
+    useActions();
   const [mode, setMode] = useState<'choose' | 'remote'>('choose');
   const [configs, setConfigs] = useState<SavedConfigInfo[]>([]);
   const [isLoadingList, setIsLoadingList] = useState(false);

@@ -45,6 +45,8 @@ export type PublicInputState = {
   absoluteHeight?: number;
   absoluteTransitionDurationMs?: number;
   absoluteTransitionEasing?: string;
+  motionScore?: number;
+  motionEnabled?: boolean;
 };
 
 export function toPublicInputState(input: RoomInputState): PublicInputState {
@@ -69,6 +71,8 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
     absoluteHeight: input.absoluteHeight,
     absoluteTransitionDurationMs: input.absoluteTransitionDurationMs,
     absoluteTransitionEasing: input.absoluteTransitionEasing,
+    motionScore: input.motionScore,
+    motionEnabled: input.motionEnabled,
   };
   switch (input.type) {
     case 'local-mp4':

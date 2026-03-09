@@ -274,7 +274,10 @@ export default function IntroView() {
                 }
                 break;
               case 'game': {
-                const result = await addSnakeGameInput(roomId, inputConfig.title);
+                const result = await addSnakeGameInput(
+                  roomId,
+                  inputConfig.title,
+                );
                 inputId = result.inputId;
                 break;
               }
@@ -326,7 +329,8 @@ export default function IntroView() {
               absoluteLeft: inputConfig.absoluteLeft,
               absoluteWidth: inputConfig.absoluteWidth,
               absoluteHeight: inputConfig.absoluteHeight,
-              absoluteTransitionDurationMs: inputConfig.absoluteTransitionDurationMs,
+              absoluteTransitionDurationMs:
+                inputConfig.absoluteTransitionDurationMs,
               absoluteTransitionEasing: inputConfig.absoluteTransitionEasing,
               attachedInputIds:
                 attachedInputIds && attachedInputIds.length > 0

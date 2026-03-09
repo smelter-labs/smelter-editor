@@ -20,8 +20,21 @@ type AbsolutePositionControllerProps = {
 
 type DragState =
   | { type: 'idle' }
-  | { type: 'move'; startX: number; startY: number; origLeft: number; origTop: number }
-  | { type: 'resize'; corner: string; startX: number; startY: number; origPos: Position; aspectRatio: number };
+  | {
+      type: 'move';
+      startX: number;
+      startY: number;
+      origLeft: number;
+      origTop: number;
+    }
+  | {
+      type: 'resize';
+      corner: string;
+      startX: number;
+      startY: number;
+      origPos: Position;
+      aspectRatio: number;
+    };
 
 const HANDLE_SIZE = 8;
 
@@ -57,8 +70,12 @@ export function AbsolutePositionController({
 
   const clampPos = useCallback(
     (p: Position): Position => ({
-      top: Math.round(Math.max(0, Math.min(p.top, resolution.height - p.height))),
-      left: Math.round(Math.max(0, Math.min(p.left, resolution.width - p.width))),
+      top: Math.round(
+        Math.max(0, Math.min(p.top, resolution.height - p.height)),
+      ),
+      left: Math.round(
+        Math.max(0, Math.min(p.left, resolution.width - p.width)),
+      ),
       width: Math.round(Math.max(20, Math.min(p.width, resolution.width))),
       height: Math.round(Math.max(20, Math.min(p.height, resolution.height))),
     }),
@@ -173,9 +190,24 @@ export function AbsolutePositionController({
 
   const corners = [
     { id: 'nw', x: canvasRect.x, y: canvasRect.y, cursor: 'nwse-resize' },
-    { id: 'ne', x: canvasRect.x + canvasRect.w, y: canvasRect.y, cursor: 'nesw-resize' },
-    { id: 'sw', x: canvasRect.x, y: canvasRect.y + canvasRect.h, cursor: 'nesw-resize' },
-    { id: 'se', x: canvasRect.x + canvasRect.w, y: canvasRect.y + canvasRect.h, cursor: 'nwse-resize' },
+    {
+      id: 'ne',
+      x: canvasRect.x + canvasRect.w,
+      y: canvasRect.y,
+      cursor: 'nesw-resize',
+    },
+    {
+      id: 'sw',
+      x: canvasRect.x,
+      y: canvasRect.y + canvasRect.h,
+      cursor: 'nesw-resize',
+    },
+    {
+      id: 'se',
+      x: canvasRect.x + canvasRect.w,
+      y: canvasRect.y + canvasRect.h,
+      cursor: 'nwse-resize',
+    },
   ];
 
   return (

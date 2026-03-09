@@ -5,7 +5,14 @@ import { useActions } from '../contexts/actions-context';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 
 export function QuickActionsSection() {
-  const { getPictureSuggestions, getMP4Suggestions, addImageInput, addMP4Input, removeInput, hideInput } = useActions();
+  const {
+    getPictureSuggestions,
+    getMP4Suggestions,
+    addImageInput,
+    addMP4Input,
+    removeInput,
+    hideInput,
+  } = useActions();
   const { inputs, roomId, refreshState } = useControlPanelContext();
   const [loadingActions, setLoadingActions] = useState<{
     addLogos: boolean;

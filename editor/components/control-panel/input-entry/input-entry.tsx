@@ -19,6 +19,7 @@ import ShaderPanel from './shader-panel';
 import SnakeEventShaderPanel from './snake-event-shader-panel';
 import { InputEntryTextSection } from './input-entry-text-section';
 import { StatusButton } from './status-button';
+import { MotionIndicator } from './motion-indicator';
 import { MuteButton } from './mute-button';
 import { DeleteButton } from './delete-button';
 import { AddShaderModal } from './add-shader-modal';
@@ -32,8 +33,15 @@ import {
   loadWhipSession,
 } from '../whip-input/utils/whip-storage';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { toggleMotionDetection } from '@/app/actions/actions';
 
 const SHADER_SETTINGS_DEBOUNCE_MS = 200;
+const VIDEO_INPUT_TYPES = [
+  'local-mp4',
+  'twitch-channel',
+  'kick-channel',
+  'whip',
+] as const;
 
 /**
  * Converts a hex color string to a packed integer (0xRRGGBB)
@@ -157,6 +165,9 @@ export default function InputEntry({
 
   const isWhipInput = input.type === 'whip';
   const isTextInput = input.type === 'text-input';
+  const isVideoInput = (VIDEO_INPUT_TYPES as readonly string[]).includes(
+    input.type,
+  );
 
   useEffect(() => {
     if (input.textColor !== undefined) {
@@ -512,6 +523,12 @@ export default function InputEntry({
       // no-op
     }
   }, [roomId, input, refreshState]);
+
+  const handleMotionToggle = useCallback(async () => {
+    const newEnabled = !(input.motionEnabled ?? true);
+    await toggleMotionDetection(roomId, input.inputId, newEnabled);
+    await refreshState();
+  }, [roomId, input.inputId, input.motionEnabled, refreshState]);
 
   const handleShaderToggle = useCallback(
     async (shaderId: string) => {
@@ -1134,6 +1151,13 @@ export default function InputEntry({
                   )}
                 </span>
               </Button>
+              {isVideoInput && (
+                <MotionIndicator
+                  score={input.motionScore ?? 0}
+                  enabled={input.motionEnabled ?? true}
+                  onToggle={handleMotionToggle}
+                />
+              )}
               <MuteButton
                 muted={muted}
                 disabled={input.sourceState === 'offline'}

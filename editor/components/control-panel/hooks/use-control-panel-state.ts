@@ -1,10 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type {
-  Input,
-  RoomState,
-  AvailableShader,
-  Layout,
-} from '@/lib/types';
+import type { Input, RoomState, AvailableShader, Layout } from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
 import { useStreamsSpinner } from '../whip-input/hooks/use-streams-spinner';
 import { loadUserName, saveUserName } from '../whip-input/utils/whip-storage';
@@ -16,7 +11,11 @@ export function useControlPanelState(
   roomState: RoomState,
   refreshState: () => Promise<void>,
 ) {
-  const { getAvailableShaders, updateRoom: updateRoomAction, updateInput } = useActions();
+  const {
+    getAvailableShaders,
+    updateRoom: updateRoomAction,
+    updateInput,
+  } = useActions();
   const [userName, setUserName] = useState<string>(() => {
     const saved = loadUserName(roomId);
     if (saved) return saved;
@@ -158,8 +157,7 @@ export function useControlPanelState(
   const changeLayout = useCallback(
     async (layout: Layout) => {
       try {
-        const disableNewsStrip =
-          layout === 'picture-in-picture';
+        const disableNewsStrip = layout === 'picture-in-picture';
         await updateRoomAction(roomId, {
           layout,
           ...(disableNewsStrip && { newsStripEnabled: false }),

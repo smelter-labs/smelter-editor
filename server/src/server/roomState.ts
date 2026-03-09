@@ -13,6 +13,7 @@ import { createDefaultSnakeGameInputState, DEFAULT_SNAKE_EVENT_SHADERS, buildUpd
 import { KickChannelMonitor } from '../kick/KickChannelMonitor';
 import { WhipInputMonitor } from '../whip/WhipInputMonitor';
 import type { RoomNameEntry } from './roomNames';
+import { MotionManager } from '../motion/MotionManager';
 
 export type InputOrientation = 'horizontal' | 'vertical';
 
@@ -35,6 +36,8 @@ export type RoomInputState = {
   absoluteHeight?: number;
   absoluteTransitionDurationMs?: number;
   absoluteTransitionEasing?: string;
+  motionScore?: number;
+  motionEnabled: boolean;
   metadata: {
     title: string;
     description: string;
@@ -157,6 +160,7 @@ function cloneDefaultLogoShaders(): ShaderConfig[] {
 
 export class RoomState {
   private inputs: RoomInputState[];
+  private motionManager = new MotionManager();
   private layout: Layout = 'picture-in-picture';
   private swapDurationMs: number = 500;
   private swapOutgoingEnabled: boolean = true;
@@ -427,6 +431,7 @@ export class RoomState {
         borderColor: '#ff0000',
         borderWidth: 0,
         hidden: false,
+        motionEnabled: false,
         metadata: {
           title: 'Smelter',
           description: '',
@@ -461,6 +466,7 @@ export class RoomState {
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
+      motionEnabled: true,
       monitor: monitor,
       metadata: {
         title: `[Camera] ${cleanUsername}`,
@@ -500,6 +506,7 @@ export class RoomState {
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
+      motionEnabled: true,
       metadata: { title: '', description: '' },
       volume: 0,
       channelId,
@@ -562,6 +569,7 @@ export class RoomState {
         borderColor: '#ff0000',
         borderWidth: 0,
         hidden: false,
+        motionEnabled: true,
         metadata: {
           title: `[MP4] ${formatMp4Name(mp4Name)}`,
           description: '[Static source] AI Generated',
@@ -631,6 +639,7 @@ export class RoomState {
           borderColor: '#ff0000',
           borderWidth: 0,
           hidden: false,
+          motionEnabled: false,
           metadata: {
             title: formatImageName(fileName),
             description: '',
@@ -658,6 +667,7 @@ export class RoomState {
         borderColor: '#ff0000',
         borderWidth: 0,
         hidden: false,
+        motionEnabled: false,
         metadata: {
           title: 'Text',
           description: '',
@@ -690,6 +700,7 @@ export class RoomState {
         borderColor: '#ff0000',
         borderWidth: 0,
         hidden: false,
+        motionEnabled: false,
         volume: 0,
         ...defaults,
       });
@@ -733,6 +744,7 @@ export class RoomState {
       await sleep(500);
     }
     if (input.status === 'connected') {
+      await this.motionManager.stopMotionDetection(inputId);
       try {
         await SmelterInstance.unregisterInput(inputId);
       } catch (err: any) {
@@ -772,6 +784,16 @@ export class RoomState {
       throw err;
     }
     input.status = 'connected';
+    // Start motion detection for video inputs
+    if (input.motionEnabled && ['local-mp4', 'twitch-channel', 'kick-channel', 'whip'].includes(input.type)) {
+      this.motionManager.startMotionDetection(inputId, (score) => {
+        if (score === -1) {
+          input.motionScore = undefined;
+        } else {
+          input.motionScore = score;
+        }
+      }).catch(err => console.error(`[motion] Failed to start for ${inputId}`, err));
+    }
     this.updateStoreWithState();
     return response;
   }
@@ -797,6 +819,7 @@ export class RoomState {
     if (input.status === 'disconnected') {
       return;
     }
+    await this.motionManager.stopMotionDetection(inputId);
     input.status = 'pending';
     this.updateStoreWithState();
     try {
@@ -985,6 +1008,7 @@ export class RoomState {
   }
 
   public async deleteRoom() {
+    await this.stopAllMotion();
     const inputs = this.inputs;
     this.inputs = [];
     for (const input of inputs) {
@@ -1089,6 +1113,31 @@ export class RoomState {
     this.updateStoreWithState();
   }
 
+  public async setMotionEnabled(inputId: string, enabled: boolean): Promise<void> {
+    const input = this.getInput(inputId);
+    input.motionEnabled = enabled;
+    if (enabled && input.status === 'connected' && ['local-mp4', 'twitch-channel', 'kick-channel', 'whip'].includes(input.type)) {
+      try {
+        await this.motionManager.startMotionDetection(inputId, (score) => {
+          if (score === -1) {
+            input.motionScore = undefined;
+          } else {
+            input.motionScore = score;
+          }
+        });
+      } catch (err) {
+        console.error(`[motion] Failed to start motion detection for ${inputId}`, err);
+      }
+    } else if (!enabled) {
+      await this.motionManager.stopMotionDetection(inputId);
+      input.motionScore = undefined;
+    }
+  }
+
+  public async stopAllMotion(): Promise<void> {
+    await this.motionManager.stopAll();
+  }
+
   public updateSnakeGameState(inputId: string, incomingState: { board: { width: number; height: number; cellSize: number; cellGap?: number }; cells: { x: number; y: number; color: string; size?: number; isHead?: boolean; direction?: 'up' | 'down' | 'left' | 'right'; progress?: number }[]; smoothMove?: boolean; smoothMoveSpeed?: number; smoothMoveAccel?: number; smoothMoveDecel?: number; backgroundColor: string; gameOverData?: { winnerName: string; reason: string; players: { name: string; score: number; eaten: number; cuts: number; color: string }[] } }, events?: { type: SnakeEventType }[]) {
     const input = this.getInput(inputId);
     if (input.type !== 'game') {
@@ -1186,6 +1235,7 @@ export class RoomState {
         borderColor: '#ff0000',
         borderWidth: 0,
         hidden: false,
+        motionEnabled: true,
         metadata: {
           title: `[MP4] ${formatMp4Name(fileName)}`,
           description: '[Wrapped MP4]',
@@ -1248,6 +1298,7 @@ export class RoomState {
         borderColor: '#ff0000',
         borderWidth: 0,
         hidden: false,
+        motionEnabled: false,
         metadata: {
           title: formatImageName(fileName),
           description: '',

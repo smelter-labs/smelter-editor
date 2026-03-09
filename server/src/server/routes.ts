@@ -632,6 +632,22 @@ routes.post<RoomAndInputIdParams>('/room/:roomId/input/:inputId/show', { schema:
   res.status(200).send({ status: 'ok' });
 });
 
+const MotionDetectionSchema = Type.Object({
+  enabled: Type.Boolean(),
+});
+
+routes.post<RoomAndInputIdParams & { Body: Static<typeof MotionDetectionSchema> }>(
+  '/room/:roomId/input/:inputId/motion-detection',
+  { schema: { params: RoomAndInputIdParamsSchema, body: MotionDetectionSchema } },
+  async (req, res) => {
+    const { roomId, inputId } = req.params;
+    console.log('[request] Toggle motion detection', { roomId, inputId, enabled: req.body.enabled });
+    const room = state.getRoom(roomId);
+    await room.setMotionEnabled(inputId, req.body.enabled);
+    res.status(200).send({ status: 'ok' });
+  }
+);
+
 const UpdateInputSchema = Type.Object({
   volume: Type.Optional(Type.Number({ maximum: 1, minimum: 0 })),
   showTitle: Type.Optional(Type.Boolean()),

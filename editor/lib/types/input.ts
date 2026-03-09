@@ -52,6 +52,8 @@ export type Input = {
   absoluteHeight?: number;
   absoluteTransitionDurationMs?: number;
   absoluteTransitionEasing?: string;
+  motionScore?: number;
+  motionEnabled?: boolean;
 };
 
 export type RegisterInputOptions =

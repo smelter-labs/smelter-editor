@@ -7,6 +7,7 @@ import type { RoomStore } from './app/store';
 import { createRoomStore } from './app/store';
 import { config } from './config';
 import { readFile } from 'fs-extra';
+import { MotionScene } from './motion/MotionScene';
 import shadersController from './shaders/shaders';
 import type { Resolution } from './types';
 import { RESOLUTION_PRESETS } from './types';
@@ -216,6 +217,23 @@ export class SmelterManager {
 
   public async unregisterImage(imageId: string): Promise<void> {
     await this.instance.unregisterImage(imageId);
+  }
+
+  public async registerMotionOutput(outputId: string, inputId: string, port: number): Promise<void> {
+    await this.instance.registerOutput(outputId, <MotionScene inputId={inputId} />, {
+      type: 'rtp_stream',
+      port,
+      ip: '127.0.0.1',
+      transportProtocol: 'udp',
+      video: {
+        resolution: { width: 160, height: 90 },
+        encoder: { type: 'ffmpeg_h264', preset: 'ultrafast' },
+      },
+    });
+  }
+
+  public async unregisterMotionOutput(outputId: string): Promise<void> {
+    await this.unregisterOutput(outputId);
   }
 
   private async registerShaderFromFile(smelter: Smelter, shaderId: string, file: string) {

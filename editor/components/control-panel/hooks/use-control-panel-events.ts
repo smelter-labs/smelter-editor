@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { InputWrapper } from './use-control-panel-state';
 import { useControlPanelInputOrderEvents } from './use-control-panel-input-order-events';
 import type { Input, AvailableShader } from '@/lib/types';
-import { useActions, type ControlPanelActions } from '../contexts/actions-context';
+import {
+  useActions,
+  type ControlPanelActions,
+} from '../contexts/actions-context';
 import { stopCameraAndConnection } from '../whip-input/utils/preview';
 import {
   loadWhipSession,

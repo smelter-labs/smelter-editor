@@ -4,7 +4,12 @@ import { fadeIn } from '@/utils/animations';
 import { motion } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
-import type { RoomState, Input, AvailableShader, PendingWhipInputData } from '@/lib/types';
+import type {
+  RoomState,
+  Input,
+  AvailableShader,
+  PendingWhipInputData,
+} from '@/lib/types';
 import { useActions } from './contexts/actions-context';
 import { ActionsProvider } from './contexts/actions-context';
 import { defaultActions } from './contexts/default-actions';
@@ -512,7 +517,9 @@ function ControlPanelInner({
           handleRefreshState={handleRefreshState}
           resolution={roomState.resolution}
           pendingWhipInputs={isGuest ? undefined : pendingWhipInputs}
-          setPendingWhipInputs={isGuest ? undefined : handleSetPendingWhipInputs}
+          setPendingWhipInputs={
+            isGuest ? undefined : handleSetPendingWhipInputs
+          }
         />
       </div>
     );
@@ -862,7 +869,8 @@ function SettingsBar({
             absoluteLeft: inputConfig.absoluteLeft,
             absoluteWidth: inputConfig.absoluteWidth,
             absoluteHeight: inputConfig.absoluteHeight,
-            absoluteTransitionDurationMs: inputConfig.absoluteTransitionDurationMs,
+            absoluteTransitionDurationMs:
+              inputConfig.absoluteTransitionDurationMs,
             absoluteTransitionEasing: inputConfig.absoluteTransitionEasing,
             attachedInputIds:
               attachedInputIds && attachedInputIds.length > 0
