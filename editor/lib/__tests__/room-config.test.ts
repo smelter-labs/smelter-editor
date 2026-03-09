@@ -4,7 +4,7 @@ import {
   parseRoomConfig,
   type RoomConfigTransitionSettings,
 } from '../room-config';
-import type { Input, Layout } from '@/app/actions/actions';
+import type { Input, Layout } from '@/lib/types';
 
 describe('parseRoomConfig', () => {
   it('parses valid config v1', () => {

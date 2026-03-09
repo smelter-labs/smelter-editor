@@ -7,11 +7,8 @@ import type {
   SnakeEventShaderMapping,
   SnakeEventApplicationMode,
 } from '@/lib/game-types';
-import {
-  type AvailableShader,
-  type ShaderParamConfig,
-  updateInput,
-} from '@/app/actions/actions';
+import type { AvailableShader, ShaderParamConfig } from '@/lib/types';
+import { useActions } from '../contexts/actions-context';
 import { SNAKE_EVENT_TYPES } from '@/lib/snake-events';
 import { getRandomSnakeEventEffectPreset } from '@/lib/snake-event-effect-presets';
 import { ChevronDown, ChevronRight, Dices } from 'lucide-react';
@@ -70,6 +67,7 @@ export default function SnakeEventShaderPanel({
   onUpdate,
   onConfigChange,
 }: SnakeEventShaderPanelProps) {
+  const { updateInput } = useActions();
   const [panelOpen, setPanelOpen] = useState(false);
   const [expandedEvents, setExpandedEvents] = useState<Set<SnakeEventType>>(
     new Set(),

@@ -1,6 +1,7 @@
 import type { TwitchStreamInfo } from './TwitchApi';
 import { getTwitchStreamInfo, getTopStreamsFromCategory } from './TwitchApi';
 import { sleep } from '../utils';
+import type { StreamMonitor } from '../types';
 
 const CATEGORY_ID_EA_SPORTS_FC_25 = '2011938005';
 const CATEGORIES = [CATEGORY_ID_EA_SPORTS_FC_25];
@@ -34,7 +35,7 @@ class TwitchChannelSuggestionsMonitor {
   }
 }
 
-export class TwitchChannelMonitor {
+export class TwitchChannelMonitor implements StreamMonitor {
   private channelId: string;
   private streamInfo: TwitchStreamInfo;
   private isStreamLive: boolean = true;

@@ -1,19 +1,8 @@
 'use client';
 
 import { useRef, useState, useEffect, useCallback } from 'react';
-import type { Input, Layout } from '@/app/actions/actions';
-import {
-  addTwitchInput,
-  addKickInput,
-  addMP4Input,
-  addImageInput,
-  addTextInput,
-  addGameInput,
-  addCameraInput,
-  updateInput,
-  updateRoom,
-  removeInput,
-} from '@/app/actions/actions';
+import type { Input, Layout } from '@/lib/types';
+import { useActions } from '../contexts/actions-context';
 import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/spinner';
 import { Download, Upload } from 'lucide-react';
@@ -57,6 +46,7 @@ export function ConfigurationSection({
   pendingWhipInputs,
   setPendingWhipInputs,
 }: ConfigurationSectionProps) {
+  const { addTwitchInput, addKickInput, addMP4Input, addImageInput, addTextInput, addGameInput, addCameraInput, updateInput, updateRoom, removeInput } = useActions();
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);

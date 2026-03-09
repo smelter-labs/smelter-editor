@@ -3,8 +3,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 
-import { getRoomInfo, type RoomState } from '@/app/actions/actions';
-import { buildIceServers } from '@/components/control-panel/whip-input/utils/webRTC-helpers';
+import type { RoomState } from '@/lib/types';
+import { getRoomInfo } from '@/app/actions/actions';
+import { buildIceServers } from '@/lib/webrtc';
 
 export default function RawPreviewPage() {
   const router = useRouter();

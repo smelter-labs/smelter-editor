@@ -1,15 +1,7 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import {
-  AvailableShader,
-  connectInput,
-  disconnectInput,
-  hideInput,
-  showInput,
-  Input,
-  removeInput,
-  updateInput,
-} from '@/app/actions/actions';
+import type { AvailableShader, Input } from '@/lib/types';
+import { useActions } from '../contexts/actions-context';
 import { Button } from '@/components/ui/button';
 import {
   Type,
@@ -123,6 +115,7 @@ export default function InputEntry({
   readOnly = false,
   isLocalWhipInput = false,
 }: InputEntryProps) {
+  const actions = useActions();
   const [connectionStateLoading, setConnectionStateLoading] = useState(false);
   const [showSliders, setShowSliders] = useState(false);
   const [shaderLoading, setShaderLoading] = useState<string | null>(null);
@@ -226,7 +219,7 @@ export default function InputEntry({
   );
 
   const handleMuteToggle = useCallback(async () => {
-    await updateInput(roomId, input.inputId, {
+    await actions.updateInput(roomId, input.inputId, {
       volume: muted ? 1 : 0,
       shaders: input.shaders,
     });
@@ -234,7 +227,7 @@ export default function InputEntry({
   }, [roomId, input, muted, refreshState]);
 
   const handleShowTitleToggle = useCallback(async () => {
-    await updateInput(roomId, input.inputId, {
+    await actions.updateInput(roomId, input.inputId, {
       showTitle: !showTitle,
       shaders: input.shaders,
       volume: input.volume,
@@ -243,7 +236,7 @@ export default function InputEntry({
   }, [roomId, input, showTitle, refreshState]);
 
   const handleOrientationToggle = useCallback(async () => {
-    await updateInput(roomId, input.inputId, {
+    await actions.updateInput(roomId, input.inputId, {
       orientation: isVerticalOrientation ? 'horizontal' : 'vertical',
       shaders: input.shaders,
       volume: input.volume,
@@ -254,13 +247,13 @@ export default function InputEntry({
   const handleRotate90 = useCallback(async () => {
     if (isLocalWhipInput && pcRef && streamRef) {
       const angle = await rotateBy90(pcRef, streamRef);
-      await updateInput(roomId, input.inputId, {
+      await actions.updateInput(roomId, input.inputId, {
         orientation: angle % 180 !== 0 ? 'vertical' : 'horizontal',
         shaders: input.shaders,
         volume: input.volume,
       });
     } else {
-      await updateInput(roomId, input.inputId, {
+      await actions.updateInput(roomId, input.inputId, {
         orientation: isVerticalOrientation ? 'horizontal' : 'vertical',
         shaders: input.shaders,
         volume: input.volume,
@@ -283,7 +276,7 @@ export default function InputEntry({
       const newAttached = currentAttached.includes(targetInputId)
         ? currentAttached.filter((id) => id !== targetInputId)
         : [...currentAttached, targetInputId];
-      await updateInput(roomId, input.inputId, {
+      await actions.updateInput(roomId, input.inputId, {
         volume: input.volume,
         attachedInputIds: newAttached,
       });
@@ -301,7 +294,7 @@ export default function InputEntry({
       textSaveTimerRef.current = setTimeout(async () => {
         setIsTextSaving(true);
         try {
-          await updateInput(roomId, input.inputId, {
+          await actions.updateInput(roomId, input.inputId, {
             text: newText,
             shaders: input.shaders,
             volume: input.volume,
@@ -320,7 +313,7 @@ export default function InputEntry({
       setTextAlign(newAlign);
       setIsTextSaving(true);
       try {
-        await updateInput(roomId, input.inputId, {
+        await actions.updateInput(roomId, input.inputId, {
           textAlign: newAlign,
           shaders: input.shaders,
           volume: input.volume,
@@ -338,7 +331,7 @@ export default function InputEntry({
       setTextColor(newColor);
       setIsTextSaving(true);
       try {
-        await updateInput(roomId, input.inputId, {
+        await actions.updateInput(roomId, input.inputId, {
           textColor: newColor,
           shaders: input.shaders,
           volume: input.volume,
@@ -356,7 +349,7 @@ export default function InputEntry({
       setTextMaxLines(newMaxLines);
       setIsTextSaving(true);
       try {
-        await updateInput(roomId, input.inputId, {
+        await actions.updateInput(roomId, input.inputId, {
           textMaxLines: newMaxLines,
           shaders: input.shaders,
           volume: input.volume,
@@ -374,7 +367,7 @@ export default function InputEntry({
       setTextScrollSpeed(newSpeed);
       setIsTextSaving(true);
       try {
-        await updateInput(roomId, input.inputId, {
+        await actions.updateInput(roomId, input.inputId, {
           textScrollSpeed: newSpeed,
           shaders: input.shaders,
           volume: input.volume,
@@ -392,7 +385,7 @@ export default function InputEntry({
       setTextScrollLoop(newLoop);
       setIsTextSaving(true);
       try {
-        await updateInput(roomId, input.inputId, {
+        await actions.updateInput(roomId, input.inputId, {
           textScrollLoop: newLoop,
           shaders: input.shaders,
           volume: input.volume,
@@ -410,7 +403,7 @@ export default function InputEntry({
       setTextFontSize(newFontSize);
       setIsTextSaving(true);
       try {
-        await updateInput(roomId, input.inputId, {
+        await actions.updateInput(roomId, input.inputId, {
           textFontSize: newFontSize,
           shaders: input.shaders,
           volume: input.volume,
@@ -440,7 +433,7 @@ export default function InputEntry({
 
     // Hide first so it disappears from the program immediately
     try {
-      await hideInput(roomId, input.inputId);
+      await actions.hideInput(roomId, input.inputId);
     } catch {
       // non-fatal
     }
@@ -458,7 +451,7 @@ export default function InputEntry({
       } catch {}
     }
 
-    await removeInput(roomId, input.inputId);
+    await actions.removeInput(roomId, input.inputId);
     await refreshState();
   }, [
     roomId,
@@ -476,14 +469,14 @@ export default function InputEntry({
         if (isWhipInput && pcRef && streamRef) {
           stopCameraAndConnection(pcRef, streamRef);
         }
-        await disconnectInput(roomId, input.inputId);
+        await actions.disconnectInput(roomId, input.inputId);
         if (isWhipInput) {
           try {
             onWhipDisconnectedOrRemoved?.(input.inputId);
           } catch {}
         }
       } else if (input.status === 'disconnected') {
-        await connectInput(roomId, input.inputId);
+        await actions.connectInput(roomId, input.inputId);
       }
       await refreshState();
     } finally {
@@ -510,9 +503,9 @@ export default function InputEntry({
   const handleVisibilityToggle = useCallback(async () => {
     try {
       if (input.hidden) {
-        await showInput(roomId, input.inputId);
+        await actions.showInput(roomId, input.inputId);
       } else {
-        await hideInput(roomId, input.inputId);
+        await actions.hideInput(roomId, input.inputId);
       }
       await refreshState();
     } finally {
@@ -571,7 +564,7 @@ export default function InputEntry({
               : shader,
           );
         }
-        await updateInput(roomId, input.inputId, {
+        await actions.updateInput(roomId, input.inputId, {
           shaders: newShadersConfig,
           volume: input.volume,
         });
@@ -607,7 +600,7 @@ export default function InputEntry({
             ),
           };
         });
-        await updateInput(roomId, input.inputId, {
+        await actions.updateInput(roomId, input.inputId, {
           shaders: newShadersConfig,
           volume: input.volume,
         });
@@ -711,7 +704,7 @@ export default function InputEntry({
           ];
       setShaderLoading(shaderId);
       try {
-        await updateInput(roomId, input.inputId, {
+        await actions.updateInput(roomId, input.inputId, {
           shaders: newConfig,
           volume: input.volume,
         });
@@ -731,7 +724,7 @@ export default function InputEntry({
       );
       setShaderLoading(shaderId);
       try {
-        await updateInput(roomId, input.inputId, {
+        await actions.updateInput(roomId, input.inputId, {
           shaders: newConfig,
           volume: input.volume,
         });
@@ -845,7 +838,7 @@ export default function InputEntry({
                 className='w-14 bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-0.5 rounded'
                 value={input.gameCellGap ?? 1}
                 onChange={(e) => {
-                  void updateInput(roomId, input.inputId, {
+                  void actions.updateInput(roomId, input.inputId, {
                     gameCellGap: Math.max(0, Number(e.target.value) || 0),
                   });
                 }}
@@ -861,7 +854,7 @@ export default function InputEntry({
                 className='w-14 bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-0.5 rounded'
                 value={input.gameBoardBorderWidth ?? 4}
                 onChange={(e) => {
-                  void updateInput(roomId, input.inputId, {
+                  void actions.updateInput(roomId, input.inputId, {
                     gameBoardBorderWidth: Math.max(
                       0,
                       Number(e.target.value) || 0,
@@ -877,7 +870,7 @@ export default function InputEntry({
                 className='w-6 h-6 bg-transparent border-0 cursor-pointer'
                 value={input.gameBoardBorderColor ?? '#ffffff'}
                 onChange={(e) => {
-                  void updateInput(roomId, input.inputId, {
+                  void actions.updateInput(roomId, input.inputId, {
                     gameBoardBorderColor: e.target.value,
                   });
                 }}
@@ -890,7 +883,7 @@ export default function InputEntry({
                 className='w-6 h-6 bg-transparent border-0 cursor-pointer'
                 value={input.gameGridLineColor ?? '#000000'}
                 onChange={(e) => {
-                  void updateInput(roomId, input.inputId, {
+                  void actions.updateInput(roomId, input.inputId, {
                     gameGridLineColor: e.target.value,
                   });
                 }}
@@ -906,7 +899,7 @@ export default function InputEntry({
                 className='w-16'
                 value={input.gameGridLineAlpha ?? 1.0}
                 onChange={(e) => {
-                  void updateInput(roomId, input.inputId, {
+                  void actions.updateInput(roomId, input.inputId, {
                     gameGridLineAlpha: Number(e.target.value),
                   });
                 }}

@@ -18,7 +18,7 @@ import {
   loadLastWhipInputId,
 } from '../whip-input/utils/whip-storage';
 import { stopCameraAndConnection } from '../whip-input/utils/preview';
-import { removeInput } from '@/app/actions/actions';
+import { useActions } from '../contexts/actions-context';
 import { Button } from '@/components/ui/button';
 import { PhoneOff } from 'lucide-react';
 
@@ -35,6 +35,7 @@ export function AddVideoSection({
   isGuest,
   hasGuestInput,
 }: AddVideoSectionProps) {
+  const { removeInput } = useActions();
   const { roomId, inputs, refreshState } = useControlPanelContext();
   const {
     cameraPcRef,

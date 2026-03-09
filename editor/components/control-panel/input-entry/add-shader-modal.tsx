@@ -1,5 +1,5 @@
 import { X } from 'lucide-react';
-import { AvailableShader } from '@/app/actions/actions';
+import type { AvailableShader } from '@/lib/types';
 
 interface AddShaderModalProps {
   isOpen: boolean;

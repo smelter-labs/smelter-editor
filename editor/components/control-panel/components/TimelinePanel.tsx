@@ -9,7 +9,8 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
-import { removeInput, type Input } from '@/app/actions/actions';
+import type { Input } from '@/lib/types';
+import { useActions } from '../contexts/actions-context';
 import { useRecordingControls } from '../hooks/use-recording-controls';
 import type { InputWrapper } from '../hooks/use-control-panel-state';
 import LoadingSpinner from '@/components/ui/spinner';
@@ -193,6 +194,7 @@ export function TimelinePanel({
   guestInputId,
   fillContainer,
 }: TimelinePanelProps) {
+  const { removeInput } = useActions();
   const { inputs, roomId, refreshState } = useControlPanelContext();
   const {
     state,

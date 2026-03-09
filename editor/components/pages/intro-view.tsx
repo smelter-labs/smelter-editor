@@ -7,9 +7,9 @@ import { motion } from 'framer-motion';
 import StatusLabel from '@/components/ui/status-label';
 import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/spinner';
+import type { RegisterInputOptions, PendingWhipInputData } from '@/lib/types';
 import {
   createNewRoom,
-  RegisterInputOptions,
   getTwitchSuggestions,
   getKickSuggestions,
   getAllRooms,
@@ -27,14 +27,13 @@ import { RESOLUTION_PRESETS, type ResolutionPreset } from '@/lib/resolution';
 import Link from 'next/link';
 import { staggerContainer } from '@/utils/animations';
 import { parseRoomConfig, restoreTimelineToStorage } from '@/lib/room-config';
-import {
-  setPendingWhipInputs as setPendingWhipInputsAction,
-  type PendingWhipInputData,
-} from '@/app/actions/actions';
+import { setPendingWhipInputs as setPendingWhipInputsAction } from '@/app/actions/actions';
 import { Upload, FolderDown, LogIn, UserPlus, Eye, Trash2 } from 'lucide-react';
 import RecordingsList from '@/components/recordings-list';
 import { toast } from 'react-toastify';
 import { LoadConfigModal } from '@/components/control-panel/components/ConfigModals';
+import { ActionsProvider } from '@/components/control-panel/contexts/actions-context';
+import { defaultActions } from '@/components/control-panel/contexts/default-actions';
 import type { RoomConfig } from '@/lib/room-config';
 
 function formatDuration(ms: number): string {
@@ -506,16 +505,18 @@ export default function IntroView() {
               className='hidden'
               onChange={handleFileChange}
             />
-            <LoadConfigModal
-              open={showLoadModal}
-              onOpenChange={setShowLoadModal}
-              onLoadLocal={() => {
-                setShowLoadModal(false);
-                fileInputRef.current?.click();
-              }}
-              onLoadRemote={importConfig}
-              isImporting={loadingImport}
-            />
+            <ActionsProvider actions={defaultActions}>
+              <LoadConfigModal
+                open={showLoadModal}
+                onOpenChange={setShowLoadModal}
+                onLoadLocal={() => {
+                  setShowLoadModal(false);
+                  fileInputRef.current?.click();
+                }}
+                onLoadRemote={importConfig}
+                isImporting={loadingImport}
+              />
+            </ActionsProvider>
             <Button
               size='lg'
               variant='default'

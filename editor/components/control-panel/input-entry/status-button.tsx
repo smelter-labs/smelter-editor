@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
-import { Input } from '@/app/actions/actions';
+import type { Input } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/spinner';
 

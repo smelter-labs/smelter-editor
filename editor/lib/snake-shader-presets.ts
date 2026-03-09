@@ -1,4 +1,4 @@
-import type { ShaderConfig } from '@/app/actions/actions';
+import type { ShaderConfig } from '@/lib/types';
 
 export type SnakeShaderPreset = {
   name: string;

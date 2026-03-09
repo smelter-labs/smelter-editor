@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { Input } from '@/app/actions/actions';
+import type { Input } from '@/lib/types';
 import { applyTextColorFromVoice } from '../use-control-panel-events';
 
 type UpdateInputFn = (typeof import('@/app/actions/actions'))['updateInput'];

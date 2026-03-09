@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { toast } from 'react-toastify';
-import { addKickInput, getKickSuggestions, Input } from '@/app/actions/actions';
+import type { Input } from '@/lib/types';
+import { useActions } from '../contexts/actions-context';
 import { GenericAddInputForm } from './generic-add-input-form';
 
 type KickSuggestion = {
@@ -31,6 +32,7 @@ export function KickAddInputForm({
   roomId,
   refreshState,
 }: KickAddInputFormProps) {
+  const { addKickInput, getKickSuggestions } = useActions();
   const [kickSuggestions, setKickSuggestions] = useState<KickSuggestion[]>([]);
 
   const refreshSuggestions = useCallback(async () => {

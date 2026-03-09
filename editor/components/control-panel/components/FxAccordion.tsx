@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { ArrowLeft } from 'lucide-react';
-import type { Input } from '@/app/actions/actions';
+import type { Input } from '@/lib/types';
 import InputEntry from '@/components/control-panel/input-entry/input-entry';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';

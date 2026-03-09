@@ -1,7 +1,7 @@
 'use client';
 
 import { createContext, useContext } from 'react';
-import type { Input, AvailableShader } from '@/app/actions/actions';
+import type { Input, AvailableShader } from '@/lib/types';
 
 type ControlPanelContextValue = {
   roomId: string;

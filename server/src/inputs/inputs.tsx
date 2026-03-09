@@ -12,9 +12,9 @@ import {
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { ReactElement } from 'react';
-import type { ShaderConfig, ShaderParamConfig } from '../shaders/shaders';
+import type { ShaderConfig, ShaderParamConfig } from '../types';
 import shadersController from '../shaders/shaders';
-import { GameBoard } from '../game/GameBoard';
+import { getInputRenderer } from './rendererRegistry';
 
 type Resolution = { width: number; height: number };
 
@@ -360,8 +360,8 @@ export function Input({ input }: { input: InputConfig }) {
               borderColor,
               backgroundColor: isTextInput ? '#1a1a2e' : undefined,
             }}>
-            {isGame ? (
-              <GameBoard gameState={input.gameState!} resolution={{ width: contentWidth, height: contentHeight }} snake1Shaders={input.snake1Shaders} snake2Shaders={input.snake2Shaders} />
+            {isGame && getInputRenderer('game') ? (
+              getInputRenderer('game')!(input, { width: contentWidth, height: contentHeight })
             ) : isImage ? (
               <Rescaler style={{ rescaleMode: 'fit' }}>
                 <Image imageId={input.imageId!} />
@@ -477,8 +477,8 @@ export function SmallInput({
           borderColor,
           backgroundColor: isTextInput ? '#1a1a2e' : undefined,
         }}>
-        {isGame ? (
-          <GameBoard gameState={input.gameState!} resolution={{ width: contentWidth, height: contentHeight }} />
+        {isGame && getInputRenderer('game') ? (
+          getInputRenderer('game')!(input, { width: contentWidth, height: contentHeight })
         ) : isImage ? (
           <Rescaler style={{ rescaleMode: 'fit' }}>
             <Image imageId={input.imageId!} />

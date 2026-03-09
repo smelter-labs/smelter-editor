@@ -1,11 +1,13 @@
 import type { StoreApi } from 'zustand';
 import { createStore } from 'zustand';
-import type { ShaderConfig } from '../shaders/shaders';
+import type { ShaderConfig, Resolution, Layout } from '../types';
+import { Layouts } from '../types';
 import { createContext, useContext } from 'react';
 import { useStore } from 'zustand';
-import type { Resolution } from '../smelter';
 
 export type { GameCell, SnakeEventType, SnakeEventApplicationMode, SnakeEventShaderMapping, SnakeEventShaderConfig, ActiveSnakeEffect, GameState, GameOverPlayer, GameOverData } from '../game/types';
+export { Layouts };
+export type { Layout };
 import type { GameState, SnakeEventShaderConfig } from '../game/types';
 
 export type InputOrientation = 'horizontal' | 'vertical';
@@ -36,29 +38,6 @@ export type InputConfig = {
   replaceWith?: InputConfig;
   attachedInputs?: InputConfig[];
 };
-
-export const Layouts = [
-  'grid',
-  'primary-on-left',
-  'primary-on-top',
-  'picture-in-picture',
-  'wrapped',
-  'wrapped-static',
-  'transition',
-  'picture-on-picture',
-  'softu-tv',
-] as const;
-
-export type Layout =
-  | 'grid'
-  | 'primary-on-left'
-  | 'primary-on-top'
-  | 'picture-in-picture'
-  | 'wrapped'
-  | 'wrapped-static'
-  | 'transition'
-  | 'picture-on-picture'
-  | 'softu-tv';
 
 export type RoomStore = {
   inputs: InputConfig[];

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
-import { addCameraInput, removeInput, type Input } from '@/app/actions/actions';
+import type { Input } from '@/lib/types';
+import { useActions } from '../../contexts/actions-context';
 import {
   loadLastWhipInputId,
   saveLastWhipInputId,
@@ -22,6 +23,7 @@ export function useAutoResume(
   setActiveWhipInputId?: (id: string | null) => void,
   setIsWhipActive?: (active: boolean) => void,
 ) {
+  const { addCameraInput, removeInput } = useActions();
   const isPageReload = useMemo(() => {
     try {
       const nav = performance.getEntriesByType('navigation')[0] as

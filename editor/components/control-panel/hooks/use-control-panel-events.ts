@@ -1,21 +1,8 @@
 import { useCallback, useEffect, useRef } from 'react';
 import type { InputWrapper } from './use-control-panel-state';
 import { useControlPanelInputOrderEvents } from './use-control-panel-input-order-events';
-import type { Input, AvailableShader } from '@/app/actions/actions';
-import {
-  removeInput,
-  hideInput,
-  updateRoom,
-  addTwitchInput,
-  addMP4Input,
-  addImageInput,
-  addTextInput,
-  addCameraInput,
-  startRecording,
-  stopRecording,
-  updateInput,
-  getTwitchSuggestions,
-} from '@/app/actions/actions';
+import type { Input, AvailableShader } from '@/lib/types';
+import { useActions, type ControlPanelActions } from '../contexts/actions-context';
 import { stopCameraAndConnection } from '../whip-input/utils/preview';
 import {
   loadWhipSession,
@@ -56,7 +43,7 @@ type ApplyTextColorFromVoiceParams = {
   roomId: string;
   handleRefreshState: () => Promise<void>;
   dispatchEvent: (event: Event) => boolean;
-  updateInputFn: typeof updateInput;
+  updateInputFn: ControlPanelActions['updateInput'];
 };
 
 type ResolveVoiceInputTargetParams = {
@@ -142,6 +129,20 @@ export function useControlPanelEvents({
   currentLayout,
   changeLayout,
 }: UseControlPanelEventsProps) {
+  const {
+    removeInput,
+    hideInput,
+    updateRoom,
+    addTwitchInput,
+    addMP4Input,
+    addImageInput,
+    addTextInput,
+    addCameraInput,
+    startRecording,
+    stopRecording,
+    updateInput,
+    getTwitchSuggestions,
+  } = useActions();
   const {
     roomId,
     refreshState: handleRefreshState,

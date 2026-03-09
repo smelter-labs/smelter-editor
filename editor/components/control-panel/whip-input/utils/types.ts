@@ -1,8 +1,4 @@
-export type AddInputResponse = {
-  inputId: string;
-  bearerToken: string;
-  whipUrl: string;
-};
+export type { AddInputResponse } from '@/lib/types';
 export type InputWrapper = { id: number; inputId: string };
 
 export type WhipSession = {

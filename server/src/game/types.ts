@@ -1,4 +1,4 @@
-import type { ShaderParamConfig } from '../shaders/shaders';
+import type { ShaderParamConfig } from '../types';
 
 export type GameCell = {
   x: number;
