@@ -1134,6 +1134,7 @@ export class RoomState {
     } else if (!enabled) {
       await this.motionManager.stopMotionDetection(inputId);
       input.motionScore = undefined;
+      this.emitMotionScores();
     }
   }
 

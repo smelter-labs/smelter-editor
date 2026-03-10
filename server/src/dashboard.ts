@@ -1,6 +1,6 @@
 import { state } from './server/serverState';
 import { config } from './config';
-import { renderSnakeBoard, findFirstSnakeGameState } from './snakeGame/snakeGameDashboard';
+// import { renderSnakeBoard, findFirstSnakeGameState } from './snakeGame/snakeGameDashboard';
 export { setGlobalSnakeGameState, getGlobalSnakeGameState } from './snakeGame/snakeGameDashboard';
 
 const isBoxed = process.env.LAYOUT === 'boxed';
@@ -18,7 +18,7 @@ let roomsTable: any;
 let inputsTable: any;
 let logBox: any;
 let sysLogBox: any;
-let snakeBox: any;
+let motionBox: any;
 
 const requestLog: string[] = [];
 const sysLog: string[] = [];
@@ -182,20 +182,56 @@ function updateDashboard() {
     data: roomRows.length > 0 ? roomRows : [['-', '-', '-', '-', '-', '-', '-']],
   });
 
-  // ── Panel 3: Snake Board ──
-  const snakeGameState = findFirstSnakeGameState();
-  if (snakeGameState) {
-    snakeBox.setContent(renderSnakeBoard(snakeGameState));
-  } else {
-    // Show diagnostic: how many game inputs exist (even without cells)
-    let snakeGameInputCount = 0;
-    for (const room of rooms) {
-      for (const input of room.getInputs()) {
-        if (input.type === 'game') snakeGameInputCount++;
-      }
+  // ── Panel 3: Motion Detection ──
+  const motionLines: string[] = [];
+  let motionEnabledCount = 0;
+  let motionTotalCount = 0;
+
+  type MotionEntry = { room: string; title: string; score: number | undefined };
+  const motionEntries: MotionEntry[] = [];
+
+  for (const room of rooms) {
+    for (const input of room.getInputs()) {
+      if (!['local-mp4', 'twitch-channel', 'kick-channel', 'whip'].includes(input.type)) continue;
+      motionTotalCount++;
+      if (!input.motionEnabled) continue;
+      motionEnabledCount++;
+      motionEntries.push({
+        room: room.idPrefix.slice(0, 8),
+        title: sanitizeTableCell(input.metadata.title),
+        score: input.motionScore,
+      });
     }
-    snakeBox.setContent(`\n  {white-fg}No active game{/}\n  {white-fg}Game inputs: ${snakeGameInputCount}{/}`);
   }
+
+  motionLines.push(`{bold}MOTION DETECTION{/bold}`);
+  motionLines.push(``);
+  motionLines.push(` Enabled: {yellow-fg}${motionEnabledCount}{/} / ${motionTotalCount} inputs`);
+  motionLines.push(``);
+
+  if (motionEntries.length === 0) {
+    motionLines.push(`  {white-fg}No inputs with motion detection{/}`);
+  } else {
+    for (const entry of motionEntries) {
+      const BAR_WIDTH = 10;
+      let scoreStr: string;
+      let bar: string;
+      if (entry.score === undefined) {
+        scoreStr = '{white-fg} wait{/}';
+        bar = `{white-fg}[${'·'.repeat(BAR_WIDTH)}]{/}`;
+      } else {
+        const filled = Math.round(entry.score * BAR_WIDTH);
+        const empty = BAR_WIDTH - filled;
+        const color = entry.score > 0.6 ? 'red' : entry.score > 0.3 ? 'yellow' : 'green';
+        scoreStr = `{${color}-fg}${entry.score.toFixed(2)}{/}`;
+        bar = `{${color}-fg}[${'█'.repeat(filled)}${'░'.repeat(empty)}]{/}`;
+      }
+      const title = entry.title.slice(0, 16).padEnd(16);
+      motionLines.push(` {cyan-fg}${entry.room}{/}  ${title}  ${scoreStr}  ${bar}`);
+    }
+  }
+
+  motionBox.setContent(motionLines.join('\n'));
 
   // ── Panel 4: Inputs ──
   const inputRows: string[][] = [];
@@ -249,7 +285,7 @@ export function initDashboard() {
 
   // Layout (12×6 grid):
   //  Row 0-2:  Server Info (2 cols) | Rooms (4 cols)
-  //  Row 3-7:  🐍 Snake (3 cols)   | Inputs (3 cols)
+  //  Row 3-7:  📡 Motion (3 cols)  | Inputs (3 cols)
   //  Row 8-11: Requests (3 cols)   | System Logs (3 cols)
   grid = new contrib.grid({ rows: 12, cols: 6, screen });
 
@@ -282,14 +318,14 @@ export function initDashboard() {
     columnWidth: [8, 8, 14, 11, 6, 5, 8],
   });
 
-  // Middle-left: Snake Board (wider + taller)
-  snakeBox = grid.set(3, 0, 5, 3, blessed.box, {
-    label: ' 🐍 Snake ',
+  // Middle-left: Motion Detection
+  motionBox = grid.set(3, 0, 5, 3, blessed.box, {
+    label: ' 📡 Motion Detection ',
     tags: true,
     border: { type: 'line' },
     style: {
-      border: { fg: 'green' },
-      label: { fg: 'green', bold: true },
+      border: { fg: 'blue' },
+      label: { fg: 'blue', bold: true },
     },
     padding: { left: 1, top: 0 },
   });

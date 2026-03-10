@@ -75,6 +75,12 @@ def main():
         signal.signal(signal.SIGTERM, handle_signal)
         signal.signal(signal.SIGINT, handle_signal)
 
+        # Signal to the parent process that ffmpeg has been spawned and the
+        # UDP socket should be bound.  The Node manager waits for this line
+        # instead of using a fixed sleep.
+        sys.stdout.write(json.dumps({"ready": True}) + "\n")
+        sys.stdout.flush()
+
         baseline_gray = None
         last_output_time = 0.0
 

@@ -40,8 +40,11 @@ let globalNextPort = 20000;
 
 export class MotionManager {
   private processes: Map<string, MotionProcess> = new Map();
+  private pendingStarts = new Set<string>();
   private pythonReady = false;
   private pythonSetupPromise: Promise<void> | null = null;
+  /** Serializes startMotionDetection calls so Smelter output registrations don't overlap. */
+  private startQueue: Promise<void> = Promise.resolve();
 
   /**
    * Ensure Python venv exists with opencv + numpy installed.
@@ -108,49 +111,115 @@ export class MotionManager {
       return;
     }
 
-    await this.ensurePython();
+    if (this.pendingStarts.has(inputId)) {
+      return;
+    }
+    this.pendingStarts.add(inputId);
 
-    const port = globalNextPort++;
-    const outputId = `motion::${inputId}`;
+    // Serialize starts so concurrent registerMotionOutput calls don't overlap.
+    const prev = this.startQueue;
+    this.startQueue = prev.then(() => this._doStart(inputId, onScore)).catch(() => {});
+    await this.startQueue;
+  }
 
-    // Spawn ffmpeg FIRST so it's already listening on the UDP port
-    // before Smelter starts sending RTP packets (including the initial keyframe).
-    const pythonPath = getPythonPath();
-    console.log(`[motion] Starting detection for ${inputId} on port ${port} using ${pythonPath}`);
-    const child = spawn(pythonPath, [SCRIPT_PATH, '--port', String(port)], {
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
+  private async _doStart(inputId: string, onScore: (score: number) => void): Promise<void> {
+    try {
+      await this.ensurePython();
 
-    // Give ffmpeg a moment to bind the UDP socket before Smelter starts streaming
-    await new Promise((resolve) => setTimeout(resolve, 500));
-
-    await SmelterInstance.registerMotionOutput(outputId, inputId, port);
-
-    const entry: MotionProcess = { process: child, port, outputId, onScore };
-    this.processes.set(inputId, entry);
-
-    const stderrRl = createInterface({ input: child.stderr! });
-    stderrRl.on('line', (line) => {
-      console.log(`[motion][${inputId}] ${line}`);
-    });
-
-    const rl = createInterface({ input: child.stdout! });
-    rl.on('line', (line) => {
-      try {
-        const data = JSON.parse(line);
-        if (typeof data.score === 'number') {
-          entry.onScore(data.score);
-        }
-      } catch {
-        // ignore malformed lines
+      const existingAfterSetup = this.processes.get(inputId);
+      if (existingAfterSetup) {
+        existingAfterSetup.onScore = onScore;
+        return;
       }
-    });
 
-    child.on('exit', (code) => {
-      console.log(`[motion] Process for ${inputId} exited with code ${code}`);
-      this.processes.delete(inputId);
-      entry.onScore(-1);
-    });
+      const port = globalNextPort++;
+      const outputId = `motion::${inputId}`;
+
+      // Spawn ffmpeg FIRST so it's already listening on the UDP port
+      // before Smelter starts sending RTP packets (including the initial keyframe).
+      const pythonPath = getPythonPath();
+      console.log(`[motion] Starting detection for ${inputId} on port ${port} using ${pythonPath}`);
+      const child = spawn(pythonPath, [SCRIPT_PATH, '--port', String(port)], {
+        stdio: ['ignore', 'pipe', 'pipe'],
+      });
+
+      // Store entry immediately so concurrent calls hot-swap the callback
+      // instead of spawning a duplicate process.
+      const entry: MotionProcess = { process: child, port, outputId, onScore };
+      this.processes.set(inputId, entry);
+
+      const stderrRl = createInterface({ input: child.stderr! });
+      stderrRl.on('line', (line) => {
+        console.log(`[motion][${inputId}] ${line}`);
+      });
+
+      const rl = createInterface({ input: child.stdout! });
+      rl.on('line', (line) => {
+        try {
+          const data = JSON.parse(line);
+          if (typeof data.score === 'number') {
+            entry.onScore(data.score);
+          }
+        } catch {
+          // ignore malformed lines
+        }
+      });
+
+      child.on('exit', (code) => {
+        console.log(`[motion] Process for ${inputId} exited with code ${code}`);
+        if (this.processes.get(inputId) === entry) {
+          this.processes.delete(inputId);
+          entry.onScore(-1);
+        }
+      });
+
+      // Wait for the Python script to signal that ffmpeg has been spawned,
+      // then give ffmpeg a moment to actually bind the UDP socket.
+      const READY_TIMEOUT_MS = 5000;
+      await new Promise<void>((resolve) => {
+        const timeout = setTimeout(() => {
+          console.warn(`[motion] Ready signal timeout for ${inputId}, proceeding anyway`);
+          resolve();
+        }, READY_TIMEOUT_MS);
+
+        let resolved = false;
+        const onLine = (line: string) => {
+          if (resolved) return;
+          try {
+            const data = JSON.parse(line);
+            if (data.ready) {
+              resolved = true;
+              clearTimeout(timeout);
+              // Small extra delay for ffmpeg to bind the UDP socket
+              setTimeout(resolve, 200);
+            }
+          } catch {
+            // ignore
+          }
+        };
+        rl.on('line', onLine);
+
+        child.on('exit', () => {
+          if (!resolved) {
+            resolved = true;
+            clearTimeout(timeout);
+            resolve();
+          }
+        });
+      });
+
+      try {
+        await SmelterInstance.registerMotionOutput(outputId, inputId, port);
+      } catch (err) {
+        if (this.processes.get(inputId) === entry) {
+          this.processes.delete(inputId);
+        }
+        child.kill('SIGTERM');
+        throw err;
+      }
+    } finally {
+      this.pendingStarts.delete(inputId);
+    }
   }
 
   async stopMotionDetection(inputId: string): Promise<void> {
