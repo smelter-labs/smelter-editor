@@ -82,6 +82,9 @@ import {
   BlockClipPropertiesPanel,
   type SelectedTimelineClip,
 } from './components/BlockClipPropertiesPanel';
+import { useMotionScores } from '@/hooks/use-motion-scores';
+import { useMotionHistory } from '@/hooks/use-motion-history';
+import { MotionPanel } from './components/MotionPanel';
 
 export type ControlPanelProps = {
   roomId: string;
@@ -102,6 +105,7 @@ export type ControlPanelProps = {
     fxSection: React.ReactNode;
     timelineSection: React.ReactNode;
     blockPropertiesSection: React.ReactNode;
+    motionSection: React.ReactNode;
   }) => React.ReactNode;
 };
 
@@ -295,6 +299,7 @@ function ControlPanelWithActions({
   );
 
   const isRecordingFromServer = roomState.isRecording ?? false;
+  const motionScores = useMotionScores(roomId);
 
   const controlPanelCtx = useMemo(
     () => ({
@@ -304,6 +309,7 @@ function ControlPanelWithActions({
       inputsRef,
       availableShaders,
       isRecording: isRecordingFromServer,
+      motionScores,
     }),
     [
       roomId,
@@ -312,6 +318,7 @@ function ControlPanelWithActions({
       inputsRef,
       availableShaders,
       isRecordingFromServer,
+      motionScores,
     ],
   );
 
@@ -394,7 +401,9 @@ function ControlPanelInner({
     refreshState: handleRefreshState,
     inputs,
     availableShaders,
+    motionScores,
   } = useControlPanelContext();
+  const motionHistoryMap = useMotionHistory(inputs, motionScores);
   const { activeCameraInputId, activeScreenshareInputId } =
     useWhipConnectionsContext();
   const actions = useActions();
@@ -524,6 +533,14 @@ function ControlPanelInner({
       </div>
     );
 
+    const motionSection = (
+      <MotionPanel
+        selectedInputId={selectedTimelineClip?.inputId ?? null}
+        inputs={inputs}
+        motionHistoryMap={motionHistoryMap}
+      />
+    );
+
     return (
       <>
         <video
@@ -540,6 +557,7 @@ function ControlPanelInner({
           fxSection,
           timelineSection,
           blockPropertiesSection,
+          motionSection,
         })}
       </>
     );

@@ -8,6 +8,7 @@ type MotionProcess = {
   process: ChildProcess;
   port: number;
   outputId: string;
+  onScore: (score: number) => void;
 };
 
 const MOTION_DIR = path.join(__dirname, '../../motion');
@@ -35,9 +36,10 @@ function getPythonPath(): string {
   return 'python3';
 }
 
+let globalNextPort = 20000;
+
 export class MotionManager {
   private processes: Map<string, MotionProcess> = new Map();
-  private nextPort = 20000;
   private pythonReady = false;
   private pythonSetupPromise: Promise<void> | null = null;
 
@@ -100,20 +102,32 @@ export class MotionManager {
   }
 
   async startMotionDetection(inputId: string, onScore: (score: number) => void): Promise<void> {
-    if (this.processes.has(inputId)) return;
+    const existing = this.processes.get(inputId);
+    if (existing) {
+      existing.onScore = onScore;
+      return;
+    }
 
     await this.ensurePython();
 
-    const port = this.nextPort++;
+    const port = globalNextPort++;
     const outputId = `motion::${inputId}`;
 
-    await SmelterInstance.registerMotionOutput(outputId, inputId, port);
-
+    // Spawn ffmpeg FIRST so it's already listening on the UDP port
+    // before Smelter starts sending RTP packets (including the initial keyframe).
     const pythonPath = getPythonPath();
     console.log(`[motion] Starting detection for ${inputId} on port ${port} using ${pythonPath}`);
     const child = spawn(pythonPath, [SCRIPT_PATH, '--port', String(port)], {
       stdio: ['ignore', 'pipe', 'pipe'],
     });
+
+    // Give ffmpeg a moment to bind the UDP socket before Smelter starts streaming
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    await SmelterInstance.registerMotionOutput(outputId, inputId, port);
+
+    const entry: MotionProcess = { process: child, port, outputId, onScore };
+    this.processes.set(inputId, entry);
 
     const stderrRl = createInterface({ input: child.stderr! });
     stderrRl.on('line', (line) => {
@@ -125,7 +139,7 @@ export class MotionManager {
       try {
         const data = JSON.parse(line);
         if (typeof data.score === 'number') {
-          onScore(data.score);
+          entry.onScore(data.score);
         }
       } catch {
         // ignore malformed lines
@@ -135,10 +149,8 @@ export class MotionManager {
     child.on('exit', (code) => {
       console.log(`[motion] Process for ${inputId} exited with code ${code}`);
       this.processes.delete(inputId);
-      onScore(-1);
+      entry.onScore(-1);
     });
-
-    this.processes.set(inputId, { process: child, port, outputId });
   }
 
   async stopMotionDetection(inputId: string): Promise<void> {

@@ -161,6 +161,7 @@ function cloneDefaultLogoShaders(): ShaderConfig[] {
 export class RoomState {
   private inputs: RoomInputState[];
   private motionManager = new MotionManager();
+  private motionScoreListeners: Set<(scores: Record<string, number>) => void> = new Set();
   private layout: Layout = 'picture-in-picture';
   private swapDurationMs: number = 500;
   private swapOutgoingEnabled: boolean = true;
@@ -792,6 +793,7 @@ export class RoomState {
         } else {
           input.motionScore = score;
         }
+        this.emitMotionScores();
       }).catch(err => console.error(`[motion] Failed to start for ${inputId}`, err));
     }
     this.updateStoreWithState();
@@ -1124,6 +1126,7 @@ export class RoomState {
           } else {
             input.motionScore = score;
           }
+          this.emitMotionScores();
         });
       } catch (err) {
         console.error(`[motion] Failed to start motion detection for ${inputId}`, err);
@@ -1136,6 +1139,26 @@ export class RoomState {
 
   public async stopAllMotion(): Promise<void> {
     await this.motionManager.stopAll();
+  }
+
+  public addMotionScoreListener(listener: (scores: Record<string, number>) => void): () => void {
+    this.motionScoreListeners.add(listener);
+    return () => {
+      this.motionScoreListeners.delete(listener);
+    };
+  }
+
+  private emitMotionScores(): void {
+    if (this.motionScoreListeners.size === 0) return;
+    const scores: Record<string, number> = {};
+    for (const input of this.inputs) {
+      if (input.motionScore !== undefined) {
+        scores[input.inputId] = input.motionScore;
+      }
+    }
+    for (const listener of this.motionScoreListeners) {
+      listener(scores);
+    }
   }
 
   public updateSnakeGameState(inputId: string, incomingState: { board: { width: number; height: number; cellSize: number; cellGap?: number }; cells: { x: number; y: number; color: string; size?: number; isHead?: boolean; direction?: 'up' | 'down' | 'left' | 'right'; progress?: number }[]; smoothMove?: boolean; smoothMoveSpeed?: number; smoothMoveAccel?: number; smoothMoveDecel?: number; backgroundColor: string; gameOverData?: { winnerName: string; reason: string; players: { name: string; score: number; eaten: number; cuts: number; color: string }[] } }, events?: { type: SnakeEventType }[]) {

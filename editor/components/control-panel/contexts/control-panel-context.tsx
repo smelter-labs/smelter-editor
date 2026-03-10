@@ -10,6 +10,7 @@ type ControlPanelContextValue = {
   inputsRef: React.MutableRefObject<Input[]>;
   availableShaders: AvailableShader[];
   isRecording: boolean;
+  motionScores: Record<string, number>;
 };
 
 const ControlPanelContext = createContext<ControlPanelContextValue | null>(

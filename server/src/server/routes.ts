@@ -648,6 +648,26 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof MotionDetectionSchema> 
   }
 );
 
+routes.get<RoomIdParams>('/room/:roomId/motion-scores/sse', { schema: { params: RoomIdParamsSchema } }, async (req, res) => {
+  const { roomId } = req.params;
+  const room = state.getRoom(roomId);
+
+  res.raw.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+  });
+
+  const unsubscribe = room.addMotionScoreListener((scores) => {
+    res.raw.write(`data: ${JSON.stringify(scores)}\n\n`);
+  });
+
+  req.raw.on('close', () => {
+    unsubscribe();
+  });
+});
+
 const UpdateInputSchema = Type.Object({
   volume: Type.Optional(Type.Number({ maximum: 1, minimum: 0 })),
   showTitle: Type.Optional(Type.Boolean()),

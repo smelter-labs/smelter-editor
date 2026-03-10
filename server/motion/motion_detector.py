@@ -35,7 +35,7 @@ def main():
     parser.add_argument("--port", type=int, required=True, help="UDP port for RTP input")
     parser.add_argument("--width", type=int, default=160, help="Frame width (default: 160)")
     parser.add_argument("--height", type=int, default=90, help="Frame height (default: 90)")
-    parser.add_argument("--interval", type=float, default=0.5, help="Min seconds between outputs (default: 0.5)")
+    parser.add_argument("--interval", type=float, default=0.15, help="Min seconds between outputs (default: 0.15)")
     args = parser.parse_args()
 
     frame_size = args.width * args.height * 3
@@ -57,10 +57,14 @@ def main():
             "pipe:1",
         ]
 
+        print(f"[motion_detector] Starting ffmpeg on port {args.port}", file=sys.stderr, flush=True)
+        print(f"[motion_detector] SDP content:\n{create_sdp(args.port)}", file=sys.stderr, flush=True)
+        print(f"[motion_detector] cmd: {' '.join(ffmpeg_cmd)}", file=sys.stderr, flush=True)
+
         proc = subprocess.Popen(
             ffmpeg_cmd,
             stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
+            stderr=sys.stderr,
         )
 
         def handle_signal(_sig, _frame):
@@ -71,7 +75,7 @@ def main():
         signal.signal(signal.SIGTERM, handle_signal)
         signal.signal(signal.SIGINT, handle_signal)
 
-        prev_gray = None
+        baseline_gray = None
         last_output_time = 0.0
 
         try:
@@ -84,15 +88,21 @@ def main():
                 frame = np.frombuffer(raw, dtype=np.uint8).reshape((args.height, args.width, 3))
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-                if prev_gray is not None and (now - last_output_time) >= args.interval:
-                    diff = cv2.absdiff(prev_gray, gray)
-                    score = round(float(diff.mean() / 255.0), 4)
+                if baseline_gray is None:
+                    baseline_gray = gray
+                    last_output_time = now
+                    continue
+
+                if (now - last_output_time) >= args.interval:
+                    diff = cv2.absdiff(baseline_gray, gray)
+                    raw_score = diff.mean() / 255.0
+                    # power curve: gently amplify small motion, cap at 1.0
+                    score = round(min(float(raw_score ** 0.5) * 1.5, 1.0), 4)
                     line = json.dumps({"score": score, "ts": now})
                     sys.stdout.write(line + "\n")
                     sys.stdout.flush()
+                    baseline_gray = gray
                     last_output_time = now
-
-                prev_gray = gray
         except (BrokenPipeError, IOError):
             pass
         finally:

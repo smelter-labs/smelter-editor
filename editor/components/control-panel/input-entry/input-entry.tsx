@@ -34,6 +34,7 @@ import {
 } from '../whip-input/utils/whip-storage';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { toggleMotionDetection } from '@/app/actions/actions';
+import { useControlPanelContext } from '../contexts/control-panel-context';
 
 const SHADER_SETTINGS_DEBOUNCE_MS = 200;
 const VIDEO_INPUT_TYPES = [
@@ -124,6 +125,7 @@ export default function InputEntry({
   isLocalWhipInput = false,
 }: InputEntryProps) {
   const actions = useActions();
+  const { motionScores } = useControlPanelContext();
   const [connectionStateLoading, setConnectionStateLoading] = useState(false);
   const [showSliders, setShowSliders] = useState(false);
   const [shaderLoading, setShaderLoading] = useState<string | null>(null);
@@ -1153,7 +1155,7 @@ export default function InputEntry({
               </Button>
               {isVideoInput && (
                 <MotionIndicator
-                  score={input.motionScore ?? 0}
+                  score={motionScores[input.inputId] ?? input.motionScore ?? 0}
                   enabled={input.motionEnabled ?? true}
                   onToggle={handleMotionToggle}
                 />

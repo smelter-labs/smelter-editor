@@ -166,6 +166,7 @@ export default function RoomView({
           fxSection,
           timelineSection,
           blockPropertiesSection,
+          motionSection,
         }) => (
           <DashboardLayout
             panels={{
@@ -182,6 +183,7 @@ export default function RoomView({
               fx: fxSection,
               timeline: timelineSection,
               'block-properties': blockPropertiesSection,
+              motion: motionSection,
             }}
           />
         )}

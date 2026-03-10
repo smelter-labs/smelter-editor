@@ -1,48 +1,65 @@
-import { useRef, useEffect, useMemo } from 'react';
+import { useRef, useEffect, useMemo, useState } from 'react';
 import type { Input } from '@/lib/types';
 
 const MAX_HISTORY = 60;
 
-type MotionHistory = {
+export type MotionHistory = {
   current: number;
   history: number[];
   peak: number;
 };
 
-export function useMotionHistory(inputs: Input[]): Map<string, MotionHistory> {
+export function useMotionHistory(
+  inputs: Input[],
+  motionScores: Record<string, number>,
+): Map<string, MotionHistory> {
   const historyRef = useRef<Map<string, number[]>>(new Map());
+  const [revision, setRevision] = useState(0);
+
+  const inputIds = useMemo(
+    () => new Set(inputs.map((i) => i.inputId)),
+    [inputs],
+  );
 
   useEffect(() => {
-    for (const input of inputs) {
-      if (input.motionScore === undefined || input.motionScore === null)
-        continue;
-
-      let history = historyRef.current.get(input.inputId);
-      if (!history) {
-        history = [];
-        historyRef.current.set(input.inputId, history);
-      }
-      history.push(input.motionScore);
-      if (history.length > MAX_HISTORY) {
-        history.splice(0, history.length - MAX_HISTORY);
-      }
-    }
-
     for (const key of historyRef.current.keys()) {
-      if (!inputs.find((i) => i.inputId === key)) {
+      if (!inputIds.has(key)) {
         historyRef.current.delete(key);
       }
     }
-  }, [inputs]);
+  }, [inputIds]);
+
+  useEffect(() => {
+    let changed = false;
+    for (const [inputId, score] of Object.entries(motionScores)) {
+      if (!inputIds.has(inputId)) continue;
+
+      let history = historyRef.current.get(inputId);
+      if (!history) {
+        history = [];
+        historyRef.current.set(inputId, history);
+      }
+      history.push(score);
+      if (history.length > MAX_HISTORY) {
+        history.splice(0, history.length - MAX_HISTORY);
+      }
+      changed = true;
+    }
+    if (changed) {
+      setRevision((r) => r + 1);
+    }
+  }, [motionScores, inputIds]);
 
   return useMemo(() => {
+    void revision;
     const result = new Map<string, MotionHistory>();
-    for (const input of inputs) {
-      const history = historyRef.current.get(input.inputId) ?? [];
-      const current = input.motionScore ?? 0;
+    for (const inputId of inputIds) {
+      const history = historyRef.current.get(inputId) ?? [];
+      const current = motionScores[inputId] ?? 0;
       const peak = history.length > 0 ? Math.max(...history) : current;
-      result.set(input.inputId, { current, history, peak });
+      result.set(inputId, { current, history: [...history], peak });
     }
     return result;
-  }, [inputs]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [revision, inputIds, motionScores]);
 }

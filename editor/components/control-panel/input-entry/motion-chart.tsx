@@ -13,7 +13,7 @@ export function MotionChart({
   peak,
   current,
   width = 200,
-  height = 32,
+  height = 80,
 }: MotionChartProps) {
   if (history.length < 2) return null;
 
@@ -28,11 +28,9 @@ export function MotionChart({
   const linePoints = points.join(' ');
 
   return (
-    <div className='px-2 pb-1'>
+    <div className='h-full flex flex-col'>
       <svg
-        width={width}
-        height={height}
-        className='w-full'
+        className='w-full flex-1'
         viewBox={`0 0 ${width} ${height}`}
         preserveAspectRatio='none'>
         <polygon points={areaPoints} fill='rgba(34, 197, 94, 0.15)' />
@@ -43,7 +41,7 @@ export function MotionChart({
           strokeWidth='1.5'
         />
       </svg>
-      <div className='flex justify-between text-[10px] text-neutral-500 mt-0.5'>
+      <div className='flex justify-between text-[10px] text-neutral-500 mt-1 px-0.5 shrink-0'>
         <span>peak: {(peak * 100).toFixed(0)}%</span>
         <span>now: {(current * 100).toFixed(0)}%</span>
       </div>
