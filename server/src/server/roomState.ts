@@ -1126,7 +1126,6 @@ export class RoomState {
           if (score === -1) {
             input.motionScore = undefined;
           } else {
-            console.log(`[motion][callback] inputId=${inputId} → setting score=${score.toFixed(3)} on input.inputId=${input.inputId} title="${input.metadata.title}"`);
             input.motionScore = score;
           }
           this.emitMotionScores();

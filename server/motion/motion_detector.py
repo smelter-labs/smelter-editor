@@ -20,6 +20,18 @@ import cv2
 import numpy as np
 
 
+def has_nvdec() -> bool:
+    """Check if ffmpeg supports CUDA/NVDEC hardware decoding."""
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-hwaccels"],
+            capture_output=True, text=True, timeout=5,
+        )
+        return "cuda" in result.stdout.lower()
+    except Exception:
+        return False
+
+
 def create_sdp(port: int) -> str:
     """Generate an SDP file telling ffmpeg to expect H.264 RTP on the given port."""
     return (
@@ -51,14 +63,22 @@ def main():
         with os.fdopen(sdp_fd, "w") as f:
             f.write(create_sdp(args.port))
 
-        ffmpeg_cmd = [
-            "ffmpeg",
+        use_hwaccel = has_nvdec()
+
+        ffmpeg_cmd = ["ffmpeg"]
+        if use_hwaccel:
+            ffmpeg_cmd += ["-hwaccel", "cuda"]
+        ffmpeg_cmd += [
             "-probesize", "5000000",
             "-analyzeduration", "5000000",
             "-fflags", "+genpts+discardcorrupt",
             "-protocol_whitelist", "file,udp,rtp",
             "-reorder_queue_size", "0",
             "-i", sdp_path,
+        ]
+        if use_hwaccel:
+            ffmpeg_cmd += ["-c:v", "h264_cuvid"]
+        ffmpeg_cmd += [
             "-f", "rawvideo",
             "-pix_fmt", "bgr24",
             "-s", f"{args.width}x{args.height}",
@@ -66,7 +86,8 @@ def main():
             "pipe:1",
         ]
 
-        print(f"[motion_detector] Starting ffmpeg on port {args.port} ({args.width}x{args.height}, {args.regions} regions)", file=sys.stderr, flush=True)
+        hwaccel_label = "NVDEC (cuda)" if use_hwaccel else "software"
+        print(f"[motion_detector] Starting ffmpeg on port {args.port} ({args.width}x{args.height}, {args.regions} regions, decode: {hwaccel_label})", file=sys.stderr, flush=True)
         print(f"[motion_detector] SDP content:\n{create_sdp(args.port)}", file=sys.stderr, flush=True)
         print(f"[motion_detector] cmd: {' '.join(ffmpeg_cmd)}", file=sys.stderr, flush=True)
 
@@ -99,11 +120,11 @@ def main():
                     break
 
                 now = time.time()
-                frame = np.frombuffer(raw, dtype=np.uint8).reshape((args.height, args.width, 3))
-                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-
                 if (now - last_output_time) < args.interval:
                     continue
+
+                frame = np.frombuffer(raw, dtype=np.uint8).reshape((args.height, args.width, 3))
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
                 scores = {}
                 for i in range(args.regions):
