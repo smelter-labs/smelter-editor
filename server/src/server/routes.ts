@@ -596,7 +596,17 @@ routes.get<RoomIdParams>('/room/:roomId/motion-scores/sse', { schema: { params: 
     res.raw.write(`data: ${JSON.stringify(scores)}\n\n`);
   });
 
+  const heartbeat = setInterval(() => {
+    if (res.raw.destroyed) {
+      clearInterval(heartbeat);
+      unsubscribe();
+      return;
+    }
+    res.raw.write(': heartbeat\n\n');
+  }, 15000);
+
   req.raw.on('close', () => {
+    clearInterval(heartbeat);
     unsubscribe();
   });
 });

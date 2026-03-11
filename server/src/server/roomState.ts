@@ -160,7 +160,7 @@ function cloneDefaultLogoShaders(): ShaderConfig[] {
 
 export class RoomState {
   private inputs: RoomInputState[];
-  private motionManager = new MotionManager();
+  private motionManager: MotionManager;
   private motionScoreListeners: Set<(scores: Record<string, number>) => void> = new Set();
   private layout: Layout = 'picture-in-picture';
   private swapDurationMs: number = 500;
@@ -198,6 +198,7 @@ export class RoomState {
     this.mp4Files = mp4SuggestionsMonitor.mp4Files;
     this.inputs = [];
     this.idPrefix = idPrefix;
+    this.motionManager = new MotionManager(idPrefix);
     this.output = output;
     this.roomName = roomName ?? { pl: `Pokój ${idPrefix.slice(0, 6)}`, en: `Room ${idPrefix.slice(0, 6)}` };
     this.initInputs = initInputs;

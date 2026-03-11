@@ -1,7 +1,8 @@
-import { spawn, execSync, type ChildProcess } from 'node:child_process';
+import { spawn, execFile, type ChildProcess } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { createInterface } from 'node:readline';
+import { promisify } from 'node:util';
 import { SmelterInstance } from '../smelter';
 import {
   createMotionStore,
@@ -11,13 +12,12 @@ import {
   MOTION_MAX_SLOTS,
 } from './MotionScene';
 
+const execFileAsync = promisify(execFile);
+
 const MOTION_DIR = path.join(__dirname, '../../motion');
 const VENV_DIR = path.join(MOTION_DIR, '.venv');
 const REQUIREMENTS_FILE = path.join(MOTION_DIR, 'requirements.txt');
 const SCRIPT_PATH = path.join(MOTION_DIR, 'motion_detector.py');
-
-const MOTION_OUTPUT_ID = 'motion::grid';
-const MOTION_RTP_PORT = 20000;
 
 function getVenvPython(): string {
   return process.platform === 'win32'
@@ -37,6 +37,11 @@ function getPythonPath(): string {
 }
 
 export class MotionManager {
+  private static nextPort = 20000;
+
+  private readonly rtpPort: number;
+  private readonly outputId: string;
+
   /** Ordered list of inputIds currently tracked. Index = grid slot. */
   private trackedInputs: string[] = [];
   /** Per-input score callbacks. */
@@ -49,8 +54,16 @@ export class MotionManager {
   private pythonReady = false;
   private pythonSetupPromise: Promise<void> | null = null;
 
+  private restartAttempts = 0;
+  private readonly MAX_RESTART_ATTEMPTS = 3;
+
   /** Serializes start/stop calls. */
   private queue: Promise<void> = Promise.resolve();
+
+  constructor(roomId: string) {
+    this.rtpPort = MotionManager.nextPort++;
+    this.outputId = `motion::grid::${roomId}`;
+  }
 
   // ── Python venv setup ─────────────────────────────────────────
 
@@ -67,7 +80,7 @@ export class MotionManager {
 
     if (process.env.MOTION_PYTHON_PATH || !existsSync(REQUIREMENTS_FILE)) {
       try {
-        execSync(`${pythonPath} -c "import cv2; import numpy"`, { stdio: 'ignore' });
+        await execFileAsync(pythonPath, ['-c', 'import cv2; import numpy']);
         console.log('[motion] Python dependencies OK');
       } catch {
         console.warn('[motion] Python dependencies missing — motion detection will not work');
@@ -79,7 +92,7 @@ export class MotionManager {
     const venvPython = getVenvPython();
     if (existsSync(venvPython)) {
       try {
-        execSync(`${venvPython} -c "import cv2; import numpy"`, { stdio: 'ignore' });
+        await execFileAsync(venvPython, ['-c', 'import cv2; import numpy']);
         console.log('[motion] Venv ready');
         return;
       } catch {
@@ -90,11 +103,10 @@ export class MotionManager {
     console.log('[motion] Setting up Python venv...');
     try {
       if (!existsSync(VENV_DIR)) {
-        execSync(`python3 -m venv ${VENV_DIR}`, { cwd: MOTION_DIR, stdio: 'pipe' });
+        await execFileAsync('python3', ['-m', 'venv', VENV_DIR], { cwd: MOTION_DIR });
       }
-      execSync(`${venvPython} -m pip install --quiet -r ${REQUIREMENTS_FILE}`, {
+      await execFileAsync(venvPython, ['-m', 'pip', 'install', '--quiet', '-r', REQUIREMENTS_FILE], {
         cwd: MOTION_DIR,
-        stdio: 'pipe',
       });
       console.log('[motion] Venv created and dependencies installed');
     } catch (err) {
@@ -178,7 +190,7 @@ export class MotionManager {
 
     const pythonPath = getPythonPath();
     console.log(
-      `[motion] Starting grid pipeline: ${MOTION_GRID_WIDTH}x${MOTION_GRID_HEIGHT} (${MOTION_MAX_SLOTS} slots, cell ${MOTION_CELL_WIDTH}x${MOTION_GRID_HEIGHT}) on port ${MOTION_RTP_PORT}`
+      `[motion] Starting grid pipeline: ${MOTION_GRID_WIDTH}x${MOTION_GRID_HEIGHT} (${MOTION_MAX_SLOTS} slots, cell ${MOTION_CELL_WIDTH}x${MOTION_GRID_HEIGHT}) on port ${this.rtpPort}`
     );
 
     const child = spawn(
@@ -186,7 +198,7 @@ export class MotionManager {
       [
         SCRIPT_PATH,
         '--port',
-        String(MOTION_RTP_PORT),
+        String(this.rtpPort),
         '--width',
         String(MOTION_GRID_WIDTH),
         '--height',
@@ -233,6 +245,18 @@ export class MotionManager {
           const cb = this.callbacks.get(id);
           if (cb) cb(-1);
         }
+        if (this.trackedInputs.length > 0 && this.restartAttempts < this.MAX_RESTART_ATTEMPTS) {
+          const delay = Math.min(1000 * Math.pow(2, this.restartAttempts), 8000);
+          this.restartAttempts++;
+          console.log(
+            `[motion] Restarting pipeline in ${delay}ms (attempt ${this.restartAttempts}/${this.MAX_RESTART_ATTEMPTS})`
+          );
+          setTimeout(() => {
+            this._startPipeline().catch((err) => {
+              console.error('[motion] Restart failed', err);
+            });
+          }, delay);
+        }
       }
     });
 
@@ -269,8 +293,9 @@ export class MotionManager {
 
     // Register fixed-resolution Smelter output (once — scene updates via Zustand)
     try {
-      await SmelterInstance.registerMotionOutput(MOTION_OUTPUT_ID, this.motionStore, MOTION_RTP_PORT);
+      await SmelterInstance.registerMotionOutput(this.outputId, this.motionStore, this.rtpPort);
       this.pipelineRunning = true;
+      this.restartAttempts = 0;
     } catch (err) {
       this._killPython();
       throw err;
@@ -283,7 +308,7 @@ export class MotionManager {
 
     if (this.pipelineRunning) {
       try {
-        await SmelterInstance.unregisterMotionOutput(MOTION_OUTPUT_ID);
+        await SmelterInstance.unregisterMotionOutput(this.outputId);
       } catch (err) {
         console.error('[motion] Failed to unregister motion output', err);
       }
