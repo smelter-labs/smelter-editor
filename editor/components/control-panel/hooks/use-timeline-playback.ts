@@ -113,6 +113,12 @@ function getActiveClipsByInputAt(
 
 // ── Hook ─────────────────────────────────────────────────
 
+type Mp4RestartKey = `${number}|${boolean}`;
+
+function isMp4InputId(inputId: string): boolean {
+  return inputId.includes('::local::');
+}
+
 export function useTimelinePlayback(
   roomId: string,
   inputs: Input[],
@@ -122,7 +128,8 @@ export function useTimelinePlayback(
   refreshState: () => Promise<void>,
   structureRevision: number,
 ) {
-  const { hideInput, showInput, updateInput, updateRoom } = useActions();
+  const { hideInput, showInput, updateInput, updateRoom, restartMp4Input } =
+    useActions();
   const appliedStateRef = useRef<DesiredState>(new Map());
   const rafRef = useRef<number | null>(null);
   const playStartRef = useRef<{ wallMs: number; playheadMs: number } | null>(
@@ -137,6 +144,7 @@ export function useTimelinePlayback(
   const nextEventIndexRef = useRef(0);
   const eventTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const appliedBlockSettingsRef = useRef<Map<string, string>>(new Map());
+  const mp4RestartedRef = useRef<Map<string, Mp4RestartKey>>(new Map());
 
   const inputsRef = useRef(inputs);
   useEffect(() => {
@@ -202,6 +210,25 @@ export function useTimelinePlayback(
       const active = getActiveClipsByInputAt(stateRef.current, timeMs);
       const updates: Promise<unknown>[] = [];
       for (const [inputId, clip] of active.entries()) {
+        // Handle MP4 restart when play-from or loop settings differ
+        if (isMp4InputId(inputId)) {
+          const playFromMs = clip.blockSettings.mp4PlayFromMs ?? 0;
+          const loop = clip.blockSettings.mp4Loop !== false;
+          const key: Mp4RestartKey = `${playFromMs}|${loop}`;
+          if (mp4RestartedRef.current.get(inputId) !== key) {
+            mp4RestartedRef.current.set(inputId, key);
+            updates.push(
+              restartMp4Input(roomId, inputId, playFromMs, loop).catch(
+                (err) =>
+                  console.warn(
+                    `Timeline: failed to restart MP4 ${inputId}`,
+                    err,
+                  ),
+              ),
+            );
+          }
+        }
+
         const serialized = JSON.stringify(clip.blockSettings);
         if (appliedBlockSettingsRef.current.get(inputId) === serialized)
           continue;
@@ -287,6 +314,14 @@ export function useTimelinePlayback(
         promises.push(showInput(roomId, input.inputId).catch(() => {}));
       }
     }
+
+    // Restore any MP4 inputs that were restarted during playback
+    for (const [inputId] of mp4RestartedRef.current) {
+      promises.push(
+        restartMp4Input(roomId, inputId, 0, true).catch(() => {}),
+      );
+    }
+    mp4RestartedRef.current.clear();
 
     if (snapshot.inputOrder.length > 0) {
       promises.push(

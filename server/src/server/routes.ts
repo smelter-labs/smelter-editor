@@ -2,6 +2,8 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { STATUS_CODES } from 'node:http';
 import path from 'node:path';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { pathExists, readdir, readFile, stat } from 'fs-extra';
 import { Type } from '@sinclair/typebox';
 import type { Static, TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
@@ -50,6 +52,47 @@ routes.setErrorHandler((err: unknown, _req, res) => {
 routes.get('/suggestions/mp4s', async (_req, res) => {
   res.status(200).send({ mp4s: mp4SuggestionsMonitor.mp4Files });
 });
+
+const execFileAsync = promisify(execFile);
+const mp4DurationCache = new Map<string, number>();
+
+routes.get<{ Params: { fileName: string } }>(
+  '/suggestions/mp4-duration/:fileName',
+  { schema: { params: Type.Object({ fileName: Type.String() }) } },
+  async (req, res) => {
+    const { fileName } = req.params;
+    const safeName = path.basename(fileName);
+    const filePath = path.join(process.cwd(), 'mp4s', safeName);
+
+    if (!(await pathExists(filePath))) {
+      return res.status(404).send({ error: 'MP4 file not found' });
+    }
+
+    const cached = mp4DurationCache.get(safeName);
+    if (cached !== undefined) {
+      return res.status(200).send({ durationMs: cached });
+    }
+
+    try {
+      const { stdout } = await execFileAsync('ffprobe', [
+        '-v', 'error',
+        '-show_entries', 'format=duration',
+        '-of', 'csv=p=0',
+        filePath,
+      ]);
+      const seconds = parseFloat(stdout.trim());
+      if (Number.isFinite(seconds)) {
+        const durationMs = Math.round(seconds * 1000);
+        mp4DurationCache.set(safeName, durationMs);
+        return res.status(200).send({ durationMs });
+      }
+      return res.status(500).send({ error: 'Could not parse duration' });
+    } catch (err: any) {
+      console.error('Failed to get MP4 duration via ffprobe', { fileName: safeName, err: err?.message });
+      return res.status(500).send({ error: 'Failed to read MP4 duration' });
+    }
+  }
+);
 
 routes.get('/suggestions/pictures', async (_req, res) => {
   res.status(200).send({ pictures: pictureSuggestionsMonitor.pictureFiles });
@@ -564,6 +607,23 @@ routes.post<RoomAndInputIdParams>('/room/:roomId/input/:inputId/show', { schema:
   room.showInput(inputId);
   res.status(200).send({ status: 'ok' });
 });
+
+const Mp4RestartSchema = Type.Object({
+  playFromMs: Type.Number({ minimum: 0 }),
+  loop: Type.Boolean(),
+});
+
+routes.post<RoomAndInputIdParams & { Body: Static<typeof Mp4RestartSchema> }>(
+  '/room/:roomId/input/:inputId/mp4-restart',
+  { schema: { params: RoomAndInputIdParamsSchema, body: Mp4RestartSchema } },
+  async (req, res) => {
+    const { roomId, inputId } = req.params;
+    console.log('[request] MP4 restart', { roomId, inputId, body: req.body });
+    const room = state.getRoom(roomId);
+    await room.restartMp4Input(inputId, req.body.playFromMs, req.body.loop);
+    res.status(200).send({ status: 'ok' });
+  }
+);
 
 const MotionDetectionSchema = Type.Object({
   enabled: Type.Boolean(),

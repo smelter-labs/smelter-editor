@@ -27,6 +27,7 @@ export type RegisterSmelterInputOptions =
       type: 'mp4';
       filePath: string;
       loop?: boolean;
+      offsetMs?: number;
     }
   | {
       type: 'hls';
@@ -46,16 +47,20 @@ const WHIP_SERVER_DECODER_PREFERENCES = [config.h264Decoder];
 
 export class SmelterManager {
   private instance: Smelter;
+  private pipelineStartTime: number = 0;
 
   constructor() {
     this.instance = new Smelter();
   }
 
-  
+  public getPipelineTimeMs(): number {
+    return Date.now() - this.pipelineStartTime;
+  }
 
   public async init() {
     await SmelterInstance['instance'].init();
     await SmelterInstance['instance'].start();
+    this.pipelineStartTime = Date.now();
     await SmelterInstance['instance'].registerImage('spinner', {
       serverPath: path.join(__dirname, '../loading.gif'),
       assetType: 'gif',
@@ -165,6 +170,7 @@ export class SmelterManager {
           serverPath: opts.filePath,
           decoderMap: MP4_DECODER_MAP,
           loop: opts.loop ?? true,
+          offsetMs: opts.offsetMs,
         });
       } else if (opts.type === 'hls') {
         await this.instance.registerInput(inputId, {

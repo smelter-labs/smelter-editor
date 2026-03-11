@@ -817,6 +817,26 @@ export class RoomState {
     });
   }
 
+  public async restartMp4Input(inputId: string, playFromMs: number, loop: boolean): Promise<void> {
+    const input = this.getInput(inputId);
+    if (input.type !== 'local-mp4') {
+      throw new Error(`Input ${inputId} is not a local-mp4 input`);
+    }
+    if (input.status !== 'connected') {
+      throw new Error(`Input ${inputId} is not connected`);
+    }
+
+    await SmelterInstance.unregisterInput(inputId);
+
+    const offsetMs = SmelterInstance.getPipelineTimeMs() - playFromMs;
+    await SmelterInstance.registerInput(inputId, {
+      type: 'mp4',
+      filePath: input.mp4FilePath,
+      loop,
+      offsetMs,
+    });
+  }
+
   public async disconnectInput(inputId: string) {
     const input = this.getInput(inputId);
     if (input.status === 'disconnected') {

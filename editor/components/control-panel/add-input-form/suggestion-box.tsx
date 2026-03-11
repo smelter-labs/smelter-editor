@@ -1,3 +1,5 @@
+import { useState, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
 
 export type SuggestionBoxProps<T> = {
@@ -29,7 +31,28 @@ export function SuggestionBox<T>({
   renderSuggestion,
   id,
 }: SuggestionBoxProps<T>) {
-  return (
+  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 });
+
+  const updatePosition = useCallback(() => {
+    const el = inputRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    setPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+  }, [inputRef]);
+
+  useEffect(() => {
+    if (!show) return;
+    updatePosition();
+
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [show, updatePosition]);
+
+  const dropdown = (
     <AnimatePresence>
       {show && suggestions.length > 0 && (
         <motion.div
@@ -41,6 +64,10 @@ export function SuggestionBox<T>({
           transition={{ duration: 0.15 }}
           className={suggestionBoxClass}
           style={{
+            position: 'fixed',
+            top: pos.top,
+            left: pos.left,
+            width: pos.width,
             WebkitOverflowScrolling: 'touch',
             overflowX: 'hidden',
           }}>
@@ -75,4 +102,7 @@ export function SuggestionBox<T>({
       )}
     </AnimatePresence>
   );
+
+  if (typeof document === 'undefined') return dropdown;
+  return createPortal(dropdown, document.body);
 }

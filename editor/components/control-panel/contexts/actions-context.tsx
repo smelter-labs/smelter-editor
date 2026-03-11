@@ -62,6 +62,13 @@ export interface ControlPanelActions {
   getMP4Suggestions(): Promise<MP4Suggestions>;
   getPictureSuggestions(): Promise<PictureSuggestions>;
 
+  restartMp4Input(
+    roomId: string,
+    inputId: string,
+    playFromMs: number,
+    loop: boolean,
+  ): Promise<void>;
+
   acknowledgeWhipInput(roomId: string, inputId: string): Promise<void>;
   setPendingWhipInputs(
     roomId: string,

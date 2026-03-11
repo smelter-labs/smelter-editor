@@ -25,9 +25,16 @@ import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/spinner';
 import { toast } from 'react-toastify';
 import { getRandomSnakeShaderPreset } from '@/lib/snake-shader-presets';
+import { getMp4Duration } from '@/app/actions/actions';
 import { AbsolutePositionController } from './AbsolutePositionController';
 
 const SHADER_SETTINGS_DEBOUNCE_MS = 200;
+
+function extractMp4FileName(title: string): string | null {
+  const match = title.match(/^\[MP4\]\s+(.+)$/);
+  if (!match) return null;
+  return match[1].split(/\s+/).join('_') + '.mp4';
+}
 
 function SnakeShaderSection({
   label,
@@ -266,6 +273,11 @@ export function BlockClipPropertiesPanel({
   const textScrollSpeedDebounceRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
+  const [mp4DurationLoading, setMp4DurationLoading] = useState(false);
+  const mp4DurationFetchedRef = useRef<string | null>(null);
+  const applyClipPatchRef = useRef<
+    ((patch: Partial<BlockSettings>, options?: { refresh?: boolean }) => Promise<void>) | null
+  >(null);
   const attachBtnRef = useRef<HTMLButtonElement>(null);
   const [attachMenuPos, setAttachMenuPos] = useState<{
     top: number;
@@ -312,6 +324,27 @@ export function BlockClipPropertiesPanel({
     !!selectedTimelineClip &&
     !selectedInput &&
     !selectedTimelineClip.inputId.startsWith('__pending-whip-');
+
+  useEffect(() => {
+    if (!selectedTimelineClip || !selectedInput) return;
+    if (selectedInput.type !== 'local-mp4') return;
+    if (selectedTimelineClip.blockSettings.mp4DurationMs) return;
+
+    const mp4FileName = extractMp4FileName(selectedInput.title);
+    if (!mp4FileName) return;
+    const fetchKey = `${selectedTimelineClip.clipId}::${mp4FileName}`;
+    if (mp4DurationFetchedRef.current === fetchKey) return;
+    mp4DurationFetchedRef.current = fetchKey;
+
+    setMp4DurationLoading(true);
+    getMp4Duration(mp4FileName)
+      .then((durationMs) => {
+        void applyClipPatchRef.current?.({ mp4DurationMs: durationMs });
+      })
+      .catch(() => {})
+      .finally(() => setMp4DurationLoading(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTimelineClip?.clipId, selectedInput?.type, selectedInput?.title]);
 
   const [connectingType, setConnectingType] = useState<
     'camera' | 'screenshare' | null
@@ -489,6 +522,10 @@ export function BlockClipPropertiesPanel({
       handleRefreshState,
     ],
   );
+
+  useEffect(() => {
+    applyClipPatchRef.current = applyClipPatch;
+  }, [applyClipPatch]);
 
   const handleShaderToggle = useCallback(
     (shaderId: string) => {
@@ -1020,6 +1057,74 @@ export function BlockClipPropertiesPanel({
           />
         </div>
       </div>
+      {selectedInput?.type === 'local-mp4' && (
+        <div className='border border-neutral-700 rounded p-2 mb-3 mt-1'>
+          <div className='text-xs text-neutral-400 font-medium mb-2'>
+            MP4 Playback
+          </div>
+          <div className='grid grid-cols-2 gap-2 mb-2'>
+            <label className='text-xs text-neutral-400 self-center'>
+              Play from (s)
+            </label>
+            <input
+              type='number'
+              min={0}
+              step={0.1}
+              className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
+              value={
+                Math.round(
+                  ((selectedTimelineClip.blockSettings.mp4PlayFromMs ?? 0) /
+                    1000) *
+                    10,
+                ) / 10
+              }
+              onChange={(e) => {
+                const seconds = Math.max(0, Number(e.target.value) || 0);
+                void applyClipPatch(
+                  { mp4PlayFromMs: Math.round(seconds * 1000) },
+                  { refresh: false },
+                );
+              }}
+            />
+          </div>
+          <div className='flex items-center justify-between mb-1'>
+            <span className='text-xs text-neutral-400'>Loop</span>
+            <input
+              type='checkbox'
+              checked={selectedTimelineClip.blockSettings.mp4Loop !== false}
+              onChange={(e) => {
+                void applyClipPatch(
+                  { mp4Loop: e.target.checked },
+                  { refresh: false },
+                );
+              }}
+            />
+          </div>
+          {selectedTimelineClip.blockSettings.mp4DurationMs != null && (
+            <div className='text-[10px] text-neutral-500 mt-1'>
+              Duration: {(selectedTimelineClip.blockSettings.mp4DurationMs / 1000).toFixed(1)}s
+              {selectedTimelineClip.blockSettings.mp4Loop === false && (
+                <span>
+                  {' '}· Max block:{' '}
+                  {(
+                    Math.max(
+                      0,
+                      selectedTimelineClip.blockSettings.mp4DurationMs -
+                        (selectedTimelineClip.blockSettings.mp4PlayFromMs ?? 0),
+                    ) / 1000
+                  ).toFixed(1)}
+                  s
+                </span>
+              )}
+            </div>
+          )}
+          {mp4DurationLoading && (
+            <div className='text-[10px] text-neutral-500 mt-1'>
+              Loading duration...
+            </div>
+          )}
+        </div>
+      )}
       {selectedInput?.type === 'game' && (
         <div className='grid grid-cols-2 gap-2 mb-2'>
           <div>

@@ -78,6 +78,14 @@ export interface SmelterApiClient {
     enabled: boolean,
   ): Promise<void>;
 
+  restartMp4Input(
+    roomId: string,
+    inputId: string,
+    playFromMs: number,
+    loop: boolean,
+  ): Promise<void>;
+  getMp4Duration(fileName: string): Promise<number>;
+
   acknowledgeWhipInput(roomId: string, inputId: string): Promise<void>;
   setPendingWhipInputs(
     roomId: string,
@@ -313,6 +321,19 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
         `/room/${enc(roomId)}/input/${enc(inputId)}/motion-detection`,
         { enabled },
       );
+    },
+
+    async restartMp4Input(roomId, inputId, playFromMs, loop) {
+      await req(
+        'post',
+        `/room/${enc(roomId)}/input/${enc(inputId)}/mp4-restart`,
+        { playFromMs, loop },
+      );
+    },
+
+    async getMp4Duration(fileName) {
+      const data = await req('get', `/suggestions/mp4-duration/${enc(fileName)}`);
+      return data.durationMs as number;
     },
 
     async acknowledgeWhipInput(roomId, inputId) {

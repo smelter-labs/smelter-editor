@@ -52,6 +52,9 @@ export type BlockSettings = {
   absoluteHeight?: number;
   absoluteTransitionDurationMs?: number;
   absoluteTransitionEasing?: string;
+  mp4PlayFromMs?: number;
+  mp4Loop?: boolean;
+  mp4DurationMs?: number;
 };
 
 /** @deprecated Use `Clip` instead. Kept for backwards compat with room-config. */
@@ -516,6 +519,18 @@ export function timelineReducer(
         // Don't overlap next clip
         const next = track.clips[clipIdx + 1];
         if (next && newEnd > next.startMs) newEnd = next.startMs;
+        // Clamp non-looped MP4 blocks to remaining duration
+        if (
+          clip.blockSettings.mp4Loop === false &&
+          clip.blockSettings.mp4DurationMs != null
+        ) {
+          const maxDuration =
+            clip.blockSettings.mp4DurationMs -
+            (clip.blockSettings.mp4PlayFromMs ?? 0);
+          if (maxDuration > 0 && newEnd - clip.startMs > maxDuration) {
+            newEnd = clip.startMs + maxDuration;
+          }
+        }
         // Auto-extend total duration if resizing past the end
         if (newEnd > newTotalDuration) {
           newTotalDuration = newEnd + 5000;
@@ -720,26 +735,35 @@ export function timelineReducer(
             ...track,
             clips: track.clips.map((clip) => {
               if (clip.id !== action.clipId) return clip;
-              return {
-                ...clip,
-                blockSettings: {
-                  ...clip.blockSettings,
-                  ...action.patch,
-                  shaders:
-                    action.patch.shaders !== undefined
-                      ? action.patch.shaders.map((shader) => ({
-                          ...shader,
-                          params: (shader.params || []).map((param) => ({
-                            ...param,
-                          })),
-                        }))
-                      : clip.blockSettings.shaders,
-                  attachedInputIds:
-                    action.patch.attachedInputIds !== undefined
-                      ? [...action.patch.attachedInputIds]
-                      : clip.blockSettings.attachedInputIds,
-                },
+              const merged = {
+                ...clip.blockSettings,
+                ...action.patch,
+                shaders:
+                  action.patch.shaders !== undefined
+                    ? action.patch.shaders.map((shader) => ({
+                        ...shader,
+                        params: (shader.params || []).map((param) => ({
+                          ...param,
+                        })),
+                      }))
+                    : clip.blockSettings.shaders,
+                attachedInputIds:
+                  action.patch.attachedInputIds !== undefined
+                    ? [...action.patch.attachedInputIds]
+                    : clip.blockSettings.attachedInputIds,
               };
+              let endMs = clip.endMs;
+              if (
+                merged.mp4Loop === false &&
+                merged.mp4DurationMs != null
+              ) {
+                const maxDuration =
+                  merged.mp4DurationMs - (merged.mp4PlayFromMs ?? 0);
+                if (maxDuration > 0 && endMs - clip.startMs > maxDuration) {
+                  endMs = clip.startMs + maxDuration;
+                }
+              }
+              return { ...clip, endMs, blockSettings: merged };
             }),
           };
         }),

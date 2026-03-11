@@ -276,6 +276,19 @@ export async function toggleMotionDetection(
   return client.toggleMotionDetection(roomId, inputId, enabled);
 }
 
+export async function restartMp4Input(
+  roomId: string,
+  inputId: string,
+  playFromMs: number,
+  loop: boolean,
+): Promise<void> {
+  return client.restartMp4Input(roomId, inputId, playFromMs, loop);
+}
+
+export async function getMp4Duration(fileName: string): Promise<number> {
+  return client.getMp4Duration(fileName);
+}
+
 export async function restartService(): Promise<void> {
   try {
     await spawn('bash', ['-c', 'sudo systemctl restart smelter.service'], {});
