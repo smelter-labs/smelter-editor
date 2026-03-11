@@ -5,7 +5,7 @@ SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 ARG USERNAME=smelter
 
 ENV DEBIAN_FRONTEND=noninteractive
-ENV NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility
+ENV NVIDIA_DRIVER_CAPABILITIES=compute,graphics,utility,video
 ENV NODE_VERSION=24.6.0
 
 USER root
@@ -13,9 +13,27 @@ WORKDIR /tmp
 
 RUN apt-get update -y -qq && \
   apt-get install -y \
-    sudo build-essential curl ffmpeg pipx python3-pip \
-    libegl1-mesa-dev libgl1-mesa-dri libxcb-xfixes0-dev mesa-vulkan-drivers && \
+    sudo build-essential curl pipx python3-pip git pkg-config \
+    libegl1-mesa-dev libgl1-mesa-dri libxcb-xfixes0-dev mesa-vulkan-drivers \
+    nasm yasm libx264-dev libx265-dev libfdk-aac-dev libmp3lame-dev \
+    libopus-dev libvpx-dev libass-dev libfreetype-dev && \
   rm -rf /var/lib/apt/lists/*
+
+# Build ffmpeg with NVDEC (h264_cuvid) support
+RUN git clone --depth 1 --branch n12.2.72.0 https://git.videolan.org/git/ffmpeg/nv-codec-headers.git /tmp/nv-codec-headers && \
+  cd /tmp/nv-codec-headers && make install && rm -rf /tmp/nv-codec-headers
+
+RUN curl -fsSL https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz | tar xJ -C /tmp && \
+  cd /tmp/ffmpeg-7.1.1 && \
+  ./configure \
+    --enable-gpl --enable-nonfree \
+    --enable-cuda --enable-cuvid --enable-nvdec --enable-nvenc \
+    --enable-libx264 --enable-libx265 --enable-libfdk-aac \
+    --enable-libmp3lame --enable-libopus --enable-libvpx \
+    --enable-libass --enable-libfreetype \
+    --disable-doc --disable-debug --enable-small && \
+  make -j"$(nproc)" && make install && \
+  rm -rf /tmp/ffmpeg-7.1.1
 
 RUN ARCH= && dpkgArch="$(dpkg --print-architecture)" \
   && case "${dpkgArch##*-}" in \
