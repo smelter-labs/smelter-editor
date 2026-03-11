@@ -30,12 +30,6 @@ import { AbsolutePositionController } from './AbsolutePositionController';
 
 const SHADER_SETTINGS_DEBOUNCE_MS = 200;
 
-function extractMp4FileName(title: string): string | null {
-  const match = title.match(/^\[MP4\]\s+(.+)$/);
-  if (!match) return null;
-  return match[1].split(/\s+/).join('_') + '.mp4';
-}
-
 function SnakeShaderSection({
   label,
   shaders,
@@ -273,6 +267,7 @@ export function BlockClipPropertiesPanel({
   const textScrollSpeedDebounceRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
+  const [mp4PlayFromLocal, setMp4PlayFromLocal] = useState<string>('0');
   const [mp4DurationLoading, setMp4DurationLoading] = useState(false);
   const mp4DurationFetchedRef = useRef<string | null>(null);
   const applyClipPatchRef = useRef<
@@ -305,6 +300,19 @@ export function BlockClipPropertiesPanel({
     }
   }, [selectedTimelineClip?.clipId]);
 
+  useEffect(() => {
+    const ms = selectedTimelineClip?.blockSettings.mp4PlayFromMs ?? 0;
+    setMp4PlayFromLocal(String(Math.round((ms / 1000) * 10) / 10));
+  }, [selectedTimelineClip?.clipId, selectedTimelineClip?.blockSettings.mp4PlayFromMs]);
+
+  const commitMp4PlayFrom = useCallback(() => {
+    const seconds = Math.max(0, Number(mp4PlayFromLocal) || 0);
+    void applyClipPatchRef.current?.(
+      { mp4PlayFromMs: Math.round(seconds * 1000) },
+      { refresh: false },
+    );
+  }, [mp4PlayFromLocal]);
+
   const {
     cameraPcRef,
     cameraStreamRef,
@@ -330,7 +338,7 @@ export function BlockClipPropertiesPanel({
     if (selectedInput.type !== 'local-mp4') return;
     if (selectedTimelineClip.blockSettings.mp4DurationMs) return;
 
-    const mp4FileName = extractMp4FileName(selectedInput.title);
+    const mp4FileName = selectedInput.mp4FileName;
     if (!mp4FileName) return;
     const fetchKey = `${selectedTimelineClip.clipId}::${mp4FileName}`;
     if (mp4DurationFetchedRef.current === fetchKey) return;
@@ -344,7 +352,7 @@ export function BlockClipPropertiesPanel({
       .catch(() => {})
       .finally(() => setMp4DurationLoading(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTimelineClip?.clipId, selectedInput?.type, selectedInput?.title]);
+  }, [selectedTimelineClip?.clipId, selectedInput?.type, selectedInput?.mp4FileName]);
 
   const [connectingType, setConnectingType] = useState<
     'camera' | 'screenshare' | null
@@ -1071,19 +1079,13 @@ export function BlockClipPropertiesPanel({
               min={0}
               step={0.1}
               className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
-              value={
-                Math.round(
-                  ((selectedTimelineClip.blockSettings.mp4PlayFromMs ?? 0) /
-                    1000) *
-                    10,
-                ) / 10
-              }
-              onChange={(e) => {
-                const seconds = Math.max(0, Number(e.target.value) || 0);
-                void applyClipPatch(
-                  { mp4PlayFromMs: Math.round(seconds * 1000) },
-                  { refresh: false },
-                );
+              value={mp4PlayFromLocal}
+              onChange={(e) => setMp4PlayFromLocal(e.target.value)}
+              onBlur={commitMp4PlayFrom}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.currentTarget.blur();
+                }
               }}
             />
           </div>

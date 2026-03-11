@@ -1,3 +1,4 @@
+import path from 'path';
 import type { RoomInputState, InputOrientation } from './roomState';
 import type { ShaderConfig } from '../types';
 import type { SnakeEventShaderConfig } from '../snakeGame/types';
@@ -47,6 +48,7 @@ export type PublicInputState = {
   absoluteTransitionEasing?: string;
   motionScore?: number;
   motionEnabled?: boolean;
+  mp4FileName?: string;
 };
 
 export function toPublicInputState(input: RoomInputState): PublicInputState {
@@ -76,7 +78,7 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
   };
   switch (input.type) {
     case 'local-mp4':
-      return { ...base, sourceState: 'always-live' as const };
+      return { ...base, sourceState: 'always-live' as const, mp4FileName: path.basename(input.mp4FilePath) };
     case 'image':
       return { ...base, sourceState: 'always-live' as const, imageId: input.imageId };
     case 'twitch-channel':
