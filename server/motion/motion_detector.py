@@ -2,6 +2,9 @@
 """
 Motion detector: receives RTP video via ffmpeg, computes frame-differencing
 motion scores, and outputs JSON lines to stdout.
+
+Supports a --regions flag to split the frame into equal horizontal regions
+and report per-region scores (for tiled multi-input grids).
 """
 
 import argparse
@@ -36,9 +39,11 @@ def main():
     parser.add_argument("--width", type=int, default=160, help="Frame width (default: 160)")
     parser.add_argument("--height", type=int, default=90, help="Frame height (default: 90)")
     parser.add_argument("--interval", type=float, default=0.15, help="Min seconds between outputs (default: 0.15)")
+    parser.add_argument("--regions", type=int, default=1, help="Number of horizontal regions to score independently")
     args = parser.parse_args()
 
     frame_size = args.width * args.height * 3
+    region_width = args.width // max(args.regions, 1)
 
     # Write a temporary SDP file so ffmpeg knows to expect H.264 RTP
     sdp_fd, sdp_path = tempfile.mkstemp(suffix=".sdp", prefix="motion_")
@@ -48,7 +53,11 @@ def main():
 
         ffmpeg_cmd = [
             "ffmpeg",
+            "-probesize", "5000000",
+            "-analyzeduration", "5000000",
+            "-fflags", "+genpts+discardcorrupt",
             "-protocol_whitelist", "file,udp,rtp",
+            "-reorder_queue_size", "0",
             "-i", sdp_path,
             "-f", "rawvideo",
             "-pix_fmt", "bgr24",
@@ -57,7 +66,7 @@ def main():
             "pipe:1",
         ]
 
-        print(f"[motion_detector] Starting ffmpeg on port {args.port}", file=sys.stderr, flush=True)
+        print(f"[motion_detector] Starting ffmpeg on port {args.port} ({args.width}x{args.height}, {args.regions} regions)", file=sys.stderr, flush=True)
         print(f"[motion_detector] SDP content:\n{create_sdp(args.port)}", file=sys.stderr, flush=True)
         print(f"[motion_detector] cmd: {' '.join(ffmpeg_cmd)}", file=sys.stderr, flush=True)
 
@@ -75,13 +84,12 @@ def main():
         signal.signal(signal.SIGTERM, handle_signal)
         signal.signal(signal.SIGINT, handle_signal)
 
-        # Signal to the parent process that ffmpeg has been spawned and the
-        # UDP socket should be bound.  The Node manager waits for this line
-        # instead of using a fixed sleep.
+        # Signal to the parent process that ffmpeg has been spawned
         sys.stdout.write(json.dumps({"ready": True}) + "\n")
         sys.stdout.flush()
 
-        baseline_gray = None
+        # Per-region baselines
+        baselines = [None] * args.regions
         last_output_time = 0.0
 
         try:
@@ -94,21 +102,31 @@ def main():
                 frame = np.frombuffer(raw, dtype=np.uint8).reshape((args.height, args.width, 3))
                 gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-                if baseline_gray is None:
-                    baseline_gray = gray
-                    last_output_time = now
+                if (now - last_output_time) < args.interval:
                     continue
 
-                if (now - last_output_time) >= args.interval:
-                    diff = cv2.absdiff(baseline_gray, gray)
+                scores = {}
+                for i in range(args.regions):
+                    x_start = i * region_width
+                    x_end = x_start + region_width
+                    region_gray = gray[:, x_start:x_end]
+
+                    if baselines[i] is None:
+                        baselines[i] = region_gray
+                        continue
+
+                    diff = cv2.absdiff(baselines[i], region_gray)
                     raw_score = diff.mean() / 255.0
-                    # power curve: gently amplify small motion, cap at 1.0
                     score = round(min(float(raw_score ** 0.5) * 1.5, 1.0), 4)
-                    line = json.dumps({"score": score, "ts": now})
+                    scores[str(i)] = score
+                    baselines[i] = region_gray
+
+                if scores:
+                    line = json.dumps({"scores": scores, "ts": now})
                     sys.stdout.write(line + "\n")
                     sys.stdout.flush()
-                    baseline_gray = gray
                     last_output_time = now
+
         except (BrokenPipeError, IOError):
             pass
         finally:

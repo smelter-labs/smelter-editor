@@ -11,12 +11,13 @@ import type {
   RegisterInputOptions,
   RoomNameEntry,
   RoomState,
-  SavedConfigInfo,
+  ShaderConfig,
   StartRecordingResponse,
   StopRecordingResponse,
   UpdateInputOptions,
   UpdateRoomOptions,
 } from './types';
+import { createStorageClient, type StorageClient } from './storage-client';
 
 export interface SmelterApiClient {
   createNewRoom(
@@ -83,24 +84,9 @@ export interface SmelterApiClient {
     pendingWhipInputs: PendingWhipInputData[],
   ): Promise<void>;
 
-  saveRemoteConfig(
-    name: string,
-    config: object,
-  ): Promise<
-    { ok: true; fileName: string; name: string } | { ok: false; error: string }
-  >;
-  listRemoteConfigs(): Promise<
-    { ok: true; configs: SavedConfigInfo[] } | { ok: false; error: string }
-  >;
-  loadRemoteConfig(
-    fileName: string,
-  ): Promise<
-    | { ok: true; name: string; config: any; savedAt: string }
-    | { ok: false; error: string }
-  >;
-  deleteRemoteConfig(
-    fileName: string,
-  ): Promise<{ ok: true } | { ok: false; error: string }>;
+  configStorage: StorageClient<object>;
+  shaderPresetStorage: StorageClient<ShaderConfig[]>;
+  dashboardLayoutStorage: StorageClient<object>;
 
   getAllRooms(): Promise<any>;
   getAvailableShaders(): Promise<AvailableShader[]>;
@@ -352,54 +338,24 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       });
     },
 
-    async saveRemoteConfig(name, config) {
-      try {
-        const result = await req('post', '/configs', { name, config });
-        return { ok: true, fileName: result.fileName, name: result.name };
-      } catch (e: any) {
-        const msg = e?.message ?? 'Failed to save config';
-        console.error('[saveRemoteConfig]', msg);
-        return { ok: false, error: msg };
-      }
-    },
-
-    async listRemoteConfigs() {
-      try {
-        const data = await req('get', '/configs');
-        return { ok: true, configs: data.configs ?? [] };
-      } catch (e: any) {
-        const msg = e?.message ?? 'Failed to list configs';
-        console.error('[listRemoteConfigs]', msg);
-        return { ok: false, error: msg };
-      }
-    },
-
-    async loadRemoteConfig(fileName) {
-      try {
-        const data = await req('get', `/configs/${enc(fileName)}`);
-        return {
-          ok: true,
-          name: data.name,
-          config: data.config,
-          savedAt: data.savedAt,
-        };
-      } catch (e: any) {
-        const msg = e?.message ?? 'Failed to load config';
-        console.error('[loadRemoteConfig]', msg);
-        return { ok: false, error: msg };
-      }
-    },
-
-    async deleteRemoteConfig(fileName) {
-      try {
-        await req('delete', `/configs/${enc(fileName)}`, {});
-        return { ok: true };
-      } catch (e: any) {
-        const msg = e?.message ?? 'Failed to delete config';
-        console.error('[deleteRemoteConfig]', msg);
-        return { ok: false, error: msg };
-      }
-    },
+    configStorage: createStorageClient<object>(
+      req,
+      '/configs',
+      'config',
+      'configs',
+    ),
+    shaderPresetStorage: createStorageClient<ShaderConfig[]>(
+      req,
+      '/shader-presets',
+      'shaders',
+      'presets',
+    ),
+    dashboardLayoutStorage: createStorageClient<object>(
+      req,
+      '/dashboard-layouts',
+      'layout',
+      'layouts',
+    ),
 
     async getAllRooms() {
       return await req('get', '/rooms');

@@ -467,7 +467,7 @@ export class RoomState {
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
-      motionEnabled: true,
+      motionEnabled: false,
       monitor: monitor,
       metadata: {
         title: `[Camera] ${cleanUsername}`,
@@ -507,7 +507,7 @@ export class RoomState {
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
-      motionEnabled: true,
+      motionEnabled: false,
       metadata: { title: '', description: '' },
       volume: 0,
       channelId,
@@ -570,7 +570,7 @@ export class RoomState {
         borderColor: '#ff0000',
         borderWidth: 0,
         hidden: false,
-        motionEnabled: true,
+        motionEnabled: false,
         metadata: {
           title: `[MP4] ${formatMp4Name(mp4Name)}`,
           description: '[Static source] AI Generated',
@@ -1120,10 +1120,12 @@ export class RoomState {
     input.motionEnabled = enabled;
     if (enabled && input.status === 'connected' && ['local-mp4', 'twitch-channel', 'kick-channel', 'whip'].includes(input.type)) {
       try {
+        console.log(`[motion][setMotionEnabled] starting for inputId=${inputId} type=${input.type} title="${input.metadata.title}"`);
         await this.motionManager.startMotionDetection(inputId, (score) => {
           if (score === -1) {
             input.motionScore = undefined;
           } else {
+            console.log(`[motion][callback] inputId=${inputId} → setting score=${score.toFixed(3)} on input.inputId=${input.inputId} title="${input.metadata.title}"`);
             input.motionScore = score;
           }
           this.emitMotionScores();
@@ -1259,7 +1261,7 @@ export class RoomState {
         borderColor: '#ff0000',
         borderWidth: 0,
         hidden: false,
-        motionEnabled: true,
+        motionEnabled: false,
         metadata: {
           title: `[MP4] ${formatMp4Name(fileName)}`,
           description: '[Wrapped MP4]',

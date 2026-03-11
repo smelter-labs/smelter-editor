@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   DEFAULT_LAYOUT,
-  ALL_PANEL_IDS,
+  STATIC_PANEL_IDS,
   LAYOUT_PRESETS,
   createResponsiveLayoutsFromLg,
   loadLayouts,
   saveLayouts,
   clearLayout,
+  isMotionPanelId,
+  motionPanelId,
+  getInputIdFromMotionPanel,
+  isKnownPanelId,
+  type MotionPanelId,
 } from '../panel-registry';
 
 function createLocalStorageMock() {
@@ -87,7 +92,7 @@ describe('panel-registry layout persistence', () => {
     expect(loadLayouts()).toBeNull();
   });
 
-  it('adds missing panels instead of rejecting saved layout', () => {
+  it('adds missing static panels instead of rejecting saved layout', () => {
     const incomplete = DEFAULT_LAYOUT.filter((item) => item.i !== 'fx');
     localStorage.setItem(
       'smelter-dashboard-layout',
@@ -98,7 +103,7 @@ describe('panel-registry layout persistence', () => {
 
     expect(restored).not.toBeNull();
     const lgIds = new Set(restored!.lg.map((item) => item.i));
-    for (const id of ALL_PANEL_IDS) {
+    for (const id of STATIC_PANEL_IDS) {
       expect(lgIds.has(id)).toBe(true);
     }
   });
@@ -122,7 +127,7 @@ describe('panel-registry layout persistence', () => {
     expect(fx?.y).not.toEqual(timeline?.y);
   });
 
-  it('removes panels that no longer exist in the registry', () => {
+  it('removes panels that are neither static nor motion panels', () => {
     const withExtra = [
       ...DEFAULT_LAYOUT,
       { i: 'obsolete-panel', x: 0, y: 50, w: 4, h: 4, minW: 2, minH: 2 },
@@ -134,5 +139,45 @@ describe('panel-registry layout persistence', () => {
     expect(restored).not.toBeNull();
     const lgIds = restored!.lg.map((item) => item.i);
     expect(lgIds).not.toContain('obsolete-panel');
+  });
+
+  it('preserves motion:* panels in persisted layout', () => {
+    const withMotion = [
+      ...DEFAULT_LAYOUT,
+      { i: 'motion:input-123', x: 0, y: 50, w: 8, h: 5, minW: 4, minH: 3 },
+      { i: 'motion:input-456', x: 8, y: 50, w: 8, h: 5, minW: 4, minH: 3 },
+    ];
+    localStorage.setItem(
+      'smelter-dashboard-layout',
+      JSON.stringify(withMotion),
+    );
+
+    const restored = loadLayouts();
+
+    expect(restored).not.toBeNull();
+    const lgIds = restored!.lg.map((item) => item.i);
+    expect(lgIds).toContain('motion:input-123');
+    expect(lgIds).toContain('motion:input-456');
+  });
+});
+
+describe('motion panel ID helpers', () => {
+  it('creates and parses motion panel IDs', () => {
+    const id = motionPanelId('abc-123');
+    expect(id).toBe('motion:abc-123');
+    expect(isMotionPanelId(id)).toBe(true);
+    expect(getInputIdFromMotionPanel(id)).toBe('abc-123');
+  });
+
+  it('rejects non-motion IDs', () => {
+    expect(isMotionPanelId('streams')).toBe(false);
+    expect(isMotionPanelId('video-preview')).toBe(false);
+    expect(isMotionPanelId('motion')).toBe(false);
+  });
+
+  it('isKnownPanelId recognises static and motion panels', () => {
+    expect(isKnownPanelId('streams')).toBe(true);
+    expect(isKnownPanelId('motion:abc')).toBe(true);
+    expect(isKnownPanelId('unknown')).toBe(false);
   });
 });

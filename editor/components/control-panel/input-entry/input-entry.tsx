@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import type { AvailableShader, Input } from '@/lib/types';
+import type { AvailableShader, Input, ShaderConfig } from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
 import { Button } from '@/components/ui/button';
 import {
@@ -527,7 +527,7 @@ export default function InputEntry({
   }, [roomId, input, refreshState]);
 
   const handleMotionToggle = useCallback(async () => {
-    const newEnabled = !(input.motionEnabled ?? true);
+    const newEnabled = !(input.motionEnabled ?? false);
     await toggleMotionDetection(roomId, input.inputId, newEnabled);
     await refreshState();
   }, [roomId, input.inputId, input.motionEnabled, refreshState]);
@@ -755,6 +755,24 @@ export default function InputEntry({
     [input, roomId, refreshState],
   );
 
+  const handleApplyPreset = useCallback(
+    async (shaders: ShaderConfig[], mode: 'replace' | 'append') => {
+      const newConfig =
+        mode === 'replace' ? shaders : [...(input.shaders || []), ...shaders];
+      try {
+        await actions.updateInput(roomId, input.inputId, {
+          shaders: newConfig,
+          volume: input.volume,
+        });
+        await refreshState();
+        ensureFxOpen();
+      } catch {
+        // ignore
+      }
+    },
+    [input, roomId, refreshState, ensureFxOpen],
+  );
+
   if (fxModeOnly && effectiveShowSliders) {
     return (
       <>
@@ -781,6 +799,7 @@ export default function InputEntry({
             onSliderChange={handleSliderChange}
             getShaderParamConfig={getShaderParamConfig}
             onOpenAddShader={() => setIsAddShaderModalOpen(true)}
+            onApplyPreset={handleApplyPreset}
           />
         </div>
 
@@ -1156,7 +1175,7 @@ export default function InputEntry({
               {isVideoInput && (
                 <MotionIndicator
                   score={motionScores[input.inputId] ?? input.motionScore ?? 0}
-                  enabled={input.motionEnabled ?? true}
+                  enabled={input.motionEnabled ?? false}
                   onToggle={handleMotionToggle}
                 />
               )}
@@ -1203,6 +1222,7 @@ export default function InputEntry({
               onSliderChange={handleSliderChange}
               getShaderParamConfig={getShaderParamConfig}
               onOpenAddShader={() => setIsAddShaderModalOpen(true)}
+              onApplyPreset={handleApplyPreset}
             />
           </div>
         )}

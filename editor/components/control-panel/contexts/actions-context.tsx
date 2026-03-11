@@ -11,12 +11,13 @@ import type {
   PictureSuggestions,
   RecordingInfo,
   RoomState,
-  SavedConfigInfo,
+  ShaderConfig,
   StartRecordingResponse,
   StopRecordingResponse,
   UpdateInputOptions,
   UpdateRoomOptions,
 } from '@/lib/types';
+import type { StorageClient } from '@/lib/storage-client';
 
 export interface ControlPanelActions {
   getRoomInfo(roomId: string): Promise<RoomState | 'not-found'>;
@@ -67,24 +68,9 @@ export interface ControlPanelActions {
     pendingWhipInputs: PendingWhipInputData[],
   ): Promise<void>;
 
-  saveRemoteConfig(
-    name: string,
-    config: object,
-  ): Promise<
-    { ok: true; fileName: string; name: string } | { ok: false; error: string }
-  >;
-  listRemoteConfigs(): Promise<
-    { ok: true; configs: SavedConfigInfo[] } | { ok: false; error: string }
-  >;
-  loadRemoteConfig(
-    fileName: string,
-  ): Promise<
-    | { ok: true; name: string; config: any; savedAt: string }
-    | { ok: false; error: string }
-  >;
-  deleteRemoteConfig(
-    fileName: string,
-  ): Promise<{ ok: true } | { ok: false; error: string }>;
+  configStorage: StorageClient<object>;
+  shaderPresetStorage: StorageClient<ShaderConfig[]>;
+  dashboardLayoutStorage: StorageClient<object>;
 
   restartService(): Promise<void>;
 }

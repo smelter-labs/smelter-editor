@@ -1,5 +1,11 @@
 import type { RoomState } from '@/lib/types';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from 'react';
 import AutoplayModal from '@/components/ui/autoplay-modal';
 import { motion } from 'framer-motion';
 import { staggerContainer } from '@/utils/animations';
@@ -8,6 +14,15 @@ import ControlPanel from '@/components/control-panel/control-panel';
 import DashboardLayout from '@/components/dashboard/dashboard-layout';
 import { Button } from '@/components/ui/button';
 import { RotateCw } from 'lucide-react';
+import {
+  STATIC_PANEL_IDS,
+  STATIC_PANEL_DEFINITIONS,
+  isMotionPanelId,
+  getInputIdFromMotionPanel,
+  getMotionPanelDefinition,
+  type PanelDefinition,
+  type MotionPanelId,
+} from '@/components/dashboard/panel-registry';
 
 interface RoomViewProps {
   roomId: string;
@@ -166,27 +181,60 @@ export default function RoomView({
           fxSection,
           timelineSection,
           blockPropertiesSection,
-          motionSection,
-        }) => (
-          <DashboardLayout
-            panels={{
-              'video-preview': (
-                <VideoPreview
-                  videoRef={videoRef}
-                  whepUrl={roomState.whepUrl}
-                  resolution={roomState.resolution}
-                />
-              ),
-              'add-video': addVideoSection,
-              buttons: buttonsSection,
-              streams: streamsSection,
-              fx: fxSection,
-              timeline: timelineSection,
-              'block-properties': blockPropertiesSection,
-              motion: motionSection,
-            }}
-          />
-        )}
+          motionPanels,
+        }) => {
+          const staticPanels: Record<string, ReactNode> = {
+            'video-preview': (
+              <VideoPreview
+                videoRef={videoRef}
+                whepUrl={roomState.whepUrl}
+                resolution={roomState.resolution}
+              />
+            ),
+            'add-video': addVideoSection,
+            buttons: buttonsSection,
+            streams: streamsSection,
+            fx: fxSection,
+            timeline: timelineSection,
+            'block-properties': blockPropertiesSection,
+          };
+
+          const allPanels = { ...staticPanels, ...motionPanels };
+          const motionIds = Object.keys(motionPanels);
+          const allPanelIds = [...STATIC_PANEL_IDS, ...motionIds];
+
+          const inputTitleMap: Record<string, string> = {};
+          for (const input of roomState.inputs) {
+            inputTitleMap[input.inputId] = input.title || input.inputId;
+          }
+
+          const getPanelDefinition = (id: string): PanelDefinition => {
+            if (isMotionPanelId(id)) {
+              const inputId = getInputIdFromMotionPanel(id as MotionPanelId);
+              return getMotionPanelDefinition(
+                inputTitleMap[inputId] ?? inputId,
+              );
+            }
+            return (
+              STATIC_PANEL_DEFINITIONS[
+                id as keyof typeof STATIC_PANEL_DEFINITIONS
+              ] ?? {
+                id,
+                title: id,
+                minW: 4,
+                minH: 3,
+              }
+            );
+          };
+
+          return (
+            <DashboardLayout
+              panels={allPanels}
+              allPanelIds={allPanelIds}
+              getPanelDefinition={getPanelDefinition}
+            />
+          );
+        }}
       />
     </>
   );

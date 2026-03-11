@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <filter id="bl">
+      <feGaussianBlur stdDeviation="4"/>
+    </filter>
+  </defs>
+  <rect width="64" height="64" rx="8" fill="#1E1B2E"/>
+  <circle cx="32" cy="32" r="18" fill="#6FA3EF" filter="url(#bl)"/>
+  <circle cx="32" cy="32" r="8" fill="#A8D0FF"/>
+</svg>

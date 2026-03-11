@@ -84,7 +84,8 @@ import {
 } from './components/BlockClipPropertiesPanel';
 import { useMotionScores } from '@/hooks/use-motion-scores';
 import { useMotionHistory } from '@/hooks/use-motion-history';
-import { MotionPanel } from './components/MotionPanel';
+import { InputMotionPanel } from './components/InputMotionPanel';
+import { motionPanelId } from '@/components/dashboard/panel-registry';
 
 export type ControlPanelProps = {
   roomId: string;
@@ -105,7 +106,7 @@ export type ControlPanelProps = {
     fxSection: React.ReactNode;
     timelineSection: React.ReactNode;
     blockPropertiesSection: React.ReactNode;
-    motionSection: React.ReactNode;
+    motionPanels: Record<string, React.ReactNode>;
   }) => React.ReactNode;
 };
 
@@ -409,7 +410,7 @@ function ControlPanelInner({
   const actions = useActions();
   const updateRoomAction = actions.updateRoom;
   const updateInputAction = actions.updateInput;
-  const saveRemoteConfig = actions.saveRemoteConfig;
+  const configStorageSave = actions.configStorage.save;
 
   useControlPanelEvents({
     inputWrappers,
@@ -533,13 +534,27 @@ function ControlPanelInner({
       </div>
     );
 
-    const motionSection = (
-      <MotionPanel
-        selectedInputId={selectedTimelineClip?.inputId ?? null}
-        inputs={inputs}
-        motionHistoryMap={motionHistoryMap}
-      />
-    );
+    const videoInputTypes = [
+      'local-mp4',
+      'twitch-channel',
+      'kick-channel',
+      'whip',
+    ];
+    const motionPanels: Record<string, React.ReactNode> = {};
+    for (const input of inputs) {
+      if (!videoInputTypes.includes(input.type)) continue;
+      const panelId = motionPanelId(input.inputId);
+      const history = motionHistoryMap.get(input.inputId);
+      motionPanels[panelId] = (
+        <InputMotionPanel
+          roomId={roomId}
+          input={input}
+          motionHistory={history ?? null}
+          motionScore={motionScores[input.inputId]}
+          refreshState={handleRefreshState}
+        />
+      );
+    }
 
     return (
       <>
@@ -557,7 +572,7 @@ function ControlPanelInner({
           fxSection,
           timelineSection,
           blockPropertiesSection,
-          motionSection,
+          motionPanels,
         })}
       </>
     );
@@ -661,7 +676,7 @@ function SettingsBar({
   const actions = useActions();
   const updateRoomAction = actions.updateRoom;
   const updateInputAction = actions.updateInput;
-  const saveRemoteConfig = actions.saveRemoteConfig;
+  const configStorageSave = actions.configStorage.save;
   const addTwitchInput = actions.addTwitchInput;
   const addKickInput = actions.addKickInput;
   const addMP4Input = actions.addMP4Input;
@@ -741,13 +756,13 @@ function SettingsBar({
   const handleExportRemote = useCallback(
     async (name: string): Promise<string | null> => {
       const config = buildConfig();
-      const result = await saveRemoteConfig(name, config);
+      const result = await configStorageSave(name, config);
       if (!result.ok) {
         return result.error;
       }
       return null;
     },
-    [buildConfig],
+    [buildConfig, configStorageSave],
   );
 
   useEffect(() => {

@@ -10,3 +10,8 @@ export type ShaderConfig = {
   enabled: boolean;
   params: ShaderParamConfig[];
 };
+
+export type ShaderPreset = {
+  name: string;
+  shaders: ShaderConfig[];
+};

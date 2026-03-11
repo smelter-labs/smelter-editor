@@ -103,9 +103,5 @@ export type RecordingInfo = {
   size: number;
 };
 
-export type SavedConfigInfo = {
-  fileName: string;
-  name: string;
-  savedAt: string;
-  size: number;
-};
+/** @deprecated Use `SavedItemInfo` from `@/lib/storage-client` instead */
+export type { SavedItemInfo as SavedConfigInfo } from '../storage-client';

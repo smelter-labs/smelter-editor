@@ -42,7 +42,7 @@ export function MotionPanel({
   }
 
   const label = input?.title || input?.channelId || selectedInputId;
-  const isEnabled = input?.motionEnabled !== false;
+  const isEnabled = input?.motionEnabled === true;
 
   if (!isEnabled) {
     return (

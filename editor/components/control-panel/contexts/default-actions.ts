@@ -1,4 +1,6 @@
 import type { ControlPanelActions } from './actions-context';
+import type { StorageClient } from '@/lib/storage-client';
+import type { ShaderConfig } from '@/lib/types';
 import {
   getRoomInfo,
   updateRoom,
@@ -31,8 +33,41 @@ import {
   listRemoteConfigs,
   loadRemoteConfig,
   deleteRemoteConfig,
+  saveShaderPreset,
+  listShaderPresets,
+  loadShaderPreset,
+  updateShaderPreset,
+  deleteShaderPreset,
+  saveDashboardLayout,
+  listDashboardLayouts,
+  loadDashboardLayout,
+  deleteDashboardLayout,
   restartService,
 } from '@/app/actions/actions';
+
+const configStorage: StorageClient<object> = {
+  save: saveRemoteConfig,
+  list: listRemoteConfigs,
+  load: loadRemoteConfig,
+  update: (_fileName, name, payload) => saveRemoteConfig(name, payload),
+  remove: deleteRemoteConfig,
+};
+
+const shaderPresetStorage: StorageClient<ShaderConfig[]> = {
+  save: saveShaderPreset,
+  list: listShaderPresets,
+  load: loadShaderPreset,
+  update: updateShaderPreset,
+  remove: deleteShaderPreset,
+};
+
+const dashboardLayoutStorage: StorageClient<object> = {
+  save: saveDashboardLayout,
+  list: listDashboardLayouts,
+  load: loadDashboardLayout,
+  update: (_fileName, name, payload) => saveDashboardLayout(name, payload),
+  remove: deleteDashboardLayout,
+};
 
 export const defaultActions: ControlPanelActions = {
   getRoomInfo,
@@ -62,9 +97,8 @@ export const defaultActions: ControlPanelActions = {
   getPictureSuggestions,
   acknowledgeWhipInput,
   setPendingWhipInputs,
-  saveRemoteConfig,
-  listRemoteConfigs,
-  loadRemoteConfig,
-  deleteRemoteConfig,
+  configStorage,
+  shaderPresetStorage,
+  dashboardLayoutStorage,
   restartService,
 };

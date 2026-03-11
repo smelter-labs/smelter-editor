@@ -21,8 +21,9 @@ import type {
   StopRecordingResponse,
   RecordingInfo,
   RoomNameEntry,
-  SavedConfigInfo,
+  ShaderConfig,
 } from '@/lib/types';
+import type { SavedItemInfo, StorageResult } from '@/lib/storage-client';
 
 const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
 
@@ -151,34 +152,92 @@ export async function setPendingWhipInputs(
   return client.setPendingWhipInputs(roomId, pendingWhipInputs);
 }
 
+// ── Config storage ───────────────────────────────────────────
 export async function saveRemoteConfig(
   name: string,
   config: object,
-): Promise<
-  { ok: true; fileName: string; name: string } | { ok: false; error: string }
-> {
-  return client.saveRemoteConfig(name, config);
+): Promise<StorageResult<{ fileName: string; name: string }>> {
+  return client.configStorage.save(name, config);
 }
 
 export async function listRemoteConfigs(): Promise<
-  { ok: true; configs: SavedConfigInfo[] } | { ok: false; error: string }
+  StorageResult<{ items: SavedItemInfo[] }>
 > {
-  return client.listRemoteConfigs();
+  return client.configStorage.list();
 }
 
 export async function loadRemoteConfig(
   fileName: string,
-): Promise<
-  | { ok: true; name: string; config: any; savedAt: string }
-  | { ok: false; error: string }
-> {
-  return client.loadRemoteConfig(fileName);
+): Promise<StorageResult<{ name: string; data: object; savedAt: string }>> {
+  return client.configStorage.load(fileName);
 }
 
 export async function deleteRemoteConfig(
   fileName: string,
-): Promise<{ ok: true } | { ok: false; error: string }> {
-  return client.deleteRemoteConfig(fileName);
+): Promise<StorageResult> {
+  return client.configStorage.remove(fileName);
+}
+
+// ── Shader preset storage ────────────────────────────────────
+export async function saveShaderPreset(
+  name: string,
+  shaders: ShaderConfig[],
+): Promise<StorageResult<{ fileName: string; name: string }>> {
+  return client.shaderPresetStorage.save(name, shaders);
+}
+
+export async function listShaderPresets(): Promise<
+  StorageResult<{ items: SavedItemInfo[] }>
+> {
+  return client.shaderPresetStorage.list();
+}
+
+export async function loadShaderPreset(
+  fileName: string,
+): Promise<
+  StorageResult<{ name: string; data: ShaderConfig[]; savedAt: string }>
+> {
+  return client.shaderPresetStorage.load(fileName);
+}
+
+export async function updateShaderPreset(
+  fileName: string,
+  name: string,
+  shaders: ShaderConfig[],
+): Promise<StorageResult<{ fileName: string; name: string }>> {
+  return client.shaderPresetStorage.update(fileName, name, shaders);
+}
+
+export async function deleteShaderPreset(
+  fileName: string,
+): Promise<StorageResult> {
+  return client.shaderPresetStorage.remove(fileName);
+}
+
+// ── Dashboard layout storage ─────────────────────────────────
+export async function saveDashboardLayout(
+  name: string,
+  layout: object,
+): Promise<StorageResult<{ fileName: string; name: string }>> {
+  return client.dashboardLayoutStorage.save(name, layout);
+}
+
+export async function listDashboardLayouts(): Promise<
+  StorageResult<{ items: SavedItemInfo[] }>
+> {
+  return client.dashboardLayoutStorage.list();
+}
+
+export async function loadDashboardLayout(
+  fileName: string,
+): Promise<StorageResult<{ name: string; data: object; savedAt: string }>> {
+  return client.dashboardLayoutStorage.load(fileName);
+}
+
+export async function deleteDashboardLayout(
+  fileName: string,
+): Promise<StorageResult> {
+  return client.dashboardLayoutStorage.remove(fileName);
 }
 
 export async function getAllRooms(): Promise<any> {
