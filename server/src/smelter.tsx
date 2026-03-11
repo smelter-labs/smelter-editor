@@ -227,7 +227,10 @@ export class SmelterManager {
       transportProtocol: 'udp',
       video: {
         resolution: { width: MOTION_GRID_WIDTH, height: MOTION_GRID_HEIGHT },
-        encoder: { type: 'ffmpeg_h264', preset: 'ultrafast' },
+        encoder:
+          config.h264Encoder.type === 'vulkan_h264'
+            ? { type: 'vulkan_h264' as const }
+            : { type: 'ffmpeg_h264' as const, preset: 'ultrafast' as const },
       },
     });
   }

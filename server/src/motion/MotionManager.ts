@@ -213,8 +213,14 @@ export class MotionManager {
     this.pythonProcess = child;
 
     const stderrRl = createInterface({ input: child.stderr! });
+    let stderrLineCount = 0;
+    const STDERR_INITIAL_LINES = 5;
+    const stderrFilter = /error|warning|fatal|critical/i;
     stderrRl.on('line', (line) => {
-      console.log(`[motion][grid] ${line}`);
+      stderrLineCount++;
+      if (stderrLineCount <= STDERR_INITIAL_LINES || stderrFilter.test(line)) {
+        console.log(`[motion][grid] ${line}`);
+      }
     });
 
     const rl = createInterface({ input: child.stdout! });
