@@ -10,6 +10,10 @@ services:
       SMELTER_LOGGER_LEVEL: info 
       SMELTER_SERVER_LOGGER_LEVEL: "debug,smelter_core=info,naga=info,cosmic_text=info,wgpu_hal=warn,smelter_core::pipeline::instance=warn"
       ENVIRONMENT: production
+      # H.264 encoder: "vulkan" (GPU, default) or "ffmpeg" (CPU, lower latency via zerolatency tune)
+      # SMELTER_H264_ENCODER: "ffmpeg"
+      # SMELTER_H264_ENCODER_PRESET: "ultrafast"
+      # SMELTER_H264_ENCODER_BITRATE: "20000000"
     volumes:
       - ./recordings:/home/smelter/demo/server/recordings
       - ./configs:/home/smelter/demo/server/configs
