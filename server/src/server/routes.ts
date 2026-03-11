@@ -118,7 +118,7 @@ routes.get<RoomIdParams>(
     try {
       state.getRoom(roomId); // throws FST_ERR_NOT_FOUND if the room doesn't exist
     } catch {
-      socket.socket.close(1008, "Room not found");
+      socket.close(1008, "Room not found");
       return;
     }
     roomEventBus.subscribe(roomId, socket);

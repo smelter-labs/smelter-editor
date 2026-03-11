@@ -1,11 +1,19 @@
-import type { SocketStream } from "@fastify/websocket";
 import type { PublicInputState } from "./publicInputState";
+
+// pnpm wants node modules imports, fastify ws's use "export =".
+interface RoomWebSocket {
+  readonly readyState: number;
+  send(data: string | Buffer): void;
+  close(code?: number, reason?: string | Buffer): void;
+  on(event: "close", listener: () => void): this;
+  on(event: string, listener: (...args: unknown[]) => void): this;
+}
 
 export type InputUpdatedEvent = {
   type: "input_updated";
   roomId: string;
   inputId: string;
-  // full (or partial) updated state of the input after the change that triggered this event, if i understand correctly
+  // full updated state of the input after the change
   input: PublicInputState;
   // value of `x-source-id` header from the request that triggered this update, if any
   sourceId: string | null;
@@ -14,10 +22,10 @@ export type InputUpdatedEvent = {
 export type RoomEvent = InputUpdatedEvent;
 
 class RoomEventBus {
-  private readonly connections = new Map<string, Set<SocketStream>>();
+  private readonly connections = new Map<string, Set<RoomWebSocket>>();
 
   // register `ws` as a subscriber to events for `roomId`
-  subscribe(roomId: string, ws: SocketStream): void {
+  subscribe(roomId: string, ws: RoomWebSocket): void {
     if (!this.connections.has(roomId)) {
       this.connections.set(roomId, new Set());
     }
@@ -40,18 +48,18 @@ class RoomEventBus {
     const payload = JSON.stringify(event);
     for (const ws of clients) {
       // 1 === WebSocket.OPEN
-      if (ws.socket.readyState === 1) {
-        ws.socket.send(payload);
+      if (ws.readyState === 1) {
+        ws.send(payload);
       }
     }
   }
 
-  // force-close all ws
+  // force-close all connections for `roomId` (e.g. when the room is deleted)
   closeRoom(roomId: string): void {
     const clients = this.connections.get(roomId);
     if (!clients) return;
     for (const ws of clients) {
-      ws.socket.close(1001, "Room deleted");
+      ws.close(1001, "Room deleted");
     }
     this.connections.delete(roomId);
   }
