@@ -1,4 +1,4 @@
-import type { AvailableShader, Input } from '@/lib/types';
+import type { AvailableShader, Input, ShaderConfig } from '@/lib/types';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -15,8 +15,14 @@ import {
   Plus,
   Trash2,
   ArrowLeft,
+  Save,
+  FolderOpen,
 } from 'lucide-react';
 import { useState } from 'react';
+import {
+  SaveShaderPresetModal,
+  LoadShaderPresetModal,
+} from '../components/ShaderPresetModals';
 
 function hexToPackedInt(hex: string): number {
   const cleanHex = hex.replace('#', '');
@@ -57,6 +63,7 @@ interface ShaderPanelProps {
   onOpenAddShader: () => void;
   /** When set, clicking a shader name calls this instead of opening a dialog */
   onOpenShaderInline?: (shaderId: string) => void;
+  onApplyPreset?: (shaders: ShaderConfig[], mode: 'replace' | 'append') => void;
 }
 
 export default function ShaderPanel({
@@ -71,8 +78,11 @@ export default function ShaderPanel({
   getShaderParamConfig,
   onOpenAddShader,
   onOpenShaderInline,
+  onApplyPreset,
 }: ShaderPanelProps) {
   const [openShaderId, setOpenShaderId] = useState<string | null>(null);
+  const [savePresetOpen, setSavePresetOpen] = useState(false);
+  const [loadPresetOpen, setLoadPresetOpen] = useState(false);
 
   const appliedShaders = input.shaders ?? [];
   const openShaderDef = openShaderId
@@ -152,15 +162,56 @@ export default function ShaderPanel({
         </div>
       )}
 
-      <Button
-        data-no-dnd
-        size='sm'
-        variant='ghost'
-        className='mt-1.5 h-7 px-2 text-xs text-neutral-400 hover:text-white cursor-pointer gap-1'
-        onClick={onOpenAddShader}>
-        <Plus className='size-3.5' />
-        Add shader
-      </Button>
+      <div className='flex items-center gap-1 mt-1.5'>
+        <Button
+          data-no-dnd
+          size='sm'
+          variant='ghost'
+          className='h-7 px-2 text-xs text-neutral-400 hover:text-white cursor-pointer gap-1'
+          onClick={onOpenAddShader}>
+          <Plus className='size-3.5' />
+          Add shader
+        </Button>
+        {onApplyPreset && (
+          <>
+            <Button
+              data-no-dnd
+              size='sm'
+              variant='ghost'
+              className='h-7 px-2 text-xs text-neutral-400 hover:text-white cursor-pointer gap-1'
+              onClick={() => setLoadPresetOpen(true)}>
+              <FolderOpen className='size-3.5' />
+              Load preset
+            </Button>
+            {appliedShaders.length > 0 && (
+              <Button
+                data-no-dnd
+                size='sm'
+                variant='ghost'
+                className='h-7 px-2 text-xs text-neutral-400 hover:text-white cursor-pointer gap-1'
+                onClick={() => setSavePresetOpen(true)}>
+                <Save className='size-3.5' />
+                Save preset
+              </Button>
+            )}
+          </>
+        )}
+      </div>
+
+      {onApplyPreset && (
+        <>
+          <SaveShaderPresetModal
+            open={savePresetOpen}
+            onOpenChange={setSavePresetOpen}
+            shaders={appliedShaders}
+          />
+          <LoadShaderPresetModal
+            open={loadPresetOpen}
+            onOpenChange={setLoadPresetOpen}
+            onApply={onApplyPreset}
+          />
+        </>
+      )}
 
       {/* Fallback dialog for non-inline mode */}
       {!onOpenShaderInline && (

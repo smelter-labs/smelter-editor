@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import type { AvailableShader, Input } from '@/lib/types';
+import type { AvailableShader, Input, ShaderConfig } from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
 import { Button } from '@/components/ui/button';
 import {
@@ -19,6 +19,7 @@ import ShaderPanel from './shader-panel';
 import SnakeEventShaderPanel from './snake-event-shader-panel';
 import { InputEntryTextSection } from './input-entry-text-section';
 import { StatusButton } from './status-button';
+import { MotionIndicator } from './motion-indicator';
 import { MuteButton } from './mute-button';
 import { DeleteButton } from './delete-button';
 import { AddShaderModal } from './add-shader-modal';
@@ -32,8 +33,16 @@ import {
   loadWhipSession,
 } from '../whip-input/utils/whip-storage';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { toggleMotionDetection } from '@/app/actions/actions';
+import { useControlPanelContext } from '../contexts/control-panel-context';
 
 const SHADER_SETTINGS_DEBOUNCE_MS = 200;
+const VIDEO_INPUT_TYPES = [
+  'local-mp4',
+  'twitch-channel',
+  'kick-channel',
+  'whip',
+] as const;
 
 /**
  * Converts a hex color string to a packed integer (0xRRGGBB)
@@ -116,6 +125,7 @@ export default function InputEntry({
   isLocalWhipInput = false,
 }: InputEntryProps) {
   const actions = useActions();
+  const { motionScores } = useControlPanelContext();
   const [connectionStateLoading, setConnectionStateLoading] = useState(false);
   const [showSliders, setShowSliders] = useState(false);
   const [shaderLoading, setShaderLoading] = useState<string | null>(null);
@@ -157,6 +167,9 @@ export default function InputEntry({
 
   const isWhipInput = input.type === 'whip';
   const isTextInput = input.type === 'text-input';
+  const isVideoInput = (VIDEO_INPUT_TYPES as readonly string[]).includes(
+    input.type,
+  );
 
   useEffect(() => {
     if (input.textColor !== undefined) {
@@ -513,6 +526,12 @@ export default function InputEntry({
     }
   }, [roomId, input, refreshState]);
 
+  const handleMotionToggle = useCallback(async () => {
+    const newEnabled = !(input.motionEnabled ?? false);
+    await toggleMotionDetection(roomId, input.inputId, newEnabled);
+    await refreshState();
+  }, [roomId, input.inputId, input.motionEnabled, refreshState]);
+
   const handleShaderToggle = useCallback(
     async (shaderId: string) => {
       setShaderLoading(shaderId);
@@ -736,6 +755,24 @@ export default function InputEntry({
     [input, roomId, refreshState],
   );
 
+  const handleApplyPreset = useCallback(
+    async (shaders: ShaderConfig[], mode: 'replace' | 'append') => {
+      const newConfig =
+        mode === 'replace' ? shaders : [...(input.shaders || []), ...shaders];
+      try {
+        await actions.updateInput(roomId, input.inputId, {
+          shaders: newConfig,
+          volume: input.volume,
+        });
+        await refreshState();
+        ensureFxOpen();
+      } catch {
+        // ignore
+      }
+    },
+    [input, roomId, refreshState, ensureFxOpen],
+  );
+
   if (fxModeOnly && effectiveShowSliders) {
     return (
       <>
@@ -762,6 +799,7 @@ export default function InputEntry({
             onSliderChange={handleSliderChange}
             getShaderParamConfig={getShaderParamConfig}
             onOpenAddShader={() => setIsAddShaderModalOpen(true)}
+            onApplyPreset={handleApplyPreset}
           />
         </div>
 
@@ -1134,6 +1172,13 @@ export default function InputEntry({
                   )}
                 </span>
               </Button>
+              {isVideoInput && (
+                <MotionIndicator
+                  score={motionScores[input.inputId] ?? input.motionScore ?? 0}
+                  enabled={input.motionEnabled ?? false}
+                  onToggle={handleMotionToggle}
+                />
+              )}
               <MuteButton
                 muted={muted}
                 disabled={input.sourceState === 'offline'}
@@ -1177,6 +1222,7 @@ export default function InputEntry({
               onSliderChange={handleSliderChange}
               getShaderParamConfig={getShaderParamConfig}
               onOpenAddShader={() => setIsAddShaderModalOpen(true)}
+              onApplyPreset={handleApplyPreset}
             />
           </div>
         )}

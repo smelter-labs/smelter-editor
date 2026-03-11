@@ -1,12 +1,10 @@
 import { Tiles } from '@swmansion/smelter';
-import React, { useContext } from 'react';
-import { useStore } from 'zustand';
-import { StoreContext, useResolution, useIsVertical } from '../store';
+import React from 'react';
+import { useResolution, useIsVertical, useLayoutInputs } from '../store';
 import { Input } from '../../inputs/inputs';
 
 export function GridLayout() {
-  const store = useContext(StoreContext);
-  const inputs = useStore(store, state => state.inputs);
+  const inputs = useLayoutInputs();
   const resolution = useResolution();
   const isVertical = useIsVertical();
 

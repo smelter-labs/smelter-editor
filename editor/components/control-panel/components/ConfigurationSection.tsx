@@ -46,7 +46,18 @@ export function ConfigurationSection({
   pendingWhipInputs,
   setPendingWhipInputs,
 }: ConfigurationSectionProps) {
-  const { addTwitchInput, addKickInput, addMP4Input, addImageInput, addTextInput, addSnakeGameInput, addCameraInput, updateInput, updateRoom, removeInput } = useActions();
+  const {
+    addTwitchInput,
+    addKickInput,
+    addMP4Input,
+    addImageInput,
+    addTextInput,
+    addSnakeGameInput,
+    addCameraInput,
+    updateInput,
+    updateRoom,
+    removeInput,
+  } = useActions();
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -226,6 +237,14 @@ export function ConfigurationSection({
           snakeEventShaders: inputConfig.snakeEventShaders,
           snake1Shaders: inputConfig.snake1Shaders,
           snake2Shaders: inputConfig.snake2Shaders,
+          absolutePosition: inputConfig.absolutePosition,
+          absoluteTop: inputConfig.absoluteTop,
+          absoluteLeft: inputConfig.absoluteLeft,
+          absoluteWidth: inputConfig.absoluteWidth,
+          absoluteHeight: inputConfig.absoluteHeight,
+          absoluteTransitionDurationMs:
+            inputConfig.absoluteTransitionDurationMs,
+          absoluteTransitionEasing: inputConfig.absoluteTransitionEasing,
           attachedInputIds:
             attachedInputIds && attachedInputIds.length > 0
               ? attachedInputIds

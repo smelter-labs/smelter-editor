@@ -1,6 +1,13 @@
 'use client';
 
-import { useState, useCallback, useMemo, type ReactNode } from 'react';
+import {
+  useState,
+  useCallback,
+  useMemo,
+  useEffect,
+  useRef,
+  type ReactNode,
+} from 'react';
 import {
   ResponsiveGridLayout,
   useContainerWidth,
@@ -11,15 +18,16 @@ import 'react-resizable/css/styles.css';
 import PanelWrapper from './panel-wrapper';
 import LayoutToolbar from './layout-toolbar';
 import {
-  type PanelId,
+  type PanelDefinition,
   type MutableLayout,
   type DashboardLayouts,
-  PANEL_DEFINITIONS,
-  ALL_PANEL_IDS,
+  STATIC_PANEL_IDS,
   DASHBOARD_BREAKPOINTS,
   DASHBOARD_BREAKPOINT_WIDTHS,
   DASHBOARD_COLS,
   DEFAULT_RESPONSIVE_LAYOUTS,
+  MOTION_PANEL_MIN_W,
+  MOTION_PANEL_MIN_H,
   createResponsiveLayoutsFromLg,
   loadLayouts,
   saveLayouts,
@@ -28,9 +36,17 @@ import {
   saveVisiblePanels,
 } from './panel-registry';
 import type { ResponsiveLayouts } from 'react-grid-layout';
+import { useActions } from '@/components/control-panel/contexts/actions-context';
+
+export type DashboardLayoutSavedData = {
+  layouts: DashboardLayouts;
+  visiblePanels: string[];
+};
 
 interface DashboardLayoutProps {
-  panels: Record<PanelId, ReactNode>;
+  panels: Record<string, ReactNode>;
+  allPanelIds: string[];
+  getPanelDefinition: (id: string) => PanelDefinition;
 }
 
 const BREAKPOINTS = DASHBOARD_BREAKPOINT_WIDTHS;
@@ -74,12 +90,17 @@ function cloneResponsiveLayouts(layouts: DashboardLayouts): DashboardLayouts {
 
 function filterLayout(
   layout: MutableLayout,
-  visible: Set<PanelId>,
+  visible: Set<string>,
 ): MutableLayout {
-  return layout.filter((item) => visible.has(item.i as PanelId));
+  return layout.filter((item) => visible.has(item.i));
 }
 
-export default function DashboardLayout({ panels }: DashboardLayoutProps) {
+export default function DashboardLayout({
+  panels,
+  allPanelIds,
+  getPanelDefinition,
+}: DashboardLayoutProps) {
+  const { dashboardLayoutStorage } = useActions();
   const { width, containerRef, mounted } = useContainerWidth({
     initialWidth: 1280,
   });
@@ -88,11 +109,69 @@ export default function DashboardLayout({ panels }: DashboardLayoutProps) {
     return loadLayouts() ?? cloneResponsiveLayouts(DEFAULT_RESPONSIVE_LAYOUTS);
   });
 
-  const [visiblePanels, setVisiblePanels] = useState<Set<PanelId>>(() => {
+  const [visiblePanels, setVisiblePanels] = useState<Set<string>>(() => {
     return loadVisiblePanels();
   });
 
   const [isEditMode, setIsEditMode] = useState(false);
+
+  const prevPanelIdsRef = useRef<string[]>(allPanelIds);
+
+  useEffect(() => {
+    const prevIds = new Set(prevPanelIdsRef.current);
+    const currentIds = new Set(allPanelIds);
+    prevPanelIdsRef.current = allPanelIds;
+
+    const newIds = allPanelIds.filter((id) => !prevIds.has(id));
+    if (newIds.length === 0) return;
+
+    setVisiblePanels((prev) => {
+      const next = new Set(prev);
+      for (const id of newIds) {
+        next.add(id);
+      }
+      saveVisiblePanels(next);
+      return next;
+    });
+
+    setCurrentLayouts((prevLayouts) => {
+      const updated = { ...prevLayouts } as DashboardLayouts;
+      let changed = false;
+
+      for (const id of newIds) {
+        const alreadyInLayout = DASHBOARD_BREAKPOINTS.some((bp) =>
+          prevLayouts[bp].some((item) => item.i === id),
+        );
+        if (alreadyInLayout) continue;
+        changed = true;
+
+        for (const breakpoint of DASHBOARD_BREAKPOINTS) {
+          const breakpointLayout = updated[breakpoint];
+          const maxY = breakpointLayout.reduce(
+            (max, item) => Math.max(max, item.y + item.h),
+            0,
+          );
+          updated[breakpoint] = [
+            ...breakpointLayout,
+            {
+              i: id,
+              x: 0,
+              y: maxY,
+              w: Math.min(COLS[breakpoint], MOTION_PANEL_MIN_W + 4),
+              h: MOTION_PANEL_MIN_H + 2,
+              minW: Math.min(COLS[breakpoint], MOTION_PANEL_MIN_W),
+              minH: MOTION_PANEL_MIN_H,
+            },
+          ];
+        }
+      }
+
+      if (changed) {
+        saveLayouts(updated);
+      }
+      return changed ? updated : prevLayouts;
+    });
+  }, [allPanelIds]);
 
   const mergeHiddenItems = useCallback(
     (layout: Layout, previousLayout: MutableLayout): MutableLayout => {
@@ -128,70 +207,107 @@ export default function DashboardLayout({ panels }: DashboardLayoutProps) {
     setIsEditMode((prev) => !prev);
   }, []);
 
-  const handleApplyPreset = useCallback((presetLayout: MutableLayout) => {
-    const nextLayouts = createResponsiveLayoutsFromLg(
-      cloneLayout(presetLayout),
-    );
-    setCurrentLayouts(nextLayouts);
-    saveLayouts(nextLayouts);
-  }, []);
+  const handleApplyPreset = useCallback(
+    (presetLayout: MutableLayout) => {
+      const currentMotionItems = currentLayouts.lg.filter((item) =>
+        allPanelIds.includes(item.i),
+      );
+      const motionItems = currentMotionItems.filter(
+        (item) => !STATIC_PANEL_IDS.includes(item.i as never),
+      );
+      const presetWithMotion = [...cloneLayout(presetLayout), ...motionItems];
+      const nextLayouts = createResponsiveLayoutsFromLg(presetWithMotion);
+      setCurrentLayouts(nextLayouts);
+      saveLayouts(nextLayouts);
+    },
+    [currentLayouts, allPanelIds],
+  );
 
   const handleReset = useCallback(() => {
     clearLayout();
     setCurrentLayouts(cloneResponsiveLayouts(DEFAULT_RESPONSIVE_LAYOUTS));
-    const allVisible = new Set(ALL_PANEL_IDS);
+    const allVisible = new Set<string>(STATIC_PANEL_IDS);
+    for (const id of allPanelIds) {
+      allVisible.add(id);
+    }
     setVisiblePanels(allVisible);
     saveVisiblePanels(allVisible);
-  }, []);
+  }, [allPanelIds]);
 
-  const handleTogglePanel = useCallback((panelId: PanelId) => {
-    setVisiblePanels((prev) => {
-      const next = new Set(prev);
-      if (next.has(panelId)) {
-        if (next.size <= 1) return prev;
-        next.delete(panelId);
-      } else {
-        next.add(panelId);
+  const getCurrentLayoutData = useCallback((): DashboardLayoutSavedData => {
+    return {
+      layouts: currentLayouts,
+      visiblePanels: [...visiblePanels],
+    };
+  }, [currentLayouts, visiblePanels]);
+
+  const handleApplyLoadedLayout = useCallback(
+    (data: DashboardLayoutSavedData) => {
+      const loaded = data as DashboardLayoutSavedData;
+      if (loaded.layouts) {
+        setCurrentLayouts(loaded.layouts);
+        saveLayouts(loaded.layouts);
       }
-      saveVisiblePanels(next);
-      return next;
-    });
+      if (loaded.visiblePanels) {
+        const newVisible = new Set(loaded.visiblePanels);
+        setVisiblePanels(newVisible);
+        saveVisiblePanels(newVisible);
+      }
+    },
+    [],
+  );
 
-    setCurrentLayouts((prevLayouts) => {
-      const alreadyInLayout = DASHBOARD_BREAKPOINTS.some((bp) =>
-        prevLayouts[bp].some((item) => item.i === panelId),
-      );
-      if (alreadyInLayout) return prevLayouts;
+  const handleTogglePanel = useCallback(
+    (panelId: string) => {
+      setVisiblePanels((prev) => {
+        const next = new Set(prev);
+        if (next.has(panelId)) {
+          if (next.size <= 1) return prev;
+          next.delete(panelId);
+        } else {
+          next.add(panelId);
+        }
+        saveVisiblePanels(next);
+        return next;
+      });
 
-      const def = PANEL_DEFINITIONS[panelId];
-      const updated = { ...prevLayouts } as DashboardLayouts;
-      for (const breakpoint of DASHBOARD_BREAKPOINTS) {
-        const breakpointLayout = prevLayouts[breakpoint];
-        const maxY = breakpointLayout.reduce(
-          (max, item) => Math.max(max, item.y + item.h),
-          0,
+      setCurrentLayouts((prevLayouts) => {
+        const alreadyInLayout = DASHBOARD_BREAKPOINTS.some((bp) =>
+          prevLayouts[bp].some((item) => item.i === panelId),
         );
-        updated[breakpoint] = [
-          ...breakpointLayout,
-          {
-            i: panelId,
-            x: 0,
-            y: maxY,
-            w: Math.min(COLS[breakpoint], def.minW + 4),
-            h: def.minH + 2,
-            minW: Math.min(COLS[breakpoint], def.minW),
-            minH: def.minH,
-          },
-        ];
-      }
-      saveLayouts(updated);
-      return updated;
-    });
-  }, []);
+        if (alreadyInLayout) return prevLayouts;
+
+        const def = getPanelDefinition(panelId);
+        const updated = { ...prevLayouts } as DashboardLayouts;
+        for (const breakpoint of DASHBOARD_BREAKPOINTS) {
+          const breakpointLayout = prevLayouts[breakpoint];
+          const maxY = breakpointLayout.reduce(
+            (max, item) => Math.max(max, item.y + item.h),
+            0,
+          );
+          updated[breakpoint] = [
+            ...breakpointLayout,
+            {
+              i: panelId,
+              x: 0,
+              y: maxY,
+              w: Math.min(COLS[breakpoint], def.minW + 4),
+              h: def.minH + 2,
+              minW: Math.min(COLS[breakpoint], def.minW),
+              minH: def.minH,
+            },
+          ];
+        }
+        saveLayouts(updated);
+        return updated;
+      });
+    },
+    [getPanelDefinition],
+  );
 
   const visibleIds = useMemo(
-    () => ALL_PANEL_IDS.filter((id) => visiblePanels.has(id)),
-    [visiblePanels],
+    () => allPanelIds.filter((id) => visiblePanels.has(id)),
+    [allPanelIds, visiblePanels],
   );
 
   const layouts = useMemo<ResponsiveLayouts>(
@@ -214,8 +330,13 @@ export default function DashboardLayout({ panels }: DashboardLayoutProps) {
           onToggleEditMode={handleToggleEditMode}
           onApplyPreset={handleApplyPreset}
           onReset={handleReset}
+          allPanelIds={allPanelIds}
           visiblePanels={visiblePanels}
           onTogglePanel={handleTogglePanel}
+          getPanelDefinition={getPanelDefinition}
+          dashboardLayoutStorage={dashboardLayoutStorage}
+          getCurrentLayoutData={getCurrentLayoutData}
+          onApplyLoadedLayout={handleApplyLoadedLayout}
         />
       </div>
 
@@ -241,11 +362,11 @@ export default function DashboardLayout({ panels }: DashboardLayoutProps) {
             }}
             onLayoutChange={handleLayoutChange}
             autoSize>
-            {/* react-grid-layout injects resize handles via cloneElement into children */}
             {visibleIds.map((panelId) => (
               <PanelWrapper
                 key={panelId}
                 panelId={panelId}
+                panelDefinition={getPanelDefinition(panelId)}
                 isEditMode={isEditMode}
                 panelContent={panels[panelId]}>
                 {null}

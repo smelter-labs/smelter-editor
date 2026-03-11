@@ -13,6 +13,7 @@ import { createDefaultSnakeGameInputState, DEFAULT_SNAKE_EVENT_SHADERS, buildUpd
 import { KickChannelMonitor } from '../kick/KickChannelMonitor';
 import { WhipInputMonitor } from '../whip/WhipInputMonitor';
 import type { RoomNameEntry } from './roomNames';
+import { MotionManager } from '../motion/MotionManager';
 
 export type InputOrientation = 'horizontal' | 'vertical';
 
@@ -28,6 +29,15 @@ export type RoomInputState = {
   borderWidth: number;
   hidden: boolean;
   attachedInputIds?: string[];
+  absolutePosition?: boolean;
+  absoluteTop?: number;
+  absoluteLeft?: number;
+  absoluteWidth?: number;
+  absoluteHeight?: number;
+  absoluteTransitionDurationMs?: number;
+  absoluteTransitionEasing?: string;
+  motionScore?: number;
+  motionEnabled: boolean;
   metadata: {
     title: string;
     description: string;
@@ -78,6 +88,13 @@ type UpdateInputOptions = {
   snakeEventShaders: SnakeEventShaderConfig;
   snake1Shaders: ShaderConfig[];
   snake2Shaders: ShaderConfig[];
+  absolutePosition: boolean;
+  absoluteTop: number;
+  absoluteLeft: number;
+  absoluteWidth: number;
+  absoluteHeight: number;
+  absoluteTransitionDurationMs: number;
+  absoluteTransitionEasing: string;
 };
 
 export type RegisterInputOptions =
@@ -143,6 +160,8 @@ function cloneDefaultLogoShaders(): ShaderConfig[] {
 
 export class RoomState {
   private inputs: RoomInputState[];
+  private motionManager: MotionManager;
+  private motionScoreListeners: Set<(scores: Record<string, number>) => void> = new Set();
   private layout: Layout = 'picture-in-picture';
   private swapDurationMs: number = 500;
   private swapOutgoingEnabled: boolean = true;
@@ -179,6 +198,7 @@ export class RoomState {
     this.mp4Files = mp4SuggestionsMonitor.mp4Files;
     this.inputs = [];
     this.idPrefix = idPrefix;
+    this.motionManager = new MotionManager(idPrefix);
     this.output = output;
     this.roomName = roomName ?? { pl: `Pokój ${idPrefix.slice(0, 6)}`, en: `Room ${idPrefix.slice(0, 6)}` };
     this.initInputs = initInputs;
@@ -413,6 +433,7 @@ export class RoomState {
         borderColor: '#ff0000',
         borderWidth: 0,
         hidden: false,
+        motionEnabled: false,
         metadata: {
           title: 'Smelter',
           description: '',
@@ -447,6 +468,7 @@ export class RoomState {
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
+      motionEnabled: false,
       monitor: monitor,
       metadata: {
         title: `[Camera] ${cleanUsername}`,
@@ -486,6 +508,7 @@ export class RoomState {
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
+      motionEnabled: false,
       metadata: { title: '', description: '' },
       volume: 0,
       channelId,
@@ -548,6 +571,7 @@ export class RoomState {
         borderColor: '#ff0000',
         borderWidth: 0,
         hidden: false,
+        motionEnabled: false,
         metadata: {
           title: `[MP4] ${formatMp4Name(mp4Name)}`,
           description: '[Static source] AI Generated',
@@ -617,6 +641,7 @@ export class RoomState {
           borderColor: '#ff0000',
           borderWidth: 0,
           hidden: false,
+          motionEnabled: false,
           metadata: {
             title: formatImageName(fileName),
             description: '',
@@ -644,6 +669,7 @@ export class RoomState {
         borderColor: '#ff0000',
         borderWidth: 0,
         hidden: false,
+        motionEnabled: false,
         metadata: {
           title: 'Text',
           description: '',
@@ -676,6 +702,7 @@ export class RoomState {
         borderColor: '#ff0000',
         borderWidth: 0,
         hidden: false,
+        motionEnabled: false,
         volume: 0,
         ...defaults,
       });
@@ -719,6 +746,7 @@ export class RoomState {
       await sleep(500);
     }
     if (input.status === 'connected') {
+      await this.motionManager.stopMotionDetection(inputId);
       try {
         await SmelterInstance.unregisterInput(inputId);
       } catch (err: any) {
@@ -758,6 +786,17 @@ export class RoomState {
       throw err;
     }
     input.status = 'connected';
+    // Start motion detection for video inputs
+    if (input.motionEnabled && ['local-mp4', 'twitch-channel', 'kick-channel', 'whip'].includes(input.type)) {
+      this.motionManager.startMotionDetection(inputId, (score) => {
+        if (score === -1) {
+          input.motionScore = undefined;
+        } else {
+          input.motionScore = score;
+        }
+        this.emitMotionScores();
+      }).catch(err => console.error(`[motion] Failed to start for ${inputId}`, err));
+    }
     this.updateStoreWithState();
     return response;
   }
@@ -783,6 +822,7 @@ export class RoomState {
     if (input.status === 'disconnected') {
       return;
     }
+    await this.motionManager.stopMotionDetection(inputId);
     input.status = 'pending';
     this.updateStoreWithState();
     try {
@@ -910,6 +950,27 @@ export class RoomState {
     if (options.attachedInputIds !== undefined) {
       input.attachedInputIds = options.attachedInputIds;
     }
+    if (options.absolutePosition !== undefined) {
+      input.absolutePosition = options.absolutePosition;
+    }
+    if (options.absoluteTop !== undefined) {
+      input.absoluteTop = options.absoluteTop;
+    }
+    if (options.absoluteLeft !== undefined) {
+      input.absoluteLeft = options.absoluteLeft;
+    }
+    if (options.absoluteWidth !== undefined) {
+      input.absoluteWidth = options.absoluteWidth;
+    }
+    if (options.absoluteHeight !== undefined) {
+      input.absoluteHeight = options.absoluteHeight;
+    }
+    if (options.absoluteTransitionDurationMs !== undefined) {
+      input.absoluteTransitionDurationMs = options.absoluteTransitionDurationMs;
+    }
+    if (options.absoluteTransitionEasing !== undefined) {
+      input.absoluteTransitionEasing = options.absoluteTransitionEasing;
+    }
     this.updateStoreWithState();
   }
 
@@ -950,6 +1011,7 @@ export class RoomState {
   }
 
   public async deleteRoom() {
+    await this.stopAllMotion();
     const inputs = this.inputs;
     this.inputs = [];
     for (const input of inputs) {
@@ -1002,6 +1064,13 @@ export class RoomState {
       snakeEventShaders: input.type === 'game' ? input.snakeEventShaders : undefined,
       snake1Shaders: input.type === 'game' ? input.snake1Shaders : undefined,
       snake2Shaders: input.type === 'game' ? input.snake2Shaders : undefined,
+      absolutePosition: input.absolutePosition,
+      absoluteTop: input.absoluteTop,
+      absoluteLeft: input.absoluteLeft,
+      absoluteWidth: input.absoluteWidth,
+      absoluteHeight: input.absoluteHeight,
+      absoluteTransitionDurationMs: input.absoluteTransitionDurationMs,
+      absoluteTransitionEasing: input.absoluteTransitionEasing,
     });
 
     const connectedInputs = this.inputs.filter(input => input.status === 'connected' && !input.hidden);
@@ -1045,6 +1114,54 @@ export class RoomState {
     const input = this.getInput(inputId);
     input.hidden = false;
     this.updateStoreWithState();
+  }
+
+  public async setMotionEnabled(inputId: string, enabled: boolean): Promise<void> {
+    const input = this.getInput(inputId);
+    input.motionEnabled = enabled;
+    if (enabled && input.status === 'connected' && ['local-mp4', 'twitch-channel', 'kick-channel', 'whip'].includes(input.type)) {
+      try {
+        console.log(`[motion][setMotionEnabled] starting for inputId=${inputId} type=${input.type} title="${input.metadata.title}"`);
+        await this.motionManager.startMotionDetection(inputId, (score) => {
+          if (score === -1) {
+            input.motionScore = undefined;
+          } else {
+            input.motionScore = score;
+          }
+          this.emitMotionScores();
+        });
+      } catch (err) {
+        console.error(`[motion] Failed to start motion detection for ${inputId}`, err);
+      }
+    } else if (!enabled) {
+      await this.motionManager.stopMotionDetection(inputId);
+      input.motionScore = undefined;
+      this.emitMotionScores();
+    }
+  }
+
+  public async stopAllMotion(): Promise<void> {
+    await this.motionManager.stopAll();
+  }
+
+  public addMotionScoreListener(listener: (scores: Record<string, number>) => void): () => void {
+    this.motionScoreListeners.add(listener);
+    return () => {
+      this.motionScoreListeners.delete(listener);
+    };
+  }
+
+  private emitMotionScores(): void {
+    if (this.motionScoreListeners.size === 0) return;
+    const scores: Record<string, number> = {};
+    for (const input of this.inputs) {
+      if (input.motionScore !== undefined) {
+        scores[input.inputId] = input.motionScore;
+      }
+    }
+    for (const listener of this.motionScoreListeners) {
+      listener(scores);
+    }
   }
 
   public updateSnakeGameState(inputId: string, incomingState: { board: { width: number; height: number; cellSize: number; cellGap?: number }; cells: { x: number; y: number; color: string; size?: number; isHead?: boolean; direction?: 'up' | 'down' | 'left' | 'right'; progress?: number }[]; smoothMove?: boolean; smoothMoveSpeed?: number; smoothMoveAccel?: number; smoothMoveDecel?: number; backgroundColor: string; gameOverData?: { winnerName: string; reason: string; players: { name: string; score: number; eaten: number; cuts: number; color: string }[] } }, events?: { type: SnakeEventType }[]) {
@@ -1144,6 +1261,7 @@ export class RoomState {
         borderColor: '#ff0000',
         borderWidth: 0,
         hidden: false,
+        motionEnabled: false,
         metadata: {
           title: `[MP4] ${formatMp4Name(fileName)}`,
           description: '[Wrapped MP4]',
@@ -1206,6 +1324,7 @@ export class RoomState {
         borderColor: '#ff0000',
         borderWidth: 0,
         hidden: false,
+        motionEnabled: false,
         metadata: {
           title: formatImageName(fileName),
           description: '',

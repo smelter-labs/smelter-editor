@@ -224,6 +224,22 @@ export function useTimelinePlayback(
             attachedInputIds: clip.blockSettings.attachedInputIds,
             snake1Shaders: clip.blockSettings.snake1Shaders,
             snake2Shaders: clip.blockSettings.snake2Shaders,
+            absolutePosition: clip.blockSettings.absolutePosition,
+            absoluteTop: clip.blockSettings.absoluteTop,
+            absoluteLeft: clip.blockSettings.absoluteLeft,
+            absoluteWidth: clip.blockSettings.absoluteWidth,
+            absoluteHeight: clip.blockSettings.absoluteHeight,
+            absoluteTransitionDurationMs:
+              clip.blockSettings.absoluteTransitionDurationMs,
+            absoluteTransitionEasing:
+              clip.blockSettings.absoluteTransitionEasing,
+            gameBackgroundColor: clip.blockSettings.gameBackgroundColor,
+            gameCellGap: clip.blockSettings.gameCellGap,
+            gameBoardBorderColor: clip.blockSettings.gameBoardBorderColor,
+            gameBoardBorderWidth: clip.blockSettings.gameBoardBorderWidth,
+            gameGridLineColor: clip.blockSettings.gameGridLineColor,
+            gameGridLineAlpha: clip.blockSettings.gameGridLineAlpha,
+            snakeEventShaders: clip.blockSettings.snakeEventShaders,
           }).catch((err) =>
             console.warn(
               `Timeline: failed to apply block settings for ${inputId}`,

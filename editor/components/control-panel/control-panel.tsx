@@ -4,7 +4,12 @@ import { fadeIn } from '@/utils/animations';
 import { motion } from 'framer-motion';
 import { createPortal } from 'react-dom';
 import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
-import type { RoomState, Input, AvailableShader, PendingWhipInputData } from '@/lib/types';
+import type {
+  RoomState,
+  Input,
+  AvailableShader,
+  PendingWhipInputData,
+} from '@/lib/types';
 import { useActions } from './contexts/actions-context';
 import { ActionsProvider } from './contexts/actions-context';
 import { defaultActions } from './contexts/default-actions';
@@ -48,7 +53,6 @@ import {
   type RoomConfigInput,
 } from '@/lib/room-config';
 import { SaveConfigModal, LoadConfigModal } from './components/ConfigModals';
-import { PendingWhipInputs } from './components/PendingWhipInputs';
 import { TransitionSettings } from './components/TransitionSettings';
 import {
   rotateBy90,
@@ -78,6 +82,10 @@ import {
   BlockClipPropertiesPanel,
   type SelectedTimelineClip,
 } from './components/BlockClipPropertiesPanel';
+import { useMotionScores } from '@/hooks/use-motion-scores';
+import { useMotionHistory } from '@/hooks/use-motion-history';
+import { InputMotionPanel } from './components/InputMotionPanel';
+import { motionPanelId } from '@/components/dashboard/panel-registry';
 
 export type ControlPanelProps = {
   roomId: string;
@@ -98,6 +106,7 @@ export type ControlPanelProps = {
     fxSection: React.ReactNode;
     timelineSection: React.ReactNode;
     blockPropertiesSection: React.ReactNode;
+    motionPanels: Record<string, React.ReactNode>;
   }) => React.ReactNode;
 };
 
@@ -291,6 +300,7 @@ function ControlPanelWithActions({
   );
 
   const isRecordingFromServer = roomState.isRecording ?? false;
+  const motionScores = useMotionScores(roomId);
 
   const controlPanelCtx = useMemo(
     () => ({
@@ -300,6 +310,7 @@ function ControlPanelWithActions({
       inputsRef,
       availableShaders,
       isRecording: isRecordingFromServer,
+      motionScores,
     }),
     [
       roomId,
@@ -308,6 +319,7 @@ function ControlPanelWithActions({
       inputsRef,
       availableShaders,
       isRecordingFromServer,
+      motionScores,
     ],
   );
 
@@ -390,13 +402,15 @@ function ControlPanelInner({
     refreshState: handleRefreshState,
     inputs,
     availableShaders,
+    motionScores,
   } = useControlPanelContext();
+  const motionHistoryMap = useMotionHistory(inputs, motionScores);
   const { activeCameraInputId, activeScreenshareInputId } =
     useWhipConnectionsContext();
   const actions = useActions();
   const updateRoomAction = actions.updateRoom;
   const updateInputAction = actions.updateInput;
-  const saveRemoteConfig = actions.saveRemoteConfig;
+  const configStorageSave = actions.configStorage.save;
 
   useControlPanelEvents({
     inputWrappers,
@@ -445,12 +459,6 @@ function ControlPanelInner({
               : false
           }
         />
-        {!isGuest && (
-          <PendingWhipInputs
-            pendingInputs={pendingWhipInputs}
-            setPendingInputs={handleSetPendingWhipInputs}
-          />
-        )}
       </div>
     );
 
@@ -517,9 +525,36 @@ function ControlPanelInner({
           inputs={inputs}
           availableShaders={availableShaders}
           handleRefreshState={handleRefreshState}
+          resolution={roomState.resolution}
+          pendingWhipInputs={isGuest ? undefined : pendingWhipInputs}
+          setPendingWhipInputs={
+            isGuest ? undefined : handleSetPendingWhipInputs
+          }
         />
       </div>
     );
+
+    const videoInputTypes = [
+      'local-mp4',
+      'twitch-channel',
+      'kick-channel',
+      'whip',
+    ];
+    const motionPanels: Record<string, React.ReactNode> = {};
+    for (const input of inputs) {
+      if (!videoInputTypes.includes(input.type)) continue;
+      const panelId = motionPanelId(input.inputId);
+      const history = motionHistoryMap.get(input.inputId);
+      motionPanels[panelId] = (
+        <InputMotionPanel
+          roomId={roomId}
+          input={input}
+          motionHistory={history ?? null}
+          motionScore={motionScores[input.inputId]}
+          refreshState={handleRefreshState}
+        />
+      );
+    }
 
     return (
       <>
@@ -537,6 +572,7 @@ function ControlPanelInner({
           fxSection,
           timelineSection,
           blockPropertiesSection,
+          motionPanels,
         })}
       </>
     );
@@ -595,12 +631,6 @@ function ControlPanelInner({
                 : false
             }
           />
-          {!isGuest && (
-            <PendingWhipInputs
-              pendingInputs={pendingWhipInputs}
-              setPendingInputs={handleSetPendingWhipInputs}
-            />
-          )}
           {!isGuest && !renderStreamsOutside && streamsSectionContent}
           {!isGuest && (
             <SettingsBar
@@ -646,7 +676,7 @@ function SettingsBar({
   const actions = useActions();
   const updateRoomAction = actions.updateRoom;
   const updateInputAction = actions.updateInput;
-  const saveRemoteConfig = actions.saveRemoteConfig;
+  const configStorageSave = actions.configStorage.save;
   const addTwitchInput = actions.addTwitchInput;
   const addKickInput = actions.addKickInput;
   const addMP4Input = actions.addMP4Input;
@@ -726,13 +756,13 @@ function SettingsBar({
   const handleExportRemote = useCallback(
     async (name: string): Promise<string | null> => {
       const config = buildConfig();
-      const result = await saveRemoteConfig(name, config);
+      const result = await configStorageSave(name, config);
       if (!result.ok) {
         return result.error;
       }
       return null;
     },
-    [buildConfig],
+    [buildConfig, configStorageSave],
   );
 
   useEffect(() => {
@@ -864,6 +894,17 @@ function SettingsBar({
             gameBoardBorderWidth: inputConfig.gameBoardBorderWidth,
             gameGridLineColor: inputConfig.gameGridLineColor,
             gameGridLineAlpha: inputConfig.gameGridLineAlpha,
+            snakeEventShaders: inputConfig.snakeEventShaders,
+            snake1Shaders: inputConfig.snake1Shaders,
+            snake2Shaders: inputConfig.snake2Shaders,
+            absolutePosition: inputConfig.absolutePosition,
+            absoluteTop: inputConfig.absoluteTop,
+            absoluteLeft: inputConfig.absoluteLeft,
+            absoluteWidth: inputConfig.absoluteWidth,
+            absoluteHeight: inputConfig.absoluteHeight,
+            absoluteTransitionDurationMs:
+              inputConfig.absoluteTransitionDurationMs,
+            absoluteTransitionEasing: inputConfig.absoluteTransitionEasing,
             attachedInputIds:
               attachedInputIds && attachedInputIds.length > 0
                 ? attachedInputIds

@@ -1,7 +1,6 @@
 import { View, Rescaler, Tiles, Shader } from '@swmansion/smelter';
-import React, { useContext } from 'react';
-import { useStore } from 'zustand';
-import { StoreContext, useResolution, useIsVertical, useSwapDurationMs, useSwapOutgoingEnabled, useSwapFadeInDurationMs, useSwapFadeOutDurationMs } from '../store';
+import React from 'react';
+import { useResolution, useIsVertical, useSwapDurationMs, useSwapOutgoingEnabled, useSwapFadeInDurationMs, useSwapFadeOutDurationMs, useLayoutInputs } from '../store';
 import { Input, SmallInput } from '../../inputs/inputs';
 import { usePrimarySwapTransition } from '../transitions/usePrimarySwapTransition';
 import { usePostSwapFadeIn } from '../transitions/usePostSwapFadeIn';
@@ -9,8 +8,7 @@ import { usePostSwapFadeIn } from '../transitions/usePostSwapFadeIn';
 const TILES_PADDING = 10;
 
 export function PrimaryOnTopLayout() {
-  const store = useContext(StoreContext);
-  const inputs = useStore(store, state => state.inputs);
+  const inputs = useLayoutInputs();
   const resolution = useResolution();
   const isVertical = useIsVertical();
   const swapDurationMs = useSwapDurationMs();

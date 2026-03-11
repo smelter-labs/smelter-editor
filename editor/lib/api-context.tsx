@@ -22,9 +22,7 @@ export function SmelterApiProvider({
 export function useSmelterApi(): SmelterApiClient {
   const client = useContext(SmelterApiContext);
   if (!client) {
-    throw new Error(
-      'useSmelterApi must be used within a SmelterApiProvider',
-    );
+    throw new Error('useSmelterApi must be used within a SmelterApiProvider');
   }
   return client;
 }

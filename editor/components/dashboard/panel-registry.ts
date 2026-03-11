@@ -1,6 +1,6 @@
 import type { LayoutItem } from 'react-grid-layout';
 
-export type PanelId =
+export type StaticPanelId =
   | 'video-preview'
   | 'add-video'
   | 'buttons'
@@ -8,6 +8,27 @@ export type PanelId =
   | 'fx'
   | 'timeline'
   | 'block-properties';
+
+export type MotionPanelId = `motion:${string}`;
+export type PanelId = StaticPanelId | MotionPanelId;
+
+const MOTION_PREFIX = 'motion:';
+
+export function isMotionPanelId(id: string): id is MotionPanelId {
+  return id.startsWith(MOTION_PREFIX);
+}
+
+export function motionPanelId(inputId: string): MotionPanelId {
+  return `${MOTION_PREFIX}${inputId}`;
+}
+
+export function getInputIdFromMotionPanel(id: MotionPanelId): string {
+  return id.slice(MOTION_PREFIX.length);
+}
+
+export function isKnownPanelId(id: string): boolean {
+  return STATIC_PANEL_IDS.includes(id as StaticPanelId) || isMotionPanelId(id);
+}
 
 export type MutableLayout = LayoutItem[];
 export type DashboardBreakpoint = 'lg' | 'md' | 'sm' | 'xs' | 'xxs';
@@ -39,45 +60,67 @@ export const DASHBOARD_COLS: Record<DashboardBreakpoint, number> = {
 };
 
 export interface PanelDefinition {
-  id: PanelId;
+  id: string;
   title: string;
   minW: number;
   minH: number;
 }
 
-export const PANEL_DEFINITIONS: Record<PanelId, PanelDefinition> = {
-  'video-preview': {
-    id: 'video-preview',
-    title: 'Video Preview',
-    minW: 6,
-    minH: 6,
-  },
-  'add-video': {
-    id: 'add-video',
-    title: 'Add Video',
-    minW: 4,
-    minH: 4,
-  },
-  buttons: {
-    id: 'buttons',
-    title: 'Buttons',
-    minW: 4,
-    minH: 4,
-  },
-  streams: { id: 'streams', title: 'Streams', minW: 4, minH: 4 },
-  fx: { id: 'fx', title: 'FX', minW: 4, minH: 4 },
-  timeline: { id: 'timeline', title: 'Timeline', minW: 8, minH: 4 },
-  'block-properties': {
-    id: 'block-properties',
-    title: 'Block Properties',
-    minW: 4,
-    minH: 6,
-  },
-};
+export const STATIC_PANEL_DEFINITIONS: Record<StaticPanelId, PanelDefinition> =
+  {
+    'video-preview': {
+      id: 'video-preview',
+      title: 'Video Preview',
+      minW: 6,
+      minH: 6,
+    },
+    'add-video': {
+      id: 'add-video',
+      title: 'Add Video',
+      minW: 4,
+      minH: 4,
+    },
+    buttons: {
+      id: 'buttons',
+      title: 'Buttons',
+      minW: 4,
+      minH: 4,
+    },
+    streams: { id: 'streams', title: 'Streams', minW: 4, minH: 4 },
+    fx: { id: 'fx', title: 'FX', minW: 4, minH: 4 },
+    timeline: { id: 'timeline', title: 'Timeline', minW: 8, minH: 4 },
+    'block-properties': {
+      id: 'block-properties',
+      title: 'Block Properties',
+      minW: 4,
+      minH: 6,
+    },
+  };
 
-export const ALL_PANEL_IDS: PanelId[] = Object.keys(
-  PANEL_DEFINITIONS,
-) as PanelId[];
+export const MOTION_PANEL_MIN_W = 4;
+export const MOTION_PANEL_MIN_H = 3;
+
+export function getMotionPanelDefinition(inputTitle: string): PanelDefinition {
+  return {
+    id: inputTitle,
+    title: `Motion: ${inputTitle}`,
+    minW: MOTION_PANEL_MIN_W,
+    minH: MOTION_PANEL_MIN_H,
+  };
+}
+
+export const STATIC_PANEL_IDS: StaticPanelId[] = Object.keys(
+  STATIC_PANEL_DEFINITIONS,
+) as StaticPanelId[];
+
+/** @deprecated Use STATIC_PANEL_IDS for static panels. Dynamic panels are managed by DashboardLayout. */
+export const ALL_PANEL_IDS = STATIC_PANEL_IDS;
+
+/** @deprecated Use STATIC_PANEL_DEFINITIONS. Dynamic panel defs come from getMotionPanelDefinition. */
+export const PANEL_DEFINITIONS = STATIC_PANEL_DEFINITIONS as Record<
+  string,
+  PanelDefinition
+>;
 
 export interface LayoutPreset {
   id: string;
@@ -96,7 +139,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'streams', x: 16, y: 14, w: 8, h: 6, minW: 4, minH: 4 },
       { i: 'fx', x: 16, y: 20, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'timeline', x: 0, y: 20, w: 16, h: 8, minW: 8, minH: 4 },
-      { i: 'block-properties', x: 0, y: 28, w: 8, h: 8, minW: 4, minH: 6 },
+      { i: 'block-properties', x: 0, y: 28, w: 16, h: 8, minW: 4, minH: 6 },
     ],
   },
   {
@@ -109,7 +152,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'streams', x: 12, y: 14, w: 6, h: 10, minW: 4, minH: 4 },
       { i: 'fx', x: 18, y: 14, w: 6, h: 10, minW: 4, minH: 4 },
       { i: 'timeline', x: 0, y: 24, w: 16, h: 8, minW: 8, minH: 4 },
-      { i: 'block-properties', x: 16, y: 24, w: 8, h: 8, minW: 4, minH: 6 },
+      { i: 'block-properties', x: 16, y: 24, w: 8, h: 8, minW: 4, minH: 3 },
     ],
   },
   {
@@ -122,7 +165,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'streams', x: 0, y: 16, w: 12, h: 6, minW: 4, minH: 4 },
       { i: 'fx', x: 12, y: 16, w: 12, h: 6, minW: 4, minH: 4 },
       { i: 'timeline', x: 0, y: 22, w: 16, h: 6, minW: 8, minH: 4 },
-      { i: 'block-properties', x: 16, y: 22, w: 8, h: 6, minW: 4, minH: 6 },
+      { i: 'block-properties', x: 16, y: 22, w: 8, h: 6, minW: 4, minH: 3 },
     ],
   },
   {
@@ -135,7 +178,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'streams', x: 18, y: 6, w: 6, h: 4, minW: 4, minH: 4 },
       { i: 'fx', x: 12, y: 10, w: 12, h: 4, minW: 4, minH: 4 },
       { i: 'timeline', x: 0, y: 14, w: 16, h: 8, minW: 8, minH: 4 },
-      { i: 'block-properties', x: 16, y: 14, w: 8, h: 8, minW: 4, minH: 6 },
+      { i: 'block-properties', x: 16, y: 14, w: 8, h: 8, minW: 4, minH: 3 },
     ],
   },
   {
@@ -148,7 +191,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'streams', x: 8, y: 8, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'fx', x: 16, y: 8, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'timeline', x: 8, y: 16, w: 16, h: 6, minW: 8, minH: 4 },
-      { i: 'block-properties', x: 8, y: 22, w: 8, h: 6, minW: 4, minH: 6 },
+      { i: 'block-properties', x: 8, y: 22, w: 16, h: 6, minW: 4, minH: 6 },
     ],
   },
 ];
@@ -244,9 +287,9 @@ function ensureAllPanels(layout: MutableLayout, cols: number): MutableLayout {
   const ids = new Set(layout.map((item) => item.i));
   let nextY = layout.reduce((max, item) => Math.max(max, item.y + item.h), 0);
 
-  for (const panelId of ALL_PANEL_IDS) {
+  for (const panelId of STATIC_PANEL_IDS) {
     if (!ids.has(panelId)) {
-      const def = PANEL_DEFINITIONS[panelId];
+      const def = STATIC_PANEL_DEFINITIONS[panelId];
       const nextItem = {
         i: panelId,
         x: 0,
@@ -262,7 +305,7 @@ function ensureAllPanels(layout: MutableLayout, cols: number): MutableLayout {
     }
   }
 
-  return layout.filter((item) => ALL_PANEL_IDS.includes(item.i as PanelId));
+  return layout.filter((item) => isKnownPanelId(item.i));
 }
 
 export function loadLayouts(): DashboardLayouts | null {
@@ -325,23 +368,21 @@ export function clearLayout(): void {
 
 const VISIBLE_PANELS_KEY = 'smelter-dashboard-visible-panels';
 
-export function loadVisiblePanels(): Set<PanelId> {
-  if (typeof window === 'undefined') return new Set(ALL_PANEL_IDS);
+export function loadVisiblePanels(): Set<string> {
+  if (typeof window === 'undefined') return new Set<string>(STATIC_PANEL_IDS);
   try {
     const stored = localStorage.getItem(VISIBLE_PANELS_KEY);
-    if (!stored) return new Set(ALL_PANEL_IDS);
+    if (!stored) return new Set<string>(STATIC_PANEL_IDS);
     const parsed = JSON.parse(stored) as string[];
-    if (!Array.isArray(parsed)) return new Set(ALL_PANEL_IDS);
-    const valid = parsed.filter((id) =>
-      ALL_PANEL_IDS.includes(id as PanelId),
-    ) as PanelId[];
-    return new Set(valid.length > 0 ? valid : ALL_PANEL_IDS);
+    if (!Array.isArray(parsed)) return new Set<string>(STATIC_PANEL_IDS);
+    const valid = parsed.filter((id) => isKnownPanelId(id));
+    return new Set(valid.length > 0 ? valid : STATIC_PANEL_IDS);
   } catch {
-    return new Set(ALL_PANEL_IDS);
+    return new Set<string>(STATIC_PANEL_IDS);
   }
 }
 
-export function saveVisiblePanels(ids: Set<PanelId>): void {
+export function saveVisiblePanels(ids: Set<string>): void {
   if (typeof window === 'undefined') return;
   try {
     localStorage.setItem(VISIBLE_PANELS_KEY, JSON.stringify([...ids]));

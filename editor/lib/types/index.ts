@@ -3,7 +3,11 @@ export type {
   AvailableShader,
   ShaderParamConfig,
   ShaderConfig,
+  ShaderPreset,
+  SavedShaderPresetInfo,
 } from './shader';
+
+export type { SavedItemInfo } from '../storage-client';
 
 export type { Layout } from './layout';
 

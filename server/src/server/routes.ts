@@ -2,10 +2,11 @@ import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import { STATUS_CODES } from 'node:http';
 import path from 'node:path';
-import { ensureDir, pathExists, readdir, readFile, remove, stat, writeFile } from 'fs-extra';
+import { pathExists, readdir, readFile, stat } from 'fs-extra';
 import { Type } from '@sinclair/typebox';
 import type { Static, TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { state } from './serverState';
+import { registerStorageRoutes } from './storageRoutes';
 import { logRequest } from '../dashboard';
 import { registerSnakeGameRoutes, clearSnakeGameRoomInactivityTimer } from '../snakeGame/snakeGameRoutes';
 import { TwitchChannelSuggestions } from '../twitch/TwitchChannelMonitor';
@@ -374,103 +375,35 @@ routes.get<RecordingFileParams>('/recordings/:fileName', async (req, res) => {
   }
 });
 
-const CONFIGS_DIR = path.join(__dirname, '../../configs');
-
-const SaveConfigSchema = Type.Object({
-  name: Type.String({ minLength: 1, maxLength: 200 }),
-  config: Type.Any(),
+registerStorageRoutes(routes, {
+  routePrefix: '/configs',
+  dirPath: path.join(__dirname, '../../configs'),
+  filePrefix: 'config',
+  resourceName: 'config',
+  payloadKey: 'config',
+  listKey: 'configs',
+  bodySchema: Type.Any(),
 });
 
-routes.post<{ Body: Static<typeof SaveConfigSchema> }>(
-  '/configs',
-  { schema: { body: SaveConfigSchema } },
-  async (req, res) => {
-    const { name, config } = req.body;
-    const safeName = name.replace(/[^a-zA-Z0-9_\-.\s]/g, '_').trim();
-    const timestamp = Date.now();
-    const fileName = `config-${safeName}-${timestamp}.json`;
-
-    await ensureDir(CONFIGS_DIR);
-    const filePath = path.join(CONFIGS_DIR, fileName);
-    await writeFile(filePath, JSON.stringify({ name, config, savedAt: new Date().toISOString() }, null, 2));
-
-    console.log('[request] Save config', { name, fileName });
-    res.status(200).send({ status: 'ok', fileName, name });
-  }
-);
-
-routes.get('/configs', async (_req, res) => {
-  if (!(await pathExists(CONFIGS_DIR))) {
-    return res.status(200).send({ configs: [] });
-  }
-
-  try {
-    const files = await readdir(CONFIGS_DIR);
-    const jsonFiles = files.filter(f => f.endsWith('.json'));
-    const configs = [];
-    for (const fileName of jsonFiles) {
-      const filePath = path.join(CONFIGS_DIR, fileName);
-      try {
-        const content = await readFile(filePath, 'utf-8');
-        const parsed = JSON.parse(content);
-        const fileStat = await stat(filePath);
-        configs.push({
-          fileName,
-          name: parsed.name ?? fileName,
-          savedAt: parsed.savedAt ?? fileStat.mtimeMs,
-          size: fileStat.size,
-        });
-      } catch {
-        continue;
-      }
-    }
-    configs.sort((a, b) => {
-      const aTime = typeof a.savedAt === 'string' ? new Date(a.savedAt).getTime() : a.savedAt;
-      const bTime = typeof b.savedAt === 'string' ? new Date(b.savedAt).getTime() : b.savedAt;
-      return bTime - aTime;
-    });
-    res.status(200).send({ configs });
-  } catch (err: any) {
-    console.error('Failed to list configs', err);
-    res.status(500).send({ error: 'Failed to list configs' });
-  }
+registerStorageRoutes(routes, {
+  routePrefix: '/shader-presets',
+  dirPath: path.join(__dirname, '../../shader-presets'),
+  filePrefix: 'preset',
+  resourceName: 'shader preset',
+  payloadKey: 'shaders',
+  listKey: 'presets',
+  bodySchema: Type.Array(Type.Any()),
+  supportsUpdate: true,
 });
 
-type ConfigFileParams = { Params: { fileName: string } };
-
-routes.get<ConfigFileParams>('/configs/:fileName', async (req, res) => {
-  const { fileName } = req.params;
-  const filePath = path.join(CONFIGS_DIR, fileName);
-
-  if (!(await pathExists(filePath))) {
-    return res.status(404).send({ error: 'Config not found' });
-  }
-
-  try {
-    const content = await readFile(filePath, 'utf-8');
-    const parsed = JSON.parse(content);
-    res.status(200).send(parsed);
-  } catch (err: any) {
-    console.error('Failed to read config file', { filePath, err });
-    res.status(500).send({ error: 'Failed to read config file' });
-  }
-});
-
-routes.delete<ConfigFileParams>('/configs/:fileName', async (req, res) => {
-  const { fileName } = req.params;
-  const filePath = path.join(CONFIGS_DIR, fileName);
-
-  if (!(await pathExists(filePath))) {
-    return res.status(404).send({ error: 'Config not found' });
-  }
-
-  try {
-    await remove(filePath);
-    res.status(200).send({ status: 'ok' });
-  } catch (err: any) {
-    console.error('Failed to delete config', { filePath, err });
-    res.status(500).send({ error: 'Failed to delete config' });
-  }
+registerStorageRoutes(routes, {
+  routePrefix: '/dashboard-layouts',
+  dirPath: path.join(__dirname, '../../dashboard-layouts'),
+  filePrefix: 'dashboard-layout',
+  resourceName: 'dashboard layout',
+  payloadKey: 'layout',
+  listKey: 'layouts',
+  bodySchema: Type.Any(),
 });
 
 const UpdateRoomSchema = Type.Object({
@@ -632,6 +565,52 @@ routes.post<RoomAndInputIdParams>('/room/:roomId/input/:inputId/show', { schema:
   res.status(200).send({ status: 'ok' });
 });
 
+const MotionDetectionSchema = Type.Object({
+  enabled: Type.Boolean(),
+});
+
+routes.post<RoomAndInputIdParams & { Body: Static<typeof MotionDetectionSchema> }>(
+  '/room/:roomId/input/:inputId/motion-detection',
+  { schema: { params: RoomAndInputIdParamsSchema, body: MotionDetectionSchema } },
+  async (req, res) => {
+    const { roomId, inputId } = req.params;
+    console.log('[request] Toggle motion detection', { roomId, inputId, enabled: req.body.enabled });
+    const room = state.getRoom(roomId);
+    await room.setMotionEnabled(inputId, req.body.enabled);
+    res.status(200).send({ status: 'ok' });
+  }
+);
+
+routes.get<RoomIdParams>('/room/:roomId/motion-scores/sse', { schema: { params: RoomIdParamsSchema } }, async (req, res) => {
+  const { roomId } = req.params;
+  const room = state.getRoom(roomId);
+
+  res.raw.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+  });
+
+  const unsubscribe = room.addMotionScoreListener((scores) => {
+    res.raw.write(`data: ${JSON.stringify(scores)}\n\n`);
+  });
+
+  const heartbeat = setInterval(() => {
+    if (res.raw.destroyed) {
+      clearInterval(heartbeat);
+      unsubscribe();
+      return;
+    }
+    res.raw.write(': heartbeat\n\n');
+  }, 15000);
+
+  req.raw.on('close', () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+  });
+});
+
 const UpdateInputSchema = Type.Object({
   volume: Type.Optional(Type.Number({ maximum: 1, minimum: 0 })),
   showTitle: Type.Optional(Type.Boolean()),
@@ -678,6 +657,13 @@ const UpdateInputSchema = Type.Object({
   snake1Shaders: Type.Optional(Type.Any()),
   snake2Shaders: Type.Optional(Type.Any()),
   attachedInputIds: Type.Optional(Type.Array(Type.String())),
+  absolutePosition: Type.Optional(Type.Boolean()),
+  absoluteTop: Type.Optional(Type.Number()),
+  absoluteLeft: Type.Optional(Type.Number()),
+  absoluteWidth: Type.Optional(Type.Number({ minimum: 0 })),
+  absoluteHeight: Type.Optional(Type.Number({ minimum: 0 })),
+  absoluteTransitionDurationMs: Type.Optional(Type.Number({ minimum: 0 })),
+  absoluteTransitionEasing: Type.Optional(Type.String()),
 });
 
 routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(

@@ -274,7 +274,10 @@ export default function IntroView() {
                 }
                 break;
               case 'game': {
-                const result = await addSnakeGameInput(roomId, inputConfig.title);
+                const result = await addSnakeGameInput(
+                  roomId,
+                  inputConfig.title,
+                );
                 inputId = result.inputId;
                 break;
               }
@@ -288,8 +291,17 @@ export default function IntroView() {
           }
         }
 
+        const configIndexToInputId = new Map<number, string>();
+        for (const { inputId, configIndex } of createdInputIds) {
+          configIndexToInputId.set(configIndex, inputId);
+        }
+
         for (const { inputId, configIndex } of createdInputIds) {
           const inputConfig = config.inputs[configIndex];
+          const attachedInputIds = inputConfig.attachedInputIndices
+            ?.map((idx) => configIndexToInputId.get(idx))
+            .filter((id): id is string => !!id);
+
           try {
             await updateInput(roomId, inputId, {
               volume: inputConfig.volume,
@@ -300,12 +312,30 @@ export default function IntroView() {
               textMaxLines: inputConfig.textMaxLines,
               textScrollSpeed: inputConfig.textScrollSpeed,
               textScrollLoop: inputConfig.textScrollLoop,
+              textFontSize: inputConfig.textFontSize,
+              borderColor: inputConfig.borderColor,
+              borderWidth: inputConfig.borderWidth,
               gameBackgroundColor: inputConfig.gameBackgroundColor,
               gameCellGap: inputConfig.gameCellGap,
               gameBoardBorderColor: inputConfig.gameBoardBorderColor,
               gameBoardBorderWidth: inputConfig.gameBoardBorderWidth,
               gameGridLineColor: inputConfig.gameGridLineColor,
               gameGridLineAlpha: inputConfig.gameGridLineAlpha,
+              snakeEventShaders: inputConfig.snakeEventShaders,
+              snake1Shaders: inputConfig.snake1Shaders,
+              snake2Shaders: inputConfig.snake2Shaders,
+              absolutePosition: inputConfig.absolutePosition,
+              absoluteTop: inputConfig.absoluteTop,
+              absoluteLeft: inputConfig.absoluteLeft,
+              absoluteWidth: inputConfig.absoluteWidth,
+              absoluteHeight: inputConfig.absoluteHeight,
+              absoluteTransitionDurationMs:
+                inputConfig.absoluteTransitionDurationMs,
+              absoluteTransitionEasing: inputConfig.absoluteTransitionEasing,
+              attachedInputIds:
+                attachedInputIds && attachedInputIds.length > 0
+                  ? attachedInputIds
+                  : undefined,
             });
           } catch (err) {
             console.warn(`Failed to update input ${inputId}:`, err);

@@ -8,7 +8,7 @@ services:
       SMELTER_WHIP_WHEP_SERVER_PORT: "9072"
       SMELTER_LOGGER_FORMAT: compact
       SMELTER_LOGGER_LEVEL: info 
-      SMELTER_SERVER_LOGGER_LEVEL: "debug,smelter_core=info,naga=info,cosmic_text=info,wgpu_hal=trace,smelter_core::pipeline::instance=warn"
+      SMELTER_SERVER_LOGGER_LEVEL: "debug,smelter_core=info,naga=info,cosmic_text=info,wgpu_hal=warn,smelter_core::pipeline::instance=warn"
       ENVIRONMENT: production
     volumes:
       - ./recordings:/home/smelter/demo/server/recordings

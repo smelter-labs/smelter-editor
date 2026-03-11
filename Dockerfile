@@ -13,7 +13,7 @@ WORKDIR /tmp
 
 RUN apt-get update -y -qq && \
   apt-get install -y \
-    sudo build-essential curl ffmpeg pipx \
+    sudo build-essential curl ffmpeg pipx python3-pip \
     libegl1-mesa-dev libgl1-mesa-dri libxcb-xfixes0-dev mesa-vulkan-drivers && \
   rm -rf /var/lib/apt/lists/*
 
@@ -42,6 +42,7 @@ ENV SMELTER_PATH=/home/smelter/smelter/main_process
 RUN sudo npm install -g pnpm
 
 RUN pipx install streamlink
+RUN pip3 install --break-system-packages opencv-python-headless numpy
 ENV PATH=/home/smelter/.local/bin:$PATH
 
 COPY --chown=$USERNAME:$USERNAME  . /home/$USERNAME/demo

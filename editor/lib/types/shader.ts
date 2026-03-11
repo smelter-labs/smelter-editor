@@ -28,3 +28,11 @@ export type ShaderConfig = {
   enabled: boolean;
   params: ShaderParamConfig[];
 };
+
+export type ShaderPreset = {
+  name: string;
+  shaders: ShaderConfig[];
+};
+
+/** @deprecated Use `SavedItemInfo` from `@/lib/storage-client` instead */
+export type { SavedItemInfo as SavedShaderPresetInfo } from '../storage-client';
