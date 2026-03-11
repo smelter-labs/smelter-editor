@@ -248,8 +248,9 @@ export async function updateInput(
   roomId: string,
   inputId: string,
   opts: Partial<UpdateInputOptions>,
+  sourceId?: string,
 ) {
-  return client.updateInput(roomId, inputId, opts);
+  return client.updateInput(roomId, inputId, opts, sourceId);
 }
 
 export async function disconnectInput(roomId: string, inputId: string) {

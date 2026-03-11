@@ -36,6 +36,7 @@ import {
   type InputWrapper,
 } from './hooks/use-control-panel-state';
 import { useWhipConnections } from './hooks/use-whip-connections';
+import { useRoomWebSocket } from './hooks/use-room-websocket';
 import { useControlPanelEvents } from './hooks/use-control-panel-events';
 import { FxAccordion } from './components/FxAccordion';
 import { AddVideoSection } from './components/AddVideoSection';
@@ -213,6 +214,8 @@ function ControlPanelWithActions({
     isScreenshareActive,
     setIsScreenshareActive,
   } = whipConnections;
+
+  useRoomWebSocket(roomId);
 
   useEffect(() => {
     if (!isGuest || !onGuestStreamChange) return;

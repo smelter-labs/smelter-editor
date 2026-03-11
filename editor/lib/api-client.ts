@@ -67,6 +67,7 @@ export interface SmelterApiClient {
     roomId: string,
     inputId: string,
     opts: Partial<UpdateInputOptions>,
+    sourceId?: string,
   ): Promise<any>;
   disconnectInput(roomId: string, inputId: string): Promise<any>;
   connectInput(roomId: string, inputId: string): Promise<any>;
@@ -107,12 +108,13 @@ async function sendRequest(
   method: 'get' | 'delete' | 'post',
   route: string,
   body?: object,
+  extraHeaders?: Record<string, string>,
 ): Promise<any> {
   console.log(`[smelter] ${method.toUpperCase()} ${route}`, body ?? '');
   const response = await fetch(`${baseUrl}${route}`, {
     method,
     body: body && JSON.stringify(body),
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...extraHeaders },
   });
 
   if (response.status >= 400) {
@@ -267,11 +269,13 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       return await req('delete', `/room/${enc(roomId)}`, {});
     },
 
-    async updateInput(roomId, inputId, opts) {
-      return await req(
+    async updateInput(roomId, inputId, opts, sourceId) {
+      return await sendRequest(
+        baseUrl,
         'post',
         `/room/${enc(roomId)}/input/${enc(inputId)}`,
         opts,
+        sourceId ? { 'x-source-id': sourceId } : undefined,
       );
     },
 
