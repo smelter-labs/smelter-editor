@@ -38,6 +38,7 @@ function getPythonPath(): string {
 
 export class MotionManager {
   private static nextPort = 20000;
+  private static readonly PORT_STRIDE = 2;
 
   private readonly rtpPort: number;
   private readonly outputId: string;
@@ -61,7 +62,8 @@ export class MotionManager {
   private queue: Promise<void> = Promise.resolve();
 
   constructor(roomId: string) {
-    this.rtpPort = MotionManager.nextPort++;
+    this.rtpPort = MotionManager.nextPort;
+    MotionManager.nextPort += MotionManager.PORT_STRIDE;
     this.outputId = `motion::grid::${roomId}`;
   }
 
