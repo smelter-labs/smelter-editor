@@ -4,7 +4,7 @@ import type { ShaderConfig } from '@/lib/types';
 import {
   getRoomInfo,
   updateRoom,
-  updateInput,
+  updateInput as updateInputAction,
   removeInput,
   disconnectInput,
   connectInput,
@@ -45,6 +45,10 @@ import {
   restartService,
 } from '@/app/actions/actions';
 
+// id for browser session.  Sent as `x-source-id` on every update request
+const SESSION_SOURCE_ID =
+  typeof crypto !== 'undefined' ? crypto.randomUUID() : undefined;
+
 const configStorage: StorageClient<object> = {
   save: saveRemoteConfig,
   list: listRemoteConfigs,
@@ -72,7 +76,8 @@ const dashboardLayoutStorage: StorageClient<object> = {
 export const defaultActions: ControlPanelActions = {
   getRoomInfo,
   updateRoom,
-  updateInput,
+  updateInput: (roomId, inputId, opts) =>
+    updateInputAction(roomId, inputId, opts, SESSION_SOURCE_ID),
   removeInput,
   disconnectInput,
   connectInput,
