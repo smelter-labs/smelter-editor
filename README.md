@@ -24,14 +24,17 @@ Real-time video compositing studio built on [Smelter](https://github.com/swmansi
 
 - **7 input types** — Twitch channel, Kick channel, WHIP (camera/screenshare), local MP4, image, text overlay, Snake game
 - **7 layout modes** — grid, primary-on-left, primary-on-top, picture-in-picture, wrapped, wrapped-static, picture-on-picture
-- **16 GPU shaders** — grayscale, ASCII filter, hologram, perspective warp, sine wave, soft shadow, orbiting, star streaks, brightness/contrast, alpha stroke, opacity, circle mask, grid overlay, page flip, color removal, and snake event highlight (WGSL)
+- **Absolute positioning** — pull inputs out of layouts and place them at arbitrary pixel positions with animated transitions (duration, easing)
+- **21 GPU shaders** — grayscale, ASCII filter, hologram, perspective warp, sine wave, soft shadow, orbiting, star streaks, brightness/contrast, alpha stroke, opacity, circle mask, grid overlay, page flip, color removal, snake event highlight, blur, HSL adjust, vignette, chromatic aberration, sharpen (WGSL)
+- **Motion detection** — real-time per-input motion scoring via Python + OpenCV, with SSE streaming, per-input charts, and inline indicators
 - **Room-based** — multiple independent compositing rooms, each with its own inputs, layout, and output stream
 - **News strip** — animated scrolling news/ticker overlay on video output with fade-during-swap support
 - **Transitions** — primary input swap transitions with configurable fade-in/fade-out durations
 - **Recording** — per-room MP4 recording with automatic cleanup
-- **Customizable dashboard** — drag-and-drop panel layout (react-grid-layout) with presets (Default, Wide Video, Compact, Equal Split, Vertical Video) and per-panel visibility toggles
+- **Customizable dashboard** — drag-and-drop panel layout (react-grid-layout) with presets (Default, Wide Video, Compact, Equal Split, Vertical Video), per-panel visibility toggles, and dynamic motion panels per input
+- **Server-side storage** — generic CRUD for room configs, shader presets, and dashboard layouts with save/load/delete modals
 - **Voice commands** — speech-to-text command system with macros
-- **Room config export/import** — save and restore full room configurations as JSON
+- **Room config export/import** — save and restore full room configurations as JSON (local file or server)
 - **Keyboard shortcuts** — keyboard-driven workflow support
 - **Snake game input** — multiplayer Snake rendered as a video input with event-driven shader effects and per-player shader presets
 - **Input renderer registry** — pluggable input type rendering system
@@ -43,6 +46,7 @@ Real-time video compositing studio built on [Smelter](https://github.com/swmansi
 - **GPU** (recommended) — NVIDIA or AMD for hardware-accelerated rendering. Falls back to CPU if no GPU is available.
 - **streamlink** — for ingesting Twitch/Kick HLS streams (`pipx install streamlink`)
 - **ffmpeg**
+- **Python 3** + `opencv-python-headless` + `numpy` — for motion detection (auto-installed into `server/motion/.venv/` on first use, or install globally: `pip3 install opencv-python-headless numpy`)
 
 ## Quick Start
 
@@ -147,6 +151,7 @@ For AMD GPUs, uncomment the `devices` section and comment out `gpus`/`runtime` i
 | `ENVIRONMENT` | server | `production` enables Vulkan encoder and production WHEP/WHIP URLs |
 | `LAYOUT` | server | `boxed` enables the blessed TUI dashboard |
 | `SMELTER_SNAKE_VISUAL_SPEED_MULTIPLIER` | server | Snake interpolation speed (default: `1.25`) |
+| `MOTION_PYTHON_PATH` | server | Override Python binary for motion detection (default: auto-detect) |
 
 ## Project Structure
 
@@ -167,13 +172,14 @@ For AMD GPUs, uncomment the `devices` section and comment out `gpus`/`runtime` i
 │   │   ├── room-page/         # Room view + WHEP player
 │   │   ├── ui/                # shadcn/ui components
 │   │   └── voice-action-feedback/ # Voice command feedback overlay
-│   ├── hooks/                 # Custom React hooks
+│   ├── hooks/                 # Custom React hooks (motion-scores, motion-history)
 │   ├── lib/
 │   │   ├── types/             # Shared TypeScript types
 │   │   ├── voice/             # Speech-to-text commands
 │   │   ├── webrtc/            # WebRTC client utilities
 │   │   ├── api-client.ts      # API client interface
 │   │   ├── api-context.tsx    # API context provider
+│   │   ├── storage-client.ts  # Generic storage CRUD client
 │   │   ├── room-config.ts     # Config export/import
 │   │   ├── resolution.ts      # Resolution presets
 │   │   ├── snake-game-types.ts # Snake game type definitions
@@ -191,8 +197,9 @@ For AMD GPUs, uncomment the `devices` section and comment out `gpus`/`runtime` i
 │   │   │   ├── App.tsx        # Root rendering component
 │   │   │   └── store.ts       # Zustand store (per room)
 │   │   ├── inputs/            # Input rendering + renderer registry
+│   │   ├── motion/            # Motion detection (MotionManager, MotionScene)
 │   │   ├── snakeGame/         # Snake game module
-│   │   ├── server/            # Fastify routes, room/server state
+│   │   ├── server/            # Fastify routes, room/server state, storage routes
 │   │   ├── shaders/           # Shader definitions
 │   │   ├── types/             # Shared TypeScript types
 │   │   ├── twitch/            # Twitch integration
@@ -201,7 +208,10 @@ For AMD GPUs, uncomment the `devices` section and comment out `gpus`/`runtime` i
 │   │   ├── mp4/               # MP4 asset management
 │   │   ├── pictures/          # Image asset management
 │   │   └── utils/             # Server utilities
+│   ├── motion/                # Python motion detector script + requirements
 │   ├── configs/               # Saved room configurations
+│   ├── shader-presets/        # Saved shader presets
+│   ├── dashboard-layouts/     # Saved dashboard layouts
 │   ├── shaders/               # WGSL shader source files
 │   ├── mp4s/                  # Static MP4 assets
 │   ├── pictures/              # Static image assets

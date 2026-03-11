@@ -4,6 +4,18 @@ import { Type } from '@sinclair/typebox';
 import type { Static, TSchema } from '@sinclair/typebox';
 import type { FastifyInstance } from 'fastify';
 
+function safeFileName(fileName: string): string {
+  if (
+    fileName.includes('..') ||
+    fileName.includes('/') ||
+    fileName.includes('\\') ||
+    !fileName.endsWith('.json')
+  ) {
+    throw Object.assign(new Error('Invalid file name'), { statusCode: 400 });
+  }
+  return fileName;
+}
+
 export interface StorageRouteOptions {
   routePrefix: string;
   dirPath: string;
@@ -110,7 +122,7 @@ export function registerStorageRoutes(
 
   // GET /:fileName — load single item
   routes.get<FileParams>(`${routePrefix}/:fileName`, async (req, res) => {
-    const { fileName } = req.params;
+    const fileName = safeFileName(req.params.fileName);
     const filePath = path.join(dirPath, fileName);
 
     if (!(await pathExists(filePath))) {
@@ -145,7 +157,7 @@ export function registerStorageRoutes(
       `${routePrefix}/:fileName`,
       { schema: { body: UpdateSchema } },
       async (req, res) => {
-        const { fileName } = req.params;
+        const fileName = safeFileName(req.params.fileName);
         const filePath = path.join(dirPath, fileName);
 
         if (!(await pathExists(filePath))) {
@@ -191,7 +203,7 @@ export function registerStorageRoutes(
 
   // DELETE /:fileName — delete item
   routes.delete<FileParams>(`${routePrefix}/:fileName`, async (req, res) => {
-    const { fileName } = req.params;
+    const fileName = safeFileName(req.params.fileName);
     const filePath = path.join(dirPath, fileName);
 
     if (!(await pathExists(filePath))) {
