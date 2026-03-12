@@ -169,6 +169,7 @@ export function useTimelinePlayback(
   const eventTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const appliedBlockSettingsRef = useRef<Map<string, string>>(new Map());
   const mp4RestartedRef = useRef<Map<string, Mp4RestartKey>>(new Map());
+  const lastAppliedOrderRef = useRef<string>('');
 
   const inputsRef = useRef(inputs);
   useEffect(() => {
@@ -325,6 +326,21 @@ export function useTimelinePlayback(
     [roomId, refreshState],
   );
 
+  /** Send updated inputOrder to the server if the active set has changed. */
+  const applyOrderIfChanged = useCallback(
+    (timeMs: number) => {
+      const snap = { ...stateRef.current, playheadMs: timeMs };
+      const order = getActiveOrder(snap);
+      const key = order.join(',');
+      if (key === lastAppliedOrderRef.current || order.length === 0) return;
+      lastAppliedOrderRef.current = key;
+      updateRoom(roomId, { inputOrder: order }).catch((err) =>
+        console.warn('Timeline: failed to apply order', err),
+      );
+    },
+    [roomId],
+  );
+
   /** Snapshot current server state before playing. */
   const snapshotPrePlayState = useCallback(() => {
     const hiddenInputIds = new Set<string>();
@@ -394,6 +410,7 @@ export function useTimelinePlayback(
     playStartRef.current = null;
     eventsRef.current = [];
     nextEventIndexRef.current = 0;
+    lastAppliedOrderRef.current = '';
     setPlaying(false);
 
     await restorePrePlayState();
@@ -501,13 +518,14 @@ export function useTimelinePlayback(
         );
       }
 
+      applyOrderIfChanged(event.timeMs);
       void applyBlockSettingsAtTime(event.timeMs);
 
       scheduleNextEvent();
     };
 
     eventTimerRef.current = setTimeout(fire, Math.max(0, delayMs));
-  }, [roomId, applyBlockSettingsAtTime]);
+  }, [roomId, applyBlockSettingsAtTime, applyOrderIfChanged]);
 
   /** Start playback — animate playhead and fire events at clip edges. */
   const play = useCallback(() => {
@@ -531,12 +549,8 @@ export function useTimelinePlayback(
     void applyBlockSettingsAtTime(state.playheadMs);
 
     // Apply input order based on track order
-    const order = getActiveOrder(state);
-    if (order.length > 0) {
-      updateRoom(roomId, { inputOrder: order }).catch((err) =>
-        console.warn('Timeline: failed to apply initial order', err),
-      );
-    }
+    lastAppliedOrderRef.current = '';
+    applyOrderIfChanged(state.playheadMs);
 
     // Start rAF loop for playhead animation
     const tick = () => {
@@ -565,7 +579,7 @@ export function useTimelinePlayback(
     setPlayhead,
     applyDesiredState,
     applyBlockSettingsAtTime,
-    roomId,
+    applyOrderIfChanged,
     scheduleNextEvent,
   ]);
 
@@ -599,12 +613,8 @@ export function useTimelinePlayback(
       void applyDesiredState(desired);
       void applyBlockSettingsAtTime(ms);
 
-      const order = getActiveOrder(snap);
-      if (order.length > 0) {
-        updateRoom(roomId, { inputOrder: order }).catch((err) =>
-          console.warn('Timeline: failed to apply order after seek', err),
-        );
-      }
+      lastAppliedOrderRef.current = '';
+      applyOrderIfChanged(ms);
 
       scheduleNextEvent();
     },
@@ -612,7 +622,7 @@ export function useTimelinePlayback(
       setPlayhead,
       applyDesiredState,
       applyBlockSettingsAtTime,
-      roomId,
+      applyOrderIfChanged,
       scheduleNextEvent,
     ],
   );
@@ -626,15 +636,9 @@ export function useTimelinePlayback(
     await applyDesiredState(desired);
     await applyBlockSettingsAtTime(state.playheadMs);
 
-    const order = getActiveOrder(state);
-    if (order.length > 0) {
-      try {
-        await updateRoom(roomId, { inputOrder: order });
-      } catch (err) {
-        console.warn('Timeline: failed to apply order', err);
-      }
-    }
-  }, [inputs, state, roomId, applyDesiredState, applyBlockSettingsAtTime]);
+    lastAppliedOrderRef.current = '';
+    applyOrderIfChanged(state.playheadMs);
+  }, [inputs, state, applyDesiredState, applyBlockSettingsAtTime, applyOrderIfChanged]);
 
   // Recompute events when the timeline structure changes during playback,
   // or re-apply desired state when structure changes while paused.
@@ -650,6 +654,7 @@ export function useTimelinePlayback(
         eventTimerRef.current = null;
       }
 
+      applyOrderIfChanged(state.playheadMs);
       scheduleNextEvent();
     } else if (!state.isPlaying) {
       // When not playing, re-apply visibility so the preview stays in sync
@@ -664,6 +669,7 @@ export function useTimelinePlayback(
     scheduleNextEvent,
     applyDesiredState,
     applyBlockSettingsAtTime,
+    applyOrderIfChanged,
   ]);
 
   return {
