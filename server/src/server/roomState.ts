@@ -1153,7 +1153,7 @@ export class RoomState {
         return config;
       });
 
-    this.output.store.getState().updateState(inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap, this.swapFadeOutDurationMs, this.newsStripEnabled);
+    this.output.store.getState().updateState([...inputs].reverse(), this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap, this.swapFadeOutDurationMs, this.newsStripEnabled);
   }
 
   public hideInput(inputId: string, activeTransition?: { type: string; durationMs: number; direction: 'in' | 'out' }) {
