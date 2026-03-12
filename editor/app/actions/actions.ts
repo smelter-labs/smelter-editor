@@ -260,12 +260,12 @@ export async function connectInput(roomId: string, inputId: string) {
   return client.connectInput(roomId, inputId);
 }
 
-export async function hideInput(roomId: string, inputId: string) {
-  return client.hideInput(roomId, inputId);
+export async function hideInput(roomId: string, inputId: string, activeTransition?: { type: string; durationMs: number; direction: 'in' | 'out' }) {
+  return client.hideInput(roomId, inputId, activeTransition);
 }
 
-export async function showInput(roomId: string, inputId: string) {
-  return client.showInput(roomId, inputId);
+export async function showInput(roomId: string, inputId: string, activeTransition?: { type: string; durationMs: number; direction: 'in' | 'out' }) {
+  return client.showInput(roomId, inputId, activeTransition);
 }
 
 export async function toggleMotionDetection(
@@ -274,6 +274,19 @@ export async function toggleMotionDetection(
   enabled: boolean,
 ): Promise<void> {
   return client.toggleMotionDetection(roomId, inputId, enabled);
+}
+
+export async function restartMp4Input(
+  roomId: string,
+  inputId: string,
+  playFromMs: number,
+  loop: boolean,
+): Promise<void> {
+  return client.restartMp4Input(roomId, inputId, playFromMs, loop);
+}
+
+export async function getMp4Duration(fileName: string): Promise<number> {
+  return client.getMp4Duration(fileName);
 }
 
 export async function restartService(): Promise<void> {

@@ -432,14 +432,16 @@ function ControlPanelInner({
       ? inputs.find((i) => i.inputId === openFxInputId)!
       : null;
 
-  const [selectedTimelineClip, setSelectedTimelineClip] =
-    useState<SelectedTimelineClip | null>(null);
+  const [selectedTimelineClips, setSelectedTimelineClips] = useState<
+    SelectedTimelineClip[]
+  >([]);
 
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ clip: SelectedTimelineClip | null }>)
-        .detail;
-      setSelectedTimelineClip(detail?.clip ?? null);
+      const detail = (
+        e as CustomEvent<{ clips: SelectedTimelineClip[] }>
+      ).detail;
+      setSelectedTimelineClips(detail?.clips ?? []);
     };
     window.addEventListener('smelter:timeline:selected-clip', handler);
     return () =>
@@ -520,8 +522,8 @@ function ControlPanelInner({
       <div className='h-full overflow-y-auto p-3'>
         <BlockClipPropertiesPanel
           roomId={roomId}
-          selectedTimelineClip={selectedTimelineClip}
-          onSelectedTimelineClipChange={setSelectedTimelineClip}
+          selectedTimelineClips={selectedTimelineClips}
+          onSelectedTimelineClipsChange={setSelectedTimelineClips}
           inputs={inputs}
           availableShaders={availableShaders}
           handleRefreshState={handleRefreshState}

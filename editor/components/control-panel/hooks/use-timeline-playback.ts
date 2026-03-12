@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useEffect } from 'react';
-import type { Input } from '@/lib/types';
+import type { Input, TransitionConfig } from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
 import type { TimelineState } from './use-timeline-state';
 
@@ -11,8 +11,9 @@ type DesiredState = Map<string, boolean>; // inputId → should be visible
 
 type PlaybackEvent = {
   timeMs: number;
-  type: 'connect' | 'disconnect';
+  type: 'connect' | 'disconnect' | 'transition-in' | 'transition-out';
   inputId: string;
+  transition?: TransitionConfig;
 };
 
 // ── Helpers ──────────────────────────────────────────────
@@ -85,6 +86,29 @@ function compileEvents(state: TimelineState, fromMs: number): PlaybackEvent[] {
           inputId: clip.inputId,
         });
       }
+
+      const intro = clip.blockSettings.introTransition;
+      if (intro && clip.startMs > fromMs) {
+        events.push({
+          timeMs: clip.startMs,
+          type: 'transition-in',
+          inputId: clip.inputId,
+          transition: intro,
+        });
+      }
+
+      const outro = clip.blockSettings.outroTransition;
+      if (outro) {
+        const outroStartMs = clip.endMs - outro.durationMs;
+        if (outroStartMs > fromMs) {
+          events.push({
+            timeMs: outroStartMs,
+            type: 'transition-out',
+            inputId: clip.inputId,
+            transition: outro,
+          });
+        }
+      }
     }
   }
 
@@ -113,6 +137,12 @@ function getActiveClipsByInputAt(
 
 // ── Hook ─────────────────────────────────────────────────
 
+type Mp4RestartKey = `${number}|${number}|${boolean}`;
+
+function isMp4InputId(inputId: string): boolean {
+  return inputId.includes('::local::');
+}
+
 export function useTimelinePlayback(
   roomId: string,
   inputs: Input[],
@@ -122,7 +152,8 @@ export function useTimelinePlayback(
   refreshState: () => Promise<void>,
   structureRevision: number,
 ) {
-  const { hideInput, showInput, updateInput, updateRoom } = useActions();
+  const { hideInput, showInput, updateInput, updateRoom, restartMp4Input } =
+    useActions();
   const appliedStateRef = useRef<DesiredState>(new Map());
   const rafRef = useRef<number | null>(null);
   const playStartRef = useRef<{ wallMs: number; playheadMs: number } | null>(
@@ -137,6 +168,8 @@ export function useTimelinePlayback(
   const nextEventIndexRef = useRef(0);
   const eventTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const appliedBlockSettingsRef = useRef<Map<string, string>>(new Map());
+  const mp4RestartedRef = useRef<Map<string, Mp4RestartKey>>(new Map());
+  const lastAppliedOrderRef = useRef<string>('');
 
   const inputsRef = useRef(inputs);
   useEffect(() => {
@@ -173,8 +206,24 @@ export function useTimelinePlayback(
           !input.hidden;
 
         if (shouldBeVisible && !isCurrentlyVisible) {
+          // Check if there's an intro transition for this input
+          let introTransition: { type: string; durationMs: number; direction: 'in' | 'out' } | undefined;
+          const t = stateRef.current.playheadMs;
+          for (const track of stateRef.current.tracks) {
+            for (const clip of track.clips) {
+              if (clip.inputId === inputId && t >= clip.startMs && t < clip.endMs && clip.blockSettings.introTransition) {
+                introTransition = {
+                  type: clip.blockSettings.introTransition.type,
+                  durationMs: clip.blockSettings.introTransition.durationMs,
+                  direction: 'in',
+                };
+                break;
+              }
+            }
+            if (introTransition) break;
+          }
           promises.push(
-            showInput(roomId, inputId).catch((err) =>
+            showInput(roomId, inputId, introTransition).catch((err) =>
               console.warn(`Timeline: failed to show ${inputId}`, err),
             ),
           );
@@ -202,6 +251,27 @@ export function useTimelinePlayback(
       const active = getActiveClipsByInputAt(stateRef.current, timeMs);
       const updates: Promise<unknown>[] = [];
       for (const [inputId, clip] of active.entries()) {
+        // Handle MP4 restart when play-from or loop settings differ
+        if (isMp4InputId(inputId)) {
+          const playFromMs = clip.blockSettings.mp4PlayFromMs ?? 0;
+          const loop = clip.blockSettings.mp4Loop !== false;
+          const key: Mp4RestartKey = loop
+            ? `0|${playFromMs}|${loop}`
+            : `${clip.startMs}|${playFromMs}|${loop}`;
+          if (mp4RestartedRef.current.get(inputId) !== key) {
+            mp4RestartedRef.current.set(inputId, key);
+            updates.push(
+              restartMp4Input(roomId, inputId, playFromMs, loop).catch(
+                (err) =>
+                  console.warn(
+                    `Timeline: failed to restart MP4 ${inputId}`,
+                    err,
+                  ),
+              ),
+            );
+          }
+        }
+
         const serialized = JSON.stringify(clip.blockSettings);
         if (appliedBlockSettingsRef.current.get(inputId) === serialized)
           continue;
@@ -256,6 +326,21 @@ export function useTimelinePlayback(
     [roomId, refreshState],
   );
 
+  /** Send updated inputOrder to the server if the active set has changed. */
+  const applyOrderIfChanged = useCallback(
+    (timeMs: number) => {
+      const snap = { ...stateRef.current, playheadMs: timeMs };
+      const order = getActiveOrder(snap);
+      const key = order.join(',');
+      if (key === lastAppliedOrderRef.current || order.length === 0) return;
+      lastAppliedOrderRef.current = key;
+      updateRoom(roomId, { inputOrder: order }).catch((err) =>
+        console.warn('Timeline: failed to apply order', err),
+      );
+    },
+    [roomId],
+  );
+
   /** Snapshot current server state before playing. */
   const snapshotPrePlayState = useCallback(() => {
     const hiddenInputIds = new Set<string>();
@@ -271,6 +356,7 @@ export function useTimelinePlayback(
       inputs.map((i) => [i.inputId, !i.hidden]),
     );
     appliedBlockSettingsRef.current = new Map();
+    mp4RestartedRef.current.clear();
   }, [inputs]);
 
   /** Restore server state to pre-play snapshot. */
@@ -287,6 +373,14 @@ export function useTimelinePlayback(
         promises.push(showInput(roomId, input.inputId).catch(() => {}));
       }
     }
+
+    // Restore any MP4 inputs that were restarted during playback
+    for (const [inputId] of mp4RestartedRef.current) {
+      promises.push(
+        restartMp4Input(roomId, inputId, 0, true).catch(() => {}),
+      );
+    }
+    mp4RestartedRef.current.clear();
 
     if (snapshot.inputOrder.length > 0) {
       promises.push(
@@ -316,6 +410,7 @@ export function useTimelinePlayback(
     playStartRef.current = null;
     eventsRef.current = [];
     nextEventIndexRef.current = 0;
+    lastAppliedOrderRef.current = '';
     setPlaying(false);
 
     await restorePrePlayState();
@@ -343,7 +438,27 @@ export function useTimelinePlayback(
 
       if (event.type === 'connect' && event.inputId) {
         appliedStateRef.current.set(event.inputId, true);
-        showInput(roomId, event.inputId).catch((err) =>
+        // Look ahead for a transition-in event at the same time for this input
+        const nextEvents = eventsRef.current;
+        let mergedTransition: { type: string; durationMs: number; direction: 'in' | 'out' } | undefined;
+        for (let j = idx + 1; j < nextEvents.length; j++) {
+          if (nextEvents[j].timeMs !== event.timeMs) break;
+          if (
+            nextEvents[j].type === 'transition-in' &&
+            nextEvents[j].inputId === event.inputId &&
+            nextEvents[j].transition
+          ) {
+            mergedTransition = {
+              type: nextEvents[j].transition!.type,
+              durationMs: nextEvents[j].transition!.durationMs,
+              direction: 'in',
+            };
+            // Remove the transition-in event so it won't fire separately
+            nextEvents.splice(j, 1);
+            break;
+          }
+        }
+        showInput(roomId, event.inputId, mergedTransition).catch((err) =>
           console.warn(`Timeline: failed to show ${event.inputId}`, err),
         );
       } else if (event.type === 'disconnect' && event.inputId) {
@@ -362,15 +477,55 @@ export function useTimelinePlayback(
             console.warn(`Timeline: failed to hide ${event.inputId}`, err),
           );
         }
+      } else if (event.type === 'transition-in' && event.transition) {
+        updateInput(roomId, event.inputId, {
+          volume:
+            inputsRef.current.find((i) => i.inputId === event.inputId)
+              ?.volume ?? 1,
+          activeTransition: {
+            ...event.transition,
+            direction: 'in',
+            startedAtMs: 0,
+          },
+        }).catch((err) =>
+          console.warn(
+            `Timeline: failed to start transition-in for ${event.inputId}`,
+            err,
+          ),
+        );
+      } else if (event.type === 'transition-out' && event.transition) {
+        appliedStateRef.current.set(event.inputId, false);
+        // Remove the corresponding disconnect event — hideInput will auto-hide after transition
+        const nextEvents = eventsRef.current;
+        for (let j = nextEventIndexRef.current; j < nextEvents.length; j++) {
+          if (
+            nextEvents[j].type === 'disconnect' &&
+            nextEvents[j].inputId === event.inputId
+          ) {
+            nextEvents.splice(j, 1);
+            break;
+          }
+        }
+        hideInput(roomId, event.inputId, {
+          type: event.transition.type,
+          durationMs: event.transition.durationMs,
+          direction: 'out',
+        }).catch((err) =>
+          console.warn(
+            `Timeline: failed to start transition-out for ${event.inputId}`,
+            err,
+          ),
+        );
       }
 
+      applyOrderIfChanged(event.timeMs);
       void applyBlockSettingsAtTime(event.timeMs);
 
       scheduleNextEvent();
     };
 
     eventTimerRef.current = setTimeout(fire, Math.max(0, delayMs));
-  }, [roomId, applyBlockSettingsAtTime]);
+  }, [roomId, applyBlockSettingsAtTime, applyOrderIfChanged]);
 
   /** Start playback — animate playhead and fire events at clip edges. */
   const play = useCallback(() => {
@@ -394,12 +549,8 @@ export function useTimelinePlayback(
     void applyBlockSettingsAtTime(state.playheadMs);
 
     // Apply input order based on track order
-    const order = getActiveOrder(state);
-    if (order.length > 0) {
-      updateRoom(roomId, { inputOrder: order }).catch((err) =>
-        console.warn('Timeline: failed to apply initial order', err),
-      );
-    }
+    lastAppliedOrderRef.current = '';
+    applyOrderIfChanged(state.playheadMs);
 
     // Start rAF loop for playhead animation
     const tick = () => {
@@ -428,7 +579,7 @@ export function useTimelinePlayback(
     setPlayhead,
     applyDesiredState,
     applyBlockSettingsAtTime,
-    roomId,
+    applyOrderIfChanged,
     scheduleNextEvent,
   ]);
 
@@ -462,12 +613,8 @@ export function useTimelinePlayback(
       void applyDesiredState(desired);
       void applyBlockSettingsAtTime(ms);
 
-      const order = getActiveOrder(snap);
-      if (order.length > 0) {
-        updateRoom(roomId, { inputOrder: order }).catch((err) =>
-          console.warn('Timeline: failed to apply order after seek', err),
-        );
-      }
+      lastAppliedOrderRef.current = '';
+      applyOrderIfChanged(ms);
 
       scheduleNextEvent();
     },
@@ -475,7 +622,7 @@ export function useTimelinePlayback(
       setPlayhead,
       applyDesiredState,
       applyBlockSettingsAtTime,
-      roomId,
+      applyOrderIfChanged,
       scheduleNextEvent,
     ],
   );
@@ -489,15 +636,9 @@ export function useTimelinePlayback(
     await applyDesiredState(desired);
     await applyBlockSettingsAtTime(state.playheadMs);
 
-    const order = getActiveOrder(state);
-    if (order.length > 0) {
-      try {
-        await updateRoom(roomId, { inputOrder: order });
-      } catch (err) {
-        console.warn('Timeline: failed to apply order', err);
-      }
-    }
-  }, [inputs, state, roomId, applyDesiredState, applyBlockSettingsAtTime]);
+    lastAppliedOrderRef.current = '';
+    applyOrderIfChanged(state.playheadMs);
+  }, [inputs, state, applyDesiredState, applyBlockSettingsAtTime, applyOrderIfChanged]);
 
   // Recompute events when the timeline structure changes during playback,
   // or re-apply desired state when structure changes while paused.
@@ -513,6 +654,7 @@ export function useTimelinePlayback(
         eventTimerRef.current = null;
       }
 
+      applyOrderIfChanged(state.playheadMs);
       scheduleNextEvent();
     } else if (!state.isPlaying) {
       // When not playing, re-apply visibility so the preview stays in sync
@@ -527,6 +669,7 @@ export function useTimelinePlayback(
     scheduleNextEvent,
     applyDesiredState,
     applyBlockSettingsAtTime,
+    applyOrderIfChanged,
   ]);
 
   return {

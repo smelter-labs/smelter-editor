@@ -1,6 +1,6 @@
 import type { StoreApi } from 'zustand';
 import { createStore } from 'zustand';
-import type { ShaderConfig, Resolution, Layout } from '../types';
+import type { ShaderConfig, Resolution, Layout, ActiveTransition } from '../types';
 import { Layouts } from '../types';
 import { createContext, useContext } from 'react';
 import { useStore } from 'zustand';
@@ -44,6 +44,7 @@ export type InputConfig = {
   absoluteHeight?: number;
   absoluteTransitionDurationMs?: number;
   absoluteTransitionEasing?: string;
+  activeTransition?: ActiveTransition;
 };
 
 export type RoomStore = {

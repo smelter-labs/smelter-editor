@@ -2,6 +2,11 @@
 
 // ─── V2 types (current) ───────────────────────────────────────────────
 
+export type StoredTransitionConfig = {
+  type: string;
+  durationMs: number;
+};
+
 export type StoredClip = {
   id: string;
   inputId: string;
@@ -24,7 +29,40 @@ export type StoredClip = {
     textScrollSpeed?: number;
     textScrollLoop?: boolean;
     textFontSize?: number;
+    borderColor?: string;
+    borderWidth?: number;
     attachedInputIds?: string[];
+    gameBackgroundColor?: string;
+    gameCellGap?: number;
+    gameBoardBorderColor?: string;
+    gameBoardBorderWidth?: number;
+    gameGridLineColor?: string;
+    gameGridLineAlpha?: number;
+    snakeEventShaders?: Record<string, unknown>;
+    snake1Shaders?: {
+      shaderName: string;
+      shaderId: string;
+      enabled: boolean;
+      params: { paramName: string; paramValue: number | string }[];
+    }[];
+    snake2Shaders?: {
+      shaderName: string;
+      shaderId: string;
+      enabled: boolean;
+      params: { paramName: string; paramValue: number | string }[];
+    }[];
+    absolutePosition?: boolean;
+    absoluteTop?: number;
+    absoluteLeft?: number;
+    absoluteWidth?: number;
+    absoluteHeight?: number;
+    absoluteTransitionDurationMs?: number;
+    absoluteTransitionEasing?: string;
+    mp4PlayFromMs?: number;
+    mp4Loop?: boolean;
+    mp4DurationMs?: number;
+    introTransition?: StoredTransitionConfig;
+    outroTransition?: StoredTransitionConfig;
   };
 };
 

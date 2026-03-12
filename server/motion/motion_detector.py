@@ -21,13 +21,13 @@ import numpy as np
 
 
 def has_nvdec() -> bool:
-    """Check if ffmpeg supports CUDA/NVDEC hardware decoding."""
+    """Check if ffmpeg has the h264_cuvid decoder (NVDEC hardware decoding)."""
     try:
         result = subprocess.run(
-            ["ffmpeg", "-hwaccels"],
+            ["ffmpeg", "-decoders"],
             capture_output=True, text=True, timeout=5,
         )
-        return "cuda" in result.stdout.lower()
+        return "h264_cuvid" in result.stdout
     except Exception:
         return False
 
@@ -67,7 +67,7 @@ def main():
 
         ffmpeg_cmd = ["ffmpeg"]
         if use_hwaccel:
-            ffmpeg_cmd += ["-hwaccel", "cuda"]
+            ffmpeg_cmd += ["-hwaccel", "cuda", "-c:v", "h264_cuvid"]
         ffmpeg_cmd += [
             "-probesize", "5000000",
             "-analyzeduration", "5000000",
@@ -76,8 +76,6 @@ def main():
             "-reorder_queue_size", "0",
             "-i", sdp_path,
         ]
-        if use_hwaccel:
-            ffmpeg_cmd += ["-c:v", "h264_cuvid"]
         ffmpeg_cmd += [
             "-f", "rawvideo",
             "-pix_fmt", "bgr24",

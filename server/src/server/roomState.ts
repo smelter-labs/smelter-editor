@@ -7,7 +7,7 @@ import type { TwitchStreamInfo } from '../twitch/TwitchApi';
 import { sleep } from '../utils';
 import type { SnakeGameState, SnakeEventShaderConfig, ActiveSnakeEffect, SnakeEventType } from '../snakeGame/types';
 import type { InputConfig } from '../app/store';
-import type { Layout, ShaderConfig, StreamMonitor, WhipMonitor } from '../types';
+import type { Layout, ShaderConfig, StreamMonitor, WhipMonitor, ActiveTransition } from '../types';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
 import { createDefaultSnakeGameInputState, DEFAULT_SNAKE_EVENT_SHADERS, buildUpdatedSnakeGameState, processSnakeGameEvents } from '../snakeGame/snakeGameState';
 import { KickChannelMonitor } from '../kick/KickChannelMonitor';
@@ -36,6 +36,7 @@ export type RoomInputState = {
   absoluteHeight?: number;
   absoluteTransitionDurationMs?: number;
   absoluteTransitionEasing?: string;
+  activeTransition?: ActiveTransition;
   motionScore?: number;
   motionEnabled: boolean;
   metadata: {
@@ -95,6 +96,11 @@ type UpdateInputOptions = {
   absoluteHeight: number;
   absoluteTransitionDurationMs: number;
   absoluteTransitionEasing: string;
+  activeTransition: {
+    type: string;
+    durationMs: number;
+    direction: 'in' | 'out';
+  };
 };
 
 export type RegisterInputOptions =
@@ -160,6 +166,7 @@ function cloneDefaultLogoShaders(): ShaderConfig[] {
 
 export class RoomState {
   private inputs: RoomInputState[];
+  private transitionTimers: Map<string, NodeJS.Timeout> = new Map();
   private motionManager: MotionManager;
   private motionScoreListeners: Set<(scores: Record<string, number>) => void> = new Set();
   private layout: Layout = 'picture-in-picture';
@@ -817,6 +824,26 @@ export class RoomState {
     });
   }
 
+  public async restartMp4Input(inputId: string, playFromMs: number, loop: boolean): Promise<void> {
+    const input = this.getInput(inputId);
+    if (input.type !== 'local-mp4') {
+      throw new Error(`Input ${inputId} is not a local-mp4 input`);
+    }
+    if (input.status !== 'connected') {
+      throw new Error(`Input ${inputId} is not connected`);
+    }
+
+    await SmelterInstance.unregisterInput(inputId);
+
+    const offsetMs = SmelterInstance.getPipelineTimeMs() - playFromMs;
+    await SmelterInstance.registerInput(inputId, {
+      type: 'mp4',
+      filePath: input.mp4FilePath,
+      loop,
+      offsetMs,
+    });
+  }
+
   public async disconnectInput(inputId: string) {
     const input = this.getInput(inputId);
     if (input.status === 'disconnected') {
@@ -971,6 +998,30 @@ export class RoomState {
     if (options.absoluteTransitionEasing !== undefined) {
       input.absoluteTransitionEasing = options.absoluteTransitionEasing;
     }
+    if (options.activeTransition !== undefined) {
+      // Cancel any existing auto-clear timer for this input
+      const existingTimer = this.transitionTimers.get(inputId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+        this.transitionTimers.delete(inputId);
+      }
+
+      const { type, durationMs, direction } = options.activeTransition;
+      input.activeTransition = {
+        type: type as ActiveTransition['type'],
+        durationMs,
+        direction,
+        startedAtMs: Date.now(),
+      };
+
+      // Auto-clear after duration
+      const timer = setTimeout(() => {
+        input.activeTransition = undefined;
+        this.transitionTimers.delete(inputId);
+        this.updateStoreWithState();
+      }, durationMs);
+      this.transitionTimers.set(inputId, timer);
+    }
     this.updateStoreWithState();
   }
 
@@ -1071,6 +1122,7 @@ export class RoomState {
       absoluteHeight: input.absoluteHeight,
       absoluteTransitionDurationMs: input.absoluteTransitionDurationMs,
       absoluteTransitionEasing: input.absoluteTransitionEasing,
+      activeTransition: input.activeTransition,
     });
 
     const connectedInputs = this.inputs.filter(input => input.status === 'connected' && !input.hidden);
@@ -1101,18 +1153,72 @@ export class RoomState {
         return config;
       });
 
-    this.output.store.getState().updateState(inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap, this.swapFadeOutDurationMs, this.newsStripEnabled);
+    this.output.store.getState().updateState([...inputs].reverse(), this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap, this.swapFadeOutDurationMs, this.newsStripEnabled);
   }
 
-  public hideInput(inputId: string) {
+  public hideInput(inputId: string, activeTransition?: { type: string; durationMs: number; direction: 'in' | 'out' }) {
     const input = this.getInput(inputId);
-    input.hidden = true;
-    this.updateStoreWithState();
+
+    if (activeTransition) {
+      // Cancel any existing auto-clear timer for this input
+      const existingTimer = this.transitionTimers.get(inputId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+        this.transitionTimers.delete(inputId);
+      }
+
+      const { type, durationMs, direction } = activeTransition;
+      input.activeTransition = {
+        type: type as ActiveTransition['type'],
+        durationMs,
+        direction,
+        startedAtMs: Date.now(),
+      };
+      this.updateStoreWithState();
+
+      // After transition completes, hide the input and clear transition atomically
+      const timer = setTimeout(() => {
+        input.hidden = true;
+        input.activeTransition = undefined;
+        this.transitionTimers.delete(inputId);
+        this.updateStoreWithState();
+      }, durationMs);
+      this.transitionTimers.set(inputId, timer);
+    } else {
+      input.hidden = true;
+      this.updateStoreWithState();
+    }
   }
 
-  public showInput(inputId: string) {
+  public showInput(inputId: string, activeTransition?: { type: string; durationMs: number; direction: 'in' | 'out' }) {
     const input = this.getInput(inputId);
     input.hidden = false;
+
+    if (activeTransition) {
+      // Cancel any existing auto-clear timer for this input
+      const existingTimer = this.transitionTimers.get(inputId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+        this.transitionTimers.delete(inputId);
+      }
+
+      const { type, durationMs, direction } = activeTransition;
+      input.activeTransition = {
+        type: type as ActiveTransition['type'],
+        durationMs,
+        direction,
+        startedAtMs: Date.now(),
+      };
+
+      // Auto-clear after duration
+      const timer = setTimeout(() => {
+        input.activeTransition = undefined;
+        this.transitionTimers.delete(inputId);
+        this.updateStoreWithState();
+      }, durationMs);
+      this.transitionTimers.set(inputId, timer);
+    }
+
     this.updateStoreWithState();
   }
 

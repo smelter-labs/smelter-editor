@@ -54,6 +54,7 @@ export default function LayoutToolbar({
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showLoadModal, setShowLoadModal] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!showPanelMenu) return;
@@ -93,6 +94,30 @@ export default function LayoutToolbar({
   const handleLoadRemote = useCallback(
     (data: object) => {
       onApplyLoadedLayout(data as DashboardLayoutSavedData);
+    },
+    [onApplyLoadedLayout],
+  );
+
+  const handleFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+
+      file
+        .text()
+        .then((text) => {
+          const parsed = JSON.parse(text);
+          const layoutData = parsed.layout ?? parsed;
+          onApplyLoadedLayout(layoutData as DashboardLayoutSavedData);
+        })
+        .catch((err) => {
+          console.error('Failed to load dashboard layout from file:', err);
+        })
+        .finally(() => {
+          if (fileInputRef.current) {
+            fileInputRef.current.value = '';
+          }
+        });
     },
     [onApplyLoadedLayout],
   );
@@ -232,12 +257,20 @@ export default function LayoutToolbar({
         onSaveLocal={handleSaveLocal}
         onSaveRemote={handleSaveRemote}
       />
+      <input
+        ref={fileInputRef}
+        type='file'
+        accept='.json,application/json'
+        className='hidden'
+        onChange={handleFileChange}
+      />
       <GenericLoadModal<object>
         open={showLoadModal}
         onOpenChange={setShowLoadModal}
         title='Load Dashboard Layout'
         description='Choose where to load your dashboard layout from.'
         storage={dashboardLayoutStorage}
+        onLoadLocal={() => fileInputRef.current?.click()}
         onLoadRemote={handleLoadRemote}
         emptyMessage='No saved dashboard layouts found.'
       />

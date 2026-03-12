@@ -1,4 +1,5 @@
 import type { Input, Layout, ShaderConfig } from '@/lib/types';
+import { parseTransitionConfig } from '@/lib/types';
 import type { SnakeEventShaderConfig } from '@/lib/snake-game-types';
 import type {
   Clip,
@@ -226,8 +227,17 @@ export function loadTimelineFromStorage(roomId: string): {
         inputId: c.inputId,
         startMs: c.startMs,
         endMs: c.endMs,
-        blockSettings:
-          c.blockSettings ?? createBlockSettingsFromInput(undefined),
+        blockSettings: c.blockSettings
+          ? {
+              ...c.blockSettings,
+              introTransition: parseTransitionConfig(
+                c.blockSettings.introTransition,
+              ),
+              outroTransition: parseTransitionConfig(
+                c.blockSettings.outroTransition,
+              ),
+            }
+          : createBlockSettingsFromInput(undefined),
       })),
     })),
     totalDurationMs: stored.totalDurationMs,

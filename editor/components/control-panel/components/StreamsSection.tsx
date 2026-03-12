@@ -130,6 +130,7 @@ export function StreamsSection({
           items={visibleWrappers}
           resetVersion={listVersion}
           disableDrag={isGuest || !isWideScreen}
+          keyExtractor={(item) => item.inputId}
           renderItem={(item, index, orderedItems) => {
             const input = inputs.find(
               (input) => input.inputId === item.inputId,
