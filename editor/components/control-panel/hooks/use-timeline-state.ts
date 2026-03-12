@@ -2,8 +2,13 @@
 
 import { useReducer, useEffect, useCallback, useRef, useState } from 'react';
 import type { Input, ShaderConfig, TransitionConfig } from '@/lib/types';
+import { parseTransitionConfig } from '@/lib/types';
 import type { SnakeEventShaderConfig } from '@/lib/snake-game-types';
-import { loadTimeline, saveTimeline } from '@/lib/timeline-storage';
+import {
+  loadTimeline,
+  saveTimeline,
+  type StoredTrack,
+} from '@/lib/timeline-storage';
 
 // ── Types ────────────────────────────────────────────────
 
@@ -228,6 +233,30 @@ function ensureClipBlockSettings(
     ...clip,
     blockSettings: createBlockSettingsFromInput(input),
   };
+}
+
+function storedTracksToTracks(storedTracks: StoredTrack[]): Track[] {
+  return storedTracks.map((t) => ({
+    id: t.id,
+    label: t.label,
+    clips: t.clips.map((c) => ({
+      id: c.id,
+      inputId: c.inputId,
+      startMs: c.startMs,
+      endMs: c.endMs,
+      blockSettings: c.blockSettings
+        ? {
+            ...c.blockSettings,
+            introTransition: parseTransitionConfig(
+              c.blockSettings.introTransition,
+            ),
+            outroTransition: parseTransitionConfig(
+              c.blockSettings.outroTransition,
+            ),
+          }
+        : createBlockSettingsFromInput(undefined),
+    })),
+  }));
 }
 
 function inferTypeFromInputId(inputId: string): string | null {
@@ -946,7 +975,7 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
           (stored.totalDurationMs as number) || DEFAULT_DURATION_MS;
         initial = {
           tracks: normalizeTracks(
-            ((stored.tracks as Track[]) || []) as Track[],
+            storedTracksToTracks(stored.tracks),
             inputs,
             totalDurationMs,
           ),
