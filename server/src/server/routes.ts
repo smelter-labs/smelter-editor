@@ -592,19 +592,37 @@ routes.post<RoomAndInputIdParams>('/room/:roomId/input/:inputId/disconnect', { s
   res.status(200).send({ status: 'ok' });
 });
 
-routes.post<RoomAndInputIdParams>('/room/:roomId/input/:inputId/hide', { schema: { params: RoomAndInputIdParamsSchema } }, async (req, res) => {
+const HideInputBodySchema = Type.Object({
+  activeTransition: Type.Optional(Type.Object({
+    type: Type.String(),
+    durationMs: Type.Number(),
+    direction: Type.Union([Type.Literal('in'), Type.Literal('out')]),
+  })),
+});
+
+routes.post<RoomAndInputIdParams & { Body: Static<typeof HideInputBodySchema> }>('/room/:roomId/input/:inputId/hide', { schema: { params: RoomAndInputIdParamsSchema, body: HideInputBodySchema } }, async (req, res) => {
   const { roomId, inputId } = req.params;
-  console.log('[request] Hide input', { roomId, inputId });
+  const { activeTransition } = req.body ?? {};
+  console.log('[request] Hide input', { roomId, inputId, hasTransition: !!activeTransition });
   const room = state.getRoom(roomId);
-  room.hideInput(inputId);
+  room.hideInput(inputId, activeTransition);
   res.status(200).send({ status: 'ok' });
 });
 
-routes.post<RoomAndInputIdParams>('/room/:roomId/input/:inputId/show', { schema: { params: RoomAndInputIdParamsSchema } }, async (req, res) => {
+const ShowInputBodySchema = Type.Object({
+  activeTransition: Type.Optional(Type.Object({
+    type: Type.String(),
+    durationMs: Type.Number(),
+    direction: Type.Union([Type.Literal('in'), Type.Literal('out')]),
+  })),
+});
+
+routes.post<RoomAndInputIdParams & { Body: Static<typeof ShowInputBodySchema> }>('/room/:roomId/input/:inputId/show', { schema: { params: RoomAndInputIdParamsSchema, body: ShowInputBodySchema } }, async (req, res) => {
   const { roomId, inputId } = req.params;
-  console.log('[request] Show input', { roomId, inputId });
+  const { activeTransition } = req.body ?? {};
+  console.log('[request] Show input', { roomId, inputId, hasTransition: !!activeTransition });
   const room = state.getRoom(roomId);
-  room.showInput(inputId);
+  room.showInput(inputId, activeTransition);
   res.status(200).send({ status: 'ok' });
 });
 

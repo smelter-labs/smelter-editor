@@ -96,6 +96,32 @@ export function hijackConsole() {
 
   interceptStream(process.stdout, origStdoutWrite, 'OUT');
   interceptStream(process.stderr, origStderrWrite, 'ERR');
+
+  // Patch child_process.spawn so that child processes spawned with
+  // stdio:'inherit' (e.g. smelter_main) get piped stdout/stderr routed into
+  // the sysLog panel instead of writing directly to the terminal fd and
+  // corrupting the blessed TUI.
+  const cp = require('child_process');
+  const origSpawn = cp.spawn;
+  cp.spawn = function (cmd: string, args: string[], opts: any) {
+    if (opts?.stdio === 'inherit') {
+      opts = { ...opts, stdio: ['inherit', 'pipe', 'pipe'] };
+    }
+    const child = origSpawn(cmd, args, opts);
+    child.stdout?.on('data', (chunk: Buffer) => {
+      for (const line of chunk.toString().split('\n')) {
+        const t = line.trim();
+        if (t) pushSysLog('OUT', [t]);
+      }
+    });
+    child.stderr?.on('data', (chunk: Buffer) => {
+      for (const line of chunk.toString().split('\n')) {
+        const t = line.trim();
+        if (t) pushSysLog('ERR', [t]);
+      }
+    });
+    return child;
+  };
 }
 
 export function logRequest(method: string, route: string, status: number) {

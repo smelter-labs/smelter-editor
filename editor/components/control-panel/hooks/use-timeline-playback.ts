@@ -205,8 +205,24 @@ export function useTimelinePlayback(
           !input.hidden;
 
         if (shouldBeVisible && !isCurrentlyVisible) {
+          // Check if there's an intro transition for this input
+          let introTransition: { type: string; durationMs: number; direction: 'in' | 'out' } | undefined;
+          const t = stateRef.current.playheadMs;
+          for (const track of stateRef.current.tracks) {
+            for (const clip of track.clips) {
+              if (clip.inputId === inputId && t >= clip.startMs && t < clip.endMs && clip.blockSettings.introTransition) {
+                introTransition = {
+                  type: clip.blockSettings.introTransition.type,
+                  durationMs: clip.blockSettings.introTransition.durationMs,
+                  direction: 'in',
+                };
+                break;
+              }
+            }
+            if (introTransition) break;
+          }
           promises.push(
-            showInput(roomId, inputId).catch((err) =>
+            showInput(roomId, inputId, introTransition).catch((err) =>
               console.warn(`Timeline: failed to show ${inputId}`, err),
             ),
           );
@@ -405,7 +421,27 @@ export function useTimelinePlayback(
 
       if (event.type === 'connect' && event.inputId) {
         appliedStateRef.current.set(event.inputId, true);
-        showInput(roomId, event.inputId).catch((err) =>
+        // Look ahead for a transition-in event at the same time for this input
+        const nextEvents = eventsRef.current;
+        let mergedTransition: { type: string; durationMs: number; direction: 'in' | 'out' } | undefined;
+        for (let j = idx + 1; j < nextEvents.length; j++) {
+          if (nextEvents[j].timeMs !== event.timeMs) break;
+          if (
+            nextEvents[j].type === 'transition-in' &&
+            nextEvents[j].inputId === event.inputId &&
+            nextEvents[j].transition
+          ) {
+            mergedTransition = {
+              type: nextEvents[j].transition!.type,
+              durationMs: nextEvents[j].transition!.durationMs,
+              direction: 'in',
+            };
+            // Remove the transition-in event so it won't fire separately
+            nextEvents.splice(j, 1);
+            break;
+          }
+        }
+        showInput(roomId, event.inputId, mergedTransition).catch((err) =>
           console.warn(`Timeline: failed to show ${event.inputId}`, err),
         );
       } else if (event.type === 'disconnect' && event.inputId) {
@@ -424,23 +460,42 @@ export function useTimelinePlayback(
             console.warn(`Timeline: failed to hide ${event.inputId}`, err),
           );
         }
-      } else if (
-        (event.type === 'transition-in' || event.type === 'transition-out') &&
-        event.transition
-      ) {
-        const direction = event.type === 'transition-in' ? 'in' : 'out';
+      } else if (event.type === 'transition-in' && event.transition) {
         updateInput(roomId, event.inputId, {
           volume:
             inputsRef.current.find((i) => i.inputId === event.inputId)
               ?.volume ?? 1,
           activeTransition: {
             ...event.transition,
-            direction,
+            direction: 'in',
             startedAtMs: 0,
           },
         }).catch((err) =>
           console.warn(
-            `Timeline: failed to start ${event.type} for ${event.inputId}`,
+            `Timeline: failed to start transition-in for ${event.inputId}`,
+            err,
+          ),
+        );
+      } else if (event.type === 'transition-out' && event.transition) {
+        appliedStateRef.current.set(event.inputId, false);
+        // Remove the corresponding disconnect event — hideInput will auto-hide after transition
+        const nextEvents = eventsRef.current;
+        for (let j = nextEventIndexRef.current; j < nextEvents.length; j++) {
+          if (
+            nextEvents[j].type === 'disconnect' &&
+            nextEvents[j].inputId === event.inputId
+          ) {
+            nextEvents.splice(j, 1);
+            break;
+          }
+        }
+        hideInput(roomId, event.inputId, {
+          type: event.transition.type,
+          durationMs: event.transition.durationMs,
+          direction: 'out',
+        }).catch((err) =>
+          console.warn(
+            `Timeline: failed to start transition-out for ${event.inputId}`,
             err,
           ),
         );

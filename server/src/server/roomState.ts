@@ -1156,15 +1156,69 @@ export class RoomState {
     this.output.store.getState().updateState(inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap, this.swapFadeOutDurationMs, this.newsStripEnabled);
   }
 
-  public hideInput(inputId: string) {
+  public hideInput(inputId: string, activeTransition?: { type: string; durationMs: number; direction: 'in' | 'out' }) {
     const input = this.getInput(inputId);
-    input.hidden = true;
-    this.updateStoreWithState();
+
+    if (activeTransition) {
+      // Cancel any existing auto-clear timer for this input
+      const existingTimer = this.transitionTimers.get(inputId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+        this.transitionTimers.delete(inputId);
+      }
+
+      const { type, durationMs, direction } = activeTransition;
+      input.activeTransition = {
+        type: type as ActiveTransition['type'],
+        durationMs,
+        direction,
+        startedAtMs: Date.now(),
+      };
+      this.updateStoreWithState();
+
+      // After transition completes, hide the input and clear transition atomically
+      const timer = setTimeout(() => {
+        input.hidden = true;
+        input.activeTransition = undefined;
+        this.transitionTimers.delete(inputId);
+        this.updateStoreWithState();
+      }, durationMs);
+      this.transitionTimers.set(inputId, timer);
+    } else {
+      input.hidden = true;
+      this.updateStoreWithState();
+    }
   }
 
-  public showInput(inputId: string) {
+  public showInput(inputId: string, activeTransition?: { type: string; durationMs: number; direction: 'in' | 'out' }) {
     const input = this.getInput(inputId);
     input.hidden = false;
+
+    if (activeTransition) {
+      // Cancel any existing auto-clear timer for this input
+      const existingTimer = this.transitionTimers.get(inputId);
+      if (existingTimer) {
+        clearTimeout(existingTimer);
+        this.transitionTimers.delete(inputId);
+      }
+
+      const { type, durationMs, direction } = activeTransition;
+      input.activeTransition = {
+        type: type as ActiveTransition['type'],
+        durationMs,
+        direction,
+        startedAtMs: Date.now(),
+      };
+
+      // Auto-clear after duration
+      const timer = setTimeout(() => {
+        input.activeTransition = undefined;
+        this.transitionTimers.delete(inputId);
+        this.updateStoreWithState();
+      }, durationMs);
+      this.transitionTimers.set(inputId, timer);
+    }
+
     this.updateStoreWithState();
   }
 

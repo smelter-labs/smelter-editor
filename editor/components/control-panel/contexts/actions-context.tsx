@@ -33,8 +33,8 @@ export interface ControlPanelActions {
   removeInput(roomId: string, inputId: string): Promise<any>;
   disconnectInput(roomId: string, inputId: string): Promise<any>;
   connectInput(roomId: string, inputId: string): Promise<any>;
-  hideInput(roomId: string, inputId: string): Promise<any>;
-  showInput(roomId: string, inputId: string): Promise<any>;
+  hideInput(roomId: string, inputId: string, activeTransition?: { type: string; durationMs: number; direction: 'in' | 'out' }): Promise<any>;
+  showInput(roomId: string, inputId: string, activeTransition?: { type: string; durationMs: number; direction: 'in' | 'out' }): Promise<any>;
 
   addTwitchInput(roomId: string, channelId: string): Promise<any>;
   addKickInput(roomId: string, channelId: string): Promise<any>;
