@@ -192,7 +192,6 @@ export class RoomState {
   public roomName: RoomNameEntry;
   private readonly initInputs: RegisterInputOptions[];
   private readonly skipDefaultInputs: boolean;
-  private mp4RestartQueue = new Map<string, Promise<void>>();
 
   public constructor(idPrefix: string, output: SmelterOutput, initInputs: RegisterInputOptions[], skipDefaultInputs: boolean = false, roomName?: RoomNameEntry) {
     this.mp4sDir = path.join(process.cwd(), 'mp4s');
@@ -819,15 +818,6 @@ export class RoomState {
   }
 
   public async restartMp4Input(inputId: string, playFromMs: number, loop: boolean): Promise<void> {
-    const prev = this.mp4RestartQueue.get(inputId) ?? Promise.resolve();
-    const next = prev
-      .catch(() => {})
-      .then(() => this._doRestartMp4Input(inputId, playFromMs, loop));
-    this.mp4RestartQueue.set(inputId, next.catch(() => {}));
-    await next;
-  }
-
-  private async _doRestartMp4Input(inputId: string, playFromMs: number, loop: boolean): Promise<void> {
     const input = this.getInput(inputId);
     if (input.type !== 'local-mp4') {
       throw new Error(`Input ${inputId} is not a local-mp4 input`);

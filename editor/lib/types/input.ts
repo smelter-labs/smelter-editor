@@ -54,7 +54,6 @@ export type Input = {
   absoluteTransitionEasing?: string;
   motionScore?: number;
   motionEnabled?: boolean;
-  mp4FileName?: string;
 };
 
 export type RegisterInputOptions =
