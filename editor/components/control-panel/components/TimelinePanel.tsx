@@ -145,6 +145,19 @@ function computeRulerTicks(
   return ticks;
 }
 
+// ── Overlap check ────────────────────────────────────────
+
+function hasOverlapOnTrack(
+  clips: import('../hooks/use-timeline-state').Clip[],
+  excludeClipId: string,
+  startMs: number,
+  endMs: number,
+): boolean {
+  return clips.some(
+    (c) => c.id !== excludeClipId && startMs < c.endMs && endMs > c.startMs,
+  );
+}
+
 // ── Snap helpers ─────────────────────────────────────────
 
 function computeSnapTargets(
@@ -214,6 +227,8 @@ export function TimelinePanel({
     replaceInputId,
     updateClipSettings,
     purgeInputId,
+    moveClips,
+    deleteClips,
     undo,
     redo,
     canUndo,
@@ -221,40 +236,96 @@ export function TimelinePanel({
     structureRevision,
   } = useTimelineState(roomId, inputs);
 
-  const [selectedClipId, setSelectedClipId] = useState<{
-    trackId: string;
-    clipId: string;
-  } | null>(null);
+  const [selectedClipIds, setSelectedClipIds] = useState<
+    { trackId: string; clipId: string }[]
+  >([]);
+  const lastClickedClipRef = useRef<{ trackId: string; clipId: string } | null>(
+    null,
+  );
+
+  const selectedClipIdSet = useMemo(
+    () => new Set(selectedClipIds.map((s) => s.clipId)),
+    [selectedClipIds],
+  );
+
+  const selectClip = useCallback(
+    (
+      trackId: string,
+      clipId: string,
+      mode: 'replace' | 'toggle' | 'range',
+    ) => {
+      if (mode === 'replace') {
+        setSelectedClipIds([{ trackId, clipId }]);
+        lastClickedClipRef.current = { trackId, clipId };
+      } else if (mode === 'toggle') {
+        setSelectedClipIds((prev) => {
+          const exists = prev.some(
+            (s) => s.trackId === trackId && s.clipId === clipId,
+          );
+          if (exists) {
+            return prev.filter(
+              (s) => !(s.trackId === trackId && s.clipId === clipId),
+            );
+          }
+          return [...prev, { trackId, clipId }];
+        });
+        lastClickedClipRef.current = { trackId, clipId };
+      } else {
+        // range: select all clips between lastClicked and this one on the same track
+        const anchor = lastClickedClipRef.current;
+        if (!anchor || anchor.trackId !== trackId) {
+          setSelectedClipIds([{ trackId, clipId }]);
+          lastClickedClipRef.current = { trackId, clipId };
+          return;
+        }
+        const track = state.tracks.find((t) => t.id === trackId);
+        if (!track) return;
+        const anchorIdx = track.clips.findIndex(
+          (c) => c.id === anchor.clipId,
+        );
+        const targetIdx = track.clips.findIndex((c) => c.id === clipId);
+        if (anchorIdx < 0 || targetIdx < 0) {
+          setSelectedClipIds([{ trackId, clipId }]);
+          lastClickedClipRef.current = { trackId, clipId };
+          return;
+        }
+        const lo = Math.min(anchorIdx, targetIdx);
+        const hi = Math.max(anchorIdx, targetIdx);
+        const rangeClips = track.clips.slice(lo, hi + 1).map((c) => ({
+          trackId,
+          clipId: c.id,
+        }));
+        setSelectedClipIds((prev) => {
+          const otherTracks = prev.filter((s) => s.trackId !== trackId);
+          return [...otherTracks, ...rangeClips];
+        });
+      }
+    },
+    [state.tracks],
+  );
 
   useEffect(() => {
-    const selected = selectedClipId
-      ? state.tracks
-          .find((track) => track.id === selectedClipId.trackId)
-          ?.clips.find((clip) => clip.id === selectedClipId.clipId)
-      : null;
-    if (!selectedClipId || !selected) {
-      window.dispatchEvent(
-        new CustomEvent('smelter:timeline:selected-clip', {
-          detail: { clip: null },
-        }),
-      );
-      return;
-    }
+    const resolvedClips = selectedClipIds
+      .map((sel) => {
+        const track = state.tracks.find((t) => t.id === sel.trackId);
+        const clip = track?.clips.find((c) => c.id === sel.clipId);
+        if (!track || !clip) return null;
+        return {
+          trackId: sel.trackId,
+          clipId: clip.id,
+          inputId: clip.inputId,
+          startMs: clip.startMs,
+          endMs: clip.endMs,
+          blockSettings: clip.blockSettings,
+        };
+      })
+      .filter(Boolean);
     window.dispatchEvent(
       new CustomEvent('smelter:timeline:selected-clip', {
-        detail: {
-          clip: {
-            trackId: selectedClipId.trackId,
-            clipId: selected.id,
-            inputId: selected.inputId,
-            startMs: selected.startMs,
-            endMs: selected.endMs,
-            blockSettings: selected.blockSettings,
-          },
-        },
+        detail: { clips: resolvedClips },
       }),
     );
-  }, [selectedClipId, state.tracks]);
+  }, [selectedClipIds, state.tracks]);
 
   useEffect(() => {
     const handler = (
@@ -352,12 +423,14 @@ export function TimelinePanel({
     ) => {
       const detail = e.detail;
       if (!detail) {
-        setSelectedClipId(null);
+        setSelectedClipIds([]);
         return;
       }
 
       if (detail.trackId && detail.clipId) {
-        setSelectedClipId({ trackId: detail.trackId, clipId: detail.clipId });
+        setSelectedClipIds([
+          { trackId: detail.trackId, clipId: detail.clipId },
+        ]);
         return;
       }
 
@@ -366,7 +439,9 @@ export function TimelinePanel({
         if (idx < 0 || idx >= state.tracks.length) return;
         const track = state.tracks[idx];
         if (track.clips.length > 0) {
-          setSelectedClipId({ trackId: track.id, clipId: track.clips[0].id });
+          setSelectedClipIds([
+            { trackId: track.id, clipId: track.clips[0].id },
+          ]);
           setPlayhead(track.clips[0].startMs);
         }
         return;
@@ -376,7 +451,7 @@ export function TimelinePanel({
         for (const track of state.tracks) {
           for (const clip of track.clips) {
             if (clip.inputId === detail.inputId) {
-              setSelectedClipId({ trackId: track.id, clipId: clip.id });
+              setSelectedClipIds([{ trackId: track.id, clipId: clip.id }]);
               setPlayhead(clip.startMs);
               return;
             }
@@ -455,6 +530,9 @@ export function TimelinePanel({
   const [showHelp, setShowHelp] = useState(false);
   const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
   const [editingTrackLabel, setEditingTrackLabel] = useState('');
+  const [invalidDropTrackId, setInvalidDropTrackId] = useState<string | null>(
+    null,
+  );
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const rulerRef = useRef<HTMLDivElement>(null);
 
@@ -473,6 +551,12 @@ export function TimelinePanel({
     originStartMs: number;
     originEndMs: number;
     originTransitionMs?: number;
+    multiClips?: {
+      trackId: string;
+      clipId: string;
+      originStartMs: number;
+      originEndMs: number;
+    }[];
   } | null>(null);
 
   // ── Sync ruler scroll with tracks scroll ──────────────
@@ -689,10 +773,9 @@ export function TimelinePanel({
     (direction: 'up' | 'down') => {
       const trackIds = state.tracks.map((t) => t.id);
       if (trackIds.length === 0) return;
-      // Find current track index based on selectedClipId or selectedInputId
       let currentIdx = -1;
-      if (selectedClipId) {
-        currentIdx = trackIds.indexOf(selectedClipId.trackId);
+      if (selectedClipIds.length > 0) {
+        currentIdx = trackIds.indexOf(selectedClipIds[0].trackId);
       } else if (selectedInputId) {
         currentIdx = state.tracks.findIndex((t) =>
           t.clips.some((c) => c.inputId === selectedInputId),
@@ -713,17 +796,17 @@ export function TimelinePanel({
         );
       }
     },
-    [state.tracks, selectedInputId, selectedClipId],
+    [state.tracks, selectedInputId, selectedClipIds],
   );
 
   // ── Tab to next clip on current track ────────────
 
   const tabToNextClip = useCallback(
     (reverse: boolean) => {
-      // Find the track to tab within
       let trackId: string | null = null;
-      if (selectedClipId) {
-        trackId = selectedClipId.trackId;
+      const primarySel = selectedClipIds.length > 0 ? selectedClipIds[0] : null;
+      if (primarySel) {
+        trackId = primarySel.trackId;
       } else if (selectedInputId) {
         const t = state.tracks.find((t) =>
           t.clips.some((c) => c.inputId === selectedInputId),
@@ -734,8 +817,8 @@ export function TimelinePanel({
       const track = state.tracks.find((t) => t.id === trackId);
       if (!track || track.clips.length === 0) return;
       const clips = track.clips;
-      const currentIdx = selectedClipId
-        ? clips.findIndex((c) => c.id === selectedClipId.clipId)
+      const currentIdx = primarySel
+        ? clips.findIndex((c) => c.id === primarySel.clipId)
         : -1;
       let nextIdx: number;
       if (reverse) {
@@ -744,13 +827,10 @@ export function TimelinePanel({
         nextIdx = currentIdx < clips.length - 1 ? currentIdx + 1 : 0;
       }
       const clip = clips[nextIdx];
-      setSelectedClipId({
-        trackId: track.id,
-        clipId: clip.id,
-      });
+      setSelectedClipIds([{ trackId: track.id, clipId: clip.id }]);
       setPlayhead(clip.startMs);
     },
-    [selectedInputId, selectedClipId, state.tracks, setPlayhead],
+    [selectedInputId, selectedClipIds, state.tracks, setPlayhead],
   );
 
   // ── Voice: select track / remove track / next-prev block ──────────
@@ -764,7 +844,9 @@ export function TimelinePanel({
       }
       const track = state.tracks[idx];
       if (track.clips.length > 0) {
-        setSelectedClipId({ trackId: track.id, clipId: track.clips[0].id });
+        setSelectedClipIds([
+          { trackId: track.id, clipId: track.clips[0].id },
+        ]);
         setPlayhead(track.clips[0].startMs);
         window.dispatchEvent(
           new CustomEvent('smelter:inputs:select', {
@@ -928,14 +1010,27 @@ export function TimelinePanel({
           scrollToPlayhead();
           break;
         }
+        case 'a':
+        case 'A': {
+          if (!ctrl) break;
+          e.preventDefault();
+          const all: { trackId: string; clipId: string }[] = [];
+          for (const track of state.tracks) {
+            for (const clip of track.clips) {
+              all.push({ trackId: track.id, clipId: clip.id });
+            }
+          }
+          setSelectedClipIds(all);
+          break;
+        }
         case 's':
         case 'S': {
           if (ctrl) break;
           e.preventDefault();
-          if (selectedClipId) {
-            const clipId = findClipAtPlayhead(selectedClipId.trackId);
-            if (clipId)
-              splitClip(selectedClipId.trackId, clipId, state.playheadMs);
+          if (selectedClipIds.length === 1) {
+            const sel = selectedClipIds[0];
+            const clipId = findClipAtPlayhead(sel.trackId);
+            if (clipId) splitClip(sel.trackId, clipId, state.playheadMs);
           }
           break;
         }
@@ -943,8 +1038,11 @@ export function TimelinePanel({
         case 'D': {
           if (ctrl) break;
           e.preventDefault();
-          if (selectedClipId) {
-            duplicateClip(selectedClipId.trackId, selectedClipId.clipId);
+          if (selectedClipIds.length === 1) {
+            duplicateClip(
+              selectedClipIds[0].trackId,
+              selectedClipIds[0].clipId,
+            );
           }
           break;
         }
@@ -963,10 +1061,17 @@ export function TimelinePanel({
         }
         case 'Delete':
         case 'Backspace': {
-          if (selectedClipId) {
+          if (selectedClipIds.length > 0) {
             e.preventDefault();
-            deleteClip(selectedClipId.trackId, selectedClipId.clipId);
-            setSelectedClipId(null);
+            if (selectedClipIds.length === 1) {
+              deleteClip(
+                selectedClipIds[0].trackId,
+                selectedClipIds[0].clipId,
+              );
+            } else {
+              deleteClips(selectedClipIds);
+            }
+            setSelectedClipIds([]);
           }
           break;
         }
@@ -976,7 +1081,7 @@ export function TimelinePanel({
           break;
         }
         case 'Escape': {
-          setSelectedClipId(null);
+          setSelectedClipIds([]);
           setShowHelp(false);
           break;
         }
@@ -995,6 +1100,7 @@ export function TimelinePanel({
     state.playheadMs,
     state.totalDurationMs,
     state.pixelsPerSecond,
+    state.tracks,
     play,
     stop,
     setPlayhead,
@@ -1006,11 +1112,12 @@ export function TimelinePanel({
     findClipAtPlayhead,
     splitClip,
     deleteClip,
+    deleteClips,
     duplicateClip,
     undo,
     redo,
     selectedInputId,
-    selectedClipId,
+    selectedClipIds,
   ]);
 
   // ── Clip pointer interactions ─────────────────────
@@ -1061,8 +1168,21 @@ export function TimelinePanel({
       e.preventDefault();
       e.stopPropagation();
 
-      // Track clip selection
-      setSelectedClipId({ trackId, clipId });
+      const ctrl = e.ctrlKey || e.metaKey;
+      const shift = e.shiftKey;
+
+      if (ctrl) {
+        selectClip(trackId, clipId, 'toggle');
+      } else if (shift) {
+        selectClip(trackId, clipId, 'range');
+      } else {
+        // Normal click: if clip is already part of multi-selection, keep
+        // the selection so that dragging moves all of them.
+        const alreadySelected = selectedClipIdSet.has(clipId);
+        if (!alreadySelected || selectedClipIds.length <= 1) {
+          selectClip(trackId, clipId, 'replace');
+        }
+      }
 
       const rect = e.currentTarget.getBoundingClientRect();
       const localX = e.clientX - rect.left;
@@ -1099,6 +1219,32 @@ export function TimelinePanel({
         type = 'resize-right';
       }
 
+      // Build multi-clip origins when moving a multi-selection
+      let multiClips:
+        | {
+            trackId: string;
+            clipId: string;
+            originStartMs: number;
+            originEndMs: number;
+          }[]
+        | undefined;
+
+      if (type === 'move' && selectedClipIdSet.has(clipId) && selectedClipIds.length > 1) {
+        multiClips = [];
+        for (const sel of selectedClipIds) {
+          const t = state.tracks.find((tr) => tr.id === sel.trackId);
+          const c = t?.clips.find((cl) => cl.id === sel.clipId);
+          if (t && c) {
+            multiClips.push({
+              trackId: sel.trackId,
+              clipId: sel.clipId,
+              originStartMs: c.startMs,
+              originEndMs: c.endMs,
+            });
+          }
+        }
+      }
+
       dragRef.current = {
         type,
         trackId,
@@ -1108,11 +1254,12 @@ export function TimelinePanel({
         originStartMs: clipStartMs,
         originEndMs: clipEndMs,
         originTransitionMs,
+        multiClips,
       };
 
       document.body.style.userSelect = 'none';
     },
-    [pxToMs, splitClip, state.pixelsPerSecond],
+    [pxToMs, splitClip, state.pixelsPerSecond, state.tracks, selectClip, selectedClipIdSet, selectedClipIds],
   );
 
   // Use document-level listeners for drag so we can detect cross-track movement
@@ -1124,32 +1271,87 @@ export function TimelinePanel({
       const deltaX = e.clientX - drag.originX;
       const deltaMs = pxToMs(deltaX);
 
-      const snapTargets = computeSnapTargets(
-        state.tracks,
-        drag.clipId,
-        state.playheadMs,
-      );
+      // Collect clip IDs being dragged to exclude from snap targets
+      const draggedClipIds = new Set<string>();
+      draggedClipIds.add(drag.clipId);
+      if (drag.multiClips) {
+        for (const mc of drag.multiClips) draggedClipIds.add(mc.clipId);
+      }
+
+      const snapTargets: number[] = [0, state.playheadMs];
+      for (const track of state.tracks) {
+        for (const clip of track.clips) {
+          if (draggedClipIds.has(clip.id)) continue;
+          snapTargets.push(clip.startMs, clip.endMs);
+        }
+      }
 
       if (drag.type === 'move') {
-        let newStart = Math.round(drag.originStartMs + deltaMs);
-        newStart = snapToNearest(newStart, snapTargets, snapThresholdMs);
-        const duration = drag.originEndMs - drag.originStartMs;
-        const snappedEnd = snapToNearest(
-          newStart + duration,
-          snapTargets,
-          snapThresholdMs,
-        );
-        if (snappedEnd !== newStart + duration) {
-          newStart = snappedEnd - duration;
-        }
+        if (drag.multiClips && drag.multiClips.length > 1) {
+          // Multi-clip move: compute delta via primary clip snap, apply to all
+          let newStart = Math.round(drag.originStartMs + deltaMs);
+          newStart = snapToNearest(newStart, snapTargets, snapThresholdMs);
+          const duration = drag.originEndMs - drag.originStartMs;
+          const snappedEnd = snapToNearest(
+            newStart + duration,
+            snapTargets,
+            snapThresholdMs,
+          );
+          if (snappedEnd !== newStart + duration) {
+            newStart = snappedEnd - duration;
+          }
+          const appliedDelta = newStart - drag.originStartMs;
 
-        // Detect cross-track movement
-        const targetTrackId = getTrackIdAtY(e.clientY);
-        if (targetTrackId && targetTrackId !== drag.trackId) {
-          moveClipToTrack(drag.trackId, drag.clipId, targetTrackId, newStart);
-          drag.trackId = targetTrackId;
+          const moves = drag.multiClips.map((mc) => ({
+            trackId: mc.trackId,
+            clipId: mc.clipId,
+            newStartMs: Math.max(0, Math.round(mc.originStartMs + appliedDelta)),
+          }));
+          moveClips(moves);
         } else {
-          moveClip(drag.trackId, drag.clipId, newStart);
+          // Single-clip move (with cross-track support)
+          let newStart = Math.round(drag.originStartMs + deltaMs);
+          newStart = snapToNearest(newStart, snapTargets, snapThresholdMs);
+          const duration = drag.originEndMs - drag.originStartMs;
+          const snappedEnd = snapToNearest(
+            newStart + duration,
+            snapTargets,
+            snapThresholdMs,
+          );
+          if (snappedEnd !== newStart + duration) {
+            newStart = snappedEnd - duration;
+          }
+
+          const targetTrackId = getTrackIdAtY(e.clientY);
+          if (targetTrackId && targetTrackId !== drag.trackId) {
+            const targetTrack = state.tracks.find(
+              (t) => t.id === targetTrackId,
+            );
+            if (
+              targetTrack &&
+              hasOverlapOnTrack(
+                targetTrack.clips,
+                drag.clipId,
+                newStart,
+                newStart + duration,
+              )
+            ) {
+              setInvalidDropTrackId(targetTrackId);
+              moveClip(drag.trackId, drag.clipId, newStart);
+            } else {
+              setInvalidDropTrackId(null);
+              moveClipToTrack(
+                drag.trackId,
+                drag.clipId,
+                targetTrackId,
+                newStart,
+              );
+              drag.trackId = targetTrackId;
+            }
+          } else {
+            setInvalidDropTrackId(null);
+            moveClip(drag.trackId, drag.clipId, newStart);
+          }
         }
       } else if (drag.type === 'resize-left') {
         let newStart = Math.round(drag.originStartMs + deltaMs);
@@ -1201,6 +1403,7 @@ export function TimelinePanel({
         dragRef.current = null;
         document.body.style.userSelect = '';
       }
+      setInvalidDropTrackId(null);
     };
 
     document.addEventListener('pointermove', handlePointerMove);
@@ -1215,6 +1418,7 @@ export function TimelinePanel({
     state.playheadMs,
     snapThresholdMs,
     moveClip,
+    moveClips,
     resizeClip,
     moveClipToTrack,
     getTrackIdAtY,
@@ -1366,11 +1570,15 @@ export function TimelinePanel({
   }, [contextMenu, splitClip, closeContextMenu]);
 
   const handleDeleteClip = useCallback(() => {
-    if (contextMenu?.clipId) {
+    if (selectedClipIds.length > 1) {
+      deleteClips(selectedClipIds);
+      setSelectedClipIds([]);
+    } else if (contextMenu?.clipId) {
       deleteClip(contextMenu.trackId, contextMenu.clipId);
+      setSelectedClipIds([]);
     }
     closeContextMenu();
-  }, [contextMenu, deleteClip, closeContextMenu]);
+  }, [contextMenu, deleteClip, deleteClips, selectedClipIds, closeContextMenu]);
 
   // ── Render helpers ───────────────────────────────────
 
@@ -1393,9 +1601,7 @@ export function TimelinePanel({
         const leftPx = (clip.startMs / 1000) * state.pixelsPerSecond;
         const widthPx =
           ((clip.endMs - clip.startMs) / 1000) * state.pixelsPerSecond;
-        const isClipSelected =
-          selectedClipId?.trackId === track.id &&
-          selectedClipId?.clipId === clip.id;
+        const isClipSelected = selectedClipIdSet.has(clip.id);
         const durationMs = clip.endMs - clip.startMs;
         const clipLabel = input?.title ?? clip.inputId;
 
@@ -1520,7 +1726,7 @@ export function TimelinePanel({
       inputs,
       inputColorMap,
       state.pixelsPerSecond,
-      selectedClipId,
+      selectedClipIdSet,
       handleClipPointerDown,
       handleClipHover,
       handleContextMenu,
@@ -1736,7 +1942,9 @@ export function TimelinePanel({
             return (
               <div
                 key={track.id}
-                className='flex border-b border-neutral-800/50 cursor-pointer group/track'
+                className={`flex border-b border-neutral-800/50 cursor-pointer group/track ${
+                  track.id === invalidDropTrackId ? 'bg-red-900/20' : ''
+                }`}
                 style={{ height: TRACK_HEIGHT }}
                 onClick={() => handleTrackClick(track.id)}
                 onContextMenu={(e) => {
@@ -1876,15 +2084,19 @@ export function TimelinePanel({
             {contextMenu.clipId && (
               <>
                 <div className='h-px bg-neutral-700 my-1' />
-                <button
-                  className='w-full text-left py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer'
-                  onClick={handleSplitHere}>
-                  Split Here
-                </button>
+                {selectedClipIds.length <= 1 && (
+                  <button
+                    className='w-full text-left py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer'
+                    onClick={handleSplitHere}>
+                    Split Here
+                  </button>
+                )}
                 <button
                   className='w-full text-left py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer text-red-400 hover:text-red-300'
                   onClick={handleDeleteClip}>
-                  Delete Clip
+                  {selectedClipIds.length > 1
+                    ? `Delete ${selectedClipIds.length} Clips`
+                    : 'Delete Clip'}
                 </button>
               </>
             )}
@@ -1969,6 +2181,15 @@ export function TimelinePanel({
                     ['+ / −', 'Zoom in / out'],
                     ['Ctrl + = / Ctrl + −', 'Zoom in / out'],
                     ['0', 'Auto-fit zoom to timeline'],
+                  ]}
+                />
+                <ShortcutGroup
+                  title='Selection'
+                  items={[
+                    ['Click', 'Select single clip'],
+                    ['Ctrl/Cmd + Click', 'Toggle clip in selection'],
+                    ['Shift + Click', 'Select range on track'],
+                    ['Ctrl/Cmd + A', 'Select all clips'],
                   ]}
                 />
                 <ShortcutGroup

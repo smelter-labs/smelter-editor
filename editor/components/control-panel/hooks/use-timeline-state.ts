@@ -126,7 +126,15 @@ type TimelineAction =
       clipId: string;
       patch: Partial<BlockSettings>;
     }
-  | { type: 'PURGE_INPUT_ID'; inputId: string };
+  | { type: 'PURGE_INPUT_ID'; inputId: string }
+  | {
+      type: 'MOVE_CLIPS';
+      moves: { trackId: string; clipId: string; newStartMs: number }[];
+    }
+  | {
+      type: 'DELETE_CLIPS';
+      clips: { trackId: string; clipId: string }[];
+    };
 
 // ── Constants ────────────────────────────────────────────
 
@@ -391,8 +399,7 @@ export function timelineReducer(
               inputById.get(resolvedId),
             );
           }),
-        }))
-        .filter((track) => track.clips.length > 0);
+        }));
 
       // For each input that has no clips on any existing track, create a new track
       const nowCoveredInputIds = new Set<string>();
@@ -791,13 +798,49 @@ export function timelineReducer(
       };
     }
 
+    case 'MOVE_CLIPS': {
+      let newTotalDuration = state.totalDurationMs;
+      const moveLookup = new Map(
+        action.moves.map((m) => [`${m.trackId}:${m.clipId}`, m.newStartMs]),
+      );
+      const newTracks = state.tracks.map((track) => {
+        const newClips = track.clips.map((clip) => {
+          const key = `${track.id}:${clip.id}`;
+          const newStart = moveLookup.get(key);
+          if (newStart == null) return clip;
+          const duration = clip.endMs - clip.startMs;
+          const clampedStart = Math.max(0, newStart);
+          const newEnd = clampedStart + duration;
+          if (newEnd > newTotalDuration) {
+            newTotalDuration = newEnd + 5000;
+          }
+          return { ...clip, startMs: clampedStart, endMs: newEnd };
+        });
+        return { ...track, clips: clampClips(newClips, newTotalDuration) };
+      });
+      return { ...state, totalDurationMs: newTotalDuration, tracks: newTracks };
+    }
+
+    case 'DELETE_CLIPS': {
+      const deleteSet = new Set(
+        action.clips.map((c) => `${c.trackId}:${c.clipId}`),
+      );
+      const newTracks = state.tracks
+        .map((track) => ({
+          ...track,
+          clips: track.clips.filter(
+            (c) => !deleteSet.has(`${track.id}:${c.id}`),
+          ),
+        }));
+      return { ...state, tracks: newTracks };
+    }
+
     case 'PURGE_INPUT_ID': {
       const newTracks = state.tracks
         .map((track) => ({
           ...track,
           clips: track.clips.filter((c) => c.inputId !== action.inputId),
-        }))
-        .filter((track) => track.clips.length > 0);
+        }));
       return { ...state, tracks: newTracks };
     }
 
@@ -832,6 +875,8 @@ const UNDOABLE_ACTIONS = new Set<TimelineAction['type']>([
   'RESET',
   'UPDATE_CLIP_SETTINGS',
   'PURGE_INPUT_ID',
+  'MOVE_CLIPS',
+  'DELETE_CLIPS',
 ]);
 
 type UndoableAction = TimelineAction | { type: 'UNDO' } | { type: 'REDO' };
@@ -1077,6 +1122,22 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     setStructureRevision((rev) => rev + 1);
   }, []);
 
+  const moveClips = useCallback(
+    (moves: { trackId: string; clipId: string; newStartMs: number }[]) => {
+      dispatch({ type: 'MOVE_CLIPS', moves });
+      setStructureRevision((rev) => rev + 1);
+    },
+    [],
+  );
+
+  const deleteClips = useCallback(
+    (clips: { trackId: string; clipId: string }[]) => {
+      dispatch({ type: 'DELETE_CLIPS', clips });
+      setStructureRevision((rev) => rev + 1);
+    },
+    [],
+  );
+
   const undo = useCallback(() => dispatch({ type: 'UNDO' }), []);
   const redo = useCallback(() => dispatch({ type: 'REDO' }), []);
   const canUndo = undoable.past.length > 0;
@@ -1102,6 +1163,8 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     replaceInputId,
     updateClipSettings,
     purgeInputId,
+    moveClips,
+    deleteClips,
     undo,
     redo,
     canUndo,
