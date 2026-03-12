@@ -49,8 +49,16 @@ export function AbsolutePositionController({
   const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState>({ type: 'idle' });
   const [localPos, setLocalPos] = useState<Position | null>(null);
+  const localPosRef = useRef<Position | null>(null);
+  localPosRef.current = localPos;
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+
+  useEffect(() => {
+    if (localPos && dragRef.current.type === 'idle') {
+      setLocalPos(null);
+    }
+  }, [top, left, width, height]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const pos = localPos ?? { top, left, width, height };
 
@@ -169,12 +177,10 @@ export function AbsolutePositionController({
     const handleMouseUp = () => {
       if (dragRef.current.type !== 'idle') {
         dragRef.current = { type: 'idle' };
-        setLocalPos((current) => {
-          if (current) {
-            onChangeRef.current(current);
-          }
-          return null;
-        });
+        const current = localPosRef.current;
+        if (current) {
+          onChangeRef.current(current);
+        }
       }
     };
 
