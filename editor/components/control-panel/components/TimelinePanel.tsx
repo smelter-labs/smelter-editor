@@ -19,7 +19,7 @@ import { useTimelineState, DEFAULT_PPS } from '../hooks/use-timeline-state';
 import { useTimelinePlayback } from '../hooks/use-timeline-playback';
 import {
   Play,
-  Square,
+  Pause,
   SkipBack,
   RotateCcw,
   ZoomIn,
@@ -398,7 +398,7 @@ export function TimelinePanel({
 
   const inputColorMap = useMemo(() => buildInputColorMap(inputs), [inputs]);
 
-  const { play, stop, seek, applyAtPlayhead } = useTimelinePlayback(
+  const { play, stop, applyAtPlayhead } = useTimelinePlayback(
     roomId,
     inputs,
     state,
@@ -460,13 +460,19 @@ export function TimelinePanel({
 
   // ── Clip interaction refs ─────────────────────────
   const dragRef = useRef<{
-    type: 'move' | 'resize-left' | 'resize-right';
+    type:
+      | 'move'
+      | 'resize-left'
+      | 'resize-right'
+      | 'resize-transition-in'
+      | 'resize-transition-out';
     trackId: string;
     clipId: string;
     originX: number;
     originY: number;
     originStartMs: number;
     originEndMs: number;
+    originTransitionMs?: number;
   } | null>(null);
 
   // ── Sync ruler scroll with tracks scroll ──────────────
@@ -584,12 +590,11 @@ export function TimelinePanel({
       document.body.style.userSelect = 'none';
       const ms = rulerPxToMs(e.clientX, e.currentTarget);
       if (state.isPlaying) {
-        seek(ms);
-      } else {
-        setPlayhead(ms);
+        stop();
       }
+      setPlayhead(ms);
     },
-    [setPlayhead, rulerPxToMs, state.isPlaying, seek],
+    [setPlayhead, rulerPxToMs, state.isPlaying, stop],
   );
 
   const handleRulerPointerMove = useCallback(
@@ -597,12 +602,11 @@ export function TimelinePanel({
       if (!rulerScrubRef.current) return;
       const ms = rulerPxToMs(e.clientX, e.currentTarget);
       if (state.isPlaying) {
-        seek(ms);
-      } else {
-        setPlayhead(ms);
+        stop();
       }
+      setPlayhead(ms);
     },
-    [setPlayhead, rulerPxToMs, state.isPlaying, seek],
+    [setPlayhead, rulerPxToMs, state.isPlaying, stop],
   );
 
   const handleRulerPointerUp = useCallback(
@@ -1042,6 +1046,8 @@ export function TimelinePanel({
       clipId: string,
       clipStartMs: number,
       clipEndMs: number,
+      introTransitionMs: number,
+      outroTransitionMs: number,
     ) => {
       // Alt+Click = split
       if (e.altKey) {
@@ -1062,8 +1068,32 @@ export function TimelinePanel({
       const localX = e.clientX - rect.left;
       const clipWidthPx = rect.width;
 
-      let type: 'move' | 'resize-left' | 'resize-right' = 'move';
-      if (localX <= RESIZE_HANDLE_PX) {
+      const introHandlePx = (introTransitionMs / 1000) * state.pixelsPerSecond;
+      const outroHandlePx = (outroTransitionMs / 1000) * state.pixelsPerSecond;
+      const TRANSITION_HANDLE_ZONE = 6;
+
+      let type:
+        | 'move'
+        | 'resize-left'
+        | 'resize-right'
+        | 'resize-transition-in'
+        | 'resize-transition-out' = 'move';
+      let originTransitionMs: number | undefined;
+
+      if (
+        introTransitionMs > 0 &&
+        Math.abs(localX - introHandlePx) <= TRANSITION_HANDLE_ZONE
+      ) {
+        type = 'resize-transition-in';
+        originTransitionMs = introTransitionMs;
+      } else if (
+        outroTransitionMs > 0 &&
+        Math.abs(localX - (clipWidthPx - outroHandlePx)) <=
+          TRANSITION_HANDLE_ZONE
+      ) {
+        type = 'resize-transition-out';
+        originTransitionMs = outroTransitionMs;
+      } else if (localX <= RESIZE_HANDLE_PX) {
         type = 'resize-left';
       } else if (localX >= clipWidthPx - RESIZE_HANDLE_PX) {
         type = 'resize-right';
@@ -1077,11 +1107,12 @@ export function TimelinePanel({
         originY: e.clientY,
         originStartMs: clipStartMs,
         originEndMs: clipEndMs,
+        originTransitionMs,
       };
 
       document.body.style.userSelect = 'none';
     },
-    [pxToMs, splitClip],
+    [pxToMs, splitClip, state.pixelsPerSecond],
   );
 
   // Use document-level listeners for drag so we can detect cross-track movement
@@ -1124,6 +1155,40 @@ export function TimelinePanel({
         let newStart = Math.round(drag.originStartMs + deltaMs);
         newStart = snapToNearest(newStart, snapTargets, snapThresholdMs);
         resizeClip(drag.trackId, drag.clipId, 'left', newStart);
+      } else if (drag.type === 'resize-transition-in' || drag.type === 'resize-transition-out') {
+        const track = state.tracks.find((t) => t.id === drag.trackId);
+        const clip = track?.clips.find((c) => c.id === drag.clipId);
+        if (clip) {
+          const clipDuration = clip.endMs - clip.startMs;
+          const originMs = drag.originTransitionMs ?? 0;
+          if (drag.type === 'resize-transition-in') {
+            const otherMs = clip.blockSettings.outroTransition?.durationMs ?? 0;
+            const newDurationMs = Math.max(
+              0,
+              Math.min(originMs + deltaMs, clipDuration - otherMs),
+            );
+            const introType = clip.blockSettings.introTransition?.type ?? 'fade';
+            updateClipSettings(drag.trackId, drag.clipId, {
+              introTransition:
+                newDurationMs > 0
+                  ? { type: introType, durationMs: Math.round(newDurationMs) }
+                  : undefined,
+            });
+          } else {
+            const otherMs = clip.blockSettings.introTransition?.durationMs ?? 0;
+            const newDurationMs = Math.max(
+              0,
+              Math.min(originMs - deltaMs, clipDuration - otherMs),
+            );
+            const outroType = clip.blockSettings.outroTransition?.type ?? 'fade';
+            updateClipSettings(drag.trackId, drag.clipId, {
+              outroTransition:
+                newDurationMs > 0
+                  ? { type: outroType, durationMs: Math.round(newDurationMs) }
+                  : undefined,
+            });
+          }
+        }
       } else {
         let newEnd = Math.round(drag.originEndMs + deltaMs);
         newEnd = snapToNearest(newEnd, snapTargets, snapThresholdMs);
@@ -1153,21 +1218,43 @@ export function TimelinePanel({
     resizeClip,
     moveClipToTrack,
     getTrackIdAtY,
+    updateClipSettings,
   ]);
 
   const handleClipHover = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
+    (
+      e: React.PointerEvent<HTMLDivElement>,
+      introTransitionMs: number,
+      outroTransitionMs: number,
+    ) => {
       if (dragRef.current) return;
       const rect = e.currentTarget.getBoundingClientRect();
       const localX = e.clientX - rect.left;
       const w = rect.width;
-      if (localX <= RESIZE_HANDLE_PX || localX >= w - RESIZE_HANDLE_PX) {
+
+      const introHandlePx =
+        (introTransitionMs / 1000) * state.pixelsPerSecond;
+      const outroHandlePx =
+        (outroTransitionMs / 1000) * state.pixelsPerSecond;
+      const TRANSITION_HANDLE_ZONE = 6;
+
+      if (
+        introTransitionMs > 0 &&
+        Math.abs(localX - introHandlePx) <= TRANSITION_HANDLE_ZONE
+      ) {
+        e.currentTarget.style.cursor = 'ew-resize';
+      } else if (
+        outroTransitionMs > 0 &&
+        Math.abs(localX - (w - outroHandlePx)) <= TRANSITION_HANDLE_ZONE
+      ) {
+        e.currentTarget.style.cursor = 'ew-resize';
+      } else if (localX <= RESIZE_HANDLE_PX || localX >= w - RESIZE_HANDLE_PX) {
         e.currentTarget.style.cursor = 'col-resize';
       } else {
         e.currentTarget.style.cursor = 'grab';
       }
     },
-    [],
+    [state.pixelsPerSecond],
   );
 
   // ── Context menu ─────────────────────────────────────
@@ -1312,6 +1399,15 @@ export function TimelinePanel({
         const durationMs = clip.endMs - clip.startMs;
         const clipLabel = input?.title ?? clip.inputId;
 
+        const introT = clip.blockSettings.introTransition;
+        const outroT = clip.blockSettings.outroTransition;
+        const introWidthPx = introT
+          ? (introT.durationMs / 1000) * state.pixelsPerSecond
+          : 0;
+        const outroWidthPx = outroT
+          ? (outroT.durationMs / 1000) * state.pixelsPerSecond
+          : 0;
+
         return (
           <div
             key={clip.id}
@@ -1348,9 +1444,17 @@ export function TimelinePanel({
                 clip.id,
                 clip.startMs,
                 clip.endMs,
+                introT?.durationMs ?? 0,
+                outroT?.durationMs ?? 0,
               )
             }
-            onPointerMove={handleClipHover}
+            onPointerMove={(e) =>
+              handleClipHover(
+                e,
+                introT?.durationMs ?? 0,
+                outroT?.durationMs ?? 0,
+              )
+            }
             onContextMenu={(e) => {
               e.stopPropagation();
               handleContextMenu(e, track.id, clip.inputId, clip.id);
@@ -1359,6 +1463,48 @@ export function TimelinePanel({
             <div className='absolute left-0 top-0 bottom-0 w-[5px] cursor-col-resize z-10' />
             {/* Right resize handle */}
             <div className='absolute right-0 top-0 bottom-0 w-[5px] cursor-col-resize z-10' />
+            {/* Intro transition zone */}
+            {introWidthPx > 0 && (
+              <>
+                <div
+                  className='absolute top-0 bottom-0 left-0 pointer-events-none z-[5]'
+                  style={{
+                    width: introWidthPx,
+                    background:
+                      'linear-gradient(to right, rgba(255,255,255,0.25), transparent)',
+                  }}
+                />
+                <div
+                  className='absolute top-0 bottom-0 z-[6] cursor-ew-resize'
+                  style={{
+                    left: introWidthPx - 2,
+                    width: 4,
+                    backgroundColor: 'rgba(255,255,255,0.4)',
+                  }}
+                />
+              </>
+            )}
+            {/* Outro transition zone */}
+            {outroWidthPx > 0 && (
+              <>
+                <div
+                  className='absolute top-0 bottom-0 right-0 pointer-events-none z-[5]'
+                  style={{
+                    width: outroWidthPx,
+                    background:
+                      'linear-gradient(to left, rgba(255,255,255,0.25), transparent)',
+                  }}
+                />
+                <div
+                  className='absolute top-0 bottom-0 z-[6] cursor-ew-resize'
+                  style={{
+                    right: outroWidthPx - 2,
+                    width: 4,
+                    backgroundColor: 'rgba(255,255,255,0.4)',
+                  }}
+                />
+              </>
+            )}
             {/* Label */}
             {widthPx > 40 && (
               <span
@@ -1403,16 +1549,13 @@ export function TimelinePanel({
         </button>
         <button
           className={`p-1 rounded hover:bg-neutral-700 transition-colors cursor-pointer ${state.isPlaying ? 'text-green-400' : 'text-neutral-400 hover:text-white'}`}
-          onClick={play}
-          title='Play'>
-          <Play className='w-3.5 h-3.5' />
-        </button>
-        <button
-          className='p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed'
-          onClick={stop}
-          disabled={!state.isPlaying}
-          title='Stop'>
-          <Square className='w-3.5 h-3.5' />
+          onClick={state.isPlaying ? stop : play}
+          title={state.isPlaying ? 'Pause' : 'Play'}>
+          {state.isPlaying ? (
+            <Pause className='w-3.5 h-3.5' />
+          ) : (
+            <Play className='w-3.5 h-3.5' />
+          )}
         </button>
         <button
           className={`p-1 rounded hover:bg-neutral-700 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${isRecording ? 'animate-pulse' : ''}`}

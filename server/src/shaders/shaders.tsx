@@ -685,6 +685,41 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
       { name: 'progress', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0 },
     ],
   },
+  {
+    id: 'transition-slide',
+    isActive: true,
+    isVisible: false,
+    name: 'Transition Slide',
+    description: 'Slide transition: offsets UV coordinates based on progress and direction.',
+    shaderFile: 'transition-slide.wgsl',
+    params: [
+      { name: 'progress', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0 },
+      { name: 'direction', type: 'number', minValue: 0, maxValue: 3, defaultValue: 0 },
+    ],
+  },
+  {
+    id: 'transition-wipe',
+    isActive: true,
+    isVisible: false,
+    name: 'Transition Wipe',
+    description: 'Wipe transition: hard-edge reveal along the horizontal axis.',
+    shaderFile: 'transition-wipe.wgsl',
+    params: [
+      { name: 'progress', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0 },
+      { name: 'direction', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0 },
+    ],
+  },
+  {
+    id: 'transition-dissolve',
+    isActive: true,
+    isVisible: false,
+    name: 'Transition Dissolve',
+    description: 'Dissolve transition: noise-based pixel dissolve effect.',
+    shaderFile: 'transition-dissolve.wgsl',
+    params: [
+      { name: 'progress', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0 },
+    ],
+  },
 ];
 
 class ShadersController {

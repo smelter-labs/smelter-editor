@@ -2,7 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { Input, AvailableShader, ShaderConfig } from '@/lib/types';
+import type {
+  Input,
+  AvailableShader,
+  ShaderConfig,
+  TransitionType,
+} from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
 import ShaderPanel, { InlineShaderParams } from '../input-entry/shader-panel';
 import { AddShaderModal } from '../input-entry/add-shader-modal';
@@ -210,6 +215,78 @@ function SnakeShaderSection({
         addedShaderIds={new Set(shaders.map((s) => s.shaderId))}
         onAddShader={handleToggle}
       />
+    </div>
+  );
+}
+
+const TRANSITION_TYPES: { value: TransitionType | 'none'; label: string }[] = [
+  { value: 'none', label: 'None' },
+  { value: 'fade', label: 'Fade' },
+  { value: 'slide-left', label: 'Slide Left' },
+  { value: 'slide-right', label: 'Slide Right' },
+  { value: 'slide-up', label: 'Slide Up' },
+  { value: 'slide-down', label: 'Slide Down' },
+  { value: 'wipe-left', label: 'Wipe Left' },
+  { value: 'wipe-right', label: 'Wipe Right' },
+  { value: 'dissolve', label: 'Dissolve' },
+];
+
+function TransitionRow({
+  label,
+  transition,
+  maxDurationMs,
+  onChange,
+}: {
+  label: string;
+  transition?: import('@/lib/types').TransitionConfig;
+  maxDurationMs: number;
+  onChange: (t: import('@/lib/types').TransitionConfig | undefined) => void;
+}) {
+  const type = transition?.type ?? 'none';
+  const durationMs = transition?.durationMs ?? 500;
+  const clampedMax = Math.max(100, maxDurationMs);
+
+  return (
+    <div className='mb-2'>
+      <span className='text-[11px] text-neutral-500 block mb-1'>{label}</span>
+      <div className='flex items-center gap-2'>
+        <select
+          className='flex-1 bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1 rounded'
+          value={type}
+          onChange={(e) => {
+            const val = e.target.value as TransitionType | 'none';
+            if (val === 'none') {
+              onChange(undefined);
+            } else {
+              onChange({ type: val, durationMs });
+            }
+          }}>
+          {TRANSITION_TYPES.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+        {type !== 'none' && (
+          <div className='flex items-center gap-1.5'>
+            <input
+              type='range'
+              min={100}
+              max={Math.min(2000, clampedMax)}
+              step={50}
+              className='w-20'
+              value={Math.min(durationMs, clampedMax)}
+              onChange={(e) => {
+                const ms = Number(e.target.value);
+                onChange({ type: type as TransitionType, durationMs: ms });
+              }}
+            />
+            <span className='text-[10px] text-neutral-500 w-10 text-right tabular-nums'>
+              {durationMs}ms
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1056,6 +1133,29 @@ export function BlockClipPropertiesPanel({
             }
           />
         </div>
+      </div>
+      <div className='border border-neutral-700 rounded p-2 mb-3 mt-1'>
+        <div className='text-xs text-neutral-400 font-medium mb-2'>
+          Transitions
+        </div>
+        <TransitionRow
+          label='Intro'
+          transition={selectedTimelineClip.blockSettings.introTransition}
+          maxDurationMs={
+            (selectedTimelineClip.endMs - selectedTimelineClip.startMs) -
+            (selectedTimelineClip.blockSettings.outroTransition?.durationMs ?? 0)
+          }
+          onChange={(t) => void applyClipPatch({ introTransition: t }, { refresh: false })}
+        />
+        <TransitionRow
+          label='Outro'
+          transition={selectedTimelineClip.blockSettings.outroTransition}
+          maxDurationMs={
+            (selectedTimelineClip.endMs - selectedTimelineClip.startMs) -
+            (selectedTimelineClip.blockSettings.introTransition?.durationMs ?? 0)
+          }
+          onChange={(t) => void applyClipPatch({ outroTransition: t }, { refresh: false })}
+        />
       </div>
       {selectedInput?.type === 'local-mp4' && (
         <div className='border border-neutral-700 rounded p-2 mb-3 mt-1'>

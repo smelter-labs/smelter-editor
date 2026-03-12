@@ -1,5 +1,6 @@
 import type { ShaderConfig } from './shader';
 import type { SnakeEventShaderConfig } from '../snake-game-types';
+import type { ActiveTransition } from './transition';
 
 export type InputOrientation = 'horizontal' | 'vertical';
 
@@ -54,6 +55,7 @@ export type Input = {
   absoluteTransitionEasing?: string;
   motionScore?: number;
   motionEnabled?: boolean;
+  activeTransition?: ActiveTransition;
 };
 
 export type RegisterInputOptions =
@@ -114,4 +116,5 @@ export type UpdateInputOptions = {
   absoluteHeight?: number;
   absoluteTransitionDurationMs?: number;
   absoluteTransitionEasing?: string;
+  activeTransition?: ActiveTransition;
 };

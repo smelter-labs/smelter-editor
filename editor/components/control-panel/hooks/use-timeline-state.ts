@@ -1,7 +1,7 @@
 'use client';
 
 import { useReducer, useEffect, useCallback, useRef, useState } from 'react';
-import type { Input, ShaderConfig } from '@/lib/types';
+import type { Input, ShaderConfig, TransitionConfig } from '@/lib/types';
 import type { SnakeEventShaderConfig } from '@/lib/snake-game-types';
 import { loadTimeline, saveTimeline } from '@/lib/timeline-storage';
 
@@ -55,6 +55,8 @@ export type BlockSettings = {
   mp4PlayFromMs?: number;
   mp4Loop?: boolean;
   mp4DurationMs?: number;
+  introTransition?: TransitionConfig;
+  outroTransition?: TransitionConfig;
 };
 
 /** @deprecated Use `Clip` instead. Kept for backwards compat with room-config. */
@@ -727,20 +729,39 @@ export function timelineReducer(
     }
 
     case 'UPDATE_CLIP_SETTINGS': {
+      let targetInputId: string | undefined;
+      const syncAbsFlag = action.patch.absolutePosition !== undefined;
+      if (syncAbsFlag) {
+        const track = state.tracks.find((t) => t.id === action.trackId);
+        const clip = track?.clips.find((c) => c.id === action.clipId);
+        targetInputId = clip?.inputId;
+      }
+
       return {
         ...state,
         tracks: state.tracks.map((track) => {
-          if (track.id !== action.trackId) return track;
           return {
             ...track,
             clips: track.clips.map((clip) => {
-              if (clip.id !== action.clipId) return clip;
+              const isTarget =
+                track.id === action.trackId && clip.id === action.clipId;
+              const isSibling =
+                !isTarget &&
+                syncAbsFlag &&
+                targetInputId &&
+                clip.inputId === targetInputId;
+
+              if (!isTarget && !isSibling) return clip;
+
+              const patch = isTarget
+                ? action.patch
+                : { absolutePosition: action.patch.absolutePosition };
               const merged = {
                 ...clip.blockSettings,
-                ...action.patch,
+                ...patch,
                 shaders:
-                  action.patch.shaders !== undefined
-                    ? action.patch.shaders.map((shader) => ({
+                  patch.shaders !== undefined
+                    ? patch.shaders.map((shader) => ({
                         ...shader,
                         params: (shader.params || []).map((param) => ({
                           ...param,
@@ -748,8 +769,8 @@ export function timelineReducer(
                       }))
                     : clip.blockSettings.shaders,
                 attachedInputIds:
-                  action.patch.attachedInputIds !== undefined
-                    ? [...action.patch.attachedInputIds]
+                  patch.attachedInputIds !== undefined
+                    ? [...patch.attachedInputIds]
                     : clip.blockSettings.attachedInputIds,
               };
               let endMs = clip.endMs;

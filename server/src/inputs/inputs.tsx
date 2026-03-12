@@ -12,6 +12,7 @@ import React from 'react';
 import { getInputRenderer } from './rendererRegistry';
 import { wrapWithShaders } from '../utils/shaderUtils';
 import { ScrollingText } from './scrollingText';
+import { TransitionShaderWrapper } from './transitionWrapper';
 
 type Resolution = { width: number; height: number };
 
@@ -83,7 +84,7 @@ export function Input({ input }: { input: InputConfig }) {
         ) : streamState === 'finished' ? (
           <View style={{ padding: 300 }}>
             <Rescaler style={{ rescaleMode: 'fit' }}>
-              <Text style={{ fontSize: 600, fontFamily: 'Star Jedi' }}>Stream offline</Text>
+              <Text style={{ fontSize: 600, fontFamily: 'Star Jedi' }}></Text>
             </Rescaler>
           </View>
         ) : (
@@ -113,7 +114,15 @@ export function Input({ input }: { input: InputConfig }) {
 
   const activeShaders = input.shaders.filter(shader => shader.enabled);
 
-  const mainRendered = wrapWithShaders(inputComponent, activeShaders, resolution);
+  let mainRendered = wrapWithShaders(inputComponent, activeShaders, resolution);
+
+  if (input.activeTransition) {
+    mainRendered = (
+      <TransitionShaderWrapper transition={input.activeTransition} resolution={resolution}>
+        {mainRendered}
+      </TransitionShaderWrapper>
+    );
+  }
 
   if (input.attachedInputs && input.attachedInputs.length > 0) {
     return (
@@ -209,9 +218,17 @@ export function SmallInput({
     </View>
   );
 
-  const mainRendered = activeShaders.length
+  let mainRendered = activeShaders.length
     ? wrapWithShaders(smallInputComponent, activeShaders, resolution)
     : smallInputComponent;
+
+  if (input.activeTransition) {
+    mainRendered = (
+      <TransitionShaderWrapper transition={input.activeTransition} resolution={resolution}>
+        {mainRendered}
+      </TransitionShaderWrapper>
+    );
+  }
 
   if (input.attachedInputs && input.attachedInputs.length > 0) {
     return (

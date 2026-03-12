@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useEffect } from 'react';
-import type { Input } from '@/lib/types';
+import type { Input, TransitionConfig } from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
 import type { TimelineState } from './use-timeline-state';
 
@@ -11,8 +11,9 @@ type DesiredState = Map<string, boolean>; // inputId → should be visible
 
 type PlaybackEvent = {
   timeMs: number;
-  type: 'connect' | 'disconnect';
+  type: 'connect' | 'disconnect' | 'transition-in' | 'transition-out';
   inputId: string;
+  transition?: TransitionConfig;
 };
 
 // ── Helpers ──────────────────────────────────────────────
@@ -85,6 +86,29 @@ function compileEvents(state: TimelineState, fromMs: number): PlaybackEvent[] {
           inputId: clip.inputId,
         });
       }
+
+      const intro = clip.blockSettings.introTransition;
+      if (intro && clip.startMs > fromMs) {
+        events.push({
+          timeMs: clip.startMs,
+          type: 'transition-in',
+          inputId: clip.inputId,
+          transition: intro,
+        });
+      }
+
+      const outro = clip.blockSettings.outroTransition;
+      if (outro) {
+        const outroStartMs = clip.endMs - outro.durationMs;
+        if (outroStartMs > fromMs) {
+          events.push({
+            timeMs: outroStartMs,
+            type: 'transition-out',
+            inputId: clip.inputId,
+            transition: outro,
+          });
+        }
+      }
     }
   }
 
@@ -113,7 +137,7 @@ function getActiveClipsByInputAt(
 
 // ── Hook ─────────────────────────────────────────────────
 
-type Mp4RestartKey = `${number}|${boolean}`;
+type Mp4RestartKey = `${number}|${number}|${boolean}`;
 
 function isMp4InputId(inputId: string): boolean {
   return inputId.includes('::local::');
@@ -214,7 +238,9 @@ export function useTimelinePlayback(
         if (isMp4InputId(inputId)) {
           const playFromMs = clip.blockSettings.mp4PlayFromMs ?? 0;
           const loop = clip.blockSettings.mp4Loop !== false;
-          const key: Mp4RestartKey = `${playFromMs}|${loop}`;
+          const key: Mp4RestartKey = loop
+            ? `0|${playFromMs}|${loop}`
+            : `${clip.startMs}|${playFromMs}|${loop}`;
           if (mp4RestartedRef.current.get(inputId) !== key) {
             mp4RestartedRef.current.set(inputId, key);
             updates.push(
@@ -298,6 +324,7 @@ export function useTimelinePlayback(
       inputs.map((i) => [i.inputId, !i.hidden]),
     );
     appliedBlockSettingsRef.current = new Map();
+    mp4RestartedRef.current.clear();
   }, [inputs]);
 
   /** Restore server state to pre-play snapshot. */
@@ -397,6 +424,26 @@ export function useTimelinePlayback(
             console.warn(`Timeline: failed to hide ${event.inputId}`, err),
           );
         }
+      } else if (
+        (event.type === 'transition-in' || event.type === 'transition-out') &&
+        event.transition
+      ) {
+        const direction = event.type === 'transition-in' ? 'in' : 'out';
+        updateInput(roomId, event.inputId, {
+          volume:
+            inputsRef.current.find((i) => i.inputId === event.inputId)
+              ?.volume ?? 1,
+          activeTransition: {
+            ...event.transition,
+            direction,
+            startedAtMs: 0,
+          },
+        }).catch((err) =>
+          console.warn(
+            `Timeline: failed to start ${event.type} for ${event.inputId}`,
+            err,
+          ),
+        );
       }
 
       void applyBlockSettingsAtTime(event.timeMs);
