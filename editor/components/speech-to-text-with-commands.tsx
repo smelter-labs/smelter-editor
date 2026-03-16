@@ -45,6 +45,9 @@ function formatMacroStepLabel(step: MacroStep): string {
 export function SpeechToTextWithCommands() {
   const params = useParams();
   const roomId = params?.roomId as string | undefined;
+  const googleSpeechApiKey =
+    process.env.NEXT_PUBLIC_GOOGLE_SPEECH_API_KEY?.trim();
+  const hasGoogleSpeechApiKey = Boolean(googleSpeechApiKey);
 
   const [isOpen, setIsOpen] = useState(false);
   const [manualInput, setManualInput] = useState('');
@@ -125,8 +128,8 @@ export function SpeechToTextWithCommands() {
   } = useSpeechToText({
     continuous: true,
     useLegacyResults: false,
-    crossBrowser: true,
-    googleApiKey: process.env.NEXT_PUBLIC_GOOGLE_SPEECH_API_KEY,
+    crossBrowser: hasGoogleSpeechApiKey,
+    googleApiKey: googleSpeechApiKey,
     speechRecognitionProperties: {
       interimResults: true,
       lang: 'en-US',
@@ -177,18 +180,24 @@ export function SpeechToTextWithCommands() {
       setCurrentMacroStep(null);
       // Restart speech recognition after macro execution
       // The Web Speech API may have stopped during async macro execution
-      startSpeechToText();
+      if (hasGoogleSpeechApiKey) {
+        startSpeechToText();
+      }
     };
 
     const onMacroError = () => {
       setCurrentMacroStep(null);
       // Restart speech recognition after macro error
-      startSpeechToText();
+      if (hasGoogleSpeechApiKey) {
+        startSpeechToText();
+      }
     };
 
     const onMacroStopped = () => {
       setCurrentMacroStep(null);
-      startSpeechToText();
+      if (hasGoogleSpeechApiKey) {
+        startSpeechToText();
+      }
     };
 
     window.addEventListener(
@@ -226,9 +235,14 @@ export function SpeechToTextWithCommands() {
         onMacroStopped as EventListener,
       );
     };
-  }, [startSpeechToText]);
+  }, [hasGoogleSpeechApiKey, startSpeechToText]);
 
   const handleToggleRecording = () => {
+    if (!hasGoogleSpeechApiKey) {
+      setIsOpen(true);
+      return;
+    }
+
     if (isRecording) {
       stopSpeechToText();
     } else {
@@ -297,7 +311,9 @@ export function SpeechToTextWithCommands() {
             if (isRecording) stopSpeechToText();
             return false;
           }
-          startSpeechToText();
+          if (hasGoogleSpeechApiKey) {
+            startSpeechToText();
+          }
           setTimeout(() => inputRef.current?.focus(), 0);
           return true;
         });
@@ -305,7 +321,7 @@ export function SpeechToTextWithCommands() {
     };
     window.addEventListener('keydown', handleKeyboard);
     return () => window.removeEventListener('keydown', handleKeyboard);
-  }, [isRecording, startSpeechToText, stopSpeechToText]);
+  }, [hasGoogleSpeechApiKey, isRecording, startSpeechToText, stopSpeechToText]);
 
   const isIntroPage = !roomId;
   // Falls back to index 0 when no step has started yet, so the UI can preview the first step.
@@ -380,6 +396,13 @@ export function SpeechToTextWithCommands() {
           {error && (
             <p className='text-red-500 text-sm mb-2'>
               Error: Web Speech API not available in this browser
+            </p>
+          )}
+
+          {!hasGoogleSpeechApiKey && (
+            <p className='text-amber-400 text-sm mb-2'>
+              Google Speech API key is missing. Voice recording is disabled, but
+              typed commands still work.
             </p>
           )}
 
@@ -581,7 +604,11 @@ export function SpeechToTextWithCommands() {
               ))}
               {transcriptHistory.length === 0 && !interimResult && !error && (
                 <p className='text-neutral-600 text-sm'>
-                  {isRecording ? 'Say a command...' : 'Click mic to start'}
+                  {hasGoogleSpeechApiKey
+                    ? isRecording
+                      ? 'Say a command...'
+                      : 'Click mic to start'
+                    : 'Type a command below'}
                 </p>
               )}
             </div>

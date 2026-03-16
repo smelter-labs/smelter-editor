@@ -8,18 +8,14 @@ interface ConnectedDevicesPanelProps {
   peers: ConnectedPeer[];
 }
 
-export function ConnectedDevicesPanel({
-  peers,
-}: ConnectedDevicesPanelProps) {
+export function ConnectedDevicesPanel({ peers }: ConnectedDevicesPanelProps) {
   const [collapsed, setCollapsed] = useState(false);
 
   const connected = peers.length > 0;
 
   return (
     <div className='h-full overflow-y-auto p-3 border border-neutral-800 rounded-md bg-neutral-900'>
-      <div
-        className='flex items-center gap-2 px-2.5 py-1.5 border-b border-neutral-700/60'
-      >
+      <div className='flex items-center gap-2 px-2.5 py-1.5 border-b border-neutral-700/60'>
         {connected ? (
           <Wifi className='w-3.5 h-3.5 text-green-400 shrink-0' />
         ) : (
@@ -30,8 +26,7 @@ export function ConnectedDevicesPanel({
         </span>
         <button
           className='text-neutral-500 hover:text-neutral-200 transition-colors p-0.5 cursor-pointer'
-          onClick={() => setCollapsed((c) => !c)}
-        >
+          onClick={() => setCollapsed((c) => !c)}>
           {collapsed ? (
             <ChevronDown className='w-3.5 h-3.5' />
           ) : (
