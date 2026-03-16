@@ -245,6 +245,10 @@ export class SmelterManager {
     await this.unregisterOutput(outputId);
   }
 
+  public async terminate(): Promise<void> {
+    await this.instance.terminate();
+  }
+
   private async registerShaderFromFile(smelter: Smelter, shaderId: string, file: string) {
     const source = await readFile(file, { encoding: 'utf-8' });
 
