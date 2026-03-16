@@ -71,8 +71,8 @@ export interface SmelterApiClient {
   ): Promise<any>;
   disconnectInput(roomId: string, inputId: string): Promise<any>;
   connectInput(roomId: string, inputId: string): Promise<any>;
-  hideInput(roomId: string, inputId: string): Promise<any>;
-  showInput(roomId: string, inputId: string): Promise<any>;
+  hideInput(roomId: string, inputId: string, sourceId?: string): Promise<any>;
+  showInput(roomId: string, inputId: string, sourceId?: string): Promise<any>;
   toggleMotionDetection(
     roomId: string,
     inputId: string,
@@ -295,19 +295,23 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       );
     },
 
-    async hideInput(roomId, inputId) {
-      return await req(
+    async hideInput(roomId, inputId, sourceId) {
+      return await sendRequest(
+        baseUrl,
         'post',
         `/room/${enc(roomId)}/input/${enc(inputId)}/hide`,
         {},
+        sourceId ? { 'x-source-id': sourceId } : undefined,
       );
     },
 
-    async showInput(roomId, inputId) {
-      return await req(
+    async showInput(roomId, inputId, sourceId) {
+      return await sendRequest(
+        baseUrl,
         'post',
         `/room/${enc(roomId)}/input/${enc(inputId)}/show`,
         {},
+        sourceId ? { 'x-source-id': sourceId } : undefined,
       );
     },
 

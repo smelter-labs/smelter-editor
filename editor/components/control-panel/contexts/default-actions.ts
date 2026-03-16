@@ -8,8 +8,8 @@ import {
   removeInput,
   disconnectInput,
   connectInput,
-  hideInput,
-  showInput,
+  hideInput as hideInputAction,
+  showInput as showInputAction,
   addTwitchInput,
   addKickInput,
   addMP4Input,
@@ -81,8 +81,10 @@ export const defaultActions: ControlPanelActions = {
   removeInput,
   disconnectInput,
   connectInput,
-  hideInput,
-  showInput,
+  hideInput: (roomId, inputId) =>
+    hideInputAction(roomId, inputId, SESSION_SOURCE_ID),
+  showInput: (roomId, inputId) =>
+    showInputAction(roomId, inputId, SESSION_SOURCE_ID),
   addTwitchInput,
   addKickInput,
   addMP4Input,

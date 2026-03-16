@@ -261,12 +261,20 @@ export async function connectInput(roomId: string, inputId: string) {
   return client.connectInput(roomId, inputId);
 }
 
-export async function hideInput(roomId: string, inputId: string) {
-  return client.hideInput(roomId, inputId);
+export async function hideInput(
+  roomId: string,
+  inputId: string,
+  sourceId?: string,
+) {
+  return client.hideInput(roomId, inputId, sourceId);
 }
 
-export async function showInput(roomId: string, inputId: string) {
-  return client.showInput(roomId, inputId);
+export async function showInput(
+  roomId: string,
+  inputId: string,
+  sourceId?: string,
+) {
+  return client.showInput(roomId, inputId, sourceId);
 }
 
 export async function toggleMotionDetection(

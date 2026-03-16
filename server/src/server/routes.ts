@@ -705,6 +705,18 @@ routes.after(() => {
       console.log("[request] Hide input", { roomId, inputId });
       const room = state.getRoom(roomId);
       room.hideInput(inputId);
+      const updatedInput = room.getInputs().find((i) => i.inputId === inputId);
+      if (updatedInput) {
+        const sourceId =
+          (req.headers["x-source-id"] as string | undefined) ?? null;
+        roomEventBus.broadcast(roomId, {
+          type: "input_updated",
+          roomId,
+          inputId,
+          input: toPublicInputState(updatedInput),
+          sourceId,
+        });
+      }
       res.status(200).send({ status: "ok" });
     },
   );
@@ -717,6 +729,18 @@ routes.after(() => {
       console.log("[request] Show input", { roomId, inputId });
       const room = state.getRoom(roomId);
       room.showInput(inputId);
+      const updatedInput = room.getInputs().find((i) => i.inputId === inputId);
+      if (updatedInput) {
+        const sourceId =
+          (req.headers["x-source-id"] as string | undefined) ?? null;
+        roomEventBus.broadcast(roomId, {
+          type: "input_updated",
+          roomId,
+          inputId,
+          input: toPublicInputState(updatedInput),
+          sourceId,
+        });
+      }
       res.status(200).send({ status: "ok" });
     },
   );
