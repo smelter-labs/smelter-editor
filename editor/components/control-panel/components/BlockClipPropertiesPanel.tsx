@@ -710,6 +710,15 @@ export function BlockClipPropertiesPanel({
     [selectedTimelineClips, applyClipPatch],
   );
 
+  const handleApplyPreset = useCallback(
+    (shaders: ShaderConfig[], mode: 'replace' | 'append') => {
+      const current = selectedTimelineClips[0]?.blockSettings.shaders || [];
+      const newShaders = mode === 'replace' ? shaders : [...current, ...shaders];
+      void applyClipPatch({ shaders: newShaders });
+    },
+    [selectedTimelineClips, applyClipPatch],
+  );
+
   const handleSliderChange = useCallback(
     (shaderId: string, paramName: string, newValue: number) => {
       if (selectedTimelineClips.length === 0) return;
@@ -1636,6 +1645,7 @@ export function BlockClipPropertiesPanel({
           onOpenShaderInline={(shaderId) =>
             setInlineShaderView({ shaderId, source: 'block' })
           }
+          onApplyPreset={handleApplyPreset}
         />
       </div>
       <AddShaderModal
