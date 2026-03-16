@@ -36,7 +36,10 @@ import {
   type InputWrapper,
 } from './hooks/use-control-panel-state';
 import { useWhipConnections } from './hooks/use-whip-connections';
-import { useRoomWebSocket } from './hooks/use-room-websocket';
+import {
+  useRoomWebSocket,
+  type ConnectedPeer,
+} from './hooks/use-room-websocket';
 import { useControlPanelEvents } from './hooks/use-control-panel-events';
 import { FxAccordion } from './components/FxAccordion';
 import { AddVideoSection } from './components/AddVideoSection';
@@ -108,6 +111,7 @@ export type ControlPanelProps = {
     timelineSection: React.ReactNode;
     blockPropertiesSection: React.ReactNode;
     motionPanels: Record<string, React.ReactNode>;
+    peers: ConnectedPeer[];
   }) => React.ReactNode;
 };
 
@@ -215,7 +219,7 @@ function ControlPanelWithActions({
     setIsScreenshareActive,
   } = whipConnections;
 
-  useRoomWebSocket(roomId);
+  const { peers } = useRoomWebSocket(roomId);
 
   useEffect(() => {
     if (!isGuest || !onGuestStreamChange) return;
@@ -576,6 +580,7 @@ function ControlPanelInner({
           timelineSection,
           blockPropertiesSection,
           motionPanels,
+          peers,
         })}
       </>
     );

@@ -1,41 +1,66 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 // Mirrors server/src/server/roomEventBus.ts - sync manually.
+export type ConnectedPeer = {
+  clientId: string;
+  name: string | null;
+};
+
 type InputUpdatedEvent = {
   type: 'input_updated';
   roomId: string;
   inputId: string;
   input: unknown;
-  // nullable x-source-id from the request that triggered this event
   sourceId: string | null;
 };
 
-type RoomEvent = InputUpdatedEvent;
+type PeersUpdatedEvent = {
+  type: 'peers_updated';
+  roomId: string;
+  peers: ConnectedPeer[];
+};
+
+type ConnectedEvent = {
+  type: 'connected';
+  clientId: string;
+};
+
+type ServerMessage = InputUpdatedEvent | PeersUpdatedEvent | ConnectedEvent;
 
 const WS_BASE = process.env.NEXT_PUBLIC_SMELTER_WS_URL ?? 'ws://localhost:3001';
 
-export function useRoomWebSocket(roomId: string): void {
+const CLIENT_NAME = 'Editor';
+
+export function useRoomWebSocket(roomId: string): { peers: ConnectedPeer[] } {
+  const [peers, setPeers] = useState<ConnectedPeer[]>([]);
+
   useEffect(() => {
     const url = `${WS_BASE}/room/${encodeURIComponent(roomId)}/ws`;
     const ws = new WebSocket(url);
 
-    // just log for now
     ws.addEventListener('open', () => {
       console.log('[room-ws] connected', { roomId, url });
+      ws.send(JSON.stringify({ type: 'identify', name: CLIENT_NAME }));
     });
 
-    // just log for now
     ws.addEventListener('message', (ev) => {
-      let event: RoomEvent;
+      let msg: ServerMessage;
       try {
-        event = JSON.parse(ev.data as string) as RoomEvent;
+        msg = JSON.parse(ev.data as string) as ServerMessage;
       } catch {
         console.warn('[room-ws] unparseable message', ev.data);
         return;
       }
-      console.log('[room-ws] event', event);
+
+      if (msg.type === 'peers_updated') {
+        setPeers(msg.peers);
+      } else if (msg.type === 'connected') {
+        console.log('[room-ws] assigned clientId', msg.clientId);
+      } else if (msg.type === 'input_updated') {
+        console.log('[room-ws] input_updated', msg);
+      }
     });
 
     ws.addEventListener('error', () => {
@@ -48,10 +73,13 @@ export function useRoomWebSocket(roomId: string): void {
         code: ev.code,
         reason: ev.reason,
       });
+      setPeers([]);
     });
 
     return () => {
       ws.close();
     };
   }, [roomId]);
+
+  return { peers };
 }

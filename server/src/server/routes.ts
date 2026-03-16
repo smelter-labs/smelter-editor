@@ -1,6 +1,7 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
+import { v4 as uuidv4 } from "uuid";
 import { STATUS_CODES } from "node:http";
 import path from "node:path";
 import { pathExists, readdir, readFile, stat } from "fs-extra";
@@ -141,9 +142,10 @@ routes.after(() => {
       });
     },
     wsHandler: (socket, req) => {
+      const clientId = uuidv4();
       console.log("[ws] New connection to room event bus", {
         url: req.url,
-        headers: req.headers,
+        clientId,
       });
       const { roomId } = req.params;
       try {
@@ -154,7 +156,7 @@ routes.after(() => {
         return;
       }
       try {
-        roomEventBus.subscribe(roomId, socket as any);
+        roomEventBus.subscribe(roomId, clientId, socket as any);
       } catch (err) {
         console.error(`[ws] Failed to subscribe to room ${roomId}:`, err);
         socket.close(1011, "Internal server error");
