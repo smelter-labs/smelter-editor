@@ -169,6 +169,7 @@ export function useTimelinePlayback(
   const eventTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const appliedBlockSettingsRef = useRef<Map<string, string>>(new Map());
   const mp4RestartedRef = useRef<Map<string, Mp4RestartKey>>(new Map());
+  const mp4ActualRestartedRef = useRef<Set<string>>(new Set());
   const lastAppliedOrderRef = useRef<string>('');
   const playbackGenRef = useRef(0);
   const inFlightRef = useRef<Set<Promise<unknown>>>(new Set());
@@ -272,6 +273,7 @@ export function useTimelinePlayback(
             : `${clip.startMs}|${playFromMs}|${loop}`;
           if (mp4RestartedRef.current.get(inputId) !== key) {
             mp4RestartedRef.current.set(inputId, key);
+            mp4ActualRestartedRef.current.add(inputId);
             updates.push(
               restartMp4Input(roomId, inputId, playFromMs, loop).catch(
                 (err) =>
@@ -370,7 +372,23 @@ export function useTimelinePlayback(
       inputs.map((i) => [i.inputId, !i.hidden]),
     );
     appliedBlockSettingsRef.current = new Map();
-    mp4RestartedRef.current.clear();
+
+    // Pre-populate MP4 keys for active clips so that MP4s already playing
+    // with matching settings are NOT unnecessarily restarted (avoids flash).
+    const currentState = stateRef.current;
+    const active = getActiveClipsByInputAt(currentState, currentState.playheadMs);
+    const mp4Map = new Map<string, Mp4RestartKey>();
+    for (const [inputId, clip] of active.entries()) {
+      if (isMp4InputId(inputId)) {
+        const playFromMs = clip.blockSettings.mp4PlayFromMs ?? 0;
+        const loop = clip.blockSettings.mp4Loop !== false;
+        const key: Mp4RestartKey = loop
+          ? `0|${playFromMs}|${loop}`
+          : `${clip.startMs}|${playFromMs}|${loop}`;
+        mp4Map.set(inputId, key);
+      }
+    }
+    mp4RestartedRef.current = mp4Map;
   }, [inputs]);
 
   /** Restore server state to pre-play snapshot. */
@@ -388,12 +406,13 @@ export function useTimelinePlayback(
       }
     }
 
-    // Restore any MP4 inputs that were restarted during playback
-    for (const [inputId] of mp4RestartedRef.current) {
+    // Restore only MP4s that were genuinely restarted during playback
+    for (const inputId of mp4ActualRestartedRef.current) {
       promises.push(
         restartMp4Input(roomId, inputId, 0, true).catch(() => {}),
       );
     }
+    mp4ActualRestartedRef.current.clear();
     mp4RestartedRef.current.clear();
 
     if (snapshot.inputOrder.length > 0) {
@@ -561,6 +580,7 @@ export function useTimelinePlayback(
     if (state.isPlaying) return;
     playbackGenRef.current += 1;
     inFlightRef.current.clear();
+    mp4ActualRestartedRef.current.clear();
 
     snapshotPrePlayState();
     setPlaying(true);

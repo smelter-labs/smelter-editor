@@ -45,6 +45,7 @@ export type InputConfig = {
   absoluteTransitionDurationMs?: number;
   absoluteTransitionEasing?: string;
   activeTransition?: ActiveTransition;
+  restartFading?: boolean;
 };
 
 export type RoomStore = {

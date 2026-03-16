@@ -5,6 +5,7 @@ import {
   InputStream,
   Image,
   Rescaler,
+  Shader,
   useInputStreams,
 } from '@swmansion/smelter';
 
@@ -121,6 +122,15 @@ export function Input({ input }: { input: InputConfig }) {
       <TransitionShaderWrapper transition={input.activeTransition} resolution={resolution}>
         {mainRendered}
       </TransitionShaderWrapper>
+    );
+  }
+
+  if (input.restartFading) {
+    mainRendered = (
+      <Shader shaderId="opacity" resolution={resolution}
+        shaderParam={{ type: 'struct', value: [{ type: 'f32', fieldName: 'opacity', value: 0 }] }}>
+        {mainRendered}
+      </Shader>
     );
   }
 

@@ -37,6 +37,7 @@ export type RoomInputState = {
   absoluteTransitionDurationMs?: number;
   absoluteTransitionEasing?: string;
   activeTransition?: ActiveTransition;
+  restartFading?: boolean;
   motionScore?: number;
   motionEnabled: boolean;
   metadata: {
@@ -833,6 +834,10 @@ export class RoomState {
       throw new Error(`Input ${inputId} is not connected`);
     }
 
+    input.restartFading = true;
+    this.updateStoreWithState();
+    await sleep(150);
+
     await SmelterInstance.unregisterInput(inputId);
 
     const offsetMs = SmelterInstance.getPipelineTimeMs() - playFromMs;
@@ -842,6 +847,9 @@ export class RoomState {
       loop,
       offsetMs,
     });
+
+    input.restartFading = false;
+    this.updateStoreWithState();
   }
 
   public async disconnectInput(inputId: string) {
@@ -1123,6 +1131,7 @@ export class RoomState {
       absoluteTransitionDurationMs: input.absoluteTransitionDurationMs,
       absoluteTransitionEasing: input.absoluteTransitionEasing,
       activeTransition: input.activeTransition,
+      restartFading: input.restartFading,
     });
 
     const connectedInputs = this.inputs.filter(input => input.status === 'connected' && !input.hidden);
