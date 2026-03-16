@@ -170,6 +170,8 @@ export function useTimelinePlayback(
   const appliedBlockSettingsRef = useRef<Map<string, string>>(new Map());
   const mp4RestartedRef = useRef<Map<string, Mp4RestartKey>>(new Map());
   const lastAppliedOrderRef = useRef<string>('');
+  const playbackGenRef = useRef(0);
+  const inFlightRef = useRef<Set<Promise<unknown>>>(new Set());
 
   const inputsRef = useRef(inputs);
   useEffect(() => {
@@ -189,9 +191,16 @@ export function useTimelinePlayback(
     };
   }, []);
 
+  const trackPromise = useCallback((p: Promise<unknown>) => {
+    inFlightRef.current.add(p);
+    p.finally(() => inFlightRef.current.delete(p));
+    return p;
+  }, []);
+
   /** Apply visibility for a desired state map — only sends commands for changed inputs. */
   const applyDesiredState = useCallback(
     async (desired: DesiredState) => {
+      const gen = playbackGenRef.current;
       const promises: Promise<void>[] = [];
 
       for (const [inputId, shouldBeVisible] of desired) {
@@ -240,7 +249,9 @@ export function useTimelinePlayback(
 
       if (promises.length > 0) {
         await Promise.allSettled(promises);
-        await refreshState();
+        if (playbackGenRef.current === gen) {
+          await refreshState();
+        }
       }
     },
     [roomId, refreshState],
@@ -248,6 +259,7 @@ export function useTimelinePlayback(
 
   const applyBlockSettingsAtTime = useCallback(
     async (timeMs: number) => {
+      const gen = playbackGenRef.current;
       const active = getActiveClipsByInputAt(stateRef.current, timeMs);
       const updates: Promise<unknown>[] = [];
       for (const [inputId, clip] of active.entries()) {
@@ -320,7 +332,9 @@ export function useTimelinePlayback(
       }
       if (updates.length > 0) {
         await Promise.allSettled(updates);
-        await refreshState();
+        if (playbackGenRef.current === gen) {
+          await refreshState();
+        }
       }
     },
     [roomId, refreshState],
@@ -399,6 +413,8 @@ export function useTimelinePlayback(
 
   /** Stop playback and restore pre-play state. */
   const stop = useCallback(async () => {
+    playbackGenRef.current += 1;
+
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -412,6 +428,10 @@ export function useTimelinePlayback(
     nextEventIndexRef.current = 0;
     lastAppliedOrderRef.current = '';
     setPlaying(false);
+
+    if (inFlightRef.current.size > 0) {
+      await Promise.allSettled([...inFlightRef.current]);
+    }
 
     await restorePrePlayState();
   }, [setPlaying, restorePrePlayState]);
@@ -433,6 +453,7 @@ export function useTimelinePlayback(
     const delayMs = event.timeMs - playheadMs - (performance.now() - wallMs);
 
     const fire = () => {
+      if (!playStartRef.current) return;
       eventTimerRef.current = null;
       nextEventIndexRef.current = idx + 1;
 
@@ -458,8 +479,10 @@ export function useTimelinePlayback(
             break;
           }
         }
-        showInput(roomId, event.inputId, mergedTransition).catch((err) =>
-          console.warn(`Timeline: failed to show ${event.inputId}`, err),
+        trackPromise(
+          showInput(roomId, event.inputId, mergedTransition).catch((err) =>
+            console.warn(`Timeline: failed to show ${event.inputId}`, err),
+          ),
         );
       } else if (event.type === 'disconnect' && event.inputId) {
         // Check if the same input has another active clip at this time
@@ -473,24 +496,28 @@ export function useTimelinePlayback(
         );
         if (!stillActive) {
           appliedStateRef.current.set(event.inputId, false);
-          hideInput(roomId, event.inputId).catch((err) =>
-            console.warn(`Timeline: failed to hide ${event.inputId}`, err),
+          trackPromise(
+            hideInput(roomId, event.inputId).catch((err) =>
+              console.warn(`Timeline: failed to hide ${event.inputId}`, err),
+            ),
           );
         }
       } else if (event.type === 'transition-in' && event.transition) {
-        updateInput(roomId, event.inputId, {
-          volume:
-            inputsRef.current.find((i) => i.inputId === event.inputId)
-              ?.volume ?? 1,
-          activeTransition: {
-            ...event.transition,
-            direction: 'in',
-            startedAtMs: 0,
-          },
-        }).catch((err) =>
-          console.warn(
-            `Timeline: failed to start transition-in for ${event.inputId}`,
-            err,
+        trackPromise(
+          updateInput(roomId, event.inputId, {
+            volume:
+              inputsRef.current.find((i) => i.inputId === event.inputId)
+                ?.volume ?? 1,
+            activeTransition: {
+              ...event.transition,
+              direction: 'in',
+              startedAtMs: 0,
+            },
+          }).catch((err) =>
+            console.warn(
+              `Timeline: failed to start transition-in for ${event.inputId}`,
+              err,
+            ),
           ),
         );
       } else if (event.type === 'transition-out' && event.transition) {
@@ -506,14 +533,16 @@ export function useTimelinePlayback(
             break;
           }
         }
-        hideInput(roomId, event.inputId, {
-          type: event.transition.type,
-          durationMs: event.transition.durationMs,
-          direction: 'out',
-        }).catch((err) =>
-          console.warn(
-            `Timeline: failed to start transition-out for ${event.inputId}`,
-            err,
+        trackPromise(
+          hideInput(roomId, event.inputId, {
+            type: event.transition.type,
+            durationMs: event.transition.durationMs,
+            direction: 'out',
+          }).catch((err) =>
+            console.warn(
+              `Timeline: failed to start transition-out for ${event.inputId}`,
+              err,
+            ),
           ),
         );
       }
@@ -530,6 +559,8 @@ export function useTimelinePlayback(
   /** Start playback — animate playhead and fire events at clip edges. */
   const play = useCallback(() => {
     if (state.isPlaying) return;
+    playbackGenRef.current += 1;
+    inFlightRef.current.clear();
 
     snapshotPrePlayState();
     setPlaying(true);
