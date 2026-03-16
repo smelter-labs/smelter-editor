@@ -34,6 +34,7 @@ export type RoomState = {
   newsStripEnabled?: boolean;
   pendingWhipInputs?: PendingWhipInputData[];
   isRecording?: boolean;
+  isFrozen?: boolean;
 };
 
 export type AddInputResponse = {

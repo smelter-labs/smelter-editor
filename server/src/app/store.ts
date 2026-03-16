@@ -58,7 +58,9 @@ export type RoomStore = {
   swapFadeOutDurationMs: number;
   newsStripFadeDuringSwap: boolean;
   newsStripEnabled: boolean;
+  frozenImageId: string | null;
   updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number, swapOutgoingEnabled: boolean, swapFadeInDurationMs: number, newsStripFadeDuringSwap: boolean, swapFadeOutDurationMs: number, newsStripEnabled: boolean) => void;
+  setFrozenImageId: (id: string | null) => void;
 };
 
 export function createRoomStore(resolution: Resolution = { width: 2560, height: 1440 }): StoreApi<RoomStore> {
@@ -72,8 +74,12 @@ export function createRoomStore(resolution: Resolution = { width: 2560, height: 
     swapFadeOutDurationMs: 500,
     newsStripFadeDuringSwap: true,
     newsStripEnabled: false,
+    frozenImageId: null,
     updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number, swapOutgoingEnabled: boolean, swapFadeInDurationMs: number, newsStripFadeDuringSwap: boolean, swapFadeOutDurationMs: number, newsStripEnabled: boolean) => {
       set(_state => ({ inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs, newsStripEnabled }));
+    },
+    setFrozenImageId: (id: string | null) => {
+      set(() => ({ frozenImageId: id }));
     },
   }));
 }
@@ -126,6 +132,11 @@ export function useLayoutInputs() {
 export function useAbsoluteInputs() {
   const store = useContext(StoreContext);
   return useStore(store, state => state.inputs.filter(i => i.absolutePosition));
+}
+
+export function useFrozenImageId() {
+  const store = useContext(StoreContext);
+  return useStore(store, state => state.frozenImageId);
 }
 
 export const StoreContext = createContext<StoreApi<RoomStore>>(createRoomStore());

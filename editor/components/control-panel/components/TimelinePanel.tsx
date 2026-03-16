@@ -33,7 +33,9 @@ import {
   Trash2,
   Pencil,
   Check,
+  Zap,
 } from 'lucide-react';
+import { freezeRoom, unfreezeRoom } from '@/app/actions/actions';
 
 // ── Props ────────────────────────────────────────────────
 
@@ -483,7 +485,7 @@ export function TimelinePanel({
     structureRevision,
   );
 
-  const { isRecording: serverIsRecording } = useControlPanelContext();
+  const { isRecording: serverIsRecording, isFrozen: serverIsFrozen } = useControlPanelContext();
   const {
     isTogglingRecording,
     effectiveIsRecording: isRecording,
@@ -491,6 +493,34 @@ export function TimelinePanel({
     stopAndDownload,
   } = useRecordingControls(roomId, serverIsRecording, refreshState);
   const wasPlayingRef = useRef(false);
+
+  const [frozen, setFrozen] = useState(serverIsFrozen);
+  const [freezeLoading, setFreezeLoading] = useState(false);
+
+  useEffect(() => {
+    setFrozen(serverIsFrozen);
+  }, [serverIsFrozen]);
+
+  const handleTurboPause = useCallback(async () => {
+    if (freezeLoading) return;
+    setFreezeLoading(true);
+    try {
+      if (frozen) {
+        await unfreezeRoom(roomId);
+        setFrozen(false);
+      } else {
+        if (state.isPlaying) {
+          stop();
+        }
+        await freezeRoom(roomId);
+        setFrozen(true);
+      }
+    } catch (err) {
+      console.error('TURBOPAUZA failed', err);
+    } finally {
+      setFreezeLoading(false);
+    }
+  }, [frozen, freezeLoading, roomId, state.isPlaying, stop]);
 
   const handleRecordAndPlay = useCallback(async () => {
     if (isTogglingRecording) return;
@@ -1782,6 +1812,13 @@ export function TimelinePanel({
           disabled={state.isPlaying}
           title='Apply state at playhead'>
           <Crosshair className='w-3.5 h-3.5' />
+        </button>
+        <button
+          className={`p-1 rounded hover:bg-neutral-700 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${frozen ? 'text-yellow-400 bg-yellow-400/20' : 'text-neutral-400 hover:text-white'}`}
+          onClick={handleTurboPause}
+          disabled={freezeLoading}
+          title='TURBOPAUZA (freeze/unfreeze output)'>
+          <Zap className={`w-3.5 h-3.5 ${freezeLoading ? 'animate-pulse' : ''}`} />
         </button>
         <button
           className='p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors cursor-pointer'

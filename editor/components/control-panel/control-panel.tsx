@@ -300,6 +300,7 @@ function ControlPanelWithActions({
   );
 
   const isRecordingFromServer = roomState.isRecording ?? false;
+  const isFrozenFromServer = roomState.isFrozen ?? false;
   const motionScores = useMotionScores(roomId);
 
   const controlPanelCtx = useMemo(
@@ -310,6 +311,7 @@ function ControlPanelWithActions({
       inputsRef,
       availableShaders,
       isRecording: isRecordingFromServer,
+      isFrozen: isFrozenFromServer,
       motionScores,
     }),
     [
@@ -319,6 +321,7 @@ function ControlPanelWithActions({
       inputsRef,
       availableShaders,
       isRecordingFromServer,
+      isFrozenFromServer,
       motionScores,
     ],
   );

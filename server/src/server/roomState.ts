@@ -48,7 +48,7 @@ export type RoomInputState = {
 } & TypeSpecificState;
 
 type TypeSpecificState =
-  | { type: 'local-mp4'; mp4FilePath: string }
+  | { type: 'local-mp4'; mp4FilePath: string; registeredAtPipelineMs?: number; playFromMs?: number }
   | { type: 'twitch-channel'; channelId: string; hlsUrl: string; monitor: StreamMonitor & { onUpdate(fn: (streamInfo: TwitchStreamInfo, isLive: boolean) => void): void } }
   | { type: 'kick-channel'; channelId: string; hlsUrl: string; monitor: StreamMonitor & { onUpdate(fn: (streamInfo: any, isLive: boolean) => void): void } }
   | { type: 'whip'; whipUrl: string; monitor: WhipMonitor }
@@ -331,6 +331,71 @@ export class RoomState {
 
       return { fileName: this.recording.fileName };
     });
+  }
+
+  private frozenImageId: string | null = null;
+  private frozenJpegPath: string | null = null;
+
+  public isFrozen(): boolean {
+    return this.frozenImageId !== null;
+  }
+
+  public async freeze(): Promise<{ screenshotUrl: string; mp4Positions: Record<string, number>; frozen: true }> {
+    return this.mutex.runExclusive(async () => {
+      if (this.frozenImageId) {
+        await this._unfreeze();
+      }
+
+      const pipelineTime = SmelterInstance.getPipelineTimeMs();
+      const mp4Positions: Record<string, number> = {};
+      for (const input of this.inputs) {
+        if (input && input.type === 'local-mp4' && input.registeredAtPipelineMs != null) {
+          mp4Positions[input.inputId] = pipelineTime - input.registeredAtPipelineMs + (input.playFromMs ?? 0);
+        }
+      }
+
+      const jpegPath = await SmelterInstance.captureScreenshot(this.output);
+      const fileName = path.basename(jpegPath);
+      const frozenImageId = `frozen::${this.idPrefix}::${Date.now()}`;
+
+      await SmelterInstance.registerImage(frozenImageId, {
+        serverPath: jpegPath,
+        assetType: 'jpeg',
+      });
+
+      this.frozenImageId = frozenImageId;
+      this.frozenJpegPath = jpegPath;
+      this.output.store.getState().setFrozenImageId(frozenImageId);
+
+      return { screenshotUrl: `/screenshots/${fileName}`, mp4Positions, frozen: true as const };
+    });
+  }
+
+  public async unfreeze(): Promise<void> {
+    return this.mutex.runExclusive(() => this._unfreeze());
+  }
+
+  private async _unfreeze(): Promise<void> {
+    if (!this.frozenImageId) return;
+
+    this.output.store.getState().setFrozenImageId(null);
+
+    try {
+      await SmelterInstance.unregisterImage(this.frozenImageId);
+    } catch (err) {
+      console.error('Failed to unregister frozen image', err);
+    }
+
+    if (this.frozenJpegPath) {
+      try {
+        await remove(this.frozenJpegPath);
+      } catch {
+        // best-effort cleanup
+      }
+    }
+
+    this.frozenImageId = null;
+    this.frozenJpegPath = null;
   }
 
   public getState(): [RoomInputState[], Layout, number, boolean, number, boolean, number, boolean] {
@@ -810,6 +875,10 @@ export class RoomState {
       throw err;
     }
     input.status = 'connected';
+    if (input.type === 'local-mp4') {
+      input.registeredAtPipelineMs = SmelterInstance.getPipelineTimeMs();
+      input.playFromMs = 0;
+    }
     // Start motion detection for video inputs
     if (input.motionEnabled && ['local-mp4', 'twitch-channel', 'kick-channel', 'whip'].includes(input.type)) {
       this.motionManager.startMotionDetection(inputId, (score) => {
@@ -867,6 +936,8 @@ export class RoomState {
         offsetMs,
       });
 
+      input.registeredAtPipelineMs = SmelterInstance.getPipelineTimeMs();
+      input.playFromMs = playFromMs;
       input.restartFading = false;
       this.updateStoreWithState();
     });
@@ -1097,6 +1168,10 @@ export class RoomState {
   public async deleteRoom() {
     return this.mutex.runExclusive(async () => {
       this.destroyed = true;
+
+    if (this.frozenImageId) {
+      await this._unfreeze();
+    }
 
     for (const timer of this.transitionTimers.values()) {
       clearTimeout(timer);
