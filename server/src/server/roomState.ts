@@ -167,6 +167,7 @@ function cloneDefaultLogoShaders(): ShaderConfig[] {
 
 export class RoomState {
   private inputs: RoomInputState[];
+  private destroyed = false;
   private transitionTimers: Map<string, NodeJS.Timeout> = new Map();
   private motionManager: MotionManager;
   private motionScoreListeners: Set<(scores: Record<string, number>) => void> = new Set();
@@ -1070,6 +1071,20 @@ export class RoomState {
   }
 
   public async deleteRoom() {
+    this.destroyed = true;
+
+    for (const timer of this.transitionTimers.values()) {
+      clearTimeout(timer);
+    }
+    this.transitionTimers.clear();
+
+    for (const input of this.inputs) {
+      if (input.type === 'game') {
+        for (const t of input.effectTimers) clearTimeout(t);
+        input.effectTimers = [];
+      }
+    }
+
     await this.stopAllMotion();
     const inputs = this.inputs;
     this.inputs = [];
@@ -1100,6 +1115,8 @@ export class RoomState {
   }
 
   private updateStoreWithState() {
+    if (this.destroyed) return;
+
     const toInputConfig = (input: RoomInputState): InputConfig => ({
       inputId: input.inputId,
       title: input.metadata.title,

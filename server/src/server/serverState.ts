@@ -22,6 +22,8 @@ const WHIP_STALE_TTL_MS =
     : 15_000;
 class ServerState {
   private rooms: Record<string, RoomState> = {};
+  private monitorInterval: NodeJS.Timeout;
+
   public getRooms(): RoomState[] {
     return Object.values(this.rooms);
   }
@@ -39,9 +41,13 @@ class ServerState {
   }
 
   constructor() {
-    setInterval(async () => {
+    this.monitorInterval = setInterval(async () => {
       await this.monitorConnectedRooms();
     }, 1000);
+  }
+
+  public stopMonitoring() {
+    clearInterval(this.monitorInterval);
   }
 
   private getUsedRoomNames(): Set<string> {

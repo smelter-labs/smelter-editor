@@ -113,6 +113,26 @@ export function Input({ input }: { input: InputConfig }) {
     </Rescaler>
   );
 
+  const [hiddenForRestart, setHiddenForRestart] = React.useState(false);
+
+  React.useEffect(() => {
+    if (input.restartFading) {
+      setHiddenForRestart(true);
+    }
+  }, [input.restartFading]);
+
+  React.useEffect(() => {
+    if (hiddenForRestart && !input.restartFading && streamState === 'playing') {
+      setHiddenForRestart(false);
+    }
+  }, [hiddenForRestart, input.restartFading, streamState]);
+
+  React.useEffect(() => {
+    if (!hiddenForRestart) return;
+    const timeout = setTimeout(() => setHiddenForRestart(false), 5000);
+    return () => clearTimeout(timeout);
+  }, [hiddenForRestart]);
+
   const activeShaders = input.shaders.filter(shader => shader.enabled);
 
   let mainRendered = wrapWithShaders(inputComponent, activeShaders, resolution);
@@ -125,7 +145,7 @@ export function Input({ input }: { input: InputConfig }) {
     );
   }
 
-  if (input.restartFading) {
+  if (hiddenForRestart || input.restartFading) {
     mainRendered = (
       <Shader shaderId="opacity" resolution={resolution}
         shaderParam={{ type: 'struct', value: [{ type: 'f32', fieldName: 'opacity', value: 0 }] }}>
