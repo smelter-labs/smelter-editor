@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useEffect } from 'react';
 import type { Input, TransitionConfig, UpdateInputOptions } from '@/lib/types';
+import { buildInputUpdateFromBlockSettings } from '@/lib/room-config';
 import { useActions } from '../contexts/actions-context';
 import type { BlockSettings, Clip, TimelineState } from './use-timeline-state';
 
@@ -158,43 +159,6 @@ function getActiveClipForInputAt(
   inputId: string,
 ): Clip | null {
   return getActiveClipsByInputAt(state, timeMs).get(inputId) ?? null;
-}
-
-function buildInputUpdateFromBlockSettings(
-  blockSettings: BlockSettings,
-): Partial<UpdateInputOptions> {
-  return {
-    volume: blockSettings.volume,
-    shaders: blockSettings.shaders,
-    showTitle: blockSettings.showTitle,
-    orientation: blockSettings.orientation,
-    text: blockSettings.text,
-    textAlign: blockSettings.textAlign,
-    textColor: blockSettings.textColor,
-    textMaxLines: blockSettings.textMaxLines,
-    textScrollSpeed: blockSettings.textScrollSpeed,
-    textScrollLoop: blockSettings.textScrollLoop,
-    textFontSize: blockSettings.textFontSize,
-    borderColor: blockSettings.borderColor,
-    borderWidth: blockSettings.borderWidth,
-    attachedInputIds: blockSettings.attachedInputIds,
-    snake1Shaders: blockSettings.snake1Shaders,
-    snake2Shaders: blockSettings.snake2Shaders,
-    absolutePosition: blockSettings.absolutePosition,
-    absoluteTop: blockSettings.absoluteTop,
-    absoluteLeft: blockSettings.absoluteLeft,
-    absoluteWidth: blockSettings.absoluteWidth,
-    absoluteHeight: blockSettings.absoluteHeight,
-    absoluteTransitionDurationMs: blockSettings.absoluteTransitionDurationMs,
-    absoluteTransitionEasing: blockSettings.absoluteTransitionEasing,
-    gameBackgroundColor: blockSettings.gameBackgroundColor,
-    gameCellGap: blockSettings.gameCellGap,
-    gameBoardBorderColor: blockSettings.gameBoardBorderColor,
-    gameBoardBorderWidth: blockSettings.gameBoardBorderWidth,
-    gameGridLineColor: blockSettings.gameGridLineColor,
-    gameGridLineAlpha: blockSettings.gameGridLineAlpha,
-    snakeEventShaders: blockSettings.snakeEventShaders,
-  };
 }
 
 function pickRestorableInputSettings(input: Input): RestorableInputSettings {

@@ -1,5 +1,6 @@
 import { ensureDir, pathExists, readdir, remove } from 'fs-extra';
 import path from 'node:path';
+import { Mutex } from 'async-mutex';
 import { SmelterInstance, type RegisterSmelterInputOptions, type SmelterOutput } from '../smelter';
 import { hlsUrlForKickChannel, hlsUrlForTwitchChannel } from '../streamlink';
 import { TwitchChannelMonitor } from '../twitch/TwitchChannelMonitor';
@@ -166,6 +167,7 @@ function cloneDefaultLogoShaders(): ShaderConfig[] {
 }
 
 export class RoomState {
+  private readonly mutex = new Mutex();
   private inputs: RoomInputState[];
   private destroyed = false;
   private transitionTimers: Map<string, NodeJS.Timeout> = new Map();
@@ -226,7 +228,7 @@ export class RoomState {
     for (let i = 0; i < this.inputs.length; i++) {
       const maybeInput = this.inputs[i];
       if (maybeInput) {
-        await this.connectInput(maybeInput.inputId);
+        await this._connectInput(maybeInput.inputId);
       }
     }
   }
@@ -238,14 +240,14 @@ export class RoomState {
   ): Promise<void> {
     if (initInputs.length > 0) {
       for (const input of initInputs) {
-        await this.addNewInput(input);
+        await this._addNewInput(input);
       }
     } else if (!skipDefaultInputs) {
       const preferredMp4 =
         this.mp4Files.find((f) => f.toLowerCase().startsWith('eclipse')) ??
         this.mp4Files.find((file) => !isBlockedDefaultMp4(file));
       if (preferredMp4) {
-        await this.addNewInput({
+        await this._addNewInput({
           type: 'local-mp4',
           source: { fileName: preferredMp4 },
         });
@@ -253,7 +255,7 @@ export class RoomState {
 
       const logoPath = path.join(process.cwd(), 'pictures', PLACEHOLDER_LOGO_FILE);
       if (await pathExists(logoPath)) {
-        const logoInputId = await this.addNewInput({
+        const logoInputId = await this._addNewInput({
           type: 'image',
           fileName: PLACEHOLDER_LOGO_FILE,
         });
@@ -282,52 +284,53 @@ export class RoomState {
   }
 
   public async startRecording(): Promise<{ fileName: string }> {
-    if (this.hasActiveRecording()) {
-      throw new Error('Recording is already in progress for this room');
-    }
+    return this.mutex.runExclusive(async () => {
+      if (this.hasActiveRecording()) {
+        throw new Error('Recording is already in progress for this room');
+      }
 
-    const recordingsDir = path.join(process.cwd(), 'recordings');
-    await ensureDir(recordingsDir);
+      const recordingsDir = path.join(process.cwd(), 'recordings');
+      await ensureDir(recordingsDir);
 
-    const timestamp = Date.now();
-    const recordingId = `${this.idPrefix}::recording::${timestamp}`;
-    const safeRoomId = this.idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
-    const fileName = `recording-${safeRoomId}-${timestamp}.mp4`;
-    const filePath = path.join(recordingsDir, fileName);
+      const timestamp = Date.now();
+      const recordingId = `${this.idPrefix}::recording::${timestamp}`;
+      const safeRoomId = this.idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const fileName = `recording-${safeRoomId}-${timestamp}.mp4`;
+      const filePath = path.join(recordingsDir, fileName);
 
-    await SmelterInstance.registerMp4Output(recordingId, this.output, filePath);
+      await SmelterInstance.registerMp4Output(recordingId, this.output, filePath);
 
-    this.recording = {
-      outputId: recordingId,
-      filePath,
-      fileName,
-      startedAt: timestamp,
-    };
+      this.recording = {
+        outputId: recordingId,
+        filePath,
+        fileName,
+        startedAt: timestamp,
+      };
 
-    return { fileName };
+      return { fileName };
+    });
   }
 
   public async stopRecording(): Promise<{ fileName: string }> {
-    if (!this.recording || this.recording.stoppedAt) {
-      throw new Error('No active recording to stop for this room');
-    }
+    return this.mutex.runExclusive(async () => {
+      if (!this.recording || this.recording.stoppedAt) {
+        throw new Error('No active recording to stop for this room');
+      }
 
-    try {
-      await SmelterInstance.unregisterOutput(this.recording.outputId);
-    } finally {
-      this.recording.stoppedAt = Date.now();
-    }
+      try {
+        await SmelterInstance.unregisterOutput(this.recording.outputId);
+      } finally {
+        this.recording.stoppedAt = Date.now();
+      }
 
-    // Enforce a global cap on stored recordings to avoid unbounded growth.
-    // Keep only the newest N recordings on disk and remove older ones.
-    try {
-      await pruneOldRecordings(10);
-    } catch (err) {
-      // Best-effort cleanup – log but don't fail the API if pruning fails.
-      console.error('Failed to prune old recordings', err);
-    }
+      try {
+        await pruneOldRecordings(10);
+      } catch (err) {
+        console.error('Failed to prune old recordings', err);
+      }
 
-    return { fileName: this.recording.fileName };
+      return { fileName: this.recording.fileName };
+    });
   }
 
   public getState(): [RoomInputState[], Layout, number, boolean, number, boolean, number, boolean] {
@@ -547,6 +550,10 @@ export class RoomState {
   }
 
   public async addNewInput(opts: RegisterInputOptions) {
+    return this.mutex.runExclusive(() => this._addNewInput(opts));
+  }
+
+  private async _addNewInput(opts: RegisterInputOptions) {
     // Remove placeholder if it exists
     await this.removePlaceholder();
 
@@ -721,6 +728,10 @@ export class RoomState {
   }
 
   public async removeInput(inputId: string): Promise<void> {
+    return this.mutex.runExclusive(() => this._removeInput(inputId));
+  }
+
+  private async _removeInput(inputId: string): Promise<void> {
     const input = this.getInput(inputId);
 
     // Check if this is the last non-placeholder input
@@ -766,6 +777,10 @@ export class RoomState {
   }
 
   public async connectInput(inputId: string): Promise<string> {
+    return this.mutex.runExclusive(() => this._connectInput(inputId));
+  }
+
+  private async _connectInput(inputId: string): Promise<string> {
     const input = this.getInput(inputId);
     if (input.status !== 'disconnected') {
       return '';
@@ -811,118 +826,124 @@ export class RoomState {
   }
 
   public async ackWhipInput(inputId: string): Promise<void> {
-    const input = this.getInput(inputId);
-    if (input.type !== 'whip') {
-      throw new Error('Input is not a Whip input');
-    }
-    const { previousAckTimestamp, currentAckTimestamp } = input.monitor.touch();
-    const ageBeforeAckMs = currentAckTimestamp - previousAckTimestamp;
-    console.log('[whip][ack]', {
-      roomId: this.idPrefix,
-      inputId,
-      username: input.monitor.getUsername(),
-      ageBeforeAckMs,
-      inputStatus: input.status,
+    return this.mutex.runExclusive(async () => {
+      const input = this.getInput(inputId);
+      if (input.type !== 'whip') {
+        throw new Error('Input is not a Whip input');
+      }
+      const { previousAckTimestamp, currentAckTimestamp } = input.monitor.touch();
+      const ageBeforeAckMs = currentAckTimestamp - previousAckTimestamp;
+      console.log('[whip][ack]', {
+        roomId: this.idPrefix,
+        inputId,
+        username: input.monitor.getUsername(),
+        ageBeforeAckMs,
+        inputStatus: input.status,
+      });
     });
   }
 
   public async restartMp4Input(inputId: string, playFromMs: number, loop: boolean): Promise<void> {
-    const input = this.getInput(inputId);
-    if (input.type !== 'local-mp4') {
-      throw new Error(`Input ${inputId} is not a local-mp4 input`);
-    }
-    if (input.status !== 'connected') {
-      throw new Error(`Input ${inputId} is not connected`);
-    }
+    return this.mutex.runExclusive(async () => {
+      const input = this.getInput(inputId);
+      if (input.type !== 'local-mp4') {
+        throw new Error(`Input ${inputId} is not a local-mp4 input`);
+      }
+      if (input.status !== 'connected') {
+        throw new Error(`Input ${inputId} is not connected`);
+      }
 
-    input.restartFading = true;
-    this.updateStoreWithState();
-    await sleep(150);
+      input.restartFading = true;
+      this.updateStoreWithState();
+      await sleep(150);
 
-    await SmelterInstance.unregisterInput(inputId);
+      await SmelterInstance.unregisterInput(inputId);
 
-    const offsetMs = SmelterInstance.getPipelineTimeMs() - playFromMs;
-    await SmelterInstance.registerInput(inputId, {
-      type: 'mp4',
-      filePath: input.mp4FilePath,
-      loop,
-      offsetMs,
+      const offsetMs = SmelterInstance.getPipelineTimeMs() - playFromMs;
+      await SmelterInstance.registerInput(inputId, {
+        type: 'mp4',
+        filePath: input.mp4FilePath,
+        loop,
+        offsetMs,
+      });
+
+      input.restartFading = false;
+      this.updateStoreWithState();
     });
-
-    input.restartFading = false;
-    this.updateStoreWithState();
   }
 
   public async disconnectInput(inputId: string) {
-    const input = this.getInput(inputId);
-    if (input.status === 'disconnected') {
-      return;
-    }
-    await this.motionManager.stopMotionDetection(inputId);
-    input.status = 'pending';
-    this.updateStoreWithState();
-    try {
-      await SmelterInstance.unregisterInput(inputId);
-    } finally {
-      input.status = 'disconnected';
+    return this.mutex.runExclusive(async () => {
+      const input = this.getInput(inputId);
+      if (input.status === 'disconnected') {
+        return;
+      }
+      await this.motionManager.stopMotionDetection(inputId);
+      input.status = 'pending';
       this.updateStoreWithState();
-    }
+      try {
+        await SmelterInstance.unregisterInput(inputId);
+      } finally {
+        input.status = 'disconnected';
+        this.updateStoreWithState();
+      }
+    });
   }
 
   public async removeStaleWhipInputs(staleTtlMs: number): Promise<void> {
-    const now = Date.now();
-    for (const input of this.getInputs()) {
-      if (input.type === 'whip') {
-        const last = input.monitor.getLastAckTimestamp() || 0;
-        const ageMs = now - last;
-        if (ageMs > staleTtlMs * 0.7 && ageMs <= staleTtlMs) {
-          console.log('[whip][health] ACK delayed', {
-            roomId: this.idPrefix,
-            inputId: input.inputId,
-            username: input.monitor.getUsername(),
-            ageMs,
-            staleTtlMs,
-            remainingMs: staleTtlMs - ageMs,
-            inputStatus: input.status,
-          });
-        }
-        if (ageMs > staleTtlMs) {
-          // If the input is still connected (WebRTC media flowing), don't
-          // remove it — the client heartbeat may be paused (mobile browser
-          // backgrounded / screen off) but the connection is alive.
-          if (input.status === 'connected') {
-            console.log('[whip][stale] Skipping removal — input still connected', {
+    return this.mutex.runExclusive(async () => {
+      const now = Date.now();
+      for (const input of this.getInputs()) {
+        if (input.type === 'whip') {
+          const last = input.monitor.getLastAckTimestamp() || 0;
+          const ageMs = now - last;
+          if (ageMs > staleTtlMs * 0.7 && ageMs <= staleTtlMs) {
+            console.log('[whip][health] ACK delayed', {
               roomId: this.idPrefix,
               inputId: input.inputId,
               username: input.monitor.getUsername(),
               ageMs,
               staleTtlMs,
+              remainingMs: staleTtlMs - ageMs,
               inputStatus: input.status,
             });
-            continue;
           }
-          try {
-            console.log('[whip][stale] Removing stale WHIP input', {
-              roomId: this.idPrefix,
-              inputId: input.inputId,
-              username: input.monitor.getUsername(),
-              ageMs,
-              staleTtlMs,
-              overdueMs: ageMs - staleTtlMs,
-              inputStatus: input.status,
-            });
-            await this.removeInput(input.inputId);
-          } catch (err: any) {
-            console.log(err, 'Failed to remove stale WHIP input');
+          if (ageMs > staleTtlMs) {
+            if (input.status === 'connected') {
+              console.log('[whip][stale] Skipping removal — input still connected', {
+                roomId: this.idPrefix,
+                inputId: input.inputId,
+                username: input.monitor.getUsername(),
+                ageMs,
+                staleTtlMs,
+                inputStatus: input.status,
+              });
+              continue;
+            }
+            try {
+              console.log('[whip][stale] Removing stale WHIP input', {
+                roomId: this.idPrefix,
+                inputId: input.inputId,
+                username: input.monitor.getUsername(),
+                ageMs,
+                staleTtlMs,
+                overdueMs: ageMs - staleTtlMs,
+                inputStatus: input.status,
+              });
+              await this._removeInput(input.inputId);
+            } catch (err: any) {
+              console.log(err, 'Failed to remove stale WHIP input');
+            }
           }
         }
       }
-    }
+    });
   }
 
   public async updateInput(inputId: string, options: Partial<UpdateInputOptions>) {
-    const input = this.getInput(inputId);
-    input.volume = options.volume ?? input.volume;
+    return this.mutex.runExclusive(async () => {
+      const input = this.getInput(inputId);
+      input.volume = options.volume ?? input.volume;
     input.shaders = options.shaders ?? input.shaders;
     input.showTitle = options.showTitle ?? input.showTitle;
     input.orientation = options.orientation ?? input.orientation;
@@ -1032,46 +1053,50 @@ export class RoomState {
       this.transitionTimers.set(inputId, timer);
     }
     this.updateStoreWithState();
+    });
   }
 
   public reorderInputs(inputOrder: string[]) {
-    const inputIdSet = new Set(this.inputs.map(input => input.inputId));
-    const inputs: RoomInputState[] = [];
-    for (const inputId of inputOrder) {
-      const input = this.inputs.find(input => input.inputId === inputId);
-      if (input) {
-        inputs.push(input);
-        inputIdSet.delete(inputId);
+    return this.mutex.runExclusive(() => {
+      const inputIdSet = new Set(this.inputs.map(input => input.inputId));
+      const inputs: RoomInputState[] = [];
+      for (const inputId of inputOrder) {
+        const input = this.inputs.find(input => input.inputId === inputId);
+        if (input) {
+          inputs.push(input);
+          inputIdSet.delete(inputId);
+        }
       }
-    }
-    for (const inputId of inputIdSet) {
-      const input = this.inputs.find(input => input.inputId === inputId);
-      if (input) {
-        inputs.push(input);
+      for (const inputId of inputIdSet) {
+        const input = this.inputs.find(input => input.inputId === inputId);
+        if (input) {
+          inputs.push(input);
+        }
       }
-    }
 
-    this.inputs = inputs;
-    this.updateStoreWithState();
+      this.inputs = inputs;
+      this.updateStoreWithState();
+    });
   }
 
   public async updateLayout(layout: Layout) {
-    this.layout = layout;
-    // When switching to wrapped layout, remove wrapped-static image inputs and add wrapped MP4s
-    if (layout === 'wrapped') {
-      await this.removeWrappedStaticInputs();
-      void this.ensureWrappedMp4Inputs();
-    }
-    // When switching to wrapped-static layout, remove wrapped MP4 inputs and add wrapped images
-    if (layout === 'wrapped-static') {
-      await this.removeWrappedMp4Inputs();
-      await this.ensureWrappedImageInputs();
-    }
-    this.updateStoreWithState();
+    return this.mutex.runExclusive(async () => {
+      this.layout = layout;
+      if (layout === 'wrapped') {
+        await this.removeWrappedStaticInputs();
+        void this.ensureWrappedMp4Inputs();
+      }
+      if (layout === 'wrapped-static') {
+        await this.removeWrappedMp4Inputs();
+        await this.ensureWrappedImageInputs();
+      }
+      this.updateStoreWithState();
+    });
   }
 
   public async deleteRoom() {
-    this.destroyed = true;
+    return this.mutex.runExclusive(async () => {
+      this.destroyed = true;
 
     for (const timer of this.transitionTimers.values()) {
       clearTimeout(timer);
@@ -1112,6 +1137,7 @@ export class RoomState {
         console.error('Failed to remove recording output', err?.body ?? err);
       }
     }
+    });
   }
 
   private updateStoreWithState() {
@@ -1183,93 +1209,95 @@ export class RoomState {
   }
 
   public hideInput(inputId: string, activeTransition?: { type: string; durationMs: number; direction: 'in' | 'out' }) {
-    const input = this.getInput(inputId);
+    return this.mutex.runExclusive(() => {
+      const input = this.getInput(inputId);
 
-    if (activeTransition) {
-      // Cancel any existing auto-clear timer for this input
-      const existingTimer = this.transitionTimers.get(inputId);
-      if (existingTimer) {
-        clearTimeout(existingTimer);
-        this.transitionTimers.delete(inputId);
-      }
+      if (activeTransition) {
+        const existingTimer = this.transitionTimers.get(inputId);
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+          this.transitionTimers.delete(inputId);
+        }
 
-      const { type, durationMs, direction } = activeTransition;
-      input.activeTransition = {
-        type: type as ActiveTransition['type'],
-        durationMs,
-        direction,
-        startedAtMs: Date.now(),
-      };
-      this.updateStoreWithState();
-
-      // After transition completes, hide the input and clear transition atomically
-      const timer = setTimeout(() => {
-        input.hidden = true;
-        input.activeTransition = undefined;
-        this.transitionTimers.delete(inputId);
+        const { type, durationMs, direction } = activeTransition;
+        input.activeTransition = {
+          type: type as ActiveTransition['type'],
+          durationMs,
+          direction,
+          startedAtMs: Date.now(),
+        };
         this.updateStoreWithState();
-      }, durationMs);
-      this.transitionTimers.set(inputId, timer);
-    } else {
-      input.hidden = true;
-      this.updateStoreWithState();
-    }
+
+        const timer = setTimeout(() => {
+          input.hidden = true;
+          input.activeTransition = undefined;
+          this.transitionTimers.delete(inputId);
+          this.updateStoreWithState();
+        }, durationMs);
+        this.transitionTimers.set(inputId, timer);
+      } else {
+        input.hidden = true;
+        this.updateStoreWithState();
+      }
+    });
   }
 
   public showInput(inputId: string, activeTransition?: { type: string; durationMs: number; direction: 'in' | 'out' }) {
-    const input = this.getInput(inputId);
-    input.hidden = false;
+    return this.mutex.runExclusive(() => {
+      const input = this.getInput(inputId);
+      input.hidden = false;
 
-    if (activeTransition) {
-      // Cancel any existing auto-clear timer for this input
-      const existingTimer = this.transitionTimers.get(inputId);
-      if (existingTimer) {
-        clearTimeout(existingTimer);
-        this.transitionTimers.delete(inputId);
+      if (activeTransition) {
+        const existingTimer = this.transitionTimers.get(inputId);
+        if (existingTimer) {
+          clearTimeout(existingTimer);
+          this.transitionTimers.delete(inputId);
+        }
+
+        const { type, durationMs, direction } = activeTransition;
+        input.activeTransition = {
+          type: type as ActiveTransition['type'],
+          durationMs,
+          direction,
+          startedAtMs: Date.now(),
+        };
+
+        const timer = setTimeout(() => {
+          input.activeTransition = undefined;
+          this.transitionTimers.delete(inputId);
+          this.updateStoreWithState();
+        }, durationMs);
+        this.transitionTimers.set(inputId, timer);
       }
 
-      const { type, durationMs, direction } = activeTransition;
-      input.activeTransition = {
-        type: type as ActiveTransition['type'],
-        durationMs,
-        direction,
-        startedAtMs: Date.now(),
-      };
-
-      // Auto-clear after duration
-      const timer = setTimeout(() => {
-        input.activeTransition = undefined;
-        this.transitionTimers.delete(inputId);
-        this.updateStoreWithState();
-      }, durationMs);
-      this.transitionTimers.set(inputId, timer);
-    }
-
-    this.updateStoreWithState();
+      this.updateStoreWithState();
+    });
   }
 
   public async setMotionEnabled(inputId: string, enabled: boolean): Promise<void> {
-    const input = this.getInput(inputId);
-    input.motionEnabled = enabled;
-    if (enabled && input.status === 'connected' && ['local-mp4', 'twitch-channel', 'kick-channel', 'whip'].includes(input.type)) {
-      try {
-        console.log(`[motion][setMotionEnabled] starting for inputId=${inputId} type=${input.type} title="${input.metadata.title}"`);
-        await this.motionManager.startMotionDetection(inputId, (score) => {
-          if (score === -1) {
-            input.motionScore = undefined;
-          } else {
-            input.motionScore = score;
-          }
-          this.emitMotionScores();
-        });
-      } catch (err) {
-        console.error(`[motion] Failed to start motion detection for ${inputId}`, err);
+    return this.mutex.runExclusive(async () => {
+      const input = this.getInput(inputId);
+      input.motionEnabled = enabled;
+      if (enabled && input.status === 'connected' && ['local-mp4', 'twitch-channel', 'kick-channel', 'whip'].includes(input.type)) {
+        try {
+          console.log(`[motion][setMotionEnabled] starting for inputId=${inputId} type=${input.type} title="${input.metadata.title}"`);
+          await this.motionManager.startMotionDetection(inputId, (score) => {
+            if (score === -1) {
+              input.motionScore = undefined;
+            } else {
+              input.motionScore = score;
+            }
+            this.emitMotionScores();
+          });
+        } catch (err) {
+          console.error(`[motion] Failed to start motion detection for ${inputId}`, err);
+        }
+      } else if (!enabled) {
+        await this.motionManager.stopMotionDetection(inputId);
+        input.motionScore = undefined;
+        this.emitMotionScores();
       }
-    } else if (!enabled) {
-      await this.motionManager.stopMotionDetection(inputId);
-      input.motionScore = undefined;
-      this.emitMotionScores();
-    }
+    });
   }
 
   public async stopAllMotion(): Promise<void> {
@@ -1297,18 +1325,20 @@ export class RoomState {
   }
 
   public updateSnakeGameState(inputId: string, incomingState: { board: { width: number; height: number; cellSize: number; cellGap?: number }; cells: { x: number; y: number; color: string; size?: number; isHead?: boolean; direction?: 'up' | 'down' | 'left' | 'right'; progress?: number }[]; smoothMove?: boolean; smoothMoveSpeed?: number; smoothMoveAccel?: number; smoothMoveDecel?: number; backgroundColor: string; gameOverData?: { winnerName: string; reason: string; players: { name: string; score: number; eaten: number; cuts: number; color: string }[] } }, events?: { type: SnakeEventType }[]) {
-    const input = this.getInput(inputId);
-    if (input.type !== 'game') {
-      throw new Error(`Input ${inputId} is not a game input`);
-    }
-    input.snakeGameState = buildUpdatedSnakeGameState(input.snakeGameState, incomingState);
-    console.log(`[game] Updated snake board: ${incomingState.cells.length} cells on ${incomingState.board.width}x${incomingState.board.height}`);
+    return this.mutex.runExclusive(() => {
+      const input = this.getInput(inputId);
+      if (input.type !== 'game') {
+        throw new Error(`Input ${inputId} is not a game input`);
+      }
+      input.snakeGameState = buildUpdatedSnakeGameState(input.snakeGameState, incomingState);
+      console.log(`[game] Updated snake board: ${incomingState.cells.length} cells on ${incomingState.board.width}x${incomingState.board.height}`);
 
-    if (events && events.length > 0) {
-      this.ingestSnakeGameEvents(inputId, events);
-    } else {
-      this.updateStoreWithState();
-    }
+      if (events && events.length > 0) {
+        this.ingestSnakeGameEvents(inputId, events);
+      } else {
+        this.updateStoreWithState();
+      }
+    });
   }
 
   private ingestSnakeGameEvents(inputId: string, events: { type: SnakeEventType }[]) {
@@ -1338,23 +1368,21 @@ export class RoomState {
     }
     return input;
   }
-  // Remove all wrapped-static image inputs
   private async removeWrappedStaticInputs(): Promise<void> {
     const inputsToRemove = this.inputs.filter(
       input => input.type === 'image' && input.imageId?.startsWith('wrapped::')
     );
     for (const input of inputsToRemove) {
-      await this.removeInput(input.inputId);
+      await this._removeInput(input.inputId);
     }
   }
 
-  // Remove all wrapped MP4 inputs
   private async removeWrappedMp4Inputs(): Promise<void> {
     const inputsToRemove = this.inputs.filter(
       input => input.type === 'local-mp4' && input.inputId.includes('::local::wrapped::')
     );
     for (const input of inputsToRemove) {
-      await this.removeInput(input.inputId);
+      await this._removeInput(input.inputId);
     }
   }
 
@@ -1402,7 +1430,7 @@ export class RoomState {
         volume: 0,
       });
       // Connect the input
-      void this.connectInput(inputId);
+      void this._connectInput(inputId);
     }
   }
 

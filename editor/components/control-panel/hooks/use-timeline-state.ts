@@ -869,7 +869,8 @@ export function timelineReducer(
         .map((track) => ({
           ...track,
           clips: track.clips.filter((c) => c.inputId !== action.inputId),
-        }));
+        }))
+        .filter((track) => track.clips.length > 0);
       return { ...state, tracks: newTracks };
     }
 

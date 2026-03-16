@@ -12,6 +12,8 @@ import {
   parseRoomConfig,
   loadTimelineFromStorage,
   restoreTimelineToStorage,
+  computeTimelineStateAtZero,
+  buildInputUpdateFromBlockSettings,
   type RoomConfig,
   type RoomConfigInput,
   type RoomConfigTransitionSettings,
@@ -57,6 +59,7 @@ export function ConfigurationSection({
     updateInput,
     updateRoom,
     removeInput,
+    hideInput,
   } = useActions();
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -265,13 +268,19 @@ export function ConfigurationSection({
 
     setPendingWhipInputs(newPendingWhipInputs);
 
-    // Restore timeline state if present in config
+    let timelineInputOrder: string[] | undefined;
+
     if (config.timeline) {
       const indexToInputId = new Map<number, string>();
       for (const { inputId, position } of createdInputIds) {
         indexToInputId.set(position, inputId);
       }
-      // Use placeholder inputIds for pending WHIP inputs so their clips are preserved
+
+      const timelineState = computeTimelineStateAtZero(
+        config.timeline,
+        indexToInputId,
+      );
+
       for (const pending of newPendingWhipInputs) {
         indexToInputId.set(
           pending.position,
@@ -279,20 +288,43 @@ export function ConfigurationSection({
         );
       }
       restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
+
+      for (const hiddenId of timelineState.hiddenInputIds) {
+        try {
+          await hideInput(roomId, hiddenId);
+        } catch (e) {
+          console.warn(`Failed to hide input ${hiddenId}:`, e);
+        }
+      }
+
+      for (const [inputId, blockSettings] of timelineState.activeBlockSettings) {
+        try {
+          await updateInput(
+            roomId,
+            inputId,
+            buildInputUpdateFromBlockSettings(blockSettings),
+          );
+        } catch (e) {
+          console.warn(`Failed to apply block settings for ${inputId}:`, e);
+        }
+      }
+
+      if (timelineState.inputOrder.length > 0) {
+        timelineInputOrder = timelineState.inputOrder;
+      }
     }
 
-    // Ensure server input order matches positions from the imported config
     const orderedCreatedIds = createdInputIds
       .slice()
       .sort((a, b) => a.position - b.position)
       .map(({ inputId }) => inputId);
 
+    const finalInputOrder = timelineInputOrder ?? (orderedCreatedIds.length > 0 ? orderedCreatedIds : undefined);
+
     try {
       await updateRoom(roomId, {
         layout: config.layout,
-        ...(orderedCreatedIds.length > 0
-          ? { inputOrder: orderedCreatedIds }
-          : {}),
+        ...(finalInputOrder ? { inputOrder: finalInputOrder } : {}),
         ...config.transitionSettings,
       });
     } catch (e) {

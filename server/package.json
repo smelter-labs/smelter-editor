@@ -8,6 +8,8 @@
     "build": "tsc",
     "lint": "eslint .",
     "start": "ts-node ./src/index.ts",
+    "test": "vitest",
+    "test:run": "vitest run",
     "watch": "tsc --watch"
   },
   "dependencies": {
@@ -17,6 +19,7 @@
     "@swmansion/smelter": "^0.3.0",
     "@swmansion/smelter-node": "^0.3.2",
     "@types/fs-extra": "^11.0.4",
+    "async-mutex": "^0.5.0",
     "blessed": "^0.1.81",
     "blessed-contrib": "^4.11.0",
     "fastify": "^5.4.0",
@@ -31,6 +34,7 @@
     "@types/react": "^18.3.3",
     "@types/uuid": "^10.0.0",
     "ts-node": "^10.9.2",
-    "typescript": "^5.5.3"
+    "typescript": "^5.5.3",
+    "vitest": "^3.2.4"
   }
 }
