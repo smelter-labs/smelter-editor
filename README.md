@@ -38,8 +38,8 @@ flowchart TD
     style HLS fill:#eff6ff,stroke:#bfdbfe,stroke-width:2px,color:#111827
 
     %% Subgraph Styling
-    style Sources fill:none,stroke:#9ca3af,stroke-width:2px,stroke-dasharray: 5 5,color:#374151
-    style Clients fill:none,stroke:#9ca3af,stroke-width:2px,stroke-dasharray: 5 5,color:#374151
+    style Sources fill:none,stroke:#9ca3af,stroke-width:2px,stroke-dasharray: 5 5,color:#a7a1c1
+    style Clients fill:none,stroke:#9ca3af,stroke-width:2px,stroke-dasharray: 5 5,color:#a7a1c1
 ```
 
 - **`editor/`** — Web UI (Next.js 15, App Router, React 19, Tailwind 4, shadcn/ui) for managing rooms, inputs, layouts, and shaders.
