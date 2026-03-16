@@ -353,6 +353,7 @@ function ControlPanelWithActions({
           renderStreamsOutside={renderStreamsOutside}
           timelinePortalRef={timelinePortalRef}
           renderDashboard={renderDashboard}
+          peers={peers}
         />
       </WhipConnectionsProvider>
     </ControlPanelProvider>
@@ -381,6 +382,7 @@ type ControlPanelInnerProps = {
   renderStreamsOutside?: boolean;
   timelinePortalRef?: React.RefObject<HTMLDivElement | null>;
   renderDashboard?: ControlPanelProps['renderDashboard'];
+  peers: ConnectedPeer[];
 };
 
 function ControlPanelInner({
@@ -403,6 +405,7 @@ function ControlPanelInner({
   renderStreamsOutside,
   timelinePortalRef,
   renderDashboard,
+  peers,
 }: ControlPanelInnerProps) {
   const {
     roomId,

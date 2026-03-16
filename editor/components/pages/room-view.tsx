@@ -12,6 +12,7 @@ import { staggerContainer } from '@/utils/animations';
 import VideoPreview from '@/components/video-preview';
 import ControlPanel from '@/components/control-panel/control-panel';
 import DashboardLayout from '@/components/dashboard/dashboard-layout';
+import { ConnectedDevicesPanel } from '@/components/dashboard/connected-devices-panel';
 import { Button } from '@/components/ui/button';
 import { RotateCw } from 'lucide-react';
 import {
@@ -182,6 +183,7 @@ export default function RoomView({
           timelineSection,
           blockPropertiesSection,
           motionPanels,
+          peers,
         }) => {
           const staticPanels: Record<string, ReactNode> = {
             'video-preview': (
@@ -197,6 +199,7 @@ export default function RoomView({
             fx: fxSection,
             timeline: timelineSection,
             'block-properties': blockPropertiesSection,
+            'connected-devices': <ConnectedDevicesPanel peers={peers} />,
           };
 
           const allPanels = { ...staticPanels, ...motionPanels };
