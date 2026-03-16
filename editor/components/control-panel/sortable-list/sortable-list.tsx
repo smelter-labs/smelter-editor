@@ -53,9 +53,7 @@ export function SortableList<T extends BaseItem>({
 }: Props<T>) {
   const [orderedItems, setOrderedItems] = useState<T[]>(items);
   const [active, setActive] = useState<Active | null>(null);
-  const [swappedIds, setSwappedIds] = useState<Set<string | number>>(
-    new Set(),
-  );
+  const [swappedIds, setSwappedIds] = useState<Set<string | number>>(new Set());
   const prevKeysRef = useRef<(string | number)[]>([]);
 
   useEffect(() => {

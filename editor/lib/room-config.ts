@@ -1,4 +1,9 @@
-import type { Input, Layout, ShaderConfig, UpdateInputOptions } from '@/lib/types';
+import type {
+  Input,
+  Layout,
+  ShaderConfig,
+  UpdateInputOptions,
+} from '@/lib/types';
 import { parseTransitionConfig } from '@/lib/types';
 import type { SnakeEventShaderConfig } from '@/lib/snake-game-types';
 import type {
@@ -379,7 +384,10 @@ export function computeTimelineStateAtZero(
           activeInputIds.add(inputId);
           inputOrder.push(inputId);
           if (clip.blockSettings) {
-            activeBlockSettings.set(inputId, clip.blockSettings as BlockSettings);
+            activeBlockSettings.set(
+              inputId,
+              clip.blockSettings as BlockSettings,
+            );
           }
         }
       }

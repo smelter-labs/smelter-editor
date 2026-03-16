@@ -251,11 +251,7 @@ export function TimelinePanel({
   );
 
   const selectClip = useCallback(
-    (
-      trackId: string,
-      clipId: string,
-      mode: 'replace' | 'toggle' | 'range',
-    ) => {
+    (trackId: string, clipId: string, mode: 'replace' | 'toggle' | 'range') => {
       if (mode === 'replace') {
         setSelectedClipIds([{ trackId, clipId }]);
         lastClickedClipRef.current = { trackId, clipId };
@@ -282,9 +278,7 @@ export function TimelinePanel({
         }
         const track = state.tracks.find((t) => t.id === trackId);
         if (!track) return;
-        const anchorIdx = track.clips.findIndex(
-          (c) => c.id === anchor.clipId,
-        );
+        const anchorIdx = track.clips.findIndex((c) => c.id === anchor.clipId);
         const targetIdx = track.clips.findIndex((c) => c.id === clipId);
         if (anchorIdx < 0 || targetIdx < 0) {
           setSelectedClipIds([{ trackId, clipId }]);
@@ -485,7 +479,8 @@ export function TimelinePanel({
     structureRevision,
   );
 
-  const { isRecording: serverIsRecording, isFrozen: serverIsFrozen } = useControlPanelContext();
+  const { isRecording: serverIsRecording, isFrozen: serverIsFrozen } =
+    useControlPanelContext();
   const {
     isTogglingRecording,
     effectiveIsRecording: isRecording,
@@ -874,9 +869,7 @@ export function TimelinePanel({
       }
       const track = state.tracks[idx];
       if (track.clips.length > 0) {
-        setSelectedClipIds([
-          { trackId: track.id, clipId: track.clips[0].id },
-        ]);
+        setSelectedClipIds([{ trackId: track.id, clipId: track.clips[0].id }]);
         setPlayhead(track.clips[0].startMs);
         window.dispatchEvent(
           new CustomEvent('smelter:inputs:select', {
@@ -1094,10 +1087,7 @@ export function TimelinePanel({
           if (selectedClipIds.length > 0) {
             e.preventDefault();
             if (selectedClipIds.length === 1) {
-              deleteClip(
-                selectedClipIds[0].trackId,
-                selectedClipIds[0].clipId,
-              );
+              deleteClip(selectedClipIds[0].trackId, selectedClipIds[0].clipId);
             } else {
               deleteClips(selectedClipIds);
             }
@@ -1259,7 +1249,11 @@ export function TimelinePanel({
           }[]
         | undefined;
 
-      if (type === 'move' && selectedClipIdSet.has(clipId) && selectedClipIds.length > 1) {
+      if (
+        type === 'move' &&
+        selectedClipIdSet.has(clipId) &&
+        selectedClipIds.length > 1
+      ) {
         multiClips = [];
         for (const sel of selectedClipIds) {
           const t = state.tracks.find((tr) => tr.id === sel.trackId);
@@ -1289,7 +1283,15 @@ export function TimelinePanel({
 
       document.body.style.userSelect = 'none';
     },
-    [pxToMs, splitClip, state.pixelsPerSecond, state.tracks, selectClip, selectedClipIdSet, selectedClipIds],
+    [
+      pxToMs,
+      splitClip,
+      state.pixelsPerSecond,
+      state.tracks,
+      selectClip,
+      selectedClipIdSet,
+      selectedClipIds,
+    ],
   );
 
   // Use document-level listeners for drag so we can detect cross-track movement
@@ -1335,7 +1337,10 @@ export function TimelinePanel({
           const moves = drag.multiClips.map((mc) => ({
             trackId: mc.trackId,
             clipId: mc.clipId,
-            newStartMs: Math.max(0, Math.round(mc.originStartMs + appliedDelta)),
+            newStartMs: Math.max(
+              0,
+              Math.round(mc.originStartMs + appliedDelta),
+            ),
           }));
           moveClips(moves);
         } else {
@@ -1387,7 +1392,10 @@ export function TimelinePanel({
         let newStart = Math.round(drag.originStartMs + deltaMs);
         newStart = snapToNearest(newStart, snapTargets, snapThresholdMs);
         resizeClip(drag.trackId, drag.clipId, 'left', newStart);
-      } else if (drag.type === 'resize-transition-in' || drag.type === 'resize-transition-out') {
+      } else if (
+        drag.type === 'resize-transition-in' ||
+        drag.type === 'resize-transition-out'
+      ) {
         const track = state.tracks.find((t) => t.id === drag.trackId);
         const clip = track?.clips.find((c) => c.id === drag.clipId);
         if (clip) {
@@ -1399,7 +1407,8 @@ export function TimelinePanel({
               0,
               Math.min(originMs + deltaMs, clipDuration - otherMs),
             );
-            const introType = clip.blockSettings.introTransition?.type ?? 'fade';
+            const introType =
+              clip.blockSettings.introTransition?.type ?? 'fade';
             updateClipSettings(drag.trackId, drag.clipId, {
               introTransition:
                 newDurationMs > 0
@@ -1412,7 +1421,8 @@ export function TimelinePanel({
               0,
               Math.min(originMs - deltaMs, clipDuration - otherMs),
             );
-            const outroType = clip.blockSettings.outroTransition?.type ?? 'fade';
+            const outroType =
+              clip.blockSettings.outroTransition?.type ?? 'fade';
             updateClipSettings(drag.trackId, drag.clipId, {
               outroTransition:
                 newDurationMs > 0
@@ -1466,10 +1476,8 @@ export function TimelinePanel({
       const localX = e.clientX - rect.left;
       const w = rect.width;
 
-      const introHandlePx =
-        (introTransitionMs / 1000) * state.pixelsPerSecond;
-      const outroHandlePx =
-        (outroTransitionMs / 1000) * state.pixelsPerSecond;
+      const introHandlePx = (introTransitionMs / 1000) * state.pixelsPerSecond;
+      const outroHandlePx = (outroTransitionMs / 1000) * state.pixelsPerSecond;
       const TRANSITION_HANDLE_ZONE = 6;
 
       if (
@@ -1818,7 +1826,9 @@ export function TimelinePanel({
           onClick={handleTurboPause}
           disabled={freezeLoading}
           title='TURBOPAUZA (freeze/unfreeze output)'>
-          <Zap className={`w-3.5 h-3.5 ${freezeLoading ? 'animate-pulse' : ''}`} />
+          <Zap
+            className={`w-3.5 h-3.5 ${freezeLoading ? 'animate-pulse' : ''}`}
+          />
         </button>
         <button
           className='p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors cursor-pointer'

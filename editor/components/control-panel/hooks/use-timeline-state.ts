@@ -417,18 +417,17 @@ export function timelineReducer(
 
       // Keep ALL clips on existing tracks. Disconnected clips that have a
       // replacement get their inputId swapped; the rest stay as placeholders.
-      const newTracks: Track[] = state.tracks
-        .map((track) => ({
-          ...track,
-          clips: track.clips.map((clip) => {
-            const replacement = replacementMap.get(clip.inputId);
-            const resolvedId = replacement ?? clip.inputId;
-            return ensureClipBlockSettings(
-              replacement ? { ...clip, inputId: resolvedId } : clip,
-              inputById.get(resolvedId),
-            );
-          }),
-        }));
+      const newTracks: Track[] = state.tracks.map((track) => ({
+        ...track,
+        clips: track.clips.map((clip) => {
+          const replacement = replacementMap.get(clip.inputId);
+          const resolvedId = replacement ?? clip.inputId;
+          return ensureClipBlockSettings(
+            replacement ? { ...clip, inputId: resolvedId } : clip,
+            inputById.get(resolvedId),
+          );
+        }),
+      }));
 
       // For each input that has no clips on any existing track, create a new track
       const nowCoveredInputIds = new Set<string>();
@@ -810,10 +809,7 @@ export function timelineReducer(
                     : clip.blockSettings.attachedInputIds,
               };
               let endMs = clip.endMs;
-              if (
-                merged.mp4Loop === false &&
-                merged.mp4DurationMs != null
-              ) {
+              if (merged.mp4Loop === false && merged.mp4DurationMs != null) {
                 const maxDuration =
                   merged.mp4DurationMs - (merged.mp4PlayFromMs ?? 0);
                 if (maxDuration > 0 && endMs - clip.startMs > maxDuration) {
@@ -854,13 +850,10 @@ export function timelineReducer(
       const deleteSet = new Set(
         action.clips.map((c) => `${c.trackId}:${c.clipId}`),
       );
-      const newTracks = state.tracks
-        .map((track) => ({
-          ...track,
-          clips: track.clips.filter(
-            (c) => !deleteSet.has(`${track.id}:${c.id}`),
-          ),
-        }));
+      const newTracks = state.tracks.map((track) => ({
+        ...track,
+        clips: track.clips.filter((c) => !deleteSet.has(`${track.id}:${c.id}`)),
+      }));
       return { ...state, tracks: newTracks };
     }
 

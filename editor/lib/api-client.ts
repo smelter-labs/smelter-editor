@@ -70,8 +70,24 @@ export interface SmelterApiClient {
   ): Promise<any>;
   disconnectInput(roomId: string, inputId: string): Promise<any>;
   connectInput(roomId: string, inputId: string): Promise<any>;
-  hideInput(roomId: string, inputId: string, activeTransition?: { type: string; durationMs: number; direction: 'in' | 'out' }): Promise<any>;
-  showInput(roomId: string, inputId: string, activeTransition?: { type: string; durationMs: number; direction: 'in' | 'out' }): Promise<any>;
+  hideInput(
+    roomId: string,
+    inputId: string,
+    activeTransition?: {
+      type: string;
+      durationMs: number;
+      direction: 'in' | 'out';
+    },
+  ): Promise<any>;
+  showInput(
+    roomId: string,
+    inputId: string,
+    activeTransition?: {
+      type: string;
+      durationMs: number;
+      direction: 'in' | 'out';
+    },
+  ): Promise<any>;
   toggleMotionDetection(
     roomId: string,
     inputId: string,
@@ -96,7 +112,11 @@ export interface SmelterApiClient {
   shaderPresetStorage: StorageClient<ShaderConfig[]>;
   dashboardLayoutStorage: StorageClient<object>;
 
-  freezeRoom(roomId: string): Promise<{ screenshotUrl: string; mp4Positions: Record<string, number>; frozen: true }>;
+  freezeRoom(roomId: string): Promise<{
+    screenshotUrl: string;
+    mp4Positions: Record<string, number>;
+    frozen: true;
+  }>;
   unfreezeRoom(roomId: string): Promise<{ status: string }>;
 
   getAllRooms(): Promise<any>;
@@ -335,7 +355,10 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
     },
 
     async getMp4Duration(fileName) {
-      const data = await req('get', `/suggestions/mp4-duration/${enc(fileName)}`);
+      const data = await req(
+        'get',
+        `/suggestions/mp4-duration/${enc(fileName)}`,
+      );
       return data.durationMs as number;
     },
 

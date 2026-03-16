@@ -395,7 +395,10 @@ export default function IntroView() {
             }
           }
 
-          for (const [inputId, blockSettings] of timelineState.activeBlockSettings) {
+          for (const [
+            inputId,
+            blockSettings,
+          ] of timelineState.activeBlockSettings) {
             try {
               await updateInput(
                 roomId,
@@ -403,7 +406,10 @@ export default function IntroView() {
                 buildInputUpdateFromBlockSettings(blockSettings),
               );
             } catch (err) {
-              console.warn(`Failed to apply block settings for ${inputId}:`, err);
+              console.warn(
+                `Failed to apply block settings for ${inputId}:`,
+                err,
+              );
             }
           }
 
@@ -417,7 +423,9 @@ export default function IntroView() {
           .sort((a, b) => a.configIndex - b.configIndex)
           .map(({ inputId }) => inputId);
 
-        const finalInputOrder = timelineInputOrder ?? (orderedCreatedIds.length > 0 ? orderedCreatedIds : undefined);
+        const finalInputOrder =
+          timelineInputOrder ??
+          (orderedCreatedIds.length > 0 ? orderedCreatedIds : undefined);
 
         try {
           await updateRoom(roomId, {

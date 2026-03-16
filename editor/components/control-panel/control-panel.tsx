@@ -441,9 +441,8 @@ function ControlPanelInner({
 
   useEffect(() => {
     const handler = (e: Event) => {
-      const detail = (
-        e as CustomEvent<{ clips: SelectedTimelineClip[] }>
-      ).detail;
+      const detail = (e as CustomEvent<{ clips: SelectedTimelineClip[] }>)
+        .detail;
       setSelectedTimelineClips(detail?.clips ?? []);
     };
     window.addEventListener('smelter:timeline:selected-clip', handler);

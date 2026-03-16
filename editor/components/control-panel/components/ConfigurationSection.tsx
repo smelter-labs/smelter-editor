@@ -297,7 +297,10 @@ export function ConfigurationSection({
         }
       }
 
-      for (const [inputId, blockSettings] of timelineState.activeBlockSettings) {
+      for (const [
+        inputId,
+        blockSettings,
+      ] of timelineState.activeBlockSettings) {
         try {
           await updateInput(
             roomId,
@@ -319,7 +322,9 @@ export function ConfigurationSection({
       .sort((a, b) => a.position - b.position)
       .map(({ inputId }) => inputId);
 
-    const finalInputOrder = timelineInputOrder ?? (orderedCreatedIds.length > 0 ? orderedCreatedIds : undefined);
+    const finalInputOrder =
+      timelineInputOrder ??
+      (orderedCreatedIds.length > 0 ? orderedCreatedIds : undefined);
 
     try {
       await updateRoom(roomId, {
