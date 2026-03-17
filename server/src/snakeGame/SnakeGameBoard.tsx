@@ -1,20 +1,27 @@
 import type { SnakeGameState, SnakeGameOverData } from './types';
 import type { ShaderParamStructField } from '@swmansion/smelter';
-import {
-  Text,
-  View,
-  Shader,
-} from '@swmansion/smelter';
+import { Text, View, Shader } from '@swmansion/smelter';
 
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { ShaderConfig, ShaderParamConfig } from '../types';
 import shadersController from '../shaders/shaders';
 import { config } from '../config';
-import { hexToRgb, colorToRgb, darkenHexColor, wrapWithShaders } from '../utils/shaderUtils';
+import {
+  hexToRgb,
+  colorToRgb,
+  darkenHexColor,
+  wrapWithShaders,
+} from '../utils/shaderUtils';
 
 type Resolution = { width: number; height: number };
 
-function SnakeGameOverModal({ data, resolution }: { data: SnakeGameOverData; resolution: Resolution }) {
+function SnakeGameOverModal({
+  data,
+  resolution,
+}: {
+  data: SnakeGameOverData;
+  resolution: Resolution;
+}) {
   const w = resolution.width;
   const h = resolution.height;
   const modalW = w * 0.45;
@@ -22,7 +29,7 @@ function SnakeGameOverModal({ data, resolution }: { data: SnakeGameOverData; res
   const modalX = (w - modalW) / 2;
   const modalY = (h - modalH) / 2;
 
-  const winnerPlayer = data.players.find(p => p.name === data.winnerName);
+  const winnerPlayer = data.players.find((p) => p.name === data.winnerName);
   const winnerColor = winnerPlayer?.color ?? '#4ade80';
 
   const sorted = [...data.players].sort((a, b) => b.score - a.score);
@@ -31,69 +38,114 @@ function SnakeGameOverModal({ data, resolution }: { data: SnakeGameOverData; res
 
   return (
     <View style={{ width: w, height: h, backgroundColor: '#00000099' }}>
-      <View style={{
-        width: modalW, height: modalH,
-        top: modalY, left: modalX,
-        backgroundColor: '#1a1a2e',
-        borderWidth: 2, borderColor: '#333333',
-        borderRadius: 16,
-      }}>
+      <View
+        style={{
+          width: modalW,
+          height: modalH,
+          top: modalY,
+          left: modalX,
+          backgroundColor: '#1a1a2e',
+          borderWidth: 2,
+          borderColor: '#333333',
+          borderRadius: 16,
+        }}>
         {/* Winner name */}
-        <View style={{ width: modalW, height: modalH * 0.15, top: modalH * 0.06, left: 0 }}>
-          <Text style={{
-            fontSize: modalW * 0.09,
-            color: winnerColor,
-            fontFamily: 'Star Jedi',
-            align: 'center',
+        <View
+          style={{
             width: modalW,
+            height: modalH * 0.15,
+            top: modalH * 0.06,
+            left: 0,
           }}>
+          <Text
+            style={{
+              fontSize: modalW * 0.09,
+              color: winnerColor,
+              fontFamily: 'Star Jedi',
+              align: 'center',
+              width: modalW,
+            }}>
             {data.winnerName} WINS!
           </Text>
         </View>
         {/* Reason */}
-        <View style={{ width: modalW, height: modalH * 0.08, top: modalH * 0.2, left: 0 }}>
-          <Text style={{
-            fontSize: modalW * 0.045,
-            color: '#9ca3af',
-            align: 'center',
+        <View
+          style={{
             width: modalW,
+            height: modalH * 0.08,
+            top: modalH * 0.2,
+            left: 0,
           }}>
+          <Text
+            style={{
+              fontSize: modalW * 0.045,
+              color: '#9ca3af',
+              align: 'center',
+              width: modalW,
+            }}>
             {data.reason}
           </Text>
         </View>
         {/* Score */}
         {p1 && p2 && (
-          <View style={{ width: modalW, height: modalH * 0.18, top: modalH * 0.3, left: 0 }}>
-            <View style={{ width: modalW * 0.4, height: modalH * 0.18, left: modalW * 0.02, top: 0 }}>
-              <Text style={{
-                fontSize: modalW * 0.14,
-                color: p1.color,
-                fontFamily: 'Star Jedi',
-                align: 'center',
+          <View
+            style={{
+              width: modalW,
+              height: modalH * 0.18,
+              top: modalH * 0.3,
+              left: 0,
+            }}>
+            <View
+              style={{
                 width: modalW * 0.4,
+                height: modalH * 0.18,
+                left: modalW * 0.02,
+                top: 0,
               }}>
+              <Text
+                style={{
+                  fontSize: modalW * 0.14,
+                  color: p1.color,
+                  fontFamily: 'Star Jedi',
+                  align: 'center',
+                  width: modalW * 0.4,
+                }}>
                 {String(p1.score)}
               </Text>
             </View>
-            <View style={{ width: modalW * 0.16, height: modalH * 0.18, left: modalW * 0.42, top: 0 }}>
-              <Text style={{
-                fontSize: modalW * 0.08,
-                color: '#ffffff',
-                fontFamily: 'Star Jedi',
-                align: 'center',
+            <View
+              style={{
                 width: modalW * 0.16,
+                height: modalH * 0.18,
+                left: modalW * 0.42,
+                top: 0,
               }}>
+              <Text
+                style={{
+                  fontSize: modalW * 0.08,
+                  color: '#ffffff',
+                  fontFamily: 'Star Jedi',
+                  align: 'center',
+                  width: modalW * 0.16,
+                }}>
                 :
               </Text>
             </View>
-            <View style={{ width: modalW * 0.4, height: modalH * 0.18, left: modalW * 0.58, top: 0 }}>
-              <Text style={{
-                fontSize: modalW * 0.14,
-                color: p2.color,
-                fontFamily: 'Star Jedi',
-                align: 'center',
+            <View
+              style={{
                 width: modalW * 0.4,
+                height: modalH * 0.18,
+                left: modalW * 0.58,
+                top: 0,
               }}>
+              <Text
+                style={{
+                  fontSize: modalW * 0.14,
+                  color: p2.color,
+                  fontFamily: 'Star Jedi',
+                  align: 'center',
+                  width: modalW * 0.4,
+                }}>
                 {String(p2.score)}
               </Text>
             </View>
@@ -101,18 +153,23 @@ function SnakeGameOverModal({ data, resolution }: { data: SnakeGameOverData; res
         )}
         {/* Player stats */}
         {sorted.map((player, i) => (
-          <View key={i} style={{
-            width: modalW * 0.8, height: modalH * 0.07,
-            top: modalH * 0.52 + i * modalH * 0.09,
-            left: modalW * 0.1,
-          }}>
-            <Text style={{
-              fontSize: modalW * 0.04,
-              color: '#9ca3af',
+          <View
+            key={i}
+            style={{
               width: modalW * 0.8,
-              align: 'center',
+              height: modalH * 0.07,
+              top: modalH * 0.52 + i * modalH * 0.09,
+              left: modalW * 0.1,
             }}>
-              {player.name}: {String(player.eaten)} eaten, {String(player.cuts)} cuts
+            <Text
+              style={{
+                fontSize: modalW * 0.04,
+                color: '#9ca3af',
+                width: modalW * 0.8,
+                align: 'center',
+              }}>
+              {player.name}: {String(player.eaten)} eaten, {String(player.cuts)}{' '}
+              cuts
             </Text>
           </View>
         ))}
@@ -121,7 +178,17 @@ function SnakeGameOverModal({ data, resolution }: { data: SnakeGameOverData; res
   );
 }
 
-export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snake2Shaders }: { snakeGameState: SnakeGameState; resolution: Resolution; snake1Shaders?: ShaderConfig[]; snake2Shaders?: ShaderConfig[] }) {
+export function SnakeGameBoard({
+  snakeGameState,
+  resolution,
+  snake1Shaders,
+  snake2Shaders,
+}: {
+  snakeGameState: SnakeGameState;
+  resolution: Resolution;
+  snake1Shaders?: ShaderConfig[];
+  snake2Shaders?: ShaderConfig[];
+}) {
   const gameState = snakeGameState;
   const activeEffect = gameState.activeEffects?.[0];
 
@@ -145,8 +212,10 @@ export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snak
   // --- Smooth client-side interpolation between game state ticks ---
   const lastUpdateRef = useRef(Date.now());
   const tickIntervalRef = useRef(150); // estimated ms between server updates
-  const prevCellsRef = useRef<(typeof gameState.cells)>(gameState.cells);
-  const interpolationFromCellsRef = useRef<(typeof gameState.cells)>(gameState.cells);
+  const prevCellsRef = useRef<typeof gameState.cells>(gameState.cells);
+  const interpolationFromCellsRef = useRef<typeof gameState.cells>(
+    gameState.cells,
+  );
   const [localProgress, setLocalProgress] = useState(1);
   const MAX_INTERPOLATED_CELL_DISTANCE = 1.25;
   const LOCAL_VISUAL_SPEED_MULTIPLIER = config.snakeVisualSpeedMultiplier;
@@ -174,9 +243,8 @@ export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snak
 
   // Fast acceleration with slower deceleration tail:
   // movement starts quickly but eases out near tile boundaries.
-  const easeOutPower = (t: number, power: number) => (
-    1 - Math.pow(1 - Math.max(0, Math.min(1, t)), power)
-  );
+  const easeOutPower = (t: number, power: number) =>
+    1 - Math.pow(1 - Math.max(0, Math.min(1, t)), power);
 
   const getSmoothedProgress = (
     rawProgress: number,
@@ -228,7 +296,11 @@ export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snak
       80,
       // Keep interpolation window slightly longer than one nominal tick.
       // This reduces "full stop" artifacts before the next update arrives.
-      Math.min(900, (tickIntervalRef.current / effectiveSmoothSpeedMultiplier) * smoothMoveDecel),
+      Math.min(
+        900,
+        (tickIntervalRef.current / effectiveSmoothSpeedMultiplier) *
+          smoothMoveDecel,
+      ),
     );
     let raf: ReturnType<typeof setInterval>;
     raf = setInterval(() => {
@@ -241,7 +313,12 @@ export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snak
       }
     }, 16);
     return () => clearInterval(raf);
-  }, [gameState.cells, smoothMoveEnabled, effectiveSmoothSpeedMultiplier, smoothMoveDecel]);
+  }, [
+    gameState.cells,
+    smoothMoveEnabled,
+    effectiveSmoothSpeedMultiplier,
+    smoothMoveDecel,
+  ]);
 
   // Game over: remove cells one by one, then show modal
   const [removedCount, setRemovedCount] = useState(0);
@@ -347,26 +424,39 @@ export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snak
 
     // Clean up old spawn times
     for (const key of spawnTimesRef.current.keys()) {
-      if (!currentFoodKeys.has(key) || now - spawnTimesRef.current.get(key)! > SPAWN_DURATION_MS) {
+      if (
+        !currentFoodKeys.has(key) ||
+        now - spawnTimesRef.current.get(key)! > SPAWN_DURATION_MS
+      ) {
         spawnTimesRef.current.delete(key);
       }
     }
     prevFoodKeysRef.current = currentFoodKeys;
 
     // Clean up finished swallow waves
-    const snakeSegmentCount = gameState.cells.filter(c => c.isHead || headColors.has(c.color)).length;
-    const maxSwallowMs = snakeSegmentCount * SWALLOW_DURATION_PER_SEGMENT_MS + SWALLOW_BULGE_MS;
+    const snakeSegmentCount = gameState.cells.filter(
+      (c) => c.isHead || headColors.has(c.color),
+    ).length;
+    const maxSwallowMs =
+      snakeSegmentCount * SWALLOW_DURATION_PER_SEGMENT_MS + SWALLOW_BULGE_MS;
     for (const [color, startTime] of swallowWavesRef.current) {
       if (now - startTime > maxSwallowMs) {
         swallowWavesRef.current.delete(color);
       }
     }
 
-    const hasActiveAnimations = spawnTimesRef.current.size > 0 || swallowWavesRef.current.size > 0;
+    const hasActiveAnimations =
+      spawnTimesRef.current.size > 0 || swallowWavesRef.current.size > 0;
     if (hasActiveAnimations) {
-      const interval = setInterval(() => forceRender(n => n + 1), 16);
-      const timeout = setTimeout(() => clearInterval(interval), Math.max(SPAWN_DURATION_MS, maxSwallowMs) + 50);
-      return () => { clearInterval(interval); clearTimeout(timeout); };
+      const interval = setInterval(() => forceRender((n) => n + 1), 16);
+      const timeout = setTimeout(
+        () => clearInterval(interval),
+        Math.max(SPAWN_DURATION_MS, maxSwallowMs) + 50,
+      );
+      return () => {
+        clearInterval(interval);
+        clearTimeout(timeout);
+      };
     }
   }, [gameState.cells]);
 
@@ -383,7 +473,8 @@ export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snak
   const offsetY = (resolution.height - boardH) / 2;
 
   const borderW = gameState.boardBorderWidth ?? 4;
-  const borderC = gameState.boardBorderColor ?? gameState.gridLineColor ?? '#000000';
+  const borderC =
+    gameState.boardBorderColor ?? gameState.gridLineColor ?? '#000000';
   const gridColor = hexToRgb(gameState.gridLineColor ?? '#000000');
 
   const prevCells = interpolationFromCellsRef.current;
@@ -398,20 +489,20 @@ export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snak
     return dx + dy;
   };
   const orderSnakeIndices = (
-    cells: (typeof gameState.cells),
+    cells: typeof gameState.cells,
     indices: number[],
   ): { ordered: number[]; connectedCount: number } => {
     if (indices.length <= 1) {
       return { ordered: [...indices], connectedCount: indices.length };
     }
 
-    const headIdx = indices.find(i => cells[i].isHead);
+    const headIdx = indices.find((i) => cells[i].isHead);
     if (headIdx === undefined) {
       return { ordered: [...indices], connectedCount: 0 };
     }
 
     const ordered = [headIdx];
-    const remaining = new Set(indices.filter(i => i !== headIdx));
+    const remaining = new Set(indices.filter((i) => i !== headIdx));
     let current = cells[headIdx];
 
     while (remaining.size > 0) {
@@ -463,13 +554,20 @@ export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snak
   for (const [color, indices] of currentSnakeIndicesByColor) {
     const orderedResult = orderSnakeIndices(gameState.cells, indices);
     orderedCurrentByColor.set(color, orderedResult.ordered);
-    for (let i = orderedResult.connectedCount; i < orderedResult.ordered.length; i++) {
+    for (
+      let i = orderedResult.connectedCount;
+      i < orderedResult.ordered.length;
+      i++
+    ) {
       detachedTailIndices.add(orderedResult.ordered[i]);
     }
   }
   const orderedPrevByColor = new Map<string, number[]>();
   for (const [color, indices] of prevSnakeIndicesByColor) {
-    orderedPrevByColor.set(color, orderSnakeIndices(prevCells, indices).ordered);
+    orderedPrevByColor.set(
+      color,
+      orderSnakeIndices(prevCells, indices).ordered,
+    );
   }
 
   // Build segment index from head for swallow wave (head=0, next body=1, ...)
@@ -481,25 +579,31 @@ export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snak
   // During game-over removal animation, slice cells from the end
   const isRemoving = !!gameState.gameOverData && removedCount > 0;
   const cellsAfterRemoval = isRemoving
-    ? gameState.cells.slice(0, Math.max(0, gameState.cells.length - removedCount))
+    ? gameState.cells.slice(
+        0,
+        Math.max(0, gameState.cells.length - removedCount),
+      )
     : gameState.cells;
 
   // Smelter engine has a hard limit of 100 layout nodes.
   // Budget: ~15 for Input wrappers + 3 fixed GameBoard nodes (wrapper, border, grid).
   // Each head = 1 View + 6 eye Views rendered separately (2×border+eye+pupil). Normal cell = 1.
-    const MAX_LAYOUT_NODES = showModal ? 20 : 80;
-    let nodesBudget = MAX_LAYOUT_NODES;
-    const visibleCells: { cell: (typeof gameState.cells)[number]; origIdx: number }[] = [];
-    for (let ci = 0; ci < cellsAfterRemoval.length; ci++) {
-      const cell = cellsAfterRemoval[ci];
-      const cost = cell.isHead ? 7 : 1;
+  const MAX_LAYOUT_NODES = showModal ? 20 : 80;
+  let nodesBudget = MAX_LAYOUT_NODES;
+  const visibleCells: {
+    cell: (typeof gameState.cells)[number];
+    origIdx: number;
+  }[] = [];
+  for (let ci = 0; ci < cellsAfterRemoval.length; ci++) {
+    const cell = cellsAfterRemoval[ci];
+    const cost = cell.isHead ? 7 : 1;
     if (nodesBudget - cost < 0) break;
     nodesBudget -= cost;
     visibleCells.push({ cell, origIdx: ci });
   }
 
-  const activeSnake1Shaders = (snake1Shaders ?? []).filter(s => s.enabled);
-  const activeSnake2Shaders = (snake2Shaders ?? []).filter(s => s.enabled);
+  const activeSnake1Shaders = (snake1Shaders ?? []).filter((s) => s.enabled);
+  const activeSnake2Shaders = (snake2Shaders ?? []).filter((s) => s.enabled);
 
   // Ordered list of snake colors (by first head appearance)
   const snakeColorOrder: string[] = [];
@@ -518,7 +622,10 @@ export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snak
     snakeShaderMap.set(snakeColorOrder[1], activeSnake2Shaders);
   }
 
-  const prevCellByCurrentIndex = new Map<number, (typeof gameState.cells)[number]>();
+  const prevCellByCurrentIndex = new Map<
+    number,
+    (typeof gameState.cells)[number]
+  >();
   for (const [color, orderedCurrent] of orderedCurrentByColor) {
     const orderedPrev = orderedPrevByColor.get(color) ?? [];
     const pairsCount = Math.min(orderedCurrent.length, orderedPrev.length);
@@ -532,7 +639,11 @@ export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snak
     }
   }
 
-  const shortestWrappedDelta = (from: number, to: number, boardSize: number) => {
+  const shortestWrappedDelta = (
+    from: number,
+    to: number,
+    boardSize: number,
+  ) => {
     let delta = to - from;
     if (Math.abs(delta) > boardSize / 2) {
       delta -= Math.sign(delta) * boardSize;
@@ -544,8 +655,12 @@ export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snak
     from: (typeof gameState.cells)[number],
     to: (typeof gameState.cells)[number],
   ) => {
-    const dx = Math.abs(shortestWrappedDelta(from.x, to.x, gameState.boardWidth));
-    const dy = Math.abs(shortestWrappedDelta(from.y, to.y, gameState.boardHeight));
+    const dx = Math.abs(
+      shortestWrappedDelta(from.x, to.x, gameState.boardWidth),
+    );
+    const dy = Math.abs(
+      shortestWrappedDelta(from.y, to.y, gameState.boardHeight),
+    );
     return dx + dy;
   };
 
@@ -571,20 +686,30 @@ export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snak
   };
 
   // Helper: compute cell position & scale for a visible cell
-  const computeCellGeometry = (cell: (typeof gameState.cells)[number], origIdx: number) => {
+  const computeCellGeometry = (
+    cell: (typeof gameState.cells)[number],
+    origIdx: number,
+  ) => {
     const size = cell.size ?? gameState.cellSize;
     const w = cellPixel * size;
     const h = cellPixel * size;
     // Use local interpolation: blend from cell's raw progress toward 1
     const prevCell = prevCellByCurrentIndex.get(origIdx);
     const rawProgress = getRawProgress(cell, prevCell);
-    const progress = getSmoothedProgress(rawProgress, typeof cell.progress === 'number');
+    const progress = getSmoothedProgress(
+      rawProgress,
+      typeof cell.progress === 'number',
+    );
     const step = cellPixel + gap;
     let boardX = cell.x;
     let boardY = cell.y;
     if (prevCell) {
       const dx = shortestWrappedDelta(prevCell.x, cell.x, gameState.boardWidth);
-      const dy = shortestWrappedDelta(prevCell.y, cell.y, gameState.boardHeight);
+      const dy = shortestWrappedDelta(
+        prevCell.y,
+        cell.y,
+        gameState.boardHeight,
+      );
       const stepDistance = Math.abs(dx) + Math.abs(dy);
       const effectiveProgress =
         stepDistance > MAX_INTERPOLATED_CELL_DISTANCE ? 1 : progress;
@@ -592,10 +717,18 @@ export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snak
       boardY = prevCell.y + dy * effectiveProgress;
     } else if (progress < 1 && cell.direction) {
       switch (cell.direction) {
-        case 'right': boardX = cell.x - (1 - progress); break;
-        case 'left':  boardX = cell.x + (1 - progress); break;
-        case 'down':  boardY = cell.y - (1 - progress); break;
-        case 'up':    boardY = cell.y + (1 - progress); break;
+        case 'right':
+          boardX = cell.x - (1 - progress);
+          break;
+        case 'left':
+          boardX = cell.x + (1 - progress);
+          break;
+        case 'down':
+          boardY = cell.y - (1 - progress);
+          break;
+        case 'up':
+          boardY = cell.y + (1 - progress);
+          break;
       }
     }
     const wrappedBoardX = wrapCoord(boardX, gameState.boardWidth);
@@ -617,7 +750,10 @@ export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snak
       }
     }
 
-    if ((cell.isHead || snakeColors.has(cell.color)) && swallowWavesRef.current.has(cell.color)) {
+    if (
+      (cell.isHead || snakeColors.has(cell.color)) &&
+      swallowWavesRef.current.has(cell.color)
+    ) {
       const waveStart = swallowWavesRef.current.get(cell.color)!;
       const segIdx = segmentIndexMap.get(origIdx) ?? 0;
       const segDelay = segIdx * SWALLOW_DURATION_PER_SEGMENT_MS;
@@ -636,20 +772,31 @@ export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snak
   };
 
   // Helper: render eyes for a head cell
-  const renderEyes = (cell: (typeof gameState.cells)[number], keyPrefix: string) => {
+  const renderEyes = (
+    cell: (typeof gameState.cells)[number],
+    keyPrefix: string,
+  ) => {
     const size = cell.size ?? gameState.cellSize;
     const w = cellPixel * size;
     const h = cellPixel * size;
-    const headIndex = gameState.cells.findIndex(c => c === cell);
-    const prevCell = headIndex >= 0 ? prevCellByCurrentIndex.get(headIndex) : undefined;
+    const headIndex = gameState.cells.findIndex((c) => c === cell);
+    const prevCell =
+      headIndex >= 0 ? prevCellByCurrentIndex.get(headIndex) : undefined;
     const rawProgress = getRawProgress(cell, prevCell);
-    const progress = getSmoothedProgress(rawProgress, typeof cell.progress === 'number');
+    const progress = getSmoothedProgress(
+      rawProgress,
+      typeof cell.progress === 'number',
+    );
     const step = cellPixel + gap;
     let boardX = cell.x;
     let boardY = cell.y;
     if (prevCell) {
       const dx = shortestWrappedDelta(prevCell.x, cell.x, gameState.boardWidth);
-      const dy = shortestWrappedDelta(prevCell.y, cell.y, gameState.boardHeight);
+      const dy = shortestWrappedDelta(
+        prevCell.y,
+        cell.y,
+        gameState.boardHeight,
+      );
       const stepDistance = Math.abs(dx) + Math.abs(dy);
       const effectiveProgress =
         stepDistance > MAX_INTERPOLATED_CELL_DISTANCE ? 1 : progress;
@@ -657,10 +804,18 @@ export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snak
       boardY = prevCell.y + dy * effectiveProgress;
     } else if (progress < 1 && cell.direction) {
       switch (cell.direction) {
-        case 'right': boardX = cell.x - (1 - progress); break;
-        case 'left':  boardX = cell.x + (1 - progress); break;
-        case 'down':  boardY = cell.y - (1 - progress); break;
-        case 'up':    boardY = cell.y + (1 - progress); break;
+        case 'right':
+          boardX = cell.x - (1 - progress);
+          break;
+        case 'left':
+          boardX = cell.x + (1 - progress);
+          break;
+        case 'down':
+          boardY = cell.y - (1 - progress);
+          break;
+        case 'up':
+          boardY = cell.y + (1 - progress);
+          break;
       }
     }
     const wrappedBoardX = wrapCoord(boardX, gameState.boardWidth);
@@ -702,61 +857,103 @@ export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snak
     let eye1Top: number, eye1Left: number, eye2Top: number, eye2Left: number;
     let p1Top: number, p1Left: number, p2Top: number, p2Left: number;
     if (dir === 'right') {
-      eye1Top = h * 0.08; eye1Left = w * 0.55;
-      eye2Top = h * 0.54; eye2Left = w * 0.55;
-      p1Top = pupilOffset; p1Left = eSize - pSize - pupilOffset;
-      p2Top = pupilOffset; p2Left = eSize - pSize - pupilOffset;
+      eye1Top = h * 0.08;
+      eye1Left = w * 0.55;
+      eye2Top = h * 0.54;
+      eye2Left = w * 0.55;
+      p1Top = pupilOffset;
+      p1Left = eSize - pSize - pupilOffset;
+      p2Top = pupilOffset;
+      p2Left = eSize - pSize - pupilOffset;
     } else if (dir === 'left') {
-      eye1Top = h * 0.08; eye1Left = w * 0.07;
-      eye2Top = h * 0.54; eye2Left = w * 0.07;
-      p1Top = pupilOffset; p1Left = pupilOffset;
-      p2Top = pupilOffset; p2Left = pupilOffset;
+      eye1Top = h * 0.08;
+      eye1Left = w * 0.07;
+      eye2Top = h * 0.54;
+      eye2Left = w * 0.07;
+      p1Top = pupilOffset;
+      p1Left = pupilOffset;
+      p2Top = pupilOffset;
+      p2Left = pupilOffset;
     } else if (dir === 'up') {
-      eye1Top = h * 0.07; eye1Left = w * 0.08;
-      eye2Top = h * 0.07; eye2Left = w * 0.54;
-      p1Top = pupilOffset; p1Left = pupilOffset;
-      p2Top = pupilOffset; p2Left = pupilOffset;
+      eye1Top = h * 0.07;
+      eye1Left = w * 0.08;
+      eye2Top = h * 0.07;
+      eye2Left = w * 0.54;
+      p1Top = pupilOffset;
+      p1Left = pupilOffset;
+      p2Top = pupilOffset;
+      p2Left = pupilOffset;
     } else {
-      eye1Top = h * 0.55; eye1Left = w * 0.08;
-      eye2Top = h * 0.55; eye2Left = w * 0.54;
-      p1Top = eSize - pSize - pupilOffset; p1Left = pupilOffset;
-      p2Top = eSize - pSize - pupilOffset; p2Left = pupilOffset;
+      eye1Top = h * 0.55;
+      eye1Left = w * 0.08;
+      eye2Top = h * 0.55;
+      eye2Left = w * 0.54;
+      p1Top = eSize - pSize - pupilOffset;
+      p1Left = pupilOffset;
+      p2Top = eSize - pSize - pupilOffset;
+      p2Left = pupilOffset;
     }
 
     return (
       <React.Fragment key={`eyes-${keyPrefix}`}>
-        <View style={{
-          width: outerSize, height: outerSize,
-          top: headY + eye1Top - eBorder, left: headX + eye1Left - eBorder,
-          backgroundColor: '#000000', borderRadius: outerSize / 2,
-        }}>
-          <View style={{
-            width: eSize, height: eSize,
-            top: eBorder, left: eBorder,
-            backgroundColor: '#ffffff', borderRadius: eSize / 2,
+        <View
+          style={{
+            width: outerSize,
+            height: outerSize,
+            top: headY + eye1Top - eBorder,
+            left: headX + eye1Left - eBorder,
+            backgroundColor: '#000000',
+            borderRadius: outerSize / 2,
           }}>
-            <View style={{
-              width: pSize, height: pSize,
-              top: p1Top, left: p1Left,
-              backgroundColor: '#000000', borderRadius: pSize / 2,
-            }} />
+          <View
+            style={{
+              width: eSize,
+              height: eSize,
+              top: eBorder,
+              left: eBorder,
+              backgroundColor: '#ffffff',
+              borderRadius: eSize / 2,
+            }}>
+            <View
+              style={{
+                width: pSize,
+                height: pSize,
+                top: p1Top,
+                left: p1Left,
+                backgroundColor: '#000000',
+                borderRadius: pSize / 2,
+              }}
+            />
           </View>
         </View>
-        <View style={{
-          width: outerSize, height: outerSize,
-          top: headY + eye2Top - eBorder, left: headX + eye2Left - eBorder,
-          backgroundColor: '#000000', borderRadius: outerSize / 2,
-        }}>
-          <View style={{
-            width: eSize, height: eSize,
-            top: eBorder, left: eBorder,
-            backgroundColor: '#ffffff', borderRadius: eSize / 2,
+        <View
+          style={{
+            width: outerSize,
+            height: outerSize,
+            top: headY + eye2Top - eBorder,
+            left: headX + eye2Left - eBorder,
+            backgroundColor: '#000000',
+            borderRadius: outerSize / 2,
           }}>
-            <View style={{
-              width: pSize, height: pSize,
-              top: p2Top, left: p2Left,
-              backgroundColor: '#000000', borderRadius: pSize / 2,
-            }} />
+          <View
+            style={{
+              width: eSize,
+              height: eSize,
+              top: eBorder,
+              left: eBorder,
+              backgroundColor: '#ffffff',
+              borderRadius: eSize / 2,
+            }}>
+            <View
+              style={{
+                width: pSize,
+                height: pSize,
+                top: p2Top,
+                left: p2Left,
+                backgroundColor: '#000000',
+                borderRadius: pSize / 2,
+              }}
+            />
           </View>
         </View>
       </React.Fragment>
@@ -764,25 +961,36 @@ export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snak
   };
 
   const boardContent = (
-    <View style={{ width: resolution.width, height: resolution.height, backgroundColor: gameState.backgroundColor }}>
+    <View
+      style={{
+        width: resolution.width,
+        height: resolution.height,
+        backgroundColor: gameState.backgroundColor,
+      }}>
       {/* Board border */}
       {borderW > 0 && (
-        <View style={{
-          width: boardW + borderW * 2,
-          height: boardH + borderW * 2,
-          top: offsetY - borderW,
-          left: offsetX - borderW,
-          borderWidth: borderW,
-          borderColor: borderC,
-        }} />
+        <View
+          style={{
+            width: boardW + borderW * 2,
+            height: boardH + borderW * 2,
+            top: offsetY - borderW,
+            left: offsetX - borderW,
+            borderWidth: borderW,
+            borderColor: borderC,
+          }}
+        />
       )}
       {/* All cells — per-snake shaders applied to individual cells */}
       {visibleCells.map(({ cell, origIdx }, i) => {
         const { sw, sh, sx, sy } = computeCellGeometry(cell, origIdx);
-        const renderedColor = detachedTailIndices.has(origIdx) ? darkenHexColor(cell.color) : cell.color;
+        const renderedColor = detachedTailIndices.has(origIdx)
+          ? darkenHexColor(cell.color)
+          : cell.color;
         const cellShaders = snakeShaderMap.get(cell.color);
         const cellView = (
-          <View style={{ width: sw, height: sh, backgroundColor: renderedColor }} />
+          <View
+            style={{ width: sw, height: sh, backgroundColor: renderedColor }}
+          />
         );
         if (cellShaders && cellShaders.length > 0) {
           const pad = sw;
@@ -790,40 +998,82 @@ export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snak
           const outerH = sh + pad * 2;
           const innerCell = (
             <View style={{ width: outerW, height: outerH }}>
-              <View style={{ width: sw, height: sh, top: pad, left: pad, backgroundColor: renderedColor }} />
+              <View
+                style={{
+                  width: sw,
+                  height: sh,
+                  top: pad,
+                  left: pad,
+                  backgroundColor: renderedColor,
+                }}
+              />
             </View>
           );
           return (
-            <View key={`cell-${i}`} style={{ width: outerW, height: outerH, top: sy - pad, left: sx - pad }}>
-              {wrapWithShaders(innerCell, cellShaders, { width: Math.round(outerW), height: Math.round(outerH) })}
+            <View
+              key={`cell-${i}`}
+              style={{
+                width: outerW,
+                height: outerH,
+                top: sy - pad,
+                left: sx - pad,
+              }}>
+              {wrapWithShaders(innerCell, cellShaders, {
+                width: Math.round(outerW),
+                height: Math.round(outerH),
+              })}
             </View>
           );
         }
         return (
-          <View key={`cell-${i}`} style={{ width: sw, height: sh, top: sy, left: sx, backgroundColor: renderedColor }} />
+          <View
+            key={`cell-${i}`}
+            style={{
+              width: sw,
+              height: sh,
+              top: sy,
+              left: sx,
+              backgroundColor: renderedColor,
+            }}
+          />
         );
       })}
       {/* Grid overlay */}
-      <View style={{ width: boardW, height: boardH, top: offsetY, left: offsetX }}>
+      <View
+        style={{ width: boardW, height: boardH, top: offsetY, left: offsetX }}>
         <Shader
-          shaderId="grid-overlay"
+          shaderId='grid-overlay'
           resolution={{ width: Math.round(boardW), height: Math.round(boardH) }}
           shaderParam={{
             type: 'struct',
             value: [
-              { type: 'f32', fieldName: 'cells_x', value: gameState.boardWidth },
-              { type: 'f32', fieldName: 'cells_y', value: gameState.boardHeight },
+              {
+                type: 'f32',
+                fieldName: 'cells_x',
+                value: gameState.boardWidth,
+              },
+              {
+                type: 'f32',
+                fieldName: 'cells_y',
+                value: gameState.boardHeight,
+              },
               { type: 'f32', fieldName: 'gap', value: gap },
               { type: 'f32', fieldName: 'line_r', value: gridColor.r },
               { type: 'f32', fieldName: 'line_g', value: gridColor.g },
               { type: 'f32', fieldName: 'line_b', value: gridColor.b },
-              { type: 'f32', fieldName: 'line_a', value: gameState.gridLineAlpha ?? 1.0 },
+              {
+                type: 'f32',
+                fieldName: 'line_a',
+                value: gameState.gridLineAlpha ?? 1.0,
+              },
             ],
           }}
         />
       </View>
       {/* Eyes on top of all cells */}
-      {visibleCells.filter(({ cell }) => cell.isHead).map(({ cell }, i) => renderEyes(cell, `top-${i}`))}
+      {visibleCells
+        .filter(({ cell }) => cell.isHead)
+        .map(({ cell }, i) => renderEyes(cell, `top-${i}`))}
     </View>
   );
 
@@ -834,26 +1084,60 @@ export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snak
 
     if (activeEffect.params) {
       for (const param of activeEffect.params) {
-        if (typeof param.paramValue === 'string' && param.paramValue.startsWith('#')) {
+        if (
+          typeof param.paramValue === 'string' &&
+          param.paramValue.startsWith('#')
+        ) {
           const rgb = hexToRgb(param.paramValue);
-          shaderParams.push({ type: 'f32', fieldName: `${param.paramName}_r`, value: rgb.r } as ShaderParamStructField);
-          shaderParams.push({ type: 'f32', fieldName: `${param.paramName}_g`, value: rgb.g } as ShaderParamStructField);
-          shaderParams.push({ type: 'f32', fieldName: `${param.paramName}_b`, value: rgb.b } as ShaderParamStructField);
+          shaderParams.push({
+            type: 'f32',
+            fieldName: `${param.paramName}_r`,
+            value: rgb.r,
+          } as ShaderParamStructField);
+          shaderParams.push({
+            type: 'f32',
+            fieldName: `${param.paramName}_g`,
+            value: rgb.g,
+          } as ShaderParamStructField);
+          shaderParams.push({
+            type: 'f32',
+            fieldName: `${param.paramName}_b`,
+            value: rgb.b,
+          } as ShaderParamStructField);
         } else {
-          const numValue = typeof param.paramValue === 'string' ? Number(param.paramValue) : param.paramValue;
-          shaderParams.push({ type: 'f32', fieldName: param.paramName, value: numValue } as ShaderParamStructField);
+          const numValue =
+            typeof param.paramValue === 'string'
+              ? Number(param.paramValue)
+              : param.paramValue;
+          shaderParams.push({
+            type: 'f32',
+            fieldName: param.paramName,
+            value: numValue,
+          } as ShaderParamStructField);
         }
       }
     }
 
     const shaderDef = shadersController.getShaderById(activeEffect.shaderId);
-    const shaderDefinesProgress = shaderDef?.params?.some(p => p.name === 'progress');
+    const shaderDefinesProgress = shaderDef?.params?.some(
+      (p) => p.name === 'progress',
+    );
     if (shaderDefinesProgress) {
-      const hasProgress = shaderParams.findIndex(p => p.fieldName === 'progress');
+      const hasProgress = shaderParams.findIndex(
+        (p) => p.fieldName === 'progress',
+      );
       if (hasProgress >= 0) {
-        shaderParams[hasProgress] = { type: 'f32', fieldName: 'progress', value: effectProgress } as ShaderParamStructField;
+        shaderParams[hasProgress] = {
+          type: 'f32',
+          fieldName: 'progress',
+          value: effectProgress,
+        } as ShaderParamStructField;
       } else {
-        shaderParams.push({ type: 'f32', fieldName: 'progress', value: effectProgress } as ShaderParamStructField);
+        shaderParams.push({
+          type: 'f32',
+          fieldName: 'progress',
+          value: effectProgress,
+        } as ShaderParamStructField);
       }
     }
 
@@ -861,8 +1145,11 @@ export function SnakeGameBoard({ snakeGameState, resolution, snake1Shaders, snak
       <Shader
         shaderId={activeEffect.shaderId}
         resolution={resolution}
-        shaderParam={shaderParams.length > 0 ? { type: 'struct', value: shaderParams } : undefined}
-      >
+        shaderParam={
+          shaderParams.length > 0
+            ? { type: 'struct', value: shaderParams }
+            : undefined
+        }>
         {boardContent}
       </Shader>
     );

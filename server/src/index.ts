@@ -20,7 +20,7 @@ async function run() {
   initDashboard();
 }
 
-run().catch(err => {
+run().catch((err) => {
   console.error('Startup failed:', err);
   process.exit(1);
 });

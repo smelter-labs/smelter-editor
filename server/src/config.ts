@@ -28,7 +28,8 @@ export const config: Config =
   process.env.ENVIRONMENT === 'production'
     ? {
         logger: {
-          level: (process.env.SMELTER_DEMO_ROUTER_LOGGER_LEVEL ?? 'warn') as any,
+          level: (process.env.SMELTER_DEMO_ROUTER_LOGGER_LEVEL ??
+            'warn') as any,
         },
         whepBaseUrl: 'https://puffer.fishjam.io/smelter-editor-webrtc/whep',
         whipBaseUrl: 'https://puffer.fishjam.io/smelter-editor-webrtc/whip',
@@ -44,7 +45,7 @@ export const config: Config =
         //    tune: 'zerolatency',
         //    thread_type: 'slice',
         //  },
-       // },
+        // },
         snakeVisualSpeedMultiplier,
       }
     : {
@@ -52,7 +53,8 @@ export const config: Config =
           transport: {
             target: 'pino-pretty',
           },
-          level: (process.env.SMELTER_DEMO_ROUTER_LOGGER_LEVEL ?? 'warn') as any,
+          level: (process.env.SMELTER_DEMO_ROUTER_LOGGER_LEVEL ??
+            'warn') as any,
         },
         whepBaseUrl: 'http://127.0.0.1:9000/whep',
         whipBaseUrl: 'http://127.0.0.1:9000/whip',

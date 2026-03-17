@@ -1,5 +1,8 @@
 import type { KickStreamInfo } from '../kick/KickApi';
-import { getKickStreamInfo, getKickTopStreamsFromCategory } from '../kick/KickApi';
+import {
+  getKickStreamInfo,
+  getKickTopStreamsFromCategory,
+} from '../kick/KickApi';
 import { sleep } from '../utils';
 import type { StreamMonitor } from '../types';
 
@@ -28,7 +31,7 @@ class KickChannelSuggestionsMonitor {
 
   private async refreshCategoryInfo(categories: string[]): Promise<void> {
     const streamsByCategory = await Promise.all(
-      categories.map(async categoryId => await getKickTopStreams(categoryId))
+      categories.map(async (categoryId) => await getKickTopStreams(categoryId)),
     );
     const streams = streamsByCategory.flat();
     this.topStreams = streams;
@@ -48,7 +51,9 @@ export class KickChannelMonitor implements StreamMonitor {
     void this.monitor();
   }
 
-  public static async startMonitor(channelId: string): Promise<KickChannelMonitor> {
+  public static async startMonitor(
+    channelId: string,
+  ): Promise<KickChannelMonitor> {
     const streamInfo = await getKickStreamInfo(channelId);
     if (!streamInfo) {
       throw new Error(`Unable to find live streams for ${channelId}`);
@@ -64,7 +69,9 @@ export class KickChannelMonitor implements StreamMonitor {
     return this.isStreamLive;
   }
 
-  public onUpdate(onUpdateFn: (streamInfo: KickStreamInfo, isLive: boolean) => void): void {
+  public onUpdate(
+    onUpdateFn: (streamInfo: KickStreamInfo, isLive: boolean) => void,
+  ): void {
     this.onUpdateFn = onUpdateFn;
     onUpdateFn(this.streamInfo, this.isStreamLive);
   }
@@ -90,11 +97,16 @@ export class KickChannelMonitor implements StreamMonitor {
   }
 }
 
-async function getKickTopStreams(categoryId: string): Promise<KickStreamInfo[]> {
-  const topStreams = await getKickTopStreamsFromCategory(categoryId, KICK_STREAMS_PER_CATEGORY);
+async function getKickTopStreams(
+  categoryId: string,
+): Promise<KickStreamInfo[]> {
+  const topStreams = await getKickTopStreamsFromCategory(
+    categoryId,
+    KICK_STREAMS_PER_CATEGORY,
+  );
   console.log('[kick] Got Kick top streams');
 
-  return topStreams.map(stream => ({
+  return topStreams.map((stream) => ({
     streamId: `${stream.slug}`,
     displayName: stream.stream_title,
     title: stream.stream_title,

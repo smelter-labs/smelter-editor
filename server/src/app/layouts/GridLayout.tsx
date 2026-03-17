@@ -8,13 +8,15 @@ export function GridLayout() {
   const resolution = useResolution();
   const isVertical = useIsVertical();
 
-  const tileAspectRatio = isVertical 
-    ? `${resolution.width}:${Math.round(resolution.width * 0.63)}` 
+  const tileAspectRatio = isVertical
+    ? `${resolution.width}:${Math.round(resolution.width * 0.63)}`
     : `${resolution.width}:${Math.round(resolution.width * 0.63)}`;
 
   return (
-    <Tiles transition={{ durationMs: 300 }} style={{ padding: 20, tileAspectRatio }}>
-      {Object.values(inputs).map(input => (
+    <Tiles
+      transition={{ durationMs: 300 }}
+      style={{ padding: 20, tileAspectRatio }}>
+      {Object.values(inputs).map((input) => (
         <Input key={input.inputId} input={input} />
       ))}
     </Tiles>

@@ -6,15 +6,23 @@ import { setGlobalSnakeGameState } from './snakeGameDashboard';
 
 let snakeGameRoomCreationInProgress: Promise<void> | null = null;
 const snakeGameInputOwnerMap = new Map<string, string>(); // "<roomId>::<inputId>" -> source key
-const snakeGameSourceRouteMap = new Map<string, { roomId: string; inputId: string }>();
+const snakeGameSourceRouteMap = new Map<
+  string,
+  { roomId: string; inputId: string }
+>();
 const snakeGameLastSeqMap = new Map<string, number>();
 const snakeGameLastSeenAtMap = new Map<string, number>();
 const snakeGameLastMovementAtMap = new Map<string, number>();
 const snakeGameLastBoardSignatureMap = new Map<string, string>();
 const SNAKE_GAME_STATE_TIMEOUT_MS = 5_000;
-const snakeGameRoomInactivityTimers = new Map<string, ReturnType<typeof setTimeout>>();
+const snakeGameRoomInactivityTimers = new Map<
+  string,
+  ReturnType<typeof setTimeout>
+>();
 
-function firstHeaderValue(value: string | string[] | undefined): string | undefined {
+function firstHeaderValue(
+  value: string | string[] | undefined,
+): string | undefined {
   if (!value) return undefined;
   return Array.isArray(value) ? value[0] : value;
 }
@@ -26,13 +34,19 @@ function resolveSnakeGameSourceKey(
   const fromBody = typeof bodyGameId === 'string' ? bodyGameId.trim() : '';
   if (fromBody) return `game-id:${fromBody}`;
 
-  const headerGameId = firstHeaderValue(req.headers['x-game-id'] as string | string[] | undefined)?.trim();
+  const headerGameId = firstHeaderValue(
+    req.headers['x-game-id'] as string | string[] | undefined,
+  )?.trim();
   if (headerGameId) return `game-id:${headerGameId}`;
 
-  const forwardedFor = firstHeaderValue(req.headers['x-forwarded-for'] as string | string[] | undefined);
+  const forwardedFor = firstHeaderValue(
+    req.headers['x-forwarded-for'] as string | string[] | undefined,
+  );
   const ip = forwardedFor?.split(',')[0]?.trim() || req.ip || 'unknown';
   const userAgent =
-    firstHeaderValue(req.headers['user-agent'] as string | string[] | undefined)?.trim() || 'unknown';
+    firstHeaderValue(
+      req.headers['user-agent'] as string | string[] | undefined,
+    )?.trim() || 'unknown';
 
   return `ip:${ip}|ua:${userAgent}`;
 }
@@ -40,7 +54,7 @@ function resolveSnakeGameSourceKey(
 function findSnakeGameInputId(roomId: string): string | undefined {
   try {
     const room = state.getRoom(roomId);
-    return room.getInputs().find(input => input.type === 'game')?.inputId;
+    return room.getInputs().find((input) => input.type === 'game')?.inputId;
   } catch {
     return undefined;
   }
@@ -91,9 +105,11 @@ type SnakeGameMovementPayload = {
   }>;
 };
 
-function buildSnakeGameBoardSignature(payload: SnakeGameMovementPayload): string {
+function buildSnakeGameBoardSignature(
+  payload: SnakeGameMovementPayload,
+): string {
   const sortedCells = payload.cells
-    .map(cell =>
+    .map((cell) =>
       [
         cell.x,
         cell.y,
@@ -102,7 +118,7 @@ function buildSnakeGameBoardSignature(payload: SnakeGameMovementPayload): string
         cell.isHead ? 1 : 0,
         cell.direction ?? '',
         cell.progress ?? '',
-      ].join(':')
+      ].join(':'),
     )
     .sort();
 
@@ -115,7 +131,10 @@ function buildSnakeGameBoardSignature(payload: SnakeGameMovementPayload): string
   ].join('#');
 }
 
-function evaluateSnakeGameMovement(sourceKey: string, payload: SnakeGameMovementPayload): { movementTimedOut: boolean; idleMs: number } {
+function evaluateSnakeGameMovement(
+  sourceKey: string,
+  payload: SnakeGameMovementPayload,
+): { movementTimedOut: boolean; idleMs: number } {
   const now = Date.now();
   const signature = buildSnakeGameBoardSignature(payload);
   const lastSignature = snakeGameLastBoardSignatureMap.get(sourceKey);
@@ -132,7 +151,10 @@ function evaluateSnakeGameMovement(sourceKey: string, payload: SnakeGameMovement
   return { movementTimedOut: false, idleMs };
 }
 
-async function closeInactiveSnakeGameRoomForSourceKey(sourceKey: string, idleMs: number): Promise<string | undefined> {
+async function closeInactiveSnakeGameRoomForSourceKey(
+  sourceKey: string,
+  idleMs: number,
+): Promise<string | undefined> {
   const target = snakeGameSourceRouteMap.get(sourceKey);
   if (!target) {
     cleanupSnakeGameTrackingForSourceKey(sourceKey);
@@ -166,7 +188,10 @@ type SnakeGameSeqDecision = {
   outOfOrder: boolean;
 };
 
-function evaluateSnakeGameSequence(sourceKey: string, seq: number): SnakeGameSeqDecision {
+function evaluateSnakeGameSequence(
+  sourceKey: string,
+  seq: number,
+): SnakeGameSeqDecision {
   const now = Date.now();
   const lastSeenAt = snakeGameLastSeenAtMap.get(sourceKey);
   if (lastSeenAt && now - lastSeenAt > SNAKE_GAME_STATE_TIMEOUT_MS) {
@@ -186,10 +211,13 @@ function evaluateSnakeGameSequence(sourceKey: string, seq: number): SnakeGameSeq
 
   if (seq === 1) {
     if (lastSeq !== undefined) {
-      console.info('[game-state] New game sequence started, keeping routed room', {
-        sourceKey,
-        lastSeq,
-      });
+      console.info(
+        '[game-state] New game sequence started, keeping routed room',
+        {
+          sourceKey,
+          lastSeq,
+        },
+      );
       // Keep route ownership so "play again" continues in the same room/input.
       // Reset only sequence/movement tracking for the fresh run.
       snakeGameLastBoardSignatureMap.delete(sourceKey);
@@ -203,19 +231,31 @@ function evaluateSnakeGameSequence(sourceKey: string, seq: number): SnakeGameSeq
     // Allow processing to avoid dropping first packet from a late/reconnected sender.
     snakeGameLastSeqMap.set(sourceKey, seq);
     if (seq > 1) {
-      console.warn('[game-state] First packet has non-initial seq', { sourceKey, seq });
+      console.warn('[game-state] First packet has non-initial seq', {
+        sourceKey,
+        seq,
+      });
       return { shouldProcess: true, outOfOrder: true };
     }
     return { shouldProcess: true, outOfOrder: false };
   }
 
   if (seq <= lastSeq) {
-    console.info('[game-state] Ignoring stale/duplicate packet', { sourceKey, seq, lastSeq });
+    console.info('[game-state] Ignoring stale/duplicate packet', {
+      sourceKey,
+      seq,
+      lastSeq,
+    });
     return { shouldProcess: false, outOfOrder: false };
   }
 
   if (seq > lastSeq + 1) {
-    console.warn('[game-state] Sequence gap detected', { sourceKey, lastSeq, seq, missed: seq - lastSeq - 1 });
+    console.warn('[game-state] Sequence gap detected', {
+      sourceKey,
+      lastSeq,
+      seq,
+      missed: seq - lastSeq - 1,
+    });
     snakeGameLastSeqMap.set(sourceKey, seq);
     return { shouldProcess: true, outOfOrder: true };
   }
@@ -244,51 +284,68 @@ const SnakeGameStateSchema = Type.Object({
       color: Type.String(),
       size: Type.Optional(Type.Number({ minimum: 1 })),
       isHead: Type.Optional(Type.Boolean()),
-      direction: Type.Optional(Type.Union([
-        Type.Literal('up'),
-        Type.Literal('down'),
-        Type.Literal('left'),
-        Type.Literal('right'),
-      ])),
+      direction: Type.Optional(
+        Type.Union([
+          Type.Literal('up'),
+          Type.Literal('down'),
+          Type.Literal('left'),
+          Type.Literal('right'),
+        ]),
+      ),
       progress: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
-    })
+    }),
   ),
   backgroundColor: Type.String(),
-  events: Type.Optional(Type.Array(
+  events: Type.Optional(
+    Type.Array(
+      Type.Object({
+        type: Type.Union([
+          Type.Literal('speed_up'),
+          Type.Literal('cut_opponent'),
+          Type.Literal('got_cut'),
+          Type.Literal('cut_self'),
+          Type.Literal('eat_block'),
+          Type.Literal('bounce_block'),
+          Type.Literal('no_moves'),
+          Type.Literal('game_over'),
+        ]),
+      }),
+    ),
+  ),
+  gameOverData: Type.Optional(
     Type.Object({
-      type: Type.Union([
-        Type.Literal('speed_up'),
-        Type.Literal('cut_opponent'),
-        Type.Literal('got_cut'),
-        Type.Literal('cut_self'),
-        Type.Literal('eat_block'),
-        Type.Literal('bounce_block'),
-        Type.Literal('no_moves'),
-        Type.Literal('game_over'),
-      ]),
-    })
-  )),
-  gameOverData: Type.Optional(Type.Object({
-    winnerName: Type.String(),
-    reason: Type.String(),
-    players: Type.Array(Type.Object({
-      name: Type.String(),
-      score: Type.Number(),
-      eaten: Type.Number(),
-      cuts: Type.Number(),
-      color: Type.String(),
-    })),
-  })),
+      winnerName: Type.String(),
+      reason: Type.String(),
+      players: Type.Array(
+        Type.Object({
+          name: Type.String(),
+          score: Type.Number(),
+          eaten: Type.Number(),
+          cuts: Type.Number(),
+          color: Type.String(),
+        }),
+      ),
+    }),
+  ),
 });
 
 async function createDedicatedSnakeGameRoom(
   gs: Static<typeof SnakeGameStateSchema>,
-): Promise<{ roomId: string; roomName: { pl: string; en: string }; inputId: string }> {
-  const { roomId, roomName, room } = await state.createRoom([{ type: 'game', title: 'Snake' }], true);
+): Promise<{
+  roomId: string;
+  roomName: { pl: string; en: string };
+  inputId: string;
+}> {
+  const { roomId, roomName, room } = await state.createRoom(
+    [{ type: 'game', title: 'Snake' }],
+    true,
+  );
   await room.updateLayout('picture-in-picture');
-  await new Promise(resolve => setTimeout(resolve, 200));
+  await new Promise((resolve) => setTimeout(resolve, 200));
 
-  const inputId = room.getInputs().find(input => input.type === 'game')?.inputId;
+  const inputId = room
+    .getInputs()
+    .find((input) => input.type === 'game')?.inputId;
   if (!inputId) {
     throw new Error('Failed to create game input in new room');
   }
@@ -306,16 +363,28 @@ const RoomAndInputIdParamsSchema = Type.Object({
 type RoomAndInputIdParams = { Params: { roomId: string; inputId: string } };
 
 export function registerSnakeGameRoutes(routes: FastifyInstance): void {
-  routes.post<RoomAndInputIdParams & { Body: Static<typeof SnakeGameStateSchema> }>(
+  routes.post<
+    RoomAndInputIdParams & { Body: Static<typeof SnakeGameStateSchema> }
+  >(
     '/room/:roomId/input/:inputId/game-state',
-    { schema: { params: RoomAndInputIdParamsSchema, body: SnakeGameStateSchema } },
+    {
+      schema: {
+        params: RoomAndInputIdParamsSchema,
+        body: SnakeGameStateSchema,
+      },
+    },
     async (req, res) => {
       const { roomId, inputId } = req.params;
       const gs = req.body;
       const sourceKey = resolveSnakeGameSourceKey(req, gs.gameId);
       const seqDecision = evaluateSnakeGameSequence(sourceKey, gs.seq);
       if (!seqDecision.shouldProcess) {
-        res.status(200).send({ status: 'ignored', reason: 'stale_or_duplicate', roomId, inputId });
+        res.status(200).send({
+          status: 'ignored',
+          reason: 'stale_or_duplicate',
+          roomId,
+          inputId,
+        });
         return;
       }
       const targetKey = `${roomId}::${inputId}`;
@@ -334,33 +403,43 @@ export function registerSnakeGameRoutes(routes: FastifyInstance): void {
         const shouldTakeOverOwner = !ownerRouteMatchesTarget || ownerTimedOut;
 
         if (shouldTakeOverOwner) {
-          console.info('[game-state] Taking over explicit room input ownership', {
-            roomId,
-            inputId,
-            previousOwner: currentOwner,
-            sourceKey,
-            reason: !ownerRouteMatchesTarget
-              ? 'stale_owner_route'
-              : 'owner_timed_out',
-          });
+          console.info(
+            '[game-state] Taking over explicit room input ownership',
+            {
+              roomId,
+              inputId,
+              previousOwner: currentOwner,
+              sourceKey,
+              reason: !ownerRouteMatchesTarget
+                ? 'stale_owner_route'
+                : 'owner_timed_out',
+            },
+          );
           cleanupSnakeGameTrackingForSourceKey(currentOwner);
         } else {
-        // Another game stream is trying to update the same input.
-        // Route this stream into a dedicated room with a single game input.
-        const { roomId: newRoomId, roomName: newRoomName, inputId: newInputId } = await createDedicatedSnakeGameRoom(gs);
-        const newTargetKey = `${newRoomId}::${newInputId}`;
-        snakeGameInputOwnerMap.set(newTargetKey, sourceKey);
-        snakeGameSourceRouteMap.set(sourceKey, { roomId: newRoomId, inputId: newInputId });
-        res.status(200).send({
-          status: 'ok',
-          rerouted: true,
-          outOfOrder: seqDecision.outOfOrder,
-          roomId: newRoomId,
-          roomName: newRoomName,
-          inputId: newInputId,
-          roomUrl: `/room/${newRoomId}`,
-        });
-        return;
+          // Another game stream is trying to update the same input.
+          // Route this stream into a dedicated room with a single game input.
+          const {
+            roomId: newRoomId,
+            roomName: newRoomName,
+            inputId: newInputId,
+          } = await createDedicatedSnakeGameRoom(gs);
+          const newTargetKey = `${newRoomId}::${newInputId}`;
+          snakeGameInputOwnerMap.set(newTargetKey, sourceKey);
+          snakeGameSourceRouteMap.set(sourceKey, {
+            roomId: newRoomId,
+            inputId: newInputId,
+          });
+          res.status(200).send({
+            status: 'ok',
+            rerouted: true,
+            outOfOrder: seqDecision.outOfOrder,
+            roomId: newRoomId,
+            roomName: newRoomName,
+            inputId: newInputId,
+            roomUrl: `/room/${newRoomId}`,
+          });
+          return;
         }
       }
 
@@ -368,7 +447,10 @@ export function registerSnakeGameRoutes(routes: FastifyInstance): void {
       snakeGameSourceRouteMap.set(sourceKey, { roomId, inputId });
       const movement = evaluateSnakeGameMovement(sourceKey, gs);
       if (movement.movementTimedOut) {
-        const closedRoomId = await closeInactiveSnakeGameRoomForSourceKey(sourceKey, movement.idleMs);
+        const closedRoomId = await closeInactiveSnakeGameRoomForSourceKey(
+          sourceKey,
+          movement.idleMs,
+        );
         res.status(200).send({
           status: 'room_closed_inactive',
           idleMs: movement.idleMs,
@@ -389,7 +471,7 @@ export function registerSnakeGameRoutes(routes: FastifyInstance): void {
         inputId,
         roomUrl: `/room/${roomId}`,
       });
-    }
+    },
   );
 
   // Global game state — no room needed, broadcasts to all game inputs
@@ -401,7 +483,9 @@ export function registerSnakeGameRoutes(routes: FastifyInstance): void {
       const sourceKey = resolveSnakeGameSourceKey(req, gs.gameId);
       const seqDecision = evaluateSnakeGameSequence(sourceKey, gs.seq);
       if (!seqDecision.shouldProcess) {
-        res.status(200).send({ status: 'ignored', reason: 'stale_or_duplicate' });
+        res
+          .status(200)
+          .send({ status: 'ignored', reason: 'stale_or_duplicate' });
         return;
       }
       setGlobalSnakeGameState({
@@ -432,7 +516,10 @@ export function registerSnakeGameRoutes(routes: FastifyInstance): void {
       let targetInputId = target?.inputId;
       const movement = evaluateSnakeGameMovement(sourceKey, gs);
       if (movement.movementTimedOut) {
-        const closedRoomId = await closeInactiveSnakeGameRoomForSourceKey(sourceKey, movement.idleMs);
+        const closedRoomId = await closeInactiveSnakeGameRoomForSourceKey(
+          sourceKey,
+          movement.idleMs,
+        );
         res.status(200).send({
           status: 'room_closed_inactive',
           idleMs: movement.idleMs,
@@ -468,7 +555,10 @@ export function registerSnakeGameRoutes(routes: FastifyInstance): void {
         const createPromise = (async () => {
           const created = await createDedicatedSnakeGameRoom(gs);
           snakeGameSourceRouteMap.set(sourceKey, created);
-          snakeGameInputOwnerMap.set(`${created.roomId}::${created.inputId}`, sourceKey);
+          snakeGameInputOwnerMap.set(
+            `${created.roomId}::${created.inputId}`,
+            sourceKey,
+          );
           return created;
         })();
 
@@ -494,7 +584,9 @@ export function registerSnakeGameRoutes(routes: FastifyInstance): void {
       if (targetRoomId) {
         try {
           targetRoomName = state.getRoom(targetRoomId).roomName;
-        } catch { /* room may have been deleted */ }
+        } catch {
+          /* room may have been deleted */
+        }
       }
       res.status(200).send({
         status: 'ok',
@@ -504,6 +596,6 @@ export function registerSnakeGameRoutes(routes: FastifyInstance): void {
         inputId: targetInputId,
         roomUrl,
       });
-    }
+    },
   );
 }

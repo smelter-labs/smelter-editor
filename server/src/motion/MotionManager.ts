@@ -85,8 +85,12 @@ export class MotionManager {
         await execFileAsync(pythonPath, ['-c', 'import cv2; import numpy']);
         console.log('[motion] Python dependencies OK');
       } catch {
-        console.warn('[motion] Python dependencies missing — motion detection will not work');
-        console.warn('[motion] Install: pip3 install opencv-python-headless numpy');
+        console.warn(
+          '[motion] Python dependencies missing — motion detection will not work',
+        );
+        console.warn(
+          '[motion] Install: pip3 install opencv-python-headless numpy',
+        );
       }
       return;
     }
@@ -105,31 +109,44 @@ export class MotionManager {
     console.log('[motion] Setting up Python venv...');
     try {
       if (!existsSync(VENV_DIR)) {
-        await execFileAsync('python3', ['-m', 'venv', VENV_DIR], { cwd: MOTION_DIR });
+        await execFileAsync('python3', ['-m', 'venv', VENV_DIR], {
+          cwd: MOTION_DIR,
+        });
       }
-      await execFileAsync(venvPython, ['-m', 'pip', 'install', '--quiet', '-r', REQUIREMENTS_FILE], {
-        cwd: MOTION_DIR,
-      });
+      await execFileAsync(
+        venvPython,
+        ['-m', 'pip', 'install', '--quiet', '-r', REQUIREMENTS_FILE],
+        {
+          cwd: MOTION_DIR,
+        },
+      );
       console.log('[motion] Venv created and dependencies installed');
     } catch (err) {
       console.error('[motion] Failed to setup Python venv:', err);
-      console.warn('[motion] Motion detection will not work. Install manually:');
       console.warn(
-        '[motion]   cd server/motion && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt'
+        '[motion] Motion detection will not work. Install manually:',
+      );
+      console.warn(
+        '[motion]   cd server/motion && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt',
       );
     }
   }
 
   // ── Public API ────────────────────────────────────────────────
 
-  async startMotionDetection(inputId: string, onScore: (score: number) => void): Promise<void> {
+  async startMotionDetection(
+    inputId: string,
+    onScore: (score: number) => void,
+  ): Promise<void> {
     if (this.callbacks.has(inputId)) {
       this.callbacks.set(inputId, onScore);
       return;
     }
 
     const prev = this.queue;
-    this.queue = prev.then(() => this._addInput(inputId, onScore)).catch(() => {});
+    this.queue = prev
+      .then(() => this._addInput(inputId, onScore))
+      .catch(() => {});
     await this.queue;
   }
 
@@ -150,9 +167,14 @@ export class MotionManager {
 
   // ── Internal ──────────────────────────────────────────────────
 
-  private async _addInput(inputId: string, onScore: (score: number) => void): Promise<void> {
+  private async _addInput(
+    inputId: string,
+    onScore: (score: number) => void,
+  ): Promise<void> {
     if (this.trackedInputs.length >= MOTION_MAX_SLOTS) {
-      console.warn(`[motion] Max ${MOTION_MAX_SLOTS} motion inputs reached, ignoring ${inputId}`);
+      console.warn(
+        `[motion] Max ${MOTION_MAX_SLOTS} motion inputs reached, ignoring ${inputId}`,
+      );
       return;
     }
 
@@ -179,7 +201,7 @@ export class MotionManager {
   private _syncStore(): void {
     this.motionStore.getState().setInputIds([...this.trackedInputs]);
     console.log(
-      `[motion] Grid updated: ${this.trackedInputs.length} inputs [${this.trackedInputs.join(', ')}]`
+      `[motion] Grid updated: ${this.trackedInputs.length} inputs [${this.trackedInputs.join(', ')}]`,
     );
   }
 
@@ -192,7 +214,7 @@ export class MotionManager {
 
     const pythonPath = getPythonPath();
     console.log(
-      `[motion] Starting grid pipeline: ${MOTION_GRID_WIDTH}x${MOTION_GRID_HEIGHT} (${MOTION_MAX_SLOTS} slots, cell ${MOTION_CELL_WIDTH}x${MOTION_GRID_HEIGHT}) on port ${this.rtpPort}`
+      `[motion] Starting grid pipeline: ${MOTION_GRID_WIDTH}x${MOTION_GRID_HEIGHT} (${MOTION_MAX_SLOTS} slots, cell ${MOTION_CELL_WIDTH}x${MOTION_GRID_HEIGHT}) on port ${this.rtpPort}`,
     );
 
     const child = spawn(
@@ -208,7 +230,7 @@ export class MotionManager {
         '--regions',
         String(MOTION_MAX_SLOTS),
       ],
-      { stdio: ['ignore', 'pipe', 'pipe'] }
+      { stdio: ['ignore', 'pipe', 'pipe'] },
     );
     this.pythonProcess = child;
 
@@ -247,11 +269,17 @@ export class MotionManager {
           const cb = this.callbacks.get(id);
           if (cb) cb(-1);
         }
-        if (this.trackedInputs.length > 0 && this.restartAttempts < this.MAX_RESTART_ATTEMPTS) {
-          const delay = Math.min(1000 * Math.pow(2, this.restartAttempts), 8000);
+        if (
+          this.trackedInputs.length > 0 &&
+          this.restartAttempts < this.MAX_RESTART_ATTEMPTS
+        ) {
+          const delay = Math.min(
+            1000 * Math.pow(2, this.restartAttempts),
+            8000,
+          );
           this.restartAttempts++;
           console.log(
-            `[motion] Restarting pipeline in ${delay}ms (attempt ${this.restartAttempts}/${this.MAX_RESTART_ATTEMPTS})`
+            `[motion] Restarting pipeline in ${delay}ms (attempt ${this.restartAttempts}/${this.MAX_RESTART_ATTEMPTS})`,
           );
           setTimeout(() => {
             this._startPipeline().catch((err) => {
@@ -295,7 +323,11 @@ export class MotionManager {
 
     // Register fixed-resolution Smelter output (once — scene updates via Zustand)
     try {
-      await SmelterInstance.registerMotionOutput(this.outputId, this.motionStore, this.rtpPort);
+      await SmelterInstance.registerMotionOutput(
+        this.outputId,
+        this.motionStore,
+        this.rtpPort,
+      );
       this.pipelineRunning = true;
       this.restartAttempts = 0;
     } catch (err) {

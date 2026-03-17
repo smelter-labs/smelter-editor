@@ -5,10 +5,23 @@ import { Layouts } from '../types';
 import { createContext, useContext } from 'react';
 import { useStore } from 'zustand';
 
-export type { SnakeGameCell, SnakeEventType, SnakeEventApplicationMode, SnakeEventShaderMapping, SnakeEventShaderConfig, ActiveSnakeEffect, SnakeGameState, SnakeGameOverPlayer, SnakeGameOverData } from '../snakeGame/types';
+export type {
+  SnakeGameCell,
+  SnakeEventType,
+  SnakeEventApplicationMode,
+  SnakeEventShaderMapping,
+  SnakeEventShaderConfig,
+  ActiveSnakeEffect,
+  SnakeGameState,
+  SnakeGameOverPlayer,
+  SnakeGameOverData,
+} from '../snakeGame/types';
 export { Layouts };
 export type { Layout };
-import type { SnakeGameState, SnakeEventShaderConfig } from '../snakeGame/types';
+import type {
+  SnakeGameState,
+  SnakeEventShaderConfig,
+} from '../snakeGame/types';
 
 export type InputOrientation = 'horizontal' | 'vertical';
 
@@ -56,11 +69,22 @@ export type RoomStore = {
   swapFadeOutDurationMs: number;
   newsStripFadeDuringSwap: boolean;
   newsStripEnabled: boolean;
-  updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number, swapOutgoingEnabled: boolean, swapFadeInDurationMs: number, newsStripFadeDuringSwap: boolean, swapFadeOutDurationMs: number, newsStripEnabled: boolean) => void;
+  updateState: (
+    inputs: InputConfig[],
+    layout: Layout,
+    swapDurationMs: number,
+    swapOutgoingEnabled: boolean,
+    swapFadeInDurationMs: number,
+    newsStripFadeDuringSwap: boolean,
+    swapFadeOutDurationMs: number,
+    newsStripEnabled: boolean,
+  ) => void;
 };
 
-export function createRoomStore(resolution: Resolution = { width: 2560, height: 1440 }): StoreApi<RoomStore> {
-  return createStore<RoomStore>(set => ({
+export function createRoomStore(
+  resolution: Resolution = { width: 2560, height: 1440 },
+): StoreApi<RoomStore> {
+  return createStore<RoomStore>((set) => ({
     inputs: [],
     layout: 'grid',
     resolution,
@@ -70,15 +94,33 @@ export function createRoomStore(resolution: Resolution = { width: 2560, height: 
     swapFadeOutDurationMs: 500,
     newsStripFadeDuringSwap: true,
     newsStripEnabled: false,
-    updateState: (inputs: InputConfig[], layout: Layout, swapDurationMs: number, swapOutgoingEnabled: boolean, swapFadeInDurationMs: number, newsStripFadeDuringSwap: boolean, swapFadeOutDurationMs: number, newsStripEnabled: boolean) => {
-      set(_state => ({ inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs, newsStripEnabled }));
+    updateState: (
+      inputs: InputConfig[],
+      layout: Layout,
+      swapDurationMs: number,
+      swapOutgoingEnabled: boolean,
+      swapFadeInDurationMs: number,
+      newsStripFadeDuringSwap: boolean,
+      swapFadeOutDurationMs: number,
+      newsStripEnabled: boolean,
+    ) => {
+      set((_state) => ({
+        inputs,
+        layout,
+        swapDurationMs,
+        swapOutgoingEnabled,
+        swapFadeInDurationMs,
+        newsStripFadeDuringSwap,
+        swapFadeOutDurationMs,
+        newsStripEnabled,
+      }));
     },
   }));
 }
 
 export function useResolution() {
   const store = useContext(StoreContext);
-  return useStore(store, state => state.resolution);
+  return useStore(store, (state) => state.resolution);
 }
 
 export function useIsVertical() {
@@ -88,42 +130,47 @@ export function useIsVertical() {
 
 export function useSwapDurationMs() {
   const store = useContext(StoreContext);
-  return useStore(store, state => state.swapDurationMs);
+  return useStore(store, (state) => state.swapDurationMs);
 }
 
 export function useSwapOutgoingEnabled() {
   const store = useContext(StoreContext);
-  return useStore(store, state => state.swapOutgoingEnabled);
+  return useStore(store, (state) => state.swapOutgoingEnabled);
 }
 
 export function useSwapFadeInDurationMs() {
   const store = useContext(StoreContext);
-  return useStore(store, state => state.swapFadeInDurationMs);
+  return useStore(store, (state) => state.swapFadeInDurationMs);
 }
 
 export function useSwapFadeOutDurationMs() {
   const store = useContext(StoreContext);
-  return useStore(store, state => state.swapFadeOutDurationMs);
+  return useStore(store, (state) => state.swapFadeOutDurationMs);
 }
 
 export function useNewsStripFadeDuringSwap() {
   const store = useContext(StoreContext);
-  return useStore(store, state => state.newsStripFadeDuringSwap);
+  return useStore(store, (state) => state.newsStripFadeDuringSwap);
 }
 
 export function useNewsStripEnabled() {
   const store = useContext(StoreContext);
-  return useStore(store, state => state.newsStripEnabled);
+  return useStore(store, (state) => state.newsStripEnabled);
 }
 
 export function useLayoutInputs() {
   const store = useContext(StoreContext);
-  return useStore(store, state => state.inputs.filter(i => !i.absolutePosition));
+  return useStore(store, (state) =>
+    state.inputs.filter((i) => !i.absolutePosition),
+  );
 }
 
 export function useAbsoluteInputs() {
   const store = useContext(StoreContext);
-  return useStore(store, state => state.inputs.filter(i => i.absolutePosition));
+  return useStore(store, (state) =>
+    state.inputs.filter((i) => i.absolutePosition),
+  );
 }
 
-export const StoreContext = createContext<StoreApi<RoomStore>>(createRoomStore());
+export const StoreContext =
+  createContext<StoreApi<RoomStore>>(createRoomStore());

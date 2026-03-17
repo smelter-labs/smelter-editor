@@ -1,15 +1,34 @@
 import { ensureDir, pathExists, readdir, remove } from 'fs-extra';
 import path from 'node:path';
-import { SmelterInstance, type RegisterSmelterInputOptions, type SmelterOutput } from '../smelter';
+import {
+  SmelterInstance,
+  type RegisterSmelterInputOptions,
+  type SmelterOutput,
+} from '../smelter';
 import { hlsUrlForKickChannel, hlsUrlForTwitchChannel } from '../streamlink';
 import { TwitchChannelMonitor } from '../twitch/TwitchChannelMonitor';
 import type { TwitchStreamInfo } from '../twitch/TwitchApi';
 import { sleep } from '../utils';
-import type { SnakeGameState, SnakeEventShaderConfig, ActiveSnakeEffect, SnakeEventType } from '../snakeGame/types';
+import type {
+  SnakeGameState,
+  SnakeEventShaderConfig,
+  ActiveSnakeEffect,
+  SnakeEventType,
+} from '../snakeGame/types';
 import type { InputConfig } from '../app/store';
-import type { Layout, ShaderConfig, StreamMonitor, WhipMonitor } from '../types';
+import type {
+  Layout,
+  ShaderConfig,
+  StreamMonitor,
+  WhipMonitor,
+} from '../types';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
-import { createDefaultSnakeGameInputState, DEFAULT_SNAKE_EVENT_SHADERS, buildUpdatedSnakeGameState, processSnakeGameEvents } from '../snakeGame/snakeGameState';
+import {
+  createDefaultSnakeGameInputState,
+  DEFAULT_SNAKE_EVENT_SHADERS,
+  buildUpdatedSnakeGameState,
+  processSnakeGameEvents,
+} from '../snakeGame/snakeGameState';
 import { KickChannelMonitor } from '../kick/KickChannelMonitor';
 import { WhipInputMonitor } from '../whip/WhipInputMonitor';
 import type { RoomNameEntry } from './roomNames';
@@ -19,7 +38,14 @@ export type InputOrientation = 'horizontal' | 'vertical';
 
 export type RoomInputState = {
   inputId: string;
-  type: 'local-mp4' | 'twitch-channel' | 'kick-channel' | 'whip' | 'image' | 'text-input' | 'game';
+  type:
+    | 'local-mp4'
+    | 'twitch-channel'
+    | 'kick-channel'
+    | 'whip'
+    | 'image'
+    | 'text-input'
+    | 'game';
   status: 'disconnected' | 'pending' | 'connected';
   volume: number;
   showTitle: boolean;
@@ -46,12 +72,46 @@ export type RoomInputState = {
 
 type TypeSpecificState =
   | { type: 'local-mp4'; mp4FilePath: string }
-  | { type: 'twitch-channel'; channelId: string; hlsUrl: string; monitor: StreamMonitor & { onUpdate(fn: (streamInfo: TwitchStreamInfo, isLive: boolean) => void): void } }
-  | { type: 'kick-channel'; channelId: string; hlsUrl: string; monitor: StreamMonitor & { onUpdate(fn: (streamInfo: any, isLive: boolean) => void): void } }
+  | {
+      type: 'twitch-channel';
+      channelId: string;
+      hlsUrl: string;
+      monitor: StreamMonitor & {
+        onUpdate(
+          fn: (streamInfo: TwitchStreamInfo, isLive: boolean) => void,
+        ): void;
+      };
+    }
+  | {
+      type: 'kick-channel';
+      channelId: string;
+      hlsUrl: string;
+      monitor: StreamMonitor & {
+        onUpdate(fn: (streamInfo: any, isLive: boolean) => void): void;
+      };
+    }
   | { type: 'whip'; whipUrl: string; monitor: WhipMonitor }
   | { type: 'image'; imageId: string }
-  | { type: 'text-input'; text: string; textAlign: 'left' | 'center' | 'right'; textColor: string; textMaxLines: number; textScrollSpeed: number; textScrollLoop: boolean; textScrollNudge: number; textFontSize: number }
-  | { type: 'game'; snakeGameState: SnakeGameState; snakeEventShaders?: SnakeEventShaderConfig; snake1Shaders?: ShaderConfig[]; snake2Shaders?: ShaderConfig[]; activeEffects: ActiveSnakeEffect[]; effectTimers: NodeJS.Timeout[] };
+  | {
+      type: 'text-input';
+      text: string;
+      textAlign: 'left' | 'center' | 'right';
+      textColor: string;
+      textMaxLines: number;
+      textScrollSpeed: number;
+      textScrollLoop: boolean;
+      textScrollNudge: number;
+      textFontSize: number;
+    }
+  | {
+      type: 'game';
+      snakeGameState: SnakeGameState;
+      snakeEventShaders?: SnakeEventShaderConfig;
+      snake1Shaders?: ShaderConfig[];
+      snake2Shaders?: ShaderConfig[];
+      activeEffects: ActiveSnakeEffect[];
+      effectTimers: NodeJS.Timeout[];
+    };
 
 export type PendingWhipInputData = {
   id: string;
@@ -161,7 +221,8 @@ function cloneDefaultLogoShaders(): ShaderConfig[] {
 export class RoomState {
   private inputs: RoomInputState[];
   private motionManager: MotionManager;
-  private motionScoreListeners: Set<(scores: Record<string, number>) => void> = new Set();
+  private motionScoreListeners: Set<(scores: Record<string, number>) => void> =
+    new Set();
   private layout: Layout = 'picture-in-picture';
   private swapDurationMs: number = 500;
   private swapOutgoingEnabled: boolean = true;
@@ -193,14 +254,23 @@ export class RoomState {
   private readonly initInputs: RegisterInputOptions[];
   private readonly skipDefaultInputs: boolean;
 
-  public constructor(idPrefix: string, output: SmelterOutput, initInputs: RegisterInputOptions[], skipDefaultInputs: boolean = false, roomName?: RoomNameEntry) {
+  public constructor(
+    idPrefix: string,
+    output: SmelterOutput,
+    initInputs: RegisterInputOptions[],
+    skipDefaultInputs: boolean = false,
+    roomName?: RoomNameEntry,
+  ) {
     this.mp4sDir = path.join(process.cwd(), 'mp4s');
     this.mp4Files = mp4SuggestionsMonitor.mp4Files;
     this.inputs = [];
     this.idPrefix = idPrefix;
     this.motionManager = new MotionManager(idPrefix);
     this.output = output;
-    this.roomName = roomName ?? { pl: `Pokój ${idPrefix.slice(0, 6)}`, en: `Room ${idPrefix.slice(0, 6)}` };
+    this.roomName = roomName ?? {
+      pl: `Pokój ${idPrefix.slice(0, 6)}`,
+      en: `Room ${idPrefix.slice(0, 6)}`,
+    };
     this.initInputs = initInputs;
     this.skipDefaultInputs = skipDefaultInputs;
 
@@ -225,7 +295,7 @@ export class RoomState {
   private async getInitialInputState(
     idPrefix: string,
     initInputs: RegisterInputOptions[],
-    skipDefaultInputs: boolean = false
+    skipDefaultInputs: boolean = false,
   ): Promise<void> {
     if (initInputs.length > 0) {
       for (const input of initInputs) {
@@ -242,13 +312,19 @@ export class RoomState {
         });
       }
 
-      const logoPath = path.join(process.cwd(), 'pictures', PLACEHOLDER_LOGO_FILE);
+      const logoPath = path.join(
+        process.cwd(),
+        'pictures',
+        PLACEHOLDER_LOGO_FILE,
+      );
       if (await pathExists(logoPath)) {
         const logoInputId = await this.addNewInput({
           type: 'image',
           fileName: PLACEHOLDER_LOGO_FILE,
         });
-        const logoInput = this.inputs.find(inp => inp.inputId === logoInputId);
+        const logoInput = this.inputs.find(
+          (inp) => inp.inputId === logoInputId,
+        );
         if (logoInput) {
           logoInput.shaders = cloneDefaultLogoShaders();
           this.updateStoreWithState();
@@ -321,9 +397,27 @@ export class RoomState {
     return { fileName: this.recording.fileName };
   }
 
-  public getState(): [RoomInputState[], Layout, number, boolean, number, boolean, number, boolean] {
+  public getState(): [
+    RoomInputState[],
+    Layout,
+    number,
+    boolean,
+    number,
+    boolean,
+    number,
+    boolean,
+  ] {
     this.lastReadTimestamp = Date.now();
-    return [this.inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap, this.swapFadeOutDurationMs, this.newsStripEnabled];
+    return [
+      this.inputs,
+      this.layout,
+      this.swapDurationMs,
+      this.swapOutgoingEnabled,
+      this.swapFadeInDurationMs,
+      this.newsStripFadeDuringSwap,
+      this.swapFadeOutDurationMs,
+      this.newsStripEnabled,
+    ];
   }
 
   public getSwapDurationMs(): number {
@@ -394,13 +488,15 @@ export class RoomState {
 
   private async ensurePlaceholder(): Promise<void> {
     // Check if there are any non-placeholder inputs
-    const nonPlaceholderInputs = this.inputs.filter(inp => !this.isPlaceholder(inp.inputId));
+    const nonPlaceholderInputs = this.inputs.filter(
+      (inp) => !this.isPlaceholder(inp.inputId),
+    );
     if (nonPlaceholderInputs.length > 0) {
       return; // Don't add placeholder if there are real inputs
     }
 
     // Check if placeholder already exists
-    if (this.inputs.find(inp => this.isPlaceholder(inp.inputId))) {
+    if (this.inputs.find((inp) => this.isPlaceholder(inp.inputId))) {
       return; // Placeholder already exists
     }
 
@@ -446,9 +542,13 @@ export class RoomState {
   }
 
   private async removePlaceholder(): Promise<void> {
-    const placeholder = this.inputs.find(inp => this.isPlaceholder(inp.inputId));
+    const placeholder = this.inputs.find((inp) =>
+      this.isPlaceholder(inp.inputId),
+    );
     if (placeholder) {
-      this.inputs = this.inputs.filter(inp => !this.isPlaceholder(inp.inputId));
+      this.inputs = this.inputs.filter(
+        (inp) => !this.isPlaceholder(inp.inputId),
+      );
       this.updateStoreWithState();
     }
   }
@@ -483,15 +583,17 @@ export class RoomState {
 
   private async addHlsChannelInput(
     platform: 'twitch-channel' | 'kick-channel',
-    channelId: string
+    channelId: string,
   ): Promise<string> {
     const inputId =
       platform === 'twitch-channel'
         ? inputIdForTwitchInput(this.idPrefix, channelId)
         : inputIdForKickInput(this.idPrefix, channelId);
     const platformLabel = platform === 'twitch-channel' ? 'Twitch' : 'Kick';
-    if (this.inputs.find(input => input.inputId === inputId)) {
-      throw new Error(`Input for ${platformLabel} channel ${channelId} already exists.`);
+    if (this.inputs.find((input) => input.inputId === inputId)) {
+      throw new Error(
+        `Input for ${platformLabel} channel ${channelId} already exists.`,
+      );
     }
 
     const hlsUrl =
@@ -520,16 +622,21 @@ export class RoomState {
     if (platform === 'twitch-channel') {
       const twitchMonitor = await TwitchChannelMonitor.startMonitor(channelId);
       monitor = twitchMonitor;
-      inputState = { ...baseState, type: 'twitch-channel', monitor: twitchMonitor };
+      inputState = {
+        ...baseState,
+        type: 'twitch-channel',
+        monitor: twitchMonitor,
+      };
     } else {
       const kickMonitor = await KickChannelMonitor.startMonitor(channelId);
       monitor = kickMonitor;
       inputState = { ...baseState, type: 'kick-channel', monitor: kickMonitor };
     }
     monitor.onUpdate((streamInfo: TwitchStreamInfo, _isLive: boolean) => {
-      inputState.metadata.title = platform === 'twitch-channel'
-        ? `[Twitch.tv/${streamInfo.category}] ${streamInfo.displayName}`
-        : `[Kick.com] ${streamInfo.displayName}`;
+      inputState.metadata.title =
+        platform === 'twitch-channel'
+          ? `[Twitch.tv/${streamInfo.category}] ${streamInfo.displayName}`
+          : `[Kick.com] ${streamInfo.displayName}`;
       inputState.metadata.description = streamInfo.title;
       this.updateStoreWithState();
     });
@@ -549,7 +656,7 @@ export class RoomState {
     } else if (opts.type === 'local-mp4') {
       if (!opts.source?.fileName) {
         throw new Error(
-          'local-mp4 requires source.fileName. Only URL is not supported; provide a file name from the mp4s directory.'
+          'local-mp4 requires source.fileName. Only URL is not supported; provide a file name from the mp4s directory.',
         );
       }
       console.log('Adding local mp4');
@@ -593,7 +700,7 @@ export class RoomState {
       if (imageId && !fileName) {
         const baseName = imageId.replace(/^pictures::/, '');
         const files = await readdir(picturesDir).catch(() => [] as string[]);
-        const found = files.find(f => {
+        const found = files.find((f) => {
           const fBase = f.replace(/\.(jpg|jpeg|png|gif|svg)$/i, '');
           return fBase === baseName;
         });
@@ -605,21 +712,29 @@ export class RoomState {
       }
 
       if (!fileName) {
-        throw new Error('Either fileName or imageId must be provided for image input');
+        throw new Error(
+          'Either fileName or imageId must be provided for image input',
+        );
       }
 
       const imagePath = path.join(picturesDir, fileName);
 
       if (await pathExists(imagePath)) {
         const lower = fileName.toLowerCase();
-        const ext = exts.find(x => lower.endsWith(x));
+        const ext = exts.find((x) => lower.endsWith(x));
         if (!ext) {
           throw new Error(`Unsupported image format: ${fileName}`);
         }
         const baseName = fileName.replace(/\.(jpg|jpeg|png|gif|svg)$/i, '');
         imageId = `pictures::${baseName}`;
         const assetType =
-          ext === '.png' ? 'png' : ext === '.gif' ? 'gif' : ext === '.svg' ? 'svg' : 'jpeg';
+          ext === '.png'
+            ? 'png'
+            : ext === '.gif'
+              ? 'gif'
+              : ext === '.svg'
+                ? 'svg'
+                : 'jpeg';
 
         // Register image resource
         try {
@@ -715,19 +830,24 @@ export class RoomState {
     const input = this.getInput(inputId);
 
     // Check if this is the last non-placeholder input
-    const nonPlaceholderInputs = this.inputs.filter(inp => !this.isPlaceholder(inp.inputId));
+    const nonPlaceholderInputs = this.inputs.filter(
+      (inp) => !this.isPlaceholder(inp.inputId),
+    );
     const willBeEmpty =
-      nonPlaceholderInputs.length === 1 && nonPlaceholderInputs[0].inputId === inputId;
+      nonPlaceholderInputs.length === 1 &&
+      nonPlaceholderInputs[0].inputId === inputId;
 
     // If removing the last input, add placeholder first
     if (willBeEmpty) {
       await this.ensurePlaceholder();
     }
 
-    this.inputs = this.inputs.filter(input => input.inputId !== inputId);
+    this.inputs = this.inputs.filter((input) => input.inputId !== inputId);
     for (const other of this.inputs) {
       if (other.attachedInputIds) {
-        other.attachedInputIds = other.attachedInputIds.filter(id => id !== inputId);
+        other.attachedInputIds = other.attachedInputIds.filter(
+          (id) => id !== inputId,
+        );
       }
     }
     this.updateStoreWithState();
@@ -739,7 +859,9 @@ export class RoomState {
     const waitStart = Date.now();
     while (input.status === 'pending') {
       if (Date.now() - waitStart > PENDING_WAIT_TIMEOUT_MS) {
-        console.warn(`[roomState] Timed out waiting for pending input ${inputId}, forcing disconnected`);
+        console.warn(
+          `[roomState] Timed out waiting for pending input ${inputId}, forcing disconnected`,
+        );
         input.status = 'disconnected';
         break;
       }
@@ -775,7 +897,10 @@ export class RoomState {
       const res = await Promise.race([
         SmelterInstance.registerInput(inputId, options),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error(`Timeout connecting input ${inputId}`)), CONNECT_TIMEOUT_MS)
+          setTimeout(
+            () => reject(new Error(`Timeout connecting input ${inputId}`)),
+            CONNECT_TIMEOUT_MS,
+          ),
         ),
       ]);
       response = res;
@@ -787,15 +912,24 @@ export class RoomState {
     }
     input.status = 'connected';
     // Start motion detection for video inputs
-    if (input.motionEnabled && ['local-mp4', 'twitch-channel', 'kick-channel', 'whip'].includes(input.type)) {
-      this.motionManager.startMotionDetection(inputId, (score) => {
-        if (score === -1) {
-          input.motionScore = undefined;
-        } else {
-          input.motionScore = score;
-        }
-        this.emitMotionScores();
-      }).catch(err => console.error(`[motion] Failed to start for ${inputId}`, err));
+    if (
+      input.motionEnabled &&
+      ['local-mp4', 'twitch-channel', 'kick-channel', 'whip'].includes(
+        input.type,
+      )
+    ) {
+      this.motionManager
+        .startMotionDetection(inputId, (score) => {
+          if (score === -1) {
+            input.motionScore = undefined;
+          } else {
+            input.motionScore = score;
+          }
+          this.emitMotionScores();
+        })
+        .catch((err) =>
+          console.error(`[motion] Failed to start for ${inputId}`, err),
+        );
     }
     this.updateStoreWithState();
     return response;
@@ -855,14 +989,17 @@ export class RoomState {
           // remove it — the client heartbeat may be paused (mobile browser
           // backgrounded / screen off) but the connection is alive.
           if (input.status === 'connected') {
-            console.log('[whip][stale] Skipping removal — input still connected', {
-              roomId: this.idPrefix,
-              inputId: input.inputId,
-              username: input.monitor.getUsername(),
-              ageMs,
-              staleTtlMs,
-              inputStatus: input.status,
-            });
+            console.log(
+              '[whip][stale] Skipping removal — input still connected',
+              {
+                roomId: this.idPrefix,
+                inputId: input.inputId,
+                username: input.monitor.getUsername(),
+                ageMs,
+                staleTtlMs,
+                inputStatus: input.status,
+              },
+            );
             continue;
           }
           try {
@@ -884,7 +1021,10 @@ export class RoomState {
     }
   }
 
-  public async updateInput(inputId: string, options: Partial<UpdateInputOptions>) {
+  public async updateInput(
+    inputId: string,
+    options: Partial<UpdateInputOptions>,
+  ) {
     const input = this.getInput(inputId);
     input.volume = options.volume ?? input.volume;
     input.shaders = options.shaders ?? input.shaders;
@@ -975,17 +1115,17 @@ export class RoomState {
   }
 
   public reorderInputs(inputOrder: string[]) {
-    const inputIdSet = new Set(this.inputs.map(input => input.inputId));
+    const inputIdSet = new Set(this.inputs.map((input) => input.inputId));
     const inputs: RoomInputState[] = [];
     for (const inputId of inputOrder) {
-      const input = this.inputs.find(input => input.inputId === inputId);
+      const input = this.inputs.find((input) => input.inputId === inputId);
       if (input) {
         inputs.push(input);
         inputIdSet.delete(inputId);
       }
     }
     for (const inputId of inputIdSet) {
-      const input = this.inputs.find(input => input.inputId === inputId);
+      const input = this.inputs.find((input) => input.inputId === inputId);
       if (input) {
         inputs.push(input);
       }
@@ -1021,7 +1161,10 @@ export class RoomState {
       try {
         await SmelterInstance.unregisterInput(input.inputId);
       } catch (err: any) {
-        console.error('Failed to remove input when removing the room.', err?.body ?? err);
+        console.error(
+          'Failed to remove input when removing the room.',
+          err?.body ?? err,
+        );
       }
     }
 
@@ -1055,13 +1198,19 @@ export class RoomState {
       text: input.type === 'text-input' ? input.text : undefined,
       textAlign: input.type === 'text-input' ? input.textAlign : undefined,
       textColor: input.type === 'text-input' ? input.textColor : undefined,
-      textMaxLines: input.type === 'text-input' ? input.textMaxLines : undefined,
-      textScrollSpeed: input.type === 'text-input' ? input.textScrollSpeed : undefined,
-      textScrollLoop: input.type === 'text-input' ? input.textScrollLoop : undefined,
-      textScrollNudge: input.type === 'text-input' ? input.textScrollNudge : undefined,
-      textFontSize: input.type === 'text-input' ? input.textFontSize : undefined,
+      textMaxLines:
+        input.type === 'text-input' ? input.textMaxLines : undefined,
+      textScrollSpeed:
+        input.type === 'text-input' ? input.textScrollSpeed : undefined,
+      textScrollLoop:
+        input.type === 'text-input' ? input.textScrollLoop : undefined,
+      textScrollNudge:
+        input.type === 'text-input' ? input.textScrollNudge : undefined,
+      textFontSize:
+        input.type === 'text-input' ? input.textFontSize : undefined,
       snakeGameState: input.type === 'game' ? input.snakeGameState : undefined,
-      snakeEventShaders: input.type === 'game' ? input.snakeEventShaders : undefined,
+      snakeEventShaders:
+        input.type === 'game' ? input.snakeEventShaders : undefined,
       snake1Shaders: input.type === 'game' ? input.snake1Shaders : undefined,
       snake2Shaders: input.type === 'game' ? input.snake2Shaders : undefined,
       absolutePosition: input.absolutePosition,
@@ -1073,7 +1222,9 @@ export class RoomState {
       absoluteTransitionEasing: input.absoluteTransitionEasing,
     });
 
-    const connectedInputs = this.inputs.filter(input => input.status === 'connected' && !input.hidden);
+    const connectedInputs = this.inputs.filter(
+      (input) => input.status === 'connected' && !input.hidden,
+    );
     const connectedMap = new Map<string, RoomInputState>();
     for (const input of connectedInputs) {
       connectedMap.set(input.inputId, input);
@@ -1089,19 +1240,30 @@ export class RoomState {
     }
 
     const inputs: InputConfig[] = connectedInputs
-      .filter(input => !attachedIds.has(input.inputId))
-      .map(input => {
+      .filter((input) => !attachedIds.has(input.inputId))
+      .map((input) => {
         const config = toInputConfig(input);
         if (input.attachedInputIds && input.attachedInputIds.length > 0) {
           config.attachedInputs = input.attachedInputIds
-            .map(id => connectedMap.get(id))
+            .map((id) => connectedMap.get(id))
             .filter((i): i is RoomInputState => !!i)
             .map(toInputConfig);
         }
         return config;
       });
 
-    this.output.store.getState().updateState(inputs, this.layout, this.swapDurationMs, this.swapOutgoingEnabled, this.swapFadeInDurationMs, this.newsStripFadeDuringSwap, this.swapFadeOutDurationMs, this.newsStripEnabled);
+    this.output.store
+      .getState()
+      .updateState(
+        inputs,
+        this.layout,
+        this.swapDurationMs,
+        this.swapOutgoingEnabled,
+        this.swapFadeInDurationMs,
+        this.newsStripFadeDuringSwap,
+        this.swapFadeOutDurationMs,
+        this.newsStripEnabled,
+      );
   }
 
   public hideInput(inputId: string) {
@@ -1116,12 +1278,23 @@ export class RoomState {
     this.updateStoreWithState();
   }
 
-  public async setMotionEnabled(inputId: string, enabled: boolean): Promise<void> {
+  public async setMotionEnabled(
+    inputId: string,
+    enabled: boolean,
+  ): Promise<void> {
     const input = this.getInput(inputId);
     input.motionEnabled = enabled;
-    if (enabled && input.status === 'connected' && ['local-mp4', 'twitch-channel', 'kick-channel', 'whip'].includes(input.type)) {
+    if (
+      enabled &&
+      input.status === 'connected' &&
+      ['local-mp4', 'twitch-channel', 'kick-channel', 'whip'].includes(
+        input.type,
+      )
+    ) {
       try {
-        console.log(`[motion][setMotionEnabled] starting for inputId=${inputId} type=${input.type} title="${input.metadata.title}"`);
+        console.log(
+          `[motion][setMotionEnabled] starting for inputId=${inputId} type=${input.type} title="${input.metadata.title}"`,
+        );
         await this.motionManager.startMotionDetection(inputId, (score) => {
           if (score === -1) {
             input.motionScore = undefined;
@@ -1131,7 +1304,10 @@ export class RoomState {
           this.emitMotionScores();
         });
       } catch (err) {
-        console.error(`[motion] Failed to start motion detection for ${inputId}`, err);
+        console.error(
+          `[motion] Failed to start motion detection for ${inputId}`,
+          err,
+        );
       }
     } else if (!enabled) {
       await this.motionManager.stopMotionDetection(inputId);
@@ -1144,7 +1320,9 @@ export class RoomState {
     await this.motionManager.stopAll();
   }
 
-  public addMotionScoreListener(listener: (scores: Record<string, number>) => void): () => void {
+  public addMotionScoreListener(
+    listener: (scores: Record<string, number>) => void,
+  ): () => void {
     this.motionScoreListeners.add(listener);
     return () => {
       this.motionScoreListeners.delete(listener);
@@ -1164,13 +1342,54 @@ export class RoomState {
     }
   }
 
-  public updateSnakeGameState(inputId: string, incomingState: { board: { width: number; height: number; cellSize: number; cellGap?: number }; cells: { x: number; y: number; color: string; size?: number; isHead?: boolean; direction?: 'up' | 'down' | 'left' | 'right'; progress?: number }[]; smoothMove?: boolean; smoothMoveSpeed?: number; smoothMoveAccel?: number; smoothMoveDecel?: number; backgroundColor: string; gameOverData?: { winnerName: string; reason: string; players: { name: string; score: number; eaten: number; cuts: number; color: string }[] } }, events?: { type: SnakeEventType }[]) {
+  public updateSnakeGameState(
+    inputId: string,
+    incomingState: {
+      board: {
+        width: number;
+        height: number;
+        cellSize: number;
+        cellGap?: number;
+      };
+      cells: {
+        x: number;
+        y: number;
+        color: string;
+        size?: number;
+        isHead?: boolean;
+        direction?: 'up' | 'down' | 'left' | 'right';
+        progress?: number;
+      }[];
+      smoothMove?: boolean;
+      smoothMoveSpeed?: number;
+      smoothMoveAccel?: number;
+      smoothMoveDecel?: number;
+      backgroundColor: string;
+      gameOverData?: {
+        winnerName: string;
+        reason: string;
+        players: {
+          name: string;
+          score: number;
+          eaten: number;
+          cuts: number;
+          color: string;
+        }[];
+      };
+    },
+    events?: { type: SnakeEventType }[],
+  ) {
     const input = this.getInput(inputId);
     if (input.type !== 'game') {
       throw new Error(`Input ${inputId} is not a game input`);
     }
-    input.snakeGameState = buildUpdatedSnakeGameState(input.snakeGameState, incomingState);
-    console.log(`[game] Updated snake board: ${incomingState.cells.length} cells on ${incomingState.board.width}x${incomingState.board.height}`);
+    input.snakeGameState = buildUpdatedSnakeGameState(
+      input.snakeGameState,
+      incomingState,
+    );
+    console.log(
+      `[game] Updated snake board: ${incomingState.cells.length} cells on ${incomingState.board.width}x${incomingState.board.height}`,
+    );
 
     if (events && events.length > 0) {
       this.ingestSnakeGameEvents(inputId, events);
@@ -1179,7 +1398,10 @@ export class RoomState {
     }
   }
 
-  private ingestSnakeGameEvents(inputId: string, events: { type: SnakeEventType }[]) {
+  private ingestSnakeGameEvents(
+    inputId: string,
+    events: { type: SnakeEventType }[],
+  ) {
     const input = this.getInput(inputId);
     if (input.type !== 'game') return;
     if (!events || events.length === 0) return;
@@ -1200,7 +1422,7 @@ export class RoomState {
   }
 
   private getInput(inputId: string): RoomInputState {
-    const input = this.inputs.find(input => input.inputId === inputId);
+    const input = this.inputs.find((input) => input.inputId === inputId);
     if (!input) {
       throw new Error(`Input ${inputId} not found`);
     }
@@ -1209,7 +1431,8 @@ export class RoomState {
   // Remove all wrapped-static image inputs
   private async removeWrappedStaticInputs(): Promise<void> {
     const inputsToRemove = this.inputs.filter(
-      input => input.type === 'image' && input.imageId?.startsWith('wrapped::')
+      (input) =>
+        input.type === 'image' && input.imageId?.startsWith('wrapped::'),
     );
     for (const input of inputsToRemove) {
       await this.removeInput(input.inputId);
@@ -1219,7 +1442,9 @@ export class RoomState {
   // Remove all wrapped MP4 inputs
   private async removeWrappedMp4Inputs(): Promise<void> {
     const inputsToRemove = this.inputs.filter(
-      input => input.type === 'local-mp4' && input.inputId.includes('::local::wrapped::')
+      (input) =>
+        input.type === 'local-mp4' &&
+        input.inputId.includes('::local::wrapped::'),
     );
     for (const input of inputsToRemove) {
       await this.removeInput(input.inputId);
@@ -1237,7 +1462,7 @@ export class RoomState {
     }
     // Keep deterministic order
     entries.sort((a, b) => a.localeCompare(b, 'en'));
-    const mp4s = entries.filter(e => e.toLowerCase().endsWith('.mp4'));
+    const mp4s = entries.filter((e) => e.toLowerCase().endsWith('.mp4'));
 
     // Remove placeholder if we're adding inputs
     if (mp4s.length > 0) {
@@ -1248,7 +1473,7 @@ export class RoomState {
       const absPath = path.join(wrappedDir, fileName);
       const baseName = fileName.replace(/\.mp4$/i, '');
       const inputId = `${this.idPrefix}::local::wrapped::${baseName}`;
-      if (this.inputs.find(inp => inp.inputId === inputId)) {
+      if (this.inputs.find((inp) => inp.inputId === inputId)) {
         continue;
       }
       this.inputs.push({
@@ -1286,7 +1511,9 @@ export class RoomState {
     // Keep deterministic order
     entries.sort((a, b) => a.localeCompare(b, 'en'));
     const exts = ['.jpg', '.jpeg', '.png', '.gif', '.svg'];
-    const images = entries.filter(e => exts.some(ext => e.toLowerCase().endsWith(ext)));
+    const images = entries.filter((e) =>
+      exts.some((ext) => e.toLowerCase().endsWith(ext)),
+    );
 
     // Remove placeholder if we're adding inputs
     if (images.length > 0) {
@@ -1295,14 +1522,20 @@ export class RoomState {
 
     for (const fileName of images) {
       const lower = fileName.toLowerCase();
-      const ext = exts.find(x => lower.endsWith(x))!;
+      const ext = exts.find((x) => lower.endsWith(x))!;
       const absPath = path.join(wrappedDir, fileName);
       const baseName = fileName.replace(/\.(jpg|jpeg|png|gif|svg)$/i, '');
       const imageId = `wrapped::${baseName}`;
       const inputId = `${this.idPrefix}::image::${baseName}`;
       // register image resource
       const assetType =
-        ext === '.png' ? 'png' : ext === '.gif' ? 'gif' : ext === '.svg' ? 'svg' : 'jpeg';
+        ext === '.png'
+          ? 'png'
+          : ext === '.gif'
+            ? 'gif'
+            : ext === '.svg'
+              ? 'svg'
+              : 'jpeg';
       try {
         await SmelterInstance.registerImage(imageId, {
           serverPath: absPath,
@@ -1311,7 +1544,7 @@ export class RoomState {
       } catch {
         // ignore if already registered
       }
-      if (this.inputs.find(inp => inp.inputId === inputId)) {
+      if (this.inputs.find((inp) => inp.inputId === inputId)) {
         continue;
       }
       this.inputs.push({
@@ -1336,7 +1569,9 @@ export class RoomState {
   }
 }
 
-function registerOptionsFromInput(input: RoomInputState): RegisterSmelterInputOptions {
+function registerOptionsFromInput(
+  input: RoomInputState,
+): RegisterSmelterInputOptions {
   if (input.type === 'local-mp4') {
     return { type: 'mp4', filePath: input.mp4FilePath };
   } else if (input.type === 'twitch-channel' || input.type === 'kick-channel') {
@@ -1354,7 +1589,10 @@ function registerOptionsFromInput(input: RoomInputState): RegisterSmelterInputOp
   }
 }
 
-function inputIdForTwitchInput(idPrefix: string, twitchChannelId: string): string {
+function inputIdForTwitchInput(
+  idPrefix: string,
+  twitchChannelId: string,
+): string {
   return `${idPrefix}::twitch::${twitchChannelId}`;
 }
 
@@ -1366,7 +1604,7 @@ function formatMp4Name(fileName: string): string {
   const fileNameWithoutExt = fileName.replace(/\.mp4$/i, '');
   return fileNameWithoutExt
     .split(/[_\- ]+/)
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
 }
 
@@ -1374,7 +1612,7 @@ function formatImageName(fileName: string): string {
   const fileNameWithoutExt = fileName.replace(/\.(jpg|jpeg|png|gif|svg)$/i, '');
   return fileNameWithoutExt
     .split(/[_\- ]+/)
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
 }
 
@@ -1401,7 +1639,7 @@ async function pruneOldRecordings(maxCount: number): Promise<void> {
     return;
   }
 
-  const mp4s = entries.filter(e => e.toLowerCase().endsWith('.mp4'));
+  const mp4s = entries.filter((e) => e.toLowerCase().endsWith('.mp4'));
   if (mp4s.length <= maxCount) {
     return;
   }
@@ -1430,7 +1668,10 @@ async function pruneOldRecordings(maxCount: number): Promise<void> {
       await remove(fullPath);
     } catch (err) {
       // Ignore individual deletion errors – best-effort cleanup.
-      console.warn('Failed to remove old recording file', { file: fullPath, err });
+      console.warn('Failed to remove old recording file', {
+        file: fullPath,
+        err,
+      });
     }
   }
 }

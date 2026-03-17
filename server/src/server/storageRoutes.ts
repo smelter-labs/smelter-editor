@@ -1,5 +1,13 @@
 import path from 'node:path';
-import { ensureDir, pathExists, readdir, readFile, remove, stat, writeFile } from 'fs-extra';
+import {
+  ensureDir,
+  pathExists,
+  readdir,
+  readFile,
+  remove,
+  stat,
+  writeFile,
+} from 'fs-extra';
 import { Type } from '@sinclair/typebox';
 import type { Static, TSchema } from '@sinclair/typebox';
 import type { FastifyInstance } from 'fastify';
@@ -126,9 +134,7 @@ export function registerStorageRoutes(
     const filePath = path.join(dirPath, fileName);
 
     if (!(await pathExists(filePath))) {
-      return res
-        .status(404)
-        .send({ error: `${resourceName} not found` });
+      return res.status(404).send({ error: `${resourceName} not found` });
     }
 
     try {
@@ -140,9 +146,7 @@ export function registerStorageRoutes(
         filePath,
         err,
       });
-      res
-        .status(500)
-        .send({ error: `Failed to read ${resourceName} file` });
+      res.status(500).send({ error: `Failed to read ${resourceName} file` });
     }
   });
 
@@ -161,9 +165,7 @@ export function registerStorageRoutes(
         const filePath = path.join(dirPath, fileName);
 
         if (!(await pathExists(filePath))) {
-          return res
-            .status(404)
-            .send({ error: `${resourceName} not found` });
+          return res.status(404).send({ error: `${resourceName} not found` });
         }
 
         const name = (req.body as any).name as string;
@@ -193,9 +195,7 @@ export function registerStorageRoutes(
             filePath,
             err,
           });
-          res
-            .status(500)
-            .send({ error: `Failed to update ${resourceName}` });
+          res.status(500).send({ error: `Failed to update ${resourceName}` });
         }
       },
     );
@@ -207,9 +207,7 @@ export function registerStorageRoutes(
     const filePath = path.join(dirPath, fileName);
 
     if (!(await pathExists(filePath))) {
-      return res
-        .status(404)
-        .send({ error: `${resourceName} not found` });
+      return res.status(404).send({ error: `${resourceName} not found` });
     }
 
     try {
@@ -220,9 +218,7 @@ export function registerStorageRoutes(
         filePath,
         err,
       });
-      res
-        .status(500)
-        .send({ error: `Failed to delete ${resourceName}` });
+      res.status(500).send({ error: `Failed to delete ${resourceName}` });
     }
   });
 }

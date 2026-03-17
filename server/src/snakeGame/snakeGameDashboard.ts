@@ -56,7 +56,8 @@ function hexToColorName(hex: string): string {
 }
 
 export function renderSnakeBoard(snakeGameState: SnakeGameState): string {
-  const { boardWidth, boardHeight, cells, backgroundColor, gridLineColor } = snakeGameState;
+  const { boardWidth, boardHeight, cells, backgroundColor, gridLineColor } =
+    snakeGameState;
 
   const bgCol = hexToColorName(backgroundColor);
   const gridCol = hexToColorName(gridLineColor);
@@ -67,7 +68,13 @@ export function renderSnakeBoard(snakeGameState: SnakeGameState): string {
   type CellInfo = { color: string; isHead?: boolean; strength: number };
   const cellMap = new Map<string, CellInfo>();
 
-  const placeCell = (x: number, y: number, color: string, isHead: boolean | undefined, strength: number) => {
+  const placeCell = (
+    x: number,
+    y: number,
+    color: string,
+    isHead: boolean | undefined,
+    strength: number,
+  ) => {
     if (x < 0 || x >= boardWidth || y < 0 || y >= boardHeight) return;
     const key = `${x},${y}`;
     const existing = cellMap.get(key);
@@ -84,8 +91,10 @@ export function renderSnakeBoard(snakeGameState: SnakeGameState): string {
 
     // Previous position (trail) — only if still interpolating
     if (progress < 1 && cell.direction) {
-      const dx = cell.direction === 'left' ? 1 : cell.direction === 'right' ? -1 : 0;
-      const dy = cell.direction === 'up' ? 1 : cell.direction === 'down' ? -1 : 0;
+      const dx =
+        cell.direction === 'left' ? 1 : cell.direction === 'right' ? -1 : 0;
+      const dy =
+        cell.direction === 'up' ? 1 : cell.direction === 'down' ? -1 : 0;
       const prevX = cell.x + dx;
       const prevY = cell.y + dy;
       // Trail fades as progress approaches 1
@@ -132,7 +141,10 @@ export function renderSnakeBoard(snakeGameState: SnakeGameState): string {
     if (existing) {
       existing.count++;
     } else {
-      playerMap.set(cell.color, { color: cell.color, count: cell.isHead ? 0 : 1 });
+      playerMap.set(cell.color, {
+        color: cell.color,
+        count: cell.isHead ? 0 : 1,
+      });
     }
   }
   for (const [hex, info] of playerMap) {

@@ -1,13 +1,13 @@
-import type { PublicInputState } from "./publicInputState";
+import type { PublicInputState } from './publicInputState';
 
 // pnpm wants node modules imports, fastify ws's use "export =".
 interface RoomWebSocket {
   readonly readyState: number;
   send(data: string | Buffer): void;
   close(code?: number, reason?: string | Buffer): void;
-  on(event: "close", listener: () => void): this;
+  on(event: 'close', listener: () => void): this;
   on(
-    event: "message",
+    event: 'message',
     listener: (
       data: Buffer | string | ArrayBuffer | Buffer[],
       isBinary: boolean,
@@ -22,7 +22,7 @@ export type ConnectedPeer = {
 };
 
 export type InputUpdatedEvent = {
-  type: "input_updated";
+  type: 'input_updated';
   roomId: string;
   inputId: string;
   // full updated state of the input after the change
@@ -32,7 +32,7 @@ export type InputUpdatedEvent = {
 };
 
 export type InputDeletedEvent = {
-  type: "input_deleted";
+  type: 'input_deleted';
   roomId: string;
   inputId: string;
   // value of `x-source-id` header from the request that triggered this deletion, if any
@@ -40,13 +40,13 @@ export type InputDeletedEvent = {
 };
 
 export type PeersUpdatedEvent = {
-  type: "peers_updated";
+  type: 'peers_updated';
   roomId: string;
   peers: ConnectedPeer[];
 };
 
 export type ConnectedEvent = {
-  type: "connected";
+  type: 'connected';
   clientId: string;
 };
 
@@ -72,7 +72,7 @@ class RoomEventBus {
     pool.set(clientId, { ws, info: { clientId, name: null } });
 
     // Announce connection to the client itself
-    const connectedMsg: ConnectedEvent = { type: "connected", clientId };
+    const connectedMsg: ConnectedEvent = { type: 'connected', clientId };
     ws.send(JSON.stringify(connectedMsg));
 
     // Broadcast updated peer list to everyone in the room
@@ -80,30 +80,30 @@ class RoomEventBus {
 
     // Listen for identify / other client→server messages
     ws.on(
-      "message",
+      'message',
       (data: Buffer | string | ArrayBuffer | Buffer[], isBinary: boolean) => {
         let msg: unknown;
         try {
-          msg = JSON.parse(typeof data === "string" ? data : data.toString());
+          msg = JSON.parse(typeof data === 'string' ? data : data.toString());
         } catch {
           return;
         }
         if (
           msg &&
-          typeof msg === "object" &&
-          (msg as Record<string, unknown>).type === "identify"
+          typeof msg === 'object' &&
+          (msg as Record<string, unknown>).type === 'identify'
         ) {
           const name = (msg as Record<string, unknown>).name;
           const record = pool.get(clientId);
           if (record) {
-            record.info.name = typeof name === "string" ? name : null;
+            record.info.name = typeof name === 'string' ? name : null;
             this._broadcastPeers(roomId);
           }
         }
       },
     );
 
-    ws.on("close", () => {
+    ws.on('close', () => {
       pool.delete(clientId);
       if (pool.size === 0) {
         this.connections.delete(roomId);
@@ -132,7 +132,7 @@ class RoomEventBus {
     const clients = this.connections.get(roomId);
     if (!clients) return;
     for (const { ws } of clients.values()) {
-      ws.close(1001, "Room deleted");
+      ws.close(1001, 'Room deleted');
     }
     this.connections.delete(roomId);
   }
@@ -149,7 +149,7 @@ class RoomEventBus {
 
   private _broadcastPeers(roomId: string): void {
     const peers = this.getConnectedPeers(roomId);
-    this.broadcast(roomId, { type: "peers_updated", roomId, peers });
+    this.broadcast(roomId, { type: 'peers_updated', roomId, peers });
   }
 }
 

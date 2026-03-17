@@ -46,7 +46,7 @@ export function useNewsStripAnimation(width: number) {
           if (!mounted) {
             return;
           }
-          setMarqueeLeft(prev => {
+          setMarqueeLeft((prev) => {
             const next = prev - step;
             return next < minLeft ? resetRight : next;
           });

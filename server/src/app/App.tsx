@@ -20,7 +20,10 @@ import { Input } from '../inputs/inputs';
 function buildEasingFunction(easing?: string) {
   if (easing === 'bounce') return 'bounce' as const;
   if (easing === 'cubic_bezier_ease_in_out') {
-    return { functionName: 'cubic_bezier' as const, points: [0.65, 0, 0.35, 1] as [number, number, number, number] };
+    return {
+      functionName: 'cubic_bezier' as const,
+      points: [0.65, 0, 0.35, 1] as [number, number, number, number],
+    };
   }
   return 'linear' as const;
 }
@@ -35,13 +38,20 @@ export default function App({ store }: { store: StoreApi<RoomStore> }) {
 
 function OutputScene() {
   const store = useContext(StoreContext);
-  const layout = useStore(store, state => state.layout);
+  const layout = useStore(store, (state) => state.layout);
   const resolution = useResolution();
   const absoluteInputs = useAbsoluteInputs();
   const { width, height } = resolution;
 
   return (
-    <View style={{ backgroundColor: '#000000', padding: 0, width, height, overflow: 'visible' }}>
+    <View
+      style={{
+        backgroundColor: '#000000',
+        padding: 0,
+        width,
+        height,
+        overflow: 'visible',
+      }}>
       {layout === 'grid' ? (
         <GridLayout />
       ) : layout === 'primary-on-top' ? (
@@ -57,7 +67,7 @@ function OutputScene() {
       ) : layout === 'picture-on-picture' ? (
         <PictureOnPictureLayout />
       ) : null}
-      {absoluteInputs.map(input => (
+      {absoluteInputs.map((input) => (
         <Rescaler
           key={input.inputId}
           id={`absolute-${input.inputId}`}

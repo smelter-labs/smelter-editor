@@ -15,7 +15,7 @@ function easeInOutCubic(t: number): number {
 export function usePostSwapFadeIn(
   isTransitioning: boolean,
   fadeInDurationMs: number,
-  fadeOutDurationMs: number = 0
+  fadeOutDurationMs: number = 0,
 ): number {
   const [fadeOpacity, setFadeOpacity] = useState(1);
   const wasTransitioningRef = useRef(false);

@@ -22,7 +22,7 @@ function getConfig(): { clientId: string; clientSecret: string } | null {
 async function kickFetch(
   input: RequestInfo,
   init: RequestInit = {},
-  retry = true
+  retry = true,
 ): Promise<Response> {
   if (!kickAuth.token) {
     await refreshKickToken();
@@ -79,10 +79,10 @@ async function refreshKickToken(force = false): Promise<void> {
 
 export async function getKickTopStreamsFromCategory(
   categoryId: string,
-  count: number = 5
+  count: number = 5,
 ): Promise<any[]> {
   const response = await kickFetch(
-    `https://api.kick.com/public/v1/livestreams?category_id=${categoryId}&limit=${count}&language=en`
+    `https://api.kick.com/public/v1/livestreams?category_id=${categoryId}&limit=${count}&language=en`,
   );
   if (!response.ok) {
     throw new Error('Failed to fetch streams from Kick API');
@@ -92,13 +92,15 @@ export async function getKickTopStreamsFromCategory(
 }
 
 export async function getKickStreamInfo(
-  kickChannelSlug: string
+  kickChannelSlug: string,
 ): Promise<KickStreamInfo | undefined> {
   const response = await kickFetch(
-    `https://api.kick.com/public/v1/channels?slug=${encodeURIComponent(kickChannelSlug)}`
+    `https://api.kick.com/public/v1/channels?slug=${encodeURIComponent(kickChannelSlug)}`,
   );
   if (!response.ok) {
-    throw new Error(`Failed to get stream status for ${kickChannelSlug}: ${await response.text()}`);
+    throw new Error(
+      `Failed to get stream status for ${kickChannelSlug}: ${await response.text()}`,
+    );
   }
   const data = await response.json();
 

@@ -37,7 +37,7 @@ export const ROOM_NAMES: RoomNameEntry[] = [
 ];
 
 export function pickUniqueRoomName(usedNames: Set<string>): RoomNameEntry {
-  const available = ROOM_NAMES.filter(entry => !usedNames.has(entry.pl));
+  const available = ROOM_NAMES.filter((entry) => !usedNames.has(entry.pl));
   if (available.length === 0) {
     const suffix = usedNames.size + 1;
     return { pl: `Pokój #${suffix}`, en: `Room #${suffix}` };
