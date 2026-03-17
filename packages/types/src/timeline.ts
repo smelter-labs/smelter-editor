@@ -40,12 +40,19 @@ export type TimelineBlockSettings = {
   outroTransition?: TransitionConfig;
 };
 
+export type TimelineKeyframe = {
+  id: string;
+  timeMs: number;
+  blockSettings: TimelineBlockSettings;
+};
+
 export type TimelineClip = {
   id: string;
   inputId: string;
   startMs: number;
   endMs: number;
   blockSettings: TimelineBlockSettings;
+  keyframes: TimelineKeyframe[];
 };
 
 export type TimelineTrack = {
@@ -53,7 +60,10 @@ export type TimelineTrack = {
   clips: TimelineClip[];
 };
 
+export type TimelineKeyframeInterpolationMode = 'step' | 'smooth';
+
 export type TimelineConfig = {
   tracks: TimelineTrack[];
   totalDurationMs: number;
+  keyframeInterpolationMode: TimelineKeyframeInterpolationMode;
 };

@@ -77,6 +77,7 @@ export type RoomConfigClip = {
   startMs: number;
   endMs: number;
   blockSettings?: Clip['blockSettings'];
+  keyframes?: Clip['keyframes'];
 };
 
 export type RoomConfigTrack = {
@@ -87,6 +88,7 @@ export type RoomConfigTrack = {
 export type RoomConfigTimeline = {
   totalDurationMs: number;
   pixelsPerSecond: number;
+  keyframeInterpolationMode?: 'step' | 'smooth';
   tracks: RoomConfigTrack[];
 };
 
@@ -108,6 +110,7 @@ export function exportRoomConfig(
   timelineState?: {
     tracks: Track[];
     totalDurationMs: number;
+    keyframeInterpolationMode: 'step' | 'smooth';
     pixelsPerSecond: number;
   },
 ): RoomConfig {
@@ -127,12 +130,14 @@ export function exportRoomConfig(
             startMs: clip.startMs,
             endMs: clip.endMs,
             blockSettings: clip.blockSettings,
+            keyframes: clip.keyframes,
           } as RoomConfigClip;
         })
         .filter((c): c is RoomConfigClip => c !== null),
     }));
     timeline = {
       totalDurationMs: timelineState.totalDurationMs,
+      keyframeInterpolationMode: timelineState.keyframeInterpolationMode,
       pixelsPerSecond: timelineState.pixelsPerSecond,
       tracks,
     };
@@ -219,6 +224,7 @@ export function parseRoomConfig(json: string): RoomConfig {
 export function loadTimelineFromStorage(roomId: string): {
   tracks: Track[];
   totalDurationMs: number;
+  keyframeInterpolationMode: 'step' | 'smooth';
   pixelsPerSecond: number;
 } | null {
   if (typeof window === 'undefined') return null;
@@ -244,9 +250,23 @@ export function loadTimelineFromStorage(roomId: string): {
               ),
             }
           : createBlockSettingsFromInput(undefined),
+        keyframes: (c.keyframes ?? []).map((keyframe) => ({
+          id: keyframe.id,
+          timeMs: keyframe.timeMs,
+          blockSettings: {
+            ...keyframe.blockSettings,
+            introTransition: parseTransitionConfig(
+              keyframe.blockSettings.introTransition,
+            ),
+            outroTransition: parseTransitionConfig(
+              keyframe.blockSettings.outroTransition,
+            ),
+          },
+        })),
       })),
     })),
     totalDurationMs: stored.totalDurationMs,
+    keyframeInterpolationMode: stored.keyframeInterpolationMode,
     pixelsPerSecond: stored.pixelsPerSecond,
   };
 }
@@ -271,6 +291,7 @@ export function restoreTimelineToStorage(
           startMs: clip.startMs,
           endMs: clip.endMs,
           blockSettings: clip.blockSettings,
+          keyframes: clip.keyframes,
         };
       })
       .filter((c): c is NonNullable<typeof c> => c !== null),
@@ -279,6 +300,7 @@ export function restoreTimelineToStorage(
   const state = {
     tracks,
     totalDurationMs: timeline.totalDurationMs,
+    keyframeInterpolationMode: timeline.keyframeInterpolationMode ?? 'step',
     playheadMs: 0,
     pixelsPerSecond: timeline.pixelsPerSecond,
   };
@@ -383,10 +405,12 @@ export function computeTimelineStateAtZero(
         if (!activeInputIds.has(inputId)) {
           activeInputIds.add(inputId);
           inputOrder.push(inputId);
-          if (clip.blockSettings) {
+          const activeSettings = clip.keyframes?.find((keyframe) => keyframe.timeMs === 0)
+            ?.blockSettings;
+          if (activeSettings ?? clip.blockSettings) {
             activeBlockSettings.set(
               inputId,
-              clip.blockSettings as BlockSettings,
+              (activeSettings ?? clip.blockSettings) as BlockSettings,
             );
           }
         }

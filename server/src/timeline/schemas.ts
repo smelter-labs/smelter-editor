@@ -63,12 +63,19 @@ const TimelineBlockSettingsSchema = Type.Object({
   outroTransition: Type.Optional(TransitionConfigSchema),
 });
 
+const TimelineKeyframeSchema = Type.Object({
+  id: Type.String(),
+  timeMs: Type.Number({ minimum: 0 }),
+  blockSettings: TimelineBlockSettingsSchema,
+});
+
 const TimelineClipSchema = Type.Object({
   id: Type.String(),
   inputId: Type.String(),
   startMs: Type.Number({ minimum: 0 }),
   endMs: Type.Number({ minimum: 0 }),
   blockSettings: TimelineBlockSettingsSchema,
+  keyframes: Type.Array(TimelineKeyframeSchema),
 });
 
 const TimelineTrackSchema = Type.Object({
@@ -79,6 +86,10 @@ const TimelineTrackSchema = Type.Object({
 export const TimelinePlaySchema = Type.Object({
   tracks: Type.Array(TimelineTrackSchema),
   totalDurationMs: Type.Number({ minimum: 0 }),
+  keyframeInterpolationMode: Type.Union([
+    Type.Literal('step'),
+    Type.Literal('smooth'),
+  ]),
   fromMs: Type.Optional(Type.Number({ minimum: 0 })),
 });
 
@@ -89,6 +100,10 @@ export const TimelineSeekSchema = Type.Object({
 export const TimelineApplySchema = Type.Object({
   tracks: Type.Array(TimelineTrackSchema),
   totalDurationMs: Type.Number({ minimum: 0 }),
+  keyframeInterpolationMode: Type.Union([
+    Type.Literal('step'),
+    Type.Literal('smooth'),
+  ]),
   playheadMs: Type.Number({ minimum: 0 }),
 });
 

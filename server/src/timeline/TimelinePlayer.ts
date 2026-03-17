@@ -2,6 +2,8 @@ import type {
   TimelineConfig,
   TimelineClip,
   TimelineBlockSettings,
+  TimelineKeyframe,
+  TimelineKeyframeInterpolationMode,
 } from './types';
 import type { RoomInputState } from '../server/roomState';
 
@@ -22,25 +24,21 @@ type Mp4RestartKey = `${number}|${number}|${boolean}`;
 
 type InputSnapshot = {
   hidden: boolean;
-  volume: number;
-  shaders: RoomInputState['shaders'];
-  orientation: RoomInputState['orientation'];
-  showTitle: boolean;
-  borderColor: string;
-  borderWidth: number;
-  absolutePosition?: boolean;
-  absoluteTop?: number;
-  absoluteLeft?: number;
-  absoluteWidth?: number;
-  absoluteHeight?: number;
-  absoluteTransitionDurationMs?: number;
-  absoluteTransitionEasing?: string;
+  update: Record<string, unknown>;
+  mp4PlayFromMs?: number;
 };
 
 type PrePlaySnapshot = {
   inputSnapshots: Map<string, InputSnapshot>;
   inputOrder: string[];
 };
+
+function deepClone<T>(value: T): T {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(value);
+  }
+  return JSON.parse(JSON.stringify(value)) as T;
+}
 
 export type TimelineListenerData = {
   playheadMs: number;
@@ -87,6 +85,7 @@ function getMp4RestartKey(clip: TimelineClip): Mp4RestartKey {
 function compileEvents(
   config: TimelineConfig,
   fromMs: number,
+  mode: TimelineKeyframeInterpolationMode,
 ): PlaybackEvent[] {
   const events: PlaybackEvent[] = [];
 
@@ -107,7 +106,8 @@ function compileEvents(
         });
       }
 
-      const intro = clip.blockSettings.introTransition;
+      const intro = resolveBlockSettingsAtTime(clip, clip.startMs, mode)
+        .introTransition;
       if (intro && clip.startMs > fromMs) {
         events.push({
           timeMs: clip.startMs,
@@ -117,7 +117,11 @@ function compileEvents(
         });
       }
 
-      const outro = clip.blockSettings.outroTransition;
+      const outro = resolveBlockSettingsAtTime(
+        clip,
+        Math.max(clip.startMs, clip.endMs - 1),
+        mode,
+      ).outroTransition;
       if (outro) {
         const outroStartMs = clip.endMs - outro.durationMs;
         if (outroStartMs > fromMs) {
@@ -153,6 +157,174 @@ function getActiveClipsByInputAt(
     }
   }
   return active;
+}
+
+function getResolvedActiveClipsByInputAt(
+  config: TimelineConfig,
+  timeMs: number,
+  mode: TimelineKeyframeInterpolationMode,
+): Map<string, TimelineClip> {
+  const active = getActiveClipsByInputAt(config, timeMs);
+  const resolved = new Map<string, TimelineClip>();
+  for (const [inputId, clip] of active) {
+    resolved.set(inputId, {
+      ...clip,
+      blockSettings: resolveBlockSettingsAtTime(clip, timeMs, mode),
+    });
+  }
+  return resolved;
+}
+
+function getClipDurationMs(clip: TimelineClip): number {
+  return Math.max(0, clip.endMs - clip.startMs);
+}
+
+function getNormalizedKeyframes(clip: TimelineClip): TimelineKeyframe[] {
+  const durationMs = getClipDurationMs(clip);
+  const rawKeyframes =
+    clip.keyframes.length > 0
+      ? clip.keyframes
+      : [{ id: `${clip.id}-0`, timeMs: 0, blockSettings: clip.blockSettings }];
+
+  const keyframes = rawKeyframes
+    .map((keyframe) => ({
+      id: keyframe.id,
+      timeMs: Math.max(0, Math.min(keyframe.timeMs, durationMs)),
+      blockSettings: deepClone(keyframe.blockSettings),
+    }))
+    .sort((a, b) => a.timeMs - b.timeMs || a.id.localeCompare(b.id));
+
+  if (keyframes.length === 0 || keyframes[0].timeMs !== 0) {
+    keyframes.unshift({
+      id: `${clip.id}-0`,
+      timeMs: 0,
+      blockSettings: deepClone(clip.blockSettings),
+    });
+  }
+
+  return keyframes;
+}
+
+function lerp(from: number, to: number, progress: number): number {
+  return from + (to - from) * progress;
+}
+
+function interpolateShaderConfigs(
+  fromShaders: TimelineBlockSettings['shaders'] | undefined,
+  toShaders: TimelineBlockSettings['shaders'] | undefined,
+  progress: number,
+): TimelineBlockSettings['shaders'] | undefined {
+  if (!fromShaders) return undefined;
+  if (!toShaders || fromShaders.length !== toShaders.length) {
+    return deepClone(fromShaders);
+  }
+
+  return fromShaders.map((fromShader, index) => {
+    const toShader = toShaders[index];
+    if (
+      !toShader ||
+      fromShader.shaderId !== toShader.shaderId ||
+      fromShader.shaderName !== toShader.shaderName ||
+      fromShader.enabled !== toShader.enabled ||
+      fromShader.params.length !== toShader.params.length
+    ) {
+      return deepClone(fromShader);
+    }
+
+    return {
+      ...deepClone(fromShader),
+      params: fromShader.params.map((fromParam, paramIndex) => {
+        const toParam = toShader.params[paramIndex];
+        if (
+          !toParam ||
+          fromParam.paramName !== toParam.paramName ||
+          typeof fromParam.paramValue !== 'number' ||
+          typeof toParam.paramValue !== 'number'
+        ) {
+          return deepClone(fromParam);
+        }
+        return {
+          ...fromParam,
+          paramValue: lerp(fromParam.paramValue, toParam.paramValue, progress),
+        };
+      }),
+    };
+  });
+}
+
+function interpolateBlockSettings(
+  from: TimelineBlockSettings,
+  to: TimelineBlockSettings,
+  progress: number,
+): TimelineBlockSettings {
+  const result = deepClone(from);
+  const resultRecord = result as Record<string, unknown>;
+  const fromRecord = from as Record<string, unknown>;
+  const toRecord = to as Record<string, unknown>;
+
+  for (const [key, toValue] of Object.entries(toRecord)) {
+    const fromValue = fromRecord[key];
+    if (typeof fromValue === 'number' && typeof toValue === 'number') {
+      resultRecord[key] = lerp(fromValue, toValue, progress);
+    }
+  }
+
+  const shaders = interpolateShaderConfigs(from.shaders, to.shaders, progress);
+  if (shaders) {
+    result.shaders = shaders;
+  }
+  const snake1Shaders = interpolateShaderConfigs(
+    from.snake1Shaders,
+    to.snake1Shaders,
+    progress,
+  );
+  if (snake1Shaders) {
+    result.snake1Shaders = snake1Shaders;
+  }
+  const snake2Shaders = interpolateShaderConfigs(
+    from.snake2Shaders,
+    to.snake2Shaders,
+    progress,
+  );
+  if (snake2Shaders) {
+    result.snake2Shaders = snake2Shaders;
+  }
+
+  return result;
+}
+
+function resolveBlockSettingsAtTime(
+  clip: TimelineClip,
+  playheadMs: number,
+  mode: TimelineKeyframeInterpolationMode,
+): TimelineBlockSettings {
+  const keyframes = getNormalizedKeyframes(clip);
+  const offsetMs = Math.max(
+    0,
+    Math.min(playheadMs - clip.startMs, getClipDurationMs(clip)),
+  );
+
+  let current = keyframes[0];
+  for (const keyframe of keyframes) {
+    if (keyframe.timeMs > offsetMs) {
+      break;
+    }
+    current = keyframe;
+  }
+
+  if (mode === 'step') {
+    return deepClone(current.blockSettings);
+  }
+
+  const currentIndex = keyframes.findIndex((keyframe) => keyframe.id === current.id);
+  const next = keyframes[currentIndex + 1];
+  if (!next || next.timeMs <= current.timeMs || offsetMs <= current.timeMs) {
+    return deepClone(current.blockSettings);
+  }
+
+  const progress =
+    (offsetMs - current.timeMs) / (next.timeMs - current.timeMs);
+  return interpolateBlockSettings(current.blockSettings, next.blockSettings, progress);
 }
 
 function getActiveOrder(config: TimelineConfig, timeMs: number): string[] {
@@ -200,7 +372,7 @@ function computeDesiredState(
 
 export function buildUpdateFromBlockSettings(
   bs: TimelineBlockSettings,
-): Record<string, any> {
+): Record<string, unknown> {
   return {
     volume: bs.volume,
     shaders: bs.shaders,
@@ -235,15 +407,26 @@ export function buildUpdateFromBlockSettings(
   };
 }
 
-function snapshotInput(input: RoomInputState): InputSnapshot {
+function buildUpdateFromRoomInput(input: RoomInputState): Record<string, unknown> {
   return {
-    hidden: input.hidden,
     volume: input.volume,
-    shaders: JSON.parse(JSON.stringify(input.shaders)),
-    orientation: input.orientation,
+    shaders: deepClone(input.shaders),
     showTitle: input.showTitle,
+    orientation: input.orientation,
+    text: input.type === 'text-input' ? input.text : undefined,
+    textAlign: input.type === 'text-input' ? input.textAlign : undefined,
+    textColor: input.type === 'text-input' ? input.textColor : undefined,
+    textMaxLines: input.type === 'text-input' ? input.textMaxLines : undefined,
+    textScrollSpeed:
+      input.type === 'text-input' ? input.textScrollSpeed : undefined,
+    textScrollLoop:
+      input.type === 'text-input' ? input.textScrollLoop : undefined,
+    textFontSize: input.type === 'text-input' ? input.textFontSize : undefined,
     borderColor: input.borderColor,
     borderWidth: input.borderWidth,
+    attachedInputIds: input.attachedInputIds,
+    snake1Shaders: input.type === 'game' ? input.snake1Shaders : undefined,
+    snake2Shaders: input.type === 'game' ? input.snake2Shaders : undefined,
     absolutePosition: input.absolutePosition,
     absoluteTop: input.absoluteTop,
     absoluteLeft: input.absoluteLeft,
@@ -251,10 +434,33 @@ function snapshotInput(input: RoomInputState): InputSnapshot {
     absoluteHeight: input.absoluteHeight,
     absoluteTransitionDurationMs: input.absoluteTransitionDurationMs,
     absoluteTransitionEasing: input.absoluteTransitionEasing,
+    gameBackgroundColor:
+      input.type === 'game' ? input.snakeGameState.backgroundColor : undefined,
+    gameCellGap:
+      input.type === 'game' ? input.snakeGameState.cellGap : undefined,
+    gameBoardBorderColor:
+      input.type === 'game' ? input.snakeGameState.boardBorderColor : undefined,
+    gameBoardBorderWidth:
+      input.type === 'game' ? input.snakeGameState.boardBorderWidth : undefined,
+    gameGridLineColor:
+      input.type === 'game' ? input.snakeGameState.gridLineColor : undefined,
+    gameGridLineAlpha:
+      input.type === 'game' ? input.snakeGameState.gridLineAlpha : undefined,
+    snakeEventShaders: input.type === 'game' ? input.snakeEventShaders : undefined,
+    activeTransition: input.activeTransition,
+  };
+}
+
+function snapshotInput(input: RoomInputState): InputSnapshot {
+  return {
+    hidden: input.hidden,
+    update: buildUpdateFromRoomInput(input),
+    mp4PlayFromMs: input.type === 'local-mp4' ? input.playFromMs : undefined,
   };
 }
 
 const PLAYHEAD_EMIT_INTERVAL_MS = 200;
+const SMOOTH_UPDATE_INTERVAL_MS = 50;
 
 export class TimelinePlayer {
   private config: TimelineConfig;
@@ -271,6 +477,7 @@ export class TimelinePlayer {
   private nextEventIndex = 0;
   private eventTimers: NodeJS.Timeout[] = [];
   private playheadInterval: NodeJS.Timeout | null = null;
+  private smoothUpdateInterval: NodeJS.Timeout | null = null;
   private endTimer: NodeJS.Timeout | null = null;
 
   private appliedState = new Map<string, boolean>();
@@ -318,7 +525,11 @@ export class TimelinePlayer {
     this.lastAppliedOrder = '';
 
     // Pre-populate MP4 keys for clips already active at fromMs
-    const activeAtStart = getActiveClipsByInputAt(this.config, playheadMs);
+    const activeAtStart = getResolvedActiveClipsByInputAt(
+      this.config,
+      playheadMs,
+      this.config.keyframeInterpolationMode,
+    );
     this.mp4RestartedKeys.clear();
     for (const [inputId, clip] of activeAtStart) {
       if (isMp4InputId(inputId)) {
@@ -345,7 +556,11 @@ export class TimelinePlayer {
     this.startWallMs = Date.now();
 
     // Compile and schedule events
-    this.events = compileEvents(this.config, playheadMs);
+    this.events = compileEvents(
+      this.config,
+      playheadMs,
+      this.config.keyframeInterpolationMode,
+    );
     this.nextEventIndex = 0;
     this.scheduleAllEvents();
     console.log(
@@ -364,6 +579,7 @@ export class TimelinePlayer {
     this.playheadInterval = setInterval(() => {
       this.emit();
     }, PLAYHEAD_EMIT_INTERVAL_MS);
+    this.startSmoothUpdates();
 
     this.emit();
   }
@@ -395,9 +611,10 @@ export class TimelinePlayer {
     this.paused = true;
     this.clearTimers();
 
-    const activeClips = getActiveClipsByInputAt(
+    const activeClips = getResolvedActiveClipsByInputAt(
       this.config,
       this.pausedPlayheadMs,
+      this.config.keyframeInterpolationMode,
     );
     this.emit();
     return { playheadMs: this.pausedPlayheadMs, activeClips };
@@ -417,7 +634,11 @@ export class TimelinePlayer {
     this.startPlayheadMs = resumeMs;
 
     // Recompile events from new position
-    this.events = compileEvents(this.config, resumeMs);
+    this.events = compileEvents(
+      this.config,
+      resumeMs,
+      this.config.keyframeInterpolationMode,
+    );
     this.nextEventIndex = 0;
 
     // Apply state at resume position
@@ -444,6 +665,7 @@ export class TimelinePlayer {
     this.playheadInterval = setInterval(() => {
       this.emit();
     }, PLAYHEAD_EMIT_INTERVAL_MS);
+    this.startSmoothUpdates();
 
     this.emit();
   }
@@ -473,7 +695,11 @@ export class TimelinePlayer {
     }
 
     // Recompile events from new position
-    this.events = compileEvents(this.config, ms);
+    this.events = compileEvents(
+      this.config,
+      ms,
+      this.config.keyframeInterpolationMode,
+    );
     this.nextEventIndex = 0;
 
     // Apply state at new position
@@ -513,7 +739,11 @@ export class TimelinePlayer {
     this.pausedPlayheadMs = playheadMs;
     this.emit();
 
-    return getActiveClipsByInputAt(this.config, playheadMs);
+    return getResolvedActiveClipsByInputAt(
+      this.config,
+      playheadMs,
+      this.config.keyframeInterpolationMode,
+    );
   }
 
   public destroy(): void {
@@ -552,10 +782,25 @@ export class TimelinePlayer {
       clearInterval(this.playheadInterval);
       this.playheadInterval = null;
     }
+    if (this.smoothUpdateInterval) {
+      clearInterval(this.smoothUpdateInterval);
+      this.smoothUpdateInterval = null;
+    }
     if (this.endTimer) {
       clearTimeout(this.endTimer);
       this.endTimer = null;
     }
+  }
+
+  private startSmoothUpdates(): void {
+    if (this.config.keyframeInterpolationMode !== 'smooth') return;
+    if (this.smoothUpdateInterval) {
+      clearInterval(this.smoothUpdateInterval);
+    }
+    this.smoothUpdateInterval = setInterval(() => {
+      if (!this.playing) return;
+      void this.applyBlockSettingsAtTime(this.getPlayheadMs());
+    }, SMOOTH_UPDATE_INTERVAL_MS);
   }
 
   private scheduleAllEvents(): void {
@@ -656,7 +901,11 @@ export class TimelinePlayer {
     timeMs: number,
     transition?: TimelineVisibilityTransition,
   ): Promise<void> {
-    const clip = getActiveClipsByInputAt(this.config, timeMs).get(inputId);
+    const clip = getResolvedActiveClipsByInputAt(
+      this.config,
+      timeMs,
+      this.config.keyframeInterpolationMode,
+    ).get(inputId);
     if (!clip) {
       console.warn(
         `[timeline] showInputAtTime: no active clip for ${inputId} at ${timeMs}ms`,
@@ -713,11 +962,16 @@ export class TimelinePlayer {
     clip: TimelineClip,
     targetPlayheadMs: number,
   ): Promise<void> {
-    const serialized = JSON.stringify(clip.blockSettings);
+    const resolvedBlockSettings = resolveBlockSettingsAtTime(
+      clip,
+      targetPlayheadMs,
+      this.config.keyframeInterpolationMode,
+    );
+    const serialized = JSON.stringify(resolvedBlockSettings);
     if (this.appliedBlockSettings.get(inputId) !== serialized) {
       this.appliedBlockSettings.set(inputId, serialized);
       await this.room
-        .updateInput(inputId, buildUpdateFromBlockSettings(clip.blockSettings))
+        .updateInput(inputId, buildUpdateFromBlockSettings(resolvedBlockSettings))
         .catch((err) =>
           console.warn(
             `[timeline] Failed to apply block settings for ${inputId}`,
@@ -727,11 +981,14 @@ export class TimelinePlayer {
     }
 
     if (isMp4InputId(inputId)) {
-      const basePlayFrom = clip.blockSettings.mp4PlayFromMs ?? 0;
+      const basePlayFrom = resolvedBlockSettings.mp4PlayFromMs ?? 0;
       const elapsedInClip = Math.max(0, targetPlayheadMs - clip.startMs);
       const playFromMs = basePlayFrom + elapsedInClip;
-      const loop = clip.blockSettings.mp4Loop !== false;
-      const key = getMp4RestartKey(clip);
+      const loop = resolvedBlockSettings.mp4Loop !== false;
+      const key = getMp4RestartKey({
+        ...clip,
+        blockSettings: resolvedBlockSettings,
+      });
       const prevKey = this.mp4RestartedKeys.get(inputId);
       if (prevKey !== key) {
         console.log(
@@ -791,7 +1048,11 @@ export class TimelinePlayer {
   }
 
   private async applyBlockSettingsAtTime(timeMs: number): Promise<void> {
-    const active = getActiveClipsByInputAt(this.config, timeMs);
+    const active = getResolvedActiveClipsByInputAt(
+      this.config,
+      timeMs,
+      this.config.keyframeInterpolationMode,
+    );
     const updates: Promise<void>[] = [];
     for (const [inputId, clip] of active) {
       updates.push(this.applyClipState(inputId, clip, timeMs));
@@ -834,36 +1095,9 @@ export class TimelinePlayer {
       const snap = this.snapshot.inputSnapshots.get(input.inputId);
       if (!snap) continue;
 
-      const patch: Record<string, any> = {};
-      if (input.volume !== snap.volume) patch.volume = snap.volume;
-      if (JSON.stringify(input.shaders) !== JSON.stringify(snap.shaders)) {
-        patch.shaders = snap.shaders;
-      }
-      if (input.orientation !== snap.orientation)
-        patch.orientation = snap.orientation;
-      if (input.showTitle !== snap.showTitle) patch.showTitle = snap.showTitle;
-      if (input.borderColor !== snap.borderColor)
-        patch.borderColor = snap.borderColor;
-      if (input.borderWidth !== snap.borderWidth)
-        patch.borderWidth = snap.borderWidth;
-      if (input.absolutePosition !== snap.absolutePosition)
-        patch.absolutePosition = snap.absolutePosition;
-      if (input.absoluteTop !== snap.absoluteTop)
-        patch.absoluteTop = snap.absoluteTop;
-      if (input.absoluteLeft !== snap.absoluteLeft)
-        patch.absoluteLeft = snap.absoluteLeft;
-      if (input.absoluteWidth !== snap.absoluteWidth)
-        patch.absoluteWidth = snap.absoluteWidth;
-      if (input.absoluteHeight !== snap.absoluteHeight)
-        patch.absoluteHeight = snap.absoluteHeight;
-      if (
-        input.absoluteTransitionDurationMs !== snap.absoluteTransitionDurationMs
-      )
-        patch.absoluteTransitionDurationMs = snap.absoluteTransitionDurationMs;
-      if (input.absoluteTransitionEasing !== snap.absoluteTransitionEasing)
-        patch.absoluteTransitionEasing = snap.absoluteTransitionEasing;
-
-      const hasPatch = Object.keys(patch).length > 0;
+      const currentUpdate = buildUpdateFromRoomInput(input);
+      const hasPatch =
+        JSON.stringify(currentUpdate) !== JSON.stringify(snap.update);
       const shouldRestartMp4 = this.mp4ActualRestarted.has(input.inputId);
       const needsVisibilityRestore =
         (snap.hidden && !input.hidden) || (!snap.hidden && input.hidden);
@@ -873,11 +1107,11 @@ export class TimelinePlayer {
       promises.push(
         (async () => {
           if (hasPatch) {
-            await this.room.updateInput(input.inputId, patch).catch(() => {});
+            await this.room.updateInput(input.inputId, snap.update).catch(() => {});
           }
           if (shouldRestartMp4) {
             await this.room
-              .restartMp4Input(input.inputId, 0, true)
+              .restartMp4Input(input.inputId, snap.mp4PlayFromMs ?? 0, true)
               .catch(() => {});
           }
           if (snap.hidden && !input.hidden) {

@@ -17,6 +17,7 @@ import type {
   UpdateInputOptions,
   UpdateRoomOptions,
 } from './types';
+import type { TimelineConfig } from '@smelter-editor/types';
 import { createStorageClient, type StorageClient } from './storage-client';
 
 export interface SmelterApiClient {
@@ -126,20 +127,14 @@ export interface SmelterApiClient {
 
   startTimelinePlayback(
     roomId: string,
-    config: {
-      tracks: { id: string; clips: any[] }[];
-      totalDurationMs: number;
-    },
+    config: TimelineConfig,
     fromMs?: number,
   ): Promise<{ status: string }>;
   stopTimelinePlayback(roomId: string): Promise<{ status: string }>;
   seekTimeline(roomId: string, ms: number): Promise<{ status: string }>;
   applyTimelineState(
     roomId: string,
-    config: {
-      tracks: { id: string; clips: any[] }[];
-      totalDurationMs: number;
-    },
+    config: TimelineConfig,
     playheadMs: number,
   ): Promise<{ status: string }>;
 }
@@ -459,6 +454,7 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       return await req('post', `/room/${enc(roomId)}/timeline/play`, {
         tracks: config.tracks,
         totalDurationMs: config.totalDurationMs,
+        keyframeInterpolationMode: config.keyframeInterpolationMode,
         fromMs,
       });
     },
@@ -475,6 +471,7 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       return await req('post', `/room/${enc(roomId)}/timeline/apply`, {
         tracks: config.tracks,
         totalDurationMs: config.totalDurationMs,
+        keyframeInterpolationMode: config.keyframeInterpolationMode,
         playheadMs,
       });
     },

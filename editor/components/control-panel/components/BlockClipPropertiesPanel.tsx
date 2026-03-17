@@ -12,7 +12,7 @@ import { useActions } from '../contexts/actions-context';
 import ShaderPanel, { InlineShaderParams } from '../input-entry/shader-panel';
 import { AddShaderModal } from '../input-entry/add-shader-modal';
 import SnakeEventShaderPanel from '../input-entry/snake-event-shader-panel';
-import type { BlockSettings } from '../hooks/use-timeline-state';
+import type { BlockSettings, Keyframe } from '../hooks/use-timeline-state';
 import { PendingWhipInputs } from './PendingWhipInputs';
 import type { PendingWhipInput } from './ConfigurationSection';
 import { Link, Video, Monitor, Dices } from 'lucide-react';
@@ -298,6 +298,8 @@ export type SelectedTimelineClip = {
   startMs: number;
   endMs: number;
   blockSettings: BlockSettings;
+  keyframes: Keyframe[];
+  selectedKeyframeId?: string | null;
 };
 
 function computeCommonBlockSettings(
@@ -443,6 +445,12 @@ export function BlockClipPropertiesPanel({
 
   const primaryClip =
     selectedTimelineClips.length > 0 ? selectedTimelineClips[0] : null;
+  const selectedTimelineKeyframe =
+    primaryClip?.selectedKeyframeId != null
+      ? primaryClip.keyframes.find(
+          (keyframe) => keyframe.id === primaryClip.selectedKeyframeId,
+        ) ?? null
+      : null;
   const selectedInput = primaryClip
     ? inputs.find((i) => i.inputId === primaryClip.inputId)
     : null;
@@ -585,21 +593,55 @@ export function BlockClipPropertiesPanel({
     async (patch: Partial<BlockSettings>, options?: { refresh?: boolean }) => {
       if (selectedTimelineClips.length === 0) return;
       const shouldRefresh = options?.refresh ?? true;
+      const singleSelectedClip =
+        selectedTimelineClips.length === 1 ? selectedTimelineClips[0] : null;
+      const targetKeyframeId = singleSelectedClip?.selectedKeyframeId ?? null;
 
       // Update local state for all clips
       const nextClips = selectedTimelineClips.map((clip) => ({
         ...clip,
         blockSettings: { ...clip.blockSettings, ...patch },
+        keyframes:
+          targetKeyframeId && clip.clipId === singleSelectedClip?.clipId
+            ? clip.keyframes.map((keyframe) =>
+                keyframe.id === targetKeyframeId
+                  ? {
+                      ...keyframe,
+                      blockSettings: { ...keyframe.blockSettings, ...patch },
+                    }
+                  : keyframe,
+              )
+            : clip.keyframes.map((keyframe) =>
+                keyframe.timeMs === 0
+                  ? {
+                      ...keyframe,
+                      blockSettings: { ...keyframe.blockSettings, ...patch },
+                    }
+                  : keyframe,
+              ),
       }));
       onSelectedTimelineClipsChange(nextClips);
 
-      // Dispatch timeline update for each clip
-      for (const clip of selectedTimelineClips) {
+      // Dispatch timeline update for each clip or selected keyframe.
+      if (targetKeyframeId && singleSelectedClip) {
         window.dispatchEvent(
-          new CustomEvent('smelter:timeline:update-clip-settings', {
-            detail: { trackId: clip.trackId, clipId: clip.clipId, patch },
+          new CustomEvent('smelter:timeline:update-keyframe', {
+            detail: {
+              trackId: singleSelectedClip.trackId,
+              clipId: singleSelectedClip.clipId,
+              keyframeId: targetKeyframeId,
+              patch,
+            },
           }),
         );
+      } else {
+        for (const clip of selectedTimelineClips) {
+          window.dispatchEvent(
+            new CustomEvent('smelter:timeline:update-clip-settings', {
+              detail: { trackId: clip.trackId, clipId: clip.clipId, patch },
+            }),
+          );
+        }
       }
 
       // Send server update for each unique inputId
@@ -661,6 +703,80 @@ export function BlockClipPropertiesPanel({
   useEffect(() => {
     applyClipPatchRef.current = applyClipPatch;
   }, [applyClipPatch]);
+
+  const handleSelectKeyframe = useCallback(
+    (keyframeId: string | null) => {
+      if (!selectedTimelineClip) return;
+      window.dispatchEvent(
+        new CustomEvent('smelter:timeline:select-keyframe', {
+          detail: {
+            trackId: selectedTimelineClip.trackId,
+            clipId: selectedTimelineClip.clipId,
+            keyframeId,
+          },
+        }),
+      );
+    },
+    [selectedTimelineClip],
+  );
+
+  const handleAddKeyframe = useCallback(() => {
+    if (!selectedTimelineClip) return;
+    const clipDurationMs = selectedTimelineClip.endMs - selectedTimelineClip.startMs;
+    let defaultTimeMs = Math.min(
+      clipDurationMs,
+      Math.max(
+        0,
+        selectedTimelineKeyframe?.timeMs ?? Math.round(clipDurationMs / 2),
+      ),
+    );
+    const usedTimes = new Set(
+      selectedTimelineClip.keyframes.map((keyframe) => Math.round(keyframe.timeMs)),
+    );
+    while (usedTimes.has(defaultTimeMs) && defaultTimeMs < clipDurationMs) {
+      defaultTimeMs = Math.min(clipDurationMs, defaultTimeMs + 100);
+    }
+    window.dispatchEvent(
+      new CustomEvent('smelter:timeline:add-keyframe', {
+        detail: {
+          trackId: selectedTimelineClip.trackId,
+          clipId: selectedTimelineClip.clipId,
+          timeMs: defaultTimeMs,
+        },
+      }),
+    );
+  }, [selectedTimelineClip, selectedTimelineKeyframe]);
+
+  const handleMoveSelectedKeyframe = useCallback(
+    (timeMs: number) => {
+      if (!selectedTimelineClip || !selectedTimelineKeyframe) return;
+      window.dispatchEvent(
+        new CustomEvent('smelter:timeline:move-keyframe', {
+          detail: {
+            trackId: selectedTimelineClip.trackId,
+            clipId: selectedTimelineClip.clipId,
+            keyframeId: selectedTimelineKeyframe.id,
+            timeMs,
+          },
+        }),
+      );
+    },
+    [selectedTimelineClip, selectedTimelineKeyframe],
+  );
+
+  const handleDeleteSelectedKeyframe = useCallback(() => {
+    if (!selectedTimelineClip || !selectedTimelineKeyframe) return;
+    window.dispatchEvent(
+      new CustomEvent('smelter:timeline:delete-keyframe', {
+        detail: {
+          trackId: selectedTimelineClip.trackId,
+          clipId: selectedTimelineClip.clipId,
+          keyframeId: selectedTimelineKeyframe.id,
+        },
+      }),
+    );
+    handleSelectKeyframe(null);
+  }, [handleSelectKeyframe, selectedTimelineClip, selectedTimelineKeyframe]);
 
   const handleShaderToggle = useCallback(
     (shaderId: string) => {
@@ -1033,6 +1149,83 @@ export function BlockClipPropertiesPanel({
               )}
             </Button>
           </div>
+        </div>
+      )}
+      {!isMultiSelect && selectedTimelineClip && (
+        <div className='border border-neutral-700 rounded p-2 mb-3 mt-1'>
+          <div className='flex items-center justify-between mb-2'>
+            <div>
+              <div className='text-xs text-neutral-400 font-medium'>Keyframes</div>
+              <div className='text-[10px] text-neutral-500'>
+                {selectedTimelineKeyframe
+                  ? `Editing ${Math.round(selectedTimelineKeyframe.timeMs)}ms snapshot`
+                  : 'Editing clip default snapshot'}
+              </div>
+            </div>
+            <Button
+              type='button'
+              size='sm'
+              variant='outline'
+              className='h-7 px-2 bg-neutral-800 border-neutral-700 text-white cursor-pointer hover:bg-neutral-700'
+              onClick={handleAddKeyframe}>
+              Add
+            </Button>
+          </div>
+          <div className='flex flex-wrap gap-1.5 mb-2'>
+            <button
+              type='button'
+              className={`rounded border px-2 py-1 text-[11px] cursor-pointer transition-colors ${
+                selectedTimelineKeyframe == null
+                  ? 'border-neutral-500 bg-neutral-700 text-white'
+                  : 'border-neutral-700 bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
+              }`}
+              onClick={() => handleSelectKeyframe(null)}>
+              Clip
+            </button>
+            {selectedTimelineClip.keyframes.map((keyframe) => (
+              <button
+                key={keyframe.id}
+                type='button'
+                className={`rounded border px-2 py-1 text-[11px] cursor-pointer transition-colors ${
+                  selectedTimelineKeyframe?.id === keyframe.id
+                    ? 'border-red-400/70 bg-red-500/20 text-red-100'
+                    : 'border-neutral-700 bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
+                }`}
+                onClick={() => handleSelectKeyframe(keyframe.id)}>
+                {Math.round(keyframe.timeMs)}ms
+              </button>
+            ))}
+          </div>
+          {selectedTimelineKeyframe && (
+            <div className='grid grid-cols-[1fr_auto] gap-2 items-end'>
+              <div>
+                <label className='text-xs text-neutral-400 block mb-1'>
+                  Time (ms)
+                </label>
+                <input
+                  type='number'
+                  min={0}
+                  max={selectedTimelineClip.endMs - selectedTimelineClip.startMs}
+                  step={50}
+                  disabled={selectedTimelineKeyframe.timeMs === 0}
+                  className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1 disabled:opacity-50'
+                  value={Math.round(selectedTimelineKeyframe.timeMs)}
+                  onChange={(e) =>
+                    handleMoveSelectedKeyframe(Math.max(0, Number(e.target.value) || 0))
+                  }
+                />
+              </div>
+              <Button
+                type='button'
+                size='sm'
+                variant='outline'
+                disabled={selectedTimelineKeyframe.timeMs === 0}
+                className='h-8 px-2 bg-neutral-800 border-neutral-700 text-white cursor-pointer hover:bg-neutral-700 disabled:cursor-not-allowed'
+                onClick={handleDeleteSelectedKeyframe}>
+                Delete
+              </Button>
+            </div>
+          )}
         </div>
       )}
       <div className='grid grid-cols-2 gap-2 mb-2'>

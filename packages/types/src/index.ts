@@ -24,7 +24,9 @@ export type {
 
 export type {
   TimelineBlockSettings,
+  TimelineKeyframe,
   TimelineClip,
   TimelineTrack,
+  TimelineKeyframeInterpolationMode,
   TimelineConfig,
 } from './timeline.js';

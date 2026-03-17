@@ -31,7 +31,8 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
     async (req, res) => {
       const { roomId } = req.params;
       const room = state.getRoom(roomId);
-      const { tracks, totalDurationMs, fromMs } = req.body;
+      const { tracks, totalDurationMs, keyframeInterpolationMode, fromMs } =
+        req.body;
       console.log('[timeline] Start playback', {
         roomId,
         tracks: tracks.length,
@@ -40,7 +41,11 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
       });
       // TypeBox schema validates structure; cast to TimelineConfig since
       // TransitionType is narrower than the schema's `string`.
-      const config = { tracks, totalDurationMs } as TimelineConfig;
+      const config = {
+        tracks,
+        totalDurationMs,
+        keyframeInterpolationMode,
+      } as TimelineConfig;
       await room.startTimelinePlayback(config, fromMs);
       res.status(200).send({ status: 'ok' });
     },
@@ -99,14 +104,19 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
     async (req, res) => {
       const { roomId } = req.params;
       const room = state.getRoom(roomId);
-      const { tracks, totalDurationMs, playheadMs } = req.body;
+      const { tracks, totalDurationMs, keyframeInterpolationMode, playheadMs } =
+        req.body;
       console.log('[timeline] Apply static snapshot', {
         roomId,
         tracks: tracks.length,
         totalDurationMs,
         playheadMs,
       });
-      const config = { tracks, totalDurationMs } as TimelineConfig;
+      const config = {
+        tracks,
+        totalDurationMs,
+        keyframeInterpolationMode,
+      } as TimelineConfig;
       await room.applyTimelineState(config, playheadMs);
       res.status(200).send({ status: 'ok' });
     },

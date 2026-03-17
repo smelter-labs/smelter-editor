@@ -24,6 +24,7 @@ import type {
   ShaderConfig,
 } from '@/lib/types';
 import type { SavedItemInfo, StorageResult } from '@/lib/storage-client';
+import type { TimelineConfig } from '@smelter-editor/types';
 
 const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
 
@@ -339,10 +340,7 @@ export async function getAvailableShaders(): Promise<AvailableShader[]> {
 
 export async function startTimelinePlayback(
   roomId: string,
-  config: {
-    tracks: { id: string; clips: any[] }[];
-    totalDurationMs: number;
-  },
+  config: TimelineConfig,
   fromMs?: number,
 ): Promise<{ status: string }> {
   return client.startTimelinePlayback(roomId, config, fromMs);
@@ -363,10 +361,7 @@ export async function seekTimeline(
 
 export async function applyTimelineState(
   roomId: string,
-  config: {
-    tracks: { id: string; clips: any[] }[];
-    totalDurationMs: number;
-  },
+  config: TimelineConfig,
   playheadMs: number,
 ): Promise<{ status: string }> {
   return client.applyTimelineState(roomId, config, playheadMs);

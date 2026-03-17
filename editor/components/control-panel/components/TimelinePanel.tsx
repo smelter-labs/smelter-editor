@@ -215,6 +215,7 @@ export function TimelinePanel({
     setPlaying,
     setZoom,
     reset,
+    setKeyframeInterpolationMode,
     moveClip,
     resizeClip,
     splitClip,
@@ -226,6 +227,10 @@ export function TimelinePanel({
     deleteTrack,
     replaceInputId,
     updateClipSettings,
+    addKeyframe,
+    updateKeyframe,
+    deleteKeyframe,
+    moveKeyframe,
     purgeInputId,
     moveClips,
     deleteClips,
@@ -239,6 +244,9 @@ export function TimelinePanel({
   const [selectedClipIds, setSelectedClipIds] = useState<
     { trackId: string; clipId: string }[]
   >([]);
+  const [selectedKeyframeId, setSelectedKeyframeId] = useState<string | null>(
+    null,
+  );
   const lastClickedClipRef = useRef<{ trackId: string; clipId: string } | null>(
     null,
   );
@@ -252,6 +260,7 @@ export function TimelinePanel({
     (trackId: string, clipId: string, mode: 'replace' | 'toggle' | 'range') => {
       if (mode === 'replace') {
         setSelectedClipIds([{ trackId, clipId }]);
+        setSelectedKeyframeId(null);
         lastClickedClipRef.current = { trackId, clipId };
       } else if (mode === 'toggle') {
         setSelectedClipIds((prev) => {
@@ -265,12 +274,14 @@ export function TimelinePanel({
           }
           return [...prev, { trackId, clipId }];
         });
+        setSelectedKeyframeId(null);
         lastClickedClipRef.current = { trackId, clipId };
       } else {
         // range: select all clips between lastClicked and this one on the same track
         const anchor = lastClickedClipRef.current;
         if (!anchor || anchor.trackId !== trackId) {
           setSelectedClipIds([{ trackId, clipId }]);
+          setSelectedKeyframeId(null);
           lastClickedClipRef.current = { trackId, clipId };
           return;
         }
@@ -280,6 +291,7 @@ export function TimelinePanel({
         const targetIdx = track.clips.findIndex((c) => c.id === clipId);
         if (anchorIdx < 0 || targetIdx < 0) {
           setSelectedClipIds([{ trackId, clipId }]);
+          setSelectedKeyframeId(null);
           lastClickedClipRef.current = { trackId, clipId };
           return;
         }
@@ -293,10 +305,21 @@ export function TimelinePanel({
           const otherTracks = prev.filter((s) => s.trackId !== trackId);
           return [...otherTracks, ...rangeClips];
         });
+        setSelectedKeyframeId(null);
       }
     },
     [state.tracks],
   );
+
+  useEffect(() => {
+    if (selectedClipIds.length !== 1 || !selectedKeyframeId) return;
+    const selected = selectedClipIds[0];
+    const track = state.tracks.find((item) => item.id === selected.trackId);
+    const clip = track?.clips.find((item) => item.id === selected.clipId);
+    if (!clip || !clip.keyframes.some((keyframe) => keyframe.id === selectedKeyframeId)) {
+      setSelectedKeyframeId(null);
+    }
+  }, [selectedClipIds, selectedKeyframeId, state.tracks]);
 
   useEffect(() => {
     const resolvedClips = selectedClipIds
@@ -304,13 +327,24 @@ export function TimelinePanel({
         const track = state.tracks.find((t) => t.id === sel.trackId);
         const clip = track?.clips.find((c) => c.id === sel.clipId);
         if (!track || !clip) return null;
+        const clipSelectedKeyframeId =
+          selectedClipIds.length === 1 &&
+          sel.trackId === selectedClipIds[0]?.trackId &&
+          sel.clipId === selectedClipIds[0]?.clipId
+            ? selectedKeyframeId
+            : null;
+        const selectedKeyframe = clipSelectedKeyframeId
+          ? clip.keyframes.find((keyframe) => keyframe.id === clipSelectedKeyframeId)
+          : null;
         return {
           trackId: sel.trackId,
           clipId: clip.id,
           inputId: clip.inputId,
           startMs: clip.startMs,
           endMs: clip.endMs,
-          blockSettings: clip.blockSettings,
+          blockSettings: selectedKeyframe?.blockSettings ?? clip.blockSettings,
+          keyframes: clip.keyframes,
+          selectedKeyframeId: clipSelectedKeyframeId,
         };
       })
       .filter(Boolean);
@@ -319,7 +353,7 @@ export function TimelinePanel({
         detail: { clips: resolvedClips },
       }),
     );
-  }, [selectedClipIds, state.tracks]);
+  }, [selectedClipIds, selectedKeyframeId, state.tracks]);
 
   useEffect(() => {
     const handler = (
@@ -343,6 +377,106 @@ export function TimelinePanel({
       );
     };
   }, [updateClipSettings]);
+
+  useEffect(() => {
+    const handleAdd = (
+      e: CustomEvent<{
+        trackId: string;
+        clipId: string;
+        timeMs: number;
+      }>,
+    ) => {
+      const { trackId, clipId, timeMs } = e.detail;
+      addKeyframe(trackId, clipId, timeMs);
+    };
+    const handleUpdate = (
+      e: CustomEvent<{
+        trackId: string;
+        clipId: string;
+        keyframeId: string;
+        patch: Partial<import('../hooks/use-timeline-state').BlockSettings>;
+      }>,
+    ) => {
+      const { trackId, clipId, keyframeId, patch } = e.detail;
+      updateKeyframe(trackId, clipId, keyframeId, patch);
+    };
+    const handleMove = (
+      e: CustomEvent<{
+        trackId: string;
+        clipId: string;
+        keyframeId: string;
+        timeMs: number;
+      }>,
+    ) => {
+      const { trackId, clipId, keyframeId, timeMs } = e.detail;
+      moveKeyframe(trackId, clipId, keyframeId, timeMs);
+    };
+    const handleDelete = (
+      e: CustomEvent<{
+        trackId: string;
+        clipId: string;
+        keyframeId: string;
+      }>,
+    ) => {
+      const { trackId, clipId, keyframeId } = e.detail;
+      deleteKeyframe(trackId, clipId, keyframeId);
+    };
+    const handleSelect = (
+      e: CustomEvent<{
+        trackId: string;
+        clipId: string;
+        keyframeId: string | null;
+      }>,
+    ) => {
+      const { trackId, clipId, keyframeId } = e.detail;
+      setSelectedClipIds([{ trackId, clipId }]);
+      setSelectedKeyframeId(keyframeId);
+      lastClickedClipRef.current = { trackId, clipId };
+    };
+
+    window.addEventListener(
+      'smelter:timeline:add-keyframe',
+      handleAdd as unknown as EventListener,
+    );
+    window.addEventListener(
+      'smelter:timeline:update-keyframe',
+      handleUpdate as unknown as EventListener,
+    );
+    window.addEventListener(
+      'smelter:timeline:move-keyframe',
+      handleMove as unknown as EventListener,
+    );
+    window.addEventListener(
+      'smelter:timeline:delete-keyframe',
+      handleDelete as unknown as EventListener,
+    );
+    window.addEventListener(
+      'smelter:timeline:select-keyframe',
+      handleSelect as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:timeline:add-keyframe',
+        handleAdd as unknown as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:timeline:update-keyframe',
+        handleUpdate as unknown as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:timeline:move-keyframe',
+        handleMove as unknown as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:timeline:delete-keyframe',
+        handleDelete as unknown as EventListener,
+      );
+      window.removeEventListener(
+        'smelter:timeline:select-keyframe',
+        handleSelect as unknown as EventListener,
+      );
+    };
+  }, [addKeyframe, deleteKeyframe, moveKeyframe, updateKeyframe]);
 
   // Listen for input-level clip settings updates (e.g. from voice macros)
   useEffect(() => {
@@ -418,6 +552,7 @@ export function TimelinePanel({
       const detail = e.detail;
       if (!detail) {
         setSelectedClipIds([]);
+        setSelectedKeyframeId(null);
         return;
       }
 
@@ -425,6 +560,7 @@ export function TimelinePanel({
         setSelectedClipIds([
           { trackId: detail.trackId, clipId: detail.clipId },
         ]);
+        setSelectedKeyframeId(null);
         return;
       }
 
@@ -436,6 +572,7 @@ export function TimelinePanel({
           setSelectedClipIds([
             { trackId: track.id, clipId: track.clips[0].id },
           ]);
+          setSelectedKeyframeId(null);
           setPlayhead(track.clips[0].startMs);
         }
         return;
@@ -446,6 +583,7 @@ export function TimelinePanel({
           for (const clip of track.clips) {
             if (clip.inputId === detail.inputId) {
               setSelectedClipIds([{ trackId: track.id, clipId: clip.id }]);
+              setSelectedKeyframeId(null);
               setPlayhead(clip.startMs);
               return;
             }
@@ -630,6 +768,7 @@ export function TimelinePanel({
       // Find the first clip on this track to select its input
       const track = state.tracks.find((t) => t.id === trackId);
       if (track && track.clips.length > 0) {
+        setSelectedKeyframeId(null);
         window.dispatchEvent(
           new CustomEvent('smelter:inputs:select', {
             detail: { inputId: track.clips[0].inputId },
@@ -815,6 +954,7 @@ export function TimelinePanel({
       }
       const clip = clips[nextIdx];
       setSelectedClipIds([{ trackId: track.id, clipId: clip.id }]);
+      setSelectedKeyframeId(null);
       setPlayhead(clip.startMs);
     },
     [selectedInputId, selectedClipIds, state.tracks, setPlayhead],
@@ -832,6 +972,7 @@ export function TimelinePanel({
       const track = state.tracks[idx];
       if (track.clips.length > 0) {
         setSelectedClipIds([{ trackId: track.id, clipId: track.clips[0].id }]);
+        setSelectedKeyframeId(null);
         setPlayhead(track.clips[0].startMs);
         window.dispatchEvent(
           new CustomEvent('smelter:inputs:select', {
@@ -1054,6 +1195,7 @@ export function TimelinePanel({
               deleteClips(selectedClipIds);
             }
             setSelectedClipIds([]);
+            setSelectedKeyframeId(null);
           }
           break;
         }
@@ -1064,6 +1206,7 @@ export function TimelinePanel({
         }
         case 'Escape': {
           setSelectedClipIds([]);
+          setSelectedKeyframeId(null);
           setShowHelp(false);
           break;
         }
@@ -1583,6 +1726,51 @@ export function TimelinePanel({
 
   // ── Render helpers ───────────────────────────────────
 
+  const renderKeyframes = useCallback(
+    (track: import('../hooks/use-timeline-state').Track) => {
+      return track.clips.flatMap((clip) => {
+        const isClipSelected =
+          selectedClipIds.length === 1 &&
+          selectedClipIds[0].trackId === track.id &&
+          selectedClipIds[0].clipId === clip.id;
+
+        return clip.keyframes.map((keyframe) => {
+          const leftPx =
+            ((clip.startMs + keyframe.timeMs) / 1000) * state.pixelsPerSecond;
+          const isSelected = isClipSelected && selectedKeyframeId === keyframe.id;
+
+          return (
+            <button
+              key={keyframe.id}
+              type='button'
+              className='absolute z-20 size-3 -ml-1.5 -mt-1.5 cursor-pointer border border-neutral-900 transition-transform hover:scale-110'
+              style={{
+                left: leftPx,
+                top: TRACK_HEIGHT / 2,
+                transform: 'rotate(45deg)',
+                backgroundColor: isSelected
+                  ? 'rgb(248 113 113)'
+                  : 'rgb(212 212 212 / 0.9)',
+                boxShadow: isSelected
+                  ? '0 0 0 2px rgb(248 113 113 / 0.35)'
+                  : 'none',
+              }}
+              title={`Keyframe at ${formatMs(clip.startMs + keyframe.timeMs)}`}
+              onPointerDown={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setSelectedClipIds([{ trackId: track.id, clipId: clip.id }]);
+                setSelectedKeyframeId(keyframe.id);
+                lastClickedClipRef.current = { trackId: track.id, clipId: clip.id };
+              }}
+            />
+          );
+        });
+      });
+    },
+    [selectedClipIds, selectedKeyframeId, state.pixelsPerSecond],
+  );
+
   const renderClips = useCallback(
     (track: import('../hooks/use-timeline-state').Track) => {
       return track.clips.map((clip) => {
@@ -1823,6 +2011,31 @@ export function TimelinePanel({
 
         <div className='flex-1' />
 
+        <div className='flex items-center gap-1 rounded border border-neutral-800 bg-neutral-950/60 p-0.5'>
+          <button
+            type='button'
+            className={`rounded px-2 py-0.5 text-[10px] uppercase tracking-wide transition-colors cursor-pointer ${
+              state.keyframeInterpolationMode === 'step'
+                ? 'bg-neutral-700 text-white'
+                : 'text-neutral-500 hover:text-neutral-300'
+            }`}
+            onClick={() => setKeyframeInterpolationMode('step')}
+            title='Use the latest keyframe snapshot until the next one'>
+            Step
+          </button>
+          <button
+            type='button'
+            className={`rounded px-2 py-0.5 text-[10px] uppercase tracking-wide transition-colors cursor-pointer ${
+              state.keyframeInterpolationMode === 'smooth'
+                ? 'bg-neutral-700 text-white'
+                : 'text-neutral-500 hover:text-neutral-300'
+            }`}
+            onClick={() => setKeyframeInterpolationMode('smooth')}
+            title='Interpolate numeric values between keyframes'>
+            Smooth
+          </button>
+        </div>
+
         <button
           className='p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors cursor-pointer'
           onClick={handleZoomOut}
@@ -2032,6 +2245,7 @@ export function TimelinePanel({
                     minWidth: `calc(100% - ${SOURCES_WIDTH}px)`,
                   }}>
                   {renderClips(track)}
+                  {renderKeyframes(track)}
                   {/* Playhead line on track */}
                   <div
                     className='absolute top-0 bottom-0 w-px bg-red-500/50 z-10 pointer-events-none'
