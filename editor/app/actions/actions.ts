@@ -347,6 +347,32 @@ export async function getAvailableShaders(): Promise<AvailableShader[]> {
   return client.getAvailableShaders();
 }
 
+// ── Timeline playback ────────────────────────────────────────
+
+export async function startTimelinePlayback(
+  roomId: string,
+  config: {
+    tracks: { id: string; clips: any[] }[];
+    totalDurationMs: number;
+  },
+  fromMs?: number,
+): Promise<{ status: string }> {
+  return client.startTimelinePlayback(roomId, config, fromMs);
+}
+
+export async function stopTimelinePlayback(
+  roomId: string,
+): Promise<{ status: string }> {
+  return client.stopTimelinePlayback(roomId);
+}
+
+export async function seekTimeline(
+  roomId: string,
+  ms: number,
+): Promise<{ status: string }> {
+  return client.seekTimeline(roomId, ms);
+}
+
 function spawn(
   command: string,
   args: string[],

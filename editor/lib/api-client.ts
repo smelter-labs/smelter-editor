@@ -126,6 +126,17 @@ export interface SmelterApiClient {
 
   getAllRooms(): Promise<any>;
   getAvailableShaders(): Promise<AvailableShader[]>;
+
+  startTimelinePlayback(
+    roomId: string,
+    config: {
+      tracks: { id: string; clips: any[] }[];
+      totalDurationMs: number;
+    },
+    fromMs?: number,
+  ): Promise<{ status: string }>;
+  stopTimelinePlayback(roomId: string): Promise<{ status: string }>;
+  seekTimeline(roomId: string, ms: number): Promise<{ status: string }>;
 }
 
 class SmelterApiError extends Error {
@@ -441,6 +452,22 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
     async getAvailableShaders() {
       const shaders = await req('get', '/shaders');
       return (shaders?.shaders as AvailableShader[]) || [];
+    },
+
+    async startTimelinePlayback(roomId, config, fromMs) {
+      return await req('post', `/room/${enc(roomId)}/timeline/play`, {
+        tracks: config.tracks,
+        totalDurationMs: config.totalDurationMs,
+        fromMs,
+      });
+    },
+
+    async stopTimelinePlayback(roomId) {
+      return await req('post', `/room/${enc(roomId)}/timeline/stop`, {});
+    },
+
+    async seekTimeline(roomId, ms) {
+      return await req('post', `/room/${enc(roomId)}/timeline/seek`, { ms });
     },
   };
 }

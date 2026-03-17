@@ -35,6 +35,12 @@ import { KickChannelMonitor } from '../kick/KickChannelMonitor';
 import { WhipInputMonitor } from '../whip/WhipInputMonitor';
 import type { RoomNameEntry } from './roomNames';
 import { MotionManager } from '../motion/MotionManager';
+import {
+  TimelinePlayer,
+  type TimelineListener,
+  type TimelineRoomStateAdapter,
+} from '../timeline/TimelinePlayer';
+import type { TimelineConfig } from '../timeline/types';
 
 export type InputOrientation = 'horizontal' | 'vertical';
 
@@ -240,6 +246,8 @@ export class RoomState {
   private motionManager: MotionManager;
   private motionScoreListeners: Set<(scores: Record<string, number>) => void> =
     new Set();
+  private timelinePlayer: TimelinePlayer | null = null;
+  private timelineListeners = new Set<TimelineListener>();
   private layout: Layout = 'picture-in-picture';
   private swapDurationMs: number = 500;
   private swapOutgoingEnabled: boolean = true;
@@ -1086,24 +1094,52 @@ export class RoomState {
         throw new Error(`Input ${inputId} is not connected`);
       }
 
+      const pipelineMs = SmelterInstance.getPipelineTimeMs();
+      console.log(
+        `[mp4-restart] BEGIN inputId=${inputId} playFromMs=${playFromMs} loop=${loop} pipelineMs=${pipelineMs} status=${input.status} hidden=${input.hidden}`,
+      );
+      const t0 = Date.now();
+
       input.restartFading = true;
       this.updateStoreWithState();
       await sleep(150);
 
-      await SmelterInstance.unregisterInput(inputId);
+      try {
+        console.log(`[mp4-restart] unregisterInput inputId=${inputId}`);
+        await SmelterInstance.unregisterInput(inputId);
+        console.log(
+          `[mp4-restart] unregisterInput OK inputId=${inputId} elapsed=${Date.now() - t0}ms`,
+        );
 
-      const offsetMs = SmelterInstance.getPipelineTimeMs() - playFromMs;
-      await SmelterInstance.registerInput(inputId, {
-        type: 'mp4',
-        filePath: input.mp4FilePath,
-        loop,
-        offsetMs,
-      });
+        const offsetMs = SmelterInstance.getPipelineTimeMs() - playFromMs;
+        console.log(
+          `[mp4-restart] registerInput inputId=${inputId} filePath=${input.mp4FilePath} loop=${loop} offsetMs=${offsetMs}`,
+        );
+        await SmelterInstance.registerInput(inputId, {
+          type: 'mp4',
+          filePath: input.mp4FilePath,
+          loop,
+          offsetMs,
+        });
+        console.log(
+          `[mp4-restart] registerInput OK inputId=${inputId} elapsed=${Date.now() - t0}ms`,
+        );
 
-      input.registeredAtPipelineMs = SmelterInstance.getPipelineTimeMs();
-      input.playFromMs = playFromMs;
-      input.restartFading = false;
-      this.updateStoreWithState();
+        input.registeredAtPipelineMs = SmelterInstance.getPipelineTimeMs();
+        input.playFromMs = playFromMs;
+      } catch (err) {
+        console.error(
+          `[mp4-restart] FAILED inputId=${inputId} elapsed=${Date.now() - t0}ms status=${input.status}`,
+          err,
+        );
+        throw err;
+      } finally {
+        input.restartFading = false;
+        this.updateStoreWithState();
+        console.log(
+          `[mp4-restart] END inputId=${inputId} elapsed=${Date.now() - t0}ms restartFading=${input.restartFading} status=${input.status} hidden=${input.hidden}`,
+        );
+      }
     });
   }
 
@@ -1336,9 +1372,83 @@ export class RoomState {
     });
   }
 
+  // ── Timeline playback ─────────────────────────────────────
+
+  private buildTimelineAdapter(): TimelineRoomStateAdapter {
+    return {
+      getInputs: () => this.getInputs(),
+      showInput: (inputId, transition) => this.showInput(inputId, transition),
+      hideInput: (inputId, transition) => this.hideInput(inputId, transition),
+      updateInput: (inputId, options) => this.updateInput(inputId, options),
+      restartMp4Input: (inputId, playFromMs, loop) =>
+        this.restartMp4Input(inputId, playFromMs, loop),
+      reorderInputs: (order) => this.reorderInputs(order),
+    };
+  }
+
+  public async startTimelinePlayback(
+    config: TimelineConfig,
+    fromMs?: number,
+  ): Promise<void> {
+    if (this.timelinePlayer) {
+      this.timelinePlayer.destroy();
+    }
+
+    const adapter = this.buildTimelineAdapter();
+    this.timelinePlayer = new TimelinePlayer(adapter, config);
+
+    const forwardListener: TimelineListener = (data) => {
+      for (const listener of this.timelineListeners) {
+        listener(data);
+      }
+    };
+    this.timelinePlayer.addListener(forwardListener);
+
+    await this.timelinePlayer.start(fromMs);
+  }
+
+  public async stopTimelinePlayback(): Promise<void> {
+    if (!this.timelinePlayer) return;
+    await this.timelinePlayer.stop();
+    this.timelinePlayer.destroy();
+    this.timelinePlayer = null;
+  }
+
+  public async seekTimeline(ms: number): Promise<void> {
+    if (!this.timelinePlayer) {
+      throw new Error('No timeline playback in progress');
+    }
+    await this.timelinePlayer.seek(ms);
+  }
+
+  public getTimelinePlaybackState(): {
+    playheadMs: number;
+    isPlaying: boolean;
+  } {
+    if (!this.timelinePlayer) {
+      return { playheadMs: 0, isPlaying: false };
+    }
+    return {
+      playheadMs: this.timelinePlayer.getPlayheadMs(),
+      isPlaying: this.timelinePlayer.isPlaying(),
+    };
+  }
+
+  public addTimelineListener(listener: TimelineListener): () => void {
+    this.timelineListeners.add(listener);
+    return () => {
+      this.timelineListeners.delete(listener);
+    };
+  }
+
   public async deleteRoom() {
     return this.mutex.runExclusive(async () => {
       this.destroyed = true;
+
+      if (this.timelinePlayer) {
+        this.timelinePlayer.destroy();
+        this.timelinePlayer = null;
+      }
 
       if (this.frozenImageId) {
         await this._unfreeze();
@@ -1465,7 +1575,7 @@ export class RoomState {
     this.output.store
       .getState()
       .updateState(
-        inputs,
+        [...inputs].reverse(),
         this.layout,
         this.swapDurationMs,
         this.swapOutgoingEnabled,

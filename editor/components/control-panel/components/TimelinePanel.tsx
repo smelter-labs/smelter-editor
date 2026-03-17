@@ -16,7 +16,7 @@ import type { InputWrapper } from '../hooks/use-control-panel-state';
 import LoadingSpinner from '@/components/ui/spinner';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useTimelineState, DEFAULT_PPS } from '../hooks/use-timeline-state';
-import { useTimelinePlayback } from '../hooks/use-timeline-playback';
+import { useServerTimelinePlayback } from '../hooks/use-server-timeline-playback';
 import {
   Play,
   Pause,
@@ -469,14 +469,11 @@ export function TimelinePanel({
 
   const inputColorMap = useMemo(() => buildInputColorMap(inputs), [inputs]);
 
-  const { play, stop, applyAtPlayhead } = useTimelinePlayback(
+  const { play, stop, applyAtPlayhead } = useServerTimelinePlayback(
     roomId,
-    inputs,
     state,
     setPlayhead,
     setPlaying,
-    refreshState,
-    structureRevision,
   );
 
   const { isRecording: serverIsRecording, isFrozen: serverIsFrozen } =

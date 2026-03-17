@@ -176,6 +176,7 @@ export class SmelterManager {
     inputId: string,
     opts: RegisterSmelterInputOptions,
   ): Promise<string> {
+    const t0 = Date.now();
     try {
       if (opts.type === 'whip') {
         const res = await this.instance.registerInput(inputId, {
@@ -185,6 +186,9 @@ export class SmelterManager {
         console.log('whipInput', res);
         return res.bearerToken;
       } else if (opts.type === 'mp4') {
+        console.log(
+          `[smelter] registerInput MP4 inputId=${inputId} path=${opts.filePath} loop=${opts.loop ?? true} offsetMs=${opts.offsetMs}`,
+        );
         await this.instance.registerInput(inputId, {
           type: 'mp4',
           serverPath: opts.filePath,
@@ -192,6 +196,9 @@ export class SmelterManager {
           loop: opts.loop ?? true,
           offsetMs: opts.offsetMs,
         });
+        console.log(
+          `[smelter] registerInput MP4 OK inputId=${inputId} elapsed=${Date.now() - t0}ms`,
+        );
       } else if (opts.type === 'hls') {
         await this.instance.registerInput(inputId, {
           type: 'hls',
@@ -200,18 +207,35 @@ export class SmelterManager {
         });
       }
     } catch (err: any) {
-      if (err.body?.error_code === 'INPUT_STREAM_ALREADY_REGISTERED') {
+      const errorCode = err.body?.error_code ?? 'unknown';
+      console.error(
+        `[smelter] registerInput FAILED inputId=${inputId} type=${opts.type} errorCode=${errorCode} elapsed=${Date.now() - t0}ms`,
+        err.body ?? err,
+      );
+      if (errorCode === 'INPUT_STREAM_ALREADY_REGISTERED') {
         throw new Error('already registered');
       }
       try {
-        // try to unregister in case it worked
+        console.log(
+          `[smelter] registerInput cleanup: attempting unregister inputId=${inputId}`,
+        );
         await this.instance.unregisterInput(inputId);
-      } catch (err: any) {
-        if (err.body?.error_code === 'INPUT_STREAM_NOT_FOUND') {
-          return '';
+        console.log(
+          `[smelter] registerInput cleanup: unregister succeeded inputId=${inputId} — re-throwing original error`,
+        );
+      } catch (cleanupErr: any) {
+        const cleanupCode = cleanupErr.body?.error_code ?? 'unknown';
+        if (cleanupCode === 'INPUT_STREAM_NOT_FOUND') {
+          console.log(
+            `[smelter] registerInput cleanup: input not found (registration truly failed) inputId=${inputId}`,
+          );
+        } else {
+          console.error(
+            `[smelter] registerInput cleanup: unregister also failed inputId=${inputId} cleanupCode=${cleanupCode}`,
+            cleanupErr.body ?? cleanupErr,
+          );
         }
       }
-      console.log(err.body, err);
       throw err;
     }
     return '';
