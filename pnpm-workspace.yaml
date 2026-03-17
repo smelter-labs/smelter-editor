@@ -1,4 +1,4 @@
 packages:
   - editor
   - server
-  - packages/types
+  - packages/*

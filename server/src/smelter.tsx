@@ -66,7 +66,6 @@ export class SmelterManager {
   public getPipelineTimeMs(): number {
     return Date.now() - this.pipelineStartTime;
   }
-
   public async init() {
     await SmelterInstance['instance'].init();
     await SmelterInstance['instance'].start();
@@ -321,7 +320,6 @@ export class SmelterManager {
   public async terminate(): Promise<void> {
     await this.instance.terminate();
   }
-
   private async registerShaderFromFile(
     smelter: Smelter,
     shaderId: string,

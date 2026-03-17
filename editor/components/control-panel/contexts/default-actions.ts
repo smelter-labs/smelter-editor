@@ -4,12 +4,12 @@ import type { ShaderConfig } from '@/lib/types';
 import {
   getRoomInfo,
   updateRoom,
-  updateInput,
-  removeInput,
+  updateInput as updateInputAction,
+  removeInput as removeInputAction,
   disconnectInput,
   connectInput,
-  hideInput,
-  showInput,
+  hideInput as hideInputAction,
+  showInput as showInputAction,
   addTwitchInput,
   addKickInput,
   addMP4Input,
@@ -46,6 +46,10 @@ import {
   restartService,
 } from '@/app/actions/actions';
 
+// id for browser session.  Sent as `x-source-id` on every update request
+export const SESSION_SOURCE_ID =
+  typeof crypto !== 'undefined' ? crypto.randomUUID() : undefined;
+
 const configStorage: StorageClient<object> = {
   save: saveRemoteConfig,
   list: listRemoteConfigs,
@@ -73,12 +77,16 @@ const dashboardLayoutStorage: StorageClient<object> = {
 export const defaultActions: ControlPanelActions = {
   getRoomInfo,
   updateRoom,
-  updateInput,
-  removeInput,
+  updateInput: (roomId, inputId, opts) =>
+    updateInputAction(roomId, inputId, opts, SESSION_SOURCE_ID),
+  removeInput: (roomId, inputId) =>
+    removeInputAction(roomId, inputId, SESSION_SOURCE_ID),
   disconnectInput,
   connectInput,
-  hideInput,
-  showInput,
+  hideInput: (roomId, inputId) =>
+    hideInputAction(roomId, inputId, SESSION_SOURCE_ID),
+  showInput: (roomId, inputId) =>
+    showInputAction(roomId, inputId, SESSION_SOURCE_ID),
   addTwitchInput,
   addKickInput,
   addMP4Input,

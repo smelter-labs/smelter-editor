@@ -1,0 +1,154 @@
+'use client';
+
+import { useEffect, useRef, useState } from 'react';
+
+// Mirrors server/src/server/roomEventBus.ts - sync manually.
+export type ConnectedPeer = {
+  clientId: string;
+  name: string | null;
+};
+
+type InputUpdatedEvent = {
+  type: 'input_updated';
+  roomId: string;
+  inputId: string;
+  input: unknown;
+  sourceId: string | null;
+};
+
+type InputDeletedEvent = {
+  type: 'input_deleted';
+  roomId: string;
+  inputId: string;
+  sourceId: string | null;
+};
+
+type PeersUpdatedEvent = {
+  type: 'peers_updated';
+  roomId: string;
+  peers: ConnectedPeer[];
+};
+
+type ConnectedEvent = {
+  type: 'connected';
+  clientId: string;
+};
+
+type ServerMessage =
+  | InputUpdatedEvent
+  | InputDeletedEvent
+  | PeersUpdatedEvent
+  | ConnectedEvent;
+
+const WS_BASE = process.env.NEXT_PUBLIC_SMELTER_WS_URL ?? 'ws://localhost:3001';
+
+const CLIENT_NAME = 'Editor';
+const RECONNECT_BASE_DELAY_MS = 1_000;
+const RECONNECT_MAX_DELAY_MS = 30_000;
+// Code sent by the server when the room is deleted — no point reconnecting.
+const CLOSE_CODE_ROOM_DELETED = 1001;
+
+type Opts = {
+  onRemoteInputChange?: () => void;
+  ownSourceId?: string;
+};
+
+export function useRoomWebSocket(
+  roomId: string,
+  opts?: Opts,
+): { peers: ConnectedPeer[] } {
+  const [peers, setPeers] = useState<ConnectedPeer[]>([]);
+  const attemptRef = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const optsRef = useRef(opts);
+  optsRef.current = opts;
+
+  useEffect(() => {
+    let destroyed = false;
+
+    function connect() {
+      const url = `${WS_BASE}/room/${encodeURIComponent(roomId)}/ws`;
+      const ws = new WebSocket(url);
+
+      ws.addEventListener('open', () => {
+        attemptRef.current = 0;
+        console.log('[room-ws] connected', { roomId, url });
+        ws.send(JSON.stringify({ type: 'identify', name: CLIENT_NAME }));
+      });
+
+      ws.addEventListener('message', (ev) => {
+        let msg: ServerMessage;
+        try {
+          msg = JSON.parse(ev.data as string) as ServerMessage;
+        } catch {
+          console.warn('[room-ws] unparseable message', ev.data);
+          return;
+        }
+
+        if (msg.type === 'peers_updated') {
+          setPeers(msg.peers);
+        } else if (msg.type === 'connected') {
+          console.log('[room-ws] assigned clientId', msg.clientId);
+        } else if (
+          msg.type === 'input_updated' ||
+          msg.type === 'input_deleted'
+        ) {
+          const { onRemoteInputChange, ownSourceId } = optsRef.current ?? {};
+          const isOwnChange =
+            ownSourceId != null && msg.sourceId === ownSourceId;
+          if (!isOwnChange) {
+            console.log(`[room-ws] ${msg.type} from remote`, msg);
+            onRemoteInputChange?.();
+          }
+        }
+      });
+
+      ws.addEventListener('error', () => {
+        console.error('[room-ws] connection error', { roomId, url });
+      });
+
+      ws.addEventListener('close', (ev) => {
+        setPeers([]);
+
+        if (destroyed || ev.code === CLOSE_CODE_ROOM_DELETED) {
+          console.log('[room-ws] disconnected (permanent)', {
+            roomId,
+            code: ev.code,
+            reason: ev.reason,
+          });
+          return;
+        }
+
+        attemptRef.current += 1;
+        const delay = Math.min(
+          RECONNECT_BASE_DELAY_MS * 2 ** (attemptRef.current - 1),
+          RECONNECT_MAX_DELAY_MS,
+        );
+        console.log('[room-ws] disconnected, reconnecting', {
+          roomId,
+          code: ev.code,
+          attempt: attemptRef.current,
+          delayMs: delay,
+        });
+        timerRef.current = setTimeout(() => {
+          if (!destroyed) connect();
+        }, delay);
+      });
+
+      return ws;
+    }
+
+    const ws = connect();
+
+    return () => {
+      destroyed = true;
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+      ws.close();
+    };
+  }, [roomId]);
+
+  return { peers };
+}

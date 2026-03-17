@@ -4,17 +4,42 @@ Real-time video compositing studio built on [Smelter](https://github.com/swmansi
 
 ## Architecture
 
-```
-+---------------------+       REST API        +----------------------------+
-|       Editor        | <-------------------> |          Server            |
-|  Next.js 15 / React |                       |  Fastify + Smelter Engine  |
-|  Tailwind + shadcn  |    WHEP (video out)   |  React 18 -> video frames  |
-|                     | <-------------------- |                            |
-+---------------------+                       +----------------------------+
-                                                    ^            ^
-                                                    |            |
-                                                WHIP/cam    HLS streams
-                                                (WebRTC)   (Twitch/Kick)
+```mermaid
+%%{init: {'flowchart': {'curve': 'monotoneY'}} }%%
+flowchart TD
+    %% Media Inputs Subgraph
+    subgraph Sources ["Media Sources"]
+        WHIP["<b>WHIP/cam</b><br/>(WebRTC)"]
+        HLS["<b>HLS streams</b><br/>(Twitch/Kick)"]
+    end
+
+    %% Core Server (Middle)
+    Server["<b>Server</b><br/>Fastify + Smelter Engine<br/>React 18 -> video frames"]
+
+    %% Clients Subgraph
+    subgraph Clients ["Client Applications"]
+        Editor["<b>Editor</b><br/>Next.js 15 / React<br/>Tailwind + shadcn"]
+        Mobile["<b>Mobile App</b><br/>Remote control / monitoring"]
+    end
+
+    %% Flow of external media into the server
+    WHIP --> Server
+    HLS --> Server
+
+    %% Grouped bidirectional client connections
+    Server <-->|"<b>REST API</b> (requests)<br/><b>WS</b> (events/state sync)<br/><b>WHEP</b> (video out)"| Editor
+    Server <-->|"<b>REST API</b> (requests)<br/><b>WS</b> (events/state sync)<br/><b>WHEP</b> (video out)"| Mobile
+
+    %% Node Styling
+    style Editor fill:#f9fafb,stroke:#d1d5db,stroke-width:2px,color:#111827
+    style Mobile fill:#f9fafb,stroke:#d1d5db,stroke-width:2px,color:#111827
+    style Server fill:#f0fdf4,stroke:#86efac,stroke-width:2px,color:#111827
+    style WHIP fill:#eff6ff,stroke:#bfdbfe,stroke-width:2px,color:#111827
+    style HLS fill:#eff6ff,stroke:#bfdbfe,stroke-width:2px,color:#111827
+
+    %% Subgraph Styling
+    style Sources fill:none,stroke:#9ca3af,stroke-width:2px,stroke-dasharray: 5 5,color:#a7a1c1
+    style Clients fill:none,stroke:#9ca3af,stroke-width:2px,stroke-dasharray: 5 5,color:#a7a1c1
 ```
 
 - **`editor/`** — Web UI (Next.js 15, App Router, React 19, Tailwind 4, shadcn/ui) for managing rooms, inputs, layouts, and shaders.
@@ -122,36 +147,36 @@ For AMD GPUs, uncomment the `devices` section and comment out `gpus`/`runtime` i
 
 ### Editor (`cd editor/`)
 
-| Command | Description |
-|---------|-------------|
-| `pnpm dev` | Dev server (Turbopack) |
-| `pnpm build` | Production build |
-| `pnpm lint --fix` | ESLint + Prettier |
-| `pnpm test` | Run vitest (watch mode) |
-| `pnpm test:run` | Run vitest once (CI) |
+| Command           | Description             |
+| ----------------- | ----------------------- |
+| `pnpm dev`        | Dev server (Turbopack)  |
+| `pnpm build`      | Production build        |
+| `pnpm lint --fix` | ESLint + Prettier       |
+| `pnpm test`       | Run vitest (watch mode) |
+| `pnpm test:run`   | Run vitest once (CI)    |
 
 ### Server (`cd server/`)
 
-| Command | Description |
-|---------|-------------|
-| `pnpm start` | Run with ts-node |
-| `pnpm build` | Compile TypeScript |
+| Command      | Description           |
+| ------------ | --------------------- |
+| `pnpm start` | Run with ts-node      |
+| `pnpm build` | Compile TypeScript    |
 | `pnpm watch` | TypeScript watch mode |
 
 ## Environment Variables
 
-| Variable | Where | Description |
-|----------|-------|-------------|
-| `SMELTER_EDITOR_SERVER_URL` | editor | Server URL (e.g. `http://localhost:3001`) |
-| `SMELTER_DEMO_API_PORT` | server | API port (default: `3001`) |
-| `TWITCH_CLIENT_ID` | server | Twitch API client ID |
-| `TWITCH_CLIENT_SECRET` | server | Twitch API client secret |
-| `KICK_CLIENT_ID` | server | Kick API client ID |
-| `KICK_CLIENT_SECRET` | server | Kick API client secret |
-| `ENVIRONMENT` | server | `production` enables Vulkan encoder and production WHEP/WHIP URLs |
-| `LAYOUT` | server | `boxed` enables the blessed TUI dashboard |
-| `SMELTER_SNAKE_VISUAL_SPEED_MULTIPLIER` | server | Snake interpolation speed (default: `1.25`) |
-| `MOTION_PYTHON_PATH` | server | Override Python binary for motion detection (default: auto-detect) |
+| Variable                                | Where  | Description                                                        |
+| --------------------------------------- | ------ | ------------------------------------------------------------------ |
+| `SMELTER_EDITOR_SERVER_URL`             | editor | Server URL (e.g. `http://localhost:3001`)                          |
+| `SMELTER_DEMO_API_PORT`                 | server | API port (default: `3001`)                                         |
+| `TWITCH_CLIENT_ID`                      | server | Twitch API client ID                                               |
+| `TWITCH_CLIENT_SECRET`                  | server | Twitch API client secret                                           |
+| `KICK_CLIENT_ID`                        | server | Kick API client ID                                                 |
+| `KICK_CLIENT_SECRET`                    | server | Kick API client secret                                             |
+| `ENVIRONMENT`                           | server | `production` enables Vulkan encoder and production WHEP/WHIP URLs  |
+| `LAYOUT`                                | server | `boxed` enables the blessed TUI dashboard                          |
+| `SMELTER_SNAKE_VISUAL_SPEED_MULTIPLIER` | server | Snake interpolation speed (default: `1.25`)                        |
+| `MOTION_PYTHON_PATH`                    | server | Override Python binary for motion detection (default: auto-detect) |
 
 ## Project Structure
 

@@ -141,8 +141,12 @@ export async function addSnakeGameInput(roomId: string, title?: string) {
   return client.addSnakeGameInput(roomId, title);
 }
 
-export async function removeInput(roomId: string, inputId: string) {
-  return client.removeInput(roomId, inputId);
+export async function removeInput(
+  roomId: string,
+  inputId: string,
+  sourceId?: string,
+) {
+  return client.removeInput(roomId, inputId, sourceId);
 }
 
 export async function deleteRoom(roomId: string) {
@@ -266,8 +270,9 @@ export async function updateInput(
   roomId: string,
   inputId: string,
   opts: Partial<UpdateInputOptions>,
+  sourceId?: string,
 ) {
-  return client.updateInput(roomId, inputId, opts);
+  return client.updateInput(roomId, inputId, opts, sourceId);
 }
 
 export async function disconnectInput(roomId: string, inputId: string) {
@@ -281,25 +286,29 @@ export async function connectInput(roomId: string, inputId: string) {
 export async function hideInput(
   roomId: string,
   inputId: string,
-  activeTransition?: {
-    type: string;
-    durationMs: number;
-    direction: 'in' | 'out';
-  },
+  sourceIdOrTransition?:
+    | string
+    | {
+        type: string;
+        durationMs: number;
+        direction: 'in' | 'out';
+      },
 ) {
-  return client.hideInput(roomId, inputId, activeTransition);
+  return client.hideInput(roomId, inputId, sourceIdOrTransition);
 }
 
 export async function showInput(
   roomId: string,
   inputId: string,
-  activeTransition?: {
-    type: string;
-    durationMs: number;
-    direction: 'in' | 'out';
-  },
+  sourceIdOrTransition?:
+    | string
+    | {
+        type: string;
+        durationMs: number;
+        direction: 'in' | 'out';
+      },
 ) {
-  return client.showInput(roomId, inputId, activeTransition);
+  return client.showInput(roomId, inputId, sourceIdOrTransition);
 }
 
 export async function toggleMotionDetection(

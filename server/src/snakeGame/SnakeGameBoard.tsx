@@ -5,6 +5,7 @@ import { Text, View, Shader } from '@swmansion/smelter';
 import React, { useEffect, useRef, useState } from 'react';
 import type { ShaderConfig } from '../types';
 import shadersController from '../shaders/shaders';
+import { config } from '../config';
 import {
   hexToRgb,
   darkenHexColor,
@@ -209,8 +210,58 @@ export function SnakeGameBoard({
 
   // Adaptive tick interval estimation for Smelter transition duration
   const lastUpdateRef = useRef(Date.now());
-  const tickIntervalRef = useRef(150);
+  const tickIntervalRef = useRef(150); // estimated ms between server updates
   const prevCellsRef = useRef<typeof gameState.cells>(gameState.cells);
+  const [localProgress, setLocalProgress] = useState(1);
+  const MAX_INTERPOLATED_CELL_DISTANCE = 1.25;
+  const LOCAL_VISUAL_SPEED_MULTIPLIER = config.snakeVisualSpeedMultiplier;
+  const smoothMoveEnabled = gameState.smoothMove === true;
+  const smoothMoveSpeed =
+    typeof gameState.smoothMoveSpeed === 'number' &&
+    Number.isFinite(gameState.smoothMoveSpeed) &&
+    gameState.smoothMoveSpeed > 0
+      ? gameState.smoothMoveSpeed
+      : 1;
+  const smoothMoveAccel =
+    typeof gameState.smoothMoveAccel === 'number' &&
+    Number.isFinite(gameState.smoothMoveAccel) &&
+    gameState.smoothMoveAccel > 0
+      ? gameState.smoothMoveAccel
+      : 3.2;
+  const smoothMoveDecel =
+    typeof gameState.smoothMoveDecel === 'number' &&
+    Number.isFinite(gameState.smoothMoveDecel) &&
+    gameState.smoothMoveDecel > 0
+      ? gameState.smoothMoveDecel
+      : 1.18;
+  const effectiveSmoothSpeedMultiplier =
+    LOCAL_VISUAL_SPEED_MULTIPLIER * smoothMoveSpeed;
+
+  // Fast acceleration with slower deceleration tail:
+  // movement starts quickly but eases out near tile boundaries.
+  const easeOutPower = (t: number, power: number) =>
+    1 - Math.pow(1 - Math.max(0, Math.min(1, t)), power);
+
+  const getSmoothedProgress = (
+    rawProgress: number,
+    hasBackendProgress: boolean,
+  ) => {
+    const clampedRaw = Math.max(0, Math.min(1, rawProgress));
+    const unboundedLocal = Math.max(0, localProgress);
+    const clampedLocal = Math.max(0, Math.min(1, unboundedLocal));
+    if (!smoothMoveEnabled) {
+      // Hard snap mode: disable local interpolation entirely.
+      return 1;
+    }
+    if (hasBackendProgress) {
+      // Backend already drives sub-tick movement; avoid double interpolation.
+      return clampedRaw;
+    }
+    // Asymmetric smoothing: accelerate quickly, decelerate more gradually.
+    const easedLocal = easeOutPower(clampedLocal, smoothMoveAccel);
+    const blended = clampedRaw + (1 - clampedRaw) * easedLocal;
+    return Math.max(0, Math.min(1, blended));
+  };
 
   useEffect(() => {
     const now = Date.now();
@@ -222,7 +273,41 @@ export function SnakeGameBoard({
     }
     lastUpdateRef.current = now;
     prevCellsRef.current = gameState.cells;
-  }, [gameState.cells]);
+    if (!smoothMoveEnabled) {
+      setLocalProgress(1);
+      return;
+    }
+    setLocalProgress(0);
+
+    // Animate progress continuously inside a single tick window.
+    const startTime = now;
+    const duration = Math.max(
+      80,
+      // Keep interpolation window slightly longer than one nominal tick.
+      // This reduces "full stop" artifacts before the next update arrives.
+      Math.min(
+        900,
+        (tickIntervalRef.current / effectiveSmoothSpeedMultiplier) *
+          smoothMoveDecel,
+      ),
+    );
+    let raf: ReturnType<typeof setInterval>;
+    raf = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+      const t = elapsed / duration;
+      const clamped = Math.max(0, Math.min(1, t));
+      setLocalProgress(clamped);
+      if (clamped >= 1) {
+        clearInterval(raf);
+      }
+    }, 16);
+    return () => clearInterval(raf);
+  }, [
+    gameState.cells,
+    smoothMoveEnabled,
+    effectiveSmoothSpeedMultiplier,
+    smoothMoveDecel,
+  ]);
 
   // Game over: remove cells one by one, then show modal
   const [removedCount, setRemovedCount] = useState(0);
@@ -326,6 +411,7 @@ export function SnakeGameBoard({
     }
     prevFoodKeysRef.current = currentFoodKeys;
 
+    // Clean up finished swallow waves
     const snakeSegmentCount = gameState.cells.filter(
       (c) => c.isHead || headColors.has(c.color),
     ).length;
@@ -473,6 +559,9 @@ export function SnakeGameBoard({
       )
     : gameState.cells;
 
+  // Smelter engine has a hard limit of 100 layout nodes.
+  // Budget: ~15 for Input wrappers + 3 fixed GameBoard nodes (wrapper, border, grid).
+  // Each head = 1 View + 6 eye Views rendered separately (2×border+eye+pupil). Normal cell = 1.
   const MAX_LAYOUT_NODES = showModal ? 20 : 80;
   let nodesBudget = MAX_LAYOUT_NODES;
   const visibleCells: {
@@ -536,6 +625,45 @@ export function SnakeGameBoard({
     }
   });
 
+  const shortestWrappedDelta = (
+    from: number,
+    to: number,
+    boardSize: number,
+  ) => {
+    let delta = to - from;
+    if (Math.abs(delta) > boardSize / 2) {
+      delta -= Math.sign(delta) * boardSize;
+    }
+    return delta;
+  };
+
+  const wrapCoord = (value: number, boardSize: number) => {
+    if (boardSize <= 0) return value;
+    return ((value % boardSize) + boardSize) % boardSize;
+  };
+
+  const getRawProgress = (
+    cell: (typeof gameState.cells)[number],
+    prev?: (typeof gameState.cells)[number],
+  ) => {
+    if (typeof cell.progress === 'number' && Number.isFinite(cell.progress)) {
+      return Math.max(0, Math.min(1, cell.progress));
+    }
+
+    if (!prev) {
+      return 0;
+    }
+
+    const dx = Math.abs(
+      shortestWrappedDelta(prev.x, cell.x, gameState.boardWidth),
+    );
+    const dy = Math.abs(
+      shortestWrappedDelta(prev.y, cell.y, gameState.boardHeight),
+    );
+    const stepDistance = dx + dy;
+    return stepDistance > MAX_INTERPOLATED_CELL_DISTANCE ? 1 : 0;
+  };
+
   const isCellWrapping = (
     cell: (typeof gameState.cells)[number],
     prev: (typeof gameState.cells)[number],
@@ -552,7 +680,13 @@ export function SnakeGameBoard({
     if (!prevCell) return undefined;
     const cell = gameState.cells[origIdx];
     if (!cell) return undefined;
-    if (isCellWrapping(cell, prevCell)) return undefined;
+    if (
+      smoothMoveEnabled ||
+      typeof cell.progress === 'number' ||
+      isCellWrapping(cell, prevCell)
+    ) {
+      return undefined;
+    }
     return {
       durationMs: tickIntervalRef.current,
       easingFunction: 'linear',
@@ -561,7 +695,6 @@ export function SnakeGameBoard({
   };
 
   const step = cellPixel + gap;
-
   const computeCellGeometry = (
     cell: (typeof gameState.cells)[number],
     origIdx: number,
@@ -569,8 +702,47 @@ export function SnakeGameBoard({
     const size = cell.size ?? gameState.cellSize;
     const w = cellPixel * size;
     const h = cellPixel * size;
-    const x = offsetX + cell.x * step;
-    const y = offsetY + cell.y * step;
+    const prevCell = prevCellByCurrentIndex.get(origIdx);
+    const rawProgress = getRawProgress(cell, prevCell);
+    const progress = getSmoothedProgress(
+      rawProgress,
+      typeof cell.progress === 'number',
+    );
+    const step = cellPixel + gap;
+    let boardX = cell.x;
+    let boardY = cell.y;
+    if (prevCell) {
+      const dx = shortestWrappedDelta(prevCell.x, cell.x, gameState.boardWidth);
+      const dy = shortestWrappedDelta(
+        prevCell.y,
+        cell.y,
+        gameState.boardHeight,
+      );
+      const stepDistance = Math.abs(dx) + Math.abs(dy);
+      const effectiveProgress =
+        stepDistance > MAX_INTERPOLATED_CELL_DISTANCE ? 1 : progress;
+      boardX = prevCell.x + dx * effectiveProgress;
+      boardY = prevCell.y + dy * effectiveProgress;
+    } else if (progress < 1 && cell.direction) {
+      switch (cell.direction) {
+        case 'right':
+          boardX = cell.x - (1 - progress);
+          break;
+        case 'left':
+          boardX = cell.x + (1 - progress);
+          break;
+        case 'down':
+          boardY = cell.y - (1 - progress);
+          break;
+        case 'up':
+          boardY = cell.y + (1 - progress);
+          break;
+      }
+    }
+    const wrappedBoardX = wrapCoord(boardX, gameState.boardWidth);
+    const wrappedBoardY = wrapCoord(boardY, gameState.boardHeight);
+    const x = offsetX + wrappedBoardX * step;
+    const y = offsetY + wrappedBoardY * step;
 
     const cellKey = `${cell.x},${cell.y},${cell.color}`;
     const isFood = !cell.isHead && !snakeColors.has(cell.color);
@@ -607,6 +779,7 @@ export function SnakeGameBoard({
     return { w, h, x, y, sw, sh, sx, sy };
   };
 
+  // Helper: render eyes for a head cell
   const renderEyes = (
     cell: (typeof gameState.cells)[number],
     keyPrefix: string,
@@ -615,20 +788,51 @@ export function SnakeGameBoard({
     const size = cell.size ?? gameState.cellSize;
     const w = cellPixel * size;
     const h = cellPixel * size;
-    const headX = offsetX + cell.x * step;
-    const headY = offsetY + cell.y * step;
-
     const headIndex = gameState.cells.findIndex((c) => c === cell);
     const prevCell =
       headIndex >= 0 ? prevCellByCurrentIndex.get(headIndex) : undefined;
-    const isWrapping = prevCell ? isCellWrapping(cell, prevCell) : false;
-    const eyeTransition: Transition | undefined = isWrapping
-      ? undefined
-      : {
-          durationMs: tickIntervalRef.current,
-          easingFunction: 'linear',
-          shouldInterrupt: true,
-        };
+    const rawProgress = getRawProgress(cell, prevCell);
+    const progress = getSmoothedProgress(
+      rawProgress,
+      typeof cell.progress === 'number',
+    );
+    const step = cellPixel + gap;
+    let boardX = cell.x;
+    let boardY = cell.y;
+    if (prevCell) {
+      const dx = shortestWrappedDelta(prevCell.x, cell.x, gameState.boardWidth);
+      const dy = shortestWrappedDelta(
+        prevCell.y,
+        cell.y,
+        gameState.boardHeight,
+      );
+      const stepDistance = Math.abs(dx) + Math.abs(dy);
+      const effectiveProgress =
+        stepDistance > MAX_INTERPOLATED_CELL_DISTANCE ? 1 : progress;
+      boardX = prevCell.x + dx * effectiveProgress;
+      boardY = prevCell.y + dy * effectiveProgress;
+    } else if (progress < 1 && cell.direction) {
+      switch (cell.direction) {
+        case 'right':
+          boardX = cell.x - (1 - progress);
+          break;
+        case 'left':
+          boardX = cell.x + (1 - progress);
+          break;
+        case 'down':
+          boardY = cell.y - (1 - progress);
+          break;
+        case 'up':
+          boardY = cell.y + (1 - progress);
+          break;
+      }
+    }
+    const wrappedBoardX = wrapCoord(boardX, gameState.boardWidth);
+    const wrappedBoardY = wrapCoord(boardY, gameState.boardHeight);
+    const headX = offsetX + wrappedBoardX * step;
+    const headY = offsetY + wrappedBoardY * step;
+    const eyeTransition =
+      headIndex >= 0 ? buildCellTransition(headIndex) : undefined;
 
     let dir: 'up' | 'down' | 'left' | 'right' = 'right';
     let closestBody: (typeof gameState.cells)[number] | undefined;

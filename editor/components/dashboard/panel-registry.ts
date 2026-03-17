@@ -7,7 +7,8 @@ export type StaticPanelId =
   | 'streams'
   | 'fx'
   | 'timeline'
-  | 'block-properties';
+  | 'block-properties'
+  | 'connected-devices';
 
 export type MotionPanelId = `motion:${string}`;
 export type PanelId = StaticPanelId | MotionPanelId;
@@ -95,6 +96,12 @@ export const STATIC_PANEL_DEFINITIONS: Record<StaticPanelId, PanelDefinition> =
       minW: 4,
       minH: 6,
     },
+    'connected-devices': {
+      id: 'connected-devices',
+      title: 'Connected Devices',
+      minW: 4,
+      minH: 4,
+    },
   };
 
 export const MOTION_PANEL_MIN_W = 4;
@@ -140,6 +147,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'fx', x: 16, y: 20, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'timeline', x: 0, y: 20, w: 16, h: 8, minW: 8, minH: 4 },
       { i: 'block-properties', x: 0, y: 28, w: 16, h: 8, minW: 4, minH: 6 },
+      { i: 'connected-devices', x: 16, y: 28, w: 8, h: 8, minW: 4, minH: 4 },
     ],
   },
   {
@@ -153,6 +161,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'fx', x: 18, y: 14, w: 6, h: 10, minW: 4, minH: 4 },
       { i: 'timeline', x: 0, y: 24, w: 16, h: 8, minW: 8, minH: 4 },
       { i: 'block-properties', x: 16, y: 24, w: 8, h: 8, minW: 4, minH: 3 },
+      { i: 'connected-devices', x: 0, y: 32, w: 8, h: 8, minW: 4, minH: 4 },
     ],
   },
   {
@@ -166,6 +175,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'fx', x: 12, y: 16, w: 12, h: 6, minW: 4, minH: 4 },
       { i: 'timeline', x: 0, y: 22, w: 16, h: 6, minW: 8, minH: 4 },
       { i: 'block-properties', x: 16, y: 22, w: 8, h: 6, minW: 4, minH: 3 },
+      { i: 'connected-devices', x: 0, y: 28, w: 8, h: 6, minW: 4, minH: 4 },
     ],
   },
   {
@@ -179,6 +189,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'fx', x: 12, y: 10, w: 12, h: 4, minW: 4, minH: 4 },
       { i: 'timeline', x: 0, y: 14, w: 16, h: 8, minW: 8, minH: 4 },
       { i: 'block-properties', x: 16, y: 14, w: 8, h: 8, minW: 4, minH: 3 },
+      { i: 'connected-devices', x: 0, y: 22, w: 8, h: 8, minW: 4, minH: 4 },
     ],
   },
   {
@@ -192,6 +203,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'fx', x: 16, y: 8, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'timeline', x: 8, y: 16, w: 16, h: 6, minW: 8, minH: 4 },
       { i: 'block-properties', x: 8, y: 22, w: 16, h: 6, minW: 4, minH: 6 },
+      { i: 'connected-devices', x: 16, y: 28, w: 8, h: 6, minW: 4, minH: 4 },
     ],
   },
 ];
@@ -206,6 +218,7 @@ export const SMALL_LAYOUT: MutableLayout = [
   { i: 'fx', x: 0, y: 26, w: 12, h: 6, minW: 4, minH: 4 },
   { i: 'timeline', x: 0, y: 32, w: 12, h: 6, minW: 4, minH: 4 },
   { i: 'block-properties', x: 0, y: 38, w: 12, h: 6, minW: 4, minH: 6 },
+  { i: 'connected-devices', x: 0, y: 44, w: 12, h: 6, minW: 4, minH: 4 },
 ];
 
 const STORAGE_KEY = 'smelter-dashboard-layout';

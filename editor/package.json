@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "pnpm --filter @smelter-editor/types build && rm -rf .next &&  next dev --turbopack",
     "build": "pnpm --filter @smelter-editor/types build && rm -rf .next && next build",
     "start": "next start",
     "lint": "next lint --quiet",

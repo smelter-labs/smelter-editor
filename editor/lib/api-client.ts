@@ -60,33 +60,38 @@ export interface SmelterApiClient {
   addSnakeGameInput(roomId: string, title?: string): Promise<any>;
   addCameraInput(roomId: string, username?: string): Promise<AddInputResponse>;
 
-  removeInput(roomId: string, inputId: string): Promise<any>;
+  removeInput(roomId: string, inputId: string, sourceId?: string): Promise<any>;
   deleteRoom(roomId: string): Promise<any>;
 
   updateInput(
     roomId: string,
     inputId: string,
     opts: Partial<UpdateInputOptions>,
+    sourceId?: string,
   ): Promise<any>;
   disconnectInput(roomId: string, inputId: string): Promise<any>;
   connectInput(roomId: string, inputId: string): Promise<any>;
   hideInput(
     roomId: string,
     inputId: string,
-    activeTransition?: {
-      type: string;
-      durationMs: number;
-      direction: 'in' | 'out';
-    },
+    sourceIdOrTransition?:
+      | string
+      | {
+          type: string;
+          durationMs: number;
+          direction: 'in' | 'out';
+        },
   ): Promise<any>;
   showInput(
     roomId: string,
     inputId: string,
-    activeTransition?: {
-      type: string;
-      durationMs: number;
-      direction: 'in' | 'out';
-    },
+    sourceIdOrTransition?:
+      | string
+      | {
+          type: string;
+          durationMs: number;
+          direction: 'in' | 'out';
+        },
   ): Promise<any>;
   toggleMotionDetection(
     roomId: string,
@@ -138,12 +143,13 @@ async function sendRequest(
   method: 'get' | 'delete' | 'post',
   route: string,
   body?: object,
+  extraHeaders?: Record<string, string>,
 ): Promise<any> {
   console.log(`[smelter] ${method.toUpperCase()} ${route}`, body ?? '');
   const response = await fetch(`${baseUrl}${route}`, {
     method,
     body: body && JSON.stringify(body),
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...extraHeaders },
   });
 
   if (response.status >= 400) {
@@ -286,11 +292,13 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       };
     },
 
-    async removeInput(roomId, inputId) {
-      return await req(
+    async removeInput(roomId, inputId, sourceId) {
+      return await sendRequest(
+        baseUrl,
         'delete',
         `/room/${enc(roomId)}/input/${enc(inputId)}`,
         {},
+        sourceId ? { 'x-source-id': sourceId } : undefined,
       );
     },
 
@@ -298,11 +306,13 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       return await req('delete', `/room/${enc(roomId)}`, {});
     },
 
-    async updateInput(roomId, inputId, opts) {
-      return await req(
+    async updateInput(roomId, inputId, opts, sourceId) {
+      return await sendRequest(
+        baseUrl,
         'post',
         `/room/${enc(roomId)}/input/${enc(inputId)}`,
         opts,
+        sourceId ? { 'x-source-id': sourceId } : undefined,
       );
     },
 
@@ -322,19 +332,31 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       );
     },
 
-    async hideInput(roomId, inputId, activeTransition) {
-      return await req(
+    async hideInput(roomId, inputId, sourceIdOrTransition) {
+      const sourceId =
+        typeof sourceIdOrTransition === 'string' ? sourceIdOrTransition : undefined;
+      const activeTransition =
+        typeof sourceIdOrTransition === 'string' ? undefined : sourceIdOrTransition;
+      return await sendRequest(
+        baseUrl,
         'post',
         `/room/${enc(roomId)}/input/${enc(inputId)}/hide`,
         activeTransition ? { activeTransition } : {},
+        sourceId ? { 'x-source-id': sourceId } : undefined,
       );
     },
 
-    async showInput(roomId, inputId, activeTransition) {
-      return await req(
+    async showInput(roomId, inputId, sourceIdOrTransition) {
+      const sourceId =
+        typeof sourceIdOrTransition === 'string' ? sourceIdOrTransition : undefined;
+      const activeTransition =
+        typeof sourceIdOrTransition === 'string' ? undefined : sourceIdOrTransition;
+      return await sendRequest(
+        baseUrl,
         'post',
         `/room/${enc(roomId)}/input/${enc(inputId)}/show`,
         activeTransition ? { activeTransition } : {},
+        sourceId ? { 'x-source-id': sourceId } : undefined,
       );
     },
 

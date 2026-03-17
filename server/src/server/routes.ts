@@ -1,5 +1,7 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import websocket from '@fastify/websocket';
+import { v4 as uuidv4 } from 'uuid';
 import { STATUS_CODES } from 'node:http';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
@@ -11,6 +13,7 @@ import type {
   TypeBoxTypeProvider,
 } from '@fastify/type-provider-typebox';
 import { state } from './serverState';
+import { roomEventBus } from './roomEventBus';
 import { registerStorageRoutes } from './storageRoutes';
 import { logRequest } from '../dashboard';
 import {
@@ -29,7 +32,6 @@ import {
   RESOLUTION_PRESETS,
   type Resolution,
   type ResolutionPreset,
-  type ShaderConfig,
 } from '../types';
 
 type RoomIdParams = { Params: { roomId: string } };
@@ -41,6 +43,11 @@ export const routes = Fastify({
 }).withTypeProvider<TypeBoxTypeProvider>();
 
 routes.register(cors, { origin: true });
+routes.register(websocket, {
+  options: {
+    perMessageDeflate: false,
+  },
+});
 
 routes.addHook('onResponse', (req, reply, done) => {
   logRequest(req.method, req.url, reply.statusCode);
@@ -148,6 +155,12 @@ const RoomIdParamsSchema = Type.Object({
 const RoomAndInputIdParamsSchema = Type.Object({
   roomId: Type.String({ maxLength: 64, minLength: 1 }),
   inputId: Type.String({ maxLength: 512, minLength: 1 }),
+});
+
+const ActiveTransitionSchema = Type.Object({
+  type: Type.String(),
+  durationMs: Type.Number(),
+  direction: Type.Union([Type.Literal('in'), Type.Literal('out')]),
 });
 
 const InputSchema = Type.Union([
@@ -290,6 +303,25 @@ routes.get<RoomIdParams>(
     });
   },
 );
+
+routes.after(() => {
+  routes.route<RoomIdParams>({
+    method: 'GET',
+    url: '/room/:roomId/ws',
+    schema: { params: RoomIdParamsSchema },
+    handler: async (_req, res) => {
+      res.status(426).send({
+        error: 'Upgrade Required',
+        message: 'Use a WebSocket client to connect to this endpoint.',
+      });
+    },
+    wsHandler: (socket, req) => {
+      const { roomId } = req.params;
+      const clientId = uuidv4();
+      roomEventBus.subscribe(roomId, clientId, socket);
+    },
+  });
+});
 
 routes.get('/rooms', async (_req, res) => {
   // const adminKey = _req.headers['x-admin-key'];
@@ -755,13 +787,7 @@ routes.post<RoomAndInputIdParams>(
 );
 
 const HideInputBodySchema = Type.Object({
-  activeTransition: Type.Optional(
-    Type.Object({
-      type: Type.String(),
-      durationMs: Type.Number(),
-      direction: Type.Union([Type.Literal('in'), Type.Literal('out')]),
-    }),
-  ),
+  activeTransition: Type.Optional(ActiveTransitionSchema),
 });
 
 routes.post<
@@ -778,19 +804,25 @@ routes.post<
       hasTransition: !!activeTransition,
     });
     const room = state.getRoom(roomId);
-    room.hideInput(inputId, activeTransition);
+    await room.hideInput(inputId, activeTransition);
+    const updatedInput = room.getInputs().find((i) => i.inputId === inputId);
+    if (updatedInput) {
+      const sourceId =
+        (req.headers['x-source-id'] as string | undefined) ?? null;
+      roomEventBus.broadcast(roomId, {
+        type: 'input_updated',
+        roomId,
+        inputId,
+        input: toPublicInputState(updatedInput),
+        sourceId,
+      });
+    }
     res.status(200).send({ status: 'ok' });
   },
 );
 
 const ShowInputBodySchema = Type.Object({
-  activeTransition: Type.Optional(
-    Type.Object({
-      type: Type.String(),
-      durationMs: Type.Number(),
-      direction: Type.Union([Type.Literal('in'), Type.Literal('out')]),
-    }),
-  ),
+  activeTransition: Type.Optional(ActiveTransitionSchema),
 });
 
 routes.post<
@@ -807,7 +839,19 @@ routes.post<
       hasTransition: !!activeTransition,
     });
     const room = state.getRoom(roomId);
-    room.showInput(inputId, activeTransition);
+    await room.showInput(inputId, activeTransition);
+    const updatedInput = room.getInputs().find((i) => i.inputId === inputId);
+    if (updatedInput) {
+      const sourceId =
+        (req.headers['x-source-id'] as string | undefined) ?? null;
+      roomEventBus.broadcast(roomId, {
+        type: 'input_updated',
+        roomId,
+        inputId,
+        input: toPublicInputState(updatedInput),
+        sourceId,
+      });
+    }
     res.status(200).send({ status: 'ok' });
   },
 );
@@ -941,6 +985,7 @@ const UpdateInputSchema = Type.Object({
   absoluteHeight: Type.Optional(Type.Number({ minimum: 0 })),
   absoluteTransitionDurationMs: Type.Optional(Type.Number({ minimum: 0 })),
   absoluteTransitionEasing: Type.Optional(Type.String()),
+  activeTransition: Type.Optional(ActiveTransitionSchema),
 });
 
 routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(
@@ -955,6 +1000,18 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(
     });
     const room = state.getRoom(roomId);
     await room.updateInput(inputId, req.body);
+    const updatedInput = room.getInputs().find((i) => i.inputId === inputId);
+    if (updatedInput) {
+      const sourceId =
+        (req.headers['x-source-id'] as string | undefined) ?? null;
+      roomEventBus.broadcast(roomId, {
+        type: 'input_updated',
+        roomId,
+        inputId,
+        input: toPublicInputState(updatedInput),
+        sourceId,
+      });
+    }
     res.status(200).send({ status: 'ok' });
   },
 );
@@ -969,6 +1026,13 @@ routes.delete<RoomAndInputIdParams>(
     console.log('[request] Remove input', { roomId, inputId });
     const room = state.getRoom(roomId);
     await room.removeInput(inputId);
+    const sourceId = (req.headers['x-source-id'] as string | undefined) ?? null;
+    roomEventBus.broadcast(roomId, {
+      type: 'input_deleted',
+      roomId,
+      inputId,
+      sourceId,
+    });
     res.status(200).send({ status: 'ok' });
   },
 );

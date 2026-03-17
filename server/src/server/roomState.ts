@@ -1465,7 +1465,7 @@ export class RoomState {
     this.output.store
       .getState()
       .updateState(
-        [...inputs].reverse(),
+        inputs,
         this.layout,
         this.swapDurationMs,
         this.swapOutgoingEnabled,

@@ -12,7 +12,7 @@ import type {
 } from '@/lib/types';
 import { useActions } from './contexts/actions-context';
 import { ActionsProvider } from './contexts/actions-context';
-import { defaultActions } from './contexts/default-actions';
+import { defaultActions, SESSION_SOURCE_ID } from './contexts/default-actions';
 import { useRecordingControls } from './hooks/use-recording-controls';
 import LayoutSelector, { type Layout } from '@/components/layout-selector';
 import {
@@ -36,6 +36,10 @@ import {
   type InputWrapper,
 } from './hooks/use-control-panel-state';
 import { useWhipConnections } from './hooks/use-whip-connections';
+import {
+  useRoomWebSocket,
+  type ConnectedPeer,
+} from './hooks/use-room-websocket';
 import { useControlPanelEvents } from './hooks/use-control-panel-events';
 import { FxAccordion } from './components/FxAccordion';
 import { AddVideoSection } from './components/AddVideoSection';
@@ -107,6 +111,7 @@ export type ControlPanelProps = {
     timelineSection: React.ReactNode;
     blockPropertiesSection: React.ReactNode;
     motionPanels: Record<string, React.ReactNode>;
+    peers: ConnectedPeer[];
   }) => React.ReactNode;
 };
 
@@ -213,6 +218,11 @@ function ControlPanelWithActions({
     isScreenshareActive,
     setIsScreenshareActive,
   } = whipConnections;
+
+  const { peers } = useRoomWebSocket(roomId, {
+    onRemoteInputChange: handleRefreshState,
+    ownSourceId: SESSION_SOURCE_ID,
+  });
 
   useEffect(() => {
     if (!isGuest || !onGuestStreamChange) return;
@@ -349,6 +359,7 @@ function ControlPanelWithActions({
           renderStreamsOutside={renderStreamsOutside}
           timelinePortalRef={timelinePortalRef}
           renderDashboard={renderDashboard}
+          peers={peers}
         />
       </WhipConnectionsProvider>
     </ControlPanelProvider>
@@ -377,6 +388,7 @@ type ControlPanelInnerProps = {
   renderStreamsOutside?: boolean;
   timelinePortalRef?: React.RefObject<HTMLDivElement | null>;
   renderDashboard?: ControlPanelProps['renderDashboard'];
+  peers: ConnectedPeer[];
 };
 
 function ControlPanelInner({
@@ -399,6 +411,7 @@ function ControlPanelInner({
   renderStreamsOutside,
   timelinePortalRef,
   renderDashboard,
+  peers,
 }: ControlPanelInnerProps) {
   const {
     roomId,
@@ -577,6 +590,7 @@ function ControlPanelInner({
           timelineSection,
           blockPropertiesSection,
           motionPanels,
+          peers,
         })}
       </>
     );
