@@ -6,7 +6,13 @@ interface RoomWebSocket {
   send(data: string | Buffer): void;
   close(code?: number, reason?: string | Buffer): void;
   on(event: "close", listener: () => void): this;
-  on(event: "message", listener: (data: Buffer) => void): this;
+  on(
+    event: "message",
+    listener: (
+      data: Buffer | string | ArrayBuffer | Buffer[],
+      isBinary: boolean,
+    ) => void,
+  ): this;
   on(event: string, listener: (...args: unknown[]) => void): this;
 }
 
@@ -73,26 +79,29 @@ class RoomEventBus {
     this._broadcastPeers(roomId);
 
     // Listen for identify / other client→server messages
-    ws.on("message", (data: Buffer) => {
-      let msg: unknown;
-      try {
-        msg = JSON.parse(data.toString());
-      } catch {
-        return;
-      }
-      if (
-        msg &&
-        typeof msg === "object" &&
-        (msg as Record<string, unknown>).type === "identify"
-      ) {
-        const name = (msg as Record<string, unknown>).name;
-        const record = pool.get(clientId);
-        if (record) {
-          record.info.name = typeof name === "string" ? name : null;
-          this._broadcastPeers(roomId);
+    ws.on(
+      "message",
+      (data: Buffer | string | ArrayBuffer | Buffer[], isBinary: boolean) => {
+        let msg: unknown;
+        try {
+          msg = JSON.parse(typeof data === "string" ? data : data.toString());
+        } catch {
+          return;
         }
-      }
-    });
+        if (
+          msg &&
+          typeof msg === "object" &&
+          (msg as Record<string, unknown>).type === "identify"
+        ) {
+          const name = (msg as Record<string, unknown>).name;
+          const record = pool.get(clientId);
+          if (record) {
+            record.info.name = typeof name === "string" ? name : null;
+            this._broadcastPeers(roomId);
+          }
+        }
+      },
+    );
 
     ws.on("close", () => {
       pool.delete(clientId);
