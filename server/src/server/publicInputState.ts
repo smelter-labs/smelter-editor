@@ -78,7 +78,11 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
     case 'local-mp4':
       return { ...base, sourceState: 'always-live' as const };
     case 'image':
-      return { ...base, sourceState: 'always-live' as const, imageId: input.imageId };
+      return {
+        ...base,
+        sourceState: 'always-live' as const,
+        imageId: input.imageId,
+      };
     case 'twitch-channel':
     case 'kick-channel':
       return {

@@ -64,7 +64,9 @@ export function createDefaultSnakeGameInputState(title?: string) {
       gridLineColor: '#000000',
       gridLineAlpha: 1.0,
     } satisfies SnakeGameState,
-    snakeEventShaders: { ...DEFAULT_SNAKE_EVENT_SHADERS } as SnakeEventShaderConfig,
+    snakeEventShaders: {
+      ...DEFAULT_SNAKE_EVENT_SHADERS,
+    } as SnakeEventShaderConfig,
     activeEffects: [] as ActiveSnakeEffect[],
     effectTimers: [] as NodeJS.Timeout[],
     metadata: {
@@ -77,14 +79,37 @@ export function createDefaultSnakeGameInputState(title?: string) {
 export function buildUpdatedSnakeGameState(
   currentGameState: SnakeGameState,
   incomingGameState: {
-    board: { width: number; height: number; cellSize: number; cellGap?: number };
-    cells: { x: number; y: number; color: string; size?: number; isHead?: boolean; direction?: 'up' | 'down' | 'left' | 'right'; progress?: number }[];
+    board: {
+      width: number;
+      height: number;
+      cellSize: number;
+      cellGap?: number;
+    };
+    cells: {
+      x: number;
+      y: number;
+      color: string;
+      size?: number;
+      isHead?: boolean;
+      direction?: 'up' | 'down' | 'left' | 'right';
+      progress?: number;
+    }[];
     smoothMove?: boolean;
     smoothMoveSpeed?: number;
     smoothMoveAccel?: number;
     smoothMoveDecel?: number;
     backgroundColor: string;
-    gameOverData?: { winnerName: string; reason: string; players: { name: string; score: number; eaten: number; cuts: number; color: string }[] };
+    gameOverData?: {
+      winnerName: string;
+      reason: string;
+      players: {
+        name: string;
+        score: number;
+        eaten: number;
+        cuts: number;
+        color: string;
+      }[];
+    };
   },
 ): SnakeGameState {
   return {
@@ -111,9 +136,13 @@ export function buildUpdatedSnakeGameState(
       incomingGameState.smoothMoveDecel > 0
         ? incomingGameState.smoothMoveDecel
         : 1.18,
-    backgroundColor: currentGameState.backgroundColor || incomingGameState.backgroundColor,
+    backgroundColor:
+      currentGameState.backgroundColor || incomingGameState.backgroundColor,
     cellGap: currentGameState.cellGap || incomingGameState.board.cellGap || 0,
-    boardBorderColor: currentGameState.boardBorderColor ?? currentGameState.gridLineColor ?? '#000000',
+    boardBorderColor:
+      currentGameState.boardBorderColor ??
+      currentGameState.gridLineColor ??
+      '#000000',
     boardBorderWidth: currentGameState.boardBorderWidth ?? 4,
     gridLineColor: currentGameState.gridLineColor ?? '#000000',
     gridLineAlpha: currentGameState.gridLineAlpha ?? 1.0,
@@ -135,7 +164,12 @@ export function processSnakeGameEvents(
   config: SnakeEventShaderConfig | undefined,
   onStoreUpdate: () => void,
 ): ProcessSnakeGameEventsResult {
-  if (!config) return { updatedActiveEffects: activeEffects, newTimers: [], needsStoreUpdate: false };
+  if (!config)
+    return {
+      updatedActiveEffects: activeEffects,
+      newTimers: [],
+      needsStoreUpdate: false,
+    };
 
   const now = Date.now();
   let currentEffects = [...activeEffects];
@@ -157,8 +191,10 @@ export function processSnakeGameEvents(
       if (cell.isHead) snakeColorsSet.add(cell.color);
     }
     const snakeCellIndices = cells
-      .map((cell, i) => (cell.isHead || snakeColorsSet.has(cell.color)) ? i : -1)
-      .filter(i => i !== -1);
+      .map((cell, i) =>
+        cell.isHead || snakeColorsSet.has(cell.color) ? i : -1,
+      )
+      .filter((i) => i !== -1);
 
     if (mapping.application.mode === 'all') {
       affectedCellIndices = Array.from({ length: totalCells }, (_, i) => i);
@@ -168,7 +204,8 @@ export function processSnakeGameEvents(
       const n = Math.min(mapping.application.n, snakeCellIndices.length);
       affectedCellIndices = snakeCellIndices.slice(0, n);
     } else if (mapping.application.mode === 'sequential') {
-      affectedCellIndices = snakeCellIndices.length > 0 ? [snakeCellIndices[0]] : [];
+      affectedCellIndices =
+        snakeCellIndices.length > 0 ? [snakeCellIndices[0]] : [];
     }
 
     const effect: ActiveSnakeEffect = {
@@ -181,13 +218,14 @@ export function processSnakeGameEvents(
     };
 
     // Remove any existing effect of the same type
-    currentEffects = currentEffects.filter(e => e.eventType !== event.type);
+    currentEffects = currentEffects.filter((e) => e.eventType !== event.type);
     currentEffects.push(effect);
 
     // Set cleanup timer
     const cleanupTimer = setTimeout(() => {
-      currentEffects = currentEffects.filter(e => e !== effect);
-      snakeGameState.activeEffects = currentEffects.length > 0 ? [...currentEffects] : undefined;
+      currentEffects = currentEffects.filter((e) => e !== effect);
+      snakeGameState.activeEffects =
+        currentEffects.length > 0 ? [...currentEffects] : undefined;
       onStoreUpdate();
     }, effectDurationMs);
     newTimers.push(cleanupTimer);
@@ -210,7 +248,8 @@ export function processSnakeGameEvents(
   }
 
   // Update game state with active effects
-  snakeGameState.activeEffects = currentEffects.length > 0 ? [...currentEffects] : undefined;
+  snakeGameState.activeEffects =
+    currentEffects.length > 0 ? [...currentEffects] : undefined;
 
   return {
     updatedActiveEffects: currentEffects,

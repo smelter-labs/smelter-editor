@@ -48,10 +48,10 @@ export function ScrollingText({
   }, [text, linePaddingInterval]);
   const measuredTextHeight = Math.max(lineHeight, lines.length * lineHeight);
   const totalTextHeight = measuredTextHeight + textVerticalPadding * 2;
-  
+
   const shouldAnimate = maxLines > 0;
   const startPosition = visibleHeight - textVerticalPadding;
-  
+
   const [scrollOffset, setScrollOffset] = useState(startPosition);
   const [permanentNudgeOffset, setPermanentNudgeOffset] = useState(0);
   const permanentNudgeRef = useRef(0);
@@ -78,10 +78,11 @@ export function ScrollingText({
       nudgeTimerRef.current = setInterval(() => {
         currentStep++;
         const progress = currentStep / steps;
-        const eased = progress < 0.5 
-          ? 4 * progress * progress * progress 
-          : 1 - Math.pow(-2 * progress + 2, 3) / 2;
-        
+        const eased =
+          progress < 0.5
+            ? 4 * progress * progress * progress
+            : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
         setAnimatingNudge(nudgeAmount * eased);
 
         if (currentStep >= steps) {
@@ -111,7 +112,7 @@ export function ScrollingText({
     const currentLinesCount = lines.length;
     const prevLinesCount = prevLinesCountRef.current;
     const isFirstRun = !initializedRef.current;
-    
+
     prevLinesCountRef.current = currentLinesCount;
     initializedRef.current = true;
 
@@ -124,7 +125,7 @@ export function ScrollingText({
     const pixelsPerFrame = (scrollSpeed / 1000) * intervalMs;
 
     timerRef.current = setInterval(() => {
-      setScrollOffset(prev => {
+      setScrollOffset((prev) => {
         const effectivePosition = prev + permanentNudgeRef.current;
         if (effectivePosition <= targetPosition) {
           if (scrollLoop) {
@@ -148,22 +149,34 @@ export function ScrollingText({
         timerRef.current = null;
       }
     };
-  }, [text, shouldAnimate, totalTextHeight, startPosition, scrollSpeed, scrollLoop, lines.length]);
+  }, [
+    text,
+    shouldAnimate,
+    totalTextHeight,
+    startPosition,
+    scrollSpeed,
+    scrollLoop,
+    lines.length,
+  ]);
 
-  const textTopOffset = shouldAnimate ? scrollOffset + permanentNudgeOffset + animatingNudge : 0;
+  const textTopOffset = shouldAnimate
+    ? scrollOffset + permanentNudgeOffset + animatingNudge
+    : 0;
 
   return (
-    <View style={{ 
-      width: containerWidth, 
-      height: visibleHeight, 
-      overflow: 'hidden',
-    }}>
-      <View style={{ 
+    <View
+      style={{
         width: containerWidth,
-        height: totalTextHeight,
-        top: textTopOffset,
-        left: 0,
+        height: visibleHeight,
+        overflow: 'hidden',
       }}>
+      <View
+        style={{
+          width: containerWidth,
+          height: totalTextHeight,
+          top: textTopOffset,
+          left: 0,
+        }}>
         <View
           style={{
             width: containerWidth,
@@ -171,15 +184,16 @@ export function ScrollingText({
             top: textVerticalPadding,
             left: 0,
           }}>
-          <Text style={{ 
-            fontSize, 
-            lineHeight,
-            width: containerWidth,
-            color, 
-            wrap: 'word',
-            align,
-            fontFamily: 'Star Jedi',
-          }}>
+          <Text
+            style={{
+              fontSize,
+              lineHeight,
+              width: containerWidth,
+              color,
+              wrap: 'word',
+              align,
+              fontFamily: 'Star Jedi',
+            }}>
             {paddedText}
           </Text>
         </View>

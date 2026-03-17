@@ -2,7 +2,16 @@ import { Rescaler, Shader } from '@swmansion/smelter';
 import { View } from '@swmansion/smelter';
 import React, { useContext } from 'react';
 import { useStore } from 'zustand';
-import { StoreContext, useResolution, useIsVertical, useNewsStripFadeDuringSwap, useNewsStripEnabled, useSwapDurationMs, useSwapFadeInDurationMs, useSwapFadeOutDurationMs } from '../store';
+import {
+  StoreContext,
+  useResolution,
+  useIsVertical,
+  useNewsStripFadeDuringSwap,
+  useNewsStripEnabled,
+  useSwapDurationMs,
+  useSwapFadeInDurationMs,
+  useSwapFadeOutDurationMs,
+} from '../store';
 import { usePrimarySwapTransition } from '../transitions/usePrimarySwapTransition';
 import { usePostSwapFadeIn } from '../transitions/usePostSwapFadeIn';
 import { NewsStripDecorated } from './NewsStripDecorated';
@@ -16,7 +25,7 @@ type NewsStripOverlayProps = {
 
 export function NewsStripOverlay({ theme }: NewsStripOverlayProps) {
   const store = useContext(StoreContext);
-  const inputs = useStore(store, state => state.inputs);
+  const inputs = useStore(store, (state) => state.inputs);
   const resolution = useResolution();
   const isVertical = useIsVertical();
   const newsStripFadeDuringSwap = useNewsStripFadeDuringSwap();
@@ -25,12 +34,20 @@ export function NewsStripOverlay({ theme }: NewsStripOverlayProps) {
   const swapFadeInDurationMs = useSwapFadeInDurationMs();
   const swapFadeOutDurationMs = useSwapFadeOutDurationMs();
   const swap = usePrimarySwapTransition(inputs, swapDurationMs);
-  const fadeOpacity = usePostSwapFadeIn(swap.isTransitioning, swapFadeInDurationMs, swapFadeOutDurationMs);
+  const fadeOpacity = usePostSwapFadeIn(
+    swap.isTransitioning,
+    swapFadeInDurationMs,
+    swapFadeOutDurationMs,
+  );
   const { width, height } = resolution;
   const { waveAmpPx, waveSpeed, marqueeLeft } = useNewsStripAnimation(width);
 
-  const stripHeight = isVertical ? Math.round(height * 0.12) : Math.round(height * 0.31);
-  const stripTop = isVertical ? height - stripHeight : Math.round(height * 0.67);
+  const stripHeight = isVertical
+    ? Math.round(height * 0.12)
+    : Math.round(height * 0.31);
+  const stripTop = isVertical
+    ? height - stripHeight
+    : Math.round(height * 0.67);
   const showStrip = !isVertical && newsStripEnabled;
 
   if (!showStrip) {
@@ -52,9 +69,12 @@ export function NewsStripOverlay({ theme }: NewsStripOverlayProps) {
         left: 0,
       }}>
       <Shader
-        shaderId="opacity"
+        shaderId='opacity'
         resolution={{ width, height: stripHeight }}
-        shaderParam={{ type: 'struct', value: [{ type: 'f32', fieldName: 'opacity', value: opacityValue }] }}>
+        shaderParam={{
+          type: 'struct',
+          value: [{ type: 'f32', fieldName: 'opacity', value: opacityValue }],
+        }}>
         <View style={{ width, height: stripHeight }}>
           <NewsStripDecorated
             resolution={{ width, height: stripHeight }}

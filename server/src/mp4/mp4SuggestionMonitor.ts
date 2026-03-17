@@ -12,7 +12,7 @@ class Mp4SuggestionMonitor {
     } catch {
       files = [];
     }
-    this.mp4Files = files.filter(f => f.toLowerCase().endsWith('.mp4'));
+    this.mp4Files = files.filter((f) => f.toLowerCase().endsWith('.mp4'));
   }
 }
 const mp4SuggestionsMonitor = new Mp4SuggestionMonitor();

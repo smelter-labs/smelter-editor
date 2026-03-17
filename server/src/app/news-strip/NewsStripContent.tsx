@@ -67,8 +67,15 @@ export function NewsStripContent({
           overflow: 'hidden',
           backgroundColor: theme.logoBoxBg,
         }}>
-        <Rescaler style={{ rescaleMode: 'fill', width: Math.round(width * 0.059), height: Math.round(stripHeight * 0.16), top: Math.round(stripHeight * 0.12), left: Math.round(width * 0.02) }}>
-          <Image imageId="smelter_logo" />
+        <Rescaler
+          style={{
+            rescaleMode: 'fill',
+            width: Math.round(width * 0.059),
+            height: Math.round(stripHeight * 0.16),
+            top: Math.round(stripHeight * 0.12),
+            left: Math.round(width * 0.02),
+          }}>
+          <Image imageId='smelter_logo' />
         </Rescaler>
       </View>
       <View

@@ -1,6 +1,11 @@
 import { View, Rescaler, Shader, Text } from '@swmansion/smelter';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { type InputConfig, useResolution, useIsVertical, useLayoutInputs } from '../store';
+import {
+  type InputConfig,
+  useResolution,
+  useIsVertical,
+  useLayoutInputs,
+} from '../store';
 import { Input } from '../../inputs/inputs';
 
 // ----- Pure helpers (logic separated from React) -----
@@ -12,13 +17,13 @@ function easeInOutCubic(t: number): number {
 }
 
 function computeDesiredIds(inputs: Array<InputConfig>): string[] {
-  return inputs.map(i => i.inputId);
+  return inputs.map((i) => i.inputId);
 }
 
 function buildYOffsetMap(
   ids: string[],
   baseYOffset: number,
-  stepYOffset: number
+  stepYOffset: number,
 ): Record<string, number> {
   const out: Record<string, number> = {};
   for (let idx = 0; idx < ids.length; idx++) {
@@ -36,7 +41,10 @@ function xPatternOffset(index: number, stepPx: number): number {
   return sign * magnitude;
 }
 
-function buildXOffsetMap(ids: string[], xStepPx: number): Record<string, number> {
+function buildXOffsetMap(
+  ids: string[],
+  xStepPx: number,
+): Record<string, number> {
   const out: Record<string, number> = {};
   for (let idx = 0; idx < ids.length; idx++) {
     out[ids[idx]] = xPatternOffset(idx, xStepPx);
@@ -47,7 +55,7 @@ function buildXOffsetMap(ids: string[], xStepPx: number): Record<string, number>
 function buildScaleMap(
   ids: string[],
   baseScale: number,
-  shrinkPercent: number
+  shrinkPercent: number,
 ): Record<string, number> {
   const out: Record<string, number> = {};
   const factor = Math.max(0, 1 - shrinkPercent);
@@ -73,7 +81,7 @@ function buildWobbleMaps(
   baseWobbleXAmp: number,
   baseWobbleYAmp: number,
   baseWobbleXFreq: number,
-  baseWobbleYFreq: number
+  baseWobbleYFreq: number,
 ): {
   wobbleXAmp: Record<string, number>;
   wobbleYAmp: Record<string, number>;
@@ -145,7 +153,7 @@ export function WrappedLayout() {
       wobble_y_amp_px: 50,
       wobble_y_freq: 0.5,
     }),
-    []
+    [],
   );
 
   // Animate per-input Y offsets to their desired positions (based on desired order)
@@ -166,7 +174,7 @@ export function WrappedLayout() {
   const [, setArrivalIndexById] = useState<Record<string, number>>({});
   const nextArrivalIndexRef = useRef<number>(0);
   useEffect(() => {
-    setArrivalIndexById(prev => {
+    setArrivalIndexById((prev) => {
       const next = { ...prev };
       // Keep monotonic counter in sync with already assigned indices
       const assignedCount = Object.keys(next).length;
@@ -192,15 +200,15 @@ export function WrappedLayout() {
   // Targets follow desired order (enables swapping animation)
   const targetYOffsetById = useMemo(
     () => buildYOffsetMap(desiredIds, baseYOffset, stepYOffset),
-    [desiredIds]
+    [desiredIds],
   );
   const targetXOffsetById = useMemo(
     () => buildXOffsetMap(desiredIds, xStepPx),
-    [desiredIds, xStepPx]
+    [desiredIds, xStepPx],
   );
   const targetScaleById = useMemo(
     () => buildScaleMap(desiredIds, baseCircleScale, shrinkPercent),
-    [desiredIds, baseCircleScale, shrinkPercent]
+    [desiredIds, baseCircleScale, shrinkPercent],
   );
   const {
     wobbleXAmp: targetWobbleXAmpById,
@@ -209,8 +217,14 @@ export function WrappedLayout() {
     wobbleYFreq: targetWobbleYFreqById,
   } = useMemo(
     () =>
-      buildWobbleMaps(desiredIds, baseWobbleXAmp, baseWobbleYAmp, baseWobbleXFreq, baseWobbleYFreq),
-    [desiredIds]
+      buildWobbleMaps(
+        desiredIds,
+        baseWobbleXAmp,
+        baseWobbleYAmp,
+        baseWobbleXFreq,
+        baseWobbleYFreq,
+      ),
+    [desiredIds],
   );
   // Persistent hue per input: assign once on first sight, keep even if order changes
   const baseOutlineHue = 0.44;
@@ -219,7 +233,7 @@ export function WrappedLayout() {
   // Sequential hue assignment independent of current queue position
   const hueIndexRef = useRef<number>(0);
   useEffect(() => {
-    setHueById(prev => {
+    setHueById((prev) => {
       const next = { ...prev };
       // Sync counter with how many are already assigned (monotonic, never decremented)
       const assignedCount = Object.keys(next).length;
@@ -256,7 +270,7 @@ export function WrappedLayout() {
 
   // Ensure state keys match current inputs: initialize from arrival-based initial maps
   useEffect(() => {
-    setYOffsetById(prev => {
+    setYOffsetById((prev) => {
       const next = { ...prev };
       const endIdx = Math.max(0, desiredIds.length - 1);
       const initY = baseYOffset - endIdx * stepYOffset;
@@ -275,7 +289,7 @@ export function WrappedLayout() {
   }, [desiredIds, targetYOffsetById, baseYOffset, stepYOffset]);
 
   useEffect(() => {
-    setXOffsetById(prev => {
+    setXOffsetById((prev) => {
       const next = { ...prev };
       const endIdx = Math.max(0, desiredIds.length - 1);
       const initX = xPatternOffset(endIdx, xStepPx);
@@ -294,7 +308,7 @@ export function WrappedLayout() {
   }, [desiredIds, targetXOffsetById, xStepPx]);
 
   useEffect(() => {
-    setScaleById(prev => {
+    setScaleById((prev) => {
       const next = { ...prev };
       const endIdx = Math.max(0, desiredIds.length - 1);
       const factor = Math.max(0, 1 - shrinkPercent);
@@ -353,7 +367,7 @@ export function WrappedLayout() {
     const tick = () => {
       const t = Math.min(1, (Date.now() - start) / EASING_DURATION_MS);
       const e = easeInOutCubic(t);
-      setYOffsetById(prev => {
+      setYOffsetById((prev) => {
         const next: Record<string, number> = { ...prev };
         for (const id of Object.keys(toRef.current)) {
           const from = fromRef.current[id] ?? toRef.current[id];
@@ -362,7 +376,7 @@ export function WrappedLayout() {
         }
         return next;
       });
-      setXOffsetById(prev => {
+      setXOffsetById((prev) => {
         const next: Record<string, number> = { ...prev };
         for (const id of Object.keys(toXRef.current)) {
           const from = fromXRef.current[id] ?? toXRef.current[id];
@@ -371,7 +385,7 @@ export function WrappedLayout() {
         }
         return next;
       });
-      setScaleById(prev => {
+      setScaleById((prev) => {
         const next: Record<string, number> = { ...prev };
         for (const id of Object.keys(toScaleRef.current)) {
           const from = fromScaleRef.current[id] ?? toScaleRef.current[id];
@@ -411,7 +425,7 @@ export function WrappedLayout() {
           left: 0,
         }}>
         <Shader
-          shaderId="star-streaks"
+          shaderId='star-streaks'
           resolution={{ width, height }}
           shaderParam={{
             type: 'struct',
@@ -427,7 +441,12 @@ export function WrappedLayout() {
             ],
           }}>
           <View
-            style={{ width, height, backgroundColor: '#000000', direction: 'column' }}
+            style={{
+              width,
+              height,
+              backgroundColor: '#000000',
+              direction: 'column',
+            }}
           />
         </Shader>
       </Rescaler>
@@ -441,9 +460,11 @@ export function WrappedLayout() {
         const yOffset =
           (id in yOffsetById ? yOffsetById[id] : targetYOffsetById[id]) ??
           baseYOffset - renderIdx * stepYOffset;
-        const xOffset = (id in xOffsetById ? xOffsetById[id] : targetXOffsetById[id]) ?? 0;
+        const xOffset =
+          (id in xOffsetById ? xOffsetById[id] : targetXOffsetById[id]) ?? 0;
         const circleScale =
-          (id in scaleById ? scaleById[id] : targetScaleById[id]) ?? baseCircleScale;
+          (id in scaleById ? scaleById[id] : targetScaleById[id]) ??
+          baseCircleScale;
         return (
           <Rescaler
             key={input.inputId}
@@ -457,7 +478,7 @@ export function WrappedLayout() {
               left: 0,
             }}>
             <Shader
-              shaderId="circle-mask-outline"
+              shaderId='circle-mask-outline'
               resolution={{ width: 1920, height: 1080 }}
               shaderParam={{
                 type: 'struct',
@@ -468,12 +489,32 @@ export function WrappedLayout() {
                     fieldName: 'circle_diameter',
                     value: shaderDefaults.circle_diameter,
                   },
-                  { type: 'f32', fieldName: 'outline_width', value: shaderDefaults.outline_width },
-                  { type: 'f32', fieldName: 'outline_hue', value: hueById[id] ?? 0.44 },
-                  { type: 'f32', fieldName: 'circle_scale', value: circleScale },
-                  { type: 'f32', fieldName: 'circle_offset_x_px', value: xOffset },
+                  {
+                    type: 'f32',
+                    fieldName: 'outline_width',
+                    value: shaderDefaults.outline_width,
+                  },
+                  {
+                    type: 'f32',
+                    fieldName: 'outline_hue',
+                    value: hueById[id] ?? 0.44,
+                  },
+                  {
+                    type: 'f32',
+                    fieldName: 'circle_scale',
+                    value: circleScale,
+                  },
+                  {
+                    type: 'f32',
+                    fieldName: 'circle_offset_x_px',
+                    value: xOffset,
+                  },
                   // Animated per-input vertical offset
-                  { type: 'f32', fieldName: 'circle_offset_y_px', value: yOffset },
+                  {
+                    type: 'f32',
+                    fieldName: 'circle_offset_y_px',
+                    value: yOffset,
+                  },
                   // Free oscillation (organic per input)
                   {
                     type: 'f32',
@@ -496,13 +537,21 @@ export function WrappedLayout() {
                     value: targetWobbleYFreqById[id] ?? baseWobbleYFreq,
                   },
                   // Trail defaults
-                  { type: 'f32', fieldName: 'trail_enable', value: shaderDefaults.trail_enable },
+                  {
+                    type: 'f32',
+                    fieldName: 'trail_enable',
+                    value: shaderDefaults.trail_enable,
+                  },
                   {
                     type: 'f32',
                     fieldName: 'trail_spawn_interval',
                     value: shaderDefaults.trail_spawn_interval,
                   },
-                  { type: 'f32', fieldName: 'trail_speed', value: shaderDefaults.trail_speed },
+                  {
+                    type: 'f32',
+                    fieldName: 'trail_speed',
+                    value: shaderDefaults.trail_speed,
+                  },
                   {
                     type: 'f32',
                     fieldName: 'trail_shrink_speed',
@@ -523,7 +572,11 @@ export function WrappedLayout() {
                     fieldName: 'trail_count_f32',
                     value: shaderDefaults.trail_count_f32,
                   },
-                  { type: 'f32', fieldName: 'trail_opacity', value: shaderDefaults.trail_opacity },
+                  {
+                    type: 'f32',
+                    fieldName: 'trail_opacity',
+                    value: shaderDefaults.trail_opacity,
+                  },
                 ],
               }}>
               <View

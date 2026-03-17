@@ -1,1 +1,5 @@
-export type { ShaderParamConfig, ShaderConfig, ShaderPreset } from '@smelter-editor/types';
+export type {
+  ShaderParamConfig,
+  ShaderConfig,
+  ShaderPreset,
+} from '@smelter-editor/types';

@@ -13,7 +13,9 @@ class PictureSuggestionMonitor {
       files = [];
     }
     const exts = ['.jpg', '.jpeg', '.png', '.gif', '.svg'];
-    this.pictureFiles = files.filter(f => exts.some(ext => f.toLowerCase().endsWith(ext)));
+    this.pictureFiles = files.filter((f) =>
+      exts.some((ext) => f.toLowerCase().endsWith(ext)),
+    );
   }
 }
 const pictureSuggestionsMonitor = new PictureSuggestionMonitor();

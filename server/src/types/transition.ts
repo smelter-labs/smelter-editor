@@ -1,1 +1,5 @@
-export type { TransitionType, TransitionConfig, ActiveTransition } from '@smelter-editor/types';
+export type {
+  TransitionType,
+  TransitionConfig,
+  ActiveTransition,
+} from '@smelter-editor/types';

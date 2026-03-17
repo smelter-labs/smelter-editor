@@ -26,45 +26,84 @@ function transitionShaderId(type: ActiveTransition['type']): string {
 
 function slideDirection(type: ActiveTransition['type']): number {
   switch (type) {
-    case 'slide-left': return 0;
-    case 'slide-right': return 1;
-    case 'slide-up': return 2;
-    case 'slide-down': return 3;
-    default: return 0;
+    case 'slide-left':
+      return 0;
+    case 'slide-right':
+      return 1;
+    case 'slide-up':
+      return 2;
+    case 'slide-down':
+      return 3;
+    default:
+      return 0;
   }
 }
 
 function wipeDirection(type: ActiveTransition['type']): number {
   switch (type) {
-    case 'wipe-left': return 0;
-    case 'wipe-right': return 1;
-    default: return 0;
+    case 'wipe-left':
+      return 0;
+    case 'wipe-right':
+      return 1;
+    default:
+      return 0;
   }
 }
 
-function buildShaderParams(type: ActiveTransition['type'], progress: number): ShaderParamStructField[] {
+function buildShaderParams(
+  type: ActiveTransition['type'],
+  progress: number,
+): ShaderParamStructField[] {
   const shaderId = transitionShaderId(type);
 
   if (shaderId === 'opacity') {
-    return [{ type: 'f32', fieldName: 'opacity', value: progress } as ShaderParamStructField];
+    return [
+      {
+        type: 'f32',
+        fieldName: 'opacity',
+        value: progress,
+      } as ShaderParamStructField,
+    ];
   }
 
   if (shaderId === 'transition-slide') {
     return [
-      { type: 'f32', fieldName: 'progress', value: progress } as ShaderParamStructField,
-      { type: 'f32', fieldName: 'direction', value: slideDirection(type) } as ShaderParamStructField,
+      {
+        type: 'f32',
+        fieldName: 'progress',
+        value: progress,
+      } as ShaderParamStructField,
+      {
+        type: 'f32',
+        fieldName: 'direction',
+        value: slideDirection(type),
+      } as ShaderParamStructField,
     ];
   }
 
   if (shaderId === 'transition-wipe') {
     return [
-      { type: 'f32', fieldName: 'progress', value: progress } as ShaderParamStructField,
-      { type: 'f32', fieldName: 'direction', value: wipeDirection(type) } as ShaderParamStructField,
+      {
+        type: 'f32',
+        fieldName: 'progress',
+        value: progress,
+      } as ShaderParamStructField,
+      {
+        type: 'f32',
+        fieldName: 'direction',
+        value: wipeDirection(type),
+      } as ShaderParamStructField,
     ];
   }
 
   // dissolve
-  return [{ type: 'f32', fieldName: 'progress', value: progress } as ShaderParamStructField];
+  return [
+    {
+      type: 'f32',
+      fieldName: 'progress',
+      value: progress,
+    } as ShaderParamStructField,
+  ];
 }
 
 export function TransitionShaderWrapper({

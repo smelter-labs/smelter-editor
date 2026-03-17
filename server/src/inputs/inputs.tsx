@@ -29,12 +29,15 @@ export function Input({ input }: { input: InputConfig }) {
   const isImage = !!input.imageId;
   const isTextInput = !!input.text;
   const isGame = !!input.snakeGameState;
-  const streamState = isImage || isTextInput || isGame ? 'playing' : (streams[input.inputId]?.videoState ?? 'finished');
+  const streamState =
+    isImage || isTextInput || isGame
+      ? 'playing'
+      : (streams[input.inputId]?.videoState ?? 'finished');
   const isVerticalInput = input.orientation === 'vertical';
-  const resolution = isVerticalInput ? { width: 1080, height: 1920 } : { width: 1920, height: 1080 };
-  const borderWidth = normalizeBorderWidth(
-    input.borderWidth ?? 0,
-  );
+  const resolution = isVerticalInput
+    ? { width: 1080, height: 1920 }
+    : { width: 1920, height: 1080 };
+  const borderWidth = normalizeBorderWidth(input.borderWidth ?? 0);
   const borderColor = input.borderColor ?? '#ff0000';
   const contentWidth = Math.max(1, resolution.width - borderWidth * 2);
   const contentHeight = Math.max(1, resolution.height - borderWidth * 2);
@@ -52,7 +55,10 @@ export function Input({ input }: { input: InputConfig }) {
               backgroundColor: isTextInput ? '#1a1a2e' : undefined,
             }}>
             {isGame && getInputRenderer('game') ? (
-              getInputRenderer('game')!(input, { width: contentWidth, height: contentHeight })
+              getInputRenderer('game')!(input, {
+                width: contentWidth,
+                height: contentHeight,
+              })
             ) : isImage ? (
               <Rescaler style={{ rescaleMode: 'fit' }}>
                 <Image imageId={input.imageId!} />
@@ -79,7 +85,7 @@ export function Input({ input }: { input: InputConfig }) {
         ) : streamState === 'ready' ? (
           <View style={{ padding: 300 }}>
             <Rescaler style={{ rescaleMode: 'fit' }}>
-              <Image imageId="spinner" />
+              <Image imageId='spinner' />
             </Rescaler>
           </View>
         ) : streamState === 'finished' ? (
@@ -103,10 +109,16 @@ export function Input({ input }: { input: InputConfig }) {
               bottom: 0,
               left: 0,
             }}>
-            <Text style={{ fontSize: 40, color: 'white', fontFamily: 'Star Jedi' }}>{input?.title}</Text>
+            <Text
+              style={{ fontSize: 40, color: 'white', fontFamily: 'Star Jedi' }}>
+              {input?.title}
+            </Text>
             <View style={{ height: 10 }} />
 
-            <Text style={{ fontSize: 25, color: 'white', fontFamily: 'Star Jedi' }}>{input?.description}</Text>
+            <Text
+              style={{ fontSize: 25, color: 'white', fontFamily: 'Star Jedi' }}>
+              {input?.description}
+            </Text>
           </View>
         )}
       </View>
@@ -133,13 +145,15 @@ export function Input({ input }: { input: InputConfig }) {
     return () => clearTimeout(timeout);
   }, [hiddenForRestart]);
 
-  const activeShaders = input.shaders.filter(shader => shader.enabled);
+  const activeShaders = input.shaders.filter((shader) => shader.enabled);
 
   let mainRendered = wrapWithShaders(inputComponent, activeShaders, resolution);
 
   if (input.activeTransition) {
     mainRendered = (
-      <TransitionShaderWrapper transition={input.activeTransition} resolution={resolution}>
+      <TransitionShaderWrapper
+        transition={input.activeTransition}
+        resolution={resolution}>
         {mainRendered}
       </TransitionShaderWrapper>
     );
@@ -147,8 +161,13 @@ export function Input({ input }: { input: InputConfig }) {
 
   if (hiddenForRestart || input.restartFading) {
     mainRendered = (
-      <Shader shaderId="opacity" resolution={resolution}
-        shaderParam={{ type: 'struct', value: [{ type: 'f32', fieldName: 'opacity', value: 0 }] }}>
+      <Shader
+        shaderId='opacity'
+        resolution={resolution}
+        shaderParam={{
+          type: 'struct',
+          value: [{ type: 'f32', fieldName: 'opacity', value: 0 }],
+        }}>
         {mainRendered}
       </Shader>
     );
@@ -157,8 +176,10 @@ export function Input({ input }: { input: InputConfig }) {
   if (input.attachedInputs && input.attachedInputs.length > 0) {
     return (
       <View style={{ ...resolution, direction: 'column', overflow: 'visible' }}>
-        {input.attachedInputs.map(attached => (
-          <Rescaler key={attached.inputId} style={{ ...resolution, top: 0, left: 0 }}>
+        {input.attachedInputs.map((attached) => (
+          <Rescaler
+            key={attached.inputId}
+            style={{ ...resolution, top: 0, left: 0 }}>
             <Input input={attached} />
           </Rescaler>
         ))}
@@ -179,13 +200,11 @@ export function SmallInput({
   input: InputConfig;
   resolution?: Resolution;
 }) {
-  const activeShaders = input.shaders.filter(shader => shader.enabled);
+  const activeShaders = input.shaders.filter((shader) => shader.enabled);
   const isImage = !!input.imageId;
   const isTextInput = !!input.text;
   const isGame = !!input.snakeGameState;
-  const borderWidth = normalizeBorderWidth(
-    input.borderWidth ?? 0,
-  );
+  const borderWidth = normalizeBorderWidth(input.borderWidth ?? 0);
   const borderColor = input.borderColor ?? '#ff0000';
   const contentWidth = Math.max(1, resolution.width - borderWidth * 2);
   const contentHeight = Math.max(1, resolution.height - borderWidth * 2);
@@ -206,7 +225,10 @@ export function SmallInput({
           backgroundColor: isTextInput ? '#1a1a2e' : undefined,
         }}>
         {isGame && getInputRenderer('game') ? (
-          getInputRenderer('game')!(input, { width: contentWidth, height: contentHeight })
+          getInputRenderer('game')!(input, {
+            width: contentWidth,
+            height: contentHeight,
+          })
         ) : isImage ? (
           <Rescaler style={{ rescaleMode: 'fit' }}>
             <Image imageId={input.imageId!} />
@@ -242,7 +264,10 @@ export function SmallInput({
             bottom: 0,
             left: 0,
           }}>
-          <Text style={{ fontSize: 30, color: 'white', fontFamily: 'Star Jedi' }}>{input.title}</Text>
+          <Text
+            style={{ fontSize: 30, color: 'white', fontFamily: 'Star Jedi' }}>
+            {input.title}
+          </Text>
         </View>
       )}
     </View>
@@ -254,7 +279,9 @@ export function SmallInput({
 
   if (input.activeTransition) {
     mainRendered = (
-      <TransitionShaderWrapper transition={input.activeTransition} resolution={resolution}>
+      <TransitionShaderWrapper
+        transition={input.activeTransition}
+        resolution={resolution}>
         {mainRendered}
       </TransitionShaderWrapper>
     );
@@ -263,9 +290,12 @@ export function SmallInput({
   if (input.attachedInputs && input.attachedInputs.length > 0) {
     return (
       <Rescaler>
-        <View style={{ ...resolution, direction: 'column', overflow: 'visible' }}>
-          {input.attachedInputs.map(attached => (
-            <Rescaler key={attached.inputId} style={{ ...resolution, top: 0, left: 0 }}>
+        <View
+          style={{ ...resolution, direction: 'column', overflow: 'visible' }}>
+          {input.attachedInputs.map((attached) => (
+            <Rescaler
+              key={attached.inputId}
+              style={{ ...resolution, top: 0, left: 0 }}>
               <SmallInput input={attached} resolution={resolution} />
             </Rescaler>
           ))}

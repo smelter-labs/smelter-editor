@@ -29,7 +29,7 @@ export type SwapTransitionState = {
  */
 export function usePrimarySwapTransition(
   inputs: InputConfig[],
-  durationMs: number = 500
+  durationMs: number = 500,
 ): SwapTransitionState {
   const prevPrimaryRef = useRef<InputConfig | null>(null);
   const prevInputsRef = useRef<InputConfig[]>(inputs);
@@ -56,12 +56,14 @@ export function usePrimarySwapTransition(
     prevPrimaryRef.current.inputId !== currentPrimary.inputId &&
     !state.isTransitioning &&
     durationMs > 0 &&
-    inputs.some(i => i.inputId === prevPrimaryRef.current!.inputId)
+    inputs.some((i) => i.inputId === prevPrimaryRef.current!.inputId)
   ) {
     const prevSecondary = prevInputsRef.current.filter(
-      i => i.inputId !== prevPrimaryRef.current!.inputId
+      (i) => i.inputId !== prevPrimaryRef.current!.inputId,
     );
-    const idx = prevSecondary.findIndex(i => i.inputId === currentPrimary.inputId);
+    const idx = prevSecondary.findIndex(
+      (i) => i.inputId === currentPrimary.inputId,
+    );
 
     // setState during render: React discards current output and re-renders
     // immediately before painting, so the outgoing overlay is never missing.

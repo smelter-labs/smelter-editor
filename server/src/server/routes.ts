@@ -6,11 +6,17 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { pathExists, readdir, readFile, stat } from 'fs-extra';
 import { Type } from '@sinclair/typebox';
-import type { Static, TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
+import type {
+  Static,
+  TypeBoxTypeProvider,
+} from '@fastify/type-provider-typebox';
 import { state } from './serverState';
 import { registerStorageRoutes } from './storageRoutes';
 import { logRequest } from '../dashboard';
-import { registerSnakeGameRoutes, clearSnakeGameRoomInactivityTimer } from '../snakeGame/snakeGameRoutes';
+import {
+  registerSnakeGameRoutes,
+  clearSnakeGameRoomInactivityTimer,
+} from '../snakeGame/snakeGameRoutes';
 import { TwitchChannelSuggestions } from '../twitch/TwitchChannelMonitor';
 import type { RegisterInputOptions, PendingWhipInputData } from './roomState';
 import { toPublicInputState } from './publicInputState';
@@ -19,7 +25,12 @@ import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
 import pictureSuggestionsMonitor from '../pictures/pictureSuggestionMonitor';
 import { KickChannelSuggestions } from '../kick/KickChannelMonitor';
 import shadersController from '../shaders/shaders';
-import { RESOLUTION_PRESETS, type Resolution, type ResolutionPreset, type ShaderConfig } from '../types';
+import {
+  RESOLUTION_PRESETS,
+  type Resolution,
+  type ResolutionPreset,
+  type ShaderConfig,
+} from '../types';
 
 type RoomIdParams = { Params: { roomId: string } };
 type RoomAndInputIdParams = { Params: { roomId: string; inputId: string } };
@@ -37,7 +48,12 @@ routes.addHook('onResponse', (req, reply, done) => {
 });
 
 routes.setErrorHandler((err: unknown, _req, res) => {
-  const e = err as { statusCode?: number; status?: number; code?: string; message?: string };
+  const e = err as {
+    statusCode?: number;
+    status?: number;
+    code?: string;
+    message?: string;
+  };
   const statusCode = e.statusCode ?? e.status ?? 500;
   const code = e.code ?? 'INTERNAL_ERROR';
   const message = e.message ?? 'Internal server error';
@@ -75,9 +91,12 @@ routes.get<{ Params: { fileName: string } }>(
 
     try {
       const { stdout } = await execFileAsync('ffprobe', [
-        '-v', 'error',
-        '-show_entries', 'format=duration',
-        '-of', 'csv=p=0',
+        '-v',
+        'error',
+        '-show_entries',
+        'format=duration',
+        '-of',
+        'csv=p=0',
         filePath,
       ]);
       const seconds = parseFloat(stdout.trim());
@@ -88,10 +107,13 @@ routes.get<{ Params: { fileName: string } }>(
       }
       return res.status(500).send({ error: 'Could not parse duration' });
     } catch (err: any) {
-      console.error('Failed to get MP4 duration via ffprobe', { fileName: safeName, err: err?.message });
+      console.error('Failed to get MP4 duration via ffprobe', {
+        fileName: safeName,
+        err: err?.message,
+      });
       return res.status(500).send({ error: 'Failed to read MP4 duration' });
     }
-  }
+  },
 );
 
 routes.get('/suggestions/pictures', async (_req, res) => {
@@ -112,9 +134,10 @@ routes.get('/suggestions', async (_req, res) => {
 });
 
 routes.get('/active-rooms', async (_req, res) => {
-  const rooms = state.getRooms()
-    .filter(room => !room.pendingDelete)
-    .map(room => ({ roomId: room.idPrefix, roomName: room.roomName }));
+  const rooms = state
+    .getRooms()
+    .filter((room) => !room.pendingDelete)
+    .map((room) => ({ roomId: room.idPrefix, roomName: room.roomName }));
   res.status(200).send({ rooms });
 });
 
@@ -155,11 +178,13 @@ const InputSchema = Type.Union([
   Type.Object({
     type: Type.Literal('text-input'),
     text: Type.String(),
-    textAlign: Type.Optional(Type.Union([
-      Type.Literal('left'),
-      Type.Literal('center'),
-      Type.Literal('right'),
-    ])),
+    textAlign: Type.Optional(
+      Type.Union([
+        Type.Literal('left'),
+        Type.Literal('center'),
+        Type.Literal('right'),
+      ]),
+    ),
   }),
   Type.Object({
     type: Type.Literal('game'),
@@ -186,7 +211,7 @@ const CreateRoomSchema = Type.Object({
         Type.Literal('1440p-vertical'),
         Type.Literal('4k-vertical'),
       ]),
-    ])
+    ]),
   ),
 });
 
@@ -202,51 +227,69 @@ routes.post<{ Body: Static<typeof CreateRoomSchema> }>(
     let resolution: Resolution | undefined;
     if (req.body.resolution) {
       if (typeof req.body.resolution === 'string') {
-        resolution = RESOLUTION_PRESETS[req.body.resolution as ResolutionPreset];
+        resolution =
+          RESOLUTION_PRESETS[req.body.resolution as ResolutionPreset];
       } else {
         resolution = req.body.resolution;
       }
     }
 
-    const { roomId, roomName, room } = await state.createRoom(initInputs, skipDefaultInputs, resolution);
+    const { roomId, roomName, room } = await state.createRoom(
+      initInputs,
+      skipDefaultInputs,
+      resolution,
+    );
     res.status(200).send({
       roomId,
       roomName,
       whepUrl: room.getWhepUrl(),
       resolution: room.getResolution(),
     });
-  }
+  },
 );
 
 routes.get('/shaders', async (_req, res) => {
-  const visible = shadersController.shaders.filter(s => s.isVisible);
+  const visible = shadersController.shaders.filter((s) => s.isVisible);
   res.status(200).send({ shaders: visible });
 });
 
-routes.get<RoomIdParams>('/room/:roomId', { schema: { params: RoomIdParamsSchema } }, async (req, res) => {
-  const { roomId } = req.params;
-  const room = state.getRoom(roomId);
-  const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs, newsStripEnabled] = room.getState();
+routes.get<RoomIdParams>(
+  '/room/:roomId',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    const room = state.getRoom(roomId);
+    const [
+      inputs,
+      layout,
+      swapDurationMs,
+      swapOutgoingEnabled,
+      swapFadeInDurationMs,
+      newsStripFadeDuringSwap,
+      swapFadeOutDurationMs,
+      newsStripEnabled,
+    ] = room.getState();
 
-  res.status(200).send({
-    roomName: room.roomName,
-    inputs: inputs.map(toPublicInputState),
-    layout,
-    whepUrl: room.getWhepUrl(),
-    pendingDelete: room.pendingDelete,
-    isPublic: room.isPublic,
-    resolution: room.getResolution(),
-    pendingWhipInputs: room.pendingWhipInputs,
-    swapDurationMs,
-    swapOutgoingEnabled,
-    swapFadeInDurationMs,
-    newsStripFadeDuringSwap,
-    swapFadeOutDurationMs,
-    newsStripEnabled,
-    isRecording: room.hasActiveRecording(),
-    isFrozen: room.isFrozen(),
-  });
-});
+    res.status(200).send({
+      roomName: room.roomName,
+      inputs: inputs.map(toPublicInputState),
+      layout,
+      whepUrl: room.getWhepUrl(),
+      pendingDelete: room.pendingDelete,
+      isPublic: room.isPublic,
+      resolution: room.getResolution(),
+      pendingWhipInputs: room.pendingWhipInputs,
+      swapDurationMs,
+      swapOutgoingEnabled,
+      swapFadeInDurationMs,
+      newsStripFadeDuringSwap,
+      swapFadeOutDurationMs,
+      newsStripEnabled,
+      isRecording: room.hasActiveRecording(),
+      isFrozen: room.isFrozen(),
+    });
+  },
+);
 
 routes.get('/rooms', async (_req, res) => {
   // const adminKey = _req.headers['x-admin-key'];
@@ -259,11 +302,20 @@ routes.get('/rooms', async (_req, res) => {
   const allRooms = state.getRooms();
 
   const roomsInfo = allRooms
-    .map(room => {
+    .map((room) => {
       if (!room) {
         return undefined;
       }
-      const [inputs, layout, swapDurationMs, swapOutgoingEnabled, swapFadeInDurationMs, newsStripFadeDuringSwap, swapFadeOutDurationMs, newsStripEnabled] = room.getState();
+      const [
+        inputs,
+        layout,
+        swapDurationMs,
+        swapOutgoingEnabled,
+        swapFadeInDurationMs,
+        newsStripFadeDuringSwap,
+        swapFadeOutDurationMs,
+        newsStripEnabled,
+      ] = room.getState();
       return {
         roomId: room.idPrefix,
         roomName: room.roomName,
@@ -290,105 +342,128 @@ routes.get('/rooms', async (_req, res) => {
     .send(JSON.stringify({ rooms: roomsInfo }, null, 2));
 });
 
-routes.post<RoomIdParams>('/room/:roomId/record/start', { schema: { params: RoomIdParamsSchema } }, async (req, res) => {
-  const { roomId } = req.params;
-  console.log('[request] Start recording', { roomId });
-  try {
-    const room = state.getRoom(roomId);
-    const { fileName } = await room.startRecording();
-    res.status(200).send({ status: 'recording', fileName });
-  } catch (err: any) {
-    console.error('Failed to start recording', err?.body ?? err);
-    res
-      .status(400)
-      .send({ status: 'error', message: err?.message ?? 'Failed to start recording' });
-  }
-});
+routes.post<RoomIdParams>(
+  '/room/:roomId/record/start',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    console.log('[request] Start recording', { roomId });
+    try {
+      const room = state.getRoom(roomId);
+      const { fileName } = await room.startRecording();
+      res.status(200).send({ status: 'recording', fileName });
+    } catch (err: any) {
+      console.error('Failed to start recording', err?.body ?? err);
+      res.status(400).send({
+        status: 'error',
+        message: err?.message ?? 'Failed to start recording',
+      });
+    }
+  },
+);
 
-routes.post<RoomIdParams>('/room/:roomId/record/stop', { schema: { params: RoomIdParamsSchema } }, async (req, res) => {
-  const { roomId } = req.params;
-  console.log('[request] Stop recording', { roomId });
-  try {
-    const room = state.getRoom(roomId);
-    const { fileName } = await room.stopRecording();
+routes.post<RoomIdParams>(
+  '/room/:roomId/record/stop',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    console.log('[request] Stop recording', { roomId });
+    try {
+      const room = state.getRoom(roomId);
+      const { fileName } = await room.stopRecording();
 
-    const forwardedProto = (req.headers['x-forwarded-proto'] as string | undefined)?.split(
-      ','
-    )[0];
-    const protocol = forwardedProto || (req.protocol as string) || 'http';
-    const host = (req.headers['host'] as string) || 'localhost';
-    const baseUrl = `${protocol}://${host}`;
-    const downloadUrl = `${baseUrl}/recordings/${encodeURIComponent(fileName)}`;
+      const forwardedProto = (
+        req.headers['x-forwarded-proto'] as string | undefined
+      )?.split(',')[0];
+      const protocol = forwardedProto || (req.protocol as string) || 'http';
+      const host = (req.headers['host'] as string) || 'localhost';
+      const baseUrl = `${protocol}://${host}`;
+      const downloadUrl = `${baseUrl}/recordings/${encodeURIComponent(fileName)}`;
 
-    res.status(200).send({ status: 'stopped', fileName, downloadUrl });
-  } catch (err: any) {
-    console.error('Failed to stop recording', err?.body ?? err);
-    res
-      .status(400)
-      .send({ status: 'error', message: err?.message ?? 'Failed to stop recording' });
-  }
-});
+      res.status(200).send({ status: 'stopped', fileName, downloadUrl });
+    } catch (err: any) {
+      console.error('Failed to stop recording', err?.body ?? err);
+      res.status(400).send({
+        status: 'error',
+        message: err?.message ?? 'Failed to stop recording',
+      });
+    }
+  },
+);
 
 const SCREENSHOTS_DIR = path.join(__dirname, '../../screenshots');
 
-routes.post<RoomIdParams>('/room/:roomId/freeze', { schema: { params: RoomIdParamsSchema } }, async (req, res) => {
-  const { roomId } = req.params;
-  console.log('[request] Freeze room', { roomId });
-  try {
-    const room = state.getRoom(roomId);
-    const result = await room.freeze();
-
+routes.post<RoomIdParams>(
+  '/room/:roomId/freeze',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    console.log('[request] Freeze room', { roomId });
     try {
-      await pruneOldScreenshots(20);
-    } catch (err) {
-      console.error('Failed to prune old screenshots', err);
+      const room = state.getRoom(roomId);
+      const result = await room.freeze();
+
+      try {
+        await pruneOldScreenshots(20);
+      } catch (err) {
+        console.error('Failed to prune old screenshots', err);
+      }
+
+      res.status(200).send(result);
+    } catch (err: any) {
+      console.error('Failed to freeze room', err?.body ?? err);
+      res.status(400).send({
+        status: 'error',
+        message: err?.message ?? 'Failed to freeze room',
+      });
+    }
+  },
+);
+
+routes.post<RoomIdParams>(
+  '/room/:roomId/unfreeze',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    console.log('[request] Unfreeze room', { roomId });
+    try {
+      const room = state.getRoom(roomId);
+      await room.unfreeze();
+      res.status(200).send({ status: 'ok' });
+    } catch (err: any) {
+      console.error('Failed to unfreeze room', err?.body ?? err);
+      res.status(400).send({
+        status: 'error',
+        message: err?.message ?? 'Failed to unfreeze room',
+      });
+    }
+  },
+);
+
+routes.get<{ Params: { fileName: string } }>(
+  '/screenshots/:fileName',
+  async (req, res) => {
+    const { fileName } = req.params;
+    const filePath = path.join(SCREENSHOTS_DIR, path.basename(fileName));
+
+    if (!(await pathExists(filePath))) {
+      return res.status(404).send({ error: 'Screenshot not found' });
     }
 
-    res.status(200).send(result);
-  } catch (err: any) {
-    console.error('Failed to freeze room', err?.body ?? err);
-    res
-      .status(400)
-      .send({ status: 'error', message: err?.message ?? 'Failed to freeze room' });
-  }
-});
+    try {
+      const fileStat = await stat(filePath);
+      const data = await readFile(filePath);
 
-routes.post<RoomIdParams>('/room/:roomId/unfreeze', { schema: { params: RoomIdParamsSchema } }, async (req, res) => {
-  const { roomId } = req.params;
-  console.log('[request] Unfreeze room', { roomId });
-  try {
-    const room = state.getRoom(roomId);
-    await room.unfreeze();
-    res.status(200).send({ status: 'ok' });
-  } catch (err: any) {
-    console.error('Failed to unfreeze room', err?.body ?? err);
-    res
-      .status(400)
-      .send({ status: 'error', message: err?.message ?? 'Failed to unfreeze room' });
-  }
-});
-
-routes.get<{ Params: { fileName: string } }>('/screenshots/:fileName', async (req, res) => {
-  const { fileName } = req.params;
-  const filePath = path.join(SCREENSHOTS_DIR, path.basename(fileName));
-
-  if (!(await pathExists(filePath))) {
-    return res.status(404).send({ error: 'Screenshot not found' });
-  }
-
-  try {
-    const fileStat = await stat(filePath);
-    const data = await readFile(filePath);
-
-    res.header('Content-Type', 'image/jpeg');
-    res.header('Cache-Control', 'public, max-age=3600');
-    res.header('Content-Length', fileStat.size.toString());
-    res.send(data);
-  } catch (err: any) {
-    console.error('Failed to read screenshot file', { filePath, err });
-    res.status(500).send({ error: 'Failed to read screenshot file' });
-  }
-});
+      res.header('Content-Type', 'image/jpeg');
+      res.header('Cache-Control', 'public, max-age=3600');
+      res.header('Content-Length', fileStat.size.toString());
+      res.send(data);
+    } catch (err: any) {
+      console.error('Failed to read screenshot file', { filePath, err });
+      res.status(500).send({ error: 'Failed to read screenshot file' });
+    }
+  },
+);
 
 const RECORDINGS_DIR = path.join(__dirname, '../../recordings');
 
@@ -401,7 +476,7 @@ routes.get('/recordings', async (_req, res) => {
 
   try {
     const files = await readdir(recordingsDir);
-    const mp4Files = files.filter(f => f.endsWith('.mp4'));
+    const mp4Files = files.filter((f) => f.endsWith('.mp4'));
     const recordings = [];
     for (const fileName of mp4Files) {
       const filePath = path.join(recordingsDir, fileName);
@@ -422,40 +497,44 @@ routes.get('/recordings', async (_req, res) => {
   }
 });
 
-routes.get<RoomIdParams>('/room/:roomId/recordings', { schema: { params: RoomIdParamsSchema } }, async (req, res) => {
-  const { roomId } = req.params;
-  const safeRoomId = roomId.replace(/[^a-zA-Z0-9_-]/g, '_');
-  const recordingsDir = RECORDINGS_DIR;
+routes.get<RoomIdParams>(
+  '/room/:roomId/recordings',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    const safeRoomId = roomId.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const recordingsDir = RECORDINGS_DIR;
 
-  if (!(await pathExists(recordingsDir))) {
-    return res.status(200).send({ recordings: [] });
-  }
-
-  try {
-    const files = await readdir(recordingsDir);
-    const mp4Files = files.filter(f => f.endsWith('.mp4'));
-    const recordings = [];
-    for (const fileName of mp4Files) {
-      const match = fileName.match(/^recording-(.+)-(\d+)\.mp4$/);
-      if (!match || match[1] !== safeRoomId) {
-        continue;
-      }
-      const filePath = path.join(recordingsDir, fileName);
-      const fileStat = await stat(filePath);
-      recordings.push({
-        fileName,
-        roomId: match[1],
-        createdAt: Number(match[2]),
-        size: fileStat.size,
-      });
+    if (!(await pathExists(recordingsDir))) {
+      return res.status(200).send({ recordings: [] });
     }
-    recordings.sort((a, b) => b.createdAt - a.createdAt);
-    res.status(200).send({ recordings });
-  } catch (err: any) {
-    console.error('Failed to list recordings for room', { roomId, err });
-    res.status(500).send({ error: 'Failed to list recordings' });
-  }
-});
+
+    try {
+      const files = await readdir(recordingsDir);
+      const mp4Files = files.filter((f) => f.endsWith('.mp4'));
+      const recordings = [];
+      for (const fileName of mp4Files) {
+        const match = fileName.match(/^recording-(.+)-(\d+)\.mp4$/);
+        if (!match || match[1] !== safeRoomId) {
+          continue;
+        }
+        const filePath = path.join(recordingsDir, fileName);
+        const fileStat = await stat(filePath);
+        recordings.push({
+          fileName,
+          roomId: match[1],
+          createdAt: Number(match[2]),
+          size: fileStat.size,
+        });
+      }
+      recordings.sort((a, b) => b.createdAt - a.createdAt);
+      res.status(200).send({ recordings });
+    } catch (err: any) {
+      console.error('Failed to list recordings for room', { roomId, err });
+      res.status(500).send({ error: 'Failed to list recordings' });
+    }
+  },
+);
 
 routes.get<RecordingFileParams>('/recordings/:fileName', async (req, res) => {
   const { fileName } = req.params;
@@ -522,13 +601,17 @@ const UpdateRoomSchema = Type.Object({
       Type.Literal('wrapped'),
       Type.Literal('wrapped-static'),
       Type.Literal('picture-on-picture'),
-    ])
+    ]),
   ),
   isPublic: Type.Optional(Type.Boolean()),
   swapDurationMs: Type.Optional(Type.Number({ minimum: 0, maximum: 5000 })),
   swapOutgoingEnabled: Type.Optional(Type.Boolean()),
-  swapFadeInDurationMs: Type.Optional(Type.Number({ minimum: 0, maximum: 5000 })),
-  swapFadeOutDurationMs: Type.Optional(Type.Number({ minimum: 0, maximum: 5000 })),
+  swapFadeInDurationMs: Type.Optional(
+    Type.Number({ minimum: 0, maximum: 5000 }),
+  ),
+  swapFadeOutDurationMs: Type.Optional(
+    Type.Number({ minimum: 0, maximum: 5000 }),
+  ),
   newsStripFadeDuringSwap: Type.Optional(Type.Boolean()),
   newsStripEnabled: Type.Optional(Type.Boolean()),
 });
@@ -572,7 +655,7 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
     }
 
     res.status(200).send({ status: 'ok' });
-  }
+  },
 );
 
 const PendingWhipInputSchema = Type.Object({
@@ -581,7 +664,10 @@ const PendingWhipInputSchema = Type.Object({
   volume: Type.Number(),
   showTitle: Type.Boolean(),
   shaders: Type.Array(Type.Any()),
-  orientation: Type.Union([Type.Literal('horizontal'), Type.Literal('vertical')]),
+  orientation: Type.Union([
+    Type.Literal('horizontal'),
+    Type.Literal('vertical'),
+  ]),
   position: Type.Number(),
 });
 
@@ -597,7 +683,7 @@ routes.post<RoomIdParams & { Body: Static<typeof SetPendingWhipInputsSchema> }>(
     const room = state.getRoom(roomId);
     room.pendingWhipInputs = req.body.pendingWhipInputs;
     res.status(200).send({ status: 'ok' });
-  }
+  },
 );
 
 // (Removed endpoints for multiple-pictures shader defaults)
@@ -617,76 +703,114 @@ routes.post<RoomIdParams & { Body: Static<typeof InputSchema> }>(
     }
     let whipUrl = `${config.whipBaseUrl}/${inputId}`;
     res.status(200).send({ inputId, bearerToken, whipUrl });
-  }
+  },
 );
 
-routes.post<RoomAndInputIdParams>('/room/:roomId/input/:inputId/whip/ack', { schema: { params: RoomAndInputIdParamsSchema } }, async (req, res) => {
-  const { roomId, inputId } = req.params;
-  console.log('[request] WHIP ack', { roomId, inputId });
-  try {
-    const input = state
-      .getRoom(roomId)
-      .getInputs()
-      .find(i => i.inputId === inputId);
-    if (!input || input.type !== 'whip') {
-      return res.status(400).send({ error: 'Not a WHIP input' });
+routes.post<RoomAndInputIdParams>(
+  '/room/:roomId/input/:inputId/whip/ack',
+  { schema: { params: RoomAndInputIdParamsSchema } },
+  async (req, res) => {
+    const { roomId, inputId } = req.params;
+    console.log('[request] WHIP ack', { roomId, inputId });
+    try {
+      const input = state
+        .getRoom(roomId)
+        .getInputs()
+        .find((i) => i.inputId === inputId);
+      if (!input || input.type !== 'whip') {
+        return res.status(400).send({ error: 'Not a WHIP input' });
+      }
+      await state.getRoom(roomId).ackWhipInput(inputId);
+      res.status(200).send({ status: 'ok' });
+    } catch (err: any) {
+      res
+        .status(400)
+        .send({ status: 'error', message: err?.message ?? 'Invalid input' });
     }
-    await state.getRoom(roomId).ackWhipInput(inputId);
+  },
+);
+
+routes.post<RoomAndInputIdParams>(
+  '/room/:roomId/input/:inputId/connect',
+  { schema: { params: RoomAndInputIdParamsSchema } },
+  async (req, res) => {
+    const { roomId, inputId } = req.params;
+    console.log('[request] Connect input', { roomId, inputId });
+    const room = state.getRoom(roomId);
+    await room.connectInput(inputId);
     res.status(200).send({ status: 'ok' });
-  } catch (err: any) {
-    res.status(400).send({ status: 'error', message: err?.message ?? 'Invalid input' });
-  }
-});
+  },
+);
 
-routes.post<RoomAndInputIdParams>('/room/:roomId/input/:inputId/connect', { schema: { params: RoomAndInputIdParamsSchema } }, async (req, res) => {
-  const { roomId, inputId } = req.params;
-  console.log('[request] Connect input', { roomId, inputId });
-  const room = state.getRoom(roomId);
-  await room.connectInput(inputId);
-  res.status(200).send({ status: 'ok' });
-});
-
-routes.post<RoomAndInputIdParams>('/room/:roomId/input/:inputId/disconnect', { schema: { params: RoomAndInputIdParamsSchema } }, async (req, res) => {
-  const { roomId, inputId } = req.params;
-  console.log('[request] Disconnect input', { roomId, inputId });
-  const room = state.getRoom(roomId);
-  await room.disconnectInput(inputId);
-  res.status(200).send({ status: 'ok' });
-});
+routes.post<RoomAndInputIdParams>(
+  '/room/:roomId/input/:inputId/disconnect',
+  { schema: { params: RoomAndInputIdParamsSchema } },
+  async (req, res) => {
+    const { roomId, inputId } = req.params;
+    console.log('[request] Disconnect input', { roomId, inputId });
+    const room = state.getRoom(roomId);
+    await room.disconnectInput(inputId);
+    res.status(200).send({ status: 'ok' });
+  },
+);
 
 const HideInputBodySchema = Type.Object({
-  activeTransition: Type.Optional(Type.Object({
-    type: Type.String(),
-    durationMs: Type.Number(),
-    direction: Type.Union([Type.Literal('in'), Type.Literal('out')]),
-  })),
+  activeTransition: Type.Optional(
+    Type.Object({
+      type: Type.String(),
+      durationMs: Type.Number(),
+      direction: Type.Union([Type.Literal('in'), Type.Literal('out')]),
+    }),
+  ),
 });
 
-routes.post<RoomAndInputIdParams & { Body: Static<typeof HideInputBodySchema> }>('/room/:roomId/input/:inputId/hide', { schema: { params: RoomAndInputIdParamsSchema, body: HideInputBodySchema } }, async (req, res) => {
-  const { roomId, inputId } = req.params;
-  const { activeTransition } = req.body ?? {};
-  console.log('[request] Hide input', { roomId, inputId, hasTransition: !!activeTransition });
-  const room = state.getRoom(roomId);
-  room.hideInput(inputId, activeTransition);
-  res.status(200).send({ status: 'ok' });
-});
+routes.post<
+  RoomAndInputIdParams & { Body: Static<typeof HideInputBodySchema> }
+>(
+  '/room/:roomId/input/:inputId/hide',
+  { schema: { params: RoomAndInputIdParamsSchema, body: HideInputBodySchema } },
+  async (req, res) => {
+    const { roomId, inputId } = req.params;
+    const { activeTransition } = req.body ?? {};
+    console.log('[request] Hide input', {
+      roomId,
+      inputId,
+      hasTransition: !!activeTransition,
+    });
+    const room = state.getRoom(roomId);
+    room.hideInput(inputId, activeTransition);
+    res.status(200).send({ status: 'ok' });
+  },
+);
 
 const ShowInputBodySchema = Type.Object({
-  activeTransition: Type.Optional(Type.Object({
-    type: Type.String(),
-    durationMs: Type.Number(),
-    direction: Type.Union([Type.Literal('in'), Type.Literal('out')]),
-  })),
+  activeTransition: Type.Optional(
+    Type.Object({
+      type: Type.String(),
+      durationMs: Type.Number(),
+      direction: Type.Union([Type.Literal('in'), Type.Literal('out')]),
+    }),
+  ),
 });
 
-routes.post<RoomAndInputIdParams & { Body: Static<typeof ShowInputBodySchema> }>('/room/:roomId/input/:inputId/show', { schema: { params: RoomAndInputIdParamsSchema, body: ShowInputBodySchema } }, async (req, res) => {
-  const { roomId, inputId } = req.params;
-  const { activeTransition } = req.body ?? {};
-  console.log('[request] Show input', { roomId, inputId, hasTransition: !!activeTransition });
-  const room = state.getRoom(roomId);
-  room.showInput(inputId, activeTransition);
-  res.status(200).send({ status: 'ok' });
-});
+routes.post<
+  RoomAndInputIdParams & { Body: Static<typeof ShowInputBodySchema> }
+>(
+  '/room/:roomId/input/:inputId/show',
+  { schema: { params: RoomAndInputIdParamsSchema, body: ShowInputBodySchema } },
+  async (req, res) => {
+    const { roomId, inputId } = req.params;
+    const { activeTransition } = req.body ?? {};
+    console.log('[request] Show input', {
+      roomId,
+      inputId,
+      hasTransition: !!activeTransition,
+    });
+    const room = state.getRoom(roomId);
+    room.showInput(inputId, activeTransition);
+    res.status(200).send({ status: 'ok' });
+  },
+);
 
 const Mp4RestartSchema = Type.Object({
   playFromMs: Type.Number({ minimum: 0 }),
@@ -702,54 +826,66 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof Mp4RestartSchema> }>(
     const room = state.getRoom(roomId);
     await room.restartMp4Input(inputId, req.body.playFromMs, req.body.loop);
     res.status(200).send({ status: 'ok' });
-  }
+  },
 );
 
 const MotionDetectionSchema = Type.Object({
   enabled: Type.Boolean(),
 });
 
-routes.post<RoomAndInputIdParams & { Body: Static<typeof MotionDetectionSchema> }>(
+routes.post<
+  RoomAndInputIdParams & { Body: Static<typeof MotionDetectionSchema> }
+>(
   '/room/:roomId/input/:inputId/motion-detection',
-  { schema: { params: RoomAndInputIdParamsSchema, body: MotionDetectionSchema } },
+  {
+    schema: { params: RoomAndInputIdParamsSchema, body: MotionDetectionSchema },
+  },
   async (req, res) => {
     const { roomId, inputId } = req.params;
-    console.log('[request] Toggle motion detection', { roomId, inputId, enabled: req.body.enabled });
+    console.log('[request] Toggle motion detection', {
+      roomId,
+      inputId,
+      enabled: req.body.enabled,
+    });
     const room = state.getRoom(roomId);
     await room.setMotionEnabled(inputId, req.body.enabled);
     res.status(200).send({ status: 'ok' });
-  }
+  },
 );
 
-routes.get<RoomIdParams>('/room/:roomId/motion-scores/sse', { schema: { params: RoomIdParamsSchema } }, async (req, res) => {
-  const { roomId } = req.params;
-  const room = state.getRoom(roomId);
+routes.get<RoomIdParams>(
+  '/room/:roomId/motion-scores/sse',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    const room = state.getRoom(roomId);
 
-  res.raw.writeHead(200, {
-    'Content-Type': 'text/event-stream',
-    'Cache-Control': 'no-cache',
-    Connection: 'keep-alive',
-    'Access-Control-Allow-Origin': '*',
-  });
+    res.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+    });
 
-  const unsubscribe = room.addMotionScoreListener((scores) => {
-    res.raw.write(`data: ${JSON.stringify(scores)}\n\n`);
-  });
+    const unsubscribe = room.addMotionScoreListener((scores) => {
+      res.raw.write(`data: ${JSON.stringify(scores)}\n\n`);
+    });
 
-  const heartbeat = setInterval(() => {
-    if (res.raw.destroyed) {
+    const heartbeat = setInterval(() => {
+      if (res.raw.destroyed) {
+        clearInterval(heartbeat);
+        unsubscribe();
+        return;
+      }
+      res.raw.write(': heartbeat\n\n');
+    }, 15000);
+
+    req.raw.on('close', () => {
       clearInterval(heartbeat);
       unsubscribe();
-      return;
-    }
-    res.raw.write(': heartbeat\n\n');
-  }, 15000);
-
-  req.raw.on('close', () => {
-    clearInterval(heartbeat);
-    unsubscribe();
-  });
-});
+    });
+  },
+);
 
 const UpdateInputSchema = Type.Object({
   volume: Type.Optional(Type.Number({ maximum: 1, minimum: 0 })),
@@ -764,21 +900,22 @@ const UpdateInputSchema = Type.Object({
           Type.Object({
             paramName: Type.String(),
             paramValue: Type.Union([Type.Number(), Type.String()]),
-          })
+          }),
         ),
-      })
-    )
+      }),
+    ),
   ),
-  orientation: Type.Optional(Type.Union([
-    Type.Literal('horizontal'),
-    Type.Literal('vertical'),
-  ])),
+  orientation: Type.Optional(
+    Type.Union([Type.Literal('horizontal'), Type.Literal('vertical')]),
+  ),
   text: Type.Optional(Type.String()),
-  textAlign: Type.Optional(Type.Union([
-    Type.Literal('left'),
-    Type.Literal('center'),
-    Type.Literal('right'),
-  ])),
+  textAlign: Type.Optional(
+    Type.Union([
+      Type.Literal('left'),
+      Type.Literal('center'),
+      Type.Literal('right'),
+    ]),
+  ),
   textColor: Type.Optional(Type.String()),
   textMaxLines: Type.Optional(Type.Number()),
   textScrollSpeed: Type.Optional(Type.Number()),
@@ -811,30 +948,42 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(
   { schema: { params: RoomAndInputIdParamsSchema, body: UpdateInputSchema } },
   async (req, res) => {
     const { roomId, inputId } = req.params;
-    console.log('[request] Update input', { roomId, inputId, body: JSON.stringify(req.body) });
+    console.log('[request] Update input', {
+      roomId,
+      inputId,
+      body: JSON.stringify(req.body),
+    });
     const room = state.getRoom(roomId);
     await room.updateInput(inputId, req.body);
     res.status(200).send({ status: 'ok' });
-  }
+  },
 );
 
 registerSnakeGameRoutes(routes);
 
-routes.delete<RoomAndInputIdParams>('/room/:roomId/input/:inputId', { schema: { params: RoomAndInputIdParamsSchema } }, async (req, res) => {
-  const { roomId, inputId } = req.params;
-  console.log('[request] Remove input', { roomId, inputId });
-  const room = state.getRoom(roomId);
-  await room.removeInput(inputId);
-  res.status(200).send({ status: 'ok' });
-});
+routes.delete<RoomAndInputIdParams>(
+  '/room/:roomId/input/:inputId',
+  { schema: { params: RoomAndInputIdParamsSchema } },
+  async (req, res) => {
+    const { roomId, inputId } = req.params;
+    console.log('[request] Remove input', { roomId, inputId });
+    const room = state.getRoom(roomId);
+    await room.removeInput(inputId);
+    res.status(200).send({ status: 'ok' });
+  },
+);
 
-routes.delete<RoomIdParams>('/room/:roomId', { schema: { params: RoomIdParamsSchema } }, async (req, res) => {
-  const { roomId } = req.params;
-  console.log('[request] Delete room', { roomId });
-  clearSnakeGameRoomInactivityTimer(roomId);
-  await state.deleteRoom(roomId);
-  res.status(200).send({ status: 'ok' });
-});
+routes.delete<RoomIdParams>(
+  '/room/:roomId',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    console.log('[request] Delete room', { roomId });
+    clearSnakeGameRoomInactivityTimer(roomId);
+    await state.deleteRoom(roomId);
+    res.status(200).send({ status: 'ok' });
+  },
+);
 
 async function pruneOldScreenshots(maxCount: number): Promise<void> {
   if (!(await pathExists(SCREENSHOTS_DIR))) return;
@@ -844,10 +993,10 @@ async function pruneOldScreenshots(maxCount: number): Promise<void> {
   } catch {
     return;
   }
-  const jpgs = entries.filter(e => e.toLowerCase().endsWith('.jpg'));
+  const jpgs = entries.filter((e) => e.toLowerCase().endsWith('.jpg'));
   if (jpgs.length <= maxCount) return;
 
-  const parsed = jpgs.map(name => {
+  const parsed = jpgs.map((name) => {
     const match = name.match(/(\d+)\.jpg$/);
     return { name, timestamp: match ? Number(match[1]) : 0 };
   });

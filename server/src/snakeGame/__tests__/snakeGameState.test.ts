@@ -5,7 +5,11 @@ import {
   buildUpdatedSnakeGameState,
   processSnakeGameEvents,
 } from '../snakeGameState';
-import type { SnakeGameState, ActiveSnakeEffect, SnakeEventShaderConfig } from '../types';
+import type {
+  SnakeGameState,
+  ActiveSnakeEffect,
+  SnakeEventShaderConfig,
+} from '../types';
 
 describe('createDefaultSnakeGameInputState', () => {
   it('returns default board dimensions', () => {
@@ -45,12 +49,20 @@ describe('createDefaultSnakeGameInputState', () => {
 describe('DEFAULT_SNAKE_EVENT_SHADERS', () => {
   it('has mappings for all event types', () => {
     const eventTypes = [
-      'speed_up', 'cut_opponent', 'got_cut', 'cut_self',
-      'eat_block', 'bounce_block', 'no_moves', 'game_over',
+      'speed_up',
+      'cut_opponent',
+      'got_cut',
+      'cut_self',
+      'eat_block',
+      'bounce_block',
+      'no_moves',
+      'game_over',
     ];
 
     for (const type of eventTypes) {
-      expect(DEFAULT_SNAKE_EVENT_SHADERS[type as keyof SnakeEventShaderConfig]).toBeDefined();
+      expect(
+        DEFAULT_SNAKE_EVENT_SHADERS[type as keyof SnakeEventShaderConfig],
+      ).toBeDefined();
     }
   });
 
@@ -104,7 +116,13 @@ describe('buildUpdatedSnakeGameState', () => {
   it('updates cells from incoming state', () => {
     const cells = [
       { x: 1, y: 2, color: '#ff0000' },
-      { x: 3, y: 4, color: '#00ff00', isHead: true, direction: 'right' as const },
+      {
+        x: 3,
+        y: 4,
+        color: '#00ff00',
+        isHead: true,
+        direction: 'right' as const,
+      },
     ];
 
     const result = buildUpdatedSnakeGameState(baseGameState, {
@@ -164,7 +182,9 @@ describe('buildUpdatedSnakeGameState', () => {
     const gameOverData = {
       winnerName: 'Player 1',
       reason: 'last_standing',
-      players: [{ name: 'Player 1', score: 10, eaten: 5, cuts: 2, color: '#ff0000' }],
+      players: [
+        { name: 'Player 1', score: 10, eaten: 5, cuts: 2, color: '#ff0000' },
+      ],
     };
 
     const result = buildUpdatedSnakeGameState(baseGameState, {
@@ -293,7 +313,7 @@ describe('processSnakeGameEvents', () => {
     );
 
     expect(result.updatedActiveEffects).toHaveLength(2);
-    const types = result.updatedActiveEffects.map(e => e.eventType);
+    const types = result.updatedActiveEffects.map((e) => e.eventType);
     expect(types).toContain('speed_up');
     expect(types).toContain('eat_block');
 
@@ -337,7 +357,9 @@ describe('processSnakeGameEvents', () => {
       vi.fn(),
     );
 
-    expect(result.updatedActiveEffects[0].affectedCellIndices).toHaveLength(baseGameState.cells.length);
+    expect(result.updatedActiveEffects[0].affectedCellIndices).toHaveLength(
+      baseGameState.cells.length,
+    );
 
     for (const t of result.newTimers) clearTimeout(t);
   });
@@ -360,8 +382,12 @@ describe('processSnakeGameEvents', () => {
     );
 
     // All 3 cells are snake cells (2 heads + 1 body sharing head color)
-    expect(result.updatedActiveEffects[0].affectedCellIndices.length).toBeGreaterThan(0);
-    expect(result.updatedActiveEffects[0].affectedCellIndices.length).toBeLessThanOrEqual(baseGameState.cells.length);
+    expect(
+      result.updatedActiveEffects[0].affectedCellIndices.length,
+    ).toBeGreaterThan(0);
+    expect(
+      result.updatedActiveEffects[0].affectedCellIndices.length,
+    ).toBeLessThanOrEqual(baseGameState.cells.length);
 
     for (const t of result.newTimers) clearTimeout(t);
   });

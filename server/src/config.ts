@@ -31,12 +31,22 @@ function buildH264Encoder(): Outputs.WhepVideoEncoderOptions {
   const useVulkan = encoderEnv === 'vulkan' || (!encoderEnv && isProduction);
 
   if (useVulkan) {
-    const bitrate = Number(process.env.SMELTER_H264_ENCODER_BITRATE) || 50_000_000;
+    const bitrate =
+      Number(process.env.SMELTER_H264_ENCODER_BITRATE) || 50_000_000;
     return { type: 'vulkan_h264', bitrate };
   }
 
   const preset = (process.env.SMELTER_H264_ENCODER_PRESET ?? 'ultrafast') as
-    'ultrafast' | 'superfast' | 'veryfast' | 'faster' | 'fast' | 'medium' | 'slow' | 'slower' | 'veryslow' | 'placebo';
+    | 'ultrafast'
+    | 'superfast'
+    | 'veryfast'
+    | 'faster'
+    | 'fast'
+    | 'medium'
+    | 'slow'
+    | 'slower'
+    | 'veryslow'
+    | 'placebo';
   const bitrate = process.env.SMELTER_H264_ENCODER_BITRATE ?? '20000000';
   return {
     type: 'ffmpeg_h264',
@@ -50,28 +60,27 @@ function buildH264Encoder(): Outputs.WhepVideoEncoderOptions {
   };
 }
 
-export const config: Config =
-  isProduction
-    ? {
-        logger: {
-          level: (process.env.SMELTER_DEMO_ROUTER_LOGGER_LEVEL ?? 'warn') as any,
+export const config: Config = isProduction
+  ? {
+      logger: {
+        level: (process.env.SMELTER_DEMO_ROUTER_LOGGER_LEVEL ?? 'warn') as any,
+      },
+      whepBaseUrl: 'https://puffer.fishjam.io/smelter-editor-webrtc/whep',
+      whipBaseUrl: 'https://puffer.fishjam.io/smelter-editor-webrtc/whip',
+      h264Decoder: 'ffmpeg_h264',
+      h264Encoder: buildH264Encoder(),
+      snakeVisualSpeedMultiplier,
+    }
+  : {
+      logger: {
+        transport: {
+          target: 'pino-pretty',
         },
-        whepBaseUrl: 'https://puffer.fishjam.io/smelter-editor-webrtc/whep',
-        whipBaseUrl: 'https://puffer.fishjam.io/smelter-editor-webrtc/whip',
-        h264Decoder: 'ffmpeg_h264',
-        h264Encoder: buildH264Encoder(),
-        snakeVisualSpeedMultiplier,
-      }
-    : {
-        logger: {
-          transport: {
-            target: 'pino-pretty',
-          },
-          level: (process.env.SMELTER_DEMO_ROUTER_LOGGER_LEVEL ?? 'warn') as any,
-        },
-        whepBaseUrl: 'http://127.0.0.1:9000/whep',
-        whipBaseUrl: 'http://127.0.0.1:9000/whip',
-        h264Decoder: 'ffmpeg_h264',
-        h264Encoder: buildH264Encoder(),
-        snakeVisualSpeedMultiplier,
-      };
+        level: (process.env.SMELTER_DEMO_ROUTER_LOGGER_LEVEL ?? 'warn') as any,
+      },
+      whepBaseUrl: 'http://127.0.0.1:9000/whep',
+      whipBaseUrl: 'http://127.0.0.1:9000/whip',
+      h264Decoder: 'ffmpeg_h264',
+      h264Encoder: buildH264Encoder(),
+      snakeVisualSpeedMultiplier,
+    };

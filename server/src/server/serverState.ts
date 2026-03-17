@@ -31,14 +31,15 @@ export class ServerState {
   }
 
   public isChannelIdUsed(channelId: string): boolean {
-    return this.getRooms().some(room =>
+    return this.getRooms().some((room) =>
       room
         .getInputs()
         .some(
-          input =>
-            (input.type === 'kick-channel' || input.type === 'twitch-channel') &&
-            input.channelId === channelId
-        )
+          (input) =>
+            (input.type === 'kick-channel' ||
+              input.type === 'twitch-channel') &&
+            input.channelId === channelId,
+        ),
     );
   }
 
@@ -71,13 +72,25 @@ export class ServerState {
       const roomId = uuidv4();
       const roomName = pickUniqueRoomName(this.getUsedRoomNames());
       const resolvedResolution = resolution ?? RESOLUTION_PRESETS['1440p'];
-      const smelterOutput = await SmelterInstance.registerOutput(roomId, resolvedResolution);
-      const room = new RoomState(roomId, smelterOutput, initInputs, skipDefaultInputs, roomName);
+      const smelterOutput = await SmelterInstance.registerOutput(
+        roomId,
+        resolvedResolution,
+      );
+      const room = new RoomState(
+        roomId,
+        smelterOutput,
+        initInputs,
+        skipDefaultInputs,
+        roomName,
+      );
       try {
         await room.init();
       } catch (error) {
         await room.deleteRoom().catch((cleanupError) => {
-          console.error(`Failed to cleanup room ${roomId} after init error`, cleanupError);
+          console.error(
+            `Failed to cleanup room ${roomId} after init error`,
+            cleanupError,
+          );
         });
         throw error;
       }
@@ -110,7 +123,10 @@ export class ServerState {
   private async monitorConnectedRooms() {
     await this.mutex.runExclusive(async () => {
       let rooms = Object.entries(this.rooms);
-      rooms.sort(([_aId, aRoom], [_bId, bRoom]) => bRoom.creationTimestamp - aRoom.creationTimestamp);
+      rooms.sort(
+        ([_aId, aRoom], [_bId, bRoom]) =>
+          bRoom.creationTimestamp - aRoom.creationTimestamp,
+      );
       for (const [_roomId, room] of rooms) {
         await room.removeStaleWhipInputs(WHIP_STALE_TTL_MS);
       }
@@ -126,10 +142,15 @@ export class ServerState {
       }
 
       rooms = Object.entries(this.rooms);
-      rooms.sort(([_aId, aRoom], [_bId, bRoom]) => bRoom.creationTimestamp - aRoom.creationTimestamp);
+      rooms.sort(
+        ([_aId, aRoom], [_bId, bRoom]) =>
+          bRoom.creationTimestamp - aRoom.creationTimestamp,
+      );
 
       if (rooms.length > ROOM_COUNT_HARD_LIMIT) {
-        for (const [roomId, _room] of rooms.slice(ROOM_COUNT_HARD_LIMIT - rooms.length)) {
+        for (const [roomId, _room] of rooms.slice(
+          ROOM_COUNT_HARD_LIMIT - rooms.length,
+        )) {
           try {
             console.log('Stop from hard limit');
             await this._deleteRoom(roomId).catch(() => {});
@@ -140,7 +161,9 @@ export class ServerState {
       }
 
       if (rooms.length > ROOM_COUNT_SOFT_LIMIT) {
-        for (const [roomId, room] of rooms.slice(ROOM_COUNT_SOFT_LIMIT - rooms.length)) {
+        for (const [roomId, room] of rooms.slice(
+          ROOM_COUNT_SOFT_LIMIT - rooms.length,
+        )) {
           if (room.pendingDelete) {
             continue;
           }

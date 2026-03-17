@@ -44,7 +44,10 @@ export function createMocks() {
   const whipMonitor = {
     startMonitor: vi.fn(async () => ({
       isLive: () => false,
-      touch: vi.fn(() => ({ previousAckTimestamp: Date.now(), currentAckTimestamp: Date.now() })),
+      touch: vi.fn(() => ({
+        previousAckTimestamp: Date.now(),
+        currentAckTimestamp: Date.now(),
+      })),
       getUsername: vi.fn(() => 'test-user'),
       getLastAckTimestamp: vi.fn(() => Date.now()),
       stop: vi.fn(),

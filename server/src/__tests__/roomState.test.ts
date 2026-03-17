@@ -17,14 +17,21 @@ const mocks = vi.hoisted(() => {
       terminate: fn().mockResolvedValue(undefined),
     },
     twitchStartMonitor: fn().mockResolvedValue({
-      isLive: () => true, stop: fn(), onUpdate: fn(),
+      isLive: () => true,
+      stop: fn(),
+      onUpdate: fn(),
     }),
     kickStartMonitor: fn().mockResolvedValue({
-      isLive: () => true, stop: fn(), onUpdate: fn(),
+      isLive: () => true,
+      stop: fn(),
+      onUpdate: fn(),
     }),
     whipStartMonitor: fn().mockResolvedValue({
       isLive: () => false,
-      touch: fn().mockReturnValue({ previousAckTimestamp: Date.now(), currentAckTimestamp: Date.now() }),
+      touch: fn().mockReturnValue({
+        previousAckTimestamp: Date.now(),
+        currentAckTimestamp: Date.now(),
+      }),
       getUsername: fn().mockReturnValue('test-user'),
       getLastAckTimestamp: fn().mockReturnValue(Date.now()),
       stop: fn(),
@@ -38,7 +45,9 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('../smelter', () => ({ SmelterInstance: mocks.smelter }));
 vi.mock('../streamlink', () => ({
-  hlsUrlForTwitchChannel: vi.fn(async (id: string) => `http://hls/twitch/${id}`),
+  hlsUrlForTwitchChannel: vi.fn(
+    async (id: string) => `http://hls/twitch/${id}`,
+  ),
   hlsUrlForKickChannel: vi.fn(async (id: string) => `http://hls/kick/${id}`),
 }));
 vi.mock('../twitch/TwitchChannelMonitor', () => ({
@@ -50,7 +59,9 @@ vi.mock('../kick/KickChannelMonitor', () => ({
 vi.mock('../whip/WhipInputMonitor', () => ({
   WhipInputMonitor: { startMonitor: mocks.whipStartMonitor },
 }));
-vi.mock('../mp4/mp4SuggestionMonitor', () => ({ default: { mp4Files: ['test-video.mp4'] } }));
+vi.mock('../mp4/mp4SuggestionMonitor', () => ({
+  default: { mp4Files: ['test-video.mp4'] },
+}));
 vi.mock('fs-extra', () => ({
   pathExists: mocks.pathExists,
   ensureDir: mocks.ensureDir,
@@ -104,7 +115,10 @@ describe('RoomState', () => {
 
     it('assigns room name', async () => {
       const output = createTestOutput();
-      const room = new RoomState('room-1', output, [], true, { pl: 'Kuchnia', en: 'Kitchen' });
+      const room = new RoomState('room-1', output, [], true, {
+        pl: 'Kuchnia',
+        en: 'Kitchen',
+      });
       await room.init();
 
       expect(room.roomName.pl).toBe('Kuchnia');
@@ -126,7 +140,7 @@ describe('RoomState', () => {
 
       expect(inputId).toBeDefined();
       const inputs = room.getInputs();
-      const textInput = inputs.find(i => i.inputId === inputId);
+      const textInput = inputs.find((i) => i.inputId === inputId);
       expect(textInput).toBeDefined();
       expect(textInput!.type).toBe('text-input');
       if (textInput!.type === 'text-input') {
@@ -140,11 +154,14 @@ describe('RoomState', () => {
       const room = new RoomState('room-1', output, [], true);
       await room.init();
 
-      const inputId = await room.addNewInput({ type: 'game', title: 'Test Game' });
+      const inputId = await room.addNewInput({
+        type: 'game',
+        title: 'Test Game',
+      });
       expect(inputId).toBeDefined();
 
       const inputs = room.getInputs();
-      const gameInput = inputs.find(i => i.inputId === inputId);
+      const gameInput = inputs.find((i) => i.inputId === inputId);
       expect(gameInput).toBeDefined();
       expect(gameInput!.type).toBe('game');
       if (gameInput!.type === 'game') {
@@ -161,7 +178,9 @@ describe('RoomState', () => {
       await room.addNewInput({ type: 'text-input', text: 'Hello' });
 
       const inputs = room.getInputs();
-      const placeholders = inputs.filter(i => i.inputId.includes('placeholder'));
+      const placeholders = inputs.filter((i) =>
+        i.inputId.includes('placeholder'),
+      );
       expect(placeholders).toHaveLength(0);
     });
 
@@ -170,11 +189,14 @@ describe('RoomState', () => {
       const room = new RoomState('room-1', output, [], true);
       await room.init();
 
-      const inputId = await room.addNewInput({ type: 'whip', username: 'test-user' });
+      const inputId = await room.addNewInput({
+        type: 'whip',
+        username: 'test-user',
+      });
       expect(inputId).toBeDefined();
       expect(inputId).toContain('whip');
 
-      const whipInput = room.getInputs().find(i => i.inputId === inputId);
+      const whipInput = room.getInputs().find((i) => i.inputId === inputId);
       expect(whipInput).toBeDefined();
       expect(whipInput!.type).toBe('whip');
     });
@@ -184,11 +206,14 @@ describe('RoomState', () => {
       const room = new RoomState('room-1', output, [], true);
       await room.init();
 
-      const inputId = await room.addNewInput({ type: 'twitch-channel', channelId: 'test_channel' });
+      const inputId = await room.addNewInput({
+        type: 'twitch-channel',
+        channelId: 'test_channel',
+      });
       expect(inputId).toBeDefined();
       expect(inputId).toContain('twitch');
 
-      const input = room.getInputs().find(i => i.inputId === inputId);
+      const input = room.getInputs().find((i) => i.inputId === inputId);
       expect(input).toBeDefined();
       expect(input!.type).toBe('twitch-channel');
     });
@@ -198,11 +223,14 @@ describe('RoomState', () => {
       const room = new RoomState('room-1', output, [], true);
       await room.init();
 
-      const inputId = await room.addNewInput({ type: 'kick-channel', channelId: 'kick_channel' });
+      const inputId = await room.addNewInput({
+        type: 'kick-channel',
+        channelId: 'kick_channel',
+      });
       expect(inputId).toBeDefined();
       expect(inputId).toContain('kick');
 
-      const input = room.getInputs().find(i => i.inputId === inputId);
+      const input = room.getInputs().find((i) => i.inputId === inputId);
       expect(input).toBeDefined();
       expect(input!.type).toBe('kick-channel');
     });
@@ -214,13 +242,18 @@ describe('RoomState', () => {
       const room = new RoomState('room-1', output, [], true);
       await room.init();
 
-      const inputId = (await room.addNewInput({ type: 'text-input', text: 'Hello' }))!;
-      expect(room.getInputs().some(i => i.inputId === inputId)).toBe(true);
+      const inputId = (await room.addNewInput({
+        type: 'text-input',
+        text: 'Hello',
+      }))!;
+      expect(room.getInputs().some((i) => i.inputId === inputId)).toBe(true);
 
       await room.removeInput(inputId);
 
-      const remaining = room.getInputs().filter(i => !i.inputId.includes('placeholder'));
-      expect(remaining.some(i => i.inputId === inputId)).toBe(false);
+      const remaining = room
+        .getInputs()
+        .filter((i) => !i.inputId.includes('placeholder'));
+      expect(remaining.some((i) => i.inputId === inputId)).toBe(false);
     });
 
     it('throws for unknown input id', async () => {
@@ -228,7 +261,9 @@ describe('RoomState', () => {
       const room = new RoomState('room-1', output, [], true);
       await room.init();
 
-      await expect(room.removeInput('nonexistent')).rejects.toThrow(/not found/);
+      await expect(room.removeInput('nonexistent')).rejects.toThrow(
+        /not found/,
+      );
     });
 
     it('cleans up attachedInputIds references', async () => {
@@ -240,11 +275,15 @@ describe('RoomState', () => {
       const id2 = (await room.addNewInput({ type: 'text-input', text: 'B' }))!;
 
       await room.updateInput(id1, { attachedInputIds: [id2] } as any);
-      expect(room.getInputs().find(i => i.inputId === id1)?.attachedInputIds).toContain(id2);
+      expect(
+        room.getInputs().find((i) => i.inputId === id1)?.attachedInputIds,
+      ).toContain(id2);
 
       await room.removeInput(id2);
 
-      expect(room.getInputs().find(i => i.inputId === id1)?.attachedInputIds ?? []).not.toContain(id2);
+      expect(
+        room.getInputs().find((i) => i.inputId === id1)?.attachedInputIds ?? [],
+      ).not.toContain(id2);
     });
   });
 
@@ -254,14 +293,19 @@ describe('RoomState', () => {
       const room = new RoomState('room-1', output, [], true);
       await room.init();
 
-      const inputId = (await room.addNewInput({ type: 'text-input', text: 'Test' }))!;
+      const inputId = (await room.addNewInput({
+        type: 'text-input',
+        text: 'Test',
+      }))!;
 
       await room.updateInput(inputId, {
         volume: 0.8,
-        shaders: [{ shaderName: 'Blur', shaderId: 'blur', enabled: true, params: [] }],
+        shaders: [
+          { shaderName: 'Blur', shaderId: 'blur', enabled: true, params: [] },
+        ],
       });
 
-      const input = room.getInputs().find(i => i.inputId === inputId);
+      const input = room.getInputs().find((i) => i.inputId === inputId);
       expect(input?.volume).toBe(0.8);
       expect(input?.shaders).toHaveLength(1);
       expect(input?.shaders[0].shaderId).toBe('blur');
@@ -272,7 +316,10 @@ describe('RoomState', () => {
       const room = new RoomState('room-1', output, [], true);
       await room.init();
 
-      const inputId = (await room.addNewInput({ type: 'text-input', text: 'Original' }))!;
+      const inputId = (await room.addNewInput({
+        type: 'text-input',
+        text: 'Original',
+      }))!;
 
       await room.updateInput(inputId, {
         text: 'Updated',
@@ -280,7 +327,7 @@ describe('RoomState', () => {
         textFontSize: 48,
       });
 
-      const input = room.getInputs().find(i => i.inputId === inputId);
+      const input = room.getInputs().find((i) => i.inputId === inputId);
       if (input?.type === 'text-input') {
         expect(input.text).toBe('Updated');
         expect(input.textColor).toBe('#00ff00');
@@ -293,7 +340,10 @@ describe('RoomState', () => {
       const room = new RoomState('room-1', output, [], true);
       await room.init();
 
-      const inputId = (await room.addNewInput({ type: 'text-input', text: 'Test' }))!;
+      const inputId = (await room.addNewInput({
+        type: 'text-input',
+        text: 'Test',
+      }))!;
 
       await room.updateInput(inputId, {
         absolutePosition: true,
@@ -303,7 +353,7 @@ describe('RoomState', () => {
         absoluteHeight: 400,
       });
 
-      const input = room.getInputs().find(i => i.inputId === inputId);
+      const input = room.getInputs().find((i) => i.inputId === inputId);
       expect(input?.absolutePosition).toBe(true);
       expect(input?.absoluteTop).toBe(100);
       expect(input?.absoluteLeft).toBe(200);
@@ -324,7 +374,7 @@ describe('RoomState', () => {
         gameBoardBorderWidth: 8,
       });
 
-      const input = room.getInputs().find(i => i.inputId === inputId);
+      const input = room.getInputs().find((i) => i.inputId === inputId);
       if (input?.type === 'game') {
         expect(input.snakeGameState.backgroundColor).toBe('#222222');
         expect(input.snakeGameState.cellGap).toBe(4);
@@ -346,7 +396,7 @@ describe('RoomState', () => {
 
       await room.reorderInputs([id3, id1, id2]);
 
-      const ids = room.getInputs().map(i => i.inputId);
+      const ids = room.getInputs().map((i) => i.inputId);
       expect(ids.indexOf(id3)).toBeLessThan(ids.indexOf(id1));
       expect(ids.indexOf(id1)).toBeLessThan(ids.indexOf(id2));
     });
@@ -361,7 +411,7 @@ describe('RoomState', () => {
 
       await room.reorderInputs([id2]);
 
-      const ids = room.getInputs().map(i => i.inputId);
+      const ids = room.getInputs().map((i) => i.inputId);
       expect(ids.indexOf(id2)).toBeLessThan(ids.indexOf(id1));
     });
   });
@@ -386,13 +436,20 @@ describe('RoomState', () => {
       const room = new RoomState('room-1', output, [], true);
       await room.init();
 
-      const inputId = (await room.addNewInput({ type: 'text-input', text: 'Test' }))!;
+      const inputId = (await room.addNewInput({
+        type: 'text-input',
+        text: 'Test',
+      }))!;
 
       await room.hideInput(inputId);
-      expect(room.getInputs().find(i => i.inputId === inputId)?.hidden).toBe(true);
+      expect(room.getInputs().find((i) => i.inputId === inputId)?.hidden).toBe(
+        true,
+      );
 
       await room.showInput(inputId);
-      expect(room.getInputs().find(i => i.inputId === inputId)?.hidden).toBe(false);
+      expect(room.getInputs().find((i) => i.inputId === inputId)?.hidden).toBe(
+        false,
+      );
     });
   });
 
@@ -414,7 +471,7 @@ describe('RoomState', () => {
       await room.init();
 
       const before = room.lastReadTimestamp;
-      await new Promise(r => setTimeout(r, 10));
+      await new Promise((r) => setTimeout(r, 10));
       room.getState();
       expect(room.lastReadTimestamp).toBeGreaterThanOrEqual(before);
     });
@@ -503,7 +560,9 @@ describe('RoomState', () => {
       await room.init();
 
       await room.startRecording();
-      await expect(room.startRecording()).rejects.toThrow(/already in progress/);
+      await expect(room.startRecording()).rejects.toThrow(
+        /already in progress/,
+      );
       await room.stopRecording();
     });
   });

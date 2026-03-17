@@ -9,7 +9,12 @@ import type { RoomStore } from './app/store';
 import { createRoomStore } from './app/store';
 import { config } from './config';
 import { ensureDir, readFile, remove, stat } from 'fs-extra';
-import { MotionScene, type MotionStore, MOTION_GRID_WIDTH, MOTION_GRID_HEIGHT } from './motion/MotionScene';
+import {
+  MotionScene,
+  type MotionStore,
+  MOTION_GRID_WIDTH,
+  MOTION_GRID_HEIGHT,
+} from './motion/MotionScene';
 import shadersController from './shaders/shaders';
 import { sleep } from './utils';
 import type { Resolution } from './types';
@@ -71,7 +76,12 @@ export class SmelterManager {
       assetType: 'gif',
     });
     await SmelterInstance['instance'].registerImage('news_strip', {
-      serverPath: path.join(process.cwd(), 'mp4s', 'news_strip', 'news_strip.png'),
+      serverPath: path.join(
+        process.cwd(),
+        'mp4s',
+        'news_strip',
+        'news_strip.png',
+      ),
       assetType: 'png',
     });
     await SmelterInstance['instance'].registerImage('smelter_logo', {
@@ -79,19 +89,21 @@ export class SmelterManager {
       assetType: 'png',
     });
 
-
     await this.instance.registerFont('https://madbangbang.com/Starjedi.ttf');
 
     for (const shader of shadersController.shaders) {
       await this.registerShaderFromFile(
         SmelterInstance['instance'],
         shader.id,
-        path.join(__dirname, `../shaders/${shader.shaderFile}`)
+        path.join(__dirname, `../shaders/${shader.shaderFile}`),
       );
     }
   }
 
-  public async registerOutput(roomId: string, resolution: Resolution = RESOLUTION_PRESETS['1440p']): Promise<SmelterOutput> {
+  public async registerOutput(
+    roomId: string,
+    resolution: Resolution = RESOLUTION_PRESETS['1440p'],
+  ): Promise<SmelterOutput> {
     let store = createRoomStore(resolution);
     await this.instance.registerOutput(roomId, <App store={store} />, {
       type: 'whep_server',
@@ -109,7 +121,12 @@ export class SmelterManager {
       },
     });
 
-    return { id: roomId, url: `${config.whepBaseUrl}/${encodeURIComponent(roomId)}`, store, resolution };
+    return {
+      id: roomId,
+      url: `${config.whepBaseUrl}/${encodeURIComponent(roomId)}`,
+      store,
+      resolution,
+    };
   }
 
   /**
@@ -119,32 +136,28 @@ export class SmelterManager {
   public async registerMp4Output(
     outputId: string,
     output: SmelterOutput,
-    filePath: string
+    filePath: string,
   ): Promise<void> {
-    await this.instance.registerOutput(
-      outputId,
-      <App store={output.store} />,
-      {
-        type: 'mp4',
-        serverPath: filePath,
-        video: {
-          encoder: {
-            type: 'ffmpeg_h264',
-            preset: 'fast',
-          },
-          resolution: {
-            width: output.resolution.width,
-            height: output.resolution.height,
-          },
+    await this.instance.registerOutput(outputId, <App store={output.store} />, {
+      type: 'mp4',
+      serverPath: filePath,
+      video: {
+        encoder: {
+          type: 'ffmpeg_h264',
+          preset: 'fast',
         },
-        audio: {
-          encoder: {
-            type: 'aac',
-            channels: 'stereo',
-          } as any,
+        resolution: {
+          width: output.resolution.width,
+          height: output.resolution.height,
         },
-      }
-    );
+      },
+      audio: {
+        encoder: {
+          type: 'aac',
+          channels: 'stereo',
+        } as any,
+      },
+    });
   }
 
   public async unregisterOutput(roomId: string): Promise<void> {
@@ -160,7 +173,10 @@ export class SmelterManager {
     }
   }
 
-  public async registerInput(inputId: string, opts: RegisterSmelterInputOptions): Promise<string> {
+  public async registerInput(
+    inputId: string,
+    opts: RegisterSmelterInputOptions,
+  ): Promise<string> {
     try {
       if (opts.type === 'whip') {
         const res = await this.instance.registerInput(inputId, {
@@ -217,7 +233,11 @@ export class SmelterManager {
 
   public async registerImage(
     imageId: string,
-    opts: { serverPath?: string; url?: string; assetType: 'jpeg' | 'png' | 'gif' | 'svg' | 'auto' }
+    opts: {
+      serverPath?: string;
+      url?: string;
+      assetType: 'jpeg' | 'png' | 'gif' | 'svg' | 'auto';
+    },
   ): Promise<void> {
     await this.instance.registerImage(imageId, {
       serverPath: opts.serverPath,
@@ -230,20 +250,28 @@ export class SmelterManager {
     await this.instance.unregisterImage(imageId);
   }
 
-  public async registerMotionOutput(outputId: string, store: StoreApi<MotionStore>, port: number): Promise<void> {
-    await this.instance.registerOutput(outputId, <MotionScene store={store} />, {
-      type: 'rtp_stream',
-      port,
-      ip: '127.0.0.1',
-      transportProtocol: 'udp',
-      video: {
-        resolution: { width: MOTION_GRID_WIDTH, height: MOTION_GRID_HEIGHT },
-        encoder:
-          config.h264Encoder.type === 'vulkan_h264'
-            ? { type: 'vulkan_h264' as const }
-            : { type: 'ffmpeg_h264' as const, preset: 'ultrafast' as const },
+  public async registerMotionOutput(
+    outputId: string,
+    store: StoreApi<MotionStore>,
+    port: number,
+  ): Promise<void> {
+    await this.instance.registerOutput(
+      outputId,
+      <MotionScene store={store} />,
+      {
+        type: 'rtp_stream',
+        port,
+        ip: '127.0.0.1',
+        transportProtocol: 'udp',
+        video: {
+          resolution: { width: MOTION_GRID_WIDTH, height: MOTION_GRID_HEIGHT },
+          encoder:
+            config.h264Encoder.type === 'vulkan_h264'
+              ? { type: 'vulkan_h264' as const }
+              : { type: 'ffmpeg_h264' as const, preset: 'ultrafast' as const },
+        },
       },
-    });
+    );
   }
 
   public async unregisterMotionOutput(outputId: string): Promise<void> {
@@ -277,7 +305,13 @@ export class SmelterManager {
     await sleep(200);
 
     await execFileAsync('ffmpeg', [
-      '-i', mp4Path, '-vframes', '1', '-q:v', '2', jpegPath,
+      '-i',
+      mp4Path,
+      '-vframes',
+      '1',
+      '-q:v',
+      '2',
+      jpegPath,
     ]);
     await remove(mp4Path);
 
@@ -288,7 +322,11 @@ export class SmelterManager {
     await this.instance.terminate();
   }
 
-  private async registerShaderFromFile(smelter: Smelter, shaderId: string, file: string) {
+  private async registerShaderFromFile(
+    smelter: Smelter,
+    shaderId: string,
+    file: string,
+  ) {
     const source = await readFile(file, { encoding: 'utf-8' });
 
     await smelter.registerShader(shaderId, {

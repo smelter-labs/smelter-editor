@@ -35,7 +35,9 @@ export type SnakeEventShaderMapping = {
   effectDurationMs: number;
 };
 
-export type SnakeEventShaderConfig = Partial<Record<SnakeEventType, SnakeEventShaderMapping>>;
+export type SnakeEventShaderConfig = Partial<
+  Record<SnakeEventType, SnakeEventShaderMapping>
+>;
 
 export type ActiveSnakeEffect = {
   eventType: SnakeEventType;

@@ -81,7 +81,8 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     isActive: true,
     isVisible: false,
     name: 'Page Flip',
-    description: 'A 3D page flip transition/filter with realistic shading and back tint option.',
+    description:
+      'A 3D page flip transition/filter with realistic shading and back tint option.',
     shaderFile: 'page-flip-1.wgsl',
     params: [
       {
@@ -133,7 +134,8 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     isActive: true,
     isVisible: true,
     name: 'Brightness & Contrast',
-    description: 'A shader that adjusts the brightness and contrast of the input video.',
+    description:
+      'A shader that adjusts the brightness and contrast of the input video.',
     shaderFile: 'brightness-contrast.wgsl',
     params: [
       {
@@ -294,13 +296,14 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     isActive: true,
     isVisible: true,
     name: 'Remove Color',
-    description: 'Removes the exact target RGB color by making it fully transparent.',
+    description:
+      'Removes the exact target RGB color by making it fully transparent.',
     shaderFile: 'remove-color.wgsl',
     params: [
       {
-        name: 'target_color', 
-        type: 'color', 
-        defaultValue: '#1c1c35' // green by default (was r=0, g=1, b=0)
+        name: 'target_color',
+        type: 'color',
+        defaultValue: '#1c1c35', // green by default (was r=0, g=1, b=0)
       },
       {
         name: 'tolerance',
@@ -446,14 +449,62 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
       'Adds animated, parameterized white streaks (warp-star effect) over the input, simulating fast motion through space.',
     shaderFile: 'star-streaks.wgsl',
     params: [
-      { name: 'line_density', type: 'number', minValue: 1, maxValue: 200, defaultValue: 40 },
-      { name: 'thickness_px', type: 'number', minValue: 0.5, maxValue: 10, defaultValue: 2 },
-      { name: 'speed', type: 'number', minValue: 0, maxValue: 5, defaultValue: 0.8 },
-      { name: 'jitter_amp_px', type: 'number', minValue: 0, maxValue: 50, defaultValue: 4 },
-      { name: 'jitter_freq', type: 'number', minValue: 0, maxValue: 10, defaultValue: 1.5 },
-      { name: 'dash_repeat', type: 'number', minValue: 0, maxValue: 50, defaultValue: 10 },
-      { name: 'dash_duty', type: 'number', minValue: 0.0, maxValue: 1.0, defaultValue: 0.4 },
-      { name: 'brightness', type: 'number', minValue: 0.0, maxValue: 3.0, defaultValue: 0.5 },
+      {
+        name: 'line_density',
+        type: 'number',
+        minValue: 1,
+        maxValue: 200,
+        defaultValue: 40,
+      },
+      {
+        name: 'thickness_px',
+        type: 'number',
+        minValue: 0.5,
+        maxValue: 10,
+        defaultValue: 2,
+      },
+      {
+        name: 'speed',
+        type: 'number',
+        minValue: 0,
+        maxValue: 5,
+        defaultValue: 0.8,
+      },
+      {
+        name: 'jitter_amp_px',
+        type: 'number',
+        minValue: 0,
+        maxValue: 50,
+        defaultValue: 4,
+      },
+      {
+        name: 'jitter_freq',
+        type: 'number',
+        minValue: 0,
+        maxValue: 10,
+        defaultValue: 1.5,
+      },
+      {
+        name: 'dash_repeat',
+        type: 'number',
+        minValue: 0,
+        maxValue: 50,
+        defaultValue: 10,
+      },
+      {
+        name: 'dash_duty',
+        type: 'number',
+        minValue: 0.0,
+        maxValue: 1.0,
+        defaultValue: 0.4,
+      },
+      {
+        name: 'brightness',
+        type: 'number',
+        minValue: 0.0,
+        maxValue: 3.0,
+        defaultValue: 0.5,
+      },
     ],
   },
   {
@@ -465,15 +516,69 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
       'Adds a soft, slightly animated shadow behind the input. Color, opacity, offset and blur are configurable.',
     shaderFile: 'soft-shadow.wgsl',
     params: [
-      { name: 'shadow_r', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.0 },
-      { name: 'shadow_g', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.0 },
-      { name: 'shadow_b', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.0 },
-      { name: 'opacity', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.5 },
-      { name: 'offset_x_px', type: 'number', minValue: -200, maxValue: 200, defaultValue: 8 },
-      { name: 'offset_y_px', type: 'number', minValue: -200, maxValue: 200, defaultValue: 8 },
-      { name: 'blur_px', type: 'number', minValue: 0, maxValue: 200, defaultValue: 6 },
-      { name: 'anim_amp_px', type: 'number', minValue: 0, maxValue: 30, defaultValue: 2 },
-      { name: 'anim_speed', type: 'number', minValue: 0, maxValue: 20, defaultValue: 2 },
+      {
+        name: 'shadow_r',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.0,
+      },
+      {
+        name: 'shadow_g',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.0,
+      },
+      {
+        name: 'shadow_b',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.0,
+      },
+      {
+        name: 'opacity',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.5,
+      },
+      {
+        name: 'offset_x_px',
+        type: 'number',
+        minValue: -200,
+        maxValue: 200,
+        defaultValue: 8,
+      },
+      {
+        name: 'offset_y_px',
+        type: 'number',
+        minValue: -200,
+        maxValue: 200,
+        defaultValue: 8,
+      },
+      {
+        name: 'blur_px',
+        type: 'number',
+        minValue: 0,
+        maxValue: 200,
+        defaultValue: 6,
+      },
+      {
+        name: 'anim_amp_px',
+        type: 'number',
+        minValue: 0,
+        maxValue: 30,
+        defaultValue: 2,
+      },
+      {
+        name: 'anim_speed',
+        type: 'number',
+        minValue: 0,
+        maxValue: 20,
+        defaultValue: 2,
+      },
     ],
   },
   {
@@ -485,9 +590,27 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
       'Draws an outline wherever transparent and opaque pixels meet, with configurable width, softness, and color.',
     shaderFile: 'alpha-stroke.wgsl',
     params: [
-      { name: 'stroke_width_px', type: 'number', minValue: 0, maxValue: 100, defaultValue: 66 },
-      { name: 'softness_px', type: 'number', minValue: 0, maxValue: 50, defaultValue: 31.5 },
-      { name: 'opacity', type: 'number', minValue: 0, maxValue: 1, defaultValue: 1 },
+      {
+        name: 'stroke_width_px',
+        type: 'number',
+        minValue: 0,
+        maxValue: 100,
+        defaultValue: 66,
+      },
+      {
+        name: 'softness_px',
+        type: 'number',
+        minValue: 0,
+        maxValue: 50,
+        defaultValue: 31.5,
+      },
+      {
+        name: 'opacity',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 1,
+      },
       { name: 'stroke_color', type: 'color', defaultValue: '#000000' },
     ],
   },
@@ -500,25 +623,139 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
       'Star Wars style hologram effect with scanlines, flicker, chromatic aberration, and blue tint.',
     shaderFile: 'sw-hologram.wgsl',
     params: [
-      { name: 'tint_r', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.25 },
-      { name: 'tint_g', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.6 },
-      { name: 'tint_b', type: 'number', minValue: 0, maxValue: 1, defaultValue: 1.0 },
-      { name: 'opacity', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.92 },
-      { name: 'scanline_intensity', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.65 },
-      { name: 'scanline_density', type: 'number', minValue: 10, maxValue: 500, defaultValue: 127.6 },
-      { name: 'scanline_speed', type: 'number', minValue: 0, maxValue: 50, defaultValue: 37.0 },
-      { name: 'flicker_intensity', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.69 },
-      { name: 'flicker_speed', type: 'number', minValue: 0, maxValue: 30, defaultValue: 8 },
-      { name: 'chromatic_aberration_px', type: 'number', minValue: 0, maxValue: 20, defaultValue: 2 },
-      { name: 'noise_intensity', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.0 },
-      { name: 'jitter_x_px', type: 'number', minValue: 0, maxValue: 20, defaultValue: 2.2 },
-      { name: 'jitter_y_px', type: 'number', minValue: 0, maxValue: 20, defaultValue: 0.5 },
-      { name: 'jitter_speed', type: 'number', minValue: 0, maxValue: 20, defaultValue: 2.2 },
-      { name: 'glow_intensity', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.09 },
-      { name: 'edge_glow_width', type: 'number', minValue: 0, maxValue: 0.5, defaultValue: 0.1 },
-      { name: 'brightness', type: 'number', minValue: 0.5, maxValue: 5, defaultValue: 2.93 },
-      { name: 'bloom_intensity', type: 'number', minValue: 0, maxValue: 2, defaultValue: 0.42 },
-      { name: 'bloom_radius', type: 'number', minValue: 1, maxValue: 50, defaultValue: 32.36 },
+      {
+        name: 'tint_r',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.25,
+      },
+      {
+        name: 'tint_g',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.6,
+      },
+      {
+        name: 'tint_b',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 1.0,
+      },
+      {
+        name: 'opacity',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.92,
+      },
+      {
+        name: 'scanline_intensity',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.65,
+      },
+      {
+        name: 'scanline_density',
+        type: 'number',
+        minValue: 10,
+        maxValue: 500,
+        defaultValue: 127.6,
+      },
+      {
+        name: 'scanline_speed',
+        type: 'number',
+        minValue: 0,
+        maxValue: 50,
+        defaultValue: 37.0,
+      },
+      {
+        name: 'flicker_intensity',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.69,
+      },
+      {
+        name: 'flicker_speed',
+        type: 'number',
+        minValue: 0,
+        maxValue: 30,
+        defaultValue: 8,
+      },
+      {
+        name: 'chromatic_aberration_px',
+        type: 'number',
+        minValue: 0,
+        maxValue: 20,
+        defaultValue: 2,
+      },
+      {
+        name: 'noise_intensity',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.0,
+      },
+      {
+        name: 'jitter_x_px',
+        type: 'number',
+        minValue: 0,
+        maxValue: 20,
+        defaultValue: 2.2,
+      },
+      {
+        name: 'jitter_y_px',
+        type: 'number',
+        minValue: 0,
+        maxValue: 20,
+        defaultValue: 0.5,
+      },
+      {
+        name: 'jitter_speed',
+        type: 'number',
+        minValue: 0,
+        maxValue: 20,
+        defaultValue: 2.2,
+      },
+      {
+        name: 'glow_intensity',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.09,
+      },
+      {
+        name: 'edge_glow_width',
+        type: 'number',
+        minValue: 0,
+        maxValue: 0.5,
+        defaultValue: 0.1,
+      },
+      {
+        name: 'brightness',
+        type: 'number',
+        minValue: 0.5,
+        maxValue: 5,
+        defaultValue: 2.93,
+      },
+      {
+        name: 'bloom_intensity',
+        type: 'number',
+        minValue: 0,
+        maxValue: 2,
+        defaultValue: 0.42,
+      },
+      {
+        name: 'bloom_radius',
+        type: 'number',
+        minValue: 1,
+        maxValue: 50,
+        defaultValue: 32.36,
+      },
     ],
   },
   {
@@ -565,16 +802,59 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     isActive: true,
     isVisible: false,
     name: 'Grid Overlay',
-    description: 'Procedurally generates a grid overlay with configurable cell count, gap size and line color.',
+    description:
+      'Procedurally generates a grid overlay with configurable cell count, gap size and line color.',
     shaderFile: 'grid-overlay.wgsl',
     params: [
-      { name: 'cells_x', type: 'number', minValue: 1, maxValue: 200, defaultValue: 20 },
-      { name: 'cells_y', type: 'number', minValue: 1, maxValue: 200, defaultValue: 20 },
-      { name: 'gap', type: 'number', minValue: 0, maxValue: 20, defaultValue: 1 },
-      { name: 'line_r', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.75 },
-      { name: 'line_g', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.75 },
-      { name: 'line_b', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.75 },
-      { name: 'line_a', type: 'number', minValue: 0, maxValue: 1, defaultValue: 1.0 },
+      {
+        name: 'cells_x',
+        type: 'number',
+        minValue: 1,
+        maxValue: 200,
+        defaultValue: 20,
+      },
+      {
+        name: 'cells_y',
+        type: 'number',
+        minValue: 1,
+        maxValue: 200,
+        defaultValue: 20,
+      },
+      {
+        name: 'gap',
+        type: 'number',
+        minValue: 0,
+        maxValue: 20,
+        defaultValue: 1,
+      },
+      {
+        name: 'line_r',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.75,
+      },
+      {
+        name: 'line_g',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.75,
+      },
+      {
+        name: 'line_b',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.75,
+      },
+      {
+        name: 'line_a',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 1.0,
+      },
     ],
   },
   {
@@ -586,12 +866,48 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
       'Gaussian blur with configurable radius, strength, directional mode, alpha preservation, and quality (sample count).',
     shaderFile: 'blur.wgsl',
     params: [
-      { name: 'radius', type: 'number', minValue: 0, maxValue: 50, defaultValue: 5 },
-      { name: 'strength', type: 'number', minValue: 0, maxValue: 1, defaultValue: 1 },
-      { name: 'direction_x', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0 },
-      { name: 'direction_y', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0 },
-      { name: 'preserve_alpha', type: 'number', minValue: 0, maxValue: 1, defaultValue: 1 },
-      { name: 'quality', type: 'number', minValue: 1, maxValue: 8, defaultValue: 4 },
+      {
+        name: 'radius',
+        type: 'number',
+        minValue: 0,
+        maxValue: 50,
+        defaultValue: 5,
+      },
+      {
+        name: 'strength',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 1,
+      },
+      {
+        name: 'direction_x',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0,
+      },
+      {
+        name: 'direction_y',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0,
+      },
+      {
+        name: 'preserve_alpha',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 1,
+      },
+      {
+        name: 'quality',
+        type: 'number',
+        minValue: 1,
+        maxValue: 8,
+        defaultValue: 4,
+      },
     ],
   },
   {
@@ -603,13 +919,55 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
       'Adjust hue, saturation, and lightness. Supports colorize mode and blend with original.',
     shaderFile: 'hsl-adjust.wgsl',
     params: [
-      { name: 'hue_shift', type: 'number', minValue: -1, maxValue: 1, defaultValue: 0 },
-      { name: 'saturation', type: 'number', minValue: -1, maxValue: 2, defaultValue: 0 },
-      { name: 'lightness', type: 'number', minValue: -1, maxValue: 1, defaultValue: 0 },
-      { name: 'colorize_enable', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0 },
-      { name: 'colorize_hue', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0 },
-      { name: 'colorize_saturation', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.5 },
-      { name: 'mix_amount', type: 'number', minValue: 0, maxValue: 1, defaultValue: 1 },
+      {
+        name: 'hue_shift',
+        type: 'number',
+        minValue: -1,
+        maxValue: 1,
+        defaultValue: 0,
+      },
+      {
+        name: 'saturation',
+        type: 'number',
+        minValue: -1,
+        maxValue: 2,
+        defaultValue: 0,
+      },
+      {
+        name: 'lightness',
+        type: 'number',
+        minValue: -1,
+        maxValue: 1,
+        defaultValue: 0,
+      },
+      {
+        name: 'colorize_enable',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0,
+      },
+      {
+        name: 'colorize_hue',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0,
+      },
+      {
+        name: 'colorize_saturation',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.5,
+      },
+      {
+        name: 'mix_amount',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 1,
+      },
     ],
   },
   {
@@ -621,16 +979,76 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
       'Darkens edges of the frame with configurable intensity, radius, softness, roundness, color, center offset, and opacity.',
     shaderFile: 'vignette.wgsl',
     params: [
-      { name: 'intensity', type: 'number', minValue: 0, maxValue: 2, defaultValue: 1 },
-      { name: 'radius', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.5 },
-      { name: 'softness', type: 'number', minValue: 0, maxValue: 2, defaultValue: 0.5 },
-      { name: 'roundness', type: 'number', minValue: 0, maxValue: 1, defaultValue: 1 },
-      { name: 'color_r', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0 },
-      { name: 'color_g', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0 },
-      { name: 'color_b', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0 },
-      { name: 'center_x', type: 'number', minValue: -1, maxValue: 1, defaultValue: 0 },
-      { name: 'center_y', type: 'number', minValue: -1, maxValue: 1, defaultValue: 0 },
-      { name: 'opacity', type: 'number', minValue: 0, maxValue: 1, defaultValue: 1 },
+      {
+        name: 'intensity',
+        type: 'number',
+        minValue: 0,
+        maxValue: 2,
+        defaultValue: 1,
+      },
+      {
+        name: 'radius',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.5,
+      },
+      {
+        name: 'softness',
+        type: 'number',
+        minValue: 0,
+        maxValue: 2,
+        defaultValue: 0.5,
+      },
+      {
+        name: 'roundness',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 1,
+      },
+      {
+        name: 'color_r',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0,
+      },
+      {
+        name: 'color_g',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0,
+      },
+      {
+        name: 'color_b',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0,
+      },
+      {
+        name: 'center_x',
+        type: 'number',
+        minValue: -1,
+        maxValue: 1,
+        defaultValue: 0,
+      },
+      {
+        name: 'center_y',
+        type: 'number',
+        minValue: -1,
+        maxValue: 1,
+        defaultValue: 0,
+      },
+      {
+        name: 'opacity',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 1,
+      },
     ],
   },
   {
@@ -642,16 +1060,76 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
       'Splits RGB channels with configurable offset, angle, falloff from center, per-channel multipliers, and optional animation.',
     shaderFile: 'chromatic-aberration.wgsl',
     params: [
-      { name: 'offset_px', type: 'number', minValue: 0, maxValue: 50, defaultValue: 5 },
-      { name: 'angle', type: 'number', minValue: 0, maxValue: 6.283, defaultValue: 0 },
-      { name: 'falloff', type: 'number', minValue: 0, maxValue: 1, defaultValue: 1 },
-      { name: 'center_x', type: 'number', minValue: -1, maxValue: 1, defaultValue: 0 },
-      { name: 'center_y', type: 'number', minValue: -1, maxValue: 1, defaultValue: 0 },
-      { name: 'r_multiplier', type: 'number', minValue: 0, maxValue: 2, defaultValue: 1 },
-      { name: 'g_multiplier', type: 'number', minValue: 0, maxValue: 2, defaultValue: 1 },
-      { name: 'b_multiplier', type: 'number', minValue: 0, maxValue: 2, defaultValue: 1 },
-      { name: 'animated', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0 },
-      { name: 'anim_speed', type: 'number', minValue: 0, maxValue: 10, defaultValue: 2 },
+      {
+        name: 'offset_px',
+        type: 'number',
+        minValue: 0,
+        maxValue: 50,
+        defaultValue: 5,
+      },
+      {
+        name: 'angle',
+        type: 'number',
+        minValue: 0,
+        maxValue: 6.283,
+        defaultValue: 0,
+      },
+      {
+        name: 'falloff',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 1,
+      },
+      {
+        name: 'center_x',
+        type: 'number',
+        minValue: -1,
+        maxValue: 1,
+        defaultValue: 0,
+      },
+      {
+        name: 'center_y',
+        type: 'number',
+        minValue: -1,
+        maxValue: 1,
+        defaultValue: 0,
+      },
+      {
+        name: 'r_multiplier',
+        type: 'number',
+        minValue: 0,
+        maxValue: 2,
+        defaultValue: 1,
+      },
+      {
+        name: 'g_multiplier',
+        type: 'number',
+        minValue: 0,
+        maxValue: 2,
+        defaultValue: 1,
+      },
+      {
+        name: 'b_multiplier',
+        type: 'number',
+        minValue: 0,
+        maxValue: 2,
+        defaultValue: 1,
+      },
+      {
+        name: 'animated',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0,
+      },
+      {
+        name: 'anim_speed',
+        type: 'number',
+        minValue: 0,
+        maxValue: 10,
+        defaultValue: 2,
+      },
     ],
   },
   {
@@ -663,11 +1141,41 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
       'Unsharp mask sharpening with strength, radius, threshold, edge detection preview, and detail boost.',
     shaderFile: 'sharpen.wgsl',
     params: [
-      { name: 'strength', type: 'number', minValue: 0, maxValue: 5, defaultValue: 1 },
-      { name: 'radius_px', type: 'number', minValue: 0.5, maxValue: 10, defaultValue: 1 },
-      { name: 'threshold', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0 },
-      { name: 'edge_detect_mix', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0 },
-      { name: 'detail_boost', type: 'number', minValue: 0, maxValue: 2, defaultValue: 1 },
+      {
+        name: 'strength',
+        type: 'number',
+        minValue: 0,
+        maxValue: 5,
+        defaultValue: 1,
+      },
+      {
+        name: 'radius_px',
+        type: 'number',
+        minValue: 0.5,
+        maxValue: 10,
+        defaultValue: 1,
+      },
+      {
+        name: 'threshold',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0,
+      },
+      {
+        name: 'edge_detect_mix',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0,
+      },
+      {
+        name: 'detail_boost',
+        type: 'number',
+        minValue: 0,
+        maxValue: 2,
+        defaultValue: 1,
+      },
     ],
   },
   {
@@ -679,10 +1187,28 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
       'Visual effect overlay for snake game events. Supports pulse glow, flash, shake, color shift, ripple, vignette, chromatic burst, and pixelate effects.',
     shaderFile: 'snake-event-highlight.wgsl',
     params: [
-      { name: 'effect_type', type: 'number', minValue: 0, maxValue: 8, defaultValue: 1 },
-      { name: 'intensity', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0.7 },
+      {
+        name: 'effect_type',
+        type: 'number',
+        minValue: 0,
+        maxValue: 8,
+        defaultValue: 1,
+      },
+      {
+        name: 'intensity',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.7,
+      },
       { name: 'effect_color', type: 'color', defaultValue: '#ff4400' },
-      { name: 'progress', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0 },
+      {
+        name: 'progress',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0,
+      },
     ],
   },
   {
@@ -690,11 +1216,24 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     isActive: true,
     isVisible: false,
     name: 'Transition Slide',
-    description: 'Slide transition: offsets UV coordinates based on progress and direction.',
+    description:
+      'Slide transition: offsets UV coordinates based on progress and direction.',
     shaderFile: 'transition-slide.wgsl',
     params: [
-      { name: 'progress', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0 },
-      { name: 'direction', type: 'number', minValue: 0, maxValue: 3, defaultValue: 0 },
+      {
+        name: 'progress',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0,
+      },
+      {
+        name: 'direction',
+        type: 'number',
+        minValue: 0,
+        maxValue: 3,
+        defaultValue: 0,
+      },
     ],
   },
   {
@@ -705,8 +1244,20 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     description: 'Wipe transition: hard-edge reveal along the horizontal axis.',
     shaderFile: 'transition-wipe.wgsl',
     params: [
-      { name: 'progress', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0 },
-      { name: 'direction', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0 },
+      {
+        name: 'progress',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0,
+      },
+      {
+        name: 'direction',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0,
+      },
     ],
   },
   {
@@ -717,7 +1268,13 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     description: 'Dissolve transition: noise-based pixel dissolve effect.',
     shaderFile: 'transition-dissolve.wgsl',
     params: [
-      { name: 'progress', type: 'number', minValue: 0, maxValue: 1, defaultValue: 0 },
+      {
+        name: 'progress',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0,
+      },
     ],
   },
 ];
@@ -725,21 +1282,25 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
 class ShadersController {
   public get shaders(): PublicShader[] {
     const baseIconsDir = path.resolve(__dirname, '../../shaders/icons');
-    return AVAILABLE_SHADERS.filter(shader => shader.isActive).map(shader => {
-      const iconPath = path.join(baseIconsDir, `${shader.id}.svg`);
-      let iconSvg = '';
-      try {
-        iconSvg = fs.readFileSync(iconPath, { encoding: 'utf-8' });
-      } catch {
-        iconSvg =
-          '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><rect width="24" height="24" fill="#888"/></svg>';
-      }
-      return { ...shader, iconSvg };
-    });
+    return AVAILABLE_SHADERS.filter((shader) => shader.isActive).map(
+      (shader) => {
+        const iconPath = path.join(baseIconsDir, `${shader.id}.svg`);
+        let iconSvg = '';
+        try {
+          iconSvg = fs.readFileSync(iconPath, { encoding: 'utf-8' });
+        } catch {
+          iconSvg =
+            '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24"><rect width="24" height="24" fill="#888"/></svg>';
+        }
+        return { ...shader, iconSvg };
+      },
+    );
   }
 
   public getShaderById(shaderId: string): AvailableShader | undefined {
-    return AVAILABLE_SHADERS.find(shader => shader.id === shaderId && shader.isActive);
+    return AVAILABLE_SHADERS.find(
+      (shader) => shader.id === shaderId && shader.isActive,
+    );
   }
 }
 

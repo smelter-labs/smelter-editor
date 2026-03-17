@@ -33,7 +33,7 @@ class TwitchChannelSuggestionsMonitor {
 
   private async refreshCategoryInfo(categories: string[]): Promise<void> {
     const streamsByCategory = await Promise.all(
-      categories.map(async categoryId => await getTopStreams(categoryId))
+      categories.map(async (categoryId) => await getTopStreams(categoryId)),
     );
     const streams = streamsByCategory.flat();
     this.topStreams = streams;
@@ -53,7 +53,9 @@ export class TwitchChannelMonitor implements StreamMonitor {
     void this.monitor();
   }
 
-  public static async startMonitor(channelId: string): Promise<TwitchChannelMonitor> {
+  public static async startMonitor(
+    channelId: string,
+  ): Promise<TwitchChannelMonitor> {
     const streamInfo = await getTwitchStreamInfo(channelId);
     if (!streamInfo) {
       throw new Error(`Unable to find live streams for ${channelId}`);
@@ -69,7 +71,9 @@ export class TwitchChannelMonitor implements StreamMonitor {
     return this.isStreamLive;
   }
 
-  public onUpdate(onUpdateFn: (streamInfo: TwitchStreamInfo, isLive: boolean) => void): void {
+  public onUpdate(
+    onUpdateFn: (streamInfo: TwitchStreamInfo, isLive: boolean) => void,
+  ): void {
     this.onUpdateFn = onUpdateFn;
     onUpdateFn(this.streamInfo, this.isStreamLive);
   }
@@ -98,13 +102,16 @@ export class TwitchChannelMonitor implements StreamMonitor {
 async function getTopStreams(categoryId: string): Promise<TwitchStreamInfo[]> {
   console.log('[twitch] Got Twitch top streams');
 
-  const streamIds = await getTopStreamsFromCategory(categoryId, STREAMS_PER_CATEGORY);
+  const streamIds = await getTopStreamsFromCategory(
+    categoryId,
+    STREAMS_PER_CATEGORY,
+  );
   return await Promise.all(
     streamIds
-      .map(async streamId => {
+      .map(async (streamId) => {
         return (await getTwitchStreamInfo(streamId))!;
       })
-      .filter(stream => !!stream)
+      .filter((stream) => !!stream),
   );
 }
 

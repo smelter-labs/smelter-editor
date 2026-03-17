@@ -11,8 +11,12 @@ export async function hlsUrlForKickChannel(channelId: string) {
 }
 
 async function getHlsPlaylistUrl(url: string): Promise<string> {
-  const streamlinkOutput = await spawn('streamlink', ['--stream-url', url, '720p,720p60,best'], {
-    stdio: 'pipe',
-  });
+  const streamlinkOutput = await spawn(
+    'streamlink',
+    ['--stream-url', url, '720p,720p60,best'],
+    {
+      stdio: 'pipe',
+    },
+  );
   return streamlinkOutput.stdout.trim();
 }

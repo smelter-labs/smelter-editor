@@ -17,14 +17,21 @@ const mocks = vi.hoisted(() => {
       terminate: fn().mockResolvedValue(undefined),
     },
     twitchStartMonitor: fn().mockResolvedValue({
-      isLive: () => true, stop: fn(), onUpdate: fn(),
+      isLive: () => true,
+      stop: fn(),
+      onUpdate: fn(),
     }),
     kickStartMonitor: fn().mockResolvedValue({
-      isLive: () => true, stop: fn(), onUpdate: fn(),
+      isLive: () => true,
+      stop: fn(),
+      onUpdate: fn(),
     }),
     whipStartMonitor: fn().mockResolvedValue({
       isLive: () => false,
-      touch: fn().mockReturnValue({ previousAckTimestamp: Date.now(), currentAckTimestamp: Date.now() }),
+      touch: fn().mockReturnValue({
+        previousAckTimestamp: Date.now(),
+        currentAckTimestamp: Date.now(),
+      }),
       getUsername: fn().mockReturnValue('test-user'),
       getLastAckTimestamp: fn().mockReturnValue(Date.now()),
       stop: fn(),
@@ -38,7 +45,9 @@ const mocks = vi.hoisted(() => {
 
 vi.mock('../smelter', () => ({ SmelterInstance: mocks.smelter }));
 vi.mock('../streamlink', () => ({
-  hlsUrlForTwitchChannel: vi.fn(async (id: string) => `http://hls/twitch/${id}`),
+  hlsUrlForTwitchChannel: vi.fn(
+    async (id: string) => `http://hls/twitch/${id}`,
+  ),
   hlsUrlForKickChannel: vi.fn(async (id: string) => `http://hls/kick/${id}`),
 }));
 vi.mock('../twitch/TwitchChannelMonitor', () => ({
@@ -50,7 +59,9 @@ vi.mock('../kick/KickChannelMonitor', () => ({
 vi.mock('../whip/WhipInputMonitor', () => ({
   WhipInputMonitor: { startMonitor: mocks.whipStartMonitor },
 }));
-vi.mock('../mp4/mp4SuggestionMonitor', () => ({ default: { mp4Files: ['test-video.mp4'] } }));
+vi.mock('../mp4/mp4SuggestionMonitor', () => ({
+  default: { mp4Files: ['test-video.mp4'] },
+}));
 vi.mock('fs-extra', () => ({
   pathExists: mocks.pathExists,
   ensureDir: mocks.ensureDir,
@@ -62,10 +73,17 @@ import { createRoomStore } from '../app/store';
 import { RESOLUTION_PRESETS } from '../types';
 
 // Wire up registerOutput to return a proper SmelterOutput
-mocks.smelter.registerOutput.mockImplementation(async (roomId: string, resolution?: { width: number; height: number }) => {
-  const res = resolution ?? RESOLUTION_PRESETS['1440p'];
-  return { id: roomId, url: `http://test-whep/${roomId}`, store: createRoomStore(res), resolution: res };
-});
+mocks.smelter.registerOutput.mockImplementation(
+  async (roomId: string, resolution?: { width: number; height: number }) => {
+    const res = resolution ?? RESOLUTION_PRESETS['1440p'];
+    return {
+      id: roomId,
+      url: `http://test-whep/${roomId}`,
+      store: createRoomStore(res),
+      resolution: res,
+    };
+  },
+);
 
 const { ServerState } = await import('../server/serverState');
 
@@ -75,10 +93,17 @@ let state: ServerStateInstance;
 beforeEach(() => {
   vi.clearAllMocks();
   // Re-apply default implementation after clearAllMocks
-  mocks.smelter.registerOutput.mockImplementation(async (roomId: string, resolution?: { width: number; height: number }) => {
-    const res = resolution ?? RESOLUTION_PRESETS['1440p'];
-    return { id: roomId, url: `http://test-whep/${roomId}`, store: createRoomStore(res), resolution: res };
-  });
+  mocks.smelter.registerOutput.mockImplementation(
+    async (roomId: string, resolution?: { width: number; height: number }) => {
+      const res = resolution ?? RESOLUTION_PRESETS['1440p'];
+      return {
+        id: roomId,
+        url: `http://test-whep/${roomId}`,
+        store: createRoomStore(res),
+        resolution: res,
+      };
+    },
+  );
   mocks.pathExists.mockResolvedValue(false);
   mocks.ensureDir.mockResolvedValue(undefined);
   mocks.readdir.mockResolvedValue([]);
@@ -118,7 +143,10 @@ describe('ServerState', () => {
     it('uses provided resolution', async () => {
       const resolution = { width: 1920, height: 1080 };
       await state.createRoom([], true, resolution);
-      expect(mocks.smelter.registerOutput).toHaveBeenCalledWith(expect.any(String), resolution);
+      expect(mocks.smelter.registerOutput).toHaveBeenCalledWith(
+        expect.any(String),
+        resolution,
+      );
     });
   });
 
@@ -154,7 +182,9 @@ describe('ServerState', () => {
     });
 
     it('throws for unknown roomId', async () => {
-      await expect(state.deleteRoom('nonexistent')).rejects.toThrow(/does not exist/);
+      await expect(state.deleteRoom('nonexistent')).rejects.toThrow(
+        /does not exist/,
+      );
     });
   });
 

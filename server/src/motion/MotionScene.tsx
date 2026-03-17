@@ -32,9 +32,16 @@ function MotionGrid() {
   const inputIds = useStore(store, (s) => s.inputIds);
 
   return (
-    <View style={{ width: MOTION_GRID_WIDTH, height: MOTION_GRID_HEIGHT, direction: 'row' }}>
+    <View
+      style={{
+        width: MOTION_GRID_WIDTH,
+        height: MOTION_GRID_HEIGHT,
+        direction: 'row',
+      }}>
       {inputIds.map((id) => (
-        <Rescaler key={id} style={{ width: MOTION_CELL_WIDTH, height: MOTION_CELL_HEIGHT }}>
+        <Rescaler
+          key={id}
+          style={{ width: MOTION_CELL_WIDTH, height: MOTION_CELL_HEIGHT }}>
           <InputStream inputId={id} />
         </Rescaler>
       ))}

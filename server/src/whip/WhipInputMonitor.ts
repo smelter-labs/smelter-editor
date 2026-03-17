@@ -10,7 +10,9 @@ export class WhipInputMonitor implements WhipMonitor {
     this.username = username;
   }
 
-  public static async startMonitor(username: string): Promise<WhipInputMonitor> {
+  public static async startMonitor(
+    username: string,
+  ): Promise<WhipInputMonitor> {
     return new WhipInputMonitor(username);
   }
   public getLastAckTimestamp(): number {
@@ -25,7 +27,10 @@ export class WhipInputMonitor implements WhipMonitor {
     return this.username;
   }
 
-  public touch(): { previousAckTimestamp: number; currentAckTimestamp: number } {
+  public touch(): {
+    previousAckTimestamp: number;
+    currentAckTimestamp: number;
+  } {
     const previousAckTimestamp = this.lastAckTimestamp;
     const currentAckTimestamp = Date.now();
     this.lastAckTimestamp = currentAckTimestamp;

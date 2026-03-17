@@ -22,7 +22,7 @@ function getConfig(): { clientId: string; clientSecret: string } | null {
 async function twitchFetch(
   input: RequestInfo,
   init: RequestInit = {},
-  retry = true
+  retry = true,
 ): Promise<Response> {
   if (!twitchAuth.token) {
     await refreshTwitchToken();
@@ -83,10 +83,10 @@ async function refreshTwitchToken(force = false): Promise<void> {
 
 export async function getTopStreamsFromCategory(
   categoryId: string,
-  count: number = 2
+  count: number = 2,
 ): Promise<string[]> {
   const response = await twitchFetch(
-    `https://api.twitch.tv/helix/streams?game_id=${encodeURIComponent(categoryId)}&language=en&first=${count}`
+    `https://api.twitch.tv/helix/streams?game_id=${encodeURIComponent(categoryId)}&language=en&first=${count}`,
   );
   if (!response.ok) {
     throw new Error('Failed to fetch streams from Twitch API');
@@ -97,13 +97,15 @@ export async function getTopStreamsFromCategory(
 }
 
 export async function getTwitchStreamInfo(
-  twitchChannelId: string
+  twitchChannelId: string,
 ): Promise<TwitchStreamInfo | undefined> {
   const response = await twitchFetch(
-    `https://api.twitch.tv/helix/streams?user_login=${encodeURIComponent(twitchChannelId)}`
+    `https://api.twitch.tv/helix/streams?user_login=${encodeURIComponent(twitchChannelId)}`,
   );
   if (!response.ok) {
-    throw new Error(`Failed to get stream status for ${twitchChannelId}: ${await response.text()}`);
+    throw new Error(
+      `Failed to get stream status for ${twitchChannelId}: ${await response.text()}`,
+    );
   }
   const data = await response.json();
   const stream = data.data ? data.data[0] : null;

@@ -1,7 +1,10 @@
 import { state } from './server/serverState';
 import { config } from './config';
 // import { renderSnakeBoard, findFirstSnakeGameState } from './snakeGame/snakeGameDashboard';
-export { setGlobalSnakeGameState, getGlobalSnakeGameState } from './snakeGame/snakeGameDashboard';
+export {
+  setGlobalSnakeGameState,
+  getGlobalSnakeGameState,
+} from './snakeGame/snakeGameDashboard';
 
 const isBoxed = process.env.LAYOUT === 'boxed';
 
@@ -29,15 +32,17 @@ let startTime = Date.now();
 function pushSysLog(level: string, args: unknown[]) {
   const time = new Date().toLocaleTimeString('pl-PL', { hour12: false });
   const msg = args
-    .map(a => (typeof a === 'string' ? a : JSON.stringify(a, null, 0)))
+    .map((a) => (typeof a === 'string' ? a : JSON.stringify(a, null, 0)))
     .join(' ')
     .replace(/\{/g, '\\{')
     .replace(/\}/g, '\\}');
 
   const colorTag =
-    level === 'ERR' ? '{red-fg}' :
-    level === 'WRN' ? '{yellow-fg}' :
-    '{white-fg}';
+    level === 'ERR'
+      ? '{red-fg}'
+      : level === 'WRN'
+        ? '{yellow-fg}'
+        : '{white-fg}';
 
   const line = `${time}  ${colorTag}${level}{/}  ${msg}`;
   sysLog.push(line);
@@ -57,7 +62,8 @@ const origStderrWrite = process.stderr.write.bind(process.stderr);
 
 // Matches blessed/TUI cursor-control sequences (move, clear, show/hide cursor, scroll region)
 // but NOT simple SGR color codes like \x1b[32m that pino-pretty uses.
-const BLESSED_CSI_RE = /\x1b\[\??[\d;]*[A-HJKSTfhlmnsu]|\x1b\(|\x1b\[\d*[ABCDEFGHIJKLMPXZ@`ade]/;
+const BLESSED_CSI_RE =
+  /\x1b\[\??[\d;]*[A-HJKSTfhlmnsu]|\x1b\(|\x1b\[\d*[ABCDEFGHIJKLMPXZ@`ade]/;
 
 function interceptStream(
   stream: NodeJS.WriteStream,
@@ -185,7 +191,7 @@ function updateDashboard() {
   serverBox.setContent(serverLines.join('\n'));
 
   // ── Panel 2: Rooms ──
-  const roomRows = rooms.map(room => {
+  const roomRows = rooms.map((room) => {
     const inputs = room.getInputs();
     const [, layout] = room.getState();
     const res = room.getResolution();
@@ -204,8 +210,17 @@ function updateDashboard() {
   });
 
   roomsTable.setData({
-    headers: ['Room ID', 'Status', 'Layout', 'Resolution', 'Inputs', 'Rec', 'Age'],
-    data: roomRows.length > 0 ? roomRows : [['-', '-', '-', '-', '-', '-', '-']],
+    headers: [
+      'Room ID',
+      'Status',
+      'Layout',
+      'Resolution',
+      'Inputs',
+      'Rec',
+      'Age',
+    ],
+    data:
+      roomRows.length > 0 ? roomRows : [['-', '-', '-', '-', '-', '-', '-']],
   });
 
   // ── Panel 3: Motion Detection ──
@@ -218,7 +233,12 @@ function updateDashboard() {
 
   for (const room of rooms) {
     for (const input of room.getInputs()) {
-      if (!['local-mp4', 'twitch-channel', 'kick-channel', 'whip'].includes(input.type)) continue;
+      if (
+        !['local-mp4', 'twitch-channel', 'kick-channel', 'whip'].includes(
+          input.type,
+        )
+      )
+        continue;
       motionTotalCount++;
       if (!input.motionEnabled) continue;
       motionEnabledCount++;
@@ -232,7 +252,9 @@ function updateDashboard() {
 
   motionLines.push(`{bold}MOTION DETECTION{/bold}`);
   motionLines.push(``);
-  motionLines.push(` Enabled: {yellow-fg}${motionEnabledCount}{/} / ${motionTotalCount} inputs`);
+  motionLines.push(
+    ` Enabled: {yellow-fg}${motionEnabledCount}{/} / ${motionTotalCount} inputs`,
+  );
   motionLines.push(``);
 
   if (motionEntries.length === 0) {
@@ -248,12 +270,15 @@ function updateDashboard() {
       } else {
         const filled = Math.round(entry.score * BAR_WIDTH);
         const empty = BAR_WIDTH - filled;
-        const color = entry.score > 0.6 ? 'red' : entry.score > 0.3 ? 'yellow' : 'green';
+        const color =
+          entry.score > 0.6 ? 'red' : entry.score > 0.3 ? 'yellow' : 'green';
         scoreStr = `{${color}-fg}${entry.score.toFixed(2)}{/}`;
         bar = `{${color}-fg}[${'█'.repeat(filled)}${'░'.repeat(empty)}]{/}`;
       }
       const title = entry.title.slice(0, 16).padEnd(16);
-      motionLines.push(` {cyan-fg}${entry.room}{/}  ${title}  ${scoreStr}  ${bar}`);
+      motionLines.push(
+        ` {cyan-fg}${entry.room}{/}  ${title}  ${scoreStr}  ${bar}`,
+      );
     }
   }
 
@@ -266,16 +291,18 @@ function updateDashboard() {
       const typeLabels: Record<string, string> = {
         'twitch-channel': 'twitch',
         'kick-channel': 'kick',
-        'whip': 'whip',
+        whip: 'whip',
         'local-mp4': 'mp4',
-        'image': 'image',
+        image: 'image',
         'text-input': 'text',
-        'game': 'game',
+        game: 'game',
       };
       const statusLabel =
-        input.status === 'connected' ? 'ON' :
-        input.status === 'pending' ? 'PND' :
-        'OFF';
+        input.status === 'connected'
+          ? 'ON'
+          : input.status === 'pending'
+            ? 'PND'
+            : 'OFF';
       inputRows.push([
         room.idPrefix.slice(0, 8),
         (typeLabels[input.type] ?? input.type).slice(0, 8),

@@ -4,7 +4,12 @@ import type { RoomStore, InputConfig } from './store';
 import type { StoreApi } from 'zustand';
 import { useStore } from 'zustand';
 import { useContext } from 'react';
-import { StoreContext, useResolution, useAbsoluteInputs, useFrozenImageId } from './store';
+import {
+  StoreContext,
+  useResolution,
+  useAbsoluteInputs,
+  useFrozenImageId,
+} from './store';
 import {
   GridLayout,
   PrimaryOnTopLayout,
@@ -20,7 +25,10 @@ import { Input } from '../inputs/inputs';
 function buildEasingFunction(easing?: string) {
   if (easing === 'bounce') return 'bounce' as const;
   if (easing === 'cubic_bezier_ease_in_out') {
-    return { functionName: 'cubic_bezier' as const, points: [0.65, 0, 0.35, 1] as [number, number, number, number] };
+    return {
+      functionName: 'cubic_bezier' as const,
+      points: [0.65, 0, 0.35, 1] as [number, number, number, number],
+    };
   }
   return 'linear' as const;
 }
@@ -35,7 +43,7 @@ export default function App({ store }: { store: StoreApi<RoomStore> }) {
 
 function OutputScene() {
   const store = useContext(StoreContext);
-  const layout = useStore(store, state => state.layout);
+  const layout = useStore(store, (state) => state.layout);
   const resolution = useResolution();
   const absoluteInputs = useAbsoluteInputs();
   const frozenImageId = useFrozenImageId();
@@ -52,7 +60,14 @@ function OutputScene() {
   }
 
   return (
-    <View style={{ backgroundColor: '#000000', padding: 0, width, height, overflow: 'visible' }}>
+    <View
+      style={{
+        backgroundColor: '#000000',
+        padding: 0,
+        width,
+        height,
+        overflow: 'visible',
+      }}>
       {layout === 'grid' ? (
         <GridLayout />
       ) : layout === 'primary-on-top' ? (
@@ -68,7 +83,7 @@ function OutputScene() {
       ) : layout === 'picture-on-picture' ? (
         <PictureOnPictureLayout />
       ) : null}
-      {absoluteInputs.map(input => (
+      {absoluteInputs.map((input) => (
         <Rescaler
           key={input.inputId}
           id={`absolute-${input.inputId}`}
