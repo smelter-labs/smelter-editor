@@ -26,7 +26,10 @@ export function ConnectedDevicesPanel({ peers }: ConnectedDevicesPanelProps) {
         </span>
         <button
           className='text-neutral-500 hover:text-neutral-200 transition-colors p-0.5 cursor-pointer'
-          onClick={() => setCollapsed((c) => !c)}>
+          onClick={() => setCollapsed((c) => !c)}
+          aria-label={collapsed ? 'Expand connected devices' : 'Collapse connected devices'}
+          aria-expanded={!collapsed}
+          aria-controls='connected-devices-panel-content'>
           {collapsed ? (
             <ChevronDown className='w-3.5 h-3.5' />
           ) : (
@@ -36,7 +39,9 @@ export function ConnectedDevicesPanel({ peers }: ConnectedDevicesPanelProps) {
       </div>
 
       {!collapsed && (
-        <div className='px-2.5 py-2 flex flex-col gap-1'>
+        <div
+          id='connected-devices-panel-content'
+          className='px-2.5 py-2 flex flex-col gap-1'>
           {peers.length === 0 ? (
             <span className='text-[11px] text-neutral-500 italic'>
               No devices connected
