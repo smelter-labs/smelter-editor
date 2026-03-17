@@ -304,21 +304,23 @@ routes.get<RoomIdParams>(
   },
 );
 
-routes.route<RoomIdParams>({
-  method: 'GET',
-  url: '/room/:roomId/ws',
-  schema: { params: RoomIdParamsSchema },
-  handler: async (_req, res) => {
-    res.status(426).send({
-      error: 'Upgrade Required',
-      message: 'Use a WebSocket client to connect to this endpoint.',
-    });
-  },
-  wsHandler: (socket, req) => {
-    const { roomId } = req.params;
-    const clientId = uuidv4();
-    roomEventBus.subscribe(roomId, clientId, socket);
-  },
+routes.after(() => {
+  routes.route<RoomIdParams>({
+    method: 'GET',
+    url: '/room/:roomId/ws',
+    schema: { params: RoomIdParamsSchema },
+    handler: async (_req, res) => {
+      res.status(426).send({
+        error: 'Upgrade Required',
+        message: 'Use a WebSocket client to connect to this endpoint.',
+      });
+    },
+    wsHandler: (socket, req) => {
+      const { roomId } = req.params;
+      const clientId = uuidv4();
+      roomEventBus.subscribe(roomId, clientId, socket);
+    },
+  });
 });
 
 routes.get('/rooms', async (_req, res) => {
@@ -1024,8 +1026,7 @@ routes.delete<RoomAndInputIdParams>(
     console.log('[request] Remove input', { roomId, inputId });
     const room = state.getRoom(roomId);
     await room.removeInput(inputId);
-    const sourceId =
-      (req.headers['x-source-id'] as string | undefined) ?? null;
+    const sourceId = (req.headers['x-source-id'] as string | undefined) ?? null;
     roomEventBus.broadcast(roomId, {
       type: 'input_deleted',
       roomId,
