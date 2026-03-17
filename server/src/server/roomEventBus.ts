@@ -25,6 +25,14 @@ export type InputUpdatedEvent = {
   sourceId: string | null;
 };
 
+export type InputDeletedEvent = {
+  type: "input_deleted";
+  roomId: string;
+  inputId: string;
+  // value of `x-source-id` header from the request that triggered this deletion, if any
+  sourceId: string | null;
+};
+
 export type PeersUpdatedEvent = {
   type: "peers_updated";
   roomId: string;
@@ -36,7 +44,10 @@ export type ConnectedEvent = {
   clientId: string;
 };
 
-export type RoomEvent = InputUpdatedEvent | PeersUpdatedEvent;
+export type RoomEvent =
+  | InputUpdatedEvent
+  | InputDeletedEvent
+  | PeersUpdatedEvent;
 
 interface ClientRecord {
   ws: RoomWebSocket;

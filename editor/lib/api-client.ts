@@ -60,7 +60,7 @@ export interface SmelterApiClient {
   addSnakeGameInput(roomId: string, title?: string): Promise<any>;
   addCameraInput(roomId: string, username?: string): Promise<AddInputResponse>;
 
-  removeInput(roomId: string, inputId: string): Promise<any>;
+  removeInput(roomId: string, inputId: string, sourceId?: string): Promise<any>;
   deleteRoom(roomId: string): Promise<any>;
 
   updateInput(
@@ -257,11 +257,13 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       };
     },
 
-    async removeInput(roomId, inputId) {
-      return await req(
+    async removeInput(roomId, inputId, sourceId) {
+      return await sendRequest(
+        baseUrl,
         'delete',
         `/room/${enc(roomId)}/input/${enc(inputId)}`,
         {},
+        sourceId ? { 'x-source-id': sourceId } : undefined,
       );
     },
 

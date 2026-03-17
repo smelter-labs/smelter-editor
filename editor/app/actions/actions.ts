@@ -123,8 +123,12 @@ export async function addSnakeGameInput(roomId: string, title?: string) {
   return client.addSnakeGameInput(roomId, title);
 }
 
-export async function removeInput(roomId: string, inputId: string) {
-  return client.removeInput(roomId, inputId);
+export async function removeInput(
+  roomId: string,
+  inputId: string,
+  sourceId?: string,
+) {
+  return client.removeInput(roomId, inputId, sourceId);
 }
 
 export async function deleteRoom(roomId: string) {

@@ -16,6 +16,13 @@ type InputUpdatedEvent = {
   sourceId: string | null;
 };
 
+type InputDeletedEvent = {
+  type: 'input_deleted';
+  roomId: string;
+  inputId: string;
+  sourceId: string | null;
+};
+
 type PeersUpdatedEvent = {
   type: 'peers_updated';
   roomId: string;
@@ -27,7 +34,11 @@ type ConnectedEvent = {
   clientId: string;
 };
 
-type ServerMessage = InputUpdatedEvent | PeersUpdatedEvent | ConnectedEvent;
+type ServerMessage =
+  | InputUpdatedEvent
+  | InputDeletedEvent
+  | PeersUpdatedEvent
+  | ConnectedEvent;
 
 const WS_BASE = process.env.NEXT_PUBLIC_SMELTER_WS_URL ?? 'ws://localhost:3001';
 
@@ -60,6 +71,8 @@ export function useRoomWebSocket(roomId: string): { peers: ConnectedPeer[] } {
         console.log('[room-ws] assigned clientId', msg.clientId);
       } else if (msg.type === 'input_updated') {
         console.log('[room-ws] input_updated', msg);
+      } else if (msg.type === 'input_deleted') {
+        console.log('[room-ws] input_deleted', msg);
       }
     });
 

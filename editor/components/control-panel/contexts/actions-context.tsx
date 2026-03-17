@@ -31,7 +31,7 @@ export interface ControlPanelActions {
     opts: Partial<UpdateInputOptions>,
     sourceId?: string,
   ): Promise<any>;
-  removeInput(roomId: string, inputId: string): Promise<any>;
+  removeInput(roomId: string, inputId: string, sourceId?: string): Promise<any>;
   disconnectInput(roomId: string, inputId: string): Promise<any>;
   connectInput(roomId: string, inputId: string): Promise<any>;
   hideInput(roomId: string, inputId: string, sourceId?: string): Promise<any>;

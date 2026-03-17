@@ -121,6 +121,7 @@ routes.after(() => {
   //
   // event shape (currently only one type):
   //   { type: "input_updated", roomId, inputId, input: PublicInputState, sourceId: string | null }
+  //   { type: "input_deleted", roomId, inputId, sourceId: string | null }
   //
   routes.route<RoomIdParams>({
     method: "GET",
@@ -905,8 +906,16 @@ routes.after(() => {
     async (req, res) => {
       const { roomId, inputId } = req.params;
       console.log("[request] Remove input", { roomId, inputId });
+      const sourceId =
+        (req.headers["x-source-id"] as string | undefined) ?? null;
       const room = state.getRoom(roomId);
       await room.removeInput(inputId);
+      roomEventBus.broadcast(roomId, {
+        type: "input_deleted",
+        roomId,
+        inputId,
+        sourceId,
+      });
       res.status(200).send({ status: "ok" });
     },
   );

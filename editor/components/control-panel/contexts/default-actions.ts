@@ -5,7 +5,7 @@ import {
   getRoomInfo,
   updateRoom,
   updateInput as updateInputAction,
-  removeInput,
+  removeInput as removeInputAction,
   disconnectInput,
   connectInput,
   hideInput as hideInputAction,
@@ -78,7 +78,8 @@ export const defaultActions: ControlPanelActions = {
   updateRoom,
   updateInput: (roomId, inputId, opts) =>
     updateInputAction(roomId, inputId, opts, SESSION_SOURCE_ID),
-  removeInput,
+  removeInput: (roomId, inputId) =>
+    removeInputAction(roomId, inputId, SESSION_SOURCE_ID),
   disconnectInput,
   connectInput,
   hideInput: (roomId, inputId) =>
