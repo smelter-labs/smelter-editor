@@ -12,7 +12,7 @@ import type {
 } from '@/lib/types';
 import { useActions } from './contexts/actions-context';
 import { ActionsProvider } from './contexts/actions-context';
-import { defaultActions } from './contexts/default-actions';
+import { defaultActions, SESSION_SOURCE_ID } from './contexts/default-actions';
 import { useRecordingControls } from './hooks/use-recording-controls';
 import LayoutSelector, { type Layout } from '@/components/layout-selector';
 import {
@@ -219,7 +219,10 @@ function ControlPanelWithActions({
     setIsScreenshareActive,
   } = whipConnections;
 
-  const { peers } = useRoomWebSocket(roomId);
+  const { peers } = useRoomWebSocket(roomId, {
+    onRemoteInputChange: handleRefreshState,
+    ownSourceId: SESSION_SOURCE_ID,
+  });
 
   useEffect(() => {
     if (!isGuest || !onGuestStreamChange) return;

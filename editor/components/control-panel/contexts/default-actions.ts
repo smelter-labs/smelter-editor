@@ -46,7 +46,7 @@ import {
 } from '@/app/actions/actions';
 
 // id for browser session.  Sent as `x-source-id` on every update request
-const SESSION_SOURCE_ID =
+export const SESSION_SOURCE_ID =
   typeof crypto !== 'undefined' ? crypto.randomUUID() : undefined;
 
 const configStorage: StorageClient<object> = {

@@ -48,10 +48,20 @@ const RECONNECT_MAX_DELAY_MS = 30_000;
 // Code sent by the server when the room is deleted — no point reconnecting.
 const CLOSE_CODE_ROOM_DELETED = 1001;
 
-export function useRoomWebSocket(roomId: string): { peers: ConnectedPeer[] } {
+type Opts = {
+  onRemoteInputChange?: () => void;
+  ownSourceId?: string;
+};
+
+export function useRoomWebSocket(
+  roomId: string,
+  opts?: Opts,
+): { peers: ConnectedPeer[] } {
   const [peers, setPeers] = useState<ConnectedPeer[]>([]);
   const attemptRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const optsRef = useRef(opts);
+  optsRef.current = opts;
 
   useEffect(() => {
     let destroyed = false;
@@ -79,10 +89,13 @@ export function useRoomWebSocket(roomId: string): { peers: ConnectedPeer[] } {
           setPeers(msg.peers);
         } else if (msg.type === 'connected') {
           console.log('[room-ws] assigned clientId', msg.clientId);
-        } else if (msg.type === 'input_updated') {
-          console.log('[room-ws] input_updated', msg);
-        } else if (msg.type === 'input_deleted') {
-          console.log('[room-ws] input_deleted', msg);
+        } else if (msg.type === 'input_updated' || msg.type === 'input_deleted') {
+          const { onRemoteInputChange, ownSourceId } = optsRef.current ?? {};
+          const isOwnChange = ownSourceId != null && msg.sourceId === ownSourceId;
+          if (!isOwnChange) {
+            console.log(`[room-ws] ${msg.type} from remote`, msg);
+            onRemoteInputChange?.();
+          }
         }
       });
 
