@@ -1,0 +1,44 @@
+{
+  "expo": {
+    "name": "smelter-editor-tablet",
+    "slug": "smelter-editor-tablet",
+    "version": "1.0.0",
+    "orientation": "landscape",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "scheme": "smeltereditortablet",
+    "ios": {
+      "supportsTablet": true,
+      "requiresFullScreen": true,
+      "bundleIdentifier": "com.smeltereditortablet"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#0f0f1a"
+      },
+      "package": "com.smeltereditortablet"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-asset",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#0f0f1a",
+          "image": "./assets/splash-icon.png"
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow Smelter Editor to access your camera for QR code scanning."
+        }
+      ],
+      "expo-screen-orientation"
+    ]
+  }
+}
