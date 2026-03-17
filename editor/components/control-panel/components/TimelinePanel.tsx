@@ -20,6 +20,7 @@ import { useServerTimelinePlayback } from '../hooks/use-server-timeline-playback
 import {
   Play,
   Pause,
+  Square,
   SkipBack,
   RotateCcw,
   ZoomIn,
@@ -32,10 +33,7 @@ import {
   Plus,
   Trash2,
   Pencil,
-  Check,
-  Zap,
 } from 'lucide-react';
-import { freezeRoom, unfreezeRoom } from '@/app/actions/actions';
 
 // ── Props ────────────────────────────────────────────────
 
@@ -469,15 +467,10 @@ export function TimelinePanel({
 
   const inputColorMap = useMemo(() => buildInputColorMap(inputs), [inputs]);
 
-  const { play, stop, applyAtPlayhead } = useServerTimelinePlayback(
-    roomId,
-    state,
-    setPlayhead,
-    setPlaying,
-  );
+  const { play, pause, stop, applyAtPlayhead, isPaused } =
+    useServerTimelinePlayback(roomId, state, setPlayhead, setPlaying);
 
-  const { isRecording: serverIsRecording, isFrozen: serverIsFrozen } =
-    useControlPanelContext();
+  const { isRecording: serverIsRecording } = useControlPanelContext();
   const {
     isTogglingRecording,
     effectiveIsRecording: isRecording,
@@ -486,38 +479,10 @@ export function TimelinePanel({
   } = useRecordingControls(roomId, serverIsRecording, refreshState);
   const wasPlayingRef = useRef(false);
 
-  const [frozen, setFrozen] = useState(serverIsFrozen);
-  const [freezeLoading, setFreezeLoading] = useState(false);
-
-  useEffect(() => {
-    setFrozen(serverIsFrozen);
-  }, [serverIsFrozen]);
-
-  const handleTurboPause = useCallback(async () => {
-    if (freezeLoading) return;
-    setFreezeLoading(true);
-    try {
-      if (frozen) {
-        await unfreezeRoom(roomId);
-        setFrozen(false);
-      } else {
-        if (state.isPlaying) {
-          stop();
-        }
-        await freezeRoom(roomId);
-        setFrozen(true);
-      }
-    } catch (err) {
-      console.error('TURBOPAUZA failed', err);
-    } finally {
-      setFreezeLoading(false);
-    }
-  }, [frozen, freezeLoading, roomId, state.isPlaying, stop]);
-
   const handleRecordAndPlay = useCallback(async () => {
     if (isTogglingRecording) return;
     if (isRecording) {
-      stop();
+      pause();
       await stopAndDownload();
       return;
     }
@@ -525,7 +490,7 @@ export function TimelinePanel({
     if (started) {
       play();
     }
-  }, [isRecording, isTogglingRecording, play, stop, startRec, stopAndDownload]);
+  }, [isRecording, isTogglingRecording, play, pause, startRec, stopAndDownload]);
 
   useEffect(() => {
     if (wasPlayingRef.current && !state.isPlaying && isRecording) {
@@ -696,11 +661,11 @@ export function TimelinePanel({
       document.body.style.userSelect = 'none';
       const ms = rulerPxToMs(e.clientX, e.currentTarget);
       if (state.isPlaying) {
-        stop();
+        pause();
       }
       setPlayhead(ms);
     },
-    [setPlayhead, rulerPxToMs, state.isPlaying, stop],
+    [setPlayhead, rulerPxToMs, state.isPlaying, pause],
   );
 
   const handleRulerPointerMove = useCallback(
@@ -708,11 +673,11 @@ export function TimelinePanel({
       if (!rulerScrubRef.current) return;
       const ms = rulerPxToMs(e.clientX, e.currentTarget);
       if (state.isPlaying) {
-        stop();
+        pause();
       }
       setPlayhead(ms);
     },
-    [setPlayhead, rulerPxToMs, state.isPlaying, stop],
+    [setPlayhead, rulerPxToMs, state.isPlaying, pause],
   );
 
   const handleRulerPointerUp = useCallback(
@@ -943,7 +908,7 @@ export function TimelinePanel({
         }
         case ' ': {
           e.preventDefault();
-          if (state.isPlaying) stop();
+          if (state.isPlaying) pause();
           else play();
           break;
         }
@@ -1119,6 +1084,7 @@ export function TimelinePanel({
     state.pixelsPerSecond,
     state.tracks,
     play,
+    pause,
     stop,
     setPlayhead,
     setZoom,
@@ -1789,14 +1755,21 @@ export function TimelinePanel({
           <SkipBack className='w-3.5 h-3.5' />
         </button>
         <button
-          className={`p-1 rounded hover:bg-neutral-700 transition-colors cursor-pointer ${state.isPlaying ? 'text-green-400' : 'text-neutral-400 hover:text-white'}`}
-          onClick={state.isPlaying ? stop : play}
-          title={state.isPlaying ? 'Pause' : 'Play'}>
+          className={`p-1 rounded hover:bg-neutral-700 transition-colors cursor-pointer ${state.isPlaying ? 'text-green-400' : isPaused ? 'text-yellow-400' : 'text-neutral-400 hover:text-white'}`}
+          onClick={state.isPlaying ? pause : play}
+          title={state.isPlaying ? 'Pause' : isPaused ? 'Resume' : 'Play'}>
           {state.isPlaying ? (
             <Pause className='w-3.5 h-3.5' />
           ) : (
             <Play className='w-3.5 h-3.5' />
           )}
+        </button>
+        <button
+          className='p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed'
+          onClick={stop}
+          disabled={!state.isPlaying && !isPaused}
+          title='Stop (full reset)'>
+          <Square className='w-3.5 h-3.5' />
         </button>
         <button
           className={`p-1 rounded hover:bg-neutral-700 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${isRecording ? 'animate-pulse' : ''}`}
@@ -1817,15 +1790,6 @@ export function TimelinePanel({
           disabled={state.isPlaying}
           title='Apply state at playhead'>
           <Crosshair className='w-3.5 h-3.5' />
-        </button>
-        <button
-          className={`p-1 rounded hover:bg-neutral-700 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${frozen ? 'text-yellow-400 bg-yellow-400/20' : 'text-neutral-400 hover:text-white'}`}
-          onClick={handleTurboPause}
-          disabled={freezeLoading}
-          title='TURBOPAUZA (freeze/unfreeze output)'>
-          <Zap
-            className={`w-3.5 h-3.5 ${freezeLoading ? 'animate-pulse' : ''}`}
-          />
         </button>
         <button
           className='p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors cursor-pointer'
@@ -2192,7 +2156,7 @@ export function TimelinePanel({
                 <ShortcutGroup
                   title='Playback & Navigation'
                   items={[
-                    ['Space', 'Play / Stop'],
+                    ['Space', 'Play / Pause'],
                     ['Home', 'Go to start'],
                     ['End', 'Go to end'],
                     ['← / →', 'Move playhead ±1s'],

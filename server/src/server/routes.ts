@@ -426,52 +426,6 @@ routes.post<RoomIdParams>(
 
 const SCREENSHOTS_DIR = path.join(__dirname, '../../screenshots');
 
-routes.post<RoomIdParams>(
-  '/room/:roomId/freeze',
-  { schema: { params: RoomIdParamsSchema } },
-  async (req, res) => {
-    const { roomId } = req.params;
-    console.log('[request] Freeze room', { roomId });
-    try {
-      const room = state.getRoom(roomId);
-      const result = await room.freeze();
-
-      try {
-        await pruneOldScreenshots(20);
-      } catch (err) {
-        console.error('Failed to prune old screenshots', err);
-      }
-
-      res.status(200).send(result);
-    } catch (err: any) {
-      console.error('Failed to freeze room', err?.body ?? err);
-      res.status(400).send({
-        status: 'error',
-        message: err?.message ?? 'Failed to freeze room',
-      });
-    }
-  },
-);
-
-routes.post<RoomIdParams>(
-  '/room/:roomId/unfreeze',
-  { schema: { params: RoomIdParamsSchema } },
-  async (req, res) => {
-    const { roomId } = req.params;
-    console.log('[request] Unfreeze room', { roomId });
-    try {
-      const room = state.getRoom(roomId);
-      await room.unfreeze();
-      res.status(200).send({ status: 'ok' });
-    } catch (err: any) {
-      console.error('Failed to unfreeze room', err?.body ?? err);
-      res.status(400).send({
-        status: 'error',
-        message: err?.message ?? 'Failed to unfreeze room',
-      });
-    }
-  },
-);
 
 routes.get<{ Params: { fileName: string } }>(
   '/screenshots/:fileName',
@@ -1051,30 +1005,3 @@ routes.delete<RoomIdParams>(
   },
 );
 
-async function pruneOldScreenshots(maxCount: number): Promise<void> {
-  if (!(await pathExists(SCREENSHOTS_DIR))) return;
-  let entries: string[];
-  try {
-    entries = await readdir(SCREENSHOTS_DIR);
-  } catch {
-    return;
-  }
-  const jpgs = entries.filter((e) => e.toLowerCase().endsWith('.jpg'));
-  if (jpgs.length <= maxCount) return;
-
-  const parsed = jpgs.map((name) => {
-    const match = name.match(/(\d+)\.jpg$/);
-    return { name, timestamp: match ? Number(match[1]) : 0 };
-  });
-  parsed.sort((a, b) => a.timestamp - b.timestamp);
-
-  const { remove } = await import('fs-extra');
-  const toDelete = parsed.slice(0, Math.max(0, parsed.length - maxCount));
-  for (const file of toDelete) {
-    try {
-      await remove(path.join(SCREENSHOTS_DIR, file.name));
-    } catch {
-      // best-effort
-    }
-  }
-}

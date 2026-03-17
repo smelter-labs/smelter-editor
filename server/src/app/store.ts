@@ -64,6 +64,7 @@ export type InputConfig = {
   absoluteTransitionEasing?: string;
   activeTransition?: ActiveTransition;
   restartFading?: boolean;
+  frozenImageId?: string;
 };
 
 export type RoomStore = {
@@ -76,7 +77,6 @@ export type RoomStore = {
   swapFadeOutDurationMs: number;
   newsStripFadeDuringSwap: boolean;
   newsStripEnabled: boolean;
-  frozenImageId: string | null;
   updateState: (
     inputs: InputConfig[],
     layout: Layout,
@@ -87,7 +87,7 @@ export type RoomStore = {
     swapFadeOutDurationMs: number,
     newsStripEnabled: boolean,
   ) => void;
-  setFrozenImageId: (id: string | null) => void;
+  setInputFrozenImage: (inputId: string, imageId: string | null) => void;
 };
 
 export function createRoomStore(
@@ -103,7 +103,6 @@ export function createRoomStore(
     swapFadeOutDurationMs: 500,
     newsStripFadeDuringSwap: true,
     newsStripEnabled: false,
-    frozenImageId: null,
     updateState: (
       inputs: InputConfig[],
       layout: Layout,
@@ -125,8 +124,14 @@ export function createRoomStore(
         newsStripEnabled,
       }));
     },
-    setFrozenImageId: (id: string | null) => {
-      set(() => ({ frozenImageId: id }));
+    setInputFrozenImage: (inputId: string, imageId: string | null) => {
+      set((state) => ({
+        inputs: state.inputs.map((input) =>
+          input.inputId === inputId
+            ? { ...input, frozenImageId: imageId ?? undefined }
+            : input,
+        ),
+      }));
     },
   }));
 }
@@ -183,11 +188,6 @@ export function useAbsoluteInputs() {
   return useStore(store, (state) =>
     state.inputs.filter((i) => i.absolutePosition),
   );
-}
-
-export function useFrozenImageId() {
-  const store = useContext(StoreContext);
-  return useStore(store, (state) => state.frozenImageId);
 }
 
 export const StoreContext =

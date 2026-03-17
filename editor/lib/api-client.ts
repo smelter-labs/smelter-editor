@@ -117,12 +117,9 @@ export interface SmelterApiClient {
   shaderPresetStorage: StorageClient<ShaderConfig[]>;
   dashboardLayoutStorage: StorageClient<object>;
 
-  freezeRoom(roomId: string): Promise<{
-    screenshotUrl: string;
-    mp4Positions: Record<string, number>;
-    frozen: true;
-  }>;
-  unfreezeRoom(roomId: string): Promise<{ status: string }>;
+  pauseTimeline(
+    roomId: string,
+  ): Promise<{ playheadMs: number; isPaused: true }>;
 
   getAllRooms(): Promise<any>;
   getAvailableShaders(): Promise<AvailableShader[]>;
@@ -437,12 +434,8 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       'layouts',
     ),
 
-    async freezeRoom(roomId) {
-      return await req('post', `/room/${enc(roomId)}/freeze`, {});
-    },
-
-    async unfreezeRoom(roomId) {
-      return await req('post', `/room/${enc(roomId)}/unfreeze`, {});
+    async pauseTimeline(roomId) {
+      return await req('post', `/room/${enc(roomId)}/timeline/pause`, {});
     },
 
     async getAllRooms() {

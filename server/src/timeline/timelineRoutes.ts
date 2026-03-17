@@ -39,6 +39,18 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
   );
 
   routes.post<RoomIdParams>(
+    '/room/:roomId/timeline/pause',
+    { schema: { params: RoomIdParamsSchema } },
+    async (req, res) => {
+      const { roomId } = req.params;
+      const room = state.getRoom(roomId);
+      console.log('[timeline] Pause playback', { roomId });
+      const result = await room.pauseTimeline();
+      res.status(200).send(result);
+    },
+  );
+
+  routes.post<RoomIdParams>(
     '/room/:roomId/timeline/stop',
     { schema: { params: RoomIdParamsSchema } },
     async (req, res) => {

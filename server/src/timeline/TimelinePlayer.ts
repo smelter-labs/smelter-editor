@@ -45,6 +45,7 @@ type PrePlaySnapshot = {
 export type TimelineListenerData = {
   playheadMs: number;
   isPlaying: boolean;
+  isPaused: boolean;
 };
 
 export type TimelineListener = (data: TimelineListenerData) => void;
@@ -263,6 +264,8 @@ export class TimelinePlayer {
   private startWallMs = 0;
   private startPlayheadMs = 0;
   private playing = false;
+  private paused = false;
+  private pausedPlayheadMs = 0;
 
   private events: PlaybackEvent[] = [];
   private nextEventIndex = 0;
@@ -291,6 +294,7 @@ export class TimelinePlayer {
   }
 
   public getPlayheadMs(): number {
+    if (this.paused) return this.pausedPlayheadMs;
     if (!this.playing) return this.startPlayheadMs;
     return this.startPlayheadMs + (Date.now() - this.startWallMs);
   }
@@ -362,14 +366,83 @@ export class TimelinePlayer {
   }
 
   public async stop(): Promise<void> {
-    if (!this.playing) return;
+    if (!this.playing && !this.paused) return;
     console.log(
-      `[timeline] STOP playback playheadMs=${this.getPlayheadMs()}`,
+      `[timeline] STOP playback playheadMs=${this.getPlayheadMs()} paused=${this.paused}`,
     );
     this.playing = false;
+    this.paused = false;
     this.clearTimers();
     await this.restoreState();
     this.emit();
+  }
+
+  public pause(): {
+    playheadMs: number;
+    activeClips: Map<string, TimelineClip>;
+  } {
+    if (!this.playing) {
+      throw new Error('Cannot pause: timeline is not playing');
+    }
+    this.pausedPlayheadMs = this.getPlayheadMs();
+    console.log(
+      `[timeline] PAUSE playback playheadMs=${this.pausedPlayheadMs}`,
+    );
+    this.playing = false;
+    this.paused = true;
+    this.clearTimers();
+
+    const activeClips = getActiveClipsByInputAt(
+      this.config,
+      this.pausedPlayheadMs,
+    );
+    this.emit();
+    return { playheadMs: this.pausedPlayheadMs, activeClips };
+  }
+
+  public async resume(fromMs?: number): Promise<void> {
+    if (!this.paused) {
+      throw new Error('Cannot resume: timeline is not paused');
+    }
+    const resumeMs = fromMs ?? this.pausedPlayheadMs;
+    console.log(
+      `[timeline] RESUME playback fromMs=${resumeMs} (pausedAt=${this.pausedPlayheadMs})`,
+    );
+    this.paused = false;
+    this.playing = true;
+    this.startWallMs = Date.now();
+    this.startPlayheadMs = resumeMs;
+
+    // Recompile events from new position
+    this.events = compileEvents(this.config, resumeMs);
+    this.nextEventIndex = 0;
+
+    // Apply state at resume position
+    const desired = computeDesiredState(this.config, resumeMs);
+    await this.applyDesiredState(desired, resumeMs);
+    await this.applyBlockSettingsAtTime(resumeMs);
+    this.lastAppliedOrder = '';
+    this.applyOrderIfChanged(resumeMs);
+
+    this.scheduleAllEvents();
+
+    // Schedule end-of-timeline auto-stop
+    const remainingMs = this.config.totalDurationMs - resumeMs;
+    if (remainingMs > 0) {
+      this.endTimer = setTimeout(() => {
+        void this.stop();
+      }, remainingMs);
+    }
+
+    this.playheadInterval = setInterval(() => {
+      this.emit();
+    }, PLAYHEAD_EMIT_INTERVAL_MS);
+
+    this.emit();
+  }
+
+  public getIsPaused(): boolean {
+    return this.paused;
   }
 
   public async seek(ms: number): Promise<void> {
@@ -409,6 +482,7 @@ export class TimelinePlayer {
 
   public destroy(): void {
     this.playing = false;
+    this.paused = false;
     this.clearTimers();
     this.listeners.clear();
   }
@@ -422,6 +496,7 @@ export class TimelinePlayer {
         this.config.totalDurationMs,
       ),
       isPlaying: this.playing,
+      isPaused: this.paused,
     };
     for (const listener of this.listeners) {
       listener(data);

@@ -8,7 +8,7 @@ import App from './app/App';
 import type { RoomStore } from './app/store';
 import { createRoomStore } from './app/store';
 import { config } from './config';
-import { ensureDir, readFile, remove, stat } from 'fs-extra';
+import { ensureDir, readFile } from 'fs-extra';
 import {
   MotionScene,
   type MotionStore,
@@ -16,7 +16,6 @@ import {
   MOTION_GRID_HEIGHT,
 } from './motion/MotionScene';
 import shadersController from './shaders/shaders';
-import { sleep } from './utils';
 import type { Resolution } from './types';
 import { RESOLUTION_PRESETS } from './types';
 
@@ -301,33 +300,20 @@ export class SmelterManager {
     await this.unregisterOutput(outputId);
   }
 
-  public async captureScreenshot(output: SmelterOutput): Promise<string> {
-    const screenshotId = `screenshot-${output.id}-${Date.now()}`;
-    const screenshotsDir = path.join(process.cwd(), 'screenshots');
-    await ensureDir(screenshotsDir);
-    const mp4Path = path.join(screenshotsDir, `${screenshotId}.mp4`);
-    const jpegPath = path.join(screenshotsDir, `${screenshotId}.jpg`);
-
-    await this.registerMp4Output(screenshotId, output, mp4Path);
-    await sleep(800);
-    await this.unregisterOutput(screenshotId);
-
-    // Wait for the MP4 moov atom to be flushed to disk
-    const MAX_WAIT_MS = 3000;
-    const POLL_MS = 100;
-    const startWait = Date.now();
-    while (Date.now() - startWait < MAX_WAIT_MS) {
-      try {
-        const s = await stat(mp4Path);
-        if (s.size > 0) break;
-      } catch {
-        // file not ready yet
-      }
-      await sleep(POLL_MS);
-    }
-    await sleep(200);
-
+  public async extractMp4Frame(
+    mp4Path: string,
+    positionMs: number,
+  ): Promise<string> {
+    const dir = path.join(process.cwd(), 'screenshots');
+    await ensureDir(dir);
+    const jpegPath = path.join(
+      dir,
+      `frame-${Date.now()}-${Math.random().toString(36).slice(2)}.jpg`,
+    );
+    const seconds = Math.max(0, positionMs / 1000);
     await execFileAsync('ffmpeg', [
+      '-ss',
+      seconds.toString(),
       '-i',
       mp4Path,
       '-vframes',
@@ -336,8 +322,6 @@ export class SmelterManager {
       '2',
       jpegPath,
     ]);
-    await remove(mp4Path);
-
     return jpegPath;
   }
 

@@ -69,22 +69,10 @@ export async function stopRecording(
   return client.stopRecording(roomId);
 }
 
-export async function freezeRoom(roomId: string): Promise<{
-  screenshotUrl: string;
-  mp4Positions: Record<string, number>;
-  frozen: true;
-}> {
-  const result = await client.freezeRoom(roomId);
-  return {
-    ...result,
-    screenshotUrl: `${BASE_URL}${result.screenshotUrl}`,
-  };
-}
-
-export async function unfreezeRoom(
+export async function pauseTimeline(
   roomId: string,
-): Promise<{ status: string }> {
-  return client.unfreezeRoom(roomId);
+): Promise<{ playheadMs: number; isPaused: true }> {
+  return client.pauseTimeline(roomId);
 }
 
 export async function getRecordings(): Promise<RecordingInfo[]> {

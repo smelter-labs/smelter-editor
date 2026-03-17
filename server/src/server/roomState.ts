@@ -427,84 +427,13 @@ export class RoomState {
     });
   }
 
-  private frozenImageId: string | null = null;
-  private frozenJpegPath: string | null = null;
+  private frozenImages: Map<
+    string,
+    { imageId: string; jpegPath: string }
+  > = new Map();
 
   public isFrozen(): boolean {
-    return this.frozenImageId !== null;
-  }
-
-  public async freeze(): Promise<{
-    screenshotUrl: string;
-    mp4Positions: Record<string, number>;
-    frozen: true;
-  }> {
-    return this.mutex.runExclusive(async () => {
-      if (this.frozenImageId) {
-        await this._unfreeze();
-      }
-
-      const pipelineTime = SmelterInstance.getPipelineTimeMs();
-      const mp4Positions: Record<string, number> = {};
-      for (const input of this.inputs) {
-        if (
-          input &&
-          input.type === 'local-mp4' &&
-          input.registeredAtPipelineMs != null
-        ) {
-          mp4Positions[input.inputId] =
-            pipelineTime -
-            input.registeredAtPipelineMs +
-            (input.playFromMs ?? 0);
-        }
-      }
-
-      const jpegPath = await SmelterInstance.captureScreenshot(this.output);
-      const fileName = path.basename(jpegPath);
-      const frozenImageId = `frozen::${this.idPrefix}::${Date.now()}`;
-
-      await SmelterInstance.registerImage(frozenImageId, {
-        serverPath: jpegPath,
-        assetType: 'jpeg',
-      });
-
-      this.frozenImageId = frozenImageId;
-      this.frozenJpegPath = jpegPath;
-      this.output.store.getState().setFrozenImageId(frozenImageId);
-
-      return {
-        screenshotUrl: `/screenshots/${fileName}`,
-        mp4Positions,
-        frozen: true as const,
-      };
-    });
-  }
-
-  public async unfreeze(): Promise<void> {
-    return this.mutex.runExclusive(() => this._unfreeze());
-  }
-
-  private async _unfreeze(): Promise<void> {
-    if (!this.frozenImageId) return;
-
-    this.output.store.getState().setFrozenImageId(null);
-
-    try {
-      await SmelterInstance.unregisterImage(this.frozenImageId);
-    } catch (err) {
-      console.error('Failed to unregister frozen image', err);
-    }
-
-    if (this.frozenJpegPath) {
-      try {
-        await remove(this.frozenJpegPath);
-      } catch {
-        // best-effort cleanup
-      }
-    }
-
-    this.frozenImageId = null;
-    this.frozenJpegPath = null;
+    return this.timelinePlayer?.getIsPaused() === true;
   }
 
   public getState(): [
@@ -1390,6 +1319,11 @@ export class RoomState {
     config: TimelineConfig,
     fromMs?: number,
   ): Promise<void> {
+    if (this.timelinePlayer?.getIsPaused()) {
+      await this.resumeTimeline(fromMs);
+      return;
+    }
+
     if (this.timelinePlayer) {
       this.timelinePlayer.destroy();
     }
@@ -1409,9 +1343,79 @@ export class RoomState {
 
   public async stopTimelinePlayback(): Promise<void> {
     if (!this.timelinePlayer) return;
+    await this.cleanupFrozenImages();
     await this.timelinePlayer.stop();
     this.timelinePlayer.destroy();
     this.timelinePlayer = null;
+  }
+
+  public async pauseTimeline(): Promise<{
+    playheadMs: number;
+    isPaused: true;
+  }> {
+    if (!this.timelinePlayer || !this.timelinePlayer.isPlaying()) {
+      throw new Error('No timeline playback in progress');
+    }
+
+    const { playheadMs, activeClips } = this.timelinePlayer.pause();
+
+    for (const [inputId, clip] of activeClips) {
+      const input = this.inputs.find((i) => i.inputId === inputId);
+      if (!input || input.type !== 'local-mp4') continue;
+
+      const mp4PlayFromMs = clip.blockSettings.mp4PlayFromMs ?? 0;
+      const framePositionMs = (playheadMs - clip.startMs) + mp4PlayFromMs;
+
+      try {
+        const jpegPath = await SmelterInstance.extractMp4Frame(
+          input.mp4FilePath,
+          framePositionMs,
+        );
+        const frozenId = `frozen::${this.idPrefix}::${inputId}::${Date.now()}`;
+        await SmelterInstance.registerImage(frozenId, {
+          serverPath: jpegPath,
+          assetType: 'jpeg',
+        });
+
+        this.frozenImages.set(inputId, { imageId: frozenId, jpegPath });
+        this.output.store
+          .getState()
+          .setInputFrozenImage(inputId, frozenId);
+      } catch (err) {
+        console.error(
+          `[timeline] Failed to extract frame for ${inputId}`,
+          err,
+        );
+      }
+    }
+
+    return { playheadMs, isPaused: true };
+  }
+
+  public async resumeTimeline(fromMs?: number): Promise<void> {
+    if (!this.timelinePlayer?.getIsPaused()) {
+      throw new Error('Timeline is not paused');
+    }
+
+    await this.cleanupFrozenImages();
+    await this.timelinePlayer.resume(fromMs);
+  }
+
+  private async cleanupFrozenImages(): Promise<void> {
+    for (const [inputId, { imageId, jpegPath }] of this.frozenImages) {
+      this.output.store.getState().setInputFrozenImage(inputId, null);
+      try {
+        await SmelterInstance.unregisterImage(imageId);
+      } catch (err) {
+        console.error(`Failed to unregister frozen image ${imageId}`, err);
+      }
+      try {
+        await remove(jpegPath);
+      } catch {
+        // best-effort cleanup
+      }
+    }
+    this.frozenImages.clear();
   }
 
   public async seekTimeline(ms: number): Promise<void> {
@@ -1424,13 +1428,15 @@ export class RoomState {
   public getTimelinePlaybackState(): {
     playheadMs: number;
     isPlaying: boolean;
+    isPaused: boolean;
   } {
     if (!this.timelinePlayer) {
-      return { playheadMs: 0, isPlaying: false };
+      return { playheadMs: 0, isPlaying: false, isPaused: false };
     }
     return {
       playheadMs: this.timelinePlayer.getPlayheadMs(),
       isPlaying: this.timelinePlayer.isPlaying(),
+      isPaused: this.timelinePlayer.getIsPaused(),
     };
   }
 
@@ -1450,9 +1456,7 @@ export class RoomState {
         this.timelinePlayer = null;
       }
 
-      if (this.frozenImageId) {
-        await this._unfreeze();
-      }
+      await this.cleanupFrozenImages();
 
       for (const timer of this.transitionTimers.values()) {
         clearTimeout(timer);
@@ -1540,6 +1544,7 @@ export class RoomState {
       absoluteTransitionEasing: input.absoluteTransitionEasing,
       activeTransition: input.activeTransition,
       restartFading: input.restartFading,
+      frozenImageId: this.frozenImages.get(input.inputId)?.imageId,
     });
 
     const connectedInputs = this.inputs.filter(

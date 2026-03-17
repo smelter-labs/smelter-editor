@@ -1,10 +1,11 @@
 'use client';
 
-import { useCallback, useRef, useEffect } from 'react';
+import { useCallback, useRef, useEffect, useState } from 'react';
 import {
   startTimelinePlayback,
   stopTimelinePlayback,
   seekTimeline,
+  pauseTimeline,
 } from '@/app/actions/actions';
 import { toServerTimelineConfig } from '@/lib/timeline-config';
 import { useTimelineSSE } from '@/hooks/use-timeline-sse';
@@ -26,19 +27,25 @@ export function useServerTimelinePlayback(
     null,
   );
 
-  const sseData = useTimelineSSE(roomId, state.isPlaying);
+  const [isPaused, setIsPaused] = useState(false);
+
+  const sseData = useTimelineSSE(roomId, state.isPlaying || isPaused);
   const sseCountRef = useRef(0);
 
-  // When we receive SSE updates, correct the playhead and interpolation base
   useEffect(() => {
     if (!sseData) return;
     sseCountRef.current += 1;
 
-    if (!sseData.isPlaying && stateRef.current.isPlaying) {
+    if (sseData.isPaused && !isPaused) {
+      setIsPaused(true);
+    }
+
+    if (!sseData.isPlaying && !sseData.isPaused && stateRef.current.isPlaying) {
       console.log(
         `[timeline-ui] SSE signaled stop (sseCount=${sseCountRef.current} playhead=${sseData.playheadMs})`,
       );
       setPlaying(false);
+      setIsPaused(false);
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
@@ -59,9 +66,8 @@ export function useServerTimelinePlayback(
       };
       setPlayhead(Math.round(sseData.playheadMs));
     }
-  }, [sseData, setPlayhead, setPlaying]);
+  }, [sseData, setPlayhead, setPlaying, isPaused]);
 
-  // Local interpolation loop during playback
   useEffect(() => {
     if (!state.isPlaying) {
       if (rafRef.current) {
@@ -107,7 +113,7 @@ export function useServerTimelinePlayback(
     const config = toServerTimelineConfig(stateRef.current);
     const fromMs = stateRef.current.playheadMs;
     console.log(
-      `[timeline-ui] PLAY requested fromMs=${fromMs} tracks=${config.tracks.length} totalDuration=${config.totalDurationMs}`,
+      `[timeline-ui] PLAY requested fromMs=${fromMs} isPaused=${isPaused} tracks=${config.tracks.length} totalDuration=${config.totalDurationMs}`,
     );
     sseCountRef.current = 0;
 
@@ -118,16 +124,36 @@ export function useServerTimelinePlayback(
         wallMs: performance.now(),
         playheadMs: fromMs,
       };
+      setIsPaused(false);
       setPlaying(true);
     } catch (err) {
       console.error('[timeline-ui] PLAY failed', err);
       setPlaying(false);
       lastSSERef.current = null;
     }
-  }, [roomId, setPlaying]);
+  }, [roomId, setPlaying, isPaused]);
+
+  const pause = useCallback(async () => {
+    setPlaying(false);
+    setIsPaused(true);
+    if (rafRef.current) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    lastSSERef.current = null;
+
+    try {
+      const result = await pauseTimeline(roomId);
+      setPlayhead(Math.round(result.playheadMs));
+    } catch (err) {
+      console.error('[timeline-ui] PAUSE failed', err);
+      setIsPaused(false);
+    }
+  }, [roomId, setPlaying, setPlayhead]);
 
   const stop = useCallback(async () => {
     setPlaying(false);
+    setIsPaused(false);
     if (rafRef.current) {
       cancelAnimationFrame(rafRef.current);
       rafRef.current = null;
@@ -161,15 +187,13 @@ export function useServerTimelinePlayback(
 
   const applyAtPlayhead = useCallback(async () => {
     // No-op for server-side playback: state is applied on the server.
-    // Kept for API compatibility with the old hook.
   }, []);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
   }, []);
 
-  return { play, stop, seek, applyAtPlayhead };
+  return { play, pause, stop, seek, applyAtPlayhead, isPaused };
 }

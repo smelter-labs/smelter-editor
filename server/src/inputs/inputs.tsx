@@ -26,11 +26,12 @@ function normalizeBorderWidth(borderWidth: number | undefined): number {
 
 export function Input({ input }: { input: InputConfig }) {
   const streams = useInputStreams();
+  const isFrozen = !!input.frozenImageId;
   const isImage = !!input.imageId;
   const isTextInput = !!input.text;
   const isGame = !!input.snakeGameState;
   const streamState =
-    isImage || isTextInput || isGame
+    isFrozen || isImage || isTextInput || isGame
       ? 'playing'
       : (streams[input.inputId]?.videoState ?? 'finished');
   const isVerticalInput = input.orientation === 'vertical';
@@ -54,7 +55,11 @@ export function Input({ input }: { input: InputConfig }) {
               borderColor,
               backgroundColor: isTextInput ? '#1a1a2e' : undefined,
             }}>
-            {isGame && getInputRenderer('game') ? (
+            {isFrozen ? (
+              <Rescaler style={{ rescaleMode: 'fill' }}>
+                <Image imageId={input.frozenImageId!} />
+              </Rescaler>
+            ) : isGame && getInputRenderer('game') ? (
               getInputRenderer('game')!(input, {
                 width: contentWidth,
                 height: contentHeight,
@@ -203,6 +208,7 @@ export function SmallInput({
   resolution?: Resolution;
 }) {
   const activeShaders = input.shaders.filter((shader) => shader.enabled);
+  const isFrozen = !!input.frozenImageId;
   const isImage = !!input.imageId;
   const isTextInput = !!input.text;
   const isGame = !!input.snakeGameState;
@@ -226,7 +232,11 @@ export function SmallInput({
           borderColor,
           backgroundColor: isTextInput ? '#1a1a2e' : undefined,
         }}>
-        {isGame && getInputRenderer('game') ? (
+        {isFrozen ? (
+          <Rescaler style={{ rescaleMode: 'fill' }}>
+            <Image imageId={input.frozenImageId!} />
+          </Rescaler>
+        ) : isGame && getInputRenderer('game') ? (
           getInputRenderer('game')!(input, {
             width: contentWidth,
             height: contentHeight,
