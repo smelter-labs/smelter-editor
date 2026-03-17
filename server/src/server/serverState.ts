@@ -5,6 +5,7 @@ import { errorCodes } from 'fastify';
 import { SmelterInstance } from '../smelter';
 import { type Resolution, RESOLUTION_PRESETS } from '../types';
 import { pickUniqueRoomName, type RoomNameEntry } from './roomNames';
+import { roomEventBus } from './roomEventBus';
 
 export type CreateRoomResult = {
   roomId: string;
@@ -91,6 +92,7 @@ class ServerState {
       throw new Error(`Room ${roomId} does not exist.`);
     }
     await room.deleteRoom();
+    roomEventBus.closeRoom(roomId);
   }
 
   private async monitorConnectedRooms() {

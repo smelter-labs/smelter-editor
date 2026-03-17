@@ -928,7 +928,6 @@ routes.after(() => {
       console.log("[request] Delete room", { roomId });
       clearSnakeGameRoomInactivityTimer(roomId);
       await state.deleteRoom(roomId);
-      roomEventBus.closeRoom(roomId);
       res.status(200).send({ status: "ok" });
     },
   );
