@@ -1,8 +1,7 @@
-import type { ShaderConfig } from './shader';
-import type { SnakeEventShaderConfig } from '../snake-game-types';
-import type { ActiveTransition } from './transition';
-
-export type InputOrientation = 'horizontal' | 'vertical';
+export type { InputOrientation } from '@smelter-editor/types';
+import type { ShaderConfig } from '@smelter-editor/types';
+import type { SnakeEventShaderConfig } from '@smelter-editor/types';
+import type { ActiveTransition } from '@smelter-editor/types';
 
 export type Input = {
   id: number;
@@ -24,7 +23,7 @@ export type Input = {
   channelId?: string;
   imageId?: string;
   shaders: ShaderConfig[];
-  orientation: InputOrientation;
+  orientation: 'horizontal' | 'vertical';
   text?: string;
   textAlign?: 'left' | 'center' | 'right';
   textColor?: string;
@@ -88,7 +87,7 @@ export type UpdateInputOptions = {
   volume: number;
   shaders?: ShaderConfig[];
   showTitle?: boolean;
-  orientation?: InputOrientation;
+  orientation?: 'horizontal' | 'vertical';
   text?: string;
   textAlign?: 'left' | 'center' | 'right';
   textColor?: string;

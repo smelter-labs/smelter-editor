@@ -1,9 +1,9 @@
 'use client';
 
 import { useReducer, useEffect, useCallback, useRef, useState } from 'react';
-import type { Input, ShaderConfig, TransitionConfig } from '@/lib/types';
+import type { Input } from '@/lib/types';
 import { parseTransitionConfig } from '@/lib/types';
-import type { SnakeEventShaderConfig } from '@/lib/snake-game-types';
+import type { TimelineBlockSettings } from '@smelter-editor/types';
 import {
   loadTimeline,
   saveTimeline,
@@ -26,42 +26,8 @@ export type Track = {
   clips: Clip[];
 };
 
-export type BlockSettings = {
-  volume: number;
-  showTitle: boolean;
-  shaders: Input['shaders'];
-  orientation: Input['orientation'];
-  text?: string;
-  textAlign?: Input['textAlign'];
-  textColor?: string;
-  textMaxLines?: number;
-  textScrollSpeed?: number;
-  textScrollLoop?: boolean;
-  textFontSize?: number;
-  borderColor?: string;
-  borderWidth?: number;
-  attachedInputIds?: string[];
-  gameBackgroundColor?: string;
-  gameCellGap?: number;
-  gameBoardBorderColor?: string;
-  gameBoardBorderWidth?: number;
-  gameGridLineColor?: string;
-  gameGridLineAlpha?: number;
-  snakeEventShaders?: SnakeEventShaderConfig;
-  snake1Shaders?: ShaderConfig[];
-  snake2Shaders?: ShaderConfig[];
-  absolutePosition?: boolean;
-  absoluteTop?: number;
-  absoluteLeft?: number;
-  absoluteWidth?: number;
-  absoluteHeight?: number;
-  absoluteTransitionDurationMs?: number;
-  absoluteTransitionEasing?: string;
-  mp4PlayFromMs?: number;
-  mp4Loop?: boolean;
+export type BlockSettings = TimelineBlockSettings & {
   mp4DurationMs?: number;
-  introTransition?: TransitionConfig;
-  outroTransition?: TransitionConfig;
 };
 
 /** @deprecated Use `Clip` instead. Kept for backwards compat with room-config. */

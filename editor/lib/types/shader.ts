@@ -1,3 +1,9 @@
+export type {
+  ShaderParamConfig,
+  ShaderConfig,
+  ShaderPreset,
+} from '@smelter-editor/types';
+
 export type ShaderParam = {
   name: string;
   type: string;
@@ -15,23 +21,6 @@ export type AvailableShader = {
   maxValue: number;
   defaultValue: number;
   params: ShaderParam[];
-};
-
-export type ShaderParamConfig = {
-  paramName: string;
-  paramValue: number | string;
-};
-
-export type ShaderConfig = {
-  shaderName: string;
-  shaderId: string;
-  enabled: boolean;
-  params: ShaderParamConfig[];
-};
-
-export type ShaderPreset = {
-  name: string;
-  shaders: ShaderConfig[];
 };
 
 /** @deprecated Use `SavedItemInfo` from `@/lib/storage-client` instead */

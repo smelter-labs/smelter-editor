@@ -41,4 +41,4 @@ export type {
   TransitionConfig,
   ActiveTransition,
 } from './transition';
-export { parseTransitionConfig } from './transition';
+export { isTransitionType, parseTransitionConfig } from './transition';
