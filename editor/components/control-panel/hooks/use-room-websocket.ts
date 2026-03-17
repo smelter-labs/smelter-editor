@@ -89,9 +89,13 @@ export function useRoomWebSocket(
           setPeers(msg.peers);
         } else if (msg.type === 'connected') {
           console.log('[room-ws] assigned clientId', msg.clientId);
-        } else if (msg.type === 'input_updated' || msg.type === 'input_deleted') {
+        } else if (
+          msg.type === 'input_updated' ||
+          msg.type === 'input_deleted'
+        ) {
           const { onRemoteInputChange, ownSourceId } = optsRef.current ?? {};
-          const isOwnChange = ownSourceId != null && msg.sourceId === ownSourceId;
+          const isOwnChange =
+            ownSourceId != null && msg.sourceId === ownSourceId;
           if (!isOwnChange) {
             console.log(`[room-ws] ${msg.type} from remote`, msg);
             onRemoteInputChange?.();

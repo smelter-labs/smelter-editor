@@ -27,7 +27,11 @@ export function ConnectedDevicesPanel({ peers }: ConnectedDevicesPanelProps) {
         <button
           className='text-neutral-500 hover:text-neutral-200 transition-colors p-0.5 cursor-pointer'
           onClick={() => setCollapsed((c) => !c)}
-          aria-label={collapsed ? 'Expand connected devices' : 'Collapse connected devices'}
+          aria-label={
+            collapsed
+              ? 'Expand connected devices'
+              : 'Collapse connected devices'
+          }
           aria-expanded={!collapsed}
           aria-controls='connected-devices-panel-content'>
           {collapsed ? (
