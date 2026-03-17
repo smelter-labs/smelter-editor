@@ -6,6 +6,7 @@ import {
   stopTimelinePlayback,
   seekTimeline,
   pauseTimeline,
+  applyTimelineState,
 } from '@/app/actions/actions';
 import { toServerTimelineConfig } from '@/lib/timeline-config';
 import { useTimelineSSE } from '@/hooks/use-timeline-sse';
@@ -186,8 +187,27 @@ export function useServerTimelinePlayback(
   );
 
   const applyAtPlayhead = useCallback(async () => {
-    // No-op for server-side playback: state is applied on the server.
-  }, []);
+    const config = toServerTimelineConfig(stateRef.current);
+    if (config.tracks.length === 0) return;
+    const playheadMs = stateRef.current.playheadMs;
+    try {
+      await applyTimelineState(roomId, config, playheadMs);
+      setIsPaused(true);
+    } catch (err) {
+      console.error('[timeline-ui] applyAtPlayhead failed', err);
+    }
+  }, [roomId]);
+
+  const hasAutoApplied = useRef(false);
+  useEffect(() => {
+    if (hasAutoApplied.current) return;
+    const hasClips = stateRef.current.tracks.some(
+      (t) => t.clips.length > 0,
+    );
+    if (!hasClips) return;
+    hasAutoApplied.current = true;
+    void applyAtPlayhead();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     return () => {

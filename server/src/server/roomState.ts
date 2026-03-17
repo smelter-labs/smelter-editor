@@ -25,6 +25,7 @@ import type {
   ActiveTransition,
 } from '../types';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
+import { getMp4DurationMs } from './mp4Duration';
 import {
   createDefaultSnakeGameInputState,
   DEFAULT_SNAKE_EVENT_SHADERS,
@@ -86,6 +87,7 @@ type TypeSpecificState =
       mp4FilePath: string;
       registeredAtPipelineMs?: number;
       playFromMs?: number;
+      mp4DurationMs?: number;
     }
   | {
       type: 'twitch-channel';
@@ -965,6 +967,16 @@ export class RoomState {
     if (input.type === 'local-mp4') {
       input.registeredAtPipelineMs = SmelterInstance.getPipelineTimeMs();
       input.playFromMs = 0;
+      getMp4DurationMs(input.mp4FilePath)
+        .then((ms) => {
+          input.mp4DurationMs = ms;
+        })
+        .catch((err) =>
+          console.warn(
+            `[mp4] Failed to probe duration for ${inputId}`,
+            err,
+          ),
+        );
     }
     // Start motion detection for video inputs
     if (
@@ -1055,7 +1067,11 @@ export class RoomState {
         );
 
         input.registeredAtPipelineMs = SmelterInstance.getPipelineTimeMs();
-        input.playFromMs = playFromMs;
+        if (loop && input.mp4DurationMs && input.mp4DurationMs > 0) {
+          input.playFromMs = playFromMs % input.mp4DurationMs;
+        } else {
+          input.playFromMs = playFromMs;
+        }
       } catch (err) {
         console.error(
           `[mp4-restart] FAILED inputId=${inputId} elapsed=${Date.now() - t0}ms status=${input.status}`,
@@ -1341,6 +1357,27 @@ export class RoomState {
     await this.timelinePlayer.start(fromMs);
   }
 
+  public async applyTimelineState(
+    config: TimelineConfig,
+    playheadMs: number,
+  ): Promise<void> {
+    if (this.timelinePlayer) {
+      this.timelinePlayer.destroy();
+    }
+
+    const adapter = this.buildTimelineAdapter();
+    this.timelinePlayer = new TimelinePlayer(adapter, config);
+
+    const forwardListener: TimelineListener = (data) => {
+      for (const listener of this.timelineListeners) {
+        listener(data);
+      }
+    };
+    this.timelinePlayer.addListener(forwardListener);
+
+    await this.timelinePlayer.applyStaticSnapshot(playheadMs);
+  }
+
   public async stopTimelinePlayback(): Promise<void> {
     if (!this.timelinePlayer) return;
     await this.cleanupFrozenImages();
@@ -1358,13 +1395,20 @@ export class RoomState {
     }
 
     const { playheadMs, activeClips } = this.timelinePlayer.pause();
+    const currentPipelineMs = SmelterInstance.getPipelineTimeMs();
 
     for (const [inputId, clip] of activeClips) {
       const input = this.inputs.find((i) => i.inputId === inputId);
       if (!input || input.type !== 'local-mp4') continue;
 
-      const mp4PlayFromMs = clip.blockSettings.mp4PlayFromMs ?? 0;
-      const framePositionMs = (playheadMs - clip.startMs) + mp4PlayFromMs;
+      let framePositionMs =
+        (input.playFromMs ?? 0) +
+        (currentPipelineMs - (input.registeredAtPipelineMs ?? currentPipelineMs));
+
+      const isLooped = clip.blockSettings.mp4Loop !== false;
+      if (isLooped && input.mp4DurationMs && input.mp4DurationMs > 0) {
+        framePositionMs = framePositionMs % input.mp4DurationMs;
+      }
 
       try {
         const jpegPath = await SmelterInstance.extractMp4Frame(

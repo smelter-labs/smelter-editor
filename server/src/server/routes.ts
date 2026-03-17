@@ -4,9 +4,8 @@ import websocket from '@fastify/websocket';
 import { v4 as uuidv4 } from 'uuid';
 import { STATUS_CODES } from 'node:http';
 import path from 'node:path';
-import { execFile } from 'node:child_process';
-import { promisify } from 'node:util';
 import { pathExists, readdir, readFile, stat } from 'fs-extra';
+import { getMp4DurationMs } from './mp4Duration';
 import { Type } from '@sinclair/typebox';
 import type {
   Static,
@@ -77,9 +76,6 @@ routes.get('/suggestions/mp4s', async (_req, res) => {
   res.status(200).send({ mp4s: mp4SuggestionsMonitor.mp4Files });
 });
 
-const execFileAsync = promisify(execFile);
-const mp4DurationCache = new Map<string, number>();
-
 routes.get<{ Params: { fileName: string } }>(
   '/suggestions/mp4-duration/:fileName',
   { schema: { params: Type.Object({ fileName: Type.String() }) } },
@@ -92,28 +88,9 @@ routes.get<{ Params: { fileName: string } }>(
       return res.status(404).send({ error: 'MP4 file not found' });
     }
 
-    const cached = mp4DurationCache.get(safeName);
-    if (cached !== undefined) {
-      return res.status(200).send({ durationMs: cached });
-    }
-
     try {
-      const { stdout } = await execFileAsync('ffprobe', [
-        '-v',
-        'error',
-        '-show_entries',
-        'format=duration',
-        '-of',
-        'csv=p=0',
-        filePath,
-      ]);
-      const seconds = parseFloat(stdout.trim());
-      if (Number.isFinite(seconds)) {
-        const durationMs = Math.round(seconds * 1000);
-        mp4DurationCache.set(safeName, durationMs);
-        return res.status(200).send({ durationMs });
-      }
-      return res.status(500).send({ error: 'Could not parse duration' });
+      const durationMs = await getMp4DurationMs(filePath);
+      return res.status(200).send({ durationMs });
     } catch (err: any) {
       console.error('Failed to get MP4 duration via ffprobe', {
         fileName: safeName,

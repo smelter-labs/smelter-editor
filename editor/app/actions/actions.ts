@@ -361,6 +361,17 @@ export async function seekTimeline(
   return client.seekTimeline(roomId, ms);
 }
 
+export async function applyTimelineState(
+  roomId: string,
+  config: {
+    tracks: { id: string; clips: any[] }[];
+    totalDurationMs: number;
+  },
+  playheadMs: number,
+): Promise<{ status: string }> {
+  return client.applyTimelineState(roomId, config, playheadMs);
+}
+
 function spawn(
   command: string,
   args: string[],

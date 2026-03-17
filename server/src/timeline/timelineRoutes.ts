@@ -1,8 +1,16 @@
 import { Type } from '@sinclair/typebox';
 import type { FastifyInstance } from 'fastify';
 import { state } from '../server/serverState';
-import { TimelinePlaySchema, TimelineSeekSchema } from './schemas';
-import type { TimelinePlayBody, TimelineSeekBody } from './schemas';
+import {
+  TimelinePlaySchema,
+  TimelineSeekSchema,
+  TimelineApplySchema,
+} from './schemas';
+import type {
+  TimelinePlayBody,
+  TimelineSeekBody,
+  TimelineApplyBody,
+} from './schemas';
 import type { TimelineConfig } from './types';
 
 type RoomIdParams = { Params: { roomId: string } };
@@ -76,6 +84,30 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
       const { ms } = req.body;
       console.log('[timeline] Seek', { roomId, ms });
       await room.seekTimeline(ms);
+      res.status(200).send({ status: 'ok' });
+    },
+  );
+
+  routes.post<RoomIdParams & { Body: TimelineApplyBody }>(
+    '/room/:roomId/timeline/apply',
+    {
+      schema: {
+        params: RoomIdParamsSchema,
+        body: TimelineApplySchema,
+      },
+    },
+    async (req, res) => {
+      const { roomId } = req.params;
+      const room = state.getRoom(roomId);
+      const { tracks, totalDurationMs, playheadMs } = req.body;
+      console.log('[timeline] Apply static snapshot', {
+        roomId,
+        tracks: tracks.length,
+        totalDurationMs,
+        playheadMs,
+      });
+      const config = { tracks, totalDurationMs } as TimelineConfig;
+      await room.applyTimelineState(config, playheadMs);
       res.status(200).send({ status: 'ok' });
     },
   );

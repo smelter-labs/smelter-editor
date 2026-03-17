@@ -86,5 +86,12 @@ export const TimelineSeekSchema = Type.Object({
   ms: Type.Number({ minimum: 0 }),
 });
 
+export const TimelineApplySchema = Type.Object({
+  tracks: Type.Array(TimelineTrackSchema),
+  totalDurationMs: Type.Number({ minimum: 0 }),
+  playheadMs: Type.Number({ minimum: 0 }),
+});
+
 export type TimelinePlayBody = Static<typeof TimelinePlaySchema>;
 export type TimelineSeekBody = Static<typeof TimelineSeekSchema>;
+export type TimelineApplyBody = Static<typeof TimelineApplySchema>;

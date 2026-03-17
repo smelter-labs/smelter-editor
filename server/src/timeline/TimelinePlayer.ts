@@ -341,6 +341,9 @@ export class TimelinePlayer {
     await this.applyBlockSettingsAtTime(playheadMs);
     this.applyOrderIfChanged(playheadMs);
 
+    // Re-sync wall clock so playhead starts from when MP4s are actually playing
+    this.startWallMs = Date.now();
+
     // Compile and schedule events
     this.events = compileEvents(this.config, playheadMs);
     this.nextEventIndex = 0;
@@ -420,9 +423,13 @@ export class TimelinePlayer {
     // Apply state at resume position
     const desired = computeDesiredState(this.config, resumeMs);
     await this.applyDesiredState(desired, resumeMs);
+    this.mp4RestartedKeys.clear();
     await this.applyBlockSettingsAtTime(resumeMs);
     this.lastAppliedOrder = '';
     this.applyOrderIfChanged(resumeMs);
+
+    // Re-sync wall clock so playhead starts from when MP4s are actually playing
+    this.startWallMs = Date.now();
 
     this.scheduleAllEvents();
 
@@ -472,11 +479,36 @@ export class TimelinePlayer {
     // Apply state at new position
     const desired = computeDesiredState(this.config, ms);
     await this.applyDesiredState(desired, ms);
+    this.mp4RestartedKeys.clear();
     await this.applyBlockSettingsAtTime(ms);
     this.lastAppliedOrder = '';
     this.applyOrderIfChanged(ms);
 
     this.scheduleAllEvents();
+    this.emit();
+  }
+
+  public async applyStaticSnapshot(playheadMs: number): Promise<void> {
+    console.log(
+      `[timeline] APPLY STATIC SNAPSHOT playheadMs=${playheadMs} totalDuration=${this.config.totalDurationMs}`,
+    );
+
+    this.snapshotState();
+    this.appliedState = new Map(
+      this.room.getInputs().map((i) => [i.inputId, !i.hidden]),
+    );
+    this.appliedBlockSettings.clear();
+    this.mp4RestartedKeys.clear();
+    this.mp4ActualRestarted.clear();
+    this.lastAppliedOrder = '';
+
+    const desired = computeDesiredState(this.config, playheadMs);
+    await this.applyDesiredState(desired, playheadMs);
+    await this.applyBlockSettingsAtTime(playheadMs);
+    this.applyOrderIfChanged(playheadMs);
+
+    this.paused = true;
+    this.pausedPlayheadMs = playheadMs;
     this.emit();
   }
 
@@ -635,7 +667,7 @@ export class TimelinePlayer {
       );
     }
 
-    await this.applyClipState(inputId, clip);
+    await this.applyClipState(inputId, clip, timeMs);
 
     const input = this.room.getInputs().find((i) => i.inputId === inputId);
     if (!input) {
@@ -675,6 +707,7 @@ export class TimelinePlayer {
   private async applyClipState(
     inputId: string,
     clip: TimelineClip,
+    targetPlayheadMs: number,
   ): Promise<void> {
     const serialized = JSON.stringify(clip.blockSettings);
     if (this.appliedBlockSettings.get(inputId) !== serialized) {
@@ -690,7 +723,9 @@ export class TimelinePlayer {
     }
 
     if (isMp4InputId(inputId)) {
-      const playFromMs = clip.blockSettings.mp4PlayFromMs ?? 0;
+      const basePlayFrom = clip.blockSettings.mp4PlayFromMs ?? 0;
+      const elapsedInClip = Math.max(0, targetPlayheadMs - clip.startMs);
+      const playFromMs = basePlayFrom + elapsedInClip;
       const loop = clip.blockSettings.mp4Loop !== false;
       const key = getMp4RestartKey(clip);
       const prevKey = this.mp4RestartedKeys.get(inputId);
@@ -755,7 +790,7 @@ export class TimelinePlayer {
     const active = getActiveClipsByInputAt(this.config, timeMs);
     const updates: Promise<void>[] = [];
     for (const [inputId, clip] of active) {
-      updates.push(this.applyClipState(inputId, clip));
+      updates.push(this.applyClipState(inputId, clip, timeMs));
     }
     if (updates.length > 0) {
       await Promise.allSettled(updates);

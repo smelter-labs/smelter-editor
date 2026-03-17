@@ -134,6 +134,14 @@ export interface SmelterApiClient {
   ): Promise<{ status: string }>;
   stopTimelinePlayback(roomId: string): Promise<{ status: string }>;
   seekTimeline(roomId: string, ms: number): Promise<{ status: string }>;
+  applyTimelineState(
+    roomId: string,
+    config: {
+      tracks: { id: string; clips: any[] }[];
+      totalDurationMs: number;
+    },
+    playheadMs: number,
+  ): Promise<{ status: string }>;
 }
 
 class SmelterApiError extends Error {
@@ -461,6 +469,14 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
 
     async seekTimeline(roomId, ms) {
       return await req('post', `/room/${enc(roomId)}/timeline/seek`, { ms });
+    },
+
+    async applyTimelineState(roomId, config, playheadMs) {
+      return await req('post', `/room/${enc(roomId)}/timeline/apply`, {
+        tracks: config.tracks,
+        totalDurationMs: config.totalDurationMs,
+        playheadMs,
+      });
     },
   };
 }
