@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 // Mirrors server/src/server/roomEventBus.ts - sync manually.
 export type ConnectedPeer = {
@@ -43,53 +43,92 @@ type ServerMessage =
 const WS_BASE = process.env.NEXT_PUBLIC_SMELTER_WS_URL ?? 'ws://localhost:3001';
 
 const CLIENT_NAME = 'Editor';
+const RECONNECT_BASE_DELAY_MS = 1_000;
+const RECONNECT_MAX_DELAY_MS = 30_000;
+// Code sent by the server when the room is deleted — no point reconnecting.
+const CLOSE_CODE_ROOM_DELETED = 1001;
 
 export function useRoomWebSocket(roomId: string): { peers: ConnectedPeer[] } {
   const [peers, setPeers] = useState<ConnectedPeer[]>([]);
+  const attemptRef = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    const url = `${WS_BASE}/room/${encodeURIComponent(roomId)}/ws`;
-    const ws = new WebSocket(url);
+    let destroyed = false;
 
-    ws.addEventListener('open', () => {
-      console.log('[room-ws] connected', { roomId, url });
-      ws.send(JSON.stringify({ type: 'identify', name: CLIENT_NAME }));
-    });
+    function connect() {
+      const url = `${WS_BASE}/room/${encodeURIComponent(roomId)}/ws`;
+      const ws = new WebSocket(url);
 
-    ws.addEventListener('message', (ev) => {
-      let msg: ServerMessage;
-      try {
-        msg = JSON.parse(ev.data as string) as ServerMessage;
-      } catch {
-        console.warn('[room-ws] unparseable message', ev.data);
-        return;
-      }
-
-      if (msg.type === 'peers_updated') {
-        setPeers(msg.peers);
-      } else if (msg.type === 'connected') {
-        console.log('[room-ws] assigned clientId', msg.clientId);
-      } else if (msg.type === 'input_updated') {
-        console.log('[room-ws] input_updated', msg);
-      } else if (msg.type === 'input_deleted') {
-        console.log('[room-ws] input_deleted', msg);
-      }
-    });
-
-    ws.addEventListener('error', () => {
-      console.error('[room-ws] connection error', { roomId, url });
-    });
-
-    ws.addEventListener('close', (ev) => {
-      console.log('[room-ws] disconnected', {
-        roomId,
-        code: ev.code,
-        reason: ev.reason,
+      ws.addEventListener('open', () => {
+        attemptRef.current = 0;
+        console.log('[room-ws] connected', { roomId, url });
+        ws.send(JSON.stringify({ type: 'identify', name: CLIENT_NAME }));
       });
-      setPeers([]);
-    });
+
+      ws.addEventListener('message', (ev) => {
+        let msg: ServerMessage;
+        try {
+          msg = JSON.parse(ev.data as string) as ServerMessage;
+        } catch {
+          console.warn('[room-ws] unparseable message', ev.data);
+          return;
+        }
+
+        if (msg.type === 'peers_updated') {
+          setPeers(msg.peers);
+        } else if (msg.type === 'connected') {
+          console.log('[room-ws] assigned clientId', msg.clientId);
+        } else if (msg.type === 'input_updated') {
+          console.log('[room-ws] input_updated', msg);
+        } else if (msg.type === 'input_deleted') {
+          console.log('[room-ws] input_deleted', msg);
+        }
+      });
+
+      ws.addEventListener('error', () => {
+        console.error('[room-ws] connection error', { roomId, url });
+      });
+
+      ws.addEventListener('close', (ev) => {
+        setPeers([]);
+
+        if (destroyed || ev.code === CLOSE_CODE_ROOM_DELETED) {
+          console.log('[room-ws] disconnected (permanent)', {
+            roomId,
+            code: ev.code,
+            reason: ev.reason,
+          });
+          return;
+        }
+
+        attemptRef.current += 1;
+        const delay = Math.min(
+          RECONNECT_BASE_DELAY_MS * 2 ** (attemptRef.current - 1),
+          RECONNECT_MAX_DELAY_MS,
+        );
+        console.log('[room-ws] disconnected, reconnecting', {
+          roomId,
+          code: ev.code,
+          attempt: attemptRef.current,
+          delayMs: delay,
+        });
+        timerRef.current = setTimeout(() => {
+          if (!destroyed) connect();
+        }, delay);
+      });
+
+      return ws;
+    }
+
+    const ws = connect();
 
     return () => {
+      destroyed = true;
+      if (timerRef.current !== null) {
+        clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
       ws.close();
     };
   }, [roomId]);
