@@ -1305,14 +1305,6 @@ export class RoomState {
   public async updateLayout(layout: Layout) {
     return this.mutex.runExclusive(async () => {
       this.layout = layout;
-      if (layout === 'wrapped') {
-        await this.removeWrappedStaticInputs();
-        void this.ensureWrappedMp4Inputs();
-      }
-      if (layout === 'wrapped-static') {
-        await this.removeWrappedMp4Inputs();
-        await this.ensureWrappedImageInputs();
-      }
       this.updateStoreWithState();
     });
   }
@@ -1375,7 +1367,44 @@ export class RoomState {
     };
     this.timelinePlayer.addListener(forwardListener);
 
-    await this.timelinePlayer.applyStaticSnapshot(playheadMs);
+    const activeClips = await this.timelinePlayer.applyStaticSnapshot(playheadMs);
+
+    await this.cleanupFrozenImages();
+
+    for (const [inputId, clip] of activeClips) {
+      const input = this.inputs.find((i) => i.inputId === inputId);
+      if (!input || input.type !== 'local-mp4') continue;
+
+      const basePlayFrom = clip.blockSettings.mp4PlayFromMs ?? 0;
+      let framePositionMs = basePlayFrom + (playheadMs - clip.startMs);
+
+      const isLooped = clip.blockSettings.mp4Loop !== false;
+      if (isLooped && input.mp4DurationMs && input.mp4DurationMs > 0) {
+        framePositionMs = framePositionMs % input.mp4DurationMs;
+      }
+
+      try {
+        const jpegPath = await SmelterInstance.extractMp4Frame(
+          input.mp4FilePath,
+          framePositionMs,
+        );
+        const frozenId = `frozen::${this.idPrefix}::${inputId}::${Date.now()}`;
+        await SmelterInstance.registerImage(frozenId, {
+          serverPath: jpegPath,
+          assetType: 'jpeg',
+        });
+
+        this.frozenImages.set(inputId, { imageId: frozenId, jpegPath });
+        this.output.store
+          .getState()
+          .setInputFrozenImage(inputId, frozenId);
+      } catch (err) {
+        console.error(
+          `[timeline] Failed to extract frame for ${inputId} at scrub position`,
+          err,
+        );
+      }
+    }
   }
 
   public async stopTimelinePlayback(): Promise<void> {
@@ -1625,7 +1654,6 @@ export class RoomState {
       .getState()
       .updateState(
         [...inputs].reverse(),
-        this.layout,
         this.swapDurationMs,
         this.swapOutgoingEnabled,
         this.swapFadeInDurationMs,
@@ -1868,143 +1896,6 @@ export class RoomState {
       throw new Error(`Input ${inputId} not found`);
     }
     return input;
-  }
-  private async removeWrappedStaticInputs(): Promise<void> {
-    const inputsToRemove = this.inputs.filter(
-      (input) =>
-        input.type === 'image' && input.imageId?.startsWith('wrapped::'),
-    );
-    for (const input of inputsToRemove) {
-      await this._removeInput(input.inputId);
-    }
-  }
-
-  private async removeWrappedMp4Inputs(): Promise<void> {
-    const inputsToRemove = this.inputs.filter(
-      (input) =>
-        input.type === 'local-mp4' &&
-        input.inputId.includes('::local::wrapped::'),
-    );
-    for (const input of inputsToRemove) {
-      await this._removeInput(input.inputId);
-    }
-  }
-
-  // Add every MP4 from wrapped/ as an input (if not present).
-  private async ensureWrappedMp4Inputs(): Promise<void> {
-    const wrappedDir = path.join(process.cwd(), 'wrapped');
-    let entries: string[] = [];
-    try {
-      entries = await readdir(wrappedDir);
-    } catch {
-      return;
-    }
-    // Keep deterministic order
-    entries.sort((a, b) => a.localeCompare(b, 'en'));
-    const mp4s = entries.filter((e) => e.toLowerCase().endsWith('.mp4'));
-
-    // Remove placeholder if we're adding inputs
-    if (mp4s.length > 0) {
-      await this.removePlaceholder();
-    }
-
-    for (const fileName of mp4s) {
-      const absPath = path.join(wrappedDir, fileName);
-      const baseName = fileName.replace(/\.mp4$/i, '');
-      const inputId = `${this.idPrefix}::local::wrapped::${baseName}`;
-      if (this.inputs.find((inp) => inp.inputId === inputId)) {
-        continue;
-      }
-      this.inputs.push({
-        inputId,
-        type: 'local-mp4',
-        status: 'disconnected',
-        showTitle: false,
-        shaders: [],
-        orientation: 'horizontal',
-        borderColor: '#ff0000',
-        borderWidth: 0,
-        hidden: false,
-        motionEnabled: false,
-        metadata: {
-          title: `[MP4] ${formatMp4Name(fileName)}`,
-          description: '[Wrapped MP4]',
-        },
-        mp4FilePath: absPath,
-        volume: 0,
-      });
-      // Connect the input
-      void this._connectInput(inputId);
-    }
-  }
-
-  // Add every image from wrapped/ as an input (if not present). Registers images on the fly.
-  private async ensureWrappedImageInputs(): Promise<void> {
-    const wrappedDir = path.join(process.cwd(), 'wrapped');
-    let entries: string[] = [];
-    try {
-      entries = await readdir(wrappedDir);
-    } catch {
-      return;
-    }
-    // Keep deterministic order
-    entries.sort((a, b) => a.localeCompare(b, 'en'));
-    const exts = ['.jpg', '.jpeg', '.png', '.gif', '.svg'];
-    const images = entries.filter((e) =>
-      exts.some((ext) => e.toLowerCase().endsWith(ext)),
-    );
-
-    // Remove placeholder if we're adding inputs
-    if (images.length > 0) {
-      await this.removePlaceholder();
-    }
-
-    for (const fileName of images) {
-      const lower = fileName.toLowerCase();
-      const ext = exts.find((x) => lower.endsWith(x))!;
-      const absPath = path.join(wrappedDir, fileName);
-      const baseName = fileName.replace(/\.(jpg|jpeg|png|gif|svg)$/i, '');
-      const imageId = `wrapped::${baseName}`;
-      const inputId = `${this.idPrefix}::image::${baseName}`;
-      // register image resource
-      const assetType =
-        ext === '.png'
-          ? 'png'
-          : ext === '.gif'
-            ? 'gif'
-            : ext === '.svg'
-              ? 'svg'
-              : 'jpeg';
-      try {
-        await SmelterInstance.registerImage(imageId, {
-          serverPath: absPath,
-          assetType: assetType as any,
-        });
-      } catch {
-        // ignore if already registered
-      }
-      if (this.inputs.find((inp) => inp.inputId === inputId)) {
-        continue;
-      }
-      this.inputs.push({
-        inputId,
-        type: 'image',
-        status: 'connected',
-        showTitle: false,
-        shaders: [],
-        orientation: 'horizontal',
-        borderColor: '#ff0000',
-        borderWidth: 0,
-        hidden: false,
-        motionEnabled: false,
-        metadata: {
-          title: formatImageName(fileName),
-          description: '',
-        },
-        volume: 0,
-        imageId,
-      });
-    }
   }
 }
 

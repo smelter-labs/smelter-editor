@@ -14,7 +14,6 @@ import { useActions } from './contexts/actions-context';
 import { ActionsProvider } from './contexts/actions-context';
 import { defaultActions, SESSION_SOURCE_ID } from './contexts/default-actions';
 import { useRecordingControls } from './hooks/use-recording-controls';
-import LayoutSelector, { type Layout } from '@/components/layout-selector';
 import {
   Dialog,
   DialogContent,
@@ -22,7 +21,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  Grid3X3,
   SlidersHorizontal,
   Zap,
   Download,
@@ -166,7 +164,6 @@ function ControlPanelWithActions({
     handleRefreshState,
     availableShaders,
     updateOrder,
-    changeLayout,
     openFxInputId,
     setOpenFxInputId,
     selectedInputId,
@@ -346,7 +343,6 @@ function ControlPanelWithActions({
           listVersion={listVersion}
           setListVersion={setListVersion}
           showStreamsSpinner={showStreamsSpinner}
-          changeLayout={changeLayout}
           updateOrderWithLock={updateOrderWithLock}
           openFxInputId={openFxInputId}
           setOpenFxInputId={setOpenFxInputId}
@@ -375,7 +371,6 @@ type ControlPanelInnerProps = {
   listVersion: number;
   setListVersion: (v: number | ((prev: number) => number)) => void;
   showStreamsSpinner: boolean;
-  changeLayout: (layout: Layout) => void;
   updateOrderWithLock: (wrappers: InputWrapper[]) => Promise<void>;
   openFxInputId: string | null;
   setOpenFxInputId: React.Dispatch<React.SetStateAction<string | null>>;
@@ -398,7 +393,6 @@ function ControlPanelInner({
   listVersion,
   setListVersion,
   showStreamsSpinner,
-  changeLayout,
   updateOrderWithLock,
   openFxInputId,
   setOpenFxInputId,
@@ -435,8 +429,6 @@ function ControlPanelInner({
     updateOrder: updateOrderWithLock,
     selectedInputId,
     setSelectedInputId,
-    currentLayout: roomState.layout,
-    changeLayout,
   });
 
   const handleToggleFx = (inputId: string) => {
@@ -482,7 +474,6 @@ function ControlPanelInner({
     const buttonsSection = (
       <div className='h-full overflow-y-auto p-3'>
         <SettingsBar
-          changeLayout={changeLayout}
           roomState={roomState}
           pendingWhipInputs={pendingWhipInputs}
           setPendingWhipInputs={handleSetPendingWhipInputs}
@@ -652,7 +643,6 @@ function ControlPanelInner({
           {!isGuest && !renderStreamsOutside && streamsSectionContent}
           {!isGuest && (
             <SettingsBar
-              changeLayout={changeLayout}
               roomState={roomState}
               pendingWhipInputs={pendingWhipInputs}
               setPendingWhipInputs={handleSetPendingWhipInputs}
@@ -677,15 +667,13 @@ function ControlPanelInner({
   return mainPanel;
 }
 
-type ModalId = 'quickActions' | 'layouts' | 'settings';
+type ModalId = 'quickActions' | 'settings';
 
 function SettingsBar({
-  changeLayout,
   roomState,
   pendingWhipInputs,
   setPendingWhipInputs,
 }: {
-  changeLayout: (layout: Layout) => void;
   roomState: RoomState;
   pendingWhipInputs: PendingWhipInput[];
   setPendingWhipInputs: (inputs: PendingWhipInput[]) => void | Promise<void>;
@@ -1009,11 +997,6 @@ function SettingsBar({
         icon: <Zap className='w-4 h-4' />,
       },
       {
-        id: 'layouts',
-        label: 'Layouts',
-        icon: <Grid3X3 className='w-4 h-4' />,
-      },
-      {
         id: 'settings',
         label: 'Settings',
         icon: <SlidersHorizontal className='w-4 h-4' />,
@@ -1031,7 +1014,7 @@ function SettingsBar({
 
   return (
     <>
-      <div className='grid grid-cols-7 gap-2'>
+      <div className='grid grid-cols-6 gap-2'>
         {modalButtons.map((btn) => (
           <button
             key={btn.id}
@@ -1112,21 +1095,6 @@ function SettingsBar({
             <DialogTitle>Quick Actions</DialogTitle>
           </DialogHeader>
           <QuickActionsSection />
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={openModal === 'layouts'}
-        onOpenChange={(open) => !open && setOpenModal(null)}>
-        <DialogContent className='max-w-xl'>
-          <DialogHeader>
-            <DialogTitle>Layouts</DialogTitle>
-          </DialogHeader>
-          <LayoutSelector
-            changeLayout={changeLayout}
-            activeLayoutId={roomState.layout}
-            connectedStreamsLength={roomState.inputs.length}
-          />
         </DialogContent>
       </Dialog>
 

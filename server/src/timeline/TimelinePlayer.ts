@@ -488,7 +488,9 @@ export class TimelinePlayer {
     this.emit();
   }
 
-  public async applyStaticSnapshot(playheadMs: number): Promise<void> {
+  public async applyStaticSnapshot(
+    playheadMs: number,
+  ): Promise<Map<string, TimelineClip>> {
     console.log(
       `[timeline] APPLY STATIC SNAPSHOT playheadMs=${playheadMs} totalDuration=${this.config.totalDurationMs}`,
     );
@@ -510,6 +512,8 @@ export class TimelinePlayer {
     this.paused = true;
     this.pausedPlayheadMs = playheadMs;
     this.emit();
+
+    return getActiveClipsByInputAt(this.config, playheadMs);
   }
 
   public destroy(): void {
