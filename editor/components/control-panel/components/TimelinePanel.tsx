@@ -117,6 +117,7 @@ const TRACK_HEIGHT = 40;
 const SOURCES_WIDTH = 180;
 const SNAP_THRESHOLD_PX = 8;
 const RESIZE_HANDLE_PX = 5;
+const MIN_MOVABLE_KEYFRAME_MS = 1;
 
 // ── Time formatting ──────────────────────────────────────
 
@@ -198,6 +199,56 @@ function snapToNearest(
     }
   }
   return best;
+}
+
+function clampKeyframeTimeMs(ms: number, clipDurationMs: number): number {
+  return Math.max(
+    MIN_MOVABLE_KEYFRAME_MS,
+    Math.min(Math.round(ms), clipDurationMs),
+  );
+}
+
+function computeKeyframeSnapTargets(
+  clip: import('../hooks/use-timeline-state').Clip,
+  excludeKeyframeId: string,
+): number[] {
+  return [
+    0,
+    clip.endMs - clip.startMs,
+    ...clip.keyframes
+      .filter((keyframe) => keyframe.id !== excludeKeyframeId)
+      .map((keyframe) => keyframe.timeMs),
+  ];
+}
+
+function resolveKeyframeCollision(
+  ms: number,
+  occupiedTimes: Set<number>,
+  clipDurationMs: number,
+  deltaMs: number,
+): number {
+  if (!occupiedTimes.has(ms)) {
+    return ms;
+  }
+
+  const preferredStep = deltaMs < 0 ? -1 : 1;
+  for (const step of [preferredStep, -preferredStep]) {
+    let candidate = ms;
+    while (true) {
+      candidate += step;
+      if (
+        candidate < MIN_MOVABLE_KEYFRAME_MS ||
+        candidate > clipDurationMs
+      ) {
+        break;
+      }
+      if (!occupiedTimes.has(candidate)) {
+        return candidate;
+      }
+    }
+  }
+
+  return ms;
 }
 
 // ── Component ────────────────────────────────────────────
@@ -701,6 +752,13 @@ export function TimelinePanel({
       originStartMs: number;
       originEndMs: number;
     }[];
+  } | null>(null);
+  const keyframeDragRef = useRef<{
+    trackId: string;
+    clipId: string;
+    keyframeId: string;
+    originX: number;
+    originTimeMs: number;
   } | null>(null);
 
   // ── Sync ruler scroll with tracks scroll ──────────────
@@ -1419,9 +1477,79 @@ export function TimelinePanel({
     ],
   );
 
+  const handleKeyframePointerDown = useCallback(
+    (
+      e: React.PointerEvent<HTMLButtonElement>,
+      trackId: string,
+      clip: import('../hooks/use-timeline-state').Clip,
+      keyframe: import('../hooks/use-timeline-state').Keyframe,
+    ) => {
+      e.preventDefault();
+      e.stopPropagation();
+
+      setSelectedClipIds([{ trackId, clipId: clip.id }]);
+      setSelectedKeyframeId(keyframe.id);
+      lastClickedClipRef.current = { trackId, clipId: clip.id };
+
+      if (keyframe.timeMs === 0) {
+        return;
+      }
+
+      keyframeDragRef.current = {
+        trackId,
+        clipId: clip.id,
+        keyframeId: keyframe.id,
+        originX: e.clientX,
+        originTimeMs: keyframe.timeMs,
+      };
+
+      document.body.style.userSelect = 'none';
+    },
+    [],
+  );
+
   // Use document-level listeners for drag so we can detect cross-track movement
   useEffect(() => {
     const handlePointerMove = (e: PointerEvent) => {
+      const keyframeDrag = keyframeDragRef.current;
+      if (keyframeDrag) {
+        const deltaMs = pxToMs(e.clientX - keyframeDrag.originX);
+        const track = state.tracks.find((item) => item.id === keyframeDrag.trackId);
+        const clip = track?.clips.find((item) => item.id === keyframeDrag.clipId);
+        if (!clip) {
+          return;
+        }
+
+        const clipDurationMs = clip.endMs - clip.startMs;
+        const occupiedTimes = new Set(
+          clip.keyframes
+            .filter((keyframe) => keyframe.id !== keyframeDrag.keyframeId)
+            .map((keyframe) => keyframe.timeMs),
+        );
+        let nextTimeMs = Math.round(keyframeDrag.originTimeMs + deltaMs);
+        nextTimeMs = clampKeyframeTimeMs(nextTimeMs, clipDurationMs);
+        nextTimeMs = snapToNearest(
+          nextTimeMs,
+          computeKeyframeSnapTargets(clip, keyframeDrag.keyframeId),
+          snapThresholdMs,
+        );
+        nextTimeMs = clampKeyframeTimeMs(nextTimeMs, clipDurationMs);
+        nextTimeMs = resolveKeyframeCollision(
+          nextTimeMs,
+          occupiedTimes,
+          clipDurationMs,
+          deltaMs,
+        );
+
+        moveKeyframe(
+          keyframeDrag.trackId,
+          keyframeDrag.clipId,
+          keyframeDrag.keyframeId,
+          nextTimeMs,
+        );
+        return;
+      }
+
       const drag = dragRef.current;
       if (!drag) return;
 
@@ -1564,8 +1692,10 @@ export function TimelinePanel({
     };
 
     const handlePointerUp = () => {
-      if (dragRef.current) {
-        dragRef.current = null;
+      const hadActiveDrag = keyframeDragRef.current || dragRef.current;
+      keyframeDragRef.current = null;
+      dragRef.current = null;
+      if (hadActiveDrag) {
         document.body.style.userSelect = '';
       }
       setInvalidDropTrackId(null);
@@ -1588,6 +1718,7 @@ export function TimelinePanel({
     moveClipToTrack,
     getTrackIdAtY,
     updateClipSettings,
+    moveKeyframe,
   ]);
 
   const handleClipHover = useCallback(
@@ -1762,11 +1893,12 @@ export function TimelinePanel({
             <button
               key={keyframe.id}
               type='button'
-              className='absolute z-20 size-3 -ml-1.5 -mt-1.5 cursor-pointer border border-neutral-900 transition-transform hover:scale-110'
+              className='absolute z-20 size-3 -ml-1.5 -mt-1.5 border border-neutral-900 transition-transform hover:scale-110'
               style={{
                 left: leftPx,
                 top: TRACK_HEIGHT / 2,
                 transform: 'rotate(45deg)',
+                cursor: keyframe.timeMs === 0 ? 'pointer' : 'ew-resize',
                 backgroundColor: isSelected
                   ? 'rgb(248 113 113)'
                   : 'rgb(212 212 212 / 0.9)',
@@ -1775,19 +1907,24 @@ export function TimelinePanel({
                   : 'none',
               }}
               title={`Keyframe at ${formatMs(clip.startMs + keyframe.timeMs)}`}
-              onPointerDown={(e) => {
+              onPointerDown={(e) =>
+                handleKeyframePointerDown(e, track.id, clip, keyframe)
+              }
+              onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                setSelectedClipIds([{ trackId: track.id, clipId: clip.id }]);
-                setSelectedKeyframeId(keyframe.id);
-                lastClickedClipRef.current = { trackId: track.id, clipId: clip.id };
               }}
             />
           );
         });
       });
     },
-    [selectedClipIds, selectedKeyframeId, state.pixelsPerSecond],
+    [
+      selectedClipIds,
+      selectedKeyframeId,
+      state.pixelsPerSecond,
+      handleKeyframePointerDown,
+    ],
   );
 
   const renderClips = useCallback(

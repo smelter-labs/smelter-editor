@@ -94,4 +94,79 @@ describe('timelineReducer', () => {
     expect(next.tracks[0].clips).toHaveLength(1);
     expect(next.tracks[0].clips[0].inputId).toBe('room::local::b');
   });
+
+  it('keeps the base keyframe locked at 0ms and clamps moved keyframes into clip bounds', () => {
+    const state: TimelineState = {
+      tracks: [
+        {
+          id: 'track-1',
+          label: 'Track 1',
+          clips: [
+            {
+              id: 'clip-1',
+              inputId: 'room::local::one',
+              startMs: 0,
+              endMs: 10_000,
+              blockSettings: defaultBlockSettings,
+              keyframes: [
+                {
+                  id: 'kf-base',
+                  timeMs: 0,
+                  blockSettings: defaultBlockSettings,
+                },
+                {
+                  id: 'kf-move',
+                  timeMs: 2_000,
+                  blockSettings: defaultBlockSettings,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      totalDurationMs: 60_000,
+      keyframeInterpolationMode: 'step',
+      playheadMs: 0,
+      isPlaying: false,
+      pixelsPerSecond: 15,
+    };
+
+    const movedBase = timelineReducer(state, {
+      type: 'MOVE_KEYFRAME',
+      trackId: 'track-1',
+      clipId: 'clip-1',
+      keyframeId: 'kf-base',
+      timeMs: 1_000,
+    });
+
+    expect(movedBase.tracks[0].clips[0].keyframes[0].timeMs).toBe(0);
+
+    const movedIntoStart = timelineReducer(state, {
+      type: 'MOVE_KEYFRAME',
+      trackId: 'track-1',
+      clipId: 'clip-1',
+      keyframeId: 'kf-move',
+      timeMs: 0,
+    });
+
+    expect(
+      movedIntoStart.tracks[0].clips[0].keyframes.find(
+        (keyframe) => keyframe.id === 'kf-move',
+      )?.timeMs,
+    ).toBe(1);
+
+    const movedPastEnd = timelineReducer(state, {
+      type: 'MOVE_KEYFRAME',
+      trackId: 'track-1',
+      clipId: 'clip-1',
+      keyframeId: 'kf-move',
+      timeMs: 25_000,
+    });
+
+    expect(
+      movedPastEnd.tracks[0].clips[0].keyframes.find(
+        (keyframe) => keyframe.id === 'kf-move',
+      )?.timeMs,
+    ).toBe(10_000);
+  });
 });
