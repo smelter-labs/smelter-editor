@@ -26,6 +26,18 @@
     "plugins": [
       "expo-asset",
       [
+        "expo-build-properties",
+        {
+          "android": {
+            "packagingOptions": {
+              "pickFirst": [
+                "**/libworklets.so"
+              ]
+            }
+          }
+        }
+      ],
+      [
         "expo-splash-screen",
         {
           "backgroundColor": "#0f0f1a",

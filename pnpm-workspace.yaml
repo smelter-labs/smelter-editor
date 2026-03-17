@@ -2,3 +2,4 @@ packages:
   - editor
   - server
   - packages/*
+  - mobile_app
