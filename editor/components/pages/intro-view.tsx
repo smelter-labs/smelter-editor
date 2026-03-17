@@ -22,11 +22,17 @@ import {
   updateInput,
   updateRoom,
   deleteRoom,
+  hideInput,
 } from '@/app/actions/actions';
 import { RESOLUTION_PRESETS, type ResolutionPreset } from '@/lib/resolution';
 import Link from 'next/link';
 import { staggerContainer } from '@/utils/animations';
-import { parseRoomConfig, restoreTimelineToStorage } from '@/lib/room-config';
+import {
+  parseRoomConfig,
+  restoreTimelineToStorage,
+  computeTimelineStateAtZero,
+  buildInputUpdateFromBlockSettings,
+} from '@/lib/room-config';
 import { setPendingWhipInputs as setPendingWhipInputsAction } from '@/app/actions/actions';
 import { Upload, FolderDown, LogIn, UserPlus, Eye, Trash2 } from 'lucide-react';
 import RecordingsList from '@/components/recordings-list';
@@ -342,23 +348,6 @@ export default function IntroView() {
           }
         }
 
-        const orderedCreatedIds = createdInputIds
-          .slice()
-          .sort((a, b) => a.configIndex - b.configIndex)
-          .map(({ inputId }) => inputId);
-
-        try {
-          await updateRoom(roomId, {
-            layout: config.layout,
-            ...(orderedCreatedIds.length > 0
-              ? { inputOrder: orderedCreatedIds }
-              : {}),
-            ...config.transitionSettings,
-          });
-        } catch (err) {
-          console.warn('Failed to set layout or input order:', err);
-        }
-
         const pendingWhipInputs: PendingWhipInputData[] = [];
         for (let i = 0; i < config.inputs.length; i++) {
           const inputConfig = config.inputs[i];
@@ -377,11 +366,19 @@ export default function IntroView() {
           }
         }
 
+        let timelineInputOrder: string[] | undefined;
+
         if (config.timeline) {
           const indexToInputId = new Map<number, string>();
           for (const { inputId, configIndex } of createdInputIds) {
             indexToInputId.set(configIndex, inputId);
           }
+
+          const timelineState = computeTimelineStateAtZero(
+            config.timeline,
+            indexToInputId,
+          );
+
           for (const pending of pendingWhipInputs) {
             indexToInputId.set(
               pending.position,
@@ -389,6 +386,55 @@ export default function IntroView() {
             );
           }
           restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
+
+          for (const hiddenId of timelineState.hiddenInputIds) {
+            try {
+              await hideInput(roomId, hiddenId);
+            } catch (err) {
+              console.warn(`Failed to hide input ${hiddenId}:`, err);
+            }
+          }
+
+          for (const [
+            inputId,
+            blockSettings,
+          ] of timelineState.activeBlockSettings) {
+            try {
+              await updateInput(
+                roomId,
+                inputId,
+                buildInputUpdateFromBlockSettings(blockSettings),
+              );
+            } catch (err) {
+              console.warn(
+                `Failed to apply block settings for ${inputId}:`,
+                err,
+              );
+            }
+          }
+
+          if (timelineState.inputOrder.length > 0) {
+            timelineInputOrder = timelineState.inputOrder;
+          }
+        }
+
+        const orderedCreatedIds = createdInputIds
+          .slice()
+          .sort((a, b) => a.configIndex - b.configIndex)
+          .map(({ inputId }) => inputId);
+
+        const finalInputOrder =
+          timelineInputOrder ??
+          (orderedCreatedIds.length > 0 ? orderedCreatedIds : undefined);
+
+        try {
+          await updateRoom(roomId, {
+            layout: config.layout,
+            ...(finalInputOrder ? { inputOrder: finalInputOrder } : {}),
+            ...config.transitionSettings,
+          });
+        } catch (err) {
+          console.warn('Failed to set layout or input order:', err);
         }
 
         if (pendingWhipInputs.length > 0) {

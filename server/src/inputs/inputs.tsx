@@ -5,6 +5,7 @@ import {
   InputStream,
   Image,
   Rescaler,
+  Shader,
   useInputStreams,
 } from '@swmansion/smelter';
 
@@ -12,6 +13,7 @@ import React from 'react';
 import { getInputRenderer } from './rendererRegistry';
 import { wrapWithShaders } from '../utils/shaderUtils';
 import { ScrollingText } from './scrollingText';
+import { TransitionShaderWrapper } from './transitionWrapper';
 
 type Resolution = { width: number; height: number };
 
@@ -125,13 +127,53 @@ export function Input({ input }: { input: InputConfig }) {
     </Rescaler>
   );
 
+  const [hiddenForRestart, setHiddenForRestart] = React.useState(false);
+
+  React.useEffect(() => {
+    if (input.restartFading) {
+      setHiddenForRestart(true);
+    }
+  }, [input.restartFading]);
+
+  React.useEffect(() => {
+    if (hiddenForRestart && !input.restartFading && streamState === 'playing') {
+      setHiddenForRestart(false);
+    }
+  }, [hiddenForRestart, input.restartFading, streamState]);
+
+  React.useEffect(() => {
+    if (!hiddenForRestart) return;
+    const timeout = setTimeout(() => setHiddenForRestart(false), 5000);
+    return () => clearTimeout(timeout);
+  }, [hiddenForRestart]);
+
   const activeShaders = input.shaders.filter((shader) => shader.enabled);
 
-  const mainRendered = wrapWithShaders(
-    inputComponent,
-    activeShaders,
-    resolution,
-  );
+  let mainRendered = wrapWithShaders(inputComponent, activeShaders, resolution);
+
+  if (input.activeTransition) {
+    mainRendered = (
+      <TransitionShaderWrapper
+        transition={input.activeTransition}
+        resolution={resolution}>
+        {mainRendered}
+      </TransitionShaderWrapper>
+    );
+  }
+
+  if (hiddenForRestart || input.restartFading) {
+    mainRendered = (
+      <Shader
+        shaderId='opacity'
+        resolution={resolution}
+        shaderParam={{
+          type: 'struct',
+          value: [{ type: 'f32', fieldName: 'opacity', value: 0 }],
+        }}>
+        {mainRendered}
+      </Shader>
+    );
+  }
 
   if (input.attachedInputs && input.attachedInputs.length > 0) {
     return (
@@ -233,9 +275,19 @@ export function SmallInput({
     </View>
   );
 
-  const mainRendered = activeShaders.length
+  let mainRendered = activeShaders.length
     ? wrapWithShaders(smallInputComponent, activeShaders, resolution)
     : smallInputComponent;
+
+  if (input.activeTransition) {
+    mainRendered = (
+      <TransitionShaderWrapper
+        transition={input.activeTransition}
+        resolution={resolution}>
+        {mainRendered}
+      </TransitionShaderWrapper>
+    );
+  }
 
   if (input.attachedInputs && input.attachedInputs.length > 0) {
     return (

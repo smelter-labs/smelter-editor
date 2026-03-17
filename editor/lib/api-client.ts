@@ -71,13 +71,41 @@ export interface SmelterApiClient {
   ): Promise<any>;
   disconnectInput(roomId: string, inputId: string): Promise<any>;
   connectInput(roomId: string, inputId: string): Promise<any>;
-  hideInput(roomId: string, inputId: string, sourceId?: string): Promise<any>;
-  showInput(roomId: string, inputId: string, sourceId?: string): Promise<any>;
+  hideInput(
+    roomId: string,
+    inputId: string,
+    sourceIdOrTransition?:
+      | string
+      | {
+          type: string;
+          durationMs: number;
+          direction: 'in' | 'out';
+        },
+  ): Promise<any>;
+  showInput(
+    roomId: string,
+    inputId: string,
+    sourceIdOrTransition?:
+      | string
+      | {
+          type: string;
+          durationMs: number;
+          direction: 'in' | 'out';
+        },
+  ): Promise<any>;
   toggleMotionDetection(
     roomId: string,
     inputId: string,
     enabled: boolean,
   ): Promise<void>;
+
+  restartMp4Input(
+    roomId: string,
+    inputId: string,
+    playFromMs: number,
+    loop: boolean,
+  ): Promise<void>;
+  getMp4Duration(fileName: string): Promise<number>;
 
   acknowledgeWhipInput(roomId: string, inputId: string): Promise<void>;
   setPendingWhipInputs(
@@ -88,6 +116,13 @@ export interface SmelterApiClient {
   configStorage: StorageClient<object>;
   shaderPresetStorage: StorageClient<ShaderConfig[]>;
   dashboardLayoutStorage: StorageClient<object>;
+
+  freezeRoom(roomId: string): Promise<{
+    screenshotUrl: string;
+    mp4Positions: Record<string, number>;
+    frozen: true;
+  }>;
+  unfreezeRoom(roomId: string): Promise<{ status: string }>;
 
   getAllRooms(): Promise<any>;
   getAvailableShaders(): Promise<AvailableShader[]>;
@@ -297,22 +332,30 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       );
     },
 
-    async hideInput(roomId, inputId, sourceId) {
+    async hideInput(roomId, inputId, sourceIdOrTransition) {
+      const sourceId =
+        typeof sourceIdOrTransition === 'string' ? sourceIdOrTransition : undefined;
+      const activeTransition =
+        typeof sourceIdOrTransition === 'string' ? undefined : sourceIdOrTransition;
       return await sendRequest(
         baseUrl,
         'post',
         `/room/${enc(roomId)}/input/${enc(inputId)}/hide`,
-        {},
+        activeTransition ? { activeTransition } : {},
         sourceId ? { 'x-source-id': sourceId } : undefined,
       );
     },
 
-    async showInput(roomId, inputId, sourceId) {
+    async showInput(roomId, inputId, sourceIdOrTransition) {
+      const sourceId =
+        typeof sourceIdOrTransition === 'string' ? sourceIdOrTransition : undefined;
+      const activeTransition =
+        typeof sourceIdOrTransition === 'string' ? undefined : sourceIdOrTransition;
       return await sendRequest(
         baseUrl,
         'post',
         `/room/${enc(roomId)}/input/${enc(inputId)}/show`,
-        {},
+        activeTransition ? { activeTransition } : {},
         sourceId ? { 'x-source-id': sourceId } : undefined,
       );
     },
@@ -323,6 +366,22 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
         `/room/${enc(roomId)}/input/${enc(inputId)}/motion-detection`,
         { enabled },
       );
+    },
+
+    async restartMp4Input(roomId, inputId, playFromMs, loop) {
+      await req(
+        'post',
+        `/room/${enc(roomId)}/input/${enc(inputId)}/mp4-restart`,
+        { playFromMs, loop },
+      );
+    },
+
+    async getMp4Duration(fileName) {
+      const data = await req(
+        'get',
+        `/suggestions/mp4-duration/${enc(fileName)}`,
+      );
+      return data.durationMs as number;
     },
 
     async acknowledgeWhipInput(roomId, inputId) {
@@ -366,6 +425,14 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       'layout',
       'layouts',
     ),
+
+    async freezeRoom(roomId) {
+      return await req('post', `/room/${enc(roomId)}/freeze`, {});
+    },
+
+    async unfreezeRoom(roomId) {
+      return await req('post', `/room/${enc(roomId)}/unfreeze`, {});
+    },
 
     async getAllRooms() {
       return await req('get', '/rooms');

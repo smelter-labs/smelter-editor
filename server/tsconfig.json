@@ -10,5 +10,6 @@
     "jsx": "react-jsx",
     "skipLibCheck": true
   },
-  "exclude": ["workingdir", "dist"]
+  "include": ["src"],
+  "exclude": ["workingdir", "dist", "src/**/__tests__"]
 }

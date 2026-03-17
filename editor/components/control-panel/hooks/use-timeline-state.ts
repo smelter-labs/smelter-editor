@@ -1,9 +1,14 @@
 'use client';
 
 import { useReducer, useEffect, useCallback, useRef, useState } from 'react';
-import type { Input, ShaderConfig } from '@/lib/types';
-import type { SnakeEventShaderConfig } from '@/lib/snake-game-types';
-import { loadTimeline, saveTimeline } from '@/lib/timeline-storage';
+import type { Input } from '@/lib/types';
+import { parseTransitionConfig } from '@/lib/types';
+import type { TimelineBlockSettings } from '@smelter-editor/types';
+import {
+  loadTimeline,
+  saveTimeline,
+  type StoredTrack,
+} from '@/lib/timeline-storage';
 
 // ── Types ────────────────────────────────────────────────
 
@@ -21,37 +26,8 @@ export type Track = {
   clips: Clip[];
 };
 
-export type BlockSettings = {
-  volume: number;
-  showTitle: boolean;
-  shaders: Input['shaders'];
-  orientation: Input['orientation'];
-  text?: string;
-  textAlign?: Input['textAlign'];
-  textColor?: string;
-  textMaxLines?: number;
-  textScrollSpeed?: number;
-  textScrollLoop?: boolean;
-  textFontSize?: number;
-  borderColor?: string;
-  borderWidth?: number;
-  attachedInputIds?: string[];
-  gameBackgroundColor?: string;
-  gameCellGap?: number;
-  gameBoardBorderColor?: string;
-  gameBoardBorderWidth?: number;
-  gameGridLineColor?: string;
-  gameGridLineAlpha?: number;
-  snakeEventShaders?: SnakeEventShaderConfig;
-  snake1Shaders?: ShaderConfig[];
-  snake2Shaders?: ShaderConfig[];
-  absolutePosition?: boolean;
-  absoluteTop?: number;
-  absoluteLeft?: number;
-  absoluteWidth?: number;
-  absoluteHeight?: number;
-  absoluteTransitionDurationMs?: number;
-  absoluteTransitionEasing?: string;
+export type BlockSettings = TimelineBlockSettings & {
+  mp4DurationMs?: number;
 };
 
 /** @deprecated Use `Clip` instead. Kept for backwards compat with room-config. */
@@ -121,7 +97,15 @@ type TimelineAction =
       clipId: string;
       patch: Partial<BlockSettings>;
     }
-  | { type: 'PURGE_INPUT_ID'; inputId: string };
+  | { type: 'PURGE_INPUT_ID'; inputId: string }
+  | {
+      type: 'MOVE_CLIPS';
+      moves: { trackId: string; clipId: string; newStartMs: number }[];
+    }
+  | {
+      type: 'DELETE_CLIPS';
+      clips: { trackId: string; clipId: string }[];
+    };
 
 // ── Constants ────────────────────────────────────────────
 
@@ -215,6 +199,30 @@ function ensureClipBlockSettings(
     ...clip,
     blockSettings: createBlockSettingsFromInput(input),
   };
+}
+
+function storedTracksToTracks(storedTracks: StoredTrack[]): Track[] {
+  return storedTracks.map((t) => ({
+    id: t.id,
+    label: t.label,
+    clips: t.clips.map((c) => ({
+      id: c.id,
+      inputId: c.inputId,
+      startMs: c.startMs,
+      endMs: c.endMs,
+      blockSettings: c.blockSettings
+        ? {
+            ...c.blockSettings,
+            introTransition: parseTransitionConfig(
+              c.blockSettings.introTransition,
+            ),
+            outroTransition: parseTransitionConfig(
+              c.blockSettings.outroTransition,
+            ),
+          }
+        : createBlockSettingsFromInput(undefined),
+    })),
+  }));
 }
 
 function inferTypeFromInputId(inputId: string): string | null {
@@ -375,19 +383,17 @@ export function timelineReducer(
 
       // Keep ALL clips on existing tracks. Disconnected clips that have a
       // replacement get their inputId swapped; the rest stay as placeholders.
-      const newTracks: Track[] = state.tracks
-        .map((track) => ({
-          ...track,
-          clips: track.clips.map((clip) => {
-            const replacement = replacementMap.get(clip.inputId);
-            const resolvedId = replacement ?? clip.inputId;
-            return ensureClipBlockSettings(
-              replacement ? { ...clip, inputId: resolvedId } : clip,
-              inputById.get(resolvedId),
-            );
-          }),
-        }))
-        .filter((track) => track.clips.length > 0);
+      const newTracks: Track[] = state.tracks.map((track) => ({
+        ...track,
+        clips: track.clips.map((clip) => {
+          const replacement = replacementMap.get(clip.inputId);
+          const resolvedId = replacement ?? clip.inputId;
+          return ensureClipBlockSettings(
+            replacement ? { ...clip, inputId: resolvedId } : clip,
+            inputById.get(resolvedId),
+          );
+        }),
+      }));
 
       // For each input that has no clips on any existing track, create a new track
       const nowCoveredInputIds = new Set<string>();
@@ -516,6 +522,18 @@ export function timelineReducer(
         // Don't overlap next clip
         const next = track.clips[clipIdx + 1];
         if (next && newEnd > next.startMs) newEnd = next.startMs;
+        // Clamp non-looped MP4 blocks to remaining duration
+        if (
+          clip.blockSettings.mp4Loop === false &&
+          clip.blockSettings.mp4DurationMs != null
+        ) {
+          const maxDuration =
+            clip.blockSettings.mp4DurationMs -
+            (clip.blockSettings.mp4PlayFromMs ?? 0);
+          if (maxDuration > 0 && newEnd - clip.startMs > maxDuration) {
+            newEnd = clip.startMs + maxDuration;
+          }
+        }
         // Auto-extend total duration if resizing past the end
         if (newEnd > newTotalDuration) {
           newTotalDuration = newEnd + 5000;
@@ -712,38 +730,97 @@ export function timelineReducer(
     }
 
     case 'UPDATE_CLIP_SETTINGS': {
+      let targetInputId: string | undefined;
+      const syncAbsFlag = action.patch.absolutePosition !== undefined;
+      if (syncAbsFlag) {
+        const track = state.tracks.find((t) => t.id === action.trackId);
+        const clip = track?.clips.find((c) => c.id === action.clipId);
+        targetInputId = clip?.inputId;
+      }
+
       return {
         ...state,
         tracks: state.tracks.map((track) => {
-          if (track.id !== action.trackId) return track;
           return {
             ...track,
             clips: track.clips.map((clip) => {
-              if (clip.id !== action.clipId) return clip;
-              return {
-                ...clip,
-                blockSettings: {
-                  ...clip.blockSettings,
-                  ...action.patch,
-                  shaders:
-                    action.patch.shaders !== undefined
-                      ? action.patch.shaders.map((shader) => ({
-                          ...shader,
-                          params: (shader.params || []).map((param) => ({
-                            ...param,
-                          })),
-                        }))
-                      : clip.blockSettings.shaders,
-                  attachedInputIds:
-                    action.patch.attachedInputIds !== undefined
-                      ? [...action.patch.attachedInputIds]
-                      : clip.blockSettings.attachedInputIds,
-                },
+              const isTarget =
+                track.id === action.trackId && clip.id === action.clipId;
+              const isSibling =
+                !isTarget &&
+                syncAbsFlag &&
+                targetInputId &&
+                clip.inputId === targetInputId;
+
+              if (!isTarget && !isSibling) return clip;
+
+              const patch = isTarget
+                ? action.patch
+                : { absolutePosition: action.patch.absolutePosition };
+              const merged = {
+                ...clip.blockSettings,
+                ...patch,
+                shaders:
+                  patch.shaders !== undefined
+                    ? patch.shaders.map((shader) => ({
+                        ...shader,
+                        params: (shader.params || []).map((param) => ({
+                          ...param,
+                        })),
+                      }))
+                    : clip.blockSettings.shaders,
+                attachedInputIds:
+                  patch.attachedInputIds !== undefined
+                    ? [...patch.attachedInputIds]
+                    : clip.blockSettings.attachedInputIds,
               };
+              let endMs = clip.endMs;
+              if (merged.mp4Loop === false && merged.mp4DurationMs != null) {
+                const maxDuration =
+                  merged.mp4DurationMs - (merged.mp4PlayFromMs ?? 0);
+                if (maxDuration > 0 && endMs - clip.startMs > maxDuration) {
+                  endMs = clip.startMs + maxDuration;
+                }
+              }
+              return { ...clip, endMs, blockSettings: merged };
             }),
           };
         }),
       };
+    }
+
+    case 'MOVE_CLIPS': {
+      let newTotalDuration = state.totalDurationMs;
+      const moveLookup = new Map(
+        action.moves.map((m) => [`${m.trackId}:${m.clipId}`, m.newStartMs]),
+      );
+      const newTracks = state.tracks.map((track) => {
+        const newClips = track.clips.map((clip) => {
+          const key = `${track.id}:${clip.id}`;
+          const newStart = moveLookup.get(key);
+          if (newStart == null) return clip;
+          const duration = clip.endMs - clip.startMs;
+          const clampedStart = Math.max(0, newStart);
+          const newEnd = clampedStart + duration;
+          if (newEnd > newTotalDuration) {
+            newTotalDuration = newEnd + 5000;
+          }
+          return { ...clip, startMs: clampedStart, endMs: newEnd };
+        });
+        return { ...track, clips: clampClips(newClips, newTotalDuration) };
+      });
+      return { ...state, totalDurationMs: newTotalDuration, tracks: newTracks };
+    }
+
+    case 'DELETE_CLIPS': {
+      const deleteSet = new Set(
+        action.clips.map((c) => `${c.trackId}:${c.clipId}`),
+      );
+      const newTracks = state.tracks.map((track) => ({
+        ...track,
+        clips: track.clips.filter((c) => !deleteSet.has(`${track.id}:${c.id}`)),
+      }));
+      return { ...state, tracks: newTracks };
     }
 
     case 'PURGE_INPUT_ID': {
@@ -787,6 +864,8 @@ const UNDOABLE_ACTIONS = new Set<TimelineAction['type']>([
   'RESET',
   'UPDATE_CLIP_SETTINGS',
   'PURGE_INPUT_ID',
+  'MOVE_CLIPS',
+  'DELETE_CLIPS',
 ]);
 
 type UndoableAction = TimelineAction | { type: 'UNDO' } | { type: 'REDO' };
@@ -856,7 +935,7 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
           (stored.totalDurationMs as number) || DEFAULT_DURATION_MS;
         initial = {
           tracks: normalizeTracks(
-            ((stored.tracks as Track[]) || []) as Track[],
+            storedTracksToTracks(stored.tracks),
             inputs,
             totalDurationMs,
           ),
@@ -1032,6 +1111,22 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     setStructureRevision((rev) => rev + 1);
   }, []);
 
+  const moveClips = useCallback(
+    (moves: { trackId: string; clipId: string; newStartMs: number }[]) => {
+      dispatch({ type: 'MOVE_CLIPS', moves });
+      setStructureRevision((rev) => rev + 1);
+    },
+    [],
+  );
+
+  const deleteClips = useCallback(
+    (clips: { trackId: string; clipId: string }[]) => {
+      dispatch({ type: 'DELETE_CLIPS', clips });
+      setStructureRevision((rev) => rev + 1);
+    },
+    [],
+  );
+
   const undo = useCallback(() => dispatch({ type: 'UNDO' }), []);
   const redo = useCallback(() => dispatch({ type: 'REDO' }), []);
   const canUndo = undoable.past.length > 0;
@@ -1057,6 +1152,8 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     replaceInputId,
     updateClipSettings,
     purgeInputId,
+    moveClips,
+    deleteClips,
     undo,
     redo,
     canUndo,

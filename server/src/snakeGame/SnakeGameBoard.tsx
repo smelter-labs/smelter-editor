@@ -1,14 +1,13 @@
 import type { SnakeGameState, SnakeGameOverData } from './types';
-import type { ShaderParamStructField } from '@swmansion/smelter';
+import type { ShaderParamStructField, Transition } from '@swmansion/smelter';
 import { Text, View, Shader } from '@swmansion/smelter';
 
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import type { ShaderConfig, ShaderParamConfig } from '../types';
+import React, { useEffect, useRef, useState } from 'react';
+import type { ShaderConfig } from '../types';
 import shadersController from '../shaders/shaders';
 import { config } from '../config';
 import {
   hexToRgb,
-  colorToRgb,
   darkenHexColor,
   wrapWithShaders,
 } from '../utils/shaderUtils';
@@ -209,13 +208,10 @@ export function SnakeGameBoard({
     return () => clearInterval(interval);
   }, [activeEffect?.startedAtMs, activeEffect?.endsAtMs]);
 
-  // --- Smooth client-side interpolation between game state ticks ---
+  // Adaptive tick interval estimation for Smelter transition duration
   const lastUpdateRef = useRef(Date.now());
   const tickIntervalRef = useRef(150); // estimated ms between server updates
   const prevCellsRef = useRef<typeof gameState.cells>(gameState.cells);
-  const interpolationFromCellsRef = useRef<typeof gameState.cells>(
-    gameState.cells,
-  );
   const [localProgress, setLocalProgress] = useState(1);
   const MAX_INTERPOLATED_CELL_DISTANCE = 1.25;
   const LOCAL_VISUAL_SPEED_MULTIPLIER = config.snakeVisualSpeedMultiplier;
@@ -267,22 +263,15 @@ export function SnakeGameBoard({
     return Math.max(0, Math.min(1, blended));
   };
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     const now = Date.now();
     const delta = now - lastUpdateRef.current;
-    // Ticks can jitter slightly; smooth the interval estimate to prevent visible stutter.
     if (delta > 30 && delta < 2000) {
       const current = tickIntervalRef.current;
-      // Recover quickly when updates slow down again after speed-up bursts.
-      // Adapt more conservatively when updates get faster to avoid jitter.
       const alpha = delta > current ? 0.45 : 0.2;
       tickIntervalRef.current = current * (1 - alpha) + delta * alpha;
     }
     lastUpdateRef.current = now;
-
-    // Freeze interpolation source for the whole tick window,
-    // then advance previous snapshot for the next server update.
-    interpolationFromCellsRef.current = prevCellsRef.current;
     prevCellsRef.current = gameState.cells;
     if (!smoothMoveEnabled) {
       setLocalProgress(1);
@@ -328,7 +317,6 @@ export function SnakeGameBoard({
 
   useEffect(() => {
     if (gameState.gameOverData && !prevGameOverRef.current) {
-      // Game just ended — start removal animation
       prevGameOverRef.current = gameState.gameOverData;
       totalCellsAtGameOver.current = gameState.cells.length;
       setRemovedCount(0);
@@ -353,7 +341,6 @@ export function SnakeGameBoard({
 
       return () => clearInterval(timer);
     } else if (!gameState.gameOverData && prevGameOverRef.current) {
-      // Game restarted — reset
       prevGameOverRef.current = undefined;
       setRemovedCount(0);
       setShowModal(false);
@@ -366,14 +353,11 @@ export function SnakeGameBoard({
   const spawnTimesRef = useRef<Map<string, number>>(new Map());
   const [, forceRender] = useState(0);
 
-  // --- Swallow wave animation (bulge traveling head → tail) ---
+  // --- Swallow wave animation (bulge traveling head -> tail) ---
   const SWALLOW_DURATION_PER_SEGMENT_MS = 80;
   const SWALLOW_BULGE_MS = 200;
-  // Map: snakeColor → swallow start timestamp
   const swallowWavesRef = useRef<Map<string, number>>(new Map());
 
-  // Build set of snake colors (colors that have a head) to reliably distinguish body from food.
-  // Body segments may lack `direction` when not actively interpolating, so we can't rely on it.
   const snakeColors = new Set<string>();
   for (const cell of gameState.cells) {
     if (cell.isHead) snakeColors.add(cell.color);
@@ -382,14 +366,11 @@ export function SnakeGameBoard({
   useEffect(() => {
     const now = Date.now();
 
-    // Build snake colors inside the effect too for food detection
     const headColors = new Set<string>();
     for (const cell of gameState.cells) {
       if (cell.isHead) headColors.add(cell.color);
     }
 
-    // Track food cells for spawn animation & detect eaten food
-    // A food cell is one whose color doesn't match any snake head
     const currentFoodKeys = new Set<string>();
     for (const cell of gameState.cells) {
       if (cell.isHead || headColors.has(cell.color)) continue;
@@ -400,10 +381,8 @@ export function SnakeGameBoard({
       }
     }
 
-    // Detect eaten food → trigger swallow wave on nearest snake
     for (const oldKey of prevFoodKeysRef.current) {
       if (!currentFoodKeys.has(oldKey)) {
-        // Food disappeared — find which snake head is closest
         const [fx, fy] = oldKey.split(',').map(Number);
         let closestColor: string | null = null;
         let closestDist = Infinity;
@@ -422,7 +401,6 @@ export function SnakeGameBoard({
       }
     }
 
-    // Clean up old spawn times
     for (const key of spawnTimesRef.current.keys()) {
       if (
         !currentFoodKeys.has(key) ||
@@ -477,7 +455,7 @@ export function SnakeGameBoard({
     gameState.boardBorderColor ?? gameState.gridLineColor ?? '#000000';
   const gridColor = hexToRgb(gameState.gridLineColor ?? '#000000');
 
-  const prevCells = interpolationFromCellsRef.current;
+  const prevCells = prevCellsRef.current;
   const wrappedDistance = (
     a: (typeof gameState.cells)[number],
     b: (typeof gameState.cells)[number],
@@ -488,6 +466,7 @@ export function SnakeGameBoard({
     const dy = Math.min(rawDy, gameState.boardHeight - rawDy);
     return dx + dy;
   };
+
   const orderSnakeIndices = (
     cells: typeof gameState.cells,
     indices: number[],
@@ -515,7 +494,6 @@ export function SnakeGameBoard({
           closest = ri;
         }
       }
-      // Adjacent segments on toroidal board should still be local neighbors.
       if (closest === null || closestDist > 2) break;
       ordered.push(closest);
       current = cells[closest];
@@ -523,8 +501,6 @@ export function SnakeGameBoard({
     }
 
     const connectedCount = ordered.length;
-
-    // Deterministic fallback for disconnected leftovers.
     ordered.push(...[...remaining].sort((a, b) => a - b));
     return { ordered, connectedCount };
   };
@@ -570,13 +546,11 @@ export function SnakeGameBoard({
     );
   }
 
-  // Build segment index from head for swallow wave (head=0, next body=1, ...)
-  const segmentIndexMap = new Map<number, number>(); // cellArrayIndex → segmentIndex
+  const segmentIndexMap = new Map<number, number>();
   for (const ordered of orderedCurrentByColor.values()) {
     ordered.forEach((cellIdx, segIdx) => segmentIndexMap.set(cellIdx, segIdx));
   }
 
-  // During game-over removal animation, slice cells from the end
   const isRemoving = !!gameState.gameOverData && removedCount > 0;
   const cellsAfterRemoval = isRemoving
     ? gameState.cells.slice(
@@ -605,7 +579,6 @@ export function SnakeGameBoard({
   const activeSnake1Shaders = (snake1Shaders ?? []).filter((s) => s.enabled);
   const activeSnake2Shaders = (snake2Shaders ?? []).filter((s) => s.enabled);
 
-  // Ordered list of snake colors (by first head appearance)
   const snakeColorOrder: string[] = [];
   for (const cell of gameState.cells) {
     if (cell.isHead && !snakeColorOrder.includes(cell.color)) {
@@ -613,7 +586,6 @@ export function SnakeGameBoard({
     }
   }
 
-  // Map snake color → its active shaders
   const snakeShaderMap = new Map<string, ShaderConfig[]>();
   if (activeSnake1Shaders.length > 0 && snakeColorOrder[0]) {
     snakeShaderMap.set(snakeColorOrder[0], activeSnake1Shaders);
@@ -639,6 +611,20 @@ export function SnakeGameBoard({
     }
   }
 
+  // Build stable id for each cell (snake: color index + segment index, food: position)
+  const cellIdMap = new Map<number, string>();
+  for (const [color, orderedIndices] of orderedCurrentByColor) {
+    const colorIdx = snakeColorOrder.indexOf(color);
+    orderedIndices.forEach((cellIdx, segIdx) => {
+      cellIdMap.set(cellIdx, `s${colorIdx}-${segIdx}`);
+    });
+  }
+  gameState.cells.forEach((cell, i) => {
+    if (!cellIdMap.has(i)) {
+      cellIdMap.set(i, `f-${cell.x}-${cell.y}`);
+    }
+  });
+
   const shortestWrappedDelta = (
     from: number,
     to: number,
@@ -651,19 +637,6 @@ export function SnakeGameBoard({
     return delta;
   };
 
-  const wrappedStepDistance = (
-    from: (typeof gameState.cells)[number],
-    to: (typeof gameState.cells)[number],
-  ) => {
-    const dx = Math.abs(
-      shortestWrappedDelta(from.x, to.x, gameState.boardWidth),
-    );
-    const dy = Math.abs(
-      shortestWrappedDelta(from.y, to.y, gameState.boardHeight),
-    );
-    return dx + dy;
-  };
-
   const wrapCoord = (value: number, boardSize: number) => {
     if (boardSize <= 0) return value;
     return ((value % boardSize) + boardSize) % boardSize;
@@ -671,21 +644,57 @@ export function SnakeGameBoard({
 
   const getRawProgress = (
     cell: (typeof gameState.cells)[number],
-    prevCell?: (typeof gameState.cells)[number],
+    prev?: (typeof gameState.cells)[number],
   ) => {
-    if (typeof cell.progress === 'number') return cell.progress;
-
-    if (prevCell) {
-      const stepDistance = wrappedStepDistance(prevCell, cell);
-      if (stepDistance > 1) return 1;
-      return stepDistance > 0 ? 0 : 1;
+    if (typeof cell.progress === 'number' && Number.isFinite(cell.progress)) {
+      return Math.max(0, Math.min(1, cell.progress));
     }
 
-    // Fallback for sparse backend payloads.
-    return cell.direction ? 0 : 1;
+    if (!prev) {
+      return 0;
+    }
+
+    const dx = Math.abs(
+      shortestWrappedDelta(prev.x, cell.x, gameState.boardWidth),
+    );
+    const dy = Math.abs(
+      shortestWrappedDelta(prev.y, cell.y, gameState.boardHeight),
+    );
+    const stepDistance = dx + dy;
+    return stepDistance > MAX_INTERPOLATED_CELL_DISTANCE ? 1 : 0;
   };
 
-  // Helper: compute cell position & scale for a visible cell
+  const isCellWrapping = (
+    cell: (typeof gameState.cells)[number],
+    prev: (typeof gameState.cells)[number],
+  ) => {
+    const rawDx = Math.abs(cell.x - prev.x);
+    const rawDy = Math.abs(cell.y - prev.y);
+    const wrappedDx = Math.min(rawDx, gameState.boardWidth - rawDx);
+    const wrappedDy = Math.min(rawDy, gameState.boardHeight - rawDy);
+    return wrappedDx !== rawDx || wrappedDy !== rawDy;
+  };
+
+  const buildCellTransition = (origIdx: number): Transition | undefined => {
+    const prevCell = prevCellByCurrentIndex.get(origIdx);
+    if (!prevCell) return undefined;
+    const cell = gameState.cells[origIdx];
+    if (!cell) return undefined;
+    if (
+      smoothMoveEnabled ||
+      typeof cell.progress === 'number' ||
+      isCellWrapping(cell, prevCell)
+    ) {
+      return undefined;
+    }
+    return {
+      durationMs: tickIntervalRef.current,
+      easingFunction: 'linear',
+      shouldInterrupt: true,
+    };
+  };
+
+  const step = cellPixel + gap;
   const computeCellGeometry = (
     cell: (typeof gameState.cells)[number],
     origIdx: number,
@@ -693,7 +702,6 @@ export function SnakeGameBoard({
     const size = cell.size ?? gameState.cellSize;
     const w = cellPixel * size;
     const h = cellPixel * size;
-    // Use local interpolation: blend from cell's raw progress toward 1
     const prevCell = prevCellByCurrentIndex.get(origIdx);
     const rawProgress = getRawProgress(cell, prevCell);
     const progress = getSmoothedProgress(
@@ -775,6 +783,7 @@ export function SnakeGameBoard({
   const renderEyes = (
     cell: (typeof gameState.cells)[number],
     keyPrefix: string,
+    headColorIdx: number,
   ) => {
     const size = cell.size ?? gameState.cellSize;
     const w = cellPixel * size;
@@ -822,6 +831,8 @@ export function SnakeGameBoard({
     const wrappedBoardY = wrapCoord(boardY, gameState.boardHeight);
     const headX = offsetX + wrappedBoardX * step;
     const headY = offsetY + wrappedBoardY * step;
+    const eyeTransition =
+      headIndex >= 0 ? buildCellTransition(headIndex) : undefined;
 
     let dir: 'up' | 'down' | 'left' | 'right' = 'right';
     let closestBody: (typeof gameState.cells)[number] | undefined;
@@ -894,9 +905,12 @@ export function SnakeGameBoard({
       p2Left = pupilOffset;
     }
 
+    const eyeIdPrefix = `eye-${headColorIdx}`;
     return (
       <React.Fragment key={`eyes-${keyPrefix}`}>
         <View
+          id={`${eyeIdPrefix}-1o`}
+          transition={eyeTransition}
           style={{
             width: outerSize,
             height: outerSize,
@@ -927,6 +941,8 @@ export function SnakeGameBoard({
           </View>
         </View>
         <View
+          id={`${eyeIdPrefix}-2o`}
+          transition={eyeTransition}
           style={{
             width: outerSize,
             height: outerSize,
@@ -967,7 +983,6 @@ export function SnakeGameBoard({
         height: resolution.height,
         backgroundColor: gameState.backgroundColor,
       }}>
-      {/* Board border */}
       {borderW > 0 && (
         <View
           style={{
@@ -980,18 +995,14 @@ export function SnakeGameBoard({
           }}
         />
       )}
-      {/* All cells — per-snake shaders applied to individual cells */}
-      {visibleCells.map(({ cell, origIdx }, i) => {
+      {visibleCells.map(({ cell, origIdx }) => {
         const { sw, sh, sx, sy } = computeCellGeometry(cell, origIdx);
         const renderedColor = detachedTailIndices.has(origIdx)
           ? darkenHexColor(cell.color)
           : cell.color;
         const cellShaders = snakeShaderMap.get(cell.color);
-        const cellView = (
-          <View
-            style={{ width: sw, height: sh, backgroundColor: renderedColor }}
-          />
-        );
+        const cellId = cellIdMap.get(origIdx) ?? `cell-${origIdx}`;
+        const cellTransition = buildCellTransition(origIdx);
         if (cellShaders && cellShaders.length > 0) {
           const pad = sw;
           const outerW = sw + pad * 2;
@@ -1011,7 +1022,9 @@ export function SnakeGameBoard({
           );
           return (
             <View
-              key={`cell-${i}`}
+              key={cellId}
+              id={cellId}
+              transition={cellTransition}
               style={{
                 width: outerW,
                 height: outerH,
@@ -1027,7 +1040,9 @@ export function SnakeGameBoard({
         }
         return (
           <View
-            key={`cell-${i}`}
+            key={cellId}
+            id={cellId}
+            transition={cellTransition}
             style={{
               width: sw,
               height: sh,
@@ -1038,7 +1053,6 @@ export function SnakeGameBoard({
           />
         );
       })}
-      {/* Grid overlay */}
       <View
         style={{ width: boardW, height: boardH, top: offsetY, left: offsetX }}>
         <Shader
@@ -1070,10 +1084,12 @@ export function SnakeGameBoard({
           }}
         />
       </View>
-      {/* Eyes on top of all cells */}
       {visibleCells
         .filter(({ cell }) => cell.isHead)
-        .map(({ cell }, i) => renderEyes(cell, `top-${i}`))}
+        .map(({ cell }, i) => {
+          const colorIdx = snakeColorOrder.indexOf(cell.color);
+          return renderEyes(cell, `top-${i}`, colorIdx);
+        })}
     </View>
   );
 

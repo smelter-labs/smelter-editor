@@ -140,7 +140,7 @@ export function GenericAddInputForm<T>({
   };
 
   const suggestionBoxClass =
-    'absolute z-30 left-0 right-0 mt-1 bg-[#141414] border border-neutral-700 max-h-56 min-w-0 w-full overflow-y-auto text-sm sm:text-base';
+    'z-[9999] bg-[#141414] border border-neutral-700 max-h-56 min-w-0 overflow-y-auto text-sm sm:text-base rounded-md shadow-lg';
 
   const handleSubmit = async (e?: React.FormEvent | Event) => {
     if (e) e.preventDefault();

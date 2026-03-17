@@ -1,6 +1,11 @@
 import type { StoreApi } from 'zustand';
 import { createStore } from 'zustand';
-import type { ShaderConfig, Resolution, Layout } from '../types';
+import type {
+  ShaderConfig,
+  Resolution,
+  Layout,
+  ActiveTransition,
+} from '../types';
 import { Layouts } from '../types';
 import { createContext, useContext } from 'react';
 import { useStore } from 'zustand';
@@ -57,6 +62,8 @@ export type InputConfig = {
   absoluteHeight?: number;
   absoluteTransitionDurationMs?: number;
   absoluteTransitionEasing?: string;
+  activeTransition?: ActiveTransition;
+  restartFading?: boolean;
 };
 
 export type RoomStore = {
@@ -69,6 +76,7 @@ export type RoomStore = {
   swapFadeOutDurationMs: number;
   newsStripFadeDuringSwap: boolean;
   newsStripEnabled: boolean;
+  frozenImageId: string | null;
   updateState: (
     inputs: InputConfig[],
     layout: Layout,
@@ -79,6 +87,7 @@ export type RoomStore = {
     swapFadeOutDurationMs: number,
     newsStripEnabled: boolean,
   ) => void;
+  setFrozenImageId: (id: string | null) => void;
 };
 
 export function createRoomStore(
@@ -94,6 +103,7 @@ export function createRoomStore(
     swapFadeOutDurationMs: 500,
     newsStripFadeDuringSwap: true,
     newsStripEnabled: false,
+    frozenImageId: null,
     updateState: (
       inputs: InputConfig[],
       layout: Layout,
@@ -114,6 +124,9 @@ export function createRoomStore(
         swapFadeOutDurationMs,
         newsStripEnabled,
       }));
+    },
+    setFrozenImageId: (id: string | null) => {
+      set(() => ({ frozenImageId: id }));
     },
   }));
 }
@@ -170,6 +183,11 @@ export function useAbsoluteInputs() {
   return useStore(store, (state) =>
     state.inputs.filter((i) => i.absolutePosition),
   );
+}
+
+export function useFrozenImageId() {
+  const store = useContext(StoreContext);
+  return useStore(store, (state) => state.frozenImageId);
 }
 
 export const StoreContext =

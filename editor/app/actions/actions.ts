@@ -69,6 +69,24 @@ export async function stopRecording(
   return client.stopRecording(roomId);
 }
 
+export async function freezeRoom(roomId: string): Promise<{
+  screenshotUrl: string;
+  mp4Positions: Record<string, number>;
+  frozen: true;
+}> {
+  const result = await client.freezeRoom(roomId);
+  return {
+    ...result,
+    screenshotUrl: `${BASE_URL}${result.screenshotUrl}`,
+  };
+}
+
+export async function unfreezeRoom(
+  roomId: string,
+): Promise<{ status: string }> {
+  return client.unfreezeRoom(roomId);
+}
+
 export async function getRecordings(): Promise<RecordingInfo[]> {
   return client.getRecordings();
 }
@@ -268,17 +286,29 @@ export async function connectInput(roomId: string, inputId: string) {
 export async function hideInput(
   roomId: string,
   inputId: string,
-  sourceId?: string,
+  sourceIdOrTransition?:
+    | string
+    | {
+        type: string;
+        durationMs: number;
+        direction: 'in' | 'out';
+      },
 ) {
-  return client.hideInput(roomId, inputId, sourceId);
+  return client.hideInput(roomId, inputId, sourceIdOrTransition);
 }
 
 export async function showInput(
   roomId: string,
   inputId: string,
-  sourceId?: string,
+  sourceIdOrTransition?:
+    | string
+    | {
+        type: string;
+        durationMs: number;
+        direction: 'in' | 'out';
+      },
 ) {
-  return client.showInput(roomId, inputId, sourceId);
+  return client.showInput(roomId, inputId, sourceIdOrTransition);
 }
 
 export async function toggleMotionDetection(
@@ -287,6 +317,19 @@ export async function toggleMotionDetection(
   enabled: boolean,
 ): Promise<void> {
   return client.toggleMotionDetection(roomId, inputId, enabled);
+}
+
+export async function restartMp4Input(
+  roomId: string,
+  inputId: string,
+  playFromMs: number,
+  loop: boolean,
+): Promise<void> {
+  return client.restartMp4Input(roomId, inputId, playFromMs, loop);
+}
+
+export async function getMp4Duration(fileName: string): Promise<number> {
+  return client.getMp4Duration(fileName);
 }
 
 export async function restartService(): Promise<void> {

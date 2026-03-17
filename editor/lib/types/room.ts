@@ -1,4 +1,4 @@
-import type { Resolution } from '../resolution';
+import type { Resolution } from '@smelter-editor/types';
 import type { ShaderConfig } from './shader';
 import type { Input, InputOrientation } from './input';
 import type { Layout } from './layout';
@@ -34,6 +34,7 @@ export type RoomState = {
   newsStripEnabled?: boolean;
   pendingWhipInputs?: PendingWhipInputData[];
   isRecording?: boolean;
+  isFrozen?: boolean;
 };
 
 export type AddInputResponse = {
@@ -68,7 +69,7 @@ export type PictureSuggestions = {
 export type CreateRoomOptions = {
   initInputs?: import('./input').RegisterInputOptions[];
   skipDefaultInputs?: boolean;
-  resolution?: import('../resolution').ResolutionPreset | Resolution;
+  resolution?: import('@smelter-editor/types').ResolutionPreset | Resolution;
 };
 
 export type UpdateRoomOptions = {

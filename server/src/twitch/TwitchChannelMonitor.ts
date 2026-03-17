@@ -9,9 +9,10 @@ const STREAMS_PER_CATEGORY = 5;
 
 class TwitchChannelSuggestionsMonitor {
   private topStreams: TwitchStreamInfo[] = [];
+  private shouldStop = false;
 
   public async monitor() {
-    while (true) {
+    while (!this.shouldStop) {
       try {
         console.log(`[twitch] Refresh category info.`);
         await this.refreshCategoryInfo(CATEGORIES);
@@ -20,6 +21,10 @@ class TwitchChannelSuggestionsMonitor {
       }
       await sleep(60_000);
     }
+  }
+
+  public stop() {
+    this.shouldStop = true;
   }
 
   public getTopStreams(): TwitchStreamInfo[] {

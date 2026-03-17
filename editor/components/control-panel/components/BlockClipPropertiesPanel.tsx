@@ -1,8 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type { Input, AvailableShader, ShaderConfig } from '@/lib/types';
+import type {
+  Input,
+  AvailableShader,
+  ShaderConfig,
+  TransitionType,
+} from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
 import ShaderPanel, { InlineShaderParams } from '../input-entry/shader-panel';
 import { AddShaderModal } from '../input-entry/add-shader-modal';
@@ -25,9 +30,16 @@ import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/spinner';
 import { toast } from 'react-toastify';
 import { getRandomSnakeShaderPreset } from '@/lib/snake-shader-presets';
+import { getMp4Duration } from '@/app/actions/actions';
 import { AbsolutePositionController } from './AbsolutePositionController';
 
 const SHADER_SETTINGS_DEBOUNCE_MS = 200;
+
+function extractMp4FileName(title: string): string | null {
+  const match = title.match(/^\[MP4\]\s+(.+)$/);
+  if (!match) return null;
+  return match[1].split(/\s+/).join('_') + '.mp4';
+}
 
 function SnakeShaderSection({
   label,
@@ -207,6 +219,78 @@ function SnakeShaderSection({
   );
 }
 
+const TRANSITION_TYPES: { value: TransitionType | 'none'; label: string }[] = [
+  { value: 'none', label: 'None' },
+  { value: 'fade', label: 'Fade' },
+  { value: 'slide-left', label: 'Slide Left' },
+  { value: 'slide-right', label: 'Slide Right' },
+  { value: 'slide-up', label: 'Slide Up' },
+  { value: 'slide-down', label: 'Slide Down' },
+  { value: 'wipe-left', label: 'Wipe Left' },
+  { value: 'wipe-right', label: 'Wipe Right' },
+  { value: 'dissolve', label: 'Dissolve' },
+];
+
+function TransitionRow({
+  label,
+  transition,
+  maxDurationMs,
+  onChange,
+}: {
+  label: string;
+  transition?: import('@/lib/types').TransitionConfig;
+  maxDurationMs: number;
+  onChange: (t: import('@/lib/types').TransitionConfig | undefined) => void;
+}) {
+  const type = transition?.type ?? 'none';
+  const durationMs = transition?.durationMs ?? 500;
+  const clampedMax = Math.max(100, maxDurationMs);
+
+  return (
+    <div className='mb-2'>
+      <span className='text-[11px] text-neutral-500 block mb-1'>{label}</span>
+      <div className='flex items-center gap-2'>
+        <select
+          className='flex-1 bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1 rounded'
+          value={type}
+          onChange={(e) => {
+            const val = e.target.value as TransitionType | 'none';
+            if (val === 'none') {
+              onChange(undefined);
+            } else {
+              onChange({ type: val, durationMs });
+            }
+          }}>
+          {TRANSITION_TYPES.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.label}
+            </option>
+          ))}
+        </select>
+        {type !== 'none' && (
+          <div className='flex items-center gap-1.5'>
+            <input
+              type='range'
+              min={100}
+              max={Math.min(2000, clampedMax)}
+              step={50}
+              className='w-20'
+              value={Math.min(durationMs, clampedMax)}
+              onChange={(e) => {
+                const ms = Number(e.target.value);
+                onChange({ type: type as TransitionType, durationMs: ms });
+              }}
+            />
+            <span className='text-[10px] text-neutral-500 w-10 text-right tabular-nums'>
+              {durationMs}ms
+            </span>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export type SelectedTimelineClip = {
   trackId: string;
   clipId: string;
@@ -216,10 +300,40 @@ export type SelectedTimelineClip = {
   blockSettings: BlockSettings;
 };
 
+function computeCommonBlockSettings(
+  clips: SelectedTimelineClip[],
+): BlockSettings {
+  if (clips.length === 0) {
+    return {
+      volume: 1,
+      showTitle: true,
+      shaders: [],
+      orientation: 'horizontal',
+    };
+  }
+  if (clips.length === 1) return clips[0].blockSettings;
+
+  const first = clips[0].blockSettings;
+  const result: BlockSettings = { ...first };
+
+  for (let i = 1; i < clips.length; i++) {
+    const bs = clips[i].blockSettings;
+    if (bs.volume !== result.volume) result.volume = -1;
+    if (bs.showTitle !== result.showTitle) result.showTitle = first.showTitle;
+    if (bs.orientation !== result.orientation)
+      result.orientation = first.orientation;
+    if (bs.borderColor !== result.borderColor) result.borderColor = undefined;
+    if (bs.borderWidth !== result.borderWidth) result.borderWidth = undefined;
+    if (bs.absolutePosition !== result.absolutePosition)
+      result.absolutePosition = undefined;
+  }
+  return result;
+}
+
 export function BlockClipPropertiesPanel({
   roomId,
-  selectedTimelineClip,
-  onSelectedTimelineClipChange,
+  selectedTimelineClips,
+  onSelectedTimelineClipsChange,
   inputs,
   availableShaders,
   handleRefreshState,
@@ -228,8 +342,8 @@ export function BlockClipPropertiesPanel({
   setPendingWhipInputs,
 }: {
   roomId: string;
-  selectedTimelineClip: SelectedTimelineClip | null;
-  onSelectedTimelineClipChange: (clip: SelectedTimelineClip | null) => void;
+  selectedTimelineClips: SelectedTimelineClip[];
+  onSelectedTimelineClipsChange: (clips: SelectedTimelineClip[]) => void;
   inputs: Input[];
   availableShaders: AvailableShader[];
   handleRefreshState: () => Promise<void>;
@@ -237,6 +351,19 @@ export function BlockClipPropertiesPanel({
   pendingWhipInputs?: PendingWhipInput[];
   setPendingWhipInputs?: (inputs: PendingWhipInput[]) => void | Promise<void>;
 }) {
+  const selectedTimelineClip =
+    selectedTimelineClips.length === 1 ? selectedTimelineClips[0] : null;
+  const isMultiSelect = selectedTimelineClips.length > 1;
+  const commonSettings = useMemo(
+    () => computeCommonBlockSettings(selectedTimelineClips),
+    [selectedTimelineClips],
+  );
+  const onSelectedTimelineClipChange = useCallback(
+    (clip: SelectedTimelineClip | null) => {
+      onSelectedTimelineClipsChange(clip ? [clip] : []);
+    },
+    [onSelectedTimelineClipsChange],
+  );
   const { updateInput: updateInputAction, addCameraInput } = useActions();
   const [sliderValues, setSliderValues] = useState<{ [key: string]: number }>(
     {},
@@ -266,6 +393,15 @@ export function BlockClipPropertiesPanel({
   const textScrollSpeedDebounceRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
+  const [mp4DurationLoading, setMp4DurationLoading] = useState(false);
+  const mp4DurationFetchedRef = useRef<string | null>(null);
+  const applyClipPatchRef = useRef<
+    | ((
+        patch: Partial<BlockSettings>,
+        options?: { refresh?: boolean },
+      ) => Promise<void>)
+    | null
+  >(null);
   const attachBtnRef = useRef<HTMLButtonElement>(null);
   const [attachMenuPos, setAttachMenuPos] = useState<{
     top: number;
@@ -291,7 +427,7 @@ export function BlockClipPropertiesPanel({
       clearTimeout(textScrollSpeedDebounceRef.current);
       textScrollSpeedDebounceRef.current = null;
     }
-  }, [selectedTimelineClip?.clipId]);
+  }, [selectedTimelineClips]);
 
   const {
     cameraPcRef,
@@ -305,13 +441,40 @@ export function BlockClipPropertiesPanel({
   } = useWhipConnectionsContext();
   const { refreshState: ctxRefreshState } = useControlPanelContext();
 
-  const selectedInput = selectedTimelineClip
-    ? inputs.find((i) => i.inputId === selectedTimelineClip.inputId)
+  const primaryClip =
+    selectedTimelineClips.length > 0 ? selectedTimelineClips[0] : null;
+  const selectedInput = primaryClip
+    ? inputs.find((i) => i.inputId === primaryClip.inputId)
     : null;
+  const allSameInput = selectedTimelineClips.every(
+    (c) => c.inputId === primaryClip?.inputId,
+  );
   const isDisconnected =
-    !!selectedTimelineClip &&
+    !!primaryClip &&
+    !isMultiSelect &&
     !selectedInput &&
-    !selectedTimelineClip.inputId.startsWith('__pending-whip-');
+    !primaryClip.inputId.startsWith('__pending-whip-');
+
+  useEffect(() => {
+    if (!selectedTimelineClip || !selectedInput) return;
+    if (selectedInput.type !== 'local-mp4') return;
+    if (effectiveClip.blockSettings.mp4DurationMs) return;
+
+    const mp4FileName = extractMp4FileName(selectedInput.title);
+    if (!mp4FileName) return;
+    const fetchKey = `${selectedTimelineClip.clipId}::${mp4FileName}`;
+    if (mp4DurationFetchedRef.current === fetchKey) return;
+    mp4DurationFetchedRef.current = fetchKey;
+
+    setMp4DurationLoading(true);
+    getMp4Duration(mp4FileName)
+      .then((durationMs) => {
+        void applyClipPatchRef.current?.({ mp4DurationMs: durationMs });
+      })
+      .catch(() => {})
+      .finally(() => setMp4DurationLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedTimelineClip?.clipId, selectedInput?.type, selectedInput?.title]);
 
   const [connectingType, setConnectingType] = useState<
     'camera' | 'screenshare' | null
@@ -420,61 +583,66 @@ export function BlockClipPropertiesPanel({
 
   const applyClipPatch = useCallback(
     async (patch: Partial<BlockSettings>, options?: { refresh?: boolean }) => {
-      if (!selectedTimelineClip) return;
+      if (selectedTimelineClips.length === 0) return;
       const shouldRefresh = options?.refresh ?? true;
-      const nextClip: SelectedTimelineClip = {
-        ...selectedTimelineClip,
-        blockSettings: {
-          ...selectedTimelineClip.blockSettings,
-          ...patch,
-        },
-      };
-      onSelectedTimelineClipChange(nextClip);
-      window.dispatchEvent(
-        new CustomEvent('smelter:timeline:update-clip-settings', {
-          detail: {
-            trackId: selectedTimelineClip.trackId,
-            clipId: selectedTimelineClip.clipId,
-            patch,
-          },
-        }),
-      );
 
+      // Update local state for all clips
+      const nextClips = selectedTimelineClips.map((clip) => ({
+        ...clip,
+        blockSettings: { ...clip.blockSettings, ...patch },
+      }));
+      onSelectedTimelineClipsChange(nextClips);
+
+      // Dispatch timeline update for each clip
+      for (const clip of selectedTimelineClips) {
+        window.dispatchEvent(
+          new CustomEvent('smelter:timeline:update-clip-settings', {
+            detail: { trackId: clip.trackId, clipId: clip.clipId, patch },
+          }),
+        );
+      }
+
+      // Send server update for each unique inputId
+      const seenInputIds = new Set<string>();
       try {
-        await updateInputAction(roomId, selectedTimelineClip.inputId, {
-          volume: patch.volume ?? nextClip.blockSettings.volume,
-          shaders: patch.shaders ?? nextClip.blockSettings.shaders,
-          showTitle: patch.showTitle ?? nextClip.blockSettings.showTitle,
-          orientation: patch.orientation ?? nextClip.blockSettings.orientation,
-          text: patch.text,
-          textAlign: patch.textAlign,
-          textColor: patch.textColor,
-          textMaxLines: patch.textMaxLines,
-          textScrollSpeed: patch.textScrollSpeed,
-          textScrollLoop: patch.textScrollLoop,
-          textFontSize: patch.textFontSize,
-          borderColor: patch.borderColor,
-          borderWidth: patch.borderWidth,
-          attachedInputIds: patch.attachedInputIds,
-          gameBackgroundColor: patch.gameBackgroundColor,
-          gameCellGap: patch.gameCellGap,
-          gameBoardBorderColor: patch.gameBoardBorderColor,
-          gameBoardBorderWidth: patch.gameBoardBorderWidth,
-          gameGridLineColor: patch.gameGridLineColor,
-          gameGridLineAlpha: patch.gameGridLineAlpha,
-          snakeEventShaders: patch.snakeEventShaders,
-          snake1Shaders:
-            patch.snake1Shaders ?? nextClip.blockSettings.snake1Shaders,
-          snake2Shaders:
-            patch.snake2Shaders ?? nextClip.blockSettings.snake2Shaders,
-          absolutePosition: patch.absolutePosition,
-          absoluteTop: patch.absoluteTop,
-          absoluteLeft: patch.absoluteLeft,
-          absoluteWidth: patch.absoluteWidth,
-          absoluteHeight: patch.absoluteHeight,
-          absoluteTransitionDurationMs: patch.absoluteTransitionDurationMs,
-          absoluteTransitionEasing: patch.absoluteTransitionEasing,
-        });
+        for (const clip of nextClips) {
+          if (seenInputIds.has(clip.inputId)) continue;
+          seenInputIds.add(clip.inputId);
+          await updateInputAction(roomId, clip.inputId, {
+            volume: patch.volume ?? clip.blockSettings.volume,
+            shaders: patch.shaders ?? clip.blockSettings.shaders,
+            showTitle: patch.showTitle ?? clip.blockSettings.showTitle,
+            orientation: patch.orientation ?? clip.blockSettings.orientation,
+            text: patch.text,
+            textAlign: patch.textAlign,
+            textColor: patch.textColor,
+            textMaxLines: patch.textMaxLines,
+            textScrollSpeed: patch.textScrollSpeed,
+            textScrollLoop: patch.textScrollLoop,
+            textFontSize: patch.textFontSize,
+            borderColor: patch.borderColor,
+            borderWidth: patch.borderWidth,
+            attachedInputIds: patch.attachedInputIds,
+            gameBackgroundColor: patch.gameBackgroundColor,
+            gameCellGap: patch.gameCellGap,
+            gameBoardBorderColor: patch.gameBoardBorderColor,
+            gameBoardBorderWidth: patch.gameBoardBorderWidth,
+            gameGridLineColor: patch.gameGridLineColor,
+            gameGridLineAlpha: patch.gameGridLineAlpha,
+            snakeEventShaders: patch.snakeEventShaders,
+            snake1Shaders:
+              patch.snake1Shaders ?? clip.blockSettings.snake1Shaders,
+            snake2Shaders:
+              patch.snake2Shaders ?? clip.blockSettings.snake2Shaders,
+            absolutePosition: patch.absolutePosition,
+            absoluteTop: patch.absoluteTop,
+            absoluteLeft: patch.absoluteLeft,
+            absoluteWidth: patch.absoluteWidth,
+            absoluteHeight: patch.absoluteHeight,
+            absoluteTransitionDurationMs: patch.absoluteTransitionDurationMs,
+            absoluteTransitionEasing: patch.absoluteTransitionEasing,
+          });
+        }
         if (shouldRefresh) {
           await handleRefreshState();
         }
@@ -483,17 +651,22 @@ export function BlockClipPropertiesPanel({
       }
     },
     [
-      selectedTimelineClip,
-      onSelectedTimelineClipChange,
+      selectedTimelineClips,
+      onSelectedTimelineClipsChange,
       roomId,
       handleRefreshState,
     ],
   );
 
+  useEffect(() => {
+    applyClipPatchRef.current = applyClipPatch;
+  }, [applyClipPatch]);
+
   const handleShaderToggle = useCallback(
     (shaderId: string) => {
-      if (!selectedTimelineClip) return;
-      const current = selectedTimelineClip.blockSettings.shaders || [];
+      if (selectedTimelineClips.length === 0) return;
+      const clip = selectedTimelineClips[0];
+      const current = clip.blockSettings.shaders || [];
       const existing = current.find((s) => s.shaderId === shaderId);
       if (!existing) {
         const shaderDef = availableShaders.find((s) => s.id === shaderId);
@@ -526,24 +699,35 @@ export function BlockClipPropertiesPanel({
         ),
       });
     },
-    [selectedTimelineClip, availableShaders, applyClipPatch],
+    [selectedTimelineClips, availableShaders, applyClipPatch],
   );
 
   const handleShaderRemove = useCallback(
     (shaderId: string) => {
-      if (!selectedTimelineClip) return;
+      if (selectedTimelineClips.length === 0) return;
+      const clip = selectedTimelineClips[0];
       void applyClipPatch({
-        shaders: (selectedTimelineClip.blockSettings.shaders || []).filter(
+        shaders: (clip.blockSettings.shaders || []).filter(
           (shader) => shader.shaderId !== shaderId,
         ),
       });
     },
-    [selectedTimelineClip, applyClipPatch],
+    [selectedTimelineClips, applyClipPatch],
+  );
+
+  const handleApplyPreset = useCallback(
+    (shaders: ShaderConfig[], mode: 'replace' | 'append') => {
+      const current = selectedTimelineClips[0]?.blockSettings.shaders || [];
+      const newShaders =
+        mode === 'replace' ? shaders : [...current, ...shaders];
+      void applyClipPatch({ shaders: newShaders });
+    },
+    [selectedTimelineClips, applyClipPatch],
   );
 
   const handleSliderChange = useCallback(
     (shaderId: string, paramName: string, newValue: number) => {
-      if (!selectedTimelineClip) return;
+      if (selectedTimelineClips.length === 0) return;
       const key = `${shaderId}:${paramName}`;
       setSliderValues((prev) => ({
         ...prev,
@@ -555,7 +739,7 @@ export function BlockClipPropertiesPanel({
         clearTimeout(timer);
       }
       shaderSliderTimersRef.current[key] = setTimeout(() => {
-        const current = selectedTimelineClip.blockSettings.shaders || [];
+        const current = selectedTimelineClips[0].blockSettings.shaders || [];
         const shaders = current.map((shader) => {
           if (shader.shaderId !== shaderId) return shader;
           return {
@@ -578,27 +762,28 @@ export function BlockClipPropertiesPanel({
         });
       }, SHADER_SETTINGS_DEBOUNCE_MS);
     },
-    [selectedTimelineClip, applyClipPatch],
+    [selectedTimelineClips, applyClipPatch],
   );
 
   const getShaderParamConfig = useCallback(
     (shaderId: string, paramName: string) =>
-      selectedTimelineClip?.blockSettings.shaders
+      primaryClip?.blockSettings.shaders
         ?.find((shader) => shader.shaderId === shaderId)
         ?.params.find((param) => param.paramName === paramName),
-    [selectedTimelineClip],
+    [primaryClip],
   );
 
   const handleAttachToggle = useCallback(
     (targetInputId: string) => {
-      if (!selectedTimelineClip) return;
-      const current = selectedTimelineClip.blockSettings.attachedInputIds || [];
+      if (selectedTimelineClips.length === 0) return;
+      const current =
+        selectedTimelineClips[0].blockSettings.attachedInputIds || [];
       const newAttached = current.includes(targetInputId)
         ? current.filter((id) => id !== targetInputId)
         : [...current, targetInputId];
       void applyClipPatch({ attachedInputIds: newAttached });
     },
-    [selectedTimelineClip, applyClipPatch],
+    [selectedTimelineClips, applyClipPatch],
   );
 
   const handleTextScrollSpeedChange = useCallback(
@@ -628,38 +813,41 @@ export function BlockClipPropertiesPanel({
       />
     ) : null;
 
-  if (!selectedTimelineClip) {
+  if (selectedTimelineClips.length === 0) {
     return pendingSection;
   }
 
+  // Effective clip used for rendering: primary clip for single, or first clip for multi
+  const effectiveClip = selectedTimelineClips[0];
+
   const shaderInput: Input = selectedInput ?? {
     id: -1,
-    inputId: selectedTimelineClip.inputId,
-    title: selectedTimelineClip.inputId,
+    inputId: effectiveClip.inputId,
+    title: effectiveClip.inputId,
     description: '',
-    showTitle: selectedTimelineClip.blockSettings.showTitle,
-    volume: selectedTimelineClip.blockSettings.volume,
+    showTitle: effectiveClip.blockSettings.showTitle,
+    volume: effectiveClip.blockSettings.volume,
     type: 'local-mp4',
     sourceState: 'unknown',
     status: 'connected',
-    shaders: selectedTimelineClip.blockSettings.shaders,
-    orientation: selectedTimelineClip.blockSettings.orientation,
-    attachedInputIds: selectedTimelineClip.blockSettings.attachedInputIds,
-    borderColor: selectedTimelineClip.blockSettings.borderColor,
-    borderWidth: selectedTimelineClip.blockSettings.borderWidth,
+    shaders: effectiveClip.blockSettings.shaders,
+    orientation: effectiveClip.blockSettings.orientation,
+    attachedInputIds: effectiveClip.blockSettings.attachedInputIds,
+    borderColor: effectiveClip.blockSettings.borderColor,
+    borderWidth: effectiveClip.blockSettings.borderWidth,
   };
-  shaderInput.shaders = selectedTimelineClip.blockSettings.shaders;
+  shaderInput.shaders = effectiveClip.blockSettings.shaders;
 
   const inlineShaders =
     inlineShaderView?.source === 'snake1'
-      ? (selectedTimelineClip.blockSettings.snake1Shaders ?? [])
+      ? (effectiveClip.blockSettings.snake1Shaders ?? [])
       : inlineShaderView?.source === 'snake2'
-        ? (selectedTimelineClip.blockSettings.snake2Shaders ?? [])
-        : (selectedTimelineClip.blockSettings.shaders ?? []);
+        ? (effectiveClip.blockSettings.snake2Shaders ?? [])
+        : (effectiveClip.blockSettings.shaders ?? []);
 
   const inlineShaderToggle = (sid: string) => {
     if (inlineShaderView?.source === 'snake1') {
-      const current = selectedTimelineClip.blockSettings.snake1Shaders ?? [];
+      const current = effectiveClip.blockSettings.snake1Shaders ?? [];
       const existing = current.find((s) => s.shaderId === sid);
       if (!existing) return;
       void applyClipPatch({
@@ -668,7 +856,7 @@ export function BlockClipPropertiesPanel({
         ),
       });
     } else if (inlineShaderView?.source === 'snake2') {
-      const current = selectedTimelineClip.blockSettings.snake2Shaders ?? [];
+      const current = effectiveClip.blockSettings.snake2Shaders ?? [];
       const existing = current.find((s) => s.shaderId === sid);
       if (!existing) return;
       void applyClipPatch({
@@ -684,15 +872,15 @@ export function BlockClipPropertiesPanel({
   const inlineShaderRemove = (sid: string) => {
     if (inlineShaderView?.source === 'snake1') {
       void applyClipPatch({
-        snake1Shaders: (
-          selectedTimelineClip.blockSettings.snake1Shaders ?? []
-        ).filter((s) => s.shaderId !== sid),
+        snake1Shaders: (effectiveClip.blockSettings.snake1Shaders ?? []).filter(
+          (s) => s.shaderId !== sid,
+        ),
       });
     } else if (inlineShaderView?.source === 'snake2') {
       void applyClipPatch({
-        snake2Shaders: (
-          selectedTimelineClip.blockSettings.snake2Shaders ?? []
-        ).filter((s) => s.shaderId !== sid),
+        snake2Shaders: (effectiveClip.blockSettings.snake2Shaders ?? []).filter(
+          (s) => s.shaderId !== sid,
+        ),
       });
     } else {
       handleShaderRemove(sid);
@@ -709,7 +897,7 @@ export function BlockClipPropertiesPanel({
         clearTimeout(timer);
       }
       shaderSliderTimersRef.current[key] = setTimeout(() => {
-        const current = selectedTimelineClip.blockSettings.snake1Shaders ?? [];
+        const current = effectiveClip.blockSettings.snake1Shaders ?? [];
         void applyClipPatch(
           {
             snake1Shaders: current.map((s) =>
@@ -742,7 +930,7 @@ export function BlockClipPropertiesPanel({
         clearTimeout(timer);
       }
       shaderSliderTimersRef.current[key] = setTimeout(() => {
-        const current = selectedTimelineClip.blockSettings.snake2Shaders ?? [];
+        const current = effectiveClip.blockSettings.snake2Shaders ?? [];
         void applyClipPatch(
           {
             snake2Shaders: current.map((s) =>
@@ -804,7 +992,9 @@ export function BlockClipPropertiesPanel({
         Selected block properties
       </div>
       <div className='text-sm text-neutral-300 mb-3 truncate'>
-        {selectedInput?.title ?? selectedTimelineClip.inputId}
+        {isMultiSelect
+          ? `${selectedTimelineClips.length} clips selected`
+          : (selectedInput?.title ?? effectiveClip.inputId)}
       </div>
       {isDisconnected && (
         <div className='mb-3 p-2.5 rounded border-2 border-dashed border-neutral-700 bg-neutral-800/50'>
@@ -852,7 +1042,7 @@ export function BlockClipPropertiesPanel({
           min={0}
           max={1}
           step={0.01}
-          value={selectedTimelineClip.blockSettings.volume}
+          value={effectiveClip.blockSettings.volume}
           onChange={(e) => {
             void applyClipPatch({ volume: Number(e.target.value) });
           }}
@@ -862,7 +1052,7 @@ export function BlockClipPropertiesPanel({
         <span className='text-xs text-neutral-400'>Show title</span>
         <input
           type='checkbox'
-          checked={selectedTimelineClip.blockSettings.showTitle}
+          checked={effectiveClip.blockSettings.showTitle}
           onChange={(e) => {
             void applyClipPatch({ showTitle: e.target.checked });
           }}
@@ -872,7 +1062,7 @@ export function BlockClipPropertiesPanel({
         <span className='text-xs text-neutral-400'>Orientation</span>
         <select
           className='bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
-          value={selectedTimelineClip.blockSettings.orientation}
+          value={effectiveClip.blockSettings.orientation}
           onChange={(e) =>
             void applyClipPatch({
               orientation: e.target.value as 'horizontal' | 'vertical',
@@ -890,14 +1080,12 @@ export function BlockClipPropertiesPanel({
           <span className='text-xs text-neutral-400'>Absolute position</span>
           <input
             type='checkbox'
-            checked={
-              selectedTimelineClip.blockSettings.absolutePosition ?? false
-            }
+            checked={effectiveClip.blockSettings.absolutePosition ?? false}
             onChange={(e) => {
               const enabled = e.target.checked;
               if (enabled && resolution) {
                 const isVert =
-                  selectedTimelineClip.blockSettings.orientation === 'vertical';
+                  effectiveClip.blockSettings.orientation === 'vertical';
                 const w = Math.round(resolution.width * 0.5);
                 const h = isVert
                   ? Math.round(w * (16 / 9))
@@ -917,18 +1105,18 @@ export function BlockClipPropertiesPanel({
             }}
           />
         </div>
-        {selectedTimelineClip.blockSettings.absolutePosition && resolution && (
+        {effectiveClip.blockSettings.absolutePosition && resolution && (
           <>
             <AbsolutePositionController
               resolution={resolution}
-              top={selectedTimelineClip.blockSettings.absoluteTop ?? 0}
-              left={selectedTimelineClip.blockSettings.absoluteLeft ?? 0}
+              top={effectiveClip.blockSettings.absoluteTop ?? 0}
+              left={effectiveClip.blockSettings.absoluteLeft ?? 0}
               width={
-                selectedTimelineClip.blockSettings.absoluteWidth ??
+                effectiveClip.blockSettings.absoluteWidth ??
                 Math.round(resolution.width * 0.5)
               }
               height={
-                selectedTimelineClip.blockSettings.absoluteHeight ??
+                effectiveClip.blockSettings.absoluteHeight ??
                 Math.round(resolution.height * 0.5)
               }
               onChange={(pos) =>
@@ -951,8 +1139,8 @@ export function BlockClipPropertiesPanel({
                   step={50}
                   className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
                   value={
-                    selectedTimelineClip.blockSettings
-                      .absoluteTransitionDurationMs ?? 300
+                    effectiveClip.blockSettings.absoluteTransitionDurationMs ??
+                    300
                   }
                   onChange={(e) =>
                     void applyClipPatch({
@@ -971,8 +1159,8 @@ export function BlockClipPropertiesPanel({
                 <select
                   className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
                   value={
-                    selectedTimelineClip.blockSettings
-                      .absoluteTransitionEasing ?? 'linear'
+                    effectiveClip.blockSettings.absoluteTransitionEasing ??
+                    'linear'
                   }
                   onChange={(e) =>
                     void applyClipPatch({
@@ -996,7 +1184,7 @@ export function BlockClipPropertiesPanel({
           <input
             type='color'
             className='w-full h-8 bg-neutral-800 border border-neutral-700'
-            value={selectedTimelineClip.blockSettings.borderColor || '#ff0000'}
+            value={effectiveClip.blockSettings.borderColor || '#ff0000'}
             onChange={(e) =>
               void applyClipPatch({ borderColor: e.target.value })
             }
@@ -1011,7 +1199,7 @@ export function BlockClipPropertiesPanel({
             min={0}
             max={100}
             className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
-            value={selectedTimelineClip.blockSettings.borderWidth ?? 0}
+            value={effectiveClip.blockSettings.borderWidth ?? 0}
             onChange={(e) =>
               void applyClipPatch({
                 borderWidth: Math.max(0, Number(e.target.value) || 0),
@@ -1020,6 +1208,104 @@ export function BlockClipPropertiesPanel({
           />
         </div>
       </div>
+      <div className='border border-neutral-700 rounded p-2 mb-3 mt-1'>
+        <div className='text-xs text-neutral-400 font-medium mb-2'>
+          Transitions
+        </div>
+        <TransitionRow
+          label='Intro'
+          transition={effectiveClip.blockSettings.introTransition}
+          maxDurationMs={
+            effectiveClip.endMs -
+            effectiveClip.startMs -
+            (effectiveClip.blockSettings.outroTransition?.durationMs ?? 0)
+          }
+          onChange={(t) =>
+            void applyClipPatch({ introTransition: t }, { refresh: false })
+          }
+        />
+        <TransitionRow
+          label='Outro'
+          transition={effectiveClip.blockSettings.outroTransition}
+          maxDurationMs={
+            effectiveClip.endMs -
+            effectiveClip.startMs -
+            (effectiveClip.blockSettings.introTransition?.durationMs ?? 0)
+          }
+          onChange={(t) =>
+            void applyClipPatch({ outroTransition: t }, { refresh: false })
+          }
+        />
+      </div>
+      {selectedInput?.type === 'local-mp4' && (
+        <div className='border border-neutral-700 rounded p-2 mb-3 mt-1'>
+          <div className='text-xs text-neutral-400 font-medium mb-2'>
+            MP4 Playback
+          </div>
+          <div className='grid grid-cols-2 gap-2 mb-2'>
+            <label className='text-xs text-neutral-400 self-center'>
+              Play from (s)
+            </label>
+            <input
+              type='number'
+              min={0}
+              step={0.1}
+              className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
+              value={
+                Math.round(
+                  ((effectiveClip.blockSettings.mp4PlayFromMs ?? 0) / 1000) *
+                    10,
+                ) / 10
+              }
+              onChange={(e) => {
+                const seconds = Math.max(0, Number(e.target.value) || 0);
+                void applyClipPatch(
+                  { mp4PlayFromMs: Math.round(seconds * 1000) },
+                  { refresh: false },
+                );
+              }}
+            />
+          </div>
+          <div className='flex items-center justify-between mb-1'>
+            <span className='text-xs text-neutral-400'>Loop</span>
+            <input
+              type='checkbox'
+              checked={effectiveClip.blockSettings.mp4Loop !== false}
+              onChange={(e) => {
+                void applyClipPatch(
+                  { mp4Loop: e.target.checked },
+                  { refresh: false },
+                );
+              }}
+            />
+          </div>
+          {effectiveClip.blockSettings.mp4DurationMs != null && (
+            <div className='text-[10px] text-neutral-500 mt-1'>
+              Duration:{' '}
+              {(effectiveClip.blockSettings.mp4DurationMs / 1000).toFixed(1)}s
+              {effectiveClip.blockSettings.mp4Loop === false && (
+                <span>
+                  {' '}
+                  · Max block:{' '}
+                  {(
+                    Math.max(
+                      0,
+                      effectiveClip.blockSettings.mp4DurationMs -
+                        (effectiveClip.blockSettings.mp4PlayFromMs ?? 0),
+                    ) / 1000
+                  ).toFixed(1)}
+                  s
+                </span>
+              )}
+            </div>
+          )}
+          {mp4DurationLoading && (
+            <div className='text-[10px] text-neutral-500 mt-1'>
+              Loading duration...
+            </div>
+          )}
+        </div>
+      )}
       {selectedInput?.type === 'game' && (
         <div className='grid grid-cols-2 gap-2 mb-2'>
           <div>
@@ -1031,7 +1317,7 @@ export function BlockClipPropertiesPanel({
               className='w-full h-8 bg-neutral-800 border border-neutral-700'
               value={
                 gameBgColor ??
-                selectedTimelineClip.blockSettings.gameBackgroundColor ??
+                effectiveClip.blockSettings.gameBackgroundColor ??
                 '#0a0f1a'
               }
               onChange={(e) => {
@@ -1056,7 +1342,7 @@ export function BlockClipPropertiesPanel({
               min={0}
               max={20}
               className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
-              value={selectedTimelineClip.blockSettings.gameCellGap ?? 1}
+              value={effectiveClip.blockSettings.gameCellGap ?? 1}
               onChange={(e) =>
                 void applyClipPatch({
                   gameCellGap: Math.max(0, Number(e.target.value) || 0),
@@ -1073,7 +1359,7 @@ export function BlockClipPropertiesPanel({
               className='w-full h-8 bg-neutral-800 border border-neutral-700'
               value={
                 gameGridColor ??
-                selectedTimelineClip.blockSettings.gameGridLineColor ??
+                effectiveClip.blockSettings.gameGridLineColor ??
                 '#000000'
               }
               onChange={(e) => {
@@ -1099,9 +1385,7 @@ export function BlockClipPropertiesPanel({
               max={1}
               step={0.01}
               className='w-full'
-              value={
-                selectedTimelineClip.blockSettings.gameGridLineAlpha ?? 1.0
-              }
+              value={effectiveClip.blockSettings.gameGridLineAlpha ?? 1.0}
               onChange={(e) =>
                 void applyClipPatch({
                   gameGridLineAlpha: Number(e.target.value),
@@ -1114,8 +1398,8 @@ export function BlockClipPropertiesPanel({
       {selectedInput?.type === 'game' && (
         <SnakeEventShaderPanel
           roomId={roomId}
-          inputId={selectedTimelineClip.inputId}
-          config={selectedTimelineClip.blockSettings.snakeEventShaders}
+          inputId={effectiveClip.inputId}
+          config={effectiveClip.blockSettings.snakeEventShaders}
           availableShaders={availableShaders}
           onConfigChange={(updated) => {
             void applyClipPatch(
@@ -1130,7 +1414,7 @@ export function BlockClipPropertiesPanel({
         <>
           <SnakeShaderSection
             label='🐍 Snake 1 Shaders'
-            shaders={selectedTimelineClip.blockSettings.snake1Shaders ?? []}
+            shaders={effectiveClip.blockSettings.snake1Shaders ?? []}
             playerColor={selectedInput?.snakePlayerColors?.[0]}
             availableShaders={availableShaders}
             onPatch={(shaders) =>
@@ -1142,7 +1426,7 @@ export function BlockClipPropertiesPanel({
           />
           <SnakeShaderSection
             label='🐍 Snake 2 Shaders'
-            shaders={selectedTimelineClip.blockSettings.snake2Shaders ?? []}
+            shaders={effectiveClip.blockSettings.snake2Shaders ?? []}
             playerColor={selectedInput?.snakePlayerColors?.[1]}
             availableShaders={availableShaders}
             onPatch={(shaders) =>
@@ -1167,12 +1451,11 @@ export function BlockClipPropertiesPanel({
             setShowAttachMenu(!showAttachMenu);
           }}>
           <Link
-            className={`w-3.5 h-3.5 ${(selectedTimelineClip.blockSettings.attachedInputIds?.length ?? 0) > 0 ? 'text-blue-400' : 'text-neutral-400'}`}
+            className={`w-3.5 h-3.5 ${(effectiveClip.blockSettings.attachedInputIds?.length ?? 0) > 0 ? 'text-blue-400' : 'text-neutral-400'}`}
           />
           <span className='text-neutral-300'>
-            {(selectedTimelineClip.blockSettings.attachedInputIds?.length ??
-              0) > 0
-              ? `${selectedTimelineClip.blockSettings.attachedInputIds!.length} attached`
+            {(effectiveClip.blockSettings.attachedInputIds?.length ?? 0) > 0
+              ? `${effectiveClip.blockSettings.attachedInputIds!.length} attached`
               : 'None'}
           </span>
         </button>
@@ -1194,18 +1477,18 @@ export function BlockClipPropertiesPanel({
                   Attach inputs (render behind)
                 </div>
                 {inputs
-                  .filter((i) => i.inputId !== selectedTimelineClip.inputId)
+                  .filter((i) => i.inputId !== effectiveClip.inputId)
                   .filter(
                     (i) =>
                       !inputs.some(
                         (other) =>
-                          other.inputId !== selectedTimelineClip.inputId &&
+                          other.inputId !== effectiveClip.inputId &&
                           (other.attachedInputIds || []).includes(i.inputId),
                       ),
                   )
                   .map((i) => {
                     const isAttached = (
-                      selectedTimelineClip.blockSettings.attachedInputIds || []
+                      effectiveClip.blockSettings.attachedInputIds || []
                     ).includes(i.inputId);
                     return (
                       <label
@@ -1234,7 +1517,7 @@ export function BlockClipPropertiesPanel({
             <label className='text-xs text-neutral-400 block mb-1'>Text</label>
             <textarea
               className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs p-2 min-h-[80px]'
-              value={selectedTimelineClip.blockSettings.text || ''}
+              value={effectiveClip.blockSettings.text || ''}
               onChange={(e) => void applyClipPatch({ text: e.target.value })}
             />
           </div>
@@ -1245,7 +1528,7 @@ export function BlockClipPropertiesPanel({
               </label>
               <select
                 className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
-                value={selectedTimelineClip.blockSettings.textAlign || 'left'}
+                value={effectiveClip.blockSettings.textAlign || 'left'}
                 onChange={(e) =>
                   void applyClipPatch({
                     textAlign: e.target.value as 'left' | 'center' | 'right',
@@ -1263,9 +1546,7 @@ export function BlockClipPropertiesPanel({
               <input
                 type='color'
                 className='w-full h-8 bg-neutral-800 border border-neutral-700'
-                value={
-                  selectedTimelineClip.blockSettings.textColor || '#ffffff'
-                }
+                value={effectiveClip.blockSettings.textColor || '#ffffff'}
                 onChange={(e) =>
                   void applyClipPatch({ textColor: e.target.value })
                 }
@@ -1282,7 +1563,7 @@ export function BlockClipPropertiesPanel({
                 min={8}
                 max={300}
                 className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
-                value={selectedTimelineClip.blockSettings.textFontSize ?? 80}
+                value={effectiveClip.blockSettings.textFontSize ?? 80}
                 onChange={(e) =>
                   void applyClipPatch({
                     textFontSize: Number(e.target.value) || 80,
@@ -1299,7 +1580,7 @@ export function BlockClipPropertiesPanel({
                 min={1}
                 max={50}
                 className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
-                value={selectedTimelineClip.blockSettings.textMaxLines ?? 10}
+                value={effectiveClip.blockSettings.textMaxLines ?? 10}
                 onChange={(e) =>
                   void applyClipPatch({
                     textMaxLines: Number(e.target.value) || 10,
@@ -1321,7 +1602,7 @@ export function BlockClipPropertiesPanel({
                 className='flex-1'
                 value={
                   textScrollSpeedDraft ??
-                  selectedTimelineClip.blockSettings.textScrollSpeed ??
+                  effectiveClip.blockSettings.textScrollSpeed ??
                   80
                 }
                 onChange={(e) =>
@@ -1330,7 +1611,7 @@ export function BlockClipPropertiesPanel({
               />
               <span className='text-xs text-neutral-500 w-8 text-right'>
                 {textScrollSpeedDraft ??
-                  selectedTimelineClip.blockSettings.textScrollSpeed ??
+                  effectiveClip.blockSettings.textScrollSpeed ??
                   80}
               </span>
             </div>
@@ -1339,9 +1620,7 @@ export function BlockClipPropertiesPanel({
             <span className='text-xs text-neutral-400'>Scroll loop</span>
             <input
               type='checkbox'
-              checked={
-                selectedTimelineClip.blockSettings.textScrollLoop ?? true
-              }
+              checked={effectiveClip.blockSettings.textScrollLoop ?? true}
               onChange={(e) =>
                 void applyClipPatch({ textScrollLoop: e.target.checked })
               }
@@ -1370,6 +1649,7 @@ export function BlockClipPropertiesPanel({
           onOpenShaderInline={(shaderId) =>
             setInlineShaderView({ shaderId, source: 'block' })
           }
+          onApplyPreset={handleApplyPreset}
         />
       </div>
       <AddShaderModal
@@ -1378,9 +1658,7 @@ export function BlockClipPropertiesPanel({
         availableShaders={availableShaders}
         addedShaderIds={
           new Set(
-            (selectedTimelineClip.blockSettings.shaders || []).map(
-              (s) => s.shaderId,
-            ),
+            (effectiveClip.blockSettings.shaders || []).map((s) => s.shaderId),
           )
         }
         onAddShader={handleShaderToggle}

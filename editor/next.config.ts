@@ -1,4 +1,5 @@
 import type { NextConfig } from 'next';
+import path from 'path';
 
 const nextConfig: NextConfig = {
   env: {
@@ -10,6 +11,8 @@ const nextConfig: NextConfig = {
       process.env.SMELTER_EDITOR_SERVER_URL ?? 'http://localhost:3001'
     ).replace(/^http/, 'ws'),
   },
+  transpilePackages: ['@smelter-editor/types'],
+  outputFileTracingRoot: path.resolve(import.meta.dirname, '../'),
   eslint: {
     ignoreDuringBuilds: true,
   },

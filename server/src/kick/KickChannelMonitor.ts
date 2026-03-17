@@ -12,9 +12,10 @@ const KICK_STREAMS_PER_CATEGORY = 10;
 
 class KickChannelSuggestionsMonitor {
   private topStreams: KickStreamInfo[] = [];
+  private shouldStop = false;
 
   public async monitor() {
-    while (true) {
+    while (!this.shouldStop) {
       try {
         console.log('[kick] Refresh category info.');
         await this.refreshCategoryInfo(KICK_CATEGORIES);
@@ -23,6 +24,10 @@ class KickChannelSuggestionsMonitor {
       }
       await sleep(60_000);
     }
+  }
+
+  public stop() {
+    this.shouldStop = true;
   }
 
   public getTopStreams(): KickStreamInfo[] {

@@ -1,10 +1,15 @@
-import { View, Rescaler } from '@swmansion/smelter';
+import { View, Rescaler, Image } from '@swmansion/smelter';
 
 import type { RoomStore, InputConfig } from './store';
 import type { StoreApi } from 'zustand';
 import { useStore } from 'zustand';
 import { useContext } from 'react';
-import { StoreContext, useResolution, useAbsoluteInputs } from './store';
+import {
+  StoreContext,
+  useResolution,
+  useAbsoluteInputs,
+  useFrozenImageId,
+} from './store';
 import {
   GridLayout,
   PrimaryOnTopLayout,
@@ -41,7 +46,18 @@ function OutputScene() {
   const layout = useStore(store, (state) => state.layout);
   const resolution = useResolution();
   const absoluteInputs = useAbsoluteInputs();
+  const frozenImageId = useFrozenImageId();
   const { width, height } = resolution;
+
+  if (frozenImageId) {
+    return (
+      <View style={{ backgroundColor: '#000000', padding: 0, width, height }}>
+        <Rescaler style={{ width, height }}>
+          <Image imageId={frozenImageId} />
+        </Rescaler>
+      </View>
+    );
+  }
 
   return (
     <View

@@ -35,3 +35,10 @@ export type {
   RecordingInfo,
   SavedConfigInfo,
 } from './room';
+
+export type {
+  TransitionType,
+  TransitionConfig,
+  ActiveTransition,
+} from './transition';
+export { isTransitionType, parseTransitionConfig } from './transition';

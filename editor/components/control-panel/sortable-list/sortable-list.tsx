@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import type { ReactNode } from 'react';
 import {
   DndContext,
@@ -20,6 +20,7 @@ import {
   arrayMove,
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
+import { motion, LayoutGroup } from 'framer-motion';
 
 import './sortable-list.css';
 import { SortableOverlay } from '@/components/control-panel/sortable-list/sortable-overlay';
@@ -34,7 +35,13 @@ interface Props<T extends BaseItem> {
   onOrderChange(items: T[]): void;
   resetVersion?: number;
   disableDrag?: boolean;
+  keyExtractor?: (item: T) => string | number;
 }
+
+const defaultKeyExtractor = <T extends BaseItem>(item: T): string | number =>
+  typeof item.id === 'string' || typeof item.id === 'number'
+    ? item.id
+    : String(item.id);
 
 export function SortableList<T extends BaseItem>({
   items,
@@ -42,9 +49,13 @@ export function SortableList<T extends BaseItem>({
   onOrderChange,
   resetVersion,
   disableDrag = false,
+  keyExtractor = defaultKeyExtractor,
 }: Props<T>) {
   const [orderedItems, setOrderedItems] = useState<T[]>(items);
   const [active, setActive] = useState<Active | null>(null);
+  const [swappedIds, setSwappedIds] = useState<Set<string | number>>(new Set());
+  const prevKeysRef = useRef<(string | number)[]>([]);
+
   useEffect(() => {
     setOrderedItems((prev) => {
       if (
@@ -62,6 +73,27 @@ export function SortableList<T extends BaseItem>({
       setOrderedItems(items);
     }
   }, [resetVersion, items]);
+
+  useEffect(() => {
+    if (active) return;
+    const newKeys = orderedItems.map(keyExtractor);
+    const prevKeys = prevKeysRef.current;
+
+    if (prevKeys.length > 0 && prevKeys.length === newKeys.length) {
+      const moved = new Set<string | number>();
+      for (let i = 0; i < newKeys.length; i++) {
+        if (newKeys[i] !== prevKeys[i]) {
+          moved.add(newKeys[i]);
+        }
+      }
+      if (moved.size > 0) {
+        setSwappedIds(moved);
+        const timer = setTimeout(() => setSwappedIds(new Set()), 800);
+        return () => clearTimeout(timer);
+      }
+    }
+    prevKeysRef.current = newKeys;
+  }, [orderedItems, active, keyExtractor]);
 
   const activeItem = useMemo(
     () => orderedItems.find((item) => item.id === active?.id),
@@ -132,23 +164,33 @@ export function SortableList<T extends BaseItem>({
         setActive(null);
       }}>
       <SortableContext items={orderedItems}>
-        <ul
-          className='SortableList'
-          role='application'
-          style={{
-            overflowY: 'hidden',
-            overflowX: 'hidden',
-            maxHeight: 'none',
-          }}>
-          {orderedItems.map((item, index) => {
-            const isActive = active?.id === item.id;
-            return (
-              <li key={item.id} style={isActive ? { opacity: 0.5 } : undefined}>
-                {renderItem(item, index, orderedItems)}
-              </li>
-            );
-          })}
-        </ul>
+        <LayoutGroup>
+          <ul
+            className='SortableList'
+            role='application'
+            style={{
+              overflowY: 'hidden',
+              overflowX: 'hidden',
+              maxHeight: 'none',
+            }}>
+            {orderedItems.map((item, index) => {
+              const key = keyExtractor(item);
+              const isActive = active?.id === item.id;
+              const isSwapped = swappedIds.has(key);
+              return (
+                <motion.li
+                  key={key}
+                  layout={active === null}
+                  layoutId={String(key)}
+                  transition={{ layout: { duration: 0.4, ease: 'easeInOut' } }}
+                  className={isSwapped ? 'reorder-highlight' : undefined}
+                  style={isActive ? { opacity: 0.5 } : undefined}>
+                  {renderItem(item, index, orderedItems)}
+                </motion.li>
+              );
+            })}
+          </ul>
+        </LayoutGroup>
       </SortableContext>
       <SortableOverlay>
         {activeItem

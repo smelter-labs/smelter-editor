@@ -24,50 +24,63 @@ const snakeVisualSpeedMultiplier =
     ? parsedSnakeVisualSpeedMultiplier
     : defaultSnakeVisualSpeedMultiplier;
 
-export const config: Config =
-  process.env.ENVIRONMENT === 'production'
-    ? {
-        logger: {
-          level: (process.env.SMELTER_DEMO_ROUTER_LOGGER_LEVEL ??
-            'warn') as any,
+const isProduction = process.env.ENVIRONMENT === 'production';
+
+function buildH264Encoder(): Outputs.WhepVideoEncoderOptions {
+  const encoderEnv = process.env.SMELTER_H264_ENCODER;
+  const useVulkan = encoderEnv === 'vulkan' || (!encoderEnv && isProduction);
+
+  if (useVulkan) {
+    const bitrate =
+      Number(process.env.SMELTER_H264_ENCODER_BITRATE) || 50_000_000;
+    return { type: 'vulkan_h264', bitrate };
+  }
+
+  const preset = (process.env.SMELTER_H264_ENCODER_PRESET ?? 'ultrafast') as
+    | 'ultrafast'
+    | 'superfast'
+    | 'veryfast'
+    | 'faster'
+    | 'fast'
+    | 'medium'
+    | 'slow'
+    | 'slower'
+    | 'veryslow'
+    | 'placebo';
+  const bitrate = process.env.SMELTER_H264_ENCODER_BITRATE ?? '20000000';
+  return {
+    type: 'ffmpeg_h264',
+    preset,
+    ffmpegOptions: {
+      tune: 'zerolatency',
+      thread_type: 'slice',
+      preset,
+      bitrate,
+    },
+  };
+}
+
+export const config: Config = isProduction
+  ? {
+      logger: {
+        level: (process.env.SMELTER_DEMO_ROUTER_LOGGER_LEVEL ?? 'warn') as any,
+      },
+      whepBaseUrl: 'https://puffer.fishjam.io/smelter-editor-webrtc/whep',
+      whipBaseUrl: 'https://puffer.fishjam.io/smelter-editor-webrtc/whip',
+      h264Decoder: 'ffmpeg_h264',
+      h264Encoder: buildH264Encoder(),
+      snakeVisualSpeedMultiplier,
+    }
+  : {
+      logger: {
+        transport: {
+          target: 'pino-pretty',
         },
-        whepBaseUrl: 'https://puffer.fishjam.io/smelter-editor-webrtc/whep',
-        whipBaseUrl: 'https://puffer.fishjam.io/smelter-editor-webrtc/whip',
-        //h264Decoder: 'vulkan_h264',
-        h264Decoder: 'ffmpeg_h264',
-        h264Encoder: { type: 'vulkan_h264', bitrate: 50_000_000 },
-        // h264Encoder: {
-        //  type: 'ffmpeg_h264',
-        //  preset: 'veryfast',
-        //  ffmpegOptions: {
-        //    qmin: '4',
-        //    qmax: '4',
-        //    tune: 'zerolatency',
-        //    thread_type: 'slice',
-        //  },
-        // },
-        snakeVisualSpeedMultiplier,
-      }
-    : {
-        logger: {
-          transport: {
-            target: 'pino-pretty',
-          },
-          level: (process.env.SMELTER_DEMO_ROUTER_LOGGER_LEVEL ??
-            'warn') as any,
-        },
-        whepBaseUrl: 'http://127.0.0.1:9000/whep',
-        whipBaseUrl: 'http://127.0.0.1:9000/whip',
-        h264Decoder: 'ffmpeg_h264',
-        h264Encoder: {
-          type: 'ffmpeg_h264',
-          preset: 'ultrafast',
-          ffmpegOptions: {
-            tune: 'zerolatency',
-            thread_type: 'slice',
-            preset: 'ultrafast',
-            bitrate: '20000000',
-          },
-        },
-        snakeVisualSpeedMultiplier,
-      };
+        level: (process.env.SMELTER_DEMO_ROUTER_LOGGER_LEVEL ?? 'warn') as any,
+      },
+      whepBaseUrl: 'http://127.0.0.1:9000/whep',
+      whipBaseUrl: 'http://127.0.0.1:9000/whip',
+      h264Decoder: 'ffmpeg_h264',
+      h264Encoder: buildH264Encoder(),
+      snakeVisualSpeedMultiplier,
+    };

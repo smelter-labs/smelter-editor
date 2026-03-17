@@ -1,6 +1,13 @@
-import type { Input, Layout, ShaderConfig } from '@/lib/types';
+import type {
+  Input,
+  Layout,
+  ShaderConfig,
+  UpdateInputOptions,
+} from '@/lib/types';
+import { parseTransitionConfig } from '@/lib/types';
 import type { SnakeEventShaderConfig } from '@/lib/snake-game-types';
 import type {
+  BlockSettings,
   Clip,
   Track,
 } from '@/components/control-panel/hooks/use-timeline-state';
@@ -226,8 +233,17 @@ export function loadTimelineFromStorage(roomId: string): {
         inputId: c.inputId,
         startMs: c.startMs,
         endMs: c.endMs,
-        blockSettings:
-          c.blockSettings ?? createBlockSettingsFromInput(undefined),
+        blockSettings: c.blockSettings
+          ? {
+              ...c.blockSettings,
+              introTransition: parseTransitionConfig(
+                c.blockSettings.introTransition,
+              ),
+              outroTransition: parseTransitionConfig(
+                c.blockSettings.outroTransition,
+              ),
+            }
+          : createBlockSettingsFromInput(undefined),
       })),
     })),
     totalDurationMs: stored.totalDurationMs,
@@ -299,6 +315,90 @@ export function updateTimelineInputId(
     saveTimeline(roomId, { ...stored, tracks });
   }
   return changed;
+}
+
+export function buildInputUpdateFromBlockSettings(
+  blockSettings: BlockSettings,
+): Partial<UpdateInputOptions> {
+  return {
+    volume: blockSettings.volume,
+    shaders: blockSettings.shaders,
+    showTitle: blockSettings.showTitle,
+    orientation: blockSettings.orientation,
+    text: blockSettings.text,
+    textAlign: blockSettings.textAlign,
+    textColor: blockSettings.textColor,
+    textMaxLines: blockSettings.textMaxLines,
+    textScrollSpeed: blockSettings.textScrollSpeed,
+    textScrollLoop: blockSettings.textScrollLoop,
+    textFontSize: blockSettings.textFontSize,
+    borderColor: blockSettings.borderColor,
+    borderWidth: blockSettings.borderWidth,
+    attachedInputIds: blockSettings.attachedInputIds,
+    snake1Shaders: blockSettings.snake1Shaders,
+    snake2Shaders: blockSettings.snake2Shaders,
+    absolutePosition: blockSettings.absolutePosition,
+    absoluteTop: blockSettings.absoluteTop,
+    absoluteLeft: blockSettings.absoluteLeft,
+    absoluteWidth: blockSettings.absoluteWidth,
+    absoluteHeight: blockSettings.absoluteHeight,
+    absoluteTransitionDurationMs: blockSettings.absoluteTransitionDurationMs,
+    absoluteTransitionEasing: blockSettings.absoluteTransitionEasing,
+    gameBackgroundColor: blockSettings.gameBackgroundColor,
+    gameCellGap: blockSettings.gameCellGap,
+    gameBoardBorderColor: blockSettings.gameBoardBorderColor,
+    gameBoardBorderWidth: blockSettings.gameBoardBorderWidth,
+    gameGridLineColor: blockSettings.gameGridLineColor,
+    gameGridLineAlpha: blockSettings.gameGridLineAlpha,
+    snakeEventShaders: blockSettings.snakeEventShaders,
+  };
+}
+
+/**
+ * Compute the desired room state at timeline position 0.
+ * Returns which inputs should be hidden, the block settings for active clips,
+ * and the input order derived from track ordering.
+ */
+export function computeTimelineStateAtZero(
+  timeline: RoomConfigTimeline,
+  indexToInputId: Map<number, string>,
+): {
+  hiddenInputIds: string[];
+  activeBlockSettings: Map<string, BlockSettings>;
+  inputOrder: string[];
+} {
+  const allTimelineInputIds = new Set<string>();
+  const activeInputIds = new Set<string>();
+  const activeBlockSettings = new Map<string, BlockSettings>();
+  const inputOrder: string[] = [];
+
+  for (const track of timeline.tracks) {
+    for (const clip of track.clips) {
+      const inputId = indexToInputId.get(clip.inputIndex);
+      if (!inputId) continue;
+
+      allTimelineInputIds.add(inputId);
+
+      if (0 >= clip.startMs && 0 < clip.endMs) {
+        if (!activeInputIds.has(inputId)) {
+          activeInputIds.add(inputId);
+          inputOrder.push(inputId);
+          if (clip.blockSettings) {
+            activeBlockSettings.set(
+              inputId,
+              clip.blockSettings as BlockSettings,
+            );
+          }
+        }
+      }
+    }
+  }
+
+  const hiddenInputIds = [...allTimelineInputIds].filter(
+    (id) => !activeInputIds.has(id),
+  );
+
+  return { hiddenInputIds, activeBlockSettings, inputOrder };
 }
 
 const PENDING_WHIP_STORAGE_KEY = 'smelter-pending-whip-inputs';
