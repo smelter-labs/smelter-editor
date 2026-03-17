@@ -1513,10 +1513,15 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
   const redo = useCallback(() => dispatch({ type: 'REDO' }), []);
   const canUndo = undoable.past.length > 0;
   const canRedo = undoable.future.length > 0;
+  const loadState = useCallback((nextState: TimelineState) => {
+    dispatch({ type: 'LOAD', state: nextState });
+    setStructureRevision((rev) => rev + 1);
+  }, []);
 
   return {
     state,
     dispatch,
+    loadState,
     setPlayhead,
     setPlaying,
     setZoom,

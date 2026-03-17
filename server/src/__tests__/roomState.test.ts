@@ -71,6 +71,7 @@ vi.mock('fs-extra', () => ({
 
 import { createRoomStore } from '../app/store';
 import { RESOLUTION_PRESETS } from '../types';
+import type { TimelineConfig } from '@smelter-editor/types';
 
 const { RoomState } = await import('../server/roomState');
 
@@ -81,6 +82,60 @@ function createTestOutput(roomId = 'test-room') {
     url: `http://test-whep/${roomId}`,
     store: createRoomStore(res),
     resolution: res,
+  };
+}
+
+function createTimelineConfig(
+  inputId: string,
+  initialKeyframeText: string,
+): TimelineConfig {
+  return {
+    tracks: [
+      {
+        id: 'track-1',
+        clips: [
+          {
+            id: 'clip-1',
+            inputId,
+            startMs: 0,
+            endMs: 1000,
+            blockSettings: {
+              volume: 1,
+              showTitle: true,
+              shaders: [],
+              orientation: 'horizontal',
+              text: 'clip-default',
+            },
+            keyframes: [
+              {
+                id: 'kf-1',
+                timeMs: 0,
+                blockSettings: {
+                  volume: 1,
+                  showTitle: true,
+                  shaders: [],
+                  orientation: 'horizontal',
+                  text: initialKeyframeText,
+                },
+              },
+              {
+                id: 'kf-2',
+                timeMs: 500,
+                blockSettings: {
+                  volume: 1,
+                  showTitle: true,
+                  shaders: [],
+                  orientation: 'horizontal',
+                  text: `${initialKeyframeText}-later`,
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    totalDurationMs: 1000,
+    keyframeInterpolationMode: 'step',
   };
 }
 
@@ -515,6 +570,73 @@ describe('RoomState', () => {
 
       room.setSwapFadeOutDurationMs(750);
       expect(room.getSwapFadeOutDurationMs()).toBe(750);
+    });
+  });
+
+  describe('timeline playback', () => {
+    it('uses the latest keyframes when playback resumes from pause', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const inputId = (await room.addNewInput({
+        type: 'text-input',
+        text: 'Original',
+      }))!;
+
+      await room.startTimelinePlayback(createTimelineConfig(inputId, 'First'), 0);
+      await room.pauseTimeline();
+      await room.startTimelinePlayback(createTimelineConfig(inputId, 'Updated'), 0);
+
+      const resumedInput = room.getInputs().find((i) => i.inputId === inputId);
+      expect(resumedInput?.type).toBe('text-input');
+      if (resumedInput?.type === 'text-input') {
+        expect(resumedInput.text).toBe('Updated');
+      }
+
+      await room.stopTimelinePlayback();
+
+      const restoredInput = room.getInputs().find((i) => i.inputId === inputId);
+      expect(restoredInput?.type).toBe('text-input');
+      if (restoredInput?.type === 'text-input') {
+        expect(restoredInput.text).toBe('Original');
+      }
+    });
+
+    it('applies step keyframes during playback', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(0);
+
+      try {
+        const output = createTestOutput();
+        const room = new RoomState('room-1', output, [], true);
+        await room.init();
+
+        const inputId = (await room.addNewInput({
+          type: 'text-input',
+          text: 'Original',
+        }))!;
+
+        await room.startTimelinePlayback(createTimelineConfig(inputId, 'First'), 0);
+
+        const initialInput = room.getInputs().find((i) => i.inputId === inputId);
+        expect(initialInput?.type).toBe('text-input');
+        if (initialInput?.type === 'text-input') {
+          expect(initialInput.text).toBe('First');
+        }
+
+        await vi.advanceTimersByTimeAsync(500);
+
+        const midPlaybackInput = room.getInputs().find((i) => i.inputId === inputId);
+        expect(midPlaybackInput?.type).toBe('text-input');
+        if (midPlaybackInput?.type === 'text-input') {
+          expect(midPlaybackInput.text).toBe('First-later');
+        }
+
+        await room.stopTimelinePlayback();
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 

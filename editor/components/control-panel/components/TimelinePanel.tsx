@@ -15,7 +15,11 @@ import { useRecordingControls } from '../hooks/use-recording-controls';
 import type { InputWrapper } from '../hooks/use-control-panel-state';
 import LoadingSpinner from '@/components/ui/spinner';
 import { useControlPanelContext } from '../contexts/control-panel-context';
-import { useTimelineState, DEFAULT_PPS } from '../hooks/use-timeline-state';
+import {
+  useTimelineState,
+  DEFAULT_PPS,
+  type TimelineState,
+} from '../hooks/use-timeline-state';
 import { useServerTimelinePlayback } from '../hooks/use-server-timeline-playback';
 import {
   Play,
@@ -49,6 +53,10 @@ type TimelinePanelProps = {
   isGuest?: boolean;
   guestInputId?: string | null;
   fillContainer?: boolean;
+  onTimelineStateChange?: (state: TimelineState) => void;
+  onTimelineLoadStateReady?: (
+    loadState: (state: TimelineState) => void,
+  ) => void;
 };
 
 // ── Color maps ───────────────────────────────────────────
@@ -206,6 +214,8 @@ export function TimelinePanel({
   isGuest,
   guestInputId,
   fillContainer,
+  onTimelineStateChange,
+  onTimelineLoadStateReady,
 }: TimelinePanelProps) {
   const { removeInput } = useActions();
   const { inputs, roomId, refreshState } = useControlPanelContext();
@@ -239,7 +249,16 @@ export function TimelinePanel({
     canUndo,
     canRedo,
     structureRevision,
+    loadState,
   } = useTimelineState(roomId, inputs);
+
+  useEffect(() => {
+    onTimelineStateChange?.(state);
+  }, [onTimelineStateChange, state]);
+
+  useEffect(() => {
+    onTimelineLoadStateReady?.(loadState);
+  }, [loadState, onTimelineLoadStateReady]);
 
   const [selectedClipIds, setSelectedClipIds] = useState<
     { trackId: string; clipId: string }[]

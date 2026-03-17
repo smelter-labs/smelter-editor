@@ -36,6 +36,11 @@
 - **Session:** 7bcc5bb1
 - **Rule:** Verify the fix at the layer where the symptom appears, not just where the data originates.
 
+### 2.2b Timeline step mode needs runtime scheduling
+- **Pattern:** Timeline keyframes were serialized and accepted by the server, but `step` playback still ignored mid-clip keyframes because no playback events were scheduled at keyframe times. `smooth` appeared to work thanks to periodic updates, which masked the missing scheduler path.
+- **Session:** current
+- **Rule:** For timeline/playback bugs, verify not only payload transport and state resolution, but also whether runtime scheduling actually re-applies state at every semantic boundary like keyframes.
+
 ### 2.3 Debounce vs request queuing
 - **Pattern:** 20-30s delay on shader slider changes. Agent focused on debounce; real cause was `refreshState()` firing after every tick, queuing heavy requests.
 - **Session:** 259f220d

@@ -1328,7 +1328,9 @@ export class RoomState {
     fromMs?: number,
   ): Promise<void> {
     if (this.timelinePlayer?.getIsPaused()) {
-      await this.resumeTimeline(fromMs);
+      await this.cleanupFrozenImages();
+      this.timelinePlayer.updateConfig(config);
+      await this.timelinePlayer.resume(fromMs);
       return;
     }
 

@@ -1,10 +1,64 @@
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, it, expect } from 'vitest';
 import {
   exportRoomConfig,
+  loadTimelineFromStorage,
   parseRoomConfig,
+  resolveRoomConfigTimelineState,
+  restoreTimelineToStorage,
   type RoomConfigTransitionSettings,
+  type RoomConfigTimeline,
+  type RoomConfigTimelineState,
 } from '../room-config';
 import type { Input, Layout } from '@/lib/types';
+
+function createLocalStorageMock(): Storage {
+  const store = new Map<string, string>();
+  return {
+    get length() {
+      return store.size;
+    },
+    clear() {
+      store.clear();
+    },
+    getItem(key: string) {
+      return store.get(key) ?? null;
+    },
+    key(index: number) {
+      return [...store.keys()][index] ?? null;
+    },
+    removeItem(key: string) {
+      store.delete(key);
+    },
+    setItem(key: string, value: string) {
+      store.set(key, value);
+    },
+  };
+}
+
+beforeEach(() => {
+  Object.defineProperty(globalThis, 'window', {
+    value: globalThis,
+    configurable: true,
+  });
+  Object.defineProperty(globalThis, 'localStorage', {
+    value: createLocalStorageMock(),
+    configurable: true,
+  });
+  localStorage.clear();
+});
+
+const minimalInput: Input = {
+  id: 0,
+  inputId: 'room::text::1',
+  title: 'Text',
+  description: '',
+  volume: 1,
+  type: 'text-input',
+  sourceState: 'always-live',
+  status: 'connected',
+  shaders: [],
+  orientation: 'horizontal',
+};
 
 describe('parseRoomConfig', () => {
   it('parses valid config v1', () => {
@@ -64,19 +118,6 @@ describe('parseRoomConfig', () => {
 });
 
 describe('exportRoomConfig', () => {
-  const minimalInput: Input = {
-    id: 0,
-    inputId: 'room::text::1',
-    title: 'Text',
-    description: '',
-    volume: 1,
-    type: 'text-input',
-    sourceState: 'always-live',
-    status: 'connected',
-    shaders: [],
-    orientation: 'horizontal',
-  };
-
   it('exports config with inputs and layout', () => {
     const inputs: Input[] = [minimalInput];
     const layout: Layout = 'grid';
@@ -116,5 +157,308 @@ describe('exportRoomConfig', () => {
     };
     const config = exportRoomConfig([mp4Input], 'grid');
     expect(config.inputs[0].mp4FileName).toBe('my_video.mp4');
+  });
+
+  it('includes timeline keyframes from the provided live state', () => {
+    const timelineState: RoomConfigTimelineState = {
+      tracks: [
+        {
+          id: 'track-1',
+          label: 'Track 1',
+          clips: [
+            {
+              id: 'clip-1',
+              inputId: minimalInput.inputId,
+              startMs: 0,
+              endMs: 10_000,
+              blockSettings: {
+                volume: 1,
+                showTitle: true,
+                shaders: [],
+                orientation: 'horizontal',
+                text: 'initial',
+              },
+              keyframes: [
+                {
+                  id: 'kf-0',
+                  timeMs: 0,
+                  blockSettings: {
+                    volume: 1,
+                    showTitle: true,
+                    shaders: [],
+                    orientation: 'horizontal',
+                    text: 'initial',
+                  },
+                },
+                {
+                  id: 'kf-1',
+                  timeMs: 2500,
+                  blockSettings: {
+                    volume: 0.5,
+                    showTitle: false,
+                    shaders: [],
+                    orientation: 'horizontal',
+                    text: 'updated',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      totalDurationMs: 10_000,
+      keyframeInterpolationMode: 'smooth',
+      pixelsPerSecond: 15,
+    };
+
+    const config = exportRoomConfig([minimalInput], 'grid', undefined, undefined, timelineState);
+
+    expect(config.timeline).toEqual({
+      totalDurationMs: 10_000,
+      keyframeInterpolationMode: 'smooth',
+      pixelsPerSecond: 15,
+      tracks: [
+        {
+          label: 'Track 1',
+          clips: [
+            {
+              inputIndex: 0,
+              startMs: 0,
+              endMs: 10_000,
+              blockSettings: {
+                volume: 1,
+                showTitle: true,
+                shaders: [],
+                orientation: 'horizontal',
+                text: 'initial',
+              },
+              keyframes: [
+                {
+                  id: 'kf-0',
+                  timeMs: 0,
+                  blockSettings: {
+                    volume: 1,
+                    showTitle: true,
+                    shaders: [],
+                    orientation: 'horizontal',
+                    text: 'initial',
+                  },
+                },
+                {
+                  id: 'kf-1',
+                  timeMs: 2500,
+                  blockSettings: {
+                    volume: 0.5,
+                    showTitle: false,
+                    shaders: [],
+                    orientation: 'horizontal',
+                    text: 'updated',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+  });
+});
+
+describe('timeline config persistence helpers', () => {
+  it('restores keyframes to local timeline storage without losing them', () => {
+    const timeline: RoomConfigTimeline = {
+      totalDurationMs: 12_000,
+      pixelsPerSecond: 24,
+      keyframeInterpolationMode: 'smooth',
+      tracks: [
+        {
+          label: 'Track 1',
+          clips: [
+            {
+              inputIndex: 0,
+              startMs: 1000,
+              endMs: 8000,
+              blockSettings: {
+                volume: 1,
+                showTitle: true,
+                shaders: [],
+                orientation: 'horizontal',
+                text: 'intro',
+              },
+              keyframes: [
+                {
+                  id: 'kf-a',
+                  timeMs: 0,
+                  blockSettings: {
+                    volume: 1,
+                    showTitle: true,
+                    shaders: [],
+                    orientation: 'horizontal',
+                    text: 'intro',
+                  },
+                },
+                {
+                  id: 'kf-b',
+                  timeMs: 3000,
+                  blockSettings: {
+                    volume: 0.2,
+                    showTitle: false,
+                    shaders: [],
+                    orientation: 'horizontal',
+                    text: 'middle',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    restoreTimelineToStorage(
+      'room-1',
+      timeline,
+      new Map<number, string>([[0, 'room::text::1']]),
+    );
+
+    expect(loadTimelineFromStorage('room-1')).toEqual({
+      totalDurationMs: 12_000,
+      keyframeInterpolationMode: 'smooth',
+      pixelsPerSecond: 24,
+      tracks: [
+        {
+          id: expect.any(String),
+          label: 'Track 1',
+          clips: [
+            {
+              id: expect.any(String),
+              inputId: 'room::text::1',
+              startMs: 1000,
+              endMs: 8000,
+              blockSettings: {
+                volume: 1,
+                showTitle: true,
+                shaders: [],
+                orientation: 'horizontal',
+                text: 'intro',
+              },
+              keyframes: [
+                {
+                  id: 'kf-a',
+                  timeMs: 0,
+                  blockSettings: {
+                    volume: 1,
+                    showTitle: true,
+                    shaders: [],
+                    orientation: 'horizontal',
+                    text: 'intro',
+                  },
+                },
+                {
+                  id: 'kf-b',
+                  timeMs: 3000,
+                  blockSettings: {
+                    volume: 0.2,
+                    showTitle: false,
+                    shaders: [],
+                    orientation: 'horizontal',
+                    text: 'middle',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+  });
+
+  it('prefers the live timeline state over stale local storage during export', () => {
+    const staleTimeline: RoomConfigTimeline = {
+      totalDurationMs: 5000,
+      pixelsPerSecond: 10,
+      keyframeInterpolationMode: 'step',
+      tracks: [
+        {
+          label: 'Track 1',
+          clips: [
+            {
+              inputIndex: 0,
+              startMs: 0,
+              endMs: 5000,
+              blockSettings: {
+                volume: 1,
+                showTitle: true,
+                shaders: [],
+                orientation: 'horizontal',
+                text: 'stale',
+              },
+              keyframes: [
+                {
+                  id: 'stale-kf',
+                  timeMs: 0,
+                  blockSettings: {
+                    volume: 1,
+                    showTitle: true,
+                    shaders: [],
+                    orientation: 'horizontal',
+                    text: 'stale',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+    restoreTimelineToStorage(
+      'room-2',
+      staleTimeline,
+      new Map<number, string>([[0, minimalInput.inputId]]),
+    );
+
+    const liveTimelineState: RoomConfigTimelineState = {
+      tracks: [
+        {
+          id: 'track-live',
+          label: 'Track 1',
+          clips: [
+            {
+              id: 'clip-live',
+              inputId: minimalInput.inputId,
+              startMs: 0,
+              endMs: 5000,
+              blockSettings: {
+                volume: 1,
+                showTitle: true,
+                shaders: [],
+                orientation: 'horizontal',
+                text: 'fresh',
+              },
+              keyframes: [
+                {
+                  id: 'live-kf',
+                  timeMs: 0,
+                  blockSettings: {
+                    volume: 1,
+                    showTitle: true,
+                    shaders: [],
+                    orientation: 'horizontal',
+                    text: 'fresh',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      totalDurationMs: 5000,
+      keyframeInterpolationMode: 'step',
+      pixelsPerSecond: 15,
+    };
+
+    expect(
+      resolveRoomConfigTimelineState('room-2', liveTimelineState),
+    ).toBe(liveTimelineState);
   });
 });

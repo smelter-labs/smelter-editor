@@ -10,7 +10,7 @@ import {
   exportRoomConfig,
   downloadRoomConfig,
   parseRoomConfig,
-  loadTimelineFromStorage,
+  resolveRoomConfigTimelineState,
   restoreTimelineToStorage,
   computeTimelineStateAtZero,
   buildInputUpdateFromBlockSettings,
@@ -68,7 +68,7 @@ export function ConfigurationSection({
   const handleExport = useCallback(async () => {
     setIsExporting(true);
     try {
-      const timelineState = loadTimelineFromStorage(roomId);
+      const timelineState = resolveRoomConfigTimelineState(roomId);
       const config = exportRoomConfig(
         inputs,
         layout,

@@ -102,17 +102,29 @@ export type RoomConfig = {
   exportedAt: string;
 };
 
+export type RoomConfigTimelineState = {
+  tracks: Track[];
+  totalDurationMs: number;
+  keyframeInterpolationMode: 'step' | 'smooth';
+  pixelsPerSecond: number;
+};
+
+export function resolveRoomConfigTimelineState(
+  roomId: string,
+  liveTimelineState?: RoomConfigTimelineState | null,
+): RoomConfigTimelineState | null {
+  if (liveTimelineState) {
+    return liveTimelineState;
+  }
+  return loadTimelineFromStorage(roomId);
+}
+
 export function exportRoomConfig(
   inputs: Input[],
   layout: Layout,
   resolution?: { width: number; height: number },
   transitionSettings?: RoomConfigTransitionSettings,
-  timelineState?: {
-    tracks: Track[];
-    totalDurationMs: number;
-    keyframeInterpolationMode: 'step' | 'smooth';
-    pixelsPerSecond: number;
-  },
+  timelineState?: RoomConfigTimelineState,
 ): RoomConfig {
   const inputIdToIndex = new Map<string, number>();
   inputs.forEach((input, idx) => inputIdToIndex.set(input.inputId, idx));

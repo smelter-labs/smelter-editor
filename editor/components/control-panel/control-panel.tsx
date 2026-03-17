@@ -50,6 +50,7 @@ import {
   downloadRoomConfig,
   parseRoomConfig,
   loadTimelineFromStorage,
+  resolveRoomConfigTimelineState,
   restoreTimelineToStorage,
   type RoomConfig,
   type RoomConfigInput,
@@ -84,6 +85,7 @@ import {
   BlockClipPropertiesPanel,
   type SelectedTimelineClip,
 } from './components/BlockClipPropertiesPanel';
+import type { TimelineState } from './hooks/use-timeline-state';
 import { useMotionScores } from '@/hooks/use-motion-scores';
 import { useMotionHistory } from '@/hooks/use-motion-history';
 import { InputMotionPanel } from './components/InputMotionPanel';
@@ -443,6 +445,36 @@ function ControlPanelInner({
   const [selectedTimelineClips, setSelectedTimelineClips] = useState<
     SelectedTimelineClip[]
   >([]);
+  const timelineStateRef = useRef<TimelineState | null>(null);
+  const timelineLoadStateRef = useRef<
+    ((state: TimelineState) => void) | null
+  >(null);
+
+  const handleTimelineStateChange = useCallback((state: TimelineState) => {
+    timelineStateRef.current = state;
+  }, []);
+
+  const handleTimelineLoadStateReady = useCallback(
+    (loadState: (state: TimelineState) => void) => {
+      timelineLoadStateRef.current = loadState;
+    },
+    [],
+  );
+
+  const getTimelineStateForConfig = useCallback(
+    () => timelineStateRef.current,
+    [],
+  );
+
+  const applyImportedTimelineState = useCallback(
+    (state: TimelineState | null) => {
+      if (state) {
+        timelineLoadStateRef.current?.(state);
+      }
+      timelineStateRef.current = state;
+    },
+    [],
+  );
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -454,6 +486,11 @@ function ControlPanelInner({
     return () =>
       window.removeEventListener('smelter:timeline:selected-clip', handler);
   }, []);
+
+  useEffect(() => {
+    timelineStateRef.current = null;
+    timelineLoadStateRef.current = null;
+  }, [roomId]);
 
   if (renderDashboard) {
     const addVideoSection = (
@@ -477,6 +514,8 @@ function ControlPanelInner({
           roomState={roomState}
           pendingWhipInputs={pendingWhipInputs}
           setPendingWhipInputs={handleSetPendingWhipInputs}
+          getTimelineStateForConfig={getTimelineStateForConfig}
+          applyImportedTimelineState={applyImportedTimelineState}
         />
       </div>
     );
@@ -521,6 +560,8 @@ function ControlPanelInner({
         isGuest={isGuest}
         guestInputId={activeCameraInputId || activeScreenshareInputId}
         fillContainer
+        onTimelineStateChange={handleTimelineStateChange}
+        onTimelineLoadStateReady={handleTimelineLoadStateReady}
       />
     );
 
@@ -615,6 +656,8 @@ function ControlPanelInner({
       isGuest={isGuest}
       guestInputId={activeCameraInputId || activeScreenshareInputId}
       fillContainer={false}
+      onTimelineStateChange={handleTimelineStateChange}
+      onTimelineLoadStateReady={handleTimelineLoadStateReady}
     />
   ) : null;
 
@@ -646,6 +689,8 @@ function ControlPanelInner({
               roomState={roomState}
               pendingWhipInputs={pendingWhipInputs}
               setPendingWhipInputs={handleSetPendingWhipInputs}
+              getTimelineStateForConfig={getTimelineStateForConfig}
+              applyImportedTimelineState={applyImportedTimelineState}
             />
           )}
         </>
@@ -673,10 +718,14 @@ function SettingsBar({
   roomState,
   pendingWhipInputs,
   setPendingWhipInputs,
+  getTimelineStateForConfig,
+  applyImportedTimelineState,
 }: {
   roomState: RoomState;
   pendingWhipInputs: PendingWhipInput[];
   setPendingWhipInputs: (inputs: PendingWhipInput[]) => void | Promise<void>;
+  getTimelineStateForConfig: () => TimelineState | null;
+  applyImportedTimelineState: (state: TimelineState | null) => void;
 }) {
   const { roomId, refreshState: handleRefreshState } = useControlPanelContext();
   const actions = useActions();
@@ -730,7 +779,10 @@ function SettingsBar({
   }, [roomId, roomState.isPublic, handleRefreshState, isTogglingPublic]);
 
   const buildConfig = useCallback(() => {
-    const timelineState = loadTimelineFromStorage(roomId);
+    const timelineState = resolveRoomConfigTimelineState(
+      roomId,
+      getTimelineStateForConfig(),
+    );
     return exportRoomConfig(
       roomState.inputs,
       roomState.layout,
@@ -745,7 +797,7 @@ function SettingsBar({
       },
       timelineState ?? undefined,
     );
-  }, [roomState, roomId]);
+  }, [getTimelineStateForConfig, roomState, roomId]);
 
   const handleExportLocal = useCallback(() => {
     setIsExporting(true);
@@ -943,6 +995,17 @@ function SettingsBar({
           );
         }
         restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
+        const restoredTimelineState = loadTimelineFromStorage(roomId);
+        if (restoredTimelineState) {
+          const nextTimelineState: TimelineState = {
+            ...restoredTimelineState,
+            playheadMs: 0,
+            isPlaying: false,
+          };
+          applyImportedTimelineState(nextTimelineState);
+        } else {
+          applyImportedTimelineState(null);
+        }
       }
 
       const orderedCreatedIds = createdInputIds
@@ -964,7 +1027,13 @@ function SettingsBar({
 
       await handleRefreshState();
     },
-    [roomId, roomState.inputs, handleRefreshState, setPendingWhipInputs],
+    [
+      roomId,
+      roomState.inputs,
+      handleRefreshState,
+      setPendingWhipInputs,
+      applyImportedTimelineState,
+    ],
   );
 
   const handleFileChange = useCallback(

@@ -9,7 +9,12 @@ import type { RoomInputState } from '../server/roomState';
 
 type PlaybackEvent = {
   timeMs: number;
-  type: 'connect' | 'disconnect' | 'transition-in' | 'transition-out';
+  type:
+    | 'connect'
+    | 'disconnect'
+    | 'transition-in'
+    | 'transition-out'
+    | 'keyframe';
   inputId: string;
   transition?: { type: string; durationMs: number };
 };
@@ -104,6 +109,23 @@ function compileEvents(
           type: 'disconnect',
           inputId: clip.inputId,
         });
+      }
+
+      if (mode === 'step') {
+        for (const keyframe of getNormalizedKeyframes(clip)) {
+          const keyframeTimeMs = clip.startMs + keyframe.timeMs;
+          if (
+            keyframeTimeMs > fromMs &&
+            keyframeTimeMs > clip.startMs &&
+            keyframeTimeMs < clip.endMs
+          ) {
+            events.push({
+              timeMs: keyframeTimeMs,
+              type: 'keyframe',
+              inputId: clip.inputId,
+            });
+          }
+        }
       }
 
       const intro = resolveBlockSettingsAtTime(clip, clip.startMs, mode)
@@ -510,6 +532,10 @@ export class TimelinePlayer {
     return this.playing;
   }
 
+  public updateConfig(config: TimelineConfig): void {
+    this.config = config;
+  }
+
   public async start(fromMs?: number): Promise<void> {
     const playheadMs = fromMs ?? 0;
     console.log(
@@ -890,6 +916,8 @@ export class TimelinePlayer {
             err,
           ),
         );
+    } else if (event.type === 'keyframe') {
+      // Keyframe timing is handled by the shared post-event apply below.
     }
 
     this.applyOrderIfChanged(event.timeMs);
