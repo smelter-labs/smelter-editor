@@ -63,9 +63,10 @@ RUN pipx install streamlink
 RUN pip3 install --break-system-packages opencv-python-headless numpy
 ENV PATH=/home/smelter/.local/bin:$PATH
 
+ARG CACHE_BUST=1
 COPY --chown=$USERNAME:$USERNAME  . /home/$USERNAME/demo
 WORKDIR /home/$USERNAME/demo/server
 RUN mkdir -p /home/$USERNAME/demo/server/recordings /home/$USERNAME/demo/server/configs
-RUN CI=1 pnpm install && pnpm build
+RUN CI=1 pnpm install && pnpm --filter @smelter-editor/types build && pnpm build
 
 ENTRYPOINT ["/home/smelter/demo/entrypoint.sh"]

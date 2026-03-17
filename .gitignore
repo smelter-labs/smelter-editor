@@ -53,3 +53,5 @@ server/dist/
 recordings/
 configs/
 server/motion/.venv/
+packages/types/dist/
+packages/types/node_modules/

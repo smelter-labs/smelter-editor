@@ -69,6 +69,24 @@ export async function stopRecording(
   return client.stopRecording(roomId);
 }
 
+export async function freezeRoom(roomId: string): Promise<{
+  screenshotUrl: string;
+  mp4Positions: Record<string, number>;
+  frozen: true;
+}> {
+  const result = await client.freezeRoom(roomId);
+  return {
+    ...result,
+    screenshotUrl: `${BASE_URL}${result.screenshotUrl}`,
+  };
+}
+
+export async function unfreezeRoom(
+  roomId: string,
+): Promise<{ status: string }> {
+  return client.unfreezeRoom(roomId);
+}
+
 export async function getRecordings(): Promise<RecordingInfo[]> {
   return client.getRecordings();
 }
@@ -260,11 +278,27 @@ export async function connectInput(roomId: string, inputId: string) {
   return client.connectInput(roomId, inputId);
 }
 
-export async function hideInput(roomId: string, inputId: string, activeTransition?: { type: string; durationMs: number; direction: 'in' | 'out' }) {
+export async function hideInput(
+  roomId: string,
+  inputId: string,
+  activeTransition?: {
+    type: string;
+    durationMs: number;
+    direction: 'in' | 'out';
+  },
+) {
   return client.hideInput(roomId, inputId, activeTransition);
 }
 
-export async function showInput(roomId: string, inputId: string, activeTransition?: { type: string; durationMs: number; direction: 'in' | 'out' }) {
+export async function showInput(
+  roomId: string,
+  inputId: string,
+  activeTransition?: {
+    type: string;
+    durationMs: number;
+    direction: 'in' | 'out';
+  },
+) {
   return client.showInput(roomId, inputId, activeTransition);
 }
 

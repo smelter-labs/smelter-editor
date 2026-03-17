@@ -1,4 +1,4 @@
-import type { ShaderParamConfig } from '../types';
+import type { ShaderParamConfig } from '@smelter-editor/types';
 
 export type SnakeGameCell = {
   x: number;

@@ -755,24 +755,6 @@ export default function InputEntry({
     [input, roomId, refreshState],
   );
 
-  const handleApplyPreset = useCallback(
-    async (shaders: ShaderConfig[], mode: 'replace' | 'append') => {
-      const newConfig =
-        mode === 'replace' ? shaders : [...(input.shaders || []), ...shaders];
-      try {
-        await actions.updateInput(roomId, input.inputId, {
-          shaders: newConfig,
-          volume: input.volume,
-        });
-        await refreshState();
-        ensureFxOpen();
-      } catch {
-        // ignore
-      }
-    },
-    [input, roomId, refreshState, ensureFxOpen],
-  );
-
   if (fxModeOnly && effectiveShowSliders) {
     return (
       <>
@@ -799,7 +781,6 @@ export default function InputEntry({
             onSliderChange={handleSliderChange}
             getShaderParamConfig={getShaderParamConfig}
             onOpenAddShader={() => setIsAddShaderModalOpen(true)}
-            onApplyPreset={handleApplyPreset}
           />
         </div>
 
@@ -1222,7 +1203,6 @@ export default function InputEntry({
               onSliderChange={handleSliderChange}
               getShaderParamConfig={getShaderParamConfig}
               onOpenAddShader={() => setIsAddShaderModalOpen(true)}
-              onApplyPreset={handleApplyPreset}
             />
           </div>
         )}

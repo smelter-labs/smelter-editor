@@ -244,6 +244,7 @@ routes.get<RoomIdParams>('/room/:roomId', { schema: { params: RoomIdParamsSchema
     swapFadeOutDurationMs,
     newsStripEnabled,
     isRecording: room.hasActiveRecording(),
+    isFrozen: room.isFrozen(),
   });
 });
 
@@ -325,6 +326,67 @@ routes.post<RoomIdParams>('/room/:roomId/record/stop', { schema: { params: RoomI
     res
       .status(400)
       .send({ status: 'error', message: err?.message ?? 'Failed to stop recording' });
+  }
+});
+
+const SCREENSHOTS_DIR = path.join(__dirname, '../../screenshots');
+
+routes.post<RoomIdParams>('/room/:roomId/freeze', { schema: { params: RoomIdParamsSchema } }, async (req, res) => {
+  const { roomId } = req.params;
+  console.log('[request] Freeze room', { roomId });
+  try {
+    const room = state.getRoom(roomId);
+    const result = await room.freeze();
+
+    try {
+      await pruneOldScreenshots(20);
+    } catch (err) {
+      console.error('Failed to prune old screenshots', err);
+    }
+
+    res.status(200).send(result);
+  } catch (err: any) {
+    console.error('Failed to freeze room', err?.body ?? err);
+    res
+      .status(400)
+      .send({ status: 'error', message: err?.message ?? 'Failed to freeze room' });
+  }
+});
+
+routes.post<RoomIdParams>('/room/:roomId/unfreeze', { schema: { params: RoomIdParamsSchema } }, async (req, res) => {
+  const { roomId } = req.params;
+  console.log('[request] Unfreeze room', { roomId });
+  try {
+    const room = state.getRoom(roomId);
+    await room.unfreeze();
+    res.status(200).send({ status: 'ok' });
+  } catch (err: any) {
+    console.error('Failed to unfreeze room', err?.body ?? err);
+    res
+      .status(400)
+      .send({ status: 'error', message: err?.message ?? 'Failed to unfreeze room' });
+  }
+});
+
+routes.get<{ Params: { fileName: string } }>('/screenshots/:fileName', async (req, res) => {
+  const { fileName } = req.params;
+  const filePath = path.join(SCREENSHOTS_DIR, path.basename(fileName));
+
+  if (!(await pathExists(filePath))) {
+    return res.status(404).send({ error: 'Screenshot not found' });
+  }
+
+  try {
+    const fileStat = await stat(filePath);
+    const data = await readFile(filePath);
+
+    res.header('Content-Type', 'image/jpeg');
+    res.header('Cache-Control', 'public, max-age=3600');
+    res.header('Content-Length', fileStat.size.toString());
+    res.send(data);
+  } catch (err: any) {
+    console.error('Failed to read screenshot file', { filePath, err });
+    res.status(500).send({ error: 'Failed to read screenshot file' });
   }
 });
 
@@ -773,3 +835,31 @@ routes.delete<RoomIdParams>('/room/:roomId', { schema: { params: RoomIdParamsSch
   await state.deleteRoom(roomId);
   res.status(200).send({ status: 'ok' });
 });
+
+async function pruneOldScreenshots(maxCount: number): Promise<void> {
+  if (!(await pathExists(SCREENSHOTS_DIR))) return;
+  let entries: string[];
+  try {
+    entries = await readdir(SCREENSHOTS_DIR);
+  } catch {
+    return;
+  }
+  const jpgs = entries.filter(e => e.toLowerCase().endsWith('.jpg'));
+  if (jpgs.length <= maxCount) return;
+
+  const parsed = jpgs.map(name => {
+    const match = name.match(/(\d+)\.jpg$/);
+    return { name, timestamp: match ? Number(match[1]) : 0 };
+  });
+  parsed.sort((a, b) => a.timestamp - b.timestamp);
+
+  const { remove } = await import('fs-extra');
+  const toDelete = parsed.slice(0, Math.max(0, parsed.length - maxCount));
+  for (const file of toDelete) {
+    try {
+      await remove(path.join(SCREENSHOTS_DIR, file.name));
+    } catch {
+      // best-effort
+    }
+  }
+}

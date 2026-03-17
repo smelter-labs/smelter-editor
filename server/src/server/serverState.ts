@@ -2,6 +2,7 @@ import type { RegisterInputOptions } from './roomState';
 import { RoomState } from './roomState';
 import { v4 as uuidv4 } from 'uuid';
 import { errorCodes } from 'fastify';
+import { Mutex } from 'async-mutex';
 import { SmelterInstance } from '../smelter';
 import { type Resolution, RESOLUTION_PRESETS } from '../types';
 import { pickUniqueRoomName, type RoomNameEntry } from './roomNames';
@@ -20,8 +21,11 @@ const WHIP_STALE_TTL_MS =
   Number.isFinite(whipStaleTtlFromEnv) && whipStaleTtlFromEnv > 0
     ? whipStaleTtlFromEnv
     : 15_000;
-class ServerState {
+export class ServerState {
+  private readonly mutex = new Mutex();
   private rooms: Record<string, RoomState> = {};
+  private monitorInterval: NodeJS.Timeout;
+
   public getRooms(): RoomState[] {
     return Object.values(this.rooms);
   }
@@ -39,9 +43,13 @@ class ServerState {
   }
 
   constructor() {
-    setInterval(async () => {
+    this.monitorInterval = setInterval(async () => {
       await this.monitorConnectedRooms();
     }, 1000);
+  }
+
+  public stopMonitoring() {
+    clearInterval(this.monitorInterval);
   }
 
   private getUsedRoomNames(): Set<string> {
@@ -59,21 +67,23 @@ class ServerState {
     skipDefaultInputs: boolean = false,
     resolution?: Resolution,
   ): Promise<CreateRoomResult> {
-    const roomId = uuidv4();
-    const roomName = pickUniqueRoomName(this.getUsedRoomNames());
-    const resolvedResolution = resolution ?? RESOLUTION_PRESETS['1440p'];
-    const smelterOutput = await SmelterInstance.registerOutput(roomId, resolvedResolution);
-    const room = new RoomState(roomId, smelterOutput, initInputs, skipDefaultInputs, roomName);
-    try {
-      await room.init();
-    } catch (error) {
-      await room.deleteRoom().catch((cleanupError) => {
-        console.error(`Failed to cleanup room ${roomId} after init error`, cleanupError);
-      });
-      throw error;
-    }
-    this.rooms[roomId] = room;
-    return { roomId, roomName, room };
+    return this.mutex.runExclusive(async () => {
+      const roomId = uuidv4();
+      const roomName = pickUniqueRoomName(this.getUsedRoomNames());
+      const resolvedResolution = resolution ?? RESOLUTION_PRESETS['1440p'];
+      const smelterOutput = await SmelterInstance.registerOutput(roomId, resolvedResolution);
+      const room = new RoomState(roomId, smelterOutput, initInputs, skipDefaultInputs, roomName);
+      try {
+        await room.init();
+      } catch (error) {
+        await room.deleteRoom().catch((cleanupError) => {
+          console.error(`Failed to cleanup room ${roomId} after init error`, cleanupError);
+        });
+        throw error;
+      }
+      this.rooms[roomId] = room;
+      return { roomId, roomName, room };
+    });
   }
 
   public getRoom(roomId: string): RoomState {
@@ -85,6 +95,10 @@ class ServerState {
   }
 
   public async deleteRoom(roomId: string) {
+    return this.mutex.runExclusive(() => this._deleteRoom(roomId));
+  }
+
+  private async _deleteRoom(roomId: string) {
     const room = this.rooms[roomId];
     delete this.rooms[roomId];
     if (!room) {
@@ -94,55 +108,55 @@ class ServerState {
   }
 
   private async monitorConnectedRooms() {
-    let rooms = Object.entries(this.rooms);
-    rooms.sort(([_aId, aRoom], [_bId, bRoom]) => bRoom.creationTimestamp - aRoom.creationTimestamp);
-    // Remove WHIP inputs that haven't acked within configured TTL.
-    for (const [_roomId, room] of rooms) {
-      await room.removeStaleWhipInputs(WHIP_STALE_TTL_MS);
-    }
-    for (const [roomId, room] of rooms) {
-      if (Date.now() - room.lastReadTimestamp > 60_000) {
-        try {
-          console.log('Stop from inactivity');
-          await this.deleteRoom(roomId);
-        } catch (err: any) {
-          console.log(err, `Failed to remove room ${roomId}`);
+    await this.mutex.runExclusive(async () => {
+      let rooms = Object.entries(this.rooms);
+      rooms.sort(([_aId, aRoom], [_bId, bRoom]) => bRoom.creationTimestamp - aRoom.creationTimestamp);
+      for (const [_roomId, room] of rooms) {
+        await room.removeStaleWhipInputs(WHIP_STALE_TTL_MS);
+      }
+      for (const [roomId, room] of rooms) {
+        if (Date.now() - room.lastReadTimestamp > 60_000) {
+          try {
+            console.log('Stop from inactivity');
+            await this._deleteRoom(roomId);
+          } catch (err: any) {
+            console.log(err, `Failed to remove room ${roomId}`);
+          }
         }
       }
-    }
 
-    // recalculate the rooms
-    rooms = Object.entries(this.rooms);
-    rooms.sort(([_aId, aRoom], [_bId, bRoom]) => bRoom.creationTimestamp - aRoom.creationTimestamp);
+      rooms = Object.entries(this.rooms);
+      rooms.sort(([_aId, aRoom], [_bId, bRoom]) => bRoom.creationTimestamp - aRoom.creationTimestamp);
 
-    if (rooms.length > ROOM_COUNT_HARD_LIMIT) {
-      for (const [roomId, _room] of rooms.slice(ROOM_COUNT_HARD_LIMIT - rooms.length)) {
-        try {
-          console.log('Stop from hard limit');
-          await this.deleteRoom(roomId).catch(() => {});
-        } catch (err: any) {
-          console.log(err, `Failed to remove room ${roomId}`);
+      if (rooms.length > ROOM_COUNT_HARD_LIMIT) {
+        for (const [roomId, _room] of rooms.slice(ROOM_COUNT_HARD_LIMIT - rooms.length)) {
+          try {
+            console.log('Stop from hard limit');
+            await this._deleteRoom(roomId).catch(() => {});
+          } catch (err: any) {
+            console.log(err, `Failed to remove room ${roomId}`);
+          }
         }
       }
-    }
 
-    if (rooms.length > ROOM_COUNT_SOFT_LIMIT) {
-      for (const [roomId, room] of rooms.slice(ROOM_COUNT_SOFT_LIMIT - rooms.length)) {
-        if (room.pendingDelete) {
-          continue;
-        }
-        try {
-          console.log('Schedule stop from soft limit');
-          room.pendingDelete = true;
-          setTimeout(async () => {
-            console.log('Stop from soft limit');
-            await this.deleteRoom(roomId).catch(() => {});
-          }, SOFT_LIMIT_ROOM_DELETE_DELAY);
-        } catch (err: any) {
-          console.log(err, `Failed to remove room ${roomId}`);
+      if (rooms.length > ROOM_COUNT_SOFT_LIMIT) {
+        for (const [roomId, room] of rooms.slice(ROOM_COUNT_SOFT_LIMIT - rooms.length)) {
+          if (room.pendingDelete) {
+            continue;
+          }
+          try {
+            console.log('Schedule stop from soft limit');
+            room.pendingDelete = true;
+            setTimeout(async () => {
+              console.log('Stop from soft limit');
+              await this.deleteRoom(roomId).catch(() => {});
+            }, SOFT_LIMIT_ROOM_DELETE_DELAY);
+          } catch (err: any) {
+            console.log(err, `Failed to remove room ${roomId}`);
+          }
         }
       }
-    }
+    });
   }
 }
 

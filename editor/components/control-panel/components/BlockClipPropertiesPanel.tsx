@@ -396,7 +396,11 @@ export function BlockClipPropertiesPanel({
   const [mp4DurationLoading, setMp4DurationLoading] = useState(false);
   const mp4DurationFetchedRef = useRef<string | null>(null);
   const applyClipPatchRef = useRef<
-    ((patch: Partial<BlockSettings>, options?: { refresh?: boolean }) => Promise<void>) | null
+    | ((
+        patch: Partial<BlockSettings>,
+        options?: { refresh?: boolean },
+      ) => Promise<void>)
+    | null
   >(null);
   const attachBtnRef = useRef<HTMLButtonElement>(null);
   const [attachMenuPos, setAttachMenuPos] = useState<{
@@ -437,7 +441,8 @@ export function BlockClipPropertiesPanel({
   } = useWhipConnectionsContext();
   const { refreshState: ctxRefreshState } = useControlPanelContext();
 
-  const primaryClip = selectedTimelineClips.length > 0 ? selectedTimelineClips[0] : null;
+  const primaryClip =
+    selectedTimelineClips.length > 0 ? selectedTimelineClips[0] : null;
   const selectedInput = primaryClip
     ? inputs.find((i) => i.inputId === primaryClip.inputId)
     : null;
@@ -468,7 +473,7 @@ export function BlockClipPropertiesPanel({
       })
       .catch(() => {})
       .finally(() => setMp4DurationLoading(false));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTimelineClip?.clipId, selectedInput?.type, selectedInput?.title]);
 
   const [connectingType, setConnectingType] = useState<
@@ -710,6 +715,16 @@ export function BlockClipPropertiesPanel({
     [selectedTimelineClips, applyClipPatch],
   );
 
+  const handleApplyPreset = useCallback(
+    (shaders: ShaderConfig[], mode: 'replace' | 'append') => {
+      const current = selectedTimelineClips[0]?.blockSettings.shaders || [];
+      const newShaders =
+        mode === 'replace' ? shaders : [...current, ...shaders];
+      void applyClipPatch({ shaders: newShaders });
+    },
+    [selectedTimelineClips, applyClipPatch],
+  );
+
   const handleSliderChange = useCallback(
     (shaderId: string, paramName: string, newValue: number) => {
       if (selectedTimelineClips.length === 0) return;
@@ -857,15 +872,15 @@ export function BlockClipPropertiesPanel({
   const inlineShaderRemove = (sid: string) => {
     if (inlineShaderView?.source === 'snake1') {
       void applyClipPatch({
-        snake1Shaders: (
-          effectiveClip.blockSettings.snake1Shaders ?? []
-        ).filter((s) => s.shaderId !== sid),
+        snake1Shaders: (effectiveClip.blockSettings.snake1Shaders ?? []).filter(
+          (s) => s.shaderId !== sid,
+        ),
       });
     } else if (inlineShaderView?.source === 'snake2') {
       void applyClipPatch({
-        snake2Shaders: (
-          effectiveClip.blockSettings.snake2Shaders ?? []
-        ).filter((s) => s.shaderId !== sid),
+        snake2Shaders: (effectiveClip.blockSettings.snake2Shaders ?? []).filter(
+          (s) => s.shaderId !== sid,
+        ),
       });
     } else {
       handleShaderRemove(sid);
@@ -1065,9 +1080,7 @@ export function BlockClipPropertiesPanel({
           <span className='text-xs text-neutral-400'>Absolute position</span>
           <input
             type='checkbox'
-            checked={
-              effectiveClip.blockSettings.absolutePosition ?? false
-            }
+            checked={effectiveClip.blockSettings.absolutePosition ?? false}
             onChange={(e) => {
               const enabled = e.target.checked;
               if (enabled && resolution) {
@@ -1126,8 +1139,8 @@ export function BlockClipPropertiesPanel({
                   step={50}
                   className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
                   value={
-                    effectiveClip.blockSettings
-                      .absoluteTransitionDurationMs ?? 300
+                    effectiveClip.blockSettings.absoluteTransitionDurationMs ??
+                    300
                   }
                   onChange={(e) =>
                     void applyClipPatch({
@@ -1146,8 +1159,8 @@ export function BlockClipPropertiesPanel({
                 <select
                   className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
                   value={
-                    effectiveClip.blockSettings
-                      .absoluteTransitionEasing ?? 'linear'
+                    effectiveClip.blockSettings.absoluteTransitionEasing ??
+                    'linear'
                   }
                   onChange={(e) =>
                     void applyClipPatch({
@@ -1203,19 +1216,25 @@ export function BlockClipPropertiesPanel({
           label='Intro'
           transition={effectiveClip.blockSettings.introTransition}
           maxDurationMs={
-            (effectiveClip.endMs - effectiveClip.startMs) -
+            effectiveClip.endMs -
+            effectiveClip.startMs -
             (effectiveClip.blockSettings.outroTransition?.durationMs ?? 0)
           }
-          onChange={(t) => void applyClipPatch({ introTransition: t }, { refresh: false })}
+          onChange={(t) =>
+            void applyClipPatch({ introTransition: t }, { refresh: false })
+          }
         />
         <TransitionRow
           label='Outro'
           transition={effectiveClip.blockSettings.outroTransition}
           maxDurationMs={
-            (effectiveClip.endMs - effectiveClip.startMs) -
+            effectiveClip.endMs -
+            effectiveClip.startMs -
             (effectiveClip.blockSettings.introTransition?.durationMs ?? 0)
           }
-          onChange={(t) => void applyClipPatch({ outroTransition: t }, { refresh: false })}
+          onChange={(t) =>
+            void applyClipPatch({ outroTransition: t }, { refresh: false })
+          }
         />
       </div>
       {selectedInput?.type === 'local-mp4' && (
@@ -1234,8 +1253,7 @@ export function BlockClipPropertiesPanel({
               className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
               value={
                 Math.round(
-                  ((effectiveClip.blockSettings.mp4PlayFromMs ?? 0) /
-                    1000) *
+                  ((effectiveClip.blockSettings.mp4PlayFromMs ?? 0) / 1000) *
                     10,
                 ) / 10
               }
@@ -1263,10 +1281,12 @@ export function BlockClipPropertiesPanel({
           </div>
           {effectiveClip.blockSettings.mp4DurationMs != null && (
             <div className='text-[10px] text-neutral-500 mt-1'>
-              Duration: {(effectiveClip.blockSettings.mp4DurationMs / 1000).toFixed(1)}s
+              Duration:{' '}
+              {(effectiveClip.blockSettings.mp4DurationMs / 1000).toFixed(1)}s
               {effectiveClip.blockSettings.mp4Loop === false && (
                 <span>
-                  {' '}· Max block:{' '}
+                  {' '}
+                  · Max block:{' '}
                   {(
                     Math.max(
                       0,
@@ -1365,9 +1385,7 @@ export function BlockClipPropertiesPanel({
               max={1}
               step={0.01}
               className='w-full'
-              value={
-                effectiveClip.blockSettings.gameGridLineAlpha ?? 1.0
-              }
+              value={effectiveClip.blockSettings.gameGridLineAlpha ?? 1.0}
               onChange={(e) =>
                 void applyClipPatch({
                   gameGridLineAlpha: Number(e.target.value),
@@ -1436,8 +1454,7 @@ export function BlockClipPropertiesPanel({
             className={`w-3.5 h-3.5 ${(effectiveClip.blockSettings.attachedInputIds?.length ?? 0) > 0 ? 'text-blue-400' : 'text-neutral-400'}`}
           />
           <span className='text-neutral-300'>
-            {(effectiveClip.blockSettings.attachedInputIds?.length ??
-              0) > 0
+            {(effectiveClip.blockSettings.attachedInputIds?.length ?? 0) > 0
               ? `${effectiveClip.blockSettings.attachedInputIds!.length} attached`
               : 'None'}
           </span>
@@ -1529,9 +1546,7 @@ export function BlockClipPropertiesPanel({
               <input
                 type='color'
                 className='w-full h-8 bg-neutral-800 border border-neutral-700'
-                value={
-                  effectiveClip.blockSettings.textColor || '#ffffff'
-                }
+                value={effectiveClip.blockSettings.textColor || '#ffffff'}
                 onChange={(e) =>
                   void applyClipPatch({ textColor: e.target.value })
                 }
@@ -1605,9 +1620,7 @@ export function BlockClipPropertiesPanel({
             <span className='text-xs text-neutral-400'>Scroll loop</span>
             <input
               type='checkbox'
-              checked={
-                effectiveClip.blockSettings.textScrollLoop ?? true
-              }
+              checked={effectiveClip.blockSettings.textScrollLoop ?? true}
               onChange={(e) =>
                 void applyClipPatch({ textScrollLoop: e.target.checked })
               }
@@ -1636,6 +1649,7 @@ export function BlockClipPropertiesPanel({
           onOpenShaderInline={(shaderId) =>
             setInlineShaderView({ shaderId, source: 'block' })
           }
+          onApplyPreset={handleApplyPreset}
         />
       </div>
       <AddShaderModal
@@ -1644,9 +1658,7 @@ export function BlockClipPropertiesPanel({
         availableShaders={availableShaders}
         addedShaderIds={
           new Set(
-            (effectiveClip.blockSettings.shaders || []).map(
-              (s) => s.shaderId,
-            ),
+            (effectiveClip.blockSettings.shaders || []).map((s) => s.shaderId),
           )
         }
         onAddShader={handleShaderToggle}

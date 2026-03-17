@@ -36,5 +36,9 @@ export type {
   SavedConfigInfo,
 } from './room';
 
-export type { TransitionType, TransitionConfig, ActiveTransition } from './transition';
-export { parseTransitionConfig } from './transition';
+export type {
+  TransitionType,
+  TransitionConfig,
+  ActiveTransition,
+} from './transition';
+export { isTransitionType, parseTransitionConfig } from './transition';

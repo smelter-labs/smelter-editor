@@ -1,9 +1,9 @@
 'use client';
 
 import { useReducer, useEffect, useCallback, useRef, useState } from 'react';
-import type { Input, ShaderConfig, TransitionConfig } from '@/lib/types';
+import type { Input } from '@/lib/types';
 import { parseTransitionConfig } from '@/lib/types';
-import type { SnakeEventShaderConfig } from '@/lib/snake-game-types';
+import type { TimelineBlockSettings } from '@smelter-editor/types';
 import {
   loadTimeline,
   saveTimeline,
@@ -26,42 +26,8 @@ export type Track = {
   clips: Clip[];
 };
 
-export type BlockSettings = {
-  volume: number;
-  showTitle: boolean;
-  shaders: Input['shaders'];
-  orientation: Input['orientation'];
-  text?: string;
-  textAlign?: Input['textAlign'];
-  textColor?: string;
-  textMaxLines?: number;
-  textScrollSpeed?: number;
-  textScrollLoop?: boolean;
-  textFontSize?: number;
-  borderColor?: string;
-  borderWidth?: number;
-  attachedInputIds?: string[];
-  gameBackgroundColor?: string;
-  gameCellGap?: number;
-  gameBoardBorderColor?: string;
-  gameBoardBorderWidth?: number;
-  gameGridLineColor?: string;
-  gameGridLineAlpha?: number;
-  snakeEventShaders?: SnakeEventShaderConfig;
-  snake1Shaders?: ShaderConfig[];
-  snake2Shaders?: ShaderConfig[];
-  absolutePosition?: boolean;
-  absoluteTop?: number;
-  absoluteLeft?: number;
-  absoluteWidth?: number;
-  absoluteHeight?: number;
-  absoluteTransitionDurationMs?: number;
-  absoluteTransitionEasing?: string;
-  mp4PlayFromMs?: number;
-  mp4Loop?: boolean;
+export type BlockSettings = TimelineBlockSettings & {
   mp4DurationMs?: number;
-  introTransition?: TransitionConfig;
-  outroTransition?: TransitionConfig;
 };
 
 /** @deprecated Use `Clip` instead. Kept for backwards compat with room-config. */
@@ -417,18 +383,17 @@ export function timelineReducer(
 
       // Keep ALL clips on existing tracks. Disconnected clips that have a
       // replacement get their inputId swapped; the rest stay as placeholders.
-      const newTracks: Track[] = state.tracks
-        .map((track) => ({
-          ...track,
-          clips: track.clips.map((clip) => {
-            const replacement = replacementMap.get(clip.inputId);
-            const resolvedId = replacement ?? clip.inputId;
-            return ensureClipBlockSettings(
-              replacement ? { ...clip, inputId: resolvedId } : clip,
-              inputById.get(resolvedId),
-            );
-          }),
-        }));
+      const newTracks: Track[] = state.tracks.map((track) => ({
+        ...track,
+        clips: track.clips.map((clip) => {
+          const replacement = replacementMap.get(clip.inputId);
+          const resolvedId = replacement ?? clip.inputId;
+          return ensureClipBlockSettings(
+            replacement ? { ...clip, inputId: resolvedId } : clip,
+            inputById.get(resolvedId),
+          );
+        }),
+      }));
 
       // For each input that has no clips on any existing track, create a new track
       const nowCoveredInputIds = new Set<string>();
@@ -810,10 +775,7 @@ export function timelineReducer(
                     : clip.blockSettings.attachedInputIds,
               };
               let endMs = clip.endMs;
-              if (
-                merged.mp4Loop === false &&
-                merged.mp4DurationMs != null
-              ) {
+              if (merged.mp4Loop === false && merged.mp4DurationMs != null) {
                 const maxDuration =
                   merged.mp4DurationMs - (merged.mp4PlayFromMs ?? 0);
                 if (maxDuration > 0 && endMs - clip.startMs > maxDuration) {
@@ -854,13 +816,10 @@ export function timelineReducer(
       const deleteSet = new Set(
         action.clips.map((c) => `${c.trackId}:${c.clipId}`),
       );
-      const newTracks = state.tracks
-        .map((track) => ({
-          ...track,
-          clips: track.clips.filter(
-            (c) => !deleteSet.has(`${track.id}:${c.id}`),
-          ),
-        }));
+      const newTracks = state.tracks.map((track) => ({
+        ...track,
+        clips: track.clips.filter((c) => !deleteSet.has(`${track.id}:${c.id}`)),
+      }));
       return { ...state, tracks: newTracks };
     }
 
@@ -869,7 +828,8 @@ export function timelineReducer(
         .map((track) => ({
           ...track,
           clips: track.clips.filter((c) => c.inputId !== action.inputId),
-        }));
+        }))
+        .filter((track) => track.clips.length > 0);
       return { ...state, tracks: newTracks };
     }
 
