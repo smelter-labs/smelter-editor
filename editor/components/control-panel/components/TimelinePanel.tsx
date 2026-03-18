@@ -128,6 +128,114 @@ function formatMs(ms: number): string {
   return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
 }
 
+// ── Keyframe diff ────────────────────────────────────────
+
+function computeKeyframeDiff(
+  prev: import('../hooks/use-timeline-state').BlockSettings,
+  next: import('../hooks/use-timeline-state').BlockSettings,
+): string[] {
+  const diffs: string[] = [];
+
+  const fmtNum = (v: number) =>
+    Number.isInteger(v) ? String(v) : v.toFixed(2);
+  const fmtBool = (v: boolean) => (v ? 'on' : 'off');
+
+  const primitiveKeys: {
+    key: keyof import('../hooks/use-timeline-state').BlockSettings;
+    label: string;
+    fmt?: (v: unknown) => string;
+  }[] = [
+    { key: 'volume', label: 'volume', fmt: (v) => fmtNum(v as number) },
+    { key: 'showTitle', label: 'showTitle', fmt: (v) => fmtBool(v as boolean) },
+    { key: 'orientation', label: 'orientation' },
+    { key: 'text', label: 'text' },
+    { key: 'textAlign', label: 'textAlign' },
+    { key: 'textColor', label: 'textColor' },
+    { key: 'textMaxLines', label: 'textMaxLines', fmt: (v) => fmtNum(v as number) },
+    { key: 'textScrollSpeed', label: 'textScrollSpeed', fmt: (v) => fmtNum(v as number) },
+    { key: 'textScrollLoop', label: 'textScrollLoop', fmt: (v) => fmtBool(v as boolean) },
+    { key: 'textFontSize', label: 'textFontSize', fmt: (v) => fmtNum(v as number) },
+    { key: 'borderColor', label: 'borderColor' },
+    { key: 'borderWidth', label: 'borderWidth', fmt: (v) => fmtNum(v as number) },
+    { key: 'absolutePosition', label: 'absolutePosition', fmt: (v) => fmtBool(v as boolean) },
+    { key: 'absoluteTop', label: 'absoluteTop', fmt: (v) => fmtNum(v as number) },
+    { key: 'absoluteLeft', label: 'absoluteLeft', fmt: (v) => fmtNum(v as number) },
+    { key: 'absoluteWidth', label: 'absoluteWidth', fmt: (v) => fmtNum(v as number) },
+    { key: 'absoluteHeight', label: 'absoluteHeight', fmt: (v) => fmtNum(v as number) },
+    { key: 'absoluteTransitionDurationMs', label: 'absTrDuration', fmt: (v) => `${v}ms` },
+    { key: 'absoluteTransitionEasing', label: 'absTrEasing' },
+    { key: 'mp4PlayFromMs', label: 'mp4PlayFrom', fmt: (v) => `${v}ms` },
+    { key: 'mp4Loop', label: 'mp4Loop', fmt: (v) => fmtBool(v as boolean) },
+    { key: 'gameBackgroundColor', label: 'gameBgColor' },
+    { key: 'gameCellGap', label: 'gameCellGap', fmt: (v) => fmtNum(v as number) },
+    { key: 'gameBoardBorderColor', label: 'gameBorderColor' },
+    { key: 'gameBoardBorderWidth', label: 'gameBorderWidth', fmt: (v) => fmtNum(v as number) },
+    { key: 'gameGridLineColor', label: 'gameGridColor' },
+    { key: 'gameGridLineAlpha', label: 'gameGridAlpha', fmt: (v) => fmtNum(v as number) },
+  ];
+
+  for (const { key, label, fmt } of primitiveKeys) {
+    const a = prev[key];
+    const b = next[key];
+    if (a === b) continue;
+    if (a == null && b == null) continue;
+    const format = fmt ?? ((v: unknown) => String(v));
+    if (a == null) {
+      diffs.push(`${label}: → ${format(b)}`);
+    } else if (b == null) {
+      diffs.push(`${label}: ${format(a)} → (none)`);
+    } else {
+      diffs.push(`${label}: ${format(a)} → ${format(b)}`);
+    }
+  }
+
+  const shaderSummary = (s: import('@/lib/types').ShaderConfig[]) =>
+    s
+      .filter((x) => x.enabled)
+      .map((x) => x.shaderName)
+      .join(', ') || '(none)';
+
+  const shaderArrayKeys: {
+    key: 'shaders' | 'snake1Shaders' | 'snake2Shaders';
+    label: string;
+  }[] = [
+    { key: 'shaders', label: 'shaders' },
+    { key: 'snake1Shaders', label: 'snake1Shaders' },
+    { key: 'snake2Shaders', label: 'snake2Shaders' },
+  ];
+  for (const { key, label } of shaderArrayKeys) {
+    const a = prev[key] ?? [];
+    const b = next[key] ?? [];
+    const sa = shaderSummary(a);
+    const sb = shaderSummary(b);
+    if (sa !== sb) diffs.push(`${label}: ${sa} → ${sb}`);
+  }
+
+  const trSummary = (t?: { type: string; durationMs: number }) =>
+    t ? `${t.type} ${t.durationMs}ms` : '(none)';
+  for (const key of ['introTransition', 'outroTransition'] as const) {
+    const sa = trSummary(prev[key]);
+    const sb = trSummary(next[key]);
+    if (sa !== sb) diffs.push(`${key}: ${sa} → ${sb}`);
+  }
+
+  const prevEvents = prev.snakeEventShaders;
+  const nextEvents = next.snakeEventShaders;
+  if (JSON.stringify(prevEvents) !== JSON.stringify(nextEvents)) {
+    diffs.push(
+      `snakeEventShaders: ${prevEvents ? 'configured' : '(none)'} → ${nextEvents ? 'configured' : '(none)'}`,
+    );
+  }
+
+  const prevAttached = (prev.attachedInputIds ?? []).join(',');
+  const nextAttached = (next.attachedInputIds ?? []).join(',');
+  if (prevAttached !== nextAttached) {
+    diffs.push(`attachedInputIds changed`);
+  }
+
+  return diffs;
+}
+
 // ── Ruler tick computation ───────────────────────────────
 
 function computeRulerTicks(
@@ -321,6 +429,14 @@ export function TimelinePanel({
     null,
   );
 
+  const [hoveredKeyframe, setHoveredKeyframe] = useState<{
+    keyframeId: string;
+    clipId: string;
+    rect: DOMRect;
+    diffs: string[];
+    timeMs: number;
+  } | null>(null);
+
   const selectedClipIdSet = useMemo(
     () => new Set(selectedClipIds.map((s) => s.clipId)),
     [selectedClipIds],
@@ -397,12 +513,15 @@ export function TimelinePanel({
         const track = state.tracks.find((t) => t.id === sel.trackId);
         const clip = track?.clips.find((c) => c.id === sel.clipId);
         if (!track || !clip) return null;
-        const clipSelectedKeyframeId =
+        const explicitKeyframeId =
           selectedClipIds.length === 1 &&
           sel.trackId === selectedClipIds[0]?.trackId &&
           sel.clipId === selectedClipIds[0]?.clipId
             ? selectedKeyframeId
             : null;
+        const baseKeyframeId =
+          clip.keyframes.find((k) => k.timeMs === 0)?.id ?? null;
+        const clipSelectedKeyframeId = explicitKeyframeId ?? baseKeyframeId;
         const selectedKeyframe = clipSelectedKeyframeId
           ? clip.keyframes.find((keyframe) => keyframe.id === clipSelectedKeyframeId)
           : null;
@@ -1884,10 +2003,17 @@ export function TimelinePanel({
           selectedClipIds[0].trackId === track.id &&
           selectedClipIds[0].clipId === clip.id;
 
+        const sortedKeyframes = [...clip.keyframes].sort(
+          (a, b) => a.timeMs - b.timeMs,
+        );
+
         return clip.keyframes.map((keyframe) => {
           const leftPx =
             ((clip.startMs + keyframe.timeMs) / 1000) * state.pixelsPerSecond;
-          const isSelected = isClipSelected && selectedKeyframeId === keyframe.id;
+          const isSelected =
+            isClipSelected &&
+            (selectedKeyframeId === keyframe.id ||
+              (selectedKeyframeId == null && keyframe.timeMs === 0));
 
           return (
             <button
@@ -1906,7 +2032,25 @@ export function TimelinePanel({
                   ? '0 0 0 2px rgb(248 113 113 / 0.35)'
                   : 'none',
               }}
-              title={`Keyframe at ${formatMs(clip.startMs + keyframe.timeMs)}`}
+              onMouseEnter={(e) => {
+                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                const idx = sortedKeyframes.findIndex((k) => k.id === keyframe.id);
+                const diffs =
+                  idx <= 0
+                    ? []
+                    : computeKeyframeDiff(
+                        sortedKeyframes[idx - 1].blockSettings,
+                        keyframe.blockSettings,
+                      );
+                setHoveredKeyframe({
+                  keyframeId: keyframe.id,
+                  clipId: clip.id,
+                  rect,
+                  diffs,
+                  timeMs: keyframe.timeMs,
+                });
+              }}
+              onMouseLeave={() => setHoveredKeyframe(null)}
               onPointerDown={(e) =>
                 handleKeyframePointerDown(e, track.id, clip, keyframe)
               }
@@ -2499,6 +2643,40 @@ export function TimelinePanel({
               }}>
               Delete Track
             </button>
+          </div>,
+          document.body,
+        )}
+
+      {/* Keyframe tooltip */}
+      {hoveredKeyframe &&
+        createPortal(
+          <div
+            className='fixed z-[10000] pointer-events-none'
+            style={{
+              left: hoveredKeyframe.rect.left + hoveredKeyframe.rect.width / 2,
+              top: hoveredKeyframe.rect.top - 8,
+              transform: 'translate(-50%, -100%)',
+            }}>
+            <div className='bg-neutral-900 border border-neutral-700 rounded px-2.5 py-1.5 text-[10px] text-neutral-200 shadow-lg max-w-[240px]'>
+              <div className='font-medium text-neutral-100 mb-0.5'>
+                {hoveredKeyframe.timeMs === 0
+                  ? 'Base keyframe (0ms)'
+                  : `Keyframe at ${formatMs(hoveredKeyframe.timeMs)}`}
+              </div>
+              {hoveredKeyframe.timeMs === 0 ? (
+                <div className='text-neutral-400'>Initial values</div>
+              ) : hoveredKeyframe.diffs.length === 0 ? (
+                <div className='text-neutral-400'>No changes from previous</div>
+              ) : (
+                <ul className='space-y-px'>
+                  {hoveredKeyframe.diffs.map((diff, i) => (
+                    <li key={i} className='text-neutral-300 truncate'>
+                      {diff}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
           </div>,
           document.body,
         )}

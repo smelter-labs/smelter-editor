@@ -53,7 +53,7 @@ function useFrozenImageHandoff(
       !restartFading &&
       liveStreamState === 'playing'
     ) {
-      setDisplayFrozenImage(false);
+        setDisplayFrozenImage(false);
     }
   }, [displayFrozenImage, hiddenForRestart, restartFading, liveStreamState]);
 

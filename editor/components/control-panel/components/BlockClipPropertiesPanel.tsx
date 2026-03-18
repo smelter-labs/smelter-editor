@@ -1196,8 +1196,10 @@ export function BlockClipPropertiesPanel({
               </div>
               <div className='text-[10px] text-neutral-500'>
                 {selectedTimelineKeyframe
-                  ? `Editing ${Math.round(selectedTimelineKeyframe.timeMs)}ms snapshot`
-                  : 'Editing clip default snapshot'}
+                  ? selectedTimelineKeyframe.timeMs === 0
+                    ? 'Editing base (0ms) keyframe'
+                    : `Editing ${Math.round(selectedTimelineKeyframe.timeMs)}ms snapshot`
+                  : 'Editing base (0ms) keyframe'}
               </div>
             </div>
             <Button
@@ -1210,16 +1212,6 @@ export function BlockClipPropertiesPanel({
             </Button>
           </div>
           <div className='flex flex-wrap gap-1.5 mb-2'>
-            <button
-              type='button'
-              className={`rounded border px-2 py-1 text-[11px] cursor-pointer transition-colors ${
-                selectedTimelineKeyframe == null
-                  ? 'border-neutral-500 bg-neutral-700 text-white'
-                  : 'border-neutral-700 bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
-              }`}
-              onClick={() => handleSelectKeyframe(null)}>
-              Clip
-            </button>
             {selectedTimelineClip.keyframes.map((keyframe) => (
               <button
                 key={keyframe.id}
@@ -1230,7 +1222,9 @@ export function BlockClipPropertiesPanel({
                     : 'border-neutral-700 bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
                 }`}
                 onClick={() => handleSelectKeyframe(keyframe.id)}>
-                {Math.round(keyframe.timeMs)}ms
+                {keyframe.timeMs === 0
+                  ? 'Base (0ms)'
+                  : `${Math.round(keyframe.timeMs)}ms`}
               </button>
             ))}
           </div>

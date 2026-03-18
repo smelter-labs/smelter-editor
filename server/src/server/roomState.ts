@@ -1044,7 +1044,7 @@ export class RoomState {
 
       input.restartFading = true;
       this.updateStoreWithState();
-      await sleep(150);
+      //await sleep(150);
 
       try {
         console.log(`[mp4-restart] unregisterInput inputId=${inputId}`);
@@ -1329,9 +1329,8 @@ export class RoomState {
     fromMs?: number,
   ): Promise<void> {
     if (this.timelinePlayer?.getIsPaused()) {
-      await this.cleanupFrozenImages();
       this.timelinePlayer.updateConfig(config);
-      await this.timelinePlayer.resume(fromMs);
+      await this.resumeTimeline(fromMs);
       return;
     }
 
