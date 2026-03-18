@@ -74,6 +74,14 @@ export default function RoomPage() {
     }
   }, [roomId, roomState.inputs]);
 
+  if (loading || notFound) {
+    return (
+      <div className='h-screen grid place-content-center bg-[#0a0a0a]'>
+        <LoadingSpinner size='lg' variant='spinner' />
+      </div>
+    );
+  }
+
   return (
     <motion.div
       variants={staggerContainer}
@@ -97,22 +105,14 @@ export default function RoomPage() {
         </Link>
       )}
 
-      {loading ? (
-        <motion.div
-          variants={staggerContainer}
-          className='flex-1 grid min-h-0 justify-center content-center'>
-          <LoadingSpinner size='lg' variant='spinner' />
-        </motion.div>
-      ) : (
-        <ErrorBoundary>
-          <RoomView
-            roomState={roomState}
-            roomId={roomId as string}
-            refreshState={refreshState}
-            isGuest={isGuest}
-          />
-        </ErrorBoundary>
-      )}
+      <ErrorBoundary>
+        <RoomView
+          roomState={roomState}
+          roomId={roomId as string}
+          refreshState={refreshState}
+          isGuest={isGuest}
+        />
+      </ErrorBoundary>
     </motion.div>
   );
 }

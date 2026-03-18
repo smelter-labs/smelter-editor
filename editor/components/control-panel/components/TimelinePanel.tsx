@@ -359,6 +359,37 @@ function resolveKeyframeCollision(
   return ms;
 }
 
+// ── Orphaned-input detection ─────────────────────────────
+
+function findOrphanedInputIds(
+  tracks: import('../hooks/use-timeline-state').Track[],
+  clipsToDelete: { trackId: string; clipId: string }[],
+): string[] {
+  const deleteSet = new Set(
+    clipsToDelete.map((c) => `${c.trackId}:${c.clipId}`),
+  );
+
+  const deletedInputIds = new Set<string>();
+  for (const track of tracks) {
+    for (const clip of track.clips) {
+      if (deleteSet.has(`${track.id}:${clip.id}`)) {
+        deletedInputIds.add(clip.inputId);
+      }
+    }
+  }
+
+  const orphaned: string[] = [];
+  for (const inputId of deletedInputIds) {
+    const hasSurvivingClip = tracks.some((t) =>
+      t.clips.some(
+        (c) => c.inputId === inputId && !deleteSet.has(`${t.id}:${c.id}`),
+      ),
+    );
+    if (!hasSurvivingClip) orphaned.push(inputId);
+  }
+  return orphaned;
+}
+
 // ── Component ────────────────────────────────────────────
 
 export function TimelinePanel({
@@ -1215,6 +1246,27 @@ export function TimelinePanel({
     };
   }, [state.tracks, setPlayhead, tabToNextClip, deleteTrack]);
 
+  const deleteClipsAndRemoveOrphans = useCallback(
+    async (clipsToDelete: { trackId: string; clipId: string }[]) => {
+      if (clipsToDelete.length === 0) return;
+
+      const orphanedIds = findOrphanedInputIds(state.tracks, clipsToDelete);
+
+      if (clipsToDelete.length === 1) {
+        deleteClip(clipsToDelete[0].trackId, clipsToDelete[0].clipId);
+      } else {
+        deleteClips(clipsToDelete);
+      }
+
+      for (const inputId of orphanedIds) {
+        await removeInput(roomId, inputId);
+        purgeInputId(inputId);
+      }
+      if (orphanedIds.length > 0) await refreshState();
+    },
+    [state.tracks, deleteClip, deleteClips, removeInput, roomId, purgeInputId, refreshState],
+  );
+
   // ── Keyboard shortcuts ──────────────────────────────
 
   useEffect(() => {
@@ -1385,11 +1437,7 @@ export function TimelinePanel({
         case 'Backspace': {
           if (selectedClipIds.length > 0) {
             e.preventDefault();
-            if (selectedClipIds.length === 1) {
-              deleteClip(selectedClipIds[0].trackId, selectedClipIds[0].clipId);
-            } else {
-              deleteClips(selectedClipIds);
-            }
+            void deleteClipsAndRemoveOrphans(selectedClipIds);
             setSelectedClipIds([]);
             setSelectedKeyframeId(null);
           }
@@ -1433,8 +1481,7 @@ export function TimelinePanel({
     tabToNextClip,
     findClipAtPlayhead,
     splitClip,
-    deleteClip,
-    deleteClips,
+    deleteClipsAndRemoveOrphans,
     duplicateClip,
     undo,
     redo,
@@ -1971,16 +2018,18 @@ export function TimelinePanel({
     closeContextMenu();
   }, [contextMenu, splitClip, closeContextMenu]);
 
-  const handleDeleteClip = useCallback(() => {
-    if (selectedClipIds.length > 1) {
-      deleteClips(selectedClipIds);
-      setSelectedClipIds([]);
-    } else if (contextMenu?.clipId) {
-      deleteClip(contextMenu.trackId, contextMenu.clipId);
-      setSelectedClipIds([]);
-    }
+  const handleDeleteClip = useCallback(async () => {
+    const clipsToDelete =
+      selectedClipIds.length > 1
+        ? selectedClipIds
+        : contextMenu?.clipId
+          ? [{ trackId: contextMenu.trackId, clipId: contextMenu.clipId }]
+          : [];
+
+    await deleteClipsAndRemoveOrphans(clipsToDelete);
+    setSelectedClipIds([]);
     closeContextMenu();
-  }, [contextMenu, deleteClip, deleteClips, selectedClipIds, closeContextMenu]);
+  }, [contextMenu, selectedClipIds, closeContextMenu, deleteClipsAndRemoveOrphans]);
 
   // ── Render helpers ───────────────────────────────────
 
