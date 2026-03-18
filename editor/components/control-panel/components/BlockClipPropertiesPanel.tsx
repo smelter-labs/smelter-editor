@@ -332,10 +332,49 @@ function computeCommonBlockSettings(
   return result;
 }
 
+function clampKeyframeToClipRange(
+  valueMs: number,
+  clipDurationMs: number,
+): number {
+  return Math.max(0, Math.min(Math.round(valueMs), clipDurationMs));
+}
+
+function resolveNewKeyframeTimeMs(
+  clip: Pick<SelectedTimelineClip, 'startMs' | 'endMs' | 'keyframes'>,
+  desiredTimeMs: number,
+): number {
+  const clipDurationMs = Math.max(0, clip.endMs - clip.startMs);
+  const clampedTimeMs = clampKeyframeToClipRange(desiredTimeMs, clipDurationMs);
+  const occupiedTimes = new Set(
+    clip.keyframes.map((keyframe) => Math.round(keyframe.timeMs)),
+  );
+
+  if (!occupiedTimes.has(clampedTimeMs)) {
+    return clampedTimeMs;
+  }
+
+  const preferredStep = clampedTimeMs >= clipDurationMs ? -100 : 100;
+  for (const step of [preferredStep, -preferredStep]) {
+    let candidateTimeMs = clampedTimeMs;
+    while (true) {
+      candidateTimeMs += step;
+      if (candidateTimeMs < 0 || candidateTimeMs > clipDurationMs) {
+        break;
+      }
+      if (!occupiedTimes.has(candidateTimeMs)) {
+        return candidateTimeMs;
+      }
+    }
+  }
+
+  return clampedTimeMs;
+}
+
 export function BlockClipPropertiesPanel({
   roomId,
   selectedTimelineClips,
   onSelectedTimelineClipsChange,
+  playheadMs,
   inputs,
   availableShaders,
   handleRefreshState,
@@ -346,6 +385,7 @@ export function BlockClipPropertiesPanel({
   roomId: string;
   selectedTimelineClips: SelectedTimelineClip[];
   onSelectedTimelineClipsChange: (clips: SelectedTimelineClip[]) => void;
+  playheadMs?: number;
   inputs: Input[];
   availableShaders: AvailableShader[];
   handleRefreshState: () => Promise<void>;
@@ -447,9 +487,9 @@ export function BlockClipPropertiesPanel({
     selectedTimelineClips.length > 0 ? selectedTimelineClips[0] : null;
   const selectedTimelineKeyframe =
     primaryClip?.selectedKeyframeId != null
-      ? primaryClip.keyframes.find(
+      ? (primaryClip.keyframes.find(
           (keyframe) => keyframe.id === primaryClip.selectedKeyframeId,
-        ) ?? null
+        ) ?? null)
       : null;
   const selectedInput = primaryClip
     ? inputs.find((i) => i.inputId === primaryClip.inputId)
@@ -722,30 +762,26 @@ export function BlockClipPropertiesPanel({
 
   const handleAddKeyframe = useCallback(() => {
     if (!selectedTimelineClip) return;
-    const clipDurationMs = selectedTimelineClip.endMs - selectedTimelineClip.startMs;
-    let defaultTimeMs = Math.min(
-      clipDurationMs,
-      Math.max(
-        0,
-        selectedTimelineKeyframe?.timeMs ?? Math.round(clipDurationMs / 2),
-      ),
+    const clipDurationMs =
+      selectedTimelineClip.endMs - selectedTimelineClip.startMs;
+    const desiredTimeMs =
+      playheadMs == null
+        ? (selectedTimelineKeyframe?.timeMs ?? Math.round(clipDurationMs / 2))
+        : playheadMs - selectedTimelineClip.startMs;
+    const nextTimeMs = resolveNewKeyframeTimeMs(
+      selectedTimelineClip,
+      desiredTimeMs,
     );
-    const usedTimes = new Set(
-      selectedTimelineClip.keyframes.map((keyframe) => Math.round(keyframe.timeMs)),
-    );
-    while (usedTimes.has(defaultTimeMs) && defaultTimeMs < clipDurationMs) {
-      defaultTimeMs = Math.min(clipDurationMs, defaultTimeMs + 100);
-    }
     window.dispatchEvent(
       new CustomEvent('smelter:timeline:add-keyframe', {
         detail: {
           trackId: selectedTimelineClip.trackId,
           clipId: selectedTimelineClip.clipId,
-          timeMs: defaultTimeMs,
+          timeMs: nextTimeMs,
         },
       }),
     );
-  }, [selectedTimelineClip, selectedTimelineKeyframe]);
+  }, [playheadMs, selectedTimelineClip, selectedTimelineKeyframe]);
 
   const handleMoveSelectedKeyframe = useCallback(
     (timeMs: number) => {
@@ -1155,7 +1191,9 @@ export function BlockClipPropertiesPanel({
         <div className='border border-neutral-700 rounded p-2 mb-3 mt-1'>
           <div className='flex items-center justify-between mb-2'>
             <div>
-              <div className='text-xs text-neutral-400 font-medium'>Keyframes</div>
+              <div className='text-xs text-neutral-400 font-medium'>
+                Keyframes
+              </div>
               <div className='text-[10px] text-neutral-500'>
                 {selectedTimelineKeyframe
                   ? `Editing ${Math.round(selectedTimelineKeyframe.timeMs)}ms snapshot`
@@ -1205,13 +1243,17 @@ export function BlockClipPropertiesPanel({
                 <input
                   type='number'
                   min={0}
-                  max={selectedTimelineClip.endMs - selectedTimelineClip.startMs}
+                  max={
+                    selectedTimelineClip.endMs - selectedTimelineClip.startMs
+                  }
                   step={50}
                   disabled={selectedTimelineKeyframe.timeMs === 0}
                   className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1 disabled:opacity-50'
                   value={Math.round(selectedTimelineKeyframe.timeMs)}
                   onChange={(e) =>
-                    handleMoveSelectedKeyframe(Math.max(0, Number(e.target.value) || 0))
+                    handleMoveSelectedKeyframe(
+                      Math.max(0, Number(e.target.value) || 0),
+                    )
                   }
                 />
               </div>

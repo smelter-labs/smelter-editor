@@ -24,16 +24,72 @@ function normalizeBorderWidth(borderWidth: number | undefined): number {
   return Math.max(0, Math.round(borderWidth));
 }
 
-export function Input({ input }: { input: InputConfig }) {
+function useFrozenImageHandoff(
+  inputId: string,
+  frozenImageId: string | undefined,
+  restartFading: boolean | undefined,
+) {
   const streams = useInputStreams();
-  const isFrozen = !!input.frozenImageId;
+  const liveStreamState = streams[inputId]?.videoState ?? 'finished';
+  const [hiddenForRestart, setHiddenForRestart] = React.useState(false);
+  const [displayFrozenImage, setDisplayFrozenImage] = React.useState(
+    () => !!frozenImageId,
+  );
+
+  React.useEffect(() => {
+    setDisplayFrozenImage(!!frozenImageId);
+  }, [frozenImageId]);
+
+  React.useEffect(() => {
+    if (restartFading) {
+      setHiddenForRestart(true);
+    }
+  }, [restartFading]);
+
+  React.useEffect(() => {
+    if (
+      displayFrozenImage &&
+      hiddenForRestart &&
+      !restartFading &&
+      liveStreamState === 'playing'
+    ) {
+      setDisplayFrozenImage(false);
+    }
+  }, [displayFrozenImage, hiddenForRestart, restartFading, liveStreamState]);
+
+  React.useEffect(() => {
+    if (hiddenForRestart && !restartFading && liveStreamState === 'playing') {
+      setHiddenForRestart(false);
+    }
+  }, [hiddenForRestart, restartFading, liveStreamState]);
+
+  React.useEffect(() => {
+    if (!hiddenForRestart) return;
+    const timeout = setTimeout(() => setHiddenForRestart(false), 5000);
+    return () => clearTimeout(timeout);
+  }, [hiddenForRestart]);
+
+  return {
+    hiddenForRestart,
+    liveStreamState,
+    showFrozenImage: !!frozenImageId && displayFrozenImage,
+  };
+}
+
+export function Input({ input }: { input: InputConfig }) {
+  const { hiddenForRestart, liveStreamState, showFrozenImage } =
+    useFrozenImageHandoff(
+      input.inputId,
+      input.frozenImageId,
+      input.restartFading,
+    );
   const isImage = !!input.imageId;
   const isTextInput = !!input.text;
   const isGame = !!input.snakeGameState;
   const streamState =
-    isFrozen || isImage || isTextInput || isGame
+    showFrozenImage || isImage || isTextInput || isGame
       ? 'playing'
-      : (streams[input.inputId]?.videoState ?? 'finished');
+      : liveStreamState;
   const isVerticalInput = input.orientation === 'vertical';
   const resolution = isVerticalInput
     ? { width: 1080, height: 1920 }
@@ -55,7 +111,7 @@ export function Input({ input }: { input: InputConfig }) {
               borderColor,
               backgroundColor: isTextInput ? '#1a1a2e' : undefined,
             }}>
-            {isFrozen ? (
+            {showFrozenImage ? (
               <Rescaler style={{ rescaleMode: 'fill' }}>
                 <Image imageId={input.frozenImageId!} />
               </Rescaler>
@@ -132,26 +188,6 @@ export function Input({ input }: { input: InputConfig }) {
     </Rescaler>
   );
 
-  const [hiddenForRestart, setHiddenForRestart] = React.useState(false);
-
-  React.useEffect(() => {
-    if (input.restartFading) {
-      setHiddenForRestart(true);
-    }
-  }, [input.restartFading]);
-
-  React.useEffect(() => {
-    if (hiddenForRestart && !input.restartFading && streamState === 'playing') {
-      setHiddenForRestart(false);
-    }
-  }, [hiddenForRestart, input.restartFading, streamState]);
-
-  React.useEffect(() => {
-    if (!hiddenForRestart) return;
-    const timeout = setTimeout(() => setHiddenForRestart(false), 5000);
-    return () => clearTimeout(timeout);
-  }, [hiddenForRestart]);
-
   const activeShaders = input.shaders.filter((shader) => shader.enabled);
 
   let mainRendered = wrapWithShaders(inputComponent, activeShaders, resolution);
@@ -166,7 +202,7 @@ export function Input({ input }: { input: InputConfig }) {
     );
   }
 
-  if (hiddenForRestart || input.restartFading) {
+  if ((hiddenForRestart || input.restartFading) && !showFrozenImage) {
     mainRendered = (
       <Shader
         shaderId='opacity'
@@ -207,11 +243,20 @@ export function SmallInput({
   input: InputConfig;
   resolution?: Resolution;
 }) {
+  const { hiddenForRestart, liveStreamState, showFrozenImage } =
+    useFrozenImageHandoff(
+      input.inputId,
+      input.frozenImageId,
+      input.restartFading,
+    );
   const activeShaders = input.shaders.filter((shader) => shader.enabled);
-  const isFrozen = !!input.frozenImageId;
   const isImage = !!input.imageId;
   const isTextInput = !!input.text;
   const isGame = !!input.snakeGameState;
+  const streamState =
+    showFrozenImage || isImage || isTextInput || isGame
+      ? 'playing'
+      : liveStreamState;
   const borderWidth = normalizeBorderWidth(input.borderWidth ?? 0);
   const borderColor = input.borderColor ?? '#ff0000';
   const contentWidth = Math.max(1, resolution.width - borderWidth * 2);
@@ -232,20 +277,20 @@ export function SmallInput({
           borderColor,
           backgroundColor: isTextInput ? '#1a1a2e' : undefined,
         }}>
-        {isFrozen ? (
+        {streamState === 'playing' && showFrozenImage ? (
           <Rescaler style={{ rescaleMode: 'fill' }}>
             <Image imageId={input.frozenImageId!} />
           </Rescaler>
-        ) : isGame && getInputRenderer('game') ? (
+        ) : streamState === 'playing' && isGame && getInputRenderer('game') ? (
           getInputRenderer('game')!(input, {
             width: contentWidth,
             height: contentHeight,
           })
-        ) : isImage ? (
+        ) : streamState === 'playing' && isImage ? (
           <Rescaler style={{ rescaleMode: 'fit' }}>
             <Image imageId={input.imageId!} />
           </Rescaler>
-        ) : isTextInput ? (
+        ) : streamState === 'playing' && isTextInput ? (
           <ScrollingText
             text={input.text!}
             maxLines={input.textMaxLines ?? 10}
@@ -258,10 +303,22 @@ export function SmallInput({
             containerHeight={contentHeight}
             scrollNudge={input.textScrollNudge}
           />
-        ) : (
+        ) : streamState === 'playing' ? (
           <Rescaler style={{ rescaleMode: 'fill' }}>
             <InputStream inputId={input.inputId} volume={input.volume} />
           </Rescaler>
+        ) : streamState === 'ready' ? (
+          <Rescaler style={{ rescaleMode: 'fit' }}>
+            <Image imageId='spinner' />
+          </Rescaler>
+        ) : streamState === 'finished' ? (
+          <Rescaler style={{ rescaleMode: 'fit' }}>
+            <Text style={{ fontSize: 120, fontFamily: 'Star Jedi' }}>
+              Stream offline
+            </Text>
+          </Rescaler>
+        ) : (
+          <View />
         )}
       </View>
       {input.showTitle !== false && (
@@ -296,6 +353,20 @@ export function SmallInput({
         resolution={resolution}>
         {mainRendered}
       </TransitionShaderWrapper>
+    );
+  }
+
+  if ((hiddenForRestart || input.restartFading) && !showFrozenImage) {
+    mainRendered = (
+      <Shader
+        shaderId='opacity'
+        resolution={resolution}
+        shaderParam={{
+          type: 'struct',
+          value: [{ type: 'f32', fieldName: 'opacity', value: 0 }],
+        }}>
+        {mainRendered}
+      </Shader>
     );
   }
 

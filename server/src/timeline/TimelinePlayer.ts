@@ -128,8 +128,11 @@ function compileEvents(
         }
       }
 
-      const intro = resolveBlockSettingsAtTime(clip, clip.startMs, mode)
-        .introTransition;
+      const intro = resolveBlockSettingsAtTime(
+        clip,
+        clip.startMs,
+        mode,
+      ).introTransition;
       if (intro && clip.startMs > fromMs) {
         events.push({
           timeMs: clip.startMs,
@@ -338,15 +341,20 @@ function resolveBlockSettingsAtTime(
     return deepClone(current.blockSettings);
   }
 
-  const currentIndex = keyframes.findIndex((keyframe) => keyframe.id === current.id);
+  const currentIndex = keyframes.findIndex(
+    (keyframe) => keyframe.id === current.id,
+  );
   const next = keyframes[currentIndex + 1];
   if (!next || next.timeMs <= current.timeMs || offsetMs <= current.timeMs) {
     return deepClone(current.blockSettings);
   }
 
-  const progress =
-    (offsetMs - current.timeMs) / (next.timeMs - current.timeMs);
-  return interpolateBlockSettings(current.blockSettings, next.blockSettings, progress);
+  const progress = (offsetMs - current.timeMs) / (next.timeMs - current.timeMs);
+  return interpolateBlockSettings(
+    current.blockSettings,
+    next.blockSettings,
+    progress,
+  );
 }
 
 function getActiveOrder(config: TimelineConfig, timeMs: number): string[] {
@@ -429,7 +437,9 @@ export function buildUpdateFromBlockSettings(
   };
 }
 
-function buildUpdateFromRoomInput(input: RoomInputState): Record<string, unknown> {
+function buildUpdateFromRoomInput(
+  input: RoomInputState,
+): Record<string, unknown> {
   return {
     volume: input.volume,
     shaders: deepClone(input.shaders),
@@ -468,7 +478,8 @@ function buildUpdateFromRoomInput(input: RoomInputState): Record<string, unknown
       input.type === 'game' ? input.snakeGameState.gridLineColor : undefined,
     gameGridLineAlpha:
       input.type === 'game' ? input.snakeGameState.gridLineAlpha : undefined,
-    snakeEventShaders: input.type === 'game' ? input.snakeEventShaders : undefined,
+    snakeEventShaders:
+      input.type === 'game' ? input.snakeEventShaders : undefined,
     activeTransition: input.activeTransition,
   };
 }
@@ -526,6 +537,10 @@ export class TimelinePlayer {
     if (this.paused) return this.pausedPlayheadMs;
     if (!this.playing) return this.startPlayheadMs;
     return this.startPlayheadMs + (Date.now() - this.startWallMs);
+  }
+
+  public getActiveInputIdsAt(timeMs: number): string[] {
+    return [...getActiveClipsByInputAt(this.config, timeMs).keys()];
   }
 
   public isPlaying(): boolean {
@@ -702,7 +717,9 @@ export class TimelinePlayer {
 
   public async seek(ms: number): Promise<void> {
     if (!this.playing) return;
-    console.log(`[timeline] SEEK to ${ms}ms (was at ${this.getPlayheadMs()}ms)`);
+    console.log(
+      `[timeline] SEEK to ${ms}ms (was at ${this.getPlayheadMs()}ms)`,
+    );
 
     this.clearEventTimers();
     this.startWallMs = Date.now();
@@ -783,10 +800,7 @@ export class TimelinePlayer {
 
   private emit(): void {
     const data: TimelineListenerData = {
-      playheadMs: Math.min(
-        this.getPlayheadMs(),
-        this.config.totalDurationMs,
-      ),
+      playheadMs: Math.min(this.getPlayheadMs(), this.config.totalDurationMs),
       isPlaying: this.playing,
       isPaused: this.paused,
     };
@@ -837,9 +851,12 @@ export class TimelinePlayer {
       const delayMs =
         event.timeMs - this.startPlayheadMs - (Date.now() - this.startWallMs);
 
-      const timer = setTimeout(() => {
-        this.fireEvent(i);
-      }, Math.max(0, delayMs));
+      const timer = setTimeout(
+        () => {
+          this.fireEvent(i);
+        },
+        Math.max(0, delayMs),
+      );
       this.eventTimers.push(timer);
     }
   }
@@ -882,9 +899,11 @@ export class TimelinePlayer {
       );
       if (!stillActive) {
         this.appliedState.set(event.inputId, false);
-        void this.room.hideInput(event.inputId).catch((err) =>
-          console.warn(`[timeline] Failed to hide ${event.inputId}`, err),
-        );
+        void this.room
+          .hideInput(event.inputId)
+          .catch((err) =>
+            console.warn(`[timeline] Failed to hide ${event.inputId}`, err),
+          );
       }
     } else if (event.type === 'transition-in' && event.transition) {
       // Standalone transition-in (not merged with connect)
@@ -980,9 +999,11 @@ export class TimelinePlayer {
           }
         : undefined);
 
-    await this.room.showInput(inputId, showTransition).catch((err) =>
-      console.warn(`[timeline] Failed to show ${inputId}`, err),
-    );
+    await this.room
+      .showInput(inputId, showTransition)
+      .catch((err) =>
+        console.warn(`[timeline] Failed to show ${inputId}`, err),
+      );
   }
 
   private async applyClipState(
@@ -999,7 +1020,10 @@ export class TimelinePlayer {
     if (this.appliedBlockSettings.get(inputId) !== serialized) {
       this.appliedBlockSettings.set(inputId, serialized);
       await this.room
-        .updateInput(inputId, buildUpdateFromBlockSettings(resolvedBlockSettings))
+        .updateInput(
+          inputId,
+          buildUpdateFromBlockSettings(resolvedBlockSettings),
+        )
         .catch((err) =>
           console.warn(
             `[timeline] Failed to apply block settings for ${inputId}`,
@@ -1061,9 +1085,11 @@ export class TimelinePlayer {
         promises.push(this.showInputAtTime(inputId, timeMs));
       } else if (!shouldBeVisible && isCurrentlyVisible) {
         promises.push(
-          this.room.hideInput(inputId).catch((err) =>
-            console.warn(`[timeline] Failed to hide ${inputId}`, err),
-          ),
+          this.room
+            .hideInput(inputId)
+            .catch((err) =>
+              console.warn(`[timeline] Failed to hide ${inputId}`, err),
+            ),
         );
       }
 
@@ -1095,9 +1121,9 @@ export class TimelinePlayer {
     const key = order.join(',');
     if (key === this.lastAppliedOrder || order.length === 0) return;
     this.lastAppliedOrder = key;
-    void this.room.reorderInputs(order).catch((err) =>
-      console.warn('[timeline] Failed to apply order', err),
-    );
+    void this.room
+      .reorderInputs(order)
+      .catch((err) => console.warn('[timeline] Failed to apply order', err));
   }
 
   private snapshotState(): void {
@@ -1135,7 +1161,9 @@ export class TimelinePlayer {
       promises.push(
         (async () => {
           if (hasPatch) {
-            await this.room.updateInput(input.inputId, snap.update).catch(() => {});
+            await this.room
+              .updateInput(input.inputId, snap.update)
+              .catch(() => {});
           }
           if (shouldRestartMp4) {
             await this.room

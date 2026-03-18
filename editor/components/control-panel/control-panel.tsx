@@ -445,14 +445,23 @@ function ControlPanelInner({
   const [selectedTimelineClips, setSelectedTimelineClips] = useState<
     SelectedTimelineClip[]
   >([]);
+  const [timelinePlayheadMs, setTimelinePlayheadMs] = useState(0);
   const timelineStateRef = useRef<TimelineState | null>(null);
-  const timelineLoadStateRef = useRef<
-    ((state: TimelineState) => void) | null
-  >(null);
+  const timelineLoadStateRef = useRef<((state: TimelineState) => void) | null>(
+    null,
+  );
 
-  const handleTimelineStateChange = useCallback((state: TimelineState) => {
-    timelineStateRef.current = state;
-  }, []);
+  const handleTimelineStateChange = useCallback(
+    (state: TimelineState) => {
+      timelineStateRef.current = state;
+      if (selectedTimelineClips.length > 0) {
+        setTimelinePlayheadMs((prev) =>
+          prev === state.playheadMs ? prev : state.playheadMs,
+        );
+      }
+    },
+    [selectedTimelineClips.length],
+  );
 
   const handleTimelineLoadStateReady = useCallback(
     (loadState: (state: TimelineState) => void) => {
@@ -472,6 +481,7 @@ function ControlPanelInner({
         timelineLoadStateRef.current?.(state);
       }
       timelineStateRef.current = state;
+      setTimelinePlayheadMs(state?.playheadMs ?? 0);
     },
     [],
   );
@@ -490,7 +500,15 @@ function ControlPanelInner({
   useEffect(() => {
     timelineStateRef.current = null;
     timelineLoadStateRef.current = null;
+    setTimelinePlayheadMs(0);
   }, [roomId]);
+
+  useEffect(() => {
+    if (selectedTimelineClips.length === 0) {
+      return;
+    }
+    setTimelinePlayheadMs(timelineStateRef.current?.playheadMs ?? 0);
+  }, [selectedTimelineClips.length]);
 
   if (renderDashboard) {
     const addVideoSection = (
@@ -571,6 +589,7 @@ function ControlPanelInner({
           roomId={roomId}
           selectedTimelineClips={selectedTimelineClips}
           onSelectedTimelineClipsChange={setSelectedTimelineClips}
+          playheadMs={timelinePlayheadMs}
           inputs={inputs}
           availableShaders={availableShaders}
           handleRefreshState={handleRefreshState}
