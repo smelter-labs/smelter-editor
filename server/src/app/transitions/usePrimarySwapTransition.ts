@@ -22,7 +22,7 @@ export type SwapTransitionState = {
 
 /**
  * Detects when the primary input (inputs[0]) changes and provides
- * animated transition state for swapping between Input and SmallInput.
+ * animated transition state for the primary input swap.
  *
  * @param inputs - current inputs array from store
  * @param durationMs - transition duration in ms (default 500)

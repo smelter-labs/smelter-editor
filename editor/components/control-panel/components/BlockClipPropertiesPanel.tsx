@@ -176,6 +176,7 @@ function SnakeShaderSection({
     title: '',
     description: '',
     volume: 0,
+    showTitle: true,
     type: 'local-mp4',
     sourceState: 'unknown',
     status: 'connected',

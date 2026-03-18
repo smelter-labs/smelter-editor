@@ -1,53 +1,8 @@
-import type { RoomInputState, InputOrientation } from '../room/types';
-import type { ShaderConfig } from '../types';
-import type { SnakeEventShaderConfig } from '../snakeGame/types';
+import type { RoomInputState } from '../room/types';
+import type { PublicInputState } from '../types';
 import { toPublicSnakeGameInputState } from '../snakeGame/publicSnakeGameState';
 
-/** API DTO for a single input; single source of truth for RoomInputState → response mapping */
-export type PublicInputState = {
-  inputId: string;
-  title: string;
-  description: string;
-  showTitle: boolean;
-  sourceState: 'live' | 'offline' | 'unknown' | 'always-live';
-  status: 'disconnected' | 'pending' | 'connected';
-  volume: number;
-  type: RoomInputState['type'];
-  shaders: ShaderConfig[];
-  orientation: InputOrientation;
-  channelId?: string;
-  imageId?: string;
-  text?: string;
-  textAlign?: 'left' | 'center' | 'right';
-  textColor?: string;
-  textMaxLines?: number;
-  textScrollSpeed?: number;
-  textScrollLoop?: boolean;
-  textFontSize?: number;
-  borderColor?: string;
-  borderWidth?: number;
-  attachedInputIds?: string[];
-  hidden?: boolean;
-  gameBackgroundColor?: string;
-  gameCellGap?: number;
-  gameBoardBorderColor?: string;
-  gameBoardBorderWidth?: number;
-  gameGridLineColor?: string;
-  gameGridLineAlpha?: number;
-  snakeEventShaders?: SnakeEventShaderConfig;
-  snake1Shaders?: ShaderConfig[];
-  snake2Shaders?: ShaderConfig[];
-  snakePlayerColors?: string[];
-  absolutePosition?: boolean;
-  absoluteTop?: number;
-  absoluteLeft?: number;
-  absoluteWidth?: number;
-  absoluteHeight?: number;
-  absoluteTransitionDurationMs?: number;
-  absoluteTransitionEasing?: string;
-  motionScore?: number;
-  motionEnabled?: boolean;
-};
+export type { PublicInputState } from '../types';
 
 export function toPublicInputState(input: RoomInputState): PublicInputState {
   const base = {

@@ -1,9 +1,13 @@
 import type { StoreApi } from 'zustand';
 import { createStore } from 'zustand';
 import type {
-  ShaderConfig,
   Resolution,
   ActiveTransition,
+  InputDisplayProperties,
+  TextInputProperties,
+  AbsolutePositionProperties,
+  BorderProperties,
+  SnakeGameDisplayProperties,
 } from '../types';
 import { createContext, useContext } from 'react';
 import { useStore } from 'zustand';
@@ -19,49 +23,24 @@ export type {
   SnakeGameOverPlayer,
   SnakeGameOverData,
 } from '../snakeGame/types';
-import type {
-  SnakeGameState,
-  SnakeEventShaderConfig,
-} from '../snakeGame/types';
-
-export type InputOrientation = 'horizontal' | 'vertical';
+import type { SnakeGameState } from '../snakeGame/types';
 
 export type InputConfig = {
   inputId: string;
-  volume: number;
   title: string;
   description: string;
-  showTitle?: boolean;
-  shaders: ShaderConfig[];
-  orientation?: InputOrientation;
   imageId?: string;
-  text?: string;
-  textAlign?: 'left' | 'center' | 'right';
-  textColor?: string;
-  textMaxLines?: number;
-  textScrollSpeed?: number;
-  textScrollLoop?: boolean;
-  textScrollNudge?: number;
-  textFontSize?: number;
   snakeGameState?: SnakeGameState;
-  snakeEventShaders?: SnakeEventShaderConfig;
-  snake1Shaders?: ShaderConfig[];
-  snake2Shaders?: ShaderConfig[];
-  borderColor?: string;
-  borderWidth?: number;
   replaceWith?: InputConfig;
   attachedInputs?: InputConfig[];
-  absolutePosition?: boolean;
-  absoluteTop?: number;
-  absoluteLeft?: number;
-  absoluteWidth?: number;
-  absoluteHeight?: number;
-  absoluteTransitionDurationMs?: number;
-  absoluteTransitionEasing?: string;
   activeTransition?: ActiveTransition;
   restartFading?: boolean;
   frozenImageId?: string;
-};
+} & InputDisplayProperties &
+  Partial<TextInputProperties> &
+  Partial<BorderProperties> &
+  Partial<AbsolutePositionProperties> &
+  Partial<SnakeGameDisplayProperties>;
 
 export type RoomStore = {
   inputs: InputConfig[];
