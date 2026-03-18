@@ -201,9 +201,7 @@ export function useServerTimelinePlayback(
   const hasAutoApplied = useRef(false);
   useEffect(() => {
     if (hasAutoApplied.current) return;
-    const hasClips = stateRef.current.tracks.some(
-      (t) => t.clips.length > 0,
-    );
+    const hasClips = stateRef.current.tracks.some((t) => t.clips.length > 0);
     if (!hasClips) return;
     hasAutoApplied.current = true;
     void applyAtPlayhead();

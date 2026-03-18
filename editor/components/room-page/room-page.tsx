@@ -27,6 +27,10 @@ export default function RoomPage() {
   const isGuest = searchParams.get('guest') === 'true';
   const defaultInputsSavedRef = useRef(false);
 
+  useEffect(() => {
+    defaultInputsSavedRef.current = false;
+  }, [roomId]);
+
   const {
     roomState,
     loading,

@@ -151,27 +151,83 @@ function computeKeyframeDiff(
     { key: 'text', label: 'text' },
     { key: 'textAlign', label: 'textAlign' },
     { key: 'textColor', label: 'textColor' },
-    { key: 'textMaxLines', label: 'textMaxLines', fmt: (v) => fmtNum(v as number) },
-    { key: 'textScrollSpeed', label: 'textScrollSpeed', fmt: (v) => fmtNum(v as number) },
-    { key: 'textScrollLoop', label: 'textScrollLoop', fmt: (v) => fmtBool(v as boolean) },
-    { key: 'textFontSize', label: 'textFontSize', fmt: (v) => fmtNum(v as number) },
+    {
+      key: 'textMaxLines',
+      label: 'textMaxLines',
+      fmt: (v) => fmtNum(v as number),
+    },
+    {
+      key: 'textScrollSpeed',
+      label: 'textScrollSpeed',
+      fmt: (v) => fmtNum(v as number),
+    },
+    {
+      key: 'textScrollLoop',
+      label: 'textScrollLoop',
+      fmt: (v) => fmtBool(v as boolean),
+    },
+    {
+      key: 'textFontSize',
+      label: 'textFontSize',
+      fmt: (v) => fmtNum(v as number),
+    },
     { key: 'borderColor', label: 'borderColor' },
-    { key: 'borderWidth', label: 'borderWidth', fmt: (v) => fmtNum(v as number) },
-    { key: 'absolutePosition', label: 'absolutePosition', fmt: (v) => fmtBool(v as boolean) },
-    { key: 'absoluteTop', label: 'absoluteTop', fmt: (v) => fmtNum(v as number) },
-    { key: 'absoluteLeft', label: 'absoluteLeft', fmt: (v) => fmtNum(v as number) },
-    { key: 'absoluteWidth', label: 'absoluteWidth', fmt: (v) => fmtNum(v as number) },
-    { key: 'absoluteHeight', label: 'absoluteHeight', fmt: (v) => fmtNum(v as number) },
-    { key: 'absoluteTransitionDurationMs', label: 'absTrDuration', fmt: (v) => `${v}ms` },
+    {
+      key: 'borderWidth',
+      label: 'borderWidth',
+      fmt: (v) => fmtNum(v as number),
+    },
+    {
+      key: 'absolutePosition',
+      label: 'absolutePosition',
+      fmt: (v) => fmtBool(v as boolean),
+    },
+    {
+      key: 'absoluteTop',
+      label: 'absoluteTop',
+      fmt: (v) => fmtNum(v as number),
+    },
+    {
+      key: 'absoluteLeft',
+      label: 'absoluteLeft',
+      fmt: (v) => fmtNum(v as number),
+    },
+    {
+      key: 'absoluteWidth',
+      label: 'absoluteWidth',
+      fmt: (v) => fmtNum(v as number),
+    },
+    {
+      key: 'absoluteHeight',
+      label: 'absoluteHeight',
+      fmt: (v) => fmtNum(v as number),
+    },
+    {
+      key: 'absoluteTransitionDurationMs',
+      label: 'absTrDuration',
+      fmt: (v) => `${v}ms`,
+    },
     { key: 'absoluteTransitionEasing', label: 'absTrEasing' },
     { key: 'mp4PlayFromMs', label: 'mp4PlayFrom', fmt: (v) => `${v}ms` },
     { key: 'mp4Loop', label: 'mp4Loop', fmt: (v) => fmtBool(v as boolean) },
     { key: 'gameBackgroundColor', label: 'gameBgColor' },
-    { key: 'gameCellGap', label: 'gameCellGap', fmt: (v) => fmtNum(v as number) },
+    {
+      key: 'gameCellGap',
+      label: 'gameCellGap',
+      fmt: (v) => fmtNum(v as number),
+    },
     { key: 'gameBoardBorderColor', label: 'gameBorderColor' },
-    { key: 'gameBoardBorderWidth', label: 'gameBorderWidth', fmt: (v) => fmtNum(v as number) },
+    {
+      key: 'gameBoardBorderWidth',
+      label: 'gameBorderWidth',
+      fmt: (v) => fmtNum(v as number),
+    },
     { key: 'gameGridLineColor', label: 'gameGridColor' },
-    { key: 'gameGridLineAlpha', label: 'gameGridAlpha', fmt: (v) => fmtNum(v as number) },
+    {
+      key: 'gameGridLineAlpha',
+      label: 'gameGridAlpha',
+      fmt: (v) => fmtNum(v as number),
+    },
   ];
 
   for (const { key, label, fmt } of primitiveKeys) {
@@ -344,10 +400,7 @@ function resolveKeyframeCollision(
     let candidate = ms;
     while (true) {
       candidate += step;
-      if (
-        candidate < MIN_MOVABLE_KEYFRAME_MS ||
-        candidate > clipDurationMs
-      ) {
+      if (candidate < MIN_MOVABLE_KEYFRAME_MS || candidate > clipDurationMs) {
         break;
       }
       if (!occupiedTimes.has(candidate)) {
@@ -533,7 +586,10 @@ export function TimelinePanel({
     const selected = selectedClipIds[0];
     const track = state.tracks.find((item) => item.id === selected.trackId);
     const clip = track?.clips.find((item) => item.id === selected.clipId);
-    if (!clip || !clip.keyframes.some((keyframe) => keyframe.id === selectedKeyframeId)) {
+    if (
+      !clip ||
+      !clip.keyframes.some((keyframe) => keyframe.id === selectedKeyframeId)
+    ) {
       setSelectedKeyframeId(null);
     }
   }, [selectedClipIds, selectedKeyframeId, state.tracks]);
@@ -554,7 +610,9 @@ export function TimelinePanel({
           clip.keyframes.find((k) => k.timeMs === 0)?.id ?? null;
         const clipSelectedKeyframeId = explicitKeyframeId ?? baseKeyframeId;
         const selectedKeyframe = clipSelectedKeyframeId
-          ? clip.keyframes.find((keyframe) => keyframe.id === clipSelectedKeyframeId)
+          ? clip.keyframes.find(
+              (keyframe) => keyframe.id === clipSelectedKeyframeId,
+            )
           : null;
         return {
           trackId: sel.trackId,
@@ -848,7 +906,14 @@ export function TimelinePanel({
     if (started) {
       play();
     }
-  }, [isRecording, isTogglingRecording, play, pause, startRec, stopAndDownload]);
+  }, [
+    isRecording,
+    isTogglingRecording,
+    play,
+    pause,
+    startRec,
+    stopAndDownload,
+  ]);
 
   useEffect(() => {
     if (wasPlayingRef.current && !state.isPlaying && isRecording) {
@@ -1264,7 +1329,15 @@ export function TimelinePanel({
       }
       if (orphanedIds.length > 0) await refreshState();
     },
-    [state.tracks, deleteClip, deleteClips, removeInput, roomId, purgeInputId, refreshState],
+    [
+      state.tracks,
+      deleteClip,
+      deleteClips,
+      removeInput,
+      roomId,
+      purgeInputId,
+      refreshState,
+    ],
   );
 
   // ── Keyboard shortcuts ──────────────────────────────
@@ -1680,8 +1753,12 @@ export function TimelinePanel({
       const keyframeDrag = keyframeDragRef.current;
       if (keyframeDrag) {
         const deltaMs = pxToMs(e.clientX - keyframeDrag.originX);
-        const track = state.tracks.find((item) => item.id === keyframeDrag.trackId);
-        const clip = track?.clips.find((item) => item.id === keyframeDrag.clipId);
+        const track = state.tracks.find(
+          (item) => item.id === keyframeDrag.trackId,
+        );
+        const clip = track?.clips.find(
+          (item) => item.id === keyframeDrag.clipId,
+        );
         if (!clip) {
           return;
         }
@@ -2029,7 +2106,12 @@ export function TimelinePanel({
     await deleteClipsAndRemoveOrphans(clipsToDelete);
     setSelectedClipIds([]);
     closeContextMenu();
-  }, [contextMenu, selectedClipIds, closeContextMenu, deleteClipsAndRemoveOrphans]);
+  }, [
+    contextMenu,
+    selectedClipIds,
+    closeContextMenu,
+    deleteClipsAndRemoveOrphans,
+  ]);
 
   // ── Render helpers ───────────────────────────────────
 
@@ -2071,8 +2153,12 @@ export function TimelinePanel({
                   : 'none',
               }}
               onMouseEnter={(e) => {
-                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                const idx = sortedKeyframes.findIndex((k) => k.id === keyframe.id);
+                const rect = (
+                  e.currentTarget as HTMLElement
+                ).getBoundingClientRect();
+                const idx = sortedKeyframes.findIndex(
+                  (k) => k.id === keyframe.id,
+                );
                 const diffs =
                   idx <= 0
                     ? []

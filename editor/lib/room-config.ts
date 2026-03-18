@@ -417,8 +417,9 @@ export function computeTimelineStateAtZero(
         if (!activeInputIds.has(inputId)) {
           activeInputIds.add(inputId);
           inputOrder.push(inputId);
-          const activeSettings = clip.keyframes?.find((keyframe) => keyframe.timeMs === 0)
-            ?.blockSettings;
+          const activeSettings = clip.keyframes?.find(
+            (keyframe) => keyframe.timeMs === 0,
+          )?.blockSettings;
           if (activeSettings ?? clip.blockSettings) {
             activeBlockSettings.set(
               inputId,

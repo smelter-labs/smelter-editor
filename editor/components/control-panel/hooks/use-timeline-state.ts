@@ -751,7 +751,12 @@ export function timelineReducer(
       };
 
       const newClips = [...track.clips];
-      newClips.splice(clipIdx, 1, syncClipKeyframes(left), syncClipKeyframes(right));
+      newClips.splice(
+        clipIdx,
+        1,
+        syncClipKeyframes(left),
+        syncClipKeyframes(right),
+      );
 
       return {
         ...state,
@@ -1147,7 +1152,8 @@ export function timelineReducer(
     case 'LOAD':
       return {
         ...action.state,
-        keyframeInterpolationMode: action.state.keyframeInterpolationMode ?? 'step',
+        keyframeInterpolationMode:
+          action.state.keyframeInterpolationMode ?? 'step',
       };
 
     default:
@@ -1259,8 +1265,7 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
             totalDurationMs,
           ),
           totalDurationMs,
-          keyframeInterpolationMode:
-            stored.keyframeInterpolationMode ?? 'step',
+          keyframeInterpolationMode: stored.keyframeInterpolationMode ?? 'step',
           playheadMs: 0,
           isPlaying: false,
           pixelsPerSecond: stored.pixelsPerSecond || DEFAULT_PPS,
@@ -1447,7 +1452,13 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
       timeMs: number,
       blockSettings?: BlockSettings,
     ) => {
-      dispatch({ type: 'ADD_KEYFRAME', trackId, clipId, timeMs, blockSettings });
+      dispatch({
+        type: 'ADD_KEYFRAME',
+        trackId,
+        clipId,
+        timeMs,
+        blockSettings,
+      });
       setStructureRevision((rev) => rev + 1);
     },
     [],

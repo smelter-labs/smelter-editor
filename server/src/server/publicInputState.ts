@@ -19,6 +19,7 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
     borderWidth: input.borderWidth,
     attachedInputIds: input.attachedInputIds,
     hidden: input.hidden,
+    activeTransition: input.activeTransition,
     absolutePosition: input.absolutePosition,
     absoluteTop: input.absoluteTop,
     absoluteLeft: input.absoluteLeft,
@@ -60,6 +61,7 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
         textMaxLines: input.textMaxLines,
         textScrollSpeed: input.textScrollSpeed,
         textScrollLoop: input.textScrollLoop,
+        textScrollNudge: input.textScrollNudge,
         textFontSize: input.textFontSize,
       };
     case 'game':

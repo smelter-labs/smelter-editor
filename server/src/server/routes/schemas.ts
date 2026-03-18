@@ -50,6 +50,11 @@ export const InputSchema = Type.Union([
         Type.Literal('right'),
       ]),
     ),
+    textColor: Type.Optional(Type.String()),
+    textMaxLines: Type.Optional(Type.Number()),
+    textScrollSpeed: Type.Optional(Type.Number()),
+    textScrollLoop: Type.Optional(Type.Boolean()),
+    textFontSize: Type.Optional(Type.Number()),
   }),
   Type.Object({
     type: Type.Literal('game'),

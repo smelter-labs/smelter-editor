@@ -1,7 +1,7 @@
 const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
 
 export async function GET(
-  _request: Request,
+  request: Request,
   { params }: { params: Promise<{ roomId: string }> },
 ) {
   const { roomId } = await params;
@@ -12,11 +12,18 @@ export async function GET(
     });
   }
 
+  const abortController = new AbortController();
+
+  request.signal.addEventListener('abort', () => {
+    abortController.abort();
+  });
+
   const upstream = await fetch(
     `${BASE_URL}/room/${encodeURIComponent(roomId)}/state/sse`,
     {
       headers: { Accept: 'text/event-stream' },
       cache: 'no-store',
+      signal: abortController.signal,
     },
   );
 

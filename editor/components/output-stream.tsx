@@ -430,12 +430,20 @@ async function gatherICECandidates(
 ): Promise<RTCSessionDescription | null> {
   return new Promise<RTCSessionDescription | null>((res) => {
     setTimeout(function () {
-      res(peerConnection.localDescription);
+      try {
+        res(peerConnection.localDescription);
+      } catch {
+        res(null);
+      }
     }, 2000);
 
     peerConnection.onicegatheringstatechange = () => {
       if (peerConnection.iceGatheringState === 'complete') {
-        res(peerConnection.localDescription);
+        try {
+          res(peerConnection.localDescription);
+        } catch {
+          res(null);
+        }
       }
     };
   });

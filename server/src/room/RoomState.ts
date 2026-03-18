@@ -57,9 +57,9 @@ export class RoomState {
 
   public lastReadTimestamp: number;
   public creationTimestamp: number;
-  public pendingDelete?: boolean;
-  public isPublic: boolean = true;
-  public pendingWhipInputs: import('./types').PendingWhipInputData[] = [];
+  private _pendingDelete?: boolean;
+  private _isPublic: boolean = true;
+  private _pendingWhipInputs: import('./types').PendingWhipInputData[] = [];
   public roomName: RoomNameEntry;
 
   private readonly initInputs: RegisterInputOptions[];
@@ -106,6 +106,34 @@ export class RoomState {
     for (const input of this.inputManager.getInputs()) {
       await this.inputManager.connectInput(input.inputId);
     }
+  }
+
+  // ── Room-level property accessors ────────────────────────
+
+  public get pendingDelete(): boolean | undefined {
+    return this._pendingDelete;
+  }
+  public set pendingDelete(value: boolean | undefined) {
+    this._pendingDelete = value;
+    this.notifyStateChange();
+  }
+
+  public get isPublic(): boolean {
+    return this._isPublic;
+  }
+  public set isPublic(value: boolean) {
+    this._isPublic = value;
+    this.notifyStateChange();
+  }
+
+  public get pendingWhipInputs(): import('./types').PendingWhipInputData[] {
+    return this._pendingWhipInputs;
+  }
+  public set pendingWhipInputs(
+    value: import('./types').PendingWhipInputData[],
+  ) {
+    this._pendingWhipInputs = value;
+    this.notifyStateChange();
   }
 
   // ── Output accessors ──────────────────────────────────────
@@ -391,6 +419,7 @@ export class RoomState {
     this.timelinePlayer.addListener(forwardListener);
 
     await this.timelinePlayer.start(fromMs);
+    this.notifyStateChange();
   }
 
   public async applyTimelineState(
@@ -460,6 +489,7 @@ export class RoomState {
     await this.timelinePlayer.stop();
     this.timelinePlayer.destroy();
     this.timelinePlayer = null;
+    this.notifyStateChange();
   }
 
   public async pauseTimeline(): Promise<{
@@ -512,6 +542,7 @@ export class RoomState {
       }
     }
 
+    this.notifyStateChange();
     return { playheadMs, isPaused: true };
   }
 
@@ -548,6 +579,8 @@ export class RoomState {
       );
       this.scheduleFrozenImageCleanup(inputId);
     }
+
+    this.notifyStateChange();
   }
 
   public async seekTimeline(ms: number): Promise<void> {
@@ -722,6 +755,16 @@ export class RoomState {
 
   // ── Store sync ────────────────────────────────────────────
 
+  private notifyStateChange() {
+    for (const listener of this.stateChangeListeners) {
+      try {
+        listener();
+      } catch {
+        // best-effort notification
+      }
+    }
+  }
+
   private updateStoreWithState() {
     if (this.destroyed) return;
 
@@ -809,12 +852,6 @@ export class RoomState {
       newsStripEnabled: this.newsStripEnabled,
     });
 
-    for (const listener of this.stateChangeListeners) {
-      try {
-        listener();
-      } catch {
-        // best-effort notification
-      }
-    }
+    this.notifyStateChange();
   }
 }

@@ -170,7 +170,9 @@ export function StreamsSection({
                         }
                         isFxOpen={openFxInputId === input.inputId}
                         onToggleFx={() => onToggleFx(input.inputId)}
-                        onWhipDisconnectedOrRemoved={onWhipDisconnectedOrRemoved}
+                        onWhipDisconnectedOrRemoved={
+                          onWhipDisconnectedOrRemoved
+                        }
                         showGrip={isGuest ? false : isWideScreen}
                         isSelected={selectedInputId === input.inputId}
                         index={index}

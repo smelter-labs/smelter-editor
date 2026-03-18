@@ -11,10 +11,7 @@ export function useControlPanelState(
   roomState: RoomState,
   refreshState: () => Promise<void>,
 ) {
-  const {
-    getAvailableShaders,
-    updateRoom: updateRoomAction,
-  } = useActions();
+  const { getAvailableShaders, updateRoom: updateRoomAction } = useActions();
   const [userName, setUserName] = useState<string>(() => {
     const saved = loadUserName(roomId);
     if (saved) return saved;

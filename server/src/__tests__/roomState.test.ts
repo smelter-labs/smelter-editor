@@ -691,6 +691,151 @@ describe('RoomState', () => {
     });
   });
 
+  describe('state change notifications', () => {
+    it('notifies listeners when isPublic changes', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const listener = vi.fn();
+      room.addStateChangeListener(listener);
+
+      room.isPublic = false;
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      room.isPublic = true;
+      expect(listener).toHaveBeenCalledTimes(2);
+    });
+
+    it('notifies listeners when pendingWhipInputs changes', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const listener = vi.fn();
+      room.addStateChangeListener(listener);
+
+      room.pendingWhipInputs = [
+        {
+          id: 'whip-1',
+          title: 'Camera',
+          position: 0,
+          volume: 1,
+          showTitle: true,
+          shaders: [],
+          orientation: 'horizontal' as const,
+        },
+      ];
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('notifies listeners when pendingDelete changes', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const listener = vi.fn();
+      room.addStateChangeListener(listener);
+
+      room.pendingDelete = true;
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('notifies listeners on timeline pause/resume/stop', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const inputId = (await room.addNewInput({
+        type: 'text-input',
+        text: 'Test',
+      }))!;
+
+      const listener = vi.fn();
+      room.addStateChangeListener(listener);
+      const callsBefore = listener.mock.calls.length;
+
+      await room.startTimelinePlayback(
+        createTimelineConfig(inputId, 'TL'),
+        0,
+      );
+      expect(listener.mock.calls.length).toBeGreaterThan(callsBefore);
+
+      const callsAfterStart = listener.mock.calls.length;
+      await room.pauseTimeline();
+      expect(listener.mock.calls.length).toBeGreaterThan(callsAfterStart);
+
+      const callsAfterPause = listener.mock.calls.length;
+      await room.resumeTimeline();
+      expect(listener.mock.calls.length).toBeGreaterThan(callsAfterPause);
+
+      const callsAfterResume = listener.mock.calls.length;
+      await room.stopTimelinePlayback();
+      expect(listener.mock.calls.length).toBeGreaterThan(callsAfterResume);
+    });
+
+    it('unsubscribes listener via returned function', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const listener = vi.fn();
+      const unsub = room.addStateChangeListener(listener);
+
+      room.isPublic = false;
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      unsub();
+      room.isPublic = true;
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('publicInputState serialization', () => {
+    it('includes activeTransition in serialized output', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const inputId = (await room.addNewInput({
+        type: 'text-input',
+        text: 'Test',
+      }))!;
+
+      const transition = {
+        type: 'fade',
+        durationMs: 300,
+        direction: 'in' as const,
+      };
+      await room.showInput(inputId, transition);
+
+      const { toPublicInputState } = await import(
+        '../server/publicInputState'
+      );
+      const input = room.getInputs().find((i) => i.inputId === inputId)!;
+      const pub = toPublicInputState(input);
+      expect(pub.activeTransition).toMatchObject(transition);
+    });
+
+    it('includes textScrollNudge for text-input', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const inputId = (await room.addNewInput({
+        type: 'text-input',
+        text: 'Test',
+      }))!;
+
+      const { toPublicInputState } = await import(
+        '../server/publicInputState'
+      );
+      const input = room.getInputs().find((i) => i.inputId === inputId)!;
+      const pub = toPublicInputState(input);
+      expect('textScrollNudge' in pub).toBe(true);
+    });
+  });
+
   describe('getWhepUrl and getResolution', () => {
     it('returns the WHEP url from output', async () => {
       const output = createTestOutput('my-room');
