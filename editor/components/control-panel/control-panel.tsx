@@ -14,7 +14,6 @@ import { useActions } from './contexts/actions-context';
 import { ActionsProvider } from './contexts/actions-context';
 import { defaultActions, SESSION_SOURCE_ID } from './contexts/default-actions';
 import { useRecordingControls } from './hooks/use-recording-controls';
-import LayoutSelector, { type Layout } from '@/components/layout-selector';
 import {
   Dialog,
   DialogContent,
@@ -22,7 +21,6 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  Grid3X3,
   SlidersHorizontal,
   Zap,
   Download,
@@ -52,6 +50,7 @@ import {
   downloadRoomConfig,
   parseRoomConfig,
   loadTimelineFromStorage,
+  resolveRoomConfigTimelineState,
   restoreTimelineToStorage,
   type RoomConfig,
   type RoomConfigInput,
@@ -86,6 +85,7 @@ import {
   BlockClipPropertiesPanel,
   type SelectedTimelineClip,
 } from './components/BlockClipPropertiesPanel';
+import type { TimelineState } from './hooks/use-timeline-state';
 import { useMotionScores } from '@/hooks/use-motion-scores';
 import { useMotionHistory } from '@/hooks/use-motion-history';
 import { InputMotionPanel } from './components/InputMotionPanel';
@@ -166,7 +166,6 @@ function ControlPanelWithActions({
     handleRefreshState,
     availableShaders,
     updateOrder,
-    changeLayout,
     openFxInputId,
     setOpenFxInputId,
     selectedInputId,
@@ -346,7 +345,6 @@ function ControlPanelWithActions({
           listVersion={listVersion}
           setListVersion={setListVersion}
           showStreamsSpinner={showStreamsSpinner}
-          changeLayout={changeLayout}
           updateOrderWithLock={updateOrderWithLock}
           openFxInputId={openFxInputId}
           setOpenFxInputId={setOpenFxInputId}
@@ -375,7 +373,6 @@ type ControlPanelInnerProps = {
   listVersion: number;
   setListVersion: (v: number | ((prev: number) => number)) => void;
   showStreamsSpinner: boolean;
-  changeLayout: (layout: Layout) => void;
   updateOrderWithLock: (wrappers: InputWrapper[]) => Promise<void>;
   openFxInputId: string | null;
   setOpenFxInputId: React.Dispatch<React.SetStateAction<string | null>>;
@@ -398,7 +395,6 @@ function ControlPanelInner({
   listVersion,
   setListVersion,
   showStreamsSpinner,
-  changeLayout,
   updateOrderWithLock,
   openFxInputId,
   setOpenFxInputId,
@@ -435,8 +431,6 @@ function ControlPanelInner({
     updateOrder: updateOrderWithLock,
     selectedInputId,
     setSelectedInputId,
-    currentLayout: roomState.layout,
-    changeLayout,
   });
 
   const handleToggleFx = (inputId: string) => {
@@ -451,6 +445,46 @@ function ControlPanelInner({
   const [selectedTimelineClips, setSelectedTimelineClips] = useState<
     SelectedTimelineClip[]
   >([]);
+  const [timelinePlayheadMs, setTimelinePlayheadMs] = useState(0);
+  const timelineStateRef = useRef<TimelineState | null>(null);
+  const timelineLoadStateRef = useRef<((state: TimelineState) => void) | null>(
+    null,
+  );
+
+  const handleTimelineStateChange = useCallback(
+    (state: TimelineState) => {
+      timelineStateRef.current = state;
+      if (selectedTimelineClips.length > 0) {
+        setTimelinePlayheadMs((prev) =>
+          prev === state.playheadMs ? prev : state.playheadMs,
+        );
+      }
+    },
+    [selectedTimelineClips.length],
+  );
+
+  const handleTimelineLoadStateReady = useCallback(
+    (loadState: (state: TimelineState) => void) => {
+      timelineLoadStateRef.current = loadState;
+    },
+    [],
+  );
+
+  const getTimelineStateForConfig = useCallback(
+    () => timelineStateRef.current,
+    [],
+  );
+
+  const applyImportedTimelineState = useCallback(
+    (state: TimelineState | null) => {
+      if (state) {
+        timelineLoadStateRef.current?.(state);
+      }
+      timelineStateRef.current = state;
+      setTimelinePlayheadMs(state?.playheadMs ?? 0);
+    },
+    [],
+  );
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -462,6 +496,19 @@ function ControlPanelInner({
     return () =>
       window.removeEventListener('smelter:timeline:selected-clip', handler);
   }, []);
+
+  useEffect(() => {
+    timelineStateRef.current = null;
+    timelineLoadStateRef.current = null;
+    setTimelinePlayheadMs(0);
+  }, [roomId]);
+
+  useEffect(() => {
+    if (selectedTimelineClips.length === 0) {
+      return;
+    }
+    setTimelinePlayheadMs(timelineStateRef.current?.playheadMs ?? 0);
+  }, [selectedTimelineClips.length]);
 
   if (renderDashboard) {
     const addVideoSection = (
@@ -482,10 +529,11 @@ function ControlPanelInner({
     const buttonsSection = (
       <div className='h-full overflow-y-auto p-3'>
         <SettingsBar
-          changeLayout={changeLayout}
           roomState={roomState}
           pendingWhipInputs={pendingWhipInputs}
           setPendingWhipInputs={handleSetPendingWhipInputs}
+          getTimelineStateForConfig={getTimelineStateForConfig}
+          applyImportedTimelineState={applyImportedTimelineState}
         />
       </div>
     );
@@ -530,6 +578,8 @@ function ControlPanelInner({
         isGuest={isGuest}
         guestInputId={activeCameraInputId || activeScreenshareInputId}
         fillContainer
+        onTimelineStateChange={handleTimelineStateChange}
+        onTimelineLoadStateReady={handleTimelineLoadStateReady}
       />
     );
 
@@ -539,6 +589,7 @@ function ControlPanelInner({
           roomId={roomId}
           selectedTimelineClips={selectedTimelineClips}
           onSelectedTimelineClipsChange={setSelectedTimelineClips}
+          playheadMs={timelinePlayheadMs}
           inputs={inputs}
           availableShaders={availableShaders}
           handleRefreshState={handleRefreshState}
@@ -624,6 +675,8 @@ function ControlPanelInner({
       isGuest={isGuest}
       guestInputId={activeCameraInputId || activeScreenshareInputId}
       fillContainer={false}
+      onTimelineStateChange={handleTimelineStateChange}
+      onTimelineLoadStateReady={handleTimelineLoadStateReady}
     />
   ) : null;
 
@@ -652,10 +705,11 @@ function ControlPanelInner({
           {!isGuest && !renderStreamsOutside && streamsSectionContent}
           {!isGuest && (
             <SettingsBar
-              changeLayout={changeLayout}
               roomState={roomState}
               pendingWhipInputs={pendingWhipInputs}
               setPendingWhipInputs={handleSetPendingWhipInputs}
+              getTimelineStateForConfig={getTimelineStateForConfig}
+              applyImportedTimelineState={applyImportedTimelineState}
             />
           )}
         </>
@@ -677,18 +731,20 @@ function ControlPanelInner({
   return mainPanel;
 }
 
-type ModalId = 'quickActions' | 'layouts' | 'settings';
+type ModalId = 'quickActions' | 'settings';
 
 function SettingsBar({
-  changeLayout,
   roomState,
   pendingWhipInputs,
   setPendingWhipInputs,
+  getTimelineStateForConfig,
+  applyImportedTimelineState,
 }: {
-  changeLayout: (layout: Layout) => void;
   roomState: RoomState;
   pendingWhipInputs: PendingWhipInput[];
   setPendingWhipInputs: (inputs: PendingWhipInput[]) => void | Promise<void>;
+  getTimelineStateForConfig: () => TimelineState | null;
+  applyImportedTimelineState: (state: TimelineState | null) => void;
 }) {
   const { roomId, refreshState: handleRefreshState } = useControlPanelContext();
   const actions = useActions();
@@ -742,7 +798,10 @@ function SettingsBar({
   }, [roomId, roomState.isPublic, handleRefreshState, isTogglingPublic]);
 
   const buildConfig = useCallback(() => {
-    const timelineState = loadTimelineFromStorage(roomId);
+    const timelineState = resolveRoomConfigTimelineState(
+      roomId,
+      getTimelineStateForConfig(),
+    );
     return exportRoomConfig(
       roomState.inputs,
       roomState.layout,
@@ -757,7 +816,7 @@ function SettingsBar({
       },
       timelineState ?? undefined,
     );
-  }, [roomState, roomId]);
+  }, [getTimelineStateForConfig, roomState, roomId]);
 
   const handleExportLocal = useCallback(() => {
     setIsExporting(true);
@@ -955,6 +1014,17 @@ function SettingsBar({
           );
         }
         restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
+        const restoredTimelineState = loadTimelineFromStorage(roomId);
+        if (restoredTimelineState) {
+          const nextTimelineState: TimelineState = {
+            ...restoredTimelineState,
+            playheadMs: 0,
+            isPlaying: false,
+          };
+          applyImportedTimelineState(nextTimelineState);
+        } else {
+          applyImportedTimelineState(null);
+        }
       }
 
       const orderedCreatedIds = createdInputIds
@@ -976,7 +1046,13 @@ function SettingsBar({
 
       await handleRefreshState();
     },
-    [roomId, roomState.inputs, handleRefreshState, setPendingWhipInputs],
+    [
+      roomId,
+      roomState.inputs,
+      handleRefreshState,
+      setPendingWhipInputs,
+      applyImportedTimelineState,
+    ],
   );
 
   const handleFileChange = useCallback(
@@ -1009,11 +1085,6 @@ function SettingsBar({
         icon: <Zap className='w-4 h-4' />,
       },
       {
-        id: 'layouts',
-        label: 'Layouts',
-        icon: <Grid3X3 className='w-4 h-4' />,
-      },
-      {
         id: 'settings',
         label: 'Settings',
         icon: <SlidersHorizontal className='w-4 h-4' />,
@@ -1031,7 +1102,7 @@ function SettingsBar({
 
   return (
     <>
-      <div className='grid grid-cols-7 gap-2'>
+      <div className='grid grid-cols-6 gap-2'>
         {modalButtons.map((btn) => (
           <button
             key={btn.id}
@@ -1112,21 +1183,6 @@ function SettingsBar({
             <DialogTitle>Quick Actions</DialogTitle>
           </DialogHeader>
           <QuickActionsSection />
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
-        open={openModal === 'layouts'}
-        onOpenChange={(open) => !open && setOpenModal(null)}>
-        <DialogContent className='max-w-xl'>
-          <DialogHeader>
-            <DialogTitle>Layouts</DialogTitle>
-          </DialogHeader>
-          <LayoutSelector
-            changeLayout={changeLayout}
-            activeLayoutId={roomState.layout}
-            connectedStreamsLength={roomState.inputs.length}
-          />
         </DialogContent>
       </Dialog>
 

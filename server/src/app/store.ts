@@ -3,10 +3,8 @@ import { createStore } from 'zustand';
 import type {
   ShaderConfig,
   Resolution,
-  Layout,
   ActiveTransition,
 } from '../types';
-import { Layouts } from '../types';
 import { createContext, useContext } from 'react';
 import { useStore } from 'zustand';
 
@@ -21,8 +19,6 @@ export type {
   SnakeGameOverPlayer,
   SnakeGameOverData,
 } from '../snakeGame/types';
-export { Layouts };
-export type { Layout };
 import type {
   SnakeGameState,
   SnakeEventShaderConfig,
@@ -64,11 +60,11 @@ export type InputConfig = {
   absoluteTransitionEasing?: string;
   activeTransition?: ActiveTransition;
   restartFading?: boolean;
+  frozenImageId?: string;
 };
 
 export type RoomStore = {
   inputs: InputConfig[];
-  layout: Layout;
   resolution: Resolution;
   swapDurationMs: number;
   swapOutgoingEnabled: boolean;
@@ -76,10 +72,8 @@ export type RoomStore = {
   swapFadeOutDurationMs: number;
   newsStripFadeDuringSwap: boolean;
   newsStripEnabled: boolean;
-  frozenImageId: string | null;
   updateState: (
     inputs: InputConfig[],
-    layout: Layout,
     swapDurationMs: number,
     swapOutgoingEnabled: boolean,
     swapFadeInDurationMs: number,
@@ -87,7 +81,7 @@ export type RoomStore = {
     swapFadeOutDurationMs: number,
     newsStripEnabled: boolean,
   ) => void;
-  setFrozenImageId: (id: string | null) => void;
+  setInputFrozenImage: (inputId: string, imageId: string | null) => void;
 };
 
 export function createRoomStore(
@@ -95,7 +89,6 @@ export function createRoomStore(
 ): StoreApi<RoomStore> {
   return createStore<RoomStore>((set) => ({
     inputs: [],
-    layout: 'grid',
     resolution,
     swapDurationMs: 500,
     swapOutgoingEnabled: true,
@@ -103,10 +96,8 @@ export function createRoomStore(
     swapFadeOutDurationMs: 500,
     newsStripFadeDuringSwap: true,
     newsStripEnabled: false,
-    frozenImageId: null,
     updateState: (
       inputs: InputConfig[],
-      layout: Layout,
       swapDurationMs: number,
       swapOutgoingEnabled: boolean,
       swapFadeInDurationMs: number,
@@ -116,7 +107,6 @@ export function createRoomStore(
     ) => {
       set((_state) => ({
         inputs,
-        layout,
         swapDurationMs,
         swapOutgoingEnabled,
         swapFadeInDurationMs,
@@ -125,8 +115,14 @@ export function createRoomStore(
         newsStripEnabled,
       }));
     },
-    setFrozenImageId: (id: string | null) => {
-      set(() => ({ frozenImageId: id }));
+    setInputFrozenImage: (inputId: string, imageId: string | null) => {
+      set((state) => ({
+        inputs: state.inputs.map((input) =>
+          input.inputId === inputId
+            ? { ...input, frozenImageId: imageId ?? undefined }
+            : input,
+        ),
+      }));
     },
   }));
 }
@@ -171,23 +167,9 @@ export function useNewsStripEnabled() {
   return useStore(store, (state) => state.newsStripEnabled);
 }
 
-export function useLayoutInputs() {
+export function useInputs() {
   const store = useContext(StoreContext);
-  return useStore(store, (state) =>
-    state.inputs.filter((i) => !i.absolutePosition),
-  );
-}
-
-export function useAbsoluteInputs() {
-  const store = useContext(StoreContext);
-  return useStore(store, (state) =>
-    state.inputs.filter((i) => i.absolutePosition),
-  );
-}
-
-export function useFrozenImageId() {
-  const store = useContext(StoreContext);
-  return useStore(store, (state) => state.frozenImageId);
+  return useStore(store, (state) => state.inputs);
 }
 
 export const StoreContext =

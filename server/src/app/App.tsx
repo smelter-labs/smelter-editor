@@ -1,24 +1,8 @@
-import { View, Rescaler, Image } from '@swmansion/smelter';
+import { View, Rescaler } from '@swmansion/smelter';
 
-import type { RoomStore, InputConfig } from './store';
+import type { RoomStore } from './store';
 import type { StoreApi } from 'zustand';
-import { useStore } from 'zustand';
-import { useContext } from 'react';
-import {
-  StoreContext,
-  useResolution,
-  useAbsoluteInputs,
-  useFrozenImageId,
-} from './store';
-import {
-  GridLayout,
-  PrimaryOnTopLayout,
-  PrimaryOnLeftLayout,
-  PictureInPictureLayout,
-  WrappedLayout,
-  WrappedStaticLayout,
-  PictureOnPictureLayout,
-} from './layouts';
+import { StoreContext, useResolution, useInputs } from './store';
 import { NewsStripOverlay } from './news-strip';
 import { Input } from '../inputs/inputs';
 
@@ -42,22 +26,9 @@ export default function App({ store }: { store: StoreApi<RoomStore> }) {
 }
 
 function OutputScene() {
-  const store = useContext(StoreContext);
-  const layout = useStore(store, (state) => state.layout);
   const resolution = useResolution();
-  const absoluteInputs = useAbsoluteInputs();
-  const frozenImageId = useFrozenImageId();
+  const inputs = useInputs();
   const { width, height } = resolution;
-
-  if (frozenImageId) {
-    return (
-      <View style={{ backgroundColor: '#000000', padding: 0, width, height }}>
-        <Rescaler style={{ width, height }}>
-          <Image imageId={frozenImageId} />
-        </Rescaler>
-      </View>
-    );
-  }
 
   return (
     <View
@@ -68,22 +39,7 @@ function OutputScene() {
         height,
         overflow: 'visible',
       }}>
-      {layout === 'grid' ? (
-        <GridLayout />
-      ) : layout === 'primary-on-top' ? (
-        <PrimaryOnTopLayout />
-      ) : layout === 'primary-on-left' ? (
-        <PrimaryOnLeftLayout />
-      ) : layout === 'picture-in-picture' ? (
-        <PictureInPictureLayout />
-      ) : layout === 'wrapped' ? (
-        <WrappedLayout />
-      ) : layout === 'wrapped-static' ? (
-        <WrappedStaticLayout />
-      ) : layout === 'picture-on-picture' ? (
-        <PictureOnPictureLayout />
-      ) : null}
-      {absoluteInputs.map((input) => (
+      {inputs.map((input) => (
         <Rescaler
           key={input.inputId}
           id={`absolute-${input.inputId}`}

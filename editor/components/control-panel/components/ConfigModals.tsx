@@ -5,7 +5,7 @@ import {
   GenericLoadModal,
 } from '@/components/storage-modals';
 import { useActions } from '../contexts/actions-context';
-import type { RoomConfig } from '@/lib/room-config';
+import { parseRoomConfig, type RoomConfig } from '@/lib/room-config';
 
 type SaveConfigModalProps = {
   open: boolean;
@@ -61,7 +61,7 @@ export function LoadConfigModal({
       description='Choose where to load your room configuration from.'
       storage={configStorage}
       onLoadLocal={onLoadLocal}
-      onLoadRemote={(data) => onLoadRemote(data as RoomConfig)}
+      onLoadRemote={(data) => onLoadRemote(parseRoomConfig(JSON.stringify(data)))}
       emptyMessage='No saved configurations found.'
     />
   );

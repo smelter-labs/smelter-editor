@@ -77,6 +77,7 @@ export type RoomConfigClip = {
   startMs: number;
   endMs: number;
   blockSettings?: Clip['blockSettings'];
+  keyframes?: Clip['keyframes'];
 };
 
 export type RoomConfigTrack = {
@@ -87,6 +88,7 @@ export type RoomConfigTrack = {
 export type RoomConfigTimeline = {
   totalDurationMs: number;
   pixelsPerSecond: number;
+  keyframeInterpolationMode?: 'step' | 'smooth';
   tracks: RoomConfigTrack[];
 };
 
@@ -100,16 +102,29 @@ export type RoomConfig = {
   exportedAt: string;
 };
 
+export type RoomConfigTimelineState = {
+  tracks: Track[];
+  totalDurationMs: number;
+  keyframeInterpolationMode: 'step' | 'smooth';
+  pixelsPerSecond: number;
+};
+
+export function resolveRoomConfigTimelineState(
+  roomId: string,
+  liveTimelineState?: RoomConfigTimelineState | null,
+): RoomConfigTimelineState | null {
+  if (liveTimelineState) {
+    return liveTimelineState;
+  }
+  return loadTimelineFromStorage(roomId);
+}
+
 export function exportRoomConfig(
   inputs: Input[],
   layout: Layout,
   resolution?: { width: number; height: number },
   transitionSettings?: RoomConfigTransitionSettings,
-  timelineState?: {
-    tracks: Track[];
-    totalDurationMs: number;
-    pixelsPerSecond: number;
-  },
+  timelineState?: RoomConfigTimelineState,
 ): RoomConfig {
   const inputIdToIndex = new Map<string, number>();
   inputs.forEach((input, idx) => inputIdToIndex.set(input.inputId, idx));
@@ -127,12 +142,14 @@ export function exportRoomConfig(
             startMs: clip.startMs,
             endMs: clip.endMs,
             blockSettings: clip.blockSettings,
+            keyframes: clip.keyframes,
           } as RoomConfigClip;
         })
         .filter((c): c is RoomConfigClip => c !== null),
     }));
     timeline = {
       totalDurationMs: timelineState.totalDurationMs,
+      keyframeInterpolationMode: timelineState.keyframeInterpolationMode,
       pixelsPerSecond: timelineState.pixelsPerSecond,
       tracks,
     };
@@ -219,6 +236,7 @@ export function parseRoomConfig(json: string): RoomConfig {
 export function loadTimelineFromStorage(roomId: string): {
   tracks: Track[];
   totalDurationMs: number;
+  keyframeInterpolationMode: 'step' | 'smooth';
   pixelsPerSecond: number;
 } | null {
   if (typeof window === 'undefined') return null;
@@ -244,9 +262,23 @@ export function loadTimelineFromStorage(roomId: string): {
               ),
             }
           : createBlockSettingsFromInput(undefined),
+        keyframes: (c.keyframes ?? []).map((keyframe) => ({
+          id: keyframe.id,
+          timeMs: keyframe.timeMs,
+          blockSettings: {
+            ...keyframe.blockSettings,
+            introTransition: parseTransitionConfig(
+              keyframe.blockSettings.introTransition,
+            ),
+            outroTransition: parseTransitionConfig(
+              keyframe.blockSettings.outroTransition,
+            ),
+          },
+        })),
       })),
     })),
     totalDurationMs: stored.totalDurationMs,
+    keyframeInterpolationMode: stored.keyframeInterpolationMode,
     pixelsPerSecond: stored.pixelsPerSecond,
   };
 }
@@ -271,6 +303,7 @@ export function restoreTimelineToStorage(
           startMs: clip.startMs,
           endMs: clip.endMs,
           blockSettings: clip.blockSettings,
+          keyframes: clip.keyframes,
         };
       })
       .filter((c): c is NonNullable<typeof c> => c !== null),
@@ -279,6 +312,7 @@ export function restoreTimelineToStorage(
   const state = {
     tracks,
     totalDurationMs: timeline.totalDurationMs,
+    keyframeInterpolationMode: timeline.keyframeInterpolationMode ?? 'step',
     playheadMs: 0,
     pixelsPerSecond: timeline.pixelsPerSecond,
   };
@@ -383,10 +417,12 @@ export function computeTimelineStateAtZero(
         if (!activeInputIds.has(inputId)) {
           activeInputIds.add(inputId);
           inputOrder.push(inputId);
-          if (clip.blockSettings) {
+          const activeSettings = clip.keyframes?.find((keyframe) => keyframe.timeMs === 0)
+            ?.blockSettings;
+          if (activeSettings ?? clip.blockSettings) {
             activeBlockSettings.set(
               inputId,
-              clip.blockSettings as BlockSettings,
+              (activeSettings ?? clip.blockSettings) as BlockSettings,
             );
           }
         }

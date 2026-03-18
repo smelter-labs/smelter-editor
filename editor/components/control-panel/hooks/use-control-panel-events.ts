@@ -20,7 +20,6 @@ import type { InputType } from '@/lib/voice/commandTypes';
 import { emitActionFeedback } from '@/lib/voice/feedbackEvents';
 import { triggerRecordingDownload } from './use-recording-controls';
 import { getDefaultOrientationSetting } from '@/lib/voice/macroSettings';
-import { LAYOUT_CONFIGS, type Layout } from '@/components/layout-selector';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
 
@@ -33,8 +32,6 @@ type UseControlPanelEventsProps = {
   updateOrder: (wrappers: InputWrapper[]) => Promise<void>;
   selectedInputId: string | null;
   setSelectedInputId: (id: string | null) => void;
-  currentLayout: Layout;
-  changeLayout: (layout: Layout) => void;
 };
 
 type ApplyTextColorFromVoiceParams = {
@@ -129,8 +126,6 @@ export function useControlPanelEvents({
   updateOrder,
   selectedInputId,
   setSelectedInputId,
-  currentLayout,
-  changeLayout,
 }: UseControlPanelEventsProps) {
   const {
     removeInput,
@@ -1081,36 +1076,6 @@ export function useControlPanelEvents({
   }, [roomId, handleRefreshState, inputsRef]);
 
   useEffect(() => {
-    const onNextLayout = () => {
-      const currentIndex = LAYOUT_CONFIGS.findIndex(
-        (l) => l.id === currentLayout,
-      );
-      const nextIndex = (currentIndex + 1) % LAYOUT_CONFIGS.length;
-      changeLayout(LAYOUT_CONFIGS[nextIndex].id);
-    };
-
-    const onPreviousLayout = () => {
-      const currentIndex = LAYOUT_CONFIGS.findIndex(
-        (l) => l.id === currentLayout,
-      );
-      const prevIndex =
-        (currentIndex - 1 + LAYOUT_CONFIGS.length) % LAYOUT_CONFIGS.length;
-      changeLayout(LAYOUT_CONFIGS[prevIndex].id);
-    };
-
-    window.addEventListener('smelter:voice:next-layout', onNextLayout);
-    window.addEventListener('smelter:voice:previous-layout', onPreviousLayout);
-
-    return () => {
-      window.removeEventListener('smelter:voice:next-layout', onNextLayout);
-      window.removeEventListener(
-        'smelter:voice:previous-layout',
-        onPreviousLayout,
-      );
-    };
-  }, [currentLayout, changeLayout]);
-
-  useEffect(() => {
     const onSetTextColor = async (
       e: CustomEvent<{
         color: string;
@@ -1443,40 +1408,6 @@ export function useControlPanelEvents({
       );
     };
   }, []);
-
-  useEffect(() => {
-    const onSetLayout = async (
-      e: CustomEvent<{ layout: Layout; requestId?: string }>,
-    ) => {
-      const requestId = e.detail?.requestId;
-      try {
-        const { layout } = e.detail;
-        const validLayout = LAYOUT_CONFIGS.find((l) => l.id === layout);
-        if (validLayout) {
-          await Promise.resolve(changeLayout(validLayout.id));
-          emitMacroStepComplete(requestId);
-        } else {
-          const error = new Error(`Invalid layout: ${layout}`);
-          console.warn('Macro: invalid layout', layout);
-          emitMacroStepComplete(requestId, error);
-        }
-      } catch (err) {
-        emitMacroStepComplete(requestId, err);
-        console.error('Macro: failed to set layout', err);
-      }
-    };
-
-    window.addEventListener(
-      'smelter:voice:set-layout',
-      onSetLayout as unknown as EventListener,
-    );
-    return () => {
-      window.removeEventListener(
-        'smelter:voice:set-layout',
-        onSetLayout as unknown as EventListener,
-      );
-    };
-  }, [changeLayout]);
 
   useEffect(() => {
     const onSetSwapDuration = async (

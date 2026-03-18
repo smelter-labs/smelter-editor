@@ -17,6 +17,7 @@ import type {
   UpdateInputOptions,
   UpdateRoomOptions,
 } from './types';
+import type { TimelineConfig } from '@smelter-editor/types';
 import { createStorageClient, type StorageClient } from './storage-client';
 
 export interface SmelterApiClient {
@@ -117,15 +118,25 @@ export interface SmelterApiClient {
   shaderPresetStorage: StorageClient<ShaderConfig[]>;
   dashboardLayoutStorage: StorageClient<object>;
 
-  freezeRoom(roomId: string): Promise<{
-    screenshotUrl: string;
-    mp4Positions: Record<string, number>;
-    frozen: true;
-  }>;
-  unfreezeRoom(roomId: string): Promise<{ status: string }>;
+  pauseTimeline(
+    roomId: string,
+  ): Promise<{ playheadMs: number; isPaused: true }>;
 
   getAllRooms(): Promise<any>;
   getAvailableShaders(): Promise<AvailableShader[]>;
+
+  startTimelinePlayback(
+    roomId: string,
+    config: TimelineConfig,
+    fromMs?: number,
+  ): Promise<{ status: string }>;
+  stopTimelinePlayback(roomId: string): Promise<{ status: string }>;
+  seekTimeline(roomId: string, ms: number): Promise<{ status: string }>;
+  applyTimelineState(
+    roomId: string,
+    config: TimelineConfig,
+    playheadMs: number,
+  ): Promise<{ status: string }>;
 }
 
 class SmelterApiError extends Error {
@@ -426,12 +437,8 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       'layouts',
     ),
 
-    async freezeRoom(roomId) {
-      return await req('post', `/room/${enc(roomId)}/freeze`, {});
-    },
-
-    async unfreezeRoom(roomId) {
-      return await req('post', `/room/${enc(roomId)}/unfreeze`, {});
+    async pauseTimeline(roomId) {
+      return await req('post', `/room/${enc(roomId)}/timeline/pause`, {});
     },
 
     async getAllRooms() {
@@ -441,6 +448,32 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
     async getAvailableShaders() {
       const shaders = await req('get', '/shaders');
       return (shaders?.shaders as AvailableShader[]) || [];
+    },
+
+    async startTimelinePlayback(roomId, config, fromMs) {
+      return await req('post', `/room/${enc(roomId)}/timeline/play`, {
+        tracks: config.tracks,
+        totalDurationMs: config.totalDurationMs,
+        keyframeInterpolationMode: config.keyframeInterpolationMode,
+        fromMs,
+      });
+    },
+
+    async stopTimelinePlayback(roomId) {
+      return await req('post', `/room/${enc(roomId)}/timeline/stop`, {});
+    },
+
+    async seekTimeline(roomId, ms) {
+      return await req('post', `/room/${enc(roomId)}/timeline/seek`, { ms });
+    },
+
+    async applyTimelineState(roomId, config, playheadMs) {
+      return await req('post', `/room/${enc(roomId)}/timeline/apply`, {
+        tracks: config.tracks,
+        totalDurationMs: config.totalDurationMs,
+        keyframeInterpolationMode: config.keyframeInterpolationMode,
+        playheadMs,
+      });
     },
   };
 }

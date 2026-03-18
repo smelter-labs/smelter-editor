@@ -21,10 +21,12 @@ let roomsTable: any;
 let inputsTable: any;
 let logBox: any;
 let sysLogBox: any;
-let motionBox: any;
+let timelineBox: any;
 
 const requestLog: string[] = [];
 const sysLog: string[] = [];
+const timelineLog: string[] = [];
+const MAX_TIMELINE_LOG_LINES = 50;
 let requestCount = 0;
 let startTime = Date.now();
 
@@ -153,6 +155,22 @@ export function logRequest(method: string, route: string, status: number) {
   }
 }
 
+export function logTimelineEvent(roomId: string, message: string) {
+  const time = new Date().toLocaleTimeString('pl-PL', { hour12: false });
+  const roomShort = roomId.slice(0, 8);
+
+  if (!isBoxed) {
+    console.log(`[timeline] ${roomShort}  ${message}`);
+    return;
+  }
+
+  const line = `${time}  {cyan-fg}${roomShort}{/}  ${sanitizeTableCell(message)}`;
+  timelineLog.push(line);
+  if (timelineLog.length > MAX_TIMELINE_LOG_LINES) {
+    timelineLog.shift();
+  }
+}
+
 function formatUptime(ms: number): string {
   const s = Math.floor(ms / 1000);
   const h = Math.floor(s / 3600);
@@ -163,6 +181,25 @@ function formatUptime(ms: number): string {
 
 function sanitizeTableCell(value: string): string {
   return value.replace(/\{/g, '\\{').replace(/\}/g, '\\}');
+}
+
+function formatTimelineMs(ms: number): string {
+  const totalSec = Math.floor(ms / 1000);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
+  const tenths = Math.floor((ms % 1000) / 100);
+  return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}.${tenths}`;
+}
+
+function formatMotionScore(input: {
+  motionEnabled: boolean;
+  motionScore?: number;
+  type: string;
+}): string {
+  const videoTypes = ['local-mp4', 'twitch-channel', 'kick-channel', 'whip'];
+  if (!videoTypes.includes(input.type) || !input.motionEnabled) return '-';
+  if (input.motionScore === undefined) return '...';
+  return input.motionScore.toFixed(2);
 }
 
 function updateDashboard() {
@@ -223,66 +260,68 @@ function updateDashboard() {
       roomRows.length > 0 ? roomRows : [['-', '-', '-', '-', '-', '-', '-']],
   });
 
-  // ── Panel 3: Motion Detection ──
-  const motionLines: string[] = [];
-  let motionEnabledCount = 0;
-  let motionTotalCount = 0;
-
-  type MotionEntry = { room: string; title: string; score: number | undefined };
-  const motionEntries: MotionEntry[] = [];
+  // ── Panel 3: Timeline ──
+  const tlLines: string[] = [];
+  let anyTimelinePlaying = false;
 
   for (const room of rooms) {
-    for (const input of room.getInputs()) {
-      if (
-        !['local-mp4', 'twitch-channel', 'kick-channel', 'whip'].includes(
-          input.type,
-        )
-      )
-        continue;
-      motionTotalCount++;
-      if (!input.motionEnabled) continue;
-      motionEnabledCount++;
-      motionEntries.push({
-        room: room.idPrefix.slice(0, 8),
-        title: sanitizeTableCell(input.metadata.title),
-        score: input.motionScore,
+    const tl = room.getTimelinePlaybackState();
+    if (!tl.isPlaying && !tl.isPaused) continue;
+    anyTimelinePlaying = true;
+
+    const roomId = room.idPrefix.slice(0, 8);
+    const statusLabel = tl.isPlaying
+      ? '{green-fg}PLAYING{/}'
+      : '{yellow-fg}PAUSED{/}';
+
+    const playheadStr = formatTimelineMs(tl.playheadMs);
+    const totalStr = formatTimelineMs(tl.totalDurationMs);
+    tlLines.push(
+      ` {cyan-fg}${roomId}{/}  ${statusLabel}  ${playheadStr} / ${totalStr}`,
+    );
+
+    const BAR_WIDTH = 30;
+    const pct =
+      tl.totalDurationMs > 0
+        ? Math.min(tl.playheadMs / tl.totalDurationMs, 1)
+        : 0;
+    const filled = Math.round(pct * BAR_WIDTH);
+    const empty = BAR_WIDTH - filled;
+    const pctLabel = `${Math.round(pct * 100)}%`;
+    const barColor = tl.isPlaying ? 'green' : 'yellow';
+    tlLines.push(
+      ` {${barColor}-fg}[${'█'.repeat(filled)}${'░'.repeat(empty)}]{/} ${pctLabel}`,
+    );
+
+    const activeIds = room.getTimelineActiveInputIds();
+    if (activeIds.length > 0) {
+      const allInputs = room.getInputs();
+      const names = activeIds.map((id) => {
+        const inp = allInputs.find((i) => i.inputId === id);
+        return inp
+          ? sanitizeTableCell(inp.metadata.title).slice(0, 14)
+          : id.slice(0, 8);
       });
+      tlLines.push(` Active: {white-fg}${names.join(', ')}{/}`);
+    }
+    tlLines.push(``);
+  }
+
+  if (!anyTimelinePlaying && timelineLog.length === 0) {
+    tlLines.push(` {white-fg}No active timeline playback{/}`);
+  }
+
+  if (timelineLog.length > 0) {
+    if (anyTimelinePlaying) {
+      tlLines.push(` {bold}── Recent events ──{/bold}`);
+    }
+    const visibleEvents = timelineLog.slice(-12);
+    for (const line of visibleEvents) {
+      tlLines.push(` ${line}`);
     }
   }
 
-  motionLines.push(`{bold}MOTION DETECTION{/bold}`);
-  motionLines.push(``);
-  motionLines.push(
-    ` Enabled: {yellow-fg}${motionEnabledCount}{/} / ${motionTotalCount} inputs`,
-  );
-  motionLines.push(``);
-
-  if (motionEntries.length === 0) {
-    motionLines.push(`  {white-fg}No inputs with motion detection{/}`);
-  } else {
-    for (const entry of motionEntries) {
-      const BAR_WIDTH = 10;
-      let scoreStr: string;
-      let bar: string;
-      if (entry.score === undefined) {
-        scoreStr = '{white-fg} wait{/}';
-        bar = `{white-fg}[${'·'.repeat(BAR_WIDTH)}]{/}`;
-      } else {
-        const filled = Math.round(entry.score * BAR_WIDTH);
-        const empty = BAR_WIDTH - filled;
-        const color =
-          entry.score > 0.6 ? 'red' : entry.score > 0.3 ? 'yellow' : 'green';
-        scoreStr = `{${color}-fg}${entry.score.toFixed(2)}{/}`;
-        bar = `{${color}-fg}[${'█'.repeat(filled)}${'░'.repeat(empty)}]{/}`;
-      }
-      const title = entry.title.slice(0, 16).padEnd(16);
-      motionLines.push(
-        ` {cyan-fg}${entry.room}{/}  ${title}  ${scoreStr}  ${bar}`,
-      );
-    }
-  }
-
-  motionBox.setContent(motionLines.join('\n'));
+  timelineBox.setContent(tlLines.join('\n'));
 
   // ── Panel 4: Inputs ──
   const inputRows: string[][] = [];
@@ -307,16 +346,20 @@ function updateDashboard() {
         room.idPrefix.slice(0, 8),
         (typeLabels[input.type] ?? input.type).slice(0, 8),
         statusLabel,
-        sanitizeTableCell(input.metadata.title).slice(0, 18),
+        sanitizeTableCell(input.metadata.title).slice(0, 14),
         input.hidden ? 'hid' : 'vis',
         `${Math.round(input.volume * 100)}%`.slice(0, 4),
+        formatMotionScore(input),
       ]);
     }
   }
 
   inputsTable.setData({
-    headers: ['Room', 'Type', 'St', 'Title', 'Vis', 'Vol'],
-    data: inputRows.length > 0 ? inputRows : [['-', '-', '-', '-', '-', '-']],
+    headers: ['Room', 'Type', 'St', 'Title', 'Vis', 'Vol', 'Mot'],
+    data:
+      inputRows.length > 0
+        ? inputRows
+        : [['-', '-', '-', '-', '-', '-', '-']],
   });
 
   screen.render();
@@ -336,9 +379,9 @@ export function initDashboard() {
     tags: true,
   });
 
-  // Layout (12×6 grid):
+  // Layout (12x6 grid):
   //  Row 0-2:  Server Info (2 cols) | Rooms (4 cols)
-  //  Row 3-7:  📡 Motion (3 cols)  | Inputs (3 cols)
+  //  Row 3-7:  Timeline (3 cols)   | Inputs (3 cols)
   //  Row 8-11: Requests (3 cols)   | System Logs (3 cols)
   grid = new contrib.grid({ rows: 12, cols: 6, screen });
 
@@ -367,13 +410,13 @@ export function initDashboard() {
       header: { fg: 'white', bold: true },
       cell: { fg: 'white' },
     },
-    columnSpacing: 1,
+    columnSpacing: 2,
     columnWidth: [8, 8, 14, 11, 6, 5, 8],
   });
 
-  // Middle-left: Motion Detection
-  motionBox = grid.set(3, 0, 5, 3, blessed.box, {
-    label: ' 📡 Motion Detection ',
+  // Middle-left: Timeline
+  timelineBox = grid.set(3, 0, 5, 3, blessed.box, {
+    label: ' 🎬 Timeline ',
     tags: true,
     border: { type: 'line' },
     style: {
@@ -396,8 +439,8 @@ export function initDashboard() {
       header: { fg: 'white', bold: true },
       cell: { fg: 'white' },
     },
-    columnSpacing: 1,
-    columnWidth: [8, 8, 4, 18, 5, 4],
+    columnSpacing: 2,
+    columnWidth: [8, 8, 4, 14, 4, 4, 5],
   });
 
   // Bottom-left: Request Log

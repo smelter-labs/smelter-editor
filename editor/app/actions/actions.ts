@@ -24,6 +24,7 @@ import type {
   ShaderConfig,
 } from '@/lib/types';
 import type { SavedItemInfo, StorageResult } from '@/lib/storage-client';
+import type { TimelineConfig } from '@smelter-editor/types';
 
 const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
 
@@ -69,22 +70,10 @@ export async function stopRecording(
   return client.stopRecording(roomId);
 }
 
-export async function freezeRoom(roomId: string): Promise<{
-  screenshotUrl: string;
-  mp4Positions: Record<string, number>;
-  frozen: true;
-}> {
-  const result = await client.freezeRoom(roomId);
-  return {
-    ...result,
-    screenshotUrl: `${BASE_URL}${result.screenshotUrl}`,
-  };
-}
-
-export async function unfreezeRoom(
+export async function pauseTimeline(
   roomId: string,
-): Promise<{ status: string }> {
-  return client.unfreezeRoom(roomId);
+): Promise<{ playheadMs: number; isPaused: true }> {
+  return client.pauseTimeline(roomId);
 }
 
 export async function getRecordings(): Promise<RecordingInfo[]> {
@@ -345,6 +334,37 @@ export async function restartService(): Promise<void> {
 
 export async function getAvailableShaders(): Promise<AvailableShader[]> {
   return client.getAvailableShaders();
+}
+
+// ── Timeline playback ────────────────────────────────────────
+
+export async function startTimelinePlayback(
+  roomId: string,
+  config: TimelineConfig,
+  fromMs?: number,
+): Promise<{ status: string }> {
+  return client.startTimelinePlayback(roomId, config, fromMs);
+}
+
+export async function stopTimelinePlayback(
+  roomId: string,
+): Promise<{ status: string }> {
+  return client.stopTimelinePlayback(roomId);
+}
+
+export async function seekTimeline(
+  roomId: string,
+  ms: number,
+): Promise<{ status: string }> {
+  return client.seekTimeline(roomId, ms);
+}
+
+export async function applyTimelineState(
+  roomId: string,
+  config: TimelineConfig,
+  playheadMs: number,
+): Promise<{ status: string }> {
+  return client.applyTimelineState(roomId, config, playheadMs);
 }
 
 function spawn(
