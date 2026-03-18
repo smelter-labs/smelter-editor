@@ -1037,40 +1037,27 @@ export class RoomState {
         throw new Error(`Input ${inputId} is not connected`);
       }
 
-      const pipelineMs = SmelterInstance.getPipelineTimeMs();
-      console.log(
-        `[mp4-restart] BEGIN inputId=${inputId} playFromMs=${playFromMs} loop=${loop} pipelineMs=${pipelineMs} status=${input.status} hidden=${input.hidden}`,
-      );
+      const name = input.metadata.title;
       const t0 = Date.now();
+      logTimelineEvent(this.idPrefix, `[mp4-restart] BEGIN "${name}" from=${playFromMs}ms loop=${loop}`);
 
       input.restartFading = true;
       this.updateStoreWithState();
-      //await sleep(150);
 
       try {
-        console.log(`[mp4-restart] unregisterInput inputId=${inputId}`);
+        logTimelineEvent(this.idPrefix, `[mp4-restart] unregister "${name}"`);
         await SmelterInstance.unregisterInput(inputId);
-        console.log(
-          `[mp4-restart] unregisterInput OK inputId=${inputId} elapsed=${Date.now() - t0}ms`,
-        );
+        logTimelineEvent(this.idPrefix, `[mp4-restart] unregister OK "${name}" ${Date.now() - t0}ms`);
 
         const offsetMs = SmelterInstance.getPipelineTimeMs() - playFromMs;
-        console.log(
-          `[mp4-restart] registerInput inputId=${inputId} filePath=${input.mp4FilePath} loop=${loop} offsetMs=${offsetMs}`,
-        );
+        logTimelineEvent(this.idPrefix, `[mp4-restart] register "${name}" loop=${loop} offsetMs=${offsetMs}`);
         await SmelterInstance.registerInput(inputId, {
           type: 'mp4',
           filePath: input.mp4FilePath,
           loop,
           offsetMs,
         });
-        console.log(
-          `[mp4-restart] registerInput OK inputId=${inputId} elapsed=${Date.now() - t0}ms`,
-        );
-        logTimelineEvent(
-          this.idPrefix,
-          `MP4 RESTART ${input.metadata.title} from ${Math.round(playFromMs)}ms (${Date.now() - t0}ms)`,
-        );
+        logTimelineEvent(this.idPrefix, `[mp4-restart] register OK "${name}" ${Date.now() - t0}ms`);
 
         input.registeredAtPipelineMs = SmelterInstance.getPipelineTimeMs();
         if (loop && input.mp4DurationMs && input.mp4DurationMs > 0) {
@@ -1079,17 +1066,12 @@ export class RoomState {
           input.playFromMs = playFromMs;
         }
       } catch (err) {
-        console.error(
-          `[mp4-restart] FAILED inputId=${inputId} elapsed=${Date.now() - t0}ms status=${input.status}`,
-          err,
-        );
+        logTimelineEvent(this.idPrefix, `[mp4-restart] FAILED "${name}" ${Date.now() - t0}ms ${err}`);
         throw err;
       } finally {
         input.restartFading = false;
         this.updateStoreWithState();
-        console.log(
-          `[mp4-restart] END inputId=${inputId} elapsed=${Date.now() - t0}ms restartFading=${input.restartFading} status=${input.status} hidden=${input.hidden}`,
-        );
+        logTimelineEvent(this.idPrefix, `[mp4-restart] END "${name}" ${Date.now() - t0}ms`);
       }
     });
   }
