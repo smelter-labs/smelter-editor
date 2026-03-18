@@ -16,12 +16,25 @@ import type {
   ActiveSnakeEffect,
 } from '../snakeGame/types';
 
+import type { Layout } from '../types';
+
 export type { InputOrientation } from '../types';
 export type {
   UpdateInputOptions,
   RegisterInputOptions,
   PendingWhipInputData,
 } from '../types';
+
+export type RoomSnapshot = {
+  inputs: RoomInputState[];
+  layout: Layout;
+  swapDurationMs: number;
+  swapOutgoingEnabled: boolean;
+  swapFadeInDurationMs: number;
+  newsStripFadeDuringSwap: boolean;
+  swapFadeOutDurationMs: number;
+  newsStripEnabled: boolean;
+};
 
 export type RoomInputState = {
   inputId: string;

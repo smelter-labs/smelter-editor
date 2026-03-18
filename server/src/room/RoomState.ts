@@ -18,7 +18,7 @@ import { RecordingController } from './RecordingController';
 import { MotionController } from './MotionController';
 import { SnakeGameController } from './SnakeGameController';
 import { PlaceholderManager } from './PlaceholderManager';
-import type { RoomInputState, RegisterInputOptions } from './types';
+import type { RoomInputState, RegisterInputOptions, RoomSnapshot } from './types';
 
 const RESUME_FROZEN_IMAGE_CLEANUP_DELAY_MS = 5500;
 
@@ -31,6 +31,8 @@ export class RoomState {
   private readonly motionController: MotionController;
   private readonly snakeGameController: SnakeGameController;
   private readonly placeholderManager: PlaceholderManager;
+
+  private stateChangeListeners = new Set<() => void>();
 
   private timelinePlayer: TimelinePlayer | null = null;
   private timelineListeners = new Set<TimelineListener>();
@@ -118,27 +120,18 @@ export class RoomState {
 
   // ── State snapshot ────────────────────────────────────────
 
-  public getState(): [
-    RoomInputState[],
-    Layout,
-    number,
-    boolean,
-    number,
-    boolean,
-    number,
-    boolean,
-  ] {
+  public getState(): RoomSnapshot {
     this.lastReadTimestamp = Date.now();
-    return [
-      this.inputManager.getInputs(),
-      this.layout,
-      this.swapDurationMs,
-      this.swapOutgoingEnabled,
-      this.swapFadeInDurationMs,
-      this.newsStripFadeDuringSwap,
-      this.swapFadeOutDurationMs,
-      this.newsStripEnabled,
-    ];
+    return {
+      inputs: this.inputManager.getInputs(),
+      layout: this.layout,
+      swapDurationMs: this.swapDurationMs,
+      swapOutgoingEnabled: this.swapOutgoingEnabled,
+      swapFadeInDurationMs: this.swapFadeInDurationMs,
+      newsStripFadeDuringSwap: this.newsStripFadeDuringSwap,
+      swapFadeOutDurationMs: this.swapFadeOutDurationMs,
+      newsStripEnabled: this.newsStripEnabled,
+    };
   }
 
   public getInputs(): RoomInputState[] {
@@ -319,6 +312,13 @@ export class RoomState {
 
   public async stopAllMotion(): Promise<void> {
     await this.motionController.stopAll();
+  }
+
+  public addStateChangeListener(listener: () => void): () => void {
+    this.stateChangeListeners.add(listener);
+    return () => {
+      this.stateChangeListeners.delete(listener);
+    };
   }
 
   public addMotionScoreListener(
@@ -799,16 +799,22 @@ export class RoomState {
         return config;
       });
 
-    this.output.store
-      .getState()
-      .updateState(
-        [...inputs].reverse(),
-        this.swapDurationMs,
-        this.swapOutgoingEnabled,
-        this.swapFadeInDurationMs,
-        this.newsStripFadeDuringSwap,
-        this.swapFadeOutDurationMs,
-        this.newsStripEnabled,
-      );
+    this.output.store.getState().updateState({
+      inputs: [...inputs].reverse(),
+      swapDurationMs: this.swapDurationMs,
+      swapOutgoingEnabled: this.swapOutgoingEnabled,
+      swapFadeInDurationMs: this.swapFadeInDurationMs,
+      newsStripFadeDuringSwap: this.newsStripFadeDuringSwap,
+      swapFadeOutDurationMs: this.swapFadeOutDurationMs,
+      newsStripEnabled: this.newsStripEnabled,
+    });
+
+    for (const listener of this.stateChangeListeners) {
+      try {
+        listener();
+      } catch {
+        // best-effort notification
+      }
+    }
   }
 }

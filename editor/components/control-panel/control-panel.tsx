@@ -90,6 +90,7 @@ import { useMotionScores } from '@/hooks/use-motion-scores';
 import { useMotionHistory } from '@/hooks/use-motion-history';
 import { InputMotionPanel } from './components/InputMotionPanel';
 import { motionPanelId } from '@/components/dashboard/panel-registry';
+import { ErrorBoundary } from '@/components/error-boundary';
 
 export type ControlPanelProps = {
   roomId: string;
@@ -528,13 +529,15 @@ function ControlPanelInner({
 
     const buttonsSection = (
       <div className='h-full overflow-y-auto p-3'>
-        <SettingsBar
-          roomState={roomState}
-          pendingWhipInputs={pendingWhipInputs}
-          setPendingWhipInputs={handleSetPendingWhipInputs}
-          getTimelineStateForConfig={getTimelineStateForConfig}
-          applyImportedTimelineState={applyImportedTimelineState}
-        />
+        <ErrorBoundary>
+          <SettingsBar
+            roomState={roomState}
+            pendingWhipInputs={pendingWhipInputs}
+            setPendingWhipInputs={handleSetPendingWhipInputs}
+            getTimelineStateForConfig={getTimelineStateForConfig}
+            applyImportedTimelineState={applyImportedTimelineState}
+          />
+        </ErrorBoundary>
       </div>
     );
 
@@ -566,21 +569,23 @@ function ControlPanelInner({
     );
 
     const timelineSection = (
-      <TimelinePanel
-        inputWrappers={inputWrappers}
-        listVersion={listVersion}
-        showStreamsSpinner={showStreamsSpinner}
-        updateOrder={updateOrderWithLock}
-        openFxInputId={openFxInputId}
-        onToggleFx={handleToggleFx}
-        isSwapping={isSwapping}
-        selectedInputId={selectedInputId}
-        isGuest={isGuest}
-        guestInputId={activeCameraInputId || activeScreenshareInputId}
-        fillContainer
-        onTimelineStateChange={handleTimelineStateChange}
-        onTimelineLoadStateReady={handleTimelineLoadStateReady}
-      />
+      <ErrorBoundary>
+        <TimelinePanel
+          inputWrappers={inputWrappers}
+          listVersion={listVersion}
+          showStreamsSpinner={showStreamsSpinner}
+          updateOrder={updateOrderWithLock}
+          openFxInputId={openFxInputId}
+          onToggleFx={handleToggleFx}
+          isSwapping={isSwapping}
+          selectedInputId={selectedInputId}
+          isGuest={isGuest}
+          guestInputId={activeCameraInputId || activeScreenshareInputId}
+          fillContainer
+          onTimelineStateChange={handleTimelineStateChange}
+          onTimelineLoadStateReady={handleTimelineLoadStateReady}
+        />
+      </ErrorBoundary>
     );
 
     const blockPropertiesSection = (
@@ -663,21 +668,23 @@ function ControlPanelInner({
   ) : null;
 
   const timelineSection = !fxInput ? (
-    <TimelinePanel
-      inputWrappers={inputWrappers}
-      listVersion={listVersion}
-      showStreamsSpinner={showStreamsSpinner}
-      updateOrder={updateOrderWithLock}
-      openFxInputId={openFxInputId}
-      onToggleFx={handleToggleFx}
-      isSwapping={isSwapping}
-      selectedInputId={selectedInputId}
-      isGuest={isGuest}
-      guestInputId={activeCameraInputId || activeScreenshareInputId}
-      fillContainer={false}
-      onTimelineStateChange={handleTimelineStateChange}
-      onTimelineLoadStateReady={handleTimelineLoadStateReady}
-    />
+    <ErrorBoundary>
+      <TimelinePanel
+        inputWrappers={inputWrappers}
+        listVersion={listVersion}
+        showStreamsSpinner={showStreamsSpinner}
+        updateOrder={updateOrderWithLock}
+        openFxInputId={openFxInputId}
+        onToggleFx={handleToggleFx}
+        isSwapping={isSwapping}
+        selectedInputId={selectedInputId}
+        isGuest={isGuest}
+        guestInputId={activeCameraInputId || activeScreenshareInputId}
+        fillContainer={false}
+        onTimelineStateChange={handleTimelineStateChange}
+        onTimelineLoadStateReady={handleTimelineLoadStateReady}
+      />
+    </ErrorBoundary>
   ) : null;
 
   const mainPanel = (
@@ -704,13 +711,15 @@ function ControlPanelInner({
           />
           {!isGuest && !renderStreamsOutside && streamsSectionContent}
           {!isGuest && (
-            <SettingsBar
-              roomState={roomState}
-              pendingWhipInputs={pendingWhipInputs}
-              setPendingWhipInputs={handleSetPendingWhipInputs}
-              getTimelineStateForConfig={getTimelineStateForConfig}
-              applyImportedTimelineState={applyImportedTimelineState}
-            />
+            <ErrorBoundary>
+              <SettingsBar
+                roomState={roomState}
+                pendingWhipInputs={pendingWhipInputs}
+                setPendingWhipInputs={handleSetPendingWhipInputs}
+                getTimelineStateForConfig={getTimelineStateForConfig}
+                applyImportedTimelineState={applyImportedTimelineState}
+              />
+            </ErrorBoundary>
           )}
         </>
       )}

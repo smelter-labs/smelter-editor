@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import {
   useParams,
   useRouter,
@@ -11,13 +11,13 @@ import { motion } from 'framer-motion';
 import { toast } from 'react-toastify';
 import Link from 'next/link';
 
-import type { RoomState } from '@/lib/types';
-import { getRoomInfo } from '@/app/actions/actions';
 import LoadingSpinner from '@/components/ui/spinner';
 import { WarningBanner } from '@/components/warning-banner';
 import SmelterLogo from '@/components/ui/smelter-logo';
 import { staggerContainer } from '@/utils/animations';
 import RoomView from '@/components/pages/room-view';
+import { ErrorBoundary } from '@/components/error-boundary';
+import { useRoomStateSse } from '@/hooks/use-room-state-sse';
 
 export default function RoomPage() {
   const router = useRouter();
@@ -25,19 +25,28 @@ export default function RoomPage() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const isGuest = searchParams.get('guest') === 'true';
+  const defaultInputsSavedRef = useRef(false);
 
-  const [loading, setLoading] = useState(true);
-  const [roomState, setRoomState] = useState<RoomState>({
-    inputs: [],
-    layout: 'grid',
-    whepUrl: '',
-  });
+  const {
+    roomState,
+    loading,
+    notFound,
+    refreshState: sseRefresh,
+  } = useRoomStateSse(roomId as string | undefined);
+
+  useEffect(() => {
+    if (!notFound) return;
+    toast.error('Room not found, redirecting...');
+    if (pathname?.toLowerCase().includes('kick')) {
+      router.push('/kick');
+    } else {
+      router.push('/');
+    }
+  }, [notFound, router, pathname]);
 
   const refreshState = useCallback(async () => {
     if (!roomId) return;
-
-    const state = await getRoomInfo(roomId as string);
-
+    const state = await sseRefresh();
     if (state === 'not-found') {
       toast.error('Room was closed, Redirecting ...');
       if (pathname?.toLowerCase().includes('kick')) {
@@ -45,27 +54,25 @@ export default function RoomPage() {
       } else {
         router.push('/');
       }
-    } else {
-      setRoomState(state);
-      setLoading(false);
-
-      // Save default inputs on first load if they exist and haven't been saved yet
-      if (typeof window !== 'undefined' && state.inputs.length > 0) {
-        const storageKey = `smelter:default-inputs:${roomId}`;
-        const existing = localStorage.getItem(storageKey);
-        if (!existing) {
-          const defaultInputIds = state.inputs.map((input) => input.inputId);
-          localStorage.setItem(storageKey, JSON.stringify(defaultInputIds));
-        }
-      }
     }
-  }, [roomId, router, pathname]);
+  }, [roomId, sseRefresh, router, pathname]);
 
   useEffect(() => {
-    void refreshState();
-    const interval = setInterval(refreshState, 3_000);
-    return () => clearInterval(interval);
-  }, [refreshState]);
+    if (
+      !defaultInputsSavedRef.current &&
+      roomId &&
+      typeof window !== 'undefined' &&
+      roomState.inputs.length > 0
+    ) {
+      const storageKey = `smelter:default-inputs:${roomId}`;
+      const existing = localStorage.getItem(storageKey);
+      if (!existing) {
+        const defaultInputIds = roomState.inputs.map((input) => input.inputId);
+        localStorage.setItem(storageKey, JSON.stringify(defaultInputIds));
+      }
+      defaultInputsSavedRef.current = true;
+    }
+  }, [roomId, roomState.inputs]);
 
   return (
     <motion.div
@@ -97,12 +104,14 @@ export default function RoomPage() {
           <LoadingSpinner size='lg' variant='spinner' />
         </motion.div>
       ) : (
-        <RoomView
-          roomState={roomState}
-          roomId={roomId as string}
-          refreshState={refreshState}
-          isGuest={isGuest}
-        />
+        <ErrorBoundary>
+          <RoomView
+            roomState={roomState}
+            roomId={roomId as string}
+            refreshState={refreshState}
+            isGuest={isGuest}
+          />
+        </ErrorBoundary>
       )}
     </motion.div>
   );

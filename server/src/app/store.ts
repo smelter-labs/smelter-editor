@@ -51,15 +51,15 @@ export type RoomStore = {
   swapFadeOutDurationMs: number;
   newsStripFadeDuringSwap: boolean;
   newsStripEnabled: boolean;
-  updateState: (
-    inputs: InputConfig[],
-    swapDurationMs: number,
-    swapOutgoingEnabled: boolean,
-    swapFadeInDurationMs: number,
-    newsStripFadeDuringSwap: boolean,
-    swapFadeOutDurationMs: number,
-    newsStripEnabled: boolean,
-  ) => void;
+  updateState: (state: {
+    inputs: InputConfig[];
+    swapDurationMs: number;
+    swapOutgoingEnabled: boolean;
+    swapFadeInDurationMs: number;
+    newsStripFadeDuringSwap: boolean;
+    swapFadeOutDurationMs: number;
+    newsStripEnabled: boolean;
+  }) => void;
   setInputFrozenImage: (inputId: string, imageId: string | null) => void;
 };
 
@@ -75,16 +75,16 @@ export function createRoomStore(
     swapFadeOutDurationMs: 500,
     newsStripFadeDuringSwap: true,
     newsStripEnabled: false,
-    updateState: (
-      inputs: InputConfig[],
-      swapDurationMs: number,
-      swapOutgoingEnabled: boolean,
-      swapFadeInDurationMs: number,
-      newsStripFadeDuringSwap: boolean,
-      swapFadeOutDurationMs: number,
-      newsStripEnabled: boolean,
-    ) => {
-      set((_state) => ({
+    updateState: ({
+      inputs,
+      swapDurationMs,
+      swapOutgoingEnabled,
+      swapFadeInDurationMs,
+      newsStripFadeDuringSwap,
+      swapFadeOutDurationMs,
+      newsStripEnabled,
+    }) => {
+      set(() => ({
         inputs,
         swapDurationMs,
         swapOutgoingEnabled,

@@ -5,6 +5,7 @@ import InputEntry from '@/components/control-panel/input-entry/input-entry';
 import { SortableItem } from '@/components/control-panel/sortable-list/sortable-item';
 import { SortableList } from '@/components/control-panel/sortable-list/sortable-list';
 import LoadingSpinner from '@/components/ui/spinner';
+import { ErrorBoundary } from '@/components/error-boundary';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
 
@@ -148,57 +149,61 @@ export function StreamsSection({
                 disableDrag={isGuest || !isWideScreen}>
                 {input && (
                   <>
-                    <InputEntry
-                      input={input}
-                      refreshState={refreshState}
-                      roomId={roomId}
-                      availableShaders={availableShaders}
-                      canRemove={
-                        isGuest
-                          ? input.inputId === guestInputId
-                          : visibleWrappers.length > 1
-                      }
-                      canMoveUp={isGuest ? false : !isFirst}
-                      canMoveDown={isGuest ? false : !isLast}
-                      pcRef={cameraPcRef}
-                      streamRef={cameraStreamRef}
-                      isLocalWhipInput={
-                        input.inputId === activeCameraInputId ||
-                        input.inputId === activeScreenshareInputId
-                      }
-                      isFxOpen={openFxInputId === input.inputId}
-                      onToggleFx={() => onToggleFx(input.inputId)}
-                      onWhipDisconnectedOrRemoved={onWhipDisconnectedOrRemoved}
-                      showGrip={isGuest ? false : isWideScreen}
-                      isSelected={selectedInputId === input.inputId}
-                      index={index}
-                      allInputs={inputs}
-                      readOnly={isGuest && input.inputId !== guestInputId}
-                    />
+                    <ErrorBoundary>
+                      <InputEntry
+                        input={input}
+                        refreshState={refreshState}
+                        roomId={roomId}
+                        availableShaders={availableShaders}
+                        canRemove={
+                          isGuest
+                            ? input.inputId === guestInputId
+                            : visibleWrappers.length > 1
+                        }
+                        canMoveUp={isGuest ? false : !isFirst}
+                        canMoveDown={isGuest ? false : !isLast}
+                        pcRef={cameraPcRef}
+                        streamRef={cameraStreamRef}
+                        isLocalWhipInput={
+                          input.inputId === activeCameraInputId ||
+                          input.inputId === activeScreenshareInputId
+                        }
+                        isFxOpen={openFxInputId === input.inputId}
+                        onToggleFx={() => onToggleFx(input.inputId)}
+                        onWhipDisconnectedOrRemoved={onWhipDisconnectedOrRemoved}
+                        showGrip={isGuest ? false : isWideScreen}
+                        isSelected={selectedInputId === input.inputId}
+                        index={index}
+                        allInputs={inputs}
+                        readOnly={isGuest && input.inputId !== guestInputId}
+                      />
+                    </ErrorBoundary>
                     {attachedChildren.map((child) => (
                       <div
                         key={child.inputId}
                         className='ml-6 mt-1 border-l-2 border-blue-500/30 pl-2'>
-                        <InputEntry
-                          input={child}
-                          refreshState={refreshState}
-                          roomId={roomId}
-                          availableShaders={availableShaders}
-                          canRemove={false}
-                          canMoveUp={false}
-                          canMoveDown={false}
-                          pcRef={cameraPcRef}
-                          streamRef={cameraStreamRef}
-                          isFxOpen={openFxInputId === child.inputId}
-                          onToggleFx={() => onToggleFx(child.inputId)}
-                          onWhipDisconnectedOrRemoved={
-                            onWhipDisconnectedOrRemoved
-                          }
-                          showGrip={false}
-                          isSelected={selectedInputId === child.inputId}
-                          allInputs={inputs}
-                          readOnly={isGuest && child.inputId !== guestInputId}
-                        />
+                        <ErrorBoundary>
+                          <InputEntry
+                            input={child}
+                            refreshState={refreshState}
+                            roomId={roomId}
+                            availableShaders={availableShaders}
+                            canRemove={false}
+                            canMoveUp={false}
+                            canMoveDown={false}
+                            pcRef={cameraPcRef}
+                            streamRef={cameraStreamRef}
+                            isFxOpen={openFxInputId === child.inputId}
+                            onToggleFx={() => onToggleFx(child.inputId)}
+                            onWhipDisconnectedOrRemoved={
+                              onWhipDisconnectedOrRemoved
+                            }
+                            showGrip={false}
+                            isSelected={selectedInputId === child.inputId}
+                            allInputs={inputs}
+                            readOnly={isGuest && child.inputId !== guestInputId}
+                          />
+                        </ErrorBoundary>
                       </div>
                     ))}
                   </>

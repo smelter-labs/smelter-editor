@@ -73,7 +73,7 @@ import { createRoomStore } from '../app/store';
 import { RESOLUTION_PRESETS } from '../types';
 import type { TimelineConfig } from '@smelter-editor/types';
 
-const { RoomState } = await import('../server/roomState');
+const { RoomState } = await import('../room/RoomState');
 
 function createTestOutput(roomId = 'test-room') {
   const res = RESOLUTION_PRESETS['1440p'];
@@ -153,7 +153,7 @@ describe('RoomState', () => {
       const room = new RoomState('room-1', output, [], true);
       await room.init();
 
-      const [inputs] = room.getState();
+      const { inputs } = room.getState();
       for (const input of inputs) {
         expect(input.inputId).toContain('placeholder');
       }
@@ -478,10 +478,10 @@ describe('RoomState', () => {
       await room.init();
 
       await room.updateLayout('grid');
-      expect(room.getState()[1]).toBe('grid');
+      expect(room.getState().layout).toBe('grid');
 
       await room.updateLayout('primary-on-left');
-      expect(room.getState()[1]).toBe('primary-on-left');
+      expect(room.getState().layout).toBe('primary-on-left');
     });
   });
 
@@ -509,15 +509,17 @@ describe('RoomState', () => {
   });
 
   describe('getState', () => {
-    it('returns tuple of inputs, layout, and settings', async () => {
+    it('returns RoomSnapshot with inputs, layout, and settings', async () => {
       const output = createTestOutput();
       const room = new RoomState('room-1', output, [], true);
       await room.init();
 
       const result = room.getState();
-      expect(result).toHaveLength(8);
-      expect(Array.isArray(result[0])).toBe(true);
-      expect(typeof result[1]).toBe('string');
+      expect(Array.isArray(result.inputs)).toBe(true);
+      expect(typeof result.layout).toBe('string');
+      expect(typeof result.swapDurationMs).toBe('number');
+      expect(typeof result.swapOutgoingEnabled).toBe('boolean');
+      expect(typeof result.newsStripEnabled).toBe('boolean');
     });
 
     it('updates lastReadTimestamp', async () => {

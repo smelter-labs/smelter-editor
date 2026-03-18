@@ -1943,18 +1943,7 @@ export function TimelinePanel({
     closeContextMenu();
   }, [contextMenu, closeContextMenu]);
 
-  const handleDelete = useCallback(() => {
-    if (contextMenu) {
-      window.dispatchEvent(
-        new CustomEvent('smelter:inputs:hide', {
-          detail: { inputId: contextMenu.inputId },
-        }),
-      );
-    }
-    closeContextMenu();
-  }, [contextMenu, closeContextMenu]);
-
-  const handleHardDelete = useCallback(async () => {
+  const handleDelete = useCallback(async () => {
     if (!contextMenu) return;
     const input = inputs.find((i) => i.inputId === contextMenu.inputId);
     const label = input?.title ?? contextMenu.inputId;
@@ -2597,11 +2586,6 @@ export function TimelinePanel({
               className='w-full text-left py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer text-red-400 hover:text-red-300'
               onClick={handleDelete}>
               Delete
-            </button>
-            <button
-              className='w-full text-left py-1.5 px-3 text-sm hover:bg-neutral-700 cursor-pointer text-red-500 hover:text-red-400 font-semibold'
-              onClick={handleHardDelete}>
-              Hard Delete (remove input)
             </button>
             {contextMenu.clipId && (
               <>

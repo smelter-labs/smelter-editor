@@ -68,6 +68,26 @@ export function PendingWhipInputs({
       setActiveInputId(response.inputId);
       setIsActive(false);
 
+      // Replace timeline placeholder before any other awaits so that
+      // SSE-driven SYNC_TRACKS (triggered by the new input appearing on the
+      // server) already sees the real inputId and doesn't create a duplicate track.
+      const placeholderId = `__pending-whip-${pendingInput.position}__`;
+      const timelineUpdated = updateTimelineInputId(
+        roomId,
+        placeholderId,
+        response.inputId,
+      );
+      if (timelineUpdated) {
+        window.dispatchEvent(
+          new CustomEvent('smelter:timeline-input-replaced', {
+            detail: {
+              oldInputId: placeholderId,
+              newInputId: response.inputId,
+            },
+          }),
+        );
+      }
+
       const onDisconnected = () => {
         stopCameraAndConnection(pcRef, streamRef);
         setIsActive(false);
@@ -99,24 +119,6 @@ export function PendingWhipInputs({
         showTitle: pendingInput.config.showTitle,
         orientation: pendingInput.config.orientation,
       });
-
-      // Update timeline clips: replace placeholder inputId with real one
-      const placeholderId = `__pending-whip-${pendingInput.position}__`;
-      const timelineUpdated = updateTimelineInputId(
-        roomId,
-        placeholderId,
-        response.inputId,
-      );
-      if (timelineUpdated) {
-        window.dispatchEvent(
-          new CustomEvent('smelter:timeline-input-replaced', {
-            detail: {
-              oldInputId: placeholderId,
-              newInputId: response.inputId,
-            },
-          }),
-        );
-      }
 
       const roomInfo = await getRoomInfo(roomId);
       if (roomInfo !== 'not-found') {
