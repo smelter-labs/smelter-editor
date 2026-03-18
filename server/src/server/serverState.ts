@@ -1,5 +1,5 @@
-import type { RegisterInputOptions } from './roomState';
-import { RoomState } from './roomState';
+import type { RegisterInputOptions } from '../room/types';
+import { RoomState } from '../room/RoomState';
 import { v4 as uuidv4 } from 'uuid';
 import { errorCodes } from 'fastify';
 import { Mutex } from 'async-mutex';

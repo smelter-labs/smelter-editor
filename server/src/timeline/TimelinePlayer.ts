@@ -5,7 +5,7 @@ import type {
   TimelineKeyframe,
   TimelineKeyframeInterpolationMode,
 } from './types';
-import type { RoomInputState } from '../server/roomState';
+import type { RoomInputState } from '../room/types';
 
 type PlaybackEvent = {
   timeMs: number;

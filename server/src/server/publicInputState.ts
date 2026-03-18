@@ -1,4 +1,4 @@
-import type { RoomInputState, InputOrientation } from './roomState';
+import type { RoomInputState, InputOrientation } from '../room/types';
 import type { ShaderConfig } from '../types';
 import type { SnakeEventShaderConfig } from '../snakeGame/types';
 import { toPublicSnakeGameInputState } from '../snakeGame/publicSnakeGameState';

@@ -21,7 +21,7 @@ import {
 } from '../snakeGame/snakeGameRoutes';
 import { registerTimelineRoutes } from '../timeline/timelineRoutes';
 import { TwitchChannelSuggestions } from '../twitch/TwitchChannelMonitor';
-import type { RegisterInputOptions, PendingWhipInputData } from './roomState';
+import type { RegisterInputOptions, PendingWhipInputData } from '../room/types';
 import { toPublicInputState } from './publicInputState';
 import { config } from '../config';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
