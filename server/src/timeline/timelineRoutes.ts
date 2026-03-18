@@ -1,6 +1,7 @@
 import { Type } from '@sinclair/typebox';
 import type { FastifyInstance } from 'fastify';
 import { state } from '../server/serverState';
+import { logTimelineEvent } from '../dashboard';
 import {
   TimelinePlaySchema,
   TimelineSeekSchema,
@@ -39,6 +40,10 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
         totalDurationMs,
         fromMs,
       });
+      logTimelineEvent(
+        roomId,
+        `PLAY from ${fromMs ?? 0}ms (${tracks.length} tracks, ${totalDurationMs}ms)`,
+      );
       // TypeBox schema validates structure; cast to TimelineConfig since
       // TransitionType is narrower than the schema's `string`.
       const config = {
@@ -58,6 +63,7 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
       const { roomId } = req.params;
       const room = state.getRoom(roomId);
       console.log('[timeline] Pause playback', { roomId });
+      logTimelineEvent(roomId, 'PAUSE');
       const result = await room.pauseTimeline();
       res.status(200).send(result);
     },
@@ -70,6 +76,7 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
       const { roomId } = req.params;
       const room = state.getRoom(roomId);
       console.log('[timeline] Stop playback', { roomId });
+      logTimelineEvent(roomId, 'STOP');
       await room.stopTimelinePlayback();
       res.status(200).send({ status: 'ok' });
     },
@@ -88,6 +95,7 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
       const room = state.getRoom(roomId);
       const { ms } = req.body;
       console.log('[timeline] Seek', { roomId, ms });
+      logTimelineEvent(roomId, `SEEK to ${ms}ms`);
       await room.seekTimeline(ms);
       res.status(200).send({ status: 'ok' });
     },
@@ -112,6 +120,7 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
         totalDurationMs,
         playheadMs,
       });
+      logTimelineEvent(roomId, `APPLY snapshot at ${playheadMs}ms`);
       const config = {
         tracks,
         totalDurationMs,

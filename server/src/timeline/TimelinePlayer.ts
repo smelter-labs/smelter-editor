@@ -547,6 +547,10 @@ export class TimelinePlayer {
     return this.playing;
   }
 
+  public getTotalDurationMs(): number {
+    return this.config.totalDurationMs;
+  }
+
   public updateConfig(config: TimelineConfig): void {
     this.config = config;
   }

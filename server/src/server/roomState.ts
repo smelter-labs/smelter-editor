@@ -42,6 +42,7 @@ import {
   type TimelineRoomStateAdapter,
 } from '../timeline/TimelinePlayer';
 import type { TimelineConfig } from '../timeline/types';
+import { logTimelineEvent } from '../dashboard';
 
 const RESUME_FROZEN_IMAGE_CLEANUP_DELAY_MS = 5500;
 
@@ -1066,6 +1067,10 @@ export class RoomState {
         console.log(
           `[mp4-restart] registerInput OK inputId=${inputId} elapsed=${Date.now() - t0}ms`,
         );
+        logTimelineEvent(
+          this.idPrefix,
+          `MP4 RESTART ${input.metadata.title} from ${Math.round(playFromMs)}ms (${Date.now() - t0}ms)`,
+        );
 
         input.registeredAtPipelineMs = SmelterInstance.getPipelineTimeMs();
         if (loop && input.mp4DurationMs && input.mp4DurationMs > 0) {
@@ -1398,6 +1403,10 @@ export class RoomState {
         });
 
         await this.setFrozenImage(inputId, frozenId, jpegPath);
+        logTimelineEvent(
+          this.idPrefix,
+          `MP4 FROZEN (scrub) ${input.metadata.title} at ${Math.round(framePositionMs)}ms`,
+        );
       } catch (err) {
         console.error(
           `[timeline] Failed to extract frame for ${inputId} at scrub position`,
@@ -1452,6 +1461,10 @@ export class RoomState {
         });
 
         await this.setFrozenImage(inputId, frozenId, jpegPath);
+        logTimelineEvent(
+          this.idPrefix,
+          `MP4 FROZEN (pause) ${input.metadata.title} at ${Math.round(framePositionMs)}ms`,
+        );
       } catch (err) {
         console.error(`[timeline] Failed to extract frame for ${inputId}`, err);
       }
@@ -1472,6 +1485,11 @@ export class RoomState {
         .filter((inputId) => this.frozenImages.has(inputId)),
     );
 
+    logTimelineEvent(
+      this.idPrefix,
+      `RESUME at ${Math.round(resumeMs)}ms (${activeFrozenInputIds.size} frozen MP4s)`,
+    );
+
     await this.timelinePlayer.resume(fromMs);
 
     const inactiveFrozenInputIds = [...this.frozenImages.keys()].filter(
@@ -1480,6 +1498,11 @@ export class RoomState {
     await this.cleanupFrozenImages(inactiveFrozenInputIds);
 
     for (const inputId of activeFrozenInputIds) {
+      const input = this.inputs.find((i) => i.inputId === inputId);
+      logTimelineEvent(
+        this.idPrefix,
+        `MP4 UNFREEZING ${input?.metadata.title ?? inputId.slice(0, 12)} (fade ${RESUME_FROZEN_IMAGE_CLEANUP_DELAY_MS}ms)`,
+      );
       this.scheduleFrozenImageCleanup(inputId);
     }
   }
@@ -1594,15 +1617,29 @@ export class RoomState {
     playheadMs: number;
     isPlaying: boolean;
     isPaused: boolean;
+    totalDurationMs: number;
   } {
     if (!this.timelinePlayer) {
-      return { playheadMs: 0, isPlaying: false, isPaused: false };
+      return {
+        playheadMs: 0,
+        isPlaying: false,
+        isPaused: false,
+        totalDurationMs: 0,
+      };
     }
     return {
       playheadMs: this.timelinePlayer.getPlayheadMs(),
       isPlaying: this.timelinePlayer.isPlaying(),
       isPaused: this.timelinePlayer.getIsPaused(),
+      totalDurationMs: this.timelinePlayer.getTotalDurationMs(),
     };
+  }
+
+  public getTimelineActiveInputIds(): string[] {
+    if (!this.timelinePlayer) return [];
+    return this.timelinePlayer.getActiveInputIdsAt(
+      this.timelinePlayer.getPlayheadMs(),
+    );
   }
 
   public addTimelineListener(listener: TimelineListener): () => void {
