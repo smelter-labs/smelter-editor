@@ -1,9 +1,13 @@
 import type { StoreApi } from 'zustand';
 import { createStore } from 'zustand';
 import type {
-  ShaderConfig,
   Resolution,
   ActiveTransition,
+  InputDisplayProperties,
+  TextInputProperties,
+  AbsolutePositionProperties,
+  BorderProperties,
+  SnakeGameDisplayProperties,
 } from '../types';
 import { createContext, useContext } from 'react';
 import { useStore } from 'zustand';
@@ -19,49 +23,24 @@ export type {
   SnakeGameOverPlayer,
   SnakeGameOverData,
 } from '../snakeGame/types';
-import type {
-  SnakeGameState,
-  SnakeEventShaderConfig,
-} from '../snakeGame/types';
-
-export type InputOrientation = 'horizontal' | 'vertical';
+import type { SnakeGameState } from '../snakeGame/types';
 
 export type InputConfig = {
   inputId: string;
-  volume: number;
   title: string;
   description: string;
-  showTitle?: boolean;
-  shaders: ShaderConfig[];
-  orientation?: InputOrientation;
   imageId?: string;
-  text?: string;
-  textAlign?: 'left' | 'center' | 'right';
-  textColor?: string;
-  textMaxLines?: number;
-  textScrollSpeed?: number;
-  textScrollLoop?: boolean;
-  textScrollNudge?: number;
-  textFontSize?: number;
   snakeGameState?: SnakeGameState;
-  snakeEventShaders?: SnakeEventShaderConfig;
-  snake1Shaders?: ShaderConfig[];
-  snake2Shaders?: ShaderConfig[];
-  borderColor?: string;
-  borderWidth?: number;
   replaceWith?: InputConfig;
   attachedInputs?: InputConfig[];
-  absolutePosition?: boolean;
-  absoluteTop?: number;
-  absoluteLeft?: number;
-  absoluteWidth?: number;
-  absoluteHeight?: number;
-  absoluteTransitionDurationMs?: number;
-  absoluteTransitionEasing?: string;
   activeTransition?: ActiveTransition;
   restartFading?: boolean;
   frozenImageId?: string;
-};
+} & InputDisplayProperties &
+  Partial<TextInputProperties> &
+  Partial<BorderProperties> &
+  Partial<AbsolutePositionProperties> &
+  Partial<SnakeGameDisplayProperties>;
 
 export type RoomStore = {
   inputs: InputConfig[];
@@ -72,15 +51,15 @@ export type RoomStore = {
   swapFadeOutDurationMs: number;
   newsStripFadeDuringSwap: boolean;
   newsStripEnabled: boolean;
-  updateState: (
-    inputs: InputConfig[],
-    swapDurationMs: number,
-    swapOutgoingEnabled: boolean,
-    swapFadeInDurationMs: number,
-    newsStripFadeDuringSwap: boolean,
-    swapFadeOutDurationMs: number,
-    newsStripEnabled: boolean,
-  ) => void;
+  updateState: (state: {
+    inputs: InputConfig[];
+    swapDurationMs: number;
+    swapOutgoingEnabled: boolean;
+    swapFadeInDurationMs: number;
+    newsStripFadeDuringSwap: boolean;
+    swapFadeOutDurationMs: number;
+    newsStripEnabled: boolean;
+  }) => void;
   setInputFrozenImage: (inputId: string, imageId: string | null) => void;
 };
 
@@ -96,16 +75,16 @@ export function createRoomStore(
     swapFadeOutDurationMs: 500,
     newsStripFadeDuringSwap: true,
     newsStripEnabled: false,
-    updateState: (
-      inputs: InputConfig[],
-      swapDurationMs: number,
-      swapOutgoingEnabled: boolean,
-      swapFadeInDurationMs: number,
-      newsStripFadeDuringSwap: boolean,
-      swapFadeOutDurationMs: number,
-      newsStripEnabled: boolean,
-    ) => {
-      set((_state) => ({
+    updateState: ({
+      inputs,
+      swapDurationMs,
+      swapOutgoingEnabled,
+      swapFadeInDurationMs,
+      newsStripFadeDuringSwap,
+      swapFadeOutDurationMs,
+      newsStripEnabled,
+    }) => {
+      set(() => ({
         inputs,
         swapDurationMs,
         swapOutgoingEnabled,

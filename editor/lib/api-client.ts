@@ -345,9 +345,13 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
 
     async hideInput(roomId, inputId, sourceIdOrTransition) {
       const sourceId =
-        typeof sourceIdOrTransition === 'string' ? sourceIdOrTransition : undefined;
+        typeof sourceIdOrTransition === 'string'
+          ? sourceIdOrTransition
+          : undefined;
       const activeTransition =
-        typeof sourceIdOrTransition === 'string' ? undefined : sourceIdOrTransition;
+        typeof sourceIdOrTransition === 'string'
+          ? undefined
+          : sourceIdOrTransition;
       return await sendRequest(
         baseUrl,
         'post',
@@ -359,9 +363,13 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
 
     async showInput(roomId, inputId, sourceIdOrTransition) {
       const sourceId =
-        typeof sourceIdOrTransition === 'string' ? sourceIdOrTransition : undefined;
+        typeof sourceIdOrTransition === 'string'
+          ? sourceIdOrTransition
+          : undefined;
       const activeTransition =
-        typeof sourceIdOrTransition === 'string' ? undefined : sourceIdOrTransition;
+        typeof sourceIdOrTransition === 'string'
+          ? undefined
+          : sourceIdOrTransition;
       return await sendRequest(
         baseUrl,
         'post',

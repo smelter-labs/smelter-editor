@@ -66,14 +66,14 @@ export class SmelterManager {
     return Date.now() - this.pipelineStartTime;
   }
   public async init() {
-    await SmelterInstance['instance'].init();
-    await SmelterInstance['instance'].start();
+    await this.instance.init();
+    await this.instance.start();
     this.pipelineStartTime = Date.now();
-    await SmelterInstance['instance'].registerImage('spinner', {
+    await this.instance.registerImage('spinner', {
       serverPath: path.join(__dirname, '../loading.gif'),
       assetType: 'gif',
     });
-    await SmelterInstance['instance'].registerImage('news_strip', {
+    await this.instance.registerImage('news_strip', {
       serverPath: path.join(
         process.cwd(),
         'mp4s',
@@ -82,7 +82,7 @@ export class SmelterManager {
       ),
       assetType: 'png',
     });
-    await SmelterInstance['instance'].registerImage('smelter_logo', {
+    await this.instance.registerImage('smelter_logo', {
       serverPath: path.join(__dirname, '../imgs/smelter_logo.png'),
       assetType: 'png',
     });
@@ -91,7 +91,7 @@ export class SmelterManager {
 
     for (const shader of shadersController.shaders) {
       await this.registerShaderFromFile(
-        SmelterInstance['instance'],
+        this.instance,
         shader.id,
         path.join(__dirname, `../shaders/${shader.shaderFile}`),
       );

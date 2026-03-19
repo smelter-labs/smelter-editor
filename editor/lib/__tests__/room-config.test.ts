@@ -211,7 +211,13 @@ describe('exportRoomConfig', () => {
       pixelsPerSecond: 15,
     };
 
-    const config = exportRoomConfig([minimalInput], 'grid', undefined, undefined, timelineState);
+    const config = exportRoomConfig(
+      [minimalInput],
+      'grid',
+      undefined,
+      undefined,
+      timelineState,
+    );
 
     expect(config.timeline).toEqual({
       totalDurationMs: 10_000,
@@ -457,8 +463,8 @@ describe('timeline config persistence helpers', () => {
       pixelsPerSecond: 15,
     };
 
-    expect(
-      resolveRoomConfigTimelineState('room-2', liveTimelineState),
-    ).toBe(liveTimelineState);
+    expect(resolveRoomConfigTimelineState('room-2', liveTimelineState)).toBe(
+      liveTimelineState,
+    );
   });
 });

@@ -61,7 +61,9 @@ export function LoadConfigModal({
       description='Choose where to load your room configuration from.'
       storage={configStorage}
       onLoadLocal={onLoadLocal}
-      onLoadRemote={(data) => onLoadRemote(parseRoomConfig(JSON.stringify(data)))}
+      onLoadRemote={(data) =>
+        onLoadRemote(parseRoomConfig(JSON.stringify(data)))
+      }
       emptyMessage='No saved configurations found.'
     />
   );

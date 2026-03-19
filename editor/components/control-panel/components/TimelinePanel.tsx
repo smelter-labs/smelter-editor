@@ -151,27 +151,83 @@ function computeKeyframeDiff(
     { key: 'text', label: 'text' },
     { key: 'textAlign', label: 'textAlign' },
     { key: 'textColor', label: 'textColor' },
-    { key: 'textMaxLines', label: 'textMaxLines', fmt: (v) => fmtNum(v as number) },
-    { key: 'textScrollSpeed', label: 'textScrollSpeed', fmt: (v) => fmtNum(v as number) },
-    { key: 'textScrollLoop', label: 'textScrollLoop', fmt: (v) => fmtBool(v as boolean) },
-    { key: 'textFontSize', label: 'textFontSize', fmt: (v) => fmtNum(v as number) },
+    {
+      key: 'textMaxLines',
+      label: 'textMaxLines',
+      fmt: (v) => fmtNum(v as number),
+    },
+    {
+      key: 'textScrollSpeed',
+      label: 'textScrollSpeed',
+      fmt: (v) => fmtNum(v as number),
+    },
+    {
+      key: 'textScrollLoop',
+      label: 'textScrollLoop',
+      fmt: (v) => fmtBool(v as boolean),
+    },
+    {
+      key: 'textFontSize',
+      label: 'textFontSize',
+      fmt: (v) => fmtNum(v as number),
+    },
     { key: 'borderColor', label: 'borderColor' },
-    { key: 'borderWidth', label: 'borderWidth', fmt: (v) => fmtNum(v as number) },
-    { key: 'absolutePosition', label: 'absolutePosition', fmt: (v) => fmtBool(v as boolean) },
-    { key: 'absoluteTop', label: 'absoluteTop', fmt: (v) => fmtNum(v as number) },
-    { key: 'absoluteLeft', label: 'absoluteLeft', fmt: (v) => fmtNum(v as number) },
-    { key: 'absoluteWidth', label: 'absoluteWidth', fmt: (v) => fmtNum(v as number) },
-    { key: 'absoluteHeight', label: 'absoluteHeight', fmt: (v) => fmtNum(v as number) },
-    { key: 'absoluteTransitionDurationMs', label: 'absTrDuration', fmt: (v) => `${v}ms` },
+    {
+      key: 'borderWidth',
+      label: 'borderWidth',
+      fmt: (v) => fmtNum(v as number),
+    },
+    {
+      key: 'absolutePosition',
+      label: 'absolutePosition',
+      fmt: (v) => fmtBool(v as boolean),
+    },
+    {
+      key: 'absoluteTop',
+      label: 'absoluteTop',
+      fmt: (v) => fmtNum(v as number),
+    },
+    {
+      key: 'absoluteLeft',
+      label: 'absoluteLeft',
+      fmt: (v) => fmtNum(v as number),
+    },
+    {
+      key: 'absoluteWidth',
+      label: 'absoluteWidth',
+      fmt: (v) => fmtNum(v as number),
+    },
+    {
+      key: 'absoluteHeight',
+      label: 'absoluteHeight',
+      fmt: (v) => fmtNum(v as number),
+    },
+    {
+      key: 'absoluteTransitionDurationMs',
+      label: 'absTrDuration',
+      fmt: (v) => `${v}ms`,
+    },
     { key: 'absoluteTransitionEasing', label: 'absTrEasing' },
     { key: 'mp4PlayFromMs', label: 'mp4PlayFrom', fmt: (v) => `${v}ms` },
     { key: 'mp4Loop', label: 'mp4Loop', fmt: (v) => fmtBool(v as boolean) },
     { key: 'gameBackgroundColor', label: 'gameBgColor' },
-    { key: 'gameCellGap', label: 'gameCellGap', fmt: (v) => fmtNum(v as number) },
+    {
+      key: 'gameCellGap',
+      label: 'gameCellGap',
+      fmt: (v) => fmtNum(v as number),
+    },
     { key: 'gameBoardBorderColor', label: 'gameBorderColor' },
-    { key: 'gameBoardBorderWidth', label: 'gameBorderWidth', fmt: (v) => fmtNum(v as number) },
+    {
+      key: 'gameBoardBorderWidth',
+      label: 'gameBorderWidth',
+      fmt: (v) => fmtNum(v as number),
+    },
     { key: 'gameGridLineColor', label: 'gameGridColor' },
-    { key: 'gameGridLineAlpha', label: 'gameGridAlpha', fmt: (v) => fmtNum(v as number) },
+    {
+      key: 'gameGridLineAlpha',
+      label: 'gameGridAlpha',
+      fmt: (v) => fmtNum(v as number),
+    },
   ];
 
   for (const { key, label, fmt } of primitiveKeys) {
@@ -344,10 +400,7 @@ function resolveKeyframeCollision(
     let candidate = ms;
     while (true) {
       candidate += step;
-      if (
-        candidate < MIN_MOVABLE_KEYFRAME_MS ||
-        candidate > clipDurationMs
-      ) {
+      if (candidate < MIN_MOVABLE_KEYFRAME_MS || candidate > clipDurationMs) {
         break;
       }
       if (!occupiedTimes.has(candidate)) {
@@ -357,6 +410,37 @@ function resolveKeyframeCollision(
   }
 
   return ms;
+}
+
+// ── Orphaned-input detection ─────────────────────────────
+
+function findOrphanedInputIds(
+  tracks: import('../hooks/use-timeline-state').Track[],
+  clipsToDelete: { trackId: string; clipId: string }[],
+): string[] {
+  const deleteSet = new Set(
+    clipsToDelete.map((c) => `${c.trackId}:${c.clipId}`),
+  );
+
+  const deletedInputIds = new Set<string>();
+  for (const track of tracks) {
+    for (const clip of track.clips) {
+      if (deleteSet.has(`${track.id}:${clip.id}`)) {
+        deletedInputIds.add(clip.inputId);
+      }
+    }
+  }
+
+  const orphaned: string[] = [];
+  for (const inputId of deletedInputIds) {
+    const hasSurvivingClip = tracks.some((t) =>
+      t.clips.some(
+        (c) => c.inputId === inputId && !deleteSet.has(`${t.id}:${c.id}`),
+      ),
+    );
+    if (!hasSurvivingClip) orphaned.push(inputId);
+  }
+  return orphaned;
 }
 
 // ── Component ────────────────────────────────────────────
@@ -502,7 +586,10 @@ export function TimelinePanel({
     const selected = selectedClipIds[0];
     const track = state.tracks.find((item) => item.id === selected.trackId);
     const clip = track?.clips.find((item) => item.id === selected.clipId);
-    if (!clip || !clip.keyframes.some((keyframe) => keyframe.id === selectedKeyframeId)) {
+    if (
+      !clip ||
+      !clip.keyframes.some((keyframe) => keyframe.id === selectedKeyframeId)
+    ) {
       setSelectedKeyframeId(null);
     }
   }, [selectedClipIds, selectedKeyframeId, state.tracks]);
@@ -523,7 +610,9 @@ export function TimelinePanel({
           clip.keyframes.find((k) => k.timeMs === 0)?.id ?? null;
         const clipSelectedKeyframeId = explicitKeyframeId ?? baseKeyframeId;
         const selectedKeyframe = clipSelectedKeyframeId
-          ? clip.keyframes.find((keyframe) => keyframe.id === clipSelectedKeyframeId)
+          ? clip.keyframes.find(
+              (keyframe) => keyframe.id === clipSelectedKeyframeId,
+            )
           : null;
         return {
           trackId: sel.trackId,
@@ -817,7 +906,14 @@ export function TimelinePanel({
     if (started) {
       play();
     }
-  }, [isRecording, isTogglingRecording, play, pause, startRec, stopAndDownload]);
+  }, [
+    isRecording,
+    isTogglingRecording,
+    play,
+    pause,
+    startRec,
+    stopAndDownload,
+  ]);
 
   useEffect(() => {
     if (wasPlayingRef.current && !state.isPlaying && isRecording) {
@@ -1215,6 +1311,31 @@ export function TimelinePanel({
     };
   }, [state.tracks, setPlayhead, tabToNextClip, deleteTrack]);
 
+  const deleteClipsAndRemoveOrphans = useCallback(
+    async (clipsToDelete: { trackId: string; clipId: string }[]) => {
+      if (clipsToDelete.length === 0) return;
+
+      const orphanedIds = findOrphanedInputIds(state.tracks, clipsToDelete);
+
+      deleteClips(clipsToDelete);
+
+      for (const inputId of orphanedIds) {
+        await removeInput(roomId, inputId);
+        purgeInputId(inputId);
+      }
+      if (orphanedIds.length > 0) await refreshState();
+    },
+    [
+      state.tracks,
+      deleteClip,
+      deleteClips,
+      removeInput,
+      roomId,
+      purgeInputId,
+      refreshState,
+    ],
+  );
+
   // ── Keyboard shortcuts ──────────────────────────────
 
   useEffect(() => {
@@ -1385,11 +1506,7 @@ export function TimelinePanel({
         case 'Backspace': {
           if (selectedClipIds.length > 0) {
             e.preventDefault();
-            if (selectedClipIds.length === 1) {
-              deleteClip(selectedClipIds[0].trackId, selectedClipIds[0].clipId);
-            } else {
-              deleteClips(selectedClipIds);
-            }
+            void deleteClipsAndRemoveOrphans(selectedClipIds);
             setSelectedClipIds([]);
             setSelectedKeyframeId(null);
           }
@@ -1433,8 +1550,7 @@ export function TimelinePanel({
     tabToNextClip,
     findClipAtPlayhead,
     splitClip,
-    deleteClip,
-    deleteClips,
+    deleteClipsAndRemoveOrphans,
     duplicateClip,
     undo,
     redo,
@@ -1633,8 +1749,12 @@ export function TimelinePanel({
       const keyframeDrag = keyframeDragRef.current;
       if (keyframeDrag) {
         const deltaMs = pxToMs(e.clientX - keyframeDrag.originX);
-        const track = state.tracks.find((item) => item.id === keyframeDrag.trackId);
-        const clip = track?.clips.find((item) => item.id === keyframeDrag.clipId);
+        const track = state.tracks.find(
+          (item) => item.id === keyframeDrag.trackId,
+        );
+        const clip = track?.clips.find(
+          (item) => item.id === keyframeDrag.clipId,
+        );
         if (!clip) {
           return;
         }
@@ -1943,18 +2063,7 @@ export function TimelinePanel({
     closeContextMenu();
   }, [contextMenu, closeContextMenu]);
 
-  const handleDelete = useCallback(() => {
-    if (contextMenu) {
-      window.dispatchEvent(
-        new CustomEvent('smelter:inputs:hide', {
-          detail: { inputId: contextMenu.inputId },
-        }),
-      );
-    }
-    closeContextMenu();
-  }, [contextMenu, closeContextMenu]);
-
-  const handleHardDelete = useCallback(async () => {
+  const handleDelete = useCallback(async () => {
     if (!contextMenu) return;
     const input = inputs.find((i) => i.inputId === contextMenu.inputId);
     const label = input?.title ?? contextMenu.inputId;
@@ -1982,16 +2091,23 @@ export function TimelinePanel({
     closeContextMenu();
   }, [contextMenu, splitClip, closeContextMenu]);
 
-  const handleDeleteClip = useCallback(() => {
-    if (selectedClipIds.length > 1) {
-      deleteClips(selectedClipIds);
-      setSelectedClipIds([]);
-    } else if (contextMenu?.clipId) {
-      deleteClip(contextMenu.trackId, contextMenu.clipId);
-      setSelectedClipIds([]);
-    }
+  const handleDeleteClip = useCallback(async () => {
+    const clipsToDelete =
+      selectedClipIds.length > 1
+        ? selectedClipIds
+        : contextMenu?.clipId
+          ? [{ trackId: contextMenu.trackId, clipId: contextMenu.clipId }]
+          : [];
+
+    await deleteClipsAndRemoveOrphans(clipsToDelete);
+    setSelectedClipIds([]);
     closeContextMenu();
-  }, [contextMenu, deleteClip, deleteClips, selectedClipIds, closeContextMenu]);
+  }, [
+    contextMenu,
+    selectedClipIds,
+    closeContextMenu,
+    deleteClipsAndRemoveOrphans,
+  ]);
 
   // ── Render helpers ───────────────────────────────────
 
@@ -2033,8 +2149,12 @@ export function TimelinePanel({
                   : 'none',
               }}
               onMouseEnter={(e) => {
-                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                const idx = sortedKeyframes.findIndex((k) => k.id === keyframe.id);
+                const rect = (
+                  e.currentTarget as HTMLElement
+                ).getBoundingClientRect();
+                const idx = sortedKeyframes.findIndex(
+                  (k) => k.id === keyframe.id,
+                );
                 const diffs =
                   idx <= 0
                     ? []
@@ -2597,11 +2717,6 @@ export function TimelinePanel({
               className='w-full text-left py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer text-red-400 hover:text-red-300'
               onClick={handleDelete}>
               Delete
-            </button>
-            <button
-              className='w-full text-left py-1.5 px-3 text-sm hover:bg-neutral-700 cursor-pointer text-red-500 hover:text-red-400 font-semibold'
-              onClick={handleHardDelete}>
-              Hard Delete (remove input)
             </button>
             {contextMenu.clipId && (
               <>

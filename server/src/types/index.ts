@@ -13,3 +13,24 @@ export type {
   TransitionConfig,
   ActiveTransition,
 } from './transition';
+
+export type {
+  InputOrientation,
+  InputType,
+  InputStatus,
+  InputSourceState,
+  InputDisplayProperties,
+  TextInputProperties,
+  AbsolutePositionProperties,
+  BorderProperties,
+  SnakeGameDisplayProperties,
+  MotionProperties,
+} from '@smelter-editor/types';
+
+export type { PublicInputState } from '@smelter-editor/types';
+
+export type {
+  UpdateInputOptions,
+  RegisterInputOptions,
+  PendingWhipInputData,
+} from '@smelter-editor/types';

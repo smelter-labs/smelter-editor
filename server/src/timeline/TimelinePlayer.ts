@@ -5,7 +5,7 @@ import type {
   TimelineKeyframe,
   TimelineKeyframeInterpolationMode,
 } from './types';
-import type { RoomInputState } from '../server/roomState';
+import type { RoomInputState } from '../room/types';
 
 type PlaybackEvent = {
   timeMs: number;
@@ -1100,6 +1100,25 @@ export class TimelinePlayer {
       this.appliedState.set(inputId, shouldBeVisible);
     }
 
+    for (const input of this.room.getInputs()) {
+      if (desired.has(input.inputId)) continue;
+      const isVisible =
+        (input.status === 'connected' || input.status === 'pending') &&
+        !input.hidden;
+      if (isVisible) {
+        promises.push(
+          this.room
+            .hideInput(input.inputId)
+            .catch((err) =>
+              console.warn(
+                `[timeline] Failed to hide non-timeline input ${input.inputId}`,
+                err,
+              ),
+            ),
+        );
+      }
+    }
+
     if (promises.length > 0) {
       await Promise.allSettled(promises);
     }
@@ -1151,7 +1170,12 @@ export class TimelinePlayer {
 
     for (const input of inputs) {
       const snap = this.snapshot.inputSnapshots.get(input.inputId);
-      if (!snap) continue;
+      if (!snap) {
+        if (input.hidden) {
+          promises.push(this.room.showInput(input.inputId).catch(() => {}));
+        }
+        continue;
+      }
 
       const currentUpdate = buildUpdateFromRoomInput(input);
       const hasPatch =

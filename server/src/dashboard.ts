@@ -230,7 +230,7 @@ function updateDashboard() {
   // ── Panel 2: Rooms ──
   const roomRows = rooms.map((room) => {
     const inputs = room.getInputs();
-    const [, layout] = room.getState();
+    const { layout } = room.getState();
     const res = room.getResolution();
     const recording = room.hasActiveRecording() ? 'REC' : '-';
     const age = formatUptime(Date.now() - room.creationTimestamp);
