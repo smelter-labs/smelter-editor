@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Input, RoomState, AvailableShader, Layout } from '@/lib/types';
+import type { Input, RoomState, AvailableShader } from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
 import { useStreamsSpinner } from '../whip-input/hooks/use-streams-spinner';
 import { loadUserName, saveUserName } from '../whip-input/utils/whip-storage';
@@ -11,11 +11,7 @@ export function useControlPanelState(
   roomState: RoomState,
   refreshState: () => Promise<void>,
 ) {
-  const {
-    getAvailableShaders,
-    updateRoom: updateRoomAction,
-    updateInput,
-  } = useActions();
+  const { getAvailableShaders, updateRoom: updateRoomAction } = useActions();
   const [userName, setUserName] = useState<string>(() => {
     const saved = loadUserName(roomId);
     if (saved) return saved;
@@ -88,56 +84,6 @@ export function useControlPanelState(
     };
   }, []);
 
-  useEffect(() => {
-    if (roomState.layout !== 'wrapped') return;
-    if (!availableShaders || availableShaders.length === 0) return;
-
-    const shaderDef =
-      availableShaders.find((s) => s.id === 'multiple-pictures') ||
-      availableShaders.find(
-        (s) =>
-          s.name.toLowerCase().includes('multiple') &&
-          s.name.toLowerCase().includes('picture'),
-      );
-    if (!shaderDef) return;
-
-    (async () => {
-      const updates: Promise<any>[] = [];
-      for (const input of inputsRef.current) {
-        const hasShader = (input.shaders || []).some(
-          (s) => s.shaderId === shaderDef.id,
-        );
-        if (!hasShader) {
-          const newShadersConfig = [
-            ...(input.shaders || []),
-            {
-              shaderName: shaderDef.name,
-              shaderId: shaderDef.id,
-              enabled: true,
-              params:
-                shaderDef.params?.map((param) => ({
-                  paramName: param.name,
-                  paramValue: param.defaultValue ?? 0,
-                })) || [],
-            },
-          ];
-          updates.push(
-            updateInput(roomId, input.inputId, {
-              shaders: newShadersConfig,
-              volume: input.volume,
-            }),
-          );
-        }
-      }
-      if (updates.length > 0) {
-        try {
-          await Promise.allSettled(updates);
-          await handleRefreshState();
-        } catch {}
-      }
-    })();
-  }, [roomState.layout, availableShaders, roomId, handleRefreshState]);
-
   const [isSwapping, setIsSwapping] = useState(false);
   const swapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -152,43 +98,6 @@ export function useControlPanelState(
       }
     },
     [roomId],
-  );
-
-  const changeLayout = useCallback(
-    async (layout: Layout) => {
-      try {
-        const disableNewsStrip = layout === 'picture-in-picture';
-        await updateRoomAction(roomId, {
-          layout,
-          ...(disableNewsStrip && { newsStripEnabled: false }),
-        });
-        await refreshState();
-        if (layout === 'wrapped' && typeof window !== 'undefined') {
-          setTimeout(async () => {
-            try {
-              const currentInputs = inputsRef.current;
-              if (!currentInputs || currentInputs.length < 2) return;
-
-              const newWrappers = [...getInputWrappers(currentInputs)];
-              const temp = newWrappers[0];
-              newWrappers[0] = newWrappers[1];
-              newWrappers[1] = temp;
-
-              await updateOrder(newWrappers);
-            } catch (e) {
-              console.warn(
-                'Failed to swap first two inputs for wrapped layout:',
-                e,
-              );
-            }
-          }, 1000);
-        }
-      } catch (e) {
-        console.error('changeLayout failed:', e);
-        alert('Failed to change layout.');
-      }
-    },
-    [roomId, refreshState, getInputWrappers, updateOrder],
   );
 
   const [openFxInputId, setOpenFxInputId] = useState<string | null>(null);
@@ -221,7 +130,6 @@ export function useControlPanelState(
     handleRefreshState,
     availableShaders,
     updateOrder,
-    changeLayout,
     openFxInputId,
     setOpenFxInputId,
     selectedInputId,

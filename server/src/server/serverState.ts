@@ -1,5 +1,5 @@
-import type { RegisterInputOptions } from './roomState';
-import { RoomState } from './roomState';
+import type { RegisterInputOptions } from '../room/types';
+import { RoomState } from '../room/RoomState';
 import { v4 as uuidv4 } from 'uuid';
 import { errorCodes } from 'fastify';
 import { Mutex } from 'async-mutex';
@@ -150,9 +150,7 @@ export class ServerState {
       );
 
       if (rooms.length > ROOM_COUNT_HARD_LIMIT) {
-        for (const [roomId, _room] of rooms.slice(
-          ROOM_COUNT_HARD_LIMIT - rooms.length,
-        )) {
+        for (const [roomId, _room] of rooms.slice(ROOM_COUNT_HARD_LIMIT)) {
           try {
             console.log('Stop from hard limit');
             await this._deleteRoom(roomId).catch(() => {});
@@ -163,9 +161,7 @@ export class ServerState {
       }
 
       if (rooms.length > ROOM_COUNT_SOFT_LIMIT) {
-        for (const [roomId, room] of rooms.slice(
-          ROOM_COUNT_SOFT_LIMIT - rooms.length,
-        )) {
+        for (const [roomId, room] of rooms.slice(ROOM_COUNT_SOFT_LIMIT)) {
           if (room.pendingDelete) {
             continue;
           }

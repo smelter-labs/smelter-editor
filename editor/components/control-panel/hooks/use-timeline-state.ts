@@ -3,7 +3,11 @@
 import { useReducer, useEffect, useCallback, useRef, useState } from 'react';
 import type { Input } from '@/lib/types';
 import { parseTransitionConfig } from '@/lib/types';
-import type { TimelineBlockSettings } from '@smelter-editor/types';
+import type {
+  TimelineBlockSettings,
+  TimelineKeyframe as SharedTimelineKeyframe,
+  TimelineKeyframeInterpolationMode,
+} from '@smelter-editor/types';
 import {
   loadTimeline,
   saveTimeline,
@@ -18,6 +22,7 @@ export type Clip = {
   startMs: number;
   endMs: number;
   blockSettings: BlockSettings;
+  keyframes: Keyframe[];
 };
 
 export type Track = {
@@ -28,6 +33,10 @@ export type Track = {
 
 export type BlockSettings = TimelineBlockSettings & {
   mp4DurationMs?: number;
+};
+
+export type Keyframe = SharedTimelineKeyframe & {
+  blockSettings: BlockSettings;
 };
 
 /** @deprecated Use `Clip` instead. Kept for backwards compat with room-config. */
@@ -49,6 +58,7 @@ export type TrackTimeline = {
 export type TimelineState = {
   tracks: Track[];
   totalDurationMs: number;
+  keyframeInterpolationMode: TimelineKeyframeInterpolationMode;
   playheadMs: number;
   isPlaying: boolean;
   pixelsPerSecond: number;
@@ -62,6 +72,10 @@ type TimelineAction =
   | { type: 'SET_PLAYING'; playing: boolean }
   | { type: 'SET_ZOOM'; pixelsPerSecond: number }
   | { type: 'SET_TOTAL_DURATION'; durationMs: number }
+  | {
+      type: 'SET_KEYFRAME_INTERPOLATION_MODE';
+      mode: TimelineKeyframeInterpolationMode;
+    }
   | { type: 'RESET'; inputs: Input[] }
   | { type: 'LOAD'; state: TimelineState }
   | {
@@ -97,6 +111,33 @@ type TimelineAction =
       clipId: string;
       patch: Partial<BlockSettings>;
     }
+  | {
+      type: 'ADD_KEYFRAME';
+      trackId: string;
+      clipId: string;
+      timeMs: number;
+      blockSettings?: BlockSettings;
+    }
+  | {
+      type: 'UPDATE_KEYFRAME';
+      trackId: string;
+      clipId: string;
+      keyframeId: string;
+      patch: Partial<BlockSettings>;
+    }
+  | {
+      type: 'DELETE_KEYFRAME';
+      trackId: string;
+      clipId: string;
+      keyframeId: string;
+    }
+  | {
+      type: 'MOVE_KEYFRAME';
+      trackId: string;
+      clipId: string;
+      keyframeId: string;
+      timeMs: number;
+    }
   | { type: 'PURGE_INPUT_ID'; inputId: string }
   | {
       type: 'MOVE_CLIPS';
@@ -125,17 +166,103 @@ function genId(): string {
   return crypto.randomUUID();
 }
 
+function deepClone<T>(value: T): T {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(value);
+  }
+  return JSON.parse(JSON.stringify(value)) as T;
+}
+
 function cloneBlockSettings(settings: BlockSettings): BlockSettings {
+  return deepClone(settings);
+}
+
+function cloneKeyframe(keyframe: Keyframe): Keyframe {
   return {
-    ...settings,
-    shaders: (settings.shaders || []).map((shader) => ({
-      ...shader,
-      params: (shader.params || []).map((param) => ({ ...param })),
-    })),
-    attachedInputIds: settings.attachedInputIds
-      ? [...settings.attachedInputIds]
-      : undefined,
+    ...keyframe,
+    blockSettings: cloneBlockSettings(keyframe.blockSettings),
   };
+}
+
+function createInitialKeyframes(blockSettings: BlockSettings): Keyframe[] {
+  return [
+    {
+      id: genId(),
+      timeMs: 0,
+      blockSettings: cloneBlockSettings(blockSettings),
+    },
+  ];
+}
+
+function getClipDuration(clip: Pick<Clip, 'startMs' | 'endMs'>): number {
+  return Math.max(MIN_CLIP_MS, clip.endMs - clip.startMs);
+}
+
+function normalizeKeyframesForClip(
+  clip: Pick<Clip, 'startMs' | 'endMs' | 'blockSettings' | 'keyframes'>,
+): Keyframe[] {
+  const durationMs = getClipDuration(clip);
+  const rawKeyframes =
+    clip.keyframes.length > 0
+      ? clip.keyframes
+      : createInitialKeyframes(clip.blockSettings);
+
+  const normalized = rawKeyframes
+    .map((keyframe) => ({
+      id: keyframe.id || genId(),
+      timeMs: Math.max(0, Math.min(Math.round(keyframe.timeMs), durationMs)),
+      blockSettings: cloneBlockSettings(keyframe.blockSettings),
+    }))
+    .sort((a, b) => a.timeMs - b.timeMs || a.id.localeCompare(b.id));
+
+  const deduped: Keyframe[] = [];
+  for (const keyframe of normalized) {
+    const previous = deduped[deduped.length - 1];
+    if (previous && previous.timeMs === keyframe.timeMs) {
+      deduped[deduped.length - 1] = keyframe;
+      continue;
+    }
+    deduped.push(keyframe);
+  }
+
+  if (deduped.length === 0 || deduped[0].timeMs !== 0) {
+    deduped.unshift({
+      id: genId(),
+      timeMs: 0,
+      blockSettings: cloneBlockSettings(clip.blockSettings),
+    });
+  }
+
+  return deduped.map(cloneKeyframe);
+}
+
+function syncClipKeyframes(clip: Clip): Clip {
+  const keyframes = normalizeKeyframesForClip(clip);
+  return {
+    ...clip,
+    blockSettings: cloneBlockSettings(keyframes[0].blockSettings),
+    keyframes,
+  };
+}
+
+function resolveClipBlockSettingsAtOffset(
+  clip: Pick<Clip, 'blockSettings' | 'keyframes'>,
+  offsetMs: number,
+): BlockSettings {
+  const keyframes = normalizeKeyframesForClip({
+    startMs: 0,
+    endMs: Math.max(MIN_CLIP_MS, offsetMs + MIN_CLIP_MS),
+    blockSettings: clip.blockSettings,
+    keyframes: clip.keyframes,
+  });
+  let resolved = keyframes[0];
+  for (const keyframe of keyframes) {
+    if (keyframe.timeMs > offsetMs) {
+      break;
+    }
+    resolved = keyframe;
+  }
+  return cloneBlockSettings(resolved.blockSettings);
 }
 
 export function createBlockSettingsFromInput(input?: Input): BlockSettings {
@@ -192,13 +319,15 @@ function ensureClipBlockSettings(
   clip: Omit<Clip, 'blockSettings'> & Partial<Pick<Clip, 'blockSettings'>>,
   input?: Input,
 ): Clip {
+  const blockSettings = clip.blockSettings
+    ? cloneBlockSettings(clip.blockSettings)
+    : createBlockSettingsFromInput(input);
+  const keyframes = clip.keyframes ? clip.keyframes.map(cloneKeyframe) : [];
+
   if (clip.blockSettings) {
-    return { ...clip, blockSettings: cloneBlockSettings(clip.blockSettings) };
+    return syncClipKeyframes({ ...clip, blockSettings, keyframes });
   }
-  return {
-    ...clip,
-    blockSettings: createBlockSettingsFromInput(input),
-  };
+  return syncClipKeyframes({ ...clip, blockSettings, keyframes });
 }
 
 function storedTracksToTracks(storedTracks: StoredTrack[]): Track[] {
@@ -221,6 +350,19 @@ function storedTracksToTracks(storedTracks: StoredTrack[]): Track[] {
             ),
           }
         : createBlockSettingsFromInput(undefined),
+      keyframes: (c.keyframes ?? []).map((keyframe) => ({
+        id: keyframe.id,
+        timeMs: keyframe.timeMs,
+        blockSettings: {
+          ...keyframe.blockSettings,
+          introTransition: parseTransitionConfig(
+            keyframe.blockSettings.introTransition,
+          ),
+          outroTransition: parseTransitionConfig(
+            keyframe.blockSettings.outroTransition,
+          ),
+        },
+      })),
     })),
   }));
 }
@@ -257,12 +399,14 @@ function makeFullClip(
   totalDurationMs: number,
   input?: Input,
 ): Clip {
+  const blockSettings = createBlockSettingsFromInput(input);
   return {
     id: genId(),
     inputId,
     startMs: 0,
     endMs: totalDurationMs,
-    blockSettings: createBlockSettingsFromInput(input),
+    blockSettings,
+    keyframes: createInitialKeyframes(blockSettings),
   };
 }
 
@@ -270,6 +414,7 @@ function createInitialState(): TimelineState {
   return {
     tracks: [],
     totalDurationMs: DEFAULT_DURATION_MS,
+    keyframeInterpolationMode: 'step',
     playheadMs: 0,
     isPlaying: false,
     pixelsPerSecond: DEFAULT_PPS,
@@ -289,6 +434,7 @@ function clampClips(clips: Clip[], totalDurationMs: number): Clip[] {
       endMs: Math.max(MIN_CLIP_MS, Math.min(c.endMs, totalDurationMs)),
     }))
     .filter((c) => c.endMs - c.startMs >= MIN_CLIP_MS)
+    .map(syncClipKeyframes)
     .sort((a, b) => a.startMs - b.startMs);
 }
 
@@ -318,6 +464,7 @@ function migrateV1ToV2(stored: Record<string, unknown>): TimelineState | null {
   return {
     tracks: newTracks,
     totalDurationMs: (stored.totalDurationMs as number) || DEFAULT_DURATION_MS,
+    keyframeInterpolationMode: 'step',
     playheadMs: 0,
     isPlaying: false,
     pixelsPerSecond: (stored.pixelsPerSecond as number) || DEFAULT_PPS,
@@ -433,10 +580,14 @@ export function timelineReducer(
       const durationMs = Math.max(10_000, action.durationMs);
       return {
         ...state,
+        tracks: normalizeTracks(state.tracks, [], durationMs),
         totalDurationMs: durationMs,
         playheadMs: Math.min(state.playheadMs, durationMs),
       };
     }
+
+    case 'SET_KEYFRAME_INTERPOLATION_MODE':
+      return { ...state, keyframeInterpolationMode: action.mode };
 
     case 'RESET': {
       const tracks: Track[] = action.inputs.map((input, idx) => ({
@@ -569,17 +720,43 @@ export function timelineReducer(
         startMs: clip.startMs,
         endMs: action.atMs,
         blockSettings: cloneBlockSettings(clip.blockSettings),
+        keyframes: clip.keyframes
+          .filter((keyframe) => keyframe.timeMs <= action.atMs - clip.startMs)
+          .map(cloneKeyframe),
       };
+      const rightStartOffsetMs = action.atMs - clip.startMs;
+      const rightStartSnapshot = resolveClipBlockSettingsAtOffset(
+        clip,
+        rightStartOffsetMs,
+      );
       const right: Clip = {
         id: genId(),
         inputId: clip.inputId,
         startMs: action.atMs,
         endMs: clip.endMs,
-        blockSettings: cloneBlockSettings(clip.blockSettings),
+        blockSettings: cloneBlockSettings(rightStartSnapshot),
+        keyframes: [
+          {
+            id: genId(),
+            timeMs: 0,
+            blockSettings: cloneBlockSettings(rightStartSnapshot),
+          },
+          ...clip.keyframes
+            .filter((keyframe) => keyframe.timeMs > rightStartOffsetMs)
+            .map((keyframe) => ({
+              ...cloneKeyframe(keyframe),
+              timeMs: keyframe.timeMs - rightStartOffsetMs,
+            })),
+        ],
       };
 
       const newClips = [...track.clips];
-      newClips.splice(clipIdx, 1, left, right);
+      newClips.splice(
+        clipIdx,
+        1,
+        syncClipKeyframes(left),
+        syncClipKeyframes(right),
+      );
 
       return {
         ...state,
@@ -620,6 +797,7 @@ export function timelineReducer(
         startMs: newStart,
         endMs: newEnd,
         blockSettings: cloneBlockSettings(clip.blockSettings),
+        keyframes: clip.keyframes.map(cloneKeyframe),
       };
       const newClips = [...track.clips];
       newClips.splice(clipIdx + 1, 0, duplicate);
@@ -782,7 +960,145 @@ export function timelineReducer(
                   endMs = clip.startMs + maxDuration;
                 }
               }
-              return { ...clip, endMs, blockSettings: merged };
+              const nextKeyframes = clip.keyframes.map((keyframe) =>
+                keyframe.timeMs === 0
+                  ? {
+                      ...keyframe,
+                      blockSettings: cloneBlockSettings(merged),
+                    }
+                  : cloneKeyframe(keyframe),
+              );
+              return syncClipKeyframes({
+                ...clip,
+                endMs,
+                blockSettings: merged,
+                keyframes: nextKeyframes,
+              });
+            }),
+          };
+        }),
+      };
+    }
+
+    case 'ADD_KEYFRAME': {
+      return {
+        ...state,
+        tracks: state.tracks.map((track) => {
+          if (track.id !== action.trackId) return track;
+          return {
+            ...track,
+            clips: track.clips.map((clip) => {
+              if (clip.id !== action.clipId) return clip;
+              const durationMs = getClipDuration(clip);
+              const timeMs = Math.max(
+                0,
+                Math.min(Math.round(action.timeMs), durationMs),
+              );
+              const blockSettings =
+                action.blockSettings ??
+                resolveClipBlockSettingsAtOffset(clip, timeMs);
+              return syncClipKeyframes({
+                ...clip,
+                keyframes: [
+                  ...clip.keyframes.map(cloneKeyframe),
+                  {
+                    id: genId(),
+                    timeMs,
+                    blockSettings: cloneBlockSettings(blockSettings),
+                  },
+                ],
+              });
+            }),
+          };
+        }),
+      };
+    }
+
+    case 'UPDATE_KEYFRAME': {
+      return {
+        ...state,
+        tracks: state.tracks.map((track) => {
+          if (track.id !== action.trackId) return track;
+          return {
+            ...track,
+            clips: track.clips.map((clip) => {
+              if (clip.id !== action.clipId) return clip;
+              const keyframes = clip.keyframes.map((keyframe) =>
+                keyframe.id === action.keyframeId
+                  ? {
+                      ...cloneKeyframe(keyframe),
+                      blockSettings: {
+                        ...cloneBlockSettings(keyframe.blockSettings),
+                        ...action.patch,
+                      },
+                    }
+                  : cloneKeyframe(keyframe),
+              );
+              return syncClipKeyframes({ ...clip, keyframes });
+            }),
+          };
+        }),
+      };
+    }
+
+    case 'DELETE_KEYFRAME': {
+      return {
+        ...state,
+        tracks: state.tracks.map((track) => {
+          if (track.id !== action.trackId) return track;
+          return {
+            ...track,
+            clips: track.clips.map((clip) => {
+              if (clip.id !== action.clipId) return clip;
+              const target = clip.keyframes.find(
+                (keyframe) => keyframe.id === action.keyframeId,
+              );
+              if (!target || target.timeMs === 0) {
+                return clip;
+              }
+              return syncClipKeyframes({
+                ...clip,
+                keyframes: clip.keyframes
+                  .filter((keyframe) => keyframe.id !== action.keyframeId)
+                  .map(cloneKeyframe),
+              });
+            }),
+          };
+        }),
+      };
+    }
+
+    case 'MOVE_KEYFRAME': {
+      return {
+        ...state,
+        tracks: state.tracks.map((track) => {
+          if (track.id !== action.trackId) return track;
+          return {
+            ...track,
+            clips: track.clips.map((clip) => {
+              if (clip.id !== action.clipId) return clip;
+              const durationMs = getClipDuration(clip);
+              const current = clip.keyframes.find(
+                (keyframe) => keyframe.id === action.keyframeId,
+              );
+              if (!current || current.timeMs === 0) {
+                return clip;
+              }
+              const timeMs = Math.max(
+                1,
+                Math.min(Math.round(action.timeMs), durationMs),
+              );
+              return syncClipKeyframes({
+                ...clip,
+                keyframes: clip.keyframes.map((keyframe) =>
+                  keyframe.id === action.keyframeId
+                    ? {
+                        ...cloneKeyframe(keyframe),
+                        timeMs,
+                      }
+                    : cloneKeyframe(keyframe),
+                ),
+              });
             }),
           };
         }),
@@ -834,7 +1150,11 @@ export function timelineReducer(
     }
 
     case 'LOAD':
-      return action.state;
+      return {
+        ...action.state,
+        keyframeInterpolationMode:
+          action.state.keyframeInterpolationMode ?? 'step',
+      };
 
     default:
       return state;
@@ -863,6 +1183,11 @@ const UNDOABLE_ACTIONS = new Set<TimelineAction['type']>([
   'DELETE_TRACK',
   'RESET',
   'UPDATE_CLIP_SETTINGS',
+  'SET_KEYFRAME_INTERPOLATION_MODE',
+  'ADD_KEYFRAME',
+  'UPDATE_KEYFRAME',
+  'DELETE_KEYFRAME',
+  'MOVE_KEYFRAME',
   'PURGE_INPUT_ID',
   'MOVE_CLIPS',
   'DELETE_CLIPS',
@@ -940,6 +1265,7 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
             totalDurationMs,
           ),
           totalDurationMs,
+          keyframeInterpolationMode: stored.keyframeInterpolationMode ?? 'step',
           playheadMs: 0,
           isPlaying: false,
           pixelsPerSecond: stored.pixelsPerSecond || DEFAULT_PPS,
@@ -977,10 +1303,17 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     if (!initializedRef.current) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      const { tracks, totalDurationMs, playheadMs, pixelsPerSecond } = state;
+      const {
+        tracks,
+        totalDurationMs,
+        keyframeInterpolationMode,
+        playheadMs,
+        pixelsPerSecond,
+      } = state;
       saveTimeline(roomId, {
         tracks,
         totalDurationMs,
+        keyframeInterpolationMode,
         playheadMs,
         pixelsPerSecond,
       });
@@ -1009,6 +1342,12 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
   const setTotalDuration = useCallback(
     (durationMs: number) =>
       dispatch({ type: 'SET_TOTAL_DURATION', durationMs }),
+    [],
+  );
+
+  const setKeyframeInterpolationMode = useCallback(
+    (mode: TimelineKeyframeInterpolationMode) =>
+      dispatch({ type: 'SET_KEYFRAME_INTERPOLATION_MODE', mode }),
     [],
   );
 
@@ -1106,6 +1445,60 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     [],
   );
 
+  const addKeyframe = useCallback(
+    (
+      trackId: string,
+      clipId: string,
+      timeMs: number,
+      blockSettings?: BlockSettings,
+    ) => {
+      dispatch({
+        type: 'ADD_KEYFRAME',
+        trackId,
+        clipId,
+        timeMs,
+        blockSettings,
+      });
+      setStructureRevision((rev) => rev + 1);
+    },
+    [],
+  );
+
+  const updateKeyframe = useCallback(
+    (
+      trackId: string,
+      clipId: string,
+      keyframeId: string,
+      patch: Partial<BlockSettings>,
+    ) => {
+      dispatch({
+        type: 'UPDATE_KEYFRAME',
+        trackId,
+        clipId,
+        keyframeId,
+        patch,
+      });
+      setStructureRevision((rev) => rev + 1);
+    },
+    [],
+  );
+
+  const deleteKeyframe = useCallback(
+    (trackId: string, clipId: string, keyframeId: string) => {
+      dispatch({ type: 'DELETE_KEYFRAME', trackId, clipId, keyframeId });
+      setStructureRevision((rev) => rev + 1);
+    },
+    [],
+  );
+
+  const moveKeyframe = useCallback(
+    (trackId: string, clipId: string, keyframeId: string, timeMs: number) => {
+      dispatch({ type: 'MOVE_KEYFRAME', trackId, clipId, keyframeId, timeMs });
+      setStructureRevision((rev) => rev + 1);
+    },
+    [],
+  );
+
   const purgeInputId = useCallback((inputId: string) => {
     dispatch({ type: 'PURGE_INPUT_ID', inputId });
     setStructureRevision((rev) => rev + 1);
@@ -1131,14 +1524,20 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
   const redo = useCallback(() => dispatch({ type: 'REDO' }), []);
   const canUndo = undoable.past.length > 0;
   const canRedo = undoable.future.length > 0;
+  const loadState = useCallback((nextState: TimelineState) => {
+    dispatch({ type: 'LOAD', state: nextState });
+    setStructureRevision((rev) => rev + 1);
+  }, []);
 
   return {
     state,
     dispatch,
+    loadState,
     setPlayhead,
     setPlaying,
     setZoom,
     setTotalDuration,
+    setKeyframeInterpolationMode,
     reset,
     moveClip,
     resizeClip,
@@ -1151,6 +1550,10 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     deleteTrack,
     replaceInputId,
     updateClipSettings,
+    addKeyframe,
+    updateKeyframe,
+    deleteKeyframe,
+    moveKeyframe,
     purgeInputId,
     moveClips,
     deleteClips,

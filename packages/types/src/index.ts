@@ -13,7 +13,18 @@ export type {
 } from './transition.js';
 export { isTransitionType, parseTransitionConfig } from './transition.js';
 
-export type { InputOrientation } from './input.js';
+export type {
+  InputOrientation,
+  InputType,
+  InputStatus,
+  InputSourceState,
+  InputDisplayProperties,
+  TextInputProperties,
+  AbsolutePositionProperties,
+  BorderProperties,
+  SnakeGameDisplayProperties,
+  MotionProperties,
+} from './input.js';
 
 export type {
   SnakeEventType,
@@ -22,9 +33,19 @@ export type {
   SnakeEventShaderConfig,
 } from './snake-game.js';
 
+export type { PublicInputState } from './public-input-state.js';
+
+export type {
+  UpdateInputOptions,
+  RegisterInputOptions,
+  PendingWhipInputData,
+} from './input-options.js';
+
 export type {
   TimelineBlockSettings,
+  TimelineKeyframe,
   TimelineClip,
   TimelineTrack,
+  TimelineKeyframeInterpolationMode,
   TimelineConfig,
 } from './timeline.js';

@@ -71,8 +71,9 @@ vi.mock('fs-extra', () => ({
 
 import { createRoomStore } from '../app/store';
 import { RESOLUTION_PRESETS } from '../types';
+import type { TimelineConfig } from '@smelter-editor/types';
 
-const { RoomState } = await import('../server/roomState');
+const { RoomState } = await import('../room/RoomState');
 
 function createTestOutput(roomId = 'test-room') {
   const res = RESOLUTION_PRESETS['1440p'];
@@ -81,6 +82,60 @@ function createTestOutput(roomId = 'test-room') {
     url: `http://test-whep/${roomId}`,
     store: createRoomStore(res),
     resolution: res,
+  };
+}
+
+function createTimelineConfig(
+  inputId: string,
+  initialKeyframeText: string,
+): TimelineConfig {
+  return {
+    tracks: [
+      {
+        id: 'track-1',
+        clips: [
+          {
+            id: 'clip-1',
+            inputId,
+            startMs: 0,
+            endMs: 1000,
+            blockSettings: {
+              volume: 1,
+              showTitle: true,
+              shaders: [],
+              orientation: 'horizontal',
+              text: 'clip-default',
+            },
+            keyframes: [
+              {
+                id: 'kf-1',
+                timeMs: 0,
+                blockSettings: {
+                  volume: 1,
+                  showTitle: true,
+                  shaders: [],
+                  orientation: 'horizontal',
+                  text: initialKeyframeText,
+                },
+              },
+              {
+                id: 'kf-2',
+                timeMs: 500,
+                blockSettings: {
+                  volume: 1,
+                  showTitle: true,
+                  shaders: [],
+                  orientation: 'horizontal',
+                  text: `${initialKeyframeText}-later`,
+                },
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    totalDurationMs: 1000,
+    keyframeInterpolationMode: 'step',
   };
 }
 
@@ -98,7 +153,7 @@ describe('RoomState', () => {
       const room = new RoomState('room-1', output, [], true);
       await room.init();
 
-      const [inputs] = room.getState();
+      const { inputs } = room.getState();
       for (const input of inputs) {
         expect(input.inputId).toContain('placeholder');
       }
@@ -423,10 +478,10 @@ describe('RoomState', () => {
       await room.init();
 
       await room.updateLayout('grid');
-      expect(room.getState()[1]).toBe('grid');
+      expect(room.getState().layout).toBe('grid');
 
       await room.updateLayout('primary-on-left');
-      expect(room.getState()[1]).toBe('primary-on-left');
+      expect(room.getState().layout).toBe('primary-on-left');
     });
   });
 
@@ -454,15 +509,17 @@ describe('RoomState', () => {
   });
 
   describe('getState', () => {
-    it('returns tuple of inputs, layout, and settings', async () => {
+    it('returns RoomSnapshot with inputs, layout, and settings', async () => {
       const output = createTestOutput();
       const room = new RoomState('room-1', output, [], true);
       await room.init();
 
       const result = room.getState();
-      expect(result).toHaveLength(8);
-      expect(Array.isArray(result[0])).toBe(true);
-      expect(typeof result[1]).toBe('string');
+      expect(Array.isArray(result.inputs)).toBe(true);
+      expect(typeof result.layout).toBe('string');
+      expect(typeof result.swapDurationMs).toBe('number');
+      expect(typeof result.swapOutgoingEnabled).toBe('boolean');
+      expect(typeof result.newsStripEnabled).toBe('boolean');
     });
 
     it('updates lastReadTimestamp', async () => {
@@ -518,6 +575,73 @@ describe('RoomState', () => {
     });
   });
 
+  describe('timeline playback', () => {
+    it('uses the latest keyframes when playback resumes from pause', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const inputId = (await room.addNewInput({
+        type: 'text-input',
+        text: 'Original',
+      }))!;
+
+      await room.startTimelinePlayback(createTimelineConfig(inputId, 'First'), 0);
+      await room.pauseTimeline();
+      await room.startTimelinePlayback(createTimelineConfig(inputId, 'Updated'), 0);
+
+      const resumedInput = room.getInputs().find((i) => i.inputId === inputId);
+      expect(resumedInput?.type).toBe('text-input');
+      if (resumedInput?.type === 'text-input') {
+        expect(resumedInput.text).toBe('Updated');
+      }
+
+      await room.stopTimelinePlayback();
+
+      const restoredInput = room.getInputs().find((i) => i.inputId === inputId);
+      expect(restoredInput?.type).toBe('text-input');
+      if (restoredInput?.type === 'text-input') {
+        expect(restoredInput.text).toBe('Original');
+      }
+    });
+
+    it('applies step keyframes during playback', async () => {
+      vi.useFakeTimers();
+      vi.setSystemTime(0);
+
+      try {
+        const output = createTestOutput();
+        const room = new RoomState('room-1', output, [], true);
+        await room.init();
+
+        const inputId = (await room.addNewInput({
+          type: 'text-input',
+          text: 'Original',
+        }))!;
+
+        await room.startTimelinePlayback(createTimelineConfig(inputId, 'First'), 0);
+
+        const initialInput = room.getInputs().find((i) => i.inputId === inputId);
+        expect(initialInput?.type).toBe('text-input');
+        if (initialInput?.type === 'text-input') {
+          expect(initialInput.text).toBe('First');
+        }
+
+        await vi.advanceTimersByTimeAsync(500);
+
+        const midPlaybackInput = room.getInputs().find((i) => i.inputId === inputId);
+        expect(midPlaybackInput?.type).toBe('text-input');
+        if (midPlaybackInput?.type === 'text-input') {
+          expect(midPlaybackInput.text).toBe('First-later');
+        }
+
+        await room.stopTimelinePlayback();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+  });
+
   describe('deleteRoom', () => {
     it('unregisters output from smelter', async () => {
       const output = createTestOutput();
@@ -564,6 +688,151 @@ describe('RoomState', () => {
         /already in progress/,
       );
       await room.stopRecording();
+    });
+  });
+
+  describe('state change notifications', () => {
+    it('notifies listeners when isPublic changes', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const listener = vi.fn();
+      room.addStateChangeListener(listener);
+
+      room.isPublic = false;
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      room.isPublic = true;
+      expect(listener).toHaveBeenCalledTimes(2);
+    });
+
+    it('notifies listeners when pendingWhipInputs changes', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const listener = vi.fn();
+      room.addStateChangeListener(listener);
+
+      room.pendingWhipInputs = [
+        {
+          id: 'whip-1',
+          title: 'Camera',
+          position: 0,
+          volume: 1,
+          showTitle: true,
+          shaders: [],
+          orientation: 'horizontal' as const,
+        },
+      ];
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('notifies listeners when pendingDelete changes', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const listener = vi.fn();
+      room.addStateChangeListener(listener);
+
+      room.pendingDelete = true;
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+
+    it('notifies listeners on timeline pause/resume/stop', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const inputId = (await room.addNewInput({
+        type: 'text-input',
+        text: 'Test',
+      }))!;
+
+      const listener = vi.fn();
+      room.addStateChangeListener(listener);
+      const callsBefore = listener.mock.calls.length;
+
+      await room.startTimelinePlayback(
+        createTimelineConfig(inputId, 'TL'),
+        0,
+      );
+      expect(listener.mock.calls.length).toBeGreaterThan(callsBefore);
+
+      const callsAfterStart = listener.mock.calls.length;
+      await room.pauseTimeline();
+      expect(listener.mock.calls.length).toBeGreaterThan(callsAfterStart);
+
+      const callsAfterPause = listener.mock.calls.length;
+      await room.resumeTimeline();
+      expect(listener.mock.calls.length).toBeGreaterThan(callsAfterPause);
+
+      const callsAfterResume = listener.mock.calls.length;
+      await room.stopTimelinePlayback();
+      expect(listener.mock.calls.length).toBeGreaterThan(callsAfterResume);
+    });
+
+    it('unsubscribes listener via returned function', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const listener = vi.fn();
+      const unsub = room.addStateChangeListener(listener);
+
+      room.isPublic = false;
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      unsub();
+      room.isPublic = true;
+      expect(listener).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('publicInputState serialization', () => {
+    it('includes activeTransition in serialized output', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const inputId = (await room.addNewInput({
+        type: 'text-input',
+        text: 'Test',
+      }))!;
+
+      const transition = {
+        type: 'fade',
+        durationMs: 300,
+        direction: 'in' as const,
+      };
+      await room.showInput(inputId, transition);
+
+      const { toPublicInputState } = await import(
+        '../server/publicInputState'
+      );
+      const input = room.getInputs().find((i) => i.inputId === inputId)!;
+      const pub = toPublicInputState(input);
+      expect(pub.activeTransition).toMatchObject(transition);
+    });
+
+    it('includes textScrollNudge for text-input', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const inputId = (await room.addNewInput({
+        type: 'text-input',
+        text: 'Test',
+      }))!;
+
+      const { toPublicInputState } = await import(
+        '../server/publicInputState'
+      );
+      const input = room.getInputs().find((i) => i.inputId === inputId)!;
+      const pub = toPublicInputState(input);
+      expect('textScrollNudge' in pub).toBe(true);
     });
   });
 

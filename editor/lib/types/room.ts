@@ -1,17 +1,8 @@
-import type { Resolution } from '@smelter-editor/types';
-import type { ShaderConfig } from './shader';
-import type { Input, InputOrientation } from './input';
+import type { Resolution, PendingWhipInputData } from '@smelter-editor/types';
+import type { Input } from './input';
 import type { Layout } from './layout';
 
-export type PendingWhipInputData = {
-  id: string;
-  title: string;
-  volume: number;
-  showTitle: boolean;
-  shaders: ShaderConfig[];
-  orientation: InputOrientation;
-  position: number;
-};
+export type { PendingWhipInputData } from '@smelter-editor/types';
 
 export type RoomNameEntry = {
   pl: string;
