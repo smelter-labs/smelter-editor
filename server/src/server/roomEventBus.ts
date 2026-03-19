@@ -39,6 +39,13 @@ export type InputDeletedEvent = {
   sourceId: string | null;
 };
 
+export type RoomUpdatedEvent = {
+  type: 'room_updated';
+  roomId: string;
+  // value of `x-source-id` header from the request that triggered this room update, if any
+  sourceId: string | null;
+};
+
 export type PeersUpdatedEvent = {
   type: 'peers_updated';
   roomId: string;
@@ -53,6 +60,7 @@ export type ConnectedEvent = {
 export type RoomEvent =
   | InputUpdatedEvent
   | InputDeletedEvent
+  | RoomUpdatedEvent
   | PeersUpdatedEvent;
 
 interface ClientRecord {

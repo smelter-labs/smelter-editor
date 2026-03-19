@@ -76,7 +76,8 @@ const dashboardLayoutStorage: StorageClient<object> = {
 
 export const defaultActions: ControlPanelActions = {
   getRoomInfo,
-  updateRoom,
+  updateRoom: (roomId, opts, sourceId) =>
+    updateRoom(roomId, opts, sourceId ?? SESSION_SOURCE_ID),
   updateInput: (roomId, inputId, opts) =>
     updateInputAction(roomId, inputId, opts, SESSION_SOURCE_ID),
   removeInput: (roomId, inputId) =>

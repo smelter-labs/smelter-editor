@@ -34,8 +34,7 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
     async (req, res) => {
       console.log('[request] Create new room', { body: req.body });
 
-      const initInputs =
-        (req.body.initInputs as RegisterInputOptions[]) || [];
+      const initInputs = (req.body.initInputs as RegisterInputOptions[]) || [];
       const skipDefaultInputs = req.body.skipDefaultInputs === true;
 
       let resolution: Resolution | undefined;
@@ -182,6 +181,14 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
       if (req.body.newsStripEnabled !== undefined) {
         room.setNewsStripEnabled(req.body.newsStripEnabled);
       }
+
+      const sourceId =
+        (req.headers['x-source-id'] as string | undefined) ?? null;
+      roomEventBus.broadcast(roomId, {
+        type: 'room_updated',
+        roomId,
+        sourceId,
+      });
 
       res.status(200).send({ status: 'ok' });
     },

@@ -23,6 +23,12 @@ type InputDeletedEvent = {
   sourceId: string | null;
 };
 
+type RoomUpdatedEvent = {
+  type: 'room_updated';
+  roomId: string;
+  sourceId: string | null;
+};
+
 type PeersUpdatedEvent = {
   type: 'peers_updated';
   roomId: string;
@@ -37,6 +43,7 @@ type ConnectedEvent = {
 type ServerMessage =
   | InputUpdatedEvent
   | InputDeletedEvent
+  | RoomUpdatedEvent
   | PeersUpdatedEvent
   | ConnectedEvent;
 
@@ -91,7 +98,8 @@ export function useRoomWebSocket(
           console.log('[room-ws] assigned clientId', msg.clientId);
         } else if (
           msg.type === 'input_updated' ||
-          msg.type === 'input_deleted'
+          msg.type === 'input_deleted' ||
+          msg.type === 'room_updated'
         ) {
           const { onRemoteInputChange, ownSourceId } = optsRef.current ?? {};
           const isOwnChange =

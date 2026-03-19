@@ -24,6 +24,7 @@ export interface ControlPanelActions {
   updateRoom(
     roomId: string,
     opts: UpdateRoomOptions,
+    sourceId?: string,
   ): Promise<{ roomId: string; whepUrl: string }>;
   updateInput(
     roomId: string,
