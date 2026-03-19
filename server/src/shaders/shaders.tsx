@@ -1,16 +1,8 @@
 import path from 'path';
 import fs from 'fs';
-import type { ShaderParamConfig, ShaderConfig } from '../types';
+import type { ShaderParamConfig, ShaderConfig, ShaderParam } from '../types';
 
 export type { ShaderParamConfig, ShaderConfig };
-
-type ShaderParam = {
-  name: string;
-  type: string;
-  minValue?: number;
-  maxValue?: number;
-  defaultValue?: number | string;
-};
 
 type AvailableShader = {
   id: string;

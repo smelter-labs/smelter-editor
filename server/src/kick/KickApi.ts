@@ -113,9 +113,6 @@ export async function getKickStreamInfo(
   };
 }
 
-export interface KickStreamInfo {
-  streamId: string;
-  displayName: string;
-  title: string;
-  category: string;
-}
+import type { ChannelInfo } from '@smelter-editor/types';
+
+export type KickStreamInfo = ChannelInfo;

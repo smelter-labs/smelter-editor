@@ -1,4 +1,17 @@
-import type { PublicInputState } from './publicInputState';
+import type {
+  ConnectedPeer,
+  ConnectedEvent,
+  RoomEvent,
+} from '@smelter-editor/types';
+
+export type {
+  ConnectedPeer,
+  InputUpdatedEvent,
+  InputDeletedEvent,
+  PeersUpdatedEvent,
+  ConnectedEvent,
+  RoomEvent,
+} from '@smelter-editor/types';
 
 // pnpm wants node modules imports, fastify ws's use "export =".
 interface RoomWebSocket {
@@ -15,45 +28,6 @@ interface RoomWebSocket {
   ): this;
   on(event: string, listener: (...args: unknown[]) => void): this;
 }
-
-export type ConnectedPeer = {
-  clientId: string;
-  name: string | null;
-};
-
-export type InputUpdatedEvent = {
-  type: 'input_updated';
-  roomId: string;
-  inputId: string;
-  // full updated state of the input after the change
-  input: PublicInputState;
-  // value of `x-source-id` header from the request that triggered this update, if any
-  sourceId: string | null;
-};
-
-export type InputDeletedEvent = {
-  type: 'input_deleted';
-  roomId: string;
-  inputId: string;
-  // value of `x-source-id` header from the request that triggered this deletion, if any
-  sourceId: string | null;
-};
-
-export type PeersUpdatedEvent = {
-  type: 'peers_updated';
-  roomId: string;
-  peers: ConnectedPeer[];
-};
-
-export type ConnectedEvent = {
-  type: 'connected';
-  clientId: string;
-};
-
-export type RoomEvent =
-  | InputUpdatedEvent
-  | InputDeletedEvent
-  | PeersUpdatedEvent;
 
 interface ClientRecord {
   ws: RoomWebSocket;
