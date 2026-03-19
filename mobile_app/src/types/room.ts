@@ -3,62 +3,18 @@
  * These represent the shape of data returned by the backend.
  */
 
+import type {
+  InputOrientation,
+  PublicInputState,
+  Resolution,
+  ShaderConfig,
+  ShaderParamConfig,
+} from "@smelter-editor/types";
+
 import { StreamMonitor, WhipMonitor } from "./monitor";
 import { TwitchStreamInfo } from "./twitchApi";
 
-export interface RoomResolution {
-  width: number;
-  height: number;
-}
-
-/**
- * PublicInputState returned by the server.
- * Maps to what the backend sends via toPublicInputState().
- */
-export interface PublicInputState {
-  inputId: string;
-  title: string;
-  description: string;
-  showTitle: boolean;
-  sourceState: "live" | "offline" | "unknown" | "always-live";
-  status: "disconnected" | "pending" | "connected";
-  volume: number;
-  type: RoomInputState["type"];
-  shaders: ShaderConfig[];
-  orientation: InputOrientation;
-  channelId?: string;
-  imageId?: string;
-  text?: string;
-  textAlign?: "left" | "center" | "right";
-  textColor?: string;
-  textMaxLines?: number;
-  textScrollSpeed?: number;
-  textScrollLoop?: boolean;
-  textFontSize?: number;
-  borderColor?: string;
-  borderWidth?: number;
-  attachedInputIds?: string[];
-  hidden?: boolean;
-  gameBackgroundColor?: string;
-  gameCellGap?: number;
-  gameBoardBorderColor?: string;
-  gameBoardBorderWidth?: number;
-  gameGridLineColor?: string;
-  gameGridLineAlpha?: number;
-  snakeEventShaders?: any; // TODO - define type if we keep this
-  snake1Shaders?: ShaderConfig[];
-  snake2Shaders?: ShaderConfig[];
-  snakePlayerColors?: string[];
-  absolutePosition?: boolean;
-  absoluteTop?: number;
-  absoluteLeft?: number;
-  absoluteWidth?: number;
-  absoluteHeight?: number;
-  absoluteTransitionDurationMs?: number;
-  absoluteTransitionEasing?: string;
-  motionScore?: number;
-  motionEnabled?: boolean;
-}
+export type { InputOrientation, PublicInputState, ShaderConfig, ShaderParamConfig };
 
 /**
  * Full room state response from GET /room/:roomId.
@@ -70,7 +26,7 @@ export interface RoomState {
   whepUrl: string;
   pendingDelete: boolean;
   isPublic: boolean;
-  resolution: RoomResolution;
+  resolution: Resolution;
   pendingWhipInputs: unknown[];
   swapDurationMs: number;
   swapOutgoingEnabled: boolean;
@@ -94,8 +50,6 @@ export interface LayoutResponse {
   rows?: number;
   [key: string]: unknown;
 }
-
-export type InputOrientation = "horizontal" | "vertical";
 
 export type RoomInputState = {
   inputId: string;
@@ -175,16 +129,3 @@ type TypeSpecificState =
       textScrollNudge: number;
       textFontSize: number;
     };
-
-export type ShaderParamConfig = {
-  paramName: string;
-  /** number for numeric params, string (e.g. hex) for color params */
-  paramValue: number | string;
-};
-
-export type ShaderConfig = {
-  shaderName: string;
-  shaderId: string;
-  enabled: boolean;
-  params: ShaderParamConfig[];
-};
