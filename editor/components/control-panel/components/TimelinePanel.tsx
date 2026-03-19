@@ -1317,11 +1317,7 @@ export function TimelinePanel({
 
       const orphanedIds = findOrphanedInputIds(state.tracks, clipsToDelete);
 
-      if (clipsToDelete.length === 1) {
-        deleteClip(clipsToDelete[0].trackId, clipsToDelete[0].clipId);
-      } else {
-        deleteClips(clipsToDelete);
-      }
+      deleteClips(clipsToDelete);
 
       for (const inputId of orphanedIds) {
         await removeInput(roomId, inputId);
