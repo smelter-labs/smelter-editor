@@ -23,25 +23,7 @@ import {
   SaveShaderPresetModal,
   LoadShaderPresetModal,
 } from '../components/ShaderPresetModals';
-
-function hexToPackedInt(hex: string): number {
-  const cleanHex = hex.replace('#', '');
-  const fullHex =
-    cleanHex.length === 3
-      ? cleanHex
-          .split('')
-          .map((char) => char + char)
-          .join('')
-      : cleanHex;
-  return parseInt(fullHex, 16);
-}
-
-function packedIntToHex(packed: number): string {
-  const r = ((packed >> 16) & 0xff).toString(16).padStart(2, '0');
-  const g = ((packed >> 8) & 0xff).toString(16).padStart(2, '0');
-  const b = (packed & 0xff).toString(16).padStart(2, '0');
-  return `#${r}${g}${b}`;
-}
+import { hexToPackedInt, packedIntToHex } from '@/lib/color-utils';
 
 interface ShaderPanelProps {
   input: Input;

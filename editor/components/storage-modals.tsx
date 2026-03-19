@@ -25,15 +25,7 @@ import {
   ArrowLeft,
 } from 'lucide-react';
 
-// ── Shared helpers ───────────────────────────────────────────
-
-function formatDate(savedAt: string) {
-  try {
-    return new Date(savedAt).toLocaleString();
-  } catch {
-    return savedAt;
-  }
-}
+import { formatDate } from '@/lib/format-utils';
 
 const btnBase =
   'flex items-center gap-3 w-full px-4 py-3 rounded-lg border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 hover:border-neutral-600 transition-all cursor-pointer text-left';
