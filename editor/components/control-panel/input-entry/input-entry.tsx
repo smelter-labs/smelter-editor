@@ -35,6 +35,7 @@ import {
 import { useIsMobile } from '@/hooks/use-mobile';
 import { toggleMotionDetection } from '@/app/actions/actions';
 import { useControlPanelContext } from '../contexts/control-panel-context';
+import { hexToPackedInt, packedIntToHex } from '@/lib/color-utils';
 
 const SHADER_SETTINGS_DEBOUNCE_MS = 200;
 const VIDEO_INPUT_TYPES = [
@@ -43,31 +44,6 @@ const VIDEO_INPUT_TYPES = [
   'kick-channel',
   'whip',
 ] as const;
-
-/**
- * Converts a hex color string to a packed integer (0xRRGGBB)
- */
-function hexToPackedInt(hex: string): number {
-  const cleanHex = hex.replace('#', '');
-  const fullHex =
-    cleanHex.length === 3
-      ? cleanHex
-          .split('')
-          .map((char) => char + char)
-          .join('')
-      : cleanHex;
-  return parseInt(fullHex, 16);
-}
-
-/**
- * Converts a packed integer (0xRRGGBB) to a hex color string
- */
-function packedIntToHex(packed: number): string {
-  const r = ((packed >> 16) & 0xff).toString(16).padStart(2, '0');
-  const g = ((packed >> 8) & 0xff).toString(16).padStart(2, '0');
-  const b = (packed & 0xff).toString(16).padStart(2, '0');
-  return `#${r}${g}${b}`;
-}
 
 function isInputAttachedElsewhere(
   targetInputId: string,

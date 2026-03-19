@@ -18,6 +18,7 @@ const ShaderConfigSchema = Type.Object({
 });
 
 const TimelineBlockSettingsSchema = Type.Object({
+  timelineColor: Type.Optional(Type.String()),
   volume: Type.Number(),
   showTitle: Type.Boolean(),
   shaders: Type.Array(ShaderConfigSchema),

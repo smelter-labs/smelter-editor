@@ -7,23 +7,12 @@ import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/spinner';
 import { Download, X } from 'lucide-react';
 import { motion } from 'framer-motion';
+import { formatFileSize, formatDate } from '@/lib/format-utils';
 
 interface RecordingsListProps {
   open: boolean;
   onClose: () => void;
   roomId?: string;
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024)
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
-}
-
-function formatDate(timestamp: number): string {
-  return new Date(timestamp).toLocaleString();
 }
 
 export default function RecordingsList({

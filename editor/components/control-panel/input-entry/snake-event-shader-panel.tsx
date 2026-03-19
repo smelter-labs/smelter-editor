@@ -13,25 +13,7 @@ import { SNAKE_EVENT_TYPES } from '@/lib/snake-events';
 import { getRandomSnakeEventEffectPreset } from '@/lib/snake-event-effect-presets';
 import { ChevronDown, ChevronRight, Dices } from 'lucide-react';
 import { toast } from 'react-toastify';
-
-function hexToPackedInt(hex: string): number {
-  const cleanHex = hex.replace('#', '');
-  const fullHex =
-    cleanHex.length === 3
-      ? cleanHex
-          .split('')
-          .map((char) => char + char)
-          .join('')
-      : cleanHex;
-  return parseInt(fullHex, 16);
-}
-
-function packedIntToHex(packed: number): string {
-  const r = ((packed >> 16) & 0xff).toString(16).padStart(2, '0');
-  const g = ((packed >> 8) & 0xff).toString(16).padStart(2, '0');
-  const b = (packed & 0xff).toString(16).padStart(2, '0');
-  return `#${r}${g}${b}`;
-}
+import { hexToPackedInt, packedIntToHex } from '@/lib/color-utils';
 
 const DEFAULT_EFFECT_TYPES: Record<
   SnakeEventType,

@@ -12,6 +12,7 @@ import {
   Minimize2 as MinimizeIcon,
 } from 'lucide-react';
 import { buildIceServers } from '@/lib/webrtc';
+import { formatMs } from '@/lib/format-utils';
 
 function LoadingSpinner() {
   return (
@@ -252,12 +253,8 @@ export default function OutputStream({
     }
   };
 
-  const formatTime = (s: number) => {
-    if (!isFinite(s)) return '--:--';
-    const m = Math.floor(s / 60);
-    const sec = Math.floor(s % 60);
-    return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
-  };
+  const formatTime = (s: number) =>
+    !isFinite(s) ? '--:--' : formatMs(s * 1000);
 
   const controlBar =
     'absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-black/20 flex items-center px-4 py-3 gap-3 z-10';

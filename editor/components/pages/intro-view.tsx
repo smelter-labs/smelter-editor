@@ -41,19 +41,7 @@ import { LoadConfigModal } from '@/components/control-panel/components/ConfigMod
 import { ActionsProvider } from '@/components/control-panel/contexts/actions-context';
 import { defaultActions } from '@/components/control-panel/contexts/default-actions';
 import type { RoomConfig } from '@/lib/room-config';
-
-function formatDuration(ms: number): string {
-  const seconds = Math.floor(ms / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-  if (hours > 0) {
-    return `${hours}h ${minutes % 60}m`;
-  }
-  if (minutes > 0) {
-    return `${minutes}m ${seconds % 60}s`;
-  }
-  return `${seconds}s`;
-}
+import { formatDuration } from '@/lib/format-utils';
 
 function getBasePath(pathname: string): string {
   // Remove trailing slash if present

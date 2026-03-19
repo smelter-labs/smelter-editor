@@ -37,7 +37,16 @@ import {
   Plus,
   Trash2,
   Pencil,
+  ChevronRight,
+  ChevronLeft,
 } from 'lucide-react';
+import {
+  hexToHsla,
+  hexToHsl,
+  hslToHex,
+  generateShades,
+} from '@/lib/color-utils';
+import { formatMs } from '@/lib/format-utils';
 
 // ── Props ────────────────────────────────────────────────
 
@@ -119,14 +128,20 @@ const SNAP_THRESHOLD_PX = 8;
 const RESIZE_HANDLE_PX = 5;
 const MIN_MOVABLE_KEYFRAME_MS = 1;
 
-// ── Time formatting ──────────────────────────────────────
+const TIMELINE_COLOR_PRESETS = [
+  '#ef4444',
+  '#f97316',
+  '#eab308',
+  '#22c55e',
+  '#06b6d4',
+  '#3b82f6',
+  '#8b5cf6',
+  '#ec4899',
+  '#f5f5f5',
+  '#6b7280',
+];
 
-function formatMs(ms: number): string {
-  const totalSec = Math.floor(ms / 1000);
-  const min = Math.floor(totalSec / 60);
-  const sec = totalSec % 60;
-  return `${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-}
+const LONG_PRESS_MS = 500;
 
 // ── Keyframe diff ────────────────────────────────────────
 
@@ -441,6 +456,92 @@ function findOrphanedInputIds(
     if (!hasSurvivingClip) orphaned.push(inputId);
   }
   return orphaned;
+}
+
+// ── Long-press color swatch ─────────────────────────────
+
+function ColorSwatch({
+  color,
+  onQuickClick,
+  onLongPress,
+}: {
+  color: string;
+  onQuickClick: (c: string) => void;
+  onLongPress: (c: string) => void;
+}) {
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const firedRef = useRef(false);
+  const [pressing, setPressing] = useState(false);
+
+  const cancel = useCallback(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = null;
+    setPressing(false);
+  }, []);
+
+  const handlePointerDown = useCallback(
+    (e: React.PointerEvent) => {
+      e.currentTarget.setPointerCapture(e.pointerId);
+      firedRef.current = false;
+      setPressing(true);
+      timerRef.current = setTimeout(() => {
+        firedRef.current = true;
+        setPressing(false);
+        onLongPress(color);
+      }, LONG_PRESS_MS);
+    },
+    [color, onLongPress],
+  );
+
+  const handlePointerUp = useCallback(() => {
+    cancel();
+    if (!firedRef.current) onQuickClick(color);
+  }, [cancel, color, onQuickClick]);
+
+  const handlePointerLeave = useCallback(() => {
+    cancel();
+  }, [cancel]);
+
+  useEffect(() => () => cancel(), [cancel]);
+
+  const circumference = 2 * Math.PI * 8;
+
+  return (
+    <button
+      className='relative w-5 h-5 rounded-sm border border-neutral-600 hover:scale-125 transition-transform cursor-pointer'
+      style={{ backgroundColor: color }}
+      title={`Click to apply, hold for shades`}
+      onPointerDown={handlePointerDown}
+      onPointerUp={handlePointerUp}
+      onPointerLeave={handlePointerLeave}>
+      {pressing && (
+        <svg
+          className='absolute inset-[-3px] w-[calc(100%+6px)] h-[calc(100%+6px)] pointer-events-none'
+          viewBox='0 0 26 26'>
+          <circle
+            cx='13'
+            cy='13'
+            r='8'
+            fill='none'
+            stroke='rgba(255,255,255,0.6)'
+            strokeWidth='2.5'
+            strokeDasharray={circumference}
+            strokeDashoffset={circumference}
+            strokeLinecap='round'
+            style={{
+              animation: `swatch-ring ${LONG_PRESS_MS}ms linear forwards`,
+            }}
+          />
+        </svg>
+      )}
+      <style>{`
+        @keyframes swatch-ring {
+          from { stroke-dashoffset: ${circumference}; }
+          to   { stroke-dashoffset: 0; }
+        }
+      `}</style>
+    </button>
+  );
 }
 
 // ── Component ────────────────────────────────────────────
@@ -936,6 +1037,8 @@ export function TimelinePanel({
     clipId?: string;
     splitAtMs?: number;
   } | null>(null);
+  const [colorSubmenuOpen, setColorSubmenuOpen] = useState(false);
+  const [longPressColor, setLongPressColor] = useState<string | null>(null);
 
   const [showHelp, setShowHelp] = useState(false);
   const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
@@ -2026,7 +2129,11 @@ export function TimelinePanel({
     [inputs, state.pixelsPerSecond],
   );
 
-  const closeContextMenu = useCallback(() => setContextMenu(null), []);
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null);
+    setColorSubmenuOpen(false);
+    setLongPressColor(null);
+  }, []);
 
   useEffect(() => {
     if (!contextMenu) return;
@@ -2108,6 +2215,17 @@ export function TimelinePanel({
     closeContextMenu,
     deleteClipsAndRemoveOrphans,
   ]);
+
+  const handleSetClipColor = useCallback(
+    (color: string | undefined) => {
+      if (!contextMenu?.clipId) return;
+      updateClipSettings(contextMenu.trackId, contextMenu.clipId, {
+        timelineColor: color,
+      });
+      closeContextMenu();
+    },
+    [contextMenu, updateClipSettings, closeContextMenu],
+  );
 
   // ── Render helpers ───────────────────────────────────
 
@@ -2197,7 +2315,16 @@ export function TimelinePanel({
         const input = inputs.find((i) => i.inputId === clip.inputId);
         const isDisconnected =
           !input && !clip.inputId.startsWith('__pending-whip-');
-        const colors = inputColorMap.get(clip.inputId);
+        const baseColors = inputColorMap.get(clip.inputId);
+        const tc = clip.blockSettings.timelineColor;
+        const colors = tc
+          ? {
+              dot: tc,
+              segBg: hexToHsla(tc, 0.4),
+              segBorder: hexToHsla(tc, 0.6),
+              ring: hexToHsla(tc, 0.7),
+            }
+          : baseColors;
         const disconnectedBg = isDisconnected
           ? 'hsla(0, 0%, 45%, 0.25)'
           : undefined;
@@ -2574,10 +2701,16 @@ export function TimelinePanel({
               ? inputs.find((i) => i.inputId === firstClipInputId)
               : undefined;
             const trackHasDisconnected = firstClipInputId && !firstClipInput;
-            const trackDotColor = firstClipInputId
-              ? (inputColorMap.get(firstClipInputId)?.dot ??
-                (trackHasDisconnected ? '#6b7280' : undefined))
-              : undefined;
+            const firstClipColor =
+              track.clips.length > 0
+                ? track.clips[0].blockSettings.timelineColor
+                : undefined;
+            const trackDotColor =
+              firstClipColor ??
+              (firstClipInputId
+                ? (inputColorMap.get(firstClipInputId)?.dot ??
+                  (trackHasDisconnected ? '#6b7280' : undefined))
+                : undefined);
             const isEditing = editingTrackId === track.id;
 
             return (
@@ -2702,7 +2835,8 @@ export function TimelinePanel({
         createPortal(
           <div
             className='fixed z-[9999] bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl py-1 min-w-[160px]'
-            style={{ left: contextMenu.x, top: contextMenu.y }}>
+            style={{ left: contextMenu.x, top: contextMenu.y }}
+            onClick={(e) => e.stopPropagation()}>
             <button
               className='w-full text-left py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer'
               onClick={handleFx}>
@@ -2713,6 +2847,92 @@ export function TimelinePanel({
               onClick={handleMuteToggle}>
               {contextMenu.isMuted ? 'Unmute' : 'Mute'}
             </button>
+            {contextMenu.clipId && (
+              <div
+                className='relative'
+                onMouseEnter={() => setColorSubmenuOpen(true)}
+                onMouseLeave={() => {
+                  setColorSubmenuOpen(false);
+                  setLongPressColor(null);
+                }}>
+                <button
+                  className='w-full text-left py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer flex items-center justify-between'
+                  onClick={() => setColorSubmenuOpen((v) => !v)}>
+                  <span>Color</span>
+                  <ChevronRight className='w-3.5 h-3.5 text-neutral-400' />
+                </button>
+                {colorSubmenuOpen && (
+                  <div
+                    className='absolute left-full top-0 ml-1 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl py-2 px-2 z-[10000]'
+                    style={{ minWidth: 140 }}>
+                    {longPressColor ? (
+                      <>
+                        <button
+                          className='flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-200 mb-1.5 cursor-pointer'
+                          onClick={() => setLongPressColor(null)}>
+                          <ChevronLeft className='w-3 h-3' />
+                          <span
+                            className='w-3 h-3 rounded-sm border border-neutral-600 inline-block'
+                            style={{ backgroundColor: longPressColor }}
+                          />
+                          <span>Shades</span>
+                        </button>
+                        <div className='grid grid-cols-7 gap-1.5'>
+                          {generateShades(longPressColor).map((shade) => (
+                            <button
+                              key={shade}
+                              className='w-5 h-5 rounded-sm border border-neutral-600 hover:scale-125 transition-transform cursor-pointer'
+                              style={{ backgroundColor: shade }}
+                              title={shade}
+                              onClick={() => handleSetClipColor(shade)}
+                            />
+                          ))}
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className='grid grid-cols-5 gap-1.5 mb-2'>
+                          {TIMELINE_COLOR_PRESETS.map((color) => (
+                            <ColorSwatch
+                              key={color}
+                              color={color}
+                              onQuickClick={handleSetClipColor}
+                              onLongPress={setLongPressColor}
+                            />
+                          ))}
+                        </div>
+                        <div className='flex items-center gap-2 mb-1.5'>
+                          <label className='text-xs text-neutral-400'>
+                            Custom
+                          </label>
+                          <input
+                            type='color'
+                            className='w-6 h-5 bg-transparent border-none cursor-pointer'
+                            defaultValue={(() => {
+                              const track = state.tracks.find(
+                                (t) => t.id === contextMenu.trackId,
+                              );
+                              const clip = track?.clips.find(
+                                (c) => c.id === contextMenu.clipId,
+                              );
+                              return (
+                                clip?.blockSettings.timelineColor ?? '#3b82f6'
+                              );
+                            })()}
+                            onChange={(e) => handleSetClipColor(e.target.value)}
+                          />
+                        </div>
+                        <button
+                          className='w-full text-left py-1 px-1 text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-700 rounded cursor-pointer'
+                          onClick={() => handleSetClipColor(undefined)}>
+                          Reset to default
+                        </button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
             <button
               className='w-full text-left py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer text-red-400 hover:text-red-300'
               onClick={handleDelete}>

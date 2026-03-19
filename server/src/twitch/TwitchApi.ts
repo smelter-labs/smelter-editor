@@ -120,9 +120,6 @@ export async function getTwitchStreamInfo(
     : undefined;
 }
 
-export interface TwitchStreamInfo {
-  streamId: string;
-  displayName: string;
-  title: string;
-  category: string;
-}
+import type { ChannelInfo } from '@smelter-editor/types';
+
+export type TwitchStreamInfo = ChannelInfo;
