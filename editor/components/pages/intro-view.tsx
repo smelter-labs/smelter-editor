@@ -559,7 +559,7 @@ export default function IntroView() {
             <Button
               size='lg'
               variant='default'
-              className='text-black font-medium w-full bg-white border-0 hover:bg-neutral-200 cursor-pointer'
+              className='w-full cursor-pointer'
               onClick={() => handleCreateRoom()}
               disabled={loadingNew || loadingImport}>
               Let&apos;s go!
@@ -567,8 +567,8 @@ export default function IntroView() {
             </Button>
             <Button
               size='lg'
-              variant='default'
-              className='font-medium w-full bg-neutral-800 hover:bg-neutral-700 text-white cursor-pointer'
+              variant='outline'
+              className='w-full cursor-pointer'
               onClick={() => setShowLoadModal(true)}
               disabled={loadingNew || loadingImport}>
               {loadingImport ? (
@@ -604,8 +604,8 @@ export default function IntroView() {
             </ActionsProvider>
             <Button
               size='lg'
-              variant='default'
-              className='font-medium w-full bg-neutral-800 hover:bg-neutral-700 text-white cursor-pointer'
+              variant='outline'
+              className='w-full cursor-pointer'
               onClick={() => setShowRecordings(true)}
               disabled={loadingNew || loadingImport}>
               <FolderDown className='w-4 h-4 mr-2' />
@@ -643,7 +643,7 @@ export default function IntroView() {
                         <Button
                           size='sm'
                           variant='default'
-                          className='bg-white text-black hover:bg-neutral-200 cursor-pointer flex-1 sm:flex-none'
+                          className='cursor-pointer flex-1 sm:flex-none'
                           title='Join'
                           onClick={() =>
                             router.push(getRoomRoute(room.roomId))
@@ -652,8 +652,8 @@ export default function IntroView() {
                         </Button>
                         <Button
                           size='sm'
-                          variant='default'
-                          className='bg-neutral-700 text-white hover:bg-neutral-600 cursor-pointer flex-1 sm:flex-none'
+                          variant='outline'
+                          className='cursor-pointer flex-1 sm:flex-none'
                           title='Join as Guest'
                           onClick={() =>
                             router.push(
@@ -664,8 +664,8 @@ export default function IntroView() {
                         </Button>
                         <Button
                           size='sm'
-                          variant='default'
-                          className='bg-neutral-800 text-neutral-300 hover:bg-neutral-700 cursor-pointer flex-1 sm:flex-none'
+                          variant='secondary'
+                          className='cursor-pointer flex-1 sm:flex-none'
                           title='Spectate'
                           onClick={() =>
                             window.open(
@@ -677,8 +677,8 @@ export default function IntroView() {
                         </Button>
                         <Button
                           size='sm'
-                          variant='default'
-                          className='bg-red-900/50 text-red-400 hover:bg-red-900 cursor-pointer flex-1 sm:flex-none'
+                          variant='destructive'
+                          className='cursor-pointer flex-1 sm:flex-none'
                           title='Delete Room'
                           onClick={async () => {
                             try {

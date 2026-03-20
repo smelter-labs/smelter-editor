@@ -840,8 +840,8 @@ export function BlockClipPropertiesPanel({
           <div className='flex gap-2'>
             <Button
               size='sm'
-              variant='default'
-              className='flex-1 bg-card hover:bg-accent text-foreground cursor-pointer'
+              variant='outline'
+              className='flex-1 cursor-pointer'
               disabled={!!connectingType}
               onClick={() => handleConnectWhip('camera')}>
               {connectingType === 'camera' ? (
@@ -855,8 +855,8 @@ export function BlockClipPropertiesPanel({
             </Button>
             <Button
               size='sm'
-              variant='default'
-              className='flex-1 bg-card hover:bg-accent text-foreground cursor-pointer'
+              variant='outline'
+              className='flex-1 cursor-pointer'
               disabled={!!connectingType}
               onClick={() => handleConnectWhip('screenshare')}>
               {connectingType === 'screenshare' ? (

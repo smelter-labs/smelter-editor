@@ -1,17 +1,13 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Space_Grotesk } from 'next/font/google';
 import './globals.css';
 import React from 'react';
 import ClientLayoutAddons from '@/components/client-layout-addons';
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
+const spaceGrotesk = Space_Grotesk({
+  variable: '--font-space-grotesk',
   subsets: ['latin'],
-});
-
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
+  weight: ['300', '400', '500', '600', '700'],
 });
 
 export const metadata: Metadata = {
@@ -25,9 +21,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang='en' className='dark bg-background'>
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background`}>
+    <html
+      lang='en'
+      className={`dark bg-background ${spaceGrotesk.variable}`}>
+      <body className='antialiased bg-background'>
         {children}
         <ClientLayoutAddons />
       </body>

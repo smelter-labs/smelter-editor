@@ -10,14 +10,13 @@ import {
 import LoadingSpinner from '@/components/ui/spinner';
 import {
   X as XIcon,
-  ToggleLeft,
-  ToggleRight,
   Plus,
   Trash2,
   ArrowLeft,
   Save,
   FolderOpen,
 } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import { useState } from 'react';
 import {
   SaveShaderPresetModal,
@@ -113,24 +112,16 @@ export default function ShaderPanel({
                   title={hasParams ? 'Configure shader' : name}>
                   {name}
                 </Button>
-                <Button
-                  data-no-dnd
-                  size='sm'
-                  variant='ghost'
-                  className='h-6 w-6 p-0.5 cursor-pointer opacity-70 hover:opacity-100'
-                  aria-label={
-                    shaderConfig.enabled ? 'Disable shader' : 'Enable shader'
-                  }
-                  disabled={shaderLoading === shaderConfig.shaderId}
-                  onClick={() => onShaderToggle(shaderConfig.shaderId)}>
-                  {shaderLoading === shaderConfig.shaderId ? (
-                    <LoadingSpinner size='sm' variant='spinner' />
-                  ) : shaderConfig.enabled ? (
-                    <ToggleRight className='text-white size-4' />
-                  ) : (
-                    <ToggleLeft className='text-neutral-500 size-4' />
-                  )}
-                </Button>
+                {shaderLoading === shaderConfig.shaderId ? (
+                  <LoadingSpinner size='sm' variant='spinner' />
+                ) : (
+                  <Switch
+                    data-no-dnd
+                    checked={shaderConfig.enabled}
+                    onCheckedChange={() => onShaderToggle(shaderConfig.shaderId)}
+                    className='scale-75'
+                  />
+                )}
                 <Button
                   data-no-dnd
                   size='sm'
@@ -217,18 +208,11 @@ export default function ShaderPanel({
             {openShaderConfig && (
               <div className='flex items-center justify-between py-2 border-b border-neutral-800'>
                 <span className='text-sm text-neutral-300'>Enabled</span>
-                <Button
+                <Switch
                   data-no-dnd
-                  size='sm'
-                  variant='ghost'
-                  className='h-8 w-8 p-1 cursor-pointer'
-                  onClick={() => onShaderToggle(openShaderConfig.shaderId)}>
-                  {openShaderConfig.enabled ? (
-                    <ToggleRight className='text-white size-5' />
-                  ) : (
-                    <ToggleLeft className='text-neutral-500 size-5' />
-                  )}
-                </Button>
+                  checked={openShaderConfig.enabled}
+                  onCheckedChange={() => onShaderToggle(openShaderConfig.shaderId)}
+                />
               </div>
             )}
 
@@ -390,18 +374,11 @@ export function InlineShaderParams({
 
       <div className='flex items-center justify-between py-2 border-b border-neutral-800 mb-3'>
         <span className='text-sm text-neutral-300'>Enabled</span>
-        <Button
+        <Switch
           data-no-dnd
-          size='sm'
-          variant='ghost'
-          className='h-8 w-8 p-1 cursor-pointer'
-          onClick={() => onShaderToggle(shaderConfig.shaderId)}>
-          {shaderConfig.enabled ? (
-            <ToggleRight className='text-white size-5' />
-          ) : (
-            <ToggleLeft className='text-neutral-500 size-5' />
-          )}
-        </Button>
+          checked={shaderConfig.enabled}
+          onCheckedChange={() => onShaderToggle(shaderConfig.shaderId)}
+        />
       </div>
 
       <div className='space-y-5 py-2'>

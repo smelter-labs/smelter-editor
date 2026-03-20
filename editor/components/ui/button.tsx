@@ -5,16 +5,20 @@ import { cva, type VariantProps } from 'class-variance-authority';
 import { cn } from '@/lib/utils';
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border focus-visible:border-white/50",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap text-[10px] font-mono transition-all duration-200 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:ring-1 focus-visible:ring-cyan/50 active:scale-95",
   {
     variants: {
       variant: {
-        default: 'bg-primary text-primary-foreground hover:opacity-90',
-        destructive: 'bg-destructive text-white hover:opacity-90',
-        outline: 'border border-white/20 bg-transparent hover:bg-white/10',
-        secondary: 'bg-secondary text-secondary-foreground hover:opacity-80',
-        ghost: 'hover:bg-white/10',
-        link: 'text-primary underline-offset-4 hover:underline',
+        default:
+          'bg-[#141414] border border-[#2a2a2a] text-neutral-300 hover:bg-cyan/10 hover:border-cyan/30 hover:text-cyan',
+        destructive:
+          'bg-[#141414] border border-[#2a2a2a] text-neutral-300 hover:bg-destructive/10 hover:border-destructive/30 hover:text-red-400',
+        outline:
+          'bg-[#141414] border border-[#2a2a2a] text-neutral-400 hover:bg-[#1e1e1e] hover:border-[#404040] hover:text-neutral-200',
+        secondary:
+          'bg-[#141414] border border-[#2a2a2a] text-neutral-400 hover:bg-[#1e1e1e] hover:border-[#353535] hover:text-neutral-300',
+        ghost: 'text-neutral-400 hover:bg-[#2a2a2a] hover:text-cyan',
+        link: 'text-cyan underline-offset-4 hover:underline',
       },
       size: {
         default: 'h-9 px-4 py-2 has-[>svg]:px-3',

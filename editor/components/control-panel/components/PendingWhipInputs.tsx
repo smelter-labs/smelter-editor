@@ -186,8 +186,8 @@ export function PendingWhipInputs({
           <div className='flex gap-2'>
             <Button
               size='sm'
-              variant='default'
-              className='flex-1 bg-neutral-800 hover:bg-neutral-700 text-white cursor-pointer'
+              variant='outline'
+              className='flex-1 cursor-pointer'
               disabled={connectingId === pendingInput.id}
               onClick={() => handleConnect(pendingInput, 'camera')}>
               {connectingId === pendingInput.id && connectType === 'camera' ? (
@@ -201,8 +201,8 @@ export function PendingWhipInputs({
             </Button>
             <Button
               size='sm'
-              variant='default'
-              className='flex-1 bg-neutral-800 hover:bg-neutral-700 text-white cursor-pointer'
+              variant='outline'
+              className='flex-1 cursor-pointer'
               disabled={connectingId === pendingInput.id}
               onClick={() => handleConnect(pendingInput, 'screenshare')}>
               {connectingId === pendingInput.id &&

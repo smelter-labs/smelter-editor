@@ -5,8 +5,6 @@ import { useActions } from '../contexts/actions-context';
 import { Button } from '@/components/ui/button';
 import {
   Type,
-  ChevronUp,
-  ChevronDown,
   GripVertical,
   RectangleHorizontal,
   RectangleVertical,
@@ -18,7 +16,6 @@ import {
 import ShaderPanel from './shader-panel';
 import SnakeEventShaderPanel from './snake-event-shader-panel';
 import { InputEntryTextSection } from './input-entry-text-section';
-import { StatusButton } from './status-button';
 import { MotionIndicator } from './motion-indicator';
 import { MuteButton } from './mute-button';
 import { DeleteButton } from './delete-button';
@@ -799,7 +796,7 @@ export default function InputEntry({
             className={`inline-block w-3 h-3 rounded-none mr-2 ${getSourceStateColor(input)}`}
             aria-label={getSourceStateLabel(input)}
           />
-          <div className='text-s font-medium text-foreground truncate'>
+          <div className='text-[12px] font-bold text-foreground truncate'>
             {input.title}
           </div>
           {isTextSaving && (
@@ -916,67 +913,7 @@ export default function InputEntry({
         )}
         {!readOnly && (
           <div className='flex flex-row items-center min-w-0'>
-            <div className='flex-1 flex md:pl-7 min-w-0'>
-              <StatusButton
-                input={input}
-                loading={connectionStateLoading}
-                showSliders={effectiveShowSliders}
-                onClick={handleSlidersToggle}
-              />
-            </div>
-            <div className='flex flex-row items-center justify-end flex-1 gap-0.5 pr-1'>
-              <Button
-                data-no-dnd
-                size='sm'
-                variant='ghost'
-                className={`transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer ${
-                  canMoveUp
-                    ? 'text-foreground hover:text-foreground'
-                    : 'text-muted-foreground'
-                }`}
-                disabled={!canMoveUp}
-                aria-label='Move up'
-                onClick={() => {
-                  try {
-                    window.dispatchEvent(
-                      new CustomEvent('smelter:inputs:move', {
-                        detail: {
-                          roomId,
-                          inputId: input.inputId,
-                          direction: 'up',
-                        },
-                      }),
-                    );
-                  } catch {}
-                }}>
-                <ChevronUp className='size-5' strokeWidth={3} />
-              </Button>
-              <Button
-                data-no-dnd
-                size='sm'
-                variant='ghost'
-                className={`transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer ${
-                  canMoveDown
-                    ? 'text-foreground hover:text-foreground'
-                    : 'text-muted-foreground'
-                }`}
-                disabled={!canMoveDown}
-                aria-label='Move down'
-                onClick={() => {
-                  try {
-                    window.dispatchEvent(
-                      new CustomEvent('smelter:inputs:move', {
-                        detail: {
-                          roomId,
-                          inputId: input.inputId,
-                          direction: 'down',
-                        },
-                      }),
-                    );
-                  } catch {}
-                }}>
-                <ChevronDown className='size-5' strokeWidth={3} />
-              </Button>
+            <div className='flex flex-row items-center justify-end flex-1 gap-0.5 pr-1 md:pl-7'>
               <Button
                 data-no-dnd
                 size='sm'

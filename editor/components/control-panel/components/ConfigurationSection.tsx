@@ -352,8 +352,8 @@ export function ConfigurationSection({
     <div className='flex flex-col gap-3'>
       <Button
         size='lg'
-        variant='default'
-        className='bg-neutral-800 hover:bg-neutral-700 text-white font-medium cursor-pointer px-4 py-0 h-[48px] sm:h-[52px] text-sm sm:text-base sm:px-7 transition-all'
+        variant='outline'
+        className='cursor-pointer px-4 py-0 h-[48px] sm:h-[52px] sm:px-7'
         disabled={isExporting}
         onClick={handleExport}>
         {isExporting ? (
@@ -370,8 +370,8 @@ export function ConfigurationSection({
       </Button>
       <Button
         size='lg'
-        variant='default'
-        className='bg-neutral-800 hover:bg-neutral-700 text-white font-medium cursor-pointer px-4 py-0 h-[48px] sm:h-[52px] text-sm sm:text-base sm:px-7 transition-all'
+        variant='outline'
+        className='cursor-pointer px-4 py-0 h-[48px] sm:h-[52px] sm:px-7'
         disabled={isImporting}
         onClick={handleImportClick}>
         {isImporting ? (
