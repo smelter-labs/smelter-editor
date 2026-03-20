@@ -312,6 +312,9 @@ export function createBlockSettingsFromInput(input?: Input): BlockSettings {
     absoluteHeight: input?.absoluteHeight,
     absoluteTransitionDurationMs: input?.absoluteTransitionDurationMs,
     absoluteTransitionEasing: input?.absoluteTransitionEasing,
+    equalizerConfig: input?.equalizerConfig
+      ? { ...input.equalizerConfig }
+      : undefined,
   };
 }
 
@@ -550,9 +553,10 @@ export function timelineReducer(
         }
       }
       let nextTrackNumber = newTracks.length + 1;
+      const brandNewTracks: Track[] = [];
       for (const input of action.inputs) {
         if (!nowCoveredInputIds.has(input.inputId)) {
-          newTracks.push({
+          brandNewTracks.push({
             id: genId(),
             label: `Track ${nextTrackNumber}`,
             clips: [makeFullClip(input.inputId, state.totalDurationMs, input)],
@@ -561,7 +565,7 @@ export function timelineReducer(
         }
       }
 
-      return { ...state, tracks: newTracks };
+      return { ...state, tracks: [...brandNewTracks, ...newTracks] };
     }
 
     case 'SET_PLAYHEAD':
@@ -884,7 +888,7 @@ export function timelineReducer(
       };
       return {
         ...state,
-        tracks: [...state.tracks, newTrack],
+        tracks: [newTrack, ...state.tracks],
       };
     }
 

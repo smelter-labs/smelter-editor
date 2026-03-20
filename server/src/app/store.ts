@@ -8,7 +8,9 @@ import type {
   AbsolutePositionProperties,
   BorderProperties,
   SnakeGameDisplayProperties,
+  EqualizerConfig,
 } from '../types';
+import type { HandsStore } from '../hands/handStore';
 import { createContext, useContext } from 'react';
 import { useStore } from 'zustand';
 
@@ -31,6 +33,9 @@ export type InputConfig = {
   description: string;
   imageId?: string;
   snakeGameState?: SnakeGameState;
+  equalizerConfig?: EqualizerConfig;
+  handsSourceInputId?: string;
+  handsStore?: StoreApi<HandsStore>;
   replaceWith?: InputConfig;
   attachedInputs?: InputConfig[];
   activeTransition?: ActiveTransition;

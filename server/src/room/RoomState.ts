@@ -18,6 +18,9 @@ import { RecordingController } from './RecordingController';
 import { MotionController } from './MotionController';
 import { SnakeGameController } from './SnakeGameController';
 import { PlaceholderManager } from './PlaceholderManager';
+import { AudioController } from '../audio/AudioController';
+import type { AudioStoreState } from '../audio/audioStore';
+import type { StoreApi } from 'zustand';
 import type { RoomInputState, RegisterInputOptions, RoomSnapshot } from './types';
 
 const RESUME_FROZEN_IMAGE_CLEANUP_DELAY_MS = 5500;
@@ -32,6 +35,7 @@ export class RoomState {
   private readonly motionController: MotionController;
   private readonly snakeGameController: SnakeGameController;
   private readonly placeholderManager: PlaceholderManager;
+  private readonly audioController: AudioController;
 
   private stateChangeListeners = new Set<() => void>();
 
@@ -76,6 +80,7 @@ export class RoomState {
     initInputs: RegisterInputOptions[],
     skipDefaultInputs: boolean = false,
     roomName?: RoomNameEntry,
+    audioStore?: StoreApi<AudioStoreState>,
   ) {
     this.idPrefix = idPrefix;
     this.output = output;
@@ -92,6 +97,11 @@ export class RoomState {
     this.motionController = new MotionController(
       idPrefix,
       () => this.inputManager.getInputs(),
+    );
+    this.audioController = new AudioController(
+      idPrefix,
+      output,
+      audioStore,
     );
     this.inputManager = new InputManager(
       idPrefix,
@@ -249,7 +259,16 @@ export class RoomState {
   // ── Input operations (mutex-wrapped delegation) ───────────
 
   public async addNewInput(opts: RegisterInputOptions) {
-    return this.mutex.runExclusive(() => this.inputManager.addNewInput(opts));
+    return this.mutex.runExclusive(async () => {
+      const inputId = await this.inputManager.addNewInput(opts);
+
+      // Equalizers depend on live audio band analysis, so enable it automatically.
+      if (opts.type === 'equalizer' && !this.audioController.isEnabled()) {
+        await this.audioController.setAudioAnalysisEnabled(true);
+      }
+
+      return inputId;
+    });
   }
 
   public async removeInput(inputId: string): Promise<void> {
@@ -358,6 +377,28 @@ export class RoomState {
     listener: (scores: Record<string, number>) => void,
   ): () => void {
     return this.motionController.addMotionScoreListener(listener);
+  }
+
+  // ── Audio analysis (delegated) ──────────────────────────────
+
+  public async setAudioAnalysisEnabled(enabled: boolean): Promise<void> {
+    return this.mutex.runExclusive(async () => {
+      await this.audioController.setAudioAnalysisEnabled(enabled);
+    });
+  }
+
+  public isAudioAnalysisEnabled(): boolean {
+    return this.audioController.isEnabled();
+  }
+
+  public getAudioStore() {
+    return this.audioController.audioStore;
+  }
+
+  public addAudioLevelListener(
+    listener: (levels: number[]) => void,
+  ): () => void {
+    return this.audioController.addAudioLevelListener(listener);
   }
 
   // ── Snake game (delegated) ────────────────────────────────
@@ -755,6 +796,7 @@ export class RoomState {
       await this.flushPendingImageUnregisters();
 
       await this.motionController.stopAll();
+      await this.audioController.stopAll();
       await this.inputManager.destroyAll();
 
       try {
@@ -814,6 +856,11 @@ export class RoomState {
         input.type === 'game' ? input.snakeEventShaders : undefined,
       snake1Shaders: input.type === 'game' ? input.snake1Shaders : undefined,
       snake2Shaders: input.type === 'game' ? input.snake2Shaders : undefined,
+      equalizerConfig:
+        input.type === 'equalizer' ? input.equalizerConfig : undefined,
+      handsSourceInputId:
+        input.type === 'hands' ? input.sourceInputId : undefined,
+      handsStore: input.type === 'hands' ? input.handsStore : undefined,
       absolutePosition: input.absolutePosition,
       absoluteTop: input.absoluteTop,
       absoluteLeft: input.absoluteLeft,

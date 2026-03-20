@@ -59,6 +59,19 @@ export interface SmelterApiClient {
     textAlign?: 'left' | 'center' | 'right',
   ): Promise<any>;
   addSnakeGameInput(roomId: string, title?: string): Promise<any>;
+  addEqualizerInput(
+    roomId: string,
+    opts?: {
+      barCount?: number;
+      style?: 'bars' | 'bars-rounded';
+      barColor?: string;
+      glowIntensity?: number;
+      bgOpacity?: number;
+      gap?: number;
+      smoothing?: number;
+    },
+  ): Promise<any>;
+  addHandsInput(roomId: string, sourceInputId: string): Promise<any>;
   addCameraInput(roomId: string, username?: string): Promise<AddInputResponse>;
 
   removeInput(roomId: string, inputId: string, sourceId?: string): Promise<any>;
@@ -99,6 +112,8 @@ export interface SmelterApiClient {
     inputId: string,
     enabled: boolean,
   ): Promise<void>;
+
+  setAudioAnalysisEnabled(roomId: string, enabled: boolean): Promise<void>;
 
   restartMp4Input(
     roomId: string,
@@ -291,6 +306,20 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       });
     },
 
+    async addEqualizerInput(roomId, opts) {
+      return await req('post', `/room/${enc(roomId)}/input`, {
+        type: 'equalizer',
+        ...opts,
+      });
+    },
+
+    async addHandsInput(roomId, sourceInputId) {
+      return await req('post', `/room/${enc(roomId)}/input`, {
+        type: 'hands',
+        sourceInputId,
+      });
+    },
+
     async addCameraInput(roomId, username) {
       const response = await req('post', `/room/${enc(roomId)}/input`, {
         type: 'whip',
@@ -385,6 +414,10 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
         `/room/${enc(roomId)}/input/${enc(inputId)}/motion-detection`,
         { enabled },
       );
+    },
+
+    async setAudioAnalysisEnabled(roomId, enabled) {
+      await req('post', `/room/${enc(roomId)}/audio-analysis`, { enabled });
     },
 
     async restartMp4Input(roomId, inputId, playFromMs, loop) {

@@ -102,7 +102,10 @@ function SelectLabel({
 }: React.ComponentProps<typeof SelectPrimitive.Label>) {
   return (
     <SelectPrimitive.Label
-      className={cn('px-2 py-1.5 text-[10px] font-mono uppercase tracking-wider text-neutral-500', className)}
+      className={cn(
+        'px-2 py-1.5 text-[10px] font-mono uppercase tracking-wider text-neutral-500',
+        className,
+      )}
       {...props}
     />
   );

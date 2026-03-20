@@ -39,6 +39,40 @@ export const sseRoutes: FastifyPluginCallback = (routes, _opts, done) => {
   );
 
   routes.get<RoomIdParams>(
+    '/room/:roomId/audio-levels/sse',
+    { schema: { params: RoomIdParamsSchema } },
+    async (req, res) => {
+      const { roomId } = req.params;
+      const room = state.getRoom(roomId);
+
+      res.raw.writeHead(200, {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        Connection: 'keep-alive',
+        'Access-Control-Allow-Origin': '*',
+      });
+
+      const unsubscribe = room.addAudioLevelListener((levels) => {
+        res.raw.write(`data: ${JSON.stringify(levels)}\n\n`);
+      });
+
+      const heartbeat = setInterval(() => {
+        if (res.raw.destroyed) {
+          clearInterval(heartbeat);
+          unsubscribe();
+          return;
+        }
+        res.raw.write(': heartbeat\n\n');
+      }, 15000);
+
+      req.raw.on('close', () => {
+        clearInterval(heartbeat);
+        unsubscribe();
+      });
+    },
+  );
+
+  routes.get<RoomIdParams>(
     '/room/:roomId/state/sse',
     { schema: { params: RoomIdParamsSchema } },
     async (req, res) => {
@@ -72,6 +106,7 @@ export const sseRoutes: FastifyPluginCallback = (routes, _opts, done) => {
           newsStripEnabled: snapshot.newsStripEnabled,
           isRecording: room.hasActiveRecording(),
           isFrozen: room.isFrozen(),
+          audioAnalysisEnabled: room.isAudioAnalysisEnabled(),
         };
         res.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
       };

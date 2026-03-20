@@ -15,6 +15,7 @@ import {
   MOTION_GRID_WIDTH,
   MOTION_GRID_HEIGHT,
 } from './motion/MotionScene';
+import { AudioAnalysisScene } from './audio/AudioAnalysisScene';
 import shadersController from './shaders/shaders';
 import type { Resolution } from './types';
 import { RESOLUTION_PRESETS } from './types';
@@ -24,11 +25,14 @@ const execFileAsync = promisify(execFile);
 export type { Resolution, ResolutionPreset } from './types';
 export { RESOLUTION_PRESETS } from './types';
 
+import type { AudioStoreState } from './audio/audioStore';
+
 export type SmelterOutput = {
   id: string;
   url: string;
   store: StoreApi<RoomStore>;
   resolution: Resolution;
+  audioStore?: StoreApi<AudioStoreState>;
 };
 
 export type RegisterSmelterInputOptions =
@@ -101,9 +105,10 @@ export class SmelterManager {
   public async registerOutput(
     roomId: string,
     resolution: Resolution = RESOLUTION_PRESETS['1440p'],
+    audioStore?: StoreApi<AudioStoreState>,
   ): Promise<SmelterOutput> {
     let store = createRoomStore(resolution);
-    await this.instance.registerOutput(roomId, <App store={store} />, {
+    await this.instance.registerOutput(roomId, <App store={store} audioStore={audioStore} />, {
       type: 'whep_server',
       video: {
         encoder: config.h264Encoder,
@@ -124,6 +129,7 @@ export class SmelterManager {
       url: `${config.whepBaseUrl}/${encodeURIComponent(roomId)}`,
       store,
       resolution,
+      audioStore,
     };
   }
 
@@ -136,7 +142,7 @@ export class SmelterManager {
     output: SmelterOutput,
     filePath: string,
   ): Promise<void> {
-    await this.instance.registerOutput(outputId, <App store={output.store} />, {
+    await this.instance.registerOutput(outputId, <App store={output.store} audioStore={output.audioStore} />, {
       type: 'mp4',
       serverPath: filePath,
       video: {
@@ -297,6 +303,47 @@ export class SmelterManager {
   }
 
   public async unregisterMotionOutput(outputId: string): Promise<void> {
+    await this.unregisterOutput(outputId);
+  }
+
+  /**
+   * Register an RTP output for room-level audio analysis.
+   *
+   * Uses a lightweight AudioAnalysisScene that renders a solid-color 16x16
+   * View (so video is never empty) and includes an InputStream for every
+   * input in the room store, producing the same program audio mix as the
+   * main WHEP output.
+   */
+  public async registerRoomAudioOutput(
+    outputId: string,
+    output: SmelterOutput,
+    port: number,
+  ): Promise<void> {
+    await this.instance.registerOutput(
+      outputId,
+      <AudioAnalysisScene store={output.store} />,
+      {
+        type: 'rtp_stream',
+        port,
+        ip: '127.0.0.1',
+        transportProtocol: 'udp',
+        video: {
+          resolution: { width: 16, height: 16 },
+          encoder: { type: 'ffmpeg_h264' as const, preset: 'ultrafast' as const },
+        },
+        audio: {
+          channels: 'stereo',
+          encoder: {
+            type: 'opus',
+            sampleRate: 48000,
+            preset: 'lowest_latency',
+          },
+        },
+      },
+    );
+  }
+
+  public async unregisterRoomAudioOutput(outputId: string): Promise<void> {
     await this.unregisterOutput(outputId);
   }
 

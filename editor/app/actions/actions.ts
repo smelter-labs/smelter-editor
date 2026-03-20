@@ -130,6 +130,25 @@ export async function addSnakeGameInput(roomId: string, title?: string) {
   return client.addSnakeGameInput(roomId, title);
 }
 
+export async function addEqualizerInput(
+  roomId: string,
+  opts?: {
+    barCount?: number;
+    style?: 'bars' | 'bars-rounded';
+    barColor?: string;
+    glowIntensity?: number;
+    bgOpacity?: number;
+    gap?: number;
+    smoothing?: number;
+  },
+) {
+  return client.addEqualizerInput(roomId, opts);
+}
+
+export async function addHandsInput(roomId: string, sourceInputId: string) {
+  return client.addHandsInput(roomId, sourceInputId);
+}
+
 export async function removeInput(
   roomId: string,
   inputId: string,
@@ -306,6 +325,13 @@ export async function toggleMotionDetection(
   enabled: boolean,
 ): Promise<void> {
   return client.toggleMotionDetection(roomId, inputId, enabled);
+}
+
+export async function setAudioAnalysisEnabled(
+  roomId: string,
+  enabled: boolean,
+): Promise<void> {
+  return client.setAudioAnalysisEnabled(roomId, enabled);
 }
 
 export async function restartMp4Input(

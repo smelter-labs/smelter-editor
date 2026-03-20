@@ -70,6 +70,18 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
         sourceState: 'always-live' as const,
         ...toPublicSnakeGameInputState(input),
       };
+    case 'equalizer':
+      return {
+        ...base,
+        sourceState: 'always-live' as const,
+        equalizerConfig: input.equalizerConfig,
+      };
+    case 'hands':
+      return {
+        ...base,
+        sourceState: 'always-live' as const,
+        handsSourceInputId: input.sourceInputId,
+      };
     default:
       throw new Error('Unknown input state');
   }

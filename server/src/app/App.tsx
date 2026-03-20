@@ -5,6 +5,9 @@ import type { StoreApi } from 'zustand';
 import { StoreContext, useResolution, useInputs } from './store';
 import { NewsStripOverlay } from './news-strip';
 import { Input } from '../inputs/inputs';
+import { AudioStoreContext } from '../audio/AudioStoreContext';
+import type { AudioStoreState } from '../audio/audioStore';
+import { createAudioStore } from '../audio/audioStore';
 
 function buildEasingFunction(easing?: string) {
   if (easing === 'bounce') return 'bounce' as const;
@@ -17,10 +20,20 @@ function buildEasingFunction(easing?: string) {
   return 'linear' as const;
 }
 
-export default function App({ store }: { store: StoreApi<RoomStore> }) {
+const defaultAudioStore = createAudioStore();
+
+export default function App({
+  store,
+  audioStore,
+}: {
+  store: StoreApi<RoomStore>;
+  audioStore?: StoreApi<AudioStoreState>;
+}) {
   return (
     <StoreContext.Provider value={store}>
-      <OutputScene />
+      <AudioStoreContext.Provider value={audioStore ?? defaultAudioStore}>
+        <OutputScene />
+      </AudioStoreContext.Provider>
     </StoreContext.Provider>
   );
 }

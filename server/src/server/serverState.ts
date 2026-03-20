@@ -7,6 +7,7 @@ import { SmelterInstance } from '../smelter';
 import { type Resolution, RESOLUTION_PRESETS } from '../types';
 import { pickUniqueRoomName, type RoomNameEntry } from './roomNames';
 import { roomEventBus } from './roomEventBus';
+import { createAudioStore } from '../audio/audioStore';
 
 export type CreateRoomResult = {
   roomId: string;
@@ -73,9 +74,11 @@ export class ServerState {
       const roomId = uuidv4();
       const roomName = pickUniqueRoomName(this.getUsedRoomNames());
       const resolvedResolution = resolution ?? RESOLUTION_PRESETS['1440p'];
+      const audioStore = createAudioStore();
       const smelterOutput = await SmelterInstance.registerOutput(
         roomId,
         resolvedResolution,
+        audioStore,
       );
       const room = new RoomState(
         roomId,
@@ -83,6 +86,7 @@ export class ServerState {
         initInputs,
         skipDefaultInputs,
         roomName,
+        audioStore,
       );
       try {
         await room.init();

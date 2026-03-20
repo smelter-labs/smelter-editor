@@ -46,6 +46,11 @@
 - **Session:** 259f220d
 - **Rule:** When UI feels slow, check for unnecessary state refresh calls, not just debounce timing. Use `refresh: false` for fire-and-forget updates.
 
+### 2.4 Imported runtime IDs must be remapped
+- **Pattern:** Imported equalizer configs kept the original `sourceInputId`, so after recreating inputs they pointed at stale room-specific IDs. The UI rendered, but audio bands never updated because the equalizer subscribed to a non-existent source key.
+- **Session:** current
+- **Rule:** Never persist runtime-only input relationships by raw `inputId` when exporting/importing room config. Store a stable reference like input index, remap it on import, and update placeholder-based references when deferred inputs (for example pending WHIP) become real.
+
 ---
 
 ## 3. React / Hooks Patterns

@@ -3,7 +3,6 @@ import type { LayoutItem } from 'react-grid-layout';
 export type StaticPanelId =
   | 'video-preview'
   | 'add-video'
-  | 'buttons'
   | 'streams'
   | 'fx'
   | 'timeline'
@@ -81,12 +80,6 @@ export const STATIC_PANEL_DEFINITIONS: Record<StaticPanelId, PanelDefinition> =
       minW: 4,
       minH: 4,
     },
-    buttons: {
-      id: 'buttons',
-      title: 'Buttons',
-      minW: 4,
-      minH: 4,
-    },
     streams: { id: 'streams', title: 'Streams', minW: 4, minH: 4 },
     fx: { id: 'fx', title: 'FX', minW: 4, minH: 4 },
     timeline: { id: 'timeline', title: 'Timeline', minW: 8, minH: 4 },
@@ -142,8 +135,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
     layout: [
       { i: 'video-preview', x: 0, y: 0, w: 16, h: 20, minW: 6, minH: 6 },
       { i: 'add-video', x: 16, y: 0, w: 8, h: 8, minW: 4, minH: 4 },
-      { i: 'buttons', x: 16, y: 8, w: 8, h: 6, minW: 4, minH: 2 },
-      { i: 'streams', x: 16, y: 14, w: 8, h: 6, minW: 4, minH: 4 },
+      { i: 'streams', x: 16, y: 8, w: 8, h: 6, minW: 4, minH: 4 },
       { i: 'fx', x: 16, y: 20, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'timeline', x: 0, y: 20, w: 16, h: 8, minW: 8, minH: 4 },
       { i: 'block-properties', x: 0, y: 28, w: 16, h: 8, minW: 4, minH: 6 },
@@ -155,9 +147,8 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
     label: 'Wide Video',
     layout: [
       { i: 'video-preview', x: 0, y: 0, w: 24, h: 14, minW: 6, minH: 6 },
-      { i: 'add-video', x: 0, y: 14, w: 6, h: 10, minW: 4, minH: 4 },
-      { i: 'buttons', x: 6, y: 14, w: 6, h: 10, minW: 4, minH: 2 },
-      { i: 'streams', x: 12, y: 14, w: 6, h: 10, minW: 4, minH: 4 },
+      { i: 'add-video', x: 0, y: 14, w: 8, h: 10, minW: 4, minH: 4 },
+      { i: 'streams', x: 8, y: 14, w: 8, h: 10, minW: 4, minH: 4 },
       { i: 'fx', x: 18, y: 14, w: 6, h: 10, minW: 4, minH: 4 },
       { i: 'timeline', x: 0, y: 24, w: 16, h: 8, minW: 8, minH: 4 },
       { i: 'block-properties', x: 16, y: 24, w: 8, h: 8, minW: 4, minH: 3 },
@@ -170,8 +161,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
     layout: [
       { i: 'video-preview', x: 0, y: 0, w: 24, h: 10, minW: 6, minH: 6 },
       { i: 'add-video', x: 0, y: 10, w: 12, h: 6, minW: 4, minH: 4 },
-      { i: 'buttons', x: 12, y: 10, w: 12, h: 6, minW: 4, minH: 2 },
-      { i: 'streams', x: 0, y: 16, w: 12, h: 6, minW: 4, minH: 4 },
+      { i: 'streams', x: 12, y: 10, w: 12, h: 6, minW: 4, minH: 4 },
       { i: 'fx', x: 12, y: 16, w: 12, h: 6, minW: 4, minH: 4 },
       { i: 'timeline', x: 0, y: 22, w: 16, h: 6, minW: 8, minH: 4 },
       { i: 'block-properties', x: 16, y: 22, w: 8, h: 6, minW: 4, minH: 3 },
@@ -184,8 +174,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
     layout: [
       { i: 'video-preview', x: 0, y: 0, w: 12, h: 14, minW: 6, minH: 6 },
       { i: 'add-video', x: 12, y: 0, w: 12, h: 6, minW: 4, minH: 4 },
-      { i: 'buttons', x: 12, y: 6, w: 6, h: 4, minW: 4, minH: 4 },
-      { i: 'streams', x: 18, y: 6, w: 6, h: 4, minW: 4, minH: 4 },
+      { i: 'streams', x: 12, y: 6, w: 12, h: 4, minW: 4, minH: 4 },
       { i: 'fx', x: 12, y: 10, w: 12, h: 4, minW: 4, minH: 4 },
       { i: 'timeline', x: 0, y: 14, w: 16, h: 8, minW: 8, minH: 4 },
       { i: 'block-properties', x: 16, y: 14, w: 8, h: 8, minW: 4, minH: 3 },
@@ -198,8 +187,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
     layout: [
       { i: 'video-preview', x: 0, y: 0, w: 8, h: 28, minW: 6, minH: 6 },
       { i: 'add-video', x: 8, y: 0, w: 8, h: 8, minW: 4, minH: 4 },
-      { i: 'buttons', x: 16, y: 0, w: 8, h: 8, minW: 4, minH: 2 },
-      { i: 'streams', x: 8, y: 8, w: 8, h: 8, minW: 4, minH: 4 },
+      { i: 'streams', x: 16, y: 0, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'fx', x: 16, y: 8, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'timeline', x: 8, y: 16, w: 16, h: 6, minW: 8, minH: 4 },
       { i: 'block-properties', x: 8, y: 22, w: 16, h: 6, minW: 4, minH: 6 },
@@ -213,8 +201,7 @@ export const DEFAULT_LAYOUT: MutableLayout = LAYOUT_PRESETS[0].layout;
 export const SMALL_LAYOUT: MutableLayout = [
   { i: 'video-preview', x: 0, y: 0, w: 12, h: 10, minW: 4, minH: 4 },
   { i: 'add-video', x: 0, y: 10, w: 12, h: 6, minW: 4, minH: 4 },
-  { i: 'buttons', x: 0, y: 16, w: 12, h: 4, minW: 4, minH: 2 },
-  { i: 'streams', x: 0, y: 20, w: 12, h: 6, minW: 4, minH: 4 },
+  { i: 'streams', x: 0, y: 16, w: 12, h: 6, minW: 4, minH: 4 },
   { i: 'fx', x: 0, y: 26, w: 12, h: 6, minW: 4, minH: 4 },
   { i: 'timeline', x: 0, y: 32, w: 12, h: 6, minW: 4, minH: 4 },
   { i: 'block-properties', x: 0, y: 38, w: 12, h: 6, minW: 4, minH: 6 },

@@ -38,7 +38,9 @@ const PanelWrapper = forwardRef<HTMLDivElement, PanelWrapperProps>(
         className={`${className ?? ''} flex flex-col rounded-lg overflow-visible transition-colors ${
           isEditMode
             ? 'border border-neutral-600 ring-1 ring-neutral-700/50'
-            : 'bg-neutral-900 border border-neutral-800'
+            : panelId === 'video-preview'
+              ? 'bg-transparent border-0'
+              : 'bg-neutral-900 border border-neutral-800'
         }`}
         {...rest}>
         {isEditMode && (

@@ -12,6 +12,7 @@ type ControlPanelContextValue = {
   isRecording: boolean;
   isFrozen: boolean;
   motionScores: Record<string, number>;
+  audioAnalysisEnabled: boolean;
 };
 
 const ControlPanelContext = createContext<ControlPanelContextValue | null>(

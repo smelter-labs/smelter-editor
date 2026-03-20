@@ -30,6 +30,7 @@ interface RoomViewProps {
   roomState: RoomState;
   refreshState: () => Promise<void>;
   isGuest?: boolean;
+  settingsNavPortalRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 export default function RoomView({
@@ -37,6 +38,7 @@ export default function RoomView({
   roomState,
   refreshState,
   isGuest,
+  settingsNavPortalRef,
 }: RoomViewProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [showAutoplayPopup, setShowAutoplayPopup] = useState(true);
@@ -175,9 +177,9 @@ export default function RoomView({
         roomState={roomState}
         roomId={roomId}
         refreshState={refreshState}
+        settingsNavPortalRef={settingsNavPortalRef}
         renderDashboard={({
           addVideoSection,
-          buttonsSection,
           streamsSection,
           fxSection,
           timelineSection,
@@ -195,7 +197,6 @@ export default function RoomView({
               />
             ),
             'add-video': addVideoSection,
-            buttons: buttonsSection,
             streams: streamsSection,
             fx: fxSection,
             timeline: timelineSection,
@@ -236,6 +237,11 @@ export default function RoomView({
               panels={allPanels}
               allPanelIds={allPanelIds}
               getPanelDefinition={getPanelDefinition}
+              videoAspectRatio={
+                roomState.resolution
+                  ? roomState.resolution.width / roomState.resolution.height
+                  : 16 / 9
+              }
             />
           );
         }}

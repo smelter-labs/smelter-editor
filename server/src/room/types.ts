@@ -8,7 +8,10 @@ import type {
   InputDisplayProperties,
   BorderProperties,
   AbsolutePositionProperties,
+  EqualizerConfig,
 } from '../types';
+import type { StoreApi } from 'zustand';
+import type { HandsStore } from '../hands/handStore';
 import type { TwitchStreamInfo } from '../twitch/TwitchApi';
 import type {
   SnakeGameState,
@@ -102,4 +105,13 @@ type TypeSpecificState =
       snake2Shaders?: ShaderConfig[];
       activeEffects: ActiveSnakeEffect[];
       effectTimers: NodeJS.Timeout[];
+    }
+  | {
+      type: 'equalizer';
+      equalizerConfig: EqualizerConfig;
+    }
+  | {
+      type: 'hands';
+      sourceInputId: string;
+      handsStore: StoreApi<HandsStore>;
     };

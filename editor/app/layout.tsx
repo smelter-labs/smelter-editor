@@ -21,9 +21,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang='en'
-      className={`dark bg-background ${spaceGrotesk.variable}`}>
+    <html lang='en' className={`dark bg-background ${spaceGrotesk.variable}`}>
       <body className='antialiased bg-background'>
         {children}
         <ClientLayoutAddons />

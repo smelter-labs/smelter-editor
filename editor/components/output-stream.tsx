@@ -287,7 +287,7 @@ export default function OutputStream({
 
   return (
     <div
-      className='relative bg-black rounded-none overflow-hidden border-[#2a2a2a] border-4'
+      className='relative bg-black rounded-none overflow-hidden'
       style={{
         aspectRatio,
         maxWidth: '100%',

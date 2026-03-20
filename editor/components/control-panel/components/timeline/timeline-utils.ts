@@ -15,6 +15,8 @@ export const TYPE_HSL: Record<Input['type'], [number, number, number]> = {
   image: [48, 96, 53],
   'text-input': [330, 81, 60],
   game: [0, 72, 51],
+  equalizer: [190, 85, 55],
+  hands: [180, 90, 50],
 };
 
 const LIGHTNESS_STEP = 10;

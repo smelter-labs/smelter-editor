@@ -26,6 +26,7 @@ export type RoomState = {
   pendingWhipInputs?: PendingWhipInputData[];
   isRecording?: boolean;
   isFrozen?: boolean;
+  audioAnalysisEnabled?: boolean;
 };
 
 export type AddInputResponse = {

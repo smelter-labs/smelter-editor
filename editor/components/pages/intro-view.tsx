@@ -17,6 +17,7 @@ import {
   addKickInput,
   addMP4Input,
   addSnakeGameInput,
+  addEqualizerInput,
   addImageInput,
   addTextInput,
   updateInput,
@@ -29,6 +30,7 @@ import Link from 'next/link';
 import { staggerContainer } from '@/utils/animations';
 import {
   parseRoomConfig,
+  resolveImportedEqualizerConfig,
   restoreTimelineToStorage,
   computeTimelineStateAtZero,
   buildInputUpdateFromBlockSettings,
@@ -221,6 +223,10 @@ export default function IntroView() {
         const roomId = room.roomId;
 
         const createdInputIds: { inputId: string; configIndex: number }[] = [];
+        const deferredEqualizers: {
+          config: RoomConfig['inputs'][number];
+          position: number;
+        }[] = [];
 
         for (let i = 0; i < config.inputs.length; i++) {
           const inputConfig = config.inputs[i];
@@ -228,6 +234,11 @@ export default function IntroView() {
             let inputId: string | null = null;
 
             if (inputConfig.type === 'whip') {
+              continue;
+            }
+
+            if (inputConfig.type === 'equalizer') {
+              deferredEqualizers.push({ config: inputConfig, position: i });
               continue;
             }
 
@@ -301,11 +312,52 @@ export default function IntroView() {
           configIndexToInputId.set(configIndex, inputId);
         }
 
+        const pendingWhipInputs: PendingWhipInputData[] = [];
+        for (let i = 0; i < config.inputs.length; i++) {
+          const inputConfig = config.inputs[i];
+          if (inputConfig.type === 'whip') {
+            pendingWhipInputs.push({
+              id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              title: inputConfig.title,
+              volume: inputConfig.volume,
+              showTitle: inputConfig.showTitle !== false,
+              shaders: inputConfig.shaders || [],
+              orientation: (inputConfig.orientation || 'horizontal') as
+                | 'horizontal'
+                | 'vertical',
+              position: i,
+            });
+            configIndexToInputId.set(i, `__pending-whip-${i}__`);
+          }
+        }
+
+        for (const { config: inputConfig, position } of deferredEqualizers) {
+          try {
+            const equalizerConfig = resolveImportedEqualizerConfig(inputConfig);
+            if (!equalizerConfig) {
+              console.warn(
+                `Failed to resolve equalizer config for ${inputConfig.title}`,
+              );
+              continue;
+            }
+
+            const result = await addEqualizerInput(roomId, equalizerConfig);
+            createdInputIds.push({
+              inputId: result.inputId,
+              configIndex: position,
+            });
+            configIndexToInputId.set(position, result.inputId);
+          } catch (err) {
+            console.warn(`Failed to add input ${inputConfig.title}:`, err);
+          }
+        }
+
         for (const { inputId, configIndex } of createdInputIds) {
           const inputConfig = config.inputs[configIndex];
           const attachedInputIds = inputConfig.attachedInputIndices
             ?.map((idx) => configIndexToInputId.get(idx))
             .filter((id): id is string => !!id);
+          const equalizerConfig = resolveImportedEqualizerConfig(inputConfig);
 
           try {
             await updateInput(roomId, inputId, {
@@ -337,6 +389,7 @@ export default function IntroView() {
               absoluteTransitionDurationMs:
                 inputConfig.absoluteTransitionDurationMs,
               absoluteTransitionEasing: inputConfig.absoluteTransitionEasing,
+              equalizerConfig,
               attachedInputIds:
                 attachedInputIds && attachedInputIds.length > 0
                   ? attachedInputIds
@@ -344,24 +397,6 @@ export default function IntroView() {
             });
           } catch (err) {
             console.warn(`Failed to update input ${inputId}:`, err);
-          }
-        }
-
-        const pendingWhipInputs: PendingWhipInputData[] = [];
-        for (let i = 0; i < config.inputs.length; i++) {
-          const inputConfig = config.inputs[i];
-          if (inputConfig.type === 'whip') {
-            pendingWhipInputs.push({
-              id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              title: inputConfig.title,
-              volume: inputConfig.volume,
-              showTitle: inputConfig.showTitle !== false,
-              shaders: inputConfig.shaders || [],
-              orientation: (inputConfig.orientation || 'horizontal') as
-                | 'horizontal'
-                | 'vertical',
-              position: i,
-            });
           }
         }
 

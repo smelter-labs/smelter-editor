@@ -407,6 +407,7 @@ export function BlockClipPropertiesPanel({
             absoluteHeight: patch.absoluteHeight,
             absoluteTransitionDurationMs: patch.absoluteTransitionDurationMs,
             absoluteTransitionEasing: patch.absoluteTransitionEasing,
+            equalizerConfig: patch.equalizerConfig,
           });
         }
         if (shouldRefresh) {
@@ -1353,6 +1354,147 @@ export function BlockClipPropertiesPanel({
           />
         </>
       )}
+      {selectedInput?.type === 'equalizer' &&
+        effectiveClip.blockSettings.equalizerConfig && (
+          <div className={panelSectionStyles()}>
+            <div className='text-xs text-muted-foreground font-medium mb-2'>
+              Equalizer
+            </div>
+            <div className='text-[10px] text-muted-foreground mb-2'>
+              Source: Room mix
+            </div>
+            <div className='grid grid-cols-2 gap-2 mb-2'>
+              <div>
+                <label className={labelStyles({ block: true })}>
+                  Bar color
+                </label>
+                <input
+                  type='color'
+                  className='w-full h-8 bg-card border border-border'
+                  value={
+                    effectiveClip.blockSettings.equalizerConfig.barColor ??
+                    '#33ccff'
+                  }
+                  onChange={(e) =>
+                    void applyClipPatch({
+                      equalizerConfig: {
+                        ...effectiveClip.blockSettings.equalizerConfig!,
+                        barColor: e.target.value,
+                      },
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label className={labelStyles({ block: true })}>Bars</label>
+                <ShadcnInput
+                  type='number'
+                  min={2}
+                  max={32}
+                  className={panelInputStyles({ fullWidth: true })}
+                  value={
+                    effectiveClip.blockSettings.equalizerConfig.barCount ?? 16
+                  }
+                  onChange={(e) =>
+                    void applyClipPatch({
+                      equalizerConfig: {
+                        ...effectiveClip.blockSettings.equalizerConfig!,
+                        barCount: Math.max(2, Number(e.target.value) || 16),
+                      },
+                    })
+                  }
+                />
+              </div>
+            </div>
+            <div className='grid grid-cols-2 gap-2 mb-2'>
+              <div>
+                <label className={labelStyles({ block: true })}>Glow</label>
+                <Slider
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={[
+                    effectiveClip.blockSettings.equalizerConfig.glowIntensity ??
+                      0.5,
+                  ]}
+                  onValueChange={(v) =>
+                    void applyClipPatch({
+                      equalizerConfig: {
+                        ...effectiveClip.blockSettings.equalizerConfig!,
+                        glowIntensity: v[0],
+                      },
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label className={labelStyles({ block: true })}>Gap</label>
+                <Slider
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={[
+                    effectiveClip.blockSettings.equalizerConfig.gap ?? 0.2,
+                  ]}
+                  onValueChange={(v) =>
+                    void applyClipPatch({
+                      equalizerConfig: {
+                        ...effectiveClip.blockSettings.equalizerConfig!,
+                        gap: v[0],
+                      },
+                    })
+                  }
+                />
+              </div>
+            </div>
+            <div className='grid grid-cols-2 gap-2'>
+              <div>
+                <label className={labelStyles({ block: true })}>
+                  Smoothing
+                </label>
+                <Slider
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={[
+                    effectiveClip.blockSettings.equalizerConfig.smoothing ??
+                      0.3,
+                  ]}
+                  onValueChange={(v) =>
+                    void applyClipPatch({
+                      equalizerConfig: {
+                        ...effectiveClip.blockSettings.equalizerConfig!,
+                        smoothing: v[0],
+                      },
+                    })
+                  }
+                />
+              </div>
+              <div>
+                <label className={labelStyles({ block: true })}>
+                  BG opacity
+                </label>
+                <Slider
+                  min={0}
+                  max={1}
+                  step={0.05}
+                  value={[
+                    effectiveClip.blockSettings.equalizerConfig.bgOpacity ??
+                      0.8,
+                  ]}
+                  onValueChange={(v) =>
+                    void applyClipPatch({
+                      equalizerConfig: {
+                        ...effectiveClip.blockSettings.equalizerConfig!,
+                        bgOpacity: v[0],
+                      },
+                    })
+                  }
+                />
+              </div>
+            </div>
+          </div>
+        )}
       <div className='flex items-center justify-between mb-2'>
         <span className='text-xs text-muted-foreground'>Attached inputs</span>
         <Button

@@ -9,6 +9,8 @@ import type {
   BorderProperties,
   SnakeGameDisplayProperties,
   MotionProperties,
+  EqualizerProperties,
+  HandsProperties,
 } from './input.js';
 
 export type PublicInputState = {
@@ -28,4 +30,6 @@ export type PublicInputState = {
   Partial<AbsolutePositionProperties> &
   Partial<BorderProperties> &
   Partial<SnakeGameDisplayProperties> &
-  Partial<MotionProperties>;
+  Partial<MotionProperties> &
+  Partial<EqualizerProperties> &
+  Partial<HandsProperties>;

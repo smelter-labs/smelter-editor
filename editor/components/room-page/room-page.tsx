@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   useParams,
   useRouter,
@@ -26,6 +26,12 @@ export default function RoomPage() {
   const searchParams = useSearchParams();
   const isGuest = searchParams.get('guest') === 'true';
   const defaultInputsSavedRef = useRef(false);
+  const settingsNavRef = useRef<HTMLDivElement | null>(null);
+  const [settingsNavReady, setSettingsNavReady] = useState(false);
+
+  useEffect(() => {
+    setSettingsNavReady(true);
+  }, []);
 
   useEffect(() => {
     defaultInputsSavedRef.current = false;
@@ -90,15 +96,17 @@ export default function RoomPage() {
     <motion.div
       variants={staggerContainer}
       className='h-screen flex flex-col p-2 py-4 md:p-4 bg-[#0a0a0a]'>
-      <div className='flex items-center justify-between'>
+      <div className='flex items-center gap-6 mb-4'>
         <div
           style={{
             display: 'inline-block',
             width: `${162.5 / 1.2}px`,
             height: `${21.25 / 1.2}px`,
+            flexShrink: 0,
           }}>
           <SmelterLogo />
         </div>
+        <div ref={settingsNavRef} className='flex-1' />
       </div>
       {roomState.pendingDelete && (
         <Link href='/'>
@@ -115,6 +123,7 @@ export default function RoomPage() {
           roomId={roomId as string}
           refreshState={refreshState}
           isGuest={isGuest}
+          settingsNavPortalRef={settingsNavReady ? settingsNavRef : undefined}
         />
       </ErrorBoundary>
     </motion.div>

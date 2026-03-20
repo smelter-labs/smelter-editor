@@ -118,7 +118,9 @@ export default function ShaderPanel({
                   <Switch
                     data-no-dnd
                     checked={shaderConfig.enabled}
-                    onCheckedChange={() => onShaderToggle(shaderConfig.shaderId)}
+                    onCheckedChange={() =>
+                      onShaderToggle(shaderConfig.shaderId)
+                    }
                     className='scale-75'
                   />
                 )}
@@ -211,7 +213,9 @@ export default function ShaderPanel({
                 <Switch
                   data-no-dnd
                   checked={openShaderConfig.enabled}
-                  onCheckedChange={() => onShaderToggle(openShaderConfig.shaderId)}
+                  onCheckedChange={() =>
+                    onShaderToggle(openShaderConfig.shaderId)
+                  }
                 />
               </div>
             )}

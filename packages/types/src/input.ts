@@ -1,5 +1,6 @@
 import type { ShaderConfig } from './shader.js';
 import type { SnakeEventShaderConfig } from './snake-game.js';
+import type { EqualizerConfig } from './audio.js';
 
 export type InputOrientation = 'horizontal' | 'vertical';
 
@@ -10,7 +11,9 @@ export type InputType =
   | 'whip'
   | 'image'
   | 'text-input'
-  | 'game';
+  | 'game'
+  | 'equalizer'
+  | 'hands';
 
 export type InputStatus = 'disconnected' | 'pending' | 'connected';
 
@@ -65,4 +68,12 @@ export type SnakeGameDisplayProperties = {
 export type MotionProperties = {
   motionScore: number;
   motionEnabled: boolean;
+};
+
+export type EqualizerProperties = {
+  equalizerConfig?: EqualizerConfig;
+};
+
+export type HandsProperties = {
+  handsSourceInputId?: string;
 };

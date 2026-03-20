@@ -5,6 +5,7 @@ import type {
   AbsolutePositionProperties,
   BorderProperties,
   SnakeGameDisplayProperties,
+  EqualizerProperties,
 } from './input.js';
 
 export type TimelineBlockSettings = {
@@ -18,7 +19,8 @@ export type TimelineBlockSettings = {
   Partial<TextInputProperties> &
   Partial<AbsolutePositionProperties> &
   Partial<BorderProperties> &
-  Partial<SnakeGameDisplayProperties>;
+  Partial<SnakeGameDisplayProperties> &
+  Partial<EqualizerProperties>;
 
 export type TimelineKeyframe = {
   id: string;

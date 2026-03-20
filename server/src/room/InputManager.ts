@@ -14,6 +14,7 @@ import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
 import { getMp4DurationMs } from '../server/mp4Duration';
 import { logTimelineEvent } from '../dashboard';
 import { createDefaultSnakeGameInputState } from '../snakeGame/snakeGameState';
+import { createHandsStore } from '../hands/handStore';
 import type { ShaderConfig, ActiveTransition } from '../types';
 import type {
   RoomInputState,
@@ -123,6 +124,10 @@ export class InputManager {
       return this.addTextInput(opts);
     } else if (opts.type === 'game') {
       return this.addGameInput(opts);
+    } else if (opts.type === 'equalizer') {
+      return this.addEqualizerInput(opts);
+    } else if (opts.type === 'hands') {
+      return this.addHandsInput(opts);
     }
   }
 
@@ -396,6 +401,76 @@ export class InputManager {
     return inputId;
   }
 
+  private addEqualizerInput(
+    opts: Extract<RegisterInputOptions, { type: 'equalizer' }>,
+  ): string {
+    console.log('Adding equalizer input');
+    const inputId = `${this.idPrefix}::equalizer::${Date.now()}`;
+
+    this.inputs.push({
+      inputId,
+      type: 'equalizer',
+      status: 'connected',
+      showTitle: false,
+      shaders: [],
+      orientation: 'horizontal',
+      borderColor: '#ff0000',
+      borderWidth: 0,
+      hidden: false,
+      motionEnabled: false,
+      volume: 0,
+      metadata: { title: 'Equalizer', description: '' },
+      equalizerConfig: {
+        barCount: opts.barCount,
+        style: opts.style,
+        barColor: opts.barColor,
+        glowIntensity: opts.glowIntensity,
+        bgOpacity: opts.bgOpacity,
+        gap: opts.gap,
+        smoothing: opts.smoothing,
+      },
+    });
+    this.onStateChange();
+    return inputId;
+  }
+
+  private async addHandsInput(
+    opts: Extract<RegisterInputOptions, { type: 'hands' }>,
+  ): Promise<string> {
+    console.log('Adding hands input');
+    const inputId = `${this.idPrefix}::hands::${Date.now()}`;
+    const handsStore = createHandsStore();
+
+    this.inputs.push({
+      inputId,
+      type: 'hands',
+      status: 'connected',
+      showTitle: false,
+      shaders: [],
+      orientation: 'horizontal',
+      borderColor: '#ff0000',
+      borderWidth: 0,
+      hidden: false,
+      motionEnabled: false,
+      metadata: { title: 'Hand Tracking', description: 'Cyberpunk hand overlay' },
+      volume: 0,
+      sourceInputId: opts.sourceInputId,
+      handsStore,
+    });
+
+    this.motionController
+      .startHandTracking(opts.sourceInputId, handsStore)
+      .catch((err) =>
+        console.error(
+          `[hands] Failed to start hand tracking for ${opts.sourceInputId}`,
+          err,
+        ),
+      );
+
+    this.onStateChange();
+    return inputId;
+  }
+
   // ── Remove ────────────────────────────────────────────────
 
   async removeInput(inputId: string): Promise<void> {
@@ -429,6 +504,10 @@ export class InputManager {
       input.monitor.stop();
     }
 
+    if (input.type === 'hands') {
+      this.motionController.stopHandTracking(input.sourceInputId);
+    }
+
     const PENDING_WAIT_TIMEOUT_MS = 30_000;
     const waitStart = Date.now();
     while (input.status === 'pending') {
@@ -459,7 +538,7 @@ export class InputManager {
     const input = this.getInput(inputId);
     if (input.status !== 'disconnected') return '';
 
-    if (input.type === 'image' || input.type === 'game') {
+    if (input.type === 'image' || input.type === 'game' || input.type === 'equalizer' || input.type === 'hands') {
       input.status = 'connected';
       this.onStateChange();
       return '';
@@ -580,6 +659,12 @@ export class InputManager {
         input.snake1Shaders = options.snake1Shaders;
       if (options.snake2Shaders !== undefined)
         input.snake2Shaders = options.snake2Shaders;
+    }
+
+    if (input.type === 'equalizer' && input.equalizerConfig) {
+      if ((options as any).equalizerConfig !== undefined) {
+        Object.assign(input.equalizerConfig, (options as any).equalizerConfig);
+      }
     }
 
     if (options.attachedInputIds !== undefined)
@@ -914,6 +999,10 @@ function registerOptionsFromInput(
     throw Error('Images cannot be connected as stream inputs');
   } else if (input.type === 'game') {
     throw Error('Snake game inputs do not need stream registration');
+  } else if (input.type === 'equalizer') {
+    throw Error('Equalizer inputs do not need stream registration');
+  } else if (input.type === 'hands') {
+    throw Error('Hands inputs do not need stream registration');
   } else {
     throw Error('Unknown type');
   }

@@ -94,7 +94,7 @@ export default function VideoPreview({
               </div>
             )}
             {showPreview && (
-              <div className='rounded-none flex items-center justify-center bg-[#141414] flex-1 min-h-0 overflow-hidden'>
+              <div className='rounded-none flex items-center justify-center flex-1 min-h-0 overflow-hidden'>
                 {isGuest && guestStream && previewMode === 'input' ? (
                   <div
                     className='relative bg-black rounded-none overflow-hidden border-[#2a2a2a] border-4'

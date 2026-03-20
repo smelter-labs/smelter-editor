@@ -8,6 +8,8 @@ import { TextAddInputForm } from '../add-input-form/text-add-input-form';
 import { WHIPAddInputForm } from '../add-input-form/whip-add-input-form';
 import { ScreenshareAddInputForm } from '../add-input-form/screenshare-add-input-form';
 import { SnakeGameAddInputForm } from '../add-input-form/snake-game-add-input-form';
+import { EqualizerAddInputForm } from '../add-input-form/equalizer-add-input-form';
+import { HandsAddInputForm } from '../add-input-form/hands-add-input-form';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
@@ -22,7 +24,15 @@ import { useActions } from '../contexts/actions-context';
 import { Button } from '@/components/ui/button';
 import { PhoneOff } from 'lucide-react';
 
-export type AddTab = 'stream' | 'mp4' | 'image' | 'text' | 'game' | 'inputs';
+export type AddTab =
+  | 'stream'
+  | 'mp4'
+  | 'image'
+  | 'text'
+  | 'game'
+  | 'equalizer'
+  | 'hands'
+  | 'inputs';
 type StreamTab = 'twitch' | 'kick';
 type InputsTab = 'camera' | 'screenshare';
 
@@ -174,30 +184,44 @@ export function AddVideoSection({
         { id: 'image', label: 'Image' },
         { id: 'text', label: 'Text' },
         { id: 'game', label: 'Game' },
+        { id: 'equalizer', label: 'EQ' },
+        { id: 'hands', label: 'Hands' },
         { id: 'inputs', label: 'Inputs' },
       ];
 
   const effectiveActiveTab = isGuest ? 'inputs' : addInputActiveTab;
 
+  const topTabs = isGuest ? tabs : tabs.slice(0, 4);
+  const bottomTabs = isGuest ? [] : tabs.slice(4);
+
+  const renderTab = (t: { id: AddTab; label: string }) => {
+    const isActive = effectiveActiveTab === t.id;
+    return (
+      <Button
+        key={t.id}
+        variant='ghost'
+        className={`py-2 px-2 md:px-3 -mb-[1px] rounded-none cursor-pointer text-sm font-bold ${
+          isActive
+            ? 'border-b-[3px] border-white text-white'
+            : 'border-b-[3px] border-transparent text-neutral-400 hover:text-white'
+        }`}
+        onClick={() => setAddInputActiveTab(t.id)}>
+        {t.label}
+      </Button>
+    );
+  };
+
   return (
     <div>
-      <div className='flex gap-2 sm:gap-3 md:gap-4 lg:gap-4 xl:gap-4 2xl:gap-5 border-b border-neutral-800 justify-center'>
-        {tabs.map((t) => {
-          const isActive = effectiveActiveTab === t.id;
-          return (
-            <Button
-              key={t.id}
-              variant='ghost'
-              className={`py-2 px-2 md:px-3 -mb-[1px] rounded-none cursor-pointer text-sm font-bold ${
-                isActive
-                  ? 'border-b-[3px] border-white text-white'
-                  : 'border-b-[3px] border-transparent text-neutral-400 hover:text-white'
-              }`}
-              onClick={() => setAddInputActiveTab(t.id)}>
-              {t.label}
-            </Button>
-          );
-        })}
+      <div className='flex flex-col border-b border-neutral-800'>
+        <div className='flex gap-2 sm:gap-3 md:gap-4 lg:gap-4 xl:gap-4 2xl:gap-5 justify-center'>
+          {topTabs.map(renderTab)}
+        </div>
+        {bottomTabs.length > 0 && (
+          <div className='flex gap-2 sm:gap-3 md:gap-4 lg:gap-4 xl:gap-4 2xl:gap-5 justify-center'>
+            {bottomTabs.map(renderTab)}
+          </div>
+        )}
       </div>
       <div className='pt-3 px-2'>
         {effectiveActiveTab === 'stream' && (
@@ -274,6 +298,23 @@ export function AddVideoSection({
         {effectiveActiveTab === 'game' && (
           <div>
             <SnakeGameAddInputForm
+              inputs={inputs}
+              roomId={roomId}
+              refreshState={refreshState}
+            />
+          </div>
+        )}
+        {effectiveActiveTab === 'equalizer' && (
+          <div>
+            <EqualizerAddInputForm
+              roomId={roomId}
+              refreshState={refreshState}
+            />
+          </div>
+        )}
+        {effectiveActiveTab === 'hands' && (
+          <div>
+            <HandsAddInputForm
               inputs={inputs}
               roomId={roomId}
               refreshState={refreshState}
