@@ -21,6 +21,7 @@ import { PlaceholderManager } from './PlaceholderManager';
 import type { RoomInputState, RegisterInputOptions, RoomSnapshot } from './types';
 
 const RESUME_FROZEN_IMAGE_CLEANUP_DELAY_MS = 5500;
+const FROZEN_IMAGE_UNREGISTER_GRACE_MS = 500;
 
 export class RoomState {
   private readonly mutex = new Mutex();
@@ -42,6 +43,10 @@ export class RoomState {
   private frozenImageCleanupTimers = new Map<
     string,
     ReturnType<typeof setTimeout>
+  >();
+  private pendingImageUnregisters = new Map<
+    string,
+    { timer: ReturnType<typeof setTimeout>; jpegPath: string }
   >();
 
   private layout: Layout = 'picture-in-picture';
@@ -443,7 +448,7 @@ export class RoomState {
     const activeClips =
       await this.timelinePlayer.applyStaticSnapshot(playheadMs);
 
-    await this.cleanupFrozenImages();
+    this.cleanupFrozenImages();
 
     const inputs = this.inputManager.getInputs();
     for (const [inputId, clip] of activeClips) {
@@ -469,7 +474,7 @@ export class RoomState {
           assetType: 'jpeg',
         });
 
-        await this.setFrozenImage(inputId, frozenId, jpegPath);
+        this.setFrozenImage(inputId, frozenId, jpegPath);
         logTimelineEvent(
           this.idPrefix,
           `MP4 FROZEN (scrub) ${input.metadata.title} at ${Math.round(framePositionMs)}ms`,
@@ -485,7 +490,7 @@ export class RoomState {
 
   public async stopTimelinePlayback(): Promise<void> {
     if (!this.timelinePlayer) return;
-    await this.cleanupFrozenImages();
+    this.cleanupFrozenImages();
     await this.timelinePlayer.stop();
     this.timelinePlayer.destroy();
     this.timelinePlayer = null;
@@ -529,7 +534,7 @@ export class RoomState {
           assetType: 'jpeg',
         });
 
-        await this.setFrozenImage(inputId, frozenId, jpegPath);
+        this.setFrozenImage(inputId, frozenId, jpegPath);
         logTimelineEvent(
           this.idPrefix,
           `MP4 FROZEN (pause) ${input.metadata.title} at ${Math.round(framePositionMs)}ms`,
@@ -568,7 +573,7 @@ export class RoomState {
     const inactiveFrozenInputIds = [...this.frozenImages.keys()].filter(
       (inputId) => !activeFrozenInputIds.has(inputId),
     );
-    await this.cleanupFrozenImages(inactiveFrozenInputIds);
+    this.cleanupFrozenImages(inactiveFrozenInputIds);
 
     const inputs = this.inputManager.getInputs();
     for (const inputId of activeFrozenInputIds) {
@@ -654,16 +659,16 @@ export class RoomState {
     this.clearFrozenImageCleanupTimer(inputId);
     const timer = setTimeout(() => {
       this.frozenImageCleanupTimers.delete(inputId);
-      void this.cleanupFrozenImages([inputId]);
+      void this.mutex.runExclusive(() => this.cleanupFrozenImages([inputId]));
     }, delayMs);
     this.frozenImageCleanupTimers.set(inputId, timer);
   }
 
-  private async setFrozenImage(
+  private setFrozenImage(
     inputId: string,
     imageId: string,
     jpegPath: string,
-  ): Promise<void> {
+  ): void {
     const previous = this.frozenImages.get(inputId);
     this.clearFrozenImageCleanupTimer(inputId);
 
@@ -672,24 +677,10 @@ export class RoomState {
 
     if (!previous) return;
 
-    try {
-      await SmelterInstance.unregisterImage(previous.imageId);
-    } catch (err) {
-      console.error(
-        `Failed to unregister replaced frozen image ${previous.imageId}`,
-        err,
-      );
-    }
-    try {
-      await remove(previous.jpegPath);
-    } catch {
-      // best-effort cleanup
-    }
+    this.deferredUnregisterImage(previous.imageId, previous.jpegPath);
   }
 
-  private async cleanupFrozenImages(
-    inputIds?: Iterable<string>,
-  ): Promise<void> {
+  private cleanupFrozenImages(inputIds?: Iterable<string>): void {
     const targets = inputIds
       ? [...new Set(inputIds)]
           .map((inputId) => {
@@ -714,10 +705,31 @@ export class RoomState {
       this.clearFrozenImageCleanupTimer(inputId);
       this.output.store.getState().setInputFrozenImage(inputId, null);
       this.frozenImages.delete(inputId);
+      this.deferredUnregisterImage(imageId, jpegPath);
+    }
+  }
+
+  private deferredUnregisterImage(imageId: string, jpegPath: string): void {
+    const existing = this.pendingImageUnregisters.get(imageId);
+    if (existing) clearTimeout(existing.timer);
+
+    const timer = setTimeout(() => {
+      this.pendingImageUnregisters.delete(imageId);
+      SmelterInstance.unregisterImage(imageId).catch((err) => {
+        console.error(`Failed to unregister frozen image ${imageId}`, err);
+      });
+      remove(jpegPath).catch(() => {});
+    }, FROZEN_IMAGE_UNREGISTER_GRACE_MS);
+    this.pendingImageUnregisters.set(imageId, { timer, jpegPath });
+  }
+
+  private async flushPendingImageUnregisters(): Promise<void> {
+    for (const [imageId, { timer, jpegPath }] of this.pendingImageUnregisters) {
+      clearTimeout(timer);
       try {
         await SmelterInstance.unregisterImage(imageId);
       } catch (err) {
-        console.error(`Failed to unregister frozen image ${imageId}`, err);
+        console.error(`Failed to flush-unregister frozen image ${imageId}`, err);
       }
       try {
         await remove(jpegPath);
@@ -725,6 +737,7 @@ export class RoomState {
         // best-effort cleanup
       }
     }
+    this.pendingImageUnregisters.clear();
   }
 
   // ── Room lifecycle ────────────────────────────────────────
@@ -738,7 +751,8 @@ export class RoomState {
         this.timelinePlayer = null;
       }
 
-      await this.cleanupFrozenImages();
+      this.cleanupFrozenImages();
+      await this.flushPendingImageUnregisters();
 
       await this.motionController.stopAll();
       await this.inputManager.destroyAll();

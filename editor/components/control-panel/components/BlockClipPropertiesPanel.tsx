@@ -2,20 +2,15 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type {
-  Input,
-  AvailableShader,
-  ShaderConfig,
-  TransitionType,
-} from '@/lib/types';
+import type { Input, AvailableShader, ShaderConfig } from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
 import ShaderPanel, { InlineShaderParams } from '../input-entry/shader-panel';
 import { AddShaderModal } from '../input-entry/add-shader-modal';
 import SnakeEventShaderPanel from '../input-entry/snake-event-shader-panel';
-import type { BlockSettings, Keyframe } from '../hooks/use-timeline-state';
+import type { BlockSettings } from '../hooks/use-timeline-state';
 import { PendingWhipInputs } from './PendingWhipInputs';
 import type { PendingWhipInput } from './ConfigurationSection';
-import { Link, Video, Monitor, Dices } from 'lucide-react';
+import { Link, Video, Monitor } from 'lucide-react';
 import {
   Select,
   SelectTrigger,
@@ -39,351 +34,25 @@ import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
 import LoadingSpinner from '@/components/ui/spinner';
 import { toast } from 'sonner';
-import { getRandomSnakeShaderPreset } from '@/lib/snake-shader-presets';
 import { getMp4Duration } from '@/app/actions/actions';
 import { AbsolutePositionController } from './AbsolutePositionController';
+import {
+  type SelectedTimelineClip,
+  extractMp4FileName,
+  computeCommonBlockSettings,
+  resolveNewKeyframeTimeMs,
+} from './block-clip/block-clip-utils';
+import { SnakeShaderSection } from './block-clip/SnakeShaderSection';
+import { TransitionRow } from './block-clip/TransitionRow';
+import {
+  panelInputStyles,
+  panelSectionStyles,
+  labelStyles,
+} from '../styles/panel-primitives';
 
 const SHADER_SETTINGS_DEBOUNCE_MS = 200;
 
-function extractMp4FileName(title: string): string | null {
-  const match = title.match(/^\[MP4\]\s+(.+)$/);
-  if (!match) return null;
-  return match[1].split(/\s+/).join('_') + '.mp4';
-}
-
-function SnakeShaderSection({
-  label,
-  shaders,
-  playerColor,
-  availableShaders,
-  onPatch,
-  onOpenShaderInline,
-}: {
-  label: string;
-  shaders: ShaderConfig[];
-  playerColor?: string;
-  availableShaders: AvailableShader[];
-  onPatch: (shaders: ShaderConfig[], options?: { refresh?: boolean }) => void;
-  onOpenShaderInline?: (shaderId: string) => void;
-}) {
-  const handleRandomPreset = useCallback(() => {
-    const preset = getRandomSnakeShaderPreset(playerColor);
-    onPatch(preset.shaders);
-    toast.info(`🎲 ${preset.name}`, { duration: 1500 });
-  }, [onPatch, playerColor]);
-  const [sliderValues, setSliderValues] = useState<{ [key: string]: number }>(
-    {},
-  );
-  const [paramLoading, setParamLoading] = useState<{
-    [shaderId: string]: string | null;
-  }>({});
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const sliderTimersRef = useRef<
-    Record<string, ReturnType<typeof setTimeout> | null>
-  >({});
-
-  useEffect(() => {
-    return () => {
-      Object.values(sliderTimersRef.current).forEach((timer) => {
-        if (timer) {
-          clearTimeout(timer);
-        }
-      });
-    };
-  }, []);
-
-  const handleToggle = useCallback(
-    (shaderId: string) => {
-      const current = shaders;
-      const existing = current.find((s) => s.shaderId === shaderId);
-      if (!existing) {
-        const shaderDef = availableShaders.find((s) => s.id === shaderId);
-        if (!shaderDef) return;
-        onPatch([
-          ...current,
-          {
-            shaderName: shaderDef.name,
-            shaderId: shaderDef.id,
-            enabled: true,
-            params:
-              shaderDef.params?.map((param) => ({
-                paramName: param.name,
-                paramValue:
-                  typeof param.defaultValue === 'number'
-                    ? param.defaultValue
-                    : 0,
-              })) || [],
-          },
-        ]);
-        return;
-      }
-      onPatch(
-        current.map((shader) =>
-          shader.shaderId === shaderId
-            ? { ...shader, enabled: !shader.enabled }
-            : shader,
-        ),
-      );
-    },
-    [shaders, availableShaders, onPatch],
-  );
-
-  const handleRemove = useCallback(
-    (shaderId: string) => {
-      onPatch(shaders.filter((shader) => shader.shaderId !== shaderId));
-    },
-    [shaders, onPatch],
-  );
-
-  const handleSlider = useCallback(
-    (shaderId: string, paramName: string, newValue: number) => {
-      const key = `${shaderId}:${paramName}`;
-      setSliderValues((prev) => ({
-        ...prev,
-        [key]: newValue,
-      }));
-      setParamLoading((prev) => ({ ...prev, [shaderId]: paramName }));
-      const timer = sliderTimersRef.current[key];
-      if (timer) {
-        clearTimeout(timer);
-      }
-      sliderTimersRef.current[key] = setTimeout(() => {
-        const updated = shaders.map((shader) => {
-          if (shader.shaderId !== shaderId) return shader;
-          return {
-            ...shader,
-            params: shader.params.map((param) =>
-              param.paramName === paramName
-                ? { ...param, paramValue: newValue }
-                : param,
-            ),
-          };
-        });
-        onPatch(updated, { refresh: false });
-        setParamLoading((prev) => ({ ...prev, [shaderId]: null }));
-        setSliderValues((prev) => {
-          const next = { ...prev };
-          delete next[key];
-          return next;
-        });
-        sliderTimersRef.current[key] = null;
-      }, SHADER_SETTINGS_DEBOUNCE_MS);
-    },
-    [shaders, onPatch],
-  );
-
-  const getParamConfig = useCallback(
-    (shaderId: string, paramName: string) =>
-      shaders
-        ?.find((shader) => shader.shaderId === shaderId)
-        ?.params.find((param) => param.paramName === paramName),
-    [shaders],
-  );
-
-  const fakeInput: Input = {
-    id: -1,
-    inputId: '',
-    title: '',
-    description: '',
-    volume: 0,
-    showTitle: true,
-    type: 'local-mp4',
-    sourceState: 'unknown',
-    status: 'connected',
-    shaders,
-    orientation: 'horizontal',
-  };
-
-  return (
-    <div className='mt-2 border-t border-neutral-800 pt-2'>
-      <div className='flex items-center justify-between mb-1'>
-        <span className='text-xs text-neutral-400'>{label}</span>
-        <Button
-          type='button'
-          variant='ghost'
-          size='icon'
-          title='Random shader preset'
-          onClick={handleRandomPreset}
-          className='h-6 w-6 text-neutral-400 hover:text-white cursor-pointer'>
-          <Dices className='size-3.5' />
-        </Button>
-      </div>
-      <ShaderPanel
-        input={fakeInput}
-        availableShaders={availableShaders}
-        sliderValues={sliderValues}
-        paramLoading={paramLoading}
-        shaderLoading={null}
-        onShaderToggle={handleToggle}
-        onShaderRemove={handleRemove}
-        onSliderChange={handleSlider}
-        getShaderParamConfig={getParamConfig}
-        onOpenAddShader={() => setIsAddModalOpen(true)}
-        onOpenShaderInline={onOpenShaderInline}
-      />
-      <AddShaderModal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        availableShaders={availableShaders}
-        addedShaderIds={new Set(shaders.map((s) => s.shaderId))}
-        onAddShader={handleToggle}
-      />
-    </div>
-  );
-}
-
-const TRANSITION_TYPES: { value: TransitionType | 'none'; label: string }[] = [
-  { value: 'none', label: 'None' },
-  { value: 'fade', label: 'Fade' },
-  { value: 'slide-left', label: 'Slide Left' },
-  { value: 'slide-right', label: 'Slide Right' },
-  { value: 'slide-up', label: 'Slide Up' },
-  { value: 'slide-down', label: 'Slide Down' },
-  { value: 'wipe-left', label: 'Wipe Left' },
-  { value: 'wipe-right', label: 'Wipe Right' },
-  { value: 'dissolve', label: 'Dissolve' },
-];
-
-function TransitionRow({
-  label,
-  transition,
-  maxDurationMs,
-  onChange,
-}: {
-  label: string;
-  transition?: import('@/lib/types').TransitionConfig;
-  maxDurationMs: number;
-  onChange: (t: import('@/lib/types').TransitionConfig | undefined) => void;
-}) {
-  const type = transition?.type ?? 'none';
-  const durationMs = transition?.durationMs ?? 500;
-  const clampedMax = Math.max(100, maxDurationMs);
-
-  return (
-    <div className='mb-2'>
-      <span className='text-[11px] text-neutral-500 block mb-1'>{label}</span>
-      <div className='flex items-center gap-2'>
-        <Select
-          value={type}
-          onValueChange={(val: TransitionType | 'none') => {
-            if (val === 'none') {
-              onChange(undefined);
-            } else {
-              onChange({ type: val, durationMs });
-            }
-          }}>
-          <SelectTrigger className='flex-1 bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1 rounded h-auto'>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {TRANSITION_TYPES.map((t) => (
-              <SelectItem key={t.value} value={t.value}>
-                {t.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        {type !== 'none' && (
-          <div className='flex items-center gap-1.5'>
-            <Slider
-              min={100}
-              max={Math.min(2000, clampedMax)}
-              step={50}
-              className='w-20'
-              value={[Math.min(durationMs, clampedMax)]}
-              onValueChange={(v) => {
-                const ms = v[0];
-                onChange({ type: type as TransitionType, durationMs: ms });
-              }}
-            />
-            <span className='text-[10px] text-neutral-500 w-10 text-right tabular-nums'>
-              {durationMs}ms
-            </span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-export type SelectedTimelineClip = {
-  trackId: string;
-  clipId: string;
-  inputId: string;
-  startMs: number;
-  endMs: number;
-  blockSettings: BlockSettings;
-  keyframes: Keyframe[];
-  selectedKeyframeId?: string | null;
-};
-
-function computeCommonBlockSettings(
-  clips: SelectedTimelineClip[],
-): BlockSettings {
-  if (clips.length === 0) {
-    return {
-      volume: 1,
-      showTitle: true,
-      shaders: [],
-      orientation: 'horizontal',
-    };
-  }
-  if (clips.length === 1) return clips[0].blockSettings;
-
-  const first = clips[0].blockSettings;
-  const result: BlockSettings = { ...first };
-
-  for (let i = 1; i < clips.length; i++) {
-    const bs = clips[i].blockSettings;
-    if (bs.volume !== result.volume) result.volume = -1;
-    if (bs.showTitle !== result.showTitle) result.showTitle = first.showTitle;
-    if (bs.orientation !== result.orientation)
-      result.orientation = first.orientation;
-    if (bs.borderColor !== result.borderColor) result.borderColor = undefined;
-    if (bs.borderWidth !== result.borderWidth) result.borderWidth = undefined;
-    if (bs.absolutePosition !== result.absolutePosition)
-      result.absolutePosition = undefined;
-  }
-  return result;
-}
-
-function clampKeyframeToClipRange(
-  valueMs: number,
-  clipDurationMs: number,
-): number {
-  return Math.max(0, Math.min(Math.round(valueMs), clipDurationMs));
-}
-
-function resolveNewKeyframeTimeMs(
-  clip: Pick<SelectedTimelineClip, 'startMs' | 'endMs' | 'keyframes'>,
-  desiredTimeMs: number,
-): number {
-  const clipDurationMs = Math.max(0, clip.endMs - clip.startMs);
-  const clampedTimeMs = clampKeyframeToClipRange(desiredTimeMs, clipDurationMs);
-  const occupiedTimes = new Set(
-    clip.keyframes.map((keyframe) => Math.round(keyframe.timeMs)),
-  );
-
-  if (!occupiedTimes.has(clampedTimeMs)) {
-    return clampedTimeMs;
-  }
-
-  const preferredStep = clampedTimeMs >= clipDurationMs ? -100 : 100;
-  for (const step of [preferredStep, -preferredStep]) {
-    let candidateTimeMs = clampedTimeMs;
-    while (true) {
-      candidateTimeMs += step;
-      if (candidateTimeMs < 0 || candidateTimeMs > clipDurationMs) {
-        break;
-      }
-      if (!occupiedTimes.has(candidateTimeMs)) {
-        return candidateTimeMs;
-      }
-    }
-  }
-
-  return clampedTimeMs;
-}
+export type { SelectedTimelineClip } from './block-clip/block-clip-utils';
 
 export function BlockClipPropertiesPanel({
   roomId,
@@ -1155,16 +824,16 @@ export function BlockClipPropertiesPanel({
   return (
     <div>
       {pendingSection}
-      <div className='text-xs text-neutral-500 mb-2'>
+      <div className='text-xs text-muted-foreground mb-2'>
         Selected block properties
       </div>
-      <div className='text-sm text-neutral-300 mb-3 truncate'>
+      <div className='text-sm text-card-foreground mb-3 truncate'>
         {isMultiSelect
           ? `${selectedTimelineClips.length} clips selected`
           : (selectedInput?.title ?? effectiveClip.inputId)}
       </div>
       {isDisconnected && (
-        <div className='mb-3 p-2.5 rounded border-2 border-dashed border-neutral-700 bg-neutral-800/50'>
+        <div className='mb-3 p-2.5 rounded border-2 border-dashed border-border bg-card/50'>
           <div className='text-xs text-amber-400/80 mb-2'>
             Disconnected — connect a new input
           </div>
@@ -1172,7 +841,7 @@ export function BlockClipPropertiesPanel({
             <Button
               size='sm'
               variant='default'
-              className='flex-1 bg-neutral-800 hover:bg-neutral-700 text-white cursor-pointer'
+              className='flex-1 bg-card hover:bg-accent text-foreground cursor-pointer'
               disabled={!!connectingType}
               onClick={() => handleConnectWhip('camera')}>
               {connectingType === 'camera' ? (
@@ -1187,7 +856,7 @@ export function BlockClipPropertiesPanel({
             <Button
               size='sm'
               variant='default'
-              className='flex-1 bg-neutral-800 hover:bg-neutral-700 text-white cursor-pointer'
+              className='flex-1 bg-card hover:bg-accent text-foreground cursor-pointer'
               disabled={!!connectingType}
               onClick={() => handleConnectWhip('screenshare')}>
               {connectingType === 'screenshare' ? (
@@ -1203,13 +872,13 @@ export function BlockClipPropertiesPanel({
         </div>
       )}
       {!isMultiSelect && selectedTimelineClip && (
-        <div className='border border-neutral-700 rounded p-2 mb-3 mt-1'>
+        <div className={panelSectionStyles()}>
           <div className='flex items-center justify-between mb-2'>
             <div>
-              <div className='text-xs text-neutral-400 font-medium'>
+              <div className='text-xs text-muted-foreground font-medium'>
                 Keyframes
               </div>
-              <div className='text-[10px] text-neutral-500'>
+              <div className='text-[10px] text-muted-foreground'>
                 {selectedTimelineKeyframe
                   ? selectedTimelineKeyframe.timeMs === 0
                     ? 'Editing base (0ms) keyframe'
@@ -1221,7 +890,7 @@ export function BlockClipPropertiesPanel({
               type='button'
               size='sm'
               variant='outline'
-              className='h-7 px-2 bg-neutral-800 border-neutral-700 text-white cursor-pointer hover:bg-neutral-700'
+              className='h-7 px-2 bg-card border-border text-foreground cursor-pointer hover:bg-accent'
               onClick={handleAddKeyframe}>
               Add
             </Button>
@@ -1236,7 +905,7 @@ export function BlockClipPropertiesPanel({
                 className={`px-2 py-1 text-[11px] cursor-pointer ${
                   selectedTimelineKeyframe?.id === keyframe.id
                     ? 'border-red-400/70 bg-red-500/20 text-red-100'
-                    : 'border-neutral-700 bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
+                    : 'border-border bg-card text-card-foreground hover:bg-accent'
                 }`}
                 onClick={() => handleSelectKeyframe(keyframe.id)}>
                 {keyframe.timeMs === 0
@@ -1248,7 +917,7 @@ export function BlockClipPropertiesPanel({
           {selectedTimelineKeyframe && (
             <div className='grid grid-cols-[1fr_auto] gap-2 items-end'>
               <div>
-                <label className='text-xs text-neutral-400 block mb-1'>
+                <label className={labelStyles({ block: true })}>
                   Time (ms)
                 </label>
                 <ShadcnInput
@@ -1259,7 +928,7 @@ export function BlockClipPropertiesPanel({
                   }
                   step={50}
                   disabled={selectedTimelineKeyframe.timeMs === 0}
-                  className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1 disabled:opacity-50'
+                  className='w-full bg-card border border-border text-foreground text-xs px-2 py-1 disabled:opacity-50'
                   value={Math.round(selectedTimelineKeyframe.timeMs)}
                   onChange={(e) =>
                     handleMoveSelectedKeyframe(
@@ -1273,7 +942,7 @@ export function BlockClipPropertiesPanel({
                 size='sm'
                 variant='outline'
                 disabled={selectedTimelineKeyframe.timeMs === 0}
-                className='h-8 px-2 bg-neutral-800 border-neutral-700 text-white cursor-pointer hover:bg-neutral-700 disabled:cursor-not-allowed'
+                className='h-8 px-2 bg-card border-border text-foreground cursor-pointer hover:bg-accent disabled:cursor-not-allowed'
                 onClick={handleDeleteSelectedKeyframe}>
                 Delete
               </Button>
@@ -1282,7 +951,7 @@ export function BlockClipPropertiesPanel({
         </div>
       )}
       <div className='grid grid-cols-2 gap-2 mb-2'>
-        <label className='text-xs text-neutral-400'>Volume</label>
+        <label className='text-xs text-muted-foreground'>Volume</label>
         <Slider
           min={0}
           max={1}
@@ -1294,7 +963,7 @@ export function BlockClipPropertiesPanel({
         />
       </div>
       <div className='flex items-center justify-between mb-2'>
-        <span className='text-xs text-neutral-400'>Show title</span>
+        <span className='text-xs text-muted-foreground'>Show title</span>
         <input
           type='checkbox'
           checked={effectiveClip.blockSettings.showTitle}
@@ -1304,13 +973,13 @@ export function BlockClipPropertiesPanel({
         />
       </div>
       <div className='flex items-center justify-between mb-2'>
-        <span className='text-xs text-neutral-400'>Orientation</span>
+        <span className='text-xs text-muted-foreground'>Orientation</span>
         <Select
           value={effectiveClip.blockSettings.orientation}
           onValueChange={(v: 'horizontal' | 'vertical') =>
             void applyClipPatch({ orientation: v })
           }>
-          <SelectTrigger className='bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1 h-auto'>
+          <SelectTrigger className={panelInputStyles({ compact: true })}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -1319,12 +988,14 @@ export function BlockClipPropertiesPanel({
           </SelectContent>
         </Select>
       </div>
-      <div className='border border-neutral-700 rounded p-2 mb-3 mt-1'>
-        <div className='text-xs text-neutral-400 font-medium mb-2'>
+      <div className={panelSectionStyles()}>
+        <div className='text-xs text-muted-foreground font-medium mb-2'>
           Position
         </div>
         <div className='flex items-center justify-between mb-2'>
-          <span className='text-xs text-neutral-400'>Absolute position</span>
+          <span className='text-xs text-muted-foreground'>
+            Absolute position
+          </span>
           <input
             type='checkbox'
             checked={effectiveClip.blockSettings.absolutePosition ?? false}
@@ -1377,14 +1048,14 @@ export function BlockClipPropertiesPanel({
             />
             <div className='grid grid-cols-2 gap-2'>
               <div>
-                <label className='text-xs text-neutral-400 block mb-1'>
+                <label className={labelStyles({ block: true })}>
                   Duration (ms)
                 </label>
                 <ShadcnInput
                   type='number'
                   min={0}
                   step={50}
-                  className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
+                  className={panelInputStyles({ fullWidth: true })}
                   value={
                     effectiveClip.blockSettings.absoluteTransitionDurationMs ??
                     300
@@ -1400,9 +1071,7 @@ export function BlockClipPropertiesPanel({
                 />
               </div>
               <div>
-                <label className='text-xs text-neutral-400 block mb-1'>
-                  Easing
-                </label>
+                <label className={labelStyles({ block: true })}>Easing</label>
                 <Select
                   value={
                     effectiveClip.blockSettings.absoluteTransitionEasing ??
@@ -1413,7 +1082,11 @@ export function BlockClipPropertiesPanel({
                       absoluteTransitionEasing: v,
                     })
                   }>
-                  <SelectTrigger className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1 h-auto'>
+                  <SelectTrigger
+                    className={panelInputStyles({
+                      fullWidth: true,
+                      compact: true,
+                    })}>
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1431,12 +1104,10 @@ export function BlockClipPropertiesPanel({
       </div>
       <div className='grid grid-cols-2 gap-2 mb-2'>
         <div>
-          <label className='text-xs text-neutral-400 block mb-1'>
-            Border color
-          </label>
+          <label className={labelStyles({ block: true })}>Border color</label>
           <input
             type='color'
-            className='w-full h-8 bg-neutral-800 border border-neutral-700'
+            className='w-full h-8 bg-card border border-border'
             value={effectiveClip.blockSettings.borderColor || '#ff0000'}
             onChange={(e) =>
               void applyClipPatch({ borderColor: e.target.value })
@@ -1444,14 +1115,12 @@ export function BlockClipPropertiesPanel({
           />
         </div>
         <div>
-          <label className='text-xs text-neutral-400 block mb-1'>
-            Border width
-          </label>
+          <label className={labelStyles({ block: true })}>Border width</label>
           <ShadcnInput
             type='number'
             min={0}
             max={100}
-            className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
+            className={panelInputStyles({ fullWidth: true })}
             value={effectiveClip.blockSettings.borderWidth ?? 0}
             onChange={(e) =>
               void applyClipPatch({
@@ -1461,8 +1130,8 @@ export function BlockClipPropertiesPanel({
           />
         </div>
       </div>
-      <div className='border border-neutral-700 rounded p-2 mb-3 mt-1'>
-        <div className='text-xs text-neutral-400 font-medium mb-2'>
+      <div className={panelSectionStyles()}>
+        <div className='text-xs text-muted-foreground font-medium mb-2'>
           Transitions
         </div>
         <TransitionRow
@@ -1491,19 +1160,19 @@ export function BlockClipPropertiesPanel({
         />
       </div>
       {selectedInput?.type === 'local-mp4' && (
-        <div className='border border-neutral-700 rounded p-2 mb-3 mt-1'>
-          <div className='text-xs text-neutral-400 font-medium mb-2'>
+        <div className={panelSectionStyles()}>
+          <div className='text-xs text-muted-foreground font-medium mb-2'>
             MP4 Playback
           </div>
           <div className='grid grid-cols-2 gap-2 mb-2'>
-            <label className='text-xs text-neutral-400 self-center'>
+            <label className='text-xs text-muted-foreground self-center'>
               Play from (s)
             </label>
             <ShadcnInput
               type='number'
               min={0}
               step={0.1}
-              className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
+              className={panelInputStyles({ fullWidth: true })}
               value={
                 Math.round(
                   ((effectiveClip.blockSettings.mp4PlayFromMs ?? 0) / 1000) *
@@ -1520,7 +1189,7 @@ export function BlockClipPropertiesPanel({
             />
           </div>
           <div className='flex items-center justify-between mb-1'>
-            <span className='text-xs text-neutral-400'>Loop</span>
+            <span className='text-xs text-muted-foreground'>Loop</span>
             <input
               type='checkbox'
               checked={effectiveClip.blockSettings.mp4Loop !== false}
@@ -1533,7 +1202,7 @@ export function BlockClipPropertiesPanel({
             />
           </div>
           {effectiveClip.blockSettings.mp4DurationMs != null && (
-            <div className='text-[10px] text-neutral-500 mt-1'>
+            <div className='text-[10px] text-muted-foreground mt-1'>
               Duration:{' '}
               {(effectiveClip.blockSettings.mp4DurationMs / 1000).toFixed(1)}s
               {effectiveClip.blockSettings.mp4Loop === false && (
@@ -1553,7 +1222,7 @@ export function BlockClipPropertiesPanel({
             </div>
           )}
           {mp4DurationLoading && (
-            <div className='text-[10px] text-neutral-500 mt-1'>
+            <div className='text-[10px] text-muted-foreground mt-1'>
               Loading duration...
             </div>
           )}
@@ -1562,12 +1231,10 @@ export function BlockClipPropertiesPanel({
       {selectedInput?.type === 'game' && (
         <div className='grid grid-cols-2 gap-2 mb-2'>
           <div>
-            <label className='text-xs text-neutral-400 block mb-1'>
-              BG color
-            </label>
+            <label className={labelStyles({ block: true })}>BG color</label>
             <input
               type='color'
-              className='w-full h-8 bg-neutral-800 border border-neutral-700'
+              className='w-full h-8 bg-card border border-border'
               value={
                 gameBgColor ??
                 effectiveClip.blockSettings.gameBackgroundColor ??
@@ -1587,14 +1254,12 @@ export function BlockClipPropertiesPanel({
             />
           </div>
           <div>
-            <label className='text-xs text-neutral-400 block mb-1'>
-              Cell gap
-            </label>
+            <label className={labelStyles({ block: true })}>Cell gap</label>
             <ShadcnInput
               type='number'
               min={0}
               max={20}
-              className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
+              className={panelInputStyles({ fullWidth: true })}
               value={effectiveClip.blockSettings.gameCellGap ?? 1}
               onChange={(e) =>
                 void applyClipPatch({
@@ -1604,12 +1269,12 @@ export function BlockClipPropertiesPanel({
             />
           </div>
           <div>
-            <label className='text-xs text-neutral-400 block mb-1'>
+            <label className={labelStyles({ block: true })}>
               Grid line color
             </label>
             <input
               type='color'
-              className='w-full h-8 bg-neutral-800 border border-neutral-700'
+              className='w-full h-8 bg-card border border-border'
               value={
                 gameGridColor ??
                 effectiveClip.blockSettings.gameGridLineColor ??
@@ -1629,9 +1294,7 @@ export function BlockClipPropertiesPanel({
             />
           </div>
           <div>
-            <label className='text-xs text-neutral-400 block mb-1'>
-              Grid opacity
-            </label>
+            <label className={labelStyles({ block: true })}>Grid opacity</label>
             <Slider
               min={0}
               max={1}
@@ -1691,12 +1354,12 @@ export function BlockClipPropertiesPanel({
         </>
       )}
       <div className='flex items-center justify-between mb-2'>
-        <span className='text-xs text-neutral-400'>Attached inputs</span>
+        <span className='text-xs text-muted-foreground'>Attached inputs</span>
         <Button
           ref={attachBtnRef}
           variant='outline'
           size='sm'
-          className='flex items-center gap-1 text-xs px-2 py-1 border-neutral-700 bg-neutral-800 hover:bg-neutral-700 cursor-pointer'
+          className='flex items-center gap-1 text-xs px-2 py-1 border-border bg-card hover:bg-accent cursor-pointer'
           onClick={() => {
             if (!showAttachMenu && attachBtnRef.current) {
               const rect = attachBtnRef.current.getBoundingClientRect();
@@ -1705,9 +1368,9 @@ export function BlockClipPropertiesPanel({
             setShowAttachMenu(!showAttachMenu);
           }}>
           <Link
-            className={`w-3.5 h-3.5 ${(effectiveClip.blockSettings.attachedInputIds?.length ?? 0) > 0 ? 'text-blue-400' : 'text-neutral-400'}`}
+            className={`w-3.5 h-3.5 ${(effectiveClip.blockSettings.attachedInputIds?.length ?? 0) > 0 ? 'text-blue-400' : 'text-muted-foreground'}`}
           />
-          <span className='text-neutral-300'>
+          <span className='text-card-foreground'>
             {(effectiveClip.blockSettings.attachedInputIds?.length ?? 0) > 0
               ? `${effectiveClip.blockSettings.attachedInputIds!.length} attached`
               : 'None'}
@@ -1722,12 +1385,12 @@ export function BlockClipPropertiesPanel({
                 onClick={() => setShowAttachMenu(false)}
               />
               <div
-                className='fixed bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-2 z-[100] min-w-48'
+                className='fixed bg-card border border-border rounded-lg shadow-lg p-2 z-[100] min-w-48'
                 style={{
                   top: attachMenuPos.top,
                   left: attachMenuPos.left,
                 }}>
-                <div className='text-xs text-neutral-400 mb-1 px-1'>
+                <div className='text-xs text-muted-foreground mb-1 px-1'>
                   Attach inputs (render behind)
                 </div>
                 {inputs
@@ -1747,14 +1410,14 @@ export function BlockClipPropertiesPanel({
                     return (
                       <label
                         key={i.inputId}
-                        className='flex items-center gap-2 px-1 py-1 hover:bg-neutral-700 rounded cursor-pointer'>
+                        className='flex items-center gap-2 px-1 py-1 hover:bg-accent rounded cursor-pointer'>
                         <input
                           type='checkbox'
                           checked={isAttached}
                           onChange={() => handleAttachToggle(i.inputId)}
                           className='accent-blue-500 cursor-pointer'
                         />
-                        <span className='text-sm text-white truncate'>
+                        <span className='text-sm text-foreground truncate'>
                           {i.title}
                         </span>
                       </label>
@@ -1768,24 +1431,26 @@ export function BlockClipPropertiesPanel({
       {selectedInput?.type === 'text-input' && (
         <div className='mt-2 space-y-2'>
           <div>
-            <label className='text-xs text-neutral-400 block mb-1'>Text</label>
+            <label className={labelStyles({ block: true })}>Text</label>
             <Textarea
-              className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs p-2 min-h-[80px]'
+              className='w-full bg-card border border-border text-foreground text-xs p-2 min-h-[80px]'
               value={effectiveClip.blockSettings.text || ''}
               onChange={(e) => void applyClipPatch({ text: e.target.value })}
             />
           </div>
           <div className='grid grid-cols-2 gap-2'>
             <div>
-              <label className='text-xs text-neutral-400 block mb-1'>
-                Align
-              </label>
+              <label className={labelStyles({ block: true })}>Align</label>
               <Select
                 value={effectiveClip.blockSettings.textAlign || 'left'}
                 onValueChange={(v: 'left' | 'center' | 'right') =>
                   void applyClipPatch({ textAlign: v })
                 }>
-                <SelectTrigger className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1 h-auto'>
+                <SelectTrigger
+                  className={panelInputStyles({
+                    fullWidth: true,
+                    compact: true,
+                  })}>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -1796,12 +1461,10 @@ export function BlockClipPropertiesPanel({
               </Select>
             </div>
             <div>
-              <label className='text-xs text-neutral-400 block mb-1'>
-                Text color
-              </label>
+              <label className={labelStyles({ block: true })}>Text color</label>
               <input
                 type='color'
-                className='w-full h-8 bg-neutral-800 border border-neutral-700'
+                className='w-full h-8 bg-card border border-border'
                 value={effectiveClip.blockSettings.textColor || '#ffffff'}
                 onChange={(e) =>
                   void applyClipPatch({ textColor: e.target.value })
@@ -1811,14 +1474,12 @@ export function BlockClipPropertiesPanel({
           </div>
           <div className='grid grid-cols-2 gap-2'>
             <div>
-              <label className='text-xs text-neutral-400 block mb-1'>
-                Font size
-              </label>
+              <label className={labelStyles({ block: true })}>Font size</label>
               <ShadcnInput
                 type='number'
                 min={8}
                 max={300}
-                className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
+                className={panelInputStyles({ fullWidth: true })}
                 value={effectiveClip.blockSettings.textFontSize ?? 80}
                 onChange={(e) =>
                   void applyClipPatch({
@@ -1828,14 +1489,12 @@ export function BlockClipPropertiesPanel({
               />
             </div>
             <div>
-              <label className='text-xs text-neutral-400 block mb-1'>
-                Max lines
-              </label>
+              <label className={labelStyles({ block: true })}>Max lines</label>
               <ShadcnInput
                 type='number'
                 min={1}
                 max={50}
-                className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
+                className={panelInputStyles({ fullWidth: true })}
                 value={effectiveClip.blockSettings.textMaxLines ?? 10}
                 onChange={(e) =>
                   void applyClipPatch({
@@ -1846,9 +1505,7 @@ export function BlockClipPropertiesPanel({
             </div>
           </div>
           <div>
-            <label className='text-xs text-neutral-400 block mb-1'>
-              Scroll speed
-            </label>
+            <label className={labelStyles({ block: true })}>Scroll speed</label>
             <div className='flex items-center gap-2'>
               <Slider
                 min={1}
@@ -1862,7 +1519,7 @@ export function BlockClipPropertiesPanel({
                 ]}
                 onValueChange={(v) => handleTextScrollSpeedChange(v[0] || 80)}
               />
-              <span className='text-xs text-neutral-500 w-8 text-right'>
+              <span className='text-xs text-muted-foreground w-8 text-right'>
                 {textScrollSpeedDraft ??
                   effectiveClip.blockSettings.textScrollSpeed ??
                   80}
@@ -1870,7 +1527,7 @@ export function BlockClipPropertiesPanel({
             </div>
           </div>
           <div className='flex items-center justify-between'>
-            <span className='text-xs text-neutral-400'>Scroll loop</span>
+            <span className='text-xs text-muted-foreground'>Scroll loop</span>
             <input
               type='checkbox'
               checked={effectiveClip.blockSettings.textScrollLoop ?? true}
@@ -1881,11 +1538,11 @@ export function BlockClipPropertiesPanel({
           </div>
         </div>
       )}
-      <div className='mt-3 border-t border-neutral-800 pt-2'>
-        <div className='text-xs text-neutral-400 mb-1'>
+      <div className='mt-3 border-t border-border pt-2'>
+        <div className='text-xs text-muted-foreground mb-1'>
           Shaders (block-level)
         </div>
-        <div className='text-[11px] text-neutral-500 mb-2'>
+        <div className='text-[11px] text-muted-foreground mb-2'>
           Edit this block&apos;s shaders independently from other blocks.
         </div>
         <ShaderPanel

@@ -15,6 +15,8 @@ import {
   restoreTimelineToStorage,
   computeTimelineStateAtZero,
   buildInputUpdateFromBlockSettings,
+  loadOutputPlayerSettings,
+  saveOutputPlayerSettings,
   type RoomConfig,
   type RoomConfigInput,
   type RoomConfigTransitionSettings,
@@ -70,12 +72,14 @@ export function ConfigurationSection({
     setIsExporting(true);
     try {
       const timelineState = resolveRoomConfigTimelineState(roomId);
+      const outputPlayer = loadOutputPlayerSettings(roomId) ?? undefined;
       const config = exportRoomConfig(
         inputs,
         layout,
         resolution,
         transitionSettings,
         timelineState ?? undefined,
+        outputPlayer,
       );
       downloadRoomConfig(config);
       toast.success('Configuration exported successfully');
@@ -335,6 +339,10 @@ export function ConfigurationSection({
       });
     } catch (e) {
       console.warn('Failed to set layout or input order:', e);
+    }
+
+    if (config.outputPlayer) {
+      saveOutputPlayerSettings(roomId, config.outputPlayer);
     }
 
     await refreshState();

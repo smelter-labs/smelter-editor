@@ -92,6 +92,11 @@ export type RoomConfigTimeline = {
   tracks: RoomConfigTrack[];
 };
 
+export type RoomConfigOutputPlayer = {
+  muted: boolean;
+  volume: number;
+};
+
 export type RoomConfig = {
   version: 1;
   layout: Layout;
@@ -99,6 +104,7 @@ export type RoomConfig = {
   resolution?: { width: number; height: number };
   transitionSettings?: RoomConfigTransitionSettings;
   timeline?: RoomConfigTimeline;
+  outputPlayer?: RoomConfigOutputPlayer;
   exportedAt: string;
 };
 
@@ -125,6 +131,7 @@ export function exportRoomConfig(
   resolution?: { width: number; height: number },
   transitionSettings?: RoomConfigTransitionSettings,
   timelineState?: RoomConfigTimelineState,
+  outputPlayer?: RoomConfigOutputPlayer,
 ): RoomConfig {
   const inputIdToIndex = new Map<string, number>();
   inputs.forEach((input, idx) => inputIdToIndex.set(input.inputId, idx));
@@ -161,6 +168,7 @@ export function exportRoomConfig(
     resolution,
     transitionSettings,
     timeline,
+    outputPlayer,
     inputs: inputs.map((input) => ({
       type: input.type,
       title: input.title,
@@ -436,6 +444,37 @@ export function computeTimelineStateAtZero(
   );
 
   return { hiddenInputIds, activeBlockSettings, inputOrder };
+}
+
+const OUTPUT_PLAYER_STORAGE_KEY = 'smelter-output-player';
+
+export function saveOutputPlayerSettings(
+  roomId: string,
+  settings: RoomConfigOutputPlayer,
+) {
+  if (typeof window === 'undefined') return;
+  const key = `${OUTPUT_PLAYER_STORAGE_KEY}-${roomId}`;
+  try {
+    localStorage.setItem(key, JSON.stringify(settings));
+  } catch (e) {
+    console.warn('Failed to save output player settings:', e);
+  }
+}
+
+export function loadOutputPlayerSettings(
+  roomId: string,
+): RoomConfigOutputPlayer | null {
+  if (typeof window === 'undefined') return null;
+  const key = `${OUTPUT_PLAYER_STORAGE_KEY}-${roomId}`;
+  try {
+    const data = localStorage.getItem(key);
+    if (data) {
+      return JSON.parse(data);
+    }
+  } catch (e) {
+    console.warn('Failed to load output player settings:', e);
+  }
+  return null;
 }
 
 const PENDING_WHIP_STORAGE_KEY = 'smelter-pending-whip-inputs';

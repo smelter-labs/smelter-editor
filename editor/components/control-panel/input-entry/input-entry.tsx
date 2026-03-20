@@ -777,21 +777,21 @@ export default function InputEntry({
     <>
       <div
         key={input.inputId}
-        className={`group relative p-2 mb-2 last:mb-0 rounded-none bg-neutral-900 border-2 overflow-hidden ${
+        className={`group relative p-2 mb-2 last:mb-0 rounded-none bg-background border-2 overflow-hidden ${
           isSelected
             ? 'border-blue-500 ring-2 ring-blue-500/30'
-            : 'border-neutral-800'
+            : 'border-border'
         }`}>
         {typeof index === 'number' && (
           <div className='absolute top-2 right-2 pointer-events-none'>
-            <span className='text-xs font-medium text-neutral-400'>
+            <span className='text-xs font-medium text-muted-foreground'>
               {index + 1}
             </span>
           </div>
         )}
         {!isMobile && showGrip && (
           <div className='absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none'>
-            <GripVertical className='w-5 h-5 text-neutral-500' />
+            <GripVertical className='w-5 h-5 text-muted-foreground' />
           </div>
         )}
         <div className='flex items-center mb-3 md:pl-7'>
@@ -799,11 +799,13 @@ export default function InputEntry({
             className={`inline-block w-3 h-3 rounded-none mr-2 ${getSourceStateColor(input)}`}
             aria-label={getSourceStateLabel(input)}
           />
-          <div className='text-s font-medium text-white truncate'>
+          <div className='text-s font-medium text-foreground truncate'>
             {input.title}
           </div>
           {isTextSaving && (
-            <span className='ml-2 text-xs text-neutral-400'>Saving...</span>
+            <span className='ml-2 text-xs text-muted-foreground'>
+              Saving...
+            </span>
           )}
         </div>
         {isTextInput && !readOnly && (
@@ -827,12 +829,12 @@ export default function InputEntry({
         {input.type === 'game' && !readOnly && (
           <div className='flex items-center gap-3 px-2 py-1'>
             <div className='flex items-center gap-1'>
-              <label className='text-xs text-neutral-400'>Gap</label>
+              <label className='text-xs text-muted-foreground'>Gap</label>
               <ShadcnInput
                 type='number'
                 min={0}
                 max={20}
-                className='w-14 bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-0.5 rounded'
+                className='w-14 bg-card border border-border text-foreground text-xs px-2 py-0.5 rounded'
                 value={input.gameCellGap ?? 1}
                 onChange={(e) => {
                   void actions.updateInput(roomId, input.inputId, {
@@ -840,15 +842,15 @@ export default function InputEntry({
                   });
                 }}
               />
-              <span className='text-xs text-neutral-500'>px</span>
+              <span className='text-xs text-muted-foreground'>px</span>
             </div>
             <div className='flex items-center gap-1'>
-              <label className='text-xs text-neutral-400'>Border</label>
+              <label className='text-xs text-muted-foreground'>Border</label>
               <ShadcnInput
                 type='number'
                 min={0}
                 max={20}
-                className='w-14 bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-0.5 rounded'
+                className='w-14 bg-card border border-border text-foreground text-xs px-2 py-0.5 rounded'
                 value={input.gameBoardBorderWidth ?? 4}
                 onChange={(e) => {
                   void actions.updateInput(roomId, input.inputId, {
@@ -859,7 +861,7 @@ export default function InputEntry({
                   });
                 }}
               />
-              <span className='text-xs text-neutral-500'>px</span>
+              <span className='text-xs text-muted-foreground'>px</span>
             </div>
             <div className='flex items-center gap-1'>
               <input
@@ -874,7 +876,7 @@ export default function InputEntry({
               />
             </div>
             <div className='flex items-center gap-1'>
-              <label className='text-xs text-neutral-400'>Grid</label>
+              <label className='text-xs text-muted-foreground'>Grid</label>
               <input
                 type='color'
                 className='w-6 h-6 bg-transparent border-0 cursor-pointer'
@@ -887,7 +889,7 @@ export default function InputEntry({
               />
             </div>
             <div className='flex items-center gap-1'>
-              <label className='text-xs text-neutral-400'>α</label>
+              <label className='text-xs text-muted-foreground'>α</label>
               <Slider
                 min={0}
                 max={1}
@@ -928,7 +930,9 @@ export default function InputEntry({
                 size='sm'
                 variant='ghost'
                 className={`transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer ${
-                  canMoveUp ? 'text-white hover:text-white' : 'text-neutral-500'
+                  canMoveUp
+                    ? 'text-foreground hover:text-foreground'
+                    : 'text-muted-foreground'
                 }`}
                 disabled={!canMoveUp}
                 aria-label='Move up'
@@ -953,8 +957,8 @@ export default function InputEntry({
                 variant='ghost'
                 className={`transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer ${
                   canMoveDown
-                    ? 'text-white hover:text-white'
-                    : 'text-neutral-500'
+                    ? 'text-foreground hover:text-foreground'
+                    : 'text-muted-foreground'
                 }`}
                 disabled={!canMoveDown}
                 aria-label='Move down'
@@ -990,9 +994,9 @@ export default function InputEntry({
                     : 'Horizontal (click for vertical)'
                 }>
                 {isVerticalOrientation ? (
-                  <RectangleVertical className='text-white size-5' />
+                  <RectangleVertical className='text-foreground size-5' />
                 ) : (
-                  <RectangleHorizontal className='text-neutral-400 size-5' />
+                  <RectangleHorizontal className='text-muted-foreground size-5' />
                 )}
               </Button>
               {isWhipInput && (
@@ -1004,7 +1008,7 @@ export default function InputEntry({
                   onClick={handleRotate90}
                   aria-label='Rotate 90°'
                   title='Rotate 90°'>
-                  <RotateCw className='text-neutral-400 size-5' />
+                  <RotateCw className='text-muted-foreground size-5' />
                 </Button>
               )}
               <Button
@@ -1026,7 +1030,7 @@ export default function InputEntry({
                 aria-label='Attach inputs'
                 title='Attach inputs (render behind this input)'>
                 <Link
-                  className={`size-5 ${(input.attachedInputIds?.length ?? 0) > 0 ? 'text-blue-400' : 'text-neutral-400'}`}
+                  className={`size-5 ${(input.attachedInputIds?.length ?? 0) > 0 ? 'text-blue-400' : 'text-muted-foreground'}`}
                 />
               </Button>
               {showAttachMenu &&
@@ -1038,13 +1042,13 @@ export default function InputEntry({
                       onClick={() => setShowAttachMenu(false)}
                     />
                     <div
-                      className='fixed bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-2 z-[100] min-w-48'
+                      className='fixed bg-card border border-border rounded-lg shadow-lg p-2 z-[100] min-w-48'
                       style={{
                         top: attachMenuPos.top,
                         left: attachMenuPos.left,
                         transform: 'translate(-100%, -100%)',
                       }}>
-                      <div className='text-xs text-neutral-400 mb-1 px-1'>
+                      <div className='text-xs text-muted-foreground mb-1 px-1'>
                         Attach inputs (render behind)
                       </div>
                       {(allInputs || [])
@@ -1064,14 +1068,14 @@ export default function InputEntry({
                           return (
                             <label
                               key={i.inputId}
-                              className='flex items-center gap-2 px-1 py-1 hover:bg-neutral-700 rounded cursor-pointer'>
+                              className='flex items-center gap-2 px-1 py-1 hover:bg-accent rounded cursor-pointer'>
                               <input
                                 type='checkbox'
                                 checked={isAttached}
                                 onChange={() => handleAttachToggle(i.inputId)}
                                 className='accent-blue-500 cursor-pointer'
                               />
-                              <span className='text-sm text-white truncate'>
+                              <span className='text-sm text-foreground truncate'>
                                 {i.title}
                               </span>
                             </label>
@@ -1092,9 +1096,9 @@ export default function InputEntry({
                 }
                 title={input.hidden ? 'Show in program' : 'Hide from program'}>
                 {input.hidden ? (
-                  <EyeOff className='text-neutral-400 size-5' />
+                  <EyeOff className='text-muted-foreground size-5' />
                 ) : (
-                  <Eye className='text-white size-5' />
+                  <Eye className='text-foreground size-5' />
                 )}
               </Button>
               <Button
@@ -1106,7 +1110,7 @@ export default function InputEntry({
                 aria-label={showTitle ? 'Hide title' : 'Show title'}>
                 <span className='relative inline-flex items-center justify-center'>
                   <Type
-                    className={`${showTitle ? 'text-white' : 'text-neutral-400'} size-5`}
+                    className={`${showTitle ? 'text-foreground' : 'text-muted-foreground'} size-5`}
                   />
                   {!showTitle && (
                     <span className='absolute inset-0 flex items-center justify-center pointer-events-none'>
@@ -1115,7 +1119,7 @@ export default function InputEntry({
                         height='20'
                         viewBox='0 0 20 20'
                         fill='none'
-                        className='text-neutral-400'>
+                        className='text-muted-foreground'>
                         <line
                           x1='4'
                           y1='4'

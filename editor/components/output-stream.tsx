@@ -1,6 +1,6 @@
 'use client';
 
-import { RefObject, useEffect, useState } from 'react';
+import { RefObject, useEffect, useRef, useState } from 'react';
 
 import { useIsMobileDevice } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
@@ -15,6 +15,10 @@ import {
 import { buildIceServers } from '@/lib/webrtc';
 import { formatMs } from '@/lib/format-utils';
 import { Slider } from '@/components/ui/slider';
+import {
+  loadOutputPlayerSettings,
+  saveOutputPlayerSettings,
+} from '@/lib/room-config';
 
 function LoadingSpinner() {
   return (
@@ -38,22 +42,28 @@ export default function OutputStream({
   whepUrl,
   videoRef,
   resolution,
+  roomId,
 }: {
   whepUrl: string;
   videoRef: RefObject<HTMLVideoElement | null>;
   resolution?: OutputResolution;
+  roomId?: string;
 }) {
   const aspectRatio = resolution
     ? `${resolution.width}/${resolution.height}`
     : '16/9';
   const isVertical = resolution ? resolution.height > resolution.width : false;
   const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState(true);
-  const [volume, setVolume] = useState(1);
+
+  const persisted = roomId ? loadOutputPlayerSettings(roomId) : null;
+  const [muted, setMuted] = useState(persisted?.muted ?? true);
+  const [volume, setVolume] = useState(persisted?.volume ?? 1);
+
   const [current, setCurrent] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [videoLoaded, setVideoLoaded] = useState(false);
   const isMobile = useIsMobileDevice();
+  const roomIdRef = useRef(roomId);
 
   useEffect(() => {
     let cancelled = false;
@@ -103,6 +113,17 @@ export default function OutputStream({
     if (!vid) return;
     vid.muted = muted;
   }, [muted, videoRef]);
+
+  useEffect(() => {
+    roomIdRef.current = roomId;
+  }, [roomId]);
+
+  useEffect(() => {
+    const rid = roomIdRef.current;
+    if (rid) {
+      saveOutputPlayerSettings(rid, { muted, volume });
+    }
+  }, [muted, volume]);
 
   useEffect(() => {
     const vid = videoRef.current;

@@ -16,6 +16,7 @@ export default function VideoPreview({
   isGuest,
   guestStream,
   className,
+  roomId,
 }: {
   whepUrl: string;
   videoRef: RefObject<HTMLVideoElement | null>;
@@ -24,6 +25,7 @@ export default function VideoPreview({
   isGuest?: boolean;
   guestStream?: MediaStream | null;
   className?: string;
+  roomId?: string;
 }) {
   const activeStream = true;
   const [showPreview, setShowPreview] = useState(!isGuest);
@@ -116,6 +118,7 @@ export default function VideoPreview({
                       videoRef={videoRef}
                       whepUrl={whepUrl}
                       resolution={resolution}
+                      roomId={roomId}
                     />
                   </div>
                 ) : (

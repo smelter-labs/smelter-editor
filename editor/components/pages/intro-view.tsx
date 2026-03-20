@@ -32,6 +32,7 @@ import {
   restoreTimelineToStorage,
   computeTimelineStateAtZero,
   buildInputUpdateFromBlockSettings,
+  saveOutputPlayerSettings,
 } from '@/lib/room-config';
 import { setPendingWhipInputs as setPendingWhipInputsAction } from '@/app/actions/actions';
 import { Upload, FolderDown, LogIn, UserPlus, Eye, Trash2 } from 'lucide-react';
@@ -442,6 +443,10 @@ export default function IntroView() {
           );
         } else {
           toast.success('Room created from configuration');
+        }
+
+        if (config.outputPlayer) {
+          saveOutputPlayerSettings(roomId, config.outputPlayer);
         }
 
         router.push(getRoomRoute(roomId));

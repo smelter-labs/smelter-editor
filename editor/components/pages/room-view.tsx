@@ -191,6 +191,7 @@ export default function RoomView({
                 videoRef={videoRef}
                 whepUrl={roomState.whepUrl}
                 resolution={roomState.resolution}
+                roomId={roomId}
               />
             ),
             'add-video': addVideoSection,

@@ -53,6 +53,8 @@ import {
   loadTimelineFromStorage,
   resolveRoomConfigTimelineState,
   restoreTimelineToStorage,
+  loadOutputPlayerSettings,
+  saveOutputPlayerSettings,
   type RoomConfig,
   type RoomConfigInput,
 } from '@/lib/room-config';
@@ -573,7 +575,7 @@ function ControlPanelInner({
         <FxAccordion fxInput={fxInput} onClose={() => setOpenFxInputId(null)} />
       </div>
     ) : (
-      <div className='h-full flex items-center justify-center text-neutral-500 text-sm'>
+      <div className='h-full flex items-center justify-center text-muted-foreground text-sm'>
         Select a stream to edit FX
       </div>
     );
@@ -700,7 +702,7 @@ function ControlPanelInner({
   const mainPanel = (
     <motion.div
       {...(fadeIn as any)}
-      className='flex flex-col flex-1 mt-6 min-h-0 gap-3 rounded-none bg-neutral-950'>
+      className='flex flex-col flex-1 mt-6 min-h-0 gap-3 rounded-none bg-background'>
       <video id='local-preview' muted playsInline autoPlay className='hidden' />
 
       {fxInput ? (
@@ -821,6 +823,7 @@ function SettingsBar({
       roomId,
       getTimelineStateForConfig(),
     );
+    const outputPlayer = loadOutputPlayerSettings(roomId) ?? undefined;
     return exportRoomConfig(
       roomState.inputs,
       roomState.layout,
@@ -834,6 +837,7 @@ function SettingsBar({
         newsStripEnabled: roomState.newsStripEnabled,
       },
       timelineState ?? undefined,
+      outputPlayer,
     );
   }, [getTimelineStateForConfig, roomState, roomId]);
 
@@ -1063,6 +1067,10 @@ function SettingsBar({
         console.warn('Failed to set layout or input order:', e);
       }
 
+      if (config.outputPlayer) {
+        saveOutputPlayerSettings(roomId, config.outputPlayer);
+      }
+
       await handleRefreshState();
     },
     [
@@ -1111,7 +1119,7 @@ function SettingsBar({
     ];
 
   const btnClass =
-    'flex flex-col items-center gap-1.5 h-auto px-2 py-3 rounded-md border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 hover:border-neutral-600 transition-all cursor-pointer group font-normal';
+    'flex flex-col items-center gap-1.5 h-auto px-2 py-3 rounded-md border border-border bg-background hover:bg-card hover:border-border transition-all cursor-pointer group font-normal';
 
   const recordLabel = isWaitingForDownload
     ? 'Wait...'
@@ -1128,10 +1136,10 @@ function SettingsBar({
             variant='ghost'
             onClick={() => setOpenModal(btn.id)}
             className={btnClass}>
-            <span className='text-neutral-400 group-hover:text-white transition-colors'>
+            <span className='text-muted-foreground group-hover:text-foreground transition-colors'>
               {btn.icon}
             </span>
-            <span className='text-[11px] font-medium text-neutral-400 group-hover:text-white transition-colors leading-tight text-center'>
+            <span className='text-[11px] font-medium text-muted-foreground group-hover:text-foreground transition-colors leading-tight text-center'>
               {btn.label}
             </span>
           </Button>
@@ -1141,10 +1149,10 @@ function SettingsBar({
           onClick={() => setShowSaveModal(true)}
           disabled={isExporting}
           className={btnClass}>
-          <span className='text-neutral-400 group-hover:text-white transition-colors'>
+          <span className='text-muted-foreground group-hover:text-foreground transition-colors'>
             <Download className='w-4 h-4' />
           </span>
-          <span className='text-[11px] font-medium text-neutral-400 group-hover:text-white transition-colors leading-tight text-center'>
+          <span className='text-[11px] font-medium text-muted-foreground group-hover:text-foreground transition-colors leading-tight text-center'>
             {isExporting ? 'Saving...' : 'Save'}
           </span>
         </Button>
@@ -1153,10 +1161,10 @@ function SettingsBar({
           onClick={() => setShowLoadModal(true)}
           disabled={isImporting}
           className={btnClass}>
-          <span className='text-neutral-400 group-hover:text-white transition-colors'>
+          <span className='text-muted-foreground group-hover:text-foreground transition-colors'>
             <Upload className='w-4 h-4' />
           </span>
-          <span className='text-[11px] font-medium text-neutral-400 group-hover:text-white transition-colors leading-tight text-center'>
+          <span className='text-[11px] font-medium text-muted-foreground group-hover:text-foreground transition-colors leading-tight text-center'>
             {isImporting ? 'Loading...' : 'Load'}
           </span>
         </Button>
@@ -1164,9 +1172,9 @@ function SettingsBar({
           variant='ghost'
           onClick={handleTogglePublic}
           disabled={isTogglingPublic}
-          className={`${btnClass} ${roomState.isPublic ? 'border-white/20 bg-neutral-700' : ''}`}>
+          className={`${btnClass} ${roomState.isPublic ? 'border-white/20 bg-secondary' : ''}`}>
           <span
-            className={`transition-colors ${roomState.isPublic ? 'text-white' : 'text-neutral-400 group-hover:text-white'}`}>
+            className={`transition-colors ${roomState.isPublic ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'}`}>
             {roomState.isPublic ? (
               <ToggleRight className='w-4 h-4' />
             ) : (
@@ -1174,7 +1182,7 @@ function SettingsBar({
             )}
           </span>
           <span
-            className={`text-[11px] font-medium transition-colors leading-tight text-center ${roomState.isPublic ? 'text-neutral-200' : 'text-neutral-400 group-hover:text-white'}`}>
+            className={`text-[11px] font-medium transition-colors leading-tight text-center ${roomState.isPublic ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'}`}>
             Public
           </span>
         </Button>
@@ -1184,10 +1192,10 @@ function SettingsBar({
           disabled={isTogglingRecording || isWaitingForDownload}
           className={`${btnClass} ${isRecording ? 'border-red-500/50 bg-red-950/30' : ''}`}>
           <span
-            className={`transition-colors ${isRecording ? 'text-red-400 group-hover:text-red-300' : 'text-neutral-400 group-hover:text-white'}`}>
+            className={`transition-colors ${isRecording ? 'text-red-400 group-hover:text-red-300' : 'text-muted-foreground group-hover:text-foreground'}`}>
             <Circle className='w-4 h-4' />
           </span>
-          <span className='text-[11px] font-medium text-neutral-400 group-hover:text-white transition-colors leading-tight text-center'>
+          <span className='text-[11px] font-medium text-muted-foreground group-hover:text-foreground transition-colors leading-tight text-center'>
             {recordLabel}
           </span>
         </Button>
@@ -1219,7 +1227,7 @@ function SettingsBar({
           </DialogHeader>
           <div className='grid grid-cols-2 gap-6'>
             <section className='space-y-2'>
-              <h4 className='text-sm font-medium text-white'>
+              <h4 className='text-sm font-medium text-foreground'>
                 Transition Settings
               </h4>
               <TransitionSettings
@@ -1267,7 +1275,7 @@ function SettingsBar({
             </section>
             <div className='space-y-4'>
               <section className='space-y-2 px-1'>
-                <h4 className='text-sm font-medium text-white'>
+                <h4 className='text-sm font-medium text-foreground'>
                   Macros Settings
                 </h4>
                 <label className='flex items-center gap-2 cursor-pointer'>
@@ -1279,7 +1287,7 @@ function SettingsBar({
                     }}
                     className='accent-white'
                   />
-                  <span className='text-xs text-neutral-400'>
+                  <span className='text-xs text-muted-foreground'>
                     Auto Play Macro
                   </span>
                 </label>
@@ -1292,12 +1300,12 @@ function SettingsBar({
                     }
                     className='accent-white'
                   />
-                  <span className='text-xs text-neutral-400'>
+                  <span className='text-xs text-muted-foreground'>
                     Compact Voice Panel
                   </span>
                 </label>
                 <div className='flex items-center justify-between gap-3'>
-                  <span className='text-xs text-neutral-400 shrink-0'>
+                  <span className='text-xs text-muted-foreground shrink-0'>
                     Panel Opacity
                   </span>
                   <Slider
@@ -1308,18 +1316,18 @@ function SettingsBar({
                     onValueChange={(v) => setVoicePanelOpacity(v[0])}
                     className='flex-1 accent-white h-1'
                   />
-                  <span className='text-xs text-neutral-500 w-8 text-right tabular-nums'>
+                  <span className='text-xs text-muted-foreground w-8 text-right tabular-nums'>
                     {voicePanelOpacity}%
                   </span>
                 </div>
               </section>
-              <div className='h-px bg-neutral-800' />
+              <div className='h-px bg-card' />
               <section className='space-y-2 px-1'>
-                <h4 className='text-sm font-medium text-white'>
+                <h4 className='text-sm font-medium text-foreground'>
                   Input Defaults
                 </h4>
                 <div className='flex items-center justify-between'>
-                  <span className='text-xs text-neutral-400'>
+                  <span className='text-xs text-muted-foreground'>
                     Default Orientation
                   </span>
                   <Select
@@ -1327,7 +1335,7 @@ function SettingsBar({
                     onValueChange={(v: 'horizontal' | 'vertical') =>
                       setDefaultOrientation(v)
                     }>
-                    <SelectTrigger className='bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1 rounded h-auto'>
+                    <SelectTrigger className='bg-card border border-border text-foreground text-xs px-2 py-1 rounded h-auto'>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -1337,9 +1345,9 @@ function SettingsBar({
                   </Select>
                 </div>
               </section>
-              <div className='h-px bg-neutral-800' />
+              <div className='h-px bg-card' />
               <section className='space-y-2 px-1'>
-                <h4 className='text-sm font-medium text-white'>
+                <h4 className='text-sm font-medium text-foreground'>
                   Toast Notifications
                 </h4>
                 <FeedbackPositionPicker

@@ -298,6 +298,12 @@ export const RoomConfigSchema = Type.Object({
       ),
     }),
   ),
+  outputPlayer: Type.Optional(
+    Type.Object({
+      muted: Type.Boolean(),
+      volume: Type.Number({ minimum: 0, maximum: 1 }),
+    }),
+  ),
 });
 
 const LayoutItemSchema = Type.Object({
