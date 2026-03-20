@@ -24,6 +24,8 @@ import {
   LoadShaderPresetModal,
 } from '../components/ShaderPresetModals';
 import { hexToPackedInt, packedIntToHex } from '@/lib/color-utils';
+import { Input as ShadcnInput } from '@/components/ui/input';
+import { Slider } from '@/components/ui/slider';
 
 interface ShaderPanelProps {
   input: Input;
@@ -102,15 +104,15 @@ export default function ShaderPanel({
                 <span
                   className={`shrink-0 w-2 h-2 rounded-full ${shaderConfig.enabled ? 'bg-green-500' : 'bg-neutral-600'}`}
                 />
-                <button
-                  type='button'
-                  className='flex-1 text-left text-sm text-white truncate cursor-pointer hover:underline'
+                <Button
+                  variant='ghost'
+                  className='flex-1 justify-start text-left text-white truncate h-auto px-0 py-0 cursor-pointer hover:underline font-normal'
                   onClick={() =>
                     hasParams && handleShaderClick(shaderConfig.shaderId)
                   }
                   title={hasParams ? 'Configure shader' : name}>
                   {name}
-                </button>
+                </Button>
                 <Button
                   data-no-dnd
                   size='sm'
@@ -369,13 +371,13 @@ export function InlineShaderParams({
 
   return (
     <div data-no-dnd>
-      <button
-        type='button'
-        className='flex items-center gap-1.5 text-xs text-neutral-400 hover:text-white cursor-pointer mb-3 transition-colors'
+      <Button
+        variant='ghost'
+        className='h-auto px-0 py-0 gap-1.5 text-xs text-neutral-400 hover:text-white cursor-pointer mb-3 font-normal'
         onClick={onBack}>
         <ArrowLeft className='size-3.5' />
         Back to block properties
-      </button>
+      </Button>
 
       <div className='text-sm text-white font-medium mb-1'>
         {shaderDef.name}
@@ -511,16 +513,14 @@ function ShaderParamSlider({
           {typeof paramValue === 'number' ? paramValue.toFixed(2) : paramValue}
         </span>
       </label>
-      <input
+      <Slider
         data-no-dnd
-        type='range'
         min={min}
         max={max}
         step={step}
-        value={paramValue}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className='w-full h-2 rounded bg-neutral-700 outline-none appearance-none focus:outline-none focus:ring-2 focus:ring-neutral-500'
-        style={{ accentColor: '#a0a0a0' }}
+        value={[paramValue]}
+        onValueChange={(v) => onChange(v[0])}
+        className='w-full'
       />
     </div>
   );
@@ -562,7 +562,7 @@ function ShaderParamColorPicker({
           className='h-10 w-20 rounded border-2 border-neutral-700 bg-neutral-900 cursor-pointer'
           disabled={loading}
         />
-        <input
+        <ShadcnInput
           data-no-dnd
           type='text'
           value={colorValue}

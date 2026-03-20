@@ -8,7 +8,7 @@ import {
   useSearchParams,
 } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
 import Link from 'next/link';
 
 import LoadingSpinner from '@/components/ui/spinner';

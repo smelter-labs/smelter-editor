@@ -12,7 +12,7 @@ import {
   saveWhipSession,
   saveLastWhipInputId,
 } from '../whip-input/utils/whip-storage';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
 import type { PendingWhipInput } from './ConfigurationSection';
 import { updateTimelineInputId } from '@/lib/room-config';
 import { useControlPanelContext } from '../contexts/control-panel-context';
@@ -172,11 +172,13 @@ export function PendingWhipInputs({
             <span className='text-sm text-white font-medium truncate'>
               {pendingInput.title}
             </span>
-            <button
+            <Button
+              variant='ghost'
+              size='icon'
               onClick={() => handleDismiss(pendingInput)}
-              className='p-1 text-neutral-500 hover:text-white transition-colors cursor-pointer'>
+              className='h-6 w-6 text-neutral-500 hover:text-white cursor-pointer'>
               <X className='w-4 h-4' />
-            </button>
+            </Button>
           </div>
           <div className='text-xs text-neutral-500 mb-3'>
             WHIP input - click to connect

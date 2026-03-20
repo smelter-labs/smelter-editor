@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Wifi, WifiOff, ChevronDown, ChevronUp } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import type { ConnectedPeer } from '@/components/control-panel/hooks/use-room-websocket';
 
 interface ConnectedDevicesPanelProps {
@@ -24,8 +25,10 @@ export function ConnectedDevicesPanel({ peers }: ConnectedDevicesPanelProps) {
         <span className='text-[11px] font-semibold text-neutral-300 uppercase tracking-wider flex-1'>
           Connected ({peers.length})
         </span>
-        <button
-          className='text-neutral-500 hover:text-neutral-200 transition-colors p-0.5 cursor-pointer'
+        <Button
+          variant='ghost'
+          size='icon'
+          className='h-auto w-auto text-neutral-500 hover:text-neutral-200 hover:bg-transparent p-0.5 cursor-pointer'
           onClick={() => setCollapsed((c) => !c)}
           aria-label={
             collapsed
@@ -39,7 +42,7 @@ export function ConnectedDevicesPanel({ peers }: ConnectedDevicesPanelProps) {
           ) : (
             <ChevronUp className='w-3.5 h-3.5' />
           )}
-        </button>
+        </Button>
       </div>
 
       {!collapsed && (

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Input as ShadcnInput } from '@/components/ui/input';
 import LoadingSpinner from '@/components/ui/spinner';
 import { SuggestionBox } from './suggestion-box';
 import type { Input } from '@/lib/types';
@@ -206,7 +207,7 @@ export function GenericAddInputForm<T>({
       autoComplete='off'
       onSubmit={handleSubmit}>
       <div className='relative flex-1 min-w-0 my-2 sm:my-2'>
-        <input
+        <ShadcnInput
           ref={inputRef}
           className={
             'py-3 pl-3 pr-8 sm:py-3 sm:pl-3 sm:pr-10 border-neutral-700 border text-neutral-300 rounded-none w-full min-w-0 text-sm sm:text-base outline-none focus:ring-2 focus:ring-neutral-600 transition-all ' +

@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 import { ArrowLeft } from 'lucide-react';
 import type { Input } from '@/lib/types';
+import { Button } from '@/components/ui/button';
 import InputEntry from '@/components/control-panel/input-entry/input-entry';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
@@ -47,13 +48,14 @@ export function FxAccordion({ fxInput, onClose }: FxPanelProps) {
 
   return (
     <div>
-      <button
+      <Button
         type='button'
+        variant='ghost'
         onClick={onClose}
-        className='flex items-center gap-2 px-2 py-1.5 mb-1 text-sm text-neutral-400 hover:text-white transition-colors cursor-pointer'>
+        className='flex items-center gap-2 px-2 py-1.5 mb-1 text-sm text-neutral-400 hover:text-white cursor-pointer'>
         <ArrowLeft className='w-4 h-4' />
         <span className='font-medium'>{fxInput.title}</span>
-      </button>
+      </Button>
       <div className='px-0 py-1'>
         <InputEntry
           input={fxInput}

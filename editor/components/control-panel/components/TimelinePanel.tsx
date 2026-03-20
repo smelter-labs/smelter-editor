@@ -47,6 +47,8 @@ import {
   generateShades,
 } from '@/lib/color-utils';
 import { formatMs } from '@/lib/format-utils';
+import { Button } from '@/components/ui/button';
+import { Input as ShadcnInput } from '@/components/ui/input';
 
 // ── Props ────────────────────────────────────────────────
 
@@ -507,8 +509,10 @@ function ColorSwatch({
   const circumference = 2 * Math.PI * 8;
 
   return (
-    <button
-      className='relative w-5 h-5 rounded-sm border border-neutral-600 hover:scale-125 transition-transform cursor-pointer'
+    <Button
+      variant='ghost'
+      size='icon'
+      className='relative w-5 h-5 rounded-sm border border-neutral-600 hover:scale-125 transition-transform cursor-pointer p-0'
       style={{ backgroundColor: color }}
       title={`Click to apply, hold for shades`}
       onPointerDown={handlePointerDown}
@@ -540,7 +544,7 @@ function ColorSwatch({
           to   { stroke-dashoffset: 0; }
         }
       `}</style>
-    </button>
+    </Button>
   );
 }
 
@@ -2250,10 +2254,12 @@ export function TimelinePanel({
               (selectedKeyframeId == null && keyframe.timeMs === 0));
 
           return (
-            <button
+            <Button
               key={keyframe.id}
               type='button'
-              className='absolute z-20 size-3 -ml-1.5 -mt-1.5 border border-neutral-900 transition-transform hover:scale-110'
+              variant='ghost'
+              size='icon'
+              className='absolute z-20 size-3 -ml-1.5 -mt-1.5 border border-neutral-900 transition-transform hover:scale-110 p-0 rounded-none'
               style={{
                 left: leftPx,
                 top: TRACK_HEIGHT / 2,
@@ -2482,15 +2488,19 @@ export function TimelinePanel({
 
       {/* Transport bar */}
       <div className='flex items-center gap-2 px-3 h-8 bg-neutral-900 border-b border-neutral-800 shrink-0'>
-        <button
-          className='p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed'
+        <Button
+          variant='ghost'
+          size='icon'
+          className='h-6 w-6 text-neutral-400 hover:text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed'
           onClick={() => setPlayhead(0)}
           disabled={state.isPlaying}
           title='Skip to beginning'>
           <SkipBack className='w-3.5 h-3.5' />
-        </button>
-        <button
-          className={`p-1 rounded hover:bg-neutral-700 transition-colors cursor-pointer ${state.isPlaying ? 'text-green-400' : isPaused ? 'text-yellow-400' : 'text-neutral-400 hover:text-white'}`}
+        </Button>
+        <Button
+          variant='ghost'
+          size='icon'
+          className={`h-6 w-6 cursor-pointer ${state.isPlaying ? 'text-green-400' : isPaused ? 'text-yellow-400' : 'text-neutral-400 hover:text-white'}`}
           onClick={state.isPlaying ? pause : play}
           title={state.isPlaying ? 'Pause' : isPaused ? 'Resume' : 'Play'}>
           {state.isPlaying ? (
@@ -2498,16 +2508,20 @@ export function TimelinePanel({
           ) : (
             <Play className='w-3.5 h-3.5' />
           )}
-        </button>
-        <button
-          className='p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed'
+        </Button>
+        <Button
+          variant='ghost'
+          size='icon'
+          className='h-6 w-6 text-neutral-400 hover:text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed'
           onClick={stop}
           disabled={!state.isPlaying && !isPaused}
           title='Stop (full reset)'>
           <Square className='w-3.5 h-3.5' />
-        </button>
-        <button
-          className={`p-1 rounded hover:bg-neutral-700 transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${isRecording ? 'animate-pulse' : ''}`}
+        </Button>
+        <Button
+          variant='ghost'
+          size='icon'
+          className={`h-6 w-6 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${isRecording ? 'animate-pulse' : ''}`}
           onClick={handleRecordAndPlay}
           disabled={isTogglingRecording}
           title={isRecording ? 'Stop recording' : 'Record & Play'}>
@@ -2518,37 +2532,45 @@ export function TimelinePanel({
               <div className='w-2.5 h-2.5 rounded-full border-2 border-red-400/70' />
             )}
           </div>
-        </button>
-        <button
-          className='p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed'
+        </Button>
+        <Button
+          variant='ghost'
+          size='icon'
+          className='h-6 w-6 text-neutral-400 hover:text-white cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed'
           onClick={applyAtPlayhead}
           disabled={state.isPlaying}
           title='Apply state at playhead'>
           <Crosshair className='w-3.5 h-3.5' />
-        </button>
-        <button
-          className='p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors cursor-pointer'
+        </Button>
+        <Button
+          variant='ghost'
+          size='icon'
+          className='h-6 w-6 text-neutral-400 hover:text-white cursor-pointer'
           onClick={reset}
           title='Reset timeline'>
           <RotateCcw className='w-3.5 h-3.5' />
-        </button>
+        </Button>
 
         <div className='w-px h-4 bg-neutral-700' />
 
-        <button
-          className='p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed'
+        <Button
+          variant='ghost'
+          size='icon'
+          className='h-6 w-6 text-neutral-400 hover:text-white cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed'
           onClick={undo}
           disabled={!canUndo}
           title='Undo (Ctrl+Z)'>
           <Undo2 className='w-3.5 h-3.5' />
-        </button>
-        <button
-          className='p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed'
+        </Button>
+        <Button
+          variant='ghost'
+          size='icon'
+          className='h-6 w-6 text-neutral-400 hover:text-white cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed'
           onClick={redo}
           disabled={!canRedo}
           title='Redo (Ctrl+Shift+Z)'>
           <Redo2 className='w-3.5 h-3.5' />
-        </button>
+        </Button>
 
         <div className='text-[11px] text-neutral-500 font-mono tabular-nums ml-1'>
           {formatMs(state.playheadMs)}
@@ -2559,9 +2581,11 @@ export function TimelinePanel({
         <div className='flex-1' />
 
         <div className='flex items-center gap-1 rounded border border-neutral-800 bg-neutral-950/60 p-0.5'>
-          <button
+          <Button
             type='button'
-            className={`rounded px-2 py-0.5 text-[10px] uppercase tracking-wide transition-colors cursor-pointer ${
+            variant='ghost'
+            size='sm'
+            className={`rounded px-2 py-0.5 h-auto text-[10px] uppercase tracking-wide cursor-pointer ${
               state.keyframeInterpolationMode === 'step'
                 ? 'bg-neutral-700 text-white'
                 : 'text-neutral-500 hover:text-neutral-300'
@@ -2569,10 +2593,12 @@ export function TimelinePanel({
             onClick={() => setKeyframeInterpolationMode('step')}
             title='Use the latest keyframe snapshot until the next one'>
             Step
-          </button>
-          <button
+          </Button>
+          <Button
             type='button'
-            className={`rounded px-2 py-0.5 text-[10px] uppercase tracking-wide transition-colors cursor-pointer ${
+            variant='ghost'
+            size='sm'
+            className={`rounded px-2 py-0.5 h-auto text-[10px] uppercase tracking-wide cursor-pointer ${
               state.keyframeInterpolationMode === 'smooth'
                 ? 'bg-neutral-700 text-white'
                 : 'text-neutral-500 hover:text-neutral-300'
@@ -2580,40 +2606,48 @@ export function TimelinePanel({
             onClick={() => setKeyframeInterpolationMode('smooth')}
             title='Interpolate numeric values between keyframes'>
             Smooth
-          </button>
+          </Button>
         </div>
 
-        <button
-          className='p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors cursor-pointer'
+        <Button
+          variant='ghost'
+          size='icon'
+          className='h-6 w-6 text-neutral-400 hover:text-white cursor-pointer'
           onClick={handleZoomOut}
           title='Zoom out'>
           <ZoomOut className='w-3.5 h-3.5' />
-        </button>
+        </Button>
         <div className='text-[10px] text-neutral-600 font-mono w-10 text-center'>
           {Math.round((state.pixelsPerSecond / DEFAULT_PPS) * 100)}%
         </div>
-        <button
-          className='p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors cursor-pointer'
+        <Button
+          variant='ghost'
+          size='icon'
+          className='h-6 w-6 text-neutral-400 hover:text-white cursor-pointer'
           onClick={handleZoomIn}
           title='Zoom in'>
           <ZoomIn className='w-3.5 h-3.5' />
-        </button>
+        </Button>
 
         <div className='w-px h-4 bg-neutral-700 mx-1' />
 
-        <button
-          className='p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors cursor-pointer'
+        <Button
+          variant='ghost'
+          size='icon'
+          className='h-6 w-6 text-neutral-400 hover:text-white cursor-pointer'
           onClick={scrollToPlayhead}
           title='Scroll to playhead (F)'>
           <Crosshair className='w-3.5 h-3.5' />
-        </button>
+        </Button>
 
-        <button
-          className='p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors cursor-pointer'
+        <Button
+          variant='ghost'
+          size='icon'
+          className='h-6 w-6 text-neutral-400 hover:text-white cursor-pointer'
           onClick={() => setShowHelp((prev) => !prev)}
           title='Keyboard shortcuts (?)'>
           <HelpCircle className='w-3.5 h-3.5' />
-        </button>
+        </Button>
       </div>
 
       {/* Header: Sources label + ruler */}
@@ -2734,7 +2768,7 @@ export function TimelinePanel({
                     style={{ backgroundColor: trackDotColor ?? '#737373' }}
                   />
                   {isEditing ? (
-                    <input
+                    <ShadcnInput
                       autoFocus
                       className='text-sm text-neutral-200 bg-neutral-800 border border-neutral-600 rounded px-1 py-0.5 flex-1 min-w-0 outline-none focus:border-blue-500'
                       value={editingTrackLabel}
@@ -2768,8 +2802,10 @@ export function TimelinePanel({
                   )}
                   {!isEditing && (
                     <div className='flex items-center gap-0.5 opacity-0 group-hover/track:opacity-100 transition-opacity'>
-                      <button
-                        className='p-0.5 rounded hover:bg-neutral-700 text-neutral-500 hover:text-neutral-300 cursor-pointer'
+                      <Button
+                        variant='ghost'
+                        size='icon'
+                        className='h-5 w-5 text-neutral-500 hover:text-neutral-300 cursor-pointer'
                         title='Rename track'
                         onClick={(e) => {
                           e.stopPropagation();
@@ -2777,16 +2813,18 @@ export function TimelinePanel({
                           setEditingTrackLabel(track.label);
                         }}>
                         <Pencil className='w-3 h-3' />
-                      </button>
-                      <button
-                        className='p-0.5 rounded hover:bg-neutral-700 text-neutral-500 hover:text-red-400 cursor-pointer'
+                      </Button>
+                      <Button
+                        variant='ghost'
+                        size='icon'
+                        className='h-5 w-5 text-neutral-500 hover:text-red-400 cursor-pointer'
                         title='Delete track'
                         onClick={(e) => {
                           e.stopPropagation();
                           deleteTrack(track.id);
                         }}>
                         <Trash2 className='w-3 h-3' />
-                      </button>
+                      </Button>
                     </div>
                   )}
                 </div>
@@ -2818,13 +2856,15 @@ export function TimelinePanel({
             <div
               className='shrink-0 bg-neutral-900 flex items-center px-2 sticky left-0 z-10'
               style={{ width: SOURCES_WIDTH }}>
-              <button
-                className='flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded px-2 py-1 cursor-pointer transition-colors'
+              <Button
+                variant='ghost'
+                size='sm'
+                className='flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 px-2 py-1 cursor-pointer'
                 onClick={() => addTrack()}
                 title='Add empty track'>
                 <Plus className='w-3 h-3' />
                 <span>Add Track</span>
-              </button>
+              </Button>
             </div>
           </div>
         )}
@@ -2837,16 +2877,18 @@ export function TimelinePanel({
             className='fixed z-[9999] bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl py-1 min-w-[160px]'
             style={{ left: contextMenu.x, top: contextMenu.y }}
             onClick={(e) => e.stopPropagation()}>
-            <button
-              className='w-full text-left py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer'
+            <Button
+              variant='ghost'
+              className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer'
               onClick={handleFx}>
               FX / Shaders
-            </button>
-            <button
-              className='w-full text-left py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer'
+            </Button>
+            <Button
+              variant='ghost'
+              className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer'
               onClick={handleMuteToggle}>
               {contextMenu.isMuted ? 'Unmute' : 'Mute'}
-            </button>
+            </Button>
             {contextMenu.clipId && (
               <div
                 className='relative'
@@ -2855,19 +2897,22 @@ export function TimelinePanel({
                   setColorSubmenuOpen(false);
                   setLongPressColor(null);
                 }}>
-                <button
-                  className='w-full text-left py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer flex items-center justify-between'
+                <Button
+                  variant='ghost'
+                  className='w-full justify-between rounded-none py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer'
                   onClick={() => setColorSubmenuOpen((v) => !v)}>
                   <span>Color</span>
                   <ChevronRight className='w-3.5 h-3.5 text-neutral-400' />
-                </button>
+                </Button>
                 {colorSubmenuOpen && (
                   <div
                     className='absolute left-full top-0 ml-1 bg-neutral-800 border border-neutral-700 rounded-lg shadow-xl py-2 px-2 z-[10000]'
                     style={{ minWidth: 140 }}>
                     {longPressColor ? (
                       <>
-                        <button
+                        <Button
+                          variant='ghost'
+                          size='sm'
                           className='flex items-center gap-1 text-xs text-neutral-400 hover:text-neutral-200 mb-1.5 cursor-pointer'
                           onClick={() => setLongPressColor(null)}>
                           <ChevronLeft className='w-3 h-3' />
@@ -2876,12 +2921,14 @@ export function TimelinePanel({
                             style={{ backgroundColor: longPressColor }}
                           />
                           <span>Shades</span>
-                        </button>
+                        </Button>
                         <div className='grid grid-cols-7 gap-1.5'>
                           {generateShades(longPressColor).map((shade) => (
-                            <button
+                            <Button
                               key={shade}
-                              className='w-5 h-5 rounded-sm border border-neutral-600 hover:scale-125 transition-transform cursor-pointer'
+                              variant='ghost'
+                              size='icon'
+                              className='w-5 h-5 rounded-sm border border-neutral-600 hover:scale-125 transition-transform cursor-pointer p-0'
                               style={{ backgroundColor: shade }}
                               title={shade}
                               onClick={() => handleSetClipColor(shade)}
@@ -2922,44 +2969,50 @@ export function TimelinePanel({
                             onChange={(e) => handleSetClipColor(e.target.value)}
                           />
                         </div>
-                        <button
-                          className='w-full text-left py-1 px-1 text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-700 rounded cursor-pointer'
+                        <Button
+                          variant='ghost'
+                          size='sm'
+                          className='w-full justify-start py-1 px-1 text-xs text-neutral-400 hover:text-neutral-200 hover:bg-neutral-700 cursor-pointer'
                           onClick={() => handleSetClipColor(undefined)}>
                           Reset to default
-                        </button>
+                        </Button>
                       </>
                     )}
                   </div>
                 )}
               </div>
             )}
-            <button
-              className='w-full text-left py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer text-red-400 hover:text-red-300'
+            <Button
+              variant='ghost'
+              className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-red-400 hover:bg-neutral-700 hover:text-red-300 cursor-pointer'
               onClick={handleDelete}>
               Delete
-            </button>
+            </Button>
             {contextMenu.clipId && (
               <>
                 <div className='h-px bg-neutral-700 my-1' />
                 {selectedClipIds.length <= 1 && (
-                  <button
-                    className='w-full text-left py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer'
+                  <Button
+                    variant='ghost'
+                    className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer'
                     onClick={handleSplitHere}>
                     Split Here
-                  </button>
+                  </Button>
                 )}
-                <button
-                  className='w-full text-left py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer text-red-400 hover:text-red-300'
+                <Button
+                  variant='ghost'
+                  className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-red-400 hover:bg-neutral-700 hover:text-red-300 cursor-pointer'
                   onClick={handleDeleteClip}>
                   {selectedClipIds.length > 1
                     ? `Delete ${selectedClipIds.length} Clips`
                     : 'Delete Clip'}
-                </button>
+                </Button>
               </>
             )}
             <div className='h-px bg-neutral-700 my-1' />
-            <button
-              className='w-full text-left py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer'
+            <Button
+              variant='ghost'
+              className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-neutral-200 hover:bg-neutral-700 cursor-pointer'
               onClick={() => {
                 setEditingTrackId(contextMenu.trackId);
                 const track = state.tracks.find(
@@ -2969,15 +3022,16 @@ export function TimelinePanel({
                 closeContextMenu();
               }}>
               Rename Track
-            </button>
-            <button
-              className='w-full text-left py-1.5 px-3 text-sm text-red-400 hover:bg-neutral-700 hover:text-red-300 cursor-pointer'
+            </Button>
+            <Button
+              variant='ghost'
+              className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-red-400 hover:bg-neutral-700 hover:text-red-300 cursor-pointer'
               onClick={() => {
                 deleteTrack(contextMenu.trackId);
                 closeContextMenu();
               }}>
               Delete Track
-            </button>
+            </Button>
           </div>,
           document.body,
         )}
@@ -3029,11 +3083,13 @@ export function TimelinePanel({
                 <h2 className='text-sm font-semibold text-neutral-200'>
                   Keyboard Shortcuts
                 </h2>
-                <button
-                  className='p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white cursor-pointer'
+                <Button
+                  variant='ghost'
+                  size='icon'
+                  className='h-6 w-6 text-neutral-400 hover:text-white cursor-pointer'
                   onClick={() => setShowHelp(false)}>
                   <X className='w-4 h-4' />
-                </button>
+                </Button>
               </div>
               <div className='p-5 space-y-4 text-[13px]'>
                 <ShortcutGroup

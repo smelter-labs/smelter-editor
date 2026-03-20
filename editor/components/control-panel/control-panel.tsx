@@ -29,6 +29,7 @@ import {
   ToggleRight,
   Circle,
 } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import {
   useControlPanelState,
   type InputWrapper,
@@ -91,6 +92,15 @@ import { useMotionHistory } from '@/hooks/use-motion-history';
 import { InputMotionPanel } from './components/InputMotionPanel';
 import { motionPanelId } from '@/components/dashboard/panel-registry';
 import { ErrorBoundary } from '@/components/error-boundary';
+import { Input as ShadcnInput } from '@/components/ui/input';
+import { Slider } from '@/components/ui/slider';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 
 export type ControlPanelProps = {
   roomId: string;
@@ -1101,7 +1111,7 @@ function SettingsBar({
     ];
 
   const btnClass =
-    'flex flex-col items-center gap-1.5 px-2 py-3 rounded-md border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 hover:border-neutral-600 transition-all cursor-pointer group';
+    'flex flex-col items-center gap-1.5 h-auto px-2 py-3 rounded-md border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 hover:border-neutral-600 transition-all cursor-pointer group font-normal';
 
   const recordLabel = isWaitingForDownload
     ? 'Wait...'
@@ -1113,8 +1123,9 @@ function SettingsBar({
     <>
       <div className='grid grid-cols-6 gap-2'>
         {modalButtons.map((btn) => (
-          <button
+          <Button
             key={btn.id}
+            variant='ghost'
             onClick={() => setOpenModal(btn.id)}
             className={btnClass}>
             <span className='text-neutral-400 group-hover:text-white transition-colors'>
@@ -1123,9 +1134,10 @@ function SettingsBar({
             <span className='text-[11px] font-medium text-neutral-400 group-hover:text-white transition-colors leading-tight text-center'>
               {btn.label}
             </span>
-          </button>
+          </Button>
         ))}
-        <button
+        <Button
+          variant='ghost'
           onClick={() => setShowSaveModal(true)}
           disabled={isExporting}
           className={btnClass}>
@@ -1135,8 +1147,9 @@ function SettingsBar({
           <span className='text-[11px] font-medium text-neutral-400 group-hover:text-white transition-colors leading-tight text-center'>
             {isExporting ? 'Saving...' : 'Save'}
           </span>
-        </button>
-        <button
+        </Button>
+        <Button
+          variant='ghost'
           onClick={() => setShowLoadModal(true)}
           disabled={isImporting}
           className={btnClass}>
@@ -1146,8 +1159,9 @@ function SettingsBar({
           <span className='text-[11px] font-medium text-neutral-400 group-hover:text-white transition-colors leading-tight text-center'>
             {isImporting ? 'Loading...' : 'Load'}
           </span>
-        </button>
-        <button
+        </Button>
+        <Button
+          variant='ghost'
           onClick={handleTogglePublic}
           disabled={isTogglingPublic}
           className={`${btnClass} ${roomState.isPublic ? 'border-white/20 bg-neutral-700' : ''}`}>
@@ -1163,8 +1177,9 @@ function SettingsBar({
             className={`text-[11px] font-medium transition-colors leading-tight text-center ${roomState.isPublic ? 'text-neutral-200' : 'text-neutral-400 group-hover:text-white'}`}>
             Public
           </span>
-        </button>
-        <button
+        </Button>
+        <Button
+          variant='ghost'
           onClick={handleToggleRecording}
           disabled={isTogglingRecording || isWaitingForDownload}
           className={`${btnClass} ${isRecording ? 'border-red-500/50 bg-red-950/30' : ''}`}>
@@ -1175,9 +1190,9 @@ function SettingsBar({
           <span className='text-[11px] font-medium text-neutral-400 group-hover:text-white transition-colors leading-tight text-center'>
             {recordLabel}
           </span>
-        </button>
+        </Button>
       </div>
-      <input
+      <ShadcnInput
         ref={fileInputRef}
         type='file'
         accept='.json,application/json'
@@ -1285,15 +1300,12 @@ function SettingsBar({
                   <span className='text-xs text-neutral-400 shrink-0'>
                     Panel Opacity
                   </span>
-                  <input
-                    type='range'
+                  <Slider
                     min={0}
                     max={100}
                     step={5}
-                    value={voicePanelOpacity}
-                    onChange={(e) =>
-                      setVoicePanelOpacity(Number(e.target.value))
-                    }
+                    value={[voicePanelOpacity]}
+                    onValueChange={(v) => setVoicePanelOpacity(v[0])}
                     className='flex-1 accent-white h-1'
                   />
                   <span className='text-xs text-neutral-500 w-8 text-right tabular-nums'>
@@ -1310,17 +1322,19 @@ function SettingsBar({
                   <span className='text-xs text-neutral-400'>
                     Default Orientation
                   </span>
-                  <select
-                    className='bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1 rounded'
+                  <Select
                     value={defaultOrientation}
-                    onChange={(e) =>
-                      setDefaultOrientation(
-                        e.target.value as 'horizontal' | 'vertical',
-                      )
+                    onValueChange={(v: 'horizontal' | 'vertical') =>
+                      setDefaultOrientation(v)
                     }>
-                    <option value='horizontal'>Horizontal</option>
-                    <option value='vertical'>Vertical</option>
-                  </select>
+                    <SelectTrigger className='bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1 rounded h-auto'>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='horizontal'>Horizontal</SelectItem>
+                      <SelectItem value='vertical'>Vertical</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </section>
               <div className='h-px bg-neutral-800' />

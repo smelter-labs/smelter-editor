@@ -36,7 +36,17 @@ import {
 import { setPendingWhipInputs as setPendingWhipInputsAction } from '@/app/actions/actions';
 import { Upload, FolderDown, LogIn, UserPlus, Eye, Trash2 } from 'lucide-react';
 import RecordingsList from '@/components/recordings-list';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+  SelectGroup,
+  SelectLabel,
+} from '@/components/ui/select';
 import { LoadConfigModal } from '@/components/control-panel/components/ConfigModals';
 import { ActionsProvider } from '@/components/control-panel/contexts/actions-context';
 import { defaultActions } from '@/components/control-panel/contexts/default-actions';
@@ -494,7 +504,7 @@ export default function IntroView() {
               <label className='text-xs text-neutral-400 text-left'>
                 Display Name
               </label>
-              <input
+              <Input
                 type='text'
                 value={displayName}
                 onChange={(e) => handleSetDisplayName(e.target.value)}
@@ -507,33 +517,39 @@ export default function IntroView() {
               <label className='text-xs text-neutral-400 text-left'>
                 Output Resolution
               </label>
-              <select
+              <Select
                 value={selectedResolution}
-                onChange={(e) =>
-                  setSelectedResolution(e.target.value as ResolutionPreset)
+                onValueChange={(v) =>
+                  setSelectedResolution(v as ResolutionPreset)
                 }
-                className='w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-white text-sm focus:outline-none focus:border-neutral-500'
                 disabled={loadingNew || loadingImport}>
-                <optgroup label='Landscape'>
-                  {Object.entries(RESOLUTION_PRESETS)
-                    .filter(([key]) => !key.includes('vertical'))
-                    .map(([key, { width, height }]) => (
-                      <option key={key} value={key}>
-                        {key.toUpperCase()} ({width}×{height})
-                      </option>
-                    ))}
-                </optgroup>
-                <optgroup label='Portrait'>
-                  {Object.entries(RESOLUTION_PRESETS)
-                    .filter(([key]) => key.includes('vertical'))
-                    .map(([key, { width, height }]) => (
-                      <option key={key} value={key}>
-                        {key.replace('-vertical', '').toUpperCase()} Vertical (
-                        {width}×{height})
-                      </option>
-                    ))}
-                </optgroup>
-              </select>
+                <SelectTrigger className='w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-white text-sm focus:outline-none focus:border-neutral-500 h-auto'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel>Landscape</SelectLabel>
+                    {Object.entries(RESOLUTION_PRESETS)
+                      .filter(([key]) => !key.includes('vertical'))
+                      .map(([key, { width, height }]) => (
+                        <SelectItem key={key} value={key}>
+                          {key.toUpperCase()} ({width}×{height})
+                        </SelectItem>
+                      ))}
+                  </SelectGroup>
+                  <SelectGroup>
+                    <SelectLabel>Portrait</SelectLabel>
+                    {Object.entries(RESOLUTION_PRESETS)
+                      .filter(([key]) => key.includes('vertical'))
+                      .map(([key, { width, height }]) => (
+                        <SelectItem key={key} value={key}>
+                          {key.replace('-vertical', '').toUpperCase()} Vertical
+                          ({width}×{height})
+                        </SelectItem>
+                      ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </div>
             <Button
               size='lg'
@@ -562,7 +578,7 @@ export default function IntroView() {
                 </>
               )}
             </Button>
-            <input
+            <Input
               ref={fileInputRef}
               type='file'
               accept='.json,application/json'

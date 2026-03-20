@@ -1,6 +1,7 @@
 'use client';
 
 import { Component, type ReactNode, type ErrorInfo } from 'react';
+import { Button } from '@/components/ui/button';
 
 interface ErrorBoundaryProps {
   children: ReactNode;
@@ -47,11 +48,13 @@ export class ErrorBoundary extends Component<
           <p className='text-xs text-neutral-500 max-w-xs truncate'>
             {this.state.error?.message}
           </p>
-          <button
+          <Button
+            variant='outline'
+            size='sm'
             onClick={this.handleRetry}
-            className='px-3 py-1.5 text-xs font-medium rounded-md border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 text-neutral-300 transition-colors'>
+            className='text-xs rounded-md border-neutral-700 bg-neutral-800 hover:bg-neutral-700 text-neutral-300'>
             Try again
-          </button>
+          </Button>
         </div>
       );
     }

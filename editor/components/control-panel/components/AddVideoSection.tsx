@@ -185,16 +185,17 @@ export function AddVideoSection({
         {tabs.map((t) => {
           const isActive = effectiveActiveTab === t.id;
           return (
-            <button
+            <Button
               key={t.id}
-              className={`py-2 px-2 md:px-3 -mb-[1px] cursor-pointer text-sm font-bold transition-colors ${
+              variant='ghost'
+              className={`py-2 px-2 md:px-3 -mb-[1px] rounded-none cursor-pointer text-sm font-bold ${
                 isActive
                   ? 'border-b-[3px] border-white text-white'
                   : 'border-b-[3px] border-transparent text-neutral-400 hover:text-white'
               }`}
               onClick={() => setAddInputActiveTab(t.id)}>
               {t.label}
-            </button>
+            </Button>
           );
         })}
       </div>
@@ -202,24 +203,26 @@ export function AddVideoSection({
         {effectiveActiveTab === 'stream' && (
           <div>
             <div className='flex gap-2 sm:gap-3 md:gap-4 lg:gap-4 xl:gap-4 2xl:gap-5 border-b border-neutral-800 mb-3 justify-center'>
-              <button
-                className={`py-2 px-2 md:px-3 -mb-[1px] cursor-pointer text-sm font-bold transition-colors ${
+              <Button
+                variant='ghost'
+                className={`py-2 px-2 md:px-3 -mb-[1px] rounded-none cursor-pointer text-sm font-bold ${
                   streamActiveTab === 'twitch'
                     ? 'border-b-[3px] border-white text-white'
                     : 'border-b-[3px] border-transparent text-neutral-400 hover:text-white'
                 }`}
                 onClick={() => setStreamActiveTab('twitch')}>
                 Twitch
-              </button>
-              <button
-                className={`py-2 px-2 md:px-3 -mb-[1px] cursor-pointer text-sm font-bold transition-colors ${
+              </Button>
+              <Button
+                variant='ghost'
+                className={`py-2 px-2 md:px-3 -mb-[1px] rounded-none cursor-pointer text-sm font-bold ${
                   streamActiveTab === 'kick'
                     ? 'border-b-[3px] border-white text-white'
                     : 'border-b-[3px] border-transparent text-neutral-400 hover:text-white'
                 }`}
                 onClick={() => setStreamActiveTab('kick')}>
                 Kick
-              </button>
+              </Button>
             </div>
             {streamActiveTab === 'twitch' && (
               <div>
@@ -281,24 +284,26 @@ export function AddVideoSection({
           <div>
             {!isMobile && (
               <div className='flex gap-2 sm:gap-3 md:gap-4 lg:gap-4 xl:gap-4 2xl:gap-5 border-b border-neutral-800 mb-3 justify-center'>
-                <button
-                  className={`py-2 px-2 md:px-3 -mb-[1px] cursor-pointer text-sm font-bold transition-colors ${
+                <Button
+                  variant='ghost'
+                  className={`py-2 px-2 md:px-3 -mb-[1px] rounded-none cursor-pointer text-sm font-bold ${
                     inputsActiveTab === 'camera'
                       ? 'border-b-[3px] border-white text-white'
                       : 'border-b-[3px] border-transparent text-neutral-400 hover:text-white'
                   }`}
                   onClick={() => setInputsActiveTab('camera')}>
                   Camera
-                </button>
-                <button
-                  className={`py-2 px-2 md:px-3 -mb-[1px] cursor-pointer text-sm font-bold transition-colors ${
+                </Button>
+                <Button
+                  variant='ghost'
+                  className={`py-2 px-2 md:px-3 -mb-[1px] rounded-none cursor-pointer text-sm font-bold ${
                     inputsActiveTab === 'screenshare'
                       ? 'border-b-[3px] border-white text-white'
                       : 'border-b-[3px] border-transparent text-neutral-400 hover:text-white'
                   }`}
                   onClick={() => setInputsActiveTab('screenshare')}>
                   Screenshare
-                </button>
+                </Button>
               </div>
             )}
             {(isMobile || inputsActiveTab === 'camera') && (

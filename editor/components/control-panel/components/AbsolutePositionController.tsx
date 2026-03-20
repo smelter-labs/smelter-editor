@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState, useEffect } from 'react';
+import { Input } from '@/components/ui/input';
 
 type Position = {
   top: number;
@@ -254,7 +255,7 @@ export function AbsolutePositionController({
             <label className='text-[10px] text-neutral-500 block'>
               {field[0].toUpperCase() + field.slice(1)}
             </label>
-            <input
+            <Input
               type='number'
               className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-1 py-0.5'
               value={pos[field]}

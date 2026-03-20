@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { Slider } from '@/components/ui/slider';
 
 type TransitionSettingsProps = {
   swapDurationMs: number;
@@ -144,13 +145,12 @@ export function TransitionSettings({
               {localSwapDuration}ms
             </span>
           </div>
-          <input
-            type='range'
+          <Slider
             min={100}
             max={2000}
             step={50}
-            value={localSwapDuration}
-            onChange={(e) => handleSwapDurationChange(Number(e.target.value))}
+            value={[localSwapDuration]}
+            onValueChange={(v) => handleSwapDurationChange(v[0])}
             className='w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-white'
           />
           <label className='flex items-center gap-2 cursor-pointer mt-3'>
@@ -193,15 +193,12 @@ export function TransitionSettings({
                   {localFadeOutDuration}ms
                 </span>
               </div>
-              <input
-                type='range'
+              <Slider
                 min={100}
                 max={2000}
                 step={50}
-                value={localFadeOutDuration}
-                onChange={(e) =>
-                  handleFadeOutDurationChange(Number(e.target.value))
-                }
+                value={[localFadeOutDuration]}
+                onValueChange={(v) => handleFadeOutDurationChange(v[0])}
                 className='w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-white'
               />
             </>
@@ -231,15 +228,12 @@ export function TransitionSettings({
                   {localFadeInDuration}ms
                 </span>
               </div>
-              <input
-                type='range'
+              <Slider
                 min={100}
                 max={2000}
                 step={50}
-                value={localFadeInDuration}
-                onChange={(e) =>
-                  handleFadeInDurationChange(Number(e.target.value))
-                }
+                value={[localFadeInDuration]}
+                onValueChange={(v) => handleFadeInDurationChange(v[0])}
                 className='w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-white'
               />
               <label className='flex items-center gap-2 cursor-pointer mt-3'>

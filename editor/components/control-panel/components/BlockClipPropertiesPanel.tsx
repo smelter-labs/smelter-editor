@@ -16,6 +16,13 @@ import type { BlockSettings, Keyframe } from '../hooks/use-timeline-state';
 import { PendingWhipInputs } from './PendingWhipInputs';
 import type { PendingWhipInput } from './ConfigurationSection';
 import { Link, Video, Monitor, Dices } from 'lucide-react';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 import { startPublish } from '../whip-input/utils/whip-publisher';
 import { startScreensharePublish } from '../whip-input/utils/screenshare-publisher';
 import { stopCameraAndConnection } from '../whip-input/utils/preview';
@@ -27,8 +34,11 @@ import { updateTimelineInputId } from '@/lib/room-config';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { Button } from '@/components/ui/button';
+import { Input as ShadcnInput } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Slider } from '@/components/ui/slider';
 import LoadingSpinner from '@/components/ui/spinner';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
 import { getRandomSnakeShaderPreset } from '@/lib/snake-shader-presets';
 import { getMp4Duration } from '@/app/actions/actions';
 import { AbsolutePositionController } from './AbsolutePositionController';
@@ -59,7 +69,7 @@ function SnakeShaderSection({
   const handleRandomPreset = useCallback(() => {
     const preset = getRandomSnakeShaderPreset(playerColor);
     onPatch(preset.shaders);
-    toast.info(`🎲 ${preset.name}`, { autoClose: 1500 });
+    toast.info(`🎲 ${preset.name}`, { duration: 1500 });
   }, [onPatch, playerColor]);
   const [sliderValues, setSliderValues] = useState<{ [key: string]: number }>(
     {},
@@ -188,13 +198,15 @@ function SnakeShaderSection({
     <div className='mt-2 border-t border-neutral-800 pt-2'>
       <div className='flex items-center justify-between mb-1'>
         <span className='text-xs text-neutral-400'>{label}</span>
-        <button
+        <Button
           type='button'
+          variant='ghost'
+          size='icon'
           title='Random shader preset'
           onClick={handleRandomPreset}
-          className='p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors cursor-pointer'>
+          className='h-6 w-6 text-neutral-400 hover:text-white cursor-pointer'>
           <Dices className='size-3.5' />
-        </button>
+        </Button>
       </div>
       <ShaderPanel
         input={fakeInput}
@@ -251,34 +263,36 @@ function TransitionRow({
     <div className='mb-2'>
       <span className='text-[11px] text-neutral-500 block mb-1'>{label}</span>
       <div className='flex items-center gap-2'>
-        <select
-          className='flex-1 bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1 rounded'
+        <Select
           value={type}
-          onChange={(e) => {
-            const val = e.target.value as TransitionType | 'none';
+          onValueChange={(val: TransitionType | 'none') => {
             if (val === 'none') {
               onChange(undefined);
             } else {
               onChange({ type: val, durationMs });
             }
           }}>
-          {TRANSITION_TYPES.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </select>
+          <SelectTrigger className='flex-1 bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1 rounded h-auto'>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {TRANSITION_TYPES.map((t) => (
+              <SelectItem key={t.value} value={t.value}>
+                {t.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         {type !== 'none' && (
           <div className='flex items-center gap-1.5'>
-            <input
-              type='range'
+            <Slider
               min={100}
               max={Math.min(2000, clampedMax)}
               step={50}
               className='w-20'
-              value={Math.min(durationMs, clampedMax)}
-              onChange={(e) => {
-                const ms = Number(e.target.value);
+              value={[Math.min(durationMs, clampedMax)]}
+              onValueChange={(v) => {
+                const ms = v[0];
                 onChange({ type: type as TransitionType, durationMs: ms });
               }}
             />
@@ -1214,10 +1228,12 @@ export function BlockClipPropertiesPanel({
           </div>
           <div className='flex flex-wrap gap-1.5 mb-2'>
             {selectedTimelineClip.keyframes.map((keyframe) => (
-              <button
+              <Button
                 key={keyframe.id}
                 type='button'
-                className={`rounded border px-2 py-1 text-[11px] cursor-pointer transition-colors ${
+                variant='outline'
+                size='sm'
+                className={`px-2 py-1 text-[11px] cursor-pointer ${
                   selectedTimelineKeyframe?.id === keyframe.id
                     ? 'border-red-400/70 bg-red-500/20 text-red-100'
                     : 'border-neutral-700 bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
@@ -1226,7 +1242,7 @@ export function BlockClipPropertiesPanel({
                 {keyframe.timeMs === 0
                   ? 'Base (0ms)'
                   : `${Math.round(keyframe.timeMs)}ms`}
-              </button>
+              </Button>
             ))}
           </div>
           {selectedTimelineKeyframe && (
@@ -1235,7 +1251,7 @@ export function BlockClipPropertiesPanel({
                 <label className='text-xs text-neutral-400 block mb-1'>
                   Time (ms)
                 </label>
-                <input
+                <ShadcnInput
                   type='number'
                   min={0}
                   max={
@@ -1267,14 +1283,13 @@ export function BlockClipPropertiesPanel({
       )}
       <div className='grid grid-cols-2 gap-2 mb-2'>
         <label className='text-xs text-neutral-400'>Volume</label>
-        <input
-          type='range'
+        <Slider
           min={0}
           max={1}
           step={0.01}
-          value={effectiveClip.blockSettings.volume}
-          onChange={(e) => {
-            void applyClipPatch({ volume: Number(e.target.value) });
+          value={[effectiveClip.blockSettings.volume]}
+          onValueChange={(v) => {
+            void applyClipPatch({ volume: v[0] });
           }}
         />
       </div>
@@ -1290,17 +1305,19 @@ export function BlockClipPropertiesPanel({
       </div>
       <div className='flex items-center justify-between mb-2'>
         <span className='text-xs text-neutral-400'>Orientation</span>
-        <select
-          className='bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
+        <Select
           value={effectiveClip.blockSettings.orientation}
-          onChange={(e) =>
-            void applyClipPatch({
-              orientation: e.target.value as 'horizontal' | 'vertical',
-            })
+          onValueChange={(v: 'horizontal' | 'vertical') =>
+            void applyClipPatch({ orientation: v })
           }>
-          <option value='horizontal'>Horizontal</option>
-          <option value='vertical'>Vertical</option>
-        </select>
+          <SelectTrigger className='bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1 h-auto'>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value='horizontal'>Horizontal</SelectItem>
+            <SelectItem value='vertical'>Vertical</SelectItem>
+          </SelectContent>
+        </Select>
       </div>
       <div className='border border-neutral-700 rounded p-2 mb-3 mt-1'>
         <div className='text-xs text-neutral-400 font-medium mb-2'>
@@ -1363,7 +1380,7 @@ export function BlockClipPropertiesPanel({
                 <label className='text-xs text-neutral-400 block mb-1'>
                   Duration (ms)
                 </label>
-                <input
+                <ShadcnInput
                   type='number'
                   min={0}
                   step={50}
@@ -1386,21 +1403,27 @@ export function BlockClipPropertiesPanel({
                 <label className='text-xs text-neutral-400 block mb-1'>
                   Easing
                 </label>
-                <select
-                  className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
+                <Select
                   value={
                     effectiveClip.blockSettings.absoluteTransitionEasing ??
                     'linear'
                   }
-                  onChange={(e) =>
+                  onValueChange={(v) =>
                     void applyClipPatch({
-                      absoluteTransitionEasing: e.target.value,
+                      absoluteTransitionEasing: v,
                     })
                   }>
-                  <option value='linear'>Linear</option>
-                  <option value='bounce'>Bounce</option>
-                  <option value='cubic_bezier_ease_in_out'>Ease in-out</option>
-                </select>
+                  <SelectTrigger className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1 h-auto'>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='linear'>Linear</SelectItem>
+                    <SelectItem value='bounce'>Bounce</SelectItem>
+                    <SelectItem value='cubic_bezier_ease_in_out'>
+                      Ease in-out
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </div>
           </>
@@ -1424,7 +1447,7 @@ export function BlockClipPropertiesPanel({
           <label className='text-xs text-neutral-400 block mb-1'>
             Border width
           </label>
-          <input
+          <ShadcnInput
             type='number'
             min={0}
             max={100}
@@ -1476,7 +1499,7 @@ export function BlockClipPropertiesPanel({
             <label className='text-xs text-neutral-400 self-center'>
               Play from (s)
             </label>
-            <input
+            <ShadcnInput
               type='number'
               min={0}
               step={0.1}
@@ -1567,7 +1590,7 @@ export function BlockClipPropertiesPanel({
             <label className='text-xs text-neutral-400 block mb-1'>
               Cell gap
             </label>
-            <input
+            <ShadcnInput
               type='number'
               min={0}
               max={20}
@@ -1609,16 +1632,15 @@ export function BlockClipPropertiesPanel({
             <label className='text-xs text-neutral-400 block mb-1'>
               Grid opacity
             </label>
-            <input
-              type='range'
+            <Slider
               min={0}
               max={1}
               step={0.01}
               className='w-full'
-              value={effectiveClip.blockSettings.gameGridLineAlpha ?? 1.0}
-              onChange={(e) =>
+              value={[effectiveClip.blockSettings.gameGridLineAlpha ?? 1.0]}
+              onValueChange={(v) =>
                 void applyClipPatch({
-                  gameGridLineAlpha: Number(e.target.value),
+                  gameGridLineAlpha: v[0],
                 })
               }
             />
@@ -1670,9 +1692,11 @@ export function BlockClipPropertiesPanel({
       )}
       <div className='flex items-center justify-between mb-2'>
         <span className='text-xs text-neutral-400'>Attached inputs</span>
-        <button
+        <Button
           ref={attachBtnRef}
-          className='flex items-center gap-1 text-xs px-2 py-1 rounded border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 cursor-pointer transition-colors'
+          variant='outline'
+          size='sm'
+          className='flex items-center gap-1 text-xs px-2 py-1 border-neutral-700 bg-neutral-800 hover:bg-neutral-700 cursor-pointer'
           onClick={() => {
             if (!showAttachMenu && attachBtnRef.current) {
               const rect = attachBtnRef.current.getBoundingClientRect();
@@ -1688,7 +1712,7 @@ export function BlockClipPropertiesPanel({
               ? `${effectiveClip.blockSettings.attachedInputIds!.length} attached`
               : 'None'}
           </span>
-        </button>
+        </Button>
         {showAttachMenu &&
           attachMenuPos &&
           createPortal(
@@ -1745,7 +1769,7 @@ export function BlockClipPropertiesPanel({
         <div className='mt-2 space-y-2'>
           <div>
             <label className='text-xs text-neutral-400 block mb-1'>Text</label>
-            <textarea
+            <Textarea
               className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs p-2 min-h-[80px]'
               value={effectiveClip.blockSettings.text || ''}
               onChange={(e) => void applyClipPatch({ text: e.target.value })}
@@ -1756,18 +1780,20 @@ export function BlockClipPropertiesPanel({
               <label className='text-xs text-neutral-400 block mb-1'>
                 Align
               </label>
-              <select
-                className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
+              <Select
                 value={effectiveClip.blockSettings.textAlign || 'left'}
-                onChange={(e) =>
-                  void applyClipPatch({
-                    textAlign: e.target.value as 'left' | 'center' | 'right',
-                  })
+                onValueChange={(v: 'left' | 'center' | 'right') =>
+                  void applyClipPatch({ textAlign: v })
                 }>
-                <option value='left'>Left</option>
-                <option value='center'>Center</option>
-                <option value='right'>Right</option>
-              </select>
+                <SelectTrigger className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1 h-auto'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value='left'>Left</SelectItem>
+                  <SelectItem value='center'>Center</SelectItem>
+                  <SelectItem value='right'>Right</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
             <div>
               <label className='text-xs text-neutral-400 block mb-1'>
@@ -1788,7 +1814,7 @@ export function BlockClipPropertiesPanel({
               <label className='text-xs text-neutral-400 block mb-1'>
                 Font size
               </label>
-              <input
+              <ShadcnInput
                 type='number'
                 min={8}
                 max={300}
@@ -1805,7 +1831,7 @@ export function BlockClipPropertiesPanel({
               <label className='text-xs text-neutral-400 block mb-1'>
                 Max lines
               </label>
-              <input
+              <ShadcnInput
                 type='number'
                 min={1}
                 max={50}
@@ -1824,20 +1850,17 @@ export function BlockClipPropertiesPanel({
               Scroll speed
             </label>
             <div className='flex items-center gap-2'>
-              <input
-                type='range'
+              <Slider
                 min={1}
                 max={400}
                 step={1}
                 className='flex-1'
-                value={
+                value={[
                   textScrollSpeedDraft ??
-                  effectiveClip.blockSettings.textScrollSpeed ??
-                  80
-                }
-                onChange={(e) =>
-                  handleTextScrollSpeedChange(Number(e.target.value) || 80)
-                }
+                    effectiveClip.blockSettings.textScrollSpeed ??
+                    80,
+                ]}
+                onValueChange={(v) => handleTextScrollSpeedChange(v[0] || 80)}
               />
               <span className='text-xs text-neutral-500 w-8 text-right'>
                 {textScrollSpeedDraft ??

@@ -4,6 +4,7 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import type { Input, Layout } from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
 import { Button } from '@/components/ui/button';
+import { Input as ShadcnInput } from '@/components/ui/input';
 import LoadingSpinner from '@/components/ui/spinner';
 import { Download, Upload } from 'lucide-react';
 import {
@@ -18,7 +19,7 @@ import {
   type RoomConfigInput,
   type RoomConfigTransitionSettings,
 } from '@/lib/room-config';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
 
 type ConfigurationSectionProps = {
   inputs: Input[];
@@ -377,7 +378,7 @@ export function ConfigurationSection({
           </span>
         )}
       </Button>
-      <input
+      <ShadcnInput
         ref={fileInputRef}
         type='file'
         accept='.json,application/json'

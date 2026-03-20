@@ -8,7 +8,7 @@ import {
   saveLastWhipInputId,
 } from '../whip-input/utils/whip-storage';
 import { startPublish } from '../whip-input/utils/whip-publisher';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
 import type React from 'react';
 import { useState } from 'react';
 import { useIsMobileDevice } from '@/hooks/use-mobile';

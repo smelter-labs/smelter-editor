@@ -1,5 +1,7 @@
 import { URLSearchParams } from 'url';
 
+import type { ChannelInfo } from '@smelter-editor/types';
+
 const kickAuth = {
   token: null as string | null,
   clientId: null as string | null,
@@ -112,7 +114,5 @@ export async function getKickStreamInfo(
     category: stream?.category.name || '',
   };
 }
-
-import type { ChannelInfo } from '@smelter-editor/types';
 
 export type KickStreamInfo = ChannelInfo;

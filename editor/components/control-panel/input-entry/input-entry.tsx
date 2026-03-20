@@ -36,6 +36,8 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { toggleMotionDetection } from '@/app/actions/actions';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { hexToPackedInt, packedIntToHex } from '@/lib/color-utils';
+import { Input as ShadcnInput } from '@/components/ui/input';
+import { Slider } from '@/components/ui/slider';
 
 const SHADER_SETTINGS_DEBOUNCE_MS = 200;
 const VIDEO_INPUT_TYPES = [
@@ -826,7 +828,7 @@ export default function InputEntry({
           <div className='flex items-center gap-3 px-2 py-1'>
             <div className='flex items-center gap-1'>
               <label className='text-xs text-neutral-400'>Gap</label>
-              <input
+              <ShadcnInput
                 type='number'
                 min={0}
                 max={20}
@@ -842,7 +844,7 @@ export default function InputEntry({
             </div>
             <div className='flex items-center gap-1'>
               <label className='text-xs text-neutral-400'>Border</label>
-              <input
+              <ShadcnInput
                 type='number'
                 min={0}
                 max={20}
@@ -886,16 +888,15 @@ export default function InputEntry({
             </div>
             <div className='flex items-center gap-1'>
               <label className='text-xs text-neutral-400'>α</label>
-              <input
-                type='range'
+              <Slider
                 min={0}
                 max={1}
                 step={0.01}
                 className='w-16'
-                value={input.gameGridLineAlpha ?? 1.0}
-                onChange={(e) => {
+                value={[input.gameGridLineAlpha ?? 1.0]}
+                onValueChange={(v) => {
                   void actions.updateInput(roomId, input.inputId, {
-                    gameGridLineAlpha: Number(e.target.value),
+                    gameGridLineAlpha: v[0],
                   });
                 }}
               />

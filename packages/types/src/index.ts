@@ -1,10 +1,28 @@
 export type { Resolution, ResolutionPreset } from './resolution.js';
 export { RESOLUTION_PRESETS } from './resolution.js';
 
+export type { ChannelInfo } from './channel-info.js';
+
+export type {
+  ConnectedPeer,
+  ConnectedEvent,
+  InputUpdatedEvent,
+  InputDeletedEvent,
+  PeersUpdatedEvent,
+  RoomEvent,
+} from './room-events.js';
+
+export type { RoomNameEntry } from './room-names.js';
+
 export { Layouts } from './layout.js';
 export type { Layout } from './layout.js';
 
-export type { ShaderParamConfig, ShaderConfig, ShaderPreset } from './shader.js';
+export type {
+  ShaderParam,
+  ShaderParamConfig,
+  ShaderConfig,
+  ShaderPreset,
+} from './shader.js';
 
 export type {
   TransitionType,
