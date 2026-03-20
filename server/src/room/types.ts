@@ -8,6 +8,7 @@ import type {
   InputDisplayProperties,
   BorderProperties,
   AbsolutePositionProperties,
+  CropProperties,
   EqualizerConfig,
 } from '../types';
 import type { StoreApi } from 'zustand';
@@ -56,6 +57,7 @@ export type RoomInputState = {
 } & InputDisplayProperties &
   BorderProperties &
   Partial<AbsolutePositionProperties> &
+  Partial<CropProperties> &
   TypeSpecificState;
 
 type TypeSpecificState =

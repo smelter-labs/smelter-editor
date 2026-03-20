@@ -427,6 +427,10 @@ export function buildUpdateFromBlockSettings(
     absoluteHeight: bs.absoluteHeight,
     absoluteTransitionDurationMs: bs.absoluteTransitionDurationMs,
     absoluteTransitionEasing: bs.absoluteTransitionEasing,
+    cropTop: bs.cropTop,
+    cropLeft: bs.cropLeft,
+    cropRight: bs.cropRight,
+    cropBottom: bs.cropBottom,
     gameBackgroundColor: bs.gameBackgroundColor,
     gameCellGap: bs.gameCellGap,
     gameBoardBorderColor: bs.gameBoardBorderColor,
@@ -466,6 +470,10 @@ function buildUpdateFromRoomInput(
     absoluteHeight: input.absoluteHeight,
     absoluteTransitionDurationMs: input.absoluteTransitionDurationMs,
     absoluteTransitionEasing: input.absoluteTransitionEasing,
+    cropTop: input.cropTop,
+    cropLeft: input.cropLeft,
+    cropRight: input.cropRight,
+    cropBottom: input.cropBottom,
     gameBackgroundColor:
       input.type === 'game' ? input.snakeGameState.backgroundColor : undefined,
     gameCellGap:

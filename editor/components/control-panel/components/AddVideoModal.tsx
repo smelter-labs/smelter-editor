@@ -259,7 +259,7 @@ export function AddVideoModal({
         <div className='flex flex-col h-full'>
           {/* Header + Filter */}
           <div className='px-5 pt-5 pb-3 border-b border-[#3a494b]/20'>
-            <div className='flex items-center justify-between mb-3'>
+            <div className='flex items-center justify-between mb-3 pr-6'>
               <h2 className='font-headline font-bold text-sm tracking-widest text-[#00f3ff] uppercase'>
                 ACTIVE_ASSET_REPOSITORY
               </h2>

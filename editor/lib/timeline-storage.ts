@@ -54,6 +54,10 @@ export type StoredBlockSettings = {
   absoluteHeight?: number;
   absoluteTransitionDurationMs?: number;
   absoluteTransitionEasing?: string;
+  cropTop?: number;
+  cropLeft?: number;
+  cropRight?: number;
+  cropBottom?: number;
   mp4PlayFromMs?: number;
   mp4Loop?: boolean;
   mp4DurationMs?: number;

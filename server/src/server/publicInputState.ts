@@ -27,6 +27,10 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
     absoluteHeight: input.absoluteHeight,
     absoluteTransitionDurationMs: input.absoluteTransitionDurationMs,
     absoluteTransitionEasing: input.absoluteTransitionEasing,
+    cropTop: input.cropTop,
+    cropLeft: input.cropLeft,
+    cropRight: input.cropRight,
+    cropBottom: input.cropBottom,
     motionScore: input.motionScore,
     motionEnabled: input.motionEnabled,
   };

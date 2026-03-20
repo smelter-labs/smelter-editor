@@ -305,13 +305,17 @@ export function createBlockSettingsFromInput(input?: Input): BlockSettings {
           params: (s.params || []).map((p) => ({ ...p })),
         }))
       : undefined,
-    absolutePosition: input?.absolutePosition,
+    absolutePosition: input?.absolutePosition ?? true,
     absoluteTop: input?.absoluteTop,
     absoluteLeft: input?.absoluteLeft,
     absoluteWidth: input?.absoluteWidth,
     absoluteHeight: input?.absoluteHeight,
     absoluteTransitionDurationMs: input?.absoluteTransitionDurationMs,
     absoluteTransitionEasing: input?.absoluteTransitionEasing,
+    cropTop: input?.cropTop,
+    cropLeft: input?.cropLeft,
+    cropRight: input?.cropRight,
+    cropBottom: input?.cropBottom,
     equalizerConfig: input?.equalizerConfig
       ? { ...input.equalizerConfig }
       : undefined,

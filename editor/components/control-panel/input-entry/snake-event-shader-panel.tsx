@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { hexToPackedInt, packedIntToHex } from '@/lib/color-utils';
 import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Slider } from '@/components/ui/slider';
 import {
   Select,
@@ -503,8 +504,7 @@ export default function SnakeEventShaderPanel({
                         <label className='text-xs text-neutral-400 shrink-0'>
                           N:
                         </label>
-                        <Input
-                          type='number'
+                        <NumberInput
                           min={1}
                           value={
                             (
@@ -533,8 +533,7 @@ export default function SnakeEventShaderPanel({
                           <label className='text-xs text-neutral-400 shrink-0'>
                             Duration:
                           </label>
-                          <Input
-                            type='number'
+                          <NumberInput
                             min={0}
                             step={50}
                             value={
@@ -561,8 +560,7 @@ export default function SnakeEventShaderPanel({
                           <label className='text-xs text-neutral-400 shrink-0'>
                             Delay:
                           </label>
-                          <Input
-                            type='number'
+                          <NumberInput
                             min={0}
                             step={10}
                             value={
@@ -593,8 +591,7 @@ export default function SnakeEventShaderPanel({
                       <label className='text-xs text-neutral-400 shrink-0'>
                         Effect Duration:
                       </label>
-                      <Input
-                        type='number'
+                      <NumberInput
                         min={50}
                         step={50}
                         value={mapping.effectDurationMs}

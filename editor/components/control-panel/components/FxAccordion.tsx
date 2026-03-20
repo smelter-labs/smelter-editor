@@ -63,8 +63,6 @@ export function FxAccordion({ fxInput, onClose }: FxPanelProps) {
           roomId={roomId}
           availableShaders={availableShaders}
           canRemove={inputs.length > 1}
-          canMoveUp={false}
-          canMoveDown={false}
           pcRef={cameraPcRef}
           streamRef={cameraStreamRef}
           isFxOpen={true}

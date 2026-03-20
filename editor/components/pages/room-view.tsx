@@ -13,6 +13,8 @@ import VideoPreview from '@/components/video-preview';
 import ControlPanel from '@/components/control-panel/control-panel';
 import DashboardLayout from '@/components/dashboard/dashboard-layout';
 import { ConnectedDevicesPanel } from '@/components/dashboard/connected-devices-panel';
+import { SystemLogPanel } from '@/components/dashboard/system-log-panel';
+import { LayoutPreviewPanel } from '@/components/dashboard/layout-preview-panel';
 import { Button } from '@/components/ui/button';
 import { RotateCw } from 'lucide-react';
 import {
@@ -179,7 +181,6 @@ export default function RoomView({
         refreshState={refreshState}
         settingsNavPortalRef={settingsNavPortalRef}
         renderDashboard={({
-          addVideoSection,
           streamsSection,
           fxSection,
           timelineSection,
@@ -196,12 +197,20 @@ export default function RoomView({
                 roomId={roomId}
               />
             ),
-            'add-video': addVideoSection,
             streams: streamsSection,
             fx: fxSection,
             timeline: timelineSection,
             'block-properties': blockPropertiesSection,
             'connected-devices': <ConnectedDevicesPanel peers={peers} />,
+            'system-log': <SystemLogPanel />,
+            'layout-preview': (
+              <LayoutPreviewPanel
+                inputs={roomState.inputs}
+                resolution={
+                  roomState.resolution ?? { width: 1920, height: 1080 }
+                }
+              />
+            ),
           };
 
           const allPanels = { ...staticPanels, ...motionPanels };

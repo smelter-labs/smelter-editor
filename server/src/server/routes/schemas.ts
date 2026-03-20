@@ -199,6 +199,10 @@ export const UpdateInputSchema = Type.Object({
   absoluteHeight: Type.Optional(Type.Number({ minimum: 0 })),
   absoluteTransitionDurationMs: Type.Optional(Type.Number({ minimum: 0 })),
   absoluteTransitionEasing: Type.Optional(Type.String()),
+  cropTop: Type.Optional(Type.Number({ minimum: 0 })),
+  cropLeft: Type.Optional(Type.Number({ minimum: 0 })),
+  cropRight: Type.Optional(Type.Number({ minimum: 0 })),
+  cropBottom: Type.Optional(Type.Number({ minimum: 0 })),
   activeTransition: Type.Optional(ActiveTransitionSchema),
 });
 
@@ -270,6 +274,10 @@ const RoomConfigInputSchema = Type.Object({
   absoluteHeight: Type.Optional(Type.Number()),
   absoluteTransitionDurationMs: Type.Optional(Type.Number()),
   absoluteTransitionEasing: Type.Optional(Type.String()),
+  cropTop: Type.Optional(Type.Number({ minimum: 0 })),
+  cropLeft: Type.Optional(Type.Number({ minimum: 0 })),
+  cropRight: Type.Optional(Type.Number({ minimum: 0 })),
+  cropBottom: Type.Optional(Type.Number({ minimum: 0 })),
 });
 
 export const RoomConfigSchema = Type.Object({

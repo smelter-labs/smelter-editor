@@ -6,6 +6,7 @@ import type {
   InputDisplayProperties,
   TextInputProperties,
   AbsolutePositionProperties,
+  CropProperties,
   BorderProperties,
   SnakeGameDisplayProperties,
   MotionProperties,
@@ -28,6 +29,7 @@ export type PublicInputState = {
 } & InputDisplayProperties &
   Partial<TextInputProperties> &
   Partial<AbsolutePositionProperties> &
+  Partial<CropProperties> &
   Partial<BorderProperties> &
   Partial<SnakeGameDisplayProperties> &
   Partial<MotionProperties> &

@@ -52,23 +52,60 @@ function OutputScene() {
         height,
         overflow: 'visible',
       }}>
-      {inputs.map((input) => (
-        <Rescaler
-          key={input.inputId}
-          id={`absolute-${input.inputId}`}
-          transition={{
-            durationMs: input.absoluteTransitionDurationMs ?? 300,
-            easingFunction: buildEasingFunction(input.absoluteTransitionEasing),
-          }}
-          style={{
-            top: input.absoluteTop ?? 0,
-            left: input.absoluteLeft ?? 0,
-            width: input.absoluteWidth ?? Math.round(width * 0.5),
-            height: input.absoluteHeight ?? Math.round(height * 0.5),
-          }}>
-          <Input input={input} />
-        </Rescaler>
-      ))}
+      {inputs.map((input) => {
+        const t = input.absoluteTop ?? 0;
+        const l = input.absoluteLeft ?? 0;
+        const w = input.absoluteWidth ?? Math.round(width * 0.5);
+        const h = input.absoluteHeight ?? Math.round(height * 0.5);
+        const cT = input.cropTop ?? 0;
+        const cL = input.cropLeft ?? 0;
+        const cR = input.cropRight ?? 0;
+        const cB = input.cropBottom ?? 0;
+        const hasCrop = cT || cL || cR || cB;
+
+        const transition = {
+          durationMs: input.absoluteTransitionDurationMs ?? 300,
+          easingFunction: buildEasingFunction(input.absoluteTransitionEasing),
+        };
+
+        const inner = <Input input={input} />;
+
+        if (hasCrop) {
+          return (
+            <View
+              key={input.inputId}
+              style={{
+                overflow: 'hidden' as const,
+                top: t + cT,
+                left: l + cL,
+                width: w - cL - cR,
+                height: h - cT - cB,
+              }}>
+              <Rescaler
+                id={`absolute-${input.inputId}`}
+                transition={transition}
+                style={{
+                  top: -cT,
+                  left: -cL,
+                  width: w,
+                  height: h,
+                }}>
+                {inner}
+              </Rescaler>
+            </View>
+          );
+        }
+
+        return (
+          <Rescaler
+            key={input.inputId}
+            id={`absolute-${input.inputId}`}
+            transition={transition}
+            style={{ top: t, left: l, width: w, height: h }}>
+            {inner}
+          </Rescaler>
+        );
+      })}
       <NewsStripOverlay />
     </View>
   );

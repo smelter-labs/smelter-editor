@@ -16,7 +16,7 @@ import type {
 import { state } from './serverState';
 import { roomEventBus } from './roomEventBus';
 import { registerStorageRoutes } from './storageRoutes';
-import { logRequest } from '../dashboard';
+import { logRequest, addLogListener, getLogBuffer } from '../dashboard';
 import {
   registerSnakeGameRoutes,
   clearSnakeGameRoomInactivityTimer,
@@ -283,6 +283,10 @@ const InputSchema = Type.Union([
     bgOpacity: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
     gap: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
     smoothing: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
+  }),
+  Type.Object({
+    type: Type.Literal('hands'),
+    sourceInputId: Type.String(),
   }),
 ]);
 
@@ -951,6 +955,7 @@ routes.get<RoomIdParams>(
 );
 
 const UpdateInputSchema = Type.Object({
+  title: Type.Optional(Type.String()),
   volume: Type.Optional(Type.Number({ maximum: 1, minimum: 0 })),
   showTitle: Type.Optional(Type.Boolean()),
   shaders: Type.Optional(
@@ -1005,6 +1010,10 @@ const UpdateInputSchema = Type.Object({
   absoluteHeight: Type.Optional(Type.Number({ minimum: 0 })),
   absoluteTransitionDurationMs: Type.Optional(Type.Number({ minimum: 0 })),
   absoluteTransitionEasing: Type.Optional(Type.String()),
+  cropTop: Type.Optional(Type.Number({ minimum: 0 })),
+  cropLeft: Type.Optional(Type.Number({ minimum: 0 })),
+  cropRight: Type.Optional(Type.Number({ minimum: 0 })),
+  cropBottom: Type.Optional(Type.Number({ minimum: 0 })),
   activeTransition: Type.Optional(ActiveTransitionSchema),
 });
 
@@ -1171,6 +1180,40 @@ routes.get<RoomIdParams>(
     });
   },
 );
+
+routes.get('/logs/sse', async (req, res) => {
+  res.raw.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+    'Access-Control-Allow-Origin': '*',
+  });
+
+  const batch = getLogBuffer();
+  if (batch.length > 0) {
+    res.raw.write(`event: batch\ndata: ${JSON.stringify(batch)}\n\n`);
+  }
+
+  const unsubscribe = addLogListener((entry) => {
+    if (!res.raw.destroyed) {
+      res.raw.write(`data: ${JSON.stringify(entry)}\n\n`);
+    }
+  });
+
+  const heartbeat = setInterval(() => {
+    if (res.raw.destroyed) {
+      clearInterval(heartbeat);
+      unsubscribe();
+      return;
+    }
+    res.raw.write(': heartbeat\n\n');
+  }, 15000);
+
+  req.raw.on('close', () => {
+    clearInterval(heartbeat);
+    unsubscribe();
+  });
+});
 
 routes.delete<RoomIdParams>(
   '/room/:roomId',

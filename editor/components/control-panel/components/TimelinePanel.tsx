@@ -57,6 +57,8 @@ import {
   DEFAULT_HEIGHT,
   TRACK_HEIGHT,
   SOURCES_WIDTH,
+  MIN_SOURCES_WIDTH,
+  MAX_SOURCES_WIDTH,
   SNAP_THRESHOLD_PX,
   RESIZE_HANDLE_PX,
   MIN_MOVABLE_KEYFRAME_MS,
@@ -71,6 +73,7 @@ import {
   computeKeyframeSnapTargets,
   resolveKeyframeCollision,
   findOrphanedInputIds,
+  getContentExtentMs,
 } from './timeline/timeline-utils';
 import { ColorSwatch } from './timeline/ColorSwatch';
 import { ShortcutGroup } from './timeline/ShortcutGroup';
@@ -583,6 +586,11 @@ export function TimelinePanel({
   const startYRef = useRef(0);
   const startHeightRef = useRef(0);
 
+  const [sourcesWidth, setSourcesWidth] = useState(SOURCES_WIDTH);
+  const sourcesResizingRef = useRef(false);
+  const sourcesStartXRef = useRef(0);
+  const sourcesStartWidthRef = useRef(0);
+
   const [contextMenu, setContextMenu] = useState<{
     x: number;
     y: number;
@@ -647,20 +655,28 @@ export function TimelinePanel({
     return () => el.removeEventListener('scroll', onScroll);
   }, []);
 
-  // ── Auto-fit zoom so total duration sits at ~90% width ──
+  // ── Auto-fit zoom so all clips are visible at max zoom ──
   const autoFitRef = useRef(false);
   useEffect(() => {
     if (autoFitRef.current) return;
+    if (state.tracks.length === 0) return;
     const el = scrollContainerRef.current;
     if (!el) return;
-    const availableWidth = el.clientWidth - SOURCES_WIDTH;
-    if (availableWidth <= 0) return;
-    const durationSec = state.totalDurationMs / 1000;
-    if (durationSec <= 0) return;
-    const idealPps = (availableWidth * 0.9) / durationSec;
-    setZoom(idealPps);
-    autoFitRef.current = true;
-  }, [state.totalDurationMs, setZoom]);
+    const rafId = requestAnimationFrame(() => {
+      if (autoFitRef.current) return;
+      const availableWidth = el.clientWidth - sourcesWidth;
+      if (availableWidth <= 0) return;
+      const extentMs = getContentExtentMs(state.tracks);
+      const extentSec =
+        (extentMs > 0 ? extentMs : state.totalDurationMs) / 1000;
+      if (extentSec <= 0) return;
+      const padding = 40;
+      const idealPps = Math.max(1, availableWidth - padding) / extentSec;
+      setZoom(idealPps);
+      autoFitRef.current = true;
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [state.tracks, state.totalDurationMs, setZoom, sourcesWidth]);
 
   // ── Timeline dimensions ──────────────────────────────
 
@@ -709,6 +725,42 @@ export function TimelinePanel({
       document.addEventListener('mouseup', handleMouseUp);
     },
     [panelHeight],
+  );
+
+  // ── Sources column resize ────────────────────────────
+
+  const handleSourcesResizeStart = useCallback(
+    (e: ReactMouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      sourcesResizingRef.current = true;
+      sourcesStartXRef.current = e.clientX;
+      sourcesStartWidthRef.current = sourcesWidth;
+
+      const handleMouseMove = (ev: globalThis.MouseEvent) => {
+        if (!sourcesResizingRef.current) return;
+        const delta = ev.clientX - sourcesStartXRef.current;
+        const newWidth = Math.min(
+          MAX_SOURCES_WIDTH,
+          Math.max(MIN_SOURCES_WIDTH, sourcesStartWidthRef.current + delta),
+        );
+        setSourcesWidth(newWidth);
+      };
+
+      const handleMouseUp = () => {
+        sourcesResizingRef.current = false;
+        document.body.style.userSelect = '';
+        document.body.style.cursor = '';
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', handleMouseUp);
+      };
+
+      document.body.style.userSelect = 'none';
+      document.body.style.cursor = 'col-resize';
+      document.addEventListener('mousemove', handleMouseMove);
+      document.addEventListener('mouseup', handleMouseUp);
+    },
+    [sourcesWidth],
   );
 
   // ── Track click ──────────────────────────────────────
@@ -784,13 +836,31 @@ export function TimelinePanel({
 
   // ── Zoom ─────────────────────────────────────────────
 
+  const ZOOM_TRANSITION_MS = 180;
+  const zoomTransitionStyle = `left ${ZOOM_TRANSITION_MS}ms ease-out, width ${ZOOM_TRANSITION_MS}ms ease-out`;
+  const [zoomAnimating, setZoomAnimating] = useState(false);
+  const zoomTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const animateZoom = useCallback(
+    (pps: number) => {
+      setZoomAnimating(true);
+      setZoom(pps);
+      if (zoomTimerRef.current) clearTimeout(zoomTimerRef.current);
+      zoomTimerRef.current = setTimeout(
+        () => setZoomAnimating(false),
+        ZOOM_TRANSITION_MS,
+      );
+    },
+    [setZoom],
+  );
+
   const handleZoomIn = useCallback(() => {
-    setZoom(state.pixelsPerSecond * 1.5);
-  }, [state.pixelsPerSecond, setZoom]);
+    animateZoom(state.pixelsPerSecond * 1.5);
+  }, [state.pixelsPerSecond, animateZoom]);
 
   const handleZoomOut = useCallback(() => {
-    setZoom(state.pixelsPerSecond / 1.5);
-  }, [state.pixelsPerSecond, setZoom]);
+    animateZoom(state.pixelsPerSecond / 1.5);
+  }, [state.pixelsPerSecond, animateZoom]);
 
   // ── Scroll to playhead ───────────────────────────────
 
@@ -798,9 +868,9 @@ export function TimelinePanel({
     const el = scrollContainerRef.current;
     if (!el) return;
     const phPx = (state.playheadMs / 1000) * state.pixelsPerSecond;
-    const viewportWidth = el.clientWidth - SOURCES_WIDTH;
+    const viewportWidth = el.clientWidth - sourcesWidth;
     el.scrollLeft = Math.max(0, phPx - viewportWidth / 2);
-  }, [state.playheadMs, state.pixelsPerSecond]);
+  }, [state.playheadMs, state.pixelsPerSecond, sourcesWidth]);
 
   // ── Find clip at playhead for selected track ──────
 
@@ -1078,28 +1148,30 @@ export function TimelinePanel({
         case '=': {
           if (ctrl) {
             e.preventDefault();
-            setZoom(state.pixelsPerSecond * 1.5);
+            animateZoom(state.pixelsPerSecond * 1.5);
           } else if (key === '+') {
             e.preventDefault();
-            setZoom(state.pixelsPerSecond * 1.5);
+            animateZoom(state.pixelsPerSecond * 1.5);
           }
           break;
         }
         case '-': {
           if (ctrl) e.preventDefault();
-          setZoom(state.pixelsPerSecond / 1.5);
+          animateZoom(state.pixelsPerSecond / 1.5);
           break;
         }
         case '0': {
           if (ctrl) break;
           e.preventDefault();
-          // Auto-fit zoom
           const el = scrollContainerRef.current;
           if (el) {
-            const availableWidth = el.clientWidth - SOURCES_WIDTH;
-            const durationSec = state.totalDurationMs / 1000;
-            if (durationSec > 0 && availableWidth > 0) {
-              setZoom((availableWidth * 0.9) / durationSec);
+            const availableWidth = el.clientWidth - sourcesWidth;
+            const extentMs = getContentExtentMs(state.tracks);
+            const extentSec =
+              (extentMs > 0 ? extentMs : state.totalDurationMs) / 1000;
+            if (extentSec > 0 && availableWidth > 0) {
+              const padding = 40;
+              animateZoom(Math.max(1, availableWidth - padding) / extentSec);
             }
           }
           break;
@@ -1202,6 +1274,7 @@ export function TimelinePanel({
     stop,
     setPlayhead,
     setZoom,
+    animateZoom,
     scrollToPlayhead,
     jumpToEdge,
     navigateTrack,
@@ -1810,11 +1883,14 @@ export function TimelinePanel({
               type='button'
               variant='ghost'
               size='icon'
-              className='absolute z-20 size-3 -ml-1.5 -mt-1.5 border border-background transition-transform hover:scale-110 p-0 rounded-none'
+              className='absolute z-20 size-3 -ml-1.5 -mt-1.5 border border-background hover:scale-110 p-0 rounded-none'
               style={{
                 left: leftPx,
                 top: TRACK_HEIGHT / 2,
                 transform: 'rotate(45deg)',
+                transition: zoomAnimating
+                  ? `left ${ZOOM_TRANSITION_MS}ms ease-out, transform 150ms`
+                  : 'transform 150ms',
                 cursor: keyframe.timeMs === 0 ? 'pointer' : 'ew-resize',
                 backgroundColor: isSelected
                   ? 'rgb(248 113 113)'
@@ -1877,16 +1953,16 @@ export function TimelinePanel({
         const colors = tc
           ? {
               dot: tc,
-              segBg: hexToHsla(tc, 0.4),
-              segBorder: hexToHsla(tc, 0.6),
+              segBg: hexToHsla(tc, 0.18),
+              segBorder: hexToHsla(tc, 0.35),
               ring: hexToHsla(tc, 0.7),
             }
           : baseColors;
         const disconnectedBg = isDisconnected
-          ? 'hsla(0, 0%, 45%, 0.25)'
+          ? 'hsla(0, 0%, 45%, 0.15)'
           : undefined;
         const disconnectedBorder = isDisconnected
-          ? 'hsla(0, 0%, 55%, 0.4)'
+          ? 'hsla(0, 0%, 55%, 0.25)'
           : undefined;
         const disconnectedRing = isDisconnected
           ? 'hsla(0, 0%, 60%, 0.5)'
@@ -1916,6 +1992,7 @@ export function TimelinePanel({
               left: leftPx,
               width: Math.max(widthPx, 2),
               cursor: 'grab',
+              transition: zoomAnimating ? zoomTransitionStyle : undefined,
               backgroundColor: colors?.segBg ?? disconnectedBg,
               borderColor: colors?.segBorder ?? disconnectedBorder,
               borderStyle: isDisconnected ? 'dashed' : undefined,
@@ -2204,12 +2281,16 @@ export function TimelinePanel({
       {/* Header: Sources label + ruler */}
       <div className='flex shrink-0'>
         <div
-          className='shrink-0 bg-background flex items-center px-3'
-          style={{ width: SOURCES_WIDTH }}>
+          className='shrink-0 bg-muted/40 flex items-center px-3 border-b border-border'
+          style={{ width: sourcesWidth }}>
           <span className='text-[11px] text-muted-foreground uppercase tracking-wider font-medium'>
             Sources
           </span>
         </div>
+        <div
+          className='w-1 shrink-0 cursor-col-resize hover:bg-accent active:bg-accent/80 transition-colors border-b border-border'
+          onMouseDown={handleSourcesResizeStart}
+        />
         <div
           ref={rulerRef}
           className='flex-1 h-7 bg-background border-b border-border relative cursor-pointer overflow-x-hidden touch-none'
@@ -2219,14 +2300,25 @@ export function TimelinePanel({
           onPointerCancel={handleRulerPointerUp}>
           <div
             className='relative h-full pointer-events-none'
-            style={{ width: timelineWidthPx, minWidth: '100%' }}>
+            style={{
+              width: timelineWidthPx,
+              minWidth: '100%',
+              transition: zoomAnimating
+                ? `width ${ZOOM_TRANSITION_MS}ms ease-out`
+                : undefined,
+            }}>
             {rulerTicks.map((tick) => {
               const x = (tick.timeMs / 1000) * state.pixelsPerSecond;
               return (
                 <div
                   key={tick.timeMs}
                   className='absolute flex flex-col items-center top-0 bottom-0 justify-end'
-                  style={{ left: x }}>
+                  style={{
+                    left: x,
+                    transition: zoomAnimating
+                      ? `left ${ZOOM_TRANSITION_MS}ms ease-out`
+                      : undefined,
+                  }}>
                   <span className='text-[10px] text-muted-foreground font-mono -translate-x-1/2 leading-none mb-1'>
                     {tick.label}
                   </span>
@@ -2237,7 +2329,12 @@ export function TimelinePanel({
             {/* Playhead marker on ruler */}
             <div
               className='absolute top-0 bottom-0 w-px bg-red-500 z-10 pointer-events-none'
-              style={{ left: playheadPx }}
+              style={{
+                left: playheadPx,
+                transition: zoomAnimating
+                  ? `left ${ZOOM_TRANSITION_MS}ms ease-out`
+                  : undefined,
+              }}
             />
           </div>
         </div>
@@ -2312,8 +2409,8 @@ export function TimelinePanel({
                 }}>
                 {/* Track label (sticky left) */}
                 <div
-                  className='shrink-0 bg-background flex items-center gap-1.5 px-2 sticky left-0 z-10'
-                  style={{ width: SOURCES_WIDTH }}>
+                  className='shrink-0 bg-muted/40 flex items-center gap-1.5 px-2 sticky left-0 z-10 border-r border-border/30'
+                  style={{ width: sourcesWidth }}>
                   <div
                     className='w-2.5 h-2.5 rounded-full shrink-0'
                     style={{ backgroundColor: trackDotColor ?? '#737373' }}
@@ -2384,14 +2481,22 @@ export function TimelinePanel({
                   className='relative'
                   style={{
                     width: timelineWidthPx,
-                    minWidth: `calc(100% - ${SOURCES_WIDTH}px)`,
+                    minWidth: `calc(100% - ${sourcesWidth}px)`,
+                    transition: zoomAnimating
+                      ? `width ${ZOOM_TRANSITION_MS}ms ease-out`
+                      : undefined,
                   }}>
                   {renderClips(track)}
                   {renderKeyframes(track)}
                   {/* Playhead line on track */}
                   <div
                     className='absolute top-0 bottom-0 w-px bg-red-500/50 z-10 pointer-events-none'
-                    style={{ left: playheadPx }}
+                    style={{
+                      left: playheadPx,
+                      transition: zoomAnimating
+                        ? `left ${ZOOM_TRANSITION_MS}ms ease-out`
+                        : undefined,
+                    }}
                   />
                 </div>
               </div>
@@ -2405,8 +2510,8 @@ export function TimelinePanel({
             className='flex border-b border-border/50'
             style={{ height: TRACK_HEIGHT }}>
             <div
-              className='shrink-0 bg-background flex items-center px-2 sticky left-0 z-10'
-              style={{ width: SOURCES_WIDTH }}>
+              className='shrink-0 bg-muted/40 flex items-center px-2 sticky left-0 z-10 border-r border-border/30'
+              style={{ width: sourcesWidth }}>
               <Button
                 variant='ghost'
                 size='sm'

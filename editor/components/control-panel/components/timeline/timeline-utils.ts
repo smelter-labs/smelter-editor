@@ -51,8 +51,8 @@ export function buildInputColorMap(inputs: Input[]) {
 
     map.set(input.inputId, {
       dot: `hsl(${h} ${s}% ${l}%)`,
-      segBg: `hsla(${h}, ${s}%, ${l}%, 0.4)`,
-      segBorder: `hsla(${h}, ${s}%, ${l}%, 0.6)`,
+      segBg: `hsla(${h}, ${s}%, ${l}%, 0.18)`,
+      segBorder: `hsla(${h}, ${s}%, ${l}%, 0.35)`,
       ring: `hsla(${h}, ${s}%, ${Math.min(90, l + 10)}%, 0.7)`,
     });
   }
@@ -66,6 +66,8 @@ export const MAX_HEIGHT_VH = 0.6;
 export const DEFAULT_HEIGHT = 250;
 export const TRACK_HEIGHT = 40;
 export const SOURCES_WIDTH = 180;
+export const MIN_SOURCES_WIDTH = 100;
+export const MAX_SOURCES_WIDTH = 400;
 export const SNAP_THRESHOLD_PX = 8;
 export const RESIZE_HANDLE_PX = 5;
 export const MIN_MOVABLE_KEYFRAME_MS = 1;
@@ -164,6 +166,18 @@ export function computeKeyframeDiff(
       fmt: (v) => `${v}ms`,
     },
     { key: 'absoluteTransitionEasing', label: 'absTrEasing' },
+    { key: 'cropTop', label: 'cropTop', fmt: (v) => fmtNum(v as number) },
+    { key: 'cropLeft', label: 'cropLeft', fmt: (v) => fmtNum(v as number) },
+    {
+      key: 'cropRight',
+      label: 'cropRight',
+      fmt: (v) => fmtNum(v as number),
+    },
+    {
+      key: 'cropBottom',
+      label: 'cropBottom',
+      fmt: (v) => fmtNum(v as number),
+    },
     { key: 'mp4PlayFromMs', label: 'mp4PlayFrom', fmt: (v) => `${v}ms` },
     { key: 'mp4Loop', label: 'mp4Loop', fmt: (v) => fmtBool(v as boolean) },
     { key: 'gameBackgroundColor', label: 'gameBgColor' },
@@ -270,6 +284,19 @@ export function computeRulerTicks(
     ticks.push({ timeMs: t, label: formatMs(t) });
   }
   return ticks;
+}
+
+// ── Content extent ───────────────────────────────────────
+
+/** Returns the rightmost clip endMs across all tracks, or 0 if empty. */
+export function getContentExtentMs(tracks: Track[]): number {
+  let maxEnd = 0;
+  for (const track of tracks) {
+    for (const clip of track.clips) {
+      if (clip.endMs > maxEnd) maxEnd = clip.endMs;
+    }
+  }
+  return maxEnd;
 }
 
 // ── Overlap check ────────────────────────────────────────

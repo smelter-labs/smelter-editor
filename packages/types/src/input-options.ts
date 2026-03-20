@@ -2,12 +2,14 @@ import type {
   InputDisplayProperties,
   TextInputProperties,
   AbsolutePositionProperties,
+  CropProperties,
   BorderProperties,
   SnakeGameDisplayProperties,
   EqualizerProperties,
 } from './input.js';
 
 export type UpdateInputOptions = {
+  title: string;
   attachedInputIds: string[];
   activeTransition: {
     type: string;
@@ -17,6 +19,7 @@ export type UpdateInputOptions = {
 } & InputDisplayProperties &
   TextInputProperties &
   AbsolutePositionProperties &
+  CropProperties &
   BorderProperties &
   SnakeGameDisplayProperties &
   EqualizerProperties;

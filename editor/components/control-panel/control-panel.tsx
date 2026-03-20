@@ -32,7 +32,6 @@ import {
 } from './hooks/use-room-websocket';
 import { useControlPanelEvents } from './hooks/use-control-panel-events';
 import { FxAccordion } from './components/FxAccordion';
-import { AddVideoSection } from './components/AddVideoSection';
 import { StreamsSection } from './components/StreamsSection';
 import { TimelinePanel } from './components/TimelinePanel';
 import { AddVideoModal } from './components/AddVideoModal';
@@ -123,7 +122,6 @@ export type ControlPanelProps = {
   timelinePortalRef?: React.RefObject<HTMLDivElement | null>;
   settingsNavPortalRef?: React.RefObject<HTMLDivElement | null>;
   renderDashboard?: (panels: {
-    addVideoSection: React.ReactNode;
     streamsSection: React.ReactNode;
     fxSection: React.ReactNode;
     timelineSection: React.ReactNode;
@@ -537,21 +535,6 @@ function ControlPanelInner({
   }, [selectedTimelineClips.length]);
 
   if (renderDashboard) {
-    const addVideoSection = (
-      <div className='h-full overflow-y-auto flex flex-col gap-3 p-3'>
-        <AddVideoSection
-          isGuest={isGuest}
-          hasGuestInput={
-            isGuest
-              ? !!(activeCameraInputId || activeScreenshareInputId) ||
-                (!!loadLastWhipInputId(roomId) &&
-                  inputs.some((i) => i.inputId === loadLastWhipInputId(roomId)))
-              : false
-          }
-        />
-      </div>
-    );
-
     const settingsNav = (
       <ErrorBoundary>
         <SettingsBar
@@ -664,7 +647,6 @@ function ControlPanelInner({
         {settingsNavPortalRef?.current &&
           createPortal(settingsNav, settingsNavPortalRef.current)}
         {renderDashboard({
-          addVideoSection,
           streamsSection,
           fxSection,
           timelineSection,
@@ -721,18 +703,6 @@ function ControlPanelInner({
         <FxAccordion fxInput={fxInput} onClose={() => setOpenFxInputId(null)} />
       ) : (
         <>
-          <AddVideoSection
-            isGuest={isGuest}
-            hasGuestInput={
-              isGuest
-                ? !!(activeCameraInputId || activeScreenshareInputId) ||
-                  (!!loadLastWhipInputId(roomId) &&
-                    inputs.some(
-                      (i) => i.inputId === loadLastWhipInputId(roomId),
-                    ))
-                : false
-            }
-          />
           {!isGuest && !renderStreamsOutside && streamsSectionContent}
           {!isGuest &&
             settingsNavPortalRef?.current &&
@@ -1140,6 +1110,10 @@ function SettingsBar({
             absoluteTransitionDurationMs:
               inputConfig.absoluteTransitionDurationMs,
             absoluteTransitionEasing: inputConfig.absoluteTransitionEasing,
+            cropTop: inputConfig.cropTop,
+            cropLeft: inputConfig.cropLeft,
+            cropRight: inputConfig.cropRight,
+            cropBottom: inputConfig.cropBottom,
             equalizerConfig,
             attachedInputIds:
               attachedInputIds && attachedInputIds.length > 0
@@ -1241,7 +1215,7 @@ function SettingsBar({
   );
 
   const navLinkClass =
-    "uppercase tracking-widest text-xl font-bold text-[#849495] hover:text-[#00f3ff] hover:border-b-2 hover:border-[#00f3ff] pb-[6px] transition-colors px-2 py-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed";
+    'uppercase tracking-widest text-xl font-bold text-[#849495] hover:text-[#00f3ff] border-b-2 border-b-transparent hover:border-b-[#00f3ff] pb-[6px] transition-colors px-2 py-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
 
   const recordLabel = isWaitingForDownload
     ? 'Wait...'
@@ -1276,19 +1250,19 @@ function SettingsBar({
                   <button
                     key={preset.id}
                     onClick={() => dashboardToolbar.applyPreset(preset.layout)}
-                    className="text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors">
+                    className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors'>
                     {preset.label}
                   </button>
                 ))}
                 <div className='h-px bg-[#3a494b]/30 my-1' />
                 <button
                   onClick={() => setShowDashSaveModal(true)}
-                  className="text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors">
+                  className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors'>
                   Save Layout
                 </button>
                 <button
                   onClick={() => setShowDashLoadModal(true)}
-                  className="text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors">
+                  className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors'>
                   Load Layout
                 </button>
                 <div className='h-px bg-[#3a494b]/30 my-1' />
@@ -1316,7 +1290,7 @@ function SettingsBar({
                 <div className='h-px bg-[#3a494b]/30 my-1' />
                 <button
                   onClick={() => dashboardToolbar.reset()}
-                  className="text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors">
+                  className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors'>
                   Reset Layout
                 </button>
               </div>
@@ -1355,7 +1329,7 @@ function SettingsBar({
             {recordLabel}
           </button>
         </nav>
-        <div className="ml-auto flex items-center gap-4 uppercase tracking-widest text-xl font-bold">
+        <div className='ml-auto flex items-center gap-4 uppercase tracking-widest text-xl font-bold'>
           <label className='flex items-center gap-2 cursor-pointer'>
             <span className='text-[#849495]'>Public</span>
             <Switch

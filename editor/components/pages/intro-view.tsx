@@ -389,6 +389,10 @@ export default function IntroView() {
               absoluteTransitionDurationMs:
                 inputConfig.absoluteTransitionDurationMs,
               absoluteTransitionEasing: inputConfig.absoluteTransitionEasing,
+              cropTop: inputConfig.cropTop,
+              cropLeft: inputConfig.cropLeft,
+              cropRight: inputConfig.cropRight,
+              cropBottom: inputConfig.cropBottom,
               equalizerConfig,
               attachedInputIds:
                 attachedInputIds && attachedInputIds.length > 0

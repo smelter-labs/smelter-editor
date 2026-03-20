@@ -1,69 +1,33 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
-import { createPortal } from 'react-dom';
-import type { AvailableShader, Input, ShaderConfig } from '@/lib/types';
+import type { AvailableShader, Input } from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
-import { Button } from '@/components/ui/button';
-import {
-  Type,
-  GripVertical,
-  RectangleHorizontal,
-  RectangleVertical,
-  RotateCw,
-  Link,
-  Eye,
-  EyeOff,
-} from 'lucide-react';
+import { GripVertical } from 'lucide-react';
 import ShaderPanel from './shader-panel';
 import SnakeEventShaderPanel from './snake-event-shader-panel';
 import { InputEntryTextSection } from './input-entry-text-section';
-import { MotionIndicator } from './motion-indicator';
-import { MuteButton } from './mute-button';
 import { DeleteButton } from './delete-button';
 import { AddShaderModal } from './add-shader-modal';
 import { getSourceStateColor, getSourceStateLabel } from './utils';
 import { handleShaderDrop, handleShaderDragOver } from './shader-drop-handler';
 import { stopCameraAndConnection } from '../whip-input/utils/preview';
-import { rotateBy90 } from '../whip-input/utils/whip-publisher';
 import {
   clearWhipSessionFor,
   loadLastWhipInputId,
   loadWhipSession,
 } from '../whip-input/utils/whip-storage';
 import { useIsMobile } from '@/hooks/use-mobile';
-import { toggleMotionDetection } from '@/app/actions/actions';
-import { useControlPanelContext } from '../contexts/control-panel-context';
-import { hexToPackedInt, packedIntToHex } from '@/lib/color-utils';
+import { hexToPackedInt } from '@/lib/color-utils';
 import { Input as ShadcnInput } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
 import { Slider } from '@/components/ui/slider';
 
 const SHADER_SETTINGS_DEBOUNCE_MS = 200;
-const VIDEO_INPUT_TYPES = [
-  'local-mp4',
-  'twitch-channel',
-  'kick-channel',
-  'whip',
-] as const;
-
-function isInputAttachedElsewhere(
-  targetInputId: string,
-  currentInputId: string,
-  allInputs: Input[],
-): boolean {
-  return allInputs.some(
-    (i) =>
-      i.inputId !== currentInputId &&
-      (i.attachedInputIds || []).includes(targetInputId),
-  );
-}
-
 interface InputEntryProps {
   roomId: string;
   input: Input;
   refreshState: () => Promise<void>;
   availableShaders?: AvailableShader[];
   canRemove?: boolean;
-  canMoveUp?: boolean;
-  canMoveDown?: boolean;
   pcRef?: React.MutableRefObject<RTCPeerConnection | null>;
   streamRef?: React.MutableRefObject<MediaStream | null>;
   onWhipDisconnectedOrRemoved?: (inputId: string) => void;
@@ -73,9 +37,7 @@ interface InputEntryProps {
   showGrip?: boolean;
   isSelected?: boolean;
   index?: number;
-  allInputs?: Input[];
   readOnly?: boolean;
-  isLocalWhipInput?: boolean;
 }
 
 export default function InputEntry({
@@ -84,8 +46,6 @@ export default function InputEntry({
   refreshState,
   availableShaders = [],
   canRemove = true,
-  canMoveUp = true,
-  canMoveDown = true,
   pcRef,
   streamRef,
   onWhipDisconnectedOrRemoved,
@@ -95,13 +55,9 @@ export default function InputEntry({
   showGrip = true,
   isSelected = false,
   index,
-  allInputs,
   readOnly = false,
-  isLocalWhipInput = false,
 }: InputEntryProps) {
   const actions = useActions();
-  const { motionScores } = useControlPanelContext();
-  const [connectionStateLoading, setConnectionStateLoading] = useState(false);
   const [showSliders, setShowSliders] = useState(false);
   const [shaderLoading, setShaderLoading] = useState<string | null>(null);
   const [paramLoading, setParamLoading] = useState<{
@@ -129,22 +85,9 @@ export default function InputEntry({
   );
   const [isTextSaving, setIsTextSaving] = useState(false);
   const textSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const [showAttachMenu, setShowAttachMenu] = useState(false);
-  const attachBtnRef = useRef<HTMLButtonElement>(null);
-  const [attachMenuPos, setAttachMenuPos] = useState<{
-    top: number;
-    left: number;
-  } | null>(null);
   const isMobile = useIsMobile();
-  const muted = input.volume === 0;
-  const showTitle = input.showTitle !== false;
-  const isVerticalOrientation = input.orientation === 'vertical';
 
-  const isWhipInput = input.type === 'whip';
   const isTextInput = input.type === 'text-input';
-  const isVideoInput = (VIDEO_INPUT_TYPES as readonly string[]).includes(
-    input.type,
-  );
 
   useEffect(() => {
     if (input.textColor !== undefined) {
@@ -204,73 +147,6 @@ export default function InputEntry({
   const addedShaderIds = useMemo(
     () => new Set((input.shaders || []).map((s) => s.shaderId)),
     [input.shaders],
-  );
-
-  const handleMuteToggle = useCallback(async () => {
-    await actions.updateInput(roomId, input.inputId, {
-      volume: muted ? 1 : 0,
-      shaders: input.shaders,
-    });
-    await refreshState();
-  }, [roomId, input, muted, refreshState]);
-
-  const handleShowTitleToggle = useCallback(async () => {
-    await actions.updateInput(roomId, input.inputId, {
-      showTitle: !showTitle,
-      shaders: input.shaders,
-      volume: input.volume,
-    });
-    await refreshState();
-  }, [roomId, input, showTitle, refreshState]);
-
-  const handleOrientationToggle = useCallback(async () => {
-    await actions.updateInput(roomId, input.inputId, {
-      orientation: isVerticalOrientation ? 'horizontal' : 'vertical',
-      shaders: input.shaders,
-      volume: input.volume,
-    });
-    await refreshState();
-  }, [roomId, input, isVerticalOrientation, refreshState]);
-
-  const handleRotate90 = useCallback(async () => {
-    if (isLocalWhipInput && pcRef && streamRef) {
-      const angle = await rotateBy90(pcRef, streamRef);
-      await actions.updateInput(roomId, input.inputId, {
-        orientation: angle % 180 !== 0 ? 'vertical' : 'horizontal',
-        shaders: input.shaders,
-        volume: input.volume,
-      });
-    } else {
-      await actions.updateInput(roomId, input.inputId, {
-        orientation: isVerticalOrientation ? 'horizontal' : 'vertical',
-        shaders: input.shaders,
-        volume: input.volume,
-      });
-    }
-    await refreshState();
-  }, [
-    roomId,
-    input,
-    isVerticalOrientation,
-    refreshState,
-    isLocalWhipInput,
-    pcRef,
-    streamRef,
-  ]);
-
-  const handleAttachToggle = useCallback(
-    async (targetInputId: string) => {
-      const currentAttached = input.attachedInputIds || [];
-      const newAttached = currentAttached.includes(targetInputId)
-        ? currentAttached.filter((id) => id !== targetInputId)
-        : [...currentAttached, targetInputId];
-      await actions.updateInput(roomId, input.inputId, {
-        volume: input.volume,
-        attachedInputIds: newAttached,
-      });
-      await refreshState();
-    },
-    [roomId, input, refreshState],
   );
 
   const handleTextChange = useCallback(
@@ -449,63 +325,6 @@ export default function InputEntry({
     streamRef,
     onWhipDisconnectedOrRemoved,
   ]);
-
-  const handleConnectionToggle = useCallback(async () => {
-    setConnectionStateLoading(true);
-    try {
-      if (input.status === 'connected') {
-        if (isWhipInput && pcRef && streamRef) {
-          stopCameraAndConnection(pcRef, streamRef);
-        }
-        await actions.disconnectInput(roomId, input.inputId);
-        if (isWhipInput) {
-          try {
-            onWhipDisconnectedOrRemoved?.(input.inputId);
-          } catch {}
-        }
-      } else if (input.status === 'disconnected') {
-        await actions.connectInput(roomId, input.inputId);
-      }
-      await refreshState();
-    } finally {
-      setConnectionStateLoading(false);
-    }
-  }, [
-    roomId,
-    input,
-    refreshState,
-    isWhipInput,
-    pcRef,
-    streamRef,
-    onWhipDisconnectedOrRemoved,
-  ]);
-
-  const handleSlidersToggle = useCallback(() => {
-    if (onToggleFx) {
-      onToggleFx();
-    } else {
-      setShowSliders((prev) => !prev);
-    }
-  }, [onToggleFx]);
-
-  const handleVisibilityToggle = useCallback(async () => {
-    try {
-      if (input.hidden) {
-        await actions.showInput(roomId, input.inputId);
-      } else {
-        await actions.hideInput(roomId, input.inputId);
-      }
-      await refreshState();
-    } finally {
-      // no-op
-    }
-  }, [roomId, input, refreshState]);
-
-  const handleMotionToggle = useCallback(async () => {
-    const newEnabled = !(input.motionEnabled ?? false);
-    await toggleMotionDetection(roomId, input.inputId, newEnabled);
-    await refreshState();
-  }, [roomId, input.inputId, input.motionEnabled, refreshState]);
 
   const handleShaderToggle = useCallback(
     async (shaderId: string) => {
@@ -779,21 +598,14 @@ export default function InputEntry({
             ? 'border-blue-500 ring-2 ring-blue-500/30'
             : 'border-border'
         }`}>
-        {typeof index === 'number' && (
-          <div className='absolute top-2 right-2 pointer-events-none'>
-            <span className='text-xs font-medium text-muted-foreground'>
-              {index + 1}
-            </span>
-          </div>
-        )}
         {!isMobile && showGrip && (
           <div className='absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none'>
             <GripVertical className='w-5 h-5 text-muted-foreground' />
           </div>
         )}
-        <div className='flex items-center mb-3 md:pl-7'>
+        <div className='flex items-center min-h-7 md:pl-7'>
           <span
-            className={`inline-block w-3 h-3 rounded-none mr-2 ${getSourceStateColor(input)}`}
+            className={`shrink-0 w-3 h-3 rounded-none mr-2 ${getSourceStateColor(input)}`}
             aria-label={getSourceStateLabel(input)}
           />
           <div className='text-[12px] font-bold text-foreground truncate'>
@@ -804,6 +616,12 @@ export default function InputEntry({
               Saving...
             </span>
           )}
+          {typeof index === 'number' && (
+            <span className='ml-auto mr-2 text-xs font-medium text-muted-foreground'>
+              {index + 1}
+            </span>
+          )}
+          {!readOnly && canRemove && <DeleteButton onClick={handleDelete} />}
         </div>
         {isTextInput && !readOnly && (
           <InputEntryTextSection
@@ -827,11 +645,10 @@ export default function InputEntry({
           <div className='flex items-center gap-3 px-2 py-1'>
             <div className='flex items-center gap-1'>
               <label className='text-xs text-muted-foreground'>Gap</label>
-              <ShadcnInput
-                type='number'
+              <NumberInput
                 min={0}
                 max={20}
-                className='w-14 bg-card border border-border text-foreground text-xs px-2 py-0.5 rounded'
+                className='w-16 bg-card border border-border text-foreground text-xs px-2 py-0.5'
                 value={input.gameCellGap ?? 1}
                 onChange={(e) => {
                   void actions.updateInput(roomId, input.inputId, {
@@ -843,11 +660,10 @@ export default function InputEntry({
             </div>
             <div className='flex items-center gap-1'>
               <label className='text-xs text-muted-foreground'>Border</label>
-              <ShadcnInput
-                type='number'
+              <NumberInput
                 min={0}
                 max={20}
-                className='w-14 bg-card border border-border text-foreground text-xs px-2 py-0.5 rounded'
+                className='w-16 bg-card border border-border text-foreground text-xs px-2 py-0.5'
                 value={input.gameBoardBorderWidth ?? 4}
                 onChange={(e) => {
                   void actions.updateInput(roomId, input.inputId, {
@@ -910,182 +726,6 @@ export default function InputEntry({
             availableShaders={availableShaders}
             onUpdate={refreshState}
           />
-        )}
-        {!readOnly && (
-          <div className='flex flex-row items-center min-w-0'>
-            <div className='flex flex-row items-center justify-end flex-1 gap-0.5 pr-1 md:pl-7'>
-              <Button
-                data-no-dnd
-                size='sm'
-                variant='ghost'
-                className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
-                onClick={handleOrientationToggle}
-                aria-label={
-                  isVerticalOrientation
-                    ? 'Switch to horizontal'
-                    : 'Switch to vertical'
-                }
-                title={
-                  isVerticalOrientation
-                    ? 'Vertical (click for horizontal)'
-                    : 'Horizontal (click for vertical)'
-                }>
-                {isVerticalOrientation ? (
-                  <RectangleVertical className='text-foreground size-5' />
-                ) : (
-                  <RectangleHorizontal className='text-muted-foreground size-5' />
-                )}
-              </Button>
-              {isWhipInput && (
-                <Button
-                  data-no-dnd
-                  size='sm'
-                  variant='ghost'
-                  className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
-                  onClick={handleRotate90}
-                  aria-label='Rotate 90°'
-                  title='Rotate 90°'>
-                  <RotateCw className='text-muted-foreground size-5' />
-                </Button>
-              )}
-              <Button
-                ref={attachBtnRef}
-                data-no-dnd
-                size='sm'
-                variant='ghost'
-                className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
-                onClick={() => {
-                  if (!showAttachMenu && attachBtnRef.current) {
-                    const rect = attachBtnRef.current.getBoundingClientRect();
-                    setAttachMenuPos({
-                      top: rect.top,
-                      left: rect.right,
-                    });
-                  }
-                  setShowAttachMenu(!showAttachMenu);
-                }}
-                aria-label='Attach inputs'
-                title='Attach inputs (render behind this input)'>
-                <Link
-                  className={`size-5 ${(input.attachedInputIds?.length ?? 0) > 0 ? 'text-blue-400' : 'text-muted-foreground'}`}
-                />
-              </Button>
-              {showAttachMenu &&
-                attachMenuPos &&
-                createPortal(
-                  <>
-                    <div
-                      className='fixed inset-0 z-[99]'
-                      onClick={() => setShowAttachMenu(false)}
-                    />
-                    <div
-                      className='fixed bg-card border border-border rounded-lg shadow-lg p-2 z-[100] min-w-48'
-                      style={{
-                        top: attachMenuPos.top,
-                        left: attachMenuPos.left,
-                        transform: 'translate(-100%, -100%)',
-                      }}>
-                      <div className='text-xs text-muted-foreground mb-1 px-1'>
-                        Attach inputs (render behind)
-                      </div>
-                      {(allInputs || [])
-                        .filter((i) => i.inputId !== input.inputId)
-                        .filter(
-                          (i) =>
-                            !isInputAttachedElsewhere(
-                              i.inputId,
-                              input.inputId,
-                              allInputs || [],
-                            ),
-                        )
-                        .map((i) => {
-                          const isAttached = (
-                            input.attachedInputIds || []
-                          ).includes(i.inputId);
-                          return (
-                            <label
-                              key={i.inputId}
-                              className='flex items-center gap-2 px-1 py-1 hover:bg-accent rounded cursor-pointer'>
-                              <input
-                                type='checkbox'
-                                checked={isAttached}
-                                onChange={() => handleAttachToggle(i.inputId)}
-                                className='accent-blue-500 cursor-pointer'
-                              />
-                              <span className='text-sm text-foreground truncate'>
-                                {i.title}
-                              </span>
-                            </label>
-                          );
-                        })}
-                    </div>
-                  </>,
-                  document.body,
-                )}
-              <Button
-                data-no-dnd
-                size='sm'
-                variant='ghost'
-                className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
-                onClick={handleVisibilityToggle}
-                aria-label={
-                  input.hidden ? 'Show in program' : 'Hide from program'
-                }
-                title={input.hidden ? 'Show in program' : 'Hide from program'}>
-                {input.hidden ? (
-                  <EyeOff className='text-muted-foreground size-5' />
-                ) : (
-                  <Eye className='text-foreground size-5' />
-                )}
-              </Button>
-              <Button
-                data-no-dnd
-                size='sm'
-                variant='ghost'
-                className='transition-all duration-300 ease-in-out h-7 w-7 p-1.5 cursor-pointer'
-                onClick={handleShowTitleToggle}
-                aria-label={showTitle ? 'Hide title' : 'Show title'}>
-                <span className='relative inline-flex items-center justify-center'>
-                  <Type
-                    className={`${showTitle ? 'text-foreground' : 'text-muted-foreground'} size-5`}
-                  />
-                  {!showTitle && (
-                    <span className='absolute inset-0 flex items-center justify-center pointer-events-none'>
-                      <svg
-                        width='20'
-                        height='20'
-                        viewBox='0 0 20 20'
-                        fill='none'
-                        className='text-muted-foreground'>
-                        <line
-                          x1='4'
-                          y1='4'
-                          x2='16'
-                          y2='16'
-                          stroke='currentColor'
-                          strokeWidth='2'
-                          strokeLinecap='round'
-                        />
-                      </svg>
-                    </span>
-                  )}
-                </span>
-              </Button>
-              {isVideoInput && (
-                <MotionIndicator
-                  score={motionScores[input.inputId] ?? input.motionScore ?? 0}
-                  enabled={input.motionEnabled ?? false}
-                  onToggle={handleMotionToggle}
-                />
-              )}
-              <MuteButton
-                muted={muted}
-                disabled={input.sourceState === 'offline'}
-                onClick={handleMuteToggle}
-              />
-              {canRemove && <DeleteButton onClick={handleDelete} />}
-            </div>
-          </div>
         )}
         {!readOnly && (
           <div

@@ -41,8 +41,6 @@ export function computeCommonBlockSettings(
       result.orientation = first.orientation;
     if (bs.borderColor !== result.borderColor) result.borderColor = undefined;
     if (bs.borderWidth !== result.borderWidth) result.borderWidth = undefined;
-    if (bs.absolutePosition !== result.absolutePosition)
-      result.absolutePosition = undefined;
   }
   return result;
 }

@@ -3,6 +3,7 @@ import type {
   InputDisplayProperties,
   TextInputProperties,
   AbsolutePositionProperties,
+  CropProperties,
   BorderProperties,
   SnakeGameDisplayProperties,
   EqualizerProperties,
@@ -18,6 +19,7 @@ export type TimelineBlockSettings = {
 } & InputDisplayProperties &
   Partial<TextInputProperties> &
   Partial<AbsolutePositionProperties> &
+  Partial<CropProperties> &
   Partial<BorderProperties> &
   Partial<SnakeGameDisplayProperties> &
   Partial<EqualizerProperties>;

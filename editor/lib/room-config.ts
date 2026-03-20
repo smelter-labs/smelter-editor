@@ -53,6 +53,10 @@ export type RoomConfigInput = {
   absoluteHeight?: number;
   absoluteTransitionDurationMs?: number;
   absoluteTransitionEasing?: string;
+  cropTop?: number;
+  cropLeft?: number;
+  cropRight?: number;
+  cropBottom?: number;
   equalizerConfig?: EqualizerConfig;
 };
 
@@ -211,6 +215,10 @@ export function exportRoomConfig(
       absoluteHeight: input.absoluteHeight,
       absoluteTransitionDurationMs: input.absoluteTransitionDurationMs,
       absoluteTransitionEasing: input.absoluteTransitionEasing,
+      cropTop: input.cropTop,
+      cropLeft: input.cropLeft,
+      cropRight: input.cropRight,
+      cropBottom: input.cropBottom,
       attachedInputIndices: input.attachedInputIds
         ?.map((id) => inputIdToIndex.get(id))
         .filter((idx): idx is number => idx !== undefined),
@@ -395,6 +403,10 @@ export function buildInputUpdateFromBlockSettings(
     absoluteHeight: blockSettings.absoluteHeight,
     absoluteTransitionDurationMs: blockSettings.absoluteTransitionDurationMs,
     absoluteTransitionEasing: blockSettings.absoluteTransitionEasing,
+    cropTop: blockSettings.cropTop,
+    cropLeft: blockSettings.cropLeft,
+    cropRight: blockSettings.cropRight,
+    cropBottom: blockSettings.cropBottom,
     gameBackgroundColor: blockSettings.gameBackgroundColor,
     gameCellGap: blockSettings.gameCellGap,
     gameBoardBorderColor: blockSettings.gameBoardBorderColor,

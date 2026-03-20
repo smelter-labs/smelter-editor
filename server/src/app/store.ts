@@ -6,6 +6,7 @@ import type {
   InputDisplayProperties,
   TextInputProperties,
   AbsolutePositionProperties,
+  CropProperties,
   BorderProperties,
   SnakeGameDisplayProperties,
   EqualizerConfig,
@@ -45,6 +46,7 @@ export type InputConfig = {
   Partial<TextInputProperties> &
   Partial<BorderProperties> &
   Partial<AbsolutePositionProperties> &
+  Partial<CropProperties> &
   Partial<SnakeGameDisplayProperties>;
 
 export type RoomStore = {

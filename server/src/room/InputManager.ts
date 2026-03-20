@@ -617,6 +617,7 @@ export class InputManager {
 
   updateInput(inputId: string, options: Partial<UpdateInputOptions>): void {
     const input = this.getInput(inputId);
+    if (options.title !== undefined) input.metadata.title = options.title;
     input.volume = options.volume ?? input.volume;
     input.shaders = options.shaders ?? input.shaders;
     input.showTitle = options.showTitle ?? input.showTitle;
@@ -684,6 +685,10 @@ export class InputManager {
         options.absoluteTransitionDurationMs;
     if (options.absoluteTransitionEasing !== undefined)
       input.absoluteTransitionEasing = options.absoluteTransitionEasing;
+    if (options.cropTop !== undefined) input.cropTop = options.cropTop;
+    if (options.cropLeft !== undefined) input.cropLeft = options.cropLeft;
+    if (options.cropRight !== undefined) input.cropRight = options.cropRight;
+    if (options.cropBottom !== undefined) input.cropBottom = options.cropBottom;
 
     if (options.activeTransition !== undefined) {
       const existingTimer = this.transitionTimers.get(inputId);

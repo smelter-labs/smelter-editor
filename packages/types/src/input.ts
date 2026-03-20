@@ -47,6 +47,13 @@ export type AbsolutePositionProperties = {
   absoluteTransitionEasing: string;
 };
 
+export type CropProperties = {
+  cropTop: number;
+  cropLeft: number;
+  cropRight: number;
+  cropBottom: number;
+};
+
 export type BorderProperties = {
   borderColor: string;
   borderWidth: number;

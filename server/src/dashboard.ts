@@ -30,15 +30,60 @@ const MAX_TIMELINE_LOG_LINES = 50;
 let requestCount = 0;
 let startTime = Date.now();
 
+// ── Structured log streaming (SSE) ──
+
+export interface LogEntry {
+  timestamp: string;
+  level: 'LOG' | 'ERR' | 'WRN' | 'OUT' | 'REQ';
+  message: string;
+}
+
+const structuredLogBuffer: LogEntry[] = [];
+const logListeners = new Set<(entry: LogEntry) => void>();
+
+function emitLogEntry(level: LogEntry['level'], message: string) {
+  const timestamp = new Date().toLocaleTimeString('pl-PL', { hour12: false });
+  const entry: LogEntry = { timestamp, level, message };
+  structuredLogBuffer.push(entry);
+  if (structuredLogBuffer.length > MAX_LOG_LINES) {
+    structuredLogBuffer.shift();
+  }
+  for (const listener of logListeners) {
+    listener(entry);
+  }
+}
+
+export function addLogListener(
+  cb: (entry: LogEntry) => void,
+): () => void {
+  logListeners.add(cb);
+  return () => {
+    logListeners.delete(cb);
+  };
+}
+
+export function getLogBuffer(): LogEntry[] {
+  return [...structuredLogBuffer];
+}
+
+// Original console methods — saved before hijacking so logRequest can
+// write to terminal without triggering the hijack in non-boxed mode.
+let origConsoleLog = console.log;
+let origConsoleError = console.error;
+let origConsoleWarn = console.warn;
+
 // ── Capture console output ──
 function pushSysLog(level: string, args: unknown[]) {
   const time = new Date().toLocaleTimeString('pl-PL', { hour12: false });
   const msg = args
     .map((a) => (typeof a === 'string' ? a : JSON.stringify(a, null, 0)))
-    .join(' ')
-    .replace(/\{/g, '\\{')
-    .replace(/\}/g, '\\}');
+    .join(' ');
 
+  emitLogEntry(level as LogEntry['level'], msg);
+
+  if (!isBoxed) return;
+
+  const escapedMsg = msg.replace(/\{/g, '\\{').replace(/\}/g, '\\}');
   const colorTag =
     level === 'ERR'
       ? '{red-fg}'
@@ -46,7 +91,7 @@ function pushSysLog(level: string, args: unknown[]) {
         ? '{yellow-fg}'
         : '{white-fg}';
 
-  const line = `${time}  ${colorTag}${level}{/}  ${msg}`;
+  const line = `${time}  ${colorTag}${level}{/}  ${escapedMsg}`;
   sysLog.push(line);
   if (sysLog.length > MAX_LOG_LINES) {
     sysLog.shift();
@@ -90,17 +135,24 @@ function interceptStream(
 }
 
 export function hijackConsole() {
-  if (!isBoxed) return;
+  origConsoleLog = console.log;
+  origConsoleError = console.error;
+  origConsoleWarn = console.warn;
 
   console.log = (...args: unknown[]) => {
     pushSysLog('LOG', args);
+    if (!isBoxed) origConsoleLog(...args);
   };
   console.error = (...args: unknown[]) => {
     pushSysLog('ERR', args);
+    if (!isBoxed) origConsoleError(...args);
   };
   console.warn = (...args: unknown[]) => {
     pushSysLog('WRN', args);
+    if (!isBoxed) origConsoleWarn(...args);
   };
+
+  if (!isBoxed) return;
 
   interceptStream(process.stdout, origStdoutWrite, 'OUT');
   interceptStream(process.stderr, origStderrWrite, 'ERR');
@@ -135,14 +187,17 @@ export function hijackConsole() {
 export function logRequest(method: string, route: string, status: number) {
   requestCount++;
 
+  const time = new Date().toLocaleTimeString('pl-PL', { hour12: false });
+  const statusStr = status < 400 ? `${status}` : `${status} !!`;
+  const msg = `${statusStr}  ${method.padEnd(6)} ${route}`;
+
+  emitLogEntry('REQ', msg);
+
   if (!isBoxed) {
-    const time = new Date().toLocaleTimeString('pl-PL', { hour12: false });
-    const statusStr = status < 400 ? `${status}` : `${status} !!`;
-    console.log(`${time}  ${statusStr}  ${method.padEnd(6)} ${route}`);
+    origConsoleLog(`${time}  ${msg}`);
     return;
   }
 
-  const time = new Date().toLocaleTimeString('pl-PL', { hour12: false });
   const statusColor = status < 400 ? '{green-fg}' : '{red-fg}';
   const line = `${time}  ${statusColor}${status}{/}  ${method.padEnd(6)} ${route}`;
   requestLog.push(line);
