@@ -26,6 +26,13 @@ import type {
 
 const RESUME_FROZEN_IMAGE_CLEANUP_DELAY_MS = 5500;
 
+function cloneLayers(layers: Layer[]): Layer[] {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(layers);
+  }
+  return JSON.parse(JSON.stringify(layers)) as Layer[];
+}
+
 export class RoomState {
   private readonly mutex = new Mutex();
   private destroyed = false;
@@ -241,11 +248,15 @@ export class RoomState {
 
   public async updateLayers(layers: Layer[]) {
     return this.mutex.runExclusive(async () => {
-      this.layers = layers;
+      this.layers = cloneLayers(layers);
       // Empty array means "revert to auto-managed grid"
       this.autoManagedLayers = layers.length === 0;
       this.updateStoreWithState();
     });
+  }
+
+  public areLayersAutoManaged(): boolean {
+    return this.autoManagedLayers;
   }
 
   // ── Input operations (mutex-wrapped delegation) ───────────
@@ -395,6 +406,7 @@ export class RoomState {
     return {
       getInputs: () => this.getInputs(),
       getLayers: () => this.layers,
+      areLayersAutoManaged: () => this.areLayersAutoManaged(),
       showInput: (inputId, transition) => this.showInput(inputId, transition),
       hideInput: (inputId, transition) => this.hideInput(inputId, transition),
       updateInput: (inputId, options) => this.updateInput(inputId, options),

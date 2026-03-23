@@ -511,6 +511,34 @@ describe('RoomState', () => {
       await room.updateLayers(secondLayers);
       expect(room.getState().layers).toEqual(secondLayers);
     });
+
+    it('clones provided layers to avoid external mutations', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const layers = [
+        {
+          id: 'layer-1',
+          inputs: [
+            {
+              inputId: 'input-1',
+              x: 0,
+              y: 0,
+              width: 640,
+              height: 360,
+            },
+          ],
+        },
+      ];
+
+      await room.updateLayers(layers);
+      layers[0]!.id = 'mutated';
+      layers[0]!.inputs[0]!.x = 123;
+
+      expect(room.getState().layers[0]!.id).toBe('layer-1');
+      expect(room.getState().layers[0]!.inputs[0]!.x).toBe(0);
+    });
   });
 
   describe('hideInput / showInput', () => {
