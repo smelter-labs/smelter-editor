@@ -53,6 +53,7 @@ const minimalInput: Input = {
   title: 'Text',
   description: '',
   volume: 1,
+  showTitle: false,
   type: 'text-input',
   sourceState: 'always-live',
   status: 'connected',

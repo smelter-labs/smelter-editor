@@ -1,17 +1,14 @@
-import type { Resolution, PendingWhipInputData } from '@smelter-editor/types';
+import type { Resolution, PendingWhipInputData, RoomNameEntry } from '@smelter-editor/types';
 import type { Input } from './input';
 import type { Layer, Layout } from './layout';
 
-export type { PendingWhipInputData } from '@smelter-editor/types';
-
-export type RoomNameEntry = {
-  pl: string;
-  en: string;
-};
+export type { PendingWhipInputData, RoomNameEntry } from '@smelter-editor/types';
 
 export type RoomState = {
   inputs: Input[];
   layers: Layer[];
+  /** @deprecated Kept for room-config presets and voice commands; use `layers` for live layout. */
+  layout?: Layout;
   whepUrl: string;
   roomName?: RoomNameEntry;
   pendingDelete?: boolean;
@@ -66,6 +63,8 @@ export type CreateRoomOptions = {
 export type UpdateRoomOptions = {
   inputOrder?: string[];
   layers?: Layer[];
+  /** @deprecated Kept for room-config presets and voice commands; use `layers` for live layout. */
+  layout?: Layout;
   isPublic?: boolean;
   swapDurationMs?: number;
   swapOutgoingEnabled?: boolean;

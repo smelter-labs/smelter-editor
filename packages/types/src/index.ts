@@ -4,7 +4,7 @@ export { RESOLUTION_PRESETS } from './resolution.js';
 export { Layouts } from './layout.js';
 export type { Layout, Layer, LayerInput } from './layout.js';
 
-export type { ShaderParamConfig, ShaderConfig, ShaderPreset } from './shader.js';
+export type { ShaderParamConfig, ShaderParam, ShaderParamDefinition, ShaderConfig, ShaderPreset } from './shader.js';
 
 export type {
   TransitionType,
@@ -49,3 +49,17 @@ export type {
   TimelineKeyframeInterpolationMode,
   TimelineConfig,
 } from './timeline.js';
+
+export type { ChannelInfo } from './channel.js';
+
+export type { RoomNameEntry } from './room-names.js';
+
+export type {
+  ConnectedPeer,
+  ConnectedEvent,
+  InputUpdatedEvent,
+  InputDeletedEvent,
+  RoomUpdatedEvent,
+  PeersUpdatedEvent,
+  RoomEvent,
+} from './events.js';

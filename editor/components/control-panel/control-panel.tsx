@@ -813,7 +813,7 @@ function SettingsBar({
     );
     return exportRoomConfig(
       roomState.inputs,
-      roomState.layout,
+      roomState.layout ?? 'grid',
       roomState.resolution,
       {
         swapDurationMs: roomState.swapDurationMs,
