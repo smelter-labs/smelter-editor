@@ -12,7 +12,6 @@ import {
   downloadRoomConfig,
   parseRoomConfig,
   resolveRoomConfigTimelineState,
-  resolveImportedEqualizerConfig,
   restoreTimelineToStorage,
   computeTimelineStateAtZero,
   buildInputUpdateFromBlockSettings,
@@ -23,8 +22,6 @@ import {
   type RoomConfigTransitionSettings,
 } from '@/lib/room-config';
 import { toast } from 'sonner';
-import { addEqualizerInput } from '@/app/actions/actions';
-
 type ConfigurationSectionProps = {
   inputs: Input[];
   layout: Layout;
@@ -131,8 +128,6 @@ export function ConfigurationSection({
   const importConfig = async (config: RoomConfig) => {
     const oldInputIds = inputs.map((i) => i.inputId);
     const newPendingWhipInputs: PendingWhipInput[] = [];
-    const deferredEqualizers: { config: RoomConfigInput; position: number }[] =
-      [];
     const createdInputIds: {
       inputId: string;
       config: RoomConfigInput;
@@ -151,11 +146,6 @@ export function ConfigurationSection({
             config: inputConfig,
             position: i,
           });
-          continue;
-        }
-
-        if (inputConfig.type === 'equalizer') {
-          deferredEqualizers.push({ config: inputConfig, position: i });
           continue;
         }
 
@@ -231,36 +221,12 @@ export function ConfigurationSection({
       );
     }
 
-    for (const { config: inputConfig, position } of deferredEqualizers) {
-      try {
-        const equalizerConfig = resolveImportedEqualizerConfig(inputConfig);
-        if (!equalizerConfig) {
-          console.warn(
-            `Failed to resolve equalizer config for ${inputConfig.title}`,
-          );
-          continue;
-        }
-
-        const result = await addEqualizerInput(roomId, equalizerConfig);
-        createdInputIds.push({
-          inputId: result.inputId,
-          config: inputConfig,
-          position,
-        });
-        positionToInputId.set(position, result.inputId);
-      } catch (e) {
-        console.warn(`Failed to add input ${inputConfig.title}:`, e);
-      }
-    }
-
     await refreshState();
 
     for (const { inputId, config: inputConfig } of createdInputIds) {
       const attachedInputIds = inputConfig.attachedInputIndices
         ?.map((idx) => positionToInputId.get(idx))
         .filter((id): id is string => !!id);
-      const equalizerConfig = resolveImportedEqualizerConfig(inputConfig);
-
       try {
         await updateInput(roomId, inputId, {
           volume: inputConfig.volume,
@@ -295,7 +261,6 @@ export function ConfigurationSection({
           cropLeft: inputConfig.cropLeft,
           cropRight: inputConfig.cropRight,
           cropBottom: inputConfig.cropBottom,
-          equalizerConfig,
           attachedInputIds:
             attachedInputIds && attachedInputIds.length > 0
               ? attachedInputIds

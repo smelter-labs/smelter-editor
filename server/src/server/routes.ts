@@ -273,18 +273,6 @@ const InputSchema = Type.Union([
     title: Type.Optional(Type.String()),
   }),
   Type.Object({
-    type: Type.Literal('equalizer'),
-    barCount: Type.Optional(Type.Number({ minimum: 1, maximum: 64 })),
-    style: Type.Optional(
-      Type.Union([Type.Literal('bars'), Type.Literal('bars-rounded')]),
-    ),
-    barColor: Type.Optional(Type.String()),
-    glowIntensity: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
-    bgOpacity: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
-    gap: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
-    smoothing: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
-  }),
-  Type.Object({
     type: Type.Literal('hands'),
     sourceInputId: Type.String(),
   }),
@@ -1001,7 +989,6 @@ const UpdateInputSchema = Type.Object({
   snakeEventShaders: Type.Optional(Type.Any()),
   snake1Shaders: Type.Optional(Type.Any()),
   snake2Shaders: Type.Optional(Type.Any()),
-  equalizerConfig: Type.Optional(Type.Any()),
   attachedInputIds: Type.Optional(Type.Array(Type.String())),
   absolutePosition: Type.Optional(Type.Boolean()),
   absoluteTop: Type.Optional(Type.Number()),

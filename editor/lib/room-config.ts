@@ -6,7 +6,6 @@ import type {
 } from '@/lib/types';
 import { parseTransitionConfig } from '@/lib/types';
 import type { SnakeEventShaderConfig } from '@/lib/snake-game-types';
-import type { EqualizerConfig } from '@/lib/types/input';
 import type {
   BlockSettings,
   Clip,
@@ -57,7 +56,6 @@ export type RoomConfigInput = {
   cropLeft?: number;
   cropRight?: number;
   cropBottom?: number;
-  equalizerConfig?: EqualizerConfig;
 };
 
 function extractMp4FileName(title: string): string | undefined {
@@ -222,7 +220,6 @@ export function exportRoomConfig(
       attachedInputIndices: input.attachedInputIds
         ?.map((id) => inputIdToIndex.get(id))
         .filter((idx): idx is number => idx !== undefined),
-      equalizerConfig: input.equalizerConfig,
     })),
     exportedAt: new Date().toISOString(),
   };
@@ -370,12 +367,6 @@ export function updateTimelineInputId(
   return changed;
 }
 
-export function resolveImportedEqualizerConfig(
-  inputConfig: RoomConfigInput,
-): EqualizerConfig | undefined {
-  return inputConfig.equalizerConfig;
-}
-
 export function buildInputUpdateFromBlockSettings(
   blockSettings: BlockSettings,
 ): Partial<UpdateInputOptions> {
@@ -414,7 +405,6 @@ export function buildInputUpdateFromBlockSettings(
     gameGridLineColor: blockSettings.gameGridLineColor,
     gameGridLineAlpha: blockSettings.gameGridLineAlpha,
     snakeEventShaders: blockSettings.snakeEventShaders,
-    equalizerConfig: blockSettings.equalizerConfig,
   };
 }
 

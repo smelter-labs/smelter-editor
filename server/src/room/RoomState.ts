@@ -260,14 +260,7 @@ export class RoomState {
 
   public async addNewInput(opts: RegisterInputOptions) {
     return this.mutex.runExclusive(async () => {
-      const inputId = await this.inputManager.addNewInput(opts);
-
-      // Equalizers depend on live audio band analysis, so enable it automatically.
-      if (opts.type === 'equalizer' && !this.audioController.isEnabled()) {
-        await this.audioController.setAudioAnalysisEnabled(true);
-      }
-
-      return inputId;
+      return await this.inputManager.addNewInput(opts);
     });
   }
 
@@ -856,8 +849,6 @@ export class RoomState {
         input.type === 'game' ? input.snakeEventShaders : undefined,
       snake1Shaders: input.type === 'game' ? input.snake1Shaders : undefined,
       snake2Shaders: input.type === 'game' ? input.snake2Shaders : undefined,
-      equalizerConfig:
-        input.type === 'equalizer' ? input.equalizerConfig : undefined,
       handsSourceInputId:
         input.type === 'hands' ? input.sourceInputId : undefined,
       handsStore: input.type === 'hands' ? input.handsStore : undefined,

@@ -14,7 +14,6 @@ import { getInputRenderer } from './rendererRegistry';
 import { wrapWithShaders } from '../utils/shaderUtils';
 import { ScrollingText } from './scrollingText';
 import { TransitionShaderWrapper } from './transitionWrapper';
-import { EqualizerInput } from './EqualizerInput';
 import { HandsInput } from './HandsInput';
 
 type Resolution = { width: number; height: number };
@@ -88,10 +87,9 @@ export function Input({ input }: { input: InputConfig }) {
   const isImage = !!input.imageId;
   const isTextInput = !!input.text;
   const isGame = !!input.snakeGameState;
-  const isEqualizer = !!input.equalizerConfig;
   const isHands = !!input.handsSourceInputId && !!input.handsStore;
   const streamState =
-    showFrozenImage || isImage || isTextInput || isGame || isEqualizer || isHands
+    showFrozenImage || isImage || isTextInput || isGame || isHands
       ? 'playing'
       : liveStreamState;
   const isVerticalInput = input.orientation === 'vertical';
@@ -140,11 +138,6 @@ export function Input({ input }: { input: InputConfig }) {
                 containerWidth={contentWidth}
                 containerHeight={contentHeight}
                 scrollNudge={input.textScrollNudge}
-              />
-            ) : isEqualizer ? (
-              <EqualizerInput
-                input={input}
-                resolution={{ width: contentWidth, height: contentHeight }}
               />
             ) : isHands ? (
               <HandsInput

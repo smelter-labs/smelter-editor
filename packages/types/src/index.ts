@@ -43,16 +43,11 @@ export type {
   BorderProperties,
   SnakeGameDisplayProperties,
   MotionProperties,
-  EqualizerProperties,
   HandsProperties,
 } from './input.js';
 
 export { AUDIO_BAND_COUNT } from './audio.js';
-export type {
-  AudioBands,
-  EqualizerStyle,
-  EqualizerConfig,
-} from './audio.js';
+export type { AudioBands } from './audio.js';
 
 export type {
   SnakeEventType,

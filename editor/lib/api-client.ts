@@ -59,18 +59,6 @@ export interface SmelterApiClient {
     textAlign?: 'left' | 'center' | 'right',
   ): Promise<any>;
   addSnakeGameInput(roomId: string, title?: string): Promise<any>;
-  addEqualizerInput(
-    roomId: string,
-    opts?: {
-      barCount?: number;
-      style?: 'bars' | 'bars-rounded';
-      barColor?: string;
-      glowIntensity?: number;
-      bgOpacity?: number;
-      gap?: number;
-      smoothing?: number;
-    },
-  ): Promise<any>;
   addHandsInput(roomId: string, sourceInputId: string): Promise<any>;
   addCameraInput(roomId: string, username?: string): Promise<AddInputResponse>;
 
@@ -303,13 +291,6 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       return await req('post', `/room/${enc(roomId)}/input`, {
         type: 'game',
         title,
-      });
-    },
-
-    async addEqualizerInput(roomId, opts) {
-      return await req('post', `/room/${enc(roomId)}/input`, {
-        type: 'equalizer',
-        ...opts,
       });
     },
 

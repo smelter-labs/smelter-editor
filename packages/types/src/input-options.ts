@@ -5,7 +5,6 @@ import type {
   CropProperties,
   BorderProperties,
   SnakeGameDisplayProperties,
-  EqualizerProperties,
 } from './input.js';
 
 export type UpdateInputOptions = {
@@ -21,8 +20,7 @@ export type UpdateInputOptions = {
   AbsolutePositionProperties &
   CropProperties &
   BorderProperties &
-  SnakeGameDisplayProperties &
-  EqualizerProperties;
+  SnakeGameDisplayProperties;
 
 export type RegisterInputOptions =
   | { type: 'twitch-channel'; channelId: string }
@@ -41,16 +39,6 @@ export type RegisterInputOptions =
       textFontSize?: number;
     }
   | { type: 'game'; title?: string }
-  | {
-      type: 'equalizer';
-      barCount?: number;
-      style?: 'bars' | 'bars-rounded';
-      barColor?: string;
-      glowIntensity?: number;
-      bgOpacity?: number;
-      gap?: number;
-      smoothing?: number;
-    }
   | { type: 'hands'; sourceInputId: string };
 
 export type PendingWhipInputData = {

@@ -26,16 +26,11 @@ export type {
   BorderProperties,
   SnakeGameDisplayProperties,
   MotionProperties,
-  EqualizerProperties,
   HandsProperties,
 } from '@smelter-editor/types';
 
 export { AUDIO_BAND_COUNT } from '@smelter-editor/types';
-export type {
-  AudioBands,
-  EqualizerStyle,
-  EqualizerConfig,
-} from '@smelter-editor/types';
+export type { AudioBands } from '@smelter-editor/types';
 
 export type { PublicInputState } from '@smelter-editor/types';
 

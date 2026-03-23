@@ -43,7 +43,6 @@ import {
   parseRoomConfig,
   loadTimelineFromStorage,
   resolveRoomConfigTimelineState,
-  resolveImportedEqualizerConfig,
   restoreTimelineToStorage,
   loadOutputPlayerSettings,
   saveOutputPlayerSettings,
@@ -55,10 +54,7 @@ import {
   GenericSaveModal,
   GenericLoadModal,
 } from '@/components/storage-modals';
-import {
-  setAudioAnalysisEnabled,
-  addEqualizerInput,
-} from '@/app/actions/actions';
+import { setAudioAnalysisEnabled } from '@/app/actions/actions';
 import { TransitionSettings } from './components/TransitionSettings';
 import {
   rotateBy90,
@@ -946,10 +942,6 @@ function SettingsBar({
     async (config: RoomConfig) => {
       const oldInputIds = roomState.inputs.map((i) => i.inputId);
       const newPendingWhipInputs: PendingWhipInput[] = [];
-      const deferredEqualizers: {
-        config: RoomConfigInput;
-        position: number;
-      }[] = [];
       const createdInputIds: {
         inputId: string;
         config: RoomConfigInput;
@@ -968,11 +960,6 @@ function SettingsBar({
               config: inputConfig,
               position: i,
             });
-            continue;
-          }
-
-          if (inputConfig.type === 'equalizer') {
-            deferredEqualizers.push({ config: inputConfig, position: i });
             continue;
           }
 
@@ -1050,36 +1037,12 @@ function SettingsBar({
         );
       }
 
-      for (const { config: inputConfig, position } of deferredEqualizers) {
-        try {
-          const equalizerConfig = resolveImportedEqualizerConfig(inputConfig);
-          if (!equalizerConfig) {
-            console.warn(
-              `Failed to resolve equalizer config for ${inputConfig.title}`,
-            );
-            continue;
-          }
-
-          const result = await addEqualizerInput(roomId, equalizerConfig);
-          createdInputIds.push({
-            inputId: result.inputId,
-            config: inputConfig,
-            position,
-          });
-          positionToInputId.set(position, result.inputId);
-        } catch (e) {
-          console.warn(`Failed to add input ${inputConfig.title}:`, e);
-        }
-      }
-
       await handleRefreshState();
 
       for (const { inputId, config: inputConfig } of createdInputIds) {
         const attachedInputIds = inputConfig.attachedInputIndices
           ?.map((idx) => positionToInputId.get(idx))
           .filter((id): id is string => !!id);
-        const equalizerConfig = resolveImportedEqualizerConfig(inputConfig);
-
         try {
           await updateInputAction(roomId, inputId, {
             volume: inputConfig.volume,
@@ -1114,7 +1077,6 @@ function SettingsBar({
             cropLeft: inputConfig.cropLeft,
             cropRight: inputConfig.cropRight,
             cropBottom: inputConfig.cropBottom,
-            equalizerConfig,
             attachedInputIds:
               attachedInputIds && attachedInputIds.length > 0
                 ? attachedInputIds

@@ -8,7 +8,6 @@ import { TextAddInputForm } from '../add-input-form/text-add-input-form';
 import { WHIPAddInputForm } from '../add-input-form/whip-add-input-form';
 import { ScreenshareAddInputForm } from '../add-input-form/screenshare-add-input-form';
 import { SnakeGameAddInputForm } from '../add-input-form/snake-game-add-input-form';
-import { EqualizerAddInputForm } from '../add-input-form/equalizer-add-input-form';
 import { HandsAddInputForm } from '../add-input-form/hands-add-input-form';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useControlPanelContext } from '../contexts/control-panel-context';
@@ -30,7 +29,6 @@ export type AddTab =
   | 'image'
   | 'text'
   | 'game'
-  | 'equalizer'
   | 'hands'
   | 'inputs';
 type StreamTab = 'twitch' | 'kick';
@@ -184,7 +182,6 @@ export function AddVideoSection({
         { id: 'image', label: 'Image' },
         { id: 'text', label: 'Text' },
         { id: 'game', label: 'Game' },
-        { id: 'equalizer', label: 'EQ' },
         { id: 'hands', label: 'Hands' },
         { id: 'inputs', label: 'Inputs' },
       ];
@@ -299,14 +296,6 @@ export function AddVideoSection({
           <div>
             <SnakeGameAddInputForm
               inputs={inputs}
-              roomId={roomId}
-              refreshState={refreshState}
-            />
-          </div>
-        )}
-        {effectiveActiveTab === 'equalizer' && (
-          <div>
-            <EqualizerAddInputForm
               roomId={roomId}
               refreshState={refreshState}
             />

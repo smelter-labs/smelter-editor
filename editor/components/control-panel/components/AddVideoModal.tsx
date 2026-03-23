@@ -21,7 +21,6 @@ import {
 import { startPublish } from '../whip-input/utils/whip-publisher';
 import { startScreensharePublish } from '../whip-input/utils/screenshare-publisher';
 import {
-  addEqualizerInput,
   addHandsInput,
   getMp4Duration,
 } from '@/app/actions/actions';
@@ -40,7 +39,6 @@ type AssetItemAction = {
   actionType:
     | 'text'
     | 'game'
-    | 'equalizer'
     | 'hands'
     | 'camera'
     | 'screenshare';
@@ -60,7 +58,6 @@ const FILTER_TYPES = [
   'IMAGE',
   'TEXT',
   'GAME',
-  'EQ',
   'HANDS',
   'INPUT',
 ] as const;
@@ -69,7 +66,6 @@ type FilterType = (typeof FILTER_TYPES)[number];
 const ACTION_CARDS: AssetItemAction[] = [
   { kind: 'action', actionType: 'text' },
   { kind: 'action', actionType: 'game' },
-  { kind: 'action', actionType: 'equalizer' },
   { kind: 'action', actionType: 'hands' },
   { kind: 'action', actionType: 'camera' },
   { kind: 'action', actionType: 'screenshare' },
@@ -103,8 +99,6 @@ function itemMatchesFilter(item: AssetItem, filter: FilterType): boolean {
       return item.kind === 'action' && item.actionType === 'text';
     case 'GAME':
       return item.kind === 'action' && item.actionType === 'game';
-    case 'EQ':
-      return item.kind === 'action' && item.actionType === 'equalizer';
     case 'HANDS':
       return item.kind === 'action' && item.actionType === 'hands';
     case 'INPUT':
@@ -133,7 +127,6 @@ function itemLabel(item: AssetItem): string {
 const ACTION_TYPE_LABELS: Record<AssetItemAction['actionType'], string> = {
   text: 'TEXT INPUT',
   game: 'SNAKE GAME',
-  equalizer: 'EQUALIZER',
   hands: 'HAND TRACKING',
   camera: 'CAMERA',
   screenshare: 'SCREENSHARE',
@@ -549,22 +542,6 @@ function ActionThumbnail({
             {/* apple */}
             <rect x='59' y='32' width='8' height='8' rx='1' fill='#fe00fe' />
           </svg>
-        </div>
-      );
-    case 'equalizer':
-      return (
-        <div className='w-full h-full flex items-end justify-center gap-[3px] pb-3 bg-gradient-to-b from-[#131313] to-[#00f3ff]/5'>
-          {[60, 85, 45, 70, 55, 90, 40, 75].map((h, i) => (
-            <div
-              key={i}
-              className='w-[6px] rounded-t-sm'
-              style={{
-                height: `${h}%`,
-                background: `linear-gradient(to top, #00f3ff, #fe00fe)`,
-                opacity: 0.4 + (h / 90) * 0.3,
-              }}
-            />
-          ))}
         </div>
       );
     case 'hands':
@@ -983,8 +960,6 @@ function ActionInspector({
       return <TextActionInspector roomId={roomId} onDone={onDone} />;
     case 'game':
       return <GameActionInspector roomId={roomId} onDone={onDone} />;
-    case 'equalizer':
-      return <EqualizerActionInspector roomId={roomId} onDone={onDone} />;
     case 'hands':
       return (
         <HandsActionInspector roomId={roomId} inputs={inputs} onDone={onDone} />
@@ -1133,64 +1108,6 @@ function GameActionInspector({
   );
 }
 
-function EqualizerActionInspector({
-  roomId,
-  onDone,
-}: {
-  roomId: string;
-  onDone: () => Promise<void>;
-}) {
-  const [barColor, setBarColor] = useState('#33ccff');
-  const [loading, setLoading] = useState(false);
-
-  const handleAdd = async () => {
-    setLoading(true);
-    try {
-      await addEqualizerInput(roomId, {
-        barColor,
-        barCount: 16,
-        glowIntensity: 0.5,
-        bgOpacity: 0.8,
-        gap: 0.2,
-        smoothing: 0.3,
-      });
-      await onDone();
-    } catch {
-      toast.error('Failed to add equalizer input.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className='space-y-3'>
-      <div>
-        <span className='text-[10px] font-mono text-[#849495] block mb-1'>
-          BAR_COLOR
-        </span>
-        <div className='flex items-center gap-2'>
-          <input
-            type='color'
-            value={barColor}
-            onChange={(e) => setBarColor(e.target.value)}
-            className='w-7 h-7 border border-[#3a494b]/30 cursor-pointer bg-transparent'
-          />
-          <span className='font-mono text-[10px] text-[#00f3ff]'>
-            {barColor}
-          </span>
-        </div>
-      </div>
-      <PropRow label='BAR_COUNT' value='16' />
-      <PropRow label='SMOOTHING' value='0.3' />
-      <InitiateButton
-        label='INITIATE_EQ'
-        onClick={handleAdd}
-        loading={loading}
-      />
-    </div>
-  );
-}
-
 const VIDEO_TYPES = new Set([
   'local-mp4',
   'twitch-channel',
@@ -1328,7 +1245,7 @@ function WhipActionInspector({
         setIsWhipActive(false);
       };
 
-      let location: string;
+      let location: string | null;
       if (kind === 'camera') {
         const result = await startPublish(
           response.inputId,

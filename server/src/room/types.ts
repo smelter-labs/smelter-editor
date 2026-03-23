@@ -9,7 +9,6 @@ import type {
   BorderProperties,
   AbsolutePositionProperties,
   CropProperties,
-  EqualizerConfig,
 } from '../types';
 import type { StoreApi } from 'zustand';
 import type { HandsStore } from '../hands/handStore';
@@ -107,10 +106,6 @@ type TypeSpecificState =
       snake2Shaders?: ShaderConfig[];
       activeEffects: ActiveSnakeEffect[];
       effectTimers: NodeJS.Timeout[];
-    }
-  | {
-      type: 'equalizer';
-      equalizerConfig: EqualizerConfig;
     }
   | {
       type: 'hands';

@@ -316,9 +316,6 @@ export function createBlockSettingsFromInput(input?: Input): BlockSettings {
     cropLeft: input?.cropLeft,
     cropRight: input?.cropRight,
     cropBottom: input?.cropBottom,
-    equalizerConfig: input?.equalizerConfig
-      ? { ...input.equalizerConfig }
-      : undefined,
   };
 }
 
