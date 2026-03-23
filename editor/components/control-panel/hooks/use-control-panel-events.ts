@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import type { InputWrapper } from './use-control-panel-state';
 import { useControlPanelInputOrderEvents } from './use-control-panel-input-order-events';
 import type { Input, AvailableShader } from '@/lib/types';
+import { hexToPackedInt } from '@/lib/color-utils';
 import {
   useActions,
   type ControlPanelActions,
@@ -667,18 +668,6 @@ export function useControlPanelEvents({
   }, [roomId, handleRefreshState]);
 
   useEffect(() => {
-    const hexToPackedInt = (hex: string): number => {
-      const cleanHex = hex.replace('#', '');
-      const fullHex =
-        cleanHex.length === 3
-          ? cleanHex
-              .split('')
-              .map((char) => char + char)
-              .join('')
-          : cleanHex;
-      return parseInt(fullHex, 16);
-    };
-
     const onAddShader = async (
       e: CustomEvent<{
         requestId?: string;

@@ -1,4 +1,17 @@
-import type { PublicInputState } from './publicInputState';
+import type {
+  ConnectedPeer,
+  ConnectedEvent,
+  RoomEvent,
+} from '@smelter-editor/types';
+
+export type {
+  ConnectedPeer,
+  InputUpdatedEvent,
+  InputDeletedEvent,
+  PeersUpdatedEvent,
+  ConnectedEvent,
+  RoomEvent,
+} from '@smelter-editor/types';
 
 // pnpm wants node modules imports, fastify ws's use "export =".
 interface RoomWebSocket {

@@ -1,7 +1,6 @@
-export type RoomNameEntry = {
-  pl: string;
-  en: string;
-};
+import type { RoomNameEntry } from '@smelter-editor/types';
+
+export type { RoomNameEntry } from '@smelter-editor/types';
 
 export const ROOM_NAMES: RoomNameEntry[] = [
   { pl: 'Kuchnia', en: 'Kitchen' },

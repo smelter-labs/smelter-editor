@@ -8,6 +8,7 @@ export type StoredTransitionConfig = {
 };
 
 export type StoredBlockSettings = {
+  timelineColor?: string;
   volume: number;
   showTitle: boolean;
   shaders: {

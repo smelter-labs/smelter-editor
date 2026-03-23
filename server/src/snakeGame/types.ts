@@ -1,4 +1,15 @@
-import type { ShaderParamConfig } from '@smelter-editor/types';
+import type {
+  ShaderParamConfig,
+  SnakeEventType,
+  SnakeEventShaderConfig,
+} from '@smelter-editor/types';
+
+export type {
+  SnakeEventType,
+  SnakeEventApplicationMode,
+  SnakeEventShaderMapping,
+  SnakeEventShaderConfig,
+} from '@smelter-editor/types';
 
 export type SnakeGameCell = {
   x: number;
@@ -10,34 +21,6 @@ export type SnakeGameCell = {
   /** Interpolation progress 0→1 from previous grid position to current (x,y). */
   progress?: number;
 };
-
-export type SnakeEventType =
-  | 'speed_up'
-  | 'cut_opponent'
-  | 'got_cut'
-  | 'cut_self'
-  | 'eat_block'
-  | 'bounce_block'
-  | 'no_moves'
-  | 'game_over';
-
-export type SnakeEventApplicationMode =
-  | { mode: 'all' }
-  | { mode: 'snake_cells' }
-  | { mode: 'first_n'; n: number }
-  | { mode: 'sequential'; durationMs: number; delayMs: number };
-
-export type SnakeEventShaderMapping = {
-  enabled: boolean;
-  shaderId: string;
-  params: ShaderParamConfig[];
-  application: SnakeEventApplicationMode;
-  effectDurationMs: number;
-};
-
-export type SnakeEventShaderConfig = Partial<
-  Record<SnakeEventType, SnakeEventShaderMapping>
->;
 
 export type ActiveSnakeEffect = {
   eventType: SnakeEventType;

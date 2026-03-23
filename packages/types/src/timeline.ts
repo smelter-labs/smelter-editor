@@ -8,6 +8,7 @@ import type {
 } from './input.js';
 
 export type TimelineBlockSettings = {
+  timelineColor?: string;
   attachedInputIds?: string[];
   mp4PlayFromMs?: number;
   mp4Loop?: boolean;
