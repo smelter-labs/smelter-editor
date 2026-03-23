@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { View, StyleSheet, Pressable, Text } from "react-native";
 import { useTheme } from "react-native-paper";
 import { useLayoutStore } from "../../store/layoutStore";
@@ -117,9 +117,20 @@ export function LayoutScreen() {
     "right",
   );
 
+  // Refs used to gate room_updated processing while a layer push is in-flight.
+  // Using refs (not state) so they don't trigger re-renders or recreate closures.
+  const isPushing = useRef(false);
+  const pendingRefresh = useRef(false);
+
   // Subscribe to server room updates
   useEffect(() => {
     const unsubRoom = wsService.on("room_updated", async () => {
+      if (isPushing.current) {
+        // Defer: a push is in-flight; applying server state now would roll back the
+        // optimistic update. The pushLayers finally-block will reconcile instead.
+        pendingRefresh.current = true;
+        return;
+      }
       try {
         const { layers: updatedLayers } = await apiService.fetchRoomState(
           serverUrl,
@@ -138,11 +149,29 @@ export function LayoutScreen() {
   // Push updated layers to server
   const pushLayers = useCallback(
     async (newLayers: Layer[]) => {
+      isPushing.current = true;
+      pendingRefresh.current = false;
       setLayers(newLayers);
       try {
         await apiService.updateLayers(serverUrl, roomId, newLayers);
       } catch (err) {
         console.warn("[Layout] Failed to push layer update:", err);
+        // Force reconcile so the optimistic state doesn't stay permanently broken.
+        pendingRefresh.current = true;
+      } finally {
+        isPushing.current = false;
+        if (pendingRefresh.current) {
+          pendingRefresh.current = false;
+          try {
+            const { layers: serverLayers } = await apiService.fetchRoomState(
+              serverUrl,
+              roomId,
+            );
+            setLayers(serverLayers);
+          } catch (err) {
+            console.warn("[Layout] Failed to refresh after push:", err);
+          }
+        }
       }
     },
     [serverUrl, roomId, setLayers],

@@ -152,7 +152,7 @@ interface ReshufflableGridWrapperProps<T> {
   containerStyle?: object;
 }
 
-const ReshufflableGridWrapper = <T extends { id: string },>({
+const ReshufflableGridWrapper = <T extends { id: string }>({
   itemData,
   renderedComponent: RenderedComponent,
   onItemChange,
@@ -184,33 +184,27 @@ const ReshufflableGridWrapper = <T extends { id: string },>({
     }
 
     setData((prev) => {
-      const prevById = new Map(prev.map((item) => [item.id, item]));
-
-      const next = itemData.map((item) => {
-        const id = item.props.id;
-        const existing = prevById.get(id);
-
-        if (existing) {
-          // Existing item — keep current grid position, update props only
-          if (existing.itemProps === item.props) return existing;
-          return { ...existing, itemProps: item.props };
-        }
-
-        // New item — use the initial position provided by the caller
-        return {
-          id,
-          width: item.initial.width,
-          height: item.initial.height,
-          startColumn: item.initial.col,
-          startRow: item.initial.row,
-          itemProps: item.props,
-        };
-      });
+      const next = itemData.map((item) => ({
+        id: item.props.id,
+        width: item.initial.width,
+        height: item.initial.height,
+        startColumn: item.initial.col,
+        startRow: item.initial.row,
+        itemProps: item.props,
+      }));
 
       // Avoid unnecessary state updates
       if (
         next.length === prev.length &&
-        next.every((item, i) => item === prev[i])
+        next.every(
+          (item, i) =>
+            item.id === prev[i].id &&
+            item.startColumn === prev[i].startColumn &&
+            item.startRow === prev[i].startRow &&
+            item.width === prev[i].width &&
+            item.height === prev[i].height &&
+            item.itemProps === prev[i].itemProps,
+        )
       ) {
         return prev;
       }

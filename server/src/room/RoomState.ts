@@ -248,11 +248,72 @@ export class RoomState {
 
   public async updateLayers(layers: Layer[]) {
     return this.mutex.runExclusive(async () => {
-      this.layers = cloneLayers(layers);
+      const cloned = cloneLayers(layers);
       // Empty array means "revert to auto-managed grid"
-      this.autoManagedLayers = layers.length === 0;
+      this.autoManagedLayers = cloned.length === 0;
+
+      if (!this.autoManagedLayers) {
+        // Collect all inputIds the client explicitly placed in the layers.
+        const mentionedIds = new Set<string>();
+        for (const layer of cloned) {
+          for (const li of layer.inputs) {
+            mentionedIds.add(li.inputId);
+          }
+        }
+
+        // Find connected, non-hidden, non-attached inputs that the client omitted.
+        // This happens when the client's state was stale (e.g. a new input was added
+        // after the client last fetched room state). We append them so they are never
+        // silently dropped from the layout.
+        const allInputs = this.inputManager.getInputs();
+        const attachedIds = new Set<string>();
+        for (const inp of allInputs) {
+          if (inp.status === 'connected' && !inp.hidden && inp.attachedInputIds) {
+            for (const id of inp.attachedInputIds) {
+              attachedIds.add(id);
+            }
+          }
+        }
+        const missing = allInputs.filter(
+          (inp) =>
+            inp.status === 'connected' &&
+            !inp.hidden &&
+            !attachedIds.has(inp.inputId) &&
+            !mentionedIds.has(inp.inputId),
+        );
+
+        if (missing.length > 0) {
+          const existingCount = cloned[0].inputs.length;
+          const total = existingCount + missing.length;
+          missing.forEach((inp, i) => {
+            cloned[0].inputs.push({
+              inputId: inp.inputId,
+              ...this.computeDefaultPosition(existingCount + i, total),
+            });
+          });
+        }
+      }
+
+      this.layers = cloned;
       this.updateStoreWithState();
     });
+  }
+
+  private computeDefaultPosition(
+    index: number,
+    total: number,
+  ): { x: number; y: number; width: number; height: number } {
+    const { width, height } = this.output.resolution;
+    const cols = Math.ceil(Math.sqrt(total));
+    const rows = Math.ceil(total / cols);
+    const cellW = Math.floor(width / cols);
+    const cellH = Math.floor(height / rows);
+    return {
+      x: (index % cols) * cellW,
+      y: Math.floor(index / cols) * cellH,
+      width: cellW,
+      height: cellH,
+    };
   }
 
   public areLayersAutoManaged(): boolean {
