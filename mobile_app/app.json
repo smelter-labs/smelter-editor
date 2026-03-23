@@ -18,6 +18,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#0f0f1a"
       },
+      "usesCleartextTraffic": true,
       "package": "com.smeltereditortablet"
     },
     "web": {

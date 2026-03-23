@@ -31,6 +31,13 @@ export const inputRoutes: FastifyPluginCallback = (routes, _opts, done) => {
       if (inputId) {
         bearerToken = await room.connectInput(inputId);
       }
+      const sourceId =
+        (req.headers['x-source-id'] as string | undefined) ?? null;
+      roomEventBus.broadcast(roomId, {
+        type: 'room_updated',
+        roomId,
+        sourceId,
+      });
       let whipUrl = `${config.whipBaseUrl}/${inputId}`;
       res.status(200).send({ inputId, bearerToken, whipUrl });
     },

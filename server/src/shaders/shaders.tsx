@@ -1,6 +1,10 @@
 import path from 'path';
 import fs from 'fs';
-import type { ShaderParamConfig, ShaderConfig, ShaderParamDefinition } from '../types';
+import type {
+  ShaderParamConfig,
+  ShaderConfig,
+  ShaderParamDefinition,
+} from '../types';
 
 export type { ShaderParamConfig, ShaderConfig };
 

@@ -114,16 +114,23 @@ export function useJoinRoom() {
 
   const validate = useCallback((): FormErrors => {
     const newErrors: FormErrors = {};
+    const trimmedServerUrl = localServerUrl.trim();
+    const trimmedRoomId = localRoomId.trim();
+
     if (!localServerUrl.trim()) {
       newErrors.serverUrl = "Server URL is required";
     }
-    if (!localRoomId.trim()) {
+    if (!trimmedRoomId) {
       newErrors.roomId = "Room ID is required";
     }
-    const data = ConnectionData.fromManualInput(localServerUrl, localRoomId);
-    if (localServerUrl && !data.isValid()) {
-      newErrors.serverUrl = "Invalid server URL format";
+
+    if (trimmedServerUrl) {
+      const data = ConnectionData.fromManualInput(trimmedServerUrl, "_probe_");
+      if (!data.isValid()) {
+        newErrors.serverUrl = "Invalid server URL format";
+      }
     }
+
     return newErrors;
   }, [localServerUrl, localRoomId]);
 

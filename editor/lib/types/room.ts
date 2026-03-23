@@ -1,8 +1,15 @@
-import type { Resolution, PendingWhipInputData, RoomNameEntry } from '@smelter-editor/types';
+import type {
+  Resolution,
+  PendingWhipInputData,
+  RoomNameEntry,
+} from '@smelter-editor/types';
 import type { Input } from './input';
 import type { Layer, Layout } from './layout';
 
-export type { PendingWhipInputData, RoomNameEntry } from '@smelter-editor/types';
+export type {
+  PendingWhipInputData,
+  RoomNameEntry,
+} from '@smelter-editor/types';
 
 export type RoomState = {
   inputs: Input[];
