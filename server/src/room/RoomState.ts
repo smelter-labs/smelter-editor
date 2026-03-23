@@ -45,6 +45,8 @@ export class RoomState {
   >();
 
   private layers: Layer[] = [];
+  /** True while no explicit layers have been configured; layers are auto-built from inputs. */
+  private autoManagedLayers = true;
   private swapDurationMs: number = 500;
   private swapOutgoingEnabled: boolean = true;
   private swapFadeInDurationMs: number = 500;
@@ -237,6 +239,8 @@ export class RoomState {
   public async updateLayers(layers: Layer[]) {
     return this.mutex.runExclusive(async () => {
       this.layers = layers;
+      // Empty array means "revert to auto-managed grid"
+      this.autoManagedLayers = layers.length === 0;
       this.updateStoreWithState();
     });
   }
@@ -767,6 +771,32 @@ export class RoomState {
     }
   }
 
+  /**
+   * Build a single default layer that places all provided inputs in an
+   * equal-area grid. Used only when no layers have been explicitly configured.
+   */
+  private buildDefaultLayer(inputs: { inputId: string }[]): Layer {
+    const { width, height } = this.output.resolution;
+    const count = inputs.length;
+    if (count === 0) {
+      return { id: 'default', inputs: [] };
+    }
+    const cols = Math.ceil(Math.sqrt(count));
+    const rows = Math.ceil(count / cols);
+    const cellW = Math.floor(width / cols);
+    const cellH = Math.floor(height / rows);
+    return {
+      id: 'default',
+      inputs: inputs.map((input, i) => ({
+        inputId: input.inputId,
+        x: (i % cols) * cellW,
+        y: Math.floor(i / cols) * cellH,
+        width: cellW,
+        height: cellH,
+      })),
+    };
+  }
+
   private updateStoreWithState() {
     if (this.destroyed) return;
 
@@ -843,6 +873,10 @@ export class RoomState {
         }
         return config;
       });
+
+    if (this.autoManagedLayers) {
+      this.layers = inputs.length > 0 ? [this.buildDefaultLayer(inputs)] : [];
+    }
 
     this.output.store.getState().updateState({
       inputs: [...inputs].reverse(),

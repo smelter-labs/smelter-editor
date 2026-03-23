@@ -471,17 +471,45 @@ describe('RoomState', () => {
     });
   });
 
-  describe('updateLayout', () => {
-    it('changes the layout', async () => {
+  describe('updateLayers', () => {
+    it('changes layers', async () => {
       const output = createTestOutput();
       const room = new RoomState('room-1', output, [], true);
       await room.init();
 
-      await room.updateLayout('grid');
-      expect(room.getState().layout).toBe('grid');
+      const firstLayers = [
+        {
+          id: 'layer-1',
+          inputs: [
+            {
+              inputId: 'input-1',
+              x: 0,
+              y: 0,
+              width: 640,
+              height: 360,
+            },
+          ],
+        },
+      ];
+      await room.updateLayers(firstLayers);
+      expect(room.getState().layers).toEqual(firstLayers);
 
-      await room.updateLayout('primary-on-left');
-      expect(room.getState().layout).toBe('primary-on-left');
+      const secondLayers = [
+        {
+          id: 'layer-2',
+          inputs: [
+            {
+              inputId: 'input-2',
+              x: 100,
+              y: 100,
+              width: 1280,
+              height: 720,
+            },
+          ],
+        },
+      ];
+      await room.updateLayers(secondLayers);
+      expect(room.getState().layers).toEqual(secondLayers);
     });
   });
 
@@ -509,14 +537,14 @@ describe('RoomState', () => {
   });
 
   describe('getState', () => {
-    it('returns RoomSnapshot with inputs, layout, and settings', async () => {
+    it('returns RoomSnapshot with inputs, layers, and settings', async () => {
       const output = createTestOutput();
       const room = new RoomState('room-1', output, [], true);
       await room.init();
 
       const result = room.getState();
       expect(Array.isArray(result.inputs)).toBe(true);
-      expect(typeof result.layout).toBe('string');
+      expect(Array.isArray(result.layers)).toBe(true);
       expect(typeof result.swapDurationMs).toBe('number');
       expect(typeof result.swapOutgoingEnabled).toBe('boolean');
       expect(typeof result.newsStripEnabled).toBe('boolean');
@@ -586,9 +614,15 @@ describe('RoomState', () => {
         text: 'Original',
       }))!;
 
-      await room.startTimelinePlayback(createTimelineConfig(inputId, 'First'), 0);
+      await room.startTimelinePlayback(
+        createTimelineConfig(inputId, 'First'),
+        0,
+      );
       await room.pauseTimeline();
-      await room.startTimelinePlayback(createTimelineConfig(inputId, 'Updated'), 0);
+      await room.startTimelinePlayback(
+        createTimelineConfig(inputId, 'Updated'),
+        0,
+      );
 
       const resumedInput = room.getInputs().find((i) => i.inputId === inputId);
       expect(resumedInput?.type).toBe('text-input');
@@ -619,9 +653,14 @@ describe('RoomState', () => {
           text: 'Original',
         }))!;
 
-        await room.startTimelinePlayback(createTimelineConfig(inputId, 'First'), 0);
+        await room.startTimelinePlayback(
+          createTimelineConfig(inputId, 'First'),
+          0,
+        );
 
-        const initialInput = room.getInputs().find((i) => i.inputId === inputId);
+        const initialInput = room
+          .getInputs()
+          .find((i) => i.inputId === inputId);
         expect(initialInput?.type).toBe('text-input');
         if (initialInput?.type === 'text-input') {
           expect(initialInput.text).toBe('First');
@@ -629,7 +668,9 @@ describe('RoomState', () => {
 
         await vi.advanceTimersByTimeAsync(500);
 
-        const midPlaybackInput = room.getInputs().find((i) => i.inputId === inputId);
+        const midPlaybackInput = room
+          .getInputs()
+          .find((i) => i.inputId === inputId);
         expect(midPlaybackInput?.type).toBe('text-input');
         if (midPlaybackInput?.type === 'text-input') {
           expect(midPlaybackInput.text).toBe('First-later');
@@ -755,10 +796,7 @@ describe('RoomState', () => {
       room.addStateChangeListener(listener);
       const callsBefore = listener.mock.calls.length;
 
-      await room.startTimelinePlayback(
-        createTimelineConfig(inputId, 'TL'),
-        0,
-      );
+      await room.startTimelinePlayback(createTimelineConfig(inputId, 'TL'), 0);
       expect(listener.mock.calls.length).toBeGreaterThan(callsBefore);
 
       const callsAfterStart = listener.mock.calls.length;
@@ -809,9 +847,7 @@ describe('RoomState', () => {
       };
       await room.showInput(inputId, transition);
 
-      const { toPublicInputState } = await import(
-        '../server/publicInputState'
-      );
+      const { toPublicInputState } = await import('../server/publicInputState');
       const input = room.getInputs().find((i) => i.inputId === inputId)!;
       const pub = toPublicInputState(input);
       expect(pub.activeTransition).toMatchObject(transition);
@@ -827,9 +863,7 @@ describe('RoomState', () => {
         text: 'Test',
       }))!;
 
-      const { toPublicInputState } = await import(
-        '../server/publicInputState'
-      );
+      const { toPublicInputState } = await import('../server/publicInputState');
       const input = room.getInputs().find((i) => i.inputId === inputId)!;
       const pub = toPublicInputState(input);
       expect('textScrollNudge' in pub).toBe(true);

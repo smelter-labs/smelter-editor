@@ -340,7 +340,6 @@ async function createDedicatedSnakeGameRoom(
     [{ type: 'game', title: 'Snake' }],
     true,
   );
-  await room.updateLayout('picture-in-picture');
   await new Promise((resolve) => setTimeout(resolve, 200));
 
   const inputId = room
@@ -349,6 +348,22 @@ async function createDedicatedSnakeGameRoom(
   if (!inputId) {
     throw new Error('Failed to create game input in new room');
   }
+
+  const { width, height } = room.getResolution();
+  await room.updateLayers([
+    {
+      id: 'snake-layer',
+      inputs: [
+        {
+          inputId,
+          x: 0,
+          y: 0,
+          width,
+          height,
+        },
+      ],
+    },
+  ]);
 
   room.updateSnakeGameState(inputId, gs, gs.events);
 
