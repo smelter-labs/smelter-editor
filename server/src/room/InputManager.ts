@@ -1,9 +1,6 @@
 import path from 'node:path';
 import { pathExists, readdir } from 'fs-extra';
-import {
-  SmelterInstance,
-  type RegisterSmelterInputOptions,
-} from '../smelter';
+import { SmelterInstance, type RegisterSmelterInputOptions } from '../smelter';
 import { hlsUrlForKickChannel, hlsUrlForTwitchChannel } from '../streamlink';
 import { TwitchChannelMonitor } from '../twitch/TwitchChannelMonitor';
 import type { TwitchStreamInfo } from '../twitch/TwitchApi';
@@ -595,8 +592,7 @@ export class InputManager {
     if (options.absoluteHeight !== undefined)
       input.absoluteHeight = options.absoluteHeight;
     if (options.absoluteTransitionDurationMs !== undefined)
-      input.absoluteTransitionDurationMs =
-        options.absoluteTransitionDurationMs;
+      input.absoluteTransitionDurationMs = options.absoluteTransitionDurationMs;
     if (options.absoluteTransitionEasing !== undefined)
       input.absoluteTransitionEasing = options.absoluteTransitionEasing;
 
@@ -729,8 +725,7 @@ export class InputManager {
   ackWhipInput(inputId: string): void {
     const input = this.getInput(inputId);
     if (input.type !== 'whip') throw new Error('Input is not a Whip input');
-    const { previousAckTimestamp, currentAckTimestamp } =
-      input.monitor.touch();
+    const { previousAckTimestamp, currentAckTimestamp } = input.monitor.touch();
     const ageBeforeAckMs = currentAckTimestamp - previousAckTimestamp;
     console.log('[whip][ack]', {
       roomId: this.idPrefix,
@@ -818,10 +813,7 @@ export class InputManager {
     this.onStateChange();
 
     try {
-      logTimelineEvent(
-        this.idPrefix,
-        `[mp4-restart] unregister "${name}"`,
-      );
+      logTimelineEvent(this.idPrefix, `[mp4-restart] unregister "${name}"`);
       await SmelterInstance.unregisterInput(inputId);
       logTimelineEvent(
         this.idPrefix,
@@ -926,10 +918,7 @@ function inputIdForTwitchInput(
   return `${idPrefix}::twitch::${twitchChannelId}`;
 }
 
-function inputIdForKickInput(
-  idPrefix: string,
-  kickChannelId: string,
-): string {
+function inputIdForKickInput(idPrefix: string, kickChannelId: string): string {
   return `${idPrefix}::kick::${kickChannelId}`;
 }
 
@@ -942,10 +931,7 @@ export function formatMp4Name(fileName: string): string {
 }
 
 function formatImageName(fileName: string): string {
-  const fileNameWithoutExt = fileName.replace(
-    /\.(jpg|jpeg|png|gif|svg)$/i,
-    '',
-  );
+  const fileNameWithoutExt = fileName.replace(/\.(jpg|jpeg|png|gif|svg)$/i, '');
   return fileNameWithoutExt
     .split(/[_\- ]+/)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))

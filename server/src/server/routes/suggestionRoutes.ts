@@ -9,7 +9,11 @@ import mp4SuggestionsMonitor from '../../mp4/mp4SuggestionMonitor';
 import pictureSuggestionsMonitor from '../../pictures/pictureSuggestionMonitor';
 import shadersController from '../../shaders/shaders';
 
-export const suggestionRoutes: FastifyPluginCallback = (routes, _opts, done) => {
+export const suggestionRoutes: FastifyPluginCallback = (
+  routes,
+  _opts,
+  done,
+) => {
   routes.get('/suggestions/mp4s', async (_req, res) => {
     res.status(200).send({ mp4s: mp4SuggestionsMonitor.mp4Files });
   });

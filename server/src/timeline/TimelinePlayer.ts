@@ -1297,9 +1297,7 @@ export class TimelinePlayer {
       );
     }
 
-    promises.push(
-      this.room.updateLayers(this.snapshot.layers).catch(() => {}),
-    );
+    promises.push(this.room.updateLayers(this.snapshot.layers).catch(() => {}));
 
     if (promises.length > 0) {
       await Promise.allSettled(promises);

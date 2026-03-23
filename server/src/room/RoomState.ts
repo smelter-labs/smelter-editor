@@ -18,7 +18,11 @@ import { RecordingController } from './RecordingController';
 import { MotionController } from './MotionController';
 import { SnakeGameController } from './SnakeGameController';
 import { PlaceholderManager } from './PlaceholderManager';
-import type { RoomInputState, RegisterInputOptions, RoomSnapshot } from './types';
+import type {
+  RoomInputState,
+  RegisterInputOptions,
+  RoomSnapshot,
+} from './types';
 
 const RESUME_FROZEN_IMAGE_CLEANUP_DELAY_MS = 5500;
 
@@ -86,9 +90,8 @@ export class RoomState {
     this.creationTimestamp = Date.now();
 
     this.placeholderManager = new PlaceholderManager(idPrefix);
-    this.motionController = new MotionController(
-      idPrefix,
-      () => this.inputManager.getInputs(),
+    this.motionController = new MotionController(idPrefix, () =>
+      this.inputManager.getInputs(),
     );
     this.inputManager = new InputManager(
       idPrefix,
@@ -252,7 +255,9 @@ export class RoomState {
   }
 
   public async removeInput(inputId: string): Promise<void> {
-    return this.mutex.runExclusive(() => this.inputManager.removeInput(inputId));
+    return this.mutex.runExclusive(() =>
+      this.inputManager.removeInput(inputId),
+    );
   }
 
   public async connectInput(inputId: string): Promise<string> {
@@ -541,10 +546,7 @@ export class RoomState {
           `MP4 FROZEN (pause) ${input.metadata.title} at ${Math.round(framePositionMs)}ms`,
         );
       } catch (err) {
-        console.error(
-          `[timeline] Failed to extract frame for ${inputId}`,
-          err,
-        );
+        console.error(`[timeline] Failed to extract frame for ${inputId}`, err);
       }
     }
 
@@ -826,8 +828,7 @@ export class RoomState {
         input.type === 'text-input' ? input.textScrollNudge : undefined,
       textFontSize:
         input.type === 'text-input' ? input.textFontSize : undefined,
-      snakeGameState:
-        input.type === 'game' ? input.snakeGameState : undefined,
+      snakeGameState: input.type === 'game' ? input.snakeGameState : undefined,
       snakeEventShaders:
         input.type === 'game' ? input.snakeEventShaders : undefined,
       snake1Shaders: input.type === 'game' ? input.snake1Shaders : undefined,
