@@ -6,10 +6,7 @@
 
 ### Unimplemented features
 
-- QR codes scanning
-- Layout changes
-- Muting inputs
-- Rearranging inputs (the UI components are not yet draggable)
+- Rearranging inputs (the UI components in the Inputs screen are not yet draggable)
 
 ## Description
 
