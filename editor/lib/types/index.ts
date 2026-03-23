@@ -9,7 +9,7 @@ export type {
 
 export type { SavedItemInfo } from '../storage-client';
 
-export type { Layout } from './layout';
+export type { Layout, Layer, LayerInput } from './layout';
 
 export type {
   InputOrientation,

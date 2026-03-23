@@ -16,7 +16,7 @@ import type {
   ActiveSnakeEffect,
 } from '../snakeGame/types';
 
-import type { Layout } from '../types';
+import type { Layer } from '../types';
 
 export type { InputOrientation } from '../types';
 export type {
@@ -27,7 +27,7 @@ export type {
 
 export type RoomSnapshot = {
   inputs: RoomInputState[];
-  layout: Layout;
+  layers: Layer[];
   swapDurationMs: number;
   swapOutgoingEnabled: boolean;
   swapFadeInDurationMs: number;

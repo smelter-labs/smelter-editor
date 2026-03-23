@@ -1,4 +1,3 @@
-import type { GridItem } from "./layout";
 import type { InputCard } from "./input";
 
 /**
@@ -21,6 +20,11 @@ export type WSEventMap = {
     type: "input_deleted";
     roomId: string;
     inputId: string;
+    sourceId: string | null;
+  };
+  room_updated: {
+    type: "room_updated";
+    roomId: string;
     sourceId: string | null;
   };
   peers_updated: {

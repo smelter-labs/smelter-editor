@@ -2,7 +2,7 @@ export type { Resolution, ResolutionPreset } from './resolution.js';
 export { RESOLUTION_PRESETS } from './resolution.js';
 
 export { Layouts } from './layout.js';
-export type { Layout } from './layout.js';
+export type { Layout, Layer, LayerInput } from './layout.js';
 
 export type { ShaderParamConfig, ShaderConfig, ShaderPreset } from './shader.js';
 

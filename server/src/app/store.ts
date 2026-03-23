@@ -8,6 +8,7 @@ import type {
   AbsolutePositionProperties,
   BorderProperties,
   SnakeGameDisplayProperties,
+  Layer,
 } from '../types';
 import { createContext, useContext } from 'react';
 import { useStore } from 'zustand';
@@ -44,6 +45,7 @@ export type InputConfig = {
 
 export type RoomStore = {
   inputs: InputConfig[];
+  layers: Layer[];
   resolution: Resolution;
   swapDurationMs: number;
   swapOutgoingEnabled: boolean;
@@ -53,6 +55,7 @@ export type RoomStore = {
   newsStripEnabled: boolean;
   updateState: (state: {
     inputs: InputConfig[];
+    layers: Layer[];
     swapDurationMs: number;
     swapOutgoingEnabled: boolean;
     swapFadeInDurationMs: number;
@@ -68,6 +71,7 @@ export function createRoomStore(
 ): StoreApi<RoomStore> {
   return createStore<RoomStore>((set) => ({
     inputs: [],
+    layers: [],
     resolution,
     swapDurationMs: 500,
     swapOutgoingEnabled: true,
@@ -77,6 +81,7 @@ export function createRoomStore(
     newsStripEnabled: false,
     updateState: ({
       inputs,
+      layers,
       swapDurationMs,
       swapOutgoingEnabled,
       swapFadeInDurationMs,
@@ -86,6 +91,7 @@ export function createRoomStore(
     }) => {
       set(() => ({
         inputs,
+        layers,
         swapDurationMs,
         swapOutgoingEnabled,
         swapFadeInDurationMs,
@@ -149,6 +155,11 @@ export function useNewsStripEnabled() {
 export function useInputs() {
   const store = useContext(StoreContext);
   return useStore(store, (state) => state.inputs);
+}
+
+export function useLayers() {
+  const store = useContext(StoreContext);
+  return useStore(store, (state) => state.layers);
 }
 
 export const StoreContext =

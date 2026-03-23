@@ -72,7 +72,7 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
       res.status(200).send({
         roomName: room.roomName,
         inputs: snapshot.inputs.map(toPublicInputState),
-        layout: snapshot.layout,
+        layers: snapshot.layers,
         whepUrl: room.getWhepUrl(),
         pendingDelete: room.pendingDelete,
         isPublic: room.isPublic,
@@ -124,7 +124,7 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
           roomId: room.idPrefix,
           roomName: room.roomName,
           inputs: snapshot.inputs.map(toPublicInputState),
-          layout: snapshot.layout,
+          layers: snapshot.layers,
           whepUrl: room.getWhepUrl(),
           pendingDelete: room.pendingDelete,
           createdAt: room.creationTimestamp,
@@ -157,8 +157,8 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
       if (req.body.inputOrder) {
         room.reorderInputs(req.body.inputOrder);
       }
-      if (req.body.layout) {
-        await room.updateLayout(req.body.layout);
+      if (req.body.layers) {
+        await room.updateLayers(req.body.layers);
       }
       if (req.body.isPublic !== undefined) {
         room.isPublic = req.body.isPublic;

@@ -142,7 +142,7 @@ export function useJoinRoom() {
     setCredentials(trimmedUrl, trimmedRoomId);
 
     const { setInputs } = useInputsStore.getState();
-    const { setItems, setGridConfig } = useLayoutStore.getState();
+    const { setLayers } = useLayoutStore.getState();
 
     try {
       await wsService.connect(trimmedUrl, trimmedRoomId);
@@ -150,16 +150,15 @@ export function useJoinRoom() {
 
       // Fetch and populate room state
       try {
-        const { inputs, layout } = await apiService.fetchRoomState(
+        const { inputs, layers } = await apiService.fetchRoomState(
           trimmedUrl,
           trimmedRoomId,
         );
         setInputs(inputs);
-        setItems(layout.items);
-        setGridConfig(layout.columns, layout.rows);
+        setLayers(layers);
         console.log("[JoinRoom] Room state loaded", {
           inputCount: inputs.length,
-          layoutGrid: `${layout.columns}x${layout.rows}`,
+          layerCount: layers.length,
         });
       } catch (err) {
         console.warn("[JoinRoom] Failed to load room state:", err);

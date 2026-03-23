@@ -58,7 +58,7 @@ export const sseRoutes: FastifyPluginCallback = (routes, _opts, done) => {
         const payload = {
           roomName: room.roomName,
           inputs: snapshot.inputs.map(toPublicInputState),
-          layout: snapshot.layout,
+          layers: snapshot.layers,
           whepUrl: room.getWhepUrl(),
           pendingDelete: room.pendingDelete,
           isPublic: room.isPublic,

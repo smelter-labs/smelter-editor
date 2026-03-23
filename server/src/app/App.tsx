@@ -2,7 +2,7 @@ import { View, Rescaler } from '@swmansion/smelter';
 
 import type { RoomStore } from './store';
 import type { StoreApi } from 'zustand';
-import { StoreContext, useResolution, useInputs } from './store';
+import { StoreContext, useResolution, useInputs, useLayers } from './store';
 import { NewsStripOverlay } from './news-strip';
 import { Input } from '../inputs/inputs';
 
@@ -28,7 +28,10 @@ export default function App({ store }: { store: StoreApi<RoomStore> }) {
 function OutputScene() {
   const resolution = useResolution();
   const inputs = useInputs();
+  const layers = useLayers();
   const { width, height } = resolution;
+
+  const inputMap = new Map(inputs.map((input) => [input.inputId, input]));
 
   return (
     <View
@@ -39,22 +42,32 @@ function OutputScene() {
         height,
         overflow: 'visible',
       }}>
-      {inputs.map((input) => (
-        <Rescaler
-          key={input.inputId}
-          id={`absolute-${input.inputId}`}
-          transition={{
-            durationMs: input.absoluteTransitionDurationMs ?? 300,
-            easingFunction: buildEasingFunction(input.absoluteTransitionEasing),
-          }}
-          style={{
-            top: input.absoluteTop ?? 0,
-            left: input.absoluteLeft ?? 0,
-            width: input.absoluteWidth ?? Math.round(width * 0.5),
-            height: input.absoluteHeight ?? Math.round(height * 0.5),
-          }}>
-          <Input input={input} />
-        </Rescaler>
+      {layers.map((layer) => (
+        <View
+          key={layer.id}
+          style={{ top: 0, left: 0, width, height, overflow: 'visible' }}>
+          {layer.inputs.map((item) => {
+            const input = inputMap.get(item.inputId);
+            if (!input) return null;
+            return (
+              <Rescaler
+                key={item.inputId}
+                id={`layer-${layer.id}-${item.inputId}`}
+                transition={{
+                  durationMs: item.transitionDurationMs ?? 300,
+                  easingFunction: buildEasingFunction(item.transitionEasing),
+                }}
+                style={{
+                  top: item.y,
+                  left: item.x,
+                  width: item.width,
+                  height: item.height,
+                }}>
+                <Input input={input} />
+              </Rescaler>
+            );
+          })}
+        </View>
       ))}
       <NewsStripOverlay />
     </View>

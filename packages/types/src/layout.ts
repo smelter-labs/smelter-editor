@@ -16,3 +16,18 @@ export type Layout =
   | 'wrapped'
   | 'wrapped-static'
   | 'picture-on-picture';
+
+export type LayerInput = {
+  inputId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  transitionDurationMs?: number;
+  transitionEasing?: string;
+};
+
+export type Layer = {
+  id: string;
+  inputs: LayerInput[];
+};

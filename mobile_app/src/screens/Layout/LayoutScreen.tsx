@@ -3,18 +3,21 @@ import { View, StyleSheet } from "react-native";
 import { useTheme } from "react-native-paper";
 import { GestureDetector } from "react-native-gesture-handler";
 import { useLayoutStore } from "../../store/layoutStore";
+import { useConnectionStore } from "../../store/connectionStore";
 import { wsService } from "../../services/websocketService";
-import type { GridItem } from "../../types/layout";
+import { apiService } from "../../services/apiService";
 import { useLayoutGestures } from "./useLayoutGestures";
 import { GridWrapper } from "./GridWrapper";
 import { GridItemCell } from "./GridItem";
 import { LayoutSidePanel } from "./LayoutSidePanel";
 import { SettingsPanel } from "./SettingsPanel";
 import { ScreenLabel } from "../../components/shared/ScreenLabel";
+import type { GridItem } from "../../types/layout";
 
 export function LayoutScreen() {
   const theme = useTheme();
-  const { items, columns, rows, setItems } = useLayoutStore();
+  const { layers, setLayers } = useLayoutStore();
+  const { serverUrl, roomId } = useConnectionStore();
 
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
@@ -23,22 +26,24 @@ export function LayoutScreen() {
     "right",
   );
 
-  // Log data on mount
+  // Subscribe to server input and room updates
   useEffect(() => {
-    console.log("[LayoutScreen] Mounted with data:", {
-      items,
-      columns,
-      rows,
-    });
-  }, []);
-
-  // Subscribe to server input updates
-  useEffect(() => {
-    const unsub = wsService.on("input_updated", (event) => {
+    const unsubInput = wsService.on("input_updated", (event) => {
       console.log("[Layout] input_updated:", event.inputId);
     });
-    return unsub;
-  }, []);
+    const unsubRoom = wsService.on("room_updated", async () => {
+      try {
+        const { layers: updatedLayers } = await apiService.fetchRoomState(serverUrl, roomId);
+        setLayers(updatedLayers);
+      } catch (err) {
+        console.warn("[Layout] Failed to refresh layers on room_updated:", err);
+      }
+    });
+    return () => {
+      unsubInput();
+      unsubRoom();
+    };
+  }, [serverUrl, roomId, setLayers]);
 
   const handleItemTap = useCallback((itemId: string) => {
     setSelectedItemId(itemId);
@@ -56,10 +61,10 @@ export function LayoutScreen() {
   });
 
   const handleLayoutChange = useCallback(
-    (newItems: GridItem[]) => {
-      setItems(newItems);
+    (_newItems: GridItem[]) => {
+      // Layer-based layout changes will be wired when layer UI is added
     },
-    [setItems],
+    [],
   );
 
   return (
@@ -67,11 +72,11 @@ export function LayoutScreen() {
       <View
         style={[styles.container, { backgroundColor: theme.colors.background }]}
       >
-        <ScreenLabel label="Layout" />
+        <ScreenLabel label={`Layout (${layers.length} layers)`} />
         <GridWrapper
-          items={items}
-          columns={columns}
-          rows={rows}
+          items={[]}
+          columns={4}
+          rows={3}
           onLayoutChange={handleLayoutChange}
           renderItem={(item) => (
             <GridItemCell

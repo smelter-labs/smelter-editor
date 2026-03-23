@@ -85,19 +85,24 @@ export const CreateRoomSchema = Type.Object({
   ),
 });
 
+const LayerInputSchema = Type.Object({
+  inputId: Type.String(),
+  x: Type.Number(),
+  y: Type.Number(),
+  width: Type.Number({ minimum: 0 }),
+  height: Type.Number({ minimum: 0 }),
+  transitionDurationMs: Type.Optional(Type.Number({ minimum: 0 })),
+  transitionEasing: Type.Optional(Type.String()),
+});
+
+const LayerSchema = Type.Object({
+  id: Type.String(),
+  inputs: Type.Array(LayerInputSchema),
+});
+
 export const UpdateRoomSchema = Type.Object({
   inputOrder: Type.Optional(Type.Array(Type.String())),
-  layout: Type.Optional(
-    Type.Union([
-      Type.Literal('grid'),
-      Type.Literal('primary-on-left'),
-      Type.Literal('primary-on-top'),
-      Type.Literal('picture-in-picture'),
-      Type.Literal('wrapped'),
-      Type.Literal('wrapped-static'),
-      Type.Literal('picture-on-picture'),
-    ]),
-  ),
+  layers: Type.Optional(Type.Array(LayerSchema)),
   isPublic: Type.Optional(Type.Boolean()),
   swapDurationMs: Type.Optional(Type.Number({ minimum: 0, maximum: 5000 })),
   swapOutgoingEnabled: Type.Optional(Type.Boolean()),

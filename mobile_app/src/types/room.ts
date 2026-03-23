@@ -9,12 +9,13 @@ import type {
   Resolution,
   ShaderConfig,
   ShaderParamConfig,
+  Layer,
 } from "@smelter-editor/types";
 
 import { StreamMonitor, WhipMonitor } from "./monitor";
 import { TwitchStreamInfo } from "./twitchApi";
 
-export type { InputOrientation, PublicInputState, ShaderConfig, ShaderParamConfig };
+export type { InputOrientation, PublicInputState, ShaderConfig, ShaderParamConfig, Layer };
 
 /**
  * Full room state response from GET /room/:roomId.
@@ -22,7 +23,7 @@ export type { InputOrientation, PublicInputState, ShaderConfig, ShaderParamConfi
 export interface RoomState {
   roomName: string;
   inputs: PublicInputState[];
-  layout: LayoutResponse;
+  layers: Layer[];
   whepUrl: string;
   pendingDelete: boolean;
   isPublic: boolean;
@@ -35,20 +36,6 @@ export interface RoomState {
   swapFadeOutDurationMs: number;
   newsStripEnabled: boolean;
   isRecording: boolean;
-}
-
-export interface LayoutResponse {
-  items?: Array<{
-    id: string;
-    x: number;
-    y: number;
-    w: number;
-    h: number;
-    label?: string;
-  }>;
-  columns?: number;
-  rows?: number;
-  [key: string]: unknown;
 }
 
 export type RoomInputState = {

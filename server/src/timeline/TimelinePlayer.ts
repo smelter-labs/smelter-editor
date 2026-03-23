@@ -6,6 +6,7 @@ import type {
   TimelineKeyframeInterpolationMode,
 } from './types';
 import type { RoomInputState } from '../room/types';
+import type { Layer, LayerInput } from '../types';
 
 type PlaybackEvent = {
   timeMs: number;
@@ -33,9 +34,19 @@ type InputSnapshot = {
   mp4PlayFromMs?: number;
 };
 
+type LayerPositionPatch = {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+  transitionDurationMs?: number;
+  transitionEasing?: string;
+};
+
 type PrePlaySnapshot = {
   inputSnapshots: Map<string, InputSnapshot>;
   inputOrder: string[];
+  layers: Layer[];
 };
 
 function deepClone<T>(value: T): T {
@@ -43,6 +54,53 @@ function deepClone<T>(value: T): T {
     return structuredClone(value);
   }
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function extractLayerPosition(
+  bs: TimelineBlockSettings,
+): LayerPositionPatch | null {
+  const hasPosition =
+    bs.absoluteLeft !== undefined ||
+    bs.absoluteTop !== undefined ||
+    bs.absoluteWidth !== undefined ||
+    bs.absoluteHeight !== undefined;
+  if (!hasPosition) return null;
+  return {
+    x: bs.absoluteLeft,
+    y: bs.absoluteTop,
+    width: bs.absoluteWidth,
+    height: bs.absoluteHeight,
+    transitionDurationMs: bs.absoluteTransitionDurationMs,
+    transitionEasing: bs.absoluteTransitionEasing,
+  };
+}
+
+function patchLayersWithPosition(
+  layers: Layer[],
+  inputId: string,
+  patch: LayerPositionPatch,
+): Layer[] {
+  return layers.map((layer) => {
+    const idx = layer.inputs.findIndex((i) => i.inputId === inputId);
+    if (idx === -1) return layer;
+    const existing = layer.inputs[idx];
+    const updated: LayerInput = {
+      ...existing,
+      ...(patch.x !== undefined ? { x: patch.x } : {}),
+      ...(patch.y !== undefined ? { y: patch.y } : {}),
+      ...(patch.width !== undefined ? { width: patch.width } : {}),
+      ...(patch.height !== undefined ? { height: patch.height } : {}),
+      ...(patch.transitionDurationMs !== undefined
+        ? { transitionDurationMs: patch.transitionDurationMs }
+        : {}),
+      ...(patch.transitionEasing !== undefined
+        ? { transitionEasing: patch.transitionEasing }
+        : {}),
+    };
+    const inputs = [...layer.inputs];
+    inputs[idx] = updated;
+    return { ...layer, inputs };
+  });
 }
 
 export type TimelineListenerData = {
@@ -55,6 +113,7 @@ export type TimelineListener = (data: TimelineListenerData) => void;
 
 export interface TimelineRoomStateAdapter {
   getInputs(): RoomInputState[];
+  getLayers(): Layer[];
   showInput(
     inputId: string,
     activeTransition?: TimelineVisibilityTransition,
@@ -67,6 +126,7 @@ export interface TimelineRoomStateAdapter {
     inputId: string,
     options: Partial<Record<string, any>>,
   ): Promise<void>;
+  updateLayers(layers: Layer[]): Promise<void>;
   restartMp4Input(
     inputId: string,
     playFromMs: number,
@@ -420,13 +480,7 @@ export function buildUpdateFromBlockSettings(
     attachedInputIds: bs.attachedInputIds,
     snake1Shaders: bs.snake1Shaders,
     snake2Shaders: bs.snake2Shaders,
-    absolutePosition: bs.absolutePosition,
-    absoluteTop: bs.absoluteTop,
-    absoluteLeft: bs.absoluteLeft,
-    absoluteWidth: bs.absoluteWidth,
-    absoluteHeight: bs.absoluteHeight,
-    absoluteTransitionDurationMs: bs.absoluteTransitionDurationMs,
-    absoluteTransitionEasing: bs.absoluteTransitionEasing,
+    // Position fields are routed through layers, not updateInput
     gameBackgroundColor: bs.gameBackgroundColor,
     gameCellGap: bs.gameCellGap,
     gameBoardBorderColor: bs.gameBoardBorderColor,
@@ -459,13 +513,7 @@ function buildUpdateFromRoomInput(
     attachedInputIds: input.attachedInputIds,
     snake1Shaders: input.type === 'game' ? input.snake1Shaders : undefined,
     snake2Shaders: input.type === 'game' ? input.snake2Shaders : undefined,
-    absolutePosition: input.absolutePosition,
-    absoluteTop: input.absoluteTop,
-    absoluteLeft: input.absoluteLeft,
-    absoluteWidth: input.absoluteWidth,
-    absoluteHeight: input.absoluteHeight,
-    absoluteTransitionDurationMs: input.absoluteTransitionDurationMs,
-    absoluteTransitionEasing: input.absoluteTransitionEasing,
+    // Position fields are restored via layer snapshot, not updateInput
     gameBackgroundColor:
       input.type === 'game' ? input.snakeGameState.backgroundColor : undefined,
     gameCellGap:
@@ -1130,10 +1178,42 @@ export class TimelinePlayer {
       timeMs,
       this.config.keyframeInterpolationMode,
     );
+
+    // Collect position patches for all active inputs so they can be applied
+    // as a single atomic layers update rather than per-input updateInput calls.
+    const positionPatches = new Map<string, LayerPositionPatch>();
+    for (const [inputId, clip] of active) {
+      const bs = resolveBlockSettingsAtTime(
+        clip,
+        timeMs,
+        this.config.keyframeInterpolationMode,
+      );
+      const position = extractLayerPosition(bs);
+      if (position) {
+        positionPatches.set(inputId, position);
+      }
+    }
+
     const updates: Promise<void>[] = [];
+
+    if (positionPatches.size > 0) {
+      let layers = this.room.getLayers();
+      for (const [inputId, position] of positionPatches) {
+        layers = patchLayersWithPosition(layers, inputId, position);
+      }
+      updates.push(
+        this.room
+          .updateLayers(layers)
+          .catch((err) =>
+            console.warn('[timeline] Failed to apply layer positions', err),
+          ),
+      );
+    }
+
     for (const [inputId, clip] of active) {
       updates.push(this.applyClipState(inputId, clip, timeMs));
     }
+
     if (updates.length > 0) {
       await Promise.allSettled(updates);
     }
@@ -1159,7 +1239,11 @@ export class TimelinePlayer {
       inputSnapshots.set(input.inputId, snapshotInput(input));
     }
 
-    this.snapshot = { inputSnapshots, inputOrder };
+    this.snapshot = {
+      inputSnapshots,
+      inputOrder,
+      layers: deepClone(this.room.getLayers()),
+    };
   }
 
   private async restoreState(): Promise<void> {
@@ -1212,6 +1296,10 @@ export class TimelinePlayer {
         this.room.reorderInputs(this.snapshot.inputOrder).catch(() => {}),
       );
     }
+
+    promises.push(
+      this.room.updateLayers(this.snapshot.layers).catch(() => {}),
+    );
 
     if (promises.length > 0) {
       await Promise.allSettled(promises);

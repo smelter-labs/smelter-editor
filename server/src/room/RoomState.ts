@@ -2,7 +2,7 @@ import { remove } from 'fs-extra';
 import { Mutex } from 'async-mutex';
 import { SmelterInstance, type SmelterOutput } from '../smelter';
 import type { InputConfig } from '../app/store';
-import type { Layout } from '../types';
+import type { Layer } from '../types';
 import type { SnakeEventType } from '../snakeGame/types';
 import type { RoomNameEntry } from '../server/roomNames';
 import {
@@ -44,7 +44,7 @@ export class RoomState {
     ReturnType<typeof setTimeout>
   >();
 
-  private layout: Layout = 'picture-in-picture';
+  private layers: Layer[] = [];
   private swapDurationMs: number = 500;
   private swapOutgoingEnabled: boolean = true;
   private swapFadeInDurationMs: number = 500;
@@ -152,7 +152,7 @@ export class RoomState {
     this.lastReadTimestamp = Date.now();
     return {
       inputs: this.inputManager.getInputs(),
-      layout: this.layout,
+      layers: this.layers,
       swapDurationMs: this.swapDurationMs,
       swapOutgoingEnabled: this.swapOutgoingEnabled,
       swapFadeInDurationMs: this.swapFadeInDurationMs,
@@ -234,9 +234,9 @@ export class RoomState {
     this.updateStoreWithState();
   }
 
-  public async updateLayout(layout: Layout) {
+  public async updateLayers(layers: Layer[]) {
     return this.mutex.runExclusive(async () => {
-      this.layout = layout;
+      this.layers = layers;
       this.updateStoreWithState();
     });
   }
@@ -385,9 +385,11 @@ export class RoomState {
   private buildTimelineAdapter(): TimelineRoomStateAdapter {
     return {
       getInputs: () => this.getInputs(),
+      getLayers: () => this.layers,
       showInput: (inputId, transition) => this.showInput(inputId, transition),
       hideInput: (inputId, transition) => this.hideInput(inputId, transition),
       updateInput: (inputId, options) => this.updateInput(inputId, options),
+      updateLayers: (layers) => this.updateLayers(layers),
       restartMp4Input: (inputId, playFromMs, loop) =>
         this.restartMp4Input(inputId, playFromMs, loop),
       reorderInputs: (order) => this.reorderInputs(order),
@@ -844,6 +846,7 @@ export class RoomState {
 
     this.output.store.getState().updateState({
       inputs: [...inputs].reverse(),
+      layers: this.layers,
       swapDurationMs: this.swapDurationMs,
       swapOutgoingEnabled: this.swapOutgoingEnabled,
       swapFadeInDurationMs: this.swapFadeInDurationMs,

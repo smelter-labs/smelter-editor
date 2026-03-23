@@ -1,7 +1,6 @@
 import type { InputCard } from "../types/input";
-import type { GridLayout } from "../types/layout";
+import type { Layer } from "../types/layout";
 import type {
-  LayoutResponse,
   PublicInputState,
   RoomState,
 } from "../types/room";
@@ -65,7 +64,7 @@ class ApiService {
     roomId: string,
   ): Promise<{
     inputs: InputCard[];
-    layout: GridLayout;
+    layers: Layer[];
   }> {
     const base = this.buildHttpUrl(serverUrl);
     const res = await fetch(`${base}/room/${encodeURIComponent(roomId)}`);
@@ -81,8 +80,29 @@ class ApiService {
     );
     return {
       inputs: this.mapInputsToCards(roomState.inputs),
-      layout: this.mapLayoutResponse(roomState.layout),
+      layers: roomState.layers ?? [],
     };
+  }
+
+  async updateLayers(
+    serverUrl: string,
+    roomId: string,
+    layers: Layer[],
+    sourceId?: string,
+  ): Promise<void> {
+    const base = this.buildHttpUrl(serverUrl);
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+    if (sourceId) {
+      headers["x-source-id"] = sourceId;
+    }
+    const res = await fetch(`${base}/room/${encodeURIComponent(roomId)}`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({ layers }),
+    });
+    if (!res.ok) throw new Error(`updateLayers failed (${res.status})`);
   }
 
   /**
@@ -214,23 +234,6 @@ class ApiService {
     }));
   }
 
-  /**
-   * Map server layout response to mobile GridLayout format.
-   */
-  private mapLayoutResponse(layout: LayoutResponse): GridLayout {
-    return {
-      items: (layout.items ?? []).map((item) => ({
-        id: item.id,
-        x: item.x,
-        y: item.y,
-        w: item.w,
-        h: item.h,
-        label: item.label || "",
-      })),
-      columns: layout.columns ?? 4,
-      rows: layout.rows ?? 3,
-    };
-  }
 }
 
 export const apiService = new ApiService();
