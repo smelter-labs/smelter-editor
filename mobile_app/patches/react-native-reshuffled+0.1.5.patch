@@ -1,0 +1,71 @@
+diff --git a/node_modules/react-native-reshuffled/src/components/ReshufflableGrid/index.tsx b/node_modules/react-native-reshuffled/src/components/ReshufflableGrid/index.tsx
+index e19cefe..322c776 100644
+--- a/node_modules/react-native-reshuffled/src/components/ReshufflableGrid/index.tsx
++++ b/node_modules/react-native-reshuffled/src/components/ReshufflableGrid/index.tsx
+@@ -2,7 +2,6 @@ import { Cell, getNewGrid } from '../../algorithm'
+ import { DraggableRectangle } from '../DraggableRectangle'
+ import React, { useCallback, useEffect, useState } from 'react'
+ import { LayoutChangeEvent, View } from 'react-native'
+-import { GestureHandlerRootView } from 'react-native-gesture-handler'
+ import { useSharedValue } from 'react-native-reanimated'
+ import { GridPropsContextProvider } from '../GridPropsContextProvider'
+ import { getOccupiedSlots } from './utils'
+@@ -10,6 +9,7 @@ import { RenderItemInfo, ReshufflableGridProps } from './types'
+ 
+ export default function ReshufflableGrid<T extends Cell>({
+   data,
++  onItemsChange,
+   renderItem,
+   renderShadow = (_info: RenderItemInfo<T>) => null,
+   rows,
+@@ -35,6 +35,11 @@ export default function ReshufflableGrid<T extends Cell>({
+     occupiedSlots.value = getOccupiedSlots(items)
+   }, [items, occupiedSlots])
+ 
++  useEffect(() => {
++    setItems(data)
++    setItemsBeforeDrag(data)
++  }, [data])
++
+   const handleDragUpdate = useCallback(
+     (draggedItemId: string, finalX: number, finalY: number) => {
+       const cellWidth = dimensions.width / columns
+@@ -105,15 +110,16 @@ export default function ReshufflableGrid<T extends Cell>({
+       }
+       setItems(restItems)
+       setItemsBeforeDrag(restItems)
++      onItemsChange?.(restItems)
+     },
+-    [items, itemsBeforeDrag]
++    [items, itemsBeforeDrag, onItemsChange]
+   )
+ 
+   // If dimensions are not set yet, we cannot calculate cell sizes, so we render nothing until we have them. This prevents DraggableRectangles from rendering with incorrect dimensions and then jumping to the correct ones once dimensions are set.
+   const dimensionsDefaulted = dimensions.width === 0 || dimensions.height === 0
+ 
+   return (
+-    <GestureHandlerRootView style={style} onLayout={onLayout}>
++    <View style={style} onLayout={onLayout} pointerEvents="box-none">
+       {!dimensionsDefaulted && (
+         <GridPropsContextProvider
+           gridWidth={dimensions.width}
+@@ -141,6 +147,6 @@ export default function ReshufflableGrid<T extends Cell>({
+           </View>
+         </GridPropsContextProvider>
+       )}
+-    </GestureHandlerRootView>
++    </View>
+   )
+ }
+diff --git a/node_modules/react-native-reshuffled/src/components/ReshufflableGrid/types.tsx b/node_modules/react-native-reshuffled/src/components/ReshufflableGrid/types.tsx
+index a765fa1..1a76b60 100644
+--- a/node_modules/react-native-reshuffled/src/components/ReshufflableGrid/types.tsx
++++ b/node_modules/react-native-reshuffled/src/components/ReshufflableGrid/types.tsx
+@@ -9,6 +9,7 @@ interface RenderItemInfo<ItemT> {
+ 
+ interface ReshufflableGridProps<ItemT extends Cell> {
+   data: ItemT[]
++  onItemsChange?: (items: ItemT[]) => void
+   renderItem: (info: RenderItemInfo<ItemT>) => React.ReactElement | null
+   renderShadow?: (info: RenderItemInfo<ItemT>) => React.ReactElement | null
+   rows: number

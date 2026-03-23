@@ -1,5 +1,6 @@
 import type { InputCard } from "../types/input";
 import type { Layer } from "../types/layout";
+import type { Resolution } from "@smelter-editor/types";
 import type {
   PublicInputState,
   RoomState,
@@ -65,6 +66,7 @@ class ApiService {
   ): Promise<{
     inputs: InputCard[];
     layers: Layer[];
+    resolution: Resolution;
   }> {
     const base = this.buildHttpUrl(serverUrl);
     const res = await fetch(`${base}/room/${encodeURIComponent(roomId)}`);
@@ -81,6 +83,7 @@ class ApiService {
     return {
       inputs: this.mapInputsToCards(roomState.inputs),
       layers: roomState.layers ?? [],
+      resolution: roomState.resolution ?? { width: 1920, height: 1080 },
     };
   }
 
