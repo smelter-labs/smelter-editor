@@ -30,8 +30,6 @@ import {
   ChevronDown,
   ChevronRight,
   GripVertical,
-  Eye,
-  EyeOff,
   Layers,
 } from 'lucide-react';
 import type { Input, Layer, LayerBehaviorConfig } from '@/lib/types';
