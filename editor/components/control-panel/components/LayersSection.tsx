@@ -30,11 +30,10 @@ import {
   ChevronDown,
   ChevronRight,
   GripVertical,
-  Eye,
-  EyeOff,
   Layers,
 } from 'lucide-react';
 import type { Input, Layer, LayerBehaviorConfig } from '@/lib/types';
+import { computeLayout } from '@smelter-editor/types';
 import type { InputWrapper } from '../hooks/use-control-panel-state';
 import InputEntry from '@/components/control-panel/input-entry/input-entry';
 import { ErrorBoundary } from '@/components/error-boundary';
@@ -142,7 +141,7 @@ function SortableInputItem({
 
 function LayerHeader({
   layerId,
-  layerIndex,
+  stableLayerNumber,
   isCollapsed,
   onToggleCollapse,
   behavior,
@@ -150,7 +149,7 @@ function LayerHeader({
   isGuest,
 }: {
   layerId: string;
-  layerIndex: number;
+  stableLayerNumber: number;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   behavior: LayerBehaviorConfig | undefined;
@@ -172,7 +171,7 @@ function LayerHeader({
         </span>
         <Layers className='w-3.5 h-3.5 text-neutral-500 flex-shrink-0' />
         <span className='text-[11px] font-semibold text-neutral-300 flex-1 text-left truncate'>
-          Layer {layerIndex + 1}
+          Layer {stableLayerNumber + 1}
         </span>
         {!isGuest && (
           <GripVertical className='w-3.5 h-3.5 text-neutral-600 flex-shrink-0' />
@@ -230,20 +229,23 @@ export function LayersSection({
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [activeDragItem, setActiveDragItem] = useState<DragItem | null>(null);
   const [localLayers, setLocalLayers] = useState(layers);
+  const layerNamesRef = useRef<Map<string, number>>(new Map());
+  const nextLayerNumberRef = useRef(0);
 
   useEffect(() => {
     setLocalLayers(layers);
   }, [layers]);
 
-  const [isWideScreen, setIsWideScreen] = useState(true);
+  // Register new layers with stable numbers
   useEffect(() => {
-    const check = () => setIsWideScreen(window.innerWidth >= 1600);
-    check();
-    window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
-  }, []);
+    localLayers.forEach((layer) => {
+      if (!layerNamesRef.current.has(layer.id)) {
+        layerNamesRef.current.set(layer.id, nextLayerNumberRef.current++);
+      }
+    });
+  }, [localLayers]);
 
-  const disableDrag = isGuest || !isWideScreen;
+  const disableDrag = isGuest || false;
 
   const onWhipDisconnectedOrRemoved = useCallback(
     (id: string) => {
@@ -410,10 +412,57 @@ export function LayersSection({
     async (_event: DragEndEvent) => {
       setActiveId(null);
       setActiveDragItem(null);
-      // Push the localLayers state to server
-      await onLayersChange(localLayers);
+
+      let layersToSend = localLayers;
+
+      // If input was reordered within a layer, recompute the layout
+      // to match what the server will return
+      if (activeDragItem?.type === 'input') {
+        const layerIdx = localLayers.findIndex(
+          (l) => l.id === activeDragItem.layerId,
+        );
+        if (layerIdx !== -1) {
+          const layer = localLayers[layerIdx];
+          if (layer.behavior) {
+            const layerInputInfos = layer.inputs
+              .map((li) => {
+                const inp = inputs.find((i) => i.inputId === li.inputId);
+                return inp
+                  ? {
+                      inputId: inp.inputId,
+                      nativeWidth: inp.nativeWidth,
+                      nativeHeight: inp.nativeHeight,
+                    }
+                  : null;
+              })
+              .filter((bi): bi is any => !!bi);
+
+            try {
+              // TODO: get actual resolution from context
+              const resolution = { width: 1920, height: 1080 };
+              const result = computeLayout(
+                layer.behavior,
+                layerInputInfos,
+                resolution,
+              );
+
+              // Build the updated layers with recomputed positions
+              layersToSend = localLayers.map((l) =>
+                l.id === layer.id ? { ...l, inputs: result.inputs } : l,
+              );
+              setLocalLayers(layersToSend);
+            } catch (e) {
+              // If recomputation fails, just use the reordered layout
+              console.error('Failed to recompute layout:', e);
+            }
+          }
+        }
+      }
+
+      // Push the layers (either recomputed or original) to server
+      await onLayersChange(layersToSend);
     },
-    [localLayers, onLayersChange],
+    [activeDragItem, inputs, onLayersChange, localLayers],
   );
 
   const handleDragCancel = useCallback(() => {
@@ -432,6 +481,18 @@ export function LayersSection({
     },
     [localLayers, onLayersChange],
   );
+
+  const handleAddLayer = useCallback(async () => {
+    const newLayerId = `layer-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    const newLayer: Layer = {
+      id: newLayerId,
+      inputs: [],
+      behavior: { type: 'equal-grid', autoscale: true },
+    };
+    const updated = [...localLayers, newLayer];
+    setLocalLayers(updated);
+    await onLayersChange(updated);
+  }, [localLayers, onLayersChange]);
 
   // Active drag overlay content
   const activeInput = useMemo(() => {
@@ -505,7 +566,7 @@ export function LayersSection({
                 <div className='border-b border-neutral-800/50'>
                   <LayerHeader
                     layerId={layer.id}
-                    layerIndex={layerIndex}
+                    stableLayerNumber={layerNamesRef.current.get(layer.id) ?? layerIndex}
                     isCollapsed={isCollapsed}
                     onToggleCollapse={() => toggleCollapse(layer.id)}
                     behavior={layer.behavior}
@@ -568,7 +629,7 @@ export function LayersSection({
                                   onWhipDisconnectedOrRemoved={
                                     onWhipDisconnectedOrRemoved
                                   }
-                                  showGrip={isGuest ? false : isWideScreen}
+                                  showGrip={isGuest ? false : true}
                                   isSelected={selectedInputId === input.inputId}
                                   index={inputIndex}
                                   allInputs={inputs}
@@ -637,6 +698,15 @@ export function LayersSection({
           )}
         </DragOverlay>
       </DndContext>
+
+      {!isGuest && (
+        <button
+          onClick={handleAddLayer}
+          className='w-full px-2 py-2 mt-1 text-xs font-medium text-neutral-400 hover:text-neutral-200 hover:bg-neutral-800/50 border border-neutral-700/50 hover:border-neutral-600 rounded transition-colors'
+          data-no-dnd='true'>
+          + Add Layer
+        </button>
+      )}
     </div>
   );
 }

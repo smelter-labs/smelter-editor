@@ -253,56 +253,11 @@ export class RoomState {
 
   public async updateLayers(layers: Layer[]) {
     return this.mutex.runExclusive(async () => {
-      const cloned = cloneLayers(layers);
-
-      if (cloned.length > 0) {
-        // Collect all inputIds the client explicitly placed in the layers.
-        const mentionedIds = new Set<string>();
-        for (const layer of cloned) {
-          for (const li of layer.inputs) {
-            mentionedIds.add(li.inputId);
-          }
-        }
-
-        // Find connected, non-hidden, non-attached inputs that the client omitted.
-        // This happens when the client's state was stale (e.g. a new input was added
-        // after the client last fetched room state). We append them so they are never
-        // silently dropped from the layout.
-        const allInputs = this.inputManager.getInputs();
-        const attachedIds = new Set<string>();
-        for (const inp of allInputs) {
-          if (
-            inp.status === 'connected' &&
-            !inp.hidden &&
-            inp.attachedInputIds
-          ) {
-            for (const id of inp.attachedInputIds) {
-              attachedIds.add(id);
-            }
-          }
-        }
-        const missing = allInputs.filter(
-          (inp) =>
-            inp.status === 'connected' &&
-            !inp.hidden &&
-            !attachedIds.has(inp.inputId) &&
-            !mentionedIds.has(inp.inputId),
-        );
-
-        if (missing.length > 0 && cloned[0]) {
-          // If the first layer has a behavior, let computeLayout handle placement.
-          // Otherwise, append with a simple default position.
-          for (const inp of missing) {
-            cloned[0].inputs.push({
-              inputId: inp.inputId,
-              x: 0,
-              y: 0,
-              width: 0,
-              height: 0,
-            });
-          }
-        }
+      if (layers.length === 0) {
+        throw new Error('layers must not be empty');
       }
+
+      const cloned = cloneLayers(layers);
 
       this.layers = cloned;
       this.updateStoreWithState();
@@ -940,14 +895,73 @@ export class RoomState {
 
     // Recompute positions for layers with a behavior config
     const behaviorInputInfos = this.collectBehaviorInputInfos();
+    const inputMap = new Map(allInputs.map((i) => [i.inputId, i]));
+
+    // Auto-append connected inputs that aren't in any layer to the first
+    // behavior-driven layer. This handles inputs that connected after the
+    // client last called updateLayers() (e.g. a new WHIP stream appearing).
+    const mentionedIds = new Set(
+      this.layers.flatMap((l) => l.inputs.map((li) => li.inputId)),
+    );
+    const unplacedAttachedIds = new Set(
+      allInputs
+        .filter((i) => i.status === 'connected' && !i.hidden && i.attachedInputIds)
+        .flatMap((i) => i.attachedInputIds ?? []),
+    );
+    const unplacedInputs = behaviorInputInfos.filter(
+      (bi) => !mentionedIds.has(bi.inputId) && !unplacedAttachedIds.has(bi.inputId),
+    );
+    if (unplacedInputs.length > 0) {
+      const firstBehaviorLayer = this.layers.find((l) => l.behavior);
+      if (firstBehaviorLayer) {
+        for (const bi of unplacedInputs) {
+          firstBehaviorLayer.inputs.push({
+            inputId: bi.inputId,
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+          });
+        }
+      }
+    }
+
     this.layers = this.layers.map((layer) => {
       if (!layer.behavior) return layer; // manual layer, keep as-is
+
+      // Separate visible (non-hidden) and hidden inputs
+      const visibleLayerInputs: typeof layer.inputs = [];
+      const hiddenLayerInputs: typeof layer.inputs = [];
+
+      for (const li of layer.inputs) {
+        const input = inputMap.get(li.inputId);
+        if (input?.hidden) {
+          hiddenLayerInputs.push(li);
+        } else {
+          visibleLayerInputs.push(li);
+        }
+      }
+
+      // Compute layout only for visible inputs, preserving layer order.
+      // We build a lookup map from the global infos and then re-order by the
+      // layer's own input sequence so that user reorderings are honoured.
+      const behaviorInfoMap = new Map(
+        behaviorInputInfos.map((bi) => [bi.inputId, bi]),
+      );
+      const visibleInputInfos = visibleLayerInputs
+        .map((li) => behaviorInfoMap.get(li.inputId))
+        .filter((bi): bi is BehaviorInputInfo => bi !== undefined);
       const result = computeLayout(
         layer.behavior,
-        behaviorInputInfos,
+        visibleInputInfos,
         this.output.resolution,
       );
-      return { ...layer, inputs: result.inputs };
+
+      // Merge computed positions with hidden inputs
+      return {
+        ...layer,
+        inputs: [...result.inputs, ...hiddenLayerInputs],
+      };
     });
 
     this.output.store.getState().updateState({
