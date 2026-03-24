@@ -1,12 +1,14 @@
 import React from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
-import { Divider, Surface, Text, useTheme } from "react-native-paper";
+import { Button, Divider, Surface, Text, useTheme } from "react-native-paper";
 import { useShallow } from "zustand/react/shallow";
 import { useConnectionStore } from "../../store";
 import { ScreenLabel } from "../../components/shared/ScreenLabel";
+import { useLeaveRoom } from "../../hooks/useLeaveRoom";
 
 export function DebugScreen() {
   const theme = useTheme();
+  const leaveRoom = useLeaveRoom();
   const { status, clientId, peers, roomId, serverUrl } = useConnectionStore(
     useShallow((state) => ({
       status: state.status,
@@ -45,6 +47,16 @@ export function DebugScreen() {
           <Text variant="bodyMedium">Client ID: {clientId || "—"}</Text>
           <Text variant="bodyMedium">Client Name: {clientName}</Text>
         </Surface>
+
+        <Button
+          mode="contained"
+          buttonColor={theme.colors.error}
+          textColor={theme.colors.onError}
+          onPress={leaveRoom}
+          style={styles.leaveButton}
+        >
+          Leave room
+        </Button>
 
         <Surface style={styles.card} elevation={2}>
           <Text variant="titleMedium">Peers ({peers.length})</Text>
@@ -100,5 +112,8 @@ const styles = StyleSheet.create({
   },
   peerName: {
     fontWeight: "600",
+  },
+  leaveButton: {
+    borderRadius: 8,
   },
 });

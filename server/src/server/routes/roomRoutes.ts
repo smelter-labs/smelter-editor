@@ -1,4 +1,3 @@
-import { v4 as uuidv4 } from 'uuid';
 import type { FastifyPluginCallback } from 'fastify';
 import type { Static } from '@sinclair/typebox';
 import { state } from '../serverState';
@@ -16,8 +15,8 @@ import {
   CreateRoomSchema,
   UpdateRoomSchema,
   SetPendingWhipInputsSchema,
-  type RoomIdParams,
 } from './schemas';
+import type { RoomIdParams } from './schemas';
 
 export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
   routes.get('/active-rooms', async (_req, res) => {
@@ -89,25 +88,6 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
       });
     },
   );
-
-  routes.after(() => {
-    routes.route<RoomIdParams>({
-      method: 'GET',
-      url: '/room/:roomId/ws',
-      schema: { params: RoomIdParamsSchema },
-      handler: async (_req, res) => {
-        res.status(426).send({
-          error: 'Upgrade Required',
-          message: 'Use a WebSocket client to connect to this endpoint.',
-        });
-      },
-      wsHandler: (socket, req) => {
-        const { roomId } = req.params;
-        const clientId = uuidv4();
-        roomEventBus.subscribe(roomId, clientId, socket);
-      },
-    });
-  });
 
   routes.get('/rooms', async (_req, res) => {
     res.header('Refresh', '2');
