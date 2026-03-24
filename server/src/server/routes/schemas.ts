@@ -95,9 +95,46 @@ const LayerInputSchema = Type.Object({
   transitionEasing: Type.Optional(Type.String()),
 });
 
+const ObjectFitSchema = Type.Union([
+  Type.Literal('fill'),
+  Type.Literal('cover'),
+  Type.Literal('contain'),
+]);
+
+const SpacingProps = {
+  horizontalSpacing: Type.Optional(Type.Number({ minimum: 0 })),
+  verticalSpacing: Type.Optional(Type.Number({ minimum: 0 })),
+};
+
+const LayerBehaviorSchema = Type.Union([
+  Type.Object({
+    type: Type.Literal('equal-grid'),
+    autoscale: Type.Optional(Type.Boolean()),
+    rows: Type.Optional(Type.Integer({ minimum: 1 })),
+    cols: Type.Optional(Type.Integer({ minimum: 1 })),
+    objectFit: Type.Optional(ObjectFitSchema),
+    resolveCollisions: Type.Optional(Type.Boolean()),
+    ...SpacingProps,
+  }),
+  Type.Object({
+    type: Type.Literal('approximate-aspect-grid'),
+    resolveCollisions: Type.Optional(Type.Boolean()),
+    ...SpacingProps,
+  }),
+  Type.Object({
+    type: Type.Literal('exact-aspect-grid'),
+    ...SpacingProps,
+  }),
+  Type.Object({
+    type: Type.Literal('picture-in-picture'),
+    ...SpacingProps,
+  }),
+]);
+
 const LayerSchema = Type.Object({
   id: Type.String(),
   inputs: Type.Array(LayerInputSchema),
+  behavior: Type.Optional(LayerBehaviorSchema),
 });
 
 export const UpdateRoomSchema = Type.Object({

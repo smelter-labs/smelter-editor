@@ -46,6 +46,10 @@ export type RoomInputState = {
   restartFading?: boolean;
   motionEnabled: boolean;
   motionScore?: number;
+  /** Native stream resolution width, if known. */
+  nativeWidth?: number;
+  /** Native stream resolution height, if known. */
+  nativeHeight?: number;
   metadata: {
     title: string;
     description: string;

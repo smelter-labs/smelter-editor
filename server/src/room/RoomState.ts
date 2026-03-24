@@ -2,7 +2,8 @@ import { remove } from 'fs-extra';
 import { Mutex } from 'async-mutex';
 import { SmelterInstance, type SmelterOutput } from '../smelter';
 import type { InputConfig } from '../app/store';
-import type { Layer } from '../types';
+import type { Layer, BehaviorInputInfo } from '../types';
+import { computeLayout } from '@smelter-editor/types';
 import type { SnakeEventType } from '../snakeGame/types';
 import type { RoomNameEntry } from '../server/roomNames';
 import {
@@ -55,9 +56,13 @@ export class RoomState {
     ReturnType<typeof setTimeout>
   >();
 
-  private layers: Layer[] = [];
-  /** True while no explicit layers have been configured; layers are auto-built from inputs. */
-  private autoManagedLayers = true;
+  private layers: Layer[] = [
+    {
+      id: 'default',
+      inputs: [],
+      behavior: { type: 'equal-grid', autoscale: true },
+    },
+  ];
   private swapDurationMs: number = 500;
   private swapOutgoingEnabled: boolean = true;
   private swapFadeInDurationMs: number = 500;
@@ -248,76 +253,43 @@ export class RoomState {
 
   public async updateLayers(layers: Layer[]) {
     return this.mutex.runExclusive(async () => {
-      const cloned = cloneLayers(layers);
-      // Empty array means "revert to auto-managed grid"
-      this.autoManagedLayers = cloned.length === 0;
-
-      if (!this.autoManagedLayers) {
-        // Collect all inputIds the client explicitly placed in the layers.
-        const mentionedIds = new Set<string>();
-        for (const layer of cloned) {
-          for (const li of layer.inputs) {
-            mentionedIds.add(li.inputId);
-          }
-        }
-
-        // Find connected, non-hidden, non-attached inputs that the client omitted.
-        // This happens when the client's state was stale (e.g. a new input was added
-        // after the client last fetched room state). We append them so they are never
-        // silently dropped from the layout.
-        const allInputs = this.inputManager.getInputs();
-        const attachedIds = new Set<string>();
-        for (const inp of allInputs) {
-          if (inp.status === 'connected' && !inp.hidden && inp.attachedInputIds) {
-            for (const id of inp.attachedInputIds) {
-              attachedIds.add(id);
-            }
-          }
-        }
-        const missing = allInputs.filter(
-          (inp) =>
-            inp.status === 'connected' &&
-            !inp.hidden &&
-            !attachedIds.has(inp.inputId) &&
-            !mentionedIds.has(inp.inputId),
-        );
-
-        if (missing.length > 0) {
-          const existingCount = cloned[0].inputs.length;
-          const total = existingCount + missing.length;
-          missing.forEach((inp, i) => {
-            cloned[0].inputs.push({
-              inputId: inp.inputId,
-              ...this.computeDefaultPosition(existingCount + i, total),
-            });
-          });
-        }
+      if (layers.length === 0) {
+        throw new Error('layers must not be empty');
       }
+
+      const cloned = cloneLayers(layers);
 
       this.layers = cloned;
       this.updateStoreWithState();
     });
   }
 
-  private computeDefaultPosition(
-    index: number,
-    total: number,
-  ): { x: number; y: number; width: number; height: number } {
-    const { width, height } = this.output.resolution;
-    const cols = Math.ceil(Math.sqrt(total));
-    const rows = Math.ceil(total / cols);
-    const cellW = Math.floor(width / cols);
-    const cellH = Math.floor(height / rows);
-    return {
-      x: (index % cols) * cellW,
-      y: Math.floor(index / cols) * cellH,
-      width: cellW,
-      height: cellH,
-    };
-  }
-
-  public areLayersAutoManaged(): boolean {
-    return this.autoManagedLayers;
+  /**
+   * Build BehaviorInputInfo[] from the current connected, non-hidden inputs
+   * for use with computeLayout().
+   */
+  private collectBehaviorInputInfos(): BehaviorInputInfo[] {
+    const allInputs = this.inputManager.getInputs();
+    const attachedIds = new Set<string>();
+    for (const inp of allInputs) {
+      if (inp.status === 'connected' && !inp.hidden && inp.attachedInputIds) {
+        for (const id of inp.attachedInputIds) {
+          attachedIds.add(id);
+        }
+      }
+    }
+    return allInputs
+      .filter(
+        (inp) =>
+          inp.status === 'connected' &&
+          !inp.hidden &&
+          !attachedIds.has(inp.inputId),
+      )
+      .map((inp) => ({
+        inputId: inp.inputId,
+        nativeWidth: inp.nativeWidth,
+        nativeHeight: inp.nativeHeight,
+      }));
   }
 
   // ── Input operations (mutex-wrapped delegation) ───────────
@@ -467,7 +439,6 @@ export class RoomState {
     return {
       getInputs: () => this.getInputs(),
       getLayers: () => this.layers,
-      areLayersAutoManaged: () => this.areLayersAutoManaged(),
       showInput: (inputId, transition) => this.showInput(inputId, transition),
       hideInput: (inputId, transition) => this.hideInput(inputId, transition),
       updateInput: (inputId, options) => this.updateInput(inputId, options),
@@ -846,32 +817,6 @@ export class RoomState {
     }
   }
 
-  /**
-   * Build a single default layer that places all provided inputs in an
-   * equal-area grid. Used only when no layers have been explicitly configured.
-   */
-  private buildDefaultLayer(inputs: { inputId: string }[]): Layer {
-    const { width, height } = this.output.resolution;
-    const count = inputs.length;
-    if (count === 0) {
-      return { id: 'default', inputs: [] };
-    }
-    const cols = Math.ceil(Math.sqrt(count));
-    const rows = Math.ceil(count / cols);
-    const cellW = Math.floor(width / cols);
-    const cellH = Math.floor(height / rows);
-    return {
-      id: 'default',
-      inputs: inputs.map((input, i) => ({
-        inputId: input.inputId,
-        x: (i % cols) * cellW,
-        y: Math.floor(i / cols) * cellH,
-        width: cellW,
-        height: cellH,
-      })),
-    };
-  }
-
   private updateStoreWithState() {
     if (this.destroyed) return;
 
@@ -948,9 +893,79 @@ export class RoomState {
         return config;
       });
 
-    if (this.autoManagedLayers) {
-      this.layers = inputs.length > 0 ? [this.buildDefaultLayer(inputs)] : [];
+    // Recompute positions for layers with a behavior config
+    const behaviorInputInfos = this.collectBehaviorInputInfos();
+    const inputMap = new Map(allInputs.map((i) => [i.inputId, i]));
+
+    // Auto-append connected inputs that aren't in any layer to the first
+    // behavior-driven layer. This handles inputs that connected after the
+    // client last called updateLayers() (e.g. a new WHIP stream appearing).
+    const mentionedIds = new Set(
+      this.layers.flatMap((l) => l.inputs.map((li) => li.inputId)),
+    );
+    const unplacedAttachedIds = new Set(
+      allInputs
+        .filter(
+          (i) => i.status === 'connected' && !i.hidden && i.attachedInputIds,
+        )
+        .flatMap((i) => i.attachedInputIds ?? []),
+    );
+    const unplacedInputs = behaviorInputInfos.filter(
+      (bi) =>
+        !mentionedIds.has(bi.inputId) && !unplacedAttachedIds.has(bi.inputId),
+    );
+    if (unplacedInputs.length > 0) {
+      const firstBehaviorLayer = this.layers.find((l) => l.behavior);
+      if (firstBehaviorLayer) {
+        for (const bi of unplacedInputs) {
+          firstBehaviorLayer.inputs.push({
+            inputId: bi.inputId,
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+          });
+        }
+      }
     }
+
+    this.layers = this.layers.map((layer) => {
+      if (!layer.behavior) return layer; // manual layer, keep as-is
+
+      // Separate visible (non-hidden) and hidden inputs
+      const visibleLayerInputs: typeof layer.inputs = [];
+      const hiddenLayerInputs: typeof layer.inputs = [];
+
+      for (const li of layer.inputs) {
+        const input = inputMap.get(li.inputId);
+        if (input?.hidden) {
+          hiddenLayerInputs.push(li);
+        } else {
+          visibleLayerInputs.push(li);
+        }
+      }
+
+      // Compute layout only for visible inputs, preserving layer order.
+      // We build a lookup map from the global infos and then re-order by the
+      // layer's own input sequence so that user reorderings are honoured.
+      const behaviorInfoMap = new Map(
+        behaviorInputInfos.map((bi) => [bi.inputId, bi]),
+      );
+      const visibleInputInfos = visibleLayerInputs
+        .map((li) => behaviorInfoMap.get(li.inputId))
+        .filter((bi): bi is BehaviorInputInfo => bi !== undefined);
+      const result = computeLayout(
+        layer.behavior,
+        visibleInputInfos,
+        this.output.resolution,
+      );
+
+      // Merge computed positions with hidden inputs
+      return {
+        ...layer,
+        inputs: [...result.inputs, ...hiddenLayerInputs],
+      };
+    });
 
     this.output.store.getState().updateState({
       inputs: [...inputs].reverse(),

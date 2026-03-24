@@ -2,7 +2,21 @@ export type { Resolution, ResolutionPreset } from './resolution.js';
 export { RESOLUTION_PRESETS } from './resolution.js';
 
 export { Layouts } from './layout.js';
-export type { Layout, Layer, LayerInput } from './layout.js';
+export type {
+  Layout,
+  Layer,
+  LayerInput,
+  LayerBehaviorConfig,
+  EqualGridConfig,
+  PreserveApproximateAspectGridConfig,
+  PreserveExactAspectGridConfig,
+  PictureInPictureConfig,
+  ObjectFit,
+  BehaviorInputInfo,
+} from './layout.js';
+
+export { computeLayout, computeAddInput } from './layer-behavior.js';
+export type { ComputeLayoutResult } from './layer-behavior.js';
 
 export type { ShaderParamConfig, ShaderParam, ShaderParamDefinition, ShaderConfig, ShaderPreset } from './shader.js';
 

@@ -15,7 +15,7 @@ import {
   LAYERS_CONTAINER_ID,
 } from "./dnd";
 import type { OrderChangeEvent } from "./dnd/types";
-import type { Layer } from "../../types/layout";
+import type { Layer, LayerBehaviorConfig } from "../../types/layout";
 import type { InputCard } from "../../types/input";
 
 // ─── Layer UI State ─────────────────────────────────────────────────────────────
@@ -96,6 +96,57 @@ function EditableName({
         {value}
       </Text>
     </Pressable>
+  );
+}
+
+// ─── Behavior selector ───────────────────────────────────────────────────────
+
+const BEHAVIOR_OPTIONS: { label: string; type: LayerBehaviorConfig["type"] | "manual" }[] = [
+  { label: "Equal Grid", type: "equal-grid" },
+  { label: "≈ Aspect Grid", type: "approximate-aspect-grid" },
+  { label: "Exact Aspect", type: "exact-aspect-grid" },
+  { label: "PiP", type: "picture-in-picture" },
+  { label: "Manual", type: "manual" },
+];
+
+function BehaviorSelector({
+  behavior,
+  onChange,
+}: {
+  behavior: LayerBehaviorConfig | undefined;
+  onChange: (b: LayerBehaviorConfig | undefined) => void;
+}) {
+  const currentType = behavior?.type ?? "manual";
+
+  return (
+    <View style={styles.behaviorRow}>
+      {BEHAVIOR_OPTIONS.map((opt) => {
+        const active = currentType === opt.type;
+        return (
+          <Pressable
+            key={opt.type}
+            style={[styles.behaviorChip, active && styles.behaviorChipActive]}
+            onPress={() => {
+              if (opt.type === "manual") {
+                onChange(undefined);
+              } else if (opt.type !== currentType) {
+                onChange({ type: opt.type } as LayerBehaviorConfig);
+              }
+            }}
+          >
+            <Text
+              style={[
+                styles.behaviorChipText,
+                active && styles.behaviorChipTextActive,
+              ]}
+              numberOfLines={1}
+            >
+              {opt.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
   );
 }
 
@@ -297,6 +348,20 @@ export default function LayersPanel({
                     onNameChange={(name) => setLayerUi(layer.id, { name })}
                   />
 
+                  {!ui.isCollapsed && (
+                    <BehaviorSelector
+                      behavior={layer.behavior}
+                      onChange={(b) => {
+                        const newLayers = layers.map((l) =>
+                          l.id === layer.id
+                            ? { ...l, behavior: b }
+                            : l,
+                        );
+                        onLayersChange(newLayers);
+                      }}
+                    />
+                  )}
+
                   {!ui.isCollapsed &&
                     layer.inputs.map((item, itemIndex) => (
                       <DraggableObject
@@ -415,5 +480,36 @@ const styles = StyleSheet.create({
     fontSize: 12,
     borderBottomWidth: 1,
     borderBottomColor: PS.accent,
+  },
+
+  behaviorRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    backgroundColor: PS.layerBg,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: PS.layerBorder,
+  },
+  behaviorChip: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: PS.layerBorder,
+    backgroundColor: PS.itemBg,
+  },
+  behaviorChipActive: {
+    borderColor: PS.accent,
+    backgroundColor: "rgba(77, 157, 224, 0.15)",
+  },
+  behaviorChipText: {
+    color: PS.textDim,
+    fontSize: 10,
+    fontWeight: "500",
+  },
+  behaviorChipTextActive: {
+    color: PS.accent,
   },
 });

@@ -29,6 +29,8 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
     absoluteTransitionEasing: input.absoluteTransitionEasing,
     motionScore: input.motionScore,
     motionEnabled: input.motionEnabled,
+    nativeWidth: input.nativeWidth,
+    nativeHeight: input.nativeHeight,
   };
   switch (input.type) {
     case 'local-mp4':

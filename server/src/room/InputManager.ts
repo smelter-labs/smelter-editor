@@ -135,6 +135,8 @@ export class InputManager {
       showTitle: false,
       shaders: [],
       orientation: 'horizontal',
+      nativeWidth: 1920,
+      nativeHeight: 1080,
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
@@ -176,6 +178,8 @@ export class InputManager {
       showTitle: false,
       shaders: [] as ShaderConfig[],
       orientation: 'horizontal' as InputOrientation,
+      nativeWidth: 1920,
+      nativeHeight: 1080,
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
@@ -241,6 +245,8 @@ export class InputManager {
       showTitle: false,
       shaders: [],
       orientation: 'horizontal',
+      nativeWidth: 1920,
+      nativeHeight: 1080,
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
@@ -320,6 +326,8 @@ export class InputManager {
         showTitle: false,
         shaders: [],
         orientation: 'horizontal',
+        nativeWidth: 1920,
+        nativeHeight: 1080,
         borderColor: '#ff0000',
         borderWidth: 0,
         hidden: false,
@@ -349,6 +357,8 @@ export class InputManager {
       showTitle: false,
       shaders: [],
       orientation: 'horizontal',
+      nativeWidth: 1920,
+      nativeHeight: 1080,
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
@@ -382,6 +392,8 @@ export class InputManager {
       showTitle: false,
       shaders: [],
       orientation: 'horizontal',
+      nativeWidth: 1920,
+      nativeHeight: 1080,
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
@@ -539,6 +551,11 @@ export class InputManager {
     input.shaders = options.shaders ?? input.shaders;
     input.showTitle = options.showTitle ?? input.showTitle;
     input.orientation = options.orientation ?? input.orientation;
+    // Update native resolution heuristic when orientation changes
+    if (options.orientation !== undefined) {
+      input.nativeWidth = options.orientation === 'vertical' ? 1080 : 1920;
+      input.nativeHeight = options.orientation === 'vertical' ? 1920 : 1080;
+    }
     input.borderColor = options.borderColor ?? input.borderColor;
     input.borderWidth = options.borderWidth ?? input.borderWidth;
 
