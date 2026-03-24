@@ -38,7 +38,6 @@ import InputEntry from '@/components/control-panel/input-entry/input-entry';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
-import { useActions } from '../contexts/actions-context';
 import { BehaviorSelector } from './BehaviorSelector';
 import LoadingSpinner from '@/components/ui/spinner';
 
