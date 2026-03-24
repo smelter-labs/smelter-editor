@@ -47,7 +47,6 @@ type PrePlaySnapshot = {
   inputSnapshots: Map<string, InputSnapshot>;
   inputOrder: string[];
   layers: Layer[];
-  autoManagedLayers: boolean;
 };
 
 function deepClone<T>(value: T): T {
@@ -115,7 +114,6 @@ export type TimelineListener = (data: TimelineListenerData) => void;
 export interface TimelineRoomStateAdapter {
   getInputs(): RoomInputState[];
   getLayers(): Layer[];
-  areLayersAutoManaged(): boolean;
   showInput(
     inputId: string,
     activeTransition?: TimelineVisibilityTransition,
@@ -1245,7 +1243,6 @@ export class TimelinePlayer {
       inputSnapshots,
       inputOrder,
       layers: deepClone(this.room.getLayers()),
-      autoManagedLayers: this.room.areLayersAutoManaged(),
     };
   }
 
@@ -1300,10 +1297,7 @@ export class TimelinePlayer {
       );
     }
 
-    const layersToRestore = this.snapshot.autoManagedLayers
-      ? []
-      : this.snapshot.layers;
-    promises.push(this.room.updateLayers(layersToRestore).catch(() => {}));
+    promises.push(this.room.updateLayers(this.snapshot.layers).catch(() => {}));
 
     if (promises.length > 0) {
       await Promise.allSettled(promises);

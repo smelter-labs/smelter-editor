@@ -73,6 +73,8 @@ export class PlaceholderManager {
       showTitle: false,
       shaders: cloneDefaultLogoShaders(),
       orientation: 'horizontal' as InputOrientation,
+      nativeWidth: 1920,
+      nativeHeight: 1080,
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,

@@ -10,7 +10,13 @@ export type {
 } from './shader';
 
 export { Layouts } from './layout';
-export type { Layout, Layer, LayerInput } from './layout';
+export type {
+  Layout,
+  Layer,
+  LayerInput,
+  LayerBehaviorConfig,
+  BehaviorInputInfo,
+} from './layout';
 
 export type { StreamMonitor, WhipMonitor } from './monitor';
 
