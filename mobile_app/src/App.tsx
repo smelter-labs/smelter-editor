@@ -1,25 +1,18 @@
 import { useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
-import {
-  NavigationContainer,
-  createNavigationContainerRef,
-} from "@react-navigation/native";
+import { NavigationContainer } from "@react-navigation/native";
 import { PaperProvider } from "react-native-paper";
 import * as ScreenOrientation from "expo-screen-orientation";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { smelterTheme } from "./theme/paperTheme";
 import { RootNavigator } from "./navigation/RootNavigator";
-import {
-  SCREEN_NAMES,
-  type RootStackParamList,
-} from "./navigation/navigationTypes";
+import { SCREEN_NAMES } from "./navigation/navigationTypes";
+import { navigationRef } from "./navigation/navigationRef";
 import { wsService } from "./services/websocketService";
 import { useConnectionStore } from "./store";
 
 SplashScreen.preventAutoHideAsync();
-
-const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 export function App() {
   useEffect(() => {
@@ -39,7 +32,7 @@ export function App() {
       setPeers(peers);
     });
 
-    const unsubDisconnected = wsService.on("disconnected", () => {
+    const goToJoinRoom = () => {
       wsService.disconnect();
       reset();
       if (navigationRef.isReady()) {
@@ -48,7 +41,9 @@ export function App() {
           routes: [{ name: SCREEN_NAMES.JOIN_ROOM }],
         });
       }
-    });
+    };
+
+    const unsubDisconnected = wsService.on("disconnected", goToJoinRoom);
 
     return () => {
       unsubConnected();
