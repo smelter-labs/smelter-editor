@@ -245,7 +245,7 @@ function syncClipKeyframes(clip: Clip): Clip {
   };
 }
 
-function resolveClipBlockSettingsAtOffset(
+export function resolveClipBlockSettingsAtOffset(
   clip: Pick<Clip, 'blockSettings' | 'keyframes'>,
   offsetMs: number,
 ): BlockSettings {

@@ -205,6 +205,7 @@ export default function RoomView({
             'system-log': <SystemLogPanel />,
             'layout-preview': (
               <LayoutPreviewPanel
+                roomId={roomId}
                 inputs={roomState.inputs}
                 resolution={
                   roomState.resolution ?? { width: 1920, height: 1080 }

@@ -18,6 +18,7 @@ import { useControlPanelContext } from '../contexts/control-panel-context';
 import {
   useTimelineState,
   DEFAULT_PPS,
+  resolveClipBlockSettingsAtOffset,
   type TimelineState,
 } from '../hooks/use-timeline-state';
 import { useServerTimelinePlayback } from '../hooks/use-server-timeline-playback';
@@ -475,6 +476,48 @@ export function TimelinePanel({
     return () =>
       window.removeEventListener('smelter:timeline-input-replaced', handler);
   }, [replaceInputId]);
+
+  // Auto-create keyframe when layout map position changes
+  useEffect(() => {
+    const handler = (
+      e: CustomEvent<{
+        inputId: string;
+        absoluteTop: number;
+        absoluteLeft: number;
+        absoluteWidth: number;
+        absoluteHeight: number;
+      }>,
+    ) => {
+      const { inputId, ...positionPatch } = e.detail;
+      for (const track of state.tracks) {
+        for (const clip of track.clips) {
+          if (clip.inputId !== inputId) continue;
+          if (
+            state.playheadMs < clip.startMs ||
+            state.playheadMs >= clip.endMs
+          )
+            continue;
+          const offsetMs = state.playheadMs - clip.startMs;
+          const resolved = resolveClipBlockSettingsAtOffset(clip, offsetMs);
+          addKeyframe(track.id, clip.id, offsetMs, {
+            ...resolved,
+            ...positionPatch,
+          });
+          return;
+        }
+      }
+    };
+    window.addEventListener(
+      'smelter:layout-map:input-moved',
+      handler as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:layout-map:input-moved',
+        handler as unknown as EventListener,
+      );
+    };
+  }, [state.tracks, state.playheadMs, addKeyframe]);
 
   // Inward event: external code (voice, control-panel) can request a clip selection
   useEffect(() => {
