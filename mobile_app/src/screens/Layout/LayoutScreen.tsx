@@ -184,8 +184,19 @@ export function LayoutScreen() {
       if (layerIndex === -1) return;
 
       const existingInputs = layers[layerIndex].inputs;
+
+      // Sort items by their visual position (row-major) so the resulting
+      // LayerInput array order reflects where the user placed each tile.
+      // Behavior algorithms (equal-grid, PiP, etc.) derive slot assignments
+      // from array index, so without this sort a drag only changes pixel
+      // coordinates that the server immediately discards and recomputes.
+      const sortedItems = [...items].sort((a, b) => {
+        if (a.initial.row !== b.initial.row) return a.initial.row - b.initial.row;
+        return a.initial.col - b.initial.col;
+      });
+
       const newInputs = itemDataToLayerInputs(
-        items,
+        sortedItems,
         resolution,
         columns,
         rows,
