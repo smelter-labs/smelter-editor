@@ -26,12 +26,7 @@ import {
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import {
-  ChevronDown,
-  ChevronRight,
-  GripVertical,
-  Layers,
-} from 'lucide-react';
+import { ChevronDown, ChevronRight, GripVertical, Layers } from 'lucide-react';
 import type { Input, Layer, LayerBehaviorConfig } from '@/lib/types';
 import { computeLayout } from '@smelter-editor/types';
 import type { InputWrapper } from '../hooks/use-control-panel-state';
@@ -39,7 +34,6 @@ import InputEntry from '@/components/control-panel/input-entry/input-entry';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
-import { useActions } from '../contexts/actions-context';
 import { BehaviorSelector } from './BehaviorSelector';
 import LoadingSpinner from '@/components/ui/spinner';
 
@@ -198,10 +192,7 @@ const dropAnimation: DropAnimation = {
 
 export function LayersSection({
   layers,
-  inputWrappers,
-  listVersion,
   showStreamsSpinner,
-  updateOrder,
   openFxInputId,
   onToggleFx,
   isSwapping,
@@ -397,12 +388,19 @@ export function LayersSection({
               if (overInputIdx !== -1) insertIdx = overInputIdx;
             }
             next[dstLayerIdx].inputs.splice(insertIdx, 0, movedInput);
-            // Update drag source tracking
-            activeDragItem.layerId = overLayerId;
           }
 
           return next;
         });
+
+        // Update drag source tracking immutably so React state is not mutated in place
+        if (activeDragItem.layerId !== overLayerId) {
+          setActiveDragItem((prev) =>
+            prev && prev.type === 'input'
+              ? { ...prev, layerId: overLayerId }
+              : prev,
+          );
+        }
       }
     },
     [activeDragItem, findDragItem],
@@ -566,7 +564,9 @@ export function LayersSection({
                 <div className='border-b border-neutral-800/50'>
                   <LayerHeader
                     layerId={layer.id}
-                    stableLayerNumber={layerNamesRef.current.get(layer.id) ?? layerIndex}
+                    stableLayerNumber={
+                      layerNamesRef.current.get(layer.id) ?? layerIndex
+                    }
                     isCollapsed={isCollapsed}
                     onToggleCollapse={() => toggleCollapse(layer.id)}
                     behavior={layer.behavior}

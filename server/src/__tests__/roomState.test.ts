@@ -545,7 +545,9 @@ describe('RoomState', () => {
       const room = new RoomState('room-1', output, [], true);
       await room.init();
 
-      await expect(room.updateLayers([])).rejects.toThrow('layers must not be empty');
+      await expect(room.updateLayers([])).rejects.toThrow(
+        'layers must not be empty',
+      );
     });
 
     it('preserves multiple layers with independent input sets', async () => {
@@ -579,7 +581,13 @@ describe('RoomState', () => {
       const room = new RoomState('room-1', output, [], true);
       await room.init();
 
-      const mk = (id: string) => ({ inputId: id, x: 0, y: 0, width: 10, height: 10 });
+      const mk = (id: string) => ({
+        inputId: id,
+        x: 0,
+        y: 0,
+        width: 10,
+        height: 10,
+      });
       await room.updateLayers([
         { id: 'manual', inputs: [mk('c'), mk('a'), mk('b')] },
       ]);

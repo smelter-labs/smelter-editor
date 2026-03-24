@@ -905,11 +905,14 @@ export class RoomState {
     );
     const unplacedAttachedIds = new Set(
       allInputs
-        .filter((i) => i.status === 'connected' && !i.hidden && i.attachedInputIds)
+        .filter(
+          (i) => i.status === 'connected' && !i.hidden && i.attachedInputIds,
+        )
         .flatMap((i) => i.attachedInputIds ?? []),
     );
     const unplacedInputs = behaviorInputInfos.filter(
-      (bi) => !mentionedIds.has(bi.inputId) && !unplacedAttachedIds.has(bi.inputId),
+      (bi) =>
+        !mentionedIds.has(bi.inputId) && !unplacedAttachedIds.has(bi.inputId),
     );
     if (unplacedInputs.length > 0) {
       const firstBehaviorLayer = this.layers.find((l) => l.behavior);

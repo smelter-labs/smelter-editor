@@ -110,8 +110,8 @@ const LayerBehaviorSchema = Type.Union([
   Type.Object({
     type: Type.Literal('equal-grid'),
     autoscale: Type.Optional(Type.Boolean()),
-    rows: Type.Optional(Type.Number({ minimum: 1 })),
-    cols: Type.Optional(Type.Number({ minimum: 1 })),
+    rows: Type.Optional(Type.Integer({ minimum: 1 })),
+    cols: Type.Optional(Type.Integer({ minimum: 1 })),
     objectFit: Type.Optional(ObjectFitSchema),
     resolveCollisions: Type.Optional(Type.Boolean()),
     ...SpacingProps,
