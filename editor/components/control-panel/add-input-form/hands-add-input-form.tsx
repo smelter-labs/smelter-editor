@@ -12,6 +12,7 @@ const VIDEO_TYPES = new Set([
   'local-mp4',
   'twitch-channel',
   'kick-channel',
+  'hls',
   'whip',
 ]);
 

@@ -374,6 +374,7 @@ function storedTracksToTracks(storedTracks: StoredTrack[]): Track[] {
 function inferTypeFromInputId(inputId: string): string | null {
   if (inputId.includes('::twitch::')) return 'twitch-channel';
   if (inputId.includes('::kick::')) return 'kick-channel';
+  if (inputId.includes('::hls::')) return 'hls';
   if (inputId.includes('::whip::')) return 'whip';
   if (inputId.includes('::local::')) return 'local-mp4';
   if (inputId.includes('::image::')) return 'image';

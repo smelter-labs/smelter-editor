@@ -60,6 +60,7 @@ export interface SmelterApiClient {
   ): Promise<any>;
   addSnakeGameInput(roomId: string, title?: string): Promise<any>;
   addHandsInput(roomId: string, sourceInputId: string): Promise<any>;
+  addHlsInput(roomId: string, url: string): Promise<any>;
   addCameraInput(roomId: string, username?: string): Promise<AddInputResponse>;
 
   removeInput(roomId: string, inputId: string, sourceId?: string): Promise<any>;
@@ -298,6 +299,13 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       return await req('post', `/room/${enc(roomId)}/input`, {
         type: 'hands',
         sourceInputId,
+      });
+    },
+
+    async addHlsInput(roomId, url) {
+      return await req('post', `/room/${enc(roomId)}/input`, {
+        type: 'hls',
+        url,
       });
     },
 

@@ -25,6 +25,7 @@ export type UpdateInputOptions = {
 export type RegisterInputOptions =
   | { type: 'twitch-channel'; channelId: string }
   | { type: 'kick-channel'; channelId: string }
+  | { type: 'hls'; url: string }
   | { type: 'whip'; username: string }
   | { type: 'local-mp4'; source: { fileName?: string; url?: string } }
   | { type: 'image'; fileName?: string; imageId?: string }

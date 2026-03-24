@@ -85,6 +85,7 @@ type TypeSpecificState =
         onUpdate(fn: (streamInfo: any, isLive: boolean) => void): void;
       };
     }
+  | { type: 'hls'; hlsUrl: string }
   | { type: 'whip'; whipUrl: string; monitor: WhipMonitor }
   | { type: 'image'; imageId: string }
   | {

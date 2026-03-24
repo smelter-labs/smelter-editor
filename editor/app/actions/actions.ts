@@ -134,6 +134,10 @@ export async function addHandsInput(roomId: string, sourceInputId: string) {
   return client.addHandsInput(roomId, sourceInputId);
 }
 
+export async function addHlsInput(roomId: string, url: string) {
+  return client.addHlsInput(roomId, url);
+}
+
 export async function removeInput(
   roomId: string,
   inputId: string,

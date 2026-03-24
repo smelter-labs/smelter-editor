@@ -187,6 +187,9 @@ export default function RoomView({
           blockPropertiesSection,
           motionPanels,
           peers,
+          timelineColorOverrides,
+          selectedInputId,
+          onSelectInput,
         }) => {
           const staticPanels: Record<string, ReactNode> = {
             'video-preview': (
@@ -210,6 +213,9 @@ export default function RoomView({
                 resolution={
                   roomState.resolution ?? { width: 1920, height: 1080 }
                 }
+                timelineColorOverrides={timelineColorOverrides}
+                selectedInputId={selectedInputId}
+                onSelectInput={onSelectInput}
               />
             ),
           };

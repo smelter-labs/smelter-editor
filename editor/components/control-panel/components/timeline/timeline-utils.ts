@@ -10,6 +10,7 @@ import { formatMs } from '@/lib/format-utils';
 export const TYPE_HSL: Record<Input['type'], [number, number, number]> = {
   'twitch-channel': [271, 81, 56],
   'kick-channel': [142, 71, 45],
+  hls: [24, 95, 50],
   whip: [217, 91, 60],
   'local-mp4': [25, 95, 53],
   image: [48, 96, 53],

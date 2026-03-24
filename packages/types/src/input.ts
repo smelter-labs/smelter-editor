@@ -7,6 +7,7 @@ export type InputType =
   | 'local-mp4'
   | 'twitch-channel'
   | 'kick-channel'
+  | 'hls'
   | 'whip'
   | 'image'
   | 'text-input'

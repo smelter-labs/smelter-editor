@@ -3,12 +3,19 @@
 import { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import type { Input } from '@/lib/types';
 import { useActions } from '@/components/control-panel/contexts/actions-context';
-import { buildInputColorMap } from '@/components/control-panel/components/timeline/timeline-utils';
+import {
+  buildInputColorMap,
+  type InputColorEntry,
+} from '@/components/control-panel/components/timeline/timeline-utils';
+import { hexToHsla } from '@/lib/color-utils';
 
 interface LayoutPreviewPanelProps {
   roomId: string;
   inputs: Input[];
   resolution: { width: number; height: number };
+  timelineColorOverrides?: Record<string, string>;
+  selectedInputId?: string | null;
+  onSelectInput?: (id: string) => void;
 }
 
 const EASING_MAP: Record<string, string> = {
@@ -52,6 +59,9 @@ export function LayoutPreviewPanel({
   roomId,
   inputs,
   resolution,
+  timelineColorOverrides,
+  selectedInputId,
+  onSelectInput,
 }: LayoutPreviewPanelProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -79,7 +89,20 @@ export function LayoutPreviewPanel({
   const scale = containerWidth > 0 ? containerWidth / resolution.width : 0;
   const canvasHeight = Math.round(resolution.height * scale);
 
-  const inputColorMap = useMemo(() => buildInputColorMap(inputs), [inputs]);
+  const inputColorMap = useMemo(() => {
+    const base = buildInputColorMap(inputs);
+    if (!timelineColorOverrides) return base;
+    const merged = new Map<string, InputColorEntry>(base);
+    for (const [inputId, hex] of Object.entries(timelineColorOverrides)) {
+      merged.set(inputId, {
+        dot: hex,
+        segBg: hexToHsla(hex, 0.18),
+        segBorder: hexToHsla(hex, 0.35),
+        ring: hexToHsla(hex, 0.7),
+      });
+    }
+    return merged;
+  }, [inputs, timelineColorOverrides]);
 
   const snapPos = useCallback(
     (
@@ -132,6 +155,7 @@ export function LayoutPreviewPanel({
     (e: React.MouseEvent, input: Input) => {
       e.preventDefault();
       e.stopPropagation();
+      onSelectInput?.(input.inputId);
       const absTop = input.absoluteTop ?? 0;
       const absLeft = input.absoluteLeft ?? 0;
       const absW = input.absoluteWidth ?? Math.round(resolution.width * 0.5);
@@ -149,13 +173,14 @@ export function LayoutPreviewPanel({
       setDragInputId(input.inputId);
       setOverride({ top: absTop, left: absLeft, width: absW, height: absH });
     },
-    [resolution],
+    [resolution, onSelectInput],
   );
 
   const handleCornerMouseDown = useCallback(
     (e: React.MouseEvent, input: Input, corner: string) => {
       e.preventDefault();
       e.stopPropagation();
+      onSelectInput?.(input.inputId);
       const absTop = input.absoluteTop ?? 0;
       const absLeft = input.absoluteLeft ?? 0;
       const absW = input.absoluteWidth ?? Math.round(resolution.width * 0.5);
@@ -173,7 +198,7 @@ export function LayoutPreviewPanel({
       setDragInputId(input.inputId);
       setOverride({ top: absTop, left: absLeft, width: absW, height: absH });
     },
-    [resolution],
+    [resolution, onSelectInput],
   );
 
   useEffect(() => {
@@ -315,7 +340,7 @@ export function LayoutPreviewPanel({
                     left,
                     width,
                     height,
-                    zIndex: isDragging ? 1000 : index,
+                    zIndex: isDragging ? 1000 : selectedInputId === input.inputId ? 500 : index,
                     transition: durationMs > 0
                       ? `top ${durationMs}ms ${easing}, left ${durationMs}ms ${easing}, width ${durationMs}ms ${easing}, height ${durationMs}ms ${easing}, opacity ${durationMs}ms ${easing}`
                       : 'none',
@@ -330,9 +355,9 @@ export function LayoutPreviewPanel({
                         : `1px solid ${colors?.dot ?? '#737373'}`,
                       borderStyle: isHidden ? 'dashed' : 'solid',
                       opacity: isHidden ? 0.15 : 1,
-                      cursor: 'grab',
+                      cursor: isHidden ? 'default' : 'grab',
                     }}
-                    onMouseDown={(e) => handleRectMouseDown(e, input)}>
+                    onMouseDown={isHidden ? undefined : (e) => handleRectMouseDown(e, input)}>
                     <span
                       className='block w-full truncate px-0.5 text-white font-mono leading-tight pointer-events-none'
                       style={{
@@ -343,26 +368,27 @@ export function LayoutPreviewPanel({
                     </span>
                   </div>
 
-                  {/* Corner resize handles */}
-                  {corners.map((c) => (
-                    <div
-                      key={c.id}
-                      className='absolute z-10'
-                      style={{
-                        left: c.x - HANDLE_SIZE / 2,
-                        top: c.y - HANDLE_SIZE / 2,
-                        width: HANDLE_SIZE,
-                        height: HANDLE_SIZE,
-                        backgroundColor: colors?.dot ?? '#737373',
-                        border: '1px solid rgba(255,255,255,0.5)',
-                        cursor: c.cursor,
-                        opacity: isHidden ? 0.15 : 0.8,
-                      }}
-                      onMouseDown={(e) =>
-                        handleCornerMouseDown(e, input, c.id)
-                      }
-                    />
-                  ))}
+                  {/* Corner resize handles — hidden for invisible inputs */}
+                  {!isHidden &&
+                    corners.map((c) => (
+                      <div
+                        key={c.id}
+                        className='absolute z-10'
+                        style={{
+                          left: c.x - HANDLE_SIZE / 2,
+                          top: c.y - HANDLE_SIZE / 2,
+                          width: HANDLE_SIZE,
+                          height: HANDLE_SIZE,
+                          backgroundColor: colors?.dot ?? '#737373',
+                          border: '1px solid rgba(255,255,255,0.5)',
+                          cursor: c.cursor,
+                          opacity: 0.8,
+                        }}
+                        onMouseDown={(e) =>
+                          handleCornerMouseDown(e, input, c.id)
+                        }
+                      />
+                    ))}
                 </div>
               );
             })}

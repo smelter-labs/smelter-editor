@@ -40,6 +40,7 @@ export type ChannelSuggestion = {
   displayName: string;
   title: string;
   category: string;
+  thumbnailUrl?: string;
 };
 
 export type InputSuggestions = {

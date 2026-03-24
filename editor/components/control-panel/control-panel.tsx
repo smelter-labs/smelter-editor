@@ -124,6 +124,9 @@ export type ControlPanelProps = {
     blockPropertiesSection: React.ReactNode;
     motionPanels: Record<string, React.ReactNode>;
     peers: ConnectedPeer[];
+    timelineColorOverrides: Record<string, string>;
+    selectedInputId: string | null;
+    onSelectInput: (id: string) => void;
   }) => React.ReactNode;
 };
 
@@ -471,6 +474,11 @@ function ControlPanelInner({
     null,
   );
 
+  const [timelineColorOverrides, setTimelineColorOverrides] = useState<
+    Record<string, string>
+  >({});
+  const timelineColorKeyRef = useRef('');
+
   const handleTimelineStateChange = useCallback(
     (state: TimelineState) => {
       timelineStateRef.current = state;
@@ -478,6 +486,20 @@ function ControlPanelInner({
         setTimelinePlayheadMs((prev) =>
           prev === state.playheadMs ? prev : state.playheadMs,
         );
+      }
+
+      const next: Record<string, string> = {};
+      for (const track of state.tracks) {
+        for (const clip of track.clips) {
+          if (clip.blockSettings.timelineColor && !next[clip.inputId]) {
+            next[clip.inputId] = clip.blockSettings.timelineColor;
+          }
+        }
+      }
+      const key = JSON.stringify(next);
+      if (key !== timelineColorKeyRef.current) {
+        timelineColorKeyRef.current = key;
+        setTimelineColorOverrides(next);
       }
     },
     [selectedTimelineClips.length],
@@ -613,6 +635,7 @@ function ControlPanelInner({
       'local-mp4',
       'twitch-channel',
       'kick-channel',
+      'hls',
       'whip',
     ];
     const motionPanels: Record<string, React.ReactNode> = {};
@@ -649,6 +672,9 @@ function ControlPanelInner({
           blockPropertiesSection,
           motionPanels,
           peers,
+          timelineColorOverrides,
+          selectedInputId,
+          onSelectInput: setSelectedInputId,
         })}
       </DashboardToolbarProvider>
     );

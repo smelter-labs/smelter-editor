@@ -25,6 +25,10 @@ export const InputSchema = Type.Union([
     channelId: Type.String(),
   }),
   Type.Object({
+    type: Type.Literal('hls'),
+    url: Type.String(),
+  }),
+  Type.Object({
     type: Type.Literal('whip'),
     username: Type.String(),
   }),

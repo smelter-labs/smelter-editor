@@ -50,6 +50,8 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
         sourceState: input.monitor.isLive() ? 'live' : 'offline',
         channelId: input.channelId,
       };
+    case 'hls':
+      return { ...base, sourceState: 'always-live' as const };
     case 'whip':
       return {
         ...base,

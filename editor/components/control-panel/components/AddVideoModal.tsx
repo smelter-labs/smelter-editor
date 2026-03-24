@@ -41,7 +41,8 @@ type AssetItemAction = {
     | 'game'
     | 'hands'
     | 'camera'
-    | 'screenshare';
+    | 'screenshare'
+    | 'hls';
 };
 
 type AssetItem =
@@ -54,6 +55,7 @@ type AssetItem =
 const FILTER_TYPES = [
   'ALL',
   'STREAM',
+  'HLS',
   'MP4',
   'IMAGE',
   'TEXT',
@@ -64,6 +66,7 @@ const FILTER_TYPES = [
 type FilterType = (typeof FILTER_TYPES)[number];
 
 const ACTION_CARDS: AssetItemAction[] = [
+  { kind: 'action', actionType: 'hls' },
   { kind: 'action', actionType: 'text' },
   { kind: 'action', actionType: 'game' },
   { kind: 'action', actionType: 'hands' },
@@ -91,6 +94,8 @@ function itemMatchesFilter(item: AssetItem, filter: FilterType): boolean {
   switch (filter) {
     case 'STREAM':
       return item.kind === 'twitch' || item.kind === 'kick';
+    case 'HLS':
+      return item.kind === 'action' && item.actionType === 'hls';
     case 'MP4':
       return item.kind === 'mp4';
     case 'IMAGE':
@@ -125,6 +130,7 @@ function itemLabel(item: AssetItem): string {
 }
 
 const ACTION_TYPE_LABELS: Record<AssetItemAction['actionType'], string> = {
+  hls: 'HLS STREAM',
   text: 'TEXT INPUT',
   game: 'SNAKE GAME',
   hands: 'HAND TRACKING',
@@ -441,6 +447,16 @@ function AssetThumbnail({ item }: { item: AssetItem }) {
     );
   }
   if (item.kind === 'twitch') {
+    if (item.channel.thumbnailUrl) {
+      return (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={item.channel.thumbnailUrl}
+          alt={item.channel.displayName}
+          className='w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700'
+        />
+      );
+    }
     return (
       <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-[#9146FF]/20 to-[#131313]'>
         <svg
@@ -456,6 +472,16 @@ function AssetThumbnail({ item }: { item: AssetItem }) {
     );
   }
   if (item.kind === 'kick') {
+    if (item.channel.thumbnailUrl) {
+      return (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={item.channel.thumbnailUrl}
+          alt={item.channel.displayName}
+          className='w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700'
+        />
+      );
+    }
     return (
       <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-[#53FC18]/15 to-[#131313]'>
         <span className='font-mono font-black text-xl text-[#53FC18]/50 tracking-tighter group-hover:text-[#53FC18]/70 transition-colors'>
@@ -476,6 +502,20 @@ function ActionThumbnail({
   actionType: AssetItemAction['actionType'];
 }) {
   switch (actionType) {
+    case 'hls':
+      return (
+        <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-[#ff6b00]/15 to-[#131313]'>
+          <svg viewBox='0 0 60 60' className='w-10 h-10 opacity-40'>
+            <circle cx='30' cy='30' r='6' fill='#ff6b00' />
+            <path d='M30 18 A12 12 0 0 1 42 30' stroke='#ff6b00' strokeWidth='2.5' fill='none' strokeLinecap='round' />
+            <path d='M30 18 A12 12 0 0 0 18 30' stroke='#ff6b00' strokeWidth='2.5' fill='none' strokeLinecap='round' />
+            <path d='M30 10 A20 20 0 0 1 50 30' stroke='#ff6b00' strokeWidth='2' fill='none' strokeLinecap='round' opacity='0.6' />
+            <path d='M30 10 A20 20 0 0 0 10 30' stroke='#ff6b00' strokeWidth='2' fill='none' strokeLinecap='round' opacity='0.6' />
+            <path d='M30 3 A27 27 0 0 1 57 30' stroke='#ff6b00' strokeWidth='1.5' fill='none' strokeLinecap='round' opacity='0.35' />
+            <path d='M30 3 A27 27 0 0 0 3 30' stroke='#ff6b00' strokeWidth='1.5' fill='none' strokeLinecap='round' opacity='0.35' />
+          </svg>
+        </div>
+      );
     case 'text':
       return (
         <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-[#00f3ff]/10 to-[#131313]'>
@@ -868,6 +908,17 @@ function TwitchInspector({
 
   return (
     <div className='space-y-3'>
+      {item.channel.thumbnailUrl && (
+        <div className='relative aspect-video bg-black overflow-hidden border border-[#3a494b]/30'>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={item.channel.thumbnailUrl}
+            alt={item.channel.displayName}
+            className='w-full h-full object-cover'
+          />
+          <div className='absolute inset-0 scanline opacity-20' />
+        </div>
+      )}
       <PropRow label='CHANNEL' value={item.channel.displayName} />
       <PropRow label='STREAM_ID' value={item.channel.streamId} />
       {item.channel.title && (
@@ -917,6 +968,17 @@ function KickInspector({
 
   return (
     <div className='space-y-3'>
+      {item.channel.thumbnailUrl && (
+        <div className='relative aspect-video bg-black overflow-hidden border border-[#3a494b]/30'>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={item.channel.thumbnailUrl}
+            alt={item.channel.displayName}
+            className='w-full h-full object-cover'
+          />
+          <div className='absolute inset-0 scanline opacity-20' />
+        </div>
+      )}
       <PropRow label='CHANNEL' value={item.channel.displayName} />
       <PropRow label='STREAM_ID' value={item.channel.streamId} />
       {item.channel.title && (
@@ -956,6 +1018,8 @@ function ActionInspector({
   whipCtx: ReturnType<typeof useWhipConnectionsContext>;
 }) {
   switch (item.actionType) {
+    case 'hls':
+      return <HlsActionInspector roomId={roomId} onDone={onDone} />;
     case 'text':
       return <TextActionInspector roomId={roomId} onDone={onDone} />;
     case 'game':
@@ -989,6 +1053,59 @@ function ActionInspector({
         />
       );
   }
+}
+
+function HlsActionInspector({
+  roomId,
+  onDone,
+}: {
+  roomId: string;
+  onDone: () => Promise<void>;
+}) {
+  const { addHlsInput } = useActions();
+  const [url, setUrl] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleAdd = async () => {
+    const trimmed = url.trim();
+    if (!trimmed) {
+      toast.error('Enter an HLS URL.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await addHlsInput(roomId, trimmed);
+      await onDone();
+    } catch {
+      toast.error('Failed to add HLS stream.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className='space-y-3'>
+      <PropRow label='TYPE' value='HLS_STREAM' />
+      <div>
+        <span className='text-[10px] font-mono text-[#849495] block mb-1'>
+          STREAM_URL
+        </span>
+        <input
+          type='text'
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          className='w-full bg-[#1c1b1b] border border-[#3a494b]/30 text-[#e3fdff] font-mono text-[11px] px-2 py-1.5 focus:border-[#00f3ff]/50 focus:outline-none'
+          placeholder='https://example.com/stream.m3u8'
+        />
+      </div>
+      <InitiateButton
+        label='INITIATE_STREAM'
+        onClick={handleAdd}
+        loading={loading}
+        disabled={!url.trim()}
+      />
+    </div>
+  );
 }
 
 function TextActionInspector({
@@ -1112,6 +1229,7 @@ const VIDEO_TYPES = new Set([
   'local-mp4',
   'twitch-channel',
   'kick-channel',
+  'hls',
   'whip',
 ]);
 

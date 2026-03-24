@@ -33,6 +33,7 @@ const VIDEO_INPUT_TYPES: RoomInputState['type'][] = [
   'local-mp4',
   'twitch-channel',
   'kick-channel',
+  'hls',
   'whip',
 ];
 
@@ -116,6 +117,8 @@ export class InputManager {
       return this.addNewWhipInput(opts.username);
     } else if (opts.type === 'twitch-channel' || opts.type === 'kick-channel') {
       return this.addHlsChannelInput(opts.type, opts.channelId);
+    } else if (opts.type === 'hls') {
+      return this.addDirectHlsInput(opts.url);
     } else if (opts.type === 'local-mp4') {
       return this.addMp4Input(opts);
     } else if (opts.type === 'image') {
@@ -220,6 +223,36 @@ export class InputManager {
       this.onStateChange();
     });
     this.inputs.push(inputState);
+    return inputId;
+  }
+
+  private async addDirectHlsInput(url: string): Promise<string> {
+    const inputId = `${this.idPrefix}::hls::${Date.now()}`;
+    let label = url;
+    try {
+      const parsed = new URL(url);
+      label = parsed.hostname + parsed.pathname.split('/').pop();
+    } catch {
+      // keep raw url as label
+    }
+    this.inputs.push({
+      inputId,
+      type: 'hls',
+      status: 'disconnected',
+      showTitle: false,
+      shaders: [],
+      orientation: 'horizontal',
+      borderColor: '#ff0000',
+      borderWidth: 0,
+      hidden: false,
+      motionEnabled: false,
+      metadata: {
+        title: `[HLS] ${label}`,
+        description: `Direct HLS stream`,
+      },
+      volume: 0,
+      hlsUrl: url,
+    });
     return inputId;
   }
 
@@ -955,7 +988,11 @@ function registerOptionsFromInput(
 ): RegisterSmelterInputOptions {
   if (input.type === 'local-mp4') {
     return { type: 'mp4', filePath: input.mp4FilePath };
-  } else if (input.type === 'twitch-channel' || input.type === 'kick-channel') {
+  } else if (
+    input.type === 'twitch-channel' ||
+    input.type === 'kick-channel' ||
+    input.type === 'hls'
+  ) {
     return { type: 'hls', url: input.hlsUrl };
   } else if (input.type === 'whip') {
     return { type: 'whip', url: input.whipUrl };

@@ -4,4 +4,5 @@ export type ChannelInfo = {
   displayName: string;
   title: string;
   category: string;
+  thumbnailUrl?: string;
 };
