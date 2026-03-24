@@ -940,11 +940,54 @@ export class RoomState {
 
     // Recompute positions for layers with a behavior config
     const behaviorInputInfos = this.collectBehaviorInputInfos();
+    const behaviorInputInfoById = new Map<string, BehaviorInputInfo>();
+    for (const info of behaviorInputInfos) {
+      // Assume BehaviorInputInfo has an `inputId` field, which is standard for
+      // associating behavior info with a specific input.
+      // If multiple infos share the same id, the last one wins, matching
+      // typical Map semantics.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const inputId = (info as any).inputId as string | undefined;
+      if (inputId) {
+        behaviorInputInfoById.set(inputId, info);
+      }
+    }
+
     this.layers = this.layers.map((layer) => {
       if (!layer.behavior) return layer; // manual layer, keep as-is
+
+      // Derive per-layer BehaviorInputInfo[] based on this layer's input IDs
+      // or, as a fallback, based on the `inputId` of each element in
+      // layer.inputs, preserving the layer's own ordering.
+      let layerBehaviorInputInfos: BehaviorInputInfo[] = behaviorInputInfos;
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const anyLayer = layer as any;
+      const inputIds: string[] | undefined = Array.isArray(anyLayer.inputIds)
+        ? anyLayer.inputIds.slice()
+        : Array.isArray(layer.inputs)
+          ? layer.inputs
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              .map((input: any) => input && input.inputId)
+              .filter((id: unknown): id is string => typeof id === 'string')
+          : undefined;
+
+      if (inputIds && inputIds.length > 0) {
+        const orderedInfos: BehaviorInputInfo[] = [];
+        for (const id of inputIds) {
+          const info = behaviorInputInfoById.get(id);
+          if (info) {
+            orderedInfos.push(info);
+          }
+        }
+        if (orderedInfos.length > 0) {
+          layerBehaviorInputInfos = orderedInfos;
+        }
+      }
+
       const result = computeLayout(
         layer.behavior,
-        behaviorInputInfos,
+        layerBehaviorInputInfos,
         this.output.resolution,
       );
       return { ...layer, inputs: result.inputs };

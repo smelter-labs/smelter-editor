@@ -199,11 +199,7 @@ const dropAnimation: DropAnimation = {
 
 export function LayersSection({
   layers,
-  inputWrappers,
-  listVersion,
   showStreamsSpinner,
-  updateOrder,
-  openFxInputId,
   onToggleFx,
   isSwapping,
   selectedInputId,
@@ -395,12 +391,19 @@ export function LayersSection({
               if (overInputIdx !== -1) insertIdx = overInputIdx;
             }
             next[dstLayerIdx].inputs.splice(insertIdx, 0, movedInput);
-            // Update drag source tracking
-            activeDragItem.layerId = overLayerId;
           }
 
           return next;
         });
+
+        // Update drag source tracking immutably so React state is not mutated in place
+        if (activeDragItem.layerId !== overLayerId) {
+          setActiveDragItem((prev) =>
+            prev && prev.type === 'input'
+              ? { ...prev, layerId: overLayerId }
+              : prev,
+          );
+        }
       }
     },
     [activeDragItem, findDragItem],

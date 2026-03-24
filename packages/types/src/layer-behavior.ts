@@ -131,7 +131,7 @@ function computePictureInPicture(
   const smallCols = Math.ceil(Math.sqrt(smallCount));
   const smallRows = Math.ceil(smallCount / smallCols);
 
-  // Small grid takes ~25% of the area (sqrt(0.25) ≈ 0.5 of each dimension)
+  // Small grid takes ~16% of the area (0.4 of each dimension)
   const gridW = Math.floor(resolution.width * 0.4);
   const gridH = Math.floor(resolution.height * 0.4);
   const gridX = resolution.width - gridW - hSpacing;
