@@ -139,7 +139,7 @@ const LayerSchema = Type.Object({
 
 export const UpdateRoomSchema = Type.Object({
   inputOrder: Type.Optional(Type.Array(Type.String())),
-  layers: Type.Optional(Type.Array(LayerSchema)),
+  layers: Type.Optional(Type.Array(LayerSchema, { minItems: 1 })),
   isPublic: Type.Optional(Type.Boolean()),
   swapDurationMs: Type.Optional(Type.Number({ minimum: 0, maximum: 5000 })),
   swapOutgoingEnabled: Type.Optional(Type.Boolean()),

@@ -138,6 +138,14 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
         room.reorderInputs(req.body.inputOrder);
       }
       if (req.body.layers) {
+        if (req.body.layers.length === 0) {
+          return res.status(400).send({
+            statusCode: 400,
+            code: 'BAD_REQUEST',
+            error: 'Bad Request',
+            message: 'layers must contain at least one layer',
+          });
+        }
         await room.updateLayers(req.body.layers);
       }
       if (req.body.isPublic !== undefined) {
