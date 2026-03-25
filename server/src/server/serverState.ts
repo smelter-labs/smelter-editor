@@ -133,7 +133,7 @@ export class ServerState {
         await room.removeStaleWhipInputs(WHIP_STALE_TTL_MS);
       }
       for (const [roomId, room] of rooms) {
-        if (Date.now() - room.lastReadTimestamp > 60_000) {
+        if (Date.now() - room.lastReadTimestamp > 300_000) {
           try {
             console.log('Stop from inactivity');
             await this._deleteRoom(roomId);
