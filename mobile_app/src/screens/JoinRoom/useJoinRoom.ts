@@ -31,6 +31,7 @@ export function useJoinRoom() {
   const [rooms, setRooms] = useState<ActiveRoom[]>([]);
   const [roomsLoading, setRoomsLoading] = useState(false);
   const fetchIdRef = useRef(0);
+  const preloadStartedRef = useRef(false);
   const refreshIntervalMs = 5000;
 
   useEffect(() => {
@@ -42,6 +43,40 @@ export function useJoinRoom() {
       console.log("[JoinRoom/useJoinRoom] unmounted");
     };
   }, [serverUrl, roomId]);
+
+  // If serverUrl/roomId are restored from storage, preload last room state
+  // so Inputs/Layout are visible immediately on Join screen.
+  useEffect(() => {
+    if (preloadStartedRef.current) return;
+
+    const trimmedUrl = localServerUrl.trim();
+    const trimmedRoomId = localRoomId.trim();
+    if (!trimmedUrl || !trimmedRoomId) return;
+
+    preloadStartedRef.current = true;
+
+    const { setInputs } = useInputsStore.getState();
+    const { setLayers, setResolution } = useLayoutStore.getState();
+
+    void (async () => {
+      try {
+        const { inputs, layers, resolution } = await apiService.fetchRoomState(
+          trimmedUrl,
+          trimmedRoomId,
+        );
+        setInputs(inputs);
+        setLayers(layers);
+        setResolution(resolution);
+        console.log("[JoinRoom] preloaded room state", {
+          inputCount: inputs.length,
+          layerCount: layers.length,
+          resolution,
+        });
+      } catch (err) {
+        console.warn("[JoinRoom] preload room state failed:", err);
+      }
+    })();
+  }, [localServerUrl, localRoomId]);
 
   // Auto-fetch rooms when serverUrl changes (debounced 600ms)
   // and keep refreshing every 5 seconds to detect stale rooms.

@@ -1,6 +1,6 @@
 import React from "react";
 import { StyleSheet, View } from "react-native";
-import { Surface, Text, useTheme } from "react-native-paper";
+import { Chip, useTheme } from "react-native-paper";
 
 interface ScreenLabelProps {
   label: string;
@@ -11,14 +11,13 @@ export function ScreenLabel({ label }: ScreenLabelProps) {
 
   return (
     <View pointerEvents="none" style={styles.wrapper}>
-      <Surface
+      <Chip
+        compact
         style={[styles.chip, { backgroundColor: theme.colors.surface }]}
-        elevation={2}
+        textStyle={[styles.text, { color: theme.colors.onSurface }]}
       >
-        <Text variant="labelLarge" style={{ color: theme.colors.onSurface }}>
-          {label}
-        </Text>
-      </Surface>
+        {label}
+      </Chip>
     </View>
   );
 }
@@ -31,8 +30,10 @@ const styles = StyleSheet.create({
     zIndex: 10,
   },
   chip: {
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    borderRadius: 9999,
+  },
+  text: {
+    fontSize: 14,
+    fontWeight: "600",
   },
 });

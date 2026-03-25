@@ -14,6 +14,7 @@ import {
   DroppableLayer,
   LAYERS_CONTAINER_ID,
 } from "./dnd";
+import { Chip } from "react-native-paper";
 import type { OrderChangeEvent } from "./dnd/types";
 import type { Layer, LayerBehaviorConfig } from "../../types/layout";
 import type { InputCard } from "../../types/input";
@@ -101,7 +102,10 @@ function EditableName({
 
 // ─── Behavior selector ───────────────────────────────────────────────────────
 
-const BEHAVIOR_OPTIONS: { label: string; type: LayerBehaviorConfig["type"] | "manual" }[] = [
+const BEHAVIOR_OPTIONS: {
+  label: string;
+  type: LayerBehaviorConfig["type"] | "manual";
+}[] = [
   { label: "Equal Grid", type: "equal-grid" },
   { label: "≈ Aspect Grid", type: "approximate-aspect-grid" },
   { label: "Exact Aspect", type: "exact-aspect-grid" },
@@ -123,9 +127,17 @@ function BehaviorSelector({
       {BEHAVIOR_OPTIONS.map((opt) => {
         const active = currentType === opt.type;
         return (
-          <Pressable
+          <Chip
             key={opt.type}
+            compact
+            mode={active ? "flat" : "outlined"}
+            selected={active}
+            showSelectedCheck={false}
             style={[styles.behaviorChip, active && styles.behaviorChipActive]}
+            textStyle={[
+              styles.behaviorChipText,
+              active && styles.behaviorChipTextActive,
+            ]}
             onPress={() => {
               if (opt.type === "manual") {
                 onChange(undefined);
@@ -134,16 +146,8 @@ function BehaviorSelector({
               }
             }}
           >
-            <Text
-              style={[
-                styles.behaviorChipText,
-                active && styles.behaviorChipTextActive,
-              ]}
-              numberOfLines={1}
-            >
-              {opt.label}
-            </Text>
-          </Pressable>
+            {opt.label}
+          </Chip>
         );
       })}
     </View>
@@ -295,9 +299,7 @@ export default function LayersPanel({
 
         const [movedItem] = srcLayer.inputs.splice(itemIdx, 1);
         // Remove from dst in case it's a same-layer reorder
-        const cleanDst = dstLayer.inputs.filter(
-          (i) => i.inputId !== objectId,
-        );
+        const cleanDst = dstLayer.inputs.filter((i) => i.inputId !== objectId);
         cleanDst.splice(newIndex, 0, movedItem);
         dstLayer.inputs = cleanDst;
 
@@ -353,9 +355,7 @@ export default function LayersPanel({
                       behavior={layer.behavior}
                       onChange={(b) => {
                         const newLayers = layers.map((l) =>
-                          l.id === layer.id
-                            ? { ...l, behavior: b }
-                            : l,
+                          l.id === layer.id ? { ...l, behavior: b } : l,
                         );
                         onLayersChange(newLayers);
                       }}

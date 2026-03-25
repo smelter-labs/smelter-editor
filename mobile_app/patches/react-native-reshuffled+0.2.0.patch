@@ -40,3 +40,19 @@ index 7144fc0..bb083bb 100644
 +    </View>
    )
  }
+diff --git a/node_modules/react-native-reshuffled/src/components/ReshufflableGrid/useReshufflableGrid.ts b/node_modules/react-native-reshuffled/src/components/ReshufflableGrid/useReshufflableGrid.ts
+index 4e5bf9c..8fbe1e0 100644
+--- a/node_modules/react-native-reshuffled/src/components/ReshufflableGrid/useReshufflableGrid.ts
++++ b/node_modules/react-native-reshuffled/src/components/ReshufflableGrid/useReshufflableGrid.ts
+@@ -43,6 +43,11 @@ export function useReshufflableGrid<T extends Cell>(
+     setDimensions({ width, height })
+   }
+
++  useEffect(() => {
++    setItems(data)
++    setItemsBeforeDrag(data)
++  }, [data])
++
+   useEffect(() => {
+     occupiedSlots.value = getOccupiedSlots(items)
+   }, [items, occupiedSlots])

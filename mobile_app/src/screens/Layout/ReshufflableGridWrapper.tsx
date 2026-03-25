@@ -185,6 +185,7 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
   const [columns, setColumns] = useState(initialColumns);
   const [rows, setRows] = useState(initialRows);
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
+  const [gridSize, setGridSize] = useState({ width: 0, height: 0 });
   const isUpdatingFromGrid = useRef(false);
   const resizeSessionRef = useRef<{
     itemId: string;
@@ -532,68 +533,92 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
     const session = resizeSessionRef.current;
     if (!session || session.itemId !== itemId) return;
 
-    // Simple resize adjustment—production would integrate with grid cell sizing
-    const cellWidth = 10;
-    const cellHeight = 10;
-    const horizontalSign =
-      session.direction === "topLeft" ||
-      session.direction === "bottomLeft" ||
-      session.direction === "left"
-        ? -1
-        : 1;
-    const verticalSign =
-      session.direction === "topLeft" ||
-      session.direction === "topRight" ||
-      session.direction === "top"
-        ? -1
-        : 1;
-
-    const targetColDelta = Math.round(
-      (translationX * horizontalSign) / cellWidth,
-    );
-    const targetRowDelta = Math.round(
-      (translationY * verticalSign) / cellHeight,
-    );
+    const cellPixelWidth = gridSize.width > 0 ? gridSize.width / columns : 1;
+    const cellPixelHeight = gridSize.height > 0 ? gridSize.height / rows : 1;
+    const colDelta = Math.round(translationX / cellPixelWidth);
+    const rowDelta = Math.round(translationY / cellPixelHeight);
 
     setData((prevData) => {
-      const nextData = [...prevData];
+      const nextData = prevData.map((item) => ({ ...item }));
       const index = nextData.findIndex((item) => item.id === itemId);
       if (index === -1) return prevData;
 
       const target = nextData[index];
-      target.width = Math.max(
-        1,
-        Math.min(
-          session.startWidth + targetColDelta,
-          columns - session.startColumn,
-        ),
-      );
-      target.height = Math.max(
-        1,
-        Math.min(session.startHeight + targetRowDelta, rows - session.startRow),
-      );
+      const dir = session.direction;
+      const rightEdge = session.startColumn + session.startWidth;
+      const bottomEdge = session.startRow + session.startHeight;
+
+      // Horizontal axis
+      if (dir === "left" || dir === "topLeft" || dir === "bottomLeft") {
+        const newCol = Math.max(
+          0,
+          Math.min(rightEdge - 1, session.startColumn + colDelta),
+        );
+        target.startColumn = newCol;
+        target.width = rightEdge - newCol;
+      } else if (
+        dir === "right" ||
+        dir === "topRight" ||
+        dir === "bottomRight"
+      ) {
+        target.startColumn = session.startColumn;
+        target.width = Math.max(
+          1,
+          Math.min(columns - session.startColumn, session.startWidth + colDelta),
+        );
+      }
+
+      // Vertical axis
+      if (dir === "top" || dir === "topLeft" || dir === "topRight") {
+        const newRow = Math.max(
+          0,
+          Math.min(bottomEdge - 1, session.startRow + rowDelta),
+        );
+        target.startRow = newRow;
+        target.height = bottomEdge - newRow;
+      } else if (
+        dir === "bottom" ||
+        dir === "bottomLeft" ||
+        dir === "bottomRight"
+      ) {
+        target.startRow = session.startRow;
+        target.height = Math.max(
+          1,
+          Math.min(rows - session.startRow, session.startHeight + rowDelta),
+        );
+      }
 
       return nextData;
     });
   };
 
   const handleResizeEnd = (_itemId: string): void => {
-    const updatedItemData: ItemData<T>[] = data.map((item) => ({
-      initial: {
-        width: item.width,
-        height: item.height,
-        col: item.startColumn,
-        row: item.startRow,
-      },
-      props: item.itemProps,
-    }));
-    onItemChange(updatedItemData);
     resizeSessionRef.current = null;
     setSelectedItemId(null);
+    setData((latestData) => {
+      const updatedItemData: ItemData<T>[] = latestData.map((item) => ({
+        initial: {
+          width: item.width,
+          height: item.height,
+          col: item.startColumn,
+          row: item.startRow,
+        },
+        props: item.itemProps,
+      }));
+      onItemChange(updatedItemData);
+      return latestData;
+    });
   };
 
   return (
-    <View style={[styles.container, containerStyle]} pointerEvents="box-none">
+    <View
+      style={[styles.container, containerStyle]}
+      pointerEvents="box-none"
+      onLayout={(e) => {
+        const { width, height } = e.nativeEvent.layout;
+        setGridSize({ width, height });
+      }}
+    >
       <ReshufflableGrid
         data={normalizedData as Cell[]}
         onDragEnd={handleItemsChange}

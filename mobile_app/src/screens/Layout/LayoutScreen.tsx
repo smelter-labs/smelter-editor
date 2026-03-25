@@ -1,6 +1,12 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { View, StyleSheet, Pressable, Text } from "react-native";
-import { useTheme } from "react-native-paper";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
+import { View, StyleSheet } from "react-native";
+import { Chip, useTheme } from "react-native-paper";
 import { useLayoutStore } from "../../store/layoutStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useInputsStore } from "../../store/inputsStore";
@@ -94,9 +100,7 @@ function itemDataToLayerInputs(
       x: Math.round((item.initial.col / gridCols) * resolution.width),
       y: Math.round((item.initial.row / gridRows) * resolution.height),
       width: Math.round((item.initial.width / gridCols) * resolution.width),
-      height: Math.round(
-        (item.initial.height / gridRows) * resolution.height,
-      ),
+      height: Math.round((item.initial.height / gridRows) * resolution.height),
       transitionDurationMs: existing?.transitionDurationMs,
       transitionEasing: existing?.transitionEasing,
     };
@@ -191,7 +195,8 @@ export function LayoutScreen() {
       // from array index, so without this sort a drag only changes pixel
       // coordinates that the server immediately discards and recomputes.
       const sortedItems = [...items].sort((a, b) => {
-        if (a.initial.row !== b.initial.row) return a.initial.row - b.initial.row;
+        if (a.initial.row !== b.initial.row)
+          return a.initial.row - b.initial.row;
         return a.initial.col - b.initial.col;
       });
 
@@ -223,28 +228,32 @@ export function LayoutScreen() {
   }, [layers, inputs, resolution, columns, rows]);
 
   return (
-    <View
-      style={[styles.root, { backgroundColor: theme.colors.background }]}
-    >
+    <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
       <ScreenLabel label={`Layout (${layers.length} layers)`} />
 
       {/* Toolbar row */}
       <View style={styles.toolbar}>
-        <Pressable
-          style={styles.toolbarBtn}
+        <Chip
+          compact
+          mode="flat"
+          style={styles.toolbarChip}
+          textStyle={styles.toolbarChipText}
           onPress={() => setLayersPanelOpen((v) => !v)}
         >
-          <Text style={styles.toolbarBtnText}>LAYERS</Text>
-        </Pressable>
-        <Pressable
-          style={styles.toolbarBtn}
+          LAYERS
+        </Chip>
+        <Chip
+          compact
+          mode="flat"
+          style={styles.toolbarChip}
+          textStyle={styles.toolbarChipText}
           onPress={() => {
             setSettingsPanelSide("right");
             setSettingsPanelOpen(true);
           }}
         >
-          <Text style={styles.toolbarBtnText}>⚙</Text>
-        </Pressable>
+          ⚙
+        </Chip>
       </View>
 
       {/* Canvas: stacked layer grids (bottom layer rendered first) */}
@@ -306,13 +315,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     gap: 8,
   },
-  toolbarBtn: {
-    paddingHorizontal: 12,
-    paddingVertical: 4,
-    borderRadius: 4,
+  toolbarChip: {
+    borderRadius: 8,
     backgroundColor: "rgba(255,255,255,0.1)",
   },
-  toolbarBtnText: {
+  toolbarChipText: {
     color: "#CCCCCC",
     fontSize: 11,
     fontWeight: "700",
