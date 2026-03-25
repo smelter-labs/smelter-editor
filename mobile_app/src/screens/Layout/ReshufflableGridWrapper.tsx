@@ -143,9 +143,31 @@ const clampWithinGrid = <T,>(
   };
 };
 
+export type ResizeHandleDirection =
+  | "top"
+  | "topRight"
+  | "right"
+  | "bottomRight"
+  | "bottom"
+  | "bottomLeft"
+  | "left"
+  | "topLeft";
+
+export type GridItemControls = {
+  isSelected?: boolean;
+  onSelect?: () => void;
+  onResizeStart?: (direction: ResizeHandleDirection) => void;
+  onResizeUpdate?: (
+    direction: ResizeHandleDirection,
+    translationX: number,
+    translationY: number,
+  ) => void;
+  onResizeEnd?: (direction: ResizeHandleDirection) => void;
+};
+
 interface ReshufflableGridWrapperProps<T> {
   itemData: ItemData<T>[];
-  renderedComponent: React.ComponentType<T>;
+  renderedComponent: React.ComponentType<T & GridItemControls>;
   onItemChange: (items: ItemData<T>[]) => void;
   rows?: number;
   columns?: number;
@@ -162,7 +184,16 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
 }: ReshufflableGridWrapperProps<T>) => {
   const [columns, setColumns] = useState(initialColumns);
   const [rows, setRows] = useState(initialRows);
+  const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const isUpdatingFromGrid = useRef(false);
+  const resizeSessionRef = useRef<{
+    itemId: string;
+    startWidth: number;
+    startHeight: number;
+    startColumn: number;
+    startRow: number;
+    direction: ResizeHandleDirection;
+  } | null>(null);
 
   const [data, setData] = useState<GridItem<T>[]>(() =>
     itemData.map((item) => ({
@@ -470,17 +501,124 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
     onItemChange(updatedItemData);
   };
 
+  const handleResizeStart = (
+    itemId: string,
+    direction: ResizeHandleDirection,
+  ): void => {
+    setSelectedItemId(itemId);
+
+    const target = data.find((item) => item.id === itemId);
+    if (!target) {
+      resizeSessionRef.current = null;
+      return;
+    }
+
+    resizeSessionRef.current = {
+      itemId,
+      startWidth: target.width,
+      startHeight: target.height,
+      startColumn: target.startColumn,
+      startRow: target.startRow,
+      direction,
+    };
+  };
+
+  const handleResizeUpdate = (
+    itemId: string,
+    _direction: ResizeHandleDirection,
+    translationX: number,
+    translationY: number,
+  ): void => {
+    const session = resizeSessionRef.current;
+    if (!session || session.itemId !== itemId) return;
+
+    // Simple resize adjustment—production would integrate with grid cell sizing
+    const cellWidth = 10;
+    const cellHeight = 10;
+    const horizontalSign =
+      session.direction === "topLeft" ||
+      session.direction === "bottomLeft" ||
+      session.direction === "left"
+        ? -1
+        : 1;
+    const verticalSign =
+      session.direction === "topLeft" ||
+      session.direction === "topRight" ||
+      session.direction === "top"
+        ? -1
+        : 1;
+
+    const targetColDelta = Math.round(
+      (translationX * horizontalSign) / cellWidth,
+    );
+    const targetRowDelta = Math.round(
+      (translationY * verticalSign) / cellHeight,
+    );
+
+    setData((prevData) => {
+      const nextData = [...prevData];
+      const index = nextData.findIndex((item) => item.id === itemId);
+      if (index === -1) return prevData;
+
+      const target = nextData[index];
+      target.width = Math.max(
+        1,
+        Math.min(
+          session.startWidth + targetColDelta,
+          columns - session.startColumn,
+        ),
+      );
+      target.height = Math.max(
+        1,
+        Math.min(session.startHeight + targetRowDelta, rows - session.startRow),
+      );
+
+      return nextData;
+    });
+  };
+
+  const handleResizeEnd = (_itemId: string): void => {
+    const updatedItemData: ItemData<T>[] = data.map((item) => ({
+      initial: {
+        width: item.width,
+        height: item.height,
+        col: item.startColumn,
+        row: item.startRow,
+      },
+      props: item.itemProps,
+    }));
+    onItemChange(updatedItemData);
+    resizeSessionRef.current = null;
+    setSelectedItemId(null);
+  };
+
   return (
     <View style={[styles.container, containerStyle]} pointerEvents="box-none">
       <ReshufflableGrid
         data={normalizedData as Cell[]}
-        onItemsChange={handleItemsChange}
+        onDragEnd={handleItemsChange}
         columns={columns}
         rows={rows}
         style={styles.grid}
         renderItem={({ item }) => {
           const gridItem = item as GridItem<T>;
-          return <RenderedComponent {...(gridItem.itemProps as any)} />;
+          const isSelected = selectedItemId === gridItem.id;
+          return (
+            <RenderedComponent
+              {...(gridItem.itemProps as any)}
+              isSelected={isSelected}
+              onSelect={() => setSelectedItemId(gridItem.id)}
+              onResizeStart={(dir: ResizeHandleDirection) =>
+                handleResizeStart(gridItem.id, dir)
+              }
+              onResizeUpdate={(
+                dir: ResizeHandleDirection,
+                dx: number,
+                dy: number,
+              ) => handleResizeUpdate(gridItem.id, dir, dx, dy)}
+              onResizeEnd={() => handleResizeEnd(gridItem.id)}
+            />
+          );
         }}
       />
     </View>

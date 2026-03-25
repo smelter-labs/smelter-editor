@@ -84,8 +84,8 @@ importers:
         specifier: ~4.1.1
         version: 4.1.6(@babel/core@7.29.0)(react-native-worklets@0.7.4(@babel/core@7.29.0)(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0))(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       react-native-reshuffled:
-        specifier: ^0.1.5
-        version: 0.1.5(@babel/core@7.29.0)(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
+        specifier: ^0.2.0
+        version: 0.2.0(@babel/core@7.29.0)(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       react-native-safe-area-context:
         specifier: ~5.6.0
         version: 5.6.2(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
@@ -2608,8 +2608,8 @@ packages:
       react-native: '*'
       react-native-worklets: '>=0.5.0'
 
-  react-native-reshuffled@0.1.5:
-    resolution: {integrity: sha512-AW+VRI38t9NWIpuiEM7qCLHiroVuF0TNGM2vfhCCMgd5ahBYwlVaSd7NoMDq7s682mR7gJLvgfrKvNQVkAXu7g==}
+  react-native-reshuffled@0.2.0:
+    resolution: {integrity: sha512-6ChKnaq7GVJv9iXhfX0OmeD3ZmRrs4nnn2EGjfqWAMiUSVy8E+JPvch7GB4C8kuUiOP9T+1P8Psqorg1aCbBFg==}
     peerDependencies:
       react: '*'
       react-native: '*'
@@ -6361,7 +6361,7 @@ snapshots:
       react-native-worklets: 0.7.4(@babel/core@7.29.0)(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0)
       semver: 7.7.2
 
-  react-native-reshuffled@0.1.5(@babel/core@7.29.0)(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
+  react-native-reshuffled@0.2.0(@babel/core@7.29.0)(react-native@0.81.4(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0))(react@19.1.0):
     dependencies:
       react: 19.1.0
       react-native: 0.81.4(@babel/core@7.29.0)(@types/react@19.1.17)(react@19.1.0)
