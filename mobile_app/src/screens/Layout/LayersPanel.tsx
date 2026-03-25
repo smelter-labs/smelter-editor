@@ -7,20 +7,16 @@ import {
   TextInput,
   View,
 } from "react-native";
-
 import {
-  DragCanvas,
-  DraggableObject,
-  DroppableLayer,
-  LAYERS_CONTAINER_ID,
-} from "./dnd";
+  Draggable,
+  Droppable,
+  DropProvider,
+} from "react-native-reanimated-dnd";
 import { Chip } from "react-native-paper";
-import type { OrderChangeEvent } from "./dnd/types";
 import type { Layer, LayerBehaviorConfig } from "../../types/layout";
 import type { InputCard } from "../../types/input";
 
 // ─── Layer UI State ─────────────────────────────────────────────────────────────
-
 interface LayerUiState {
   name: string;
   isVisible: boolean;
@@ -34,6 +30,19 @@ interface LayersPanelProps {
   inputs: InputCard[];
   onLayersChange: (layers: Layer[]) => void;
 }
+
+type LayerDragData = {
+  type: "layer";
+  layerId: string;
+};
+
+type InputDragData = {
+  type: "input";
+  inputId: string;
+  sourceLayerId: string;
+};
+
+type DragData = LayerDragData | InputDragData;
 
 // ─── Color helper ────────────────────────────────────────────────────────────
 
@@ -272,118 +281,209 @@ export default function LayersPanel({
     [],
   );
 
-  const handleOrderChange = useCallback(
-    (event: OrderChangeEvent) => {
-      const { sourceLayerId, targetLayerId, objectId, newIndex } = event;
+  const moveLayer = useCallback(
+    (layerId: string, targetIndex: number) => {
+      const fromIndex = layers.findIndex((l) => l.id === layerId);
+      if (fromIndex === -1) return;
 
-      if (sourceLayerId === LAYERS_CONTAINER_ID) {
-        // Reorder layers
-        const ids = layers.map((l) => l.id).filter((id) => id !== objectId);
-        ids.splice(newIndex, 0, objectId);
-        const reordered = ids.map((id) => layers.find((l) => l.id === id)!);
-        onLayersChange(reordered);
-      } else {
-        // Move an input between layers (or reorder within the same layer)
-        const newLayers = layers.map((l) => ({
-          ...l,
-          inputs: [...l.inputs],
-        }));
-        const srcLayer = newLayers.find((l) => l.id === sourceLayerId);
-        const dstLayer = newLayers.find((l) => l.id === targetLayerId);
-        if (!srcLayer || !dstLayer) return;
+      const boundedTarget = Math.max(0, Math.min(targetIndex, layers.length));
+      const adjustedTarget =
+        fromIndex < boundedTarget ? boundedTarget - 1 : boundedTarget;
+      if (adjustedTarget === fromIndex) return;
 
-        const itemIdx = srcLayer.inputs.findIndex(
-          (i) => i.inputId === objectId,
-        );
-        if (itemIdx === -1) return;
+      const next = [...layers];
+      const [moved] = next.splice(fromIndex, 1);
+      next.splice(adjustedTarget, 0, moved);
+      onLayersChange(next);
+    },
+    [layers, onLayersChange],
+  );
 
-        const [movedItem] = srcLayer.inputs.splice(itemIdx, 1);
-        // Remove from dst in case it's a same-layer reorder
-        const cleanDst = dstLayer.inputs.filter((i) => i.inputId !== objectId);
-        cleanDst.splice(newIndex, 0, movedItem);
-        dstLayer.inputs = cleanDst;
+  const moveInput = useCallback(
+    (
+      sourceLayerId: string,
+      inputId: string,
+      targetLayerId: string,
+      targetIndex: number,
+    ) => {
+      const nextLayers = layers.map((layer) => ({
+        ...layer,
+        inputs: [...layer.inputs],
+      }));
 
-        onLayersChange(newLayers);
+      const sourceLayer = nextLayers.find(
+        (layer) => layer.id === sourceLayerId,
+      );
+      const targetLayer = nextLayers.find(
+        (layer) => layer.id === targetLayerId,
+      );
+      if (!sourceLayer || !targetLayer) return;
+
+      const sourceIndex = sourceLayer.inputs.findIndex(
+        (input) => input.inputId === inputId,
+      );
+      if (sourceIndex === -1) return;
+
+      const [movedInput] = sourceLayer.inputs.splice(sourceIndex, 1);
+
+      const duplicateIndex = targetLayer.inputs.findIndex(
+        (input) => input.inputId === inputId,
+      );
+      if (duplicateIndex !== -1) {
+        targetLayer.inputs.splice(duplicateIndex, 1);
       }
+
+      const boundedTarget = Math.max(
+        0,
+        Math.min(targetIndex, targetLayer.inputs.length),
+      );
+      const adjustedTarget =
+        sourceLayerId === targetLayerId && sourceIndex < boundedTarget
+          ? boundedTarget - 1
+          : boundedTarget;
+
+      targetLayer.inputs.splice(adjustedTarget, 0, movedInput);
+      onLayersChange(nextLayers);
     },
     [layers, onLayersChange],
   );
 
   return (
-    <DragCanvas onOrderChange={handleOrderChange} style={styles.panel}>
-      <View style={styles.panelHeader}>
-        <Text style={styles.panelTitle}>LAYERS</Text>
-      </View>
+    <DropProvider>
+      <View style={styles.panel}>
+        <View style={styles.panelHeader}>
+          <Text style={styles.panelTitle}>LAYERS</Text>
+        </View>
 
-      <ScrollView
-        style={styles.layersList}
-        contentContainerStyle={styles.layersContent}
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-      >
-        <DroppableLayer layerId={LAYERS_CONTAINER_ID} style={{ flex: 1 }}>
+        <ScrollView
+          style={styles.layersList}
+          contentContainerStyle={styles.layersContent}
+          showsVerticalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
           {layers.map((layer, layerIndex) => {
             const ui = getUi(layer.id);
+
             return (
-              <DraggableObject
-                key={layer.id}
-                objectId={layer.id}
-                layerId={LAYERS_CONTAINER_ID}
-                index={layerIndex}
-              >
-                <DroppableLayer
-                  layerId={layer.id}
-                  style={styles.layerContainer}
+              <View key={layer.id} style={styles.layerContainer}>
+                <Droppable<DragData>
+                  style={styles.layerDropZone}
+                  activeStyle={styles.layerDropZoneActive}
+                  onDrop={(data) => {
+                    if (data.type === "layer") {
+                      moveLayer(data.layerId, layerIndex);
+                      return;
+                    }
+                    moveInput(
+                      data.sourceLayerId,
+                      data.inputId,
+                      layer.id,
+                      layer.inputs.length,
+                    );
+                  }}
                 >
-                  <LayerHeader
-                    name={ui.name}
-                    isVisible={ui.isVisible}
-                    isCollapsed={ui.isCollapsed}
-                    onToggleCollapse={() =>
-                      setLayerUi(layer.id, {
-                        isCollapsed: !ui.isCollapsed,
-                      })
-                    }
-                    onToggleVisible={() =>
-                      setLayerUi(layer.id, { isVisible: !ui.isVisible })
-                    }
-                    onNameChange={(name) => setLayerUi(layer.id, { name })}
-                  />
-
-                  {!ui.isCollapsed && (
-                    <BehaviorSelector
-                      behavior={layer.behavior}
-                      onChange={(b) => {
-                        const newLayers = layers.map((l) =>
-                          l.id === layer.id ? { ...l, behavior: b } : l,
-                        );
-                        onLayersChange(newLayers);
-                      }}
+                  <Draggable<LayerDragData>
+                    data={{ type: "layer", layerId: layer.id }}
+                    dragAxis="y"
+                    preDragDelay={140}
+                  >
+                    <LayerHeader
+                      name={ui.name}
+                      isVisible={ui.isVisible}
+                      isCollapsed={ui.isCollapsed}
+                      onToggleCollapse={() =>
+                        setLayerUi(layer.id, {
+                          isCollapsed: !ui.isCollapsed,
+                        })
+                      }
+                      onToggleVisible={() =>
+                        setLayerUi(layer.id, { isVisible: !ui.isVisible })
+                      }
+                      onNameChange={(name) => setLayerUi(layer.id, { name })}
                     />
-                  )}
+                  </Draggable>
+                </Droppable>
 
-                  {!ui.isCollapsed &&
-                    layer.inputs.map((item, itemIndex) => (
-                      <DraggableObject
-                        key={item.inputId}
-                        objectId={item.inputId}
-                        layerId={layer.id}
-                        index={itemIndex}
+                {!ui.isCollapsed && (
+                  <BehaviorSelector
+                    behavior={layer.behavior}
+                    onChange={(behavior) => {
+                      const newLayers = layers.map((entry) =>
+                        entry.id === layer.id ? { ...entry, behavior } : entry,
+                      );
+                      onLayersChange(newLayers);
+                    }}
+                  />
+                )}
+
+                {!ui.isCollapsed &&
+                  layer.inputs.map((item, itemIndex) => (
+                    <Droppable<DragData>
+                      key={item.inputId}
+                      style={styles.itemDropZone}
+                      activeStyle={styles.itemDropZoneActive}
+                      onDrop={(data) => {
+                        if (data.type !== "input") return;
+                        moveInput(
+                          data.sourceLayerId,
+                          data.inputId,
+                          layer.id,
+                          itemIndex,
+                        );
+                      }}
+                    >
+                      <Draggable<InputDragData>
+                        data={{
+                          type: "input",
+                          inputId: item.inputId,
+                          sourceLayerId: layer.id,
+                        }}
+                        dragAxis="y"
+                        preDragDelay={140}
                       >
                         <ItemRow
                           inputId={item.inputId}
                           inputs={inputs}
                           dimmed={!ui.isVisible}
                         />
-                      </DraggableObject>
-                    ))}
-                </DroppableLayer>
-              </DraggableObject>
+                      </Draggable>
+                    </Droppable>
+                  ))}
+
+                {!ui.isCollapsed && (
+                  <Droppable<DragData>
+                    style={styles.layerTailDropZone}
+                    activeStyle={styles.layerTailDropZoneActive}
+                    onDrop={(data) => {
+                      if (data.type !== "input") return;
+                      moveInput(
+                        data.sourceLayerId,
+                        data.inputId,
+                        layer.id,
+                        layer.inputs.length,
+                      );
+                    }}
+                  >
+                    <View style={styles.layerTailDropLine} />
+                  </Droppable>
+                )}
+              </View>
             );
           })}
-        </DroppableLayer>
-      </ScrollView>
-    </DragCanvas>
+
+          <Droppable<DragData>
+            style={styles.layersTailDropZone}
+            activeStyle={styles.layersTailDropZoneActive}
+            onDrop={(data) => {
+              if (data.type !== "layer") return;
+              moveLayer(data.layerId, layers.length);
+            }}
+          >
+            <View style={styles.layersTailDropLine} />
+          </Droppable>
+        </ScrollView>
+      </View>
+    </DropProvider>
   );
 }
 
@@ -425,6 +525,12 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
     borderBottomColor: PS.layerBorder,
     overflow: "hidden",
+  },
+  layerDropZone: {
+    backgroundColor: PS.layerBg,
+  },
+  layerDropZoneActive: {
+    backgroundColor: "rgba(77, 157, 224, 0.2)",
   },
 
   layerHeader: {
@@ -470,6 +576,39 @@ const styles = StyleSheet.create({
     color: PS.text,
     fontSize: 12,
     flex: 1,
+  },
+  itemDropZone: {
+    backgroundColor: PS.itemBg,
+  },
+  itemDropZoneActive: {
+    backgroundColor: "rgba(77, 157, 224, 0.2)",
+  },
+  layerTailDropZone: {
+    height: 10,
+    justifyContent: "center",
+    paddingHorizontal: 8,
+    backgroundColor: PS.itemBg,
+  },
+  layerTailDropZoneActive: {
+    backgroundColor: "rgba(77, 157, 224, 0.2)",
+  },
+  layerTailDropLine: {
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: "rgba(77, 157, 224, 0.6)",
+  },
+  layersTailDropZone: {
+    height: 20,
+    justifyContent: "center",
+    paddingHorizontal: 8,
+  },
+  layersTailDropZoneActive: {
+    backgroundColor: "rgba(77, 157, 224, 0.2)",
+  },
+  layersTailDropLine: {
+    height: 2,
+    borderRadius: 999,
+    backgroundColor: "rgba(77, 157, 224, 0.6)",
   },
 
   editInput: {

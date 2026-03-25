@@ -1,6 +1,5 @@
 import React from "react";
 import { StyleSheet, Text, Pressable, View } from "react-native";
-import type { LayerItemProps } from "./dnd/types";
 
 import { GestureDetector, Gesture } from "react-native-gesture-handler";
 import { runOnJS } from "react-native-reanimated";
@@ -8,6 +7,7 @@ import type {
   GridItemControls,
   ResizeHandleDirection,
 } from "./ReshufflableGridWrapper";
+import type { LayerItemProps } from "./types";
 
 type GridCellProps = LayerItemProps & GridItemControls;
 

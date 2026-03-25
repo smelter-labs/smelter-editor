@@ -18,8 +18,8 @@ import { ScreenLabel } from "../../components/shared/ScreenLabel";
 import ReshufflableGridWrapper from "./ReshufflableGridWrapper";
 import GridCell from "./GridCell";
 import LayersPanel from "./LayersPanel";
-import type { LayerItemProps } from "./dnd/types";
 import type { ItemData } from "./ReshufflableGridWrapper";
+import type { LayerItemProps } from "./types";
 import type { Layer, LayerInput } from "../../types/layout";
 import type { Resolution } from "@smelter-editor/types";
 
