@@ -49,5 +49,10 @@
     "patch-package": "^8.0.1",
     "typescript": "~5.9.2"
   },
+  "pnpm": {
+    "overrides": {
+      "react-native-reanimated": "4.2.0"
+    }
+  },
   "private": true
 }
