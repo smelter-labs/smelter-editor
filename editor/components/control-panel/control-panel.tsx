@@ -835,7 +835,7 @@ function SettingsBar({
     );
     return exportRoomConfig(
       roomState.inputs,
-      roomState.layout ?? 'grid',
+      'grid',
       roomState.resolution,
       {
         swapDurationMs: roomState.swapDurationMs,
@@ -1065,14 +1065,13 @@ function SettingsBar({
 
       try {
         await updateRoomAction(roomId, {
-          layout: config.layout,
           ...(orderedCreatedIds.length > 0
             ? { inputOrder: orderedCreatedIds }
             : {}),
           ...config.transitionSettings,
         });
       } catch (e) {
-        console.warn('Failed to set layout or input order:', e);
+        console.warn('Failed to set input order:', e);
       }
 
       await handleRefreshState();

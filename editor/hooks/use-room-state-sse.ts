@@ -11,7 +11,6 @@ export function useRoomStateSse(roomId: string | undefined) {
   const [roomState, setRoomState] = useState<RoomState>({
     inputs: [],
     layers: [],
-    layout: 'grid',
     whepUrl: '',
   });
   const [loading, setLoading] = useState(true);

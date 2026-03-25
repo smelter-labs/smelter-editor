@@ -18,7 +18,6 @@ export default function RoomPreviewPage() {
   const [roomState, setRoomState] = useState<RoomState>({
     inputs: [],
     layers: [],
-    layout: 'grid',
     whepUrl: '',
   });
   const videoRef = useRef<HTMLVideoElement | null>(null);
