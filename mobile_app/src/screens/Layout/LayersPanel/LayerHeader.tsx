@@ -1,11 +1,5 @@
 import React, { useCallback, useRef, useState } from "react";
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 
 const C = {
   layerBg: "#2D2D2D",

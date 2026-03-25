@@ -181,39 +181,39 @@ export function useJoinRoom() {
     setStatus(ConnectionStatus.Connecting);
     const trimmedUrl = localServerUrl.trim();
     const trimmedRoomId = localRoomId.trim();
-    setCredentials(trimmedUrl, trimmedRoomId);
 
     const { setInputs } = useInputsStore.getState();
     const { setLayers, setResolution } = useLayoutStore.getState();
 
     try {
+      const { inputs, layers, resolution } = await apiService.fetchRoomState(
+        trimmedUrl,
+        trimmedRoomId,
+      );
+
       await wsService.connect(trimmedUrl, trimmedRoomId);
+      setCredentials(trimmedUrl, trimmedRoomId);
       setStatus(ConnectionStatus.Connected);
 
-      // Fetch and populate room state
-      try {
-        const { inputs, layers, resolution } = await apiService.fetchRoomState(
-          trimmedUrl,
-          trimmedRoomId,
-        );
-        setInputs(inputs);
-        setLayers(layers);
-        setResolution(resolution);
-        console.log("[JoinRoom] Room state loaded", {
-          inputCount: inputs.length,
-          layerCount: layers.length,
-          resolution,
-        });
-      } catch (err) {
-        console.warn("[JoinRoom] Failed to load room state:", err);
-        // Non-fatal; continue to main screen
-      }
+      setInputs(inputs);
+      setLayers(layers);
+      setResolution(resolution);
+      console.log("[JoinRoom] Room state loaded", {
+        inputCount: inputs.length,
+        layerCount: layers.length,
+        resolution,
+      });
 
       navigation.replace(SCREEN_NAMES.MAIN);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Connection failed";
+      const rawMessage =
+        err instanceof Error ? err.message : "Connection failed";
+      const isRoomNotFound = /\(404\)/.test(rawMessage);
+      const message = isRoomNotFound
+        ? "Room not found. Check the room ID and try again."
+        : rawMessage;
       setError(message);
-      setErrors({ serverUrl: message });
+      setErrors(isRoomNotFound ? { roomId: message } : { serverUrl: message });
     } finally {
       setIsLoading(false);
     }
