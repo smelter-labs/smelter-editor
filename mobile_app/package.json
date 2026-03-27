@@ -7,7 +7,9 @@
     "web": "expo start --web",
     "android": "expo run:android",
     "ios": "expo run:ios",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package",
+    "lint": "eslint .",
+    "lint:fix": "eslint --fix --ext .js,.jsx,.ts,.tsx ."
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
@@ -46,7 +48,13 @@
   "devDependencies": {
     "@babel/core": "^7.20.0",
     "@types/react": "~19.1.10",
+    "@typescript-eslint/eslint-plugin": "^8.57.1",
+    "@typescript-eslint/parser": "^8.57.1",
+    "eslint": "^9.32.0",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-prettier": "^5.5.3",
     "patch-package": "^8.0.1",
+    "prettier": "^3.6.2",
     "typescript": "~5.9.2"
   },
   "pnpm": {
