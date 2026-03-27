@@ -113,7 +113,10 @@ export function LayoutScreen() {
   const theme = useTheme();
   const { layers, setLayers, resolution, columns, rows } = useLayoutStore();
   const { serverUrl, roomId } = useConnectionStore();
-  const inputs = useInputsStore((s) => s.inputs);
+  const { inputs, setInputs } = useInputsStore((s) => ({
+    inputs: s.inputs,
+    setInputs: s.setInputs,
+  }));
 
   const [layersPanelOpen, setLayersPanelOpen] = useState(false);
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
@@ -136,11 +139,13 @@ export function LayoutScreen() {
         return;
       }
       try {
-        const { layers: updatedLayers } = await apiService.fetchRoomState(
+        const { layers: updatedLayers, inputs: updatedInputs } =
+          await apiService.fetchRoomState(
           serverUrl,
           roomId,
         );
         setLayers(updatedLayers);
+        setInputs(updatedInputs);
       } catch (err) {
         console.warn("[Layout] Failed to refresh layers on room_updated:", err);
       }
@@ -148,7 +153,7 @@ export function LayoutScreen() {
     return () => {
       unsubRoom();
     };
-  }, [serverUrl, roomId, setLayers]);
+  }, [serverUrl, roomId, setLayers, setInputs]);
 
   // Push updated layers to server
   const pushLayers = useCallback(
@@ -167,18 +172,20 @@ export function LayoutScreen() {
         if (pendingRefresh.current) {
           pendingRefresh.current = false;
           try {
-            const { layers: serverLayers } = await apiService.fetchRoomState(
+            const { layers: serverLayers, inputs: serverInputs } =
+              await apiService.fetchRoomState(
               serverUrl,
               roomId,
             );
             setLayers(serverLayers);
+            setInputs(serverInputs);
           } catch (err) {
             console.warn("[Layout] Failed to refresh after push:", err);
           }
         }
       }
     },
-    [serverUrl, roomId, setLayers],
+    [serverUrl, roomId, setLayers, setInputs],
   );
 
   // Handle grid item position change for a specific layer
