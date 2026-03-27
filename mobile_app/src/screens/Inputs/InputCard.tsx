@@ -66,10 +66,7 @@ export function InputCard({ input, tapGesture, onUpdate }: InputCardProps) {
           Vol: {Math.round(input.inputVolume * 100)}%
         </Text>
         <View
-          style={[
-            styles.volumeTrack,
-            { backgroundColor: appColors.surface2 },
-          ]}
+          style={[styles.volumeTrack, { backgroundColor: appColors.surface2 }]}
         >
           <View
             style={[

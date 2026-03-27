@@ -564,7 +564,10 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
         target.startColumn = session.startColumn;
         target.width = Math.max(
           1,
-          Math.min(columns - session.startColumn, session.startWidth + colDelta),
+          Math.min(
+            columns - session.startColumn,
+            session.startWidth + colDelta,
+          ),
         );
       }
 

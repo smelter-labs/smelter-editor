@@ -172,7 +172,11 @@ export function LayerRow({
             if (data.type === "layer") {
               onLayerDrop(data);
             } else {
-              onInputDrop(data.sourceLayerId, data.inputId, layer.inputs.length);
+              onInputDrop(
+                data.sourceLayerId,
+                data.inputId,
+                layer.inputs.length,
+              );
             }
           }}
         >

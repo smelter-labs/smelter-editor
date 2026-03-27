@@ -18,8 +18,14 @@ import { ScreenLabel } from "../../components/shared/ScreenLabel";
 
 export function InputsScreen() {
   const theme = useTheme();
-  const { inputs, gridColumns, setInputs, updateInput, removeInput, reorderInputs } =
-    useInputsStore();
+  const {
+    inputs,
+    gridColumns,
+    setInputs,
+    updateInput,
+    removeInput,
+    reorderInputs,
+  } = useInputsStore();
 
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [selectedCardIndex, setSelectedCardIndex] = useState(0);

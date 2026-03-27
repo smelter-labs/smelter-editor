@@ -147,12 +147,7 @@ export default function LayersPanel({
                   handleLayerDrop(data.layerId, layerIndex)
                 }
                 onInputDrop={(sourceLayerId, inputId, targetIndex) =>
-                  handleInputDrop(
-                    sourceLayerId,
-                    inputId,
-                    layer.id,
-                    targetIndex,
-                  )
+                  handleInputDrop(sourceLayerId, inputId, layer.id, targetIndex)
                 }
                 onUiChange={(patch) => patchUi(layer.id, patch)}
                 onBehaviorChange={(b) => setBehavior(layer.id, b)}

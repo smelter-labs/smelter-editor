@@ -15,7 +15,13 @@ import type {
 import { StreamMonitor, WhipMonitor } from "./monitor";
 import { TwitchStreamInfo } from "./twitchApi";
 
-export type { InputOrientation, PublicInputState, ShaderConfig, ShaderParamConfig, Layer };
+export type {
+  InputOrientation,
+  PublicInputState,
+  ShaderConfig,
+  ShaderParamConfig,
+  Layer,
+};
 
 /**
  * Full room state response from GET /room/:roomId.

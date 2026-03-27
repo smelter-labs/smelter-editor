@@ -140,10 +140,7 @@ export function LayoutScreen() {
       }
       try {
         const { layers: updatedLayers, inputs: updatedInputs } =
-          await apiService.fetchRoomState(
-          serverUrl,
-          roomId,
-        );
+          await apiService.fetchRoomState(serverUrl, roomId);
         setLayers(updatedLayers);
         setInputs(updatedInputs);
       } catch (err) {
@@ -173,10 +170,7 @@ export function LayoutScreen() {
           pendingRefresh.current = false;
           try {
             const { layers: serverLayers, inputs: serverInputs } =
-              await apiService.fetchRoomState(
-              serverUrl,
-              roomId,
-            );
+              await apiService.fetchRoomState(serverUrl, roomId);
             setLayers(serverLayers);
             setInputs(serverInputs);
           } catch (err) {

@@ -1,10 +1,7 @@
 import type { InputCard } from "../types/input";
 import type { Layer } from "../types/layout";
 import type { Resolution } from "@smelter-editor/types";
-import type {
-  PublicInputState,
-  RoomState,
-} from "../types/room";
+import type { PublicInputState, RoomState } from "../types/room";
 
 export interface ActiveRoom {
   roomId: string;
@@ -236,7 +233,6 @@ class ApiService {
       displaySize: (input as { displaySize?: number }).displaySize ?? 0,
     }));
   }
-
 }
 
 export const apiService = new ApiService();
