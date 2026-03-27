@@ -156,6 +156,7 @@ export type ResizeHandleDirection =
 export type GridItemControls = {
   isSelected?: boolean;
   onSelect?: () => void;
+  onLongPress?: () => void;
   onResizeStart?: (direction: ResizeHandleDirection) => void;
   onResizeUpdate?: (
     direction: ResizeHandleDirection,
@@ -169,6 +170,7 @@ interface ReshufflableGridWrapperProps<T> {
   itemData: ItemData<T>[];
   renderedComponent: React.ComponentType<T & GridItemControls>;
   onItemChange: (items: ItemData<T>[]) => void;
+  onItemLongPress?: (itemId: string) => void;
   rows?: number;
   columns?: number;
   containerStyle?: object;
@@ -178,6 +180,7 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
   itemData,
   renderedComponent: RenderedComponent,
   onItemChange,
+  onItemLongPress,
   rows: initialRows = 20,
   columns: initialColumns = 20,
   containerStyle,
@@ -636,6 +639,7 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
               {...(gridItem.itemProps as any)}
               isSelected={isSelected}
               onSelect={() => setSelectedItemId(gridItem.id)}
+              onLongPress={() => onItemLongPress?.(gridItem.id)}
               onResizeStart={(dir: ResizeHandleDirection) =>
                 handleResizeStart(gridItem.id, dir)
               }

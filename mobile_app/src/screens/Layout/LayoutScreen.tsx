@@ -14,6 +14,7 @@ import { wsService } from "../../services/websocketService";
 import { apiService } from "../../services/apiService";
 import { SidePanel } from "../../components/shared/SidePanel";
 import { SettingsPanel } from "./SettingsPanel";
+import { LayoutEffectsPanel } from "./LayoutEffectsPanel";
 import { ScreenLabel } from "../../components/shared/ScreenLabel";
 import ReshufflableGridWrapper from "./ReshufflableGridWrapper";
 import GridCell from "./GridCell";
@@ -123,6 +124,8 @@ export function LayoutScreen() {
   const [settingsPanelSide, setSettingsPanelSide] = useState<"left" | "right">(
     "right",
   );
+  const [effectsPanelOpen, setEffectsPanelOpen] = useState(false);
+  const [effectsInputId, setEffectsInputId] = useState<string | null>(null);
 
   // Refs used to gate room_updated processing while a layer push is in-flight.
   // Using refs (not state) so they don't trigger re-renders or recreate closures.
@@ -151,6 +154,14 @@ export function LayoutScreen() {
       unsubRoom();
     };
   }, [serverUrl, roomId, setLayers, setInputs]);
+
+  useEffect(() => {
+    if (!effectsInputId) return;
+    if (!inputs.some((input) => input.id === effectsInputId)) {
+      setEffectsPanelOpen(false);
+      setEffectsInputId(null);
+    }
+  }, [effectsInputId, inputs]);
 
   // Push updated layers to server
   const pushLayers = useCallback(
@@ -271,6 +282,10 @@ export function LayoutScreen() {
                 itemData={itemData}
                 renderedComponent={GridCell}
                 onItemChange={(items) => handleGridChange(layer.id, items)}
+                onItemLongPress={(itemId) => {
+                  setEffectsInputId(itemId);
+                  setEffectsPanelOpen(true);
+                }}
                 rows={rows}
                 columns={columns}
                 containerStyle={styles.layerGrid}
@@ -299,6 +314,12 @@ export function LayoutScreen() {
         isVisible={settingsPanelOpen}
         side={settingsPanelSide}
         onClose={() => setSettingsPanelOpen(false)}
+      />
+
+      <LayoutEffectsPanel
+        isVisible={effectsPanelOpen}
+        inputId={effectsInputId}
+        onClose={() => setEffectsPanelOpen(false)}
       />
     </View>
   );

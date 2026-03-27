@@ -65,6 +65,7 @@ export const useInputsStore = create<InputsState>()((set) => ({
             audioLevel: changes.audioLevel ?? 0,
             videoStreamUrl: changes.videoStreamUrl ?? null,
             displaySize: changes.displaySize ?? 0,
+            shaders: changes.shaders ?? [],
           },
         ];
       })(),

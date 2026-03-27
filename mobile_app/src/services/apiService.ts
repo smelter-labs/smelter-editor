@@ -1,7 +1,19 @@
 import type { InputCard } from "../types/input";
 import type { Layer } from "../types/layout";
-import type { Resolution } from "@smelter-editor/types";
+import type {
+  Resolution,
+  ShaderConfig,
+  ShaderParamDefinition,
+} from "@smelter-editor/types";
 import type { PublicInputState, RoomState } from "../types/room";
+
+export interface AvailableShader {
+  id: string;
+  name: string;
+  description?: string;
+  shaderFile?: string;
+  params?: ShaderParamDefinition[];
+}
 
 export interface ActiveRoom {
   roomId: string;
@@ -164,6 +176,34 @@ class ApiService {
     if (!res.ok) throw new Error(`removeInput failed (${res.status})`);
   }
 
+  async updateInput(
+    serverUrl: string,
+    roomId: string,
+    inputId: string,
+    opts: Record<string, unknown>,
+  ): Promise<void> {
+    const base = this.buildHttpUrl(serverUrl);
+    const res = await fetch(
+      `${base}/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}`,
+      {
+        method: "POST",
+        body: JSON.stringify(opts),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+    if (!res.ok) throw new Error(`updateInput failed (${res.status})`);
+  }
+
+  async getAvailableShaders(serverUrl: string): Promise<AvailableShader[]> {
+    const base = this.buildHttpUrl(serverUrl);
+    const res = await fetch(`${base}/shaders`);
+    if (!res.ok) {
+      throw new Error(`Failed to fetch shaders (${res.status})`);
+    }
+    const payload = (await res.json()) as { shaders?: AvailableShader[] };
+    return payload.shaders ?? [];
+  }
+
   /**
    * Map a server input_updated payload to Partial<InputCard> for store updates.
    */
@@ -202,6 +242,9 @@ class ApiService {
       changes.videoStreamUrl = input.videoStreamUrl as string | null;
     if (input.displaySize !== undefined)
       changes.displaySize = input.displaySize as number;
+    if (Array.isArray(input.shaders)) {
+      changes.shaders = input.shaders as ShaderConfig[];
+    }
     return changes;
   }
 
@@ -231,6 +274,7 @@ class ApiService {
       videoStreamUrl:
         (input as { videoStreamUrl?: string | null }).videoStreamUrl ?? null,
       displaySize: (input as { displaySize?: number }).displaySize ?? 0,
+      shaders: (input.shaders as ShaderConfig[] | undefined) ?? [],
     }));
   }
 }

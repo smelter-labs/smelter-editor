@@ -1,6 +1,7 @@
 import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Draggable, Droppable } from "react-native-reanimated-dnd";
+import { Badge } from "react-native-paper";
 import type { InputCard } from "../../../types/input";
 import type { DragData, InputDragData, LayerDragData } from "./LayerRow";
 
@@ -39,6 +40,7 @@ export function InputRow({
   const input = inputs.find((i) => i.id === inputId);
   const name = input?.name ?? inputId;
   const color = colorFromId(inputId);
+  const effectsCount = input?.shaders?.length ?? 0;
 
   return (
     <Droppable<DragData>
@@ -60,6 +62,7 @@ export function InputRow({
           <Text style={styles.name} numberOfLines={1}>
             {name}
           </Text>
+          <Badge style={styles.effectsBadge}>{effectsCount}</Badge>
         </View>
       </Draggable>
     </Droppable>
@@ -99,5 +102,8 @@ const styles = StyleSheet.create({
     color: C.text,
     fontSize: 12,
     flex: 1,
+  },
+  effectsBadge: {
+    backgroundColor: "rgba(77, 157, 224, 0.9)",
   },
 });

@@ -1,3 +1,5 @@
+import type { ShaderConfig } from "@smelter-editor/types";
+
 export interface InputCard {
   id: string;
   name: string;
@@ -15,6 +17,8 @@ export interface InputCard {
   videoStreamUrl: string | null;
   /** Pixel area from layout screen; used for default sort ordering */
   displaySize: number;
+  /** Active effects (same as shaders) configured for this input */
+  shaders: ShaderConfig[];
 }
 
 export type SortMode = "prominence" | "timeline" | "manual";

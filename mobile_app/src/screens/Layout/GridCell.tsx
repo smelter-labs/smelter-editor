@@ -19,6 +19,7 @@ export default function GridCell({
   isVisible,
   isSelected = false,
   onSelect,
+  onLongPress,
   onResizeStart,
   onResizeUpdate,
   onResizeEnd,
@@ -96,7 +97,11 @@ export default function GridCell({
   };
 
   return (
-    <Pressable onPress={onSelect} style={styles.pressable}>
+    <Pressable
+      onPress={onSelect}
+      onLongPress={onLongPress}
+      style={styles.pressable}
+    >
       <View
         style={[
           styles.cell,
