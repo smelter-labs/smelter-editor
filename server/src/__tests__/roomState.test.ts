@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => {
       terminate: fn().mockResolvedValue(undefined),
     },
     getMp4DurationMs: fn().mockResolvedValue(10000),
+    getMp4VideoDimensions: fn().mockResolvedValue({ width: 1920, height: 1080 }),
     twitchStartMonitor: fn().mockResolvedValue({
       isLive: () => true,
       stop: fn(),
@@ -72,6 +73,7 @@ vi.mock('fs-extra', () => ({
 }));
 vi.mock('../server/mp4Duration', () => ({
   getMp4DurationMs: mocks.getMp4DurationMs,
+  getMp4VideoDimensions: mocks.getMp4VideoDimensions,
 }));
 
 import { createRoomStore } from '../app/store';
@@ -108,7 +110,7 @@ function createTimelineConfig(
               volume: 1,
               showTitle: true,
               shaders: [],
-              orientation: 'horizontal',
+
               text: 'clip-default',
             },
             keyframes: [
@@ -119,7 +121,7 @@ function createTimelineConfig(
                   volume: 1,
                   showTitle: true,
                   shaders: [],
-                  orientation: 'horizontal',
+    
                   text: initialKeyframeText,
                 },
               },
@@ -130,7 +132,7 @@ function createTimelineConfig(
                   volume: 1,
                   showTitle: true,
                   shaders: [],
-                  orientation: 'horizontal',
+    
                   text: `${initialKeyframeText}-later`,
                 },
               },
@@ -728,7 +730,6 @@ describe('RoomState', () => {
           volume: 1,
           showTitle: true,
           shaders: [],
-          orientation: 'horizontal' as const,
         },
       ];
       expect(listener).toHaveBeenCalledTimes(1);
@@ -892,7 +893,7 @@ describe('RoomState', () => {
                   volume: 1,
                   showTitle: false,
                   shaders: [],
-                  orientation: 'horizontal',
+    
                   mp4PlayFromMs: 0,
                   mp4Loop: true,
                 },

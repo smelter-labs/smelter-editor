@@ -22,10 +22,6 @@ const TimelineBlockSettingsSchema = Type.Object({
   volume: Type.Number(),
   showTitle: Type.Boolean(),
   shaders: Type.Array(ShaderConfigSchema),
-  orientation: Type.Union([
-    Type.Literal('horizontal'),
-    Type.Literal('vertical'),
-  ]),
   text: Type.Optional(Type.String()),
   textAlign: Type.Optional(
     Type.Union([

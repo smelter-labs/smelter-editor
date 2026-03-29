@@ -1,8 +1,6 @@
 import type { ShaderConfig } from './shader.js';
 import type { SnakeEventShaderConfig } from './snake-game.js';
 
-export type InputOrientation = 'horizontal' | 'vertical';
-
 export type InputType =
   | 'local-mp4'
   | 'twitch-channel'
@@ -22,7 +20,6 @@ export type InputDisplayProperties = {
   volume: number;
   showTitle: boolean;
   shaders: ShaderConfig[];
-  orientation: InputOrientation;
 };
 
 export type TextInputProperties = {

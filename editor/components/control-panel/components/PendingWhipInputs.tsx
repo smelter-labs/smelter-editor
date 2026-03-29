@@ -117,7 +117,6 @@ export function PendingWhipInputs({
         volume: pendingInput.config.volume,
         shaders: pendingInput.config.shaders,
         showTitle: pendingInput.config.showTitle,
-        orientation: pendingInput.config.orientation,
       });
 
       const roomInfo = await getRoomInfo(roomId);

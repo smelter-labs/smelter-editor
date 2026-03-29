@@ -99,17 +99,6 @@ export default function RoomView({
     }
   }, [guestStream]);
 
-  // Sync guest rotation when host changes orientation via server
-  useEffect(() => {
-    if (!isGuest || !guestInputId) return;
-    const guestInput = roomState.inputs.find((i) => i.inputId === guestInputId);
-    if (!guestInput) return;
-    const serverVertical = guestInput.orientation === 'vertical';
-    const localVertical = guestRotation % 180 !== 0;
-    if (serverVertical !== localVertical && guestRotateRef.current) {
-      guestRotateRef.current().then(setGuestRotation);
-    }
-  }, [isGuest, guestInputId, roomState.inputs]);
 
   if (isGuest) {
     return (

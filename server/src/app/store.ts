@@ -32,6 +32,8 @@ export type InputConfig = {
   title: string;
   description: string;
   imageId?: string;
+  sourceWidth?: number;
+  sourceHeight?: number;
   snakeGameState?: SnakeGameState;
   handsSourceInputId?: string;
   handsStore?: StoreApi<HandsStore>;

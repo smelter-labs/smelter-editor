@@ -37,6 +37,7 @@ import LoadingSpinner from '@/components/ui/spinner';
 import { toast } from 'sonner';
 import { getMp4Duration } from '@/app/actions/actions';
 import { AbsolutePositionController } from './AbsolutePositionController';
+import { defaultAbsoluteRect } from '@/lib/source-fit';
 import {
   type SelectedTimelineClip,
   extractMp4FileName,
@@ -325,6 +326,22 @@ export function BlockClipPropertiesPanel({
         selectedTimelineClips.length === 1 ? selectedTimelineClips[0] : null;
       const targetKeyframeId = singleSelectedClip?.selectedKeyframeId ?? null;
 
+      const hasCropInPatch =
+        'cropTop' in patch ||
+        'cropLeft' in patch ||
+        'cropRight' in patch ||
+        'cropBottom' in patch;
+      const cropOnly = hasCropInPatch
+        ? {
+            ...(patch.cropTop !== undefined && { cropTop: patch.cropTop }),
+            ...(patch.cropLeft !== undefined && { cropLeft: patch.cropLeft }),
+            ...(patch.cropRight !== undefined && { cropRight: patch.cropRight }),
+            ...(patch.cropBottom !== undefined && {
+              cropBottom: patch.cropBottom,
+            }),
+          }
+        : null;
+
       // Update local state for all clips
       const nextClips = selectedTimelineClips.map((clip) => ({
         ...clip,
@@ -337,7 +354,15 @@ export function BlockClipPropertiesPanel({
                       ...keyframe,
                       blockSettings: { ...keyframe.blockSettings, ...patch },
                     }
-                  : keyframe,
+                  : cropOnly
+                    ? {
+                        ...keyframe,
+                        blockSettings: {
+                          ...keyframe.blockSettings,
+                          ...cropOnly,
+                        },
+                      }
+                    : keyframe,
               )
             : clip.keyframes.map((keyframe) =>
                 keyframe.timeMs === 0
@@ -345,7 +370,15 @@ export function BlockClipPropertiesPanel({
                       ...keyframe,
                       blockSettings: { ...keyframe.blockSettings, ...patch },
                     }
-                  : keyframe,
+                  : cropOnly
+                    ? {
+                        ...keyframe,
+                        blockSettings: {
+                          ...keyframe.blockSettings,
+                          ...cropOnly,
+                        },
+                      }
+                    : keyframe,
               ),
       }));
       onSelectedTimelineClipsChange(nextClips);
@@ -382,7 +415,6 @@ export function BlockClipPropertiesPanel({
             volume: patch.volume ?? clip.blockSettings.volume,
             shaders: patch.shaders ?? clip.blockSettings.shaders,
             showTitle: patch.showTitle ?? clip.blockSettings.showTitle,
-            orientation: patch.orientation ?? clip.blockSettings.orientation,
             text: patch.text,
             textAlign: patch.textAlign,
             textColor: patch.textColor,
@@ -696,7 +728,6 @@ export function BlockClipPropertiesPanel({
     sourceState: 'unknown',
     status: 'connected',
     shaders: effectiveClip.blockSettings.shaders,
-    orientation: effectiveClip.blockSettings.orientation,
     attachedInputIds: effectiveClip.blockSettings.attachedInputIds,
     borderColor: effectiveClip.blockSettings.borderColor,
     borderWidth: effectiveClip.blockSettings.borderWidth,
@@ -1011,22 +1042,6 @@ export function BlockClipPropertiesPanel({
             }}
           />
         </div>
-        <div className='flex items-center justify-between mb-2'>
-          <span className='text-xs text-muted-foreground'>Orientation</span>
-          <Select
-            value={effectiveClip.blockSettings.orientation}
-            onValueChange={(v: 'horizontal' | 'vertical') =>
-              void applyClipPatch({ orientation: v })
-            }>
-            <SelectTrigger className={panelInputStyles({ compact: true })}>
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value='horizontal'>Horizontal</SelectItem>
-              <SelectItem value='vertical'>Vertical</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
       </CollapsibleSection>
       <CollapsibleSection title='Position' className={panelSectionStyles()}>
         {resolution && (
@@ -1037,11 +1052,31 @@ export function BlockClipPropertiesPanel({
               left={effectiveClip.blockSettings.absoluteLeft ?? 0}
               width={
                 effectiveClip.blockSettings.absoluteWidth ??
-                Math.round(resolution.width * 0.5)
+                defaultAbsoluteRect(
+                  {
+                    sourceWidth:
+                      effectiveClip.blockSettings.sourceWidth ??
+                      selectedInput?.sourceWidth,
+                    sourceHeight:
+                      effectiveClip.blockSettings.sourceHeight ??
+                      selectedInput?.sourceHeight,
+                  },
+                  resolution,
+                ).width
               }
               height={
                 effectiveClip.blockSettings.absoluteHeight ??
-                Math.round(resolution.height * 0.5)
+                defaultAbsoluteRect(
+                  {
+                    sourceWidth:
+                      effectiveClip.blockSettings.sourceWidth ??
+                      selectedInput?.sourceWidth,
+                    sourceHeight:
+                      effectiveClip.blockSettings.sourceHeight ??
+                      selectedInput?.sourceHeight,
+                  },
+                  resolution,
+                ).height
               }
               cropTop={effectiveClip.blockSettings.cropTop}
               cropLeft={effectiveClip.blockSettings.cropLeft}

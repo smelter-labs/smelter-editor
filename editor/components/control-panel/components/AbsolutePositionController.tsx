@@ -47,6 +47,7 @@ type DragState =
       startY: number;
       origPos: Position;
       aspectRatio: number;
+      cropAtStart: CropValues;
     }
   | {
       type: 'crop-drag';
@@ -133,20 +134,12 @@ export function AbsolutePositionController({
     cropRight: propCropRight,
     cropBottom: propCropBottom,
   };
+  const cropValuesRef = useRef(crop);
+  cropValuesRef.current = crop;
 
   const containerWidth = 280;
   const scale = containerWidth / resolution.width;
   const containerHeight = Math.round(resolution.height * scale);
-
-  const toCanvas = useCallback(
-    (p: Position) => ({
-      x: p.left * scale,
-      y: p.top * scale,
-      w: p.width * scale,
-      h: p.height * scale,
-    }),
-    [scale],
-  );
 
   const clampPos = useCallback(
     (p: Position): Position => ({
@@ -159,26 +152,30 @@ export function AbsolutePositionController({
   );
 
   const snapPos = useCallback(
-    (p: Position): Position => {
+    (p: Position, c: CropValues): Position => {
       const threshold = SNAP_SCREEN_PX / scale;
+      const visW = p.width - c.cropLeft - c.cropRight;
+      const visH = p.height - c.cropTop - c.cropBottom;
+      const visL = p.left + c.cropLeft;
+      const visT = p.top + c.cropTop;
       const leftTargets = [
         0,
-        Math.round((resolution.width - p.width) / 2),
-        resolution.width - p.width,
-        Math.round(-p.width / 2),
-        Math.round(resolution.width - p.width / 2),
+        Math.round((resolution.width - visW) / 2),
+        resolution.width - visW,
+        Math.round(-visW / 2),
+        Math.round(resolution.width - visW / 2),
       ];
       const topTargets = [
         0,
-        Math.round((resolution.height - p.height) / 2),
-        resolution.height - p.height,
-        Math.round(-p.height / 2),
-        Math.round(resolution.height - p.height / 2),
+        Math.round((resolution.height - visH) / 2),
+        resolution.height - visH,
+        Math.round(-visH / 2),
+        Math.round(resolution.height - visH / 2),
       ];
       return {
         ...p,
-        left: snapAxis(p.left, leftTargets, threshold),
-        top: snapAxis(p.top, topTargets, threshold),
+        left: snapAxis(visL, leftTargets, threshold) - c.cropLeft,
+        top: snapAxis(visT, topTargets, threshold) - c.cropTop,
       };
     },
     [resolution, scale],
@@ -251,7 +248,10 @@ export function AbsolutePositionController({
       e.preventDefault();
       e.stopPropagation();
       cancelLongPress();
-      const aspectRatio = pos.width / pos.height;
+      const c = cropValuesRef.current;
+      const visW = pos.width - c.cropLeft - c.cropRight;
+      const visH = pos.height - c.cropTop - c.cropBottom;
+      const aspectRatio = visW / visH;
       dragRef.current = {
         type: 'resize',
         corner,
@@ -259,6 +259,7 @@ export function AbsolutePositionController({
         startY: e.clientY,
         origPos: { ...pos },
         aspectRatio,
+        cropAtStart: { ...c },
       };
     },
     [pos, cancelLongPress],
@@ -286,21 +287,25 @@ export function AbsolutePositionController({
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
 
-      const canvasRect = toCanvas(pos);
       const clickX = e.clientX - rect.left;
       const clickY = e.clientY - rect.top;
 
+      const fullX = pos.left * scale;
+      const fullY = pos.top * scale;
+      const fullW = pos.width * scale;
+      const fullH = pos.height * scale;
+
       const insideRect =
-        clickX >= canvasRect.x &&
-        clickX <= canvasRect.x + canvasRect.w &&
-        clickY >= canvasRect.y &&
-        clickY <= canvasRect.y + canvasRect.h;
+        clickX >= fullX &&
+        clickX <= fullX + fullW &&
+        clickY >= fullY &&
+        clickY <= fullY + fullH;
 
       if (!insideRect) {
         setMode('position');
       }
     },
-    [mode, pos, toCanvas],
+    [mode, pos, crop, scale],
   );
 
   useEffect(() => {
@@ -336,44 +341,54 @@ export function AbsolutePositionController({
             left: drag.origLeft + dx,
             top: drag.origTop + dy,
           }),
+          cropValuesRef.current,
         );
         setLocalPos(newPos);
       } else if (drag.type === 'resize') {
         const dx = (e.clientX - drag.startX) / scale;
-        const { origPos, corner, aspectRatio } = drag;
+        const { origPos, corner, aspectRatio, cropAtStart: c } = drag;
+        const origVisW = origPos.width - c.cropLeft - c.cropRight;
         let newPos = { ...origPos };
 
         if (corner === 'se') {
-          const newW = Math.max(40, origPos.width + dx);
-          const newH = newW / aspectRatio;
-          newPos = { ...origPos, width: newW, height: newH };
-        } else if (corner === 'sw') {
-          const newW = Math.max(40, origPos.width - dx);
-          const newH = newW / aspectRatio;
+          const newVisW = Math.max(40, origVisW + dx);
+          const newVisH = newVisW / aspectRatio;
           newPos = {
             ...origPos,
-            left: origPos.left + origPos.width - newW,
-            width: newW,
-            height: newH,
+            width: newVisW + c.cropLeft + c.cropRight,
+            height: newVisH + c.cropTop + c.cropBottom,
+          };
+        } else if (corner === 'sw') {
+          const newVisW = Math.max(40, origVisW - dx);
+          const newVisH = newVisW / aspectRatio;
+          const newAbsW = newVisW + c.cropLeft + c.cropRight;
+          newPos = {
+            ...origPos,
+            left: origPos.left + origPos.width - newAbsW,
+            width: newAbsW,
+            height: newVisH + c.cropTop + c.cropBottom,
           };
         } else if (corner === 'ne') {
-          const newW = Math.max(40, origPos.width + dx);
-          const newH = newW / aspectRatio;
+          const newVisW = Math.max(40, origVisW + dx);
+          const newVisH = newVisW / aspectRatio;
+          const newAbsH = newVisH + c.cropTop + c.cropBottom;
           newPos = {
             ...origPos,
-            top: origPos.top + origPos.height - newH,
-            width: newW,
-            height: newH,
+            top: origPos.top + origPos.height - newAbsH,
+            width: newVisW + c.cropLeft + c.cropRight,
+            height: newAbsH,
           };
         } else if (corner === 'nw') {
-          const newW = Math.max(40, origPos.width - dx);
-          const newH = newW / aspectRatio;
+          const newVisW = Math.max(40, origVisW - dx);
+          const newVisH = newVisW / aspectRatio;
+          const newAbsW = newVisW + c.cropLeft + c.cropRight;
+          const newAbsH = newVisH + c.cropTop + c.cropBottom;
           newPos = {
             ...origPos,
-            left: origPos.left + origPos.width - newW,
-            top: origPos.top + origPos.height - newH,
-            width: newW,
-            height: newH,
+            left: origPos.left + origPos.width - newAbsW,
+            top: origPos.top + origPos.height - newAbsH,
+            width: newAbsW,
+            height: newAbsH,
           };
         }
         setLocalPos(clampPos(newPos));
@@ -421,7 +436,20 @@ export function AbsolutePositionController({
     };
   }, [scale, clampPos, snapPos, clampCrop, pos, cancelLongPress]);
 
-  const canvasRect = toCanvas(pos);
+  const visWidth = Math.max(0, pos.width - crop.cropLeft - crop.cropRight);
+  const visHeight = Math.max(0, pos.height - crop.cropTop - crop.cropBottom);
+  const canvasRect = {
+    x: pos.left * scale,
+    y: pos.top * scale,
+    w: pos.width * scale,
+    h: pos.height * scale,
+  };
+  const visRect = {
+    x: (pos.left + crop.cropLeft) * scale,
+    y: (pos.top + crop.cropTop) * scale,
+    w: visWidth * scale,
+    h: visHeight * scale,
+  };
 
   const cropCanvasTop = crop.cropTop * scale;
   const cropCanvasLeft = crop.cropLeft * scale;
@@ -429,23 +457,23 @@ export function AbsolutePositionController({
   const cropCanvasBottom = crop.cropBottom * scale;
 
   const corners = [
-    { id: 'nw', x: canvasRect.x, y: canvasRect.y, cursor: 'nwse-resize' },
+    { id: 'nw', x: visRect.x, y: visRect.y, cursor: 'nwse-resize' },
     {
       id: 'ne',
-      x: canvasRect.x + canvasRect.w,
-      y: canvasRect.y,
+      x: visRect.x + visRect.w,
+      y: visRect.y,
       cursor: 'nesw-resize',
     },
     {
       id: 'sw',
-      x: canvasRect.x,
-      y: canvasRect.y + canvasRect.h,
+      x: visRect.x,
+      y: visRect.y + visRect.h,
       cursor: 'nesw-resize',
     },
     {
       id: 'se',
-      x: canvasRect.x + canvasRect.w,
-      y: canvasRect.y + canvasRect.h,
+      x: visRect.x + visRect.w,
+      y: visRect.y + visRect.h,
       cursor: 'nwse-resize',
     },
   ];
@@ -470,7 +498,7 @@ export function AbsolutePositionController({
         className='relative border border-neutral-600 bg-neutral-900 mx-auto select-none'
         style={{ width: containerWidth, height: containerHeight }}
         onMouseDown={handleCanvasClick}>
-        {/* Main rectangle */}
+        {/* Main rectangle — always shows full (uncropped) video area */}
         <div
           className={`absolute ${
             mode === 'crop'
@@ -485,8 +513,8 @@ export function AbsolutePositionController({
             cursor: 'move',
           }}
           onMouseDown={(e) => handleRectMouseDown(e)}>
-          {/* Crop mode: darkened cropped areas */}
-          {mode === 'crop' && (
+          {/* Darkened cropped areas */}
+          {hasCrop && (
             <>
               {cropCanvasTop > 0 && (
                 <div
@@ -524,10 +552,14 @@ export function AbsolutePositionController({
           )}
         </div>
 
-        {/* Crop visible area border — sibling above main rect */}
-        {mode === 'crop' && hasCrop && (
+        {/* Crop visible area dashed border */}
+        {hasCrop && (
           <div
-            className='absolute border border-dashed border-green-300/80 pointer-events-none z-10'
+            className={`absolute border border-dashed pointer-events-none z-10 ${
+              mode === 'crop'
+                ? 'border-green-300/80'
+                : 'border-blue-300/80'
+            }`}
             style={{
               left: canvasRect.x + cropCanvasLeft,
               top: canvasRect.y + cropCanvasTop,
@@ -667,22 +699,40 @@ export function AbsolutePositionController({
       )}
 
       <div className='grid grid-cols-4 gap-1 mt-2'>
-        {(['left', 'top', 'width', 'height'] as const).map((field) => (
-          <div key={field}>
-            <label className='text-[10px] text-neutral-500 block'>
-              {field[0].toUpperCase() + field.slice(1)}
-            </label>
-            <NumberInput
-              className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-1 py-0.5'
-              value={pos[field]}
-              onChange={(e) => {
-                const val = Number(e.target.value) || 0;
-                const newPos = clampPos({ ...pos, [field]: val });
-                onChange(newPos);
-              }}
-            />
-          </div>
-        ))}
+        {(['left', 'top', 'width', 'height'] as const).map((field) => {
+          const isCropped =
+            (field === 'width' &&
+              (crop.cropLeft > 0 || crop.cropRight > 0)) ||
+            (field === 'height' &&
+              (crop.cropTop > 0 || crop.cropBottom > 0));
+          const croppedValue =
+            field === 'width'
+              ? visWidth
+              : field === 'height'
+                ? visHeight
+                : 0;
+          return (
+            <div key={field}>
+              <label className='text-[10px] text-neutral-500 block'>
+                {field[0].toUpperCase() + field.slice(1)}
+              </label>
+              <NumberInput
+                className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-1 py-0.5'
+                value={Math.round(pos[field])}
+                onChange={(e) => {
+                  const val = Number(e.target.value) || 0;
+                  const newPos = clampPos({ ...pos, [field]: val });
+                  onChange(newPos);
+                }}
+              />
+              {isCropped && (
+                <span className='text-[9px] text-green-400/70'>
+                  → {Math.round(croppedValue)}
+                </span>
+              )}
+            </div>
+          );
+        })}
       </div>
 
       <div className='grid grid-cols-4 gap-1 mt-2'>

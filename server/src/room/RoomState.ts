@@ -826,7 +826,10 @@ export class RoomState {
       showTitle: input.showTitle,
       volume: input.volume,
       shaders: input.shaders,
-      orientation: input.orientation,
+      sourceWidth:
+        input.type === 'local-mp4' ? input.mp4VideoWidth : undefined,
+      sourceHeight:
+        input.type === 'local-mp4' ? input.mp4VideoHeight : undefined,
       borderColor: input.borderColor,
       borderWidth: input.borderWidth,
       imageId: input.type === 'image' ? input.imageId : undefined,

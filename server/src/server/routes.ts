@@ -38,6 +38,41 @@ import {
 
 const execFileAsync = promisify(execFile);
 const THUMBNAILS_DIR = path.join(process.cwd(), 'thumbnails', 'mp4');
+const HLS_THUMBNAILS_DIR = path.join(process.cwd(), 'thumbnails', 'hls');
+const HLS_STREAMS_DIR = path.join(__dirname, '../../hls-streams');
+
+async function ensureHlsThumbnail(jsonFileName: string): Promise<string> {
+  const safeName = path.basename(jsonFileName);
+  const thumbName = safeName.replace(/\.json$/, '.jpg');
+  const thumbPath = path.join(HLS_THUMBNAILS_DIR, thumbName);
+
+  if (await pathExists(thumbPath)) {
+    return thumbPath;
+  }
+
+  const jsonPath = path.join(HLS_STREAMS_DIR, safeName);
+  if (!(await pathExists(jsonPath))) {
+    throw Object.assign(new Error('HLS stream not found'), { statusCode: 404 });
+  }
+
+  const content = JSON.parse(await readFile(jsonPath, 'utf-8'));
+  const hlsUrl: string | undefined = content?.stream?.url;
+  if (!hlsUrl) {
+    throw Object.assign(new Error('No URL in saved stream'), {
+      statusCode: 400,
+    });
+  }
+
+  await ensureDir(HLS_THUMBNAILS_DIR);
+
+  await execFileAsync(
+    'ffmpeg',
+    ['-ss', '2', '-i', hlsUrl, '-vframes', '1', '-vf', 'scale=320:-1', '-q:v', '4', '-y', thumbPath],
+    { timeout: 10_000 },
+  );
+
+  return thumbPath;
+}
 
 async function ensureMp4Thumbnail(mp4FileName: string): Promise<string> {
   const safeName = path.basename(mp4FileName);
@@ -155,6 +190,26 @@ routes.get<{ Params: { fileName: string } }>(
       const status = err?.statusCode ?? 500;
       const message = err?.message ?? 'Failed to generate thumbnail';
       console.error('MP4 thumbnail error', { fileName, err: message });
+      res.status(status).send({ error: message });
+    }
+  },
+);
+
+routes.get<{ Params: { fileName: string } }>(
+  '/hls-streams/thumbnail/:fileName',
+  { schema: { params: Type.Object({ fileName: Type.String() }) } },
+  async (req, res) => {
+    const { fileName } = req.params;
+    try {
+      const thumbPath = await ensureHlsThumbnail(fileName);
+      const data = await readFile(thumbPath);
+      res.header('Content-Type', 'image/jpeg');
+      res.header('Cache-Control', 'public, max-age=3600');
+      res.send(data);
+    } catch (err: any) {
+      const status = err?.statusCode ?? 500;
+      const message = err?.message ?? 'Failed to generate HLS thumbnail';
+      console.error('HLS thumbnail error', { fileName, err: message });
       res.status(status).send({ error: message });
     }
   },
@@ -637,6 +692,17 @@ registerStorageRoutes(routes, {
   bodySchema: Type.Any(),
 });
 
+registerStorageRoutes(routes, {
+  routePrefix: '/hls-streams',
+  dirPath: path.join(__dirname, '../../hls-streams'),
+  filePrefix: 'hls',
+  resourceName: 'HLS stream',
+  payloadKey: 'stream',
+  listKey: 'streams',
+  bodySchema: Type.Object({ url: Type.String() }),
+  supportsUpdate: true,
+});
+
 const UpdateRoomSchema = Type.Object({
   inputOrder: Type.Optional(Type.Array(Type.String())),
   layout: Type.Optional(
@@ -711,10 +777,6 @@ const PendingWhipInputSchema = Type.Object({
   volume: Type.Number(),
   showTitle: Type.Boolean(),
   shaders: Type.Array(Type.Any()),
-  orientation: Type.Union([
-    Type.Literal('horizontal'),
-    Type.Literal('vertical'),
-  ]),
   position: Type.Number(),
 });
 
@@ -964,9 +1026,6 @@ const UpdateInputSchema = Type.Object({
         ),
       }),
     ),
-  ),
-  orientation: Type.Optional(
-    Type.Union([Type.Literal('horizontal'), Type.Literal('vertical')]),
   ),
   text: Type.Optional(Type.String()),
   textAlign: Type.Optional(

@@ -259,6 +259,42 @@ export async function deleteDashboardLayout(
   return client.dashboardLayoutStorage.remove(fileName);
 }
 
+// ── HLS stream storage ──────────────────────────────────────
+export async function saveHlsStream(
+  name: string,
+  stream: { url: string },
+): Promise<StorageResult<{ fileName: string; name: string }>> {
+  return client.hlsStreamStorage.save(name, stream);
+}
+
+export async function listHlsStreams(): Promise<
+  StorageResult<{ items: SavedItemInfo[] }>
+> {
+  return client.hlsStreamStorage.list();
+}
+
+export async function loadHlsStream(
+  fileName: string,
+): Promise<
+  StorageResult<{ name: string; data: { url: string }; savedAt: string }>
+> {
+  return client.hlsStreamStorage.load(fileName);
+}
+
+export async function updateHlsStream(
+  fileName: string,
+  name: string,
+  stream: { url: string },
+): Promise<StorageResult<{ fileName: string; name: string }>> {
+  return client.hlsStreamStorage.update(fileName, name, stream);
+}
+
+export async function deleteHlsStream(
+  fileName: string,
+): Promise<StorageResult> {
+  return client.hlsStreamStorage.remove(fileName);
+}
+
 export async function getAllRooms(): Promise<any> {
   return client.getAllRooms();
 }

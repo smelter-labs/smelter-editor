@@ -33,6 +33,8 @@ export type Track = {
 
 export type BlockSettings = TimelineBlockSettings & {
   mp4DurationMs?: number;
+  sourceWidth?: number;
+  sourceHeight?: number;
 };
 
 export type Keyframe = SharedTimelineKeyframe & {
@@ -273,7 +275,6 @@ export function createBlockSettingsFromInput(input?: Input): BlockSettings {
       ...shader,
       params: (shader.params || []).map((param) => ({ ...param })),
     })),
-    orientation: input?.orientation ?? 'horizontal',
     text: input?.text,
     textAlign: input?.textAlign,
     textColor: input?.textColor,
@@ -316,6 +317,8 @@ export function createBlockSettingsFromInput(input?: Input): BlockSettings {
     cropLeft: input?.cropLeft,
     cropRight: input?.cropRight,
     cropBottom: input?.cropBottom,
+    sourceWidth: input?.sourceWidth,
+    sourceHeight: input?.sourceHeight,
   };
 }
 
@@ -922,6 +925,12 @@ export function timelineReducer(
         targetInputId = clip?.inputId;
       }
 
+      const hasCropInPatch =
+        'cropTop' in action.patch ||
+        'cropLeft' in action.patch ||
+        'cropRight' in action.patch ||
+        'cropBottom' in action.patch;
+
       return {
         ...state,
         tracks: state.tracks.map((track) => {
@@ -966,14 +975,33 @@ export function timelineReducer(
                   endMs = clip.startMs + maxDuration;
                 }
               }
-              const nextKeyframes = clip.keyframes.map((keyframe) =>
-                keyframe.timeMs === 0
+              const cropPatch =
+                hasCropInPatch && isTarget
                   ? {
-                      ...keyframe,
-                      blockSettings: cloneBlockSettings(merged),
+                      cropTop: merged.cropTop,
+                      cropLeft: merged.cropLeft,
+                      cropRight: merged.cropRight,
+                      cropBottom: merged.cropBottom,
                     }
-                  : cloneKeyframe(keyframe),
-              );
+                  : null;
+              const nextKeyframes = clip.keyframes.map((keyframe) => {
+                if (keyframe.timeMs === 0) {
+                  return {
+                    ...keyframe,
+                    blockSettings: cloneBlockSettings(merged),
+                  };
+                }
+                if (cropPatch) {
+                  return {
+                    ...cloneKeyframe(keyframe),
+                    blockSettings: {
+                      ...cloneBlockSettings(keyframe.blockSettings),
+                      ...cropPatch,
+                    },
+                  };
+                }
+                return cloneKeyframe(keyframe);
+              });
               return syncClipKeyframes({
                 ...clip,
                 endMs,
@@ -1000,9 +1028,16 @@ export function timelineReducer(
                 0,
                 Math.min(Math.round(action.timeMs), durationMs),
               );
-              const blockSettings =
+              const resolved =
                 action.blockSettings ??
                 resolveClipBlockSettingsAtOffset(clip, timeMs);
+              const blockSettings = cloneBlockSettings({
+                ...resolved,
+                cropTop: clip.blockSettings.cropTop,
+                cropLeft: clip.blockSettings.cropLeft,
+                cropRight: clip.blockSettings.cropRight,
+                cropBottom: clip.blockSettings.cropBottom,
+              });
               return syncClipKeyframes({
                 ...clip,
                 keyframes: [
@@ -1010,7 +1045,7 @@ export function timelineReducer(
                   {
                     id: genId(),
                     timeMs,
-                    blockSettings: cloneBlockSettings(blockSettings),
+                    blockSettings,
                   },
                 ],
               });
@@ -1021,6 +1056,12 @@ export function timelineReducer(
     }
 
     case 'UPDATE_KEYFRAME': {
+      const hasCropInKfPatch =
+        'cropTop' in action.patch ||
+        'cropLeft' in action.patch ||
+        'cropRight' in action.patch ||
+        'cropBottom' in action.patch;
+
       return {
         ...state,
         tracks: state.tracks.map((track) => {
@@ -1029,18 +1070,54 @@ export function timelineReducer(
             ...track,
             clips: track.clips.map((clip) => {
               if (clip.id !== action.clipId) return clip;
-              const keyframes = clip.keyframes.map((keyframe) =>
-                keyframe.id === action.keyframeId
-                  ? {
-                      ...cloneKeyframe(keyframe),
-                      blockSettings: {
-                        ...cloneBlockSettings(keyframe.blockSettings),
-                        ...action.patch,
-                      },
-                    }
-                  : cloneKeyframe(keyframe),
+
+              const targetKf = clip.keyframes.find(
+                (kf) => kf.id === action.keyframeId,
               );
-              return syncClipKeyframes({ ...clip, keyframes });
+              const mergedTarget = targetKf
+                ? {
+                    ...cloneBlockSettings(targetKf.blockSettings),
+                    ...action.patch,
+                  }
+                : null;
+
+              const cropPatch =
+                hasCropInKfPatch && mergedTarget
+                  ? {
+                      cropTop: mergedTarget.cropTop,
+                      cropLeft: mergedTarget.cropLeft,
+                      cropRight: mergedTarget.cropRight,
+                      cropBottom: mergedTarget.cropBottom,
+                    }
+                  : null;
+
+              const keyframes = clip.keyframes.map((keyframe) => {
+                if (keyframe.id === action.keyframeId) {
+                  return {
+                    ...cloneKeyframe(keyframe),
+                    blockSettings: {
+                      ...cloneBlockSettings(keyframe.blockSettings),
+                      ...action.patch,
+                    },
+                  };
+                }
+                if (cropPatch) {
+                  return {
+                    ...cloneKeyframe(keyframe),
+                    blockSettings: {
+                      ...cloneBlockSettings(keyframe.blockSettings),
+                      ...cropPatch,
+                    },
+                  };
+                }
+                return cloneKeyframe(keyframe);
+              });
+
+              const blockSettings = cropPatch
+                ? { ...clip.blockSettings, ...cropPatch }
+                : clip.blockSettings;
+
+              return syncClipKeyframes({ ...clip, blockSettings, keyframes });
             }),
           };
         }),

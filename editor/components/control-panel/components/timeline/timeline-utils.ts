@@ -105,7 +105,6 @@ export function computeKeyframeDiff(
   }[] = [
     { key: 'volume', label: 'volume', fmt: (v) => fmtNum(v as number) },
     { key: 'showTitle', label: 'showTitle', fmt: (v) => fmtBool(v as boolean) },
-    { key: 'orientation', label: 'orientation' },
     { key: 'text', label: 'text' },
     { key: 'textAlign', label: 'textAlign' },
     { key: 'textColor', label: 'textColor' },

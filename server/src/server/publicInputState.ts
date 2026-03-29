@@ -14,7 +14,6 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
     volume: input.volume,
     type: input.type,
     shaders: input.shaders,
-    orientation: input.orientation,
     borderColor: input.borderColor,
     borderWidth: input.borderWidth,
     attachedInputIds: input.attachedInputIds,
@@ -36,7 +35,12 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
   };
   switch (input.type) {
     case 'local-mp4':
-      return { ...base, sourceState: 'always-live' as const };
+      return {
+        ...base,
+        sourceState: 'always-live' as const,
+        sourceWidth: input.mp4VideoWidth,
+        sourceHeight: input.mp4VideoHeight,
+      };
     case 'image':
       return {
         ...base,

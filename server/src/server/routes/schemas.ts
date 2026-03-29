@@ -125,10 +125,6 @@ export const PendingWhipInputSchema = Type.Object({
   volume: Type.Number(),
   showTitle: Type.Boolean(),
   shaders: Type.Array(Type.Any()),
-  orientation: Type.Union([
-    Type.Literal('horizontal'),
-    Type.Literal('vertical'),
-  ]),
   position: Type.Number(),
 });
 
@@ -153,9 +149,6 @@ export const UpdateInputSchema = Type.Object({
         ),
       }),
     ),
-  ),
-  orientation: Type.Optional(
-    Type.Union([Type.Literal('horizontal'), Type.Literal('vertical')]),
   ),
   text: Type.Optional(Type.String()),
   textAlign: Type.Optional(
@@ -241,7 +234,6 @@ const RoomConfigInputSchema = Type.Object({
   text: Type.Optional(Type.String()),
   textAlign: Type.Optional(Type.String()),
   textColor: Type.Optional(Type.String()),
-  orientation: Type.Optional(Type.String()),
   textMaxLines: Type.Optional(Type.Number()),
   textScrollSpeed: Type.Optional(Type.Number()),
   textScrollLoop: Type.Optional(Type.Boolean()),

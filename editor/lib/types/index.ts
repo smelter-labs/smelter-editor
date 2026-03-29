@@ -12,7 +12,6 @@ export type { SavedItemInfo } from '../storage-client';
 export type { Layout } from './layout';
 
 export type {
-  InputOrientation,
   Input,
   RegisterInputOptions,
   UpdateInputOptions,

@@ -277,6 +277,13 @@ function interpolateShaderConfigs(
   });
 }
 
+const CLIP_LEVEL_KEYS = new Set([
+  'cropTop',
+  'cropLeft',
+  'cropRight',
+  'cropBottom',
+]);
+
 function interpolateBlockSettings(
   from: TimelineBlockSettings,
   to: TimelineBlockSettings,
@@ -288,6 +295,7 @@ function interpolateBlockSettings(
   const toRecord = to as Record<string, unknown>;
 
   for (const [key, toValue] of Object.entries(toRecord)) {
+    if (CLIP_LEVEL_KEYS.has(key)) continue;
     const fromValue = fromRecord[key];
     if (typeof fromValue === 'number' && typeof toValue === 'number') {
       resultRecord[key] = lerp(fromValue, toValue, progress);
@@ -337,24 +345,34 @@ function resolveBlockSettingsAtTime(
     current = keyframe;
   }
 
+  let resolved: TimelineBlockSettings;
+
   if (mode === 'step') {
-    return deepClone(current.blockSettings);
+    resolved = deepClone(current.blockSettings);
+  } else {
+    const currentIndex = keyframes.findIndex(
+      (keyframe) => keyframe.id === current.id,
+    );
+    const next = keyframes[currentIndex + 1];
+    if (!next || next.timeMs <= current.timeMs || offsetMs <= current.timeMs) {
+      resolved = deepClone(current.blockSettings);
+    } else {
+      const progress =
+        (offsetMs - current.timeMs) / (next.timeMs - current.timeMs);
+      resolved = interpolateBlockSettings(
+        current.blockSettings,
+        next.blockSettings,
+        progress,
+      );
+    }
   }
 
-  const currentIndex = keyframes.findIndex(
-    (keyframe) => keyframe.id === current.id,
-  );
-  const next = keyframes[currentIndex + 1];
-  if (!next || next.timeMs <= current.timeMs || offsetMs <= current.timeMs) {
-    return deepClone(current.blockSettings);
-  }
+  resolved.cropTop = clip.blockSettings.cropTop;
+  resolved.cropLeft = clip.blockSettings.cropLeft;
+  resolved.cropRight = clip.blockSettings.cropRight;
+  resolved.cropBottom = clip.blockSettings.cropBottom;
 
-  const progress = (offsetMs - current.timeMs) / (next.timeMs - current.timeMs);
-  return interpolateBlockSettings(
-    current.blockSettings,
-    next.blockSettings,
-    progress,
-  );
+  return resolved;
 }
 
 function getActiveOrder(config: TimelineConfig, timeMs: number): string[] {
@@ -407,7 +425,6 @@ export function buildUpdateFromBlockSettings(
     volume: bs.volume,
     shaders: bs.shaders,
     showTitle: bs.showTitle,
-    orientation: bs.orientation,
     text: bs.text,
     textAlign: bs.textAlign,
     textColor: bs.textColor,
@@ -448,7 +465,6 @@ function buildUpdateFromRoomInput(
     volume: input.volume,
     shaders: deepClone(input.shaders),
     showTitle: input.showTitle,
-    orientation: input.orientation,
     text: input.type === 'text-input' ? input.text : undefined,
     textAlign: input.type === 'text-input' ? input.textAlign : undefined,
     textColor: input.type === 'text-input' ? input.textColor : undefined,

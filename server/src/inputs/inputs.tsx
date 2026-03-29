@@ -18,6 +18,23 @@ import { HandsInput } from './HandsInput';
 
 type Resolution = { width: number; height: number };
 
+const DEFAULT_LONG_EDGE = 1920;
+
+function deriveInputResolution(
+  sourceWidth?: number,
+  sourceHeight?: number,
+): Resolution {
+  if (sourceWidth && sourceHeight && sourceWidth > 0 && sourceHeight > 0) {
+    const maxDim = Math.max(sourceWidth, sourceHeight);
+    const scale = DEFAULT_LONG_EDGE / maxDim;
+    return {
+      width: Math.round(sourceWidth * scale),
+      height: Math.round(sourceHeight * scale),
+    };
+  }
+  return { width: 1920, height: 1080 };
+}
+
 function normalizeBorderWidth(borderWidth: number | undefined): number {
   if (borderWidth === undefined || Number.isNaN(borderWidth)) {
     return 0;
@@ -92,10 +109,7 @@ export function Input({ input }: { input: InputConfig }) {
     showFrozenImage || isImage || isTextInput || isGame || isHands
       ? 'playing'
       : liveStreamState;
-  const isVerticalInput = input.orientation === 'vertical';
-  const resolution = isVerticalInput
-    ? { width: 1080, height: 1920 }
-    : { width: 1920, height: 1080 };
+  const resolution = deriveInputResolution(input.sourceWidth, input.sourceHeight);
   const borderWidth = normalizeBorderWidth(input.borderWidth ?? 0);
   const borderColor = input.borderColor ?? '#ff0000';
   const contentWidth = Math.max(1, resolution.width - borderWidth * 2);

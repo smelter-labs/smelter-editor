@@ -121,6 +121,7 @@ export interface SmelterApiClient {
   configStorage: StorageClient<object>;
   shaderPresetStorage: StorageClient<ShaderConfig[]>;
   dashboardLayoutStorage: StorageClient<object>;
+  hlsStreamStorage: StorageClient<{ url: string }>;
 
   pauseTimeline(
     roomId: string,
@@ -465,6 +466,12 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       '/dashboard-layouts',
       'layout',
       'layouts',
+    ),
+    hlsStreamStorage: createStorageClient<{ url: string }>(
+      req,
+      '/hls-streams',
+      'stream',
+      'streams',
     ),
 
     async pauseTimeline(roomId) {

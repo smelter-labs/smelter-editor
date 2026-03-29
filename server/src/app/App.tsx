@@ -71,28 +71,38 @@ function OutputScene() {
         const inner = <Input input={input} />;
 
         if (hasCrop) {
+          const visibleW = w - cL - cR;
+          const visibleH = h - cT - cB;
           return (
-            <View
+            <Rescaler
               key={input.inputId}
+              id={`absolute-${input.inputId}`}
+              transition={transition}
               style={{
-                overflow: 'hidden' as const,
                 top: t + cT,
                 left: l + cL,
-                width: w - cL - cR,
-                height: h - cT - cB,
+                width: visibleW,
+                height: visibleH,
               }}>
-              <Rescaler
-                id={`absolute-${input.inputId}`}
-                transition={transition}
+              <View
                 style={{
-                  top: -cT,
-                  left: -cL,
-                  width: w,
-                  height: h,
+                  overflow: 'hidden' as const,
+                  width: visibleW,
+                  height: visibleH,
                 }}>
-                {inner}
-              </Rescaler>
-            </View>
+                <Rescaler
+                  id={`crop-${input.inputId}`}
+                  transition={transition}
+                  style={{
+                    top: -cT,
+                    left: -cL,
+                    width: w,
+                    height: h,
+                  }}>
+                  {inner}
+                </Rescaler>
+              </View>
+            </Rescaler>
           );
         }
 

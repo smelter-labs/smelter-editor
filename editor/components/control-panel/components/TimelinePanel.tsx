@@ -266,9 +266,22 @@ export function TimelinePanel({
           sel.clipId === selectedClipIds[0]?.clipId
             ? selectedKeyframeId
             : null;
-        const baseKeyframeId =
-          clip.keyframes.find((k) => k.timeMs === 0)?.id ?? null;
-        const clipSelectedKeyframeId = explicitKeyframeId ?? baseKeyframeId;
+
+        let fallbackKeyframeId: string | null = null;
+        if (!explicitKeyframeId) {
+          const offsetMs = Math.max(0, state.playheadMs - clip.startMs);
+          const sorted = [...clip.keyframes].sort(
+            (a, b) => a.timeMs - b.timeMs,
+          );
+          const atPlayhead = sorted.filter((k) => k.timeMs <= offsetMs).pop();
+          fallbackKeyframeId =
+            atPlayhead?.id ??
+            clip.keyframes.find((k) => k.timeMs === 0)?.id ??
+            null;
+        }
+
+        const clipSelectedKeyframeId =
+          explicitKeyframeId ?? fallbackKeyframeId;
         const selectedKeyframe = clipSelectedKeyframeId
           ? clip.keyframes.find(
               (keyframe) => keyframe.id === clipSelectedKeyframeId,
@@ -291,7 +304,7 @@ export function TimelinePanel({
         detail: { clips: resolvedClips },
       }),
     );
-  }, [selectedClipIds, selectedKeyframeId, state.tracks]);
+  }, [selectedClipIds, selectedKeyframeId, state.tracks, state.playheadMs]);
 
   useEffect(() => {
     const handler = (
@@ -645,6 +658,9 @@ export function TimelinePanel({
   } | null>(null);
   const [colorSubmenuOpen, setColorSubmenuOpen] = useState(false);
   const [longPressColor, setLongPressColor] = useState<string | null>(null);
+  const colorSubmenuCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   const [showHelp, setShowHelp] = useState(false);
   const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
@@ -1801,6 +1817,10 @@ export function TimelinePanel({
   );
 
   const closeContextMenu = useCallback(() => {
+    if (colorSubmenuCloseTimer.current) {
+      clearTimeout(colorSubmenuCloseTimer.current);
+      colorSubmenuCloseTimer.current = null;
+    }
     setContextMenu(null);
     setColorSubmenuOpen(false);
     setLongPressColor(null);
@@ -2591,10 +2611,19 @@ export function TimelinePanel({
             {contextMenu.clipId && (
               <div
                 className='relative'
-                onMouseEnter={() => setColorSubmenuOpen(true)}
+                onMouseEnter={() => {
+                  if (colorSubmenuCloseTimer.current) {
+                    clearTimeout(colorSubmenuCloseTimer.current);
+                    colorSubmenuCloseTimer.current = null;
+                  }
+                  setColorSubmenuOpen(true);
+                }}
                 onMouseLeave={() => {
-                  setColorSubmenuOpen(false);
-                  setLongPressColor(null);
+                  colorSubmenuCloseTimer.current = setTimeout(() => {
+                    setColorSubmenuOpen(false);
+                    setLongPressColor(null);
+                    colorSubmenuCloseTimer.current = null;
+                  }, 150);
                 }}>
                 <Button
                   variant='ghost'
@@ -2605,8 +2634,14 @@ export function TimelinePanel({
                 </Button>
                 {colorSubmenuOpen && (
                   <div
-                    className='absolute left-full top-0 ml-1 bg-card border border-border rounded-lg shadow-xl py-2 px-2 z-[10000]'
-                    style={{ minWidth: 140 }}>
+                    className='absolute left-full top-0 bg-card border border-border rounded-lg shadow-xl py-2 px-2 z-[10000]'
+                    style={{ minWidth: 140 }}
+                    onMouseEnter={() => {
+                      if (colorSubmenuCloseTimer.current) {
+                        clearTimeout(colorSubmenuCloseTimer.current);
+                        colorSubmenuCloseTimer.current = null;
+                      }
+                    }}>
                     {longPressColor ? (
                       <>
                         <Button

@@ -233,7 +233,6 @@ export function ConfigurationSection({
           shaders: inputConfig.shaders,
           showTitle: inputConfig.showTitle,
           textColor: inputConfig.textColor,
-          orientation: inputConfig.orientation,
           textMaxLines: inputConfig.textMaxLines,
           textScrollSpeed: inputConfig.textScrollSpeed,
           textScrollLoop: inputConfig.textScrollLoop,

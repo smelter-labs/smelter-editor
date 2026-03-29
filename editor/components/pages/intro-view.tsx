@@ -311,9 +311,6 @@ export default function IntroView() {
               volume: inputConfig.volume,
               showTitle: inputConfig.showTitle !== false,
               shaders: inputConfig.shaders || [],
-              orientation: (inputConfig.orientation || 'horizontal') as
-                | 'horizontal'
-                | 'vertical',
               position: i,
             });
             configIndexToInputId.set(i, `__pending-whip-${i}__`);
@@ -331,7 +328,6 @@ export default function IntroView() {
               shaders: inputConfig.shaders,
               showTitle: inputConfig.showTitle,
               textColor: inputConfig.textColor,
-              orientation: inputConfig.orientation,
               textMaxLines: inputConfig.textMaxLines,
               textScrollSpeed: inputConfig.textScrollSpeed,
               textScrollLoop: inputConfig.textScrollLoop,

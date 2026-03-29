@@ -165,7 +165,6 @@ function ControlPanelWithActions({
       volume: p.volume,
       showTitle: p.showTitle,
       shaders: p.shaders,
-      orientation: p.orientation,
     },
     position: p.position,
   }));
@@ -269,7 +268,6 @@ function ControlPanelWithActions({
           const angle = await rotateBy90(pcRef, streamRef);
           const currentInput = inputs.find((i) => i.inputId === guestInputId);
           await defaultActions.updateInput(roomId, guestInputId, {
-            orientation: angle % 180 !== 0 ? 'vertical' : 'horizontal',
             volume: currentInput?.volume ?? 1,
             shaders: currentInput?.shaders ?? [],
           });
@@ -313,9 +311,6 @@ function ControlPanelWithActions({
         volume: p.config.volume,
         showTitle: p.config.showTitle !== false,
         shaders: p.config.shaders || [],
-        orientation: (p.config.orientation || 'horizontal') as
-          | 'horizontal'
-          | 'vertical',
         position: p.position,
       }));
       await defaultActions.setPendingWhipInputs(roomId, serverData);
@@ -1075,7 +1070,6 @@ function SettingsBar({
             shaders: inputConfig.shaders,
             showTitle: inputConfig.showTitle,
             textColor: inputConfig.textColor,
-            orientation: inputConfig.orientation,
             textMaxLines: inputConfig.textMaxLines,
             textScrollSpeed: inputConfig.textScrollSpeed,
             textScrollLoop: inputConfig.textScrollLoop,

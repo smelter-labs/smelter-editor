@@ -15,7 +15,6 @@ export type {
 } from './transition';
 
 export type {
-  InputOrientation,
   InputType,
   InputStatus,
   InputSourceState,

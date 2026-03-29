@@ -25,7 +25,6 @@ export function computeCommonBlockSettings(
       volume: 1,
       showTitle: true,
       shaders: [],
-      orientation: 'horizontal',
     };
   }
   if (clips.length === 1) return clips[0].blockSettings;
@@ -37,8 +36,6 @@ export function computeCommonBlockSettings(
     const bs = clips[i].blockSettings;
     if (bs.volume !== result.volume) result.volume = -1;
     if (bs.showTitle !== result.showTitle) result.showTitle = first.showTitle;
-    if (bs.orientation !== result.orientation)
-      result.orientation = first.orientation;
     if (bs.borderColor !== result.borderColor) result.borderColor = undefined;
     if (bs.borderWidth !== result.borderWidth) result.borderWidth = undefined;
   }

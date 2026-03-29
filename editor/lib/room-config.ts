@@ -28,7 +28,6 @@ export type RoomConfigInput = {
   textAlign?: 'left' | 'center' | 'right';
   textColor?: string;
   needsConnection?: boolean;
-  orientation?: 'horizontal' | 'vertical';
   textMaxLines?: number;
   textScrollSpeed?: number;
   textScrollLoop?: boolean;
@@ -190,7 +189,6 @@ export function exportRoomConfig(
       textAlign: input.textAlign,
       textColor: input.textColor,
       needsConnection: input.type === 'whip',
-      orientation: input.orientation,
       textMaxLines: input.textMaxLines,
       textScrollSpeed: input.textScrollSpeed,
       textScrollLoop: input.textScrollLoop,
@@ -374,7 +372,6 @@ export function buildInputUpdateFromBlockSettings(
     volume: blockSettings.volume,
     shaders: blockSettings.shaders,
     showTitle: blockSettings.showTitle,
-    orientation: blockSettings.orientation,
     text: blockSettings.text,
     textAlign: blockSettings.textAlign,
     textColor: blockSettings.textColor,

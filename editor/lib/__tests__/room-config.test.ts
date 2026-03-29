@@ -60,7 +60,7 @@ const minimalInput: Input = {
   sourceState: 'always-live',
   status: 'connected',
   shaders: [],
-  orientation: 'horizontal',
+
 };
 
 describe('parseRoomConfig', () => {
@@ -196,7 +196,7 @@ describe('exportRoomConfig', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-                orientation: 'horizontal',
+              
                 text: 'initial',
               },
               keyframes: [
@@ -207,7 +207,7 @@ describe('exportRoomConfig', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                    orientation: 'horizontal',
+                  
                     text: 'initial',
                   },
                 },
@@ -218,7 +218,7 @@ describe('exportRoomConfig', () => {
                     volume: 0.5,
                     showTitle: false,
                     shaders: [],
-                    orientation: 'horizontal',
+                  
                     text: 'updated',
                   },
                 },
@@ -256,7 +256,7 @@ describe('exportRoomConfig', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-                orientation: 'horizontal',
+              
                 text: 'initial',
               },
               keyframes: [
@@ -267,7 +267,7 @@ describe('exportRoomConfig', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                    orientation: 'horizontal',
+                  
                     text: 'initial',
                   },
                 },
@@ -278,7 +278,7 @@ describe('exportRoomConfig', () => {
                     volume: 0.5,
                     showTitle: false,
                     shaders: [],
-                    orientation: 'horizontal',
+                  
                     text: 'updated',
                   },
                 },
@@ -309,7 +309,7 @@ describe('timeline config persistence helpers', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-                orientation: 'horizontal',
+              
                 text: 'intro',
               },
               keyframes: [
@@ -320,7 +320,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                    orientation: 'horizontal',
+                  
                     text: 'intro',
                   },
                 },
@@ -331,7 +331,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 0.2,
                     showTitle: false,
                     shaders: [],
-                    orientation: 'horizontal',
+                  
                     text: 'middle',
                   },
                 },
@@ -366,7 +366,7 @@ describe('timeline config persistence helpers', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-                orientation: 'horizontal',
+              
                 text: 'intro',
               },
               keyframes: [
@@ -377,7 +377,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                    orientation: 'horizontal',
+                  
                     text: 'intro',
                   },
                 },
@@ -388,7 +388,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 0.2,
                     showTitle: false,
                     shaders: [],
-                    orientation: 'horizontal',
+                  
                     text: 'middle',
                   },
                 },
@@ -417,7 +417,7 @@ describe('timeline config persistence helpers', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-                orientation: 'horizontal',
+              
                 text: 'stale',
               },
               keyframes: [
@@ -428,7 +428,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                    orientation: 'horizontal',
+                  
                     text: 'stale',
                   },
                 },
@@ -459,7 +459,7 @@ describe('timeline config persistence helpers', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-                orientation: 'horizontal',
+              
                 text: 'fresh',
               },
               keyframes: [
@@ -470,7 +470,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                    orientation: 'horizontal',
+                  
                     text: 'fresh',
                   },
                 },

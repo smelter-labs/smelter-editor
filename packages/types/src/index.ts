@@ -32,7 +32,6 @@ export type {
 export { isTransitionType, parseTransitionConfig } from './transition.js';
 
 export type {
-  InputOrientation,
   InputType,
   InputStatus,
   InputSourceState,

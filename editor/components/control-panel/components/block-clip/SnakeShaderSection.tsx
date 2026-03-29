@@ -151,7 +151,6 @@ export function SnakeShaderSection({
     sourceState: 'unknown',
     status: 'connected',
     shaders,
-    orientation: 'horizontal',
   };
 
   return (

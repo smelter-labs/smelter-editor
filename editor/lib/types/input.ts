@@ -1,6 +1,5 @@
 import type { PublicInputState } from '@smelter-editor/types';
 
-export type { InputOrientation } from '@smelter-editor/types';
 export type {
   UpdateInputOptions,
   RegisterInputOptions,

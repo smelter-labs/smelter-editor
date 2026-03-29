@@ -100,6 +100,7 @@ export interface ControlPanelActions {
   configStorage: StorageClient<object>;
   shaderPresetStorage: StorageClient<ShaderConfig[]>;
   dashboardLayoutStorage: StorageClient<object>;
+  hlsStreamStorage: StorageClient<{ url: string }>;
 
   restartService(): Promise<void>;
 }

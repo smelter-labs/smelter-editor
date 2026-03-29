@@ -34,6 +34,12 @@ type AssetItemMp4 = { kind: 'mp4'; fileName: string; durationMs?: number };
 type AssetItemImage = { kind: 'image'; fileName: string };
 type AssetItemTwitch = { kind: 'twitch'; channel: ChannelSuggestion };
 type AssetItemKick = { kind: 'kick'; channel: ChannelSuggestion };
+type AssetItemHls = {
+  kind: 'hls-saved';
+  name: string;
+  url: string;
+  fileName: string;
+};
 type AssetItemAction = {
   kind: 'action';
   actionType:
@@ -50,6 +56,7 @@ type AssetItem =
   | AssetItemImage
   | AssetItemTwitch
   | AssetItemKick
+  | AssetItemHls
   | AssetItemAction;
 
 const FILTER_TYPES = [
@@ -84,6 +91,8 @@ function itemKey(item: AssetItem): string {
       return `twitch:${item.channel.streamId}`;
     case 'kick':
       return `kick:${item.channel.streamId}`;
+    case 'hls-saved':
+      return `hls-saved:${item.fileName}`;
     case 'action':
       return `action:${item.actionType}`;
   }
@@ -95,7 +104,10 @@ function itemMatchesFilter(item: AssetItem, filter: FilterType): boolean {
     case 'STREAM':
       return item.kind === 'twitch' || item.kind === 'kick';
     case 'HLS':
-      return item.kind === 'action' && item.actionType === 'hls';
+      return (
+        item.kind === 'hls-saved' ||
+        (item.kind === 'action' && item.actionType === 'hls')
+      );
     case 'MP4':
       return item.kind === 'mp4';
     case 'IMAGE':
@@ -124,13 +136,15 @@ function itemLabel(item: AssetItem): string {
       return item.channel.displayName;
     case 'kick':
       return item.channel.displayName;
+    case 'hls-saved':
+      return item.name;
     case 'action':
       return ACTION_TYPE_LABELS[item.actionType];
   }
 }
 
 const ACTION_TYPE_LABELS: Record<AssetItemAction['actionType'], string> = {
-  hls: 'HLS STREAM',
+  hls: 'NEW HLS STREAM',
   text: 'TEXT INPUT',
   game: 'SNAKE GAME',
   hands: 'HAND TRACKING',
@@ -148,6 +162,8 @@ function typeBadge(item: AssetItem): string {
       return 'TWITCH';
     case 'kick':
       return 'KICK';
+    case 'hls-saved':
+      return 'HLS';
     case 'action':
       return item.actionType.toUpperCase();
   }
@@ -182,20 +198,49 @@ export function AddVideoModal({
   const fetchItems = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [twitchRes, kickRes, mp4Res, pictureRes] = await Promise.all([
-        actions
-          .getTwitchSuggestions()
-          .catch(() => ({ twitch: [] as ChannelSuggestion[] })),
-        actions
-          .getKickSuggestions()
-          .catch(() => ({ kick: [] as ChannelSuggestion[] })),
-        actions.getMP4Suggestions().catch(() => ({ mp4s: [] as string[] })),
-        actions
-          .getPictureSuggestions()
-          .catch(() => ({ pictures: [] as string[] })),
-      ]);
+      const [twitchRes, kickRes, mp4Res, pictureRes, hlsListRes] =
+        await Promise.all([
+          actions
+            .getTwitchSuggestions()
+            .catch(() => ({ twitch: [] as ChannelSuggestion[] })),
+          actions
+            .getKickSuggestions()
+            .catch(() => ({ kick: [] as ChannelSuggestion[] })),
+          actions.getMP4Suggestions().catch(() => ({ mp4s: [] as string[] })),
+          actions
+            .getPictureSuggestions()
+            .catch(() => ({ pictures: [] as string[] })),
+          actions.hlsStreamStorage
+            .list()
+            .catch(() => ({ ok: false as const, error: 'failed' })),
+        ]);
+
+      const hlsSavedItems: AssetItemHls[] = [];
+      if (hlsListRes.ok) {
+        const loads = await Promise.all(
+          hlsListRes.items.map((info) =>
+            actions.hlsStreamStorage
+              .load(info.fileName)
+              .then((r) =>
+                r.ok
+                  ? {
+                      kind: 'hls-saved' as const,
+                      name: r.name,
+                      url: r.data.url,
+                      fileName: info.fileName,
+                    }
+                  : null,
+              )
+              .catch(() => null),
+          ),
+        );
+        for (const item of loads) {
+          if (item) hlsSavedItems.push(item);
+        }
+      }
 
       const fetched: AssetItem[] = [
+        ...hlsSavedItems,
         ...twitchRes.twitch.map(
           (channel): AssetItemTwitch => ({ kind: 'twitch', channel }),
         ),
@@ -384,6 +429,13 @@ function AssetCard({
         const ext = item.fileName.split('.').pop()?.toUpperCase() ?? '';
         return ext;
       }
+      case 'hls-saved': {
+        try {
+          return new URL(item.url).hostname;
+        } catch {
+          return 'HLS';
+        }
+      }
       case 'action':
         return 'ACTION';
       default:
@@ -446,6 +498,9 @@ function AssetThumbnail({ item }: { item: AssetItem }) {
       />
     );
   }
+  if (item.kind === 'hls-saved') {
+    return <HlsThumbnailWithFallback fileName={item.fileName} name={item.name} />;
+  }
   if (item.kind === 'twitch') {
     if (item.channel.thumbnailUrl) {
       return (
@@ -494,6 +549,42 @@ function AssetThumbnail({ item }: { item: AssetItem }) {
     return <ActionThumbnail actionType={item.actionType} />;
   }
   return null;
+}
+
+function HlsFallbackIcon() {
+  return (
+    <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-[#ff6b00]/15 to-[#131313]'>
+      <svg viewBox='0 0 60 60' className='w-10 h-10 opacity-40'>
+        <circle cx='30' cy='30' r='6' fill='#ff6b00' />
+        <path d='M30 18 A12 12 0 0 1 42 30' stroke='#ff6b00' strokeWidth='2.5' fill='none' strokeLinecap='round' />
+        <path d='M30 18 A12 12 0 0 0 18 30' stroke='#ff6b00' strokeWidth='2.5' fill='none' strokeLinecap='round' />
+        <path d='M30 10 A20 20 0 0 1 50 30' stroke='#ff6b00' strokeWidth='2' fill='none' strokeLinecap='round' opacity='0.6' />
+        <path d='M30 10 A20 20 0 0 0 10 30' stroke='#ff6b00' strokeWidth='2' fill='none' strokeLinecap='round' opacity='0.6' />
+        <path d='M30 3 A27 27 0 0 1 57 30' stroke='#ff6b00' strokeWidth='1.5' fill='none' strokeLinecap='round' opacity='0.35' />
+        <path d='M30 3 A27 27 0 0 0 3 30' stroke='#ff6b00' strokeWidth='1.5' fill='none' strokeLinecap='round' opacity='0.35' />
+      </svg>
+    </div>
+  );
+}
+
+function HlsThumbnailWithFallback({
+  fileName,
+  name,
+}: {
+  fileName: string;
+  name: string;
+}) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return <HlsFallbackIcon />;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`/api/hls-thumbnail/${encodeURIComponent(fileName)}`}
+      alt={name}
+      className='w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700'
+      onError={() => setFailed(true)}
+    />
+  );
 }
 
 function ActionThumbnail({
@@ -740,6 +831,10 @@ function PropertyInspector({
       return <TwitchInspector item={item} roomId={roomId} onDone={onDone} />;
     case 'kick':
       return <KickInspector item={item} roomId={roomId} onDone={onDone} />;
+    case 'hls-saved':
+      return (
+        <HlsSavedInspector item={item} roomId={roomId} onDone={onDone} />
+      );
     case 'action':
       return (
         <ActionInspector
@@ -1055,6 +1150,77 @@ function ActionInspector({
   }
 }
 
+function HlsSavedInspector({
+  item,
+  roomId,
+  onDone,
+}: {
+  item: AssetItemHls;
+  roomId: string;
+  onDone: () => Promise<void>;
+}) {
+  const { addHlsInput, hlsStreamStorage } = useActions();
+  const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const handleAdd = async () => {
+    setLoading(true);
+    try {
+      await addHlsInput(roomId, item.url);
+      await onDone();
+    } catch {
+      toast.error('Failed to add HLS stream.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      const result = await hlsStreamStorage.remove(item.fileName);
+      if (result.ok) {
+        toast.success('HLS stream removed from library.');
+        await onDone();
+      } else {
+        toast.error('Failed to remove HLS stream.');
+      }
+    } catch {
+      toast.error('Failed to remove HLS stream.');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className='space-y-3'>
+      <div className='relative aspect-video bg-black overflow-hidden border border-[#3a494b]/30'>
+        <HlsThumbnailWithFallback fileName={item.fileName} name={item.name} />
+        <div className='absolute inset-0 scanline opacity-20' />
+      </div>
+      <PropRow label='NAME' value={item.name} />
+      <div className='space-y-1'>
+        <span className='text-[10px] font-mono text-[#849495]'>URL</span>
+        <p className='text-[10px] font-mono text-[#e3fdff] leading-tight break-all'>
+          {item.url}
+        </p>
+      </div>
+      <PropRow label='TYPE' value='HLS_STREAM' />
+      <InitiateButton
+        label='INITIATE_STREAM'
+        onClick={handleAdd}
+        loading={loading}
+      />
+      <button
+        onClick={handleDelete}
+        disabled={deleting}
+        className='w-full py-1.5 bg-transparent border border-[#fe00fe]/40 text-[#fe00fe] font-mono text-[10px] uppercase tracking-widest hover:bg-[#fe00fe]/10 transition-colors disabled:opacity-40'>
+        {deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
+      </button>
+    </div>
+  );
+}
+
 function HlsActionInspector({
   roomId,
   onDone,
@@ -1062,8 +1228,10 @@ function HlsActionInspector({
   roomId: string;
   onDone: () => Promise<void>;
 }) {
-  const { addHlsInput } = useActions();
+  const { addHlsInput, hlsStreamStorage } = useActions();
   const [url, setUrl] = useState('');
+  const [name, setName] = useState('');
+  const [saveToLibrary, setSaveToLibrary] = useState(true);
   const [loading, setLoading] = useState(false);
 
   const handleAdd = async () => {
@@ -1075,6 +1243,17 @@ function HlsActionInspector({
     setLoading(true);
     try {
       await addHlsInput(roomId, trimmed);
+      if (saveToLibrary) {
+        let streamName = name.trim();
+        if (!streamName) {
+          try {
+            streamName = new URL(trimmed).hostname;
+          } catch {
+            streamName = trimmed.slice(0, 40);
+          }
+        }
+        await hlsStreamStorage.save(streamName, { url: trimmed });
+      }
       await onDone();
     } catch {
       toast.error('Failed to add HLS stream.');
@@ -1085,7 +1264,7 @@ function HlsActionInspector({
 
   return (
     <div className='space-y-3'>
-      <PropRow label='TYPE' value='HLS_STREAM' />
+      <PropRow label='TYPE' value='NEW_HLS_STREAM' />
       <div>
         <span className='text-[10px] font-mono text-[#849495] block mb-1'>
           STREAM_URL
@@ -1098,6 +1277,29 @@ function HlsActionInspector({
           placeholder='https://example.com/stream.m3u8'
         />
       </div>
+      <div>
+        <span className='text-[10px] font-mono text-[#849495] block mb-1'>
+          STREAM_NAME
+        </span>
+        <input
+          type='text'
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          className='w-full bg-[#1c1b1b] border border-[#3a494b]/30 text-[#e3fdff] font-mono text-[11px] px-2 py-1.5 focus:border-[#00f3ff]/50 focus:outline-none'
+          placeholder='(auto from hostname)'
+        />
+      </div>
+      <label className='flex items-center gap-2 cursor-pointer'>
+        <input
+          type='checkbox'
+          checked={saveToLibrary}
+          onChange={(e) => setSaveToLibrary(e.target.checked)}
+          className='accent-[#00f3ff]'
+        />
+        <span className='text-[10px] font-mono text-[#849495]'>
+          SAVE_TO_LIBRARY
+        </span>
+      </label>
       <InitiateButton
         label='INITIATE_STREAM'
         onClick={handleAdd}

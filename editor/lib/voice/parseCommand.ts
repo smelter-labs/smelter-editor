@@ -182,15 +182,6 @@ const DISABLE_NEWS_STRIP_FADE_PATTERN =
 const NEXT_BLOCK_PATTERN = /\b(next|forward)\s+block\b/;
 const PREV_BLOCK_PATTERN = /\b(previous|prev|back|last)\s+block\b/;
 
-const SET_DEFAULT_ORIENTATION_PATTERN =
-  /\b(?:set\s+)?default\s+(?:orientation\s+)?(?:to\s+)?(horizontal|vertical)\b/;
-const DEFAULT_ORIENTATION_ALT_PATTERN =
-  /\bdefault\s+(?:input\s+)?orientation\s+(?:to\s+)?(horizontal|vertical)\b/;
-const SET_ORIENTATION_PATTERN =
-  /\b(?:set|change)\s+(?:(?:input\s+(\d+)\s+)?(?:orientation\s+)?(?:to\s+)?)?(horizontal|vertical)\b/;
-const FLIP_INPUT_PATTERN =
-  /\bflip\s+(?:input\s+)?(?:(\d+)\s+)?(?:to\s+)?(horizontal|vertical)?\b/;
-
 const SCROLL_TEXT_DOWN_PATTERN = /\bmove\s+(down(?:\s+down)*)\b/;
 const SCROLL_TEXT_UP_PATTERN = /\bmove\s+(up(?:\s+up)*)\b/;
 
@@ -464,51 +455,6 @@ export function parseCommand(
   }
   if (DISABLE_NEWS_STRIP_PATTERN.test(text)) {
     return { intent: 'SET_NEWS_STRIP_ENABLED', enabled: false };
-  }
-
-  const defaultOrientationMatch =
-    text.match(SET_DEFAULT_ORIENTATION_PATTERN) ||
-    text.match(DEFAULT_ORIENTATION_ALT_PATTERN);
-  if (defaultOrientationMatch) {
-    return {
-      intent: 'SET_DEFAULT_ORIENTATION',
-      orientation: defaultOrientationMatch[1] as 'horizontal' | 'vertical',
-    };
-  }
-
-  const flipMatch = text.match(FLIP_INPUT_PATTERN);
-  if (flipMatch) {
-    const result: import('./commandTypes').SetOrientationCommand = {
-      intent: 'SET_ORIENTATION',
-    };
-    if (flipMatch[1]) {
-      result.inputIndex = parseInt(flipMatch[1], 10);
-    }
-    if (flipMatch[2]) {
-      result.orientation = flipMatch[2] as 'horizontal' | 'vertical';
-    }
-    return result;
-  }
-
-  const setOrientationMatch = text.match(SET_ORIENTATION_PATTERN);
-  if (setOrientationMatch) {
-    const orientationValue = setOrientationMatch[2] as
-      | 'horizontal'
-      | 'vertical';
-    if (
-      !/\b(text\s+)?colou?r\b/.test(text) &&
-      !/\bfont\b/.test(text) &&
-      !/\bsize\b/.test(text)
-    ) {
-      const result: import('./commandTypes').SetOrientationCommand = {
-        intent: 'SET_ORIENTATION',
-        orientation: orientationValue,
-      };
-      if (setOrientationMatch[1]) {
-        result.inputIndex = parseInt(setOrientationMatch[1], 10);
-      }
-      return result;
-    }
   }
 
   const colorMatch = text.match(SET_COLOR_PATTERN);

@@ -22,6 +22,8 @@ export type PublicInputState = {
   status: InputStatus;
   channelId?: string;
   imageId?: string;
+  sourceWidth?: number;
+  sourceHeight?: number;
   attachedInputIds?: string[];
   hidden?: boolean;
   activeTransition?: ActiveTransition;

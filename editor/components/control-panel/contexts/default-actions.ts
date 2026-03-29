@@ -44,6 +44,11 @@ import {
   listDashboardLayouts,
   loadDashboardLayout,
   deleteDashboardLayout,
+  saveHlsStream,
+  listHlsStreams,
+  loadHlsStream,
+  updateHlsStream,
+  deleteHlsStream,
   restartService,
 } from '@/app/actions/actions';
 
@@ -73,6 +78,14 @@ const dashboardLayoutStorage: StorageClient<object> = {
   load: loadDashboardLayout,
   update: (_fileName, name, payload) => saveDashboardLayout(name, payload),
   remove: deleteDashboardLayout,
+};
+
+const hlsStreamStorage: StorageClient<{ url: string }> = {
+  save: saveHlsStream,
+  list: listHlsStreams,
+  load: loadHlsStream,
+  update: updateHlsStream,
+  remove: deleteHlsStream,
 };
 
 export const defaultActions: ControlPanelActions = {
@@ -112,5 +125,6 @@ export const defaultActions: ControlPanelActions = {
   configStorage,
   shaderPresetStorage,
   dashboardLayoutStorage,
+  hlsStreamStorage,
   restartService,
 };

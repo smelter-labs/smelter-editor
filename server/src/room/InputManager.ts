@@ -11,14 +11,16 @@ import { KickChannelMonitor } from '../kick/KickChannelMonitor';
 import { WhipInputMonitor } from '../whip/WhipInputMonitor';
 import { sleep } from '../utils';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
-import { getMp4DurationMs } from '../server/mp4Duration';
+import {
+  getMp4DurationMs,
+  getMp4VideoDimensions,
+} from '../server/mp4Duration';
 import { logTimelineEvent } from '../dashboard';
 import { createDefaultSnakeGameInputState } from '../snakeGame/snakeGameState';
 import { createHandsStore } from '../hands/handStore';
 import type { ShaderConfig, ActiveTransition } from '../types';
 import type {
   RoomInputState,
-  InputOrientation,
   RegisterInputOptions,
   UpdateInputOptions,
 } from './types';
@@ -143,7 +145,7 @@ export class InputManager {
       status: 'disconnected',
       showTitle: false,
       shaders: [],
-      orientation: 'horizontal',
+
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
@@ -184,7 +186,7 @@ export class InputManager {
       status: 'disconnected' as const,
       showTitle: false,
       shaders: [] as ShaderConfig[],
-      orientation: 'horizontal' as InputOrientation,
+
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
@@ -241,7 +243,7 @@ export class InputManager {
       status: 'disconnected',
       showTitle: false,
       shaders: [],
-      orientation: 'horizontal',
+
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
@@ -273,13 +275,15 @@ export class InputManager {
       throw new Error(`MP4 file not found: ${opts.source.fileName}`);
     }
 
+    const dims = await getMp4VideoDimensions(mp4Path);
+
     this.inputs.push({
       inputId,
       type: 'local-mp4',
       status: 'disconnected',
       showTitle: false,
       shaders: [],
-      orientation: 'horizontal',
+
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
@@ -289,6 +293,8 @@ export class InputManager {
         description: '[Static source] AI Generated',
       },
       mp4FilePath: mp4Path,
+      mp4VideoWidth: dims?.width,
+      mp4VideoHeight: dims?.height,
       volume: 0,
     });
     return inputId;
@@ -358,7 +364,7 @@ export class InputManager {
         status: 'connected',
         showTitle: false,
         shaders: [],
-        orientation: 'horizontal',
+  
         borderColor: '#ff0000',
         borderWidth: 0,
         hidden: false,
@@ -387,7 +393,7 @@ export class InputManager {
       status: 'connected',
       showTitle: false,
       shaders: [],
-      orientation: 'horizontal',
+
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
@@ -420,7 +426,7 @@ export class InputManager {
       status: 'connected',
       showTitle: false,
       shaders: [],
-      orientation: 'horizontal',
+
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
@@ -445,7 +451,7 @@ export class InputManager {
       status: 'connected',
       showTitle: false,
       shaders: [],
-      orientation: 'horizontal',
+
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
@@ -619,7 +625,6 @@ export class InputManager {
     input.volume = options.volume ?? input.volume;
     input.shaders = options.shaders ?? input.shaders;
     input.showTitle = options.showTitle ?? input.showTitle;
-    input.orientation = options.orientation ?? input.orientation;
     input.borderColor = options.borderColor ?? input.borderColor;
     input.borderWidth = options.borderWidth ?? input.borderWidth;
 

@@ -21,7 +21,6 @@ import type {
 
 import type { Layout } from '../types';
 
-export type { InputOrientation } from '../types';
 export type {
   UpdateInputOptions,
   RegisterInputOptions,
@@ -66,6 +65,8 @@ type TypeSpecificState =
       registeredAtPipelineMs?: number;
       playFromMs?: number;
       mp4DurationMs?: number;
+      mp4VideoWidth?: number;
+      mp4VideoHeight?: number;
     }
   | {
       type: 'twitch-channel';

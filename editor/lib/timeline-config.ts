@@ -12,8 +12,12 @@ import type {
 } from '@/components/control-panel/hooks/use-timeline-state';
 
 function toServerKeyframe(keyframe: Keyframe): TimelineKeyframe {
-  const { mp4DurationMs: _mp4DurationMs, ...blockSettings } =
-    keyframe.blockSettings;
+  const {
+    mp4DurationMs: _mp4DurationMs,
+    sourceWidth: _sourceWidth,
+    sourceHeight: _sourceHeight,
+    ...blockSettings
+  } = keyframe.blockSettings;
   return {
     id: keyframe.id,
     timeMs: keyframe.timeMs,
@@ -22,8 +26,12 @@ function toServerKeyframe(keyframe: Keyframe): TimelineKeyframe {
 }
 
 function toServerClip(clip: Clip): TimelineClip {
-  const { mp4DurationMs: _mp4DurationMs, ...blockSettings } =
-    clip.blockSettings;
+  const {
+    mp4DurationMs: _mp4DurationMs,
+    sourceWidth: _sourceWidth,
+    sourceHeight: _sourceHeight,
+    ...blockSettings
+  } = clip.blockSettings;
   return {
     id: clip.id,
     inputId: clip.inputId,
