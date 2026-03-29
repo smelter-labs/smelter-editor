@@ -1,4 +1,4 @@
-import { View, Rescaler } from '@swmansion/smelter';
+import { View, Rescaler, Shader } from '@swmansion/smelter';
 
 import type { RoomStore } from './store';
 import type { StoreApi } from 'zustand';
@@ -68,41 +68,24 @@ function OutputScene() {
           easingFunction: buildEasingFunction(input.absoluteTransitionEasing),
         };
 
-        const inner = <Input input={input} />;
+        let inner = <Input input={input} />;
 
         if (hasCrop) {
-          const visibleW = w - cL - cR;
-          const visibleH = h - cT - cB;
-          return (
-            <Rescaler
-              key={input.inputId}
-              id={`absolute-${input.inputId}`}
-              transition={transition}
-              style={{
-                top: t + cT,
-                left: l + cL,
-                width: visibleW,
-                height: visibleH,
+          inner = (
+            <Shader
+              shaderId='crop'
+              resolution={{ width: w, height: h }}
+              shaderParam={{
+                type: 'struct',
+                value: [
+                  { type: 'f32', fieldName: 'crop_top', value: cT / h },
+                  { type: 'f32', fieldName: 'crop_left', value: cL / w },
+                  { type: 'f32', fieldName: 'crop_right', value: cR / w },
+                  { type: 'f32', fieldName: 'crop_bottom', value: cB / h },
+                ],
               }}>
-              <View
-                style={{
-                  overflow: 'hidden' as const,
-                  width: visibleW,
-                  height: visibleH,
-                }}>
-                <Rescaler
-                  id={`crop-${input.inputId}`}
-                  transition={transition}
-                  style={{
-                    top: -cT,
-                    left: -cL,
-                    width: w,
-                    height: h,
-                  }}>
-                  {inner}
-                </Rescaler>
-              </View>
-            </Rescaler>
+              {inner}
+            </Shader>
           );
         }
 

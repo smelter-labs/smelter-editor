@@ -60,7 +60,7 @@ type DragState =
 type ControllerMode = 'position' | 'crop';
 
 const HANDLE_SIZE = 8;
-const LONG_PRESS_MS = 1500;
+const LONG_PRESS_MS = 500;
 const LONG_PRESS_MOVE_THRESHOLD = 3;
 const CROP_HANDLE_LONG = 20;
 const CROP_HANDLE_SHORT = 6;
@@ -249,9 +249,7 @@ export function AbsolutePositionController({
       e.stopPropagation();
       cancelLongPress();
       const c = cropValuesRef.current;
-      const visW = pos.width - c.cropLeft - c.cropRight;
-      const visH = pos.height - c.cropTop - c.cropBottom;
-      const aspectRatio = visW / visH;
+      const aspectRatio = pos.width / pos.height;
       dragRef.current = {
         type: 'resize',
         corner,
@@ -346,52 +344,59 @@ export function AbsolutePositionController({
         setLocalPos(newPos);
       } else if (drag.type === 'resize') {
         const dx = (e.clientX - drag.startX) / scale;
-        const { origPos, corner, aspectRatio, cropAtStart: c } = drag;
-        const origVisW = origPos.width - c.cropLeft - c.cropRight;
+        const { origPos, corner, aspectRatio, cropAtStart } = drag;
         let newPos = { ...origPos };
 
         if (corner === 'se') {
-          const newVisW = Math.max(40, origVisW + dx);
-          const newVisH = newVisW / aspectRatio;
-          newPos = {
-            ...origPos,
-            width: newVisW + c.cropLeft + c.cropRight,
-            height: newVisH + c.cropTop + c.cropBottom,
-          };
+          const newW = Math.max(40, origPos.width + dx);
+          const newH = newW / aspectRatio;
+          newPos = { ...origPos, width: newW, height: newH };
         } else if (corner === 'sw') {
-          const newVisW = Math.max(40, origVisW - dx);
-          const newVisH = newVisW / aspectRatio;
-          const newAbsW = newVisW + c.cropLeft + c.cropRight;
+          const newW = Math.max(40, origPos.width - dx);
+          const newH = newW / aspectRatio;
           newPos = {
             ...origPos,
-            left: origPos.left + origPos.width - newAbsW,
-            width: newAbsW,
-            height: newVisH + c.cropTop + c.cropBottom,
+            left: origPos.left + origPos.width - newW,
+            width: newW,
+            height: newH,
           };
         } else if (corner === 'ne') {
-          const newVisW = Math.max(40, origVisW + dx);
-          const newVisH = newVisW / aspectRatio;
-          const newAbsH = newVisH + c.cropTop + c.cropBottom;
+          const newW = Math.max(40, origPos.width + dx);
+          const newH = newW / aspectRatio;
           newPos = {
             ...origPos,
-            top: origPos.top + origPos.height - newAbsH,
-            width: newVisW + c.cropLeft + c.cropRight,
-            height: newAbsH,
+            top: origPos.top + origPos.height - newH,
+            width: newW,
+            height: newH,
           };
         } else if (corner === 'nw') {
-          const newVisW = Math.max(40, origVisW - dx);
-          const newVisH = newVisW / aspectRatio;
-          const newAbsW = newVisW + c.cropLeft + c.cropRight;
-          const newAbsH = newVisH + c.cropTop + c.cropBottom;
+          const newW = Math.max(40, origPos.width - dx);
+          const newH = newW / aspectRatio;
           newPos = {
             ...origPos,
-            left: origPos.left + origPos.width - newAbsW,
-            top: origPos.top + origPos.height - newAbsH,
-            width: newAbsW,
-            height: newAbsH,
+            left: origPos.left + origPos.width - newW,
+            top: origPos.top + origPos.height - newH,
+            width: newW,
+            height: newH,
           };
         }
-        setLocalPos(clampPos(newPos));
+        newPos = clampPos(newPos);
+        setLocalPos(newPos);
+
+        const sx = newPos.width / origPos.width;
+        const sy = newPos.height / origPos.height;
+        setLocalCrop(
+          clampCrop(
+            {
+              cropTop: Math.round(cropAtStart.cropTop * sy),
+              cropLeft: Math.round(cropAtStart.cropLeft * sx),
+              cropRight: Math.round(cropAtStart.cropRight * sx),
+              cropBottom: Math.round(cropAtStart.cropBottom * sy),
+            },
+            newPos.width,
+            newPos.height,
+          ),
+        );
       } else if (drag.type === 'crop-drag') {
         const dx = (e.clientX - drag.startX) / scale;
         const dy = (e.clientY - drag.startY) / scale;
@@ -418,6 +423,15 @@ export function AbsolutePositionController({
           const current = localCropRef.current;
           if (current) {
             onCropChangeRef.current(current);
+          }
+        } else if (drag.type === 'resize') {
+          const currentPos = localPosRef.current;
+          if (currentPos) {
+            onChangeRef.current(currentPos);
+          }
+          const currentCrop = localCropRef.current;
+          if (currentCrop) {
+            onCropChangeRef.current(currentCrop);
           }
         } else {
           const current = localPosRef.current;
@@ -457,23 +471,23 @@ export function AbsolutePositionController({
   const cropCanvasBottom = crop.cropBottom * scale;
 
   const corners = [
-    { id: 'nw', x: visRect.x, y: visRect.y, cursor: 'nwse-resize' },
+    { id: 'nw', x: canvasRect.x, y: canvasRect.y, cursor: 'nwse-resize' },
     {
       id: 'ne',
-      x: visRect.x + visRect.w,
-      y: visRect.y,
+      x: canvasRect.x + canvasRect.w,
+      y: canvasRect.y,
       cursor: 'nesw-resize',
     },
     {
       id: 'sw',
-      x: visRect.x,
-      y: visRect.y + visRect.h,
+      x: canvasRect.x,
+      y: canvasRect.y + canvasRect.h,
       cursor: 'nesw-resize',
     },
     {
       id: 'se',
-      x: visRect.x + visRect.w,
-      y: visRect.y + visRect.h,
+      x: canvasRect.x + canvasRect.w,
+      y: canvasRect.y + canvasRect.h,
       cursor: 'nwse-resize',
     },
   ];
@@ -689,12 +703,12 @@ export function AbsolutePositionController({
 
       {mode === 'crop' && (
         <div className='text-[10px] text-green-400 mt-1 text-center'>
-          Crop mode — hold 1.5s / Esc / click outside to exit
+          Crop mode — hold 0.5s / Esc / click outside to exit
         </div>
       )}
       {mode === 'position' && (
         <div className='text-[10px] text-neutral-500 mt-1 text-center'>
-          Hold 1.5s on rect to enter crop mode
+          Hold 0.5s on rect to enter crop mode
         </div>
       )}
 

@@ -17,9 +17,9 @@ struct BaseShaderParameters {
 
 struct ShaderOptions {
     hex_size: f32,
-    border_r: f32,
-    border_g: f32,
-    border_b: f32,
+    border_color_r: f32,
+    border_color_g: f32,
+    border_color_b: f32,
     border_width: f32,
     border_glow: f32,
     background_dim: f32,
@@ -95,7 +95,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
 
     let cell_color = textureSample(textures[0], sampler_, clamp(best_center, vec2<f32>(0.0), vec2<f32>(1.0)));
 
-    let border_color = vec3<f32>(shader_options.border_r, shader_options.border_g, shader_options.border_b);
+    let border_color = vec3<f32>(shader_options.border_color_r, shader_options.border_color_g, shader_options.border_color_b);
     let bw = shader_options.border_width;
 
     let pulse = 1.0 + shader_options.pulse_amount * sin(t * shader_options.pulse_speed * 6.28318);

@@ -15,6 +15,7 @@ export type TimelineBlockSettings = {
   mp4Loop?: boolean;
   introTransition?: TransitionConfig;
   outroTransition?: TransitionConfig;
+  forceInterpolation?: TimelineKeyframeInterpolationMode;
 } & InputDisplayProperties &
   Partial<TextInputProperties> &
   Partial<AbsolutePositionProperties> &

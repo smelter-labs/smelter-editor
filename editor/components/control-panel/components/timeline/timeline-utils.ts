@@ -179,6 +179,7 @@ export function computeKeyframeDiff(
     },
     { key: 'mp4PlayFromMs', label: 'mp4PlayFrom', fmt: (v) => `${v}ms` },
     { key: 'mp4Loop', label: 'mp4Loop', fmt: (v) => fmtBool(v as boolean) },
+    { key: 'forceInterpolation', label: 'interpolation' },
     { key: 'gameBackgroundColor', label: 'gameBgColor' },
     {
       key: 'gameCellGap',

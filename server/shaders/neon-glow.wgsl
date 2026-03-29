@@ -16,9 +16,9 @@ struct BaseShaderParameters {
 }
 
 struct ShaderOptions {
-    glow_r: f32,
-    glow_g: f32,
-    glow_b: f32,
+    glow_color_r: f32,
+    glow_color_g: f32,
+    glow_color_b: f32,
     edge_threshold: f32,
     glow_intensity: f32,
     bloom_radius: f32,
@@ -76,7 +76,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let pixel = 1.0 / res;
     let t = base_params.time;
 
-    let glow_color = vec3<f32>(shader_options.glow_r, shader_options.glow_g, shader_options.glow_b);
+    let glow_color = vec3<f32>(shader_options.glow_color_r, shader_options.glow_color_g, shader_options.glow_color_b);
     let threshold = shader_options.edge_threshold;
 
     let pulse = 1.0 + shader_options.pulse_amount * sin(t * shader_options.pulse_speed * 6.28318);

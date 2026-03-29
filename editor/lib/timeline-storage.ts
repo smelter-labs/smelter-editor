@@ -64,6 +64,7 @@ export type StoredBlockSettings = {
   sourceHeight?: number;
   introTransition?: StoredTransitionConfig;
   outroTransition?: StoredTransitionConfig;
+  forceInterpolation?: 'step' | 'smooth';
 };
 
 export type StoredKeyframe = {

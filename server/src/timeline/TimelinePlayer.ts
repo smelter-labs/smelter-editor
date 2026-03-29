@@ -111,20 +111,18 @@ function compileEvents(
         });
       }
 
-      if (mode === 'step') {
-        for (const keyframe of getNormalizedKeyframes(clip)) {
-          const keyframeTimeMs = clip.startMs + keyframe.timeMs;
-          if (
-            keyframeTimeMs > fromMs &&
-            keyframeTimeMs > clip.startMs &&
-            keyframeTimeMs < clip.endMs
-          ) {
-            events.push({
-              timeMs: keyframeTimeMs,
-              type: 'keyframe',
-              inputId: clip.inputId,
-            });
-          }
+      for (const keyframe of getNormalizedKeyframes(clip)) {
+        const keyframeTimeMs = clip.startMs + keyframe.timeMs;
+        if (
+          keyframeTimeMs > fromMs &&
+          keyframeTimeMs > clip.startMs &&
+          keyframeTimeMs < clip.endMs
+        ) {
+          events.push({
+            timeMs: keyframeTimeMs,
+            type: 'keyframe',
+            inputId: clip.inputId,
+          });
         }
       }
 
@@ -345,9 +343,11 @@ function resolveBlockSettingsAtTime(
     current = keyframe;
   }
 
+  const effectiveMode = current.blockSettings.forceInterpolation ?? mode;
+
   let resolved: TimelineBlockSettings;
 
-  if (mode === 'step') {
+  if (effectiveMode === 'step') {
     resolved = deepClone(current.blockSettings);
   } else {
     const currentIndex = keyframes.findIndex(
@@ -861,7 +861,6 @@ export class TimelinePlayer {
   }
 
   private startSmoothUpdates(): void {
-    if (this.config.keyframeInterpolationMode !== 'smooth') return;
     if (this.smoothUpdateInterval) {
       clearInterval(this.smoothUpdateInterval);
     }

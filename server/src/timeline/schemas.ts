@@ -62,6 +62,9 @@ const TimelineBlockSettingsSchema = Type.Object({
   mp4Loop: Type.Optional(Type.Boolean()),
   introTransition: Type.Optional(TransitionConfigSchema),
   outroTransition: Type.Optional(TransitionConfigSchema),
+  forceInterpolation: Type.Optional(
+    Type.Union([Type.Literal('step'), Type.Literal('smooth')]),
+  ),
 });
 
 const TimelineKeyframeSchema = Type.Object({

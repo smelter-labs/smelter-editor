@@ -16,9 +16,9 @@ struct BaseShaderParameters {
 }
 
 struct ShaderOptions {
-    edge_r: f32,
-    edge_g: f32,
-    edge_b: f32,
+    edge_color_r: f32,
+    edge_color_g: f32,
+    edge_color_b: f32,
     edge_threshold: f32,
     line_brightness: f32,
     background_opacity: f32,
@@ -88,7 +88,7 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
 
     let pulse = 1.0 + 0.3 * sin(t * shader_options.pulse_speed * 6.28318);
 
-    var edge_color = vec3<f32>(shader_options.edge_r, shader_options.edge_g, shader_options.edge_b);
+    var edge_color = vec3<f32>(shader_options.edge_color_r, shader_options.edge_color_g, shader_options.edge_color_b);
     if (shader_options.color_shift_speed > 0.01) {
         let hue = fract(t * shader_options.color_shift_speed * 0.1);
         edge_color = hue_to_rgb(hue);

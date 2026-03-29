@@ -985,37 +985,74 @@ export function BlockClipPropertiesPanel({
             ))}
           </div>
           {selectedTimelineKeyframe && (
-            <div className='grid grid-cols-[1fr_auto] gap-2 items-end'>
+            <>
+              <div className='grid grid-cols-[1fr_auto] gap-2 items-end mb-2'>
+                <div>
+                  <label className={labelStyles({ block: true })}>
+                    Time (ms)
+                  </label>
+                  <NumberInput
+                    min={0}
+                    max={
+                      selectedTimelineClip.endMs - selectedTimelineClip.startMs
+                    }
+                    step={50}
+                    disabled={selectedTimelineKeyframe.timeMs === 0}
+                    className='w-full bg-card border border-border text-foreground text-xs px-2 py-1 disabled:opacity-50'
+                    value={Math.round(selectedTimelineKeyframe.timeMs)}
+                    onChange={(e) =>
+                      handleMoveSelectedKeyframe(
+                        Math.max(0, Number(e.target.value) || 0),
+                      )
+                    }
+                  />
+                </div>
+                <Button
+                  type='button'
+                  size='sm'
+                  variant='outline'
+                  disabled={selectedTimelineKeyframe.timeMs === 0}
+                  className='h-8 px-2 bg-card border-border text-foreground cursor-pointer hover:bg-accent disabled:cursor-not-allowed'
+                  onClick={handleDeleteSelectedKeyframe}>
+                  Delete
+                </Button>
+              </div>
               <div>
                 <label className={labelStyles({ block: true })}>
-                  Time (ms)
+                  Interpolation
                 </label>
-                <NumberInput
-                  min={0}
-                  max={
-                    selectedTimelineClip.endMs - selectedTimelineClip.startMs
+                <Select
+                  value={
+                    selectedTimelineKeyframe.blockSettings.forceInterpolation ??
+                    'inherit'
                   }
-                  step={50}
-                  disabled={selectedTimelineKeyframe.timeMs === 0}
-                  className='w-full bg-card border border-border text-foreground text-xs px-2 py-1 disabled:opacity-50'
-                  value={Math.round(selectedTimelineKeyframe.timeMs)}
-                  onChange={(e) =>
-                    handleMoveSelectedKeyframe(
-                      Math.max(0, Number(e.target.value) || 0),
-                    )
-                  }
-                />
+                  onValueChange={(v) =>
+                    void applyClipPatch({
+                      forceInterpolation:
+                        v === 'inherit'
+                          ? undefined
+                          : (v as 'step' | 'smooth'),
+                    })
+                  }>
+                  <SelectTrigger
+                    className={panelInputStyles({
+                      fullWidth: true,
+                      compact: true,
+                    })}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='inherit'>Inherit (global)</SelectItem>
+                    <SelectItem value='smooth'>Force Smooth</SelectItem>
+                    <SelectItem value='step'>Force Step</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className='text-[10px] text-muted-foreground mt-1'>
+                  Override the global interpolation mode for this keyframe
+                  segment
+                </div>
               </div>
-              <Button
-                type='button'
-                size='sm'
-                variant='outline'
-                disabled={selectedTimelineKeyframe.timeMs === 0}
-                className='h-8 px-2 bg-card border-border text-foreground cursor-pointer hover:bg-accent disabled:cursor-not-allowed'
-                onClick={handleDeleteSelectedKeyframe}>
-                Delete
-              </Button>
-            </div>
+            </>
           )}
         </CollapsibleSection>
       )}
