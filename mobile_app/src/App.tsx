@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { StrictMode, useEffect } from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { NavigationContainer } from "@react-navigation/native";
 import { PaperProvider } from "react-native-paper";
@@ -53,18 +53,20 @@ export function App() {
   }, []);
 
   return (
-    <GestureHandlerRootView style={{ flex: 1 }}>
-      <PaperProvider theme={smelterTheme}>
-        <NavigationContainer
-          ref={navigationRef}
-          onReady={() => {
-            SplashScreen.hideAsync();
-          }}
-        >
-          <StatusBar hidden />
-          <RootNavigator />
-        </NavigationContainer>
-      </PaperProvider>
-    </GestureHandlerRootView>
+    <StrictMode>
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <PaperProvider theme={smelterTheme}>
+          <NavigationContainer
+            ref={navigationRef}
+            onReady={() => {
+              SplashScreen.hideAsync();
+            }}
+          >
+            <StatusBar hidden />
+            <RootNavigator />
+          </NavigationContainer>
+        </PaperProvider>
+      </GestureHandlerRootView>
+    </StrictMode>
   );
 }

@@ -138,7 +138,7 @@ export default function LayersPanel({
             const ui = getUi(layer.id);
             return (
               <LayerRow
-                key={`${layer.id}-${layerIndex}`}
+                key={layer.id}
                 layer={layer}
                 layerIndex={layerIndex}
                 inputs={inputs}

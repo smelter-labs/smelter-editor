@@ -57,10 +57,8 @@ export function LayoutEffectsPanel({
   onClose,
 }: LayoutEffectsPanelProps) {
   const { serverUrl, roomId } = useConnectionStore();
-  const { inputs, updateInput } = useInputsStore((s) => ({
-    inputs: s.inputs,
-    updateInput: s.updateInput,
-  }));
+  const inputs = useInputsStore((s) => s.inputs);
+  const updateInput = useInputsStore((s) => s.updateInput);
   const input = useMemo(
     () => inputs.find((i) => i.id === inputId),
     [inputs, inputId],

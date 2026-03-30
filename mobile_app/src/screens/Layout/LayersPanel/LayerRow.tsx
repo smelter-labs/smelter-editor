@@ -180,18 +180,16 @@ export function LayerRow({
             }
           }}
         >
-          <Draggable.Handle>
-            <LayerHeader
-              name={ui.name}
-              isVisible={ui.isVisible}
-              isCollapsed={ui.isCollapsed}
-              onToggleCollapse={() =>
-                onUiChange({ isCollapsed: !ui.isCollapsed })
-              }
-              onToggleVisible={() => onUiChange({ isVisible: !ui.isVisible })}
-              onNameChange={(name) => onUiChange({ name })}
-            />
-          </Draggable.Handle>
+          <LayerHeader
+            name={ui.name}
+            isVisible={ui.isVisible}
+            isCollapsed={ui.isCollapsed}
+            onToggleCollapse={() =>
+              onUiChange({ isCollapsed: !ui.isCollapsed })
+            }
+            onToggleVisible={() => onUiChange({ isVisible: !ui.isVisible })}
+            onNameChange={(name) => onUiChange({ name })}
+          />
         </Droppable>
 
         {!ui.isCollapsed && (
@@ -204,7 +202,7 @@ export function LayerRow({
         {!ui.isCollapsed &&
           layer.inputs.map((item, itemIndex) => (
             <InputRow
-              key={`${item.inputId}-${itemIndex}`}
+              key={item.inputId}
               inputId={item.inputId}
               sourceLayerId={layer.id}
               inputs={inputs}

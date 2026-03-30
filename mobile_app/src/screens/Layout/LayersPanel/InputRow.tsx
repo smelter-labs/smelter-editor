@@ -62,7 +62,9 @@ export function InputRow({
           <Text style={styles.name} numberOfLines={1}>
             {name}
           </Text>
-          <Badge style={styles.effectsBadge}>{effectsCount}</Badge>
+          {effectsCount > 0 && (
+            <Badge style={styles.effectsBadge}>{effectsCount}</Badge>
+          )}
         </View>
       </Draggable>
     </Droppable>

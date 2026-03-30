@@ -8,6 +8,11 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "scheme": "smeltereditortablet",
+    "expo": {
+      "experiments": {
+        "reactCompiler": true
+      }
+    },
     "ios": {
       "supportsTablet": true,
       "requiresFullScreen": true,

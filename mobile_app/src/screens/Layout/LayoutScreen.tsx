@@ -114,10 +114,8 @@ export function LayoutScreen() {
   const theme = useTheme();
   const { layers, setLayers, resolution, columns, rows } = useLayoutStore();
   const { serverUrl, roomId } = useConnectionStore();
-  const { inputs, setInputs } = useInputsStore((s) => ({
-    inputs: s.inputs,
-    setInputs: s.setInputs,
-  }));
+  const inputs = useInputsStore((s) => s.inputs);
+  const setInputs = useInputsStore((s) => s.setInputs);
 
   const [layersPanelOpen, setLayersPanelOpen] = useState(false);
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
