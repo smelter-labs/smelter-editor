@@ -4,9 +4,7 @@ import type {
   Clip,
   Track,
 } from '../../hooks/use-timeline-state';
-import {
-  OUTPUT_TRACK_INPUT_ID,
-} from '../../hooks/use-timeline-state';
+import { OUTPUT_TRACK_INPUT_ID } from '../../hooks/use-timeline-state';
 import { formatMs } from '@/lib/format-utils';
 
 /** Base HSL values per input type: [hue, saturation%, lightness%] */

@@ -1,10 +1,22 @@
 export type { Resolution, ResolutionPreset } from './resolution';
 export { RESOLUTION_PRESETS } from './resolution';
 
-export type { ShaderParamConfig, ShaderParam, ShaderConfig, ShaderPreset } from './shader';
+export type {
+  ShaderParamConfig,
+  ShaderParam,
+  ShaderParamDefinition,
+  ShaderConfig,
+  ShaderPreset,
+} from './shader';
 
 export { Layouts } from './layout';
-export type { Layout } from './layout';
+export type {
+  Layout,
+  Layer,
+  LayerInput,
+  LayerBehaviorConfig,
+  BehaviorInputInfo,
+} from './layout';
 
 export type { StreamMonitor, WhipMonitor } from './monitor';
 

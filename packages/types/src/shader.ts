@@ -13,6 +13,21 @@ export type ShaderParamConfig = {
   paramValue: number | string;
 };
 
+/** Describes a configurable parameter that a shader accepts (its schema/definition). */
+export type ShaderParamDefinition =
+  | {
+      name: string;
+      type: "number";
+      minValue?: number;
+      maxValue?: number;
+      defaultValue: number;
+    }
+  | {
+      name: string;
+      type: "color";
+      defaultValue: string;
+    };
+
 export type ShaderConfig = {
   shaderName: string;
   shaderId: string;

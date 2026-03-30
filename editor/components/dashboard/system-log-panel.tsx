@@ -67,7 +67,13 @@ function PlayIcon() {
 
 function CopyIcon() {
   return (
-    <svg width='10' height='10' viewBox='0 0 10 10' fill='none' stroke='currentColor' strokeWidth='1'>
+    <svg
+      width='10'
+      height='10'
+      viewBox='0 0 10 10'
+      fill='none'
+      stroke='currentColor'
+      strokeWidth='1'>
       <rect x='3' y='3' width='6' height='6' rx='0.5' />
       <path d='M7 3V1.5a.5.5 0 00-.5-.5H1.5a.5.5 0 00-.5.5v5a.5.5 0 00.5.5H3' />
     </svg>
@@ -76,7 +82,13 @@ function CopyIcon() {
 
 function CheckIcon() {
   return (
-    <svg width='10' height='10' viewBox='0 0 10 10' fill='none' stroke='currentColor' strokeWidth='1.5'>
+    <svg
+      width='10'
+      height='10'
+      viewBox='0 0 10 10'
+      fill='none'
+      stroke='currentColor'
+      strokeWidth='1.5'>
       <polyline points='2,5 4.5,7.5 8,2.5' />
     </svg>
   );
@@ -84,7 +96,13 @@ function CheckIcon() {
 
 function SearchIcon() {
   return (
-    <svg width='10' height='10' viewBox='0 0 10 10' fill='none' stroke='currentColor' strokeWidth='1'>
+    <svg
+      width='10'
+      height='10'
+      viewBox='0 0 10 10'
+      fill='none'
+      stroke='currentColor'
+      strokeWidth='1'>
       <circle cx='4.5' cy='4.5' r='3' />
       <line x1='6.8' y1='6.8' x2='9' y2='9' />
     </svg>
@@ -93,7 +111,13 @@ function SearchIcon() {
 
 function ChevronDownIcon() {
   return (
-    <svg width='8' height='8' viewBox='0 0 8 8' fill='none' stroke='currentColor' strokeWidth='1.2'>
+    <svg
+      width='8'
+      height='8'
+      viewBox='0 0 8 8'
+      fill='none'
+      stroke='currentColor'
+      strokeWidth='1.2'>
       <polyline points='1.5,3 4,5.5 6.5,3' />
     </svg>
   );
@@ -101,11 +125,7 @@ function ChevronDownIcon() {
 
 const COPY_LAST_OPTIONS = [25, 50, 100, 250, 500, 1000] as const;
 
-function CopyLastDropdown({
-  filteredLogs,
-}: {
-  filteredLogs: LogEntry[];
-}) {
+function CopyLastDropdown({ filteredLogs }: { filteredLogs: LogEntry[] }) {
   const [open, setOpen] = useState(false);
   const [feedback, setFeedback] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -113,7 +133,10 @@ function CopyLastDropdown({
   useEffect(() => {
     if (!open) return;
     const handleClickOutside = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      if (
+        containerRef.current &&
+        !containerRef.current.contains(e.target as Node)
+      ) {
         setOpen(false);
       }
     };
@@ -140,9 +163,7 @@ function CopyLastDropdown({
       <button
         onClick={() => setOpen((p) => !p)}
         className={`flex items-center gap-0.5 transition-colors cursor-pointer uppercase tracking-wider ${
-          open
-            ? 'text-[#b9cacb]'
-            : 'text-[#849495] hover:text-[#b9cacb]'
+          open ? 'text-[#b9cacb]' : 'text-[#849495] hover:text-[#b9cacb]'
         }`}>
         <CopyIcon />
         Copy Last

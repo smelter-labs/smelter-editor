@@ -7,6 +7,7 @@ import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   RoomState,
   Input,
+  Layer,
   AvailableShader,
   PendingWhipInputData,
 } from '@/lib/types';
@@ -33,6 +34,7 @@ import {
 import { useControlPanelEvents } from './hooks/use-control-panel-events';
 import { FxAccordion } from './components/FxAccordion';
 import { StreamsSection } from './components/StreamsSection';
+import { LayersSection } from './components/LayersSection';
 import { TimelinePanel } from './components/TimelinePanel';
 import { AddVideoModal } from './components/AddVideoModal';
 import { QuickActionsSection } from './components/QuickActionsSection';
@@ -56,6 +58,7 @@ import {
 } from '@/components/storage-modals';
 import { setAudioAnalysisEnabled } from '@/app/actions/actions';
 import { TransitionSettings } from './components/TransitionSettings';
+import { BehaviorSelector } from './components/BehaviorSelector';
 import {
   rotateBy90,
   type RotationAngle,
@@ -208,6 +211,18 @@ function ControlPanelWithActions({
       }, totalSwapMs);
     },
     [isSwapping, updateOrder, totalSwapMs, setIsSwapping, swapTimerRef],
+  );
+
+  const updateRoomForLayers = useActions().updateRoom;
+  const handleLayersChange = useCallback(
+    async (newLayers: Layer[]) => {
+      try {
+        await updateRoomForLayers(roomId, { layers: newLayers });
+      } catch (e) {
+        console.error('handleLayersChange failed:', e);
+      }
+    },
+    [roomId, updateRoomForLayers],
   );
 
   const whipConnections = useWhipConnections(
@@ -374,6 +389,7 @@ function ControlPanelWithActions({
           settingsNavPortalRef={settingsNavPortalRef}
           renderDashboard={renderDashboard}
           peers={peers}
+          handleLayersChange={handleLayersChange}
         />
       </WhipConnectionsProvider>
     </ControlPanelProvider>
@@ -403,6 +419,7 @@ type ControlPanelInnerProps = {
   settingsNavPortalRef?: React.RefObject<HTMLDivElement | null>;
   renderDashboard?: ControlPanelProps['renderDashboard'];
   peers: ConnectedPeer[];
+  handleLayersChange: (layers: Layer[]) => Promise<void>;
 };
 
 function ControlPanelInner({
@@ -426,6 +443,7 @@ function ControlPanelInner({
   settingsNavPortalRef,
   renderDashboard,
   peers,
+  handleLayersChange,
 }: ControlPanelInnerProps) {
   const {
     roomId,
@@ -562,7 +580,8 @@ function ControlPanelInner({
 
     const streamsSection = (
       <div className='h-full overflow-y-auto p-3'>
-        <StreamsSection
+        <LayersSection
+          layers={roomState.layers}
           inputWrappers={inputWrappers}
           listVersion={listVersion}
           showStreamsSpinner={showStreamsSpinner}
@@ -573,6 +592,7 @@ function ControlPanelInner({
           selectedInputId={selectedInputId}
           isGuest={isGuest}
           guestInputId={activeCameraInputId || activeScreenshareInputId}
+          onLayersChange={handleLayersChange}
         />
       </div>
     );
@@ -676,7 +696,8 @@ function ControlPanelInner({
   }
 
   const streamsSectionContent = !fxInput ? (
-    <StreamsSection
+    <LayersSection
+      layers={roomState.layers}
       inputWrappers={inputWrappers}
       listVersion={listVersion}
       showStreamsSpinner={showStreamsSpinner}
@@ -687,6 +708,7 @@ function ControlPanelInner({
       selectedInputId={selectedInputId}
       isGuest={isGuest}
       guestInputId={activeCameraInputId || activeScreenshareInputId}
+      onLayersChange={handleLayersChange}
     />
   ) : null;
 
@@ -910,7 +932,7 @@ function SettingsBar({
     const outputPlayer = loadOutputPlayerSettings(roomId) ?? undefined;
     return exportRoomConfig(
       roomState.inputs,
-      roomState.layout,
+      'grid',
       roomState.resolution,
       {
         swapDurationMs: roomState.swapDurationMs,
@@ -1149,14 +1171,13 @@ function SettingsBar({
 
       try {
         await updateRoomAction(roomId, {
-          layout: config.layout,
           ...(orderedCreatedIds.length > 0
             ? { inputOrder: orderedCreatedIds }
             : {}),
           ...config.transitionSettings,
         });
       } catch (e) {
-        console.warn('Failed to set layout or input order:', e);
+        console.warn('Failed to set input order:', e);
       }
 
       if (config.outputPlayer) {
@@ -1404,6 +1425,28 @@ function SettingsBar({
               />
             </section>
             <div className='space-y-4'>
+              <section className='space-y-2 px-1'>
+                <h4 className='text-sm font-medium text-white'>
+                  Layout Behavior
+                </h4>
+                <p className='text-[11px] text-neutral-500'>
+                  Default layer behavior for new inputs
+                </p>
+                <BehaviorSelector
+                  behavior={roomState.layers?.[0]?.behavior}
+                  onChange={async (b) => {
+                    const currentLayers = roomState.layers ?? [];
+                    const updatedLayers =
+                      currentLayers.length > 0
+                        ? currentLayers.map((l, i) =>
+                            i === 0 ? { ...l, behavior: b } : l,
+                          )
+                        : [{ id: 'default', inputs: [], behavior: b }];
+                    await updateRoomAction(roomId, { layers: updatedLayers });
+                    await handleRefreshState();
+                  }}
+                />
+              </section>
               <section className='space-y-2 px-1'>
                 <h4 className='text-sm font-medium text-foreground'>
                   Macros Settings

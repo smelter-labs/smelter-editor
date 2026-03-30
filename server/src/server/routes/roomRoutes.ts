@@ -1,4 +1,3 @@
-import { v4 as uuidv4 } from 'uuid';
 import type { FastifyPluginCallback } from 'fastify';
 import type { Static } from '@sinclair/typebox';
 import { state } from '../serverState';
@@ -17,8 +16,8 @@ import {
   CreateRoomSchema,
   UpdateRoomSchema,
   SetPendingWhipInputsSchema,
-  type RoomIdParams,
 } from './schemas';
+import type { RoomIdParams } from './schemas';
 
 export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
   routes.get('/active-rooms', async (_req, res) => {
@@ -35,8 +34,7 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
     async (req, res) => {
       console.log('[request] Create new room', { body: req.body });
 
-      const initInputs =
-        (req.body.initInputs as RegisterInputOptions[]) || [];
+      const initInputs = (req.body.initInputs as RegisterInputOptions[]) || [];
       const skipDefaultInputs = req.body.skipDefaultInputs === true;
 
       let resolution: Resolution | undefined;
@@ -74,7 +72,7 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
       res.status(200).send({
         roomName: room.roomName,
         inputs: snapshot.inputs.map(toPublicInputState),
-        layout: snapshot.layout,
+        layers: snapshot.layers,
         whepUrl: room.getWhepUrl(),
         pendingDelete: room.pendingDelete,
         isPublic: room.isPublic,
@@ -93,25 +91,6 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
     },
   );
 
-  routes.after(() => {
-    routes.route<RoomIdParams>({
-      method: 'GET',
-      url: '/room/:roomId/ws',
-      schema: { params: RoomIdParamsSchema },
-      handler: async (_req, res) => {
-        res.status(426).send({
-          error: 'Upgrade Required',
-          message: 'Use a WebSocket client to connect to this endpoint.',
-        });
-      },
-      wsHandler: (socket, req) => {
-        const { roomId } = req.params;
-        const clientId = uuidv4();
-        roomEventBus.subscribe(roomId, clientId, socket);
-      },
-    });
-  });
-
   routes.get('/rooms', async (_req, res) => {
     res.header('Refresh', '2');
 
@@ -127,7 +106,7 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
           roomId: room.idPrefix,
           roomName: room.roomName,
           inputs: snapshot.inputs.map(toPublicInputState),
-          layout: snapshot.layout,
+          layers: snapshot.layers,
           whepUrl: room.getWhepUrl(),
           pendingDelete: room.pendingDelete,
           createdAt: room.creationTimestamp,
@@ -161,8 +140,16 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
       if (req.body.inputOrder) {
         room.reorderInputs(req.body.inputOrder);
       }
-      if (req.body.layout) {
-        await room.updateLayout(req.body.layout);
+      if (req.body.layers) {
+        if (req.body.layers.length === 0) {
+          return res.status(400).send({
+            statusCode: 400,
+            code: 'BAD_REQUEST',
+            error: 'Bad Request',
+            message: 'layers must contain at least one layer',
+          });
+        }
+        await room.updateLayers(req.body.layers);
       }
       if (req.body.isPublic !== undefined) {
         room.isPublic = req.body.isPublic;
@@ -185,6 +172,14 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
       if (req.body.newsStripEnabled !== undefined) {
         room.setNewsStripEnabled(req.body.newsStripEnabled);
       }
+
+      const sourceId =
+        (req.headers['x-source-id'] as string | undefined) ?? null;
+      roomEventBus.broadcast(roomId, {
+        type: 'room_updated',
+        roomId,
+        sourceId,
+      });
 
       res.status(200).send({ status: 'ok' });
     },

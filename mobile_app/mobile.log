@@ -1,0 +1,128 @@
+ ERROR  [WS] Error: {"_bubbles": false, "_cancelable": false, "_composed": false, "_defaultPrevented": false, "_timeStamp": 272991664.918418, "_type": "error", Symbol(composedPath): [{"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": [NativeEventEmitter], "_socketId": 3, "_subscriptions": [Array], "protocol": "", "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): [Map], Symbol(eventHandlerAttributeMap): [Map]}], Symbol(currentTarget): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": {}, "_socketId": 3, "_subscriptions": [[Object], [Object], [Object], [Object]], "protocol": "", "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): Map {"open" => [Map], "error" => [Map], "close" => [Map], "message" => [Map]}, Symbol(eventHandlerAttributeMap): Map {"open" => [Object], "message" => [Object], "error" => [Object], "close" => [Object]}}, Symbol(eventPhase): 2, Symbol(inPassiveListenerFlag): false, Symbol(isTrusted): false, Symbol(stopPropagationFlag): false, Symbol(stopPropagationFlag): false, Symbol(target): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": {}, "_socketId": 3, "_subscriptions": [[Object], [Object], [Object], [Object]], "protocol": "", "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): Map {"open" => [Map], "error" => [Map], "close" => [Map], "message" => [Map]}, Symbol(eventHandlerAttributeMap): Map {"open" => [Object], "message" => [Object], "error" => [Object], "close" => [Object]}}, Symbol(Event.dispatch): true} 
+
+Code: websocketService.ts
+  84 |
+  85 |         socket.onerror = (error) => {
+> 86 |           console.error("[WS] Error:", error);
+     |                        ^
+  87 |         };
+  88 |
+  89 |         socket.onclose = (event) => {
+Call Stack
+  socket.onerror (src/services/websocketService.ts:86:24)
+ LOG  [WS] Disconnected 1006 
+ LOG  [WS] Attempting reconnect...
+ LOG  [WS] Manually disconnected
+ LOG  [WS] Connecting to ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws
+ LOG  [WS] connect:start {"roomId": "9306ce78-abcf-4967-8f48-1d809a3fb548", "serverUrl": "192.168.93.117:3001", "timeoutMs": 8000}
+ ERROR  [WS] Error: {"_bubbles": false, "_cancelable": false, "_composed": false, "_defaultPrevented": false, "_timeStamp": 272994784.36988, "_type": "error", Symbol(composedPath): [{"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": [NativeEventEmitter], "_socketId": 4, "_subscriptions": [Array], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): [Map], Symbol(eventHandlerAttributeMap): [Map]}], Symbol(currentTarget): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": {}, "_socketId": 4, "_subscriptions": [[Object], [Object], [Object], [Object]], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): Map {"open" => [Map], "error" => [Map], "close" => [Map]}, Symbol(eventHandlerAttributeMap): Map {"open" => [Object], "error" => [Object], "close" => [Object]}}, Symbol(eventPhase): 2, Symbol(inPassiveListenerFlag): false, Symbol(isTrusted): false, Symbol(stopPropagationFlag): false, Symbol(stopPropagationFlag): false, Symbol(target): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": {}, "_socketId": 4, "_subscriptions": [[Object], [Object], [Object], [Object]], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): Map {"open" => [Map], "error" => [Map], "close" => [Map]}, Symbol(eventHandlerAttributeMap): Map {"open" => [Object], "error" => [Object], "close" => [Object]}}, Symbol(Event.dispatch): true} 
+
+Code: websocketService.ts
+  104 |
+  105 |       socket.onerror = (error) => {
+> 106 |         console.error("[WS] Error:", error);
+      |                      ^
+  107 |         if (opened || settled) return;
+  108 |         console.warn("[WS] connect:error-before-open", { wsUrl, error });
+  109 |         clearTimeout(timeout);
+Call Stack
+  socket.onerror (src/services/websocketService.ts:106:22)
+ WARN  [WS] connect:error-before-open {"error": {"_bubbles": false, "_cancelable": false, "_composed": false, "_defaultPrevented": false, "_timeStamp": 272994784.36988, "_type": "error", Symbol(composedPath): [[WebSocket]], Symbol(currentTarget): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": [NativeEventEmitter], "_socketId": 4, "_subscriptions": [Array], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): [Map], Symbol(eventHandlerAttributeMap): [Map]}, Symbol(eventPhase): 2, Symbol(inPassiveListenerFlag): false, Symbol(isTrusted): false, Symbol(stopPropagationFlag): false, Symbol(stopPropagationFlag): false, Symbol(target): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": [NativeEventEmitter], "_socketId": 4, "_subscriptions": [Array], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): [Map], Symbol(eventHandlerAttributeMap): [Map]}, Symbol(Event.dispatch): true}, "wsUrl": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws"}
+ WARN  [WS] connect:reject {"message": "WebSocket connection was rejected", "roomId": "9306ce78-abcf-4967-8f48-1d809a3fb548", "serverUrl": "192.168.93.117:3001", "wsUrl": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws"}
+ WARN  [WS] Reconnect failed: [Error: WebSocket connection was rejected]
+ LOG  [WS] Attempting reconnect...
+ LOG  [WS] Manually disconnected
+ LOG  [WS] Connecting to ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws
+ LOG  [WS] connect:start {"roomId": "9306ce78-abcf-4967-8f48-1d809a3fb548", "serverUrl": "192.168.93.117:3001", "timeoutMs": 8000}
+ ERROR  [WS] Error: {"_bubbles": false, "_cancelable": false, "_composed": false, "_defaultPrevented": false, "_timeStamp": 272997886.289726, "_type": "error", Symbol(composedPath): [{"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": [NativeEventEmitter], "_socketId": 5, "_subscriptions": [Array], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): [Map], Symbol(eventHandlerAttributeMap): [Map]}], Symbol(currentTarget): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": {}, "_socketId": 5, "_subscriptions": [[Object], [Object], [Object], [Object]], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): Map {"open" => [Map], "error" => [Map], "close" => [Map]}, Symbol(eventHandlerAttributeMap): Map {"open" => [Object], "error" => [Object], "close" => [Object]}}, Symbol(eventPhase): 2, Symbol(inPassiveListenerFlag): false, Symbol(isTrusted): false, Symbol(stopPropagationFlag): false, Symbol(stopPropagationFlag): false, Symbol(target): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": {}, "_socketId": 5, "_subscriptions": [[Object], [Object], [Object], [Object]], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): Map {"open" => [Map], "error" => [Map], "close" => [Map]}, Symbol(eventHandlerAttributeMap): Map {"open" => [Object], "error" => [Object], "close" => [Object]}}, Symbol(Event.dispatch): true} 
+
+Code: websocketService.ts
+  104 |
+  105 |       socket.onerror = (error) => {
+> 106 |         console.error("[WS] Error:", error);
+      |                      ^
+  107 |         if (opened || settled) return;
+  108 |         console.warn("[WS] connect:error-before-open", { wsUrl, error });
+  109 |         clearTimeout(timeout);
+Call Stack
+  socket.onerror (src/services/websocketService.ts:106:22)
+ WARN  [WS] connect:error-before-open {"error": {"_bubbles": false, "_cancelable": false, "_composed": false, "_defaultPrevented": false, "_timeStamp": 272997886.289726, "_type": "error", Symbol(composedPath): [[WebSocket]], Symbol(currentTarget): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": [NativeEventEmitter], "_socketId": 5, "_subscriptions": [Array], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): [Map], Symbol(eventHandlerAttributeMap): [Map]}, Symbol(eventPhase): 2, Symbol(inPassiveListenerFlag): false, Symbol(isTrusted): false, Symbol(stopPropagationFlag): false, Symbol(stopPropagationFlag): false, Symbol(target): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": [NativeEventEmitter], "_socketId": 5, "_subscriptions": [Array], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): [Map], Symbol(eventHandlerAttributeMap): [Map]}, Symbol(Event.dispatch): true}, "wsUrl": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws"}
+ WARN  [WS] connect:reject {"message": "WebSocket connection was rejected", "roomId": "9306ce78-abcf-4967-8f48-1d809a3fb548", "serverUrl": "192.168.93.117:3001", "wsUrl": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws"}
+ WARN  [WS] Reconnect failed: [Error: WebSocket connection was rejected]
+ LOG  [WS] Attempting reconnect...
+ LOG  [WS] Manually disconnected
+ LOG  [WS] Connecting to ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws
+ LOG  [WS] connect:start {"roomId": "9306ce78-abcf-4967-8f48-1d809a3fb548", "serverUrl": "192.168.93.117:3001", "timeoutMs": 8000}
+ WARN  [WS] connect:error-before-open {"error": {"_bubbles": false, "_cancelable": false, "_composed": false, "_defaultPrevented": false, "_timeStamp": 273001050.032957, "_type": "error", Symbol(composedPath): [[WebSocket]], Symbol(currentTarget): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": [NativeEventEmitter], "_socketId": 6, "_subscriptions": [Array], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): [Map], Symbol(eventHandlerAttributeMap): [Map]}, Symbol(eventPhase): 2, Symbol(inPassiveListenerFlag): false, Symbol(isTrusted): false, Symbol(stopPropagationFlag): false, Symbol(stopPropagationFlag): false, Symbol(target): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": [NativeEventEmitter], "_socketId": 6, "_subscriptions": [Array], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): [Map], Symbol(eventHandlerAttributeMap): [Map]}, Symbol(Event.dispatch): true}, "wsUrl": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws"}
+ ERROR  [WS] Error: {"_bubbles": false, "_cancelable": false, "_composed": false, "_defaultPrevented": false, "_timeStamp": 273001050.032957, "_type": "error", Symbol(composedPath): [{"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": [NativeEventEmitter], "_socketId": 6, "_subscriptions": [Array], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): [Map], Symbol(eventHandlerAttributeMap): [Map]}], Symbol(currentTarget): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": {}, "_socketId": 6, "_subscriptions": [[Object], [Object], [Object], [Object]], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): Map {"open" => [Map], "error" => [Map], "close" => [Map]}, Symbol(eventHandlerAttributeMap): Map {"open" => [Object], "error" => [Object], "close" => [Object]}}, Symbol(eventPhase): 2, Symbol(inPassiveListenerFlag): false, Symbol(isTrusted): false, Symbol(stopPropagationFlag): false, Symbol(stopPropagationFlag): false, Symbol(target): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": {}, "_socketId": 6, "_subscriptions": [[Object], [Object], [Object], [Object]], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): Map {"open" => [Map], "error" => [Map], "close" => [Map]}, Symbol(eventHandlerAttributeMap): Map {"open" => [Object], "error" => [Object], "close" => [Object]}}, Symbol(Event.dispatch): true} 
+
+Code: websocketService.ts
+  104 |
+  105 |       socket.onerror = (error) => {
+> 106 |         console.error("[WS] Error:", error);
+      |                      ^
+  107 |         if (opened || settled) return;
+  108 |         console.warn("[WS] connect:error-before-open", { wsUrl, error });
+  109 |         clearTimeout(timeout);
+Call Stack
+  socket.onerror (src/services/websocketService.ts:106:22)
+ WARN  [WS] connect:reject {"message": "WebSocket connection was rejected", "roomId": "9306ce78-abcf-4967-8f48-1d809a3fb548", "serverUrl": "192.168.93.117:3001", "wsUrl": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws"}
+ WARN  [WS] Reconnect failed: [Error: WebSocket connection was rejected]
+ LOG  [WS] Attempting reconnect...
+ LOG  [WS] Manually disconnected
+ LOG  [WS] Connecting to ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws
+ LOG  [WS] connect:start {"roomId": "9306ce78-abcf-4967-8f48-1d809a3fb548", "serverUrl": "192.168.93.117:3001", "timeoutMs": 8000}
+ ERROR  [WS] Error: {"_bubbles": false, "_cancelable": false, "_composed": false, "_defaultPrevented": false, "_timeStamp": 273004225.406342, "_type": "error", Symbol(composedPath): [{"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": [NativeEventEmitter], "_socketId": 7, "_subscriptions": [Array], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): [Map], Symbol(eventHandlerAttributeMap): [Map]}], Symbol(currentTarget): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": {}, "_socketId": 7, "_subscriptions": [[Object], [Object], [Object], [Object]], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): Map {"open" => [Map], "error" => [Map], "close" => [Map]}, Symbol(eventHandlerAttributeMap): Map {"open" => [Object], "error" => [Object], "close" => [Object]}}, Symbol(eventPhase): 2, Symbol(inPassiveListenerFlag): false, Symbol(isTrusted): false, Symbol(stopPropagationFlag): false, Symbol(stopPropagationFlag): false, Symbol(target): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": {}, "_socketId": 7, "_subscriptions": [[Object], [Object], [Object], [Object]], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): Map {"open" => [Map], "error" => [Map], "close" => [Map]}, Symbol(eventHandlerAttributeMap): Map {"open" => [Object], "error" => [Object], "close" => [Object]}}, Symbol(Event.dispatch): true} 
+
+Code: websocketService.ts
+  104 |
+  105 |       socket.onerror = (error) => {
+> 106 |         console.error("[WS] Error:", error);
+      |                      ^
+  107 |         if (opened || settled) return;
+  108 |         console.warn("[WS] connect:error-before-open", { wsUrl, error });
+  109 |         clearTimeout(timeout);
+Call Stack
+  socket.onerror (src/services/websocketService.ts:106:22)
+ WARN  [WS] connect:error-before-open {"error": {"_bubbles": false, "_cancelable": false, "_composed": false, "_defaultPrevented": false, "_timeStamp": 273004225.406342, "_type": "error", Symbol(composedPath): [[WebSocket]], Symbol(currentTarget): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": [NativeEventEmitter], "_socketId": 7, "_subscriptions": [Array], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): [Map], Symbol(eventHandlerAttributeMap): [Map]}, Symbol(eventPhase): 2, Symbol(inPassiveListenerFlag): false, Symbol(isTrusted): false, Symbol(stopPropagationFlag): false, Symbol(stopPropagationFlag): false, Symbol(target): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": [NativeEventEmitter], "_socketId": 7, "_subscriptions": [Array], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): [Map], Symbol(eventHandlerAttributeMap): [Map]}, Symbol(Event.dispatch): true}, "wsUrl": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws"}
+ WARN  [WS] connect:reject {"message": "WebSocket connection was rejected", "roomId": "9306ce78-abcf-4967-8f48-1d809a3fb548", "serverUrl": "192.168.93.117:3001", "wsUrl": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws"}
+ WARN  [WS] Reconnect failed: [Error: WebSocket connection was rejected]
+ LOG  [WS] Attempting reconnect...
+ LOG  [WS] Manually disconnected
+ LOG  [WS] Connecting to ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws
+ LOG  [WS] connect:start {"roomId": "9306ce78-abcf-4967-8f48-1d809a3fb548", "serverUrl": "192.168.93.117:3001", "timeoutMs": 8000}
+ ERROR  [WS] Error: {"_bubbles": false, "_cancelable": false, "_composed": false, "_defaultPrevented": false, "_timeStamp": 273007386.998957, "_type": "error", Symbol(composedPath): [{"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": [NativeEventEmitter], "_socketId": 8, "_subscriptions": [Array], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): [Map], Symbol(eventHandlerAttributeMap): [Map]}], Symbol(currentTarget): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": {}, "_socketId": 8, "_subscriptions": [[Object], [Object], [Object], [Object]], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): Map {"open" => [Map], "error" => [Map], "close" => [Map]}, Symbol(eventHandlerAttributeMap): Map {"open" => [Object], "error" => [Object], "close" => [Object]}}, Symbol(eventPhase): 2, Symbol(inPassiveListenerFlag): false, Symbol(isTrusted): false, Symbol(stopPropagationFlag): false, Symbol(stopPropagationFlag): false, Symbol(target): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": {}, "_socketId": 8, "_subscriptions": [[Object], [Object], [Object], [Object]], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): Map {"open" => [Map], "error" => [Map], "close" => [Map]}, Symbol(eventHandlerAttributeMap): Map {"open" => [Object], "error" => [Object], "close" => [Object]}}, Symbol(Event.dispatch): true} 
+
+Code: websocketService.ts
+  104 |
+  105 |       socket.onerror = (error) => {
+> 106 |         console.error("[WS] Error:", error);
+      |                      ^
+  107 |         if (opened || settled) return;
+  108 |         console.warn("[WS] connect:error-before-open", { wsUrl, error });
+  109 |         clearTimeout(timeout);
+Call Stack
+  socket.onerror (src/services/websocketService.ts:106:22)
+ WARN  [WS] connect:error-before-open {"error": {"_bubbles": false, "_cancelable": false, "_composed": false, "_defaultPrevented": false, "_timeStamp": 273007386.998957, "_type": "error", Symbol(composedPath): [[WebSocket]], Symbol(currentTarget): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": [NativeEventEmitter], "_socketId": 8, "_subscriptions": [Array], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): [Map], Symbol(eventHandlerAttributeMap): [Map]}, Symbol(eventPhase): 2, Symbol(inPassiveListenerFlag): false, Symbol(isTrusted): false, Symbol(stopPropagationFlag): false, Symbol(stopPropagationFlag): false, Symbol(target): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": [NativeEventEmitter], "_socketId": 8, "_subscriptions": [Array], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): [Map], Symbol(eventHandlerAttributeMap): [Map]}, Symbol(Event.dispatch): true}, "wsUrl": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws"}
+ WARN  [WS] connect:reject {"message": "WebSocket connection was rejected", "roomId": "9306ce78-abcf-4967-8f48-1d809a3fb548", "serverUrl": "192.168.93.117:3001", "wsUrl": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws"}
+ WARN  [WS] Reconnect failed: [Error: WebSocket connection was rejected]
+ LOG  [WS] Attempting reconnect...
+ LOG  [WS] Manually disconnected
+ LOG  [WS] Connecting to ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws
+ LOG  [WS] connect:start {"roomId": "9306ce78-abcf-4967-8f48-1d809a3fb548", "serverUrl": "192.168.93.117:3001", "timeoutMs": 8000}
+ WARN  [WS] connect:error-before-open {"error": {"_bubbles": false, "_cancelable": false, "_composed": false, "_defaultPrevented": false, "_timeStamp": 273010499.916804, "_type": "error", Symbol(composedPath): [[WebSocket]], Symbol(currentTarget): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": [NativeEventEmitter], "_socketId": 9, "_subscriptions": [Array], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): [Map], Symbol(eventHandlerAttributeMap): [Map]}, Symbol(eventPhase): 2, Symbol(inPassiveListenerFlag): false, Symbol(isTrusted): false, Symbol(stopPropagationFlag): false, Symbol(stopPropagationFlag): false, Symbol(target): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": [NativeEventEmitter], "_socketId": 9, "_subscriptions": [Array], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): [Map], Symbol(eventHandlerAttributeMap): [Map]}, Symbol(Event.dispatch): true}, "wsUrl": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws"}
+ ERROR  [WS] Error: {"_bubbles": false, "_cancelable": false, "_composed": false, "_defaultPrevented": false, "_timeStamp": 273010499.916804, "_type": "error", Symbol(composedPath): [{"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": [NativeEventEmitter], "_socketId": 9, "_subscriptions": [Array], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): [Map], Symbol(eventHandlerAttributeMap): [Map]}], Symbol(currentTarget): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": {}, "_socketId": 9, "_subscriptions": [[Object], [Object], [Object], [Object]], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): Map {"open" => [Map], "error" => [Map], "close" => [Map]}, Symbol(eventHandlerAttributeMap): Map {"open" => [Object], "error" => [Object], "close" => [Object]}}, Symbol(eventPhase): 2, Symbol(inPassiveListenerFlag): false, Symbol(isTrusted): false, Symbol(stopPropagationFlag): false, Symbol(stopPropagationFlag): false, Symbol(target): {"CLOSED": 3, "CLOSING": 2, "CONNECTING": 0, "OPEN": 1, "_eventEmitter": {}, "_socketId": 9, "_subscriptions": [[Object], [Object], [Object], [Object]], "readyState": 3, "url": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws", Symbol(bubblingListeners): Map {"open" => [Map], "error" => [Map], "close" => [Map]}, Symbol(eventHandlerAttributeMap): Map {"open" => [Object], "error" => [Object], "close" => [Object]}}, Symbol(Event.dispatch): true} 
+
+Code: websocketService.ts
+  104 |
+  105 |       socket.onerror = (error) => {
+> 106 |         console.error("[WS] Error:", error);
+      |                      ^
+  107 |         if (opened || settled) return;
+  108 |         console.warn("[WS] connect:error-before-open", { wsUrl, error });
+  109 |         clearTimeout(timeout);
+Call Stack
+  socket.onerror (src/services/websocketService.ts:106:22)
+ WARN  [WS] connect:reject {"message": "WebSocket connection was rejected", "roomId": "9306ce78-abcf-4967-8f48-1d809a3fb548", "serverUrl": "192.168.93.117:3001", "wsUrl": "ws://192.168.93.117:3001/room/9306ce78-abcf-4967-8f48-1d809a3fb548/ws"}
+ WARN  [WS] Reconnect failed: [Error: WebSocket connection was rejected]
+› Stopped server

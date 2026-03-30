@@ -19,7 +19,7 @@ import type {
   ActiveSnakeEffect,
 } from '../snakeGame/types';
 
-import type { Layout } from '../types';
+import type { Layer } from '../types';
 
 export type {
   UpdateInputOptions,
@@ -29,7 +29,7 @@ export type {
 
 export type RoomSnapshot = {
   inputs: RoomInputState[];
-  layout: Layout;
+  layers: Layer[];
   swapDurationMs: number;
   swapOutgoingEnabled: boolean;
   swapFadeInDurationMs: number;
@@ -48,6 +48,11 @@ export type RoomInputState = {
   restartFading?: boolean;
   motionEnabled: boolean;
   motionScore?: number;
+  orientation?: 'horizontal' | 'vertical';
+  /** Native stream resolution width, if known. */
+  nativeWidth?: number;
+  /** Native stream resolution height, if known. */
+  nativeHeight?: number;
   metadata: {
     title: string;
     description: string;

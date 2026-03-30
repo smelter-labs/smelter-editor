@@ -9,6 +9,7 @@ import type {
   CropProperties,
   BorderProperties,
   SnakeGameDisplayProperties,
+  Layer,
   ShaderConfig,
 } from '../types';
 import type { HandsStore } from '../hands/handStore';
@@ -52,6 +53,7 @@ export type InputConfig = {
 
 export type RoomStore = {
   inputs: InputConfig[];
+  layers: Layer[];
   resolution: Resolution;
   outputShaders: ShaderConfig[];
   swapDurationMs: number;
@@ -62,6 +64,7 @@ export type RoomStore = {
   newsStripEnabled: boolean;
   updateState: (state: {
     inputs: InputConfig[];
+    layers: Layer[];
     swapDurationMs: number;
     swapOutgoingEnabled: boolean;
     swapFadeInDurationMs: number;
@@ -78,6 +81,7 @@ export function createRoomStore(
 ): StoreApi<RoomStore> {
   return createStore<RoomStore>((set) => ({
     inputs: [],
+    layers: [],
     resolution,
     outputShaders: [],
     swapDurationMs: 500,
@@ -88,6 +92,7 @@ export function createRoomStore(
     newsStripEnabled: false,
     updateState: ({
       inputs,
+      layers,
       swapDurationMs,
       swapOutgoingEnabled,
       swapFadeInDurationMs,
@@ -97,6 +102,7 @@ export function createRoomStore(
     }) => {
       set(() => ({
         inputs,
+        layers,
         swapDurationMs,
         swapOutgoingEnabled,
         swapFadeInDurationMs,
@@ -163,6 +169,11 @@ export function useNewsStripEnabled() {
 export function useInputs() {
   const store = useContext(StoreContext);
   return useStore(store, (state) => state.inputs);
+}
+
+export function useLayers() {
+  const store = useContext(StoreContext);
+  return useStore(store, (state) => state.layers);
 }
 
 export function useOutputShaders() {

@@ -1,7 +1,7 @@
 'use client';
 
 import { useRef, useState, useEffect, useCallback } from 'react';
-import type { Input, Layout } from '@/lib/types';
+import type { Input } from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
 import { Button } from '@/components/ui/button';
 import { Input as ShadcnInput } from '@/components/ui/input';
@@ -24,7 +24,6 @@ import {
 import { toast } from 'sonner';
 type ConfigurationSectionProps = {
   inputs: Input[];
-  layout: Layout;
   roomId: string;
   resolution?: { width: number; height: number };
   transitionSettings: RoomConfigTransitionSettings;
@@ -42,7 +41,6 @@ export type PendingWhipInput = {
 
 export function ConfigurationSection({
   inputs,
-  layout,
   roomId,
   resolution,
   transitionSettings,
@@ -74,7 +72,7 @@ export function ConfigurationSection({
       const outputPlayer = loadOutputPlayerSettings(roomId) ?? undefined;
       const config = exportRoomConfig(
         inputs,
-        layout,
+        'grid',
         resolution,
         transitionSettings,
         timelineState ?? undefined,
@@ -88,7 +86,7 @@ export function ConfigurationSection({
     } finally {
       setIsExporting(false);
     }
-  }, [inputs, layout, resolution, transitionSettings, roomId]);
+  }, [inputs, resolution, transitionSettings, roomId]);
 
   useEffect(() => {
     const onVoiceExport = () => {
@@ -340,12 +338,11 @@ export function ConfigurationSection({
 
     try {
       await updateRoom(roomId, {
-        layout: config.layout,
         ...(finalInputOrder ? { inputOrder: finalInputOrder } : {}),
         ...config.transitionSettings,
       });
     } catch (e) {
-      console.warn('Failed to set layout or input order:', e);
+      console.warn('Failed to set input order:', e);
     }
 
     if (config.outputPlayer) {

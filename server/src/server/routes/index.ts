@@ -12,6 +12,7 @@ import { registerSnakeGameRoutes } from '../../snakeGame/snakeGameRoutes';
 import { registerTimelineRoutes } from '../../timeline/timelineRoutes';
 
 import { roomRoutes } from './roomRoutes';
+import { roomWsRoutes } from './roomWsRoutes';
 import { inputRoutes } from './inputRoutes';
 import { recordingRoutes } from './recordingRoutes';
 import { suggestionRoutes } from './suggestionRoutes';
@@ -58,6 +59,7 @@ routes.setErrorHandler((err: unknown, _req, res) => {
 
 routes.register(suggestionRoutes);
 routes.register(roomRoutes);
+routes.register(roomWsRoutes);
 routes.register(inputRoutes);
 routes.register(recordingRoutes);
 routes.register(sseRoutes);

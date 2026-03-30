@@ -1,15 +1,17 @@
 import type {
   ConnectedPeer,
   ConnectedEvent,
+  PeersUpdatedEvent,
   RoomEvent,
 } from '@smelter-editor/types';
 
 export type {
   ConnectedPeer,
+  ConnectedEvent,
   InputUpdatedEvent,
   InputDeletedEvent,
+  RoomUpdatedEvent,
   PeersUpdatedEvent,
-  ConnectedEvent,
   RoomEvent,
 } from '@smelter-editor/types';
 

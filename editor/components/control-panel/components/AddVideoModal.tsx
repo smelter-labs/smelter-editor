@@ -20,10 +20,7 @@ import {
 } from '../whip-input/utils/whip-storage';
 import { startPublish } from '../whip-input/utils/whip-publisher';
 import { startScreensharePublish } from '../whip-input/utils/screenshare-publisher';
-import {
-  addHandsInput,
-  getMp4Duration,
-} from '@/app/actions/actions';
+import { addHandsInput, getMp4Duration } from '@/app/actions/actions';
 import { useIsMobileDevice } from '@/hooks/use-mobile';
 import { toast } from 'sonner';
 import type { ChannelSuggestion, Input } from '@/lib/types';
@@ -42,13 +39,7 @@ type AssetItemHls = {
 };
 type AssetItemAction = {
   kind: 'action';
-  actionType:
-    | 'text'
-    | 'game'
-    | 'hands'
-    | 'camera'
-    | 'screenshare'
-    | 'hls';
+  actionType: 'text' | 'game' | 'hands' | 'camera' | 'screenshare' | 'hls';
 };
 
 type AssetItem =
@@ -499,7 +490,9 @@ function AssetThumbnail({ item }: { item: AssetItem }) {
     );
   }
   if (item.kind === 'hls-saved') {
-    return <HlsThumbnailWithFallback fileName={item.fileName} name={item.name} />;
+    return (
+      <HlsThumbnailWithFallback fileName={item.fileName} name={item.name} />
+    );
   }
   if (item.kind === 'twitch') {
     if (item.channel.thumbnailUrl) {
@@ -556,12 +549,52 @@ function HlsFallbackIcon() {
     <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-[#ff6b00]/15 to-[#131313]'>
       <svg viewBox='0 0 60 60' className='w-10 h-10 opacity-40'>
         <circle cx='30' cy='30' r='6' fill='#ff6b00' />
-        <path d='M30 18 A12 12 0 0 1 42 30' stroke='#ff6b00' strokeWidth='2.5' fill='none' strokeLinecap='round' />
-        <path d='M30 18 A12 12 0 0 0 18 30' stroke='#ff6b00' strokeWidth='2.5' fill='none' strokeLinecap='round' />
-        <path d='M30 10 A20 20 0 0 1 50 30' stroke='#ff6b00' strokeWidth='2' fill='none' strokeLinecap='round' opacity='0.6' />
-        <path d='M30 10 A20 20 0 0 0 10 30' stroke='#ff6b00' strokeWidth='2' fill='none' strokeLinecap='round' opacity='0.6' />
-        <path d='M30 3 A27 27 0 0 1 57 30' stroke='#ff6b00' strokeWidth='1.5' fill='none' strokeLinecap='round' opacity='0.35' />
-        <path d='M30 3 A27 27 0 0 0 3 30' stroke='#ff6b00' strokeWidth='1.5' fill='none' strokeLinecap='round' opacity='0.35' />
+        <path
+          d='M30 18 A12 12 0 0 1 42 30'
+          stroke='#ff6b00'
+          strokeWidth='2.5'
+          fill='none'
+          strokeLinecap='round'
+        />
+        <path
+          d='M30 18 A12 12 0 0 0 18 30'
+          stroke='#ff6b00'
+          strokeWidth='2.5'
+          fill='none'
+          strokeLinecap='round'
+        />
+        <path
+          d='M30 10 A20 20 0 0 1 50 30'
+          stroke='#ff6b00'
+          strokeWidth='2'
+          fill='none'
+          strokeLinecap='round'
+          opacity='0.6'
+        />
+        <path
+          d='M30 10 A20 20 0 0 0 10 30'
+          stroke='#ff6b00'
+          strokeWidth='2'
+          fill='none'
+          strokeLinecap='round'
+          opacity='0.6'
+        />
+        <path
+          d='M30 3 A27 27 0 0 1 57 30'
+          stroke='#ff6b00'
+          strokeWidth='1.5'
+          fill='none'
+          strokeLinecap='round'
+          opacity='0.35'
+        />
+        <path
+          d='M30 3 A27 27 0 0 0 3 30'
+          stroke='#ff6b00'
+          strokeWidth='1.5'
+          fill='none'
+          strokeLinecap='round'
+          opacity='0.35'
+        />
       </svg>
     </div>
   );
@@ -598,12 +631,52 @@ function ActionThumbnail({
         <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-[#ff6b00]/15 to-[#131313]'>
           <svg viewBox='0 0 60 60' className='w-10 h-10 opacity-40'>
             <circle cx='30' cy='30' r='6' fill='#ff6b00' />
-            <path d='M30 18 A12 12 0 0 1 42 30' stroke='#ff6b00' strokeWidth='2.5' fill='none' strokeLinecap='round' />
-            <path d='M30 18 A12 12 0 0 0 18 30' stroke='#ff6b00' strokeWidth='2.5' fill='none' strokeLinecap='round' />
-            <path d='M30 10 A20 20 0 0 1 50 30' stroke='#ff6b00' strokeWidth='2' fill='none' strokeLinecap='round' opacity='0.6' />
-            <path d='M30 10 A20 20 0 0 0 10 30' stroke='#ff6b00' strokeWidth='2' fill='none' strokeLinecap='round' opacity='0.6' />
-            <path d='M30 3 A27 27 0 0 1 57 30' stroke='#ff6b00' strokeWidth='1.5' fill='none' strokeLinecap='round' opacity='0.35' />
-            <path d='M30 3 A27 27 0 0 0 3 30' stroke='#ff6b00' strokeWidth='1.5' fill='none' strokeLinecap='round' opacity='0.35' />
+            <path
+              d='M30 18 A12 12 0 0 1 42 30'
+              stroke='#ff6b00'
+              strokeWidth='2.5'
+              fill='none'
+              strokeLinecap='round'
+            />
+            <path
+              d='M30 18 A12 12 0 0 0 18 30'
+              stroke='#ff6b00'
+              strokeWidth='2.5'
+              fill='none'
+              strokeLinecap='round'
+            />
+            <path
+              d='M30 10 A20 20 0 0 1 50 30'
+              stroke='#ff6b00'
+              strokeWidth='2'
+              fill='none'
+              strokeLinecap='round'
+              opacity='0.6'
+            />
+            <path
+              d='M30 10 A20 20 0 0 0 10 30'
+              stroke='#ff6b00'
+              strokeWidth='2'
+              fill='none'
+              strokeLinecap='round'
+              opacity='0.6'
+            />
+            <path
+              d='M30 3 A27 27 0 0 1 57 30'
+              stroke='#ff6b00'
+              strokeWidth='1.5'
+              fill='none'
+              strokeLinecap='round'
+              opacity='0.35'
+            />
+            <path
+              d='M30 3 A27 27 0 0 0 3 30'
+              stroke='#ff6b00'
+              strokeWidth='1.5'
+              fill='none'
+              strokeLinecap='round'
+              opacity='0.35'
+            />
           </svg>
         </div>
       );
@@ -832,9 +905,7 @@ function PropertyInspector({
     case 'kick':
       return <KickInspector item={item} roomId={roomId} onDone={onDone} />;
     case 'hls-saved':
-      return (
-        <HlsSavedInspector item={item} roomId={roomId} onDone={onDone} />
-      );
+      return <HlsSavedInspector item={item} roomId={roomId} onDone={onDone} />;
     case 'action':
       return (
         <ActionInspector

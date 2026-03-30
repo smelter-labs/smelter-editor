@@ -2,7 +2,8 @@ import { remove } from 'fs-extra';
 import { Mutex } from 'async-mutex';
 import { SmelterInstance, type SmelterOutput } from '../smelter';
 import type { InputConfig } from '../app/store';
-import type { Layout } from '../types';
+import type { Layer, BehaviorInputInfo } from '../types';
+import { computeLayout } from '@smelter-editor/types';
 import type { SnakeEventType } from '../snakeGame/types';
 import type { RoomNameEntry } from '../server/roomNames';
 import {
@@ -21,10 +22,21 @@ import { PlaceholderManager } from './PlaceholderManager';
 import { AudioController } from '../audio/AudioController';
 import type { AudioStoreState } from '../audio/audioStore';
 import type { StoreApi } from 'zustand';
-import type { RoomInputState, RegisterInputOptions, RoomSnapshot } from './types';
+import type {
+  RoomInputState,
+  RegisterInputOptions,
+  RoomSnapshot,
+} from './types';
 
 const RESUME_FROZEN_IMAGE_CLEANUP_DELAY_MS = 5500;
 const FROZEN_IMAGE_UNREGISTER_GRACE_MS = 500;
+
+function cloneLayers(layers: Layer[]): Layer[] {
+  if (typeof structuredClone === 'function') {
+    return structuredClone(layers);
+  }
+  return JSON.parse(JSON.stringify(layers)) as Layer[];
+}
 
 export class RoomState {
   private readonly mutex = new Mutex();
@@ -53,7 +65,13 @@ export class RoomState {
     { timer: ReturnType<typeof setTimeout>; jpegPath: string }
   >();
 
-  private layout: Layout = 'picture-in-picture';
+  private layers: Layer[] = [
+    {
+      id: 'default',
+      inputs: [],
+      behavior: { type: 'equal-grid', autoscale: true },
+    },
+  ];
   private swapDurationMs: number = 500;
   private swapOutgoingEnabled: boolean = true;
   private swapFadeInDurationMs: number = 500;
@@ -94,15 +112,10 @@ export class RoomState {
     this.creationTimestamp = Date.now();
 
     this.placeholderManager = new PlaceholderManager(idPrefix);
-    this.motionController = new MotionController(
-      idPrefix,
-      () => this.inputManager.getInputs(),
+    this.motionController = new MotionController(idPrefix, () =>
+      this.inputManager.getInputs(),
     );
-    this.audioController = new AudioController(
-      idPrefix,
-      output,
-      audioStore,
-    );
+    this.audioController = new AudioController(idPrefix, output, audioStore);
     this.inputManager = new InputManager(
       idPrefix,
       this.placeholderManager,
@@ -167,7 +180,7 @@ export class RoomState {
     this.lastReadTimestamp = Date.now();
     return {
       inputs: this.inputManager.getInputs(),
-      layout: this.layout,
+      layers: this.layers,
       swapDurationMs: this.swapDurationMs,
       swapOutgoingEnabled: this.swapOutgoingEnabled,
       swapFadeInDurationMs: this.swapFadeInDurationMs,
@@ -249,11 +262,45 @@ export class RoomState {
     this.updateStoreWithState();
   }
 
-  public async updateLayout(layout: Layout) {
+  public async updateLayers(layers: Layer[]) {
     return this.mutex.runExclusive(async () => {
-      this.layout = layout;
+      if (layers.length === 0) {
+        throw new Error('layers must not be empty');
+      }
+
+      const cloned = cloneLayers(layers);
+
+      this.layers = cloned;
       this.updateStoreWithState();
     });
+  }
+
+  /**
+   * Build BehaviorInputInfo[] from the current connected, non-hidden inputs
+   * for use with computeLayout().
+   */
+  private collectBehaviorInputInfos(): BehaviorInputInfo[] {
+    const allInputs = this.inputManager.getInputs();
+    const attachedIds = new Set<string>();
+    for (const inp of allInputs) {
+      if (inp.status === 'connected' && !inp.hidden && inp.attachedInputIds) {
+        for (const id of inp.attachedInputIds) {
+          attachedIds.add(id);
+        }
+      }
+    }
+    return allInputs
+      .filter(
+        (inp) =>
+          inp.status === 'connected' &&
+          !inp.hidden &&
+          !attachedIds.has(inp.inputId),
+      )
+      .map((inp) => ({
+        inputId: inp.inputId,
+        nativeWidth: inp.nativeWidth,
+        nativeHeight: inp.nativeHeight,
+      }));
   }
 
   // ── Input operations (mutex-wrapped delegation) ───────────
@@ -265,7 +312,9 @@ export class RoomState {
   }
 
   public async removeInput(inputId: string): Promise<void> {
-    return this.mutex.runExclusive(() => this.inputManager.removeInput(inputId));
+    return this.mutex.runExclusive(() =>
+      this.inputManager.removeInput(inputId),
+    );
   }
 
   public async connectInput(inputId: string): Promise<string> {
@@ -432,9 +481,11 @@ export class RoomState {
   private buildTimelineAdapter(): TimelineRoomStateAdapter {
     return {
       getInputs: () => this.getInputs(),
+      getLayers: () => this.layers,
       showInput: (inputId, transition) => this.showInput(inputId, transition),
       hideInput: (inputId, transition) => this.hideInput(inputId, transition),
       updateInput: (inputId, options) => this.updateInput(inputId, options),
+      updateLayers: (layers) => this.updateLayers(layers),
       restartMp4Input: (inputId, playFromMs, loop) =>
         this.restartMp4Input(inputId, playFromMs, loop),
       reorderInputs: (order) => this.reorderInputs(order),
@@ -587,10 +638,7 @@ export class RoomState {
           `MP4 FROZEN (pause) ${input.metadata.title} at ${Math.round(framePositionMs)}ms`,
         );
       } catch (err) {
-        console.error(
-          `[timeline] Failed to extract frame for ${inputId}`,
-          err,
-        );
+        console.error(`[timeline] Failed to extract frame for ${inputId}`, err);
       }
     }
 
@@ -776,7 +824,10 @@ export class RoomState {
       try {
         await SmelterInstance.unregisterImage(imageId);
       } catch (err) {
-        console.error(`Failed to flush-unregister frozen image ${imageId}`, err);
+        console.error(
+          `Failed to flush-unregister frozen image ${imageId}`,
+          err,
+        );
       }
       try {
         await remove(jpegPath);
@@ -839,8 +890,7 @@ export class RoomState {
       showTitle: input.showTitle,
       volume: input.volume,
       shaders: input.shaders,
-      sourceWidth:
-        input.type === 'local-mp4' ? input.mp4VideoWidth : undefined,
+      sourceWidth: input.type === 'local-mp4' ? input.mp4VideoWidth : undefined,
       sourceHeight:
         input.type === 'local-mp4' ? input.mp4VideoHeight : undefined,
       borderColor: input.borderColor,
@@ -859,8 +909,7 @@ export class RoomState {
         input.type === 'text-input' ? input.textScrollNudge : undefined,
       textFontSize:
         input.type === 'text-input' ? input.textFontSize : undefined,
-      snakeGameState:
-        input.type === 'game' ? input.snakeGameState : undefined,
+      snakeGameState: input.type === 'game' ? input.snakeGameState : undefined,
       snakeEventShaders:
         input.type === 'game' ? input.snakeEventShaders : undefined,
       snake1Shaders: input.type === 'game' ? input.snake1Shaders : undefined,
@@ -907,15 +956,90 @@ export class RoomState {
         const config = toInputConfig(input);
         if (input.attachedInputIds && input.attachedInputIds.length > 0) {
           config.attachedInputs = input.attachedInputIds
-            .map((id) => connectedMap.get(id))
-            .filter((i): i is RoomInputState => !!i)
+            .map((id: string) => connectedMap.get(id))
+            .filter((i: any): i is RoomInputState => !!i)
             .map(toInputConfig);
         }
         return config;
       });
 
+    // Recompute positions for layers with a behavior config
+    const behaviorInputInfos = this.collectBehaviorInputInfos();
+    const inputMap = new Map(allInputs.map((i) => [i.inputId, i]));
+
+    // Auto-append connected inputs that aren't in any layer to the first
+    // behavior-driven layer. This handles inputs that connected after the
+    // client last called updateLayers() (e.g. a new WHIP stream appearing).
+    const mentionedIds = new Set(
+      this.layers.flatMap((l) => l.inputs.map((li) => li.inputId)),
+    );
+    const unplacedAttachedIds = new Set(
+      allInputs
+        .filter(
+          (i) => i.status === 'connected' && !i.hidden && i.attachedInputIds,
+        )
+        .flatMap((i) => i.attachedInputIds ?? []),
+    );
+    const unplacedInputs = behaviorInputInfos.filter(
+      (bi) =>
+        !mentionedIds.has(bi.inputId) && !unplacedAttachedIds.has(bi.inputId),
+    );
+    if (unplacedInputs.length > 0) {
+      const firstBehaviorLayer = this.layers.find((l) => l.behavior);
+      if (firstBehaviorLayer) {
+        for (const bi of unplacedInputs) {
+          firstBehaviorLayer.inputs.push({
+            inputId: bi.inputId,
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+          });
+        }
+      }
+    }
+
+    this.layers = this.layers.map((layer) => {
+      if (!layer.behavior) return layer; // manual layer, keep as-is
+
+      // Separate visible (non-hidden) and hidden inputs
+      const visibleLayerInputs: typeof layer.inputs = [];
+      const hiddenLayerInputs: typeof layer.inputs = [];
+
+      for (const li of layer.inputs) {
+        const input = inputMap.get(li.inputId);
+        if (input?.hidden) {
+          hiddenLayerInputs.push(li);
+        } else {
+          visibleLayerInputs.push(li);
+        }
+      }
+
+      // Compute layout only for visible inputs, preserving layer order.
+      // We build a lookup map from the global infos and then re-order by the
+      // layer's own input sequence so that user reorderings are honoured.
+      const behaviorInfoMap = new Map(
+        behaviorInputInfos.map((bi) => [bi.inputId, bi]),
+      );
+      const visibleInputInfos = visibleLayerInputs
+        .map((li) => behaviorInfoMap.get(li.inputId))
+        .filter((bi): bi is BehaviorInputInfo => bi !== undefined);
+      const result = computeLayout(
+        layer.behavior,
+        visibleInputInfos,
+        this.output.resolution,
+      );
+
+      // Merge computed positions with hidden inputs
+      return {
+        ...layer,
+        inputs: [...result.inputs, ...hiddenLayerInputs],
+      };
+    });
+
     this.output.store.getState().updateState({
       inputs: [...inputs].reverse(),
+      layers: this.layers,
       swapDurationMs: this.swapDurationMs,
       swapOutgoingEnabled: this.swapOutgoingEnabled,
       swapFadeInDurationMs: this.swapFadeInDurationMs,

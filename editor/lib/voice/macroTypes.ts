@@ -59,8 +59,7 @@ export type MacroAction =
   | 'SET_SWAP_FADE_OUT_DURATION'
   | 'SET_SWAP_OUTGOING_ENABLED'
   | 'SET_NEWS_STRIP_ENABLED'
-  | 'SET_NEWS_STRIP_FADE_DURING_SWAP'
-;
+  | 'SET_NEWS_STRIP_FADE_DURING_SWAP';
 
 export type MacroDefinition = {
   id: string;

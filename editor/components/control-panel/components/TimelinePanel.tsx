@@ -283,8 +283,7 @@ export function TimelinePanel({
             null;
         }
 
-        const clipSelectedKeyframeId =
-          explicitKeyframeId ?? fallbackKeyframeId;
+        const clipSelectedKeyframeId = explicitKeyframeId ?? fallbackKeyframeId;
         const selectedKeyframe = clipSelectedKeyframeId
           ? clip.keyframes.find(
               (keyframe) => keyframe.id === clipSelectedKeyframeId,
@@ -508,10 +507,7 @@ export function TimelinePanel({
       for (const track of state.tracks) {
         for (const clip of track.clips) {
           if (clip.inputId !== inputId) continue;
-          if (
-            state.playheadMs < clip.startMs ||
-            state.playheadMs >= clip.endMs
-          )
+          if (state.playheadMs < clip.startMs || state.playheadMs >= clip.endMs)
             continue;
           const offsetMs = state.playheadMs - clip.startMs;
           const resolved = resolveClipBlockSettingsAtOffset(clip, offsetMs);
@@ -2474,10 +2470,10 @@ export function TimelinePanel({
               track.id === OUTPUT_TRACK_ID
                 ? '#a855f7'
                 : (firstClipColor ??
-                    (firstClipInputId
-                      ? (inputColorMap.get(firstClipInputId)?.dot ??
-                        (trackHasDisconnected ? '#6b7280' : undefined))
-                      : undefined));
+                  (firstClipInputId
+                    ? (inputColorMap.get(firstClipInputId)?.dot ??
+                      (trackHasDisconnected ? '#6b7280' : undefined))
+                    : undefined));
             const isEditing = editingTrackId === track.id;
 
             return (
@@ -2754,28 +2750,27 @@ export function TimelinePanel({
                 Delete
               </Button>
             )}
-            {contextMenu.clipId &&
-              contextMenu.clipId !== OUTPUT_CLIP_ID && (
-                <>
-                  <div className='h-px bg-secondary my-1' />
-                  {selectedClipIds.length <= 1 && (
-                    <Button
-                      variant='ghost'
-                      className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-foreground hover:bg-accent cursor-pointer'
-                      onClick={handleSplitHere}>
-                      Split Here
-                    </Button>
-                  )}
+            {contextMenu.clipId && contextMenu.clipId !== OUTPUT_CLIP_ID && (
+              <>
+                <div className='h-px bg-secondary my-1' />
+                {selectedClipIds.length <= 1 && (
                   <Button
                     variant='ghost'
-                    className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-red-400 hover:bg-accent hover:text-red-300 cursor-pointer'
-                    onClick={handleDeleteClip}>
-                    {selectedClipIds.length > 1
-                      ? `Delete ${selectedClipIds.length} Clips`
-                      : 'Delete Clip'}
+                    className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-foreground hover:bg-accent cursor-pointer'
+                    onClick={handleSplitHere}>
+                    Split Here
                   </Button>
-                </>
-              )}
+                )}
+                <Button
+                  variant='ghost'
+                  className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-red-400 hover:bg-accent hover:text-red-300 cursor-pointer'
+                  onClick={handleDeleteClip}>
+                  {selectedClipIds.length > 1
+                    ? `Delete ${selectedClipIds.length} Clips`
+                    : 'Delete Clip'}
+                </Button>
+              </>
+            )}
             {contextMenu.trackId !== OUTPUT_TRACK_ID && (
               <>
                 <div className='h-px bg-secondary my-1' />

@@ -83,31 +83,44 @@ export class AudioManager {
   }
 
   private _spawnFfmpeg(): void {
-    const sdp = [
-      'v=0',
-      `o=- 0 0 IN IP4 127.0.0.1`,
-      's=AudioAnalysis',
-      `c=IN IP4 127.0.0.1`,
-      't=0 0',
-      `m=audio ${this.port} RTP/AVP 111`,
-      'a=rtpmap:111 opus/48000/2',
-    ].join('\r\n') + '\r\n';
+    const sdp =
+      [
+        'v=0',
+        `o=- 0 0 IN IP4 127.0.0.1`,
+        's=AudioAnalysis',
+        `c=IN IP4 127.0.0.1`,
+        't=0 0',
+        `m=audio ${this.port} RTP/AVP 111`,
+        'a=rtpmap:111 opus/48000/2',
+      ].join('\r\n') + '\r\n';
 
-    console.log(`[audio] ffmpeg SDP for room ${this.roomId}: port=${this.port}`);
+    console.log(
+      `[audio] ffmpeg SDP for room ${this.roomId}: port=${this.port}`,
+    );
 
     const child = spawn(
       'ffmpeg',
       [
-        '-fflags', 'nobuffer',
-        '-flags', 'low_delay',
-        '-protocol_whitelist', 'pipe,rtp,udp',
-        '-f', 'sdp',
-        '-i', 'pipe:0',
-        '-ac', '1',
-        '-ar', String(SAMPLE_RATE),
-        '-f', 's16le',
-        '-acodec', 'pcm_s16le',
-        '-flush_packets', '1',
+        '-fflags',
+        'nobuffer',
+        '-flags',
+        'low_delay',
+        '-protocol_whitelist',
+        'pipe,rtp,udp',
+        '-f',
+        'sdp',
+        '-i',
+        'pipe:0',
+        '-ac',
+        '1',
+        '-ar',
+        String(SAMPLE_RATE),
+        '-f',
+        's16le',
+        '-acodec',
+        'pcm_s16le',
+        '-flush_packets',
+        '1',
         'pipe:1',
       ],
       { stdio: ['pipe', 'pipe', 'pipe'] },
@@ -130,10 +143,7 @@ export class AudioManager {
 
       this.ffmpegProcess = null;
       if (this.restartAttempts < MAX_RESTART_ATTEMPTS) {
-        const delay = Math.min(
-          1000 * Math.pow(2, this.restartAttempts),
-          8000,
-        );
+        const delay = Math.min(1000 * Math.pow(2, this.restartAttempts), 8000);
         this.restartAttempts++;
         console.log(
           `[audio] Restarting ffmpeg for room ${this.roomId} in ${delay}ms (attempt ${this.restartAttempts})`,
@@ -156,7 +166,9 @@ export class AudioManager {
       }
 
       const timeout = setTimeout(() => {
-        console.log(`[audio] ffmpeg ready timeout for room ${this.roomId}, proceeding`);
+        console.log(
+          `[audio] ffmpeg ready timeout for room ${this.roomId}, proceeding`,
+        );
         resolve();
       }, 3000);
 

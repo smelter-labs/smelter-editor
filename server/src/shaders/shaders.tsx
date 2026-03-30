@@ -1,6 +1,10 @@
 import path from 'path';
 import fs from 'fs';
-import type { ShaderParamConfig, ShaderConfig, ShaderParam } from '../types';
+import type {
+  ShaderParamConfig,
+  ShaderConfig,
+  ShaderParamDefinition,
+} from '../types';
 
 export type { ShaderParamConfig, ShaderConfig };
 
@@ -11,7 +15,7 @@ type AvailableShader = {
   name: string;
   description: string;
   shaderFile: string;
-  params?: ShaderParam[];
+  params?: ShaderParamDefinition[];
 };
 
 export type PublicShader = AvailableShader & {

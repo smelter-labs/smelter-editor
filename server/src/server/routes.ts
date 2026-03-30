@@ -67,7 +67,20 @@ async function ensureHlsThumbnail(jsonFileName: string): Promise<string> {
 
   await execFileAsync(
     'ffmpeg',
-    ['-ss', '2', '-i', hlsUrl, '-vframes', '1', '-vf', 'scale=320:-1', '-q:v', '4', '-y', thumbPath],
+    [
+      '-ss',
+      '2',
+      '-i',
+      hlsUrl,
+      '-vframes',
+      '1',
+      '-vf',
+      'scale=320:-1',
+      '-q:v',
+      '4',
+      '-y',
+      thumbPath,
+    ],
     { timeout: 10_000 },
   );
 
@@ -409,7 +422,7 @@ routes.get<RoomIdParams>(
     res.status(200).send({
       roomName: room.roomName,
       inputs: snapshot.inputs.map(toPublicInputState),
-      layout: snapshot.layout,
+      layers: snapshot.layers,
       whepUrl: room.getWhepUrl(),
       pendingDelete: room.pendingDelete,
       isPublic: room.isPublic,
@@ -467,7 +480,7 @@ routes.get('/rooms', async (_req, res) => {
         roomId: room.idPrefix,
         roomName: room.roomName,
         inputs: snapshot.inputs.map(toPublicInputState),
-        layout: snapshot.layout,
+        layers: snapshot.layers,
         whepUrl: room.getWhepUrl(),
         pendingDelete: room.pendingDelete,
         createdAt: room.creationTimestamp,
@@ -540,7 +553,6 @@ routes.post<RoomIdParams>(
 );
 
 const SCREENSHOTS_DIR = path.join(__dirname, '../../screenshots');
-
 
 routes.get<{ Params: { fileName: string } }>(
   '/screenshots/:fileName',
@@ -705,17 +717,7 @@ registerStorageRoutes(routes, {
 
 const UpdateRoomSchema = Type.Object({
   inputOrder: Type.Optional(Type.Array(Type.String())),
-  layout: Type.Optional(
-    Type.Union([
-      Type.Literal('grid'),
-      Type.Literal('primary-on-left'),
-      Type.Literal('primary-on-top'),
-      Type.Literal('picture-in-picture'),
-      Type.Literal('wrapped'),
-      Type.Literal('wrapped-static'),
-      Type.Literal('picture-on-picture'),
-    ]),
-  ),
+  layers: Type.Optional(Type.Array(Type.Any())),
   isPublic: Type.Optional(Type.Boolean()),
   swapDurationMs: Type.Optional(Type.Number({ minimum: 0, maximum: 5000 })),
   swapOutgoingEnabled: Type.Optional(Type.Boolean()),
@@ -742,8 +744,8 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
     if (req.body.inputOrder) {
       room.reorderInputs(req.body.inputOrder);
     }
-    if (req.body.layout) {
-      await room.updateLayout(req.body.layout);
+    if (req.body.layers) {
+      await room.updateLayers(req.body.layers as import('../types').Layer[]);
     }
     if (req.body.isPublic !== undefined) {
       room.isPublic = req.body.isPublic;
@@ -1192,7 +1194,7 @@ routes.get<RoomIdParams>(
       const payload = {
         roomName: room.roomName,
         inputs: snapshot.inputs.map(toPublicInputState),
-        layout: snapshot.layout,
+        layers: snapshot.layers,
         whepUrl: room.getWhepUrl(),
         pendingDelete: room.pendingDelete,
         isPublic: room.isPublic,
@@ -1276,4 +1278,3 @@ routes.delete<RoomIdParams>(
     res.status(200).send({ status: 'ok' });
   },
 );
-

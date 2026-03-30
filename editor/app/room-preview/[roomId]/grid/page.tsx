@@ -16,7 +16,7 @@ export default function RoomPreviewGridPage() {
   const [loading, setLoading] = useState(true);
   const [roomState, setRoomState] = useState<RoomState>({
     inputs: [],
-    layout: 'grid',
+    layers: [],
     whepUrl: '',
   });
 

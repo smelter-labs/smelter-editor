@@ -1,9 +1,6 @@
 import path from 'node:path';
 import { pathExists, readdir } from 'fs-extra';
-import {
-  SmelterInstance,
-  type RegisterSmelterInputOptions,
-} from '../smelter';
+import { SmelterInstance, type RegisterSmelterInputOptions } from '../smelter';
 import { hlsUrlForKickChannel, hlsUrlForTwitchChannel } from '../streamlink';
 import { TwitchChannelMonitor } from '../twitch/TwitchChannelMonitor';
 import type { TwitchStreamInfo } from '../twitch/TwitchApi';
@@ -11,10 +8,7 @@ import { KickChannelMonitor } from '../kick/KickChannelMonitor';
 import { WhipInputMonitor } from '../whip/WhipInputMonitor';
 import { sleep } from '../utils';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
-import {
-  getMp4DurationMs,
-  getMp4VideoDimensions,
-} from '../server/mp4Duration';
+import { getMp4DurationMs, getMp4VideoDimensions } from '../server/mp4Duration';
 import { logTimelineEvent } from '../dashboard';
 import { createDefaultSnakeGameInputState } from '../snakeGame/snakeGameState';
 import { createHandsStore } from '../hands/handStore';
@@ -25,11 +19,8 @@ import type {
   UpdateInputOptions,
 } from './types';
 import type { PlaceholderManager } from './PlaceholderManager';
-import {
-  cloneDefaultLogoShaders,
-  PLACEHOLDER_LOGO_FILE,
-} from './PlaceholderManager';
 import type { MotionController } from './MotionController';
+import { InputOrientation } from '@smelter-editor/types';
 
 const VIDEO_INPUT_TYPES: RoomInputState['type'][] = [
   'local-mp4',
@@ -67,45 +58,13 @@ export class InputManager {
 
   async initializeInputs(
     initInputs: RegisterInputOptions[],
-    skipDefaultInputs: boolean,
+    _skipDefaultInputs: boolean,
   ): Promise<void> {
     if (initInputs.length > 0) {
       for (const input of initInputs) {
         await this.addNewInput(input);
       }
-    } else if (!skipDefaultInputs) {
-      const preferredMp4 =
-        this.mp4Files.find((f) => f.toLowerCase().startsWith('eclipse')) ??
-        this.mp4Files.find((file) => !isBlockedDefaultMp4(file));
-      if (preferredMp4) {
-        await this.addNewInput({
-          type: 'local-mp4',
-          source: { fileName: preferredMp4 },
-        });
-      }
-
-      const logoPath = path.join(
-        process.cwd(),
-        'pictures',
-        PLACEHOLDER_LOGO_FILE,
-      );
-      if (await pathExists(logoPath)) {
-        const logoInputId = await this.addNewInput({
-          type: 'image',
-          fileName: PLACEHOLDER_LOGO_FILE,
-        });
-        const logoInput = this.inputs.find(
-          (inp) => inp.inputId === logoInputId,
-        );
-        if (logoInput) {
-          logoInput.shaders = cloneDefaultLogoShaders();
-          this.onStateChange();
-        }
-      }
     }
-
-    const added = await this.placeholderManager.ensurePlaceholder(this.inputs);
-    if (added) this.onStateChange();
   }
 
   // ── Add ───────────────────────────────────────────────────
@@ -145,7 +104,9 @@ export class InputManager {
       status: 'disconnected',
       showTitle: false,
       shaders: [],
-
+      orientation: 'horizontal',
+      nativeWidth: 1920,
+      nativeHeight: 1080,
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
@@ -186,7 +147,9 @@ export class InputManager {
       status: 'disconnected' as const,
       showTitle: false,
       shaders: [] as ShaderConfig[],
-
+      orientation: 'horizontal' as InputOrientation,
+      nativeWidth: 1920,
+      nativeHeight: 1080,
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
@@ -283,7 +246,9 @@ export class InputManager {
       status: 'disconnected',
       showTitle: false,
       shaders: [],
-
+      orientation: 'horizontal',
+      nativeWidth: 1920,
+      nativeHeight: 1080,
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
@@ -364,7 +329,9 @@ export class InputManager {
         status: 'connected',
         showTitle: false,
         shaders: [],
-  
+        orientation: 'horizontal',
+        nativeWidth: 1920,
+        nativeHeight: 1080,
         borderColor: '#ff0000',
         borderWidth: 0,
         hidden: false,
@@ -393,7 +360,9 @@ export class InputManager {
       status: 'connected',
       showTitle: false,
       shaders: [],
-
+      orientation: 'horizontal',
+      nativeWidth: 1920,
+      nativeHeight: 1080,
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
@@ -426,7 +395,9 @@ export class InputManager {
       status: 'connected',
       showTitle: false,
       shaders: [],
-
+      orientation: 'horizontal',
+      nativeWidth: 1920,
+      nativeHeight: 1080,
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
@@ -456,7 +427,10 @@ export class InputManager {
       borderWidth: 0,
       hidden: false,
       motionEnabled: false,
-      metadata: { title: 'Hand Tracking', description: 'Cyberpunk hand overlay' },
+      metadata: {
+        title: 'Hand Tracking',
+        description: 'Cyberpunk hand overlay',
+      },
       volume: 0,
       sourceInputId: opts.sourceInputId,
       handsStore,
@@ -542,7 +516,11 @@ export class InputManager {
     const input = this.getInput(inputId);
     if (input.status !== 'disconnected') return '';
 
-    if (input.type === 'image' || input.type === 'game' || input.type === 'hands') {
+    if (
+      input.type === 'image' ||
+      input.type === 'game' ||
+      input.type === 'hands'
+    ) {
       input.status = 'connected';
       this.onStateChange();
       return '';
@@ -625,6 +603,12 @@ export class InputManager {
     input.volume = options.volume ?? input.volume;
     input.shaders = options.shaders ?? input.shaders;
     input.showTitle = options.showTitle ?? input.showTitle;
+    input.orientation = options.orientation ?? input.orientation;
+    // Update native resolution heuristic when orientation changes
+    if (options.orientation !== undefined) {
+      input.nativeWidth = options.orientation === 'vertical' ? 1080 : 1920;
+      input.nativeHeight = options.orientation === 'vertical' ? 1920 : 1080;
+    }
     input.borderColor = options.borderColor ?? input.borderColor;
     input.borderWidth = options.borderWidth ?? input.borderWidth;
 
@@ -678,8 +662,7 @@ export class InputManager {
     if (options.absoluteHeight !== undefined)
       input.absoluteHeight = options.absoluteHeight;
     if (options.absoluteTransitionDurationMs !== undefined)
-      input.absoluteTransitionDurationMs =
-        options.absoluteTransitionDurationMs;
+      input.absoluteTransitionDurationMs = options.absoluteTransitionDurationMs;
     if (options.absoluteTransitionEasing !== undefined)
       input.absoluteTransitionEasing = options.absoluteTransitionEasing;
     if (options.cropTop !== undefined) input.cropTop = options.cropTop;
@@ -816,8 +799,7 @@ export class InputManager {
   ackWhipInput(inputId: string): void {
     const input = this.getInput(inputId);
     if (input.type !== 'whip') throw new Error('Input is not a Whip input');
-    const { previousAckTimestamp, currentAckTimestamp } =
-      input.monitor.touch();
+    const { previousAckTimestamp, currentAckTimestamp } = input.monitor.touch();
     const ageBeforeAckMs = currentAckTimestamp - previousAckTimestamp;
     console.log('[whip][ack]', {
       roomId: this.idPrefix,
@@ -905,10 +887,7 @@ export class InputManager {
     this.onStateChange();
 
     try {
-      logTimelineEvent(
-        this.idPrefix,
-        `[mp4-restart] unregister "${name}"`,
-      );
+      logTimelineEvent(this.idPrefix, `[mp4-restart] unregister "${name}"`);
       await SmelterInstance.unregisterInput(inputId);
       logTimelineEvent(
         this.idPrefix,
@@ -1019,10 +998,7 @@ function inputIdForTwitchInput(
   return `${idPrefix}::twitch::${twitchChannelId}`;
 }
 
-function inputIdForKickInput(
-  idPrefix: string,
-  kickChannelId: string,
-): string {
+function inputIdForKickInput(idPrefix: string, kickChannelId: string): string {
   return `${idPrefix}::kick::${kickChannelId}`;
 }
 
@@ -1035,17 +1011,9 @@ export function formatMp4Name(fileName: string): string {
 }
 
 function formatImageName(fileName: string): string {
-  const fileNameWithoutExt = fileName.replace(
-    /\.(jpg|jpeg|png|gif|svg)$/i,
-    '',
-  );
+  const fileNameWithoutExt = fileName.replace(/\.(jpg|jpeg|png|gif|svg)$/i, '');
   return fileNameWithoutExt
     .split(/[_\- ]+/)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
-}
-
-function isBlockedDefaultMp4(fileName: string): boolean {
-  const lower = fileName.toLowerCase();
-  return lower.startsWith('logo_') || lower.startsWith('wrapped_');
 }

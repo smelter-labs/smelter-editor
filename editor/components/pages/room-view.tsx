@@ -99,7 +99,6 @@ export default function RoomView({
     }
   }, [guestStream]);
 
-
   if (isGuest) {
     return (
       <motion.div

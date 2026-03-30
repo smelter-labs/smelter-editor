@@ -27,6 +27,10 @@ export type PublicInputState = {
   attachedInputIds?: string[];
   hidden?: boolean;
   activeTransition?: ActiveTransition;
+  /** Native stream resolution width, if known. */
+  nativeWidth?: number;
+  /** Native stream resolution height, if known. */
+  nativeHeight?: number;
 } & InputDisplayProperties &
   Partial<TextInputProperties> &
   Partial<AbsolutePositionProperties> &

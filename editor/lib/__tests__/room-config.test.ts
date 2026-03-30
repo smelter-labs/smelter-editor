@@ -56,11 +56,11 @@ const minimalInput: Input = {
   title: 'Text',
   description: '',
   volume: 1,
+  showTitle: false,
   type: 'text-input',
   sourceState: 'always-live',
   status: 'connected',
   shaders: [],
-
 };
 
 describe('parseRoomConfig', () => {
@@ -196,7 +196,7 @@ describe('exportRoomConfig', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-              
+
                 text: 'initial',
               },
               keyframes: [
@@ -207,7 +207,7 @@ describe('exportRoomConfig', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                  
+
                     text: 'initial',
                   },
                 },
@@ -218,7 +218,7 @@ describe('exportRoomConfig', () => {
                     volume: 0.5,
                     showTitle: false,
                     shaders: [],
-                  
+
                     text: 'updated',
                   },
                 },
@@ -256,7 +256,7 @@ describe('exportRoomConfig', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-              
+
                 text: 'initial',
               },
               keyframes: [
@@ -267,7 +267,7 @@ describe('exportRoomConfig', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                  
+
                     text: 'initial',
                   },
                 },
@@ -278,7 +278,7 @@ describe('exportRoomConfig', () => {
                     volume: 0.5,
                     showTitle: false,
                     shaders: [],
-                  
+
                     text: 'updated',
                   },
                 },
@@ -309,7 +309,7 @@ describe('timeline config persistence helpers', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-              
+
                 text: 'intro',
               },
               keyframes: [
@@ -320,7 +320,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                  
+
                     text: 'intro',
                   },
                 },
@@ -331,7 +331,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 0.2,
                     showTitle: false,
                     shaders: [],
-                  
+
                     text: 'middle',
                   },
                 },
@@ -366,7 +366,7 @@ describe('timeline config persistence helpers', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-              
+
                 text: 'intro',
               },
               keyframes: [
@@ -377,7 +377,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                  
+
                     text: 'intro',
                   },
                 },
@@ -388,7 +388,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 0.2,
                     showTitle: false,
                     shaders: [],
-                  
+
                     text: 'middle',
                   },
                 },
@@ -417,7 +417,7 @@ describe('timeline config persistence helpers', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-              
+
                 text: 'stale',
               },
               keyframes: [
@@ -428,7 +428,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                  
+
                     text: 'stale',
                   },
                 },
@@ -459,7 +459,7 @@ describe('timeline config persistence helpers', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-              
+
                 text: 'fresh',
               },
               keyframes: [
@@ -470,7 +470,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                  
+
                     text: 'fresh',
                   },
                 },

@@ -93,19 +93,61 @@ export const CreateRoomSchema = Type.Object({
   ),
 });
 
+const LayerInputSchema = Type.Object({
+  inputId: Type.String(),
+  x: Type.Number(),
+  y: Type.Number(),
+  width: Type.Number({ minimum: 0 }),
+  height: Type.Number({ minimum: 0 }),
+  transitionDurationMs: Type.Optional(Type.Number({ minimum: 0 })),
+  transitionEasing: Type.Optional(Type.String()),
+});
+
+const ObjectFitSchema = Type.Union([
+  Type.Literal('fill'),
+  Type.Literal('cover'),
+  Type.Literal('contain'),
+]);
+
+const SpacingProps = {
+  horizontalSpacing: Type.Optional(Type.Number({ minimum: 0 })),
+  verticalSpacing: Type.Optional(Type.Number({ minimum: 0 })),
+};
+
+const LayerBehaviorSchema = Type.Union([
+  Type.Object({
+    type: Type.Literal('equal-grid'),
+    autoscale: Type.Optional(Type.Boolean()),
+    rows: Type.Optional(Type.Integer({ minimum: 1 })),
+    cols: Type.Optional(Type.Integer({ minimum: 1 })),
+    objectFit: Type.Optional(ObjectFitSchema),
+    resolveCollisions: Type.Optional(Type.Boolean()),
+    ...SpacingProps,
+  }),
+  Type.Object({
+    type: Type.Literal('approximate-aspect-grid'),
+    resolveCollisions: Type.Optional(Type.Boolean()),
+    ...SpacingProps,
+  }),
+  Type.Object({
+    type: Type.Literal('exact-aspect-grid'),
+    ...SpacingProps,
+  }),
+  Type.Object({
+    type: Type.Literal('picture-in-picture'),
+    ...SpacingProps,
+  }),
+]);
+
+const LayerSchema = Type.Object({
+  id: Type.String(),
+  inputs: Type.Array(LayerInputSchema),
+  behavior: Type.Optional(LayerBehaviorSchema),
+});
+
 export const UpdateRoomSchema = Type.Object({
   inputOrder: Type.Optional(Type.Array(Type.String())),
-  layout: Type.Optional(
-    Type.Union([
-      Type.Literal('grid'),
-      Type.Literal('primary-on-left'),
-      Type.Literal('primary-on-top'),
-      Type.Literal('picture-in-picture'),
-      Type.Literal('wrapped'),
-      Type.Literal('wrapped-static'),
-      Type.Literal('picture-on-picture'),
-    ]),
-  ),
+  layers: Type.Optional(Type.Array(LayerSchema, { minItems: 1 })),
   isPublic: Type.Optional(Type.Boolean()),
   swapDurationMs: Type.Optional(Type.Number({ minimum: 0, maximum: 5000 })),
   swapOutgoingEnabled: Type.Optional(Type.Boolean()),
@@ -132,6 +174,50 @@ export const SetPendingWhipInputsSchema = Type.Object({
   pendingWhipInputs: Type.Array(PendingWhipInputSchema),
 });
 
+const SharedInputTextStyleProps = {
+  text: Type.Optional(Type.String()),
+  textAlign: Type.Optional(
+    Type.Union([
+      Type.Literal('left'),
+      Type.Literal('center'),
+      Type.Literal('right'),
+    ]),
+  ),
+  textColor: Type.Optional(Type.String()),
+  textMaxLines: Type.Optional(Type.Number()),
+  textScrollSpeed: Type.Optional(Type.Number()),
+  textScrollLoop: Type.Optional(Type.Boolean()),
+  textFontSize: Type.Optional(Type.Number()),
+  borderColor: Type.Optional(Type.String()),
+  gameBackgroundColor: Type.Optional(Type.String()),
+  gameBoardBorderColor: Type.Optional(Type.String()),
+  gameGridLineColor: Type.Optional(Type.String()),
+};
+
+const SharedInputAbsolutePositionProps = {
+  absolutePosition: Type.Optional(Type.Boolean()),
+  absoluteTop: Type.Optional(Type.Number()),
+  absoluteLeft: Type.Optional(Type.Number()),
+  absoluteTransitionEasing: Type.Optional(Type.String()),
+  absoluteWidth: Type.Optional(Type.Number()),
+  absoluteHeight: Type.Optional(Type.Number()),
+  absoluteTransitionDurationMs: Type.Optional(Type.Number()),
+  cropTop: Type.Optional(Type.Number({ minimum: 0 })),
+  cropLeft: Type.Optional(Type.Number({ minimum: 0 })),
+  cropRight: Type.Optional(Type.Number({ minimum: 0 })),
+  cropBottom: Type.Optional(Type.Number({ minimum: 0 })),
+};
+
+const SharedCommonConfigProps = {
+  borderWidth: Type.Optional(Type.Number({ minimum: 0 })),
+  gameCellGap: Type.Optional(Type.Number({ minimum: 0 })),
+  gameBoardBorderWidth: Type.Optional(Type.Number({ minimum: 0 })),
+  gameGridLineAlpha: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
+  snakeEventShaders: Type.Optional(Type.Any()),
+  snake1Shaders: Type.Optional(Type.Any()),
+  snake2Shaders: Type.Optional(Type.Any()),
+};
+
 export const UpdateInputSchema = Type.Object({
   volume: Type.Optional(Type.Number({ maximum: 1, minimum: 0 })),
   showTitle: Type.Optional(Type.Boolean()),
@@ -150,43 +236,14 @@ export const UpdateInputSchema = Type.Object({
       }),
     ),
   ),
-  text: Type.Optional(Type.String()),
-  textAlign: Type.Optional(
-    Type.Union([
-      Type.Literal('left'),
-      Type.Literal('center'),
-      Type.Literal('right'),
-    ]),
+  orientation: Type.Optional(
+    Type.Union([Type.Literal('horizontal'), Type.Literal('vertical')]),
   ),
-  textColor: Type.Optional(Type.String()),
-  textMaxLines: Type.Optional(Type.Number()),
-  textScrollSpeed: Type.Optional(Type.Number()),
-  textScrollLoop: Type.Optional(Type.Boolean()),
+  ...SharedInputTextStyleProps,
   textScrollNudge: Type.Optional(Type.Number()),
-  textFontSize: Type.Optional(Type.Number()),
-  borderColor: Type.Optional(Type.String()),
-  borderWidth: Type.Optional(Type.Number({ minimum: 0 })),
-  gameBackgroundColor: Type.Optional(Type.String()),
-  gameCellGap: Type.Optional(Type.Number({ minimum: 0 })),
-  gameBoardBorderColor: Type.Optional(Type.String()),
-  gameBoardBorderWidth: Type.Optional(Type.Number({ minimum: 0 })),
-  gameGridLineColor: Type.Optional(Type.String()),
-  gameGridLineAlpha: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
-  snakeEventShaders: Type.Optional(Type.Any()),
-  snake1Shaders: Type.Optional(Type.Any()),
-  snake2Shaders: Type.Optional(Type.Any()),
+  ...SharedCommonConfigProps,
   attachedInputIds: Type.Optional(Type.Array(Type.String())),
-  absolutePosition: Type.Optional(Type.Boolean()),
-  absoluteTop: Type.Optional(Type.Number()),
-  absoluteLeft: Type.Optional(Type.Number()),
-  absoluteWidth: Type.Optional(Type.Number({ minimum: 0 })),
-  absoluteHeight: Type.Optional(Type.Number({ minimum: 0 })),
-  absoluteTransitionDurationMs: Type.Optional(Type.Number({ minimum: 0 })),
-  absoluteTransitionEasing: Type.Optional(Type.String()),
-  cropTop: Type.Optional(Type.Number({ minimum: 0 })),
-  cropLeft: Type.Optional(Type.Number({ minimum: 0 })),
-  cropRight: Type.Optional(Type.Number({ minimum: 0 })),
-  cropBottom: Type.Optional(Type.Number({ minimum: 0 })),
+  ...SharedInputAbsolutePositionProps,
   activeTransition: Type.Optional(ActiveTransitionSchema),
 });
 
@@ -231,36 +288,17 @@ const RoomConfigInputSchema = Type.Object({
   channelId: Type.Optional(Type.String()),
   imageId: Type.Optional(Type.String()),
   mp4FileName: Type.Optional(Type.String()),
-  text: Type.Optional(Type.String()),
-  textAlign: Type.Optional(Type.String()),
+  ...SharedInputTextStyleProps,
+  orientation: Type.Optional(Type.String()),
   textColor: Type.Optional(Type.String()),
   textMaxLines: Type.Optional(Type.Number()),
   textScrollSpeed: Type.Optional(Type.Number()),
   textScrollLoop: Type.Optional(Type.Boolean()),
   textFontSize: Type.Optional(Type.Number()),
   borderColor: Type.Optional(Type.String()),
-  borderWidth: Type.Optional(Type.Number()),
-  gameBackgroundColor: Type.Optional(Type.String()),
-  gameCellGap: Type.Optional(Type.Number()),
-  gameBoardBorderColor: Type.Optional(Type.String()),
-  gameBoardBorderWidth: Type.Optional(Type.Number()),
-  gameGridLineColor: Type.Optional(Type.String()),
-  gameGridLineAlpha: Type.Optional(Type.Number()),
-  snakeEventShaders: Type.Optional(Type.Record(Type.String(), Type.Any())),
-  snake1Shaders: Type.Optional(Type.Array(ShaderConfigSchema)),
-  snake2Shaders: Type.Optional(Type.Array(ShaderConfigSchema)),
+  ...SharedCommonConfigProps,
   attachedInputIndices: Type.Optional(Type.Array(Type.Number())),
-  absolutePosition: Type.Optional(Type.Boolean()),
-  absoluteTop: Type.Optional(Type.Number()),
-  absoluteLeft: Type.Optional(Type.Number()),
-  absoluteWidth: Type.Optional(Type.Number()),
-  absoluteHeight: Type.Optional(Type.Number()),
-  absoluteTransitionDurationMs: Type.Optional(Type.Number()),
-  absoluteTransitionEasing: Type.Optional(Type.String()),
-  cropTop: Type.Optional(Type.Number({ minimum: 0 })),
-  cropLeft: Type.Optional(Type.Number({ minimum: 0 })),
-  cropRight: Type.Optional(Type.Number({ minimum: 0 })),
-  cropBottom: Type.Optional(Type.Number({ minimum: 0 })),
+  ...SharedInputAbsolutePositionProps,
 });
 
 export const RoomConfigSchema = Type.Object({

@@ -278,10 +278,7 @@ export class MotionManager {
     this.trackedInputs = this.trackedInputs.filter((id) => id !== inputId);
     this._syncStore();
 
-    if (
-      this.trackedInputs.length === 0 &&
-      this.handRegions.size === 0
-    ) {
+    if (this.trackedInputs.length === 0 && this.handRegions.size === 0) {
       await this._teardown();
     }
   }

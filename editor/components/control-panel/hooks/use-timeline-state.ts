@@ -457,7 +457,11 @@ function ensureOutputTrack(tracks: Track[], totalDurationMs: number): Track[] {
               ...t,
               clips: t.clips.map((c) =>
                 c.id === OUTPUT_CLIP_ID
-                  ? syncClipKeyframes({ ...c, startMs: 0, endMs: totalDurationMs })
+                  ? syncClipKeyframes({
+                      ...c,
+                      startMs: 0,
+                      endMs: totalDurationMs,
+                    })
                   : c,
               ),
             }

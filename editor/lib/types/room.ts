@@ -1,17 +1,19 @@
-import type { Resolution, PendingWhipInputData } from '@smelter-editor/types';
+import type {
+  Resolution,
+  PendingWhipInputData,
+  RoomNameEntry,
+} from '@smelter-editor/types';
 import type { Input } from './input';
-import type { Layout } from './layout';
+import type { Layer } from './layout';
 
-export type { PendingWhipInputData } from '@smelter-editor/types';
-
-export type RoomNameEntry = {
-  pl: string;
-  en: string;
-};
+export type {
+  PendingWhipInputData,
+  RoomNameEntry,
+} from '@smelter-editor/types';
 
 export type RoomState = {
   inputs: Input[];
-  layout: Layout;
+  layers: Layer[];
   whepUrl: string;
   roomName?: RoomNameEntry;
   pendingDelete?: boolean;
@@ -67,7 +69,7 @@ export type CreateRoomOptions = {
 
 export type UpdateRoomOptions = {
   inputOrder?: string[];
-  layout?: Layout;
+  layers?: Layer[];
   isPublic?: boolean;
   swapDurationMs?: number;
   swapOutgoingEnabled?: boolean;

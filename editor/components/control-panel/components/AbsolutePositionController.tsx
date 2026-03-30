@@ -73,11 +73,7 @@ const RING_SIZE = (RING_R + RING_STROKE) * 2;
 const RING_CENTER = RING_SIZE / 2;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_R;
 
-function snapAxis(
-  value: number,
-  targets: number[],
-  threshold: number,
-): number {
+function snapAxis(value: number, targets: number[], threshold: number): number {
   for (const t of targets) {
     if (Math.abs(value - t) <= threshold) return t;
   }
@@ -401,14 +397,13 @@ export function AbsolutePositionController({
         const dx = (e.clientX - drag.startX) / scale;
         const dy = (e.clientY - drag.startY) / scale;
         const { origCrop, edge } = drag;
-        let newCrop = { ...origCrop };
+        const newCrop = { ...origCrop };
 
         if (edge === 'top') newCrop.cropTop = origCrop.cropTop + dy;
         else if (edge === 'bottom')
           newCrop.cropBottom = origCrop.cropBottom - dy;
         else if (edge === 'left') newCrop.cropLeft = origCrop.cropLeft + dx;
-        else if (edge === 'right')
-          newCrop.cropRight = origCrop.cropRight - dx;
+        else if (edge === 'right') newCrop.cropRight = origCrop.cropRight - dx;
 
         setLocalCrop(clampCrop(newCrop, pos.width, pos.height));
       }
@@ -570,9 +565,7 @@ export function AbsolutePositionController({
         {hasCrop && (
           <div
             className={`absolute border border-dashed pointer-events-none z-10 ${
-              mode === 'crop'
-                ? 'border-green-300/80'
-                : 'border-blue-300/80'
+              mode === 'crop' ? 'border-green-300/80' : 'border-blue-300/80'
             }`}
             style={{
               left: canvasRect.x + cropCanvasLeft,
@@ -643,8 +636,7 @@ export function AbsolutePositionController({
             <div
               className='absolute bg-green-500 rounded-sm z-10'
               style={{
-                left:
-                  canvasRect.x + canvasRect.w / 2 - CROP_HANDLE_LONG / 2,
+                left: canvasRect.x + canvasRect.w / 2 - CROP_HANDLE_LONG / 2,
                 top: canvasRect.y + cropCanvasTop - CROP_HANDLE_SHORT / 2,
                 width: CROP_HANDLE_LONG,
                 height: CROP_HANDLE_SHORT,
@@ -655,8 +647,7 @@ export function AbsolutePositionController({
             <div
               className='absolute bg-green-500 rounded-sm z-10'
               style={{
-                left:
-                  canvasRect.x + canvasRect.w / 2 - CROP_HANDLE_LONG / 2,
+                left: canvasRect.x + canvasRect.w / 2 - CROP_HANDLE_LONG / 2,
                 top:
                   canvasRect.y +
                   canvasRect.h -
@@ -671,10 +662,8 @@ export function AbsolutePositionController({
             <div
               className='absolute bg-green-500 rounded-sm z-10'
               style={{
-                left:
-                  canvasRect.x + cropCanvasLeft - CROP_HANDLE_SHORT / 2,
-                top:
-                  canvasRect.y + canvasRect.h / 2 - CROP_HANDLE_LONG / 2,
+                left: canvasRect.x + cropCanvasLeft - CROP_HANDLE_SHORT / 2,
+                top: canvasRect.y + canvasRect.h / 2 - CROP_HANDLE_LONG / 2,
                 width: CROP_HANDLE_SHORT,
                 height: CROP_HANDLE_LONG,
                 cursor: 'ew-resize',
@@ -689,8 +678,7 @@ export function AbsolutePositionController({
                   canvasRect.w -
                   cropCanvasRight -
                   CROP_HANDLE_SHORT / 2,
-                top:
-                  canvasRect.y + canvasRect.h / 2 - CROP_HANDLE_LONG / 2,
+                top: canvasRect.y + canvasRect.h / 2 - CROP_HANDLE_LONG / 2,
                 width: CROP_HANDLE_SHORT,
                 height: CROP_HANDLE_LONG,
                 cursor: 'ew-resize',
@@ -715,16 +703,10 @@ export function AbsolutePositionController({
       <div className='grid grid-cols-4 gap-1 mt-2'>
         {(['left', 'top', 'width', 'height'] as const).map((field) => {
           const isCropped =
-            (field === 'width' &&
-              (crop.cropLeft > 0 || crop.cropRight > 0)) ||
-            (field === 'height' &&
-              (crop.cropTop > 0 || crop.cropBottom > 0));
+            (field === 'width' && (crop.cropLeft > 0 || crop.cropRight > 0)) ||
+            (field === 'height' && (crop.cropTop > 0 || crop.cropBottom > 0));
           const croppedValue =
-            field === 'width'
-              ? visWidth
-              : field === 'height'
-                ? visHeight
-                : 0;
+            field === 'width' ? visWidth : field === 'height' ? visHeight : 0;
           return (
             <div key={field}>
               <label className='text-[10px] text-neutral-500 block'>

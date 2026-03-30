@@ -48,8 +48,9 @@ export async function createNewRoom(
 export async function updateRoom(
   roomId: string,
   opts: UpdateRoomOptions,
+  sourceId?: string,
 ): Promise<{ roomId: string; whepUrl: string }> {
-  return client.updateRoom(roomId, opts);
+  return client.updateRoom(roomId, opts, sourceId);
 }
 
 export async function getRoomInfo(

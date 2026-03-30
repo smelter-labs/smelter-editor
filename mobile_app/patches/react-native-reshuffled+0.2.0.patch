@@ -1,0 +1,58 @@
+diff --git a/node_modules/react-native-reshuffled/src/components/DraggableRectangle/index.tsx b/node_modules/react-native-reshuffled/src/components/DraggableRectangle/index.tsx
+index f15634f..3916ed0 100644
+--- a/node_modules/react-native-reshuffled/src/components/DraggableRectangle/index.tsx
++++ b/node_modules/react-native-reshuffled/src/components/DraggableRectangle/index.tsx
+@@ -223,7 +223,7 @@ export function DraggableRectangle<T extends Cell>({
+     return {
+       width: getItemWidth(item.width),
+       height: getItemHeight(item.height),
+-      opacity: isShadowVisible.value ? 1 : 0,
++      opacity: isShadowVisible.value ? 0.35 : 0,
+       position: 'absolute',
+       zIndex: shadowZIndex.value,
+       transform: [
+diff --git a/node_modules/react-native-reshuffled/src/components/ReshufflableGrid/ReshufflableGridCore.tsx b/node_modules/react-native-reshuffled/src/components/ReshufflableGrid/ReshufflableGridCore.tsx
+index 7144fc0..bb083bb 100644
+--- a/node_modules/react-native-reshuffled/src/components/ReshufflableGrid/ReshufflableGridCore.tsx
++++ b/node_modules/react-native-reshuffled/src/components/ReshufflableGrid/ReshufflableGridCore.tsx
+@@ -2,7 +2,6 @@ import type { Cell } from '../../algorithm'
+ import { DraggableRectangle } from '../DraggableRectangle'
+ import React from 'react'
+ import { View } from 'react-native'
+-import { GestureHandlerRootView } from 'react-native-gesture-handler'
+ import { GridPropsContextProvider } from '../GridPropsContextProvider'
+ import type { ReshufflableGridProps, RenderItemInfo } from './types'
+ import {
+@@ -39,7 +38,7 @@ export function ReshufflableGridCore<T extends Cell>(
+   } = useReshufflableGrid(gridProps, getNewGrid)
+ 
+   return (
+-    <GestureHandlerRootView style={style} onLayout={onLayout}>
++    <View style={style} onLayout={onLayout} pointerEvents='box-none'>
+       {!dimensionsDefaulted && (
+         <GridPropsContextProvider {...contextGridProps}>
+           <View>
+@@ -61,6 +60,6 @@ export function ReshufflableGridCore<T extends Cell>(
+           </View>
+         </GridPropsContextProvider>
+       )}
+-    </GestureHandlerRootView>
++    </View>
+   )
+ }
+diff --git a/node_modules/react-native-reshuffled/src/components/ReshufflableGrid/useReshufflableGrid.ts b/node_modules/react-native-reshuffled/src/components/ReshufflableGrid/useReshufflableGrid.ts
+index 4e5bf9c..8fbe1e0 100644
+--- a/node_modules/react-native-reshuffled/src/components/ReshufflableGrid/useReshufflableGrid.ts
++++ b/node_modules/react-native-reshuffled/src/components/ReshufflableGrid/useReshufflableGrid.ts
+@@ -43,6 +43,11 @@ export function useReshufflableGrid<T extends Cell>(
+     setDimensions({ width, height })
+   }
+
++  useEffect(() => {
++    setItems(data)
++    setItemsBeforeDrag(data)
++  }, [data])
++
+   useEffect(() => {
+     occupiedSlots.value = getOccupiedSlots(items)
+   }, [items, occupiedSlots])

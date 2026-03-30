@@ -108,21 +108,25 @@ export class SmelterManager {
     audioStore?: StoreApi<AudioStoreState>,
   ): Promise<SmelterOutput> {
     let store = createRoomStore(resolution);
-    await this.instance.registerOutput(roomId, <App store={store} audioStore={audioStore} />, {
-      type: 'whep_server',
-      video: {
-        encoder: config.h264Encoder,
-        resolution: {
-          width: resolution.width,
-          height: resolution.height,
+    await this.instance.registerOutput(
+      roomId,
+      <App store={store} audioStore={audioStore} />,
+      {
+        type: 'whep_server',
+        video: {
+          encoder: config.h264Encoder,
+          resolution: {
+            width: resolution.width,
+            height: resolution.height,
+          },
+        },
+        audio: {
+          encoder: {
+            type: 'opus',
+          },
         },
       },
-      audio: {
-        encoder: {
-          type: 'opus',
-        },
-      },
-    });
+    );
 
     return {
       id: roomId,
@@ -142,26 +146,30 @@ export class SmelterManager {
     output: SmelterOutput,
     filePath: string,
   ): Promise<void> {
-    await this.instance.registerOutput(outputId, <App store={output.store} audioStore={output.audioStore} />, {
-      type: 'mp4',
-      serverPath: filePath,
-      video: {
-        encoder: {
-          type: 'ffmpeg_h264',
-          preset: 'fast',
+    await this.instance.registerOutput(
+      outputId,
+      <App store={output.store} audioStore={output.audioStore} />,
+      {
+        type: 'mp4',
+        serverPath: filePath,
+        video: {
+          encoder: {
+            type: 'ffmpeg_h264',
+            preset: 'fast',
+          },
+          resolution: {
+            width: output.resolution.width,
+            height: output.resolution.height,
+          },
         },
-        resolution: {
-          width: output.resolution.width,
-          height: output.resolution.height,
+        audio: {
+          encoder: {
+            type: 'aac',
+            channels: 'stereo',
+          } as any,
         },
       },
-      audio: {
-        encoder: {
-          type: 'aac',
-          channels: 'stereo',
-        } as any,
-      },
-    });
+    );
   }
 
   public async unregisterOutput(roomId: string): Promise<void> {
@@ -329,7 +337,10 @@ export class SmelterManager {
         transportProtocol: 'udp',
         video: {
           resolution: { width: 16, height: 16 },
-          encoder: { type: 'ffmpeg_h264' as const, preset: 'ultrafast' as const },
+          encoder: {
+            type: 'ffmpeg_h264' as const,
+            preset: 'ultrafast' as const,
+          },
         },
         audio: {
           channels: 'stereo',

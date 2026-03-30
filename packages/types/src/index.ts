@@ -1,35 +1,51 @@
-export type { Resolution, ResolutionPreset } from './resolution.js';
-export { RESOLUTION_PRESETS } from './resolution.js';
+export type { Resolution, ResolutionPreset } from "./resolution.js";
+export { RESOLUTION_PRESETS } from "./resolution.js";
 
-export type { ChannelInfo } from './channel-info.js';
+export type { ChannelInfo } from "./channel.js";
 
 export type {
   ConnectedPeer,
   ConnectedEvent,
   InputUpdatedEvent,
   InputDeletedEvent,
+  RoomUpdatedEvent,
   PeersUpdatedEvent,
   RoomEvent,
-} from './room-events.js';
+} from "./events.js";
 
-export type { RoomNameEntry } from './room-names.js';
+export type { RoomNameEntry } from "./room-names.js";
 
-export { Layouts } from './layout.js';
-export type { Layout } from './layout.js';
+export { Layouts } from "./layout.js";
+export type {
+  Layout,
+  Layer,
+  LayerInput,
+  LayerBehaviorConfig,
+  EqualGridConfig,
+  PreserveApproximateAspectGridConfig,
+  PreserveExactAspectGridConfig,
+  PictureInPictureConfig,
+  ObjectFit,
+  BehaviorInputInfo,
+} from "./layout.js";
+
+export { computeLayout, computeAddInput } from "./layer-behavior.js";
+export type { ComputeLayoutResult } from "./layer-behavior.js";
 
 export type {
-  ShaderParam,
   ShaderParamConfig,
+  ShaderParam,
+  ShaderParamDefinition,
   ShaderConfig,
   ShaderPreset,
-} from './shader.js';
+} from "./shader.js";
 
 export type {
   TransitionType,
   TransitionConfig,
   ActiveTransition,
-} from './transition.js';
-export { isTransitionType, parseTransitionConfig } from './transition.js';
+} from "./transition.js";
+export { isTransitionType, parseTransitionConfig } from "./transition.js";
 
 export type {
   InputType,
@@ -43,25 +59,26 @@ export type {
   SnakeGameDisplayProperties,
   MotionProperties,
   HandsProperties,
-} from './input.js';
+  InputOrientation,
+} from "./input.js";
 
-export { AUDIO_BAND_COUNT } from './audio.js';
-export type { AudioBands } from './audio.js';
+export { AUDIO_BAND_COUNT } from "./audio.js";
+export type { AudioBands } from "./audio.js";
 
 export type {
   SnakeEventType,
   SnakeEventApplicationMode,
   SnakeEventShaderMapping,
   SnakeEventShaderConfig,
-} from './snake-game.js';
+} from "./snake-game.js";
 
-export type { PublicInputState } from './public-input-state.js';
+export type { PublicInputState } from "./public-input-state.js";
 
 export type {
   UpdateInputOptions,
   RegisterInputOptions,
   PendingWhipInputData,
-} from './input-options.js';
+} from "./input-options.js";
 
 export type {
   TimelineBlockSettings,
@@ -70,10 +87,11 @@ export type {
   TimelineTrack,
   TimelineKeyframeInterpolationMode,
   TimelineConfig,
-} from './timeline.js';
+} from "./timeline.js";
+
 export {
   OUTPUT_TRACK_INPUT_ID,
   OUTPUT_TRACK_ID,
   OUTPUT_CLIP_ID,
   isOutputTrackClip,
-} from './timeline.js';
+} from "./timeline.js";

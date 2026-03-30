@@ -82,7 +82,8 @@ export function wrapWithShaders(
 
       if (paramDef.type === 'color') {
         const baseName = paramDef.name;
-        const colorValue = param?.paramValue ?? paramDef.defaultValue ?? '#000000';
+        const colorValue =
+          param?.paramValue ?? paramDef.defaultValue ?? '#000000';
         const rgb = colorToRgb(colorValue);
 
         shaderParams.push({

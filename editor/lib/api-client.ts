@@ -35,6 +35,7 @@ export interface SmelterApiClient {
   updateRoom(
     roomId: string,
     opts: UpdateRoomOptions,
+    sourceId?: string,
   ): Promise<{ roomId: string; whepUrl: string }>;
 
   getRoomInfo(roomId: string): Promise<RoomState | 'not-found'>;
@@ -202,8 +203,14 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       });
     },
 
-    async updateRoom(roomId, opts) {
-      return await req('post', `/room/${enc(roomId)}`, opts);
+    async updateRoom(roomId, opts, sourceId) {
+      return await sendRequest(
+        baseUrl,
+        'post',
+        `/room/${enc(roomId)}`,
+        opts,
+        sourceId ? { 'x-source-id': sourceId } : undefined,
+      );
     },
 
     async getRoomInfo(roomId) {

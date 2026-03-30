@@ -2,7 +2,13 @@ import { View, Rescaler, Shader } from '@swmansion/smelter';
 
 import type { RoomStore } from './store';
 import type { StoreApi } from 'zustand';
-import { StoreContext, useResolution, useInputs, useOutputShaders } from './store';
+import {
+  StoreContext,
+  useResolution,
+  useInputs,
+  useLayers,
+  useOutputShaders,
+} from './store';
 import { NewsStripOverlay } from './news-strip';
 import { Input } from '../inputs/inputs';
 import { wrapWithShaders } from '../utils/shaderUtils';
@@ -42,9 +48,10 @@ export default function App({
 function OutputScene() {
   const resolution = useResolution();
   const inputs = useInputs();
-  const outputShaders = useOutputShaders();
+  const layers = useLayers();
   const { width, height } = resolution;
-
+  const outputShaders = useOutputShaders();
+  const inputMap = new Map(inputs.map((input) => [input.inputId, input]));
   const activeOutputShaders = outputShaders.filter((s) => s.enabled);
 
   const scene = (
@@ -56,53 +63,76 @@ function OutputScene() {
         height,
         overflow: 'visible',
       }}>
-      {inputs.map((input) => {
-        const t = input.absoluteTop ?? 0;
-        const l = input.absoluteLeft ?? 0;
-        const w = input.absoluteWidth ?? Math.round(width * 0.5);
-        const h = input.absoluteHeight ?? Math.round(height * 0.5);
-        const cT = input.cropTop ?? 0;
-        const cL = input.cropLeft ?? 0;
-        const cR = input.cropRight ?? 0;
-        const cB = input.cropBottom ?? 0;
-        const hasCrop = cT || cL || cR || cB;
+      {layers.map((layer) => (
+        <View
+          key={layer.id}
+          style={{ top: 0, left: 0, width, height, overflow: 'visible' }}>
+          {layer.inputs.map((item) => {
+            const cT = item.cropTop ?? 0;
+            const cL = item.cropLeft ?? 0;
+            const cR = item.cropRight ?? 0;
+            const cB = item.cropBottom ?? 0;
+            const hasCrop = cT || cL || cR || cB;
 
-        const transition = {
-          durationMs: input.absoluteTransitionDurationMs ?? 300,
-          easingFunction: buildEasingFunction(input.absoluteTransitionEasing),
-        };
+            const input = inputMap.get(item.inputId);
+            if (!input) return null;
+            let inner = <Input input={input} />;
 
-        let inner = <Input input={input} />;
+            if (hasCrop) {
+              inner = (
+                <Shader
+                  shaderId='crop'
+                  resolution={{ width: item.width, height: item.height }}
+                  shaderParam={{
+                    type: 'struct',
+                    value: [
+                      {
+                        type: 'f32',
+                        fieldName: 'crop_top',
+                        value: cT / item.height,
+                      },
+                      {
+                        type: 'f32',
+                        fieldName: 'crop_left',
+                        value: cL / item.width,
+                      },
+                      {
+                        type: 'f32',
+                        fieldName: 'crop_right',
+                        value: cR / item.width,
+                      },
+                      {
+                        type: 'f32',
+                        fieldName: 'crop_bottom',
+                        value: cB / item.height,
+                      },
+                    ],
+                  }}>
+                  {inner}
+                </Shader>
+              );
+            }
 
-        if (hasCrop) {
-          inner = (
-            <Shader
-              shaderId='crop'
-              resolution={{ width: w, height: h }}
-              shaderParam={{
-                type: 'struct',
-                value: [
-                  { type: 'f32', fieldName: 'crop_top', value: cT / h },
-                  { type: 'f32', fieldName: 'crop_left', value: cL / w },
-                  { type: 'f32', fieldName: 'crop_right', value: cR / w },
-                  { type: 'f32', fieldName: 'crop_bottom', value: cB / h },
-                ],
-              }}>
-              {inner}
-            </Shader>
-          );
-        }
-
-        return (
-          <Rescaler
-            key={input.inputId}
-            id={`absolute-${input.inputId}`}
-            transition={transition}
-            style={{ top: t, left: l, width: w, height: h }}>
-            {inner}
-          </Rescaler>
-        );
-      })}
+            return (
+              <Rescaler
+                key={item.inputId}
+                id={`layer-${layer.id}-${item.inputId}`}
+                transition={{
+                  durationMs: item.transitionDurationMs ?? 300,
+                  easingFunction: buildEasingFunction(item.transitionEasing),
+                }}
+                style={{
+                  top: item.y,
+                  left: item.x,
+                  width: item.width,
+                  height: item.height,
+                }}>
+                {inner}
+              </Rescaler>
+            );
+          })}
+        </View>
+      ))}
       <NewsStripOverlay />
     </View>
   );

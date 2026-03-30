@@ -18,7 +18,10 @@ const mocks = vi.hoisted(() => {
       terminate: fn().mockResolvedValue(undefined),
     },
     getMp4DurationMs: fn().mockResolvedValue(10000),
-    getMp4VideoDimensions: fn().mockResolvedValue({ width: 1920, height: 1080 }),
+    getMp4VideoDimensions: fn().mockResolvedValue({
+      width: 1920,
+      height: 1080,
+    }),
     twitchStartMonitor: fn().mockResolvedValue({
       isLive: () => true,
       stop: fn(),
@@ -121,7 +124,7 @@ function createTimelineConfig(
                   volume: 1,
                   showTitle: true,
                   shaders: [],
-    
+
                   text: initialKeyframeText,
                 },
               },
@@ -132,7 +135,7 @@ function createTimelineConfig(
                   volume: 1,
                   showTitle: true,
                   shaders: [],
-    
+
                   text: `${initialKeyframeText}-later`,
                 },
               },
@@ -478,17 +481,311 @@ describe('RoomState', () => {
     });
   });
 
-  describe('updateLayout', () => {
-    it('changes the layout', async () => {
+  describe('updateLayers', () => {
+    it('changes layers', async () => {
       const output = createTestOutput();
       const room = new RoomState('room-1', output, [], true);
       await room.init();
 
-      await room.updateLayout('grid');
-      expect(room.getState().layout).toBe('grid');
+      const firstLayers = [
+        {
+          id: 'layer-1',
+          inputs: [
+            {
+              inputId: 'input-1',
+              x: 0,
+              y: 0,
+              width: 640,
+              height: 360,
+            },
+          ],
+        },
+      ];
+      await room.updateLayers(firstLayers);
+      expect(room.getState().layers).toEqual(firstLayers);
 
-      await room.updateLayout('primary-on-left');
-      expect(room.getState().layout).toBe('primary-on-left');
+      const secondLayers = [
+        {
+          id: 'layer-2',
+          inputs: [
+            {
+              inputId: 'input-2',
+              x: 100,
+              y: 100,
+              width: 1280,
+              height: 720,
+            },
+          ],
+        },
+      ];
+      await room.updateLayers(secondLayers);
+      expect(room.getState().layers).toEqual(secondLayers);
+    });
+
+    it('clones provided layers to avoid external mutations', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const layers = [
+        {
+          id: 'layer-1',
+          inputs: [
+            {
+              inputId: 'input-1',
+              x: 0,
+              y: 0,
+              width: 640,
+              height: 360,
+            },
+          ],
+        },
+      ];
+
+      await room.updateLayers(layers);
+      layers[0]!.id = 'mutated';
+      layers[0]!.inputs[0]!.x = 123;
+
+      expect(room.getState().layers[0]!.id).toBe('layer-1');
+      expect(room.getState().layers[0]!.inputs[0]!.x).toBe(0);
+    });
+
+    it('throws when called with an empty layers array', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      await expect(room.updateLayers([])).rejects.toThrow(
+        'layers must not be empty',
+      );
+    });
+
+    it('preserves multiple layers with independent input sets', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const layers = [
+        {
+          id: 'layer-a',
+          inputs: [{ inputId: 'i1', x: 0, y: 0, width: 100, height: 100 }],
+        },
+        {
+          id: 'layer-b',
+          inputs: [{ inputId: 'i2', x: 0, y: 0, width: 200, height: 200 }],
+        },
+      ];
+
+      await room.updateLayers(layers);
+      const state = room.getState();
+
+      expect(state.layers).toHaveLength(2);
+      expect(state.layers[0]!.id).toBe('layer-a');
+      expect(state.layers[0]!.inputs[0]!.inputId).toBe('i1');
+      expect(state.layers[1]!.id).toBe('layer-b');
+      expect(state.layers[1]!.inputs[0]!.inputId).toBe('i2');
+    });
+
+    it('preserves explicit input order within a manual layer', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const mk = (id: string) => ({
+        inputId: id,
+        x: 0,
+        y: 0,
+        width: 10,
+        height: 10,
+      });
+      await room.updateLayers([
+        { id: 'manual', inputs: [mk('c'), mk('a'), mk('b')] },
+      ]);
+
+      const ids = room.getState().layers[0]!.inputs.map((i) => i.inputId);
+      expect(ids).toEqual(['c', 'a', 'b']);
+    });
+  });
+
+  describe('behavior layers', () => {
+    it('equal-grid behavior recomputes non-zero positions for connected inputs', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      // Connect two real inputs so they appear as 'connected'
+      const id1 = (await room.addNewInput({ type: 'text-input', text: 'A' }))!;
+      const id2 = (await room.addNewInput({ type: 'game' }))!;
+      await room.connectInput(id1);
+      await room.connectInput(id2);
+
+      await room.updateLayers([
+        {
+          id: 'layer-1',
+          behavior: { type: 'equal-grid', autoscale: true },
+          inputs: [
+            { inputId: id1, x: 0, y: 0, width: 0, height: 0 },
+            { inputId: id2, x: 0, y: 0, width: 0, height: 0 },
+          ],
+        },
+      ]);
+
+      const layer = room.getState().layers[0]!;
+      // computeLayout should have replaced 0×0 with real grid dimensions
+      for (const li of layer.inputs) {
+        expect(li.width).toBeGreaterThan(0);
+        expect(li.height).toBeGreaterThan(0);
+      }
+    });
+
+    it('manual layer (no behavior) preserves exact 0×0 positions set by client', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      await room.updateLayers([
+        {
+          id: 'manual',
+          // no behavior field
+          inputs: [{ inputId: 'some-id', x: 5, y: 10, width: 0, height: 0 }],
+        },
+      ]);
+
+      const li = room.getState().layers[0]!.inputs[0]!;
+      expect(li.x).toBe(5);
+      expect(li.y).toBe(10);
+      expect(li.width).toBe(0);
+      expect(li.height).toBe(0);
+    });
+
+    it('equal-grid recomputes positions when input order changes', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      // Use different types to guarantee distinct Date.now()-based IDs
+      const id1 = (await room.addNewInput({ type: 'text-input', text: 'A' }))!;
+      const id2 = (await room.addNewInput({ type: 'game', title: 'B' }))!;
+      await room.connectInput(id1);
+      await room.connectInput(id2);
+
+      const resolution = room.getResolution();
+
+      await room.updateLayers([
+        {
+          id: 'layer-1',
+          behavior: { type: 'equal-grid', autoscale: true },
+          inputs: [
+            { inputId: id1, x: 0, y: 0, width: 0, height: 0 },
+            { inputId: id2, x: 0, y: 0, width: 0, height: 0 },
+          ],
+        },
+      ]);
+
+      const posId1Before = room
+        .getState()
+        .layers[0]!.inputs.find((i) => i.inputId === id1)!.x;
+
+      // Reverse order
+      await room.updateLayers([
+        {
+          id: 'layer-1',
+          behavior: { type: 'equal-grid', autoscale: true },
+          inputs: [
+            { inputId: id2, x: 0, y: 0, width: 0, height: 0 },
+            { inputId: id1, x: 0, y: 0, width: 0, height: 0 },
+          ],
+        },
+      ]);
+
+      const posId1After = room
+        .getState()
+        .layers[0]!.inputs.find((i) => i.inputId === id1)!.x;
+
+      // id1 was at column 0 before; after moving to index 1 it should be at column 1
+      expect(posId1After).toBeGreaterThan(posId1Before);
+      void resolution; // used implicitly via output resolution
+    });
+
+    it('hidden input is excluded from behavior layout but kept in layer', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      // Use different types so Date.now()-based IDs are distinct even in the same ms
+      const id1 = (await room.addNewInput({ type: 'text-input', text: 'A' }))!;
+      const id2 = (await room.addNewInput({ type: 'game', title: 'B' }))!;
+      await room.connectInput(id1);
+      await room.connectInput(id2);
+
+      await room.updateLayers([
+        {
+          id: 'layer-1',
+          behavior: { type: 'equal-grid', autoscale: true },
+          inputs: [
+            { inputId: id1, x: 0, y: 0, width: 0, height: 0 },
+            { inputId: id2, x: 0, y: 0, width: 0, height: 0 },
+          ],
+        },
+      ]);
+
+      // Hide id2 — it should stay in the layer, but layout should act as if only id1 is present
+      await room.hideInput(id2);
+
+      const layer = room.getState().layers[0]!;
+      const inputIds = layer.inputs.map((i) => i.inputId);
+
+      // Both inputs remain in the layer
+      expect(inputIds).toContain(id1);
+      expect(inputIds).toContain(id2);
+
+      // The visible input gets a full-canvas size (1 input equal-grid = full resolution)
+      const li1 = layer.inputs.find((i) => i.inputId === id1)!;
+      expect(li1.width).toBe(output.resolution.width);
+      expect(li1.height).toBe(output.resolution.height);
+    });
+
+    it('missing connected inputs are appended to behavior-driven first layer only', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const id1 = (await room.addNewInput({ type: 'text-input', text: 'A' }))!;
+      await room.connectInput(id1);
+
+      // Push a layer that does NOT mention id1
+      await room.updateLayers([
+        {
+          id: 'layer-1',
+          behavior: { type: 'equal-grid', autoscale: true },
+          inputs: [],
+        },
+      ]);
+
+      const inputIds = room.getState().layers[0]!.inputs.map((i) => i.inputId);
+      // id1 was missing from client payload; server should have appended it
+      expect(inputIds).toContain(id1);
+    });
+
+    it('missing connected inputs are NOT injected into manual layers', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const id1 = (await room.addNewInput({ type: 'text-input', text: 'A' }))!;
+      await room.connectInput(id1);
+
+      // Manual layer that intentionally omits id1
+      await room.updateLayers([
+        {
+          id: 'manual',
+          // no behavior
+          inputs: [],
+        },
+      ]);
+
+      const inputIds = room.getState().layers[0]!.inputs.map((i) => i.inputId);
+      expect(inputIds).not.toContain(id1);
     });
   });
 
@@ -516,14 +813,14 @@ describe('RoomState', () => {
   });
 
   describe('getState', () => {
-    it('returns RoomSnapshot with inputs, layout, and settings', async () => {
+    it('returns RoomSnapshot with inputs, layers, and settings', async () => {
       const output = createTestOutput();
       const room = new RoomState('room-1', output, [], true);
       await room.init();
 
       const result = room.getState();
       expect(Array.isArray(result.inputs)).toBe(true);
-      expect(typeof result.layout).toBe('string');
+      expect(Array.isArray(result.layers)).toBe(true);
       expect(typeof result.swapDurationMs).toBe('number');
       expect(typeof result.swapOutgoingEnabled).toBe('boolean');
       expect(typeof result.newsStripEnabled).toBe('boolean');
@@ -593,9 +890,15 @@ describe('RoomState', () => {
         text: 'Original',
       }))!;
 
-      await room.startTimelinePlayback(createTimelineConfig(inputId, 'First'), 0);
+      await room.startTimelinePlayback(
+        createTimelineConfig(inputId, 'First'),
+        0,
+      );
       await room.pauseTimeline();
-      await room.startTimelinePlayback(createTimelineConfig(inputId, 'Updated'), 0);
+      await room.startTimelinePlayback(
+        createTimelineConfig(inputId, 'Updated'),
+        0,
+      );
 
       const resumedInput = room.getInputs().find((i) => i.inputId === inputId);
       expect(resumedInput?.type).toBe('text-input');
@@ -626,9 +929,14 @@ describe('RoomState', () => {
           text: 'Original',
         }))!;
 
-        await room.startTimelinePlayback(createTimelineConfig(inputId, 'First'), 0);
+        await room.startTimelinePlayback(
+          createTimelineConfig(inputId, 'First'),
+          0,
+        );
 
-        const initialInput = room.getInputs().find((i) => i.inputId === inputId);
+        const initialInput = room
+          .getInputs()
+          .find((i) => i.inputId === inputId);
         expect(initialInput?.type).toBe('text-input');
         if (initialInput?.type === 'text-input') {
           expect(initialInput.text).toBe('First');
@@ -636,7 +944,9 @@ describe('RoomState', () => {
 
         await vi.advanceTimersByTimeAsync(500);
 
-        const midPlaybackInput = room.getInputs().find((i) => i.inputId === inputId);
+        const midPlaybackInput = room
+          .getInputs()
+          .find((i) => i.inputId === inputId);
         expect(midPlaybackInput?.type).toBe('text-input');
         if (midPlaybackInput?.type === 'text-input') {
           expect(midPlaybackInput.text).toBe('First-later');
@@ -761,10 +1071,7 @@ describe('RoomState', () => {
       room.addStateChangeListener(listener);
       const callsBefore = listener.mock.calls.length;
 
-      await room.startTimelinePlayback(
-        createTimelineConfig(inputId, 'TL'),
-        0,
-      );
+      await room.startTimelinePlayback(createTimelineConfig(inputId, 'TL'), 0);
       expect(listener.mock.calls.length).toBeGreaterThan(callsBefore);
 
       const callsAfterStart = listener.mock.calls.length;
@@ -815,9 +1122,7 @@ describe('RoomState', () => {
       };
       await room.showInput(inputId, transition);
 
-      const { toPublicInputState } = await import(
-        '../server/publicInputState'
-      );
+      const { toPublicInputState } = await import('../server/publicInputState');
       const input = room.getInputs().find((i) => i.inputId === inputId)!;
       const pub = toPublicInputState(input);
       expect(pub.activeTransition).toMatchObject(transition);
@@ -833,9 +1138,7 @@ describe('RoomState', () => {
         text: 'Test',
       }))!;
 
-      const { toPublicInputState } = await import(
-        '../server/publicInputState'
-      );
+      const { toPublicInputState } = await import('../server/publicInputState');
       const input = room.getInputs().find((i) => i.inputId === inputId)!;
       const pub = toPublicInputState(input);
       expect('textScrollNudge' in pub).toBe(true);
@@ -893,7 +1196,7 @@ describe('RoomState', () => {
                   volume: 1,
                   showTitle: false,
                   shaders: [],
-    
+
                   mp4PlayFromMs: 0,
                   mp4Loop: true,
                 },

@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "smelter-ts-docs": {
+      "source": "smelter-labs/skills",
+      "sourceType": "github",
+      "computedHash": "7ca88f19a6fd6513fd9b42ba26c671ac5bb4884feaf4e42498a97ee8a756727f"
+    }
+  }
+}

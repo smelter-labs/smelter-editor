@@ -10,7 +10,7 @@ const SSE_RECONNECT_DELAY = 3_000;
 export function useRoomStateSse(roomId: string | undefined) {
   const [roomState, setRoomState] = useState<RoomState>({
     inputs: [],
-    layout: 'grid',
+    layers: [],
     whepUrl: '',
   });
   const [loading, setLoading] = useState(true);

@@ -53,9 +53,7 @@ function emitLogEntry(level: LogEntry['level'], message: string) {
   }
 }
 
-export function addLogListener(
-  cb: (entry: LogEntry) => void,
-): () => void {
+export function addLogListener(cb: (entry: LogEntry) => void): () => void {
   logListeners.add(cb);
   return () => {
     logListeners.delete(cb);
@@ -285,7 +283,7 @@ function updateDashboard() {
   // ── Panel 2: Rooms ──
   const roomRows = rooms.map((room) => {
     const inputs = room.getInputs();
-    const { layout } = room.getState();
+    const { layers } = room.getState();
     const res = room.getResolution();
     const recording = room.hasActiveRecording() ? 'REC' : '-';
     const age = formatUptime(Date.now() - room.creationTimestamp);
@@ -293,7 +291,7 @@ function updateDashboard() {
     return [
       room.idPrefix.slice(0, 8),
       roomStatus,
-      String(layout).slice(0, 14),
+      String(layers.length),
       `${res.width}x${res.height}`,
       String(inputs.length),
       recording,
@@ -305,7 +303,7 @@ function updateDashboard() {
     headers: [
       'Room ID',
       'Status',
-      'Layout',
+      'Layers',
       'Resolution',
       'Inputs',
       'Rec',
@@ -412,9 +410,7 @@ function updateDashboard() {
   inputsTable.setData({
     headers: ['Room', 'Type', 'St', 'Title', 'Vis', 'Vol', 'Mot'],
     data:
-      inputRows.length > 0
-        ? inputRows
-        : [['-', '-', '-', '-', '-', '-', '-']],
+      inputRows.length > 0 ? inputRows : [['-', '-', '-', '-', '-', '-', '-']],
   });
 
   screen.render();

@@ -25,11 +25,13 @@ describe('timelineReducer', () => {
               startMs: 0,
               endMs: 10_000,
               blockSettings: defaultBlockSettings,
+              keyframes: [],
             },
           ],
         },
       ],
       totalDurationMs: 60_000,
+      keyframeInterpolationMode: 'step',
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
@@ -42,6 +44,7 @@ describe('timelineReducer', () => {
 
   it('purges an input from all tracks and removes empty ones', () => {
     const state: TimelineState = {
+      keyframeInterpolationMode: 'step',
       tracks: [
         {
           id: 'track-1',
@@ -53,6 +56,7 @@ describe('timelineReducer', () => {
               startMs: 0,
               endMs: 5_000,
               blockSettings: defaultBlockSettings,
+              keyframes: [],
             },
             {
               id: 'clip-b',
@@ -60,6 +64,7 @@ describe('timelineReducer', () => {
               startMs: 5_000,
               endMs: 10_000,
               blockSettings: defaultBlockSettings,
+              keyframes: [],
             },
           ],
         },
@@ -73,6 +78,7 @@ describe('timelineReducer', () => {
               startMs: 0,
               endMs: 8_000,
               blockSettings: defaultBlockSettings,
+              keyframes: [],
             },
           ],
         },

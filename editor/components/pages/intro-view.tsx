@@ -428,12 +428,11 @@ export default function IntroView() {
 
         try {
           await updateRoom(roomId, {
-            layout: config.layout,
             ...(finalInputOrder ? { inputOrder: finalInputOrder } : {}),
             ...config.transitionSettings,
           });
         } catch (err) {
-          console.warn('Failed to set layout or input order:', err);
+          console.warn('Failed to set input order:', err);
         }
 
         if (pendingWhipInputs.length > 0) {

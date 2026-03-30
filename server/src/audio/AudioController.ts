@@ -7,9 +7,7 @@ export class AudioController {
   private readonly audioManager: AudioManager;
   private readonly _audioStore: StoreApi<AudioStoreState>;
   private enabled = false;
-  private readonly audioLevelListeners = new Set<
-    (levels: number[]) => void
-  >();
+  private readonly audioLevelListeners = new Set<(levels: number[]) => void>();
 
   constructor(
     roomId: string,
@@ -44,9 +42,7 @@ export class AudioController {
     this.enabled = false;
   }
 
-  addAudioLevelListener(
-    listener: (levels: number[]) => void,
-  ): () => void {
+  addAudioLevelListener(listener: (levels: number[]) => void): () => void {
     this.audioLevelListeners.add(listener);
     return () => {
       this.audioLevelListeners.delete(listener);
