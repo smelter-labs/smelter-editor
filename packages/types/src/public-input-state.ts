@@ -21,7 +21,10 @@ export type PublicInputState = {
   sourceState: InputSourceState;
   status: InputStatus;
   channelId?: string;
+  url?: string;
   imageId?: string;
+  mp4FileName?: string;
+  audioFileName?: string;
   sourceWidth?: number;
   sourceHeight?: number;
   attachedInputIds?: string[];

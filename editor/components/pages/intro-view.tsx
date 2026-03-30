@@ -15,7 +15,9 @@ import {
   getAllRooms,
   addTwitchInput,
   addKickInput,
+  addHlsInput,
   addMP4Input,
+  addAudioInput,
   addSnakeGameInput,
   addImageInput,
   addTextInput,
@@ -149,11 +151,14 @@ export default function IntroView() {
 
   const basePath = getBasePath(pathname);
 
-  const getRoomRoute = (roomId: string) => {
-    // If basePath is empty, just 'room/roomId'
-    // Otherwise, 'basePath/room/roomId'
-    return basePath ? `${basePath}/room/${roomId}` : `room/${roomId}`;
-  };
+  const getRoomRoute = useCallback(
+    (roomId: string) => {
+      // If basePath is empty, just 'room/roomId'
+      // Otherwise, 'basePath/room/roomId'
+      return basePath ? `${basePath}/room/${roomId}` : `room/${roomId}`;
+    },
+    [basePath],
+  );
 
   const handleCreateRoom = useCallback(
     async (resolutionOverride?: ResolutionPreset) => {
@@ -186,7 +191,7 @@ export default function IntroView() {
     },
     [
       router,
-      basePath,
+      getRoomRoute,
       pathname,
       twitchSuggestions,
       kickSuggestions,
@@ -250,8 +255,20 @@ export default function IntroView() {
                   inputId = result.inputId;
                 }
                 break;
+              case 'hls':
+                if (inputConfig.url) {
+                  const result = await addHlsInput(roomId, inputConfig.url);
+                  inputId = result.inputId;
+                }
+                break;
               case 'local-mp4':
-                if (inputConfig.mp4FileName) {
+                if (inputConfig.audioFileName) {
+                  const result = await addAudioInput(
+                    roomId,
+                    inputConfig.audioFileName,
+                  );
+                  inputId = result.inputId;
+                } else if (inputConfig.mp4FileName) {
                   const result = await addMP4Input(
                     roomId,
                     inputConfig.mp4FileName,
@@ -457,7 +474,7 @@ export default function IntroView() {
         setLoadingImport(false);
       }
     },
-    [router, basePath, selectedResolution],
+    [getRoomRoute, router],
   );
 
   const handleFileChange = useCallback(

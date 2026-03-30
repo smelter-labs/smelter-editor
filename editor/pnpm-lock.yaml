@@ -139,12 +139,6 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/node@20.19.31)(jiti@2.6.1)(lightningcss@1.30.2)
 
-  ..: {}
-
-  ../packages/types: {}
-
-  ../server: {}
-
 packages:
 
   '@alloc/quick-lru@5.2.0':

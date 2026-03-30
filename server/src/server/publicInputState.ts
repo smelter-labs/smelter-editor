@@ -1,3 +1,4 @@
+import path from 'path';
 import type { RoomInputState } from '../room/types';
 import type { PublicInputState } from '../types';
 import { toPublicSnakeGameInputState } from '../snakeGame/publicSnakeGameState';
@@ -34,13 +35,18 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
     motionEnabled: input.motionEnabled,
   };
   switch (input.type) {
-    case 'local-mp4':
+    case 'local-mp4': {
+      const fileName = path.basename(input.mp4FilePath);
+      const isAudio = input.mp4FilePath.includes('/audios/');
       return {
         ...base,
         sourceState: 'always-live' as const,
         sourceWidth: input.mp4VideoWidth,
         sourceHeight: input.mp4VideoHeight,
+        mp4FileName: isAudio ? undefined : fileName,
+        audioFileName: isAudio ? fileName : undefined,
       };
+    }
     case 'image':
       return {
         ...base,
@@ -55,7 +61,11 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
         channelId: input.channelId,
       };
     case 'hls':
-      return { ...base, sourceState: 'always-live' as const };
+      return {
+        ...base,
+        sourceState: 'always-live' as const,
+        url: input.hlsUrl,
+      };
     case 'whip':
       return {
         ...base,

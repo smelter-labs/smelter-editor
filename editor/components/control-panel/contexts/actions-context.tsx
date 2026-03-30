@@ -3,6 +3,7 @@
 import { createContext, useContext } from 'react';
 import type {
   AddInputResponse,
+  AudioSuggestions,
   AvailableShader,
   InputSuggestions,
   KickSuggestions,
@@ -60,6 +61,7 @@ export interface ControlPanelActions {
   addTwitchInput(roomId: string, channelId: string): Promise<any>;
   addKickInput(roomId: string, channelId: string): Promise<any>;
   addMP4Input(roomId: string, mp4FileName: string): Promise<any>;
+  addAudioInput(roomId: string, audioFileName: string): Promise<any>;
   addImageInput(roomId: string, imageFileNameOrId: string): Promise<any>;
   addTextInput(
     roomId: string,
@@ -83,6 +85,7 @@ export interface ControlPanelActions {
   getKickSuggestions(): Promise<KickSuggestions>;
   getMP4Suggestions(): Promise<MP4Suggestions>;
   getPictureSuggestions(): Promise<PictureSuggestions>;
+  getAudioSuggestions(): Promise<AudioSuggestions>;
 
   restartMp4Input(
     roomId: string,
@@ -103,6 +106,7 @@ export interface ControlPanelActions {
   hlsStreamStorage: StorageClient<{ url: string }>;
 
   restartService(): Promise<void>;
+  restartSmelter(): Promise<void>;
 }
 
 const ActionsContext = createContext<ControlPanelActions | null>(null);

@@ -10,6 +10,7 @@ import type {
   BorderProperties,
   SnakeGameDisplayProperties,
   ShaderConfig,
+  ViewportProperties,
 } from '../types';
 import type { HandsStore } from '../hands/handStore';
 import { createContext, useContext } from 'react';
@@ -50,6 +51,16 @@ export type InputConfig = {
   Partial<CropProperties> &
   Partial<SnakeGameDisplayProperties>;
 
+export type RoomStoreState = {
+  inputs: InputConfig[];
+  swapDurationMs: number;
+  swapOutgoingEnabled: boolean;
+  swapFadeInDurationMs: number;
+  newsStripFadeDuringSwap: boolean;
+  swapFadeOutDurationMs: number;
+  newsStripEnabled: boolean;
+} & Partial<ViewportProperties>;
+
 export type RoomStore = {
   inputs: InputConfig[];
   resolution: Resolution;
@@ -60,18 +71,10 @@ export type RoomStore = {
   swapFadeOutDurationMs: number;
   newsStripFadeDuringSwap: boolean;
   newsStripEnabled: boolean;
-  updateState: (state: {
-    inputs: InputConfig[];
-    swapDurationMs: number;
-    swapOutgoingEnabled: boolean;
-    swapFadeInDurationMs: number;
-    newsStripFadeDuringSwap: boolean;
-    swapFadeOutDurationMs: number;
-    newsStripEnabled: boolean;
-  }) => void;
+  updateState: (state: RoomStoreState) => void;
   setOutputShaders: (shaders: ShaderConfig[]) => void;
   setInputFrozenImage: (inputId: string, imageId: string | null) => void;
-};
+} & Partial<ViewportProperties>;
 
 export function createRoomStore(
   resolution: Resolution = { width: 2560, height: 1440 },
@@ -86,15 +89,22 @@ export function createRoomStore(
     swapFadeOutDurationMs: 500,
     newsStripFadeDuringSwap: true,
     newsStripEnabled: false,
-    updateState: ({
-      inputs,
-      swapDurationMs,
-      swapOutgoingEnabled,
-      swapFadeInDurationMs,
-      newsStripFadeDuringSwap,
-      swapFadeOutDurationMs,
-      newsStripEnabled,
-    }) => {
+    updateState: (incoming) => {
+      const {
+        inputs,
+        swapDurationMs,
+        swapOutgoingEnabled,
+        swapFadeInDurationMs,
+        newsStripFadeDuringSwap,
+        swapFadeOutDurationMs,
+        newsStripEnabled,
+        viewportTop,
+        viewportLeft,
+        viewportWidth,
+        viewportHeight,
+        viewportTransitionDurationMs,
+        viewportTransitionEasing,
+      } = incoming;
       set(() => ({
         inputs,
         swapDurationMs,
@@ -103,6 +113,12 @@ export function createRoomStore(
         newsStripFadeDuringSwap,
         swapFadeOutDurationMs,
         newsStripEnabled,
+        viewportTop,
+        viewportLeft,
+        viewportWidth,
+        viewportHeight,
+        viewportTransitionDurationMs,
+        viewportTransitionEasing,
       }));
     },
     setOutputShaders: (shaders: ShaderConfig[]) => {
@@ -168,6 +184,18 @@ export function useInputs() {
 export function useOutputShaders() {
   const store = useContext(StoreContext);
   return useStore(store, (state) => state.outputShaders);
+}
+
+export function useViewport() {
+  const store = useContext(StoreContext);
+  return useStore(store, (state) => ({
+    viewportTop: state.viewportTop,
+    viewportLeft: state.viewportLeft,
+    viewportWidth: state.viewportWidth,
+    viewportHeight: state.viewportHeight,
+    viewportTransitionDurationMs: state.viewportTransitionDurationMs,
+    viewportTransitionEasing: state.viewportTransitionEasing,
+  }));
 }
 
 export const StoreContext =

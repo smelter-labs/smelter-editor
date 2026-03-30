@@ -16,6 +16,7 @@ import type {
   KickSuggestions,
   MP4Suggestions,
   PictureSuggestions,
+  AudioSuggestions,
   UpdateRoomOptions,
   StartRecordingResponse,
   StopRecordingResponse,
@@ -102,6 +103,10 @@ export async function getPictureSuggestions(): Promise<PictureSuggestions> {
   return client.getPictureSuggestions();
 }
 
+export async function getAudioSuggestions(): Promise<AudioSuggestions> {
+  return client.getAudioSuggestions();
+}
+
 export async function addTwitchInput(roomId: string, channelId: string) {
   return client.addTwitchInput(roomId, channelId);
 }
@@ -112,6 +117,10 @@ export async function addKickInput(roomId: string, channelId: string) {
 
 export async function addMP4Input(roomId: string, mp4FileName: string) {
   return client.addMP4Input(roomId, mp4FileName);
+}
+
+export async function addAudioInput(roomId: string, audioFileName: string) {
+  return client.addAudioInput(roomId, audioFileName);
 }
 
 export async function addImageInput(roomId: string, imageFileNameOrId: string) {
@@ -372,6 +381,10 @@ export async function getMp4Duration(fileName: string): Promise<number> {
   return client.getMp4Duration(fileName);
 }
 
+export async function getAudioDuration(fileName: string): Promise<number> {
+  return client.getAudioDuration(fileName);
+}
+
 export async function restartService(): Promise<void> {
   try {
     await spawn('bash', ['-c', 'sudo systemctl restart smelter.service'], {});
@@ -381,6 +394,10 @@ export async function restartService(): Promise<void> {
   await new Promise<void>((res) => {
     setTimeout(() => res(), 5000);
   });
+}
+
+export async function restartSmelter(): Promise<void> {
+  await client.restartSmelter();
 }
 
 export async function getAvailableShaders(): Promise<AvailableShader[]> {

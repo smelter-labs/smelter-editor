@@ -29,6 +29,7 @@ import { toPublicInputState } from './publicInputState';
 import { config } from '../config';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
 import pictureSuggestionsMonitor from '../pictures/pictureSuggestionMonitor';
+import audioSuggestionsMonitor from '../audio-files/audioSuggestionMonitor';
 import { KickChannelSuggestions } from '../kick/KickChannelMonitor';
 import shadersController from '../shaders/shaders';
 import { uploadRoutes } from './routes/uploadRoutes';
@@ -289,6 +290,50 @@ routes.get<{ Params: { fileName: string } }>(
   },
 );
 
+routes.get('/suggestions/audios', async (_req, res) => {
+  res.status(200).send({ audios: audioSuggestionsMonitor.audioFiles });
+});
+
+routes.get<{ Querystring: { folder?: string } }>(
+  '/suggestions/audios/browse',
+  {
+    schema: {
+      querystring: Type.Object({ folder: Type.Optional(Type.String()) }),
+    },
+  },
+  async (req, res) => {
+    const folder = req.query.folder || undefined;
+    res.status(200).send(audioSuggestionsMonitor.listFolder(folder));
+  },
+);
+
+routes.get<{ Params: { fileName: string } }>(
+  '/suggestions/audio-duration/:fileName',
+  { schema: { params: Type.Object({ fileName: Type.String() }) } },
+  async (req, res) => {
+    const { fileName } = req.params;
+    const safeName = path.basename(fileName);
+    const filePath = path.join(process.cwd(), 'audios', safeName);
+
+    if (!(await pathExists(filePath))) {
+      return res.status(404).send({ error: 'Audio file not found' });
+    }
+
+    try {
+      const durationMs = await getMp4DurationMs(filePath);
+      return res.status(200).send({ durationMs });
+    } catch (err: any) {
+      console.error('Failed to get audio duration via ffprobe', {
+        fileName: safeName,
+        err: err?.message,
+      });
+      return res
+        .status(500)
+        .send({ error: 'Failed to read audio duration' });
+    }
+  },
+);
+
 routes.get('/suggestions/twitch', async (_req, res) => {
   res.status(200).send({ twitch: TwitchChannelSuggestions.getTopStreams() });
 });
@@ -345,7 +390,10 @@ const InputSchema = Type.Union([
   Type.Object({
     type: Type.Literal('local-mp4'),
     source: Type.Union([
-      Type.Object({ fileName: Type.String() }),
+      Type.Object({
+        fileName: Type.Optional(Type.String()),
+        audioFileName: Type.Optional(Type.String()),
+      }),
       Type.Object({ url: Type.String() }),
     ]),
   }),
@@ -462,6 +510,12 @@ routes.get<RoomIdParams>(
       isRecording: room.hasActiveRecording(),
       isFrozen: room.isFrozen(),
       audioAnalysisEnabled: room.isAudioAnalysisEnabled(),
+      viewportTop: snapshot.viewportTop,
+      viewportLeft: snapshot.viewportLeft,
+      viewportWidth: snapshot.viewportWidth,
+      viewportHeight: snapshot.viewportHeight,
+      viewportTransitionDurationMs: snapshot.viewportTransitionDurationMs,
+      viewportTransitionEasing: snapshot.viewportTransitionEasing,
     });
   },
 );
@@ -518,6 +572,12 @@ routes.get('/rooms', async (_req, res) => {
         newsStripEnabled: snapshot.newsStripEnabled,
         isRecording: room.hasActiveRecording(),
         audioAnalysisEnabled: room.isAudioAnalysisEnabled(),
+        viewportTop: snapshot.viewportTop,
+        viewportLeft: snapshot.viewportLeft,
+        viewportWidth: snapshot.viewportWidth,
+        viewportHeight: snapshot.viewportHeight,
+        viewportTransitionDurationMs: snapshot.viewportTransitionDurationMs,
+        viewportTransitionEasing: snapshot.viewportTransitionEasing,
       };
     })
     .filter(Boolean);
@@ -765,6 +825,12 @@ const UpdateRoomSchema = Type.Object({
   ),
   newsStripFadeDuringSwap: Type.Optional(Type.Boolean()),
   newsStripEnabled: Type.Optional(Type.Boolean()),
+  viewportTop: Type.Optional(Type.Number()),
+  viewportLeft: Type.Optional(Type.Number()),
+  viewportWidth: Type.Optional(Type.Number({ minimum: 1 })),
+  viewportHeight: Type.Optional(Type.Number({ minimum: 1 })),
+  viewportTransitionDurationMs: Type.Optional(Type.Number({ minimum: 0 })),
+  viewportTransitionEasing: Type.Optional(Type.String()),
 });
 
 // No multiple-pictures shader defaults API - kept local in layout
@@ -803,6 +869,22 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
     }
     if (req.body.newsStripEnabled !== undefined) {
       room.setNewsStripEnabled(req.body.newsStripEnabled);
+    }
+
+    const viewportFields = [
+      'viewportTop',
+      'viewportLeft',
+      'viewportWidth',
+      'viewportHeight',
+      'viewportTransitionDurationMs',
+      'viewportTransitionEasing',
+    ] as const;
+    const viewportUpdate: Record<string, unknown> = {};
+    for (const key of viewportFields) {
+      if (req.body[key] !== undefined) viewportUpdate[key] = req.body[key];
+    }
+    if (Object.keys(viewportUpdate).length > 0) {
+      room.setViewport(viewportUpdate as any);
     }
 
     res.status(200).send({ status: 'ok' });
@@ -1245,6 +1327,12 @@ routes.get<RoomIdParams>(
         isRecording: room.hasActiveRecording(),
         isFrozen: room.isFrozen(),
         audioAnalysisEnabled: room.isAudioAnalysisEnabled(),
+        viewportTop: snapshot.viewportTop,
+        viewportLeft: snapshot.viewportLeft,
+        viewportWidth: snapshot.viewportWidth,
+        viewportHeight: snapshot.viewportHeight,
+        viewportTransitionDurationMs: snapshot.viewportTransitionDurationMs,
+        viewportTransitionEasing: snapshot.viewportTransitionEasing,
       };
       res.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
     };
@@ -1314,6 +1402,12 @@ routes.delete<RoomIdParams>(
     res.status(200).send({ status: 'ok' });
   },
 );
+
+routes.post('/restart-smelter', async (_req, res) => {
+  console.log('[request] Restart Smelter engine');
+  await state.restartSmelter();
+  res.status(200).send({ status: 'ok' });
+});
 
 routes.register(uploadRoutes);
 

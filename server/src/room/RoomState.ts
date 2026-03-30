@@ -61,6 +61,13 @@ export class RoomState {
   private newsStripFadeDuringSwap: boolean = true;
   private newsStripEnabled: boolean = false;
 
+  private viewportTop?: number;
+  private viewportLeft?: number;
+  private viewportWidth?: number;
+  private viewportHeight?: number;
+  private viewportTransitionDurationMs?: number;
+  private viewportTransitionEasing?: string;
+
   public idPrefix: string;
   private output: SmelterOutput;
 
@@ -174,6 +181,12 @@ export class RoomState {
       newsStripFadeDuringSwap: this.newsStripFadeDuringSwap,
       swapFadeOutDurationMs: this.swapFadeOutDurationMs,
       newsStripEnabled: this.newsStripEnabled,
+      viewportTop: this.viewportTop,
+      viewportLeft: this.viewportLeft,
+      viewportWidth: this.viewportWidth,
+      viewportHeight: this.viewportHeight,
+      viewportTransitionDurationMs: this.viewportTransitionDurationMs,
+      viewportTransitionEasing: this.viewportTransitionEasing,
     };
   }
 
@@ -246,6 +259,32 @@ export class RoomState {
   }
   public setNewsStripEnabled(value: boolean) {
     this.newsStripEnabled = value;
+    this.updateStoreWithState();
+  }
+
+  public setViewport(
+    opts: Partial<import('../types').ViewportProperties>,
+  ): void {
+    if (opts.viewportTop !== undefined) this.viewportTop = opts.viewportTop;
+    if (opts.viewportLeft !== undefined) this.viewportLeft = opts.viewportLeft;
+    if (opts.viewportWidth !== undefined)
+      this.viewportWidth = opts.viewportWidth;
+    if (opts.viewportHeight !== undefined)
+      this.viewportHeight = opts.viewportHeight;
+    if (opts.viewportTransitionDurationMs !== undefined)
+      this.viewportTransitionDurationMs = opts.viewportTransitionDurationMs;
+    if (opts.viewportTransitionEasing !== undefined)
+      this.viewportTransitionEasing = opts.viewportTransitionEasing;
+    this.updateStoreWithState();
+  }
+
+  public resetViewport(): void {
+    this.viewportTop = undefined;
+    this.viewportLeft = undefined;
+    this.viewportWidth = undefined;
+    this.viewportHeight = undefined;
+    this.viewportTransitionDurationMs = undefined;
+    this.viewportTransitionEasing = undefined;
     this.updateStoreWithState();
   }
 
@@ -922,6 +961,12 @@ export class RoomState {
       newsStripFadeDuringSwap: this.newsStripFadeDuringSwap,
       swapFadeOutDurationMs: this.swapFadeOutDurationMs,
       newsStripEnabled: this.newsStripEnabled,
+      viewportTop: this.viewportTop,
+      viewportLeft: this.viewportLeft,
+      viewportWidth: this.viewportWidth,
+      viewportHeight: this.viewportHeight,
+      viewportTransitionDurationMs: this.viewportTransitionDurationMs,
+      viewportTransitionEasing: this.viewportTransitionEasing,
     });
 
     this.notifyStateChange();

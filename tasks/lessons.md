@@ -51,6 +51,11 @@
 - **Session:** current
 - **Rule:** Never persist runtime-only input relationships by raw `inputId` when exporting/importing room config. Store a stable reference like input index, remap it on import, and update placeholder-based references when deferred inputs (for example pending WHIP) become real.
 
+### 2.5 Keep all config import flows in sync
+- **Pattern:** Audio inputs were recreated correctly in one config-import path, but the intro-room flow and legacy config section still handled `local-mp4` as video-only. Saved configs looked valid, yet audio timeline blocks disappeared after import because the underlying inputs were never recreated.
+- **Session:** current
+- **Rule:** When config import logic exists in multiple UI flows, centralize it or update every flow together. For dual-purpose input types like `local-mp4`, always check both `audioFileName` and `mp4FileName`.
+
 ---
 
 ## 3. React / Hooks Patterns

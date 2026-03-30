@@ -21,7 +21,11 @@ import {
 } from '../whip-input/utils/whip-storage';
 import { startPublish } from '../whip-input/utils/whip-publisher';
 import { startScreensharePublish } from '../whip-input/utils/screenshare-publisher';
-import { addHandsInput, getMp4Duration } from '@/app/actions/actions';
+import {
+  addHandsInput,
+  getMp4Duration,
+  getAudioDuration,
+} from '@/app/actions/actions';
 import { useIsMobileDevice } from '@/hooks/use-mobile';
 import { toast } from 'sonner';
 import type { ChannelSuggestion, Input } from '@/lib/types';
@@ -29,6 +33,7 @@ import type { ChannelSuggestion, Input } from '@/lib/types';
 // ── Types ────────────────────────────────────────────────────
 
 type AssetItemMp4 = { kind: 'mp4'; fileName: string; durationMs?: number };
+type AssetItemAudio = { kind: 'audio'; fileName: string; durationMs?: number };
 type AssetItemImage = { kind: 'image'; fileName: string };
 type AssetItemTwitch = { kind: 'twitch'; channel: ChannelSuggestion };
 type AssetItemKick = { kind: 'kick'; channel: ChannelSuggestion };
@@ -48,16 +53,18 @@ type AssetItemAction = {
     | 'screenshare'
     | 'hls'
     | 'upload-mp4'
-    | 'upload-image';
+    | 'upload-image'
+    | 'upload-audio';
 };
 type AssetItemFolder = {
   kind: 'folder';
   name: string;
-  mediaType: 'mp4' | 'picture';
+  mediaType: 'mp4' | 'picture' | 'audio';
 };
 
 type AssetItem =
   | AssetItemMp4
+  | AssetItemAudio
   | AssetItemImage
   | AssetItemTwitch
   | AssetItemKick
@@ -70,6 +77,7 @@ const FILTER_TYPES = [
   'STREAM',
   'HLS',
   'MP4',
+  'AUDIO',
   'IMAGE',
   'TEXT',
   'GAME',
@@ -80,6 +88,7 @@ type FilterType = (typeof FILTER_TYPES)[number];
 
 const ACTION_CARDS: AssetItemAction[] = [
   { kind: 'action', actionType: 'upload-mp4' },
+  { kind: 'action', actionType: 'upload-audio' },
   { kind: 'action', actionType: 'upload-image' },
   { kind: 'action', actionType: 'hls' },
   { kind: 'action', actionType: 'text' },
@@ -93,6 +102,8 @@ function itemKey(item: AssetItem): string {
   switch (item.kind) {
     case 'mp4':
       return `mp4:${item.fileName}`;
+    case 'audio':
+      return `audio:${item.fileName}`;
     case 'image':
       return `image:${item.fileName}`;
     case 'twitch':
@@ -130,6 +141,12 @@ function itemMatchesFilter(item: AssetItem, filter: FilterType): boolean {
         (item.kind === 'folder' && item.mediaType === 'picture') ||
         (item.kind === 'action' && item.actionType === 'upload-image')
       );
+    case 'AUDIO':
+      return (
+        item.kind === 'audio' ||
+        (item.kind === 'folder' && item.mediaType === 'audio') ||
+        (item.kind === 'action' && item.actionType === 'upload-audio')
+      );
     case 'TEXT':
       return item.kind === 'action' && item.actionType === 'text';
     case 'GAME':
@@ -148,6 +165,8 @@ function itemLabel(item: AssetItem): string {
   switch (item.kind) {
     case 'mp4':
       return item.fileName;
+    case 'audio':
+      return item.fileName;
     case 'image':
       return item.fileName;
     case 'twitch':
@@ -165,6 +184,7 @@ function itemLabel(item: AssetItem): string {
 
 const ACTION_TYPE_LABELS: Record<AssetItemAction['actionType'], string> = {
   'upload-mp4': 'UPLOAD MP4',
+  'upload-audio': 'UPLOAD AUDIO',
   'upload-image': 'UPLOAD IMAGE',
   hls: 'NEW HLS STREAM',
   text: 'TEXT INPUT',
@@ -178,6 +198,8 @@ function typeBadge(item: AssetItem): string {
   switch (item.kind) {
     case 'mp4':
       return 'MP4';
+    case 'audio':
+      return 'AUDIO';
     case 'image':
       return 'IMG';
     case 'twitch':
@@ -222,16 +244,37 @@ async function browsePictures(folder: string): Promise<BrowseResult> {
   return res.json();
 }
 
+async function browseAudios(folder: string): Promise<BrowseResult> {
+  const qs = folder ? `?folder=${encodeURIComponent(folder)}` : '';
+  const res = await fetch(`/api/suggestions/audios/browse${qs}`);
+  if (!res.ok) return { files: [], folders: [] };
+  return res.json();
+}
+
+type UploadMediaType = 'mp4' | 'picture' | 'audio';
+
+const UPLOAD_ROUTES: Record<UploadMediaType, string> = {
+  mp4: '/api/upload/mp4',
+  picture: '/api/upload/picture',
+  audio: '/api/upload/audio',
+};
+
+const FOLDER_ROUTES: Record<UploadMediaType, string> = {
+  mp4: '/api/upload/mp4/folder',
+  picture: '/api/upload/picture/folder',
+  audio: '/api/upload/audio/folder',
+};
+
 async function uploadFile(
   file: File,
-  mediaType: 'mp4' | 'picture',
+  mediaType: UploadMediaType,
   folder: string,
 ): Promise<{ fileName: string; folder: string }> {
   const formData = new FormData();
   formData.append('file', file);
   if (folder) formData.append('folder', folder);
 
-  const route = mediaType === 'mp4' ? '/api/upload/mp4' : '/api/upload/picture';
+  const route = UPLOAD_ROUTES[mediaType];
   const res = await fetch(route, { method: 'POST', body: formData });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
@@ -241,13 +284,10 @@ async function uploadFile(
 }
 
 async function createFolder(
-  mediaType: 'mp4' | 'picture',
+  mediaType: UploadMediaType,
   folder: string,
 ): Promise<void> {
-  const route =
-    mediaType === 'mp4'
-      ? '/api/upload/mp4/folder'
-      : '/api/upload/picture/folder';
+  const route = FOLDER_ROUTES[mediaType];
   const res = await fetch(route, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -260,11 +300,13 @@ async function createFolder(
 }
 
 const MP4_ACCEPT = '.mp4,video/mp4';
+const AUDIO_ACCEPT = '.wav,.mp3,audio/wav,audio/mpeg';
 const PICTURE_ACCEPT = '.jpg,.jpeg,.png,.gif,.svg,.webp,image/*';
 
-function detectMediaType(file: File): 'mp4' | 'picture' | null {
+function detectMediaType(file: File): UploadMediaType | null {
   const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
   if (ext === 'mp4') return 'mp4';
+  if (['wav', 'mp3'].includes(ext)) return 'audio';
   if (['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(ext))
     return 'picture';
   return null;
@@ -330,20 +372,29 @@ export function AddVideoModal({
 
   const [mp4Folder, setMp4Folder] = useState('');
   const [pictureFolder, setPictureFolder] = useState('');
+  const [audioFolder, setAudioFolder] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const showFolderBrowsing = filter === 'MP4' || filter === 'IMAGE';
-  const activeFolderMediaType: 'mp4' | 'picture' =
-    filter === 'IMAGE' ? 'picture' : 'mp4';
+  const showFolderBrowsing =
+    filter === 'MP4' || filter === 'IMAGE' || filter === 'AUDIO';
+  const activeFolderMediaType: UploadMediaType =
+    filter === 'IMAGE' ? 'picture' : filter === 'AUDIO' ? 'audio' : 'mp4';
   const activeFolder =
-    filter === 'IMAGE' ? pictureFolder : filter === 'MP4' ? mp4Folder : '';
+    filter === 'IMAGE'
+      ? pictureFolder
+      : filter === 'AUDIO'
+        ? audioFolder
+        : filter === 'MP4'
+          ? mp4Folder
+          : '';
 
   const setActiveFolder = useCallback(
     (folder: string) => {
       if (filter === 'IMAGE') setPictureFolder(folder);
+      else if (filter === 'AUDIO') setAudioFolder(folder);
       else if (filter === 'MP4') setMp4Folder(folder);
     },
     [filter],
@@ -357,8 +408,10 @@ export function AddVideoModal({
         kickRes,
         mp4Browse,
         pictureBrowse,
+        audioBrowse,
         mp4FlatRes,
         pictureFlatRes,
+        audioFlatRes,
         hlsListRes,
       ] = await Promise.all([
         actions
@@ -375,10 +428,17 @@ export function AddVideoModal({
           files: [] as string[],
           folders: [] as string[],
         })),
+        browseAudios(audioFolder).catch(() => ({
+          files: [] as string[],
+          folders: [] as string[],
+        })),
         actions.getMP4Suggestions().catch(() => ({ mp4s: [] as string[] })),
         actions
           .getPictureSuggestions()
           .catch(() => ({ pictures: [] as string[] })),
+        actions
+          .getAudioSuggestions()
+          .catch(() => ({ audios: [] as string[] })),
         actions.hlsStreamStorage
           .list()
           .catch(() => ({ ok: false as const, error: 'failed' })),
@@ -424,9 +484,18 @@ export function AddVideoModal({
         fileName: pictureFolder ? `${pictureFolder}/${f}` : f,
       }));
 
+      const audioFolderItems: AssetItemFolder[] = audioBrowse.folders.map(
+        (name) => ({ kind: 'folder', name, mediaType: 'audio' }),
+      );
+      const audioFileItems: AssetItemAudio[] = audioBrowse.files.map((f) => ({
+        kind: 'audio',
+        fileName: audioFolder ? `${audioFolder}/${f}` : f,
+      }));
+
       const fetched: AssetItem[] = [
         ...mp4FolderItems,
         ...picFolderItems,
+        ...audioFolderItems,
         ...hlsSavedItems,
         ...twitchRes.twitch.map(
           (channel): AssetItemTwitch => ({ kind: 'twitch', channel }),
@@ -436,6 +505,7 @@ export function AddVideoModal({
         ),
         ...mp4FileItems,
         ...picFileItems,
+        ...audioFileItems,
         ...ACTION_CARDS,
       ];
 
@@ -455,11 +525,24 @@ export function AddVideoModal({
             })
             .catch(() => {});
         }
+        if (item.kind === 'audio') {
+          getAudioDuration(item.fileName)
+            .then((durationMs) => {
+              setItems((prev) =>
+                prev.map((i) =>
+                  i.kind === 'audio' && i.fileName === item.fileName
+                    ? { ...i, durationMs }
+                    : i,
+                ),
+              );
+            })
+            .catch(() => {});
+        }
       }
     } finally {
       setIsLoading(false);
     }
-  }, [actions, mp4Folder, pictureFolder]);
+  }, [actions, mp4Folder, pictureFolder, audioFolder]);
 
   useEffect(() => {
     if (open) {
@@ -472,6 +555,7 @@ export function AddVideoModal({
     if (open) {
       setMp4Folder('');
       setPictureFolder('');
+      setAudioFolder('');
       setFilter('ALL');
       setShowNewFolderInput(false);
     }
@@ -490,25 +574,32 @@ export function AddVideoModal({
   const handleFolderClick = useCallback(
     (folderItem: AssetItemFolder) => {
       const currentBase =
-        folderItem.mediaType === 'mp4' ? mp4Folder : pictureFolder;
+        folderItem.mediaType === 'mp4'
+          ? mp4Folder
+          : folderItem.mediaType === 'audio'
+            ? audioFolder
+            : pictureFolder;
       const newPath = currentBase
         ? `${currentBase}/${folderItem.name}`
         : folderItem.name;
       if (folderItem.mediaType === 'mp4') setMp4Folder(newPath);
+      else if (folderItem.mediaType === 'audio') setAudioFolder(newPath);
       else setPictureFolder(newPath);
       setSelectedItem(null);
     },
-    [mp4Folder, pictureFolder],
+    [mp4Folder, pictureFolder, audioFolder],
   );
 
   const handleUploadClick = useCallback(() => {
     if (!fileInputRef.current) return;
     if (filter === 'MP4') {
       fileInputRef.current.accept = MP4_ACCEPT;
+    } else if (filter === 'AUDIO') {
+      fileInputRef.current.accept = AUDIO_ACCEPT;
     } else if (filter === 'IMAGE') {
       fileInputRef.current.accept = PICTURE_ACCEPT;
     } else {
-      fileInputRef.current.accept = `${MP4_ACCEPT},${PICTURE_ACCEPT}`;
+      fileInputRef.current.accept = `${MP4_ACCEPT},${AUDIO_ACCEPT},${PICTURE_ACCEPT}`;
     }
     fileInputRef.current.click();
   }, [filter]);
@@ -525,7 +616,12 @@ export function AddVideoModal({
         return;
       }
 
-      const folder = mediaType === 'mp4' ? mp4Folder : pictureFolder;
+      const folder =
+        mediaType === 'mp4'
+          ? mp4Folder
+          : mediaType === 'audio'
+            ? audioFolder
+            : pictureFolder;
 
       setIsUploading(true);
       try {
@@ -538,13 +634,18 @@ export function AddVideoModal({
         setIsUploading(false);
       }
     },
-    [mp4Folder, pictureFolder, fetchItems],
+    [mp4Folder, pictureFolder, audioFolder, fetchItems],
   );
 
   const handleCreateFolder = useCallback(async () => {
     const name = newFolderName.trim();
     if (!name) return;
-    const base = activeFolderMediaType === 'mp4' ? mp4Folder : pictureFolder;
+    const base =
+      activeFolderMediaType === 'mp4'
+        ? mp4Folder
+        : activeFolderMediaType === 'audio'
+          ? audioFolder
+          : pictureFolder;
     const fullPath = base ? `${base}/${name}` : name;
     try {
       await createFolder(activeFolderMediaType, fullPath);
@@ -721,6 +822,7 @@ export function AddVideoModal({
                     onUploadComplete={fetchItems}
                     currentMp4Folder={mp4Folder}
                     currentPictureFolder={pictureFolder}
+                    currentAudioFolder={audioFolder}
                   />
                 ) : (
                   <div className='flex items-center justify-center h-32'>
@@ -753,7 +855,7 @@ function AssetCard({
   const label = itemLabel(item);
 
   const durationBadge =
-    item.kind === 'mp4' && item.durationMs != null
+    (item.kind === 'mp4' || item.kind === 'audio') && item.durationMs != null
       ? formatDuration(item.durationMs)
       : null;
 
@@ -767,6 +869,8 @@ function AssetCard({
         const ext = item.fileName.split('.').pop()?.toUpperCase() ?? '';
         return ext;
       }
+      case 'audio':
+        return 'AUDIO';
       case 'image': {
         const ext = item.fileName.split('.').pop()?.toUpperCase() ?? '';
         return ext;
@@ -781,7 +885,11 @@ function AssetCard({
       case 'action':
         return 'ACTION';
       case 'folder':
-        return item.mediaType === 'mp4' ? 'MP4 FOLDER' : 'IMAGE FOLDER';
+        return item.mediaType === 'mp4'
+          ? 'MP4 FOLDER'
+          : item.mediaType === 'audio'
+            ? 'AUDIO FOLDER'
+            : 'IMAGE FOLDER';
       default:
         return '';
     }
@@ -830,6 +938,26 @@ function AssetThumbnail({ item }: { item: AssetItem }) {
         alt={item.fileName}
         className='w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700'
       />
+    );
+  }
+  if (item.kind === 'audio') {
+    return (
+      <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-[#a855f7]/20 to-[#131313]'>
+        <svg
+          viewBox='0 0 24 24'
+          className='w-10 h-10 opacity-50 group-hover:opacity-70 transition-opacity'
+          fill='none'
+          stroke='#a855f7'
+          strokeWidth='1.5'>
+          <path
+            d='M9 18V5l12-2v13'
+            strokeLinecap='round'
+            strokeLinejoin='round'
+          />
+          <circle cx='6' cy='18' r='3' />
+          <circle cx='18' cy='16' r='3' />
+        </svg>
+      </div>
     );
   }
   if (item.kind === 'image') {
@@ -1019,6 +1147,25 @@ function ActionThumbnail({
               strokeLinecap='round'
               strokeLinejoin='round'
             />
+          </svg>
+        </div>
+      );
+    case 'upload-audio':
+      return (
+        <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-[#a855f7]/15 to-[#131313]'>
+          <svg
+            viewBox='0 0 24 24'
+            className='w-10 h-10 opacity-40'
+            fill='none'
+            stroke='#a855f7'
+            strokeWidth='1.5'>
+            <path
+              d='M9 18V5l12-2v13'
+              strokeLinecap='round'
+              strokeLinejoin='round'
+            />
+            <circle cx='6' cy='18' r='3' />
+            <circle cx='18' cy='16' r='3' />
           </svg>
         </div>
       );
@@ -1287,6 +1434,7 @@ function PropertyInspector({
   onUploadComplete,
   currentMp4Folder,
   currentPictureFolder,
+  currentAudioFolder,
 }: {
   item: AssetItem;
   roomId: string;
@@ -1296,10 +1444,13 @@ function PropertyInspector({
   onUploadComplete: () => Promise<void>;
   currentMp4Folder: string;
   currentPictureFolder: string;
+  currentAudioFolder: string;
 }) {
   switch (item.kind) {
     case 'mp4':
       return <Mp4Inspector item={item} roomId={roomId} onDone={onDone} />;
+    case 'audio':
+      return <AudioInspector item={item} roomId={roomId} onDone={onDone} />;
     case 'image':
       return <ImageInspector item={item} roomId={roomId} onDone={onDone} />;
     case 'twitch':
@@ -1308,20 +1459,24 @@ function PropertyInspector({
       return <KickInspector item={item} roomId={roomId} onDone={onDone} />;
     case 'hls-saved':
       return <HlsSavedInspector item={item} roomId={roomId} onDone={onDone} />;
-    case 'folder':
+    case 'folder': {
+      const contentLabel =
+        item.mediaType === 'mp4'
+          ? 'MP4 FILES'
+          : item.mediaType === 'audio'
+            ? 'AUDIO FILES'
+            : 'IMAGES';
       return (
         <div className='space-y-3'>
           <PropRow label='TYPE' value='FOLDER' />
           <PropRow label='NAME' value={item.name} />
-          <PropRow
-            label='CONTENT'
-            value={item.mediaType === 'mp4' ? 'MP4 FILES' : 'IMAGES'}
-          />
+          <PropRow label='CONTENT' value={contentLabel} />
           <p className='font-mono text-[10px] text-[#849495]'>
             Click the card to enter this folder.
           </p>
         </div>
       );
+    }
     case 'action':
       return (
         <ActionInspector
@@ -1333,6 +1488,7 @@ function PropertyInspector({
           onUploadComplete={onUploadComplete}
           currentMp4Folder={currentMp4Folder}
           currentPictureFolder={currentPictureFolder}
+          currentAudioFolder={currentAudioFolder}
         />
       );
   }
@@ -1408,6 +1564,46 @@ function Mp4Inspector({
         label='FORMAT'
         value={item.fileName.split('.').pop()?.toUpperCase() ?? 'MP4'}
       />
+      <InitiateButton
+        label='INITIATE_FEED'
+        onClick={handleAdd}
+        loading={loading}
+      />
+    </div>
+  );
+}
+
+function AudioInspector({
+  item,
+  roomId,
+  onDone,
+}: {
+  item: AssetItemAudio;
+  roomId: string;
+  onDone: () => Promise<void>;
+}) {
+  const { addAudioInput } = useActions();
+  const [loading, setLoading] = useState(false);
+
+  const handleAdd = async () => {
+    setLoading(true);
+    try {
+      await addAudioInput(roomId, item.fileName);
+      await onDone();
+    } catch {
+      toast.error('Failed to add audio input.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className='space-y-3'>
+      <PropRow label='FILENAME' value={item.fileName} />
+      {item.durationMs != null && (
+        <PropRow label='DURATION' value={formatDuration(item.durationMs)} />
+      )}
+      <PropRow label='TYPE' value='AUDIO' />
       <InitiateButton
         label='INITIATE_FEED'
         onClick={handleAdd}
@@ -1598,6 +1794,7 @@ function ActionInspector({
   onUploadComplete,
   currentMp4Folder,
   currentPictureFolder,
+  currentAudioFolder,
 }: {
   item: AssetItemAction;
   roomId: string;
@@ -1607,6 +1804,7 @@ function ActionInspector({
   onUploadComplete: () => Promise<void>;
   currentMp4Folder: string;
   currentPictureFolder: string;
+  currentAudioFolder: string;
 }) {
   switch (item.actionType) {
     case 'upload-mp4':
@@ -1614,6 +1812,14 @@ function ActionInspector({
         <UploadInspector
           mediaType='mp4'
           currentFolder={currentMp4Folder}
+          onUploadComplete={onUploadComplete}
+        />
+      );
+    case 'upload-audio':
+      return (
+        <UploadInspector
+          mediaType='audio'
+          currentFolder={currentAudioFolder}
           onUploadComplete={onUploadComplete}
         />
       );
@@ -1669,7 +1875,7 @@ function UploadInspector({
   currentFolder,
   onUploadComplete,
 }: {
-  mediaType: 'mp4' | 'picture';
+  mediaType: UploadMediaType;
   currentFolder: string;
   onUploadComplete: () => Promise<void>;
 }) {
@@ -1677,8 +1883,14 @@ function UploadInspector({
   const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
 
-  const accept = mediaType === 'mp4' ? MP4_ACCEPT : PICTURE_ACCEPT;
-  const label = mediaType === 'mp4' ? 'MP4' : 'IMAGE';
+  const accept =
+    mediaType === 'mp4'
+      ? MP4_ACCEPT
+      : mediaType === 'audio'
+        ? AUDIO_ACCEPT
+        : PICTURE_ACCEPT;
+  const label =
+    mediaType === 'mp4' ? 'MP4' : mediaType === 'audio' ? 'AUDIO' : 'IMAGE';
 
   const doUpload = async (file: File) => {
     setUploading(true);

@@ -69,3 +69,24 @@
 - Skipped MotionEventEmitter (YAGNI)
 - Python crash handling: child `exit` → motionScore = undefined
 - Dockerfile uses `pip3 install --break-system-packages` (PEP 668 workaround)
+
+---
+
+## Current Fix: Audio Config Import
+
+- [x] Trace config export/import path for audio timeline blocks
+- [x] Fix room creation import flow to recreate audio inputs from `audioFileName`
+- [x] Fix control-panel config import flow to recreate audio inputs from `audioFileName`
+- [x] Verify with targeted editor checks
+
+---
+
+## Current Fix: Timeline Ruler Alignment
+
+- [x] Trace the offset between the ruler header and clip track content
+- [x] Remove the extra layout width consumed by the sources resize handle
+- [x] Verify the updated timeline panel for lint issues
+
+### Review
+- Root cause: the header ruler started after a separate `w-3` resize column, while track clips started immediately after the sources column
+- Fix: render the resize handle as an overlaid boundary control so the ruler and clip tracks share the same horizontal origin

@@ -1,4 +1,4 @@
-import type { Resolution, PendingWhipInputData } from '@smelter-editor/types';
+import type { Resolution, PendingWhipInputData, ViewportProperties } from '@smelter-editor/types';
 import type { Input } from './input';
 import type { Layout } from './layout';
 
@@ -27,7 +27,7 @@ export type RoomState = {
   isRecording?: boolean;
   isFrozen?: boolean;
   audioAnalysisEnabled?: boolean;
-};
+} & Partial<ViewportProperties>;
 
 export type AddInputResponse = {
   inputId: string;
@@ -59,6 +59,10 @@ export type PictureSuggestions = {
   pictures: string[];
 };
 
+export type AudioSuggestions = {
+  audios: string[];
+};
+
 export type CreateRoomOptions = {
   initInputs?: import('./input').RegisterInputOptions[];
   skipDefaultInputs?: boolean;
@@ -75,7 +79,7 @@ export type UpdateRoomOptions = {
   swapFadeOutDurationMs?: number;
   newsStripFadeDuringSwap?: boolean;
   newsStripEnabled?: boolean;
-};
+} & Partial<ViewportProperties>;
 
 export type StartRecordingResponse = {
   status: 'recording' | 'error';

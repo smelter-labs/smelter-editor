@@ -7,6 +7,7 @@ import { TwitchChannelSuggestions } from '../../twitch/TwitchChannelMonitor';
 import { KickChannelSuggestions } from '../../kick/KickChannelMonitor';
 import mp4SuggestionsMonitor from '../../mp4/mp4SuggestionMonitor';
 import pictureSuggestionsMonitor from '../../pictures/pictureSuggestionMonitor';
+import audioSuggestionsMonitor from '../../audio-files/audioSuggestionMonitor';
 import shadersController from '../../shaders/shaders';
 
 export const suggestionRoutes: FastifyPluginCallback = (routes, _opts, done) => {
@@ -70,6 +71,52 @@ export const suggestionRoutes: FastifyPluginCallback = (routes, _opts, done) => 
     async (req, res) => {
       const folder = req.query.folder || undefined;
       res.status(200).send(pictureSuggestionsMonitor.listFolder(folder));
+    },
+  );
+
+  routes.get('/suggestions/audios', async (_req, res) => {
+    res.status(200).send({ audios: audioSuggestionsMonitor.audioFiles });
+  });
+
+  routes.get<{ Querystring: { folder?: string } }>(
+    '/suggestions/audios/browse',
+    {
+      schema: {
+        querystring: Type.Object({
+          folder: Type.Optional(Type.String()),
+        }),
+      },
+    },
+    async (req, res) => {
+      const folder = req.query.folder || undefined;
+      res.status(200).send(audioSuggestionsMonitor.listFolder(folder));
+    },
+  );
+
+  routes.get<{ Params: { fileName: string } }>(
+    '/suggestions/audio-duration/:fileName',
+    { schema: { params: Type.Object({ fileName: Type.String() }) } },
+    async (req, res) => {
+      const { fileName } = req.params;
+      const safeName = path.basename(fileName);
+      const filePath = path.join(process.cwd(), 'audios', safeName);
+
+      if (!(await pathExists(filePath))) {
+        return res.status(404).send({ error: 'Audio file not found' });
+      }
+
+      try {
+        const durationMs = await getMp4DurationMs(filePath);
+        return res.status(200).send({ durationMs });
+      } catch (err: any) {
+        console.error('Failed to get audio duration via ffprobe', {
+          fileName: safeName,
+          err: err?.message,
+        });
+        return res
+          .status(500)
+          .send({ error: 'Failed to read audio duration' });
+      }
     },
   );
 

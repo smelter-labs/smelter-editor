@@ -372,6 +372,18 @@ export class SmelterManager {
     return jpegPath;
   }
 
+  public async restart(): Promise<void> {
+    console.log('[smelter] Restarting Smelter engine...');
+    try {
+      await this.instance.terminate();
+    } catch (err) {
+      console.warn('[smelter] Terminate failed (engine may already be dead):', err);
+    }
+    this.instance = new Smelter();
+    await this.init();
+    console.log('[smelter] Smelter engine restarted successfully');
+  }
+
   public async terminate(): Promise<void> {
     await this.instance.terminate();
   }

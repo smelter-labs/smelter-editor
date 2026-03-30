@@ -257,11 +257,45 @@ export function saveTimeline(
       schemaVersion: 3,
       ...state,
     };
+    const json = JSON.stringify(payload);
     localStorage.setItem(
       `${STORAGE_KEY_PREFIX}${roomId}`,
-      JSON.stringify(payload),
+      json,
     );
-  } catch {
-    // storage full or unavailable
+  } catch (err) {
+    console.error('[timeline-storage] saveTimeline FAILED — localStorage likely full', err);
+    pruneOldTimelineEntries(roomId);
+    try {
+      const payload: StoredTimelineStateV3 = {
+        schemaVersion: 3,
+        ...state,
+      };
+      localStorage.setItem(
+        `${STORAGE_KEY_PREFIX}${roomId}`,
+        JSON.stringify(payload),
+      );
+    } catch (retryErr) {
+      console.error('[timeline-storage] saveTimeline RETRY also failed', retryErr);
+    }
+  }
+}
+
+function pruneOldTimelineEntries(keepRoomId: string): void {
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (
+      key &&
+      key.startsWith(STORAGE_KEY_PREFIX) &&
+      key !== `${STORAGE_KEY_PREFIX}${keepRoomId}`
+    ) {
+      keysToRemove.push(key);
+    }
+  }
+  for (const key of keysToRemove) {
+    localStorage.removeItem(key);
+  }
+  if (keysToRemove.length > 0) {
+    console.log(`[timeline-storage] pruned ${keysToRemove.length} old timeline entries`);
   }
 }

@@ -261,21 +261,26 @@ export class InputManager {
   private async addMp4Input(
     opts: Extract<RegisterInputOptions, { type: 'local-mp4' }>,
   ): Promise<string> {
-    if (!opts.source?.fileName) {
+    const isAudio = !!opts.source?.audioFileName;
+    const resolvedFileName = opts.source?.audioFileName ?? opts.source?.fileName;
+
+    if (!resolvedFileName) {
       throw new Error(
-        'local-mp4 requires source.fileName. Only URL is not supported; provide a file name from the mp4s directory.',
+        'local-mp4 requires source.fileName or source.audioFileName.',
       );
     }
-    console.log('Adding local mp4');
-    const mp4Path = path.join(process.cwd(), 'mp4s', opts.source.fileName);
-    const mp4Name = opts.source.fileName;
+
+    const baseDir = isAudio ? 'audios' : 'mp4s';
+    const mp4Path = path.join(process.cwd(), baseDir, resolvedFileName);
+    const mp4Name = resolvedFileName;
     const inputId = `${this.idPrefix}::local::sample_streamer::${Date.now()}`;
 
     if (!(await pathExists(mp4Path))) {
-      throw new Error(`MP4 file not found: ${opts.source.fileName}`);
+      throw new Error(`File not found in ${baseDir}/: ${resolvedFileName}`);
     }
 
     const dims = await getMp4VideoDimensions(mp4Path);
+    const titlePrefix = isAudio ? 'AUDIO' : 'MP4';
 
     this.inputs.push({
       inputId,
@@ -289,8 +294,10 @@ export class InputManager {
       hidden: false,
       motionEnabled: false,
       metadata: {
-        title: `[MP4] ${formatMp4Name(mp4Name)}`,
-        description: '[Static source] AI Generated',
+        title: `[${titlePrefix}] ${formatMp4Name(mp4Name)}`,
+        description: isAudio
+          ? '[Audio source] Converted from audio file'
+          : '[Static source] AI Generated',
       },
       mp4FilePath: mp4Path,
       mp4VideoWidth: dims?.width,

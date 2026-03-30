@@ -72,6 +72,8 @@ export function SwapSourceModal({
   inputs,
   roomId,
   onSwap,
+  trackId,
+  clipId,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -79,6 +81,8 @@ export function SwapSourceModal({
   inputs: Input[];
   roomId: string;
   onSwap: (result: SwapSourceResult) => void;
+  trackId?: string;
+  clipId?: string;
 }) {
   const actions = useActions();
   const [tab, setTab] = useState<Tab>('inputs');
@@ -120,26 +124,30 @@ export function SwapSourceModal({
         const response = await actions.addMP4Input(roomId, fileName);
         const newInputId: string = response.inputId;
 
-        let durationMs: number | undefined;
-        try {
-          durationMs = await getMp4Duration(fileName);
-        } catch {
-          // duration fetch is best-effort
-        }
-
-        const sourceUpdates: Partial<BlockSettings> = {
-          mp4DurationMs: durationMs,
-        };
-
-        onSwap({ newInputId, sourceUpdates });
+        // Dispatch swap immediately so SWAP_CLIP_INPUT is queued before
+        // any polling-triggered SYNC_TRACKS can see the new input as uncovered.
+        onSwap({ newInputId, sourceUpdates: {} });
         onOpenChange(false);
+
+        // Fetch duration in the background and apply as a follow-up settings patch.
+        if (trackId && clipId) {
+          getMp4Duration(fileName)
+            .then((durationMs) => {
+              window.dispatchEvent(
+                new CustomEvent('smelter:timeline:update-clip-settings', {
+                  detail: { trackId, clipId, patch: { mp4DurationMs: durationMs } },
+                }),
+              );
+            })
+            .catch(() => {});
+        }
       } catch (err: any) {
         toast.error(`Failed to add MP4: ${err?.message || err}`);
       } finally {
         setSwapping(null);
       }
     },
-    [roomId, actions, onSwap, onOpenChange],
+    [roomId, actions, onSwap, onOpenChange, trackId, clipId],
   );
 
   const otherInputs = inputs.filter((i) => i.inputId !== currentInputId);

@@ -38,6 +38,7 @@ interface InputEntryProps {
   isSelected?: boolean;
   index?: number;
   readOnly?: boolean;
+  activeBlockColor?: string;
 }
 
 export default function InputEntry({
@@ -56,6 +57,7 @@ export default function InputEntry({
   isSelected = false,
   index,
   readOnly = false,
+  activeBlockColor,
 }: InputEntryProps) {
   const actions = useActions();
   const [showSliders, setShowSliders] = useState(false);
@@ -85,6 +87,7 @@ export default function InputEntry({
   );
   const [isTextSaving, setIsTextSaving] = useState(false);
   const textSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const colorDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const isMobile = useIsMobile();
 
   const isTextInput = input.type === 'text-input';
@@ -138,6 +141,7 @@ export default function InputEntry({
           clearTimeout(timer as number);
         }
       });
+      if (colorDebounceRef.current) clearTimeout(colorDebounceRef.current);
     };
   }, []);
 
@@ -191,19 +195,22 @@ export default function InputEntry({
   );
 
   const handleTextColorChange = useCallback(
-    async (newColor: string) => {
+    (newColor: string) => {
       setTextColor(newColor);
-      setIsTextSaving(true);
-      try {
-        await actions.updateInput(roomId, input.inputId, {
-          textColor: newColor,
-          shaders: input.shaders,
-          volume: input.volume,
-        });
-        await refreshState();
-      } finally {
-        setIsTextSaving(false);
-      }
+      if (colorDebounceRef.current) clearTimeout(colorDebounceRef.current);
+      colorDebounceRef.current = setTimeout(async () => {
+        setIsTextSaving(true);
+        try {
+          await actions.updateInput(roomId, input.inputId, {
+            textColor: newColor,
+            shaders: input.shaders,
+            volume: input.volume,
+          });
+          await refreshState();
+        } finally {
+          setIsTextSaving(false);
+        }
+      }, 150);
     },
     [roomId, input, refreshState],
   );
@@ -606,8 +613,16 @@ export default function InputEntry({
         )}
         <div className='flex items-center min-h-7 md:pl-7'>
           <span
-            className={`shrink-0 w-3 h-3 rounded-none mr-2 ${getSourceStateColor(input)}`}
+            className={`hidden shrink-0 w-3 h-3 rounded-none mr-2 ${getSourceStateColor(input)}`}
             aria-label={getSourceStateLabel(input)}
+          />
+          <span
+            className='shrink-0 w-3 h-3 rounded-none mr-2'
+            style={
+              activeBlockColor
+                ? { backgroundColor: activeBlockColor }
+                : { border: '1px solid #6b7280' }
+            }
           />
           <div className='text-[12px] font-bold text-foreground truncate'>
             {input.title}
@@ -618,7 +633,7 @@ export default function InputEntry({
             </span>
           )}
           {typeof index === 'number' && (
-            <span className='ml-auto mr-2 text-xs font-medium text-muted-foreground'>
+            <span className='hidden ml-auto mr-2 text-xs font-medium text-muted-foreground'>
               {index + 1}
             </span>
           )}

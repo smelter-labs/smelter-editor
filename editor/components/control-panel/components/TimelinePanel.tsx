@@ -43,6 +43,8 @@ import {
   Pencil,
   ChevronRight,
   ChevronLeft,
+  GripVertical,
+  Volume2,
 } from 'lucide-react';
 import {
   hexToHsla,
@@ -60,6 +62,7 @@ import {
   MAX_HEIGHT_VH,
   DEFAULT_HEIGHT,
   TRACK_HEIGHT,
+  AUTOMATION_LANE_HEIGHT,
   SOURCES_WIDTH,
   MIN_SOURCES_WIDTH,
   MAX_SOURCES_WIDTH,
@@ -81,6 +84,7 @@ import {
 } from './timeline/timeline-utils';
 import { ColorSwatch } from './timeline/ColorSwatch';
 import { ShortcutGroup } from './timeline/ShortcutGroup';
+import { VolumeAutomationLane } from './timeline/VolumeAutomationLane';
 
 // ── Props ────────────────────────────────────────────────
 
@@ -141,6 +145,7 @@ export function TimelinePanel({
     renameTrack,
     addTrack,
     deleteTrack,
+    reorderTrack,
     replaceInputId,
     swapClipInput,
     updateClipSettings,
@@ -184,6 +189,22 @@ export function TimelinePanel({
     diffs: string[];
     timeMs: number;
   } | null>(null);
+
+  const [automationVisibleTracks, setAutomationVisibleTracks] = useState<
+    Set<string>
+  >(new Set());
+
+  const toggleAutomationLane = useCallback((trackId: string) => {
+    setAutomationVisibleTracks((prev) => {
+      const next = new Set(prev);
+      if (next.has(trackId)) {
+        next.delete(trackId);
+      } else {
+        next.add(trackId);
+      }
+      return next;
+    });
+  }, []);
 
   const selectedClipIdSet = useMemo(
     () => new Set(selectedClipIds.map((s) => s.clipId)),
@@ -331,6 +352,30 @@ export function TimelinePanel({
       );
     };
   }, [updateClipSettings]);
+
+  useEffect(() => {
+    const handler = (
+      e: CustomEvent<{
+        trackId: string;
+        clipId: string;
+        edge: 'left' | 'right';
+        newMs: number;
+      }>,
+    ) => {
+      const { trackId, clipId, edge, newMs } = e.detail;
+      resizeClip(trackId, clipId, edge, newMs);
+    };
+    window.addEventListener(
+      'smelter:timeline:resize-clip',
+      handler as unknown as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:timeline:resize-clip',
+        handler as unknown as EventListener,
+      );
+    };
+  }, [resizeClip]);
 
   useEffect(() => {
     const handleAdd = (
@@ -718,6 +763,12 @@ export function TimelinePanel({
     originX: number;
     originTimeMs: number;
   } | null>(null);
+  const trackDragRef = useRef<{
+    trackId: string;
+    originY: number;
+    currentIndex: number;
+  } | null>(null);
+  const [trackDropIndex, setTrackDropIndex] = useState<number | null>(null);
 
   // ── Sync ruler scroll with tracks scroll ──────────────
   useEffect(() => {
@@ -808,6 +859,7 @@ export function TimelinePanel({
 
   const handleSourcesResizeStart = useCallback(
     (e: ReactMouseEvent) => {
+      if (e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
       sourcesResizingRef.current = true;
@@ -865,7 +917,7 @@ export function TimelinePanel({
   const rulerPxToMs = useCallback(
     (clientX: number, target: HTMLElement) => {
       const rect = target.getBoundingClientRect();
-      const x = clientX - rect.left;
+      const x = clientX - rect.left + target.scrollLeft;
       return Math.round((x / state.pixelsPerSecond) * 1000);
     },
     [state.pixelsPerSecond],
@@ -1376,6 +1428,23 @@ export function TimelinePanel({
   const snapThresholdMs = useMemo(() => pxToMs(SNAP_THRESHOLD_PX), [pxToMs]);
 
   // ── Determine which track the pointer is over ────
+  const getTrackIndexAtY = useCallback(
+    (relativeY: number): number => {
+      let accumulated = 0;
+      for (let i = 0; i < state.tracks.length; i++) {
+        const h =
+          TRACK_HEIGHT +
+          (automationVisibleTracks.has(state.tracks[i].id)
+            ? AUTOMATION_LANE_HEIGHT
+            : 0);
+        if (relativeY < accumulated + h) return i;
+        accumulated += h;
+      }
+      return state.tracks.length - 1;
+    },
+    [state.tracks, automationVisibleTracks],
+  );
+
   const getTrackIdAtY = useCallback(
     (clientY: number): string | null => {
       const container = scrollContainerRef.current;
@@ -1383,13 +1452,13 @@ export function TimelinePanel({
       const containerRect = container.getBoundingClientRect();
       const scrollTop = container.scrollTop;
       const relativeY = clientY - containerRect.top + scrollTop;
-      const trackIndex = Math.floor(relativeY / TRACK_HEIGHT);
+      const trackIndex = getTrackIndexAtY(relativeY);
       if (trackIndex >= 0 && trackIndex < state.tracks.length) {
         return state.tracks[trackIndex].id;
       }
       return null;
     },
-    [state.tracks],
+    [state.tracks, getTrackIndexAtY],
   );
 
   const handleClipPointerDown = useCallback(
@@ -1559,6 +1628,28 @@ export function TimelinePanel({
   // Use document-level listeners for drag so we can detect cross-track movement
   useEffect(() => {
     const handlePointerMove = (e: PointerEvent) => {
+      // ── Track reorder drag ──
+      const trackDrag = trackDragRef.current;
+      if (trackDrag) {
+        const container = scrollContainerRef.current;
+        if (!container) return;
+        const containerRect = container.getBoundingClientRect();
+        const scrollTop = container.scrollTop;
+        const relativeY = e.clientY - containerRect.top + scrollTop;
+        let targetIndex = getTrackIndexAtY(relativeY);
+        targetIndex = Math.max(0, Math.min(targetIndex, state.tracks.length - 1));
+        const targetTrack = state.tracks[targetIndex];
+        if (targetTrack && targetTrack.id === OUTPUT_TRACK_ID) {
+          return;
+        }
+        setTrackDropIndex(targetIndex);
+        if (targetIndex !== trackDrag.currentIndex) {
+          reorderTrack(trackDrag.trackId, targetIndex);
+          trackDrag.currentIndex = targetIndex;
+        }
+        return;
+      }
+
       const keyframeDrag = keyframeDragRef.current;
       if (keyframeDrag) {
         const deltaMs = pxToMs(e.clientX - keyframeDrag.originX);
@@ -1624,18 +1715,26 @@ export function TimelinePanel({
       }
 
       if (drag.type === 'move') {
+        const shiftLock = e.shiftKey;
+
         if (drag.multiClips && drag.multiClips.length > 1) {
           // Multi-clip move: compute delta via primary clip snap, apply to all
-          let newStart = Math.round(drag.originStartMs + deltaMs);
-          newStart = snapToNearest(newStart, snapTargets, snapThresholdMs);
+          let newStart = shiftLock
+            ? drag.originStartMs
+            : Math.round(drag.originStartMs + deltaMs);
+          if (!shiftLock) {
+            newStart = snapToNearest(newStart, snapTargets, snapThresholdMs);
+          }
           const duration = drag.originEndMs - drag.originStartMs;
-          const snappedEnd = snapToNearest(
-            newStart + duration,
-            snapTargets,
-            snapThresholdMs,
-          );
-          if (snappedEnd !== newStart + duration) {
-            newStart = snappedEnd - duration;
+          if (!shiftLock) {
+            const snappedEnd = snapToNearest(
+              newStart + duration,
+              snapTargets,
+              snapThresholdMs,
+            );
+            if (snappedEnd !== newStart + duration) {
+              newStart = snappedEnd - duration;
+            }
           }
           const appliedDelta = newStart - drag.originStartMs;
 
@@ -1650,16 +1749,22 @@ export function TimelinePanel({
           moveClips(moves);
         } else {
           // Single-clip move (with cross-track support)
-          let newStart = Math.round(drag.originStartMs + deltaMs);
-          newStart = snapToNearest(newStart, snapTargets, snapThresholdMs);
+          let newStart = shiftLock
+            ? drag.originStartMs
+            : Math.round(drag.originStartMs + deltaMs);
+          if (!shiftLock) {
+            newStart = snapToNearest(newStart, snapTargets, snapThresholdMs);
+          }
           const duration = drag.originEndMs - drag.originStartMs;
-          const snappedEnd = snapToNearest(
-            newStart + duration,
-            snapTargets,
-            snapThresholdMs,
-          );
-          if (snappedEnd !== newStart + duration) {
-            newStart = snappedEnd - duration;
+          if (!shiftLock) {
+            const snappedEnd = snapToNearest(
+              newStart + duration,
+              snapTargets,
+              snapThresholdMs,
+            );
+            if (snappedEnd !== newStart + duration) {
+              newStart = snappedEnd - duration;
+            }
           }
 
           const targetTrackId = getTrackIdAtY(e.clientY);
@@ -1744,9 +1849,14 @@ export function TimelinePanel({
     };
 
     const handlePointerUp = () => {
-      const hadActiveDrag = keyframeDragRef.current || dragRef.current;
+      const hadActiveDrag =
+        keyframeDragRef.current || dragRef.current || trackDragRef.current;
       keyframeDragRef.current = null;
       dragRef.current = null;
+      if (trackDragRef.current) {
+        trackDragRef.current = null;
+        setTrackDropIndex(null);
+      }
       if (hadActiveDrag) {
         document.body.style.userSelect = '';
       }
@@ -1771,6 +1881,7 @@ export function TimelinePanel({
     getTrackIdAtY,
     updateClipSettings,
     moveKeyframe,
+    reorderTrack,
   ]);
 
   const handleClipHover = useCallback(
@@ -1965,7 +2076,7 @@ export function TimelinePanel({
 
           return (
             <Button
-              key={keyframe.id}
+              key={`${clip.id}:${keyframe.id}`}
               type='button'
               variant='ghost'
               size='icon'
@@ -2379,16 +2490,19 @@ export function TimelinePanel({
       {/* Header: Sources label + ruler */}
       <div className='flex shrink-0'>
         <div
-          className='shrink-0 bg-muted/40 flex items-center px-3 border-b border-border'
+          className='relative shrink-0 bg-muted/40 flex items-center px-3 border-b border-r border-border/30'
           style={{ width: sourcesWidth }}>
           <span className='text-[11px] text-muted-foreground uppercase tracking-wider font-medium'>
             Sources
           </span>
+          <div
+            className='absolute top-0 bottom-0 right-0 z-10 w-3 translate-x-1/2 cursor-col-resize bg-transparent hover:bg-accent/40 active:bg-accent/70 transition-colors'
+            onMouseDown={handleSourcesResizeStart}
+            onDoubleClick={() => setSourcesWidth(SOURCES_WIDTH)}
+            title='Drag to resize track names'>
+            <div className='absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/80 pointer-events-none' />
+          </div>
         </div>
-        <div
-          className='w-1 shrink-0 cursor-col-resize hover:bg-accent active:bg-accent/80 transition-colors border-b border-border'
-          onMouseDown={handleSourcesResizeStart}
-        />
         <div
           ref={rulerRef}
           className='flex-1 h-7 bg-background border-b border-border relative cursor-pointer overflow-x-hidden touch-none'
@@ -2473,7 +2587,7 @@ export function TimelinePanel({
             <LoadingSpinner size='lg' variant='spinner' />
           </div>
         ) : (
-          state.tracks.map((track) => {
+          state.tracks.map((track, trackIndex) => {
             // Determine a representative input for the track label color
             const firstClipInputId =
               track.clips.length > 0 ? track.clips[0].inputId : undefined;
@@ -2494,115 +2608,256 @@ export function TimelinePanel({
                       (trackHasDisconnected ? '#6b7280' : undefined))
                     : undefined));
             const isEditing = editingTrackId === track.id;
+            const isBeingDragged =
+              trackDragRef.current?.trackId === track.id;
+            const showDropIndicator =
+              trackDropIndex !== null && trackDropIndex === trackIndex;
+
+            const isAutomationVisible =
+              track.id !== OUTPUT_TRACK_ID &&
+              automationVisibleTracks.has(track.id);
 
             return (
               <div
                 key={track.id}
-                className={`flex border-b border-border/50 cursor-pointer group/track ${
+                className={`flex flex-col border-b border-border/50 cursor-pointer group/track relative ${
                   track.id === invalidDropTrackId ? 'bg-red-900/20' : ''
-                }`}
-                style={{ height: TRACK_HEIGHT }}
+                } ${isBeingDragged ? 'bg-blue-500/10' : ''}`}
                 onClick={() => handleTrackClick(track.id)}
                 onContextMenu={(e) => {
                   const inputId = firstClipInput?.inputId ?? '';
                   handleContextMenu(e, track.id, inputId);
                 }}>
-                {/* Track label (sticky left) */}
-                <div
-                  className='shrink-0 bg-muted/40 flex items-center gap-1.5 px-2 sticky left-0 z-10 border-r border-border/30'
-                  style={{ width: sourcesWidth }}>
+                {showDropIndicator && trackDragRef.current && (
+                  <div className='absolute left-0 right-0 top-0 h-0.5 bg-blue-500 z-20 pointer-events-none' />
+                )}
+                {/* Main track row */}
+                <div className='flex' style={{ height: TRACK_HEIGHT }}>
+                  {/* Track label (sticky left) */}
                   <div
-                    className='w-2.5 h-2.5 rounded-full shrink-0'
-                    style={{ backgroundColor: trackDotColor ?? '#737373' }}
-                  />
-                  {track.id === OUTPUT_TRACK_ID ? (
-                    <span className='text-sm text-purple-400 truncate flex-1 font-medium'>
-                      {track.label}
-                    </span>
-                  ) : isEditing ? (
-                    <ShadcnInput
-                      autoFocus
-                      className='text-sm text-foreground bg-card border border-border rounded px-1 py-0.5 flex-1 min-w-0 outline-none focus:border-blue-500'
-                      value={editingTrackLabel}
-                      onChange={(e) => setEditingTrackLabel(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
+                    className='shrink-0 bg-muted/40 flex items-center gap-1.5 px-2 sticky left-0 z-10 border-r border-border/30'
+                    style={{ width: sourcesWidth }}>
+                    {track.id !== OUTPUT_TRACK_ID && (
+                      <GripVertical
+                        className='w-3 h-3 shrink-0 text-muted-foreground/50 opacity-0 group-hover/track:opacity-100 transition-opacity cursor-grab active:cursor-grabbing'
+                        onPointerDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          const idx = state.tracks.findIndex(
+                            (t) => t.id === track.id,
+                          );
+                          if (idx < 0) return;
+                          trackDragRef.current = {
+                            trackId: track.id,
+                            originY: e.clientY,
+                            currentIndex: idx,
+                          };
+                          setTrackDropIndex(idx);
+                          document.body.style.userSelect = 'none';
+                        }}
+                      />
+                    )}
+                    <div
+                      className='w-2.5 h-2.5 rounded-full shrink-0'
+                      style={{ backgroundColor: trackDotColor ?? '#737373' }}
+                    />
+                    {track.id === OUTPUT_TRACK_ID ? (
+                      <span className='text-sm text-purple-400 truncate flex-1 font-medium'>
+                        {track.label}
+                      </span>
+                    ) : isEditing ? (
+                      <ShadcnInput
+                        autoFocus
+                        className='text-sm text-foreground bg-card border border-border rounded px-1 py-0.5 flex-1 min-w-0 outline-none focus:border-blue-500'
+                        value={editingTrackLabel}
+                        onChange={(e) => setEditingTrackLabel(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            const trimmed = editingTrackLabel.trim();
+                            if (trimmed) renameTrack(track.id, trimmed);
+                            setEditingTrackId(null);
+                          } else if (e.key === 'Escape') {
+                            setEditingTrackId(null);
+                          }
+                        }}
+                        onBlur={() => {
                           const trimmed = editingTrackLabel.trim();
                           if (trimmed) renameTrack(track.id, trimmed);
                           setEditingTrackId(null);
-                        } else if (e.key === 'Escape') {
-                          setEditingTrackId(null);
-                        }
-                      }}
-                      onBlur={() => {
-                        const trimmed = editingTrackLabel.trim();
-                        if (trimmed) renameTrack(track.id, trimmed);
-                        setEditingTrackId(null);
-                      }}
-                      onClick={(e) => e.stopPropagation()}
-                    />
-                  ) : (
-                    <span
-                      className='text-sm text-foreground truncate flex-1'
-                      onDoubleClick={(e) => {
-                        e.stopPropagation();
-                        setEditingTrackId(track.id);
-                        setEditingTrackLabel(track.label);
-                      }}>
-                      {track.label}
-                    </span>
-                  )}
-                  {!isEditing && track.id !== OUTPUT_TRACK_ID && (
-                    <div className='flex items-center gap-0.5 opacity-0 group-hover/track:opacity-100 transition-opacity'>
-                      <Button
-                        variant='ghost'
-                        size='icon'
-                        className='h-5 w-5 text-muted-foreground hover:text-card-foreground cursor-pointer'
-                        title='Rename track'
-                        onClick={(e) => {
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    ) : (
+                      <span
+                        className='text-sm text-foreground truncate flex-1'
+                        onDoubleClick={(e) => {
                           e.stopPropagation();
                           setEditingTrackId(track.id);
                           setEditingTrackLabel(track.label);
                         }}>
-                        <Pencil className='w-3 h-3' />
-                      </Button>
-                      <Button
-                        variant='ghost'
-                        size='icon'
-                        className='h-5 w-5 text-muted-foreground hover:text-red-400 cursor-pointer'
-                        title='Delete track'
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          deleteTrack(track.id);
-                        }}>
-                        <Trash2 className='w-3 h-3' />
-                      </Button>
-                    </div>
-                  )}
-                </div>
-                {/* Track timeline area */}
-                <div
-                  className='relative'
-                  style={{
-                    width: timelineWidthPx,
-                    minWidth: `calc(100% - ${sourcesWidth}px)`,
-                    transition: zoomAnimating
-                      ? `width ${ZOOM_TRANSITION_MS}ms ease-out`
-                      : undefined,
-                  }}>
-                  {renderClips(track)}
-                  {renderKeyframes(track)}
-                  {/* Playhead line on track */}
+                        {track.label}
+                      </span>
+                    )}
+                    {!isEditing && track.id !== OUTPUT_TRACK_ID && (
+                      <div className='flex items-center gap-0.5'>
+                        <Button
+                          variant='ghost'
+                          size='icon'
+                          className={`h-5 w-5 cursor-pointer transition-opacity ${
+                            isAutomationVisible
+                              ? 'text-cyan opacity-100'
+                              : 'text-muted-foreground hover:text-card-foreground opacity-0 group-hover/track:opacity-100'
+                          }`}
+                          title={
+                            isAutomationVisible
+                              ? 'Hide volume automation'
+                              : 'Show volume automation'
+                          }
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            toggleAutomationLane(track.id);
+                          }}>
+                          <Volume2 className='w-3 h-3' />
+                        </Button>
+                        <Button
+                          variant='ghost'
+                          size='icon'
+                          className='h-5 w-5 text-muted-foreground hover:text-card-foreground cursor-pointer opacity-0 group-hover/track:opacity-100 transition-opacity'
+                          title='Rename track'
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingTrackId(track.id);
+                            setEditingTrackLabel(track.label);
+                          }}>
+                          <Pencil className='w-3 h-3' />
+                        </Button>
+                        <Button
+                          variant='ghost'
+                          size='icon'
+                          className='h-5 w-5 text-muted-foreground hover:text-red-400 cursor-pointer opacity-0 group-hover/track:opacity-100 transition-opacity'
+                          title='Delete track'
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            deleteTrack(track.id);
+                          }}>
+                          <Trash2 className='w-3 h-3' />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  {/* Track timeline area */}
                   <div
-                    className='absolute top-0 bottom-0 w-px bg-red-500/50 z-10 pointer-events-none'
+                    className='relative'
                     style={{
-                      left: playheadPx,
+                      width: timelineWidthPx,
+                      minWidth: `calc(100% - ${sourcesWidth}px)`,
                       transition: zoomAnimating
-                        ? `left ${ZOOM_TRANSITION_MS}ms ease-out`
+                        ? `width ${ZOOM_TRANSITION_MS}ms ease-out`
                         : undefined,
-                    }}
-                  />
+                    }}>
+                    {renderClips(track)}
+                    {renderKeyframes(track)}
+                    {/* Playhead line on track */}
+                    <div
+                      className='absolute top-0 bottom-0 w-px bg-red-500/50 z-10 pointer-events-none'
+                      style={{
+                        left: playheadPx,
+                        transition: zoomAnimating
+                          ? `left ${ZOOM_TRANSITION_MS}ms ease-out`
+                          : undefined,
+                      }}
+                    />
+                  </div>
                 </div>
+                {/* Volume automation lane */}
+                {isAutomationVisible && (
+                  <div
+                    className='flex border-t border-border/30'
+                    style={{ height: AUTOMATION_LANE_HEIGHT }}>
+                    <div
+                      className='shrink-0 bg-muted/30 flex items-center justify-center sticky left-0 z-10 border-r border-border/30'
+                      style={{ width: sourcesWidth }}>
+                      <span className='text-[10px] text-muted-foreground select-none'>
+                        Vol
+                      </span>
+                    </div>
+                    <div
+                      className='relative'
+                      style={{
+                        width: timelineWidthPx,
+                        minWidth: `calc(100% - ${sourcesWidth}px)`,
+                        transition: zoomAnimating
+                          ? `width ${ZOOM_TRANSITION_MS}ms ease-out`
+                          : undefined,
+                      }}>
+                      <VolumeAutomationLane
+                        trackId={track.id}
+                        clips={track.clips}
+                        pixelsPerSecond={state.pixelsPerSecond}
+                        interpolationMode={
+                          state.keyframeInterpolationMode
+                        }
+                        timelineWidthPx={timelineWidthPx}
+                        selectedKeyframeId={selectedKeyframeId}
+                        onAddKeyframe={(
+                          tId,
+                          clipId,
+                          timeMs,
+                          volume,
+                        ) => {
+                          const clip = track.clips.find(
+                            (c) => c.id === clipId,
+                          );
+                          if (!clip) return;
+                          const resolved =
+                            resolveClipBlockSettingsAtOffset(
+                              clip,
+                              timeMs,
+                            );
+                          addKeyframe(tId, clipId, timeMs, {
+                            ...resolved,
+                            volume,
+                          });
+                        }}
+                        onUpdateKeyframeVolume={(
+                          tId,
+                          clipId,
+                          keyframeId,
+                          volume,
+                        ) => {
+                          updateKeyframe(tId, clipId, keyframeId, {
+                            volume,
+                          });
+                        }}
+                        onMoveKeyframe={(
+                          tId,
+                          clipId,
+                          keyframeId,
+                          timeMs,
+                        ) => {
+                          moveKeyframe(tId, clipId, keyframeId, timeMs);
+                        }}
+                        onDeleteKeyframe={(tId, clipId, keyframeId) => {
+                          deleteKeyframe(tId, clipId, keyframeId);
+                        }}
+                        onSelectKeyframe={(tId, clipId, keyframeId) => {
+                          selectClip(tId, clipId, 'replace');
+                          setSelectedKeyframeId(keyframeId);
+                        }}
+                      />
+                      {/* Playhead line on automation lane */}
+                      <div
+                        className='absolute top-0 bottom-0 w-px bg-red-500/50 z-10 pointer-events-none'
+                        style={{
+                          left: playheadPx,
+                          transition: zoomAnimating
+                            ? `left ${ZOOM_TRANSITION_MS}ms ease-out`
+                            : undefined,
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })
@@ -2790,33 +3045,65 @@ export function TimelinePanel({
                 </Button>
               </>
             )}
-            {contextMenu.trackId !== OUTPUT_TRACK_ID && (
-              <>
-                <div className='h-px bg-secondary my-1' />
-                <Button
-                  variant='ghost'
-                  className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-foreground hover:bg-accent cursor-pointer'
-                  onClick={() => {
-                    setEditingTrackId(contextMenu.trackId);
-                    const track = state.tracks.find(
-                      (t) => t.id === contextMenu.trackId,
-                    );
-                    setEditingTrackLabel(track?.label ?? '');
-                    closeContextMenu();
-                  }}>
-                  Rename Track
-                </Button>
-                <Button
-                  variant='ghost'
-                  className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-red-400 hover:bg-accent hover:text-red-300 cursor-pointer'
-                  onClick={() => {
-                    deleteTrack(contextMenu.trackId);
-                    closeContextMenu();
-                  }}>
-                  Delete Track
-                </Button>
-              </>
-            )}
+            {contextMenu.trackId !== OUTPUT_TRACK_ID && (() => {
+              const ctxTrackIdx = state.tracks.findIndex(
+                (t) => t.id === contextMenu.trackId,
+              );
+              const canMoveUp =
+                ctxTrackIdx > 0 &&
+                state.tracks[ctxTrackIdx - 1]?.id !== OUTPUT_TRACK_ID;
+              const canMoveDown =
+                ctxTrackIdx >= 0 &&
+                ctxTrackIdx < state.tracks.length - 1 &&
+                state.tracks[ctxTrackIdx + 1]?.id !== OUTPUT_TRACK_ID;
+              return (
+                <>
+                  <div className='h-px bg-secondary my-1' />
+                  <Button
+                    variant='ghost'
+                    className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-foreground hover:bg-accent cursor-pointer disabled:opacity-40 disabled:cursor-default'
+                    disabled={!canMoveUp}
+                    onClick={() => {
+                      reorderTrack(contextMenu.trackId, ctxTrackIdx - 1);
+                      closeContextMenu();
+                    }}>
+                    Move Up
+                  </Button>
+                  <Button
+                    variant='ghost'
+                    className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-foreground hover:bg-accent cursor-pointer disabled:opacity-40 disabled:cursor-default'
+                    disabled={!canMoveDown}
+                    onClick={() => {
+                      reorderTrack(contextMenu.trackId, ctxTrackIdx + 1);
+                      closeContextMenu();
+                    }}>
+                    Move Down
+                  </Button>
+                  <Button
+                    variant='ghost'
+                    className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-foreground hover:bg-accent cursor-pointer'
+                    onClick={() => {
+                      setEditingTrackId(contextMenu.trackId);
+                      const track = state.tracks.find(
+                        (t) => t.id === contextMenu.trackId,
+                      );
+                      setEditingTrackLabel(track?.label ?? '');
+                      closeContextMenu();
+                    }}>
+                    Rename Track
+                  </Button>
+                  <Button
+                    variant='ghost'
+                    className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-red-400 hover:bg-accent hover:text-red-300 cursor-pointer'
+                    onClick={() => {
+                      deleteTrack(contextMenu.trackId);
+                      closeContextMenu();
+                    }}>
+                    Delete Track
+                  </Button>
+                </>
+              );
+            })()}
           </div>,
           document.body,
         )}
@@ -2907,6 +3194,7 @@ export function TimelinePanel({
                     ['M', 'Mute / Unmute selected track'],
                     ['Delete / Backspace', 'Delete selected segment'],
                     ['Alt + Click', 'Split segment at click position'],
+                    ['Shift + Drag', 'Lock horizontal position (vertical only)'],
                   ]}
                 />
                 <ShortcutGroup

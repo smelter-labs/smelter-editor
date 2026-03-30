@@ -9,6 +9,7 @@ import type {
   BorderProperties,
   AbsolutePositionProperties,
   CropProperties,
+  ViewportProperties,
 } from '../types';
 import type { StoreApi } from 'zustand';
 import type { HandsStore } from '../hands/handStore';
@@ -36,7 +37,7 @@ export type RoomSnapshot = {
   newsStripFadeDuringSwap: boolean;
   swapFadeOutDurationMs: number;
   newsStripEnabled: boolean;
-};
+} & Partial<ViewportProperties>;
 
 export type RoomInputState = {
   inputId: string;

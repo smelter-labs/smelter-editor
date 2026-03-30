@@ -121,6 +121,10 @@ export function BlockClipPropertiesPanel({
   const gameGridDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const [textColorDraft, setTextColorDraft] = useState<string | null>(null);
+  const textColorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const [textScrollSpeedDraft, setTextScrollSpeedDraft] = useState<
     number | null
   >(null);
@@ -154,15 +158,23 @@ export function BlockClipPropertiesPanel({
       if (textScrollSpeedDebounceRef.current) {
         clearTimeout(textScrollSpeedDebounceRef.current);
       }
+      if (textColorDebounceRef.current) {
+        clearTimeout(textColorDebounceRef.current);
+      }
     };
   }, []);
 
   useEffect(() => {
     setTitleDraft(null);
     setTextScrollSpeedDraft(null);
+    setTextColorDraft(null);
     if (textScrollSpeedDebounceRef.current) {
       clearTimeout(textScrollSpeedDebounceRef.current);
       textScrollSpeedDebounceRef.current = null;
+    }
+    if (textColorDebounceRef.current) {
+      clearTimeout(textColorDebounceRef.current);
+      textColorDebounceRef.current = null;
     }
   }, [selectedTimelineClips]);
 
@@ -203,7 +215,10 @@ export function BlockClipPropertiesPanel({
     if (selectedInput.type !== 'local-mp4') return;
     if (effectiveClip.blockSettings.mp4DurationMs) return;
 
-    const mp4FileName = extractMp4FileName(selectedInput.title);
+    const mp4FileName =
+      selectedInput.mp4FileName ??
+      selectedInput.audioFileName ??
+      extractMp4FileName(selectedInput.title);
     if (!mp4FileName) return;
     const fetchKey = `${selectedTimelineClip.clipId}::${mp4FileName}`;
     if (mp4DurationFetchedRef.current === fetchKey) return;
@@ -1374,10 +1389,39 @@ export function BlockClipPropertiesPanel({
                   type='checkbox'
                   checked={effectiveClip.blockSettings.mp4Loop !== false}
                   onChange={(e) => {
+                    const loopEnabled = e.target.checked;
                     void applyClipPatch(
-                      { mp4Loop: e.target.checked },
+                      { mp4Loop: loopEnabled },
                       { refresh: false },
                     );
+                    if (
+                      !loopEnabled &&
+                      effectiveClip.blockSettings.mp4DurationMs != null
+                    ) {
+                      const maxDuration =
+                        effectiveClip.blockSettings.mp4DurationMs -
+                        (effectiveClip.blockSettings.mp4PlayFromMs ?? 0);
+                      if (
+                        maxDuration > 0 &&
+                        effectiveClip.endMs - effectiveClip.startMs >
+                          maxDuration
+                      ) {
+                        window.dispatchEvent(
+                          new CustomEvent(
+                            'smelter:timeline:resize-clip',
+                            {
+                              detail: {
+                                trackId: effectiveClip.trackId,
+                                clipId: effectiveClip.clipId,
+                                edge: 'right' as const,
+                                newMs:
+                                  effectiveClip.startMs + maxDuration,
+                              },
+                            },
+                          ),
+                        );
+                      }
+                    }
                   }}
                 />
               </div>
@@ -1668,10 +1712,23 @@ export function BlockClipPropertiesPanel({
                     <input
                       type='color'
                       className='w-full h-8 bg-card border border-border'
-                      value={effectiveClip.blockSettings.textColor || '#ffffff'}
-                      onChange={(e) =>
-                        void applyClipPatch({ textColor: e.target.value })
+                      value={
+                        textColorDraft ??
+                        effectiveClip.blockSettings.textColor ??
+                        '#ffffff'
                       }
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setTextColorDraft(value);
+                        if (textColorDebounceRef.current) {
+                          clearTimeout(textColorDebounceRef.current);
+                        }
+                        textColorDebounceRef.current = setTimeout(() => {
+                          void applyClipPatch({ textColor: value });
+                          setTextColorDraft(null);
+                          textColorDebounceRef.current = null;
+                        }, SHADER_SETTINGS_DEBOUNCE_MS);
+                      }}
                     />
                   </div>
                 </div>
@@ -1796,6 +1853,8 @@ export function BlockClipPropertiesPanel({
           inputs={inputs}
           roomId={roomId}
           onSwap={handleSwapSource}
+          trackId={selectedTimelineClip.trackId}
+          clipId={selectedTimelineClip.clipId}
         />
       )}
     </div>

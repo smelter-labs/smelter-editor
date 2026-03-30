@@ -43,6 +43,7 @@ export type {
   SnakeGameDisplayProperties,
   MotionProperties,
   HandsProperties,
+  ViewportProperties,
 } from './input.js';
 
 export { AUDIO_BAND_COUNT } from './audio.js';

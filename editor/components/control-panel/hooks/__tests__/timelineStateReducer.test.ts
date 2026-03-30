@@ -3,6 +3,7 @@ import {
   timelineReducer,
   type TimelineState,
   type BlockSettings,
+  OUTPUT_TRACK_ID,
 } from '../use-timeline-state';
 
 const defaultBlockSettings: BlockSettings = {
@@ -12,7 +13,7 @@ const defaultBlockSettings: BlockSettings = {
 };
 
 describe('timelineReducer', () => {
-  it('clears all tracks when SYNC_TRACKS receives empty inputs', () => {
+  it('preserves existing clips when SYNC_TRACKS receives a transient empty input list', () => {
     const state: TimelineState = {
       tracks: [
         {
@@ -33,11 +34,49 @@ describe('timelineReducer', () => {
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
+      keyframeInterpolationMode: 'step',
+      knownInputIds: new Set<string>(),
     };
 
     const next = timelineReducer(state, { type: 'SYNC_TRACKS', inputs: [] });
 
-    expect(next.tracks).toEqual([]);
+    expect(next).toBe(state);
+  });
+
+  it('clears tracks when SYNC_TRACKS receives empty inputs and there are no clips yet', () => {
+    const state: TimelineState = {
+      tracks: [],
+      totalDurationMs: 60_000,
+      playheadMs: 0,
+      isPlaying: false,
+      pixelsPerSecond: 15,
+      keyframeInterpolationMode: 'step',
+      knownInputIds: new Set<string>(),
+    };
+
+    const next = timelineReducer(state, { type: 'SYNC_TRACKS', inputs: [] });
+
+    expect(next.tracks).toHaveLength(1);
+    expect(next.tracks[0].id).toBe(OUTPUT_TRACK_ID);
+  });
+
+  it('preserves known input ids on LOAD', () => {
+    const loaded: TimelineState = {
+      tracks: [],
+      totalDurationMs: 60_000,
+      playheadMs: 0,
+      isPlaying: false,
+      pixelsPerSecond: 15,
+      keyframeInterpolationMode: 'step',
+      knownInputIds: new Set(['room::local::one', 'room::local::two']),
+    };
+
+    const next = timelineReducer(loaded, { type: 'LOAD', state: loaded });
+
+    expect([...next.knownInputIds].sort()).toEqual([
+      'room::local::one',
+      'room::local::two',
+    ]);
   });
 
   it('purges an input from all tracks and removes empty ones', () => {
@@ -167,5 +206,91 @@ describe('timelineReducer', () => {
         (keyframe) => keyframe.id === 'kf-move',
       )?.timeMs,
     ).toBe(10_000);
+  });
+
+  it('reassigns duplicate track, clip, and keyframe ids on load', () => {
+    const loaded: TimelineState = {
+      tracks: [
+        {
+          id: 'duplicate-track',
+          label: 'Track 1',
+          clips: [
+            {
+              id: 'duplicate-clip',
+              inputId: 'room::local::one',
+              startMs: 0,
+              endMs: 10_000,
+              blockSettings: defaultBlockSettings,
+              keyframes: [
+                {
+                  id: 'duplicate-kf',
+                  timeMs: 0,
+                  blockSettings: defaultBlockSettings,
+                },
+                {
+                  id: 'duplicate-kf',
+                  timeMs: 2_000,
+                  blockSettings: defaultBlockSettings,
+                },
+              ],
+            },
+            {
+              id: 'duplicate-clip',
+              inputId: 'room::local::one',
+              startMs: 10_000,
+              endMs: 20_000,
+              blockSettings: defaultBlockSettings,
+              keyframes: [
+                {
+                  id: 'kf-2',
+                  timeMs: 0,
+                  blockSettings: defaultBlockSettings,
+                },
+              ],
+            },
+          ],
+        },
+        {
+          id: 'duplicate-track',
+          label: 'Track 2',
+          clips: [
+            {
+              id: 'clip-3',
+              inputId: 'room::local::two',
+              startMs: 0,
+              endMs: 10_000,
+              blockSettings: defaultBlockSettings,
+              keyframes: [
+                {
+                  id: 'kf-3',
+                  timeMs: 0,
+                  blockSettings: defaultBlockSettings,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      totalDurationMs: 60_000,
+      keyframeInterpolationMode: 'step',
+      playheadMs: 0,
+      isPlaying: false,
+      pixelsPerSecond: 15,
+      knownInputIds: new Set<string>(),
+    };
+
+    const next = timelineReducer(loaded, { type: 'LOAD', state: loaded });
+    const nonOutputTracks = next.tracks.filter((track) => track.id !== OUTPUT_TRACK_ID);
+    const firstTrack = nonOutputTracks[0];
+
+    expect(new Set(nonOutputTracks.map((track) => track.id)).size).toBe(
+      nonOutputTracks.length,
+    );
+    expect(new Set(firstTrack.clips.map((clip) => clip.id)).size).toBe(
+      firstTrack.clips.length,
+    );
+    expect(
+      new Set(firstTrack.clips[0].keyframes.map((keyframe) => keyframe.id)).size,
+    ).toBe(firstTrack.clips[0].keyframes.length);
   });
 });

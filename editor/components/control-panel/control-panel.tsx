@@ -41,7 +41,7 @@ import {
   exportRoomConfig,
   downloadRoomConfig,
   parseRoomConfig,
-  loadTimelineFromStorage,
+  buildTimelineStateFromConfigTimeline,
   resolveRoomConfigTimelineState,
   restoreTimelineToStorage,
   loadOutputPlayerSettings,
@@ -56,6 +56,7 @@ import {
 } from '@/components/storage-modals';
 import { setAudioAnalysisEnabled } from '@/app/actions/actions';
 import { TransitionSettings } from './components/TransitionSettings';
+import { ViewportSettings } from './components/ViewportSettings';
 import {
   rotateBy90,
   type RotationAngle,
@@ -85,6 +86,7 @@ import {
   type SelectedTimelineClip,
 } from './components/BlockClipPropertiesPanel';
 import type { TimelineState } from './hooks/use-timeline-state';
+import { buildInputColorMap } from './components/timeline/timeline-utils';
 import { useMotionScores } from '@/hooks/use-motion-scores';
 import { useMotionHistory } from '@/hooks/use-motion-history';
 import { InputMotionPanel } from './components/InputMotionPanel';
@@ -468,11 +470,19 @@ function ControlPanelInner({
   const timelineLoadStateRef = useRef<((state: TimelineState) => void) | null>(
     null,
   );
+  const pendingTimelineStateRef = useRef<TimelineState | null>(null);
 
   const [timelineColorOverrides, setTimelineColorOverrides] = useState<
     Record<string, string>
   >({});
   const timelineColorKeyRef = useRef('');
+
+  const inputsRef = useRef(inputs);
+  inputsRef.current = inputs;
+  const [activeClipColors, setActiveClipColors] = useState<
+    Record<string, string>
+  >({});
+  const activeClipColorsKeyRef = useRef('');
 
   const handleTimelineStateChange = useCallback(
     (state: TimelineState) => {
@@ -496,6 +506,27 @@ function ControlPanelInner({
         timelineColorKeyRef.current = key;
         setTimelineColorOverrides(next);
       }
+
+      const colorMap = buildInputColorMap(inputsRef.current);
+      const activeColors: Record<string, string> = {};
+      for (const track of state.tracks) {
+        for (const clip of track.clips) {
+          if (
+            state.playheadMs >= clip.startMs &&
+            state.playheadMs < clip.endMs &&
+            !activeColors[clip.inputId]
+          ) {
+            const tc = clip.blockSettings.timelineColor;
+            activeColors[clip.inputId] =
+              tc || colorMap.get(clip.inputId)?.dot || '';
+          }
+        }
+      }
+      const activeKey = JSON.stringify(activeColors);
+      if (activeKey !== activeClipColorsKeyRef.current) {
+        activeClipColorsKeyRef.current = activeKey;
+        setActiveClipColors(activeColors);
+      }
     },
     [selectedTimelineClips.length],
   );
@@ -503,6 +534,11 @@ function ControlPanelInner({
   const handleTimelineLoadStateReady = useCallback(
     (loadState: (state: TimelineState) => void) => {
       timelineLoadStateRef.current = loadState;
+      const pending = pendingTimelineStateRef.current;
+      if (pending) {
+        pendingTimelineStateRef.current = null;
+        loadState(pending);
+      }
     },
     [],
   );
@@ -515,7 +551,11 @@ function ControlPanelInner({
   const applyImportedTimelineState = useCallback(
     (state: TimelineState | null) => {
       if (state) {
-        timelineLoadStateRef.current?.(state);
+        if (timelineLoadStateRef.current) {
+          timelineLoadStateRef.current(state);
+        } else {
+          pendingTimelineStateRef.current = state;
+        }
       }
       timelineStateRef.current = state;
       setTimelinePlayheadMs(state?.playheadMs ?? 0);
@@ -573,6 +613,7 @@ function ControlPanelInner({
           selectedInputId={selectedInputId}
           isGuest={isGuest}
           guestInputId={activeCameraInputId || activeScreenshareInputId}
+          activeClipColors={activeClipColors}
         />
       </div>
     );
@@ -687,6 +728,7 @@ function ControlPanelInner({
       selectedInputId={selectedInputId}
       isGuest={isGuest}
       guestInputId={activeCameraInputId || activeScreenshareInputId}
+      activeClipColors={activeClipColors}
     />
   ) : null;
 
@@ -776,7 +818,9 @@ function SettingsBar({
   const configStorageSave = actions.configStorage.save;
   const addTwitchInput = actions.addTwitchInput;
   const addKickInput = actions.addKickInput;
+  const addHlsInput = actions.addHlsInput;
   const addMP4Input = actions.addMP4Input;
+  const addAudioInput = actions.addAudioInput;
   const addImageInput = actions.addImageInput;
   const addTextInput = actions.addTextInput;
   const addSnakeGameInput = actions.addSnakeGameInput;
@@ -922,6 +966,14 @@ function SettingsBar({
       },
       timelineState ?? undefined,
       outputPlayer,
+      {
+        viewportTop: roomState.viewportTop,
+        viewportLeft: roomState.viewportLeft,
+        viewportWidth: roomState.viewportWidth,
+        viewportHeight: roomState.viewportHeight,
+        viewportTransitionDurationMs: roomState.viewportTransitionDurationMs,
+        viewportTransitionEasing: roomState.viewportTransitionEasing,
+      },
     );
   }, [getTimelineStateForConfig, roomState, roomId]);
 
@@ -1003,8 +1055,20 @@ function SettingsBar({
                 inputId = result.inputId;
               }
               break;
+            case 'hls':
+              if (inputConfig.url) {
+                const result = await addHlsInput(roomId, inputConfig.url);
+                inputId = result.inputId;
+              }
+              break;
             case 'local-mp4':
-              if (inputConfig.mp4FileName) {
+              if (inputConfig.audioFileName) {
+                const result = await addAudioInput(
+                  roomId,
+                  inputConfig.audioFileName,
+                );
+                inputId = result.inputId;
+              } else if (inputConfig.mp4FileName) {
                 const result = await addMP4Input(
                   roomId,
                   inputConfig.mp4FileName,
@@ -1117,6 +1181,8 @@ function SettingsBar({
 
       setPendingWhipInputs(newPendingWhipInputs);
 
+      let importedTimelineState: TimelineState | null = null;
+
       if (config.timeline) {
         const indexToInputId = new Map<number, string>();
         for (const { inputId, position } of createdInputIds) {
@@ -1129,17 +1195,30 @@ function SettingsBar({
           );
         }
         restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
-        const restoredTimelineState = loadTimelineFromStorage(roomId);
-        if (restoredTimelineState) {
-          const nextTimelineState: TimelineState = {
+        const restoredTimelineState = buildTimelineStateFromConfigTimeline(
+          config.timeline,
+          indexToInputId,
+        );
+        const knownInputIds = new Set<string>();
+        for (const { inputId } of createdInputIds) {
+          knownInputIds.add(inputId);
+        }
+        for (const pending of newPendingWhipInputs) {
+          knownInputIds.add(`__pending-whip-${pending.position}__`);
+        }
+
+        if (restoredTimelineState.tracks.length > 0) {
+          importedTimelineState = {
             ...restoredTimelineState,
             playheadMs: 0,
             isPlaying: false,
+            knownInputIds,
           };
-          applyImportedTimelineState(nextTimelineState);
         } else {
-          applyImportedTimelineState(null);
+          importedTimelineState = null;
         }
+
+        applyImportedTimelineState(importedTimelineState);
       }
 
       const orderedCreatedIds = createdInputIds
@@ -1154,6 +1233,7 @@ function SettingsBar({
             ? { inputOrder: orderedCreatedIds }
             : {}),
           ...config.transitionSettings,
+          ...config.viewport,
         });
       } catch (e) {
         console.warn('Failed to set layout or input order:', e);
@@ -1164,6 +1244,10 @@ function SettingsBar({
       }
 
       await handleRefreshState();
+
+      if (config.timeline) {
+        applyImportedTimelineState(importedTimelineState);
+      }
     },
     [
       roomId,
@@ -1402,6 +1486,25 @@ function SettingsBar({
                   await handleRefreshState();
                 }}
               />
+              <div className='h-px bg-card mt-3' />
+              <h4 className='text-sm font-medium text-foreground mt-3'>
+                Viewport
+              </h4>
+              {roomState.resolution && (
+                <ViewportSettings
+                  resolution={roomState.resolution}
+                  viewportTop={roomState.viewportTop}
+                  viewportLeft={roomState.viewportLeft}
+                  viewportWidth={roomState.viewportWidth}
+                  viewportHeight={roomState.viewportHeight}
+                  viewportTransitionDurationMs={roomState.viewportTransitionDurationMs}
+                  viewportTransitionEasing={roomState.viewportTransitionEasing}
+                  onChange={async (fields) => {
+                    await updateRoomAction(roomId, fields);
+                    await handleRefreshState();
+                  }}
+                />
+              )}
             </section>
             <div className='space-y-4'>
               <section className='space-y-2 px-1'>

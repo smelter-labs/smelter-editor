@@ -35,7 +35,10 @@ export const InputSchema = Type.Union([
   Type.Object({
     type: Type.Literal('local-mp4'),
     source: Type.Union([
-      Type.Object({ fileName: Type.String() }),
+      Type.Object({
+        fileName: Type.Optional(Type.String()),
+        audioFileName: Type.Optional(Type.String()),
+      }),
       Type.Object({ url: Type.String() }),
     ]),
   }),
@@ -117,6 +120,12 @@ export const UpdateRoomSchema = Type.Object({
   ),
   newsStripFadeDuringSwap: Type.Optional(Type.Boolean()),
   newsStripEnabled: Type.Optional(Type.Boolean()),
+  viewportTop: Type.Optional(Type.Number()),
+  viewportLeft: Type.Optional(Type.Number()),
+  viewportWidth: Type.Optional(Type.Number({ minimum: 1 })),
+  viewportHeight: Type.Optional(Type.Number({ minimum: 1 })),
+  viewportTransitionDurationMs: Type.Optional(Type.Number({ minimum: 0 })),
+  viewportTransitionEasing: Type.Optional(Type.String()),
 });
 
 export const PendingWhipInputSchema = Type.Object({
@@ -229,8 +238,10 @@ const RoomConfigInputSchema = Type.Object({
   showTitle: Type.Optional(Type.Boolean()),
   shaders: Type.Optional(Type.Array(ShaderConfigSchema)),
   channelId: Type.Optional(Type.String()),
+  url: Type.Optional(Type.String()),
   imageId: Type.Optional(Type.String()),
   mp4FileName: Type.Optional(Type.String()),
+  audioFileName: Type.Optional(Type.String()),
   text: Type.Optional(Type.String()),
   textAlign: Type.Optional(Type.String()),
   textColor: Type.Optional(Type.String()),

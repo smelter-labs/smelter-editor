@@ -26,6 +26,7 @@ export type {
   SnakeGameDisplayProperties,
   MotionProperties,
   HandsProperties,
+  ViewportProperties,
 } from '@smelter-editor/types';
 
 export { AUDIO_BAND_COUNT } from '@smelter-editor/types';

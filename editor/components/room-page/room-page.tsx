@@ -77,8 +77,12 @@ export default function RoomPage() {
       const storageKey = `smelter:default-inputs:${roomId}`;
       const existing = localStorage.getItem(storageKey);
       if (!existing) {
-        const defaultInputIds = roomState.inputs.map((input) => input.inputId);
-        localStorage.setItem(storageKey, JSON.stringify(defaultInputIds));
+        try {
+          const defaultInputIds = roomState.inputs.map((input) => input.inputId);
+          localStorage.setItem(storageKey, JSON.stringify(defaultInputIds));
+        } catch (error) {
+          console.warn('Failed to persist default input IDs:', error);
+        }
       }
       defaultInputsSavedRef.current = true;
     }

@@ -20,6 +20,7 @@ type StreamsSectionProps = {
   selectedInputId: string | null;
   isGuest?: boolean;
   guestInputId?: string | null;
+  activeClipColors?: Record<string, string>;
 };
 
 export function StreamsSection({
@@ -33,6 +34,7 @@ export function StreamsSection({
   selectedInputId,
   isGuest,
   guestInputId,
+  activeClipColors,
 }: StreamsSectionProps) {
   const { inputs, roomId, refreshState, availableShaders } =
     useControlPanelContext();
@@ -169,6 +171,7 @@ export function StreamsSection({
                         isSelected={selectedInputId === input.inputId}
                         index={index}
                         readOnly={isGuest && input.inputId !== guestInputId}
+                        activeBlockColor={activeClipColors?.[input.inputId]}
                       />
                     </ErrorBoundary>
                     {attachedChildren.map((child) => (
@@ -192,6 +195,7 @@ export function StreamsSection({
                             showGrip={false}
                             isSelected={selectedInputId === child.inputId}
                             readOnly={isGuest && child.inputId !== guestInputId}
+                            activeBlockColor={activeClipColors?.[child.inputId]}
                           />
                         </ErrorBoundary>
                       </div>

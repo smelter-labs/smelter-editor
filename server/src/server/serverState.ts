@@ -126,6 +126,29 @@ export class ServerState {
     roomEventBus.closeRoom(roomId);
   }
 
+  public async deleteAllRooms(): Promise<void> {
+    return this.mutex.runExclusive(async () => {
+      const roomIds = Object.keys(this.rooms);
+      for (const roomId of roomIds) {
+        try {
+          await this._deleteRoom(roomId);
+        } catch (err) {
+          console.warn(`[restart] Failed to delete room ${roomId}, forcing removal`, err);
+          delete this.rooms[roomId];
+          roomEventBus.closeRoom(roomId);
+        }
+      }
+    });
+  }
+
+  public async restartSmelter(): Promise<void> {
+    console.log('[restart] Deleting all rooms before Smelter restart...');
+    await this.deleteAllRooms();
+    console.log('[restart] All rooms deleted, restarting Smelter engine...');
+    await SmelterInstance.restart();
+    console.log('[restart] Smelter engine restart complete');
+  }
+
   private async monitorConnectedRooms() {
     await this.mutex.runExclusive(async () => {
       let rooms = Object.entries(this.rooms);

@@ -1,5 +1,6 @@
 import { beforeEach, describe, it, expect } from 'vitest';
 import {
+  buildTimelineStateFromConfigTimeline,
   exportRoomConfig,
   loadTimelineFromStorage,
   parseRoomConfig,
@@ -179,6 +180,22 @@ describe('exportRoomConfig', () => {
     expect(config.inputs[0].mp4FileName).toBe('my_video.mp4');
   });
 
+  it('includes url for hls inputs', () => {
+    const hlsInput: Input = {
+      ...minimalInput,
+      id: 2,
+      inputId: 'room::hls::3',
+      type: 'hls',
+      title: 'Example HLS',
+      description: '',
+      url: 'https://example.com/live.m3u8',
+    };
+
+    const config = exportRoomConfig([hlsInput], 'grid');
+
+    expect(config.inputs[0].url).toBe('https://example.com/live.m3u8');
+  });
+
   it('includes timeline keyframes from the provided live state', () => {
     const timelineState: RoomConfigTimelineState = {
       tracks: [
@@ -291,6 +308,87 @@ describe('exportRoomConfig', () => {
 });
 
 describe('timeline config persistence helpers', () => {
+  it('builds timeline state from config without storage', () => {
+    const timeline: RoomConfigTimeline = {
+      totalDurationMs: 12_000,
+      pixelsPerSecond: 24,
+      keyframeInterpolationMode: 'smooth',
+      tracks: [
+        {
+          label: 'Track 1',
+          clips: [
+            {
+              inputIndex: 0,
+              startMs: 1000,
+              endMs: 8000,
+              blockSettings: {
+                volume: 1,
+                showTitle: true,
+                shaders: [],
+                text: 'intro',
+              },
+              keyframes: [
+                {
+                  id: 'kf-a',
+                  timeMs: 0,
+                  blockSettings: {
+                    volume: 1,
+                    showTitle: true,
+                    shaders: [],
+                    text: 'intro',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(
+      buildTimelineStateFromConfigTimeline(
+        timeline,
+        new Map<number, string>([[0, 'room::text::1']]),
+      ),
+    ).toEqual({
+      totalDurationMs: 12_000,
+      keyframeInterpolationMode: 'smooth',
+      pixelsPerSecond: 24,
+      tracks: [
+        {
+          id: expect.any(String),
+          label: 'Track 1',
+          clips: [
+            {
+              id: expect.any(String),
+              inputId: 'room::text::1',
+              startMs: 1000,
+              endMs: 8000,
+              blockSettings: {
+                volume: 1,
+                showTitle: true,
+                shaders: [],
+                text: 'intro',
+              },
+              keyframes: [
+                {
+                  id: 'kf-a',
+                  timeMs: 0,
+                  blockSettings: {
+                    volume: 1,
+                    showTitle: true,
+                    shaders: [],
+                    text: 'intro',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+  });
+
   it('restores keyframes to local timeline storage without losing them', () => {
     const timeline: RoomConfigTimeline = {
       totalDurationMs: 12_000,

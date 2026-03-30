@@ -1,6 +1,7 @@
 import type { Resolution, ResolutionPreset } from './resolution';
 import type {
   AddInputResponse,
+  AudioSuggestions,
   AvailableShader,
   InputSuggestions,
   KickSuggestions,
@@ -48,10 +49,12 @@ export interface SmelterApiClient {
   getMP4Suggestions(): Promise<MP4Suggestions>;
   getKickSuggestions(): Promise<KickSuggestions>;
   getPictureSuggestions(): Promise<PictureSuggestions>;
+  getAudioSuggestions(): Promise<AudioSuggestions>;
 
   addTwitchInput(roomId: string, channelId: string): Promise<any>;
   addKickInput(roomId: string, channelId: string): Promise<any>;
   addMP4Input(roomId: string, mp4FileName: string): Promise<any>;
+  addAudioInput(roomId: string, audioFileName: string): Promise<any>;
   addImageInput(roomId: string, imageFileNameOrId: string): Promise<any>;
   addTextInput(
     roomId: string,
@@ -111,6 +114,7 @@ export interface SmelterApiClient {
     loop: boolean,
   ): Promise<void>;
   getMp4Duration(fileName: string): Promise<number>;
+  getAudioDuration(fileName: string): Promise<number>;
 
   acknowledgeWhipInput(roomId: string, inputId: string): Promise<void>;
   setPendingWhipInputs(
@@ -126,6 +130,8 @@ export interface SmelterApiClient {
   pauseTimeline(
     roomId: string,
   ): Promise<{ playheadMs: number; isPaused: true }>;
+
+  restartSmelter(): Promise<void>;
 
   getAllRooms(): Promise<any>;
   getAvailableShaders(): Promise<AvailableShader[]>;
@@ -249,6 +255,10 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       return await req('get', '/suggestions/pictures');
     },
 
+    async getAudioSuggestions() {
+      return await req('get', '/suggestions/audios');
+    },
+
     async addTwitchInput(roomId, channelId) {
       return await req('post', `/room/${enc(roomId)}/input`, {
         type: 'twitch-channel',
@@ -267,6 +277,13 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       return await req('post', `/room/${enc(roomId)}/input`, {
         type: 'local-mp4',
         source: { fileName: mp4FileName, url: '' },
+      });
+    },
+
+    async addAudioInput(roomId, audioFileName) {
+      return await req('post', `/room/${enc(roomId)}/input`, {
+        type: 'local-mp4',
+        source: { audioFileName },
       });
     },
 
@@ -426,6 +443,14 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       return data.durationMs as number;
     },
 
+    async getAudioDuration(fileName) {
+      const data = await req(
+        'get',
+        `/suggestions/audio-duration/${enc(fileName)}`,
+      );
+      return data.durationMs as number;
+    },
+
     async acknowledgeWhipInput(roomId, inputId) {
       try {
         await req(
@@ -476,6 +501,10 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
 
     async pauseTimeline(roomId) {
       return await req('post', `/room/${enc(roomId)}/timeline/pause`, {});
+    },
+
+    async restartSmelter() {
+      await req('post', '/restart-smelter', {});
     },
 
     async getAllRooms() {

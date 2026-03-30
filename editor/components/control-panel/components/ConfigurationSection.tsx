@@ -21,6 +21,7 @@ import {
   type RoomConfigInput,
   type RoomConfigTransitionSettings,
 } from '@/lib/room-config';
+import type { ViewportProperties } from '@smelter-editor/types';
 import { toast } from 'sonner';
 type ConfigurationSectionProps = {
   inputs: Input[];
@@ -28,6 +29,7 @@ type ConfigurationSectionProps = {
   roomId: string;
   resolution?: { width: number; height: number };
   transitionSettings: RoomConfigTransitionSettings;
+  viewport?: Partial<ViewportProperties>;
   refreshState: () => Promise<void>;
   pendingWhipInputs: PendingWhipInput[];
   setPendingWhipInputs: (inputs: PendingWhipInput[]) => void | Promise<void>;
@@ -46,6 +48,7 @@ export function ConfigurationSection({
   roomId,
   resolution,
   transitionSettings,
+  viewport,
   refreshState,
   pendingWhipInputs,
   setPendingWhipInputs,
@@ -53,7 +56,9 @@ export function ConfigurationSection({
   const {
     addTwitchInput,
     addKickInput,
+    addHlsInput,
     addMP4Input,
+    addAudioInput,
     addImageInput,
     addTextInput,
     addSnakeGameInput,
@@ -79,6 +84,7 @@ export function ConfigurationSection({
         transitionSettings,
         timelineState ?? undefined,
         outputPlayer,
+        viewport,
       );
       downloadRoomConfig(config);
       toast.success('Configuration exported successfully');
@@ -88,7 +94,7 @@ export function ConfigurationSection({
     } finally {
       setIsExporting(false);
     }
-  }, [inputs, layout, resolution, transitionSettings, roomId]);
+  }, [inputs, layout, resolution, transitionSettings, viewport, roomId]);
 
   useEffect(() => {
     const onVoiceExport = () => {
@@ -165,8 +171,20 @@ export function ConfigurationSection({
               inputId = result.inputId;
             }
             break;
+          case 'hls':
+            if (inputConfig.url) {
+              const result = await addHlsInput(roomId, inputConfig.url);
+              inputId = result.inputId;
+            }
+            break;
           case 'local-mp4':
-            if (inputConfig.mp4FileName) {
+            if (inputConfig.audioFileName) {
+              const result = await addAudioInput(
+                roomId,
+                inputConfig.audioFileName,
+              );
+              inputId = result.inputId;
+            } else if (inputConfig.mp4FileName) {
               const result = await addMP4Input(roomId, inputConfig.mp4FileName);
               inputId = result.inputId;
             }
@@ -343,6 +361,7 @@ export function ConfigurationSection({
         layout: config.layout,
         ...(finalInputOrder ? { inputOrder: finalInputOrder } : {}),
         ...config.transitionSettings,
+        ...config.viewport,
       });
     } catch (e) {
       console.warn('Failed to set layout or input order:', e);
