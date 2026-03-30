@@ -43,6 +43,36 @@ export const suggestionRoutes: FastifyPluginCallback = (routes, _opts, done) => 
     res.status(200).send({ pictures: pictureSuggestionsMonitor.pictureFiles });
   });
 
+  routes.get<{ Querystring: { folder?: string } }>(
+    '/suggestions/mp4s/browse',
+    {
+      schema: {
+        querystring: Type.Object({
+          folder: Type.Optional(Type.String()),
+        }),
+      },
+    },
+    async (req, res) => {
+      const folder = req.query.folder || undefined;
+      res.status(200).send(mp4SuggestionsMonitor.listFolder(folder));
+    },
+  );
+
+  routes.get<{ Querystring: { folder?: string } }>(
+    '/suggestions/pictures/browse',
+    {
+      schema: {
+        querystring: Type.Object({
+          folder: Type.Optional(Type.String()),
+        }),
+      },
+    },
+    async (req, res) => {
+      const folder = req.query.folder || undefined;
+      res.status(200).send(pictureSuggestionsMonitor.listFolder(folder));
+    },
+  );
+
   routes.get('/suggestions/twitch', async (_req, res) => {
     res.status(200).send({ twitch: TwitchChannelSuggestions.getTopStreams() });
   });

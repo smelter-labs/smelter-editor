@@ -1,19 +1,68 @@
 import path from 'node:path';
 import fs from 'fs-extra';
 
+export interface FolderListing {
+  files: string[];
+  folders: string[];
+}
+
 class Mp4SuggestionMonitor {
   public mp4Files: string[];
+  private readonly baseDir: string;
 
   constructor() {
-    const mp4sDir = path.resolve(process.cwd(), 'mp4s');
-    let files: string[] = [];
+    this.baseDir = path.resolve(process.cwd(), 'mp4s');
+    this.mp4Files = this.scanAllFiles();
+  }
+
+  refresh(): void {
+    this.mp4Files = this.scanAllFiles();
+  }
+
+  listFolder(subPath?: string): FolderListing {
+    const dir = subPath
+      ? path.join(this.baseDir, subPath)
+      : this.baseDir;
+
+    let entries: fs.Dirent[];
     try {
-      files = fs.readdirSync(mp4sDir);
+      entries = fs.readdirSync(dir, { withFileTypes: true });
     } catch {
-      files = [];
+      return { files: [], folders: [] };
     }
-    this.mp4Files = files.filter((f) => f.toLowerCase().endsWith('.mp4'));
+
+    const files = entries
+      .filter((e) => e.isFile() && e.name.toLowerCase().endsWith('.mp4'))
+      .map((e) => e.name);
+
+    const folders = entries
+      .filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+      .map((e) => e.name);
+
+    return { files, folders };
+  }
+
+  private scanAllFiles(dir?: string, prefix?: string): string[] {
+    const target = dir ?? this.baseDir;
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(target, { withFileTypes: true });
+    } catch {
+      return [];
+    }
+
+    const result: string[] = [];
+    for (const entry of entries) {
+      const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+      if (entry.isFile() && entry.name.toLowerCase().endsWith('.mp4')) {
+        result.push(rel);
+      } else if (entry.isDirectory() && !entry.name.startsWith('.')) {
+        result.push(...this.scanAllFiles(path.join(target, entry.name), rel));
+      }
+    }
+    return result;
   }
 }
+
 const mp4SuggestionsMonitor = new Mp4SuggestionMonitor();
 export default mp4SuggestionsMonitor;

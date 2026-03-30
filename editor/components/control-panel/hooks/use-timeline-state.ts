@@ -147,6 +147,13 @@ type TimelineAction =
     }
   | { type: 'PURGE_INPUT_ID'; inputId: string }
   | {
+      type: 'SWAP_CLIP_INPUT';
+      trackId: string;
+      clipId: string;
+      newInputId: string;
+      sourceUpdates?: Partial<BlockSettings>;
+    }
+  | {
       type: 'MOVE_CLIPS';
       moves: { trackId: string; clipId: string; newStartMs: number }[];
     }
@@ -457,7 +464,11 @@ function ensureOutputTrack(tracks: Track[], totalDurationMs: number): Track[] {
               ...t,
               clips: t.clips.map((c) =>
                 c.id === OUTPUT_CLIP_ID
-                  ? syncClipKeyframes({ ...c, startMs: 0, endMs: totalDurationMs })
+                  ? syncClipKeyframes({
+                      ...c,
+                      startMs: 0,
+                      endMs: totalDurationMs,
+                    })
                   : c,
               ),
             }
@@ -993,6 +1004,36 @@ export function timelineReducer(
       return { ...state, tracks };
     }
 
+    case 'SWAP_CLIP_INPUT': {
+      const { trackId, clipId, newInputId, sourceUpdates } = action;
+      return {
+        ...state,
+        tracks: state.tracks.map((track) => {
+          if (track.id !== trackId) return track;
+          return {
+            ...track,
+            clips: track.clips.map((clip) => {
+              if (clip.id !== clipId) return clip;
+              const mergedSettings = sourceUpdates
+                ? { ...clip.blockSettings, ...sourceUpdates }
+                : clip.blockSettings;
+              return {
+                ...clip,
+                inputId: newInputId,
+                blockSettings: mergedSettings,
+                keyframes: clip.keyframes.map((kf) => ({
+                  ...kf,
+                  blockSettings: sourceUpdates
+                    ? { ...kf.blockSettings, ...sourceUpdates }
+                    : kf.blockSettings,
+                })),
+              };
+            }),
+          };
+        }),
+      };
+    }
+
     case 'UPDATE_CLIP_SETTINGS': {
       let targetInputId: string | undefined;
       const syncAbsFlag = action.patch.absolutePosition !== undefined;
@@ -1360,6 +1401,7 @@ const UNDOABLE_ACTIONS = new Set<TimelineAction['type']>([
   'DELETE_KEYFRAME',
   'MOVE_KEYFRAME',
   'PURGE_INPUT_ID',
+  'SWAP_CLIP_INPUT',
   'MOVE_CLIPS',
   'DELETE_CLIPS',
 ]);
@@ -1607,6 +1649,25 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     [],
   );
 
+  const swapClipInput = useCallback(
+    (
+      trackId: string,
+      clipId: string,
+      newInputId: string,
+      sourceUpdates?: Partial<BlockSettings>,
+    ) => {
+      dispatch({
+        type: 'SWAP_CLIP_INPUT',
+        trackId,
+        clipId,
+        newInputId,
+        sourceUpdates,
+      });
+      setStructureRevision((rev) => rev + 1);
+    },
+    [],
+  );
+
   const updateClipSettings = useCallback(
     (trackId: string, clipId: string, patch: Partial<BlockSettings>) => {
       dispatch({ type: 'UPDATE_CLIP_SETTINGS', trackId, clipId, patch });
@@ -1719,6 +1780,7 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     addTrack,
     deleteTrack,
     replaceInputId,
+    swapClipInput,
     updateClipSettings,
     addKeyframe,
     updateKeyframe,

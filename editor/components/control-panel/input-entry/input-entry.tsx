@@ -404,9 +404,7 @@ export default function InputEntry({
         lastParamChangeRef.current[key] = Date.now();
         const newShadersConfig = input.shaders.map((shader) => {
           if (shader.shaderId !== shaderId) return shader;
-          const hasParam = shader.params.some(
-            (p) => p.paramName === paramName,
-          );
+          const hasParam = shader.params.some((p) => p.paramName === paramName);
           const updatedParams = hasParam
             ? shader.params.map((param) =>
                 param.paramName === paramName

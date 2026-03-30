@@ -392,7 +392,10 @@ export function LayoutPreviewPanel({
       if (longPressStartRef.current) {
         const lpDx = Math.abs(e.clientX - longPressStartRef.current.x);
         const lpDy = Math.abs(e.clientY - longPressStartRef.current.y);
-        if (lpDx > LONG_PRESS_MOVE_THRESHOLD || lpDy > LONG_PRESS_MOVE_THRESHOLD) {
+        if (
+          lpDx > LONG_PRESS_MOVE_THRESHOLD ||
+          lpDy > LONG_PRESS_MOVE_THRESHOLD
+        ) {
           cancelLongPress();
         }
       }
@@ -408,12 +411,26 @@ export function LayoutPreviewPanel({
       let newWidth = drag.origWidth;
       let newHeight = drag.origHeight;
 
-      const { origCropTop: cT, origCropLeft: cL, origCropRight: cR, origCropBottom: cB } = drag;
+      const {
+        origCropTop: cT,
+        origCropLeft: cL,
+        origCropRight: cR,
+        origCropBottom: cB,
+      } = drag;
 
       if (drag.dragType === 'move') {
         newLeft = drag.origLeft + dx;
         newTop = drag.origTop + dy;
-        const snapped = snapPos(newTop, newLeft, newWidth, newHeight, cT, cL, cR, cB);
+        const snapped = snapPos(
+          newTop,
+          newLeft,
+          newWidth,
+          newHeight,
+          cT,
+          cL,
+          cR,
+          cB,
+        );
         newTop = snapped.top;
         newLeft = snapped.left;
       } else if (drag.dragType === 'resize-se') {
@@ -533,7 +550,8 @@ export function LayoutPreviewPanel({
               const height = Math.max(0, rect.height - iCT - iCB) * scale;
               const isHidden = !!input.hidden;
               const isForceGrabbed = forceGrabbedId === input.inputId;
-              const isLongPressing = longPressActive && longPressInputId === input.inputId;
+              const isLongPressing =
+                longPressActive && longPressInputId === input.inputId;
               const effectivelyHidden = isHidden && !isForceGrabbed;
               const durationMs = isDragging
                 ? 0
@@ -550,9 +568,10 @@ export function LayoutPreviewPanel({
                 { id: 'se', x: width, y: height, cursor: 'nwse-resize' },
               ];
 
-              const handleMouseDown = isHidden && !isForceGrabbed
-                ? (e: React.MouseEvent) => handleHiddenMouseDown(e, input)
-                : (e: React.MouseEvent) => handleRectMouseDown(e, input);
+              const handleMouseDown =
+                isHidden && !isForceGrabbed
+                  ? (e: React.MouseEvent) => handleHiddenMouseDown(e, input)
+                  : (e: React.MouseEvent) => handleRectMouseDown(e, input);
 
               return (
                 <div
@@ -563,10 +582,15 @@ export function LayoutPreviewPanel({
                     left,
                     width,
                     height,
-                    zIndex: isDragging ? 1000 : selectedInputId === input.inputId ? 500 : index,
-                    transition: durationMs > 0
-                      ? `top ${durationMs}ms ${easing}, left ${durationMs}ms ${easing}, width ${durationMs}ms ${easing}, height ${durationMs}ms ${easing}, opacity ${durationMs}ms ${easing}`
-                      : 'none',
+                    zIndex: isDragging
+                      ? 1000
+                      : selectedInputId === input.inputId
+                        ? 500
+                        : index,
+                    transition:
+                      durationMs > 0
+                        ? `top ${durationMs}ms ${easing}, left ${durationMs}ms ${easing}, width ${durationMs}ms ${easing}, height ${durationMs}ms ${easing}, opacity ${durationMs}ms ${easing}`
+                        : 'none',
                   }}>
                   <div
                     className='absolute inset-0 flex items-end'
@@ -576,7 +600,11 @@ export function LayoutPreviewPanel({
                         ? `2px solid ${colors?.dot ?? '#737373'}`
                         : `1px solid ${colors?.dot ?? '#737373'}`,
                       borderStyle: effectivelyHidden ? 'dashed' : 'solid',
-                      opacity: effectivelyHidden ? (isLongPressing ? 0.4 : 0.15) : 1,
+                      opacity: effectivelyHidden
+                        ? isLongPressing
+                          ? 0.4
+                          : 0.15
+                        : 1,
                       cursor: effectivelyHidden ? 'default' : 'grab',
                     }}
                     onMouseDown={handleMouseDown}>

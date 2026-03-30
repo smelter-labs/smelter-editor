@@ -1696,5 +1696,4 @@ export function useControlPanelEvents({
       );
     };
   }, [roomId, handleRefreshState, inputsRef]);
-
 }

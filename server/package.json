@@ -14,11 +14,12 @@
     "lint:fix": "eslint --fix --ext .js,.jsx,.ts,.tsx ."
   },
   "dependencies": {
-    "@smelter-editor/types": "workspace:*",
     "@fastify/cors": "^11.2.0",
+    "@fastify/multipart": "^9.4.0",
     "@fastify/type-provider-typebox": "^5.2.0",
     "@fastify/websocket": "^11.2.0",
     "@sinclair/typebox": "^0.34.38",
+    "@smelter-editor/types": "workspace:*",
     "@swmansion/smelter": "^0.3.0",
     "@swmansion/smelter-node": "^0.3.2",
     "@types/fs-extra": "^11.0.4",
@@ -34,6 +35,7 @@
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
     "@types/blessed": "^0.1.27",
+    "@types/busboy": "^1.5.4",
     "@types/node": "^20.14.10",
     "@types/react": "^18.3.3",
     "@types/uuid": "^10.0.0",

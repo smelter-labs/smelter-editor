@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
 import websocket from '@fastify/websocket';
 import { v4 as uuidv4 } from 'uuid';
 import { STATUS_CODES } from 'node:http';
@@ -30,6 +31,7 @@ import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
 import pictureSuggestionsMonitor from '../pictures/pictureSuggestionMonitor';
 import { KickChannelSuggestions } from '../kick/KickChannelMonitor';
 import shadersController from '../shaders/shaders';
+import { uploadRoutes } from './routes/uploadRoutes';
 import {
   RESOLUTION_PRESETS,
   type Resolution,
@@ -75,15 +77,18 @@ async function ensureHlsThumbnail(jsonFileName: string): Promise<string> {
 }
 
 async function ensureMp4Thumbnail(mp4FileName: string): Promise<string> {
-  const safeName = path.basename(mp4FileName);
-  const thumbName = safeName.replace(/\.[^.]+$/, '.jpg');
+  const decoded = decodeURIComponent(mp4FileName);
+  if (decoded.includes('..')) {
+    throw Object.assign(new Error('Invalid file name'), { statusCode: 400 });
+  }
+  const thumbName = decoded.replace(/[/\\]/g, '_').replace(/\.[^.]+$/, '.jpg');
   const thumbPath = path.join(THUMBNAILS_DIR, thumbName);
 
   if (await pathExists(thumbPath)) {
     return thumbPath;
   }
 
-  const mp4Path = path.join(process.cwd(), 'mp4s', safeName);
+  const mp4Path = path.join(process.cwd(), 'mp4s', decoded);
   if (!(await pathExists(mp4Path))) {
     throw Object.assign(new Error('MP4 file not found'), { statusCode: 404 });
   }
@@ -117,6 +122,7 @@ export const routes = Fastify({
 }).withTypeProvider<TypeBoxTypeProvider>();
 
 routes.register(cors, { origin: true });
+routes.register(multipart, { limits: { fileSize: 500 * 1024 * 1024 } });
 routes.register(websocket, {
   options: {
     perMessageDeflate: false,
@@ -150,13 +156,29 @@ routes.get('/suggestions/mp4s', async (_req, res) => {
   res.status(200).send({ mp4s: mp4SuggestionsMonitor.mp4Files });
 });
 
+routes.get<{ Querystring: { folder?: string } }>(
+  '/suggestions/mp4s/browse',
+  {
+    schema: {
+      querystring: Type.Object({ folder: Type.Optional(Type.String()) }),
+    },
+  },
+  async (req, res) => {
+    const folder = req.query.folder || undefined;
+    res.status(200).send(mp4SuggestionsMonitor.listFolder(folder));
+  },
+);
+
 routes.get<{ Params: { fileName: string } }>(
   '/suggestions/mp4-duration/:fileName',
   { schema: { params: Type.Object({ fileName: Type.String() }) } },
   async (req, res) => {
     const { fileName } = req.params;
-    const safeName = path.basename(fileName);
-    const filePath = path.join(process.cwd(), 'mp4s', safeName);
+    const decoded = decodeURIComponent(fileName);
+    if (decoded.includes('..')) {
+      return res.status(400).send({ error: 'Invalid file name' });
+    }
+    const filePath = path.join(process.cwd(), 'mp4s', decoded);
 
     if (!(await pathExists(filePath))) {
       return res.status(404).send({ error: 'MP4 file not found' });
@@ -167,7 +189,7 @@ routes.get<{ Params: { fileName: string } }>(
       return res.status(200).send({ durationMs });
     } catch (err: any) {
       console.error('Failed to get MP4 duration via ffprobe', {
-        fileName: safeName,
+        fileName: decoded,
         err: err?.message,
       });
       return res.status(500).send({ error: 'Failed to read MP4 duration' });
@@ -219,20 +241,36 @@ routes.get('/suggestions/pictures', async (_req, res) => {
   res.status(200).send({ pictures: pictureSuggestionsMonitor.pictureFiles });
 });
 
+routes.get<{ Querystring: { folder?: string } }>(
+  '/suggestions/pictures/browse',
+  {
+    schema: {
+      querystring: Type.Object({ folder: Type.Optional(Type.String()) }),
+    },
+  },
+  async (req, res) => {
+    const folder = req.query.folder || undefined;
+    res.status(200).send(pictureSuggestionsMonitor.listFolder(folder));
+  },
+);
+
 routes.get<{ Params: { fileName: string } }>(
   '/suggestions/pictures/:fileName',
   { schema: { params: Type.Object({ fileName: Type.String() }) } },
   async (req, res) => {
     const { fileName } = req.params;
-    const safeName = path.basename(fileName);
-    const filePath = path.join(process.cwd(), 'pictures', safeName);
+    const decoded = decodeURIComponent(fileName);
+    if (decoded.includes('..')) {
+      return res.status(400).send({ error: 'Invalid file name' });
+    }
+    const filePath = path.join(process.cwd(), 'pictures', decoded);
 
     if (!(await pathExists(filePath))) {
       return res.status(404).send({ error: 'Picture not found' });
     }
 
     try {
-      const ext = path.extname(safeName).toLowerCase();
+      const ext = path.extname(decoded).toLowerCase();
       const mimeMap: Record<string, string> = {
         '.jpg': 'image/jpeg',
         '.jpeg': 'image/jpeg',
@@ -1276,4 +1314,6 @@ routes.delete<RoomIdParams>(
     res.status(200).send({ status: 'ok' });
   },
 );
+
+routes.register(uploadRoutes);
 

@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type MutableRefObject,
 } from 'react';
@@ -20,10 +21,7 @@ import {
 } from '../whip-input/utils/whip-storage';
 import { startPublish } from '../whip-input/utils/whip-publisher';
 import { startScreensharePublish } from '../whip-input/utils/screenshare-publisher';
-import {
-  addHandsInput,
-  getMp4Duration,
-} from '@/app/actions/actions';
+import { addHandsInput, getMp4Duration } from '@/app/actions/actions';
 import { useIsMobileDevice } from '@/hooks/use-mobile';
 import { toast } from 'sonner';
 import type { ChannelSuggestion, Input } from '@/lib/types';
@@ -48,7 +46,14 @@ type AssetItemAction = {
     | 'hands'
     | 'camera'
     | 'screenshare'
-    | 'hls';
+    | 'hls'
+    | 'upload-mp4'
+    | 'upload-image';
+};
+type AssetItemFolder = {
+  kind: 'folder';
+  name: string;
+  mediaType: 'mp4' | 'picture';
 };
 
 type AssetItem =
@@ -57,7 +62,8 @@ type AssetItem =
   | AssetItemTwitch
   | AssetItemKick
   | AssetItemHls
-  | AssetItemAction;
+  | AssetItemAction
+  | AssetItemFolder;
 
 const FILTER_TYPES = [
   'ALL',
@@ -73,6 +79,8 @@ const FILTER_TYPES = [
 type FilterType = (typeof FILTER_TYPES)[number];
 
 const ACTION_CARDS: AssetItemAction[] = [
+  { kind: 'action', actionType: 'upload-mp4' },
+  { kind: 'action', actionType: 'upload-image' },
   { kind: 'action', actionType: 'hls' },
   { kind: 'action', actionType: 'text' },
   { kind: 'action', actionType: 'game' },
@@ -95,6 +103,8 @@ function itemKey(item: AssetItem): string {
       return `hls-saved:${item.fileName}`;
     case 'action':
       return `action:${item.actionType}`;
+    case 'folder':
+      return `folder:${item.mediaType}:${item.name}`;
   }
 }
 
@@ -109,9 +119,17 @@ function itemMatchesFilter(item: AssetItem, filter: FilterType): boolean {
         (item.kind === 'action' && item.actionType === 'hls')
       );
     case 'MP4':
-      return item.kind === 'mp4';
+      return (
+        item.kind === 'mp4' ||
+        (item.kind === 'folder' && item.mediaType === 'mp4') ||
+        (item.kind === 'action' && item.actionType === 'upload-mp4')
+      );
     case 'IMAGE':
-      return item.kind === 'image';
+      return (
+        item.kind === 'image' ||
+        (item.kind === 'folder' && item.mediaType === 'picture') ||
+        (item.kind === 'action' && item.actionType === 'upload-image')
+      );
     case 'TEXT':
       return item.kind === 'action' && item.actionType === 'text';
     case 'GAME':
@@ -140,10 +158,14 @@ function itemLabel(item: AssetItem): string {
       return item.name;
     case 'action':
       return ACTION_TYPE_LABELS[item.actionType];
+    case 'folder':
+      return item.name;
   }
 }
 
 const ACTION_TYPE_LABELS: Record<AssetItemAction['actionType'], string> = {
+  'upload-mp4': 'UPLOAD MP4',
+  'upload-image': 'UPLOAD IMAGE',
   hls: 'NEW HLS STREAM',
   text: 'TEXT INPUT',
   game: 'SNAKE GAME',
@@ -166,6 +188,8 @@ function typeBadge(item: AssetItem): string {
       return 'HLS';
     case 'action':
       return item.actionType.toUpperCase();
+    case 'folder':
+      return 'FOLDER';
   }
 }
 
@@ -175,6 +199,115 @@ function formatDuration(ms: number): string {
   const m = Math.floor((totalSec % 3600) / 60);
   const s = totalSec % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+// ── Browse helpers ────────────────────────────────────────────
+
+interface BrowseResult {
+  files: string[];
+  folders: string[];
+}
+
+async function browseMp4s(folder: string): Promise<BrowseResult> {
+  const qs = folder ? `?folder=${encodeURIComponent(folder)}` : '';
+  const res = await fetch(`/api/suggestions/mp4s/browse${qs}`);
+  if (!res.ok) return { files: [], folders: [] };
+  return res.json();
+}
+
+async function browsePictures(folder: string): Promise<BrowseResult> {
+  const qs = folder ? `?folder=${encodeURIComponent(folder)}` : '';
+  const res = await fetch(`/api/suggestions/pictures/browse${qs}`);
+  if (!res.ok) return { files: [], folders: [] };
+  return res.json();
+}
+
+async function uploadFile(
+  file: File,
+  mediaType: 'mp4' | 'picture',
+  folder: string,
+): Promise<{ fileName: string; folder: string }> {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (folder) formData.append('folder', folder);
+
+  const route = mediaType === 'mp4' ? '/api/upload/mp4' : '/api/upload/picture';
+  const res = await fetch(route, { method: 'POST', body: formData });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Upload failed');
+  }
+  return res.json();
+}
+
+async function createFolder(
+  mediaType: 'mp4' | 'picture',
+  folder: string,
+): Promise<void> {
+  const route =
+    mediaType === 'mp4'
+      ? '/api/upload/mp4/folder'
+      : '/api/upload/picture/folder';
+  const res = await fetch(route, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ folder }),
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to create folder');
+  }
+}
+
+const MP4_ACCEPT = '.mp4,video/mp4';
+const PICTURE_ACCEPT = '.jpg,.jpeg,.png,.gif,.svg,.webp,image/*';
+
+function detectMediaType(file: File): 'mp4' | 'picture' | null {
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  if (ext === 'mp4') return 'mp4';
+  if (['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(ext))
+    return 'picture';
+  return null;
+}
+
+// ── Breadcrumb ───────────────────────────────────────────────
+
+function FolderBreadcrumb({
+  currentFolder,
+  onNavigate,
+}: {
+  currentFolder: string;
+  onNavigate: (folder: string) => void;
+}) {
+  const segments = currentFolder ? currentFolder.split('/') : [];
+
+  return (
+    <div className='flex items-center gap-1 px-5 py-1.5 bg-[#0e0e0e]/60 border-b border-[#3a494b]/20 font-mono text-[10px]'>
+      <button
+        onClick={() => onNavigate('')}
+        className='text-[#00f3ff] hover:text-[#e3fdff] transition-colors cursor-pointer'>
+        ROOT
+      </button>
+      {segments.map((seg, i) => {
+        const pathUpTo = segments.slice(0, i + 1).join('/');
+        const isLast = i === segments.length - 1;
+        return (
+          <span key={pathUpTo} className='flex items-center gap-1'>
+            <span className='text-[#3a494b]'>/</span>
+            {isLast ? (
+              <span className='text-[#e3fdff]'>{seg}</span>
+            ) : (
+              <button
+                onClick={() => onNavigate(pathUpTo)}
+                className='text-[#00f3ff] hover:text-[#e3fdff] transition-colors cursor-pointer'>
+                {seg}
+              </button>
+            )}
+          </span>
+        );
+      })}
+    </div>
+  );
 }
 
 // ── Main Modal ───────────────────────────────────────────────
@@ -195,25 +328,61 @@ export function AddVideoModal({
   const [items, setItems] = useState<AssetItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
+  const [mp4Folder, setMp4Folder] = useState('');
+  const [pictureFolder, setPictureFolder] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [newFolderName, setNewFolderName] = useState('');
+  const [showNewFolderInput, setShowNewFolderInput] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const showFolderBrowsing = filter === 'MP4' || filter === 'IMAGE';
+  const activeFolderMediaType: 'mp4' | 'picture' =
+    filter === 'IMAGE' ? 'picture' : 'mp4';
+  const activeFolder =
+    filter === 'IMAGE' ? pictureFolder : filter === 'MP4' ? mp4Folder : '';
+
+  const setActiveFolder = useCallback(
+    (folder: string) => {
+      if (filter === 'IMAGE') setPictureFolder(folder);
+      else if (filter === 'MP4') setMp4Folder(folder);
+    },
+    [filter],
+  );
+
   const fetchItems = useCallback(async () => {
     setIsLoading(true);
     try {
-      const [twitchRes, kickRes, mp4Res, pictureRes, hlsListRes] =
-        await Promise.all([
-          actions
-            .getTwitchSuggestions()
-            .catch(() => ({ twitch: [] as ChannelSuggestion[] })),
-          actions
-            .getKickSuggestions()
-            .catch(() => ({ kick: [] as ChannelSuggestion[] })),
-          actions.getMP4Suggestions().catch(() => ({ mp4s: [] as string[] })),
-          actions
-            .getPictureSuggestions()
-            .catch(() => ({ pictures: [] as string[] })),
-          actions.hlsStreamStorage
-            .list()
-            .catch(() => ({ ok: false as const, error: 'failed' })),
-        ]);
+      const [
+        twitchRes,
+        kickRes,
+        mp4Browse,
+        pictureBrowse,
+        mp4FlatRes,
+        pictureFlatRes,
+        hlsListRes,
+      ] = await Promise.all([
+        actions
+          .getTwitchSuggestions()
+          .catch(() => ({ twitch: [] as ChannelSuggestion[] })),
+        actions
+          .getKickSuggestions()
+          .catch(() => ({ kick: [] as ChannelSuggestion[] })),
+        browseMp4s(mp4Folder).catch(() => ({
+          files: [] as string[],
+          folders: [] as string[],
+        })),
+        browsePictures(pictureFolder).catch(() => ({
+          files: [] as string[],
+          folders: [] as string[],
+        })),
+        actions.getMP4Suggestions().catch(() => ({ mp4s: [] as string[] })),
+        actions
+          .getPictureSuggestions()
+          .catch(() => ({ pictures: [] as string[] })),
+        actions.hlsStreamStorage
+          .list()
+          .catch(() => ({ ok: false as const, error: 'failed' })),
+      ]);
 
       const hlsSavedItems: AssetItemHls[] = [];
       if (hlsListRes.ok) {
@@ -239,7 +408,25 @@ export function AddVideoModal({
         }
       }
 
+      const mp4FolderItems: AssetItemFolder[] = mp4Browse.folders.map(
+        (name) => ({ kind: 'folder', name, mediaType: 'mp4' }),
+      );
+      const mp4FileItems: AssetItemMp4[] = mp4Browse.files.map((f) => ({
+        kind: 'mp4',
+        fileName: mp4Folder ? `${mp4Folder}/${f}` : f,
+      }));
+
+      const picFolderItems: AssetItemFolder[] = pictureBrowse.folders.map(
+        (name) => ({ kind: 'folder', name, mediaType: 'picture' }),
+      );
+      const picFileItems: AssetItemImage[] = pictureBrowse.files.map((f) => ({
+        kind: 'image',
+        fileName: pictureFolder ? `${pictureFolder}/${f}` : f,
+      }));
+
       const fetched: AssetItem[] = [
+        ...mp4FolderItems,
+        ...picFolderItems,
         ...hlsSavedItems,
         ...twitchRes.twitch.map(
           (channel): AssetItemTwitch => ({ kind: 'twitch', channel }),
@@ -247,18 +434,13 @@ export function AddVideoModal({
         ...kickRes.kick.map(
           (channel): AssetItemKick => ({ kind: 'kick', channel }),
         ),
-        ...mp4Res.mp4s.map(
-          (fileName): AssetItemMp4 => ({ kind: 'mp4', fileName }),
-        ),
-        ...pictureRes.pictures.map(
-          (fileName): AssetItemImage => ({ kind: 'image', fileName }),
-        ),
+        ...mp4FileItems,
+        ...picFileItems,
         ...ACTION_CARDS,
       ];
 
       setItems(fetched);
 
-      // Lazy-load MP4 durations in background
       for (const item of fetched) {
         if (item.kind === 'mp4') {
           getMp4Duration(item.fileName)
@@ -277,15 +459,23 @@ export function AddVideoModal({
     } finally {
       setIsLoading(false);
     }
-  }, [actions]);
+  }, [actions, mp4Folder, pictureFolder]);
 
   useEffect(() => {
     if (open) {
       fetchItems();
       setSelectedItem(null);
-      setFilter('ALL');
     }
   }, [open, fetchItems]);
+
+  useEffect(() => {
+    if (open) {
+      setMp4Folder('');
+      setPictureFolder('');
+      setFilter('ALL');
+      setShowNewFolderInput(false);
+    }
+  }, [open]);
 
   const filteredItems = useMemo(
     () => items.filter((item) => itemMatchesFilter(item, filter)),
@@ -297,6 +487,82 @@ export function AddVideoModal({
     onOpenChange(false);
   }, [refreshState, onOpenChange]);
 
+  const handleFolderClick = useCallback(
+    (folderItem: AssetItemFolder) => {
+      const currentBase =
+        folderItem.mediaType === 'mp4' ? mp4Folder : pictureFolder;
+      const newPath = currentBase
+        ? `${currentBase}/${folderItem.name}`
+        : folderItem.name;
+      if (folderItem.mediaType === 'mp4') setMp4Folder(newPath);
+      else setPictureFolder(newPath);
+      setSelectedItem(null);
+    },
+    [mp4Folder, pictureFolder],
+  );
+
+  const handleUploadClick = useCallback(() => {
+    if (!fileInputRef.current) return;
+    if (filter === 'MP4') {
+      fileInputRef.current.accept = MP4_ACCEPT;
+    } else if (filter === 'IMAGE') {
+      fileInputRef.current.accept = PICTURE_ACCEPT;
+    } else {
+      fileInputRef.current.accept = `${MP4_ACCEPT},${PICTURE_ACCEPT}`;
+    }
+    fileInputRef.current.click();
+  }, [filter]);
+
+  const handleFileSelected = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      e.target.value = '';
+
+      const mediaType = detectMediaType(file);
+      if (!mediaType) {
+        toast.error('Unsupported file type.');
+        return;
+      }
+
+      const folder = mediaType === 'mp4' ? mp4Folder : pictureFolder;
+
+      setIsUploading(true);
+      try {
+        await uploadFile(file, mediaType, folder);
+        toast.success(`Uploaded "${file.name}"`);
+        await fetchItems();
+      } catch (err: any) {
+        toast.error(err?.message || 'Upload failed');
+      } finally {
+        setIsUploading(false);
+      }
+    },
+    [mp4Folder, pictureFolder, fetchItems],
+  );
+
+  const handleCreateFolder = useCallback(async () => {
+    const name = newFolderName.trim();
+    if (!name) return;
+    const base = activeFolderMediaType === 'mp4' ? mp4Folder : pictureFolder;
+    const fullPath = base ? `${base}/${name}` : name;
+    try {
+      await createFolder(activeFolderMediaType, fullPath);
+      toast.success(`Folder "${name}" created`);
+      setNewFolderName('');
+      setShowNewFolderInput(false);
+      await fetchItems();
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to create folder');
+    }
+  }, [
+    newFolderName,
+    activeFolderMediaType,
+    mp4Folder,
+    pictureFolder,
+    fetchItems,
+  ]);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='max-w-[1100px] w-[95vw] max-h-[85vh] h-[85vh] bg-[#131313]/95 backdrop-blur-sm border border-[#3a494b]/30 p-0 gap-0 overflow-hidden [&>button]:text-[#849495] [&>button]:hover:text-[#e3fdff]'>
@@ -307,9 +573,37 @@ export function AddVideoModal({
               <h2 className='font-headline font-bold text-sm tracking-widest text-[#00f3ff] uppercase'>
                 ACTIVE_ASSET_REPOSITORY
               </h2>
-              <span className='font-mono text-[10px] text-[#fe00fe]'>
-                [{filteredItems.length} FILES]
-              </span>
+              <div className='flex items-center gap-2'>
+                {showFolderBrowsing && (
+                  <>
+                    <button
+                      onClick={() => {
+                        setShowNewFolderInput((v) => !v);
+                        setNewFolderName('');
+                      }}
+                      title='New folder'
+                      className='px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider bg-[#1c1b1b] text-[#849495] hover:text-[#e3fdff] border border-[#3a494b]/20 transition-colors cursor-pointer'>
+                      + FOLDER
+                    </button>
+                  </>
+                )}
+                <button
+                  onClick={handleUploadClick}
+                  disabled={isUploading}
+                  title='Upload file'
+                  className='px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider bg-[#fe00fe]/20 text-[#fe00fe] hover:bg-[#fe00fe]/30 border border-[#fe00fe]/30 transition-colors cursor-pointer disabled:opacity-40'>
+                  {isUploading ? 'UPLOADING...' : 'UPLOAD'}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type='file'
+                  className='hidden'
+                  onChange={handleFileSelected}
+                />
+                <span className='font-mono text-[10px] text-[#fe00fe]'>
+                  [{filteredItems.length} FILES]
+                </span>
+              </div>
             </div>
             <div className='flex gap-1.5 flex-wrap'>
               {FILTER_TYPES.map((f) => (
@@ -318,6 +612,7 @@ export function AddVideoModal({
                   onClick={() => {
                     setFilter(f);
                     setSelectedItem(null);
+                    setShowNewFolderInput(false);
                   }}
                   className={`px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider transition-colors ${
                     filter === f
@@ -328,7 +623,45 @@ export function AddVideoModal({
                 </button>
               ))}
             </div>
+            {showNewFolderInput && (
+              <div className='flex items-center gap-2 mt-2'>
+                <input
+                  type='text'
+                  value={newFolderName}
+                  onChange={(e) => setNewFolderName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleCreateFolder();
+                    if (e.key === 'Escape') setShowNewFolderInput(false);
+                  }}
+                  placeholder='Folder name...'
+                  autoFocus
+                  className='flex-1 bg-[#1c1b1b] border border-[#3a494b]/30 text-[#e3fdff] font-mono text-[11px] px-2 py-1 focus:border-[#00f3ff]/50 focus:outline-none'
+                />
+                <button
+                  onClick={handleCreateFolder}
+                  disabled={!newFolderName.trim()}
+                  className='px-3 py-1 text-[10px] font-mono bg-[#00f3ff] text-black font-bold uppercase disabled:opacity-40 cursor-pointer'>
+                  CREATE
+                </button>
+                <button
+                  onClick={() => setShowNewFolderInput(false)}
+                  className='px-2 py-1 text-[10px] font-mono text-[#849495] hover:text-[#e3fdff] cursor-pointer'>
+                  CANCEL
+                </button>
+              </div>
+            )}
           </div>
+
+          {/* Breadcrumb */}
+          {showFolderBrowsing && activeFolder && (
+            <FolderBreadcrumb
+              currentFolder={activeFolder}
+              onNavigate={(f) => {
+                setActiveFolder(f);
+                setSelectedItem(null);
+              }}
+            />
+          )}
 
           {/* Body: Grid + Inspector */}
           <div className='flex flex-1 min-h-0'>
@@ -356,7 +689,13 @@ export function AddVideoModal({
                         selectedItem !== null &&
                         itemKey(selectedItem) === itemKey(item)
                       }
-                      onClick={() => setSelectedItem(item)}
+                      onClick={() => {
+                        if (item.kind === 'folder') {
+                          handleFolderClick(item);
+                        } else {
+                          setSelectedItem(item);
+                        }
+                      }}
                     />
                   ))}
                 </div>
@@ -379,6 +718,9 @@ export function AddVideoModal({
                     inputs={inputs}
                     onDone={handleDone}
                     whipCtx={whipCtx}
+                    onUploadComplete={fetchItems}
+                    currentMp4Folder={mp4Folder}
+                    currentPictureFolder={pictureFolder}
                   />
                 ) : (
                   <div className='flex items-center justify-center h-32'>
@@ -438,6 +780,8 @@ function AssetCard({
       }
       case 'action':
         return 'ACTION';
+      case 'folder':
+        return item.mediaType === 'mp4' ? 'MP4 FOLDER' : 'IMAGE FOLDER';
       default:
         return '';
     }
@@ -499,7 +843,9 @@ function AssetThumbnail({ item }: { item: AssetItem }) {
     );
   }
   if (item.kind === 'hls-saved') {
-    return <HlsThumbnailWithFallback fileName={item.fileName} name={item.name} />;
+    return (
+      <HlsThumbnailWithFallback fileName={item.fileName} name={item.name} />
+    );
   }
   if (item.kind === 'twitch') {
     if (item.channel.thumbnailUrl) {
@@ -545,6 +891,26 @@ function AssetThumbnail({ item }: { item: AssetItem }) {
       </div>
     );
   }
+  if (item.kind === 'folder') {
+    return (
+      <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-[#ffd700]/15 to-[#131313]'>
+        <svg
+          viewBox='0 0 64 52'
+          className='w-12 h-10 opacity-50 group-hover:opacity-70 transition-opacity'>
+          <path
+            d='M4 8h20l4-6h28a4 4 0 0 1 4 4v38a4 4 0 0 1-4 4H4a4 4 0 0 1-4-4V12a4 4 0 0 1 4-4z'
+            fill='#ffd700'
+            opacity='0.6'
+          />
+          <path
+            d='M0 16h64v28a4 4 0 0 1-4 4H4a4 4 0 0 1-4-4V16z'
+            fill='#ffd700'
+            opacity='0.8'
+          />
+        </svg>
+      </div>
+    );
+  }
   if (item.kind === 'action') {
     return <ActionThumbnail actionType={item.actionType} />;
   }
@@ -556,12 +922,52 @@ function HlsFallbackIcon() {
     <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-[#ff6b00]/15 to-[#131313]'>
       <svg viewBox='0 0 60 60' className='w-10 h-10 opacity-40'>
         <circle cx='30' cy='30' r='6' fill='#ff6b00' />
-        <path d='M30 18 A12 12 0 0 1 42 30' stroke='#ff6b00' strokeWidth='2.5' fill='none' strokeLinecap='round' />
-        <path d='M30 18 A12 12 0 0 0 18 30' stroke='#ff6b00' strokeWidth='2.5' fill='none' strokeLinecap='round' />
-        <path d='M30 10 A20 20 0 0 1 50 30' stroke='#ff6b00' strokeWidth='2' fill='none' strokeLinecap='round' opacity='0.6' />
-        <path d='M30 10 A20 20 0 0 0 10 30' stroke='#ff6b00' strokeWidth='2' fill='none' strokeLinecap='round' opacity='0.6' />
-        <path d='M30 3 A27 27 0 0 1 57 30' stroke='#ff6b00' strokeWidth='1.5' fill='none' strokeLinecap='round' opacity='0.35' />
-        <path d='M30 3 A27 27 0 0 0 3 30' stroke='#ff6b00' strokeWidth='1.5' fill='none' strokeLinecap='round' opacity='0.35' />
+        <path
+          d='M30 18 A12 12 0 0 1 42 30'
+          stroke='#ff6b00'
+          strokeWidth='2.5'
+          fill='none'
+          strokeLinecap='round'
+        />
+        <path
+          d='M30 18 A12 12 0 0 0 18 30'
+          stroke='#ff6b00'
+          strokeWidth='2.5'
+          fill='none'
+          strokeLinecap='round'
+        />
+        <path
+          d='M30 10 A20 20 0 0 1 50 30'
+          stroke='#ff6b00'
+          strokeWidth='2'
+          fill='none'
+          strokeLinecap='round'
+          opacity='0.6'
+        />
+        <path
+          d='M30 10 A20 20 0 0 0 10 30'
+          stroke='#ff6b00'
+          strokeWidth='2'
+          fill='none'
+          strokeLinecap='round'
+          opacity='0.6'
+        />
+        <path
+          d='M30 3 A27 27 0 0 1 57 30'
+          stroke='#ff6b00'
+          strokeWidth='1.5'
+          fill='none'
+          strokeLinecap='round'
+          opacity='0.35'
+        />
+        <path
+          d='M30 3 A27 27 0 0 0 3 30'
+          stroke='#ff6b00'
+          strokeWidth='1.5'
+          fill='none'
+          strokeLinecap='round'
+          opacity='0.35'
+        />
       </svg>
     </div>
   );
@@ -593,17 +999,80 @@ function ActionThumbnail({
   actionType: AssetItemAction['actionType'];
 }) {
   switch (actionType) {
+    case 'upload-mp4':
+    case 'upload-image':
+      return (
+        <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-[#fe00fe]/15 to-[#131313]'>
+          <svg
+            viewBox='0 0 24 24'
+            className='w-10 h-10 opacity-40'
+            fill='none'
+            stroke='#fe00fe'
+            strokeWidth='1.5'>
+            <path
+              d='M12 16V4m0 0l-4 4m4-4l4 4'
+              strokeLinecap='round'
+              strokeLinejoin='round'
+            />
+            <path
+              d='M20 16v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2'
+              strokeLinecap='round'
+              strokeLinejoin='round'
+            />
+          </svg>
+        </div>
+      );
     case 'hls':
       return (
         <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-[#ff6b00]/15 to-[#131313]'>
           <svg viewBox='0 0 60 60' className='w-10 h-10 opacity-40'>
             <circle cx='30' cy='30' r='6' fill='#ff6b00' />
-            <path d='M30 18 A12 12 0 0 1 42 30' stroke='#ff6b00' strokeWidth='2.5' fill='none' strokeLinecap='round' />
-            <path d='M30 18 A12 12 0 0 0 18 30' stroke='#ff6b00' strokeWidth='2.5' fill='none' strokeLinecap='round' />
-            <path d='M30 10 A20 20 0 0 1 50 30' stroke='#ff6b00' strokeWidth='2' fill='none' strokeLinecap='round' opacity='0.6' />
-            <path d='M30 10 A20 20 0 0 0 10 30' stroke='#ff6b00' strokeWidth='2' fill='none' strokeLinecap='round' opacity='0.6' />
-            <path d='M30 3 A27 27 0 0 1 57 30' stroke='#ff6b00' strokeWidth='1.5' fill='none' strokeLinecap='round' opacity='0.35' />
-            <path d='M30 3 A27 27 0 0 0 3 30' stroke='#ff6b00' strokeWidth='1.5' fill='none' strokeLinecap='round' opacity='0.35' />
+            <path
+              d='M30 18 A12 12 0 0 1 42 30'
+              stroke='#ff6b00'
+              strokeWidth='2.5'
+              fill='none'
+              strokeLinecap='round'
+            />
+            <path
+              d='M30 18 A12 12 0 0 0 18 30'
+              stroke='#ff6b00'
+              strokeWidth='2.5'
+              fill='none'
+              strokeLinecap='round'
+            />
+            <path
+              d='M30 10 A20 20 0 0 1 50 30'
+              stroke='#ff6b00'
+              strokeWidth='2'
+              fill='none'
+              strokeLinecap='round'
+              opacity='0.6'
+            />
+            <path
+              d='M30 10 A20 20 0 0 0 10 30'
+              stroke='#ff6b00'
+              strokeWidth='2'
+              fill='none'
+              strokeLinecap='round'
+              opacity='0.6'
+            />
+            <path
+              d='M30 3 A27 27 0 0 1 57 30'
+              stroke='#ff6b00'
+              strokeWidth='1.5'
+              fill='none'
+              strokeLinecap='round'
+              opacity='0.35'
+            />
+            <path
+              d='M30 3 A27 27 0 0 0 3 30'
+              stroke='#ff6b00'
+              strokeWidth='1.5'
+              fill='none'
+              strokeLinecap='round'
+              opacity='0.35'
+            />
           </svg>
         </div>
       );
@@ -815,12 +1284,18 @@ function PropertyInspector({
   inputs,
   onDone,
   whipCtx,
+  onUploadComplete,
+  currentMp4Folder,
+  currentPictureFolder,
 }: {
   item: AssetItem;
   roomId: string;
   inputs: Input[];
   onDone: () => Promise<void>;
   whipCtx: ReturnType<typeof useWhipConnectionsContext>;
+  onUploadComplete: () => Promise<void>;
+  currentMp4Folder: string;
+  currentPictureFolder: string;
 }) {
   switch (item.kind) {
     case 'mp4':
@@ -832,8 +1307,20 @@ function PropertyInspector({
     case 'kick':
       return <KickInspector item={item} roomId={roomId} onDone={onDone} />;
     case 'hls-saved':
+      return <HlsSavedInspector item={item} roomId={roomId} onDone={onDone} />;
+    case 'folder':
       return (
-        <HlsSavedInspector item={item} roomId={roomId} onDone={onDone} />
+        <div className='space-y-3'>
+          <PropRow label='TYPE' value='FOLDER' />
+          <PropRow label='NAME' value={item.name} />
+          <PropRow
+            label='CONTENT'
+            value={item.mediaType === 'mp4' ? 'MP4 FILES' : 'IMAGES'}
+          />
+          <p className='font-mono text-[10px] text-[#849495]'>
+            Click the card to enter this folder.
+          </p>
+        </div>
       );
     case 'action':
       return (
@@ -843,6 +1330,9 @@ function PropertyInspector({
           inputs={inputs}
           onDone={onDone}
           whipCtx={whipCtx}
+          onUploadComplete={onUploadComplete}
+          currentMp4Folder={currentMp4Folder}
+          currentPictureFolder={currentPictureFolder}
         />
       );
   }
@@ -1097,7 +1587,7 @@ function KickInspector({
   );
 }
 
-// ── Action Inspector (text, game, eq, hands, camera, screenshare) ──
+// ── Action Inspector (text, game, eq, hands, camera, screenshare, upload) ──
 
 function ActionInspector({
   item,
@@ -1105,14 +1595,36 @@ function ActionInspector({
   inputs,
   onDone,
   whipCtx,
+  onUploadComplete,
+  currentMp4Folder,
+  currentPictureFolder,
 }: {
   item: AssetItemAction;
   roomId: string;
   inputs: Input[];
   onDone: () => Promise<void>;
   whipCtx: ReturnType<typeof useWhipConnectionsContext>;
+  onUploadComplete: () => Promise<void>;
+  currentMp4Folder: string;
+  currentPictureFolder: string;
 }) {
   switch (item.actionType) {
+    case 'upload-mp4':
+      return (
+        <UploadInspector
+          mediaType='mp4'
+          currentFolder={currentMp4Folder}
+          onUploadComplete={onUploadComplete}
+        />
+      );
+    case 'upload-image':
+      return (
+        <UploadInspector
+          mediaType='picture'
+          currentFolder={currentPictureFolder}
+          onUploadComplete={onUploadComplete}
+        />
+      );
     case 'hls':
       return <HlsActionInspector roomId={roomId} onDone={onDone} />;
     case 'text':
@@ -1148,6 +1660,99 @@ function ActionInspector({
         />
       );
   }
+}
+
+// ── Upload Inspector ─────────────────────────────────────────
+
+function UploadInspector({
+  mediaType,
+  currentFolder,
+  onUploadComplete,
+}: {
+  mediaType: 'mp4' | 'picture';
+  currentFolder: string;
+  onUploadComplete: () => Promise<void>;
+}) {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+
+  const accept = mediaType === 'mp4' ? MP4_ACCEPT : PICTURE_ACCEPT;
+  const label = mediaType === 'mp4' ? 'MP4' : 'IMAGE';
+
+  const doUpload = async (file: File) => {
+    setUploading(true);
+    try {
+      await uploadFile(file, mediaType, currentFolder);
+      toast.success(`Uploaded "${file.name}"`);
+      await onUploadComplete();
+    } catch (err: any) {
+      toast.error(err?.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) doUpload(file);
+    e.target.value = '';
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) doUpload(file);
+  };
+
+  return (
+    <div className='space-y-3'>
+      <PropRow label='TYPE' value={`UPLOAD_${label}`} />
+      {currentFolder && <PropRow label='TARGET_FOLDER' value={currentFolder} />}
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setDragOver(true);
+        }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={handleDrop}
+        onClick={() => fileRef.current?.click()}
+        className={`border-2 border-dashed rounded p-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors ${
+          dragOver
+            ? 'border-[#00f3ff] bg-[#00f3ff]/10'
+            : 'border-[#3a494b]/40 hover:border-[#00f3ff]/40'
+        } ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+        <svg
+          viewBox='0 0 24 24'
+          className='w-8 h-8 text-[#849495]'
+          fill='none'
+          stroke='currentColor'
+          strokeWidth='1.5'>
+          <path
+            d='M12 16V4m0 0l-4 4m4-4l4 4'
+            strokeLinecap='round'
+            strokeLinejoin='round'
+          />
+          <path
+            d='M20 16v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2'
+            strokeLinecap='round'
+            strokeLinejoin='round'
+          />
+        </svg>
+        <span className='font-mono text-[10px] text-[#849495]'>
+          {uploading ? 'UPLOADING...' : `DROP ${label} FILE OR CLICK`}
+        </span>
+      </div>
+      <input
+        ref={fileRef}
+        type='file'
+        accept={accept}
+        className='hidden'
+        onChange={handleFileChange}
+      />
+    </div>
+  );
 }
 
 function HlsSavedInspector({
