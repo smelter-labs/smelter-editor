@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
 import type { Input } from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
 import { GenericAddInputForm } from './generic-add-input-form';

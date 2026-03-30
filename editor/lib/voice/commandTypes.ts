@@ -215,19 +215,6 @@ export type SetNewsStripFadeDuringSwapCommand = {
   enabled: boolean;
 };
 
-export type InputOrientation = 'horizontal' | 'vertical';
-
-export type SetOrientationCommand = {
-  intent: 'SET_ORIENTATION';
-  orientation?: InputOrientation;
-  inputIndex?: number;
-};
-
-export type SetDefaultOrientationCommand = {
-  intent: 'SET_DEFAULT_ORIENTATION';
-  orientation: InputOrientation;
-};
-
 export type ClarifyCommand = {
   intent: 'CLARIFY';
   missing: string[];
@@ -269,8 +256,6 @@ export type VoiceCommand =
   | SetSwapOutgoingEnabledCommand
   | SetNewsStripEnabledCommand
   | SetNewsStripFadeDuringSwapCommand
-  | SetOrientationCommand
-  | SetDefaultOrientationCommand
   | ClarifyCommand;
 
 export type VoiceInput = {
@@ -546,26 +531,6 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
         return {
           intent: 'SET_NEWS_STRIP_FADE_DURING_SWAP',
           enabled: c.enabled,
-        };
-      }
-      return null;
-
-    case 'SET_ORIENTATION': {
-      const result: SetOrientationCommand = { intent: 'SET_ORIENTATION' };
-      if (c.orientation === 'horizontal' || c.orientation === 'vertical') {
-        result.orientation = c.orientation;
-      }
-      if (typeof c.inputIndex === 'number') {
-        result.inputIndex = c.inputIndex;
-      }
-      return result;
-    }
-
-    case 'SET_DEFAULT_ORIENTATION':
-      if (c.orientation === 'horizontal' || c.orientation === 'vertical') {
-        return {
-          intent: 'SET_DEFAULT_ORIENTATION',
-          orientation: c.orientation,
         };
       }
       return null;

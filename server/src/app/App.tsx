@@ -1,10 +1,14 @@
-import { View, Rescaler } from '@swmansion/smelter';
+import { View, Rescaler, Shader } from '@swmansion/smelter';
 
 import type { RoomStore } from './store';
 import type { StoreApi } from 'zustand';
-import { StoreContext, useResolution, useInputs } from './store';
+import { StoreContext, useResolution, useInputs, useOutputShaders } from './store';
 import { NewsStripOverlay } from './news-strip';
 import { Input } from '../inputs/inputs';
+import { wrapWithShaders } from '../utils/shaderUtils';
+import { AudioStoreContext } from '../audio/AudioStoreContext';
+import type { AudioStoreState } from '../audio/audioStore';
+import { createAudioStore } from '../audio/audioStore';
 
 function buildEasingFunction(easing?: string) {
   if (easing === 'bounce') return 'bounce' as const;
@@ -17,10 +21,20 @@ function buildEasingFunction(easing?: string) {
   return 'linear' as const;
 }
 
-export default function App({ store }: { store: StoreApi<RoomStore> }) {
+const defaultAudioStore = createAudioStore();
+
+export default function App({
+  store,
+  audioStore,
+}: {
+  store: StoreApi<RoomStore>;
+  audioStore?: StoreApi<AudioStoreState>;
+}) {
   return (
     <StoreContext.Provider value={store}>
-      <OutputScene />
+      <AudioStoreContext.Provider value={audioStore ?? defaultAudioStore}>
+        <OutputScene />
+      </AudioStoreContext.Provider>
     </StoreContext.Provider>
   );
 }
@@ -28,9 +42,12 @@ export default function App({ store }: { store: StoreApi<RoomStore> }) {
 function OutputScene() {
   const resolution = useResolution();
   const inputs = useInputs();
+  const outputShaders = useOutputShaders();
   const { width, height } = resolution;
 
-  return (
+  const activeOutputShaders = outputShaders.filter((s) => s.enabled);
+
+  const scene = (
     <View
       style={{
         backgroundColor: '#000000',
@@ -39,24 +56,56 @@ function OutputScene() {
         height,
         overflow: 'visible',
       }}>
-      {inputs.map((input) => (
-        <Rescaler
-          key={input.inputId}
-          id={`absolute-${input.inputId}`}
-          transition={{
-            durationMs: input.absoluteTransitionDurationMs ?? 300,
-            easingFunction: buildEasingFunction(input.absoluteTransitionEasing),
-          }}
-          style={{
-            top: input.absoluteTop ?? 0,
-            left: input.absoluteLeft ?? 0,
-            width: input.absoluteWidth ?? Math.round(width * 0.5),
-            height: input.absoluteHeight ?? Math.round(height * 0.5),
-          }}>
-          <Input input={input} />
-        </Rescaler>
-      ))}
+      {inputs.map((input) => {
+        const t = input.absoluteTop ?? 0;
+        const l = input.absoluteLeft ?? 0;
+        const w = input.absoluteWidth ?? Math.round(width * 0.5);
+        const h = input.absoluteHeight ?? Math.round(height * 0.5);
+        const cT = input.cropTop ?? 0;
+        const cL = input.cropLeft ?? 0;
+        const cR = input.cropRight ?? 0;
+        const cB = input.cropBottom ?? 0;
+        const hasCrop = cT || cL || cR || cB;
+
+        const transition = {
+          durationMs: input.absoluteTransitionDurationMs ?? 300,
+          easingFunction: buildEasingFunction(input.absoluteTransitionEasing),
+        };
+
+        let inner = <Input input={input} />;
+
+        if (hasCrop) {
+          inner = (
+            <Shader
+              shaderId='crop'
+              resolution={{ width: w, height: h }}
+              shaderParam={{
+                type: 'struct',
+                value: [
+                  { type: 'f32', fieldName: 'crop_top', value: cT / h },
+                  { type: 'f32', fieldName: 'crop_left', value: cL / w },
+                  { type: 'f32', fieldName: 'crop_right', value: cR / w },
+                  { type: 'f32', fieldName: 'crop_bottom', value: cB / h },
+                ],
+              }}>
+              {inner}
+            </Shader>
+          );
+        }
+
+        return (
+          <Rescaler
+            key={input.inputId}
+            id={`absolute-${input.inputId}`}
+            transition={transition}
+            style={{ top: t, left: l, width: w, height: h }}>
+            {inner}
+          </Rescaler>
+        );
+      })}
       <NewsStripOverlay />
     </View>
   );
+
+  return wrapWithShaders(scene, activeOutputShaders, resolution);
 }

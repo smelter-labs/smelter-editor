@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { AnimatePresence, motion } from 'framer-motion';
+import { Button } from '@/components/ui/button';
 
 export type SuggestionBoxProps<T> = {
   suggestions: T[];
@@ -72,14 +73,14 @@ export function SuggestionBox<T>({
             overflowX: 'hidden',
           }}>
           {suggestions.map((suggestion, idx) => (
-            <button
-              type='button'
+            <Button
+              variant='ghost'
               key={
                 typeof suggestion === 'string'
                   ? suggestion
                   : ((suggestion as any).streamId ?? idx)
               }
-              className={`w-full text-left px-3 py-2 hover:bg-neutral-800 hover:text-white focus:bg-neutral-700 focus:text-white transition-colors
+              className={`w-full justify-start text-left h-auto px-3 py-2 rounded-none font-normal hover:bg-neutral-800 hover:text-white focus:bg-neutral-700 focus:text-white
                 ${highlightedIndex === idx ? 'bg-neutral-800 text-white' : 'text-neutral-400'}
               `}
               onMouseDown={(e) => {
@@ -96,7 +97,7 @@ export function SuggestionBox<T>({
                 wordBreak: 'break-word',
               }}>
               {renderSuggestion(suggestion, idx, highlightedIndex === idx)}
-            </button>
+            </Button>
           ))}
         </motion.div>
       )}

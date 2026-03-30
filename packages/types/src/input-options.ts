@@ -2,11 +2,13 @@ import type {
   InputDisplayProperties,
   TextInputProperties,
   AbsolutePositionProperties,
+  CropProperties,
   BorderProperties,
   SnakeGameDisplayProperties,
 } from './input.js';
 
 export type UpdateInputOptions = {
+  title: string;
   attachedInputIds: string[];
   activeTransition: {
     type: string;
@@ -16,12 +18,14 @@ export type UpdateInputOptions = {
 } & InputDisplayProperties &
   TextInputProperties &
   AbsolutePositionProperties &
+  CropProperties &
   BorderProperties &
   SnakeGameDisplayProperties;
 
 export type RegisterInputOptions =
   | { type: 'twitch-channel'; channelId: string }
   | { type: 'kick-channel'; channelId: string }
+  | { type: 'hls'; url: string }
   | { type: 'whip'; username: string }
   | { type: 'local-mp4'; source: { fileName?: string; url?: string } }
   | { type: 'image'; fileName?: string; imageId?: string }
@@ -35,7 +39,8 @@ export type RegisterInputOptions =
       textScrollLoop?: boolean;
       textFontSize?: number;
     }
-  | { type: 'game'; title?: string };
+  | { type: 'game'; title?: string }
+  | { type: 'hands'; sourceInputId: string };
 
 export type PendingWhipInputData = {
   id: string;

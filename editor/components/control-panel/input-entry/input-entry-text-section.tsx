@@ -1,6 +1,11 @@
 'use client';
 
 import { AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
+import { Textarea } from '@/components/ui/textarea';
+import { Slider } from '@/components/ui/slider';
 
 export type InputEntryTextSectionProps = {
   textValue: string;
@@ -37,7 +42,7 @@ export function InputEntryTextSection({
 }: InputEntryTextSectionProps) {
   return (
     <div className='mb-3 md:pl-7'>
-      <textarea
+      <Textarea
         data-no-dnd
         value={textValue}
         onChange={(e) => onTextChange(e.target.value)}
@@ -63,17 +68,18 @@ export function InputEntryTextSection({
                 icon: <AlignRight className='w-3 h-3' />,
               },
             ].map((option) => (
-              <button
+              <Button
                 key={option.value}
-                type='button'
+                variant={textAlign === option.value ? 'default' : 'ghost'}
+                size='icon'
                 onClick={() => onTextAlignChange(option.value)}
-                className={`p-1.5 rounded transition-colors cursor-pointer ${
+                className={`h-auto w-auto p-1.5 cursor-pointer ${
                   textAlign === option.value
-                    ? 'bg-white text-black'
+                    ? 'bg-white text-black hover:bg-white'
                     : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white'
                 }`}>
                 {option.icon}
-              </button>
+              </Button>
             ))}
           </div>
         </div>
@@ -89,9 +95,8 @@ export function InputEntryTextSection({
         </div>
         <div className='flex items-center gap-2'>
           <span className='text-xs text-neutral-400'>Font size:</span>
-          <input
+          <NumberInput
             data-no-dnd
-            type='number'
             min={20}
             max={200}
             value={textFontSize}
@@ -101,16 +106,15 @@ export function InputEntryTextSection({
               )
             }
             onKeyDown={(e) => e.stopPropagation()}
-            className='w-14 p-1 bg-neutral-800 border border-neutral-700 rounded text-white text-sm text-center focus:outline-none focus:border-neutral-500'
+            className='w-16 p-1 bg-neutral-800 border border-neutral-700 text-white text-sm text-center focus:outline-none focus:border-neutral-500'
           />
         </div>
       </div>
       <div className='flex items-center gap-4 mt-2'>
         <div className='flex items-center gap-2'>
           <span className='text-xs text-neutral-400'>Max lines:</span>
-          <input
+          <NumberInput
             data-no-dnd
-            type='number'
             min={1}
             max={20}
             value={textMaxLines}
@@ -120,19 +124,18 @@ export function InputEntryTextSection({
               )
             }
             onKeyDown={(e) => e.stopPropagation()}
-            className='w-14 p-1 bg-neutral-800 border border-neutral-700 rounded text-white text-sm text-center focus:outline-none focus:border-neutral-500'
+            className='w-16 p-1 bg-neutral-800 border border-neutral-700 text-white text-sm text-center focus:outline-none focus:border-neutral-500'
           />
         </div>
         <div className='flex items-center gap-2'>
           <span className='text-xs text-neutral-400'>Scroll speed:</span>
-          <input
+          <Slider
             data-no-dnd
-            type='range'
             min={20}
             max={500}
-            value={textScrollSpeed}
-            onChange={(e) => onTextScrollSpeedChange(parseInt(e.target.value))}
-            className='w-20 accent-white'
+            value={[textScrollSpeed]}
+            onValueChange={(v) => onTextScrollSpeedChange(v[0])}
+            className='w-20'
           />
           <span className='text-xs text-neutral-500 w-8'>
             {textScrollSpeed}

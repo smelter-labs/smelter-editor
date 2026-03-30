@@ -1,5 +1,7 @@
 import { URLSearchParams } from 'url';
 
+import type { ChannelInfo } from '@smelter-editor/types';
+
 const kickAuth = {
   token: null as string | null,
   clientId: null as string | null,
@@ -104,15 +106,14 @@ export async function getKickStreamInfo(
   }
   const data = await response.json();
 
-  const stream = data.data ? data.data[0] : null;
+  const channel = data.data ? data.data[0] : null;
   return {
     streamId: kickChannelSlug,
-    displayName: stream?.stream_title || '',
-    title: stream?.stream_title || '',
-    category: stream?.category.name || '',
+    displayName: channel?.stream_title || '',
+    title: channel?.stream_title || '',
+    category: channel?.category.name || '',
+    thumbnailUrl: channel?.stream?.thumbnail || undefined,
   };
 }
-
-import type { ChannelInfo } from '@smelter-editor/types';
 
 export type KickStreamInfo = ChannelInfo;

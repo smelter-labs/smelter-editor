@@ -1,7 +1,7 @@
 import type { MacroDefinition, MacroStep, MacrosConfig } from './macroTypes';
 import { normalize } from './normalize';
 import { levenshteinSimilarity } from './levenshtein';
-import { setDefaultOrientationSetting } from './macroSettings';
+
 import macrosJson from './macros.json';
 
 const macrosConfig: MacrosConfig = macrosJson as MacrosConfig;
@@ -610,28 +610,6 @@ async function dispatchMacroStep(
         resolvedParams: params,
       };
 
-    case 'SET_ORIENTATION':
-      return {
-        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
-          window.dispatchEvent(
-            new CustomEvent('smelter:voice:set-orientation', {
-              detail: {
-                orientation: params?.orientation,
-                inputIndex: params?.inputIndex,
-                inputId: params?.inputId,
-                requestId,
-              },
-            }),
-          ),
-        ),
-        resolvedParams: params,
-      };
-
-    case 'SET_DEFAULT_ORIENTATION':
-      if (params?.orientation) {
-        setDefaultOrientationSetting(params.orientation);
-      }
-      return { detail: {}, resolvedParams: params };
   }
 }
 

@@ -1,5 +1,10 @@
-import { X } from 'lucide-react';
 import type { AvailableShader } from '@/lib/types';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 
 interface AddShaderModalProps {
   isOpen: boolean;
@@ -16,33 +21,19 @@ export function AddShaderModal({
   addedShaderIds,
   onAddShader,
 }: AddShaderModalProps) {
-  if (!isOpen) return null;
-
   return (
-    <div
-      className='fixed inset-0 z-50 flex items-center justify-center'
-      data-no-dnd
-      onClick={onClose}>
-      <div className='absolute inset-0 bg-black/60' />
-      <div
-        className='relative z-10 w-full max-w-lg mx-4 rounded-none border border-neutral-700 bg-[#0a0a0a]'
-        onClick={(e) => e.stopPropagation()}>
-        <div className='flex items-center justify-between p-4 border-b border-neutral-800'>
-          <div className='text-white font-medium'>Add a shader</div>
-          <button
-            className='h-8 w-8 p-2 text-neutral-400 hover:text-white'
-            onClick={onClose}
-            aria-label='Close modal'>
-            <X className='size-4' />
-          </button>
-        </div>
-        <div className='max-h-[60vh] overflow-auto p-4'>
+    <Dialog open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DialogContent data-no-dnd className='max-w-lg'>
+        <DialogHeader>
+          <DialogTitle>Add a shader</DialogTitle>
+        </DialogHeader>
+        <div className='max-h-[60vh] overflow-auto'>
           {availableShaders
             .filter((shader) => !addedShaderIds.has(shader.id))
             .map((shader) => (
               <div
                 key={shader.id}
-                className='mb-3 p-4 rounded-none border transition-all duration-300 bg-neutral-900 border-neutral-700 hover:bg-neutral-800 cursor-pointer'
+                className='mb-3 p-4 border transition-all duration-300 bg-neutral-900 border-neutral-700 hover:bg-neutral-800 cursor-pointer rounded-md'
                 onClick={() => {
                   onClose();
                   onAddShader(shader.id);
@@ -60,7 +51,7 @@ export function AddShaderModal({
               </div>
             ))}
         </div>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

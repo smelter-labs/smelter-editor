@@ -12,8 +12,19 @@ import { useActions } from '../contexts/actions-context';
 import { SNAKE_EVENT_TYPES } from '@/lib/snake-events';
 import { getRandomSnakeEventEffectPreset } from '@/lib/snake-event-effect-presets';
 import { ChevronDown, ChevronRight, Dices } from 'lucide-react';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
 import { hexToPackedInt, packedIntToHex } from '@/lib/color-utils';
+import { Input } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
+import { Slider } from '@/components/ui/slider';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 
 const DEFAULT_EFFECT_TYPES: Record<
   SnakeEventType,
@@ -312,7 +323,7 @@ export default function SnakeEventShaderPanel({
       SNAKE_EVENT_TYPES.find((eventMeta) => eventMeta.type === eventType)
         ?.label ?? eventType;
     const suffix = randomized.presetName ? ` · ${randomized.presetName}` : '';
-    toast.info(`🎲 ${eventLabel}${suffix}`, { autoClose: 1200 });
+    toast.info(`🎲 ${eventLabel}${suffix}`, { duration: 1200 });
   };
 
   const handleRandomizeAllEnabledEvents = () => {
@@ -321,7 +332,7 @@ export default function SnakeEventShaderPanel({
     ).filter((eventType) => getMapping(eventType)?.enabled);
 
     if (enabledEvents.length === 0) {
-      toast.info('🎲 No active snake event effects', { autoClose: 1200 });
+      toast.info('🎲 No active snake event effects', { duration: 1200 });
       return;
     }
 
@@ -346,7 +357,7 @@ export default function SnakeEventShaderPanel({
     toast.info(
       `🎲 Randomized ${enabledEvents.length} event${enabledEvents.length === 1 ? '' : 's'}`,
       {
-        autoClose: 1200,
+        duration: 1200,
       },
     );
   };
@@ -358,9 +369,9 @@ export default function SnakeEventShaderPanel({
   return (
     <div className='mt-2' data-no-dnd>
       <div className='flex items-center gap-1'>
-        <button
-          type='button'
-          className='flex items-center gap-1.5 flex-1 text-left text-sm font-medium text-neutral-300 hover:text-white transition-colors py-1 cursor-pointer'
+        <Button
+          variant='ghost'
+          className='flex-1 justify-start text-left text-neutral-300 hover:text-white h-auto py-1 px-0 gap-1.5 cursor-pointer'
           onClick={() => setPanelOpen(!panelOpen)}>
           {panelOpen ? (
             <ChevronDown className='size-3.5' />
@@ -369,18 +380,19 @@ export default function SnakeEventShaderPanel({
           )}
           <span>🐍 Snake Event Effects</span>
           {enabledCount > 0 && (
-            <span className='ml-auto text-xs text-neutral-500'>
+            <span className='ml-auto text-xs text-neutral-500 font-normal'>
               {enabledCount} active
             </span>
           )}
-        </button>
-        <button
-          type='button'
+        </Button>
+        <Button
+          variant='ghost'
+          size='icon'
           title='Randomize all active snake event effects'
-          className='p-1 rounded text-neutral-500 hover:text-white hover:bg-neutral-700/70 transition-colors cursor-pointer'
+          className='h-auto w-auto p-1 text-neutral-500 hover:text-white hover:bg-neutral-700/70 cursor-pointer'
           onClick={handleRandomizeAllEnabledEvents}>
           <Dices className='size-3.5' />
-        </button>
+        </Button>
       </div>
 
       {panelOpen && (
@@ -404,38 +416,40 @@ export default function SnakeEventShaderPanel({
                     onChange={() => handleToggleEnabled(type)}
                     className='accent-green-500 cursor-pointer shrink-0'
                   />
-                  <button
-                    type='button'
-                    className='flex-1 text-left text-sm text-white truncate cursor-pointer hover:text-neutral-200'
+                  <Button
+                    variant='ghost'
+                    className='flex-1 justify-start text-left text-white truncate h-auto px-0 py-0 cursor-pointer hover:text-neutral-200 font-normal'
                     onClick={() => toggleEventExpanded(type)}
                     title={description}>
                     {label}
-                  </button>
+                  </Button>
                   {isEnabled && (
                     <span className='text-xs text-neutral-500 truncate max-w-24'>
                       {shaderDef?.name ?? mapping?.shaderId}
                     </span>
                   )}
                   {isEnabled && (
-                    <button
-                      type='button'
-                      className='text-neutral-500 hover:text-white cursor-pointer'
+                    <Button
+                      variant='ghost'
+                      size='icon'
+                      className='h-auto w-auto p-0 text-neutral-500 hover:text-white cursor-pointer'
                       title='Randomize shader settings for this event'
                       onClick={() => handleRandomizeEventShader(type)}>
                       <Dices className='size-3.5' />
-                    </button>
+                    </Button>
                   )}
                   {isEnabled && (
-                    <button
-                      type='button'
-                      className='text-neutral-500 hover:text-white cursor-pointer'
+                    <Button
+                      variant='ghost'
+                      size='icon'
+                      className='h-auto w-auto p-0 text-neutral-500 hover:text-white cursor-pointer'
                       onClick={() => toggleEventExpanded(type)}>
                       {isExpanded ? (
                         <ChevronDown className='size-3.5' />
                       ) : (
                         <ChevronRight className='size-3.5' />
                       )}
-                    </button>
+                    </Button>
                   )}
                 </div>
 
@@ -444,18 +458,20 @@ export default function SnakeEventShaderPanel({
                     {/* Shader selector */}
                     <div className='flex flex-col gap-1'>
                       <label className='text-xs text-neutral-400'>Shader</label>
-                      <select
+                      <Select
                         value={mapping.shaderId}
-                        onChange={(e) =>
-                          handleShaderChange(type, e.target.value)
-                        }
-                        className='w-full text-xs bg-neutral-900 text-white border border-neutral-700 rounded px-2 py-1 focus:outline-none focus:border-neutral-500 cursor-pointer'>
-                        {visibleShaders.map((s) => (
-                          <option key={s.id} value={s.id}>
-                            {s.name}
-                          </option>
-                        ))}
-                      </select>
+                        onValueChange={(v) => handleShaderChange(type, v)}>
+                        <SelectTrigger className='w-full text-xs bg-neutral-900 text-white border border-neutral-700 rounded px-2 py-1 h-auto focus:outline-none focus:border-neutral-500 cursor-pointer'>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {visibleShaders.map((s) => (
+                            <SelectItem key={s.id} value={s.id}>
+                              {s.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     {/* Application mode */}
@@ -463,24 +479,23 @@ export default function SnakeEventShaderPanel({
                       <label className='text-xs text-neutral-400'>
                         Application Mode
                       </label>
-                      <select
+                      <Select
                         value={mapping.application.mode}
-                        onChange={(e) =>
-                          handleApplicationModeChange(
-                            type,
-                            e.target.value as
-                              | 'all'
-                              | 'snake_cells'
-                              | 'first_n'
-                              | 'sequential',
-                          )
-                        }
-                        className='w-full text-xs bg-neutral-900 text-white border border-neutral-700 rounded px-2 py-1 focus:outline-none focus:border-neutral-500 cursor-pointer'>
-                        <option value='all'>All Cells</option>
-                        <option value='snake_cells'>Snake Cells</option>
-                        <option value='first_n'>First N Cells</option>
-                        <option value='sequential'>Sequential</option>
-                      </select>
+                        onValueChange={(
+                          v: 'all' | 'snake_cells' | 'first_n' | 'sequential',
+                        ) => handleApplicationModeChange(type, v)}>
+                        <SelectTrigger className='w-full text-xs bg-neutral-900 text-white border border-neutral-700 rounded px-2 py-1 h-auto focus:outline-none focus:border-neutral-500 cursor-pointer'>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value='all'>All Cells</SelectItem>
+                          <SelectItem value='snake_cells'>
+                            Snake Cells
+                          </SelectItem>
+                          <SelectItem value='first_n'>First N Cells</SelectItem>
+                          <SelectItem value='sequential'>Sequential</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
 
                     {/* First N param */}
@@ -489,8 +504,7 @@ export default function SnakeEventShaderPanel({
                         <label className='text-xs text-neutral-400 shrink-0'>
                           N:
                         </label>
-                        <input
-                          type='number'
+                        <NumberInput
                           min={1}
                           value={
                             (
@@ -519,8 +533,7 @@ export default function SnakeEventShaderPanel({
                           <label className='text-xs text-neutral-400 shrink-0'>
                             Duration:
                           </label>
-                          <input
-                            type='number'
+                          <NumberInput
                             min={0}
                             step={50}
                             value={
@@ -547,8 +560,7 @@ export default function SnakeEventShaderPanel({
                           <label className='text-xs text-neutral-400 shrink-0'>
                             Delay:
                           </label>
-                          <input
-                            type='number'
+                          <NumberInput
                             min={0}
                             step={10}
                             value={
@@ -579,8 +591,7 @@ export default function SnakeEventShaderPanel({
                       <label className='text-xs text-neutral-400 shrink-0'>
                         Effect Duration:
                       </label>
-                      <input
-                        type='number'
+                      <NumberInput
                         min={50}
                         step={50}
                         value={mapping.effectDurationMs}
@@ -665,21 +676,15 @@ export default function SnakeEventShaderPanel({
                                   {numValue.toFixed(2)}
                                 </span>
                               </div>
-                              <input
-                                type='range'
+                              <Slider
                                 min={min}
                                 max={max}
                                 step={step}
-                                value={numValue}
-                                onChange={(e) =>
-                                  handleParamChange(
-                                    type,
-                                    param.name,
-                                    Number(e.target.value),
-                                  )
+                                value={[numValue]}
+                                onValueChange={(v) =>
+                                  handleParamChange(type, param.name, v[0])
                                 }
-                                className='w-full h-1.5 rounded bg-neutral-700 outline-none appearance-none'
-                                style={{ accentColor: '#a0a0a0' }}
+                                className='w-full'
                               />
                             </div>
                           );

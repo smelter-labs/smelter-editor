@@ -1,16 +1,16 @@
 import type { ShaderConfig } from './shader.js';
 import type { SnakeEventShaderConfig } from './snake-game.js';
 
-export type InputOrientation = 'horizontal' | 'vertical';
-
 export type InputType =
   | 'local-mp4'
   | 'twitch-channel'
   | 'kick-channel'
+  | 'hls'
   | 'whip'
   | 'image'
   | 'text-input'
-  | 'game';
+  | 'game'
+  | 'hands';
 
 export type InputStatus = 'disconnected' | 'pending' | 'connected';
 
@@ -20,7 +20,6 @@ export type InputDisplayProperties = {
   volume: number;
   showTitle: boolean;
   shaders: ShaderConfig[];
-  orientation: InputOrientation;
 };
 
 export type TextInputProperties = {
@@ -44,6 +43,13 @@ export type AbsolutePositionProperties = {
   absoluteTransitionEasing: string;
 };
 
+export type CropProperties = {
+  cropTop: number;
+  cropLeft: number;
+  cropRight: number;
+  cropBottom: number;
+};
+
 export type BorderProperties = {
   borderColor: string;
   borderWidth: number;
@@ -65,4 +71,8 @@ export type SnakeGameDisplayProperties = {
 export type MotionProperties = {
   motionScore: number;
   motionEnabled: boolean;
+};
+
+export type HandsProperties = {
+  handsSourceInputId?: string;
 };

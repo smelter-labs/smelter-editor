@@ -4,6 +4,7 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import type { Input, Layout } from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
 import { Button } from '@/components/ui/button';
+import { Input as ShadcnInput } from '@/components/ui/input';
 import LoadingSpinner from '@/components/ui/spinner';
 import { Download, Upload } from 'lucide-react';
 import {
@@ -14,12 +15,13 @@ import {
   restoreTimelineToStorage,
   computeTimelineStateAtZero,
   buildInputUpdateFromBlockSettings,
+  loadOutputPlayerSettings,
+  saveOutputPlayerSettings,
   type RoomConfig,
   type RoomConfigInput,
   type RoomConfigTransitionSettings,
 } from '@/lib/room-config';
-import { toast } from 'react-toastify';
-
+import { toast } from 'sonner';
 type ConfigurationSectionProps = {
   inputs: Input[];
   layout: Layout;
@@ -69,12 +71,14 @@ export function ConfigurationSection({
     setIsExporting(true);
     try {
       const timelineState = resolveRoomConfigTimelineState(roomId);
+      const outputPlayer = loadOutputPlayerSettings(roomId) ?? undefined;
       const config = exportRoomConfig(
         inputs,
         layout,
         resolution,
         transitionSettings,
         timelineState ?? undefined,
+        outputPlayer,
       );
       downloadRoomConfig(config);
       toast.success('Configuration exported successfully');
@@ -206,25 +210,29 @@ export function ConfigurationSection({
       }
     }
 
-    await refreshState();
-
     const positionToInputId = new Map<number, string>();
     for (const { inputId, position } of createdInputIds) {
       positionToInputId.set(position, inputId);
     }
+    for (const pending of newPendingWhipInputs) {
+      positionToInputId.set(
+        pending.position,
+        `__pending-whip-${pending.position}__`,
+      );
+    }
+
+    await refreshState();
 
     for (const { inputId, config: inputConfig } of createdInputIds) {
       const attachedInputIds = inputConfig.attachedInputIndices
         ?.map((idx) => positionToInputId.get(idx))
         .filter((id): id is string => !!id);
-
       try {
         await updateInput(roomId, inputId, {
           volume: inputConfig.volume,
           shaders: inputConfig.shaders,
           showTitle: inputConfig.showTitle,
           textColor: inputConfig.textColor,
-          orientation: inputConfig.orientation,
           textMaxLines: inputConfig.textMaxLines,
           textScrollSpeed: inputConfig.textScrollSpeed,
           textScrollLoop: inputConfig.textScrollLoop,
@@ -248,6 +256,10 @@ export function ConfigurationSection({
           absoluteTransitionDurationMs:
             inputConfig.absoluteTransitionDurationMs,
           absoluteTransitionEasing: inputConfig.absoluteTransitionEasing,
+          cropTop: inputConfig.cropTop,
+          cropLeft: inputConfig.cropLeft,
+          cropRight: inputConfig.cropRight,
+          cropBottom: inputConfig.cropBottom,
           attachedInputIds:
             attachedInputIds && attachedInputIds.length > 0
               ? attachedInputIds
@@ -336,6 +348,10 @@ export function ConfigurationSection({
       console.warn('Failed to set layout or input order:', e);
     }
 
+    if (config.outputPlayer) {
+      saveOutputPlayerSettings(roomId, config.outputPlayer);
+    }
+
     await refreshState();
   };
 
@@ -343,8 +359,8 @@ export function ConfigurationSection({
     <div className='flex flex-col gap-3'>
       <Button
         size='lg'
-        variant='default'
-        className='bg-neutral-800 hover:bg-neutral-700 text-white font-medium cursor-pointer px-4 py-0 h-[48px] sm:h-[52px] text-sm sm:text-base sm:px-7 transition-all'
+        variant='outline'
+        className='cursor-pointer px-4 py-0 h-[48px] sm:h-[52px] sm:px-7'
         disabled={isExporting}
         onClick={handleExport}>
         {isExporting ? (
@@ -361,8 +377,8 @@ export function ConfigurationSection({
       </Button>
       <Button
         size='lg'
-        variant='default'
-        className='bg-neutral-800 hover:bg-neutral-700 text-white font-medium cursor-pointer px-4 py-0 h-[48px] sm:h-[52px] text-sm sm:text-base sm:px-7 transition-all'
+        variant='outline'
+        className='cursor-pointer px-4 py-0 h-[48px] sm:h-[52px] sm:px-7'
         disabled={isImporting}
         onClick={handleImportClick}>
         {isImporting ? (
@@ -377,7 +393,7 @@ export function ConfigurationSection({
           </span>
         )}
       </Button>
-      <input
+      <ShadcnInput
         ref={fileInputRef}
         type='file'
         accept='.json,application/json'

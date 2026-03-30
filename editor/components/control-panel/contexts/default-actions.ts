@@ -16,6 +16,7 @@ import {
   addImageInput,
   addTextInput,
   addSnakeGameInput,
+  addHlsInput,
   addCameraInput,
   deleteRoom,
   startRecording,
@@ -43,6 +44,11 @@ import {
   listDashboardLayouts,
   loadDashboardLayout,
   deleteDashboardLayout,
+  saveHlsStream,
+  listHlsStreams,
+  loadHlsStream,
+  updateHlsStream,
+  deleteHlsStream,
   restartService,
 } from '@/app/actions/actions';
 
@@ -74,6 +80,14 @@ const dashboardLayoutStorage: StorageClient<object> = {
   remove: deleteDashboardLayout,
 };
 
+const hlsStreamStorage: StorageClient<{ url: string }> = {
+  save: saveHlsStream,
+  list: listHlsStreams,
+  load: loadHlsStream,
+  update: updateHlsStream,
+  remove: deleteHlsStream,
+};
+
 export const defaultActions: ControlPanelActions = {
   getRoomInfo,
   updateRoom,
@@ -93,6 +107,7 @@ export const defaultActions: ControlPanelActions = {
   addImageInput,
   addTextInput,
   addSnakeGameInput,
+  addHlsInput,
   addCameraInput,
   deleteRoom,
   startRecording,
@@ -110,5 +125,6 @@ export const defaultActions: ControlPanelActions = {
   configStorage,
   shaderPresetStorage,
   dashboardLayoutStorage,
+  hlsStreamStorage,
   restartService,
 };

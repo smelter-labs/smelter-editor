@@ -9,7 +9,6 @@ const defaultBlockSettings: BlockSettings = {
   volume: 1,
   showTitle: true,
   shaders: [],
-  orientation: 'horizontal',
 };
 
 describe('timelineReducer', () => {

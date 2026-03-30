@@ -93,5 +93,16 @@ registerStorageRoutes(routes, {
   bodySchema: DashboardLayoutSchema,
 });
 
+registerStorageRoutes(routes, {
+  routePrefix: '/hls-streams',
+  dirPath: path.join(__dirname, '../../../hls-streams'),
+  filePrefix: 'hls',
+  resourceName: 'HLS stream',
+  payloadKey: 'stream',
+  listKey: 'streams',
+  bodySchema: Type.Object({ url: Type.String() }),
+  supportsUpdate: true,
+});
+
 registerSnakeGameRoutes(routes);
 registerTimelineRoutes(routes);

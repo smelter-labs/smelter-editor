@@ -8,7 +8,10 @@ import type {
   InputDisplayProperties,
   BorderProperties,
   AbsolutePositionProperties,
+  CropProperties,
 } from '../types';
+import type { StoreApi } from 'zustand';
+import type { HandsStore } from '../hands/handStore';
 import type { TwitchStreamInfo } from '../twitch/TwitchApi';
 import type {
   SnakeGameState,
@@ -18,7 +21,6 @@ import type {
 
 import type { Layout } from '../types';
 
-export type { InputOrientation } from '../types';
 export type {
   UpdateInputOptions,
   RegisterInputOptions,
@@ -53,6 +55,7 @@ export type RoomInputState = {
 } & InputDisplayProperties &
   BorderProperties &
   Partial<AbsolutePositionProperties> &
+  Partial<CropProperties> &
   TypeSpecificState;
 
 type TypeSpecificState =
@@ -62,6 +65,8 @@ type TypeSpecificState =
       registeredAtPipelineMs?: number;
       playFromMs?: number;
       mp4DurationMs?: number;
+      mp4VideoWidth?: number;
+      mp4VideoHeight?: number;
     }
   | {
       type: 'twitch-channel';
@@ -81,6 +86,7 @@ type TypeSpecificState =
         onUpdate(fn: (streamInfo: any, isLive: boolean) => void): void;
       };
     }
+  | { type: 'hls'; hlsUrl: string }
   | { type: 'whip'; whipUrl: string; monitor: WhipMonitor }
   | { type: 'image'; imageId: string }
   | {
@@ -102,4 +108,9 @@ type TypeSpecificState =
       snake2Shaders?: ShaderConfig[];
       activeEffects: ActiveSnakeEffect[];
       effectTimers: NodeJS.Timeout[];
+    }
+  | {
+      type: 'hands';
+      sourceInputId: string;
+      handsStore: StoreApi<HandsStore>;
     };

@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import useSpeechToText from 'react-hook-speech-to-text';
 import { Mic, MicOff, X, Send, SkipForward, Play, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { useVoiceCommands, type MacroStep } from '@/lib/voice';
 import { useSlotMachineText } from '@/hooks/useSlotMachineText';
@@ -562,7 +563,7 @@ export function SpeechToTextWithCommands() {
           )}
 
           <div className='flex gap-2 mb-3'>
-            <input
+            <Input
               ref={inputRef}
               type='text'
               value={manualInput}

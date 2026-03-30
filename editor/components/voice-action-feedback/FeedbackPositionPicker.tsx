@@ -6,6 +6,8 @@ import {
   type FeedbackSize,
 } from '@/lib/voice/macroSettings';
 import { cn } from '@/lib/utils';
+import { Button } from '@/components/ui/button';
+import { Slider } from '@/components/ui/slider';
 
 type Props = {
   enabled: boolean;
@@ -61,15 +63,17 @@ export function FeedbackPositionPicker({
               {GRID.flat().map((pos) => {
                 const isActive = pos === position;
                 return (
-                  <button
+                  <Button
+                    variant='ghost'
+                    size='icon'
                     key={pos}
                     type='button'
                     title={pos}
                     onClick={() => onPositionChange(pos)}
                     className={cn(
-                      'w-6 h-6 rounded transition-all duration-150 cursor-pointer',
+                      'w-6 h-6 rounded cursor-pointer',
                       isActive
-                        ? 'bg-white shadow-sm'
+                        ? 'bg-white shadow-sm hover:bg-white'
                         : 'bg-neutral-700 hover:bg-neutral-600',
                     )}
                   />
@@ -81,18 +85,20 @@ export function FeedbackPositionPicker({
             <span className='text-xs text-neutral-500'>Size</span>
             <div className='flex gap-1 rounded-lg border border-neutral-700 bg-neutral-800/50 p-1'>
               {FEEDBACK_SIZES.map((s) => (
-                <button
+                <Button
+                  variant='ghost'
+                  size='sm'
                   key={s}
                   type='button'
                   onClick={() => onSizeChange(s)}
                   className={cn(
-                    'px-2.5 py-1 rounded text-xs font-medium transition-all duration-150 cursor-pointer',
+                    'h-auto px-2.5 py-1 rounded text-xs cursor-pointer',
                     s === size
-                      ? 'bg-white text-neutral-900'
+                      ? 'bg-white text-neutral-900 hover:bg-white'
                       : 'text-neutral-400 hover:bg-neutral-700',
                   )}>
                   {SIZE_LABELS[s]}
-                </button>
+                </Button>
               ))}
             </div>
           </div>
@@ -100,13 +106,12 @@ export function FeedbackPositionPicker({
             <span className='text-xs text-neutral-500'>
               Duration ({duration}s)
             </span>
-            <input
-              type='range'
+            <Slider
               min={1}
               max={15}
               step={1}
-              value={duration}
-              onChange={(e) => onDurationChange(Number(e.target.value))}
+              value={[duration]}
+              onValueChange={(v) => onDurationChange(v[0])}
               className='w-24 accent-white h-2 cursor-pointer'
             />
           </div>

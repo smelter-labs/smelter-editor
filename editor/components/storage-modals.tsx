@@ -15,6 +15,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import type { SavedItemInfo, StorageClient } from '@/lib/storage-client';
 import {
   HardDrive,
@@ -28,16 +29,18 @@ import {
 import { formatDate } from '@/lib/format-utils';
 
 const btnBase =
-  'flex items-center gap-3 w-full px-4 py-3 rounded-lg border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 hover:border-neutral-600 transition-all cursor-pointer text-left';
+  'justify-start gap-3 w-full h-auto px-4 py-3 rounded-lg border-neutral-800 bg-neutral-900 hover:bg-neutral-800 hover:border-neutral-600 cursor-pointer text-left';
 
 function BackButton({ onClick }: { onClick: () => void }) {
   return (
-    <button
+    <Button
+      variant='ghost'
+      size='sm'
       onClick={onClick}
-      className='flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-300 transition-colors self-start cursor-pointer'>
+      className='gap-1.5 text-xs text-neutral-500 hover:text-neutral-300 hover:bg-transparent self-start cursor-pointer'>
       <ArrowLeft className='w-3 h-3' />
       Back
-    </button>
+    </Button>
   );
 }
 
@@ -59,11 +62,12 @@ export function RemoteItemList({
   return (
     <div className='flex flex-col gap-1.5 max-h-64 overflow-y-auto pr-1'>
       {items.map((item) => (
-        <button
+        <Button
+          variant='outline'
           key={item.fileName}
           onClick={() => onLoad(item.fileName)}
           disabled={!!loadingFile || !!deletingFile}
-          className='flex items-center gap-3 w-full px-3 py-2.5 rounded-md border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 hover:border-neutral-600 transition-all cursor-pointer text-left group disabled:opacity-50'>
+          className='justify-start gap-3 w-full h-auto px-3 py-2.5 rounded-md border-neutral-800 bg-neutral-900 hover:bg-neutral-800 hover:border-neutral-600 cursor-pointer text-left group'>
           <FileJson className='w-4 h-4 text-neutral-500 shrink-0' />
           <div className='flex flex-col min-w-0 flex-1'>
             <span className='text-sm font-medium text-white truncate'>
@@ -76,18 +80,20 @@ export function RemoteItemList({
           {loadingFile === item.fileName ? (
             <Loader2 className='w-3.5 h-3.5 animate-spin text-neutral-400 shrink-0' />
           ) : (
-            <button
+            <Button
+              variant='ghost'
+              size='icon'
               onClick={(e) => onDelete(item.fileName, e)}
               disabled={!!deletingFile}
-              className='opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-red-900/30 transition-all cursor-pointer shrink-0'>
+              className='opacity-0 group-hover:opacity-100 h-auto w-auto p-1 rounded hover:bg-red-900/30 cursor-pointer shrink-0'>
               {deletingFile === item.fileName ? (
                 <Loader2 className='w-3.5 h-3.5 animate-spin text-neutral-400' />
               ) : (
                 <Trash2 className='w-3.5 h-3.5 text-red-400' />
               )}
-            </button>
+            </Button>
           )}
-        </button>
+        </Button>
       ))}
     </div>
   );
@@ -182,7 +188,11 @@ export function GenericSaveModal({
         {mode === 'choose' ? (
           <div className='flex flex-col gap-2'>
             {extraOptions?.map((opt) => (
-              <button key={opt.id} onClick={opt.onClick} className={btnBase}>
+              <Button
+                key={opt.id}
+                variant='outline'
+                onClick={opt.onClick}
+                className={btnBase}>
                 {opt.icon}
                 <div className='flex flex-col min-w-0'>
                   <span className='text-sm font-medium text-white'>
@@ -192,10 +202,11 @@ export function GenericSaveModal({
                     {opt.description}
                   </span>
                 </div>
-              </button>
+              </Button>
             ))}
             {onSaveLocal && (
-              <button
+              <Button
+                variant='outline'
                 onClick={handleSaveLocal}
                 disabled={isExporting}
                 className={btnBase}>
@@ -208,9 +219,12 @@ export function GenericSaveModal({
                     Download as JSON file
                   </span>
                 </div>
-              </button>
+              </Button>
             )}
-            <button onClick={() => setMode('remote')} className={btnBase}>
+            <Button
+              variant='outline'
+              onClick={() => setMode('remote')}
+              className={btnBase}>
               <Cloud className='w-5 h-5 text-neutral-400 shrink-0' />
               <div className='flex flex-col min-w-0'>
                 <span className='text-sm font-medium text-white'>
@@ -220,7 +234,7 @@ export function GenericSaveModal({
                   Store on server for later use
                 </span>
               </div>
-            </button>
+            </Button>
           </div>
         ) : (
           <div className='flex flex-col gap-3'>
@@ -230,7 +244,7 @@ export function GenericSaveModal({
                 setError(null);
               }}
             />
-            <input
+            <Input
               ref={inputRef}
               type='text'
               placeholder={namePlaceholder}
@@ -377,7 +391,10 @@ export function GenericLoadModal<T>({
         {mode === 'choose' ? (
           <div className='flex flex-col gap-2'>
             {onLoadLocal && (
-              <button onClick={handleLoadLocal} className={btnBase}>
+              <Button
+                variant='outline'
+                onClick={handleLoadLocal}
+                className={btnBase}>
                 <HardDrive className='w-5 h-5 text-neutral-400 shrink-0' />
                 <div className='flex flex-col min-w-0'>
                   <span className='text-sm font-medium text-white'>
@@ -387,9 +404,12 @@ export function GenericLoadModal<T>({
                     Import from a JSON file
                   </span>
                 </div>
-              </button>
+              </Button>
             )}
-            <button onClick={handleGoToRemote} className={btnBase}>
+            <Button
+              variant='outline'
+              onClick={handleGoToRemote}
+              className={btnBase}>
               <Cloud className='w-5 h-5 text-neutral-400 shrink-0' />
               <div className='flex flex-col min-w-0'>
                 <span className='text-sm font-medium text-white'>
@@ -399,7 +419,7 @@ export function GenericLoadModal<T>({
                   Browse saved items
                 </span>
               </div>
-            </button>
+            </Button>
           </div>
         ) : (
           <div className='flex flex-col gap-3'>

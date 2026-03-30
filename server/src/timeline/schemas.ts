@@ -22,10 +22,6 @@ const TimelineBlockSettingsSchema = Type.Object({
   volume: Type.Number(),
   showTitle: Type.Boolean(),
   shaders: Type.Array(ShaderConfigSchema),
-  orientation: Type.Union([
-    Type.Literal('horizontal'),
-    Type.Literal('vertical'),
-  ]),
   text: Type.Optional(Type.String()),
   textAlign: Type.Optional(
     Type.Union([
@@ -58,10 +54,17 @@ const TimelineBlockSettingsSchema = Type.Object({
   absoluteHeight: Type.Optional(Type.Number({ minimum: 0 })),
   absoluteTransitionDurationMs: Type.Optional(Type.Number({ minimum: 0 })),
   absoluteTransitionEasing: Type.Optional(Type.String()),
+  cropTop: Type.Optional(Type.Number({ minimum: 0 })),
+  cropLeft: Type.Optional(Type.Number({ minimum: 0 })),
+  cropRight: Type.Optional(Type.Number({ minimum: 0 })),
+  cropBottom: Type.Optional(Type.Number({ minimum: 0 })),
   mp4PlayFromMs: Type.Optional(Type.Number({ minimum: 0 })),
   mp4Loop: Type.Optional(Type.Boolean()),
   introTransition: Type.Optional(TransitionConfigSchema),
   outroTransition: Type.Optional(TransitionConfigSchema),
+  forceInterpolation: Type.Optional(
+    Type.Union([Type.Literal('step'), Type.Literal('smooth')]),
+  ),
 });
 
 const TimelineKeyframeSchema = Type.Object({

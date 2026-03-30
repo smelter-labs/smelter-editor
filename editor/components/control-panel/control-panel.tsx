@@ -20,15 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import {
-  SlidersHorizontal,
-  Zap,
-  Download,
-  Upload,
-  ToggleLeft,
-  ToggleRight,
-  Circle,
-} from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
 import {
   useControlPanelState,
   type InputWrapper,
@@ -40,9 +32,9 @@ import {
 } from './hooks/use-room-websocket';
 import { useControlPanelEvents } from './hooks/use-control-panel-events';
 import { FxAccordion } from './components/FxAccordion';
-import { AddVideoSection } from './components/AddVideoSection';
 import { StreamsSection } from './components/StreamsSection';
 import { TimelinePanel } from './components/TimelinePanel';
+import { AddVideoModal } from './components/AddVideoModal';
 import { QuickActionsSection } from './components/QuickActionsSection';
 import { type PendingWhipInput } from './components/ConfigurationSection';
 import {
@@ -52,10 +44,17 @@ import {
   loadTimelineFromStorage,
   resolveRoomConfigTimelineState,
   restoreTimelineToStorage,
+  loadOutputPlayerSettings,
+  saveOutputPlayerSettings,
   type RoomConfig,
   type RoomConfigInput,
 } from '@/lib/room-config';
 import { SaveConfigModal, LoadConfigModal } from './components/ConfigModals';
+import {
+  GenericSaveModal,
+  GenericLoadModal,
+} from '@/components/storage-modals';
+import { setAudioAnalysisEnabled } from '@/app/actions/actions';
 import { TransitionSettings } from './components/TransitionSettings';
 import {
   rotateBy90,
@@ -91,6 +90,19 @@ import { useMotionHistory } from '@/hooks/use-motion-history';
 import { InputMotionPanel } from './components/InputMotionPanel';
 import { motionPanelId } from '@/components/dashboard/panel-registry';
 import { ErrorBoundary } from '@/components/error-boundary';
+import {
+  DashboardToolbarProvider,
+  useDashboardToolbar,
+} from '@/components/dashboard/dashboard-toolbar-context';
+import { Input as ShadcnInput } from '@/components/ui/input';
+import { Slider } from '@/components/ui/slider';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 
 export type ControlPanelProps = {
   roomId: string;
@@ -104,15 +116,17 @@ export type ControlPanelProps = {
   >;
   renderStreamsOutside?: boolean;
   timelinePortalRef?: React.RefObject<HTMLDivElement | null>;
+  settingsNavPortalRef?: React.RefObject<HTMLDivElement | null>;
   renderDashboard?: (panels: {
-    addVideoSection: React.ReactNode;
-    buttonsSection: React.ReactNode;
     streamsSection: React.ReactNode;
     fxSection: React.ReactNode;
     timelineSection: React.ReactNode;
     blockPropertiesSection: React.ReactNode;
     motionPanels: Record<string, React.ReactNode>;
     peers: ConnectedPeer[];
+    timelineColorOverrides: Record<string, string>;
+    selectedInputId: string | null;
+    onSelectInput: (id: string) => void;
   }) => React.ReactNode;
 };
 
@@ -136,6 +150,7 @@ function ControlPanelWithActions({
   onGuestRotateRef,
   renderStreamsOutside,
   timelinePortalRef,
+  settingsNavPortalRef,
   renderDashboard,
 }: ControlPanelProps) {
   const pendingWhipInputs: PendingWhipInput[] = (
@@ -150,7 +165,6 @@ function ControlPanelWithActions({
       volume: p.volume,
       showTitle: p.showTitle,
       shaders: p.shaders,
-      orientation: p.orientation,
     },
     position: p.position,
   }));
@@ -254,7 +268,6 @@ function ControlPanelWithActions({
           const angle = await rotateBy90(pcRef, streamRef);
           const currentInput = inputs.find((i) => i.inputId === guestInputId);
           await defaultActions.updateInput(roomId, guestInputId, {
-            orientation: angle % 180 !== 0 ? 'vertical' : 'horizontal',
             volume: currentInput?.volume ?? 1,
             shaders: currentInput?.shaders ?? [],
           });
@@ -298,9 +311,6 @@ function ControlPanelWithActions({
         volume: p.config.volume,
         showTitle: p.config.showTitle !== false,
         shaders: p.config.shaders || [],
-        orientation: (p.config.orientation || 'horizontal') as
-          | 'horizontal'
-          | 'vertical',
         position: p.position,
       }));
       await defaultActions.setPendingWhipInputs(roomId, serverData);
@@ -311,6 +321,8 @@ function ControlPanelWithActions({
 
   const isRecordingFromServer = roomState.isRecording ?? false;
   const isFrozenFromServer = roomState.isFrozen ?? false;
+  const audioAnalysisEnabledFromServer =
+    roomState.audioAnalysisEnabled ?? false;
   const motionScores = useMotionScores(roomId);
 
   const controlPanelCtx = useMemo(
@@ -323,6 +335,7 @@ function ControlPanelWithActions({
       isRecording: isRecordingFromServer,
       isFrozen: isFrozenFromServer,
       motionScores,
+      audioAnalysisEnabled: audioAnalysisEnabledFromServer,
     }),
     [
       roomId,
@@ -333,6 +346,7 @@ function ControlPanelWithActions({
       isRecordingFromServer,
       isFrozenFromServer,
       motionScores,
+      audioAnalysisEnabledFromServer,
     ],
   );
 
@@ -357,6 +371,7 @@ function ControlPanelWithActions({
           isGuest={isGuest}
           renderStreamsOutside={renderStreamsOutside}
           timelinePortalRef={timelinePortalRef}
+          settingsNavPortalRef={settingsNavPortalRef}
           renderDashboard={renderDashboard}
           peers={peers}
         />
@@ -385,6 +400,7 @@ type ControlPanelInnerProps = {
   isGuest?: boolean;
   renderStreamsOutside?: boolean;
   timelinePortalRef?: React.RefObject<HTMLDivElement | null>;
+  settingsNavPortalRef?: React.RefObject<HTMLDivElement | null>;
   renderDashboard?: ControlPanelProps['renderDashboard'];
   peers: ConnectedPeer[];
 };
@@ -407,6 +423,7 @@ function ControlPanelInner({
   isGuest,
   renderStreamsOutside,
   timelinePortalRef,
+  settingsNavPortalRef,
   renderDashboard,
   peers,
 }: ControlPanelInnerProps) {
@@ -452,6 +469,11 @@ function ControlPanelInner({
     null,
   );
 
+  const [timelineColorOverrides, setTimelineColorOverrides] = useState<
+    Record<string, string>
+  >({});
+  const timelineColorKeyRef = useRef('');
+
   const handleTimelineStateChange = useCallback(
     (state: TimelineState) => {
       timelineStateRef.current = state;
@@ -459,6 +481,20 @@ function ControlPanelInner({
         setTimelinePlayheadMs((prev) =>
           prev === state.playheadMs ? prev : state.playheadMs,
         );
+      }
+
+      const next: Record<string, string> = {};
+      for (const track of state.tracks) {
+        for (const clip of track.clips) {
+          if (clip.blockSettings.timelineColor && !next[clip.inputId]) {
+            next[clip.inputId] = clip.blockSettings.timelineColor;
+          }
+        }
+      }
+      const key = JSON.stringify(next);
+      if (key !== timelineColorKeyRef.current) {
+        timelineColorKeyRef.current = key;
+        setTimelineColorOverrides(next);
       }
     },
     [selectedTimelineClips.length],
@@ -512,33 +548,16 @@ function ControlPanelInner({
   }, [selectedTimelineClips.length]);
 
   if (renderDashboard) {
-    const addVideoSection = (
-      <div className='h-full overflow-y-auto flex flex-col gap-3 p-3'>
-        <AddVideoSection
-          isGuest={isGuest}
-          hasGuestInput={
-            isGuest
-              ? !!(activeCameraInputId || activeScreenshareInputId) ||
-                (!!loadLastWhipInputId(roomId) &&
-                  inputs.some((i) => i.inputId === loadLastWhipInputId(roomId)))
-              : false
-          }
+    const settingsNav = (
+      <ErrorBoundary>
+        <SettingsBar
+          roomState={roomState}
+          pendingWhipInputs={pendingWhipInputs}
+          setPendingWhipInputs={handleSetPendingWhipInputs}
+          getTimelineStateForConfig={getTimelineStateForConfig}
+          applyImportedTimelineState={applyImportedTimelineState}
         />
-      </div>
-    );
-
-    const buttonsSection = (
-      <div className='h-full overflow-y-auto p-3'>
-        <ErrorBoundary>
-          <SettingsBar
-            roomState={roomState}
-            pendingWhipInputs={pendingWhipInputs}
-            setPendingWhipInputs={handleSetPendingWhipInputs}
-            getTimelineStateForConfig={getTimelineStateForConfig}
-            applyImportedTimelineState={applyImportedTimelineState}
-          />
-        </ErrorBoundary>
-      </div>
+      </ErrorBoundary>
     );
 
     const streamsSection = (
@@ -563,7 +582,7 @@ function ControlPanelInner({
         <FxAccordion fxInput={fxInput} onClose={() => setOpenFxInputId(null)} />
       </div>
     ) : (
-      <div className='h-full flex items-center justify-center text-neutral-500 text-sm'>
+      <div className='h-full flex items-center justify-center text-muted-foreground text-sm'>
         Select a stream to edit FX
       </div>
     );
@@ -611,6 +630,7 @@ function ControlPanelInner({
       'local-mp4',
       'twitch-channel',
       'kick-channel',
+      'hls',
       'whip',
     ];
     const motionPanels: Record<string, React.ReactNode> = {};
@@ -630,7 +650,7 @@ function ControlPanelInner({
     }
 
     return (
-      <>
+      <DashboardToolbarProvider>
         <video
           id='local-preview'
           muted
@@ -638,17 +658,20 @@ function ControlPanelInner({
           autoPlay
           className='hidden'
         />
+        {settingsNavPortalRef?.current &&
+          createPortal(settingsNav, settingsNavPortalRef.current)}
         {renderDashboard({
-          addVideoSection,
-          buttonsSection,
           streamsSection,
           fxSection,
           timelineSection,
           blockPropertiesSection,
           motionPanels,
           peers,
+          timelineColorOverrides,
+          selectedInputId,
+          onSelectInput: setSelectedInputId,
         })}
-      </>
+      </DashboardToolbarProvider>
     );
   }
 
@@ -690,37 +713,28 @@ function ControlPanelInner({
   const mainPanel = (
     <motion.div
       {...(fadeIn as any)}
-      className='flex flex-col flex-1 mt-6 min-h-0 gap-3 rounded-none bg-neutral-950'>
+      className='flex flex-col flex-1 mt-6 min-h-0 gap-3 rounded-none bg-background'>
       <video id='local-preview' muted playsInline autoPlay className='hidden' />
 
       {fxInput ? (
         <FxAccordion fxInput={fxInput} onClose={() => setOpenFxInputId(null)} />
       ) : (
         <>
-          <AddVideoSection
-            isGuest={isGuest}
-            hasGuestInput={
-              isGuest
-                ? !!(activeCameraInputId || activeScreenshareInputId) ||
-                  (!!loadLastWhipInputId(roomId) &&
-                    inputs.some(
-                      (i) => i.inputId === loadLastWhipInputId(roomId),
-                    ))
-                : false
-            }
-          />
           {!isGuest && !renderStreamsOutside && streamsSectionContent}
-          {!isGuest && (
-            <ErrorBoundary>
-              <SettingsBar
-                roomState={roomState}
-                pendingWhipInputs={pendingWhipInputs}
-                setPendingWhipInputs={handleSetPendingWhipInputs}
-                getTimelineStateForConfig={getTimelineStateForConfig}
-                applyImportedTimelineState={applyImportedTimelineState}
-              />
-            </ErrorBoundary>
-          )}
+          {!isGuest &&
+            settingsNavPortalRef?.current &&
+            createPortal(
+              <ErrorBoundary>
+                <SettingsBar
+                  roomState={roomState}
+                  pendingWhipInputs={pendingWhipInputs}
+                  setPendingWhipInputs={handleSetPendingWhipInputs}
+                  getTimelineStateForConfig={getTimelineStateForConfig}
+                  applyImportedTimelineState={applyImportedTimelineState}
+                />
+              </ErrorBoundary>,
+              settingsNavPortalRef.current,
+            )}
         </>
       )}
     </motion.div>
@@ -768,6 +782,7 @@ function SettingsBar({
   const addSnakeGameInput = actions.addSnakeGameInput;
   const removeInput = actions.removeInput;
   const [openModal, setOpenModal] = useState<ModalId | null>(null);
+  const [showAddVideoModal, setShowAddVideoModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -783,6 +798,72 @@ function SettingsBar({
   const [voicePanelOpacity, setVoicePanelOpacity] =
     useVoicePanelOpacitySetting();
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dashboardToolbar = useDashboardToolbar();
+  const [showDashSaveModal, setShowDashSaveModal] = useState(false);
+  const [showDashLoadModal, setShowDashLoadModal] = useState(false);
+  const dashFileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleDashSaveRemote = useCallback(
+    async (name: string): Promise<string | null> => {
+      if (!dashboardToolbar) return 'Dashboard not ready';
+      const data = dashboardToolbar.getCurrentLayoutData();
+      const result = await dashboardToolbar.dashboardLayoutStorage.save(
+        name,
+        data,
+      );
+      if (!result.ok) return result.error;
+      return null;
+    },
+    [dashboardToolbar],
+  );
+
+  const handleDashSaveLocal = useCallback(() => {
+    if (!dashboardToolbar) return;
+    const data = dashboardToolbar.getCurrentLayoutData();
+    const name = `dashboard-layout-${Date.now()}`;
+    const blob = new Blob([JSON.stringify({ name, layout: data }, null, 2)], {
+      type: 'application/json',
+    });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${name}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [dashboardToolbar]);
+
+  const handleDashLoadRemote = useCallback(
+    (data: object) => {
+      if (!dashboardToolbar) return;
+      dashboardToolbar.applyLoadedLayout(
+        data as Parameters<typeof dashboardToolbar.applyLoadedLayout>[0],
+      );
+    },
+    [dashboardToolbar],
+  );
+
+  const handleDashFileChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file || !dashboardToolbar) return;
+      file
+        .text()
+        .then((text) => {
+          const parsed = JSON.parse(text);
+          const layoutData = parsed.layout ?? parsed;
+          dashboardToolbar.applyLoadedLayout(layoutData);
+        })
+        .catch((err) => {
+          console.error('Failed to load dashboard layout from file:', err);
+        })
+        .finally(() => {
+          if (dashFileInputRef.current) {
+            dashFileInputRef.current.value = '';
+          }
+        });
+    },
+    [dashboardToolbar],
+  );
 
   const serverIsRecording = roomState.isRecording ?? false;
   const {
@@ -806,11 +887,27 @@ function SettingsBar({
     }
   }, [roomId, roomState.isPublic, handleRefreshState, isTogglingPublic]);
 
+  const audioAnalysisEnabled = roomState.audioAnalysisEnabled ?? false;
+  const [isTogglingAudio, setIsTogglingAudio] = useState(false);
+  const handleToggleAudioAnalysis = useCallback(async () => {
+    if (isTogglingAudio) return;
+    setIsTogglingAudio(true);
+    try {
+      await setAudioAnalysisEnabled(roomId, !audioAnalysisEnabled);
+      await handleRefreshState();
+    } catch (err) {
+      console.error('Failed to toggle audio analysis', err);
+    } finally {
+      setIsTogglingAudio(false);
+    }
+  }, [roomId, audioAnalysisEnabled, handleRefreshState, isTogglingAudio]);
+
   const buildConfig = useCallback(() => {
     const timelineState = resolveRoomConfigTimelineState(
       roomId,
       getTimelineStateForConfig(),
     );
+    const outputPlayer = loadOutputPlayerSettings(roomId) ?? undefined;
     return exportRoomConfig(
       roomState.inputs,
       roomState.layout,
@@ -824,6 +921,7 @@ function SettingsBar({
         newsStripEnabled: roomState.newsStripEnabled,
       },
       timelineState ?? undefined,
+      outputPlayer,
     );
   }, [getTimelineStateForConfig, roomState, roomId]);
 
@@ -949,25 +1047,29 @@ function SettingsBar({
         }
       }
 
-      await handleRefreshState();
-
       const positionToInputId = new Map<number, string>();
       for (const { inputId, position } of createdInputIds) {
         positionToInputId.set(position, inputId);
       }
+      for (const pending of newPendingWhipInputs) {
+        positionToInputId.set(
+          pending.position,
+          `__pending-whip-${pending.position}__`,
+        );
+      }
+
+      await handleRefreshState();
 
       for (const { inputId, config: inputConfig } of createdInputIds) {
         const attachedInputIds = inputConfig.attachedInputIndices
           ?.map((idx) => positionToInputId.get(idx))
           .filter((id): id is string => !!id);
-
         try {
           await updateInputAction(roomId, inputId, {
             volume: inputConfig.volume,
             shaders: inputConfig.shaders,
             showTitle: inputConfig.showTitle,
             textColor: inputConfig.textColor,
-            orientation: inputConfig.orientation,
             textMaxLines: inputConfig.textMaxLines,
             textScrollSpeed: inputConfig.textScrollSpeed,
             textScrollLoop: inputConfig.textScrollLoop,
@@ -991,6 +1093,10 @@ function SettingsBar({
             absoluteTransitionDurationMs:
               inputConfig.absoluteTransitionDurationMs,
             absoluteTransitionEasing: inputConfig.absoluteTransitionEasing,
+            cropTop: inputConfig.cropTop,
+            cropLeft: inputConfig.cropLeft,
+            cropRight: inputConfig.cropRight,
+            cropBottom: inputConfig.cropBottom,
             attachedInputIds:
               attachedInputIds && attachedInputIds.length > 0
                 ? attachedInputIds
@@ -1053,6 +1159,10 @@ function SettingsBar({
         console.warn('Failed to set layout or input order:', e);
       }
 
+      if (config.outputPlayer) {
+        saveOutputPlayerSettings(roomId, config.outputPlayer);
+      }
+
       await handleRefreshState();
     },
     [
@@ -1086,22 +1196,8 @@ function SettingsBar({
     [importConfig],
   );
 
-  const modalButtons: { id: ModalId; label: string; icon: React.ReactNode }[] =
-    [
-      {
-        id: 'quickActions',
-        label: 'Actions',
-        icon: <Zap className='w-4 h-4' />,
-      },
-      {
-        id: 'settings',
-        label: 'Settings',
-        icon: <SlidersHorizontal className='w-4 h-4' />,
-      },
-    ];
-
-  const btnClass =
-    'flex flex-col items-center gap-1.5 px-2 py-3 rounded-md border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 hover:border-neutral-600 transition-all cursor-pointer group';
+  const navLinkClass =
+    'uppercase tracking-widest text-xl font-bold text-[#849495] hover:text-[#00f3ff] border-b-2 border-b-transparent hover:border-b-[#00f3ff] pb-[6px] transition-colors px-2 py-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
 
   const recordLabel = isWaitingForDownload
     ? 'Wait...'
@@ -1111,73 +1207,130 @@ function SettingsBar({
 
   return (
     <>
-      <div className='grid grid-cols-6 gap-2'>
-        {modalButtons.map((btn) => (
+      <div className='flex items-center justify-between'>
+        <nav className='flex items-center gap-6'>
           <button
-            key={btn.id}
-            onClick={() => setOpenModal(btn.id)}
-            className={btnClass}>
-            <span className='text-neutral-400 group-hover:text-white transition-colors'>
-              {btn.icon}
-            </span>
-            <span className='text-[11px] font-medium text-neutral-400 group-hover:text-white transition-colors leading-tight text-center'>
-              {btn.label}
-            </span>
+            onClick={() => setShowAddVideoModal(true)}
+            className={navLinkClass}>
+            Add Video
           </button>
-        ))}
-        <button
-          onClick={() => setShowSaveModal(true)}
-          disabled={isExporting}
-          className={btnClass}>
-          <span className='text-neutral-400 group-hover:text-white transition-colors'>
-            <Download className='w-4 h-4' />
-          </span>
-          <span className='text-[11px] font-medium text-neutral-400 group-hover:text-white transition-colors leading-tight text-center'>
+          {dashboardToolbar && (
+            <div className='relative group'>
+              <button className={navLinkClass}>Layout</button>
+              <div className='absolute left-0 top-full hidden group-hover:flex flex-col bg-[#1c1b1b] border border-[#3a494b]/30 z-50 min-w-[220px] py-1'>
+                <button
+                  onClick={() => dashboardToolbar.toggleEditMode()}
+                  className={`text-left px-3 py-1.5 uppercase tracking-widest text-sm transition-colors ${
+                    dashboardToolbar.isEditMode
+                      ? 'text-[#00f3ff]'
+                      : 'text-[#849495] hover:text-[#00f3ff]'
+                  }`}>
+                  {dashboardToolbar.isEditMode ? 'Lock Layout' : 'Edit Layout'}
+                </button>
+                <div className='h-px bg-[#3a494b]/30 my-1' />
+                {dashboardToolbar.presets.map((preset) => (
+                  <button
+                    key={preset.id}
+                    onClick={() => dashboardToolbar.applyPreset(preset.layout)}
+                    className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors'>
+                    {preset.label}
+                  </button>
+                ))}
+                <div className='h-px bg-[#3a494b]/30 my-1' />
+                <button
+                  onClick={() => setShowDashSaveModal(true)}
+                  className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors'>
+                  Save Layout
+                </button>
+                <button
+                  onClick={() => setShowDashLoadModal(true)}
+                  className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors'>
+                  Load Layout
+                </button>
+                <div className='h-px bg-[#3a494b]/30 my-1' />
+                {dashboardToolbar.allPanelIds.map((panelId) => {
+                  const def = dashboardToolbar.getPanelDefinition(panelId);
+                  const isVisible = dashboardToolbar.visiblePanels.has(panelId);
+                  return (
+                    <button
+                      key={panelId}
+                      onClick={() => dashboardToolbar.togglePanel(panelId)}
+                      className={`text-left px-3 py-1.5 uppercase tracking-widest text-sm transition-colors flex items-center gap-2 ${
+                        isVisible
+                          ? 'text-[#e3fdff]'
+                          : 'text-[#849495] hover:text-[#00f3ff]'
+                      }`}>
+                      <span
+                        className={`w-2 h-2 rounded-full ${
+                          isVisible ? 'bg-[#00f3ff]' : 'bg-[#3a494b]'
+                        }`}
+                      />
+                      {def.title}
+                    </button>
+                  );
+                })}
+                <div className='h-px bg-[#3a494b]/30 my-1' />
+                <button
+                  onClick={() => dashboardToolbar.reset()}
+                  className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors'>
+                  Reset Layout
+                </button>
+              </div>
+            </div>
+          )}
+          <button
+            onClick={() => setOpenModal('quickActions')}
+            className={navLinkClass}>
+            Actions
+          </button>
+          <button
+            onClick={() => setOpenModal('settings')}
+            className={navLinkClass}>
+            Settings
+          </button>
+          <button
+            onClick={() => setShowSaveModal(true)}
+            disabled={isExporting}
+            className={navLinkClass}>
             {isExporting ? 'Saving...' : 'Save'}
-          </span>
-        </button>
-        <button
-          onClick={() => setShowLoadModal(true)}
-          disabled={isImporting}
-          className={btnClass}>
-          <span className='text-neutral-400 group-hover:text-white transition-colors'>
-            <Upload className='w-4 h-4' />
-          </span>
-          <span className='text-[11px] font-medium text-neutral-400 group-hover:text-white transition-colors leading-tight text-center'>
+          </button>
+          <button
+            onClick={() => setShowLoadModal(true)}
+            disabled={isImporting}
+            className={navLinkClass}>
             {isImporting ? 'Loading...' : 'Load'}
-          </span>
-        </button>
-        <button
-          onClick={handleTogglePublic}
-          disabled={isTogglingPublic}
-          className={`${btnClass} ${roomState.isPublic ? 'border-white/20 bg-neutral-700' : ''}`}>
-          <span
-            className={`transition-colors ${roomState.isPublic ? 'text-white' : 'text-neutral-400 group-hover:text-white'}`}>
-            {roomState.isPublic ? (
-              <ToggleRight className='w-4 h-4' />
-            ) : (
-              <ToggleLeft className='w-4 h-4' />
-            )}
-          </span>
-          <span
-            className={`text-[11px] font-medium transition-colors leading-tight text-center ${roomState.isPublic ? 'text-neutral-200' : 'text-neutral-400 group-hover:text-white'}`}>
-            Public
-          </span>
-        </button>
-        <button
-          onClick={handleToggleRecording}
-          disabled={isTogglingRecording || isWaitingForDownload}
-          className={`${btnClass} ${isRecording ? 'border-red-500/50 bg-red-950/30' : ''}`}>
-          <span
-            className={`transition-colors ${isRecording ? 'text-red-400 group-hover:text-red-300' : 'text-neutral-400 group-hover:text-white'}`}>
-            <Circle className='w-4 h-4' />
-          </span>
-          <span className='text-[11px] font-medium text-neutral-400 group-hover:text-white transition-colors leading-tight text-center'>
+          </button>
+          <button
+            onClick={handleToggleRecording}
+            disabled={isTogglingRecording || isWaitingForDownload}
+            className={`${navLinkClass} ${
+              isRecording
+                ? 'text-red-400 border-b-2 border-red-400 hover:text-red-300'
+                : ''
+            }`}>
             {recordLabel}
-          </span>
-        </button>
+          </button>
+        </nav>
+        <div className='ml-auto flex items-center gap-4 uppercase tracking-widest text-xl font-bold'>
+          <label className='flex items-center gap-2 cursor-pointer'>
+            <span className='text-[#849495]'>Public</span>
+            <Switch
+              checked={roomState.isPublic}
+              onCheckedChange={() => handleTogglePublic()}
+              disabled={isTogglingPublic}
+            />
+          </label>
+          <label className='flex items-center gap-2 cursor-pointer'>
+            <span className='text-[#849495]'>Audio</span>
+            <Switch
+              checked={audioAnalysisEnabled}
+              onCheckedChange={() => handleToggleAudioAnalysis()}
+              disabled={isTogglingAudio}
+            />
+          </label>
+        </div>
       </div>
-      <input
+      <ShadcnInput
         ref={fileInputRef}
         type='file'
         accept='.json,application/json'
@@ -1204,7 +1357,7 @@ function SettingsBar({
           </DialogHeader>
           <div className='grid grid-cols-2 gap-6'>
             <section className='space-y-2'>
-              <h4 className='text-sm font-medium text-white'>
+              <h4 className='text-sm font-medium text-foreground'>
                 Transition Settings
               </h4>
               <TransitionSettings
@@ -1252,7 +1405,7 @@ function SettingsBar({
             </section>
             <div className='space-y-4'>
               <section className='space-y-2 px-1'>
-                <h4 className='text-sm font-medium text-white'>
+                <h4 className='text-sm font-medium text-foreground'>
                   Macros Settings
                 </h4>
                 <label className='flex items-center gap-2 cursor-pointer'>
@@ -1264,7 +1417,7 @@ function SettingsBar({
                     }}
                     className='accent-white'
                   />
-                  <span className='text-xs text-neutral-400'>
+                  <span className='text-xs text-muted-foreground'>
                     Auto Play Macro
                   </span>
                 </label>
@@ -1277,55 +1430,54 @@ function SettingsBar({
                     }
                     className='accent-white'
                   />
-                  <span className='text-xs text-neutral-400'>
+                  <span className='text-xs text-muted-foreground'>
                     Compact Voice Panel
                   </span>
                 </label>
                 <div className='flex items-center justify-between gap-3'>
-                  <span className='text-xs text-neutral-400 shrink-0'>
+                  <span className='text-xs text-muted-foreground shrink-0'>
                     Panel Opacity
                   </span>
-                  <input
-                    type='range'
+                  <Slider
                     min={0}
                     max={100}
                     step={5}
-                    value={voicePanelOpacity}
-                    onChange={(e) =>
-                      setVoicePanelOpacity(Number(e.target.value))
-                    }
+                    value={[voicePanelOpacity]}
+                    onValueChange={(v) => setVoicePanelOpacity(v[0])}
                     className='flex-1 accent-white h-1'
                   />
-                  <span className='text-xs text-neutral-500 w-8 text-right tabular-nums'>
+                  <span className='text-xs text-muted-foreground w-8 text-right tabular-nums'>
                     {voicePanelOpacity}%
                   </span>
                 </div>
               </section>
-              <div className='h-px bg-neutral-800' />
+              <div className='h-px bg-card' />
               <section className='space-y-2 px-1'>
-                <h4 className='text-sm font-medium text-white'>
+                <h4 className='text-sm font-medium text-foreground'>
                   Input Defaults
                 </h4>
                 <div className='flex items-center justify-between'>
-                  <span className='text-xs text-neutral-400'>
+                  <span className='text-xs text-muted-foreground'>
                     Default Orientation
                   </span>
-                  <select
-                    className='bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1 rounded'
+                  <Select
                     value={defaultOrientation}
-                    onChange={(e) =>
-                      setDefaultOrientation(
-                        e.target.value as 'horizontal' | 'vertical',
-                      )
+                    onValueChange={(v: 'horizontal' | 'vertical') =>
+                      setDefaultOrientation(v)
                     }>
-                    <option value='horizontal'>Horizontal</option>
-                    <option value='vertical'>Vertical</option>
-                  </select>
+                    <SelectTrigger className='bg-card border border-border text-foreground text-xs px-2 py-1 rounded h-auto'>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='horizontal'>Horizontal</SelectItem>
+                      <SelectItem value='vertical'>Vertical</SelectItem>
+                    </SelectContent>
+                  </Select>
                 </div>
               </section>
-              <div className='h-px bg-neutral-800' />
+              <div className='h-px bg-card' />
               <section className='space-y-2 px-1'>
-                <h4 className='text-sm font-medium text-white'>
+                <h4 className='text-sm font-medium text-foreground'>
                   Toast Notifications
                 </h4>
                 <FeedbackPositionPicker
@@ -1359,6 +1511,42 @@ function SettingsBar({
         onLoadRemote={importConfig}
         isImporting={isImporting}
       />
+
+      <AddVideoModal
+        open={showAddVideoModal}
+        onOpenChange={setShowAddVideoModal}
+      />
+
+      {dashboardToolbar && (
+        <>
+          <GenericSaveModal
+            open={showDashSaveModal}
+            onOpenChange={setShowDashSaveModal}
+            title='Save Dashboard Layout'
+            description='Choose where to save your dashboard layout.'
+            namePlaceholder='Layout name...'
+            onSaveLocal={handleDashSaveLocal}
+            onSaveRemote={handleDashSaveRemote}
+          />
+          <ShadcnInput
+            ref={dashFileInputRef}
+            type='file'
+            accept='.json,application/json'
+            className='hidden'
+            onChange={handleDashFileChange}
+          />
+          <GenericLoadModal<object>
+            open={showDashLoadModal}
+            onOpenChange={setShowDashLoadModal}
+            title='Load Dashboard Layout'
+            description='Choose where to load your dashboard layout from.'
+            storage={dashboardToolbar.dashboardLayoutStorage}
+            onLoadLocal={() => dashFileInputRef.current?.click()}
+            onLoadRemote={handleDashLoadRemote}
+            emptyMessage='No saved dashboard layouts found.'
+          />
+        </>
+      )}
     </>
   );
 }

@@ -9,7 +9,7 @@ import {
   clearWhipSession,
   clearLastWhipInputId,
 } from '../whip-input/utils/whip-storage';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
 
 export function useWhipConnections(
   roomId: string,

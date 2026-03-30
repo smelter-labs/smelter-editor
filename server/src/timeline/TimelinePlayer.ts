@@ -4,7 +4,9 @@ import type {
   TimelineBlockSettings,
   TimelineKeyframe,
   TimelineKeyframeInterpolationMode,
+  ShaderConfig,
 } from './types';
+import { OUTPUT_TRACK_INPUT_ID } from './types';
 import type { RoomInputState } from '../room/types';
 
 type PlaybackEvent = {
@@ -36,6 +38,7 @@ type InputSnapshot = {
 type PrePlaySnapshot = {
   inputSnapshots: Map<string, InputSnapshot>;
   inputOrder: string[];
+  outputShaders: ShaderConfig[];
 };
 
 function deepClone<T>(value: T): T {
@@ -73,6 +76,8 @@ export interface TimelineRoomStateAdapter {
     loop: boolean,
   ): Promise<void>;
   reorderInputs(inputOrder: string[]): Promise<void>;
+  updateOutputShaders(shaders: ShaderConfig[]): Promise<void>;
+  getOutputShaders(): ShaderConfig[];
 }
 
 function isMp4InputId(inputId: string): boolean {
@@ -96,66 +101,70 @@ function compileEvents(
 
   for (const track of config.tracks) {
     for (const clip of track.clips) {
-      if (clip.startMs > fromMs) {
-        events.push({
-          timeMs: clip.startMs,
-          type: 'connect',
-          inputId: clip.inputId,
-        });
-      }
-      if (clip.endMs > fromMs) {
-        events.push({
-          timeMs: clip.endMs,
-          type: 'disconnect',
-          inputId: clip.inputId,
-        });
-      }
+      const isOutput = clip.inputId === OUTPUT_TRACK_INPUT_ID;
 
-      if (mode === 'step') {
-        for (const keyframe of getNormalizedKeyframes(clip)) {
-          const keyframeTimeMs = clip.startMs + keyframe.timeMs;
-          if (
-            keyframeTimeMs > fromMs &&
-            keyframeTimeMs > clip.startMs &&
-            keyframeTimeMs < clip.endMs
-          ) {
-            events.push({
-              timeMs: keyframeTimeMs,
-              type: 'keyframe',
-              inputId: clip.inputId,
-            });
-          }
+      if (!isOutput) {
+        if (clip.startMs > fromMs) {
+          events.push({
+            timeMs: clip.startMs,
+            type: 'connect',
+            inputId: clip.inputId,
+          });
+        }
+        if (clip.endMs > fromMs) {
+          events.push({
+            timeMs: clip.endMs,
+            type: 'disconnect',
+            inputId: clip.inputId,
+          });
         }
       }
 
-      const intro = resolveBlockSettingsAtTime(
-        clip,
-        clip.startMs,
-        mode,
-      ).introTransition;
-      if (intro && clip.startMs > fromMs) {
-        events.push({
-          timeMs: clip.startMs,
-          type: 'transition-in',
-          inputId: clip.inputId,
-          transition: intro,
-        });
+      for (const keyframe of getNormalizedKeyframes(clip)) {
+        const keyframeTimeMs = clip.startMs + keyframe.timeMs;
+        if (
+          keyframeTimeMs > fromMs &&
+          keyframeTimeMs > clip.startMs &&
+          keyframeTimeMs < clip.endMs
+        ) {
+          events.push({
+            timeMs: keyframeTimeMs,
+            type: 'keyframe',
+            inputId: clip.inputId,
+          });
+        }
       }
 
-      const outro = resolveBlockSettingsAtTime(
-        clip,
-        Math.max(clip.startMs, clip.endMs - 1),
-        mode,
-      ).outroTransition;
-      if (outro) {
-        const outroStartMs = clip.endMs - outro.durationMs;
-        if (outroStartMs > fromMs) {
+      if (!isOutput) {
+        const intro = resolveBlockSettingsAtTime(
+          clip,
+          clip.startMs,
+          mode,
+        ).introTransition;
+        if (intro && clip.startMs > fromMs) {
           events.push({
-            timeMs: outroStartMs,
-            type: 'transition-out',
+            timeMs: clip.startMs,
+            type: 'transition-in',
             inputId: clip.inputId,
-            transition: outro,
+            transition: intro,
           });
+        }
+
+        const outro = resolveBlockSettingsAtTime(
+          clip,
+          Math.max(clip.startMs, clip.endMs - 1),
+          mode,
+        ).outroTransition;
+        if (outro) {
+          const outroStartMs = clip.endMs - outro.durationMs;
+          if (outroStartMs > fromMs) {
+            events.push({
+              timeMs: outroStartMs,
+              type: 'transition-out',
+              inputId: clip.inputId,
+              transition: outro,
+            });
+          }
         }
       }
     }
@@ -277,6 +286,13 @@ function interpolateShaderConfigs(
   });
 }
 
+const CLIP_LEVEL_KEYS = new Set([
+  'cropTop',
+  'cropLeft',
+  'cropRight',
+  'cropBottom',
+]);
+
 function interpolateBlockSettings(
   from: TimelineBlockSettings,
   to: TimelineBlockSettings,
@@ -288,6 +304,7 @@ function interpolateBlockSettings(
   const toRecord = to as Record<string, unknown>;
 
   for (const [key, toValue] of Object.entries(toRecord)) {
+    if (CLIP_LEVEL_KEYS.has(key)) continue;
     const fromValue = fromRecord[key];
     if (typeof fromValue === 'number' && typeof toValue === 'number') {
       resultRecord[key] = lerp(fromValue, toValue, progress);
@@ -337,24 +354,36 @@ function resolveBlockSettingsAtTime(
     current = keyframe;
   }
 
-  if (mode === 'step') {
-    return deepClone(current.blockSettings);
+  const effectiveMode = current.blockSettings.forceInterpolation ?? mode;
+
+  let resolved: TimelineBlockSettings;
+
+  if (effectiveMode === 'step') {
+    resolved = deepClone(current.blockSettings);
+  } else {
+    const currentIndex = keyframes.findIndex(
+      (keyframe) => keyframe.id === current.id,
+    );
+    const next = keyframes[currentIndex + 1];
+    if (!next || next.timeMs <= current.timeMs || offsetMs <= current.timeMs) {
+      resolved = deepClone(current.blockSettings);
+    } else {
+      const progress =
+        (offsetMs - current.timeMs) / (next.timeMs - current.timeMs);
+      resolved = interpolateBlockSettings(
+        current.blockSettings,
+        next.blockSettings,
+        progress,
+      );
+    }
   }
 
-  const currentIndex = keyframes.findIndex(
-    (keyframe) => keyframe.id === current.id,
-  );
-  const next = keyframes[currentIndex + 1];
-  if (!next || next.timeMs <= current.timeMs || offsetMs <= current.timeMs) {
-    return deepClone(current.blockSettings);
-  }
+  resolved.cropTop = clip.blockSettings.cropTop;
+  resolved.cropLeft = clip.blockSettings.cropLeft;
+  resolved.cropRight = clip.blockSettings.cropRight;
+  resolved.cropBottom = clip.blockSettings.cropBottom;
 
-  const progress = (offsetMs - current.timeMs) / (next.timeMs - current.timeMs);
-  return interpolateBlockSettings(
-    current.blockSettings,
-    next.blockSettings,
-    progress,
-  );
+  return resolved;
 }
 
 function getActiveOrder(config: TimelineConfig, timeMs: number): string[] {
@@ -362,6 +391,7 @@ function getActiveOrder(config: TimelineConfig, timeMs: number): string[] {
   const seen = new Set<string>();
   for (const track of config.tracks) {
     for (const clip of track.clips) {
+      if (clip.inputId === OUTPUT_TRACK_INPUT_ID) continue;
       if (
         timeMs >= clip.startMs &&
         timeMs < clip.endMs &&
@@ -383,6 +413,7 @@ function computeDesiredState(
 
   for (const track of config.tracks) {
     for (const clip of track.clips) {
+      if (clip.inputId === OUTPUT_TRACK_INPUT_ID) continue;
       if (!desired.has(clip.inputId)) {
         desired.set(clip.inputId, false);
       }
@@ -391,6 +422,7 @@ function computeDesiredState(
 
   for (const track of config.tracks) {
     for (const clip of track.clips) {
+      if (clip.inputId === OUTPUT_TRACK_INPUT_ID) continue;
       if (playheadMs >= clip.startMs && playheadMs < clip.endMs) {
         desired.set(clip.inputId, true);
       }
@@ -407,7 +439,6 @@ export function buildUpdateFromBlockSettings(
     volume: bs.volume,
     shaders: bs.shaders,
     showTitle: bs.showTitle,
-    orientation: bs.orientation,
     text: bs.text,
     textAlign: bs.textAlign,
     textColor: bs.textColor,
@@ -427,6 +458,10 @@ export function buildUpdateFromBlockSettings(
     absoluteHeight: bs.absoluteHeight,
     absoluteTransitionDurationMs: bs.absoluteTransitionDurationMs,
     absoluteTransitionEasing: bs.absoluteTransitionEasing,
+    cropTop: bs.cropTop,
+    cropLeft: bs.cropLeft,
+    cropRight: bs.cropRight,
+    cropBottom: bs.cropBottom,
     gameBackgroundColor: bs.gameBackgroundColor,
     gameCellGap: bs.gameCellGap,
     gameBoardBorderColor: bs.gameBoardBorderColor,
@@ -444,7 +479,6 @@ function buildUpdateFromRoomInput(
     volume: input.volume,
     shaders: deepClone(input.shaders),
     showTitle: input.showTitle,
-    orientation: input.orientation,
     text: input.type === 'text-input' ? input.text : undefined,
     textAlign: input.type === 'text-input' ? input.textAlign : undefined,
     textColor: input.type === 'text-input' ? input.textColor : undefined,
@@ -466,6 +500,10 @@ function buildUpdateFromRoomInput(
     absoluteHeight: input.absoluteHeight,
     absoluteTransitionDurationMs: input.absoluteTransitionDurationMs,
     absoluteTransitionEasing: input.absoluteTransitionEasing,
+    cropTop: input.cropTop,
+    cropLeft: input.cropLeft,
+    cropRight: input.cropRight,
+    cropBottom: input.cropBottom,
     gameBackgroundColor:
       input.type === 'game' ? input.snakeGameState.backgroundColor : undefined,
     gameCellGap:
@@ -837,7 +875,6 @@ export class TimelinePlayer {
   }
 
   private startSmoothUpdates(): void {
-    if (this.config.keyframeInterpolationMode !== 'smooth') return;
     if (this.smoothUpdateInterval) {
       clearInterval(this.smoothUpdateInterval);
     }
@@ -870,10 +907,11 @@ export class TimelinePlayer {
     const event = this.events[index];
     if (!event) return;
 
-    if (event.type === 'connect') {
+    if (event.inputId === OUTPUT_TRACK_INPUT_ID) {
+      // Output track: only keyframe events are relevant, handled by applyBlockSettingsAtTime below
+    } else if (event.type === 'connect') {
       this.appliedState.set(event.inputId, true);
 
-      // Look for a co-located transition-in event
       let mergedTransition: TimelineVisibilityTransition | undefined;
       for (let j = index + 1; j < this.events.length; j++) {
         if (this.events[j].timeMs !== event.timeMs) break;
@@ -1023,17 +1061,28 @@ export class TimelinePlayer {
     const serialized = JSON.stringify(resolvedBlockSettings);
     if (this.appliedBlockSettings.get(inputId) !== serialized) {
       this.appliedBlockSettings.set(inputId, serialized);
-      await this.room
-        .updateInput(
-          inputId,
-          buildUpdateFromBlockSettings(resolvedBlockSettings),
-        )
-        .catch((err) =>
-          console.warn(
-            `[timeline] Failed to apply block settings for ${inputId}`,
-            err,
-          ),
-        );
+      if (inputId === OUTPUT_TRACK_INPUT_ID) {
+        await this.room
+          .updateOutputShaders(resolvedBlockSettings.shaders ?? [])
+          .catch((err) =>
+            console.warn(
+              `[timeline] Failed to apply output shaders`,
+              err,
+            ),
+          );
+      } else {
+        await this.room
+          .updateInput(
+            inputId,
+            buildUpdateFromBlockSettings(resolvedBlockSettings),
+          )
+          .catch((err) =>
+            console.warn(
+              `[timeline] Failed to apply block settings for ${inputId}`,
+              err,
+            ),
+          );
+      }
     }
 
     if (isMp4InputId(inputId)) {
@@ -1159,7 +1208,11 @@ export class TimelinePlayer {
       inputSnapshots.set(input.inputId, snapshotInput(input));
     }
 
-    this.snapshot = { inputSnapshots, inputOrder };
+    this.snapshot = {
+      inputSnapshots,
+      inputOrder,
+      outputShaders: deepClone(this.room.getOutputShaders()),
+    };
   }
 
   private async restoreState(): Promise<void> {
@@ -1212,6 +1265,12 @@ export class TimelinePlayer {
         this.room.reorderInputs(this.snapshot.inputOrder).catch(() => {}),
       );
     }
+
+    promises.push(
+      this.room
+        .updateOutputShaders(this.snapshot.outputShaders)
+        .catch(() => {}),
+    );
 
     if (promises.length > 0) {
       await Promise.allSettled(promises);

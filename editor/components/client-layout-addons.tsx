@@ -11,8 +11,8 @@ const SpeechToTextWithCommands = dynamic(
   { ssr: false },
 );
 
-const ToastContainer = dynamic(
-  () => import('react-toastify').then((m) => ({ default: m.ToastContainer })),
+const SonnerToaster = dynamic(
+  () => import('@/components/ui/sonner').then((m) => ({ default: m.Toaster })),
   { ssr: false },
 );
 
@@ -45,7 +45,7 @@ export default function ClientLayoutAddons() {
     <>
       {!isPreview && <SpeechToTextWithCommands />}
       {!isPreview && <VoiceActionFeedback />}
-      <ToastContainer />
+      <SonnerToaster />
       <Analytics />
     </>
   );
