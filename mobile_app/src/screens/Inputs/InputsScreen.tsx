@@ -6,6 +6,7 @@ import DraggableFlatList, {
 } from "react-native-draggable-flatlist";
 import { GestureDetector } from "react-native-gesture-handler";
 import { useInputsStore } from "../../store/inputsStore";
+import { useConnectionStore } from "../../store/connectionStore";
 import { wsService } from "../../services/websocketService";
 import { apiService } from "../../services/apiService";
 import type { InputCard as InputCardType } from "../../types/input";
@@ -26,6 +27,7 @@ export function InputsScreen() {
     removeInput,
     reorderInputs,
   } = useInputsStore();
+  const { serverUrl, roomId } = useConnectionStore();
 
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [selectedCardIndex, setSelectedCardIndex] = useState(0);
@@ -54,11 +56,24 @@ export function InputsScreen() {
       console.log("[Inputs] input_deleted:", event.inputId);
       removeInput(event.inputId);
     });
+    const unsubRoom = wsService.on("room_updated", async () => {
+      console.log("[Inputs] room_updated — refreshing inputs");
+      try {
+        const { inputs: updatedInputs } = await apiService.fetchRoomState(
+          serverUrl,
+          roomId,
+        );
+        setInputs(updatedInputs);
+      } catch (err) {
+        console.warn("[Inputs] Failed to refresh inputs on room_updated:", err);
+      }
+    });
     return () => {
       unsubUpdated();
       unsubDeleted();
+      unsubRoom();
     };
-  }, [updateInput, removeInput]);
+  }, [serverUrl, roomId, updateInput, removeInput, setInputs]);
 
   const handleCardTap = useCallback(
     (cardId: string) => {

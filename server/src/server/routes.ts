@@ -741,11 +741,23 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
     console.log('[request] Update room', { body: req.body, roomId });
     const room = state.getRoom(roomId);
 
+    let roomStructureChanged = false;
     if (req.body.inputOrder) {
       room.reorderInputs(req.body.inputOrder);
+      roomStructureChanged = true;
     }
     if (req.body.layers) {
       await room.updateLayers(req.body.layers as import('../types').Layer[]);
+      roomStructureChanged = true;
+    }
+    if (roomStructureChanged) {
+      const sourceId =
+        (req.headers['x-source-id'] as string | undefined) ?? null;
+      roomEventBus.broadcast(roomId, {
+        type: 'room_updated',
+        roomId,
+        sourceId,
+      });
     }
     if (req.body.isPublic !== undefined) {
       room.isPublic = req.body.isPublic;
@@ -811,6 +823,13 @@ routes.post<RoomIdParams & { Body: Static<typeof InputSchema> }>(
     let bearerToken = '';
     if (inputId) {
       bearerToken = await room.connectInput(inputId);
+      const sourceId =
+        (req.headers['x-source-id'] as string | undefined) ?? null;
+      roomEventBus.broadcast(roomId, {
+        type: 'room_updated',
+        roomId,
+        sourceId,
+      });
     }
     let whipUrl = `${config.whipBaseUrl}/${inputId}`;
     res.status(200).send({ inputId, bearerToken, whipUrl });
