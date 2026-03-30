@@ -38,9 +38,16 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Install dependencies
+      - name: Install root workspace dependencies
         working-directory: ${{ github.workspace }}
         run: pnpm install --frozen-lockfile
+
+      - name: Install mobile_app dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Ensure workspace root node_modules exists
+        working-directory: ${{ github.workspace }}
+        run: mkdir -p node_modules
 
       - name: Decode Android keystore
         run: |
