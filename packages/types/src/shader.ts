@@ -1,24 +1,30 @@
+/** Static shader parameter definition (min/max/default) for UI and `AvailableShader`. */
+export type ShaderParam = {
+  name: string;
+  type: string;
+  minValue?: number;
+  maxValue?: number;
+  defaultValue?: number | string;
+};
+
 export type ShaderParamConfig = {
   paramName: string;
   /** number for numeric params, string (e.g. hex) for color params */
   paramValue: number | string;
 };
 
-/** @deprecated Use {@link ShaderParamConfig} */
-export type ShaderParam = ShaderParamConfig;
-
 /** Describes a configurable parameter that a shader accepts (its schema/definition). */
 export type ShaderParamDefinition =
   | {
       name: string;
-      type: 'number';
+      type: "number";
       minValue?: number;
       maxValue?: number;
       defaultValue: number;
     }
   | {
       name: string;
-      type: 'color';
+      type: "color";
       defaultValue: string;
     };
 

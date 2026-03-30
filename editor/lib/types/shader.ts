@@ -1,16 +1,11 @@
-export type {
+import type {
+  ShaderParam,
   ShaderParamConfig,
   ShaderConfig,
   ShaderPreset,
 } from '@smelter-editor/types';
 
-export type ShaderParam = {
-  name: string;
-  type: string;
-  minValue?: number;
-  maxValue?: number;
-  defaultValue?: number | string;
-};
+export type { ShaderParam, ShaderParamConfig, ShaderConfig, ShaderPreset };
 
 export type AvailableShader = {
   id: string;

@@ -27,17 +27,21 @@ export type {
 } from './transition';
 
 export type {
-  InputOrientation,
   InputType,
   InputStatus,
   InputSourceState,
   InputDisplayProperties,
   TextInputProperties,
   AbsolutePositionProperties,
+  CropProperties,
   BorderProperties,
   SnakeGameDisplayProperties,
   MotionProperties,
+  HandsProperties,
 } from '@smelter-editor/types';
+
+export { AUDIO_BAND_COUNT } from '@smelter-editor/types';
+export type { AudioBands } from '@smelter-editor/types';
 
 export type { PublicInputState } from '@smelter-editor/types';
 

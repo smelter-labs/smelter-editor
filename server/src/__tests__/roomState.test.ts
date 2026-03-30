@@ -14,8 +14,14 @@ const mocks = vi.hoisted(() => {
       registerMotionOutput: fn().mockResolvedValue(undefined),
       unregisterMotionOutput: fn().mockResolvedValue(undefined),
       getPipelineTimeMs: fn().mockReturnValue(0),
+      extractMp4Frame: fn().mockResolvedValue('/tmp/test-frame.jpg'),
       terminate: fn().mockResolvedValue(undefined),
     },
+    getMp4DurationMs: fn().mockResolvedValue(10000),
+    getMp4VideoDimensions: fn().mockResolvedValue({
+      width: 1920,
+      height: 1080,
+    }),
     twitchStartMonitor: fn().mockResolvedValue({
       isLive: () => true,
       stop: fn(),
@@ -68,6 +74,10 @@ vi.mock('fs-extra', () => ({
   readdir: mocks.readdir,
   remove: mocks.remove,
 }));
+vi.mock('../server/mp4Duration', () => ({
+  getMp4DurationMs: mocks.getMp4DurationMs,
+  getMp4VideoDimensions: mocks.getMp4VideoDimensions,
+}));
 
 import { createRoomStore } from '../app/store';
 import { RESOLUTION_PRESETS } from '../types';
@@ -103,7 +113,7 @@ function createTimelineConfig(
               volume: 1,
               showTitle: true,
               shaders: [],
-              orientation: 'horizontal',
+
               text: 'clip-default',
             },
             keyframes: [
@@ -114,7 +124,7 @@ function createTimelineConfig(
                   volume: 1,
                   showTitle: true,
                   shaders: [],
-                  orientation: 'horizontal',
+
                   text: initialKeyframeText,
                 },
               },
@@ -125,7 +135,7 @@ function createTimelineConfig(
                   volume: 1,
                   showTitle: true,
                   shaders: [],
-                  orientation: 'horizontal',
+
                   text: `${initialKeyframeText}-later`,
                 },
               },
@@ -1030,7 +1040,6 @@ describe('RoomState', () => {
           volume: 1,
           showTitle: true,
           shaders: [],
-          orientation: 'horizontal' as const,
         },
       ];
       expect(listener).toHaveBeenCalledTimes(1);
@@ -1154,6 +1163,146 @@ describe('RoomState', () => {
       const resolution = room.getResolution();
       expect(resolution.width).toBe(res.width);
       expect(resolution.height).toBe(res.height);
+    });
+  });
+
+  describe('frozen image lifecycle', () => {
+    async function createRoomWithMp4() {
+      mocks.pathExists.mockResolvedValue(true);
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const inputId = (await room.addNewInput({
+        type: 'local-mp4',
+        source: { fileName: 'test-video.mp4' },
+      }))!;
+      await room.connectInput(inputId);
+      return { room, output, inputId };
+    }
+
+    function createMp4TimelineConfig(inputId: string): TimelineConfig {
+      return {
+        tracks: [
+          {
+            id: 'track-1',
+            clips: [
+              {
+                id: 'clip-1',
+                inputId,
+                startMs: 0,
+                endMs: 5000,
+                blockSettings: {
+                  volume: 1,
+                  showTitle: false,
+                  shaders: [],
+
+                  mp4PlayFromMs: 0,
+                  mp4Loop: true,
+                },
+                keyframes: [],
+              },
+            ],
+          },
+        ],
+        totalDurationMs: 5000,
+        keyframeInterpolationMode: 'step',
+      };
+    }
+
+    it('defers unregisterImage when cleaning up frozen images', async () => {
+      vi.useFakeTimers();
+      try {
+        const { room, inputId } = await createRoomWithMp4();
+        const config = createMp4TimelineConfig(inputId);
+
+        await room.startTimelinePlayback(config, 0);
+        mocks.smelter.registerImage.mockClear();
+        mocks.smelter.unregisterImage.mockClear();
+
+        await room.pauseTimeline();
+
+        const frozenCalls = mocks.smelter.registerImage.mock.calls.filter(
+          (c: any[]) => typeof c[0] === 'string' && c[0].startsWith('frozen::'),
+        );
+        expect(frozenCalls.length).toBeGreaterThan(0);
+        const frozenImageId = frozenCalls[0][0];
+
+        mocks.smelter.unregisterImage.mockClear();
+
+        await room.stopTimelinePlayback();
+
+        expect(mocks.smelter.unregisterImage).not.toHaveBeenCalledWith(
+          frozenImageId,
+        );
+
+        await vi.advanceTimersByTimeAsync(600);
+
+        expect(mocks.smelter.unregisterImage).toHaveBeenCalledWith(
+          frozenImageId,
+        );
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('clears store reference before deferring unregister', async () => {
+      vi.useFakeTimers();
+      try {
+        const { room, output, inputId } = await createRoomWithMp4();
+        const config = createMp4TimelineConfig(inputId);
+
+        await room.startTimelinePlayback(config, 0);
+        mocks.smelter.registerImage.mockClear();
+
+        await room.pauseTimeline();
+
+        const storeAfterPause = output.store.getState();
+        const inputAfterPause = storeAfterPause.inputs.find(
+          (i) => i.inputId === inputId,
+        );
+        expect(inputAfterPause?.frozenImageId).toMatch(/^frozen::/);
+
+        await room.stopTimelinePlayback();
+
+        const storeAfterStop = output.store.getState();
+        const inputAfterStop = storeAfterStop.inputs.find(
+          (i) => i.inputId === inputId,
+        );
+        expect(inputAfterStop?.frozenImageId).toBeUndefined();
+      } finally {
+        vi.useRealTimers();
+      }
+    });
+
+    it('flushes pending unregisters immediately on deleteRoom', async () => {
+      vi.useFakeTimers();
+      try {
+        const { room, inputId } = await createRoomWithMp4();
+        const config = createMp4TimelineConfig(inputId);
+
+        await room.startTimelinePlayback(config, 0);
+        mocks.smelter.registerImage.mockClear();
+        mocks.smelter.unregisterImage.mockClear();
+
+        await room.pauseTimeline();
+
+        const frozenCalls = mocks.smelter.registerImage.mock.calls.filter(
+          (c: any[]) => typeof c[0] === 'string' && c[0].startsWith('frozen::'),
+        );
+        expect(frozenCalls.length).toBeGreaterThan(0);
+        const frozenImageId = frozenCalls[0][0];
+
+        mocks.smelter.unregisterImage.mockClear();
+
+        await room.deleteRoom();
+
+        expect(mocks.smelter.unregisterImage).toHaveBeenCalledWith(
+          frozenImageId,
+        );
+      } finally {
+        vi.useRealTimers();
+      }
     });
   });
 });

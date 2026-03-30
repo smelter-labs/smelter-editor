@@ -136,8 +136,6 @@ export function StreamsSection({
             const input = inputs.find(
               (input) => input.inputId === item.inputId,
             );
-            const isFirst = index === 0;
-            const isLast = index === orderedItems.length - 1;
             const attachedChildren =
               input?.attachedInputIds
                 ?.map((id) => inputs.find((i) => i.inputId === id))
@@ -160,14 +158,8 @@ export function StreamsSection({
                             ? input.inputId === guestInputId
                             : visibleWrappers.length > 1
                         }
-                        canMoveUp={isGuest ? false : !isFirst}
-                        canMoveDown={isGuest ? false : !isLast}
                         pcRef={cameraPcRef}
                         streamRef={cameraStreamRef}
-                        isLocalWhipInput={
-                          input.inputId === activeCameraInputId ||
-                          input.inputId === activeScreenshareInputId
-                        }
                         isFxOpen={openFxInputId === input.inputId}
                         onToggleFx={() => onToggleFx(input.inputId)}
                         onWhipDisconnectedOrRemoved={
@@ -176,7 +168,6 @@ export function StreamsSection({
                         showGrip={isGuest ? false : isWideScreen}
                         isSelected={selectedInputId === input.inputId}
                         index={index}
-                        allInputs={inputs}
                         readOnly={isGuest && input.inputId !== guestInputId}
                       />
                     </ErrorBoundary>
@@ -191,8 +182,6 @@ export function StreamsSection({
                             roomId={roomId}
                             availableShaders={availableShaders}
                             canRemove={false}
-                            canMoveUp={false}
-                            canMoveDown={false}
                             pcRef={cameraPcRef}
                             streamRef={cameraStreamRef}
                             isFxOpen={openFxInputId === child.inputId}
@@ -202,7 +191,6 @@ export function StreamsSection({
                             }
                             showGrip={false}
                             isSelected={selectedInputId === child.inputId}
-                            allInputs={inputs}
                             readOnly={isGuest && child.inputId !== guestInputId}
                           />
                         </ErrorBoundary>

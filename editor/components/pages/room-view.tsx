@@ -13,6 +13,8 @@ import VideoPreview from '@/components/video-preview';
 import ControlPanel from '@/components/control-panel/control-panel';
 import DashboardLayout from '@/components/dashboard/dashboard-layout';
 import { ConnectedDevicesPanel } from '@/components/dashboard/connected-devices-panel';
+import { SystemLogPanel } from '@/components/dashboard/system-log-panel';
+import { LayoutPreviewPanel } from '@/components/dashboard/layout-preview-panel';
 import { Button } from '@/components/ui/button';
 import { RotateCw } from 'lucide-react';
 import {
@@ -30,6 +32,7 @@ interface RoomViewProps {
   roomState: RoomState;
   refreshState: () => Promise<void>;
   isGuest?: boolean;
+  settingsNavPortalRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 export default function RoomView({
@@ -37,6 +40,7 @@ export default function RoomView({
   roomState,
   refreshState,
   isGuest,
+  settingsNavPortalRef,
 }: RoomViewProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [showAutoplayPopup, setShowAutoplayPopup] = useState(true);
@@ -94,18 +98,6 @@ export default function RoomView({
       guestVideoRef.current.srcObject = null;
     }
   }, [guestStream]);
-
-  // Sync guest rotation when host changes orientation via server
-  useEffect(() => {
-    if (!isGuest || !guestInputId) return;
-    const guestInput = roomState.inputs.find((i) => i.inputId === guestInputId);
-    if (!guestInput) return;
-    const serverVertical = guestInput.orientation === 'vertical';
-    const localVertical = guestRotation % 180 !== 0;
-    if (serverVertical !== localVertical && guestRotateRef.current) {
-      guestRotateRef.current().then(setGuestRotation);
-    }
-  }, [isGuest, guestInputId, roomState.inputs]);
 
   if (isGuest) {
     return (
@@ -175,15 +167,17 @@ export default function RoomView({
         roomState={roomState}
         roomId={roomId}
         refreshState={refreshState}
+        settingsNavPortalRef={settingsNavPortalRef}
         renderDashboard={({
-          addVideoSection,
-          buttonsSection,
           streamsSection,
           fxSection,
           timelineSection,
           blockPropertiesSection,
           motionPanels,
           peers,
+          timelineColorOverrides,
+          selectedInputId,
+          onSelectInput,
         }) => {
           const staticPanels: Record<string, ReactNode> = {
             'video-preview': (
@@ -191,15 +185,27 @@ export default function RoomView({
                 videoRef={videoRef}
                 whepUrl={roomState.whepUrl}
                 resolution={roomState.resolution}
+                roomId={roomId}
               />
             ),
-            'add-video': addVideoSection,
-            buttons: buttonsSection,
             streams: streamsSection,
             fx: fxSection,
             timeline: timelineSection,
             'block-properties': blockPropertiesSection,
             'connected-devices': <ConnectedDevicesPanel peers={peers} />,
+            'system-log': <SystemLogPanel />,
+            'layout-preview': (
+              <LayoutPreviewPanel
+                roomId={roomId}
+                inputs={roomState.inputs}
+                resolution={
+                  roomState.resolution ?? { width: 1920, height: 1080 }
+                }
+                timelineColorOverrides={timelineColorOverrides}
+                selectedInputId={selectedInputId}
+                onSelectInput={onSelectInput}
+              />
+            ),
           };
 
           const allPanels = { ...staticPanels, ...motionPanels };
@@ -235,6 +241,11 @@ export default function RoomView({
               panels={allPanels}
               allPanelIds={allPanelIds}
               getPanelDefinition={getPanelDefinition}
+              videoAspectRatio={
+                roomState.resolution
+                  ? roomState.resolution.width / roomState.resolution.height
+                  : 16 / 9
+              }
             />
           );
         }}

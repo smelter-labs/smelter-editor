@@ -131,6 +131,14 @@ export async function addSnakeGameInput(roomId: string, title?: string) {
   return client.addSnakeGameInput(roomId, title);
 }
 
+export async function addHandsInput(roomId: string, sourceInputId: string) {
+  return client.addHandsInput(roomId, sourceInputId);
+}
+
+export async function addHlsInput(roomId: string, url: string) {
+  return client.addHlsInput(roomId, url);
+}
+
 export async function removeInput(
   roomId: string,
   inputId: string,
@@ -252,6 +260,42 @@ export async function deleteDashboardLayout(
   return client.dashboardLayoutStorage.remove(fileName);
 }
 
+// ── HLS stream storage ──────────────────────────────────────
+export async function saveHlsStream(
+  name: string,
+  stream: { url: string },
+): Promise<StorageResult<{ fileName: string; name: string }>> {
+  return client.hlsStreamStorage.save(name, stream);
+}
+
+export async function listHlsStreams(): Promise<
+  StorageResult<{ items: SavedItemInfo[] }>
+> {
+  return client.hlsStreamStorage.list();
+}
+
+export async function loadHlsStream(
+  fileName: string,
+): Promise<
+  StorageResult<{ name: string; data: { url: string }; savedAt: string }>
+> {
+  return client.hlsStreamStorage.load(fileName);
+}
+
+export async function updateHlsStream(
+  fileName: string,
+  name: string,
+  stream: { url: string },
+): Promise<StorageResult<{ fileName: string; name: string }>> {
+  return client.hlsStreamStorage.update(fileName, name, stream);
+}
+
+export async function deleteHlsStream(
+  fileName: string,
+): Promise<StorageResult> {
+  return client.hlsStreamStorage.remove(fileName);
+}
+
 export async function getAllRooms(): Promise<any> {
   return client.getAllRooms();
 }
@@ -307,6 +351,13 @@ export async function toggleMotionDetection(
   enabled: boolean,
 ): Promise<void> {
   return client.toggleMotionDetection(roomId, inputId, enabled);
+}
+
+export async function setAudioAnalysisEnabled(
+  roomId: string,
+  enabled: boolean,
+): Promise<void> {
+  return client.setAudioAnalysisEnabled(roomId, enabled);
 }
 
 export async function restartMp4Input(

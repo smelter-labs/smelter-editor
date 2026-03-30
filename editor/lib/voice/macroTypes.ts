@@ -1,9 +1,4 @@
-import type {
-  InputType,
-  Shader,
-  Direction,
-  InputOrientation,
-} from './commandTypes';
+import type { InputType, Shader, Direction } from './commandTypes';
 
 export type MacroActionParams = {
   inputType?: InputType;
@@ -26,7 +21,6 @@ export type MacroActionParams = {
   imageName?: string;
   enabled?: boolean;
   durationMs?: number;
-  orientation?: InputOrientation;
 };
 
 export type MacroStep = {
@@ -65,9 +59,7 @@ export type MacroAction =
   | 'SET_SWAP_FADE_OUT_DURATION'
   | 'SET_SWAP_OUTGOING_ENABLED'
   | 'SET_NEWS_STRIP_ENABLED'
-  | 'SET_NEWS_STRIP_FADE_DURING_SWAP'
-  | 'SET_ORIENTATION'
-  | 'SET_DEFAULT_ORIENTATION';
+  | 'SET_NEWS_STRIP_FADE_DURING_SWAP';
 
 export type MacroDefinition = {
   id: string;

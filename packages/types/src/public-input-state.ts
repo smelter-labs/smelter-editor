@@ -6,9 +6,11 @@ import type {
   InputDisplayProperties,
   TextInputProperties,
   AbsolutePositionProperties,
+  CropProperties,
   BorderProperties,
   SnakeGameDisplayProperties,
   MotionProperties,
+  HandsProperties,
 } from './input.js';
 
 export type PublicInputState = {
@@ -20,6 +22,8 @@ export type PublicInputState = {
   status: InputStatus;
   channelId?: string;
   imageId?: string;
+  sourceWidth?: number;
+  sourceHeight?: number;
   attachedInputIds?: string[];
   hidden?: boolean;
   activeTransition?: ActiveTransition;
@@ -30,6 +34,8 @@ export type PublicInputState = {
 } & InputDisplayProperties &
   Partial<TextInputProperties> &
   Partial<AbsolutePositionProperties> &
+  Partial<CropProperties> &
   Partial<BorderProperties> &
   Partial<SnakeGameDisplayProperties> &
-  Partial<MotionProperties>;
+  Partial<MotionProperties> &
+  Partial<HandsProperties>;

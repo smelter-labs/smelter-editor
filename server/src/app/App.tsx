@@ -1,10 +1,20 @@
-import { View, Rescaler } from '@swmansion/smelter';
+import { View, Rescaler, Shader } from '@swmansion/smelter';
 
 import type { RoomStore } from './store';
 import type { StoreApi } from 'zustand';
-import { StoreContext, useResolution, useInputs, useLayers } from './store';
+import {
+  StoreContext,
+  useResolution,
+  useInputs,
+  useLayers,
+  useOutputShaders,
+} from './store';
 import { NewsStripOverlay } from './news-strip';
 import { Input } from '../inputs/inputs';
+import { wrapWithShaders } from '../utils/shaderUtils';
+import { AudioStoreContext } from '../audio/AudioStoreContext';
+import type { AudioStoreState } from '../audio/audioStore';
+import { createAudioStore } from '../audio/audioStore';
 
 function buildEasingFunction(easing?: string) {
   if (easing === 'bounce') return 'bounce' as const;
@@ -17,10 +27,20 @@ function buildEasingFunction(easing?: string) {
   return 'linear' as const;
 }
 
-export default function App({ store }: { store: StoreApi<RoomStore> }) {
+const defaultAudioStore = createAudioStore();
+
+export default function App({
+  store,
+  audioStore,
+}: {
+  store: StoreApi<RoomStore>;
+  audioStore?: StoreApi<AudioStoreState>;
+}) {
   return (
     <StoreContext.Provider value={store}>
-      <OutputScene />
+      <AudioStoreContext.Provider value={audioStore ?? defaultAudioStore}>
+        <OutputScene />
+      </AudioStoreContext.Provider>
     </StoreContext.Provider>
   );
 }
@@ -30,10 +50,11 @@ function OutputScene() {
   const inputs = useInputs();
   const layers = useLayers();
   const { width, height } = resolution;
-
+  const outputShaders = useOutputShaders();
   const inputMap = new Map(inputs.map((input) => [input.inputId, input]));
+  const activeOutputShaders = outputShaders.filter((s) => s.enabled);
 
-  return (
+  const scene = (
     <View
       style={{
         backgroundColor: '#000000',
@@ -47,8 +68,51 @@ function OutputScene() {
           key={layer.id}
           style={{ top: 0, left: 0, width, height, overflow: 'visible' }}>
           {layer.inputs.map((item) => {
+            const cT = item.cropTop ?? 0;
+            const cL = item.cropLeft ?? 0;
+            const cR = item.cropRight ?? 0;
+            const cB = item.cropBottom ?? 0;
+            const hasCrop = cT || cL || cR || cB;
+
             const input = inputMap.get(item.inputId);
             if (!input) return null;
+            let inner = <Input input={input} />;
+
+            if (hasCrop) {
+              inner = (
+                <Shader
+                  shaderId='crop'
+                  resolution={{ width: item.width, height: item.height }}
+                  shaderParam={{
+                    type: 'struct',
+                    value: [
+                      {
+                        type: 'f32',
+                        fieldName: 'crop_top',
+                        value: cT / item.height,
+                      },
+                      {
+                        type: 'f32',
+                        fieldName: 'crop_left',
+                        value: cL / item.width,
+                      },
+                      {
+                        type: 'f32',
+                        fieldName: 'crop_right',
+                        value: cR / item.width,
+                      },
+                      {
+                        type: 'f32',
+                        fieldName: 'crop_bottom',
+                        value: cB / item.height,
+                      },
+                    ],
+                  }}>
+                  {inner}
+                </Shader>
+              );
+            }
+
             return (
               <Rescaler
                 key={item.inputId}
@@ -63,7 +127,7 @@ function OutputScene() {
                   width: item.width,
                   height: item.height,
                 }}>
-                <Input input={input} />
+                {inner}
               </Rescaler>
             );
           })}
@@ -72,4 +136,6 @@ function OutputScene() {
       <NewsStripOverlay />
     </View>
   );
+
+  return wrapWithShaders(scene, activeOutputShaders, resolution);
 }

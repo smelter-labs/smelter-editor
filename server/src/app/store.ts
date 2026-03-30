@@ -6,10 +6,13 @@ import type {
   InputDisplayProperties,
   TextInputProperties,
   AbsolutePositionProperties,
+  CropProperties,
   BorderProperties,
   SnakeGameDisplayProperties,
   Layer,
+  ShaderConfig,
 } from '../types';
+import type { HandsStore } from '../hands/handStore';
 import { createContext, useContext } from 'react';
 import { useStore } from 'zustand';
 
@@ -31,7 +34,11 @@ export type InputConfig = {
   title: string;
   description: string;
   imageId?: string;
+  sourceWidth?: number;
+  sourceHeight?: number;
   snakeGameState?: SnakeGameState;
+  handsSourceInputId?: string;
+  handsStore?: StoreApi<HandsStore>;
   replaceWith?: InputConfig;
   attachedInputs?: InputConfig[];
   activeTransition?: ActiveTransition;
@@ -41,12 +48,14 @@ export type InputConfig = {
   Partial<TextInputProperties> &
   Partial<BorderProperties> &
   Partial<AbsolutePositionProperties> &
+  Partial<CropProperties> &
   Partial<SnakeGameDisplayProperties>;
 
 export type RoomStore = {
   inputs: InputConfig[];
   layers: Layer[];
   resolution: Resolution;
+  outputShaders: ShaderConfig[];
   swapDurationMs: number;
   swapOutgoingEnabled: boolean;
   swapFadeInDurationMs: number;
@@ -63,6 +72,7 @@ export type RoomStore = {
     swapFadeOutDurationMs: number;
     newsStripEnabled: boolean;
   }) => void;
+  setOutputShaders: (shaders: ShaderConfig[]) => void;
   setInputFrozenImage: (inputId: string, imageId: string | null) => void;
 };
 
@@ -73,6 +83,7 @@ export function createRoomStore(
     inputs: [],
     layers: [],
     resolution,
+    outputShaders: [],
     swapDurationMs: 500,
     swapOutgoingEnabled: true,
     swapFadeInDurationMs: 500,
@@ -99,6 +110,9 @@ export function createRoomStore(
         swapFadeOutDurationMs,
         newsStripEnabled,
       }));
+    },
+    setOutputShaders: (shaders: ShaderConfig[]) => {
+      set(() => ({ outputShaders: shaders }));
     },
     setInputFrozenImage: (inputId: string, imageId: string | null) => {
       set((state) => ({
@@ -160,6 +174,11 @@ export function useInputs() {
 export function useLayers() {
   const store = useContext(StoreContext);
   return useStore(store, (state) => state.layers);
+}
+
+export function useOutputShaders() {
+  const store = useContext(StoreContext);
+  return useStore(store, (state) => state.outputShaders);
 }
 
 export const StoreContext =

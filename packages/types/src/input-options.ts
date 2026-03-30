@@ -2,40 +2,47 @@ import type {
   InputDisplayProperties,
   TextInputProperties,
   AbsolutePositionProperties,
+  CropProperties,
   BorderProperties,
   SnakeGameDisplayProperties,
-} from './input.js';
+  InputOrientation,
+} from "./input.js";
 
 export type UpdateInputOptions = {
+  title: string;
   attachedInputIds: string[];
   activeTransition: {
     type: string;
     durationMs: number;
-    direction: 'in' | 'out';
+    direction: "in" | "out";
   };
+  orientation: InputOrientation;
 } & InputDisplayProperties &
   TextInputProperties &
   AbsolutePositionProperties &
+  CropProperties &
   BorderProperties &
   SnakeGameDisplayProperties;
 
 export type RegisterInputOptions =
-  | { type: 'twitch-channel'; channelId: string }
-  | { type: 'kick-channel'; channelId: string }
-  | { type: 'whip'; username: string }
-  | { type: 'local-mp4'; source: { fileName?: string; url?: string } }
-  | { type: 'image'; fileName?: string; imageId?: string }
+  | { type: "twitch-channel"; channelId: string }
+  | { type: "kick-channel"; channelId: string }
+  | { type: "hls"; url: string }
+  | { type: "whip"; username: string }
+  | { type: "local-mp4"; source: { fileName?: string; url?: string } }
+  | { type: "image"; fileName?: string; imageId?: string }
   | {
-      type: 'text-input';
+      type: "text-input";
       text: string;
-      textAlign?: 'left' | 'center' | 'right';
+      textAlign?: "left" | "center" | "right";
       textColor?: string;
       textMaxLines?: number;
       textScrollSpeed?: number;
       textScrollLoop?: boolean;
       textFontSize?: number;
     }
-  | { type: 'game'; title?: string };
+  | { type: "game"; title?: string }
+  | { type: "hands"; sourceInputId: string };
 
 export type PendingWhipInputData = {
   id: string;

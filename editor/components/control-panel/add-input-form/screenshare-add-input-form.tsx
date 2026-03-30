@@ -8,7 +8,7 @@ import {
   saveLastWhipInputId,
 } from '../whip-input/utils/whip-storage';
 import { startScreensharePublish } from '../whip-input/utils/screenshare-publisher';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
 import type React from 'react';
 
 export function ScreenshareAddInputForm(props: {

@@ -9,6 +9,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import type { ShaderConfig } from '@/lib/types';
 import type { SavedItemInfo } from '@/lib/storage-client';
 import { useActions } from '../contexts/actions-context';
@@ -136,7 +137,10 @@ export function SaveShaderPresetModal({
         {mode === 'choose' ? (
           <div className='flex flex-col gap-2'>
             {existingPreset && (
-              <button onClick={() => setMode('update')} className={btnBase}>
+              <Button
+                variant='ghost'
+                onClick={() => setMode('update')}
+                className={btnBase}>
                 <Pencil className='w-5 h-5 text-neutral-400 shrink-0' />
                 <div className='flex flex-col min-w-0'>
                   <span className='text-sm font-medium text-white'>
@@ -146,9 +150,12 @@ export function SaveShaderPresetModal({
                     Overwrite the existing preset
                   </span>
                 </div>
-              </button>
+              </Button>
             )}
-            <button onClick={handleSaveLocal} className={btnBase}>
+            <Button
+              variant='ghost'
+              onClick={handleSaveLocal}
+              className={btnBase}>
               <HardDrive className='w-5 h-5 text-neutral-400 shrink-0' />
               <div className='flex flex-col min-w-0'>
                 <span className='text-sm font-medium text-white'>
@@ -158,8 +165,11 @@ export function SaveShaderPresetModal({
                   Download as JSON file
                 </span>
               </div>
-            </button>
-            <button onClick={() => setMode('remote')} className={btnBase}>
+            </Button>
+            <Button
+              variant='ghost'
+              onClick={() => setMode('remote')}
+              className={btnBase}>
               <Cloud className='w-5 h-5 text-neutral-400 shrink-0' />
               <div className='flex flex-col min-w-0'>
                 <span className='text-sm font-medium text-white'>
@@ -169,20 +179,22 @@ export function SaveShaderPresetModal({
                   Store on server for later use
                 </span>
               </div>
-            </button>
+            </Button>
           </div>
         ) : (
           <div className='flex flex-col gap-3'>
-            <button
+            <Button
+              variant='ghost'
+              size='sm'
               onClick={() => {
                 setMode('choose');
                 setError(null);
               }}
-              className='flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-300 transition-colors self-start cursor-pointer'>
+              className='flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-300 self-start cursor-pointer'>
               <ArrowLeft className='w-3 h-3' />
               Back
-            </button>
-            <input
+            </Button>
+            <Input
               ref={inputRef}
               type='text'
               placeholder='Preset name...'
@@ -367,7 +379,7 @@ export function LoadShaderPresetModal({
           </DialogDescription>
         </DialogHeader>
 
-        <input
+        <Input
           ref={fileInputRef}
           type='file'
           accept='.json'
@@ -377,7 +389,10 @@ export function LoadShaderPresetModal({
 
         {mode === 'choose' ? (
           <div className='flex flex-col gap-2'>
-            <button onClick={handleLoadLocal} className={btnBase}>
+            <Button
+              variant='ghost'
+              onClick={handleLoadLocal}
+              className={btnBase}>
               <HardDrive className='w-5 h-5 text-neutral-400 shrink-0' />
               <div className='flex flex-col min-w-0'>
                 <span className='text-sm font-medium text-white'>
@@ -387,8 +402,11 @@ export function LoadShaderPresetModal({
                   Import from a JSON file
                 </span>
               </div>
-            </button>
-            <button onClick={handleGoToRemote} className={btnBase}>
+            </Button>
+            <Button
+              variant='ghost'
+              onClick={handleGoToRemote}
+              className={btnBase}>
               <Cloud className='w-5 h-5 text-neutral-400 shrink-0' />
               <div className='flex flex-col min-w-0'>
                 <span className='text-sm font-medium text-white'>
@@ -398,20 +416,25 @@ export function LoadShaderPresetModal({
                   Browse saved presets
                 </span>
               </div>
-            </button>
+            </Button>
           </div>
         ) : mode === 'apply' ? (
           <div className='flex flex-col gap-2'>
-            <button
+            <Button
+              variant='ghost'
+              size='sm'
               onClick={() => {
                 setPendingShaders(null);
                 setMode('choose');
               }}
-              className='flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-300 transition-colors self-start cursor-pointer'>
+              className='flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-300 self-start cursor-pointer'>
               <ArrowLeft className='w-3 h-3' />
               Back
-            </button>
-            <button onClick={() => handleApply('replace')} className={btnBase}>
+            </Button>
+            <Button
+              variant='ghost'
+              onClick={() => handleApply('replace')}
+              className={btnBase}>
               <Replace className='w-5 h-5 text-neutral-400 shrink-0' />
               <div className='flex flex-col min-w-0'>
                 <span className='text-sm font-medium text-white'>
@@ -421,8 +444,11 @@ export function LoadShaderPresetModal({
                   Remove current shaders and apply preset
                 </span>
               </div>
-            </button>
-            <button onClick={() => handleApply('append')} className={btnBase}>
+            </Button>
+            <Button
+              variant='ghost'
+              onClick={() => handleApply('append')}
+              className={btnBase}>
               <ListPlus className='w-5 h-5 text-neutral-400 shrink-0' />
               <div className='flex flex-col min-w-0'>
                 <span className='text-sm font-medium text-white'>
@@ -432,19 +458,21 @@ export function LoadShaderPresetModal({
                   Keep current shaders and add preset shaders
                 </span>
               </div>
-            </button>
+            </Button>
           </div>
         ) : (
           <div className='flex flex-col gap-3'>
-            <button
+            <Button
+              variant='ghost'
+              size='sm'
               onClick={() => {
                 setMode('choose');
                 setError(null);
               }}
-              className='flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-300 transition-colors self-start cursor-pointer'>
+              className='flex items-center gap-1.5 text-xs text-neutral-500 hover:text-neutral-300 self-start cursor-pointer'>
               <ArrowLeft className='w-3 h-3' />
               Back
-            </button>
+            </Button>
 
             {error && <p className='text-xs text-red-400'>{error}</p>}
 
@@ -473,10 +501,11 @@ export function LoadShaderPresetModal({
                   Built-in
                 </div>
                 {SNAKE_SHADER_PRESETS.map((preset) => (
-                  <button
+                  <Button
                     key={preset.name}
+                    variant='ghost'
                     onClick={() => handleLoadBuiltIn(preset.shaders)}
-                    className='flex items-center gap-3 w-full px-3 py-2.5 rounded-md border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 hover:border-neutral-600 transition-all cursor-pointer text-left'>
+                    className='flex items-center gap-3 w-full px-3 py-2.5 h-auto rounded-md border border-neutral-800 bg-neutral-900 hover:bg-neutral-800 hover:border-neutral-600 cursor-pointer text-left'>
                     <FileJson className='w-4 h-4 text-neutral-500 shrink-0' />
                     <div className='flex flex-col min-w-0 flex-1'>
                       <span className='text-sm font-medium text-white truncate'>
@@ -486,7 +515,7 @@ export function LoadShaderPresetModal({
                         Built-in preset
                       </span>
                     </div>
-                  </button>
+                  </Button>
                 ))}
 
                 {items.length === 0 &&

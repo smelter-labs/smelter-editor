@@ -9,6 +9,11 @@ import type {
   TimelineKeyframeInterpolationMode,
 } from '@smelter-editor/types';
 import {
+  OUTPUT_TRACK_INPUT_ID,
+  OUTPUT_TRACK_ID,
+  OUTPUT_CLIP_ID,
+} from '@smelter-editor/types';
+import {
   loadTimeline,
   saveTimeline,
   type StoredTrack,
@@ -33,6 +38,8 @@ export type Track = {
 
 export type BlockSettings = TimelineBlockSettings & {
   mp4DurationMs?: number;
+  sourceWidth?: number;
+  sourceHeight?: number;
 };
 
 export type Keyframe = SharedTimelineKeyframe & {
@@ -159,6 +166,7 @@ export const MIN_CLIP_MS = 1000;
 export const MIN_SEGMENT_MS = MIN_CLIP_MS;
 
 export { DEFAULT_DURATION_MS, DEFAULT_PPS, MIN_PPS, MAX_PPS };
+export { OUTPUT_TRACK_INPUT_ID, OUTPUT_TRACK_ID, OUTPUT_CLIP_ID };
 
 // ── Helpers ──────────────────────────────────────────────
 
@@ -245,7 +253,7 @@ function syncClipKeyframes(clip: Clip): Clip {
   };
 }
 
-function resolveClipBlockSettingsAtOffset(
+export function resolveClipBlockSettingsAtOffset(
   clip: Pick<Clip, 'blockSettings' | 'keyframes'>,
   offsetMs: number,
 ): BlockSettings {
@@ -273,7 +281,6 @@ export function createBlockSettingsFromInput(input?: Input): BlockSettings {
       ...shader,
       params: (shader.params || []).map((param) => ({ ...param })),
     })),
-    orientation: input?.orientation ?? 'horizontal',
     text: input?.text,
     textAlign: input?.textAlign,
     textColor: input?.textColor,
@@ -305,13 +312,19 @@ export function createBlockSettingsFromInput(input?: Input): BlockSettings {
           params: (s.params || []).map((p) => ({ ...p })),
         }))
       : undefined,
-    absolutePosition: input?.absolutePosition,
+    absolutePosition: input?.absolutePosition ?? true,
     absoluteTop: input?.absoluteTop,
     absoluteLeft: input?.absoluteLeft,
     absoluteWidth: input?.absoluteWidth,
     absoluteHeight: input?.absoluteHeight,
     absoluteTransitionDurationMs: input?.absoluteTransitionDurationMs,
     absoluteTransitionEasing: input?.absoluteTransitionEasing,
+    cropTop: input?.cropTop,
+    cropLeft: input?.cropLeft,
+    cropRight: input?.cropRight,
+    cropBottom: input?.cropBottom,
+    sourceWidth: input?.sourceWidth,
+    sourceHeight: input?.sourceHeight,
   };
 }
 
@@ -370,6 +383,7 @@ function storedTracksToTracks(storedTracks: StoredTrack[]): Track[] {
 function inferTypeFromInputId(inputId: string): string | null {
   if (inputId.includes('::twitch::')) return 'twitch-channel';
   if (inputId.includes('::kick::')) return 'kick-channel';
+  if (inputId.includes('::hls::')) return 'hls';
   if (inputId.includes('::whip::')) return 'whip';
   if (inputId.includes('::local::')) return 'local-mp4';
   if (inputId.includes('::image::')) return 'image';
@@ -408,6 +422,55 @@ function makeFullClip(
     blockSettings,
     keyframes: createInitialKeyframes(blockSettings),
   };
+}
+
+function makeOutputTrack(totalDurationMs: number): Track {
+  const blockSettings: BlockSettings = {
+    volume: 1,
+    showTitle: false,
+    shaders: [],
+  };
+  return {
+    id: OUTPUT_TRACK_ID,
+    label: 'Main Video',
+    clips: [
+      {
+        id: OUTPUT_CLIP_ID,
+        inputId: OUTPUT_TRACK_INPUT_ID,
+        startMs: 0,
+        endMs: totalDurationMs,
+        blockSettings,
+        keyframes: createInitialKeyframes(blockSettings),
+      },
+    ],
+  };
+}
+
+function ensureOutputTrack(tracks: Track[], totalDurationMs: number): Track[] {
+  const existing = tracks.find((t) => t.id === OUTPUT_TRACK_ID);
+  if (existing) {
+    const clip = existing.clips.find((c) => c.id === OUTPUT_CLIP_ID);
+    if (clip && clip.endMs !== totalDurationMs) {
+      return tracks.map((t) =>
+        t.id === OUTPUT_TRACK_ID
+          ? {
+              ...t,
+              clips: t.clips.map((c) =>
+                c.id === OUTPUT_CLIP_ID
+                  ? syncClipKeyframes({
+                      ...c,
+                      startMs: 0,
+                      endMs: totalDurationMs,
+                    })
+                  : c,
+              ),
+            }
+          : t,
+      );
+    }
+    return tracks;
+  }
+  return [...tracks, makeOutputTrack(totalDurationMs)];
 }
 
 function createInitialState(): TimelineState {
@@ -480,7 +543,10 @@ export function timelineReducer(
   switch (action.type) {
     case 'SYNC_TRACKS': {
       if (action.inputs.length === 0) {
-        return { ...state, tracks: [] };
+        return {
+          ...state,
+          tracks: ensureOutputTrack([], state.totalDurationMs),
+        };
       }
 
       const currentInputIds = new Set(action.inputs.map((i) => i.inputId));
@@ -495,13 +561,14 @@ export function timelineReducer(
       }
 
       // Find disconnected inputIds (referenced in clips but missing from
-      // the current inputs list, excluding pending-whip placeholders).
+      // the current inputs list, excluding pending-whip placeholders and the output track).
       const disconnectedInputIds = new Set<string>();
       for (const track of state.tracks) {
         for (const clip of track.clips) {
           if (
             !currentInputIds.has(clip.inputId) &&
-            !clip.inputId.startsWith('__pending-whip-')
+            !clip.inputId.startsWith('__pending-whip-') &&
+            clip.inputId !== OUTPUT_TRACK_INPUT_ID
           ) {
             disconnectedInputIds.add(clip.inputId);
           }
@@ -550,9 +617,10 @@ export function timelineReducer(
         }
       }
       let nextTrackNumber = newTracks.length + 1;
+      const brandNewTracks: Track[] = [];
       for (const input of action.inputs) {
         if (!nowCoveredInputIds.has(input.inputId)) {
-          newTracks.push({
+          brandNewTracks.push({
             id: genId(),
             label: `Track ${nextTrackNumber}`,
             clips: [makeFullClip(input.inputId, state.totalDurationMs, input)],
@@ -561,7 +629,13 @@ export function timelineReducer(
         }
       }
 
-      return { ...state, tracks: newTracks };
+      return {
+        ...state,
+        tracks: ensureOutputTrack(
+          [...brandNewTracks, ...newTracks],
+          state.totalDurationMs,
+        ),
+      };
     }
 
     case 'SET_PLAYHEAD':
@@ -580,7 +654,10 @@ export function timelineReducer(
       const durationMs = Math.max(10_000, action.durationMs);
       return {
         ...state,
-        tracks: normalizeTracks(state.tracks, [], durationMs),
+        tracks: ensureOutputTrack(
+          normalizeTracks(state.tracks, [], durationMs),
+          durationMs,
+        ),
         totalDurationMs: durationMs,
         playheadMs: Math.min(state.playheadMs, durationMs),
       };
@@ -597,13 +674,14 @@ export function timelineReducer(
       }));
       return {
         ...state,
-        tracks,
+        tracks: ensureOutputTrack(tracks, state.totalDurationMs),
         playheadMs: 0,
         isPlaying: false,
       };
     }
 
     case 'MOVE_CLIP': {
+      if (action.clipId === OUTPUT_CLIP_ID) return state;
       const track = state.tracks.find((t) => t.id === action.trackId);
       if (!track) return state;
       const clipIdx = track.clips.findIndex((c) => c.id === action.clipId);
@@ -651,6 +729,7 @@ export function timelineReducer(
     }
 
     case 'RESIZE_CLIP': {
+      if (action.clipId === OUTPUT_CLIP_ID) return state;
       const track = state.tracks.find((t) => t.id === action.trackId);
       if (!track) return state;
       const clipIdx = track.clips.findIndex((c) => c.id === action.clipId);
@@ -704,6 +783,7 @@ export function timelineReducer(
     }
 
     case 'SPLIT_CLIP': {
+      if (action.clipId === OUTPUT_CLIP_ID) return state;
       const track = state.tracks.find((t) => t.id === action.trackId);
       if (!track) return state;
       const clipIdx = track.clips.findIndex((c) => c.id === action.clipId);
@@ -767,6 +847,7 @@ export function timelineReducer(
     }
 
     case 'DELETE_CLIP': {
+      if (action.clipId === OUTPUT_CLIP_ID) return state;
       const track = state.tracks.find((t) => t.id === action.trackId);
       if (!track) return state;
       const newClips = track.clips.filter((c) => c.id !== action.clipId);
@@ -779,6 +860,7 @@ export function timelineReducer(
     }
 
     case 'DUPLICATE_CLIP': {
+      if (action.clipId === OUTPUT_CLIP_ID) return state;
       const track = state.tracks.find((t) => t.id === action.trackId);
       if (!track) return state;
       const clip = track.clips.find((c) => c.id === action.clipId);
@@ -810,6 +892,12 @@ export function timelineReducer(
     }
 
     case 'MOVE_CLIP_TO_TRACK': {
+      if (
+        action.clipId === OUTPUT_CLIP_ID ||
+        action.sourceTrackId === OUTPUT_TRACK_ID ||
+        action.targetTrackId === OUTPUT_TRACK_ID
+      )
+        return state;
       const sourceTrack = state.tracks.find(
         (t) => t.id === action.sourceTrackId,
       );
@@ -867,6 +955,7 @@ export function timelineReducer(
     }
 
     case 'RENAME_TRACK': {
+      if (action.trackId === OUTPUT_TRACK_ID) return state;
       return {
         ...state,
         tracks: state.tracks.map((t) =>
@@ -884,11 +973,12 @@ export function timelineReducer(
       };
       return {
         ...state,
-        tracks: [...state.tracks, newTrack],
+        tracks: [newTrack, ...state.tracks],
       };
     }
 
     case 'DELETE_TRACK': {
+      if (action.trackId === OUTPUT_TRACK_ID) return state;
       return {
         ...state,
         tracks: state.tracks.filter((t) => t.id !== action.trackId),
@@ -915,6 +1005,12 @@ export function timelineReducer(
         const clip = track?.clips.find((c) => c.id === action.clipId);
         targetInputId = clip?.inputId;
       }
+
+      const hasCropInPatch =
+        'cropTop' in action.patch ||
+        'cropLeft' in action.patch ||
+        'cropRight' in action.patch ||
+        'cropBottom' in action.patch;
 
       return {
         ...state,
@@ -960,14 +1056,33 @@ export function timelineReducer(
                   endMs = clip.startMs + maxDuration;
                 }
               }
-              const nextKeyframes = clip.keyframes.map((keyframe) =>
-                keyframe.timeMs === 0
+              const cropPatch =
+                hasCropInPatch && isTarget
                   ? {
-                      ...keyframe,
-                      blockSettings: cloneBlockSettings(merged),
+                      cropTop: merged.cropTop,
+                      cropLeft: merged.cropLeft,
+                      cropRight: merged.cropRight,
+                      cropBottom: merged.cropBottom,
                     }
-                  : cloneKeyframe(keyframe),
-              );
+                  : null;
+              const nextKeyframes = clip.keyframes.map((keyframe) => {
+                if (keyframe.timeMs === 0) {
+                  return {
+                    ...keyframe,
+                    blockSettings: cloneBlockSettings(merged),
+                  };
+                }
+                if (cropPatch) {
+                  return {
+                    ...cloneKeyframe(keyframe),
+                    blockSettings: {
+                      ...cloneBlockSettings(keyframe.blockSettings),
+                      ...cropPatch,
+                    },
+                  };
+                }
+                return cloneKeyframe(keyframe);
+              });
               return syncClipKeyframes({
                 ...clip,
                 endMs,
@@ -994,9 +1109,16 @@ export function timelineReducer(
                 0,
                 Math.min(Math.round(action.timeMs), durationMs),
               );
-              const blockSettings =
+              const resolved =
                 action.blockSettings ??
                 resolveClipBlockSettingsAtOffset(clip, timeMs);
+              const blockSettings = cloneBlockSettings({
+                ...resolved,
+                cropTop: clip.blockSettings.cropTop,
+                cropLeft: clip.blockSettings.cropLeft,
+                cropRight: clip.blockSettings.cropRight,
+                cropBottom: clip.blockSettings.cropBottom,
+              });
               return syncClipKeyframes({
                 ...clip,
                 keyframes: [
@@ -1004,7 +1126,7 @@ export function timelineReducer(
                   {
                     id: genId(),
                     timeMs,
-                    blockSettings: cloneBlockSettings(blockSettings),
+                    blockSettings,
                   },
                 ],
               });
@@ -1015,6 +1137,12 @@ export function timelineReducer(
     }
 
     case 'UPDATE_KEYFRAME': {
+      const hasCropInKfPatch =
+        'cropTop' in action.patch ||
+        'cropLeft' in action.patch ||
+        'cropRight' in action.patch ||
+        'cropBottom' in action.patch;
+
       return {
         ...state,
         tracks: state.tracks.map((track) => {
@@ -1023,18 +1151,54 @@ export function timelineReducer(
             ...track,
             clips: track.clips.map((clip) => {
               if (clip.id !== action.clipId) return clip;
-              const keyframes = clip.keyframes.map((keyframe) =>
-                keyframe.id === action.keyframeId
-                  ? {
-                      ...cloneKeyframe(keyframe),
-                      blockSettings: {
-                        ...cloneBlockSettings(keyframe.blockSettings),
-                        ...action.patch,
-                      },
-                    }
-                  : cloneKeyframe(keyframe),
+
+              const targetKf = clip.keyframes.find(
+                (kf) => kf.id === action.keyframeId,
               );
-              return syncClipKeyframes({ ...clip, keyframes });
+              const mergedTarget = targetKf
+                ? {
+                    ...cloneBlockSettings(targetKf.blockSettings),
+                    ...action.patch,
+                  }
+                : null;
+
+              const cropPatch =
+                hasCropInKfPatch && mergedTarget
+                  ? {
+                      cropTop: mergedTarget.cropTop,
+                      cropLeft: mergedTarget.cropLeft,
+                      cropRight: mergedTarget.cropRight,
+                      cropBottom: mergedTarget.cropBottom,
+                    }
+                  : null;
+
+              const keyframes = clip.keyframes.map((keyframe) => {
+                if (keyframe.id === action.keyframeId) {
+                  return {
+                    ...cloneKeyframe(keyframe),
+                    blockSettings: {
+                      ...cloneBlockSettings(keyframe.blockSettings),
+                      ...action.patch,
+                    },
+                  };
+                }
+                if (cropPatch) {
+                  return {
+                    ...cloneKeyframe(keyframe),
+                    blockSettings: {
+                      ...cloneBlockSettings(keyframe.blockSettings),
+                      ...cropPatch,
+                    },
+                  };
+                }
+                return cloneKeyframe(keyframe);
+              });
+
+              const blockSettings = cropPatch
+                ? { ...clip.blockSettings, ...cropPatch }
+                : clip.blockSettings;
+
+              return syncClipKeyframes({ ...clip, blockSettings, keyframes });
             }),
           };
         }),
@@ -1108,7 +1272,9 @@ export function timelineReducer(
     case 'MOVE_CLIPS': {
       let newTotalDuration = state.totalDurationMs;
       const moveLookup = new Map(
-        action.moves.map((m) => [`${m.trackId}:${m.clipId}`, m.newStartMs]),
+        action.moves
+          .filter((m) => m.clipId !== OUTPUT_CLIP_ID)
+          .map((m) => [`${m.trackId}:${m.clipId}`, m.newStartMs]),
       );
       const newTracks = state.tracks.map((track) => {
         const newClips = track.clips.map((clip) => {
@@ -1130,7 +1296,9 @@ export function timelineReducer(
 
     case 'DELETE_CLIPS': {
       const deleteSet = new Set(
-        action.clips.map((c) => `${c.trackId}:${c.clipId}`),
+        action.clips
+          .filter((c) => c.clipId !== OUTPUT_CLIP_ID)
+          .map((c) => `${c.trackId}:${c.clipId}`),
       );
       const newTracks = state.tracks.map((track) => ({
         ...track,
@@ -1140,18 +1308,25 @@ export function timelineReducer(
     }
 
     case 'PURGE_INPUT_ID': {
+      if (action.inputId === OUTPUT_TRACK_INPUT_ID) return state;
       const newTracks = state.tracks
         .map((track) => ({
           ...track,
           clips: track.clips.filter((c) => c.inputId !== action.inputId),
         }))
-        .filter((track) => track.clips.length > 0);
+        .filter(
+          (track) => track.clips.length > 0 || track.id === OUTPUT_TRACK_ID,
+        );
       return { ...state, tracks: newTracks };
     }
 
     case 'LOAD':
       return {
         ...action.state,
+        tracks: ensureOutputTrack(
+          action.state.tracks,
+          action.state.totalDurationMs,
+        ),
         keyframeInterpolationMode:
           action.state.keyframeInterpolationMode ?? 'step',
       };
@@ -1274,9 +1449,8 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     } else {
       initial = createInitialState();
     }
-    initial.tracks = normalizeTracks(
-      initial.tracks,
-      inputs,
+    initial.tracks = ensureOutputTrack(
+      normalizeTracks(initial.tracks, inputs, initial.totalDurationMs),
       initial.totalDurationMs,
     );
     return {

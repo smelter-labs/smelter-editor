@@ -10,6 +10,7 @@ import {
   FolderOpen,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   LAYOUT_PRESETS,
   type PanelDefinition,
@@ -194,13 +195,15 @@ export default function LayoutToolbar({
                     const def = getPanelDefinition(panelId);
                     const isVisible = visiblePanels.has(panelId);
                     return (
-                      <button
+                      <Button
+                        variant='ghost'
+                        size='sm'
                         type='button'
                         key={panelId}
                         onClick={() => onTogglePanel(panelId)}
                         role='menuitemcheckbox'
                         aria-checked={isVisible}
-                        className='flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left hover:bg-neutral-800 transition-colors cursor-pointer'>
+                        className='justify-start gap-2 w-full h-auto px-3 py-1.5 rounded-none text-xs text-left hover:bg-neutral-800 cursor-pointer'>
                         <span
                           className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center shrink-0 ${
                             isVisible
@@ -229,7 +232,7 @@ export default function LayoutToolbar({
                           }>
                           {def.title}
                         </span>
-                      </button>
+                      </Button>
                     );
                   })}
                 </div>
@@ -257,7 +260,7 @@ export default function LayoutToolbar({
         onSaveLocal={handleSaveLocal}
         onSaveRemote={handleSaveRemote}
       />
-      <input
+      <Input
         ref={fileInputRef}
         type='file'
         accept='.json,application/json'

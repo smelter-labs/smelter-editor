@@ -32,11 +32,22 @@ import {
   restoreTimelineToStorage,
   computeTimelineStateAtZero,
   buildInputUpdateFromBlockSettings,
+  saveOutputPlayerSettings,
 } from '@/lib/room-config';
 import { setPendingWhipInputs as setPendingWhipInputsAction } from '@/app/actions/actions';
 import { Upload, FolderDown, LogIn, UserPlus, Eye, Trash2 } from 'lucide-react';
 import RecordingsList from '@/components/recordings-list';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+  SelectGroup,
+  SelectLabel,
+} from '@/components/ui/select';
 import { LoadConfigModal } from '@/components/control-panel/components/ConfigModals';
 import { ActionsProvider } from '@/components/control-panel/contexts/actions-context';
 import { defaultActions } from '@/components/control-panel/contexts/default-actions';
@@ -290,19 +301,33 @@ export default function IntroView() {
           configIndexToInputId.set(configIndex, inputId);
         }
 
+        const pendingWhipInputs: PendingWhipInputData[] = [];
+        for (let i = 0; i < config.inputs.length; i++) {
+          const inputConfig = config.inputs[i];
+          if (inputConfig.type === 'whip') {
+            pendingWhipInputs.push({
+              id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              title: inputConfig.title,
+              volume: inputConfig.volume,
+              showTitle: inputConfig.showTitle !== false,
+              shaders: inputConfig.shaders || [],
+              position: i,
+            });
+            configIndexToInputId.set(i, `__pending-whip-${i}__`);
+          }
+        }
+
         for (const { inputId, configIndex } of createdInputIds) {
           const inputConfig = config.inputs[configIndex];
           const attachedInputIds = inputConfig.attachedInputIndices
             ?.map((idx) => configIndexToInputId.get(idx))
             .filter((id): id is string => !!id);
-
           try {
             await updateInput(roomId, inputId, {
               volume: inputConfig.volume,
               shaders: inputConfig.shaders,
               showTitle: inputConfig.showTitle,
               textColor: inputConfig.textColor,
-              orientation: inputConfig.orientation,
               textMaxLines: inputConfig.textMaxLines,
               textScrollSpeed: inputConfig.textScrollSpeed,
               textScrollLoop: inputConfig.textScrollLoop,
@@ -326,6 +351,10 @@ export default function IntroView() {
               absoluteTransitionDurationMs:
                 inputConfig.absoluteTransitionDurationMs,
               absoluteTransitionEasing: inputConfig.absoluteTransitionEasing,
+              cropTop: inputConfig.cropTop,
+              cropLeft: inputConfig.cropLeft,
+              cropRight: inputConfig.cropRight,
+              cropBottom: inputConfig.cropBottom,
               attachedInputIds:
                 attachedInputIds && attachedInputIds.length > 0
                   ? attachedInputIds
@@ -333,24 +362,6 @@ export default function IntroView() {
             });
           } catch (err) {
             console.warn(`Failed to update input ${inputId}:`, err);
-          }
-        }
-
-        const pendingWhipInputs: PendingWhipInputData[] = [];
-        for (let i = 0; i < config.inputs.length; i++) {
-          const inputConfig = config.inputs[i];
-          if (inputConfig.type === 'whip') {
-            pendingWhipInputs.push({
-              id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              title: inputConfig.title,
-              volume: inputConfig.volume,
-              showTitle: inputConfig.showTitle !== false,
-              shaders: inputConfig.shaders || [],
-              orientation: (inputConfig.orientation || 'horizontal') as
-                | 'horizontal'
-                | 'vertical',
-              position: i,
-            });
           }
         }
 
@@ -433,6 +444,10 @@ export default function IntroView() {
           toast.success('Room created from configuration');
         }
 
+        if (config.outputPlayer) {
+          saveOutputPlayerSettings(roomId, config.outputPlayer);
+        }
+
         router.push(getRoomRoute(roomId));
       } catch (err: any) {
         console.error('Import failed:', err);
@@ -493,7 +508,7 @@ export default function IntroView() {
               <label className='text-xs text-neutral-400 text-left'>
                 Display Name
               </label>
-              <input
+              <Input
                 type='text'
                 value={displayName}
                 onChange={(e) => handleSetDisplayName(e.target.value)}
@@ -506,38 +521,44 @@ export default function IntroView() {
               <label className='text-xs text-neutral-400 text-left'>
                 Output Resolution
               </label>
-              <select
+              <Select
                 value={selectedResolution}
-                onChange={(e) =>
-                  setSelectedResolution(e.target.value as ResolutionPreset)
+                onValueChange={(v) =>
+                  setSelectedResolution(v as ResolutionPreset)
                 }
-                className='w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-white text-sm focus:outline-none focus:border-neutral-500'
                 disabled={loadingNew || loadingImport}>
-                <optgroup label='Landscape'>
-                  {Object.entries(RESOLUTION_PRESETS)
-                    .filter(([key]) => !key.includes('vertical'))
-                    .map(([key, { width, height }]) => (
-                      <option key={key} value={key}>
-                        {key.toUpperCase()} ({width}×{height})
-                      </option>
-                    ))}
-                </optgroup>
-                <optgroup label='Portrait'>
-                  {Object.entries(RESOLUTION_PRESETS)
-                    .filter(([key]) => key.includes('vertical'))
-                    .map(([key, { width, height }]) => (
-                      <option key={key} value={key}>
-                        {key.replace('-vertical', '').toUpperCase()} Vertical (
-                        {width}×{height})
-                      </option>
-                    ))}
-                </optgroup>
-              </select>
+                <SelectTrigger className='w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-white text-sm focus:outline-none focus:border-neutral-500 h-auto'>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectGroup>
+                    <SelectLabel>Landscape</SelectLabel>
+                    {Object.entries(RESOLUTION_PRESETS)
+                      .filter(([key]) => !key.includes('vertical'))
+                      .map(([key, { width, height }]) => (
+                        <SelectItem key={key} value={key}>
+                          {key.toUpperCase()} ({width}×{height})
+                        </SelectItem>
+                      ))}
+                  </SelectGroup>
+                  <SelectGroup>
+                    <SelectLabel>Portrait</SelectLabel>
+                    {Object.entries(RESOLUTION_PRESETS)
+                      .filter(([key]) => key.includes('vertical'))
+                      .map(([key, { width, height }]) => (
+                        <SelectItem key={key} value={key}>
+                          {key.replace('-vertical', '').toUpperCase()} Vertical
+                          ({width}×{height})
+                        </SelectItem>
+                      ))}
+                  </SelectGroup>
+                </SelectContent>
+              </Select>
             </div>
             <Button
               size='lg'
               variant='default'
-              className='text-black font-medium w-full bg-white border-0 hover:bg-neutral-200 cursor-pointer'
+              className='w-full cursor-pointer'
               onClick={() => handleCreateRoom()}
               disabled={loadingNew || loadingImport}>
               Let&apos;s go!
@@ -545,8 +566,8 @@ export default function IntroView() {
             </Button>
             <Button
               size='lg'
-              variant='default'
-              className='font-medium w-full bg-neutral-800 hover:bg-neutral-700 text-white cursor-pointer'
+              variant='outline'
+              className='w-full cursor-pointer'
               onClick={() => setShowLoadModal(true)}
               disabled={loadingNew || loadingImport}>
               {loadingImport ? (
@@ -561,7 +582,7 @@ export default function IntroView() {
                 </>
               )}
             </Button>
-            <input
+            <Input
               ref={fileInputRef}
               type='file'
               accept='.json,application/json'
@@ -582,8 +603,8 @@ export default function IntroView() {
             </ActionsProvider>
             <Button
               size='lg'
-              variant='default'
-              className='font-medium w-full bg-neutral-800 hover:bg-neutral-700 text-white cursor-pointer'
+              variant='outline'
+              className='w-full cursor-pointer'
               onClick={() => setShowRecordings(true)}
               disabled={loadingNew || loadingImport}>
               <FolderDown className='w-4 h-4 mr-2' />
@@ -621,7 +642,7 @@ export default function IntroView() {
                         <Button
                           size='sm'
                           variant='default'
-                          className='bg-white text-black hover:bg-neutral-200 cursor-pointer flex-1 sm:flex-none'
+                          className='cursor-pointer flex-1 sm:flex-none'
                           title='Join'
                           onClick={() =>
                             router.push(getRoomRoute(room.roomId))
@@ -630,8 +651,8 @@ export default function IntroView() {
                         </Button>
                         <Button
                           size='sm'
-                          variant='default'
-                          className='bg-neutral-700 text-white hover:bg-neutral-600 cursor-pointer flex-1 sm:flex-none'
+                          variant='outline'
+                          className='cursor-pointer flex-1 sm:flex-none'
                           title='Join as Guest'
                           onClick={() =>
                             router.push(
@@ -642,8 +663,8 @@ export default function IntroView() {
                         </Button>
                         <Button
                           size='sm'
-                          variant='default'
-                          className='bg-neutral-800 text-neutral-300 hover:bg-neutral-700 cursor-pointer flex-1 sm:flex-none'
+                          variant='secondary'
+                          className='cursor-pointer flex-1 sm:flex-none'
                           title='Spectate'
                           onClick={() =>
                             window.open(
@@ -655,8 +676,8 @@ export default function IntroView() {
                         </Button>
                         <Button
                           size='sm'
-                          variant='default'
-                          className='bg-red-900/50 text-red-400 hover:bg-red-900 cursor-pointer flex-1 sm:flex-none'
+                          variant='destructive'
+                          className='cursor-pointer flex-1 sm:flex-none'
                           title='Delete Room'
                           onClick={async () => {
                             try {

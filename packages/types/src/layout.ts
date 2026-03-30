@@ -1,11 +1,13 @@
 // ── Object fit ────────────────────────────────────────────────────────────────
 
-export type ObjectFit = 'fill' | 'cover' | 'contain';
+import { CropProperties } from "./index.js";
+
+export type ObjectFit = "fill" | "cover" | "contain";
 
 // ── Layer behavior configs (discriminated union) ─────────────────────────────
 
 export type EqualGridConfig = {
-  type: 'equal-grid';
+  type: "equal-grid";
   /** When true (default), grid auto-expands/contracts based on input count. */
   autoscale?: boolean;
   /** Fixed row count (used when autoscale is false). */
@@ -23,7 +25,7 @@ export type EqualGridConfig = {
 };
 
 export type PreserveApproximateAspectGridConfig = {
-  type: 'approximate-aspect-grid';
+  type: "approximate-aspect-grid";
   /** Whether to resolve tile collisions. Default true. */
   resolveCollisions?: boolean;
   /** Horizontal spacing between tiles in pixels. Default 0. */
@@ -33,7 +35,7 @@ export type PreserveApproximateAspectGridConfig = {
 };
 
 export type PreserveExactAspectGridConfig = {
-  type: 'exact-aspect-grid';
+  type: "exact-aspect-grid";
   /** Horizontal spacing between tiles in pixels. Default 0. */
   horizontalSpacing?: number;
   /** Vertical spacing between tiles in pixels. Default 0. */
@@ -41,7 +43,7 @@ export type PreserveExactAspectGridConfig = {
 };
 
 export type PictureInPictureConfig = {
-  type: 'picture-in-picture';
+  type: "picture-in-picture";
   /** Horizontal spacing between tiles in pixels. Default 0. */
   horizontalSpacing?: number;
   /** Vertical spacing between tiles in pixels. Default 0. */
@@ -74,7 +76,7 @@ export type LayerInput = {
   height: number;
   transitionDurationMs?: number;
   transitionEasing?: string;
-};
+} & Partial<CropProperties>;
 
 export type Layer = {
   id: string;
@@ -87,21 +89,21 @@ export type Layer = {
 
 /** @deprecated Use LayerBehaviorConfig instead. Will be removed in a future version. */
 export const Layouts = [
-  'grid',
-  'primary-on-left',
-  'primary-on-top',
-  'picture-in-picture',
-  'wrapped',
-  'wrapped-static',
-  'picture-on-picture',
+  "grid",
+  "primary-on-left",
+  "primary-on-top",
+  "picture-in-picture",
+  "wrapped",
+  "wrapped-static",
+  "picture-on-picture",
 ] as const;
 
 /** @deprecated Use LayerBehaviorConfig instead. Will be removed in a future version. */
 export type Layout =
-  | 'grid'
-  | 'primary-on-left'
-  | 'primary-on-top'
-  | 'picture-in-picture'
-  | 'wrapped'
-  | 'wrapped-static'
-  | 'picture-on-picture';
+  | "grid"
+  | "primary-on-left"
+  | "primary-on-top"
+  | "picture-in-picture"
+  | "wrapped"
+  | "wrapped-static"
+  | "picture-on-picture";

@@ -2,7 +2,7 @@ import type { Input, InputSuggestions } from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
 import { useCallback, useEffect, useState } from 'react';
 import { GenericAddInputForm } from './generic-add-input-form';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
 
 // --- AddInputForm for Twitch ---
 export default function TwitchAddInputForm({

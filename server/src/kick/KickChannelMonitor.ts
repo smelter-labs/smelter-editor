@@ -116,6 +116,7 @@ async function getKickTopStreams(
     displayName: stream.stream_title,
     title: stream.stream_title,
     category: stream.category.name,
+    thumbnailUrl: stream.thumbnail || undefined,
   }));
 }
 

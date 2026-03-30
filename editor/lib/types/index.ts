@@ -17,12 +17,7 @@ export type {
   BehaviorInputInfo,
 } from './layout';
 
-export type {
-  InputOrientation,
-  Input,
-  RegisterInputOptions,
-  UpdateInputOptions,
-} from './input';
+export type { Input, RegisterInputOptions, UpdateInputOptions } from './input';
 
 export type {
   PendingWhipInputData,

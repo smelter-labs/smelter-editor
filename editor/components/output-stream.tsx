@@ -1,8 +1,9 @@
 'use client';
 
-import { RefObject, useEffect, useState } from 'react';
+import { RefObject, useEffect, useRef, useState } from 'react';
 
 import { useIsMobileDevice } from '@/hooks/use-mobile';
+import { Button } from '@/components/ui/button';
 import {
   Play as PlayIcon,
   Pause as PauseIcon,
@@ -13,6 +14,11 @@ import {
 } from 'lucide-react';
 import { buildIceServers } from '@/lib/webrtc';
 import { formatMs } from '@/lib/format-utils';
+import { Slider } from '@/components/ui/slider';
+import {
+  loadOutputPlayerSettings,
+  saveOutputPlayerSettings,
+} from '@/lib/room-config';
 
 function LoadingSpinner() {
   return (
@@ -36,22 +42,28 @@ export default function OutputStream({
   whepUrl,
   videoRef,
   resolution,
+  roomId,
 }: {
   whepUrl: string;
   videoRef: RefObject<HTMLVideoElement | null>;
   resolution?: OutputResolution;
+  roomId?: string;
 }) {
   const aspectRatio = resolution
     ? `${resolution.width}/${resolution.height}`
     : '16/9';
   const isVertical = resolution ? resolution.height > resolution.width : false;
   const [playing, setPlaying] = useState(false);
-  const [muted, setMuted] = useState(true);
-  const [volume, setVolume] = useState(1);
+
+  const persisted = roomId ? loadOutputPlayerSettings(roomId) : null;
+  const [muted, setMuted] = useState(persisted?.muted ?? true);
+  const [volume, setVolume] = useState(persisted?.volume ?? 1);
+
   const [current, setCurrent] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [videoLoaded, setVideoLoaded] = useState(false);
   const isMobile = useIsMobileDevice();
+  const roomIdRef = useRef(roomId);
 
   useEffect(() => {
     let cancelled = false;
@@ -101,6 +113,17 @@ export default function OutputStream({
     if (!vid) return;
     vid.muted = muted;
   }, [muted, videoRef]);
+
+  useEffect(() => {
+    roomIdRef.current = roomId;
+  }, [roomId]);
+
+  useEffect(() => {
+    const rid = roomIdRef.current;
+    if (rid) {
+      saveOutputPlayerSettings(rid, { muted, volume });
+    }
+  }, [muted, volume]);
 
   useEffect(() => {
     const vid = videoRef.current;
@@ -258,14 +281,13 @@ export default function OutputStream({
 
   const controlBar =
     'absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-black/20 flex items-center px-4 py-3 gap-3 z-10';
-  const button =
-    'group hover:bg-white/10 p-2 rounded-none transition cursor-pointer text-white outline-none';
+  const button = 'p-2 rounded-none cursor-pointer text-white';
   const slider =
     'h-1.5 rounded-none bg-gray-300 dark:bg-neutral-800 appearance-none transition w-full accent-neutral-400';
 
   return (
     <div
-      className='relative bg-black rounded-none overflow-hidden border-[#2a2a2a] border-4'
+      className='relative bg-black rounded-none overflow-hidden'
       style={{
         aspectRatio,
         maxWidth: '100%',
@@ -298,7 +320,9 @@ export default function OutputStream({
           className={controlBar + ' flex-row justify-between'}
           style={{ userSelect: 'none' }}>
           <div className='flex items-center gap-3'>
-            <button
+            <Button
+              variant='ghost'
+              size='icon'
               className={button}
               onClick={handlePlayPause}
               aria-label={playing ? 'Pause' : 'Play'}>
@@ -307,14 +331,16 @@ export default function OutputStream({
               ) : (
                 <PlayIcon className='w-6 h-6' />
               )}
-            </button>
+            </Button>
 
             <span className='text-xs text-white w-12 text-right tabular-nums font-mono mr-1'>
               {formatTime(current)}
             </span>
           </div>
           <div className='flex items-center gap-2 ml-auto'>
-            <button
+            <Button
+              variant='ghost'
+              size='icon'
               className={button + ' ml-2'}
               onClick={handleMuteToggle}
               aria-label={muted ? 'Unmute' : 'Mute'}>
@@ -323,21 +349,22 @@ export default function OutputStream({
               ) : (
                 <VolumeIcon className='w-5 h-5' />
               )}
-            </button>
-            <input
-              type='range'
+            </Button>
+            <Slider
               min={0}
               max={1}
               step={0.01}
-              value={muted ? 0 : volume}
-              onChange={(e) => handleVolumeChange(Number(e.target.value))}
+              value={[muted ? 0 : volume]}
+              onValueChange={(v) => handleVolumeChange(v[0])}
               className={slider + ' w-24'}
               aria-label='Volume'
               disabled={muted}
               style={{ marginLeft: 2, marginRight: 8, width: '120px' }}
             />
 
-            <button
+            <Button
+              variant='ghost'
+              size='icon'
               className={button}
               onClick={handleFullscreen}
               aria-label={isFullscreen ? 'Minimize video' : 'Fullscreen video'}>
@@ -346,7 +373,7 @@ export default function OutputStream({
               ) : (
                 <FullscreenIcon className='w-5 h-5' />
               )}
-            </button>
+            </Button>
           </div>
         </div>
       )}

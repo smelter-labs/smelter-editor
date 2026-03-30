@@ -1,8 +1,9 @@
 import type { Input } from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
 import { useState } from 'react';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Input as ShadcnInput } from '@/components/ui/input';
 import LoadingSpinner from '@/components/ui/spinner';
 
 export function SnakeGameAddInputForm({
@@ -36,7 +37,7 @@ export function SnakeGameAddInputForm({
 
   return (
     <form onSubmit={handleSubmit} className='flex flex-col gap-3'>
-      <input
+      <ShadcnInput
         type='text'
         value={title}
         onChange={(e) => setTitle(e.target.value)}

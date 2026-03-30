@@ -612,18 +612,8 @@ export function LayersSection({
                                       ? input.inputId === guestInputId
                                       : true
                                   }
-                                  canMoveUp={isGuest ? false : inputIndex > 0}
-                                  canMoveDown={
-                                    isGuest
-                                      ? false
-                                      : inputIndex < visibleInputs.length - 1
-                                  }
                                   pcRef={cameraPcRef}
                                   streamRef={cameraStreamRef}
-                                  isLocalWhipInput={
-                                    input.inputId === activeCameraInputId ||
-                                    input.inputId === activeScreenshareInputId
-                                  }
                                   isFxOpen={openFxInputId === input.inputId}
                                   onToggleFx={() => onToggleFx(input.inputId)}
                                   onWhipDisconnectedOrRemoved={
@@ -632,7 +622,6 @@ export function LayersSection({
                                   showGrip={isGuest ? false : true}
                                   isSelected={selectedInputId === input.inputId}
                                   index={inputIndex}
-                                  allInputs={inputs}
                                   readOnly={
                                     isGuest && input.inputId !== guestInputId
                                   }
@@ -649,8 +638,6 @@ export function LayersSection({
                                       roomId={roomId}
                                       availableShaders={availableShaders}
                                       canRemove={false}
-                                      canMoveUp={false}
-                                      canMoveDown={false}
                                       pcRef={cameraPcRef}
                                       streamRef={cameraStreamRef}
                                       isFxOpen={openFxInputId === child.inputId}
@@ -664,7 +651,6 @@ export function LayersSection({
                                       isSelected={
                                         selectedInputId === child.inputId
                                       }
-                                      allInputs={inputs}
                                       readOnly={
                                         isGuest &&
                                         child.inputId !== guestInputId

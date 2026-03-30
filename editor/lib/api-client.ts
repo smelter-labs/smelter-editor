@@ -60,6 +60,8 @@ export interface SmelterApiClient {
     textAlign?: 'left' | 'center' | 'right',
   ): Promise<any>;
   addSnakeGameInput(roomId: string, title?: string): Promise<any>;
+  addHandsInput(roomId: string, sourceInputId: string): Promise<any>;
+  addHlsInput(roomId: string, url: string): Promise<any>;
   addCameraInput(roomId: string, username?: string): Promise<AddInputResponse>;
 
   removeInput(roomId: string, inputId: string, sourceId?: string): Promise<any>;
@@ -101,6 +103,8 @@ export interface SmelterApiClient {
     enabled: boolean,
   ): Promise<void>;
 
+  setAudioAnalysisEnabled(roomId: string, enabled: boolean): Promise<void>;
+
   restartMp4Input(
     roomId: string,
     inputId: string,
@@ -118,6 +122,7 @@ export interface SmelterApiClient {
   configStorage: StorageClient<object>;
   shaderPresetStorage: StorageClient<ShaderConfig[]>;
   dashboardLayoutStorage: StorageClient<object>;
+  hlsStreamStorage: StorageClient<{ url: string }>;
 
   pauseTimeline(
     roomId: string,
@@ -298,6 +303,20 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       });
     },
 
+    async addHandsInput(roomId, sourceInputId) {
+      return await req('post', `/room/${enc(roomId)}/input`, {
+        type: 'hands',
+        sourceInputId,
+      });
+    },
+
+    async addHlsInput(roomId, url) {
+      return await req('post', `/room/${enc(roomId)}/input`, {
+        type: 'hls',
+        url,
+      });
+    },
+
     async addCameraInput(roomId, username) {
       const response = await req('post', `/room/${enc(roomId)}/input`, {
         type: 'whip',
@@ -394,6 +413,10 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       );
     },
 
+    async setAudioAnalysisEnabled(roomId, enabled) {
+      await req('post', `/room/${enc(roomId)}/audio-analysis`, { enabled });
+    },
+
     async restartMp4Input(roomId, inputId, playFromMs, loop) {
       await req(
         'post',
@@ -450,6 +473,12 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       '/dashboard-layouts',
       'layout',
       'layouts',
+    ),
+    hlsStreamStorage: createStorageClient<{ url: string }>(
+      req,
+      '/hls-streams',
+      'stream',
+      'streams',
     ),
 
     async pauseTimeline(roomId) {

@@ -5,9 +5,12 @@ import {
   parseRoomConfig,
   resolveRoomConfigTimelineState,
   restoreTimelineToStorage,
+  saveOutputPlayerSettings,
+  loadOutputPlayerSettings,
   type RoomConfigTransitionSettings,
   type RoomConfigTimeline,
   type RoomConfigTimelineState,
+  type RoomConfigOutputPlayer,
 } from '../room-config';
 import type { Input, Layout } from '@/lib/types';
 
@@ -58,7 +61,6 @@ const minimalInput: Input = {
   sourceState: 'always-live',
   status: 'connected',
   shaders: [],
-  orientation: 'horizontal',
 };
 
 describe('parseRoomConfig', () => {
@@ -147,6 +149,24 @@ describe('exportRoomConfig', () => {
     expect(config.transitionSettings).toEqual(transitionSettings);
   });
 
+  it('includes outputPlayer when provided', () => {
+    const outputPlayer: RoomConfigOutputPlayer = { muted: false, volume: 0.75 };
+    const config = exportRoomConfig(
+      [minimalInput],
+      'grid',
+      undefined,
+      undefined,
+      undefined,
+      outputPlayer,
+    );
+    expect(config.outputPlayer).toEqual({ muted: false, volume: 0.75 });
+  });
+
+  it('omits outputPlayer when not provided', () => {
+    const config = exportRoomConfig([minimalInput], 'grid');
+    expect(config.outputPlayer).toBeUndefined();
+  });
+
   it('extracts mp4 file name from title for local-mp4', () => {
     const mp4Input: Input = {
       ...minimalInput,
@@ -176,7 +196,7 @@ describe('exportRoomConfig', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-                orientation: 'horizontal',
+
                 text: 'initial',
               },
               keyframes: [
@@ -187,7 +207,7 @@ describe('exportRoomConfig', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                    orientation: 'horizontal',
+
                     text: 'initial',
                   },
                 },
@@ -198,7 +218,7 @@ describe('exportRoomConfig', () => {
                     volume: 0.5,
                     showTitle: false,
                     shaders: [],
-                    orientation: 'horizontal',
+
                     text: 'updated',
                   },
                 },
@@ -236,7 +256,7 @@ describe('exportRoomConfig', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-                orientation: 'horizontal',
+
                 text: 'initial',
               },
               keyframes: [
@@ -247,7 +267,7 @@ describe('exportRoomConfig', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                    orientation: 'horizontal',
+
                     text: 'initial',
                   },
                 },
@@ -258,7 +278,7 @@ describe('exportRoomConfig', () => {
                     volume: 0.5,
                     showTitle: false,
                     shaders: [],
-                    orientation: 'horizontal',
+
                     text: 'updated',
                   },
                 },
@@ -289,7 +309,7 @@ describe('timeline config persistence helpers', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-                orientation: 'horizontal',
+
                 text: 'intro',
               },
               keyframes: [
@@ -300,7 +320,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                    orientation: 'horizontal',
+
                     text: 'intro',
                   },
                 },
@@ -311,7 +331,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 0.2,
                     showTitle: false,
                     shaders: [],
-                    orientation: 'horizontal',
+
                     text: 'middle',
                   },
                 },
@@ -346,7 +366,7 @@ describe('timeline config persistence helpers', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-                orientation: 'horizontal',
+
                 text: 'intro',
               },
               keyframes: [
@@ -357,7 +377,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                    orientation: 'horizontal',
+
                     text: 'intro',
                   },
                 },
@@ -368,7 +388,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 0.2,
                     showTitle: false,
                     shaders: [],
-                    orientation: 'horizontal',
+
                     text: 'middle',
                   },
                 },
@@ -397,7 +417,7 @@ describe('timeline config persistence helpers', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-                orientation: 'horizontal',
+
                 text: 'stale',
               },
               keyframes: [
@@ -408,7 +428,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                    orientation: 'horizontal',
+
                     text: 'stale',
                   },
                 },
@@ -439,7 +459,7 @@ describe('timeline config persistence helpers', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-                orientation: 'horizontal',
+
                 text: 'fresh',
               },
               keyframes: [
@@ -450,7 +470,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                    orientation: 'horizontal',
+
                     text: 'fresh',
                   },
                 },
@@ -467,5 +487,30 @@ describe('timeline config persistence helpers', () => {
     expect(resolveRoomConfigTimelineState('room-2', liveTimelineState)).toBe(
       liveTimelineState,
     );
+  });
+});
+
+describe('output player settings persistence', () => {
+  it('saves and loads output player settings', () => {
+    saveOutputPlayerSettings('room-a', { muted: false, volume: 0.5 });
+    const loaded = loadOutputPlayerSettings('room-a');
+    expect(loaded).toEqual({ muted: false, volume: 0.5 });
+  });
+
+  it('returns null when no settings are stored', () => {
+    expect(loadOutputPlayerSettings('room-nonexistent')).toBeNull();
+  });
+
+  it('stores settings per room independently', () => {
+    saveOutputPlayerSettings('room-x', { muted: true, volume: 0 });
+    saveOutputPlayerSettings('room-y', { muted: false, volume: 1 });
+    expect(loadOutputPlayerSettings('room-x')).toEqual({
+      muted: true,
+      volume: 0,
+    });
+    expect(loadOutputPlayerSettings('room-y')).toEqual({
+      muted: false,
+      volume: 1,
+    });
   });
 });

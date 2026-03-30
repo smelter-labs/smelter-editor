@@ -19,6 +19,9 @@ import { RecordingController } from './RecordingController';
 import { MotionController } from './MotionController';
 import { SnakeGameController } from './SnakeGameController';
 import { PlaceholderManager } from './PlaceholderManager';
+import { AudioController } from '../audio/AudioController';
+import type { AudioStoreState } from '../audio/audioStore';
+import type { StoreApi } from 'zustand';
 import type {
   RoomInputState,
   RegisterInputOptions,
@@ -26,6 +29,7 @@ import type {
 } from './types';
 
 const RESUME_FROZEN_IMAGE_CLEANUP_DELAY_MS = 5500;
+const FROZEN_IMAGE_UNREGISTER_GRACE_MS = 500;
 
 function cloneLayers(layers: Layer[]): Layer[] {
   if (typeof structuredClone === 'function') {
@@ -43,6 +47,7 @@ export class RoomState {
   private readonly motionController: MotionController;
   private readonly snakeGameController: SnakeGameController;
   private readonly placeholderManager: PlaceholderManager;
+  private readonly audioController: AudioController;
 
   private stateChangeListeners = new Set<() => void>();
 
@@ -54,6 +59,10 @@ export class RoomState {
   private frozenImageCleanupTimers = new Map<
     string,
     ReturnType<typeof setTimeout>
+  >();
+  private pendingImageUnregisters = new Map<
+    string,
+    { timer: ReturnType<typeof setTimeout>; jpegPath: string }
   >();
 
   private layers: Layer[] = [
@@ -89,6 +98,7 @@ export class RoomState {
     initInputs: RegisterInputOptions[],
     skipDefaultInputs: boolean = false,
     roomName?: RoomNameEntry,
+    audioStore?: StoreApi<AudioStoreState>,
   ) {
     this.idPrefix = idPrefix;
     this.output = output;
@@ -105,6 +115,7 @@ export class RoomState {
     this.motionController = new MotionController(idPrefix, () =>
       this.inputManager.getInputs(),
     );
+    this.audioController = new AudioController(idPrefix, output, audioStore);
     this.inputManager = new InputManager(
       idPrefix,
       this.placeholderManager,
@@ -295,7 +306,9 @@ export class RoomState {
   // ── Input operations (mutex-wrapped delegation) ───────────
 
   public async addNewInput(opts: RegisterInputOptions) {
-    return this.mutex.runExclusive(() => this.inputManager.addNewInput(opts));
+    return this.mutex.runExclusive(async () => {
+      return await this.inputManager.addNewInput(opts);
+    });
   }
 
   public async removeInput(inputId: string): Promise<void> {
@@ -408,6 +421,28 @@ export class RoomState {
     return this.motionController.addMotionScoreListener(listener);
   }
 
+  // ── Audio analysis (delegated) ──────────────────────────────
+
+  public async setAudioAnalysisEnabled(enabled: boolean): Promise<void> {
+    return this.mutex.runExclusive(async () => {
+      await this.audioController.setAudioAnalysisEnabled(enabled);
+    });
+  }
+
+  public isAudioAnalysisEnabled(): boolean {
+    return this.audioController.isEnabled();
+  }
+
+  public getAudioStore() {
+    return this.audioController.audioStore;
+  }
+
+  public addAudioLevelListener(
+    listener: (levels: number[]) => void,
+  ): () => void {
+    return this.audioController.addAudioLevelListener(listener);
+  }
+
   // ── Snake game (delegated) ────────────────────────────────
 
   public updateSnakeGameState(
@@ -435,6 +470,14 @@ export class RoomState {
     return this.timelinePlayer?.getIsPaused() === true;
   }
 
+  public setOutputShaders(shaders: import('../types').ShaderConfig[]): void {
+    this.output.store.getState().setOutputShaders(shaders);
+  }
+
+  public getOutputShaders(): import('../types').ShaderConfig[] {
+    return this.output.store.getState().outputShaders;
+  }
+
   private buildTimelineAdapter(): TimelineRoomStateAdapter {
     return {
       getInputs: () => this.getInputs(),
@@ -446,6 +489,11 @@ export class RoomState {
       restartMp4Input: (inputId, playFromMs, loop) =>
         this.restartMp4Input(inputId, playFromMs, loop),
       reorderInputs: (order) => this.reorderInputs(order),
+      updateOutputShaders: (shaders) => {
+        this.setOutputShaders(shaders);
+        return Promise.resolve();
+      },
+      getOutputShaders: () => this.getOutputShaders(),
     };
   }
 
@@ -498,7 +546,7 @@ export class RoomState {
     const activeClips =
       await this.timelinePlayer.applyStaticSnapshot(playheadMs);
 
-    await this.cleanupFrozenImages();
+    this.cleanupFrozenImages();
 
     const inputs = this.inputManager.getInputs();
     for (const [inputId, clip] of activeClips) {
@@ -524,7 +572,7 @@ export class RoomState {
           assetType: 'jpeg',
         });
 
-        await this.setFrozenImage(inputId, frozenId, jpegPath);
+        this.setFrozenImage(inputId, frozenId, jpegPath);
         logTimelineEvent(
           this.idPrefix,
           `MP4 FROZEN (scrub) ${input.metadata.title} at ${Math.round(framePositionMs)}ms`,
@@ -540,7 +588,7 @@ export class RoomState {
 
   public async stopTimelinePlayback(): Promise<void> {
     if (!this.timelinePlayer) return;
-    await this.cleanupFrozenImages();
+    this.cleanupFrozenImages();
     await this.timelinePlayer.stop();
     this.timelinePlayer.destroy();
     this.timelinePlayer = null;
@@ -584,7 +632,7 @@ export class RoomState {
           assetType: 'jpeg',
         });
 
-        await this.setFrozenImage(inputId, frozenId, jpegPath);
+        this.setFrozenImage(inputId, frozenId, jpegPath);
         logTimelineEvent(
           this.idPrefix,
           `MP4 FROZEN (pause) ${input.metadata.title} at ${Math.round(framePositionMs)}ms`,
@@ -620,7 +668,7 @@ export class RoomState {
     const inactiveFrozenInputIds = [...this.frozenImages.keys()].filter(
       (inputId) => !activeFrozenInputIds.has(inputId),
     );
-    await this.cleanupFrozenImages(inactiveFrozenInputIds);
+    this.cleanupFrozenImages(inactiveFrozenInputIds);
 
     const inputs = this.inputManager.getInputs();
     for (const inputId of activeFrozenInputIds) {
@@ -706,16 +754,16 @@ export class RoomState {
     this.clearFrozenImageCleanupTimer(inputId);
     const timer = setTimeout(() => {
       this.frozenImageCleanupTimers.delete(inputId);
-      void this.cleanupFrozenImages([inputId]);
+      void this.mutex.runExclusive(() => this.cleanupFrozenImages([inputId]));
     }, delayMs);
     this.frozenImageCleanupTimers.set(inputId, timer);
   }
 
-  private async setFrozenImage(
+  private setFrozenImage(
     inputId: string,
     imageId: string,
     jpegPath: string,
-  ): Promise<void> {
+  ): void {
     const previous = this.frozenImages.get(inputId);
     this.clearFrozenImageCleanupTimer(inputId);
 
@@ -724,24 +772,10 @@ export class RoomState {
 
     if (!previous) return;
 
-    try {
-      await SmelterInstance.unregisterImage(previous.imageId);
-    } catch (err) {
-      console.error(
-        `Failed to unregister replaced frozen image ${previous.imageId}`,
-        err,
-      );
-    }
-    try {
-      await remove(previous.jpegPath);
-    } catch {
-      // best-effort cleanup
-    }
+    this.deferredUnregisterImage(previous.imageId, previous.jpegPath);
   }
 
-  private async cleanupFrozenImages(
-    inputIds?: Iterable<string>,
-  ): Promise<void> {
+  private cleanupFrozenImages(inputIds?: Iterable<string>): void {
     const targets = inputIds
       ? [...new Set(inputIds)]
           .map((inputId) => {
@@ -766,10 +800,34 @@ export class RoomState {
       this.clearFrozenImageCleanupTimer(inputId);
       this.output.store.getState().setInputFrozenImage(inputId, null);
       this.frozenImages.delete(inputId);
+      this.deferredUnregisterImage(imageId, jpegPath);
+    }
+  }
+
+  private deferredUnregisterImage(imageId: string, jpegPath: string): void {
+    const existing = this.pendingImageUnregisters.get(imageId);
+    if (existing) clearTimeout(existing.timer);
+
+    const timer = setTimeout(() => {
+      this.pendingImageUnregisters.delete(imageId);
+      SmelterInstance.unregisterImage(imageId).catch((err) => {
+        console.error(`Failed to unregister frozen image ${imageId}`, err);
+      });
+      remove(jpegPath).catch(() => {});
+    }, FROZEN_IMAGE_UNREGISTER_GRACE_MS);
+    this.pendingImageUnregisters.set(imageId, { timer, jpegPath });
+  }
+
+  private async flushPendingImageUnregisters(): Promise<void> {
+    for (const [imageId, { timer, jpegPath }] of this.pendingImageUnregisters) {
+      clearTimeout(timer);
       try {
         await SmelterInstance.unregisterImage(imageId);
       } catch (err) {
-        console.error(`Failed to unregister frozen image ${imageId}`, err);
+        console.error(
+          `Failed to flush-unregister frozen image ${imageId}`,
+          err,
+        );
       }
       try {
         await remove(jpegPath);
@@ -777,6 +835,7 @@ export class RoomState {
         // best-effort cleanup
       }
     }
+    this.pendingImageUnregisters.clear();
   }
 
   // ── Room lifecycle ────────────────────────────────────────
@@ -790,9 +849,11 @@ export class RoomState {
         this.timelinePlayer = null;
       }
 
-      await this.cleanupFrozenImages();
+      this.cleanupFrozenImages();
+      await this.flushPendingImageUnregisters();
 
       await this.motionController.stopAll();
+      await this.audioController.stopAll();
       await this.inputManager.destroyAll();
 
       try {
@@ -829,7 +890,9 @@ export class RoomState {
       showTitle: input.showTitle,
       volume: input.volume,
       shaders: input.shaders,
-      orientation: input.orientation,
+      sourceWidth: input.type === 'local-mp4' ? input.mp4VideoWidth : undefined,
+      sourceHeight:
+        input.type === 'local-mp4' ? input.mp4VideoHeight : undefined,
       borderColor: input.borderColor,
       borderWidth: input.borderWidth,
       imageId: input.type === 'image' ? input.imageId : undefined,
@@ -851,6 +914,9 @@ export class RoomState {
         input.type === 'game' ? input.snakeEventShaders : undefined,
       snake1Shaders: input.type === 'game' ? input.snake1Shaders : undefined,
       snake2Shaders: input.type === 'game' ? input.snake2Shaders : undefined,
+      handsSourceInputId:
+        input.type === 'hands' ? input.sourceInputId : undefined,
+      handsStore: input.type === 'hands' ? input.handsStore : undefined,
       absolutePosition: input.absolutePosition,
       absoluteTop: input.absoluteTop,
       absoluteLeft: input.absoluteLeft,
@@ -858,6 +924,10 @@ export class RoomState {
       absoluteHeight: input.absoluteHeight,
       absoluteTransitionDurationMs: input.absoluteTransitionDurationMs,
       absoluteTransitionEasing: input.absoluteTransitionEasing,
+      cropTop: input.cropTop,
+      cropLeft: input.cropLeft,
+      cropRight: input.cropRight,
+      cropBottom: input.cropBottom,
       activeTransition: input.activeTransition,
       restartFading: input.restartFading,
       frozenImageId: this.frozenImages.get(input.inputId)?.imageId,
@@ -886,8 +956,8 @@ export class RoomState {
         const config = toInputConfig(input);
         if (input.attachedInputIds && input.attachedInputIds.length > 0) {
           config.attachedInputs = input.attachedInputIds
-            .map((id) => connectedMap.get(id))
-            .filter((i): i is RoomInputState => !!i)
+            .map((id: string) => connectedMap.get(id))
+            .filter((i: any): i is RoomInputState => !!i)
             .map(toInputConfig);
         }
         return config;

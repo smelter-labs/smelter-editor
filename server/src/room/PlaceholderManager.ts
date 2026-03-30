@@ -2,7 +2,8 @@ import path from 'node:path';
 import { pathExists } from 'fs-extra';
 import { SmelterInstance } from '../smelter';
 import type { ShaderConfig } from '../types';
-import type { RoomInputState, InputOrientation } from './types';
+import type { RoomInputState } from './types';
+import { InputOrientation } from '@smelter-editor/types';
 
 export const PLACEHOLDER_LOGO_FILE = 'logo_Smelter.png';
 

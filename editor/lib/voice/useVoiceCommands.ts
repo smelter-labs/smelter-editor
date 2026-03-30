@@ -12,10 +12,7 @@ import {
   type MacroExecutionCallbacks,
 } from './macroExecutor';
 import type { MacroDefinition } from './macroTypes';
-import {
-  useAutoPlayMacroSetting,
-  setDefaultOrientationSetting,
-} from './macroSettings';
+import { useAutoPlayMacroSetting } from './macroSettings';
 import { emitActionFeedback } from './feedbackEvents';
 
 export type UseVoiceCommandsOptions = {
@@ -460,29 +457,6 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
         type: 'toggle',
         label: 'News Strip Fade During Swap',
         value: command.enabled,
-      });
-      break;
-    case 'SET_ORIENTATION':
-      window.dispatchEvent(
-        new CustomEvent('smelter:voice:set-orientation', {
-          detail: {
-            orientation: command.orientation,
-            inputIndex: command.inputIndex,
-          },
-        }),
-      );
-      emitActionFeedback({
-        type: 'select',
-        label: 'Orientation',
-        value: command.orientation ?? 'toggle',
-      });
-      break;
-    case 'SET_DEFAULT_ORIENTATION':
-      setDefaultOrientationSetting(command.orientation);
-      emitActionFeedback({
-        type: 'select',
-        label: 'Default Orientation',
-        value: command.orientation,
       });
       break;
   }

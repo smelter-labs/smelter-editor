@@ -10,6 +10,7 @@ import {
   type Resolution,
   type ResolutionPreset,
 } from '../../types';
+import { Type } from '@sinclair/typebox';
 import {
   RoomIdParamsSchema,
   CreateRoomSchema,
@@ -85,6 +86,7 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
         newsStripEnabled: snapshot.newsStripEnabled,
         isRecording: room.hasActiveRecording(),
         isFrozen: room.isFrozen(),
+        audioAnalysisEnabled: room.isAudioAnalysisEnabled(),
       });
     },
   );
@@ -116,6 +118,7 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
           swapFadeOutDurationMs: snapshot.swapFadeOutDurationMs,
           newsStripEnabled: snapshot.newsStripEnabled,
           isRecording: room.hasActiveRecording(),
+          audioAnalysisEnabled: room.isAudioAnalysisEnabled(),
         };
       })
       .filter(Boolean);
@@ -196,6 +199,25 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
       const { roomId } = req.params;
       const room = state.getRoom(roomId);
       room.pendingWhipInputs = req.body.pendingWhipInputs;
+      res.status(200).send({ status: 'ok' });
+    },
+  );
+
+  const AudioAnalysisSchema = Type.Object({
+    enabled: Type.Boolean(),
+  });
+
+  routes.post<RoomIdParams & { Body: Static<typeof AudioAnalysisSchema> }>(
+    '/room/:roomId/audio-analysis',
+    { schema: { params: RoomIdParamsSchema, body: AudioAnalysisSchema } },
+    async (req, res) => {
+      const { roomId } = req.params;
+      console.log('[request] Toggle audio analysis', {
+        roomId,
+        enabled: req.body.enabled,
+      });
+      const room = state.getRoom(roomId);
+      await room.setAudioAnalysisEnabled(req.body.enabled);
       res.status(200).send({ status: 'ok' });
     },
   );

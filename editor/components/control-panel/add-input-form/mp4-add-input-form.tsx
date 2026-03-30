@@ -2,7 +2,7 @@ import type { Input, MP4Suggestions } from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
 import { useEffect, useState } from 'react';
 import { GenericAddInputForm } from './generic-add-input-form';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
 
 export function Mp4AddInputForm({
   inputs,

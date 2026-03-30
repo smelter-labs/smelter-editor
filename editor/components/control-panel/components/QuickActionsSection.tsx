@@ -31,8 +31,8 @@ export function QuickActionsSection() {
       {/* Add logos */}
       <Button
         size='lg'
-        variant='default'
-        className='bg-neutral-800 hover:bg-neutral-700 text-white font-medium cursor-pointer px-4 py-0 h-[48px] sm:h-[52px] text-sm sm:text-base sm:px-7 transition-all'
+        variant='outline'
+        className='cursor-pointer px-4 py-0 h-[48px] sm:h-[52px] sm:px-7'
         disabled={loadingActions.addLogos}
         onClick={async () => {
           setLoadingActions((prev) => ({ ...prev, addLogos: true }));
@@ -70,8 +70,8 @@ export function QuickActionsSection() {
       {/* Add wrapped team MP4s */}
       <Button
         size='lg'
-        variant='default'
-        className='bg-neutral-800 hover:bg-neutral-700 text-white font-medium cursor-pointer px-4 py-0 h-[48px] sm:h-[52px] text-sm sm:text-base sm:px-7 transition-all'
+        variant='outline'
+        className='cursor-pointer px-4 py-0 h-[48px] sm:h-[52px] sm:px-7'
         disabled={loadingActions.addTeam}
         onClick={async () => {
           setLoadingActions((prev) => ({ ...prev, addTeam: true }));
@@ -107,8 +107,8 @@ export function QuickActionsSection() {
       {/* Soft clear: hide all inputs and show Smelter logo */}
       <Button
         size='lg'
-        variant='default'
-        className='bg-neutral-800 hover:bg-neutral-700 text-white font-medium cursor-pointer px-4 py-0 h-[48px] sm:h-[52px] text-sm sm:text-base sm:px-7 transition-all'
+        variant='outline'
+        className='cursor-pointer px-4 py-0 h-[48px] sm:h-[52px] sm:px-7'
         disabled={loadingActions.removeAll}
         onClick={async () => {
           setLoadingActions((prev) => ({ ...prev, removeAll: true }));

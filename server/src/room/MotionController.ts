@@ -1,4 +1,6 @@
 import { MotionManager } from '../motion/MotionManager';
+import type { StoreApi } from 'zustand';
+import type { HandsStore } from '../hands/handStore';
 import type { RoomInputState } from './types';
 
 const VIDEO_INPUT_TYPES: RoomInputState['type'][] = [
@@ -68,6 +70,17 @@ export class MotionController {
       input.motionScore = undefined;
       this.emitMotionScores();
     }
+  }
+
+  async startHandTracking(
+    sourceInputId: string,
+    handsStore: StoreApi<HandsStore>,
+  ): Promise<void> {
+    await this.motionManager.startHandTracking(sourceInputId, handsStore);
+  }
+
+  stopHandTracking(sourceInputId: string): void {
+    this.motionManager.stopHandTracking(sourceInputId);
   }
 
   async stopAll(): Promise<void> {

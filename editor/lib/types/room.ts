@@ -28,6 +28,7 @@ export type RoomState = {
   pendingWhipInputs?: PendingWhipInputData[];
   isRecording?: boolean;
   isFrozen?: boolean;
+  audioAnalysisEnabled?: boolean;
 };
 
 export type AddInputResponse = {
@@ -41,6 +42,7 @@ export type ChannelSuggestion = {
   displayName: string;
   title: string;
   category: string;
+  thumbnailUrl?: string;
 };
 
 export type InputSuggestions = {

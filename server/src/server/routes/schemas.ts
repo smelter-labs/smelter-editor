@@ -25,6 +25,10 @@ export const InputSchema = Type.Union([
     channelId: Type.String(),
   }),
   Type.Object({
+    type: Type.Literal('hls'),
+    url: Type.String(),
+  }),
+  Type.Object({
     type: Type.Literal('whip'),
     username: Type.String(),
   }),
@@ -59,6 +63,10 @@ export const InputSchema = Type.Union([
   Type.Object({
     type: Type.Literal('game'),
     title: Type.Optional(Type.String()),
+  }),
+  Type.Object({
+    type: Type.Literal('hands'),
+    sourceInputId: Type.String(),
   }),
 ]);
 
@@ -159,10 +167,6 @@ export const PendingWhipInputSchema = Type.Object({
   volume: Type.Number(),
   showTitle: Type.Boolean(),
   shaders: Type.Array(Type.Any()),
-  orientation: Type.Union([
-    Type.Literal('horizontal'),
-    Type.Literal('vertical'),
-  ]),
   position: Type.Number(),
 });
 
@@ -172,6 +176,13 @@ export const SetPendingWhipInputsSchema = Type.Object({
 
 const SharedInputTextStyleProps = {
   text: Type.Optional(Type.String()),
+  textAlign: Type.Optional(
+    Type.Union([
+      Type.Literal('left'),
+      Type.Literal('center'),
+      Type.Literal('right'),
+    ]),
+  ),
   textColor: Type.Optional(Type.String()),
   textMaxLines: Type.Optional(Type.Number()),
   textScrollSpeed: Type.Optional(Type.Number()),
@@ -188,6 +199,23 @@ const SharedInputAbsolutePositionProps = {
   absoluteTop: Type.Optional(Type.Number()),
   absoluteLeft: Type.Optional(Type.Number()),
   absoluteTransitionEasing: Type.Optional(Type.String()),
+  absoluteWidth: Type.Optional(Type.Number()),
+  absoluteHeight: Type.Optional(Type.Number()),
+  absoluteTransitionDurationMs: Type.Optional(Type.Number()),
+  cropTop: Type.Optional(Type.Number({ minimum: 0 })),
+  cropLeft: Type.Optional(Type.Number({ minimum: 0 })),
+  cropRight: Type.Optional(Type.Number({ minimum: 0 })),
+  cropBottom: Type.Optional(Type.Number({ minimum: 0 })),
+};
+
+const SharedCommonConfigProps = {
+  borderWidth: Type.Optional(Type.Number({ minimum: 0 })),
+  gameCellGap: Type.Optional(Type.Number({ minimum: 0 })),
+  gameBoardBorderWidth: Type.Optional(Type.Number({ minimum: 0 })),
+  gameGridLineAlpha: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
+  snakeEventShaders: Type.Optional(Type.Any()),
+  snake1Shaders: Type.Optional(Type.Any()),
+  snake2Shaders: Type.Optional(Type.Any()),
 };
 
 export const UpdateInputSchema = Type.Object({
@@ -212,26 +240,10 @@ export const UpdateInputSchema = Type.Object({
     Type.Union([Type.Literal('horizontal'), Type.Literal('vertical')]),
   ),
   ...SharedInputTextStyleProps,
-  textAlign: Type.Optional(
-    Type.Union([
-      Type.Literal('left'),
-      Type.Literal('center'),
-      Type.Literal('right'),
-    ]),
-  ),
   textScrollNudge: Type.Optional(Type.Number()),
-  borderWidth: Type.Optional(Type.Number({ minimum: 0 })),
-  gameCellGap: Type.Optional(Type.Number({ minimum: 0 })),
-  gameBoardBorderWidth: Type.Optional(Type.Number({ minimum: 0 })),
-  gameGridLineAlpha: Type.Optional(Type.Number({ minimum: 0, maximum: 1 })),
-  snakeEventShaders: Type.Optional(Type.Any()),
-  snake1Shaders: Type.Optional(Type.Any()),
-  snake2Shaders: Type.Optional(Type.Any()),
+  ...SharedCommonConfigProps,
   attachedInputIds: Type.Optional(Type.Array(Type.String())),
   ...SharedInputAbsolutePositionProps,
-  absoluteWidth: Type.Optional(Type.Number({ minimum: 0 })),
-  absoluteHeight: Type.Optional(Type.Number({ minimum: 0 })),
-  absoluteTransitionDurationMs: Type.Optional(Type.Number({ minimum: 0 })),
   activeTransition: Type.Optional(ActiveTransitionSchema),
 });
 
@@ -277,20 +289,16 @@ const RoomConfigInputSchema = Type.Object({
   imageId: Type.Optional(Type.String()),
   mp4FileName: Type.Optional(Type.String()),
   ...SharedInputTextStyleProps,
-  textAlign: Type.Optional(Type.String()),
   orientation: Type.Optional(Type.String()),
-  borderWidth: Type.Optional(Type.Number()),
-  gameCellGap: Type.Optional(Type.Number()),
-  gameBoardBorderWidth: Type.Optional(Type.Number()),
-  gameGridLineAlpha: Type.Optional(Type.Number()),
-  snakeEventShaders: Type.Optional(Type.Record(Type.String(), Type.Any())),
-  snake1Shaders: Type.Optional(Type.Array(ShaderConfigSchema)),
-  snake2Shaders: Type.Optional(Type.Array(ShaderConfigSchema)),
+  textColor: Type.Optional(Type.String()),
+  textMaxLines: Type.Optional(Type.Number()),
+  textScrollSpeed: Type.Optional(Type.Number()),
+  textScrollLoop: Type.Optional(Type.Boolean()),
+  textFontSize: Type.Optional(Type.Number()),
+  borderColor: Type.Optional(Type.String()),
+  ...SharedCommonConfigProps,
   attachedInputIndices: Type.Optional(Type.Array(Type.Number())),
   ...SharedInputAbsolutePositionProps,
-  absoluteWidth: Type.Optional(Type.Number()),
-  absoluteHeight: Type.Optional(Type.Number()),
-  absoluteTransitionDurationMs: Type.Optional(Type.Number()),
 });
 
 export const RoomConfigSchema = Type.Object({
@@ -334,6 +342,12 @@ export const RoomConfigSchema = Type.Object({
           ),
         }),
       ),
+    }),
+  ),
+  outputPlayer: Type.Optional(
+    Type.Object({
+      muted: Type.Boolean(),
+      volume: Type.Number({ minimum: 0, maximum: 1 }),
     }),
   ),
 });

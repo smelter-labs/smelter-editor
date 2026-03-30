@@ -74,14 +74,16 @@ export function wrapWithShaders(
 
   const shaderParams: ShaderParamStructField[] = [];
 
-  if (shaderDef?.params && Array.isArray(shader.params)) {
+  if (shaderDef?.params) {
     for (const paramDef of shaderDef.params) {
-      const param = shader.params.find((p) => p.paramName === paramDef.name);
-      if (!param) continue;
+      const param = Array.isArray(shader.params)
+        ? shader.params.find((p) => p.paramName === paramDef.name)
+        : undefined;
 
       if (paramDef.type === 'color') {
-        const baseName = param.paramName;
-        const colorValue = param.paramValue;
+        const baseName = paramDef.name;
+        const colorValue =
+          param?.paramValue ?? paramDef.defaultValue ?? '#000000';
         const rgb = colorToRgb(colorValue);
 
         shaderParams.push({
@@ -100,13 +102,12 @@ export function wrapWithShaders(
           value: rgb.b,
         } as ShaderParamStructField);
       } else {
+        const rawValue = param?.paramValue ?? paramDef.defaultValue ?? 0;
         const numValue =
-          typeof param.paramValue === 'string'
-            ? Number(param.paramValue)
-            : param.paramValue;
+          typeof rawValue === 'string' ? Number(rawValue) : rawValue;
         shaderParams.push({
           type: 'f32',
-          fieldName: param.paramName,
+          fieldName: paramDef.name,
           value: numValue,
         } as ShaderParamStructField);
       }

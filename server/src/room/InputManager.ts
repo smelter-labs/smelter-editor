@@ -8,27 +8,25 @@ import { KickChannelMonitor } from '../kick/KickChannelMonitor';
 import { WhipInputMonitor } from '../whip/WhipInputMonitor';
 import { sleep } from '../utils';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
-import { getMp4DurationMs } from '../server/mp4Duration';
+import { getMp4DurationMs, getMp4VideoDimensions } from '../server/mp4Duration';
 import { logTimelineEvent } from '../dashboard';
 import { createDefaultSnakeGameInputState } from '../snakeGame/snakeGameState';
+import { createHandsStore } from '../hands/handStore';
 import type { ShaderConfig, ActiveTransition } from '../types';
 import type {
   RoomInputState,
-  InputOrientation,
   RegisterInputOptions,
   UpdateInputOptions,
 } from './types';
 import type { PlaceholderManager } from './PlaceholderManager';
-import {
-  cloneDefaultLogoShaders,
-  PLACEHOLDER_LOGO_FILE,
-} from './PlaceholderManager';
 import type { MotionController } from './MotionController';
+import { InputOrientation } from '@smelter-editor/types';
 
 const VIDEO_INPUT_TYPES: RoomInputState['type'][] = [
   'local-mp4',
   'twitch-channel',
   'kick-channel',
+  'hls',
   'whip',
 ];
 
@@ -60,45 +58,13 @@ export class InputManager {
 
   async initializeInputs(
     initInputs: RegisterInputOptions[],
-    skipDefaultInputs: boolean,
+    _skipDefaultInputs: boolean,
   ): Promise<void> {
     if (initInputs.length > 0) {
       for (const input of initInputs) {
         await this.addNewInput(input);
       }
-    } else if (!skipDefaultInputs) {
-      const preferredMp4 =
-        this.mp4Files.find((f) => f.toLowerCase().startsWith('eclipse')) ??
-        this.mp4Files.find((file) => !isBlockedDefaultMp4(file));
-      if (preferredMp4) {
-        await this.addNewInput({
-          type: 'local-mp4',
-          source: { fileName: preferredMp4 },
-        });
-      }
-
-      const logoPath = path.join(
-        process.cwd(),
-        'pictures',
-        PLACEHOLDER_LOGO_FILE,
-      );
-      if (await pathExists(logoPath)) {
-        const logoInputId = await this.addNewInput({
-          type: 'image',
-          fileName: PLACEHOLDER_LOGO_FILE,
-        });
-        const logoInput = this.inputs.find(
-          (inp) => inp.inputId === logoInputId,
-        );
-        if (logoInput) {
-          logoInput.shaders = cloneDefaultLogoShaders();
-          this.onStateChange();
-        }
-      }
     }
-
-    const added = await this.placeholderManager.ensurePlaceholder(this.inputs);
-    if (added) this.onStateChange();
   }
 
   // ── Add ───────────────────────────────────────────────────
@@ -112,6 +78,8 @@ export class InputManager {
       return this.addNewWhipInput(opts.username);
     } else if (opts.type === 'twitch-channel' || opts.type === 'kick-channel') {
       return this.addHlsChannelInput(opts.type, opts.channelId);
+    } else if (opts.type === 'hls') {
+      return this.addDirectHlsInput(opts.url);
     } else if (opts.type === 'local-mp4') {
       return this.addMp4Input(opts);
     } else if (opts.type === 'image') {
@@ -120,6 +88,8 @@ export class InputManager {
       return this.addTextInput(opts);
     } else if (opts.type === 'game') {
       return this.addGameInput(opts);
+    } else if (opts.type === 'hands') {
+      return this.addHandsInput(opts);
     }
   }
 
@@ -221,6 +191,36 @@ export class InputManager {
     return inputId;
   }
 
+  private async addDirectHlsInput(url: string): Promise<string> {
+    const inputId = `${this.idPrefix}::hls::${Date.now()}`;
+    let label = url;
+    try {
+      const parsed = new URL(url);
+      label = parsed.hostname + parsed.pathname.split('/').pop();
+    } catch {
+      // keep raw url as label
+    }
+    this.inputs.push({
+      inputId,
+      type: 'hls',
+      status: 'disconnected',
+      showTitle: false,
+      shaders: [],
+
+      borderColor: '#ff0000',
+      borderWidth: 0,
+      hidden: false,
+      motionEnabled: false,
+      metadata: {
+        title: `[HLS] ${label}`,
+        description: `Direct HLS stream`,
+      },
+      volume: 0,
+      hlsUrl: url,
+    });
+    return inputId;
+  }
+
   private async addMp4Input(
     opts: Extract<RegisterInputOptions, { type: 'local-mp4' }>,
   ): Promise<string> {
@@ -237,6 +237,8 @@ export class InputManager {
     if (!(await pathExists(mp4Path))) {
       throw new Error(`MP4 file not found: ${opts.source.fileName}`);
     }
+
+    const dims = await getMp4VideoDimensions(mp4Path);
 
     this.inputs.push({
       inputId,
@@ -256,6 +258,8 @@ export class InputManager {
         description: '[Static source] AI Generated',
       },
       mp4FilePath: mp4Path,
+      mp4VideoWidth: dims?.width,
+      mp4VideoHeight: dims?.height,
       volume: 0,
     });
     return inputId;
@@ -405,6 +409,46 @@ export class InputManager {
     return inputId;
   }
 
+  private async addHandsInput(
+    opts: Extract<RegisterInputOptions, { type: 'hands' }>,
+  ): Promise<string> {
+    console.log('Adding hands input');
+    const inputId = `${this.idPrefix}::hands::${Date.now()}`;
+    const handsStore = createHandsStore();
+
+    this.inputs.push({
+      inputId,
+      type: 'hands',
+      status: 'connected',
+      showTitle: false,
+      shaders: [],
+
+      borderColor: '#ff0000',
+      borderWidth: 0,
+      hidden: false,
+      motionEnabled: false,
+      metadata: {
+        title: 'Hand Tracking',
+        description: 'Cyberpunk hand overlay',
+      },
+      volume: 0,
+      sourceInputId: opts.sourceInputId,
+      handsStore,
+    });
+
+    this.motionController
+      .startHandTracking(opts.sourceInputId, handsStore)
+      .catch((err) =>
+        console.error(
+          `[hands] Failed to start hand tracking for ${opts.sourceInputId}`,
+          err,
+        ),
+      );
+
+    this.onStateChange();
+    return inputId;
+  }
+
   // ── Remove ────────────────────────────────────────────────
 
   async removeInput(inputId: string): Promise<void> {
@@ -438,6 +482,10 @@ export class InputManager {
       input.monitor.stop();
     }
 
+    if (input.type === 'hands') {
+      this.motionController.stopHandTracking(input.sourceInputId);
+    }
+
     const PENDING_WAIT_TIMEOUT_MS = 30_000;
     const waitStart = Date.now();
     while (input.status === 'pending') {
@@ -468,7 +516,11 @@ export class InputManager {
     const input = this.getInput(inputId);
     if (input.status !== 'disconnected') return '';
 
-    if (input.type === 'image' || input.type === 'game') {
+    if (
+      input.type === 'image' ||
+      input.type === 'game' ||
+      input.type === 'hands'
+    ) {
       input.status = 'connected';
       this.onStateChange();
       return '';
@@ -547,6 +599,7 @@ export class InputManager {
 
   updateInput(inputId: string, options: Partial<UpdateInputOptions>): void {
     const input = this.getInput(inputId);
+    if (options.title !== undefined) input.metadata.title = options.title;
     input.volume = options.volume ?? input.volume;
     input.shaders = options.shaders ?? input.shaders;
     input.showTitle = options.showTitle ?? input.showTitle;
@@ -612,6 +665,10 @@ export class InputManager {
       input.absoluteTransitionDurationMs = options.absoluteTransitionDurationMs;
     if (options.absoluteTransitionEasing !== undefined)
       input.absoluteTransitionEasing = options.absoluteTransitionEasing;
+    if (options.cropTop !== undefined) input.cropTop = options.cropTop;
+    if (options.cropLeft !== undefined) input.cropLeft = options.cropLeft;
+    if (options.cropRight !== undefined) input.cropRight = options.cropRight;
+    if (options.cropBottom !== undefined) input.cropBottom = options.cropBottom;
 
     if (options.activeTransition !== undefined) {
       const existingTimer = this.transitionTimers.get(inputId);
@@ -915,7 +972,11 @@ function registerOptionsFromInput(
 ): RegisterSmelterInputOptions {
   if (input.type === 'local-mp4') {
     return { type: 'mp4', filePath: input.mp4FilePath };
-  } else if (input.type === 'twitch-channel' || input.type === 'kick-channel') {
+  } else if (
+    input.type === 'twitch-channel' ||
+    input.type === 'kick-channel' ||
+    input.type === 'hls'
+  ) {
     return { type: 'hls', url: input.hlsUrl };
   } else if (input.type === 'whip') {
     return { type: 'whip', url: input.whipUrl };
@@ -923,6 +984,8 @@ function registerOptionsFromInput(
     throw Error('Images cannot be connected as stream inputs');
   } else if (input.type === 'game') {
     throw Error('Snake game inputs do not need stream registration');
+  } else if (input.type === 'hands') {
+    throw Error('Hands inputs do not need stream registration');
   } else {
     throw Error('Unknown type');
   }
@@ -953,9 +1016,4 @@ function formatImageName(fileName: string): string {
     .split(/[_\- ]+/)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
-}
-
-function isBlockedDefaultMp4(fileName: string): boolean {
-  const lower = fileName.toLowerCase();
-  return lower.startsWith('logo_') || lower.startsWith('wrapped_');
 }

@@ -11,6 +11,8 @@ import {
   MOTION_CELL_WIDTH,
   MOTION_MAX_SLOTS,
 } from './MotionScene';
+import type { StoreApi } from 'zustand';
+import type { HandsStore, HandLandmarks } from '../hands/handStore';
 
 const execFileAsync = promisify(execFile);
 
@@ -47,6 +49,11 @@ export class MotionManager {
   private trackedInputs: string[] = [];
   /** Per-input score callbacks. */
   private callbacks: Map<string, (score: number) => void> = new Map();
+
+  /** Per-input hand tracking stores. Key = sourceInputId. */
+  private handStores: Map<string, StoreApi<HandsStore>> = new Map();
+  /** Maps inputId → grid slot index for hand-tracked inputs. */
+  private handRegions: Map<string, number> = new Map();
 
   private motionStore = createMotionStore();
   private pythonProcess: ChildProcess | null = null;
@@ -163,9 +170,83 @@ export class MotionManager {
     for (const id of ids) {
       await this.stopMotionDetection(id);
     }
+    for (const [inputId] of this.handRegions) {
+      this.stopHandTracking(inputId);
+    }
+  }
+
+  /**
+   * Ensure an input is in the motion grid (for hand tracking purposes).
+   * If already tracked for motion, does nothing.
+   * Returns the grid slot index.
+   */
+  async ensureInGrid(inputId: string): Promise<number> {
+    const existingIdx = this.trackedInputs.indexOf(inputId);
+    if (existingIdx >= 0) return existingIdx;
+
+    const prev = this.queue;
+    let slotIdx = -1;
+    this.queue = prev
+      .then(async () => {
+        if (this.trackedInputs.length >= MOTION_MAX_SLOTS) {
+          console.warn(
+            `[motion] Max ${MOTION_MAX_SLOTS} motion inputs reached, cannot add ${inputId} for hand tracking`,
+          );
+          return;
+        }
+        this.trackedInputs.push(inputId);
+        slotIdx = this.trackedInputs.length - 1;
+        this._syncStore();
+        if (!this.pipelineRunning) {
+          await this._startPipeline();
+        }
+      })
+      .catch(() => {});
+    await this.queue;
+    return slotIdx;
+  }
+
+  /**
+   * Start hand tracking for a given source input.
+   * Ensures the input is in the grid and sends enable_hands to Python.
+   */
+  async startHandTracking(
+    inputId: string,
+    store: StoreApi<HandsStore>,
+  ): Promise<void> {
+    const slotIdx = await this.ensureInGrid(inputId);
+    if (slotIdx < 0) return;
+
+    this.handStores.set(inputId, store);
+    this.handRegions.set(inputId, slotIdx);
+
+    this._sendStdinCommand({ cmd: 'enable_hands', region: slotIdx });
+    console.log(
+      `[motion] Hand tracking started for ${inputId} at slot ${slotIdx}`,
+    );
+  }
+
+  /**
+   * Stop hand tracking for a given source input.
+   * Does NOT remove the input from the grid (it may still be used for motion).
+   */
+  stopHandTracking(inputId: string): void {
+    const slotIdx = this.handRegions.get(inputId);
+    if (slotIdx !== undefined) {
+      this._sendStdinCommand({ cmd: 'disable_hands', region: slotIdx });
+    }
+    this.handStores.delete(inputId);
+    this.handRegions.delete(inputId);
+    console.log(`[motion] Hand tracking stopped for ${inputId}`);
   }
 
   // ── Internal ──────────────────────────────────────────────────
+
+  private _sendStdinCommand(cmd: object): void {
+    if (this.pythonProcess?.stdin?.writable) {
+      this.pythonProcess.stdin.write(JSON.stringify(cmd) + '\n');
+    }
+  }
 
   private async _addInput(
     inputId: string,
@@ -189,10 +270,15 @@ export class MotionManager {
 
   private async _removeInput(inputId: string): Promise<void> {
     this.callbacks.delete(inputId);
+
+    if (this.handRegions.has(inputId)) {
+      this.stopHandTracking(inputId);
+    }
+
     this.trackedInputs = this.trackedInputs.filter((id) => id !== inputId);
     this._syncStore();
 
-    if (this.trackedInputs.length === 0) {
+    if (this.trackedInputs.length === 0 && this.handRegions.size === 0) {
       await this._teardown();
     }
   }
@@ -217,6 +303,12 @@ export class MotionManager {
       `[motion] Starting grid pipeline: ${MOTION_GRID_WIDTH}x${MOTION_GRID_HEIGHT} (${MOTION_MAX_SLOTS} slots, cell ${MOTION_CELL_WIDTH}x${MOTION_GRID_HEIGHT}) on port ${this.rtpPort}`,
     );
 
+    const handRegionArgs: string[] = [];
+    if (this.handRegions.size > 0) {
+      const regions = [...this.handRegions.values()].join(',');
+      handRegionArgs.push('--hand-regions', regions);
+    }
+
     const child = spawn(
       pythonPath,
       [
@@ -229,8 +321,9 @@ export class MotionManager {
         String(MOTION_GRID_HEIGHT),
         '--regions',
         String(MOTION_MAX_SLOTS),
+        ...handRegionArgs,
       ],
-      { stdio: ['ignore', 'pipe', 'pipe'] },
+      { stdio: ['pipe', 'pipe', 'pipe'] },
     );
     this.pythonProcess = child;
 
@@ -257,6 +350,20 @@ export class MotionManager {
               const cb = this.callbacks.get(id);
               if (cb) {
                 cb(score as number);
+              }
+            }
+          }
+        }
+        if (data.hands && typeof data.hands === 'object') {
+          for (const [indexStr, handsArr] of Object.entries(data.hands)) {
+            const idx = Number(indexStr);
+            const id = this.trackedInputs[idx];
+            if (id) {
+              const store = this.handStores.get(id);
+              if (store) {
+                store
+                  .getState()
+                  .setLandmarks({ hands: handsArr as HandLandmarks['hands'] });
               }
             }
           }

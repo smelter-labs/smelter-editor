@@ -1,8 +1,9 @@
 import type { Input } from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
 import { useState } from 'react';
-import { toast } from 'react-toastify';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
+import { Textarea } from '@/components/ui/textarea';
 import LoadingSpinner from '@/components/ui/spinner';
 import { AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
 
@@ -50,7 +51,7 @@ export function TextAddInputForm({
 
   return (
     <form onSubmit={handleSubmit} className='flex flex-col gap-3'>
-      <textarea
+      <Textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
         placeholder='Enter text to display...'
@@ -60,17 +61,18 @@ export function TextAddInputForm({
         <span className='text-sm text-neutral-400'>Align:</span>
         <div className='flex gap-1'>
           {alignOptions.map((option) => (
-            <button
+            <Button
               key={option.value}
-              type='button'
+              variant={textAlign === option.value ? 'default' : 'ghost'}
+              size='icon'
               onClick={() => setTextAlign(option.value)}
-              className={`p-2 rounded transition-colors ${
+              className={`h-auto w-auto p-2 cursor-pointer ${
                 textAlign === option.value
-                  ? 'bg-white text-black'
+                  ? 'bg-white text-black hover:bg-white'
                   : 'bg-neutral-800 text-neutral-400 hover:bg-neutral-700 hover:text-white'
               }`}>
               {option.icon}
-            </button>
+            </Button>
           ))}
         </div>
       </div>

@@ -20,7 +20,7 @@ import { startScreensharePublish } from '../whip-input/utils/screenshare-publish
 import type { InputType } from '@/lib/voice/commandTypes';
 import { emitActionFeedback } from '@/lib/voice/feedbackEvents';
 import { triggerRecordingDownload } from './use-recording-controls';
-import { getDefaultOrientationSetting } from '@/lib/voice/macroSettings';
+
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
 
@@ -636,13 +636,6 @@ export function useControlPanelEvents({
       try {
         if (addedInputId) {
           selectedInputIdRef.current = addedInputId;
-          const defaultOrientation = getDefaultOrientationSetting();
-          if (defaultOrientation === 'vertical') {
-            await updateInput(roomId, addedInputId, {
-              orientation: 'vertical',
-              volume: 1,
-            });
-          }
         }
 
         await handleRefreshState();
@@ -651,7 +644,7 @@ export function useControlPanelEvents({
         });
       } catch (err) {
         emitMacroStepComplete(requestId, err);
-        console.error('Voice: failed to apply default orientation', err);
+        console.error('Voice: failed to apply post-add input update', err);
       }
     };
 
@@ -1700,80 +1693,6 @@ export function useControlPanelEvents({
       window.removeEventListener(
         'smelter:voice:scroll-text',
         onScrollText as unknown as EventListener,
-      );
-    };
-  }, [roomId, handleRefreshState, inputsRef]);
-
-  useEffect(() => {
-    const onSetOrientation = async (
-      e: CustomEvent<{
-        orientation?: 'horizontal' | 'vertical';
-        inputIndex?: number;
-        inputId?: string;
-        requestId?: string;
-      }>,
-    ) => {
-      const requestId = e.detail?.requestId;
-      try {
-        const { orientation, inputIndex, inputId } = e.detail;
-        const currentInputs = inputsRef.current || [];
-        const input = resolveVoiceInputTarget({
-          inputs: currentInputs,
-          inputIndex,
-          inputId,
-          selectedInputId: selectedInputIdRef.current,
-        });
-
-        if (!input) {
-          const error = new Error('No input selected');
-          emitActionFeedback({
-            type: 'error',
-            label: 'No input selected',
-            description: 'Select an input or specify input number',
-          });
-          emitMacroStepComplete(requestId, error);
-          return;
-        }
-
-        const newOrientation = orientation
-          ? orientation
-          : input.orientation === 'vertical'
-            ? 'horizontal'
-            : 'vertical';
-
-        await updateInput(roomId, input.inputId, {
-          orientation: newOrientation,
-          shaders: input.shaders,
-          volume: input.volume,
-        });
-
-        window.dispatchEvent(
-          new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
-            detail: {
-              inputId: input.inputId,
-              patch: { orientation: newOrientation },
-            },
-          }),
-        );
-
-        await handleRefreshState();
-        emitMacroStepCompleteWithDetail(requestId, undefined, {
-          inputId: input.inputId,
-        });
-      } catch (err) {
-        emitMacroStepComplete(requestId, err);
-        console.error('Voice: failed to set orientation', err);
-      }
-    };
-
-    window.addEventListener(
-      'smelter:voice:set-orientation',
-      onSetOrientation as unknown as EventListener,
-    );
-    return () => {
-      window.removeEventListener(
-        'smelter:voice:set-orientation',
-        onSetOrientation as unknown as EventListener,
       );
     };
   }, [roomId, handleRefreshState, inputsRef]);

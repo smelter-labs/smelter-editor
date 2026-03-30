@@ -1,5 +1,7 @@
 import { URLSearchParams } from 'url';
 
+import type { ChannelInfo } from '@smelter-editor/types';
+
 const twitchAuth = {
   token: null as string | null,
   clientId: null as string | null,
@@ -116,10 +118,13 @@ export async function getTwitchStreamInfo(
         displayName: stream.user_name ?? '',
         title: stream.title ?? stream?.user_name ?? '',
         category: stream.game_name ?? '',
+        thumbnailUrl: stream.thumbnail_url
+          ? stream.thumbnail_url
+              .replace('{width}', '440')
+              .replace('{height}', '248')
+          : undefined,
       }
     : undefined;
 }
-
-import type { ChannelInfo } from '@smelter-editor/types';
 
 export type TwitchStreamInfo = ChannelInfo;

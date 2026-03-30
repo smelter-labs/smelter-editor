@@ -8,6 +8,7 @@ import {
   useRef,
   type ReactNode,
 } from 'react';
+import { useDashboardToolbarRegister } from './dashboard-toolbar-context';
 import {
   ResponsiveGridLayout,
   useContainerWidth,
@@ -16,7 +17,6 @@ import {
 import 'react-grid-layout/css/styles.css';
 import 'react-resizable/css/styles.css';
 import PanelWrapper from './panel-wrapper';
-import LayoutToolbar from './layout-toolbar';
 import {
   type PanelDefinition,
   type MutableLayout,
@@ -28,6 +28,7 @@ import {
   DEFAULT_RESPONSIVE_LAYOUTS,
   MOTION_PANEL_MIN_W,
   MOTION_PANEL_MIN_H,
+  LAYOUT_PRESETS,
   createResponsiveLayoutsFromLg,
   loadLayouts,
   saveLayouts,
@@ -47,11 +48,40 @@ interface DashboardLayoutProps {
   panels: Record<string, ReactNode>;
   allPanelIds: string[];
   getPanelDefinition: (id: string) => PanelDefinition;
+  videoAspectRatio?: number;
 }
 
 const BREAKPOINTS = DASHBOARD_BREAKPOINT_WIDTHS;
 const COLS = DASHBOARD_COLS;
 const ROW_HEIGHT = 30;
+const MARGIN: readonly [number, number] = [8, 8];
+const CONTAINER_PADDING: readonly [number, number] = [4, 4];
+const VIDEO_PANEL_ID = 'video-preview';
+const RESIZE_DEBOUNCE_MS = 300;
+
+function getActiveBreakpoint(containerWidth: number): keyof typeof COLS {
+  for (const bp of DASHBOARD_BREAKPOINTS) {
+    if (containerWidth >= BREAKPOINTS[bp]) return bp;
+  }
+  return 'xxs';
+}
+
+function calcVideoHeight(
+  containerWidth: number,
+  videoPanelW: number,
+  cols: number,
+  ratio: number,
+): number {
+  const colWidth =
+    (containerWidth - 2 * CONTAINER_PADDING[0] - MARGIN[0] * (cols - 1)) / cols;
+  const panelPixelWidth =
+    videoPanelW * colWidth + (videoPanelW - 1) * MARGIN[0];
+  const targetPixelHeight = panelPixelWidth / ratio;
+  return Math.max(
+    1,
+    Math.round((targetPixelHeight + MARGIN[1]) / (ROW_HEIGHT + MARGIN[1])),
+  );
+}
 
 function toMutable(layout: Layout): MutableLayout {
   return layout.map((item) => ({
@@ -99,6 +129,7 @@ export default function DashboardLayout({
   panels,
   allPanelIds,
   getPanelDefinition,
+  videoAspectRatio,
 }: DashboardLayoutProps) {
   const { dashboardLayoutStorage } = useActions();
   const { width, containerRef, mounted } = useContainerWidth({
@@ -305,6 +336,40 @@ export default function DashboardLayout({
     [getPanelDefinition],
   );
 
+  const { register, unregister } = useDashboardToolbarRegister();
+
+  useEffect(() => {
+    register({
+      isEditMode,
+      toggleEditMode: handleToggleEditMode,
+      presets: LAYOUT_PRESETS,
+      applyPreset: handleApplyPreset,
+      reset: handleReset,
+      allPanelIds,
+      visiblePanels,
+      togglePanel: handleTogglePanel,
+      getPanelDefinition,
+      dashboardLayoutStorage,
+      getCurrentLayoutData,
+      applyLoadedLayout: handleApplyLoadedLayout,
+    });
+    return () => unregister();
+  }, [
+    isEditMode,
+    allPanelIds,
+    visiblePanels,
+    handleApplyPreset,
+    handleReset,
+    handleTogglePanel,
+    getPanelDefinition,
+    dashboardLayoutStorage,
+    getCurrentLayoutData,
+    handleApplyLoadedLayout,
+    register,
+    unregister,
+    handleToggleEditMode,
+  ]);
+
   const visibleIds = useMemo(
     () => allPanelIds.filter((id) => visiblePanels.has(id)),
     [allPanelIds, visiblePanels],
@@ -322,24 +387,45 @@ export default function DashboardLayout({
     [currentLayouts, visiblePanels],
   );
 
+  useEffect(() => {
+    if (!videoAspectRatio || !mounted) return;
+
+    const timer = setTimeout(() => {
+      const bp = getActiveBreakpoint(width);
+      const cols = COLS[bp];
+
+      setCurrentLayouts((prev) => {
+        const layout = prev[bp];
+        const videoItem = layout.find((item) => item.i === VIDEO_PANEL_ID);
+        if (!videoItem) return prev;
+
+        const targetH = calcVideoHeight(
+          width,
+          videoItem.w,
+          cols,
+          videoAspectRatio,
+        );
+        if (targetH === videoItem.h) return prev;
+
+        const updated = { ...prev } as DashboardLayouts;
+        for (const breakpoint of DASHBOARD_BREAKPOINTS) {
+          const bpCols = COLS[breakpoint];
+          updated[breakpoint] = prev[breakpoint].map((item) => {
+            if (item.i !== VIDEO_PANEL_ID) return item;
+            const h = calcVideoHeight(width, item.w, bpCols, videoAspectRatio);
+            return { ...item, h };
+          });
+        }
+        saveLayouts(updated);
+        return updated;
+      });
+    }, RESIZE_DEBOUNCE_MS);
+
+    return () => clearTimeout(timer);
+  }, [width, videoAspectRatio, mounted]);
+
   return (
     <div className='flex-1 flex flex-col min-h-0 h-full overflow-hidden'>
-      <div className='flex items-center justify-end px-2 py-1 shrink-0'>
-        <LayoutToolbar
-          isEditMode={isEditMode}
-          onToggleEditMode={handleToggleEditMode}
-          onApplyPreset={handleApplyPreset}
-          onReset={handleReset}
-          allPanelIds={allPanelIds}
-          visiblePanels={visiblePanels}
-          onTogglePanel={handleTogglePanel}
-          getPanelDefinition={getPanelDefinition}
-          dashboardLayoutStorage={dashboardLayoutStorage}
-          getCurrentLayoutData={getCurrentLayoutData}
-          onApplyLoadedLayout={handleApplyLoadedLayout}
-        />
-      </div>
-
       <div ref={containerRef} className='flex-1 min-h-0 overflow-auto'>
         {mounted && (
           <ResponsiveGridLayout
@@ -348,8 +434,8 @@ export default function DashboardLayout({
             breakpoints={BREAKPOINTS}
             cols={COLS}
             rowHeight={ROW_HEIGHT}
-            margin={[8, 8] as const}
-            containerPadding={[4, 4] as const}
+            margin={MARGIN}
+            containerPadding={CONTAINER_PADDING}
             dragConfig={{
               enabled: isEditMode,
               handle: '.dashboard-drag-handle',

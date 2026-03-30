@@ -2,20 +2,23 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import type {
-  Input,
-  AvailableShader,
-  ShaderConfig,
-  TransitionType,
-} from '@/lib/types';
+import type { Input, AvailableShader, ShaderConfig } from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
 import ShaderPanel, { InlineShaderParams } from '../input-entry/shader-panel';
 import { AddShaderModal } from '../input-entry/add-shader-modal';
 import SnakeEventShaderPanel from '../input-entry/snake-event-shader-panel';
-import type { BlockSettings, Keyframe } from '../hooks/use-timeline-state';
+import type { BlockSettings } from '../hooks/use-timeline-state';
+import { OUTPUT_CLIP_ID } from '../hooks/use-timeline-state';
 import { PendingWhipInputs } from './PendingWhipInputs';
 import type { PendingWhipInput } from './ConfigurationSection';
-import { Link, Video, Monitor, Dices } from 'lucide-react';
+import { Link, Video, Monitor } from 'lucide-react';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectContent,
+  SelectItem,
+} from '@/components/ui/select';
 import { startPublish } from '../whip-input/utils/whip-publisher';
 import { startScreensharePublish } from '../whip-input/utils/screenshare-publisher';
 import { stopCameraAndConnection } from '../whip-input/utils/preview';
@@ -27,349 +30,33 @@ import { updateTimelineInputId } from '@/lib/room-config';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { Button } from '@/components/ui/button';
+import { Input as ShadcnInput } from '@/components/ui/input';
+import { NumberInput } from '@/components/ui/number-input';
+import { Textarea } from '@/components/ui/textarea';
+import { Slider } from '@/components/ui/slider';
 import LoadingSpinner from '@/components/ui/spinner';
-import { toast } from 'react-toastify';
-import { getRandomSnakeShaderPreset } from '@/lib/snake-shader-presets';
+import { toast } from 'sonner';
 import { getMp4Duration } from '@/app/actions/actions';
 import { AbsolutePositionController } from './AbsolutePositionController';
+import { defaultAbsoluteRect } from '@/lib/source-fit';
+import {
+  type SelectedTimelineClip,
+  extractMp4FileName,
+  computeCommonBlockSettings,
+  resolveNewKeyframeTimeMs,
+} from './block-clip/block-clip-utils';
+import { SnakeShaderSection } from './block-clip/SnakeShaderSection';
+import { CollapsibleSection } from './block-clip/CollapsibleSection';
+import { TransitionRow } from './block-clip/TransitionRow';
+import {
+  panelInputStyles,
+  panelSectionStyles,
+  labelStyles,
+} from '../styles/panel-primitives';
 
 const SHADER_SETTINGS_DEBOUNCE_MS = 200;
 
-function extractMp4FileName(title: string): string | null {
-  const match = title.match(/^\[MP4\]\s+(.+)$/);
-  if (!match) return null;
-  return match[1].split(/\s+/).join('_') + '.mp4';
-}
-
-function SnakeShaderSection({
-  label,
-  shaders,
-  playerColor,
-  availableShaders,
-  onPatch,
-  onOpenShaderInline,
-}: {
-  label: string;
-  shaders: ShaderConfig[];
-  playerColor?: string;
-  availableShaders: AvailableShader[];
-  onPatch: (shaders: ShaderConfig[], options?: { refresh?: boolean }) => void;
-  onOpenShaderInline?: (shaderId: string) => void;
-}) {
-  const handleRandomPreset = useCallback(() => {
-    const preset = getRandomSnakeShaderPreset(playerColor);
-    onPatch(preset.shaders);
-    toast.info(`🎲 ${preset.name}`, { autoClose: 1500 });
-  }, [onPatch, playerColor]);
-  const [sliderValues, setSliderValues] = useState<{ [key: string]: number }>(
-    {},
-  );
-  const [paramLoading, setParamLoading] = useState<{
-    [shaderId: string]: string | null;
-  }>({});
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const sliderTimersRef = useRef<
-    Record<string, ReturnType<typeof setTimeout> | null>
-  >({});
-
-  useEffect(() => {
-    return () => {
-      Object.values(sliderTimersRef.current).forEach((timer) => {
-        if (timer) {
-          clearTimeout(timer);
-        }
-      });
-    };
-  }, []);
-
-  const handleToggle = useCallback(
-    (shaderId: string) => {
-      const current = shaders;
-      const existing = current.find((s) => s.shaderId === shaderId);
-      if (!existing) {
-        const shaderDef = availableShaders.find((s) => s.id === shaderId);
-        if (!shaderDef) return;
-        onPatch([
-          ...current,
-          {
-            shaderName: shaderDef.name,
-            shaderId: shaderDef.id,
-            enabled: true,
-            params:
-              shaderDef.params?.map((param) => ({
-                paramName: param.name,
-                paramValue:
-                  typeof param.defaultValue === 'number'
-                    ? param.defaultValue
-                    : 0,
-              })) || [],
-          },
-        ]);
-        return;
-      }
-      onPatch(
-        current.map((shader) =>
-          shader.shaderId === shaderId
-            ? { ...shader, enabled: !shader.enabled }
-            : shader,
-        ),
-      );
-    },
-    [shaders, availableShaders, onPatch],
-  );
-
-  const handleRemove = useCallback(
-    (shaderId: string) => {
-      onPatch(shaders.filter((shader) => shader.shaderId !== shaderId));
-    },
-    [shaders, onPatch],
-  );
-
-  const handleSlider = useCallback(
-    (shaderId: string, paramName: string, newValue: number) => {
-      const key = `${shaderId}:${paramName}`;
-      setSliderValues((prev) => ({
-        ...prev,
-        [key]: newValue,
-      }));
-      setParamLoading((prev) => ({ ...prev, [shaderId]: paramName }));
-      const timer = sliderTimersRef.current[key];
-      if (timer) {
-        clearTimeout(timer);
-      }
-      sliderTimersRef.current[key] = setTimeout(() => {
-        const updated = shaders.map((shader) => {
-          if (shader.shaderId !== shaderId) return shader;
-          return {
-            ...shader,
-            params: shader.params.map((param) =>
-              param.paramName === paramName
-                ? { ...param, paramValue: newValue }
-                : param,
-            ),
-          };
-        });
-        onPatch(updated, { refresh: false });
-        setParamLoading((prev) => ({ ...prev, [shaderId]: null }));
-        setSliderValues((prev) => {
-          const next = { ...prev };
-          delete next[key];
-          return next;
-        });
-        sliderTimersRef.current[key] = null;
-      }, SHADER_SETTINGS_DEBOUNCE_MS);
-    },
-    [shaders, onPatch],
-  );
-
-  const getParamConfig = useCallback(
-    (shaderId: string, paramName: string) =>
-      shaders
-        ?.find((shader) => shader.shaderId === shaderId)
-        ?.params.find((param) => param.paramName === paramName),
-    [shaders],
-  );
-
-  const fakeInput: Input = {
-    id: -1,
-    inputId: '',
-    title: '',
-    description: '',
-    volume: 0,
-    showTitle: true,
-    type: 'local-mp4',
-    sourceState: 'unknown',
-    status: 'connected',
-    shaders,
-    orientation: 'horizontal',
-  };
-
-  return (
-    <div className='mt-2 border-t border-neutral-800 pt-2'>
-      <div className='flex items-center justify-between mb-1'>
-        <span className='text-xs text-neutral-400'>{label}</span>
-        <button
-          type='button'
-          title='Random shader preset'
-          onClick={handleRandomPreset}
-          className='p-1 rounded hover:bg-neutral-700 text-neutral-400 hover:text-white transition-colors cursor-pointer'>
-          <Dices className='size-3.5' />
-        </button>
-      </div>
-      <ShaderPanel
-        input={fakeInput}
-        availableShaders={availableShaders}
-        sliderValues={sliderValues}
-        paramLoading={paramLoading}
-        shaderLoading={null}
-        onShaderToggle={handleToggle}
-        onShaderRemove={handleRemove}
-        onSliderChange={handleSlider}
-        getShaderParamConfig={getParamConfig}
-        onOpenAddShader={() => setIsAddModalOpen(true)}
-        onOpenShaderInline={onOpenShaderInline}
-      />
-      <AddShaderModal
-        isOpen={isAddModalOpen}
-        onClose={() => setIsAddModalOpen(false)}
-        availableShaders={availableShaders}
-        addedShaderIds={new Set(shaders.map((s) => s.shaderId))}
-        onAddShader={handleToggle}
-      />
-    </div>
-  );
-}
-
-const TRANSITION_TYPES: { value: TransitionType | 'none'; label: string }[] = [
-  { value: 'none', label: 'None' },
-  { value: 'fade', label: 'Fade' },
-  { value: 'slide-left', label: 'Slide Left' },
-  { value: 'slide-right', label: 'Slide Right' },
-  { value: 'slide-up', label: 'Slide Up' },
-  { value: 'slide-down', label: 'Slide Down' },
-  { value: 'wipe-left', label: 'Wipe Left' },
-  { value: 'wipe-right', label: 'Wipe Right' },
-  { value: 'dissolve', label: 'Dissolve' },
-];
-
-function TransitionRow({
-  label,
-  transition,
-  maxDurationMs,
-  onChange,
-}: {
-  label: string;
-  transition?: import('@/lib/types').TransitionConfig;
-  maxDurationMs: number;
-  onChange: (t: import('@/lib/types').TransitionConfig | undefined) => void;
-}) {
-  const type = transition?.type ?? 'none';
-  const durationMs = transition?.durationMs ?? 500;
-  const clampedMax = Math.max(100, maxDurationMs);
-
-  return (
-    <div className='mb-2'>
-      <span className='text-[11px] text-neutral-500 block mb-1'>{label}</span>
-      <div className='flex items-center gap-2'>
-        <select
-          className='flex-1 bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1 rounded'
-          value={type}
-          onChange={(e) => {
-            const val = e.target.value as TransitionType | 'none';
-            if (val === 'none') {
-              onChange(undefined);
-            } else {
-              onChange({ type: val, durationMs });
-            }
-          }}>
-          {TRANSITION_TYPES.map((t) => (
-            <option key={t.value} value={t.value}>
-              {t.label}
-            </option>
-          ))}
-        </select>
-        {type !== 'none' && (
-          <div className='flex items-center gap-1.5'>
-            <input
-              type='range'
-              min={100}
-              max={Math.min(2000, clampedMax)}
-              step={50}
-              className='w-20'
-              value={Math.min(durationMs, clampedMax)}
-              onChange={(e) => {
-                const ms = Number(e.target.value);
-                onChange({ type: type as TransitionType, durationMs: ms });
-              }}
-            />
-            <span className='text-[10px] text-neutral-500 w-10 text-right tabular-nums'>
-              {durationMs}ms
-            </span>
-          </div>
-        )}
-      </div>
-    </div>
-  );
-}
-
-export type SelectedTimelineClip = {
-  trackId: string;
-  clipId: string;
-  inputId: string;
-  startMs: number;
-  endMs: number;
-  blockSettings: BlockSettings;
-  keyframes: Keyframe[];
-  selectedKeyframeId?: string | null;
-};
-
-function computeCommonBlockSettings(
-  clips: SelectedTimelineClip[],
-): BlockSettings {
-  if (clips.length === 0) {
-    return {
-      volume: 1,
-      showTitle: true,
-      shaders: [],
-      orientation: 'horizontal',
-    };
-  }
-  if (clips.length === 1) return clips[0].blockSettings;
-
-  const first = clips[0].blockSettings;
-  const result: BlockSettings = { ...first };
-
-  for (let i = 1; i < clips.length; i++) {
-    const bs = clips[i].blockSettings;
-    if (bs.volume !== result.volume) result.volume = -1;
-    if (bs.showTitle !== result.showTitle) result.showTitle = first.showTitle;
-    if (bs.orientation !== result.orientation)
-      result.orientation = first.orientation;
-    if (bs.borderColor !== result.borderColor) result.borderColor = undefined;
-    if (bs.borderWidth !== result.borderWidth) result.borderWidth = undefined;
-    if (bs.absolutePosition !== result.absolutePosition)
-      result.absolutePosition = undefined;
-  }
-  return result;
-}
-
-function clampKeyframeToClipRange(
-  valueMs: number,
-  clipDurationMs: number,
-): number {
-  return Math.max(0, Math.min(Math.round(valueMs), clipDurationMs));
-}
-
-function resolveNewKeyframeTimeMs(
-  clip: Pick<SelectedTimelineClip, 'startMs' | 'endMs' | 'keyframes'>,
-  desiredTimeMs: number,
-): number {
-  const clipDurationMs = Math.max(0, clip.endMs - clip.startMs);
-  const clampedTimeMs = clampKeyframeToClipRange(desiredTimeMs, clipDurationMs);
-  const occupiedTimes = new Set(
-    clip.keyframes.map((keyframe) => Math.round(keyframe.timeMs)),
-  );
-
-  if (!occupiedTimes.has(clampedTimeMs)) {
-    return clampedTimeMs;
-  }
-
-  const preferredStep = clampedTimeMs >= clipDurationMs ? -100 : 100;
-  for (const step of [preferredStep, -preferredStep]) {
-    let candidateTimeMs = clampedTimeMs;
-    while (true) {
-      candidateTimeMs += step;
-      if (candidateTimeMs < 0 || candidateTimeMs > clipDurationMs) {
-        break;
-      }
-      if (!occupiedTimes.has(candidateTimeMs)) {
-        return candidateTimeMs;
-      }
-    }
-  }
-
-  return clampedTimeMs;
-}
+export type { SelectedTimelineClip } from './block-clip/block-clip-utils';
 
 export function BlockClipPropertiesPanel({
   roomId,
@@ -436,6 +123,7 @@ export function BlockClipPropertiesPanel({
   const textScrollSpeedDebounceRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
+  const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const [mp4DurationLoading, setMp4DurationLoading] = useState(false);
   const mp4DurationFetchedRef = useRef<string | null>(null);
   const applyClipPatchRef = useRef<
@@ -465,6 +153,7 @@ export function BlockClipPropertiesPanel({
   }, []);
 
   useEffect(() => {
+    setTitleDraft(null);
     setTextScrollSpeedDraft(null);
     if (textScrollSpeedDebounceRef.current) {
       clearTimeout(textScrollSpeedDebounceRef.current);
@@ -638,6 +327,24 @@ export function BlockClipPropertiesPanel({
         selectedTimelineClips.length === 1 ? selectedTimelineClips[0] : null;
       const targetKeyframeId = singleSelectedClip?.selectedKeyframeId ?? null;
 
+      const hasCropInPatch =
+        'cropTop' in patch ||
+        'cropLeft' in patch ||
+        'cropRight' in patch ||
+        'cropBottom' in patch;
+      const cropOnly = hasCropInPatch
+        ? {
+            ...(patch.cropTop !== undefined && { cropTop: patch.cropTop }),
+            ...(patch.cropLeft !== undefined && { cropLeft: patch.cropLeft }),
+            ...(patch.cropRight !== undefined && {
+              cropRight: patch.cropRight,
+            }),
+            ...(patch.cropBottom !== undefined && {
+              cropBottom: patch.cropBottom,
+            }),
+          }
+        : null;
+
       // Update local state for all clips
       const nextClips = selectedTimelineClips.map((clip) => ({
         ...clip,
@@ -650,7 +357,15 @@ export function BlockClipPropertiesPanel({
                       ...keyframe,
                       blockSettings: { ...keyframe.blockSettings, ...patch },
                     }
-                  : keyframe,
+                  : cropOnly
+                    ? {
+                        ...keyframe,
+                        blockSettings: {
+                          ...keyframe.blockSettings,
+                          ...cropOnly,
+                        },
+                      }
+                    : keyframe,
               )
             : clip.keyframes.map((keyframe) =>
                 keyframe.timeMs === 0
@@ -658,7 +373,15 @@ export function BlockClipPropertiesPanel({
                       ...keyframe,
                       blockSettings: { ...keyframe.blockSettings, ...patch },
                     }
-                  : keyframe,
+                  : cropOnly
+                    ? {
+                        ...keyframe,
+                        blockSettings: {
+                          ...keyframe.blockSettings,
+                          ...cropOnly,
+                        },
+                      }
+                    : keyframe,
               ),
       }));
       onSelectedTimelineClipsChange(nextClips);
@@ -695,7 +418,6 @@ export function BlockClipPropertiesPanel({
             volume: patch.volume ?? clip.blockSettings.volume,
             shaders: patch.shaders ?? clip.blockSettings.shaders,
             showTitle: patch.showTitle ?? clip.blockSettings.showTitle,
-            orientation: patch.orientation ?? clip.blockSettings.orientation,
             text: patch.text,
             textAlign: patch.textAlign,
             textColor: patch.textColor,
@@ -724,6 +446,10 @@ export function BlockClipPropertiesPanel({
             absoluteHeight: patch.absoluteHeight,
             absoluteTransitionDurationMs: patch.absoluteTransitionDurationMs,
             absoluteTransitionEasing: patch.absoluteTransitionEasing,
+            cropTop: patch.cropTop,
+            cropLeft: patch.cropLeft,
+            cropRight: patch.cropRight,
+            cropBottom: patch.cropBottom,
           });
         }
         if (shouldRefresh) {
@@ -956,6 +682,27 @@ export function BlockClipPropertiesPanel({
     [applyClipPatch],
   );
 
+  const handleTitleCommit = useCallback(
+    async (newTitle: string) => {
+      if (!primaryClip || !selectedInput) return;
+      const trimmed = newTitle.trim();
+      if (!trimmed || trimmed === selectedInput.title) {
+        setTitleDraft(null);
+        return;
+      }
+      try {
+        await updateInputAction(roomId, primaryClip.inputId, {
+          title: trimmed,
+        });
+        await handleRefreshState();
+      } catch (err) {
+        console.warn('Failed to rename input', err);
+      }
+      setTitleDraft(null);
+    },
+    [primaryClip, selectedInput, roomId, updateInputAction, handleRefreshState],
+  );
+
   const pendingSection =
     pendingWhipInputs &&
     pendingWhipInputs.length > 0 &&
@@ -972,6 +719,7 @@ export function BlockClipPropertiesPanel({
 
   // Effective clip used for rendering: primary clip for single, or first clip for multi
   const effectiveClip = selectedTimelineClips[0];
+  const isOutputClip = effectiveClip.clipId === OUTPUT_CLIP_ID;
 
   const shaderInput: Input = selectedInput ?? {
     id: -1,
@@ -984,7 +732,6 @@ export function BlockClipPropertiesPanel({
     sourceState: 'unknown',
     status: 'connected',
     shaders: effectiveClip.blockSettings.shaders,
-    orientation: effectiveClip.blockSettings.orientation,
     attachedInputIds: effectiveClip.blockSettings.attachedInputIds,
     borderColor: effectiveClip.blockSettings.borderColor,
     borderWidth: effectiveClip.blockSettings.borderWidth,
@@ -1141,24 +888,47 @@ export function BlockClipPropertiesPanel({
   return (
     <div>
       {pendingSection}
-      <div className='text-xs text-neutral-500 mb-2'>
-        Selected block properties
+      <div className='text-xs text-muted-foreground mb-2'>
+        {isOutputClip
+          ? 'Main Video output shaders'
+          : 'Selected block properties'}
       </div>
-      <div className='text-sm text-neutral-300 mb-3 truncate'>
-        {isMultiSelect
-          ? `${selectedTimelineClips.length} clips selected`
-          : (selectedInput?.title ?? effectiveClip.inputId)}
-      </div>
-      {isDisconnected && (
-        <div className='mb-3 p-2.5 rounded border-2 border-dashed border-neutral-700 bg-neutral-800/50'>
+      {!isOutputClip && (
+        <>
+          {isMultiSelect ? (
+            <div className='text-sm text-card-foreground mb-3 truncate'>
+              {selectedTimelineClips.length} clips selected
+            </div>
+          ) : (
+            <ShadcnInput
+              className='text-sm text-card-foreground mb-3 bg-transparent border-border px-1 py-0.5 h-auto'
+              value={
+                titleDraft ?? selectedInput?.title ?? effectiveClip.inputId
+              }
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onBlur={(e) => void handleTitleCommit(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.currentTarget.blur();
+                } else if (e.key === 'Escape') {
+                  setTitleDraft(null);
+                  e.currentTarget.blur();
+                }
+              }}
+            />
+          )}
+        </>
+      )}
+      {!isOutputClip && isDisconnected && (
+        <div className='mb-3 p-2.5 rounded border-2 border-dashed border-border bg-card/50'>
           <div className='text-xs text-amber-400/80 mb-2'>
             Disconnected — connect a new input
           </div>
           <div className='flex gap-2'>
             <Button
               size='sm'
-              variant='default'
-              className='flex-1 bg-neutral-800 hover:bg-neutral-700 text-white cursor-pointer'
+              variant='outline'
+              className='flex-1 cursor-pointer'
               disabled={!!connectingType}
               onClick={() => handleConnectWhip('camera')}>
               {connectingType === 'camera' ? (
@@ -1172,8 +942,8 @@ export function BlockClipPropertiesPanel({
             </Button>
             <Button
               size='sm'
-              variant='default'
-              className='flex-1 bg-neutral-800 hover:bg-neutral-700 text-white cursor-pointer'
+              variant='outline'
+              className='flex-1 cursor-pointer'
               disabled={!!connectingType}
               onClick={() => handleConnectWhip('screenshare')}>
               {connectingType === 'screenshare' ? (
@@ -1189,681 +959,728 @@ export function BlockClipPropertiesPanel({
         </div>
       )}
       {!isMultiSelect && selectedTimelineClip && (
-        <div className='border border-neutral-700 rounded p-2 mb-3 mt-1'>
+        <CollapsibleSection title='Keyframes' className={panelSectionStyles()}>
           <div className='flex items-center justify-between mb-2'>
-            <div>
-              <div className='text-xs text-neutral-400 font-medium'>
-                Keyframes
-              </div>
-              <div className='text-[10px] text-neutral-500'>
-                {selectedTimelineKeyframe
-                  ? selectedTimelineKeyframe.timeMs === 0
-                    ? 'Editing base (0ms) keyframe'
-                    : `Editing ${Math.round(selectedTimelineKeyframe.timeMs)}ms snapshot`
-                  : 'Editing base (0ms) keyframe'}
-              </div>
+            <div className='text-[10px] text-muted-foreground'>
+              {selectedTimelineKeyframe
+                ? selectedTimelineKeyframe.timeMs === 0
+                  ? 'Editing base (0ms) keyframe'
+                  : `Editing ${Math.round(selectedTimelineKeyframe.timeMs)}ms snapshot`
+                : 'Editing base (0ms) keyframe'}
             </div>
             <Button
               type='button'
               size='sm'
               variant='outline'
-              className='h-7 px-2 bg-neutral-800 border-neutral-700 text-white cursor-pointer hover:bg-neutral-700'
+              className='h-7 px-2 bg-card border-border text-foreground cursor-pointer hover:bg-accent'
               onClick={handleAddKeyframe}>
-              Add
+              Add Keyframe
             </Button>
           </div>
           <div className='flex flex-wrap gap-1.5 mb-2'>
             {selectedTimelineClip.keyframes.map((keyframe) => (
-              <button
+              <Button
                 key={keyframe.id}
                 type='button'
-                className={`rounded border px-2 py-1 text-[11px] cursor-pointer transition-colors ${
+                variant='outline'
+                size='sm'
+                className={`px-2 py-1 text-[11px] cursor-pointer ${
                   selectedTimelineKeyframe?.id === keyframe.id
                     ? 'border-red-400/70 bg-red-500/20 text-red-100'
-                    : 'border-neutral-700 bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
+                    : 'border-border bg-card text-card-foreground hover:bg-accent'
                 }`}
                 onClick={() => handleSelectKeyframe(keyframe.id)}>
                 {keyframe.timeMs === 0
                   ? 'Base (0ms)'
                   : `${Math.round(keyframe.timeMs)}ms`}
-              </button>
+              </Button>
             ))}
           </div>
           {selectedTimelineKeyframe && (
-            <div className='grid grid-cols-[1fr_auto] gap-2 items-end'>
-              <div>
-                <label className='text-xs text-neutral-400 block mb-1'>
-                  Time (ms)
-                </label>
-                <input
-                  type='number'
-                  min={0}
-                  max={
-                    selectedTimelineClip.endMs - selectedTimelineClip.startMs
-                  }
-                  step={50}
+            <>
+              <div className='grid grid-cols-[1fr_auto] gap-2 items-end mb-2'>
+                <div>
+                  <label className={labelStyles({ block: true })}>
+                    Time (ms)
+                  </label>
+                  <NumberInput
+                    min={0}
+                    max={
+                      selectedTimelineClip.endMs - selectedTimelineClip.startMs
+                    }
+                    step={50}
+                    disabled={selectedTimelineKeyframe.timeMs === 0}
+                    className='w-full bg-card border border-border text-foreground text-xs px-2 py-1 disabled:opacity-50'
+                    value={Math.round(selectedTimelineKeyframe.timeMs)}
+                    onChange={(e) =>
+                      handleMoveSelectedKeyframe(
+                        Math.max(0, Number(e.target.value) || 0),
+                      )
+                    }
+                  />
+                </div>
+                <Button
+                  type='button'
+                  size='sm'
+                  variant='outline'
                   disabled={selectedTimelineKeyframe.timeMs === 0}
-                  className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1 disabled:opacity-50'
-                  value={Math.round(selectedTimelineKeyframe.timeMs)}
-                  onChange={(e) =>
-                    handleMoveSelectedKeyframe(
-                      Math.max(0, Number(e.target.value) || 0),
-                    )
-                  }
-                />
-              </div>
-              <Button
-                type='button'
-                size='sm'
-                variant='outline'
-                disabled={selectedTimelineKeyframe.timeMs === 0}
-                className='h-8 px-2 bg-neutral-800 border-neutral-700 text-white cursor-pointer hover:bg-neutral-700 disabled:cursor-not-allowed'
-                onClick={handleDeleteSelectedKeyframe}>
-                Delete
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
-      <div className='grid grid-cols-2 gap-2 mb-2'>
-        <label className='text-xs text-neutral-400'>Volume</label>
-        <input
-          type='range'
-          min={0}
-          max={1}
-          step={0.01}
-          value={effectiveClip.blockSettings.volume}
-          onChange={(e) => {
-            void applyClipPatch({ volume: Number(e.target.value) });
-          }}
-        />
-      </div>
-      <div className='flex items-center justify-between mb-2'>
-        <span className='text-xs text-neutral-400'>Show title</span>
-        <input
-          type='checkbox'
-          checked={effectiveClip.blockSettings.showTitle}
-          onChange={(e) => {
-            void applyClipPatch({ showTitle: e.target.checked });
-          }}
-        />
-      </div>
-      <div className='flex items-center justify-between mb-2'>
-        <span className='text-xs text-neutral-400'>Orientation</span>
-        <select
-          className='bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
-          value={effectiveClip.blockSettings.orientation}
-          onChange={(e) =>
-            void applyClipPatch({
-              orientation: e.target.value as 'horizontal' | 'vertical',
-            })
-          }>
-          <option value='horizontal'>Horizontal</option>
-          <option value='vertical'>Vertical</option>
-        </select>
-      </div>
-      <div className='border border-neutral-700 rounded p-2 mb-3 mt-1'>
-        <div className='text-xs text-neutral-400 font-medium mb-2'>
-          Position
-        </div>
-        <div className='flex items-center justify-between mb-2'>
-          <span className='text-xs text-neutral-400'>Absolute position</span>
-          <input
-            type='checkbox'
-            checked={effectiveClip.blockSettings.absolutePosition ?? false}
-            onChange={(e) => {
-              const enabled = e.target.checked;
-              if (enabled && resolution) {
-                const isVert =
-                  effectiveClip.blockSettings.orientation === 'vertical';
-                const w = Math.round(resolution.width * 0.5);
-                const h = isVert
-                  ? Math.round(w * (16 / 9))
-                  : Math.round(w * (9 / 16));
-                void applyClipPatch({
-                  absolutePosition: true,
-                  absoluteWidth: w,
-                  absoluteHeight: h,
-                  absoluteTop: Math.round((resolution.height - h) / 2),
-                  absoluteLeft: Math.round((resolution.width - w) / 2),
-                  absoluteTransitionDurationMs: 300,
-                  absoluteTransitionEasing: 'linear',
-                });
-              } else {
-                void applyClipPatch({ absolutePosition: false });
-              }
-            }}
-          />
-        </div>
-        {effectiveClip.blockSettings.absolutePosition && resolution && (
-          <>
-            <AbsolutePositionController
-              resolution={resolution}
-              top={effectiveClip.blockSettings.absoluteTop ?? 0}
-              left={effectiveClip.blockSettings.absoluteLeft ?? 0}
-              width={
-                effectiveClip.blockSettings.absoluteWidth ??
-                Math.round(resolution.width * 0.5)
-              }
-              height={
-                effectiveClip.blockSettings.absoluteHeight ??
-                Math.round(resolution.height * 0.5)
-              }
-              onChange={(pos) =>
-                void applyClipPatch({
-                  absoluteTop: pos.top,
-                  absoluteLeft: pos.left,
-                  absoluteWidth: pos.width,
-                  absoluteHeight: pos.height,
-                })
-              }
-            />
-            <div className='grid grid-cols-2 gap-2'>
-              <div>
-                <label className='text-xs text-neutral-400 block mb-1'>
-                  Duration (ms)
-                </label>
-                <input
-                  type='number'
-                  min={0}
-                  step={50}
-                  className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
-                  value={
-                    effectiveClip.blockSettings.absoluteTransitionDurationMs ??
-                    300
-                  }
-                  onChange={(e) =>
-                    void applyClipPatch({
-                      absoluteTransitionDurationMs: Math.max(
-                        0,
-                        Number(e.target.value) || 0,
-                      ),
-                    })
-                  }
-                />
+                  className='h-8 px-2 bg-card border-border text-foreground cursor-pointer hover:bg-accent disabled:cursor-not-allowed'
+                  onClick={handleDeleteSelectedKeyframe}>
+                  Delete
+                </Button>
               </div>
               <div>
-                <label className='text-xs text-neutral-400 block mb-1'>
-                  Easing
+                <label className={labelStyles({ block: true })}>
+                  Interpolation
                 </label>
-                <select
-                  className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
+                <Select
                   value={
-                    effectiveClip.blockSettings.absoluteTransitionEasing ??
-                    'linear'
+                    selectedTimelineKeyframe.blockSettings.forceInterpolation ??
+                    'inherit'
                   }
-                  onChange={(e) =>
+                  onValueChange={(v) =>
                     void applyClipPatch({
-                      absoluteTransitionEasing: e.target.value,
+                      forceInterpolation:
+                        v === 'inherit' ? undefined : (v as 'step' | 'smooth'),
                     })
                   }>
-                  <option value='linear'>Linear</option>
-                  <option value='bounce'>Bounce</option>
-                  <option value='cubic_bezier_ease_in_out'>Ease in-out</option>
-                </select>
+                  <SelectTrigger
+                    className={panelInputStyles({
+                      fullWidth: true,
+                      compact: true,
+                    })}>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value='inherit'>Inherit (global)</SelectItem>
+                    <SelectItem value='smooth'>Force Smooth</SelectItem>
+                    <SelectItem value='step'>Force Step</SelectItem>
+                  </SelectContent>
+                </Select>
+                <div className='text-[10px] text-muted-foreground mt-1'>
+                  Override the global interpolation mode for this keyframe
+                  segment
+                </div>
+              </div>
+            </>
+          )}
+        </CollapsibleSection>
+      )}
+      {!isOutputClip && (
+        <>
+          <CollapsibleSection title='Display' className='mb-2'>
+            <div className='grid grid-cols-2 gap-2 mb-2'>
+              <label className='text-xs text-muted-foreground'>Volume</label>
+              <Slider
+                min={0}
+                max={1}
+                step={0.01}
+                value={[effectiveClip.blockSettings.volume]}
+                onValueChange={(v) => {
+                  void applyClipPatch({ volume: v[0] });
+                }}
+              />
+            </div>
+            <div className='flex items-center justify-between mb-2'>
+              <span className='text-xs text-muted-foreground'>Show title</span>
+              <input
+                type='checkbox'
+                checked={effectiveClip.blockSettings.showTitle}
+                onChange={(e) => {
+                  void applyClipPatch({ showTitle: e.target.checked });
+                }}
+              />
+            </div>
+          </CollapsibleSection>
+          <CollapsibleSection title='Position' className={panelSectionStyles()}>
+            {resolution && (
+              <>
+                <AbsolutePositionController
+                  resolution={resolution}
+                  top={effectiveClip.blockSettings.absoluteTop ?? 0}
+                  left={effectiveClip.blockSettings.absoluteLeft ?? 0}
+                  width={
+                    effectiveClip.blockSettings.absoluteWidth ??
+                    defaultAbsoluteRect(
+                      {
+                        sourceWidth:
+                          effectiveClip.blockSettings.sourceWidth ??
+                          selectedInput?.sourceWidth,
+                        sourceHeight:
+                          effectiveClip.blockSettings.sourceHeight ??
+                          selectedInput?.sourceHeight,
+                      },
+                      resolution,
+                    ).width
+                  }
+                  height={
+                    effectiveClip.blockSettings.absoluteHeight ??
+                    defaultAbsoluteRect(
+                      {
+                        sourceWidth:
+                          effectiveClip.blockSettings.sourceWidth ??
+                          selectedInput?.sourceWidth,
+                        sourceHeight:
+                          effectiveClip.blockSettings.sourceHeight ??
+                          selectedInput?.sourceHeight,
+                      },
+                      resolution,
+                    ).height
+                  }
+                  cropTop={effectiveClip.blockSettings.cropTop}
+                  cropLeft={effectiveClip.blockSettings.cropLeft}
+                  cropRight={effectiveClip.blockSettings.cropRight}
+                  cropBottom={effectiveClip.blockSettings.cropBottom}
+                  onChange={(pos) =>
+                    void applyClipPatch({
+                      absoluteTop: pos.top,
+                      absoluteLeft: pos.left,
+                      absoluteWidth: pos.width,
+                      absoluteHeight: pos.height,
+                    })
+                  }
+                  onCropChange={(cropVals) =>
+                    void applyClipPatch({
+                      cropTop: cropVals.cropTop,
+                      cropLeft: cropVals.cropLeft,
+                      cropRight: cropVals.cropRight,
+                      cropBottom: cropVals.cropBottom,
+                    })
+                  }
+                />
+                <div className='grid grid-cols-2 gap-2'>
+                  <div>
+                    <label className={labelStyles({ block: true })}>
+                      Duration (ms)
+                    </label>
+                    <NumberInput
+                      min={0}
+                      step={50}
+                      className={panelInputStyles({ fullWidth: true })}
+                      value={
+                        effectiveClip.blockSettings
+                          .absoluteTransitionDurationMs ?? 300
+                      }
+                      onChange={(e) =>
+                        void applyClipPatch({
+                          absoluteTransitionDurationMs: Math.max(
+                            0,
+                            Number(e.target.value) || 0,
+                          ),
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className={labelStyles({ block: true })}>
+                      Easing
+                    </label>
+                    <Select
+                      value={
+                        effectiveClip.blockSettings.absoluteTransitionEasing ??
+                        'linear'
+                      }
+                      onValueChange={(v) =>
+                        void applyClipPatch({
+                          absoluteTransitionEasing: v,
+                        })
+                      }>
+                      <SelectTrigger
+                        className={panelInputStyles({
+                          fullWidth: true,
+                          compact: true,
+                        })}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value='linear'>Linear</SelectItem>
+                        <SelectItem value='bounce'>Bounce</SelectItem>
+                        <SelectItem value='cubic_bezier_ease_in_out'>
+                          Ease in-out
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              </>
+            )}
+          </CollapsibleSection>
+          <CollapsibleSection title='Border' className='mb-2'>
+            <div className='grid grid-cols-2 gap-2'>
+              <div>
+                <label className={labelStyles({ block: true })}>Color</label>
+                <input
+                  type='color'
+                  className='w-full h-8 bg-card border border-border'
+                  value={effectiveClip.blockSettings.borderColor || '#ff0000'}
+                  onChange={(e) =>
+                    void applyClipPatch({ borderColor: e.target.value })
+                  }
+                />
+              </div>
+              <div>
+                <label className={labelStyles({ block: true })}>Width</label>
+                <NumberInput
+                  min={0}
+                  max={100}
+                  className={panelInputStyles({ fullWidth: true })}
+                  value={effectiveClip.blockSettings.borderWidth ?? 0}
+                  onChange={(e) =>
+                    void applyClipPatch({
+                      borderWidth: Math.max(0, Number(e.target.value) || 0),
+                    })
+                  }
+                />
               </div>
             </div>
-          </>
-        )}
-      </div>
-      <div className='grid grid-cols-2 gap-2 mb-2'>
-        <div>
-          <label className='text-xs text-neutral-400 block mb-1'>
-            Border color
-          </label>
-          <input
-            type='color'
-            className='w-full h-8 bg-neutral-800 border border-neutral-700'
-            value={effectiveClip.blockSettings.borderColor || '#ff0000'}
-            onChange={(e) =>
-              void applyClipPatch({ borderColor: e.target.value })
-            }
-          />
-        </div>
-        <div>
-          <label className='text-xs text-neutral-400 block mb-1'>
-            Border width
-          </label>
-          <input
-            type='number'
-            min={0}
-            max={100}
-            className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
-            value={effectiveClip.blockSettings.borderWidth ?? 0}
-            onChange={(e) =>
-              void applyClipPatch({
-                borderWidth: Math.max(0, Number(e.target.value) || 0),
-              })
-            }
-          />
-        </div>
-      </div>
-      <div className='border border-neutral-700 rounded p-2 mb-3 mt-1'>
-        <div className='text-xs text-neutral-400 font-medium mb-2'>
-          Transitions
-        </div>
-        <TransitionRow
-          label='Intro'
-          transition={effectiveClip.blockSettings.introTransition}
-          maxDurationMs={
-            effectiveClip.endMs -
-            effectiveClip.startMs -
-            (effectiveClip.blockSettings.outroTransition?.durationMs ?? 0)
-          }
-          onChange={(t) =>
-            void applyClipPatch({ introTransition: t }, { refresh: false })
-          }
-        />
-        <TransitionRow
-          label='Outro'
-          transition={effectiveClip.blockSettings.outroTransition}
-          maxDurationMs={
-            effectiveClip.endMs -
-            effectiveClip.startMs -
-            (effectiveClip.blockSettings.introTransition?.durationMs ?? 0)
-          }
-          onChange={(t) =>
-            void applyClipPatch({ outroTransition: t }, { refresh: false })
-          }
-        />
-      </div>
-      {selectedInput?.type === 'local-mp4' && (
-        <div className='border border-neutral-700 rounded p-2 mb-3 mt-1'>
-          <div className='text-xs text-neutral-400 font-medium mb-2'>
-            MP4 Playback
-          </div>
-          <div className='grid grid-cols-2 gap-2 mb-2'>
-            <label className='text-xs text-neutral-400 self-center'>
-              Play from (s)
-            </label>
-            <input
-              type='number'
-              min={0}
-              step={0.1}
-              className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
-              value={
-                Math.round(
-                  ((effectiveClip.blockSettings.mp4PlayFromMs ?? 0) / 1000) *
-                    10,
-                ) / 10
+          </CollapsibleSection>
+          <CollapsibleSection
+            title='Transitions'
+            className={panelSectionStyles()}>
+            <TransitionRow
+              label='Intro'
+              transition={effectiveClip.blockSettings.introTransition}
+              maxDurationMs={
+                effectiveClip.endMs -
+                effectiveClip.startMs -
+                (effectiveClip.blockSettings.outroTransition?.durationMs ?? 0)
               }
-              onChange={(e) => {
-                const seconds = Math.max(0, Number(e.target.value) || 0);
-                void applyClipPatch(
-                  { mp4PlayFromMs: Math.round(seconds * 1000) },
-                  { refresh: false },
-                );
-              }}
+              onChange={(t) =>
+                void applyClipPatch({ introTransition: t }, { refresh: false })
+              }
             />
-          </div>
-          <div className='flex items-center justify-between mb-1'>
-            <span className='text-xs text-neutral-400'>Loop</span>
-            <input
-              type='checkbox'
-              checked={effectiveClip.blockSettings.mp4Loop !== false}
-              onChange={(e) => {
-                void applyClipPatch(
-                  { mp4Loop: e.target.checked },
-                  { refresh: false },
-                );
-              }}
+            <TransitionRow
+              label='Outro'
+              transition={effectiveClip.blockSettings.outroTransition}
+              maxDurationMs={
+                effectiveClip.endMs -
+                effectiveClip.startMs -
+                (effectiveClip.blockSettings.introTransition?.durationMs ?? 0)
+              }
+              onChange={(t) =>
+                void applyClipPatch({ outroTransition: t }, { refresh: false })
+              }
             />
-          </div>
-          {effectiveClip.blockSettings.mp4DurationMs != null && (
-            <div className='text-[10px] text-neutral-500 mt-1'>
-              Duration:{' '}
-              {(effectiveClip.blockSettings.mp4DurationMs / 1000).toFixed(1)}s
-              {effectiveClip.blockSettings.mp4Loop === false && (
-                <span>
-                  {' '}
-                  · Max block:{' '}
-                  {(
-                    Math.max(
-                      0,
-                      effectiveClip.blockSettings.mp4DurationMs -
-                        (effectiveClip.blockSettings.mp4PlayFromMs ?? 0),
-                    ) / 1000
-                  ).toFixed(1)}
+          </CollapsibleSection>
+          {selectedInput?.type === 'local-mp4' && (
+            <CollapsibleSection
+              title='MP4 Playback'
+              className={panelSectionStyles()}>
+              <div className='grid grid-cols-2 gap-2 mb-2'>
+                <label className='text-xs text-muted-foreground self-center'>
+                  Play from (s)
+                </label>
+                <NumberInput
+                  min={0}
+                  step={0.1}
+                  className={panelInputStyles({ fullWidth: true })}
+                  value={
+                    Math.round(
+                      ((effectiveClip.blockSettings.mp4PlayFromMs ?? 0) /
+                        1000) *
+                        10,
+                    ) / 10
+                  }
+                  onChange={(e) => {
+                    const seconds = Math.max(0, Number(e.target.value) || 0);
+                    void applyClipPatch(
+                      { mp4PlayFromMs: Math.round(seconds * 1000) },
+                      { refresh: false },
+                    );
+                  }}
+                />
+              </div>
+              <div className='flex items-center justify-between mb-1'>
+                <span className='text-xs text-muted-foreground'>Loop</span>
+                <input
+                  type='checkbox'
+                  checked={effectiveClip.blockSettings.mp4Loop !== false}
+                  onChange={(e) => {
+                    void applyClipPatch(
+                      { mp4Loop: e.target.checked },
+                      { refresh: false },
+                    );
+                  }}
+                />
+              </div>
+              {effectiveClip.blockSettings.mp4DurationMs != null && (
+                <div className='text-[10px] text-muted-foreground mt-1'>
+                  Duration:{' '}
+                  {(effectiveClip.blockSettings.mp4DurationMs / 1000).toFixed(
+                    1,
+                  )}
                   s
-                </span>
+                  {effectiveClip.blockSettings.mp4Loop === false && (
+                    <span>
+                      {' '}
+                      · Max block:{' '}
+                      {(
+                        Math.max(
+                          0,
+                          effectiveClip.blockSettings.mp4DurationMs -
+                            (effectiveClip.blockSettings.mp4PlayFromMs ?? 0),
+                        ) / 1000
+                      ).toFixed(1)}
+                      s
+                    </span>
+                  )}
+                </div>
               )}
-            </div>
+              {mp4DurationLoading && (
+                <div className='text-[10px] text-muted-foreground mt-1'>
+                  Loading duration...
+                </div>
+              )}
+            </CollapsibleSection>
           )}
-          {mp4DurationLoading && (
-            <div className='text-[10px] text-neutral-500 mt-1'>
-              Loading duration...
-            </div>
+          {selectedInput?.type === 'game' && (
+            <CollapsibleSection title='Game' className='mb-2'>
+              <div className='grid grid-cols-2 gap-2'>
+                <div>
+                  <label className={labelStyles({ block: true })}>
+                    BG color
+                  </label>
+                  <input
+                    type='color'
+                    className='w-full h-8 bg-card border border-border'
+                    value={
+                      gameBgColor ??
+                      effectiveClip.blockSettings.gameBackgroundColor ??
+                      '#0a0f1a'
+                    }
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setGameBgColor(value);
+                      if (gameBgDebounceRef.current) {
+                        clearTimeout(gameBgDebounceRef.current);
+                      }
+                      gameBgDebounceRef.current = setTimeout(() => {
+                        void applyClipPatch({ gameBackgroundColor: value });
+                        setGameBgColor(null);
+                      }, 200);
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className={labelStyles({ block: true })}>
+                    Cell gap
+                  </label>
+                  <NumberInput
+                    min={0}
+                    max={20}
+                    className={panelInputStyles({ fullWidth: true })}
+                    value={effectiveClip.blockSettings.gameCellGap ?? 1}
+                    onChange={(e) =>
+                      void applyClipPatch({
+                        gameCellGap: Math.max(0, Number(e.target.value) || 0),
+                      })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className={labelStyles({ block: true })}>
+                    Grid line color
+                  </label>
+                  <input
+                    type='color'
+                    className='w-full h-8 bg-card border border-border'
+                    value={
+                      gameGridColor ??
+                      effectiveClip.blockSettings.gameGridLineColor ??
+                      '#000000'
+                    }
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setGameGridColor(value);
+                      if (gameGridDebounceRef.current) {
+                        clearTimeout(gameGridDebounceRef.current);
+                      }
+                      gameGridDebounceRef.current = setTimeout(() => {
+                        void applyClipPatch({ gameGridLineColor: value });
+                        setGameGridColor(null);
+                      }, 200);
+                    }}
+                  />
+                </div>
+                <div>
+                  <label className={labelStyles({ block: true })}>
+                    Grid opacity
+                  </label>
+                  <Slider
+                    min={0}
+                    max={1}
+                    step={0.01}
+                    className='w-full'
+                    value={[
+                      effectiveClip.blockSettings.gameGridLineAlpha ?? 1.0,
+                    ]}
+                    onValueChange={(v) =>
+                      void applyClipPatch({
+                        gameGridLineAlpha: v[0],
+                      })
+                    }
+                  />
+                </div>
+              </div>
+            </CollapsibleSection>
           )}
-        </div>
-      )}
-      {selectedInput?.type === 'game' && (
-        <div className='grid grid-cols-2 gap-2 mb-2'>
-          <div>
-            <label className='text-xs text-neutral-400 block mb-1'>
-              BG color
-            </label>
-            <input
-              type='color'
-              className='w-full h-8 bg-neutral-800 border border-neutral-700'
-              value={
-                gameBgColor ??
-                effectiveClip.blockSettings.gameBackgroundColor ??
-                '#0a0f1a'
-              }
-              onChange={(e) => {
-                const value = e.target.value;
-                setGameBgColor(value);
-                if (gameBgDebounceRef.current) {
-                  clearTimeout(gameBgDebounceRef.current);
-                }
-                gameBgDebounceRef.current = setTimeout(() => {
-                  void applyClipPatch({ gameBackgroundColor: value });
-                  setGameBgColor(null);
-                }, 200);
+          {selectedInput?.type === 'game' && (
+            <SnakeEventShaderPanel
+              roomId={roomId}
+              inputId={effectiveClip.inputId}
+              config={effectiveClip.blockSettings.snakeEventShaders}
+              availableShaders={availableShaders}
+              onConfigChange={(updated) => {
+                void applyClipPatch(
+                  { snakeEventShaders: updated },
+                  { refresh: false },
+                );
               }}
+              onUpdate={async () => {}}
             />
-          </div>
-          <div>
-            <label className='text-xs text-neutral-400 block mb-1'>
-              Cell gap
-            </label>
-            <input
-              type='number'
-              min={0}
-              max={20}
-              className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
-              value={effectiveClip.blockSettings.gameCellGap ?? 1}
-              onChange={(e) =>
-                void applyClipPatch({
-                  gameCellGap: Math.max(0, Number(e.target.value) || 0),
-                })
-              }
-            />
-          </div>
-          <div>
-            <label className='text-xs text-neutral-400 block mb-1'>
-              Grid line color
-            </label>
-            <input
-              type='color'
-              className='w-full h-8 bg-neutral-800 border border-neutral-700'
-              value={
-                gameGridColor ??
-                effectiveClip.blockSettings.gameGridLineColor ??
-                '#000000'
-              }
-              onChange={(e) => {
-                const value = e.target.value;
-                setGameGridColor(value);
-                if (gameGridDebounceRef.current) {
-                  clearTimeout(gameGridDebounceRef.current);
+          )}
+          {selectedInput?.type === 'game' && (
+            <CollapsibleSection title='Snake Shaders' className='mb-2'>
+              <SnakeShaderSection
+                label='Snake 1 Shaders'
+                shaders={effectiveClip.blockSettings.snake1Shaders ?? []}
+                playerColor={selectedInput?.snakePlayerColors?.[0]}
+                availableShaders={availableShaders}
+                onPatch={(shaders) =>
+                  void applyClipPatch({ snake1Shaders: shaders })
                 }
-                gameGridDebounceRef.current = setTimeout(() => {
-                  void applyClipPatch({ gameGridLineColor: value });
-                  setGameGridColor(null);
-                }, 200);
-              }}
-            />
-          </div>
-          <div>
-            <label className='text-xs text-neutral-400 block mb-1'>
-              Grid opacity
-            </label>
-            <input
-              type='range'
-              min={0}
-              max={1}
-              step={0.01}
-              className='w-full'
-              value={effectiveClip.blockSettings.gameGridLineAlpha ?? 1.0}
-              onChange={(e) =>
-                void applyClipPatch({
-                  gameGridLineAlpha: Number(e.target.value),
-                })
-              }
-            />
-          </div>
-        </div>
-      )}
-      {selectedInput?.type === 'game' && (
-        <SnakeEventShaderPanel
-          roomId={roomId}
-          inputId={effectiveClip.inputId}
-          config={effectiveClip.blockSettings.snakeEventShaders}
-          availableShaders={availableShaders}
-          onConfigChange={(updated) => {
-            void applyClipPatch(
-              { snakeEventShaders: updated },
-              { refresh: false },
-            );
-          }}
-          onUpdate={async () => {}}
-        />
-      )}
-      {selectedInput?.type === 'game' && (
-        <>
-          <SnakeShaderSection
-            label='🐍 Snake 1 Shaders'
-            shaders={effectiveClip.blockSettings.snake1Shaders ?? []}
-            playerColor={selectedInput?.snakePlayerColors?.[0]}
-            availableShaders={availableShaders}
-            onPatch={(shaders) =>
-              void applyClipPatch({ snake1Shaders: shaders })
-            }
-            onOpenShaderInline={(shaderId) =>
-              setInlineShaderView({ shaderId, source: 'snake1' })
-            }
-          />
-          <SnakeShaderSection
-            label='🐍 Snake 2 Shaders'
-            shaders={effectiveClip.blockSettings.snake2Shaders ?? []}
-            playerColor={selectedInput?.snakePlayerColors?.[1]}
-            availableShaders={availableShaders}
-            onPatch={(shaders) =>
-              void applyClipPatch({ snake2Shaders: shaders })
-            }
-            onOpenShaderInline={(shaderId) =>
-              setInlineShaderView({ shaderId, source: 'snake2' })
-            }
-          />
+                onOpenShaderInline={(shaderId) =>
+                  setInlineShaderView({ shaderId, source: 'snake1' })
+                }
+              />
+              <SnakeShaderSection
+                label='Snake 2 Shaders'
+                shaders={effectiveClip.blockSettings.snake2Shaders ?? []}
+                playerColor={selectedInput?.snakePlayerColors?.[1]}
+                availableShaders={availableShaders}
+                onPatch={(shaders) =>
+                  void applyClipPatch({ snake2Shaders: shaders })
+                }
+                onOpenShaderInline={(shaderId) =>
+                  setInlineShaderView({ shaderId, source: 'snake2' })
+                }
+              />
+            </CollapsibleSection>
+          )}
+          <CollapsibleSection title='Attached inputs' className='mb-2'>
+            <div className='flex items-center justify-between'>
+              <Button
+                ref={attachBtnRef}
+                variant='outline'
+                size='sm'
+                className='flex items-center gap-1 text-xs px-2 py-1 border-border bg-card hover:bg-accent cursor-pointer'
+                onClick={() => {
+                  if (!showAttachMenu && attachBtnRef.current) {
+                    const rect = attachBtnRef.current.getBoundingClientRect();
+                    setAttachMenuPos({ top: rect.bottom + 4, left: rect.left });
+                  }
+                  setShowAttachMenu(!showAttachMenu);
+                }}>
+                <Link
+                  className={`w-3.5 h-3.5 ${(effectiveClip.blockSettings.attachedInputIds?.length ?? 0) > 0 ? 'text-blue-400' : 'text-muted-foreground'}`}
+                />
+                <span className='text-card-foreground'>
+                  {(effectiveClip.blockSettings.attachedInputIds?.length ?? 0) >
+                  0
+                    ? `${effectiveClip.blockSettings.attachedInputIds!.length} attached`
+                    : 'None'}
+                </span>
+              </Button>
+              {showAttachMenu &&
+                attachMenuPos &&
+                createPortal(
+                  <>
+                    <div
+                      className='fixed inset-0 z-[99]'
+                      onClick={() => setShowAttachMenu(false)}
+                    />
+                    <div
+                      className='fixed bg-card border border-border rounded-lg shadow-lg p-2 z-[100] min-w-48'
+                      style={{
+                        top: attachMenuPos.top,
+                        left: attachMenuPos.left,
+                      }}>
+                      <div className='text-xs text-muted-foreground mb-1 px-1'>
+                        Attach inputs (render behind)
+                      </div>
+                      {inputs
+                        .filter((i) => i.inputId !== effectiveClip.inputId)
+                        .filter(
+                          (i) =>
+                            !inputs.some(
+                              (other) =>
+                                other.inputId !== effectiveClip.inputId &&
+                                (other.attachedInputIds || []).includes(
+                                  i.inputId,
+                                ),
+                            ),
+                        )
+                        .map((i) => {
+                          const isAttached = (
+                            effectiveClip.blockSettings.attachedInputIds || []
+                          ).includes(i.inputId);
+                          return (
+                            <label
+                              key={i.inputId}
+                              className='flex items-center gap-2 px-1 py-1 hover:bg-accent rounded cursor-pointer'>
+                              <input
+                                type='checkbox'
+                                checked={isAttached}
+                                onChange={() => handleAttachToggle(i.inputId)}
+                                className='accent-blue-500 cursor-pointer'
+                              />
+                              <span className='text-sm text-foreground truncate'>
+                                {i.title}
+                              </span>
+                            </label>
+                          );
+                        })}
+                    </div>
+                  </>,
+                  document.body,
+                )}
+            </div>
+          </CollapsibleSection>
+          {selectedInput?.type === 'text-input' && (
+            <CollapsibleSection title='Text input' className='mt-2'>
+              <div className='space-y-2'>
+                <div>
+                  <label className={labelStyles({ block: true })}>Text</label>
+                  <Textarea
+                    className='w-full bg-card border border-border text-foreground text-xs p-2 min-h-[80px]'
+                    value={effectiveClip.blockSettings.text || ''}
+                    onChange={(e) =>
+                      void applyClipPatch({ text: e.target.value })
+                    }
+                  />
+                </div>
+                <div className='grid grid-cols-2 gap-2'>
+                  <div>
+                    <label className={labelStyles({ block: true })}>
+                      Align
+                    </label>
+                    <Select
+                      value={effectiveClip.blockSettings.textAlign || 'left'}
+                      onValueChange={(v: 'left' | 'center' | 'right') =>
+                        void applyClipPatch({ textAlign: v })
+                      }>
+                      <SelectTrigger
+                        className={panelInputStyles({
+                          fullWidth: true,
+                          compact: true,
+                        })}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value='left'>Left</SelectItem>
+                        <SelectItem value='center'>Center</SelectItem>
+                        <SelectItem value='right'>Right</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className={labelStyles({ block: true })}>
+                      Text color
+                    </label>
+                    <input
+                      type='color'
+                      className='w-full h-8 bg-card border border-border'
+                      value={effectiveClip.blockSettings.textColor || '#ffffff'}
+                      onChange={(e) =>
+                        void applyClipPatch({ textColor: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+                <div className='grid grid-cols-2 gap-2'>
+                  <div>
+                    <label className={labelStyles({ block: true })}>
+                      Font size
+                    </label>
+                    <NumberInput
+                      min={8}
+                      max={300}
+                      className={panelInputStyles({ fullWidth: true })}
+                      value={effectiveClip.blockSettings.textFontSize ?? 80}
+                      onChange={(e) =>
+                        void applyClipPatch({
+                          textFontSize: Number(e.target.value) || 80,
+                        })
+                      }
+                    />
+                  </div>
+                  <div>
+                    <label className={labelStyles({ block: true })}>
+                      Max lines
+                    </label>
+                    <NumberInput
+                      min={1}
+                      max={50}
+                      className={panelInputStyles({ fullWidth: true })}
+                      value={effectiveClip.blockSettings.textMaxLines ?? 10}
+                      onChange={(e) =>
+                        void applyClipPatch({
+                          textMaxLines: Number(e.target.value) || 10,
+                        })
+                      }
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className={labelStyles({ block: true })}>
+                    Scroll speed
+                  </label>
+                  <div className='flex items-center gap-2'>
+                    <Slider
+                      min={1}
+                      max={400}
+                      step={1}
+                      className='flex-1'
+                      value={[
+                        textScrollSpeedDraft ??
+                          effectiveClip.blockSettings.textScrollSpeed ??
+                          80,
+                      ]}
+                      onValueChange={(v) =>
+                        handleTextScrollSpeedChange(v[0] || 80)
+                      }
+                    />
+                    <span className='text-xs text-muted-foreground w-8 text-right'>
+                      {textScrollSpeedDraft ??
+                        effectiveClip.blockSettings.textScrollSpeed ??
+                        80}
+                    </span>
+                  </div>
+                </div>
+                <div className='flex items-center justify-between'>
+                  <span className='text-xs text-muted-foreground'>
+                    Scroll loop
+                  </span>
+                  <input
+                    type='checkbox'
+                    checked={effectiveClip.blockSettings.textScrollLoop ?? true}
+                    onChange={(e) =>
+                      void applyClipPatch({ textScrollLoop: e.target.checked })
+                    }
+                  />
+                </div>
+              </div>
+            </CollapsibleSection>
+          )}
         </>
       )}
-      <div className='flex items-center justify-between mb-2'>
-        <span className='text-xs text-neutral-400'>Attached inputs</span>
-        <button
-          ref={attachBtnRef}
-          className='flex items-center gap-1 text-xs px-2 py-1 rounded border border-neutral-700 bg-neutral-800 hover:bg-neutral-700 cursor-pointer transition-colors'
-          onClick={() => {
-            if (!showAttachMenu && attachBtnRef.current) {
-              const rect = attachBtnRef.current.getBoundingClientRect();
-              setAttachMenuPos({ top: rect.bottom + 4, left: rect.left });
-            }
-            setShowAttachMenu(!showAttachMenu);
-          }}>
-          <Link
-            className={`w-3.5 h-3.5 ${(effectiveClip.blockSettings.attachedInputIds?.length ?? 0) > 0 ? 'text-blue-400' : 'text-neutral-400'}`}
-          />
-          <span className='text-neutral-300'>
-            {(effectiveClip.blockSettings.attachedInputIds?.length ?? 0) > 0
-              ? `${effectiveClip.blockSettings.attachedInputIds!.length} attached`
-              : 'None'}
-          </span>
-        </button>
-        {showAttachMenu &&
-          attachMenuPos &&
-          createPortal(
-            <>
-              <div
-                className='fixed inset-0 z-[99]'
-                onClick={() => setShowAttachMenu(false)}
-              />
-              <div
-                className='fixed bg-neutral-800 border border-neutral-700 rounded-lg shadow-lg p-2 z-[100] min-w-48'
-                style={{
-                  top: attachMenuPos.top,
-                  left: attachMenuPos.left,
-                }}>
-                <div className='text-xs text-neutral-400 mb-1 px-1'>
-                  Attach inputs (render behind)
-                </div>
-                {inputs
-                  .filter((i) => i.inputId !== effectiveClip.inputId)
-                  .filter(
-                    (i) =>
-                      !inputs.some(
-                        (other) =>
-                          other.inputId !== effectiveClip.inputId &&
-                          (other.attachedInputIds || []).includes(i.inputId),
-                      ),
-                  )
-                  .map((i) => {
-                    const isAttached = (
-                      effectiveClip.blockSettings.attachedInputIds || []
-                    ).includes(i.inputId);
-                    return (
-                      <label
-                        key={i.inputId}
-                        className='flex items-center gap-2 px-1 py-1 hover:bg-neutral-700 rounded cursor-pointer'>
-                        <input
-                          type='checkbox'
-                          checked={isAttached}
-                          onChange={() => handleAttachToggle(i.inputId)}
-                          className='accent-blue-500 cursor-pointer'
-                        />
-                        <span className='text-sm text-white truncate'>
-                          {i.title}
-                        </span>
-                      </label>
-                    );
-                  })}
-              </div>
-            </>,
-            document.body,
-          )}
-      </div>
-      {selectedInput?.type === 'text-input' && (
-        <div className='mt-2 space-y-2'>
-          <div>
-            <label className='text-xs text-neutral-400 block mb-1'>Text</label>
-            <textarea
-              className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs p-2 min-h-[80px]'
-              value={effectiveClip.blockSettings.text || ''}
-              onChange={(e) => void applyClipPatch({ text: e.target.value })}
-            />
-          </div>
-          <div className='grid grid-cols-2 gap-2'>
-            <div>
-              <label className='text-xs text-neutral-400 block mb-1'>
-                Align
-              </label>
-              <select
-                className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
-                value={effectiveClip.blockSettings.textAlign || 'left'}
-                onChange={(e) =>
-                  void applyClipPatch({
-                    textAlign: e.target.value as 'left' | 'center' | 'right',
-                  })
-                }>
-                <option value='left'>Left</option>
-                <option value='center'>Center</option>
-                <option value='right'>Right</option>
-              </select>
-            </div>
-            <div>
-              <label className='text-xs text-neutral-400 block mb-1'>
-                Text color
-              </label>
-              <input
-                type='color'
-                className='w-full h-8 bg-neutral-800 border border-neutral-700'
-                value={effectiveClip.blockSettings.textColor || '#ffffff'}
-                onChange={(e) =>
-                  void applyClipPatch({ textColor: e.target.value })
-                }
-              />
-            </div>
-          </div>
-          <div className='grid grid-cols-2 gap-2'>
-            <div>
-              <label className='text-xs text-neutral-400 block mb-1'>
-                Font size
-              </label>
-              <input
-                type='number'
-                min={8}
-                max={300}
-                className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
-                value={effectiveClip.blockSettings.textFontSize ?? 80}
-                onChange={(e) =>
-                  void applyClipPatch({
-                    textFontSize: Number(e.target.value) || 80,
-                  })
-                }
-              />
-            </div>
-            <div>
-              <label className='text-xs text-neutral-400 block mb-1'>
-                Max lines
-              </label>
-              <input
-                type='number'
-                min={1}
-                max={50}
-                className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-2 py-1'
-                value={effectiveClip.blockSettings.textMaxLines ?? 10}
-                onChange={(e) =>
-                  void applyClipPatch({
-                    textMaxLines: Number(e.target.value) || 10,
-                  })
-                }
-              />
-            </div>
-          </div>
-          <div>
-            <label className='text-xs text-neutral-400 block mb-1'>
-              Scroll speed
-            </label>
-            <div className='flex items-center gap-2'>
-              <input
-                type='range'
-                min={1}
-                max={400}
-                step={1}
-                className='flex-1'
-                value={
-                  textScrollSpeedDraft ??
-                  effectiveClip.blockSettings.textScrollSpeed ??
-                  80
-                }
-                onChange={(e) =>
-                  handleTextScrollSpeedChange(Number(e.target.value) || 80)
-                }
-              />
-              <span className='text-xs text-neutral-500 w-8 text-right'>
-                {textScrollSpeedDraft ??
-                  effectiveClip.blockSettings.textScrollSpeed ??
-                  80}
-              </span>
-            </div>
-          </div>
-          <div className='flex items-center justify-between'>
-            <span className='text-xs text-neutral-400'>Scroll loop</span>
-            <input
-              type='checkbox'
-              checked={effectiveClip.blockSettings.textScrollLoop ?? true}
-              onChange={(e) =>
-                void applyClipPatch({ textScrollLoop: e.target.checked })
-              }
-            />
-          </div>
-        </div>
-      )}
-      <div className='mt-3 border-t border-neutral-800 pt-2'>
-        <div className='text-xs text-neutral-400 mb-1'>
-          Shaders (block-level)
-        </div>
-        <div className='text-[11px] text-neutral-500 mb-2'>
-          Edit this block&apos;s shaders independently from other blocks.
+      <CollapsibleSection
+        title={isOutputClip ? 'Output Shaders' : 'Shaders (block-level)'}
+        className='mt-3 border-t border-border pt-2'>
+        <div className='text-[11px] text-muted-foreground mb-2'>
+          {isOutputClip
+            ? 'Apply shader effects to the entire video output.'
+            : "Edit this block's shaders independently from other blocks."}
         </div>
         <ShaderPanel
           input={shaderInput}
@@ -1881,7 +1698,7 @@ export function BlockClipPropertiesPanel({
           }
           onApplyPreset={handleApplyPreset}
         />
-      </div>
+      </CollapsibleSection>
       <AddShaderModal
         isOpen={isAddShaderModalOpen}
         onClose={() => setIsAddShaderModalOpen(false)}

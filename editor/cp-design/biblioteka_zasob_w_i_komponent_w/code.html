@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+
+<html class="dark" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>NEURAL_INTERFACE_V1 | ASSETS</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&amp;family=Inter:wght@300;400;500;600;700&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              "on-secondary": "#5b005b",
+              "surface-container-lowest": "#0e0e0e",
+              "surface": "#131313",
+              "primary-container": "#00f3ff",
+              "inverse-on-surface": "#313030",
+              "surface-bright": "#3a3939",
+              "on-surface-variant": "#b9cacb",
+              "on-error": "#690005",
+              "error-container": "#93000a",
+              "tertiary-fixed-dim": "#abd600",
+              "outline-variant": "#3a494b",
+              "on-tertiary-container": "#526800",
+              "on-error-container": "#ffdad6",
+              "surface-container-low": "#1c1b1b",
+              "on-tertiary-fixed-variant": "#3c4d00",
+              "tertiary": "#f1ffc2",
+              "secondary-fixed-dim": "#ffabf3",
+              "error": "#ffb4ab",
+              "background": "#131313",
+              "primary": "#e3fdff",
+              "on-tertiary": "#283500",
+              "surface-tint": "#00dce6",
+              "on-secondary-container": "#500050",
+              "secondary": "#ffabf3",
+              "on-secondary-fixed-variant": "#810081",
+              "inverse-primary": "#00696f",
+              "primary-fixed": "#6ff6ff",
+              "surface-dim": "#131313",
+              "outline": "#849495",
+              "surface-container-high": "#2a2a2a",
+              "on-primary-fixed": "#002022",
+              "primary-fixed-dim": "#00dce6",
+              "surface-container": "#201f1f",
+              "secondary-fixed": "#ffd7f5",
+              "on-secondary-fixed": "#380038",
+              "on-primary": "#00373a",
+              "inverse-surface": "#e5e2e1",
+              "on-primary-container": "#006b71",
+              "tertiary-fixed": "#c3f400",
+              "tertiary-container": "#bded00",
+              "secondary-container": "#fe00fe",
+              "on-tertiary-fixed": "#161e00",
+              "on-background": "#e5e2e1",
+              "on-surface": "#e5e2e1",
+              "surface-variant": "#353534",
+              "surface-container-highest": "#353534",
+              "on-primary-fixed-variant": "#004f53"
+            },
+            fontFamily: {
+              "headline": ["Space Grotesk"],
+              "body": ["Inter"],
+              "label": ["Space Grotesk"]
+            },
+            borderRadius: {"DEFAULT": "0px", "lg": "0px", "xl": "0px", "full": "9999px"},
+          },
+        },
+      }
+    </script>
+<style>
+        .material-symbols-outlined {
+            font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+        }
+        body {
+            background-color: #131313;
+            background-image: 
+                linear-gradient(rgba(0, 243, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 243, 255, 0.03) 1px, transparent 1px);
+            background-size: 40px 40px;
+        }
+        .scanline {
+            background: linear-gradient(to bottom, rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 2px, 3px 100%;
+            pointer-events: none;
+        }
+        .neon-glow-primary {
+            box-shadow: 0 0 10px rgba(0, 243, 255, 0.4);
+        }
+        .neon-glow-secondary {
+            box-shadow: 0 0 10px rgba(254, 0, 254, 0.4);
+        }
+    </style>
+</head>
+<body class="font-body text-on-surface select-none overflow-hidden h-screen flex flex-col">
+<!-- TopNavBar -->
+<header class="bg-[#131313] dark:bg-[#0e0e0e] shadow-[0_0_15px_rgba(0,243,255,0.1)] flex justify-between items-center w-full px-6 h-16 fixed top-0 z-50">
+<div class="flex items-center gap-8">
+<span class="text-2xl font-black text-[#00f3ff] tracking-tighter font-headline">NEURAL_INTERFACE_V1</span>
+<nav class="hidden md:flex gap-6">
+<a class="font-['Space_Grotesk'] uppercase tracking-widest text-sm text-[#849495] hover:text-[#e3fdff] transition-colors" href="#">TIMELINE</a>
+<a class="font-['Space_Grotesk'] uppercase tracking-widest text-sm text-[#00f3ff] border-b-2 border-[#00f3ff] pb-1" href="#">ASSETS</a>
+<a class="font-['Space_Grotesk'] uppercase tracking-widest text-sm text-[#849495] hover:text-[#e3fdff] transition-colors" href="#">RENDER</a>
+<a class="font-['Space_Grotesk'] uppercase tracking-widest text-sm text-[#849495] hover:text-[#e3fdff] transition-colors" href="#">SYSTEM</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<button class="text-[#849495] hover:bg-[#2a2a2a] p-2 transition-all"><span class="material-symbols-outlined">settings</span></button>
+<button class="text-[#849495] hover:bg-[#2a2a2a] p-2 transition-all"><span class="material-symbols-outlined">terminal</span></button>
+<div class="h-8 w-8 bg-surface-container-high border border-outline-variant flex items-center justify-center">
+<span class="material-symbols-outlined text-sm text-[#00f3ff]">person</span>
+</div>
+</div>
+</header>
+<div class="flex flex-1 pt-16">
+<!-- SideNavBar -->
+<aside class="bg-[#0e0e0e] fixed left-0 top-16 bottom-0 flex flex-col items-center z-40 w-20">
+<div class="flex flex-col items-center w-full py-4 border-l-2 border-[#fe00fe] bg-[#1c1b1b] text-[#00f3ff]">
+<span class="material-symbols-outlined mb-1">grid_view</span>
+<span class="font-['Inter'] font-mono text-[10px]">LIBRARY</span>
+</div>
+<div class="flex flex-col items-center w-full py-4 text-[#849495] hover:bg-[#2a2a2a] hover:text-[#00f3ff] transition-all">
+<span class="material-symbols-outlined mb-1">auto_awesome</span>
+<span class="font-['Inter'] font-mono text-[10px]">FX</span>
+</div>
+<div class="flex flex-col items-center w-full py-4 text-[#849495] hover:bg-[#2a2a2a] hover:text-[#00f3ff] transition-all">
+<span class="material-symbols-outlined mb-1">graphic_eq</span>
+<span class="font-['Inter'] font-mono text-[10px]">AUDIO</span>
+</div>
+<div class="flex flex-col items-center w-full py-4 text-[#849495] hover:bg-[#2a2a2a] hover:text-[#00f3ff] transition-all">
+<span class="material-symbols-outlined mb-1">database</span>
+<span class="font-['Inter'] font-mono text-[10px]">METADATA</span>
+</div>
+<div class="flex flex-col items-center w-full py-4 text-[#849495] hover:bg-[#2a2a2a] hover:text-[#00f3ff] transition-all">
+<span class="material-symbols-outlined mb-1">ios_share</span>
+<span class="font-['Inter'] font-mono text-[10px]">EXPORT</span>
+</div>
+<div class="mt-auto border-t border-outline-variant/20 w-full">
+<div class="flex flex-col items-center w-full py-4 text-[#849495] hover:bg-[#2a2a2a]">
+<span class="material-symbols-outlined mb-1">code</span>
+<span class="font-['Inter'] font-mono text-[10px]">CONSOLE</span>
+</div>
+<div class="flex flex-col items-center w-full py-4 text-[#849495] hover:bg-[#2a2a2a]">
+<span class="material-symbols-outlined mb-1">history</span>
+<span class="font-['Inter'] font-mono text-[10px]">LOGS</span>
+</div>
+</div>
+</aside>
+<!-- Main Workspace -->
+<main class="ml-20 flex-1 flex flex-col h-[calc(100vh-64px)] overflow-hidden">
+<div class="flex-1 flex overflow-hidden">
+<!-- Asset Library Grid -->
+<section class="flex-1 p-6 overflow-y-auto bg-background/50 backdrop-blur-sm">
+<div class="flex justify-between items-center mb-6">
+<h2 class="font-headline font-bold text-lg tracking-widest text-[#00f3ff]">ACTIVE_ASSET_REPOSITORY</h2>
+<div class="flex gap-2">
+<span class="font-mono text-xs text-outline">FILTER: ALL_TYPES</span>
+<span class="font-mono text-xs text-[#fe00fe]">[24 FILES]</span>
+</div>
+</div>
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+<!-- Asset Card 1 -->
+<div class="bg-surface-container-low border border-outline-variant/30 hover:border-primary-container group transition-all">
+<div class="relative aspect-video bg-black overflow-hidden">
+<img class="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" data-alt="Cyberpunk city street at night with neon lights" src="https://lh3.googleusercontent.com/aida-public/AB6AXuD59_XmJRZmAUoAeoWc3-OV0CgYp8JF831HPzPqMBpMlMnaf_JxlN0Ii52CJTh3W04_F8PBP9XCItb1RpFPEj4nXJtnX7kezFf7py9zfeh3anvUSZKJQiY9tTyQlZvCpe2TxPbM4uoEWEeX9KDOxcMrKWWEQuqJqTk0ophkaFykhGpQA3IzTy2hd48-cBY8CeuoieaM_-A0L2-6--g1O3gzg3_EvquxkdulnPb9m3NpJLUXnmSHmudTl4A4RrJ_UhD5qsEGu6CXFRg"/>
+<div class="absolute inset-0 scanline opacity-30"></div>
+<div class="absolute top-2 left-2 px-1 bg-black/80 text-[10px] font-mono text-[#00f3ff] border border-[#00f3ff]/30">4K_RAW</div>
+<div class="absolute bottom-2 right-2 px-1 bg-black/80 text-[10px] font-mono text-[#fe00fe]">00:12:45</div>
+</div>
+<div class="p-3 border-t border-outline-variant/20">
+<div class="font-mono text-xs text-primary mb-1 truncate">CORRUPT_FEED_01.MP4</div>
+<div class="flex justify-between text-[10px] font-mono text-on-surface-variant">
+<span>3840x2160</span>
+<span>24.5 GB</span>
+</div>
+</div>
+</div>
+<!-- Asset Card 2 -->
+<div class="bg-surface-container-low border border-outline-variant/30 hover:border-primary-container group transition-all">
+<div class="relative aspect-video bg-black overflow-hidden">
+<img class="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" data-alt="Abstract blue digital connection patterns" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCF8yfeC5X0nhuLC06Uo01TsCiqnW5o5JcqGbvGC6MaGkKRw0bGt8vnc4ebSYXnfC5o94Pz6C8GboYgGxl5joJwb7h1FHYHfbfOi3LJDLYeM9DELSi7nDDfzDaO9LMp5kWLT3izijoqHIZeZdTHwRAwMo0aR5gFI-IseusQPp8xOL10a-D58FtsKm3mKqWk2m5KK-ms-WsWzZuSLheiHsm9uW7ZDrpBNNqqtzmOghtpIqnO_mtsumAYRnNzo8BGe1O4i6i9zFb5tu4"/>
+<div class="absolute inset-0 scanline opacity-30"></div>
+<div class="absolute top-2 left-2 px-1 bg-black/80 text-[10px] font-mono text-[#00f3ff] border border-[#00f3ff]/30">LOG_PRO</div>
+<div class="absolute bottom-2 right-2 px-1 bg-black/80 text-[10px] font-mono text-[#fe00fe]">00:05:12</div>
+</div>
+<div class="p-3 border-t border-outline-variant/20">
+<div class="font-mono text-xs text-primary mb-1 truncate">NEURAL_DUMP_V4.MOV</div>
+<div class="flex justify-between text-[10px] font-mono text-on-surface-variant">
+<span>1920x1080</span>
+<span>8.2 GB</span>
+</div>
+</div>
+</div>
+<!-- Asset Card 3 -->
+<div class="bg-surface-container-low border border-outline-variant/30 hover:border-primary-container group transition-all">
+<div class="relative aspect-video bg-black overflow-hidden">
+<img class="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" data-alt="High tech circuit board with glowing blue lines" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCOuSF1xEbon1WFjsLV_4wApr2fInyD_uGiqLgXt5W5SziV41od4GclPsgGoJ2SUPTFSfJCQQ-F85QQfhiPMGaPBZ6Jy57CYVBMI3J3pnmOpVcu8qxyXeOLwpFZs20yn7_3NLR-FNsL0lfFu3Jz-PB7mrAnLgZomVV4DfxgWUiXPpY3Jr52qD6O0LeoXFDam62okvwHJuWXgUi8XasThsVKtCaXnpxiAopkOqLCO6TPsBcFq5UJ8T35FRaiK-CowbCML0wEbWKAph0"/>
+<div class="absolute inset-0 scanline opacity-30"></div>
+<div class="absolute top-2 left-2 px-1 bg-black/80 text-[10px] font-mono text-[#00f3ff] border border-[#00f3ff]/30">8K_ULTRA</div>
+<div class="absolute bottom-2 right-2 px-1 bg-black/80 text-[10px] font-mono text-[#fe00fe]">01:42:00</div>
+</div>
+<div class="p-3 border-t border-outline-variant/20">
+<div class="font-mono text-xs text-primary mb-1 truncate">CORE_PROCESS_09.BRAW</div>
+<div class="flex justify-between text-[10px] font-mono text-on-surface-variant">
+<span>7680x4320</span>
+<span>142 GB</span>
+</div>
+</div>
+</div>
+<!-- Asset Card 4 -->
+<div class="bg-surface-container-low border border-outline-variant/30 hover:border-primary-container group transition-all border-l-2 border-l-[#fe00fe]">
+<div class="relative aspect-video bg-black overflow-hidden">
+<img class="w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700" data-alt="Dark dramatic stormy sky with deep contrast" src="https://lh3.googleusercontent.com/aida-public/AB6AXuCUPCT0rmAKt4oSR9dGMoFEDiCa3bBaPDL7JYtSXxU-MeV3AMq9YNVgy2nTuBsso03WiWRYyZruOC10XpHvtA8QyToCTXyK3_nr4WHNMNlLbYpzG8cRolR1VpzxnhsTFzkMuY9pmdOZzvQ0nFzz-zhnLBT0OezRXQxvY_SbD0z7siaLWmNSUKhsivT_4svWbyOM1BceWuelMm5HlxtcI7to66moSQbcQWoSSYT0r9QzS40UMgeBqSOl5SsQmb5fixqmiGsJiruGyGE"/>
+<div class="absolute inset-0 scanline opacity-30"></div>
+<div class="absolute top-2 left-2 px-1 bg-black/80 text-[10px] font-mono text-[#00f3ff] border border-[#00f3ff]/30">FX_COMP</div>
+<div class="absolute bottom-2 right-2 px-1 bg-black/80 text-[10px] font-mono text-[#fe00fe]">00:01:22</div>
+</div>
+<div class="p-3 border-t border-outline-variant/20">
+<div class="font-mono text-xs text-primary mb-1 truncate">GLITCH_TRANSITION_ALPHA.MP4</div>
+<div class="flex justify-between text-[10px] font-mono text-on-surface-variant">
+<span>3840x2160</span>
+<span>1.4 GB</span>
+</div>
+</div>
+</div>
+</div>
+</section>
+<!-- Right Panel (Properties) -->
+<aside class="w-80 bg-surface-container-lowest border-l border-outline-variant/20 flex flex-col p-5 overflow-y-auto">
+<div class="flex items-center gap-2 mb-8">
+<span class="material-symbols-outlined text-[#fe00fe] text-lg">tune</span>
+<h3 class="font-headline font-bold text-sm tracking-widest uppercase">Property_Inspector</h3>
+</div>
+<!-- Sliders -->
+<div class="space-y-6 mb-8">
+<div class="space-y-3">
+<div class="flex justify-between text-[10px] font-mono tracking-tighter">
+<span class="text-on-surface-variant">CHROMATIC_ABERRATION</span>
+<span class="text-[#00f3ff]">0.42</span>
+</div>
+<div class="relative h-1 bg-surface-container-highest">
+<div class="absolute top-0 left-0 h-full w-[42%] bg-primary-container neon-glow-primary"></div>
+<div class="absolute top-1/2 -translate-y-1/2 left-[42%] w-3 h-3 bg-primary-container border border-black"></div>
+</div>
+</div>
+<div class="space-y-3">
+<div class="flex justify-between text-[10px] font-mono tracking-tighter">
+<span class="text-on-surface-variant">SCANLINE_INTENSITY</span>
+<span class="text-[#00f3ff]">0.88</span>
+</div>
+<div class="relative h-1 bg-surface-container-highest">
+<div class="absolute top-0 left-0 h-full w-[88%] bg-primary-container neon-glow-primary"></div>
+<div class="absolute top-1/2 -translate-y-1/2 left-[88%] w-3 h-3 bg-primary-container border border-black"></div>
+</div>
+</div>
+</div>
+<!-- Toggles -->
+<div class="space-y-4 mb-8">
+<div class="flex justify-between items-center">
+<span class="text-[10px] font-mono tracking-tighter">V-SYNC_LOCK</span>
+<button class="w-10 h-5 bg-primary-container relative">
+<div class="absolute top-1 left-1 bottom-1 w-3 bg-black"></div>
+</button>
+</div>
+<div class="flex justify-between items-center">
+<span class="text-[10px] font-mono tracking-tighter">GLITCH_OVERLAY</span>
+<button class="w-10 h-5 bg-secondary-container relative">
+<div class="absolute top-1 right-1 bottom-1 w-3 bg-black"></div>
+</button>
+</div>
+</div>
+<!-- Audio Knob Control -->
+<div class="mb-8">
+<div class="text-[10px] font-mono tracking-tighter text-on-surface-variant mb-4">AUDIO_GAIN_MASTER</div>
+<div class="flex justify-center items-center">
+<div class="relative w-24 h-24 border-2 border-outline-variant/30 flex items-center justify-center">
+<div class="absolute inset-0 border-t-2 border-[#00f3ff] rotate-45"></div>
+<div class="w-16 h-16 bg-surface-container-high flex items-center justify-center relative">
+<div class="w-1 h-4 bg-[#00f3ff] absolute top-1"></div>
+<span class="font-mono text-xs font-bold text-[#00f3ff]">+6.2</span>
+</div>
+</div>
+</div>
+</div>
+<!-- Segmented Buttons -->
+<div>
+<div class="text-[10px] font-mono tracking-tighter text-on-surface-variant mb-4 uppercase">Render_Quality</div>
+<div class="grid grid-cols-3 gap-0">
+<button class="bg-[#1c1b1b] border border-outline-variant/20 py-2 text-[10px] font-mono hover:text-[#00f3ff]">DRAFT</button>
+<button class="bg-primary-container text-black border border-primary-container py-2 text-[10px] font-mono font-bold">FINAL</button>
+<button class="bg-[#1c1b1b] border border-outline-variant/20 py-2 text-[10px] font-mono hover:text-[#00f3ff]">ULTRA</button>
+</div>
+</div>
+</aside>
+</div>
+<!-- Dashboard / Terminal Footer -->
+<footer class="h-48 bg-[#0e0e0e] border-t border-outline-variant/20 grid grid-cols-3 gap-0">
+<!-- System Stats -->
+<div class="p-4 border-r border-outline-variant/20 space-y-4">
+<div class="flex items-center gap-2 mb-2">
+<span class="material-symbols-outlined text-xs text-[#bded00]">analytics</span>
+<span class="text-[10px] font-mono uppercase tracking-widest text-[#bded00]">Hardware_Sensors</span>
+</div>
+<div class="space-y-3">
+<div>
+<div class="flex justify-between text-[9px] font-mono mb-1">
+<span>CPU_LOAD</span>
+<span>12%</span>
+</div>
+<div class="h-1 bg-surface-container-high"><div class="h-full w-[12%] bg-[#bded00]"></div></div>
+</div>
+<div>
+<div class="flex justify-between text-[9px] font-mono mb-1">
+<span>GPU_USAGE</span>
+<span>89%</span>
+</div>
+<div class="h-1 bg-surface-container-high"><div class="h-full w-[89%] bg-[#fe00fe]"></div></div>
+</div>
+<div>
+<div class="flex justify-between text-[9px] font-mono mb-1">
+<span>MEMORY</span>
+<span>64%</span>
+</div>
+<div class="h-1 bg-surface-container-high"><div class="h-full w-[64%] bg-[#00f3ff]"></div></div>
+</div>
+</div>
+</div>
+<!-- Terminal window -->
+<div class="col-span-2 p-4 font-mono text-[10px] bg-[#080808] overflow-hidden flex flex-col">
+<div class="flex justify-between items-center mb-2 text-on-surface-variant border-b border-outline-variant/20 pb-1">
+<span>SYSTEM_LOG_FEED.LNK</span>
+<span class="text-[#bded00]">LIVE_SYNC</span>
+</div>
+<div class="flex-1 overflow-y-auto space-y-1 text-on-surface-variant">
+<p><span class="text-outline">14:02:11</span> <span class="text-[#00f3ff]">[INIT]</span> Initializing CUDA cores...</p>
+<p><span class="text-outline">14:02:12</span> <span class="text-[#00f3ff]">[INFO]</span> Asset 'CORRUPT_FEED_01.MP4' indexed successfully.</p>
+<p><span class="text-outline">14:02:15</span> <span class="text-[#fe00fe]">[WARN]</span> Chromatic scale mismatch in AUDIO_BUFFER_02.</p>
+<p><span class="text-outline">14:02:18</span> <span class="text-[#bded00]">[DONE]</span> Neural rendering engine warm-up complete.</p>
+<p><span class="text-outline">14:02:22</span> <span class="text-[#00f3ff]">[INFO]</span> Awaiting user command sequence...</p>
+<p class="animate-pulse">_</p>
+</div>
+</div>
+</footer>
+</main>
+</div>
+</body></html>

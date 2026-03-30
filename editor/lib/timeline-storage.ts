@@ -17,7 +17,6 @@ export type StoredBlockSettings = {
     enabled: boolean;
     params: { paramName: string; paramValue: number | string }[];
   }[];
-  orientation: 'horizontal' | 'vertical';
   text?: string;
   textAlign?: 'left' | 'center' | 'right';
   textColor?: string;
@@ -54,11 +53,18 @@ export type StoredBlockSettings = {
   absoluteHeight?: number;
   absoluteTransitionDurationMs?: number;
   absoluteTransitionEasing?: string;
+  cropTop?: number;
+  cropLeft?: number;
+  cropRight?: number;
+  cropBottom?: number;
   mp4PlayFromMs?: number;
   mp4Loop?: boolean;
   mp4DurationMs?: number;
+  sourceWidth?: number;
+  sourceHeight?: number;
   introTransition?: StoredTransitionConfig;
   outroTransition?: StoredTransitionConfig;
+  forceInterpolation?: 'step' | 'smooth';
 };
 
 export type StoredKeyframe = {

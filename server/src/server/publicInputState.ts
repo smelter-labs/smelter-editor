@@ -14,7 +14,6 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
     volume: input.volume,
     type: input.type,
     shaders: input.shaders,
-    orientation: input.orientation,
     borderColor: input.borderColor,
     borderWidth: input.borderWidth,
     attachedInputIds: input.attachedInputIds,
@@ -27,6 +26,10 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
     absoluteHeight: input.absoluteHeight,
     absoluteTransitionDurationMs: input.absoluteTransitionDurationMs,
     absoluteTransitionEasing: input.absoluteTransitionEasing,
+    cropTop: input.cropTop,
+    cropLeft: input.cropLeft,
+    cropRight: input.cropRight,
+    cropBottom: input.cropBottom,
     motionScore: input.motionScore,
     motionEnabled: input.motionEnabled,
     nativeWidth: input.nativeWidth,
@@ -34,7 +37,12 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
   };
   switch (input.type) {
     case 'local-mp4':
-      return { ...base, sourceState: 'always-live' as const };
+      return {
+        ...base,
+        sourceState: 'always-live' as const,
+        sourceWidth: input.mp4VideoWidth,
+        sourceHeight: input.mp4VideoHeight,
+      };
     case 'image':
       return {
         ...base,
@@ -48,6 +56,8 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
         sourceState: input.monitor.isLive() ? 'live' : 'offline',
         channelId: input.channelId,
       };
+    case 'hls':
+      return { ...base, sourceState: 'always-live' as const };
     case 'whip':
       return {
         ...base,
@@ -71,6 +81,12 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
         ...base,
         sourceState: 'always-live' as const,
         ...toPublicSnakeGameInputState(input),
+      };
+    case 'hands':
+      return {
+        ...base,
+        sourceState: 'always-live' as const,
+        handsSourceInputId: input.sourceInputId,
       };
     default:
       throw new Error('Unknown input state');
