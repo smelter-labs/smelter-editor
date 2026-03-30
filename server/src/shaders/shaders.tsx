@@ -1533,7 +1533,7 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
       {
         name: 'edge_thickness',
         type: 'number',
-        minValue: 1,
+        minValue: 0.1,
         maxValue: 5,
         defaultValue: 2.0,
       },

@@ -50,3 +50,11 @@ export type TimelineConfig = {
   totalDurationMs: number;
   keyframeInterpolationMode: TimelineKeyframeInterpolationMode;
 };
+
+export const OUTPUT_TRACK_INPUT_ID = '__output__';
+export const OUTPUT_TRACK_ID = '__output_track__';
+export const OUTPUT_CLIP_ID = '__output_clip__';
+
+export function isOutputTrackClip(clip: TimelineClip): boolean {
+  return clip.inputId === OUTPUT_TRACK_INPUT_ID;
+}

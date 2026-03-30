@@ -4,7 +4,9 @@ import type {
   TimelineBlockSettings,
   TimelineKeyframe,
   TimelineKeyframeInterpolationMode,
+  ShaderConfig,
 } from './types';
+import { OUTPUT_TRACK_INPUT_ID } from './types';
 import type { RoomInputState } from '../room/types';
 
 type PlaybackEvent = {
@@ -36,6 +38,7 @@ type InputSnapshot = {
 type PrePlaySnapshot = {
   inputSnapshots: Map<string, InputSnapshot>;
   inputOrder: string[];
+  outputShaders: ShaderConfig[];
 };
 
 function deepClone<T>(value: T): T {
@@ -73,6 +76,8 @@ export interface TimelineRoomStateAdapter {
     loop: boolean,
   ): Promise<void>;
   reorderInputs(inputOrder: string[]): Promise<void>;
+  updateOutputShaders(shaders: ShaderConfig[]): Promise<void>;
+  getOutputShaders(): ShaderConfig[];
 }
 
 function isMp4InputId(inputId: string): boolean {
@@ -96,19 +101,23 @@ function compileEvents(
 
   for (const track of config.tracks) {
     for (const clip of track.clips) {
-      if (clip.startMs > fromMs) {
-        events.push({
-          timeMs: clip.startMs,
-          type: 'connect',
-          inputId: clip.inputId,
-        });
-      }
-      if (clip.endMs > fromMs) {
-        events.push({
-          timeMs: clip.endMs,
-          type: 'disconnect',
-          inputId: clip.inputId,
-        });
+      const isOutput = clip.inputId === OUTPUT_TRACK_INPUT_ID;
+
+      if (!isOutput) {
+        if (clip.startMs > fromMs) {
+          events.push({
+            timeMs: clip.startMs,
+            type: 'connect',
+            inputId: clip.inputId,
+          });
+        }
+        if (clip.endMs > fromMs) {
+          events.push({
+            timeMs: clip.endMs,
+            type: 'disconnect',
+            inputId: clip.inputId,
+          });
+        }
       }
 
       for (const keyframe of getNormalizedKeyframes(clip)) {
@@ -126,34 +135,36 @@ function compileEvents(
         }
       }
 
-      const intro = resolveBlockSettingsAtTime(
-        clip,
-        clip.startMs,
-        mode,
-      ).introTransition;
-      if (intro && clip.startMs > fromMs) {
-        events.push({
-          timeMs: clip.startMs,
-          type: 'transition-in',
-          inputId: clip.inputId,
-          transition: intro,
-        });
-      }
-
-      const outro = resolveBlockSettingsAtTime(
-        clip,
-        Math.max(clip.startMs, clip.endMs - 1),
-        mode,
-      ).outroTransition;
-      if (outro) {
-        const outroStartMs = clip.endMs - outro.durationMs;
-        if (outroStartMs > fromMs) {
+      if (!isOutput) {
+        const intro = resolveBlockSettingsAtTime(
+          clip,
+          clip.startMs,
+          mode,
+        ).introTransition;
+        if (intro && clip.startMs > fromMs) {
           events.push({
-            timeMs: outroStartMs,
-            type: 'transition-out',
+            timeMs: clip.startMs,
+            type: 'transition-in',
             inputId: clip.inputId,
-            transition: outro,
+            transition: intro,
           });
+        }
+
+        const outro = resolveBlockSettingsAtTime(
+          clip,
+          Math.max(clip.startMs, clip.endMs - 1),
+          mode,
+        ).outroTransition;
+        if (outro) {
+          const outroStartMs = clip.endMs - outro.durationMs;
+          if (outroStartMs > fromMs) {
+            events.push({
+              timeMs: outroStartMs,
+              type: 'transition-out',
+              inputId: clip.inputId,
+              transition: outro,
+            });
+          }
         }
       }
     }
@@ -380,6 +391,7 @@ function getActiveOrder(config: TimelineConfig, timeMs: number): string[] {
   const seen = new Set<string>();
   for (const track of config.tracks) {
     for (const clip of track.clips) {
+      if (clip.inputId === OUTPUT_TRACK_INPUT_ID) continue;
       if (
         timeMs >= clip.startMs &&
         timeMs < clip.endMs &&
@@ -401,6 +413,7 @@ function computeDesiredState(
 
   for (const track of config.tracks) {
     for (const clip of track.clips) {
+      if (clip.inputId === OUTPUT_TRACK_INPUT_ID) continue;
       if (!desired.has(clip.inputId)) {
         desired.set(clip.inputId, false);
       }
@@ -409,6 +422,7 @@ function computeDesiredState(
 
   for (const track of config.tracks) {
     for (const clip of track.clips) {
+      if (clip.inputId === OUTPUT_TRACK_INPUT_ID) continue;
       if (playheadMs >= clip.startMs && playheadMs < clip.endMs) {
         desired.set(clip.inputId, true);
       }
@@ -893,10 +907,11 @@ export class TimelinePlayer {
     const event = this.events[index];
     if (!event) return;
 
-    if (event.type === 'connect') {
+    if (event.inputId === OUTPUT_TRACK_INPUT_ID) {
+      // Output track: only keyframe events are relevant, handled by applyBlockSettingsAtTime below
+    } else if (event.type === 'connect') {
       this.appliedState.set(event.inputId, true);
 
-      // Look for a co-located transition-in event
       let mergedTransition: TimelineVisibilityTransition | undefined;
       for (let j = index + 1; j < this.events.length; j++) {
         if (this.events[j].timeMs !== event.timeMs) break;
@@ -1046,17 +1061,28 @@ export class TimelinePlayer {
     const serialized = JSON.stringify(resolvedBlockSettings);
     if (this.appliedBlockSettings.get(inputId) !== serialized) {
       this.appliedBlockSettings.set(inputId, serialized);
-      await this.room
-        .updateInput(
-          inputId,
-          buildUpdateFromBlockSettings(resolvedBlockSettings),
-        )
-        .catch((err) =>
-          console.warn(
-            `[timeline] Failed to apply block settings for ${inputId}`,
-            err,
-          ),
-        );
+      if (inputId === OUTPUT_TRACK_INPUT_ID) {
+        await this.room
+          .updateOutputShaders(resolvedBlockSettings.shaders ?? [])
+          .catch((err) =>
+            console.warn(
+              `[timeline] Failed to apply output shaders`,
+              err,
+            ),
+          );
+      } else {
+        await this.room
+          .updateInput(
+            inputId,
+            buildUpdateFromBlockSettings(resolvedBlockSettings),
+          )
+          .catch((err) =>
+            console.warn(
+              `[timeline] Failed to apply block settings for ${inputId}`,
+              err,
+            ),
+          );
+      }
     }
 
     if (isMp4InputId(inputId)) {
@@ -1182,7 +1208,11 @@ export class TimelinePlayer {
       inputSnapshots.set(input.inputId, snapshotInput(input));
     }
 
-    this.snapshot = { inputSnapshots, inputOrder };
+    this.snapshot = {
+      inputSnapshots,
+      inputOrder,
+      outputShaders: deepClone(this.room.getOutputShaders()),
+    };
   }
 
   private async restoreState(): Promise<void> {
@@ -1235,6 +1265,12 @@ export class TimelinePlayer {
         this.room.reorderInputs(this.snapshot.inputOrder).catch(() => {}),
       );
     }
+
+    promises.push(
+      this.room
+        .updateOutputShaders(this.snapshot.outputShaders)
+        .catch(() => {}),
+    );
 
     if (promises.length > 0) {
       await Promise.allSettled(promises);

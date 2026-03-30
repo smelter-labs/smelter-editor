@@ -404,14 +404,17 @@ export default function InputEntry({
         lastParamChangeRef.current[key] = Date.now();
         const newShadersConfig = input.shaders.map((shader) => {
           if (shader.shaderId !== shaderId) return shader;
-          return {
-            ...shader,
-            params: shader.params.map((param) =>
-              param.paramName === paramName
-                ? { ...param, paramValue: newValue }
-                : param,
-            ),
-          };
+          const hasParam = shader.params.some(
+            (p) => p.paramName === paramName,
+          );
+          const updatedParams = hasParam
+            ? shader.params.map((param) =>
+                param.paramName === paramName
+                  ? { ...param, paramValue: newValue }
+                  : param,
+              )
+            : [...shader.params, { paramName, paramValue: newValue }];
+          return { ...shader, params: updatedParams };
         });
         await actions.updateInput(roomId, input.inputId, {
           shaders: newShadersConfig,

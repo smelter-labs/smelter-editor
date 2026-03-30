@@ -19,6 +19,9 @@ import {
   useTimelineState,
   DEFAULT_PPS,
   resolveClipBlockSettingsAtOffset,
+  OUTPUT_TRACK_ID,
+  OUTPUT_CLIP_ID,
+  OUTPUT_TRACK_INPUT_ID,
   type TimelineState,
 } from '../hooks/use-timeline-state';
 import { useServerTimelinePlayback } from '../hooks/use-server-timeline-playback';
@@ -1384,8 +1387,10 @@ export function TimelinePanel({
       introTransitionMs: number,
       outroTransitionMs: number,
     ) => {
-      // Alt+Click = split
-      if (e.altKey) {
+      const isOutputClip = clipId === OUTPUT_CLIP_ID;
+
+      // Alt+Click = split (not for output clip)
+      if (e.altKey && !isOutputClip) {
         const rect = e.currentTarget.parentElement!.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const atMs = Math.round(pxToMs(x));
@@ -1411,6 +1416,9 @@ export function TimelinePanel({
           selectClip(trackId, clipId, 'replace');
         }
       }
+
+      // Output clip: allow selection but no move/resize/split
+      if (isOutputClip) return;
 
       const rect = e.currentTarget.getBoundingClientRect();
       const localX = e.clientX - rect.left;
@@ -2008,9 +2016,12 @@ export function TimelinePanel({
   const renderClips = useCallback(
     (track: import('../hooks/use-timeline-state').Track) => {
       return track.clips.map((clip) => {
+        const isOutputClip = clip.id === OUTPUT_CLIP_ID;
         const input = inputs.find((i) => i.inputId === clip.inputId);
         const isDisconnected =
-          !input && !clip.inputId.startsWith('__pending-whip-');
+          !isOutputClip &&
+          !input &&
+          !clip.inputId.startsWith('__pending-whip-');
         const baseColors = inputColorMap.get(clip.inputId);
         const tc = clip.blockSettings.timelineColor;
         const colors = tc
@@ -2035,7 +2046,9 @@ export function TimelinePanel({
           ((clip.endMs - clip.startMs) / 1000) * state.pixelsPerSecond;
         const isClipSelected = selectedClipIdSet.has(clip.id);
         const durationMs = clip.endMs - clip.startMs;
-        const clipLabel = input?.title ?? clip.inputId;
+        const clipLabel = isOutputClip
+          ? 'Main Video'
+          : (input?.title ?? clip.inputId);
 
         const introT = clip.blockSettings.introTransition;
         const outroT = clip.blockSettings.outroTransition;
@@ -2046,6 +2059,10 @@ export function TimelinePanel({
           ? (outroT.durationMs / 1000) * state.pixelsPerSecond
           : 0;
 
+        const outputClipBg = 'hsla(270, 60%, 50%, 0.15)';
+        const outputClipBorder = 'hsla(270, 60%, 55%, 0.3)';
+        const outputClipRing = 'hsla(270, 60%, 60%, 0.6)';
+
         return (
           <div
             key={clip.id}
@@ -2054,14 +2071,18 @@ export function TimelinePanel({
             style={{
               left: leftPx,
               width: Math.max(widthPx, 2),
-              cursor: 'grab',
+              cursor: isOutputClip ? 'default' : 'grab',
               transition: zoomAnimating ? zoomTransitionStyle : undefined,
-              backgroundColor: colors?.segBg ?? disconnectedBg,
-              borderColor: colors?.segBorder ?? disconnectedBorder,
+              backgroundColor: isOutputClip
+                ? outputClipBg
+                : (colors?.segBg ?? disconnectedBg),
+              borderColor: isOutputClip
+                ? outputClipBorder
+                : (colors?.segBorder ?? disconnectedBorder),
               borderStyle: isDisconnected ? 'dashed' : undefined,
               ...(isClipSelected
                 ? {
-                    boxShadow: `0 0 0 2px ${colors?.ring ?? disconnectedRing ?? 'transparent'}`,
+                    boxShadow: `0 0 0 2px ${isOutputClip ? outputClipRing : (colors?.ring ?? disconnectedRing ?? 'transparent')}`,
                   }
                 : {}),
               ...(isDisconnected
@@ -2098,12 +2119,13 @@ export function TimelinePanel({
               e.stopPropagation();
               handleContextMenu(e, track.id, clip.inputId, clip.id);
             }}>
-            {/* Left resize handle */}
-            <div className='absolute left-0 top-0 bottom-0 w-[5px] cursor-col-resize z-10' />
-            {/* Right resize handle */}
-            <div className='absolute right-0 top-0 bottom-0 w-[5px] cursor-col-resize z-10' />
-            {/* Intro transition zone */}
-            {introWidthPx > 0 && (
+            {!isOutputClip && (
+              <>
+                <div className='absolute left-0 top-0 bottom-0 w-[5px] cursor-col-resize z-10' />
+                <div className='absolute right-0 top-0 bottom-0 w-[5px] cursor-col-resize z-10' />
+              </>
+            )}
+            {!isOutputClip && introWidthPx > 0 && (
               <>
                 <div
                   className='absolute top-0 bottom-0 left-0 pointer-events-none z-[5]'
@@ -2123,8 +2145,7 @@ export function TimelinePanel({
                 />
               </>
             )}
-            {/* Outro transition zone */}
-            {outroWidthPx > 0 && (
+            {!isOutputClip && outroWidthPx > 0 && (
               <>
                 <div
                   className='absolute top-0 bottom-0 right-0 pointer-events-none z-[5]'
@@ -2144,10 +2165,9 @@ export function TimelinePanel({
                 />
               </>
             )}
-            {/* Label */}
             {widthPx > 40 && (
               <span
-                className={`text-[10px] truncate px-2 select-none pointer-events-none ${isDisconnected ? 'text-muted-foreground/70 italic' : 'text-card-foreground/80'}`}>
+                className={`text-[10px] truncate px-2 select-none pointer-events-none ${isOutputClip ? 'text-purple-300/80' : isDisconnected ? 'text-muted-foreground/70 italic' : 'text-card-foreground/80'}`}>
                 {isDisconnected ? `[Disconnected] ${clipLabel}` : clipLabel}
               </span>
             )}
@@ -2451,11 +2471,13 @@ export function TimelinePanel({
                 ? track.clips[0].blockSettings.timelineColor
                 : undefined;
             const trackDotColor =
-              firstClipColor ??
-              (firstClipInputId
-                ? (inputColorMap.get(firstClipInputId)?.dot ??
-                  (trackHasDisconnected ? '#6b7280' : undefined))
-                : undefined);
+              track.id === OUTPUT_TRACK_ID
+                ? '#a855f7'
+                : (firstClipColor ??
+                    (firstClipInputId
+                      ? (inputColorMap.get(firstClipInputId)?.dot ??
+                        (trackHasDisconnected ? '#6b7280' : undefined))
+                      : undefined));
             const isEditing = editingTrackId === track.id;
 
             return (
@@ -2478,7 +2500,11 @@ export function TimelinePanel({
                     className='w-2.5 h-2.5 rounded-full shrink-0'
                     style={{ backgroundColor: trackDotColor ?? '#737373' }}
                   />
-                  {isEditing ? (
+                  {track.id === OUTPUT_TRACK_ID ? (
+                    <span className='text-sm text-purple-400 truncate flex-1 font-medium'>
+                      {track.label}
+                    </span>
+                  ) : isEditing ? (
                     <ShadcnInput
                       autoFocus
                       className='text-sm text-foreground bg-card border border-border rounded px-1 py-0.5 flex-1 min-w-0 outline-none focus:border-blue-500'
@@ -2511,7 +2537,7 @@ export function TimelinePanel({
                       {track.label}
                     </span>
                   )}
-                  {!isEditing && (
+                  {!isEditing && track.id !== OUTPUT_TRACK_ID && (
                     <div className='flex items-center gap-0.5 opacity-0 group-hover/track:opacity-100 transition-opacity'>
                       <Button
                         variant='ghost'
@@ -2596,18 +2622,22 @@ export function TimelinePanel({
             className='fixed z-[9999] bg-card border border-border rounded-lg shadow-xl py-1 min-w-[160px]'
             style={{ left: contextMenu.x, top: contextMenu.y }}
             onClick={(e) => e.stopPropagation()}>
-            <Button
-              variant='ghost'
-              className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-foreground hover:bg-accent cursor-pointer'
-              onClick={handleFx}>
-              FX / Shaders
-            </Button>
-            <Button
-              variant='ghost'
-              className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-foreground hover:bg-accent cursor-pointer'
-              onClick={handleMuteToggle}>
-              {contextMenu.isMuted ? 'Unmute' : 'Mute'}
-            </Button>
+            {contextMenu.trackId !== OUTPUT_TRACK_ID && (
+              <>
+                <Button
+                  variant='ghost'
+                  className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-foreground hover:bg-accent cursor-pointer'
+                  onClick={handleFx}>
+                  FX / Shaders
+                </Button>
+                <Button
+                  variant='ghost'
+                  className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-foreground hover:bg-accent cursor-pointer'
+                  onClick={handleMuteToggle}>
+                  {contextMenu.isMuted ? 'Unmute' : 'Mute'}
+                </Button>
+              </>
+            )}
             {contextMenu.clipId && (
               <div
                 className='relative'
@@ -2716,56 +2746,63 @@ export function TimelinePanel({
                 )}
               </div>
             )}
-            <Button
-              variant='ghost'
-              className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-red-400 hover:bg-accent hover:text-red-300 cursor-pointer'
-              onClick={handleDelete}>
-              Delete
-            </Button>
-            {contextMenu.clipId && (
-              <>
-                <div className='h-px bg-secondary my-1' />
-                {selectedClipIds.length <= 1 && (
+            {contextMenu.trackId !== OUTPUT_TRACK_ID && (
+              <Button
+                variant='ghost'
+                className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-red-400 hover:bg-accent hover:text-red-300 cursor-pointer'
+                onClick={handleDelete}>
+                Delete
+              </Button>
+            )}
+            {contextMenu.clipId &&
+              contextMenu.clipId !== OUTPUT_CLIP_ID && (
+                <>
+                  <div className='h-px bg-secondary my-1' />
+                  {selectedClipIds.length <= 1 && (
+                    <Button
+                      variant='ghost'
+                      className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-foreground hover:bg-accent cursor-pointer'
+                      onClick={handleSplitHere}>
+                      Split Here
+                    </Button>
+                  )}
                   <Button
                     variant='ghost'
-                    className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-foreground hover:bg-accent cursor-pointer'
-                    onClick={handleSplitHere}>
-                    Split Here
+                    className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-red-400 hover:bg-accent hover:text-red-300 cursor-pointer'
+                    onClick={handleDeleteClip}>
+                    {selectedClipIds.length > 1
+                      ? `Delete ${selectedClipIds.length} Clips`
+                      : 'Delete Clip'}
                   </Button>
-                )}
+                </>
+              )}
+            {contextMenu.trackId !== OUTPUT_TRACK_ID && (
+              <>
+                <div className='h-px bg-secondary my-1' />
+                <Button
+                  variant='ghost'
+                  className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-foreground hover:bg-accent cursor-pointer'
+                  onClick={() => {
+                    setEditingTrackId(contextMenu.trackId);
+                    const track = state.tracks.find(
+                      (t) => t.id === contextMenu.trackId,
+                    );
+                    setEditingTrackLabel(track?.label ?? '');
+                    closeContextMenu();
+                  }}>
+                  Rename Track
+                </Button>
                 <Button
                   variant='ghost'
                   className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-red-400 hover:bg-accent hover:text-red-300 cursor-pointer'
-                  onClick={handleDeleteClip}>
-                  {selectedClipIds.length > 1
-                    ? `Delete ${selectedClipIds.length} Clips`
-                    : 'Delete Clip'}
+                  onClick={() => {
+                    deleteTrack(contextMenu.trackId);
+                    closeContextMenu();
+                  }}>
+                  Delete Track
                 </Button>
               </>
             )}
-            <div className='h-px bg-secondary my-1' />
-            <Button
-              variant='ghost'
-              className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-foreground hover:bg-accent cursor-pointer'
-              onClick={() => {
-                setEditingTrackId(contextMenu.trackId);
-                const track = state.tracks.find(
-                  (t) => t.id === contextMenu.trackId,
-                );
-                setEditingTrackLabel(track?.label ?? '');
-                closeContextMenu();
-              }}>
-              Rename Track
-            </Button>
-            <Button
-              variant='ghost'
-              className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-red-400 hover:bg-accent hover:text-red-300 cursor-pointer'
-              onClick={() => {
-                deleteTrack(contextMenu.trackId);
-                closeContextMenu();
-              }}>
-              Delete Track
-            </Button>
           </div>,
           document.body,
         )}

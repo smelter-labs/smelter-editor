@@ -421,6 +421,14 @@ export class RoomState {
     return this.timelinePlayer?.getIsPaused() === true;
   }
 
+  public setOutputShaders(shaders: import('../types').ShaderConfig[]): void {
+    this.output.store.getState().setOutputShaders(shaders);
+  }
+
+  public getOutputShaders(): import('../types').ShaderConfig[] {
+    return this.output.store.getState().outputShaders;
+  }
+
   private buildTimelineAdapter(): TimelineRoomStateAdapter {
     return {
       getInputs: () => this.getInputs(),
@@ -430,6 +438,11 @@ export class RoomState {
       restartMp4Input: (inputId, playFromMs, loop) =>
         this.restartMp4Input(inputId, playFromMs, loop),
       reorderInputs: (order) => this.reorderInputs(order),
+      updateOutputShaders: (shaders) => {
+        this.setOutputShaders(shaders);
+        return Promise.resolve();
+      },
+      getOutputShaders: () => this.getOutputShaders(),
     };
   }
 

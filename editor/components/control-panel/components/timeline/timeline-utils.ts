@@ -4,6 +4,9 @@ import type {
   Clip,
   Track,
 } from '../../hooks/use-timeline-state';
+import {
+  OUTPUT_TRACK_INPUT_ID,
+} from '../../hooks/use-timeline-state';
 import { formatMs } from '@/lib/format-utils';
 
 /** Base HSL values per input type: [hue, saturation%, lightness%] */
@@ -35,6 +38,13 @@ export type InputColorEntry = {
 export function buildInputColorMap(inputs: Input[]) {
   const countByType = new Map<Input['type'], number>();
   const map = new Map<string, InputColorEntry>();
+
+  map.set(OUTPUT_TRACK_INPUT_ID, {
+    dot: 'hsl(270 60% 50%)',
+    segBg: 'hsla(270, 60%, 50%, 0.15)',
+    segBorder: 'hsla(270, 60%, 55%, 0.3)',
+    ring: 'hsla(270, 60%, 60%, 0.6)',
+  });
 
   for (const input of inputs) {
     const idx = countByType.get(input.type) ?? 0;
@@ -417,6 +427,7 @@ export function findOrphanedInputIds(
 
   const orphaned: string[] = [];
   for (const inputId of deletedInputIds) {
+    if (inputId === OUTPUT_TRACK_INPUT_ID) continue;
     const hasSurvivingClip = tracks.some((t) =>
       t.clips.some(
         (c) => c.inputId === inputId && !deleteSet.has(`${t.id}:${c.id}`),

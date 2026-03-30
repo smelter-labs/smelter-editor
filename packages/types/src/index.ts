@@ -71,3 +71,9 @@ export type {
   TimelineKeyframeInterpolationMode,
   TimelineConfig,
 } from './timeline.js';
+export {
+  OUTPUT_TRACK_INPUT_ID,
+  OUTPUT_TRACK_ID,
+  OUTPUT_CLIP_ID,
+  isOutputTrackClip,
+} from './timeline.js';

@@ -8,6 +8,7 @@ import ShaderPanel, { InlineShaderParams } from '../input-entry/shader-panel';
 import { AddShaderModal } from '../input-entry/add-shader-modal';
 import SnakeEventShaderPanel from '../input-entry/snake-event-shader-panel';
 import type { BlockSettings } from '../hooks/use-timeline-state';
+import { OUTPUT_CLIP_ID } from '../hooks/use-timeline-state';
 import { PendingWhipInputs } from './PendingWhipInputs';
 import type { PendingWhipInput } from './ConfigurationSection';
 import { Link, Video, Monitor } from 'lucide-react';
@@ -716,6 +717,7 @@ export function BlockClipPropertiesPanel({
 
   // Effective clip used for rendering: primary clip for single, or first clip for multi
   const effectiveClip = selectedTimelineClips[0];
+  const isOutputClip = effectiveClip.clipId === OUTPUT_CLIP_ID;
 
   const shaderInput: Input = selectedInput ?? {
     id: -1,
@@ -885,29 +887,33 @@ export function BlockClipPropertiesPanel({
     <div>
       {pendingSection}
       <div className='text-xs text-muted-foreground mb-2'>
-        Selected block properties
+        {isOutputClip ? 'Main Video output shaders' : 'Selected block properties'}
       </div>
-      {isMultiSelect ? (
-        <div className='text-sm text-card-foreground mb-3 truncate'>
-          {selectedTimelineClips.length} clips selected
-        </div>
-      ) : (
-        <ShadcnInput
-          className='text-sm text-card-foreground mb-3 bg-transparent border-border px-1 py-0.5 h-auto'
-          value={titleDraft ?? selectedInput?.title ?? effectiveClip.inputId}
-          onChange={(e) => setTitleDraft(e.target.value)}
-          onBlur={(e) => void handleTitleCommit(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') {
-              e.currentTarget.blur();
-            } else if (e.key === 'Escape') {
-              setTitleDraft(null);
-              e.currentTarget.blur();
-            }
-          }}
-        />
+      {!isOutputClip && (
+        <>
+          {isMultiSelect ? (
+            <div className='text-sm text-card-foreground mb-3 truncate'>
+              {selectedTimelineClips.length} clips selected
+            </div>
+          ) : (
+            <ShadcnInput
+              className='text-sm text-card-foreground mb-3 bg-transparent border-border px-1 py-0.5 h-auto'
+              value={titleDraft ?? selectedInput?.title ?? effectiveClip.inputId}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onBlur={(e) => void handleTitleCommit(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  e.currentTarget.blur();
+                } else if (e.key === 'Escape') {
+                  setTitleDraft(null);
+                  e.currentTarget.blur();
+                }
+              }}
+            />
+          )}
+        </>
       )}
-      {isDisconnected && (
+      {!isOutputClip && isDisconnected && (
         <div className='mb-3 p-2.5 rounded border-2 border-dashed border-border bg-card/50'>
           <div className='text-xs text-amber-400/80 mb-2'>
             Disconnected — connect a new input
@@ -1056,6 +1062,8 @@ export function BlockClipPropertiesPanel({
           )}
         </CollapsibleSection>
       )}
+      {!isOutputClip && (
+      <>
       <CollapsibleSection title='Display' className='mb-2'>
         <div className='grid grid-cols-2 gap-2 mb-2'>
           <label className='text-xs text-muted-foreground'>Volume</label>
@@ -1635,11 +1643,15 @@ export function BlockClipPropertiesPanel({
           </div>
         </CollapsibleSection>
       )}
+      </>
+      )}
       <CollapsibleSection
-        title='Shaders (block-level)'
+        title={isOutputClip ? 'Output Shaders' : 'Shaders (block-level)'}
         className='mt-3 border-t border-border pt-2'>
         <div className='text-[11px] text-muted-foreground mb-2'>
-          Edit this block&apos;s shaders independently from other blocks.
+          {isOutputClip
+            ? 'Apply shader effects to the entire video output.'
+            : "Edit this block's shaders independently from other blocks."}
         </div>
         <ShaderPanel
           input={shaderInput}

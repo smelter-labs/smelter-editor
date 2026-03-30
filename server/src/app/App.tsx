@@ -2,9 +2,10 @@ import { View, Rescaler, Shader } from '@swmansion/smelter';
 
 import type { RoomStore } from './store';
 import type { StoreApi } from 'zustand';
-import { StoreContext, useResolution, useInputs } from './store';
+import { StoreContext, useResolution, useInputs, useOutputShaders } from './store';
 import { NewsStripOverlay } from './news-strip';
 import { Input } from '../inputs/inputs';
+import { wrapWithShaders } from '../utils/shaderUtils';
 import { AudioStoreContext } from '../audio/AudioStoreContext';
 import type { AudioStoreState } from '../audio/audioStore';
 import { createAudioStore } from '../audio/audioStore';
@@ -41,9 +42,12 @@ export default function App({
 function OutputScene() {
   const resolution = useResolution();
   const inputs = useInputs();
+  const outputShaders = useOutputShaders();
   const { width, height } = resolution;
 
-  return (
+  const activeOutputShaders = outputShaders.filter((s) => s.enabled);
+
+  const scene = (
     <View
       style={{
         backgroundColor: '#000000',
@@ -102,4 +106,6 @@ function OutputScene() {
       <NewsStripOverlay />
     </View>
   );
+
+  return wrapWithShaders(scene, activeOutputShaders, resolution);
 }
