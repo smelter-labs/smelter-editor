@@ -122,6 +122,12 @@ export function useAutoResume(
             await refreshState();
           } catch {}
         }
+
+        window.dispatchEvent(
+          new CustomEvent('smelter:timeline:cleanup-spurious-whip-track', {
+            detail: { inputId: resp.inputId },
+          }),
+        );
       } catch (e) {
         if (setActiveWhipInputId) setActiveWhipInputId(null);
         if (setIsWhipActive) setIsWhipActive(false);

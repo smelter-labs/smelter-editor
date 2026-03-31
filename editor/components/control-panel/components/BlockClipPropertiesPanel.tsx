@@ -8,7 +8,7 @@ import ShaderPanel, { InlineShaderParams } from '../input-entry/shader-panel';
 import { AddShaderModal } from '../input-entry/add-shader-modal';
 import SnakeEventShaderPanel from '../input-entry/snake-event-shader-panel';
 import type { BlockSettings } from '../hooks/use-timeline-state';
-import { OUTPUT_CLIP_ID } from '../hooks/use-timeline-state';
+import { OUTPUT_CLIP_ID, OUTPUT_TRACK_INPUT_ID } from '../hooks/use-timeline-state';
 import { PendingWhipInputs } from './PendingWhipInputs';
 import type { PendingWhipInput } from './ConfigurationSection';
 import { Link, Video, Monitor, ArrowLeftRight } from 'lucide-react';
@@ -98,7 +98,11 @@ export function BlockClipPropertiesPanel({
     },
     [onSelectedTimelineClipsChange],
   );
-  const { updateInput: updateInputAction, addCameraInput } = useActions();
+  const {
+    updateInput: updateInputAction,
+    updateRoom: updateRoomAction,
+    addCameraInput,
+  } = useActions();
   const [sliderValues, setSliderValues] = useState<{ [key: string]: number }>(
     {},
   );
@@ -131,6 +135,8 @@ export function BlockClipPropertiesPanel({
   const textScrollSpeedDebounceRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
+  const [volumeDraft, setVolumeDraft] = useState<number | null>(null);
+  const volumeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const [mp4DurationLoading, setMp4DurationLoading] = useState(false);
   const mp4DurationFetchedRef = useRef<string | null>(null);
@@ -310,6 +316,13 @@ export function BlockClipPropertiesPanel({
         });
 
         await handleRefreshState();
+
+        window.dispatchEvent(
+          new CustomEvent('smelter:timeline:cleanup-spurious-whip-track', {
+            detail: { inputId: response.inputId },
+          }),
+        );
+
         toast.success(
           `Connected ${type === 'camera' ? 'camera' : 'screenshare'}`,
         );
@@ -497,6 +510,15 @@ export function BlockClipPropertiesPanel({
         for (const clip of nextClips) {
           if (seenInputIds.has(clip.inputId)) continue;
           seenInputIds.add(clip.inputId);
+
+          if (clip.inputId === OUTPUT_TRACK_INPUT_ID) {
+            await updateRoomAction(roomId, {
+              outputShaders:
+                patch.shaders ?? clip.blockSettings.shaders ?? [],
+            });
+            continue;
+          }
+
           await updateInputAction(roomId, clip.inputId, {
             volume: patch.volume ?? clip.blockSettings.volume,
             shaders: patch.shaders ?? clip.blockSettings.shaders,
@@ -1168,9 +1190,21 @@ export function BlockClipPropertiesPanel({
                 min={0}
                 max={1}
                 step={0.01}
-                value={[effectiveClip.blockSettings.volume]}
+                value={[
+                  volumeDraft ?? effectiveClip.blockSettings.volume,
+                ]}
                 onValueChange={(v) => {
-                  void applyClipPatch({ volume: v[0] });
+                  const value = v[0];
+                  setVolumeDraft(value);
+                  if (volumeDebounceRef.current) {
+                    clearTimeout(volumeDebounceRef.current);
+                  }
+                  volumeDebounceRef.current = setTimeout(() => {
+                    void applyClipPatch({ volume: value }).finally(() => {
+                      setVolumeDraft(null);
+                      volumeDebounceRef.current = null;
+                    });
+                  }, SHADER_SETTINGS_DEBOUNCE_MS);
                 }}
               />
             </div>

@@ -1,4 +1,4 @@
-import type { Resolution, PendingWhipInputData, ViewportProperties } from '@smelter-editor/types';
+import type { Resolution, PendingWhipInputData, ViewportProperties, ShaderConfig } from '@smelter-editor/types';
 import type { Input } from './input';
 import type { Layout } from './layout';
 
@@ -23,6 +23,7 @@ export type RoomState = {
   swapFadeOutDurationMs?: number;
   newsStripFadeDuringSwap?: boolean;
   newsStripEnabled?: boolean;
+  outputShaders?: ShaderConfig[];
   pendingWhipInputs?: PendingWhipInputData[];
   isRecording?: boolean;
   isFrozen?: boolean;
@@ -79,6 +80,7 @@ export type UpdateRoomOptions = {
   swapFadeOutDurationMs?: number;
   newsStripFadeDuringSwap?: boolean;
   newsStripEnabled?: boolean;
+  outputShaders?: ShaderConfig[];
 } & Partial<ViewportProperties>;
 
 export type StartRecordingResponse = {

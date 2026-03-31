@@ -139,6 +139,12 @@ export function PendingWhipInputs({
         pendingInputs.filter((p) => p.id !== pendingInput.id),
       );
 
+      window.dispatchEvent(
+        new CustomEvent('smelter:timeline:cleanup-spurious-whip-track', {
+          detail: { inputId: response.inputId },
+        }),
+      );
+
       toast.success(
         `Connected ${type === 'camera' ? 'camera' : 'screenshare'}: ${pendingInput.title}`,
       );

@@ -53,6 +53,11 @@ export class RoomState {
     { timer: ReturnType<typeof setTimeout>; jpegPath: string }
   >();
 
+  private storeUpdateScheduled = false;
+  private lastStoreFlushTime = 0;
+  private pendingStoreFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly MIN_STORE_FLUSH_INTERVAL_MS = 10;
+
   private layout: Layout = 'picture-in-picture';
   private swapDurationMs: number = 500;
   private swapOutgoingEnabled: boolean = true;
@@ -181,6 +186,7 @@ export class RoomState {
       newsStripFadeDuringSwap: this.newsStripFadeDuringSwap,
       swapFadeOutDurationMs: this.swapFadeOutDurationMs,
       newsStripEnabled: this.newsStripEnabled,
+      outputShaders: this.getOutputShaders(),
       viewportTop: this.viewportTop,
       viewportLeft: this.viewportLeft,
       viewportWidth: this.viewportWidth,
@@ -832,6 +838,12 @@ export class RoomState {
     return this.mutex.runExclusive(async () => {
       this.destroyed = true;
 
+      if (this.pendingStoreFlushTimer) {
+        clearTimeout(this.pendingStoreFlushTimer);
+        this.pendingStoreFlushTimer = null;
+      }
+      this.storeUpdateScheduled = false;
+
       if (this.timelinePlayer) {
         this.timelinePlayer.destroy();
         this.timelinePlayer = null;
@@ -867,6 +879,25 @@ export class RoomState {
   }
 
   private updateStoreWithState() {
+    if (this.destroyed) return;
+    if (this.storeUpdateScheduled) return;
+    this.storeUpdateScheduled = true;
+
+    const elapsed = Date.now() - this.lastStoreFlushTime;
+    if (elapsed >= RoomState.MIN_STORE_FLUSH_INTERVAL_MS) {
+      queueMicrotask(() => this.flushStoreUpdate());
+    } else {
+      const delay = RoomState.MIN_STORE_FLUSH_INTERVAL_MS - elapsed;
+      this.pendingStoreFlushTimer = setTimeout(() => {
+        this.pendingStoreFlushTimer = null;
+        this.flushStoreUpdate();
+      }, delay);
+    }
+  }
+
+  private flushStoreUpdate() {
+    this.storeUpdateScheduled = false;
+    this.lastStoreFlushTime = Date.now();
     if (this.destroyed) return;
 
     const allInputs = this.inputManager.getInputs();

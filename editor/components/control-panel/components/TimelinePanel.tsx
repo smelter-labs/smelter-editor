@@ -52,7 +52,7 @@ import {
   hslToHex,
   generateShades,
 } from '@/lib/color-utils';
-import { formatMs } from '@/lib/format-utils';
+import { formatMs, parseDurationInput } from '@/lib/format-utils';
 import { Button } from '@/components/ui/button';
 import { Input as ShadcnInput } from '@/components/ui/input';
 import {
@@ -110,6 +110,75 @@ type TimelinePanelProps = {
 
 // Utility functions extracted to ./timeline/timeline-utils.ts
 
+// ── Editable Duration ────────────────────────────────────
+
+function EditableDuration({
+  totalDurationMs,
+  isPlaying,
+  onChange,
+}: {
+  totalDurationMs: number;
+  isPlaying: boolean;
+  onChange: (ms: number) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const startEditing = useCallback(() => {
+    if (isPlaying) return;
+    setDraft(formatMs(totalDurationMs));
+    setEditing(true);
+  }, [isPlaying, totalDurationMs]);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.select();
+  }, [editing]);
+
+  const commit = useCallback(() => {
+    setEditing(false);
+    const parsed = parseDurationInput(draft);
+    if (parsed != null && parsed > 0) {
+      onChange(parsed);
+    }
+  }, [draft, onChange]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commit();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setEditing(false);
+      }
+    },
+    [commit],
+  );
+
+  if (editing) {
+    return (
+      <input
+        ref={inputRef}
+        className='bg-transparent border border-border rounded px-1 text-[11px] font-mono tabular-nums w-14 text-center outline-none focus:border-primary'
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={handleKeyDown}
+      />
+    );
+  }
+
+  return (
+    <span
+      className={`cursor-pointer hover:text-foreground transition-colors ${isPlaying ? 'pointer-events-none' : ''}`}
+      onClick={startEditing}
+      title='Click to edit total duration (mm:ss)'>
+      {formatMs(totalDurationMs)}
+    </span>
+  );
+}
+
 // ── Component ────────────────────────────────────────────
 
 export function TimelinePanel({
@@ -154,6 +223,7 @@ export function TimelinePanel({
     deleteKeyframe,
     moveKeyframe,
     purgeInputId,
+    cleanupSpuriousWhipTrack,
     moveClips,
     deleteClips,
     undo,
@@ -162,6 +232,7 @@ export function TimelinePanel({
     canRedo,
     structureRevision,
     loadState,
+    setTotalDuration,
   } = useTimelineState(roomId, inputs);
 
   useEffect(() => {
@@ -537,6 +608,30 @@ export function TimelinePanel({
     return () =>
       window.removeEventListener('smelter:timeline-input-replaced', handler);
   }, [replaceInputId]);
+
+  // After a WHIP input is connected, SYNC_TRACKS may race and create a
+  // spurious full-span track at the top. Wait 1.5s then clean it up.
+  useEffect(() => {
+    let timers: ReturnType<typeof setTimeout>[] = [];
+    const handler = (e: Event) => {
+      const { inputId } = (e as CustomEvent).detail;
+      const timer = setTimeout(() => {
+        cleanupSpuriousWhipTrack(inputId);
+      }, 1500);
+      timers.push(timer);
+    };
+    window.addEventListener(
+      'smelter:timeline:cleanup-spurious-whip-track',
+      handler,
+    );
+    return () => {
+      window.removeEventListener(
+        'smelter:timeline:cleanup-spurious-whip-track',
+        handler,
+      );
+      for (const t of timers) clearTimeout(t);
+    };
+  }, [cleanupSpuriousWhipTrack]);
 
   useEffect(() => {
     const handler = (e: Event) => {
@@ -2412,7 +2507,11 @@ export function TimelinePanel({
         <div className='text-[11px] text-muted-foreground font-mono tabular-nums ml-1'>
           {formatMs(state.playheadMs)}
           <span className='text-muted-foreground mx-1'>/</span>
-          {formatMs(state.totalDurationMs)}
+          <EditableDuration
+            totalDurationMs={state.totalDurationMs}
+            isPlaying={state.isPlaying}
+            onChange={setTotalDuration}
+          />
         </div>
 
         <div className='flex-1' />

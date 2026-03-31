@@ -126,6 +126,7 @@ export const UpdateRoomSchema = Type.Object({
   viewportHeight: Type.Optional(Type.Number({ minimum: 1 })),
   viewportTransitionDurationMs: Type.Optional(Type.Number({ minimum: 0 })),
   viewportTransitionEasing: Type.Optional(Type.String()),
+  outputShaders: Type.Optional(Type.Array(Type.Any())),
 });
 
 export const PendingWhipInputSchema = Type.Object({

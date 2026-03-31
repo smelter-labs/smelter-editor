@@ -164,7 +164,8 @@ type TimelineAction =
   | {
       type: 'DELETE_CLIPS';
       clips: { trackId: string; clipId: string }[];
-    };
+    }
+  | { type: 'CLEANUP_SPURIOUS_WHIP_TRACK'; inputId: string };
 
 // ── Constants ────────────────────────────────────────────
 
@@ -1451,6 +1452,20 @@ export function timelineReducer(
       return { ...state, tracks: newTracks };
     }
 
+    case 'CLEANUP_SPURIOUS_WHIP_TRACK': {
+      const topTrack = state.tracks.find((t) => t.id !== OUTPUT_TRACK_ID);
+      if (!topTrack) return state;
+      if (topTrack.clips.length !== 1) return state;
+      const clip = topTrack.clips[0];
+      if (clip.inputId !== action.inputId) return state;
+      const isFullSpan = clip.startMs === 0 && clip.endMs >= state.totalDurationMs;
+      if (!isFullSpan) return state;
+      return {
+        ...state,
+        tracks: state.tracks.filter((t) => t.id !== topTrack.id),
+      };
+    }
+
     case 'LOAD': {
       const normalizedTracks = normalizeTracks(action.state.tracks, [], action.state.totalDurationMs);
       const finalTracks = ensureOutputTrack(normalizedTracks, action.state.totalDurationMs);
@@ -1843,6 +1858,11 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     setStructureRevision((rev) => rev + 1);
   }, []);
 
+  const cleanupSpuriousWhipTrack = useCallback((inputId: string) => {
+    dispatch({ type: 'CLEANUP_SPURIOUS_WHIP_TRACK', inputId });
+    setStructureRevision((rev) => rev + 1);
+  }, []);
+
   const moveClips = useCallback(
     (moves: { trackId: string; clipId: string; newStartMs: number }[]) => {
       dispatch({ type: 'MOVE_CLIPS', moves });
@@ -1896,6 +1916,7 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     deleteKeyframe,
     moveKeyframe,
     purgeInputId,
+    cleanupSpuriousWhipTrack,
     moveClips,
     deleteClips,
     undo,

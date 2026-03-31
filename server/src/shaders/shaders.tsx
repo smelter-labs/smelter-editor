@@ -1662,7 +1662,7 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     isVisible: true,
     name: 'Cyber Glitch',
     description:
-      'Digital corruption effect — horizontal slice displacement, RGB channel splitting, block artifacts, and CRT scanlines like a hacked cyberpunk terminal.',
+      'Digital corruption effect — multi-directional slice displacement, RGB channel splitting, block artifacts with color inversion, and CRT scanlines like a hacked cyberpunk terminal.',
     shaderFile: 'cyber-glitch.wgsl',
     params: [
       {
@@ -1698,7 +1698,7 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
         type: 'number',
         minValue: 0,
         maxValue: 1,
-        defaultValue: 0.2,
+        defaultValue: 0.4,
       },
       {
         name: 'speed',

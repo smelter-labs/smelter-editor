@@ -89,6 +89,7 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
         isRecording: room.hasActiveRecording(),
         isFrozen: room.isFrozen(),
         audioAnalysisEnabled: room.isAudioAnalysisEnabled(),
+        outputShaders: snapshot.outputShaders,
         viewportTop: snapshot.viewportTop,
         viewportLeft: snapshot.viewportLeft,
         viewportWidth: snapshot.viewportWidth,
@@ -144,6 +145,7 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
           newsStripFadeDuringSwap: snapshot.newsStripFadeDuringSwap,
           swapFadeOutDurationMs: snapshot.swapFadeOutDurationMs,
           newsStripEnabled: snapshot.newsStripEnabled,
+          outputShaders: snapshot.outputShaders,
           isRecording: room.hasActiveRecording(),
           audioAnalysisEnabled: room.isAudioAnalysisEnabled(),
           viewportTop: snapshot.viewportTop,
@@ -196,6 +198,10 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
       }
       if (req.body.newsStripEnabled !== undefined) {
         room.setNewsStripEnabled(req.body.newsStripEnabled);
+      }
+
+      if (req.body.outputShaders !== undefined) {
+        room.setOutputShaders(req.body.outputShaders);
       }
 
       const viewportFields = [

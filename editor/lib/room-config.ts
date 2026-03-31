@@ -5,6 +5,11 @@ import type {
   UpdateInputOptions,
 } from '@/lib/types';
 import type { ViewportProperties } from '@smelter-editor/types';
+import {
+  OUTPUT_TRACK_INPUT_ID,
+  OUTPUT_TRACK_ID,
+  OUTPUT_CLIP_ID,
+} from '@smelter-editor/types';
 import { parseTransitionConfig } from '@/lib/types';
 import type { SnakeEventShaderConfig } from '@/lib/snake-game-types';
 import type {
@@ -121,6 +126,7 @@ export type RoomConfig = {
   viewport?: Partial<ViewportProperties>;
   timeline?: RoomConfigTimeline;
   outputPlayer?: RoomConfigOutputPlayer;
+  outputShaders?: ShaderConfig[];
   exportedAt: string;
 };
 
@@ -149,6 +155,7 @@ export function exportRoomConfig(
   timelineState?: RoomConfigTimelineState,
   outputPlayer?: RoomConfigOutputPlayer,
   viewport?: Partial<ViewportProperties>,
+  outputShaders?: ShaderConfig[],
 ): RoomConfig {
   const inputIdToIndex = new Map<string, number>();
   inputs.forEach((input, idx) => inputIdToIndex.set(input.inputId, idx));
@@ -159,7 +166,8 @@ export function exportRoomConfig(
       label: track.label,
       clips: track.clips
         .map((clip) => {
-          const idx = inputIdToIndex.get(clip.inputId);
+          const isOutput = clip.inputId === OUTPUT_TRACK_INPUT_ID;
+          const idx = isOutput ? -1 : inputIdToIndex.get(clip.inputId);
           if (idx === undefined) return null;
           return {
             inputIndex: idx,
@@ -187,6 +195,8 @@ export function exportRoomConfig(
     viewport,
     timeline,
     outputPlayer,
+    outputShaders:
+      outputShaders && outputShaders.length > 0 ? outputShaders : undefined,
     inputs: inputs.map((input) => ({
       type: input.type,
       title: input.title,
@@ -322,25 +332,31 @@ export function buildTimelineStateFromConfigTimeline(
   indexToInputId: Map<number, string>,
 ): RoomConfigTimelineState {
   return {
-    tracks: timeline.tracks.map((track) => ({
-      id: crypto.randomUUID(),
-      label: track.label,
-      clips: track.clips
-        .map((clip) => {
-          const inputId = indexToInputId.get(clip.inputIndex);
-          if (!inputId) return null;
-          return {
-            id: crypto.randomUUID(),
-            inputId,
-            startMs: clip.startMs,
-            endMs: clip.endMs,
-            blockSettings:
-              clip.blockSettings ?? createBlockSettingsFromInput(undefined),
-            keyframes: clip.keyframes ?? [],
-          };
-        })
-        .filter((c): c is NonNullable<typeof c> => c !== null),
-    })),
+    tracks: timeline.tracks.map((track) => {
+      const hasOutputClip = track.clips.some((c) => c.inputIndex === -1);
+      return {
+        id: hasOutputClip ? OUTPUT_TRACK_ID : crypto.randomUUID(),
+        label: track.label,
+        clips: track.clips
+          .map((clip) => {
+            const isOutput = clip.inputIndex === -1;
+            const inputId = isOutput
+              ? OUTPUT_TRACK_INPUT_ID
+              : indexToInputId.get(clip.inputIndex);
+            if (!inputId) return null;
+            return {
+              id: isOutput ? OUTPUT_CLIP_ID : crypto.randomUUID(),
+              inputId,
+              startMs: clip.startMs,
+              endMs: clip.endMs,
+              blockSettings:
+                clip.blockSettings ?? createBlockSettingsFromInput(undefined),
+              keyframes: clip.keyframes ?? [],
+            };
+          })
+          .filter((c): c is NonNullable<typeof c> => c !== null),
+      };
+    }),
     totalDurationMs: timeline.totalDurationMs,
     keyframeInterpolationMode: timeline.keyframeInterpolationMode ?? 'step',
     pixelsPerSecond: timeline.pixelsPerSecond,
@@ -452,7 +468,10 @@ export function computeTimelineStateAtZero(
 
   for (const track of timeline.tracks) {
     for (const clip of track.clips) {
-      const inputId = indexToInputId.get(clip.inputIndex);
+      const isOutput = clip.inputIndex === -1;
+      const inputId = isOutput
+        ? OUTPUT_TRACK_INPUT_ID
+        : indexToInputId.get(clip.inputIndex);
       if (!inputId) continue;
 
       allTimelineInputIds.add(inputId);

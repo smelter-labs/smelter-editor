@@ -21,7 +21,7 @@ import {
   type RoomConfigInput,
   type RoomConfigTransitionSettings,
 } from '@/lib/room-config';
-import type { ViewportProperties } from '@smelter-editor/types';
+import type { ViewportProperties, ShaderConfig } from '@smelter-editor/types';
 import { toast } from 'sonner';
 type ConfigurationSectionProps = {
   inputs: Input[];
@@ -30,6 +30,7 @@ type ConfigurationSectionProps = {
   resolution?: { width: number; height: number };
   transitionSettings: RoomConfigTransitionSettings;
   viewport?: Partial<ViewportProperties>;
+  outputShaders?: ShaderConfig[];
   refreshState: () => Promise<void>;
   pendingWhipInputs: PendingWhipInput[];
   setPendingWhipInputs: (inputs: PendingWhipInput[]) => void | Promise<void>;
@@ -49,6 +50,7 @@ export function ConfigurationSection({
   resolution,
   transitionSettings,
   viewport,
+  outputShaders,
   refreshState,
   pendingWhipInputs,
   setPendingWhipInputs,
@@ -85,6 +87,7 @@ export function ConfigurationSection({
         timelineState ?? undefined,
         outputPlayer,
         viewport,
+        outputShaders,
       );
       downloadRoomConfig(config);
       toast.success('Configuration exported successfully');
@@ -94,7 +97,7 @@ export function ConfigurationSection({
     } finally {
       setIsExporting(false);
     }
-  }, [inputs, layout, resolution, transitionSettings, viewport, roomId]);
+  }, [inputs, layout, resolution, transitionSettings, viewport, outputShaders, roomId]);
 
   useEffect(() => {
     const onVoiceExport = () => {
@@ -362,6 +365,7 @@ export function ConfigurationSection({
         ...(finalInputOrder ? { inputOrder: finalInputOrder } : {}),
         ...config.transitionSettings,
         ...config.viewport,
+        outputShaders: config.outputShaders ?? [],
       });
     } catch (e) {
       console.warn('Failed to set layout or input order:', e);

@@ -176,7 +176,7 @@ export function Input({ input }: { input: InputConfig }) {
           <View style={{ padding: 300 }}>
             <Rescaler style={{ rescaleMode: 'fit' }}>
               <Text style={{ fontSize: 600, fontFamily: 'Star Jedi' }}>
-                Stream offline
+                {' '}
               </Text>
             </Rescaler>
           </View>

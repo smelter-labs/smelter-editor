@@ -88,6 +88,12 @@ export default function InputEntry({
   const [isTextSaving, setIsTextSaving] = useState(false);
   const textSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
   const colorDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  const [gameGridAlphaDraft, setGameGridAlphaDraft] = useState<number | null>(
+    null,
+  );
+  const gameGridAlphaTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const gameBorderColorTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const gameGridColorTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isMobile = useIsMobile();
 
   const isTextInput = input.type === 'text-input';
@@ -142,6 +148,12 @@ export default function InputEntry({
         }
       });
       if (colorDebounceRef.current) clearTimeout(colorDebounceRef.current);
+      if (gameGridAlphaTimerRef.current)
+        clearTimeout(gameGridAlphaTimerRef.current);
+      if (gameBorderColorTimerRef.current)
+        clearTimeout(gameBorderColorTimerRef.current);
+      if (gameGridColorTimerRef.current)
+        clearTimeout(gameGridColorTimerRef.current);
     };
   }, []);
 
@@ -698,9 +710,16 @@ export default function InputEntry({
                 className='w-6 h-6 bg-transparent border-0 cursor-pointer'
                 value={input.gameBoardBorderColor ?? '#ffffff'}
                 onChange={(e) => {
-                  void actions.updateInput(roomId, input.inputId, {
-                    gameBoardBorderColor: e.target.value,
-                  });
+                  const value = e.target.value;
+                  if (gameBorderColorTimerRef.current) {
+                    clearTimeout(gameBorderColorTimerRef.current);
+                  }
+                  gameBorderColorTimerRef.current = setTimeout(() => {
+                    void actions.updateInput(roomId, input.inputId, {
+                      gameBoardBorderColor: value,
+                    });
+                    gameBorderColorTimerRef.current = null;
+                  }, SHADER_SETTINGS_DEBOUNCE_MS);
                 }}
               />
             </div>
@@ -711,9 +730,16 @@ export default function InputEntry({
                 className='w-6 h-6 bg-transparent border-0 cursor-pointer'
                 value={input.gameGridLineColor ?? '#000000'}
                 onChange={(e) => {
-                  void actions.updateInput(roomId, input.inputId, {
-                    gameGridLineColor: e.target.value,
-                  });
+                  const value = e.target.value;
+                  if (gameGridColorTimerRef.current) {
+                    clearTimeout(gameGridColorTimerRef.current);
+                  }
+                  gameGridColorTimerRef.current = setTimeout(() => {
+                    void actions.updateInput(roomId, input.inputId, {
+                      gameGridLineColor: value,
+                    });
+                    gameGridColorTimerRef.current = null;
+                  }, SHADER_SETTINGS_DEBOUNCE_MS);
                 }}
               />
             </div>
@@ -724,11 +750,21 @@ export default function InputEntry({
                 max={1}
                 step={0.01}
                 className='w-16'
-                value={[input.gameGridLineAlpha ?? 1.0]}
+                value={[gameGridAlphaDraft ?? input.gameGridLineAlpha ?? 1.0]}
                 onValueChange={(v) => {
-                  void actions.updateInput(roomId, input.inputId, {
-                    gameGridLineAlpha: v[0],
-                  });
+                  const value = v[0];
+                  setGameGridAlphaDraft(value);
+                  if (gameGridAlphaTimerRef.current) {
+                    clearTimeout(gameGridAlphaTimerRef.current);
+                  }
+                  gameGridAlphaTimerRef.current = setTimeout(() => {
+                    void actions
+                      .updateInput(roomId, input.inputId, {
+                        gameGridLineAlpha: value,
+                      })
+                      .finally(() => setGameGridAlphaDraft(null));
+                    gameGridAlphaTimerRef.current = null;
+                  }, SHADER_SETTINGS_DEBOUNCE_MS);
                 }}
               />
             </div>

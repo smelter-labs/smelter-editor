@@ -974,6 +974,7 @@ function SettingsBar({
         viewportTransitionDurationMs: roomState.viewportTransitionDurationMs,
         viewportTransitionEasing: roomState.viewportTransitionEasing,
       },
+      roomState.outputShaders,
     );
   }, [getTimelineStateForConfig, roomState, roomId]);
 
@@ -1234,6 +1235,7 @@ function SettingsBar({
             : {}),
           ...config.transitionSettings,
           ...config.viewport,
+          outputShaders: config.outputShaders ?? [],
         });
       } catch (e) {
         console.warn('Failed to set layout or input order:', e);
