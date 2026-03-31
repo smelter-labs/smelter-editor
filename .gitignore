@@ -56,3 +56,4 @@ server/motion/.venv/
 packages/types/dist/
 packages/types/node_modules/
 server/screenshots/
+*.mp4
