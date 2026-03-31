@@ -644,7 +644,10 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
             const isLast = j === arr.length - 1;
             const newW = isLast
               ? Math.max(1, rangeEnd - cursor)
-              : Math.max(1, Math.floor((c.width / Math.max(1, totalW)) * available));
+              : Math.max(
+                  1,
+                  Math.floor((c.width / Math.max(1, totalW)) * available),
+                );
             const idx = nextData.findIndex((d) => d.id === c.id);
             if (idx >= 0) {
               nextData[idx].startColumn = cursor;
@@ -669,7 +672,10 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
             const isLast = j === arr.length - 1;
             const newH = isLast
               ? Math.max(1, rangeEnd - cursor)
-              : Math.max(1, Math.floor((c.height / Math.max(1, totalH)) * available));
+              : Math.max(
+                  1,
+                  Math.floor((c.height / Math.max(1, totalH)) * available),
+                );
             const idx = nextData.findIndex((d) => d.id === c.id);
             if (idx >= 0) {
               nextData[idx].startRow = cursor;
