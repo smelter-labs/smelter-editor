@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Input } from '@/lib/types';
 import { applyTextColorFromVoice } from '../use-control-panel-events';
+import { TIMELINE_EVENTS } from '../../components/timeline/timeline-events';
 
 type UpdateInputFn = (typeof import('@/app/actions/actions'))['updateInput'];
 
@@ -29,6 +30,13 @@ describe('applyTextColorFromVoice', () => {
       (globalThis as { CustomEvent: typeof CustomEvent }).CustomEvent =
         TestCustomEvent as unknown as typeof CustomEvent;
     }
+    if (typeof globalThis.window === 'undefined') {
+      (globalThis as unknown as { window: object }).window = {
+        dispatchEvent: vi.fn(() => true),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+      };
+    }
   });
 
   it('updates input and syncs timeline clip settings in order', async () => {
@@ -43,6 +51,7 @@ describe('applyTextColorFromVoice', () => {
       order.push('dispatch-timeline-patch');
       return true;
     });
+    (globalThis as unknown as { window: { dispatchEvent: typeof dispatchEvent } }).window.dispatchEvent = dispatchEvent;
 
     const didApply = await applyTextColorFromVoice({
       color: '#ff0000',
@@ -66,7 +75,7 @@ describe('applyTextColorFromVoice', () => {
       patch: { textColor: string };
     }>;
     expect(dispatchedEvent.type).toBe(
-      'smelter:timeline:update-clip-settings-for-input',
+      TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS_FOR_INPUT,
     );
     expect(dispatchedEvent.detail).toEqual({
       inputId: 'text-1',

@@ -7,7 +7,7 @@ import SnakeEventShaderPanel from './snake-event-shader-panel';
 import { InputEntryTextSection } from './input-entry-text-section';
 import { DeleteButton } from './delete-button';
 import { AddShaderModal } from './add-shader-modal';
-import { getSourceStateColor, getSourceStateLabel } from './utils';
+
 import { handleShaderDrop, handleShaderDragOver } from './shader-drop-handler';
 import { stopCameraAndConnection } from '../whip-input/utils/preview';
 import {
@@ -36,7 +36,7 @@ interface InputEntryProps {
   fxModeOnly?: boolean;
   showGrip?: boolean;
   isSelected?: boolean;
-  index?: number;
+
   readOnly?: boolean;
   activeBlockColor?: string;
 }
@@ -55,7 +55,6 @@ export default function InputEntry({
   fxModeOnly,
   showGrip = true,
   isSelected = false,
-  index,
   readOnly = false,
   activeBlockColor,
 }: InputEntryProps) {
@@ -625,10 +624,6 @@ export default function InputEntry({
         )}
         <div className='flex items-center min-h-7 md:pl-7'>
           <span
-            className={`hidden shrink-0 w-3 h-3 rounded-none mr-2 ${getSourceStateColor(input)}`}
-            aria-label={getSourceStateLabel(input)}
-          />
-          <span
             className='shrink-0 w-3 h-3 rounded-none mr-2'
             style={
               activeBlockColor
@@ -642,11 +637,6 @@ export default function InputEntry({
           {isTextSaving && (
             <span className='ml-2 text-xs text-muted-foreground'>
               Saving...
-            </span>
-          )}
-          {typeof index === 'number' && (
-            <span className='hidden ml-auto mr-2 text-xs font-medium text-muted-foreground'>
-              {index + 1}
             </span>
           )}
           {!readOnly && canRemove && <DeleteButton onClick={handleDelete} />}

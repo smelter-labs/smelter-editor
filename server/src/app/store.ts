@@ -15,6 +15,7 @@ import type {
 import type { HandsStore } from '../hands/handStore';
 import { createContext, useContext } from 'react';
 import { useStore } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 
 export type {
   SnakeGameCell,
@@ -188,14 +189,17 @@ export function useOutputShaders() {
 
 export function useViewport() {
   const store = useContext(StoreContext);
-  return useStore(store, (state) => ({
-    viewportTop: state.viewportTop,
-    viewportLeft: state.viewportLeft,
-    viewportWidth: state.viewportWidth,
-    viewportHeight: state.viewportHeight,
-    viewportTransitionDurationMs: state.viewportTransitionDurationMs,
-    viewportTransitionEasing: state.viewportTransitionEasing,
-  }));
+  return useStore(
+    store,
+    useShallow((state) => ({
+      viewportTop: state.viewportTop,
+      viewportLeft: state.viewportLeft,
+      viewportWidth: state.viewportWidth,
+      viewportHeight: state.viewportHeight,
+      viewportTransitionDurationMs: state.viewportTransitionDurationMs,
+      viewportTransitionEasing: state.viewportTransitionEasing,
+    })),
+  );
 }
 
 export const StoreContext =

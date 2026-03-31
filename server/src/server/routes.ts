@@ -312,8 +312,11 @@ routes.get<{ Params: { fileName: string } }>(
   { schema: { params: Type.Object({ fileName: Type.String() }) } },
   async (req, res) => {
     const { fileName } = req.params;
-    const safeName = path.basename(fileName);
-    const filePath = path.join(process.cwd(), 'audios', safeName);
+    const decoded = decodeURIComponent(fileName);
+    if (decoded.includes('..')) {
+      return res.status(400).send({ error: 'Invalid file name' });
+    }
+    const filePath = path.join(process.cwd(), 'audios', decoded);
 
     if (!(await pathExists(filePath))) {
       return res.status(404).send({ error: 'Audio file not found' });
@@ -324,7 +327,7 @@ routes.get<{ Params: { fileName: string } }>(
       return res.status(200).send({ durationMs });
     } catch (err: any) {
       console.error('Failed to get audio duration via ffprobe', {
-        fileName: safeName,
+        fileName: decoded,
         err: err?.message,
       });
       return res
@@ -390,10 +393,8 @@ const InputSchema = Type.Union([
   Type.Object({
     type: Type.Literal('local-mp4'),
     source: Type.Union([
-      Type.Object({
-        fileName: Type.Optional(Type.String()),
-        audioFileName: Type.Optional(Type.String()),
-      }),
+      Type.Object({ fileName: Type.String() }),
+      Type.Object({ audioFileName: Type.String() }),
       Type.Object({ url: Type.String() }),
     ]),
   }),
@@ -833,6 +834,21 @@ const UpdateRoomSchema = Type.Object({
   viewportHeight: Type.Optional(Type.Number({ minimum: 1 })),
   viewportTransitionDurationMs: Type.Optional(Type.Number({ minimum: 0 })),
   viewportTransitionEasing: Type.Optional(Type.String()),
+  outputShaders: Type.Optional(
+    Type.Array(
+      Type.Object({
+        shaderName: Type.String(),
+        shaderId: Type.String(),
+        enabled: Type.Boolean(),
+        params: Type.Array(
+          Type.Object({
+            paramName: Type.String(),
+            paramValue: Type.Union([Type.Number(), Type.String()]),
+          }),
+        ),
+      }),
+    ),
+  ),
 });
 
 // No multiple-pictures shader defaults API - kept local in layout
@@ -1407,6 +1423,9 @@ routes.delete<RoomIdParams>(
 );
 
 routes.post('/restart-smelter', async (_req, res) => {
+  if (process.env.ALLOW_SMELTER_RESTART !== 'true') {
+    return res.status(403).send({ error: 'Smelter restart is disabled' });
+  }
   console.log('[request] Restart Smelter engine');
   await state.restartSmelter();
   res.status(200).send({ status: 'ok' });

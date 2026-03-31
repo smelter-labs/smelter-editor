@@ -98,8 +98,11 @@ export const suggestionRoutes: FastifyPluginCallback = (routes, _opts, done) => 
     { schema: { params: Type.Object({ fileName: Type.String() }) } },
     async (req, res) => {
       const { fileName } = req.params;
-      const safeName = path.basename(fileName);
-      const filePath = path.join(process.cwd(), 'audios', safeName);
+      const decoded = decodeURIComponent(fileName);
+      if (decoded.includes('..')) {
+        return res.status(400).send({ error: 'Invalid file name' });
+      }
+      const filePath = path.join(process.cwd(), 'audios', decoded);
 
       if (!(await pathExists(filePath))) {
         return res.status(404).send({ error: 'Audio file not found' });
@@ -110,7 +113,7 @@ export const suggestionRoutes: FastifyPluginCallback = (routes, _opts, done) => 
         return res.status(200).send({ durationMs });
       } catch (err: any) {
         console.error('Failed to get audio duration via ffprobe', {
-          fileName: safeName,
+          fileName: decoded,
           err: err?.message,
         });
         return res

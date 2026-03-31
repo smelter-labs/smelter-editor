@@ -13,6 +13,7 @@ import {
   saveLastWhipInputId,
 } from '../whip-input/utils/whip-storage';
 import { toast } from 'sonner';
+import { emitTimelineEvent, TIMELINE_EVENTS } from './timeline/timeline-events';
 import type { PendingWhipInput } from './ConfigurationSection';
 import { updateTimelineInputId } from '@/lib/room-config';
 import { useControlPanelContext } from '../contexts/control-panel-context';
@@ -139,11 +140,9 @@ export function PendingWhipInputs({
         pendingInputs.filter((p) => p.id !== pendingInput.id),
       );
 
-      window.dispatchEvent(
-        new CustomEvent('smelter:timeline:cleanup-spurious-whip-track', {
-          detail: { inputId: response.inputId },
-        }),
-      );
+      emitTimelineEvent(TIMELINE_EVENTS.CLEANUP_SPURIOUS_WHIP_TRACK, {
+        inputId: response.inputId,
+      });
 
       toast.success(
         `Connected ${type === 'camera' ? 'camera' : 'screenshare'}: ${pendingInput.title}`,

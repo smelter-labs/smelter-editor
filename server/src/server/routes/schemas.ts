@@ -35,10 +35,8 @@ export const InputSchema = Type.Union([
   Type.Object({
     type: Type.Literal('local-mp4'),
     source: Type.Union([
-      Type.Object({
-        fileName: Type.Optional(Type.String()),
-        audioFileName: Type.Optional(Type.String()),
-      }),
+      Type.Object({ fileName: Type.String() }),
+      Type.Object({ audioFileName: Type.String() }),
       Type.Object({ url: Type.String() }),
     ]),
   }),
@@ -96,6 +94,18 @@ export const CreateRoomSchema = Type.Object({
   ),
 });
 
+const ShaderParamConfigSchema = Type.Object({
+  paramName: Type.String(),
+  paramValue: Type.Union([Type.Number(), Type.String()]),
+});
+
+export const ShaderConfigSchema = Type.Object({
+  shaderName: Type.String(),
+  shaderId: Type.String(),
+  enabled: Type.Boolean(),
+  params: Type.Array(ShaderParamConfigSchema),
+});
+
 export const UpdateRoomSchema = Type.Object({
   inputOrder: Type.Optional(Type.Array(Type.String())),
   layout: Type.Optional(
@@ -126,7 +136,7 @@ export const UpdateRoomSchema = Type.Object({
   viewportHeight: Type.Optional(Type.Number({ minimum: 1 })),
   viewportTransitionDurationMs: Type.Optional(Type.Number({ minimum: 0 })),
   viewportTransitionEasing: Type.Optional(Type.String()),
-  outputShaders: Type.Optional(Type.Array(Type.Any())),
+  outputShaders: Type.Optional(Type.Array(ShaderConfigSchema)),
 });
 
 export const PendingWhipInputSchema = Type.Object({
@@ -218,18 +228,6 @@ export const MotionDetectionSchema = Type.Object({
 });
 
 // Storage schemas
-
-const ShaderParamConfigSchema = Type.Object({
-  paramName: Type.String(),
-  paramValue: Type.Union([Type.Number(), Type.String()]),
-});
-
-export const ShaderConfigSchema = Type.Object({
-  shaderName: Type.String(),
-  shaderId: Type.String(),
-  enabled: Type.Boolean(),
-  params: Type.Array(ShaderParamConfigSchema),
-});
 
 const RoomConfigInputSchema = Type.Object({
   type: Type.String(),

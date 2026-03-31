@@ -292,10 +292,11 @@ function pruneOldTimelineEntries(keepRoomId: string): void {
       keysToRemove.push(key);
     }
   }
-  for (const key of keysToRemove) {
+  const toRemove = keysToRemove.slice(0, 3);
+  for (const key of toRemove) {
     localStorage.removeItem(key);
   }
-  if (keysToRemove.length > 0) {
-    console.log(`[timeline-storage] pruned ${keysToRemove.length} old timeline entries`);
+  if (toRemove.length > 0) {
+    console.log(`[timeline-storage] pruned ${toRemove.length} old timeline entries`);
   }
 }

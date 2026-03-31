@@ -1,6 +1,5 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
-import multipart from '@fastify/multipart';
 import websocket from '@fastify/websocket';
 import path from 'node:path';
 import { STATUS_CODES } from 'node:http';
@@ -16,7 +15,6 @@ import { roomRoutes } from './roomRoutes';
 import { inputRoutes } from './inputRoutes';
 import { recordingRoutes } from './recordingRoutes';
 import { suggestionRoutes } from './suggestionRoutes';
-import { uploadRoutes } from './uploadRoutes';
 import { sseRoutes } from './sseRoutes';
 import {
   RoomConfigSchema,
@@ -29,7 +27,6 @@ export const routes = Fastify({
 }).withTypeProvider<TypeBoxTypeProvider>();
 
 routes.register(cors, { origin: true });
-routes.register(multipart, { limits: { fileSize: 500 * 1024 * 1024 } });
 routes.register(websocket, {
   options: {
     perMessageDeflate: false,
@@ -60,7 +57,6 @@ routes.setErrorHandler((err: unknown, _req, res) => {
 });
 
 routes.register(suggestionRoutes);
-routes.register(uploadRoutes);
 routes.register(roomRoutes);
 routes.register(inputRoutes);
 routes.register(recordingRoutes);

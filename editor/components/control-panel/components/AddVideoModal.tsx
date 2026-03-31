@@ -230,23 +230,12 @@ interface BrowseResult {
   folders: string[];
 }
 
-async function browseMp4s(folder: string): Promise<BrowseResult> {
+async function browseAssets(
+  type: 'mp4s' | 'pictures' | 'audios',
+  folder: string,
+): Promise<BrowseResult> {
   const qs = folder ? `?folder=${encodeURIComponent(folder)}` : '';
-  const res = await fetch(`/api/suggestions/mp4s/browse${qs}`);
-  if (!res.ok) return { files: [], folders: [] };
-  return res.json();
-}
-
-async function browsePictures(folder: string): Promise<BrowseResult> {
-  const qs = folder ? `?folder=${encodeURIComponent(folder)}` : '';
-  const res = await fetch(`/api/suggestions/pictures/browse${qs}`);
-  if (!res.ok) return { files: [], folders: [] };
-  return res.json();
-}
-
-async function browseAudios(folder: string): Promise<BrowseResult> {
-  const qs = folder ? `?folder=${encodeURIComponent(folder)}` : '';
-  const res = await fetch(`/api/suggestions/audios/browse${qs}`);
+  const res = await fetch(`/api/suggestions/${type}/browse${qs}`);
   if (!res.ok) return { files: [], folders: [] };
   return res.json();
 }
@@ -420,15 +409,15 @@ export function AddVideoModal({
         actions
           .getKickSuggestions()
           .catch(() => ({ kick: [] as ChannelSuggestion[] })),
-        browseMp4s(mp4Folder).catch(() => ({
+        browseAssets('mp4s', mp4Folder).catch(() => ({
           files: [] as string[],
           folders: [] as string[],
         })),
-        browsePictures(pictureFolder).catch(() => ({
+        browseAssets('pictures', pictureFolder).catch(() => ({
           files: [] as string[],
           folders: [] as string[],
         })),
-        browseAudios(audioFolder).catch(() => ({
+        browseAssets('audios', audioFolder).catch(() => ({
           files: [] as string[],
           folders: [] as string[],
         })),

@@ -87,6 +87,7 @@ import {
 } from './components/BlockClipPropertiesPanel';
 import type { TimelineState } from './hooks/use-timeline-state';
 import { buildInputColorMap } from './components/timeline/timeline-utils';
+import { listenTimelineEvent, TIMELINE_EVENTS } from './components/timeline/timeline-events';
 import { useMotionScores } from '@/hooks/use-motion-scores';
 import { useMotionHistory } from '@/hooks/use-motion-history';
 import { InputMotionPanel } from './components/InputMotionPanel';
@@ -564,14 +565,9 @@ function ControlPanelInner({
   );
 
   useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ clips: SelectedTimelineClip[] }>)
-        .detail;
-      setSelectedTimelineClips(detail?.clips ?? []);
-    };
-    window.addEventListener('smelter:timeline:selected-clip', handler);
-    return () =>
-      window.removeEventListener('smelter:timeline:selected-clip', handler);
+    return listenTimelineEvent(TIMELINE_EVENTS.SELECTED_CLIP, ({ clips }) => {
+      setSelectedTimelineClips(clips ?? []);
+    });
   }, []);
 
   useEffect(() => {

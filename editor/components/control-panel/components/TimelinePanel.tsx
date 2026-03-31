@@ -85,6 +85,11 @@ import {
 import { ColorSwatch } from './timeline/ColorSwatch';
 import { ShortcutGroup } from './timeline/ShortcutGroup';
 import { VolumeAutomationLane } from './timeline/VolumeAutomationLane';
+import {
+  emitTimelineEvent,
+  listenTimelineEvent,
+  TIMELINE_EVENTS,
+} from './timeline/timeline-events';
 
 // ── Props ────────────────────────────────────────────────
 
@@ -393,170 +398,49 @@ export function TimelinePanel({
           selectedKeyframeId: clipSelectedKeyframeId,
         };
       })
-      .filter(Boolean);
-    window.dispatchEvent(
-      new CustomEvent('smelter:timeline:selected-clip', {
-        detail: { clips: resolvedClips },
-      }),
-    );
+      .filter((c): c is NonNullable<typeof c> => c != null);
+    emitTimelineEvent(TIMELINE_EVENTS.SELECTED_CLIP, {
+      clips: resolvedClips,
+    });
   }, [selectedClipIds, selectedKeyframeId, state.tracks, state.playheadMs]);
 
   useEffect(() => {
-    const handler = (
-      e: CustomEvent<{
-        trackId: string;
-        clipId: string;
-        patch: Partial<import('../hooks/use-timeline-state').BlockSettings>;
-      }>,
-    ) => {
-      const { trackId, clipId, patch } = e.detail;
+    return listenTimelineEvent(TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS, ({ trackId, clipId, patch }) => {
       updateClipSettings(trackId, clipId, patch);
-    };
-    window.addEventListener(
-      'smelter:timeline:update-clip-settings',
-      handler as unknown as EventListener,
-    );
-    return () => {
-      window.removeEventListener(
-        'smelter:timeline:update-clip-settings',
-        handler as unknown as EventListener,
-      );
-    };
+    });
   }, [updateClipSettings]);
 
   useEffect(() => {
-    const handler = (
-      e: CustomEvent<{
-        trackId: string;
-        clipId: string;
-        edge: 'left' | 'right';
-        newMs: number;
-      }>,
-    ) => {
-      const { trackId, clipId, edge, newMs } = e.detail;
+    return listenTimelineEvent(TIMELINE_EVENTS.RESIZE_CLIP, ({ trackId, clipId, edge, newMs }) => {
       resizeClip(trackId, clipId, edge, newMs);
-    };
-    window.addEventListener(
-      'smelter:timeline:resize-clip',
-      handler as unknown as EventListener,
-    );
-    return () => {
-      window.removeEventListener(
-        'smelter:timeline:resize-clip',
-        handler as unknown as EventListener,
-      );
-    };
+    });
   }, [resizeClip]);
 
   useEffect(() => {
-    const handleAdd = (
-      e: CustomEvent<{
-        trackId: string;
-        clipId: string;
-        timeMs: number;
-      }>,
-    ) => {
-      const { trackId, clipId, timeMs } = e.detail;
-      addKeyframe(trackId, clipId, timeMs);
-    };
-    const handleUpdate = (
-      e: CustomEvent<{
-        trackId: string;
-        clipId: string;
-        keyframeId: string;
-        patch: Partial<import('../hooks/use-timeline-state').BlockSettings>;
-      }>,
-    ) => {
-      const { trackId, clipId, keyframeId, patch } = e.detail;
-      updateKeyframe(trackId, clipId, keyframeId, patch);
-    };
-    const handleMove = (
-      e: CustomEvent<{
-        trackId: string;
-        clipId: string;
-        keyframeId: string;
-        timeMs: number;
-      }>,
-    ) => {
-      const { trackId, clipId, keyframeId, timeMs } = e.detail;
-      moveKeyframe(trackId, clipId, keyframeId, timeMs);
-    };
-    const handleDelete = (
-      e: CustomEvent<{
-        trackId: string;
-        clipId: string;
-        keyframeId: string;
-      }>,
-    ) => {
-      const { trackId, clipId, keyframeId } = e.detail;
-      deleteKeyframe(trackId, clipId, keyframeId);
-    };
-    const handleSelect = (
-      e: CustomEvent<{
-        trackId: string;
-        clipId: string;
-        keyframeId: string | null;
-      }>,
-    ) => {
-      const { trackId, clipId, keyframeId } = e.detail;
-      setSelectedClipIds([{ trackId, clipId }]);
-      setSelectedKeyframeId(keyframeId);
-      lastClickedClipRef.current = { trackId, clipId };
-    };
-
-    window.addEventListener(
-      'smelter:timeline:add-keyframe',
-      handleAdd as unknown as EventListener,
-    );
-    window.addEventListener(
-      'smelter:timeline:update-keyframe',
-      handleUpdate as unknown as EventListener,
-    );
-    window.addEventListener(
-      'smelter:timeline:move-keyframe',
-      handleMove as unknown as EventListener,
-    );
-    window.addEventListener(
-      'smelter:timeline:delete-keyframe',
-      handleDelete as unknown as EventListener,
-    );
-    window.addEventListener(
-      'smelter:timeline:select-keyframe',
-      handleSelect as unknown as EventListener,
-    );
-    return () => {
-      window.removeEventListener(
-        'smelter:timeline:add-keyframe',
-        handleAdd as unknown as EventListener,
-      );
-      window.removeEventListener(
-        'smelter:timeline:update-keyframe',
-        handleUpdate as unknown as EventListener,
-      );
-      window.removeEventListener(
-        'smelter:timeline:move-keyframe',
-        handleMove as unknown as EventListener,
-      );
-      window.removeEventListener(
-        'smelter:timeline:delete-keyframe',
-        handleDelete as unknown as EventListener,
-      );
-      window.removeEventListener(
-        'smelter:timeline:select-keyframe',
-        handleSelect as unknown as EventListener,
-      );
-    };
+    const unsubs = [
+      listenTimelineEvent(TIMELINE_EVENTS.ADD_KEYFRAME, ({ trackId, clipId, timeMs }) => {
+        addKeyframe(trackId, clipId, timeMs);
+      }),
+      listenTimelineEvent(TIMELINE_EVENTS.UPDATE_KEYFRAME, ({ trackId, clipId, keyframeId, patch }) => {
+        updateKeyframe(trackId, clipId, keyframeId, patch);
+      }),
+      listenTimelineEvent(TIMELINE_EVENTS.MOVE_KEYFRAME, ({ trackId, clipId, keyframeId, timeMs }) => {
+        moveKeyframe(trackId, clipId, keyframeId, timeMs);
+      }),
+      listenTimelineEvent(TIMELINE_EVENTS.DELETE_KEYFRAME, ({ trackId, clipId, keyframeId }) => {
+        deleteKeyframe(trackId, clipId, keyframeId);
+      }),
+      listenTimelineEvent(TIMELINE_EVENTS.SELECT_KEYFRAME, ({ trackId, clipId, keyframeId }) => {
+        setSelectedClipIds([{ trackId, clipId }]);
+        setSelectedKeyframeId(keyframeId);
+        lastClickedClipRef.current = { trackId, clipId };
+      }),
+    ];
+    return () => unsubs.forEach((u) => u());
   }, [addKeyframe, deleteKeyframe, moveKeyframe, updateKeyframe]);
 
-  // Listen for input-level clip settings updates (e.g. from voice macros)
   useEffect(() => {
-    const handler = (
-      e: CustomEvent<{
-        inputId: string;
-        patch: Partial<import('../hooks/use-timeline-state').BlockSettings>;
-      }>,
-    ) => {
-      const { inputId, patch } = e.detail;
+    return listenTimelineEvent(TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS_FOR_INPUT, ({ inputId, patch }) => {
       for (const track of state.tracks) {
         for (const clip of track.clips) {
           if (clip.inputId === inputId) {
@@ -564,38 +448,16 @@ export function TimelinePanel({
           }
         }
       }
-    };
-    window.addEventListener(
-      'smelter:timeline:update-clip-settings-for-input',
-      handler as unknown as EventListener,
-    );
-    return () => {
-      window.removeEventListener(
-        'smelter:timeline:update-clip-settings-for-input',
-        handler as unknown as EventListener,
-      );
-    };
+    });
   }, [state.tracks, updateClipSettings]);
 
-  // Listen for bulk hard-deletes and purge all related clips from timeline.
   useEffect(() => {
-    const handler = (e: CustomEvent<{ inputIds?: string[] }>) => {
-      const ids = e.detail?.inputIds ?? [];
-      const uniqueIds = [...new Set(ids.filter(Boolean))];
+    return listenTimelineEvent(TIMELINE_EVENTS.PURGE_INPUT_IDS, ({ inputIds }) => {
+      const uniqueIds = [...new Set(inputIds.filter(Boolean))];
       for (const inputId of uniqueIds) {
         purgeInputId(inputId);
       }
-    };
-    window.addEventListener(
-      'smelter:timeline:purge-input-ids',
-      handler as unknown as EventListener,
-    );
-    return () => {
-      window.removeEventListener(
-        'smelter:timeline:purge-input-ids',
-        handler as unknown as EventListener,
-      );
-    };
+    });
   }, [purgeInputId]);
 
   // Listen for WHIP input connections to replace placeholder inputIds
@@ -609,46 +471,24 @@ export function TimelinePanel({
       window.removeEventListener('smelter:timeline-input-replaced', handler);
   }, [replaceInputId]);
 
-  // After a WHIP input is connected, SYNC_TRACKS may race and create a
-  // spurious full-span track at the top. Wait 1.5s then clean it up.
   useEffect(() => {
     let timers: ReturnType<typeof setTimeout>[] = [];
-    const handler = (e: Event) => {
-      const { inputId } = (e as CustomEvent).detail;
+    const unsub = listenTimelineEvent(TIMELINE_EVENTS.CLEANUP_SPURIOUS_WHIP_TRACK, ({ inputId }) => {
       const timer = setTimeout(() => {
         cleanupSpuriousWhipTrack(inputId);
       }, 1500);
       timers.push(timer);
-    };
-    window.addEventListener(
-      'smelter:timeline:cleanup-spurious-whip-track',
-      handler,
-    );
+    });
     return () => {
-      window.removeEventListener(
-        'smelter:timeline:cleanup-spurious-whip-track',
-        handler,
-      );
+      unsub();
       for (const t of timers) clearTimeout(t);
     };
   }, [cleanupSpuriousWhipTrack]);
 
   useEffect(() => {
-    const handler = (e: Event) => {
-      const { trackId, clipId, newInputId, sourceUpdates } = (
-        e as CustomEvent
-      ).detail;
+    return listenTimelineEvent(TIMELINE_EVENTS.SWAP_CLIP_INPUT, ({ trackId, clipId, newInputId, sourceUpdates }) => {
       swapClipInput(trackId, clipId, newInputId, sourceUpdates);
-    };
-    window.addEventListener(
-      'smelter:timeline:swap-clip-input',
-      handler as EventListener,
-    );
-    return () =>
-      window.removeEventListener(
-        'smelter:timeline:swap-clip-input',
-        handler as EventListener,
-      );
+    });
   }, [swapClipInput]);
 
   // Auto-create keyframe when layout map position changes
@@ -692,15 +532,7 @@ export function TimelinePanel({
 
   // Inward event: external code (voice, control-panel) can request a clip selection
   useEffect(() => {
-    const handler = (
-      e: CustomEvent<{
-        inputId?: string;
-        trackIndex?: number;
-        trackId?: string;
-        clipId?: string;
-      } | null>,
-    ) => {
-      const detail = e.detail;
+    return listenTimelineEvent(TIMELINE_EVENTS.SELECT_CLIP, (detail) => {
       if (!detail) {
         setSelectedClipIds([]);
         setSelectedKeyframeId(null);
@@ -741,17 +573,7 @@ export function TimelinePanel({
           }
         }
       }
-    };
-    window.addEventListener(
-      'smelter:timeline:select-clip',
-      handler as unknown as EventListener,
-    );
-    return () => {
-      window.removeEventListener(
-        'smelter:timeline:select-clip',
-        handler as unknown as EventListener,
-      );
-    };
+    });
   }, [state.tracks, setPlayhead]);
 
   const inputColorMap = useMemo(() => buildInputColorMap(inputs), [inputs]);

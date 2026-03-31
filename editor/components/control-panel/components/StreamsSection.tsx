@@ -169,7 +169,6 @@ export function StreamsSection({
                         }
                         showGrip={isGuest ? false : isWideScreen}
                         isSelected={selectedInputId === input.inputId}
-                        index={index}
                         readOnly={isGuest && input.inputId !== guestInputId}
                         activeBlockColor={activeClipColors?.[input.inputId]}
                       />

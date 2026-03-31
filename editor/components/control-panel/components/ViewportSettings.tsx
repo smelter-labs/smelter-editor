@@ -95,6 +95,13 @@ export function ViewportSettings({
     setLocalDuration(tDur);
   }, [tDur]);
 
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      if (durationDebounceRef.current) clearTimeout(durationDebounceRef.current);
+    };
+  }, []);
+
   const handleZoomChange = useCallback(
     (newZoom: number) => {
       setLocalZoom(newZoom);

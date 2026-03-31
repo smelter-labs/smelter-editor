@@ -9,6 +9,7 @@ import { AddShaderModal } from '../input-entry/add-shader-modal';
 import SnakeEventShaderPanel from '../input-entry/snake-event-shader-panel';
 import type { BlockSettings } from '../hooks/use-timeline-state';
 import { OUTPUT_CLIP_ID, OUTPUT_TRACK_INPUT_ID } from '../hooks/use-timeline-state';
+import { emitTimelineEvent, TIMELINE_EVENTS } from './timeline/timeline-events';
 import { PendingWhipInputs } from './PendingWhipInputs';
 import type { PendingWhipInput } from './ConfigurationSection';
 import { Link, Video, Monitor, ArrowLeftRight } from 'lucide-react';
@@ -317,11 +318,9 @@ export function BlockClipPropertiesPanel({
 
         await handleRefreshState();
 
-        window.dispatchEvent(
-          new CustomEvent('smelter:timeline:cleanup-spurious-whip-track', {
-            detail: { inputId: response.inputId },
-          }),
-        );
+        emitTimelineEvent(TIMELINE_EVENTS.CLEANUP_SPURIOUS_WHIP_TRACK, {
+          inputId: response.inputId,
+        });
 
         toast.success(
           `Connected ${type === 'camera' ? 'camera' : 'screenshare'}`,
@@ -356,16 +355,12 @@ export function BlockClipPropertiesPanel({
     async (result: SwapSourceResult) => {
       if (!selectedTimelineClip) return;
 
-      window.dispatchEvent(
-        new CustomEvent('smelter:timeline:swap-clip-input', {
-          detail: {
-            trackId: selectedTimelineClip.trackId,
-            clipId: selectedTimelineClip.clipId,
-            newInputId: result.newInputId,
-            sourceUpdates: result.sourceUpdates,
-          },
-        }),
-      );
+      emitTimelineEvent(TIMELINE_EVENTS.SWAP_CLIP_INPUT, {
+        trackId: selectedTimelineClip.trackId,
+        clipId: selectedTimelineClip.clipId,
+        newInputId: result.newInputId,
+        sourceUpdates: result.sourceUpdates,
+      });
 
       const updatedSettings = {
         ...selectedTimelineClip.blockSettings,
@@ -379,40 +374,9 @@ export function BlockClipPropertiesPanel({
       });
 
       await handleRefreshState();
-
-      // For newly created inputs, dimensions may only be available after refresh.
-      // Dispatch a follow-up settings update if the refreshed input has dimensions
-      // that were not part of the initial sourceUpdates.
-      if (
-        result.sourceUpdates.sourceWidth == null ||
-        result.sourceUpdates.sourceHeight == null
-      ) {
-        const refreshedInput = inputs.find(
-          (i) => i.inputId === result.newInputId,
-        );
-        if (refreshedInput?.sourceWidth && refreshedInput?.sourceHeight) {
-          const dimPatch: Partial<BlockSettings> = {
-            sourceWidth: refreshedInput.sourceWidth,
-            sourceHeight: refreshedInput.sourceHeight,
-          };
-          window.dispatchEvent(
-            new CustomEvent('smelter:timeline:update-clip-settings', {
-              detail: {
-                trackId: selectedTimelineClip.trackId,
-                clipId: selectedTimelineClip.clipId,
-                patch: dimPatch,
-              },
-            }),
-          );
-        }
-      }
+      // Dimensions will arrive via the next poll + SYNC_TRACKS cycle.
     },
-    [
-      selectedTimelineClip,
-      onSelectedTimelineClipChange,
-      handleRefreshState,
-      inputs,
-    ],
+    [selectedTimelineClip, onSelectedTimelineClipChange, handleRefreshState],
   );
 
   const applyClipPatch = useCallback(
@@ -484,23 +448,19 @@ export function BlockClipPropertiesPanel({
 
       // Dispatch timeline update for each clip or selected keyframe.
       if (targetKeyframeId && singleSelectedClip) {
-        window.dispatchEvent(
-          new CustomEvent('smelter:timeline:update-keyframe', {
-            detail: {
-              trackId: singleSelectedClip.trackId,
-              clipId: singleSelectedClip.clipId,
-              keyframeId: targetKeyframeId,
-              patch,
-            },
-          }),
-        );
+        emitTimelineEvent(TIMELINE_EVENTS.UPDATE_KEYFRAME, {
+          trackId: singleSelectedClip.trackId,
+          clipId: singleSelectedClip.clipId,
+          keyframeId: targetKeyframeId,
+          patch,
+        });
       } else {
         for (const clip of selectedTimelineClips) {
-          window.dispatchEvent(
-            new CustomEvent('smelter:timeline:update-clip-settings', {
-              detail: { trackId: clip.trackId, clipId: clip.clipId, patch },
-            }),
-          );
+          emitTimelineEvent(TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS, {
+            trackId: clip.trackId,
+            clipId: clip.clipId,
+            patch,
+          });
         }
       }
 
@@ -579,15 +539,11 @@ export function BlockClipPropertiesPanel({
   const handleSelectKeyframe = useCallback(
     (keyframeId: string | null) => {
       if (!selectedTimelineClip) return;
-      window.dispatchEvent(
-        new CustomEvent('smelter:timeline:select-keyframe', {
-          detail: {
-            trackId: selectedTimelineClip.trackId,
-            clipId: selectedTimelineClip.clipId,
-            keyframeId,
-          },
-        }),
-      );
+      emitTimelineEvent(TIMELINE_EVENTS.SELECT_KEYFRAME, {
+        trackId: selectedTimelineClip.trackId,
+        clipId: selectedTimelineClip.clipId,
+        keyframeId,
+      });
     },
     [selectedTimelineClip],
   );
@@ -604,45 +560,33 @@ export function BlockClipPropertiesPanel({
       selectedTimelineClip,
       desiredTimeMs,
     );
-    window.dispatchEvent(
-      new CustomEvent('smelter:timeline:add-keyframe', {
-        detail: {
-          trackId: selectedTimelineClip.trackId,
-          clipId: selectedTimelineClip.clipId,
-          timeMs: nextTimeMs,
-        },
-      }),
-    );
+    emitTimelineEvent(TIMELINE_EVENTS.ADD_KEYFRAME, {
+      trackId: selectedTimelineClip.trackId,
+      clipId: selectedTimelineClip.clipId,
+      timeMs: nextTimeMs,
+    });
   }, [playheadMs, selectedTimelineClip, selectedTimelineKeyframe]);
 
   const handleMoveSelectedKeyframe = useCallback(
     (timeMs: number) => {
       if (!selectedTimelineClip || !selectedTimelineKeyframe) return;
-      window.dispatchEvent(
-        new CustomEvent('smelter:timeline:move-keyframe', {
-          detail: {
-            trackId: selectedTimelineClip.trackId,
-            clipId: selectedTimelineClip.clipId,
-            keyframeId: selectedTimelineKeyframe.id,
-            timeMs,
-          },
-        }),
-      );
+      emitTimelineEvent(TIMELINE_EVENTS.MOVE_KEYFRAME, {
+        trackId: selectedTimelineClip.trackId,
+        clipId: selectedTimelineClip.clipId,
+        keyframeId: selectedTimelineKeyframe.id,
+        timeMs,
+      });
     },
     [selectedTimelineClip, selectedTimelineKeyframe],
   );
 
   const handleDeleteSelectedKeyframe = useCallback(() => {
     if (!selectedTimelineClip || !selectedTimelineKeyframe) return;
-    window.dispatchEvent(
-      new CustomEvent('smelter:timeline:delete-keyframe', {
-        detail: {
-          trackId: selectedTimelineClip.trackId,
-          clipId: selectedTimelineClip.clipId,
-          keyframeId: selectedTimelineKeyframe.id,
-        },
-      }),
-    );
+    emitTimelineEvent(TIMELINE_EVENTS.DELETE_KEYFRAME, {
+      trackId: selectedTimelineClip.trackId,
+      clipId: selectedTimelineClip.clipId,
+      keyframeId: selectedTimelineKeyframe.id,
+    });
     handleSelectKeyframe(null);
   }, [handleSelectKeyframe, selectedTimelineClip, selectedTimelineKeyframe]);
 
@@ -1440,20 +1384,12 @@ export function BlockClipPropertiesPanel({
                         effectiveClip.endMs - effectiveClip.startMs >
                           maxDuration
                       ) {
-                        window.dispatchEvent(
-                          new CustomEvent(
-                            'smelter:timeline:resize-clip',
-                            {
-                              detail: {
-                                trackId: effectiveClip.trackId,
-                                clipId: effectiveClip.clipId,
-                                edge: 'right' as const,
-                                newMs:
-                                  effectiveClip.startMs + maxDuration,
-                              },
-                            },
-                          ),
-                        );
+                        emitTimelineEvent(TIMELINE_EVENTS.RESIZE_CLIP, {
+                          trackId: effectiveClip.trackId,
+                          clipId: effectiveClip.clipId,
+                          edge: 'right',
+                          newMs: effectiveClip.startMs + maxDuration,
+                        });
                       }
                     }
                   }}

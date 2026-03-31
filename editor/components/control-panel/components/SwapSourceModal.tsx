@@ -7,6 +7,7 @@ import { useActions } from '../contexts/actions-context';
 import { getMp4Duration } from '@/app/actions/actions';
 import type { Input } from '@/lib/types';
 import type { BlockSettings } from '../hooks/use-timeline-state';
+import { emitTimelineEvent, TIMELINE_EVENTS } from './timeline/timeline-events';
 import {
   Film,
   Image as ImageIcon,
@@ -133,11 +134,9 @@ export function SwapSourceModal({
         if (trackId && clipId) {
           getMp4Duration(fileName)
             .then((durationMs) => {
-              window.dispatchEvent(
-                new CustomEvent('smelter:timeline:update-clip-settings', {
-                  detail: { trackId, clipId, patch: { mp4DurationMs: durationMs } },
-                }),
-              );
+              emitTimelineEvent(TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS, {
+                trackId, clipId, patch: { mp4DurationMs: durationMs },
+              });
             })
             .catch(() => {});
         }
