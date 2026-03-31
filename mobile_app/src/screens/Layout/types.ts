@@ -3,4 +3,6 @@ export interface LayerItemProps {
   name: string;
   color: string;
   isVisible: boolean;
+  nativeWidth?: number;
+  nativeHeight?: number;
 }

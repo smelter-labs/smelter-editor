@@ -18,6 +18,8 @@ export default function GridCell({
   name,
   color,
   isVisible,
+  nativeWidth,
+  nativeHeight,
   isSelected = false,
   onSelect,
   onLongPress,
@@ -117,6 +119,11 @@ export default function GridCell({
         <Text style={styles.cellText} numberOfLines={1}>
           {name}
         </Text>
+        <Text style={styles.resolutionText}>
+          {nativeWidth != null && nativeHeight != null
+            ? `${nativeWidth}×${nativeHeight}`
+            : ""}
+        </Text>
         {isSelected && (
           <>
             {["topLeft", "topRight", "bottomLeft", "bottomRight"].map((dir) =>
@@ -142,8 +149,16 @@ const styles = StyleSheet.create({
   },
   cellText: {
     color: "#fff",
-    fontSize: 11,
+    fontSize: 16,
     fontWeight: "600",
+  },
+  resolutionText: {
+    position: "absolute",
+    bottom: 4,
+    right: 6,
+    color: "rgba(255,255,255,0.75)",
+    fontSize: 12,
+    fontWeight: "500",
   },
   handleTouchTarget: {
     width: HANDLE_TOUCH_SIZE,

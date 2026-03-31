@@ -279,6 +279,8 @@ class ApiService {
         (input as { videoStreamUrl?: string | null }).videoStreamUrl ?? null,
       displaySize: (input as { displaySize?: number }).displaySize ?? 0,
       shaders: (input.shaders as ShaderConfig[] | undefined) ?? [],
+      nativeWidth: input.nativeWidth,
+      nativeHeight: input.nativeHeight,
     }));
   }
 }
