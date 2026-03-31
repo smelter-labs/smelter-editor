@@ -181,7 +181,11 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
         sourceId,
       });
 
-      res.status(200).send({ status: 'ok' });
+      // Return the server-authoritative layers so callers can apply any
+      // server-side recomputation (e.g. behaviour-driven layout corrections)
+      // immediately from this response, without waiting for a WS ping + GET.
+      const snapshot = room.getState();
+      res.status(200).send({ status: 'ok', layers: snapshot.layers });
     },
   );
 

@@ -57,7 +57,6 @@ const CLOSE_CODE_ROOM_DELETED = 1001;
 
 type Opts = {
   onRemoteInputChange?: () => void;
-  ownSourceId?: string;
 };
 
 export function useRoomWebSocket(
@@ -101,13 +100,11 @@ export function useRoomWebSocket(
           msg.type === 'input_deleted' ||
           msg.type === 'room_updated'
         ) {
-          const { onRemoteInputChange, ownSourceId } = optsRef.current ?? {};
-          const isOwnChange =
-            ownSourceId != null && msg.sourceId === ownSourceId;
-          if (!isOwnChange) {
-            console.log(`[room-ws] ${msg.type} from remote`, msg);
-            onRemoteInputChange?.();
-          }
+          // Always process — even echoes of our own mutations. The server may have
+          // recomputed (corrected) the layout before echoing, and we must accept
+          // those corrections rather than staying stuck with the stale optimistic state.
+          console.log(`[room-ws] ${msg.type}`, msg);
+          optsRef.current?.onRemoteInputChange?.();
         }
       });
 

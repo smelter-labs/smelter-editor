@@ -53,7 +53,7 @@ function OutputScene() {
   const outputShaders = useOutputShaders();
   const inputMap = new Map(inputs.map((input) => [input.inputId, input]));
   const activeOutputShaders = outputShaders.filter((s) => s.enabled);
-
+  const layersReversed = [...layers].reverse();
   const scene = (
     <View
       style={{
@@ -63,7 +63,7 @@ function OutputScene() {
         height,
         overflow: 'visible',
       }}>
-      {layers.map((layer) => (
+      {layersReversed.map((layer) => (
         <View
           key={layer.id}
           style={{ top: 0, left: 0, width, height, overflow: 'visible' }}>

@@ -1,5 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
+import {
+  InteractionManager,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { Droppable, DropProvider } from "react-native-reanimated-dnd";
 import type { Layer, LayerBehaviorConfig } from "../../../types/layout";
 import type { InputCard } from "../../../types/input";
@@ -95,7 +101,11 @@ export default function LayersPanel({
         draggedLayerId,
         targetLayerIndex,
       );
-      if (result !== layersRef.current) onLayersChange(result);
+      if (result !== layersRef.current) {
+        // Defer until after the drag-release spring animation completes so the
+        // Draggable's animated view doesn't leave an empty-space ghost in the list.
+        InteractionManager.runAfterInteractions(() => onLayersChange(result));
+      }
     },
     [onLayersChange],
   );
@@ -114,7 +124,11 @@ export default function LayersPanel({
         targetLayerId,
         targetIndex,
       );
-      if (result !== layersRef.current) onLayersChange(result);
+      if (result !== layersRef.current) {
+        // Defer until after the drag-release spring animation completes so the
+        // Draggable's animated view doesn't leave an empty-space ghost in the list.
+        InteractionManager.runAfterInteractions(() => onLayersChange(result));
+      }
     },
     [onLayersChange],
   );

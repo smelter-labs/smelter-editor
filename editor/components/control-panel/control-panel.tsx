@@ -13,7 +13,7 @@ import type {
 } from '@/lib/types';
 import { useActions } from './contexts/actions-context';
 import { ActionsProvider } from './contexts/actions-context';
-import { defaultActions, SESSION_SOURCE_ID } from './contexts/default-actions';
+import { defaultActions } from './contexts/default-actions';
 import { useRecordingControls } from './hooks/use-recording-controls';
 import {
   Dialog,
@@ -250,7 +250,6 @@ function ControlPanelWithActions({
 
   const { peers } = useRoomWebSocket(roomId, {
     onRemoteInputChange: handleRefreshState,
-    ownSourceId: SESSION_SOURCE_ID,
   });
 
   useEffect(() => {

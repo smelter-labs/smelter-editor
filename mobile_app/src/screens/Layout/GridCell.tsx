@@ -11,7 +11,8 @@ import type { LayerItemProps } from "./types";
 
 type GridCellProps = LayerItemProps & GridItemControls;
 
-const HANDLE_SIZE = 12;
+const HANDLE_TOUCH_SIZE = 28; // larger touch target for reliable activation
+const HANDLE_VISUAL_SIZE = 12; // visible dot size
 
 export default function GridCell({
   name,
@@ -26,6 +27,7 @@ export default function GridCell({
 }: GridCellProps) {
   const createResizeGesture = (direction: ResizeHandleDirection) => {
     return Gesture.Pan()
+      .minDistance(1) // activate on the very first pixel so the grid's long-press can't win
       .onStart(() => {
         "worklet";
         if (onResizeStart) {
@@ -51,47 +53,46 @@ export default function GridCell({
   };
 
   const renderHandle = (direction: ResizeHandleDirection) => {
+    // The outer View is the (larger) touch target; the inner dot is the visual indicator.
     let positionStyle: any = { position: "absolute" };
 
     if (direction === "topLeft") {
       positionStyle = {
         ...positionStyle,
-        top: -HANDLE_SIZE / 2,
-        left: -HANDLE_SIZE / 2,
+        top: -HANDLE_TOUCH_SIZE / 2,
+        left: -HANDLE_TOUCH_SIZE / 2,
       };
     } else if (direction === "topRight") {
       positionStyle = {
         ...positionStyle,
-        top: -HANDLE_SIZE / 2,
-        right: -HANDLE_SIZE / 2,
+        top: -HANDLE_TOUCH_SIZE / 2,
+        right: -HANDLE_TOUCH_SIZE / 2,
       };
     } else if (direction === "bottomLeft") {
       positionStyle = {
         ...positionStyle,
-        bottom: -HANDLE_SIZE / 2,
-        left: -HANDLE_SIZE / 2,
+        bottom: -HANDLE_TOUCH_SIZE / 2,
+        left: -HANDLE_TOUCH_SIZE / 2,
       };
     } else if (direction === "bottomRight") {
       positionStyle = {
         ...positionStyle,
-        bottom: -HANDLE_SIZE / 2,
-        right: -HANDLE_SIZE / 2,
+        bottom: -HANDLE_TOUCH_SIZE / 2,
+        right: -HANDLE_TOUCH_SIZE / 2,
       };
     }
 
     return (
       <GestureDetector key={direction} gesture={createResizeGesture(direction)}>
-        <View
-          style={[
-            styles.handle,
-            positionStyle,
-            {
-              width: HANDLE_SIZE,
-              height: HANDLE_SIZE,
-              backgroundColor: isSelected ? "#4CAF50" : "#999",
-            },
-          ]}
-        />
+        {/* Larger transparent touch target around the smaller visual dot */}
+        <View style={[positionStyle, styles.handleTouchTarget]}>
+          <View
+            style={[
+              styles.handleDot,
+              { backgroundColor: isSelected ? "#4CAF50" : "#999" },
+            ]}
+          />
+        </View>
       </GestureDetector>
     );
   };
@@ -144,7 +145,15 @@ const styles = StyleSheet.create({
     fontSize: 11,
     fontWeight: "600",
   },
-  handle: {
+  handleTouchTarget: {
+    width: HANDLE_TOUCH_SIZE,
+    height: HANDLE_TOUCH_SIZE,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  handleDot: {
+    width: HANDLE_VISUAL_SIZE,
+    height: HANDLE_VISUAL_SIZE,
     borderRadius: 6,
   },
 });

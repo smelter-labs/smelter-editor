@@ -112,7 +112,14 @@ function itemDataToLayerInputs(
 
 export function LayoutScreen() {
   const theme = useTheme();
-  const { layers, setLayers, resolution, columns, rows } = useLayoutStore();
+  const {
+    layers,
+    setLayers,
+    resolution,
+    columns,
+    rows,
+    removeInputFromLayers,
+  } = useLayoutStore();
   const { serverUrl, roomId } = useConnectionStore();
   const inputs = useInputsStore((s) => s.inputs);
   const setInputs = useInputsStore((s) => s.setInputs);
@@ -148,10 +155,18 @@ export function LayoutScreen() {
         console.warn("[Layout] Failed to refresh layers on room_updated:", err);
       }
     });
+
+    // When an input is deleted, remove it from the layout immediately so the grid
+    // cell doesn't linger as a UUID-labelled rectangle.
+    const unsubDeleted = wsService.on("input_deleted", (event) => {
+      removeInputFromLayers(event.inputId);
+    });
+
     return () => {
       unsubRoom();
+      unsubDeleted();
     };
-  }, [serverUrl, roomId, setLayers, setInputs]);
+  }, [serverUrl, roomId, setLayers, setInputs, removeInputFromLayers]);
 
   useEffect(() => {
     if (!effectsInputId) return;
@@ -166,9 +181,17 @@ export function LayoutScreen() {
     async (newLayers: Layer[]) => {
       isPushing.current = true;
       pendingRefresh.current = false;
-      setLayers(newLayers);
+      setLayers(newLayers); // optimistic
       try {
-        await apiService.updateLayers(serverUrl, roomId, newLayers);
+        // The POST response now includes the server-authoritative layers.
+        // Apply them immediately so any server-side recomputation (e.g.
+        // behaviour-driven corrections) is visible without a second round-trip.
+        const confirmedLayers = await apiService.updateLayers(
+          serverUrl,
+          roomId,
+          newLayers,
+        );
+        setLayers(confirmedLayers);
       } catch (err) {
         console.warn("[Layout] Failed to push layer update:", err);
         // Force reconcile so the optimistic state doesn't stay permanently broken.
@@ -176,6 +199,8 @@ export function LayoutScreen() {
       } finally {
         isPushing.current = false;
         if (pendingRefresh.current) {
+          // Fallback path: request failed, or a concurrent room_updated arrived
+          // while the push was in-flight — fetch full state to reconcile.
           pendingRefresh.current = false;
           try {
             const { layers: serverLayers, inputs: serverInputs } =

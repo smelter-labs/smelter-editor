@@ -594,6 +594,146 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
         );
       }
 
+      // ── Collision resolution ─────────────────────────────────────────────
+      // Push siblings away from the resized item so they never visually overlap.
+      // Direction of push follows which edge(s) are being dragged.
+      const pushRight =
+        dir === "right" || dir === "topRight" || dir === "bottomRight";
+      const pushLeft =
+        dir === "left" || dir === "topLeft" || dir === "bottomLeft";
+      const pushDown =
+        dir === "bottom" || dir === "bottomLeft" || dir === "bottomRight";
+      const pushUp = dir === "top" || dir === "topLeft" || dir === "topRight";
+
+      // ── Proportional redistribution ─────────────────────────────────────────
+      // Instead of pushing cells one-by-one (BFS), collect every cell that
+      // belongs to the same band as the resize, then share the remaining space
+      // among them proportionally so all siblings shrink/grow together.
+      //
+      // "Original band" is relative to the session start, not the current
+      // (already-mutated) target position.  This keeps horizontal and vertical
+      // axes independent: a left-drag never crushes the height of row-band
+      // neighbours, and a down-drag never crushes the width of column-band
+      // neighbours.
+
+      // Helper: does `cell` overlap the dragged item's ORIGINAL row span?
+      const inOriginalRowBand = (cell: GridItem<T>) =>
+        cell.startRow < session.startRow + session.startHeight &&
+        cell.startRow + cell.height > session.startRow;
+
+      // Helper: does `cell` overlap the dragged item's ORIGINAL column span?
+      const inOriginalColBand = (cell: GridItem<T>) =>
+        cell.startColumn < session.startColumn + session.startWidth &&
+        cell.startColumn + cell.width > session.startColumn;
+
+      // Redistribute a set of cells proportionally within [rangeStart, rangeEnd).
+      // Cells are sorted left→right (or top→bottom) and placed sequentially.
+      // Each cell's share is proportional to its current width (or height).
+      const redistributeH = (
+        cells: GridItem<T>[],
+        rangeStart: number,
+        rangeEnd: number,
+      ) => {
+        const available = Math.max(0, rangeEnd - rangeStart);
+        const totalW = cells.reduce((s, c) => s + c.width, 0);
+        let cursor = rangeStart;
+        cells
+          .slice()
+          .sort((a, b) => a.startColumn - b.startColumn)
+          .forEach((c, j, arr) => {
+            const isLast = j === arr.length - 1;
+            const newW = isLast
+              ? Math.max(1, rangeEnd - cursor)
+              : Math.max(1, Math.floor((c.width / Math.max(1, totalW)) * available));
+            const idx = nextData.findIndex((d) => d.id === c.id);
+            if (idx >= 0) {
+              nextData[idx].startColumn = cursor;
+              nextData[idx].width = newW;
+            }
+            cursor += newW;
+          });
+      };
+
+      const redistributeV = (
+        cells: GridItem<T>[],
+        rangeStart: number,
+        rangeEnd: number,
+      ) => {
+        const available = Math.max(0, rangeEnd - rangeStart);
+        const totalH = cells.reduce((s, c) => s + c.height, 0);
+        let cursor = rangeStart;
+        cells
+          .slice()
+          .sort((a, b) => a.startRow - b.startRow)
+          .forEach((c, j, arr) => {
+            const isLast = j === arr.length - 1;
+            const newH = isLast
+              ? Math.max(1, rangeEnd - cursor)
+              : Math.max(1, Math.floor((c.height / Math.max(1, totalH)) * available));
+            const idx = nextData.findIndex((d) => d.id === c.id);
+            if (idx >= 0) {
+              nextData[idx].startRow = cursor;
+              nextData[idx].height = newH;
+            }
+            cursor += newH;
+          });
+      };
+
+      if (pushRight) {
+        // Cells that were originally to the RIGHT of the dragged item and
+        // share its row band.  They must all fit in [target.right, columns).
+        const affected = nextData.filter(
+          (c) =>
+            c.id !== itemId &&
+            c.startColumn >= session.startColumn + session.startWidth &&
+            inOriginalRowBand(c),
+        );
+        const targetRight = target.startColumn + target.width;
+        redistributeH(affected, targetRight, columns);
+      }
+
+      if (pushLeft) {
+        // Cells originally to the LEFT of the dragged item, same row band.
+        // They must all fit in [0, target.left).
+        const affected = nextData.filter(
+          (c) =>
+            c.id !== itemId &&
+            c.startColumn + c.width <= session.startColumn &&
+            inOriginalRowBand(c),
+        );
+        redistributeH(affected, 0, target.startColumn);
+      }
+
+      if (pushDown) {
+        // Cells originally BELOW the dragged item, same column band.
+        // They must all fit in [target.bottom, rows).
+        const affected = nextData.filter(
+          (c) =>
+            c.id !== itemId &&
+            c.startRow >= session.startRow + session.startHeight &&
+            inOriginalColBand(c),
+        );
+        const targetBottom = target.startRow + target.height;
+        redistributeV(affected, targetBottom, rows);
+      }
+
+      if (pushUp) {
+        // Cells originally ABOVE the dragged item, same column band.
+        // They must all fit in [0, target.top).
+        const affected = nextData.filter(
+          (c) =>
+            c.id !== itemId &&
+            c.startRow + c.height <= session.startRow &&
+            inOriginalColBand(c),
+        );
+        redistributeV(affected, 0, target.startRow);
+      }
+
+      // Clamp everything back within the grid bounds.
+      for (let i = 0; i < nextData.length; i += 1) {
+        nextData[i] = clampWithinGrid(nextData[i], rows, columns);
+      }
+
       return nextData;
     });
   };

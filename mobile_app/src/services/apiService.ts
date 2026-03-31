@@ -101,7 +101,7 @@ class ApiService {
     roomId: string,
     layers: Layer[],
     sourceId?: string,
-  ): Promise<void> {
+  ): Promise<Layer[]> {
     const base = this.buildHttpUrl(serverUrl);
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -115,6 +115,10 @@ class ApiService {
       body: JSON.stringify({ layers }),
     });
     if (!res.ok) throw new Error(`updateLayers failed (${res.status})`);
+    // The server returns the authoritative (possibly recomputed) layers so we
+    // can apply any corrections immediately without a second GET round-trip.
+    const data = (await res.json()) as { layers?: Layer[] };
+    return data.layers ?? layers;
   }
 
   /**
