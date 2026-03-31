@@ -685,9 +685,9 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
           });
       };
 
-      if (pushRight) {
-        // Cells that were originally to the RIGHT of the dragged item and
-        // share its row band.  They must all fit in [target.right, columns).
+      if (pushRight && target.width > session.startWidth) {
+        // Only push/compress siblings when growing rightward — shrinking frees
+        // space and siblings should stay where they are.
         const affected = nextData.filter(
           (c) =>
             c.id !== itemId &&
@@ -698,9 +698,8 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
         redistributeH(affected, targetRight, columns);
       }
 
-      if (pushLeft) {
-        // Cells originally to the LEFT of the dragged item, same row band.
-        // They must all fit in [0, target.left).
+      if (pushLeft && target.startColumn < session.startColumn) {
+        // Only push/compress siblings when growing leftward.
         const affected = nextData.filter(
           (c) =>
             c.id !== itemId &&
@@ -710,9 +709,8 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
         redistributeH(affected, 0, target.startColumn);
       }
 
-      if (pushDown) {
-        // Cells originally BELOW the dragged item, same column band.
-        // They must all fit in [target.bottom, rows).
+      if (pushDown && target.height > session.startHeight) {
+        // Only push/compress siblings when growing downward.
         const affected = nextData.filter(
           (c) =>
             c.id !== itemId &&
@@ -723,9 +721,8 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
         redistributeV(affected, targetBottom, rows);
       }
 
-      if (pushUp) {
-        // Cells originally ABOVE the dragged item, same column band.
-        // They must all fit in [0, target.top).
+      if (pushUp && target.startRow < session.startRow) {
+        // Only push/compress siblings when growing upward.
         const affected = nextData.filter(
           (c) =>
             c.id !== itemId &&
