@@ -37,7 +37,13 @@ function colorFromId(id: string): string {
 
 function layerInputsToItemData(
   layerInputs: LayerInput[],
-  inputs: { id: string; name: string; isHidden: boolean }[],
+  inputs: {
+    id: string;
+    name: string;
+    isHidden: boolean;
+    nativeWidth?: number;
+    nativeHeight?: number;
+  }[],
   resolution: Resolution,
   gridCols: number,
   gridRows: number,
@@ -81,6 +87,8 @@ function layerInputsToItemData(
         name: input?.name ?? li.inputId,
         color: colorFromId(li.inputId),
         isVisible: !(input?.isHidden ?? false),
+        nativeWidth: input?.nativeWidth,
+        nativeHeight: input?.nativeHeight,
       },
     };
   });
@@ -291,14 +299,17 @@ export function LayoutScreen() {
         </Chip>
       </View>
 
-      {/* Canvas: stacked layer grids (bottom layer rendered first) */}
+      {/* Canvas: stacked layer grids — layers[0] is topmost (highest zIndex) */}
       <View style={styles.canvas}>
-        {[...layers].reverse().map((layer) => {
+        {layers.map((layer, i) => {
           const itemData = layerItemDataMap.get(layer.id) ?? [];
           return (
             <View
               key={layer.id}
-              style={StyleSheet.absoluteFillObject}
+              style={[
+                StyleSheet.absoluteFillObject,
+                { zIndex: layers.length - i },
+              ]}
               pointerEvents="box-none"
             >
               <ReshufflableGridWrapper

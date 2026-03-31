@@ -19,6 +19,10 @@ export interface InputCard {
   displaySize: number;
   /** Active effects (same as shaders) configured for this input */
   shaders: ShaderConfig[];
+  /** Native stream resolution width, if known. */
+  nativeWidth?: number;
+  /** Native stream resolution height, if known. */
+  nativeHeight?: number;
 }
 
 export type SortMode = "prominence" | "timeline" | "manual";
