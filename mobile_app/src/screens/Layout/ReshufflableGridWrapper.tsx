@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { View, StyleSheet } from "react-native";
 import { ReshufflableGrid, type Cell } from "react-native-reshuffled";
+import { useNitroHealth } from "../../hooks/useNitroHealth";
 
 export type ItemData<T> = {
   initial: {
@@ -17,6 +18,10 @@ type GridItem<T> = Omit<Cell, "color"> & {
   itemProps: T;
   color?: string;
 };
+
+const HIGH_GRID_OPTIMIZATION_THRESHOLD = 50 * 50;
+const MIN_TILE_WIDTH_CELLS = 16;
+const MIN_TILE_HEIGHT_CELLS = 9;
 
 const isOverlapping = <T,>(first: GridItem<T>, second: GridItem<T>) => {
   const firstEndCol = first.startColumn + first.width;
@@ -130,9 +135,13 @@ const clampWithinGrid = <T,>(
   item: GridItem<T>,
   rows: number,
   columns: number,
+  minWidth: number = 1,
+  minHeight: number = 1,
 ): GridItem<T> => {
-  const width = Math.max(1, Math.min(item.width, columns));
-  const height = Math.max(1, Math.min(item.height, rows));
+  const minW = Math.max(1, Math.min(minWidth, columns));
+  const minH = Math.max(1, Math.min(minHeight, rows));
+  const width = Math.max(minW, Math.min(item.width, columns));
+  const height = Math.max(minH, Math.min(item.height, rows));
 
   return {
     ...item,
@@ -141,6 +150,222 @@ const clampWithinGrid = <T,>(
     startColumn: Math.max(0, Math.min(item.startColumn, columns - width)),
     startRow: Math.max(0, Math.min(item.startRow, rows - height)),
   };
+};
+
+const overlapsAny = <T,>(item: GridItem<T>, obstacles: GridItem<T>[]) => {
+  return obstacles.some((other) => isOverlapping(item, other));
+};
+
+const flushCandidatesForObstacle = <T,>(
+  moved: GridItem<T>,
+  obstacle: GridItem<T>,
+): Array<{ startRow: number; startColumn: number }> => {
+  const movedEndCol = moved.startColumn + moved.width;
+  const movedEndRow = moved.startRow + moved.height;
+  const obstacleEndCol = obstacle.startColumn + obstacle.width;
+  const obstacleEndRow = obstacle.startRow + obstacle.height;
+
+  const overlapX =
+    Math.min(movedEndCol, obstacleEndCol) -
+    Math.max(moved.startColumn, obstacle.startColumn);
+  const overlapY =
+    Math.min(movedEndRow, obstacleEndRow) -
+    Math.max(moved.startRow, obstacle.startRow);
+
+  if (overlapX <= 0 || overlapY <= 0) {
+    return [];
+  }
+
+  const prefersHorizontalNudge = overlapX <= overlapY;
+
+  if (prefersHorizontalNudge) {
+    return [
+      {
+        startRow: moved.startRow,
+        startColumn: obstacle.startColumn - moved.width,
+      },
+      {
+        startRow: moved.startRow,
+        startColumn: obstacleEndCol,
+      },
+    ];
+  }
+
+  return [
+    {
+      startRow: obstacle.startRow - moved.height,
+      startColumn: moved.startColumn,
+    },
+    {
+      startRow: obstacleEndRow,
+      startColumn: moved.startColumn,
+    },
+  ];
+};
+
+const findNearestFreePosition = <T,>(
+  moved: GridItem<T>,
+  obstacles: GridItem<T>[],
+  rows: number,
+  columns: number,
+  minWidth: number,
+  minHeight: number,
+): GridItem<T> => {
+  const normalizedStart = clampWithinGrid(
+    moved,
+    rows,
+    columns,
+    minWidth,
+    minHeight,
+  );
+
+  if (!overlapsAny(normalizedStart, obstacles)) {
+    return normalizedStart;
+  }
+
+  const overlappingObstacles = obstacles.filter((obstacle) =>
+    isOverlapping(normalizedStart, obstacle),
+  );
+
+  const scoredCandidates: Array<{ score: number; item: GridItem<T> }> = [];
+  for (const obstacle of overlappingObstacles) {
+    for (const candidate of flushCandidatesForObstacle(
+      normalizedStart,
+      obstacle,
+    )) {
+      const positioned = clampWithinGrid(
+        {
+          ...normalizedStart,
+          startRow: candidate.startRow,
+          startColumn: candidate.startColumn,
+        },
+        rows,
+        columns,
+        minWidth,
+        minHeight,
+      );
+
+      if (overlapsAny(positioned, obstacles)) {
+        continue;
+      }
+
+      const score =
+        Math.abs(positioned.startColumn - normalizedStart.startColumn) +
+        Math.abs(positioned.startRow - normalizedStart.startRow);
+      scoredCandidates.push({ score, item: positioned });
+    }
+  }
+
+  if (scoredCandidates.length > 0) {
+    scoredCandidates.sort((a, b) => a.score - b.score);
+    return scoredCandidates[0].item;
+  }
+
+  // Fallback: radial search around current target, no wrap-to-origin behavior.
+  const maxRadius = Math.max(columns, rows);
+  for (let radius = 1; radius <= maxRadius; radius += 1) {
+    for (let dCol = -radius; dCol <= radius; dCol += 1) {
+      const dRow = radius - Math.abs(dCol);
+      const rowOffsets = dRow === 0 ? [0] : [-dRow, dRow];
+
+      for (const rowOffset of rowOffsets) {
+        const candidate = clampWithinGrid(
+          {
+            ...normalizedStart,
+            startColumn: normalizedStart.startColumn + dCol,
+            startRow: normalizedStart.startRow + rowOffset,
+          },
+          rows,
+          columns,
+          minWidth,
+          minHeight,
+        );
+        if (!overlapsAny(candidate, obstacles)) {
+          return candidate;
+        }
+      }
+    }
+  }
+
+  return normalizedStart;
+};
+
+const resolveCollisionsOnDrop = <T,>(
+  nextItems: GridItem<T>[],
+  previousItems: GridItem<T>[],
+  rows: number,
+  columns: number,
+  minWidth: number,
+  minHeight: number,
+): GridItem<T>[] => {
+  const previousById = new Map(previousItems.map((item) => [item.id, item]));
+  const normalizedNext = nextItems.map((item) =>
+    clampWithinGrid(item, rows, columns, minWidth, minHeight),
+  );
+
+  const changedIds = normalizedNext
+    .filter((item) => {
+      const previous = previousById.get(item.id);
+      if (!previous) return true;
+      return (
+        previous.startColumn !== item.startColumn ||
+        previous.startRow !== item.startRow ||
+        previous.width !== item.width ||
+        previous.height !== item.height
+      );
+    })
+    .map((item) => item.id);
+
+  if (changedIds.length === 0) {
+    return normalizedNext;
+  }
+
+  const fixedById = new Map<string, GridItem<T>>();
+  for (const item of normalizedNext) {
+    if (!changedIds.includes(item.id)) {
+      fixedById.set(item.id, item);
+    }
+  }
+
+  const resolvedById = new Map<string, GridItem<T>>();
+
+  for (const changedId of changedIds) {
+    const changedItem = normalizedNext.find((item) => item.id === changedId);
+    if (!changedItem) {
+      continue;
+    }
+
+    const obstacles = [...fixedById.values(), ...resolvedById.values()].filter(
+      (item) => item.id !== changedItem.id,
+    );
+
+    const resolved = findNearestFreePosition(
+      changedItem,
+      obstacles,
+      rows,
+      columns,
+      minWidth,
+      minHeight,
+    );
+
+    if (overlapsAny(resolved, obstacles)) {
+      const previous = previousById.get(changedId);
+      if (previous) {
+        resolvedById.set(
+          changedId,
+          clampWithinGrid(previous, rows, columns, minWidth, minHeight),
+        );
+      } else {
+        resolvedById.set(changedId, resolved);
+      }
+    } else {
+      resolvedById.set(changedId, resolved);
+    }
+  }
+
+  return normalizedNext.map(
+    (item) => resolvedById.get(item.id) ?? fixedById.get(item.id) ?? item,
+  );
 };
 
 export type ResizeHandleDirection =
@@ -187,6 +412,7 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
 }: ReshufflableGridWrapperProps<T>) => {
   const [columns, setColumns] = useState(initialColumns);
   const [rows, setRows] = useState(initialRows);
+  const nitroHealth = useNitroHealth("ReshufflableGridWrapper");
   const [selectedItemId, setSelectedItemId] = useState<string | null>(null);
   const [gridSize, setGridSize] = useState({ width: 0, height: 0 });
   const isUpdatingFromGrid = useRef(false);
@@ -198,6 +424,16 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
     startRow: number;
     direction: ResizeHandleDirection;
   } | null>(null);
+  const lastResizeDeltaRef = useRef<{
+    itemId: string;
+    colDelta: number;
+    rowDelta: number;
+  } | null>(null);
+
+  const highGridOptimizationEnabled =
+    columns * rows > HIGH_GRID_OPTIMIZATION_THRESHOLD;
+  const minTileWidth = Math.min(MIN_TILE_WIDTH_CELLS, columns);
+  const minTileHeight = Math.min(MIN_TILE_HEIGHT_CELLS, rows);
 
   const [data, setData] = useState<GridItem<T>[]>(() =>
     itemData.map((item) => ({
@@ -247,6 +483,23 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
       return next;
     });
   }, [itemData]);
+
+  useEffect(() => {
+    console.info("[LayoutGrid] Performance mode", {
+      columns,
+      rows,
+      cells: columns * rows,
+      highGridOptimizationEnabled,
+      nitroPath: nitroHealth.path,
+      nitroReason: nitroHealth.reason,
+    });
+  }, [
+    columns,
+    rows,
+    highGridOptimizationEnabled,
+    nitroHealth.path,
+    nitroHealth.reason,
+  ]);
 
   const updateGridItemSize = (
     id: string,
@@ -310,7 +563,13 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
         verticalPushDirection = "up";
       }
 
-      nextData[targetIndex] = clampWithinGrid(target, rows, columns);
+      nextData[targetIndex] = clampWithinGrid(
+        target,
+        rows,
+        columns,
+        minTileWidth,
+        minTileHeight,
+      );
 
       const queue: string[] = [id];
       const queued = new Set<string>([id]);
@@ -384,6 +643,8 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
                 groupItem,
                 rows,
                 columns,
+                minTileWidth,
+                minTileHeight,
               );
               if (!queued.has(groupItem.id)) {
                 queue.push(groupItem.id);
@@ -441,7 +702,13 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
             );
           }
 
-          nextData[index] = clampWithinGrid(current, rows, columns);
+          nextData[index] = clampWithinGrid(
+            current,
+            rows,
+            columns,
+            minTileWidth,
+            minTileHeight,
+          );
 
           if (!queued.has(current.id)) {
             queue.push(current.id);
@@ -463,14 +730,14 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
 
       return {
         ...item,
-        width: Math.max(1, width),
-        height: Math.max(1, height),
+        width: Math.max(minTileWidth, width),
+        height: Math.max(minTileHeight, height),
         startColumn: Math.max(0, startColumn),
         startRow: Math.max(0, startRow),
         color: item.color || "#6200EE",
       };
     });
-  }, [data, columns, rows]);
+  }, [data, columns, rows, minTileWidth, minTileHeight]);
 
   const handleItemsChange = (items: Cell[]) => {
     isUpdatingFromGrid.current = true;
@@ -491,9 +758,20 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
       };
     });
 
-    setData(mergedData);
+    const nextData = highGridOptimizationEnabled
+      ? resolveCollisionsOnDrop(
+          mergedData,
+          data,
+          rows,
+          columns,
+          minTileWidth,
+          minTileHeight,
+        )
+      : mergedData;
 
-    const updatedItemData: ItemData<T>[] = mergedData.map((item) => ({
+    setData(nextData);
+
+    const updatedItemData: ItemData<T>[] = nextData.map((item) => ({
       initial: {
         width: item.width,
         height: item.height,
@@ -509,6 +787,7 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
     itemId: string,
     direction: ResizeHandleDirection,
   ): void => {
+    lastResizeDeltaRef.current = null;
     setSelectedItemId(itemId);
 
     const target = data.find((item) => item.id === itemId);
@@ -540,6 +819,19 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
     const cellPixelHeight = gridSize.height > 0 ? gridSize.height / rows : 1;
     const colDelta = Math.round(translationX / cellPixelWidth);
     const rowDelta = Math.round(translationY / cellPixelHeight);
+
+    if (highGridOptimizationEnabled) {
+      const previousDelta = lastResizeDeltaRef.current;
+      if (
+        previousDelta &&
+        previousDelta.itemId === itemId &&
+        previousDelta.colDelta === colDelta &&
+        previousDelta.rowDelta === rowDelta
+      ) {
+        return;
+      }
+      lastResizeDeltaRef.current = { itemId, colDelta, rowDelta };
+    }
 
     setData((prevData) => {
       const nextData = prevData.map((item) => ({ ...item }));
@@ -734,7 +1026,13 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
 
       // Clamp everything back within the grid bounds.
       for (let i = 0; i < nextData.length; i += 1) {
-        nextData[i] = clampWithinGrid(nextData[i], rows, columns);
+        nextData[i] = clampWithinGrid(
+          nextData[i],
+          rows,
+          columns,
+          minTileWidth,
+          minTileHeight,
+        );
       }
 
       return nextData;
@@ -742,6 +1040,7 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
   };
 
   const handleResizeEnd = (_itemId: string): void => {
+    lastResizeDeltaRef.current = null;
     resizeSessionRef.current = null;
     setSelectedItemId(null);
     setData((latestData) => {
@@ -771,6 +1070,7 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
       <ReshufflableGrid
         data={normalizedData as Cell[]}
         onDragEnd={handleItemsChange}
+        allowCollisions={highGridOptimizationEnabled}
         columns={columns}
         rows={rows}
         style={styles.grid}
