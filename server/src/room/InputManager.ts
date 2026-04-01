@@ -8,7 +8,10 @@ import { KickChannelMonitor } from '../kick/KickChannelMonitor';
 import { WhipInputMonitor } from '../whip/WhipInputMonitor';
 import { sleep } from '../utils';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
-import { getMp4DurationMs, getMp4VideoDimensions } from '../routing/mp4Duration';
+import {
+  getMp4DurationMs,
+  getMp4VideoDimensions,
+} from '../routing/mp4Duration';
 import { logTimelineEvent } from '../dashboard';
 import { createDefaultSnakeGameInputState } from '../snakeGame/snakeGameState';
 import { createHandsStore } from '../hands/handStore';
