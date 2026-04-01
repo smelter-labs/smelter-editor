@@ -234,7 +234,7 @@ function makeBolt(w: number, h: number): FxBolt {
   const pts = displaceMidpoint(x1, y1, x2, y2, dist * 0.35, 5);
 
   const branches: FxPt[][] = [];
-  for (let i = 0; i < 1 + Math.floor(Math.random() * 2); i++) {
+  for (let i = 0; i < 2 + Math.floor(Math.random() * 3); i++) {
     const idx = Math.min(
       Math.floor(pts.length * 0.3 + Math.random() * pts.length * 0.5),
       pts.length - 1,
@@ -258,16 +258,16 @@ function makeBolt(w: number, h: number): FxBolt {
     pts,
     branches,
     life: 0,
-    maxLife: 0.1 + Math.random() * 0.12,
-    w: 1 + Math.random() * 1.5,
+    maxLife: 0.15 + Math.random() * 0.2,
+    w: 1.2 + Math.random() * 2,
     hue: FX_HUES[Math.floor(Math.random() * FX_HUES.length)],
   };
 }
 
 function makeCircuits(w: number, h: number): FxPt[][] {
-  const grid = 24;
+  const grid = 16;
   const paths: FxPt[][] = [];
-  for (let i = 0; i < 12; i++) {
+  for (let i = 0; i < 28; i++) {
     const path: FxPt[] = [];
     let cx = Math.floor(Math.random() * (w / grid)) * grid;
     let cy = Math.floor(Math.random() * (h / grid)) * grid;
@@ -304,12 +304,12 @@ function makeDotPattern(
   const ctx = c.getContext('2d');
   if (!ctx) return c;
   ctx.scale(dpr, dpr);
-  const sp = 14;
+  const sp = 9;
   for (let x = sp / 2; x < w; x += sp) {
     for (let y = sp / 2; y < h; y += sp) {
-      ctx.fillStyle = `rgba(34,211,238,${0.025 + Math.random() * 0.02})`;
+      ctx.fillStyle = `rgba(34,211,238,${0.035 + Math.random() * 0.03})`;
       ctx.beginPath();
-      ctx.arc(x, y, 0.6, 0, Math.PI * 2);
+      ctx.arc(x, y, 0.7, 0, Math.PI * 2);
       ctx.fill();
     }
   }
@@ -320,25 +320,25 @@ function makeSpark(w: number, h: number, scatter?: boolean): FxSpark {
   return {
     x: Math.random() * w,
     y: scatter ? Math.random() * h : h + Math.random() * 20,
-    vx: (Math.random() - 0.5) * 18,
-    vy: -(20 + Math.random() * 40),
+    vx: (Math.random() - 0.5) * 28,
+    vy: -(25 + Math.random() * 55),
     life: scatter ? Math.random() * 3 : 0,
-    maxLife: 1.5 + Math.random() * 2.5,
+    maxLife: 1.2 + Math.random() * 2.0,
     hue: FX_HUES[Math.floor(Math.random() * FX_HUES.length)],
-    size: 0.6 + Math.random() * 1.4,
-    bright: 0.4 + Math.random() * 0.6,
+    size: 0.8 + Math.random() * 1.8,
+    bright: 0.5 + Math.random() * 0.5,
   };
 }
 
 function updateFx(s: FxState, dt: number, pct: number) {
-  const target = Math.floor(25 + 35 * pct);
+  const target = Math.floor(60 + 90 * pct);
   while (s.sparks.length < target) s.sparks.push(makeSpark(s.w, s.h));
   for (const p of s.sparks) {
     p.life += dt;
     p.x += p.vx * dt;
     p.y += p.vy * dt;
-    p.vx += (Math.random() - 0.5) * 30 * dt;
-    p.vy -= 5 * dt;
+    p.vx += (Math.random() - 0.5) * 40 * dt;
+    p.vy -= 8 * dt;
   }
   s.sparks = s.sparks.filter(
     (p) =>
@@ -346,40 +346,47 @@ function updateFx(s: FxState, dt: number, pct: number) {
   );
 
   s.nextBolt -= dt;
-  if (s.nextBolt <= 0 && pct > 0.05) {
-    s.bolts.push(makeBolt(s.w, s.h));
-    const iv = 0.8 - 0.55 * pct;
-    s.nextBolt = iv + Math.random() * iv * 0.5;
+  if (s.nextBolt <= 0 && pct > 0.02) {
+    const burstCount = 1 + Math.floor(Math.random() * 2 + pct * 2);
+    for (let i = 0; i < burstCount; i++) s.bolts.push(makeBolt(s.w, s.h));
+    const iv = 0.35 - 0.2 * pct;
+    s.nextBolt = iv + Math.random() * iv * 0.4;
   }
   for (const b of s.bolts) b.life += dt;
   s.bolts = s.bolts.filter((b) => b.life < b.maxLife);
 
   s.nextPulse -= dt;
   if (s.nextPulse <= 0 && s.circuits.length > 0) {
-    s.pulses.push({
-      path: Math.floor(Math.random() * s.circuits.length),
-      t: 0,
-      speed: 0.3 + Math.random() * 0.4 + pct * 0.3,
-      hue: FX_HUES[Math.floor(Math.random() * FX_HUES.length)],
-      tail: 0.15 + Math.random() * 0.1,
-    });
-    const iv = 1.2 - 0.8 * pct;
-    s.nextPulse = iv + Math.random() * iv * 0.3;
+    const pulseCount = 1 + Math.floor(Math.random() * 2 + pct);
+    for (let i = 0; i < pulseCount; i++) {
+      s.pulses.push({
+        path: Math.floor(Math.random() * s.circuits.length),
+        t: 0,
+        speed: 0.4 + Math.random() * 0.5 + pct * 0.4,
+        hue: FX_HUES[Math.floor(Math.random() * FX_HUES.length)],
+        tail: 0.18 + Math.random() * 0.14,
+      });
+    }
+    const iv = 0.4 - 0.25 * pct;
+    s.nextPulse = iv + Math.random() * iv * 0.2;
   }
   for (const p of s.pulses) p.t += p.speed * dt;
   s.pulses = s.pulses.filter((p) => p.t < 1 + p.tail);
 
   s.nextWave -= dt;
-  if (s.nextWave <= 0 && pct > 0.1) {
-    s.waves.push({
-      cx: s.w * (0.3 + Math.random() * 0.4),
-      cy: s.h * (0.3 + Math.random() * 0.4),
-      r: 0,
-      maxR: Math.max(s.w, s.h) * 0.8,
-      life: 0,
-      maxLife: 1.5,
-    });
-    s.nextWave = 2.5 - pct * 0.8;
+  if (s.nextWave <= 0 && pct > 0.05) {
+    const waveCount = 1 + Math.floor(pct * 1.5);
+    for (let i = 0; i < waveCount; i++) {
+      s.waves.push({
+        cx: s.w * (0.15 + Math.random() * 0.7),
+        cy: s.h * (0.15 + Math.random() * 0.7),
+        r: 0,
+        maxR: Math.max(s.w, s.h) * (0.6 + Math.random() * 0.4),
+        life: 0,
+        maxLife: 1.2 + Math.random() * 0.6,
+      });
+    }
+    s.nextWave = 1.0 - pct * 0.5;
   }
   for (const wv of s.waves) {
     wv.life += dt;
@@ -400,10 +407,10 @@ function drawFx(ctx: CanvasRenderingContext2D, s: FxState, pct: number) {
   }
 
   ctx.save();
-  ctx.globalAlpha = 0.06;
+  ctx.globalAlpha = 0.12;
   ctx.strokeStyle = 'rgba(34,211,238,1)';
   ctx.fillStyle = 'rgba(34,211,238,1)';
-  ctx.lineWidth = 0.5;
+  ctx.lineWidth = 0.7;
   for (const path of s.circuits) {
     if (path.length < 2) continue;
     ctx.beginPath();
@@ -446,9 +453,9 @@ function drawFx(ctx: CanvasRenderingContext2D, s: FxState, pct: number) {
         const ex = path[i].x + (path[i + 1].x - path[i].x) * t1;
         const ey = path[i].y + (path[i + 1].y - path[i].y) * t1;
         ctx.shadowColor = fxHsl(pulse.hue, 100, 70, 1);
-        ctx.shadowBlur = 8;
-        ctx.strokeStyle = fxHsl(pulse.hue, 90, 75, 0.7);
-        ctx.lineWidth = 1.5;
+        ctx.shadowBlur = 14;
+        ctx.strokeStyle = fxHsl(pulse.hue, 90, 75, 0.85);
+        ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(sx, sy);
         ctx.lineTo(ex, ey);
@@ -472,10 +479,10 @@ function drawFx(ctx: CanvasRenderingContext2D, s: FxState, pct: number) {
           const hx = path[i].x + (path[i + 1].x - path[i].x) * t;
           const hy = path[i].y + (path[i + 1].y - path[i].y) * t;
           ctx.shadowColor = fxHsl(pulse.hue, 100, 80, 1);
-          ctx.shadowBlur = 12;
-          ctx.fillStyle = fxHsl(pulse.hue, 80, 90, 0.9);
+          ctx.shadowBlur = 18;
+          ctx.fillStyle = fxHsl(pulse.hue, 80, 92, 0.95);
           ctx.beginPath();
-          ctx.arc(hx, hy, 2, 0, Math.PI * 2);
+          ctx.arc(hx, hy, 2.5, 0, Math.PI * 2);
           ctx.fill();
           ctx.shadowBlur = 0;
           break;
@@ -487,12 +494,13 @@ function drawFx(ctx: CanvasRenderingContext2D, s: FxState, pct: number) {
 
   for (const wv of s.waves) {
     const p = wv.life / wv.maxLife;
-    const a = (0.15 + pct * 0.1) * (1 - p) * (1 - p);
+    const a = (0.22 + pct * 0.15) * (1 - p) * (1 - p);
     if (a < 0.005) continue;
-    ctx.strokeStyle = fxHsl(187, 90, 75, a);
-    ctx.lineWidth = 1.5 * (1 - p * 0.5);
-    ctx.shadowColor = `rgba(34,211,238,${a * 0.8})`;
-    ctx.shadowBlur = 15;
+    const waveHue = FX_HUES[Math.floor((wv.cx + wv.cy) * 0.01) % FX_HUES.length];
+    ctx.strokeStyle = fxHsl(waveHue, 90, 75, a);
+    ctx.lineWidth = 2 * (1 - p * 0.4);
+    ctx.shadowColor = fxHsl(waveHue, 100, 70, a * 0.9);
+    ctx.shadowBlur = 20;
     ctx.beginPath();
     ctx.arc(wv.cx, wv.cy, wv.r, 0, Math.PI * 2);
     ctx.stroke();
@@ -504,8 +512,8 @@ function drawFx(ctx: CanvasRenderingContext2D, s: FxState, pct: number) {
     const a = Math.min(1, sp.life * 5) * (1 - lr) * sp.bright;
     if (a < 0.01) continue;
     ctx.shadowColor = fxHsl(sp.hue, 100, 70, 1);
-    ctx.shadowBlur = 6 * a;
-    ctx.fillStyle = fxHsl(sp.hue, 85, 80, a * 0.8);
+    ctx.shadowBlur = 10 * a;
+    ctx.fillStyle = fxHsl(sp.hue, 85, 80, a * 0.9);
     ctx.beginPath();
     ctx.arc(sp.x, sp.y, sp.size, 0, Math.PI * 2);
     ctx.fill();
@@ -534,10 +542,10 @@ function drawFx(ctx: CanvasRenderingContext2D, s: FxState, pct: number) {
       ctx.stroke();
     };
     ctx.shadowColor = fxHsl(bolt.hue, 100, 70, a);
-    ctx.shadowBlur = 20;
-    strokePath(bolt.pts, bolt.w * 3, a * 0.3);
-    ctx.shadowBlur = 8;
-    strokePath(bolt.pts, bolt.w * 1.5, a * 0.6);
+    ctx.shadowBlur = 30;
+    strokePath(bolt.pts, bolt.w * 4, a * 0.35);
+    ctx.shadowBlur = 12;
+    strokePath(bolt.pts, bolt.w * 2, a * 0.65);
     ctx.shadowBlur = 0;
     strokePath(bolt.pts, bolt.w * 0.5, a);
     if (lr < 0.2) {
@@ -550,11 +558,11 @@ function drawFx(ctx: CanvasRenderingContext2D, s: FxState, pct: number) {
       ctx.stroke();
     }
     for (const br of bolt.branches) {
-      ctx.shadowColor = fxHsl(bolt.hue, 100, 70, a * 0.5);
-      ctx.shadowBlur = 10;
-      strokePath(br, bolt.w * 1.5, a * 0.2);
+      ctx.shadowColor = fxHsl(bolt.hue, 100, 70, a * 0.6);
+      ctx.shadowBlur = 14;
+      strokePath(br, bolt.w * 2, a * 0.3);
       ctx.shadowBlur = 0;
-      strokePath(br, bolt.w * 0.4, a * 0.5);
+      strokePath(br, bolt.w * 0.6, a * 0.6);
     }
     ctx.shadowBlur = 0;
   }
@@ -603,7 +611,7 @@ function GpuCanvas({
       nextWave: 1.0,
       nextPulse: 0.3,
     };
-    for (let i = 0; i < 25; i++) st.sparks.push(makeSpark(st.w, st.h, true));
+    for (let i = 0; i < 55; i++) st.sparks.push(makeSpark(st.w, st.h, true));
 
     const observer = new ResizeObserver((entries) => {
       const entry = entries[0];
