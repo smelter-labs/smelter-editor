@@ -44,6 +44,53 @@ const THUMBNAILS_DIR = path.join(process.cwd(), 'thumbnails', 'mp4');
 const HLS_THUMBNAILS_DIR = path.join(process.cwd(), 'thumbnails', 'hls');
 const HLS_STREAMS_DIR = path.join(__dirname, '../../hls-streams');
 
+type BrowseFileInfo = {
+  fileName: string;
+  size: number;
+  uploadedAtMs: number;
+};
+
+function resolveBrowseDirectory(baseDir: string, folder?: string): string | null {
+  if (!folder) {
+    return baseDir;
+  }
+
+  const resolved = path.resolve(baseDir, folder);
+  if (resolved === baseDir || resolved.startsWith(`${baseDir}${path.sep}`)) {
+    return resolved;
+  }
+
+  return null;
+}
+
+async function buildBrowseFileInfos(
+  baseDir: string,
+  folder: string | undefined,
+  fileNames: string[],
+): Promise<BrowseFileInfo[]> {
+  const targetDir = resolveBrowseDirectory(baseDir, folder);
+  if (!targetDir) {
+    return [];
+  }
+
+  const fileInfos = await Promise.all(
+    fileNames.map(async (fileName) => {
+      try {
+        const fileStats = await stat(path.join(targetDir, fileName));
+        return {
+          fileName,
+          size: fileStats.size,
+          uploadedAtMs: fileStats.birthtimeMs || fileStats.mtimeMs,
+        };
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  return fileInfos.filter((fileInfo): fileInfo is BrowseFileInfo => fileInfo !== null);
+}
+
 async function ensureHlsThumbnail(jsonFileName: string): Promise<string> {
   const safeName = path.basename(jsonFileName);
   const thumbName = safeName.replace(/\.json$/, '.jpg');
@@ -183,7 +230,13 @@ routes.get<{ Querystring: { folder?: string } }>(
   },
   async (req, res) => {
     const folder = req.query.folder || undefined;
-    res.status(200).send(mp4SuggestionsMonitor.listFolder(folder));
+    const listing = mp4SuggestionsMonitor.listFolder(folder);
+    const fileInfos = await buildBrowseFileInfos(
+      path.join(process.cwd(), 'mp4s'),
+      folder,
+      listing.files,
+    );
+    res.status(200).send({ ...listing, fileInfos });
   },
 );
 
@@ -268,7 +321,13 @@ routes.get<{ Querystring: { folder?: string } }>(
   },
   async (req, res) => {
     const folder = req.query.folder || undefined;
-    res.status(200).send(pictureSuggestionsMonitor.listFolder(folder));
+    const listing = pictureSuggestionsMonitor.listFolder(folder);
+    const fileInfos = await buildBrowseFileInfos(
+      path.join(process.cwd(), 'pictures'),
+      folder,
+      listing.files,
+    );
+    res.status(200).send({ ...listing, fileInfos });
   },
 );
 
@@ -320,7 +379,13 @@ routes.get<{ Querystring: { folder?: string } }>(
   },
   async (req, res) => {
     const folder = req.query.folder || undefined;
-    res.status(200).send(audioSuggestionsMonitor.listFolder(folder));
+    const listing = audioSuggestionsMonitor.listFolder(folder);
+    const fileInfos = await buildBrowseFileInfos(
+      path.join(process.cwd(), 'audios'),
+      folder,
+      listing.files,
+    );
+    res.status(200).send({ ...listing, fileInfos });
   },
 );
 
