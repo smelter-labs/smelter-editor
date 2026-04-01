@@ -77,6 +77,11 @@ export interface SmelterApiClient {
   ): Promise<any>;
   disconnectInput(roomId: string, inputId: string): Promise<any>;
   connectInput(roomId: string, inputId: string): Promise<any>;
+  resolveMissingLocalMp4(
+    roomId: string,
+    inputId: string,
+    opts: { fileName?: string; audioFileName?: string },
+  ): Promise<{ status: string }>;
   hideInput(
     roomId: string,
     inputId: string,
@@ -377,6 +382,14 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
         'post',
         `/room/${enc(roomId)}/input/${enc(inputId)}/connect`,
         {},
+      );
+    },
+
+    async resolveMissingLocalMp4(roomId, inputId, opts) {
+      return await req(
+        'post',
+        `/room/${enc(roomId)}/input/${enc(inputId)}/resolve-missing-mp4`,
+        opts,
       );
     },
 

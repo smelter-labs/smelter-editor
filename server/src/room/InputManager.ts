@@ -276,7 +276,15 @@ export class InputManager {
     const inputId = `${this.idPrefix}::local::sample_streamer::${Date.now()}`;
 
     if (!(await pathExists(mp4Path))) {
-      throw new Error(`File not found in ${baseDir}/: ${resolvedFileName}`);
+      const titlePrefix = isAudio ? 'AUDIO' : 'MP4';
+      return this.pushMissingLocalMp4Placeholder({
+        mp4Path,
+        isAudio,
+        title: `[Missing ${titlePrefix}] ${formatMp4Name(mp4Name)}`,
+        description: isAudio
+          ? 'Audio file not found on server. Attach a file from the list below.'
+          : 'MP4 not found on server. Attach a file from the list below.',
+      });
     }
 
     const dims = await getMp4VideoDimensions(mp4Path);
@@ -307,6 +315,81 @@ export class InputManager {
     return inputId;
   }
 
+  /**
+   * When an MP4/audio file from config is missing, keep a disconnected local-mp4
+   * slot so the client can attach a real file later without losing inputId.
+   */
+  private pushMissingLocalMp4Placeholder(params: {
+    mp4Path: string;
+    isAudio: boolean;
+    title: string;
+    description: string;
+  }): string {
+    const inputId = `${this.idPrefix}::local::sample_streamer::${Date.now()}`;
+    this.inputs.push({
+      inputId,
+      type: 'local-mp4',
+      status: 'disconnected',
+      showTitle: false,
+      shaders: [],
+
+      borderColor: '#ff0000',
+      borderWidth: 0,
+      hidden: false,
+      motionEnabled: false,
+      metadata: {
+        title: params.title,
+        description: params.description,
+      },
+      mp4FilePath: params.mp4Path,
+      mp4AssetMissing: true,
+      missingAssetIsAudio: params.isAudio,
+      volume: 0,
+    });
+    this.onStateChange();
+    return inputId;
+  }
+
+  /** Wire a real file from mp4s/ or audios/ into a missing-asset placeholder, then connect. */
+  async resolveMissingLocalMp4Asset(
+    inputId: string,
+    opts: { fileName?: string; audioFileName?: string },
+  ): Promise<void> {
+    const input = this.getInput(inputId);
+    if (input.type !== 'local-mp4' || !input.mp4AssetMissing) {
+      throw new Error('Input is not a missing-asset MP4 placeholder');
+    }
+    const hasAudio = opts.audioFileName !== undefined;
+    const hasVideo = opts.fileName !== undefined;
+    if (hasAudio === hasVideo) {
+      throw new Error('Provide exactly one of fileName or audioFileName');
+    }
+    const isAudio = hasAudio;
+    const resolvedFileName = (isAudio ? opts.audioFileName : opts.fileName)!;
+    const baseDir = isAudio ? 'audios' : 'mp4s';
+    const mp4Path = path.join(process.cwd(), baseDir, resolvedFileName);
+    if (!(await pathExists(mp4Path))) {
+      throw new Error(`File not found in ${baseDir}/: ${resolvedFileName}`);
+    }
+
+    const dims = await getMp4VideoDimensions(mp4Path);
+    const mp4Name = resolvedFileName;
+    const titlePrefix = isAudio ? 'AUDIO' : 'MP4';
+
+    input.mp4FilePath = mp4Path;
+    input.mp4AssetMissing = false;
+    input.missingAssetIsAudio = undefined;
+    input.mp4VideoWidth = dims?.width;
+    input.mp4VideoHeight = dims?.height;
+    input.metadata.title = `[${titlePrefix}] ${formatMp4Name(mp4Name)}`;
+    input.metadata.description = isAudio
+      ? '[Audio source] Converted from audio file'
+      : '[Static source] AI Generated';
+
+    this.onStateChange();
+    await this.connectInput(inputId);
+  }
+
   private async addImageInput(
     opts: Extract<RegisterInputOptions, { type: 'image' }>,
   ): Promise<string> {
@@ -328,7 +411,19 @@ export class InputManager {
       if (found) {
         fileName = found;
       } else {
-        throw new Error(`Image file not found for imageId: ${imageId}`);
+        const safeStub = `${baseName.replace(/[^a-zA-Z0-9._-]+/g, '_')}.png`;
+        const stubPath = path.join(
+          process.cwd(),
+          'mp4s',
+          `__missing-image__${safeStub}`,
+        );
+        return this.pushMissingLocalMp4Placeholder({
+          mp4Path: stubPath,
+          isAudio: false,
+          title: `[Missing image] ${formatImageName(safeStub)}`,
+          description:
+            'Image not found on server. This slot is reserved; attach an MP4 file below to use it.',
+        });
       }
     }
 
@@ -382,7 +477,18 @@ export class InputManager {
       });
       this.onStateChange();
     } else {
-      throw new Error(`Image file not found: ${fileName}`);
+      const stubPath = path.join(
+        process.cwd(),
+        'mp4s',
+        `__missing-image__${fileName.replace(/[/\\]/g, '_')}`,
+      );
+      return this.pushMissingLocalMp4Placeholder({
+        mp4Path: stubPath,
+        isAudio: false,
+        title: `[Missing image] ${formatImageName(fileName)}`,
+        description:
+          'Image not found on server. This slot is reserved; attach an MP4 file below to use it.',
+      });
     }
 
     return inputId;
@@ -548,6 +654,13 @@ export class InputManager {
   async connectInput(inputId: string): Promise<string> {
     const input = this.getInput(inputId);
     if (input.status !== 'disconnected') return '';
+
+    if (
+      input.type === 'local-mp4' &&
+      input.mp4AssetMissing
+    ) {
+      return '';
+    }
 
     if (input.type === 'image' || input.type === 'game' || input.type === 'hands') {
       input.status = 'connected';
@@ -896,6 +1009,11 @@ export class InputManager {
     const input = this.getInput(inputId);
     if (input.type !== 'local-mp4') {
       throw new Error(`Input ${inputId} is not a local-mp4 input`);
+    }
+    if (input.mp4AssetMissing) {
+      throw new Error(
+        `Input ${inputId} has no file on disk yet; attach an MP4 first`,
+      );
     }
     if (input.status !== 'connected') {
       throw new Error(`Input ${inputId} is not connected`);

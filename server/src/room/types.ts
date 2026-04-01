@@ -64,6 +64,10 @@ type TypeSpecificState =
   | {
       type: 'local-mp4';
       mp4FilePath: string;
+      /** Present when the configured file was not found on disk (e.g. config import). */
+      mp4AssetMissing?: boolean;
+      /** When mp4AssetMissing, whether the slot was created for an audio file vs video MP4. */
+      missingAssetIsAudio?: boolean;
       registeredAtPipelineMs?: number;
       playFromMs?: number;
       mp4DurationMs?: number;

@@ -319,6 +319,15 @@ export class RoomState {
     );
   }
 
+  public async resolveMissingLocalMp4Asset(
+    inputId: string,
+    opts: { fileName?: string; audioFileName?: string },
+  ): Promise<void> {
+    return this.mutex.runExclusive(async () => {
+      await this.inputManager.resolveMissingLocalMp4Asset(inputId, opts);
+    });
+  }
+
   public async disconnectInput(inputId: string) {
     return this.mutex.runExclusive(() =>
       this.inputManager.disconnectInput(inputId),

@@ -1011,6 +1011,29 @@ routes.post<RoomAndInputIdParams>(
   },
 );
 
+const ResolveMissingMp4BodySchema = Type.Object({
+  fileName: Type.Optional(Type.String()),
+  audioFileName: Type.Optional(Type.String()),
+});
+
+routes.post<
+  RoomAndInputIdParams & { Body: Static<typeof ResolveMissingMp4BodySchema> }
+>(
+  '/room/:roomId/input/:inputId/resolve-missing-mp4',
+  {
+    schema: {
+      params: RoomAndInputIdParamsSchema,
+      body: ResolveMissingMp4BodySchema,
+    },
+  },
+  async (req, res) => {
+    const { roomId, inputId } = req.params;
+    const room = state.getRoom(roomId);
+    await room.resolveMissingLocalMp4Asset(inputId, req.body);
+    res.status(200).send({ status: 'ok' });
+  },
+);
+
 const HideInputBodySchema = Type.Object({
   activeTransition: Type.Optional(ActiveTransitionSchema),
 });

@@ -353,6 +353,14 @@ export async function connectInput(roomId: string, inputId: string) {
   return client.connectInput(roomId, inputId);
 }
 
+export async function resolveMissingLocalMp4(
+  roomId: string,
+  inputId: string,
+  opts: { fileName?: string; audioFileName?: string },
+) {
+  return client.resolveMissingLocalMp4(roomId, inputId, opts);
+}
+
 export async function hideInput(
   roomId: string,
   inputId: string,

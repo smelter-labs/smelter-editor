@@ -35,6 +35,11 @@ export interface ControlPanelActions {
   removeInput(roomId: string, inputId: string, sourceId?: string): Promise<any>;
   disconnectInput(roomId: string, inputId: string): Promise<any>;
   connectInput(roomId: string, inputId: string): Promise<any>;
+  resolveMissingLocalMp4(
+    roomId: string,
+    inputId: string,
+    opts: { fileName?: string; audioFileName?: string },
+  ): Promise<{ status: string }>;
   hideInput(
     roomId: string,
     inputId: string,

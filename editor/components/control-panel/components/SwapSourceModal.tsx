@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { useActions } from '../contexts/actions-context';
 import { getMp4Duration } from '@/app/actions/actions';
 import type { Input } from '@/lib/types';
 import type { BlockSettings } from '../hooks/use-timeline-state';
 import { emitTimelineEvent, TIMELINE_EVENTS } from './timeline/timeline-events';
+import { useControlPanelContext } from '../contexts/control-panel-context';
+import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
 import {
   Film,
   Image as ImageIcon,
@@ -17,12 +18,14 @@ import {
   Gamepad2,
   Hand,
   Radio,
-  Check,
 } from 'lucide-react';
 import LoadingSpinner from '@/components/ui/spinner';
-import { toast } from 'sonner';
+import {
+  AssetBrowser,
+  type AssetBrowserInputCreated,
+} from './asset-browser/AssetBrowser';
 
-type Tab = 'inputs' | 'mp4s';
+type Tab = 'inputs' | 'new-source';
 
 const INPUT_TYPE_ICON: Record<string, React.ElementType> = {
   'local-mp4': Film,
@@ -85,24 +88,17 @@ export function SwapSourceModal({
   trackId?: string;
   clipId?: string;
 }) {
-  const actions = useActions();
+  const { refreshState } = useControlPanelContext();
+  const whipCtx = useWhipConnectionsContext();
   const [tab, setTab] = useState<Tab>('inputs');
-  const [mp4Files, setMp4Files] = useState<string[]>([]);
-  const [loadingMp4s, setLoadingMp4s] = useState(false);
   const [swapping, setSwapping] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) {
       setSwapping(null);
-      return;
+      setTab('inputs');
     }
-    setLoadingMp4s(true);
-    actions
-      .getMP4Suggestions()
-      .then((res) => setMp4Files(res.mp4s ?? []))
-      .catch(() => setMp4Files([]))
-      .finally(() => setLoadingMp4s(false));
-  }, [open, actions]);
+  }, [open]);
 
   const handlePickExistingInput = useCallback(
     (input: Input) => {
@@ -118,43 +114,41 @@ export function SwapSourceModal({
     [currentInputId, onSwap, onOpenChange],
   );
 
-  const handlePickMp4 = useCallback(
-    async (fileName: string) => {
-      setSwapping(fileName);
-      try {
-        const response = await actions.addMP4Input(roomId, fileName);
-        const newInputId: string = response.inputId;
+  const handleAssetCreated = useCallback(
+    async ({
+      inputId,
+      kind,
+      fileName,
+      durationMs,
+    }: AssetBrowserInputCreated) => {
+      onSwap({ newInputId: inputId, sourceUpdates: {} });
+      onOpenChange(false);
 
-        // Dispatch swap immediately so SWAP_CLIP_INPUT is queued before
-        // any polling-triggered SYNC_TRACKS can see the new input as uncovered.
-        onSwap({ newInputId, sourceUpdates: {} });
-        onOpenChange(false);
+      if (trackId && clipId && kind === 'mp4') {
+        const resolvedDurationMs =
+          durationMs ??
+          (fileName
+            ? await getMp4Duration(fileName).catch(() => undefined)
+            : undefined);
 
-        // Fetch duration in the background and apply as a follow-up settings patch.
-        if (trackId && clipId) {
-          getMp4Duration(fileName)
-            .then((durationMs) => {
-              emitTimelineEvent(TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS, {
-                trackId, clipId, patch: { mp4DurationMs: durationMs },
-              });
-            })
-            .catch(() => {});
+        if (resolvedDurationMs != null) {
+          emitTimelineEvent(TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS, {
+            trackId,
+            clipId,
+            patch: { mp4DurationMs: resolvedDurationMs },
+          });
         }
-      } catch (err: any) {
-        toast.error(`Failed to add MP4: ${err?.message || err}`);
-      } finally {
-        setSwapping(null);
       }
     },
-    [roomId, actions, onSwap, onOpenChange, trackId, clipId],
+    [clipId, onOpenChange, onSwap, trackId],
   );
 
   const otherInputs = inputs.filter((i) => i.inputId !== currentInputId);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='max-w-[600px] w-[90vw] max-h-[70vh] bg-[#131313]/95 backdrop-blur-sm border border-[#3a494b]/30 p-0 gap-0 overflow-hidden [&>button]:text-[#849495] [&>button]:hover:text-[#e3fdff]'>
-        <div className='flex flex-col h-full max-h-[70vh]'>
+      <DialogContent className='max-w-[1100px] w-[95vw] max-h-[85vh] h-[85vh] bg-[#131313]/95 backdrop-blur-sm border border-[#3a494b]/30 p-0 gap-0 overflow-hidden [&>button]:text-[#849495] [&>button]:hover:text-[#e3fdff]'>
+        <div className='flex flex-col h-full'>
           <div className='px-5 pt-5 pb-3 border-b border-[#3a494b]/20'>
             <h2 className='text-sm font-semibold text-[#e3fdff] mb-3'>
               Change Source
@@ -169,17 +163,17 @@ export function SwapSourceModal({
               </Button>
               <Button
                 size='sm'
-                variant={tab === 'mp4s' ? 'default' : 'outline'}
+                variant={tab === 'new-source' ? 'default' : 'outline'}
                 className='h-7 px-3 text-xs cursor-pointer'
-                onClick={() => setTab('mp4s')}>
-                MP4 Files
+                onClick={() => setTab('new-source')}>
+                New Source
               </Button>
             </div>
           </div>
 
-          <div className='flex-1 overflow-y-auto p-4'>
+          <div className='flex-1 min-h-0'>
             {tab === 'inputs' && (
-              <div className='space-y-1'>
+              <div className='space-y-1 overflow-y-auto p-4 h-full'>
                 {otherInputs.length === 0 && (
                   <div className='text-xs text-muted-foreground py-8 text-center'>
                     No other inputs in this room
@@ -215,63 +209,27 @@ export function SwapSourceModal({
               </div>
             )}
 
-            {tab === 'mp4s' && (
-              <div className='space-y-1'>
-                {loadingMp4s && (
-                  <div className='flex items-center justify-center py-8'>
-                    <LoadingSpinner size='sm' variant='spinner' />
-                  </div>
-                )}
-                {!loadingMp4s && mp4Files.length === 0 && (
-                  <div className='text-xs text-muted-foreground py-8 text-center'>
-                    No MP4 files available
-                  </div>
-                )}
-                {!loadingMp4s &&
-                  mp4Files.map((fileName) => {
-                    const isAlreadyUsed = inputs.some(
-                      (i) =>
-                        i.type === 'local-mp4' &&
-                        i.title === fileName &&
-                        i.inputId === currentInputId,
-                    );
-                    const existingInput = inputs.find(
-                      (i) => i.type === 'local-mp4' && i.title === fileName,
-                    );
-                    const isSwapping = swapping === fileName;
-                    return (
-                      <button
-                        key={fileName}
-                        disabled={!!swapping || isAlreadyUsed}
-                        onClick={() => {
-                          if (existingInput && !isAlreadyUsed) {
-                            handlePickExistingInput(existingInput);
-                          } else {
-                            void handlePickMp4(fileName);
-                          }
-                        }}
-                        className='w-full flex items-center gap-3 px-3 py-2.5 rounded-md border border-[#3a494b]/20 hover:border-[#00f3ff]/40 hover:bg-[#00f3ff]/5 transition-colors text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'>
-                        <Film className='w-4 h-4 text-[#849495] shrink-0' />
-                        <div className='flex-1 min-w-0'>
-                          <div className='text-xs text-[#e3fdff] truncate'>
-                            {fileName}
-                          </div>
-                          {existingInput && !isAlreadyUsed && (
-                            <div className='text-[10px] text-[#849495]'>
-                              Already in room — will reuse
-                            </div>
-                          )}
-                        </div>
-                        {isAlreadyUsed && (
-                          <Check className='w-3.5 h-3.5 text-green-400 shrink-0' />
-                        )}
-                        {isSwapping && (
-                          <LoadingSpinner size='sm' variant='spinner' />
-                        )}
-                      </button>
-                    );
-                  })}
-              </div>
+            {tab === 'new-source' && (
+              <AssetBrowser
+                roomId={roomId}
+                refreshState={refreshState}
+                inputs={inputs}
+                whipCtx={whipCtx}
+                onDone={refreshState}
+                onInputCreated={handleAssetCreated}
+                availableFilters={[
+                  'ALL',
+                  'STREAM',
+                  'HLS',
+                  'MP4',
+                  'AUDIO',
+                  'IMAGE',
+                  'TEXT',
+                  'GAME',
+                ]}
+                allowUpload={true}
+                headerTitle='SOURCE_LIBRARY'
+              />
             )}
           </div>
         </div>

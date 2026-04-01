@@ -45,6 +45,7 @@ import {
   ChevronLeft,
   GripVertical,
   Volume2,
+  AlertTriangle,
 } from 'lucide-react';
 import {
   hexToHsla,
@@ -90,6 +91,7 @@ import {
   listenTimelineEvent,
   TIMELINE_EVENTS,
 } from './timeline/timeline-events';
+import { ResolveMissingAssetModal } from './ResolveMissingAssetModal';
 
 // ── Props ────────────────────────────────────────────────
 
@@ -270,6 +272,10 @@ export function TimelinePanel({
     Set<string>
   >(new Set());
 
+  const [resolveMissingInputId, setResolveMissingInputId] = useState<
+    string | null
+  >(null);
+
   const toggleAutomationLane = useCallback((trackId: string) => {
     setAutomationVisibleTracks((prev) => {
       const next = new Set(prev);
@@ -405,59 +411,86 @@ export function TimelinePanel({
   }, [selectedClipIds, selectedKeyframeId, state.tracks, state.playheadMs]);
 
   useEffect(() => {
-    return listenTimelineEvent(TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS, ({ trackId, clipId, patch }) => {
-      updateClipSettings(trackId, clipId, patch);
-    });
+    return listenTimelineEvent(
+      TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS,
+      ({ trackId, clipId, patch }) => {
+        updateClipSettings(trackId, clipId, patch);
+      },
+    );
   }, [updateClipSettings]);
 
   useEffect(() => {
-    return listenTimelineEvent(TIMELINE_EVENTS.RESIZE_CLIP, ({ trackId, clipId, edge, newMs }) => {
-      resizeClip(trackId, clipId, edge, newMs);
-    });
+    return listenTimelineEvent(
+      TIMELINE_EVENTS.RESIZE_CLIP,
+      ({ trackId, clipId, edge, newMs }) => {
+        resizeClip(trackId, clipId, edge, newMs);
+      },
+    );
   }, [resizeClip]);
 
   useEffect(() => {
     const unsubs = [
-      listenTimelineEvent(TIMELINE_EVENTS.ADD_KEYFRAME, ({ trackId, clipId, timeMs }) => {
-        addKeyframe(trackId, clipId, timeMs);
-      }),
-      listenTimelineEvent(TIMELINE_EVENTS.UPDATE_KEYFRAME, ({ trackId, clipId, keyframeId, patch }) => {
-        updateKeyframe(trackId, clipId, keyframeId, patch);
-      }),
-      listenTimelineEvent(TIMELINE_EVENTS.MOVE_KEYFRAME, ({ trackId, clipId, keyframeId, timeMs }) => {
-        moveKeyframe(trackId, clipId, keyframeId, timeMs);
-      }),
-      listenTimelineEvent(TIMELINE_EVENTS.DELETE_KEYFRAME, ({ trackId, clipId, keyframeId }) => {
-        deleteKeyframe(trackId, clipId, keyframeId);
-      }),
-      listenTimelineEvent(TIMELINE_EVENTS.SELECT_KEYFRAME, ({ trackId, clipId, keyframeId }) => {
-        setSelectedClipIds([{ trackId, clipId }]);
-        setSelectedKeyframeId(keyframeId);
-        lastClickedClipRef.current = { trackId, clipId };
-      }),
+      listenTimelineEvent(
+        TIMELINE_EVENTS.ADD_KEYFRAME,
+        ({ trackId, clipId, timeMs }) => {
+          addKeyframe(trackId, clipId, timeMs);
+        },
+      ),
+      listenTimelineEvent(
+        TIMELINE_EVENTS.UPDATE_KEYFRAME,
+        ({ trackId, clipId, keyframeId, patch }) => {
+          updateKeyframe(trackId, clipId, keyframeId, patch);
+        },
+      ),
+      listenTimelineEvent(
+        TIMELINE_EVENTS.MOVE_KEYFRAME,
+        ({ trackId, clipId, keyframeId, timeMs }) => {
+          moveKeyframe(trackId, clipId, keyframeId, timeMs);
+        },
+      ),
+      listenTimelineEvent(
+        TIMELINE_EVENTS.DELETE_KEYFRAME,
+        ({ trackId, clipId, keyframeId }) => {
+          deleteKeyframe(trackId, clipId, keyframeId);
+        },
+      ),
+      listenTimelineEvent(
+        TIMELINE_EVENTS.SELECT_KEYFRAME,
+        ({ trackId, clipId, keyframeId }) => {
+          setSelectedClipIds([{ trackId, clipId }]);
+          setSelectedKeyframeId(keyframeId);
+          lastClickedClipRef.current = { trackId, clipId };
+        },
+      ),
     ];
     return () => unsubs.forEach((u) => u());
   }, [addKeyframe, deleteKeyframe, moveKeyframe, updateKeyframe]);
 
   useEffect(() => {
-    return listenTimelineEvent(TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS_FOR_INPUT, ({ inputId, patch }) => {
-      for (const track of state.tracks) {
-        for (const clip of track.clips) {
-          if (clip.inputId === inputId) {
-            updateClipSettings(track.id, clip.id, patch);
+    return listenTimelineEvent(
+      TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS_FOR_INPUT,
+      ({ inputId, patch }) => {
+        for (const track of state.tracks) {
+          for (const clip of track.clips) {
+            if (clip.inputId === inputId) {
+              updateClipSettings(track.id, clip.id, patch);
+            }
           }
         }
-      }
-    });
+      },
+    );
   }, [state.tracks, updateClipSettings]);
 
   useEffect(() => {
-    return listenTimelineEvent(TIMELINE_EVENTS.PURGE_INPUT_IDS, ({ inputIds }) => {
-      const uniqueIds = [...new Set(inputIds.filter(Boolean))];
-      for (const inputId of uniqueIds) {
-        purgeInputId(inputId);
-      }
-    });
+    return listenTimelineEvent(
+      TIMELINE_EVENTS.PURGE_INPUT_IDS,
+      ({ inputIds }) => {
+        const uniqueIds = [...new Set(inputIds.filter(Boolean))];
+        for (const inputId of uniqueIds) {
+          purgeInputId(inputId);
+        }
+      },
+    );
   }, [purgeInputId]);
 
   // Listen for WHIP input connections to replace placeholder inputIds
@@ -472,13 +505,16 @@ export function TimelinePanel({
   }, [replaceInputId]);
 
   useEffect(() => {
-    let timers: ReturnType<typeof setTimeout>[] = [];
-    const unsub = listenTimelineEvent(TIMELINE_EVENTS.CLEANUP_SPURIOUS_WHIP_TRACK, ({ inputId }) => {
-      const timer = setTimeout(() => {
-        cleanupSpuriousWhipTrack(inputId);
-      }, 1500);
-      timers.push(timer);
-    });
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    const unsub = listenTimelineEvent(
+      TIMELINE_EVENTS.CLEANUP_SPURIOUS_WHIP_TRACK,
+      ({ inputId }) => {
+        const timer = setTimeout(() => {
+          cleanupSpuriousWhipTrack(inputId);
+        }, 1500);
+        timers.push(timer);
+      },
+    );
     return () => {
       unsub();
       for (const t of timers) clearTimeout(t);
@@ -486,9 +522,12 @@ export function TimelinePanel({
   }, [cleanupSpuriousWhipTrack]);
 
   useEffect(() => {
-    return listenTimelineEvent(TIMELINE_EVENTS.SWAP_CLIP_INPUT, ({ trackId, clipId, newInputId, sourceUpdates }) => {
-      swapClipInput(trackId, clipId, newInputId, sourceUpdates);
-    });
+    return listenTimelineEvent(
+      TIMELINE_EVENTS.SWAP_CLIP_INPUT,
+      ({ trackId, clipId, newInputId, sourceUpdates }) => {
+        swapClipInput(trackId, clipId, newInputId, sourceUpdates);
+      },
+    );
   }, [swapClipInput]);
 
   // Auto-create keyframe when layout map position changes
@@ -1554,7 +1593,10 @@ export function TimelinePanel({
         const scrollTop = container.scrollTop;
         const relativeY = e.clientY - containerRect.top + scrollTop;
         let targetIndex = getTrackIndexAtY(relativeY);
-        targetIndex = Math.max(0, Math.min(targetIndex, state.tracks.length - 1));
+        targetIndex = Math.max(
+          0,
+          Math.min(targetIndex, state.tracks.length - 1),
+        );
         const targetTrack = state.tracks[targetIndex];
         if (targetTrack && targetTrack.id === OUTPUT_TRACK_ID) {
           return;
@@ -2065,6 +2107,10 @@ export function TimelinePanel({
           !isOutputClip &&
           !input &&
           !clip.inputId.startsWith('__pending-whip-');
+        const isMissingAsset =
+          !isOutputClip &&
+          input?.type === 'local-mp4' &&
+          input.mp4AssetMissing === true;
         const baseColors = inputColorMap.get(clip.inputId);
         const tc = clip.blockSettings.timelineColor;
         const colors = tc
@@ -2075,15 +2121,22 @@ export function TimelinePanel({
               ring: hexToHsla(tc, 0.7),
             }
           : baseColors;
-        const disconnectedBg = isDisconnected
-          ? 'hsla(0, 0%, 45%, 0.15)'
-          : undefined;
-        const disconnectedBorder = isDisconnected
-          ? 'hsla(0, 0%, 55%, 0.25)'
-          : undefined;
-        const disconnectedRing = isDisconnected
-          ? 'hsla(0, 0%, 60%, 0.5)'
-          : undefined;
+        const warnState = isMissingAsset || isDisconnected;
+        const warnBg = isMissingAsset
+          ? 'hsla(35, 90%, 50%, 0.12)'
+          : isDisconnected
+            ? 'hsla(0, 0%, 45%, 0.15)'
+            : undefined;
+        const warnBorder = isMissingAsset
+          ? 'hsla(35, 90%, 55%, 0.35)'
+          : isDisconnected
+            ? 'hsla(0, 0%, 55%, 0.25)'
+            : undefined;
+        const warnRing = isMissingAsset
+          ? 'hsla(35, 90%, 60%, 0.6)'
+          : isDisconnected
+            ? 'hsla(0, 0%, 60%, 0.5)'
+            : undefined;
         const leftPx = (clip.startMs / 1000) * state.pixelsPerSecond;
         const widthPx =
           ((clip.endMs - clip.startMs) / 1000) * state.pixelsPerSecond;
@@ -2110,7 +2163,7 @@ export function TimelinePanel({
           <div
             key={clip.id}
             data-no-dnd='true'
-            className={`absolute top-1 bottom-1 rounded-sm border ${isClipSelected ? 'ring-2 brightness-125' : ''} ${isDisconnected ? 'opacity-60' : ''} flex items-center overflow-hidden touch-none`}
+            className={`absolute top-1 bottom-1 rounded-sm border ${isClipSelected ? 'ring-2 brightness-125' : ''} ${warnState ? 'opacity-60' : ''} flex items-center overflow-hidden touch-none`}
             style={{
               left: leftPx,
               width: Math.max(widthPx, 2),
@@ -2118,27 +2171,30 @@ export function TimelinePanel({
               transition: zoomAnimating ? zoomTransitionStyle : undefined,
               backgroundColor: isOutputClip
                 ? outputClipBg
-                : (colors?.segBg ?? disconnectedBg),
+                : (colors?.segBg ?? warnBg),
               borderColor: isOutputClip
                 ? outputClipBorder
-                : (colors?.segBorder ?? disconnectedBorder),
-              borderStyle: isDisconnected ? 'dashed' : undefined,
+                : (colors?.segBorder ?? warnBorder),
+              borderStyle: isMissingAsset ? 'dashed' : undefined,
               ...(isClipSelected
                 ? {
-                    boxShadow: `0 0 0 2px ${isOutputClip ? outputClipRing : (colors?.ring ?? disconnectedRing ?? 'transparent')}`,
+                    boxShadow: `0 0 0 2px ${isOutputClip ? outputClipRing : (colors?.ring ?? warnRing ?? 'transparent')}`,
                   }
                 : {}),
-              ...(isDisconnected
+              ...(isMissingAsset || isDisconnected
                 ? {
-                    backgroundImage:
-                      'repeating-linear-gradient(135deg, transparent, transparent 4px, hsla(0,0%,50%,0.15) 4px, hsla(0,0%,50%,0.15) 8px)',
+                    backgroundImage: isMissingAsset
+                      ? 'repeating-linear-gradient(135deg, transparent, transparent 4px, hsla(35,90%,50%,0.10) 4px, hsla(35,90%,50%,0.10) 8px)'
+                      : 'repeating-linear-gradient(135deg, transparent, transparent 4px, hsla(0,0%,50%,0.15) 4px, hsla(0,0%,50%,0.15) 8px)',
                   }
                 : {}),
             }}
             title={
-              isDisconnected
-                ? `[Disconnected] ${clipLabel}: ${formatMs(clip.startMs)} → ${formatMs(clip.endMs)} (${formatMs(durationMs)})`
-                : `${clipLabel}: ${formatMs(clip.startMs)} → ${formatMs(clip.endMs)} (${formatMs(durationMs)})`
+              isMissingAsset
+                ? `[Missing file] ${clipLabel}: ${formatMs(clip.startMs)} → ${formatMs(clip.endMs)} (${formatMs(durationMs)})`
+                : isDisconnected
+                  ? `[Disconnected] ${clipLabel}: ${formatMs(clip.startMs)} → ${formatMs(clip.endMs)} (${formatMs(durationMs)})`
+                  : `${clipLabel}: ${formatMs(clip.startMs)} → ${formatMs(clip.endMs)} (${formatMs(durationMs)})`
             }
             onPointerDown={(e) =>
               handleClipPointerDown(
@@ -2210,9 +2266,32 @@ export function TimelinePanel({
             )}
             {widthPx > 40 && (
               <span
-                className={`text-[10px] truncate px-2 select-none pointer-events-none ${isOutputClip ? 'text-purple-300/80' : isDisconnected ? 'text-muted-foreground/70 italic' : 'text-card-foreground/80'}`}>
-                {isDisconnected ? `[Disconnected] ${clipLabel}` : clipLabel}
+                className={`text-[10px] truncate select-none pointer-events-none pl-2 ${isMissingAsset ? 'pr-7' : 'pr-2'} ${isOutputClip ? 'text-purple-300/80' : isMissingAsset ? 'text-amber-200/85' : isDisconnected ? 'text-muted-foreground/70 italic' : 'text-card-foreground/80'}`}>
+                {isMissingAsset
+                  ? `[Missing file] ${clipLabel}`
+                  : isDisconnected
+                    ? `[Disconnected] ${clipLabel}`
+                    : clipLabel}
               </span>
+            )}
+            {isMissingAsset && (
+              <Button
+                type='button'
+                variant='ghost'
+                size='icon'
+                title='Attach missing file…'
+                className='absolute right-0.5 top-1/2 z-20 h-6 w-6 min-w-6 shrink-0 -translate-y-1/2 p-0 text-amber-400 hover:bg-amber-950/50 hover:text-amber-300 cursor-pointer'
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  setResolveMissingInputId(clip.inputId);
+                }}>
+                <AlertTriangle className='size-3.5' strokeWidth={2.25} />
+              </Button>
             )}
           </div>
         );
@@ -2226,6 +2305,7 @@ export function TimelinePanel({
       handleClipPointerDown,
       handleClipHover,
       handleContextMenu,
+      setResolveMissingInputId,
     ],
   );
 
@@ -2529,8 +2609,7 @@ export function TimelinePanel({
                       (trackHasDisconnected ? '#6b7280' : undefined))
                     : undefined));
             const isEditing = editingTrackId === track.id;
-            const isBeingDragged =
-              trackDragRef.current?.trackId === track.id;
+            const isBeingDragged = trackDragRef.current?.trackId === track.id;
             const showDropIndicator =
               trackDropIndex !== null && trackDropIndex === trackIndex;
 
@@ -2715,26 +2794,16 @@ export function TimelinePanel({
                         trackId={track.id}
                         clips={track.clips}
                         pixelsPerSecond={state.pixelsPerSecond}
-                        interpolationMode={
-                          state.keyframeInterpolationMode
-                        }
+                        interpolationMode={state.keyframeInterpolationMode}
                         timelineWidthPx={timelineWidthPx}
                         selectedKeyframeId={selectedKeyframeId}
-                        onAddKeyframe={(
-                          tId,
-                          clipId,
-                          timeMs,
-                          volume,
-                        ) => {
-                          const clip = track.clips.find(
-                            (c) => c.id === clipId,
-                          );
+                        onAddKeyframe={(tId, clipId, timeMs, volume) => {
+                          const clip = track.clips.find((c) => c.id === clipId);
                           if (!clip) return;
-                          const resolved =
-                            resolveClipBlockSettingsAtOffset(
-                              clip,
-                              timeMs,
-                            );
+                          const resolved = resolveClipBlockSettingsAtOffset(
+                            clip,
+                            timeMs,
+                          );
                           addKeyframe(tId, clipId, timeMs, {
                             ...resolved,
                             volume,
@@ -2750,12 +2819,7 @@ export function TimelinePanel({
                             volume,
                           });
                         }}
-                        onMoveKeyframe={(
-                          tId,
-                          clipId,
-                          keyframeId,
-                          timeMs,
-                        ) => {
+                        onMoveKeyframe={(tId, clipId, keyframeId, timeMs) => {
                           moveKeyframe(tId, clipId, keyframeId, timeMs);
                         }}
                         onDeleteKeyframe={(tId, clipId, keyframeId) => {
@@ -2966,65 +3030,66 @@ export function TimelinePanel({
                 </Button>
               </>
             )}
-            {contextMenu.trackId !== OUTPUT_TRACK_ID && (() => {
-              const ctxTrackIdx = state.tracks.findIndex(
-                (t) => t.id === contextMenu.trackId,
-              );
-              const canMoveUp =
-                ctxTrackIdx > 0 &&
-                state.tracks[ctxTrackIdx - 1]?.id !== OUTPUT_TRACK_ID;
-              const canMoveDown =
-                ctxTrackIdx >= 0 &&
-                ctxTrackIdx < state.tracks.length - 1 &&
-                state.tracks[ctxTrackIdx + 1]?.id !== OUTPUT_TRACK_ID;
-              return (
-                <>
-                  <div className='h-px bg-secondary my-1' />
-                  <Button
-                    variant='ghost'
-                    className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-foreground hover:bg-accent cursor-pointer disabled:opacity-40 disabled:cursor-default'
-                    disabled={!canMoveUp}
-                    onClick={() => {
-                      reorderTrack(contextMenu.trackId, ctxTrackIdx - 1);
-                      closeContextMenu();
-                    }}>
-                    Move Up
-                  </Button>
-                  <Button
-                    variant='ghost'
-                    className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-foreground hover:bg-accent cursor-pointer disabled:opacity-40 disabled:cursor-default'
-                    disabled={!canMoveDown}
-                    onClick={() => {
-                      reorderTrack(contextMenu.trackId, ctxTrackIdx + 1);
-                      closeContextMenu();
-                    }}>
-                    Move Down
-                  </Button>
-                  <Button
-                    variant='ghost'
-                    className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-foreground hover:bg-accent cursor-pointer'
-                    onClick={() => {
-                      setEditingTrackId(contextMenu.trackId);
-                      const track = state.tracks.find(
-                        (t) => t.id === contextMenu.trackId,
-                      );
-                      setEditingTrackLabel(track?.label ?? '');
-                      closeContextMenu();
-                    }}>
-                    Rename Track
-                  </Button>
-                  <Button
-                    variant='ghost'
-                    className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-red-400 hover:bg-accent hover:text-red-300 cursor-pointer'
-                    onClick={() => {
-                      deleteTrack(contextMenu.trackId);
-                      closeContextMenu();
-                    }}>
-                    Delete Track
-                  </Button>
-                </>
-              );
-            })()}
+            {contextMenu.trackId !== OUTPUT_TRACK_ID &&
+              (() => {
+                const ctxTrackIdx = state.tracks.findIndex(
+                  (t) => t.id === contextMenu.trackId,
+                );
+                const canMoveUp =
+                  ctxTrackIdx > 0 &&
+                  state.tracks[ctxTrackIdx - 1]?.id !== OUTPUT_TRACK_ID;
+                const canMoveDown =
+                  ctxTrackIdx >= 0 &&
+                  ctxTrackIdx < state.tracks.length - 1 &&
+                  state.tracks[ctxTrackIdx + 1]?.id !== OUTPUT_TRACK_ID;
+                return (
+                  <>
+                    <div className='h-px bg-secondary my-1' />
+                    <Button
+                      variant='ghost'
+                      className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-foreground hover:bg-accent cursor-pointer disabled:opacity-40 disabled:cursor-default'
+                      disabled={!canMoveUp}
+                      onClick={() => {
+                        reorderTrack(contextMenu.trackId, ctxTrackIdx - 1);
+                        closeContextMenu();
+                      }}>
+                      Move Up
+                    </Button>
+                    <Button
+                      variant='ghost'
+                      className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-foreground hover:bg-accent cursor-pointer disabled:opacity-40 disabled:cursor-default'
+                      disabled={!canMoveDown}
+                      onClick={() => {
+                        reorderTrack(contextMenu.trackId, ctxTrackIdx + 1);
+                        closeContextMenu();
+                      }}>
+                      Move Down
+                    </Button>
+                    <Button
+                      variant='ghost'
+                      className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-foreground hover:bg-accent cursor-pointer'
+                      onClick={() => {
+                        setEditingTrackId(contextMenu.trackId);
+                        const track = state.tracks.find(
+                          (t) => t.id === contextMenu.trackId,
+                        );
+                        setEditingTrackLabel(track?.label ?? '');
+                        closeContextMenu();
+                      }}>
+                      Rename Track
+                    </Button>
+                    <Button
+                      variant='ghost'
+                      className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-red-400 hover:bg-accent hover:text-red-300 cursor-pointer'
+                      onClick={() => {
+                        deleteTrack(contextMenu.trackId);
+                        closeContextMenu();
+                      }}>
+                      Delete Track
+                    </Button>
+                  </>
+                );
+              })()}
           </div>,
           document.body,
         )}
@@ -3115,7 +3180,10 @@ export function TimelinePanel({
                     ['M', 'Mute / Unmute selected track'],
                     ['Delete / Backspace', 'Delete selected segment'],
                     ['Alt + Click', 'Split segment at click position'],
-                    ['Shift + Drag', 'Lock horizontal position (vertical only)'],
+                    [
+                      'Shift + Drag',
+                      'Lock horizontal position (vertical only)',
+                    ],
                   ]}
                 />
                 <ShortcutGroup
@@ -3150,6 +3218,20 @@ export function TimelinePanel({
           </div>,
           document.body,
         )}
+
+      <ResolveMissingAssetModal
+        open={resolveMissingInputId !== null}
+        onOpenChange={(o) => {
+          if (!o) setResolveMissingInputId(null);
+        }}
+        roomId={roomId}
+        input={
+          resolveMissingInputId
+            ? (inputs.find((i) => i.inputId === resolveMissingInputId) ?? null)
+            : null
+        }
+        refreshState={refreshState}
+      />
     </div>
   );
 }

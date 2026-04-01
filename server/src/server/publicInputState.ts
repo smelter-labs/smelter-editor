@@ -45,6 +45,8 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
         sourceHeight: input.mp4VideoHeight,
         mp4FileName: isAudio ? undefined : fileName,
         audioFileName: isAudio ? fileName : undefined,
+        mp4AssetMissing: input.mp4AssetMissing,
+        missingAssetIsAudio: input.missingAssetIsAudio,
       };
     }
     case 'image':

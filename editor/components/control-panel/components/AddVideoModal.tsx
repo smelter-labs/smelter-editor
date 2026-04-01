@@ -73,6 +73,24 @@ type AssetItem =
   | AssetItemAction
   | AssetItemFolder;
 
+export interface AssetBrowserInputCreated {
+  inputId: string;
+  kind:
+    | 'mp4'
+    | 'audio'
+    | 'image'
+    | 'twitch'
+    | 'kick'
+    | 'hls-saved'
+    | 'text'
+    | 'game'
+    | 'hands'
+    | 'camera'
+    | 'screenshare';
+  fileName?: string;
+  durationMs?: number;
+}
+
 const FILTER_TYPES = [
   'ALL',
   'STREAM',
@@ -86,6 +104,19 @@ const FILTER_TYPES = [
   'INPUT',
 ] as const;
 type FilterType = (typeof FILTER_TYPES)[number];
+export type AssetBrowserFilterType = FilterType;
+
+export interface AssetBrowserPanelProps {
+  roomId: string;
+  refreshState: () => Promise<void>;
+  inputs: Input[];
+  whipCtx: ReturnType<typeof useWhipConnectionsContext>;
+  onDone?: () => Promise<void>;
+  onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
+  availableFilters?: AssetBrowserFilterType[];
+  allowUpload?: boolean;
+  headerTitle?: string;
+}
 
 const ACTION_CARDS: AssetItemAction[] = [
   { kind: 'action', actionType: 'upload-mp4' },
@@ -242,6 +273,22 @@ async function browseAssets(
 }
 
 type UploadMediaType = 'mp4' | 'picture' | 'audio';
+type UploadJobStatus =
+  | 'queued'
+  | 'uploading'
+  | 'processing'
+  | 'success'
+  | 'error';
+
+type UploadJob = {
+  id: string;
+  fileName: string;
+  mediaType: UploadMediaType | 'unknown';
+  targetFolder: string;
+  progress: number;
+  status: UploadJobStatus;
+  errorMessage?: string;
+};
 
 const UPLOAD_ROUTES: Record<UploadMediaType, string> = {
   mp4: '/api/upload/mp4',
@@ -259,18 +306,57 @@ async function uploadFile(
   file: File,
   mediaType: UploadMediaType,
   folder: string,
+  opts?: {
+    onProgress?: (progress: number) => void;
+    onTransferComplete?: () => void;
+  },
 ): Promise<{ fileName: string; folder: string }> {
-  const formData = new FormData();
-  formData.append('file', file);
-  if (folder) formData.append('folder', folder);
+  return new Promise((resolve, reject) => {
+    const formData = new FormData();
+    if (folder) formData.append('folder', folder);
+    formData.append('file', file);
 
-  const route = UPLOAD_ROUTES[mediaType];
-  const res = await fetch(route, { method: 'POST', body: formData });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || 'Upload failed');
-  }
-  return res.json();
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', UPLOAD_ROUTES[mediaType]);
+
+    xhr.upload.addEventListener('progress', (event) => {
+      if (!event.lengthComputable) return;
+      const progress = Math.min(
+        99,
+        Math.round((event.loaded / event.total) * 100),
+      );
+      opts?.onProgress?.(progress);
+    });
+
+    xhr.upload.addEventListener('load', () => {
+      opts?.onProgress?.(100);
+      opts?.onTransferComplete?.();
+    });
+
+    xhr.onerror = () => reject(new Error('Upload failed'));
+    xhr.onabort = () => reject(new Error('Upload aborted'));
+
+    xhr.onload = () => {
+      let body: { error?: string; fileName?: string; folder?: string } = {};
+      try {
+        body = xhr.responseText ? JSON.parse(xhr.responseText) : {};
+      } catch {
+        body = {};
+      }
+
+      if (xhr.status < 200 || xhr.status >= 300) {
+        reject(new Error(body.error || 'Upload failed'));
+        return;
+      }
+
+      resolve({
+        fileName: body.fileName ?? file.name,
+        folder: body.folder ?? folder,
+      });
+    };
+
+    xhr.send(formData);
+  });
 }
 
 async function createFolder(
@@ -289,6 +375,24 @@ async function createFolder(
   }
 }
 
+async function deleteAsset(
+  mediaType: UploadMediaType,
+  filePath: string,
+): Promise<void> {
+  const encodedPath = filePath
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+  const res = await fetch(`${UPLOAD_ROUTES[mediaType]}/${encodedPath}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || 'Failed to delete asset');
+  }
+}
+
 const MP4_ACCEPT = '.mp4,video/mp4';
 const AUDIO_ACCEPT = '.wav,.mp3,audio/wav,audio/mpeg';
 const PICTURE_ACCEPT = '.jpg,.jpeg,.png,.gif,.svg,.webp,image/*';
@@ -300,6 +404,21 @@ function detectMediaType(file: File): UploadMediaType | null {
   if (['jpg', 'jpeg', 'png', 'gif', 'svg', 'webp'].includes(ext))
     return 'picture';
   return null;
+}
+
+function uploadJobStatusLabel(job: UploadJob): string {
+  switch (job.status) {
+    case 'queued':
+      return 'QUEUED';
+    case 'uploading':
+      return `${job.progress}%`;
+    case 'processing':
+      return 'PROCESSING';
+    case 'success':
+      return 'DONE';
+    case 'error':
+      return 'FAILED';
+  }
 }
 
 // ── Breadcrumb ───────────────────────────────────────────────
@@ -344,15 +463,17 @@ function FolderBreadcrumb({
 
 // ── Main Modal ───────────────────────────────────────────────
 
-export function AddVideoModal({
-  open,
-  onOpenChange,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-}) {
-  const { roomId, refreshState, inputs } = useControlPanelContext();
-  const whipCtx = useWhipConnectionsContext();
+export function AssetBrowserPanel({
+  roomId,
+  refreshState,
+  inputs,
+  whipCtx,
+  onDone,
+  onInputCreated,
+  availableFilters,
+  allowUpload = true,
+  headerTitle = 'ACTIVE_ASSET_REPOSITORY',
+}: AssetBrowserPanelProps) {
   const actions = useActions();
 
   const [filter, setFilter] = useState<FilterType>('ALL');
@@ -363,10 +484,27 @@ export function AddVideoModal({
   const [mp4Folder, setMp4Folder] = useState('');
   const [pictureFolder, setPictureFolder] = useState('');
   const [audioFolder, setAudioFolder] = useState('');
-  const [isUploading, setIsUploading] = useState(false);
+  const [uploadJobs, setUploadJobs] = useState<UploadJob[]>([]);
   const [newFolderName, setNewFolderName] = useState('');
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const effectiveAvailableFilters = availableFilters ?? FILTER_TYPES;
+  const availableFilterKey = effectiveAvailableFilters.join('|');
+  const visibleFilters = useMemo(() => {
+    const allowed = new Set(availableFilterKey.split('|'));
+    return FILTER_TYPES.filter((f) => allowed.has(f));
+  }, [availableFilterKey]);
+  const actionCards = useMemo(
+    () =>
+      ACTION_CARDS.filter((item) =>
+        allowUpload
+          ? true
+          : !['upload-mp4', 'upload-audio', 'upload-image'].includes(
+              item.actionType,
+            ),
+      ),
+    [allowUpload],
+  );
 
   const showFolderBrowsing =
     filter === 'MP4' || filter === 'IMAGE' || filter === 'AUDIO';
@@ -380,6 +518,16 @@ export function AddVideoModal({
         : filter === 'MP4'
           ? mp4Folder
           : '';
+  const activeUploadCount = useMemo(
+    () =>
+      uploadJobs.filter(
+        (job) =>
+          job.status === 'queued' ||
+          job.status === 'uploading' ||
+          job.status === 'processing',
+      ).length,
+    [uploadJobs],
+  );
 
   const setActiveFolder = useCallback(
     (folder: string) => {
@@ -388,6 +536,31 @@ export function AddVideoModal({
       else if (filter === 'MP4') setMp4Folder(folder);
     },
     [filter],
+  );
+
+  const resolveUploadFolder = useCallback(
+    (mediaType: UploadMediaType) => {
+      const typeFolder =
+        mediaType === 'mp4'
+          ? mp4Folder
+          : mediaType === 'audio'
+            ? audioFolder
+            : pictureFolder;
+      if (showFolderBrowsing) {
+        return activeFolder || typeFolder;
+      }
+      return typeFolder;
+    },
+    [activeFolder, audioFolder, mp4Folder, pictureFolder, showFolderBrowsing],
+  );
+
+  const updateUploadJob = useCallback(
+    (jobId: string, updater: (job: UploadJob) => UploadJob) => {
+      setUploadJobs((prev) =>
+        prev.map((job) => (job.id === jobId ? updater(job) : job)),
+      );
+    },
+    [],
   );
 
   const fetchItems = useCallback(async () => {
@@ -399,9 +572,6 @@ export function AddVideoModal({
         mp4Browse,
         pictureBrowse,
         audioBrowse,
-        mp4FlatRes,
-        pictureFlatRes,
-        audioFlatRes,
         hlsListRes,
       ] = await Promise.all([
         actions
@@ -422,13 +592,6 @@ export function AddVideoModal({
           files: [] as string[],
           folders: [] as string[],
         })),
-        actions.getMP4Suggestions().catch(() => ({ mp4s: [] as string[] })),
-        actions
-          .getPictureSuggestions()
-          .catch(() => ({ pictures: [] as string[] })),
-        actions
-          .getAudioSuggestions()
-          .catch(() => ({ audios: [] as string[] })),
         actions.hlsStreamStorage
           .list()
           .catch(() => ({ ok: false as const, error: 'failed' })),
@@ -496,7 +659,7 @@ export function AddVideoModal({
         ...mp4FileItems,
         ...picFileItems,
         ...audioFileItems,
-        ...ACTION_CARDS,
+        ...actionCards,
       ];
 
       setItems(fetched);
@@ -532,24 +695,144 @@ export function AddVideoModal({
     } finally {
       setIsLoading(false);
     }
-  }, [actions, mp4Folder, pictureFolder, audioFolder]);
+  }, [actions, mp4Folder, pictureFolder, audioFolder, actionCards]);
+
+  const queueUploads = useCallback(
+    async (incomingFiles: File[]) => {
+      if (incomingFiles.length === 0) return;
+
+      const preparedUploads = incomingFiles.map((file) => {
+        const mediaType = detectMediaType(file);
+        return {
+          id: crypto.randomUUID(),
+          file,
+          mediaType,
+          targetFolder: mediaType
+            ? resolveUploadFolder(mediaType)
+            : activeFolder,
+        };
+      });
+
+      const jobsToAdd: UploadJob[] = preparedUploads.map(
+        ({ id, file, mediaType, targetFolder }) => ({
+          id,
+          fileName: file.name,
+          mediaType: mediaType ?? 'unknown',
+          targetFolder,
+          progress: 0,
+          status: mediaType ? 'queued' : 'error',
+          errorMessage: mediaType ? undefined : 'Unsupported file type.',
+        }),
+      );
+
+      setUploadJobs((prev) => [...jobsToAdd, ...prev].slice(0, 24));
+
+      const validUploads = preparedUploads.filter(
+        (
+          upload,
+        ): upload is {
+          id: string;
+          file: File;
+          mediaType: UploadMediaType;
+          targetFolder: string;
+        } => upload.mediaType !== null,
+      );
+
+      const invalidCount = preparedUploads.length - validUploads.length;
+      const uploadResults = await Promise.all(
+        validUploads.map(async ({ id, file, mediaType, targetFolder }) => {
+          updateUploadJob(id, (job) => ({
+            ...job,
+            status: 'uploading',
+            progress: 0,
+            errorMessage: undefined,
+          }));
+
+          try {
+            await uploadFile(file, mediaType, targetFolder, {
+              onProgress: (progress) => {
+                updateUploadJob(id, (job) => ({
+                  ...job,
+                  progress,
+                  status:
+                    job.status === 'success' || job.status === 'error'
+                      ? job.status
+                      : 'uploading',
+                }));
+              },
+              onTransferComplete: () => {
+                updateUploadJob(id, (job) => ({
+                  ...job,
+                  progress: 100,
+                  status: 'processing',
+                }));
+              },
+            });
+
+            updateUploadJob(id, (job) => ({
+              ...job,
+              progress: 100,
+              status: 'success',
+              errorMessage: undefined,
+            }));
+
+            return { ok: true as const };
+          } catch (error) {
+            const message =
+              error instanceof Error ? error.message : 'Upload failed';
+            updateUploadJob(id, (job) => ({
+              ...job,
+              status: 'error',
+              errorMessage: message,
+            }));
+            return { ok: false as const };
+          }
+        }),
+      );
+
+      const successCount = uploadResults.filter((result) => result.ok).length;
+      const failedCount =
+        invalidCount + uploadResults.filter((result) => !result.ok).length;
+
+      if (successCount > 0) {
+        await fetchItems();
+        toast.success(
+          successCount === 1
+            ? 'Uploaded 1 file.'
+            : `Uploaded ${successCount} files.`,
+        );
+      }
+
+      if (failedCount > 0) {
+        toast.error(
+          failedCount === 1
+            ? '1 file failed to upload.'
+            : `${failedCount} files failed to upload.`,
+        );
+      }
+    },
+    [activeFolder, fetchItems, resolveUploadFolder, updateUploadJob],
+  );
 
   useEffect(() => {
-    if (open) {
-      fetchItems();
-      setSelectedItem(null);
-    }
-  }, [open, fetchItems]);
+    fetchItems();
+    setSelectedItem(null);
+  }, [fetchItems]);
 
   useEffect(() => {
-    if (open) {
-      setMp4Folder('');
-      setPictureFolder('');
-      setAudioFolder('');
-      setFilter('ALL');
-      setShowNewFolderInput(false);
-    }
-  }, [open]);
+    setMp4Folder('');
+    setPictureFolder('');
+    setAudioFolder('');
+    setUploadJobs([]);
+    setFilter((prev) =>
+      visibleFilters.includes(prev)
+        ? prev
+        : visibleFilters.includes('ALL')
+          ? 'ALL'
+          : (visibleFilters[0] ?? 'MP4'),
+    );
+    setShowNewFolderInput(false);
+  }, [availableFilterKey, visibleFilters]);
 
   const filteredItems = useMemo(
     () => items.filter((item) => itemMatchesFilter(item, filter)),
@@ -558,8 +841,15 @@ export function AddVideoModal({
 
   const handleDone = useCallback(async () => {
     await refreshState();
-    onOpenChange(false);
-  }, [refreshState, onOpenChange]);
+    if (onDone) {
+      await onDone();
+    }
+  }, [refreshState, onDone]);
+
+  const handleAssetDeleted = useCallback(async () => {
+    setSelectedItem(null);
+    await fetchItems();
+  }, [fetchItems]);
 
   const handleFolderClick = useCallback(
     (folderItem: AssetItemFolder) => {
@@ -582,49 +872,19 @@ export function AddVideoModal({
 
   const handleUploadClick = useCallback(() => {
     if (!fileInputRef.current) return;
-    if (filter === 'MP4') {
-      fileInputRef.current.accept = MP4_ACCEPT;
-    } else if (filter === 'AUDIO') {
-      fileInputRef.current.accept = AUDIO_ACCEPT;
-    } else if (filter === 'IMAGE') {
-      fileInputRef.current.accept = PICTURE_ACCEPT;
-    } else {
-      fileInputRef.current.accept = `${MP4_ACCEPT},${AUDIO_ACCEPT},${PICTURE_ACCEPT}`;
-    }
+    fileInputRef.current.accept = `${MP4_ACCEPT},${AUDIO_ACCEPT},${PICTURE_ACCEPT}`;
     fileInputRef.current.click();
-  }, [filter]);
+  }, []);
 
   const handleFileSelected = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
+      const files = Array.from(e.target.files ?? []);
       e.target.value = '';
+      if (files.length === 0) return;
 
-      const mediaType = detectMediaType(file);
-      if (!mediaType) {
-        toast.error('Unsupported file type.');
-        return;
-      }
-
-      const folder =
-        mediaType === 'mp4'
-          ? mp4Folder
-          : mediaType === 'audio'
-            ? audioFolder
-            : pictureFolder;
-
-      setIsUploading(true);
-      try {
-        await uploadFile(file, mediaType, folder);
-        toast.success(`Uploaded "${file.name}"`);
-        await fetchItems();
-      } catch (err: any) {
-        toast.error(err?.message || 'Upload failed');
-      } finally {
-        setIsUploading(false);
-      }
+      await queueUploads(files);
     },
-    [mp4Folder, pictureFolder, audioFolder, fetchItems],
+    [queueUploads],
   );
 
   const handleCreateFolder = useCallback(async () => {
@@ -651,180 +911,212 @@ export function AddVideoModal({
     activeFolderMediaType,
     mp4Folder,
     pictureFolder,
+    audioFolder,
     fetchItems,
   ]);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='max-w-[1100px] w-[95vw] max-h-[85vh] h-[85vh] bg-[#131313]/95 backdrop-blur-sm border border-[#3a494b]/30 p-0 gap-0 overflow-hidden [&>button]:text-[#849495] [&>button]:hover:text-[#e3fdff]'>
-        <div className='flex flex-col h-full'>
-          {/* Header + Filter */}
-          <div className='px-5 pt-5 pb-3 border-b border-[#3a494b]/20'>
-            <div className='flex items-center justify-between mb-3 pr-6'>
-              <h2 className='font-headline font-bold text-sm tracking-widest text-[#00f3ff] uppercase'>
-                ACTIVE_ASSET_REPOSITORY
-              </h2>
-              <div className='flex items-center gap-2'>
-                {showFolderBrowsing && (
-                  <>
-                    <button
-                      onClick={() => {
-                        setShowNewFolderInput((v) => !v);
-                        setNewFolderName('');
-                      }}
-                      title='New folder'
-                      className='px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider bg-[#1c1b1b] text-[#849495] hover:text-[#e3fdff] border border-[#3a494b]/20 transition-colors cursor-pointer'>
-                      + FOLDER
-                    </button>
-                  </>
-                )}
+    <div className='flex flex-col h-full'>
+      {/* Header + Filter */}
+      <div className='px-5 pt-5 pb-3 border-b border-[#3a494b]/20'>
+        <div className='flex items-center justify-between mb-3 pr-6'>
+          <h2 className='font-headline font-bold text-sm tracking-widest text-[#00f3ff] uppercase'>
+            {headerTitle}
+          </h2>
+          <div className='flex items-center gap-2'>
+            {allowUpload && showFolderBrowsing && (
+              <>
+                <button
+                  onClick={() => {
+                    setShowNewFolderInput((v) => !v);
+                    setNewFolderName('');
+                  }}
+                  title='New folder'
+                  className='px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider bg-[#1c1b1b] text-[#849495] hover:text-[#e3fdff] border border-[#3a494b]/20 transition-colors cursor-pointer'>
+                  + FOLDER
+                </button>
+              </>
+            )}
+            {allowUpload && (
+              <>
                 <button
                   onClick={handleUploadClick}
-                  disabled={isUploading}
                   title='Upload file'
-                  className='px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider bg-[#fe00fe]/20 text-[#fe00fe] hover:bg-[#fe00fe]/30 border border-[#fe00fe]/30 transition-colors cursor-pointer disabled:opacity-40'>
-                  {isUploading ? 'UPLOADING...' : 'UPLOAD'}
+                  className='px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider bg-[#fe00fe]/20 text-[#fe00fe] hover:bg-[#fe00fe]/30 border border-[#fe00fe]/30 transition-colors cursor-pointer'>
+                  {activeUploadCount > 0 ? 'UPLOADING...' : 'UPLOAD'}
                 </button>
                 <input
                   ref={fileInputRef}
                   type='file'
+                  multiple
                   className='hidden'
                   onChange={handleFileSelected}
                 />
-                <span className='font-mono text-[10px] text-[#fe00fe]'>
-                  [{filteredItems.length} FILES]
-                </span>
-              </div>
+              </>
+            )}
+            <span className='font-mono text-[10px] text-[#fe00fe]'>
+              [{filteredItems.length} FILES]
+            </span>
+          </div>
+        </div>
+        <div className='flex gap-1.5 flex-wrap'>
+          {visibleFilters.map((f) => (
+            <button
+              key={f}
+              onClick={() => {
+                setFilter(f);
+                setSelectedItem(null);
+                setShowNewFolderInput(false);
+              }}
+              className={`px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider transition-colors ${
+                filter === f
+                  ? 'bg-[#00f3ff] text-black font-bold'
+                  : 'bg-[#1c1b1b] text-[#849495] hover:text-[#e3fdff] border border-[#3a494b]/20'
+              }`}>
+              {f}
+            </button>
+          ))}
+        </div>
+        {showNewFolderInput && (
+          <div className='flex items-center gap-2 mt-2'>
+            <input
+              type='text'
+              value={newFolderName}
+              onChange={(e) => setNewFolderName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleCreateFolder();
+                if (e.key === 'Escape') setShowNewFolderInput(false);
+              }}
+              placeholder='Folder name...'
+              autoFocus
+              className='flex-1 bg-[#1c1b1b] border border-[#3a494b]/30 text-[#e3fdff] font-mono text-[11px] px-2 py-1 focus:border-[#00f3ff]/50 focus:outline-none'
+            />
+            <button
+              onClick={handleCreateFolder}
+              disabled={!newFolderName.trim()}
+              className='px-3 py-1 text-[10px] font-mono bg-[#00f3ff] text-black font-bold uppercase disabled:opacity-40 cursor-pointer'>
+              CREATE
+            </button>
+            <button
+              onClick={() => setShowNewFolderInput(false)}
+              className='px-2 py-1 text-[10px] font-mono text-[#849495] hover:text-[#e3fdff] cursor-pointer'>
+              CANCEL
+            </button>
+          </div>
+        )}
+      </div>
+
+      {/* Breadcrumb */}
+      {showFolderBrowsing && activeFolder && (
+        <FolderBreadcrumb
+          currentFolder={activeFolder}
+          onNavigate={(f) => {
+            setActiveFolder(f);
+            setSelectedItem(null);
+          }}
+        />
+      )}
+
+      {/* Body: Grid + Inspector */}
+      <div className='flex flex-1 min-h-0'>
+        {/* Left: Asset Grid */}
+        <div className='flex-1 overflow-y-auto p-4'>
+          {isLoading ? (
+            <div className='flex items-center justify-center h-40'>
+              <span className='font-mono text-xs text-[#849495] animate-pulse'>
+                SCANNING_ASSETS...
+              </span>
             </div>
-            <div className='flex gap-1.5 flex-wrap'>
-              {FILTER_TYPES.map((f) => (
-                <button
-                  key={f}
+          ) : filteredItems.length === 0 ? (
+            <div className='flex items-center justify-center h-40'>
+              <span className='font-mono text-xs text-[#849495]'>
+                NO_ASSETS_FOUND
+              </span>
+            </div>
+          ) : (
+            <div className='grid grid-cols-2 lg:grid-cols-3 gap-3'>
+              {filteredItems.map((item) => (
+                <AssetCard
+                  key={itemKey(item)}
+                  item={item}
+                  isSelected={
+                    selectedItem !== null &&
+                    itemKey(selectedItem) === itemKey(item)
+                  }
                   onClick={() => {
-                    setFilter(f);
-                    setSelectedItem(null);
-                    setShowNewFolderInput(false);
+                    if (item.kind === 'folder') {
+                      handleFolderClick(item);
+                    } else {
+                      setSelectedItem(item);
+                    }
                   }}
-                  className={`px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider transition-colors ${
-                    filter === f
-                      ? 'bg-[#00f3ff] text-black font-bold'
-                      : 'bg-[#1c1b1b] text-[#849495] hover:text-[#e3fdff] border border-[#3a494b]/20'
-                  }`}>
-                  {f}
-                </button>
+                />
               ))}
             </div>
-            {showNewFolderInput && (
-              <div className='flex items-center gap-2 mt-2'>
-                <input
-                  type='text'
-                  value={newFolderName}
-                  onChange={(e) => setNewFolderName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleCreateFolder();
-                    if (e.key === 'Escape') setShowNewFolderInput(false);
-                  }}
-                  placeholder='Folder name...'
-                  autoFocus
-                  className='flex-1 bg-[#1c1b1b] border border-[#3a494b]/30 text-[#e3fdff] font-mono text-[11px] px-2 py-1 focus:border-[#00f3ff]/50 focus:outline-none'
-                />
-                <button
-                  onClick={handleCreateFolder}
-                  disabled={!newFolderName.trim()}
-                  className='px-3 py-1 text-[10px] font-mono bg-[#00f3ff] text-black font-bold uppercase disabled:opacity-40 cursor-pointer'>
-                  CREATE
-                </button>
-                <button
-                  onClick={() => setShowNewFolderInput(false)}
-                  className='px-2 py-1 text-[10px] font-mono text-[#849495] hover:text-[#e3fdff] cursor-pointer'>
-                  CANCEL
-                </button>
+          )}
+        </div>
+
+        {/* Right: Property Inspector */}
+        <div className='w-80 border-l border-[#3a494b]/20 bg-[#0e0e0e] flex flex-col overflow-y-auto'>
+          <div className='flex items-center gap-2 px-5 pt-5 pb-4'>
+            <span className='text-[#fe00fe] text-sm'>&#9881;</span>
+            <h3 className='font-headline font-bold text-[11px] tracking-widest uppercase text-[#e3fdff]'>
+              Property_Inspector
+            </h3>
+          </div>
+          <div className='flex-1 px-5 pb-5'>
+            {selectedItem ? (
+              <PropertyInspector
+                item={selectedItem}
+                roomId={roomId}
+                inputs={inputs}
+                onDone={handleDone}
+                onAssetDeleted={handleAssetDeleted}
+                onInputCreated={onInputCreated}
+                whipCtx={whipCtx}
+                onUploadFiles={queueUploads}
+                uploadJobs={uploadJobs}
+                hasActiveUploads={activeUploadCount > 0}
+                currentMp4Folder={mp4Folder}
+                currentPictureFolder={pictureFolder}
+                currentAudioFolder={audioFolder}
+              />
+            ) : (
+              <div className='flex items-center justify-center h-32'>
+                <span className='font-mono text-[10px] text-[#849495]'>
+                  SELECT_ASSET_TO_INSPECT
+                </span>
               </div>
             )}
           </div>
-
-          {/* Breadcrumb */}
-          {showFolderBrowsing && activeFolder && (
-            <FolderBreadcrumb
-              currentFolder={activeFolder}
-              onNavigate={(f) => {
-                setActiveFolder(f);
-                setSelectedItem(null);
-              }}
-            />
-          )}
-
-          {/* Body: Grid + Inspector */}
-          <div className='flex flex-1 min-h-0'>
-            {/* Left: Asset Grid */}
-            <div className='flex-1 overflow-y-auto p-4'>
-              {isLoading ? (
-                <div className='flex items-center justify-center h-40'>
-                  <span className='font-mono text-xs text-[#849495] animate-pulse'>
-                    SCANNING_ASSETS...
-                  </span>
-                </div>
-              ) : filteredItems.length === 0 ? (
-                <div className='flex items-center justify-center h-40'>
-                  <span className='font-mono text-xs text-[#849495]'>
-                    NO_ASSETS_FOUND
-                  </span>
-                </div>
-              ) : (
-                <div className='grid grid-cols-2 lg:grid-cols-3 gap-3'>
-                  {filteredItems.map((item) => (
-                    <AssetCard
-                      key={itemKey(item)}
-                      item={item}
-                      isSelected={
-                        selectedItem !== null &&
-                        itemKey(selectedItem) === itemKey(item)
-                      }
-                      onClick={() => {
-                        if (item.kind === 'folder') {
-                          handleFolderClick(item);
-                        } else {
-                          setSelectedItem(item);
-                        }
-                      }}
-                    />
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* Right: Property Inspector */}
-            <div className='w-80 border-l border-[#3a494b]/20 bg-[#0e0e0e] flex flex-col overflow-y-auto'>
-              <div className='flex items-center gap-2 px-5 pt-5 pb-4'>
-                <span className='text-[#fe00fe] text-sm'>&#9881;</span>
-                <h3 className='font-headline font-bold text-[11px] tracking-widest uppercase text-[#e3fdff]'>
-                  Property_Inspector
-                </h3>
-              </div>
-              <div className='flex-1 px-5 pb-5'>
-                {selectedItem ? (
-                  <PropertyInspector
-                    item={selectedItem}
-                    roomId={roomId}
-                    inputs={inputs}
-                    onDone={handleDone}
-                    whipCtx={whipCtx}
-                    onUploadComplete={fetchItems}
-                    currentMp4Folder={mp4Folder}
-                    currentPictureFolder={pictureFolder}
-                    currentAudioFolder={audioFolder}
-                  />
-                ) : (
-                  <div className='flex items-center justify-center h-32'>
-                    <span className='font-mono text-[10px] text-[#849495]'>
-                      SELECT_ASSET_TO_INSPECT
-                    </span>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+export function AddVideoModal({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const { roomId, refreshState, inputs } = useControlPanelContext();
+  const whipCtx = useWhipConnectionsContext();
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className='max-w-[1100px] w-[95vw] max-h-[85vh] h-[85vh] bg-[#131313]/95 backdrop-blur-sm border border-[#3a494b]/30 p-0 gap-0 overflow-hidden [&>button]:text-[#849495] [&>button]:hover:text-[#e3fdff]'>
+        <AssetBrowserPanel
+          roomId={roomId}
+          refreshState={refreshState}
+          inputs={inputs}
+          whipCtx={whipCtx}
+          onDone={async () => {
+            onOpenChange(false);
+          }}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -1420,8 +1712,12 @@ function PropertyInspector({
   roomId,
   inputs,
   onDone,
+  onAssetDeleted,
+  onInputCreated,
   whipCtx,
-  onUploadComplete,
+  onUploadFiles,
+  uploadJobs,
+  hasActiveUploads,
   currentMp4Folder,
   currentPictureFolder,
   currentAudioFolder,
@@ -1430,25 +1726,75 @@ function PropertyInspector({
   roomId: string;
   inputs: Input[];
   onDone: () => Promise<void>;
+  onAssetDeleted: () => Promise<void>;
+  onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
   whipCtx: ReturnType<typeof useWhipConnectionsContext>;
-  onUploadComplete: () => Promise<void>;
+  onUploadFiles: (files: File[]) => Promise<void>;
+  uploadJobs: UploadJob[];
+  hasActiveUploads: boolean;
   currentMp4Folder: string;
   currentPictureFolder: string;
   currentAudioFolder: string;
 }) {
   switch (item.kind) {
     case 'mp4':
-      return <Mp4Inspector item={item} roomId={roomId} onDone={onDone} />;
+      return (
+        <Mp4Inspector
+          item={item}
+          roomId={roomId}
+          onDone={onDone}
+          onAssetDeleted={onAssetDeleted}
+          onInputCreated={onInputCreated}
+        />
+      );
     case 'audio':
-      return <AudioInspector item={item} roomId={roomId} onDone={onDone} />;
+      return (
+        <AudioInspector
+          item={item}
+          roomId={roomId}
+          onDone={onDone}
+          onAssetDeleted={onAssetDeleted}
+          onInputCreated={onInputCreated}
+        />
+      );
     case 'image':
-      return <ImageInspector item={item} roomId={roomId} onDone={onDone} />;
+      return (
+        <ImageInspector
+          item={item}
+          roomId={roomId}
+          onDone={onDone}
+          onAssetDeleted={onAssetDeleted}
+          onInputCreated={onInputCreated}
+        />
+      );
     case 'twitch':
-      return <TwitchInspector item={item} roomId={roomId} onDone={onDone} />;
+      return (
+        <TwitchInspector
+          item={item}
+          roomId={roomId}
+          onDone={onDone}
+          onInputCreated={onInputCreated}
+        />
+      );
     case 'kick':
-      return <KickInspector item={item} roomId={roomId} onDone={onDone} />;
+      return (
+        <KickInspector
+          item={item}
+          roomId={roomId}
+          onDone={onDone}
+          onInputCreated={onInputCreated}
+        />
+      );
     case 'hls-saved':
-      return <HlsSavedInspector item={item} roomId={roomId} onDone={onDone} />;
+      return (
+        <HlsSavedInspector
+          item={item}
+          roomId={roomId}
+          onDone={onDone}
+          onAssetDeleted={onAssetDeleted}
+          onInputCreated={onInputCreated}
+        />
+      );
     case 'folder': {
       const contentLabel =
         item.mediaType === 'mp4'
@@ -1474,8 +1820,11 @@ function PropertyInspector({
           roomId={roomId}
           inputs={inputs}
           onDone={onDone}
+          onInputCreated={onInputCreated}
           whipCtx={whipCtx}
-          onUploadComplete={onUploadComplete}
+          onUploadFiles={onUploadFiles}
+          uploadJobs={uploadJobs}
+          hasActiveUploads={hasActiveUploads}
           currentMp4Folder={currentMp4Folder}
           currentPictureFolder={currentPictureFolder}
           currentAudioFolder={currentAudioFolder}
@@ -1493,6 +1842,60 @@ function PropRow({ label, value }: { label: string; value: string }) {
       <span className='text-[#00f3ff] truncate ml-2 text-right max-w-[140px]'>
         {value}
       </span>
+    </div>
+  );
+}
+
+function UploadJobsPanel({ jobs }: { jobs: UploadJob[] }) {
+  return (
+    <div className='mt-4 border border-[#3a494b]/20 bg-[#0d1011] p-3'>
+      <div className='flex items-center justify-between mb-2'>
+        <span className='font-mono text-[10px] uppercase tracking-wider text-[#00f3ff]'>
+          Upload Queue
+        </span>
+        <span className='font-mono text-[10px] text-[#849495]'>
+          {jobs.length} JOBS
+        </span>
+      </div>
+      <div className='space-y-2 max-h-56 overflow-y-auto pr-1'>
+        {jobs.map((job) => (
+          <div
+            key={job.id}
+            className='border border-[#3a494b]/20 bg-black/20 px-2 py-2'>
+            <div className='flex items-start justify-between gap-3'>
+              <div className='min-w-0'>
+                <div className='font-mono text-[10px] text-[#e3fdff] truncate'>
+                  {job.fileName}
+                </div>
+                <div className='font-mono text-[10px] text-[#849495] uppercase'>
+                  {job.mediaType}
+                  {job.targetFolder ? ` / ${job.targetFolder}` : ' / ROOT'}
+                </div>
+              </div>
+              <span className='font-mono text-[10px] text-[#fe00fe] shrink-0'>
+                {uploadJobStatusLabel(job)}
+              </span>
+            </div>
+            <div className='mt-2 h-1.5 bg-[#1c1b1b] overflow-hidden'>
+              <div
+                className={`h-full transition-[width] duration-200 ${
+                  job.status === 'error'
+                    ? 'bg-[#ff5f7a]'
+                    : job.status === 'success'
+                      ? 'bg-[#00f3ff]'
+                      : 'bg-[#fe00fe]'
+                }`}
+                style={{ width: `${job.progress}%` }}
+              />
+            </div>
+            {job.errorMessage && (
+              <p className='mt-2 font-mono text-[10px] text-[#ff5f7a] break-words'>
+                {job.errorMessage}
+              </p>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1518,29 +1921,77 @@ function InitiateButton({
   );
 }
 
+function DeleteLibraryItemButton({
+  label = 'REMOVE_FROM_LIBRARY',
+  onClick,
+  disabled,
+}: {
+  label?: string;
+  onClick: () => void;
+  disabled?: boolean;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className='w-full py-1.5 bg-transparent border border-[#fe00fe]/40 text-[#fe00fe] font-mono text-[10px] uppercase tracking-widest hover:bg-[#fe00fe]/10 transition-colors disabled:opacity-40'>
+      {label}
+    </button>
+  );
+}
+
 // ── Type-specific Inspectors ─────────────────────────────────
 
 function Mp4Inspector({
   item,
   roomId,
   onDone,
+  onAssetDeleted,
+  onInputCreated,
 }: {
   item: AssetItemMp4;
   roomId: string;
   onDone: () => Promise<void>;
+  onAssetDeleted: () => Promise<void>;
+  onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
 }) {
   const { addMP4Input } = useActions();
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const handleAdd = async () => {
     setLoading(true);
     try {
-      await addMP4Input(roomId, item.fileName);
+      const response = await addMP4Input(roomId, item.fileName);
+      await onInputCreated?.({
+        inputId: response.inputId,
+        kind: 'mp4',
+        fileName: item.fileName,
+        durationMs: item.durationMs,
+      });
       await onDone();
     } catch {
       toast.error('Failed to add MP4 input.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    const confirmed = window.confirm(
+      `Delete "${item.fileName}" from the library?\n\nThis cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    try {
+      await deleteAsset('mp4', item.fileName);
+      toast.success('MP4 removed from library.');
+      await onAssetDeleted();
+    } catch {
+      toast.error('Failed to remove MP4.');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -1559,6 +2010,11 @@ function Mp4Inspector({
         onClick={handleAdd}
         loading={loading}
       />
+      <DeleteLibraryItemButton
+        onClick={handleDelete}
+        disabled={deleting}
+        label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
+      />
     </div>
   );
 }
@@ -1567,23 +2023,52 @@ function AudioInspector({
   item,
   roomId,
   onDone,
+  onAssetDeleted,
+  onInputCreated,
 }: {
   item: AssetItemAudio;
   roomId: string;
   onDone: () => Promise<void>;
+  onAssetDeleted: () => Promise<void>;
+  onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
 }) {
   const { addAudioInput } = useActions();
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const handleAdd = async () => {
     setLoading(true);
     try {
-      await addAudioInput(roomId, item.fileName);
+      const response = await addAudioInput(roomId, item.fileName);
+      await onInputCreated?.({
+        inputId: response.inputId,
+        kind: 'audio',
+        fileName: item.fileName,
+        durationMs: item.durationMs,
+      });
       await onDone();
     } catch {
       toast.error('Failed to add audio input.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    const confirmed = window.confirm(
+      `Delete "${item.fileName}" from the library?\n\nThis cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    try {
+      await deleteAsset('audio', item.fileName);
+      toast.success('Audio asset removed from library.');
+      await onAssetDeleted();
+    } catch {
+      toast.error('Failed to remove audio asset.');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -1599,6 +2084,11 @@ function AudioInspector({
         onClick={handleAdd}
         loading={loading}
       />
+      <DeleteLibraryItemButton
+        onClick={handleDelete}
+        disabled={deleting}
+        label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
+      />
     </div>
   );
 }
@@ -1607,23 +2097,51 @@ function ImageInspector({
   item,
   roomId,
   onDone,
+  onAssetDeleted,
+  onInputCreated,
 }: {
   item: AssetItemImage;
   roomId: string;
   onDone: () => Promise<void>;
+  onAssetDeleted: () => Promise<void>;
+  onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
 }) {
   const { addImageInput } = useActions();
   const [loading, setLoading] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const handleAdd = async () => {
     setLoading(true);
     try {
-      await addImageInput(roomId, item.fileName);
+      const response = await addImageInput(roomId, item.fileName);
+      await onInputCreated?.({
+        inputId: response.inputId,
+        kind: 'image',
+        fileName: item.fileName,
+      });
       await onDone();
     } catch {
       toast.error('Failed to add image input.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    const confirmed = window.confirm(
+      `Delete "${item.fileName}" from the library?\n\nThis cannot be undone.`,
+    );
+    if (!confirmed) return;
+
+    setDeleting(true);
+    try {
+      await deleteAsset('picture', item.fileName);
+      toast.success('Image removed from library.');
+      await onAssetDeleted();
+    } catch {
+      toast.error('Failed to remove image.');
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -1649,6 +2167,11 @@ function ImageInspector({
         onClick={handleAdd}
         loading={loading}
       />
+      <DeleteLibraryItemButton
+        onClick={handleDelete}
+        disabled={deleting}
+        label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
+      />
     </div>
   );
 }
@@ -1657,10 +2180,12 @@ function TwitchInspector({
   item,
   roomId,
   onDone,
+  onInputCreated,
 }: {
   item: AssetItemTwitch;
   roomId: string;
   onDone: () => Promise<void>;
+  onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
 }) {
   const { addTwitchInput } = useActions();
   const [loading, setLoading] = useState(false);
@@ -1668,7 +2193,11 @@ function TwitchInspector({
   const handleAdd = async () => {
     setLoading(true);
     try {
-      await addTwitchInput(roomId, item.channel.streamId);
+      const response = await addTwitchInput(roomId, item.channel.streamId);
+      await onInputCreated?.({
+        inputId: response.inputId,
+        kind: 'twitch',
+      });
       await onDone();
     } catch {
       toast.error(`Failed to add "${item.channel.displayName}" stream.`);
@@ -1717,10 +2246,12 @@ function KickInspector({
   item,
   roomId,
   onDone,
+  onInputCreated,
 }: {
   item: AssetItemKick;
   roomId: string;
   onDone: () => Promise<void>;
+  onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
 }) {
   const { addKickInput } = useActions();
   const [loading, setLoading] = useState(false);
@@ -1728,7 +2259,11 @@ function KickInspector({
   const handleAdd = async () => {
     setLoading(true);
     try {
-      await addKickInput(roomId, item.channel.streamId);
+      const response = await addKickInput(roomId, item.channel.streamId);
+      await onInputCreated?.({
+        inputId: response.inputId,
+        kind: 'kick',
+      });
       await onDone();
     } catch {
       toast.error(`Failed to add "${item.channel.displayName}" stream.`);
@@ -1780,8 +2315,11 @@ function ActionInspector({
   roomId,
   inputs,
   onDone,
+  onInputCreated,
   whipCtx,
-  onUploadComplete,
+  onUploadFiles,
+  uploadJobs,
+  hasActiveUploads,
   currentMp4Folder,
   currentPictureFolder,
   currentAudioFolder,
@@ -1790,8 +2328,11 @@ function ActionInspector({
   roomId: string;
   inputs: Input[];
   onDone: () => Promise<void>;
+  onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
   whipCtx: ReturnType<typeof useWhipConnectionsContext>;
-  onUploadComplete: () => Promise<void>;
+  onUploadFiles: (files: File[]) => Promise<void>;
+  uploadJobs: UploadJob[];
+  hasActiveUploads: boolean;
   currentMp4Folder: string;
   currentPictureFolder: string;
   currentAudioFolder: string;
@@ -1802,7 +2343,9 @@ function ActionInspector({
         <UploadInspector
           mediaType='mp4'
           currentFolder={currentMp4Folder}
-          onUploadComplete={onUploadComplete}
+          onUploadFiles={onUploadFiles}
+          jobs={uploadJobs}
+          hasActiveUploads={hasActiveUploads}
         />
       );
     case 'upload-audio':
@@ -1810,7 +2353,9 @@ function ActionInspector({
         <UploadInspector
           mediaType='audio'
           currentFolder={currentAudioFolder}
-          onUploadComplete={onUploadComplete}
+          onUploadFiles={onUploadFiles}
+          jobs={uploadJobs}
+          hasActiveUploads={hasActiveUploads}
         />
       );
     case 'upload-image':
@@ -1818,18 +2363,43 @@ function ActionInspector({
         <UploadInspector
           mediaType='picture'
           currentFolder={currentPictureFolder}
-          onUploadComplete={onUploadComplete}
+          onUploadFiles={onUploadFiles}
+          jobs={uploadJobs}
+          hasActiveUploads={hasActiveUploads}
         />
       );
     case 'hls':
-      return <HlsActionInspector roomId={roomId} onDone={onDone} />;
+      return (
+        <HlsActionInspector
+          roomId={roomId}
+          onDone={onDone}
+          onInputCreated={onInputCreated}
+        />
+      );
     case 'text':
-      return <TextActionInspector roomId={roomId} onDone={onDone} />;
+      return (
+        <TextActionInspector
+          roomId={roomId}
+          onDone={onDone}
+          onInputCreated={onInputCreated}
+        />
+      );
     case 'game':
-      return <GameActionInspector roomId={roomId} onDone={onDone} />;
+      return (
+        <GameActionInspector
+          roomId={roomId}
+          onDone={onDone}
+          onInputCreated={onInputCreated}
+        />
+      );
     case 'hands':
       return (
-        <HandsActionInspector roomId={roomId} inputs={inputs} onDone={onDone} />
+        <HandsActionInspector
+          roomId={roomId}
+          inputs={inputs}
+          onDone={onDone}
+          onInputCreated={onInputCreated}
+        />
       );
     case 'camera':
       return (
@@ -1837,6 +2407,7 @@ function ActionInspector({
           kind='camera'
           roomId={roomId}
           onDone={onDone}
+          onInputCreated={onInputCreated}
           pcRef={whipCtx.cameraPcRef}
           streamRef={whipCtx.cameraStreamRef}
           setActiveWhipInputId={whipCtx.setActiveCameraInputId}
@@ -1849,6 +2420,7 @@ function ActionInspector({
           kind='screenshare'
           roomId={roomId}
           onDone={onDone}
+          onInputCreated={onInputCreated}
           pcRef={whipCtx.screensharePcRef}
           streamRef={whipCtx.screenshareStreamRef}
           setActiveWhipInputId={whipCtx.setActiveScreenshareInputId}
@@ -1863,14 +2435,17 @@ function ActionInspector({
 function UploadInspector({
   mediaType,
   currentFolder,
-  onUploadComplete,
+  onUploadFiles,
+  jobs,
+  hasActiveUploads,
 }: {
   mediaType: UploadMediaType;
   currentFolder: string;
-  onUploadComplete: () => Promise<void>;
+  onUploadFiles: (files: File[]) => Promise<void>;
+  jobs: UploadJob[];
+  hasActiveUploads: boolean;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
-  const [uploading, setUploading] = useState(false);
   const [dragOver, setDragOver] = useState(false);
 
   const accept =
@@ -1881,37 +2456,30 @@ function UploadInspector({
         : PICTURE_ACCEPT;
   const label =
     mediaType === 'mp4' ? 'MP4' : mediaType === 'audio' ? 'AUDIO' : 'IMAGE';
-
-  const doUpload = async (file: File) => {
-    setUploading(true);
-    try {
-      await uploadFile(file, mediaType, currentFolder);
-      toast.success(`Uploaded "${file.name}"`);
-      await onUploadComplete();
-    } catch (err: any) {
-      toast.error(err?.message || 'Upload failed');
-    } finally {
-      setUploading(false);
-    }
-  };
+  const visibleJobs = useMemo(
+    () => jobs.filter((job) => job.mediaType === mediaType),
+    [jobs, mediaType],
+  );
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) doUpload(file);
+    const files = Array.from(e.target.files ?? []);
+    if (files.length > 0) void onUploadFiles(files);
     e.target.value = '';
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) doUpload(file);
+    const files = Array.from(e.dataTransfer.files ?? []);
+    if (files.length > 0) void onUploadFiles(files);
   };
 
   return (
     <div className='space-y-3'>
       <PropRow label='TYPE' value={`UPLOAD_${label}`} />
-      {currentFolder && <PropRow label='TARGET_FOLDER' value={currentFolder} />}
+      <PropRow label='MODE' value='MULTI_UPLOAD' />
+      <PropRow label='TARGET_FOLDER' value={currentFolder || 'ROOT'} />
+      {hasActiveUploads && <PropRow label='QUEUE' value='ACTIVE' />}
       <div
         onDragOver={(e) => {
           e.preventDefault();
@@ -1924,7 +2492,7 @@ function UploadInspector({
           dragOver
             ? 'border-[#00f3ff] bg-[#00f3ff]/10'
             : 'border-[#3a494b]/40 hover:border-[#00f3ff]/40'
-        } ${uploading ? 'opacity-50 pointer-events-none' : ''}`}>
+        }`}>
         <svg
           viewBox='0 0 24 24'
           className='w-8 h-8 text-[#849495]'
@@ -1943,16 +2511,18 @@ function UploadInspector({
           />
         </svg>
         <span className='font-mono text-[10px] text-[#849495]'>
-          {uploading ? 'UPLOADING...' : `DROP ${label} FILE OR CLICK`}
+          {`DROP ${label} FILES OR CLICK`}
         </span>
       </div>
       <input
         ref={fileRef}
         type='file'
+        multiple
         accept={accept}
         className='hidden'
         onChange={handleFileChange}
       />
+      {visibleJobs.length > 0 && <UploadJobsPanel jobs={visibleJobs} />}
     </div>
   );
 }
@@ -1961,10 +2531,14 @@ function HlsSavedInspector({
   item,
   roomId,
   onDone,
+  onAssetDeleted,
+  onInputCreated,
 }: {
   item: AssetItemHls;
   roomId: string;
   onDone: () => Promise<void>;
+  onAssetDeleted: () => Promise<void>;
+  onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
 }) {
   const { addHlsInput, hlsStreamStorage } = useActions();
   const [loading, setLoading] = useState(false);
@@ -1973,7 +2547,11 @@ function HlsSavedInspector({
   const handleAdd = async () => {
     setLoading(true);
     try {
-      await addHlsInput(roomId, item.url);
+      const response = await addHlsInput(roomId, item.url);
+      await onInputCreated?.({
+        inputId: response.inputId,
+        kind: 'hls-saved',
+      });
       await onDone();
     } catch {
       toast.error('Failed to add HLS stream.');
@@ -1983,12 +2561,17 @@ function HlsSavedInspector({
   };
 
   const handleDelete = async () => {
+    const confirmed = window.confirm(
+      `Delete "${item.name}" from the library?\n\nThis cannot be undone.`,
+    );
+    if (!confirmed) return;
+
     setDeleting(true);
     try {
       const result = await hlsStreamStorage.remove(item.fileName);
       if (result.ok) {
         toast.success('HLS stream removed from library.');
-        await onDone();
+        await onAssetDeleted();
       } else {
         toast.error('Failed to remove HLS stream.');
       }
@@ -2018,12 +2601,11 @@ function HlsSavedInspector({
         onClick={handleAdd}
         loading={loading}
       />
-      <button
+      <DeleteLibraryItemButton
         onClick={handleDelete}
         disabled={deleting}
-        className='w-full py-1.5 bg-transparent border border-[#fe00fe]/40 text-[#fe00fe] font-mono text-[10px] uppercase tracking-widest hover:bg-[#fe00fe]/10 transition-colors disabled:opacity-40'>
-        {deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
-      </button>
+        label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
+      />
     </div>
   );
 }
@@ -2031,9 +2613,11 @@ function HlsSavedInspector({
 function HlsActionInspector({
   roomId,
   onDone,
+  onInputCreated,
 }: {
   roomId: string;
   onDone: () => Promise<void>;
+  onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
 }) {
   const { addHlsInput, hlsStreamStorage } = useActions();
   const [url, setUrl] = useState('');
@@ -2049,7 +2633,11 @@ function HlsActionInspector({
     }
     setLoading(true);
     try {
-      await addHlsInput(roomId, trimmed);
+      const response = await addHlsInput(roomId, trimmed);
+      await onInputCreated?.({
+        inputId: response.inputId,
+        kind: 'hls-saved',
+      });
       if (saveToLibrary) {
         let streamName = name.trim();
         if (!streamName) {
@@ -2118,9 +2706,11 @@ function HlsActionInspector({
 function TextActionInspector({
   roomId,
   onDone,
+  onInputCreated,
 }: {
   roomId: string;
   onDone: () => Promise<void>;
+  onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
 }) {
   const { addTextInput } = useActions();
   const [text, setText] = useState('');
@@ -2134,7 +2724,11 @@ function TextActionInspector({
     }
     setLoading(true);
     try {
-      await addTextInput(roomId, text, align);
+      const response = await addTextInput(roomId, text, align);
+      await onInputCreated?.({
+        inputId: response.inputId,
+        kind: 'text',
+      });
       await onDone();
     } catch {
       toast.error('Failed to add text input.');
@@ -2188,9 +2782,11 @@ function TextActionInspector({
 function GameActionInspector({
   roomId,
   onDone,
+  onInputCreated,
 }: {
   roomId: string;
   onDone: () => Promise<void>;
+  onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
 }) {
   const { addSnakeGameInput } = useActions();
   const [title, setTitle] = useState('');
@@ -2199,7 +2795,11 @@ function GameActionInspector({
   const handleAdd = async () => {
     setLoading(true);
     try {
-      await addSnakeGameInput(roomId, title || undefined);
+      const response = await addSnakeGameInput(roomId, title || undefined);
+      await onInputCreated?.({
+        inputId: response.inputId,
+        kind: 'game',
+      });
       await onDone();
     } catch {
       toast.error('Failed to add game input.');
@@ -2244,10 +2844,12 @@ function HandsActionInspector({
   roomId,
   inputs,
   onDone,
+  onInputCreated,
 }: {
   roomId: string;
   inputs: Input[];
   onDone: () => Promise<void>;
+  onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
 }) {
   const videoInputs = inputs.filter(
     (i) => VIDEO_TYPES.has(i.type) && i.status === 'connected',
@@ -2264,7 +2866,11 @@ function HandsActionInspector({
     }
     setLoading(true);
     try {
-      await addHandsInput(roomId, selectedInputId);
+      const response = await addHandsInput(roomId, selectedInputId);
+      await onInputCreated?.({
+        inputId: response.inputId,
+        kind: 'hands',
+      });
       await onDone();
     } catch {
       toast.error('Failed to add hand tracking input.');
@@ -2318,6 +2924,7 @@ function WhipActionInspector({
   kind,
   roomId,
   onDone,
+  onInputCreated,
   pcRef,
   streamRef,
   setActiveWhipInputId,
@@ -2326,6 +2933,7 @@ function WhipActionInspector({
   kind: 'camera' | 'screenshare';
   roomId: string;
   onDone: () => Promise<void>;
+  onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
   pcRef: MutableRefObject<RTCPeerConnection | null>;
   streamRef: MutableRefObject<MediaStream | null>;
   setActiveWhipInputId: (id: string | null) => void;
@@ -2405,6 +3013,10 @@ function WhipActionInspector({
       });
       saveLastWhipInputId(roomId, response.inputId);
       saveUserName(roomId, cleanedName);
+      await onInputCreated?.({
+        inputId: response.inputId,
+        kind,
+      });
       await onDone();
     } catch (e: any) {
       console.error(`${kind} add failed:`, e);

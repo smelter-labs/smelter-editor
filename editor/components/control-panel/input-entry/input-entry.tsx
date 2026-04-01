@@ -4,8 +4,8 @@ import { useActions } from '../contexts/actions-context';
 import { GripVertical } from 'lucide-react';
 import ShaderPanel from './shader-panel';
 import SnakeEventShaderPanel from './snake-event-shader-panel';
-import { InputEntryTextSection } from './input-entry-text-section';
 import { DeleteButton } from './delete-button';
+import { MissingAssetMp4Row } from './missing-asset-mp4-row';
 import { AddShaderModal } from './add-shader-modal';
 
 import { handleShaderDrop, handleShaderDragOver } from './shader-drop-handler';
@@ -17,7 +17,6 @@ import {
 } from '../whip-input/utils/whip-storage';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { hexToPackedInt } from '@/lib/color-utils';
-import { Input as ShadcnInput } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
 import { Slider } from '@/components/ui/slider';
 
@@ -65,28 +64,6 @@ export default function InputEntry({
     [shaderId: string]: string | null;
   }>({});
   const [isAddShaderModalOpen, setIsAddShaderModalOpen] = useState(false);
-  const [textValue, setTextValue] = useState(input.text || '');
-  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>(
-    input.textAlign || 'left',
-  );
-  const [textColor, setTextColor] = useState<string>(
-    input.textColor || '#ffffff',
-  );
-  const [textMaxLines, setTextMaxLines] = useState<number>(
-    input.textMaxLines ?? 10,
-  );
-  const [textScrollSpeed, setTextScrollSpeed] = useState<number>(
-    input.textScrollSpeed ?? 80,
-  );
-  const [textScrollLoop, setTextScrollLoop] = useState<boolean>(
-    input.textScrollLoop ?? true,
-  );
-  const [textFontSize, setTextFontSize] = useState<number>(
-    input.textFontSize ?? 80,
-  );
-  const [isTextSaving, setIsTextSaving] = useState(false);
-  const textSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const colorDebounceRef = useRef<NodeJS.Timeout | null>(null);
   const [gameGridAlphaDraft, setGameGridAlphaDraft] = useState<number | null>(
     null,
   );
@@ -94,42 +71,6 @@ export default function InputEntry({
   const gameBorderColorTimerRef = useRef<NodeJS.Timeout | null>(null);
   const gameGridColorTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isMobile = useIsMobile();
-
-  const isTextInput = input.type === 'text-input';
-
-  useEffect(() => {
-    if (input.textColor !== undefined) {
-      setTextColor(input.textColor);
-    }
-  }, [input.textColor]);
-
-  useEffect(() => {
-    setTextValue(input.text || '');
-  }, [input.text]);
-
-  useEffect(() => {
-    if (input.textMaxLines !== undefined) {
-      setTextMaxLines(input.textMaxLines);
-    }
-  }, [input.textMaxLines]);
-
-  useEffect(() => {
-    if (input.textScrollSpeed !== undefined) {
-      setTextScrollSpeed(input.textScrollSpeed);
-    }
-  }, [input.textScrollSpeed]);
-
-  useEffect(() => {
-    if (input.textScrollLoop !== undefined) {
-      setTextScrollLoop(input.textScrollLoop);
-    }
-  }, [input.textScrollLoop]);
-
-  useEffect(() => {
-    if (input.textFontSize !== undefined) {
-      setTextFontSize(input.textFontSize);
-    }
-  }, [input.textFontSize]);
 
   const lastParamChangeRef = useRef<{ [key: string]: number }>({});
   const [sliderValues, setSliderValues] = useState<{ [key: string]: number }>(
@@ -146,7 +87,6 @@ export default function InputEntry({
           clearTimeout(timer as number);
         }
       });
-      if (colorDebounceRef.current) clearTimeout(colorDebounceRef.current);
       if (gameGridAlphaTimerRef.current)
         clearTimeout(gameGridAlphaTimerRef.current);
       if (gameBorderColorTimerRef.current)
@@ -162,140 +102,6 @@ export default function InputEntry({
   const addedShaderIds = useMemo(
     () => new Set((input.shaders || []).map((s) => s.shaderId)),
     [input.shaders],
-  );
-
-  const handleTextChange = useCallback(
-    (newText: string) => {
-      setTextValue(newText);
-      if (textSaveTimerRef.current) {
-        clearTimeout(textSaveTimerRef.current);
-      }
-      textSaveTimerRef.current = setTimeout(async () => {
-        setIsTextSaving(true);
-        try {
-          await actions.updateInput(roomId, input.inputId, {
-            text: newText,
-            shaders: input.shaders,
-            volume: input.volume,
-          });
-          await refreshState();
-        } finally {
-          setIsTextSaving(false);
-        }
-      }, 500);
-    },
-    [roomId, input, refreshState],
-  );
-
-  const handleTextAlignChange = useCallback(
-    async (newAlign: 'left' | 'center' | 'right') => {
-      setTextAlign(newAlign);
-      setIsTextSaving(true);
-      try {
-        await actions.updateInput(roomId, input.inputId, {
-          textAlign: newAlign,
-          shaders: input.shaders,
-          volume: input.volume,
-        });
-        await refreshState();
-      } finally {
-        setIsTextSaving(false);
-      }
-    },
-    [roomId, input, refreshState],
-  );
-
-  const handleTextColorChange = useCallback(
-    (newColor: string) => {
-      setTextColor(newColor);
-      if (colorDebounceRef.current) clearTimeout(colorDebounceRef.current);
-      colorDebounceRef.current = setTimeout(async () => {
-        setIsTextSaving(true);
-        try {
-          await actions.updateInput(roomId, input.inputId, {
-            textColor: newColor,
-            shaders: input.shaders,
-            volume: input.volume,
-          });
-          await refreshState();
-        } finally {
-          setIsTextSaving(false);
-        }
-      }, 150);
-    },
-    [roomId, input, refreshState],
-  );
-
-  const handleTextMaxLinesChange = useCallback(
-    async (newMaxLines: number) => {
-      setTextMaxLines(newMaxLines);
-      setIsTextSaving(true);
-      try {
-        await actions.updateInput(roomId, input.inputId, {
-          textMaxLines: newMaxLines,
-          shaders: input.shaders,
-          volume: input.volume,
-        });
-        await refreshState();
-      } finally {
-        setIsTextSaving(false);
-      }
-    },
-    [roomId, input, refreshState],
-  );
-
-  const handleTextScrollSpeedChange = useCallback(
-    async (newSpeed: number) => {
-      setTextScrollSpeed(newSpeed);
-      setIsTextSaving(true);
-      try {
-        await actions.updateInput(roomId, input.inputId, {
-          textScrollSpeed: newSpeed,
-          shaders: input.shaders,
-          volume: input.volume,
-        });
-        await refreshState();
-      } finally {
-        setIsTextSaving(false);
-      }
-    },
-    [roomId, input, refreshState],
-  );
-
-  const handleTextScrollLoopChange = useCallback(
-    async (newLoop: boolean) => {
-      setTextScrollLoop(newLoop);
-      setIsTextSaving(true);
-      try {
-        await actions.updateInput(roomId, input.inputId, {
-          textScrollLoop: newLoop,
-          shaders: input.shaders,
-          volume: input.volume,
-        });
-        await refreshState();
-      } finally {
-        setIsTextSaving(false);
-      }
-    },
-    [roomId, input, refreshState],
-  );
-
-  const handleTextFontSizeChange = useCallback(
-    async (newFontSize: number) => {
-      setTextFontSize(newFontSize);
-      setIsTextSaving(true);
-      try {
-        await actions.updateInput(roomId, input.inputId, {
-          textFontSize: newFontSize,
-          shaders: input.shaders,
-          volume: input.volume,
-        });
-        await refreshState();
-      } finally {
-        setIsTextSaving(false);
-      }
-    },
-    [roomId, input, refreshState],
   );
 
   const handleDelete = useCallback(async () => {
@@ -634,29 +440,13 @@ export default function InputEntry({
           <div className='text-[12px] font-bold text-foreground truncate'>
             {input.title}
           </div>
-          {isTextSaving && (
-            <span className='ml-2 text-xs text-muted-foreground'>
-              Saving...
-            </span>
-          )}
           {!readOnly && canRemove && <DeleteButton onClick={handleDelete} />}
         </div>
-        {isTextInput && !readOnly && (
-          <InputEntryTextSection
-            textValue={textValue}
-            textAlign={textAlign}
-            textColor={textColor}
-            textMaxLines={textMaxLines}
-            textScrollSpeed={textScrollSpeed}
-            textScrollLoop={textScrollLoop}
-            textFontSize={textFontSize}
-            onTextChange={handleTextChange}
-            onTextAlignChange={handleTextAlignChange}
-            onTextColorChange={handleTextColorChange}
-            onTextMaxLinesChange={handleTextMaxLinesChange}
-            onTextScrollSpeedChange={handleTextScrollSpeedChange}
-            onTextScrollLoopChange={handleTextScrollLoopChange}
-            onTextFontSizeChange={handleTextFontSizeChange}
+        {input.type === 'local-mp4' && input.mp4AssetMissing && !readOnly && (
+          <MissingAssetMp4Row
+            roomId={roomId}
+            input={input}
+            refreshState={refreshState}
           />
         )}
         {input.type === 'game' && !readOnly && (
