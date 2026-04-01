@@ -5,6 +5,19 @@ import { toPublicSnakeGameInputState } from '../snakeGame/publicSnakeGameState';
 
 export type { PublicInputState } from '../types';
 
+function toRelativeMediaPath(filePath: string, baseDir: string): string | null {
+  const basePath = path.join(process.cwd(), baseDir);
+  const relativePath = path.relative(basePath, filePath);
+  if (
+    relativePath.startsWith('..') ||
+    path.isAbsolute(relativePath) ||
+    relativePath === ''
+  ) {
+    return null;
+  }
+  return relativePath.split(path.sep).join('/');
+}
+
 export function toPublicInputState(input: RoomInputState): PublicInputState {
   const base = {
     inputId: input.inputId,
@@ -36,15 +49,18 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
   };
   switch (input.type) {
     case 'local-mp4': {
-      const fileName = path.basename(input.mp4FilePath);
-      const isAudio = input.mp4FilePath.includes('/audios/');
+      const audioFileName = toRelativeMediaPath(input.mp4FilePath, 'audios');
+      const mp4FileName = toRelativeMediaPath(input.mp4FilePath, 'mp4s');
+      const isAudio = audioFileName !== null;
       return {
         ...base,
         sourceState: 'always-live' as const,
         sourceWidth: input.mp4VideoWidth,
         sourceHeight: input.mp4VideoHeight,
-        mp4FileName: isAudio ? undefined : fileName,
-        audioFileName: isAudio ? fileName : undefined,
+        mp4FileName: isAudio ? undefined : (mp4FileName ?? path.basename(input.mp4FilePath)),
+        audioFileName: isAudio
+          ? audioFileName
+          : undefined,
         mp4AssetMissing: input.mp4AssetMissing,
         missingAssetIsAudio: input.missingAssetIsAudio,
       };

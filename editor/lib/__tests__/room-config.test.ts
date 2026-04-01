@@ -180,6 +180,32 @@ describe('exportRoomConfig', () => {
     expect(config.inputs[0].mp4FileName).toBe('my_video.mp4');
   });
 
+  it('preserves nested local media paths already present on the input', () => {
+    const mp4Input: Input = {
+      ...minimalInput,
+      id: 1,
+      inputId: 'room::local::2',
+      type: 'local-mp4',
+      title: '[MP4] Demo',
+      description: '',
+      mp4FileName: 'nested/folder/demo.mp4',
+    };
+    const audioInput: Input = {
+      ...minimalInput,
+      id: 2,
+      inputId: 'room::local::3',
+      type: 'local-mp4',
+      title: '[AUDIO] Demo',
+      description: '',
+      audioFileName: 'nested/folder/demo.mp4',
+    };
+
+    const config = exportRoomConfig([mp4Input, audioInput], 'grid');
+
+    expect(config.inputs[0].mp4FileName).toBe('nested/folder/demo.mp4');
+    expect(config.inputs[1].audioFileName).toBe('nested/folder/demo.mp4');
+  });
+
   it('includes url for hls inputs', () => {
     const hlsInput: Input = {
       ...minimalInput,
