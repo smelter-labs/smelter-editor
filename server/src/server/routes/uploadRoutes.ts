@@ -24,6 +24,39 @@ const PICTURE_EXTS = new Set([
 
 const MAX_FOLDER_DEPTH = 3;
 
+function getMultipartFieldValue(field: unknown): string {
+  if (Array.isArray(field)) {
+    const firstField = field[0];
+    return typeof firstField?.value === 'string' ? firstField.value : '';
+  }
+
+  if (!field || typeof field !== 'object') {
+    return '';
+  }
+
+  const candidate = field as { value?: unknown };
+  return typeof candidate.value === 'string' ? candidate.value : '';
+}
+
+function getErrorDetails(error: unknown) {
+  if (error instanceof Error) {
+    const errorWithCode = error as Error & {
+      code?: string;
+      cause?: unknown;
+    };
+    return {
+      message: error.message,
+      code: errorWithCode.code,
+      cause: errorWithCode.cause,
+      stack: error.stack,
+    };
+  }
+
+  return {
+    message: String(error),
+  };
+}
+
 function sanitizeFolderPath(raw: string): string | null {
   const normalized = raw.replace(/\\/g, '/').replace(/\/+/g, '/');
   const segments = normalized.split('/').filter(Boolean);
@@ -53,42 +86,78 @@ function isAllowedExt(fileName: string, allowed: Set<string>): boolean {
 export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
   // ── Upload MP4 ──────────────────────────────────────────────
   routes.post('/upload/mp4', async (req, res) => {
-    const data = await req.file();
-    if (!data) {
-      return res.status(400).send({ error: 'No file uploaded' });
-    }
+    console.log('[upload/mp4] request started', {
+      contentLength: req.headers['content-length'],
+      contentType: req.headers['content-type'],
+    });
 
-    const fileName = sanitizeFileName(data.filename);
-    if (!fileName || !isAllowedExt(fileName, MP4_EXTS)) {
-      await data.toBuffer();
-      return res
-        .status(400)
-        .send({ error: 'Invalid file. Only .mp4 files are accepted.' });
-    }
-
-    const folderRaw =
-      (data.fields.folder as any)?.value ?? '';
-    let folder = '';
-    if (folderRaw) {
-      const sanitized = sanitizeFolderPath(folderRaw);
-      if (sanitized === null) {
-        await data.toBuffer();
-        return res.status(400).send({ error: 'Invalid folder path' });
+    try {
+      const data = await req.file();
+      if (!data) {
+        console.warn('[upload/mp4] missing multipart file payload');
+        return res.status(400).send({ error: 'No file uploaded' });
       }
-      folder = sanitized;
+
+      const folderRaw = getMultipartFieldValue(data.fields.folder);
+      console.log('[upload/mp4] multipart parsed', {
+        fileName: data.filename,
+        mimeType: data.mimetype,
+        fields: Object.keys(data.fields),
+        folderRaw,
+      });
+
+      const fileName = sanitizeFileName(data.filename);
+      if (!fileName || !isAllowedExt(fileName, MP4_EXTS)) {
+        await data.toBuffer();
+        console.warn('[upload/mp4] rejected invalid file', {
+          fileName: data.filename,
+        });
+        return res
+          .status(400)
+          .send({ error: 'Invalid file. Only .mp4 files are accepted.' });
+      }
+
+      let folder = '';
+      if (folderRaw) {
+        const sanitized = sanitizeFolderPath(folderRaw);
+        if (sanitized === null) {
+          await data.toBuffer();
+          console.warn('[upload/mp4] rejected invalid folder', {
+            fileName,
+            folderRaw,
+          });
+          return res.status(400).send({ error: 'Invalid folder path' });
+        }
+        folder = sanitized;
+      }
+
+      const targetDir = folder
+        ? path.join(process.cwd(), 'mp4s', folder)
+        : path.join(process.cwd(), 'mp4s');
+      await fs.ensureDir(targetDir);
+
+      const filePath = path.join(targetDir, fileName);
+      await pipeline(data.file, fs.createWriteStream(filePath));
+      const stats = await fs.stat(filePath);
+
+      console.log('[upload/mp4] file stored', {
+        fileName,
+        folder,
+        filePath,
+        bytesWritten: stats.size,
+      });
+
+      mp4SuggestionsMonitor.refresh();
+
+      return res.status(200).send({ fileName, folder });
+    } catch (error) {
+      console.error('[upload/mp4] request failed', {
+        contentLength: req.headers['content-length'],
+        contentType: req.headers['content-type'],
+        ...getErrorDetails(error),
+      });
+      throw error;
     }
-
-    const targetDir = folder
-      ? path.join(process.cwd(), 'mp4s', folder)
-      : path.join(process.cwd(), 'mp4s');
-    await fs.ensureDir(targetDir);
-
-    const filePath = path.join(targetDir, fileName);
-    await pipeline(data.file, fs.createWriteStream(filePath));
-
-    mp4SuggestionsMonitor.refresh();
-
-    return res.status(200).send({ fileName, folder });
   });
 
   // ── Upload Picture ──────────────────────────────────────────
@@ -107,8 +176,7 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
       });
     }
 
-    const folderRaw =
-      (data.fields.folder as any)?.value ?? '';
+    const folderRaw = (data.fields.folder as any)?.value ?? '';
     let folder = '';
     if (folderRaw) {
       const sanitized = sanitizeFolderPath(folderRaw);
@@ -230,9 +298,9 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
     const fileName = sanitizeFileName(data.filename);
     if (!fileName || !isAllowedExt(fileName, AUDIO_EXTS)) {
       await data.toBuffer();
-      return res
-        .status(400)
-        .send({ error: 'Invalid file. Only .wav and .mp3 files are accepted.' });
+      return res.status(400).send({
+        error: 'Invalid file. Only .wav and .mp3 files are accepted.',
+      });
     }
 
     const folderRaw = (data.fields.folder as any)?.value ?? '';
@@ -259,17 +327,28 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
 
     try {
       await execFileAsync('ffmpeg', [
-        '-f', 'lavfi',
-        '-i', 'color=c=black:s=320x160:r=1',
-        '-i', tmpPath,
-        '-map', '0:v',
-        '-map', '1:a',
-        '-c:v', 'libx264',
-        '-tune', 'stillimage',
-        '-preset', 'ultrafast',
-        '-c:a', 'aac',
-        '-b:a', '192k',
-        '-af', 'apad=whole_dur=5',
+        '-f',
+        'lavfi',
+        '-i',
+        'color=c=black:s=320x160:r=1',
+        '-i',
+        tmpPath,
+        '-map',
+        '0:v',
+        '-map',
+        '1:a',
+        '-c:v',
+        'libx264',
+        '-tune',
+        'stillimage',
+        '-preset',
+        'ultrafast',
+        '-c:a',
+        'aac',
+        '-b:a',
+        '192k',
+        '-af',
+        'apad=whole_dur=5',
         '-shortest',
         '-y',
         outputPath,

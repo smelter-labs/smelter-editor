@@ -135,16 +135,33 @@ routes.addHook('onResponse', (req, reply, done) => {
   done();
 });
 
-routes.setErrorHandler((err: unknown, _req, res) => {
+routes.setErrorHandler((err: unknown, req, res) => {
   const e = err as {
     statusCode?: number;
     status?: number;
     code?: string;
     message?: string;
+    cause?: unknown;
+    stack?: string;
   };
   const statusCode = e.statusCode ?? e.status ?? 500;
   const code = e.code ?? 'INTERNAL_ERROR';
   const message = e.message ?? 'Internal server error';
+
+  if (req.url.startsWith('/upload/')) {
+    console.error('[upload] error handler caught request failure', {
+      method: req.method,
+      url: req.url,
+      statusCode,
+      code,
+      message,
+      cause: e.cause,
+      stack: e.stack,
+      contentLength: req.headers['content-length'],
+      contentType: req.headers['content-type'],
+    });
+  }
+
   res.status(statusCode).send({
     statusCode,
     code,
