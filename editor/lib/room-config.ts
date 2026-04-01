@@ -512,9 +512,7 @@ function savePendingWhipInputs(
   }
 }
 
-function loadPendingWhipInputs(
-  roomId: string,
-): StoredPendingWhipInput[] {
+function loadPendingWhipInputs(roomId: string): StoredPendingWhipInput[] {
   if (typeof window === 'undefined') return [];
   const key = `${PENDING_WHIP_STORAGE_KEY}-${roomId}`;
   try {

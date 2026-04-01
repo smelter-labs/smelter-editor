@@ -6,7 +6,6 @@ import type {
 
 export type {
   SnakeEventType,
-  
   SnakeEventShaderMapping,
   SnakeEventShaderConfig,
 } from '@smelter-editor/types';

@@ -3,8 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 
 const AUTO_PLAY_MACRO_STORAGE_KEY = 'smelter:voice:auto-play-macro';
-const AUTO_PLAY_MACRO_CHANGED_EVENT =
-  'smelter:voice:auto-play-macro-changed';
+const AUTO_PLAY_MACRO_CHANGED_EVENT = 'smelter:voice:auto-play-macro-changed';
 
 export const FEEDBACK_POSITIONS = [
   'top-left',

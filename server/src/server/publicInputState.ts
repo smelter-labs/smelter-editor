@@ -2,8 +2,6 @@ import type { RoomInputState } from '../room/types';
 import type { PublicInputState } from '../types';
 import { toPublicSnakeGameInputState } from '../snakeGame/publicSnakeGameState';
 
-;
-
 export function toPublicInputState(input: RoomInputState): PublicInputState {
   const base = {
     inputId: input.inputId,

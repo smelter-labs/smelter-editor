@@ -101,4 +101,3 @@ export type RecordingInfo = {
 };
 
 /** @deprecated Use `SavedItemInfo` from `@/lib/storage-client` instead */
-;

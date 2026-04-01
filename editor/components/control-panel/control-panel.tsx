@@ -133,8 +133,6 @@ type ControlPanelProps = {
   }) => React.ReactNode;
 };
 
-;
-
 export default function ControlPanel(props: ControlPanelProps) {
   return (
     <ActionsProvider actions={defaultActions}>

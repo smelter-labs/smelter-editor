@@ -165,7 +165,7 @@ const MIN_CLIP_MS = 1000;
 /** @deprecated Use MIN_CLIP_MS instead */
 const MIN_SEGMENT_MS = MIN_CLIP_MS;
 
-export {  DEFAULT_PPS,   };
+export { DEFAULT_PPS };
 export { OUTPUT_TRACK_INPUT_ID, OUTPUT_TRACK_ID, OUTPUT_CLIP_ID };
 
 // ── Helpers ──────────────────────────────────────────────

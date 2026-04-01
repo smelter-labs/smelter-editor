@@ -16,17 +16,7 @@ import type { HandsStore } from '../hands/handStore';
 import { createContext, useContext } from 'react';
 import { useStore } from 'zustand';
 
-export type {
-  
-  
-  
-  
-  
-  
-  SnakeGameState,
-  
-  
-} from '../snakeGame/types';
+export type { SnakeGameState } from '../snakeGame/types';
 import type { SnakeGameState } from '../snakeGame/types';
 
 export type InputConfig = {

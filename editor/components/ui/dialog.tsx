@@ -87,14 +87,4 @@ function DialogDescription({
   );
 }
 
-export {
-  Dialog,
-  
-  
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  
-  
-};
+export { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription };

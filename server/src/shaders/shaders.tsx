@@ -6,8 +6,6 @@ import type {
   ShaderParamDefinition,
 } from '../types';
 
-;
-
 type AvailableShader = {
   id: string;
   isActive: boolean;

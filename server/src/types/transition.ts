@@ -1,5 +1,1 @@
-export type {
-  
-  
-  ActiveTransition,
-} from '@smelter-editor/types';
+export type { ActiveTransition } from '@smelter-editor/types';

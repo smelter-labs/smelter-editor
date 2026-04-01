@@ -5,8 +5,6 @@ import type {
   RoomEvent,
 } from '@smelter-editor/types';
 
-;
-
 // pnpm wants node modules imports, fastify ws's use "export =".
 interface RoomWebSocket {
   readonly readyState: number;

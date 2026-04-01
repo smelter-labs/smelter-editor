@@ -22,9 +22,7 @@ import { RESOLUTION_PRESETS } from './types';
 
 const execFileAsync = promisify(execFile);
 
-export type { Resolution,  } from './types';
-;
-
+export type { Resolution } from './types';
 import type { AudioStoreState } from './audio/audioStore';
 
 export type SmelterOutput = {

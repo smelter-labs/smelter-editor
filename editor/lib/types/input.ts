@@ -4,7 +4,4 @@ export type {
   UpdateInputOptions,
   RegisterInputOptions,
 } from '@smelter-editor/types';
-;
-;
-
 export type Input = PublicInputState & { id: number };

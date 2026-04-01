@@ -1,8 +1,6 @@
 import { state } from './server/serverState';
 import { config } from './config';
 // import { renderSnakeBoard, findFirstSnakeGameState } from './snakeGame/snakeGameDashboard';
-;
-
 const isBoxed = process.env.LAYOUT === 'boxed';
 
 // Lazy-loaded blessed modules — only imported when LAYOUT=boxed

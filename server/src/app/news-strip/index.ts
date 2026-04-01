@@ -1,6 +1,1 @@
 export { NewsStripOverlay } from './NewsStripOverlay';
-;
-;
-;
-;
-;
