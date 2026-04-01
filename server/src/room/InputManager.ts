@@ -456,6 +456,9 @@ export class InputManager {
       if (found) {
         fileName = found;
       } else {
+        const missingImageName = formatImageName(
+          path.basename(imageId.replace(/^pictures::/, '')),
+        );
         this.inputs.push({
           inputId,
           type: 'image',
@@ -467,7 +470,7 @@ export class InputManager {
           hidden: false,
           motionEnabled: false,
           metadata: {
-            title: `[Missing image] ${formatImageName(path.basename(baseName))}`,
+            title: `[Missing image] ${missingImageName}`,
             description:
               'Image not found on server. This slot is reserved; attach an image file below to use it.',
           },

@@ -106,4 +106,33 @@ describe('InputManager', () => {
       },
     );
   });
+
+  it('creates a missing-image placeholder when config imageId cannot be resolved', async () => {
+    mocks.pictureSuggestionMonitor.pictureFiles = [];
+
+    const onStateChange = vi.fn();
+    const placeholderManager = new PlaceholderManager('room');
+    const motionController = {} as MotionController;
+    const manager = new InputManager(
+      'room',
+      placeholderManager,
+      motionController,
+      onStateChange,
+    );
+
+    const inputId = await manager.addNewInput({
+      type: 'image',
+      imageId: 'pictures::nested/folder/demo',
+    });
+
+    expect(inputId).toBeTruthy();
+    expect(manager.getInput(inputId!)).toMatchObject({
+      type: 'image',
+      imageId: 'pictures::nested/folder/demo',
+      imageAssetMissing: true,
+      metadata: {
+        title: '[Missing image] Demo',
+      },
+    });
+  });
 });
