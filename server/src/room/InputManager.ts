@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { pathExists, readdir } from 'fs-extra';
+import { pathExists } from 'fs-extra';
 import { SmelterInstance, type RegisterSmelterInputOptions } from '../smelter';
 import { hlsUrlForKickChannel, hlsUrlForTwitchChannel } from '../streamlink';
 import { TwitchChannelMonitor } from '../twitch/TwitchChannelMonitor';
@@ -8,6 +8,7 @@ import { KickChannelMonitor } from '../kick/KickChannelMonitor';
 import { WhipInputMonitor } from '../whip/WhipInputMonitor';
 import { sleep } from '../utils';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
+import pictureSuggestionsMonitor from '../pictures/pictureSuggestionMonitor';
 import { getMp4DurationMs, getMp4VideoDimensions } from '../server/mp4Duration';
 import { logTimelineEvent } from '../dashboard';
 import { createDefaultSnakeGameInputState } from '../snakeGame/snakeGameState';
@@ -33,6 +34,8 @@ const VIDEO_INPUT_TYPES: RoomInputState['type'][] = [
   'hls',
   'whip',
 ];
+
+const IMAGE_EXT_RE = /\.(jpg|jpeg|png|gif|svg)$/i;
 
 export class InputManager {
   private inputs: RoomInputState[] = [];
@@ -79,11 +82,7 @@ export class InputManager {
         });
       }
 
-      const logoPath = path.join(
-        DATA_DIR,
-        'pictures',
-        PLACEHOLDER_LOGO_FILE,
-      );
+      const logoPath = path.join(DATA_DIR, 'pictures', PLACEHOLDER_LOGO_FILE);
       if (await pathExists(logoPath)) {
         const logoInputId = await this.addNewInput({
           type: 'image',
@@ -451,12 +450,9 @@ export class InputManager {
     let imageId = opts.imageId;
 
     if (imageId && !fileName) {
-      const baseName = imageId.replace(/^pictures::/, '');
-      const files = await readdir(picturesDir).catch(() => [] as string[]);
-      const found = files.find((f) => {
-        const fBase = f.replace(/\.(jpg|jpeg|png|gif|svg)$/i, '');
-        return fBase === baseName;
-      });
+      const found = pictureSuggestionsMonitor.pictureFiles.find(
+        (candidate) => imageIdFromFileName(candidate) === imageId,
+      );
       if (found) {
         fileName = found;
       } else {
@@ -1200,7 +1196,7 @@ export function formatMp4Name(fileName: string): string {
 }
 
 function formatImageName(fileName: string): string {
-  const fileNameWithoutExt = fileName.replace(/\.(jpg|jpeg|png|gif|svg)$/i, '');
+  const fileNameWithoutExt = fileName.replace(IMAGE_EXT_RE, '');
   return fileNameWithoutExt
     .split(/[_\- ]+/)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
@@ -1208,7 +1204,7 @@ function formatImageName(fileName: string): string {
 }
 
 function imageIdFromFileName(fileName: string): string {
-  const baseName = fileName.replace(/\.(jpg|jpeg|png|gif|svg)$/i, '');
+  const baseName = fileName.replace(IMAGE_EXT_RE, '');
   return `pictures::${baseName}`;
 }
 

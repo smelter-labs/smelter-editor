@@ -6,6 +6,7 @@ import fs from 'fs-extra';
 import type { FastifyPluginCallback } from 'fastify';
 import { Type } from '@sinclair/typebox';
 import { DATA_DIR } from '../../dataDir';
+import { getAudioWaveformPath } from '../../audio-files/audioWaveform';
 import mp4SuggestionsMonitor from '../../mp4/mp4SuggestionMonitor';
 import pictureSuggestionsMonitor from '../../pictures/pictureSuggestionMonitor';
 import audioSuggestionsMonitor from '../../audio-files/audioSuggestionMonitor';
@@ -82,6 +83,24 @@ function sanitizeFileName(raw: string): string | null {
 function isAllowedExt(fileName: string, allowed: Set<string>): boolean {
   const ext = path.extname(fileName).toLowerCase();
   return allowed.has(ext);
+}
+
+async function generateAudioWaveformImage(
+  audioFilePath: string,
+): Promise<void> {
+  const waveformPath = getAudioWaveformPath(audioFilePath);
+  await fs.remove(waveformPath).catch(() => {});
+
+  await execFileAsync('ffmpeg', [
+    '-i',
+    audioFilePath,
+    '-filter_complex',
+    'aformat=channel_layouts=mono,showwavespic=s=640x320:colors=0xa855f7',
+    '-frames:v',
+    '1',
+    '-y',
+    waveformPath,
+  ]);
 }
 
 export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
@@ -361,6 +380,14 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
     }
 
     await fs.remove(tmpPath).catch(() => {});
+
+    try {
+      await generateAudioWaveformImage(outputPath);
+    } catch (err: any) {
+      await fs.remove(getAudioWaveformPath(outputPath)).catch(() => {});
+      console.error('[upload/audio] waveform generation failed', err?.message);
+    }
+
     audioSuggestionsMonitor.refresh();
 
     return res.status(200).send({ fileName: outputName, folder });
@@ -383,6 +410,7 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
       }
 
       await fs.remove(absPath);
+      await fs.remove(getAudioWaveformPath(absPath)).catch(() => {});
       audioSuggestionsMonitor.refresh();
       return res.status(200).send({ deleted: sanitized });
     },

@@ -30,6 +30,7 @@ import { config } from '../config';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
 import pictureSuggestionsMonitor from '../pictures/pictureSuggestionMonitor';
 import audioSuggestionsMonitor from '../audio-files/audioSuggestionMonitor';
+import { getAudioWaveformPath } from '../audio-files/audioWaveform';
 import { KickChannelSuggestions } from '../kick/KickChannelMonitor';
 import shadersController from '../shaders/shaders';
 import { DATA_DIR } from '../dataDir';
@@ -188,7 +189,10 @@ export const routes = Fastify({
   logger: config.logger,
 }).withTypeProvider<TypeBoxTypeProvider>();
 
-routes.register(cors, { origin: true });
+routes.register(cors, {
+  origin: true,
+  methods: ['GET', 'HEAD', 'POST', 'DELETE', 'OPTIONS'],
+});
 routes.register(multipart, { limits: { fileSize: 500 * 1024 * 1024 } });
 routes.register(websocket, {
   options: {
@@ -323,6 +327,42 @@ routes.get<{ Params: { fileName: string } }>(
       const message = err?.message ?? 'Failed to generate HLS thumbnail';
       console.error('HLS thumbnail error', { fileName, err: message });
       res.status(status).send({ error: message });
+    }
+  },
+);
+
+routes.get<{ Querystring: { fileName: string } }>(
+  '/suggestions/audio-waveform',
+  { schema: { querystring: Type.Object({ fileName: Type.String() }) } },
+  async (req, res) => {
+    const { fileName } = req.query;
+    const decoded = decodeURIComponent(fileName);
+    if (decoded.includes('..')) {
+      return res.status(400).send({ error: 'Invalid file name' });
+    }
+
+    const filePath = path.join(DATA_DIR, 'audios', decoded);
+    if (!(await pathExists(filePath))) {
+      return res.status(404).send({ error: 'Audio file not found' });
+    }
+
+    const waveformPath = getAudioWaveformPath(filePath);
+    if (!(await pathExists(waveformPath))) {
+      return res.status(404).send({ error: 'Waveform image not found' });
+    }
+
+    try {
+      const data = await readFile(waveformPath);
+      res.header('Content-Type', 'image/png');
+      res.header('Cache-Control', 'public, max-age=86400');
+      res.send(data);
+    } catch (err: any) {
+      const message = err?.message ?? 'Failed to read waveform image';
+      console.error('Audio waveform error', {
+        fileName: decoded,
+        err: message,
+      });
+      res.status(500).send({ error: message });
     }
   },
 );

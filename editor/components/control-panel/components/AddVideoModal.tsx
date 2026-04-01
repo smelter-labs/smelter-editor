@@ -34,7 +34,12 @@ import type { ChannelSuggestion, Input } from '@/lib/types';
 // ── Types ────────────────────────────────────────────────────
 
 type AssetItemMp4 = { kind: 'mp4'; fileName: string; durationMs?: number };
-type AssetItemAudio = { kind: 'audio'; fileName: string; durationMs?: number };
+type AssetItemAudio = {
+  kind: 'audio';
+  fileName: string;
+  durationMs?: number;
+  waveformUrl: string;
+};
 type AssetItemImage = { kind: 'image'; fileName: string };
 type AssetItemTwitch = { kind: 'twitch'; channel: ChannelSuggestion };
 type AssetItemKick = { kind: 'kick'; channel: ChannelSuggestion };
@@ -230,6 +235,14 @@ function baseName(path: string): string {
   return name.length > 255 ? name.slice(0, 252) + '...' : name;
 }
 
+function fileExtensionLabel(fileName: string): string {
+  return fileName.split('.').pop()?.toUpperCase() ?? '';
+}
+
+function buildAudioWaveformUrl(fileName: string): string {
+  return `/api/audio-waveform?fileName=${encodeURIComponent(fileName)}`;
+}
+
 function itemLabel(item: AssetItem): string {
   switch (item.kind) {
     case 'mp4':
@@ -268,7 +281,7 @@ function typeBadge(item: AssetItem): string {
     case 'mp4':
       return 'MP4';
     case 'audio':
-      return 'AUDIO';
+      return 'TRACK';
     case 'image':
       return 'IMG';
     case 'twitch':
@@ -713,6 +726,9 @@ export function AssetBrowserPanel({
         const audioFileItems: AssetItemAudio[] = audioBrowse.files.map((f) => ({
           kind: 'audio',
           fileName: audioFolder ? `${audioFolder}/${f}` : f,
+          waveformUrl: buildAudioWaveformUrl(
+            audioFolder ? `${audioFolder}/${f}` : f,
+          ),
         }));
 
         let fetched: AssetItem[] = [
@@ -1282,13 +1298,15 @@ function AssetCard({
       case 'kick':
         return item.channel.category || item.channel.title;
       case 'mp4': {
-        const ext = item.fileName.split('.').pop()?.toUpperCase() ?? '';
+        const ext = fileExtensionLabel(item.fileName);
         return ext;
       }
-      case 'audio':
-        return 'AUDIO';
+      case 'audio': {
+        const ext = fileExtensionLabel(item.fileName);
+        return ext ? `AUDIO / ${ext}` : 'AUDIO TRACK';
+      }
       case 'image': {
-        const ext = item.fileName.split('.').pop()?.toUpperCase() ?? '';
+        const ext = fileExtensionLabel(item.fileName);
         return ext;
       }
       case 'hls-saved': {
@@ -1357,24 +1375,7 @@ function AssetThumbnail({ item }: { item: AssetItem }) {
     );
   }
   if (item.kind === 'audio') {
-    return (
-      <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-[#a855f7]/20 to-[#131313]'>
-        <svg
-          viewBox='0 0 24 24'
-          className='w-10 h-10 opacity-50 group-hover:opacity-70 transition-opacity'
-          fill='none'
-          stroke='#a855f7'
-          strokeWidth='1.5'>
-          <path
-            d='M9 18V5l12-2v13'
-            strokeLinecap='round'
-            strokeLinejoin='round'
-          />
-          <circle cx='6' cy='18' r='3' />
-          <circle cx='18' cy='16' r='3' />
-        </svg>
-      </div>
-    );
+    return <AudioWaveformThumbnail item={item} />;
   }
   if (item.kind === 'image') {
     return (
@@ -1458,7 +1459,83 @@ function AssetThumbnail({ item }: { item: AssetItem }) {
   if (item.kind === 'action') {
     return <ActionThumbnail actionType={item.actionType} />;
   }
+
   return null;
+}
+
+function AudioWaveformThumbnail({ item }: { item: AssetItemAudio }) {
+  const [waveformFailed, setWaveformFailed] = useState(false);
+
+  if (waveformFailed) {
+    return <AudioFallbackThumbnail fileName={item.fileName} />;
+  }
+
+  return (
+    <div className='relative w-full h-full overflow-hidden bg-[#120818]'>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={item.waveformUrl}
+        alt={`${item.fileName} waveform`}
+        className='w-full h-full object-cover opacity-80 group-hover:scale-105 transition-transform duration-700'
+        onError={() => setWaveformFailed(true)}
+      />
+      <div className='absolute inset-0 bg-gradient-to-t from-[#120818] via-transparent to-transparent' />
+    </div>
+  );
+}
+
+function AudioFallbackThumbnail({ fileName }: { fileName: string }) {
+  return (
+    <div className='relative w-full h-full overflow-hidden bg-gradient-to-br from-[#2a1237] via-[#16081e] to-[#080808]'>
+      <div className='absolute inset-0 opacity-70'>
+        <svg
+          viewBox='0 0 320 180'
+          className='w-full h-full'
+          preserveAspectRatio='none'>
+          <path
+            d='M0 97 C18 97, 18 82, 36 82 S54 112, 72 112 S90 70, 108 70 S126 116, 144 116 S162 54, 180 54 S198 132, 216 132 S234 76, 252 76 S270 104, 288 104 S306 90, 320 90'
+            fill='none'
+            stroke='#d946ef'
+            strokeWidth='5'
+            strokeLinecap='round'
+          />
+          <path
+            d='M0 118 C18 118, 18 103, 36 103 S54 136, 72 136 S90 94, 108 94 S126 140, 144 140 S162 78, 180 78 S198 154, 216 154 S234 99, 252 99 S270 126, 288 126 S306 112, 320 112'
+            fill='none'
+            stroke='#a855f7'
+            strokeWidth='3'
+            strokeLinecap='round'
+            opacity='0.8'
+          />
+        </svg>
+      </div>
+      <div className='absolute right-3 top-3 rounded-full border border-[#f0abfc]/30 bg-black/35 p-1.5'>
+        <svg
+          viewBox='0 0 24 24'
+          className='h-5 w-5'
+          fill='none'
+          stroke='#f0abfc'
+          strokeWidth='1.5'>
+          <path
+            d='M9 18V5l12-2v13'
+            strokeLinecap='round'
+            strokeLinejoin='round'
+          />
+          <circle cx='6' cy='18' r='3' />
+          <circle cx='18' cy='16' r='3' />
+        </svg>
+      </div>
+      <div className='absolute inset-x-0 bottom-0 h-14 bg-gradient-to-t from-[#080808] to-transparent' />
+      <div className='absolute inset-x-0 bottom-0 px-3 pb-2'>
+        <div className='font-mono text-[10px] text-[#f5d0fe] tracking-[0.2em]'>
+          AUDIO TRACK
+        </div>
+        <div className='font-mono text-[10px] text-[#e9d5ff]/80 truncate'>
+          {baseName(fileName)}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function HlsFallbackIcon() {
