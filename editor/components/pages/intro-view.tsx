@@ -114,6 +114,10 @@ export default function IntroView() {
     } catch {}
   }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const centeredContentRef = useRef<HTMLDivElement>(null);
+  const [desktopIntroOffset, setDesktopIntroOffset] = useState<number | null>(
+    null,
+  );
 
   const countImportAddRequests = useCallback((inputs: RoomConfig['inputs']) => {
     let count = 0;
@@ -242,6 +246,43 @@ export default function IntroView() {
     return () => {
       mounted = false;
       clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    const updateDesktopIntroOffset = () => {
+      if (typeof window === 'undefined') {
+        return;
+      }
+
+      if (window.innerWidth < 768) {
+        setDesktopIntroOffset(null);
+        return;
+      }
+
+      const contentHeight =
+        centeredContentRef.current?.getBoundingClientRect().height ?? 0;
+      const nextOffset = Math.max((window.innerHeight - contentHeight) / 2, 16);
+      setDesktopIntroOffset(nextOffset);
+    };
+
+    updateDesktopIntroOffset();
+
+    const currentContent = centeredContentRef.current;
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(() => updateDesktopIntroOffset());
+
+    if (currentContent && resizeObserver) {
+      resizeObserver.observe(currentContent);
+    }
+
+    window.addEventListener('resize', updateDesktopIntroOffset);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', updateDesktopIntroOffset);
     };
   }, []);
 
@@ -706,156 +747,166 @@ export default function IntroView() {
       className='min-h-screen flex flex-col p-2 py-4 md:p-4 bg-[#0a0a0a] overflow-y-auto'>
       <motion.div
         variants={staggerContainer}
-        className='flex-1 flex justify-center min-h-0 h-full items-start w-full'>
+        className='flex justify-center w-full min-h-0'
+        style={
+          desktopIntroOffset === null
+            ? undefined
+            : {
+                paddingTop: desktopIntroOffset,
+                paddingBottom: 16,
+              }
+        }>
         <motion.div
           className='border-1 rounded-none border-neutral-800 text-center justify-center items-center w-full max-w-[600px] p-4 sm:p-8'
           layout>
-          <div>
-            <StatusLabel />
-          </div>
-
-          <div className='text-white justify-center'>
-            <h2 className='text-3xl font-bold w-full'>Try Live Demo</h2>
-            <p className='text-sm line-clamp-3 mt-6'>
-              Try our low-latency video toolkit – perfect for streaming,
-              broadcasting and video conferencing.
-            </p>
-          </div>
-
-          <div className='mt-6 flex flex-col gap-3'>
-            <div className='flex flex-col gap-2'>
-              <label className='text-xs text-neutral-400 text-left'>
-                Display Name
-              </label>
-              <Input
-                type='text'
-                value={displayName}
-                onChange={(e) => handleSetDisplayName(e.target.value)}
-                placeholder='Mr Smelter'
-                className='w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-white text-sm focus:outline-none focus:border-neutral-500'
-                disabled={loadingNew || loadingImport}
-              />
+          <div ref={centeredContentRef}>
+            <div>
+              <StatusLabel />
             </div>
-            <div className='flex flex-col gap-2'>
-              <label className='text-xs text-neutral-400 text-left'>
-                Output Resolution
-              </label>
-              <Select
-                value={selectedResolution}
-                onValueChange={(v) =>
-                  setSelectedResolution(v as ResolutionPreset)
-                }
-                disabled={loadingNew || loadingImport}>
-                <SelectTrigger className='w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-white text-sm focus:outline-none focus:border-neutral-500 h-auto'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectLabel>Landscape</SelectLabel>
-                    {Object.entries(RESOLUTION_PRESETS)
-                      .filter(([key]) => !key.includes('vertical'))
-                      .map(([key, { width, height }]) => (
-                        <SelectItem key={key} value={key}>
-                          {key.toUpperCase()} ({width}×{height})
-                        </SelectItem>
-                      ))}
-                  </SelectGroup>
-                  <SelectGroup>
-                    <SelectLabel>Portrait</SelectLabel>
-                    {Object.entries(RESOLUTION_PRESETS)
-                      .filter(([key]) => key.includes('vertical'))
-                      .map(([key, { width, height }]) => (
-                        <SelectItem key={key} value={key}>
-                          {key.replace('-vertical', '').toUpperCase()} Vertical
-                          ({width}×{height})
-                        </SelectItem>
-                      ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
+
+            <div className='text-white justify-center'>
+              <h2 className='text-3xl font-bold w-full'>Try Live Demo</h2>
+              <p className='text-sm line-clamp-3 mt-6'>
+                Try our low-latency video toolkit – perfect for streaming,
+                broadcasting and video conferencing.
+              </p>
             </div>
-            {showcaseConfigs.length > 0 && (
+
+            <div className='mt-6 flex flex-col gap-3'>
+              <div className='flex flex-col gap-2'>
+                <label className='text-xs text-neutral-400 text-left'>
+                  Display Name
+                </label>
+                <Input
+                  type='text'
+                  value={displayName}
+                  onChange={(e) => handleSetDisplayName(e.target.value)}
+                  placeholder='Mr Smelter'
+                  className='w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-white text-sm focus:outline-none focus:border-neutral-500'
+                  disabled={loadingNew || loadingImport}
+                />
+              </div>
+              <div className='flex flex-col gap-2'>
+                <label className='text-xs text-neutral-400 text-left'>
+                  Output Resolution
+                </label>
+                <Select
+                  value={selectedResolution}
+                  onValueChange={(v) =>
+                    setSelectedResolution(v as ResolutionPreset)
+                  }
+                  disabled={loadingNew || loadingImport}>
+                  <SelectTrigger className='w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-white text-sm focus:outline-none focus:border-neutral-500 h-auto'>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectLabel>Landscape</SelectLabel>
+                      {Object.entries(RESOLUTION_PRESETS)
+                        .filter(([key]) => !key.includes('vertical'))
+                        .map(([key, { width, height }]) => (
+                          <SelectItem key={key} value={key}>
+                            {key.toUpperCase()} ({width}×{height})
+                          </SelectItem>
+                        ))}
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Portrait</SelectLabel>
+                      {Object.entries(RESOLUTION_PRESETS)
+                        .filter(([key]) => key.includes('vertical'))
+                        .map(([key, { width, height }]) => (
+                          <SelectItem key={key} value={key}>
+                            {key.replace('-vertical', '').toUpperCase()} Vertical
+                            ({width}×{height})
+                          </SelectItem>
+                        ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
+              {showcaseConfigs.length > 0 && (
+                <Button
+                  size='lg'
+                  variant='default'
+                  className='w-full cursor-pointer text-lg py-6 font-bold'
+                  onClick={() => {
+                    if (showcaseConfigs.length === 1) {
+                      handleStartShowcase(showcaseConfigs[0]);
+                    } else {
+                      setShowShowcasePicker(true);
+                    }
+                  }}
+                  disabled={loadingNew || loadingImport || loadingShowcase}>
+                  {loadingShowcase ? (
+                    <LoadingSpinner size='sm' variant='spinner' />
+                  ) : (
+                    <>
+                      <Presentation className='w-5 h-5 mr-2' />
+                      Start Showcase
+                    </>
+                  )}
+                </Button>
+              )}
               <Button
                 size='lg'
                 variant='default'
-                className='w-full cursor-pointer text-lg py-6 font-bold'
-                onClick={() => {
-                  if (showcaseConfigs.length === 1) {
-                    handleStartShowcase(showcaseConfigs[0]);
-                  } else {
-                    setShowShowcasePicker(true);
-                  }
-                }}
+                className='w-full cursor-pointer'
+                onClick={() => handleCreateRoom()}
                 disabled={loadingNew || loadingImport || loadingShowcase}>
-                {loadingShowcase ? (
-                  <LoadingSpinner size='sm' variant='spinner' />
+                Let&apos;s go!
+                {loadingNew && <LoadingSpinner size='sm' variant='spinner' />}
+              </Button>
+              <Button
+                size='lg'
+                variant='outline'
+                className='w-full cursor-pointer'
+                onClick={() => setShowLoadModal(true)}
+                disabled={loadingNew || loadingImport}>
+                {loadingImport ? (
+                  <>
+                    <LoadingSpinner size='sm' variant='spinner' />
+                    Importing...
+                  </>
                 ) : (
                   <>
-                    <Presentation className='w-5 h-5 mr-2' />
-                    Start Showcase
+                    <Upload className='w-4 h-4 mr-2' />
+                    Load from configuration
                   </>
                 )}
               </Button>
-            )}
-            <Button
-              size='lg'
-              variant='default'
-              className='w-full cursor-pointer'
-              onClick={() => handleCreateRoom()}
-              disabled={loadingNew || loadingImport || loadingShowcase}>
-              Let&apos;s go!
-              {loadingNew && <LoadingSpinner size='sm' variant='spinner' />}
-            </Button>
-            <Button
-              size='lg'
-              variant='outline'
-              className='w-full cursor-pointer'
-              onClick={() => setShowLoadModal(true)}
-              disabled={loadingNew || loadingImport}>
-              {loadingImport ? (
-                <>
-                  <LoadingSpinner size='sm' variant='spinner' />
-                  Importing...
-                </>
-              ) : (
-                <>
-                  <Upload className='w-4 h-4 mr-2' />
-                  Load from configuration
-                </>
-              )}
-            </Button>
-            <Input
-              ref={fileInputRef}
-              type='file'
-              accept='.json,application/json'
-              className='hidden'
-              onChange={handleFileChange}
-            />
-            <ActionsProvider actions={defaultActions}>
-              <LoadConfigModal
-                open={showLoadModal}
-                onOpenChange={setShowLoadModal}
-                onLoadLocal={() => {
-                  setShowLoadModal(false);
-                  fileInputRef.current?.click();
-                }}
-                onLoadRemote={importConfig}
+              <Input
+                ref={fileInputRef}
+                type='file'
+                accept='.json,application/json'
+                className='hidden'
+                onChange={handleFileChange}
               />
-            </ActionsProvider>
-            <ImportProgressDialog progress={importProgress} />
-            <Button
-              size='lg'
-              variant='outline'
-              className='w-full cursor-pointer'
-              onClick={() => setShowRecordings(true)}
-              disabled={loadingNew || loadingImport}>
-              <FolderDown className='w-4 h-4 mr-2' />
-              Recordings
-            </Button>
-            <RecordingsList
-              open={showRecordings}
-              onClose={() => setShowRecordings(false)}
-            />
+              <ActionsProvider actions={defaultActions}>
+                <LoadConfigModal
+                  open={showLoadModal}
+                  onOpenChange={setShowLoadModal}
+                  onLoadLocal={() => {
+                    setShowLoadModal(false);
+                    fileInputRef.current?.click();
+                  }}
+                  onLoadRemote={importConfig}
+                />
+              </ActionsProvider>
+              <ImportProgressDialog progress={importProgress} />
+              <Button
+                size='lg'
+                variant='outline'
+                className='w-full cursor-pointer'
+                onClick={() => setShowRecordings(true)}
+                disabled={loadingNew || loadingImport}>
+                <FolderDown className='w-4 h-4 mr-2' />
+                Recordings
+              </Button>
+              <RecordingsList
+                open={showRecordings}
+                onClose={() => setShowRecordings(false)}
+              />
+            </div>
           </div>
 
           {!loadingRooms && rooms.length > 0 && (
