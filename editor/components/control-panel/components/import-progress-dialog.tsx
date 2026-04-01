@@ -890,7 +890,7 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
   return (
     <Dialog open={progress !== null} onOpenChange={() => {}}>
       <DialogContent
-        className='max-w-md overflow-hidden border-cyan-400/20 bg-neutral-950/95 shadow-[0_0_60px_rgba(8,145,178,0.12)] [&>button]:hidden'
+        className='max-w-md overflow-hidden border-cyan-400/20 bg-neutral-950/70 shadow-[0_0_60px_rgba(8,145,178,0.12)] [&>button]:hidden'
         onEscapeKeyDown={(event) => event.preventDefault()}
         onPointerDownOutside={(event) => event.preventDefault()}
         onInteractOutside={(event) => event.preventDefault()}>
@@ -903,7 +903,7 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
           </DialogDescription>
         </DialogHeader>
 
-        <div className='relative overflow-hidden rounded-xl border border-cyan-400/15 bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.14),_transparent_34%),linear-gradient(180deg,_rgba(3,7,18,0.96),_rgba(2,6,23,0.82))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'>
+        <div className='relative overflow-hidden rounded-xl border border-cyan-400/15 bg-[radial-gradient(circle_at_top_left,_rgba(34,211,238,0.10),_transparent_34%),linear-gradient(180deg,_rgba(3,7,18,0.55),_rgba(2,6,23,0.40))] p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]'>
           <div className='pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,transparent,rgba(6,182,212,0.08),transparent)] opacity-70 import-progress-scanline' />
           <div className='pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[length:100%_8px] opacity-20' />
           <div className='pointer-events-none absolute -inset-x-8 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/70 to-transparent import-progress-sweep' />
@@ -926,7 +926,7 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
             <div className='space-y-2'>
               <Progress
                 value={percent}
-                className='h-2.5 bg-white/8 shadow-[0_0_18px_rgba(34,211,238,0.12)]'
+                className='h-2.5 bg-white/5 shadow-[0_0_18px_rgba(34,211,238,0.12)]'
               />
               <div className='flex items-center justify-between text-[10px] uppercase tracking-[0.26em] text-neutral-500'>
                 <span>telemetry sync</span>
@@ -944,7 +944,7 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
                   <div
                     key={metric.label}
                     className={cn(
-                      'group relative overflow-hidden rounded-lg border bg-black/35 p-3 backdrop-blur-sm transition-colors duration-300',
+                      'group relative overflow-hidden rounded-lg border bg-black/15 p-3 backdrop-blur-[2px] transition-colors duration-300',
                       metric.borderClassName,
                     )}>
                     <div
@@ -983,7 +983,7 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
                       </span>
                     </div>
 
-                    <div className='relative mt-3 h-1.5 overflow-hidden rounded-full bg-white/6'>
+                    <div className='relative mt-3 h-1.5 overflow-hidden rounded-full bg-white/4'>
                       <div
                         className={cn(
                           'absolute inset-y-0 left-0 rounded-full bg-gradient-to-r transition-[width] duration-300 ease-out',
