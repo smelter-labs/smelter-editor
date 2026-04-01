@@ -290,16 +290,23 @@ type UploadJob = {
   errorMessage?: string;
 };
 
+const PUBLIC_SERVER_URL =
+  process.env.NEXT_PUBLIC_SMELTER_SERVER_URL?.replace(/\/$/, '') ?? '';
+
+function buildUploadUrl(path: string): string {
+  return PUBLIC_SERVER_URL ? `${PUBLIC_SERVER_URL}${path}` : `/api${path}`;
+}
+
 const UPLOAD_ROUTES: Record<UploadMediaType, string> = {
-  mp4: '/api/upload/mp4',
-  picture: '/api/upload/picture',
-  audio: '/api/upload/audio',
+  mp4: buildUploadUrl('/upload/mp4'),
+  picture: buildUploadUrl('/upload/picture'),
+  audio: buildUploadUrl('/upload/audio'),
 };
 
 const FOLDER_ROUTES: Record<UploadMediaType, string> = {
-  mp4: '/api/upload/mp4/folder',
-  picture: '/api/upload/picture/folder',
-  audio: '/api/upload/audio/folder',
+  mp4: buildUploadUrl('/upload/mp4/folder'),
+  picture: buildUploadUrl('/upload/picture/folder'),
+  audio: buildUploadUrl('/upload/audio/folder'),
 };
 
 async function uploadFile(
@@ -337,15 +344,22 @@ async function uploadFile(
     xhr.onabort = () => reject(new Error('Upload aborted'));
 
     xhr.onload = () => {
+      const responseText = xhr.responseText?.trim() ?? '';
+      const responseContentType = xhr.getResponseHeader('content-type') ?? '';
       let body: { error?: string; fileName?: string; folder?: string } = {};
-      try {
-        body = xhr.responseText ? JSON.parse(xhr.responseText) : {};
-      } catch {
-        body = {};
+
+      if (responseContentType.includes('application/json')) {
+        try {
+          body = responseText ? JSON.parse(responseText) : {};
+        } catch {
+          body = {};
+        }
+      } else if (responseText) {
+        body = { error: responseText };
       }
 
       if (xhr.status < 200 || xhr.status >= 300) {
-        reject(new Error(body.error || 'Upload failed'));
+        reject(new Error(body.error || `Upload failed (${xhr.status})`));
         return;
       }
 
@@ -370,8 +384,16 @@ async function createFolder(
     body: JSON.stringify({ folder }),
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || 'Failed to create folder');
+    const responseText = await res.text();
+    let body: { error?: string } = {};
+
+    try {
+      body = responseText ? JSON.parse(responseText) : {};
+    } catch {
+      body = responseText ? { error: responseText } : {};
+    }
+
+    throw new Error(body.error || `Failed to create folder (${res.status})`);
   }
 }
 

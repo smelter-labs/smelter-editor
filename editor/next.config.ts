@@ -3,6 +3,8 @@ import path from 'path';
 
 const nextConfig: NextConfig = {
   env: {
+    NEXT_PUBLIC_SMELTER_SERVER_URL:
+      process.env.SMELTER_EDITOR_SERVER_URL ?? 'http://localhost:3001',
     // Convert the server-side HTTP URL to a WebSocket URL so client components
     // can open ws:// / wss:// connections directly to the Fastify server.
     // http://host  →  ws://host
@@ -23,7 +25,10 @@ const nextConfig: NextConfig = {
         headers: [
           { key: 'Access-Control-Allow-Origin', value: '*' },
           { key: 'Access-Control-Allow-Methods', value: 'GET, POST, OPTIONS' },
-          { key: 'Access-Control-Allow-Headers', value: 'Content-Type, X-Game-Id' },
+          {
+            key: 'Access-Control-Allow-Headers',
+            value: 'Content-Type, X-Game-Id',
+          },
           { key: 'Access-Control-Allow-Private-Network', value: 'true' },
         ],
       },
