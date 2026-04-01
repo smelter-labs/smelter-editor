@@ -232,6 +232,21 @@ export const inputRoutes: FastifyPluginCallback = (routes, _opts, done) => {
           input: toPublicInputState(updatedInput),
           sourceId,
         });
+        // Absolute position changes are mirrored to layer inputs on the server.
+        // Broadcast room_updated so clients tracking layers (e.g. mobile)
+        // refresh their layout display.
+        if (
+          req.body.absoluteLeft !== undefined ||
+          req.body.absoluteTop !== undefined ||
+          req.body.absoluteWidth !== undefined ||
+          req.body.absoluteHeight !== undefined
+        ) {
+          roomEventBus.broadcast(roomId, {
+            type: 'room_updated',
+            roomId,
+            sourceId,
+          });
+        }
       }
       res.status(200).send({ status: 'ok' });
     },

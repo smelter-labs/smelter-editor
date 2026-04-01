@@ -332,9 +332,24 @@ function ensureClipBlockSettings(
   clip: Omit<Clip, 'blockSettings'> & Partial<Pick<Clip, 'blockSettings'>>,
   input?: Input,
 ): Clip {
-  const blockSettings = clip.blockSettings
+  const cloned = clip.blockSettings
     ? cloneBlockSettings(clip.blockSettings)
     : createBlockSettingsFromInput(input);
+
+  // When an existing clip already has local blockSettings, merge in the
+  // server-authoritative absolute position coordinates so remote changes
+  // (e.g. from mobile) are reflected in the editor position controller.
+  const blockSettings =
+    clip.blockSettings && input
+      ? {
+          ...cloned,
+          absoluteLeft: input.absoluteLeft ?? cloned.absoluteLeft,
+          absoluteTop: input.absoluteTop ?? cloned.absoluteTop,
+          absoluteWidth: input.absoluteWidth ?? cloned.absoluteWidth,
+          absoluteHeight: input.absoluteHeight ?? cloned.absoluteHeight,
+        }
+      : cloned;
+
   const keyframes = clip.keyframes ? clip.keyframes.map(cloneKeyframe) : [];
 
   if (clip.blockSettings) {

@@ -269,8 +269,26 @@ export class RoomState {
       }
 
       const cloned = cloneLayers(layers);
-
       this.layers = cloned;
+
+      // Sync absolute position properties from layer positions so the web
+      // editor's absolute-position controller reflects mobile layout changes.
+      // The first layer that contains an input is authoritative.
+      const allInputs = this.inputManager.getInputs();
+      const seen = new Set<string>();
+      for (const layer of cloned) {
+        for (const li of layer.inputs) {
+          if (seen.has(li.inputId)) continue;
+          seen.add(li.inputId);
+          const input = allInputs.find((i) => i.inputId === li.inputId);
+          if (!input) continue;
+          input.absoluteLeft = li.x;
+          input.absoluteTop = li.y;
+          input.absoluteWidth = li.width;
+          input.absoluteHeight = li.height;
+        }
+      }
+
       this.updateStoreWithState();
     });
   }
@@ -334,6 +352,24 @@ export class RoomState {
     options: Partial<import('./types').UpdateInputOptions>,
   ) {
     return this.mutex.runExclusive(async () => {
+      // Sync: mirror absolute position changes to all matching layer inputs so
+      // the mobile layout grid reflects edits made in the editor timeline.
+      if (
+        options.absoluteLeft !== undefined ||
+        options.absoluteTop !== undefined ||
+        options.absoluteWidth !== undefined ||
+        options.absoluteHeight !== undefined
+      ) {
+        for (const layer of this.layers) {
+          for (const li of layer.inputs) {
+            if (li.inputId !== inputId) continue;
+            if (options.absoluteLeft !== undefined) li.x = options.absoluteLeft;
+            if (options.absoluteTop !== undefined) li.y = options.absoluteTop;
+            if (options.absoluteWidth !== undefined) li.width = options.absoluteWidth;
+            if (options.absoluteHeight !== undefined) li.height = options.absoluteHeight;
+          }
+        }
+      }
       this.inputManager.updateInput(inputId, options);
     });
   }
