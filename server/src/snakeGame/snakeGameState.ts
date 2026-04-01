@@ -151,7 +151,7 @@ export function buildUpdatedSnakeGameState(
   };
 }
 
-export type ProcessSnakeGameEventsResult = {
+type ProcessSnakeGameEventsResult = {
   updatedActiveEffects: ActiveSnakeEffect[];
   newTimers: NodeJS.Timeout[];
   needsStoreUpdate: boolean;

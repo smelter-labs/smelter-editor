@@ -42,7 +42,7 @@ export function computeCommonBlockSettings(
   return result;
 }
 
-export function clampKeyframeToClipRange(
+function clampKeyframeToClipRange(
   valueMs: number,
   clipDurationMs: number,
 ): number {

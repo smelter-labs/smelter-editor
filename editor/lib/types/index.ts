@@ -1,20 +1,20 @@
 export type {
-  ShaderParam,
+  
   AvailableShader,
   ShaderParamConfig,
   ShaderConfig,
-  ShaderPreset,
-  SavedShaderPresetInfo,
+  
+  
 } from './shader';
 
-export type { SavedItemInfo } from '../storage-client';
+;
 
 export type {
   Layout,
   Layer,
-  LayerInput,
+  
   LayerBehaviorConfig,
-  BehaviorInputInfo,
+  
 } from './layout';
 
 export type { Input, RegisterInputOptions, UpdateInputOptions } from './input';
@@ -29,17 +29,17 @@ export type {
   KickSuggestions,
   MP4Suggestions,
   PictureSuggestions,
-  CreateRoomOptions,
+  
   UpdateRoomOptions,
   StartRecordingResponse,
   StopRecordingResponse,
   RecordingInfo,
-  SavedConfigInfo,
+  
 } from './room';
 
 export type {
   TransitionType,
   TransitionConfig,
-  ActiveTransition,
+  
 } from './transition';
-export { isTransitionType, parseTransitionConfig } from './transition';
+export {  parseTransitionConfig } from './transition';

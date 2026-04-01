@@ -15,7 +15,7 @@ import type {
 import type { DashboardLayoutSavedData } from './dashboard-layout';
 import type { StorageClient } from '@/lib/storage-client';
 
-export interface DashboardToolbarActions {
+interface DashboardToolbarActions {
   isEditMode: boolean;
   toggleEditMode: () => void;
   presets: readonly LayoutPreset[];

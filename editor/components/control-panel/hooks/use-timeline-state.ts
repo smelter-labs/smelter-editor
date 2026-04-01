@@ -47,17 +47,17 @@ export type Keyframe = SharedTimelineKeyframe & {
 };
 
 /** @deprecated Use `Clip` instead. Kept for backwards compat with room-config. */
-export type Segment = Clip;
+type Segment = Clip;
 
 /** @deprecated Kept for backwards compat with room-config imports. Will be removed. */
-export type OrderKeyframe = {
+type OrderKeyframe = {
   id: string;
   timeMs: number;
   inputOrder: string[];
 };
 
 /** @deprecated Use `Track` instead. */
-export type TrackTimeline = {
+type TrackTimeline = {
   inputId: string;
   segments: Segment[];
 };
@@ -161,11 +161,11 @@ const DEFAULT_DURATION_MS = 60_000; // 1 minute
 const DEFAULT_PPS = 15; // pixels per second (60s × 15 = 900px at default)
 const MIN_PPS = 2;
 const MAX_PPS = 100;
-export const MIN_CLIP_MS = 1000;
+const MIN_CLIP_MS = 1000;
 /** @deprecated Use MIN_CLIP_MS instead */
-export const MIN_SEGMENT_MS = MIN_CLIP_MS;
+const MIN_SEGMENT_MS = MIN_CLIP_MS;
 
-export { DEFAULT_DURATION_MS, DEFAULT_PPS, MIN_PPS, MAX_PPS };
+export {  DEFAULT_PPS,   };
 export { OUTPUT_TRACK_INPUT_ID, OUTPUT_TRACK_ID, OUTPUT_CLIP_ID };
 
 // ── Helpers ──────────────────────────────────────────────

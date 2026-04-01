@@ -39,7 +39,7 @@ export type PendingWhipInput = {
   position: number;
 };
 
-export function ConfigurationSection({
+function ConfigurationSection({
   inputs,
   roomId,
   resolution,

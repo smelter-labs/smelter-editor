@@ -21,7 +21,7 @@ export function hexToRgb(hex: string): { r: number; g: number; b: number } {
   return { r, g, b };
 }
 
-export function colorToRgb(colorValue: number | string): {
+function colorToRgb(colorValue: number | string): {
   r: number;
   g: number;
   b: number;

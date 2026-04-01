@@ -9,7 +9,7 @@ import { pickUniqueRoomName, type RoomNameEntry } from './roomNames';
 import { roomEventBus } from './roomEventBus';
 import { createAudioStore } from '../audio/audioStore';
 
-export type CreateRoomResult = {
+type CreateRoomResult = {
   roomId: string;
   roomName: RoomNameEntry;
   room: RoomState;

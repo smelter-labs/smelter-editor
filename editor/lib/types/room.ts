@@ -62,7 +62,7 @@ export type PictureSuggestions = {
   pictures: string[];
 };
 
-export type CreateRoomOptions = {
+type CreateRoomOptions = {
   initInputs?: RegisterInputOptions[];
   skipDefaultInputs?: boolean;
   resolution?: ResolutionPreset | Resolution;
@@ -101,4 +101,4 @@ export type RecordingInfo = {
 };
 
 /** @deprecated Use `SavedItemInfo` from `@/lib/storage-client` instead */
-export type { SavedItemInfo as SavedConfigInfo } from '../storage-client';
+;

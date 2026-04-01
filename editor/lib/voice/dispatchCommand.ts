@@ -6,7 +6,7 @@ import type {
   InputType,
 } from './commandTypes';
 
-export type DispatchResult =
+type DispatchResult =
   | { success: true; inputs: VoiceInput[] }
   | { success: false; clarify: ClarifyCommand };
 
@@ -16,7 +16,7 @@ function generateId(): string {
   return `voice-input-${++inputIdCounter}`;
 }
 
-export function dispatchCommand(
+function dispatchCommand(
   command: VoiceCommand,
   currentInputs: VoiceInput[],
 ): DispatchResult {
@@ -149,6 +149,6 @@ export function dispatchCommand(
   return { success: true, inputs };
 }
 
-export function resetIdCounter(): void {
+function resetIdCounter(): void {
   inputIdCounter = 0;
 }

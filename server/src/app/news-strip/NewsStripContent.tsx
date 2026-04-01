@@ -9,7 +9,7 @@ export type NewsStripTheme = {
   marqueeText: string;
 };
 
-export const DEFAULT_THEME: NewsStripTheme = {
+const DEFAULT_THEME: NewsStripTheme = {
   liveBadgeBg: '#F24664',
   liveBadgeText: '#000000',
   logoBoxBg: '#ffffff',

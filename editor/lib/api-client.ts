@@ -20,7 +20,7 @@ import type {
 import type { TimelineConfig } from '@smelter-editor/types';
 import { createStorageClient, type StorageClient } from './storage-client';
 
-export interface SmelterApiClient {
+interface SmelterApiClient {
   createNewRoom(
     initInputs: RegisterInputOptions[],
     skipDefaultInputs?: boolean,

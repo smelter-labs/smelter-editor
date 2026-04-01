@@ -13,7 +13,7 @@ export function triggerRecordingDownload(fileName: string): void {
   document.body.removeChild(link);
 }
 
-export type RecordingControls = {
+type RecordingControls = {
   /** True while an API call is in flight */
   isTogglingRecording: boolean;
   /** True while waiting for the delayed download after stop */

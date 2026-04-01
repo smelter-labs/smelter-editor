@@ -7,7 +7,7 @@ import type {
   Direction,
 } from './commandTypes';
 
-export type FileMatchResult = {
+type FileMatchResult = {
   file: string;
   query: string;
   similarity: number;
@@ -349,7 +349,7 @@ function clarify(missing: string[], question: string): VoiceCommand {
   return { intent: 'CLARIFY', missing, question };
 }
 
-export type ParseCommandOptions = {
+type ParseCommandOptions = {
   mp4Files?: string[];
   imageFiles?: string[];
 };

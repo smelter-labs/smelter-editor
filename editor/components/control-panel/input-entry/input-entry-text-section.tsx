@@ -7,7 +7,7 @@ import { NumberInput } from '@/components/ui/number-input';
 import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
 
-export type InputEntryTextSectionProps = {
+type InputEntryTextSectionProps = {
   textValue: string;
   textAlign: 'left' | 'center' | 'right';
   textColor: string;

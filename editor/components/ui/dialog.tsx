@@ -89,12 +89,12 @@ function DialogDescription({
 
 export {
   Dialog,
-  DialogPortal,
-  DialogOverlay,
+  
+  
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
-  DialogTrigger,
-  DialogClose,
+  
+  
 };

@@ -1,7 +1,7 @@
 import type { ChildProcess, SpawnOptions } from 'node:child_process';
 import { spawn as nodeSpawn } from 'node:child_process';
 
-export interface SpawnPromise extends Promise<{
+interface SpawnPromise extends Promise<{
   stdout: string;
   stderr: string;
 }> {
@@ -59,7 +59,7 @@ export function sleep(timeoutMs: number): Promise<void> {
   });
 }
 
-export function isProcessRunning(pid: number): boolean {
+function isProcessRunning(pid: number): boolean {
   try {
     return process.kill(pid, 0);
   } catch (e: any) {
@@ -67,7 +67,7 @@ export function isProcessRunning(pid: number): boolean {
   }
 }
 
-export async function ensureProcessKill(pid: number): Promise<void> {
+async function ensureProcessKill(pid: number): Promise<void> {
   if (!isProcessRunning(pid)) {
     return;
   }

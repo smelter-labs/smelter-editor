@@ -1,4 +1,4 @@
-export function stopStream(s: MediaStream | null) {
+function stopStream(s: MediaStream | null) {
   s?.getTracks().forEach((t) => {
     try {
       t.stop();

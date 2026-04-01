@@ -1002,7 +1002,7 @@ function inputIdForKickInput(idPrefix: string, kickChannelId: string): string {
   return `${idPrefix}::kick::${kickChannelId}`;
 }
 
-export function formatMp4Name(fileName: string): string {
+function formatMp4Name(fileName: string): string {
   const fileNameWithoutExt = fileName.replace(/\.mp4$/i, '');
   return fileNameWithoutExt
     .split(/[_\- ]+/)

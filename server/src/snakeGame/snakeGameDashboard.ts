@@ -7,7 +7,7 @@ export function setGlobalSnakeGameState(gs: SnakeGameState) {
   globalSnakeGameState = gs;
 }
 
-export function getGlobalSnakeGameState(): SnakeGameState | null {
+function getGlobalSnakeGameState(): SnakeGameState | null {
   return globalSnakeGameState;
 }
 
@@ -55,7 +55,7 @@ function hexToColorName(hex: string): string {
   return best;
 }
 
-export function renderSnakeBoard(snakeGameState: SnakeGameState): string {
+function renderSnakeBoard(snakeGameState: SnakeGameState): string {
   const { boardWidth, boardHeight, cells, backgroundColor, gridLineColor } =
     snakeGameState;
 
@@ -155,7 +155,7 @@ export function renderSnakeBoard(snakeGameState: SnakeGameState): string {
   return lines.join('\n');
 }
 
-export function findFirstSnakeGameState(): SnakeGameState | null {
+function findFirstSnakeGameState(): SnakeGameState | null {
   // Prefer global game state (from POST /game-state)
   if (globalSnakeGameState && globalSnakeGameState.cells.length > 0) {
     return globalSnakeGameState;

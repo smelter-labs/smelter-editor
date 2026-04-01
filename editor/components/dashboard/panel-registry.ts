@@ -1,6 +1,6 @@
 import type { LayoutItem } from 'react-grid-layout';
 
-export type StaticPanelId =
+type StaticPanelId =
   | 'video-preview'
   | 'streams'
   | 'fx'
@@ -11,7 +11,7 @@ export type StaticPanelId =
   | 'layout-preview';
 
 export type MotionPanelId = `motion:${string}`;
-export type PanelId = StaticPanelId | MotionPanelId;
+type PanelId = StaticPanelId | MotionPanelId;
 
 const MOTION_PREFIX = 'motion:';
 
@@ -121,10 +121,10 @@ export const STATIC_PANEL_IDS: StaticPanelId[] = Object.keys(
 ) as StaticPanelId[];
 
 /** @deprecated Use STATIC_PANEL_IDS for static panels. Dynamic panels are managed by DashboardLayout. */
-export const ALL_PANEL_IDS = STATIC_PANEL_IDS;
+const ALL_PANEL_IDS = STATIC_PANEL_IDS;
 
 /** @deprecated Use STATIC_PANEL_DEFINITIONS. Dynamic panel defs come from getMotionPanelDefinition. */
-export const PANEL_DEFINITIONS = STATIC_PANEL_DEFINITIONS as Record<
+const PANEL_DEFINITIONS = STATIC_PANEL_DEFINITIONS as Record<
   string,
   PanelDefinition
 >;
@@ -210,7 +210,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
 
 export const DEFAULT_LAYOUT: MutableLayout = LAYOUT_PRESETS[0].layout;
 
-export const SMALL_LAYOUT: MutableLayout = [
+const SMALL_LAYOUT: MutableLayout = [
   { i: 'video-preview', x: 0, y: 0, w: 12, h: 10, minW: 4, minH: 4 },
   { i: 'streams', x: 0, y: 10, w: 12, h: 6, minW: 4, minH: 4 },
   { i: 'fx', x: 0, y: 16, w: 12, h: 6, minW: 4, minH: 4 },

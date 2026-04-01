@@ -3,7 +3,7 @@ import type { InputConfig } from '../app/store';
 
 type Resolution = { width: number; height: number };
 
-export type InputTypeRenderer = (
+type InputTypeRenderer = (
   config: InputConfig,
   resolution: Resolution,
 ) => ReactElement;

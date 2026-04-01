@@ -5,7 +5,7 @@ import type {
   ShaderPreset,
 } from '@smelter-editor/types';
 
-export type { ShaderParam, ShaderParamConfig, ShaderConfig, ShaderPreset };
+export type { ShaderParam, ShaderParamConfig, ShaderConfig,  };
 
 export type AvailableShader = {
   id: string;
@@ -19,4 +19,4 @@ export type AvailableShader = {
 };
 
 /** @deprecated Use `SavedItemInfo` from `@/lib/storage-client` instead */
-export type { SavedItemInfo as SavedShaderPresetInfo } from '../storage-client';
+;

@@ -1,6 +1,6 @@
 import type { Input } from '@/lib/types';
 
-export function hasEnabledShader(input: Input): boolean {
+function hasEnabledShader(input: Input): boolean {
   if (!input.shaders) return false;
   return input.shaders.some((shader) => shader.enabled);
 }

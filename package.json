@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "knip": "knip",
-    "snip-snip": "node ./scripts/snip-snip.mjs",
-    "snip-snip:dry": "pnpm snip-snip --dry-run"
+    "snip-snip": "pnpm knip --fix --allow-remove-files"
   },
   "devDependencies": {
     "@types/node": "^25.5.0",

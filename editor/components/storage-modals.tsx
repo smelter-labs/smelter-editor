@@ -101,7 +101,7 @@ export function RemoteItemList({
 
 // ── GenericSaveModal ─────────────────────────────────────────
 
-export type SaveModalExtraOption = {
+type SaveModalExtraOption = {
   id: string;
   icon: ReactNode;
   label: string;

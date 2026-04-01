@@ -17,15 +17,15 @@ import { createContext, useContext } from 'react';
 import { useStore } from 'zustand';
 
 export type {
-  SnakeGameCell,
-  SnakeEventType,
-  SnakeEventApplicationMode,
-  SnakeEventShaderMapping,
-  SnakeEventShaderConfig,
-  ActiveSnakeEffect,
+  
+  
+  
+  
+  
+  
   SnakeGameState,
-  SnakeGameOverPlayer,
-  SnakeGameOverData,
+  
+  
 } from '../snakeGame/types';
 import type { SnakeGameState } from '../snakeGame/types';
 
@@ -141,7 +141,7 @@ export function useSwapDurationMs() {
   return useStore(store, (state) => state.swapDurationMs);
 }
 
-export function useSwapOutgoingEnabled() {
+function useSwapOutgoingEnabled() {
   const store = useContext(StoreContext);
   return useStore(store, (state) => state.swapOutgoingEnabled);
 }

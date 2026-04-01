@@ -46,7 +46,7 @@ export const panelSectionStyles = cva(
 );
 
 /** Ghost action button in panels */
-export const panelActionBtnStyles = cva(
+const panelActionBtnStyles = cva(
   'bg-card border-border hover:bg-accent cursor-pointer',
   {
     variants: {

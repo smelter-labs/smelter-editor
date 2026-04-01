@@ -5,7 +5,7 @@ import type { ShaderConfig } from '../types';
 import type { RoomInputState } from './types';
 import { InputOrientation } from '@smelter-editor/types';
 
-export const PLACEHOLDER_LOGO_FILE = 'logo_Smelter.png';
+const PLACEHOLDER_LOGO_FILE = 'logo_Smelter.png';
 
 const DEFAULT_LOGO_SHADERS: ShaderConfig[] = [
   {
@@ -19,7 +19,7 @@ const DEFAULT_LOGO_SHADERS: ShaderConfig[] = [
   },
 ];
 
-export function cloneDefaultLogoShaders(): ShaderConfig[] {
+function cloneDefaultLogoShaders(): ShaderConfig[] {
   return DEFAULT_LOGO_SHADERS.map((shader) => ({
     ...shader,
     params: shader.params.map((param) => ({ ...param })),

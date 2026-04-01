@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useCallback, useState } from 'react';
 
-export type TimelineSSEData = {
+type TimelineSSEData = {
   playheadMs: number;
   isPlaying: boolean;
   isPaused: boolean;

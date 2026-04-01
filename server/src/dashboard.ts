@@ -1,10 +1,7 @@
 import { state } from './server/serverState';
 import { config } from './config';
 // import { renderSnakeBoard, findFirstSnakeGameState } from './snakeGame/snakeGameDashboard';
-export {
-  setGlobalSnakeGameState,
-  getGlobalSnakeGameState,
-} from './snakeGame/snakeGameDashboard';
+;
 
 const isBoxed = process.env.LAYOUT === 'boxed';
 
@@ -32,7 +29,7 @@ let startTime = Date.now();
 
 // ── Structured log streaming (SSE) ──
 
-export interface LogEntry {
+interface LogEntry {
   timestamp: string;
   level: 'LOG' | 'ERR' | 'WRN' | 'OUT' | 'REQ';
   message: string;

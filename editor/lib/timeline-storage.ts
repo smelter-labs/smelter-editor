@@ -82,7 +82,7 @@ export type StoredClip = {
   keyframes?: StoredKeyframe[];
 };
 
-export type StoredSegment = StoredClip;
+type StoredSegment = StoredClip;
 
 export type StoredTrack = {
   id: string;
@@ -90,7 +90,7 @@ export type StoredTrack = {
   clips: StoredClip[];
 };
 
-export type StoredTimelineStateV3 = {
+type StoredTimelineStateV3 = {
   schemaVersion: 3;
   tracks: StoredTrack[];
   totalDurationMs: number;
@@ -112,7 +112,7 @@ type StoredTrackTimeline = {
   segments: StoredSegmentV1[];
 };
 
-export type StoredOrderKeyframe = {
+type StoredOrderKeyframe = {
   id: string;
   timeMs: number;
   inputOrder: string[];

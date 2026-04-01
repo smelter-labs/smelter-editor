@@ -50,4 +50,4 @@ const staggerContainer = {
   },
 };
 
-export { fadeInUp, fadeIn, fadeIn2, staggerContainer };
+export { fadeInUp, fadeIn,  staggerContainer };

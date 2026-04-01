@@ -22,8 +22,8 @@ import { RESOLUTION_PRESETS } from './types';
 
 const execFileAsync = promisify(execFile);
 
-export type { Resolution, ResolutionPreset } from './types';
-export { RESOLUTION_PRESETS } from './types';
+export type { Resolution,  } from './types';
+;
 
 import type { AudioStoreState } from './audio/audioStore';
 
@@ -58,7 +58,7 @@ const MP4_DECODER_MAP = {
 
 const WHIP_SERVER_DECODER_PREFERENCES = [config.h264Decoder];
 
-export class SmelterManager {
+class SmelterManager {
   private instance: Smelter;
   private pipelineStartTime: number = 0;
 

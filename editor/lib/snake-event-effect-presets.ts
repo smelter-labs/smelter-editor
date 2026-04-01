@@ -3,14 +3,14 @@ import type {
   SnakeEventType,
 } from '@/lib/snake-game-types';
 
-export type SnakeEventEffectPreset = {
+type SnakeEventEffectPreset = {
   name: string;
   effectDurationMs: number;
   application: SnakeEventApplicationMode;
   paramOverrides: Record<string, number | string>;
 };
 
-export const SNAKE_EVENT_EFFECT_PRESETS: Record<
+const SNAKE_EVENT_EFFECT_PRESETS: Record<
   SnakeEventType,
   SnakeEventEffectPreset[]
 > = {

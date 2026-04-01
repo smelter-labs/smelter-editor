@@ -1,14 +1,14 @@
 import type { ShaderConfig } from '../types';
 import type { SnakeEventShaderConfig, SnakeGameState } from './types';
 
-export type SnakeGameInputState = {
+type SnakeGameInputState = {
   snakeGameState: SnakeGameState;
   snakeEventShaders?: SnakeEventShaderConfig;
   snake1Shaders?: ShaderConfig[];
   snake2Shaders?: ShaderConfig[];
 };
 
-export function extractSnakePlayerColors(
+function extractSnakePlayerColors(
   cells: Array<{ color: string; isHead?: boolean }>,
 ): string[] {
   const orderedHeadColors: string[] = [];

@@ -492,7 +492,7 @@ function computeDesiredState(
   return desired;
 }
 
-export function buildUpdateFromBlockSettings(
+function buildUpdateFromBlockSettings(
   bs: TimelineBlockSettings,
 ): Record<string, unknown> {
   return {

@@ -6,7 +6,7 @@ import { useStore } from 'zustand';
 
 /** Each input cell in the grid. */
 export const MOTION_CELL_WIDTH = 320;
-export const MOTION_CELL_HEIGHT = 180;
+const MOTION_CELL_HEIGHT = 180;
 /** Max simultaneous motion-tracked inputs. */
 export const MOTION_MAX_SLOTS = 8;
 /** Fixed output resolution (never changes). */

@@ -45,7 +45,7 @@ export function hexToRgb01(color: string): {
   return { r, g, b };
 }
 
-export function rgb01ToHex(r: number, g: number, b: number): string {
+function rgb01ToHex(r: number, g: number, b: number): string {
   const toByte = (value: number) =>
     Math.max(0, Math.min(255, Math.round(value * 255)));
   const rr = toByte(r).toString(16).padStart(2, '0');
@@ -88,7 +88,7 @@ export function rgbToHsl(
   return { h: h * 360, s, l };
 }
 
-export function hslToRgb(
+function hslToRgb(
   h: number,
   s: number,
   l: number,

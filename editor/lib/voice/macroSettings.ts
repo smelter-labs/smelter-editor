@@ -2,8 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
-export const AUTO_PLAY_MACRO_STORAGE_KEY = 'smelter:voice:auto-play-macro';
-export const AUTO_PLAY_MACRO_CHANGED_EVENT =
+const AUTO_PLAY_MACRO_STORAGE_KEY = 'smelter:voice:auto-play-macro';
+const AUTO_PLAY_MACRO_CHANGED_EVENT =
   'smelter:voice:auto-play-macro-changed';
 
 export const FEEDBACK_POSITIONS = [
@@ -44,7 +44,7 @@ type AutoPlayMacroChangedDetail = {
   value: boolean;
 };
 
-export function getAutoPlayMacroSetting(): boolean {
+function getAutoPlayMacroSetting(): boolean {
   if (typeof window === 'undefined') {
     return true;
   }
@@ -56,7 +56,7 @@ export function getAutoPlayMacroSetting(): boolean {
   return stored !== 'false';
 }
 
-export function setAutoPlayMacroSetting(value: boolean): void {
+function setAutoPlayMacroSetting(value: boolean): void {
   if (typeof window === 'undefined') {
     return;
   }
@@ -69,7 +69,7 @@ export function setAutoPlayMacroSetting(value: boolean): void {
   );
 }
 
-export function subscribeToAutoPlayMacroSetting(
+function subscribeToAutoPlayMacroSetting(
   listener: (value: boolean) => void,
 ): () => void {
   if (typeof window === 'undefined') {
@@ -103,7 +103,7 @@ export function useAutoPlayMacroSetting(): [boolean, (value: boolean) => void] {
   return [value, setAutoPlay];
 }
 
-export function getFeedbackPositionSetting(): FeedbackPosition {
+function getFeedbackPositionSetting(): FeedbackPosition {
   if (typeof window === 'undefined') {
     return DEFAULT_FEEDBACK_POSITION;
   }
@@ -115,7 +115,7 @@ export function getFeedbackPositionSetting(): FeedbackPosition {
   return DEFAULT_FEEDBACK_POSITION;
 }
 
-export function setFeedbackPositionSetting(value: FeedbackPosition): void {
+function setFeedbackPositionSetting(value: FeedbackPosition): void {
   if (typeof window === 'undefined') {
     return;
   }
@@ -159,7 +159,7 @@ export function useFeedbackPositionSetting(): [
   return [value, setPosition];
 }
 
-export function getFeedbackEnabledSetting(): boolean {
+function getFeedbackEnabledSetting(): boolean {
   if (typeof window === 'undefined') {
     return true;
   }
@@ -170,7 +170,7 @@ export function getFeedbackEnabledSetting(): boolean {
   return stored !== 'false';
 }
 
-export function setFeedbackEnabledSetting(value: boolean): void {
+function setFeedbackEnabledSetting(value: boolean): void {
   if (typeof window === 'undefined') {
     return;
   }
@@ -210,7 +210,7 @@ export function useFeedbackEnabledSetting(): [
   return [value, setEnabled];
 }
 
-export function getFeedbackSizeSetting(): FeedbackSize {
+function getFeedbackSizeSetting(): FeedbackSize {
   if (typeof window === 'undefined') {
     return DEFAULT_FEEDBACK_SIZE;
   }
@@ -221,7 +221,7 @@ export function getFeedbackSizeSetting(): FeedbackSize {
   return DEFAULT_FEEDBACK_SIZE;
 }
 
-export function setFeedbackSizeSetting(value: FeedbackSize): void {
+function setFeedbackSizeSetting(value: FeedbackSize): void {
   if (typeof window === 'undefined') {
     return;
   }
@@ -261,7 +261,7 @@ export function useFeedbackSizeSetting(): [
   return [value, setSize];
 }
 
-export function getFeedbackDurationSetting(): number {
+function getFeedbackDurationSetting(): number {
   if (typeof window === 'undefined') {
     return DEFAULT_FEEDBACK_DURATION;
   }
@@ -275,7 +275,7 @@ export function getFeedbackDurationSetting(): number {
   return DEFAULT_FEEDBACK_DURATION;
 }
 
-export function setFeedbackDurationSetting(value: number): void {
+function setFeedbackDurationSetting(value: number): void {
   if (typeof window === 'undefined') {
     return;
   }
@@ -320,10 +320,10 @@ const DEFAULT_ORIENTATION_STORAGE_KEY = 'smelter:voice:default-orientation';
 const DEFAULT_ORIENTATION_CHANGED_EVENT =
   'smelter:voice:default-orientation-changed';
 
-export type DefaultOrientation = 'horizontal' | 'vertical';
+type DefaultOrientation = 'horizontal' | 'vertical';
 const DEFAULT_ORIENTATION: DefaultOrientation = 'horizontal';
 
-export function getDefaultOrientationSetting(): DefaultOrientation {
+function getDefaultOrientationSetting(): DefaultOrientation {
   if (typeof window === 'undefined') {
     return DEFAULT_ORIENTATION;
   }
@@ -334,7 +334,7 @@ export function getDefaultOrientationSetting(): DefaultOrientation {
   return DEFAULT_ORIENTATION;
 }
 
-export function setDefaultOrientationSetting(value: DefaultOrientation): void {
+function setDefaultOrientationSetting(value: DefaultOrientation): void {
   if (typeof window === 'undefined') {
     return;
   }
@@ -375,14 +375,14 @@ export function useDefaultOrientationSetting(): [
   return [value, setOrientation];
 }
 
-export const VOICE_PANEL_SIZES = ['s', 'l'] as const;
-export type VoicePanelSize = (typeof VOICE_PANEL_SIZES)[number];
+const VOICE_PANEL_SIZES = ['s', 'l'] as const;
+type VoicePanelSize = (typeof VOICE_PANEL_SIZES)[number];
 
 const VOICE_PANEL_SIZE_STORAGE_KEY = 'smelter:voice:panel-size';
 const VOICE_PANEL_SIZE_CHANGED_EVENT = 'smelter:voice:panel-size-changed';
 const DEFAULT_VOICE_PANEL_SIZE: VoicePanelSize = 'l';
 
-export function getVoicePanelSizeSetting(): VoicePanelSize {
+function getVoicePanelSizeSetting(): VoicePanelSize {
   if (typeof window === 'undefined') {
     return DEFAULT_VOICE_PANEL_SIZE;
   }
@@ -393,7 +393,7 @@ export function getVoicePanelSizeSetting(): VoicePanelSize {
   return DEFAULT_VOICE_PANEL_SIZE;
 }
 
-export function setVoicePanelSizeSetting(value: VoicePanelSize): void {
+function setVoicePanelSizeSetting(value: VoicePanelSize): void {
   if (typeof window === 'undefined') {
     return;
   }
@@ -437,7 +437,7 @@ const VOICE_PANEL_OPACITY_STORAGE_KEY = 'smelter:voice:panel-opacity';
 const VOICE_PANEL_OPACITY_CHANGED_EVENT = 'smelter:voice:panel-opacity-changed';
 const DEFAULT_VOICE_PANEL_OPACITY = 100;
 
-export function getVoicePanelOpacitySetting(): number {
+function getVoicePanelOpacitySetting(): number {
   if (typeof window === 'undefined') {
     return DEFAULT_VOICE_PANEL_OPACITY;
   }
@@ -451,7 +451,7 @@ export function getVoicePanelOpacitySetting(): number {
   return DEFAULT_VOICE_PANEL_OPACITY;
 }
 
-export function setVoicePanelOpacitySetting(value: number): void {
+function setVoicePanelOpacitySetting(value: number): void {
   if (typeof window === 'undefined') {
     return;
   }

@@ -15,12 +15,12 @@ import type { MacroDefinition } from './macroTypes';
 import { useAutoPlayMacroSetting } from './macroSettings';
 import { emitActionFeedback } from './feedbackEvents';
 
-export type UseVoiceCommandsOptions = {
+type UseVoiceCommandsOptions = {
   mp4Files?: string[];
   imageFiles?: string[];
 };
 
-export type UseVoiceCommandsResult = {
+type UseVoiceCommandsResult = {
   lastCommand: VoiceCommand | null;
   lastError: string | null;
   lastClarify: string | null;
@@ -45,7 +45,7 @@ type EmitContext = {
   imageFiles: string[];
 };
 
-export type MacroControlCommand =
+type MacroControlCommand =
   | 'ENABLE_AUTO_PLAY'
   | 'DISABLE_AUTO_PLAY'
   | 'NEXT_STEP'

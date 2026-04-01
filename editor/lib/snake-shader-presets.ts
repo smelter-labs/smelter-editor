@@ -6,7 +6,7 @@ import {
   rotateHexHue,
 } from '@/lib/color-utils';
 
-export type SnakeShaderPreset = {
+type SnakeShaderPreset = {
   name: string;
   shaders: ShaderConfig[];
 };

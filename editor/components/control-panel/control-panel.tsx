@@ -107,7 +107,7 @@ import {
   SelectItem,
 } from '@/components/ui/select';
 
-export type ControlPanelProps = {
+type ControlPanelProps = {
   roomId: string;
   roomState: RoomState;
   refreshState: () => Promise<void>;
@@ -133,7 +133,7 @@ export type ControlPanelProps = {
   }) => React.ReactNode;
 };
 
-export type { InputWrapper } from './hooks/use-control-panel-state';
+;
 
 export default function ControlPanel(props: ControlPanelProps) {
   return (

@@ -6,7 +6,7 @@ import type {
   ShaderParamDefinition,
 } from '../types';
 
-export type { ShaderParamConfig, ShaderConfig };
+;
 
 type AvailableShader = {
   id: string;
@@ -18,7 +18,7 @@ type AvailableShader = {
   params?: ShaderParamDefinition[];
 };
 
-export type PublicShader = AvailableShader & {
+type PublicShader = AvailableShader & {
   iconSvg: string;
 };
 

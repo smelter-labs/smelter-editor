@@ -1,7 +1,7 @@
 import { Shader } from '@swmansion/smelter';
 import React from 'react';
 
-export type NewsStripDecoratedProps = {
+type NewsStripDecoratedProps = {
   resolution: { width: number; height: number };
   opacity?: number;
   amplitudePx?: number;

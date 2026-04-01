@@ -2,7 +2,7 @@
  * Computes "contain" fit: the largest rectangle with the source aspect ratio
  * that fits inside the canvas, clamped to a minimum size.
  */
-export function fitSourceToCanvas(
+function fitSourceToCanvas(
   sourceW: number,
   sourceH: number,
   canvasW: number,

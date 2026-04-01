@@ -488,14 +488,14 @@ export function loadOutputPlayerSettings(
 
 const PENDING_WHIP_STORAGE_KEY = 'smelter-pending-whip-inputs';
 
-export type StoredPendingWhipInput = {
+type StoredPendingWhipInput = {
   id: string;
   title: string;
   config: RoomConfigInput;
   position: number;
 };
 
-export function savePendingWhipInputs(
+function savePendingWhipInputs(
   roomId: string,
   inputs: StoredPendingWhipInput[],
 ) {
@@ -512,7 +512,7 @@ export function savePendingWhipInputs(
   }
 }
 
-export function loadPendingWhipInputs(
+function loadPendingWhipInputs(
   roomId: string,
 ): StoredPendingWhipInput[] {
   if (typeof window === 'undefined') return [];

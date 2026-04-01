@@ -73,7 +73,7 @@ export type MacrosConfig = {
   macros: MacroDefinition[];
 };
 
-export type MacroState = {
+type MacroState = {
   isListening: boolean;
   activeMacro: MacroDefinition | null;
   isExecuting: boolean;

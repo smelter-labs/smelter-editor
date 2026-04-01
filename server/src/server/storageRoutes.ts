@@ -24,7 +24,7 @@ function safeFileName(fileName: string): string {
   return fileName;
 }
 
-export interface StorageRouteOptions {
+interface StorageRouteOptions {
   routePrefix: string;
   dirPath: string;
   filePrefix: string;

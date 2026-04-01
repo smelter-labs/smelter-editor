@@ -76,7 +76,7 @@ export function findMatchingMacro(transcript: string): MacroDefinition | null {
   return null;
 }
 
-export function getAllMacros(): MacroDefinition[] {
+function getAllMacros(): MacroDefinition[] {
   return macrosConfig.macros;
 }
 
