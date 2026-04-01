@@ -133,6 +133,517 @@ function formatMetricValue(value: number) {
   return value.toLocaleString('en-US');
 }
 
+// ── GPU Canvas Effect Types & Helpers ───────────────────────────────
+
+type FxSpark = {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  maxLife: number;
+  hue: number;
+  size: number;
+  bright: number;
+};
+
+type FxPt = { x: number; y: number };
+
+type FxBolt = {
+  pts: FxPt[];
+  branches: FxPt[][];
+  life: number;
+  maxLife: number;
+  w: number;
+  hue: number;
+};
+
+type FxPulse = {
+  path: number;
+  t: number;
+  speed: number;
+  hue: number;
+  tail: number;
+};
+
+type FxWave = {
+  cx: number;
+  cy: number;
+  r: number;
+  maxR: number;
+  life: number;
+  maxLife: number;
+};
+
+type FxState = {
+  w: number;
+  h: number;
+  dpr: number;
+  sparks: FxSpark[];
+  bolts: FxBolt[];
+  circuits: FxPt[][];
+  pulses: FxPulse[];
+  waves: FxWave[];
+  dots: HTMLCanvasElement | null;
+  nextBolt: number;
+  nextWave: number;
+  nextPulse: number;
+};
+
+const FX_HUES = [187, 295, 45, 160];
+
+function fxHsl(h: number, s: number, l: number, a: number) {
+  return `hsla(${h},${s}%,${l}%,${a})`;
+}
+
+function displaceMidpoint(
+  x1: number,
+  y1: number,
+  x2: number,
+  y2: number,
+  d: number,
+  depth: number,
+): FxPt[] {
+  if (depth <= 0) return [{ x: x1, y: y1 }, { x: x2, y: y2 }];
+  const mx = (x1 + x2) / 2 + (Math.random() - 0.5) * d;
+  const my = (y1 + y2) / 2 + (Math.random() - 0.5) * d;
+  const left = displaceMidpoint(x1, y1, mx, my, d * 0.52, depth - 1);
+  const right = displaceMidpoint(mx, my, x2, y2, d * 0.52, depth - 1);
+  return [...left.slice(0, -1), ...right];
+}
+
+function makeBolt(w: number, h: number): FxBolt {
+  const edge = Math.random();
+  let x1: number, y1: number;
+  if (edge < 0.25) {
+    x1 = 0;
+    y1 = Math.random() * h;
+  } else if (edge < 0.5) {
+    x1 = w;
+    y1 = Math.random() * h;
+  } else if (edge < 0.75) {
+    x1 = Math.random() * w;
+    y1 = 0;
+  } else {
+    x1 = Math.random() * w;
+    y1 = h;
+  }
+  const x2 = w * 0.2 + Math.random() * w * 0.6;
+  const y2 = h * 0.2 + Math.random() * h * 0.6;
+  const dist = Math.hypot(x2 - x1, y2 - y1);
+  const pts = displaceMidpoint(x1, y1, x2, y2, dist * 0.35, 5);
+
+  const branches: FxPt[][] = [];
+  for (let i = 0; i < 1 + Math.floor(Math.random() * 2); i++) {
+    const idx = Math.min(
+      Math.floor(pts.length * 0.3 + Math.random() * pts.length * 0.5),
+      pts.length - 1,
+    );
+    const bp = pts[idx];
+    const bx = bp.x + (Math.random() - 0.5) * dist * 0.4;
+    const by = bp.y + (Math.random() - 0.5) * dist * 0.4;
+    branches.push(
+      displaceMidpoint(
+        bp.x,
+        bp.y,
+        bx,
+        by,
+        Math.hypot(bx - bp.x, by - bp.y) * 0.3,
+        3,
+      ),
+    );
+  }
+
+  return {
+    pts,
+    branches,
+    life: 0,
+    maxLife: 0.1 + Math.random() * 0.12,
+    w: 1 + Math.random() * 1.5,
+    hue: FX_HUES[Math.floor(Math.random() * FX_HUES.length)],
+  };
+}
+
+function makeCircuits(w: number, h: number): FxPt[][] {
+  const grid = 24;
+  const paths: FxPt[][] = [];
+  for (let i = 0; i < 12; i++) {
+    const path: FxPt[] = [];
+    let cx = Math.floor(Math.random() * (w / grid)) * grid;
+    let cy = Math.floor(Math.random() * (h / grid)) * grid;
+    path.push({ x: cx, y: cy });
+    for (let j = 0; j < 3 + Math.floor(Math.random() * 5); j++) {
+      if (Math.random() > 0.5) {
+        cx +=
+          (Math.random() > 0.5 ? 1 : -1) *
+          grid *
+          (1 + Math.floor(Math.random() * 4));
+        cx = Math.max(0, Math.min(w, cx));
+      } else {
+        cy +=
+          (Math.random() > 0.5 ? 1 : -1) *
+          grid *
+          (1 + Math.floor(Math.random() * 4));
+        cy = Math.max(0, Math.min(h, cy));
+      }
+      path.push({ x: cx, y: cy });
+    }
+    paths.push(path);
+  }
+  return paths;
+}
+
+function makeDotPattern(
+  w: number,
+  h: number,
+  dpr: number,
+): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = Math.ceil(w * dpr);
+  c.height = Math.ceil(h * dpr);
+  const ctx = c.getContext('2d');
+  if (!ctx) return c;
+  ctx.scale(dpr, dpr);
+  const sp = 14;
+  for (let x = sp / 2; x < w; x += sp) {
+    for (let y = sp / 2; y < h; y += sp) {
+      ctx.fillStyle = `rgba(34,211,238,${0.025 + Math.random() * 0.02})`;
+      ctx.beginPath();
+      ctx.arc(x, y, 0.6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  return c;
+}
+
+function makeSpark(w: number, h: number, scatter?: boolean): FxSpark {
+  return {
+    x: Math.random() * w,
+    y: scatter ? Math.random() * h : h + Math.random() * 20,
+    vx: (Math.random() - 0.5) * 18,
+    vy: -(20 + Math.random() * 40),
+    life: scatter ? Math.random() * 3 : 0,
+    maxLife: 1.5 + Math.random() * 2.5,
+    hue: FX_HUES[Math.floor(Math.random() * FX_HUES.length)],
+    size: 0.6 + Math.random() * 1.4,
+    bright: 0.4 + Math.random() * 0.6,
+  };
+}
+
+function updateFx(s: FxState, dt: number, pct: number) {
+  const target = Math.floor(25 + 35 * pct);
+  while (s.sparks.length < target) s.sparks.push(makeSpark(s.w, s.h));
+  for (const p of s.sparks) {
+    p.life += dt;
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vx += (Math.random() - 0.5) * 30 * dt;
+    p.vy -= 5 * dt;
+  }
+  s.sparks = s.sparks.filter(
+    (p) =>
+      p.life < p.maxLife && p.y > -10 && p.x > -10 && p.x < s.w + 10,
+  );
+
+  s.nextBolt -= dt;
+  if (s.nextBolt <= 0 && pct > 0.05) {
+    s.bolts.push(makeBolt(s.w, s.h));
+    const iv = 0.8 - 0.55 * pct;
+    s.nextBolt = iv + Math.random() * iv * 0.5;
+  }
+  for (const b of s.bolts) b.life += dt;
+  s.bolts = s.bolts.filter((b) => b.life < b.maxLife);
+
+  s.nextPulse -= dt;
+  if (s.nextPulse <= 0 && s.circuits.length > 0) {
+    s.pulses.push({
+      path: Math.floor(Math.random() * s.circuits.length),
+      t: 0,
+      speed: 0.3 + Math.random() * 0.4 + pct * 0.3,
+      hue: FX_HUES[Math.floor(Math.random() * FX_HUES.length)],
+      tail: 0.15 + Math.random() * 0.1,
+    });
+    const iv = 1.2 - 0.8 * pct;
+    s.nextPulse = iv + Math.random() * iv * 0.3;
+  }
+  for (const p of s.pulses) p.t += p.speed * dt;
+  s.pulses = s.pulses.filter((p) => p.t < 1 + p.tail);
+
+  s.nextWave -= dt;
+  if (s.nextWave <= 0 && pct > 0.1) {
+    s.waves.push({
+      cx: s.w * (0.3 + Math.random() * 0.4),
+      cy: s.h * (0.3 + Math.random() * 0.4),
+      r: 0,
+      maxR: Math.max(s.w, s.h) * 0.8,
+      life: 0,
+      maxLife: 1.5,
+    });
+    s.nextWave = 2.5 - pct * 0.8;
+  }
+  for (const wv of s.waves) {
+    wv.life += dt;
+    wv.r += (wv.maxR / wv.maxLife) * dt;
+  }
+  s.waves = s.waves.filter((wv) => wv.life < wv.maxLife);
+}
+
+function drawFx(ctx: CanvasRenderingContext2D, s: FxState, pct: number) {
+  const { w, h, dpr } = s;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+
+  if (s.dots) {
+    ctx.globalAlpha = 0.6 + pct * 0.4;
+    ctx.drawImage(s.dots, 0, 0, w, h);
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.save();
+  ctx.globalAlpha = 0.06;
+  ctx.strokeStyle = 'rgba(34,211,238,1)';
+  ctx.fillStyle = 'rgba(34,211,238,1)';
+  ctx.lineWidth = 0.5;
+  for (const path of s.circuits) {
+    if (path.length < 2) continue;
+    ctx.beginPath();
+    ctx.moveTo(path[0].x, path[0].y);
+    for (let i = 1; i < path.length; i++) ctx.lineTo(path[i].x, path[i].y);
+    ctx.stroke();
+    for (const n of path) {
+      ctx.beginPath();
+      ctx.arc(n.x, n.y, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+
+  ctx.lineCap = 'round';
+  for (const pulse of s.pulses) {
+    const path = s.circuits[pulse.path];
+    if (!path || path.length < 2) continue;
+    let totalLen = 0;
+    const segs: number[] = [];
+    for (let i = 1; i < path.length; i++) {
+      const len = Math.hypot(
+        path[i].x - path[i - 1].x,
+        path[i].y - path[i - 1].y,
+      );
+      segs.push(len);
+      totalLen += len;
+    }
+    const headD = pulse.t * totalLen;
+    const tailD = Math.max(0, headD - pulse.tail * totalLen);
+    let acc = 0;
+    for (let i = 0; i < segs.length; i++) {
+      const sS = acc;
+      const sE = acc + segs[i];
+      if (sE > tailD && sS < headD) {
+        const t0 = (Math.max(sS, tailD) - sS) / segs[i];
+        const t1 = (Math.min(sE, headD) - sS) / segs[i];
+        const sx = path[i].x + (path[i + 1].x - path[i].x) * t0;
+        const sy = path[i].y + (path[i + 1].y - path[i].y) * t0;
+        const ex = path[i].x + (path[i + 1].x - path[i].x) * t1;
+        const ey = path[i].y + (path[i + 1].y - path[i].y) * t1;
+        ctx.shadowColor = fxHsl(pulse.hue, 100, 70, 1);
+        ctx.shadowBlur = 8;
+        ctx.strokeStyle = fxHsl(pulse.hue, 90, 75, 0.7);
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.strokeStyle = fxHsl(pulse.hue, 60, 90, 0.5);
+        ctx.lineWidth = 0.8;
+        ctx.beginPath();
+        ctx.moveTo(sx, sy);
+        ctx.lineTo(ex, ey);
+        ctx.stroke();
+      }
+      acc = sE;
+    }
+    ctx.shadowBlur = 0;
+    if (headD <= totalLen) {
+      let a2 = 0;
+      for (let i = 0; i < segs.length; i++) {
+        if (a2 + segs[i] >= headD) {
+          const t = (headD - a2) / segs[i];
+          const hx = path[i].x + (path[i + 1].x - path[i].x) * t;
+          const hy = path[i].y + (path[i + 1].y - path[i].y) * t;
+          ctx.shadowColor = fxHsl(pulse.hue, 100, 80, 1);
+          ctx.shadowBlur = 12;
+          ctx.fillStyle = fxHsl(pulse.hue, 80, 90, 0.9);
+          ctx.beginPath();
+          ctx.arc(hx, hy, 2, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.shadowBlur = 0;
+          break;
+        }
+        a2 += segs[i];
+      }
+    }
+  }
+
+  for (const wv of s.waves) {
+    const p = wv.life / wv.maxLife;
+    const a = (0.15 + pct * 0.1) * (1 - p) * (1 - p);
+    if (a < 0.005) continue;
+    ctx.strokeStyle = fxHsl(187, 90, 75, a);
+    ctx.lineWidth = 1.5 * (1 - p * 0.5);
+    ctx.shadowColor = `rgba(34,211,238,${a * 0.8})`;
+    ctx.shadowBlur = 15;
+    ctx.beginPath();
+    ctx.arc(wv.cx, wv.cy, wv.r, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  for (const sp of s.sparks) {
+    const lr = sp.life / sp.maxLife;
+    const a = Math.min(1, sp.life * 5) * (1 - lr) * sp.bright;
+    if (a < 0.01) continue;
+    ctx.shadowColor = fxHsl(sp.hue, 100, 70, 1);
+    ctx.shadowBlur = 6 * a;
+    ctx.fillStyle = fxHsl(sp.hue, 85, 80, a * 0.8);
+    ctx.beginPath();
+    ctx.arc(sp.x, sp.y, sp.size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = fxHsl(sp.hue, 40, 95, a);
+    ctx.beginPath();
+    ctx.arc(sp.x, sp.y, sp.size * 0.4, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.shadowBlur = 0;
+
+  for (const bolt of s.bolts) {
+    const lr = bolt.life / bolt.maxLife;
+    const flash = lr < 0.15 ? lr / 0.15 : 1 - (lr - 0.15) / 0.85;
+    const a = flash * flash;
+    if (a < 0.01) continue;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    const strokePath = (pts: FxPt[], lw: number, al: number) => {
+      if (pts.length < 2) return;
+      ctx.lineWidth = lw;
+      ctx.strokeStyle = fxHsl(bolt.hue, 100, 85, al);
+      ctx.beginPath();
+      ctx.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+      ctx.stroke();
+    };
+    ctx.shadowColor = fxHsl(bolt.hue, 100, 70, a);
+    ctx.shadowBlur = 20;
+    strokePath(bolt.pts, bolt.w * 3, a * 0.3);
+    ctx.shadowBlur = 8;
+    strokePath(bolt.pts, bolt.w * 1.5, a * 0.6);
+    ctx.shadowBlur = 0;
+    strokePath(bolt.pts, bolt.w * 0.5, a);
+    if (lr < 0.2) {
+      ctx.strokeStyle = `rgba(255,255,255,${a * 0.5})`;
+      ctx.lineWidth = bolt.w * 0.2;
+      ctx.beginPath();
+      ctx.moveTo(bolt.pts[0].x, bolt.pts[0].y);
+      for (let i = 1; i < bolt.pts.length; i++)
+        ctx.lineTo(bolt.pts[i].x, bolt.pts[i].y);
+      ctx.stroke();
+    }
+    for (const br of bolt.branches) {
+      ctx.shadowColor = fxHsl(bolt.hue, 100, 70, a * 0.5);
+      ctx.shadowBlur = 10;
+      strokePath(br, bolt.w * 1.5, a * 0.2);
+      ctx.shadowBlur = 0;
+      strokePath(br, bolt.w * 0.4, a * 0.5);
+    }
+    ctx.shadowBlur = 0;
+  }
+}
+
+function GpuCanvas({
+  percent,
+  isActive,
+}: {
+  percent: number;
+  isActive: boolean;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rafRef = useRef<number | null>(null);
+  const percentRef = useRef(percent);
+  percentRef.current = percent;
+
+  useEffect(() => {
+    if (!isActive) {
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+      return;
+    }
+    const canvas = canvasRef.current;
+    const parent = canvas?.parentElement;
+    if (!canvas || !parent) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const rect = parent.getBoundingClientRect();
+    canvas.width = Math.ceil(rect.width * dpr);
+    canvas.height = Math.ceil(rect.height * dpr);
+
+    const st: FxState = {
+      w: rect.width,
+      h: rect.height,
+      dpr,
+      sparks: [],
+      bolts: [],
+      circuits: makeCircuits(rect.width, rect.height),
+      pulses: [],
+      waves: [],
+      dots: makeDotPattern(rect.width, rect.height, dpr),
+      nextBolt: 0.5,
+      nextWave: 1.0,
+      nextPulse: 0.3,
+    };
+    for (let i = 0; i < 25; i++) st.sparks.push(makeSpark(st.w, st.h, true));
+
+    const observer = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (!entry) return;
+      const { width: rw, height: rh } = entry.contentRect;
+      canvas.width = Math.ceil(rw * dpr);
+      canvas.height = Math.ceil(rh * dpr);
+      st.w = rw;
+      st.h = rh;
+      st.circuits = makeCircuits(rw, rh);
+      st.dots = makeDotPattern(rw, rh, dpr);
+    });
+    observer.observe(parent);
+
+    let last = performance.now();
+    const tick = (now: number) => {
+      const dt = Math.min((now - last) / 1000, 0.1);
+      last = now;
+      updateFx(st, dt, percentRef.current / 100);
+      drawFx(ctx, st, percentRef.current / 100);
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      observer.disconnect();
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+    };
+  }, [isActive]);
+
+  if (!isActive) return null;
+  return (
+    <canvas
+      ref={canvasRef}
+      className='absolute inset-0 pointer-events-none'
+      style={{ borderRadius: 'inherit' }}
+    />
+  );
+}
+
 export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
   const total = progress?.total ?? 0;
   const current = progress ? Math.min(progress.current, total) : 0;
@@ -371,10 +882,11 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
   return (
     <Dialog open={progress !== null} onOpenChange={() => {}}>
       <DialogContent
-        className='max-w-md border-cyan-400/20 bg-neutral-950/95 shadow-[0_0_60px_rgba(8,145,178,0.12)] [&>button]:hidden'
+        className='max-w-md overflow-hidden border-cyan-400/20 bg-neutral-950/95 shadow-[0_0_60px_rgba(8,145,178,0.12)] [&>button]:hidden'
         onEscapeKeyDown={(event) => event.preventDefault()}
         onPointerDownOutside={(event) => event.preventDefault()}
         onInteractOutside={(event) => event.preventDefault()}>
+        <GpuCanvas percent={percent} isActive={progress !== null} />
         <DialogHeader className='relative'>
           <DialogTitle>Importing Configuration</DialogTitle>
           <DialogDescription className='text-neutral-400'>
