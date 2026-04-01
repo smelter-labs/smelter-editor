@@ -7,11 +7,7 @@ import {
   loadLayouts,
   saveLayouts,
   clearLayout,
-  isMotionPanelId,
-  motionPanelId,
-  getInputIdFromMotionPanel,
   isKnownPanelId,
-  type MotionPanelId,
 } from '../panel-registry';
 
 function createLocalStorageMock() {
@@ -127,10 +123,11 @@ describe('panel-registry layout persistence', () => {
     expect(fx?.y).not.toEqual(timeline?.y);
   });
 
-  it('removes panels that are neither static nor motion panels', () => {
+  it('removes panels that are not part of the static registry', () => {
     const withExtra = [
       ...DEFAULT_LAYOUT,
       { i: 'obsolete-panel', x: 0, y: 50, w: 4, h: 4, minW: 2, minH: 2 },
+      { i: 'motion:input-123', x: 8, y: 50, w: 8, h: 5, minW: 4, minH: 3 },
     ];
     localStorage.setItem('smelter-dashboard-layout', JSON.stringify(withExtra));
 
@@ -139,45 +136,15 @@ describe('panel-registry layout persistence', () => {
     expect(restored).not.toBeNull();
     const lgIds = restored!.lg.map((item) => item.i);
     expect(lgIds).not.toContain('obsolete-panel');
-  });
-
-  it('preserves motion:* panels in persisted layout', () => {
-    const withMotion = [
-      ...DEFAULT_LAYOUT,
-      { i: 'motion:input-123', x: 0, y: 50, w: 8, h: 5, minW: 4, minH: 3 },
-      { i: 'motion:input-456', x: 8, y: 50, w: 8, h: 5, minW: 4, minH: 3 },
-    ];
-    localStorage.setItem(
-      'smelter-dashboard-layout',
-      JSON.stringify(withMotion),
-    );
-
-    const restored = loadLayouts();
-
-    expect(restored).not.toBeNull();
-    const lgIds = restored!.lg.map((item) => item.i);
-    expect(lgIds).toContain('motion:input-123');
-    expect(lgIds).toContain('motion:input-456');
+    expect(lgIds).not.toContain('motion:input-123');
   });
 });
 
-describe('motion panel ID helpers', () => {
-  it('creates and parses motion panel IDs', () => {
-    const id = motionPanelId('abc-123');
-    expect(id).toBe('motion:abc-123');
-    expect(isMotionPanelId(id)).toBe(true);
-    expect(getInputIdFromMotionPanel(id)).toBe('abc-123');
-  });
-
-  it('rejects non-motion IDs', () => {
-    expect(isMotionPanelId('streams')).toBe(false);
-    expect(isMotionPanelId('video-preview')).toBe(false);
-    expect(isMotionPanelId('motion')).toBe(false);
-  });
-
-  it('isKnownPanelId recognises static and motion panels', () => {
+describe('panel registry helpers', () => {
+  it('isKnownPanelId recognises only static panels', () => {
     expect(isKnownPanelId('streams')).toBe(true);
-    expect(isKnownPanelId('motion:abc')).toBe(true);
+    expect(isKnownPanelId('motion-detection')).toBe(true);
+    expect(isKnownPanelId('motion:abc')).toBe(false);
     expect(isKnownPanelId('unknown')).toBe(false);
   });
 });

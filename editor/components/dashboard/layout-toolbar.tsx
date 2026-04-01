@@ -13,12 +13,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
   LAYOUT_PRESETS,
-  isMotionPanelId,
   type PanelDefinition,
   type MutableLayout,
   type LayoutPreset,
 } from './panel-registry';
-import { ChevronRight } from 'lucide-react';
 import type { DashboardLayoutSavedData } from './dashboard-layout';
 import type { StorageClient } from '@/lib/storage-client';
 import {
@@ -54,27 +52,16 @@ export default function LayoutToolbar({
   onApplyLoadedLayout,
 }: LayoutToolbarProps) {
   const [showPanelMenu, setShowPanelMenu] = useState(false);
-  const [showMotionPanelMenu, setShowMotionPanelMenu] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showLoadModal, setShowLoadModal] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const staticPanelIds = allPanelIds.filter(
-    (panelId) => !isMotionPanelId(panelId),
-  );
-  const motionPanelIds = allPanelIds
-    .filter((panelId) => isMotionPanelId(panelId))
-    .sort((a, b) =>
-      getPanelDefinition(a).title.localeCompare(getPanelDefinition(b).title),
-    );
 
   useEffect(() => {
     if (!showPanelMenu) return;
     const handleClickOutside = (e: MouseEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setShowPanelMenu(false);
-        setShowMotionPanelMenu(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -191,15 +178,7 @@ export default function LayoutToolbar({
               <Button
                 size='sm'
                 variant='outline'
-                onClick={() => {
-                  setShowPanelMenu((prev) => {
-                    const next = !prev;
-                    if (!next) {
-                      setShowMotionPanelMenu(false);
-                    }
-                    return next;
-                  });
-                }}
+                onClick={() => setShowPanelMenu((prev) => !prev)}
                 aria-expanded={showPanelMenu}
                 aria-haspopup='menu'
                 aria-controls='dashboard-panel-menu'
@@ -212,7 +191,7 @@ export default function LayoutToolbar({
                   id='dashboard-panel-menu'
                   role='menu'
                   className='absolute right-0 top-full mt-1 z-50 w-48 rounded-md border border-neutral-700 bg-neutral-900 shadow-lg py-1'>
-                  {staticPanelIds.map((panelId) => {
+                  {allPanelIds.map((panelId) => {
                     const def = getPanelDefinition(panelId);
                     const isVisible = visiblePanels.has(panelId);
                     return (
@@ -254,71 +233,6 @@ export default function LayoutToolbar({
                       </Button>
                     );
                   })}
-                  {motionPanelIds.length > 0 && (
-                    <div className='relative'>
-                      <Button
-                        variant='ghost'
-                        size='sm'
-                        type='button'
-                        onClick={() => setShowMotionPanelMenu((prev) => !prev)}
-                        className='justify-between gap-2 w-full h-auto px-3 py-1.5 rounded-none text-xs text-left hover:bg-neutral-800 cursor-pointer text-neutral-200'>
-                        <span>Motion Panels</span>
-                        <ChevronRight
-                          className={`h-3.5 w-3.5 shrink-0 transition-transform ${
-                            showMotionPanelMenu ? 'rotate-90' : ''
-                          }`}
-                        />
-                      </Button>
-                      {showMotionPanelMenu && (
-                        <div className='absolute left-full top-0 z-50 ml-1 w-52 rounded-md border border-neutral-700 bg-neutral-900 py-1 shadow-lg'>
-                          {motionPanelIds.map((panelId) => {
-                            const def = getPanelDefinition(panelId);
-                            const isVisible = visiblePanels.has(panelId);
-                            return (
-                              <Button
-                                variant='ghost'
-                                size='sm'
-                                type='button'
-                                key={panelId}
-                                onClick={() => onTogglePanel(panelId)}
-                                role='menuitemcheckbox'
-                                aria-checked={isVisible}
-                                className='justify-start gap-2 w-full h-auto px-3 py-1.5 rounded-none text-xs text-left hover:bg-neutral-800 cursor-pointer'>
-                                <span
-                                  className={`w-3.5 h-3.5 border-0 flex items-center justify-center shrink-0 ${
-                                    isVisible ? 'bg-cyan' : 'bg-neutral-700'
-                                  }`}>
-                                  {isVisible && (
-                                    <svg
-                                      width='10'
-                                      height='10'
-                                      viewBox='0 0 10 10'
-                                      fill='none'>
-                                      <path
-                                        d='M2 5L4 7L8 3'
-                                        stroke='black'
-                                        strokeWidth='2'
-                                        strokeLinecap='round'
-                                        strokeLinejoin='round'
-                                      />
-                                    </svg>
-                                  )}
-                                </span>
-                                <span
-                                  className={
-                                    isVisible
-                                      ? 'text-neutral-200'
-                                      : 'text-neutral-500'
-                                  }>
-                                  {def.title}
-                                </span>
-                              </Button>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
                 </div>
               )}
             </div>

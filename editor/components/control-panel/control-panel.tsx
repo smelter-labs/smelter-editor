@@ -97,13 +97,13 @@ import {
   TYPE_HSL,
 } from './components/timeline/timeline-utils';
 import {
+  emitTimelineEvent,
   listenTimelineEvent,
   TIMELINE_EVENTS,
 } from './components/timeline/timeline-events';
 import { useMotionScores } from '@/hooks/use-motion-scores';
 import { useMotionHistory } from '@/hooks/use-motion-history';
-import { InputMotionPanel } from './components/InputMotionPanel';
-import { motionPanelId } from '@/components/dashboard/panel-registry';
+import { MotionDetectionPanel } from './components/MotionDetectionPanel';
 import { ErrorBoundary } from '@/components/error-boundary';
 import {
   ImportProgressDialog,
@@ -144,13 +144,21 @@ export type ControlPanelProps = {
     timelineSection: React.ReactNode;
     blockPropertiesSection: React.ReactNode;
     pendingConnectionsSection: React.ReactNode;
-    motionPanels: Record<string, React.ReactNode>;
+    motionDetectionSection: React.ReactNode;
     peers: ConnectedPeer[];
     timelineColorOverrides: Record<string, string>;
     selectedInputId: string | null;
     onSelectInput: (id: string) => void;
   }) => React.ReactNode;
 };
+
+const VIDEO_INPUT_TYPES = new Set<string>([
+  'local-mp4',
+  'twitch-channel',
+  'kick-channel',
+  'hls',
+  'whip',
+]);
 
 export type { InputWrapper } from './hooks/use-control-panel-state';
 
@@ -543,6 +551,16 @@ function ControlPanelInner({
     }
   }, [isGuest, pendingWhipInputs.length, showcaseWelcome]);
 
+  const handlePendingModalOpenChange = useCallback(
+    (open: boolean) => {
+      setPendingModalOpen(open);
+      if (pendingModalOpen && !open) {
+        emitTimelineEvent(TIMELINE_EVENTS.APPLY_AT_PLAYHEAD, {});
+      }
+    },
+    [pendingModalOpen],
+  );
+
   const handleTimelineStateChange = useCallback(
     (state: TimelineState) => {
       timelineStateRef.current = state;
@@ -747,28 +765,18 @@ function ControlPanelInner({
       </div>
     );
 
-    const videoInputTypes = [
-      'local-mp4',
-      'twitch-channel',
-      'kick-channel',
-      'hls',
-      'whip',
-    ];
-    const motionPanels: Record<string, React.ReactNode> = {};
-    for (const input of inputs) {
-      if (!videoInputTypes.includes(input.type)) continue;
-      const panelId = motionPanelId(input.inputId);
-      const history = motionHistoryMap.get(input.inputId);
-      motionPanels[panelId] = (
-        <InputMotionPanel
-          roomId={roomId}
-          input={input}
-          motionHistory={history ?? null}
-          motionScore={motionScores[input.inputId]}
-          refreshState={handleRefreshState}
-        />
-      );
-    }
+    const motionDetectionInputs = inputs.filter((input) =>
+      VIDEO_INPUT_TYPES.has(input.type),
+    );
+    const motionDetectionSection = (
+      <MotionDetectionPanel
+        roomId={roomId}
+        inputs={motionDetectionInputs}
+        motionHistoryMap={motionHistoryMap}
+        motionScores={motionScores}
+        refreshState={handleRefreshState}
+      />
+    );
 
     return (
       <DashboardToolbarProvider>
@@ -787,7 +795,7 @@ function ControlPanelInner({
           timelineSection,
           blockPropertiesSection,
           pendingConnectionsSection,
-          motionPanels,
+          motionDetectionSection,
           peers,
           timelineColorOverrides,
           selectedInputId,
@@ -799,7 +807,7 @@ function ControlPanelInner({
             setPendingWhipInputs={handleSetPendingWhipInputs}
             colorMap={pendingWhipColors}
             open={pendingModalOpen}
-            onOpenChange={setPendingModalOpen}
+            onOpenChange={handlePendingModalOpenChange}
             welcomeTextBefore={showcaseWelcome?.before}
             welcomeTextAfter={showcaseWelcome?.after}
           />
@@ -878,7 +886,7 @@ function ControlPanelInner({
       setPendingWhipInputs={handleSetPendingWhipInputs}
       colorMap={pendingWhipColors}
       open={pendingModalOpen}
-      onOpenChange={setPendingModalOpen}
+      onOpenChange={handlePendingModalOpenChange}
       welcomeTextBefore={showcaseWelcome?.before}
       welcomeTextAfter={showcaseWelcome?.after}
     />

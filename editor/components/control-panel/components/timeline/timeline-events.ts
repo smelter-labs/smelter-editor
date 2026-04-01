@@ -8,6 +8,7 @@ export const TIMELINE_EVENTS = {
   MOVE_KEYFRAME: 'smelter:timeline:move-keyframe',
   DELETE_KEYFRAME: 'smelter:timeline:delete-keyframe',
   SELECT_KEYFRAME: 'smelter:timeline:select-keyframe',
+  APPLY_AT_PLAYHEAD: 'smelter:timeline:apply-at-playhead',
   UPDATE_CLIP_SETTINGS_FOR_INPUT:
     'smelter:timeline:update-clip-settings-for-input',
   PURGE_INPUT_IDS: 'smelter:timeline:purge-input-ids',
@@ -56,6 +57,7 @@ export type TimelineEventMap = {
     clipId: string;
     keyframeId: string | null;
   };
+  [TIMELINE_EVENTS.APPLY_AT_PLAYHEAD]: Record<string, never>;
   [TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS_FOR_INPUT]: {
     inputId: string;
     patch: Partial<BlockSettings>;

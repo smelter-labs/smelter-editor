@@ -12,6 +12,10 @@ import { toServerTimelineConfig } from '@/lib/timeline-config';
 import { useTimelineSSE } from '@/hooks/use-timeline-sse';
 import type { TimelineState } from './use-timeline-state';
 import { OUTPUT_TRACK_ID } from './use-timeline-state';
+import {
+  listenTimelineEvent,
+  TIMELINE_EVENTS,
+} from '../components/timeline/timeline-events';
 
 export function useServerTimelinePlayback(
   roomId: string,
@@ -198,6 +202,12 @@ export function useServerTimelinePlayback(
       console.error('[timeline-ui] applyAtPlayhead failed', err);
     }
   }, [roomId]);
+
+  useEffect(() => {
+    return listenTimelineEvent(TIMELINE_EVENTS.APPLY_AT_PLAYHEAD, () => {
+      void applyAtPlayhead();
+    });
+  }, [applyAtPlayhead]);
 
   const hasAutoApplied = useRef(false);
   useEffect(() => {

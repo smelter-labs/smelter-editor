@@ -9,27 +9,13 @@ export type StaticPanelId =
   | 'pending-connections'
   | 'connected-devices'
   | 'system-log'
+  | 'motion-detection'
   | 'layout-preview';
 
-export type MotionPanelId = `motion:${string}`;
-export type PanelId = StaticPanelId | MotionPanelId;
-
-const MOTION_PREFIX = 'motion:';
-
-export function isMotionPanelId(id: string): id is MotionPanelId {
-  return id.startsWith(MOTION_PREFIX);
-}
-
-export function motionPanelId(inputId: string): MotionPanelId {
-  return `${MOTION_PREFIX}${inputId}`;
-}
-
-export function getInputIdFromMotionPanel(id: MotionPanelId): string {
-  return id.slice(MOTION_PREFIX.length);
-}
+export type PanelId = StaticPanelId;
 
 export function isKnownPanelId(id: string): boolean {
-  return STATIC_PANEL_IDS.includes(id as StaticPanelId) || isMotionPanelId(id);
+  return STATIC_PANEL_IDS.includes(id as StaticPanelId);
 }
 
 export type MutableLayout = LayoutItem[];
@@ -103,6 +89,12 @@ export const STATIC_PANEL_DEFINITIONS: Record<StaticPanelId, PanelDefinition> =
       minW: 4,
       minH: 4,
     },
+    'motion-detection': {
+      id: 'motion-detection',
+      title: 'Motion Detection',
+      minW: 4,
+      minH: 4,
+    },
     'layout-preview': {
       id: 'layout-preview',
       title: 'Layout Preview',
@@ -111,26 +103,14 @@ export const STATIC_PANEL_DEFINITIONS: Record<StaticPanelId, PanelDefinition> =
     },
   };
 
-export const MOTION_PANEL_MIN_W = 4;
-export const MOTION_PANEL_MIN_H = 3;
-
-export function getMotionPanelDefinition(inputTitle: string): PanelDefinition {
-  return {
-    id: inputTitle,
-    title: `Motion: ${inputTitle}`,
-    minW: MOTION_PANEL_MIN_W,
-    minH: MOTION_PANEL_MIN_H,
-  };
-}
-
 export const STATIC_PANEL_IDS: StaticPanelId[] = Object.keys(
   STATIC_PANEL_DEFINITIONS,
 ) as StaticPanelId[];
 
-/** @deprecated Use STATIC_PANEL_IDS for static panels. Dynamic panels are managed by DashboardLayout. */
+/** @deprecated Use STATIC_PANEL_IDS. */
 export const ALL_PANEL_IDS = STATIC_PANEL_IDS;
 
-/** @deprecated Use STATIC_PANEL_DEFINITIONS. Dynamic panel defs come from getMotionPanelDefinition. */
+/** @deprecated Use STATIC_PANEL_DEFINITIONS. */
 export const PANEL_DEFINITIONS = STATIC_PANEL_DEFINITIONS as Record<
   string,
   PanelDefinition
@@ -155,7 +135,8 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'pending-connections', x: 16, y: 30, w: 8, h: 6, minW: 4, minH: 3 },
       { i: 'connected-devices', x: 16, y: 22, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'system-log', x: 0, y: 36, w: 16, h: 6, minW: 4, minH: 4 },
-      { i: 'layout-preview', x: 16, y: 36, w: 8, h: 6, minW: 4, minH: 4 },
+      { i: 'motion-detection', x: 16, y: 36, w: 8, h: 6, minW: 4, minH: 4 },
+      { i: 'layout-preview', x: 0, y: 42, w: 24, h: 6, minW: 4, minH: 4 },
     ],
   },
   {
@@ -170,7 +151,8 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'pending-connections', x: 0, y: 32, w: 8, h: 5, minW: 4, minH: 3 },
       { i: 'connected-devices', x: 0, y: 37, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'system-log', x: 8, y: 32, w: 8, h: 8, minW: 4, minH: 4 },
-      { i: 'layout-preview', x: 16, y: 32, w: 8, h: 8, minW: 4, minH: 4 },
+      { i: 'motion-detection', x: 16, y: 32, w: 8, h: 8, minW: 4, minH: 4 },
+      { i: 'layout-preview', x: 0, y: 45, w: 24, h: 8, minW: 4, minH: 4 },
     ],
   },
   {
@@ -185,7 +167,8 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'pending-connections', x: 0, y: 22, w: 8, h: 5, minW: 4, minH: 3 },
       { i: 'connected-devices', x: 0, y: 27, w: 8, h: 6, minW: 4, minH: 4 },
       { i: 'system-log', x: 8, y: 22, w: 8, h: 6, minW: 4, minH: 4 },
-      { i: 'layout-preview', x: 16, y: 22, w: 8, h: 6, minW: 4, minH: 4 },
+      { i: 'motion-detection', x: 16, y: 22, w: 8, h: 6, minW: 4, minH: 4 },
+      { i: 'layout-preview', x: 0, y: 33, w: 24, h: 6, minW: 4, minH: 4 },
     ],
   },
   {
@@ -200,7 +183,8 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'pending-connections', x: 0, y: 22, w: 8, h: 5, minW: 4, minH: 3 },
       { i: 'connected-devices', x: 0, y: 27, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'system-log', x: 8, y: 22, w: 8, h: 8, minW: 4, minH: 4 },
-      { i: 'layout-preview', x: 16, y: 22, w: 8, h: 8, minW: 4, minH: 4 },
+      { i: 'motion-detection', x: 16, y: 22, w: 8, h: 8, minW: 4, minH: 4 },
+      { i: 'layout-preview', x: 0, y: 35, w: 24, h: 8, minW: 4, minH: 4 },
     ],
   },
   {
@@ -215,7 +199,8 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'pending-connections', x: 0, y: 28, w: 8, h: 5, minW: 4, minH: 3 },
       { i: 'connected-devices', x: 16, y: 28, w: 8, h: 6, minW: 4, minH: 4 },
       { i: 'system-log', x: 0, y: 33, w: 8, h: 6, minW: 4, minH: 4 },
-      { i: 'layout-preview', x: 8, y: 28, w: 8, h: 6, minW: 4, minH: 4 },
+      { i: 'motion-detection', x: 8, y: 28, w: 8, h: 6, minW: 4, minH: 4 },
+      { i: 'layout-preview', x: 0, y: 39, w: 24, h: 6, minW: 4, minH: 4 },
     ],
   },
 ];
@@ -231,7 +216,8 @@ export const SMALL_LAYOUT: MutableLayout = [
   { i: 'pending-connections', x: 0, y: 34, w: 12, h: 5, minW: 4, minH: 3 },
   { i: 'connected-devices', x: 0, y: 39, w: 12, h: 6, minW: 4, minH: 4 },
   { i: 'system-log', x: 0, y: 45, w: 12, h: 6, minW: 4, minH: 4 },
-  { i: 'layout-preview', x: 0, y: 51, w: 12, h: 6, minW: 4, minH: 4 },
+  { i: 'motion-detection', x: 0, y: 51, w: 12, h: 6, minW: 4, minH: 4 },
+  { i: 'layout-preview', x: 0, y: 57, w: 12, h: 6, minW: 4, minH: 4 },
 ];
 
 const STORAGE_KEY = 'smelter-dashboard-layout';

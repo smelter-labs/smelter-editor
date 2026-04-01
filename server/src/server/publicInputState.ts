@@ -57,10 +57,10 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
         sourceState: 'always-live' as const,
         sourceWidth: input.mp4VideoWidth,
         sourceHeight: input.mp4VideoHeight,
-        mp4FileName: isAudio ? undefined : (mp4FileName ?? path.basename(input.mp4FilePath)),
-        audioFileName: isAudio
-          ? audioFileName
-          : undefined,
+        mp4FileName: isAudio
+          ? undefined
+          : (mp4FileName ?? path.basename(input.mp4FilePath)),
+        audioFileName: isAudio ? audioFileName : undefined,
         mp4AssetMissing: input.mp4AssetMissing,
         missingAssetIsAudio: input.missingAssetIsAudio,
       };

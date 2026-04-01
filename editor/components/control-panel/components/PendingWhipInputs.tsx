@@ -44,13 +44,14 @@ function InlineVideoPreview({ stream }: { stream: MediaStream }) {
   const videoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.srcObject = stream;
-      videoRef.current.play().catch(() => {});
+    const video = videoRef.current;
+    if (video) {
+      video.srcObject = stream;
+      video.play().catch(() => {});
     }
     return () => {
-      if (videoRef.current) {
-        videoRef.current.srcObject = null;
+      if (video) {
+        video.srcObject = null;
       }
     };
   }, [stream]);
@@ -95,8 +96,13 @@ export function PendingWhipInputs({
   const [previews, setPreviews] = useState<Map<string, PreviewState>>(
     new Map(),
   );
+  const previewsRef = useRef(previews);
   const [acquiringId, setAcquiringId] = useState<string | null>(null);
   const [connectingId, setConnectingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    previewsRef.current = previews;
+  }, [previews]);
 
   const cleanupPreview = useCallback((pendingId: string) => {
     setPreviews((prev) => {
@@ -109,6 +115,14 @@ export function PendingWhipInputs({
       }
       return prev;
     });
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      for (const preview of previewsRef.current.values()) {
+        stopStream(preview.stream);
+      }
+    };
   }, []);
 
   if (pendingInputs.length === 0) return null;
@@ -282,9 +296,15 @@ export function PendingWhipInputs({
     cleanupPreview(pendingInput.id);
   };
 
-  const handleDismiss = (pendingInput: PendingWhipInput) => {
+  const handleDismiss = async (pendingInput: PendingWhipInput) => {
     cleanupPreview(pendingInput.id);
-    setPendingInputs(pendingInputs.filter((p) => p.id !== pendingInput.id));
+    const nextPendingInputs = pendingInputs.filter(
+      (p) => p.id !== pendingInput.id,
+    );
+    await setPendingInputs(nextPendingInputs);
+    if (nextPendingInputs.length > 0) {
+      emitTimelineEvent(TIMELINE_EVENTS.APPLY_AT_PLAYHEAD, {});
+    }
   };
 
   return (
@@ -323,7 +343,7 @@ export function PendingWhipInputs({
               <Button
                 variant='ghost'
                 size='icon'
-                onClick={() => handleDismiss(pendingInput)}
+                onClick={() => void handleDismiss(pendingInput)}
                 className='h-6 w-6 text-neutral-500 hover:text-white cursor-pointer'>
                 <X className='w-4 h-4' />
               </Button>
