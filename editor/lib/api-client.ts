@@ -125,6 +125,7 @@ export interface SmelterApiClient {
   configStorage: StorageClient<object>;
   shaderPresetStorage: StorageClient<ShaderConfig[]>;
   dashboardLayoutStorage: StorageClient<object>;
+  presentationConfigStorage: StorageClient<object>;
   hlsStreamStorage: StorageClient<{ url: string }>;
 
   pauseTimeline(
