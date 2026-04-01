@@ -73,6 +73,12 @@ type AssetItem =
   | AssetItemAction
   | AssetItemFolder;
 
+type DeletableAssetItem =
+  | AssetItemMp4
+  | AssetItemAudio
+  | AssetItemImage
+  | AssetItemHls;
+
 export interface AssetBrowserInputCreated {
   inputId: string;
   kind:
@@ -148,6 +154,32 @@ function itemKey(item: AssetItem): string {
       return `action:${item.actionType}`;
     case 'folder':
       return `folder:${item.mediaType}:${item.name}`;
+  }
+}
+
+function deleteSuccessMessage(item: DeletableAssetItem): string {
+  switch (item.kind) {
+    case 'mp4':
+      return 'MP4 removed from library.';
+    case 'audio':
+      return 'Audio asset removed from library.';
+    case 'image':
+      return 'Image removed from library.';
+    case 'hls-saved':
+      return 'HLS stream removed from library.';
+  }
+}
+
+function deleteErrorMessage(item: DeletableAssetItem): string {
+  switch (item.kind) {
+    case 'mp4':
+      return 'Failed to remove MP4.';
+    case 'audio':
+      return 'Failed to remove audio asset.';
+    case 'image':
+      return 'Failed to remove image.';
+    case 'hls-saved':
+      return 'Failed to remove HLS stream.';
   }
 }
 
@@ -522,6 +554,7 @@ export function AssetBrowserPanel({
   const [newFolderName, setNewFolderName] = useState('');
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingDeletedKeysRef = useRef(new Set<string>());
   const effectiveAvailableFilters = availableFilters ?? FILTER_TYPES;
   const availableFilterKey = effectiveAvailableFilters.join('|');
   const visibleFilters = useMemo(() => {
@@ -597,139 +630,152 @@ export function AssetBrowserPanel({
     [],
   );
 
-  const fetchItems = useCallback(async () => {
-    setIsLoading(true);
-    try {
-      const [
-        twitchRes,
-        kickRes,
-        mp4Browse,
-        pictureBrowse,
-        audioBrowse,
-        hlsListRes,
-      ] = await Promise.all([
-        actions
-          .getTwitchSuggestions()
-          .catch(() => ({ twitch: [] as ChannelSuggestion[] })),
-        actions
-          .getKickSuggestions()
-          .catch(() => ({ kick: [] as ChannelSuggestion[] })),
-        browseAssets('mp4s', mp4Folder).catch(() => ({
-          files: [] as string[],
-          folders: [] as string[],
-        })),
-        browseAssets('pictures', pictureFolder).catch(() => ({
-          files: [] as string[],
-          folders: [] as string[],
-        })),
-        browseAssets('audios', audioFolder).catch(() => ({
-          files: [] as string[],
-          folders: [] as string[],
-        })),
-        actions.hlsStreamStorage
-          .list()
-          .catch(() => ({ ok: false as const, error: 'failed' })),
-      ]);
+  const fetchItems = useCallback(
+    async ({ silent = false }: { silent?: boolean } = {}) => {
+      if (!silent) {
+        setIsLoading(true);
+      }
+      try {
+        const [
+          twitchRes,
+          kickRes,
+          mp4Browse,
+          pictureBrowse,
+          audioBrowse,
+          hlsListRes,
+        ] = await Promise.all([
+          actions
+            .getTwitchSuggestions()
+            .catch(() => ({ twitch: [] as ChannelSuggestion[] })),
+          actions
+            .getKickSuggestions()
+            .catch(() => ({ kick: [] as ChannelSuggestion[] })),
+          browseAssets('mp4s', mp4Folder).catch(() => ({
+            files: [] as string[],
+            folders: [] as string[],
+          })),
+          browseAssets('pictures', pictureFolder).catch(() => ({
+            files: [] as string[],
+            folders: [] as string[],
+          })),
+          browseAssets('audios', audioFolder).catch(() => ({
+            files: [] as string[],
+            folders: [] as string[],
+          })),
+          actions.hlsStreamStorage
+            .list()
+            .catch(() => ({ ok: false as const, error: 'failed' })),
+        ]);
 
-      const hlsSavedItems: AssetItemHls[] = [];
-      if (hlsListRes.ok) {
-        const loads = await Promise.all(
-          hlsListRes.items.map((info) =>
-            actions.hlsStreamStorage
-              .load(info.fileName)
-              .then((r) =>
-                r.ok
-                  ? {
-                      kind: 'hls-saved' as const,
-                      name: r.name,
-                      url: r.data.url,
-                      fileName: info.fileName,
-                    }
-                  : null,
-              )
-              .catch(() => null),
-          ),
+        const hlsSavedItems: AssetItemHls[] = [];
+        if (hlsListRes.ok) {
+          const loads = await Promise.all(
+            hlsListRes.items.map((info) =>
+              actions.hlsStreamStorage
+                .load(info.fileName)
+                .then((r) =>
+                  r.ok
+                    ? {
+                        kind: 'hls-saved' as const,
+                        name: r.name,
+                        url: r.data.url,
+                        fileName: info.fileName,
+                      }
+                    : null,
+                )
+                .catch(() => null),
+            ),
+          );
+          for (const item of loads) {
+            if (item) hlsSavedItems.push(item);
+          }
+        }
+
+        const mp4FolderItems: AssetItemFolder[] = mp4Browse.folders.map(
+          (name) => ({ kind: 'folder', name, mediaType: 'mp4' }),
         );
-        for (const item of loads) {
-          if (item) hlsSavedItems.push(item);
+        const mp4FileItems: AssetItemMp4[] = mp4Browse.files.map((f) => ({
+          kind: 'mp4',
+          fileName: mp4Folder ? `${mp4Folder}/${f}` : f,
+        }));
+
+        const picFolderItems: AssetItemFolder[] = pictureBrowse.folders.map(
+          (name) => ({ kind: 'folder', name, mediaType: 'picture' }),
+        );
+        const picFileItems: AssetItemImage[] = pictureBrowse.files.map((f) => ({
+          kind: 'image',
+          fileName: pictureFolder ? `${pictureFolder}/${f}` : f,
+        }));
+
+        const audioFolderItems: AssetItemFolder[] = audioBrowse.folders.map(
+          (name) => ({ kind: 'folder', name, mediaType: 'audio' }),
+        );
+        const audioFileItems: AssetItemAudio[] = audioBrowse.files.map((f) => ({
+          kind: 'audio',
+          fileName: audioFolder ? `${audioFolder}/${f}` : f,
+        }));
+
+        let fetched: AssetItem[] = [
+          ...mp4FolderItems,
+          ...picFolderItems,
+          ...audioFolderItems,
+          ...hlsSavedItems,
+          ...twitchRes.twitch.map(
+            (channel): AssetItemTwitch => ({ kind: 'twitch', channel }),
+          ),
+          ...kickRes.kick.map(
+            (channel): AssetItemKick => ({ kind: 'kick', channel }),
+          ),
+          ...mp4FileItems,
+          ...picFileItems,
+          ...audioFileItems,
+          ...actionCards,
+        ];
+
+        if (pendingDeletedKeysRef.current.size > 0) {
+          fetched = fetched.filter(
+            (item) => !pendingDeletedKeysRef.current.has(itemKey(item)),
+          );
+        }
+
+        setItems(fetched);
+
+        for (const item of fetched) {
+          if (item.kind === 'mp4') {
+            getMp4Duration(item.fileName)
+              .then((durationMs) => {
+                setItems((prev) =>
+                  prev.map((i) =>
+                    i.kind === 'mp4' && i.fileName === item.fileName
+                      ? { ...i, durationMs }
+                      : i,
+                  ),
+                );
+              })
+              .catch(() => {});
+          }
+          if (item.kind === 'audio') {
+            getAudioDuration(item.fileName)
+              .then((durationMs) => {
+                setItems((prev) =>
+                  prev.map((i) =>
+                    i.kind === 'audio' && i.fileName === item.fileName
+                      ? { ...i, durationMs }
+                      : i,
+                  ),
+                );
+              })
+              .catch(() => {});
+          }
+        }
+      } finally {
+        if (!silent) {
+          setIsLoading(false);
         }
       }
-
-      const mp4FolderItems: AssetItemFolder[] = mp4Browse.folders.map(
-        (name) => ({ kind: 'folder', name, mediaType: 'mp4' }),
-      );
-      const mp4FileItems: AssetItemMp4[] = mp4Browse.files.map((f) => ({
-        kind: 'mp4',
-        fileName: mp4Folder ? `${mp4Folder}/${f}` : f,
-      }));
-
-      const picFolderItems: AssetItemFolder[] = pictureBrowse.folders.map(
-        (name) => ({ kind: 'folder', name, mediaType: 'picture' }),
-      );
-      const picFileItems: AssetItemImage[] = pictureBrowse.files.map((f) => ({
-        kind: 'image',
-        fileName: pictureFolder ? `${pictureFolder}/${f}` : f,
-      }));
-
-      const audioFolderItems: AssetItemFolder[] = audioBrowse.folders.map(
-        (name) => ({ kind: 'folder', name, mediaType: 'audio' }),
-      );
-      const audioFileItems: AssetItemAudio[] = audioBrowse.files.map((f) => ({
-        kind: 'audio',
-        fileName: audioFolder ? `${audioFolder}/${f}` : f,
-      }));
-
-      const fetched: AssetItem[] = [
-        ...mp4FolderItems,
-        ...picFolderItems,
-        ...audioFolderItems,
-        ...hlsSavedItems,
-        ...twitchRes.twitch.map(
-          (channel): AssetItemTwitch => ({ kind: 'twitch', channel }),
-        ),
-        ...kickRes.kick.map(
-          (channel): AssetItemKick => ({ kind: 'kick', channel }),
-        ),
-        ...mp4FileItems,
-        ...picFileItems,
-        ...audioFileItems,
-        ...actionCards,
-      ];
-
-      setItems(fetched);
-
-      for (const item of fetched) {
-        if (item.kind === 'mp4') {
-          getMp4Duration(item.fileName)
-            .then((durationMs) => {
-              setItems((prev) =>
-                prev.map((i) =>
-                  i.kind === 'mp4' && i.fileName === item.fileName
-                    ? { ...i, durationMs }
-                    : i,
-                ),
-              );
-            })
-            .catch(() => {});
-        }
-        if (item.kind === 'audio') {
-          getAudioDuration(item.fileName)
-            .then((durationMs) => {
-              setItems((prev) =>
-                prev.map((i) =>
-                  i.kind === 'audio' && i.fileName === item.fileName
-                    ? { ...i, durationMs }
-                    : i,
-                ),
-              );
-            })
-            .catch(() => {});
-        }
-      }
-    } finally {
-      setIsLoading(false);
-    }
-  }, [actions, mp4Folder, pictureFolder, audioFolder, actionCards]);
+    },
+    [actions, mp4Folder, pictureFolder, audioFolder, actionCards],
+  );
 
   const queueUploads = useCallback(
     async (incomingFiles: File[]) => {
@@ -880,10 +926,64 @@ export function AssetBrowserPanel({
     }
   }, [refreshState, onDone]);
 
-  const handleAssetDeleted = useCallback(async () => {
-    setSelectedItem(null);
-    await fetchItems();
-  }, [fetchItems]);
+  const handleAssetDeleted = useCallback(
+    async (item: DeletableAssetItem) => {
+      const key = itemKey(item);
+      const previousIndex = items.findIndex(
+        (candidate) => itemKey(candidate) === key,
+      );
+
+      pendingDeletedKeysRef.current.add(key);
+      setSelectedItem((current) =>
+        current !== null && itemKey(current) === key ? null : current,
+      );
+      setItems((prev) =>
+        prev.filter((candidate) => itemKey(candidate) !== key),
+      );
+
+      try {
+        if (item.kind === 'hls-saved') {
+          const result = await actions.hlsStreamStorage.remove(item.fileName);
+          if (!result.ok) {
+            throw new Error('Failed to remove HLS stream.');
+          }
+        } else {
+          await deleteAsset(
+            item.kind === 'image' ? 'picture' : item.kind,
+            item.fileName,
+          );
+        }
+
+        toast.success(deleteSuccessMessage(item));
+      } catch {
+        pendingDeletedKeysRef.current.delete(key);
+        setItems((prev) => {
+          const withoutItem = prev.filter(
+            (candidate) => itemKey(candidate) !== key,
+          );
+          const insertIndex =
+            previousIndex >= 0
+              ? Math.min(previousIndex, withoutItem.length)
+              : withoutItem.length;
+
+          return [
+            ...withoutItem.slice(0, insertIndex),
+            item,
+            ...withoutItem.slice(insertIndex),
+          ];
+        });
+        toast.error(deleteErrorMessage(item));
+        return;
+      }
+
+      try {
+        await fetchItems({ silent: true });
+      } finally {
+        pendingDeletedKeysRef.current.delete(key);
+      }
+    },
+    [actions, fetchItems, items],
+  );
 
   const handleFolderClick = useCallback(
     (folderItem: AssetItemFolder) => {
@@ -1105,7 +1205,7 @@ export function AssetBrowserPanel({
                 roomId={roomId}
                 inputs={inputs}
                 onDone={handleDone}
-                onAssetDeleted={handleAssetDeleted}
+                onDeleteAsset={handleAssetDeleted}
                 onInputCreated={onInputCreated}
                 whipCtx={whipCtx}
                 onUploadFiles={queueUploads}
@@ -1746,7 +1846,7 @@ function PropertyInspector({
   roomId,
   inputs,
   onDone,
-  onAssetDeleted,
+  onDeleteAsset,
   onInputCreated,
   whipCtx,
   onUploadFiles,
@@ -1760,7 +1860,7 @@ function PropertyInspector({
   roomId: string;
   inputs: Input[];
   onDone: () => Promise<void>;
-  onAssetDeleted: () => Promise<void>;
+  onDeleteAsset: (item: DeletableAssetItem) => Promise<void>;
   onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
   whipCtx: ReturnType<typeof useWhipConnectionsContext>;
   onUploadFiles: (files: File[]) => Promise<void>;
@@ -1777,7 +1877,7 @@ function PropertyInspector({
           item={item}
           roomId={roomId}
           onDone={onDone}
-          onAssetDeleted={onAssetDeleted}
+          onDeleteAsset={onDeleteAsset}
           onInputCreated={onInputCreated}
         />
       );
@@ -1787,7 +1887,7 @@ function PropertyInspector({
           item={item}
           roomId={roomId}
           onDone={onDone}
-          onAssetDeleted={onAssetDeleted}
+          onDeleteAsset={onDeleteAsset}
           onInputCreated={onInputCreated}
         />
       );
@@ -1797,7 +1897,7 @@ function PropertyInspector({
           item={item}
           roomId={roomId}
           onDone={onDone}
-          onAssetDeleted={onAssetDeleted}
+          onDeleteAsset={onDeleteAsset}
           onInputCreated={onInputCreated}
         />
       );
@@ -1825,7 +1925,7 @@ function PropertyInspector({
           item={item}
           roomId={roomId}
           onDone={onDone}
-          onAssetDeleted={onAssetDeleted}
+          onDeleteAsset={onDeleteAsset}
           onInputCreated={onInputCreated}
         />
       );
@@ -1980,13 +2080,13 @@ function Mp4Inspector({
   item,
   roomId,
   onDone,
-  onAssetDeleted,
+  onDeleteAsset,
   onInputCreated,
 }: {
   item: AssetItemMp4;
   roomId: string;
   onDone: () => Promise<void>;
-  onAssetDeleted: () => Promise<void>;
+  onDeleteAsset: (item: DeletableAssetItem) => Promise<void>;
   onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
 }) {
   const { addMP4Input } = useActions();
@@ -2019,11 +2119,7 @@ function Mp4Inspector({
 
     setDeleting(true);
     try {
-      await deleteAsset('mp4', item.fileName);
-      toast.success('MP4 removed from library.');
-      await onAssetDeleted();
-    } catch {
-      toast.error('Failed to remove MP4.');
+      await onDeleteAsset(item);
     } finally {
       setDeleting(false);
     }
@@ -2057,13 +2153,13 @@ function AudioInspector({
   item,
   roomId,
   onDone,
-  onAssetDeleted,
+  onDeleteAsset,
   onInputCreated,
 }: {
   item: AssetItemAudio;
   roomId: string;
   onDone: () => Promise<void>;
-  onAssetDeleted: () => Promise<void>;
+  onDeleteAsset: (item: DeletableAssetItem) => Promise<void>;
   onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
 }) {
   const { addAudioInput } = useActions();
@@ -2096,11 +2192,7 @@ function AudioInspector({
 
     setDeleting(true);
     try {
-      await deleteAsset('audio', item.fileName);
-      toast.success('Audio asset removed from library.');
-      await onAssetDeleted();
-    } catch {
-      toast.error('Failed to remove audio asset.');
+      await onDeleteAsset(item);
     } finally {
       setDeleting(false);
     }
@@ -2131,13 +2223,13 @@ function ImageInspector({
   item,
   roomId,
   onDone,
-  onAssetDeleted,
+  onDeleteAsset,
   onInputCreated,
 }: {
   item: AssetItemImage;
   roomId: string;
   onDone: () => Promise<void>;
-  onAssetDeleted: () => Promise<void>;
+  onDeleteAsset: (item: DeletableAssetItem) => Promise<void>;
   onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
 }) {
   const { addImageInput } = useActions();
@@ -2169,11 +2261,7 @@ function ImageInspector({
 
     setDeleting(true);
     try {
-      await deleteAsset('picture', item.fileName);
-      toast.success('Image removed from library.');
-      await onAssetDeleted();
-    } catch {
-      toast.error('Failed to remove image.');
+      await onDeleteAsset(item);
     } finally {
       setDeleting(false);
     }
@@ -2565,16 +2653,16 @@ function HlsSavedInspector({
   item,
   roomId,
   onDone,
-  onAssetDeleted,
+  onDeleteAsset,
   onInputCreated,
 }: {
   item: AssetItemHls;
   roomId: string;
   onDone: () => Promise<void>;
-  onAssetDeleted: () => Promise<void>;
+  onDeleteAsset: (item: DeletableAssetItem) => Promise<void>;
   onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
 }) {
-  const { addHlsInput, hlsStreamStorage } = useActions();
+  const { addHlsInput } = useActions();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
 
@@ -2602,15 +2690,7 @@ function HlsSavedInspector({
 
     setDeleting(true);
     try {
-      const result = await hlsStreamStorage.remove(item.fileName);
-      if (result.ok) {
-        toast.success('HLS stream removed from library.');
-        await onAssetDeleted();
-      } else {
-        toast.error('Failed to remove HLS stream.');
-      }
-    } catch {
-      toast.error('Failed to remove HLS stream.');
+      await onDeleteAsset(item);
     } finally {
       setDeleting(false);
     }
