@@ -1605,7 +1605,9 @@ export function BlockClipPropertiesPanel({
                               className='flex items-center gap-2 px-1 py-1 hover:bg-accent rounded cursor-pointer'>
                               <Checkbox
                                 checked={isAttached}
-                                onCheckedChange={() => handleAttachToggle(i.inputId)}
+                                onCheckedChange={() =>
+                                  handleAttachToggle(i.inputId)
+                                }
                               />
                               <span className='text-sm text-foreground truncate'>
                                 {i.title}

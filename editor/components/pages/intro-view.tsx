@@ -41,7 +41,15 @@ import {
   listPresentationConfigs,
   loadPresentationConfig,
 } from '@/app/actions/actions';
-import { Upload, FolderDown, LogIn, UserPlus, Eye, Trash2, Presentation } from 'lucide-react';
+import {
+  Upload,
+  FolderDown,
+  LogIn,
+  UserPlus,
+  Eye,
+  Trash2,
+  Presentation,
+} from 'lucide-react';
 import RecordingsList from '@/components/recordings-list';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -703,7 +711,6 @@ export default function IntroView() {
                   fileInputRef.current?.click();
                 }}
                 onLoadRemote={importConfig}
-                isImporting={loadingImport}
               />
             </ActionsProvider>
             <Button
@@ -805,9 +812,7 @@ export default function IntroView() {
           )}
         </motion.div>
       </motion.div>
-      <Dialog
-        open={showShowcasePicker}
-        onOpenChange={setShowShowcasePicker}>
+      <Dialog open={showShowcasePicker} onOpenChange={setShowShowcasePicker}>
         <DialogContent className='max-w-md'>
           <DialogHeader>
             <DialogTitle>Select Presentation</DialogTitle>

@@ -51,7 +51,11 @@ describe('applyTextColorFromVoice', () => {
       order.push('dispatch-timeline-patch');
       return true;
     });
-    (globalThis as unknown as { window: { dispatchEvent: typeof dispatchEvent } }).window.dispatchEvent = dispatchEvent;
+    (
+      globalThis as unknown as {
+        window: { dispatchEvent: typeof dispatchEvent };
+      }
+    ).window.dispatchEvent = dispatchEvent;
 
     const didApply = await applyTextColorFromVoice({
       color: '#ff0000',

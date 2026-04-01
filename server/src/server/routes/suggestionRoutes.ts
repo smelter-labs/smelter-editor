@@ -10,7 +10,11 @@ import pictureSuggestionsMonitor from '../../pictures/pictureSuggestionMonitor';
 import audioSuggestionsMonitor from '../../audio-files/audioSuggestionMonitor';
 import shadersController from '../../shaders/shaders';
 
-export const suggestionRoutes: FastifyPluginCallback = (routes, _opts, done) => {
+export const suggestionRoutes: FastifyPluginCallback = (
+  routes,
+  _opts,
+  done,
+) => {
   routes.get('/suggestions/mp4s', async (_req, res) => {
     res.status(200).send({ mp4s: mp4SuggestionsMonitor.mp4Files });
   });
@@ -116,9 +120,7 @@ export const suggestionRoutes: FastifyPluginCallback = (routes, _opts, done) => 
           fileName: decoded,
           err: err?.message,
         });
-        return res
-          .status(500)
-          .send({ error: 'Failed to read audio duration' });
+        return res.status(500).send({ error: 'Failed to read audio duration' });
       }
     },
   );

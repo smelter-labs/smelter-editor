@@ -8,7 +8,8 @@ export const TIMELINE_EVENTS = {
   MOVE_KEYFRAME: 'smelter:timeline:move-keyframe',
   DELETE_KEYFRAME: 'smelter:timeline:delete-keyframe',
   SELECT_KEYFRAME: 'smelter:timeline:select-keyframe',
-  UPDATE_CLIP_SETTINGS_FOR_INPUT: 'smelter:timeline:update-clip-settings-for-input',
+  UPDATE_CLIP_SETTINGS_FOR_INPUT:
+    'smelter:timeline:update-clip-settings-for-input',
   PURGE_INPUT_IDS: 'smelter:timeline:purge-input-ids',
   CLEANUP_SPURIOUS_WHIP_TRACK: 'smelter:timeline:cleanup-spurious-whip-track',
   SWAP_CLIP_INPUT: 'smelter:timeline:swap-clip-input',

@@ -51,7 +51,10 @@ function volumeToY(volume: number): number {
 }
 
 function yToVolume(y: number): number {
-  const clamped = Math.max(PADDING_Y, Math.min(PADDING_Y + EFFECTIVE_HEIGHT, y));
+  const clamped = Math.max(
+    PADDING_Y,
+    Math.min(PADDING_Y + EFFECTIVE_HEIGHT, y),
+  );
   return Math.round((1 - (clamped - PADDING_Y) / EFFECTIVE_HEIGHT) * 100) / 100;
 }
 
@@ -99,8 +102,7 @@ export function VolumeAutomationLane({
     for (const clip of clips) {
       const sorted = [...clip.keyframes].sort((a, b) => a.timeMs - b.timeMs);
       for (const kf of sorted) {
-        const xPx =
-          ((clip.startMs + kf.timeMs) / 1000) * pixelsPerSecond;
+        const xPx = ((clip.startMs + kf.timeMs) / 1000) * pixelsPerSecond;
         result.push({
           xPx,
           volume: kf.blockSettings.volume ?? 1,
@@ -136,7 +138,10 @@ export function VolumeAutomationLane({
           lineSegments.push(`M ${x} ${y}`);
           areaSegments.push(`M ${x} ${clipBottomY} L ${x} ${y}`);
         } else {
-          const effectiveMode = getEffectiveInterpolation(kf, interpolationMode);
+          const effectiveMode = getEffectiveInterpolation(
+            kf,
+            interpolationMode,
+          );
           if (effectiveMode === 'step') {
             const prevY = volumeToY(sorted[i - 1].blockSettings.volume ?? 1);
             lineSegments.push(`L ${x} ${prevY}`);
@@ -166,15 +171,12 @@ export function VolumeAutomationLane({
     return paths;
   }, [clips, pixelsPerSecond, interpolationMode]);
 
-  const getSvgPoint = useCallback(
-    (e: { clientX: number; clientY: number }) => {
-      const svg = svgRef.current;
-      if (!svg) return null;
-      const rect = svg.getBoundingClientRect();
-      return { x: e.clientX - rect.left, y: e.clientY - rect.top };
-    },
-    [],
-  );
+  const getSvgPoint = useCallback((e: { clientX: number; clientY: number }) => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const rect = svg.getBoundingClientRect();
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  }, []);
 
   const handlePointPointerDown = useCallback(
     (e: React.PointerEvent, point: PointInfo) => {
@@ -232,16 +234,19 @@ export function VolumeAutomationLane({
         }
       }
     },
-    [trackId, pixelsPerSecond, getSvgPoint, onUpdateKeyframeVolume, onMoveKeyframe],
+    [
+      trackId,
+      pixelsPerSecond,
+      getSvgPoint,
+      onUpdateKeyframeVolume,
+      onMoveKeyframe,
+    ],
   );
 
-  const handlePointPointerUp = useCallback(
-    (e: React.PointerEvent) => {
-      (e.target as HTMLElement).releasePointerCapture(e.pointerId);
-      dragRef.current = null;
-    },
-    [],
-  );
+  const handlePointPointerUp = useCallback((e: React.PointerEvent) => {
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+    dragRef.current = null;
+  }, []);
 
   const handleDoubleClick = useCallback(
     (e: React.MouseEvent) => {
@@ -317,8 +322,7 @@ export function VolumeAutomationLane({
       {/* Clip boundaries */}
       {clips.map((clip) => {
         const leftPx = (clip.startMs / 1000) * pixelsPerSecond;
-        const widthPx =
-          ((clip.endMs - clip.startMs) / 1000) * pixelsPerSecond;
+        const widthPx = ((clip.endMs - clip.startMs) / 1000) * pixelsPerSecond;
         return (
           <rect
             key={`bg-${clip.id}`}

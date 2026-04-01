@@ -206,9 +206,7 @@ export default function LayoutToolbar({
                         className='justify-start gap-2 w-full h-auto px-3 py-1.5 rounded-none text-xs text-left hover:bg-neutral-800 cursor-pointer'>
                         <span
                           className={`w-3.5 h-3.5 border-0 flex items-center justify-center shrink-0 ${
-                            isVisible
-                              ? 'bg-cyan'
-                              : 'bg-neutral-700'
+                            isVisible ? 'bg-cyan' : 'bg-neutral-700'
                           }`}>
                           {isVisible && (
                             <svg

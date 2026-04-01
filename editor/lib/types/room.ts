@@ -1,4 +1,9 @@
-import type { Resolution, PendingWhipInputData, ViewportProperties, ShaderConfig } from '@smelter-editor/types';
+import type {
+  Resolution,
+  PendingWhipInputData,
+  ViewportProperties,
+  ShaderConfig,
+} from '@smelter-editor/types';
 import type { Input } from './input';
 import type { Layout } from './layout';
 

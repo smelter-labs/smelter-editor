@@ -78,7 +78,9 @@ export default function RoomPage() {
       const existing = localStorage.getItem(storageKey);
       if (!existing) {
         try {
-          const defaultInputIds = roomState.inputs.map((input) => input.inputId);
+          const defaultInputIds = roomState.inputs.map(
+            (input) => input.inputId,
+          );
           localStorage.setItem(storageKey, JSON.stringify(defaultInputIds));
         } catch (error) {
           console.warn('Failed to persist default input IDs:', error);

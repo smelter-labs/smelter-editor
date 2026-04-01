@@ -20,9 +20,7 @@ class Mp4SuggestionMonitor {
   }
 
   listFolder(subPath?: string): FolderListing {
-    const dir = subPath
-      ? path.join(this.baseDir, subPath)
-      : this.baseDir;
+    const dir = subPath ? path.join(this.baseDir, subPath) : this.baseDir;
 
     let entries: fs.Dirent[];
     try {

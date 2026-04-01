@@ -1458,7 +1458,8 @@ export function timelineReducer(
       if (topTrack.clips.length !== 1) return state;
       const clip = topTrack.clips[0];
       if (clip.inputId !== action.inputId) return state;
-      const isFullSpan = clip.startMs === 0 && clip.endMs >= state.totalDurationMs;
+      const isFullSpan =
+        clip.startMs === 0 && clip.endMs >= state.totalDurationMs;
       if (!isFullSpan) return state;
       return {
         ...state,
@@ -1467,8 +1468,15 @@ export function timelineReducer(
     }
 
     case 'LOAD': {
-      const normalizedTracks = normalizeTracks(action.state.tracks, [], action.state.totalDurationMs);
-      const finalTracks = ensureOutputTrack(normalizedTracks, action.state.totalDurationMs);
+      const normalizedTracks = normalizeTracks(
+        action.state.tracks,
+        [],
+        action.state.totalDurationMs,
+      );
+      const finalTracks = ensureOutputTrack(
+        normalizedTracks,
+        action.state.totalDurationMs,
+      );
       return {
         ...action.state,
         tracks: finalTracks,
@@ -1586,11 +1594,7 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
           (stored.totalDurationMs as number) || DEFAULT_DURATION_MS;
         const parsedTracks = storedTracksToTracks(stored.tracks);
         initial = {
-          tracks: normalizeTracks(
-            parsedTracks,
-            inputs,
-            totalDurationMs,
-          ),
+          tracks: normalizeTracks(parsedTracks, inputs, totalDurationMs),
           totalDurationMs,
           keyframeInterpolationMode: stored.keyframeInterpolationMode ?? 'step',
           playheadMs: 0,
@@ -1756,13 +1760,10 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     setStructureRevision((rev) => rev + 1);
   }, []);
 
-  const reorderTrack = useCallback(
-    (trackId: string, newIndex: number) => {
-      dispatch({ type: 'REORDER_TRACK', trackId, newIndex });
-      setStructureRevision((rev) => rev + 1);
-    },
-    [],
-  );
+  const reorderTrack = useCallback((trackId: string, newIndex: number) => {
+    dispatch({ type: 'REORDER_TRACK', trackId, newIndex });
+    setStructureRevision((rev) => rev + 1);
+  }, []);
 
   const replaceInputId = useCallback(
     (oldInputId: string, newInputId: string) => {

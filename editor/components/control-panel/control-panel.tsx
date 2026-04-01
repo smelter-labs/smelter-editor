@@ -106,6 +106,10 @@ import { InputMotionPanel } from './components/InputMotionPanel';
 import { motionPanelId } from '@/components/dashboard/panel-registry';
 import { ErrorBoundary } from '@/components/error-boundary';
 import {
+  ImportProgressDialog,
+  type ImportProgressState,
+} from './components/import-progress-dialog';
+import {
   DashboardToolbarProvider,
   useDashboardToolbar,
 } from '@/components/dashboard/dashboard-toolbar-context';
@@ -662,8 +666,6 @@ function ControlPanelInner({
       <ErrorBoundary>
         <SettingsBar
           roomState={roomState}
-          pendingWhipInputs={pendingWhipInputs}
-          setPendingWhipInputs={handleSetPendingWhipInputs}
           getTimelineStateForConfig={getTimelineStateForConfig}
           applyImportedTimelineState={applyImportedTimelineState}
         />
@@ -859,8 +861,6 @@ function ControlPanelInner({
               <ErrorBoundary>
                 <SettingsBar
                   roomState={roomState}
-                  pendingWhipInputs={pendingWhipInputs}
-                  setPendingWhipInputs={handleSetPendingWhipInputs}
                   getTimelineStateForConfig={getTimelineStateForConfig}
                   applyImportedTimelineState={applyImportedTimelineState}
                 />
@@ -908,14 +908,10 @@ type ModalId = 'quickActions' | 'settings';
 
 function SettingsBar({
   roomState,
-  pendingWhipInputs,
-  setPendingWhipInputs,
   getTimelineStateForConfig,
   applyImportedTimelineState,
 }: {
   roomState: RoomState;
-  pendingWhipInputs: PendingWhipInput[];
-  setPendingWhipInputs: (inputs: PendingWhipInput[]) => void | Promise<void>;
   getTimelineStateForConfig: () => TimelineState | null;
   applyImportedTimelineState: (state: TimelineState | null) => void;
 }) {
@@ -933,10 +929,13 @@ function SettingsBar({
   const addTextInput = actions.addTextInput;
   const addSnakeGameInput = actions.addSnakeGameInput;
   const removeInput = actions.removeInput;
+  const setPendingWhipInputsAction = actions.setPendingWhipInputs;
   const [openModal, setOpenModal] = useState<ModalId | null>(null);
   const [showAddVideoModal, setShowAddVideoModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] =
+    useState<ImportProgressState | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showLoadModal, setShowLoadModal] = useState(false);
   const [autoPlayMacro, setAutoPlayMacro] = useAutoPlayMacroSetting();
@@ -954,6 +953,77 @@ function SettingsBar({
   const [showDashSaveModal, setShowDashSaveModal] = useState(false);
   const [showDashLoadModal, setShowDashLoadModal] = useState(false);
   const dashFileInputRef = useRef<HTMLInputElement>(null);
+
+  const countImportAddRequests = useCallback((inputs: RoomConfigInput[]) => {
+    let count = 0;
+
+    for (const input of inputs) {
+      switch (input.type) {
+        case 'twitch-channel':
+        case 'kick-channel':
+          if (input.channelId) count += 1;
+          break;
+        case 'hls':
+          if (input.url) count += 1;
+          break;
+        case 'local-mp4':
+          if (input.audioFileName || input.mp4FileName) count += 1;
+          break;
+        case 'image':
+          if (input.imageId) count += 1;
+          break;
+        case 'text-input':
+          if (input.text) count += 1;
+          break;
+        case 'game':
+          count += 1;
+          break;
+        case 'whip':
+          break;
+      }
+    }
+
+    return count;
+  }, []);
+
+  const startImportProgress = useCallback((total: number, phase: string) => {
+    setImportProgress({
+      phase,
+      current: 0,
+      total: Math.max(total, 1),
+    });
+  }, []);
+
+  const setImportPhase = useCallback((phase: string) => {
+    setImportProgress((prev) => (prev ? { ...prev, phase } : prev));
+  }, []);
+
+  const advanceImportProgress = useCallback((phase?: string) => {
+    setImportProgress((prev) =>
+      prev
+        ? {
+            ...prev,
+            phase: phase ?? prev.phase,
+            current: Math.min(prev.total, prev.current + 1),
+          }
+        : prev,
+    );
+  }, []);
+
+  const adjustImportTotal = useCallback((delta: number) => {
+    if (delta === 0) {
+      return;
+    }
+
+    setImportProgress((prev) => {
+      if (!prev) {
+        return prev;
+      }
+
+      const total = Math.max(prev.current, prev.total + delta, 1);
+      return { ...prev, total };
+    });
+  }, []);
 
   const handleDashSaveRemote = useCallback(
     async (name: string): Promise<string | null> => {
@@ -1122,6 +1192,9 @@ function SettingsBar({
 
   const importConfig = useCallback(
     async (config: RoomConfig) => {
+      setIsImporting(true);
+
+      const plannedAddRequests = countImportAddRequests(config.inputs);
       const oldInputIds = roomState.inputs.map((i) => i.inputId);
       const newPendingWhipInputs: PendingWhipInput[] = [];
       const createdInputIds: {
@@ -1130,241 +1203,312 @@ function SettingsBar({
         position: number;
       }[] = [];
 
-      for (let i = 0; i < config.inputs.length; i++) {
-        const inputConfig = config.inputs[i];
-        try {
-          let inputId: string | null = null;
+      startImportProgress(
+        plannedAddRequests * 2 + oldInputIds.length + 5,
+        'Adding inputs',
+      );
 
-          if (inputConfig.type === 'whip') {
-            newPendingWhipInputs.push({
-              id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              title: inputConfig.title,
-              config: inputConfig,
-              position: i,
-            });
-            continue;
-          }
+      try {
+        for (let i = 0; i < config.inputs.length; i++) {
+          const inputConfig = config.inputs[i];
+          try {
+            let inputId: string | null = null;
+            let attemptedAdd = false;
 
-          switch (inputConfig.type) {
-            case 'twitch-channel':
-              if (inputConfig.channelId) {
-                const result = await addTwitchInput(
-                  roomId,
-                  inputConfig.channelId,
-                );
-                inputId = result.inputId;
-              }
-              break;
-            case 'kick-channel':
-              if (inputConfig.channelId) {
-                const result = await addKickInput(
-                  roomId,
-                  inputConfig.channelId,
-                );
-                inputId = result.inputId;
-              }
-              break;
-            case 'hls':
-              if (inputConfig.url) {
-                const result = await addHlsInput(roomId, inputConfig.url);
-                inputId = result.inputId;
-              }
-              break;
-            case 'local-mp4':
-              if (inputConfig.audioFileName) {
-                const result = await addAudioInput(
-                  roomId,
-                  inputConfig.audioFileName,
-                );
-                inputId = result.inputId;
-              } else if (inputConfig.mp4FileName) {
-                const result = await addMP4Input(
-                  roomId,
-                  inputConfig.mp4FileName,
-                );
-                inputId = result.inputId;
-              }
-              break;
-            case 'image':
-              if (inputConfig.imageId) {
-                const result = await addImageInput(roomId, inputConfig.imageId);
-                inputId = result.inputId;
-              }
-              break;
-            case 'text-input':
-              if (inputConfig.text) {
-                const result = await addTextInput(
-                  roomId,
-                  inputConfig.text,
-                  inputConfig.textAlign || 'left',
-                );
-                inputId = result.inputId;
-              }
-              break;
-            case 'game': {
-              const result = await addSnakeGameInput(roomId, inputConfig.title);
-              inputId = result.inputId;
-              break;
+            if (inputConfig.type === 'whip') {
+              newPendingWhipInputs.push({
+                id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                title: inputConfig.title,
+                config: inputConfig,
+                position: i,
+              });
+              continue;
             }
+
+            switch (inputConfig.type) {
+              case 'twitch-channel':
+                if (inputConfig.channelId) {
+                  attemptedAdd = true;
+                  const result = await addTwitchInput(
+                    roomId,
+                    inputConfig.channelId,
+                  );
+                  inputId = result.inputId;
+                }
+                break;
+              case 'kick-channel':
+                if (inputConfig.channelId) {
+                  attemptedAdd = true;
+                  const result = await addKickInput(
+                    roomId,
+                    inputConfig.channelId,
+                  );
+                  inputId = result.inputId;
+                }
+                break;
+              case 'hls':
+                if (inputConfig.url) {
+                  attemptedAdd = true;
+                  const result = await addHlsInput(roomId, inputConfig.url);
+                  inputId = result.inputId;
+                }
+                break;
+              case 'local-mp4':
+                if (inputConfig.audioFileName) {
+                  attemptedAdd = true;
+                  const result = await addAudioInput(
+                    roomId,
+                    inputConfig.audioFileName,
+                  );
+                  inputId = result.inputId;
+                } else if (inputConfig.mp4FileName) {
+                  attemptedAdd = true;
+                  const result = await addMP4Input(
+                    roomId,
+                    inputConfig.mp4FileName,
+                  );
+                  inputId = result.inputId;
+                }
+                break;
+              case 'image':
+                if (inputConfig.imageId) {
+                  attemptedAdd = true;
+                  const result = await addImageInput(
+                    roomId,
+                    inputConfig.imageId,
+                  );
+                  inputId = result.inputId;
+                }
+                break;
+              case 'text-input':
+                if (inputConfig.text) {
+                  attemptedAdd = true;
+                  const result = await addTextInput(
+                    roomId,
+                    inputConfig.text,
+                    inputConfig.textAlign || 'left',
+                  );
+                  inputId = result.inputId;
+                }
+                break;
+              case 'game': {
+                attemptedAdd = true;
+                const result = await addSnakeGameInput(
+                  roomId,
+                  inputConfig.title,
+                );
+                inputId = result.inputId;
+                break;
+              }
+            }
+
+            if (inputId) {
+              createdInputIds.push({
+                inputId,
+                config: inputConfig,
+                position: i,
+              });
+            }
+
+            if (attemptedAdd) {
+              advanceImportProgress('Adding inputs');
+            }
+          } catch (e) {
+            console.warn(`Failed to add input ${inputConfig.title}:`, e);
+            advanceImportProgress('Adding inputs');
           }
-
-          if (inputId) {
-            createdInputIds.push({
-              inputId,
-              config: inputConfig,
-              position: i,
-            });
-          }
-        } catch (e) {
-          console.warn(`Failed to add input ${inputConfig.title}:`, e);
         }
-      }
 
-      const positionToInputId = new Map<number, string>();
-      for (const { inputId, position } of createdInputIds) {
-        positionToInputId.set(position, inputId);
-      }
-      for (const pending of newPendingWhipInputs) {
-        positionToInputId.set(
-          pending.position,
-          `__pending-whip-${pending.position}__`,
-        );
-      }
+        adjustImportTotal(createdInputIds.length - plannedAddRequests);
 
-      await handleRefreshState();
-
-      for (const { inputId, config: inputConfig } of createdInputIds) {
-        const attachedInputIds = inputConfig.attachedInputIndices
-          ?.map((idx) => positionToInputId.get(idx))
-          .filter((id): id is string => !!id);
-        try {
-          await updateInputAction(roomId, inputId, {
-            volume: inputConfig.volume,
-            shaders: inputConfig.shaders,
-            showTitle: inputConfig.showTitle,
-            textColor: inputConfig.textColor,
-            textMaxLines: inputConfig.textMaxLines,
-            textScrollSpeed: inputConfig.textScrollSpeed,
-            textScrollLoop: inputConfig.textScrollLoop,
-            textFontSize: inputConfig.textFontSize,
-            borderColor: inputConfig.borderColor,
-            borderWidth: inputConfig.borderWidth,
-            gameBackgroundColor: inputConfig.gameBackgroundColor,
-            gameCellGap: inputConfig.gameCellGap,
-            gameBoardBorderColor: inputConfig.gameBoardBorderColor,
-            gameBoardBorderWidth: inputConfig.gameBoardBorderWidth,
-            gameGridLineColor: inputConfig.gameGridLineColor,
-            gameGridLineAlpha: inputConfig.gameGridLineAlpha,
-            snakeEventShaders: inputConfig.snakeEventShaders,
-            snake1Shaders: inputConfig.snake1Shaders,
-            snake2Shaders: inputConfig.snake2Shaders,
-            absolutePosition: inputConfig.absolutePosition,
-            absoluteTop: inputConfig.absoluteTop,
-            absoluteLeft: inputConfig.absoluteLeft,
-            absoluteWidth: inputConfig.absoluteWidth,
-            absoluteHeight: inputConfig.absoluteHeight,
-            absoluteTransitionDurationMs:
-              inputConfig.absoluteTransitionDurationMs,
-            absoluteTransitionEasing: inputConfig.absoluteTransitionEasing,
-            cropTop: inputConfig.cropTop,
-            cropLeft: inputConfig.cropLeft,
-            cropRight: inputConfig.cropRight,
-            cropBottom: inputConfig.cropBottom,
-            attachedInputIds:
-              attachedInputIds && attachedInputIds.length > 0
-                ? attachedInputIds
-                : undefined,
-          });
-        } catch (e) {
-          console.warn(`Failed to update input ${inputId}:`, e);
-        }
-      }
-
-      for (const oldInputId of oldInputIds) {
-        try {
-          await removeInput(roomId, oldInputId);
-        } catch (e) {
-          console.warn(`Failed to remove old input ${oldInputId}:`, e);
-        }
-      }
-
-      setPendingWhipInputs(newPendingWhipInputs);
-
-      let importedTimelineState: TimelineState | null = null;
-
-      if (config.timeline) {
-        const indexToInputId = new Map<number, string>();
+        const positionToInputId = new Map<number, string>();
         for (const { inputId, position } of createdInputIds) {
-          indexToInputId.set(position, inputId);
+          positionToInputId.set(position, inputId);
         }
         for (const pending of newPendingWhipInputs) {
-          indexToInputId.set(
+          positionToInputId.set(
             pending.position,
             `__pending-whip-${pending.position}__`,
           );
         }
-        restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
-        const restoredTimelineState = buildTimelineStateFromConfigTimeline(
-          config.timeline,
-          indexToInputId,
-        );
-        const knownInputIds = new Set<string>();
-        for (const { inputId } of createdInputIds) {
-          knownInputIds.add(inputId);
+
+        setImportPhase('Refreshing state');
+        await handleRefreshState();
+        advanceImportProgress('Refreshing state');
+
+        for (const { inputId, config: inputConfig } of createdInputIds) {
+          const attachedInputIds = inputConfig.attachedInputIndices
+            ?.map((idx) => positionToInputId.get(idx))
+            .filter((id): id is string => !!id);
+          try {
+            await updateInputAction(roomId, inputId, {
+              volume: inputConfig.volume,
+              shaders: inputConfig.shaders,
+              showTitle: inputConfig.showTitle,
+              textColor: inputConfig.textColor,
+              textMaxLines: inputConfig.textMaxLines,
+              textScrollSpeed: inputConfig.textScrollSpeed,
+              textScrollLoop: inputConfig.textScrollLoop,
+              textFontSize: inputConfig.textFontSize,
+              borderColor: inputConfig.borderColor,
+              borderWidth: inputConfig.borderWidth,
+              gameBackgroundColor: inputConfig.gameBackgroundColor,
+              gameCellGap: inputConfig.gameCellGap,
+              gameBoardBorderColor: inputConfig.gameBoardBorderColor,
+              gameBoardBorderWidth: inputConfig.gameBoardBorderWidth,
+              gameGridLineColor: inputConfig.gameGridLineColor,
+              gameGridLineAlpha: inputConfig.gameGridLineAlpha,
+              snakeEventShaders: inputConfig.snakeEventShaders,
+              snake1Shaders: inputConfig.snake1Shaders,
+              snake2Shaders: inputConfig.snake2Shaders,
+              absolutePosition: inputConfig.absolutePosition,
+              absoluteTop: inputConfig.absoluteTop,
+              absoluteLeft: inputConfig.absoluteLeft,
+              absoluteWidth: inputConfig.absoluteWidth,
+              absoluteHeight: inputConfig.absoluteHeight,
+              absoluteTransitionDurationMs:
+                inputConfig.absoluteTransitionDurationMs,
+              absoluteTransitionEasing: inputConfig.absoluteTransitionEasing,
+              cropTop: inputConfig.cropTop,
+              cropLeft: inputConfig.cropLeft,
+              cropRight: inputConfig.cropRight,
+              cropBottom: inputConfig.cropBottom,
+              attachedInputIds:
+                attachedInputIds && attachedInputIds.length > 0
+                  ? attachedInputIds
+                  : undefined,
+            });
+          } catch (e) {
+            console.warn(`Failed to update input ${inputId}:`, e);
+          } finally {
+            advanceImportProgress('Configuring inputs');
+          }
         }
-        for (const pending of newPendingWhipInputs) {
-          knownInputIds.add(`__pending-whip-${pending.position}__`);
+
+        for (const oldInputId of oldInputIds) {
+          try {
+            await removeInput(roomId, oldInputId);
+          } catch (e) {
+            console.warn(`Failed to remove old input ${oldInputId}:`, e);
+          } finally {
+            advanceImportProgress('Removing old inputs');
+          }
         }
 
-        if (restoredTimelineState.tracks.length > 0) {
-          importedTimelineState = {
-            ...restoredTimelineState,
-            playheadMs: 0,
-            isPlaying: false,
-            knownInputIds,
-          };
-        } else {
-          importedTimelineState = null;
+        const serverPendingWhipInputs: PendingWhipInputData[] =
+          newPendingWhipInputs.map((pendingInput) => ({
+            id: pendingInput.id,
+            title: pendingInput.title,
+            volume: pendingInput.config.volume,
+            showTitle: pendingInput.config.showTitle !== false,
+            shaders: pendingInput.config.shaders || [],
+            position: pendingInput.position,
+          }));
+
+        setImportPhase('Syncing pending WHIP inputs');
+        await setPendingWhipInputsAction(roomId, serverPendingWhipInputs);
+        advanceImportProgress('Syncing pending WHIP inputs');
+        await handleRefreshState();
+        advanceImportProgress('Syncing pending WHIP inputs');
+
+        let importedTimelineState: TimelineState | null = null;
+
+        if (config.timeline) {
+          const indexToInputId = new Map<number, string>();
+          for (const { inputId, position } of createdInputIds) {
+            indexToInputId.set(position, inputId);
+          }
+          for (const pending of newPendingWhipInputs) {
+            indexToInputId.set(
+              pending.position,
+              `__pending-whip-${pending.position}__`,
+            );
+          }
+          restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
+          const restoredTimelineState = buildTimelineStateFromConfigTimeline(
+            config.timeline,
+            indexToInputId,
+          );
+          const knownInputIds = new Set<string>();
+          for (const { inputId } of createdInputIds) {
+            knownInputIds.add(inputId);
+          }
+          for (const pending of newPendingWhipInputs) {
+            knownInputIds.add(`__pending-whip-${pending.position}__`);
+          }
+
+          if (restoredTimelineState.tracks.length > 0) {
+            importedTimelineState = {
+              ...restoredTimelineState,
+              playheadMs: 0,
+              isPlaying: false,
+              knownInputIds,
+            };
+          } else {
+            importedTimelineState = null;
+          }
+
+          applyImportedTimelineState(importedTimelineState);
         }
 
-        applyImportedTimelineState(importedTimelineState);
-      }
+        const orderedCreatedIds = createdInputIds
+          .slice()
+          .sort((a, b) => a.position - b.position)
+          .map(({ inputId }) => inputId);
 
-      const orderedCreatedIds = createdInputIds
-        .slice()
-        .sort((a, b) => a.position - b.position)
-        .map(({ inputId }) => inputId);
+        try {
+          await updateRoomAction(roomId, {
+            layout: config.layout,
+            ...(orderedCreatedIds.length > 0
+              ? { inputOrder: orderedCreatedIds }
+              : {}),
+            ...config.transitionSettings,
+            ...config.viewport,
+            outputShaders: config.outputShaders ?? [],
+          });
+        } catch (e) {
+          console.warn('Failed to set layout or input order:', e);
+        } finally {
+          advanceImportProgress('Finalizing');
+        }
 
-      try {
-        await updateRoomAction(roomId, {
-          layout: config.layout,
-          ...(orderedCreatedIds.length > 0
-            ? { inputOrder: orderedCreatedIds }
-            : {}),
-          ...config.transitionSettings,
-          ...config.viewport,
-          outputShaders: config.outputShaders ?? [],
-        });
-      } catch (e) {
-        console.warn('Failed to set layout or input order:', e);
-      }
+        if (config.outputPlayer) {
+          saveOutputPlayerSettings(roomId, config.outputPlayer);
+        }
 
-      if (config.outputPlayer) {
-        saveOutputPlayerSettings(roomId, config.outputPlayer);
-      }
+        await handleRefreshState();
+        advanceImportProgress('Finalizing');
 
-      await handleRefreshState();
-
-      if (config.timeline) {
-        applyImportedTimelineState(importedTimelineState);
+        if (config.timeline) {
+          applyImportedTimelineState(importedTimelineState);
+        }
+      } finally {
+        setImportProgress(null);
+        setIsImporting(false);
       }
     },
     [
+      countImportAddRequests,
       roomId,
       roomState.inputs,
       handleRefreshState,
-      setPendingWhipInputs,
+      setPendingWhipInputsAction,
       applyImportedTimelineState,
+      adjustImportTotal,
+      advanceImportProgress,
+      setImportPhase,
+      startImportProgress,
+      updateRoomAction,
+      updateInputAction,
+      addTwitchInput,
+      addKickInput,
+      addHlsInput,
+      addMP4Input,
+      addAudioInput,
+      addImageInput,
+      addTextInput,
+      addSnakeGameInput,
+      removeInput,
     ],
   );
 
@@ -1373,7 +1517,6 @@ function SettingsBar({
       const file = e.target.files?.[0];
       if (!file) return;
 
-      setIsImporting(true);
       try {
         const text = await file.text();
         const config = parseRoomConfig(text);
@@ -1381,7 +1524,6 @@ function SettingsBar({
       } catch (e: any) {
         console.error('Import failed:', e);
       } finally {
-        setIsImporting(false);
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
@@ -1551,8 +1693,12 @@ function SettingsBar({
           </DialogHeader>
           <Tabs defaultValue='general'>
             <TabsList className='w-full'>
-              <TabsTrigger value='general' className='flex-1'>General</TabsTrigger>
-              <TabsTrigger value='presentation' className='flex-1'>Presentation Mode</TabsTrigger>
+              <TabsTrigger value='general' className='flex-1'>
+                General
+              </TabsTrigger>
+              <TabsTrigger value='presentation' className='flex-1'>
+                Presentation Mode
+              </TabsTrigger>
             </TabsList>
             <TabsContent value='general'>
               <div className='grid grid-cols-2 gap-6'>
@@ -1580,7 +1726,9 @@ function SettingsBar({
                       });
                       await handleRefreshState();
                     }}
-                    swapFadeOutDurationMs={roomState.swapFadeOutDurationMs ?? 500}
+                    swapFadeOutDurationMs={
+                      roomState.swapFadeOutDurationMs ?? 500
+                    }
                     onSwapFadeOutDurationChange={async (value) => {
                       await updateRoomAction(roomId, {
                         swapFadeOutDurationMs: value,
@@ -1598,7 +1746,9 @@ function SettingsBar({
                     }}
                     newsStripEnabled={roomState.newsStripEnabled ?? true}
                     onNewsStripEnabledChange={async (value) => {
-                      await updateRoomAction(roomId, { newsStripEnabled: value });
+                      await updateRoomAction(roomId, {
+                        newsStripEnabled: value,
+                      });
                       await handleRefreshState();
                     }}
                   />
@@ -1616,7 +1766,9 @@ function SettingsBar({
                       viewportTransitionDurationMs={
                         roomState.viewportTransitionDurationMs
                       }
-                      viewportTransitionEasing={roomState.viewportTransitionEasing}
+                      viewportTransitionEasing={
+                        roomState.viewportTransitionEasing
+                      }
                       onChange={async (fields) => {
                         await updateRoomAction(roomId, fields);
                         await handleRefreshState();
@@ -1734,8 +1886,9 @@ function SettingsBar({
         onOpenChange={setShowLoadModal}
         onLoadLocal={() => fileInputRef.current?.click()}
         onLoadRemote={importConfig}
-        isImporting={isImporting}
       />
+
+      <ImportProgressDialog progress={importProgress} />
 
       <AddVideoModal
         open={showAddVideoModal}

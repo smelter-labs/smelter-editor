@@ -51,7 +51,12 @@ function dimensionsFromZoom(
   zoom: number,
   outW: number,
   outH: number,
-): { viewportWidth: number; viewportHeight: number; viewportTop: number; viewportLeft: number } {
+): {
+  viewportWidth: number;
+  viewportHeight: number;
+  viewportTop: number;
+  viewportLeft: number;
+} {
   const vW = Math.round(outW * zoom);
   const vH = Math.round(outH * zoom);
   const viewportTop = Math.round((outH - vH) / 2);
@@ -85,7 +90,9 @@ export function ViewportSettings({
   const [localZoom, setLocalZoom] = useState(zoomFactor);
   const [localDuration, setLocalDuration] = useState(tDur);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const durationDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const durationDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
 
   useEffect(() => {
     setLocalZoom(zoomFactor);
@@ -98,7 +105,8 @@ export function ViewportSettings({
   useEffect(() => {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
-      if (durationDebounceRef.current) clearTimeout(durationDebounceRef.current);
+      if (durationDebounceRef.current)
+        clearTimeout(durationDebounceRef.current);
     };
   }, []);
 
@@ -116,7 +124,8 @@ export function ViewportSettings({
   const handleDurationChange = useCallback(
     (value: number) => {
       setLocalDuration(value);
-      if (durationDebounceRef.current) clearTimeout(durationDebounceRef.current);
+      if (durationDebounceRef.current)
+        clearTimeout(durationDebounceRef.current);
       durationDebounceRef.current = setTimeout(() => {
         onChange({ viewportTransitionDurationMs: value });
       }, 150);
@@ -229,7 +238,9 @@ export function ViewportSettings({
             value={vH}
             min={1}
             step={10}
-            onChange={(e) => handleFieldChange('viewportHeight', e.target.value)}
+            onChange={(e) =>
+              handleFieldChange('viewportHeight', e.target.value)
+            }
           />
         </div>
       </div>

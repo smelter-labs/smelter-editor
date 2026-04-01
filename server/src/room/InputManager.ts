@@ -1,9 +1,6 @@
 import path from 'node:path';
 import { pathExists, readdir } from 'fs-extra';
-import {
-  SmelterInstance,
-  type RegisterSmelterInputOptions,
-} from '../smelter';
+import { SmelterInstance, type RegisterSmelterInputOptions } from '../smelter';
 import { hlsUrlForKickChannel, hlsUrlForTwitchChannel } from '../streamlink';
 import { TwitchChannelMonitor } from '../twitch/TwitchChannelMonitor';
 import type { TwitchStreamInfo } from '../twitch/TwitchApi';
@@ -11,10 +8,7 @@ import { KickChannelMonitor } from '../kick/KickChannelMonitor';
 import { WhipInputMonitor } from '../whip/WhipInputMonitor';
 import { sleep } from '../utils';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
-import {
-  getMp4DurationMs,
-  getMp4VideoDimensions,
-} from '../server/mp4Duration';
+import { getMp4DurationMs, getMp4VideoDimensions } from '../server/mp4Duration';
 import { logTimelineEvent } from '../dashboard';
 import { createDefaultSnakeGameInputState } from '../snakeGame/snakeGameState';
 import { createHandsStore } from '../hands/handStore';
@@ -262,7 +256,8 @@ export class InputManager {
     opts: Extract<RegisterInputOptions, { type: 'local-mp4' }>,
   ): Promise<string> {
     const isAudio = !!opts.source?.audioFileName;
-    const resolvedFileName = opts.source?.audioFileName ?? opts.source?.fileName;
+    const resolvedFileName =
+      opts.source?.audioFileName ?? opts.source?.fileName;
 
     if (!resolvedFileName) {
       throw new Error(
@@ -466,7 +461,7 @@ export class InputManager {
         status: 'connected',
         showTitle: false,
         shaders: [],
-  
+
         borderColor: '#ff0000',
         borderWidth: 0,
         hidden: false,
@@ -569,7 +564,10 @@ export class InputManager {
       borderWidth: 0,
       hidden: false,
       motionEnabled: false,
-      metadata: { title: 'Hand Tracking', description: 'Cyberpunk hand overlay' },
+      metadata: {
+        title: 'Hand Tracking',
+        description: 'Cyberpunk hand overlay',
+      },
       volume: 0,
       sourceInputId: opts.sourceInputId,
       handsStore,
@@ -655,14 +653,15 @@ export class InputManager {
     const input = this.getInput(inputId);
     if (input.status !== 'disconnected') return '';
 
-    if (
-      input.type === 'local-mp4' &&
-      input.mp4AssetMissing
-    ) {
+    if (input.type === 'local-mp4' && input.mp4AssetMissing) {
       return '';
     }
 
-    if (input.type === 'image' || input.type === 'game' || input.type === 'hands') {
+    if (
+      input.type === 'image' ||
+      input.type === 'game' ||
+      input.type === 'hands'
+    ) {
       input.status = 'connected';
       this.onStateChange();
       return '';
@@ -798,8 +797,7 @@ export class InputManager {
     if (options.absoluteHeight !== undefined)
       input.absoluteHeight = options.absoluteHeight;
     if (options.absoluteTransitionDurationMs !== undefined)
-      input.absoluteTransitionDurationMs =
-        options.absoluteTransitionDurationMs;
+      input.absoluteTransitionDurationMs = options.absoluteTransitionDurationMs;
     if (options.absoluteTransitionEasing !== undefined)
       input.absoluteTransitionEasing = options.absoluteTransitionEasing;
     if (options.cropTop !== undefined) input.cropTop = options.cropTop;
@@ -936,8 +934,7 @@ export class InputManager {
   ackWhipInput(inputId: string): void {
     const input = this.getInput(inputId);
     if (input.type !== 'whip') throw new Error('Input is not a Whip input');
-    const { previousAckTimestamp, currentAckTimestamp } =
-      input.monitor.touch();
+    const { previousAckTimestamp, currentAckTimestamp } = input.monitor.touch();
     const ageBeforeAckMs = currentAckTimestamp - previousAckTimestamp;
     console.log('[whip][ack]', {
       roomId: this.idPrefix,
@@ -1030,10 +1027,7 @@ export class InputManager {
     this.onStateChange();
 
     try {
-      logTimelineEvent(
-        this.idPrefix,
-        `[mp4-restart] unregister "${name}"`,
-      );
+      logTimelineEvent(this.idPrefix, `[mp4-restart] unregister "${name}"`);
       await SmelterInstance.unregisterInput(inputId);
       logTimelineEvent(
         this.idPrefix,
@@ -1144,10 +1138,7 @@ function inputIdForTwitchInput(
   return `${idPrefix}::twitch::${twitchChannelId}`;
 }
 
-function inputIdForKickInput(
-  idPrefix: string,
-  kickChannelId: string,
-): string {
+function inputIdForKickInput(idPrefix: string, kickChannelId: string): string {
   return `${idPrefix}::kick::${kickChannelId}`;
 }
 
@@ -1160,10 +1151,7 @@ export function formatMp4Name(fileName: string): string {
 }
 
 function formatImageName(fileName: string): string {
-  const fileNameWithoutExt = fileName.replace(
-    /\.(jpg|jpeg|png|gif|svg)$/i,
-    '',
-  );
+  const fileNameWithoutExt = fileName.replace(/\.(jpg|jpeg|png|gif|svg)$/i, '');
   return fileNameWithoutExt
     .split(/[_\- ]+/)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))

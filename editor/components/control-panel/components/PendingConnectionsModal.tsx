@@ -64,7 +64,9 @@ export function PendingConnectionsModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='max-w-lg'>
         <DialogHeader>
-          <DialogTitle>{isShowcase ? 'Welcome' : 'Pending Connections'}</DialogTitle>
+          <DialogTitle>
+            {isShowcase ? 'Welcome' : 'Pending Connections'}
+          </DialogTitle>
           {!isShowcase && (
             <DialogDescription>
               The following WHIP inputs need to be connected. Choose camera or

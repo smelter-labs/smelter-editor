@@ -18,7 +18,10 @@ const mocks = vi.hoisted(() => {
       terminate: fn().mockResolvedValue(undefined),
     },
     getMp4DurationMs: fn().mockResolvedValue(10000),
-    getMp4VideoDimensions: fn().mockResolvedValue({ width: 1920, height: 1080 }),
+    getMp4VideoDimensions: fn().mockResolvedValue({
+      width: 1920,
+      height: 1080,
+    }),
     twitchStartMonitor: fn().mockResolvedValue({
       isLive: () => true,
       stop: fn(),
@@ -121,7 +124,7 @@ function createTimelineConfig(
                   volume: 1,
                   showTitle: true,
                   shaders: [],
-    
+
                   text: initialKeyframeText,
                 },
               },
@@ -132,7 +135,7 @@ function createTimelineConfig(
                   volume: 1,
                   showTitle: true,
                   shaders: [],
-    
+
                   text: `${initialKeyframeText}-later`,
                 },
               },
@@ -593,9 +596,15 @@ describe('RoomState', () => {
         text: 'Original',
       }))!;
 
-      await room.startTimelinePlayback(createTimelineConfig(inputId, 'First'), 0);
+      await room.startTimelinePlayback(
+        createTimelineConfig(inputId, 'First'),
+        0,
+      );
       await room.pauseTimeline();
-      await room.startTimelinePlayback(createTimelineConfig(inputId, 'Updated'), 0);
+      await room.startTimelinePlayback(
+        createTimelineConfig(inputId, 'Updated'),
+        0,
+      );
 
       const resumedInput = room.getInputs().find((i) => i.inputId === inputId);
       expect(resumedInput?.type).toBe('text-input');
@@ -626,9 +635,14 @@ describe('RoomState', () => {
           text: 'Original',
         }))!;
 
-        await room.startTimelinePlayback(createTimelineConfig(inputId, 'First'), 0);
+        await room.startTimelinePlayback(
+          createTimelineConfig(inputId, 'First'),
+          0,
+        );
 
-        const initialInput = room.getInputs().find((i) => i.inputId === inputId);
+        const initialInput = room
+          .getInputs()
+          .find((i) => i.inputId === inputId);
         expect(initialInput?.type).toBe('text-input');
         if (initialInput?.type === 'text-input') {
           expect(initialInput.text).toBe('First');
@@ -636,7 +650,9 @@ describe('RoomState', () => {
 
         await vi.advanceTimersByTimeAsync(500);
 
-        const midPlaybackInput = room.getInputs().find((i) => i.inputId === inputId);
+        const midPlaybackInput = room
+          .getInputs()
+          .find((i) => i.inputId === inputId);
         expect(midPlaybackInput?.type).toBe('text-input');
         if (midPlaybackInput?.type === 'text-input') {
           expect(midPlaybackInput.text).toBe('First-later');
@@ -761,10 +777,7 @@ describe('RoomState', () => {
       room.addStateChangeListener(listener);
       const callsBefore = listener.mock.calls.length;
 
-      await room.startTimelinePlayback(
-        createTimelineConfig(inputId, 'TL'),
-        0,
-      );
+      await room.startTimelinePlayback(createTimelineConfig(inputId, 'TL'), 0);
       expect(listener.mock.calls.length).toBeGreaterThan(callsBefore);
 
       const callsAfterStart = listener.mock.calls.length;
@@ -815,9 +828,7 @@ describe('RoomState', () => {
       };
       await room.showInput(inputId, transition);
 
-      const { toPublicInputState } = await import(
-        '../server/publicInputState'
-      );
+      const { toPublicInputState } = await import('../server/publicInputState');
       const input = room.getInputs().find((i) => i.inputId === inputId)!;
       const pub = toPublicInputState(input);
       expect(pub.activeTransition).toMatchObject(transition);
@@ -833,9 +844,7 @@ describe('RoomState', () => {
         text: 'Test',
       }))!;
 
-      const { toPublicInputState } = await import(
-        '../server/publicInputState'
-      );
+      const { toPublicInputState } = await import('../server/publicInputState');
       const input = room.getInputs().find((i) => i.inputId === inputId)!;
       const pub = toPublicInputState(input);
       expect('textScrollNudge' in pub).toBe(true);
@@ -893,7 +902,7 @@ describe('RoomState', () => {
                   volume: 1,
                   showTitle: false,
                   shaders: [],
-    
+
                   mp4PlayFromMs: 0,
                   mp4Loop: true,
                 },

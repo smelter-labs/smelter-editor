@@ -215,11 +215,11 @@ export function exportRoomConfig(
       imageId: input.imageId,
       mp4FileName:
         input.type === 'local-mp4'
-          ? input.mp4FileName ?? extractMp4FileName(input.title)
+          ? (input.mp4FileName ?? extractMp4FileName(input.title))
           : input.mp4FileName,
       audioFileName:
         input.type === 'local-mp4'
-          ? input.audioFileName ?? extractAudioFileName(input.title)
+          ? (input.audioFileName ?? extractAudioFileName(input.title))
           : input.audioFileName,
       text: input.text,
       textAlign: input.textAlign,

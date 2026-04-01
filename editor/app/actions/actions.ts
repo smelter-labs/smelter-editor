@@ -284,9 +284,7 @@ export async function listPresentationConfigs(): Promise<
 
 export async function loadPresentationConfig(
   fileName: string,
-): Promise<
-  StorageResult<{ name: string; data: object; savedAt: string }>
-> {
+): Promise<StorageResult<{ name: string; data: object; savedAt: string }>> {
   return client.presentationConfigStorage.load(fileName);
 }
 

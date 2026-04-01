@@ -201,11 +201,11 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
   });
 
   // ── Delete MP4 ──────────────────────────────────────────────
-  routes.delete<{ Params: { filePath: string } }>(
-    '/upload/mp4/:filePath',
-    { schema: { params: Type.Object({ filePath: Type.String() }) } },
+  routes.delete<{ Params: { '*': string } }>(
+    '/upload/mp4/*',
+    { schema: { params: Type.Object({ '*': Type.String() }) } },
     async (req, res) => {
-      const decoded = decodeURIComponent(req.params.filePath);
+      const decoded = decodeURIComponent(req.params['*']);
       const sanitized = sanitizeFolderPath(decoded);
       if (sanitized === null) {
         return res.status(400).send({ error: 'Invalid file path' });
@@ -223,11 +223,11 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
   );
 
   // ── Delete Picture ──────────────────────────────────────────
-  routes.delete<{ Params: { filePath: string } }>(
-    '/upload/picture/:filePath',
-    { schema: { params: Type.Object({ filePath: Type.String() }) } },
+  routes.delete<{ Params: { '*': string } }>(
+    '/upload/picture/*',
+    { schema: { params: Type.Object({ '*': Type.String() }) } },
     async (req, res) => {
-      const decoded = decodeURIComponent(req.params.filePath);
+      const decoded = decodeURIComponent(req.params['*']);
       const sanitized = sanitizeFolderPath(decoded);
       if (sanitized === null) {
         return res.status(400).send({ error: 'Invalid file path' });
@@ -366,11 +366,11 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
   });
 
   // ── Delete Audio ────────────────────────────────────────────
-  routes.delete<{ Params: { filePath: string } }>(
-    '/upload/audio/:filePath',
-    { schema: { params: Type.Object({ filePath: Type.String() }) } },
+  routes.delete<{ Params: { '*': string } }>(
+    '/upload/audio/*',
+    { schema: { params: Type.Object({ '*': Type.String() }) } },
     async (req, res) => {
-      const decoded = decodeURIComponent(req.params.filePath);
+      const decoded = decodeURIComponent(req.params['*']);
       const sanitized = sanitizeFolderPath(decoded);
       if (sanitized === null) {
         return res.status(400).send({ error: 'Invalid file path' });

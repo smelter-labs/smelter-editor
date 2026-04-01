@@ -258,12 +258,12 @@ export function saveTimeline(
       ...state,
     };
     const json = JSON.stringify(payload);
-    localStorage.setItem(
-      `${STORAGE_KEY_PREFIX}${roomId}`,
-      json,
-    );
+    localStorage.setItem(`${STORAGE_KEY_PREFIX}${roomId}`, json);
   } catch (err) {
-    console.error('[timeline-storage] saveTimeline FAILED — localStorage likely full', err);
+    console.error(
+      '[timeline-storage] saveTimeline FAILED — localStorage likely full',
+      err,
+    );
     pruneOldTimelineEntries(roomId);
     try {
       const payload: StoredTimelineStateV3 = {
@@ -275,7 +275,10 @@ export function saveTimeline(
         JSON.stringify(payload),
       );
     } catch (retryErr) {
-      console.error('[timeline-storage] saveTimeline RETRY also failed', retryErr);
+      console.error(
+        '[timeline-storage] saveTimeline RETRY also failed',
+        retryErr,
+      );
     }
   }
 }
@@ -297,6 +300,8 @@ function pruneOldTimelineEntries(keepRoomId: string): void {
     localStorage.removeItem(key);
   }
   if (toRemove.length > 0) {
-    console.log(`[timeline-storage] pruned ${toRemove.length} old timeline entries`);
+    console.log(
+      `[timeline-storage] pruned ${toRemove.length} old timeline entries`,
+    );
   }
 }

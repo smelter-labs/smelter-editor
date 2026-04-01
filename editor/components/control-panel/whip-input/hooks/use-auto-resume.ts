@@ -12,7 +12,10 @@ import type { AddInputResponse } from '../utils/types';
 import { startPublish } from '../utils/whip-publisher';
 import { stopCameraAndConnection } from '../utils/preview';
 import { updateTimelineInputId } from '@/lib/room-config';
-import { emitTimelineEvent, TIMELINE_EVENTS } from '../../components/timeline/timeline-events';
+import {
+  emitTimelineEvent,
+  TIMELINE_EVENTS,
+} from '../../components/timeline/timeline-events';
 
 export function useAutoResume(
   roomId: string,

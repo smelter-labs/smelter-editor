@@ -23,7 +23,10 @@ import { triggerRecordingDownload } from './use-recording-controls';
 
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
-import { emitTimelineEvent, TIMELINE_EVENTS } from '../components/timeline/timeline-events';
+import {
+  emitTimelineEvent,
+  TIMELINE_EVENTS,
+} from '../components/timeline/timeline-events';
 
 type UseControlPanelEventsProps = {
   inputWrappers: InputWrapper[];

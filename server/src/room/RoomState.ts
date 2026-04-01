@@ -21,7 +21,11 @@ import { PlaceholderManager } from './PlaceholderManager';
 import { AudioController } from '../audio/AudioController';
 import type { AudioStoreState } from '../audio/audioStore';
 import type { StoreApi } from 'zustand';
-import type { RoomInputState, RegisterInputOptions, RoomSnapshot } from './types';
+import type {
+  RoomInputState,
+  RegisterInputOptions,
+  RoomSnapshot,
+} from './types';
 
 const RESUME_FROZEN_IMAGE_CLEANUP_DELAY_MS = 5500;
 const FROZEN_IMAGE_UNREGISTER_GRACE_MS = 500;
@@ -106,15 +110,10 @@ export class RoomState {
     this.creationTimestamp = Date.now();
 
     this.placeholderManager = new PlaceholderManager(idPrefix);
-    this.motionController = new MotionController(
-      idPrefix,
-      () => this.inputManager.getInputs(),
+    this.motionController = new MotionController(idPrefix, () =>
+      this.inputManager.getInputs(),
     );
-    this.audioController = new AudioController(
-      idPrefix,
-      output,
-      audioStore,
-    );
+    this.audioController = new AudioController(idPrefix, output, audioStore);
     this.inputManager = new InputManager(
       idPrefix,
       this.placeholderManager,
@@ -310,7 +309,9 @@ export class RoomState {
   }
 
   public async removeInput(inputId: string): Promise<void> {
-    return this.mutex.runExclusive(() => this.inputManager.removeInput(inputId));
+    return this.mutex.runExclusive(() =>
+      this.inputManager.removeInput(inputId),
+    );
   }
 
   public async connectInput(inputId: string): Promise<string> {
@@ -641,10 +642,7 @@ export class RoomState {
           `MP4 FROZEN (pause) ${input.metadata.title} at ${Math.round(framePositionMs)}ms`,
         );
       } catch (err) {
-        console.error(
-          `[timeline] Failed to extract frame for ${inputId}`,
-          err,
-        );
+        console.error(`[timeline] Failed to extract frame for ${inputId}`, err);
       }
     }
 
@@ -830,7 +828,10 @@ export class RoomState {
       try {
         await SmelterInstance.unregisterImage(imageId);
       } catch (err) {
-        console.error(`Failed to flush-unregister frozen image ${imageId}`, err);
+        console.error(
+          `Failed to flush-unregister frozen image ${imageId}`,
+          err,
+        );
       }
       try {
         await remove(jpegPath);
@@ -918,8 +919,7 @@ export class RoomState {
       showTitle: input.showTitle,
       volume: input.volume,
       shaders: input.shaders,
-      sourceWidth:
-        input.type === 'local-mp4' ? input.mp4VideoWidth : undefined,
+      sourceWidth: input.type === 'local-mp4' ? input.mp4VideoWidth : undefined,
       sourceHeight:
         input.type === 'local-mp4' ? input.mp4VideoHeight : undefined,
       borderColor: input.borderColor,
@@ -938,8 +938,7 @@ export class RoomState {
         input.type === 'text-input' ? input.textScrollNudge : undefined,
       textFontSize:
         input.type === 'text-input' ? input.textFontSize : undefined,
-      snakeGameState:
-        input.type === 'game' ? input.snakeGameState : undefined,
+      snakeGameState: input.type === 'game' ? input.snakeGameState : undefined,
       snakeEventShaders:
         input.type === 'game' ? input.snakeEventShaders : undefined,
       snake1Shaders: input.type === 'game' ? input.snake1Shaders : undefined,

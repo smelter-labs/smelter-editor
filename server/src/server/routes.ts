@@ -50,7 +50,10 @@ type BrowseFileInfo = {
   uploadedAtMs: number;
 };
 
-function resolveBrowseDirectory(baseDir: string, folder?: string): string | null {
+function resolveBrowseDirectory(
+  baseDir: string,
+  folder?: string,
+): string | null {
   if (!folder) {
     return baseDir;
   }
@@ -88,7 +91,9 @@ async function buildBrowseFileInfos(
     }),
   );
 
-  return fileInfos.filter((fileInfo): fileInfo is BrowseFileInfo => fileInfo !== null);
+  return fileInfos.filter(
+    (fileInfo): fileInfo is BrowseFileInfo => fileInfo !== null,
+  );
 }
 
 async function ensureHlsThumbnail(jsonFileName: string): Promise<string> {
@@ -117,7 +122,20 @@ async function ensureHlsThumbnail(jsonFileName: string): Promise<string> {
 
   await execFileAsync(
     'ffmpeg',
-    ['-ss', '2', '-i', hlsUrl, '-vframes', '1', '-vf', 'scale=320:-1', '-q:v', '4', '-y', thumbPath],
+    [
+      '-ss',
+      '2',
+      '-i',
+      hlsUrl,
+      '-vframes',
+      '1',
+      '-vf',
+      'scale=320:-1',
+      '-q:v',
+      '4',
+      '-y',
+      thumbPath,
+    ],
     { timeout: 10_000 },
   );
 
@@ -412,9 +430,7 @@ routes.get<{ Params: { fileName: string } }>(
         fileName: decoded,
         err: err?.message,
       });
-      return res
-        .status(500)
-        .send({ error: 'Failed to read audio duration' });
+      return res.status(500).send({ error: 'Failed to read audio duration' });
     }
   },
 );
@@ -723,7 +739,6 @@ routes.post<RoomIdParams>(
 );
 
 const SCREENSHOTS_DIR = path.join(__dirname, '../../screenshots');
-
 
 routes.get<{ Params: { fileName: string } }>(
   '/screenshots/:fileName',
@@ -1547,4 +1562,3 @@ routes.post('/restart-smelter', async (_req, res) => {
 });
 
 routes.register(uploadRoutes);
-

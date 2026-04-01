@@ -2,7 +2,13 @@ import { View, Rescaler, Shader } from '@swmansion/smelter';
 
 import type { RoomStore } from './store';
 import type { StoreApi } from 'zustand';
-import { StoreContext, useResolution, useInputs, useOutputShaders, useViewport } from './store';
+import {
+  StoreContext,
+  useResolution,
+  useInputs,
+  useOutputShaders,
+  useViewport,
+} from './store';
 import { NewsStripOverlay } from './news-strip';
 import { Input } from '../inputs/inputs';
 import { wrapWithShaders } from '../utils/shaderUtils';

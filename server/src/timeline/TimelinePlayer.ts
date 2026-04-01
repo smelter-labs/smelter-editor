@@ -1065,10 +1065,7 @@ export class TimelinePlayer {
         await this.room
           .updateOutputShaders(resolvedBlockSettings.shaders ?? [])
           .catch((err) =>
-            console.warn(
-              `[timeline] Failed to apply output shaders`,
-              err,
-            ),
+            console.warn(`[timeline] Failed to apply output shaders`, err),
           );
       } else {
         await this.room

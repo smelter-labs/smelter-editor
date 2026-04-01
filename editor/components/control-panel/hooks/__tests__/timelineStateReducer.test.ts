@@ -375,7 +375,11 @@ describe('timelineReducer', () => {
       trackId: 'track-1',
       clipId: 'clip-1',
       newInputId: 'room::local::new',
-      sourceUpdates: { mp4DurationMs: 8000, sourceWidth: 1920, sourceHeight: 1080 },
+      sourceUpdates: {
+        mp4DurationMs: 8000,
+        sourceWidth: 1920,
+        sourceHeight: 1080,
+      },
     });
 
     const clip = next.tracks[0].clips[0];
@@ -584,7 +588,9 @@ describe('timelineReducer', () => {
     };
 
     const next = timelineReducer(loaded, { type: 'LOAD', state: loaded });
-    const nonOutputTracks = next.tracks.filter((track) => track.id !== OUTPUT_TRACK_ID);
+    const nonOutputTracks = next.tracks.filter(
+      (track) => track.id !== OUTPUT_TRACK_ID,
+    );
     const firstTrack = nonOutputTracks[0];
 
     expect(new Set(nonOutputTracks.map((track) => track.id)).size).toBe(
@@ -594,7 +600,8 @@ describe('timelineReducer', () => {
       firstTrack.clips.length,
     );
     expect(
-      new Set(firstTrack.clips[0].keyframes.map((keyframe) => keyframe.id)).size,
+      new Set(firstTrack.clips[0].keyframes.map((keyframe) => keyframe.id))
+        .size,
     ).toBe(firstTrack.clips[0].keyframes.length);
   });
 });

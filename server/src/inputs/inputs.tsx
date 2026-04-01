@@ -71,7 +71,7 @@ function useFrozenImageHandoff(
       !restartFading &&
       liveStreamState === 'playing'
     ) {
-        setDisplayFrozenImage(false);
+      setDisplayFrozenImage(false);
     }
   }, [displayFrozenImage, hiddenForRestart, restartFading, liveStreamState]);
 
@@ -109,7 +109,10 @@ export function Input({ input }: { input: InputConfig }) {
     showFrozenImage || isImage || isTextInput || isGame || isHands
       ? 'playing'
       : liveStreamState;
-  const resolution = deriveInputResolution(input.sourceWidth, input.sourceHeight);
+  const resolution = deriveInputResolution(
+    input.sourceWidth,
+    input.sourceHeight,
+  );
   const borderWidth = normalizeBorderWidth(input.borderWidth ?? 0);
   const borderColor = input.borderColor ?? '#ff0000';
   const contentWidth = Math.max(1, resolution.width - borderWidth * 2);
@@ -175,9 +178,7 @@ export function Input({ input }: { input: InputConfig }) {
         ) : streamState === 'finished' ? (
           <View style={{ padding: 300 }}>
             <Rescaler style={{ rescaleMode: 'fit' }}>
-              <Text style={{ fontSize: 600, fontFamily: 'Star Jedi' }}>
-                {' '}
-              </Text>
+              <Text style={{ fontSize: 600, fontFamily: 'Star Jedi' }}> </Text>
             </Rescaler>
           </View>
         ) : (

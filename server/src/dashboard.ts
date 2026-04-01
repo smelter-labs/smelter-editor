@@ -53,9 +53,7 @@ function emitLogEntry(level: LogEntry['level'], message: string) {
   }
 }
 
-export function addLogListener(
-  cb: (entry: LogEntry) => void,
-): () => void {
+export function addLogListener(cb: (entry: LogEntry) => void): () => void {
   logListeners.add(cb);
   return () => {
     logListeners.delete(cb);
@@ -412,9 +410,7 @@ function updateDashboard() {
   inputsTable.setData({
     headers: ['Room', 'Type', 'St', 'Title', 'Vis', 'Vol', 'Mot'],
     data:
-      inputRows.length > 0
-        ? inputRows
-        : [['-', '-', '-', '-', '-', '-', '-']],
+      inputRows.length > 0 ? inputRows : [['-', '-', '-', '-', '-', '-', '-']],
   });
 
   screen.render();

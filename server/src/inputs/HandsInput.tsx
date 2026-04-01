@@ -68,7 +68,7 @@ export function HandsInput({
 
   return (
     <Shader
-      shaderId="cyberpunk-hands"
+      shaderId='cyberpunk-hands'
       resolution={resolution}
       shaderParam={{ type: 'struct', value: params }}>
       <Rescaler style={{ ...resolution, rescaleMode: 'fill' }}>

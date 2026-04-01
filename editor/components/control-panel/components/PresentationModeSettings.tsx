@@ -49,9 +49,9 @@ export function PresentationModeSettings({
   const [welcomeTextBefore, setWelcomeTextBefore] = useState('');
   const [welcomeTextAfter, setWelcomeTextAfter] = useState('');
   const [configName, setConfigName] = useState('');
-  const [roomConfigSource, setRoomConfigSource] = useState<
-    'current' | 'saved'
-  >('current');
+  const [roomConfigSource, setRoomConfigSource] = useState<'current' | 'saved'>(
+    'current',
+  );
   const [savedConfigs, setSavedConfigs] = useState<SavedItemInfo[]>([]);
   const [selectedConfigFile, setSelectedConfigFile] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
@@ -170,27 +170,24 @@ export function PresentationModeSettings({
     fetchPresentationConfigs,
   ]);
 
-  const handleLoadConfig = useCallback(
-    async (fileName: string) => {
-      setLoadingConfigFile(fileName);
-      try {
-        const result = await loadPresentationConfig(fileName);
-        if (!result.ok) {
-          toast.error(`Load failed: ${result.error}`);
-          return;
-        }
-        const config = result.data as PresentationConfig;
-        setWelcomeTextBefore(config.welcomeTextBefore || '');
-        setWelcomeTextAfter(config.welcomeTextAfter || '');
-        toast.success('Loaded presentation config settings');
-      } catch (e: any) {
-        toast.error(`Load failed: ${e?.message || e}`);
-      } finally {
-        setLoadingConfigFile(null);
+  const handleLoadConfig = useCallback(async (fileName: string) => {
+    setLoadingConfigFile(fileName);
+    try {
+      const result = await loadPresentationConfig(fileName);
+      if (!result.ok) {
+        toast.error(`Load failed: ${result.error}`);
+        return;
       }
-    },
-    [],
-  );
+      const config = result.data as PresentationConfig;
+      setWelcomeTextBefore(config.welcomeTextBefore || '');
+      setWelcomeTextAfter(config.welcomeTextAfter || '');
+      toast.success('Loaded presentation config settings');
+    } catch (e: any) {
+      toast.error(`Load failed: ${e?.message || e}`);
+    } finally {
+      setLoadingConfigFile(null);
+    }
+  }, []);
 
   const handleDeleteConfig = useCallback(
     async (fileName: string) => {
@@ -214,7 +211,9 @@ export function PresentationModeSettings({
       <section className='space-y-3'>
         <h4 className='text-sm font-medium text-foreground'>Welcome Modal</h4>
         <div className='space-y-2'>
-          <Label htmlFor='welcome-before' className='text-xs text-muted-foreground'>
+          <Label
+            htmlFor='welcome-before'
+            className='text-xs text-muted-foreground'>
             Text before pending connections
           </Label>
           <Textarea
@@ -226,7 +225,9 @@ export function PresentationModeSettings({
           />
         </div>
         <div className='space-y-2'>
-          <Label htmlFor='welcome-after' className='text-xs text-muted-foreground'>
+          <Label
+            htmlFor='welcome-after'
+            className='text-xs text-muted-foreground'>
             Text after pending connections
           </Label>
           <Textarea
@@ -242,7 +243,9 @@ export function PresentationModeSettings({
       <div className='h-px bg-card' />
 
       <section className='space-y-3'>
-        <h4 className='text-sm font-medium text-foreground'>Room Configuration</h4>
+        <h4 className='text-sm font-medium text-foreground'>
+          Room Configuration
+        </h4>
         <div className='flex items-center gap-3'>
           <Select
             value={roomConfigSource}

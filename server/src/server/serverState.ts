@@ -133,7 +133,10 @@ export class ServerState {
         try {
           await this._deleteRoom(roomId);
         } catch (err) {
-          console.warn(`[restart] Failed to delete room ${roomId}, forcing removal`, err);
+          console.warn(
+            `[restart] Failed to delete room ${roomId}, forcing removal`,
+            err,
+          );
           delete this.rooms[roomId];
           roomEventBus.closeRoom(roomId);
         }

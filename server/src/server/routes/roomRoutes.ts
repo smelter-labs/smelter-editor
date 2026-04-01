@@ -35,8 +35,7 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
     async (req, res) => {
       console.log('[request] Create new room', { body: req.body });
 
-      const initInputs =
-        (req.body.initInputs as RegisterInputOptions[]) || [];
+      const initInputs = (req.body.initInputs as RegisterInputOptions[]) || [];
       const skipDefaultInputs = req.body.skipDefaultInputs === true;
 
       let resolution: Resolution | undefined;

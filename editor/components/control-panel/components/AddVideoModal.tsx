@@ -193,14 +193,19 @@ function itemMatchesFilter(item: AssetItem, filter: FilterType): boolean {
   }
 }
 
+function baseName(path: string): string {
+  const name = path.split('/').pop() ?? path;
+  return name.length > 255 ? name.slice(0, 252) + '...' : name;
+}
+
 function itemLabel(item: AssetItem): string {
   switch (item.kind) {
     case 'mp4':
-      return item.fileName;
+      return baseName(item.fileName);
     case 'audio':
-      return item.fileName;
+      return baseName(item.fileName);
     case 'image':
-      return item.fileName;
+      return baseName(item.fileName);
     case 'twitch':
       return item.channel.displayName;
     case 'kick':
@@ -2026,7 +2031,7 @@ function Mp4Inspector({
 
   return (
     <div className='space-y-3'>
-      <PropRow label='FILENAME' value={item.fileName} />
+      <PropRow label='FILENAME' value={baseName(item.fileName)} />
       {item.durationMs != null && (
         <PropRow label='DURATION' value={formatDuration(item.durationMs)} />
       )}
@@ -2103,7 +2108,7 @@ function AudioInspector({
 
   return (
     <div className='space-y-3'>
-      <PropRow label='FILENAME' value={item.fileName} />
+      <PropRow label='FILENAME' value={baseName(item.fileName)} />
       {item.durationMs != null && (
         <PropRow label='DURATION' value={formatDuration(item.durationMs)} />
       )}
@@ -2176,7 +2181,7 @@ function ImageInspector({
 
   return (
     <div className='space-y-3'>
-      <PropRow label='FILENAME' value={item.fileName} />
+      <PropRow label='FILENAME' value={baseName(item.fileName)} />
       <PropRow
         label='FORMAT'
         value={item.fileName.split('.').pop()?.toUpperCase() ?? 'IMG'}

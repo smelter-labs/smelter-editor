@@ -155,7 +155,9 @@ export function TransitionSettings({
           <label className='flex items-center gap-2 cursor-pointer mt-3'>
             <Checkbox
               checked={swapOutgoingEnabled}
-              onCheckedChange={(checked: boolean) => onSwapOutgoingEnabledChange(checked)}
+              onCheckedChange={(checked: boolean) =>
+                onSwapOutgoingEnabledChange(checked)
+              }
             />
             <span className='text-xs text-neutral-400'>
               Outgoing Transition
@@ -232,7 +234,9 @@ export function TransitionSettings({
               <label className='flex items-center gap-2 cursor-pointer mt-3'>
                 <Checkbox
                   checked={newsStripEnabled}
-                  onCheckedChange={(checked: boolean) => onNewsStripEnabledChange(checked)}
+                  onCheckedChange={(checked: boolean) =>
+                    onNewsStripEnabledChange(checked)
+                  }
                 />
                 <span className='text-xs text-neutral-400'>News Strip</span>
               </label>

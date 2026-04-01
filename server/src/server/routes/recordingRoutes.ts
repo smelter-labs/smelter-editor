@@ -2,7 +2,11 @@ import path from 'node:path';
 import { pathExists, readdir, readFile, stat } from 'fs-extra';
 import type { FastifyPluginCallback } from 'fastify';
 import { state } from '../serverState';
-import { RoomIdParamsSchema, type RoomIdParams, type RecordingFileParams } from './schemas';
+import {
+  RoomIdParamsSchema,
+  type RoomIdParams,
+  type RecordingFileParams,
+} from './schemas';
 
 const SCREENSHOTS_DIR = path.join(__dirname, '../../../screenshots');
 const RECORDINGS_DIR = path.join(__dirname, '../../../recordings');
@@ -148,33 +152,27 @@ export const recordingRoutes: FastifyPluginCallback = (routes, _opts, done) => {
     },
   );
 
-  routes.get<RecordingFileParams>(
-    '/recordings/:fileName',
-    async (req, res) => {
-      const { fileName } = req.params;
-      const filePath = path.join(RECORDINGS_DIR, fileName);
+  routes.get<RecordingFileParams>('/recordings/:fileName', async (req, res) => {
+    const { fileName } = req.params;
+    const filePath = path.join(RECORDINGS_DIR, fileName);
 
-      if (!(await pathExists(filePath))) {
-        return res.status(404).send({ error: 'Recording not found' });
-      }
+    if (!(await pathExists(filePath))) {
+      return res.status(404).send({ error: 'Recording not found' });
+    }
 
-      try {
-        const fileStat = await stat(filePath);
-        const data = await readFile(filePath);
+    try {
+      const fileStat = await stat(filePath);
+      const data = await readFile(filePath);
 
-        res.header('Content-Type', 'video/mp4');
-        res.header(
-          'Content-Disposition',
-          `attachment; filename="${fileName}"`,
-        );
-        res.header('Content-Length', fileStat.size.toString());
-        res.send(data);
-      } catch (err: any) {
-        console.error('Failed to read recording file', { filePath, err });
-        res.status(500).send({ error: 'Failed to read recording file' });
-      }
-    },
-  );
+      res.header('Content-Type', 'video/mp4');
+      res.header('Content-Disposition', `attachment; filename="${fileName}"`);
+      res.header('Content-Length', fileStat.size.toString());
+      res.send(data);
+    } catch (err: any) {
+      console.error('Failed to read recording file', { filePath, err });
+      res.status(500).send({ error: 'Failed to read recording file' });
+    }
+  });
 
   done();
 };
