@@ -64,6 +64,10 @@ import {
 } from '@/components/ui/select';
 import { LoadConfigModal } from '@/components/control-panel/components/ConfigModals';
 import {
+  ImportProgressDialog,
+  type ImportProgressState,
+} from '@/components/control-panel/components/import-progress-dialog';
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -94,6 +98,8 @@ export default function IntroView() {
   const pathname = usePathname();
   const [loadingNew, setLoadingNew] = useState(false);
   const [loadingImport, setLoadingImport] = useState(false);
+  const [importProgress, setImportProgress] =
+    useState<ImportProgressState | null>(null);
   const [showRecordings, setShowRecordings] = useState(false);
   const [selectedResolution, setSelectedResolution] =
     useState<ResolutionPreset>('1440p');
@@ -108,6 +114,77 @@ export default function IntroView() {
     } catch {}
   }, []);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const countImportAddRequests = useCallback((inputs: RoomConfig['inputs']) => {
+    let count = 0;
+
+    for (const input of inputs) {
+      switch (input.type) {
+        case 'twitch-channel':
+        case 'kick-channel':
+          if (input.channelId) count += 1;
+          break;
+        case 'hls':
+          if (input.url) count += 1;
+          break;
+        case 'local-mp4':
+          if (input.audioFileName || input.mp4FileName) count += 1;
+          break;
+        case 'image':
+          if (input.imageId) count += 1;
+          break;
+        case 'text-input':
+          if (input.text) count += 1;
+          break;
+        case 'game':
+          count += 1;
+          break;
+        case 'whip':
+          break;
+      }
+    }
+
+    return count;
+  }, []);
+
+  const startImportProgress = useCallback((total: number, phase: string) => {
+    setImportProgress({
+      phase,
+      current: 0,
+      total: Math.max(total, 1),
+    });
+  }, []);
+
+  const setImportPhase = useCallback((phase: string) => {
+    setImportProgress((prev) => (prev ? { ...prev, phase } : prev));
+  }, []);
+
+  const advanceImportProgress = useCallback((phase?: string) => {
+    setImportProgress((prev) =>
+      prev
+        ? {
+            ...prev,
+            phase: phase ?? prev.phase,
+            current: Math.min(prev.total, prev.current + 1),
+          }
+        : prev,
+    );
+  }, []);
+
+  const adjustImportTotal = useCallback((delta: number) => {
+    if (delta === 0) {
+      return;
+    }
+
+    setImportProgress((prev) => {
+      if (!prev) {
+        return prev;
+      }
+
+      const total = Math.max(prev.current, prev.total + delta, 1);
+      return { ...prev, total };
+    });
+  }, []);
 
   // Suggestions state
   const [twitchSuggestions, setTwitchSuggestions] = useState<any[]>([]);
@@ -260,9 +337,21 @@ export default function IntroView() {
       showcaseWelcome?: { before: string; after: string },
     ) => {
       setLoadingImport(true);
+
+      const plannedAddRequests = countImportAddRequests(config.inputs);
+      const hasPendingWhipSync = config.inputs.some(
+        (input) => input.type === 'whip',
+      );
+
+      startImportProgress(
+        1 + plannedAddRequests * 2 + (hasPendingWhipSync ? 1 : 0) + 1,
+        'Creating room',
+      );
+
       try {
         const room = await createNewRoom([], true, config.resolution);
         const roomId = room.roomId;
+        advanceImportProgress('Creating room');
 
         if (showcaseWelcome) {
           try {
@@ -279,6 +368,7 @@ export default function IntroView() {
           const inputConfig = config.inputs[i];
           try {
             let inputId: string | null = null;
+            let attemptedAdd = false;
 
             if (inputConfig.type === 'whip') {
               continue;
@@ -287,6 +377,7 @@ export default function IntroView() {
             switch (inputConfig.type) {
               case 'twitch-channel':
                 if (inputConfig.channelId) {
+                  attemptedAdd = true;
                   const result = await addTwitchInput(
                     roomId,
                     inputConfig.channelId,
@@ -296,6 +387,7 @@ export default function IntroView() {
                 break;
               case 'kick-channel':
                 if (inputConfig.channelId) {
+                  attemptedAdd = true;
                   const result = await addKickInput(
                     roomId,
                     inputConfig.channelId,
@@ -305,18 +397,21 @@ export default function IntroView() {
                 break;
               case 'hls':
                 if (inputConfig.url) {
+                  attemptedAdd = true;
                   const result = await addHlsInput(roomId, inputConfig.url);
                   inputId = result.inputId;
                 }
                 break;
               case 'local-mp4':
                 if (inputConfig.audioFileName) {
+                  attemptedAdd = true;
                   const result = await addAudioInput(
                     roomId,
                     inputConfig.audioFileName,
                   );
                   inputId = result.inputId;
                 } else if (inputConfig.mp4FileName) {
+                  attemptedAdd = true;
                   const result = await addMP4Input(
                     roomId,
                     inputConfig.mp4FileName,
@@ -326,6 +421,7 @@ export default function IntroView() {
                 break;
               case 'image':
                 if (inputConfig.imageId) {
+                  attemptedAdd = true;
                   const result = await addImageInput(
                     roomId,
                     inputConfig.imageId,
@@ -335,6 +431,7 @@ export default function IntroView() {
                 break;
               case 'text-input':
                 if (inputConfig.text) {
+                  attemptedAdd = true;
                   const result = await addTextInput(
                     roomId,
                     inputConfig.text,
@@ -344,6 +441,7 @@ export default function IntroView() {
                 }
                 break;
               case 'game': {
+                attemptedAdd = true;
                 const result = await addSnakeGameInput(
                   roomId,
                   inputConfig.title,
@@ -356,10 +454,17 @@ export default function IntroView() {
             if (inputId) {
               createdInputIds.push({ inputId, configIndex: i });
             }
+
+            if (attemptedAdd) {
+              advanceImportProgress('Adding inputs');
+            }
           } catch (err) {
             console.warn(`Failed to add input ${inputConfig.title}:`, err);
+            advanceImportProgress('Adding inputs');
           }
         }
+
+        adjustImportTotal(createdInputIds.length - plannedAddRequests);
 
         const configIndexToInputId = new Map<number, string>();
         for (const { inputId, configIndex } of createdInputIds) {
@@ -427,6 +532,8 @@ export default function IntroView() {
             });
           } catch (err) {
             console.warn(`Failed to update input ${inputId}:`, err);
+          } finally {
+            advanceImportProgress('Configuring inputs');
           }
         }
 
@@ -451,11 +558,18 @@ export default function IntroView() {
           }
           restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
 
+          adjustImportTotal(
+            timelineState.hiddenInputIds.length +
+              timelineState.activeBlockSettings.size,
+          );
+
           for (const hiddenId of timelineState.hiddenInputIds) {
             try {
               await hideInput(roomId, hiddenId);
             } catch (err) {
               console.warn(`Failed to hide input ${hiddenId}:`, err);
+            } finally {
+              advanceImportProgress('Applying timeline state');
             }
           }
 
@@ -474,6 +588,8 @@ export default function IntroView() {
                 `Failed to apply block settings for ${inputId}:`,
                 err,
               );
+            } finally {
+              advanceImportProgress('Applying timeline state');
             }
           }
 
@@ -499,10 +615,14 @@ export default function IntroView() {
           });
         } catch (err) {
           console.warn('Failed to set layout or input order:', err);
+        } finally {
+          advanceImportProgress('Finalizing room');
         }
 
         if (pendingWhipInputs.length > 0) {
+          setImportPhase('Syncing pending WHIP inputs');
           await setPendingWhipInputsAction(roomId, pendingWhipInputs);
+          advanceImportProgress('Syncing pending WHIP inputs');
           toast.info(
             `Room created. ${pendingWhipInputs.length} WHIP input(s) need to be connected manually.`,
           );
@@ -519,10 +639,19 @@ export default function IntroView() {
         console.error('Import failed:', err);
         toast.error(`Import failed: ${err?.message || err}`);
       } finally {
+        setImportProgress(null);
         setLoadingImport(false);
       }
     },
-    [getRoomRoute, router],
+    [
+      adjustImportTotal,
+      advanceImportProgress,
+      countImportAddRequests,
+      getRoomRoute,
+      router,
+      setImportPhase,
+      startImportProgress,
+    ],
   );
 
   const handleStartShowcase = useCallback(
@@ -713,6 +842,7 @@ export default function IntroView() {
                 onLoadRemote={importConfig}
               />
             </ActionsProvider>
+            <ImportProgressDialog progress={importProgress} />
             <Button
               size='lg'
               variant='outline'
