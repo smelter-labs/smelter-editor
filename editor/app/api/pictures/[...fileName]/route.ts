@@ -4,9 +4,10 @@ const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: Promise<{ fileName: string }> },
+  { params }: { params: Promise<{ fileName: string[] }> },
 ) {
-  const { fileName } = await params;
+  const { fileName: segments } = await params;
+  const fileName = segments.join('/');
   if (!BASE_URL) {
     return NextResponse.json(
       { error: 'Server URL not configured' },

@@ -24,6 +24,7 @@ type ImportProgressDialogProps = {
 type ImportMetricConfig = {
   label: string;
   multiplier: number;
+  continuous?: boolean;
   accentClassName: string;
   borderClassName: string;
   badgeClassName: string;
@@ -59,6 +60,7 @@ const IMPORT_METRICS: ImportMetricConfig[] = [
   {
     label: 'gpu fan rotations',
     multiplier: 100,
+    continuous: true,
     accentClassName: 'text-emerald-200',
     borderClassName: 'border-emerald-400/30',
     badgeClassName: 'border-emerald-400/25 bg-emerald-400/10 text-emerald-100',
@@ -75,6 +77,14 @@ const IMPORT_METRICS: ImportMetricConfig[] = [
 ];
 
 const zeroMetricValues = IMPORT_METRICS.map(() => 0);
+
+const CONTINUOUS_METRIC_INDEX = IMPORT_METRICS.findIndex(
+  (metric) => metric.continuous,
+);
+const CONTINUOUS_DECAY_RATE = 3.0;
+const CONTINUOUS_MIN_VELOCITY = 12;
+const CONTINUOUS_BOOST_FACTOR = 3.5;
+const CONTINUOUS_MAX_VELOCITY = 800;
 
 function createSeededRandom(seed: number) {
   let state = (seed ^ 0xa5a5a5a5) >>> 0;
@@ -133,6 +143,11 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
   const wasOpenRef = useRef(false);
   const animatedValuesRef = useRef<number[]>(zeroMetricValues);
   const animationFrameRef = useRef<number | null>(null);
+  const continuousVelocityRef = useRef(0);
+  const continuousValueRef = useRef(0);
+  const continuousPrevTargetRef = useRef(0);
+  const continuousRafRef = useRef<number | null>(null);
+  const continuousLastTimeRef = useRef<number | null>(null);
 
   useEffect(() => {
     const isOpen = progress !== null;
@@ -141,11 +156,27 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
       setSessionSeed((previous) => previous + 1);
       setDisplayValues(zeroMetricValues);
       animatedValuesRef.current = zeroMetricValues;
+      continuousVelocityRef.current = 0;
+      continuousValueRef.current = 0;
+      continuousPrevTargetRef.current = 0;
+      continuousLastTimeRef.current = null;
+      if (continuousRafRef.current !== null) {
+        cancelAnimationFrame(continuousRafRef.current);
+        continuousRafRef.current = null;
+      }
     }
 
     if (!isOpen && wasOpenRef.current) {
       setDisplayValues(zeroMetricValues);
       animatedValuesRef.current = zeroMetricValues;
+      continuousVelocityRef.current = 0;
+      continuousValueRef.current = 0;
+      continuousPrevTargetRef.current = 0;
+      continuousLastTimeRef.current = null;
+      if (continuousRafRef.current !== null) {
+        cancelAnimationFrame(continuousRafRef.current);
+        continuousRafRef.current = null;
+      }
     }
 
     wasOpenRef.current = isOpen;
@@ -216,12 +247,20 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
       const progressRatio = Math.min((timestamp - startedAt) / durationMs, 1);
       const easedRatio = 1 - Math.pow(1 - progressRatio, 3);
       const nextValues = startValues.map((value, index) => {
+        if (index === CONTINUOUS_METRIC_INDEX) return value;
         const targetValue = targetValues[index] ?? value;
         return Math.round(value + (targetValue - value) * easedRatio);
       });
 
       animatedValuesRef.current = nextValues;
-      setDisplayValues(nextValues);
+      setDisplayValues((prev) => {
+        if (CONTINUOUS_METRIC_INDEX >= 0) {
+          const result = [...nextValues];
+          result[CONTINUOUS_METRIC_INDEX] = prev[CONTINUOUS_METRIC_INDEX] ?? 0;
+          return result;
+        }
+        return nextValues;
+      });
 
       if (progressRatio < 1) {
         animationFrameRef.current = requestAnimationFrame(tick);
@@ -239,6 +278,95 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
       }
     };
   }, [metricPlans, progress, targetValuesKey]);
+
+  useEffect(() => {
+    if (progress === null || CONTINUOUS_METRIC_INDEX < 0) {
+      if (continuousRafRef.current !== null) {
+        cancelAnimationFrame(continuousRafRef.current);
+        continuousRafRef.current = null;
+      }
+      continuousLastTimeRef.current = null;
+      return;
+    }
+
+    const continuousMetric = metricPlans[CONTINUOUS_METRIC_INDEX];
+    if (!continuousMetric) return;
+
+    const newTarget = continuousMetric.currentDisplayValue;
+    const prevTarget = continuousPrevTargetRef.current;
+    if (newTarget > prevTarget) {
+      const delta = newTarget - prevTarget;
+      continuousVelocityRef.current = Math.min(
+        continuousVelocityRef.current + CONTINUOUS_BOOST_FACTOR * delta,
+        CONTINUOUS_MAX_VELOCITY,
+      );
+    }
+    continuousPrevTargetRef.current = newTarget;
+
+    const totalDisplay = continuousMetric.totalDisplayValue;
+    const isComplete = current >= total && total > 0;
+
+    if (continuousRafRef.current !== null) {
+      cancelAnimationFrame(continuousRafRef.current);
+    }
+    continuousLastTimeRef.current = null;
+
+    const tick = (timestamp: number) => {
+      if (continuousLastTimeRef.current === null) {
+        continuousLastTimeRef.current = timestamp;
+        continuousRafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+
+      const dt = Math.min(
+        (timestamp - continuousLastTimeRef.current) / 1000,
+        0.1,
+      );
+      continuousLastTimeRef.current = timestamp;
+
+      let velocity = continuousVelocityRef.current;
+      velocity *= Math.exp(-CONTINUOUS_DECAY_RATE * dt);
+
+      const reachedTotal =
+        totalDisplay > 0 && continuousValueRef.current >= totalDisplay;
+      if (!(reachedTotal && isComplete)) {
+        velocity = Math.max(velocity, CONTINUOUS_MIN_VELOCITY);
+      }
+      continuousVelocityRef.current = velocity;
+
+      let nextValue = continuousValueRef.current + velocity * dt;
+      if (totalDisplay > 0) {
+        nextValue = Math.min(nextValue, totalDisplay);
+      }
+      continuousValueRef.current = nextValue;
+
+      const rounded = Math.round(nextValue);
+      setDisplayValues((prev) => {
+        if (prev[CONTINUOUS_METRIC_INDEX] === rounded) return prev;
+        const next = [...prev];
+        next[CONTINUOUS_METRIC_INDEX] = rounded;
+        return next;
+      });
+
+      const finished =
+        totalDisplay > 0 && nextValue >= totalDisplay && isComplete;
+      if (!finished) {
+        continuousRafRef.current = requestAnimationFrame(tick);
+      } else {
+        continuousRafRef.current = null;
+        continuousLastTimeRef.current = null;
+      }
+    };
+
+    continuousRafRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      if (continuousRafRef.current !== null) {
+        cancelAnimationFrame(continuousRafRef.current);
+        continuousRafRef.current = null;
+      }
+    };
+  }, [metricPlans, progress, current, total]);
 
   return (
     <Dialog open={progress !== null} onOpenChange={() => {}}>

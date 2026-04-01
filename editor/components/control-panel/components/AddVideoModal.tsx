@@ -568,6 +568,8 @@ export function AssetBrowserPanel({
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const pendingDeletedKeysRef = useRef(new Set<string>());
+  const [modalDragOver, setModalDragOver] = useState(false);
+  const dragCounterRef = useRef(0);
   const effectiveAvailableFilters = availableFilters ?? FILTER_TYPES;
   const availableFilterKey = effectiveAvailableFilters.join('|');
   const visibleFilters = useMemo(() => {
@@ -1065,8 +1067,49 @@ export function AssetBrowserPanel({
     fetchItems,
   ]);
 
+  const handleModalDragEnter = useCallback(
+    (e: React.DragEvent) => {
+      if (!allowUpload) return;
+      e.preventDefault();
+      dragCounterRef.current += 1;
+      if (dragCounterRef.current === 1) setModalDragOver(true);
+    },
+    [allowUpload],
+  );
+
+  const handleModalDragLeave = useCallback(() => {
+    dragCounterRef.current = Math.max(0, dragCounterRef.current - 1);
+    if (dragCounterRef.current === 0) setModalDragOver(false);
+  }, []);
+
+  const handleModalDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      dragCounterRef.current = 0;
+      setModalDragOver(false);
+      if (!allowUpload) return;
+      const files = Array.from(e.dataTransfer.files ?? []);
+      if (files.length > 0) void queueUploads(files);
+    },
+    [allowUpload, queueUploads],
+  );
+
   return (
-    <div className='flex flex-col h-full'>
+    <div
+      className='flex flex-col h-full relative'
+      onDragEnter={handleModalDragEnter}
+      onDragOver={(e) => {
+        if (allowUpload) e.preventDefault();
+      }}
+      onDragLeave={handleModalDragLeave}
+      onDrop={handleModalDrop}>
+      {modalDragOver && (
+        <div className='absolute inset-0 z-50 flex items-center justify-center bg-black/60 border-2 border-dashed border-[#00f3ff] pointer-events-none'>
+          <span className='font-mono text-sm text-[#00f3ff] tracking-widest uppercase'>
+            DROP FILES TO UPLOAD
+          </span>
+        </div>
+      )}
       {/* Header + Filter */}
       <div className='px-5 pt-5 pb-3 border-b border-[#3a494b]/20'>
         <div className='flex items-center justify-between mb-3 pr-6'>
@@ -2668,6 +2711,7 @@ function UploadInspector({
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
+    e.stopPropagation();
     setDragOver(false);
     const files = Array.from(e.dataTransfer.files ?? []);
     if (files.length > 0) void onUploadFiles(files);

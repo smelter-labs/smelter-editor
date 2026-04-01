@@ -706,7 +706,7 @@ export default function IntroView() {
       className='min-h-screen flex flex-col p-2 py-4 md:p-4 bg-[#0a0a0a] overflow-y-auto'>
       <motion.div
         variants={staggerContainer}
-        className='flex-1 flex justify-center min-h-0 h-full items-start md:items-center w-full'>
+        className='flex-1 flex justify-center min-h-0 h-full items-start w-full'>
         <motion.div
           className='border-1 rounded-none border-neutral-800 text-center justify-center items-center w-full max-w-[600px] p-4 sm:p-8'
           layout>
