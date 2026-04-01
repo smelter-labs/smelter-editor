@@ -240,11 +240,11 @@ routes.get<{ Querystring: { folder?: string } }>(
   },
 );
 
-routes.get<{ Params: { fileName: string } }>(
-  '/suggestions/mp4-duration/:fileName',
-  { schema: { params: Type.Object({ fileName: Type.String() }) } },
+routes.get<{ Querystring: { fileName: string } }>(
+  '/suggestions/mp4-duration',
+  { schema: { querystring: Type.Object({ fileName: Type.String() }) } },
   async (req, res) => {
-    const { fileName } = req.params;
+    const { fileName } = req.query;
     const decoded = decodeURIComponent(fileName);
     if (decoded.includes('..')) {
       return res.status(400).send({ error: 'Invalid file name' });
@@ -268,11 +268,11 @@ routes.get<{ Params: { fileName: string } }>(
   },
 );
 
-routes.get<{ Params: { fileName: string } }>(
-  '/suggestions/mp4-thumbnail/:fileName',
-  { schema: { params: Type.Object({ fileName: Type.String() }) } },
+routes.get<{ Querystring: { fileName: string } }>(
+  '/suggestions/mp4-thumbnail',
+  { schema: { querystring: Type.Object({ fileName: Type.String() }) } },
   async (req, res) => {
-    const { fileName } = req.params;
+    const { fileName } = req.query;
     try {
       const thumbPath = await ensureMp4Thumbnail(fileName);
       const data = await readFile(thumbPath);

@@ -1245,7 +1245,7 @@ function AssetThumbnail({ item }: { item: AssetItem }) {
     return (
       // eslint-disable-next-line @next/next/no-img-element
       <img
-        src={`/api/mp4-thumbnail/${encodeURIComponent(item.fileName)}`}
+        src={`/api/mp4-thumbnail?fileName=${encodeURIComponent(item.fileName)}`}
         alt={item.fileName}
         className='w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700'
       />

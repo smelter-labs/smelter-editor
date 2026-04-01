@@ -452,7 +452,7 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
     async getMp4Duration(fileName) {
       const data = await req(
         'get',
-        `/suggestions/mp4-duration/${enc(fileName)}`,
+        `/suggestions/mp4-duration?fileName=${enc(fileName)}`,
       );
       return data.durationMs as number;
     },

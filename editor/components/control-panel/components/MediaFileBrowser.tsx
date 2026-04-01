@@ -245,7 +245,7 @@ export function MediaFileBrowser({
                     {mediaType === 'mp4' ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
-                        src={`/api/mp4-thumbnail/${encodeURIComponent(file.fileName)}`}
+                        src={`/api/mp4-thumbnail?fileName=${encodeURIComponent(file.fileName)}`}
                         alt={file.fileName}
                         className='w-full h-full object-cover opacity-60'
                       />
