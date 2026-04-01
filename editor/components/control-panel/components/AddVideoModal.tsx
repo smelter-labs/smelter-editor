@@ -293,18 +293,25 @@ type UploadJob = {
 const PUBLIC_SERVER_URL =
   process.env.NEXT_PUBLIC_SMELTER_SERVER_URL?.replace(/\/$/, '') ?? '';
 
-function buildUploadUrl(path: string): string {
+function buildUploadUrl(
+  path: string,
+  opts?: { preferProxy?: boolean },
+): string {
+  if (opts?.preferProxy) {
+    return `/api${path}`;
+  }
+
   return PUBLIC_SERVER_URL ? `${PUBLIC_SERVER_URL}${path}` : `/api${path}`;
 }
 
 const UPLOAD_ROUTES: Record<UploadMediaType, string> = {
-  mp4: buildUploadUrl('/upload/mp4'),
+  mp4: buildUploadUrl('/upload/mp4', { preferProxy: true }),
   picture: buildUploadUrl('/upload/picture'),
   audio: buildUploadUrl('/upload/audio'),
 };
 
 const FOLDER_ROUTES: Record<UploadMediaType, string> = {
-  mp4: buildUploadUrl('/upload/mp4/folder'),
+  mp4: buildUploadUrl('/upload/mp4/folder', { preferProxy: true }),
   picture: buildUploadUrl('/upload/picture/folder'),
   audio: buildUploadUrl('/upload/audio/folder'),
 };
