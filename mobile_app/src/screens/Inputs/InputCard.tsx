@@ -1,7 +1,7 @@
 import React from "react";
 import { View, StyleSheet } from "react-native";
 import { Chip, Text, useTheme } from "react-native-paper";
-import { GestureDetector } from "react-native-gesture-handler";
+import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import type { InputCard as InputCardType } from "../../types/input";
 import { getMovementColor } from "../../utils/gridUtils";
 import { appColors } from "../../theme/paperTheme";
@@ -11,9 +11,7 @@ import { InputCardControls } from "./InputCardControls";
 
 interface InputCardProps {
   input: InputCardType;
-  tapGesture: ReturnType<
-    typeof import("react-native-gesture-handler").Gesture.Tap
-  >;
+  tapGesture: ReturnType<typeof Gesture.Tap>;
   onUpdate: (changes: Partial<InputCardType>) => void;
 }
 

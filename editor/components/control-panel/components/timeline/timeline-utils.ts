@@ -1,4 +1,5 @@
 import type { Input } from '@/lib/types';
+import type { ShaderConfig } from '@/lib/types';
 import type {
   BlockSettings,
   Clip,
@@ -223,7 +224,7 @@ export function computeKeyframeDiff(
     }
   }
 
-  const shaderSummary = (s: import('@/lib/types').ShaderConfig[]) =>
+  const shaderSummary = (s: ShaderConfig[]) =>
     s
       .filter((x) => x.enabled)
       .map((x) => x.shaderName)

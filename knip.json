@@ -3,6 +3,9 @@
   "tags": [
     "-lintignore"
   ],
+  "ignoreWorkspaces": [
+    "mobile_app"
+  ],
   "workspaces": {
     ".": {}
   }

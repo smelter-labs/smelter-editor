@@ -22,6 +22,10 @@ import {
   OUTPUT_TRACK_ID,
   OUTPUT_CLIP_ID,
   OUTPUT_TRACK_INPUT_ID,
+  type BlockSettings,
+  type Clip,
+  type Keyframe,
+  type Track,
   type TimelineState,
 } from '../hooks/use-timeline-state';
 import { useServerTimelinePlayback } from '../hooks/use-server-timeline-playback';
@@ -313,7 +317,7 @@ export function TimelinePanel({
       e: CustomEvent<{
         trackId: string;
         clipId: string;
-        patch: Partial<import('../hooks/use-timeline-state').BlockSettings>;
+        patch: Partial<BlockSettings>;
       }>,
     ) => {
       const { trackId, clipId, patch } = e.detail;
@@ -347,7 +351,7 @@ export function TimelinePanel({
         trackId: string;
         clipId: string;
         keyframeId: string;
-        patch: Partial<import('../hooks/use-timeline-state').BlockSettings>;
+        patch: Partial<BlockSettings>;
       }>,
     ) => {
       const { trackId, clipId, keyframeId, patch } = e.detail;
@@ -436,7 +440,7 @@ export function TimelinePanel({
     const handler = (
       e: CustomEvent<{
         inputId: string;
-        patch: Partial<import('../hooks/use-timeline-state').BlockSettings>;
+        patch: Partial<BlockSettings>;
       }>,
     ) => {
       const { inputId, patch } = e.detail;
@@ -1510,8 +1514,8 @@ export function TimelinePanel({
     (
       e: React.PointerEvent<HTMLButtonElement>,
       trackId: string,
-      clip: import('../hooks/use-timeline-state').Clip,
-      keyframe: import('../hooks/use-timeline-state').Keyframe,
+      clip: Clip,
+      keyframe: Keyframe,
     ) => {
       e.preventDefault();
       e.stopPropagation();
@@ -1925,7 +1929,7 @@ export function TimelinePanel({
   // ── Render helpers ───────────────────────────────────
 
   const renderKeyframes = useCallback(
-    (track: import('../hooks/use-timeline-state').Track) => {
+    (track: Track) => {
       return track.clips.flatMap((clip) => {
         const isClipSelected =
           selectedClipIds.length === 1 &&
@@ -2010,7 +2014,7 @@ export function TimelinePanel({
   );
 
   const renderClips = useCallback(
-    (track: import('../hooks/use-timeline-state').Track) => {
+    (track: Track) => {
       return track.clips.map((clip) => {
         const isOutputClip = clip.id === OUTPUT_CLIP_ID;
         const input = inputs.find((i) => i.inputId === clip.inputId);

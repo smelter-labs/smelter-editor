@@ -1,9 +1,10 @@
 import type {
   Resolution,
+  ResolutionPreset,
   PendingWhipInputData,
   RoomNameEntry,
 } from '@smelter-editor/types';
-import type { Input } from './input';
+import type { Input, RegisterInputOptions } from './input';
 import type { Layer } from './layout';
 
 export type {
@@ -62,9 +63,9 @@ export type PictureSuggestions = {
 };
 
 export type CreateRoomOptions = {
-  initInputs?: import('./input').RegisterInputOptions[];
+  initInputs?: RegisterInputOptions[];
   skipDefaultInputs?: boolean;
-  resolution?: import('@smelter-editor/types').ResolutionPreset | Resolution;
+  resolution?: ResolutionPreset | Resolution;
 };
 
 export type UpdateRoomOptions = {

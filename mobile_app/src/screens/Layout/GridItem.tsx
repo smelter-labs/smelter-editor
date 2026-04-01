@@ -12,9 +12,7 @@ import type { ResizeHandleDirection } from "./ReshufflableGridWrapper";
 
 interface GridItemProps {
   item: GridItemType;
-  tapGesture: ReturnType<
-    typeof import("react-native-gesture-handler").Gesture.Tap
-  >;
+  tapGesture: ReturnType<typeof Gesture.Tap>;
   isSelected?: boolean;
   onSelect?: () => void;
   onResizeStart?: (direction: ResizeHandleDirection) => void;

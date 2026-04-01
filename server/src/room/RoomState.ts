@@ -23,10 +23,13 @@ import { AudioController } from '../audio/AudioController';
 import type { AudioStoreState } from '../audio/audioStore';
 import type { StoreApi } from 'zustand';
 import type {
+  PendingWhipInputData,
   RoomInputState,
   RegisterInputOptions,
   RoomSnapshot,
+  UpdateInputOptions,
 } from './types';
+import type { ShaderConfig } from '../types';
 
 const RESUME_FROZEN_IMAGE_CLEANUP_DELAY_MS = 5500;
 const FROZEN_IMAGE_UNREGISTER_GRACE_MS = 500;
@@ -86,7 +89,7 @@ export class RoomState {
   public creationTimestamp: number;
   private _pendingDelete?: boolean;
   private _isPublic: boolean = true;
-  private _pendingWhipInputs: import('./types').PendingWhipInputData[] = [];
+  private _pendingWhipInputs: PendingWhipInputData[] = [];
   public roomName: RoomNameEntry;
 
   private readonly initInputs: RegisterInputOptions[];
@@ -154,12 +157,10 @@ export class RoomState {
     this.notifyStateChange();
   }
 
-  public get pendingWhipInputs(): import('./types').PendingWhipInputData[] {
+  public get pendingWhipInputs(): PendingWhipInputData[] {
     return this._pendingWhipInputs;
   }
-  public set pendingWhipInputs(
-    value: import('./types').PendingWhipInputData[],
-  ) {
+  public set pendingWhipInputs(value: PendingWhipInputData[]) {
     this._pendingWhipInputs = value;
     this.notifyStateChange();
   }
@@ -349,7 +350,7 @@ export class RoomState {
 
   public async updateInput(
     inputId: string,
-    options: Partial<import('./types').UpdateInputOptions>,
+    options: Partial<UpdateInputOptions>,
   ) {
     return this.mutex.runExclusive(async () => {
       // Sync: mirror absolute position changes to all matching layer inputs so
@@ -365,8 +366,10 @@ export class RoomState {
             if (li.inputId !== inputId) continue;
             if (options.absoluteLeft !== undefined) li.x = options.absoluteLeft;
             if (options.absoluteTop !== undefined) li.y = options.absoluteTop;
-            if (options.absoluteWidth !== undefined) li.width = options.absoluteWidth;
-            if (options.absoluteHeight !== undefined) li.height = options.absoluteHeight;
+            if (options.absoluteWidth !== undefined)
+              li.width = options.absoluteWidth;
+            if (options.absoluteHeight !== undefined)
+              li.height = options.absoluteHeight;
           }
         }
       }
@@ -506,11 +509,11 @@ export class RoomState {
     return this.timelinePlayer?.getIsPaused() === true;
   }
 
-  public setOutputShaders(shaders: import('../types').ShaderConfig[]): void {
+  public setOutputShaders(shaders: ShaderConfig[]): void {
     this.output.store.getState().setOutputShaders(shaders);
   }
 
-  public getOutputShaders(): import('../types').ShaderConfig[] {
+  public getOutputShaders(): ShaderConfig[] {
     return this.output.store.getState().outputShaders;
   }
 

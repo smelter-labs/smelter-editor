@@ -23,7 +23,11 @@ import {
 } from '../snakeGame/snakeGameRoutes';
 import { registerTimelineRoutes } from '../timeline/timelineRoutes';
 import { TwitchChannelSuggestions } from '../twitch/TwitchChannelMonitor';
-import type { RegisterInputOptions, PendingWhipInputData } from '../types';
+import type {
+  Layer,
+  RegisterInputOptions,
+  PendingWhipInputData,
+} from '../types';
 import { toPublicInputState } from './publicInputState';
 import { config } from '../config';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
@@ -747,7 +751,7 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
       roomStructureChanged = true;
     }
     if (req.body.layers) {
-      await room.updateLayers(req.body.layers as import('../types').Layer[]);
+      await room.updateLayers(req.body.layers as Layer[]);
       roomStructureChanged = true;
     }
     if (roomStructureChanged) {
