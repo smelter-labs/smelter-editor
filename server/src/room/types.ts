@@ -94,7 +94,12 @@ type TypeSpecificState =
     }
   | { type: 'hls'; hlsUrl: string }
   | { type: 'whip'; whipUrl: string; monitor: WhipMonitor }
-  | { type: 'image'; imageId: string }
+  | {
+      type: 'image';
+      imageId: string;
+      /** Present when the configured image file was not found on disk yet. */
+      imageAssetMissing?: boolean;
+    }
   | {
       type: 'text-input';
       text: string;

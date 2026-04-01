@@ -14,8 +14,11 @@ export function MissingAssetMp4Row({
   input: Input;
   refreshState: () => Promise<void>;
 }) {
-  const enabled = input.type === 'local-mp4' && input.mp4AssetMissing === true;
+  const enabled =
+    (input.type === 'local-mp4' && input.mp4AssetMissing === true) ||
+    (input.type === 'image' && input.imageAssetMissing === true);
   const isAudio = input.missingAssetIsAudio === true;
+  const isImage = input.type === 'image';
   const [open, setOpen] = useState(false);
 
   if (!enabled) {
@@ -36,7 +39,11 @@ export function MissingAssetMp4Row({
             variant='outline'
             className='h-7 text-[10px] cursor-pointer border-amber-400/30 text-amber-100 hover:bg-amber-400/10'
             onClick={() => setOpen(true)}>
-            {isAudio ? 'Browse audio files' : 'Browse MP4 files'}
+            {isImage
+              ? 'Browse image files'
+              : isAudio
+                ? 'Browse audio files'
+                : 'Browse MP4 files'}
           </Button>
         </div>
       </div>

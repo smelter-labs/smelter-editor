@@ -23,6 +23,8 @@ export type PublicInputState = {
   channelId?: string;
   url?: string;
   imageId?: string;
+  /** True when the server has no image file on disk for this slot yet. */
+  imageAssetMissing?: boolean;
   mp4FileName?: string;
   audioFileName?: string;
   /** True when the server has no file on disk for this slot yet (import / missing asset). */

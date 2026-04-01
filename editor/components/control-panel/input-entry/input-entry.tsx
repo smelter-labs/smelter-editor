@@ -442,13 +442,15 @@ export default function InputEntry({
           </div>
           {!readOnly && canRemove && <DeleteButton onClick={handleDelete} />}
         </div>
-        {input.type === 'local-mp4' && input.mp4AssetMissing && !readOnly && (
-          <MissingAssetMp4Row
-            roomId={roomId}
-            input={input}
-            refreshState={refreshState}
-          />
-        )}
+        {((input.type === 'local-mp4' && input.mp4AssetMissing) ||
+          (input.type === 'image' && input.imageAssetMissing)) &&
+          !readOnly && (
+            <MissingAssetMp4Row
+              roomId={roomId}
+              input={input}
+              refreshState={refreshState}
+            />
+          )}
         {input.type === 'game' && !readOnly && (
           <div className='flex items-center gap-3 px-2 py-1'>
             <div className='flex items-center gap-1'>

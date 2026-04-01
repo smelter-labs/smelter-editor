@@ -385,13 +385,66 @@ export class InputManager {
     await this.connectInput(inputId);
   }
 
+  async resolveMissingImageAsset(
+    inputId: string,
+    opts: { fileName: string },
+  ): Promise<void> {
+    const input = this.getInput(inputId);
+    if (input.type !== 'image' || !input.imageAssetMissing) {
+      throw new Error('Input is not a missing image placeholder');
+    }
+
+    const imageId = await this.registerImageAsset(opts.fileName);
+    input.imageId = imageId;
+    input.imageAssetMissing = false;
+    input.metadata.title = formatImageName(opts.fileName);
+    input.metadata.description = '';
+    input.status = 'connected';
+
+    this.onStateChange();
+  }
+
+  private async registerImageAsset(fileName: string): Promise<string> {
+    const imagePath = path.join(process.cwd(), 'pictures', fileName);
+    if (!(await pathExists(imagePath))) {
+      throw new Error(`Image not found in pictures/: ${fileName}`);
+    }
+
+    const lower = fileName.toLowerCase();
+    const exts = ['.jpg', '.jpeg', '.png', '.gif', '.svg'];
+    const ext = exts.find((x) => lower.endsWith(x));
+    if (!ext) {
+      throw new Error(`Unsupported image format: ${fileName}`);
+    }
+
+    const imageId = imageIdFromFileName(fileName);
+    const assetType =
+      ext === '.png'
+        ? 'png'
+        : ext === '.gif'
+          ? 'gif'
+          : ext === '.svg'
+            ? 'svg'
+            : 'jpeg';
+
+    try {
+      await SmelterInstance.registerImage(imageId, {
+        serverPath: imagePath,
+        assetType,
+      });
+    } catch {
+      // ignore if already registered
+    }
+
+    return imageId;
+  }
+
   private async addImageInput(
     opts: Extract<RegisterInputOptions, { type: 'image' }>,
   ): Promise<string> {
     console.log('Adding image');
     const picturesDir = path.join(process.cwd(), 'pictures');
     const inputId = `${this.idPrefix}::image::${Date.now()}`;
-    const exts = ['.jpg', '.jpeg', '.png', '.gif', '.svg'];
 
     let fileName = opts.fileName;
     let imageId = opts.imageId;
@@ -406,19 +459,27 @@ export class InputManager {
       if (found) {
         fileName = found;
       } else {
-        const safeStub = `${baseName.replace(/[^a-zA-Z0-9._-]+/g, '_')}.png`;
-        const stubPath = path.join(
-          process.cwd(),
-          'mp4s',
-          `__missing-image__${safeStub}`,
-        );
-        return this.pushMissingLocalMp4Placeholder({
-          mp4Path: stubPath,
-          isAudio: false,
-          title: `[Missing image] ${formatImageName(safeStub)}`,
-          description:
-            'Image not found on server. This slot is reserved; attach an MP4 file below to use it.',
+        this.inputs.push({
+          inputId,
+          type: 'image',
+          status: 'connected',
+          showTitle: false,
+          shaders: [],
+          borderColor: '#ff0000',
+          borderWidth: 0,
+          hidden: false,
+          motionEnabled: false,
+          metadata: {
+            title: `[Missing image] ${formatImageName(path.basename(baseName))}`,
+            description:
+              'Image not found on server. This slot is reserved; attach an image file below to use it.',
+          },
+          volume: 0,
+          imageId,
+          imageAssetMissing: true,
         });
+        this.onStateChange();
+        return inputId;
       }
     }
 
@@ -431,29 +492,7 @@ export class InputManager {
     const imagePath = path.join(picturesDir, fileName);
 
     if (await pathExists(imagePath)) {
-      const lower = fileName.toLowerCase();
-      const ext = exts.find((x) => lower.endsWith(x));
-      if (!ext) throw new Error(`Unsupported image format: ${fileName}`);
-
-      const baseName = fileName.replace(/\.(jpg|jpeg|png|gif|svg)$/i, '');
-      imageId = `pictures::${baseName}`;
-      const assetType =
-        ext === '.png'
-          ? 'png'
-          : ext === '.gif'
-            ? 'gif'
-            : ext === '.svg'
-              ? 'svg'
-              : 'jpeg';
-
-      try {
-        await SmelterInstance.registerImage(imageId, {
-          serverPath: imagePath,
-          assetType: assetType as any,
-        });
-      } catch {
-        // ignore if already registered
-      }
+      imageId = await this.registerImageAsset(fileName);
 
       this.inputs.push({
         inputId,
@@ -472,18 +511,27 @@ export class InputManager {
       });
       this.onStateChange();
     } else {
-      const stubPath = path.join(
-        process.cwd(),
-        'mp4s',
-        `__missing-image__${fileName.replace(/[/\\]/g, '_')}`,
-      );
-      return this.pushMissingLocalMp4Placeholder({
-        mp4Path: stubPath,
-        isAudio: false,
-        title: `[Missing image] ${formatImageName(fileName)}`,
-        description:
-          'Image not found on server. This slot is reserved; attach an MP4 file below to use it.',
+      this.inputs.push({
+        inputId,
+        type: 'image',
+        status: 'connected',
+        showTitle: false,
+        shaders: [],
+        borderColor: '#ff0000',
+        borderWidth: 0,
+        hidden: false,
+        motionEnabled: false,
+        metadata: {
+          title: `[Missing image] ${formatImageName(path.basename(fileName))}`,
+          description:
+            'Image not found on server. This slot is reserved; attach an image file below to use it.',
+        },
+        volume: 0,
+        imageId: imageId ?? imageIdFromFileName(fileName),
+        imageAssetMissing: true,
       });
+      this.onStateChange();
+      return inputId;
     }
 
     return inputId;
@@ -1156,6 +1204,11 @@ function formatImageName(fileName: string): string {
     .split(/[_\- ]+/)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
+}
+
+function imageIdFromFileName(fileName: string): string {
+  const baseName = fileName.replace(/\.(jpg|jpeg|png|gif|svg)$/i, '');
+  return `pictures::${baseName}`;
 }
 
 function isBlockedDefaultMp4(fileName: string): boolean {

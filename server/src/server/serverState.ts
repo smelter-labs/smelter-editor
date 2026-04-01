@@ -27,6 +27,7 @@ export class ServerState {
   private readonly mutex = new Mutex();
   private rooms: Record<string, RoomState> = {};
   private monitorInterval: NodeJS.Timeout;
+  private smelterRecoveryPromise: Promise<void> | null = null;
 
   public getRooms(): RoomState[] {
     return Object.values(this.rooms);
@@ -46,6 +47,9 @@ export class ServerState {
   }
 
   constructor() {
+    SmelterInstance.setRecoveryHandler((reason, error) => {
+      void this.recoverSmelter(reason, error);
+    });
     this.monitorInterval = setInterval(async () => {
       await this.monitorConnectedRooms();
     }, 1000);
@@ -127,29 +131,60 @@ export class ServerState {
   }
 
   public async deleteAllRooms(): Promise<void> {
-    return this.mutex.runExclusive(async () => {
-      const roomIds = Object.keys(this.rooms);
-      for (const roomId of roomIds) {
-        try {
-          await this._deleteRoom(roomId);
-        } catch (err) {
-          console.warn(
-            `[restart] Failed to delete room ${roomId}, forcing removal`,
-            err,
-          );
-          delete this.rooms[roomId];
-          roomEventBus.closeRoom(roomId);
-        }
+    return this.mutex.runExclusive(() => this._deleteAllRooms());
+  }
+
+  private async _deleteAllRooms(): Promise<void> {
+    const roomIds = Object.keys(this.rooms);
+    for (const roomId of roomIds) {
+      try {
+        await this._deleteRoom(roomId);
+      } catch (err) {
+        console.warn(
+          `[restart] Failed to delete room ${roomId}, forcing removal`,
+          err,
+        );
+        delete this.rooms[roomId];
+        roomEventBus.closeRoom(roomId);
       }
+    }
+  }
+
+  public async restartSmelter(reason: string = 'manual'): Promise<void> {
+    return this.mutex.runExclusive(async () => {
+      console.log(
+        `[restart] Deleting all rooms before Smelter restart (${reason})...`,
+      );
+      await this._deleteAllRooms();
+      console.log('[restart] All rooms deleted, restarting Smelter engine...');
+      await SmelterInstance.restart();
+      console.log('[restart] Smelter engine restart complete');
     });
   }
 
-  public async restartSmelter(): Promise<void> {
-    console.log('[restart] Deleting all rooms before Smelter restart...');
-    await this.deleteAllRooms();
-    console.log('[restart] All rooms deleted, restarting Smelter engine...');
-    await SmelterInstance.restart();
-    console.log('[restart] Smelter engine restart complete');
+  private async recoverSmelter(reason: string, error: unknown): Promise<void> {
+    if (this.smelterRecoveryPromise) {
+      console.warn(
+        `[restart] Smelter recovery already in progress; skipping duplicate trigger (${reason})`,
+      );
+      return this.smelterRecoveryPromise;
+    }
+
+    console.error(
+      `[restart] Auto-restarting Smelter after transport failure: ${reason}`,
+      error,
+    );
+
+    const recoveryPromise = this.restartSmelter(`auto: ${reason}`).finally(
+      () => {
+        if (this.smelterRecoveryPromise === recoveryPromise) {
+          this.smelterRecoveryPromise = null;
+        }
+      },
+    );
+
+    this.smelterRecoveryPromise = recoveryPromise;
+    return recoveryPromise;
   }
 
   private async monitorConnectedRooms() {

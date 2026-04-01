@@ -7,13 +7,13 @@ import { toast } from 'sonner';
 export function useResolveMissingLocalMp4Source({
   roomId,
   inputId,
-  isAudio,
+  assetType,
   enabled,
   refreshState,
 }: {
   roomId: string;
   inputId: string;
-  isAudio: boolean;
+  assetType: 'mp4' | 'audio' | 'picture';
   enabled: boolean;
   refreshState: () => Promise<void>;
 }) {
@@ -30,15 +30,27 @@ export function useResolveMissingLocalMp4Source({
 
   const attach = useCallback(async () => {
     if (!selected) {
-      toast.error(isAudio ? 'Select an audio file.' : 'Select an MP4 file.');
+      toast.error(
+        assetType === 'audio'
+          ? 'Select an audio file.'
+          : assetType === 'picture'
+            ? 'Select an image file.'
+            : 'Select an MP4 file.',
+      );
       return false;
     }
     setAttaching(true);
     try {
-      await actions.resolveMissingLocalMp4(roomId, inputId, {
-        fileName: isAudio ? undefined : selected,
-        audioFileName: isAudio ? selected : undefined,
-      });
+      if (assetType === 'picture') {
+        await actions.resolveMissingImage(roomId, inputId, {
+          fileName: selected,
+        });
+      } else {
+        await actions.resolveMissingLocalMp4(roomId, inputId, {
+          fileName: assetType === 'audio' ? undefined : selected,
+          audioFileName: assetType === 'audio' ? selected : undefined,
+        });
+      }
       await refreshState();
       toast.success('Source attached');
       return true;
@@ -49,7 +61,7 @@ export function useResolveMissingLocalMp4Source({
     } finally {
       setAttaching(false);
     }
-  }, [actions, roomId, inputId, isAudio, selected, refreshState]);
+  }, [actions, roomId, inputId, assetType, selected, refreshState]);
 
   return {
     selected,

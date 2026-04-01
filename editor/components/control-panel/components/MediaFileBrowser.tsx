@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getAudioDuration, getMp4Duration } from '@/app/actions/actions';
 
-type MediaBrowserType = 'mp4' | 'audio';
+type MediaBrowserType = 'mp4' | 'audio' | 'picture';
 
 type MediaFileItem = {
   fileName: string;
@@ -32,7 +32,7 @@ function formatDuration(ms: number): string {
 }
 
 async function browseAssets(
-  type: 'mp4s' | 'audios',
+  type: 'mp4s' | 'audios' | 'pictures',
   folder: string,
 ): Promise<BrowseResult> {
   const qs = folder ? `?folder=${encodeURIComponent(folder)}` : '';
@@ -123,7 +123,11 @@ export function MediaFileBrowser({
       setLoading(true);
       try {
         const result = await browseAssets(
-          mediaType === 'mp4' ? 'mp4s' : 'audios',
+          mediaType === 'mp4'
+            ? 'mp4s'
+            : mediaType === 'audio'
+              ? 'audios'
+              : 'pictures',
           folder,
         );
 
@@ -136,6 +140,10 @@ export function MediaFileBrowser({
         setFiles(baseFiles);
 
         for (const item of baseFiles) {
+          if (mediaType === 'picture') {
+            continue;
+          }
+
           const durationPromise =
             mediaType === 'mp4'
               ? getMp4Duration(item.fileName)
@@ -169,7 +177,12 @@ export function MediaFileBrowser({
   }, [folder, mediaType]);
 
   const emptyLabel = useMemo(
-    () => (mediaType === 'mp4' ? 'No MP4 files found' : 'No audio files found'),
+    () =>
+      mediaType === 'mp4'
+        ? 'No MP4 files found'
+        : mediaType === 'audio'
+          ? 'No audio files found'
+          : 'No image files found',
     [mediaType],
   );
 
@@ -249,12 +262,23 @@ export function MediaFileBrowser({
                         alt={file.fileName}
                         className='w-full h-full object-cover opacity-60'
                       />
+                    ) : mediaType === 'picture' ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={`/api/pictures/${encodeURIComponent(file.fileName)}`}
+                        alt={file.fileName}
+                        className='w-full h-full object-contain opacity-90'
+                      />
                     ) : (
                       <AudioThumbnail />
                     )}
                     <div className='absolute inset-0 scanline opacity-30' />
                     <div className='absolute top-1.5 left-1.5 px-1 bg-black/80 text-[10px] font-mono text-[#00f3ff] border border-[#00f3ff]/30'>
-                      {mediaType === 'mp4' ? 'MP4' : 'AUDIO'}
+                      {mediaType === 'mp4'
+                        ? 'MP4'
+                        : mediaType === 'audio'
+                          ? 'AUDIO'
+                          : 'IMAGE'}
                     </div>
                     {file.durationMs != null && (
                       <div className='absolute bottom-1.5 right-1.5 px-1 bg-black/80 text-[10px] font-mono text-[#fe00fe]'>
@@ -270,7 +294,10 @@ export function MediaFileBrowser({
                       {mediaType === 'mp4'
                         ? (file.fileName.split('.').pop()?.toUpperCase() ??
                           'MP4')
-                        : 'AUDIO'}
+                        : mediaType === 'audio'
+                          ? 'AUDIO'
+                          : (file.fileName.split('.').pop()?.toUpperCase() ??
+                            'IMAGE')}
                     </div>
                   </div>
                 </button>

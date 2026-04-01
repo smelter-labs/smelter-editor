@@ -54,6 +54,7 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
         ...base,
         sourceState: 'always-live' as const,
         imageId: input.imageId,
+        imageAssetMissing: input.imageAssetMissing,
       };
     case 'twitch-channel':
     case 'kick-channel':

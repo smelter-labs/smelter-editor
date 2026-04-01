@@ -22,15 +22,20 @@ export function ResolveMissingAssetModal({
 }) {
   const valid =
     input != null &&
-    input.type === 'local-mp4' &&
-    input.mp4AssetMissing === true;
-  const isAudio = input?.missingAssetIsAudio === true;
+    ((input.type === 'local-mp4' && input.mp4AssetMissing === true) ||
+      (input.type === 'image' && input.imageAssetMissing === true));
+  const assetType =
+    input?.type === 'image'
+      ? 'picture'
+      : input?.missingAssetIsAudio === true
+        ? 'audio'
+        : 'mp4';
 
   const { selected, setSelected, attaching, attach } =
     useResolveMissingLocalMp4Source({
       roomId,
       inputId: input?.inputId ?? '',
-      isAudio,
+      assetType,
       enabled: open && valid,
       refreshState,
     });
@@ -76,7 +81,7 @@ export function ResolveMissingAssetModal({
                   {description}
                 </p>
                 <MediaFileBrowser
-                  mediaType={isAudio ? 'audio' : 'mp4'}
+                  mediaType={assetType}
                   selectedFile={selected}
                   disabled={attaching}
                   onSelect={setSelected}

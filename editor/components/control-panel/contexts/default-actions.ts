@@ -9,6 +9,7 @@ import {
   disconnectInput,
   connectInput,
   resolveMissingLocalMp4,
+  resolveMissingImage,
   hideInput as hideInputAction,
   showInput as showInputAction,
   addTwitchInput,
@@ -102,6 +103,7 @@ export const defaultActions: ControlPanelActions = {
   disconnectInput,
   connectInput,
   resolveMissingLocalMp4,
+  resolveMissingImage,
   hideInput: (roomId, inputId) =>
     hideInputAction(roomId, inputId, SESSION_SOURCE_ID),
   showInput: (roomId, inputId) =>

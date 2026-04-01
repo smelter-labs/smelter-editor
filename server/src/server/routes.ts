@@ -1113,6 +1113,10 @@ const ResolveMissingMp4BodySchema = Type.Object({
   audioFileName: Type.Optional(Type.String()),
 });
 
+const ResolveMissingImageBodySchema = Type.Object({
+  fileName: Type.String(),
+});
+
 routes.post<
   RoomAndInputIdParams & { Body: Static<typeof ResolveMissingMp4BodySchema> }
 >(
@@ -1127,6 +1131,24 @@ routes.post<
     const { roomId, inputId } = req.params;
     const room = state.getRoom(roomId);
     await room.resolveMissingLocalMp4Asset(inputId, req.body);
+    res.status(200).send({ status: 'ok' });
+  },
+);
+
+routes.post<
+  RoomAndInputIdParams & { Body: Static<typeof ResolveMissingImageBodySchema> }
+>(
+  '/room/:roomId/input/:inputId/resolve-missing-image',
+  {
+    schema: {
+      params: RoomAndInputIdParamsSchema,
+      body: ResolveMissingImageBodySchema,
+    },
+  },
+  async (req, res) => {
+    const { roomId, inputId } = req.params;
+    const room = state.getRoom(roomId);
+    await room.resolveMissingImageAsset(inputId, req.body);
     res.status(200).send({ status: 'ok' });
   },
 );

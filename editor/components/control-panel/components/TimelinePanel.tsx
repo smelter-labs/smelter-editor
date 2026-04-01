@@ -2109,8 +2109,8 @@ export function TimelinePanel({
           !clip.inputId.startsWith('__pending-whip-');
         const isMissingAsset =
           !isOutputClip &&
-          input?.type === 'local-mp4' &&
-          input.mp4AssetMissing === true;
+          ((input?.type === 'local-mp4' && input.mp4AssetMissing === true) ||
+            (input?.type === 'image' && input.imageAssetMissing === true));
         const baseColors = inputColorMap.get(clip.inputId);
         const tc = clip.blockSettings.timelineColor;
         const colors = tc

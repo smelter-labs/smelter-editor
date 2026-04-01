@@ -2,7 +2,10 @@ import path from 'path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import type { StoreApi } from 'zustand';
-import Smelter from '@swmansion/smelter-node';
+import Smelter, {
+  LocallySpawnedInstanceManager,
+  type SmelterManager as SmelterNodeManager,
+} from '@swmansion/smelter-node';
 
 import App from './app/App';
 import type { RoomStore } from './app/store';
@@ -21,6 +24,86 @@ import type { Resolution } from './types';
 import { RESOLUTION_PRESETS } from './types';
 
 const execFileAsync = promisify(execFile);
+
+type SmelterRecoveryHandler = (reason: string, error: unknown) => void;
+
+function isSmelterTransportError(error: unknown): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const maybeError = error as {
+    code?: unknown;
+    errno?: unknown;
+    message?: unknown;
+  };
+  const code =
+    typeof maybeError.code === 'string'
+      ? maybeError.code
+      : typeof maybeError.errno === 'string'
+        ? maybeError.errno
+        : '';
+  const message =
+    typeof maybeError.message === 'string'
+      ? maybeError.message.toLowerCase()
+      : '';
+
+  return (
+    code === 'ECONNRESET' ||
+    code === 'ECONNREFUSED' ||
+    code === 'EPIPE' ||
+    message.includes('socket hang up') ||
+    message.includes('network socket disconnected') ||
+    message.includes('connect econnrefused')
+  );
+}
+
+class RecoveringSmelterNodeManager implements SmelterNodeManager {
+  private readonly inner = LocallySpawnedInstanceManager.defaultManager();
+
+  constructor(
+    private readonly onTransportFailure: (
+      route: string,
+      error: unknown,
+    ) => void,
+  ) {}
+
+  public async setupInstance(
+    opts: Parameters<SmelterNodeManager['setupInstance']>[0],
+  ): Promise<void> {
+    await this.inner.setupInstance(opts);
+  }
+
+  public async sendRequest(
+    request: Parameters<SmelterNodeManager['sendRequest']>[0],
+  ): Promise<object> {
+    try {
+      return await this.inner.sendRequest(request);
+    } catch (error) {
+      this.onTransportFailure(request.route, error);
+      throw error;
+    }
+  }
+
+  public async sendMultipartRequest(
+    request: Parameters<SmelterNodeManager['sendMultipartRequest']>[0],
+  ): Promise<object> {
+    try {
+      return await this.inner.sendMultipartRequest(request);
+    } catch (error) {
+      this.onTransportFailure(request.route, error);
+      throw error;
+    }
+  }
+
+  public registerEventListener(cb: (event: unknown) => void): void {
+    this.inner.registerEventListener(cb);
+  }
+
+  public async terminate(): Promise<void> {
+    await this.inner.terminate();
+  }
+}
 
 export type { Resolution, ResolutionPreset } from './types';
 export { RESOLUTION_PRESETS } from './types';
@@ -61,9 +144,15 @@ const WHIP_SERVER_DECODER_PREFERENCES = [config.h264Decoder];
 export class SmelterManager {
   private instance: Smelter;
   private pipelineStartTime: number = 0;
+  private recoveryHandler: SmelterRecoveryHandler | null = null;
+  private recoverySuppressed = false;
 
   constructor() {
-    this.instance = new Smelter();
+    this.instance = this.createInstance();
+  }
+
+  public setRecoveryHandler(handler: SmelterRecoveryHandler | null): void {
+    this.recoveryHandler = handler;
   }
 
   public getPipelineTimeMs(): number {
@@ -377,17 +466,22 @@ export class SmelterManager {
 
   public async restart(): Promise<void> {
     console.log('[smelter] Restarting Smelter engine...');
+    this.recoverySuppressed = true;
     try {
-      await this.instance.terminate();
-    } catch (err) {
-      console.warn(
-        '[smelter] Terminate failed (engine may already be dead):',
-        err,
-      );
+      try {
+        await this.instance.terminate();
+      } catch (err) {
+        console.warn(
+          '[smelter] Terminate failed (engine may already be dead):',
+          err,
+        );
+      }
+      this.instance = this.createInstance();
+      await this.init();
+      console.log('[smelter] Smelter engine restarted successfully');
+    } finally {
+      this.recoverySuppressed = false;
     }
-    this.instance = new Smelter();
-    await this.init();
-    console.log('[smelter] Smelter engine restarted successfully');
   }
 
   public async terminate(): Promise<void> {
@@ -403,6 +497,26 @@ export class SmelterManager {
     await smelter.registerShader(shaderId, {
       source,
     });
+  }
+
+  private createInstance(): Smelter {
+    const manager = new RecoveringSmelterNodeManager((route, error) => {
+      this.handleTransportFailure(route, error);
+    });
+
+    return new Smelter(manager);
+  }
+
+  private handleTransportFailure(route: string, error: unknown): void {
+    if (this.recoverySuppressed || !isSmelterTransportError(error)) {
+      return;
+    }
+
+    console.error(
+      `[smelter] Transport failure on ${route}; scheduling engine recovery`,
+      error,
+    );
+    this.recoveryHandler?.(`request failed for ${route}`, error);
   }
 }
 

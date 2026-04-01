@@ -40,6 +40,11 @@ export interface ControlPanelActions {
     inputId: string,
     opts: { fileName?: string; audioFileName?: string },
   ): Promise<{ status: string }>;
+  resolveMissingImage(
+    roomId: string,
+    inputId: string,
+    opts: { fileName: string },
+  ): Promise<{ status: string }>;
   hideInput(
     roomId: string,
     inputId: string,

@@ -359,6 +359,14 @@ export async function resolveMissingLocalMp4(
   return client.resolveMissingLocalMp4(roomId, inputId, opts);
 }
 
+export async function resolveMissingImage(
+  roomId: string,
+  inputId: string,
+  opts: { fileName: string },
+) {
+  return client.resolveMissingImage(roomId, inputId, opts);
+}
+
 export async function hideInput(
   roomId: string,
   inputId: string,

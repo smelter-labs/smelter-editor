@@ -329,6 +329,15 @@ export class RoomState {
     });
   }
 
+  public async resolveMissingImageAsset(
+    inputId: string,
+    opts: { fileName: string },
+  ): Promise<void> {
+    return this.mutex.runExclusive(async () => {
+      await this.inputManager.resolveMissingImageAsset(inputId, opts);
+    });
+  }
+
   public async disconnectInput(inputId: string) {
     return this.mutex.runExclusive(() =>
       this.inputManager.disconnectInput(inputId),
@@ -924,7 +933,10 @@ export class RoomState {
         input.type === 'local-mp4' ? input.mp4VideoHeight : undefined,
       borderColor: input.borderColor,
       borderWidth: input.borderWidth,
-      imageId: input.type === 'image' ? input.imageId : undefined,
+      imageId:
+        input.type === 'image' && !input.imageAssetMissing
+          ? input.imageId
+          : undefined,
       text: input.type === 'text-input' ? input.text : undefined,
       textAlign: input.type === 'text-input' ? input.textAlign : undefined,
       textColor: input.type === 'text-input' ? input.textColor : undefined,
