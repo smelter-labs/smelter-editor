@@ -106,6 +106,7 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
+import QRCode from 'react-qr-code';
 
 type ControlPanelProps = {
   roomId: string;
@@ -806,6 +807,7 @@ function SettingsBar({
   const [isImporting, setIsImporting] = useState(false);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showLoadModal, setShowLoadModal] = useState(false);
+  const [showQRModal, setShowQRModal] = useState(false);
   const [autoPlayMacro, setAutoPlayMacro] = useAutoPlayMacroSetting();
   const [feedbackPosition, setFeedbackPosition] = useFeedbackPositionSetting();
   const [feedbackEnabled, setFeedbackEnabled] = useFeedbackEnabledSetting();
@@ -1318,6 +1320,9 @@ function SettingsBar({
             className={navLinkClass}>
             {isImporting ? 'Loading...' : 'Load'}
           </button>
+          <button onClick={() => setShowQRModal(true)} className={navLinkClass}>
+            Join via QR
+          </button>
           <button
             onClick={handleToggleRecording}
             disabled={isTogglingRecording || isWaitingForDownload}
@@ -1552,6 +1557,12 @@ function SettingsBar({
         isImporting={isImporting}
       />
 
+      <QRModal
+        roomId={roomId}
+        open={showQRModal}
+        onOpenChange={setShowQRModal}
+      />
+
       <AddVideoModal
         open={showAddVideoModal}
         onOpenChange={setShowAddVideoModal}
@@ -1588,5 +1599,80 @@ function SettingsBar({
         </>
       )}
     </>
+  );
+}
+
+function QRModal({
+  roomId,
+  open,
+  onOpenChange,
+}: {
+  roomId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const joinUrl = useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    const url = new URL(
+      `/room/${encodeURIComponent(roomId)}`,
+      window.location.origin,
+    );
+    return url.toString();
+  }, [roomId]);
+
+  const handleCopy = useCallback(async () => {
+    if (!joinUrl) return;
+    try {
+      await navigator.clipboard.writeText(joinUrl);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch (err) {
+      console.error('Failed to copy join URL:', err);
+    }
+  }, [joinUrl]);
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        onOpenChange(nextOpen);
+        if (!nextOpen) setCopied(false);
+      }}>
+      <DialogContent className='max-w-md'>
+        <DialogHeader>
+          <DialogTitle>Join via QR</DialogTitle>
+        </DialogHeader>
+        <div className='space-y-4'>
+          <div className='flex justify-center'>
+            {joinUrl ? (
+              <div className='rounded-md border border-border bg-card p-3'>
+                <QRCode
+                  value={joinUrl}
+                  size={220}
+                  bgColor='transparent'
+                  fgColor='currentColor'
+                />
+              </div>
+            ) : (
+              <div className='text-sm text-muted-foreground'>
+                Preparing link…
+              </div>
+            )}
+          </div>
+          <div className='space-y-2'>
+            <ShadcnInput readOnly value={joinUrl} />
+            <button
+              type='button'
+              className='w-full uppercase tracking-widest text-sm font-bold text-[#849495] hover:text-[#00f3ff] border border-border py-2 transition-colors disabled:opacity-50'
+              onClick={() => void handleCopy()}
+              disabled={!joinUrl}>
+              {copied ? 'Copied' : 'Copy Link'}
+            </button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
