@@ -1,6 +1,7 @@
 'use client';
 
 import { AlignLeft, AlignCenter, AlignRight } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
@@ -142,12 +143,10 @@ export function InputEntryTextSection({
           </span>
         </div>
         <label className='flex items-center gap-2 cursor-pointer'>
-          <input
+          <Checkbox
             data-no-dnd
-            type='checkbox'
             checked={textScrollLoop}
-            onChange={(e) => onTextScrollLoopChange(e.target.checked)}
-            className='accent-white cursor-pointer'
+            onCheckedChange={(checked) => onTextScrollLoopChange(!!checked)}
           />
           <span className='text-xs text-neutral-400'>Loop</span>
         </label>

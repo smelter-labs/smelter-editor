@@ -6,6 +6,7 @@ export type StaticPanelId =
   | 'fx'
   | 'timeline'
   | 'block-properties'
+  | 'pending-connections'
   | 'connected-devices'
   | 'system-log'
   | 'layout-preview';
@@ -84,6 +85,12 @@ export const STATIC_PANEL_DEFINITIONS: Record<StaticPanelId, PanelDefinition> =
       minW: 4,
       minH: 6,
     },
+    'pending-connections': {
+      id: 'pending-connections',
+      title: 'Pending Connections',
+      minW: 4,
+      minH: 3,
+    },
     'connected-devices': {
       id: 'connected-devices',
       title: 'Connected Devices',
@@ -145,6 +152,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'fx', x: 16, y: 14, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'timeline', x: 0, y: 20, w: 16, h: 8, minW: 8, minH: 4 },
       { i: 'block-properties', x: 0, y: 28, w: 16, h: 8, minW: 4, minH: 6 },
+      { i: 'pending-connections', x: 16, y: 30, w: 8, h: 6, minW: 4, minH: 3 },
       { i: 'connected-devices', x: 16, y: 22, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'system-log', x: 0, y: 36, w: 16, h: 6, minW: 4, minH: 4 },
       { i: 'layout-preview', x: 16, y: 36, w: 8, h: 6, minW: 4, minH: 4 },
@@ -159,7 +167,8 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'fx', x: 12, y: 14, w: 12, h: 10, minW: 4, minH: 4 },
       { i: 'timeline', x: 0, y: 24, w: 16, h: 8, minW: 8, minH: 4 },
       { i: 'block-properties', x: 16, y: 24, w: 8, h: 8, minW: 4, minH: 3 },
-      { i: 'connected-devices', x: 0, y: 32, w: 8, h: 8, minW: 4, minH: 4 },
+      { i: 'pending-connections', x: 0, y: 32, w: 8, h: 5, minW: 4, minH: 3 },
+      { i: 'connected-devices', x: 0, y: 37, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'system-log', x: 8, y: 32, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'layout-preview', x: 16, y: 32, w: 8, h: 8, minW: 4, minH: 4 },
     ],
@@ -173,7 +182,8 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'fx', x: 12, y: 10, w: 12, h: 6, minW: 4, minH: 4 },
       { i: 'timeline', x: 0, y: 16, w: 16, h: 6, minW: 8, minH: 4 },
       { i: 'block-properties', x: 16, y: 16, w: 8, h: 6, minW: 4, minH: 3 },
-      { i: 'connected-devices', x: 0, y: 22, w: 8, h: 6, minW: 4, minH: 4 },
+      { i: 'pending-connections', x: 0, y: 22, w: 8, h: 5, minW: 4, minH: 3 },
+      { i: 'connected-devices', x: 0, y: 27, w: 8, h: 6, minW: 4, minH: 4 },
       { i: 'system-log', x: 8, y: 22, w: 8, h: 6, minW: 4, minH: 4 },
       { i: 'layout-preview', x: 16, y: 22, w: 8, h: 6, minW: 4, minH: 4 },
     ],
@@ -187,7 +197,8 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'fx', x: 12, y: 7, w: 12, h: 7, minW: 4, minH: 4 },
       { i: 'timeline', x: 0, y: 14, w: 16, h: 8, minW: 8, minH: 4 },
       { i: 'block-properties', x: 16, y: 14, w: 8, h: 8, minW: 4, minH: 3 },
-      { i: 'connected-devices', x: 0, y: 22, w: 8, h: 8, minW: 4, minH: 4 },
+      { i: 'pending-connections', x: 0, y: 22, w: 8, h: 5, minW: 4, minH: 3 },
+      { i: 'connected-devices', x: 0, y: 27, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'system-log', x: 8, y: 22, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'layout-preview', x: 16, y: 22, w: 8, h: 8, minW: 4, minH: 4 },
     ],
@@ -201,8 +212,9 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'fx', x: 8, y: 8, w: 16, h: 8, minW: 4, minH: 4 },
       { i: 'timeline', x: 8, y: 16, w: 16, h: 6, minW: 8, minH: 4 },
       { i: 'block-properties', x: 8, y: 22, w: 16, h: 6, minW: 4, minH: 6 },
+      { i: 'pending-connections', x: 0, y: 28, w: 8, h: 5, minW: 4, minH: 3 },
       { i: 'connected-devices', x: 16, y: 28, w: 8, h: 6, minW: 4, minH: 4 },
-      { i: 'system-log', x: 0, y: 28, w: 8, h: 6, minW: 4, minH: 4 },
+      { i: 'system-log', x: 0, y: 33, w: 8, h: 6, minW: 4, minH: 4 },
       { i: 'layout-preview', x: 8, y: 28, w: 8, h: 6, minW: 4, minH: 4 },
     ],
   },
@@ -216,9 +228,10 @@ export const SMALL_LAYOUT: MutableLayout = [
   { i: 'fx', x: 0, y: 16, w: 12, h: 6, minW: 4, minH: 4 },
   { i: 'timeline', x: 0, y: 22, w: 12, h: 6, minW: 4, minH: 4 },
   { i: 'block-properties', x: 0, y: 28, w: 12, h: 6, minW: 4, minH: 6 },
-  { i: 'connected-devices', x: 0, y: 34, w: 12, h: 6, minW: 4, minH: 4 },
-  { i: 'system-log', x: 0, y: 40, w: 12, h: 6, minW: 4, minH: 4 },
-  { i: 'layout-preview', x: 0, y: 46, w: 12, h: 6, minW: 4, minH: 4 },
+  { i: 'pending-connections', x: 0, y: 34, w: 12, h: 5, minW: 4, minH: 3 },
+  { i: 'connected-devices', x: 0, y: 39, w: 12, h: 6, minW: 4, minH: 4 },
+  { i: 'system-log', x: 0, y: 45, w: 12, h: 6, minW: 4, minH: 4 },
+  { i: 'layout-preview', x: 0, y: 51, w: 12, h: 6, minW: 4, minH: 4 },
 ];
 
 const STORAGE_KEY = 'smelter-dashboard-layout';

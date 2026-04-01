@@ -27,6 +27,7 @@ import {
   getAudioDuration,
 } from '@/app/actions/actions';
 import { useIsMobileDevice } from '@/hooks/use-mobile';
+import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import type { ChannelSuggestion, Input } from '@/lib/types';
 
@@ -2096,11 +2097,9 @@ function HlsActionInspector({
         />
       </div>
       <label className='flex items-center gap-2 cursor-pointer'>
-        <input
-          type='checkbox'
+        <Checkbox
           checked={saveToLibrary}
-          onChange={(e) => setSaveToLibrary(e.target.checked)}
-          className='accent-[#00f3ff]'
+          onCheckedChange={(checked) => setSaveToLibrary(!!checked)}
         />
         <span className='text-[10px] font-mono text-[#849495]'>
           SAVE_TO_LIBRARY

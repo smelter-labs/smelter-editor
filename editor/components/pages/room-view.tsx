@@ -173,6 +173,7 @@ export default function RoomView({
           fxSection,
           timelineSection,
           blockPropertiesSection,
+          pendingConnectionsSection,
           motionPanels,
           peers,
           timelineColorOverrides,
@@ -192,6 +193,7 @@ export default function RoomView({
             fx: fxSection,
             timeline: timelineSection,
             'block-properties': blockPropertiesSection,
+            'pending-connections': pendingConnectionsSection,
             'connected-devices': <ConnectedDevicesPanel peers={peers} />,
             'system-log': <SystemLogPanel />,
             'layout-preview': (

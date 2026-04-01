@@ -492,6 +492,12 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       'layout',
       'layouts',
     ),
+    presentationConfigStorage: createStorageClient<object>(
+      req,
+      '/presentation-configs',
+      'presentationConfig',
+      'presentationConfigs',
+    ),
     hlsStreamStorage: createStorageClient<{ url: string }>(
       req,
       '/hls-streams',

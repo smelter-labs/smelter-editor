@@ -36,8 +36,12 @@ import {
   buildInputUpdateFromBlockSettings,
   saveOutputPlayerSettings,
 } from '@/lib/room-config';
-import { setPendingWhipInputs as setPendingWhipInputsAction } from '@/app/actions/actions';
-import { Upload, FolderDown, LogIn, UserPlus, Eye, Trash2 } from 'lucide-react';
+import {
+  setPendingWhipInputs as setPendingWhipInputsAction,
+  listPresentationConfigs,
+  loadPresentationConfig,
+} from '@/app/actions/actions';
+import { Upload, FolderDown, LogIn, UserPlus, Eye, Trash2, Presentation } from 'lucide-react';
 import RecordingsList from '@/components/recordings-list';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -51,9 +55,16 @@ import {
   SelectLabel,
 } from '@/components/ui/select';
 import { LoadConfigModal } from '@/components/control-panel/components/ConfigModals';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { ActionsProvider } from '@/components/control-panel/contexts/actions-context';
 import { defaultActions } from '@/components/control-panel/contexts/default-actions';
-import type { RoomConfig } from '@/lib/room-config';
+import type { RoomConfig, PresentationConfig } from '@/lib/room-config';
+import type { SavedItemInfo } from '@/lib/storage-client';
 import { formatDuration } from '@/lib/format-utils';
 
 function getBasePath(pathname: string): string {
@@ -216,14 +227,43 @@ export default function IntroView() {
     };
   }, [handleCreateRoom, loadingNew, loadingImport]);
 
+  // Showcase / presentation mode
+  const [showcaseConfigs, setShowcaseConfigs] = useState<SavedItemInfo[]>([]);
+  const [loadingShowcase, setLoadingShowcase] = useState(false);
+  const [showShowcasePicker, setShowShowcasePicker] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    listPresentationConfigs().then((result) => {
+      if (mounted && result.ok) {
+        setShowcaseConfigs(result.items);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const [showLoadModal, setShowLoadModal] = useState(false);
 
   const importConfig = useCallback(
-    async (config: RoomConfig) => {
+    async (
+      config: RoomConfig,
+      showcaseWelcome?: { before: string; after: string },
+    ) => {
       setLoadingImport(true);
       try {
         const room = await createNewRoom([], true, config.resolution);
         const roomId = room.roomId;
+
+        if (showcaseWelcome) {
+          try {
+            sessionStorage.setItem(
+              `showcase-welcome-${roomId}`,
+              JSON.stringify(showcaseWelcome),
+            );
+          } catch {}
+        }
 
         const createdInputIds: { inputId: string; configIndex: number }[] = [];
 
@@ -477,6 +517,30 @@ export default function IntroView() {
     [getRoomRoute, router],
   );
 
+  const handleStartShowcase = useCallback(
+    async (configItem: SavedItemInfo) => {
+      setLoadingShowcase(true);
+      try {
+        const result = await loadPresentationConfig(configItem.fileName);
+        if (!result.ok) {
+          toast.error(`Failed to load presentation config: ${result.error}`);
+          return;
+        }
+        const presentation = result.data as PresentationConfig;
+        await importConfig(presentation.roomConfig, {
+          before: presentation.welcomeTextBefore || '',
+          after: presentation.welcomeTextAfter || '',
+        });
+      } catch (err: any) {
+        console.error('Showcase start failed:', err);
+        toast.error(`Showcase start failed: ${err?.message || err}`);
+      } finally {
+        setLoadingShowcase(false);
+      }
+    },
+    [importConfig],
+  );
+
   const handleFileChange = useCallback(
     async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
@@ -573,12 +637,35 @@ export default function IntroView() {
                 </SelectContent>
               </Select>
             </div>
+            {showcaseConfigs.length > 0 && (
+              <Button
+                size='lg'
+                variant='default'
+                className='w-full cursor-pointer text-lg py-6 font-bold'
+                onClick={() => {
+                  if (showcaseConfigs.length === 1) {
+                    handleStartShowcase(showcaseConfigs[0]);
+                  } else {
+                    setShowShowcasePicker(true);
+                  }
+                }}
+                disabled={loadingNew || loadingImport || loadingShowcase}>
+                {loadingShowcase ? (
+                  <LoadingSpinner size='sm' variant='spinner' />
+                ) : (
+                  <>
+                    <Presentation className='w-5 h-5 mr-2' />
+                    Start Showcase
+                  </>
+                )}
+              </Button>
+            )}
             <Button
               size='lg'
               variant='default'
               className='w-full cursor-pointer'
               onClick={() => handleCreateRoom()}
-              disabled={loadingNew || loadingImport}>
+              disabled={loadingNew || loadingImport || loadingShowcase}>
               Let&apos;s go!
               {loadingNew && <LoadingSpinner size='sm' variant='spinner' />}
             </Button>
@@ -718,6 +805,37 @@ export default function IntroView() {
           )}
         </motion.div>
       </motion.div>
+      <Dialog
+        open={showShowcasePicker}
+        onOpenChange={setShowShowcasePicker}>
+        <DialogContent className='max-w-md'>
+          <DialogHeader>
+            <DialogTitle>Select Presentation</DialogTitle>
+          </DialogHeader>
+          <div className='space-y-2'>
+            {showcaseConfigs.map((item) => (
+              <button
+                key={item.fileName}
+                onClick={() => {
+                  setShowShowcasePicker(false);
+                  handleStartShowcase(item);
+                }}
+                disabled={loadingShowcase}
+                className='w-full flex items-center justify-between bg-neutral-900 hover:bg-neutral-800 rounded px-4 py-3 text-left transition-colors cursor-pointer'>
+                <div className='min-w-0'>
+                  <span className='text-sm text-white font-medium block truncate'>
+                    {item.name}
+                  </span>
+                  <span className='text-xs text-neutral-500'>
+                    {new Date(item.savedAt).toLocaleString()}
+                  </span>
+                </div>
+                <Presentation className='w-4 h-4 text-neutral-400 shrink-0 ml-3' />
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }

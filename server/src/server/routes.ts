@@ -784,6 +784,16 @@ registerStorageRoutes(routes, {
 });
 
 registerStorageRoutes(routes, {
+  routePrefix: '/presentation-configs',
+  dirPath: path.join(__dirname, '../../presentation-configs'),
+  filePrefix: 'presentation',
+  resourceName: 'presentation config',
+  payloadKey: 'presentationConfig',
+  listKey: 'presentationConfigs',
+  bodySchema: Type.Any(),
+});
+
+registerStorageRoutes(routes, {
   routePrefix: '/dashboard-layouts',
   dirPath: path.join(__dirname, '../../dashboard-layouts'),
   filePrefix: 'dashboard-layout',

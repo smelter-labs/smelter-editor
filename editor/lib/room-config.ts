@@ -130,6 +130,12 @@ export type RoomConfig = {
   exportedAt: string;
 };
 
+export type PresentationConfig = {
+  roomConfig: RoomConfig;
+  welcomeTextBefore: string;
+  welcomeTextAfter: string;
+};
+
 export type RoomConfigTimelineState = {
   tracks: Track[];
   totalDurationMs: number;

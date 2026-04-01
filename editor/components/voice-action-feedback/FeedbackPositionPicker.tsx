@@ -6,6 +6,7 @@ import {
   type FeedbackSize,
 } from '@/lib/voice/macroSettings';
 import { cn } from '@/lib/utils';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 
@@ -45,11 +46,9 @@ export function FeedbackPositionPicker({
   return (
     <div className='space-y-2'>
       <label className='flex items-center gap-2 cursor-pointer'>
-        <input
-          type='checkbox'
+        <Checkbox
           checked={enabled}
-          onChange={(e) => onEnabledChange(e.target.checked)}
-          className='accent-white'
+          onCheckedChange={(checked) => onEnabledChange(!!checked)}
         />
         <span className='text-xs text-neutral-400'>
           Voice Command Toast Notifications

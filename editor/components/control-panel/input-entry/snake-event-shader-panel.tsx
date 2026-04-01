@@ -11,6 +11,7 @@ import type { AvailableShader, ShaderParamConfig } from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
 import { SNAKE_EVENT_TYPES } from '@/lib/snake-events';
 import { getRandomSnakeEventEffectPreset } from '@/lib/snake-event-effect-presets';
+import { Checkbox } from '@/components/ui/checkbox';
 import { ChevronDown, ChevronRight, Dices } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -410,11 +411,9 @@ export default function SnakeEventShaderPanel({
                 key={type}
                 className='rounded bg-neutral-800/60 border border-neutral-700/50'>
                 <div className='flex items-center gap-2 px-2 py-1.5'>
-                  <input
-                    type='checkbox'
+                  <Checkbox
                     checked={isEnabled}
-                    onChange={() => handleToggleEnabled(type)}
-                    className='accent-green-500 cursor-pointer shrink-0'
+                    onCheckedChange={() => handleToggleEnabled(type)}
                   />
                   <Button
                     variant='ghost'

@@ -8,10 +8,12 @@ import ShaderPanel, { InlineShaderParams } from '../input-entry/shader-panel';
 import { AddShaderModal } from '../input-entry/add-shader-modal';
 import SnakeEventShaderPanel from '../input-entry/snake-event-shader-panel';
 import type { BlockSettings } from '../hooks/use-timeline-state';
-import { OUTPUT_CLIP_ID, OUTPUT_TRACK_INPUT_ID } from '../hooks/use-timeline-state';
+import {
+  OUTPUT_CLIP_ID,
+  OUTPUT_TRACK_INPUT_ID,
+} from '../hooks/use-timeline-state';
 import { emitTimelineEvent, TIMELINE_EVENTS } from './timeline/timeline-events';
-import { PendingWhipInputs } from './PendingWhipInputs';
-import type { PendingWhipInput } from './ConfigurationSection';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Link, Video, Monitor, ArrowLeftRight } from 'lucide-react';
 import {
   Select,
@@ -54,10 +56,7 @@ import {
   panelSectionStyles,
   labelStyles,
 } from '../styles/panel-primitives';
-import {
-  SwapSourceModal,
-  type SwapSourceResult,
-} from './SwapSourceModal';
+import { SwapSourceModal, type SwapSourceResult } from './SwapSourceModal';
 
 const SHADER_SETTINGS_DEBOUNCE_MS = 200;
 
@@ -72,8 +71,6 @@ export function BlockClipPropertiesPanel({
   availableShaders,
   handleRefreshState,
   resolution,
-  pendingWhipInputs,
-  setPendingWhipInputs,
 }: {
   roomId: string;
   selectedTimelineClips: SelectedTimelineClip[];
@@ -83,8 +80,6 @@ export function BlockClipPropertiesPanel({
   availableShaders: AvailableShader[];
   handleRefreshState: () => Promise<void>;
   resolution?: { width: number; height: number };
-  pendingWhipInputs?: PendingWhipInput[];
-  setPendingWhipInputs?: (inputs: PendingWhipInput[]) => void | Promise<void>;
 }) {
   const selectedTimelineClip =
     selectedTimelineClips.length === 1 ? selectedTimelineClips[0] : null;
@@ -473,8 +468,7 @@ export function BlockClipPropertiesPanel({
 
           if (clip.inputId === OUTPUT_TRACK_INPUT_ID) {
             await updateRoomAction(roomId, {
-              outputShaders:
-                patch.shaders ?? clip.blockSettings.shaders ?? [],
+              outputShaders: patch.shaders ?? clip.blockSettings.shaders ?? [],
             });
             continue;
           }
@@ -752,18 +746,12 @@ export function BlockClipPropertiesPanel({
     [primaryClip, selectedInput, roomId, updateInputAction, handleRefreshState],
   );
 
-  const pendingSection =
-    pendingWhipInputs &&
-    pendingWhipInputs.length > 0 &&
-    setPendingWhipInputs ? (
-      <PendingWhipInputs
-        pendingInputs={pendingWhipInputs}
-        setPendingInputs={setPendingWhipInputs}
-      />
-    ) : null;
-
   if (selectedTimelineClips.length === 0) {
-    return pendingSection;
+    return (
+      <p className='text-xs text-neutral-500'>
+        Select a block on the timeline to view its properties.
+      </p>
+    );
   }
 
   // Effective clip used for rendering: primary clip for single, or first clip for multi
@@ -936,7 +924,6 @@ export function BlockClipPropertiesPanel({
 
   return (
     <div>
-      {pendingSection}
       <div className='text-xs text-muted-foreground mb-2'>
         {isOutputClip
           ? 'Main Video output shaders'
@@ -1134,9 +1121,7 @@ export function BlockClipPropertiesPanel({
                 min={0}
                 max={1}
                 step={0.01}
-                value={[
-                  volumeDraft ?? effectiveClip.blockSettings.volume,
-                ]}
+                value={[volumeDraft ?? effectiveClip.blockSettings.volume]}
                 onValueChange={(v) => {
                   const value = v[0];
                   setVolumeDraft(value);
@@ -1154,11 +1139,10 @@ export function BlockClipPropertiesPanel({
             </div>
             <div className='flex items-center justify-between mb-2'>
               <span className='text-xs text-muted-foreground'>Show title</span>
-              <input
-                type='checkbox'
+              <Checkbox
                 checked={effectiveClip.blockSettings.showTitle}
-                onChange={(e) => {
-                  void applyClipPatch({ showTitle: e.target.checked });
+                onCheckedChange={(checked) => {
+                  void applyClipPatch({ showTitle: !!checked });
                 }}
               />
             </div>
@@ -1363,11 +1347,10 @@ export function BlockClipPropertiesPanel({
               </div>
               <div className='flex items-center justify-between mb-1'>
                 <span className='text-xs text-muted-foreground'>Loop</span>
-                <input
-                  type='checkbox'
+                <Checkbox
                   checked={effectiveClip.blockSettings.mp4Loop !== false}
-                  onChange={(e) => {
-                    const loopEnabled = e.target.checked;
+                  onCheckedChange={(checked) => {
+                    const loopEnabled = !!checked;
                     void applyClipPatch(
                       { mp4Loop: loopEnabled },
                       { refresh: false },
@@ -1620,11 +1603,9 @@ export function BlockClipPropertiesPanel({
                             <label
                               key={i.inputId}
                               className='flex items-center gap-2 px-1 py-1 hover:bg-accent rounded cursor-pointer'>
-                              <input
-                                type='checkbox'
+                              <Checkbox
                                 checked={isAttached}
-                                onChange={() => handleAttachToggle(i.inputId)}
-                                className='accent-blue-500 cursor-pointer'
+                                onCheckedChange={() => handleAttachToggle(i.inputId)}
                               />
                               <span className='text-sm text-foreground truncate'>
                                 {i.title}
@@ -1766,11 +1747,10 @@ export function BlockClipPropertiesPanel({
                   <span className='text-xs text-muted-foreground'>
                     Scroll loop
                   </span>
-                  <input
-                    type='checkbox'
+                  <Checkbox
                     checked={effectiveClip.blockSettings.textScrollLoop ?? true}
-                    onChange={(e) =>
-                      void applyClipPatch({ textScrollLoop: e.target.checked })
+                    onCheckedChange={(checked) =>
+                      void applyClipPatch({ textScrollLoop: !!checked })
                     }
                   />
                 </div>

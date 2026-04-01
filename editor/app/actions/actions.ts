@@ -268,6 +268,34 @@ export async function deleteDashboardLayout(
   return client.dashboardLayoutStorage.remove(fileName);
 }
 
+// ── Presentation config storage ──────────────────────────────
+export async function savePresentationConfig(
+  name: string,
+  presentationConfig: object,
+): Promise<StorageResult<{ fileName: string; name: string }>> {
+  return client.presentationConfigStorage.save(name, presentationConfig);
+}
+
+export async function listPresentationConfigs(): Promise<
+  StorageResult<{ items: SavedItemInfo[] }>
+> {
+  return client.presentationConfigStorage.list();
+}
+
+export async function loadPresentationConfig(
+  fileName: string,
+): Promise<
+  StorageResult<{ name: string; data: object; savedAt: string }>
+> {
+  return client.presentationConfigStorage.load(fileName);
+}
+
+export async function deletePresentationConfig(
+  fileName: string,
+): Promise<StorageResult> {
+  return client.presentationConfigStorage.remove(fileName);
+}
+
 // ── HLS stream storage ──────────────────────────────────────
 export async function saveHlsStream(
   name: string,

@@ -20,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import {
   useControlPanelState,
@@ -85,9 +86,20 @@ import {
   BlockClipPropertiesPanel,
   type SelectedTimelineClip,
 } from './components/BlockClipPropertiesPanel';
+import {
+  PendingConnectionsPanel,
+  loadAutoModalSetting,
+} from './components/PendingConnectionsPanel';
+import { PendingConnectionsModal } from './components/PendingConnectionsModal';
 import type { TimelineState } from './hooks/use-timeline-state';
-import { buildInputColorMap } from './components/timeline/timeline-utils';
-import { listenTimelineEvent, TIMELINE_EVENTS } from './components/timeline/timeline-events';
+import {
+  buildInputColorMap,
+  TYPE_HSL,
+} from './components/timeline/timeline-utils';
+import {
+  listenTimelineEvent,
+  TIMELINE_EVENTS,
+} from './components/timeline/timeline-events';
 import { useMotionScores } from '@/hooks/use-motion-scores';
 import { useMotionHistory } from '@/hooks/use-motion-history';
 import { InputMotionPanel } from './components/InputMotionPanel';
@@ -99,6 +111,8 @@ import {
 } from '@/components/dashboard/dashboard-toolbar-context';
 import { Input as ShadcnInput } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { PresentationModeSettings } from './components/PresentationModeSettings';
 import {
   Select,
   SelectTrigger,
@@ -125,6 +139,7 @@ export type ControlPanelProps = {
     fxSection: React.ReactNode;
     timelineSection: React.ReactNode;
     blockPropertiesSection: React.ReactNode;
+    pendingConnectionsSection: React.ReactNode;
     motionPanels: Record<string, React.ReactNode>;
     peers: ConnectedPeer[];
     timelineColorOverrides: Record<string, string>;
@@ -485,6 +500,45 @@ function ControlPanelInner({
   >({});
   const activeClipColorsKeyRef = useRef('');
 
+  const [pendingWhipColors, setPendingWhipColors] = useState<
+    Record<string, string>
+  >({});
+  const pendingWhipColorsKeyRef = useRef('');
+
+  const [pendingModalOpen, setPendingModalOpen] = useState(false);
+  const pendingModalShownRef = useRef(false);
+
+  const [showcaseWelcome, setShowcaseWelcome] = useState<{
+    before: string;
+    after: string;
+  } | null>(null);
+
+  useEffect(() => {
+    try {
+      const key = `showcase-welcome-${roomId}`;
+      const raw = sessionStorage.getItem(key);
+      if (raw) {
+        sessionStorage.removeItem(key);
+        const parsed = JSON.parse(raw);
+        if (parsed.before || parsed.after) {
+          setShowcaseWelcome(parsed);
+        }
+      }
+    } catch {}
+  }, [roomId]);
+
+  useEffect(() => {
+    if (
+      !isGuest &&
+      !pendingModalShownRef.current &&
+      pendingWhipInputs.length > 0 &&
+      (loadAutoModalSetting() || showcaseWelcome)
+    ) {
+      pendingModalShownRef.current = true;
+      setPendingModalOpen(true);
+    }
+  }, [isGuest, pendingWhipInputs.length, showcaseWelcome]);
+
   const handleTimelineStateChange = useCallback(
     (state: TimelineState) => {
       timelineStateRef.current = state;
@@ -527,6 +581,26 @@ function ControlPanelInner({
       if (activeKey !== activeClipColorsKeyRef.current) {
         activeClipColorsKeyRef.current = activeKey;
         setActiveClipColors(activeColors);
+      }
+
+      const whipBase = TYPE_HSL['whip'];
+      const pendingColors: Record<string, string> = {};
+      for (const track of state.tracks) {
+        for (const clip of track.clips) {
+          if (
+            clip.inputId.startsWith('__pending-whip-') &&
+            !pendingColors[clip.inputId]
+          ) {
+            const tc = clip.blockSettings.timelineColor;
+            pendingColors[clip.inputId] =
+              tc || `hsl(${whipBase[0]} ${whipBase[1]}% ${whipBase[2]}%)`;
+          }
+        }
+      }
+      const pendingKey = JSON.stringify(pendingColors);
+      if (pendingKey !== pendingWhipColorsKeyRef.current) {
+        pendingWhipColorsKeyRef.current = pendingKey;
+        setPendingWhipColors(pendingColors);
       }
     },
     [selectedTimelineClips.length],
@@ -655,11 +729,19 @@ function ControlPanelInner({
           availableShaders={availableShaders}
           handleRefreshState={handleRefreshState}
           resolution={roomState.resolution}
-          pendingWhipInputs={isGuest ? undefined : pendingWhipInputs}
-          setPendingWhipInputs={
-            isGuest ? undefined : handleSetPendingWhipInputs
-          }
         />
+      </div>
+    );
+
+    const pendingConnectionsSection = !isGuest ? (
+      <PendingConnectionsPanel
+        pendingWhipInputs={pendingWhipInputs}
+        setPendingWhipInputs={handleSetPendingWhipInputs}
+        colorMap={pendingWhipColors}
+      />
+    ) : (
+      <div className='h-full flex items-center justify-center p-3'>
+        <p className='text-xs text-neutral-500'>Not available for guests</p>
       </div>
     );
 
@@ -702,12 +784,24 @@ function ControlPanelInner({
           fxSection,
           timelineSection,
           blockPropertiesSection,
+          pendingConnectionsSection,
           motionPanels,
           peers,
           timelineColorOverrides,
           selectedInputId,
           onSelectInput: setSelectedInputId,
         })}
+        {!isGuest && (
+          <PendingConnectionsModal
+            pendingWhipInputs={pendingWhipInputs}
+            setPendingWhipInputs={handleSetPendingWhipInputs}
+            colorMap={pendingWhipColors}
+            open={pendingModalOpen}
+            onOpenChange={setPendingModalOpen}
+            welcomeTextBefore={showcaseWelcome?.before}
+            welcomeTextAfter={showcaseWelcome?.after}
+          />
+        )}
       </DashboardToolbarProvider>
     );
   }
@@ -778,6 +872,18 @@ function ControlPanelInner({
     </motion.div>
   );
 
+  const pendingModal = !isGuest && (
+    <PendingConnectionsModal
+      pendingWhipInputs={pendingWhipInputs}
+      setPendingWhipInputs={handleSetPendingWhipInputs}
+      colorMap={pendingWhipColors}
+      open={pendingModalOpen}
+      onOpenChange={setPendingModalOpen}
+      welcomeTextBefore={showcaseWelcome?.before}
+      welcomeTextAfter={showcaseWelcome?.after}
+    />
+  );
+
   if (renderStreamsOutside) {
     return (
       <>
@@ -785,11 +891,17 @@ function ControlPanelInner({
         {timelineSection &&
           timelinePortalRef?.current &&
           createPortal(timelineSection, timelinePortalRef.current)}
+        {pendingModal}
       </>
     );
   }
 
-  return mainPanel;
+  return (
+    <>
+      {mainPanel}
+      {pendingModal}
+    </>
+  );
 }
 
 type ModalId = 'quickActions' | 'settings';
@@ -1437,163 +1549,175 @@ function SettingsBar({
           <DialogHeader>
             <DialogTitle>Settings</DialogTitle>
           </DialogHeader>
-          <div className='grid grid-cols-2 gap-6'>
-            <section className='space-y-2'>
-              <h4 className='text-sm font-medium text-foreground'>
-                Transition Settings
-              </h4>
-              <TransitionSettings
-                swapDurationMs={roomState.swapDurationMs ?? 500}
-                onSwapDurationChange={async (value) => {
-                  await updateRoomAction(roomId, { swapDurationMs: value });
-                  await handleRefreshState();
-                }}
-                swapOutgoingEnabled={roomState.swapOutgoingEnabled ?? true}
-                onSwapOutgoingEnabledChange={async (value) => {
-                  await updateRoomAction(roomId, {
-                    swapOutgoingEnabled: value,
-                  });
-                  await handleRefreshState();
-                }}
-                swapFadeInDurationMs={roomState.swapFadeInDurationMs ?? 500}
-                onSwapFadeInDurationChange={async (value) => {
-                  await updateRoomAction(roomId, {
-                    swapFadeInDurationMs: value,
-                  });
-                  await handleRefreshState();
-                }}
-                swapFadeOutDurationMs={roomState.swapFadeOutDurationMs ?? 500}
-                onSwapFadeOutDurationChange={async (value) => {
-                  await updateRoomAction(roomId, {
-                    swapFadeOutDurationMs: value,
-                  });
-                  await handleRefreshState();
-                }}
-                newsStripFadeDuringSwap={
-                  roomState.newsStripFadeDuringSwap ?? true
-                }
-                onNewsStripFadeDuringSwapChange={async (value) => {
-                  await updateRoomAction(roomId, {
-                    newsStripFadeDuringSwap: value,
-                  });
-                  await handleRefreshState();
-                }}
-                newsStripEnabled={roomState.newsStripEnabled ?? true}
-                onNewsStripEnabledChange={async (value) => {
-                  await updateRoomAction(roomId, { newsStripEnabled: value });
-                  await handleRefreshState();
-                }}
-              />
-              <div className='h-px bg-card mt-3' />
-              <h4 className='text-sm font-medium text-foreground mt-3'>
-                Viewport
-              </h4>
-              {roomState.resolution && (
-                <ViewportSettings
-                  resolution={roomState.resolution}
-                  viewportTop={roomState.viewportTop}
-                  viewportLeft={roomState.viewportLeft}
-                  viewportWidth={roomState.viewportWidth}
-                  viewportHeight={roomState.viewportHeight}
-                  viewportTransitionDurationMs={roomState.viewportTransitionDurationMs}
-                  viewportTransitionEasing={roomState.viewportTransitionEasing}
-                  onChange={async (fields) => {
-                    await updateRoomAction(roomId, fields);
-                    await handleRefreshState();
-                  }}
-                />
-              )}
-            </section>
-            <div className='space-y-4'>
-              <section className='space-y-2 px-1'>
-                <h4 className='text-sm font-medium text-foreground'>
-                  Macros Settings
-                </h4>
-                <label className='flex items-center gap-2 cursor-pointer'>
-                  <input
-                    type='checkbox'
-                    checked={autoPlayMacro}
-                    onChange={(e) => {
-                      setAutoPlayMacro(e.target.checked);
+          <Tabs defaultValue='general'>
+            <TabsList className='w-full'>
+              <TabsTrigger value='general' className='flex-1'>General</TabsTrigger>
+              <TabsTrigger value='presentation' className='flex-1'>Presentation Mode</TabsTrigger>
+            </TabsList>
+            <TabsContent value='general'>
+              <div className='grid grid-cols-2 gap-6'>
+                <section className='space-y-2'>
+                  <h4 className='text-sm font-medium text-foreground'>
+                    Transition Settings
+                  </h4>
+                  <TransitionSettings
+                    swapDurationMs={roomState.swapDurationMs ?? 500}
+                    onSwapDurationChange={async (value) => {
+                      await updateRoomAction(roomId, { swapDurationMs: value });
+                      await handleRefreshState();
                     }}
-                    className='accent-white'
-                  />
-                  <span className='text-xs text-muted-foreground'>
-                    Auto Play Macro
-                  </span>
-                </label>
-                <label className='flex items-center gap-2 cursor-pointer'>
-                  <input
-                    type='checkbox'
-                    checked={voicePanelSize === 's'}
-                    onChange={(e) =>
-                      setVoicePanelSize(e.target.checked ? 's' : 'l')
+                    swapOutgoingEnabled={roomState.swapOutgoingEnabled ?? true}
+                    onSwapOutgoingEnabledChange={async (value) => {
+                      await updateRoomAction(roomId, {
+                        swapOutgoingEnabled: value,
+                      });
+                      await handleRefreshState();
+                    }}
+                    swapFadeInDurationMs={roomState.swapFadeInDurationMs ?? 500}
+                    onSwapFadeInDurationChange={async (value) => {
+                      await updateRoomAction(roomId, {
+                        swapFadeInDurationMs: value,
+                      });
+                      await handleRefreshState();
+                    }}
+                    swapFadeOutDurationMs={roomState.swapFadeOutDurationMs ?? 500}
+                    onSwapFadeOutDurationChange={async (value) => {
+                      await updateRoomAction(roomId, {
+                        swapFadeOutDurationMs: value,
+                      });
+                      await handleRefreshState();
+                    }}
+                    newsStripFadeDuringSwap={
+                      roomState.newsStripFadeDuringSwap ?? true
                     }
-                    className='accent-white'
+                    onNewsStripFadeDuringSwapChange={async (value) => {
+                      await updateRoomAction(roomId, {
+                        newsStripFadeDuringSwap: value,
+                      });
+                      await handleRefreshState();
+                    }}
+                    newsStripEnabled={roomState.newsStripEnabled ?? true}
+                    onNewsStripEnabledChange={async (value) => {
+                      await updateRoomAction(roomId, { newsStripEnabled: value });
+                      await handleRefreshState();
+                    }}
                   />
-                  <span className='text-xs text-muted-foreground'>
-                    Compact Voice Panel
-                  </span>
-                </label>
-                <div className='flex items-center justify-between gap-3'>
-                  <span className='text-xs text-muted-foreground shrink-0'>
-                    Panel Opacity
-                  </span>
-                  <Slider
-                    min={0}
-                    max={100}
-                    step={5}
-                    value={[voicePanelOpacity]}
-                    onValueChange={(v) => setVoicePanelOpacity(v[0])}
-                    className='flex-1 accent-white h-1'
-                  />
-                  <span className='text-xs text-muted-foreground w-8 text-right tabular-nums'>
-                    {voicePanelOpacity}%
-                  </span>
+                  <div className='h-px bg-card mt-3' />
+                  <h4 className='text-sm font-medium text-foreground mt-3'>
+                    Viewport
+                  </h4>
+                  {roomState.resolution && (
+                    <ViewportSettings
+                      resolution={roomState.resolution}
+                      viewportTop={roomState.viewportTop}
+                      viewportLeft={roomState.viewportLeft}
+                      viewportWidth={roomState.viewportWidth}
+                      viewportHeight={roomState.viewportHeight}
+                      viewportTransitionDurationMs={
+                        roomState.viewportTransitionDurationMs
+                      }
+                      viewportTransitionEasing={roomState.viewportTransitionEasing}
+                      onChange={async (fields) => {
+                        await updateRoomAction(roomId, fields);
+                        await handleRefreshState();
+                      }}
+                    />
+                  )}
+                </section>
+                <div className='space-y-4'>
+                  <section className='space-y-2 px-1'>
+                    <h4 className='text-sm font-medium text-foreground'>
+                      Macros Settings
+                    </h4>
+                    <label className='flex items-center gap-2 cursor-pointer'>
+                      <Checkbox
+                        checked={autoPlayMacro}
+                        onCheckedChange={(checked: boolean) => {
+                          setAutoPlayMacro(checked);
+                        }}
+                      />
+                      <span className='text-xs text-muted-foreground'>
+                        Auto Play Macro
+                      </span>
+                    </label>
+                    <label className='flex items-center gap-2 cursor-pointer'>
+                      <Checkbox
+                        checked={voicePanelSize === 's'}
+                        onCheckedChange={(checked: boolean) =>
+                          setVoicePanelSize(checked ? 's' : 'l')
+                        }
+                      />
+                      <span className='text-xs text-muted-foreground'>
+                        Compact Voice Panel
+                      </span>
+                    </label>
+                    <div className='flex items-center justify-between gap-3'>
+                      <span className='text-xs text-muted-foreground shrink-0'>
+                        Panel Opacity
+                      </span>
+                      <Slider
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={[voicePanelOpacity]}
+                        onValueChange={(v) => setVoicePanelOpacity(v[0])}
+                        className='flex-1 accent-white h-1'
+                      />
+                      <span className='text-xs text-muted-foreground w-8 text-right tabular-nums'>
+                        {voicePanelOpacity}%
+                      </span>
+                    </div>
+                  </section>
+                  <div className='h-px bg-card' />
+                  <section className='space-y-2 px-1'>
+                    <h4 className='text-sm font-medium text-foreground'>
+                      Input Defaults
+                    </h4>
+                    <div className='flex items-center justify-between'>
+                      <span className='text-xs text-muted-foreground'>
+                        Default Orientation
+                      </span>
+                      <Select
+                        value={defaultOrientation}
+                        onValueChange={(v: 'horizontal' | 'vertical') =>
+                          setDefaultOrientation(v)
+                        }>
+                        <SelectTrigger className='bg-card border border-border text-foreground text-xs px-2 py-1 rounded h-auto'>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value='horizontal'>Horizontal</SelectItem>
+                          <SelectItem value='vertical'>Vertical</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </section>
+                  <div className='h-px bg-card' />
+                  <section className='space-y-2 px-1'>
+                    <h4 className='text-sm font-medium text-foreground'>
+                      Toast Notifications
+                    </h4>
+                    <FeedbackPositionPicker
+                      enabled={feedbackEnabled}
+                      onEnabledChange={setFeedbackEnabled}
+                      position={feedbackPosition}
+                      onPositionChange={setFeedbackPosition}
+                      size={feedbackSize}
+                      onSizeChange={setFeedbackSize}
+                      duration={feedbackDuration}
+                      onDurationChange={setFeedbackDuration}
+                    />
+                  </section>
                 </div>
-              </section>
-              <div className='h-px bg-card' />
-              <section className='space-y-2 px-1'>
-                <h4 className='text-sm font-medium text-foreground'>
-                  Input Defaults
-                </h4>
-                <div className='flex items-center justify-between'>
-                  <span className='text-xs text-muted-foreground'>
-                    Default Orientation
-                  </span>
-                  <Select
-                    value={defaultOrientation}
-                    onValueChange={(v: 'horizontal' | 'vertical') =>
-                      setDefaultOrientation(v)
-                    }>
-                    <SelectTrigger className='bg-card border border-border text-foreground text-xs px-2 py-1 rounded h-auto'>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value='horizontal'>Horizontal</SelectItem>
-                      <SelectItem value='vertical'>Vertical</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </section>
-              <div className='h-px bg-card' />
-              <section className='space-y-2 px-1'>
-                <h4 className='text-sm font-medium text-foreground'>
-                  Toast Notifications
-                </h4>
-                <FeedbackPositionPicker
-                  enabled={feedbackEnabled}
-                  onEnabledChange={setFeedbackEnabled}
-                  position={feedbackPosition}
-                  onPositionChange={setFeedbackPosition}
-                  size={feedbackSize}
-                  onSizeChange={setFeedbackSize}
-                  duration={feedbackDuration}
-                  onDurationChange={setFeedbackDuration}
-                />
-              </section>
-            </div>
-          </div>
+              </div>
+            </TabsContent>
+            <TabsContent value='presentation'>
+              <PresentationModeSettings
+                roomState={roomState}
+                getTimelineStateForConfig={getTimelineStateForConfig}
+              />
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
 

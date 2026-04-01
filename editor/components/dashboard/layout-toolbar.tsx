@@ -205,10 +205,10 @@ export default function LayoutToolbar({
                         aria-checked={isVisible}
                         className='justify-start gap-2 w-full h-auto px-3 py-1.5 rounded-none text-xs text-left hover:bg-neutral-800 cursor-pointer'>
                         <span
-                          className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center shrink-0 ${
+                          className={`w-3.5 h-3.5 border-0 flex items-center justify-center shrink-0 ${
                             isVisible
-                              ? 'border-blue-500 bg-blue-500/20'
-                              : 'border-neutral-600 bg-transparent'
+                              ? 'bg-cyan'
+                              : 'bg-neutral-700'
                           }`}>
                           {isVisible && (
                             <svg
@@ -218,8 +218,8 @@ export default function LayoutToolbar({
                               fill='none'>
                               <path
                                 d='M2 5L4 7L8 3'
-                                stroke='#60a5fa'
-                                strokeWidth='1.5'
+                                stroke='black'
+                                strokeWidth='2'
                                 strokeLinecap='round'
                                 strokeLinejoin='round'
                               />
