@@ -1,5 +1,5 @@
 import type { SnakeGameState } from './types';
-import { state } from '../server/serverState';
+import { state } from '../core/serverState';
 
 let globalSnakeGameState: SnakeGameState | null = null;
 

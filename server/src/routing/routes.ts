@@ -13,8 +13,8 @@ import type {
   Static,
   TypeBoxTypeProvider,
 } from '@fastify/type-provider-typebox';
-import { state } from './serverState';
-import { roomEventBus } from './roomEventBus';
+import { state } from '../core/serverState';
+import { roomEventBus } from '../core/roomEventBus';
 import { registerStorageRoutes } from './storageRoutes';
 import { logRequest, addLogListener, getLogBuffer } from '../dashboard';
 import {
@@ -28,7 +28,7 @@ import type {
   RegisterInputOptions,
   PendingWhipInputData,
 } from '../types';
-import { toPublicInputState } from './publicInputState';
+import { toPublicInputState } from '../core/publicInputState';
 import { config } from '../config';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
 import pictureSuggestionsMonitor from '../pictures/pictureSuggestionMonitor';

@@ -1122,7 +1122,7 @@ describe('RoomState', () => {
       };
       await room.showInput(inputId, transition);
 
-      const { toPublicInputState } = await import('../server/publicInputState');
+      const { toPublicInputState } = await import('../core/publicInputState');
       const input = room.getInputs().find((i) => i.inputId === inputId)!;
       const pub = toPublicInputState(input);
       expect(pub.activeTransition).toMatchObject(transition);
@@ -1138,7 +1138,7 @@ describe('RoomState', () => {
         text: 'Test',
       }))!;
 
-      const { toPublicInputState } = await import('../server/publicInputState');
+      const { toPublicInputState } = await import('../core/publicInputState');
       const input = room.getInputs().find((i) => i.inputId === inputId)!;
       const pub = toPublicInputState(input);
       expect('textScrollNudge' in pub).toBe(true);
