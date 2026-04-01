@@ -342,13 +342,13 @@ function buildUploadUrl(
 }
 
 const UPLOAD_ROUTES: Record<UploadMediaType, string> = {
-  mp4: buildUploadUrl('/upload/mp4', { preferProxy: true }),
+  mp4: buildUploadUrl('/upload/mp4'),
   picture: buildUploadUrl('/upload/picture'),
   audio: buildUploadUrl('/upload/audio'),
 };
 
 const FOLDER_ROUTES: Record<UploadMediaType, string> = {
-  mp4: buildUploadUrl('/upload/mp4/folder', { preferProxy: true }),
+  mp4: buildUploadUrl('/upload/mp4/folder'),
   picture: buildUploadUrl('/upload/picture/folder'),
   audio: buildUploadUrl('/upload/audio/folder'),
 };
@@ -1982,7 +1982,7 @@ function PropRow({ label, value }: { label: string; value: string }) {
 
 function UploadJobsPanel({ jobs }: { jobs: UploadJob[] }) {
   return (
-    <div className='mt-4 border border-[#3a494b]/20 bg-[#0d1011] p-3'>
+    <div className='mt-4 flex min-h-0 flex-1 flex-col border border-[#3a494b]/20 bg-[#0d1011] p-3'>
       <div className='flex items-center justify-between mb-2'>
         <span className='font-mono text-[10px] uppercase tracking-wider text-[#00f3ff]'>
           Upload Queue
@@ -1991,7 +1991,7 @@ function UploadJobsPanel({ jobs }: { jobs: UploadJob[] }) {
           {jobs.length} JOBS
         </span>
       </div>
-      <div className='space-y-2 max-h-56 overflow-y-auto pr-1'>
+      <div className='min-h-0 flex-1 space-y-2 overflow-y-auto pr-1'>
         {jobs.map((job) => (
           <div
             key={job.id}
@@ -2597,7 +2597,7 @@ function UploadInspector({
   };
 
   return (
-    <div className='space-y-3'>
+    <div className='flex h-full min-h-0 flex-col gap-3'>
       <PropRow label='TYPE' value={`UPLOAD_${label}`} />
       <PropRow label='MODE' value='MULTI_UPLOAD' />
       <PropRow label='TARGET_FOLDER' value={currentFolder || 'ROOT'} />
