@@ -11,15 +11,31 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const formData = await req.formData();
+    const headers = new Headers();
+    const contentType = req.headers.get('content-type');
+    const contentLength = req.headers.get('content-length');
+
+    if (contentType) {
+      headers.set('content-type', contentType);
+    }
+
+    if (contentLength) {
+      headers.set('content-length', contentLength);
+    }
+
     const upstream = await fetch(`${BASE_URL}/upload/mp4`, {
       method: 'POST',
-      body: formData,
+      body: req.body,
+      headers,
+      // `duplex` is required when streaming a request body in Node.js.
+      // @ts-expect-error `duplex` is supported at runtime but missing in typings.
+      duplex: 'half',
     });
 
     const data = await upstream.json();
     return NextResponse.json(data, { status: upstream.status });
-  } catch {
+  } catch (error) {
+    console.error('[upload/mp4 proxy] failed', error);
     return NextResponse.json(
       { error: 'Failed to upload MP4' },
       { status: 502 },
