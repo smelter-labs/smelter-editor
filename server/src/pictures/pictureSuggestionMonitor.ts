@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'fs-extra';
+import { DATA_DIR } from '../dataDir';
 
 export interface FolderListing {
   files: string[];
@@ -18,7 +19,7 @@ class PictureSuggestionMonitor {
   private readonly baseDir: string;
 
   constructor() {
-    this.baseDir = path.resolve(process.cwd(), 'pictures');
+    this.baseDir = path.resolve(DATA_DIR, 'pictures');
     this.pictureFiles = this.scanAllFiles();
   }
 

@@ -2,6 +2,7 @@ import path from 'node:path';
 import { pathExists } from 'fs-extra';
 import type { FastifyPluginCallback } from 'fastify';
 import { Type } from '@sinclair/typebox';
+import { DATA_DIR } from '../../dataDir';
 import { getMp4DurationMs } from '../mp4Duration';
 import { TwitchChannelSuggestions } from '../../twitch/TwitchChannelMonitor';
 import { KickChannelSuggestions } from '../../kick/KickChannelMonitor';
@@ -25,7 +26,7 @@ export const suggestionRoutes: FastifyPluginCallback = (
     async (req, res) => {
       const { fileName } = req.params;
       const safeName = path.basename(fileName);
-      const filePath = path.join(process.cwd(), 'mp4s', safeName);
+      const filePath = path.join(DATA_DIR, 'mp4s', safeName);
 
       if (!(await pathExists(filePath))) {
         return res.status(404).send({ error: 'MP4 file not found' });
@@ -106,7 +107,7 @@ export const suggestionRoutes: FastifyPluginCallback = (
       if (decoded.includes('..')) {
         return res.status(400).send({ error: 'Invalid file name' });
       }
-      const filePath = path.join(process.cwd(), 'audios', decoded);
+      const filePath = path.join(DATA_DIR, 'audios', decoded);
 
       if (!(await pathExists(filePath))) {
         return res.status(404).send({ error: 'Audio file not found' });

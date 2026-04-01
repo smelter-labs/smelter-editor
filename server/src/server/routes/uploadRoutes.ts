@@ -5,6 +5,7 @@ import { pipeline } from 'node:stream/promises';
 import fs from 'fs-extra';
 import type { FastifyPluginCallback } from 'fastify';
 import { Type } from '@sinclair/typebox';
+import { DATA_DIR } from '../../dataDir';
 import mp4SuggestionsMonitor from '../../mp4/mp4SuggestionMonitor';
 import pictureSuggestionsMonitor from '../../pictures/pictureSuggestionMonitor';
 import audioSuggestionsMonitor from '../../audio-files/audioSuggestionMonitor';
@@ -132,8 +133,8 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
       }
 
       const targetDir = folder
-        ? path.join(process.cwd(), 'mp4s', folder)
-        : path.join(process.cwd(), 'mp4s');
+        ? path.join(DATA_DIR, 'mp4s', folder)
+        : path.join(DATA_DIR, 'mp4s');
       await fs.ensureDir(targetDir);
 
       const filePath = path.join(targetDir, fileName);
@@ -188,8 +189,8 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
     }
 
     const targetDir = folder
-      ? path.join(process.cwd(), 'pictures', folder)
-      : path.join(process.cwd(), 'pictures');
+      ? path.join(DATA_DIR, 'pictures', folder)
+      : path.join(DATA_DIR, 'pictures');
     await fs.ensureDir(targetDir);
 
     const filePath = path.join(targetDir, fileName);
@@ -211,7 +212,7 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
         return res.status(400).send({ error: 'Invalid file path' });
       }
 
-      const absPath = path.join(process.cwd(), 'mp4s', sanitized);
+      const absPath = path.join(DATA_DIR, 'mp4s', sanitized);
       if (!(await fs.pathExists(absPath))) {
         return res.status(404).send({ error: 'File not found' });
       }
@@ -233,7 +234,7 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
         return res.status(400).send({ error: 'Invalid file path' });
       }
 
-      const absPath = path.join(process.cwd(), 'pictures', sanitized);
+      const absPath = path.join(DATA_DIR, 'pictures', sanitized);
       if (!(await fs.pathExists(absPath))) {
         return res.status(404).send({ error: 'File not found' });
       }
@@ -259,7 +260,7 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
         return res.status(400).send({ error: 'Invalid folder path' });
       }
 
-      const absPath = path.join(process.cwd(), 'mp4s', sanitized);
+      const absPath = path.join(DATA_DIR, 'mp4s', sanitized);
       await fs.ensureDir(absPath);
       mp4SuggestionsMonitor.refresh();
       return res.status(200).send({ folder: sanitized });
@@ -281,7 +282,7 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
         return res.status(400).send({ error: 'Invalid folder path' });
       }
 
-      const absPath = path.join(process.cwd(), 'pictures', sanitized);
+      const absPath = path.join(DATA_DIR, 'pictures', sanitized);
       await fs.ensureDir(absPath);
       pictureSuggestionsMonitor.refresh();
       return res.status(200).send({ folder: sanitized });
@@ -315,8 +316,8 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
     }
 
     const targetDir = folder
-      ? path.join(process.cwd(), 'audios', folder)
-      : path.join(process.cwd(), 'audios');
+      ? path.join(DATA_DIR, 'audios', folder)
+      : path.join(DATA_DIR, 'audios');
     await fs.ensureDir(targetDir);
 
     const tmpPath = path.join(targetDir, `.tmp_${fileName}`);
@@ -376,7 +377,7 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
         return res.status(400).send({ error: 'Invalid file path' });
       }
 
-      const absPath = path.join(process.cwd(), 'audios', sanitized);
+      const absPath = path.join(DATA_DIR, 'audios', sanitized);
       if (!(await fs.pathExists(absPath))) {
         return res.status(404).send({ error: 'File not found' });
       }
@@ -402,7 +403,7 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
         return res.status(400).send({ error: 'Invalid folder path' });
       }
 
-      const absPath = path.join(process.cwd(), 'audios', sanitized);
+      const absPath = path.join(DATA_DIR, 'audios', sanitized);
       await fs.ensureDir(absPath);
       audioSuggestionsMonitor.refresh();
       return res.status(200).send({ folder: sanitized });

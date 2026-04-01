@@ -1,5 +1,6 @@
 import path from 'node:path';
 import fs from 'fs-extra';
+import { DATA_DIR } from '../dataDir';
 
 export interface FolderListing {
   files: string[];
@@ -11,7 +12,7 @@ class Mp4SuggestionMonitor {
   private readonly baseDir: string;
 
   constructor() {
-    this.baseDir = path.resolve(process.cwd(), 'mp4s');
+    this.baseDir = path.resolve(DATA_DIR, 'mp4s');
     this.mp4Files = this.scanAllFiles();
   }
 

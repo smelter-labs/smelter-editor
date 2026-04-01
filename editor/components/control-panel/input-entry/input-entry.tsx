@@ -423,12 +423,12 @@ export default function InputEntry({
             ? 'border-blue-500 ring-2 ring-blue-500/30'
             : 'border-border'
         }`}>
-        {!isMobile && showGrip && (
-          <div className='absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none'>
-            <GripVertical className='w-5 h-5 text-muted-foreground' />
-          </div>
-        )}
-        <div className='flex items-center min-h-7 md:pl-7'>
+        <div className='flex items-center min-h-7 gap-2'>
+          {!isMobile && showGrip && (
+            <div className='shrink-0 pointer-events-none'>
+              <GripVertical className='w-5 h-5 text-muted-foreground' />
+            </div>
+          )}
           <span
             className='shrink-0 w-3 h-3 rounded-none mr-2'
             style={
@@ -437,7 +437,7 @@ export default function InputEntry({
                 : { border: '1px solid #6b7280' }
             }
           />
-          <div className='text-[12px] font-bold text-foreground truncate'>
+          <div className='min-w-0 flex-1 text-[12px] font-bold text-foreground truncate'>
             {input.title}
           </div>
           {!readOnly && canRemove && <DeleteButton onClick={handleDelete} />}

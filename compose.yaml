@@ -15,10 +15,17 @@ services:
       # SMELTER_H264_ENCODER_PRESET: "ultrafast"
       # SMELTER_H264_ENCODER_BITRATE: "20000000"
     volumes:
-      - ./recordings:/home/smelter/demo/server/recordings
-      - ./configs:/home/smelter/demo/server/configs
-      - ./mp4s:/home/smelter/demo/server/mp4s
-      - ./pictures:/home/smelter/demo/server/pictures
+      - .data/recordings:/home/smelter/demo/server/data/recordings
+      - .data/configs:/home/smelter/demo/server/data/configs
+      - .data/mp4s:/home/smelter/demo/server/data/mp4s
+      - .data/pictures:/home/smelter/demo/server/data/pictures
+      - .data/audios:/home/smelter/demo/server/data/audios
+      - .data/screenshots:/home/smelter/demo/server/data/screenshots
+      - .data/thumbnails:/home/smelter/demo/server/data/thumbnails
+      - .data/shader-presets:/home/smelter/demo/server/data/shader-presets
+      - .data/dashboard-layouts:/home/smelter/demo/server/data/dashboard-layouts
+      - .data/presentation-configs:/home/smelter/demo/server/data/presentation-configs
+      - .data/hls-streams:/home/smelter/demo/server/data/hls-streams
     ports:
       - 9071:9071
       - 9072:9072

@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { pathExists, readdir, readFile, stat } from 'fs-extra';
 import type { FastifyPluginCallback } from 'fastify';
+import { DATA_DIR } from '../../dataDir';
 import { state } from '../serverState';
 import {
   RoomIdParamsSchema,
@@ -8,8 +9,8 @@ import {
   type RecordingFileParams,
 } from './schemas';
 
-const SCREENSHOTS_DIR = path.join(__dirname, '../../../screenshots');
-const RECORDINGS_DIR = path.join(__dirname, '../../../recordings');
+const SCREENSHOTS_DIR = path.join(DATA_DIR, 'screenshots');
+const RECORDINGS_DIR = path.join(DATA_DIR, 'recordings');
 
 export const recordingRoutes: FastifyPluginCallback = (routes, _opts, done) => {
   routes.post<RoomIdParams>(

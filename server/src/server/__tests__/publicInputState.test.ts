@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { toPublicInputState } from '../publicInputState';
+import { DATA_DIR } from '../../dataDir';
 import type { RoomInputState } from '../../room/types';
 
 function createLocalMp4Input(mp4FilePath: string): RoomInputState {
@@ -22,7 +23,7 @@ function createLocalMp4Input(mp4FilePath: string): RoomInputState {
 describe('toPublicInputState', () => {
   it('preserves nested relative paths for MP4 files', () => {
     const pub = toPublicInputState(
-      createLocalMp4Input(`${process.cwd()}/mp4s/nested/folder/demo.mp4`),
+      createLocalMp4Input(`${DATA_DIR}/mp4s/nested/folder/demo.mp4`),
     );
 
     expect(pub.mp4FileName).toBe('nested/folder/demo.mp4');
@@ -31,7 +32,7 @@ describe('toPublicInputState', () => {
 
   it('preserves nested relative paths for audio files', () => {
     const pub = toPublicInputState(
-      createLocalMp4Input(`${process.cwd()}/audios/nested/folder/demo.mp4`),
+      createLocalMp4Input(`${DATA_DIR}/audios/nested/folder/demo.mp4`),
     );
 
     expect(pub.audioFileName).toBe('nested/folder/demo.mp4');

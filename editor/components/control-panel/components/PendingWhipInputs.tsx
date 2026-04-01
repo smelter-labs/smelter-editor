@@ -1,9 +1,15 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import {
+  useState,
+  useRef,
+  useEffect,
+  useCallback,
+  type MutableRefObject,
+} from 'react';
 import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/spinner';
-import { Video, Monitor, X, PlugZap } from 'lucide-react';
+import { Video, Monitor, X } from 'lucide-react';
 import { useActions } from '../contexts/actions-context';
 import { startPublish } from '../whip-input/utils/whip-publisher';
 import { startScreensharePublish } from '../whip-input/utils/screenshare-publisher';
@@ -63,7 +69,7 @@ function InlineVideoPreview({ stream }: { stream: MediaStream }) {
         muted
         playsInline
         autoPlay
-        className='w-full h-auto max-h-40 object-contain'
+        className='w-full h-auto object-contain'
       />
     </div>
   );
@@ -73,15 +79,19 @@ type PendingWhipInputsProps = {
   pendingInputs: PendingWhipInput[];
   setPendingInputs: (inputs: PendingWhipInput[]) => void | Promise<void>;
   colorMap?: Record<string, string>;
+  connectAllRef?: MutableRefObject<(() => Promise<boolean>) | null>;
+  onConnectAllReadyChange?: (ready: boolean) => void;
 };
 
 export function PendingWhipInputs({
   pendingInputs,
   setPendingInputs,
   colorMap,
+  connectAllRef,
+  onConnectAllReadyChange,
 }: PendingWhipInputsProps) {
   const { addCameraInput, updateInput, updateRoom, getRoomInfo } = useActions();
-  const { roomId, refreshState } = useControlPanelContext();
+  const { roomId } = useControlPanelContext();
   const {
     cameraPcRef,
     cameraStreamRef,
@@ -97,12 +107,18 @@ export function PendingWhipInputs({
     new Map(),
   );
   const previewsRef = useRef(previews);
+  const pendingInputsRef = useRef(pendingInputs);
   const [acquiringId, setAcquiringId] = useState<string | null>(null);
   const [connectingId, setConnectingId] = useState<string | null>(null);
+  const [isBulkConnecting, setIsBulkConnecting] = useState(false);
 
   useEffect(() => {
     previewsRef.current = previews;
   }, [previews]);
+
+  useEffect(() => {
+    pendingInputsRef.current = pendingInputs;
+  }, [pendingInputs]);
 
   const cleanupPreview = useCallback((pendingId: string) => {
     setPreviews((prev) => {
@@ -125,172 +141,252 @@ export function PendingWhipInputs({
     };
   }, []);
 
-  if (pendingInputs.length === 0) return null;
-
-  const handlePreview = async (
-    pendingInput: PendingWhipInput,
-    type: 'camera' | 'screenshare',
-  ) => {
-    setAcquiringId(pendingInput.id);
-    try {
-      let stream: MediaStream;
-      if (type === 'camera') {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: true,
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-        });
-      } else {
-        stream = await navigator.mediaDevices.getDisplayMedia({
-          video: { displaySurface: 'monitor' } as any,
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-        });
-      }
-      setPreviews((prev) => {
-        const next = new Map(prev);
-        next.set(pendingInput.id, { stream, type });
-        return next;
-      });
-    } catch (e: any) {
-      toast.error(`Failed to access ${type}: ${e?.message || e}`);
-    } finally {
-      setAcquiringId(null);
-    }
-  };
-
-  const handleConnect = async (pendingInput: PendingWhipInput) => {
-    const preview = previews.get(pendingInput.id);
-    if (!preview) return;
-
-    setConnectingId(pendingInput.id);
-    const { stream: previewStream, type } = preview;
-
-    const pcRef = type === 'camera' ? cameraPcRef : screensharePcRef;
-    const streamRef =
-      type === 'camera' ? cameraStreamRef : screenshareStreamRef;
-    const setActiveInputId =
-      type === 'camera' ? setActiveCameraInputId : setActiveScreenshareInputId;
-    const setIsActive =
-      type === 'camera' ? setIsCameraActive : setIsScreenshareActive;
-
-    try {
-      const response = await addCameraInput(roomId, pendingInput.title);
-      setActiveInputId(response.inputId);
-      setIsActive(false);
-
-      const placeholderId = `__pending-whip-${pendingInput.position}__`;
-      const timelineUpdated = updateTimelineInputId(
-        roomId,
-        placeholderId,
-        response.inputId,
-      );
-      if (timelineUpdated) {
-        window.dispatchEvent(
-          new CustomEvent('smelter:timeline-input-replaced', {
-            detail: {
-              oldInputId: placeholderId,
-              newInputId: response.inputId,
+  const handlePreview = useCallback(
+    async (pendingInput: PendingWhipInput, type: 'camera' | 'screenshare') => {
+      setAcquiringId(pendingInput.id);
+      try {
+        let stream: MediaStream;
+        if (type === 'camera') {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
             },
-          }),
-        );
+          });
+        } else {
+          stream = await navigator.mediaDevices.getDisplayMedia({
+            video: { displaySurface: 'monitor' } as any,
+            audio: {
+              echoCancellation: true,
+              noiseSuppression: true,
+              autoGainControl: true,
+            },
+          });
+        }
+        setPreviews((prev) => {
+          const next = new Map(prev);
+          const existing = next.get(pendingInput.id);
+          if (existing) {
+            stopStream(existing.stream);
+          }
+          next.set(pendingInput.id, { stream, type });
+          return next;
+        });
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : String(e);
+        toast.error(`Failed to access ${type}: ${message}`);
+      } finally {
+        setAcquiringId(null);
       }
+    },
+    [],
+  );
 
-      const onDisconnected = () => {
-        stopCameraAndConnection(pcRef, streamRef);
-        setIsActive(false);
-      };
+  const handleConnect = useCallback(
+    async (pendingInput: PendingWhipInput) => {
+      const preview = previewsRef.current.get(pendingInput.id);
+      if (!preview) return false;
 
-      const { location } =
+      setConnectingId(pendingInput.id);
+      const { stream: previewStream, type } = preview;
+
+      const pcRef = type === 'camera' ? cameraPcRef : screensharePcRef;
+      const streamRef =
+        type === 'camera' ? cameraStreamRef : screenshareStreamRef;
+      const setActiveInputId =
         type === 'camera'
-          ? await startPublish(
-              response.inputId,
-              response.bearerToken,
-              response.whipUrl,
-              pcRef,
-              streamRef,
-              onDisconnected,
-              undefined,
-              undefined,
-              previewStream,
-            )
-          : await startScreensharePublish(
-              response.inputId,
-              response.bearerToken,
-              response.whipUrl,
-              pcRef,
-              streamRef,
-              onDisconnected,
-              previewStream,
-            );
+          ? setActiveCameraInputId
+          : setActiveScreenshareInputId;
+      const setIsActive =
+        type === 'camera' ? setIsCameraActive : setIsScreenshareActive;
 
-      setIsActive(true);
+      try {
+        const response = await addCameraInput(roomId, pendingInput.title);
+        setActiveInputId(response.inputId);
+        setIsActive(false);
 
-      // Remove from previews map (stream now owned by publisher)
-      setPreviews((prev) => {
-        const next = new Map(prev);
-        next.delete(pendingInput.id);
-        return next;
-      });
+        const placeholderId = `__pending-whip-${pendingInput.position}__`;
+        const timelineUpdated = updateTimelineInputId(
+          roomId,
+          placeholderId,
+          response.inputId,
+        );
+        if (timelineUpdated) {
+          window.dispatchEvent(
+            new CustomEvent('smelter:timeline-input-replaced', {
+              detail: {
+                oldInputId: placeholderId,
+                newInputId: response.inputId,
+              },
+            }),
+          );
+        }
 
-      saveWhipSession({
-        roomId,
-        inputId: response.inputId,
-        bearerToken: response.bearerToken,
-        location,
-        ts: Date.now(),
-      });
-      saveLastWhipInputId(roomId, response.inputId);
+        const onDisconnected = () => {
+          stopCameraAndConnection(pcRef, streamRef);
+          setIsActive(false);
+        };
 
-      await updateInput(roomId, response.inputId, {
-        volume: pendingInput.config.volume,
-        shaders: pendingInput.config.shaders,
-        showTitle: pendingInput.config.showTitle,
-      });
+        const { location } =
+          type === 'camera'
+            ? await startPublish(
+                response.inputId,
+                response.bearerToken,
+                response.whipUrl,
+                pcRef,
+                streamRef,
+                onDisconnected,
+                undefined,
+                undefined,
+                previewStream,
+              )
+            : await startScreensharePublish(
+                response.inputId,
+                response.bearerToken,
+                response.whipUrl,
+                pcRef,
+                streamRef,
+                onDisconnected,
+                previewStream,
+              );
 
-      const roomInfo = await getRoomInfo(roomId);
-      if (roomInfo !== 'not-found') {
-        const currentInputIds = roomInfo.inputs.map((i) => i.inputId);
-        const newInputId = response.inputId;
-        const targetPosition = pendingInput.position;
+        setIsActive(true);
 
-        const withoutNew = currentInputIds.filter((id) => id !== newInputId);
-        const reordered = [
-          ...withoutNew.slice(0, targetPosition),
-          newInputId,
-          ...withoutNew.slice(targetPosition),
-        ];
+        // Remove from previews map (stream now owned by publisher)
+        setPreviews((prev) => {
+          const next = new Map(prev);
+          next.delete(pendingInput.id);
+          return next;
+        });
 
-        await updateRoom(roomId, { inputOrder: reordered });
+        saveWhipSession({
+          roomId,
+          inputId: response.inputId,
+          bearerToken: response.bearerToken,
+          location,
+          ts: Date.now(),
+        });
+        saveLastWhipInputId(roomId, response.inputId);
+
+        await updateInput(roomId, response.inputId, {
+          volume: pendingInput.config.volume,
+          shaders: pendingInput.config.shaders,
+          showTitle: pendingInput.config.showTitle,
+        });
+
+        const roomInfo = await getRoomInfo(roomId);
+        if (roomInfo !== 'not-found') {
+          const currentInputIds = roomInfo.inputs.map((i) => i.inputId);
+          const newInputId = response.inputId;
+          const targetPosition = pendingInput.position;
+
+          const withoutNew = currentInputIds.filter((id) => id !== newInputId);
+          const reordered = [
+            ...withoutNew.slice(0, targetPosition),
+            newInputId,
+            ...withoutNew.slice(targetPosition),
+          ];
+
+          await updateRoom(roomId, { inputOrder: reordered });
+        }
+
+        const nextPendingInputs = pendingInputsRef.current.filter(
+          (p) => p.id !== pendingInput.id,
+        );
+        pendingInputsRef.current = nextPendingInputs;
+        await setPendingInputs(nextPendingInputs);
+
+        emitTimelineEvent(TIMELINE_EVENTS.CLEANUP_SPURIOUS_WHIP_TRACK, {
+          inputId: response.inputId,
+        });
+
+        toast.success(
+          `Connected ${type === 'camera' ? 'camera' : 'screenshare'}: ${pendingInput.title}`,
+        );
+        return true;
+      } catch (e: unknown) {
+        console.error(`Failed to connect ${type}:`, e);
+        const message = e instanceof Error ? e.message : String(e);
+        toast.error(`Failed to connect: ${message}`);
+        stopCameraAndConnection(pcRef, streamRef);
+        setActiveInputId(null);
+        setIsActive(false);
+        return false;
+      } finally {
+        setConnectingId(null);
       }
+    },
+    [
+      addCameraInput,
+      cameraPcRef,
+      cameraStreamRef,
+      getRoomInfo,
+      roomId,
+      screensharePcRef,
+      screenshareStreamRef,
+      setActiveCameraInputId,
+      setActiveScreenshareInputId,
+      setIsCameraActive,
+      setIsScreenshareActive,
+      setPendingInputs,
+      updateInput,
+      updateRoom,
+    ],
+  );
 
-      await setPendingInputs(
-        pendingInputs.filter((p) => p.id !== pendingInput.id),
-      );
-
-      emitTimelineEvent(TIMELINE_EVENTS.CLEANUP_SPURIOUS_WHIP_TRACK, {
-        inputId: response.inputId,
-      });
-
-      toast.success(
-        `Connected ${type === 'camera' ? 'camera' : 'screenshare'}: ${pendingInput.title}`,
-      );
-    } catch (e: any) {
-      console.error(`Failed to connect ${type}:`, e);
-      toast.error(`Failed to connect: ${e?.message || e}`);
-      stopCameraAndConnection(pcRef, streamRef);
-      setActiveInputId(null);
-      setIsActive(false);
-    } finally {
-      setConnectingId(null);
+  const connectAll = useCallback(async () => {
+    const currentPendingInputs = pendingInputsRef.current;
+    if (currentPendingInputs.length === 0) {
+      return false;
     }
-  };
+
+    setIsBulkConnecting(true);
+    try {
+      for (const pendingInput of currentPendingInputs) {
+        if (!previewsRef.current.has(pendingInput.id)) {
+          return false;
+        }
+        const connected = await handleConnect(pendingInput);
+        if (!connected) {
+          return false;
+        }
+      }
+      return true;
+    } finally {
+      setIsBulkConnecting(false);
+    }
+  }, [handleConnect]);
+
+  useEffect(() => {
+    if (!connectAllRef) {
+      return;
+    }
+
+    const allInputsReady =
+      pendingInputs.length > 0 && previews.size === pendingInputs.length;
+    const isBusy =
+      acquiringId !== null || connectingId !== null || isBulkConnecting;
+    connectAllRef.current = allInputsReady && !isBusy ? connectAll : null;
+    onConnectAllReadyChange?.(allInputsReady && !isBusy);
+
+    return () => {
+      if (connectAllRef.current === connectAll) {
+        connectAllRef.current = null;
+      }
+      onConnectAllReadyChange?.(false);
+    };
+  }, [
+    acquiringId,
+    connectAll,
+    connectAllRef,
+    connectingId,
+    isBulkConnecting,
+    onConnectAllReadyChange,
+    pendingInputs.length,
+    previews.size,
+  ]);
 
   const handleCancelPreview = (pendingInput: PendingWhipInput) => {
     cleanupPreview(pendingInput.id);
@@ -298,14 +394,17 @@ export function PendingWhipInputs({
 
   const handleDismiss = async (pendingInput: PendingWhipInput) => {
     cleanupPreview(pendingInput.id);
-    const nextPendingInputs = pendingInputs.filter(
+    const nextPendingInputs = pendingInputsRef.current.filter(
       (p) => p.id !== pendingInput.id,
     );
+    pendingInputsRef.current = nextPendingInputs;
     await setPendingInputs(nextPendingInputs);
     if (nextPendingInputs.length > 0) {
       emitTimelineEvent(TIMELINE_EVENTS.APPLY_AT_PLAYHEAD, {});
     }
   };
+
+  if (pendingInputs.length === 0) return null;
 
   return (
     <div className='flex flex-col gap-2'>
@@ -315,6 +414,8 @@ export function PendingWhipInputs({
         const preview = previews.get(pendingInput.id);
         const isAcquiring = acquiringId === pendingInput.id;
         const isConnecting = connectingId === pendingInput.id;
+        const isBusy =
+          isBulkConnecting || acquiringId !== null || connectingId !== null;
 
         return (
           <div
@@ -359,24 +460,13 @@ export function PendingWhipInputs({
                   <Button
                     size='sm'
                     variant='outline'
-                    className='flex-1 cursor-pointer'
-                    disabled={isConnecting}
+                    className='w-full cursor-pointer'
+                    disabled={isBusy}
                     onClick={() => handleCancelPreview(pendingInput)}>
-                    Cancel
-                  </Button>
-                  <Button
-                    size='sm'
-                    variant='default'
-                    className='flex-1 cursor-pointer'
-                    disabled={isConnecting}
-                    onClick={() => handleConnect(pendingInput)}>
                     {isConnecting ? (
                       <LoadingSpinner size='sm' variant='spinner' />
                     ) : (
-                      <>
-                        <PlugZap className='w-4 h-4 mr-1' />
-                        Connect
-                      </>
+                      'Disconnect'
                     )}
                   </Button>
                 </div>
@@ -389,7 +479,7 @@ export function PendingWhipInputs({
                   size='sm'
                   variant='outline'
                   className='flex-1 cursor-pointer'
-                  disabled={isAcquiring || isConnecting}
+                  disabled={isBusy}
                   onClick={() => handlePreview(pendingInput, 'camera')}>
                   {isAcquiring && acquiringId === pendingInput.id ? (
                     <LoadingSpinner size='sm' variant='spinner' />
@@ -404,7 +494,7 @@ export function PendingWhipInputs({
                   size='sm'
                   variant='outline'
                   className='flex-1 cursor-pointer'
-                  disabled={isAcquiring || isConnecting}
+                  disabled={isBusy}
                   onClick={() => handlePreview(pendingInput, 'screenshare')}>
                   {isAcquiring && acquiringId === pendingInput.id ? (
                     <LoadingSpinner size='sm' variant='spinner' />

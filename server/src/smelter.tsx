@@ -11,6 +11,7 @@ import App from './app/App';
 import type { RoomStore } from './app/store';
 import { createRoomStore } from './app/store';
 import { config } from './config';
+import { DATA_DIR } from './dataDir';
 import { ensureDir, readFile } from 'fs-extra';
 import {
   MotionScene,
@@ -443,7 +444,7 @@ export class SmelterManager {
     mp4Path: string,
     positionMs: number,
   ): Promise<string> {
-    const dir = path.join(process.cwd(), 'screenshots');
+    const dir = path.join(DATA_DIR, 'screenshots');
     await ensureDir(dir);
     const jpegPath = path.join(
       dir,

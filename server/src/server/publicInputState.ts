@@ -2,11 +2,12 @@ import path from 'path';
 import type { RoomInputState } from '../room/types';
 import type { PublicInputState } from '../types';
 import { toPublicSnakeGameInputState } from '../snakeGame/publicSnakeGameState';
+import { DATA_DIR } from '../dataDir';
 
 export type { PublicInputState } from '../types';
 
 function toRelativeMediaPath(filePath: string, baseDir: string): string | null {
-  const basePath = path.join(process.cwd(), baseDir);
+  const basePath = path.join(DATA_DIR, baseDir);
   const relativePath = path.relative(basePath, filePath);
   if (
     relativePath.startsWith('..') ||

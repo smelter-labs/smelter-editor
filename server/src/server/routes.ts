@@ -32,6 +32,7 @@ import pictureSuggestionsMonitor from '../pictures/pictureSuggestionMonitor';
 import audioSuggestionsMonitor from '../audio-files/audioSuggestionMonitor';
 import { KickChannelSuggestions } from '../kick/KickChannelMonitor';
 import shadersController from '../shaders/shaders';
+import { DATA_DIR } from '../dataDir';
 import { uploadRoutes } from './routes/uploadRoutes';
 import {
   RESOLUTION_PRESETS,
@@ -40,9 +41,9 @@ import {
 } from '../types';
 
 const execFileAsync = promisify(execFile);
-const THUMBNAILS_DIR = path.join(process.cwd(), 'thumbnails', 'mp4');
-const HLS_THUMBNAILS_DIR = path.join(process.cwd(), 'thumbnails', 'hls');
-const HLS_STREAMS_DIR = path.join(__dirname, '../../hls-streams');
+const THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails', 'mp4');
+const HLS_THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails', 'hls');
+const HLS_STREAMS_DIR = path.join(DATA_DIR, 'hls-streams');
 
 type BrowseFileInfo = {
   fileName: string;
@@ -154,7 +155,7 @@ async function ensureMp4Thumbnail(mp4FileName: string): Promise<string> {
     return thumbPath;
   }
 
-  const mp4Path = path.join(process.cwd(), 'mp4s', decoded);
+  const mp4Path = path.join(DATA_DIR, 'mp4s', decoded);
   if (!(await pathExists(mp4Path))) {
     throw Object.assign(new Error('MP4 file not found'), { statusCode: 404 });
   }
@@ -250,7 +251,7 @@ routes.get<{ Querystring: { folder?: string } }>(
     const folder = req.query.folder || undefined;
     const listing = mp4SuggestionsMonitor.listFolder(folder);
     const fileInfos = await buildBrowseFileInfos(
-      path.join(process.cwd(), 'mp4s'),
+      path.join(DATA_DIR, 'mp4s'),
       folder,
       listing.files,
     );
@@ -267,7 +268,7 @@ routes.get<{ Querystring: { fileName: string } }>(
     if (decoded.includes('..')) {
       return res.status(400).send({ error: 'Invalid file name' });
     }
-    const filePath = path.join(process.cwd(), 'mp4s', decoded);
+    const filePath = path.join(DATA_DIR, 'mp4s', decoded);
 
     if (!(await pathExists(filePath))) {
       return res.status(404).send({ error: 'MP4 file not found' });
@@ -341,7 +342,7 @@ routes.get<{ Querystring: { folder?: string } }>(
     const folder = req.query.folder || undefined;
     const listing = pictureSuggestionsMonitor.listFolder(folder);
     const fileInfos = await buildBrowseFileInfos(
-      path.join(process.cwd(), 'pictures'),
+      path.join(DATA_DIR, 'pictures'),
       folder,
       listing.files,
     );
@@ -358,7 +359,7 @@ routes.get<{ Params: { fileName: string } }>(
     if (decoded.includes('..')) {
       return res.status(400).send({ error: 'Invalid file name' });
     }
-    const filePath = path.join(process.cwd(), 'pictures', decoded);
+    const filePath = path.join(DATA_DIR, 'pictures', decoded);
 
     if (!(await pathExists(filePath))) {
       return res.status(404).send({ error: 'Picture not found' });
@@ -399,7 +400,7 @@ routes.get<{ Querystring: { folder?: string } }>(
     const folder = req.query.folder || undefined;
     const listing = audioSuggestionsMonitor.listFolder(folder);
     const fileInfos = await buildBrowseFileInfos(
-      path.join(process.cwd(), 'audios'),
+      path.join(DATA_DIR, 'audios'),
       folder,
       listing.files,
     );
@@ -416,7 +417,7 @@ routes.get<{ Params: { fileName: string } }>(
     if (decoded.includes('..')) {
       return res.status(400).send({ error: 'Invalid file name' });
     }
-    const filePath = path.join(process.cwd(), 'audios', decoded);
+    const filePath = path.join(DATA_DIR, 'audios', decoded);
 
     if (!(await pathExists(filePath))) {
       return res.status(404).send({ error: 'Audio file not found' });
@@ -738,7 +739,7 @@ routes.post<RoomIdParams>(
   },
 );
 
-const SCREENSHOTS_DIR = path.join(__dirname, '../../screenshots');
+const SCREENSHOTS_DIR = path.join(DATA_DIR, 'screenshots');
 
 routes.get<{ Params: { fileName: string } }>(
   '/screenshots/:fileName',
@@ -765,7 +766,7 @@ routes.get<{ Params: { fileName: string } }>(
   },
 );
 
-const RECORDINGS_DIR = path.join(__dirname, '../../recordings');
+const RECORDINGS_DIR = path.join(DATA_DIR, 'recordings');
 
 routes.get('/recordings', async (_req, res) => {
   const recordingsDir = RECORDINGS_DIR;
@@ -861,7 +862,7 @@ routes.get<RecordingFileParams>('/recordings/:fileName', async (req, res) => {
 
 registerStorageRoutes(routes, {
   routePrefix: '/configs',
-  dirPath: path.join(__dirname, '../../configs'),
+  dirPath: path.join(DATA_DIR, 'configs'),
   filePrefix: 'config',
   resourceName: 'config',
   payloadKey: 'config',
@@ -871,7 +872,7 @@ registerStorageRoutes(routes, {
 
 registerStorageRoutes(routes, {
   routePrefix: '/shader-presets',
-  dirPath: path.join(__dirname, '../../shader-presets'),
+  dirPath: path.join(DATA_DIR, 'shader-presets'),
   filePrefix: 'preset',
   resourceName: 'shader preset',
   payloadKey: 'shaders',
@@ -882,7 +883,7 @@ registerStorageRoutes(routes, {
 
 registerStorageRoutes(routes, {
   routePrefix: '/presentation-configs',
-  dirPath: path.join(__dirname, '../../presentation-configs'),
+  dirPath: path.join(DATA_DIR, 'presentation-configs'),
   filePrefix: 'presentation',
   resourceName: 'presentation config',
   payloadKey: 'presentationConfig',
@@ -892,7 +893,7 @@ registerStorageRoutes(routes, {
 
 registerStorageRoutes(routes, {
   routePrefix: '/dashboard-layouts',
-  dirPath: path.join(__dirname, '../../dashboard-layouts'),
+  dirPath: path.join(DATA_DIR, 'dashboard-layouts'),
   filePrefix: 'dashboard-layout',
   resourceName: 'dashboard layout',
   payloadKey: 'layout',
@@ -902,7 +903,7 @@ registerStorageRoutes(routes, {
 
 registerStorageRoutes(routes, {
   routePrefix: '/hls-streams',
-  dirPath: path.join(__dirname, '../../hls-streams'),
+  dirPath: path.join(DATA_DIR, 'hls-streams'),
   filePrefix: 'hls',
   resourceName: 'HLS stream',
   payloadKey: 'stream',

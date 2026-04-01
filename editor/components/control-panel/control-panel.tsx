@@ -34,7 +34,10 @@ import {
 import { useControlPanelEvents } from './hooks/use-control-panel-events';
 import { FxAccordion } from './components/FxAccordion';
 import { StreamsSection } from './components/StreamsSection';
-import { TimelinePanel } from './components/TimelinePanel';
+import {
+  TimelinePanel,
+  type TimelinePanelActions,
+} from './components/TimelinePanel';
 import { AddVideoModal } from './components/AddVideoModal';
 import { QuickActionsSection } from './components/QuickActionsSection';
 import { type PendingWhipInput } from './components/ConfigurationSection';
@@ -462,6 +465,7 @@ function ControlPanelInner({
     refreshState: handleRefreshState,
     inputs,
     availableShaders,
+    isRecording,
     motionScores,
   } = useControlPanelContext();
   const motionHistoryMap = useMotionHistory(inputs, motionScores);
@@ -499,6 +503,7 @@ function ControlPanelInner({
     null,
   );
   const pendingTimelineStateRef = useRef<TimelineState | null>(null);
+  const timelineActionsRef = useRef<TimelinePanelActions | null>(null);
 
   const [timelineColorOverrides, setTimelineColorOverrides] = useState<
     Record<string, string>
@@ -519,6 +524,7 @@ function ControlPanelInner({
 
   const [pendingModalOpen, setPendingModalOpen] = useState(false);
   const pendingModalShownRef = useRef(false);
+  const [timelineActionsReady, setTimelineActionsReady] = useState(false);
 
   const [showcaseWelcome, setShowcaseWelcome] = useState<{
     before: string;
@@ -555,11 +561,55 @@ function ControlPanelInner({
     (open: boolean) => {
       setPendingModalOpen(open);
       if (pendingModalOpen && !open) {
-        emitTimelineEvent(TIMELINE_EVENTS.APPLY_AT_PLAYHEAD, {});
+        const applyAtPlayhead = timelineActionsRef.current?.applyAtPlayhead;
+        if (applyAtPlayhead) {
+          void applyAtPlayhead();
+        } else {
+          emitTimelineEvent(TIMELINE_EVENTS.APPLY_AT_PLAYHEAD, {});
+        }
       }
     },
     [pendingModalOpen],
   );
+
+  const handleTimelineActionsReady = useCallback(
+    (actions: TimelinePanelActions | null) => {
+      timelineActionsRef.current = actions;
+      setTimelineActionsReady(actions !== null);
+    },
+    [],
+  );
+
+  const handlePendingModalActionClose = useCallback(() => {
+    setPendingModalOpen(false);
+  }, []);
+
+  const handlePendingModalApply = useCallback(async () => {
+    const applyAtPlayhead = timelineActionsRef.current?.applyAtPlayhead;
+    if (applyAtPlayhead) {
+      await applyAtPlayhead();
+      return;
+    }
+    emitTimelineEvent(TIMELINE_EVENTS.APPLY_AT_PLAYHEAD, {});
+  }, []);
+
+  const handlePendingModalConnectAndPlay = useCallback(async () => {
+    const timelineActions = timelineActionsRef.current;
+    if (!timelineActions) {
+      return;
+    }
+    await timelineActions.applyAtPlayhead();
+    await timelineActions.play();
+  }, []);
+
+  const handlePendingModalConnectAndRecord = useCallback(async () => {
+    const timelineActions = timelineActionsRef.current;
+    if (!timelineActions || isRecording) {
+      return;
+    }
+    await timelineActions.applyAtPlayhead();
+    await timelineActions.recordAndPlay();
+  }, [isRecording]);
 
   const handleTimelineStateChange = useCallback(
     (state: TimelineState) => {
@@ -734,6 +784,7 @@ function ControlPanelInner({
           fillContainer
           onTimelineStateChange={handleTimelineStateChange}
           onTimelineLoadStateReady={handleTimelineLoadStateReady}
+          onTimelineActionsReady={handleTimelineActionsReady}
         />
       </ErrorBoundary>
     );
@@ -808,6 +859,12 @@ function ControlPanelInner({
             colorMap={pendingWhipColors}
             open={pendingModalOpen}
             onOpenChange={handlePendingModalOpenChange}
+            onActionClose={handlePendingModalActionClose}
+            onApplyAtPlayhead={handlePendingModalApply}
+            onConnectAndPlay={handlePendingModalConnectAndPlay}
+            onConnectAndRecord={handlePendingModalConnectAndRecord}
+            canConnectAndPlay={timelineActionsReady}
+            canConnectAndRecord={timelineActionsReady && !isRecording}
             welcomeTextBefore={showcaseWelcome?.before}
             welcomeTextAfter={showcaseWelcome?.after}
           />
@@ -848,6 +905,7 @@ function ControlPanelInner({
         fillContainer={false}
         onTimelineStateChange={handleTimelineStateChange}
         onTimelineLoadStateReady={handleTimelineLoadStateReady}
+        onTimelineActionsReady={handleTimelineActionsReady}
       />
     </ErrorBoundary>
   ) : null;
@@ -887,6 +945,12 @@ function ControlPanelInner({
       colorMap={pendingWhipColors}
       open={pendingModalOpen}
       onOpenChange={handlePendingModalOpenChange}
+      onActionClose={handlePendingModalActionClose}
+      onApplyAtPlayhead={handlePendingModalApply}
+      onConnectAndPlay={handlePendingModalConnectAndPlay}
+      onConnectAndRecord={handlePendingModalConnectAndRecord}
+      canConnectAndPlay={timelineActionsReady}
+      canConnectAndRecord={timelineActionsReady && !isRecording}
       welcomeTextBefore={showcaseWelcome?.before}
       welcomeTextAfter={showcaseWelcome?.after}
     />

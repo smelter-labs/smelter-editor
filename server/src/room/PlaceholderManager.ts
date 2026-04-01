@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { pathExists } from 'fs-extra';
 import { SmelterInstance } from '../smelter';
+import { DATA_DIR } from '../dataDir';
 import type { ShaderConfig } from '../types';
 import type { RoomInputState } from './types';
 
@@ -49,7 +50,7 @@ export class PlaceholderManager {
 
     const inputId = this.getPlaceholderId();
     const imagePath = path.join(
-      process.cwd(),
+      DATA_DIR,
       'pictures',
       PLACEHOLDER_LOGO_FILE,
     );

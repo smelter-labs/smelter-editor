@@ -13,6 +13,7 @@ import { logTimelineEvent } from '../dashboard';
 import { createDefaultSnakeGameInputState } from '../snakeGame/snakeGameState';
 import { createHandsStore } from '../hands/handStore';
 import type { ShaderConfig, ActiveTransition } from '../types';
+import { DATA_DIR } from '../dataDir';
 import type {
   RoomInputState,
   RegisterInputOptions,
@@ -79,7 +80,7 @@ export class InputManager {
       }
 
       const logoPath = path.join(
-        process.cwd(),
+        DATA_DIR,
         'pictures',
         PLACEHOLDER_LOGO_FILE,
       );
@@ -266,7 +267,7 @@ export class InputManager {
     }
 
     const baseDir = isAudio ? 'audios' : 'mp4s';
-    const mp4Path = path.join(process.cwd(), baseDir, resolvedFileName);
+    const mp4Path = path.join(DATA_DIR, baseDir, resolvedFileName);
     const mp4Name = resolvedFileName;
     const inputId = `${this.idPrefix}::local::sample_streamer::${Date.now()}`;
 
@@ -362,7 +363,7 @@ export class InputManager {
     const isAudio = hasAudio;
     const resolvedFileName = (isAudio ? opts.audioFileName : opts.fileName)!;
     const baseDir = isAudio ? 'audios' : 'mp4s';
-    const mp4Path = path.join(process.cwd(), baseDir, resolvedFileName);
+    const mp4Path = path.join(DATA_DIR, baseDir, resolvedFileName);
     if (!(await pathExists(mp4Path))) {
       throw new Error(`File not found in ${baseDir}/: ${resolvedFileName}`);
     }
@@ -405,7 +406,7 @@ export class InputManager {
   }
 
   private async registerImageAsset(fileName: string): Promise<string> {
-    const imagePath = path.join(process.cwd(), 'pictures', fileName);
+    const imagePath = path.join(DATA_DIR, 'pictures', fileName);
     if (!(await pathExists(imagePath))) {
       throw new Error(`Image not found in pictures/: ${fileName}`);
     }
@@ -443,7 +444,7 @@ export class InputManager {
     opts: Extract<RegisterInputOptions, { type: 'image' }>,
   ): Promise<string> {
     console.log('Adding image');
-    const picturesDir = path.join(process.cwd(), 'pictures');
+    const picturesDir = path.join(DATA_DIR, 'pictures');
     const inputId = `${this.idPrefix}::image::${Date.now()}`;
 
     let fileName = opts.fileName;

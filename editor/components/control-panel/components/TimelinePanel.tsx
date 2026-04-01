@@ -95,6 +95,12 @@ import { ResolveMissingAssetModal } from './ResolveMissingAssetModal';
 
 // ── Props ────────────────────────────────────────────────
 
+export type TimelinePanelActions = {
+  applyAtPlayhead: () => Promise<void>;
+  play: () => Promise<void>;
+  recordAndPlay: () => Promise<void>;
+};
+
 type TimelinePanelProps = {
   inputWrappers: InputWrapper[];
   listVersion: number;
@@ -111,6 +117,7 @@ type TimelinePanelProps = {
   onTimelineLoadStateReady?: (
     loadState: (state: TimelineState) => void,
   ) => void;
+  onTimelineActionsReady?: (actions: TimelinePanelActions | null) => void;
 };
 
 // Color maps, constants, and utility functions are in ./timeline/timeline-utils.ts
@@ -202,6 +209,7 @@ export function TimelinePanel({
   fillContainer,
   onTimelineStateChange,
   onTimelineLoadStateReady,
+  onTimelineActionsReady,
 }: TimelinePanelProps) {
   const { removeInput } = useActions();
   const { inputs, roomId, refreshState } = useControlPanelContext();
@@ -638,7 +646,7 @@ export function TimelinePanel({
     }
     const started = await startRec();
     if (started) {
-      play();
+      await play();
     }
   }, [
     isRecording,
@@ -648,6 +656,17 @@ export function TimelinePanel({
     startRec,
     stopAndDownload,
   ]);
+
+  useEffect(() => {
+    onTimelineActionsReady?.({
+      applyAtPlayhead,
+      play,
+      recordAndPlay: handleRecordAndPlay,
+    });
+    return () => {
+      onTimelineActionsReady?.(null);
+    };
+  }, [applyAtPlayhead, handleRecordAndPlay, onTimelineActionsReady, play]);
 
   useEffect(() => {
     if (wasPlayingRef.current && !state.isPlaying && isRecording) {

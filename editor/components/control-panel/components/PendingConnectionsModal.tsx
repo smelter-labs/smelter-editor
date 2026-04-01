@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Dialog,
   DialogContent,
@@ -8,8 +8,10 @@ import {
   DialogTitle,
   DialogDescription,
 } from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import LoadingSpinner from '@/components/ui/spinner';
 import { PendingWhipInputs } from './PendingWhipInputs';
 import {
   loadAutoModalSetting,
@@ -23,9 +25,17 @@ type PendingConnectionsModalProps = {
   colorMap: Record<string, string>;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onActionClose?: () => void;
+  onApplyAtPlayhead?: () => Promise<void>;
+  onConnectAndPlay?: () => Promise<void>;
+  onConnectAndRecord?: () => Promise<void>;
+  canConnectAndPlay?: boolean;
+  canConnectAndRecord?: boolean;
   welcomeTextBefore?: string;
   welcomeTextAfter?: string;
 };
+
+type PendingModalAction = 'connect' | 'play' | 'record' | null;
 
 export function PendingConnectionsModal({
   pendingWhipInputs,
@@ -33,15 +43,26 @@ export function PendingConnectionsModal({
   colorMap,
   open,
   onOpenChange,
+  onActionClose,
+  onApplyAtPlayhead,
+  onConnectAndPlay,
+  onConnectAndRecord,
+  canConnectAndPlay = false,
+  canConnectAndRecord = false,
   welcomeTextBefore,
   welcomeTextAfter,
 }: PendingConnectionsModalProps) {
   const [dontShow, setDontShow] = useState(false);
+  const [pendingAction, setPendingAction] = useState<PendingModalAction>(null);
+  const [isConnectAllReady, setIsConnectAllReady] = useState(false);
   const isShowcase = !!(welcomeTextBefore || welcomeTextAfter);
+  const connectAllRef = useRef<(() => Promise<boolean>) | null>(null);
 
   useEffect(() => {
     if (open) {
       setDontShow(!loadAutoModalSetting());
+      setPendingAction(null);
+      setIsConnectAllReady(false);
     }
   }, [open]);
 
@@ -55,10 +76,46 @@ export function PendingConnectionsModal({
   };
 
   useEffect(() => {
-    if (open && pendingWhipInputs.length === 0) {
+    if (open && pendingWhipInputs.length === 0 && pendingAction === null) {
       onOpenChange(false);
     }
-  }, [open, pendingWhipInputs.length, onOpenChange]);
+  }, [open, pendingAction, pendingWhipInputs.length, onOpenChange]);
+
+  const handleConnectAction = async (
+    action: Exclude<PendingModalAction, null>,
+  ) => {
+    const connectAll = connectAllRef.current;
+    if (!connectAll) {
+      return;
+    }
+
+    setPendingAction(action);
+    try {
+      const connectedAll = await connectAll();
+      if (!connectedAll) {
+        return;
+      }
+
+      if (action === 'connect') {
+        await onApplyAtPlayhead?.();
+      } else if (action === 'play') {
+        await onConnectAndPlay?.();
+      } else {
+        await onConnectAndRecord?.();
+      }
+
+      if (onActionClose) {
+        onActionClose();
+      } else {
+        onOpenChange(false);
+      }
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const isRunningAction = pendingAction !== null;
+  const canConnectAll = isConnectAllReady && connectAllRef.current !== null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -81,11 +138,13 @@ export function PendingConnectionsModal({
           </p>
         )}
 
-        <div className='max-h-80 overflow-y-auto'>
+        <div className='max-h-[70vh] overflow-y-auto'>
           <PendingWhipInputs
             pendingInputs={pendingWhipInputs}
             setPendingInputs={setPendingWhipInputs}
             colorMap={colorMap}
+            connectAllRef={connectAllRef}
+            onConnectAllReadyChange={setIsConnectAllReady}
           />
         </div>
 
@@ -94,6 +153,46 @@ export function PendingConnectionsModal({
             {welcomeTextAfter}
           </p>
         )}
+
+        <div className='border-t border-neutral-800 pt-3 space-y-2'>
+          <Button
+            size='lg'
+            className='w-full cursor-pointer'
+            disabled={!canConnectAll || isRunningAction}
+            onClick={() => void handleConnectAction('connect')}>
+            {pendingAction === 'connect' ? (
+              <LoadingSpinner size='sm' variant='spinner' />
+            ) : (
+              'Connect'
+            )}
+          </Button>
+          <div className='grid grid-cols-2 gap-2'>
+            <Button
+              variant='outline'
+              className='cursor-pointer'
+              disabled={!canConnectAll || !canConnectAndPlay || isRunningAction}
+              onClick={() => void handleConnectAction('play')}>
+              {pendingAction === 'play' ? (
+                <LoadingSpinner size='sm' variant='spinner' />
+              ) : (
+                'Connect & Play'
+              )}
+            </Button>
+            <Button
+              variant='outline'
+              className='cursor-pointer'
+              disabled={
+                !canConnectAll || !canConnectAndRecord || isRunningAction
+              }
+              onClick={() => void handleConnectAction('record')}>
+              {pendingAction === 'record' ? (
+                <LoadingSpinner size='sm' variant='spinner' />
+              ) : (
+                'Connect & Record'
+              )}
+            </Button>
+          </div>
+        </div>
 
         <div className='flex items-center gap-2 pt-3 border-t border-neutral-800'>
           <Switch

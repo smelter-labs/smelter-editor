@@ -107,6 +107,11 @@ export const STATIC_PANEL_IDS: StaticPanelId[] = Object.keys(
   STATIC_PANEL_DEFINITIONS,
 ) as StaticPanelId[];
 
+export const MOTION_PANEL_MIN_W =
+  STATIC_PANEL_DEFINITIONS['motion-detection'].minW;
+export const MOTION_PANEL_MIN_H =
+  STATIC_PANEL_DEFINITIONS['motion-detection'].minH;
+
 /** @deprecated Use STATIC_PANEL_IDS. */
 export const ALL_PANEL_IDS = STATIC_PANEL_IDS;
 
