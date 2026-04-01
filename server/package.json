@@ -10,15 +10,16 @@
     "start": "ts-node ./src/index.ts",
     "test": "vitest",
     "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "watch": "tsc --watch",
     "lint:fix": "eslint --fix --ext .js,.jsx,.ts,.tsx ."
   },
   "dependencies": {
-    "@smelter-editor/types": "workspace:*",
     "@fastify/cors": "^11.2.0",
     "@fastify/type-provider-typebox": "^5.2.0",
     "@fastify/websocket": "^11.2.0",
     "@sinclair/typebox": "^0.34.38",
+    "@smelter-editor/types": "workspace:*",
     "@swmansion/smelter": "^0.3.0",
     "@swmansion/smelter-node": "^0.3.2",
     "@types/fs-extra": "^11.0.4",
@@ -38,12 +39,13 @@
     "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^8.57.1",
     "@typescript-eslint/parser": "^8.57.1",
+    "@vitest/coverage-v8": "^4.1.2",
     "eslint": "^9.32.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.3",
     "prettier": "^3.6.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.5.3",
-    "vitest": "^3.2.4"
+    "vitest": "^4.1.2"
   }
 }

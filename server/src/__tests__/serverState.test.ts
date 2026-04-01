@@ -73,17 +73,18 @@ import { createRoomStore } from '../app/store';
 import { RESOLUTION_PRESETS } from '../types';
 
 // Wire up registerOutput to return a proper SmelterOutput
-mocks.smelter.registerOutput.mockImplementation(
-  async (roomId: string, resolution?: { width: number; height: number }) => {
-    const res = resolution ?? RESOLUTION_PRESETS['1440p'];
-    return {
-      id: roomId,
-      url: `http://test-whep/${roomId}`,
-      store: createRoomStore(res),
-      resolution: res,
-    };
-  },
-);
+mocks.smelter.registerOutput.mockImplementation((async (
+  roomId: string,
+  resolution?: { width: number; height: number },
+) => {
+  const res = resolution ?? RESOLUTION_PRESETS['1440p'];
+  return {
+    id: roomId,
+    url: `http://test-whep/${roomId}`,
+    store: createRoomStore(res),
+    resolution: res,
+  };
+}) as any);
 
 const { ServerState } = await import('../server/serverState');
 
@@ -93,17 +94,18 @@ let state: ServerStateInstance;
 beforeEach(() => {
   vi.clearAllMocks();
   // Re-apply default implementation after clearAllMocks
-  mocks.smelter.registerOutput.mockImplementation(
-    async (roomId: string, resolution?: { width: number; height: number }) => {
-      const res = resolution ?? RESOLUTION_PRESETS['1440p'];
-      return {
-        id: roomId,
-        url: `http://test-whep/${roomId}`,
-        store: createRoomStore(res),
-        resolution: res,
-      };
-    },
-  );
+  mocks.smelter.registerOutput.mockImplementation((async (
+    roomId: string,
+    resolution?: { width: number; height: number },
+  ) => {
+    const res = resolution ?? RESOLUTION_PRESETS['1440p'];
+    return {
+      id: roomId,
+      url: `http://test-whep/${roomId}`,
+      store: createRoomStore(res),
+      resolution: res,
+    };
+  }) as any);
   mocks.pathExists.mockResolvedValue(false);
   mocks.ensureDir.mockResolvedValue(undefined);
   mocks.readdir.mockResolvedValue([]);
@@ -146,6 +148,7 @@ describe('ServerState', () => {
       expect(mocks.smelter.registerOutput).toHaveBeenCalledWith(
         expect.any(String),
         resolution,
+        expect.any(Object),
       );
     });
   });
