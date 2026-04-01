@@ -3,7 +3,14 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "scripts": {},
-  "devDependencies": {},
-  "dependencies": {}
+  "scripts": {
+    "knip": "knip",
+    "snip-snip": "node ./scripts/snip-snip.mjs",
+    "snip-snip:dry": "pnpm snip-snip --dry-run"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "knip": "^6.1.1",
+    "typescript": "^6.0.2"
+  }
 }
