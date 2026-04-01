@@ -77,15 +77,7 @@ export class SmelterManager {
       serverPath: path.join(__dirname, '../loading.gif'),
       assetType: 'gif',
     });
-    await this.instance.registerImage('news_strip', {
-      serverPath: path.join(
-        process.cwd(),
-        'mp4s',
-        'news_strip',
-        'news_strip.png',
-      ),
-      assetType: 'png',
-    });
+
     await this.instance.registerImage('smelter_logo', {
       serverPath: path.join(__dirname, '../imgs/smelter_logo.png'),
       assetType: 'png',
