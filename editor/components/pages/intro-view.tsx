@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 
 import StatusLabel from '@/components/ui/status-label';
@@ -103,6 +103,7 @@ function getBasePath(pathname: string): string {
 export default function IntroView() {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [loadingNew, setLoadingNew] = useState(false);
   const [loadingImport, setLoadingImport] = useState(false);
   const [importProgress, setImportProgress] =
@@ -721,6 +722,15 @@ export default function IntroView() {
     setCrashRecovery(null);
     await importConfig(crashRecovery.config);
   }, [crashRecovery, importConfig]);
+
+  const autoRestoreTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (autoRestoreTriggeredRef.current) return;
+    if (searchParams.get('restore') !== 'true') return;
+    if (!crashRecovery) return;
+    autoRestoreTriggeredRef.current = true;
+    handleRecoveryRestore();
+  }, [searchParams, crashRecovery, handleRecoveryRestore]);
 
   const handleStartShowcase = useCallback(
     async (configItem: SavedItemInfo) => {

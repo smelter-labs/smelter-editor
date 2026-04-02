@@ -9,6 +9,7 @@ import {
 } from '@/components/control-panel/components/timeline/timeline-utils';
 import { hexToHsla } from '@/lib/color-utils';
 import { defaultAbsoluteRect } from '@/lib/source-fit';
+import { Checkbox } from '@/components/ui/checkbox';
 
 interface LayoutPreviewPanelProps {
   roomId: string;
@@ -106,7 +107,7 @@ export function LayoutPreviewPanel({
   const { updateInput } = useActions();
 
   const [showActive, setShowActive] = useState(true);
-  const [showInactive, setShowInactive] = useState(true);
+  const [showInactive, setShowInactive] = useState(false);
   const [showAudio, setShowAudio] = useState(false);
 
   const filteredInputs = useMemo(() => {
@@ -538,38 +539,40 @@ export function LayoutPreviewPanel({
   );
 
   return (
-    <div className='flex flex-col h-full bg-[#080808]'>
-      <div className='flex justify-between items-center px-3 py-1.5 text-[#b9cacb] border-b border-[#3a494b]/20 shrink-0 font-mono text-[10px]'>
-        <span className='tracking-widest uppercase'>Layout_Map</span>
-        <span className='text-[#849495]'>
-          {resolution.width}x{resolution.height}
+    <div className='flex flex-col h-full bg-neutral-950/80'>
+      <div className='flex justify-between items-center px-3 py-1.5 text-neutral-400 border-b border-neutral-800/60 shrink-0 font-mono text-[10px]'>
+        <span className='tracking-widest uppercase text-neutral-300'>
+          Layout_Map
         </span>
+        <div className='flex items-center gap-3.5'>
+          {[
+            { id: 'lp-active', label: 'Active', checked: showActive, set: setShowActive },
+            { id: 'lp-inactive', label: 'Inactive', checked: showInactive, set: setShowInactive },
+            { id: 'lp-audio', label: 'Audio', checked: showAudio, set: setShowAudio },
+          ].map(({ id, label, checked, set }) => (
+            <label
+              key={id}
+              htmlFor={id}
+              className='flex items-center gap-1.5 cursor-pointer select-none hover:text-neutral-300 transition-colors'>
+              <Checkbox
+                id={id}
+                checked={checked}
+                onCheckedChange={(v) => set(!!v)}
+                className='size-3'
+              />
+              {label}
+            </label>
+          ))}
+          <span className='text-neutral-600 ml-1'>
+            {resolution.width}x{resolution.height}
+          </span>
+        </div>
       </div>
 
-      <div className='flex items-center gap-3 px-3 py-1 border-b border-[#3a494b]/10 shrink-0 font-mono text-[10px] text-[#849495]'>
-        {[
-          { label: 'Active', checked: showActive, set: setShowActive },
-          { label: 'Inactive', checked: showInactive, set: setShowInactive },
-          { label: 'Audio', checked: showAudio, set: setShowAudio },
-        ].map(({ label, checked, set }) => (
-          <label
-            key={label}
-            className='flex items-center gap-1 cursor-pointer select-none hover:text-[#b9cacb] transition-colors'>
-            <input
-              type='checkbox'
-              checked={checked}
-              onChange={(e) => set(e.target.checked)}
-              className='accent-[#849495] w-3 h-3 cursor-pointer'
-            />
-            {label}
-          </label>
-        ))}
-      </div>
-
-      <div className='flex-1 flex items-center justify-center px-10 py-3 min-h-0'>
+      <div className='flex-1 flex items-center justify-center px-6 py-3 min-h-0'>
         <div
           ref={containerRef}
-          className='relative w-full border border-[#3a494b]/40 bg-black select-none'
+          className='relative w-full border border-neutral-800/60 bg-black/80 select-none'
           style={{
             height: canvasHeight || 'auto',
             aspectRatio: canvasHeight
@@ -735,22 +738,20 @@ export function LayoutPreviewPanel({
       </div>
 
       {filteredInputs.length > 0 && (
-        <div className='flex flex-wrap gap-x-3 gap-y-0.5 px-3 pb-2 font-mono text-[9px] text-[#b9cacb] shrink-0'>
+        <div className='flex flex-wrap gap-x-3 gap-y-0.5 px-3 py-1.5 border-t border-neutral-800/40 font-mono text-[9px] text-neutral-500 shrink-0'>
           {filteredInputs.map((input) => {
             const colors = inputColorMap.get(input.inputId);
+            const active = !!activeClipColors?.[input.inputId];
             return (
               <span
                 key={input.inputId}
-                className='flex items-center gap-1 truncate max-w-[120px]'
+                className='flex items-center gap-1 truncate max-w-[130px]'
                 style={{
-                  opacity: input.hidden
-                    ? 0.15
-                    : activeClipColors?.[input.inputId]
-                      ? 1
-                      : 0.45,
+                  opacity: input.hidden ? 0.15 : active ? 1 : 0.5,
+                  color: active ? '#b9cacb' : undefined,
                 }}>
                 <span
-                  className='inline-block w-2 h-2 shrink-0 rounded-sm'
+                  className='inline-block w-1.5 h-1.5 shrink-0 rounded-full'
                   style={{
                     backgroundColor: colors?.dot ?? '#737373',
                   }}
