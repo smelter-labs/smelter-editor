@@ -130,7 +130,11 @@ export class InputManager {
 
   private async addNewWhipInput(username: string): Promise<string> {
     const inputId = `${this.idPrefix}::whip::${Date.now()}`;
-    const cleanUsername = username.replace(/\[Camera\]\s*/g, '').trim();
+    const isScreenshare = /\bscreenshare\b/i.test(username);
+    const cleanUsername = username
+      .replace(/\[(camera|screenshare|live)\]\s*/gi, '')
+      .trim();
+    const liveTitle = isScreenshare ? '[Live] Screenshare' : '[Live] Camera';
     const monitor = await WhipInputMonitor.startMonitor(cleanUsername);
     monitor.touch();
     this.inputs.push({
@@ -146,7 +150,7 @@ export class InputManager {
       motionEnabled: false,
       monitor,
       metadata: {
-        title: `[Camera] ${cleanUsername}`,
+        title: liveTitle,
         description: `Whip Input for ${username}`,
       },
       volume: 0,
