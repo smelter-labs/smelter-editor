@@ -85,6 +85,8 @@ const CONTINUOUS_DECAY_RATE = 3.0;
 const CONTINUOUS_MIN_VELOCITY = 12;
 const CONTINUOUS_BOOST_FACTOR = 3.5;
 const CONTINUOUS_MAX_VELOCITY = 800;
+const MIN_IMPORT_DIALOG_VISIBLE_MS = 3000;
+const MAX_IMPORT_DIALOG_VISIBLE_MS = 5000;
 
 function createSeededRandom(seed: number) {
   let state = (seed ^ 0xa5a5a5a5) >>> 0;
@@ -653,9 +655,26 @@ function GpuCanvas({
 }
 
 export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
-  const total = progress?.total ?? 0;
-  const current = progress ? Math.min(progress.current, total) : 0;
-  const percent = total > 0 ? Math.round((current / total) * 100) : 0;
+  const [visibleProgress, setVisibleProgress] =
+    useState<ImportProgressState | null>(progress);
+  const openedAtRef = useRef<number | null>(progress ? Date.now() : null);
+  const sessionMinVisibleMsRef = useRef(MIN_IMPORT_DIALOG_VISIBLE_MS);
+  const closeTimeoutRef = useRef<number | null>(null);
+  const [, setDisplayTick] = useState(0);
+  const total = visibleProgress?.total ?? 0;
+  const current = visibleProgress ? Math.min(visibleProgress.current, total) : 0;
+  const elapsedMs =
+    openedAtRef.current === null ? 0 : Math.max(Date.now() - openedAtRef.current, 0);
+  const sessionProgressRatio =
+    sessionMinVisibleMsRef.current > 0
+      ? Math.min(elapsedMs / sessionMinVisibleMsRef.current, 1)
+      : 1;
+  const sessionCurrentCap =
+    total > 0 ? Math.floor(total * sessionProgressRatio) : 0;
+  const displayedCurrent = visibleProgress
+    ? Math.min(current, sessionCurrentCap)
+    : 0;
+  const percent = total > 0 ? Math.round((displayedCurrent / total) * 100) : 0;
   const [sessionSeed, setSessionSeed] = useState(0);
   const [displayValues, setDisplayValues] =
     useState<number[]>(zeroMetricValues);
@@ -669,7 +688,59 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
   const continuousLastTimeRef = useRef<number | null>(null);
 
   useEffect(() => {
-    const isOpen = progress !== null;
+    if (visibleProgress === null) return;
+
+    const intervalId = window.setInterval(() => {
+      setDisplayTick((previous) => previous + 1);
+    }, 50);
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, [visibleProgress]);
+
+  useEffect(() => {
+    if (progress !== null) {
+      if (closeTimeoutRef.current !== null) {
+        window.clearTimeout(closeTimeoutRef.current);
+        closeTimeoutRef.current = null;
+      }
+      if (openedAtRef.current === null) {
+        openedAtRef.current = Date.now();
+        const range =
+          MAX_IMPORT_DIALOG_VISIBLE_MS - MIN_IMPORT_DIALOG_VISIBLE_MS;
+        sessionMinVisibleMsRef.current =
+          MIN_IMPORT_DIALOG_VISIBLE_MS + Math.floor(Math.random() * (range + 1));
+      }
+      setVisibleProgress(progress);
+      return;
+    }
+
+    if (visibleProgress === null) {
+      openedAtRef.current = null;
+      return;
+    }
+
+    const openedAt = openedAtRef.current ?? Date.now();
+    const elapsed = Date.now() - openedAt;
+    const delayMs = Math.max(sessionMinVisibleMsRef.current - elapsed, 0);
+
+    closeTimeoutRef.current = window.setTimeout(() => {
+      setVisibleProgress(null);
+      openedAtRef.current = null;
+      closeTimeoutRef.current = null;
+    }, delayMs);
+
+    return () => {
+      if (closeTimeoutRef.current !== null) {
+        window.clearTimeout(closeTimeoutRef.current);
+        closeTimeoutRef.current = null;
+      }
+    };
+  }, [progress, visibleProgress]);
+
+  useEffect(() => {
+    const isOpen = visibleProgress !== null;
 
     if (isOpen && !wasOpenRef.current) {
       setSessionSeed((previous) => previous + 1);
@@ -699,7 +770,7 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
     }
 
     wasOpenRef.current = isOpen;
-  }, [progress]);
+  }, [visibleProgress]);
 
   const metricPlans = useMemo<ImportMetricPlan[]>(() => {
     const random = createSeededRandom(Math.max(sessionSeed, 1));
@@ -731,14 +802,14 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
         delayMs: 140 + Math.round(random() * 800),
       };
     });
-  }, [current, sessionSeed, total]);
+  }, [displayedCurrent, sessionSeed, total]);
 
   const targetValuesKey = metricPlans
     .map((metric) => metric.currentDisplayValue)
     .join(':');
 
   useEffect(() => {
-    if (progress === null) {
+    if (visibleProgress === null) {
       if (animationFrameRef.current !== null) {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
@@ -796,10 +867,10 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
         animationFrameRef.current = null;
       }
     };
-  }, [metricPlans, progress, targetValuesKey]);
+  }, [metricPlans, visibleProgress, targetValuesKey]);
 
   useEffect(() => {
-    if (progress === null || CONTINUOUS_METRIC_INDEX < 0) {
+    if (visibleProgress === null || CONTINUOUS_METRIC_INDEX < 0) {
       if (continuousRafRef.current !== null) {
         cancelAnimationFrame(continuousRafRef.current);
         continuousRafRef.current = null;
@@ -885,16 +956,16 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
         continuousRafRef.current = null;
       }
     };
-  }, [metricPlans, progress, current, total]);
+  }, [metricPlans, visibleProgress, displayedCurrent, total]);
 
   return (
-    <Dialog open={progress !== null} onOpenChange={() => {}}>
+    <Dialog open={visibleProgress !== null} onOpenChange={() => {}}>
       <DialogContent
         className='max-w-md overflow-hidden border-cyan-400/20 bg-neutral-950/70 shadow-[0_0_60px_rgba(8,145,178,0.12)] [&>button]:hidden'
         onEscapeKeyDown={(event) => event.preventDefault()}
         onPointerDownOutside={(event) => event.preventDefault()}
         onInteractOutside={(event) => event.preventDefault()}>
-        <GpuCanvas percent={percent} isActive={progress !== null} />
+        <GpuCanvas percent={percent} isActive={visibleProgress !== null} />
         <DialogHeader className='relative'>
           <DialogTitle>Importing Configuration</DialogTitle>
           <DialogDescription className='text-neutral-400'>
@@ -915,7 +986,7 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
                   Render pipeline
                 </p>
                 <p className='text-sm font-medium text-white'>
-                  {progress?.phase}
+                  {visibleProgress?.phase}
                 </p>
               </div>
               <p className='text-sm text-cyan-100 tabular-nums drop-shadow-[0_0_10px_rgba(34,211,238,0.45)]'>
@@ -931,7 +1002,7 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
               <div className='flex items-center justify-between text-[10px] uppercase tracking-[0.26em] text-neutral-500'>
                 <span>telemetry sync</span>
                 <span className='tabular-nums'>
-                  {current} / {total}
+                  {displayedCurrent} / {total}
                 </span>
               </div>
             </div>
