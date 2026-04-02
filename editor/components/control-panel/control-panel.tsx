@@ -86,6 +86,13 @@ import {
 } from '@/lib/voice/macroSettings';
 import { FeedbackPositionPicker } from '@/components/voice-action-feedback/FeedbackPositionPicker';
 import {
+  useTimelineEventsEnabledSetting,
+  useTimelineEventsPositionSetting,
+  useTimelineEventsSizeSetting,
+  useTimelineEventsDurationSetting,
+} from '@/lib/timeline-event-settings';
+import { useTimelineEventDetection } from '@/hooks/use-timeline-event-detection';
+import {
   BlockClipPropertiesPanel,
   type SelectedTimelineClip,
 } from './components/BlockClipPropertiesPanel';
@@ -499,6 +506,8 @@ function ControlPanelInner({
   >([]);
   const [timelinePlayheadMs, setTimelinePlayheadMs] = useState(0);
   const timelineStateRef = useRef<TimelineState | null>(null);
+
+  useTimelineEventDetection(timelineStateRef, inputs);
   const timelineLoadStateRef = useRef<((state: TimelineState) => void) | null>(
     null,
   );
@@ -1015,6 +1024,13 @@ function SettingsBar({
   const [feedbackEnabled, setFeedbackEnabled] = useFeedbackEnabledSetting();
   const [feedbackSize, setFeedbackSize] = useFeedbackSizeSetting();
   const [feedbackDuration, setFeedbackDuration] = useFeedbackDurationSetting();
+  const [tlEventsEnabled, setTlEventsEnabled] =
+    useTimelineEventsEnabledSetting();
+  const [tlEventsPosition, setTlEventsPosition] =
+    useTimelineEventsPositionSetting();
+  const [tlEventsSize, setTlEventsSize] = useTimelineEventsSizeSetting();
+  const [tlEventsDuration, setTlEventsDuration] =
+    useTimelineEventsDurationSetting();
   const [defaultOrientation, setDefaultOrientation] =
     useDefaultOrientationSetting();
   const [voicePanelSize, setVoicePanelSize] = useVoicePanelSizeSetting();
@@ -1930,6 +1946,23 @@ function SettingsBar({
                       onSizeChange={setFeedbackSize}
                       duration={feedbackDuration}
                       onDurationChange={setFeedbackDuration}
+                    />
+                  </section>
+                  <div className='h-px bg-card' />
+                  <section className='space-y-2 px-1'>
+                    <h4 className='text-sm font-medium text-foreground'>
+                      Timeline Event Notifications
+                    </h4>
+                    <FeedbackPositionPicker
+                      label='Show Timeline Events'
+                      enabled={tlEventsEnabled}
+                      onEnabledChange={setTlEventsEnabled}
+                      position={tlEventsPosition}
+                      onPositionChange={setTlEventsPosition}
+                      size={tlEventsSize}
+                      onSizeChange={setTlEventsSize}
+                      duration={tlEventsDuration}
+                      onDurationChange={setTlEventsDuration}
                     />
                   </section>
                 </div>

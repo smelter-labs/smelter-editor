@@ -116,15 +116,20 @@ export function PendingConnectionsModal({
 
   const isRunningAction = pendingAction !== null;
   const canConnectAll = isConnectAllReady && connectAllRef.current !== null;
+  const isConnecting = pendingAction === 'connect';
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='max-w-lg'>
         <DialogHeader>
           <DialogTitle>
-            {isShowcase ? 'Welcome' : 'Pending Connections'}
+            {isConnecting
+              ? 'Connecting inputs'
+              : isShowcase
+                ? 'Welcome'
+                : 'Pending Connections'}
           </DialogTitle>
-          {!isShowcase && (
+          {!isShowcase && !isConnecting && (
             <DialogDescription>
               The following WHIP inputs need to be connected. Choose camera or
               screen for each one.
@@ -132,81 +137,92 @@ export function PendingConnectionsModal({
           )}
         </DialogHeader>
 
-        {welcomeTextBefore && (
-          <p className='text-sm text-neutral-300 whitespace-pre-wrap'>
-            {welcomeTextBefore}
-          </p>
-        )}
-
-        <div className='max-h-[70vh] overflow-y-auto'>
-          <PendingWhipInputs
-            pendingInputs={pendingWhipInputs}
-            setPendingInputs={setPendingWhipInputs}
-            colorMap={colorMap}
-            connectAllRef={connectAllRef}
-            onConnectAllReadyChange={setIsConnectAllReady}
+        {welcomeTextBefore && !isConnecting && (
+          <div
+            className='rich-text-content text-sm text-neutral-300'
+            dangerouslySetInnerHTML={{ __html: welcomeTextBefore }}
           />
-        </div>
-
-        {welcomeTextAfter && (
-          <p className='text-sm text-neutral-300 whitespace-pre-wrap'>
-            {welcomeTextAfter}
-          </p>
         )}
 
-        <div className='border-t border-neutral-800 pt-3 space-y-2'>
-          <Button
-            size='lg'
-            className='w-full cursor-pointer'
-            disabled={!canConnectAll || isRunningAction}
-            onClick={() => void handleConnectAction('connect')}>
-            {pendingAction === 'connect' ? (
-              <LoadingSpinner size='sm' variant='spinner' />
-            ) : (
-              'Connect'
-            )}
-          </Button>
-          <div className='grid grid-cols-2 gap-2'>
-            <Button
-              variant='outline'
-              className='cursor-pointer'
-              disabled={!canConnectAll || !canConnectAndPlay || isRunningAction}
-              onClick={() => void handleConnectAction('play')}>
-              {pendingAction === 'play' ? (
-                <LoadingSpinner size='sm' variant='spinner' />
-              ) : (
-                'Connect & Play'
-              )}
-            </Button>
-            <Button
-              variant='outline'
-              className='cursor-pointer'
-              disabled={
-                !canConnectAll || !canConnectAndRecord || isRunningAction
-              }
-              onClick={() => void handleConnectAction('record')}>
-              {pendingAction === 'record' ? (
-                <LoadingSpinner size='sm' variant='spinner' />
-              ) : (
-                'Connect & Record'
-              )}
-            </Button>
+        {isConnecting ? (
+          <div className='flex min-h-48 flex-col items-center justify-center gap-3 py-8'>
+            <LoadingSpinner size='lg' variant='spinner' />
+            <p className='text-sm text-neutral-300'>Connecting inputs...</p>
           </div>
-        </div>
+        ) : (
+          <div className='max-h-[70vh] overflow-y-auto'>
+            <PendingWhipInputs
+              pendingInputs={pendingWhipInputs}
+              setPendingInputs={setPendingWhipInputs}
+              colorMap={colorMap}
+              connectAllRef={connectAllRef}
+              onConnectAllReadyChange={setIsConnectAllReady}
+            />
+          </div>
+        )}
 
-        <div className='flex items-center gap-2 pt-3 border-t border-neutral-800'>
-          <Switch
-            id='pending-modal-dont-show'
-            checked={dontShow}
-            onCheckedChange={handleDontShowChange}
-            className='cursor-pointer'
+        {welcomeTextAfter && !isConnecting && (
+          <div
+            className='rich-text-content text-sm text-neutral-300'
+            dangerouslySetInnerHTML={{ __html: welcomeTextAfter }}
           />
-          <Label
-            htmlFor='pending-modal-dont-show'
-            className='text-xs text-neutral-400 cursor-pointer select-none'>
-            Don&apos;t show this on project open
-          </Label>
-        </div>
+        )}
+
+        {!isConnecting && (
+          <div className='border-t border-neutral-800 pt-3 space-y-2'>
+            <Button
+              size='lg'
+              className='w-full cursor-pointer'
+              disabled={!canConnectAll || isRunningAction}
+              onClick={() => void handleConnectAction('connect')}>
+              Connect
+            </Button>
+            <div className='grid grid-cols-2 gap-2'>
+              <Button
+                variant='outline'
+                className='cursor-pointer'
+                disabled={
+                  !canConnectAll || !canConnectAndPlay || isRunningAction
+                }
+                onClick={() => void handleConnectAction('play')}>
+                {pendingAction === 'play' ? (
+                  <LoadingSpinner size='sm' variant='spinner' />
+                ) : (
+                  'Connect & Play'
+                )}
+              </Button>
+              <Button
+                variant='outline'
+                className='cursor-pointer'
+                disabled={
+                  !canConnectAll || !canConnectAndRecord || isRunningAction
+                }
+                onClick={() => void handleConnectAction('record')}>
+                {pendingAction === 'record' ? (
+                  <LoadingSpinner size='sm' variant='spinner' />
+                ) : (
+                  'Connect & Record'
+                )}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {!isConnecting && (
+          <div className='flex items-center gap-2 pt-3 border-t border-neutral-800'>
+            <Switch
+              id='pending-modal-dont-show'
+              checked={dontShow}
+              onCheckedChange={handleDontShowChange}
+              className='cursor-pointer'
+            />
+            <Label
+              htmlFor='pending-modal-dont-show'
+              className='text-xs text-neutral-400 cursor-pointer select-none'>
+              Don&apos;t show this on project open
+            </Label>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

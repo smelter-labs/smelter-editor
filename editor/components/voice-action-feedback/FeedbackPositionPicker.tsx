@@ -19,6 +19,7 @@ type Props = {
   onSizeChange: (size: FeedbackSize) => void;
   duration: number;
   onDurationChange: (seconds: number) => void;
+  label?: string;
 };
 
 const GRID: FeedbackPosition[][] = [
@@ -42,6 +43,7 @@ export function FeedbackPositionPicker({
   onSizeChange,
   duration,
   onDurationChange,
+  label = 'Voice Command Toast Notifications',
 }: Props) {
   return (
     <div className='space-y-2'>
@@ -51,7 +53,7 @@ export function FeedbackPositionPicker({
           onCheckedChange={(checked) => onEnabledChange(!!checked)}
         />
         <span className='text-xs text-neutral-400'>
-          Voice Command Toast Notifications
+          {label}
         </span>
       </label>
       {enabled && (

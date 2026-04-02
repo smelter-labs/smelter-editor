@@ -400,6 +400,7 @@ export default function InputEntry({
             onSliderChange={handleSliderChange}
             getShaderParamConfig={getShaderParamConfig}
             onOpenAddShader={() => setIsAddShaderModalOpen(true)}
+            allowInlineValueEdit
           />
         </div>
 
@@ -595,6 +596,7 @@ export default function InputEntry({
               onSliderChange={handleSliderChange}
               getShaderParamConfig={getShaderParamConfig}
               onOpenAddShader={() => setIsAddShaderModalOpen(true)}
+              allowInlineValueEdit
             />
           </div>
         )}

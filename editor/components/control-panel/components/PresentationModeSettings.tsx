@@ -2,8 +2,8 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
-import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
+import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import LoadingSpinner from '@/components/ui/spinner';
 import { toast } from 'sonner';
 import { Trash2, Download, Check } from 'lucide-react';
@@ -211,31 +211,23 @@ export function PresentationModeSettings({
       <section className='space-y-3'>
         <h4 className='text-sm font-medium text-foreground'>Welcome Modal</h4>
         <div className='space-y-2'>
-          <Label
-            htmlFor='welcome-before'
-            className='text-xs text-muted-foreground'>
+          <Label className='text-xs text-muted-foreground'>
             Text before pending connections
           </Label>
-          <Textarea
-            id='welcome-before'
-            placeholder='Welcome! Please connect your camera or screenshare below...'
+          <RichTextEditor
             value={welcomeTextBefore}
-            onChange={(e) => setWelcomeTextBefore(e.target.value)}
-            className='min-h-[60px] text-sm'
+            onChange={setWelcomeTextBefore}
+            placeholder='Welcome! Please connect your camera or screenshare below...'
           />
         </div>
         <div className='space-y-2'>
-          <Label
-            htmlFor='welcome-after'
-            className='text-xs text-muted-foreground'>
+          <Label className='text-xs text-muted-foreground'>
             Text after pending connections
           </Label>
-          <Textarea
-            id='welcome-after'
-            placeholder='Once connected, the presentation will begin automatically.'
+          <RichTextEditor
             value={welcomeTextAfter}
-            onChange={(e) => setWelcomeTextAfter(e.target.value)}
-            className='min-h-[60px] text-sm'
+            onChange={setWelcomeTextAfter}
+            placeholder='Once connected, the presentation will begin automatically.'
           />
         </div>
       </section>

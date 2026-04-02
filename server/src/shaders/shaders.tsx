@@ -1039,6 +1039,7 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
         minValue: 0.1,
         maxValue: 5,
         defaultValue: 1.5,
+        step: 0.0001,
       },
       {
         name: 'center_x',

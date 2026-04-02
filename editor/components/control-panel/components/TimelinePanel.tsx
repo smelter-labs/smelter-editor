@@ -2044,13 +2044,23 @@ export function TimelinePanel({
           (a, b) => a.timeMs - b.timeMs,
         );
 
+        let resolvedKeyframeId: string | null = selectedKeyframeId;
+        if (isClipSelected && !resolvedKeyframeId) {
+          const offsetMs = Math.max(0, state.playheadMs - clip.startMs);
+          const atPlayhead = sortedKeyframes
+            .filter((k) => k.timeMs <= offsetMs)
+            .pop();
+          resolvedKeyframeId =
+            atPlayhead?.id ??
+            clip.keyframes.find((k) => k.timeMs === 0)?.id ??
+            null;
+        }
+
         return clip.keyframes.map((keyframe) => {
           const leftPx =
             ((clip.startMs + keyframe.timeMs) / 1000) * state.pixelsPerSecond;
           const isSelected =
-            isClipSelected &&
-            (selectedKeyframeId === keyframe.id ||
-              (selectedKeyframeId == null && keyframe.timeMs === 0));
+            isClipSelected && resolvedKeyframeId === keyframe.id;
 
           return (
             <Button
@@ -2113,6 +2123,7 @@ export function TimelinePanel({
       selectedClipIds,
       selectedKeyframeId,
       state.pixelsPerSecond,
+      state.playheadMs,
       handleKeyframePointerDown,
     ],
   );
