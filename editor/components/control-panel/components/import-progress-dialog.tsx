@@ -975,6 +975,10 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
             <div className='grid gap-2'>
               {metricPlans.map((metric, index) => {
                 const animatedValue = displayValues[index] ?? 0;
+                const animatedPercent =
+                  metric.totalDisplayValue > 0
+                    ? Math.round((animatedValue / metric.totalDisplayValue) * 100)
+                    : 0;
 
                 return (
                   <div
@@ -1015,7 +1019,7 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
                           'rounded-full border px-2 py-1 font-mono text-[10px] uppercase tracking-[0.24em] tabular-nums',
                           metric.badgeClassName,
                         )}>
-                        {metric.percent}%
+                        {animatedPercent}%
                       </span>
                     </div>
 
@@ -1025,7 +1029,7 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
                           'absolute inset-y-0 left-0 rounded-full bg-gradient-to-r transition-[width] duration-300 ease-out',
                           metric.barClassName,
                         )}
-                        style={{ width: `${metric.percent}%` }}
+                        style={{ width: `${animatedPercent}%` }}
                       />
                     </div>
                   </div>
