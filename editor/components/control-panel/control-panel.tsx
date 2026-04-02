@@ -1217,7 +1217,7 @@ function SettingsBar({
   );
 
   const navLinkClass =
-    'uppercase tracking-widest text-xl font-bold text-[#849495] hover:text-[#00f3ff] border-b-2 border-b-transparent hover:border-b-[#00f3ff] pb-[6px] transition-colors px-2 py-1 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed';
+    'relative inline-flex h-12 mt-2 items-center justify-center px-2 uppercase tracking-widest text-xl font-bold leading-none text-[#849495] transition-colors hover:text-[#00f3ff] after:pointer-events-none after:absolute after:left-2 after:right-2 after:bottom-3 after:h-[2px] after:rounded-full after:bg-transparent after:content-[""] hover:after:bg-[#00f3ff] disabled:opacity-50 disabled:cursor-not-allowed';
 
   const recordLabel = isWaitingForDownload
     ? 'Wait...'
@@ -1328,7 +1328,7 @@ function SettingsBar({
             disabled={isTogglingRecording || isWaitingForDownload}
             className={`${navLinkClass} ${
               isRecording
-                ? 'text-red-400 border-b-2 border-red-400 hover:text-red-300'
+                ? 'text-red-400 after:bg-red-400 hover:text-red-300 hover:after:bg-red-300'
                 : ''
             }`}>
             {recordLabel}
