@@ -97,40 +97,6 @@ function createSeededRandom(seed: number) {
   };
 }
 
-function splitWeightedTotal(total: number, weights: number[]) {
-  if (total <= 0) {
-    return IMPORT_METRICS.map(() => 0);
-  }
-
-  const minimumPerMetric = total >= weights.length ? 1 : 0;
-  const base = weights.map(() => minimumPerMetric);
-  const guaranteedTotal = minimumPerMetric * weights.length;
-  const distributable = Math.max(total - guaranteedTotal, 0);
-  const sumOfWeights = weights.reduce((sum, value) => sum + value, 0) || 1;
-  const rawShares = weights.map(
-    (weight) => (weight / sumOfWeights) * distributable,
-  );
-  const totals = rawShares.map(
-    (share, index) => base[index] + Math.floor(share),
-  );
-  const remainder = total - totals.reduce((sum, value) => sum + value, 0);
-
-  if (remainder > 0) {
-    rawShares
-      .map((share, index) => ({
-        index,
-        fraction: share - Math.floor(share),
-      }))
-      .sort((left, right) => right.fraction - left.fraction)
-      .slice(0, remainder)
-      .forEach(({ index }) => {
-        totals[index] += 1;
-      });
-  }
-
-  return totals;
-}
-
 function formatMetricValue(value: number) {
   return value.toLocaleString('en-US');
 }
@@ -774,16 +740,15 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
 
   const metricPlans = useMemo<ImportMetricPlan[]>(() => {
     const random = createSeededRandom(Math.max(sessionSeed, 1));
-    const weights = IMPORT_METRICS.map(
-      (_, index) => 0.8 + random() * 1.35 + (index === 2 ? 0.22 : 0),
-    );
-    const totals = splitWeightedTotal(Math.max(total, 1), weights);
+    const baseTotal = Math.max(total, 1);
+    const ratioFromProgress = total > 0 ? displayedCurrent / total : 0;
+    const ratio = Math.max(ratioFromProgress, sessionProgressRatio);
 
     return IMPORT_METRICS.map((metric, index) => {
-      const metricTotal = totals[index] ?? 0;
-      const phaseOffset = random() * 0.75;
-      const preciseCurrent =
-        total > 0 ? ((current + phaseOffset) / total) * metricTotal : 0;
+      const targetScale = 7 + random() * 16 + (index === 2 ? 8 : 0);
+      const metricTotal = Math.max(1, Math.round(baseTotal * targetScale));
+      const paceBias = 0.8 + random() * 0.45;
+      const preciseCurrent = Math.min(1, Math.pow(ratio, paceBias)) * metricTotal;
       const metricCurrent = Math.min(metricTotal, Math.floor(preciseCurrent));
       const currentDisplayValue = metricCurrent * metric.multiplier;
       const totalDisplayValue = metricTotal * metric.multiplier;
@@ -802,7 +767,7 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
         delayMs: 140 + Math.round(random() * 800),
       };
     });
-  }, [displayedCurrent, sessionSeed, total]);
+  }, [displayedCurrent, sessionProgressRatio, sessionSeed, total]);
 
   const targetValuesKey = metricPlans
     .map((metric) => metric.currentDisplayValue)
