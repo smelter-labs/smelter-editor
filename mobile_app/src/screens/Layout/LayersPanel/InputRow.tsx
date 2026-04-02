@@ -26,7 +26,11 @@ export interface InputRowProps {
   inputs: InputCard[];
   layers: Layer[];
   dimmed: boolean;
-  onMoveToLayer: (inputId: string, fromLayerId: string, toLayerId: string) => void;
+  onMoveToLayer: (
+    inputId: string,
+    fromLayerId: string,
+    toLayerId: string,
+  ) => void;
 }
 
 export function InputRow({

@@ -86,7 +86,14 @@ export function Layer({
         />
       </SortableItem>
     ),
-    [layer.id, inputs, allLayers, ui.isVisible, handleInputMove, onInputMoveLayer],
+    [
+      layer.id,
+      inputs,
+      allLayers,
+      ui.isVisible,
+      handleInputMove,
+      onInputMoveLayer,
+    ],
   );
 
   return (
@@ -103,9 +110,7 @@ export function Layer({
           name={ui.name}
           isVisible={ui.isVisible}
           isCollapsed={ui.isCollapsed}
-          onToggleCollapse={() =>
-            onUiChange({ isCollapsed: !ui.isCollapsed })
-          }
+          onToggleCollapse={() => onUiChange({ isCollapsed: !ui.isCollapsed })}
           onToggleVisible={() => onUiChange({ isVisible: !ui.isVisible })}
           onNameChange={(name) => onUiChange({ name })}
         />
