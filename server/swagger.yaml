@@ -1,0 +1,1083 @@
+openapi: 3.0.0
+info:
+  title: Smelter Server API
+  description: REST API for managing streaming rooms, inputs, shaders, and recordings
+  version: 1.0.0
+  contact:
+    name: Smelter Team
+
+servers:
+  - url: http://localhost:3001
+    description: Local development server
+  - url: https://api.smelter.example.com
+    description: Production server
+
+tags:
+  - name: Rooms
+    description: Operations on streaming rooms and their configuration
+  - name: Inputs
+    description: Operations on input sources (Twitch, Kick, MP4, images, etc.)
+  - name: Shaders
+    description: Available special effects/shaders for processing video
+  - name: Recordings
+    description: Recording management operations
+  - name: Suggestions
+    description: Auto-complete suggestions for various input types
+
+paths:
+  /active-rooms:
+    get:
+      tags:
+        - Rooms
+      summary: Get list of active rooms
+      description: Returns all currently active streaming rooms
+      operationId: getActiveRooms
+      responses:
+        '200':
+          description: List of active rooms
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rooms:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ActiveRoom'
+              example:
+                rooms:
+                  - roomId: room-123
+                    roomName: 'My Stream'
+                  - roomId: room-456
+                    roomName:
+                      en: 'Gaming Session'
+                      es: 'Sesión de juegos'
+
+  /rooms:
+    get:
+      tags:
+        - Rooms
+      summary: Get all rooms with details
+      description: Returns comprehensive information about all rooms
+      operationId: getAllRooms
+      responses:
+        '200':
+          description: List of rooms with full details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rooms:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/RoomDetail'
+
+  /room:
+    post:
+      tags:
+        - Rooms
+      summary: Create a new room
+      description: Creates a new streaming room with initial inputs and configuration
+      operationId: createRoom
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRoomRequest'
+      responses:
+        '200':
+          description: Room created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateRoomResponse'
+        '400':
+          description: Invalid request parameters
+        '500':
+          description: Server error creating room
+
+  /room/{roomId}:
+    get:
+      tags:
+        - Rooms
+      summary: Get room state
+      description: Returns the current state of a room including inputs, layers, and shaders
+      operationId: getRoomState
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: The unique identifier of the room
+      responses:
+        '200':
+          description: Room state snapshot
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RoomState'
+        '404':
+          description: Room not found
+
+    post:
+      tags:
+        - Rooms
+      summary: Update room state
+      description: Updates room configuration including layers, shaders, and output settings
+      operationId: updateRoom
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: x-source-id
+          in: header
+          schema:
+            type: string
+          description: Optional source identifier for request tracking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRoomRequest'
+      responses:
+        '200':
+          description: Room updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  layers:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Layer'
+        '400':
+          description: Invalid update parameters
+        '404':
+          description: Room not found
+
+  /room/{roomId}/input/{inputId}:
+    post:
+      tags:
+        - Inputs
+      summary: Update input properties
+      description: Updates configuration of a specific input source
+      operationId: updateInput
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: inputId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: x-source-id
+          in: header
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateInputRequest'
+      responses:
+        '200':
+          description: Input updated successfully
+        '400':
+          description: Invalid input parameters
+        '404':
+          description: Input not found
+
+    delete:
+      tags:
+        - Inputs
+      summary: Remove input from room
+      description: Deletes an input source from the room
+      operationId: removeInput
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: inputId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Input removed successfully
+        '404':
+          description: Input not found
+
+  /room/{roomId}/input/{inputId}/show:
+    post:
+      tags:
+        - Inputs
+      summary: Show input in output
+      description: Makes an input visible in the output stream
+      operationId: showInput
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: inputId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Input shown successfully
+        '404':
+          description: Input not found
+
+  /room/{roomId}/input/{inputId}/hide:
+    post:
+      tags:
+        - Inputs
+      summary: Hide input from output
+      description: Removes an input from visible output (but keeps it in the room)
+      operationId: hideInput
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: inputId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Input hidden successfully
+        '404':
+          description: Input not found
+
+  /shaders:
+    get:
+      tags:
+        - Shaders
+      summary: Get available shaders/effects
+      description: Returns list of all available shaders that can be applied to inputs or output
+      operationId: getAvailableShaders
+      responses:
+        '200':
+          description: List of available shaders
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  shaders:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/AvailableShader'
+              example:
+                shaders:
+                  - id: ascii-filter
+                    name: ASCII Filter
+                    description: Converts input to ASCII art
+                    shaderFile: ascii-filter.wgsl
+                    params:
+                      - name: glyph_size
+                        type: number
+                        minValue: 1
+                        maxValue: 100
+                        defaultValue: 10
+                  - id: grayscale
+                    name: Grayscale
+                    description: Converts input to grayscale
+                    shaderFile: grayscale.wgsl
+
+  /suggestions/twitch:
+    get:
+      tags:
+        - Suggestions
+      summary: Get Twitch channel suggestions
+      description: Returns list of trending Twitch channels for quick input addition
+      operationId: getTwitchSuggestions
+      responses:
+        '200':
+          description: List of Twitch channel suggestions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  suggestions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ChannelSuggestion'
+
+  /suggestions/kick:
+    get:
+      tags:
+        - Suggestions
+      summary: Get Kick channel suggestions
+      description: Returns list of trending Kick channels for quick input addition
+      operationId: getKickSuggestions
+      responses:
+        '200':
+          description: List of Kick channel suggestions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  suggestions:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ChannelSuggestion'
+
+  /suggestions/mp4s:
+    get:
+      tags:
+        - Suggestions
+      summary: Get available MP4 files
+      description: Returns list of MP4 files available for playback as input
+      operationId: getMP4Suggestions
+      responses:
+        '200':
+          description: List of available MP4 files
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  files:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MediaFile'
+
+  /suggestions/pictures:
+    get:
+      tags:
+        - Suggestions
+      summary: Get available images
+      description: Returns list of image files available for use as input
+      operationId: getPictureSuggestions
+      responses:
+        '200':
+          description: List of available image files
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  files:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MediaFile'
+
+  /suggestions:
+    get:
+      tags:
+        - Suggestions
+      summary: Get all suggestions
+      description: Returns aggregated suggestions for all available input types
+      operationId: getAllSuggestions
+      responses:
+        '200':
+          description: All available suggestions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  twitch:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ChannelSuggestion'
+                  kick:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ChannelSuggestion'
+                  mp4s:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MediaFile'
+                  pictures:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MediaFile'
+
+  /recordings:
+    get:
+      tags:
+        - Recordings
+      summary: Get all recordings
+      description: Returns list of all saved recordings
+      operationId: getRecordings
+      responses:
+        '200':
+          description: List of all recordings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recordings:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Recording'
+
+  /room/{roomId}/recordings:
+    get:
+      tags:
+        - Recordings
+      summary: Get recordings for a specific room
+      description: Returns all recordings associated with a particular room
+      operationId: getRoomRecordings
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: List of room-specific recordings
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  recordings:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Recording'
+        '404':
+          description: Room not found
+
+  /room/{roomId}/record/start:
+    post:
+      tags:
+        - Recordings
+      summary: Start recording
+      description: Begins recording the output stream of a room
+      operationId: startRecording
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Recording started successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  roomId:
+                    type: string
+                  fileName:
+                    type: string
+                  startTime:
+                    type: string
+                    format: date-time
+        '400':
+          description: Recording already in progress
+        '404':
+          description: Room not found
+
+  /room/{roomId}/record/stop:
+    post:
+      tags:
+        - Recordings
+      summary: Stop recording
+      description: Ends the current recording session for a room
+      operationId: stopRecording
+      parameters:
+        - name: roomId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        '200':
+          description: Recording stopped successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  roomId:
+                    type: string
+                  fileName:
+                    type: string
+                  duration:
+                    type: integer
+                    description: Duration in milliseconds
+        '400':
+          description: No recording in progress
+        '404':
+          description: Room not found
+
+  /recordings/{fileName}:
+    get:
+      tags:
+        - Recordings
+      summary: Download recording file
+      description: Downloads a recorded video file
+      operationId: downloadRecording
+      parameters:
+        - name: fileName
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Recording file
+          content:
+            video/mp4:
+              schema:
+                type: string
+                format: binary
+        '404':
+          description: Recording not found
+
+components:
+  schemas:
+    ActiveRoom:
+      type: object
+      required:
+        - roomId
+        - roomName
+      properties:
+        roomId:
+          type: string
+          description: Unique identifier for the room
+        roomName:
+          oneOf:
+            - type: string
+              description: Room display name in English
+            - type: object
+              description: Localized room names
+              additionalProperties:
+                type: string
+
+    RoomDetail:
+      allOf:
+        - $ref: '#/components/schemas/ActiveRoom'
+        - type: object
+          properties:
+            isPublic:
+              type: boolean
+            pendingDelete:
+              type: boolean
+            isRecording:
+              type: boolean
+            isFrozen:
+              type: boolean
+            audioAnalysisEnabled:
+              type: boolean
+
+    CreateRoomRequest:
+      type: object
+      properties:
+        initInputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/RegisterInputOptions'
+          description: Initial inputs to add to the room
+        skipDefaultInputs:
+          type: boolean
+          default: false
+          description: Skip adding default test inputs
+        resolution:
+          $ref: '#/components/schemas/ResolutionRequest'
+
+    CreateRoomResponse:
+      type: object
+      required:
+        - roomId
+        - roomName
+        - whepUrl
+        - resolution
+      properties:
+        roomId:
+          type: string
+        roomName:
+          oneOf:
+            - type: string
+            - type: object
+              additionalProperties:
+                type: string
+        whepUrl:
+          type: string
+          format: uri
+          description: WebRTC Endpoint (WHEP) URL for output stream
+        resolution:
+          $ref: '#/components/schemas/Resolution'
+
+    RoomState:
+      type: object
+      properties:
+        roomName:
+          oneOf:
+            - type: string
+            - type: object
+              additionalProperties:
+                type: string
+        inputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/PublicInputState'
+        layers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Layer'
+        whepUrl:
+          type: string
+          format: uri
+        pendingDelete:
+          type: boolean
+        isPublic:
+          type: boolean
+        resolution:
+          $ref: '#/components/schemas/Resolution'
+        pendingWhipInputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/PendingWhipInput'
+        swapDurationMs:
+          type: integer
+        swapOutgoingEnabled:
+          type: boolean
+        swapFadeInDurationMs:
+          type: integer
+        newsStripFadeDuringSwap:
+          type: boolean
+        swapFadeOutDurationMs:
+          type: integer
+        newsStripEnabled:
+          type: boolean
+        isRecording:
+          type: boolean
+        isFrozen:
+          type: boolean
+        audioAnalysisEnabled:
+          type: boolean
+
+    UpdateRoomRequest:
+      type: object
+      properties:
+        layers:
+          type: array
+          items:
+            $ref: '#/components/schemas/Layer'
+          description: Updated layer configuration
+        resolution:
+          $ref: '#/components/schemas/Resolution'
+        newsStripEnabled:
+          type: boolean
+        swapDurationMs:
+          type: integer
+        swapOutgoingEnabled:
+          type: boolean
+        swapFadeInDurationMs:
+          type: integer
+        swapFadeOutDurationMs:
+          type: integer
+        newsStripFadeDuringSwap:
+          type: boolean
+
+    PublicInputState:
+      type: object
+      required:
+        - inputId
+        - inputType
+        - title
+        - status
+      properties:
+        inputId:
+          type: string
+        inputType:
+          type: string
+          enum:
+            - twitch
+            - kick
+            - mp4
+            - picture
+            - text
+            - camera
+            - snake-game
+            - hands
+            - hls
+        title:
+          type: string
+        status:
+          type: string
+          enum:
+            - connected
+            - disconnected
+            - error
+        hidden:
+          type: boolean
+        volume:
+          type: number
+          minimum: 0
+          maximum: 1
+        isMuted:
+          type: boolean
+        isRunning:
+          type: boolean
+        sourceState:
+          type: string
+        motionScore:
+          type: number
+        nativeWidth:
+          type: integer
+        nativeHeight:
+          type: integer
+        shaders:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShaderConfig'
+        timestamp:
+          type: string
+          format: date-time
+
+    UpdateInputRequest:
+      type: object
+      properties:
+        title:
+          type: string
+        volume:
+          type: number
+          minimum: 0
+          maximum: 1
+        isMuted:
+          type: boolean
+        hidden:
+          type: boolean
+        shaders:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShaderConfig'
+        displaySize:
+          type: number
+        any:
+          type: object
+          description: Other input-specific properties
+
+    Layer:
+      type: object
+      required:
+        - id
+        - inputs
+      properties:
+        id:
+          type: string
+          description: Layer unique identifier
+        inputs:
+          type: array
+          items:
+            $ref: '#/components/schemas/LayerInput'
+          description: Input references in this layer
+
+    LayerInput:
+      type: object
+      required:
+        - inputId
+        - width
+        - height
+        - x
+        - y
+      properties:
+        inputId:
+          type: string
+        width:
+          type: integer
+        height:
+          type: integer
+        x:
+          type: integer
+        y:
+          type: integer
+        cropTop:
+          type: integer
+          default: 0
+        cropBottom:
+          type: integer
+          default: 0
+        cropLeft:
+          type: integer
+          default: 0
+        cropRight:
+          type: integer
+          default: 0
+        transitionDurationMs:
+          type: integer
+        transitionEasing:
+          type: string
+          enum:
+            - linear
+            - bounce
+            - cubic_bezier_ease_in_out
+
+    Resolution:
+      type: object
+      required:
+        - width
+        - height
+      properties:
+        width:
+          type: integer
+        height:
+          type: integer
+
+    ResolutionRequest:
+      oneOf:
+        - type: string
+          enum:
+            - '1080p'
+            - '720p'
+            - '480p'
+            - 'ultra-wide'
+        - $ref: '#/components/schemas/Resolution'
+
+    AvailableShader:
+      type: object
+      required:
+        - id
+        - name
+        - shaderFile
+      properties:
+        id:
+          type: string
+          description: Unique shader identifier
+        name:
+          type: string
+          description: Display name for the shader
+        description:
+          type: string
+          description: What the shader does
+        shaderFile:
+          type: string
+          description: Path to the WGSL shader file
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShaderParamDefinition'
+          description: Available parameters for configuring the shader
+
+    ShaderParamDefinition:
+      oneOf:
+        - type: object
+          required:
+            - name
+            - type
+            - defaultValue
+          properties:
+            name:
+              type: string
+            type:
+              type: string
+              enum:
+                - number
+            minValue:
+              type: number
+            maxValue:
+              type: number
+            defaultValue:
+              type: number
+        - type: object
+          required:
+            - name
+            - type
+            - defaultValue
+          properties:
+            name:
+              type: string
+            type:
+              type: string
+              enum:
+                - color
+            defaultValue:
+              type: string
+              pattern: '^#[0-9a-fA-F]{6}$'
+
+    ShaderConfig:
+      type: object
+      required:
+        - shaderName
+        - shaderId
+        - enabled
+        - params
+      properties:
+        shaderName:
+          type: string
+        shaderId:
+          type: string
+        enabled:
+          type: boolean
+        params:
+          type: array
+          items:
+            $ref: '#/components/schemas/ShaderParamConfig'
+
+    ShaderParamConfig:
+      type: object
+      required:
+        - paramName
+        - paramValue
+      properties:
+        paramName:
+          type: string
+        paramValue:
+          oneOf:
+            - type: number
+            - type: string
+
+    RegisterInputOptions:
+      type: object
+      required:
+        - inputType
+      properties:
+        inputType:
+          type: string
+          enum:
+            - twitch
+            - kick
+            - mp4
+            - picture
+            - text
+            - camera
+            - snake-game
+            - hands
+            - hls
+        title:
+          type: string
+        channelId:
+          type: string
+        mp4FileName:
+          type: string
+        imageFileNameOrId:
+          type: string
+        text:
+          type: string
+        textAlign:
+          type: string
+          enum:
+            - left
+            - center
+            - right
+        url:
+          type: string
+        username:
+          type: string
+        sourceInputId:
+          type: string
+
+    ChannelSuggestion:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        viewers:
+          type: integer
+        thumbnail:
+          type: string
+          format: uri
+
+    MediaFile:
+      type: object
+      properties:
+        name:
+          type: string
+        fileName:
+          type: string
+        thumbnail:
+          type: string
+          format: uri
+        duration:
+          type: integer
+          description: Duration in milliseconds (for video files)
+        width:
+          type: integer
+          description: Image/video width in pixels
+        height:
+          type: integer
+          description: Image/video height in pixels
+
+    PendingWhipInput:
+      type: object
+      properties:
+        inputId:
+          type: string
+        whipUrl:
+          type: string
+          format: uri
+        status:
+          type: string
+
+    Recording:
+      type: object
+      properties:
+        fileName:
+          type: string
+        roomId:
+          type: string
+        duration:
+          type: integer
+          description: Duration in milliseconds
+        fileSize:
+          type: integer
+          description: File size in bytes
+        createdAt:
+          type: string
+          format: date-time
+        width:
+          type: integer
+        height:
+          type: integer
+
+  responses:
+    NotFound:
+      description: Resource not found
+    Unauthorized:
+      description: Unauthorized
+    BadRequest:
+      description: Bad request
