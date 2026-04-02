@@ -69,6 +69,9 @@ export type TimelineState = {
   playheadMs: number;
   isPlaying: boolean;
   pixelsPerSecond: number;
+  /** Runtime-only: inputIds that have appeared on clips. Prevents SYNC_TRACKS
+   *  from auto-creating tracks for inputs that were deliberately swapped out. */
+  knownInputIds: Set<string>;
 };
 
 // ── Actions ──────────────────────────────────────────────
@@ -146,6 +149,14 @@ type TimelineAction =
       timeMs: number;
     }
   | { type: 'PURGE_INPUT_ID'; inputId: string }
+  | { type: 'REORDER_TRACK'; trackId: string; newIndex: number }
+  | {
+      type: 'SWAP_CLIP_INPUT';
+      trackId: string;
+      clipId: string;
+      newInputId: string;
+      sourceUpdates?: Partial<BlockSettings>;
+    }
   | {
       type: 'MOVE_CLIPS';
       moves: { trackId: string; clipId: string; newStartMs: number }[];
@@ -153,7 +164,8 @@ type TimelineAction =
   | {
       type: 'DELETE_CLIPS';
       clips: { trackId: string; clipId: string }[];
-    };
+    }
+  | { type: 'CLEANUP_SPURIOUS_WHIP_TRACK'; inputId: string };
 
 // ── Constants ────────────────────────────────────────────
 
@@ -391,13 +403,45 @@ function inferTypeFromInputId(inputId: string): string | null {
   return null;
 }
 
+function claimUniqueId(id: string | undefined, usedIds: Set<string>): string {
+  let nextId = id || genId();
+  while (usedIds.has(nextId)) {
+    nextId = genId();
+  }
+  usedIds.add(nextId);
+  return nextId;
+}
+
+function ensureUniqueTrackStructureIds(tracks: Track[]): Track[] {
+  const usedTrackIds = new Set<string>();
+  return tracks.map((track) => {
+    const usedClipIds = new Set<string>();
+    return {
+      ...track,
+      id: claimUniqueId(track.id, usedTrackIds),
+      clips: track.clips.map((clip) => {
+        const usedKeyframeIds = new Set<string>();
+        return {
+          ...clip,
+          id: claimUniqueId(clip.id, usedClipIds),
+          keyframes: (clip.keyframes ?? []).map((keyframe) => ({
+            ...keyframe,
+            id: claimUniqueId(keyframe.id, usedKeyframeIds),
+          })),
+        };
+      }),
+    };
+  });
+}
+
 function normalizeTracks(
   tracks: Track[],
   inputs: Input[],
   totalDurationMs: number,
 ): Track[] {
+  const tracksWithUniqueIds = ensureUniqueTrackStructureIds(tracks);
   const inputById = new Map(inputs.map((input) => [input.inputId, input]));
-  return tracks.map((track) => ({
+  return tracksWithUniqueIds.map((track) => ({
     ...track,
     clips: clampClips(
       track.clips.map((clip) =>
@@ -457,7 +501,11 @@ function ensureOutputTrack(tracks: Track[], totalDurationMs: number): Track[] {
               ...t,
               clips: t.clips.map((c) =>
                 c.id === OUTPUT_CLIP_ID
-                  ? syncClipKeyframes({ ...c, startMs: 0, endMs: totalDurationMs })
+                  ? syncClipKeyframes({
+                      ...c,
+                      startMs: 0,
+                      endMs: totalDurationMs,
+                    })
                   : c,
               ),
             }
@@ -477,6 +525,7 @@ function createInitialState(): TimelineState {
     playheadMs: 0,
     isPlaying: false,
     pixelsPerSecond: DEFAULT_PPS,
+    knownInputIds: new Set(),
   };
 }
 
@@ -527,6 +576,7 @@ function migrateV1ToV2(stored: Record<string, unknown>): TimelineState | null {
     playheadMs: 0,
     isPlaying: false,
     pixelsPerSecond: (stored.pixelsPerSecond as number) || DEFAULT_PPS,
+    knownInputIds: new Set<string>(),
   };
 }
 
@@ -539,9 +589,19 @@ export function timelineReducer(
   switch (action.type) {
     case 'SYNC_TRACKS': {
       if (action.inputs.length === 0) {
+        const hasExistingClips = state.tracks.some(
+          (track) => track.id !== OUTPUT_TRACK_ID && track.clips.length > 0,
+        );
+        // Room refreshes can momentarily report zero inputs while the server is
+        // still reconnecting imported sources. Keep the current timeline
+        // instead of wiping it and rebuilding every clip from 0:00.
+        if (hasExistingClips) {
+          return state;
+        }
         return {
           ...state,
           tracks: ensureOutputTrack([], state.totalDurationMs),
+          knownInputIds: new Set<string>(),
         };
       }
 
@@ -612,15 +672,31 @@ export function timelineReducer(
           nowCoveredInputIds.add(clip.inputId);
         }
       }
+
+      // Update knownInputIds: prune IDs no longer in the room, keep all covered IDs.
+      const updatedKnownInputIds = new Set<string>();
+      for (const id of state.knownInputIds) {
+        if (currentInputIds.has(id)) {
+          updatedKnownInputIds.add(id);
+        }
+      }
+      for (const id of nowCoveredInputIds) {
+        updatedKnownInputIds.add(id);
+      }
+
       let nextTrackNumber = newTracks.length + 1;
       const brandNewTracks: Track[] = [];
       for (const input of action.inputs) {
-        if (!nowCoveredInputIds.has(input.inputId)) {
+        if (
+          !nowCoveredInputIds.has(input.inputId) &&
+          !updatedKnownInputIds.has(input.inputId)
+        ) {
           brandNewTracks.push({
             id: genId(),
             label: `Track ${nextTrackNumber}`,
             clips: [makeFullClip(input.inputId, state.totalDurationMs, input)],
           });
+          updatedKnownInputIds.add(input.inputId);
           nextTrackNumber++;
         }
       }
@@ -631,6 +707,7 @@ export function timelineReducer(
           [...brandNewTracks, ...newTracks],
           state.totalDurationMs,
         ),
+        knownInputIds: updatedKnownInputIds,
       };
     }
 
@@ -673,6 +750,7 @@ export function timelineReducer(
         tracks: ensureOutputTrack(tracks, state.totalDurationMs),
         playheadMs: 0,
         isPlaying: false,
+        knownInputIds: new Set(action.inputs.map((i) => i.inputId)),
       };
     }
 
@@ -981,7 +1059,26 @@ export function timelineReducer(
       };
     }
 
+    case 'REORDER_TRACK': {
+      if (action.trackId === OUTPUT_TRACK_ID) return state;
+      const oldIndex = state.tracks.findIndex((t) => t.id === action.trackId);
+      if (oldIndex < 0) return state;
+      const targetIndex = Math.max(
+        0,
+        Math.min(action.newIndex, state.tracks.length - 1),
+      );
+      if (targetIndex === oldIndex) return state;
+      const targetTrack = state.tracks[targetIndex];
+      if (targetTrack && targetTrack.id === OUTPUT_TRACK_ID) return state;
+      const newTracks = [...state.tracks];
+      const [moved] = newTracks.splice(oldIndex, 1);
+      newTracks.splice(targetIndex, 0, moved);
+      return { ...state, tracks: newTracks };
+    }
+
     case 'REPLACE_INPUT_ID': {
+      const updatedKnown = new Set(state.knownInputIds);
+      updatedKnown.add(action.newInputId);
       const tracks = state.tracks.map((track) => ({
         ...track,
         clips: track.clips.map((clip) =>
@@ -990,7 +1087,46 @@ export function timelineReducer(
             : clip,
         ),
       }));
-      return { ...state, tracks };
+      return { ...state, tracks, knownInputIds: updatedKnown };
+    }
+
+    case 'SWAP_CLIP_INPUT': {
+      const { trackId, clipId, newInputId, sourceUpdates } = action;
+      // Mark both the old and new inputIds as known so SYNC_TRACKS won't
+      // auto-create tracks for the swapped-out input or the incoming one.
+      const updatedKnown = new Set(state.knownInputIds);
+      const targetTrack = state.tracks.find((t) => t.id === trackId);
+      const targetClip = targetTrack?.clips.find((c) => c.id === clipId);
+      if (targetClip) updatedKnown.add(targetClip.inputId);
+      updatedKnown.add(newInputId);
+
+      return {
+        ...state,
+        knownInputIds: updatedKnown,
+        tracks: state.tracks.map((track) => {
+          if (track.id !== trackId) return track;
+          return {
+            ...track,
+            clips: track.clips.map((clip) => {
+              if (clip.id !== clipId) return clip;
+              const mergedSettings = sourceUpdates
+                ? { ...clip.blockSettings, ...sourceUpdates }
+                : clip.blockSettings;
+              return {
+                ...clip,
+                inputId: newInputId,
+                blockSettings: mergedSettings,
+                keyframes: clip.keyframes.map((kf) => ({
+                  ...kf,
+                  blockSettings: sourceUpdates
+                    ? { ...kf.blockSettings, ...sourceUpdates }
+                    : kf.blockSettings,
+                })),
+              };
+            }),
+          };
+        }),
+      };
     }
 
     case 'UPDATE_CLIP_SETTINGS': {
@@ -1316,16 +1452,39 @@ export function timelineReducer(
       return { ...state, tracks: newTracks };
     }
 
-    case 'LOAD':
+    case 'CLEANUP_SPURIOUS_WHIP_TRACK': {
+      const topTrack = state.tracks.find((t) => t.id !== OUTPUT_TRACK_ID);
+      if (!topTrack) return state;
+      if (topTrack.clips.length !== 1) return state;
+      const clip = topTrack.clips[0];
+      if (clip.inputId !== action.inputId) return state;
+      const isFullSpan =
+        clip.startMs === 0 && clip.endMs >= state.totalDurationMs;
+      if (!isFullSpan) return state;
+      return {
+        ...state,
+        tracks: state.tracks.filter((t) => t.id !== topTrack.id),
+      };
+    }
+
+    case 'LOAD': {
+      const normalizedTracks = normalizeTracks(
+        action.state.tracks,
+        [],
+        action.state.totalDurationMs,
+      );
+      const finalTracks = ensureOutputTrack(
+        normalizedTracks,
+        action.state.totalDurationMs,
+      );
       return {
         ...action.state,
-        tracks: ensureOutputTrack(
-          action.state.tracks,
-          action.state.totalDurationMs,
-        ),
+        tracks: finalTracks,
         keyframeInterpolationMode:
           action.state.keyframeInterpolationMode ?? 'step',
+        knownInputIds: new Set(action.state.knownInputIds),
       };
+    }
 
     default:
       return state;
@@ -1352,6 +1511,7 @@ const UNDOABLE_ACTIONS = new Set<TimelineAction['type']>([
   'RENAME_TRACK',
   'ADD_TRACK',
   'DELETE_TRACK',
+  'REORDER_TRACK',
   'RESET',
   'UPDATE_CLIP_SETTINGS',
   'SET_KEYFRAME_INTERPOLATION_MODE',
@@ -1360,6 +1520,7 @@ const UNDOABLE_ACTIONS = new Set<TimelineAction['type']>([
   'DELETE_KEYFRAME',
   'MOVE_KEYFRAME',
   'PURGE_INPUT_ID',
+  'SWAP_CLIP_INPUT',
   'MOVE_CLIPS',
   'DELETE_CLIPS',
 ]);
@@ -1379,6 +1540,7 @@ function undoableReducer(
         playheadMs: state.current.playheadMs,
         pixelsPerSecond: state.current.pixelsPerSecond,
         isPlaying: state.current.isPlaying,
+        knownInputIds: state.current.knownInputIds,
       },
       past: state.past.slice(0, -1),
       future: [state.current, ...state.future],
@@ -1394,6 +1556,7 @@ function undoableReducer(
         playheadMs: state.current.playheadMs,
         pixelsPerSecond: state.current.pixelsPerSecond,
         isPlaying: state.current.isPlaying,
+        knownInputIds: state.current.knownInputIds,
       },
       past: [...state.past, state.current],
       future: state.future.slice(1),
@@ -1429,17 +1592,15 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
       } else {
         const totalDurationMs =
           (stored.totalDurationMs as number) || DEFAULT_DURATION_MS;
+        const parsedTracks = storedTracksToTracks(stored.tracks);
         initial = {
-          tracks: normalizeTracks(
-            storedTracksToTracks(stored.tracks),
-            inputs,
-            totalDurationMs,
-          ),
+          tracks: normalizeTracks(parsedTracks, inputs, totalDurationMs),
           totalDurationMs,
           keyframeInterpolationMode: stored.keyframeInterpolationMode ?? 'step',
           playheadMs: 0,
           isPlaying: false,
           pixelsPerSecond: stored.pixelsPerSecond || DEFAULT_PPS,
+          knownInputIds: new Set(inputs.map((input) => input.inputId)),
         };
       }
     } else {
@@ -1599,9 +1760,33 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     setStructureRevision((rev) => rev + 1);
   }, []);
 
+  const reorderTrack = useCallback((trackId: string, newIndex: number) => {
+    dispatch({ type: 'REORDER_TRACK', trackId, newIndex });
+    setStructureRevision((rev) => rev + 1);
+  }, []);
+
   const replaceInputId = useCallback(
     (oldInputId: string, newInputId: string) => {
       dispatch({ type: 'REPLACE_INPUT_ID', oldInputId, newInputId });
+      setStructureRevision((rev) => rev + 1);
+    },
+    [],
+  );
+
+  const swapClipInput = useCallback(
+    (
+      trackId: string,
+      clipId: string,
+      newInputId: string,
+      sourceUpdates?: Partial<BlockSettings>,
+    ) => {
+      dispatch({
+        type: 'SWAP_CLIP_INPUT',
+        trackId,
+        clipId,
+        newInputId,
+        sourceUpdates,
+      });
       setStructureRevision((rev) => rev + 1);
     },
     [],
@@ -1674,6 +1859,11 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     setStructureRevision((rev) => rev + 1);
   }, []);
 
+  const cleanupSpuriousWhipTrack = useCallback((inputId: string) => {
+    dispatch({ type: 'CLEANUP_SPURIOUS_WHIP_TRACK', inputId });
+    setStructureRevision((rev) => rev + 1);
+  }, []);
+
   const moveClips = useCallback(
     (moves: { trackId: string; clipId: string; newStartMs: number }[]) => {
       dispatch({ type: 'MOVE_CLIPS', moves });
@@ -1718,13 +1908,16 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     renameTrack,
     addTrack,
     deleteTrack,
+    reorderTrack,
     replaceInputId,
+    swapClipInput,
     updateClipSettings,
     addKeyframe,
     updateKeyframe,
     deleteKeyframe,
     moveKeyframe,
     purgeInputId,
+    cleanupSpuriousWhipTrack,
     moveClips,
     deleteClips,
     undo,

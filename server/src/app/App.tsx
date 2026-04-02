@@ -2,7 +2,13 @@ import { View, Rescaler, Shader } from '@swmansion/smelter';
 
 import type { RoomStore } from './store';
 import type { StoreApi } from 'zustand';
-import { StoreContext, useResolution, useInputs, useOutputShaders } from './store';
+import {
+  StoreContext,
+  useResolution,
+  useInputs,
+  useOutputShaders,
+  useViewport,
+} from './store';
 import { NewsStripOverlay } from './news-strip';
 import { Input } from '../inputs/inputs';
 import { wrapWithShaders } from '../utils/shaderUtils';
@@ -43,11 +49,23 @@ function OutputScene() {
   const resolution = useResolution();
   const inputs = useInputs();
   const outputShaders = useOutputShaders();
+  const viewport = useViewport();
   const { width, height } = resolution;
 
   const activeOutputShaders = outputShaders.filter((s) => s.enabled);
 
-  const scene = (
+  const vT = viewport.viewportTop ?? 0;
+  const vL = viewport.viewportLeft ?? 0;
+  const vW = viewport.viewportWidth ?? width;
+  const vH = viewport.viewportHeight ?? height;
+  const hasViewport = vT !== 0 || vL !== 0 || vW !== width || vH !== height;
+
+  const viewportTransition = {
+    durationMs: viewport.viewportTransitionDurationMs ?? 300,
+    easingFunction: buildEasingFunction(viewport.viewportTransitionEasing),
+  };
+
+  const innerScene = (
     <View
       style={{
         backgroundColor: '#000000',
@@ -105,6 +123,19 @@ function OutputScene() {
       })}
       <NewsStripOverlay />
     </View>
+  );
+
+  const scene = hasViewport ? (
+    <View style={{ width, height, backgroundColor: '#000000' }}>
+      <Rescaler
+        id='viewport'
+        transition={viewportTransition}
+        style={{ top: vT, left: vL, width: vW, height: vH }}>
+        {innerScene}
+      </Rescaler>
+    </View>
+  ) : (
+    innerScene
   );
 
   return wrapWithShaders(scene, activeOutputShaders, resolution);

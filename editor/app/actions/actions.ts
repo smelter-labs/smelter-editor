@@ -16,6 +16,7 @@ import type {
   KickSuggestions,
   MP4Suggestions,
   PictureSuggestions,
+  AudioSuggestions,
   UpdateRoomOptions,
   StartRecordingResponse,
   StopRecordingResponse,
@@ -102,6 +103,10 @@ export async function getPictureSuggestions(): Promise<PictureSuggestions> {
   return client.getPictureSuggestions();
 }
 
+export async function getAudioSuggestions(): Promise<AudioSuggestions> {
+  return client.getAudioSuggestions();
+}
+
 export async function addTwitchInput(roomId: string, channelId: string) {
   return client.addTwitchInput(roomId, channelId);
 }
@@ -112,6 +117,10 @@ export async function addKickInput(roomId: string, channelId: string) {
 
 export async function addMP4Input(roomId: string, mp4FileName: string) {
   return client.addMP4Input(roomId, mp4FileName);
+}
+
+export async function addAudioInput(roomId: string, audioFileName: string) {
+  return client.addAudioInput(roomId, audioFileName);
 }
 
 export async function addImageInput(roomId: string, imageFileNameOrId: string) {
@@ -259,6 +268,32 @@ export async function deleteDashboardLayout(
   return client.dashboardLayoutStorage.remove(fileName);
 }
 
+// ── Presentation config storage ──────────────────────────────
+export async function savePresentationConfig(
+  name: string,
+  presentationConfig: object,
+): Promise<StorageResult<{ fileName: string; name: string }>> {
+  return client.presentationConfigStorage.save(name, presentationConfig);
+}
+
+export async function listPresentationConfigs(): Promise<
+  StorageResult<{ items: SavedItemInfo[] }>
+> {
+  return client.presentationConfigStorage.list();
+}
+
+export async function loadPresentationConfig(
+  fileName: string,
+): Promise<StorageResult<{ name: string; data: object; savedAt: string }>> {
+  return client.presentationConfigStorage.load(fileName);
+}
+
+export async function deletePresentationConfig(
+  fileName: string,
+): Promise<StorageResult> {
+  return client.presentationConfigStorage.remove(fileName);
+}
+
 // ── HLS stream storage ──────────────────────────────────────
 export async function saveHlsStream(
   name: string,
@@ -314,6 +349,22 @@ export async function disconnectInput(roomId: string, inputId: string) {
 
 export async function connectInput(roomId: string, inputId: string) {
   return client.connectInput(roomId, inputId);
+}
+
+export async function resolveMissingLocalMp4(
+  roomId: string,
+  inputId: string,
+  opts: { fileName?: string; audioFileName?: string },
+) {
+  return client.resolveMissingLocalMp4(roomId, inputId, opts);
+}
+
+export async function resolveMissingImage(
+  roomId: string,
+  inputId: string,
+  opts: { fileName: string },
+) {
+  return client.resolveMissingImage(roomId, inputId, opts);
 }
 
 export async function hideInput(
@@ -372,6 +423,10 @@ export async function getMp4Duration(fileName: string): Promise<number> {
   return client.getMp4Duration(fileName);
 }
 
+export async function getAudioDuration(fileName: string): Promise<number> {
+  return client.getAudioDuration(fileName);
+}
+
 export async function restartService(): Promise<void> {
   try {
     await spawn('bash', ['-c', 'sudo systemctl restart smelter.service'], {});
@@ -381,6 +436,10 @@ export async function restartService(): Promise<void> {
   await new Promise<void>((res) => {
     setTimeout(() => res(), 5000);
   });
+}
+
+export async function restartSmelter(): Promise<void> {
+  await client.restartSmelter();
 }
 
 export async function getAvailableShaders(): Promise<AvailableShader[]> {

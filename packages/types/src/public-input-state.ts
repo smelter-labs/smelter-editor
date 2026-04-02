@@ -21,7 +21,16 @@ export type PublicInputState = {
   sourceState: InputSourceState;
   status: InputStatus;
   channelId?: string;
+  url?: string;
   imageId?: string;
+  /** True when the server has no image file on disk for this slot yet. */
+  imageAssetMissing?: boolean;
+  mp4FileName?: string;
+  audioFileName?: string;
+  /** True when the server has no file on disk for this slot yet (import / missing asset). */
+  mp4AssetMissing?: boolean;
+  /** When mp4AssetMissing, whether to pick from audios/ instead of mp4s/. */
+  missingAssetIsAudio?: boolean;
   sourceWidth?: number;
   sourceHeight?: number;
   attachedInputIds?: string[];

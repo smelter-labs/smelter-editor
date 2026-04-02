@@ -104,9 +104,16 @@ export const sseRoutes: FastifyPluginCallback = (routes, _opts, done) => {
           newsStripFadeDuringSwap: snapshot.newsStripFadeDuringSwap,
           swapFadeOutDurationMs: snapshot.swapFadeOutDurationMs,
           newsStripEnabled: snapshot.newsStripEnabled,
+          outputShaders: snapshot.outputShaders,
           isRecording: room.hasActiveRecording(),
           isFrozen: room.isFrozen(),
           audioAnalysisEnabled: room.isAudioAnalysisEnabled(),
+          viewportTop: snapshot.viewportTop,
+          viewportLeft: snapshot.viewportLeft,
+          viewportWidth: snapshot.viewportWidth,
+          viewportHeight: snapshot.viewportHeight,
+          viewportTransitionDurationMs: snapshot.viewportTransitionDurationMs,
+          viewportTransitionEasing: snapshot.viewportTransitionEasing,
         };
         res.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
       };

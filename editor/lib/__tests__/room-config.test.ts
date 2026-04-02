@@ -1,5 +1,6 @@
 import { beforeEach, describe, it, expect } from 'vitest';
 import {
+  buildTimelineStateFromConfigTimeline,
   exportRoomConfig,
   loadTimelineFromStorage,
   parseRoomConfig,
@@ -60,7 +61,6 @@ const minimalInput: Input = {
   sourceState: 'always-live',
   status: 'connected',
   shaders: [],
-
 };
 
 describe('parseRoomConfig', () => {
@@ -180,6 +180,48 @@ describe('exportRoomConfig', () => {
     expect(config.inputs[0].mp4FileName).toBe('my_video.mp4');
   });
 
+  it('preserves nested local media paths already present on the input', () => {
+    const mp4Input: Input = {
+      ...minimalInput,
+      id: 1,
+      inputId: 'room::local::2',
+      type: 'local-mp4',
+      title: '[MP4] Demo',
+      description: '',
+      mp4FileName: 'nested/folder/demo.mp4',
+    };
+    const audioInput: Input = {
+      ...minimalInput,
+      id: 2,
+      inputId: 'room::local::3',
+      type: 'local-mp4',
+      title: '[AUDIO] Demo',
+      description: '',
+      audioFileName: 'nested/folder/demo.mp4',
+    };
+
+    const config = exportRoomConfig([mp4Input, audioInput], 'grid');
+
+    expect(config.inputs[0].mp4FileName).toBe('nested/folder/demo.mp4');
+    expect(config.inputs[1].audioFileName).toBe('nested/folder/demo.mp4');
+  });
+
+  it('includes url for hls inputs', () => {
+    const hlsInput: Input = {
+      ...minimalInput,
+      id: 2,
+      inputId: 'room::hls::3',
+      type: 'hls',
+      title: 'Example HLS',
+      description: '',
+      url: 'https://example.com/live.m3u8',
+    };
+
+    const config = exportRoomConfig([hlsInput], 'grid');
+
+    expect(config.inputs[0].url).toBe('https://example.com/live.m3u8');
+  });
+
   it('includes timeline keyframes from the provided live state', () => {
     const timelineState: RoomConfigTimelineState = {
       tracks: [
@@ -196,7 +238,7 @@ describe('exportRoomConfig', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-              
+
                 text: 'initial',
               },
               keyframes: [
@@ -207,7 +249,7 @@ describe('exportRoomConfig', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                  
+
                     text: 'initial',
                   },
                 },
@@ -218,7 +260,7 @@ describe('exportRoomConfig', () => {
                     volume: 0.5,
                     showTitle: false,
                     shaders: [],
-                  
+
                     text: 'updated',
                   },
                 },
@@ -256,7 +298,7 @@ describe('exportRoomConfig', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-              
+
                 text: 'initial',
               },
               keyframes: [
@@ -267,7 +309,7 @@ describe('exportRoomConfig', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                  
+
                     text: 'initial',
                   },
                 },
@@ -278,7 +320,7 @@ describe('exportRoomConfig', () => {
                     volume: 0.5,
                     showTitle: false,
                     shaders: [],
-                  
+
                     text: 'updated',
                   },
                 },
@@ -292,6 +334,87 @@ describe('exportRoomConfig', () => {
 });
 
 describe('timeline config persistence helpers', () => {
+  it('builds timeline state from config without storage', () => {
+    const timeline: RoomConfigTimeline = {
+      totalDurationMs: 12_000,
+      pixelsPerSecond: 24,
+      keyframeInterpolationMode: 'smooth',
+      tracks: [
+        {
+          label: 'Track 1',
+          clips: [
+            {
+              inputIndex: 0,
+              startMs: 1000,
+              endMs: 8000,
+              blockSettings: {
+                volume: 1,
+                showTitle: true,
+                shaders: [],
+                text: 'intro',
+              },
+              keyframes: [
+                {
+                  id: 'kf-a',
+                  timeMs: 0,
+                  blockSettings: {
+                    volume: 1,
+                    showTitle: true,
+                    shaders: [],
+                    text: 'intro',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    expect(
+      buildTimelineStateFromConfigTimeline(
+        timeline,
+        new Map<number, string>([[0, 'room::text::1']]),
+      ),
+    ).toEqual({
+      totalDurationMs: 12_000,
+      keyframeInterpolationMode: 'smooth',
+      pixelsPerSecond: 24,
+      tracks: [
+        {
+          id: expect.any(String),
+          label: 'Track 1',
+          clips: [
+            {
+              id: expect.any(String),
+              inputId: 'room::text::1',
+              startMs: 1000,
+              endMs: 8000,
+              blockSettings: {
+                volume: 1,
+                showTitle: true,
+                shaders: [],
+                text: 'intro',
+              },
+              keyframes: [
+                {
+                  id: 'kf-a',
+                  timeMs: 0,
+                  blockSettings: {
+                    volume: 1,
+                    showTitle: true,
+                    shaders: [],
+                    text: 'intro',
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+  });
+
   it('restores keyframes to local timeline storage without losing them', () => {
     const timeline: RoomConfigTimeline = {
       totalDurationMs: 12_000,
@@ -309,7 +432,7 @@ describe('timeline config persistence helpers', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-              
+
                 text: 'intro',
               },
               keyframes: [
@@ -320,7 +443,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                  
+
                     text: 'intro',
                   },
                 },
@@ -331,7 +454,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 0.2,
                     showTitle: false,
                     shaders: [],
-                  
+
                     text: 'middle',
                   },
                 },
@@ -366,7 +489,7 @@ describe('timeline config persistence helpers', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-              
+
                 text: 'intro',
               },
               keyframes: [
@@ -377,7 +500,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                  
+
                     text: 'intro',
                   },
                 },
@@ -388,7 +511,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 0.2,
                     showTitle: false,
                     shaders: [],
-                  
+
                     text: 'middle',
                   },
                 },
@@ -417,7 +540,7 @@ describe('timeline config persistence helpers', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-              
+
                 text: 'stale',
               },
               keyframes: [
@@ -428,7 +551,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                  
+
                     text: 'stale',
                   },
                 },
@@ -459,7 +582,7 @@ describe('timeline config persistence helpers', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
-              
+
                 text: 'fresh',
               },
               keyframes: [
@@ -470,7 +593,7 @@ describe('timeline config persistence helpers', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
-                  
+
                     text: 'fresh',
                   },
                 },

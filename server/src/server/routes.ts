@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
+import multipart from '@fastify/multipart';
 import websocket from '@fastify/websocket';
 import { v4 as uuidv4 } from 'uuid';
 import { STATUS_CODES } from 'node:http';
@@ -22,14 +23,19 @@ import {
   clearSnakeGameRoomInactivityTimer,
 } from '../snakeGame/snakeGameRoutes';
 import { registerTimelineRoutes } from '../timeline/timelineRoutes';
+import { registerImportConfigRoute } from './importConfigRoute';
 import { TwitchChannelSuggestions } from '../twitch/TwitchChannelMonitor';
 import type { RegisterInputOptions, PendingWhipInputData } from '../types';
 import { toPublicInputState } from './publicInputState';
 import { config } from '../config';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
 import pictureSuggestionsMonitor from '../pictures/pictureSuggestionMonitor';
+import audioSuggestionsMonitor from '../audio-files/audioSuggestionMonitor';
+import { getAudioWaveformPath } from '../audio-files/audioWaveform';
 import { KickChannelSuggestions } from '../kick/KickChannelMonitor';
 import shadersController from '../shaders/shaders';
+import { DATA_DIR } from '../dataDir';
+import { uploadRoutes } from './routes/uploadRoutes';
 import {
   RESOLUTION_PRESETS,
   type Resolution,
@@ -37,9 +43,61 @@ import {
 } from '../types';
 
 const execFileAsync = promisify(execFile);
-const THUMBNAILS_DIR = path.join(process.cwd(), 'thumbnails', 'mp4');
-const HLS_THUMBNAILS_DIR = path.join(process.cwd(), 'thumbnails', 'hls');
-const HLS_STREAMS_DIR = path.join(__dirname, '../../hls-streams');
+const THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails', 'mp4');
+const HLS_THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails', 'hls');
+const HLS_STREAMS_DIR = path.join(DATA_DIR, 'hls-streams');
+
+type BrowseFileInfo = {
+  fileName: string;
+  size: number;
+  uploadedAtMs: number;
+};
+
+function resolveBrowseDirectory(
+  baseDir: string,
+  folder?: string,
+): string | null {
+  if (!folder) {
+    return baseDir;
+  }
+
+  const resolved = path.resolve(baseDir, folder);
+  if (resolved === baseDir || resolved.startsWith(`${baseDir}${path.sep}`)) {
+    return resolved;
+  }
+
+  return null;
+}
+
+async function buildBrowseFileInfos(
+  baseDir: string,
+  folder: string | undefined,
+  fileNames: string[],
+): Promise<BrowseFileInfo[]> {
+  const targetDir = resolveBrowseDirectory(baseDir, folder);
+  if (!targetDir) {
+    return [];
+  }
+
+  const fileInfos = await Promise.all(
+    fileNames.map(async (fileName) => {
+      try {
+        const fileStats = await stat(path.join(targetDir, fileName));
+        return {
+          fileName,
+          size: fileStats.size,
+          uploadedAtMs: fileStats.birthtimeMs || fileStats.mtimeMs,
+        };
+      } catch {
+        return null;
+      }
+    }),
+  );
+
+  return fileInfos.filter(
+    (fileInfo): fileInfo is BrowseFileInfo => fileInfo !== null,
+  );
+}
 
 async function ensureHlsThumbnail(jsonFileName: string): Promise<string> {
   const safeName = path.basename(jsonFileName);
@@ -67,7 +125,20 @@ async function ensureHlsThumbnail(jsonFileName: string): Promise<string> {
 
   await execFileAsync(
     'ffmpeg',
-    ['-ss', '2', '-i', hlsUrl, '-vframes', '1', '-vf', 'scale=320:-1', '-q:v', '4', '-y', thumbPath],
+    [
+      '-ss',
+      '2',
+      '-i',
+      hlsUrl,
+      '-vframes',
+      '1',
+      '-vf',
+      'scale=320:-1',
+      '-q:v',
+      '4',
+      '-y',
+      thumbPath,
+    ],
     { timeout: 10_000 },
   );
 
@@ -75,15 +146,18 @@ async function ensureHlsThumbnail(jsonFileName: string): Promise<string> {
 }
 
 async function ensureMp4Thumbnail(mp4FileName: string): Promise<string> {
-  const safeName = path.basename(mp4FileName);
-  const thumbName = safeName.replace(/\.[^.]+$/, '.jpg');
+  const decoded = decodeURIComponent(mp4FileName);
+  if (decoded.includes('..')) {
+    throw Object.assign(new Error('Invalid file name'), { statusCode: 400 });
+  }
+  const thumbName = decoded.replace(/[/\\]/g, '_').replace(/\.[^.]+$/, '.jpg');
   const thumbPath = path.join(THUMBNAILS_DIR, thumbName);
 
   if (await pathExists(thumbPath)) {
     return thumbPath;
   }
 
-  const mp4Path = path.join(process.cwd(), 'mp4s', safeName);
+  const mp4Path = path.join(DATA_DIR, 'mp4s', decoded);
   if (!(await pathExists(mp4Path))) {
     throw Object.assign(new Error('MP4 file not found'), { statusCode: 404 });
   }
@@ -116,7 +190,11 @@ export const routes = Fastify({
   logger: config.logger,
 }).withTypeProvider<TypeBoxTypeProvider>();
 
-routes.register(cors, { origin: true });
+routes.register(cors, {
+  origin: true,
+  methods: ['GET', 'HEAD', 'POST', 'DELETE', 'OPTIONS'],
+});
+routes.register(multipart, { limits: { fileSize: 500 * 1024 * 1024 } });
 routes.register(websocket, {
   options: {
     perMessageDeflate: false,
@@ -128,16 +206,33 @@ routes.addHook('onResponse', (req, reply, done) => {
   done();
 });
 
-routes.setErrorHandler((err: unknown, _req, res) => {
+routes.setErrorHandler((err: unknown, req, res) => {
   const e = err as {
     statusCode?: number;
     status?: number;
     code?: string;
     message?: string;
+    cause?: unknown;
+    stack?: string;
   };
   const statusCode = e.statusCode ?? e.status ?? 500;
   const code = e.code ?? 'INTERNAL_ERROR';
   const message = e.message ?? 'Internal server error';
+
+  if (req.url.startsWith('/upload/')) {
+    console.error('[upload] error handler caught request failure', {
+      method: req.method,
+      url: req.url,
+      statusCode,
+      code,
+      message,
+      cause: e.cause,
+      stack: e.stack,
+      contentLength: req.headers['content-length'],
+      contentType: req.headers['content-type'],
+    });
+  }
+
   res.status(statusCode).send({
     statusCode,
     code,
@@ -150,13 +245,35 @@ routes.get('/suggestions/mp4s', async (_req, res) => {
   res.status(200).send({ mp4s: mp4SuggestionsMonitor.mp4Files });
 });
 
-routes.get<{ Params: { fileName: string } }>(
-  '/suggestions/mp4-duration/:fileName',
-  { schema: { params: Type.Object({ fileName: Type.String() }) } },
+routes.get<{ Querystring: { folder?: string } }>(
+  '/suggestions/mp4s/browse',
+  {
+    schema: {
+      querystring: Type.Object({ folder: Type.Optional(Type.String()) }),
+    },
+  },
   async (req, res) => {
-    const { fileName } = req.params;
-    const safeName = path.basename(fileName);
-    const filePath = path.join(process.cwd(), 'mp4s', safeName);
+    const folder = req.query.folder || undefined;
+    const listing = mp4SuggestionsMonitor.listFolder(folder);
+    const fileInfos = await buildBrowseFileInfos(
+      path.join(DATA_DIR, 'mp4s'),
+      folder,
+      listing.files,
+    );
+    res.status(200).send({ ...listing, fileInfos });
+  },
+);
+
+routes.get<{ Querystring: { fileName: string } }>(
+  '/suggestions/mp4-duration',
+  { schema: { querystring: Type.Object({ fileName: Type.String() }) } },
+  async (req, res) => {
+    const { fileName } = req.query;
+    const decoded = decodeURIComponent(fileName);
+    if (decoded.includes('..')) {
+      return res.status(400).send({ error: 'Invalid file name' });
+    }
+    const filePath = path.join(DATA_DIR, 'mp4s', decoded);
 
     if (!(await pathExists(filePath))) {
       return res.status(404).send({ error: 'MP4 file not found' });
@@ -167,7 +284,7 @@ routes.get<{ Params: { fileName: string } }>(
       return res.status(200).send({ durationMs });
     } catch (err: any) {
       console.error('Failed to get MP4 duration via ffprobe', {
-        fileName: safeName,
+        fileName: decoded,
         err: err?.message,
       });
       return res.status(500).send({ error: 'Failed to read MP4 duration' });
@@ -175,11 +292,11 @@ routes.get<{ Params: { fileName: string } }>(
   },
 );
 
-routes.get<{ Params: { fileName: string } }>(
-  '/suggestions/mp4-thumbnail/:fileName',
-  { schema: { params: Type.Object({ fileName: Type.String() }) } },
+routes.get<{ Querystring: { fileName: string } }>(
+  '/suggestions/mp4-thumbnail',
+  { schema: { querystring: Type.Object({ fileName: Type.String() }) } },
   async (req, res) => {
-    const { fileName } = req.params;
+    const { fileName } = req.query;
     try {
       const thumbPath = await ensureMp4Thumbnail(fileName);
       const data = await readFile(thumbPath);
@@ -215,24 +332,82 @@ routes.get<{ Params: { fileName: string } }>(
   },
 );
 
+routes.get<{ Querystring: { fileName: string } }>(
+  '/suggestions/audio-waveform',
+  { schema: { querystring: Type.Object({ fileName: Type.String() }) } },
+  async (req, res) => {
+    const { fileName } = req.query;
+    const decoded = decodeURIComponent(fileName);
+    if (decoded.includes('..')) {
+      return res.status(400).send({ error: 'Invalid file name' });
+    }
+
+    const filePath = path.join(DATA_DIR, 'audios', decoded);
+    if (!(await pathExists(filePath))) {
+      return res.status(404).send({ error: 'Audio file not found' });
+    }
+
+    const waveformPath = getAudioWaveformPath(filePath);
+    if (!(await pathExists(waveformPath))) {
+      return res.status(404).send({ error: 'Waveform image not found' });
+    }
+
+    try {
+      const data = await readFile(waveformPath);
+      res.header('Content-Type', 'image/png');
+      res.header('Cache-Control', 'public, max-age=86400');
+      res.send(data);
+    } catch (err: any) {
+      const message = err?.message ?? 'Failed to read waveform image';
+      console.error('Audio waveform error', {
+        fileName: decoded,
+        err: message,
+      });
+      res.status(500).send({ error: message });
+    }
+  },
+);
+
 routes.get('/suggestions/pictures', async (_req, res) => {
   res.status(200).send({ pictures: pictureSuggestionsMonitor.pictureFiles });
 });
+
+routes.get<{ Querystring: { folder?: string } }>(
+  '/suggestions/pictures/browse',
+  {
+    schema: {
+      querystring: Type.Object({ folder: Type.Optional(Type.String()) }),
+    },
+  },
+  async (req, res) => {
+    const folder = req.query.folder || undefined;
+    const listing = pictureSuggestionsMonitor.listFolder(folder);
+    const fileInfos = await buildBrowseFileInfos(
+      path.join(DATA_DIR, 'pictures'),
+      folder,
+      listing.files,
+    );
+    res.status(200).send({ ...listing, fileInfos });
+  },
+);
 
 routes.get<{ Params: { fileName: string } }>(
   '/suggestions/pictures/:fileName',
   { schema: { params: Type.Object({ fileName: Type.String() }) } },
   async (req, res) => {
     const { fileName } = req.params;
-    const safeName = path.basename(fileName);
-    const filePath = path.join(process.cwd(), 'pictures', safeName);
+    const decoded = decodeURIComponent(fileName);
+    if (decoded.includes('..')) {
+      return res.status(400).send({ error: 'Invalid file name' });
+    }
+    const filePath = path.join(DATA_DIR, 'pictures', decoded);
 
     if (!(await pathExists(filePath))) {
       return res.status(404).send({ error: 'Picture not found' });
     }
 
     try {
-      const ext = path.extname(safeName).toLowerCase();
+      const ext = path.extname(decoded).toLowerCase();
       const mimeMap: Record<string, string> = {
         '.jpg': 'image/jpeg',
         '.jpeg': 'image/jpeg',
@@ -247,6 +422,57 @@ routes.get<{ Params: { fileName: string } }>(
     } catch (err: any) {
       console.error('Failed to read picture file', { filePath, err });
       res.status(500).send({ error: 'Failed to read picture file' });
+    }
+  },
+);
+
+routes.get('/suggestions/audios', async (_req, res) => {
+  res.status(200).send({ audios: audioSuggestionsMonitor.audioFiles });
+});
+
+routes.get<{ Querystring: { folder?: string } }>(
+  '/suggestions/audios/browse',
+  {
+    schema: {
+      querystring: Type.Object({ folder: Type.Optional(Type.String()) }),
+    },
+  },
+  async (req, res) => {
+    const folder = req.query.folder || undefined;
+    const listing = audioSuggestionsMonitor.listFolder(folder);
+    const fileInfos = await buildBrowseFileInfos(
+      path.join(DATA_DIR, 'audios'),
+      folder,
+      listing.files,
+    );
+    res.status(200).send({ ...listing, fileInfos });
+  },
+);
+
+routes.get<{ Params: { fileName: string } }>(
+  '/suggestions/audio-duration/:fileName',
+  { schema: { params: Type.Object({ fileName: Type.String() }) } },
+  async (req, res) => {
+    const { fileName } = req.params;
+    const decoded = decodeURIComponent(fileName);
+    if (decoded.includes('..')) {
+      return res.status(400).send({ error: 'Invalid file name' });
+    }
+    const filePath = path.join(DATA_DIR, 'audios', decoded);
+
+    if (!(await pathExists(filePath))) {
+      return res.status(404).send({ error: 'Audio file not found' });
+    }
+
+    try {
+      const durationMs = await getMp4DurationMs(filePath);
+      return res.status(200).send({ durationMs });
+    } catch (err: any) {
+      console.error('Failed to get audio duration via ffprobe', {
+        fileName: decoded,
+        err: err?.message,
+      });
+      return res.status(500).send({ error: 'Failed to read audio duration' });
     }
   },
 );
@@ -308,6 +534,7 @@ const InputSchema = Type.Union([
     type: Type.Literal('local-mp4'),
     source: Type.Union([
       Type.Object({ fileName: Type.String() }),
+      Type.Object({ audioFileName: Type.String() }),
       Type.Object({ url: Type.String() }),
     ]),
   }),
@@ -421,9 +648,16 @@ routes.get<RoomIdParams>(
       newsStripFadeDuringSwap: snapshot.newsStripFadeDuringSwap,
       swapFadeOutDurationMs: snapshot.swapFadeOutDurationMs,
       newsStripEnabled: snapshot.newsStripEnabled,
+      outputShaders: snapshot.outputShaders,
       isRecording: room.hasActiveRecording(),
       isFrozen: room.isFrozen(),
       audioAnalysisEnabled: room.isAudioAnalysisEnabled(),
+      viewportTop: snapshot.viewportTop,
+      viewportLeft: snapshot.viewportLeft,
+      viewportWidth: snapshot.viewportWidth,
+      viewportHeight: snapshot.viewportHeight,
+      viewportTransitionDurationMs: snapshot.viewportTransitionDurationMs,
+      viewportTransitionEasing: snapshot.viewportTransitionEasing,
     });
   },
 );
@@ -478,8 +712,15 @@ routes.get('/rooms', async (_req, res) => {
         newsStripFadeDuringSwap: snapshot.newsStripFadeDuringSwap,
         swapFadeOutDurationMs: snapshot.swapFadeOutDurationMs,
         newsStripEnabled: snapshot.newsStripEnabled,
+        outputShaders: snapshot.outputShaders,
         isRecording: room.hasActiveRecording(),
         audioAnalysisEnabled: room.isAudioAnalysisEnabled(),
+        viewportTop: snapshot.viewportTop,
+        viewportLeft: snapshot.viewportLeft,
+        viewportWidth: snapshot.viewportWidth,
+        viewportHeight: snapshot.viewportHeight,
+        viewportTransitionDurationMs: snapshot.viewportTransitionDurationMs,
+        viewportTransitionEasing: snapshot.viewportTransitionEasing,
       };
     })
     .filter(Boolean);
@@ -539,8 +780,7 @@ routes.post<RoomIdParams>(
   },
 );
 
-const SCREENSHOTS_DIR = path.join(__dirname, '../../screenshots');
-
+const SCREENSHOTS_DIR = path.join(DATA_DIR, 'screenshots');
 
 routes.get<{ Params: { fileName: string } }>(
   '/screenshots/:fileName',
@@ -567,7 +807,7 @@ routes.get<{ Params: { fileName: string } }>(
   },
 );
 
-const RECORDINGS_DIR = path.join(__dirname, '../../recordings');
+const RECORDINGS_DIR = path.join(DATA_DIR, 'recordings');
 
 routes.get('/recordings', async (_req, res) => {
   const recordingsDir = RECORDINGS_DIR;
@@ -663,7 +903,7 @@ routes.get<RecordingFileParams>('/recordings/:fileName', async (req, res) => {
 
 registerStorageRoutes(routes, {
   routePrefix: '/configs',
-  dirPath: path.join(__dirname, '../../configs'),
+  dirPath: path.join(DATA_DIR, 'configs'),
   filePrefix: 'config',
   resourceName: 'config',
   payloadKey: 'config',
@@ -673,7 +913,7 @@ registerStorageRoutes(routes, {
 
 registerStorageRoutes(routes, {
   routePrefix: '/shader-presets',
-  dirPath: path.join(__dirname, '../../shader-presets'),
+  dirPath: path.join(DATA_DIR, 'shader-presets'),
   filePrefix: 'preset',
   resourceName: 'shader preset',
   payloadKey: 'shaders',
@@ -683,8 +923,18 @@ registerStorageRoutes(routes, {
 });
 
 registerStorageRoutes(routes, {
+  routePrefix: '/presentation-configs',
+  dirPath: path.join(DATA_DIR, 'presentation-configs'),
+  filePrefix: 'presentation',
+  resourceName: 'presentation config',
+  payloadKey: 'presentationConfig',
+  listKey: 'presentationConfigs',
+  bodySchema: Type.Any(),
+});
+
+registerStorageRoutes(routes, {
   routePrefix: '/dashboard-layouts',
-  dirPath: path.join(__dirname, '../../dashboard-layouts'),
+  dirPath: path.join(DATA_DIR, 'dashboard-layouts'),
   filePrefix: 'dashboard-layout',
   resourceName: 'dashboard layout',
   payloadKey: 'layout',
@@ -694,7 +944,7 @@ registerStorageRoutes(routes, {
 
 registerStorageRoutes(routes, {
   routePrefix: '/hls-streams',
-  dirPath: path.join(__dirname, '../../hls-streams'),
+  dirPath: path.join(DATA_DIR, 'hls-streams'),
   filePrefix: 'hls',
   resourceName: 'HLS stream',
   payloadKey: 'stream',
@@ -727,6 +977,27 @@ const UpdateRoomSchema = Type.Object({
   ),
   newsStripFadeDuringSwap: Type.Optional(Type.Boolean()),
   newsStripEnabled: Type.Optional(Type.Boolean()),
+  viewportTop: Type.Optional(Type.Number()),
+  viewportLeft: Type.Optional(Type.Number()),
+  viewportWidth: Type.Optional(Type.Number({ minimum: 1 })),
+  viewportHeight: Type.Optional(Type.Number({ minimum: 1 })),
+  viewportTransitionDurationMs: Type.Optional(Type.Number({ minimum: 0 })),
+  viewportTransitionEasing: Type.Optional(Type.String()),
+  outputShaders: Type.Optional(
+    Type.Array(
+      Type.Object({
+        shaderName: Type.String(),
+        shaderId: Type.String(),
+        enabled: Type.Boolean(),
+        params: Type.Array(
+          Type.Object({
+            paramName: Type.String(),
+            paramValue: Type.Union([Type.Number(), Type.String()]),
+          }),
+        ),
+      }),
+    ),
+  ),
 });
 
 // No multiple-pictures shader defaults API - kept local in layout
@@ -765,6 +1036,22 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
     }
     if (req.body.newsStripEnabled !== undefined) {
       room.setNewsStripEnabled(req.body.newsStripEnabled);
+    }
+
+    const viewportFields = [
+      'viewportTop',
+      'viewportLeft',
+      'viewportWidth',
+      'viewportHeight',
+      'viewportTransitionDurationMs',
+      'viewportTransitionEasing',
+    ] as const;
+    const viewportUpdate: Record<string, unknown> = {};
+    for (const key of viewportFields) {
+      if (req.body[key] !== undefined) viewportUpdate[key] = req.body[key];
+    }
+    if (Object.keys(viewportUpdate).length > 0) {
+      room.setViewport(viewportUpdate as any);
     }
 
     res.status(200).send({ status: 'ok' });
@@ -859,6 +1146,51 @@ routes.post<RoomAndInputIdParams>(
     console.log('[request] Disconnect input', { roomId, inputId });
     const room = state.getRoom(roomId);
     await room.disconnectInput(inputId);
+    res.status(200).send({ status: 'ok' });
+  },
+);
+
+const ResolveMissingMp4BodySchema = Type.Object({
+  fileName: Type.Optional(Type.String()),
+  audioFileName: Type.Optional(Type.String()),
+});
+
+const ResolveMissingImageBodySchema = Type.Object({
+  fileName: Type.String(),
+});
+
+routes.post<
+  RoomAndInputIdParams & { Body: Static<typeof ResolveMissingMp4BodySchema> }
+>(
+  '/room/:roomId/input/:inputId/resolve-missing-mp4',
+  {
+    schema: {
+      params: RoomAndInputIdParamsSchema,
+      body: ResolveMissingMp4BodySchema,
+    },
+  },
+  async (req, res) => {
+    const { roomId, inputId } = req.params;
+    const room = state.getRoom(roomId);
+    await room.resolveMissingLocalMp4Asset(inputId, req.body);
+    res.status(200).send({ status: 'ok' });
+  },
+);
+
+routes.post<
+  RoomAndInputIdParams & { Body: Static<typeof ResolveMissingImageBodySchema> }
+>(
+  '/room/:roomId/input/:inputId/resolve-missing-image',
+  {
+    schema: {
+      params: RoomAndInputIdParamsSchema,
+      body: ResolveMissingImageBodySchema,
+    },
+  },
+  async (req, res) => {
+    const { roomId, inputId } = req.params;
+    const room = state.getRoom(roomId);
+    await room.resolveMissingImageAsset(inputId, req.body);
     res.status(200).send({ status: 'ok' });
   },
 );
@@ -1097,6 +1429,7 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(
 
 registerSnakeGameRoutes(routes);
 registerTimelineRoutes(routes);
+registerImportConfigRoute(routes);
 
 routes.delete<RoomAndInputIdParams>(
   '/room/:roomId/input/:inputId',
@@ -1204,9 +1537,16 @@ routes.get<RoomIdParams>(
         newsStripFadeDuringSwap: snapshot.newsStripFadeDuringSwap,
         swapFadeOutDurationMs: snapshot.swapFadeOutDurationMs,
         newsStripEnabled: snapshot.newsStripEnabled,
+        outputShaders: snapshot.outputShaders,
         isRecording: room.hasActiveRecording(),
         isFrozen: room.isFrozen(),
         audioAnalysisEnabled: room.isAudioAnalysisEnabled(),
+        viewportTop: snapshot.viewportTop,
+        viewportLeft: snapshot.viewportLeft,
+        viewportWidth: snapshot.viewportWidth,
+        viewportHeight: snapshot.viewportHeight,
+        viewportTransitionDurationMs: snapshot.viewportTransitionDurationMs,
+        viewportTransitionEasing: snapshot.viewportTransitionEasing,
       };
       res.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
     };
@@ -1277,3 +1617,13 @@ routes.delete<RoomIdParams>(
   },
 );
 
+routes.post('/restart-smelter', async (_req, res) => {
+  if (process.env.ALLOW_SMELTER_RESTART !== 'true') {
+    return res.status(403).send({ error: 'Smelter restart is disabled' });
+  }
+  console.log('[request] Restart Smelter engine');
+  await state.restartSmelter();
+  res.status(200).send({ status: 'ok' });
+});
+
+routes.register(uploadRoutes);

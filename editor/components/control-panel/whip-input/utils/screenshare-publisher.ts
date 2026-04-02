@@ -14,17 +14,20 @@ export async function startScreensharePublish(
   pcRef: React.MutableRefObject<RTCPeerConnection | null>,
   streamRef: React.MutableRefObject<MediaStream | null>,
   onDisconnected?: () => void,
+  existingStream?: MediaStream,
 ): Promise<{ location: string | null }> {
-  const stream = await navigator.mediaDevices.getDisplayMedia({
-    video: {
-      displaySurface: 'monitor',
-    } as any,
-    audio: {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    },
-  });
+  const stream =
+    existingStream ??
+    (await navigator.mediaDevices.getDisplayMedia({
+      video: {
+        displaySurface: 'monitor',
+      } as any,
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    }));
   streamRef.current = stream;
   attachLocalPreview(stream);
 

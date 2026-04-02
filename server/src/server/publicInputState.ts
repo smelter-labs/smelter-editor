@@ -1,8 +1,23 @@
+import path from 'path';
 import type { RoomInputState } from '../room/types';
 import type { PublicInputState } from '../types';
 import { toPublicSnakeGameInputState } from '../snakeGame/publicSnakeGameState';
+import { DATA_DIR } from '../dataDir';
 
 export type { PublicInputState } from '../types';
+
+function toRelativeMediaPath(filePath: string, baseDir: string): string | null {
+  const basePath = path.join(DATA_DIR, baseDir);
+  const relativePath = path.relative(basePath, filePath);
+  if (
+    relativePath.startsWith('..') ||
+    path.isAbsolute(relativePath) ||
+    relativePath === ''
+  ) {
+    return null;
+  }
+  return relativePath.split(path.sep).join('/');
+}
 
 export function toPublicInputState(input: RoomInputState): PublicInputState {
   const base = {
@@ -34,18 +49,29 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
     motionEnabled: input.motionEnabled,
   };
   switch (input.type) {
-    case 'local-mp4':
+    case 'local-mp4': {
+      const audioFileName = toRelativeMediaPath(input.mp4FilePath, 'audios');
+      const mp4FileName = toRelativeMediaPath(input.mp4FilePath, 'mp4s');
+      const isAudio = audioFileName !== null;
       return {
         ...base,
         sourceState: 'always-live' as const,
         sourceWidth: input.mp4VideoWidth,
         sourceHeight: input.mp4VideoHeight,
+        mp4FileName: isAudio
+          ? undefined
+          : (mp4FileName ?? path.basename(input.mp4FilePath)),
+        audioFileName: isAudio ? audioFileName : undefined,
+        mp4AssetMissing: input.mp4AssetMissing,
+        missingAssetIsAudio: input.missingAssetIsAudio,
       };
+    }
     case 'image':
       return {
         ...base,
         sourceState: 'always-live' as const,
         imageId: input.imageId,
+        imageAssetMissing: input.imageAssetMissing,
       };
     case 'twitch-channel':
     case 'kick-channel':
@@ -55,7 +81,11 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
         channelId: input.channelId,
       };
     case 'hls':
-      return { ...base, sourceState: 'always-live' as const };
+      return {
+        ...base,
+        sourceState: 'always-live' as const,
+        url: input.hlsUrl,
+      };
     case 'whip':
       return {
         ...base,

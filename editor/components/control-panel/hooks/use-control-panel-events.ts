@@ -23,6 +23,10 @@ import { triggerRecordingDownload } from './use-recording-controls';
 
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
+import {
+  emitTimelineEvent,
+  TIMELINE_EVENTS,
+} from '../components/timeline/timeline-events';
 
 type UseControlPanelEventsProps = {
   inputWrappers: InputWrapper[];
@@ -107,14 +111,10 @@ export async function applyTextColorFromVoice({
     volume: input.volume,
   });
 
-  dispatchEvent(
-    new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
-      detail: {
-        inputId: input.inputId,
-        patch: { textColor: color },
-      },
-    }),
-  );
+  emitTimelineEvent(TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS_FOR_INPUT, {
+    inputId: input.inputId,
+    patch: { textColor: color },
+  });
 
   await handleRefreshState();
   return true;
@@ -389,11 +389,9 @@ export function useControlPanelEvents({
           }
         }
         if (removedInputIds.length > 0) {
-          window.dispatchEvent(
-            new CustomEvent('smelter:timeline:purge-input-ids', {
-              detail: { inputIds: removedInputIds },
-            }),
-          );
+          emitTimelineEvent(TIMELINE_EVENTS.PURGE_INPUT_IDS, {
+            inputIds: removedInputIds,
+          });
         }
         await handleRefreshState();
         if (failures.length > 0) {
@@ -745,14 +743,10 @@ export function useControlPanelEvents({
           shaders: updatedShaders,
           volume: input.volume,
         });
-        window.dispatchEvent(
-          new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
-            detail: {
-              inputId: input.inputId,
-              patch: { shaders: updatedShaders },
-            },
-          }),
-        );
+        emitTimelineEvent(TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS_FOR_INPUT, {
+          inputId: input.inputId,
+          patch: { shaders: updatedShaders },
+        });
         await handleRefreshState();
         emitMacroStepCompleteWithDetail(requestId, undefined, {
           inputId: input.inputId,
@@ -799,14 +793,10 @@ export function useControlPanelEvents({
           shaders: updatedShaders,
           volume: input.volume,
         });
-        window.dispatchEvent(
-          new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
-            detail: {
-              inputId: input.inputId,
-              patch: { shaders: updatedShaders },
-            },
-          }),
-        );
+        emitTimelineEvent(TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS_FOR_INPUT, {
+          inputId: input.inputId,
+          patch: { shaders: updatedShaders },
+        });
         await handleRefreshState();
       } catch (err) {
         console.error('Voice: failed to remove shader', err);
@@ -842,11 +832,9 @@ export function useControlPanelEvents({
         }
         selectedInputIdRef.current = input.inputId;
         setSelectedInputId(input.inputId);
-        window.dispatchEvent(
-          new CustomEvent('smelter:timeline:select-clip', {
-            detail: { inputId: input.inputId },
-          }),
-        );
+        emitTimelineEvent(TIMELINE_EVENTS.SELECT_CLIP, {
+          inputId: input.inputId,
+        });
       } catch (err) {
         console.error('Voice: failed to select input', err);
       }
@@ -923,14 +911,10 @@ export function useControlPanelEvents({
             volume: input.volume,
           });
 
-          window.dispatchEvent(
-            new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
-              detail: {
-                inputId: input.inputId,
-                patch: { text: accumulatedTextRef.current },
-              },
-            }),
-          );
+          emitTimelineEvent(TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS_FOR_INPUT, {
+            inputId: input.inputId,
+            patch: { text: accumulatedTextRef.current },
+          });
 
           await handleRefreshState();
         } catch (err) {
@@ -963,14 +947,10 @@ export function useControlPanelEvents({
           volume: input.volume,
         });
 
-        window.dispatchEvent(
-          new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
-            detail: {
-              inputId: input.inputId,
-              patch: { text: accumulatedTextRef.current },
-            },
-          }),
-        );
+        emitTimelineEvent(TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS_FOR_INPUT, {
+          inputId: input.inputId,
+          patch: { text: accumulatedTextRef.current },
+        });
 
         await handleRefreshState();
       } catch (err) {
@@ -1202,14 +1182,10 @@ export function useControlPanelEvents({
           volume: input.volume,
         });
 
-        window.dispatchEvent(
-          new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
-            detail: {
-              inputId: input.inputId,
-              patch: { textFontSize: fontSize },
-            },
-          }),
-        );
+        emitTimelineEvent(TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS_FOR_INPUT, {
+          inputId: input.inputId,
+          patch: { textFontSize: fontSize },
+        });
 
         await handleRefreshState();
         emitMacroStepCompleteWithDetail(requestId, undefined, {
@@ -1276,14 +1252,10 @@ export function useControlPanelEvents({
           volume: input.volume,
         });
 
-        window.dispatchEvent(
-          new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
-            detail: {
-              inputId: input.inputId,
-              patch: { textScrollSpeed: nextSpeed },
-            },
-          }),
-        );
+        emitTimelineEvent(TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS_FOR_INPUT, {
+          inputId: input.inputId,
+          patch: { textScrollSpeed: nextSpeed },
+        });
 
         await handleRefreshState();
         emitMacroStepCompleteWithDetail(requestId, undefined, {
@@ -1343,14 +1315,10 @@ export function useControlPanelEvents({
           volume: input.volume,
         });
 
-        window.dispatchEvent(
-          new CustomEvent('smelter:timeline:update-clip-settings-for-input', {
-            detail: {
-              inputId: input.inputId,
-              patch: { textAlign },
-            },
-          }),
-        );
+        emitTimelineEvent(TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS_FOR_INPUT, {
+          inputId: input.inputId,
+          patch: { textAlign },
+        });
 
         await handleRefreshState();
         emitMacroStepCompleteWithDetail(requestId, undefined, {
@@ -1696,5 +1664,4 @@ export function useControlPanelEvents({
       );
     };
   }, [roomId, handleRefreshState, inputsRef]);
-
 }

@@ -32,8 +32,10 @@ function fftInPlace(real: Float64Array, imag: Float64Array): void {
       let curReal = 1;
       let curImag = 0;
       for (let j = 0; j < halfLen; j++) {
-        const tReal = curReal * real[i + j + halfLen] - curImag * imag[i + j + halfLen];
-        const tImag = curReal * imag[i + j + halfLen] + curImag * real[i + j + halfLen];
+        const tReal =
+          curReal * real[i + j + halfLen] - curImag * imag[i + j + halfLen];
+        const tImag =
+          curReal * imag[i + j + halfLen] + curImag * real[i + j + halfLen];
         real[i + j + halfLen] = real[i + j] - tReal;
         imag[i + j + halfLen] = imag[i + j] - tImag;
         real[i + j] += tReal;

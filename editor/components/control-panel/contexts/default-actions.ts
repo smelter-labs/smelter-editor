@@ -8,11 +8,14 @@ import {
   removeInput as removeInputAction,
   disconnectInput,
   connectInput,
+  resolveMissingLocalMp4,
+  resolveMissingImage,
   hideInput as hideInputAction,
   showInput as showInputAction,
   addTwitchInput,
   addKickInput,
   addMP4Input,
+  addAudioInput,
   addImageInput,
   addTextInput,
   addSnakeGameInput,
@@ -28,6 +31,7 @@ import {
   getKickSuggestions,
   getMP4Suggestions,
   getPictureSuggestions,
+  getAudioSuggestions,
   acknowledgeWhipInput,
   setPendingWhipInputs,
   restartMp4Input,
@@ -50,6 +54,7 @@ import {
   updateHlsStream,
   deleteHlsStream,
   restartService,
+  restartSmelter,
 } from '@/app/actions/actions';
 
 // id for browser session.  Sent as `x-source-id` on every update request
@@ -97,6 +102,8 @@ export const defaultActions: ControlPanelActions = {
     removeInputAction(roomId, inputId, SESSION_SOURCE_ID),
   disconnectInput,
   connectInput,
+  resolveMissingLocalMp4,
+  resolveMissingImage,
   hideInput: (roomId, inputId) =>
     hideInputAction(roomId, inputId, SESSION_SOURCE_ID),
   showInput: (roomId, inputId) =>
@@ -104,6 +111,7 @@ export const defaultActions: ControlPanelActions = {
   addTwitchInput,
   addKickInput,
   addMP4Input,
+  addAudioInput,
   addImageInput,
   addTextInput,
   addSnakeGameInput,
@@ -119,6 +127,7 @@ export const defaultActions: ControlPanelActions = {
   getKickSuggestions,
   getMP4Suggestions,
   getPictureSuggestions,
+  getAudioSuggestions,
   restartMp4Input,
   acknowledgeWhipInput,
   setPendingWhipInputs,
@@ -127,4 +136,5 @@ export const defaultActions: ControlPanelActions = {
   dashboardLayoutStorage,
   hlsStreamStorage,
   restartService,
+  restartSmelter,
 };

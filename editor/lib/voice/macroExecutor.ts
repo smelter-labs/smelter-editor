@@ -609,7 +609,6 @@ async function dispatchMacroStep(
         ),
         resolvedParams: params,
       };
-
   }
 }
 

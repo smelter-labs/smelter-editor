@@ -1,7 +1,12 @@
 export type { Resolution, ResolutionPreset } from './resolution';
 export { RESOLUTION_PRESETS } from './resolution';
 
-export type { ShaderParamConfig, ShaderParam, ShaderConfig, ShaderPreset } from './shader';
+export type {
+  ShaderParamConfig,
+  ShaderParam,
+  ShaderConfig,
+  ShaderPreset,
+} from './shader';
 
 export { Layouts } from './layout';
 export type { Layout } from './layout';
@@ -26,6 +31,7 @@ export type {
   SnakeGameDisplayProperties,
   MotionProperties,
   HandsProperties,
+  ViewportProperties,
 } from '@smelter-editor/types';
 
 export { AUDIO_BAND_COUNT } from '@smelter-editor/types';

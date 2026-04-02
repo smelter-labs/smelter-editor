@@ -157,9 +157,7 @@ export const inputRoutes: FastifyPluginCallback = (routes, _opts, done) => {
     },
   );
 
-  routes.post<
-    RoomAndInputIdParams & { Body: Static<typeof Mp4RestartSchema> }
-  >(
+  routes.post<RoomAndInputIdParams & { Body: Static<typeof Mp4RestartSchema> }>(
     '/room/:roomId/input/:inputId/mp4-restart',
     {
       schema: { params: RoomAndInputIdParamsSchema, body: Mp4RestartSchema },

@@ -4,9 +4,7 @@ import type {
   Clip,
   Track,
 } from '../../hooks/use-timeline-state';
-import {
-  OUTPUT_TRACK_INPUT_ID,
-} from '../../hooks/use-timeline-state';
+import { OUTPUT_TRACK_INPUT_ID } from '../../hooks/use-timeline-state';
 import { formatMs } from '@/lib/format-utils';
 
 /** Base HSL values per input type: [hue, saturation%, lightness%] */
@@ -75,9 +73,10 @@ export const MIN_HEIGHT = 120;
 export const MAX_HEIGHT_VH = 0.6;
 export const DEFAULT_HEIGHT = 250;
 export const TRACK_HEIGHT = 40;
-export const SOURCES_WIDTH = 180;
-export const MIN_SOURCES_WIDTH = 100;
-export const MAX_SOURCES_WIDTH = 400;
+export const AUTOMATION_LANE_HEIGHT = 50;
+export const SOURCES_WIDTH = 260;
+export const MIN_SOURCES_WIDTH = 180;
+export const MAX_SOURCES_WIDTH = 520;
 export const SNAP_THRESHOLD_PX = 8;
 export const RESIZE_HANDLE_PX = 5;
 export const MIN_MOVABLE_KEYFRAME_MS = 1;

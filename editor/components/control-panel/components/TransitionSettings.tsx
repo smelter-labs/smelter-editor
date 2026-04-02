@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Slider } from '@/components/ui/slider';
 
 type TransitionSettingsProps = {
@@ -123,17 +124,15 @@ export function TransitionSettings({
   return (
     <div className='px-1'>
       <label className='flex items-center gap-2 cursor-pointer mb-2'>
-        <input
-          type='checkbox'
+        <Checkbox
           checked={localSwapDuration > 0}
-          onChange={(e) => {
-            if (e.target.checked) {
+          onCheckedChange={(checked: boolean) => {
+            if (checked) {
               handleSwapDurationChange(lastEnabledValueRef.current);
             } else {
               handleSwapDurationChange(0);
             }
           }}
-          className='accent-white'
         />
         <span className='text-xs text-neutral-400'>Swap Transition</span>
       </label>
@@ -154,22 +153,21 @@ export function TransitionSettings({
             className='w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-white'
           />
           <label className='flex items-center gap-2 cursor-pointer mt-3'>
-            <input
-              type='checkbox'
+            <Checkbox
               checked={swapOutgoingEnabled}
-              onChange={(e) => onSwapOutgoingEnabledChange(e.target.checked)}
-              className='accent-white'
+              onCheckedChange={(checked: boolean) =>
+                onSwapOutgoingEnabledChange(checked)
+              }
             />
             <span className='text-xs text-neutral-400'>
               Outgoing Transition
             </span>
           </label>
           <label className='flex items-center gap-2 cursor-pointer mt-3'>
-            <input
-              type='checkbox'
+            <Checkbox
               checked={localFadeOutDuration > 0}
-              onChange={(e) => {
-                if (e.target.checked) {
+              onCheckedChange={(checked: boolean) => {
+                if (checked) {
                   handleFadeOutDurationChange(
                     lastEnabledFadeOutValueRef.current,
                   );
@@ -177,7 +175,6 @@ export function TransitionSettings({
                   handleFadeOutDurationChange(0);
                 }
               }}
-              className='accent-white'
             />
             <span className='text-xs text-neutral-400'>
               Fade Out During Swap
@@ -204,17 +201,15 @@ export function TransitionSettings({
             </>
           )}
           <label className='flex items-center gap-2 cursor-pointer mt-3'>
-            <input
-              type='checkbox'
+            <Checkbox
               checked={localFadeInDuration > 0}
-              onChange={(e) => {
-                if (e.target.checked) {
+              onCheckedChange={(checked: boolean) => {
+                if (checked) {
                   handleFadeInDurationChange(lastEnabledFadeInValueRef.current);
                 } else {
                   handleFadeInDurationChange(0);
                 }
               }}
-              className='accent-white'
             />
             <span className='text-xs text-neutral-400'>Fade In After Swap</span>
           </label>
@@ -237,22 +232,20 @@ export function TransitionSettings({
                 className='w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-white'
               />
               <label className='flex items-center gap-2 cursor-pointer mt-3'>
-                <input
-                  type='checkbox'
+                <Checkbox
                   checked={newsStripEnabled}
-                  onChange={(e) => onNewsStripEnabledChange(e.target.checked)}
-                  className='accent-white'
+                  onCheckedChange={(checked: boolean) =>
+                    onNewsStripEnabledChange(checked)
+                  }
                 />
                 <span className='text-xs text-neutral-400'>News Strip</span>
               </label>
               <label className='flex items-center gap-2 cursor-pointer mt-3'>
-                <input
-                  type='checkbox'
+                <Checkbox
                   checked={newsStripFadeDuringSwap}
-                  onChange={(e) =>
-                    onNewsStripFadeDuringSwapChange(e.target.checked)
+                  onCheckedChange={(checked: boolean) =>
+                    onNewsStripFadeDuringSwapChange(checked)
                   }
-                  className='accent-white'
                 />
                 <span className='text-xs text-neutral-400'>
                   News Strip Fades

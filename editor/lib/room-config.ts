@@ -4,6 +4,12 @@ import type {
   ShaderConfig,
   UpdateInputOptions,
 } from '@/lib/types';
+import type { ViewportProperties } from '@smelter-editor/types';
+import {
+  OUTPUT_TRACK_INPUT_ID,
+  OUTPUT_TRACK_ID,
+  OUTPUT_CLIP_ID,
+} from '@smelter-editor/types';
 import { parseTransitionConfig } from '@/lib/types';
 import type { SnakeEventShaderConfig } from '@/lib/snake-game-types';
 import type {
@@ -22,8 +28,10 @@ export type RoomConfigInput = {
   showTitle?: boolean;
   shaders: ShaderConfig[];
   channelId?: string;
+  url?: string;
   imageId?: string;
   mp4FileName?: string;
+  audioFileName?: string;
   text?: string;
   textAlign?: 'left' | 'center' | 'right';
   textColor?: string;
@@ -59,6 +67,15 @@ export type RoomConfigInput = {
 
 function extractMp4FileName(title: string): string | undefined {
   const match = title.match(/^\[MP4\]\s*(.+)$/);
+  if (match) {
+    const name = match[1].trim();
+    return name.toLowerCase().replace(/\s+/g, '_') + '.mp4';
+  }
+  return undefined;
+}
+
+function extractAudioFileName(title: string): string | undefined {
+  const match = title.match(/^\[AUDIO\]\s*(.+)$/);
   if (match) {
     const name = match[1].trim();
     return name.toLowerCase().replace(/\s+/g, '_') + '.mp4';
@@ -106,9 +123,17 @@ export type RoomConfig = {
   inputs: RoomConfigInput[];
   resolution?: { width: number; height: number };
   transitionSettings?: RoomConfigTransitionSettings;
+  viewport?: Partial<ViewportProperties>;
   timeline?: RoomConfigTimeline;
   outputPlayer?: RoomConfigOutputPlayer;
+  outputShaders?: ShaderConfig[];
   exportedAt: string;
+};
+
+export type PresentationConfig = {
+  roomConfig: RoomConfig;
+  welcomeTextBefore: string;
+  welcomeTextAfter: string;
 };
 
 export type RoomConfigTimelineState = {
@@ -135,6 +160,8 @@ export function exportRoomConfig(
   transitionSettings?: RoomConfigTransitionSettings,
   timelineState?: RoomConfigTimelineState,
   outputPlayer?: RoomConfigOutputPlayer,
+  viewport?: Partial<ViewportProperties>,
+  outputShaders?: ShaderConfig[],
 ): RoomConfig {
   const inputIdToIndex = new Map<string, number>();
   inputs.forEach((input, idx) => inputIdToIndex.set(input.inputId, idx));
@@ -145,7 +172,8 @@ export function exportRoomConfig(
       label: track.label,
       clips: track.clips
         .map((clip) => {
-          const idx = inputIdToIndex.get(clip.inputId);
+          const isOutput = clip.inputId === OUTPUT_TRACK_INPUT_ID;
+          const idx = isOutput ? -1 : inputIdToIndex.get(clip.inputId);
           if (idx === undefined) return null;
           return {
             inputIndex: idx,
@@ -170,8 +198,11 @@ export function exportRoomConfig(
     layout,
     resolution,
     transitionSettings,
+    viewport,
     timeline,
     outputPlayer,
+    outputShaders:
+      outputShaders && outputShaders.length > 0 ? outputShaders : undefined,
     inputs: inputs.map((input) => ({
       type: input.type,
       title: input.title,
@@ -180,11 +211,16 @@ export function exportRoomConfig(
       showTitle: input.showTitle,
       shaders: input.shaders,
       channelId: input.channelId,
+      url: input.url,
       imageId: input.imageId,
       mp4FileName:
         input.type === 'local-mp4'
-          ? extractMp4FileName(input.title)
-          : undefined,
+          ? (input.mp4FileName ?? extractMp4FileName(input.title))
+          : input.mp4FileName,
+      audioFileName:
+        input.type === 'local-mp4'
+          ? (input.audioFileName ?? extractAudioFileName(input.title))
+          : input.audioFileName,
       text: input.text,
       textAlign: input.textAlign,
       textColor: input.textColor,
@@ -297,42 +333,55 @@ export function loadTimelineFromStorage(roomId: string): {
   };
 }
 
+export function buildTimelineStateFromConfigTimeline(
+  timeline: RoomConfigTimeline,
+  indexToInputId: Map<number, string>,
+): RoomConfigTimelineState {
+  return {
+    tracks: timeline.tracks.map((track) => {
+      const hasOutputClip = track.clips.some((c) => c.inputIndex === -1);
+      return {
+        id: hasOutputClip ? OUTPUT_TRACK_ID : crypto.randomUUID(),
+        label: track.label,
+        clips: track.clips
+          .map((clip) => {
+            const isOutput = clip.inputIndex === -1;
+            const inputId = isOutput
+              ? OUTPUT_TRACK_INPUT_ID
+              : indexToInputId.get(clip.inputIndex);
+            if (!inputId) return null;
+            return {
+              id: isOutput ? OUTPUT_CLIP_ID : crypto.randomUUID(),
+              inputId,
+              startMs: clip.startMs,
+              endMs: clip.endMs,
+              blockSettings:
+                clip.blockSettings ?? createBlockSettingsFromInput(undefined),
+              keyframes: clip.keyframes ?? [],
+            };
+          })
+          .filter((c): c is NonNullable<typeof c> => c !== null),
+      };
+    }),
+    totalDurationMs: timeline.totalDurationMs,
+    keyframeInterpolationMode: timeline.keyframeInterpolationMode ?? 'step',
+    pixelsPerSecond: timeline.pixelsPerSecond,
+  };
+}
+
 export function restoreTimelineToStorage(
   roomId: string,
   timeline: RoomConfigTimeline,
   indexToInputId: Map<number, string>,
 ): void {
   if (typeof window === 'undefined') return;
-
-  const tracks = timeline.tracks.map((track) => ({
-    id: crypto.randomUUID(),
-    label: track.label,
-    clips: track.clips
-      .map((clip) => {
-        const inputId = indexToInputId.get(clip.inputIndex);
-        if (!inputId) return null;
-        return {
-          id: crypto.randomUUID(),
-          inputId,
-          startMs: clip.startMs,
-          endMs: clip.endMs,
-          blockSettings: clip.blockSettings,
-          keyframes: clip.keyframes,
-        };
-      })
-      .filter((c): c is NonNullable<typeof c> => c !== null),
-  }));
-
-  const state = {
-    tracks,
-    totalDurationMs: timeline.totalDurationMs,
-    keyframeInterpolationMode: timeline.keyframeInterpolationMode ?? 'step',
-    playheadMs: 0,
-    pixelsPerSecond: timeline.pixelsPerSecond,
-  };
+  const state = buildTimelineStateFromConfigTimeline(timeline, indexToInputId);
 
   try {
-    saveTimeline(roomId, state);
+    saveTimeline(roomId, {
+      ...state,
+      playheadMs: 0,
+    });
   } catch {
     console.warn('Failed to save imported timeline to localStorage');
   }
@@ -425,7 +474,10 @@ export function computeTimelineStateAtZero(
 
   for (const track of timeline.tracks) {
     for (const clip of track.clips) {
-      const inputId = indexToInputId.get(clip.inputIndex);
+      const isOutput = clip.inputIndex === -1;
+      const inputId = isOutput
+        ? OUTPUT_TRACK_INPUT_ID
+        : indexToInputId.get(clip.inputIndex);
       if (!inputId) continue;
 
       allTimelineInputIds.add(inputId);

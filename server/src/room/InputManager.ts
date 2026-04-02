@@ -1,9 +1,6 @@
 import path from 'node:path';
-import { pathExists, readdir } from 'fs-extra';
-import {
-  SmelterInstance,
-  type RegisterSmelterInputOptions,
-} from '../smelter';
+import { pathExists } from 'fs-extra';
+import { SmelterInstance, type RegisterSmelterInputOptions } from '../smelter';
 import { hlsUrlForKickChannel, hlsUrlForTwitchChannel } from '../streamlink';
 import { TwitchChannelMonitor } from '../twitch/TwitchChannelMonitor';
 import type { TwitchStreamInfo } from '../twitch/TwitchApi';
@@ -11,14 +8,13 @@ import { KickChannelMonitor } from '../kick/KickChannelMonitor';
 import { WhipInputMonitor } from '../whip/WhipInputMonitor';
 import { sleep } from '../utils';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
-import {
-  getMp4DurationMs,
-  getMp4VideoDimensions,
-} from '../server/mp4Duration';
+import pictureSuggestionsMonitor from '../pictures/pictureSuggestionMonitor';
+import { getMp4DurationMs, getMp4VideoDimensions } from '../server/mp4Duration';
 import { logTimelineEvent } from '../dashboard';
 import { createDefaultSnakeGameInputState } from '../snakeGame/snakeGameState';
 import { createHandsStore } from '../hands/handStore';
 import type { ShaderConfig, ActiveTransition } from '../types';
+import { DATA_DIR } from '../dataDir';
 import type {
   RoomInputState,
   RegisterInputOptions,
@@ -38,6 +34,8 @@ const VIDEO_INPUT_TYPES: RoomInputState['type'][] = [
   'hls',
   'whip',
 ];
+
+const IMAGE_EXT_RE = /\.(jpg|jpeg|png|gif|svg)$/i;
 
 export class InputManager {
   private inputs: RoomInputState[] = [];
@@ -84,11 +82,7 @@ export class InputManager {
         });
       }
 
-      const logoPath = path.join(
-        process.cwd(),
-        'pictures',
-        PLACEHOLDER_LOGO_FILE,
-      );
+      const logoPath = path.join(DATA_DIR, 'pictures', PLACEHOLDER_LOGO_FILE);
       if (await pathExists(logoPath)) {
         const logoInputId = await this.addNewInput({
           type: 'image',
@@ -136,7 +130,11 @@ export class InputManager {
 
   private async addNewWhipInput(username: string): Promise<string> {
     const inputId = `${this.idPrefix}::whip::${Date.now()}`;
-    const cleanUsername = username.replace(/\[Camera\]\s*/g, '').trim();
+    const isScreenshare = /\bscreenshare\b/i.test(username);
+    const cleanUsername = username
+      .replace(/\[(camera|screenshare|live)\]\s*/gi, '')
+      .trim();
+    const liveTitle = isScreenshare ? '[Live] Screenshare' : '[Live] Camera';
     const monitor = await WhipInputMonitor.startMonitor(cleanUsername);
     monitor.touch();
     this.inputs.push({
@@ -152,7 +150,7 @@ export class InputManager {
       motionEnabled: false,
       monitor,
       metadata: {
-        title: `[Camera] ${cleanUsername}`,
+        title: liveTitle,
         description: `Whip Input for ${username}`,
       },
       volume: 0,
@@ -261,21 +259,35 @@ export class InputManager {
   private async addMp4Input(
     opts: Extract<RegisterInputOptions, { type: 'local-mp4' }>,
   ): Promise<string> {
-    if (!opts.source?.fileName) {
+    const isAudio = !!opts.source?.audioFileName;
+    const resolvedFileName =
+      opts.source?.audioFileName ?? opts.source?.fileName;
+
+    if (!resolvedFileName) {
       throw new Error(
-        'local-mp4 requires source.fileName. Only URL is not supported; provide a file name from the mp4s directory.',
+        'local-mp4 requires source.fileName or source.audioFileName.',
       );
     }
-    console.log('Adding local mp4');
-    const mp4Path = path.join(process.cwd(), 'mp4s', opts.source.fileName);
-    const mp4Name = opts.source.fileName;
+
+    const baseDir = isAudio ? 'audios' : 'mp4s';
+    const mp4Path = path.join(DATA_DIR, baseDir, resolvedFileName);
+    const mp4Name = resolvedFileName;
     const inputId = `${this.idPrefix}::local::sample_streamer::${Date.now()}`;
 
     if (!(await pathExists(mp4Path))) {
-      throw new Error(`MP4 file not found: ${opts.source.fileName}`);
+      const titlePrefix = isAudio ? 'AUDIO' : 'MP4';
+      return this.pushMissingLocalMp4Placeholder({
+        mp4Path,
+        isAudio,
+        title: `[Missing ${titlePrefix}] ${formatMp4Name(mp4Name)}`,
+        description: isAudio
+          ? 'Audio file not found on server. Attach a file from the list below.'
+          : 'MP4 not found on server. Attach a file from the list below.',
+      });
     }
 
     const dims = await getMp4VideoDimensions(mp4Path);
+    const titlePrefix = isAudio ? 'AUDIO' : 'MP4';
 
     this.inputs.push({
       inputId,
@@ -289,8 +301,10 @@ export class InputManager {
       hidden: false,
       motionEnabled: false,
       metadata: {
-        title: `[MP4] ${formatMp4Name(mp4Name)}`,
-        description: '[Static source] AI Generated',
+        title: `[${titlePrefix}] ${formatMp4Name(mp4Name)}`,
+        description: isAudio
+          ? '[Audio source] Converted from audio file'
+          : '[Static source] AI Generated',
       },
       mp4FilePath: mp4Path,
       mp4VideoWidth: dims?.width,
@@ -300,28 +314,176 @@ export class InputManager {
     return inputId;
   }
 
+  /**
+   * When an MP4/audio file from config is missing, keep a disconnected local-mp4
+   * slot so the client can attach a real file later without losing inputId.
+   */
+  private pushMissingLocalMp4Placeholder(params: {
+    mp4Path: string;
+    isAudio: boolean;
+    title: string;
+    description: string;
+  }): string {
+    const inputId = `${this.idPrefix}::local::sample_streamer::${Date.now()}`;
+    this.inputs.push({
+      inputId,
+      type: 'local-mp4',
+      status: 'disconnected',
+      showTitle: false,
+      shaders: [],
+
+      borderColor: '#ff0000',
+      borderWidth: 0,
+      hidden: false,
+      motionEnabled: false,
+      metadata: {
+        title: params.title,
+        description: params.description,
+      },
+      mp4FilePath: params.mp4Path,
+      mp4AssetMissing: true,
+      missingAssetIsAudio: params.isAudio,
+      volume: 0,
+    });
+    this.onStateChange();
+    return inputId;
+  }
+
+  /** Wire a real file from mp4s/ or audios/ into a missing-asset placeholder, then connect. */
+  async resolveMissingLocalMp4Asset(
+    inputId: string,
+    opts: { fileName?: string; audioFileName?: string },
+  ): Promise<void> {
+    const input = this.getInput(inputId);
+    if (input.type !== 'local-mp4' || !input.mp4AssetMissing) {
+      throw new Error('Input is not a missing-asset MP4 placeholder');
+    }
+    const hasAudio = opts.audioFileName !== undefined;
+    const hasVideo = opts.fileName !== undefined;
+    if (hasAudio === hasVideo) {
+      throw new Error('Provide exactly one of fileName or audioFileName');
+    }
+    const isAudio = hasAudio;
+    const resolvedFileName = (isAudio ? opts.audioFileName : opts.fileName)!;
+    const baseDir = isAudio ? 'audios' : 'mp4s';
+    const mp4Path = path.join(DATA_DIR, baseDir, resolvedFileName);
+    if (!(await pathExists(mp4Path))) {
+      throw new Error(`File not found in ${baseDir}/: ${resolvedFileName}`);
+    }
+
+    const dims = await getMp4VideoDimensions(mp4Path);
+    const mp4Name = resolvedFileName;
+    const titlePrefix = isAudio ? 'AUDIO' : 'MP4';
+
+    input.mp4FilePath = mp4Path;
+    input.mp4AssetMissing = false;
+    input.missingAssetIsAudio = undefined;
+    input.mp4VideoWidth = dims?.width;
+    input.mp4VideoHeight = dims?.height;
+    input.metadata.title = `[${titlePrefix}] ${formatMp4Name(mp4Name)}`;
+    input.metadata.description = isAudio
+      ? '[Audio source] Converted from audio file'
+      : '[Static source] AI Generated';
+
+    this.onStateChange();
+    await this.connectInput(inputId);
+  }
+
+  async resolveMissingImageAsset(
+    inputId: string,
+    opts: { fileName: string },
+  ): Promise<void> {
+    const input = this.getInput(inputId);
+    if (input.type !== 'image' || !input.imageAssetMissing) {
+      throw new Error('Input is not a missing image placeholder');
+    }
+
+    const imageId = await this.registerImageAsset(opts.fileName);
+    input.imageId = imageId;
+    input.imageAssetMissing = false;
+    input.metadata.title = formatImageName(opts.fileName);
+    input.metadata.description = '';
+    input.status = 'connected';
+
+    this.onStateChange();
+  }
+
+  private async registerImageAsset(fileName: string): Promise<string> {
+    const imagePath = path.join(DATA_DIR, 'pictures', fileName);
+    if (!(await pathExists(imagePath))) {
+      throw new Error(`Image not found in pictures/: ${fileName}`);
+    }
+
+    const lower = fileName.toLowerCase();
+    const exts = ['.jpg', '.jpeg', '.png', '.gif', '.svg'];
+    const ext = exts.find((x) => lower.endsWith(x));
+    if (!ext) {
+      throw new Error(`Unsupported image format: ${fileName}`);
+    }
+
+    const imageId = imageIdFromFileName(fileName);
+    const assetType =
+      ext === '.png'
+        ? 'png'
+        : ext === '.gif'
+          ? 'gif'
+          : ext === '.svg'
+            ? 'svg'
+            : 'jpeg';
+
+    try {
+      await SmelterInstance.registerImage(imageId, {
+        serverPath: imagePath,
+        assetType,
+      });
+    } catch {
+      // ignore if already registered
+    }
+
+    return imageId;
+  }
+
   private async addImageInput(
     opts: Extract<RegisterInputOptions, { type: 'image' }>,
   ): Promise<string> {
     console.log('Adding image');
-    const picturesDir = path.join(process.cwd(), 'pictures');
+    const picturesDir = path.join(DATA_DIR, 'pictures');
     const inputId = `${this.idPrefix}::image::${Date.now()}`;
-    const exts = ['.jpg', '.jpeg', '.png', '.gif', '.svg'];
 
     let fileName = opts.fileName;
     let imageId = opts.imageId;
 
     if (imageId && !fileName) {
-      const baseName = imageId.replace(/^pictures::/, '');
-      const files = await readdir(picturesDir).catch(() => [] as string[]);
-      const found = files.find((f) => {
-        const fBase = f.replace(/\.(jpg|jpeg|png|gif|svg)$/i, '');
-        return fBase === baseName;
-      });
+      const found = pictureSuggestionsMonitor.pictureFiles.find(
+        (candidate) => imageIdFromFileName(candidate) === imageId,
+      );
       if (found) {
         fileName = found;
       } else {
-        throw new Error(`Image file not found for imageId: ${imageId}`);
+        const missingImageName = formatImageName(
+          path.basename(imageId.replace(/^pictures::/, '')),
+        );
+        this.inputs.push({
+          inputId,
+          type: 'image',
+          status: 'connected',
+          showTitle: false,
+          shaders: [],
+          borderColor: '#ff0000',
+          borderWidth: 0,
+          hidden: false,
+          motionEnabled: false,
+          metadata: {
+            title: `[Missing image] ${missingImageName}`,
+            description:
+              'Image not found on server. This slot is reserved; attach an image file below to use it.',
+          },
+          volume: 0,
+          imageId,
+          imageAssetMissing: true,
+        });
+        this.onStateChange();
+        return inputId;
       }
     }
 
@@ -334,29 +496,7 @@ export class InputManager {
     const imagePath = path.join(picturesDir, fileName);
 
     if (await pathExists(imagePath)) {
-      const lower = fileName.toLowerCase();
-      const ext = exts.find((x) => lower.endsWith(x));
-      if (!ext) throw new Error(`Unsupported image format: ${fileName}`);
-
-      const baseName = fileName.replace(/\.(jpg|jpeg|png|gif|svg)$/i, '');
-      imageId = `pictures::${baseName}`;
-      const assetType =
-        ext === '.png'
-          ? 'png'
-          : ext === '.gif'
-            ? 'gif'
-            : ext === '.svg'
-              ? 'svg'
-              : 'jpeg';
-
-      try {
-        await SmelterInstance.registerImage(imageId, {
-          serverPath: imagePath,
-          assetType: assetType as any,
-        });
-      } catch {
-        // ignore if already registered
-      }
+      imageId = await this.registerImageAsset(fileName);
 
       this.inputs.push({
         inputId,
@@ -364,7 +504,7 @@ export class InputManager {
         status: 'connected',
         showTitle: false,
         shaders: [],
-  
+
         borderColor: '#ff0000',
         borderWidth: 0,
         hidden: false,
@@ -375,7 +515,27 @@ export class InputManager {
       });
       this.onStateChange();
     } else {
-      throw new Error(`Image file not found: ${fileName}`);
+      this.inputs.push({
+        inputId,
+        type: 'image',
+        status: 'connected',
+        showTitle: false,
+        shaders: [],
+        borderColor: '#ff0000',
+        borderWidth: 0,
+        hidden: false,
+        motionEnabled: false,
+        metadata: {
+          title: `[Missing image] ${formatImageName(path.basename(fileName))}`,
+          description:
+            'Image not found on server. This slot is reserved; attach an image file below to use it.',
+        },
+        volume: 0,
+        imageId: imageId ?? imageIdFromFileName(fileName),
+        imageAssetMissing: true,
+      });
+      this.onStateChange();
+      return inputId;
     }
 
     return inputId;
@@ -456,7 +616,10 @@ export class InputManager {
       borderWidth: 0,
       hidden: false,
       motionEnabled: false,
-      metadata: { title: 'Hand Tracking', description: 'Cyberpunk hand overlay' },
+      metadata: {
+        title: 'Hand Tracking',
+        description: 'Cyberpunk hand overlay',
+      },
       volume: 0,
       sourceInputId: opts.sourceInputId,
       handsStore,
@@ -542,7 +705,15 @@ export class InputManager {
     const input = this.getInput(inputId);
     if (input.status !== 'disconnected') return '';
 
-    if (input.type === 'image' || input.type === 'game' || input.type === 'hands') {
+    if (input.type === 'local-mp4' && input.mp4AssetMissing) {
+      return '';
+    }
+
+    if (
+      input.type === 'image' ||
+      input.type === 'game' ||
+      input.type === 'hands'
+    ) {
       input.status = 'connected';
       this.onStateChange();
       return '';
@@ -678,8 +849,7 @@ export class InputManager {
     if (options.absoluteHeight !== undefined)
       input.absoluteHeight = options.absoluteHeight;
     if (options.absoluteTransitionDurationMs !== undefined)
-      input.absoluteTransitionDurationMs =
-        options.absoluteTransitionDurationMs;
+      input.absoluteTransitionDurationMs = options.absoluteTransitionDurationMs;
     if (options.absoluteTransitionEasing !== undefined)
       input.absoluteTransitionEasing = options.absoluteTransitionEasing;
     if (options.cropTop !== undefined) input.cropTop = options.cropTop;
@@ -816,8 +986,7 @@ export class InputManager {
   ackWhipInput(inputId: string): void {
     const input = this.getInput(inputId);
     if (input.type !== 'whip') throw new Error('Input is not a Whip input');
-    const { previousAckTimestamp, currentAckTimestamp } =
-      input.monitor.touch();
+    const { previousAckTimestamp, currentAckTimestamp } = input.monitor.touch();
     const ageBeforeAckMs = currentAckTimestamp - previousAckTimestamp;
     console.log('[whip][ack]', {
       roomId: this.idPrefix,
@@ -890,6 +1059,11 @@ export class InputManager {
     if (input.type !== 'local-mp4') {
       throw new Error(`Input ${inputId} is not a local-mp4 input`);
     }
+    if (input.mp4AssetMissing) {
+      throw new Error(
+        `Input ${inputId} has no file on disk yet; attach an MP4 first`,
+      );
+    }
     if (input.status !== 'connected') {
       throw new Error(`Input ${inputId} is not connected`);
     }
@@ -905,10 +1079,7 @@ export class InputManager {
     this.onStateChange();
 
     try {
-      logTimelineEvent(
-        this.idPrefix,
-        `[mp4-restart] unregister "${name}"`,
-      );
+      logTimelineEvent(this.idPrefix, `[mp4-restart] unregister "${name}"`);
       await SmelterInstance.unregisterInput(inputId);
       logTimelineEvent(
         this.idPrefix,
@@ -1019,10 +1190,7 @@ function inputIdForTwitchInput(
   return `${idPrefix}::twitch::${twitchChannelId}`;
 }
 
-function inputIdForKickInput(
-  idPrefix: string,
-  kickChannelId: string,
-): string {
+function inputIdForKickInput(idPrefix: string, kickChannelId: string): string {
   return `${idPrefix}::kick::${kickChannelId}`;
 }
 
@@ -1035,14 +1203,16 @@ export function formatMp4Name(fileName: string): string {
 }
 
 function formatImageName(fileName: string): string {
-  const fileNameWithoutExt = fileName.replace(
-    /\.(jpg|jpeg|png|gif|svg)$/i,
-    '',
-  );
+  const fileNameWithoutExt = fileName.replace(IMAGE_EXT_RE, '');
   return fileNameWithoutExt
     .split(/[_\- ]+/)
     .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');
+}
+
+function imageIdFromFileName(fileName: string): string {
+  const baseName = fileName.replace(IMAGE_EXT_RE, '');
+  return `pictures::${baseName}`;
 }
 
 function isBlockedDefaultMp4(fileName: string): boolean {

@@ -11,6 +11,11 @@ import {
 import { toServerTimelineConfig } from '@/lib/timeline-config';
 import { useTimelineSSE } from '@/hooks/use-timeline-sse';
 import type { TimelineState } from './use-timeline-state';
+import { OUTPUT_TRACK_ID } from './use-timeline-state';
+import {
+  listenTimelineEvent,
+  TIMELINE_EVENTS,
+} from '../components/timeline/timeline-events';
 
 export function useServerTimelinePlayback(
   roomId: string,
@@ -198,14 +203,26 @@ export function useServerTimelinePlayback(
     }
   }, [roomId]);
 
+  useEffect(() => {
+    return listenTimelineEvent(TIMELINE_EVENTS.APPLY_AT_PLAYHEAD, () => {
+      void applyAtPlayhead();
+    });
+  }, [applyAtPlayhead]);
+
   const hasAutoApplied = useRef(false);
   useEffect(() => {
+    hasAutoApplied.current = false;
+  }, [roomId]);
+
+  useEffect(() => {
     if (hasAutoApplied.current) return;
-    const hasClips = stateRef.current.tracks.some((t) => t.clips.length > 0);
+    const hasClips = state.tracks.some(
+      (track) => track.id !== OUTPUT_TRACK_ID && track.clips.length > 0,
+    );
     if (!hasClips) return;
     hasAutoApplied.current = true;
     void applyAtPlayhead();
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [state.tracks, roomId, applyAtPlayhead]);
 
   useEffect(() => {
     return () => {

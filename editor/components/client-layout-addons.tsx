@@ -24,6 +24,14 @@ const VoiceActionFeedback = dynamic(
   { ssr: false },
 );
 
+const TimelineEventFeedback = dynamic(
+  () =>
+    import('@/components/timeline-event-feedback/TimelineEventFeedback').then(
+      (m) => ({ default: m.TimelineEventFeedback }),
+    ),
+  { ssr: false },
+);
+
 const Analytics = dynamic(
   () =>
     import('@vercel/analytics/next').then((m) => ({ default: m.Analytics })),
@@ -45,6 +53,7 @@ export default function ClientLayoutAddons() {
     <>
       {!isPreview && <SpeechToTextWithCommands />}
       {!isPreview && <VoiceActionFeedback />}
+      {!isPreview && <TimelineEventFeedback />}
       <SonnerToaster />
       <Analytics />
     </>

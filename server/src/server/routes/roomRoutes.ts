@@ -35,8 +35,7 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
     async (req, res) => {
       console.log('[request] Create new room', { body: req.body });
 
-      const initInputs =
-        (req.body.initInputs as RegisterInputOptions[]) || [];
+      const initInputs = (req.body.initInputs as RegisterInputOptions[]) || [];
       const skipDefaultInputs = req.body.skipDefaultInputs === true;
 
       let resolution: Resolution | undefined;
@@ -89,6 +88,13 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
         isRecording: room.hasActiveRecording(),
         isFrozen: room.isFrozen(),
         audioAnalysisEnabled: room.isAudioAnalysisEnabled(),
+        outputShaders: snapshot.outputShaders,
+        viewportTop: snapshot.viewportTop,
+        viewportLeft: snapshot.viewportLeft,
+        viewportWidth: snapshot.viewportWidth,
+        viewportHeight: snapshot.viewportHeight,
+        viewportTransitionDurationMs: snapshot.viewportTransitionDurationMs,
+        viewportTransitionEasing: snapshot.viewportTransitionEasing,
       });
     },
   );
@@ -138,8 +144,15 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
           newsStripFadeDuringSwap: snapshot.newsStripFadeDuringSwap,
           swapFadeOutDurationMs: snapshot.swapFadeOutDurationMs,
           newsStripEnabled: snapshot.newsStripEnabled,
+          outputShaders: snapshot.outputShaders,
           isRecording: room.hasActiveRecording(),
           audioAnalysisEnabled: room.isAudioAnalysisEnabled(),
+          viewportTop: snapshot.viewportTop,
+          viewportLeft: snapshot.viewportLeft,
+          viewportWidth: snapshot.viewportWidth,
+          viewportHeight: snapshot.viewportHeight,
+          viewportTransitionDurationMs: snapshot.viewportTransitionDurationMs,
+          viewportTransitionEasing: snapshot.viewportTransitionEasing,
         };
       })
       .filter(Boolean);
@@ -184,6 +197,26 @@ export const roomRoutes: FastifyPluginCallback = (routes, _opts, done) => {
       }
       if (req.body.newsStripEnabled !== undefined) {
         room.setNewsStripEnabled(req.body.newsStripEnabled);
+      }
+
+      if (req.body.outputShaders !== undefined) {
+        room.setOutputShaders(req.body.outputShaders);
+      }
+
+      const viewportFields = [
+        'viewportTop',
+        'viewportLeft',
+        'viewportWidth',
+        'viewportHeight',
+        'viewportTransitionDurationMs',
+        'viewportTransitionEasing',
+      ] as const;
+      const viewportUpdate: Record<string, unknown> = {};
+      for (const key of viewportFields) {
+        if (req.body[key] !== undefined) viewportUpdate[key] = req.body[key];
+      }
+      if (Object.keys(viewportUpdate).length > 0) {
+        room.setViewport(viewportUpdate as any);
       }
 
       res.status(200).send({ status: 'ok' });

@@ -500,5 +500,4 @@ describe('parseCommand', () => {
       });
     });
   });
-
 });

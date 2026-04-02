@@ -1025,6 +1025,88 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     ],
   },
   {
+    id: 'organic-zoom',
+    isActive: true,
+    isVisible: true,
+    name: 'Organic Zoom',
+    description:
+      'Fancy cinematic zoom with organic camera drift, breathing pulse, and subtle rotation wobble. Parameter changes transition smoothly for dramatic live effects.',
+    shaderFile: 'organic-zoom.wgsl',
+    params: [
+      {
+        name: 'zoom',
+        type: 'number',
+        minValue: 0.1,
+        maxValue: 5,
+        defaultValue: 1.5,
+        step: 0.0001,
+      },
+      {
+        name: 'center_x',
+        type: 'number',
+        minValue: -1,
+        maxValue: 1,
+        defaultValue: 0,
+      },
+      {
+        name: 'center_y',
+        type: 'number',
+        minValue: -1,
+        maxValue: 1,
+        defaultValue: 0,
+      },
+      {
+        name: 'move_amount',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.3,
+      },
+      {
+        name: 'move_speed',
+        type: 'number',
+        minValue: 0,
+        maxValue: 10,
+        defaultValue: 1,
+      },
+      {
+        name: 'rotation_amount',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.2,
+      },
+      {
+        name: 'rotation_speed',
+        type: 'number',
+        minValue: 0,
+        maxValue: 10,
+        defaultValue: 0.8,
+      },
+      {
+        name: 'breathe_amount',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.15,
+      },
+      {
+        name: 'breathe_speed',
+        type: 'number',
+        minValue: 0,
+        maxValue: 5,
+        defaultValue: 0.5,
+      },
+      {
+        name: 'vignette',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.3,
+      },
+    ],
+  },
+  {
     id: 'grid-overlay',
     isActive: true,
     isVisible: false,
@@ -1662,7 +1744,7 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     isVisible: true,
     name: 'Cyber Glitch',
     description:
-      'Digital corruption effect — horizontal slice displacement, RGB channel splitting, block artifacts, and CRT scanlines like a hacked cyberpunk terminal.',
+      'Digital corruption effect — multi-directional slice displacement, RGB channel splitting, block artifacts with color inversion, and CRT scanlines like a hacked cyberpunk terminal.',
     shaderFile: 'cyber-glitch.wgsl',
     params: [
       {
@@ -1698,7 +1780,7 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
         type: 'number',
         minValue: 0,
         maxValue: 1,
-        defaultValue: 0.2,
+        defaultValue: 0.4,
       },
       {
         name: 'speed',

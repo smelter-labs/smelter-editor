@@ -9,6 +9,7 @@ import type {
   BorderProperties,
   AbsolutePositionProperties,
   CropProperties,
+  ViewportProperties,
 } from '../types';
 import type { StoreApi } from 'zustand';
 import type { HandsStore } from '../hands/handStore';
@@ -36,7 +37,8 @@ export type RoomSnapshot = {
   newsStripFadeDuringSwap: boolean;
   swapFadeOutDurationMs: number;
   newsStripEnabled: boolean;
-};
+  outputShaders: ShaderConfig[];
+} & Partial<ViewportProperties>;
 
 export type RoomInputState = {
   inputId: string;
@@ -62,6 +64,10 @@ type TypeSpecificState =
   | {
       type: 'local-mp4';
       mp4FilePath: string;
+      /** Present when the configured file was not found on disk (e.g. config import). */
+      mp4AssetMissing?: boolean;
+      /** When mp4AssetMissing, whether the slot was created for an audio file vs video MP4. */
+      missingAssetIsAudio?: boolean;
       registeredAtPipelineMs?: number;
       playFromMs?: number;
       mp4DurationMs?: number;
@@ -88,7 +94,12 @@ type TypeSpecificState =
     }
   | { type: 'hls'; hlsUrl: string }
   | { type: 'whip'; whipUrl: string; monitor: WhipMonitor }
-  | { type: 'image'; imageId: string }
+  | {
+      type: 'image';
+      imageId: string;
+      /** Present when the configured image file was not found on disk yet. */
+      imageAssetMissing?: boolean;
+    }
   | {
       type: 'text-input';
       text: string;

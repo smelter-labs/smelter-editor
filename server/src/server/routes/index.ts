@@ -7,6 +7,7 @@ import { Type } from '@sinclair/typebox';
 import type { TypeBoxTypeProvider } from '@fastify/type-provider-typebox';
 import { logRequest } from '../../dashboard';
 import { config } from '../../config';
+import { DATA_DIR } from '../../dataDir';
 import { registerStorageRoutes } from '../storageRoutes';
 import { registerSnakeGameRoutes } from '../../snakeGame/snakeGameRoutes';
 import { registerTimelineRoutes } from '../../timeline/timelineRoutes';
@@ -64,7 +65,7 @@ routes.register(sseRoutes);
 
 registerStorageRoutes(routes, {
   routePrefix: '/configs',
-  dirPath: path.join(__dirname, '../../../configs'),
+  dirPath: path.join(DATA_DIR, 'configs'),
   filePrefix: 'config',
   resourceName: 'config',
   payloadKey: 'config',
@@ -74,7 +75,7 @@ registerStorageRoutes(routes, {
 
 registerStorageRoutes(routes, {
   routePrefix: '/shader-presets',
-  dirPath: path.join(__dirname, '../../../shader-presets'),
+  dirPath: path.join(DATA_DIR, 'shader-presets'),
   filePrefix: 'preset',
   resourceName: 'shader preset',
   payloadKey: 'shaders',
@@ -85,7 +86,7 @@ registerStorageRoutes(routes, {
 
 registerStorageRoutes(routes, {
   routePrefix: '/dashboard-layouts',
-  dirPath: path.join(__dirname, '../../../dashboard-layouts'),
+  dirPath: path.join(DATA_DIR, 'dashboard-layouts'),
   filePrefix: 'dashboard-layout',
   resourceName: 'dashboard layout',
   payloadKey: 'layout',
@@ -95,7 +96,7 @@ registerStorageRoutes(routes, {
 
 registerStorageRoutes(routes, {
   routePrefix: '/hls-streams',
-  dirPath: path.join(__dirname, '../../../hls-streams'),
+  dirPath: path.join(DATA_DIR, 'hls-streams'),
   filePrefix: 'hls',
   resourceName: 'HLS stream',
   payloadKey: 'stream',

@@ -41,7 +41,6 @@ type LoadConfigModalProps = {
   onOpenChange: (open: boolean) => void;
   onLoadLocal: () => void;
   onLoadRemote: (config: RoomConfig) => Promise<void>;
-  isImporting: boolean;
 };
 
 export function LoadConfigModal({
@@ -49,7 +48,6 @@ export function LoadConfigModal({
   onOpenChange,
   onLoadLocal,
   onLoadRemote,
-  isImporting: _isImporting,
 }: LoadConfigModalProps) {
   const { configStorage } = useActions();
 
@@ -61,9 +59,10 @@ export function LoadConfigModal({
       description='Choose where to load your room configuration from.'
       storage={configStorage}
       onLoadLocal={onLoadLocal}
-      onLoadRemote={(data) =>
-        onLoadRemote(parseRoomConfig(JSON.stringify(data)))
-      }
+      onLoadRemote={async (data) => {
+        onOpenChange(false);
+        await onLoadRemote(parseRoomConfig(JSON.stringify(data)));
+      }}
       emptyMessage='No saved configurations found.'
     />
   );

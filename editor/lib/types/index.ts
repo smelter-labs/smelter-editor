@@ -11,11 +11,7 @@ export type { SavedItemInfo } from '../storage-client';
 
 export type { Layout } from './layout';
 
-export type {
-  Input,
-  RegisterInputOptions,
-  UpdateInputOptions,
-} from './input';
+export type { Input, RegisterInputOptions, UpdateInputOptions } from './input';
 
 export type {
   PendingWhipInputData,
@@ -27,6 +23,7 @@ export type {
   KickSuggestions,
   MP4Suggestions,
   PictureSuggestions,
+  AudioSuggestions,
   CreateRoomOptions,
   UpdateRoomOptions,
   StartRecordingResponse,

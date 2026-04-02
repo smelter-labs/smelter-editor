@@ -26,7 +26,12 @@ function AudioMixer() {
   const inputs = useStore(store, (s) => s.inputs);
 
   return (
-    <View style={{ width: SCENE_SIZE, height: SCENE_SIZE, backgroundColor: '#000000' }}>
+    <View
+      style={{
+        width: SCENE_SIZE,
+        height: SCENE_SIZE,
+        backgroundColor: '#000000',
+      }}>
       {inputs.map((input) => (
         <InputStream
           key={input.inputId}

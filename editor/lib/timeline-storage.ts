@@ -257,11 +257,51 @@ export function saveTimeline(
       schemaVersion: 3,
       ...state,
     };
-    localStorage.setItem(
-      `${STORAGE_KEY_PREFIX}${roomId}`,
-      JSON.stringify(payload),
+    const json = JSON.stringify(payload);
+    localStorage.setItem(`${STORAGE_KEY_PREFIX}${roomId}`, json);
+  } catch (err) {
+    console.error(
+      '[timeline-storage] saveTimeline FAILED — localStorage likely full',
+      err,
     );
-  } catch {
-    // storage full or unavailable
+    pruneOldTimelineEntries(roomId);
+    try {
+      const payload: StoredTimelineStateV3 = {
+        schemaVersion: 3,
+        ...state,
+      };
+      localStorage.setItem(
+        `${STORAGE_KEY_PREFIX}${roomId}`,
+        JSON.stringify(payload),
+      );
+    } catch (retryErr) {
+      console.error(
+        '[timeline-storage] saveTimeline RETRY also failed',
+        retryErr,
+      );
+    }
+  }
+}
+
+function pruneOldTimelineEntries(keepRoomId: string): void {
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (
+      key &&
+      key.startsWith(STORAGE_KEY_PREFIX) &&
+      key !== `${STORAGE_KEY_PREFIX}${keepRoomId}`
+    ) {
+      keysToRemove.push(key);
+    }
+  }
+  const toRemove = keysToRemove.slice(0, 3);
+  for (const key of toRemove) {
+    localStorage.removeItem(key);
+  }
+  if (toRemove.length > 0) {
+    console.log(
+      `[timeline-storage] pruned ${toRemove.length} old timeline entries`,
+    );
   }
 }

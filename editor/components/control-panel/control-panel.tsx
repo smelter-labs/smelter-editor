@@ -20,6 +20,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import {
   useControlPanelState,
@@ -33,7 +34,10 @@ import {
 import { useControlPanelEvents } from './hooks/use-control-panel-events';
 import { FxAccordion } from './components/FxAccordion';
 import { StreamsSection } from './components/StreamsSection';
-import { TimelinePanel } from './components/TimelinePanel';
+import {
+  TimelinePanel,
+  type TimelinePanelActions,
+} from './components/TimelinePanel';
 import { AddVideoModal } from './components/AddVideoModal';
 import { QuickActionsSection } from './components/QuickActionsSection';
 import { type PendingWhipInput } from './components/ConfigurationSection';
@@ -41,14 +45,14 @@ import {
   exportRoomConfig,
   downloadRoomConfig,
   parseRoomConfig,
-  loadTimelineFromStorage,
+  buildTimelineStateFromConfigTimeline,
   resolveRoomConfigTimelineState,
   restoreTimelineToStorage,
   loadOutputPlayerSettings,
   saveOutputPlayerSettings,
   type RoomConfig,
-  type RoomConfigInput,
 } from '@/lib/room-config';
+import { streamImportConfig } from '@/lib/import-config-stream';
 import { SaveConfigModal, LoadConfigModal } from './components/ConfigModals';
 import {
   GenericSaveModal,
@@ -56,6 +60,7 @@ import {
 } from '@/components/storage-modals';
 import { setAudioAnalysisEnabled } from '@/app/actions/actions';
 import { TransitionSettings } from './components/TransitionSettings';
+import { ViewportSettings } from './components/ViewportSettings';
 import {
   rotateBy90,
   type RotationAngle,
@@ -81,21 +86,47 @@ import {
 } from '@/lib/voice/macroSettings';
 import { FeedbackPositionPicker } from '@/components/voice-action-feedback/FeedbackPositionPicker';
 import {
+  useTimelineEventsEnabledSetting,
+  useTimelineEventsPositionSetting,
+  useTimelineEventsSizeSetting,
+  useTimelineEventsDurationSetting,
+} from '@/lib/timeline-event-settings';
+import { useTimelineEventDetection } from '@/hooks/use-timeline-event-detection';
+import {
   BlockClipPropertiesPanel,
   type SelectedTimelineClip,
 } from './components/BlockClipPropertiesPanel';
+import {
+  PendingConnectionsPanel,
+  loadAutoModalSetting,
+} from './components/PendingConnectionsPanel';
+import { PendingConnectionsModal } from './components/PendingConnectionsModal';
 import type { TimelineState } from './hooks/use-timeline-state';
+import {
+  buildInputColorMap,
+  TYPE_HSL,
+} from './components/timeline/timeline-utils';
+import {
+  emitTimelineEvent,
+  listenTimelineEvent,
+  TIMELINE_EVENTS,
+} from './components/timeline/timeline-events';
 import { useMotionScores } from '@/hooks/use-motion-scores';
 import { useMotionHistory } from '@/hooks/use-motion-history';
-import { InputMotionPanel } from './components/InputMotionPanel';
-import { motionPanelId } from '@/components/dashboard/panel-registry';
+import { MotionDetectionPanel } from './components/MotionDetectionPanel';
 import { ErrorBoundary } from '@/components/error-boundary';
+import {
+  ImportProgressDialog,
+  type ImportProgressState,
+} from './components/import-progress-dialog';
 import {
   DashboardToolbarProvider,
   useDashboardToolbar,
 } from '@/components/dashboard/dashboard-toolbar-context';
 import { Input as ShadcnInput } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
+import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
+import { PresentationModeSettings } from './components/PresentationModeSettings';
 import {
   Select,
   SelectTrigger,
@@ -122,13 +153,23 @@ export type ControlPanelProps = {
     fxSection: React.ReactNode;
     timelineSection: React.ReactNode;
     blockPropertiesSection: React.ReactNode;
-    motionPanels: Record<string, React.ReactNode>;
+    pendingConnectionsSection: React.ReactNode;
+    motionDetectionSection: React.ReactNode;
     peers: ConnectedPeer[];
     timelineColorOverrides: Record<string, string>;
+    activeClipColors: Record<string, string>;
     selectedInputId: string | null;
     onSelectInput: (id: string) => void;
   }) => React.ReactNode;
 };
+
+const VIDEO_INPUT_TYPES = new Set<string>([
+  'local-mp4',
+  'twitch-channel',
+  'kick-channel',
+  'hls',
+  'whip',
+]);
 
 export type { InputWrapper } from './hooks/use-control-panel-state';
 
@@ -432,6 +473,7 @@ function ControlPanelInner({
     refreshState: handleRefreshState,
     inputs,
     availableShaders,
+    isRecording,
     motionScores,
   } = useControlPanelContext();
   const motionHistoryMap = useMotionHistory(inputs, motionScores);
@@ -439,7 +481,6 @@ function ControlPanelInner({
     useWhipConnectionsContext();
   const actions = useActions();
   const updateRoomAction = actions.updateRoom;
-  const updateInputAction = actions.updateInput;
   const configStorageSave = actions.configStorage.save;
 
   useControlPanelEvents({
@@ -465,14 +506,119 @@ function ControlPanelInner({
   >([]);
   const [timelinePlayheadMs, setTimelinePlayheadMs] = useState(0);
   const timelineStateRef = useRef<TimelineState | null>(null);
+
+  useTimelineEventDetection(timelineStateRef, inputs);
   const timelineLoadStateRef = useRef<((state: TimelineState) => void) | null>(
     null,
   );
+  const pendingTimelineStateRef = useRef<TimelineState | null>(null);
+  const timelineActionsRef = useRef<TimelinePanelActions | null>(null);
 
   const [timelineColorOverrides, setTimelineColorOverrides] = useState<
     Record<string, string>
   >({});
   const timelineColorKeyRef = useRef('');
+
+  const inputsRef = useRef(inputs);
+  inputsRef.current = inputs;
+  const [activeClipColors, setActiveClipColors] = useState<
+    Record<string, string>
+  >({});
+  const activeClipColorsKeyRef = useRef('');
+
+  const [pendingWhipColors, setPendingWhipColors] = useState<
+    Record<string, string>
+  >({});
+  const pendingWhipColorsKeyRef = useRef('');
+
+  const [pendingModalOpen, setPendingModalOpen] = useState(false);
+  const pendingModalShownRef = useRef(false);
+  const [timelineActionsReady, setTimelineActionsReady] = useState(false);
+
+  const [showcaseWelcome, setShowcaseWelcome] = useState<{
+    before: string;
+    after: string;
+  } | null>(null);
+
+  useEffect(() => {
+    try {
+      const key = `showcase-welcome-${roomId}`;
+      const raw = sessionStorage.getItem(key);
+      if (raw) {
+        sessionStorage.removeItem(key);
+        const parsed = JSON.parse(raw);
+        if (parsed.before || parsed.after) {
+          setShowcaseWelcome(parsed);
+        }
+      }
+    } catch {}
+  }, [roomId]);
+
+  useEffect(() => {
+    if (
+      !isGuest &&
+      !pendingModalShownRef.current &&
+      pendingWhipInputs.length > 0 &&
+      (loadAutoModalSetting() || showcaseWelcome)
+    ) {
+      pendingModalShownRef.current = true;
+      setPendingModalOpen(true);
+    }
+  }, [isGuest, pendingWhipInputs.length, showcaseWelcome]);
+
+  const handlePendingModalOpenChange = useCallback(
+    (open: boolean) => {
+      setPendingModalOpen(open);
+      if (pendingModalOpen && !open) {
+        const applyAtPlayhead = timelineActionsRef.current?.applyAtPlayhead;
+        if (applyAtPlayhead) {
+          void applyAtPlayhead();
+        } else {
+          emitTimelineEvent(TIMELINE_EVENTS.APPLY_AT_PLAYHEAD, {});
+        }
+      }
+    },
+    [pendingModalOpen],
+  );
+
+  const handleTimelineActionsReady = useCallback(
+    (actions: TimelinePanelActions | null) => {
+      timelineActionsRef.current = actions;
+      setTimelineActionsReady(actions !== null);
+    },
+    [],
+  );
+
+  const handlePendingModalActionClose = useCallback(() => {
+    setPendingModalOpen(false);
+  }, []);
+
+  const handlePendingModalApply = useCallback(async () => {
+    const applyAtPlayhead = timelineActionsRef.current?.applyAtPlayhead;
+    if (applyAtPlayhead) {
+      await applyAtPlayhead();
+      return;
+    }
+    emitTimelineEvent(TIMELINE_EVENTS.APPLY_AT_PLAYHEAD, {});
+  }, []);
+
+  const handlePendingModalConnectAndPlay = useCallback(async () => {
+    const timelineActions = timelineActionsRef.current;
+    if (!timelineActions) {
+      return;
+    }
+    await timelineActions.applyAtPlayhead();
+    await timelineActions.play();
+  }, []);
+
+  const handlePendingModalConnectAndRecord = useCallback(async () => {
+    const timelineActions = timelineActionsRef.current;
+    if (!timelineActions || isRecording) {
+      return;
+    }
+    await timelineActions.applyAtPlayhead();
+    await timelineActions.recordAndPlay();
+  }, [isRecording]);
 
   const handleTimelineStateChange = useCallback(
     (state: TimelineState) => {
@@ -496,6 +642,47 @@ function ControlPanelInner({
         timelineColorKeyRef.current = key;
         setTimelineColorOverrides(next);
       }
+
+      const colorMap = buildInputColorMap(inputsRef.current);
+      const activeColors: Record<string, string> = {};
+      for (const track of state.tracks) {
+        for (const clip of track.clips) {
+          if (
+            state.playheadMs >= clip.startMs &&
+            state.playheadMs < clip.endMs &&
+            !activeColors[clip.inputId]
+          ) {
+            const tc = clip.blockSettings.timelineColor;
+            activeColors[clip.inputId] =
+              tc || colorMap.get(clip.inputId)?.dot || '';
+          }
+        }
+      }
+      const activeKey = JSON.stringify(activeColors);
+      if (activeKey !== activeClipColorsKeyRef.current) {
+        activeClipColorsKeyRef.current = activeKey;
+        setActiveClipColors(activeColors);
+      }
+
+      const whipBase = TYPE_HSL['whip'];
+      const pendingColors: Record<string, string> = {};
+      for (const track of state.tracks) {
+        for (const clip of track.clips) {
+          if (
+            clip.inputId.startsWith('__pending-whip-') &&
+            !pendingColors[clip.inputId]
+          ) {
+            const tc = clip.blockSettings.timelineColor;
+            pendingColors[clip.inputId] =
+              tc || `hsl(${whipBase[0]} ${whipBase[1]}% ${whipBase[2]}%)`;
+          }
+        }
+      }
+      const pendingKey = JSON.stringify(pendingColors);
+      if (pendingKey !== pendingWhipColorsKeyRef.current) {
+        pendingWhipColorsKeyRef.current = pendingKey;
+        setPendingWhipColors(pendingColors);
+      }
     },
     [selectedTimelineClips.length],
   );
@@ -503,6 +690,11 @@ function ControlPanelInner({
   const handleTimelineLoadStateReady = useCallback(
     (loadState: (state: TimelineState) => void) => {
       timelineLoadStateRef.current = loadState;
+      const pending = pendingTimelineStateRef.current;
+      if (pending) {
+        pendingTimelineStateRef.current = null;
+        loadState(pending);
+      }
     },
     [],
   );
@@ -515,7 +707,11 @@ function ControlPanelInner({
   const applyImportedTimelineState = useCallback(
     (state: TimelineState | null) => {
       if (state) {
-        timelineLoadStateRef.current?.(state);
+        if (timelineLoadStateRef.current) {
+          timelineLoadStateRef.current(state);
+        } else {
+          pendingTimelineStateRef.current = state;
+        }
       }
       timelineStateRef.current = state;
       setTimelinePlayheadMs(state?.playheadMs ?? 0);
@@ -524,14 +720,9 @@ function ControlPanelInner({
   );
 
   useEffect(() => {
-    const handler = (e: Event) => {
-      const detail = (e as CustomEvent<{ clips: SelectedTimelineClip[] }>)
-        .detail;
-      setSelectedTimelineClips(detail?.clips ?? []);
-    };
-    window.addEventListener('smelter:timeline:selected-clip', handler);
-    return () =>
-      window.removeEventListener('smelter:timeline:selected-clip', handler);
+    return listenTimelineEvent(TIMELINE_EVENTS.SELECTED_CLIP, ({ clips }) => {
+      setSelectedTimelineClips(clips ?? []);
+    });
   }, []);
 
   useEffect(() => {
@@ -552,8 +743,6 @@ function ControlPanelInner({
       <ErrorBoundary>
         <SettingsBar
           roomState={roomState}
-          pendingWhipInputs={pendingWhipInputs}
-          setPendingWhipInputs={handleSetPendingWhipInputs}
           getTimelineStateForConfig={getTimelineStateForConfig}
           applyImportedTimelineState={applyImportedTimelineState}
         />
@@ -573,6 +762,7 @@ function ControlPanelInner({
           selectedInputId={selectedInputId}
           isGuest={isGuest}
           guestInputId={activeCameraInputId || activeScreenshareInputId}
+          activeClipColors={activeClipColors}
         />
       </div>
     );
@@ -603,6 +793,7 @@ function ControlPanelInner({
           fillContainer
           onTimelineStateChange={handleTimelineStateChange}
           onTimelineLoadStateReady={handleTimelineLoadStateReady}
+          onTimelineActionsReady={handleTimelineActionsReady}
         />
       </ErrorBoundary>
     );
@@ -618,36 +809,34 @@ function ControlPanelInner({
           availableShaders={availableShaders}
           handleRefreshState={handleRefreshState}
           resolution={roomState.resolution}
-          pendingWhipInputs={isGuest ? undefined : pendingWhipInputs}
-          setPendingWhipInputs={
-            isGuest ? undefined : handleSetPendingWhipInputs
-          }
         />
       </div>
     );
 
-    const videoInputTypes = [
-      'local-mp4',
-      'twitch-channel',
-      'kick-channel',
-      'hls',
-      'whip',
-    ];
-    const motionPanels: Record<string, React.ReactNode> = {};
-    for (const input of inputs) {
-      if (!videoInputTypes.includes(input.type)) continue;
-      const panelId = motionPanelId(input.inputId);
-      const history = motionHistoryMap.get(input.inputId);
-      motionPanels[panelId] = (
-        <InputMotionPanel
-          roomId={roomId}
-          input={input}
-          motionHistory={history ?? null}
-          motionScore={motionScores[input.inputId]}
-          refreshState={handleRefreshState}
-        />
-      );
-    }
+    const pendingConnectionsSection = !isGuest ? (
+      <PendingConnectionsPanel
+        pendingWhipInputs={pendingWhipInputs}
+        setPendingWhipInputs={handleSetPendingWhipInputs}
+        colorMap={pendingWhipColors}
+      />
+    ) : (
+      <div className='h-full flex items-center justify-center p-3'>
+        <p className='text-xs text-neutral-500'>Not available for guests</p>
+      </div>
+    );
+
+    const motionDetectionInputs = inputs.filter((input) =>
+      VIDEO_INPUT_TYPES.has(input.type),
+    );
+    const motionDetectionSection = (
+      <MotionDetectionPanel
+        roomId={roomId}
+        inputs={motionDetectionInputs}
+        motionHistoryMap={motionHistoryMap}
+        motionScores={motionScores}
+        refreshState={handleRefreshState}
+      />
+    );
 
     return (
       <DashboardToolbarProvider>
@@ -665,12 +854,31 @@ function ControlPanelInner({
           fxSection,
           timelineSection,
           blockPropertiesSection,
-          motionPanels,
+          pendingConnectionsSection,
+          motionDetectionSection,
           peers,
           timelineColorOverrides,
+          activeClipColors,
           selectedInputId,
           onSelectInput: setSelectedInputId,
         })}
+        {!isGuest && (
+          <PendingConnectionsModal
+            pendingWhipInputs={pendingWhipInputs}
+            setPendingWhipInputs={handleSetPendingWhipInputs}
+            colorMap={pendingWhipColors}
+            open={pendingModalOpen}
+            onOpenChange={handlePendingModalOpenChange}
+            onActionClose={handlePendingModalActionClose}
+            onApplyAtPlayhead={handlePendingModalApply}
+            onConnectAndPlay={handlePendingModalConnectAndPlay}
+            onConnectAndRecord={handlePendingModalConnectAndRecord}
+            canConnectAndPlay={timelineActionsReady}
+            canConnectAndRecord={timelineActionsReady && !isRecording}
+            welcomeTextBefore={showcaseWelcome?.before}
+            welcomeTextAfter={showcaseWelcome?.after}
+          />
+        )}
       </DashboardToolbarProvider>
     );
   }
@@ -687,6 +895,7 @@ function ControlPanelInner({
       selectedInputId={selectedInputId}
       isGuest={isGuest}
       guestInputId={activeCameraInputId || activeScreenshareInputId}
+      activeClipColors={activeClipColors}
     />
   ) : null;
 
@@ -706,6 +915,7 @@ function ControlPanelInner({
         fillContainer={false}
         onTimelineStateChange={handleTimelineStateChange}
         onTimelineLoadStateReady={handleTimelineLoadStateReady}
+        onTimelineActionsReady={handleTimelineActionsReady}
       />
     </ErrorBoundary>
   ) : null;
@@ -727,8 +937,6 @@ function ControlPanelInner({
               <ErrorBoundary>
                 <SettingsBar
                   roomState={roomState}
-                  pendingWhipInputs={pendingWhipInputs}
-                  setPendingWhipInputs={handleSetPendingWhipInputs}
                   getTimelineStateForConfig={getTimelineStateForConfig}
                   applyImportedTimelineState={applyImportedTimelineState}
                 />
@@ -740,6 +948,24 @@ function ControlPanelInner({
     </motion.div>
   );
 
+  const pendingModal = !isGuest && (
+    <PendingConnectionsModal
+      pendingWhipInputs={pendingWhipInputs}
+      setPendingWhipInputs={handleSetPendingWhipInputs}
+      colorMap={pendingWhipColors}
+      open={pendingModalOpen}
+      onOpenChange={handlePendingModalOpenChange}
+      onActionClose={handlePendingModalActionClose}
+      onApplyAtPlayhead={handlePendingModalApply}
+      onConnectAndPlay={handlePendingModalConnectAndPlay}
+      onConnectAndRecord={handlePendingModalConnectAndRecord}
+      canConnectAndPlay={timelineActionsReady}
+      canConnectAndRecord={timelineActionsReady && !isRecording}
+      welcomeTextBefore={showcaseWelcome?.before}
+      welcomeTextAfter={showcaseWelcome?.after}
+    />
+  );
+
   if (renderStreamsOutside) {
     return (
       <>
@@ -747,44 +973,40 @@ function ControlPanelInner({
         {timelineSection &&
           timelinePortalRef?.current &&
           createPortal(timelineSection, timelinePortalRef.current)}
+        {pendingModal}
       </>
     );
   }
 
-  return mainPanel;
+  return (
+    <>
+      {mainPanel}
+      {pendingModal}
+    </>
+  );
 }
 
 type ModalId = 'quickActions' | 'settings';
 
 function SettingsBar({
   roomState,
-  pendingWhipInputs,
-  setPendingWhipInputs,
   getTimelineStateForConfig,
   applyImportedTimelineState,
 }: {
   roomState: RoomState;
-  pendingWhipInputs: PendingWhipInput[];
-  setPendingWhipInputs: (inputs: PendingWhipInput[]) => void | Promise<void>;
   getTimelineStateForConfig: () => TimelineState | null;
   applyImportedTimelineState: (state: TimelineState | null) => void;
 }) {
   const { roomId, refreshState: handleRefreshState } = useControlPanelContext();
   const actions = useActions();
   const updateRoomAction = actions.updateRoom;
-  const updateInputAction = actions.updateInput;
   const configStorageSave = actions.configStorage.save;
-  const addTwitchInput = actions.addTwitchInput;
-  const addKickInput = actions.addKickInput;
-  const addMP4Input = actions.addMP4Input;
-  const addImageInput = actions.addImageInput;
-  const addTextInput = actions.addTextInput;
-  const addSnakeGameInput = actions.addSnakeGameInput;
-  const removeInput = actions.removeInput;
   const [openModal, setOpenModal] = useState<ModalId | null>(null);
   const [showAddVideoModal, setShowAddVideoModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
+  const [importProgress, setImportProgress] =
+    useState<ImportProgressState | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [showLoadModal, setShowLoadModal] = useState(false);
   const [autoPlayMacro, setAutoPlayMacro] = useAutoPlayMacroSetting();
@@ -792,6 +1014,13 @@ function SettingsBar({
   const [feedbackEnabled, setFeedbackEnabled] = useFeedbackEnabledSetting();
   const [feedbackSize, setFeedbackSize] = useFeedbackSizeSetting();
   const [feedbackDuration, setFeedbackDuration] = useFeedbackDurationSetting();
+  const [tlEventsEnabled, setTlEventsEnabled] =
+    useTimelineEventsEnabledSetting();
+  const [tlEventsPosition, setTlEventsPosition] =
+    useTimelineEventsPositionSetting();
+  const [tlEventsSize, setTlEventsSize] = useTimelineEventsSizeSetting();
+  const [tlEventsDuration, setTlEventsDuration] =
+    useTimelineEventsDurationSetting();
   const [defaultOrientation, setDefaultOrientation] =
     useDefaultOrientationSetting();
   const [voicePanelSize, setVoicePanelSize] = useVoicePanelSizeSetting();
@@ -802,6 +1031,14 @@ function SettingsBar({
   const [showDashSaveModal, setShowDashSaveModal] = useState(false);
   const [showDashLoadModal, setShowDashLoadModal] = useState(false);
   const dashFileInputRef = useRef<HTMLInputElement>(null);
+
+  const startImportProgress = useCallback((total: number, phase: string) => {
+    setImportProgress({
+      phase,
+      current: 0,
+      total: Math.max(total, 1),
+    });
+  }, []);
 
   const handleDashSaveRemote = useCallback(
     async (name: string): Promise<string | null> => {
@@ -922,6 +1159,15 @@ function SettingsBar({
       },
       timelineState ?? undefined,
       outputPlayer,
+      {
+        viewportTop: roomState.viewportTop,
+        viewportLeft: roomState.viewportLeft,
+        viewportWidth: roomState.viewportWidth,
+        viewportHeight: roomState.viewportHeight,
+        viewportTransitionDurationMs: roomState.viewportTransitionDurationMs,
+        viewportTransitionEasing: roomState.viewportTransitionEasing,
+      },
+      roomState.outputShaders,
     );
   }, [getTimelineStateForConfig, roomState, roomId]);
 
@@ -961,216 +1207,84 @@ function SettingsBar({
 
   const importConfig = useCallback(
     async (config: RoomConfig) => {
-      const oldInputIds = roomState.inputs.map((i) => i.inputId);
-      const newPendingWhipInputs: PendingWhipInput[] = [];
-      const createdInputIds: {
-        inputId: string;
-        config: RoomConfigInput;
-        position: number;
-      }[] = [];
-
-      for (let i = 0; i < config.inputs.length; i++) {
-        const inputConfig = config.inputs[i];
-        try {
-          let inputId: string | null = null;
-
-          if (inputConfig.type === 'whip') {
-            newPendingWhipInputs.push({
-              id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              title: inputConfig.title,
-              config: inputConfig,
-              position: i,
-            });
-            continue;
-          }
-
-          switch (inputConfig.type) {
-            case 'twitch-channel':
-              if (inputConfig.channelId) {
-                const result = await addTwitchInput(
-                  roomId,
-                  inputConfig.channelId,
-                );
-                inputId = result.inputId;
-              }
-              break;
-            case 'kick-channel':
-              if (inputConfig.channelId) {
-                const result = await addKickInput(
-                  roomId,
-                  inputConfig.channelId,
-                );
-                inputId = result.inputId;
-              }
-              break;
-            case 'local-mp4':
-              if (inputConfig.mp4FileName) {
-                const result = await addMP4Input(
-                  roomId,
-                  inputConfig.mp4FileName,
-                );
-                inputId = result.inputId;
-              }
-              break;
-            case 'image':
-              if (inputConfig.imageId) {
-                const result = await addImageInput(roomId, inputConfig.imageId);
-                inputId = result.inputId;
-              }
-              break;
-            case 'text-input':
-              if (inputConfig.text) {
-                const result = await addTextInput(
-                  roomId,
-                  inputConfig.text,
-                  inputConfig.textAlign || 'left',
-                );
-                inputId = result.inputId;
-              }
-              break;
-            case 'game': {
-              const result = await addSnakeGameInput(roomId, inputConfig.title);
-              inputId = result.inputId;
-              break;
-            }
-          }
-
-          if (inputId) {
-            createdInputIds.push({
-              inputId,
-              config: inputConfig,
-              position: i,
-            });
-          }
-        } catch (e) {
-          console.warn(`Failed to add input ${inputConfig.title}:`, e);
-        }
-      }
-
-      const positionToInputId = new Map<number, string>();
-      for (const { inputId, position } of createdInputIds) {
-        positionToInputId.set(position, inputId);
-      }
-      for (const pending of newPendingWhipInputs) {
-        positionToInputId.set(
-          pending.position,
-          `__pending-whip-${pending.position}__`,
-        );
-      }
-
-      await handleRefreshState();
-
-      for (const { inputId, config: inputConfig } of createdInputIds) {
-        const attachedInputIds = inputConfig.attachedInputIndices
-          ?.map((idx) => positionToInputId.get(idx))
-          .filter((id): id is string => !!id);
-        try {
-          await updateInputAction(roomId, inputId, {
-            volume: inputConfig.volume,
-            shaders: inputConfig.shaders,
-            showTitle: inputConfig.showTitle,
-            textColor: inputConfig.textColor,
-            textMaxLines: inputConfig.textMaxLines,
-            textScrollSpeed: inputConfig.textScrollSpeed,
-            textScrollLoop: inputConfig.textScrollLoop,
-            textFontSize: inputConfig.textFontSize,
-            borderColor: inputConfig.borderColor,
-            borderWidth: inputConfig.borderWidth,
-            gameBackgroundColor: inputConfig.gameBackgroundColor,
-            gameCellGap: inputConfig.gameCellGap,
-            gameBoardBorderColor: inputConfig.gameBoardBorderColor,
-            gameBoardBorderWidth: inputConfig.gameBoardBorderWidth,
-            gameGridLineColor: inputConfig.gameGridLineColor,
-            gameGridLineAlpha: inputConfig.gameGridLineAlpha,
-            snakeEventShaders: inputConfig.snakeEventShaders,
-            snake1Shaders: inputConfig.snake1Shaders,
-            snake2Shaders: inputConfig.snake2Shaders,
-            absolutePosition: inputConfig.absolutePosition,
-            absoluteTop: inputConfig.absoluteTop,
-            absoluteLeft: inputConfig.absoluteLeft,
-            absoluteWidth: inputConfig.absoluteWidth,
-            absoluteHeight: inputConfig.absoluteHeight,
-            absoluteTransitionDurationMs:
-              inputConfig.absoluteTransitionDurationMs,
-            absoluteTransitionEasing: inputConfig.absoluteTransitionEasing,
-            cropTop: inputConfig.cropTop,
-            cropLeft: inputConfig.cropLeft,
-            cropRight: inputConfig.cropRight,
-            cropBottom: inputConfig.cropBottom,
-            attachedInputIds:
-              attachedInputIds && attachedInputIds.length > 0
-                ? attachedInputIds
-                : undefined,
-          });
-        } catch (e) {
-          console.warn(`Failed to update input ${inputId}:`, e);
-        }
-      }
-
-      for (const oldInputId of oldInputIds) {
-        try {
-          await removeInput(roomId, oldInputId);
-        } catch (e) {
-          console.warn(`Failed to remove old input ${oldInputId}:`, e);
-        }
-      }
-
-      setPendingWhipInputs(newPendingWhipInputs);
-
-      if (config.timeline) {
-        const indexToInputId = new Map<number, string>();
-        for (const { inputId, position } of createdInputIds) {
-          indexToInputId.set(position, inputId);
-        }
-        for (const pending of newPendingWhipInputs) {
-          indexToInputId.set(
-            pending.position,
-            `__pending-whip-${pending.position}__`,
-          );
-        }
-        restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
-        const restoredTimelineState = loadTimelineFromStorage(roomId);
-        if (restoredTimelineState) {
-          const nextTimelineState: TimelineState = {
-            ...restoredTimelineState,
-            playheadMs: 0,
-            isPlaying: false,
-          };
-          applyImportedTimelineState(nextTimelineState);
-        } else {
-          applyImportedTimelineState(null);
-        }
-      }
-
-      const orderedCreatedIds = createdInputIds
-        .slice()
-        .sort((a, b) => a.position - b.position)
-        .map(({ inputId }) => inputId);
+      setIsImporting(true);
+      startImportProgress(1, 'Starting import');
 
       try {
-        await updateRoomAction(roomId, {
-          layout: config.layout,
-          ...(orderedCreatedIds.length > 0
-            ? { inputOrder: orderedCreatedIds }
-            : {}),
-          ...config.transitionSettings,
-        });
-      } catch (e) {
-        console.warn('Failed to set layout or input order:', e);
-      }
+        const oldInputIds = roomState.inputs.map((i) => i.inputId);
 
-      if (config.outputPlayer) {
-        saveOutputPlayerSettings(roomId, config.outputPlayer);
-      }
+        const result = await streamImportConfig(
+          roomId,
+          { config, oldInputIds },
+          {
+            onProgress: (event) => {
+              setImportProgress({
+                phase: event.phase,
+                current: event.current,
+                total: event.total,
+              });
+            },
+          },
+        );
 
-      await handleRefreshState();
+        if (result.errors.length > 0) {
+          console.warn('[import-config] Errors:', result.errors);
+        }
+
+        const indexToInputId = new Map<number, string>();
+        for (const [idx, inputId] of Object.entries(result.indexToInputId)) {
+          indexToInputId.set(Number(idx), inputId);
+        }
+        for (const pw of result.pendingWhipData) {
+          indexToInputId.set(
+            pw.position,
+            `__pending-whip-${pw.position}__`,
+          );
+        }
+
+        if (config.timeline) {
+          restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
+          const restoredTimelineState = buildTimelineStateFromConfigTimeline(
+            config.timeline,
+            indexToInputId,
+          );
+          const knownInputIds = new Set<string>();
+          for (const inputId of Object.values(result.indexToInputId)) {
+            knownInputIds.add(inputId);
+          }
+          for (const pw of result.pendingWhipData) {
+            knownInputIds.add(`__pending-whip-${pw.position}__`);
+          }
+
+          const importedTimelineState =
+            restoredTimelineState.tracks.length > 0
+              ? {
+                  ...restoredTimelineState,
+                  playheadMs: 0,
+                  isPlaying: false,
+                  knownInputIds,
+                }
+              : null;
+
+          applyImportedTimelineState(importedTimelineState);
+        }
+
+        if (config.outputPlayer) {
+          saveOutputPlayerSettings(roomId, config.outputPlayer);
+        }
+
+        await handleRefreshState();
+      } finally {
+        setImportProgress(null);
+        setIsImporting(false);
+      }
     },
     [
       roomId,
       roomState.inputs,
       handleRefreshState,
-      setPendingWhipInputs,
       applyImportedTimelineState,
+      startImportProgress,
     ],
   );
 
@@ -1179,7 +1293,6 @@ function SettingsBar({
       const file = e.target.files?.[0];
       if (!file) return;
 
-      setIsImporting(true);
       try {
         const text = await file.text();
         const config = parseRoomConfig(text);
@@ -1187,7 +1300,6 @@ function SettingsBar({
       } catch (e: any) {
         console.error('Import failed:', e);
       } finally {
-        setIsImporting(false);
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
@@ -1355,144 +1467,202 @@ function SettingsBar({
           <DialogHeader>
             <DialogTitle>Settings</DialogTitle>
           </DialogHeader>
-          <div className='grid grid-cols-2 gap-6'>
-            <section className='space-y-2'>
-              <h4 className='text-sm font-medium text-foreground'>
-                Transition Settings
-              </h4>
-              <TransitionSettings
-                swapDurationMs={roomState.swapDurationMs ?? 500}
-                onSwapDurationChange={async (value) => {
-                  await updateRoomAction(roomId, { swapDurationMs: value });
-                  await handleRefreshState();
-                }}
-                swapOutgoingEnabled={roomState.swapOutgoingEnabled ?? true}
-                onSwapOutgoingEnabledChange={async (value) => {
-                  await updateRoomAction(roomId, {
-                    swapOutgoingEnabled: value,
-                  });
-                  await handleRefreshState();
-                }}
-                swapFadeInDurationMs={roomState.swapFadeInDurationMs ?? 500}
-                onSwapFadeInDurationChange={async (value) => {
-                  await updateRoomAction(roomId, {
-                    swapFadeInDurationMs: value,
-                  });
-                  await handleRefreshState();
-                }}
-                swapFadeOutDurationMs={roomState.swapFadeOutDurationMs ?? 500}
-                onSwapFadeOutDurationChange={async (value) => {
-                  await updateRoomAction(roomId, {
-                    swapFadeOutDurationMs: value,
-                  });
-                  await handleRefreshState();
-                }}
-                newsStripFadeDuringSwap={
-                  roomState.newsStripFadeDuringSwap ?? true
-                }
-                onNewsStripFadeDuringSwapChange={async (value) => {
-                  await updateRoomAction(roomId, {
-                    newsStripFadeDuringSwap: value,
-                  });
-                  await handleRefreshState();
-                }}
-                newsStripEnabled={roomState.newsStripEnabled ?? true}
-                onNewsStripEnabledChange={async (value) => {
-                  await updateRoomAction(roomId, { newsStripEnabled: value });
-                  await handleRefreshState();
-                }}
-              />
-            </section>
-            <div className='space-y-4'>
-              <section className='space-y-2 px-1'>
-                <h4 className='text-sm font-medium text-foreground'>
-                  Macros Settings
-                </h4>
-                <label className='flex items-center gap-2 cursor-pointer'>
-                  <input
-                    type='checkbox'
-                    checked={autoPlayMacro}
-                    onChange={(e) => {
-                      setAutoPlayMacro(e.target.checked);
+          <Tabs defaultValue='general'>
+            <TabsList className='w-full'>
+              <TabsTrigger value='general' className='flex-1'>
+                General
+              </TabsTrigger>
+              <TabsTrigger value='presentation' className='flex-1'>
+                Presentation Mode
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value='general'>
+              <div className='grid grid-cols-2 gap-6'>
+                <section className='space-y-2'>
+                  <h4 className='text-sm font-medium text-foreground'>
+                    Transition Settings
+                  </h4>
+                  <TransitionSettings
+                    swapDurationMs={roomState.swapDurationMs ?? 500}
+                    onSwapDurationChange={async (value) => {
+                      await updateRoomAction(roomId, { swapDurationMs: value });
+                      await handleRefreshState();
                     }}
-                    className='accent-white'
-                  />
-                  <span className='text-xs text-muted-foreground'>
-                    Auto Play Macro
-                  </span>
-                </label>
-                <label className='flex items-center gap-2 cursor-pointer'>
-                  <input
-                    type='checkbox'
-                    checked={voicePanelSize === 's'}
-                    onChange={(e) =>
-                      setVoicePanelSize(e.target.checked ? 's' : 'l')
+                    swapOutgoingEnabled={roomState.swapOutgoingEnabled ?? true}
+                    onSwapOutgoingEnabledChange={async (value) => {
+                      await updateRoomAction(roomId, {
+                        swapOutgoingEnabled: value,
+                      });
+                      await handleRefreshState();
+                    }}
+                    swapFadeInDurationMs={roomState.swapFadeInDurationMs ?? 500}
+                    onSwapFadeInDurationChange={async (value) => {
+                      await updateRoomAction(roomId, {
+                        swapFadeInDurationMs: value,
+                      });
+                      await handleRefreshState();
+                    }}
+                    swapFadeOutDurationMs={
+                      roomState.swapFadeOutDurationMs ?? 500
                     }
-                    className='accent-white'
+                    onSwapFadeOutDurationChange={async (value) => {
+                      await updateRoomAction(roomId, {
+                        swapFadeOutDurationMs: value,
+                      });
+                      await handleRefreshState();
+                    }}
+                    newsStripFadeDuringSwap={
+                      roomState.newsStripFadeDuringSwap ?? true
+                    }
+                    onNewsStripFadeDuringSwapChange={async (value) => {
+                      await updateRoomAction(roomId, {
+                        newsStripFadeDuringSwap: value,
+                      });
+                      await handleRefreshState();
+                    }}
+                    newsStripEnabled={roomState.newsStripEnabled ?? true}
+                    onNewsStripEnabledChange={async (value) => {
+                      await updateRoomAction(roomId, {
+                        newsStripEnabled: value,
+                      });
+                      await handleRefreshState();
+                    }}
                   />
-                  <span className='text-xs text-muted-foreground'>
-                    Compact Voice Panel
-                  </span>
-                </label>
-                <div className='flex items-center justify-between gap-3'>
-                  <span className='text-xs text-muted-foreground shrink-0'>
-                    Panel Opacity
-                  </span>
-                  <Slider
-                    min={0}
-                    max={100}
-                    step={5}
-                    value={[voicePanelOpacity]}
-                    onValueChange={(v) => setVoicePanelOpacity(v[0])}
-                    className='flex-1 accent-white h-1'
-                  />
-                  <span className='text-xs text-muted-foreground w-8 text-right tabular-nums'>
-                    {voicePanelOpacity}%
-                  </span>
+                  <div className='h-px bg-card mt-3' />
+                  <h4 className='text-sm font-medium text-foreground mt-3'>
+                    Viewport
+                  </h4>
+                  {roomState.resolution && (
+                    <ViewportSettings
+                      resolution={roomState.resolution}
+                      viewportTop={roomState.viewportTop}
+                      viewportLeft={roomState.viewportLeft}
+                      viewportWidth={roomState.viewportWidth}
+                      viewportHeight={roomState.viewportHeight}
+                      viewportTransitionDurationMs={
+                        roomState.viewportTransitionDurationMs
+                      }
+                      viewportTransitionEasing={
+                        roomState.viewportTransitionEasing
+                      }
+                      onChange={async (fields) => {
+                        await updateRoomAction(roomId, fields);
+                        await handleRefreshState();
+                      }}
+                    />
+                  )}
+                </section>
+                <div className='space-y-4'>
+                  <section className='space-y-2 px-1'>
+                    <h4 className='text-sm font-medium text-foreground'>
+                      Macros Settings
+                    </h4>
+                    <label className='flex items-center gap-2 cursor-pointer'>
+                      <Checkbox
+                        checked={autoPlayMacro}
+                        onCheckedChange={(checked: boolean) => {
+                          setAutoPlayMacro(checked);
+                        }}
+                      />
+                      <span className='text-xs text-muted-foreground'>
+                        Auto Play Macro
+                      </span>
+                    </label>
+                    <label className='flex items-center gap-2 cursor-pointer'>
+                      <Checkbox
+                        checked={voicePanelSize === 's'}
+                        onCheckedChange={(checked: boolean) =>
+                          setVoicePanelSize(checked ? 's' : 'l')
+                        }
+                      />
+                      <span className='text-xs text-muted-foreground'>
+                        Compact Voice Panel
+                      </span>
+                    </label>
+                    <div className='flex items-center justify-between gap-3'>
+                      <span className='text-xs text-muted-foreground shrink-0'>
+                        Panel Opacity
+                      </span>
+                      <Slider
+                        min={0}
+                        max={100}
+                        step={5}
+                        value={[voicePanelOpacity]}
+                        onValueChange={(v) => setVoicePanelOpacity(v[0])}
+                        className='flex-1 accent-white h-1'
+                      />
+                      <span className='text-xs text-muted-foreground w-8 text-right tabular-nums'>
+                        {voicePanelOpacity}%
+                      </span>
+                    </div>
+                  </section>
+                  <div className='h-px bg-card' />
+                  <section className='space-y-2 px-1'>
+                    <h4 className='text-sm font-medium text-foreground'>
+                      Input Defaults
+                    </h4>
+                    <div className='flex items-center justify-between'>
+                      <span className='text-xs text-muted-foreground'>
+                        Default Orientation
+                      </span>
+                      <Select
+                        value={defaultOrientation}
+                        onValueChange={(v: 'horizontal' | 'vertical') =>
+                          setDefaultOrientation(v)
+                        }>
+                        <SelectTrigger className='bg-card border border-border text-foreground text-xs px-2 py-1 rounded h-auto'>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value='horizontal'>Horizontal</SelectItem>
+                          <SelectItem value='vertical'>Vertical</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </section>
+                  <div className='h-px bg-card' />
+                  <section className='space-y-2 px-1'>
+                    <h4 className='text-sm font-medium text-foreground'>
+                      Toast Notifications
+                    </h4>
+                    <FeedbackPositionPicker
+                      enabled={feedbackEnabled}
+                      onEnabledChange={setFeedbackEnabled}
+                      position={feedbackPosition}
+                      onPositionChange={setFeedbackPosition}
+                      size={feedbackSize}
+                      onSizeChange={setFeedbackSize}
+                      duration={feedbackDuration}
+                      onDurationChange={setFeedbackDuration}
+                    />
+                  </section>
+                  <div className='h-px bg-card' />
+                  <section className='space-y-2 px-1'>
+                    <h4 className='text-sm font-medium text-foreground'>
+                      Timeline Event Notifications
+                    </h4>
+                    <FeedbackPositionPicker
+                      label='Show Timeline Events'
+                      enabled={tlEventsEnabled}
+                      onEnabledChange={setTlEventsEnabled}
+                      position={tlEventsPosition}
+                      onPositionChange={setTlEventsPosition}
+                      size={tlEventsSize}
+                      onSizeChange={setTlEventsSize}
+                      duration={tlEventsDuration}
+                      onDurationChange={setTlEventsDuration}
+                    />
+                  </section>
                 </div>
-              </section>
-              <div className='h-px bg-card' />
-              <section className='space-y-2 px-1'>
-                <h4 className='text-sm font-medium text-foreground'>
-                  Input Defaults
-                </h4>
-                <div className='flex items-center justify-between'>
-                  <span className='text-xs text-muted-foreground'>
-                    Default Orientation
-                  </span>
-                  <Select
-                    value={defaultOrientation}
-                    onValueChange={(v: 'horizontal' | 'vertical') =>
-                      setDefaultOrientation(v)
-                    }>
-                    <SelectTrigger className='bg-card border border-border text-foreground text-xs px-2 py-1 rounded h-auto'>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value='horizontal'>Horizontal</SelectItem>
-                      <SelectItem value='vertical'>Vertical</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </section>
-              <div className='h-px bg-card' />
-              <section className='space-y-2 px-1'>
-                <h4 className='text-sm font-medium text-foreground'>
-                  Toast Notifications
-                </h4>
-                <FeedbackPositionPicker
-                  enabled={feedbackEnabled}
-                  onEnabledChange={setFeedbackEnabled}
-                  position={feedbackPosition}
-                  onPositionChange={setFeedbackPosition}
-                  size={feedbackSize}
-                  onSizeChange={setFeedbackSize}
-                  duration={feedbackDuration}
-                  onDurationChange={setFeedbackDuration}
-                />
-              </section>
-            </div>
-          </div>
+              </div>
+            </TabsContent>
+            <TabsContent value='presentation'>
+              <PresentationModeSettings
+                roomState={roomState}
+                getTimelineStateForConfig={getTimelineStateForConfig}
+              />
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
 
@@ -1509,8 +1679,9 @@ function SettingsBar({
         onOpenChange={setShowLoadModal}
         onLoadLocal={() => fileInputRef.current?.click()}
         onLoadRemote={importConfig}
-        isImporting={isImporting}
       />
+
+      <ImportProgressDialog progress={importProgress} />
 
       <AddVideoModal
         open={showAddVideoModal}

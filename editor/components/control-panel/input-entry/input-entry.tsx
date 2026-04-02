@@ -4,10 +4,10 @@ import { useActions } from '../contexts/actions-context';
 import { GripVertical } from 'lucide-react';
 import ShaderPanel from './shader-panel';
 import SnakeEventShaderPanel from './snake-event-shader-panel';
-import { InputEntryTextSection } from './input-entry-text-section';
 import { DeleteButton } from './delete-button';
+import { MissingAssetMp4Row } from './missing-asset-mp4-row';
 import { AddShaderModal } from './add-shader-modal';
-import { getSourceStateColor, getSourceStateLabel } from './utils';
+
 import { handleShaderDrop, handleShaderDragOver } from './shader-drop-handler';
 import { stopCameraAndConnection } from '../whip-input/utils/preview';
 import {
@@ -17,7 +17,6 @@ import {
 } from '../whip-input/utils/whip-storage';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { hexToPackedInt } from '@/lib/color-utils';
-import { Input as ShadcnInput } from '@/components/ui/input';
 import { NumberInput } from '@/components/ui/number-input';
 import { Slider } from '@/components/ui/slider';
 
@@ -36,8 +35,9 @@ interface InputEntryProps {
   fxModeOnly?: boolean;
   showGrip?: boolean;
   isSelected?: boolean;
-  index?: number;
+
   readOnly?: boolean;
+  activeBlockColor?: string;
 }
 
 export default function InputEntry({
@@ -54,8 +54,8 @@ export default function InputEntry({
   fxModeOnly,
   showGrip = true,
   isSelected = false,
-  index,
   readOnly = false,
+  activeBlockColor,
 }: InputEntryProps) {
   const actions = useActions();
   const [showSliders, setShowSliders] = useState(false);
@@ -64,64 +64,13 @@ export default function InputEntry({
     [shaderId: string]: string | null;
   }>({});
   const [isAddShaderModalOpen, setIsAddShaderModalOpen] = useState(false);
-  const [textValue, setTextValue] = useState(input.text || '');
-  const [textAlign, setTextAlign] = useState<'left' | 'center' | 'right'>(
-    input.textAlign || 'left',
+  const [gameGridAlphaDraft, setGameGridAlphaDraft] = useState<number | null>(
+    null,
   );
-  const [textColor, setTextColor] = useState<string>(
-    input.textColor || '#ffffff',
-  );
-  const [textMaxLines, setTextMaxLines] = useState<number>(
-    input.textMaxLines ?? 10,
-  );
-  const [textScrollSpeed, setTextScrollSpeed] = useState<number>(
-    input.textScrollSpeed ?? 80,
-  );
-  const [textScrollLoop, setTextScrollLoop] = useState<boolean>(
-    input.textScrollLoop ?? true,
-  );
-  const [textFontSize, setTextFontSize] = useState<number>(
-    input.textFontSize ?? 80,
-  );
-  const [isTextSaving, setIsTextSaving] = useState(false);
-  const textSaveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const gameGridAlphaTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const gameBorderColorTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const gameGridColorTimerRef = useRef<NodeJS.Timeout | null>(null);
   const isMobile = useIsMobile();
-
-  const isTextInput = input.type === 'text-input';
-
-  useEffect(() => {
-    if (input.textColor !== undefined) {
-      setTextColor(input.textColor);
-    }
-  }, [input.textColor]);
-
-  useEffect(() => {
-    setTextValue(input.text || '');
-  }, [input.text]);
-
-  useEffect(() => {
-    if (input.textMaxLines !== undefined) {
-      setTextMaxLines(input.textMaxLines);
-    }
-  }, [input.textMaxLines]);
-
-  useEffect(() => {
-    if (input.textScrollSpeed !== undefined) {
-      setTextScrollSpeed(input.textScrollSpeed);
-    }
-  }, [input.textScrollSpeed]);
-
-  useEffect(() => {
-    if (input.textScrollLoop !== undefined) {
-      setTextScrollLoop(input.textScrollLoop);
-    }
-  }, [input.textScrollLoop]);
-
-  useEffect(() => {
-    if (input.textFontSize !== undefined) {
-      setTextFontSize(input.textFontSize);
-    }
-  }, [input.textFontSize]);
 
   const lastParamChangeRef = useRef<{ [key: string]: number }>({});
   const [sliderValues, setSliderValues] = useState<{ [key: string]: number }>(
@@ -138,6 +87,12 @@ export default function InputEntry({
           clearTimeout(timer as number);
         }
       });
+      if (gameGridAlphaTimerRef.current)
+        clearTimeout(gameGridAlphaTimerRef.current);
+      if (gameBorderColorTimerRef.current)
+        clearTimeout(gameBorderColorTimerRef.current);
+      if (gameGridColorTimerRef.current)
+        clearTimeout(gameGridColorTimerRef.current);
     };
   }, []);
 
@@ -147,137 +102,6 @@ export default function InputEntry({
   const addedShaderIds = useMemo(
     () => new Set((input.shaders || []).map((s) => s.shaderId)),
     [input.shaders],
-  );
-
-  const handleTextChange = useCallback(
-    (newText: string) => {
-      setTextValue(newText);
-      if (textSaveTimerRef.current) {
-        clearTimeout(textSaveTimerRef.current);
-      }
-      textSaveTimerRef.current = setTimeout(async () => {
-        setIsTextSaving(true);
-        try {
-          await actions.updateInput(roomId, input.inputId, {
-            text: newText,
-            shaders: input.shaders,
-            volume: input.volume,
-          });
-          await refreshState();
-        } finally {
-          setIsTextSaving(false);
-        }
-      }, 500);
-    },
-    [roomId, input, refreshState],
-  );
-
-  const handleTextAlignChange = useCallback(
-    async (newAlign: 'left' | 'center' | 'right') => {
-      setTextAlign(newAlign);
-      setIsTextSaving(true);
-      try {
-        await actions.updateInput(roomId, input.inputId, {
-          textAlign: newAlign,
-          shaders: input.shaders,
-          volume: input.volume,
-        });
-        await refreshState();
-      } finally {
-        setIsTextSaving(false);
-      }
-    },
-    [roomId, input, refreshState],
-  );
-
-  const handleTextColorChange = useCallback(
-    async (newColor: string) => {
-      setTextColor(newColor);
-      setIsTextSaving(true);
-      try {
-        await actions.updateInput(roomId, input.inputId, {
-          textColor: newColor,
-          shaders: input.shaders,
-          volume: input.volume,
-        });
-        await refreshState();
-      } finally {
-        setIsTextSaving(false);
-      }
-    },
-    [roomId, input, refreshState],
-  );
-
-  const handleTextMaxLinesChange = useCallback(
-    async (newMaxLines: number) => {
-      setTextMaxLines(newMaxLines);
-      setIsTextSaving(true);
-      try {
-        await actions.updateInput(roomId, input.inputId, {
-          textMaxLines: newMaxLines,
-          shaders: input.shaders,
-          volume: input.volume,
-        });
-        await refreshState();
-      } finally {
-        setIsTextSaving(false);
-      }
-    },
-    [roomId, input, refreshState],
-  );
-
-  const handleTextScrollSpeedChange = useCallback(
-    async (newSpeed: number) => {
-      setTextScrollSpeed(newSpeed);
-      setIsTextSaving(true);
-      try {
-        await actions.updateInput(roomId, input.inputId, {
-          textScrollSpeed: newSpeed,
-          shaders: input.shaders,
-          volume: input.volume,
-        });
-        await refreshState();
-      } finally {
-        setIsTextSaving(false);
-      }
-    },
-    [roomId, input, refreshState],
-  );
-
-  const handleTextScrollLoopChange = useCallback(
-    async (newLoop: boolean) => {
-      setTextScrollLoop(newLoop);
-      setIsTextSaving(true);
-      try {
-        await actions.updateInput(roomId, input.inputId, {
-          textScrollLoop: newLoop,
-          shaders: input.shaders,
-          volume: input.volume,
-        });
-        await refreshState();
-      } finally {
-        setIsTextSaving(false);
-      }
-    },
-    [roomId, input, refreshState],
-  );
-
-  const handleTextFontSizeChange = useCallback(
-    async (newFontSize: number) => {
-      setTextFontSize(newFontSize);
-      setIsTextSaving(true);
-      try {
-        await actions.updateInput(roomId, input.inputId, {
-          textFontSize: newFontSize,
-          shaders: input.shaders,
-          volume: input.volume,
-        });
-        await refreshState();
-      } finally {
-        setIsTextSaving(false);
-      }
-    },
-    [roomId, input, refreshState],
   );
 
   const handleDelete = useCallback(async () => {
@@ -404,9 +228,7 @@ export default function InputEntry({
         lastParamChangeRef.current[key] = Date.now();
         const newShadersConfig = input.shaders.map((shader) => {
           if (shader.shaderId !== shaderId) return shader;
-          const hasParam = shader.params.some(
-            (p) => p.paramName === paramName,
-          );
+          const hasParam = shader.params.some((p) => p.paramName === paramName);
           const updatedParams = hasParam
             ? shader.params.map((param) =>
                 param.paramName === paramName
@@ -578,6 +400,7 @@ export default function InputEntry({
             onSliderChange={handleSliderChange}
             getShaderParamConfig={getShaderParamConfig}
             onOpenAddShader={() => setIsAddShaderModalOpen(true)}
+            allowInlineValueEdit
           />
         </div>
 
@@ -601,49 +424,34 @@ export default function InputEntry({
             ? 'border-blue-500 ring-2 ring-blue-500/30'
             : 'border-border'
         }`}>
-        {!isMobile && showGrip && (
-          <div className='absolute left-2 top-1/2 -translate-y-1/2 pointer-events-none'>
-            <GripVertical className='w-5 h-5 text-muted-foreground' />
-          </div>
-        )}
-        <div className='flex items-center min-h-7 md:pl-7'>
+        <div className='flex items-center min-h-7 gap-2'>
+          {!isMobile && showGrip && (
+            <div className='shrink-0 pointer-events-none'>
+              <GripVertical className='w-5 h-5 text-muted-foreground' />
+            </div>
+          )}
           <span
-            className={`shrink-0 w-3 h-3 rounded-none mr-2 ${getSourceStateColor(input)}`}
-            aria-label={getSourceStateLabel(input)}
+            className='shrink-0 w-3 h-3 rounded-none mr-2'
+            style={
+              activeBlockColor
+                ? { backgroundColor: activeBlockColor }
+                : { border: '1px solid #6b7280' }
+            }
           />
-          <div className='text-[12px] font-bold text-foreground truncate'>
+          <div className='min-w-0 flex-1 text-[12px] font-bold text-foreground truncate'>
             {input.title}
           </div>
-          {isTextSaving && (
-            <span className='ml-2 text-xs text-muted-foreground'>
-              Saving...
-            </span>
-          )}
-          {typeof index === 'number' && (
-            <span className='ml-auto mr-2 text-xs font-medium text-muted-foreground'>
-              {index + 1}
-            </span>
-          )}
           {!readOnly && canRemove && <DeleteButton onClick={handleDelete} />}
         </div>
-        {isTextInput && !readOnly && (
-          <InputEntryTextSection
-            textValue={textValue}
-            textAlign={textAlign}
-            textColor={textColor}
-            textMaxLines={textMaxLines}
-            textScrollSpeed={textScrollSpeed}
-            textScrollLoop={textScrollLoop}
-            textFontSize={textFontSize}
-            onTextChange={handleTextChange}
-            onTextAlignChange={handleTextAlignChange}
-            onTextColorChange={handleTextColorChange}
-            onTextMaxLinesChange={handleTextMaxLinesChange}
-            onTextScrollSpeedChange={handleTextScrollSpeedChange}
-            onTextScrollLoopChange={handleTextScrollLoopChange}
-            onTextFontSizeChange={handleTextFontSizeChange}
-          />
-        )}
+        {((input.type === 'local-mp4' && input.mp4AssetMissing) ||
+          (input.type === 'image' && input.imageAssetMissing)) &&
+          !readOnly && (
+            <MissingAssetMp4Row
+              roomId={roomId}
+              input={input}
+              refreshState={refreshState}
+            />
+          )}
         {input.type === 'game' && !readOnly && (
           <div className='flex items-center gap-3 px-2 py-1'>
             <div className='flex items-center gap-1'>
@@ -685,9 +493,16 @@ export default function InputEntry({
                 className='w-6 h-6 bg-transparent border-0 cursor-pointer'
                 value={input.gameBoardBorderColor ?? '#ffffff'}
                 onChange={(e) => {
-                  void actions.updateInput(roomId, input.inputId, {
-                    gameBoardBorderColor: e.target.value,
-                  });
+                  const value = e.target.value;
+                  if (gameBorderColorTimerRef.current) {
+                    clearTimeout(gameBorderColorTimerRef.current);
+                  }
+                  gameBorderColorTimerRef.current = setTimeout(() => {
+                    void actions.updateInput(roomId, input.inputId, {
+                      gameBoardBorderColor: value,
+                    });
+                    gameBorderColorTimerRef.current = null;
+                  }, SHADER_SETTINGS_DEBOUNCE_MS);
                 }}
               />
             </div>
@@ -698,9 +513,16 @@ export default function InputEntry({
                 className='w-6 h-6 bg-transparent border-0 cursor-pointer'
                 value={input.gameGridLineColor ?? '#000000'}
                 onChange={(e) => {
-                  void actions.updateInput(roomId, input.inputId, {
-                    gameGridLineColor: e.target.value,
-                  });
+                  const value = e.target.value;
+                  if (gameGridColorTimerRef.current) {
+                    clearTimeout(gameGridColorTimerRef.current);
+                  }
+                  gameGridColorTimerRef.current = setTimeout(() => {
+                    void actions.updateInput(roomId, input.inputId, {
+                      gameGridLineColor: value,
+                    });
+                    gameGridColorTimerRef.current = null;
+                  }, SHADER_SETTINGS_DEBOUNCE_MS);
                 }}
               />
             </div>
@@ -711,11 +533,21 @@ export default function InputEntry({
                 max={1}
                 step={0.01}
                 className='w-16'
-                value={[input.gameGridLineAlpha ?? 1.0]}
+                value={[gameGridAlphaDraft ?? input.gameGridLineAlpha ?? 1.0]}
                 onValueChange={(v) => {
-                  void actions.updateInput(roomId, input.inputId, {
-                    gameGridLineAlpha: v[0],
-                  });
+                  const value = v[0];
+                  setGameGridAlphaDraft(value);
+                  if (gameGridAlphaTimerRef.current) {
+                    clearTimeout(gameGridAlphaTimerRef.current);
+                  }
+                  gameGridAlphaTimerRef.current = setTimeout(() => {
+                    void actions
+                      .updateInput(roomId, input.inputId, {
+                        gameGridLineAlpha: value,
+                      })
+                      .finally(() => setGameGridAlphaDraft(null));
+                    gameGridAlphaTimerRef.current = null;
+                  }, SHADER_SETTINGS_DEBOUNCE_MS);
                 }}
               />
             </div>
@@ -764,6 +596,7 @@ export default function InputEntry({
               onSliderChange={handleSliderChange}
               getShaderParamConfig={getShaderParamConfig}
               onOpenAddShader={() => setIsAddShaderModalOpen(true)}
+              allowInlineValueEdit
             />
           </div>
         )}

@@ -1,6 +1,7 @@
 import { ensureDir, pathExists, readdir, remove } from 'fs-extra';
 import path from 'node:path';
 import { SmelterInstance, type SmelterOutput } from '../smelter';
+import { DATA_DIR } from '../dataDir';
 
 export class RecordingController {
   private recording?: {
@@ -25,7 +26,7 @@ export class RecordingController {
       throw new Error('Recording is already in progress for this room');
     }
 
-    const recordingsDir = path.join(process.cwd(), 'recordings');
+    const recordingsDir = path.join(DATA_DIR, 'recordings');
     await ensureDir(recordingsDir);
 
     const timestamp = Date.now();
@@ -78,7 +79,7 @@ export class RecordingController {
 }
 
 async function pruneOldRecordings(maxCount: number): Promise<void> {
-  const recordingsDir = path.join(process.cwd(), 'recordings');
+  const recordingsDir = path.join(DATA_DIR, 'recordings');
   if (!(await pathExists(recordingsDir))) return;
 
   let entries: string[] = [];

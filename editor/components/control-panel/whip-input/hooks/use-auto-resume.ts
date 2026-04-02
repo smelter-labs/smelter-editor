@@ -12,6 +12,10 @@ import type { AddInputResponse } from '../utils/types';
 import { startPublish } from '../utils/whip-publisher';
 import { stopCameraAndConnection } from '../utils/preview';
 import { updateTimelineInputId } from '@/lib/room-config';
+import {
+  emitTimelineEvent,
+  TIMELINE_EVENTS,
+} from '../../components/timeline/timeline-events';
 
 export function useAutoResume(
   roomId: string,
@@ -122,6 +126,10 @@ export function useAutoResume(
             await refreshState();
           } catch {}
         }
+
+        emitTimelineEvent(TIMELINE_EVENTS.CLEANUP_SPURIOUS_WHIP_TRACK, {
+          inputId: resp.inputId,
+        });
       } catch (e) {
         if (setActiveWhipInputId) setActiveWhipInputId(null);
         if (setIsWhipActive) setIsWhipActive(false);

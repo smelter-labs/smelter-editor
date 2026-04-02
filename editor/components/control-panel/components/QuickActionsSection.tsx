@@ -3,6 +3,7 @@ import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/spinner';
 import { useActions } from '../contexts/actions-context';
 import { useControlPanelContext } from '../contexts/control-panel-context';
+import { emitTimelineEvent, TIMELINE_EVENTS } from './timeline/timeline-events';
 
 export function QuickActionsSection() {
   const {
@@ -182,11 +183,9 @@ export function QuickActionsSection() {
               }
             }
             if (deletedInputIds.length > 0) {
-              window.dispatchEvent(
-                new CustomEvent('smelter:timeline:purge-input-ids', {
-                  detail: { inputIds: deletedInputIds },
-                }),
-              );
+              emitTimelineEvent(TIMELINE_EVENTS.PURGE_INPUT_IDS, {
+                inputIds: deletedInputIds,
+              });
             }
             await refreshState();
             if (failedInputIds.length > 0) {
