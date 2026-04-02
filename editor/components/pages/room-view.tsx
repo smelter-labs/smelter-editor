@@ -173,6 +173,7 @@ export default function RoomView({
           motionDetectionSection,
           peers,
           timelineColorOverrides,
+          activeClipColors,
           selectedInputId,
           onSelectInput,
         }) => {
@@ -201,6 +202,7 @@ export default function RoomView({
                   roomState.resolution ?? { width: 1920, height: 1080 }
                 }
                 timelineColorOverrides={timelineColorOverrides}
+                activeClipColors={activeClipColors}
                 selectedInputId={selectedInputId}
                 onSelectInput={onSelectInput}
               />

@@ -18,6 +18,7 @@ import { staggerContainer } from '@/utils/animations';
 import RoomView from '@/components/pages/room-view';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { useRoomStateSse } from '@/hooks/use-room-state-sse';
+import { saveCrashRecoverySnapshot } from '@/lib/crash-recovery';
 
 export default function RoomPage() {
   const router = useRouter();
@@ -89,6 +90,16 @@ export default function RoomPage() {
       defaultInputsSavedRef.current = true;
     }
   }, [roomId, roomState.inputs]);
+
+  useEffect(() => {
+    if (!roomId || roomState.inputs.length === 0) return;
+
+    const timer = setTimeout(() => {
+      saveCrashRecoverySnapshot(roomId as string, roomState);
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [roomId, roomState]);
 
   if (loading || notFound) {
     return (

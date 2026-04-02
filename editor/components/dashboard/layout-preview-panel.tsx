@@ -15,6 +15,7 @@ interface LayoutPreviewPanelProps {
   inputs: Input[];
   resolution: { width: number; height: number };
   timelineColorOverrides?: Record<string, string>;
+  activeClipColors?: Record<string, string>;
   selectedInputId?: string | null;
   onSelectInput?: (id: string) => void;
 }
@@ -36,6 +37,15 @@ const LP_RING_STROKE = 2.5;
 const LP_RING_SIZE = (LP_RING_R + LP_RING_STROKE) * 2;
 const LP_RING_CENTER = LP_RING_SIZE / 2;
 const LP_RING_CIRCUMFERENCE = 2 * Math.PI * LP_RING_R;
+
+function isAudioOnlyInput(input: Input): boolean {
+  return (
+    (input.type === 'local-mp4' &&
+      !!input.audioFileName &&
+      !input.mp4FileName) ||
+    /^\[AUDIO\]/.test(input.title)
+  );
+}
 
 type DragType = 'move' | 'resize-nw' | 'resize-ne' | 'resize-sw' | 'resize-se';
 
@@ -74,6 +84,7 @@ export function LayoutPreviewPanel({
   inputs,
   resolution,
   timelineColorOverrides,
+  activeClipColors,
   selectedInputId,
   onSelectInput,
 }: LayoutPreviewPanelProps) {
@@ -93,6 +104,20 @@ export function LayoutPreviewPanel({
   const [forceGrabbedId, setForceGrabbedId] = useState<string | null>(null);
 
   const { updateInput } = useActions();
+
+  const [showActive, setShowActive] = useState(true);
+  const [showInactive, setShowInactive] = useState(true);
+  const [showAudio, setShowAudio] = useState(false);
+
+  const filteredInputs = useMemo(() => {
+    return inputs.filter((input) => {
+      if (!showAudio && isAudioOnlyInput(input)) return false;
+      const isActive = !!activeClipColors?.[input.inputId];
+      if (!showActive && isActive) return false;
+      if (!showInactive && !isActive) return false;
+      return true;
+    });
+  }, [inputs, activeClipColors, showActive, showInactive, showAudio]);
 
   useEffect(() => {
     const el = containerRef.current;
@@ -521,6 +546,26 @@ export function LayoutPreviewPanel({
         </span>
       </div>
 
+      <div className='flex items-center gap-3 px-3 py-1 border-b border-[#3a494b]/10 shrink-0 font-mono text-[10px] text-[#849495]'>
+        {[
+          { label: 'Active', checked: showActive, set: setShowActive },
+          { label: 'Inactive', checked: showInactive, set: setShowInactive },
+          { label: 'Audio', checked: showAudio, set: setShowAudio },
+        ].map(({ label, checked, set }) => (
+          <label
+            key={label}
+            className='flex items-center gap-1 cursor-pointer select-none hover:text-[#b9cacb] transition-colors'>
+            <input
+              type='checkbox'
+              checked={checked}
+              onChange={(e) => set(e.target.checked)}
+              className='accent-[#849495] w-3 h-3 cursor-pointer'
+            />
+            {label}
+          </label>
+        ))}
+      </div>
+
       <div className='flex-1 flex items-center justify-center px-10 py-3 min-h-0'>
         <div
           ref={containerRef}
@@ -536,7 +581,7 @@ export function LayoutPreviewPanel({
           )}
 
           {scale > 0 &&
-            inputs.map((input, index) => {
+            filteredInputs.map((input, index) => {
               const colors = inputColorMap.get(input.inputId);
               const rect = getInputRect(input);
               const isDragging = dragInputId === input.inputId;
@@ -553,6 +598,9 @@ export function LayoutPreviewPanel({
               const isLongPressing =
                 longPressActive && longPressInputId === input.inputId;
               const effectivelyHidden = isHidden && !isForceGrabbed;
+              const isActiveOnTimeline =
+                !!activeClipColors?.[input.inputId];
+              const isSelected = selectedInputId === input.inputId;
               const durationMs = isDragging
                 ? 0
                 : (input.absoluteTransitionDurationMs ?? 300);
@@ -584,7 +632,7 @@ export function LayoutPreviewPanel({
                     height,
                     zIndex: isDragging
                       ? 1000
-                      : selectedInputId === input.inputId
+                      : isSelected
                         ? 500
                         : index,
                     transition:
@@ -595,7 +643,7 @@ export function LayoutPreviewPanel({
                   <div
                     className='absolute inset-0 flex items-end'
                     style={{
-                      backgroundColor: colors?.segBorder,
+                      backgroundColor: colors?.segBg,
                       border: isDragging
                         ? `2px solid ${colors?.dot ?? '#737373'}`
                         : `1px solid ${colors?.dot ?? '#737373'}`,
@@ -604,7 +652,13 @@ export function LayoutPreviewPanel({
                         ? isLongPressing
                           ? 0.4
                           : 0.15
-                        : 1,
+                        : isSelected
+                          ? isActiveOnTimeline
+                            ? 0.9
+                            : 0.6
+                          : isActiveOnTimeline
+                            ? 0.65
+                            : 0.35,
                       cursor: effectivelyHidden ? 'default' : 'grab',
                     }}
                     onMouseDown={handleMouseDown}>
@@ -680,15 +734,21 @@ export function LayoutPreviewPanel({
         </div>
       </div>
 
-      {inputs.length > 0 && (
+      {filteredInputs.length > 0 && (
         <div className='flex flex-wrap gap-x-3 gap-y-0.5 px-3 pb-2 font-mono text-[9px] text-[#b9cacb] shrink-0'>
-          {inputs.map((input) => {
+          {filteredInputs.map((input) => {
             const colors = inputColorMap.get(input.inputId);
             return (
               <span
                 key={input.inputId}
                 className='flex items-center gap-1 truncate max-w-[120px]'
-                style={{ opacity: input.hidden ? 0.15 : 1 }}>
+                style={{
+                  opacity: input.hidden
+                    ? 0.15
+                    : activeClipColors?.[input.inputId]
+                      ? 1
+                      : 0.45,
+                }}>
                 <span
                   className='inline-block w-2 h-2 shrink-0 rounded-sm'
                   style={{

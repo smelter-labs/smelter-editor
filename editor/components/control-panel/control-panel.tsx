@@ -157,6 +157,7 @@ export type ControlPanelProps = {
     motionDetectionSection: React.ReactNode;
     peers: ConnectedPeer[];
     timelineColorOverrides: Record<string, string>;
+    activeClipColors: Record<string, string>;
     selectedInputId: string | null;
     onSelectInput: (id: string) => void;
   }) => React.ReactNode;
@@ -858,6 +859,7 @@ function ControlPanelInner({
           motionDetectionSection,
           peers,
           timelineColorOverrides,
+          activeClipColors,
           selectedInputId,
           onSelectInput: setSelectedInputId,
         })}

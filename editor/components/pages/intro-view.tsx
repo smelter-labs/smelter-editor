@@ -49,6 +49,8 @@ import {
   Eye,
   Trash2,
   Presentation,
+  RotateCcw,
+  X,
 } from 'lucide-react';
 import RecordingsList from '@/components/recordings-list';
 import { toast } from 'sonner';
@@ -78,6 +80,11 @@ import { defaultActions } from '@/components/control-panel/contexts/default-acti
 import type { RoomConfig, PresentationConfig } from '@/lib/room-config';
 import type { SavedItemInfo } from '@/lib/storage-client';
 import { formatDuration } from '@/lib/format-utils';
+import {
+  loadCrashRecoveryConfig,
+  clearCrashRecoveryConfig,
+  type CrashRecoveryData,
+} from '@/lib/crash-recovery';
 
 function getBasePath(pathname: string): string {
   // Remove trailing slash if present
@@ -113,6 +120,19 @@ export default function IntroView() {
       localStorage.setItem('smelter-display-name', name);
     } catch {}
   }, []);
+  const [crashRecovery, setCrashRecovery] = useState<CrashRecoveryData | null>(
+    null,
+  );
+
+  useEffect(() => {
+    setCrashRecovery(loadCrashRecoveryConfig());
+  }, []);
+
+  const handleRecoveryDismiss = useCallback(() => {
+    clearCrashRecoveryConfig();
+    setCrashRecovery(null);
+  }, []);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
   const centeredContentRef = useRef<HTMLDivElement>(null);
   const [desktopIntroOffset, setDesktopIntroOffset] = useState<number | null>(
@@ -695,6 +715,13 @@ export default function IntroView() {
     ],
   );
 
+  const handleRecoveryRestore = useCallback(async () => {
+    if (!crashRecovery) return;
+    clearCrashRecoveryConfig();
+    setCrashRecovery(null);
+    await importConfig(crashRecovery.config);
+  }, [crashRecovery, importConfig]);
+
   const handleStartShowcase = useCallback(
     async (configItem: SavedItemInfo) => {
       setLoadingShowcase(true);
@@ -760,6 +787,42 @@ export default function IntroView() {
           className='border-1 rounded-none border-neutral-800 text-center justify-center items-center w-full max-w-[600px] p-4 sm:p-8'
           layout>
           <div ref={centeredContentRef}>
+            {crashRecovery && (
+              <div className='mb-4 border border-amber-700/50 bg-amber-950/30 rounded p-4 text-left'>
+                <div className='flex items-start justify-between gap-3'>
+                  <div className='min-w-0'>
+                    <p className='text-sm font-medium text-amber-200'>
+                      Your previous session was interrupted
+                    </p>
+                    <p className='text-xs text-neutral-400 mt-1'>
+                      {crashRecovery.config.inputs.length} input(s) &middot;
+                      saved {formatDuration(Date.now() - new Date(crashRecovery.savedAt).getTime())} ago
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleRecoveryDismiss}
+                    className='text-neutral-500 hover:text-neutral-300 shrink-0 cursor-pointer'>
+                    <X className='w-4 h-4' />
+                  </button>
+                </div>
+                <div className='flex gap-2 mt-3'>
+                  <Button
+                    size='sm'
+                    variant='default'
+                    className='cursor-pointer'
+                    disabled={loadingNew || loadingImport}
+                    onClick={handleRecoveryRestore}>
+                    {loadingImport ? (
+                      <LoadingSpinner size='sm' variant='spinner' />
+                    ) : (
+                      <RotateCcw className='w-3.5 h-3.5 mr-1.5' />
+                    )}
+                    Restore session
+                  </Button>
+                </div>
+              </div>
+            )}
+
             <div>
               <StatusLabel />
             </div>
