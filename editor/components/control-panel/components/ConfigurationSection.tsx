@@ -2,7 +2,6 @@
 
 import { useRef, useState, useEffect, useCallback } from 'react';
 import type { Input, Layout } from '@/lib/types';
-import { useActions } from '../contexts/actions-context';
 import { Button } from '@/components/ui/button';
 import { Input as ShadcnInput } from '@/components/ui/input';
 import LoadingSpinner from '@/components/ui/spinner';
@@ -21,6 +20,7 @@ import {
   type RoomConfigInput,
   type RoomConfigTransitionSettings,
 } from '@/lib/room-config';
+import { streamImportConfig } from '@/lib/import-config-stream';
 import type { ViewportProperties, ShaderConfig } from '@smelter-editor/types';
 import { toast } from 'sonner';
 import {
@@ -36,8 +36,8 @@ type ConfigurationSectionProps = {
   viewport?: Partial<ViewportProperties>;
   outputShaders?: ShaderConfig[];
   refreshState: () => Promise<void>;
-  pendingWhipInputs: PendingWhipInput[];
-  setPendingWhipInputs: (inputs: PendingWhipInput[]) => void | Promise<void>;
+  pendingWhipInputs?: PendingWhipInput[];
+  setPendingWhipInputs?: (inputs: PendingWhipInput[]) => void | Promise<void>;
 };
 
 export type PendingWhipInput = {
@@ -56,103 +56,12 @@ export function ConfigurationSection({
   viewport,
   outputShaders,
   refreshState,
-  pendingWhipInputs,
-  setPendingWhipInputs,
 }: ConfigurationSectionProps) {
-  const {
-    addTwitchInput,
-    addKickInput,
-    addHlsInput,
-    addMP4Input,
-    addAudioInput,
-    addImageInput,
-    addTextInput,
-    addSnakeGameInput,
-    addCameraInput,
-    updateInput,
-    updateRoom,
-    removeInput,
-    hideInput,
-  } = useActions();
   const [isExporting, setIsExporting] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] =
     useState<ImportProgressState | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-
-  const countImportAddRequests = useCallback(
-    (configInputs: RoomConfigInput[]) => {
-      let count = 0;
-
-      for (const input of configInputs) {
-        switch (input.type) {
-          case 'twitch-channel':
-          case 'kick-channel':
-            if (input.channelId) count += 1;
-            break;
-          case 'hls':
-            if (input.url) count += 1;
-            break;
-          case 'local-mp4':
-            if (input.audioFileName || input.mp4FileName) count += 1;
-            break;
-          case 'image':
-            if (input.imageId) count += 1;
-            break;
-          case 'text-input':
-            if (input.text) count += 1;
-            break;
-          case 'game':
-            count += 1;
-            break;
-          case 'whip':
-            break;
-        }
-      }
-
-      return count;
-    },
-    [],
-  );
-
-  const startImportProgress = useCallback((total: number, phase: string) => {
-    setImportProgress({
-      phase,
-      current: 0,
-      total: Math.max(total, 1),
-    });
-  }, []);
-
-  const setImportPhase = useCallback((phase: string) => {
-    setImportProgress((prev) => (prev ? { ...prev, phase } : prev));
-  }, []);
-
-  const advanceImportProgress = useCallback((phase?: string) => {
-    setImportProgress((prev) =>
-      prev
-        ? {
-            ...prev,
-            phase: phase ?? prev.phase,
-            current: Math.min(prev.total, prev.current + 1),
-          }
-        : prev,
-    );
-  }, []);
-
-  const adjustImportTotal = useCallback((delta: number) => {
-    if (delta === 0) {
-      return;
-    }
-
-    setImportProgress((prev) => {
-      if (!prev) {
-        return prev;
-      }
-
-      const total = Math.max(prev.current, prev.total + delta, 1);
-      return { ...prev, total };
-    });
-  }, []);
 
   const handleExport = useCallback(async () => {
     setIsExporting(true);
@@ -222,282 +131,82 @@ export function ConfigurationSection({
 
   const importConfig = async (config: RoomConfig) => {
     setIsImporting(true);
-
-    const plannedAddRequests = countImportAddRequests(config.inputs);
-    const oldInputIds = inputs.map((i) => i.inputId);
-    const newPendingWhipInputs: PendingWhipInput[] = [];
-    const createdInputIds: {
-      inputId: string;
-      config: RoomConfigInput;
-      position: number;
-    }[] = [];
-
-    startImportProgress(
-      plannedAddRequests * 2 + oldInputIds.length + 5,
-      'Adding inputs',
-    );
+    setImportProgress({ phase: 'Starting import', current: 0, total: 1 });
 
     try {
-      for (let i = 0; i < config.inputs.length; i++) {
-        const inputConfig = config.inputs[i];
-        try {
-          let inputId: string | null = null;
-          let attemptedAdd = false;
+      const oldInputIds = inputs.map((i) => i.inputId);
 
-          if (inputConfig.type === 'whip') {
-            newPendingWhipInputs.push({
-              id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              title: inputConfig.title,
-              config: inputConfig,
-              position: i,
-            });
-            continue;
+      // Pre-compute timeline-at-zero so the server can apply hide/blockSettings
+      let timelineAtZero:
+        | {
+            hiddenInputIds: number[];
+            blockSettingsEntries: [number, Record<string, unknown>][];
           }
-
-          switch (inputConfig.type) {
-            case 'twitch-channel':
-              if (inputConfig.channelId) {
-                attemptedAdd = true;
-                const result = await addTwitchInput(
-                  roomId,
-                  inputConfig.channelId,
-                );
-                inputId = result.inputId;
-              }
-              break;
-            case 'kick-channel':
-              if (inputConfig.channelId) {
-                attemptedAdd = true;
-                const result = await addKickInput(
-                  roomId,
-                  inputConfig.channelId,
-                );
-                inputId = result.inputId;
-              }
-              break;
-            case 'hls':
-              if (inputConfig.url) {
-                attemptedAdd = true;
-                const result = await addHlsInput(roomId, inputConfig.url);
-                inputId = result.inputId;
-              }
-              break;
-            case 'local-mp4':
-              if (inputConfig.audioFileName) {
-                attemptedAdd = true;
-                const result = await addAudioInput(
-                  roomId,
-                  inputConfig.audioFileName,
-                );
-                inputId = result.inputId;
-              } else if (inputConfig.mp4FileName) {
-                attemptedAdd = true;
-                const result = await addMP4Input(
-                  roomId,
-                  inputConfig.mp4FileName,
-                );
-                inputId = result.inputId;
-              }
-              break;
-            case 'image':
-              if (inputConfig.imageId) {
-                attemptedAdd = true;
-                const result = await addImageInput(roomId, inputConfig.imageId);
-                inputId = result.inputId;
-              }
-              break;
-            case 'text-input':
-              if (inputConfig.text) {
-                attemptedAdd = true;
-                const result = await addTextInput(
-                  roomId,
-                  inputConfig.text,
-                  inputConfig.textAlign || 'left',
-                );
-                inputId = result.inputId;
-              }
-              break;
-            case 'game': {
-              attemptedAdd = true;
-              const result = await addSnakeGameInput(roomId, inputConfig.title);
-              inputId = result.inputId;
-              break;
-            }
-          }
-
-          if (inputId) {
-            createdInputIds.push({ inputId, config: inputConfig, position: i });
-          }
-
-          if (attemptedAdd) {
-            advanceImportProgress('Adding inputs');
-          }
-        } catch (e) {
-          console.warn(`Failed to add input ${inputConfig.title}:`, e);
-          advanceImportProgress('Adding inputs');
-        }
-      }
-
-      adjustImportTotal(createdInputIds.length - plannedAddRequests);
-
-      const positionToInputId = new Map<number, string>();
-      for (const { inputId, position } of createdInputIds) {
-        positionToInputId.set(position, inputId);
-      }
-      for (const pending of newPendingWhipInputs) {
-        positionToInputId.set(
-          pending.position,
-          `__pending-whip-${pending.position}__`,
-        );
-      }
-
-      setImportPhase('Refreshing state');
-      await refreshState();
-      advanceImportProgress('Refreshing state');
-
-      for (const { inputId, config: inputConfig } of createdInputIds) {
-        const attachedInputIds = inputConfig.attachedInputIndices
-          ?.map((idx) => positionToInputId.get(idx))
-          .filter((id): id is string => !!id);
-        try {
-          await updateInput(roomId, inputId, {
-            volume: inputConfig.volume,
-            shaders: inputConfig.shaders,
-            showTitle: inputConfig.showTitle,
-            textColor: inputConfig.textColor,
-            textMaxLines: inputConfig.textMaxLines,
-            textScrollSpeed: inputConfig.textScrollSpeed,
-            textScrollLoop: inputConfig.textScrollLoop,
-            textFontSize: inputConfig.textFontSize,
-            borderColor: inputConfig.borderColor,
-            borderWidth: inputConfig.borderWidth,
-            gameBackgroundColor: inputConfig.gameBackgroundColor,
-            gameCellGap: inputConfig.gameCellGap,
-            gameBoardBorderColor: inputConfig.gameBoardBorderColor,
-            gameBoardBorderWidth: inputConfig.gameBoardBorderWidth,
-            gameGridLineColor: inputConfig.gameGridLineColor,
-            gameGridLineAlpha: inputConfig.gameGridLineAlpha,
-            snakeEventShaders: inputConfig.snakeEventShaders,
-            snake1Shaders: inputConfig.snake1Shaders,
-            snake2Shaders: inputConfig.snake2Shaders,
-            absolutePosition: inputConfig.absolutePosition,
-            absoluteTop: inputConfig.absoluteTop,
-            absoluteLeft: inputConfig.absoluteLeft,
-            absoluteWidth: inputConfig.absoluteWidth,
-            absoluteHeight: inputConfig.absoluteHeight,
-            absoluteTransitionDurationMs:
-              inputConfig.absoluteTransitionDurationMs,
-            absoluteTransitionEasing: inputConfig.absoluteTransitionEasing,
-            cropTop: inputConfig.cropTop,
-            cropLeft: inputConfig.cropLeft,
-            cropRight: inputConfig.cropRight,
-            cropBottom: inputConfig.cropBottom,
-            attachedInputIds:
-              attachedInputIds && attachedInputIds.length > 0
-                ? attachedInputIds
-                : undefined,
-          });
-        } catch (e) {
-          console.warn(`Failed to update input ${inputId}:`, e);
-        } finally {
-          advanceImportProgress('Configuring inputs');
-        }
-      }
-
-      for (const oldInputId of oldInputIds) {
-        try {
-          await removeInput(roomId, oldInputId);
-        } catch (e) {
-          console.warn(`Failed to remove old input ${oldInputId}:`, e);
-        } finally {
-          advanceImportProgress('Removing old inputs');
-        }
-      }
-
-      setImportPhase('Syncing pending WHIP inputs');
-      await Promise.resolve(setPendingWhipInputs(newPendingWhipInputs));
-      advanceImportProgress('Syncing pending WHIP inputs');
-      advanceImportProgress('Syncing pending WHIP inputs');
-
-      let timelineInputOrder: string[] | undefined;
+        | undefined;
 
       if (config.timeline) {
-        const indexToInputId = new Map<number, string>();
-        for (const { inputId, position } of createdInputIds) {
-          indexToInputId.set(position, inputId);
+        const tempIndexMap = new Map<number, string>();
+        config.inputs.forEach((_, idx) =>
+          tempIndexMap.set(idx, `__temp_${idx}__`),
+        );
+        const atZero = computeTimelineStateAtZero(config.timeline, tempIndexMap);
+
+        const hiddenIndices: number[] = [];
+        for (const hiddenId of atZero.hiddenInputIds) {
+          const match = hiddenId.match(/^__temp_(\d+)__$/);
+          if (match) hiddenIndices.push(Number(match[1]));
         }
 
-        const timelineState = computeTimelineStateAtZero(
-          config.timeline,
-          indexToInputId,
-        );
+        const blockEntries: [number, Record<string, unknown>][] = [];
+        for (const [tempId, bs] of atZero.activeBlockSettings) {
+          const match = tempId.match(/^__temp_(\d+)__$/);
+          if (match) {
+            blockEntries.push([
+              Number(match[1]),
+              buildInputUpdateFromBlockSettings(bs) as Record<string, unknown>,
+            ]);
+          }
+        }
 
-        for (const pending of newPendingWhipInputs) {
+        if (hiddenIndices.length > 0 || blockEntries.length > 0) {
+          timelineAtZero = {
+            hiddenInputIds: hiddenIndices,
+            blockSettingsEntries: blockEntries,
+          };
+        }
+      }
+
+      const result = await streamImportConfig(
+        roomId,
+        { config, oldInputIds, timelineAtZero },
+        {
+          onProgress: (event) => {
+            setImportProgress({
+              phase: event.phase,
+              current: event.current,
+              total: event.total,
+            });
+          },
+        },
+      );
+
+      if (result.errors.length > 0) {
+        console.warn('[import-config] Errors:', result.errors);
+      }
+
+      // Client-side: restore timeline to localStorage
+      if (config.timeline) {
+        const indexToInputId = new Map<number, string>();
+        for (const [idx, inputId] of Object.entries(result.indexToInputId)) {
+          indexToInputId.set(Number(idx), inputId);
+        }
+        for (const pw of result.pendingWhipData) {
           indexToInputId.set(
-            pending.position,
-            `__pending-whip-${pending.position}__`,
+            pw.position,
+            `__pending-whip-${pw.position}__`,
           );
         }
         restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
-
-        adjustImportTotal(
-          timelineState.hiddenInputIds.length +
-            timelineState.activeBlockSettings.size,
-        );
-
-        for (const hiddenId of timelineState.hiddenInputIds) {
-          try {
-            await hideInput(roomId, hiddenId);
-          } catch (e) {
-            console.warn(`Failed to hide input ${hiddenId}:`, e);
-          } finally {
-            advanceImportProgress('Applying timeline state');
-          }
-        }
-
-        for (const [
-          inputId,
-          blockSettings,
-        ] of timelineState.activeBlockSettings) {
-          try {
-            await updateInput(
-              roomId,
-              inputId,
-              buildInputUpdateFromBlockSettings(blockSettings),
-            );
-          } catch (e) {
-            console.warn(`Failed to apply block settings for ${inputId}:`, e);
-          } finally {
-            advanceImportProgress('Applying timeline state');
-          }
-        }
-
-        if (timelineState.inputOrder.length > 0) {
-          timelineInputOrder = timelineState.inputOrder;
-        }
-      }
-
-      const orderedCreatedIds = createdInputIds
-        .slice()
-        .sort((a, b) => a.position - b.position)
-        .map(({ inputId }) => inputId);
-
-      const finalInputOrder =
-        timelineInputOrder ??
-        (orderedCreatedIds.length > 0 ? orderedCreatedIds : undefined);
-
-      try {
-        await updateRoom(roomId, {
-          layout: config.layout,
-          ...(finalInputOrder ? { inputOrder: finalInputOrder } : {}),
-          ...config.transitionSettings,
-          ...config.viewport,
-          outputShaders: config.outputShaders ?? [],
-        });
-      } catch (e) {
-        console.warn('Failed to set layout or input order:', e);
-      } finally {
-        advanceImportProgress('Finalizing');
       }
 
       if (config.outputPlayer) {
@@ -505,7 +214,6 @@ export function ConfigurationSection({
       }
 
       await refreshState();
-      advanceImportProgress('Finalizing');
     } finally {
       setImportProgress(null);
       setIsImporting(false);

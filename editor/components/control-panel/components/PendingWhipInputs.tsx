@@ -444,7 +444,11 @@ export function PendingWhipInputs({
               <Button
                 variant='ghost'
                 size='icon'
-                onClick={() => void handleDismiss(pendingInput)}
+                onClick={() =>
+                  preview
+                    ? handleCancelPreview(pendingInput)
+                    : void handleDismiss(pendingInput)
+                }
                 className='h-6 w-6 text-neutral-500 hover:text-white cursor-pointer'>
                 <X className='w-4 h-4' />
               </Button>
@@ -454,23 +458,7 @@ export function PendingWhipInputs({
             </div>
 
             {preview && (
-              <>
-                <InlineVideoPreview stream={preview.stream} />
-                <div className='flex gap-2'>
-                  <Button
-                    size='sm'
-                    variant='outline'
-                    className='w-full cursor-pointer'
-                    disabled={isBusy}
-                    onClick={() => handleCancelPreview(pendingInput)}>
-                    {isConnecting ? (
-                      <LoadingSpinner size='sm' variant='spinner' />
-                    ) : (
-                      'Disconnect'
-                    )}
-                  </Button>
-                </div>
-              </>
+              <InlineVideoPreview stream={preview.stream} />
             )}
 
             {!preview && (
@@ -478,7 +466,7 @@ export function PendingWhipInputs({
                 <Button
                   size='sm'
                   variant='outline'
-                  className='flex-1 cursor-pointer'
+                  className={`flex-1 cursor-pointer ${!isBusy ? 'animate-pulse-cyan' : ''}`}
                   disabled={isBusy}
                   onClick={() => handlePreview(pendingInput, 'camera')}>
                   {isAcquiring && acquiringId === pendingInput.id ? (
@@ -493,7 +481,7 @@ export function PendingWhipInputs({
                 <Button
                   size='sm'
                   variant='outline'
-                  className='flex-1 cursor-pointer'
+                  className={`flex-1 cursor-pointer ${!isBusy ? 'animate-pulse-cyan' : ''}`}
                   disabled={isBusy}
                   onClick={() => handlePreview(pendingInput, 'screenshare')}>
                   {isAcquiring && acquiringId === pendingInput.id ? (

@@ -172,7 +172,7 @@ export function PendingConnectionsModal({
           <div className='border-t border-neutral-800 pt-3 space-y-2'>
             <Button
               size='lg'
-              className='w-full cursor-pointer'
+              className={`w-full cursor-pointer ${canConnectAll && !isRunningAction ? 'animate-pulse-cyan' : ''}`}
               disabled={!canConnectAll || isRunningAction}
               onClick={() => void handleConnectAction('connect')}>
               Connect

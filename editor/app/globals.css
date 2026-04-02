@@ -214,7 +214,15 @@
   margin: 0.15em 0;
 }
 
+@keyframes pulse-to-cyan {
+  0%, 100% { background-color: transparent; }
+  50% { background-color: #008B8B; }
+}
+
 @layer utilities {
+  .animate-pulse-cyan {
+    animation: pulse-to-cyan 2s ease-in-out infinite;
+  }
   .scanline {
     background: linear-gradient(to bottom, rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
     background-size: 100% 2px, 3px 100%;

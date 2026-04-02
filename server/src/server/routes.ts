@@ -23,6 +23,7 @@ import {
   clearSnakeGameRoomInactivityTimer,
 } from '../snakeGame/snakeGameRoutes';
 import { registerTimelineRoutes } from '../timeline/timelineRoutes';
+import { registerImportConfigRoute } from './importConfigRoute';
 import { TwitchChannelSuggestions } from '../twitch/TwitchChannelMonitor';
 import type { RegisterInputOptions, PendingWhipInputData } from '../types';
 import { toPublicInputState } from './publicInputState';
@@ -1428,6 +1429,7 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(
 
 registerSnakeGameRoutes(routes);
 registerTimelineRoutes(routes);
+registerImportConfigRoute(routes);
 
 routes.delete<RoomAndInputIdParams>(
   '/room/:roomId/input/:inputId',

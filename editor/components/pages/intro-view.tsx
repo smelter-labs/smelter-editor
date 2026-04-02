@@ -7,24 +7,13 @@ import { motion } from 'framer-motion';
 import StatusLabel from '@/components/ui/status-label';
 import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/spinner';
-import type { RegisterInputOptions, PendingWhipInputData } from '@/lib/types';
+import type { RegisterInputOptions } from '@/lib/types';
 import {
   createNewRoom,
   getTwitchSuggestions,
   getKickSuggestions,
   getAllRooms,
-  addTwitchInput,
-  addKickInput,
-  addHlsInput,
-  addMP4Input,
-  addAudioInput,
-  addSnakeGameInput,
-  addImageInput,
-  addTextInput,
-  updateInput,
-  updateRoom,
   deleteRoom,
-  hideInput,
 } from '@/app/actions/actions';
 import { RESOLUTION_PRESETS, type ResolutionPreset } from '@/lib/resolution';
 import Link from 'next/link';
@@ -36,8 +25,8 @@ import {
   buildInputUpdateFromBlockSettings,
   saveOutputPlayerSettings,
 } from '@/lib/room-config';
+import { streamImportConfig } from '@/lib/import-config-stream';
 import {
-  setPendingWhipInputs as setPendingWhipInputsAction,
   listPresentationConfigs,
   loadPresentationConfig,
 } from '@/app/actions/actions';
@@ -139,77 +128,6 @@ export default function IntroView() {
   const [desktopIntroOffset, setDesktopIntroOffset] = useState<number | null>(
     null,
   );
-
-  const countImportAddRequests = useCallback((inputs: RoomConfig['inputs']) => {
-    let count = 0;
-
-    for (const input of inputs) {
-      switch (input.type) {
-        case 'twitch-channel':
-        case 'kick-channel':
-          if (input.channelId) count += 1;
-          break;
-        case 'hls':
-          if (input.url) count += 1;
-          break;
-        case 'local-mp4':
-          if (input.audioFileName || input.mp4FileName) count += 1;
-          break;
-        case 'image':
-          if (input.imageId) count += 1;
-          break;
-        case 'text-input':
-          if (input.text) count += 1;
-          break;
-        case 'game':
-          count += 1;
-          break;
-        case 'whip':
-          break;
-      }
-    }
-
-    return count;
-  }, []);
-
-  const startImportProgress = useCallback((total: number, phase: string) => {
-    setImportProgress({
-      phase,
-      current: 0,
-      total: Math.max(total, 1),
-    });
-  }, []);
-
-  const setImportPhase = useCallback((phase: string) => {
-    setImportProgress((prev) => (prev ? { ...prev, phase } : prev));
-  }, []);
-
-  const advanceImportProgress = useCallback((phase?: string) => {
-    setImportProgress((prev) =>
-      prev
-        ? {
-            ...prev,
-            phase: phase ?? prev.phase,
-            current: Math.min(prev.total, prev.current + 1),
-          }
-        : prev,
-    );
-  }, []);
-
-  const adjustImportTotal = useCallback((delta: number) => {
-    if (delta === 0) {
-      return;
-    }
-
-    setImportProgress((prev) => {
-      if (!prev) {
-        return prev;
-      }
-
-      const total = Math.max(prev.current, prev.total + delta, 1);
-      return { ...prev, total };
-    });
-  }, []);
 
   // Suggestions state
   const [twitchSuggestions, setTwitchSuggestions] = useState<any[]>([]);
@@ -399,21 +317,11 @@ export default function IntroView() {
       showcaseWelcome?: { before: string; after: string },
     ) => {
       setLoadingImport(true);
-
-      const plannedAddRequests = countImportAddRequests(config.inputs);
-      const hasPendingWhipSync = config.inputs.some(
-        (input) => input.type === 'whip',
-      );
-
-      startImportProgress(
-        1 + plannedAddRequests * 2 + (hasPendingWhipSync ? 1 : 0) + 1,
-        'Creating room',
-      );
+      setImportProgress({ phase: 'Creating room', current: 0, total: 1 });
 
       try {
         const room = await createNewRoom([], true, config.resolution);
         const roomId = room.roomId;
-        advanceImportProgress('Creating room');
 
         if (showcaseWelcome) {
           try {
@@ -424,269 +332,86 @@ export default function IntroView() {
           } catch {}
         }
 
-        const createdInputIds: { inputId: string; configIndex: number }[] = [];
-
-        for (let i = 0; i < config.inputs.length; i++) {
-          const inputConfig = config.inputs[i];
-          try {
-            let inputId: string | null = null;
-            let attemptedAdd = false;
-
-            if (inputConfig.type === 'whip') {
-              continue;
+        let timelineAtZero:
+          | {
+              hiddenInputIds: number[];
+              blockSettingsEntries: [number, Record<string, unknown>][];
             }
+          | undefined;
 
-            switch (inputConfig.type) {
-              case 'twitch-channel':
-                if (inputConfig.channelId) {
-                  attemptedAdd = true;
-                  const result = await addTwitchInput(
-                    roomId,
-                    inputConfig.channelId,
-                  );
-                  inputId = result.inputId;
-                }
-                break;
-              case 'kick-channel':
-                if (inputConfig.channelId) {
-                  attemptedAdd = true;
-                  const result = await addKickInput(
-                    roomId,
-                    inputConfig.channelId,
-                  );
-                  inputId = result.inputId;
-                }
-                break;
-              case 'hls':
-                if (inputConfig.url) {
-                  attemptedAdd = true;
-                  const result = await addHlsInput(roomId, inputConfig.url);
-                  inputId = result.inputId;
-                }
-                break;
-              case 'local-mp4':
-                if (inputConfig.audioFileName) {
-                  attemptedAdd = true;
-                  const result = await addAudioInput(
-                    roomId,
-                    inputConfig.audioFileName,
-                  );
-                  inputId = result.inputId;
-                } else if (inputConfig.mp4FileName) {
-                  attemptedAdd = true;
-                  const result = await addMP4Input(
-                    roomId,
-                    inputConfig.mp4FileName,
-                  );
-                  inputId = result.inputId;
-                }
-                break;
-              case 'image':
-                if (inputConfig.imageId) {
-                  attemptedAdd = true;
-                  const result = await addImageInput(
-                    roomId,
-                    inputConfig.imageId,
-                  );
-                  inputId = result.inputId;
-                }
-                break;
-              case 'text-input':
-                if (inputConfig.text) {
-                  attemptedAdd = true;
-                  const result = await addTextInput(
-                    roomId,
-                    inputConfig.text,
-                    inputConfig.textAlign || 'left',
-                  );
-                  inputId = result.inputId;
-                }
-                break;
-              case 'game': {
-                attemptedAdd = true;
-                const result = await addSnakeGameInput(
-                  roomId,
-                  inputConfig.title,
-                );
-                inputId = result.inputId;
-                break;
-              }
-            }
+        if (config.timeline) {
+          const tempIndexMap = new Map<number, string>();
+          config.inputs.forEach((_, idx) =>
+            tempIndexMap.set(idx, `__temp_${idx}__`),
+          );
+          const atZero = computeTimelineStateAtZero(
+            config.timeline,
+            tempIndexMap,
+          );
 
-            if (inputId) {
-              createdInputIds.push({ inputId, configIndex: i });
-            }
+          const hiddenIndices: number[] = [];
+          for (const hiddenId of atZero.hiddenInputIds) {
+            const match = hiddenId.match(/^__temp_(\d+)__$/);
+            if (match) hiddenIndices.push(Number(match[1]));
+          }
 
-            if (attemptedAdd) {
-              advanceImportProgress('Adding inputs');
+          const blockEntries: [number, Record<string, unknown>][] = [];
+          for (const [tempId, bs] of atZero.activeBlockSettings) {
+            const match = tempId.match(/^__temp_(\d+)__$/);
+            if (match) {
+              blockEntries.push([
+                Number(match[1]),
+                buildInputUpdateFromBlockSettings(bs) as Record<
+                  string,
+                  unknown
+                >,
+              ]);
             }
-          } catch (err) {
-            console.warn(`Failed to add input ${inputConfig.title}:`, err);
-            advanceImportProgress('Adding inputs');
+          }
+
+          if (hiddenIndices.length > 0 || blockEntries.length > 0) {
+            timelineAtZero = {
+              hiddenInputIds: hiddenIndices,
+              blockSettingsEntries: blockEntries,
+            };
           }
         }
 
-        adjustImportTotal(createdInputIds.length - plannedAddRequests);
+        const result = await streamImportConfig(
+          roomId,
+          { config, oldInputIds: [], timelineAtZero },
+          {
+            onProgress: (event) => {
+              setImportProgress({
+                phase: event.phase,
+                current: event.current,
+                total: event.total,
+              });
+            },
+          },
+        );
 
-        const configIndexToInputId = new Map<number, string>();
-        for (const { inputId, configIndex } of createdInputIds) {
-          configIndexToInputId.set(configIndex, inputId);
+        if (result.errors.length > 0) {
+          console.warn('[import-config] Errors:', result.errors);
         }
-
-        const pendingWhipInputs: PendingWhipInputData[] = [];
-        for (let i = 0; i < config.inputs.length; i++) {
-          const inputConfig = config.inputs[i];
-          if (inputConfig.type === 'whip') {
-            pendingWhipInputs.push({
-              id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              title: inputConfig.title,
-              volume: inputConfig.volume,
-              showTitle: inputConfig.showTitle !== false,
-              shaders: inputConfig.shaders || [],
-              position: i,
-            });
-            configIndexToInputId.set(i, `__pending-whip-${i}__`);
-          }
-        }
-
-        for (const { inputId, configIndex } of createdInputIds) {
-          const inputConfig = config.inputs[configIndex];
-          const attachedInputIds = inputConfig.attachedInputIndices
-            ?.map((idx) => configIndexToInputId.get(idx))
-            .filter((id): id is string => !!id);
-          try {
-            await updateInput(roomId, inputId, {
-              volume: inputConfig.volume,
-              shaders: inputConfig.shaders,
-              showTitle: inputConfig.showTitle,
-              textColor: inputConfig.textColor,
-              textMaxLines: inputConfig.textMaxLines,
-              textScrollSpeed: inputConfig.textScrollSpeed,
-              textScrollLoop: inputConfig.textScrollLoop,
-              textFontSize: inputConfig.textFontSize,
-              borderColor: inputConfig.borderColor,
-              borderWidth: inputConfig.borderWidth,
-              gameBackgroundColor: inputConfig.gameBackgroundColor,
-              gameCellGap: inputConfig.gameCellGap,
-              gameBoardBorderColor: inputConfig.gameBoardBorderColor,
-              gameBoardBorderWidth: inputConfig.gameBoardBorderWidth,
-              gameGridLineColor: inputConfig.gameGridLineColor,
-              gameGridLineAlpha: inputConfig.gameGridLineAlpha,
-              snakeEventShaders: inputConfig.snakeEventShaders,
-              snake1Shaders: inputConfig.snake1Shaders,
-              snake2Shaders: inputConfig.snake2Shaders,
-              absolutePosition: inputConfig.absolutePosition,
-              absoluteTop: inputConfig.absoluteTop,
-              absoluteLeft: inputConfig.absoluteLeft,
-              absoluteWidth: inputConfig.absoluteWidth,
-              absoluteHeight: inputConfig.absoluteHeight,
-              absoluteTransitionDurationMs:
-                inputConfig.absoluteTransitionDurationMs,
-              absoluteTransitionEasing: inputConfig.absoluteTransitionEasing,
-              cropTop: inputConfig.cropTop,
-              cropLeft: inputConfig.cropLeft,
-              cropRight: inputConfig.cropRight,
-              cropBottom: inputConfig.cropBottom,
-              attachedInputIds:
-                attachedInputIds && attachedInputIds.length > 0
-                  ? attachedInputIds
-                  : undefined,
-            });
-          } catch (err) {
-            console.warn(`Failed to update input ${inputId}:`, err);
-          } finally {
-            advanceImportProgress('Configuring inputs');
-          }
-        }
-
-        let timelineInputOrder: string[] | undefined;
 
         if (config.timeline) {
           const indexToInputId = new Map<number, string>();
-          for (const { inputId, configIndex } of createdInputIds) {
-            indexToInputId.set(configIndex, inputId);
+          for (const [idx, inputId] of Object.entries(result.indexToInputId)) {
+            indexToInputId.set(Number(idx), inputId);
           }
-
-          const timelineState = computeTimelineStateAtZero(
-            config.timeline,
-            indexToInputId,
-          );
-
-          for (const pending of pendingWhipInputs) {
+          for (const pw of result.pendingWhipData) {
             indexToInputId.set(
-              pending.position,
-              `__pending-whip-${pending.position}__`,
+              pw.position,
+              `__pending-whip-${pw.position}__`,
             );
           }
           restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
-
-          adjustImportTotal(
-            timelineState.hiddenInputIds.length +
-              timelineState.activeBlockSettings.size,
-          );
-
-          for (const hiddenId of timelineState.hiddenInputIds) {
-            try {
-              await hideInput(roomId, hiddenId);
-            } catch (err) {
-              console.warn(`Failed to hide input ${hiddenId}:`, err);
-            } finally {
-              advanceImportProgress('Applying timeline state');
-            }
-          }
-
-          for (const [
-            inputId,
-            blockSettings,
-          ] of timelineState.activeBlockSettings) {
-            try {
-              await updateInput(
-                roomId,
-                inputId,
-                buildInputUpdateFromBlockSettings(blockSettings),
-              );
-            } catch (err) {
-              console.warn(
-                `Failed to apply block settings for ${inputId}:`,
-                err,
-              );
-            } finally {
-              advanceImportProgress('Applying timeline state');
-            }
-          }
-
-          if (timelineState.inputOrder.length > 0) {
-            timelineInputOrder = timelineState.inputOrder;
-          }
         }
 
-        const orderedCreatedIds = createdInputIds
-          .slice()
-          .sort((a, b) => a.configIndex - b.configIndex)
-          .map(({ inputId }) => inputId);
-
-        const finalInputOrder =
-          timelineInputOrder ??
-          (orderedCreatedIds.length > 0 ? orderedCreatedIds : undefined);
-
-        try {
-          await updateRoom(roomId, {
-            layout: config.layout,
-            ...(finalInputOrder ? { inputOrder: finalInputOrder } : {}),
-            ...config.transitionSettings,
-          });
-        } catch (err) {
-          console.warn('Failed to set layout or input order:', err);
-        } finally {
-          advanceImportProgress('Finalizing room');
-        }
-
-        if (pendingWhipInputs.length > 0) {
-          setImportPhase('Syncing pending WHIP inputs');
-          await setPendingWhipInputsAction(roomId, pendingWhipInputs);
-          advanceImportProgress('Syncing pending WHIP inputs');
+        if (result.pendingWhipData.length > 0) {
           toast.info(
-            `Room created. ${pendingWhipInputs.length} WHIP input(s) need to be connected manually.`,
+            `Room created. ${result.pendingWhipData.length} WHIP input(s) need to be connected manually.`,
           );
         } else {
           toast.success('Room created from configuration');
@@ -705,15 +430,7 @@ export default function IntroView() {
         setLoadingImport(false);
       }
     },
-    [
-      adjustImportTotal,
-      advanceImportProgress,
-      countImportAddRequests,
-      getRoomRoute,
-      router,
-      setImportPhase,
-      startImportProgress,
-    ],
+    [getRoomRoute, router],
   );
 
   const handleRecoveryRestore = useCallback(async () => {
