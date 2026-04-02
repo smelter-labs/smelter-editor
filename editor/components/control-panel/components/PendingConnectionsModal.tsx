@@ -144,13 +144,9 @@ export function PendingConnectionsModal({
           />
         )}
 
-        {isConnecting ? (
-          <div className='flex min-h-48 flex-col items-center justify-center gap-3 py-8'>
-            <LoadingSpinner size='lg' variant='spinner' />
-            <p className='text-sm text-neutral-300'>Connecting inputs...</p>
-          </div>
-        ) : (
-          <div className='max-h-[70vh] overflow-y-auto'>
+        <div className='relative'>
+          <div
+            className={`max-h-[70vh] overflow-y-auto ${isConnecting ? 'pointer-events-none opacity-60' : ''}`}>
             <PendingWhipInputs
               pendingInputs={pendingWhipInputs}
               setPendingInputs={setPendingWhipInputs}
@@ -159,7 +155,13 @@ export function PendingConnectionsModal({
               onConnectAllReadyChange={setIsConnectAllReady}
             />
           </div>
-        )}
+          {isConnecting && (
+            <div className='absolute inset-0 flex min-h-48 flex-col items-center justify-center gap-3 py-8 bg-black/30'>
+              <LoadingSpinner size='lg' variant='spinner' />
+              <p className='text-sm text-neutral-300'>Connecting inputs...</p>
+            </div>
+          )}
+        </div>
 
         {welcomeTextAfter && !isConnecting && (
           <div
