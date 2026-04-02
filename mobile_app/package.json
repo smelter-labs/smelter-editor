@@ -8,6 +8,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "postinstall": "patch-package",
+    "check-types": "tsc --noEmit 2>&1 && echo 'Compilation successful'",
     "lint": "eslint .",
     "lint:fix": "eslint --fix --ext .js,.jsx,.ts,.tsx ."
   },
