@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from "react";
+import { useState, useCallback, useEffect, useRef, use } from "react";
 import { useNavigation } from "@react-navigation/native";
 import { wsService } from "../../services/websocketService";
 import { apiService, type ActiveRoom } from "../../services/apiService";
@@ -184,6 +184,7 @@ export function useJoinRoom() {
 
     const { setInputs } = useInputsStore.getState();
     const { setLayers, setResolution } = useLayoutStore.getState();
+    const { setGridConfig } = useLayoutStore.getState();
 
     try {
       const { inputs, layers, resolution } = await apiService.fetchRoomState(
@@ -198,6 +199,11 @@ export function useJoinRoom() {
       setInputs(inputs);
       setLayers(layers);
       setResolution(resolution);
+      setGridConfig(
+        Math.round(resolution.width / 10),
+        Math.round(resolution.height / 10),
+      );
+
       console.log("[JoinRoom] Room state loaded", {
         inputCount: inputs.length,
         layerCount: layers.length,

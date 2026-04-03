@@ -1,6 +1,6 @@
 import { Type } from '@sinclair/typebox';
 import type { FastifyInstance } from 'fastify';
-import { state } from '../server/serverState';
+import { state } from '../core/serverState';
 import { logTimelineEvent } from '../dashboard';
 import {
   TimelinePlaySchema,

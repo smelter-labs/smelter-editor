@@ -86,7 +86,7 @@ mocks.smelter.registerOutput.mockImplementation((async (
   };
 }) as any);
 
-const { ServerState } = await import('../server/serverState');
+const { ServerState } = await import('../core/serverState');
 
 type ServerStateInstance = InstanceType<typeof ServerState>;
 let state: ServerStateInstance;

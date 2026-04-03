@@ -5,7 +5,7 @@ import type { InputConfig } from '../app/store';
 import type { Layer, BehaviorInputInfo } from '../types';
 import { computeLayout } from '@smelter-editor/types';
 import type { SnakeEventType } from '../snakeGame/types';
-import type { RoomNameEntry } from '../server/roomNames';
+import type { RoomNameEntry } from '../core/roomNames';
 import {
   TimelinePlayer,
   type TimelineListener,

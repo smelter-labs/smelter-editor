@@ -1,8 +1,8 @@
-import { state } from './server/serverState';
+import { state } from './core/serverState';
 import { TwitchChannelSuggestions } from './twitch/TwitchChannelMonitor';
 import { KickChannelSuggestions } from './kick/KickChannelMonitor';
 import { SmelterInstance } from './smelter';
-import { routes } from './server/routes';
+import { routes } from './routing/routes';
 import { initDashboard, hijackConsole } from './dashboard';
 import './snakeGame/registerSnakeGameRenderer';
 

@@ -1,4 +1,4 @@
-import { state } from './server/serverState';
+import { state } from './core/serverState';
 import { config } from './config';
 // import { renderSnakeBoard, findFirstSnakeGameState } from './snakeGame/snakeGameDashboard';
 const isBoxed = process.env.LAYOUT === 'boxed';

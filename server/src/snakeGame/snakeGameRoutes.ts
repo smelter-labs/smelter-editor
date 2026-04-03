@@ -1,7 +1,7 @@
 import { Type } from '@sinclair/typebox';
 import type { Static } from '@fastify/type-provider-typebox';
 import type { FastifyInstance } from 'fastify';
-import { state } from '../server/serverState';
+import { state } from '../core/serverState';
 import { setGlobalSnakeGameState } from './snakeGameDashboard';
 
 let snakeGameRoomCreationInProgress: Promise<void> | null = null;
