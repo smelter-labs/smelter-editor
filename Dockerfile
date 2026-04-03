@@ -66,7 +66,7 @@ ENV PATH=/home/smelter/.local/bin:$PATH
 ARG CACHE_BUST=1
 COPY --chown=$USERNAME:$USERNAME  . /home/$USERNAME/demo
 WORKDIR /home/$USERNAME/demo/server
-RUN mkdir -p /home/$USERNAME/demo/server/recordings /home/$USERNAME/demo/server/configs
+RUN mkdir -p /home/$USERNAME/demo/server/data/recordings /home/$USERNAME/demo/server/data/configs /home/$USERNAME/demo/server/data/mp4s /home/$USERNAME/demo/server/data/pictures /home/$USERNAME/demo/server/data/audios /home/$USERNAME/demo/server/data/screenshots /home/$USERNAME/demo/server/data/thumbnails /home/$USERNAME/demo/server/data/shader-presets /home/$USERNAME/demo/server/data/dashboard-layouts /home/$USERNAME/demo/server/data/presentation-configs /home/$USERNAME/demo/server/data/hls-streams
 RUN CI=1 pnpm install && pnpm --filter @smelter-editor/types build && pnpm build
 
 ENTRYPOINT ["/home/smelter/demo/entrypoint.sh"]

@@ -22,6 +22,9 @@ export type {
   CropProperties,
   BorderProperties,
   SnakeGameDisplayProperties,
+  
+  
+  ViewportProperties,
 } from '@smelter-editor/types';
 
 export { AUDIO_BAND_COUNT } from '@smelter-editor/types';

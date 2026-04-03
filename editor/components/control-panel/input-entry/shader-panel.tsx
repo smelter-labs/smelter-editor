@@ -17,7 +17,7 @@ import {
   FolderOpen,
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
-import { useState } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import {
   SaveShaderPresetModal,
   LoadShaderPresetModal,
@@ -47,6 +47,7 @@ interface ShaderPanelProps {
   /** When set, clicking a shader name calls this instead of opening a dialog */
   onOpenShaderInline?: (shaderId: string) => void;
   onApplyPreset?: (shaders: ShaderConfig[], mode: 'replace' | 'append') => void;
+  allowInlineValueEdit?: boolean;
 }
 
 export default function ShaderPanel({
@@ -62,6 +63,7 @@ export default function ShaderPanel({
   onOpenAddShader,
   onOpenShaderInline,
   onApplyPreset,
+  allowInlineValueEdit,
 }: ShaderPanelProps) {
   const [openShaderId, setOpenShaderId] = useState<string | null>(null);
   const [savePresetOpen, setSavePresetOpen] = useState(false);
@@ -285,6 +287,7 @@ export default function ShaderPanel({
                       onChange={(value) =>
                         onSliderChange(openShaderDef.id, param.name, value)
                       }
+                      allowInlineEdit={allowInlineValueEdit}
                     />
                   );
                 });
@@ -325,6 +328,7 @@ export function InlineShaderParams({
   onSliderChange,
   getShaderParamConfig,
   onBack,
+  allowInlineValueEdit,
 }: {
   shaderId: string;
   availableShaders: AvailableShader[];
@@ -348,6 +352,7 @@ export function InlineShaderParams({
     paramName: string,
   ) => { paramName: string; paramValue: number | string } | undefined;
   onBack: () => void;
+  allowInlineValueEdit?: boolean;
 }) {
   const shaderDef = availableShaders.find((s) => s.id === shaderId);
   const shaderConfig = shaders.find((s) => s.shaderId === shaderId);
@@ -441,6 +446,7 @@ export function InlineShaderParams({
                 onChange={(value) =>
                   onSliderChange(shaderDef.id, param.name, value)
                 }
+                allowInlineEdit={allowInlineValueEdit}
               />
             );
           })
@@ -469,30 +475,86 @@ function ShaderParamSlider({
   param,
   paramValue,
   onChange,
+  allowInlineEdit,
 }: {
   param: {
     name: string;
     minValue?: number;
     maxValue?: number;
     defaultValue?: number | string;
+    step?: number;
   };
   paramValue: number;
   loading: boolean;
   onChange: (value: number) => void;
+  allowInlineEdit?: boolean;
 }) {
   const min = param?.minValue ?? 0;
   const max = param?.maxValue ?? 1;
-  const step = (max - min) / 100;
+  const step = param.step ?? (max - min) / 100;
+  const decimals = step < 1 ? Math.max(0, Math.ceil(-Math.log10(step))) : 0;
+
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.select();
+  }, [editing]);
+
+  const commitEdit = useCallback(() => {
+    setEditing(false);
+    const parsed = parseFloat(draft);
+    if (Number.isNaN(parsed)) return;
+    const clamped = Math.min(max, Math.max(min, parsed));
+    onChange(clamped);
+  }, [draft, onChange, min, max]);
+
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commitEdit();
+      } else if (e.key === 'Escape') {
+        e.preventDefault();
+        setEditing(false);
+      }
+    },
+    [commitEdit],
+  );
+
+  const startEditing = useCallback(() => {
+    if (!allowInlineEdit) return;
+    setDraft(paramValue.toFixed(decimals));
+    setEditing(true);
+  }, [allowInlineEdit, paramValue, decimals]);
 
   return (
     <div data-no-dnd className='flex flex-col gap-2'>
       <label className='text-xs text-white font-semibold flex justify-between items-center mb-1'>
         <span className='uppercase tracking-wide'>{param.name}</span>
-        <span
-          data-no-dnd
-          className='ml-2 text-neutral-300 font-mono text-sm px-2 py-0.5 rounded bg-neutral-900'>
-          {typeof paramValue === 'number' ? paramValue.toFixed(2) : paramValue}
-        </span>
+        {editing ? (
+          <input
+            ref={inputRef}
+            data-no-dnd
+            type='text'
+            inputMode='decimal'
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onBlur={commitEdit}
+            onKeyDown={handleKeyDown}
+            className='ml-2 w-16 text-right text-neutral-300 font-mono text-sm px-2 py-0.5 rounded bg-neutral-900 border border-neutral-600 outline-none focus:border-cyan'
+          />
+        ) : (
+          <span
+            data-no-dnd
+            onClick={startEditing}
+            className={`ml-2 text-neutral-300 font-mono text-sm px-2 py-0.5 rounded bg-neutral-900${allowInlineEdit ? ' cursor-pointer hover:border hover:border-neutral-600' : ''}`}>
+            {typeof paramValue === 'number'
+              ? paramValue.toFixed(decimals)
+              : paramValue}
+          </span>
+        )}
       </label>
       <Slider
         data-no-dnd

@@ -8,10 +8,13 @@ import ShaderPanel, { InlineShaderParams } from '../input-entry/shader-panel';
 import { AddShaderModal } from '../input-entry/add-shader-modal';
 import SnakeEventShaderPanel from '../input-entry/snake-event-shader-panel';
 import type { BlockSettings } from '../hooks/use-timeline-state';
-import { OUTPUT_CLIP_ID } from '../hooks/use-timeline-state';
-import { PendingWhipInputs } from './PendingWhipInputs';
-import type { PendingWhipInput } from './ConfigurationSection';
-import { Link, Video, Monitor } from 'lucide-react';
+import {
+  OUTPUT_CLIP_ID,
+  OUTPUT_TRACK_INPUT_ID,
+} from '../hooks/use-timeline-state';
+import { emitTimelineEvent, TIMELINE_EVENTS } from './timeline/timeline-events';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Link, Video, Monitor, ArrowLeftRight } from 'lucide-react';
 import {
   Select,
   SelectTrigger,
@@ -53,6 +56,7 @@ import {
   panelSectionStyles,
   labelStyles,
 } from '../styles/panel-primitives';
+import { SwapSourceModal, type SwapSourceResult } from './SwapSourceModal';
 
 const SHADER_SETTINGS_DEBOUNCE_MS = 200;
 
@@ -67,8 +71,6 @@ export function BlockClipPropertiesPanel({
   availableShaders,
   handleRefreshState,
   resolution,
-  pendingWhipInputs,
-  setPendingWhipInputs,
 }: {
   roomId: string;
   selectedTimelineClips: SelectedTimelineClip[];
@@ -78,8 +80,6 @@ export function BlockClipPropertiesPanel({
   availableShaders: AvailableShader[];
   handleRefreshState: () => Promise<void>;
   resolution?: { width: number; height: number };
-  pendingWhipInputs?: PendingWhipInput[];
-  setPendingWhipInputs?: (inputs: PendingWhipInput[]) => void | Promise<void>;
 }) {
   const selectedTimelineClip =
     selectedTimelineClips.length === 1 ? selectedTimelineClips[0] : null;
@@ -94,7 +94,11 @@ export function BlockClipPropertiesPanel({
     },
     [onSelectedTimelineClipsChange],
   );
-  const { updateInput: updateInputAction, addCameraInput } = useActions();
+  const {
+    updateInput: updateInputAction,
+    updateRoom: updateRoomAction,
+    addCameraInput,
+  } = useActions();
   const [sliderValues, setSliderValues] = useState<{ [key: string]: number }>(
     {},
   );
@@ -117,12 +121,18 @@ export function BlockClipPropertiesPanel({
   const gameGridDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   );
+  const [textColorDraft, setTextColorDraft] = useState<string | null>(null);
+  const textColorDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
   const [textScrollSpeedDraft, setTextScrollSpeedDraft] = useState<
     number | null
   >(null);
   const textScrollSpeedDebounceRef = useRef<ReturnType<
     typeof setTimeout
   > | null>(null);
+  const [volumeDraft, setVolumeDraft] = useState<number | null>(null);
+  const volumeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const [mp4DurationLoading, setMp4DurationLoading] = useState(false);
   const mp4DurationFetchedRef = useRef<string | null>(null);
@@ -138,6 +148,7 @@ export function BlockClipPropertiesPanel({
     top: number;
     left: number;
   } | null>(null);
+  const [swapModalOpen, setSwapModalOpen] = useState(false);
 
   useEffect(() => {
     return () => {
@@ -149,15 +160,23 @@ export function BlockClipPropertiesPanel({
       if (textScrollSpeedDebounceRef.current) {
         clearTimeout(textScrollSpeedDebounceRef.current);
       }
+      if (textColorDebounceRef.current) {
+        clearTimeout(textColorDebounceRef.current);
+      }
     };
   }, []);
 
   useEffect(() => {
     setTitleDraft(null);
     setTextScrollSpeedDraft(null);
+    setTextColorDraft(null);
     if (textScrollSpeedDebounceRef.current) {
       clearTimeout(textScrollSpeedDebounceRef.current);
       textScrollSpeedDebounceRef.current = null;
+    }
+    if (textColorDebounceRef.current) {
+      clearTimeout(textColorDebounceRef.current);
+      textColorDebounceRef.current = null;
     }
   }, [selectedTimelineClips]);
 
@@ -198,7 +217,10 @@ export function BlockClipPropertiesPanel({
     if (selectedInput.type !== 'local-mp4') return;
     if (effectiveClip.blockSettings.mp4DurationMs) return;
 
-    const mp4FileName = extractMp4FileName(selectedInput.title);
+    const mp4FileName =
+      selectedInput.mp4FileName ??
+      selectedInput.audioFileName ??
+      extractMp4FileName(selectedInput.title);
     if (!mp4FileName) return;
     const fetchKey = `${selectedTimelineClip.clipId}::${mp4FileName}`;
     if (mp4DurationFetchedRef.current === fetchKey) return;
@@ -290,6 +312,11 @@ export function BlockClipPropertiesPanel({
         });
 
         await handleRefreshState();
+
+        emitTimelineEvent(TIMELINE_EVENTS.CLEANUP_SPURIOUS_WHIP_TRACK, {
+          inputId: response.inputId,
+        });
+
         toast.success(
           `Connected ${type === 'camera' ? 'camera' : 'screenshare'}`,
         );
@@ -317,6 +344,34 @@ export function BlockClipPropertiesPanel({
       handleRefreshState,
       onSelectedTimelineClipChange,
     ],
+  );
+
+  const handleSwapSource = useCallback(
+    async (result: SwapSourceResult) => {
+      if (!selectedTimelineClip) return;
+
+      emitTimelineEvent(TIMELINE_EVENTS.SWAP_CLIP_INPUT, {
+        trackId: selectedTimelineClip.trackId,
+        clipId: selectedTimelineClip.clipId,
+        newInputId: result.newInputId,
+        sourceUpdates: result.sourceUpdates,
+      });
+
+      const updatedSettings = {
+        ...selectedTimelineClip.blockSettings,
+        ...result.sourceUpdates,
+      };
+
+      onSelectedTimelineClipChange({
+        ...selectedTimelineClip,
+        inputId: result.newInputId,
+        blockSettings: updatedSettings,
+      });
+
+      await handleRefreshState();
+      // Dimensions will arrive via the next poll + SYNC_TRACKS cycle.
+    },
+    [selectedTimelineClip, onSelectedTimelineClipChange, handleRefreshState],
   );
 
   const applyClipPatch = useCallback(
@@ -388,23 +443,19 @@ export function BlockClipPropertiesPanel({
 
       // Dispatch timeline update for each clip or selected keyframe.
       if (targetKeyframeId && singleSelectedClip) {
-        window.dispatchEvent(
-          new CustomEvent('smelter:timeline:update-keyframe', {
-            detail: {
-              trackId: singleSelectedClip.trackId,
-              clipId: singleSelectedClip.clipId,
-              keyframeId: targetKeyframeId,
-              patch,
-            },
-          }),
-        );
+        emitTimelineEvent(TIMELINE_EVENTS.UPDATE_KEYFRAME, {
+          trackId: singleSelectedClip.trackId,
+          clipId: singleSelectedClip.clipId,
+          keyframeId: targetKeyframeId,
+          patch,
+        });
       } else {
         for (const clip of selectedTimelineClips) {
-          window.dispatchEvent(
-            new CustomEvent('smelter:timeline:update-clip-settings', {
-              detail: { trackId: clip.trackId, clipId: clip.clipId, patch },
-            }),
-          );
+          emitTimelineEvent(TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS, {
+            trackId: clip.trackId,
+            clipId: clip.clipId,
+            patch,
+          });
         }
       }
 
@@ -414,6 +465,14 @@ export function BlockClipPropertiesPanel({
         for (const clip of nextClips) {
           if (seenInputIds.has(clip.inputId)) continue;
           seenInputIds.add(clip.inputId);
+
+          if (clip.inputId === OUTPUT_TRACK_INPUT_ID) {
+            await updateRoomAction(roomId, {
+              outputShaders: patch.shaders ?? clip.blockSettings.shaders ?? [],
+            });
+            continue;
+          }
+
           await updateInputAction(roomId, clip.inputId, {
             volume: patch.volume ?? clip.blockSettings.volume,
             shaders: patch.shaders ?? clip.blockSettings.shaders,
@@ -474,15 +533,11 @@ export function BlockClipPropertiesPanel({
   const handleSelectKeyframe = useCallback(
     (keyframeId: string | null) => {
       if (!selectedTimelineClip) return;
-      window.dispatchEvent(
-        new CustomEvent('smelter:timeline:select-keyframe', {
-          detail: {
-            trackId: selectedTimelineClip.trackId,
-            clipId: selectedTimelineClip.clipId,
-            keyframeId,
-          },
-        }),
-      );
+      emitTimelineEvent(TIMELINE_EVENTS.SELECT_KEYFRAME, {
+        trackId: selectedTimelineClip.trackId,
+        clipId: selectedTimelineClip.clipId,
+        keyframeId,
+      });
     },
     [selectedTimelineClip],
   );
@@ -499,45 +554,33 @@ export function BlockClipPropertiesPanel({
       selectedTimelineClip,
       desiredTimeMs,
     );
-    window.dispatchEvent(
-      new CustomEvent('smelter:timeline:add-keyframe', {
-        detail: {
-          trackId: selectedTimelineClip.trackId,
-          clipId: selectedTimelineClip.clipId,
-          timeMs: nextTimeMs,
-        },
-      }),
-    );
+    emitTimelineEvent(TIMELINE_EVENTS.ADD_KEYFRAME, {
+      trackId: selectedTimelineClip.trackId,
+      clipId: selectedTimelineClip.clipId,
+      timeMs: nextTimeMs,
+    });
   }, [playheadMs, selectedTimelineClip, selectedTimelineKeyframe]);
 
   const handleMoveSelectedKeyframe = useCallback(
     (timeMs: number) => {
       if (!selectedTimelineClip || !selectedTimelineKeyframe) return;
-      window.dispatchEvent(
-        new CustomEvent('smelter:timeline:move-keyframe', {
-          detail: {
-            trackId: selectedTimelineClip.trackId,
-            clipId: selectedTimelineClip.clipId,
-            keyframeId: selectedTimelineKeyframe.id,
-            timeMs,
-          },
-        }),
-      );
+      emitTimelineEvent(TIMELINE_EVENTS.MOVE_KEYFRAME, {
+        trackId: selectedTimelineClip.trackId,
+        clipId: selectedTimelineClip.clipId,
+        keyframeId: selectedTimelineKeyframe.id,
+        timeMs,
+      });
     },
     [selectedTimelineClip, selectedTimelineKeyframe],
   );
 
   const handleDeleteSelectedKeyframe = useCallback(() => {
     if (!selectedTimelineClip || !selectedTimelineKeyframe) return;
-    window.dispatchEvent(
-      new CustomEvent('smelter:timeline:delete-keyframe', {
-        detail: {
-          trackId: selectedTimelineClip.trackId,
-          clipId: selectedTimelineClip.clipId,
-          keyframeId: selectedTimelineKeyframe.id,
-        },
-      }),
-    );
+    emitTimelineEvent(TIMELINE_EVENTS.DELETE_KEYFRAME, {
+      trackId: selectedTimelineClip.trackId,
+      clipId: selectedTimelineClip.clipId,
+      keyframeId: selectedTimelineKeyframe.id,
+    });
     handleSelectKeyframe(null);
   }, [handleSelectKeyframe, selectedTimelineClip, selectedTimelineKeyframe]);
 
@@ -703,18 +746,12 @@ export function BlockClipPropertiesPanel({
     [primaryClip, selectedInput, roomId, updateInputAction, handleRefreshState],
   );
 
-  const pendingSection =
-    pendingWhipInputs &&
-    pendingWhipInputs.length > 0 &&
-    setPendingWhipInputs ? (
-      <PendingWhipInputs
-        pendingInputs={pendingWhipInputs}
-        setPendingInputs={setPendingWhipInputs}
-      />
-    ) : null;
-
   if (selectedTimelineClips.length === 0) {
-    return pendingSection;
+    return (
+      <p className='text-xs text-neutral-500'>
+        Select a block on the timeline to view its properties.
+      </p>
+    );
   }
 
   // Effective clip used for rendering: primary clip for single, or first clip for multi
@@ -887,7 +924,6 @@ export function BlockClipPropertiesPanel({
 
   return (
     <div>
-      {pendingSection}
       <div className='text-xs text-muted-foreground mb-2'>
         {isOutputClip
           ? 'Main Video output shaders'
@@ -900,22 +936,32 @@ export function BlockClipPropertiesPanel({
               {selectedTimelineClips.length} clips selected
             </div>
           ) : (
-            <ShadcnInput
-              className='text-sm text-card-foreground mb-3 bg-transparent border-border px-1 py-0.5 h-auto'
-              value={
-                titleDraft ?? selectedInput?.title ?? effectiveClip.inputId
-              }
-              onChange={(e) => setTitleDraft(e.target.value)}
-              onBlur={(e) => void handleTitleCommit(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') {
-                  e.currentTarget.blur();
-                } else if (e.key === 'Escape') {
-                  setTitleDraft(null);
-                  e.currentTarget.blur();
+            <div className='flex items-center gap-1.5 mb-3'>
+              <ShadcnInput
+                className='text-sm text-card-foreground bg-transparent border-border px-1 py-0.5 h-auto flex-1'
+                value={
+                  titleDraft ?? selectedInput?.title ?? effectiveClip.inputId
                 }
-              }}
-            />
+                onChange={(e) => setTitleDraft(e.target.value)}
+                onBlur={(e) => void handleTitleCommit(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.currentTarget.blur();
+                  } else if (e.key === 'Escape') {
+                    setTitleDraft(null);
+                    e.currentTarget.blur();
+                  }
+                }}
+              />
+              <Button
+                size='sm'
+                variant='outline'
+                className='h-7 px-2 shrink-0 cursor-pointer border-border text-muted-foreground hover:text-foreground hover:bg-accent'
+                title='Change source'
+                onClick={() => setSwapModalOpen(true)}>
+                <ArrowLeftRight className='w-3.5 h-3.5' />
+              </Button>
+            </div>
           )}
         </>
       )}
@@ -1075,19 +1121,28 @@ export function BlockClipPropertiesPanel({
                 min={0}
                 max={1}
                 step={0.01}
-                value={[effectiveClip.blockSettings.volume]}
+                value={[volumeDraft ?? effectiveClip.blockSettings.volume]}
                 onValueChange={(v) => {
-                  void applyClipPatch({ volume: v[0] });
+                  const value = v[0];
+                  setVolumeDraft(value);
+                  if (volumeDebounceRef.current) {
+                    clearTimeout(volumeDebounceRef.current);
+                  }
+                  volumeDebounceRef.current = setTimeout(() => {
+                    void applyClipPatch({ volume: value }).finally(() => {
+                      setVolumeDraft(null);
+                      volumeDebounceRef.current = null;
+                    });
+                  }, SHADER_SETTINGS_DEBOUNCE_MS);
                 }}
               />
             </div>
             <div className='flex items-center justify-between mb-2'>
               <span className='text-xs text-muted-foreground'>Show title</span>
-              <input
-                type='checkbox'
+              <Checkbox
                 checked={effectiveClip.blockSettings.showTitle}
-                onChange={(e) => {
-                  void applyClipPatch({ showTitle: e.target.checked });
+                onCheckedChange={(checked) => {
+                  void applyClipPatch({ showTitle: !!checked });
                 }}
               />
             </div>
@@ -1292,14 +1347,34 @@ export function BlockClipPropertiesPanel({
               </div>
               <div className='flex items-center justify-between mb-1'>
                 <span className='text-xs text-muted-foreground'>Loop</span>
-                <input
-                  type='checkbox'
+                <Checkbox
                   checked={effectiveClip.blockSettings.mp4Loop !== false}
-                  onChange={(e) => {
+                  onCheckedChange={(checked) => {
+                    const loopEnabled = !!checked;
                     void applyClipPatch(
-                      { mp4Loop: e.target.checked },
+                      { mp4Loop: loopEnabled },
                       { refresh: false },
                     );
+                    if (
+                      !loopEnabled &&
+                      effectiveClip.blockSettings.mp4DurationMs != null
+                    ) {
+                      const maxDuration =
+                        effectiveClip.blockSettings.mp4DurationMs -
+                        (effectiveClip.blockSettings.mp4PlayFromMs ?? 0);
+                      if (
+                        maxDuration > 0 &&
+                        effectiveClip.endMs - effectiveClip.startMs >
+                          maxDuration
+                      ) {
+                        emitTimelineEvent(TIMELINE_EVENTS.RESIZE_CLIP, {
+                          trackId: effectiveClip.trackId,
+                          clipId: effectiveClip.clipId,
+                          edge: 'right',
+                          newMs: effectiveClip.startMs + maxDuration,
+                        });
+                      }
+                    }
                   }}
                 />
               </div>
@@ -1528,11 +1603,11 @@ export function BlockClipPropertiesPanel({
                             <label
                               key={i.inputId}
                               className='flex items-center gap-2 px-1 py-1 hover:bg-accent rounded cursor-pointer'>
-                              <input
-                                type='checkbox'
+                              <Checkbox
                                 checked={isAttached}
-                                onChange={() => handleAttachToggle(i.inputId)}
-                                className='accent-blue-500 cursor-pointer'
+                                onCheckedChange={() =>
+                                  handleAttachToggle(i.inputId)
+                                }
                               />
                               <span className='text-sm text-foreground truncate'>
                                 {i.title}
@@ -1590,10 +1665,23 @@ export function BlockClipPropertiesPanel({
                     <input
                       type='color'
                       className='w-full h-8 bg-card border border-border'
-                      value={effectiveClip.blockSettings.textColor || '#ffffff'}
-                      onChange={(e) =>
-                        void applyClipPatch({ textColor: e.target.value })
+                      value={
+                        textColorDraft ??
+                        effectiveClip.blockSettings.textColor ??
+                        '#ffffff'
                       }
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setTextColorDraft(value);
+                        if (textColorDebounceRef.current) {
+                          clearTimeout(textColorDebounceRef.current);
+                        }
+                        textColorDebounceRef.current = setTimeout(() => {
+                          void applyClipPatch({ textColor: value });
+                          setTextColorDraft(null);
+                          textColorDebounceRef.current = null;
+                        }, SHADER_SETTINGS_DEBOUNCE_MS);
+                      }}
                     />
                   </div>
                 </div>
@@ -1661,11 +1749,10 @@ export function BlockClipPropertiesPanel({
                   <span className='text-xs text-muted-foreground'>
                     Scroll loop
                   </span>
-                  <input
-                    type='checkbox'
+                  <Checkbox
                     checked={effectiveClip.blockSettings.textScrollLoop ?? true}
-                    onChange={(e) =>
-                      void applyClipPatch({ textScrollLoop: e.target.checked })
+                    onCheckedChange={(checked) =>
+                      void applyClipPatch({ textScrollLoop: !!checked })
                     }
                   />
                 </div>
@@ -1710,6 +1797,18 @@ export function BlockClipPropertiesPanel({
         }
         onAddShader={handleShaderToggle}
       />
+      {!isOutputClip && !isMultiSelect && selectedTimelineClip && (
+        <SwapSourceModal
+          open={swapModalOpen}
+          onOpenChange={setSwapModalOpen}
+          currentInputId={selectedTimelineClip.inputId}
+          inputs={inputs}
+          roomId={roomId}
+          onSwap={handleSwapSource}
+          trackId={selectedTimelineClip.trackId}
+          clipId={selectedTimelineClip.clipId}
+        />
+      )}
     </div>
   );
 }

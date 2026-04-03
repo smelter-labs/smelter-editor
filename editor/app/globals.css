@@ -142,7 +142,98 @@
   }
 }
 
+/* Tiptap rich-text editor */
+.rich-text-editor .tiptap {
+  outline: none;
+}
+.rich-text-editor .tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  color: #525252;
+  pointer-events: none;
+  float: left;
+  height: 0;
+}
+.rich-text-editor .tiptap h1 {
+  font-size: 1.25rem;
+  line-height: 1.4;
+  font-weight: 700;
+  margin: 0.5em 0 0.25em;
+}
+.rich-text-editor .tiptap h2 {
+  font-size: 1rem;
+  line-height: 1.4;
+  font-weight: 600;
+  margin: 0.4em 0 0.2em;
+}
+.rich-text-editor .tiptap ul,
+.rich-text-editor .tiptap ol {
+  padding-left: 1.25em;
+  margin: 0.25em 0;
+}
+.rich-text-editor .tiptap ul {
+  list-style: disc;
+}
+.rich-text-editor .tiptap ol {
+  list-style: decimal;
+}
+.rich-text-editor .tiptap li {
+  margin: 0.1em 0;
+}
+.rich-text-editor .tiptap p {
+  margin: 0.15em 0;
+}
+
+/* Read-only rich-text HTML rendering (modal / preview) */
+.rich-text-content h1 {
+  font-size: 1.25rem;
+  line-height: 1.4;
+  font-weight: 700;
+  margin: 0.5em 0 0.25em;
+}
+.rich-text-content h2 {
+  font-size: 1rem;
+  line-height: 1.4;
+  font-weight: 600;
+  margin: 0.4em 0 0.2em;
+}
+.rich-text-content ul,
+.rich-text-content ol {
+  padding-left: 1.25em;
+  margin: 0.25em 0;
+}
+.rich-text-content ul {
+  list-style: disc;
+}
+.rich-text-content ol {
+  list-style: decimal;
+}
+.rich-text-content li {
+  margin: 0.1em 0;
+}
+.rich-text-content p {
+  margin: 0.15em 0;
+}
+
+@keyframes pulse-to-cyan {
+  0%,
+  100% {
+    background-color: rgba(0, 139, 139, 0.06);
+    border-color: rgba(64, 64, 64, 1);
+    box-shadow: 0 0 0 rgba(0, 139, 139, 0);
+  }
+  50% {
+    background-color: rgba(0, 139, 139, 0.14);
+    border-color: rgba(0, 139, 139, 0.95);
+    box-shadow:
+      0 0 0 1px rgba(0, 139, 139, 0.35),
+      0 0 14px rgba(0, 139, 139, 0.3);
+  }
+}
+
 @layer utilities {
+  .animate-pulse-cyan {
+    animation: pulse-to-cyan 2s ease-in-out infinite;
+  }
   .scanline {
     background: linear-gradient(to bottom, rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
     background-size: 100% 2px, 3px 100%;

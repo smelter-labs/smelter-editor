@@ -46,14 +46,15 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-server/recordings/*
-server/configs/*
+server/data/
+.data/
 server/dist/
-recordings/
-configs/
 server/motion/.venv/
 packages/types/dist/
 packages/types/node_modules/
 server/screenshots/
 .claude
-.agents
+/.agents/
+tasks/
+*.mp4
+.pnpm-store/

@@ -621,7 +621,6 @@ export function LayersSection({
                                   }
                                   showGrip={isGuest ? false : true}
                                   isSelected={selectedInputId === input.inputId}
-                                  index={inputIndex}
                                   readOnly={
                                     isGuest && input.inputId !== guestInputId
                                   }

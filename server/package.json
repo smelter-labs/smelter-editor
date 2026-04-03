@@ -11,11 +11,13 @@
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "check-types": "tsc --noEmit 2>&1 && echo 'Compilation successful'",
     "watch": "tsc --watch",
     "lint:fix": "eslint --fix --ext .js,.jsx,.ts,.tsx ."
   },
   "dependencies": {
     "@fastify/cors": "^11.2.0",
+    "@fastify/multipart": "^9.4.0",
     "@fastify/type-provider-typebox": "^5.2.0",
     "@fastify/websocket": "^11.2.0",
     "@sinclair/typebox": "^0.34.38",

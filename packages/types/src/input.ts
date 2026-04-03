@@ -78,3 +78,12 @@ export type MotionProperties = {
 export type HandsProperties = {
   handsSourceInputId?: string;
 };
+
+export type ViewportProperties = {
+  viewportTop: number;
+  viewportLeft: number;
+  viewportWidth: number;
+  viewportHeight: number;
+  viewportTransitionDurationMs: number;
+  viewportTransitionEasing: string;
+};

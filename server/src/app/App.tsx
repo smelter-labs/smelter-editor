@@ -8,6 +8,7 @@ import {
   useInputs,
   useLayers,
   useOutputShaders,
+  useViewport,
 } from './store';
 import { NewsStripOverlay } from './news-strip';
 import { Input } from '../inputs/inputs';
@@ -51,10 +52,23 @@ function OutputScene() {
   const layers = useLayers();
   const { width, height } = resolution;
   const outputShaders = useOutputShaders();
+  const viewport = useViewport();
   const inputMap = new Map(inputs.map((input) => [input.inputId, input]));
   const activeOutputShaders = outputShaders.filter((s) => s.enabled);
   const layersReversed = [...layers].reverse();
-  const scene = (
+
+  const vT = viewport.viewportTop ?? 0;
+  const vL = viewport.viewportLeft ?? 0;
+  const vW = viewport.viewportWidth ?? width;
+  const vH = viewport.viewportHeight ?? height;
+  const hasViewport = vT !== 0 || vL !== 0 || vW !== width || vH !== height;
+
+  const viewportTransition = {
+    durationMs: viewport.viewportTransitionDurationMs ?? 300,
+    easingFunction: buildEasingFunction(viewport.viewportTransitionEasing),
+  };
+
+  const innerScene = (
     <View
       style={{
         backgroundColor: '#000000',
@@ -135,6 +149,19 @@ function OutputScene() {
       ))}
       <NewsStripOverlay />
     </View>
+  );
+
+  const scene = hasViewport ? (
+    <View style={{ width, height, backgroundColor: '#000000' }}>
+      <Rescaler
+        id='viewport'
+        transition={viewportTransition}
+        style={{ top: vT, left: vL, width: vW, height: vH }}>
+        {innerScene}
+      </Rescaler>
+    </View>
+  ) : (
+    innerScene
   );
 
   return wrapWithShaders(scene, activeOutputShaders, resolution);

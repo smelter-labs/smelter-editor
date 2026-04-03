@@ -18,6 +18,8 @@ export type {
   KickSuggestions,
   MP4Suggestions,
   PictureSuggestions,
+  AudioSuggestions,
+  
   UpdateRoomOptions,
   StartRecordingResponse,
   StopRecordingResponse,

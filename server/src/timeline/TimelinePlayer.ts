@@ -591,7 +591,7 @@ function snapshotInput(input: RoomInputState): InputSnapshot {
 }
 
 const PLAYHEAD_EMIT_INTERVAL_MS = 200;
-const SMOOTH_UPDATE_INTERVAL_MS = 50;
+const SMOOTH_UPDATE_INTERVAL_MS = 33;
 
 export class TimelinePlayer {
   private config: TimelineConfig;

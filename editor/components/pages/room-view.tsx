@@ -20,11 +20,7 @@ import { RotateCw } from 'lucide-react';
 import {
   STATIC_PANEL_IDS,
   STATIC_PANEL_DEFINITIONS,
-  isMotionPanelId,
-  getInputIdFromMotionPanel,
-  getMotionPanelDefinition,
   type PanelDefinition,
-  type MotionPanelId,
 } from '@/components/dashboard/panel-registry';
 
 interface RoomViewProps {
@@ -173,9 +169,11 @@ export default function RoomView({
           fxSection,
           timelineSection,
           blockPropertiesSection,
-          motionPanels,
+          pendingConnectionsSection,
+          motionDetectionSection,
           peers,
           timelineColorOverrides,
+          activeClipColors,
           selectedInputId,
           onSelectInput,
         }) => {
@@ -192,8 +190,10 @@ export default function RoomView({
             fx: fxSection,
             timeline: timelineSection,
             'block-properties': blockPropertiesSection,
+            'pending-connections': pendingConnectionsSection,
             'connected-devices': <ConnectedDevicesPanel peers={peers} />,
             'system-log': <SystemLogPanel />,
+            'motion-detection': motionDetectionSection,
             'layout-preview': (
               <LayoutPreviewPanel
                 roomId={roomId}
@@ -202,28 +202,14 @@ export default function RoomView({
                   roomState.resolution ?? { width: 1920, height: 1080 }
                 }
                 timelineColorOverrides={timelineColorOverrides}
+                activeClipColors={activeClipColors}
                 selectedInputId={selectedInputId}
                 onSelectInput={onSelectInput}
               />
             ),
           };
 
-          const allPanels = { ...staticPanels, ...motionPanels };
-          const motionIds = Object.keys(motionPanels);
-          const allPanelIds = [...STATIC_PANEL_IDS, ...motionIds];
-
-          const inputTitleMap: Record<string, string> = {};
-          for (const input of roomState.inputs) {
-            inputTitleMap[input.inputId] = input.title || input.inputId;
-          }
-
           const getPanelDefinition = (id: string): PanelDefinition => {
-            if (isMotionPanelId(id)) {
-              const inputId = getInputIdFromMotionPanel(id as MotionPanelId);
-              return getMotionPanelDefinition(
-                inputTitleMap[inputId] ?? inputId,
-              );
-            }
             return (
               STATIC_PANEL_DEFINITIONS[
                 id as keyof typeof STATIC_PANEL_DEFINITIONS
@@ -238,8 +224,8 @@ export default function RoomView({
 
           return (
             <DashboardLayout
-              panels={allPanels}
-              allPanelIds={allPanelIds}
+              panels={staticPanels}
+              allPanelIds={STATIC_PANEL_IDS}
               getPanelDefinition={getPanelDefinition}
               videoAspectRatio={
                 roomState.resolution

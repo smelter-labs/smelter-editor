@@ -60,6 +60,7 @@ export type {
   MotionProperties,
   HandsProperties,
   InputOrientation,
+  ViewportProperties,
 } from "./input.js";
 
 export { AUDIO_BAND_COUNT } from "./audio.js";
@@ -95,3 +96,13 @@ export {
   OUTPUT_CLIP_ID,
   isOutputTrackClip,
 } from "./timeline.js";
+
+export type {
+  ImportConfigInput,
+  ImportConfigTimeline,
+  ImportConfigTransitionSettings,
+  ImportConfigRequest,
+  ImportConfigProgressEvent,
+  ImportConfigDoneEvent,
+  ImportConfigStreamEvent,
+} from "./import-config.js";

@@ -68,6 +68,11 @@ export class RoomState {
     { timer: ReturnType<typeof setTimeout>; jpegPath: string }
   >();
 
+  private storeUpdateScheduled = false;
+  private lastStoreFlushTime = 0;
+  private pendingStoreFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  private static readonly MIN_STORE_FLUSH_INTERVAL_MS = 10;
+
   private layers: Layer[] = [
     {
       id: 'default',
@@ -81,6 +86,13 @@ export class RoomState {
   private swapFadeOutDurationMs: number = 500;
   private newsStripFadeDuringSwap: boolean = true;
   private newsStripEnabled: boolean = false;
+
+  private viewportTop?: number;
+  private viewportLeft?: number;
+  private viewportWidth?: number;
+  private viewportHeight?: number;
+  private viewportTransitionDurationMs?: number;
+  private viewportTransitionEasing?: string;
 
   public idPrefix: string;
   private output: SmelterOutput;
@@ -188,6 +200,13 @@ export class RoomState {
       newsStripFadeDuringSwap: this.newsStripFadeDuringSwap,
       swapFadeOutDurationMs: this.swapFadeOutDurationMs,
       newsStripEnabled: this.newsStripEnabled,
+      outputShaders: this.getOutputShaders(),
+      viewportTop: this.viewportTop,
+      viewportLeft: this.viewportLeft,
+      viewportWidth: this.viewportWidth,
+      viewportHeight: this.viewportHeight,
+      viewportTransitionDurationMs: this.viewportTransitionDurationMs,
+      viewportTransitionEasing: this.viewportTransitionEasing,
     };
   }
 
@@ -260,6 +279,32 @@ export class RoomState {
   }
   public setNewsStripEnabled(value: boolean) {
     this.newsStripEnabled = value;
+    this.updateStoreWithState();
+  }
+
+  public setViewport(
+    opts: Partial<import('../types').ViewportProperties>,
+  ): void {
+    if (opts.viewportTop !== undefined) this.viewportTop = opts.viewportTop;
+    if (opts.viewportLeft !== undefined) this.viewportLeft = opts.viewportLeft;
+    if (opts.viewportWidth !== undefined)
+      this.viewportWidth = opts.viewportWidth;
+    if (opts.viewportHeight !== undefined)
+      this.viewportHeight = opts.viewportHeight;
+    if (opts.viewportTransitionDurationMs !== undefined)
+      this.viewportTransitionDurationMs = opts.viewportTransitionDurationMs;
+    if (opts.viewportTransitionEasing !== undefined)
+      this.viewportTransitionEasing = opts.viewportTransitionEasing;
+    this.updateStoreWithState();
+  }
+
+  public resetViewport(): void {
+    this.viewportTop = undefined;
+    this.viewportLeft = undefined;
+    this.viewportWidth = undefined;
+    this.viewportHeight = undefined;
+    this.viewportTransitionDurationMs = undefined;
+    this.viewportTransitionEasing = undefined;
     this.updateStoreWithState();
   }
 
@@ -340,6 +385,24 @@ export class RoomState {
     return this.mutex.runExclusive(() =>
       this.inputManager.connectInput(inputId),
     );
+  }
+
+  public async resolveMissingLocalMp4Asset(
+    inputId: string,
+    opts: { fileName?: string; audioFileName?: string },
+  ): Promise<void> {
+    return this.mutex.runExclusive(async () => {
+      await this.inputManager.resolveMissingLocalMp4Asset(inputId, opts);
+    });
+  }
+
+  public async resolveMissingImageAsset(
+    inputId: string,
+    opts: { fileName: string },
+  ): Promise<void> {
+    return this.mutex.runExclusive(async () => {
+      await this.inputManager.resolveMissingImageAsset(inputId, opts);
+    });
   }
 
   public async disconnectInput(inputId: string) {
@@ -883,6 +946,12 @@ export class RoomState {
     return this.mutex.runExclusive(async () => {
       this.destroyed = true;
 
+      if (this.pendingStoreFlushTimer) {
+        clearTimeout(this.pendingStoreFlushTimer);
+        this.pendingStoreFlushTimer = null;
+      }
+      this.storeUpdateScheduled = false;
+
       if (this.timelinePlayer) {
         this.timelinePlayer.destroy();
         this.timelinePlayer = null;
@@ -919,6 +988,25 @@ export class RoomState {
 
   private updateStoreWithState() {
     if (this.destroyed) return;
+    if (this.storeUpdateScheduled) return;
+    this.storeUpdateScheduled = true;
+
+    const elapsed = Date.now() - this.lastStoreFlushTime;
+    if (elapsed >= RoomState.MIN_STORE_FLUSH_INTERVAL_MS) {
+      queueMicrotask(() => this.flushStoreUpdate());
+    } else {
+      const delay = RoomState.MIN_STORE_FLUSH_INTERVAL_MS - elapsed;
+      this.pendingStoreFlushTimer = setTimeout(() => {
+        this.pendingStoreFlushTimer = null;
+        this.flushStoreUpdate();
+      }, delay);
+    }
+  }
+
+  private flushStoreUpdate() {
+    this.storeUpdateScheduled = false;
+    this.lastStoreFlushTime = Date.now();
+    if (this.destroyed) return;
 
     const allInputs = this.inputManager.getInputs();
 
@@ -934,7 +1022,10 @@ export class RoomState {
         input.type === 'local-mp4' ? input.mp4VideoHeight : undefined,
       borderColor: input.borderColor,
       borderWidth: input.borderWidth,
-      imageId: input.type === 'image' ? input.imageId : undefined,
+      imageId:
+        input.type === 'image' && !input.imageAssetMissing
+          ? input.imageId
+          : undefined,
       text: input.type === 'text-input' ? input.text : undefined,
       textAlign: input.type === 'text-input' ? input.textAlign : undefined,
       textColor: input.type === 'text-input' ? input.textColor : undefined,
@@ -1085,6 +1176,12 @@ export class RoomState {
       newsStripFadeDuringSwap: this.newsStripFadeDuringSwap,
       swapFadeOutDurationMs: this.swapFadeOutDurationMs,
       newsStripEnabled: this.newsStripEnabled,
+      viewportTop: this.viewportTop,
+      viewportLeft: this.viewportLeft,
+      viewportWidth: this.viewportWidth,
+      viewportHeight: this.viewportHeight,
+      viewportTransitionDurationMs: this.viewportTransitionDurationMs,
+      viewportTransitionEasing: this.viewportTransitionEasing,
     });
 
     this.notifyStateChange();

@@ -1,28 +1,19 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 
 import StatusLabel from '@/components/ui/status-label';
 import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/spinner';
-import type { RegisterInputOptions, PendingWhipInputData } from '@/lib/types';
+import type { RegisterInputOptions } from '@/lib/types';
 import {
   createNewRoom,
   getTwitchSuggestions,
   getKickSuggestions,
   getAllRooms,
-  addTwitchInput,
-  addKickInput,
-  addMP4Input,
-  addSnakeGameInput,
-  addImageInput,
-  addTextInput,
-  updateInput,
-  updateRoom,
   deleteRoom,
-  hideInput,
 } from '@/app/actions/actions';
 import { RESOLUTION_PRESETS, type ResolutionPreset } from '@/lib/resolution';
 import Link from 'next/link';
@@ -34,8 +25,22 @@ import {
   buildInputUpdateFromBlockSettings,
   saveOutputPlayerSettings,
 } from '@/lib/room-config';
-import { setPendingWhipInputs as setPendingWhipInputsAction } from '@/app/actions/actions';
-import { Upload, FolderDown, LogIn, UserPlus, Eye, Trash2 } from 'lucide-react';
+import { streamImportConfig } from '@/lib/import-config-stream';
+import {
+  listPresentationConfigs,
+  loadPresentationConfig,
+} from '@/app/actions/actions';
+import {
+  Upload,
+  FolderDown,
+  LogIn,
+  UserPlus,
+  Eye,
+  Trash2,
+  Presentation,
+  RotateCcw,
+  X,
+} from 'lucide-react';
 import RecordingsList from '@/components/recordings-list';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
@@ -49,10 +54,26 @@ import {
   SelectLabel,
 } from '@/components/ui/select';
 import { LoadConfigModal } from '@/components/control-panel/components/ConfigModals';
+import {
+  ImportProgressDialog,
+  type ImportProgressState,
+} from '@/components/control-panel/components/import-progress-dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { ActionsProvider } from '@/components/control-panel/contexts/actions-context';
 import { defaultActions } from '@/components/control-panel/contexts/default-actions';
-import type { RoomConfig } from '@/lib/room-config';
+import type { RoomConfig, PresentationConfig } from '@/lib/room-config';
+import type { SavedItemInfo } from '@/lib/storage-client';
 import { formatDuration } from '@/lib/format-utils';
+import {
+  loadCrashRecoveryConfig,
+  clearCrashRecoveryConfig,
+  type CrashRecoveryData,
+} from '@/lib/crash-recovery';
 
 function getBasePath(pathname: string): string {
   // Remove trailing slash if present
@@ -71,8 +92,11 @@ function getBasePath(pathname: string): string {
 export default function IntroView() {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [loadingNew, setLoadingNew] = useState(false);
   const [loadingImport, setLoadingImport] = useState(false);
+  const [importProgress, setImportProgress] =
+    useState<ImportProgressState | null>(null);
   const [showRecordings, setShowRecordings] = useState(false);
   const [selectedResolution, setSelectedResolution] =
     useState<ResolutionPreset>('1440p');
@@ -86,7 +110,24 @@ export default function IntroView() {
       localStorage.setItem('smelter-display-name', name);
     } catch {}
   }, []);
+  const [crashRecovery, setCrashRecovery] = useState<CrashRecoveryData | null>(
+    null,
+  );
+
+  useEffect(() => {
+    setCrashRecovery(loadCrashRecoveryConfig());
+  }, []);
+
+  const handleRecoveryDismiss = useCallback(() => {
+    clearCrashRecoveryConfig();
+    setCrashRecovery(null);
+  }, []);
+
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const centeredContentRef = useRef<HTMLDivElement>(null);
+  const [desktopIntroOffset, setDesktopIntroOffset] = useState<number | null>(
+    null,
+  );
 
   // Suggestions state
   const [twitchSuggestions, setTwitchSuggestions] = useState<any[]>([]);
@@ -147,13 +188,53 @@ export default function IntroView() {
     };
   }, []);
 
+  useEffect(() => {
+    const updateDesktopIntroOffset = () => {
+      if (typeof window === 'undefined') {
+        return;
+      }
+
+      if (window.innerWidth < 768) {
+        setDesktopIntroOffset(null);
+        return;
+      }
+
+      const contentHeight =
+        centeredContentRef.current?.getBoundingClientRect().height ?? 0;
+      const nextOffset = Math.max((window.innerHeight - contentHeight) / 2, 16);
+      setDesktopIntroOffset(nextOffset);
+    };
+
+    updateDesktopIntroOffset();
+
+    const currentContent = centeredContentRef.current;
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(() => updateDesktopIntroOffset());
+
+    if (currentContent && resizeObserver) {
+      resizeObserver.observe(currentContent);
+    }
+
+    window.addEventListener('resize', updateDesktopIntroOffset);
+
+    return () => {
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', updateDesktopIntroOffset);
+    };
+  }, []);
+
   const basePath = getBasePath(pathname);
 
-  const getRoomRoute = (roomId: string) => {
-    // If basePath is empty, just 'room/roomId'
-    // Otherwise, 'basePath/room/roomId'
-    return basePath ? `${basePath}/room/${roomId}` : `room/${roomId}`;
-  };
+  const getRoomRoute = useCallback(
+    (roomId: string) => {
+      // If basePath is empty, just 'room/roomId'
+      // Otherwise, 'basePath/room/roomId'
+      return basePath ? `${basePath}/room/${roomId}` : `room/${roomId}`;
+    },
+    [basePath],
+  );
 
   const handleCreateRoom = useCallback(
     async (resolutionOverride?: ResolutionPreset) => {
@@ -186,7 +267,7 @@ export default function IntroView() {
     },
     [
       router,
-      basePath,
+      getRoomRoute,
       pathname,
       twitchSuggestions,
       kickSuggestions,
@@ -211,234 +292,126 @@ export default function IntroView() {
     };
   }, [handleCreateRoom, loadingNew, loadingImport]);
 
+  // Showcase / presentation mode
+  const [showcaseConfigs, setShowcaseConfigs] = useState<SavedItemInfo[]>([]);
+  const [loadingShowcase, setLoadingShowcase] = useState(false);
+  const [showShowcasePicker, setShowShowcasePicker] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    listPresentationConfigs().then((result) => {
+      if (mounted && result.ok) {
+        setShowcaseConfigs(result.items);
+      }
+    });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const [showLoadModal, setShowLoadModal] = useState(false);
 
   const importConfig = useCallback(
-    async (config: RoomConfig) => {
+    async (
+      config: RoomConfig,
+      showcaseWelcome?: { before: string; after: string },
+    ) => {
       setLoadingImport(true);
+      setImportProgress({ phase: 'Creating room', current: 0, total: 1 });
+
       try {
         const room = await createNewRoom([], true, config.resolution);
         const roomId = room.roomId;
 
-        const createdInputIds: { inputId: string; configIndex: number }[] = [];
-
-        for (let i = 0; i < config.inputs.length; i++) {
-          const inputConfig = config.inputs[i];
+        if (showcaseWelcome) {
           try {
-            let inputId: string | null = null;
+            sessionStorage.setItem(
+              `showcase-welcome-${roomId}`,
+              JSON.stringify(showcaseWelcome),
+            );
+          } catch {}
+        }
 
-            if (inputConfig.type === 'whip') {
-              continue;
+        let timelineAtZero:
+          | {
+              hiddenInputIds: number[];
+              blockSettingsEntries: [number, Record<string, unknown>][];
             }
+          | undefined;
 
-            switch (inputConfig.type) {
-              case 'twitch-channel':
-                if (inputConfig.channelId) {
-                  const result = await addTwitchInput(
-                    roomId,
-                    inputConfig.channelId,
-                  );
-                  inputId = result.inputId;
-                }
-                break;
-              case 'kick-channel':
-                if (inputConfig.channelId) {
-                  const result = await addKickInput(
-                    roomId,
-                    inputConfig.channelId,
-                  );
-                  inputId = result.inputId;
-                }
-                break;
-              case 'local-mp4':
-                if (inputConfig.mp4FileName) {
-                  const result = await addMP4Input(
-                    roomId,
-                    inputConfig.mp4FileName,
-                  );
-                  inputId = result.inputId;
-                }
-                break;
-              case 'image':
-                if (inputConfig.imageId) {
-                  const result = await addImageInput(
-                    roomId,
-                    inputConfig.imageId,
-                  );
-                  inputId = result.inputId;
-                }
-                break;
-              case 'text-input':
-                if (inputConfig.text) {
-                  const result = await addTextInput(
-                    roomId,
-                    inputConfig.text,
-                    inputConfig.textAlign || 'left',
-                  );
-                  inputId = result.inputId;
-                }
-                break;
-              case 'game': {
-                const result = await addSnakeGameInput(
-                  roomId,
-                  inputConfig.title,
-                );
-                inputId = result.inputId;
-                break;
-              }
-            }
+        if (config.timeline) {
+          const tempIndexMap = new Map<number, string>();
+          config.inputs.forEach((_, idx) =>
+            tempIndexMap.set(idx, `__temp_${idx}__`),
+          );
+          const atZero = computeTimelineStateAtZero(
+            config.timeline,
+            tempIndexMap,
+          );
 
-            if (inputId) {
-              createdInputIds.push({ inputId, configIndex: i });
+          const hiddenIndices: number[] = [];
+          for (const hiddenId of atZero.hiddenInputIds) {
+            const match = hiddenId.match(/^__temp_(\d+)__$/);
+            if (match) hiddenIndices.push(Number(match[1]));
+          }
+
+          const blockEntries: [number, Record<string, unknown>][] = [];
+          for (const [tempId, bs] of atZero.activeBlockSettings) {
+            const match = tempId.match(/^__temp_(\d+)__$/);
+            if (match) {
+              blockEntries.push([
+                Number(match[1]),
+                buildInputUpdateFromBlockSettings(bs) as Record<
+                  string,
+                  unknown
+                >,
+              ]);
             }
-          } catch (err) {
-            console.warn(`Failed to add input ${inputConfig.title}:`, err);
+          }
+
+          if (hiddenIndices.length > 0 || blockEntries.length > 0) {
+            timelineAtZero = {
+              hiddenInputIds: hiddenIndices,
+              blockSettingsEntries: blockEntries,
+            };
           }
         }
 
-        const configIndexToInputId = new Map<number, string>();
-        for (const { inputId, configIndex } of createdInputIds) {
-          configIndexToInputId.set(configIndex, inputId);
-        }
+        const result = await streamImportConfig(
+          roomId,
+          { config, oldInputIds: [], timelineAtZero },
+          {
+            onProgress: (event) => {
+              setImportProgress({
+                phase: event.phase,
+                current: event.current,
+                total: event.total,
+              });
+            },
+          },
+        );
 
-        const pendingWhipInputs: PendingWhipInputData[] = [];
-        for (let i = 0; i < config.inputs.length; i++) {
-          const inputConfig = config.inputs[i];
-          if (inputConfig.type === 'whip') {
-            pendingWhipInputs.push({
-              id: `pending-${Date.now()}-${Math.random().toString(36).slice(2)}`,
-              title: inputConfig.title,
-              volume: inputConfig.volume,
-              showTitle: inputConfig.showTitle !== false,
-              shaders: inputConfig.shaders || [],
-              position: i,
-            });
-            configIndexToInputId.set(i, `__pending-whip-${i}__`);
-          }
+        if (result.errors.length > 0) {
+          console.warn('[import-config] Errors:', result.errors);
         }
-
-        for (const { inputId, configIndex } of createdInputIds) {
-          const inputConfig = config.inputs[configIndex];
-          const attachedInputIds = inputConfig.attachedInputIndices
-            ?.map((idx) => configIndexToInputId.get(idx))
-            .filter((id): id is string => !!id);
-          try {
-            await updateInput(roomId, inputId, {
-              volume: inputConfig.volume,
-              shaders: inputConfig.shaders,
-              showTitle: inputConfig.showTitle,
-              textColor: inputConfig.textColor,
-              textMaxLines: inputConfig.textMaxLines,
-              textScrollSpeed: inputConfig.textScrollSpeed,
-              textScrollLoop: inputConfig.textScrollLoop,
-              textFontSize: inputConfig.textFontSize,
-              borderColor: inputConfig.borderColor,
-              borderWidth: inputConfig.borderWidth,
-              gameBackgroundColor: inputConfig.gameBackgroundColor,
-              gameCellGap: inputConfig.gameCellGap,
-              gameBoardBorderColor: inputConfig.gameBoardBorderColor,
-              gameBoardBorderWidth: inputConfig.gameBoardBorderWidth,
-              gameGridLineColor: inputConfig.gameGridLineColor,
-              gameGridLineAlpha: inputConfig.gameGridLineAlpha,
-              snakeEventShaders: inputConfig.snakeEventShaders,
-              snake1Shaders: inputConfig.snake1Shaders,
-              snake2Shaders: inputConfig.snake2Shaders,
-              absolutePosition: inputConfig.absolutePosition,
-              absoluteTop: inputConfig.absoluteTop,
-              absoluteLeft: inputConfig.absoluteLeft,
-              absoluteWidth: inputConfig.absoluteWidth,
-              absoluteHeight: inputConfig.absoluteHeight,
-              absoluteTransitionDurationMs:
-                inputConfig.absoluteTransitionDurationMs,
-              absoluteTransitionEasing: inputConfig.absoluteTransitionEasing,
-              cropTop: inputConfig.cropTop,
-              cropLeft: inputConfig.cropLeft,
-              cropRight: inputConfig.cropRight,
-              cropBottom: inputConfig.cropBottom,
-              attachedInputIds:
-                attachedInputIds && attachedInputIds.length > 0
-                  ? attachedInputIds
-                  : undefined,
-            });
-          } catch (err) {
-            console.warn(`Failed to update input ${inputId}:`, err);
-          }
-        }
-
-        let timelineInputOrder: string[] | undefined;
 
         if (config.timeline) {
           const indexToInputId = new Map<number, string>();
-          for (const { inputId, configIndex } of createdInputIds) {
-            indexToInputId.set(configIndex, inputId);
+          for (const [idx, inputId] of Object.entries(result.indexToInputId)) {
+            indexToInputId.set(Number(idx), inputId);
           }
-
-          const timelineState = computeTimelineStateAtZero(
-            config.timeline,
-            indexToInputId,
-          );
-
-          for (const pending of pendingWhipInputs) {
+          for (const pw of result.pendingWhipData) {
             indexToInputId.set(
-              pending.position,
-              `__pending-whip-${pending.position}__`,
+              pw.position,
+              `__pending-whip-${pw.position}__`,
             );
           }
           restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
-
-          for (const hiddenId of timelineState.hiddenInputIds) {
-            try {
-              await hideInput(roomId, hiddenId);
-            } catch (err) {
-              console.warn(`Failed to hide input ${hiddenId}:`, err);
-            }
-          }
-
-          for (const [
-            inputId,
-            blockSettings,
-          ] of timelineState.activeBlockSettings) {
-            try {
-              await updateInput(
-                roomId,
-                inputId,
-                buildInputUpdateFromBlockSettings(blockSettings),
-              );
-            } catch (err) {
-              console.warn(
-                `Failed to apply block settings for ${inputId}:`,
-                err,
-              );
-            }
-          }
-
-          if (timelineState.inputOrder.length > 0) {
-            timelineInputOrder = timelineState.inputOrder;
-          }
         }
 
-        const orderedCreatedIds = createdInputIds
-          .slice()
-          .sort((a, b) => a.configIndex - b.configIndex)
-          .map(({ inputId }) => inputId);
-
-        const finalInputOrder =
-          timelineInputOrder ??
-          (orderedCreatedIds.length > 0 ? orderedCreatedIds : undefined);
-
-        try {
-          await updateRoom(roomId, {
-            ...(finalInputOrder ? { inputOrder: finalInputOrder } : {}),
-            ...config.transitionSettings,
-          });
-        } catch (err) {
-          console.warn('Failed to set input order:', err);
-        }
-
-        if (pendingWhipInputs.length > 0) {
-          await setPendingWhipInputsAction(roomId, pendingWhipInputs);
+        if (result.pendingWhipData.length > 0) {
           toast.info(
-            `Room created. ${pendingWhipInputs.length} WHIP input(s) need to be connected manually.`,
+            `Room created. ${result.pendingWhipData.length} WHIP input(s) need to be connected manually.`,
           );
         } else {
           toast.success('Room created from configuration');
@@ -453,10 +426,51 @@ export default function IntroView() {
         console.error('Import failed:', err);
         toast.error(`Import failed: ${err?.message || err}`);
       } finally {
+        setImportProgress(null);
         setLoadingImport(false);
       }
     },
-    [router, basePath, selectedResolution],
+    [getRoomRoute, router],
+  );
+
+  const handleRecoveryRestore = useCallback(async () => {
+    if (!crashRecovery) return;
+    clearCrashRecoveryConfig();
+    setCrashRecovery(null);
+    await importConfig(crashRecovery.config);
+  }, [crashRecovery, importConfig]);
+
+  const autoRestoreTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (autoRestoreTriggeredRef.current) return;
+    if (searchParams.get('restore') !== 'true') return;
+    if (!crashRecovery) return;
+    autoRestoreTriggeredRef.current = true;
+    handleRecoveryRestore();
+  }, [searchParams, crashRecovery, handleRecoveryRestore]);
+
+  const handleStartShowcase = useCallback(
+    async (configItem: SavedItemInfo) => {
+      setLoadingShowcase(true);
+      try {
+        const result = await loadPresentationConfig(configItem.fileName);
+        if (!result.ok) {
+          toast.error(`Failed to load presentation config: ${result.error}`);
+          return;
+        }
+        const presentation = result.data as PresentationConfig;
+        await importConfig(presentation.roomConfig, {
+          before: presentation.welcomeTextBefore || '',
+          after: presentation.welcomeTextAfter || '',
+        });
+      } catch (err: any) {
+        console.error('Showcase start failed:', err);
+        toast.error(`Showcase start failed: ${err?.message || err}`);
+      } finally {
+        setLoadingShowcase(false);
+      }
+    },
+    [importConfig],
   );
 
   const handleFileChange = useCallback(
@@ -487,133 +501,202 @@ export default function IntroView() {
       className='min-h-screen flex flex-col p-2 py-4 md:p-4 bg-[#0a0a0a] overflow-y-auto'>
       <motion.div
         variants={staggerContainer}
-        className='flex-1 flex justify-center min-h-0 h-full items-start md:items-center w-full'>
+        className='flex justify-center w-full min-h-0'
+        style={
+          desktopIntroOffset === null
+            ? undefined
+            : {
+                paddingTop: desktopIntroOffset,
+                paddingBottom: 16,
+              }
+        }>
         <motion.div
           className='border-1 rounded-none border-neutral-800 text-center justify-center items-center w-full max-w-[600px] p-4 sm:p-8'
           layout>
-          <div>
-            <StatusLabel />
-          </div>
+          <div ref={centeredContentRef}>
+            {crashRecovery && (
+              <div className='mb-4 border border-amber-700/50 bg-amber-950/30 rounded p-4 text-left'>
+                <div className='flex items-start justify-between gap-3'>
+                  <div className='min-w-0'>
+                    <p className='text-sm font-medium text-amber-200'>
+                      Your previous session was interrupted
+                    </p>
+                    <p className='text-xs text-neutral-400 mt-1'>
+                      {crashRecovery.config.inputs.length} input(s) &middot;
+                      saved {formatDuration(Date.now() - new Date(crashRecovery.savedAt).getTime())} ago
+                    </p>
+                  </div>
+                  <button
+                    onClick={handleRecoveryDismiss}
+                    className='text-neutral-500 hover:text-neutral-300 shrink-0 cursor-pointer'>
+                    <X className='w-4 h-4' />
+                  </button>
+                </div>
+                <div className='flex gap-2 mt-3'>
+                  <Button
+                    size='sm'
+                    variant='default'
+                    className='cursor-pointer'
+                    disabled={loadingNew || loadingImport}
+                    onClick={handleRecoveryRestore}>
+                    {loadingImport ? (
+                      <LoadingSpinner size='sm' variant='spinner' />
+                    ) : (
+                      <RotateCcw className='w-3.5 h-3.5 mr-1.5' />
+                    )}
+                    Restore session
+                  </Button>
+                </div>
+              </div>
+            )}
 
-          <div className='text-white justify-center'>
-            <h2 className='text-3xl font-bold w-full'>Try Live Demo</h2>
-            <p className='text-sm line-clamp-3 mt-6'>
-              Try our low-latency video toolkit – perfect for streaming,
-              broadcasting and video conferencing.
-            </p>
-          </div>
+            <div>
+              <StatusLabel />
+            </div>
 
-          <div className='mt-6 flex flex-col gap-3'>
-            <div className='flex flex-col gap-2'>
-              <label className='text-xs text-neutral-400 text-left'>
-                Display Name
-              </label>
-              <Input
-                type='text'
-                value={displayName}
-                onChange={(e) => handleSetDisplayName(e.target.value)}
-                placeholder='Mr Smelter'
-                className='w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-white text-sm focus:outline-none focus:border-neutral-500'
-                disabled={loadingNew || loadingImport}
-              />
+            <div className='text-white justify-center'>
+              <h2 className='text-3xl font-bold w-full'>Try Live Demo</h2>
+              <p className='text-sm line-clamp-3 mt-6'>
+                Try our low-latency video toolkit – perfect for streaming,
+                broadcasting and video conferencing.
+              </p>
             </div>
-            <div className='flex flex-col gap-2'>
-              <label className='text-xs text-neutral-400 text-left'>
-                Output Resolution
-              </label>
-              <Select
-                value={selectedResolution}
-                onValueChange={(v) =>
-                  setSelectedResolution(v as ResolutionPreset)
-                }
-                disabled={loadingNew || loadingImport}>
-                <SelectTrigger className='w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-white text-sm focus:outline-none focus:border-neutral-500 h-auto'>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectGroup>
-                    <SelectLabel>Landscape</SelectLabel>
-                    {Object.entries(RESOLUTION_PRESETS)
-                      .filter(([key]) => !key.includes('vertical'))
-                      .map(([key, { width, height }]) => (
-                        <SelectItem key={key} value={key}>
-                          {key.toUpperCase()} ({width}×{height})
-                        </SelectItem>
-                      ))}
-                  </SelectGroup>
-                  <SelectGroup>
-                    <SelectLabel>Portrait</SelectLabel>
-                    {Object.entries(RESOLUTION_PRESETS)
-                      .filter(([key]) => key.includes('vertical'))
-                      .map(([key, { width, height }]) => (
-                        <SelectItem key={key} value={key}>
-                          {key.replace('-vertical', '').toUpperCase()} Vertical
-                          ({width}×{height})
-                        </SelectItem>
-                      ))}
-                  </SelectGroup>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button
-              size='lg'
-              variant='default'
-              className='w-full cursor-pointer'
-              onClick={() => handleCreateRoom()}
-              disabled={loadingNew || loadingImport}>
-              Let&apos;s go!
-              {loadingNew && <LoadingSpinner size='sm' variant='spinner' />}
-            </Button>
-            <Button
-              size='lg'
-              variant='outline'
-              className='w-full cursor-pointer'
-              onClick={() => setShowLoadModal(true)}
-              disabled={loadingNew || loadingImport}>
-              {loadingImport ? (
-                <>
-                  <LoadingSpinner size='sm' variant='spinner' />
-                  Importing...
-                </>
-              ) : (
-                <>
-                  <Upload className='w-4 h-4 mr-2' />
-                  Load from configuration
-                </>
+
+            <div className='mt-6 flex flex-col gap-3'>
+              <div className='flex flex-col gap-2'>
+                <label className='text-xs text-neutral-400 text-left'>
+                  Display Name
+                </label>
+                <Input
+                  type='text'
+                  value={displayName}
+                  onChange={(e) => handleSetDisplayName(e.target.value)}
+                  placeholder='Mr Smelter'
+                  className='w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-white text-sm focus:outline-none focus:border-neutral-500'
+                  disabled={loadingNew || loadingImport}
+                />
+              </div>
+              <div className='flex flex-col gap-2'>
+                <label className='text-xs text-neutral-400 text-left'>
+                  Output Resolution
+                </label>
+                <Select
+                  value={selectedResolution}
+                  onValueChange={(v) =>
+                    setSelectedResolution(v as ResolutionPreset)
+                  }
+                  disabled={loadingNew || loadingImport}>
+                  <SelectTrigger className='w-full px-3 py-2 bg-neutral-900 border border-neutral-700 rounded text-white text-sm focus:outline-none focus:border-neutral-500 h-auto'>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectGroup>
+                      <SelectLabel>Landscape</SelectLabel>
+                      {Object.entries(RESOLUTION_PRESETS)
+                        .filter(([key]) => !key.includes('vertical'))
+                        .map(([key, { width, height }]) => (
+                          <SelectItem key={key} value={key}>
+                            {key.toUpperCase()} ({width}×{height})
+                          </SelectItem>
+                        ))}
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Portrait</SelectLabel>
+                      {Object.entries(RESOLUTION_PRESETS)
+                        .filter(([key]) => key.includes('vertical'))
+                        .map(([key, { width, height }]) => (
+                          <SelectItem key={key} value={key}>
+                            {key.replace('-vertical', '').toUpperCase()} Vertical
+                            ({width}×{height})
+                          </SelectItem>
+                        ))}
+                    </SelectGroup>
+                  </SelectContent>
+                </Select>
+              </div>
+              {showcaseConfigs.length > 0 && (
+                <Button
+                  size='lg'
+                  variant='default'
+                  className='w-full cursor-pointer text-lg py-6 font-bold'
+                  onClick={() => {
+                    if (showcaseConfigs.length === 1) {
+                      handleStartShowcase(showcaseConfigs[0]);
+                    } else {
+                      setShowShowcasePicker(true);
+                    }
+                  }}
+                  disabled={loadingNew || loadingImport || loadingShowcase}>
+                  {loadingShowcase ? (
+                    <LoadingSpinner size='sm' variant='spinner' />
+                  ) : (
+                    <>
+                      <Presentation className='w-5 h-5 mr-2' />
+                      Start Showcase
+                    </>
+                  )}
+                </Button>
               )}
-            </Button>
-            <Input
-              ref={fileInputRef}
-              type='file'
-              accept='.json,application/json'
-              className='hidden'
-              onChange={handleFileChange}
-            />
-            <ActionsProvider actions={defaultActions}>
-              <LoadConfigModal
-                open={showLoadModal}
-                onOpenChange={setShowLoadModal}
-                onLoadLocal={() => {
-                  setShowLoadModal(false);
-                  fileInputRef.current?.click();
-                }}
-                onLoadRemote={importConfig}
-                isImporting={loadingImport}
+              <Button
+                size='lg'
+                variant='default'
+                className='w-full cursor-pointer'
+                onClick={() => handleCreateRoom()}
+                disabled={loadingNew || loadingImport || loadingShowcase}>
+                Let&apos;s go!
+                {loadingNew && <LoadingSpinner size='sm' variant='spinner' />}
+              </Button>
+              <Button
+                size='lg'
+                variant='outline'
+                className='w-full cursor-pointer'
+                onClick={() => setShowLoadModal(true)}
+                disabled={loadingNew || loadingImport}>
+                {loadingImport ? (
+                  <>
+                    <LoadingSpinner size='sm' variant='spinner' />
+                    Importing...
+                  </>
+                ) : (
+                  <>
+                    <Upload className='w-4 h-4 mr-2' />
+                    Load from configuration
+                  </>
+                )}
+              </Button>
+              <Input
+                ref={fileInputRef}
+                type='file'
+                accept='.json,application/json'
+                className='hidden'
+                onChange={handleFileChange}
               />
-            </ActionsProvider>
-            <Button
-              size='lg'
-              variant='outline'
-              className='w-full cursor-pointer'
-              onClick={() => setShowRecordings(true)}
-              disabled={loadingNew || loadingImport}>
-              <FolderDown className='w-4 h-4 mr-2' />
-              Recordings
-            </Button>
-            <RecordingsList
-              open={showRecordings}
-              onClose={() => setShowRecordings(false)}
-            />
+              <ActionsProvider actions={defaultActions}>
+                <LoadConfigModal
+                  open={showLoadModal}
+                  onOpenChange={setShowLoadModal}
+                  onLoadLocal={() => {
+                    setShowLoadModal(false);
+                    fileInputRef.current?.click();
+                  }}
+                  onLoadRemote={importConfig}
+                />
+              </ActionsProvider>
+              <ImportProgressDialog progress={importProgress} />
+              <Button
+                size='lg'
+                variant='outline'
+                className='w-full cursor-pointer'
+                onClick={() => setShowRecordings(true)}
+                disabled={loadingNew || loadingImport}>
+                <FolderDown className='w-4 h-4 mr-2' />
+                Recordings
+              </Button>
+              <RecordingsList
+                open={showRecordings}
+                onClose={() => setShowRecordings(false)}
+              />
+            </div>
           </div>
 
           {!loadingRooms && rooms.length > 0 && (
@@ -700,6 +783,35 @@ export default function IntroView() {
           )}
         </motion.div>
       </motion.div>
+      <Dialog open={showShowcasePicker} onOpenChange={setShowShowcasePicker}>
+        <DialogContent className='max-w-md'>
+          <DialogHeader>
+            <DialogTitle>Select Presentation</DialogTitle>
+          </DialogHeader>
+          <div className='space-y-2'>
+            {showcaseConfigs.map((item) => (
+              <button
+                key={item.fileName}
+                onClick={() => {
+                  setShowShowcasePicker(false);
+                  handleStartShowcase(item);
+                }}
+                disabled={loadingShowcase}
+                className='w-full flex items-center justify-between bg-neutral-900 hover:bg-neutral-800 rounded px-4 py-3 text-left transition-colors cursor-pointer'>
+                <div className='min-w-0'>
+                  <span className='text-sm text-white font-medium block truncate'>
+                    {item.name}
+                  </span>
+                  <span className='text-xs text-neutral-500'>
+                    {new Date(item.savedAt).toLocaleString()}
+                  </span>
+                </div>
+                <Presentation className='w-4 h-4 text-neutral-400 shrink-0 ml-3' />
+              </button>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }

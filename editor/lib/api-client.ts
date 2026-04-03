@@ -1,6 +1,7 @@
 import type { Resolution, ResolutionPreset } from './resolution';
 import type {
   AddInputResponse,
+  AudioSuggestions,
   AvailableShader,
   InputSuggestions,
   KickSuggestions,
@@ -49,10 +50,12 @@ interface SmelterApiClient {
   getMP4Suggestions(): Promise<MP4Suggestions>;
   getKickSuggestions(): Promise<KickSuggestions>;
   getPictureSuggestions(): Promise<PictureSuggestions>;
+  getAudioSuggestions(): Promise<AudioSuggestions>;
 
   addTwitchInput(roomId: string, channelId: string): Promise<any>;
   addKickInput(roomId: string, channelId: string): Promise<any>;
   addMP4Input(roomId: string, mp4FileName: string): Promise<any>;
+  addAudioInput(roomId: string, audioFileName: string): Promise<any>;
   addImageInput(roomId: string, imageFileNameOrId: string): Promise<any>;
   addTextInput(
     roomId: string,
@@ -75,6 +78,16 @@ interface SmelterApiClient {
   ): Promise<any>;
   disconnectInput(roomId: string, inputId: string): Promise<any>;
   connectInput(roomId: string, inputId: string): Promise<any>;
+  resolveMissingLocalMp4(
+    roomId: string,
+    inputId: string,
+    opts: { fileName?: string; audioFileName?: string },
+  ): Promise<{ status: string }>;
+  resolveMissingImage(
+    roomId: string,
+    inputId: string,
+    opts: { fileName: string },
+  ): Promise<{ status: string }>;
   hideInput(
     roomId: string,
     inputId: string,
@@ -112,6 +125,7 @@ interface SmelterApiClient {
     loop: boolean,
   ): Promise<void>;
   getMp4Duration(fileName: string): Promise<number>;
+  getAudioDuration(fileName: string): Promise<number>;
 
   acknowledgeWhipInput(roomId: string, inputId: string): Promise<void>;
   setPendingWhipInputs(
@@ -122,11 +136,14 @@ interface SmelterApiClient {
   configStorage: StorageClient<object>;
   shaderPresetStorage: StorageClient<ShaderConfig[]>;
   dashboardLayoutStorage: StorageClient<object>;
+  presentationConfigStorage: StorageClient<object>;
   hlsStreamStorage: StorageClient<{ url: string }>;
 
   pauseTimeline(
     roomId: string,
   ): Promise<{ playheadMs: number; isPaused: true }>;
+
+  restartSmelter(): Promise<void>;
 
   getAllRooms(): Promise<any>;
   getAvailableShaders(): Promise<AvailableShader[]>;
@@ -148,10 +165,12 @@ interface SmelterApiClient {
 class SmelterApiError extends Error {
   body: any;
   status: number;
-  constructor(message: string, status: number, body: any) {
+  code?: string;
+  constructor(message: string, status: number, body: any, code?: string) {
     super(message);
     this.status = status;
     this.body = body;
+    this.code = code;
   }
 }
 
@@ -163,11 +182,21 @@ async function sendRequest(
   extraHeaders?: Record<string, string>,
 ): Promise<any> {
   console.log(`[smelter] ${method.toUpperCase()} ${route}`, body ?? '');
-  const response = await fetch(`${baseUrl}${route}`, {
-    method,
-    body: body && JSON.stringify(body),
-    headers: { 'Content-Type': 'application/json', ...extraHeaders },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}${route}`, {
+      method,
+      body: body && JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json', ...extraHeaders },
+    });
+  } catch (error: any) {
+    const code = error?.cause?.code ?? error?.code;
+    const message =
+      code === 'ECONNREFUSED'
+        ? `Could not connect to Smelter server at ${baseUrl}`
+        : `Failed to connect to Smelter server`;
+    throw new SmelterApiError(message, 503, { code }, code);
+  }
 
   if (response.status >= 400) {
     let respBody: any = await response.text();
@@ -256,6 +285,10 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       return await req('get', '/suggestions/pictures');
     },
 
+    async getAudioSuggestions() {
+      return await req('get', '/suggestions/audios');
+    },
+
     async addTwitchInput(roomId, channelId) {
       return await req('post', `/room/${enc(roomId)}/input`, {
         type: 'twitch-channel',
@@ -274,6 +307,13 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       return await req('post', `/room/${enc(roomId)}/input`, {
         type: 'local-mp4',
         source: { fileName: mp4FileName, url: '' },
+      });
+    },
+
+    async addAudioInput(roomId, audioFileName) {
+      return await req('post', `/room/${enc(roomId)}/input`, {
+        type: 'local-mp4',
+        source: { audioFileName },
       });
     },
 
@@ -369,6 +409,22 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       );
     },
 
+    async resolveMissingLocalMp4(roomId, inputId, opts) {
+      return await req(
+        'post',
+        `/room/${enc(roomId)}/input/${enc(inputId)}/resolve-missing-mp4`,
+        opts,
+      );
+    },
+
+    async resolveMissingImage(roomId, inputId, opts) {
+      return await req(
+        'post',
+        `/room/${enc(roomId)}/input/${enc(inputId)}/resolve-missing-image`,
+        opts,
+      );
+    },
+
     async hideInput(roomId, inputId, sourceIdOrTransition) {
       const sourceId =
         typeof sourceIdOrTransition === 'string'
@@ -428,7 +484,15 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
     async getMp4Duration(fileName) {
       const data = await req(
         'get',
-        `/suggestions/mp4-duration/${enc(fileName)}`,
+        `/suggestions/mp4-duration?fileName=${enc(fileName)}`,
+      );
+      return data.durationMs as number;
+    },
+
+    async getAudioDuration(fileName) {
+      const data = await req(
+        'get',
+        `/suggestions/audio-duration/${enc(fileName)}`,
       );
       return data.durationMs as number;
     },
@@ -474,6 +538,12 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       'layout',
       'layouts',
     ),
+    presentationConfigStorage: createStorageClient<object>(
+      req,
+      '/presentation-configs',
+      'presentationConfig',
+      'presentationConfigs',
+    ),
     hlsStreamStorage: createStorageClient<{ url: string }>(
       req,
       '/hls-streams',
@@ -483,6 +553,10 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
 
     async pauseTimeline(roomId) {
       return await req('post', `/room/${enc(roomId)}/timeline/pause`, {});
+    },
+
+    async restartSmelter() {
+      await req('post', '/restart-smelter', {});
     },
 
     async getAllRooms() {

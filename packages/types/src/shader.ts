@@ -5,6 +5,8 @@ export type ShaderParam = {
   minValue?: number;
   maxValue?: number;
   defaultValue?: number | string;
+  /** Slider granularity; if omitted, defaults to (max - min) / 100 */
+  step?: number;
 };
 
 export type ShaderParamConfig = {
@@ -21,6 +23,7 @@ export type ShaderParamDefinition =
       minValue?: number;
       maxValue?: number;
       defaultValue: number;
+      step?: number;
     }
   | {
       name: string;

@@ -67,15 +67,18 @@ export async function startPublish(
   onDisconnected?: () => void,
   facingMode?: 'user' | 'environment',
   rotate90?: boolean,
+  existingStream?: MediaStream,
 ): Promise<{ location: string | null }> {
-  const rawStream = await navigator.mediaDevices.getUserMedia({
-    video: facingMode ? { facingMode } : true,
-    audio: {
-      echoCancellation: true,
-      noiseSuppression: true,
-      autoGainControl: true,
-    },
-  });
+  const rawStream =
+    existingStream ??
+    (await navigator.mediaDevices.getUserMedia({
+      video: facingMode ? { facingMode } : true,
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+      },
+    }));
 
   cleanupRotation();
 
