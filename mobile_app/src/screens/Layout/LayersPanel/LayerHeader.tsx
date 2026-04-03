@@ -1,5 +1,6 @@
 import React, { useCallback, useRef, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
+import MaterialDesignIcons from "@react-native-vector-icons/material-design-icons";
 
 const C = {
   layerBg: "#2D2D2D",
@@ -78,15 +79,21 @@ export function LayerHeader({
   return (
     <Pressable onPress={onToggleCollapse} style={styles.header}>
       <Pressable onPress={onToggleVisible} hitSlop={8} style={styles.eyeBtn}>
-        <Text style={[styles.eyeIcon, !isVisible && styles.eyeIconHidden]}>
-          {isVisible ? "[X]" : "[ ]"}
-        </Text>
+        <MaterialDesignIcons
+          name={isVisible ? "eye-outline" : "eye-closed"}
+          color={isVisible ? C.text : C.textDim}
+          size={16}
+        />
       </Pressable>
 
       <EditableName value={name} onChange={onNameChange} />
 
       <View style={styles.collapseBtn} pointerEvents="none">
-        <Text style={styles.collapseIcon}>{isCollapsed ? ">" : "Y"}</Text>
+        <MaterialDesignIcons
+          name={isCollapsed ? "chevron-right" : "chevron-down"}
+          color={C.text}
+          size={16}
+        />
       </View>
     </Pressable>
   );
@@ -106,8 +113,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  eyeIcon: { color: C.text, fontSize: 14 },
-  eyeIconHidden: { color: C.textDim, opacity: 0.4 },
   layerName: {
     color: C.text,
     fontSize: 12,

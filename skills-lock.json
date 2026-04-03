@@ -1,10 +1,20 @@
 {
   "version": 1,
   "skills": {
+    "reanimated-dnd": {
+      "source": "entropyconquers/react-native-reanimated-dnd",
+      "sourceType": "github",
+      "computedHash": "bad9ca3cf7038d96a3fd1558f07742ec3e4b4f9526e907cef99dfb655017bd7b"
+    },
     "smelter-ts-docs": {
       "source": "smelter-labs/skills",
       "sourceType": "github",
       "computedHash": "7ca88f19a6fd6513fd9b42ba26c671ac5bb4884feaf4e42498a97ee8a756727f"
+    },
+    "vercel-react-native-skills": {
+      "source": "vercel-labs/agent-skills",
+      "sourceType": "github",
+      "computedHash": "2e9088a7333666d8c2833b8ff58bd51b955501c42b4c7244f72b4cbf22dafcc4"
     }
   }
 }

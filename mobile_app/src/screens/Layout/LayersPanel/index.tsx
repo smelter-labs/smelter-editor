@@ -9,7 +9,8 @@ import {
 import { Droppable, DropProvider } from "react-native-reanimated-dnd";
 import type { Layer, LayerBehaviorConfig } from "../../../types/layout";
 import type { InputCard } from "../../../types/input";
-import { LayerRow, applyMoveLayer, applyMoveInput } from "./LayerRow";
+import { Layer as LayerComponent } from "./Layer";
+import { applyMoveLayer, applyMoveInput } from "./LayerRow";
 import type { DragData, LayerUiState } from "./LayerRow";
 
 const C = {
@@ -110,24 +111,35 @@ export default function LayersPanel({
     [onLayersChange],
   );
 
-  const handleInputDrop = useCallback(
-    (
-      sourceLayerId: string,
-      inputId: string,
-      targetLayerId: string,
-      targetIndex: number,
-    ) => {
+  const handleInputMove = useCallback(
+    (layerId: string, inputId: string, fromIndex: number, toIndex: number) => {
       const result = applyMoveInput(
         layersRef.current,
-        sourceLayerId,
+        layerId,
         inputId,
-        targetLayerId,
+        layerId,
+        toIndex,
+      );
+      if (result !== layersRef.current) {
+        onLayersChange(result);
+      }
+    },
+    [onLayersChange],
+  );
+
+  const handleInputMoveLayer = useCallback(
+    (inputId: string, fromLayerId: string, toLayerId: string) => {
+      const targetLayer = layersRef.current.find((l) => l.id === toLayerId);
+      const targetIndex = targetLayer ? targetLayer.inputs.length : 0;
+      const result = applyMoveInput(
+        layersRef.current,
+        fromLayerId,
+        inputId,
+        toLayerId,
         targetIndex,
       );
       if (result !== layersRef.current) {
-        // Defer until after the drag-release spring animation completes so the
-        // Draggable's animated view doesn't leave an empty-space ghost in the list.
-        InteractionManager.runAfterInteractions(() => onLayersChange(result));
+        onLayersChange(result);
       }
     },
     [onLayersChange],
@@ -151,20 +163,23 @@ export default function LayersPanel({
           {layers.map((layer, layerIndex) => {
             const ui = getUi(layer.id);
             return (
-              <LayerRow
+              <LayerComponent
                 key={layer.id}
                 layer={layer}
-                layerIndex={layerIndex}
                 inputs={inputs}
                 ui={ui}
-                onLayerDrop={(data) =>
-                  handleLayerDrop(data.layerId, layerIndex)
+                allLayers={layers}
+                onInputMove={(layerId, inputId, from, to) =>
+                  handleInputMove(layerId, inputId, from, to)
                 }
-                onInputDrop={(sourceLayerId, inputId, targetIndex) =>
-                  handleInputDrop(sourceLayerId, inputId, layer.id, targetIndex)
+                onInputMoveLayer={(inputId, fromLayerId, toLayerId) =>
+                  handleInputMoveLayer(inputId, fromLayerId, toLayerId)
                 }
                 onUiChange={(patch) => patchUi(layer.id, patch)}
                 onBehaviorChange={(b) => setBehavior(layer.id, b)}
+                onLayerDrop={(data) =>
+                  handleLayerDrop(data.layerId, layerIndex)
+                }
               />
             );
           })}
