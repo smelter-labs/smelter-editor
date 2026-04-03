@@ -164,10 +164,12 @@ export interface SmelterApiClient {
 class SmelterApiError extends Error {
   body: any;
   status: number;
-  constructor(message: string, status: number, body: any) {
+  code?: string;
+  constructor(message: string, status: number, body: any, code?: string) {
     super(message);
     this.status = status;
     this.body = body;
+    this.code = code;
   }
 }
 
@@ -179,11 +181,21 @@ async function sendRequest(
   extraHeaders?: Record<string, string>,
 ): Promise<any> {
   console.log(`[smelter] ${method.toUpperCase()} ${route}`, body ?? '');
-  const response = await fetch(`${baseUrl}${route}`, {
-    method,
-    body: body && JSON.stringify(body),
-    headers: { 'Content-Type': 'application/json', ...extraHeaders },
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}${route}`, {
+      method,
+      body: body && JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json', ...extraHeaders },
+    });
+  } catch (error: any) {
+    const code = error?.cause?.code ?? error?.code;
+    const message =
+      code === 'ECONNREFUSED'
+        ? `Could not connect to Smelter server at ${baseUrl}`
+        : `Failed to connect to Smelter server`;
+    throw new SmelterApiError(message, 503, { code }, code);
+  }
 
   if (response.status >= 400) {
     let respBody: any = await response.text();

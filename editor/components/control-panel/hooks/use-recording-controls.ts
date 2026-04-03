@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { useActions } from '../contexts/actions-context';
 
 const DOWNLOAD_DELAY_MS = 1500;
+export const RECORDING_DOWNLOAD_STARTED_EVENT =
+  'smelter:recording-download-started';
 
 export function triggerRecordingDownload(fileName: string): void {
   if (typeof window === 'undefined') return;
@@ -11,6 +13,11 @@ export function triggerRecordingDownload(fileName: string): void {
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
+  window.dispatchEvent(
+    new CustomEvent(RECORDING_DOWNLOAD_STARTED_EVENT, {
+      detail: { fileName },
+    }),
+  );
 }
 
 export type RecordingControls = {

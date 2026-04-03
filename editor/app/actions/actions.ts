@@ -33,6 +33,11 @@ assert(BASE_URL);
 
 const client = createSmelterApiClient(BASE_URL!);
 
+function isServerUnavailableError(err: unknown): boolean {
+  const maybeError = err as { status?: number; code?: string } | undefined;
+  return maybeError?.status === 503 || maybeError?.code === 'ECONNREFUSED';
+}
+
 export async function createNewRoom(
   initInputs: RegisterInputOptions[],
   skipDefaultInputs: boolean = false,
@@ -88,23 +93,58 @@ export async function getRoomRecordings(
 }
 
 export async function getTwitchSuggestions(): Promise<InputSuggestions> {
-  return client.getTwitchSuggestions();
+  try {
+    return await client.getTwitchSuggestions();
+  } catch (err) {
+    if (isServerUnavailableError(err)) {
+      return { twitch: [] };
+    }
+    throw err;
+  }
 }
 
 export async function getMP4Suggestions(): Promise<MP4Suggestions> {
-  return client.getMP4Suggestions();
+  try {
+    return await client.getMP4Suggestions();
+  } catch (err) {
+    if (isServerUnavailableError(err)) {
+      return { mp4s: [] };
+    }
+    throw err;
+  }
 }
 
 export async function getKickSuggestions(): Promise<KickSuggestions> {
-  return client.getKickSuggestions();
+  try {
+    return await client.getKickSuggestions();
+  } catch (err) {
+    if (isServerUnavailableError(err)) {
+      return { kick: [] };
+    }
+    throw err;
+  }
 }
 
 export async function getPictureSuggestions(): Promise<PictureSuggestions> {
-  return client.getPictureSuggestions();
+  try {
+    return await client.getPictureSuggestions();
+  } catch (err) {
+    if (isServerUnavailableError(err)) {
+      return { pictures: [] };
+    }
+    throw err;
+  }
 }
 
 export async function getAudioSuggestions(): Promise<AudioSuggestions> {
-  return client.getAudioSuggestions();
+  try {
+    return await client.getAudioSuggestions();
+  } catch (err) {
+    if (isServerUnavailableError(err)) {
+      return { audios: [] };
+    }
+    throw err;
+  }
 }
 
 export async function addTwitchInput(roomId: string, channelId: string) {

@@ -13,7 +13,10 @@ import type {
 import { useActions } from './contexts/actions-context';
 import { ActionsProvider } from './contexts/actions-context';
 import { defaultActions, SESSION_SOURCE_ID } from './contexts/default-actions';
-import { useRecordingControls } from './hooks/use-recording-controls';
+import {
+  RECORDING_DOWNLOAD_STARTED_EVENT,
+  useRecordingControls,
+} from './hooks/use-recording-controls';
 import {
   Dialog,
   DialogContent,
@@ -1111,6 +1114,9 @@ function SettingsBar({
   } = useRecordingControls(roomId, serverIsRecording, handleRefreshState);
 
   const [isTogglingPublic, setIsTogglingPublic] = useState(false);
+  const [recordingDownloadFileName, setRecordingDownloadFileName] = useState<
+    string | null
+  >(null);
   const handleTogglePublic = useCallback(async () => {
     if (isTogglingPublic) return;
     setIsTogglingPublic(true);
@@ -1204,6 +1210,25 @@ function SettingsBar({
       window.removeEventListener('smelter:export-configuration', onVoiceExport);
     };
   }, [handleExportLocal]);
+
+  useEffect(() => {
+    const onRecordingDownloadStarted = (
+      event: CustomEvent<{ fileName?: string }>,
+    ) => {
+      setRecordingDownloadFileName(event.detail?.fileName ?? null);
+    };
+
+    window.addEventListener(
+      RECORDING_DOWNLOAD_STARTED_EVENT,
+      onRecordingDownloadStarted as EventListener,
+    );
+    return () => {
+      window.removeEventListener(
+        RECORDING_DOWNLOAD_STARTED_EVENT,
+        onRecordingDownloadStarted as EventListener,
+      );
+    };
+  }, []);
 
   const importConfig = useCallback(
     async (config: RoomConfig) => {
@@ -1663,6 +1688,31 @@ function SettingsBar({
               />
             </TabsContent>
           </Tabs>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={recordingDownloadFileName !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setRecordingDownloadFileName(null);
+          }
+        }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Recording download started</DialogTitle>
+          </DialogHeader>
+          <p className='text-sm text-muted-foreground'>
+            Your recording file started downloading
+            {recordingDownloadFileName ? `: ${recordingDownloadFileName}` : '.'}
+          </p>
+          <div className='mt-4 flex justify-end'>
+            <button
+              type='button'
+              onClick={() => setRecordingDownloadFileName(null)}
+              className='rounded-md bg-primary px-3 py-2 text-sm text-primary-foreground hover:opacity-90 transition-opacity'>
+              OK
+            </button>
+          </div>
         </DialogContent>
       </Dialog>
 
