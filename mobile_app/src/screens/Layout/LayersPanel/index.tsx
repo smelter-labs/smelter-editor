@@ -111,27 +111,6 @@ export default function LayersPanel({
     [onLayersChange],
   );
 
-  const handleInputDrop = useCallback(
-    (
-      sourceLayerId: string,
-      inputId: string,
-      targetLayerId: string,
-      targetIndex: number,
-    ) => {
-      const result = applyMoveInput(
-        layersRef.current,
-        sourceLayerId,
-        inputId,
-        targetLayerId,
-        targetIndex,
-      );
-      if (result !== layersRef.current) {
-        InteractionManager.runAfterInteractions(() => onLayersChange(result));
-      }
-    },
-    [onLayersChange],
-  );
-
   const handleInputMove = useCallback(
     (layerId: string, inputId: string, fromIndex: number, toIndex: number) => {
       const result = applyMoveInput(
@@ -150,12 +129,14 @@ export default function LayersPanel({
 
   const handleInputMoveLayer = useCallback(
     (inputId: string, fromLayerId: string, toLayerId: string) => {
+      const targetLayer = layersRef.current.find((l) => l.id === toLayerId);
+      const targetIndex = targetLayer ? targetLayer.inputs.length : 0;
       const result = applyMoveInput(
         layersRef.current,
         fromLayerId,
         inputId,
         toLayerId,
-        0,
+        targetIndex,
       );
       if (result !== layersRef.current) {
         onLayersChange(result);
