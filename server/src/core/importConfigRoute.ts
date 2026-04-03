@@ -22,9 +22,7 @@ const ImportConfigBodySchema = Type.Object({
   timelineAtZero: Type.Optional(
     Type.Object({
       hiddenInputIds: Type.Array(Type.Number()),
-      blockSettingsEntries: Type.Array(
-        Type.Tuple([Type.Number(), Type.Any()]),
-      ),
+      blockSettingsEntries: Type.Array(Type.Tuple([Type.Number(), Type.Any()])),
     }),
   ),
 });
@@ -179,7 +177,9 @@ export function registerImportConfigRoute(routes: FastifyInstance): void {
       // Phase 1: Add inputs
       const createdInputs: { inputId: string; index: number }[] = [];
       const configInputIndexMap = new Map<ImportConfigInput, number>();
-      config.inputs.forEach((input, idx) => configInputIndexMap.set(input, idx));
+      config.inputs.forEach((input, idx) =>
+        configInputIndexMap.set(input, idx),
+      );
 
       for (const input of nonWhipInputs) {
         const originalIndex = configInputIndexMap.get(input)!;
@@ -272,7 +272,10 @@ export function registerImportConfigRoute(routes: FastifyInstance): void {
           advance('Applying timeline state');
         }
 
-        for (const [inputIndex, blockSettings] of timelineAtZero.blockSettingsEntries) {
+        for (const [
+          inputIndex,
+          blockSettings,
+        ] of timelineAtZero.blockSettingsEntries) {
           const inputId = indexToInputId[inputIndex];
           if (inputId) {
             try {

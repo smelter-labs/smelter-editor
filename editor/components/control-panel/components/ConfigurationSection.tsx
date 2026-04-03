@@ -140,7 +140,10 @@ function ConfigurationSection({
         config.inputs.forEach((_, idx) =>
           tempIndexMap.set(idx, `__temp_${idx}__`),
         );
-        const atZero = computeTimelineStateAtZero(config.timeline, tempIndexMap);
+        const atZero = computeTimelineStateAtZero(
+          config.timeline,
+          tempIndexMap,
+        );
 
         const hiddenIndices: number[] = [];
         for (const hiddenId of atZero.hiddenInputIds) {
@@ -192,10 +195,7 @@ function ConfigurationSection({
           indexToInputId.set(Number(idx), inputId);
         }
         for (const pw of result.pendingWhipData) {
-          indexToInputId.set(
-            pw.position,
-            `__pending-whip-${pw.position}__`,
-          );
+          indexToInputId.set(pw.position, `__pending-whip-${pw.position}__`);
         }
         restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
       }

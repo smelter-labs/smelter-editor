@@ -93,7 +93,9 @@ describe('TimelinePlayer', () => {
   describe('getActiveInputIdsAt', () => {
     it('returns empty for time before any clip', () => {
       const config = makeConfig({
-        tracks: [{ id: 't1', clips: [makeClip({ startMs: 1000, endMs: 5000 })] }],
+        tracks: [
+          { id: 't1', clips: [makeClip({ startMs: 1000, endMs: 5000 })] },
+        ],
       });
       const player = new TimelinePlayer(adapter, config);
       expect(player.getActiveInputIdsAt(500)).toEqual([]);
@@ -132,8 +134,17 @@ describe('TimelinePlayer', () => {
           {
             id: 't1',
             clips: [
-              makeClip({ inputId: OUTPUT_TRACK_INPUT_ID, startMs: 0, endMs: 5000 }),
-              makeClip({ id: 'c2', inputId: 'real-input', startMs: 0, endMs: 5000 }),
+              makeClip({
+                inputId: OUTPUT_TRACK_INPUT_ID,
+                startMs: 0,
+                endMs: 5000,
+              }),
+              makeClip({
+                id: 'c2',
+                inputId: 'real-input',
+                startMs: 0,
+                endMs: 5000,
+              }),
             ],
           },
         ],
@@ -169,7 +180,10 @@ describe('TimelinePlayer', () => {
 
   describe('updateConfig', () => {
     it('replaces the internal config', () => {
-      const player = new TimelinePlayer(adapter, makeConfig({ totalDurationMs: 5000 }));
+      const player = new TimelinePlayer(
+        adapter,
+        makeConfig({ totalDurationMs: 5000 }),
+      );
       player.updateConfig(makeConfig({ totalDurationMs: 20000 }));
       expect(player.getTotalDurationMs()).toBe(20000);
     });
@@ -187,7 +201,12 @@ describe('TimelinePlayer', () => {
       // 'b' is visible (connected + not hidden) but should be hidden (not active at t=0)
       (adapter.getInputs as any).mockReturnValue([
         { inputId: 'a', hidden: true, status: 'connected', type: 'text-input' },
-        { inputId: 'b', hidden: false, status: 'connected', type: 'text-input' },
+        {
+          inputId: 'b',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
       ]);
       const config = makeConfig({
         tracks: [

@@ -52,9 +52,7 @@ export function FeedbackPositionPicker({
           checked={enabled}
           onCheckedChange={(checked) => onEnabledChange(!!checked)}
         />
-        <span className='text-xs text-neutral-400'>
-          {label}
-        </span>
+        <span className='text-xs text-neutral-400'>{label}</span>
       </label>
       {enabled && (
         <div className='flex flex-wrap items-end gap-4 pl-5'>

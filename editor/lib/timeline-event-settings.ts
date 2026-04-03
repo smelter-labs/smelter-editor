@@ -85,9 +85,7 @@ function getTimelineEventsPositionSetting(): FeedbackPosition {
   return DEFAULT_POSITION;
 }
 
-function setTimelineEventsPositionSetting(
-  value: FeedbackPosition,
-): void {
+function setTimelineEventsPositionSetting(value: FeedbackPosition): void {
   if (typeof window === 'undefined') {
     return;
   }

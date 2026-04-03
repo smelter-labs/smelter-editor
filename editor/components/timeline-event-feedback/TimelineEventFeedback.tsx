@@ -115,7 +115,11 @@ function displaceMidpoint(
   d: number,
   depth: number,
 ): FxPt[] {
-  if (depth <= 0) return [{ x: x1, y: y1 }, { x: x2, y: y2 }];
+  if (depth <= 0)
+    return [
+      { x: x1, y: y1 },
+      { x: x2, y: y2 },
+    ];
   const mx = (x1 + x2) / 2 + (Math.random() - 0.5) * d;
   const my = (y1 + y2) / 2 + (Math.random() - 0.5) * d;
   const left = displaceMidpoint(x1, y1, mx, my, d * 0.52, depth - 1);
@@ -187,7 +191,11 @@ function updateMiniFx(s: MiniFxState, dt: number, hue: number) {
   }
   s.sparks = s.sparks.filter(
     (p) =>
-      p.life < p.maxLife && p.y > -4 && p.y < s.h + 4 && p.x > -4 && p.x < s.w + 4,
+      p.life < p.maxLife &&
+      p.y > -4 &&
+      p.y < s.h + 4 &&
+      p.x > -4 &&
+      p.x < s.w + 4,
   );
 
   s.nextBolt -= dt;
@@ -269,7 +277,13 @@ function drawMiniFx(ctx: CanvasRenderingContext2D, s: MiniFxState) {
   }
 }
 
-function MiniGpuCanvas({ color, isActive }: { color: string; isActive: boolean }) {
+function MiniGpuCanvas({
+  color,
+  isActive,
+}: {
+  color: string;
+  isActive: boolean;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rafRef = useRef<number | null>(null);
   const hue = extractHue(color);
@@ -360,7 +374,10 @@ function TimelineEventCard({
         border: `1px solid ${color}33`,
         background: `linear-gradient(135deg, ${color}12 0%, rgba(10,10,10,0.95) 100%)`,
       }}>
-      <MiniGpuCanvas color={color} isActive={phase === 'enter' || phase === 'visible'} />
+      <MiniGpuCanvas
+        color={color}
+        isActive={phase === 'enter' || phase === 'visible'}
+      />
 
       <div
         className='pointer-events-none absolute inset-0 opacity-40 tl-event-scanline'
@@ -389,8 +406,12 @@ function TimelineEventCard({
         </div>
 
         <div className='min-w-0 flex-1'>
-          <p className='text-sm font-medium text-white truncate'>{inputLabel}</p>
-          <p className='text-xs text-neutral-400'>{detail || EVENT_LABELS[type]}</p>
+          <p className='text-sm font-medium text-white truncate'>
+            {inputLabel}
+          </p>
+          <p className='text-xs text-neutral-400'>
+            {detail || EVENT_LABELS[type]}
+          </p>
         </div>
       </div>
     </div>
@@ -415,7 +436,11 @@ export function TimelineEventFeedback() {
 
   useEffect(() => {
     const handler = (e: CustomEvent<TimelineEventNotification>) => {
-      const item: QueuedEvent = { ...e.detail, id: ++idCounter, phase: 'enter' };
+      const item: QueuedEvent = {
+        ...e.detail,
+        id: ++idCounter,
+        phase: 'enter',
+      };
       setItems((prev) => {
         const next = [...prev, item];
         return next.slice(-5);
@@ -424,7 +449,9 @@ export function TimelineEventFeedback() {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           setItems((prev) =>
-            prev.map((i) => (i.id === item.id ? { ...i, phase: 'visible' } : i)),
+            prev.map((i) =>
+              i.id === item.id ? { ...i, phase: 'visible' } : i,
+            ),
           );
         });
       });

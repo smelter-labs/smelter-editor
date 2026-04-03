@@ -178,8 +178,6 @@ const VIDEO_INPUT_TYPES = new Set<string>([
   'whip',
 ]);
 
-;
-
 export default function ControlPanel(props: ControlPanelProps) {
   return (
     <ActionsProvider actions={defaultActions}>
@@ -1282,10 +1280,7 @@ function SettingsBar({
           indexToInputId.set(Number(idx), inputId);
         }
         for (const pw of result.pendingWhipData) {
-          indexToInputId.set(
-            pw.position,
-            `__pending-whip-${pw.position}__`,
-          );
+          indexToInputId.set(pw.position, `__pending-whip-${pw.position}__`);
         }
 
         if (config.timeline) {

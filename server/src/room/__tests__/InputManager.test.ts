@@ -174,7 +174,10 @@ describe('InputManager', () => {
           channelId: 'streamer1',
         });
         await expect(
-          manager.addNewInput({ type: 'twitch-channel', channelId: 'streamer1' }),
+          manager.addNewInput({
+            type: 'twitch-channel',
+            channelId: 'streamer1',
+          }),
         ).rejects.toThrow(/already exists/);
       });
     });
@@ -587,9 +590,9 @@ describe('InputManager', () => {
         type: 'text-input',
         text: 'hi',
       } as any))!;
-      await expect(
-        manager.restartMp4Input(inputId, 0, true),
-      ).rejects.toThrow(/not a local-mp4/);
+      await expect(manager.restartMp4Input(inputId, 0, true)).rejects.toThrow(
+        /not a local-mp4/,
+      );
     });
   });
 });

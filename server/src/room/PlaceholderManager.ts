@@ -50,11 +50,7 @@ export class PlaceholderManager {
     if (inputs.find((inp) => this.isPlaceholder(inp.inputId))) return false;
 
     const inputId = this.getPlaceholderId();
-    const imagePath = path.join(
-      DATA_DIR,
-      'pictures',
-      PLACEHOLDER_LOGO_FILE,
-    );
+    const imagePath = path.join(DATA_DIR, 'pictures', PLACEHOLDER_LOGO_FILE);
 
     if (!(await pathExists(imagePath))) return false;
 

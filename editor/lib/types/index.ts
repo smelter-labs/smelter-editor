@@ -19,7 +19,6 @@ export type {
   MP4Suggestions,
   PictureSuggestions,
   AudioSuggestions,
-  
   UpdateRoomOptions,
   StartRecordingResponse,
   StopRecordingResponse,

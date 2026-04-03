@@ -26,7 +26,7 @@ import { RESOLUTION_PRESETS } from './types';
 
 const execFileAsync = promisify(execFile);
 
-export type { Resolution,  } from './types';
+export type { Resolution } from './types';
 
 type SmelterRecoveryHandler = (reason: string, error: unknown) => void;
 

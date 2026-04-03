@@ -22,8 +22,6 @@ export type {
   CropProperties,
   BorderProperties,
   SnakeGameDisplayProperties,
-  
-  
   ViewportProperties,
 } from '@smelter-editor/types';
 

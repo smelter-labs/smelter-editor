@@ -45,7 +45,9 @@ export function MotionDetectionPanel({
           .map((input) => input.inputId),
       ),
   );
-  const [pendingInputIds, setPendingInputIds] = useState<Set<string>>(new Set());
+  const [pendingInputIds, setPendingInputIds] = useState<Set<string>>(
+    new Set(),
+  );
 
   useEffect(() => {
     const inputIds = new Set(inputs.map((input) => input.inputId));
@@ -107,7 +109,8 @@ export function MotionDetectionPanel({
         const isEnabled = input.motionEnabled === true;
         const isExpanded = expandedInputIds.has(input.inputId);
         const isPending = pendingInputIds.has(input.inputId);
-        const currentScore = history?.current ?? motionScores[input.inputId] ?? 0;
+        const currentScore =
+          history?.current ?? motionScores[input.inputId] ?? 0;
         const hasChartData = (history?.history.length ?? 0) >= 2;
 
         return (
@@ -124,14 +127,17 @@ export function MotionDetectionPanel({
                 <div className='truncate text-sm font-medium text-neutral-200'>
                   {label}
                 </div>
-                <div className='text-[11px] text-neutral-500'>{input.inputId}</div>
+                <div className='text-[11px] text-neutral-500'>
+                  {input.inputId}
+                </div>
               </div>
               <div className='flex items-center gap-2 shrink-0'>
                 <div className='flex items-center gap-1.5 rounded-sm border border-neutral-800 px-2 py-1'>
                   <span
                     className={`inline-block h-1.5 w-1.5 rounded-full ${getMotionDotColor(currentScore)}`}
                   />
-                  <span className={`text-xs font-mono ${getMotionTextColor(currentScore)}`}>
+                  <span
+                    className={`text-xs font-mono ${getMotionTextColor(currentScore)}`}>
                     {(currentScore * 100).toFixed(0)}%
                   </span>
                 </div>
@@ -157,9 +163,7 @@ export function MotionDetectionPanel({
                 <Button
                   size='sm'
                   variant={isEnabled ? 'default' : 'outline'}
-                  onClick={() =>
-                    handleToggleMotion(input.inputId, !isEnabled)
-                  }
+                  onClick={() => handleToggleMotion(input.inputId, !isEnabled)}
                   disabled={isPending}
                   className='h-7 cursor-pointer gap-1.5 px-2 text-xs'>
                   <Power className='size-3.5' />
@@ -211,5 +215,9 @@ export function MotionDetectionPanel({
     );
   }
 
-  return <div className='flex h-full flex-col gap-3 overflow-y-auto p-3'>{inputPanels}</div>;
+  return (
+    <div className='flex h-full flex-col gap-3 overflow-y-auto p-3'>
+      {inputPanels}
+    </div>
+  );
 }

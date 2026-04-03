@@ -172,7 +172,11 @@ function displaceMidpoint(
   d: number,
   depth: number,
 ): FxPt[] {
-  if (depth <= 0) return [{ x: x1, y: y1 }, { x: x2, y: y2 }];
+  if (depth <= 0)
+    return [
+      { x: x1, y: y1 },
+      { x: x2, y: y2 },
+    ];
   const mx = (x1 + x2) / 2 + (Math.random() - 0.5) * d;
   const my = (y1 + y2) / 2 + (Math.random() - 0.5) * d;
   const left = displaceMidpoint(x1, y1, mx, my, d * 0.52, depth - 1);
@@ -261,11 +265,7 @@ function makeCircuits(w: number, h: number): FxPt[][] {
   return paths;
 }
 
-function makeDotPattern(
-  w: number,
-  h: number,
-  dpr: number,
-): HTMLCanvasElement {
+function makeDotPattern(w: number, h: number, dpr: number): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = Math.ceil(w * dpr);
   c.height = Math.ceil(h * dpr);
@@ -309,8 +309,7 @@ function updateFx(s: FxState, dt: number, pct: number) {
     p.vy -= 8 * dt;
   }
   s.sparks = s.sparks.filter(
-    (p) =>
-      p.life < p.maxLife && p.y > -10 && p.x > -10 && p.x < s.w + 10,
+    (p) => p.life < p.maxLife && p.y > -10 && p.x > -10 && p.x < s.w + 10,
   );
 
   s.nextBolt -= dt;
@@ -464,7 +463,8 @@ function drawFx(ctx: CanvasRenderingContext2D, s: FxState, pct: number) {
     const p = wv.life / wv.maxLife;
     const a = (0.22 + pct * 0.15) * (1 - p) * (1 - p);
     if (a < 0.005) continue;
-    const waveHue = FX_HUES[Math.floor((wv.cx + wv.cy) * 0.01) % FX_HUES.length];
+    const waveHue =
+      FX_HUES[Math.floor((wv.cx + wv.cy) * 0.01) % FX_HUES.length];
     ctx.strokeStyle = fxHsl(waveHue, 90, 75, a);
     ctx.lineWidth = 2 * (1 - p * 0.4);
     ctx.shadowColor = fxHsl(waveHue, 100, 70, a * 0.9);
@@ -628,9 +628,13 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
   const closeTimeoutRef = useRef<number | null>(null);
   const [, setDisplayTick] = useState(0);
   const total = visibleProgress?.total ?? 0;
-  const current = visibleProgress ? Math.min(visibleProgress.current, total) : 0;
+  const current = visibleProgress
+    ? Math.min(visibleProgress.current, total)
+    : 0;
   const elapsedMs =
-    openedAtRef.current === null ? 0 : Math.max(Date.now() - openedAtRef.current, 0);
+    openedAtRef.current === null
+      ? 0
+      : Math.max(Date.now() - openedAtRef.current, 0);
   const sessionProgressRatio =
     sessionMinVisibleMsRef.current > 0
       ? Math.min(elapsedMs / sessionMinVisibleMsRef.current, 1)
@@ -676,7 +680,8 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
         const range =
           MAX_IMPORT_DIALOG_VISIBLE_MS - MIN_IMPORT_DIALOG_VISIBLE_MS;
         sessionMinVisibleMsRef.current =
-          MIN_IMPORT_DIALOG_VISIBLE_MS + Math.floor(Math.random() * (range + 1));
+          MIN_IMPORT_DIALOG_VISIBLE_MS +
+          Math.floor(Math.random() * (range + 1));
       }
       setVisibleProgress(progress);
       return;
@@ -748,7 +753,8 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
       const targetScale = 7 + random() * 16 + (index === 2 ? 8 : 0);
       const metricTotal = Math.max(1, Math.round(baseTotal * targetScale));
       const paceBias = 0.8 + random() * 0.45;
-      const preciseCurrent = Math.min(1, Math.pow(ratio, paceBias)) * metricTotal;
+      const preciseCurrent =
+        Math.min(1, Math.pow(ratio, paceBias)) * metricTotal;
       const metricCurrent = Math.min(metricTotal, Math.floor(preciseCurrent));
       const currentDisplayValue = metricCurrent * metric.multiplier;
       const totalDisplayValue = metricTotal * metric.multiplier;
@@ -977,7 +983,9 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
                 const animatedValue = displayValues[index] ?? 0;
                 const animatedPercent =
                   metric.totalDisplayValue > 0
-                    ? Math.round((animatedValue / metric.totalDisplayValue) * 100)
+                    ? Math.round(
+                        (animatedValue / metric.totalDisplayValue) * 100,
+                      )
                     : 0;
 
                 return (

@@ -169,7 +169,9 @@ describe('RecordingController', () => {
     it('catches and logs errors from unregisterOutput', async () => {
       await controller.startRecording();
       mocks.unregisterOutput.mockRejectedValueOnce(new Error('cleanup fail'));
-      const consoleSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const consoleSpy = vi
+        .spyOn(console, 'error')
+        .mockImplementation(() => {});
 
       // Should not throw
       await controller.cleanup();
@@ -210,8 +212,9 @@ describe('pruneOldRecordings (via stopRecording)', () => {
   });
 
   it('deletes oldest recordings when count exceeds 10', async () => {
-    const files = Array.from({ length: 12 }, (_, i) =>
-      `recording-room-1-${1000 + i * 100}.mp4`,
+    const files = Array.from(
+      { length: 12 },
+      (_, i) => `recording-room-1-${1000 + i * 100}.mp4`,
     );
     mocks.readdir.mockResolvedValue(files);
 
@@ -229,8 +232,9 @@ describe('pruneOldRecordings (via stopRecording)', () => {
   });
 
   it('assigns timestamp 0 to unparseable filenames (deleted first)', async () => {
-    const files = Array.from({ length: 11 }, (_, i) =>
-      `recording-room-1-${1000 + i * 100}.mp4`,
+    const files = Array.from(
+      { length: 11 },
+      (_, i) => `recording-room-1-${1000 + i * 100}.mp4`,
     );
     files.push('weird-filename.mp4');
     mocks.readdir.mockResolvedValue(files);

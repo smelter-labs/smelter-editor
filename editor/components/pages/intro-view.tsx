@@ -401,10 +401,7 @@ export default function IntroView() {
             indexToInputId.set(Number(idx), inputId);
           }
           for (const pw of result.pendingWhipData) {
-            indexToInputId.set(
-              pw.position,
-              `__pending-whip-${pw.position}__`,
-            );
+            indexToInputId.set(pw.position, `__pending-whip-${pw.position}__`);
           }
           restoreTimelineToStorage(roomId, config.timeline, indexToInputId);
         }
@@ -523,7 +520,11 @@ export default function IntroView() {
                     </p>
                     <p className='text-xs text-neutral-400 mt-1'>
                       {crashRecovery.config.inputs.length} input(s) &middot;
-                      saved {formatDuration(Date.now() - new Date(crashRecovery.savedAt).getTime())} ago
+                      saved{' '}
+                      {formatDuration(
+                        Date.now() - new Date(crashRecovery.savedAt).getTime(),
+                      )}{' '}
+                      ago
                     </p>
                   </div>
                   <button
@@ -606,8 +607,8 @@ export default function IntroView() {
                         .filter(([key]) => key.includes('vertical'))
                         .map(([key, { width, height }]) => (
                           <SelectItem key={key} value={key}>
-                            {key.replace('-vertical', '').toUpperCase()} Vertical
-                            ({width}×{height})
+                            {key.replace('-vertical', '').toUpperCase()}{' '}
+                            Vertical ({width}×{height})
                           </SelectItem>
                         ))}
                     </SelectGroup>

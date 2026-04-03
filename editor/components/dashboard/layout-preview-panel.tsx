@@ -546,9 +546,24 @@ export function LayoutPreviewPanel({
         </span>
         <div className='flex items-center gap-3.5'>
           {[
-            { id: 'lp-active', label: 'Active', checked: showActive, set: setShowActive },
-            { id: 'lp-inactive', label: 'Inactive', checked: showInactive, set: setShowInactive },
-            { id: 'lp-audio', label: 'Audio', checked: showAudio, set: setShowAudio },
+            {
+              id: 'lp-active',
+              label: 'Active',
+              checked: showActive,
+              set: setShowActive,
+            },
+            {
+              id: 'lp-inactive',
+              label: 'Inactive',
+              checked: showInactive,
+              set: setShowInactive,
+            },
+            {
+              id: 'lp-audio',
+              label: 'Audio',
+              checked: showAudio,
+              set: setShowAudio,
+            },
           ].map(({ id, label, checked, set }) => (
             <label
               key={id}
@@ -601,8 +616,7 @@ export function LayoutPreviewPanel({
               const isLongPressing =
                 longPressActive && longPressInputId === input.inputId;
               const effectivelyHidden = isHidden && !isForceGrabbed;
-              const isActiveOnTimeline =
-                !!activeClipColors?.[input.inputId];
+              const isActiveOnTimeline = !!activeClipColors?.[input.inputId];
               const isSelected = selectedInputId === input.inputId;
               const durationMs = isDragging
                 ? 0
@@ -633,11 +647,7 @@ export function LayoutPreviewPanel({
                     left,
                     width,
                     height,
-                    zIndex: isDragging
-                      ? 1000
-                      : isSelected
-                        ? 500
-                        : index,
+                    zIndex: isDragging ? 1000 : isSelected ? 500 : index,
                     transition:
                       durationMs > 0
                         ? `top ${durationMs}ms ${easing}, left ${durationMs}ms ${easing}, width ${durationMs}ms ${easing}, height ${durationMs}ms ${easing}, opacity ${durationMs}ms ${easing}`

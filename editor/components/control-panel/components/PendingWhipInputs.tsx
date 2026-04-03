@@ -457,9 +457,7 @@ export function PendingWhipInputs({
               WHIP input - {preview ? 'preview active' : 'click to connect'}
             </div>
 
-            {preview && (
-              <InlineVideoPreview stream={preview.stream} />
-            )}
+            {preview && <InlineVideoPreview stream={preview.stream} />}
 
             {!preview && (
               <div className='flex gap-2'>
