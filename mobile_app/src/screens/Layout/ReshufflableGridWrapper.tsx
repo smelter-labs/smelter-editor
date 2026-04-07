@@ -546,6 +546,20 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
   }, [itemData]);
 
   useEffect(() => {
+    setColumns(initialColumns);
+  }, [initialColumns]);
+
+  useEffect(() => {
+    setRows(initialRows);
+  }, [initialRows]);
+
+  useEffect(() => {
+    resizeSessionRef.current = null;
+    lastResizeDeltaRef.current = null;
+    setSelectedItemId(null);
+  }, [columns, rows]);
+
+  useEffect(() => {
     if (
       Platform.OS === "android" &&
       UIManager.setLayoutAnimationEnabledExperimental
