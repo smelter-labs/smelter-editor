@@ -1,5 +1,11 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { View, StyleSheet } from "react-native";
+import {
+  View,
+  StyleSheet,
+  LayoutAnimation,
+  Platform,
+  UIManager,
+} from "react-native";
 import { ReshufflableGrid, type Cell } from "react-native-reshuffled";
 import { useNitroHealth } from "../../hooks/useNitroHealth";
 
@@ -431,6 +437,12 @@ export type GridItemControls = {
   isSelected?: boolean;
   onSelect?: () => void;
   onLongPress?: () => void;
+  resizePreview?: {
+    cellPixelWidth: number;
+    cellPixelHeight: number;
+    widthCells: number;
+    heightCells: number;
+  };
   onResizeStart?: (direction: ResizeHandleDirection) => void;
   onResizeUpdate?: (
     direction: ResizeHandleDirection,
@@ -532,6 +544,15 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
       return next;
     });
   }, [itemData]);
+
+  useEffect(() => {
+    if (
+      Platform.OS === "android" &&
+      UIManager.setLayoutAnimationEnabledExperimental
+    ) {
+      UIManager.setLayoutAnimationEnabledExperimental(true);
+    }
+  }, []);
 
   useEffect(() => {
     console.info("[LayoutGrid] Performance mode", {
@@ -869,18 +890,23 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
     const colDelta = Math.round(translationX / cellPixelWidth);
     const rowDelta = Math.round(translationY / cellPixelHeight);
 
-    if (highGridOptimizationEnabled) {
-      const previousDelta = lastResizeDeltaRef.current;
-      if (
-        previousDelta &&
-        previousDelta.itemId === itemId &&
-        previousDelta.colDelta === colDelta &&
-        previousDelta.rowDelta === rowDelta
-      ) {
-        return;
-      }
-      lastResizeDeltaRef.current = { itemId, colDelta, rowDelta };
+    const previousDelta = lastResizeDeltaRef.current;
+    if (
+      previousDelta &&
+      previousDelta.itemId === itemId &&
+      previousDelta.colDelta === colDelta &&
+      previousDelta.rowDelta === rowDelta
+    ) {
+      return;
     }
+    lastResizeDeltaRef.current = { itemId, colDelta, rowDelta };
+
+    LayoutAnimation.configureNext({
+      duration: highGridOptimizationEnabled ? 90 : 70,
+      update: {
+        type: LayoutAnimation.Types.easeInEaseOut,
+      },
+    });
 
     setData((prevData) => {
       const nextData = prevData.map((item) => ({ ...item }));
@@ -1470,10 +1496,18 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
         renderItem={({ item }) => {
           const gridItem = item as GridItem<T>;
           const isSelected = selectedItemId === gridItem.id;
+          const cellPixelWidth = gridSize.width > 0 ? gridSize.width / columns : 1;
+          const cellPixelHeight = gridSize.height > 0 ? gridSize.height / rows : 1;
           return (
             <RenderedComponent
               {...(gridItem.itemProps as any)}
               isSelected={isSelected}
+              resizePreview={{
+                cellPixelWidth,
+                cellPixelHeight,
+                widthCells: gridItem.width,
+                heightCells: gridItem.height,
+              }}
               onSelect={() => setSelectedItemId(gridItem.id)}
               onLongPress={() => onItemLongPress?.(gridItem.id)}
               onResizeStart={(dir: ResizeHandleDirection) =>
