@@ -89,9 +89,11 @@ export default function GridCell({
           const rowResidual = rowDeltaFloat - rowDeltaSnap;
 
           const affectsHorizontal =
-            rightDirections.includes(direction) || leftDirections.includes(direction);
+            rightDirections.includes(direction) ||
+            leftDirections.includes(direction);
           const affectsVertical =
-            topDirections.includes(direction) || bottomDirections.includes(direction);
+            topDirections.includes(direction) ||
+            bottomDirections.includes(direction);
 
           let widthResidual = 0;
           if (rightDirections.includes(direction)) {

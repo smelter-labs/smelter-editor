@@ -1496,8 +1496,10 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
         renderItem={({ item }) => {
           const gridItem = item as GridItem<T>;
           const isSelected = selectedItemId === gridItem.id;
-          const cellPixelWidth = gridSize.width > 0 ? gridSize.width / columns : 1;
-          const cellPixelHeight = gridSize.height > 0 ? gridSize.height / rows : 1;
+          const cellPixelWidth =
+            gridSize.width > 0 ? gridSize.width / columns : 1;
+          const cellPixelHeight =
+            gridSize.height > 0 ? gridSize.height / rows : 1;
           return (
             <RenderedComponent
               {...(gridItem.itemProps as any)}
