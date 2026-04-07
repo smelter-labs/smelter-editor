@@ -86,6 +86,55 @@ const splitByVerticalOverlap = <T,>(items: GridItem<T>[]) => {
   return groups;
 };
 
+const isHorizontallyOverlapping = <T,>(
+  first: GridItem<T>,
+  second: GridItem<T>,
+) => {
+  const firstEndCol = first.startColumn + first.width;
+  const secondEndCol = second.startColumn + second.width;
+
+  return first.startColumn < secondEndCol && firstEndCol > second.startColumn;
+};
+
+const splitByHorizontalOverlap = <T,>(items: GridItem<T>[]) => {
+  const groups: GridItem<T>[][] = [];
+  const visited = new Set<string>();
+
+  for (const item of items) {
+    if (visited.has(item.id)) {
+      continue;
+    }
+
+    const stack = [item];
+    const group: GridItem<T>[] = [];
+    visited.add(item.id);
+
+    while (stack.length > 0) {
+      const current = stack.pop();
+      if (!current) {
+        continue;
+      }
+
+      group.push(current);
+
+      for (const candidate of items) {
+        if (visited.has(candidate.id)) {
+          continue;
+        }
+
+        if (isHorizontallyOverlapping(current, candidate)) {
+          visited.add(candidate.id);
+          stack.push(candidate);
+        }
+      }
+    }
+
+    groups.push(group);
+  }
+
+  return groups;
+};
+
 const distributeEqualShrink = (widths: number[], deficit: number) => {
   const next = [...widths];
   let remaining = deficit;
@@ -897,16 +946,10 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
         dir === "bottom" || dir === "bottomLeft" || dir === "bottomRight";
       const pushUp = dir === "top" || dir === "topLeft" || dir === "topRight";
 
-      // ── Proportional redistribution ─────────────────────────────────────────
-      // Instead of pushing cells one-by-one (BFS), collect every cell that
-      // belongs to the same band as the resize, then share the remaining space
-      // among them proportionally so all siblings shrink/grow together.
-      //
-      // "Original band" is relative to the session start, not the current
-      // (already-mutated) target position.  This keeps horizontal and vertical
-      // axes independent: a left-drag never crushes the height of row-band
-      // neighbours, and a down-drag never crushes the width of column-band
-      // neighbours.
+      // ── Collision-chain pushing ────────────────────────────────────────────
+      // Keep empty space intact and only move siblings when they are actually
+      // touched by the resized item (or by another moved sibling in the chain).
+      // This prevents distant, non-neighbour items from being redistributed.
 
       // Helper: does `cell` overlap the dragged item's ORIGINAL row span?
       const inOriginalRowBand = (cell: GridItem<T>) =>
@@ -918,68 +961,319 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
         cell.startColumn < session.startColumn + session.startWidth &&
         cell.startColumn + cell.width > session.startColumn;
 
-      // Redistribute a set of cells proportionally within [rangeStart, rangeEnd).
-      // Cells are sorted left→right (or top→bottom) and placed sequentially.
-      // Each cell's share is proportional to its current width (or height).
-      const redistributeH = (
+      const redistributeHFromLeft = (
         cells: GridItem<T>[],
         rangeStart: number,
         rangeEnd: number,
       ) => {
+        if (cells.length === 0) return;
+
         const available = Math.max(0, rangeEnd - rangeStart);
-        const totalW = cells.reduce((s, c) => s + c.width, 0);
-        let cursor = rangeStart;
-        cells
-          .slice()
-          .sort((a, b) => a.startColumn - b.startColumn)
-          .forEach((c, j, arr) => {
-            const isLast = j === arr.length - 1;
-            const newW = isLast
-              ? Math.max(1, rangeEnd - cursor)
-              : Math.max(
-                  1,
-                  Math.floor((c.width / Math.max(1, totalW)) * available),
-                );
-            const idx = nextData.findIndex((d) => d.id === c.id);
-            if (idx >= 0) {
-              nextData[idx].startColumn = cursor;
-              nextData[idx].width = newW;
+        const allocateProportionalSizes = (
+          sizes: number[],
+          totalAvailable: number,
+        ): number[] => {
+          const count = sizes.length;
+          if (count === 0) return [];
+
+          const safeSizes = sizes.map((size) => Math.max(1, size));
+          if (totalAvailable <= count) {
+            return Array(count).fill(1);
+          }
+
+          const base = Array(count).fill(1);
+          const remaining = totalAvailable - count;
+          const weights = safeSizes.map((size) => size - 1);
+          const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+
+          if (totalWeight <= 0) {
+            const equalShare = Math.floor(remaining / count);
+            let leftover = remaining - equalShare * count;
+            for (let index = 0; index < count; index += 1) {
+              base[index] += equalShare;
+              if (leftover > 0) {
+                base[index] += 1;
+                leftover -= 1;
+              }
             }
-            cursor += newW;
-          });
+            return base;
+          }
+
+          const floors: number[] = Array(count).fill(0);
+          const remainders: Array<{ index: number; value: number }> = [];
+          let used = 0;
+
+          for (let index = 0; index < count; index += 1) {
+            const raw = (weights[index] / totalWeight) * remaining;
+            const floorValue = Math.floor(raw);
+            floors[index] = floorValue;
+            used += floorValue;
+            remainders.push({ index, value: raw - floorValue });
+          }
+
+          let leftover = remaining - used;
+          remainders.sort((first, second) => second.value - first.value);
+          for (let idx = 0; idx < remainders.length && leftover > 0; idx += 1) {
+            floors[remainders[idx].index] += 1;
+            leftover -= 1;
+          }
+
+          return base.map((value, index) => value + floors[index]);
+        };
+
+        const allocated = allocateProportionalSizes(
+          cells.map((cell) => cell.width),
+          available,
+        );
+        let cursor = rangeStart;
+
+        cells.forEach((cell, index) => {
+          const nextWidth = allocated[index] ?? 1;
+
+          const dataIndex = nextData.findIndex((item) => item.id === cell.id);
+          if (dataIndex >= 0) {
+            nextData[dataIndex].startColumn = cursor;
+            nextData[dataIndex].width = nextWidth;
+          }
+          cursor += nextWidth;
+        });
       };
 
-      const redistributeV = (
+      const redistributeHFromRight = (
         cells: GridItem<T>[],
         rangeStart: number,
         rangeEnd: number,
       ) => {
+        if (cells.length === 0) return;
+
         const available = Math.max(0, rangeEnd - rangeStart);
-        const totalH = cells.reduce((s, c) => s + c.height, 0);
-        let cursor = rangeStart;
-        cells
-          .slice()
-          .sort((a, b) => a.startRow - b.startRow)
-          .forEach((c, j, arr) => {
-            const isLast = j === arr.length - 1;
-            const newH = isLast
-              ? Math.max(1, rangeEnd - cursor)
-              : Math.max(
-                  1,
-                  Math.floor((c.height / Math.max(1, totalH)) * available),
-                );
-            const idx = nextData.findIndex((d) => d.id === c.id);
-            if (idx >= 0) {
-              nextData[idx].startRow = cursor;
-              nextData[idx].height = newH;
+        const allocateProportionalSizes = (
+          sizes: number[],
+          totalAvailable: number,
+        ): number[] => {
+          const count = sizes.length;
+          if (count === 0) return [];
+
+          const safeSizes = sizes.map((size) => Math.max(1, size));
+          if (totalAvailable <= count) {
+            return Array(count).fill(1);
+          }
+
+          const base = Array(count).fill(1);
+          const remaining = totalAvailable - count;
+          const weights = safeSizes.map((size) => size - 1);
+          const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+
+          if (totalWeight <= 0) {
+            const equalShare = Math.floor(remaining / count);
+            let leftover = remaining - equalShare * count;
+            for (let index = 0; index < count; index += 1) {
+              base[index] += equalShare;
+              if (leftover > 0) {
+                base[index] += 1;
+                leftover -= 1;
+              }
             }
-            cursor += newH;
-          });
+            return base;
+          }
+
+          const floors: number[] = Array(count).fill(0);
+          const remainders: Array<{ index: number; value: number }> = [];
+          let used = 0;
+
+          for (let index = 0; index < count; index += 1) {
+            const raw = (weights[index] / totalWeight) * remaining;
+            const floorValue = Math.floor(raw);
+            floors[index] = floorValue;
+            used += floorValue;
+            remainders.push({ index, value: raw - floorValue });
+          }
+
+          let leftover = remaining - used;
+          remainders.sort((first, second) => second.value - first.value);
+          for (let idx = 0; idx < remainders.length && leftover > 0; idx += 1) {
+            floors[remainders[idx].index] += 1;
+            leftover -= 1;
+          }
+
+          return base.map((value, index) => value + floors[index]);
+        };
+
+        const allocated = allocateProportionalSizes(
+          cells.map((cell) => cell.width),
+          available,
+        );
+        let cursor = rangeEnd;
+
+        cells.forEach((cell, index) => {
+          const nextWidth = allocated[index] ?? 1;
+
+          cursor -= nextWidth;
+          const dataIndex = nextData.findIndex((item) => item.id === cell.id);
+          if (dataIndex >= 0) {
+            nextData[dataIndex].startColumn = cursor;
+            nextData[dataIndex].width = nextWidth;
+          }
+        });
+      };
+
+      const redistributeVFromTop = (
+        cells: GridItem<T>[],
+        rangeStart: number,
+        rangeEnd: number,
+      ) => {
+        if (cells.length === 0) return;
+
+        const available = Math.max(0, rangeEnd - rangeStart);
+        const allocateProportionalSizes = (
+          sizes: number[],
+          totalAvailable: number,
+        ): number[] => {
+          const count = sizes.length;
+          if (count === 0) return [];
+
+          const safeSizes = sizes.map((size) => Math.max(1, size));
+          if (totalAvailable <= count) {
+            return Array(count).fill(1);
+          }
+
+          const base = Array(count).fill(1);
+          const remaining = totalAvailable - count;
+          const weights = safeSizes.map((size) => size - 1);
+          const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+
+          if (totalWeight <= 0) {
+            const equalShare = Math.floor(remaining / count);
+            let leftover = remaining - equalShare * count;
+            for (let index = 0; index < count; index += 1) {
+              base[index] += equalShare;
+              if (leftover > 0) {
+                base[index] += 1;
+                leftover -= 1;
+              }
+            }
+            return base;
+          }
+
+          const floors: number[] = Array(count).fill(0);
+          const remainders: Array<{ index: number; value: number }> = [];
+          let used = 0;
+
+          for (let index = 0; index < count; index += 1) {
+            const raw = (weights[index] / totalWeight) * remaining;
+            const floorValue = Math.floor(raw);
+            floors[index] = floorValue;
+            used += floorValue;
+            remainders.push({ index, value: raw - floorValue });
+          }
+
+          let leftover = remaining - used;
+          remainders.sort((first, second) => second.value - first.value);
+          for (let idx = 0; idx < remainders.length && leftover > 0; idx += 1) {
+            floors[remainders[idx].index] += 1;
+            leftover -= 1;
+          }
+
+          return base.map((value, index) => value + floors[index]);
+        };
+
+        const allocated = allocateProportionalSizes(
+          cells.map((cell) => cell.height),
+          available,
+        );
+        let cursor = rangeStart;
+
+        cells.forEach((cell, index) => {
+          const nextHeight = allocated[index] ?? 1;
+
+          const dataIndex = nextData.findIndex((item) => item.id === cell.id);
+          if (dataIndex >= 0) {
+            nextData[dataIndex].startRow = cursor;
+            nextData[dataIndex].height = nextHeight;
+          }
+          cursor += nextHeight;
+        });
+      };
+
+      const redistributeVFromBottom = (
+        cells: GridItem<T>[],
+        rangeStart: number,
+        rangeEnd: number,
+      ) => {
+        if (cells.length === 0) return;
+
+        const available = Math.max(0, rangeEnd - rangeStart);
+        const allocateProportionalSizes = (
+          sizes: number[],
+          totalAvailable: number,
+        ): number[] => {
+          const count = sizes.length;
+          if (count === 0) return [];
+
+          const safeSizes = sizes.map((size) => Math.max(1, size));
+          if (totalAvailable <= count) {
+            return Array(count).fill(1);
+          }
+
+          const base = Array(count).fill(1);
+          const remaining = totalAvailable - count;
+          const weights = safeSizes.map((size) => size - 1);
+          const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+
+          if (totalWeight <= 0) {
+            const equalShare = Math.floor(remaining / count);
+            let leftover = remaining - equalShare * count;
+            for (let index = 0; index < count; index += 1) {
+              base[index] += equalShare;
+              if (leftover > 0) {
+                base[index] += 1;
+                leftover -= 1;
+              }
+            }
+            return base;
+          }
+
+          const floors: number[] = Array(count).fill(0);
+          const remainders: Array<{ index: number; value: number }> = [];
+          let used = 0;
+
+          for (let index = 0; index < count; index += 1) {
+            const raw = (weights[index] / totalWeight) * remaining;
+            const floorValue = Math.floor(raw);
+            floors[index] = floorValue;
+            used += floorValue;
+            remainders.push({ index, value: raw - floorValue });
+          }
+
+          let leftover = remaining - used;
+          remainders.sort((first, second) => second.value - first.value);
+          for (let idx = 0; idx < remainders.length && leftover > 0; idx += 1) {
+            floors[remainders[idx].index] += 1;
+            leftover -= 1;
+          }
+
+          return base.map((value, index) => value + floors[index]);
+        };
+
+        const allocated = allocateProportionalSizes(
+          cells.map((cell) => cell.height),
+          available,
+        );
+        let cursor = rangeEnd;
+
+        cells.forEach((cell, index) => {
+          const nextHeight = allocated[index] ?? 1;
+
+          cursor -= nextHeight;
+          const dataIndex = nextData.findIndex((item) => item.id === cell.id);
+          if (dataIndex >= 0) {
+            nextData[dataIndex].startRow = cursor;
+            nextData[dataIndex].height = nextHeight;
+          }
+        });
       };
 
       if (pushRight && target.width > session.startWidth) {
-        // Only push/compress siblings when growing rightward — shrinking frees
-        // space and siblings should stay where they are.
         const affected = nextData.filter(
           (c) =>
             c.id !== itemId &&
@@ -987,22 +1281,73 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
             inOriginalRowBand(c),
         );
         const targetRight = target.startColumn + target.width;
-        redistributeH(affected, targetRight, columns);
+        const verticalGroups = splitByVerticalOverlap(affected);
+        verticalGroups.forEach((group) => {
+          const sorted = group
+            .slice()
+            .sort((a, b) => a.startColumn - b.startColumn);
+
+          const touched: GridItem<T>[] = [];
+          let cursor = targetRight;
+          let gapStart: number | null = null;
+
+          for (const cell of sorted) {
+            if (cell.startColumn > cursor) {
+              gapStart = cell.startColumn;
+              break;
+            }
+
+            touched.push(cell);
+            cursor = Math.max(cursor, cell.startColumn + cell.width);
+          }
+
+          if (touched.length === 0) {
+            return;
+          }
+
+          const rangeEnd = gapStart ?? columns;
+          redistributeHFromLeft(touched, targetRight, rangeEnd);
+        });
       }
 
       if (pushLeft && target.startColumn < session.startColumn) {
-        // Only push/compress siblings when growing leftward.
         const affected = nextData.filter(
           (c) =>
             c.id !== itemId &&
             c.startColumn + c.width <= session.startColumn &&
             inOriginalRowBand(c),
         );
-        redistributeH(affected, 0, target.startColumn);
+        const verticalGroups = splitByVerticalOverlap(affected);
+        verticalGroups.forEach((group) => {
+          const sorted = group
+            .slice()
+            .sort((a, b) => b.startColumn - a.startColumn);
+
+          const touched: GridItem<T>[] = [];
+          let cursor = target.startColumn;
+          let gapEnd: number | null = null;
+
+          for (const cell of sorted) {
+            const cellEnd = cell.startColumn + cell.width;
+            if (cellEnd < cursor) {
+              gapEnd = cellEnd;
+              break;
+            }
+
+            touched.push(cell);
+            cursor = Math.min(cursor, cell.startColumn);
+          }
+
+          if (touched.length === 0) {
+            return;
+          }
+
+          const rangeStart = gapEnd ?? 0;
+          redistributeHFromRight(touched, rangeStart, target.startColumn);
+        });
       }
 
       if (pushDown && target.height > session.startHeight) {
-        // Only push/compress siblings when growing downward.
         const affected = nextData.filter(
           (c) =>
             c.id !== itemId &&
@@ -1010,18 +1355,66 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
             inOriginalColBand(c),
         );
         const targetBottom = target.startRow + target.height;
-        redistributeV(affected, targetBottom, rows);
+        const horizontalGroups = splitByHorizontalOverlap(affected);
+        horizontalGroups.forEach((group) => {
+          const sorted = group.slice().sort((a, b) => a.startRow - b.startRow);
+
+          const touched: GridItem<T>[] = [];
+          let cursor = targetBottom;
+          let gapStart: number | null = null;
+
+          for (const cell of sorted) {
+            if (cell.startRow > cursor) {
+              gapStart = cell.startRow;
+              break;
+            }
+
+            touched.push(cell);
+            cursor = Math.max(cursor, cell.startRow + cell.height);
+          }
+
+          if (touched.length === 0) {
+            return;
+          }
+
+          const rangeEnd = gapStart ?? rows;
+          redistributeVFromTop(touched, targetBottom, rangeEnd);
+        });
       }
 
       if (pushUp && target.startRow < session.startRow) {
-        // Only push/compress siblings when growing upward.
         const affected = nextData.filter(
           (c) =>
             c.id !== itemId &&
             c.startRow + c.height <= session.startRow &&
             inOriginalColBand(c),
         );
-        redistributeV(affected, 0, target.startRow);
+        const horizontalGroups = splitByHorizontalOverlap(affected);
+        horizontalGroups.forEach((group) => {
+          const sorted = group.slice().sort((a, b) => b.startRow - a.startRow);
+
+          const touched: GridItem<T>[] = [];
+          let cursor = target.startRow;
+          let gapEnd: number | null = null;
+
+          for (const cell of sorted) {
+            const cellBottom = cell.startRow + cell.height;
+            if (cellBottom < cursor) {
+              gapEnd = cellBottom;
+              break;
+            }
+
+            touched.push(cell);
+            cursor = Math.min(cursor, cell.startRow);
+          }
+
+          if (touched.length === 0) {
+            return;
+          }
+
+          const rangeStart = gapEnd ?? 0;
+          redistributeVFromBottom(touched, rangeStart, target.startRow);
+        });
       }
 
       // Clamp everything back within the grid bounds.
