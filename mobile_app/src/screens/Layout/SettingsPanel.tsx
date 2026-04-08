@@ -1,4 +1,4 @@
-import React, { useRef } from "react";
+import React, { useEffect, useRef } from "react";
 import { View, StyleSheet } from "react-native";
 import { IconButton, Text, useTheme } from "react-native-paper";
 import { SidePanel } from "../../components/shared/SidePanel";
@@ -26,12 +26,7 @@ export function SettingsPanel({
   const minRowSize = Math.round(resolution.height / 100);
   const maxRowSize = Math.round(resolution.height / 10);
 
-  const holdIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  const startHold = (callback: () => void) => {
-    callback(); // Immediate first call on press
-    holdIntervalRef.current = setInterval(callback, 50);
-  };
+  const holdIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const stopHold = () => {
     if (holdIntervalRef.current) {
@@ -40,20 +35,80 @@ export function SettingsPanel({
     }
   };
 
+  const startHold = (callback: () => void) => {
+    stopHold();
+    callback(); // Immediate first call on press
+    holdIntervalRef.current = setInterval(callback, 50);
+  };
+
+  useEffect(() => stopHold, []);
+
   const handleColsDecrement = () => {
-    startHold(() => setGridConfig(Math.max(minColSize, columns - 1), rows));
+    startHold(() => {
+      const {
+        columns: currentColumns,
+        rows: currentRows,
+        resolution: currentResolution,
+        setGridConfig: setCurrentGridConfig,
+      } = useLayoutStore.getState();
+      const currentMinColSize = Math.round(currentResolution.width / 100);
+
+      setCurrentGridConfig(
+        Math.max(currentMinColSize, currentColumns - 1),
+        currentRows,
+      );
+    });
   };
 
   const handleColsIncrement = () => {
-    startHold(() => setGridConfig(Math.min(maxColSize, columns + 1), rows));
+    startHold(() => {
+      const {
+        columns: currentColumns,
+        rows: currentRows,
+        resolution: currentResolution,
+        setGridConfig: setCurrentGridConfig,
+      } = useLayoutStore.getState();
+      const currentMaxColSize = Math.round(currentResolution.width / 10);
+
+      setCurrentGridConfig(
+        Math.min(currentMaxColSize, currentColumns + 1),
+        currentRows,
+      );
+    });
   };
 
   const handleRowsDecrement = () => {
-    startHold(() => setGridConfig(columns, Math.max(minRowSize, rows - 1)));
+    startHold(() => {
+      const {
+        columns: currentColumns,
+        rows: currentRows,
+        resolution: currentResolution,
+        setGridConfig: setCurrentGridConfig,
+      } = useLayoutStore.getState();
+      const currentMinRowSize = Math.round(currentResolution.height / 100);
+
+      setCurrentGridConfig(
+        currentColumns,
+        Math.max(currentMinRowSize, currentRows - 1),
+      );
+    });
   };
 
   const handleRowsIncrement = () => {
-    startHold(() => setGridConfig(columns, Math.min(maxRowSize, rows + 1)));
+    startHold(() => {
+      const {
+        columns: currentColumns,
+        rows: currentRows,
+        resolution: currentResolution,
+        setGridConfig: setCurrentGridConfig,
+      } = useLayoutStore.getState();
+      const currentMaxRowSize = Math.round(currentResolution.height / 10);
+
+      setCurrentGridConfig(
+        currentColumns,
+        Math.min(currentMaxRowSize, currentRows + 1),
+      );
+    });
   };
 
   return (

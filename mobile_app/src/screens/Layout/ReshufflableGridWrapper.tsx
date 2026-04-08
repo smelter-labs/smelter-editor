@@ -180,6 +180,58 @@ const distributeEqualShrink = (widths: number[], deficit: number) => {
   return next;
 };
 
+const allocateProportionalSizes = (
+  sizes: number[],
+  totalAvailable: number,
+): number[] => {
+  const count = sizes.length;
+  if (count === 0) return [];
+
+  const safeSizes = sizes.map((size) => Math.max(1, size));
+  if (totalAvailable <= count) {
+    return Array(count).fill(1);
+  }
+
+  const base = Array(count).fill(1);
+  const remaining = totalAvailable - count;
+  const weights = safeSizes.map((size) => size - 1);
+  const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+
+  if (totalWeight <= 0) {
+    const equalShare = Math.floor(remaining / count);
+    let leftover = remaining - equalShare * count;
+    for (let index = 0; index < count; index += 1) {
+      base[index] += equalShare;
+      if (leftover > 0) {
+        base[index] += 1;
+        leftover -= 1;
+      }
+    }
+    return base;
+  }
+
+  const floors: number[] = Array(count).fill(0);
+  const remainders: Array<{ index: number; value: number }> = [];
+  let used = 0;
+
+  for (let index = 0; index < count; index += 1) {
+    const raw = (weights[index] / totalWeight) * remaining;
+    const floorValue = Math.floor(raw);
+    floors[index] = floorValue;
+    used += floorValue;
+    remainders.push({ index, value: raw - floorValue });
+  }
+
+  let leftover = remaining - used;
+  remainders.sort((first, second) => second.value - first.value);
+  for (let index = 0; index < remainders.length && leftover > 0; index += 1) {
+    floors[remainders[index].index] += 1;
+    leftover -= 1;
+  }
+
+  return base.map((value, index) => value + floors[index]);
+};
+
 const clampWithinGrid = <T,>(
   item: GridItem<T>,
   rows: number,
@@ -994,57 +1046,6 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
         if (cells.length === 0) return;
 
         const available = Math.max(0, rangeEnd - rangeStart);
-        const allocateProportionalSizes = (
-          sizes: number[],
-          totalAvailable: number,
-        ): number[] => {
-          const count = sizes.length;
-          if (count === 0) return [];
-
-          const safeSizes = sizes.map((size) => Math.max(1, size));
-          if (totalAvailable <= count) {
-            return Array(count).fill(1);
-          }
-
-          const base = Array(count).fill(1);
-          const remaining = totalAvailable - count;
-          const weights = safeSizes.map((size) => size - 1);
-          const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
-
-          if (totalWeight <= 0) {
-            const equalShare = Math.floor(remaining / count);
-            let leftover = remaining - equalShare * count;
-            for (let index = 0; index < count; index += 1) {
-              base[index] += equalShare;
-              if (leftover > 0) {
-                base[index] += 1;
-                leftover -= 1;
-              }
-            }
-            return base;
-          }
-
-          const floors: number[] = Array(count).fill(0);
-          const remainders: Array<{ index: number; value: number }> = [];
-          let used = 0;
-
-          for (let index = 0; index < count; index += 1) {
-            const raw = (weights[index] / totalWeight) * remaining;
-            const floorValue = Math.floor(raw);
-            floors[index] = floorValue;
-            used += floorValue;
-            remainders.push({ index, value: raw - floorValue });
-          }
-
-          let leftover = remaining - used;
-          remainders.sort((first, second) => second.value - first.value);
-          for (let idx = 0; idx < remainders.length && leftover > 0; idx += 1) {
-            floors[remainders[idx].index] += 1;
-            leftover -= 1;
-          }
-
-          return base.map((value, index) => value + floors[index]);
-        };
 
         const allocated = allocateProportionalSizes(
           cells.map((cell) => cell.width),
@@ -1072,57 +1073,6 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
         if (cells.length === 0) return;
 
         const available = Math.max(0, rangeEnd - rangeStart);
-        const allocateProportionalSizes = (
-          sizes: number[],
-          totalAvailable: number,
-        ): number[] => {
-          const count = sizes.length;
-          if (count === 0) return [];
-
-          const safeSizes = sizes.map((size) => Math.max(1, size));
-          if (totalAvailable <= count) {
-            return Array(count).fill(1);
-          }
-
-          const base = Array(count).fill(1);
-          const remaining = totalAvailable - count;
-          const weights = safeSizes.map((size) => size - 1);
-          const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
-
-          if (totalWeight <= 0) {
-            const equalShare = Math.floor(remaining / count);
-            let leftover = remaining - equalShare * count;
-            for (let index = 0; index < count; index += 1) {
-              base[index] += equalShare;
-              if (leftover > 0) {
-                base[index] += 1;
-                leftover -= 1;
-              }
-            }
-            return base;
-          }
-
-          const floors: number[] = Array(count).fill(0);
-          const remainders: Array<{ index: number; value: number }> = [];
-          let used = 0;
-
-          for (let index = 0; index < count; index += 1) {
-            const raw = (weights[index] / totalWeight) * remaining;
-            const floorValue = Math.floor(raw);
-            floors[index] = floorValue;
-            used += floorValue;
-            remainders.push({ index, value: raw - floorValue });
-          }
-
-          let leftover = remaining - used;
-          remainders.sort((first, second) => second.value - first.value);
-          for (let idx = 0; idx < remainders.length && leftover > 0; idx += 1) {
-            floors[remainders[idx].index] += 1;
-            leftover -= 1;
-          }
-
-          return base.map((value, index) => value + floors[index]);
-        };
 
         const allocated = allocateProportionalSizes(
           cells.map((cell) => cell.width),
@@ -1150,57 +1100,6 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
         if (cells.length === 0) return;
 
         const available = Math.max(0, rangeEnd - rangeStart);
-        const allocateProportionalSizes = (
-          sizes: number[],
-          totalAvailable: number,
-        ): number[] => {
-          const count = sizes.length;
-          if (count === 0) return [];
-
-          const safeSizes = sizes.map((size) => Math.max(1, size));
-          if (totalAvailable <= count) {
-            return Array(count).fill(1);
-          }
-
-          const base = Array(count).fill(1);
-          const remaining = totalAvailable - count;
-          const weights = safeSizes.map((size) => size - 1);
-          const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
-
-          if (totalWeight <= 0) {
-            const equalShare = Math.floor(remaining / count);
-            let leftover = remaining - equalShare * count;
-            for (let index = 0; index < count; index += 1) {
-              base[index] += equalShare;
-              if (leftover > 0) {
-                base[index] += 1;
-                leftover -= 1;
-              }
-            }
-            return base;
-          }
-
-          const floors: number[] = Array(count).fill(0);
-          const remainders: Array<{ index: number; value: number }> = [];
-          let used = 0;
-
-          for (let index = 0; index < count; index += 1) {
-            const raw = (weights[index] / totalWeight) * remaining;
-            const floorValue = Math.floor(raw);
-            floors[index] = floorValue;
-            used += floorValue;
-            remainders.push({ index, value: raw - floorValue });
-          }
-
-          let leftover = remaining - used;
-          remainders.sort((first, second) => second.value - first.value);
-          for (let idx = 0; idx < remainders.length && leftover > 0; idx += 1) {
-            floors[remainders[idx].index] += 1;
-            leftover -= 1;
-          }
-
-          return base.map((value, index) => value + floors[index]);
-        };
 
         const allocated = allocateProportionalSizes(
           cells.map((cell) => cell.height),
@@ -1228,57 +1127,6 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
         if (cells.length === 0) return;
 
         const available = Math.max(0, rangeEnd - rangeStart);
-        const allocateProportionalSizes = (
-          sizes: number[],
-          totalAvailable: number,
-        ): number[] => {
-          const count = sizes.length;
-          if (count === 0) return [];
-
-          const safeSizes = sizes.map((size) => Math.max(1, size));
-          if (totalAvailable <= count) {
-            return Array(count).fill(1);
-          }
-
-          const base = Array(count).fill(1);
-          const remaining = totalAvailable - count;
-          const weights = safeSizes.map((size) => size - 1);
-          const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
-
-          if (totalWeight <= 0) {
-            const equalShare = Math.floor(remaining / count);
-            let leftover = remaining - equalShare * count;
-            for (let index = 0; index < count; index += 1) {
-              base[index] += equalShare;
-              if (leftover > 0) {
-                base[index] += 1;
-                leftover -= 1;
-              }
-            }
-            return base;
-          }
-
-          const floors: number[] = Array(count).fill(0);
-          const remainders: Array<{ index: number; value: number }> = [];
-          let used = 0;
-
-          for (let index = 0; index < count; index += 1) {
-            const raw = (weights[index] / totalWeight) * remaining;
-            const floorValue = Math.floor(raw);
-            floors[index] = floorValue;
-            used += floorValue;
-            remainders.push({ index, value: raw - floorValue });
-          }
-
-          let leftover = remaining - used;
-          remainders.sort((first, second) => second.value - first.value);
-          for (let idx = 0; idx < remainders.length && leftover > 0; idx += 1) {
-            floors[remainders[idx].index] += 1;
-            leftover -= 1;
-          }
-
-          return base.map((value, index) => value + floors[index]);
-        };
 
         const allocated = allocateProportionalSizes(
           cells.map((cell) => cell.height),
