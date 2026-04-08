@@ -1016,10 +1016,13 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
     if (roomStructureChanged) {
       const sourceId =
         (req.headers['x-source-id'] as string | undefined) ?? null;
+      const snapshot = room.getState();
       roomEventBus.broadcast(roomId, {
         type: 'room_updated',
         roomId,
         sourceId,
+        layers: snapshot.layers,
+        inputs: snapshot.inputs.map(toPublicInputState),
       });
     }
     if (req.body.isPublic !== undefined) {
@@ -1104,10 +1107,13 @@ routes.post<RoomIdParams & { Body: Static<typeof InputSchema> }>(
       bearerToken = await room.connectInput(inputId);
       const sourceId =
         (req.headers['x-source-id'] as string | undefined) ?? null;
+      const snapshot = room.getState();
       roomEventBus.broadcast(roomId, {
         type: 'room_updated',
         roomId,
         sourceId,
+        layers: snapshot.layers,
+        inputs: snapshot.inputs.map(toPublicInputState),
       });
     }
     let whipUrl = `${config.whipBaseUrl}/${inputId}`;

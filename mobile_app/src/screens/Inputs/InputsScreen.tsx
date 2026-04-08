@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import type { WSEventPayload } from "../../types/websocket";
 import { View, StyleSheet } from "react-native";
 import { useTheme } from "react-native-paper";
 import DraggableFlatList, {
@@ -16,6 +17,8 @@ import { InputCard } from "./InputCard";
 import { InputSidePanel } from "./InputSidePanel";
 import { InputsSettingsPanel } from "./InputsSettingsPanel";
 import { ScreenLabel } from "../../components/shared/ScreenLabel";
+
+const ROOM_UPDATE_COALESCE_MS = 16;
 
 export function InputsScreen() {
   const theme = useTheme();
@@ -45,33 +48,36 @@ export function InputsScreen() {
     });
   }, []);
 
+  // Debounce timer for room_updated: coalesces a burst of buffered events (e.g.
+  // TCP flush after screen wake) into a single re-render on the latest state.
+  const refreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
+
   // Subscribe to server input updates
   useEffect(() => {
     const unsubUpdated = wsService.on("input_updated", (event) => {
-      console.log("[Inputs] input_updated:", event.inputId);
       const changes = apiService.mapInputUpdateToCardChanges(event.input);
       updateInput(event.inputId, changes);
     });
     const unsubDeleted = wsService.on("input_deleted", (event) => {
-      console.log("[Inputs] input_deleted:", event.inputId);
       removeInput(event.inputId);
     });
-    const unsubRoom = wsService.on("room_updated", async () => {
-      console.log("[Inputs] room_updated — refreshing inputs");
-      try {
-        const { inputs: updatedInputs } = await apiService.fetchRoomState(
-          serverUrl,
-          roomId,
-        );
-        setInputs(updatedInputs);
-      } catch (err) {
-        console.warn("[Inputs] Failed to refresh inputs on room_updated:", err);
-      }
+    const unsubRoom = wsService.on("room_updated", (event) => {
+      pendingEventRef.current = event;
+      if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current);
+      refreshDebounceRef.current = setTimeout(() => {
+        refreshDebounceRef.current = null;
+        const latest = pendingEventRef.current;
+        pendingEventRef.current = null;
+        if (!latest) return;
+        setInputs(apiService.mapInputsToCards(latest.inputs));
+      }, ROOM_UPDATE_COALESCE_MS);
     });
     return () => {
       unsubUpdated();
       unsubDeleted();
       unsubRoom();
+      if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current);
     };
   }, [serverUrl, roomId, updateInput, removeInput, setInputs]);
 

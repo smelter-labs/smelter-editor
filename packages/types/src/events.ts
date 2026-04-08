@@ -1,4 +1,5 @@
 import type { PublicInputState } from './public-input-state.js';
+import type { Layer } from './layout.js';
 
 export type ConnectedPeer = {
   clientId: string;
@@ -28,6 +29,10 @@ export type RoomUpdatedEvent = {
   roomId: string;
   /** Value of `x-source-id` header from the triggering request, if any. */
   sourceId: string | null;
+  /** Current layers after the mutation — allows clients to apply state without an extra round-trip. */
+  layers: Layer[];
+  /** Current inputs after the mutation — allows clients to apply state without an extra round-trip. */
+  inputs: PublicInputState[];
 };
 
 export type PeersUpdatedEvent = {

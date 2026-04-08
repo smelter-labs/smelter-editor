@@ -23,6 +23,9 @@ import type { ItemData } from "./ReshufflableGridWrapper";
 import type { LayerItemProps } from "./types";
 import type { Layer, LayerInput } from "../../types/layout";
 import type { Resolution } from "@smelter-editor/types";
+import type { WSEventPayload } from "../../types/websocket";
+
+const ROOM_UPDATE_COALESCE_MS = 16;
 
 // ─── Conversion helpers ───────────────────────────────────────────────────────
 
@@ -144,24 +147,32 @@ export function LayoutScreen() {
   // Using refs (not state) so they don't trigger re-renders or recreate closures.
   const isPushing = useRef(false);
   const pendingRefresh = useRef(false);
+  // Debounce timer for room_updated: coalesces a burst of buffered events (e.g.
+  // TCP flush after screen wake) into a single re-render on the latest state.
+  const refreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Holds the latest room_updated payload so the debounce callback always applies
+  // the most recent state rather than a stale closure capture.
+  const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
 
   // Subscribe to server room updates
   useEffect(() => {
-    const unsubRoom = wsService.on("room_updated", async () => {
+    const unsubRoom = wsService.on("room_updated", (event) => {
       if (isPushing.current) {
         // Defer: a push is in-flight; applying server state now would roll back the
         // optimistic update. The pushLayers finally-block will reconcile instead.
         pendingRefresh.current = true;
         return;
       }
-      try {
-        const { layers: updatedLayers, inputs: updatedInputs } =
-          await apiService.fetchRoomState(serverUrl, roomId);
-        setLayers(updatedLayers);
-        setInputs(updatedInputs);
-      } catch (err) {
-        console.warn("[Layout] Failed to refresh layers on room_updated:", err);
-      }
+      pendingEventRef.current = event;
+      if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current);
+      refreshDebounceRef.current = setTimeout(() => {
+        refreshDebounceRef.current = null;
+        const latest = pendingEventRef.current;
+        pendingEventRef.current = null;
+        if (!latest) return;
+        setLayers(latest.layers);
+        setInputs(apiService.mapInputsToCards(latest.inputs));
+      }, ROOM_UPDATE_COALESCE_MS);
     });
 
     // When an input is deleted, remove it from the layout immediately so the grid
@@ -173,6 +184,7 @@ export function LayoutScreen() {
     return () => {
       unsubRoom();
       unsubDeleted();
+      if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current);
     };
   }, [serverUrl, roomId, setLayers, setInputs, removeInputFromLayers]);
 

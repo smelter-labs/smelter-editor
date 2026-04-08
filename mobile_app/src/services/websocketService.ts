@@ -71,7 +71,6 @@ class WebSocketService {
         socket.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            console.log("[WS] <-", JSON.stringify(data, null, 2));
             if (data.type) {
               this.dispatchEvent(data.type as WSEventKey, data);
             }

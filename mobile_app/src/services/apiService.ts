@@ -255,7 +255,7 @@ class ApiService {
   /**
    * Map server PublicInputState array to mobile InputCard format.
    */
-  private mapInputsToCards(inputs: PublicInputState[]): InputCard[] {
+  mapInputsToCards(inputs: PublicInputState[]): InputCard[] {
     return inputs.map((input) => ({
       id: input.inputId,
       name: input.title || "Unknown Input",

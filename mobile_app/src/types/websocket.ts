@@ -1,4 +1,6 @@
 import type { InputCard } from "./input";
+import type { Layer } from "./layout";
+import type { PublicInputState } from "./room";
 
 /**
  * Server -> client WS events.
@@ -26,6 +28,10 @@ export type WSEventMap = {
     type: "room_updated";
     roomId: string;
     sourceId: string | null;
+    /** Authoritative layers after the mutation — apply directly, no extra fetch needed. */
+    layers: Layer[];
+    /** Authoritative inputs after the mutation — apply directly, no extra fetch needed. */
+    inputs: PublicInputState[];
   };
   peers_updated: {
     type: "peers_updated";
