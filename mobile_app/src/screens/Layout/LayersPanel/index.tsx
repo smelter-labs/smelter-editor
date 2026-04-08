@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  FlatList,
   InteractionManager,
-  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -154,17 +154,17 @@ export default function LayersPanel({
           <Text style={styles.panelTitle}>LAYERS</Text>
         </View>
 
-        <ScrollView
+        <FlatList
           style={styles.list}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-        >
-          {layers.map((layer, layerIndex) => {
+          data={layers}
+          keyExtractor={(layer) => layer.id}
+          renderItem={({ item: layer, index: layerIndex }) => {
             const ui = getUi(layer.id);
             return (
               <LayerComponent
-                key={layer.id}
                 layer={layer}
                 inputs={inputs}
                 ui={ui}
@@ -182,21 +182,21 @@ export default function LayersPanel({
                 }
               />
             );
-          })}
-
-          {/* Drop zone to place a layer at the very end of the list */}
-          <Droppable<DragData>
-            style={styles.tailDropZone}
-            activeStyle={styles.tailDropZoneActive}
-            onDrop={(data) => {
-              if (data.type === "layer") {
-                handleLayerDrop(data.layerId, layers.length);
-              }
-            }}
-          >
-            <View style={styles.tailLine} />
-          </Droppable>
-        </ScrollView>
+          }}
+          ListFooterComponent={
+            <Droppable<DragData>
+              style={styles.tailDropZone}
+              activeStyle={styles.tailDropZoneActive}
+              onDrop={(data) => {
+                if (data.type === "layer") {
+                  handleLayerDrop(data.layerId, layers.length);
+                }
+              }}
+            >
+              <View style={styles.tailLine} />
+            </Droppable>
+          }
+        />
       </View>
     </DropProvider>
   );

@@ -1,11 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import {
-  View,
-  StyleSheet,
-  LayoutAnimation,
-  Platform,
-  UIManager,
-} from "react-native";
+import { View, StyleSheet, LayoutAnimation } from "react-native";
 import { ReshufflableGrid, type Cell } from "react-native-reshuffled";
 import { useNitroHealth } from "../../hooks/useNitroHealth";
 
@@ -558,15 +552,6 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
     lastResizeDeltaRef.current = null;
     setSelectedItemId(null);
   }, [columns, rows]);
-
-  useEffect(() => {
-    if (
-      Platform.OS === "android" &&
-      UIManager.setLayoutAnimationEnabledExperimental
-    ) {
-      UIManager.setLayoutAnimationEnabledExperimental(true);
-    }
-  }, []);
 
   useEffect(() => {
     console.info("[LayoutGrid] Performance mode", {

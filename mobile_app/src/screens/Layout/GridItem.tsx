@@ -51,6 +51,7 @@ export function GridItemCell({
     const translationY = useSharedValue(0);
 
     return Gesture.Pan()
+      .maxPointers(1)
       .onStart(() => {
         onResizeStart?.(direction);
         setActiveDragDirection(direction);

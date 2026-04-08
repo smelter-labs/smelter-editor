@@ -38,14 +38,17 @@ export default function GridCell({
   const previewTranslateX = useSharedValue(0);
   const previewTranslateY = useSharedValue(0);
 
-  const previewAnimatedStyle = useAnimatedStyle(() => ({
-    transform: [
-      { translateX: previewTranslateX.value },
-      { translateY: previewTranslateY.value },
-      { scaleX: previewScaleX.value },
-      { scaleY: previewScaleY.value },
-    ],
-  }));
+  const previewAnimatedStyle = useAnimatedStyle(() => {
+    "worklet";
+    return {
+      transform: [
+        { translateX: previewTranslateX.value },
+        { translateY: previewTranslateY.value },
+        { scaleX: previewScaleX.value },
+        { scaleY: previewScaleY.value },
+      ],
+    };
+  });
 
   const rightDirections: ResizeHandleDirection[] = [
     "right",
@@ -66,6 +69,7 @@ export default function GridCell({
 
   const createResizeGesture = (direction: ResizeHandleDirection) => {
     return Gesture.Pan()
+      .maxPointers(1)
       .minDistance(1) // activate on the very first pixel so the grid's long-press can't win
       .onStart(() => {
         "worklet";

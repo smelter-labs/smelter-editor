@@ -200,8 +200,8 @@ export function useJoinRoom() {
       setLayers(layers);
       setResolution(resolution);
       setGridConfig(
-        Math.round(resolution.width / 10),
-        Math.round(resolution.height / 10),
+        Math.round(resolution.width / 50),
+        Math.round(resolution.height / 50),
       );
 
       console.log("[JoinRoom] Room state loaded", {

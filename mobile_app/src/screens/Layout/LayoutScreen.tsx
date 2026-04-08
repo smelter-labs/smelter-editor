@@ -7,7 +7,6 @@ import React, {
 } from "react";
 import { View, StyleSheet } from "react-native";
 import { Chip, useTheme } from "react-native-paper";
-import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import { useLayoutStore } from "../../store/layoutStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useInputsStore } from "../../store/inputsStore";
@@ -271,14 +270,6 @@ export function LayoutScreen() {
     return map;
   }, [layers, inputs, resolution, columns, rows]);
 
-  // Three-finger pan gesture that allows screen swipe through the canvas
-  // This gesture does nothing on its own but prevents the grid from consuming
-  // the three-finger gesture that's handled at the MainNavigator level
-  const threeFingerGesture = Gesture.Pan()
-    .minPointers(3)
-    .maxPointers(3)
-    .activeOffsetX([-20, 20]);
-
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
       <ScreenLabel label={`Layout (${layers.length} layers)`} />
@@ -309,36 +300,34 @@ export function LayoutScreen() {
       </View>
 
       {/* Canvas: stacked layer grids — layers[0] is topmost (highest zIndex) */}
-      <GestureDetector gesture={threeFingerGesture}>
-        <View style={styles.canvas}>
-          {layers.map((layer, i) => {
-            const itemData = layerItemDataMap.get(layer.id) ?? [];
-            return (
-              <View
-                key={layer.id}
-                style={[
-                  StyleSheet.absoluteFillObject,
-                  { zIndex: layers.length - i },
-                ]}
-                pointerEvents="box-none"
-              >
-                <ReshufflableGridWrapper
-                  itemData={itemData}
-                  renderedComponent={GridCell}
-                  onItemChange={(items) => handleGridChange(layer.id, items)}
-                  onItemLongPress={(itemId) => {
-                    setEffectsInputId(itemId);
-                    setEffectsPanelOpen(true);
-                  }}
-                  rows={rows}
-                  columns={columns}
-                  containerStyle={styles.layerGrid}
-                />
-              </View>
-            );
-          })}
-        </View>
-      </GestureDetector>
+      <View style={styles.canvas}>
+        {layers.map((layer, i) => {
+          const itemData = layerItemDataMap.get(layer.id) ?? [];
+          return (
+            <View
+              key={layer.id}
+              style={[
+                StyleSheet.absoluteFillObject,
+                { zIndex: layers.length - i },
+              ]}
+              pointerEvents="box-none"
+            >
+              <ReshufflableGridWrapper
+                itemData={itemData}
+                renderedComponent={GridCell}
+                onItemChange={(items) => handleGridChange(layer.id, items)}
+                onItemLongPress={(itemId) => {
+                  setEffectsInputId(itemId);
+                  setEffectsPanelOpen(true);
+                }}
+                rows={rows}
+                columns={columns}
+                containerStyle={styles.layerGrid}
+              />
+            </View>
+          );
+        })}
+      </View>
 
       {/* Layers panel — slide-in from right */}
       <SidePanel
