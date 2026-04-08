@@ -21,12 +21,14 @@ interface LayoutState {
 }
 
 const DEFAULT_RESOLUTION: Resolution = { width: 1920, height: 1080 };
+const DEFAULT_COLUMNS = Math.round(DEFAULT_RESOLUTION.width / 50);
+const DEFAULT_ROWS = Math.round(DEFAULT_RESOLUTION.height / 50);
 
 export const useLayoutStore = create<LayoutState>()((set) => ({
   layers: [],
   resolution: DEFAULT_RESOLUTION,
-  columns: 20,
-  rows: 20,
+  columns: DEFAULT_COLUMNS,
+  rows: DEFAULT_ROWS,
   isDirty: false,
 
   setLayers: (layers) => set({ layers, isDirty: false }),

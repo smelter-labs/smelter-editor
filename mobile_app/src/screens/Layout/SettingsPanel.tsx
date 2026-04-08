@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef } from "react";
 import { View, StyleSheet } from "react-native";
 import { IconButton, Text, useTheme } from "react-native-paper";
 import { SidePanel } from "../../components/shared/SidePanel";
@@ -20,7 +20,41 @@ export function SettingsPanel({
   onClose,
 }: SettingsPanelProps) {
   const theme = useTheme();
-  const { columns, rows, setGridConfig } = useLayoutStore();
+  const { columns, rows, resolution, setGridConfig } = useLayoutStore();
+  const minColSize = Math.round(resolution.width / 100);
+  const maxColSize = Math.round(resolution.width / 10);
+  const minRowSize = Math.round(resolution.height / 100);
+  const maxRowSize = Math.round(resolution.height / 10);
+
+  const holdIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  const startHold = (callback: () => void) => {
+    callback(); // Immediate first call on press
+    holdIntervalRef.current = setInterval(callback, 50);
+  };
+
+  const stopHold = () => {
+    if (holdIntervalRef.current) {
+      clearInterval(holdIntervalRef.current);
+      holdIntervalRef.current = null;
+    }
+  };
+
+  const handleColsDecrement = () => {
+    startHold(() => setGridConfig(Math.max(minColSize, columns - 1), rows));
+  };
+
+  const handleColsIncrement = () => {
+    startHold(() => setGridConfig(Math.min(maxColSize, columns + 1), rows));
+  };
+
+  const handleRowsDecrement = () => {
+    startHold(() => setGridConfig(columns, Math.max(minRowSize, rows - 1)));
+  };
+
+  const handleRowsIncrement = () => {
+    startHold(() => setGridConfig(columns, Math.min(maxRowSize, rows + 1)));
+  };
 
   return (
     <SidePanel isVisible={isVisible} side={side} onClose={onClose}>
@@ -41,7 +75,8 @@ export function SettingsPanel({
               icon="minus"
               mode="contained-tonal"
               size={18}
-              onPress={() => setGridConfig(Math.max(1, columns - 1), rows)}
+              onPressIn={handleColsDecrement}
+              onPressOut={stopHold}
             />
             <Text variant="bodyLarge" style={styles.value}>
               {columns}
@@ -50,7 +85,8 @@ export function SettingsPanel({
               icon="plus"
               mode="contained-tonal"
               size={18}
-              onPress={() => setGridConfig(columns + 1, rows)}
+              onPressIn={handleColsIncrement}
+              onPressOut={stopHold}
             />
           </View>
         </View>
@@ -67,7 +103,8 @@ export function SettingsPanel({
               icon="minus"
               mode="contained-tonal"
               size={18}
-              onPress={() => setGridConfig(columns, Math.max(1, rows - 1))}
+              onPressIn={handleRowsDecrement}
+              onPressOut={stopHold}
             />
             <Text variant="bodyLarge" style={styles.value}>
               {rows}
@@ -76,7 +113,8 @@ export function SettingsPanel({
               icon="plus"
               mode="contained-tonal"
               size={18}
-              onPress={() => setGridConfig(columns, rows + 1)}
+              onPressIn={handleRowsIncrement}
+              onPressOut={stopHold}
             />
           </View>
         </View>
