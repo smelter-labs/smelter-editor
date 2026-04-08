@@ -2194,6 +2194,41 @@ function DeleteLibraryItemButton({
   );
 }
 
+function buildLibraryDownloadHref(
+  kind: 'mp4' | 'audio' | 'image',
+  fileName: string,
+): string {
+  const prefix =
+    kind === 'mp4'
+      ? '/api/download/mp4'
+      : kind === 'audio'
+        ? '/api/download/audio'
+        : '/api/download/picture';
+  const encodedPath = fileName
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+  return `${prefix}/${encodedPath}`;
+}
+
+function DownloadLibraryItemButton({
+  href,
+  downloadName,
+}: {
+  href: string;
+  downloadName: string;
+}) {
+  return (
+    <a
+      href={href}
+      download={downloadName}
+      className='block w-full py-1.5 text-center bg-transparent border border-[#00f3ff]/40 text-[#00f3ff] font-mono text-[10px] uppercase tracking-widest hover:bg-[#00f3ff]/10 transition-colors cursor-pointer'>
+      DOWNLOAD_ASSET
+    </a>
+  );
+}
+
 // ── Type-specific Inspectors ─────────────────────────────────
 
 function Mp4Inspector({
@@ -2259,6 +2294,10 @@ function Mp4Inspector({
         label='INITIATE_FEED'
         onClick={handleAdd}
         loading={loading}
+      />
+      <DownloadLibraryItemButton
+        href={buildLibraryDownloadHref('mp4', item.fileName)}
+        downloadName={baseName(item.fileName)}
       />
       <DeleteLibraryItemButton
         onClick={handleDelete}
@@ -2329,6 +2368,10 @@ function AudioInspector({
         label='INITIATE_FEED'
         onClick={handleAdd}
         loading={loading}
+      />
+      <DownloadLibraryItemButton
+        href={buildLibraryDownloadHref('audio', item.fileName)}
+        downloadName={baseName(item.fileName)}
       />
       <DeleteLibraryItemButton
         onClick={handleDelete}
@@ -2408,6 +2451,10 @@ function ImageInspector({
         label='INITIATE_FEED'
         onClick={handleAdd}
         loading={loading}
+      />
+      <DownloadLibraryItemButton
+        href={buildLibraryDownloadHref('image', item.fileName)}
+        downloadName={baseName(item.fileName)}
       />
       <DeleteLibraryItemButton
         onClick={handleDelete}

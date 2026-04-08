@@ -39,7 +39,7 @@ import { getAudioWaveformPath } from '../audio-files/audioWaveform';
 import { KickChannelSuggestions } from '../kick/KickChannelMonitor';
 import shadersController from '../shaders/shaders';
 import { DATA_DIR } from '../dataDir';
-import { uploadRoutes } from '../core/routes/uploadRoutes';
+import { uploadRoutes, sanitizeFolderPath } from '../core/routes/uploadRoutes';
 import {
   RESOLUTION_PRESETS,
   type Resolution,
@@ -426,6 +426,105 @@ routes.get<{ Params: { fileName: string } }>(
     } catch (err: any) {
       console.error('Failed to read picture file', { filePath, err });
       res.status(500).send({ error: 'Failed to read picture file' });
+    }
+  },
+);
+
+function attachmentFileNameHeader(filePath: string): string {
+  const base = path.basename(filePath);
+  const safe = base.replace(/"/g, '');
+  return `attachment; filename="${safe}"`;
+}
+
+routes.get<{ Params: { '*': string } }>(
+  '/download/mp4/*',
+  { schema: { params: Type.Object({ '*': Type.String() }) } },
+  async (req, res) => {
+    const decoded = decodeURIComponent(req.params['*']);
+    const sanitized = sanitizeFolderPath(decoded);
+    if (sanitized === null) {
+      return res.status(400).send({ error: 'Invalid file path' });
+    }
+    const filePath = path.join(DATA_DIR, 'mp4s', sanitized);
+    if (!(await pathExists(filePath))) {
+      return res.status(404).send({ error: 'File not found' });
+    }
+    try {
+      const fileStat = await stat(filePath);
+      const data = await readFile(filePath);
+      res.header('Content-Type', 'video/mp4');
+      res.header('Content-Disposition', attachmentFileNameHeader(filePath));
+      res.header('Content-Length', fileStat.size.toString());
+      res.send(data);
+    } catch (err: any) {
+      console.error('Failed to read MP4 for download', { filePath, err });
+      res.status(500).send({ error: 'Failed to read file' });
+    }
+  },
+);
+
+routes.get<{ Params: { '*': string } }>(
+  '/download/audio/*',
+  { schema: { params: Type.Object({ '*': Type.String() }) } },
+  async (req, res) => {
+    const decoded = decodeURIComponent(req.params['*']);
+    const sanitized = sanitizeFolderPath(decoded);
+    if (sanitized === null) {
+      return res.status(400).send({ error: 'Invalid file path' });
+    }
+    const filePath = path.join(DATA_DIR, 'audios', sanitized);
+    if (!(await pathExists(filePath))) {
+      return res.status(404).send({ error: 'File not found' });
+    }
+    try {
+      const fileStat = await stat(filePath);
+      const data = await readFile(filePath);
+      res.header('Content-Type', 'video/mp4');
+      res.header('Content-Disposition', attachmentFileNameHeader(filePath));
+      res.header('Content-Length', fileStat.size.toString());
+      res.send(data);
+    } catch (err: any) {
+      console.error('Failed to read audio asset for download', {
+        filePath,
+        err,
+      });
+      res.status(500).send({ error: 'Failed to read file' });
+    }
+  },
+);
+
+routes.get<{ Params: { '*': string } }>(
+  '/download/picture/*',
+  { schema: { params: Type.Object({ '*': Type.String() }) } },
+  async (req, res) => {
+    const decoded = decodeURIComponent(req.params['*']);
+    const sanitized = sanitizeFolderPath(decoded);
+    if (sanitized === null) {
+      return res.status(400).send({ error: 'Invalid file path' });
+    }
+    const filePath = path.join(DATA_DIR, 'pictures', sanitized);
+    if (!(await pathExists(filePath))) {
+      return res.status(404).send({ error: 'File not found' });
+    }
+    try {
+      const ext = path.extname(sanitized).toLowerCase();
+      const mimeMap: Record<string, string> = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.svg': 'image/svg+xml',
+        '.webp': 'image/webp',
+      };
+      const fileStat = await stat(filePath);
+      const data = await readFile(filePath);
+      res.header('Content-Type', mimeMap[ext] ?? 'application/octet-stream');
+      res.header('Content-Disposition', attachmentFileNameHeader(filePath));
+      res.header('Content-Length', fileStat.size.toString());
+      res.send(data);
+    } catch (err: any) {
+      console.error('Failed to read picture for download', { filePath, err });
+      res.status(500).send({ error: 'Failed to read file' });
     }
   },
 );

@@ -77,7 +77,6 @@ export class RoomState {
     {
       id: 'default',
       inputs: [],
-      behavior: { type: 'equal-grid', autoscale: true },
     },
   ];
   private swapDurationMs: number = 500;
@@ -335,7 +334,14 @@ export class RoomState {
         }
       }
 
-      this.updateStoreWithState();
+      // Apply store + behavior layouts immediately (do not debounce: callers expect
+      // this.layers to match computeLayout right after updateLayers returns).
+      if (this.pendingStoreFlushTimer) {
+        clearTimeout(this.pendingStoreFlushTimer);
+        this.pendingStoreFlushTimer = null;
+      }
+      this.storeUpdateScheduled = false;
+      this.flushStoreUpdate();
     });
   }
 
@@ -443,6 +449,41 @@ export class RoomState {
   public reorderInputs(inputOrder: string[]) {
     return this.mutex.runExclusive(() => {
       this.inputManager.reorderInputs(inputOrder);
+
+      const orderIndex = new Map(inputOrder.map((id, idx) => [id, idx]));
+      for (const layer of this.layers) {
+        if (!layer.behavior) {
+          // Manual layer: positions are stored per-input, so we need to keep
+          // slot positions stable and reassign which input occupies each slot.
+          const slotPositions = layer.inputs.map((li) => ({
+            x: li.x,
+            y: li.y,
+            width: li.width,
+            height: li.height,
+          }));
+          layer.inputs.sort((a, b) => {
+            const ai = orderIndex.get(a.inputId) ?? Number.MAX_SAFE_INTEGER;
+            const bi = orderIndex.get(b.inputId) ?? Number.MAX_SAFE_INTEGER;
+            return ai - bi;
+          });
+          for (let i = 0; i < layer.inputs.length; i++) {
+            const slot = slotPositions[i];
+            if (!slot) break;
+            layer.inputs[i].x = slot.x;
+            layer.inputs[i].y = slot.y;
+            layer.inputs[i].width = slot.width;
+            layer.inputs[i].height = slot.height;
+          }
+        } else {
+          // Behavior-driven layer: positions will be recomputed by
+          // computeLayout in flushStoreUpdate, just reorder.
+          layer.inputs.sort((a, b) => {
+            const ai = orderIndex.get(a.inputId) ?? Number.MAX_SAFE_INTEGER;
+            const bi = orderIndex.get(b.inputId) ?? Number.MAX_SAFE_INTEGER;
+            return ai - bi;
+          });
+        }
+      }
     });
   }
 
@@ -1097,9 +1138,9 @@ export class RoomState {
     const behaviorInputInfos = this.collectBehaviorInputInfos();
     const inputMap = new Map(allInputs.map((i) => [i.inputId, i]));
 
-    // Auto-append connected inputs that aren't in any layer to the first
-    // behavior-driven layer. This handles inputs that connected after the
-    // client last called updateLayers() (e.g. a new WHIP stream appearing).
+    // Auto-append connected inputs that aren't in any layer to layers[0].
+    // For a manual first layer, tile positions are filled in below using
+    // equal-grid as a layout helper only (layer.behavior stays unset).
     const mentionedIds = new Set(
       this.layers.flatMap((l) => l.inputs.map((li) => li.inputId)),
     );
@@ -1114,57 +1155,99 @@ export class RoomState {
       (bi) =>
         !mentionedIds.has(bi.inputId) && !unplacedAttachedIds.has(bi.inputId),
     );
-    if (unplacedInputs.length > 0) {
-      const firstBehaviorLayer = this.layers.find((l) => l.behavior);
-      if (firstBehaviorLayer) {
-        for (const bi of unplacedInputs) {
-          firstBehaviorLayer.inputs.push({
-            inputId: bi.inputId,
-            x: 0,
-            y: 0,
-            width: 0,
-            height: 0,
-          });
-        }
+    let appendedUnplacedToFirstLayer = false;
+    if (unplacedInputs.length > 0 && this.layers.length > 0) {
+      const firstLayer = this.layers[0]!;
+      for (const bi of unplacedInputs) {
+        firstLayer.inputs.push({
+          inputId: bi.inputId,
+          x: 0,
+          y: 0,
+          width: 0,
+          height: 0,
+        });
       }
+      appendedUnplacedToFirstLayer = true;
     }
 
-    this.layers = this.layers.map((layer) => {
-      if (!layer.behavior) return layer; // manual layer, keep as-is
+    const manualFirstLayerLayoutHelper = {
+      type: 'equal-grid' as const,
+      autoscale: true,
+    };
 
-      // Separate visible (non-hidden) and hidden inputs
-      const visibleLayerInputs: typeof layer.inputs = [];
-      const hiddenLayerInputs: typeof layer.inputs = [];
+    this.layers = this.layers.map((layer, layerIndex) => {
+      if (layer.behavior) {
+        // Separate visible (non-hidden) and hidden inputs
+        const visibleLayerInputs: typeof layer.inputs = [];
+        const hiddenLayerInputs: typeof layer.inputs = [];
 
-      for (const li of layer.inputs) {
-        const input = inputMap.get(li.inputId);
-        if (input?.hidden) {
-          hiddenLayerInputs.push(li);
-        } else {
-          visibleLayerInputs.push(li);
+        for (const li of layer.inputs) {
+          const input = inputMap.get(li.inputId);
+          if (input?.hidden) {
+            hiddenLayerInputs.push(li);
+          } else {
+            visibleLayerInputs.push(li);
+          }
         }
+
+        // Compute layout only for visible inputs, preserving layer order.
+        // We build a lookup map from the global infos and then re-order by the
+        // layer's own input sequence so that user reorderings are honoured.
+        const behaviorInfoMap = new Map(
+          behaviorInputInfos.map((bi) => [bi.inputId, bi]),
+        );
+        const visibleInputInfos = visibleLayerInputs
+          .map((li) => behaviorInfoMap.get(li.inputId))
+          .filter((bi): bi is BehaviorInputInfo => bi !== undefined);
+        const result = computeLayout(
+          layer.behavior,
+          visibleInputInfos,
+          this.output.resolution,
+        );
+
+        // Merge computed positions with hidden inputs
+        return {
+          ...layer,
+          inputs: [...result.inputs, ...hiddenLayerInputs],
+        };
       }
 
-      // Compute layout only for visible inputs, preserving layer order.
-      // We build a lookup map from the global infos and then re-order by the
-      // layer's own input sequence so that user reorderings are honoured.
-      const behaviorInfoMap = new Map(
-        behaviorInputInfos.map((bi) => [bi.inputId, bi]),
-      );
-      const visibleInputInfos = visibleLayerInputs
-        .map((li) => behaviorInfoMap.get(li.inputId))
-        .filter((bi): bi is BehaviorInputInfo => bi !== undefined);
-      const result = computeLayout(
-        layer.behavior,
-        visibleInputInfos,
-        this.output.resolution,
-      );
+      if (
+        layerIndex === 0 &&
+        !layer.behavior &&
+        appendedUnplacedToFirstLayer
+      ) {
+        const visibleLayerInputs: typeof layer.inputs = [];
+        const hiddenLayerInputs: typeof layer.inputs = [];
 
-      // Merge computed positions with hidden inputs
-      return {
-        ...layer,
-        inputs: [...result.inputs, ...hiddenLayerInputs],
-      };
+        for (const li of layer.inputs) {
+          const input = inputMap.get(li.inputId);
+          if (input?.hidden) {
+            hiddenLayerInputs.push(li);
+          } else {
+            visibleLayerInputs.push(li);
+          }
+        }
+
+        const behaviorInfoMap = new Map(
+          behaviorInputInfos.map((bi) => [bi.inputId, bi]),
+        );
+        const visibleInputInfos = visibleLayerInputs
+          .map((li) => behaviorInfoMap.get(li.inputId))
+          .filter((bi): bi is BehaviorInputInfo => bi !== undefined);
+        const result = computeLayout(
+          manualFirstLayerLayoutHelper,
+          visibleInputInfos,
+          this.output.resolution,
+        );
+
+        return {
+          ...layer,
+          inputs: [...result.inputs, ...hiddenLayerInputs],
+        };
+      }
+
+      return layer;
     });
 
     this.output.store.getState().updateState({

@@ -59,7 +59,7 @@ function getErrorDetails(error: unknown) {
   };
 }
 
-function sanitizeFolderPath(raw: string): string | null {
+export function sanitizeFolderPath(raw: string): string | null {
   const normalized = raw.replace(/\\/g, '/').replace(/\/+/g, '/');
   const segments = normalized.split('/').filter(Boolean);
 

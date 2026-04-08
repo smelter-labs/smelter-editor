@@ -485,7 +485,6 @@ export function LayersSection({
     const newLayer: Layer = {
       id: newLayerId,
       inputs: [],
-      behavior: { type: 'equal-grid', autoscale: true },
     };
     const updated = [...localLayers, newLayer];
     setLocalLayers(updated);

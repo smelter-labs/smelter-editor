@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => {
   const fn = vi.fn;
   return {
     smelter: {
+      setRecoveryHandler: fn(),
       registerOutput: fn<any>(),
       registerMp4Output: fn().mockResolvedValue(undefined),
       unregisterOutput: fn().mockResolvedValue(undefined),
@@ -479,6 +480,81 @@ describe('RoomState', () => {
       const ids = room.getInputs().map((i) => i.inputId);
       expect(ids.indexOf(id2)).toBeLessThan(ids.indexOf(id1));
     });
+
+    it('reorders inputs inside behavior-driven layers', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const id1 = (await room.addNewInput({ type: 'text-input', text: 'A' }))!;
+      const id2 = (await room.addNewInput({ type: 'game', title: 'B' }))!;
+      const id3 = (await room.addNewInput({ type: 'whip', username: 'C' }))!;
+      await room.connectInput(id1);
+      await room.connectInput(id2);
+      await room.connectInput(id3);
+
+      await room.updateLayers([
+        {
+          id: 'layer-1',
+          behavior: { type: 'equal-grid', autoscale: true },
+          inputs: [
+            { inputId: id1, x: 0, y: 0, width: 100, height: 100 },
+            { inputId: id2, x: 0, y: 0, width: 100, height: 100 },
+            { inputId: id3, x: 0, y: 0, width: 100, height: 100 },
+          ],
+        },
+      ]);
+
+      await room.reorderInputs([id3, id1, id2]);
+
+      const layerInputIds = room
+        .getState()
+        .layers[0]!.inputs.map((i) => i.inputId);
+      expect(layerInputIds.indexOf(id3)).toBeLessThan(
+        layerInputIds.indexOf(id1),
+      );
+      expect(layerInputIds.indexOf(id1)).toBeLessThan(
+        layerInputIds.indexOf(id2),
+      );
+    });
+
+    it('swaps slot positions in manual layers so inputs visually move', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const id1 = (await room.addNewInput({ type: 'text-input', text: 'A' }))!;
+      const id2 = (await room.addNewInput({ type: 'game', title: 'B' }))!;
+      await room.connectInput(id1);
+      await room.connectInput(id2);
+
+      const pos0 = { x: 0, y: 0, width: 960, height: 1080 };
+      const pos1 = { x: 960, y: 0, width: 960, height: 1080 };
+
+      await room.updateLayers([
+        {
+          id: 'manual',
+          inputs: [
+            { inputId: id1, ...pos0 },
+            { inputId: id2, ...pos1 },
+          ],
+        },
+      ]);
+
+      await room.reorderInputs([id2, id1]);
+      // Allow debounced store flush
+      await new Promise((r) => setTimeout(r, 20));
+
+      const layer = room.getState().layers[0]!;
+      const li1 = layer.inputs.find((i) => i.inputId === id1)!;
+      const li2 = layer.inputs.find((i) => i.inputId === id2)!;
+
+      // id2 should now occupy slot 0 (pos0), id1 should occupy slot 1 (pos1)
+      expect(li2.x).toBe(pos0.x);
+      expect(li2.width).toBe(pos0.width);
+      expect(li1.x).toBe(pos1.x);
+      expect(li1.width).toBe(pos1.width);
+    });
   });
 
   describe('updateLayers', () => {
@@ -731,6 +807,8 @@ describe('RoomState', () => {
 
       // Hide id2 — it should stay in the layer, but layout should act as if only id1 is present
       await room.hideInput(id2);
+      // hideInput triggers debounced flushStoreUpdate (≤ MIN_STORE_FLUSH_INTERVAL_MS)
+      await new Promise((r) => setTimeout(r, 20));
 
       const layer = room.getState().layers[0]!;
       const inputIds = layer.inputs.map((i) => i.inputId);
@@ -745,7 +823,7 @@ describe('RoomState', () => {
       expect(li1.height).toBe(output.resolution.height);
     });
 
-    it('missing connected inputs are appended to behavior-driven first layer only', async () => {
+    it('missing connected inputs are appended to first layer when it uses equal-grid', async () => {
       const output = createTestOutput();
       const room = new RoomState('room-1', output, [], true);
       await room.init();
@@ -767,7 +845,7 @@ describe('RoomState', () => {
       expect(inputIds).toContain(id1);
     });
 
-    it('missing connected inputs are NOT injected into manual layers', async () => {
+    it('missing connected inputs are appended to first manual layer with computed geometry', async () => {
       const output = createTestOutput();
       const room = new RoomState('room-1', output, [], true);
       await room.init();
@@ -775,17 +853,41 @@ describe('RoomState', () => {
       const id1 = (await room.addNewInput({ type: 'text-input', text: 'A' }))!;
       await room.connectInput(id1);
 
-      // Manual layer that intentionally omits id1
       await room.updateLayers([
         {
           id: 'manual',
-          // no behavior
           inputs: [],
         },
       ]);
 
-      const inputIds = room.getState().layers[0]!.inputs.map((i) => i.inputId);
-      expect(inputIds).not.toContain(id1);
+      const layer = room.getState().layers[0]!;
+      const li = layer.inputs.find((i) => i.inputId === id1);
+      expect(li).toBeDefined();
+      expect(li!.width).toBeGreaterThan(0);
+      expect(li!.height).toBeGreaterThan(0);
+      expect(layer.behavior).toBeUndefined();
+    });
+
+    it('unplaced inputs go to first layer, not a lower manual-only layer', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const id1 = (await room.addNewInput({ type: 'text-input', text: 'A' }))!;
+      await room.connectInput(id1);
+
+      await room.updateLayers([
+        { id: 'first-manual', inputs: [] },
+        {
+          id: 'second-behavior',
+          behavior: { type: 'equal-grid', autoscale: true },
+          inputs: [],
+        },
+      ]);
+
+      const layers = room.getState().layers;
+      expect(layers[0]!.inputs.map((i) => i.inputId)).toContain(id1);
+      expect(layers[1]!.inputs.map((i) => i.inputId)).not.toContain(id1);
     });
   });
 

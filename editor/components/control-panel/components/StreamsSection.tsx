@@ -9,6 +9,8 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
 
+const inputWrapperKeyExtractor = (item: InputWrapper) => item.inputId;
+
 type StreamsSectionProps = {
   inputWrappers: InputWrapper[];
   listVersion: number;
@@ -133,7 +135,7 @@ export function StreamsSection({
           items={visibleWrappers}
           resetVersion={listVersion}
           disableDrag={isGuest || !isWideScreen}
-          keyExtractor={(item) => item.inputId}
+          keyExtractor={inputWrapperKeyExtractor}
           renderItem={(item, index, orderedItems) => {
             const input = inputs.find(
               (input) => input.inputId === item.inputId,
