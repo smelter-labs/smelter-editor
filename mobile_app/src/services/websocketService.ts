@@ -72,6 +72,26 @@ class WebSocketService {
           try {
             const data = JSON.parse(event.data);
             if (data.type) {
+              const summary =
+                data.type === "room_updated"
+                  ? {
+                      roomId: data.roomId,
+                      layers: Array.isArray(data.layers)
+                        ? data.layers.length
+                        : 0,
+                      inputs: Array.isArray(data.inputs)
+                        ? data.inputs.length
+                        : 0,
+                    }
+                  : {
+                      roomId: data.roomId,
+                      inputId: data.inputId,
+                      sourceId: data.sourceId,
+                    };
+              console.log(
+                `[${new Date().toISOString()}] [sync][mobile-recv] ${data.type}`,
+                summary,
+              );
               this.dispatchEvent(data.type as WSEventKey, data);
             }
           } catch (err) {

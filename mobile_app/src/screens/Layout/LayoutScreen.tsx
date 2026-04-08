@@ -25,7 +25,33 @@ import type { Layer, LayerInput } from "../../types/layout";
 import type { Resolution } from "@smelter-editor/types";
 import type { WSEventPayload } from "../../types/websocket";
 
-const ROOM_UPDATE_COALESCE_MS = 16;
+const areInputCardsEquivalent = (
+  first: ReturnType<typeof useInputsStore.getState>["inputs"],
+  second: ReturnType<typeof useInputsStore.getState>["inputs"],
+): boolean => {
+  if (first === second) return true;
+  if (first.length !== second.length) return false;
+
+  for (let index = 0; index < first.length; index += 1) {
+    const a = first[index];
+    const b = second[index];
+    if (!b) return false;
+    if (
+      a.id !== b.id ||
+      a.name !== b.name ||
+      a.isHidden !== b.isHidden ||
+      a.nativeWidth !== b.nativeWidth ||
+      a.nativeHeight !== b.nativeHeight ||
+      a.isRunning !== b.isRunning ||
+      a.isMuted !== b.isMuted ||
+      a.inputVolume !== b.inputVolume
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+};
 
 // ─── Conversion helpers ───────────────────────────────────────────────────────
 
@@ -143,36 +169,27 @@ export function LayoutScreen() {
   const [effectsPanelOpen, setEffectsPanelOpen] = useState(false);
   const [effectsInputId, setEffectsInputId] = useState<string | null>(null);
 
-  // Refs used to gate room_updated processing while a layer push is in-flight.
-  // Using refs (not state) so they don't trigger re-renders or recreate closures.
-  const isPushing = useRef(false);
-  const pendingRefresh = useRef(false);
-  // Debounce timer for room_updated: coalesces a burst of buffered events (e.g.
-  // TCP flush after screen wake) into a single re-render on the latest state.
-  const refreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Holds the latest room_updated payload so the debounce callback always applies
-  // the most recent state rather than a stale closure capture.
+  // Hold latest room_updated payload and apply at most once per animation frame.
   const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
+  const frameRef = useRef<number | null>(null);
 
   // Subscribe to server room updates
   useEffect(() => {
     const unsubRoom = wsService.on("room_updated", (event) => {
-      if (isPushing.current) {
-        // Defer: a push is in-flight; applying server state now would roll back the
-        // optimistic update. The pushLayers finally-block will reconcile instead.
-        pendingRefresh.current = true;
-        return;
-      }
       pendingEventRef.current = event;
-      if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current);
-      refreshDebounceRef.current = setTimeout(() => {
-        refreshDebounceRef.current = null;
+      if (frameRef.current !== null) return;
+      frameRef.current = requestAnimationFrame(() => {
+        frameRef.current = null;
         const latest = pendingEventRef.current;
         pendingEventRef.current = null;
         if (!latest) return;
         setLayers(latest.layers);
-        setInputs(apiService.mapInputsToCards(latest.inputs));
-      }, ROOM_UPDATE_COALESCE_MS);
+        const nextInputs = apiService.mapInputsToCards(latest.inputs);
+        const currentInputs = useInputsStore.getState().inputs;
+        if (!areInputCardsEquivalent(currentInputs, nextInputs)) {
+          setInputs(nextInputs);
+        }
+      });
     });
 
     // When an input is deleted, remove it from the layout immediately so the grid
@@ -184,7 +201,10 @@ export function LayoutScreen() {
     return () => {
       unsubRoom();
       unsubDeleted();
-      if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current);
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
     };
   }, [serverUrl, roomId, setLayers, setInputs, removeInputFromLayers]);
 
@@ -199,8 +219,7 @@ export function LayoutScreen() {
   // Push updated layers to server
   const pushLayers = useCallback(
     async (newLayers: Layer[]) => {
-      isPushing.current = true;
-      pendingRefresh.current = false;
+      const previousLayers = layers;
       setLayers(newLayers); // optimistic
       try {
         // The POST response now includes the server-authoritative layers.
@@ -214,26 +233,10 @@ export function LayoutScreen() {
         setLayers(confirmedLayers);
       } catch (err) {
         console.warn("[Layout] Failed to push layer update:", err);
-        // Force reconcile so the optimistic state doesn't stay permanently broken.
-        pendingRefresh.current = true;
-      } finally {
-        isPushing.current = false;
-        if (pendingRefresh.current) {
-          // Fallback path: request failed, or a concurrent room_updated arrived
-          // while the push was in-flight — fetch full state to reconcile.
-          pendingRefresh.current = false;
-          try {
-            const { layers: serverLayers, inputs: serverInputs } =
-              await apiService.fetchRoomState(serverUrl, roomId);
-            setLayers(serverLayers);
-            setInputs(serverInputs);
-          } catch (err) {
-            console.warn("[Layout] Failed to refresh after push:", err);
-          }
-        }
+        setLayers(previousLayers);
       }
     },
-    [serverUrl, roomId, setLayers, setInputs],
+    [layers, serverUrl, roomId, setLayers],
   );
 
   // Handle grid item position change for a specific layer

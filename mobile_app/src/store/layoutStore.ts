@@ -2,6 +2,78 @@ import { create } from "zustand";
 import type { Layer } from "../types/layout";
 import type { Resolution } from "@smelter-editor/types";
 
+type LayerInputLike = {
+  inputId: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  transitionDurationMs?: number;
+  transitionEasing?: string;
+};
+
+const areLayerInputsEqual = (
+  first: LayerInputLike[],
+  second: LayerInputLike[],
+): boolean => {
+  if (first === second) return true;
+  if (first.length !== second.length) return false;
+
+  for (let index = 0; index < first.length; index += 1) {
+    const a = first[index];
+    const b = second[index];
+    if (!b) return false;
+    if (
+      a.inputId !== b.inputId ||
+      a.x !== b.x ||
+      a.y !== b.y ||
+      a.width !== b.width ||
+      a.height !== b.height ||
+      a.transitionDurationMs !== b.transitionDurationMs ||
+      a.transitionEasing !== b.transitionEasing
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+};
+
+const isLayerEquivalent = (first: Layer, second: Layer): boolean => {
+  if (first.id !== second.id) return false;
+  if (
+    !areLayerInputsEqual(
+      first.inputs as LayerInputLike[],
+      second.inputs as LayerInputLike[],
+    )
+  ) {
+    return false;
+  }
+
+  const firstBehavior = JSON.stringify(first.behavior ?? null);
+  const secondBehavior = JSON.stringify(second.behavior ?? null);
+  return firstBehavior === secondBehavior;
+};
+
+const mergeLayersWithStructuralSharing = (
+  previous: Layer[],
+  incoming: Layer[],
+): Layer[] => {
+  if (previous.length === 0) return incoming;
+
+  const merged = incoming.map((nextLayer, index) => {
+    const prevLayer = previous[index];
+    if (!prevLayer) return nextLayer;
+    return isLayerEquivalent(prevLayer, nextLayer) ? prevLayer : nextLayer;
+  });
+
+  const unchanged =
+    merged.length === previous.length &&
+    merged.every((layer, index) => layer === previous[index]);
+
+  return unchanged ? previous : merged;
+};
+
 interface LayoutState {
   layers: Layer[];
   resolution: Resolution;
@@ -31,16 +103,29 @@ export const useLayoutStore = create<LayoutState>()((set) => ({
   rows: DEFAULT_ROWS,
   isDirty: false,
 
-  setLayers: (layers) => set({ layers, isDirty: false }),
+  setLayers: (layers) =>
+    set((state) => ({
+      layers: mergeLayersWithStructuralSharing(state.layers, layers),
+      isDirty: false,
+    })),
   setResolution: (resolution) => set({ resolution }),
   setGridConfig: (columns, rows) => set({ columns, rows }),
   markDirty: () => set({ isDirty: true }),
   markSynced: () => set({ isDirty: false }),
   removeInputFromLayers: (inputId) =>
-    set((state) => ({
-      layers: state.layers.map((l) => ({
-        ...l,
-        inputs: l.inputs.filter((i) => i.inputId !== inputId),
-      })),
-    })),
+    set((state) => {
+      let changed = false;
+      const nextLayers = state.layers.map((layer) => {
+        const nextInputs = layer.inputs.filter(
+          (input) => input.inputId !== inputId,
+        );
+        if (nextInputs.length === layer.inputs.length) {
+          return layer;
+        }
+        changed = true;
+        return { ...layer, inputs: nextInputs };
+      });
+
+      return changed ? { layers: nextLayers } : state;
+    }),
 }));

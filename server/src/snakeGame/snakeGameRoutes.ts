@@ -375,6 +375,13 @@ const RoomAndInputIdParamsSchema = Type.Object({
   inputId: Type.String({ maxLength: 512, minLength: 1 }),
 });
 
+function logGameStateSync(
+  phase: string,
+  details: Record<string, unknown>,
+): void {
+  console.log(`[${new Date().toISOString()}] [sync][server-${phase}]`, details);
+}
+
 type RoomAndInputIdParams = { Params: { roomId: string; inputId: string } };
 
 export function registerSnakeGameRoutes(routes: FastifyInstance): void {
@@ -391,6 +398,14 @@ export function registerSnakeGameRoutes(routes: FastifyInstance): void {
     async (req, res) => {
       const { roomId, inputId } = req.params;
       const gs = req.body;
+      logGameStateSync('receive', {
+        route: '/room/:roomId/input/:inputId/game-state',
+        method: 'POST',
+        roomId,
+        inputId,
+        seq: gs.seq,
+        gameId: gs.gameId,
+      });
       const sourceKey = resolveSnakeGameSourceKey(req, gs.gameId);
       const seqDecision = evaluateSnakeGameSequence(sourceKey, gs.seq);
       if (!seqDecision.shouldProcess) {
@@ -495,6 +510,12 @@ export function registerSnakeGameRoutes(routes: FastifyInstance): void {
     { schema: { body: SnakeGameStateSchema } },
     async (req, res) => {
       const gs = req.body;
+      logGameStateSync('receive', {
+        route: '/game-state',
+        method: 'POST',
+        seq: gs.seq,
+        gameId: gs.gameId,
+      });
       const sourceKey = resolveSnakeGameSourceKey(req, gs.gameId);
       const seqDecision = evaluateSnakeGameSequence(sourceKey, gs.seq);
       if (!seqDecision.shouldProcess) {

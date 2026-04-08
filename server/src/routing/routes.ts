@@ -51,6 +51,10 @@ const THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails', 'mp4');
 const HLS_THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails', 'hls');
 const HLS_STREAMS_DIR = path.join(DATA_DIR, 'hls-streams');
 
+function logSyncServer(phase: string, details: Record<string, unknown>): void {
+  console.log(`[${new Date().toISOString()}] [sync][server-${phase}]`, details);
+}
+
 type BrowseFileInfo = {
   fileName: string;
   size: number;
@@ -1001,7 +1005,12 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
   { schema: { params: RoomIdParamsSchema, body: UpdateRoomSchema } },
   async (req, res) => {
     const { roomId } = req.params;
-    console.log('[request] Update room', { body: req.body, roomId });
+    logSyncServer('receive', {
+      route: '/room/:roomId',
+      method: 'POST',
+      roomId,
+      body: req.body,
+    });
     const room = state.getRoom(roomId);
 
     let roomStructureChanged = false;
@@ -1063,7 +1072,8 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
       room.setViewport(viewportUpdate as any);
     }
 
-    res.status(200).send({ status: 'ok' });
+    const snapshot = room.getState();
+    res.status(200).send({ status: 'ok', layers: snapshot.layers });
   },
 );
 
@@ -1098,6 +1108,12 @@ routes.post<RoomIdParams & { Body: Static<typeof InputSchema> }>(
   { schema: { params: RoomIdParamsSchema, body: InputSchema } },
   async (req, res) => {
     const { roomId } = req.params;
+    logSyncServer('receive', {
+      route: '/room/:roomId/input',
+      method: 'POST',
+      roomId,
+      body: req.body,
+    });
     console.log('[request] Create input', { body: req.body, roomId });
     const room = state.getRoom(roomId);
     const inputId = await room.addNewInput(req.body);
@@ -1225,6 +1241,13 @@ routes.post<
   { schema: { params: RoomAndInputIdParamsSchema, body: HideInputBodySchema } },
   async (req, res) => {
     const { roomId, inputId } = req.params;
+    logSyncServer('receive', {
+      route: '/room/:roomId/input/:inputId/hide',
+      method: 'POST',
+      roomId,
+      inputId,
+      body: req.body,
+    });
     const { activeTransition } = req.body ?? {};
     console.log('[request] Hide input', {
       roomId,
@@ -1260,6 +1283,13 @@ routes.post<
   { schema: { params: RoomAndInputIdParamsSchema, body: ShowInputBodySchema } },
   async (req, res) => {
     const { roomId, inputId } = req.params;
+    logSyncServer('receive', {
+      route: '/room/:roomId/input/:inputId/show',
+      method: 'POST',
+      roomId,
+      inputId,
+      body: req.body,
+    });
     const { activeTransition } = req.body ?? {};
     console.log('[request] Show input', {
       roomId,
@@ -1423,10 +1453,12 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(
   { schema: { params: RoomAndInputIdParamsSchema, body: UpdateInputSchema } },
   async (req, res) => {
     const { roomId, inputId } = req.params;
-    console.log('[request] Update input', {
+    logSyncServer('receive', {
+      route: '/room/:roomId/input/:inputId',
+      method: 'POST',
       roomId,
       inputId,
-      body: JSON.stringify(req.body),
+      body: req.body,
     });
     const room = state.getRoom(roomId);
     await room.updateInput(inputId, req.body);
@@ -1455,7 +1487,12 @@ routes.delete<RoomAndInputIdParams>(
   { schema: { params: RoomAndInputIdParamsSchema } },
   async (req, res) => {
     const { roomId, inputId } = req.params;
-    console.log('[request] Remove input', { roomId, inputId });
+    logSyncServer('receive', {
+      route: '/room/:roomId/input/:inputId',
+      method: 'DELETE',
+      roomId,
+      inputId,
+    });
     const room = state.getRoom(roomId);
     await room.removeInput(inputId);
     const sourceId = (req.headers['x-source-id'] as string | undefined) ?? null;
@@ -1567,6 +1604,13 @@ routes.get<RoomIdParams>(
         viewportTransitionDurationMs: snapshot.viewportTransitionDurationMs,
         viewportTransitionEasing: snapshot.viewportTransitionEasing,
       };
+      logSyncServer('broadcast', {
+        route: '/room/:roomId/state/sse',
+        roomId,
+        event: 'room_state',
+        inputs: payload.inputs.length,
+        layers: payload.layers.length,
+      });
       res.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
     };
 

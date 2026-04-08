@@ -18,7 +18,33 @@ import { InputSidePanel } from "./InputSidePanel";
 import { InputsSettingsPanel } from "./InputsSettingsPanel";
 import { ScreenLabel } from "../../components/shared/ScreenLabel";
 
-const ROOM_UPDATE_COALESCE_MS = 16;
+const areInputCardsEquivalent = (
+  first: ReturnType<typeof useInputsStore.getState>["inputs"],
+  second: ReturnType<typeof useInputsStore.getState>["inputs"],
+): boolean => {
+  if (first === second) return true;
+  if (first.length !== second.length) return false;
+
+  for (let index = 0; index < first.length; index += 1) {
+    const a = first[index];
+    const b = second[index];
+    if (!b) return false;
+    if (
+      a.id !== b.id ||
+      a.name !== b.name ||
+      a.isHidden !== b.isHidden ||
+      a.nativeWidth !== b.nativeWidth ||
+      a.nativeHeight !== b.nativeHeight ||
+      a.isRunning !== b.isRunning ||
+      a.isMuted !== b.isMuted ||
+      a.inputVolume !== b.inputVolume
+    ) {
+      return false;
+    }
+  }
+
+  return true;
+};
 
 export function InputsScreen() {
   const theme = useTheme();
@@ -48,10 +74,9 @@ export function InputsScreen() {
     });
   }, []);
 
-  // Debounce timer for room_updated: coalesces a burst of buffered events (e.g.
-  // TCP flush after screen wake) into a single re-render on the latest state.
-  const refreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Hold latest room_updated payload and apply at most once per animation frame.
   const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
+  const frameRef = useRef<number | null>(null);
 
   // Subscribe to server input updates
   useEffect(() => {
@@ -64,20 +89,27 @@ export function InputsScreen() {
     });
     const unsubRoom = wsService.on("room_updated", (event) => {
       pendingEventRef.current = event;
-      if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current);
-      refreshDebounceRef.current = setTimeout(() => {
-        refreshDebounceRef.current = null;
+      if (frameRef.current !== null) return;
+      frameRef.current = requestAnimationFrame(() => {
+        frameRef.current = null;
         const latest = pendingEventRef.current;
         pendingEventRef.current = null;
         if (!latest) return;
-        setInputs(apiService.mapInputsToCards(latest.inputs));
-      }, ROOM_UPDATE_COALESCE_MS);
+        const nextInputs = apiService.mapInputsToCards(latest.inputs);
+        const currentInputs = useInputsStore.getState().inputs;
+        if (!areInputCardsEquivalent(currentInputs, nextInputs)) {
+          setInputs(nextInputs);
+        }
+      });
     });
     return () => {
       unsubUpdated();
       unsubDeleted();
       unsubRoom();
-      if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current);
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
     };
   }, [serverUrl, roomId, updateInput, removeInput, setInputs]);
 

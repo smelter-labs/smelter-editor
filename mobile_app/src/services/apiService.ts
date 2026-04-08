@@ -31,6 +31,13 @@ export function getRoomDisplayName(room: ActiveRoom): string {
  * REST API service for communicating with the Smelter server.
  */
 class ApiService {
+  private logSyncSend(method: string, route: string, body?: unknown): void {
+    console.log(
+      `[${new Date().toISOString()}] [sync][mobile-send] ${method} ${route}`,
+      body ?? "",
+    );
+  }
+
   /**
    * Build an HTTP base URL from a raw server address.
    * Accepts "host:port", "http://...", "https://...", or "ws://..." / "wss://...".
@@ -103,6 +110,10 @@ class ApiService {
     sourceId?: string,
   ): Promise<Layer[]> {
     const base = this.buildHttpUrl(serverUrl);
+    this.logSyncSend("POST", `/room/${encodeURIComponent(roomId)}`, {
+      layers,
+      ...(sourceId ? { sourceId } : {}),
+    });
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
     };
@@ -118,7 +129,10 @@ class ApiService {
     // The server returns the authoritative (possibly recomputed) layers so we
     // can apply any corrections immediately without a second GET round-trip.
     const data = (await res.json()) as { layers?: Layer[] };
-    return data.layers ?? layers;
+    if (!Array.isArray(data.layers)) {
+      throw new Error("updateLayers failed: missing layers in response");
+    }
+    return data.layers;
   }
 
   /**
@@ -131,6 +145,11 @@ class ApiService {
     inputId: string,
   ): Promise<void> {
     const base = this.buildHttpUrl(serverUrl);
+    this.logSyncSend(
+      "POST",
+      `/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}/hide`,
+      {},
+    );
     const res = await fetch(
       `${base}/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}/hide`,
       {
@@ -152,6 +171,11 @@ class ApiService {
     inputId: string,
   ): Promise<void> {
     const base = this.buildHttpUrl(serverUrl);
+    this.logSyncSend(
+      "POST",
+      `/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}/show`,
+      {},
+    );
     const res = await fetch(
       `${base}/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}/show`,
       {
@@ -173,6 +197,11 @@ class ApiService {
     inputId: string,
   ): Promise<void> {
     const base = this.buildHttpUrl(serverUrl);
+    this.logSyncSend(
+      "DELETE",
+      `/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}`,
+      {},
+    );
     const res = await fetch(
       `${base}/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}`,
       { method: "DELETE" },
@@ -187,6 +216,11 @@ class ApiService {
     opts: Record<string, unknown>,
   ): Promise<void> {
     const base = this.buildHttpUrl(serverUrl);
+    this.logSyncSend(
+      "POST",
+      `/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}`,
+      opts,
+    );
     const res = await fetch(
       `${base}/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}`,
       {

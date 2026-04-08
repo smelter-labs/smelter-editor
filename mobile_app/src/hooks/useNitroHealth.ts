@@ -1,4 +1,3 @@
-import { useEffect, useState } from "react";
 import { Platform } from "react-native";
 import { NitroModules } from "react-native-nitro-modules";
 
@@ -9,36 +8,38 @@ type NitroHealthState = {
   reason: string;
 };
 
-export function useNitroHealth(scope: string): NitroHealthState {
-  const [state, setState] = useState<NitroHealthState>({
-    path: "fallback",
-    reason: "not_checked",
-  });
+let cachedNitroHealth: NitroHealthState | null = null;
 
-  useEffect(() => {
-    try {
-      if (Platform.OS === "web") {
-        setState({ path: "fallback", reason: "web_platform" });
-        return;
-      }
+function resolveNitroHealth(): NitroHealthState {
+  if (cachedNitroHealth) return cachedNitroHealth;
 
-      const hybridObject = NitroModules.createHybridObject<any>("Reshuffle");
-      if (hybridObject) {
-        setState({ path: "native", reason: "hybrid_object_available" });
-      } else {
-        setState({ path: "fallback", reason: "hybrid_object_missing" });
-      }
-    } catch (error) {
-      setState({
-        path: "fallback",
-        reason: error instanceof Error ? error.message : "nitro_probe_failed",
-      });
+  try {
+    if (Platform.OS === "web") {
+      cachedNitroHealth = { path: "fallback", reason: "web_platform" };
+      return cachedNitroHealth;
     }
-  }, []);
 
-  useEffect(() => {
+    const hybridObject = NitroModules.createHybridObject<any>("Reshuffle");
+    cachedNitroHealth = hybridObject
+      ? { path: "native", reason: "hybrid_object_available" }
+      : { path: "fallback", reason: "hybrid_object_missing" };
+    return cachedNitroHealth;
+  } catch (error) {
+    cachedNitroHealth = {
+      path: "fallback",
+      reason: error instanceof Error ? error.message : "nitro_probe_failed",
+    };
+    return cachedNitroHealth;
+  }
+}
+
+const loggedScopes = new Set<string>();
+
+export function useNitroHealth(scope: string): NitroHealthState {
+  const state = resolveNitroHealth();
+  if (__DEV__ && !loggedScopes.has(scope)) {
+    loggedScopes.add(scope);
     console.info(`[NitroHealth:${scope}]`, state);
-  }, [scope, state]);
-
+  }
   return state;
 }
