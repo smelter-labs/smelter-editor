@@ -276,6 +276,30 @@ export function LayoutScreen() {
     [layers, inputs, serverUrl, roomId, setInputs],
   );
 
+  // Add a new empty layer
+  const handleAddLayer = useCallback(() => {
+    const newLayer: Layer = {
+      id: `layer-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      inputs: [],
+    };
+    const newLayers = [...layers, newLayer];
+    void pushLayers(newLayers);
+  }, [layers, pushLayers]);
+
+  // Delete an empty layer
+  const handleDeleteLayer = useCallback(
+    (layerId: string) => {
+      const layer = layers.find((l) => l.id === layerId);
+      if (!layer || layer.inputs.length > 0) {
+        console.warn("[Layout] Cannot delete non-empty layer");
+        return;
+      }
+      const newLayers = layers.filter((l) => l.id !== layerId);
+      void pushLayers(newLayers);
+    },
+    [layers, pushLayers],
+  );
+
   // Handle grid item position change for a specific layer
   const handleGridChange = useCallback(
     (layerId: string, items: ItemData<LayerItemProps>[]) => {
@@ -402,6 +426,8 @@ export function LayoutScreen() {
           inputs={inputs}
           onLayersChange={(newLayers) => void pushLayers(newLayers)}
           onToggleLayerVisibility={handleToggleLayerVisibility}
+          onAddLayer={handleAddLayer}
+          onDeleteLayer={handleDeleteLayer}
         />
       </SidePanel>
 

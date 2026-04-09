@@ -2,11 +2,13 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   FlatList,
   InteractionManager,
+  Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { Droppable, DropProvider } from "react-native-reanimated-dnd";
+import MaterialDesignIcons from "@react-native-vector-icons/material-design-icons";
 import type { Layer, LayerBehaviorConfig } from "../../../types/layout";
 import type { InputCard } from "../../../types/input";
 import { Layer as LayerComponent } from "./Layer";
@@ -28,6 +30,8 @@ interface LayersPanelProps {
     layerId: string,
     shouldShow: boolean,
   ) => Promise<void>;
+  onAddLayer?: () => void;
+  onDeleteLayer?: (layerId: string) => void;
 }
 
 export default function LayersPanel({
@@ -35,6 +39,8 @@ export default function LayersPanel({
   inputs,
   onLayersChange,
   onToggleLayerVisibility,
+  onAddLayer,
+  onDeleteLayer,
 }: LayersPanelProps) {
   // Always-fresh ref so onDrop closures never use stale layers.
   const layersRef = useRef(layers);
@@ -157,6 +163,15 @@ export default function LayersPanel({
       <View style={styles.panel}>
         <View style={styles.panelHeader}>
           <Text style={styles.panelTitle}>LAYERS</Text>
+          {onAddLayer && (
+            <Pressable
+              onPress={onAddLayer}
+              hitSlop={8}
+              style={styles.addLayerBtn}
+            >
+              <MaterialDesignIcons name="plus" color={C.accent} size={18} />
+            </Pressable>
+          )}
         </View>
 
         <FlatList
@@ -186,6 +201,7 @@ export default function LayersPanel({
                   handleLayerDrop(data.layerId, layerIndex)
                 }
                 onToggleLayerVisibility={onToggleLayerVisibility}
+                onDeleteLayer={onDeleteLayer}
               />
             );
           }}
@@ -215,7 +231,9 @@ const styles = StyleSheet.create({
   },
   panelHeader: {
     height: 36,
-    justifyContent: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 12,
     borderBottomWidth: 1,
     borderBottomColor: C.divider,
@@ -225,6 +243,12 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "700",
     letterSpacing: 1.5,
+  },
+  addLayerBtn: {
+    width: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
   },
   list: { flex: 1 },
   listContent: { paddingBottom: 16, flexGrow: 1 },

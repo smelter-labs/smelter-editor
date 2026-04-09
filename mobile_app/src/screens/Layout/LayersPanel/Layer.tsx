@@ -45,6 +45,7 @@ export interface LayerComponentProps {
     layerId: string,
     shouldShow: boolean,
   ) => Promise<void>;
+  onDeleteLayer?: (layerId: string) => void;
 }
 
 export function Layer({
@@ -58,6 +59,7 @@ export function Layer({
   onBehaviorChange,
   onLayerDrop,
   onToggleLayerVisibility,
+  onDeleteLayer,
 }: LayerComponentProps) {
   // Create sortable items from layer inputs
   const sortableInputs = layer.inputs.map((input) => ({
@@ -134,6 +136,8 @@ export function Layer({
           onToggleCollapse={() => onUiChange({ isCollapsed: !ui.isCollapsed })}
           onToggleVisible={handleToggleVisible}
           onNameChange={(name) => onUiChange({ name })}
+          isEmpty={layer.inputs.length === 0}
+          onDelete={onDeleteLayer ? () => onDeleteLayer(layer.id) : undefined}
         />
       </Draggable>
 
