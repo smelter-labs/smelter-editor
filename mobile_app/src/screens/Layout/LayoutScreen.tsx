@@ -64,6 +64,56 @@ function colorFromId(id: string): string {
   return `hsl(${h}, 55%, 45%)`;
 }
 
+const clampInt = (value: number, min: number, max: number): number =>
+  Math.max(min, Math.min(max, value));
+
+const toGridInterval = (
+  startPx: number,
+  sizePx: number,
+  totalPx: number,
+  totalCells: number,
+): { start: number; span: number } => {
+  const safeTotalPx = Math.max(1, totalPx);
+  const safeTotalCells = Math.max(1, totalCells);
+
+  const normalizedStart = (startPx / safeTotalPx) * safeTotalCells;
+  const normalizedEnd = ((startPx + sizePx) / safeTotalPx) * safeTotalCells;
+
+  const start = clampInt(
+    Math.floor(normalizedStart),
+    0,
+    Math.max(0, safeTotalCells - 1),
+  );
+  const end = clampInt(Math.ceil(normalizedEnd), start + 1, safeTotalCells);
+
+  return { start, span: end - start };
+};
+
+const toPixelInterval = (
+  startCell: number,
+  spanCells: number,
+  totalCells: number,
+  totalPx: number,
+): { start: number; span: number } => {
+  const safeTotalCells = Math.max(1, totalCells);
+  const safeTotalPx = Math.max(1, totalPx);
+
+  const start = clampInt(startCell, 0, Math.max(0, safeTotalCells - 1));
+  const endCell = clampInt(
+    start + Math.max(1, spanCells),
+    start + 1,
+    safeTotalCells,
+  );
+
+  const startPxValue = Math.round((start / safeTotalCells) * safeTotalPx);
+  const endPxValue = Math.round((endCell / safeTotalCells) * safeTotalPx);
+
+  return {
+    start: startPxValue,
+    span: Math.max(1, endPxValue - startPxValue),
+  };
+};
+
 function layerInputsToItemData(
   layerInputs: LayerInput[],
   inputs: {
@@ -80,36 +130,25 @@ function layerInputsToItemData(
   const inputMap = new Map(inputs.map((i) => [i.id, i]));
   return layerInputs.map((li) => {
     const input = inputMap.get(li.inputId);
+    const horizontal = toGridInterval(
+      li.x,
+      li.width,
+      resolution.width,
+      gridCols,
+    );
+    const vertical = toGridInterval(
+      li.y,
+      li.height,
+      resolution.height,
+      gridRows,
+    );
+
     return {
       initial: {
-        col: Math.max(
-          0,
-          Math.min(
-            gridCols - 1,
-            Math.round((li.x / resolution.width) * gridCols),
-          ),
-        ),
-        row: Math.max(
-          0,
-          Math.min(
-            gridRows - 1,
-            Math.round((li.y / resolution.height) * gridRows),
-          ),
-        ),
-        width: Math.max(
-          1,
-          Math.min(
-            gridCols,
-            Math.round((li.width / resolution.width) * gridCols),
-          ),
-        ),
-        height: Math.max(
-          1,
-          Math.min(
-            gridRows,
-            Math.round((li.height / resolution.height) * gridRows),
-          ),
-        ),
+        col: horizontal.start,
+        row: vertical.start,
+        width: horizontal.span,
+        height: vertical.span,
       },
       props: {
         id: li.inputId,
@@ -133,12 +172,25 @@ function itemDataToLayerInputs(
   const existingMap = new Map(existingInputs.map((i) => [i.inputId, i]));
   return items.map((item) => {
     const existing = existingMap.get(item.props.id);
+    const horizontal = toPixelInterval(
+      item.initial.col,
+      item.initial.width,
+      gridCols,
+      resolution.width,
+    );
+    const vertical = toPixelInterval(
+      item.initial.row,
+      item.initial.height,
+      gridRows,
+      resolution.height,
+    );
+
     return {
       inputId: item.props.id,
-      x: Math.round((item.initial.col / gridCols) * resolution.width),
-      y: Math.round((item.initial.row / gridRows) * resolution.height),
-      width: Math.round((item.initial.width / gridCols) * resolution.width),
-      height: Math.round((item.initial.height / gridRows) * resolution.height),
+      x: horizontal.start,
+      y: vertical.start,
+      width: horizontal.span,
+      height: vertical.span,
       transitionDurationMs: existing?.transitionDurationMs,
       transitionEasing: existing?.transitionEasing,
     };
