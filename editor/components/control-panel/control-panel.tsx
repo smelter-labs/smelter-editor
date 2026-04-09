@@ -3,7 +3,7 @@
 import { fadeIn } from '@/utils/animations';
 import { motion } from 'framer-motion';
 import { createPortal } from 'react-dom';
-import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   RoomState,
   Input,
@@ -441,7 +441,6 @@ function ControlPanelWithActions({
   const isFrozenFromServer = roomState.isFrozen ?? false;
   const audioAnalysisEnabledFromServer =
     roomState.audioAnalysisEnabled ?? false;
-  const motionScores = useMotionScores(roomId);
 
   const controlPanelCtx = useMemo(
     () => ({
@@ -452,7 +451,6 @@ function ControlPanelWithActions({
       availableShaders,
       isRecording: isRecordingFromServer,
       isFrozen: isFrozenFromServer,
-      motionScores,
       audioAnalysisEnabled: audioAnalysisEnabledFromServer,
     }),
     [
@@ -463,7 +461,6 @@ function ControlPanelWithActions({
       availableShaders,
       isRecordingFromServer,
       isFrozenFromServer,
-      motionScores,
       audioAnalysisEnabledFromServer,
     ],
   );
@@ -554,9 +551,7 @@ function ControlPanelInner({
     inputs,
     availableShaders,
     isRecording,
-    motionScores,
   } = useControlPanelContext();
-  const motionHistoryMap = useMotionHistory(inputs, motionScores);
   const [videoOverlayEnabled] = useVideoOverlayEnabledSetting();
   const { activeCameraInputId, activeScreenshareInputId } =
     useWhipConnectionsContext();
@@ -975,16 +970,11 @@ function ControlPanelInner({
       </div>
     );
 
-    const motionDetectionInputs = inputs.filter((input) =>
-      VIDEO_INPUT_TYPES.has(input.type),
-    );
     const motionDetectionSection = (
-      <MotionDetectionPanel
+      <MotionDetectionSection
         roomId={roomId}
-        inputs={motionDetectionInputs}
-        motionHistoryMap={motionHistoryMap}
-        motionScores={motionScores}
         refreshState={handleRefreshState}
+        inputs={inputs}
       />
     );
 
@@ -1168,6 +1158,33 @@ function ControlPanelInner({
     </>
   );
 }
+
+const MotionDetectionSection = memo(function MotionDetectionSection({
+  roomId,
+  inputs,
+  refreshState,
+}: {
+  roomId: string;
+  inputs: Input[];
+  refreshState: () => Promise<void>;
+}) {
+  const motionDetectionInputs = useMemo(
+    () => inputs.filter((input) => VIDEO_INPUT_TYPES.has(input.type)),
+    [inputs],
+  );
+  const motionScores = useMotionScores(roomId);
+  const motionHistoryMap = useMotionHistory(motionDetectionInputs, motionScores);
+
+  return (
+    <MotionDetectionPanel
+      roomId={roomId}
+      inputs={motionDetectionInputs}
+      motionHistoryMap={motionHistoryMap}
+      motionScores={motionScores}
+      refreshState={refreshState}
+    />
+  );
+});
 
 type ModalId = 'settings' | 'showcase';
 

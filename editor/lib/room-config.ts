@@ -435,6 +435,8 @@ export function restoreTimelineToStorage(
   try {
     saveTimeline(roomId, {
       ...state,
+      snapToBlocks: true,
+      snapToKeyframes: true,
       playheadMs: 0,
     });
   } catch {

@@ -17,6 +17,8 @@ import {
   TIMELINE_EVENTS,
 } from '../components/timeline/timeline-events';
 
+const PLAYHEAD_UI_UPDATE_INTERVAL_MS = 33;
+
 export function useServerTimelinePlayback(
   roomId: string,
   state: TimelineState,
@@ -32,11 +34,39 @@ export function useServerTimelinePlayback(
   const lastSSERef = useRef<{ wallMs: number; playheadMs: number } | null>(
     null,
   );
+  const lastPlayheadUpdateRef = useRef<{ ts: number; ms: number | null }>({
+    ts: 0,
+    ms: null,
+  });
 
   const [isPaused, setIsPaused] = useState(false);
 
   const sseData = useTimelineSSE(roomId, state.isPlaying || isPaused);
   const sseCountRef = useRef(0);
+
+  const pushPlayheadUpdate = useCallback(
+    (ms: number, options?: { force?: boolean }) => {
+      const now = performance.now();
+      const clampedMs = Math.round(
+        Math.max(0, Math.min(ms, stateRef.current.totalDurationMs)),
+      );
+      if (lastPlayheadUpdateRef.current.ms === clampedMs) {
+        return;
+      }
+      if (
+        !options?.force &&
+        now - lastPlayheadUpdateRef.current.ts < PLAYHEAD_UI_UPDATE_INTERVAL_MS
+      ) {
+        return;
+      }
+      lastPlayheadUpdateRef.current = {
+        ts: now,
+        ms: clampedMs,
+      };
+      setPlayhead(clampedMs);
+    },
+    [setPlayhead],
+  );
 
   useEffect(() => {
     if (!sseData) return;
@@ -70,9 +100,9 @@ export function useServerTimelinePlayback(
         wallMs: performance.now(),
         playheadMs: sseData.playheadMs,
       };
-      setPlayhead(Math.round(sseData.playheadMs));
+      pushPlayheadUpdate(sseData.playheadMs, { force: true });
     }
-  }, [sseData, setPlayhead, setPlaying, isPaused]);
+  }, [sseData, pushPlayheadUpdate, setPlaying, isPaused]);
 
   useEffect(() => {
     if (!state.isPlaying) {
@@ -95,11 +125,11 @@ export function useServerTimelinePlayback(
       const totalDuration = stateRef.current.totalDurationMs;
 
       if (interpolated >= totalDuration) {
-        setPlayhead(totalDuration);
+        pushPlayheadUpdate(totalDuration, { force: true });
         return;
       }
 
-      setPlayhead(Math.round(interpolated));
+      pushPlayheadUpdate(interpolated);
       rafRef.current = requestAnimationFrame(tick);
     };
 
@@ -111,7 +141,7 @@ export function useServerTimelinePlayback(
         rafRef.current = null;
       }
     };
-  }, [state.isPlaying, setPlayhead]);
+  }, [state.isPlaying, pushPlayheadUpdate]);
 
   const play = useCallback(async () => {
     if (stateRef.current.isPlaying) return;
@@ -150,12 +180,12 @@ export function useServerTimelinePlayback(
 
     try {
       const result = await pauseTimeline(roomId);
-      setPlayhead(Math.round(result.playheadMs));
+      pushPlayheadUpdate(result.playheadMs, { force: true });
     } catch (err) {
       console.error('[timeline-ui] PAUSE failed', err);
       setIsPaused(false);
     }
-  }, [roomId, setPlaying, setPlayhead]);
+  }, [roomId, pushPlayheadUpdate, setPlaying]);
 
   const stop = useCallback(async () => {
     setPlaying(false);
@@ -172,7 +202,7 @@ export function useServerTimelinePlayback(
       console.error('[timeline] Failed to stop playback', err);
     }
 
-    setPlayhead(0);
+    pushPlayheadUpdate(0, { force: true });
     const config = toServerTimelineConfig(stateRef.current);
     if (config.tracks.length === 0) return;
     try {
@@ -180,12 +210,12 @@ export function useServerTimelinePlayback(
     } catch (err) {
       console.error('[timeline-ui] applyAtPlayhead(0) after STOP failed', err);
     }
-  }, [roomId, setPlaying, setPlayhead]);
+  }, [roomId, pushPlayheadUpdate, setPlaying]);
 
   const seek = useCallback(
     async (ms: number) => {
       console.log(`[timeline-ui] SEEK to ${ms}ms`);
-      setPlayhead(ms);
+      pushPlayheadUpdate(ms, { force: true });
       lastSSERef.current = {
         wallMs: performance.now(),
         playheadMs: ms,
@@ -197,7 +227,7 @@ export function useServerTimelinePlayback(
         console.error('[timeline-ui] SEEK failed', err);
       }
     },
-    [roomId, setPlayhead],
+    [roomId, pushPlayheadUpdate],
   );
 
   const applyAtPlayhead = useCallback(async () => {

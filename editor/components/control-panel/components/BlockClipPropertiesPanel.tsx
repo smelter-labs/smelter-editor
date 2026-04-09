@@ -648,6 +648,13 @@ export function BlockClipPropertiesPanel({
     [selectedTimelineClips, applyClipPatch],
   );
 
+  const handleReorderShaders = useCallback(
+    (shaders: ShaderConfig[]) => {
+      void applyClipPatch({ shaders });
+    },
+    [applyClipPatch],
+  );
+
   const handleSliderChange = useCallback(
     (shaderId: string, paramName: string, newValue: number) => {
       if (selectedTimelineClips.length === 0) return;
@@ -1804,6 +1811,7 @@ export function BlockClipPropertiesPanel({
             setInlineShaderView({ shaderId, source: 'block' })
           }
           onApplyPreset={handleApplyPreset}
+          onReorderShaders={handleReorderShaders}
         />
       </CollapsibleSection>
       <AddShaderModal
