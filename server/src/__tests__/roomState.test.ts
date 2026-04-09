@@ -518,7 +518,7 @@ describe('RoomState', () => {
       );
     });
 
-    it('swaps slot positions in manual layers so inputs visually move', async () => {
+    it('preserves per-input positions in manual layers on reorder', async () => {
       const output = createTestOutput();
       const room = new RoomState('room-1', output, [], true);
       await room.init();
@@ -549,11 +549,11 @@ describe('RoomState', () => {
       const li1 = layer.inputs.find((i) => i.inputId === id1)!;
       const li2 = layer.inputs.find((i) => i.inputId === id2)!;
 
-      // id2 should now occupy slot 0 (pos0), id1 should occupy slot 1 (pos1)
-      expect(li2.x).toBe(pos0.x);
-      expect(li2.width).toBe(pos0.width);
-      expect(li1.x).toBe(pos1.x);
-      expect(li1.width).toBe(pos1.width);
+      // Each input keeps its own position after reorder
+      expect(li1.x).toBe(pos0.x);
+      expect(li1.width).toBe(pos0.width);
+      expect(li2.x).toBe(pos1.x);
+      expect(li2.width).toBe(pos1.width);
     });
   });
 

@@ -1193,6 +1193,7 @@ function SettingsBar({
         viewportTransitionEasing: roomState.viewportTransitionEasing,
       },
       roomState.outputShaders,
+      roomState.layers,
     );
   }, [getTimelineStateForConfig, roomState, roomId]);
 

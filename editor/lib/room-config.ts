@@ -4,6 +4,7 @@ import type {
   ShaderConfig,
   UpdateInputOptions,
 } from '@/lib/types';
+import type { Layer, LayerBehaviorConfig } from '@/lib/types';
 import type { ViewportProperties } from '@smelter-editor/types';
 import {
   OUTPUT_TRACK_INPUT_ID,
@@ -117,10 +118,31 @@ export type RoomConfigOutputPlayer = {
   volume: number;
 };
 
+export type RoomConfigLayerInput = {
+  inputIndex: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  transitionDurationMs?: number;
+  transitionEasing?: string;
+  cropTop?: number;
+  cropLeft?: number;
+  cropRight?: number;
+  cropBottom?: number;
+};
+
+export type RoomConfigLayer = {
+  id: string;
+  inputs: RoomConfigLayerInput[];
+  behavior?: LayerBehaviorConfig;
+};
+
 export type RoomConfig = {
   version: 1;
   layout: Layout;
   inputs: RoomConfigInput[];
+  layers?: RoomConfigLayer[];
   resolution?: { width: number; height: number };
   transitionSettings?: RoomConfigTransitionSettings;
   viewport?: Partial<ViewportProperties>;
@@ -162,6 +184,7 @@ export function exportRoomConfig(
   outputPlayer?: RoomConfigOutputPlayer,
   viewport?: Partial<ViewportProperties>,
   outputShaders?: ShaderConfig[],
+  layers?: Layer[],
 ): RoomConfig {
   const inputIdToIndex = new Map<string, number>();
   inputs.forEach((input, idx) => inputIdToIndex.set(input.inputId, idx));
@@ -193,9 +216,41 @@ export function exportRoomConfig(
     };
   }
 
+  const serializedLayers: RoomConfigLayer[] | undefined = layers?.map(
+    (layer) => ({
+      id: layer.id,
+      behavior: layer.behavior,
+      inputs: layer.inputs.reduce<RoomConfigLayerInput[]>((acc, li) => {
+        const idx = inputIdToIndex.get(li.inputId);
+        if (idx === undefined) return acc;
+        const entry: RoomConfigLayerInput = {
+          inputIndex: idx,
+          x: li.x,
+          y: li.y,
+          width: li.width,
+          height: li.height,
+        };
+        if (li.transitionDurationMs !== undefined)
+          entry.transitionDurationMs = li.transitionDurationMs;
+        if (li.transitionEasing !== undefined)
+          entry.transitionEasing = li.transitionEasing;
+        if (li.cropTop !== undefined) entry.cropTop = li.cropTop;
+        if (li.cropLeft !== undefined) entry.cropLeft = li.cropLeft;
+        if (li.cropRight !== undefined) entry.cropRight = li.cropRight;
+        if (li.cropBottom !== undefined) entry.cropBottom = li.cropBottom;
+        acc.push(entry);
+        return acc;
+      }, []),
+    }),
+  );
+
   return {
     version: 1,
     layout,
+    layers:
+      serializedLayers && serializedLayers.length > 0
+        ? serializedLayers
+        : undefined,
     resolution,
     transitionSettings,
     viewport,

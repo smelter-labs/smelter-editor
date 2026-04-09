@@ -1,4 +1,4 @@
-import type { Layout } from './layout.js';
+import type { Layout, LayerBehaviorConfig } from './layout.js';
 import type { ShaderConfig } from './shader.js';
 import type { InputType } from './input.js';
 import type { SnakeEventShaderConfig } from './snake-game.js';
@@ -73,11 +73,32 @@ export type ImportConfigTransitionSettings = {
   newsStripEnabled?: boolean;
 };
 
+export type ImportConfigLayerInput = {
+  inputIndex: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  transitionDurationMs?: number;
+  transitionEasing?: string;
+  cropTop?: number;
+  cropLeft?: number;
+  cropRight?: number;
+  cropBottom?: number;
+};
+
+export type ImportConfigLayer = {
+  id: string;
+  inputs: ImportConfigLayerInput[];
+  behavior?: LayerBehaviorConfig;
+};
+
 export type ImportConfigRequest = {
   config: {
     version: 1;
     layout: Layout;
     inputs: ImportConfigInput[];
+    layers?: ImportConfigLayer[];
     resolution?: { width: number; height: number };
     transitionSettings?: ImportConfigTransitionSettings;
     viewport?: {

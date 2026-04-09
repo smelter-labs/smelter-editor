@@ -99,6 +99,8 @@ export {
 
 export type {
   ImportConfigInput,
+  ImportConfigLayerInput,
+  ImportConfigLayer,
   ImportConfigTimeline,
   ImportConfigTransitionSettings,
   ImportConfigRequest,

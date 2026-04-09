@@ -49,6 +49,7 @@ export function saveCrashRecoverySnapshot(
         viewportTransitionEasing: roomState.viewportTransitionEasing,
       },
       roomState.outputShaders,
+      roomState.layers,
     );
 
     const data: CrashRecoveryData = {

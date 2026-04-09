@@ -316,8 +316,8 @@ export class RoomState {
       const cloned = cloneLayers(layers);
       this.layers = cloned;
 
-      // Sync absolute position properties from layer positions so the web
-      // editor's absolute-position controller reflects mobile layout changes.
+      // Sync position, transition, and crop properties from layer entries back
+      // to input state so the editor's controllers stay consistent.
       // The first layer that contains an input is authoritative.
       const allInputs = this.inputManager.getInputs();
       const seen = new Set<string>();
@@ -331,6 +331,14 @@ export class RoomState {
           input.absoluteTop = li.y;
           input.absoluteWidth = li.width;
           input.absoluteHeight = li.height;
+          if (li.transitionDurationMs !== undefined)
+            input.absoluteTransitionDurationMs = li.transitionDurationMs;
+          if (li.transitionEasing !== undefined)
+            input.absoluteTransitionEasing = li.transitionEasing;
+          if (li.cropTop !== undefined) input.cropTop = li.cropTop;
+          if (li.cropLeft !== undefined) input.cropLeft = li.cropLeft;
+          if (li.cropRight !== undefined) input.cropRight = li.cropRight;
+          if (li.cropBottom !== undefined) input.cropBottom = li.cropBottom;
         }
       }
 
@@ -382,9 +390,12 @@ export class RoomState {
   }
 
   public async removeInput(inputId: string): Promise<void> {
-    return this.mutex.runExclusive(() =>
-      this.inputManager.removeInput(inputId),
-    );
+    return this.mutex.runExclusive(async () => {
+      await this.inputManager.removeInput(inputId);
+      for (const layer of this.layers) {
+        layer.inputs = layer.inputs.filter((li) => li.inputId !== inputId);
+      }
+    });
   }
 
   public async connectInput(inputId: string): Promise<string> {
@@ -422,14 +433,21 @@ export class RoomState {
     options: Partial<UpdateInputOptions>,
   ) {
     return this.mutex.runExclusive(async () => {
-      // Sync: mirror absolute position changes to all matching layer inputs so
-      // the mobile layout grid reflects edits made in the editor timeline.
-      if (
+      // Sync: mirror absolute position, transition, and crop changes to all
+      // matching layer inputs so the rendering pipeline (App.tsx reads from
+      // LayerInput) stays consistent with input state.
+      const hasLayerPatch =
         options.absoluteLeft !== undefined ||
         options.absoluteTop !== undefined ||
         options.absoluteWidth !== undefined ||
-        options.absoluteHeight !== undefined
-      ) {
+        options.absoluteHeight !== undefined ||
+        options.absoluteTransitionDurationMs !== undefined ||
+        options.absoluteTransitionEasing !== undefined ||
+        options.cropTop !== undefined ||
+        options.cropLeft !== undefined ||
+        options.cropRight !== undefined ||
+        options.cropBottom !== undefined;
+      if (hasLayerPatch) {
         for (const layer of this.layers) {
           for (const li of layer.inputs) {
             if (li.inputId !== inputId) continue;
@@ -439,6 +457,16 @@ export class RoomState {
               li.width = options.absoluteWidth;
             if (options.absoluteHeight !== undefined)
               li.height = options.absoluteHeight;
+            if (options.absoluteTransitionDurationMs !== undefined)
+              li.transitionDurationMs = options.absoluteTransitionDurationMs;
+            if (options.absoluteTransitionEasing !== undefined)
+              li.transitionEasing = options.absoluteTransitionEasing;
+            if (options.cropTop !== undefined) li.cropTop = options.cropTop;
+            if (options.cropLeft !== undefined) li.cropLeft = options.cropLeft;
+            if (options.cropRight !== undefined)
+              li.cropRight = options.cropRight;
+            if (options.cropBottom !== undefined)
+              li.cropBottom = options.cropBottom;
           }
         }
       }
@@ -452,37 +480,14 @@ export class RoomState {
 
       const orderIndex = new Map(inputOrder.map((id, idx) => [id, idx]));
       for (const layer of this.layers) {
-        if (!layer.behavior) {
-          // Manual layer: positions are stored per-input, so we need to keep
-          // slot positions stable and reassign which input occupies each slot.
-          const slotPositions = layer.inputs.map((li) => ({
-            x: li.x,
-            y: li.y,
-            width: li.width,
-            height: li.height,
-          }));
-          layer.inputs.sort((a, b) => {
-            const ai = orderIndex.get(a.inputId) ?? Number.MAX_SAFE_INTEGER;
-            const bi = orderIndex.get(b.inputId) ?? Number.MAX_SAFE_INTEGER;
-            return ai - bi;
-          });
-          for (let i = 0; i < layer.inputs.length; i++) {
-            const slot = slotPositions[i];
-            if (!slot) break;
-            layer.inputs[i].x = slot.x;
-            layer.inputs[i].y = slot.y;
-            layer.inputs[i].width = slot.width;
-            layer.inputs[i].height = slot.height;
-          }
-        } else {
-          // Behavior-driven layer: positions will be recomputed by
-          // computeLayout in flushStoreUpdate, just reorder.
-          layer.inputs.sort((a, b) => {
-            const ai = orderIndex.get(a.inputId) ?? Number.MAX_SAFE_INTEGER;
-            const bi = orderIndex.get(b.inputId) ?? Number.MAX_SAFE_INTEGER;
-            return ai - bi;
-          });
-        }
+        // For both manual and behavior layers, sort inputs by the requested
+        // order. Each LayerInput carries its own position, so a plain sort
+        // preserves per-input geometry (no slot-position reassignment).
+        layer.inputs.sort((a, b) => {
+          const ai = orderIndex.get(a.inputId) ?? Number.MAX_SAFE_INTEGER;
+          const bi = orderIndex.get(b.inputId) ?? Number.MAX_SAFE_INTEGER;
+          return ai - bi;
+        });
       }
     });
   }
