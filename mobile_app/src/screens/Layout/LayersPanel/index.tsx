@@ -24,12 +24,17 @@ interface LayersPanelProps {
   layers: Layer[];
   inputs: InputCard[];
   onLayersChange: (layers: Layer[]) => void;
+  onToggleLayerVisibility?: (
+    layerId: string,
+    shouldShow: boolean,
+  ) => Promise<void>;
 }
 
 export default function LayersPanel({
   layers,
   inputs,
   onLayersChange,
+  onToggleLayerVisibility,
 }: LayersPanelProps) {
   // Always-fresh ref so onDrop closures never use stale layers.
   const layersRef = useRef(layers);
@@ -180,6 +185,7 @@ export default function LayersPanel({
                 onLayerDrop={(data) =>
                   handleLayerDrop(data.layerId, layerIndex)
                 }
+                onToggleLayerVisibility={onToggleLayerVisibility}
               />
             );
           }}

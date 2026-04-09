@@ -78,49 +78,54 @@ function layerInputsToItemData(
   gridRows: number,
 ): ItemData<LayerItemProps>[] {
   const inputMap = new Map(inputs.map((i) => [i.id, i]));
-  return layerInputs.map((li) => {
-    const input = inputMap.get(li.inputId);
-    return {
-      initial: {
-        col: Math.max(
-          0,
-          Math.min(
-            gridCols - 1,
-            Math.round((li.x / resolution.width) * gridCols),
+  return layerInputs
+    .filter((li) => {
+      const input = inputMap.get(li.inputId);
+      return !input?.isHidden; // Filter out hidden inputs
+    })
+    .map((li) => {
+      const input = inputMap.get(li.inputId);
+      return {
+        initial: {
+          col: Math.max(
+            0,
+            Math.min(
+              gridCols - 1,
+              Math.round((li.x / resolution.width) * gridCols),
+            ),
           ),
-        ),
-        row: Math.max(
-          0,
-          Math.min(
-            gridRows - 1,
-            Math.round((li.y / resolution.height) * gridRows),
+          row: Math.max(
+            0,
+            Math.min(
+              gridRows - 1,
+              Math.round((li.y / resolution.height) * gridRows),
+            ),
           ),
-        ),
-        width: Math.max(
-          1,
-          Math.min(
-            gridCols,
-            Math.round((li.width / resolution.width) * gridCols),
+          width: Math.max(
+            1,
+            Math.min(
+              gridCols,
+              Math.round((li.width / resolution.width) * gridCols),
+            ),
           ),
-        ),
-        height: Math.max(
-          1,
-          Math.min(
-            gridRows,
-            Math.round((li.height / resolution.height) * gridRows),
+          height: Math.max(
+            1,
+            Math.min(
+              gridRows,
+              Math.round((li.height / resolution.height) * gridRows),
+            ),
           ),
-        ),
-      },
-      props: {
-        id: li.inputId,
-        name: input?.name ?? li.inputId,
-        color: colorFromId(li.inputId),
-        isVisible: !(input?.isHidden ?? false),
-        nativeWidth: input?.nativeWidth,
-        nativeHeight: input?.nativeHeight,
-      },
-    };
-  });
+        },
+        props: {
+          id: li.inputId,
+          name: input?.name ?? li.inputId,
+          color: colorFromId(li.inputId),
+          isVisible: true, // All items in itemData are visible at this point
+          nativeWidth: input?.nativeWidth,
+          nativeHeight: input?.nativeHeight,
+        },
+      };
+    });
 }
 
 function itemDataToLayerInputs(
@@ -239,6 +244,38 @@ export function LayoutScreen() {
     [layers, serverUrl, roomId, setLayers],
   );
 
+  // Toggle visibility of all inputs in a layer (show/hide)
+  const handleToggleLayerVisibility = useCallback(
+    async (layerId: string, shouldShow: boolean) => {
+      const layer = layers.find((l) => l.id === layerId);
+      if (!layer) return;
+
+      try {
+        // Call hideInput or showInput for each input in the layer
+        const promises = layer.inputs.map((li) =>
+          shouldShow
+            ? apiService.showInput(serverUrl, roomId, li.inputId)
+            : apiService.hideInput(serverUrl, roomId, li.inputId),
+        );
+        await Promise.all(promises);
+
+        // Update local inputs state to reflect visibility changes
+        const updatedInputs = inputs.map((input) =>
+          layer.inputs.some((li) => li.inputId === input.id)
+            ? { ...input, isHidden: !shouldShow }
+            : input,
+        );
+        setInputs(updatedInputs);
+      } catch (err) {
+        console.warn(
+          `[Layout] Failed to ${shouldShow ? "show" : "hide"} layer inputs:`,
+          err,
+        );
+      }
+    },
+    [layers, inputs, serverUrl, roomId, setInputs],
+  );
+
   // Handle grid item position change for a specific layer
   const handleGridChange = useCallback(
     (layerId: string, items: ItemData<LayerItemProps>[]) => {
@@ -317,6 +354,15 @@ export function LayoutScreen() {
       {/* Canvas: stacked layer grids — layers[0] is topmost (highest zIndex) */}
       <View style={styles.canvas}>
         {layers.map((layer, i) => {
+          // Skip rendering layer if all its inputs are hidden
+          const layerInputIds = layer.inputs.map((li) => li.inputId);
+          const allInputsHidden =
+            layerInputIds.length > 0 &&
+            layerInputIds.every((id) =>
+              inputs.some((inp) => inp.id === id && inp.isHidden),
+            );
+          if (allInputsHidden) return null;
+
           const itemData = layerItemDataMap.get(layer.id) ?? [];
           return (
             <View
@@ -355,6 +401,7 @@ export function LayoutScreen() {
           layers={layers}
           inputs={inputs}
           onLayersChange={(newLayers) => void pushLayers(newLayers)}
+          onToggleLayerVisibility={handleToggleLayerVisibility}
         />
       </SidePanel>
 

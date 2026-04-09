@@ -41,6 +41,10 @@ export interface LayerComponentProps {
   onUiChange: (patch: Partial<LayerUiState>) => void;
   onBehaviorChange: (behavior: LayerBehaviorConfig | undefined) => void;
   onLayerDrop: (data: LayerDragData) => void;
+  onToggleLayerVisibility?: (
+    layerId: string,
+    shouldShow: boolean,
+  ) => Promise<void>;
 }
 
 export function Layer({
@@ -53,6 +57,7 @@ export function Layer({
   onUiChange,
   onBehaviorChange,
   onLayerDrop,
+  onToggleLayerVisibility,
 }: LayerComponentProps) {
   // Create sortable items from layer inputs
   const sortableInputs = layer.inputs.map((input) => ({
@@ -96,6 +101,22 @@ export function Layer({
     ],
   );
 
+  const handleToggleVisible = useCallback(async () => {
+    const newVisibility = !ui.isVisible;
+    // Update UI state immediately for visual feedback
+    onUiChange({ isVisible: newVisibility });
+    // Call the visibility toggle API if provided
+    if (onToggleLayerVisibility) {
+      try {
+        await onToggleLayerVisibility(layer.id, newVisibility);
+      } catch (err) {
+        // Rollback UI state on error
+        onUiChange({ isVisible: !newVisibility });
+        console.warn("[Layer] Failed to toggle visibility:", err);
+      }
+    }
+  }, [ui.isVisible, layer.id, onUiChange, onToggleLayerVisibility]);
+
   return (
     <View style={styles.container}>
       {/* Layer header — draggable */}
@@ -111,7 +132,7 @@ export function Layer({
           isVisible={ui.isVisible}
           isCollapsed={ui.isCollapsed}
           onToggleCollapse={() => onUiChange({ isCollapsed: !ui.isCollapsed })}
-          onToggleVisible={() => onUiChange({ isVisible: !ui.isVisible })}
+          onToggleVisible={handleToggleVisible}
           onNameChange={(name) => onUiChange({ name })}
         />
       </Draggable>
