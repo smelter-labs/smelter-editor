@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useMemo, useEffect } from 'react';
 import type { AvailableShader, Input } from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, EyeOff } from 'lucide-react';
 import ShaderPanel from './shader-panel';
 import SnakeEventShaderPanel from './snake-event-shader-panel';
 import { DeleteButton } from './delete-button';
@@ -38,6 +38,7 @@ interface InputEntryProps {
 
   readOnly?: boolean;
   activeBlockColor?: string;
+  isOnTimeline?: boolean;
 }
 
 export default function InputEntry({
@@ -56,6 +57,7 @@ export default function InputEntry({
   isSelected = false,
   readOnly = false,
   activeBlockColor,
+  isOnTimeline = true,
 }: InputEntryProps) {
   const actions = useActions();
   const [showSliders, setShowSliders] = useState(false);
@@ -430,14 +432,18 @@ export default function InputEntry({
               <GripVertical className='w-5 h-5 text-muted-foreground' />
             </div>
           )}
-          <span
-            className='shrink-0 w-3 h-3 rounded-none mr-2'
-            style={
-              activeBlockColor
-                ? { backgroundColor: activeBlockColor }
-                : { border: '1px solid #6b7280' }
-            }
-          />
+          {!isOnTimeline && !activeBlockColor ? (
+            <EyeOff className='shrink-0 w-3 h-3 mr-2 text-muted-foreground/50' />
+          ) : (
+            <span
+              className='shrink-0 w-3 h-3 rounded-none mr-2'
+              style={
+                activeBlockColor
+                  ? { backgroundColor: activeBlockColor }
+                  : { border: '1px solid #6b7280' }
+              }
+            />
+          )}
           <div className='min-w-0 flex-1 text-[12px] font-bold text-foreground truncate'>
             {input.title}
           </div>

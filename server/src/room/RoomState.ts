@@ -1210,10 +1210,21 @@ export class RoomState {
           this.output.resolution,
         );
 
-        // Merge computed positions with hidden inputs
+        // Merge computed positions back in the original layer.inputs order
+        // so that hidden inputs keep their position instead of being pushed
+        // to the end (which would break reorderInputs ordering).
+        const computedMap = new Map(
+          result.inputs.map((li) => [li.inputId, li]),
+        );
         return {
           ...layer,
-          inputs: [...result.inputs, ...hiddenLayerInputs],
+          inputs: layer.inputs
+            .map((li) => computedMap.get(li.inputId) ?? li)
+            .filter(
+              (li) =>
+                computedMap.has(li.inputId) ||
+                inputMap.get(li.inputId)?.hidden,
+            ),
         };
       }
 
@@ -1246,9 +1257,18 @@ export class RoomState {
           this.output.resolution,
         );
 
+        const computedMap = new Map(
+          result.inputs.map((li) => [li.inputId, li]),
+        );
         return {
           ...layer,
-          inputs: [...result.inputs, ...hiddenLayerInputs],
+          inputs: layer.inputs
+            .map((li) => computedMap.get(li.inputId) ?? li)
+            .filter(
+              (li) =>
+                computedMap.has(li.inputId) ||
+                inputMap.get(li.inputId)?.hidden,
+            ),
         };
       }
 

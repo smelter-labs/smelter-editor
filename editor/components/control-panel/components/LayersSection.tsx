@@ -26,6 +26,7 @@ import {
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { motion, LayoutGroup } from 'framer-motion';
 import { ChevronDown, ChevronRight, GripVertical, Layers } from 'lucide-react';
 import type { Input, Layer, LayerBehaviorConfig } from '@/lib/types';
 import { computeLayout } from '@smelter-editor/types';
@@ -52,6 +53,8 @@ type LayersSectionProps = {
   isGuest?: boolean;
   guestInputId?: string | null;
   onLayersChange: (layers: Layer[]) => Promise<void>;
+  activeClipColors?: Record<string, string>;
+  allTimelineInputIds?: Set<string>;
 };
 
 type DragItem = {
@@ -200,6 +203,8 @@ export function LayersSection({
   isGuest,
   guestInputId,
   onLayersChange,
+  activeClipColors,
+  allTimelineInputIds,
 }: LayersSectionProps) {
   const { inputs, roomId, refreshState, availableShaders } =
     useControlPanelContext();
@@ -550,9 +555,14 @@ export function LayersSection({
           strategy={verticalListSortingStrategy}>
           {localLayers.map((layer, layerIndex) => {
             const isCollapsed = collapsedLayers.has(layer.id);
-            const visibleInputs = layer.inputs.filter(
+            const filteredInputs = layer.inputs.filter(
               (i) => !attachedInputIds.has(i.inputId),
             );
+            const visibleInputs = [...filteredInputs].sort((a, b) => {
+              const aActive = activeClipColors?.[a.inputId] ? 0 : 1;
+              const bActive = activeClipColors?.[b.inputId] ? 0 : 1;
+              return aActive - bActive;
+            });
             const inputIds = visibleInputs.map((i) => i.inputId);
 
             return (
@@ -577,90 +587,122 @@ export function LayersSection({
                     <SortableContext
                       items={inputIds}
                       strategy={verticalListSortingStrategy}>
-                      <div className='min-h-[4px]'>
-                        {visibleInputs.length === 0 && (
-                          <div className='text-[10px] text-neutral-600 text-center py-2'>
-                            Drop inputs here
-                          </div>
-                        )}
-                        {visibleInputs.map((layerInput, inputIndex) => {
-                          const input = inputs.find(
-                            (i) => i.inputId === layerInput.inputId,
-                          );
-                          if (!input) return null;
-                          const attachedChildren =
-                            input.attachedInputIds
-                              ?.map((id) =>
-                                inputs.find((i) => i.inputId === id),
-                              )
-                              .filter((i): i is Input => !!i) || [];
+                      <LayoutGroup id={layer.id}>
+                        <div className='min-h-[4px]'>
+                          {visibleInputs.length === 0 && (
+                            <div className='text-[10px] text-neutral-600 text-center py-2'>
+                              Drop inputs here
+                            </div>
+                          )}
+                          {visibleInputs.map((layerInput, inputIndex) => {
+                            const input = inputs.find(
+                              (i) => i.inputId === layerInput.inputId,
+                            );
+                            if (!input) return null;
+                            const attachedChildren =
+                              input.attachedInputIds
+                                ?.map((id) =>
+                                  inputs.find((i) => i.inputId === id),
+                                )
+                                .filter((i): i is Input => !!i) || [];
 
-                          return (
-                            <SortableInputItem
-                              key={layerInput.inputId}
-                              id={layerInput.inputId}
-                              disabled={disableDrag}>
-                              <ErrorBoundary>
-                                <InputEntry
-                                  input={input}
-                                  refreshState={refreshState}
-                                  roomId={roomId}
-                                  availableShaders={availableShaders}
-                                  canRemove={
-                                    isGuest
-                                      ? input.inputId === guestInputId
-                                      : true
-                                  }
-                                  pcRef={cameraPcRef}
-                                  streamRef={cameraStreamRef}
-                                  isFxOpen={openFxInputId === input.inputId}
-                                  onToggleFx={() => onToggleFx(input.inputId)}
-                                  onWhipDisconnectedOrRemoved={
-                                    onWhipDisconnectedOrRemoved
-                                  }
-                                  showGrip={isGuest ? false : true}
-                                  isSelected={selectedInputId === input.inputId}
-                                  readOnly={
-                                    isGuest && input.inputId !== guestInputId
-                                  }
-                                />
-                              </ErrorBoundary>
-                              {attachedChildren.map((child) => (
-                                <div
-                                  key={child.inputId}
-                                  className='ml-6 mt-1 border-l-2 border-blue-500/30 pl-2'>
+                            return (
+                              <motion.div
+                                key={layerInput.inputId}
+                                layout={!activeId}
+                                layoutId={layerInput.inputId}
+                                transition={{
+                                  layout: { duration: 0.4, ease: 'easeInOut' },
+                                }}>
+                                <SortableInputItem
+                                  id={layerInput.inputId}
+                                  disabled={disableDrag}>
                                   <ErrorBoundary>
                                     <InputEntry
-                                      input={child}
+                                      input={input}
                                       refreshState={refreshState}
                                       roomId={roomId}
                                       availableShaders={availableShaders}
-                                      canRemove={false}
+                                      canRemove={
+                                        isGuest
+                                          ? input.inputId === guestInputId
+                                          : true
+                                      }
                                       pcRef={cameraPcRef}
                                       streamRef={cameraStreamRef}
-                                      isFxOpen={openFxInputId === child.inputId}
+                                      isFxOpen={openFxInputId === input.inputId}
                                       onToggleFx={() =>
-                                        onToggleFx(child.inputId)
+                                        onToggleFx(input.inputId)
                                       }
                                       onWhipDisconnectedOrRemoved={
                                         onWhipDisconnectedOrRemoved
                                       }
-                                      showGrip={false}
+                                      showGrip={isGuest ? false : true}
                                       isSelected={
-                                        selectedInputId === child.inputId
+                                        selectedInputId === input.inputId
                                       }
                                       readOnly={
                                         isGuest &&
-                                        child.inputId !== guestInputId
+                                        input.inputId !== guestInputId
+                                      }
+                                      activeBlockColor={
+                                        activeClipColors?.[input.inputId]
+                                      }
+                                      isOnTimeline={
+                                        allTimelineInputIds?.has(
+                                          input.inputId,
+                                        ) ?? true
                                       }
                                     />
                                   </ErrorBoundary>
-                                </div>
-                              ))}
-                            </SortableInputItem>
-                          );
-                        })}
-                      </div>
+                                  {attachedChildren.map((child) => (
+                                    <div
+                                      key={child.inputId}
+                                      className='ml-6 mt-1 border-l-2 border-blue-500/30 pl-2'>
+                                      <ErrorBoundary>
+                                        <InputEntry
+                                          input={child}
+                                          refreshState={refreshState}
+                                          roomId={roomId}
+                                          availableShaders={availableShaders}
+                                          canRemove={false}
+                                          pcRef={cameraPcRef}
+                                          streamRef={cameraStreamRef}
+                                          isFxOpen={
+                                            openFxInputId === child.inputId
+                                          }
+                                          onToggleFx={() =>
+                                            onToggleFx(child.inputId)
+                                          }
+                                          onWhipDisconnectedOrRemoved={
+                                            onWhipDisconnectedOrRemoved
+                                          }
+                                          showGrip={false}
+                                          isSelected={
+                                            selectedInputId === child.inputId
+                                          }
+                                          readOnly={
+                                            isGuest &&
+                                            child.inputId !== guestInputId
+                                          }
+                                          activeBlockColor={
+                                            activeClipColors?.[child.inputId]
+                                          }
+                                          isOnTimeline={
+                                            allTimelineInputIds?.has(
+                                              child.inputId,
+                                            ) ?? true
+                                          }
+                                        />
+                                      </ErrorBoundary>
+                                    </div>
+                                  ))}
+                                </SortableInputItem>
+                              </motion.div>
+                            );
+                          })}
+                        </div>
+                      </LayoutGroup>
                     </SortableContext>
                   )}
                 </div>

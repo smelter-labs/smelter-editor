@@ -430,4 +430,151 @@ describe('TimelinePlayer', () => {
       });
     });
   });
+
+  describe('reorderInputs respects layer order', () => {
+    it('uses layer.inputs order instead of track order for reorderInputs', async () => {
+      (adapter.getInputs as any).mockReturnValue([
+        { inputId: 'a', hidden: false, status: 'connected', type: 'text-input' },
+        { inputId: 'b', hidden: false, status: 'connected', type: 'text-input' },
+      ]);
+      (adapter.getLayers as any).mockReturnValue([
+        { id: 'L1', inputs: [{ inputId: 'b' }, { inputId: 'a' }] },
+      ]);
+
+      const config = makeConfig({
+        tracks: [
+          {
+            id: 't1',
+            clips: [makeClip({ inputId: 'a', startMs: 0, endMs: 5000 })],
+          },
+          {
+            id: 't2',
+            clips: [
+              makeClip({ id: 'c2', inputId: 'b', startMs: 0, endMs: 5000 }),
+            ],
+          },
+        ],
+      });
+
+      const player = new TimelinePlayer(adapter, config);
+      await player.start(0);
+
+      expect(adapter.reorderInputs).toHaveBeenCalledWith(['b', 'a']);
+    });
+
+    it('appends active inputs not in any layer at the end', async () => {
+      (adapter.getInputs as any).mockReturnValue([
+        { inputId: 'a', hidden: false, status: 'connected', type: 'text-input' },
+        { inputId: 'b', hidden: false, status: 'connected', type: 'text-input' },
+        { inputId: 'c', hidden: false, status: 'connected', type: 'text-input' },
+      ]);
+      (adapter.getLayers as any).mockReturnValue([
+        { id: 'L1', inputs: [{ inputId: 'b' }] },
+      ]);
+
+      const config = makeConfig({
+        tracks: [
+          {
+            id: 't1',
+            clips: [makeClip({ inputId: 'a', startMs: 0, endMs: 5000 })],
+          },
+          {
+            id: 't2',
+            clips: [
+              makeClip({ id: 'c2', inputId: 'b', startMs: 0, endMs: 5000 }),
+            ],
+          },
+          {
+            id: 't3',
+            clips: [
+              makeClip({ id: 'c3', inputId: 'c', startMs: 0, endMs: 5000 }),
+            ],
+          },
+        ],
+      });
+
+      const player = new TimelinePlayer(adapter, config);
+      await player.start(0);
+
+      const calls = (adapter.reorderInputs as any).mock.calls;
+      expect(calls.length).toBeGreaterThanOrEqual(1);
+      const order = calls[calls.length - 1][0] as string[];
+      expect(order[0]).toBe('b');
+      expect(order).toContain('a');
+      expect(order).toContain('c');
+      expect(order.indexOf('b')).toBeLessThan(order.indexOf('a'));
+      expect(order.indexOf('b')).toBeLessThan(order.indexOf('c'));
+    });
+
+    it('respects order across multiple layers', async () => {
+      (adapter.getInputs as any).mockReturnValue([
+        { inputId: 'a', hidden: false, status: 'connected', type: 'text-input' },
+        { inputId: 'b', hidden: false, status: 'connected', type: 'text-input' },
+        { inputId: 'c', hidden: false, status: 'connected', type: 'text-input' },
+      ]);
+      (adapter.getLayers as any).mockReturnValue([
+        { id: 'L1', inputs: [{ inputId: 'c' }] },
+        { id: 'L2', inputs: [{ inputId: 'a' }, { inputId: 'b' }] },
+      ]);
+
+      const config = makeConfig({
+        tracks: [
+          {
+            id: 't1',
+            clips: [makeClip({ inputId: 'a', startMs: 0, endMs: 5000 })],
+          },
+          {
+            id: 't2',
+            clips: [
+              makeClip({ id: 'c2', inputId: 'b', startMs: 0, endMs: 5000 }),
+            ],
+          },
+          {
+            id: 't3',
+            clips: [
+              makeClip({ id: 'c3', inputId: 'c', startMs: 0, endMs: 5000 }),
+            ],
+          },
+        ],
+      });
+
+      const player = new TimelinePlayer(adapter, config);
+      await player.start(0);
+
+      expect(adapter.reorderInputs).toHaveBeenCalledWith(['c', 'a', 'b']);
+    });
+
+    it('updates order when a new block starts mid-playback', async () => {
+      (adapter.getInputs as any).mockReturnValue([
+        { inputId: 'a', hidden: false, status: 'connected', type: 'text-input' },
+        { inputId: 'b', hidden: true, status: 'connected', type: 'text-input' },
+      ]);
+      (adapter.getLayers as any).mockReturnValue([
+        { id: 'L1', inputs: [{ inputId: 'b' }, { inputId: 'a' }] },
+      ]);
+
+      const config = makeConfig({
+        tracks: [
+          {
+            id: 't1',
+            clips: [makeClip({ inputId: 'a', startMs: 0, endMs: 5000 })],
+          },
+          {
+            id: 't2',
+            clips: [
+              makeClip({ id: 'c2', inputId: 'b', startMs: 2000, endMs: 5000 }),
+            ],
+          },
+        ],
+      });
+
+      const player = new TimelinePlayer(adapter, config);
+      await player.start(0);
+
+      (adapter.reorderInputs as any).mockClear();
+      await vi.advanceTimersByTimeAsync(2001);
+
+      expect(adapter.reorderInputs).toHaveBeenCalledWith(['b', 'a']);
+    });
+  });
 });

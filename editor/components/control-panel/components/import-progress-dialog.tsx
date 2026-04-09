@@ -644,7 +644,9 @@ export function ImportProgressDialog({ progress }: ImportProgressDialogProps) {
   const displayedCurrent = visibleProgress
     ? Math.min(current, sessionCurrentCap)
     : 0;
-  const percent = total > 0 ? Math.round((displayedCurrent / total) * 100) : 0;
+  const rawPercent = total > 0 ? Math.round((displayedCurrent / total) * 100) : 0;
+  const fakeMinPercent = Math.round(Math.min(sessionProgressRatio, 0.15) * 100);
+  const percent = Math.max(rawPercent, fakeMinPercent);
   const [sessionSeed, setSessionSeed] = useState(0);
   const [displayValues, setDisplayValues] =
     useState<number[]>(zeroMetricValues);

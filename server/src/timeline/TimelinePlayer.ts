@@ -446,22 +446,46 @@ function resolveBlockSettingsAtTime(
   return resolved;
 }
 
-function getActiveOrder(config: TimelineConfig, timeMs: number): string[] {
-  const order: string[] = [];
-  const seen = new Set<string>();
+function getActiveInputIds(
+  config: TimelineConfig,
+  timeMs: number,
+): Set<string> {
+  const active = new Set<string>();
   for (const track of config.tracks) {
     for (const clip of track.clips) {
       if (clip.inputId === OUTPUT_TRACK_INPUT_ID) continue;
-      if (
-        timeMs >= clip.startMs &&
-        timeMs < clip.endMs &&
-        !seen.has(clip.inputId)
-      ) {
-        order.push(clip.inputId);
-        seen.add(clip.inputId);
+      if (timeMs >= clip.startMs && timeMs < clip.endMs) {
+        active.add(clip.inputId);
       }
     }
   }
+  return active;
+}
+
+function getActiveOrderFromLayers(
+  config: TimelineConfig,
+  timeMs: number,
+  layers: Layer[],
+): string[] {
+  const active = getActiveInputIds(config, timeMs);
+  const order: string[] = [];
+  const placed = new Set<string>();
+
+  for (const layer of layers) {
+    for (const li of layer.inputs) {
+      if (active.has(li.inputId) && !placed.has(li.inputId)) {
+        order.push(li.inputId);
+        placed.add(li.inputId);
+      }
+    }
+  }
+
+  for (const id of active) {
+    if (!placed.has(id)) {
+      order.push(id);
+    }
+  }
+
   return order;
 }
 
@@ -1278,7 +1302,8 @@ export class TimelinePlayer {
   }
 
   private applyOrderIfChanged(timeMs: number): void {
-    const order = getActiveOrder(this.config, timeMs);
+    const layers = this.room.getLayers();
+    const order = getActiveOrderFromLayers(this.config, timeMs, layers);
     const key = order.join(',');
     if (key === this.lastAppliedOrder || order.length === 0) return;
     this.lastAppliedOrder = key;

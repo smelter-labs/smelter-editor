@@ -165,6 +165,7 @@ type ControlPanelProps = {
     peers: ConnectedPeer[];
     timelineColorOverrides: Record<string, string>;
     activeClipColors: Record<string, string>;
+    allTimelineInputIds: Set<string>;
     selectedInputId: string | null;
     onSelectInput: (id: string) => void;
   }) => React.ReactNode;
@@ -545,6 +546,12 @@ function ControlPanelInner({
   >({});
   const activeClipColorsKeyRef = useRef('');
 
+  const [allTimelineInputIds, setAllTimelineInputIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const allTimelineInputIdsKeyRef = useRef('');
+
+
   const [pendingWhipColors, setPendingWhipColors] = useState<
     Record<string, string>
   >({});
@@ -683,6 +690,23 @@ function ControlPanelInner({
         setActiveClipColors(activeColors);
       }
 
+      const allIds: string[] = [];
+      for (const track of state.tracks) {
+        for (const clip of track.clips) {
+          if (
+            clip.inputId !== '__output__' &&
+            !clip.inputId.startsWith('__pending-whip-')
+          ) {
+            allIds.push(clip.inputId);
+          }
+        }
+      }
+      const allIdsKey = allIds.sort().join(',');
+      if (allIdsKey !== allTimelineInputIdsKeyRef.current) {
+        allTimelineInputIdsKeyRef.current = allIdsKey;
+        setAllTimelineInputIds(new Set(allIds));
+      }
+
       const whipBase = TYPE_HSL['whip'];
       const pendingColors: Record<string, string> = {};
       for (const track of state.tracks) {
@@ -783,6 +807,8 @@ function ControlPanelInner({
           isGuest={isGuest}
           guestInputId={activeCameraInputId || activeScreenshareInputId}
           onLayersChange={handleLayersChange}
+          activeClipColors={activeClipColors}
+          allTimelineInputIds={allTimelineInputIds}
         />
       </div>
     );
@@ -879,6 +905,7 @@ function ControlPanelInner({
           peers,
           timelineColorOverrides,
           activeClipColors,
+          allTimelineInputIds,
           selectedInputId,
           onSelectInput: setSelectedInputId,
         })}
@@ -917,6 +944,8 @@ function ControlPanelInner({
       isGuest={isGuest}
       guestInputId={activeCameraInputId || activeScreenshareInputId}
       onLayersChange={handleLayersChange}
+      activeClipColors={activeClipColors}
+      allTimelineInputIds={allTimelineInputIds}
     />
   ) : null;
 
