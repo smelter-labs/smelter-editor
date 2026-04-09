@@ -793,6 +793,7 @@ const InputSchema = Type.Union([
         Type.Literal('right'),
       ]),
     ),
+    textScrollEnabled: Type.Optional(Type.Boolean()),
   }),
   Type.Object({
     type: Type.Literal('game'),
@@ -1606,6 +1607,7 @@ const UpdateInputSchema = Type.Object({
   ),
   textColor: Type.Optional(Type.String()),
   textMaxLines: Type.Optional(Type.Number()),
+  textScrollEnabled: Type.Optional(Type.Boolean()),
   textScrollSpeed: Type.Optional(Type.Number()),
   textScrollLoop: Type.Optional(Type.Boolean()),
   textScrollNudge: Type.Optional(Type.Number()),

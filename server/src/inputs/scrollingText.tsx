@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 type ScrollingTextProps = {
   text: string;
   maxLines: number;
+  scrollEnabled: boolean;
   scrollSpeed: number;
   scrollLoop: boolean;
   fontSize: number;
@@ -19,6 +20,7 @@ type ScrollingTextProps = {
 export function ScrollingText({
   text,
   maxLines,
+  scrollEnabled,
   scrollSpeed,
   scrollLoop,
   fontSize,
@@ -49,7 +51,7 @@ export function ScrollingText({
   const measuredTextHeight = Math.max(lineHeight, lines.length * lineHeight);
   const totalTextHeight = measuredTextHeight + textVerticalPadding * 2;
 
-  const shouldAnimate = maxLines > 0;
+  const shouldAnimate = scrollEnabled && maxLines > 0;
   const startPosition = visibleHeight - textVerticalPadding;
 
   const [scrollOffset, setScrollOffset] = useState(startPosition);

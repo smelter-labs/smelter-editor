@@ -277,6 +277,7 @@ describe('TimelinePlayer', () => {
         textAlign: 'left',
         textColor: '#fff',
         textMaxLines: 1,
+        textScrollEnabled: true,
         textScrollSpeed: 0,
         textScrollLoop: false,
         textFontSize: 16,

@@ -1292,6 +1292,7 @@ describe('RoomState', () => {
       const input = room.getInputs().find((i) => i.inputId === inputId)!;
       const pub = toPublicInputState(input);
       expect('textScrollNudge' in pub).toBe(true);
+      expect(pub.textScrollEnabled).toBe(true);
     });
   });
 

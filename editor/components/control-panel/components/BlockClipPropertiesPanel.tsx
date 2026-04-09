@@ -481,6 +481,7 @@ export function BlockClipPropertiesPanel({
             textAlign: patch.textAlign,
             textColor: patch.textColor,
             textMaxLines: patch.textMaxLines,
+            textScrollEnabled: patch.textScrollEnabled,
             textScrollSpeed: patch.textScrollSpeed,
             textScrollLoop: patch.textScrollLoop,
             textFontSize: patch.textFontSize,
@@ -1720,6 +1721,19 @@ export function BlockClipPropertiesPanel({
                   </div>
                 </div>
                 <div>
+                  <div className='flex items-center justify-between mb-2'>
+                    <span className='text-xs text-muted-foreground'>
+                      Scroll text
+                    </span>
+                    <Checkbox
+                      checked={
+                        effectiveClip.blockSettings.textScrollEnabled ?? true
+                      }
+                      onCheckedChange={(checked) =>
+                        void applyClipPatch({ textScrollEnabled: !!checked })
+                      }
+                    />
+                  </div>
                   <label className={labelStyles({ block: true })}>
                     Scroll speed
                   </label>
@@ -1729,6 +1743,9 @@ export function BlockClipPropertiesPanel({
                       max={400}
                       step={1}
                       className='flex-1'
+                      disabled={
+                        !(effectiveClip.blockSettings.textScrollEnabled ?? true)
+                      }
                       value={[
                         textScrollSpeedDraft ??
                           effectiveClip.blockSettings.textScrollSpeed ??
@@ -1750,6 +1767,9 @@ export function BlockClipPropertiesPanel({
                     Scroll loop
                   </span>
                   <Checkbox
+                    disabled={
+                      !(effectiveClip.blockSettings.textScrollEnabled ?? true)
+                    }
                     checked={effectiveClip.blockSettings.textScrollLoop ?? true}
                     onCheckedChange={(checked) =>
                       void applyClipPatch({ textScrollLoop: !!checked })

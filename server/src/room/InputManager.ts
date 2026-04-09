@@ -546,6 +546,7 @@ export class InputManager {
       textAlign: opts.textAlign ?? 'left',
       textColor: opts.textColor ?? '#ffffff',
       textMaxLines: opts.textMaxLines ?? 10,
+      textScrollEnabled: opts.textScrollEnabled ?? true,
       textScrollSpeed: opts.textScrollSpeed ?? 80,
       textScrollLoop: opts.textScrollLoop ?? true,
       textScrollNudge: 0,
@@ -795,6 +796,8 @@ export class InputManager {
       if (options.textColor !== undefined) input.textColor = options.textColor;
       if (options.textMaxLines !== undefined)
         input.textMaxLines = options.textMaxLines;
+      if (options.textScrollEnabled !== undefined)
+        input.textScrollEnabled = options.textScrollEnabled;
       if (options.textScrollSpeed !== undefined)
         input.textScrollSpeed = options.textScrollSpeed;
       if (options.textScrollLoop !== undefined)

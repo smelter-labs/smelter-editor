@@ -297,6 +297,7 @@ export function createBlockSettingsFromInput(input?: Input): BlockSettings {
     textAlign: input?.textAlign,
     textColor: input?.textColor,
     textMaxLines: input?.textMaxLines,
+    textScrollEnabled: input?.textScrollEnabled,
     textScrollSpeed: input?.textScrollSpeed,
     textScrollLoop: input?.textScrollLoop,
     textFontSize: input?.textFontSize,

@@ -20,6 +20,7 @@ export type ImportConfigInput = {
   textColor?: string;
   needsConnection?: boolean;
   textMaxLines?: number;
+  textScrollEnabled?: boolean;
   textScrollSpeed?: number;
   textScrollLoop?: boolean;
   textFontSize?: number;

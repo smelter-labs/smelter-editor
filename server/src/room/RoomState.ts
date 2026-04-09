@@ -1053,6 +1053,8 @@ export class RoomState {
       textColor: input.type === 'text-input' ? input.textColor : undefined,
       textMaxLines:
         input.type === 'text-input' ? input.textMaxLines : undefined,
+      textScrollEnabled:
+        input.type === 'text-input' ? input.textScrollEnabled : undefined,
       textScrollSpeed:
         input.type === 'text-input' ? input.textScrollSpeed : undefined,
       textScrollLoop:

@@ -147,6 +147,7 @@ export function Input({ input }: { input: InputConfig }) {
               <ScrollingText
                 text={input.text!}
                 maxLines={input.textMaxLines ?? 10}
+                scrollEnabled={input.textScrollEnabled ?? true}
                 scrollSpeed={input.textScrollSpeed ?? 80}
                 scrollLoop={input.textScrollLoop ?? true}
                 fontSize={input.textFontSize ?? 80}

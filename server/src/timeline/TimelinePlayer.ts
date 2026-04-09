@@ -528,6 +528,7 @@ function buildUpdateFromBlockSettings(
     textAlign: bs.textAlign,
     textColor: bs.textColor,
     textMaxLines: bs.textMaxLines,
+    textScrollEnabled: bs.textScrollEnabled,
     textScrollSpeed: bs.textScrollSpeed,
     textScrollLoop: bs.textScrollLoop,
     textFontSize: bs.textFontSize,
@@ -568,6 +569,8 @@ function buildUpdateFromRoomInput(
     textAlign: input.type === 'text-input' ? input.textAlign : undefined,
     textColor: input.type === 'text-input' ? input.textColor : undefined,
     textMaxLines: input.type === 'text-input' ? input.textMaxLines : undefined,
+    textScrollEnabled:
+      input.type === 'text-input' ? input.textScrollEnabled : undefined,
     textScrollSpeed:
       input.type === 'text-input' ? input.textScrollSpeed : undefined,
     textScrollLoop:

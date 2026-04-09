@@ -21,6 +21,7 @@ export type StoredBlockSettings = {
   textAlign?: 'left' | 'center' | 'right';
   textColor?: string;
   textMaxLines?: number;
+  textScrollEnabled?: boolean;
   textScrollSpeed?: number;
   textScrollLoop?: boolean;
   textFontSize?: number;

@@ -38,6 +38,7 @@ export type RoomConfigInput = {
   textColor?: string;
   needsConnection?: boolean;
   textMaxLines?: number;
+  textScrollEnabled?: boolean;
   textScrollSpeed?: number;
   textScrollLoop?: boolean;
   textFontSize?: number;
@@ -279,6 +280,7 @@ export function exportRoomConfig(
       textColor: input.textColor,
       needsConnection: input.type === 'whip',
       textMaxLines: input.textMaxLines,
+      textScrollEnabled: input.textScrollEnabled,
       textScrollSpeed: input.textScrollSpeed,
       textScrollLoop: input.textScrollLoop,
       textFontSize: input.textFontSize,
@@ -478,6 +480,7 @@ export function buildInputUpdateFromBlockSettings(
     textAlign: blockSettings.textAlign,
     textColor: blockSettings.textColor,
     textMaxLines: blockSettings.textMaxLines,
+    textScrollEnabled: blockSettings.textScrollEnabled,
     textScrollSpeed: blockSettings.textScrollSpeed,
     textScrollLoop: blockSettings.textScrollLoop,
     textFontSize: blockSettings.textFontSize,

@@ -134,6 +134,11 @@ export function computeKeyframeDiff(
       fmt: (v) => fmtBool(v as boolean),
     },
     {
+      key: 'textScrollEnabled',
+      label: 'textScrollEnabled',
+      fmt: (v) => fmtBool(v as boolean),
+    },
+    {
       key: 'textFontSize',
       label: 'textFontSize',
       fmt: (v) => fmtNum(v as number),

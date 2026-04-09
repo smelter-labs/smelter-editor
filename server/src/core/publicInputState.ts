@@ -99,6 +99,7 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
         textAlign: input.textAlign,
         textColor: input.textColor,
         textMaxLines: input.textMaxLines,
+        textScrollEnabled: input.textScrollEnabled,
         textScrollSpeed: input.textScrollSpeed,
         textScrollLoop: input.textScrollLoop,
         textScrollNudge: input.textScrollNudge,

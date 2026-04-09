@@ -32,6 +32,7 @@ const TimelineBlockSettingsSchema = Type.Object({
   ),
   textColor: Type.Optional(Type.String()),
   textMaxLines: Type.Optional(Type.Number()),
+  textScrollEnabled: Type.Optional(Type.Boolean()),
   textScrollSpeed: Type.Optional(Type.Number()),
   textScrollLoop: Type.Optional(Type.Boolean()),
   textFontSize: Type.Optional(Type.Number()),
