@@ -176,6 +176,7 @@ export default function RoomView({
           activeClipColors,
           selectedInputId,
           onSelectInput,
+          videoOverlayRects,
         }) => {
           const staticPanels: Record<string, ReactNode> = {
             'video-preview': (
@@ -184,6 +185,7 @@ export default function RoomView({
                 whepUrl={roomState.whepUrl}
                 resolution={roomState.resolution}
                 roomId={roomId}
+                overlayRects={videoOverlayRects}
               />
             ),
             streams: streamsSection,

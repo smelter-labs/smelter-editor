@@ -1059,6 +1059,67 @@ describe('RoomState', () => {
         vi.useRealTimers();
       }
     });
+
+    it('preserves manual layer positions after stop when unplaced inputs exist', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const id1 = (await room.addNewInput({
+        type: 'text-input',
+        text: 'A',
+      }))!;
+      const id2 = (await room.addNewInput({
+        type: 'text-input',
+        text: 'B',
+      }))!;
+      await room.connectInput(id1);
+      await room.connectInput(id2);
+
+      const pos1 = { x: 0, y: 0, width: 960, height: 1080 };
+      const pos2 = { x: 960, y: 0, width: 960, height: 1080 };
+
+      await room.updateLayers([
+        {
+          id: 'manual',
+          inputs: [
+            { inputId: id1, ...pos1 },
+            { inputId: id2, ...pos2 },
+          ],
+        },
+      ]);
+
+      await room.startTimelinePlayback(
+        createTimelineConfig(id1, 'TL'),
+        0,
+      );
+
+      const id3 = (await room.addNewInput({
+        type: 'text-input',
+        text: 'C',
+      }))!;
+      await room.connectInput(id3);
+
+      await room.stopTimelinePlayback();
+
+      // Allow any pending debounced store flushes to settle
+      await new Promise((r) => setTimeout(r, 20));
+
+      const layers = room.getState().layers;
+      const li1 = layers[0]!.inputs.find((i) => i.inputId === id1);
+      const li2 = layers[0]!.inputs.find((i) => i.inputId === id2);
+
+      expect(li1).toBeDefined();
+      expect(li2).toBeDefined();
+      expect(li1!.x).toBe(pos1.x);
+      expect(li1!.y).toBe(pos1.y);
+      expect(li1!.width).toBe(pos1.width);
+      expect(li1!.height).toBe(pos1.height);
+      expect(li2!.x).toBe(pos2.x);
+      expect(li2!.y).toBe(pos2.y);
+      expect(li2!.width).toBe(pos2.width);
+      expect(li2!.height).toBe(pos2.height);
+    });
   });
 
   describe('deleteRoom', () => {

@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Play, Square, Diamond, Move, type LucideIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { FxCanvas, FX_PRESET_MINI, extractHue } from '@/lib/fx';
 import {
   useTimelineEventsEnabledSetting,
   useTimelineEventsPositionSetting,
@@ -48,298 +49,6 @@ const EVENT_LABELS: Record<TimelineEventType, string> = {
   'position-change': 'Position Changed',
 };
 
-// ── GPU Mini-Canvas Types & Helpers ──────────────────────────────────
-
-type FxPt = { x: number; y: number };
-
-type FxSpark = {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-  life: number;
-  maxLife: number;
-  hue: number;
-  size: number;
-  bright: number;
-};
-
-type FxBolt = {
-  pts: FxPt[];
-  branches: FxPt[][];
-  life: number;
-  maxLife: number;
-  w: number;
-  hue: number;
-};
-
-type MiniFxState = {
-  w: number;
-  h: number;
-  dpr: number;
-  sparks: FxSpark[];
-  bolts: FxBolt[];
-  nextBolt: number;
-};
-
-function fxHsl(h: number, s: number, l: number, a: number) {
-  return `hsla(${h},${s}%,${l}%,${a})`;
-}
-
-function extractHue(color: string): number {
-  const hslMatch = color.match(/hsl[a]?\(\s*(\d+)/);
-  if (hslMatch) return parseInt(hslMatch[1], 10);
-
-  if (color.startsWith('#')) {
-    const r = parseInt(color.slice(1, 3), 16) / 255;
-    const g = parseInt(color.slice(3, 5), 16) / 255;
-    const b = parseInt(color.slice(5, 7), 16) / 255;
-    const max = Math.max(r, g, b),
-      min = Math.min(r, g, b);
-    const d = max - min;
-    if (d === 0) return 200;
-    let h = 0;
-    if (max === r) h = ((g - b) / d) % 6;
-    else if (max === g) h = (b - r) / d + 2;
-    else h = (r - g) / d + 4;
-    return Math.round(h * 60 + 360) % 360;
-  }
-  return 200;
-}
-
-function displaceMidpoint(
-  x1: number,
-  y1: number,
-  x2: number,
-  y2: number,
-  d: number,
-  depth: number,
-): FxPt[] {
-  if (depth <= 0)
-    return [
-      { x: x1, y: y1 },
-      { x: x2, y: y2 },
-    ];
-  const mx = (x1 + x2) / 2 + (Math.random() - 0.5) * d;
-  const my = (y1 + y2) / 2 + (Math.random() - 0.5) * d;
-  const left = displaceMidpoint(x1, y1, mx, my, d * 0.52, depth - 1);
-  const right = displaceMidpoint(mx, my, x2, y2, d * 0.52, depth - 1);
-  return [...left.slice(0, -1), ...right];
-}
-
-function makeMiniSpark(w: number, h: number, hue: number): FxSpark {
-  return {
-    x: Math.random() * 6,
-    y: Math.random() * h,
-    vx: 8 + Math.random() * 18,
-    vy: (Math.random() - 0.5) * 20,
-    life: Math.random() * 0.6,
-    maxLife: 0.8 + Math.random() * 0.7,
-    hue: hue + (Math.random() - 0.5) * 30,
-    size: 0.6 + Math.random() * 0.6,
-    bright: 0.5 + Math.random() * 0.5,
-  };
-}
-
-function makeMiniBolt(w: number, h: number, hue: number): FxBolt {
-  const x1 = Math.random() < 0.5 ? 0 : w;
-  const y1 = Math.random() * h;
-  const x2 = w * 0.2 + Math.random() * w * 0.6;
-  const y2 = h * 0.2 + Math.random() * h * 0.6;
-  const dist = Math.hypot(x2 - x1, y2 - y1);
-  const pts = displaceMidpoint(x1, y1, x2, y2, dist * 0.25, 4);
-
-  const branches: FxPt[][] = [];
-  for (let i = 0; i < 1 + Math.floor(Math.random() * 2); i++) {
-    const idx = Math.min(
-      Math.floor(pts.length * 0.3 + Math.random() * pts.length * 0.4),
-      pts.length - 1,
-    );
-    const bp = pts[idx];
-    const bx = bp.x + (Math.random() - 0.5) * dist * 0.3;
-    const by = bp.y + (Math.random() - 0.5) * dist * 0.3;
-    branches.push(
-      displaceMidpoint(
-        bp.x,
-        bp.y,
-        bx,
-        by,
-        Math.hypot(bx - bp.x, by - bp.y) * 0.25,
-        2,
-      ),
-    );
-  }
-
-  return {
-    pts,
-    branches,
-    life: 0,
-    maxLife: 0.12 + Math.random() * 0.15,
-    w: 0.6 + Math.random() * 1.0,
-    hue: hue + (Math.random() - 0.5) * 20,
-  };
-}
-
-function updateMiniFx(s: MiniFxState, dt: number, hue: number) {
-  while (s.sparks.length < 8) s.sparks.push(makeMiniSpark(s.w, s.h, hue));
-  for (const p of s.sparks) {
-    p.life += dt;
-    p.x += p.vx * dt;
-    p.y += p.vy * dt;
-    p.vx += (Math.random() - 0.5) * 12 * dt;
-    p.vy += (Math.random() - 0.5) * 8 * dt;
-  }
-  s.sparks = s.sparks.filter(
-    (p) =>
-      p.life < p.maxLife &&
-      p.y > -4 &&
-      p.y < s.h + 4 &&
-      p.x > -4 &&
-      p.x < s.w + 4,
-  );
-
-  s.nextBolt -= dt;
-  if (s.nextBolt <= 0) {
-    s.bolts.push(makeMiniBolt(s.w, s.h, hue));
-    s.nextBolt = 0.6 + Math.random() * 0.5;
-  }
-  for (const b of s.bolts) b.life += dt;
-  s.bolts = s.bolts.filter((b) => b.life < b.maxLife);
-}
-
-function drawMiniFx(ctx: CanvasRenderingContext2D, s: MiniFxState) {
-  const { w, h, dpr } = s;
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, w, h);
-
-  for (const sp of s.sparks) {
-    const lr = sp.life / sp.maxLife;
-    const a = Math.min(1, sp.life * 6) * (1 - lr) * sp.bright;
-    if (a < 0.01) continue;
-    ctx.shadowColor = fxHsl(sp.hue, 100, 70, 1);
-    ctx.shadowBlur = 8 * a;
-    ctx.fillStyle = fxHsl(sp.hue, 85, 80, a * 0.85);
-    ctx.beginPath();
-    ctx.arc(sp.x, sp.y, sp.size, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.shadowBlur = 0;
-    ctx.fillStyle = fxHsl(sp.hue, 40, 95, a);
-    ctx.beginPath();
-    ctx.arc(sp.x, sp.y, sp.size * 0.35, 0, Math.PI * 2);
-    ctx.fill();
-  }
-  ctx.shadowBlur = 0;
-
-  for (const bolt of s.bolts) {
-    const lr = bolt.life / bolt.maxLife;
-    const flash = lr < 0.15 ? lr / 0.15 : 1 - (lr - 0.15) / 0.85;
-    const a = flash * flash;
-    if (a < 0.01) continue;
-    ctx.lineCap = 'round';
-    ctx.lineJoin = 'round';
-
-    const strokePath = (pts: FxPt[], lw: number, al: number) => {
-      if (pts.length < 2) return;
-      ctx.lineWidth = lw;
-      ctx.strokeStyle = fxHsl(bolt.hue, 100, 85, al);
-      ctx.beginPath();
-      ctx.moveTo(pts[0].x, pts[0].y);
-      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
-      ctx.stroke();
-    };
-
-    ctx.shadowColor = fxHsl(bolt.hue, 100, 70, a);
-    ctx.shadowBlur = 18;
-    strokePath(bolt.pts, bolt.w * 3, a * 0.3);
-    ctx.shadowBlur = 8;
-    strokePath(bolt.pts, bolt.w * 1.5, a * 0.6);
-    ctx.shadowBlur = 0;
-    strokePath(bolt.pts, bolt.w * 0.4, a);
-
-    if (lr < 0.2) {
-      ctx.strokeStyle = `rgba(255,255,255,${a * 0.45})`;
-      ctx.lineWidth = bolt.w * 0.15;
-      ctx.beginPath();
-      ctx.moveTo(bolt.pts[0].x, bolt.pts[0].y);
-      for (let i = 1; i < bolt.pts.length; i++)
-        ctx.lineTo(bolt.pts[i].x, bolt.pts[i].y);
-      ctx.stroke();
-    }
-
-    for (const br of bolt.branches) {
-      ctx.shadowColor = fxHsl(bolt.hue, 100, 70, a * 0.5);
-      ctx.shadowBlur = 10;
-      strokePath(br, bolt.w * 1.2, a * 0.25);
-      ctx.shadowBlur = 0;
-      strokePath(br, bolt.w * 0.4, a * 0.5);
-    }
-    ctx.shadowBlur = 0;
-  }
-}
-
-function MiniGpuCanvas({
-  color,
-  isActive,
-}: {
-  color: string;
-  isActive: boolean;
-}) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const rafRef = useRef<number | null>(null);
-  const hue = extractHue(color);
-
-  useEffect(() => {
-    if (!isActive) {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
-      return;
-    }
-    const canvas = canvasRef.current;
-    const parent = canvas?.parentElement;
-    if (!canvas || !parent) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const dpr = window.devicePixelRatio || 1;
-    const rect = parent.getBoundingClientRect();
-    canvas.width = Math.ceil(rect.width * dpr);
-    canvas.height = Math.ceil(rect.height * dpr);
-
-    const st: MiniFxState = {
-      w: rect.width,
-      h: rect.height,
-      dpr,
-      sparks: [],
-      bolts: [],
-      nextBolt: 0.3 + Math.random() * 0.4,
-    };
-    for (let i = 0; i < 6; i++) st.sparks.push(makeMiniSpark(st.w, st.h, hue));
-
-    let last = performance.now();
-    const tick = (now: number) => {
-      const dt = Math.min((now - last) / 1000, 0.1);
-      last = now;
-      updateMiniFx(st, dt, hue);
-      drawMiniFx(ctx, st);
-      rafRef.current = requestAnimationFrame(tick);
-    };
-    rafRef.current = requestAnimationFrame(tick);
-
-    return () => {
-      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
-    };
-  }, [isActive, hue]);
-
-  if (!isActive) return null;
-  return (
-    <canvas
-      ref={canvasRef}
-      className='absolute inset-0 pointer-events-none'
-      style={{ borderRadius: 'inherit' }}
-    />
-  );
-}
-
 // ── Toast Card ───────────────────────────────────────────────────────
 
 type QueuedEvent = TimelineEventNotification & {
@@ -359,6 +68,7 @@ function TimelineEventCard({
   const { type, inputLabel, color, detail, phase } = item;
   const IconComponent = EVENT_ICONS[type];
   const isTop = position.startsWith('top');
+  const hues = useMemo(() => [extractHue(color)], [color]);
 
   return (
     <div
@@ -374,9 +84,10 @@ function TimelineEventCard({
         border: `1px solid ${color}33`,
         background: `linear-gradient(135deg, ${color}12 0%, rgba(10,10,10,0.95) 100%)`,
       }}>
-      <MiniGpuCanvas
-        color={color}
+      <FxCanvas
+        config={FX_PRESET_MINI}
         isActive={phase === 'enter' || phase === 'visible'}
+        hues={hues}
       />
 
       <div

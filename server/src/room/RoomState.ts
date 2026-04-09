@@ -71,6 +71,7 @@ export class RoomState {
   private storeUpdateScheduled = false;
   private lastStoreFlushTime = 0;
   private pendingStoreFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  private _restoringTimeline = false;
   private static readonly MIN_STORE_FLUSH_INTERVAL_MS = 10;
 
   private layers: Layer[] = [
@@ -309,38 +310,7 @@ export class RoomState {
 
   public async updateLayers(layers: Layer[]) {
     return this.mutex.runExclusive(async () => {
-      if (layers.length === 0) {
-        throw new Error('layers must not be empty');
-      }
-
-      const cloned = cloneLayers(layers);
-      this.layers = cloned;
-
-      // Sync position, transition, and crop properties from layer entries back
-      // to input state so the editor's controllers stay consistent.
-      // The first layer that contains an input is authoritative.
-      const allInputs = this.inputManager.getInputs();
-      const seen = new Set<string>();
-      for (const layer of cloned) {
-        for (const li of layer.inputs) {
-          if (seen.has(li.inputId)) continue;
-          seen.add(li.inputId);
-          const input = allInputs.find((i) => i.inputId === li.inputId);
-          if (!input) continue;
-          input.absoluteLeft = li.x;
-          input.absoluteTop = li.y;
-          input.absoluteWidth = li.width;
-          input.absoluteHeight = li.height;
-          if (li.transitionDurationMs !== undefined)
-            input.absoluteTransitionDurationMs = li.transitionDurationMs;
-          if (li.transitionEasing !== undefined)
-            input.absoluteTransitionEasing = li.transitionEasing;
-          if (li.cropTop !== undefined) input.cropTop = li.cropTop;
-          if (li.cropLeft !== undefined) input.cropLeft = li.cropLeft;
-          if (li.cropRight !== undefined) input.cropRight = li.cropRight;
-          if (li.cropBottom !== undefined) input.cropBottom = li.cropBottom;
-        }
-      }
+      this.setLayersAndSyncInputState(layers);
 
       // Apply store + behavior layouts immediately (do not debounce: callers expect
       // this.layers to match computeLayout right after updateLayers returns).
@@ -350,6 +320,23 @@ export class RoomState {
       }
       this.storeUpdateScheduled = false;
       this.flushStoreUpdate();
+    });
+  }
+
+  /**
+   * Restore layers from a timeline snapshot without auto-appending unplaced
+   * inputs or re-tiling manual layers with the equal-grid helper.
+   */
+  public async restoreLayers(layers: Layer[]) {
+    return this.mutex.runExclusive(async () => {
+      this.setLayersAndSyncInputState(layers);
+
+      if (this.pendingStoreFlushTimer) {
+        clearTimeout(this.pendingStoreFlushTimer);
+        this.pendingStoreFlushTimer = null;
+      }
+      this.storeUpdateScheduled = false;
+      this.flushStoreUpdate(true);
     });
   }
 
@@ -634,6 +621,7 @@ export class RoomState {
       hideInput: (inputId, transition) => this.hideInput(inputId, transition),
       updateInput: (inputId, options) => this.updateInput(inputId, options),
       updateLayers: (layers) => this.updateLayers(layers),
+      restoreLayers: (layers) => this.restoreLayers(layers),
       restartMp4Input: (inputId, playFromMs, loop) =>
         this.restartMp4Input(inputId, playFromMs, loop),
       reorderInputs: (order) => this.reorderInputs(order),
@@ -737,7 +725,12 @@ export class RoomState {
   public async stopTimelinePlayback(): Promise<void> {
     if (!this.timelinePlayer) return;
     this.cleanupFrozenImages();
-    await this.timelinePlayer.stop();
+    this._restoringTimeline = true;
+    try {
+      await this.timelinePlayer.stop();
+    } finally {
+      this._restoringTimeline = false;
+    }
     this.timelinePlayer.destroy();
     this.timelinePlayer = null;
     this.notifyStateChange();
@@ -1049,7 +1042,10 @@ export class RoomState {
     }
   }
 
-  private flushStoreUpdate() {
+  private flushStoreUpdate(skipUnplacedAppend = false) {
+    if (this._restoringTimeline) {
+      skipUnplacedAppend = true;
+    }
     this.storeUpdateScheduled = false;
     this.lastStoreFlushTime = Date.now();
     if (this.destroyed) return;
@@ -1146,33 +1142,38 @@ export class RoomState {
     // Auto-append connected inputs that aren't in any layer to layers[0].
     // For a manual first layer, tile positions are filled in below using
     // equal-grid as a layout helper only (layer.behavior stays unset).
-    const mentionedIds = new Set(
-      this.layers.flatMap((l) => l.inputs.map((li) => li.inputId)),
-    );
-    const unplacedAttachedIds = new Set(
-      allInputs
-        .filter(
-          (i) => i.status === 'connected' && !i.hidden && i.attachedInputIds,
-        )
-        .flatMap((i) => i.attachedInputIds ?? []),
-    );
-    const unplacedInputs = behaviorInputInfos.filter(
-      (bi) =>
-        !mentionedIds.has(bi.inputId) && !unplacedAttachedIds.has(bi.inputId),
-    );
+    // Skipped during timeline snapshot restore to preserve exact manual positions.
     let appendedUnplacedToFirstLayer = false;
-    if (unplacedInputs.length > 0 && this.layers.length > 0) {
-      const firstLayer = this.layers[0]!;
-      for (const bi of unplacedInputs) {
-        firstLayer.inputs.push({
-          inputId: bi.inputId,
-          x: 0,
-          y: 0,
-          width: 0,
-          height: 0,
-        });
+    if (!skipUnplacedAppend) {
+      const mentionedIds = new Set(
+        this.layers.flatMap((l) => l.inputs.map((li) => li.inputId)),
+      );
+      const unplacedAttachedIds = new Set(
+        allInputs
+          .filter(
+            (i) =>
+              i.status === 'connected' && !i.hidden && i.attachedInputIds,
+          )
+          .flatMap((i) => i.attachedInputIds ?? []),
+      );
+      const unplacedInputs = behaviorInputInfos.filter(
+        (bi) =>
+          !mentionedIds.has(bi.inputId) &&
+          !unplacedAttachedIds.has(bi.inputId),
+      );
+      if (unplacedInputs.length > 0 && this.layers.length > 0) {
+        const firstLayer = this.layers[0]!;
+        for (const bi of unplacedInputs) {
+          firstLayer.inputs.push({
+            inputId: bi.inputId,
+            x: 0,
+            y: 0,
+            width: 0,
+            height: 0,
+          });
+        }
+        appendedUnplacedToFirstLayer = true;
       }
-      appendedUnplacedToFirstLayer = true;
     }
 
     const manualFirstLayerLayoutHelper = {
@@ -1293,5 +1294,40 @@ export class RoomState {
     });
 
     this.notifyStateChange();
+  }
+
+  private setLayersAndSyncInputState(layers: Layer[]): void {
+    if (layers.length === 0) {
+      throw new Error('layers must not be empty');
+    }
+
+    const cloned = cloneLayers(layers);
+    this.layers = cloned;
+
+    // Sync position, transition, and crop properties from layer entries back
+    // to input state so the editor's controllers stay consistent.
+    // The first layer that contains an input is authoritative.
+    const allInputs = this.inputManager.getInputs();
+    const seen = new Set<string>();
+    for (const layer of cloned) {
+      for (const li of layer.inputs) {
+        if (seen.has(li.inputId)) continue;
+        seen.add(li.inputId);
+        const input = allInputs.find((i) => i.inputId === li.inputId);
+        if (!input) continue;
+        input.absoluteLeft = li.x;
+        input.absoluteTop = li.y;
+        input.absoluteWidth = li.width;
+        input.absoluteHeight = li.height;
+        if (li.transitionDurationMs !== undefined)
+          input.absoluteTransitionDurationMs = li.transitionDurationMs;
+        if (li.transitionEasing !== undefined)
+          input.absoluteTransitionEasing = li.transitionEasing;
+        if (li.cropTop !== undefined) input.cropTop = li.cropTop;
+        if (li.cropLeft !== undefined) input.cropLeft = li.cropLeft;
+        if (li.cropRight !== undefined) input.cropRight = li.cropRight;
+        if (li.cropBottom !== undefined) input.cropBottom = li.cropBottom;
+      }
+    }
   }
 }

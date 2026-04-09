@@ -130,6 +130,7 @@ export interface TimelineRoomStateAdapter {
     options: Partial<Record<string, any>>,
   ): Promise<void>;
   updateLayers(layers: Layer[]): Promise<void>;
+  restoreLayers?(layers: Layer[]): Promise<void>;
   restartMp4Input(
     inputId: string,
     playFromMs: number,
@@ -1333,14 +1334,20 @@ export class TimelinePlayer {
   private async restoreState(): Promise<void> {
     if (!this.snapshot) return;
 
-    const promises: Promise<void>[] = [];
+    // Phase 1: restore per-input state and ordering.  These operations may
+    // trigger debounced store flushes (microtask-based) that recompute layer
+    // geometry.  We await them first so that any intermediate flushes settle
+    // before we touch layers.
+    const inputPromises: Promise<void>[] = [];
     const inputs = this.room.getInputs();
 
     for (const input of inputs) {
       const snap = this.snapshot.inputSnapshots.get(input.inputId);
       if (!snap) {
         if (input.hidden) {
-          promises.push(this.room.showInput(input.inputId).catch(() => {}));
+          inputPromises.push(
+            this.room.showInput(input.inputId).catch(() => {}),
+          );
         }
         continue;
       }
@@ -1354,7 +1361,7 @@ export class TimelinePlayer {
 
       if (!hasPatch && !shouldRestartMp4 && !needsVisibilityRestore) continue;
 
-      promises.push(
+      inputPromises.push(
         (async () => {
           if (hasPatch) {
             await this.room
@@ -1376,21 +1383,25 @@ export class TimelinePlayer {
     }
 
     if (this.snapshot.inputOrder.length > 0) {
-      promises.push(
+      inputPromises.push(
         this.room.reorderInputs(this.snapshot.inputOrder).catch(() => {}),
       );
     }
 
-    promises.push(this.room.updateLayers(this.snapshot.layers).catch(() => {}));
-    promises.push(
+    if (inputPromises.length > 0) {
+      await Promise.allSettled(inputPromises);
+    }
+
+    // Phase 2: restore layers and output shaders.  restoreLayers skips the
+    // unplaced-input auto-append logic so manual layer positions from the
+    // snapshot are preserved exactly.
+    const restoreFn = this.room.restoreLayers ?? this.room.updateLayers;
+    await Promise.allSettled([
+      restoreFn(this.snapshot.layers).catch(() => {}),
       this.room
         .updateOutputShaders(this.snapshot.outputShaders)
         .catch(() => {}),
-    );
-
-    if (promises.length > 0) {
-      await Promise.allSettled(promises);
-    }
+    ]);
 
     this.snapshot = null;
     this.appliedState.clear();

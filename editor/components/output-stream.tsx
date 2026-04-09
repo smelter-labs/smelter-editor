@@ -1,6 +1,6 @@
 'use client';
 
-import { RefObject, useEffect, useRef, useState } from 'react';
+import { RefObject, useCallback, useEffect, useRef, useState } from 'react';
 
 import { useIsMobileDevice } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
@@ -19,6 +19,11 @@ import {
   loadOutputPlayerSettings,
   saveOutputPlayerSettings,
 } from '@/lib/room-config';
+import type { VideoOverlayRect } from '@/components/control-panel/control-panel';
+import {
+  useVideoOverlayLineWidthSetting,
+  useVideoOverlayGlowingSetting,
+} from '@/lib/video-overlay-settings';
 
 function LoadingSpinner() {
   return (
@@ -43,17 +48,23 @@ export default function OutputStream({
   videoRef,
   resolution,
   roomId,
+  overlayRects,
 }: {
   whepUrl: string;
   videoRef: RefObject<HTMLVideoElement | null>;
   resolution?: OutputResolution;
   roomId?: string;
+  overlayRects?: VideoOverlayRect[];
 }) {
   const aspectRatio = resolution
     ? `${resolution.width}/${resolution.height}`
     : '16/9';
   const isVertical = resolution ? resolution.height > resolution.width : false;
   const [playing, setPlaying] = useState(false);
+  const overlayCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [overlayLineWidth] = useVideoOverlayLineWidthSetting();
+  const [overlayGlowing] = useVideoOverlayGlowingSetting();
 
   const persisted = roomId ? loadOutputPlayerSettings(roomId) : null;
   const [muted, setMuted] = useState(persisted?.muted ?? true);
@@ -279,6 +290,80 @@ export default function OutputStream({
   const formatTime = (s: number) =>
     !isFinite(s) ? '--:--' : formatMs(s * 1000);
 
+  const drawOverlay = useCallback(() => {
+    const canvas = overlayCanvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const cw = container.clientWidth;
+    const ch = container.clientHeight;
+    canvas.width = cw * dpr;
+    canvas.height = ch * dpr;
+    canvas.style.width = `${cw}px`;
+    canvas.style.height = `${ch}px`;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (!overlayRects || overlayRects.length === 0 || !resolution) return;
+
+    const resW = resolution.width;
+    const resH = resolution.height;
+    const videoAspect = resW / resH;
+    const containerAspect = cw / ch;
+
+    let renderW: number, renderH: number, offsetX: number, offsetY: number;
+    if (containerAspect > videoAspect) {
+      renderH = ch;
+      renderW = ch * videoAspect;
+      offsetX = (cw - renderW) / 2;
+      offsetY = 0;
+    } else {
+      renderW = cw;
+      renderH = cw / videoAspect;
+      offsetX = 0;
+      offsetY = (ch - renderH) / 2;
+    }
+
+    const scale = renderW / resW;
+
+    ctx.scale(dpr, dpr);
+    for (const rect of overlayRects) {
+      const x = offsetX + rect.x * scale;
+      const y = offsetY + rect.y * scale;
+      const w = rect.width * scale;
+      const h = rect.height * scale;
+
+      if (overlayGlowing) {
+        ctx.save();
+        ctx.shadowColor = rect.color;
+        ctx.shadowBlur = overlayLineWidth * 4;
+        ctx.strokeStyle = rect.color;
+        ctx.lineWidth = overlayLineWidth;
+        ctx.strokeRect(x, y, w, h);
+        ctx.restore();
+      }
+
+      ctx.strokeStyle = rect.color;
+      ctx.lineWidth = overlayLineWidth;
+      ctx.strokeRect(x, y, w, h);
+    }
+  }, [overlayRects, resolution, overlayLineWidth, overlayGlowing]);
+
+  useEffect(() => {
+    drawOverlay();
+  }, [drawOverlay]);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    const observer = new ResizeObserver(() => drawOverlay());
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [drawOverlay]);
+
   const controlBar =
     'absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-black/20 flex items-center px-4 py-3 gap-3 z-10';
   const button = 'p-2 rounded-none cursor-pointer text-white';
@@ -287,6 +372,7 @@ export default function OutputStream({
 
   return (
     <div
+      ref={containerRef}
       className='relative bg-black rounded-none overflow-hidden'
       style={{
         aspectRatio,
@@ -314,6 +400,10 @@ export default function OutputStream({
         controls={isMobile}
         style={{ width: '100%', height: '100%', background: 'black' }}
         tabIndex={-1}
+      />
+      <canvas
+        ref={overlayCanvasRef}
+        className='absolute inset-0 pointer-events-none z-[15]'
       />
       {videoLoaded && !isMobile && (
         <div

@@ -7,6 +7,7 @@ import { fadeInUp } from '@/utils/animations';
 import { motion } from 'framer-motion';
 import { VideoOff, Eye, EyeOff, Monitor, Camera } from 'lucide-react';
 import { RefObject, useEffect, useRef, useState } from 'react';
+import type { VideoOverlayRect } from '@/components/control-panel/control-panel';
 
 export default function VideoPreview({
   whepUrl,
@@ -17,6 +18,7 @@ export default function VideoPreview({
   guestStream,
   className,
   roomId,
+  overlayRects,
 }: {
   whepUrl: string;
   videoRef: RefObject<HTMLVideoElement | null>;
@@ -26,6 +28,7 @@ export default function VideoPreview({
   guestStream?: MediaStream | null;
   className?: string;
   roomId?: string;
+  overlayRects?: VideoOverlayRect[];
 }) {
   const activeStream = true;
   const [showPreview, setShowPreview] = useState(!isGuest);
@@ -119,6 +122,7 @@ export default function VideoPreview({
                       whepUrl={whepUrl}
                       resolution={resolution}
                       roomId={roomId}
+                      overlayRects={overlayRects}
                     />
                   </div>
                 ) : (
