@@ -22,6 +22,7 @@ export type InputDisplayProperties = {
   volume: number;
   showTitle: boolean;
   shaders: ShaderConfig[];
+  hidden?: boolean;
 };
 
 export type TextInputProperties = {

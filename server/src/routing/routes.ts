@@ -1314,6 +1314,110 @@ routes.post<
   },
 );
 
+// Batch hide inputs in a layer
+const BatchHideInputsSchema = Type.Object({
+  inputIds: Type.Array(Type.String()),
+  activeTransition: Type.Optional(ActiveTransitionSchema),
+});
+
+routes.post<{
+  Params: { roomId: string };
+  Body: Static<typeof BatchHideInputsSchema>;
+}>(
+  '/room/:roomId/inputs/hide',
+  { schema: { params: RoomIdParamsSchema, body: BatchHideInputsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    const { inputIds, activeTransition } = req.body;
+    logSyncServer('receive', {
+      route: '/room/:roomId/inputs/hide',
+      method: 'POST',
+      roomId,
+      inputIds,
+      body: req.body,
+    });
+    console.log('[request] Batch hide inputs', {
+      roomId,
+      inputIds,
+      hasTransition: !!activeTransition,
+    });
+    const room = state.getRoom(roomId);
+    const sourceId = (req.headers['x-source-id'] as string | undefined) ?? null;
+
+    // Hide all inputs under a single mutex lock (truly parallel at state level)
+    await room.batchHideInputs(inputIds, activeTransition);
+
+    // Broadcast single batch update event
+    const updatedInputs = room
+      .getInputs()
+      .filter((i) => inputIds.includes(i.inputId));
+    if (updatedInputs.length > 0) {
+      roomEventBus.broadcast(roomId, {
+        type: 'inputs_batch_updated',
+        roomId,
+        inputs: updatedInputs.map((inp) => ({
+          inputId: inp.inputId,
+          input: toPublicInputState(inp),
+        })),
+        sourceId,
+      } as any);
+    }
+    res.status(200).send({ status: 'ok' });
+  },
+);
+
+// Batch show inputs in a layer
+const BatchShowInputsSchema = Type.Object({
+  inputIds: Type.Array(Type.String()),
+  activeTransition: Type.Optional(ActiveTransitionSchema),
+});
+
+routes.post<{
+  Params: { roomId: string };
+  Body: Static<typeof BatchShowInputsSchema>;
+}>(
+  '/room/:roomId/inputs/show',
+  { schema: { params: RoomIdParamsSchema, body: BatchShowInputsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    const { inputIds, activeTransition } = req.body;
+    logSyncServer('receive', {
+      route: '/room/:roomId/inputs/show',
+      method: 'POST',
+      roomId,
+      inputIds,
+      body: req.body,
+    });
+    console.log('[request] Batch show inputs', {
+      roomId,
+      inputIds,
+      hasTransition: !!activeTransition,
+    });
+    const room = state.getRoom(roomId);
+    const sourceId = (req.headers['x-source-id'] as string | undefined) ?? null;
+
+    // Show all inputs under a single mutex lock (truly parallel at state level)
+    await room.batchShowInputs(inputIds, activeTransition);
+
+    // Broadcast single batch update event
+    const updatedInputs = room
+      .getInputs()
+      .filter((i) => inputIds.includes(i.inputId));
+    if (updatedInputs.length > 0) {
+      roomEventBus.broadcast(roomId, {
+        type: 'inputs_batch_updated',
+        roomId,
+        inputs: updatedInputs.map((inp) => ({
+          inputId: inp.inputId,
+          input: toPublicInputState(inp),
+        })),
+        sourceId,
+      } as any);
+    }
+    res.status(200).send({ status: 'ok' });
+  },
+);
+
 const Mp4RestartSchema = Type.Object({
   playFromMs: Type.Number({ minimum: 0 }),
   loop: Type.Boolean(),

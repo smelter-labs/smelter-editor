@@ -188,6 +188,58 @@ class ApiService {
   }
 
   /**
+   * Batch hide multiple inputs in a layer.
+   * POST /room/:roomId/inputs/hide
+   */
+  async batchHideInputs(
+    serverUrl: string,
+    roomId: string,
+    inputIds: string[],
+  ): Promise<void> {
+    const base = this.buildHttpUrl(serverUrl);
+    this.logSyncSend(
+      "POST",
+      `/room/${encodeURIComponent(roomId)}/inputs/hide`,
+      { inputIds },
+    );
+    const res = await fetch(
+      `${base}/room/${encodeURIComponent(roomId)}/inputs/hide`,
+      {
+        method: "POST",
+        body: JSON.stringify({ inputIds }),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+    if (!res.ok) throw new Error(`batchHideInputs failed (${res.status})`);
+  }
+
+  /**
+   * Batch show multiple inputs in a layer.
+   * POST /room/:roomId/inputs/show
+   */
+  async batchShowInputs(
+    serverUrl: string,
+    roomId: string,
+    inputIds: string[],
+  ): Promise<void> {
+    const base = this.buildHttpUrl(serverUrl);
+    this.logSyncSend(
+      "POST",
+      `/room/${encodeURIComponent(roomId)}/inputs/show`,
+      { inputIds },
+    );
+    const res = await fetch(
+      `${base}/room/${encodeURIComponent(roomId)}/inputs/show`,
+      {
+        method: "POST",
+        body: JSON.stringify({ inputIds }),
+        headers: { "Content-Type": "application/json" },
+      },
+    );
+    if (!res.ok) throw new Error(`batchShowInputs failed (${res.status})`);
+  }
+
+  /**
    * Delete an input from the room.
    * DELETE /room/:roomId/input/:inputId
    */

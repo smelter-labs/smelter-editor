@@ -250,18 +250,20 @@ export function LayoutScreen() {
       const layer = layers.find((l) => l.id === layerId);
       if (!layer) return;
 
+      const inputIds = layer.inputs.map((li) => li.inputId);
+      if (inputIds.length === 0) return;
+
       try {
-        // Call hideInput or showInput for each input in the layer
-        const promises = layer.inputs.map((li) =>
-          shouldShow
-            ? apiService.showInput(serverUrl, roomId, li.inputId)
-            : apiService.hideInput(serverUrl, roomId, li.inputId),
-        );
-        await Promise.all(promises);
+        // Use batch API to hide/show all inputs at once
+        if (shouldShow) {
+          await apiService.batchShowInputs(serverUrl, roomId, inputIds);
+        } else {
+          await apiService.batchHideInputs(serverUrl, roomId, inputIds);
+        }
 
         // Update local inputs state to reflect visibility changes
         const updatedInputs = inputs.map((input) =>
-          layer.inputs.some((li) => li.inputId === input.id)
+          inputIds.includes(input.id)
             ? { ...input, isHidden: !shouldShow }
             : input,
         );

@@ -472,6 +472,38 @@ export class RoomState {
     });
   }
 
+  public batchHideInputs(
+    inputIds: string[],
+    activeTransition?: {
+      type: string;
+      durationMs: number;
+      direction: 'in' | 'out';
+    },
+  ) {
+    return this.mutex.runExclusive(() => {
+      // Hide all inputs under a single lock
+      for (const inputId of inputIds) {
+        this.inputManager.hideInput(inputId, activeTransition);
+      }
+    });
+  }
+
+  public batchShowInputs(
+    inputIds: string[],
+    activeTransition?: {
+      type: string;
+      durationMs: number;
+      direction: 'in' | 'out';
+    },
+  ) {
+    return this.mutex.runExclusive(() => {
+      // Show all inputs under a single lock
+      for (const inputId of inputIds) {
+        this.inputManager.showInput(inputId, activeTransition);
+      }
+    });
+  }
+
   public async ackWhipInput(inputId: string): Promise<void> {
     return this.mutex.runExclusive(async () => {
       this.inputManager.ackWhipInput(inputId);
@@ -1061,6 +1093,7 @@ export class RoomState {
       activeTransition: input.activeTransition,
       restartFading: input.restartFading,
       frozenImageId: this.frozenImages.get(input.inputId)?.imageId,
+      hidden: input.hidden,
     });
 
     const connectedInputs = allInputs.filter(
