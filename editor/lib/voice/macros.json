@@ -25,11 +25,7 @@
     },
     {
       "id": "reset-to-stream",
-      "triggers": [
-        "reset to stream",
-        "only stream",
-        "clear and add stream"
-      ],
+      "triggers": ["reset to stream", "only stream", "clear and add stream"],
       "description": "Removes all current inputs and adds a new stream input",
       "steps": [
         {
@@ -47,11 +43,7 @@
     },
     {
       "id": "dual-camera-setup",
-      "triggers": [
-        "dual camera setup",
-        "two cameras",
-        "double camera"
-      ],
+      "triggers": ["dual camera setup", "two cameras", "double camera"],
       "description": "Sets up two camera inputs",
       "steps": [
         {
@@ -159,10 +151,15 @@
           "params": {
             "shader": "sw-hologram",
             "shaderParams": {
-              "tint_r": 0.15, "tint_g": 0.44, "tint_b": 1.0,
-              "opacity": 0.79, "scanline_speed": 8.5,
-              "jitter_x_px": 3.4, "glow_intensity": 0.19,
-              "edge_glow_width": 0.09, "brightness": 3.47,
+              "tint_r": 0.15,
+              "tint_g": 0.44,
+              "tint_b": 1.0,
+              "opacity": 0.79,
+              "scanline_speed": 8.5,
+              "jitter_x_px": 3.4,
+              "glow_intensity": 0.19,
+              "edge_glow_width": 0.09,
+              "brightness": 3.47,
               "bloom_radius": 31.38
             }
           },
@@ -224,8 +221,10 @@
           "params": {
             "shader": "alpha-stroke",
             "shaderParams": {
-              "stroke_width_px": 39, "softness_px": 11.5,
-              "opacity": 0.4, "stroke_color": "#E63900"
+              "stroke_width_px": 39,
+              "softness_px": 11.5,
+              "opacity": 0.4,
+              "stroke_color": "#E63900"
             }
           },
           "delayAfterMs": 1500
@@ -295,10 +294,15 @@
           "params": {
             "shader": "sw-hologram",
             "shaderParams": {
-              "tint_r": 0.15, "tint_g": 0.44, "tint_b": 1.0,
-              "opacity": 0.79, "scanline_speed": 8.5,
-              "jitter_x_px": 3.4, "glow_intensity": 0.19,
-              "edge_glow_width": 0.09, "brightness": 3.47,
+              "tint_r": 0.15,
+              "tint_g": 0.44,
+              "tint_b": 1.0,
+              "opacity": 0.79,
+              "scanline_speed": 8.5,
+              "jitter_x_px": 3.4,
+              "glow_intensity": 0.19,
+              "edge_glow_width": 0.09,
+              "brightness": 3.47,
               "bloom_radius": 31.38
             }
           },
@@ -369,8 +373,10 @@
           "params": {
             "shader": "alpha-stroke",
             "shaderParams": {
-              "stroke_width_px": 39, "softness_px": 11.5,
-              "opacity": 0.4, "stroke_color": "#E63900"
+              "stroke_width_px": 39,
+              "softness_px": 11.5,
+              "opacity": 0.4,
+              "stroke_color": "#E63900"
             }
           },
           "delayAfterMs": 500
@@ -404,11 +410,7 @@
     },
     {
       "id": "clean-stage",
-      "triggers": [
-        "clean stage",
-        "hide all sources",
-        "hide everything now"
-      ],
+      "triggers": ["clean stage", "hide all sources", "hide everything now"],
       "description": "Hides all inputs without removing them",
       "steps": [
         {
@@ -419,11 +421,7 @@
     },
     {
       "id": "hard-reset-stage",
-      "triggers": [
-        "hard reset stage",
-        "delete all sources",
-        "wipe all inputs"
-      ],
+      "triggers": ["hard reset stage", "delete all sources", "wipe all inputs"],
       "description": "Removes all inputs and clears timeline references",
       "steps": [
         {
@@ -505,31 +503,6 @@
           "action": "SET_SWAP_FADE_IN_DURATION",
           "params": {
             "durationMs": 700
-          },
-          "delayAfterMs": 0
-        }
-      ]
-    },
-    {
-      "id": "news-strip-focus",
-      "triggers": [
-        "news strip mode",
-        "enable ticker mode",
-        "focus on news strip"
-      ],
-      "description": "Enables news strip and fading behavior during swaps",
-      "steps": [
-        {
-          "action": "SET_NEWS_STRIP_ENABLED",
-          "params": {
-            "enabled": true
-          },
-          "delayAfterMs": 150
-        },
-        {
-          "action": "SET_NEWS_STRIP_FADE_DURING_SWAP",
-          "params": {
-            "enabled": true
           },
           "delayAfterMs": 0
         }

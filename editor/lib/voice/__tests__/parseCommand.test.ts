@@ -450,29 +450,13 @@ describe('parseCommand', () => {
       });
     });
 
-    it('parses outgoing transition and news strip toggles', () => {
+    it('parses outgoing transition toggles', () => {
       expect(parseCommand('enable outgoing transition')).toEqual({
         intent: 'SET_SWAP_OUTGOING_ENABLED',
         enabled: true,
       });
       expect(parseCommand('turn off outgoing transition')).toEqual({
         intent: 'SET_SWAP_OUTGOING_ENABLED',
-        enabled: false,
-      });
-      expect(parseCommand('enable news strip')).toEqual({
-        intent: 'SET_NEWS_STRIP_ENABLED',
-        enabled: true,
-      });
-      expect(parseCommand('disable news strip')).toEqual({
-        intent: 'SET_NEWS_STRIP_ENABLED',
-        enabled: false,
-      });
-      expect(parseCommand('enable news strip fades')).toEqual({
-        intent: 'SET_NEWS_STRIP_FADE_DURING_SWAP',
-        enabled: true,
-      });
-      expect(parseCommand('turn off news strip fade')).toEqual({
-        intent: 'SET_NEWS_STRIP_FADE_DURING_SWAP',
         enabled: false,
       });
     });

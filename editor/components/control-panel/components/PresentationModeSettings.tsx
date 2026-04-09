@@ -96,8 +96,6 @@ export function PresentationModeSettings({
         swapOutgoingEnabled: roomState.swapOutgoingEnabled,
         swapFadeInDurationMs: roomState.swapFadeInDurationMs,
         swapFadeOutDurationMs: roomState.swapFadeOutDurationMs,
-        newsStripFadeDuringSwap: roomState.newsStripFadeDuringSwap,
-        newsStripEnabled: roomState.newsStripEnabled,
       },
       timelineState ?? undefined,
       outputPlayer,

@@ -171,7 +171,16 @@ export function useServerTimelinePlayback(
     } catch (err) {
       console.error('[timeline] Failed to stop playback', err);
     }
-  }, [roomId, setPlaying]);
+
+    setPlayhead(0);
+    const config = toServerTimelineConfig(stateRef.current);
+    if (config.tracks.length === 0) return;
+    try {
+      await applyTimelineState(roomId, config, 0);
+    } catch (err) {
+      console.error('[timeline-ui] applyAtPlayhead(0) after STOP failed', err);
+    }
+  }, [roomId, setPlaying, setPlayhead]);
 
   const seek = useCallback(
     async (ms: number) => {

@@ -84,8 +84,6 @@ export class RoomState {
   private swapOutgoingEnabled: boolean = true;
   private swapFadeInDurationMs: number = 500;
   private swapFadeOutDurationMs: number = 500;
-  private newsStripFadeDuringSwap: boolean = true;
-  private newsStripEnabled: boolean = false;
 
   private viewportTop?: number;
   private viewportLeft?: number;
@@ -197,9 +195,7 @@ export class RoomState {
       swapDurationMs: this.swapDurationMs,
       swapOutgoingEnabled: this.swapOutgoingEnabled,
       swapFadeInDurationMs: this.swapFadeInDurationMs,
-      newsStripFadeDuringSwap: this.newsStripFadeDuringSwap,
       swapFadeOutDurationMs: this.swapFadeOutDurationMs,
-      newsStripEnabled: this.newsStripEnabled,
       outputShaders: this.getOutputShaders(),
       viewportTop: this.viewportTop,
       viewportLeft: this.viewportLeft,
@@ -263,22 +259,6 @@ export class RoomState {
   }
   public setSwapFadeOutDurationMs(value: number) {
     this.swapFadeOutDurationMs = value;
-    this.updateStoreWithState();
-  }
-
-  public getNewsStripFadeDuringSwap(): boolean {
-    return this.newsStripFadeDuringSwap;
-  }
-  public setNewsStripFadeDuringSwap(value: boolean) {
-    this.newsStripFadeDuringSwap = value;
-    this.updateStoreWithState();
-  }
-
-  public getNewsStripEnabled(): boolean {
-    return this.newsStripEnabled;
-  }
-  public setNewsStripEnabled(value: boolean) {
-    this.newsStripEnabled = value;
     this.updateStoreWithState();
   }
 
@@ -1151,15 +1131,13 @@ export class RoomState {
       const unplacedAttachedIds = new Set(
         allInputs
           .filter(
-            (i) =>
-              i.status === 'connected' && !i.hidden && i.attachedInputIds,
+            (i) => i.status === 'connected' && !i.hidden && i.attachedInputIds,
           )
           .flatMap((i) => i.attachedInputIds ?? []),
       );
       const unplacedInputs = behaviorInputInfos.filter(
         (bi) =>
-          !mentionedIds.has(bi.inputId) &&
-          !unplacedAttachedIds.has(bi.inputId),
+          !mentionedIds.has(bi.inputId) && !unplacedAttachedIds.has(bi.inputId),
       );
       if (unplacedInputs.length > 0 && this.layers.length > 0) {
         const firstLayer = this.layers[0]!;
@@ -1223,17 +1201,12 @@ export class RoomState {
             .map((li) => computedMap.get(li.inputId) ?? li)
             .filter(
               (li) =>
-                computedMap.has(li.inputId) ||
-                inputMap.get(li.inputId)?.hidden,
+                computedMap.has(li.inputId) || inputMap.get(li.inputId)?.hidden,
             ),
         };
       }
 
-      if (
-        layerIndex === 0 &&
-        !layer.behavior &&
-        appendedUnplacedToFirstLayer
-      ) {
+      if (layerIndex === 0 && !layer.behavior && appendedUnplacedToFirstLayer) {
         const visibleLayerInputs: typeof layer.inputs = [];
         const hiddenLayerInputs: typeof layer.inputs = [];
 
@@ -1267,8 +1240,7 @@ export class RoomState {
             .map((li) => computedMap.get(li.inputId) ?? li)
             .filter(
               (li) =>
-                computedMap.has(li.inputId) ||
-                inputMap.get(li.inputId)?.hidden,
+                computedMap.has(li.inputId) || inputMap.get(li.inputId)?.hidden,
             ),
         };
       }
@@ -1282,9 +1254,7 @@ export class RoomState {
       swapDurationMs: this.swapDurationMs,
       swapOutgoingEnabled: this.swapOutgoingEnabled,
       swapFadeInDurationMs: this.swapFadeInDurationMs,
-      newsStripFadeDuringSwap: this.newsStripFadeDuringSwap,
       swapFadeOutDurationMs: this.swapFadeOutDurationMs,
-      newsStripEnabled: this.newsStripEnabled,
       viewportTop: this.viewportTop,
       viewportLeft: this.viewportLeft,
       viewportWidth: this.viewportWidth,

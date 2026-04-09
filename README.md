@@ -217,7 +217,6 @@ For AMD GPUs, uncomment the `devices` section and comment out `gpus`/`runtime` i
 │   ├── src/
 │   │   ├── app/
 │   │   │   ├── layouts/       # Layout React components
-│   │   │   ├── news-strip/    # Scrolling news strip overlay
 │   │   │   ├── transitions/   # Input swap transition hooks
 │   │   │   ├── App.tsx        # Root rendering component
 │   │   │   └── store.ts       # Zustand store (per room)

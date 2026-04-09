@@ -10,7 +10,6 @@ import {
   useOutputShaders,
   useViewport,
 } from './store';
-import { NewsStripOverlay } from './news-strip';
 import { Input } from '../inputs/inputs';
 import { wrapWithShaders } from '../utils/shaderUtils';
 import { AudioStoreContext } from '../audio/AudioStoreContext';
@@ -147,7 +146,6 @@ function OutputScene() {
           })}
         </View>
       ))}
-      <NewsStripOverlay />
     </View>
   );
 

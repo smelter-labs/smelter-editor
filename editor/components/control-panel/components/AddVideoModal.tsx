@@ -2198,12 +2198,38 @@ function buildLibraryDownloadHref(
   kind: 'mp4' | 'audio' | 'image',
   fileName: string,
 ): string {
+  const encodedPath = fileName
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
   const prefix =
     kind === 'mp4'
       ? '/api/download/mp4'
       : kind === 'audio'
         ? '/api/download/audio'
         : '/api/download/picture';
+  return `${prefix}/${encodedPath}`;
+}
+
+function buildLibraryNormalizeHref(
+  kind: 'mp4' | 'audio',
+  fileName: string,
+): string {
+  const prefix =
+    kind === 'mp4'
+      ? '/api/upload/mp4/normalize'
+      : '/api/upload/audio/normalize';
+  const encodedPath = fileName
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+  return `${prefix}/${encodedPath}`;
+}
+
+function buildLibraryPlayHref(kind: 'mp4' | 'audio', fileName: string): string {
+  const prefix = kind === 'mp4' ? '/api/play/mp4' : '/api/play/audio';
   const encodedPath = fileName
     .split('/')
     .filter(Boolean)
@@ -2229,6 +2255,70 @@ function DownloadLibraryItemButton({
   );
 }
 
+function ActionOutlineButton({
+  label,
+  onClick,
+  disabled,
+  colorClass,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  colorClass: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`w-full py-1.5 bg-transparent border font-mono text-[10px] uppercase tracking-widest transition-colors disabled:opacity-40 ${colorClass}`}>
+      {label}
+    </button>
+  );
+}
+
+function AssetPlaybackModal({
+  open,
+  onOpenChange,
+  title,
+  src,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  src: string;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (!open && videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
+      videoRef.current.load();
+    }
+  }, [open]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className='max-w-[900px] w-[92vw] bg-[#131313]/95 backdrop-blur-sm border border-[#3a494b]/30 p-0 gap-0 overflow-hidden [&>button]:text-[#849495] [&>button]:hover:text-[#e3fdff]'>
+        <div className='px-4 py-3 border-b border-[#3a494b]/20'>
+          <h3 className='font-headline font-bold text-xs tracking-widest text-[#00f3ff] uppercase truncate'>
+            {title}
+          </h3>
+        </div>
+        <div className='p-4 bg-black'>
+          <video
+            ref={videoRef}
+            src={src}
+            controls
+            autoPlay
+            className='w-full max-h-[70vh] bg-black'
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Type-specific Inspectors ─────────────────────────────────
 
 function Mp4Inspector({
@@ -2247,6 +2337,8 @@ function Mp4Inspector({
   const { addMP4Input } = useActions();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [normalizing, setNormalizing] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const handleAdd = async () => {
     setLoading(true);
@@ -2280,6 +2372,32 @@ function Mp4Inspector({
     }
   };
 
+  const handleNormalize = async () => {
+    const confirmed = window.confirm(
+      `Normalize audio for "${item.fileName}"?\n\nThis will overwrite the current file in the library.`,
+    );
+    if (!confirmed) return;
+
+    setNormalizing(true);
+    try {
+      const response = await fetch(
+        buildLibraryNormalizeHref('mp4', item.fileName),
+        { method: 'POST' },
+      );
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || 'Audio normalization failed');
+      }
+      toast.success('MP4 audio normalized.');
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to normalize audio.',
+      );
+    } finally {
+      setNormalizing(false);
+    }
+  };
+
   return (
     <div className='space-y-3'>
       <PropRow label='FILENAME' value={baseName(item.fileName)} />
@@ -2299,10 +2417,30 @@ function Mp4Inspector({
         href={buildLibraryDownloadHref('mp4', item.fileName)}
         downloadName={baseName(item.fileName)}
       />
+      <div className='grid grid-cols-2 gap-2'>
+        <ActionOutlineButton
+          label={normalizing ? 'NORMALIZING...' : 'NORMALIZE'}
+          onClick={handleNormalize}
+          disabled={normalizing || deleting}
+          colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
+        />
+        <ActionOutlineButton
+          label='ODTWORZ'
+          onClick={() => setPreviewOpen(true)}
+          disabled={normalizing || deleting}
+          colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
+        />
+      </div>
       <DeleteLibraryItemButton
         onClick={handleDelete}
-        disabled={deleting}
+        disabled={deleting || normalizing}
         label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
+      />
+      <AssetPlaybackModal
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        title={`PREVIEW_MP4: ${baseName(item.fileName)}`}
+        src={buildLibraryPlayHref('mp4', item.fileName)}
       />
     </div>
   );
@@ -2324,6 +2462,8 @@ function AudioInspector({
   const { addAudioInput } = useActions();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [normalizing, setNormalizing] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const handleAdd = async () => {
     setLoading(true);
@@ -2357,6 +2497,32 @@ function AudioInspector({
     }
   };
 
+  const handleNormalize = async () => {
+    const confirmed = window.confirm(
+      `Normalize audio for "${item.fileName}"?\n\nThis will overwrite the current file in the library.`,
+    );
+    if (!confirmed) return;
+
+    setNormalizing(true);
+    try {
+      const response = await fetch(
+        buildLibraryNormalizeHref('audio', item.fileName),
+        { method: 'POST' },
+      );
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.error || 'Audio normalization failed');
+      }
+      toast.success('Audio asset normalized.');
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : 'Failed to normalize audio.',
+      );
+    } finally {
+      setNormalizing(false);
+    }
+  };
+
   return (
     <div className='space-y-3'>
       <PropRow label='FILENAME' value={baseName(item.fileName)} />
@@ -2373,10 +2539,30 @@ function AudioInspector({
         href={buildLibraryDownloadHref('audio', item.fileName)}
         downloadName={baseName(item.fileName)}
       />
+      <div className='grid grid-cols-2 gap-2'>
+        <ActionOutlineButton
+          label={normalizing ? 'NORMALIZING...' : 'NORMALIZE'}
+          onClick={handleNormalize}
+          disabled={normalizing || deleting}
+          colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
+        />
+        <ActionOutlineButton
+          label='ODTWORZ'
+          onClick={() => setPreviewOpen(true)}
+          disabled={normalizing || deleting}
+          colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
+        />
+      </div>
       <DeleteLibraryItemButton
         onClick={handleDelete}
-        disabled={deleting}
+        disabled={deleting || normalizing}
         label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
+      />
+      <AssetPlaybackModal
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        title={`PREVIEW_AUDIO: ${baseName(item.fileName)}`}
+        src={buildLibraryPlayHref('audio', item.fileName)}
       />
     </div>
   );

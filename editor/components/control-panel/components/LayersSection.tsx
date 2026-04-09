@@ -27,7 +27,13 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { motion, LayoutGroup } from 'framer-motion';
-import { ChevronDown, ChevronRight, GripVertical, Layers } from 'lucide-react';
+import {
+  ChevronDown,
+  ChevronRight,
+  Filter,
+  GripVertical,
+  Layers,
+} from 'lucide-react';
 import type { Input, Layer, LayerBehaviorConfig } from '@/lib/types';
 import { computeLayout } from '@smelter-editor/types';
 import type { InputWrapper } from '../hooks/use-control-panel-state';
@@ -37,6 +43,7 @@ import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
 import { BehaviorSelector } from './BehaviorSelector';
 import LoadingSpinner from '@/components/ui/spinner';
+import { sortInputsByTimelineTrackOrder } from '@/lib/timeline-layer-order';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -55,6 +62,7 @@ type LayersSectionProps = {
   onLayersChange: (layers: Layer[]) => Promise<void>;
   activeClipColors?: Record<string, string>;
   allTimelineInputIds?: Set<string>;
+  timelineTrackOrder?: Record<string, number>;
 };
 
 type DragItem = {
@@ -137,48 +145,62 @@ function SortableInputItem({
 // ── Layer header ─────────────────────────────────────────────────────────────
 
 function LayerHeader({
-  layerId,
   stableLayerNumber,
   isCollapsed,
   onToggleCollapse,
   behavior,
   onBehaviorChange,
+  isColorFilterActive,
+  onToggleColorFilter,
   isGuest,
 }: {
-  layerId: string;
   stableLayerNumber: number;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   behavior: LayerBehaviorConfig | undefined;
   onBehaviorChange: (b: LayerBehaviorConfig | undefined) => void;
+  isColorFilterActive: boolean;
+  onToggleColorFilter: () => void;
   isGuest?: boolean;
 }) {
   return (
-    <div className='border-b border-neutral-800'>
-      <button
-        onClick={onToggleCollapse}
-        className='w-full flex items-center gap-1.5 px-2 py-1.5 hover:bg-neutral-800/50 transition-colors'
-        data-no-dnd='true'>
-        <span className='text-neutral-500 w-4 flex-shrink-0'>
-          {isCollapsed ? (
-            <ChevronRight className='w-3.5 h-3.5' />
-          ) : (
-            <ChevronDown className='w-3.5 h-3.5' />
-          )}
-        </span>
-        <Layers className='w-3.5 h-3.5 text-neutral-500 flex-shrink-0' />
-        <span className='text-[11px] font-semibold text-neutral-300 flex-1 text-left truncate'>
-          Layer {stableLayerNumber + 1}
-        </span>
+    <div className='border-b border-neutral-800/70 bg-neutral-900/40'>
+      <div className='w-full flex items-center gap-1.5 px-2 py-1.5 hover:bg-neutral-800/40 transition-colors'>
+        <button
+          type='button'
+          onClick={onToggleCollapse}
+          className='flex min-w-0 flex-1 items-center gap-1.5'
+          data-no-dnd='true'>
+          <span className='text-neutral-500 w-4 flex-shrink-0'>
+            {isCollapsed ? (
+              <ChevronRight className='w-3.5 h-3.5' />
+            ) : (
+              <ChevronDown className='w-3.5 h-3.5' />
+            )}
+          </span>
+          <Layers className='w-3.5 h-3.5 text-neutral-500 flex-shrink-0' />
+          <span className='text-[11px] font-semibold text-neutral-300 flex-1 text-left truncate'>
+            Layer {stableLayerNumber + 1}
+          </span>
+        </button>
         {!isGuest && (
-          <GripVertical className='w-3.5 h-3.5 text-neutral-600 flex-shrink-0' />
+          <div className='flex items-center gap-1.5' data-no-dnd='true'>
+            <button
+              type='button'
+              onClick={onToggleColorFilter}
+              className={`inline-flex items-center justify-center w-7 h-7 rounded-full border transition-colors ${
+                isColorFilterActive
+                  ? 'border-blue-500/50 bg-blue-500/15 text-blue-400'
+                  : 'border-neutral-700 bg-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-600'
+              }`}
+              aria-label='Toggle active color filter'>
+              <Filter className='w-3.5 h-3.5' />
+            </button>
+            <BehaviorSelector behavior={behavior} onChange={onBehaviorChange} />
+            <GripVertical className='w-3.5 h-3.5 text-neutral-600 flex-shrink-0 ml-0.5' />
+          </div>
         )}
-      </button>
-      {!isCollapsed && !isGuest && (
-        <div className='px-2 pb-1.5' data-no-dnd='true'>
-          <BehaviorSelector behavior={behavior} onChange={onBehaviorChange} />
-        </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -205,6 +227,7 @@ export function LayersSection({
   onLayersChange,
   activeClipColors,
   allTimelineInputIds,
+  timelineTrackOrder,
 }: LayersSectionProps) {
   const { inputs, roomId, refreshState, availableShaders } =
     useControlPanelContext();
@@ -225,6 +248,9 @@ export function LayersSection({
   const [activeId, setActiveId] = useState<UniqueIdentifier | null>(null);
   const [activeDragItem, setActiveDragItem] = useState<DragItem | null>(null);
   const [localLayers, setLocalLayers] = useState(layers);
+  const [colorFilterLayers, setColorFilterLayers] = useState<Set<string>>(
+    new Set(),
+  );
   const layerNamesRef = useRef<Map<string, number>>(new Map());
   const nextLayerNumberRef = useRef(0);
 
@@ -269,6 +295,18 @@ export function LayersSection({
       const next = new Set(prev);
       if (next.has(layerId)) next.delete(layerId);
       else next.add(layerId);
+      return next;
+    });
+  }, []);
+
+  const toggleColorFilter = useCallback((layerId: string) => {
+    setColorFilterLayers((prev) => {
+      const next = new Set(prev);
+      if (next.has(layerId)) {
+        next.delete(layerId);
+      } else {
+        next.add(layerId);
+      }
       return next;
     });
   }, []);
@@ -555,14 +593,20 @@ export function LayersSection({
           strategy={verticalListSortingStrategy}>
           {localLayers.map((layer, layerIndex) => {
             const isCollapsed = collapsedLayers.has(layer.id);
+            const isColorFilterActive = colorFilterLayers.has(layer.id);
             const filteredInputs = layer.inputs.filter(
               (i) => !attachedInputIds.has(i.inputId),
             );
-            const visibleInputs = [...filteredInputs].sort((a, b) => {
-              const aActive = activeClipColors?.[a.inputId] ? 0 : 1;
-              const bActive = activeClipColors?.[b.inputId] ? 0 : 1;
-              return aActive - bActive;
-            });
+            const sortedInputs = sortInputsByTimelineTrackOrder(
+              filteredInputs,
+              timelineTrackOrder ?? {},
+              'asc',
+            );
+            const visibleInputs = isColorFilterActive
+              ? sortedInputs.filter(
+                  (input) => !!activeClipColors?.[input.inputId],
+                )
+              : sortedInputs;
             const inputIds = visibleInputs.map((i) => i.inputId);
 
             return (
@@ -570,9 +614,8 @@ export function LayersSection({
                 key={layer.id}
                 id={`layer::${layer.id}`}
                 disabled={disableDrag}>
-                <div className='border-b border-neutral-800/50'>
+                <div className='mb-2 rounded-md border border-neutral-800/70 bg-neutral-950/20 overflow-hidden'>
                   <LayerHeader
-                    layerId={layer.id}
                     stableLayerNumber={
                       layerNamesRef.current.get(layer.id) ?? layerIndex
                     }
@@ -580,6 +623,8 @@ export function LayersSection({
                     onToggleCollapse={() => toggleCollapse(layer.id)}
                     behavior={layer.behavior}
                     onBehaviorChange={(b) => handleBehaviorChange(layer.id, b)}
+                    isColorFilterActive={isColorFilterActive}
+                    onToggleColorFilter={() => toggleColorFilter(layer.id)}
                     isGuest={isGuest}
                   />
 
@@ -591,7 +636,9 @@ export function LayersSection({
                         <div className='min-h-[4px]'>
                           {visibleInputs.length === 0 && (
                             <div className='text-[10px] text-neutral-600 text-center py-2'>
-                              Drop inputs here
+                              {isColorFilterActive
+                                ? 'No active colored inputs'
+                                : 'Drop inputs here'}
                             </div>
                           )}
                           {visibleInputs.map((layerInput, inputIndex) => {

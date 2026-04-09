@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import LoadingSpinner from '@/components/ui/spinner';
+import { FxCanvas, FX_PRESET_MODAL } from '@/lib/fx';
 import { PendingWhipInputs } from './PendingWhipInputs';
 import {
   loadAutoModalSetting,
@@ -120,8 +121,12 @@ export function PendingConnectionsModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className='max-w-lg'>
-        <DialogHeader>
+      <DialogContent className='max-w-lg overflow-hidden border-cyan-400/20 bg-neutral-950/70 shadow-[0_0_60px_rgba(8,145,178,0.12)]'>
+        <FxCanvas
+          config={FX_PRESET_MODAL}
+          isActive={open}
+        />
+        <DialogHeader className='relative'>
           <DialogTitle>
             {isConnecting
               ? 'Connecting inputs'
@@ -139,7 +144,7 @@ export function PendingConnectionsModal({
 
         {welcomeTextBefore && !isConnecting && (
           <div
-            className='rich-text-content text-sm text-neutral-300'
+            className='relative rich-text-content text-sm text-neutral-300'
             dangerouslySetInnerHTML={{ __html: welcomeTextBefore }}
           />
         )}
@@ -165,13 +170,13 @@ export function PendingConnectionsModal({
 
         {welcomeTextAfter && !isConnecting && (
           <div
-            className='rich-text-content text-sm text-neutral-300'
+            className='relative rich-text-content text-sm text-neutral-300'
             dangerouslySetInnerHTML={{ __html: welcomeTextAfter }}
           />
         )}
 
         {!isConnecting && (
-          <div className='border-t border-neutral-800 pt-3 space-y-2'>
+          <div className='relative border-t border-neutral-800 pt-3 space-y-2'>
             <Button
               size='lg'
               className={`w-full cursor-pointer ${canConnectAll && !isRunningAction ? 'animate-pulse-cyan' : ''}`}
@@ -211,7 +216,7 @@ export function PendingConnectionsModal({
         )}
 
         {!isConnecting && (
-          <div className='flex items-center gap-2 pt-3 border-t border-neutral-800'>
+          <div className='relative flex items-center gap-2 pt-3 border-t border-neutral-800'>
             <Switch
               id='pending-modal-dont-show'
               checked={dontShow}

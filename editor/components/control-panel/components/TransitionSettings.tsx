@@ -13,10 +13,6 @@ type TransitionSettingsProps = {
   onSwapFadeInDurationChange: (value: number) => void;
   swapFadeOutDurationMs: number;
   onSwapFadeOutDurationChange: (value: number) => void;
-  newsStripFadeDuringSwap: boolean;
-  onNewsStripFadeDuringSwapChange: (value: boolean) => void;
-  newsStripEnabled: boolean;
-  onNewsStripEnabledChange: (value: boolean) => void;
 };
 
 export function TransitionSettings({
@@ -28,10 +24,6 @@ export function TransitionSettings({
   onSwapFadeInDurationChange,
   swapFadeOutDurationMs,
   onSwapFadeOutDurationChange,
-  newsStripFadeDuringSwap,
-  onNewsStripFadeDuringSwapChange,
-  newsStripEnabled,
-  onNewsStripEnabledChange,
 }: TransitionSettingsProps) {
   const [localSwapDuration, setLocalSwapDuration] = useState(swapDurationMs);
   const lastEnabledValueRef = useRef(swapDurationMs > 0 ? swapDurationMs : 500);
@@ -231,26 +223,6 @@ export function TransitionSettings({
                 onValueChange={(v) => handleFadeInDurationChange(v[0])}
                 className='w-full h-1 bg-neutral-700 rounded-lg appearance-none cursor-pointer accent-white'
               />
-              <label className='flex items-center gap-2 cursor-pointer mt-3'>
-                <Checkbox
-                  checked={newsStripEnabled}
-                  onCheckedChange={(checked: boolean) =>
-                    onNewsStripEnabledChange(checked)
-                  }
-                />
-                <span className='text-xs text-neutral-400'>News Strip</span>
-              </label>
-              <label className='flex items-center gap-2 cursor-pointer mt-3'>
-                <Checkbox
-                  checked={newsStripFadeDuringSwap}
-                  onCheckedChange={(checked: boolean) =>
-                    onNewsStripFadeDuringSwapChange(checked)
-                  }
-                />
-                <span className='text-xs text-neutral-400'>
-                  News Strip Fades
-                </span>
-              </label>
             </>
           )}
         </>

@@ -4,6 +4,7 @@ import multipart from '@fastify/multipart';
 import websocket from '@fastify/websocket';
 import { v4 as uuidv4 } from 'uuid';
 import { STATUS_CODES } from 'node:http';
+import { createReadStream } from 'node:fs';
 import path from 'node:path';
 import { ensureDir, pathExists, readdir, readFile, stat } from 'fs-extra';
 import { execFile } from 'node:child_process';
@@ -436,6 +437,142 @@ function attachmentFileNameHeader(filePath: string): string {
   return `attachment; filename="${safe}"`;
 }
 
+function parseRangeHeader(
+  rangeHeader: string | undefined,
+  fileSize: number,
+): { start: number; end: number } | null {
+  if (!rangeHeader || !rangeHeader.startsWith('bytes=')) {
+    return null;
+  }
+
+  const rawRange = rangeHeader.slice('bytes='.length).split(',')[0]?.trim() ?? '';
+  const [rawStart, rawEnd] = rawRange.split('-');
+  if (!rawStart && !rawEnd) {
+    return null;
+  }
+
+  let start: number;
+  let end: number;
+
+  if (rawStart === '') {
+    const suffixLength = Number(rawEnd);
+    if (!Number.isFinite(suffixLength) || suffixLength <= 0) {
+      return null;
+    }
+    start = Math.max(fileSize - suffixLength, 0);
+    end = fileSize - 1;
+  } else {
+    start = Number(rawStart);
+    end = rawEnd ? Number(rawEnd) : fileSize - 1;
+    if (!Number.isFinite(start) || !Number.isFinite(end)) {
+      return null;
+    }
+  }
+
+  if (
+    start < 0 ||
+    end < 0 ||
+    start >= fileSize ||
+    end >= fileSize ||
+    start > end
+  ) {
+    return null;
+  }
+
+  return { start, end };
+}
+
+routes.get<{ Params: { '*': string } }>(
+  '/play/mp4/*',
+  { schema: { params: Type.Object({ '*': Type.String() }) } },
+  async (req, res) => {
+    const decoded = decodeURIComponent(req.params['*']);
+    const sanitized = sanitizeFolderPath(decoded);
+    if (sanitized === null) {
+      return res.status(400).send({ error: 'Invalid file path' });
+    }
+    const filePath = path.join(DATA_DIR, 'mp4s', sanitized);
+    if (!(await pathExists(filePath))) {
+      return res.status(404).send({ error: 'File not found' });
+    }
+
+    try {
+      const fileStat = await stat(filePath);
+      const fileSize = fileStat.size;
+      const rangeHeader = req.headers.range;
+      const parsedRange = parseRangeHeader(rangeHeader, fileSize);
+
+      res.header('Content-Type', 'video/mp4');
+      res.header('Accept-Ranges', 'bytes');
+
+      if (rangeHeader && parsedRange === null) {
+        res.header('Content-Range', `bytes */${fileSize}`);
+        return res.status(416).send();
+      }
+
+      if (parsedRange) {
+        const { start, end } = parsedRange;
+        res.header('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+        res.header('Content-Length', String(end - start + 1));
+        return res.status(206).send(createReadStream(filePath, { start, end }));
+      }
+
+      res.header('Content-Length', fileSize.toString());
+      return res.status(200).send(createReadStream(filePath));
+    } catch (err: any) {
+      console.error('Failed to stream MP4 for playback', { filePath, err });
+      return res.status(500).send({ error: 'Failed to read file' });
+    }
+  },
+);
+
+routes.get<{ Params: { '*': string } }>(
+  '/play/audio/*',
+  { schema: { params: Type.Object({ '*': Type.String() }) } },
+  async (req, res) => {
+    const decoded = decodeURIComponent(req.params['*']);
+    const sanitized = sanitizeFolderPath(decoded);
+    if (sanitized === null) {
+      return res.status(400).send({ error: 'Invalid file path' });
+    }
+    const filePath = path.join(DATA_DIR, 'audios', sanitized);
+    if (!(await pathExists(filePath))) {
+      return res.status(404).send({ error: 'File not found' });
+    }
+
+    try {
+      const fileStat = await stat(filePath);
+      const fileSize = fileStat.size;
+      const rangeHeader = req.headers.range;
+      const parsedRange = parseRangeHeader(rangeHeader, fileSize);
+
+      res.header('Content-Type', 'video/mp4');
+      res.header('Accept-Ranges', 'bytes');
+
+      if (rangeHeader && parsedRange === null) {
+        res.header('Content-Range', `bytes */${fileSize}`);
+        return res.status(416).send();
+      }
+
+      if (parsedRange) {
+        const { start, end } = parsedRange;
+        res.header('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+        res.header('Content-Length', String(end - start + 1));
+        return res.status(206).send(createReadStream(filePath, { start, end }));
+      }
+
+      res.header('Content-Length', fileSize.toString());
+      return res.status(200).send(createReadStream(filePath));
+    } catch (err: any) {
+      console.error('Failed to stream audio asset for playback', {
+        filePath,
+        err,
+      });
+      return res.status(500).send({ error: 'Failed to read file' });
+    }
+  },
+);
+
 routes.get<{ Params: { '*': string } }>(
   '/download/mp4/*',
   { schema: { params: Type.Object({ '*': Type.String() }) } },
@@ -748,9 +885,7 @@ routes.get<RoomIdParams>(
       swapDurationMs: snapshot.swapDurationMs,
       swapOutgoingEnabled: snapshot.swapOutgoingEnabled,
       swapFadeInDurationMs: snapshot.swapFadeInDurationMs,
-      newsStripFadeDuringSwap: snapshot.newsStripFadeDuringSwap,
       swapFadeOutDurationMs: snapshot.swapFadeOutDurationMs,
-      newsStripEnabled: snapshot.newsStripEnabled,
       outputShaders: snapshot.outputShaders,
       isRecording: room.hasActiveRecording(),
       isFrozen: room.isFrozen(),
@@ -812,9 +947,7 @@ routes.get('/rooms', async (_req, res) => {
         swapDurationMs: snapshot.swapDurationMs,
         swapOutgoingEnabled: snapshot.swapOutgoingEnabled,
         swapFadeInDurationMs: snapshot.swapFadeInDurationMs,
-        newsStripFadeDuringSwap: snapshot.newsStripFadeDuringSwap,
         swapFadeOutDurationMs: snapshot.swapFadeOutDurationMs,
-        newsStripEnabled: snapshot.newsStripEnabled,
         outputShaders: snapshot.outputShaders,
         isRecording: room.hasActiveRecording(),
         audioAnalysisEnabled: room.isAudioAnalysisEnabled(),
@@ -1068,8 +1201,6 @@ const UpdateRoomSchema = Type.Object({
   swapFadeOutDurationMs: Type.Optional(
     Type.Number({ minimum: 0, maximum: 5000 }),
   ),
-  newsStripFadeDuringSwap: Type.Optional(Type.Boolean()),
-  newsStripEnabled: Type.Optional(Type.Boolean()),
   viewportTop: Type.Optional(Type.Number()),
   viewportLeft: Type.Optional(Type.Number()),
   viewportWidth: Type.Optional(Type.Number({ minimum: 1 })),
@@ -1135,12 +1266,6 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
     }
     if (req.body.swapFadeOutDurationMs !== undefined) {
       room.setSwapFadeOutDurationMs(req.body.swapFadeOutDurationMs);
-    }
-    if (req.body.newsStripFadeDuringSwap !== undefined) {
-      room.setNewsStripFadeDuringSwap(req.body.newsStripFadeDuringSwap);
-    }
-    if (req.body.newsStripEnabled !== undefined) {
-      room.setNewsStripEnabled(req.body.newsStripEnabled);
     }
 
     const viewportFields = [
@@ -1646,9 +1771,7 @@ routes.get<RoomIdParams>(
         swapDurationMs: snapshot.swapDurationMs,
         swapOutgoingEnabled: snapshot.swapOutgoingEnabled,
         swapFadeInDurationMs: snapshot.swapFadeInDurationMs,
-        newsStripFadeDuringSwap: snapshot.newsStripFadeDuringSwap,
         swapFadeOutDurationMs: snapshot.swapFadeOutDurationMs,
-        newsStripEnabled: snapshot.newsStripEnabled,
         outputShaders: snapshot.outputShaders,
         isRecording: room.hasActiveRecording(),
         isFrozen: room.isFrozen(),

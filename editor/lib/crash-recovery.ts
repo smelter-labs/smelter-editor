@@ -35,8 +35,6 @@ export function saveCrashRecoverySnapshot(
         swapOutgoingEnabled: roomState.swapOutgoingEnabled,
         swapFadeInDurationMs: roomState.swapFadeInDurationMs,
         swapFadeOutDurationMs: roomState.swapFadeOutDurationMs,
-        newsStripFadeDuringSwap: roomState.newsStripFadeDuringSwap,
-        newsStripEnabled: roomState.newsStripEnabled,
       },
       timelineState,
       outputPlayer,

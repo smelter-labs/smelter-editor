@@ -585,30 +585,6 @@ async function dispatchMacroStep(
         ),
         resolvedParams: params,
       };
-
-    case 'SET_NEWS_STRIP_ENABLED':
-      return {
-        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
-          window.dispatchEvent(
-            new CustomEvent('smelter:voice:set-news-strip-enabled', {
-              detail: { enabled: params?.enabled, requestId },
-            }),
-          ),
-        ),
-        resolvedParams: params,
-      };
-
-    case 'SET_NEWS_STRIP_FADE_DURING_SWAP':
-      return {
-        detail: await dispatchAndWaitForCompletionDetail((requestId) =>
-          window.dispatchEvent(
-            new CustomEvent('smelter:voice:set-news-strip-fade-during-swap', {
-              detail: { enabled: params?.enabled, requestId },
-            }),
-          ),
-        ),
-        resolvedParams: params,
-      };
   }
 }
 

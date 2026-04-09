@@ -48,9 +48,7 @@ export type RoomStoreState = {
   swapDurationMs: number;
   swapOutgoingEnabled: boolean;
   swapFadeInDurationMs: number;
-  newsStripFadeDuringSwap: boolean;
   swapFadeOutDurationMs: number;
-  newsStripEnabled: boolean;
 } & Partial<ViewportProperties>;
 
 export type RoomStore = {
@@ -62,8 +60,6 @@ export type RoomStore = {
   swapOutgoingEnabled: boolean;
   swapFadeInDurationMs: number;
   swapFadeOutDurationMs: number;
-  newsStripFadeDuringSwap: boolean;
-  newsStripEnabled: boolean;
   updateState: (state: RoomStoreState & { layers: Layer[] }) => void;
   setOutputShaders: (shaders: ShaderConfig[]) => void;
   setInputFrozenImage: (inputId: string, imageId: string | null) => void;
@@ -81,8 +77,6 @@ export function createRoomStore(
     swapOutgoingEnabled: true,
     swapFadeInDurationMs: 500,
     swapFadeOutDurationMs: 500,
-    newsStripFadeDuringSwap: true,
-    newsStripEnabled: false,
     updateState: (incoming) => {
       const {
         inputs,
@@ -90,9 +84,7 @@ export function createRoomStore(
         swapDurationMs,
         swapOutgoingEnabled,
         swapFadeInDurationMs,
-        newsStripFadeDuringSwap,
         swapFadeOutDurationMs,
-        newsStripEnabled,
         viewportTop,
         viewportLeft,
         viewportWidth,
@@ -106,9 +98,7 @@ export function createRoomStore(
         swapDurationMs,
         swapOutgoingEnabled,
         swapFadeInDurationMs,
-        newsStripFadeDuringSwap,
         swapFadeOutDurationMs,
-        newsStripEnabled,
         viewportTop,
         viewportLeft,
         viewportWidth,
@@ -147,11 +137,6 @@ export function useSwapDurationMs() {
   return useStore(store, (state) => state.swapDurationMs);
 }
 
-function useSwapOutgoingEnabled() {
-  const store = useContext(StoreContext);
-  return useStore(store, (state) => state.swapOutgoingEnabled);
-}
-
 export function useSwapFadeInDurationMs() {
   const store = useContext(StoreContext);
   return useStore(store, (state) => state.swapFadeInDurationMs);
@@ -160,16 +145,6 @@ export function useSwapFadeInDurationMs() {
 export function useSwapFadeOutDurationMs() {
   const store = useContext(StoreContext);
   return useStore(store, (state) => state.swapFadeOutDurationMs);
-}
-
-export function useNewsStripFadeDuringSwap() {
-  const store = useContext(StoreContext);
-  return useStore(store, (state) => state.newsStripFadeDuringSwap);
-}
-
-export function useNewsStripEnabled() {
-  const store = useContext(StoreContext);
-  return useStore(store, (state) => state.newsStripEnabled);
 }
 
 export function useInputs() {

@@ -925,7 +925,6 @@ describe('RoomState', () => {
       expect(Array.isArray(result.layers)).toBe(true);
       expect(typeof result.swapDurationMs).toBe('number');
       expect(typeof result.swapOutgoingEnabled).toBe('boolean');
-      expect(typeof result.newsStripEnabled).toBe('boolean');
     });
 
     it('updates lastReadTimestamp', async () => {
@@ -940,7 +939,7 @@ describe('RoomState', () => {
     });
   });
 
-  describe('swap and news strip settings', () => {
+  describe('swap settings', () => {
     it('sets and gets swap duration', async () => {
       const output = createTestOutput();
       const room = new RoomState('room-1', output, [], true);
@@ -957,15 +956,6 @@ describe('RoomState', () => {
 
       room.setSwapOutgoingEnabled(false);
       expect(room.getSwapOutgoingEnabled()).toBe(false);
-    });
-
-    it('sets and gets news strip enabled', async () => {
-      const output = createTestOutput();
-      const room = new RoomState('room-1', output, [], true);
-      await room.init();
-
-      room.setNewsStripEnabled(true);
-      expect(room.getNewsStripEnabled()).toBe(true);
     });
 
     it('sets and gets fade durations', async () => {
@@ -1089,10 +1079,7 @@ describe('RoomState', () => {
         },
       ]);
 
-      await room.startTimelinePlayback(
-        createTimelineConfig(id1, 'TL'),
-        0,
-      );
+      await room.startTimelinePlayback(createTimelineConfig(id1, 'TL'), 0);
 
       const id3 = (await room.addNewInput({
         type: 'text-input',

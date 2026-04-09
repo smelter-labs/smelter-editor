@@ -160,9 +160,7 @@ function rebuildLayers(
           cropBottom: li.cropBottom,
         };
       })
-      .filter(
-        (li): li is NonNullable<typeof li> => li !== null,
-      ),
+      .filter((li): li is NonNullable<typeof li> => li !== null),
   }));
 }
 
@@ -355,10 +353,6 @@ export function registerImportConfigRoute(routes: FastifyInstance): void {
             room.setSwapFadeInDurationMs(ts.swapFadeInDurationMs);
           if (ts.swapFadeOutDurationMs !== undefined)
             room.setSwapFadeOutDurationMs(ts.swapFadeOutDurationMs);
-          if (ts.newsStripFadeDuringSwap !== undefined)
-            room.setNewsStripFadeDuringSwap(ts.newsStripFadeDuringSwap);
-          if (ts.newsStripEnabled !== undefined)
-            room.setNewsStripEnabled(ts.newsStripEnabled);
         }
 
         if (config.viewport) {

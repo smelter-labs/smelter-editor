@@ -170,14 +170,6 @@ const ENABLE_OUTGOING_TRANSITION_PATTERN =
   /\b(enable|turn on)\s+(?:the\s+)?outgoing(?:\s+swap)?\s+transition\b/;
 const DISABLE_OUTGOING_TRANSITION_PATTERN =
   /\b(disable|turn off)\s+(?:the\s+)?outgoing(?:\s+swap)?\s+transition\b/;
-const ENABLE_NEWS_STRIP_PATTERN =
-  /\b(enable|turn on)\s+(?:the\s+)?news\s+strip\b/;
-const DISABLE_NEWS_STRIP_PATTERN =
-  /\b(disable|turn off)\s+(?:the\s+)?news\s+strip\b/;
-const ENABLE_NEWS_STRIP_FADE_PATTERN =
-  /\b(enable|turn on)\s+(?:the\s+)?news\s+strip\s+fade(?:s)?\b/;
-const DISABLE_NEWS_STRIP_FADE_PATTERN =
-  /\b(disable|turn off)\s+(?:the\s+)?news\s+strip\s+fade(?:s)?\b/;
 
 const NEXT_BLOCK_PATTERN = /\b(next|forward)\s+block\b/;
 const PREV_BLOCK_PATTERN = /\b(previous|prev|back|last)\s+block\b/;
@@ -441,20 +433,6 @@ export function parseCommand(
   }
   if (DISABLE_OUTGOING_TRANSITION_PATTERN.test(text)) {
     return { intent: 'SET_SWAP_OUTGOING_ENABLED', enabled: false };
-  }
-
-  if (ENABLE_NEWS_STRIP_FADE_PATTERN.test(text)) {
-    return { intent: 'SET_NEWS_STRIP_FADE_DURING_SWAP', enabled: true };
-  }
-  if (DISABLE_NEWS_STRIP_FADE_PATTERN.test(text)) {
-    return { intent: 'SET_NEWS_STRIP_FADE_DURING_SWAP', enabled: false };
-  }
-
-  if (ENABLE_NEWS_STRIP_PATTERN.test(text)) {
-    return { intent: 'SET_NEWS_STRIP_ENABLED', enabled: true };
-  }
-  if (DISABLE_NEWS_STRIP_PATTERN.test(text)) {
-    return { intent: 'SET_NEWS_STRIP_ENABLED', enabled: false };
   }
 
   const colorMatch = text.match(SET_COLOR_PATTERN);

@@ -38,9 +38,7 @@ export interface RoomState {
   swapDurationMs: number;
   swapOutgoingEnabled: boolean;
   swapFadeInDurationMs: number;
-  newsStripFadeDuringSwap: boolean;
   swapFadeOutDurationMs: number;
-  newsStripEnabled: boolean;
   isRecording: boolean;
 }
 

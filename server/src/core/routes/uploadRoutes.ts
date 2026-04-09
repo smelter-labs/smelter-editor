@@ -103,6 +103,42 @@ async function generateAudioWaveformImage(
   ]);
 }
 
+const LOUDNORM_FILTER = 'loudnorm=I=-16:TP=-1.5:LRA=11';
+
+async function normalizeMediaAudioInPlace(filePath: string): Promise<void> {
+  const dirName = path.dirname(filePath);
+  const extName = path.extname(filePath) || '.mp4';
+  const baseName = path.basename(filePath, extName);
+  const tmpPath = path.join(
+    dirName,
+    `.tmp_normalize_${baseName}_${Date.now()}${extName}`,
+  );
+
+  try {
+    await execFileAsync('ffmpeg', [
+      '-i',
+      filePath,
+      '-map',
+      '0:v?',
+      '-map',
+      '0:a',
+      '-c:v',
+      'copy',
+      '-c:a',
+      'aac',
+      '-af',
+      LOUDNORM_FILTER,
+      '-movflags',
+      '+faststart',
+      '-y',
+      tmpPath,
+    ]);
+    await fs.move(tmpPath, filePath, { overwrite: true });
+  } finally {
+    await fs.remove(tmpPath).catch(() => {});
+  }
+}
+
 export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
   // ── Upload MP4 ──────────────────────────────────────────────
   routes.post('/upload/mp4', async (req, res) => {
@@ -219,6 +255,34 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
 
     return res.status(200).send({ fileName, folder });
   });
+
+  // ── Delete MP4 ──────────────────────────────────────────────
+  routes.post<{ Params: { '*': string } }>(
+    '/upload/mp4/normalize/*',
+    { schema: { params: Type.Object({ '*': Type.String() }) } },
+    async (req, res) => {
+      const decoded = decodeURIComponent(req.params['*']);
+      const sanitized = sanitizeFolderPath(decoded);
+      if (sanitized === null) {
+        return res.status(400).send({ error: 'Invalid file path' });
+      }
+
+      const absPath = path.join(DATA_DIR, 'mp4s', sanitized);
+      if (!(await fs.pathExists(absPath))) {
+        return res.status(404).send({ error: 'File not found' });
+      }
+
+      try {
+        await normalizeMediaAudioInPlace(absPath);
+      } catch (err: any) {
+        console.error('[upload/mp4/normalize] ffmpeg failed', err?.message);
+        return res.status(500).send({ error: 'Audio normalization failed' });
+      }
+
+      mp4SuggestionsMonitor.refresh();
+      return res.status(200).send({ normalized: sanitized });
+    },
+  );
 
   // ── Delete MP4 ──────────────────────────────────────────────
   routes.delete<{ Params: { '*': string } }>(
@@ -392,6 +456,44 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
 
     return res.status(200).send({ fileName: outputName, folder });
   });
+
+  // ── Delete Audio ────────────────────────────────────────────
+  routes.post<{ Params: { '*': string } }>(
+    '/upload/audio/normalize/*',
+    { schema: { params: Type.Object({ '*': Type.String() }) } },
+    async (req, res) => {
+      const decoded = decodeURIComponent(req.params['*']);
+      const sanitized = sanitizeFolderPath(decoded);
+      if (sanitized === null) {
+        return res.status(400).send({ error: 'Invalid file path' });
+      }
+
+      const absPath = path.join(DATA_DIR, 'audios', sanitized);
+      if (!(await fs.pathExists(absPath))) {
+        return res.status(404).send({ error: 'File not found' });
+      }
+
+      try {
+        await normalizeMediaAudioInPlace(absPath);
+      } catch (err: any) {
+        console.error('[upload/audio/normalize] ffmpeg failed', err?.message);
+        return res.status(500).send({ error: 'Audio normalization failed' });
+      }
+
+      try {
+        await generateAudioWaveformImage(absPath);
+      } catch (err: any) {
+        await fs.remove(getAudioWaveformPath(absPath)).catch(() => {});
+        console.error(
+          '[upload/audio/normalize] waveform generation failed',
+          err?.message,
+        );
+      }
+
+      audioSuggestionsMonitor.refresh();
+      return res.status(200).send({ normalized: sanitized });
+    },
+  );
 
   // ── Delete Audio ────────────────────────────────────────────
   routes.delete<{ Params: { '*': string } }>(

@@ -34,9 +34,7 @@ export type RoomSnapshot = {
   swapDurationMs: number;
   swapOutgoingEnabled: boolean;
   swapFadeInDurationMs: number;
-  newsStripFadeDuringSwap: boolean;
   swapFadeOutDurationMs: number;
-  newsStripEnabled: boolean;
   outputShaders: ShaderConfig[];
 } & Partial<ViewportProperties>;
 

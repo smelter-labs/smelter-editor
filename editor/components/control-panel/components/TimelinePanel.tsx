@@ -712,6 +712,7 @@ export function TimelinePanel({
   );
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const rulerRef = useRef<HTMLDivElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   // ── Clip interaction refs ─────────────────────────
   const dragRef = useRef<{
@@ -1945,18 +1946,19 @@ export function TimelinePanel({
   useEffect(() => {
     if (!contextMenu) return;
 
-    const handleClick = () => closeContextMenu();
-    const handleScroll = () => closeContextMenu();
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (target && contextMenuRef.current?.contains(target)) return;
+      closeContextMenu();
+    };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') closeContextMenu();
     };
 
-    window.addEventListener('click', handleClick);
-    window.addEventListener('scroll', handleScroll, true);
+    window.addEventListener('pointerdown', handlePointerDown);
     window.addEventListener('keydown', handleKeyDown);
     return () => {
-      window.removeEventListener('click', handleClick);
-      window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [contextMenu, closeContextMenu]);
@@ -2908,6 +2910,7 @@ export function TimelinePanel({
       {contextMenu &&
         createPortal(
           <div
+            ref={contextMenuRef}
             className='fixed z-[9999] bg-card border border-border rounded-lg shadow-xl py-1 min-w-[160px]'
             style={{ left: contextMenu.x, top: contextMenu.y }}
             onClick={(e) => e.stopPropagation()}>
