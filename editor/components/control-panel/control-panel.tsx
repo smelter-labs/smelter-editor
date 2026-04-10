@@ -118,6 +118,7 @@ import {
   loadAutoModalSetting,
 } from './components/PendingConnectionsPanel';
 import { PendingConnectionsModal } from './components/PendingConnectionsModal';
+import { ConnectPlayCompletionModal } from './components/ConnectPlayCompletionModal';
 import type { TimelineState } from './hooks/use-timeline-state';
 import {
   buildInputColorMap,
@@ -198,6 +199,7 @@ const VIDEO_INPUT_TYPES = new Set<string>([
   'hls',
   'whip',
 ]);
+const TIMELINE_END_TOLERANCE_MS = 80;
 
 function hasSameLayerInputOrder(a: Layer[], b: Layer[]): boolean {
   if (a.length !== b.length) return false;
@@ -622,7 +624,11 @@ function ControlPanelInner({
   const pendingWhipColorsKeyRef = useRef('');
 
   const [pendingModalOpen, setPendingModalOpen] = useState(false);
+  const [connectPlayCompletionOpen, setConnectPlayCompletionOpen] =
+    useState(false);
   const pendingModalShownRef = useRef(false);
+  const connectAndPlaySessionActiveRef = useRef(false);
+  const previousTimelinePlayingRef = useRef(false);
   const [timelineActionsReady, setTimelineActionsReady] = useState(false);
   const isPersistingTimelineLayerOrderRef = useRef(false);
 
@@ -661,6 +667,7 @@ function ControlPanelInner({
     (open: boolean) => {
       setPendingModalOpen(open);
       if (pendingModalOpen && !open) {
+        connectAndPlaySessionActiveRef.current = false;
         const applyAtPlayhead = timelineActionsRef.current?.applyAtPlayhead;
         if (applyAtPlayhead) {
           void applyAtPlayhead();
@@ -685,6 +692,7 @@ function ControlPanelInner({
   }, []);
 
   const handlePendingModalApply = useCallback(async () => {
+    connectAndPlaySessionActiveRef.current = false;
     const applyAtPlayhead = timelineActionsRef.current?.applyAtPlayhead;
     if (applyAtPlayhead) {
       await applyAtPlayhead();
@@ -698,11 +706,18 @@ function ControlPanelInner({
     if (!timelineActions) {
       return;
     }
-    await timelineActions.applyAtPlayhead();
-    await timelineActions.play();
+    connectAndPlaySessionActiveRef.current = true;
+    try {
+      await timelineActions.applyAtPlayhead();
+      await timelineActions.play();
+    } catch (error) {
+      connectAndPlaySessionActiveRef.current = false;
+      throw error;
+    }
   }, []);
 
   const handlePendingModalConnectAndRecord = useCallback(async () => {
+    connectAndPlaySessionActiveRef.current = false;
     const timelineActions = timelineActionsRef.current;
     if (!timelineActions || isRecording) {
       return;
@@ -714,6 +729,22 @@ function ControlPanelInner({
   const handleTimelineStateChange = useCallback(
     (state: TimelineState) => {
       timelineStateRef.current = state;
+      const wasPlaying = previousTimelinePlayingRef.current;
+      if (
+        wasPlaying &&
+        !state.isPlaying &&
+        connectAndPlaySessionActiveRef.current
+      ) {
+        const reachedEnd =
+          state.totalDurationMs > 0 &&
+          state.playheadMs >= state.totalDurationMs - TIMELINE_END_TOLERANCE_MS;
+        if (reachedEnd) {
+          setConnectPlayCompletionOpen(true);
+        }
+        connectAndPlaySessionActiveRef.current = false;
+      }
+      previousTimelinePlayingRef.current = state.isPlaying;
+
       if (selectedTimelineClips.length > 0) {
         setTimelinePlayheadMs((prev) =>
           prev === state.playheadMs ? prev : state.playheadMs,
@@ -854,6 +885,9 @@ function ControlPanelInner({
   useEffect(() => {
     timelineStateRef.current = null;
     timelineLoadStateRef.current = null;
+    previousTimelinePlayingRef.current = false;
+    connectAndPlaySessionActiveRef.current = false;
+    setConnectPlayCompletionOpen(false);
     setTimelinePlayheadMs(0);
   }, [roomId]);
 
@@ -1037,21 +1071,27 @@ function ControlPanelInner({
           videoOverlayRects,
         })}
         {!isGuest && (
-          <PendingConnectionsModal
-            pendingWhipInputs={pendingWhipInputs}
-            setPendingWhipInputs={handleSetPendingWhipInputs}
-            colorMap={pendingWhipColors}
-            open={pendingModalOpen}
-            onOpenChange={handlePendingModalOpenChange}
-            onActionClose={handlePendingModalActionClose}
-            onApplyAtPlayhead={handlePendingModalApply}
-            onConnectAndPlay={handlePendingModalConnectAndPlay}
-            onConnectAndRecord={handlePendingModalConnectAndRecord}
-            canConnectAndPlay={timelineActionsReady}
-            canConnectAndRecord={timelineActionsReady && !isRecording}
-            welcomeTextBefore={showcaseWelcome?.before}
-            welcomeTextAfter={showcaseWelcome?.after}
-          />
+          <>
+            <PendingConnectionsModal
+              pendingWhipInputs={pendingWhipInputs}
+              setPendingWhipInputs={handleSetPendingWhipInputs}
+              colorMap={pendingWhipColors}
+              open={pendingModalOpen}
+              onOpenChange={handlePendingModalOpenChange}
+              onActionClose={handlePendingModalActionClose}
+              onApplyAtPlayhead={handlePendingModalApply}
+              onConnectAndPlay={handlePendingModalConnectAndPlay}
+              onConnectAndRecord={handlePendingModalConnectAndRecord}
+              canConnectAndPlay={timelineActionsReady}
+              canConnectAndRecord={timelineActionsReady && !isRecording}
+              welcomeTextBefore={showcaseWelcome?.before}
+              welcomeTextAfter={showcaseWelcome?.after}
+            />
+            <ConnectPlayCompletionModal
+              open={connectPlayCompletionOpen}
+              onOpenChange={setConnectPlayCompletionOpen}
+            />
+          </>
         )}
       </DashboardToolbarProvider>
     );
@@ -1144,6 +1184,13 @@ function ControlPanelInner({
     />
   );
 
+  const connectPlayCompletionModal = !isGuest && (
+    <ConnectPlayCompletionModal
+      open={connectPlayCompletionOpen}
+      onOpenChange={setConnectPlayCompletionOpen}
+    />
+  );
+
   if (renderStreamsOutside) {
     return (
       <>
@@ -1152,6 +1199,7 @@ function ControlPanelInner({
           timelinePortalRef?.current &&
           createPortal(timelineSection, timelinePortalRef.current)}
         {pendingModal}
+        {connectPlayCompletionModal}
       </>
     );
   }
@@ -1160,6 +1208,7 @@ function ControlPanelInner({
     <>
       {mainPanel}
       {pendingModal}
+      {connectPlayCompletionModal}
     </>
   );
 }
@@ -1178,7 +1227,10 @@ const MotionDetectionSection = memo(function MotionDetectionSection({
     [inputs],
   );
   const motionScores = useMotionScores(roomId);
-  const motionHistoryMap = useMotionHistory(motionDetectionInputs, motionScores);
+  const motionHistoryMap = useMotionHistory(
+    motionDetectionInputs,
+    motionScores,
+  );
 
   return (
     <MotionDetectionPanel
