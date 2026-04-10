@@ -214,4 +214,26 @@ describe('rebuildLayers', () => {
 
     expect(restored[0]?.inputs).toEqual([]);
   });
+
+  it('deduplicates repeated inputIndex entries within one layer', () => {
+    const restored = rebuildLayers(
+      [
+        {
+          id: 'layer-1',
+          inputs: [
+            { inputIndex: 9, x: 1, y: 2, width: 3, height: 4 },
+            { inputIndex: 9, x: 10, y: 20, width: 30, height: 40 },
+          ],
+        },
+      ],
+      { 9: 'input-9' },
+      {},
+    );
+
+    expect(restored).toHaveLength(1);
+    expect(restored[0]?.inputs).toHaveLength(1);
+    expect(restored[0]?.inputs[0]?.inputId).toBe('input-9');
+    expect(restored[0]?.inputs[0]?.x).toBe(1);
+    expect(restored[0]?.inputs[0]?.y).toBe(2);
+  });
 });

@@ -6,9 +6,12 @@ export function rebuildLayers(
   pendingWhipPlaceholderByIndex: Record<number, string>,
 ): Layer[] {
   return configLayers.map((cl) => ({
+    // Some exported configs may accidentally contain repeated entries
+    // for the same inputIndex inside one layer. Keep first occurrence.
     id: cl.id,
     behavior: cl.behavior,
     inputs: cl.inputs
+      .filter((li, index, arr) => arr.findIndex((x) => x.inputIndex === li.inputIndex) === index)
       .map((li) => {
         const inputId =
           indexToInputId[li.inputIndex] ??
