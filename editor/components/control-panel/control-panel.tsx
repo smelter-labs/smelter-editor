@@ -1510,6 +1510,8 @@ function SettingsBar({
             restoredTimelineState.tracks.length > 0
               ? {
                   ...restoredTimelineState,
+                  snapToBlocks: true,
+                  snapToKeyframes: true,
                   playheadMs: 0,
                   isPlaying: false,
                   knownInputIds,
