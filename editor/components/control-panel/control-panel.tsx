@@ -199,7 +199,7 @@ const VIDEO_INPUT_TYPES = new Set<string>([
   'hls',
   'whip',
 ]);
-const TIMELINE_END_TOLERANCE_MS = 80;
+const TIMELINE_END_TOLERANCE_MS = 500;
 
 function hasSameLayerInputOrder(a: Layer[], b: Layer[]): boolean {
   if (a.length !== b.length) return false;
@@ -667,7 +667,6 @@ function ControlPanelInner({
     (open: boolean) => {
       setPendingModalOpen(open);
       if (pendingModalOpen && !open) {
-        connectAndPlaySessionActiveRef.current = false;
         const applyAtPlayhead = timelineActionsRef.current?.applyAtPlayhead;
         if (applyAtPlayhead) {
           void applyAtPlayhead();
