@@ -18,6 +18,7 @@ import {
 } from '../components/timeline/timeline-events';
 
 const PLAYHEAD_UI_UPDATE_INTERVAL_MS = 33;
+const AUTO_PAUSE_BEFORE_END_MS = 2000;
 
 export function useServerTimelinePlayback(
   roomId: string,
@@ -40,6 +41,7 @@ export function useServerTimelinePlayback(
   });
 
   const [isPaused, setIsPaused] = useState(false);
+  const autoPauseBeforeEndTriggeredRef = useRef(false);
 
   const sseData = useTimelineSSE(roomId, state.isPlaying || isPaused);
   const sseCountRef = useRef(0);
@@ -153,6 +155,7 @@ export function useServerTimelinePlayback(
     );
     sseCountRef.current = 0;
 
+    autoPauseBeforeEndTriggeredRef.current = false;
     try {
       await startTimelinePlayback(roomId, config, fromMs);
       console.log(`[timeline-ui] PLAY server acknowledged`);
@@ -188,6 +191,7 @@ export function useServerTimelinePlayback(
   }, [roomId, pushPlayheadUpdate, setPlaying]);
 
   const stop = useCallback(async () => {
+    autoPauseBeforeEndTriggeredRef.current = false;
     setPlaying(false);
     setIsPaused(false);
     if (rafRef.current) {
@@ -214,6 +218,7 @@ export function useServerTimelinePlayback(
 
   const seek = useCallback(
     async (ms: number) => {
+      autoPauseBeforeEndTriggeredRef.current = false;
       console.log(`[timeline-ui] SEEK to ${ms}ms`);
       pushPlayheadUpdate(ms, { force: true });
       lastSSERef.current = {
@@ -252,6 +257,39 @@ export function useServerTimelinePlayback(
   useEffect(() => {
     hasAutoApplied.current = false;
   }, [roomId]);
+
+  useEffect(() => {
+    if (!state.isPlaying) {
+      autoPauseBeforeEndTriggeredRef.current = false;
+      return;
+    }
+
+    if (state.totalDurationMs <= AUTO_PAUSE_BEFORE_END_MS) {
+      return;
+    }
+
+    const autoPauseAtMs = Math.max(
+      0,
+      state.totalDurationMs - AUTO_PAUSE_BEFORE_END_MS,
+    );
+    if (state.playheadMs < autoPauseAtMs) {
+      autoPauseBeforeEndTriggeredRef.current = false;
+      return;
+    }
+
+    if (autoPauseBeforeEndTriggeredRef.current) {
+      return;
+    }
+    autoPauseBeforeEndTriggeredRef.current = true;
+    pushPlayheadUpdate(autoPauseAtMs, { force: true });
+    void pause();
+  }, [
+    state.isPlaying,
+    state.playheadMs,
+    state.totalDurationMs,
+    pause,
+    pushPlayheadUpdate,
+  ]);
 
   useEffect(() => {
     if (hasAutoApplied.current) return;

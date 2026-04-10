@@ -199,7 +199,7 @@ const VIDEO_INPUT_TYPES = new Set<string>([
   'hls',
   'whip',
 ]);
-const TIMELINE_END_TOLERANCE_MS = 500;
+const TIMELINE_END_TOLERANCE_MS = 2500;
 
 function hasSameLayerInputOrder(a: Layer[], b: Layer[]): boolean {
   if (a.length !== b.length) return false;

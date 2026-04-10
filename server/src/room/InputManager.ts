@@ -18,6 +18,7 @@ import { createDefaultSnakeGameInputState } from '../snakeGame/snakeGameState';
 import { createHandsStore } from '../hands/handStore';
 import type { ShaderConfig, ActiveTransition } from '../types';
 import { DATA_DIR } from '../dataDir';
+import { isSmelterTransportError } from '../smelterTransportError';
 import type {
   RoomInputState,
   RegisterInputOptions,
@@ -1169,8 +1170,19 @@ export class InputManager {
       try {
         await SmelterInstance.unregisterInput(input.inputId);
       } catch (err: any) {
+        const errorCode = err?.body?.error_code;
+        if (
+          errorCode === 'INPUT_STREAM_NOT_FOUND' ||
+          isSmelterTransportError(err)
+        ) {
+          // Input teardown can race with room stop / Smelter recovery.
+          console.warn(
+            `[room] Skipping input unregister during room teardown inputId=${input.inputId} code=${errorCode ?? 'transport'}`,
+          );
+          continue;
+        }
         console.error(
-          'Failed to remove input when removing the room.',
+          `[room] Failed to remove input during room teardown inputId=${input.inputId}`,
           err?.body ?? err,
         );
       }
