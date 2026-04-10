@@ -180,27 +180,29 @@ export function PendingConnectionsModal({
             <Button
               size='lg'
               className={`w-full cursor-pointer ${canConnectAll && !isRunningAction ? 'animate-pulse-cyan' : ''}`}
-              disabled={!canConnectAll || isRunningAction}
-              onClick={() => void handleConnectAction('connect')}>
-              Connect
+              disabled={
+                !canConnectAll || !canConnectAndPlay || isRunningAction
+              }
+              onClick={() => void handleConnectAction('play')}>
+              {pendingAction === 'play' ? (
+                <LoadingSpinner size='sm' variant='spinner' />
+              ) : (
+                'Connect & Play'
+              )}
             </Button>
             <div className='grid grid-cols-2 gap-2'>
               <Button
                 variant='outline'
                 className='cursor-pointer'
-                disabled={
-                  !canConnectAll || !canConnectAndPlay || isRunningAction
-                }
-                onClick={() => void handleConnectAction('play')}>
-                {pendingAction === 'play' ? (
-                  <LoadingSpinner size='sm' variant='spinner' />
-                ) : (
-                  'Connect & Play'
-                )}
+                size='sm'
+                disabled={!canConnectAll || isRunningAction}
+                onClick={() => void handleConnectAction('connect')}>
+                Connect
               </Button>
               <Button
                 variant='outline'
                 className='cursor-pointer'
+                size='sm'
                 disabled={
                   !canConnectAll || !canConnectAndRecord || isRunningAction
                 }
