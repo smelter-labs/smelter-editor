@@ -119,6 +119,48 @@ describe('parseRoomConfig', () => {
   it('throws on invalid JSON', () => {
     expect(() => parseRoomConfig('not json')).toThrow();
   });
+
+  it('deduplicates imported input titles and track labels', () => {
+    const json = JSON.stringify({
+      version: 1,
+      layout: 'grid',
+      inputs: [
+        {
+          type: 'text-input',
+          title: 'Host',
+          description: '',
+          volume: 1,
+          shaders: [],
+        },
+        {
+          type: 'text-input',
+          title: 'Host',
+          description: '',
+          volume: 1,
+          shaders: [],
+        },
+      ],
+      timeline: {
+        totalDurationMs: 10_000,
+        pixelsPerSecond: 15,
+        tracks: [
+          { label: 'Layer', clips: [] },
+          { label: 'Layer', clips: [] },
+        ],
+      },
+      exportedAt: new Date().toISOString(),
+    });
+
+    const config = parseRoomConfig(json);
+    expect(config.inputs.map((input) => input.title)).toEqual([
+      'Host',
+      'Host (2)',
+    ]);
+    expect(config.timeline?.tracks.map((track) => track.label)).toEqual([
+      'Layer',
+      'Layer (2)',
+    ]);
+  });
 });
 
 describe('exportRoomConfig', () => {
@@ -168,7 +210,7 @@ describe('exportRoomConfig', () => {
     expect(config.outputPlayer).toBeUndefined();
   });
 
-  it('extracts mp4 file name from title for local-mp4', () => {
+  it('preserves explicit local-mp4 file names', () => {
     const mp4Input: Input = {
       ...minimalInput,
       id: 1,
@@ -176,9 +218,10 @@ describe('exportRoomConfig', () => {
       type: 'local-mp4',
       title: '[MP4] My Video',
       description: '',
+      mp4FileName: 'folder/my-video.mp4',
     };
     const config = exportRoomConfig([mp4Input], 'grid');
-    expect(config.inputs[0].mp4FileName).toBe('my_video.mp4');
+    expect(config.inputs[0].mp4FileName).toBe('folder/my-video.mp4');
   });
 
   it('preserves nested local media paths already present on the input', () => {
@@ -221,6 +264,24 @@ describe('exportRoomConfig', () => {
     const config = exportRoomConfig([hlsInput], 'grid');
 
     expect(config.inputs[0].url).toBe('https://example.com/live.m3u8');
+  });
+
+  it('includes imageFileName for image inputs', () => {
+    const imageInput: Input = {
+      ...minimalInput,
+      id: 3,
+      inputId: 'room::image::4',
+      type: 'image',
+      title: 'Overlay',
+      description: '',
+      imageId: 'pictures::overlay',
+      imageFileName: 'overlays/branding/overlay.png',
+    };
+
+    const config = exportRoomConfig([imageInput], 'grid');
+    expect(config.inputs[0].imageFileName).toBe(
+      'overlays/branding/overlay.png',
+    );
   });
 
   it('includes timeline keyframes from the provided live state', () => {

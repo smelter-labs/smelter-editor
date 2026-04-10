@@ -195,6 +195,7 @@ export function useServerTimelinePlayback(
       rafRef.current = null;
     }
     lastSSERef.current = null;
+    pushPlayheadUpdate(0, { force: true });
 
     try {
       await stopTimelinePlayback(roomId);
@@ -202,7 +203,6 @@ export function useServerTimelinePlayback(
       console.error('[timeline] Failed to stop playback', err);
     }
 
-    pushPlayheadUpdate(0, { force: true });
     const config = toServerTimelineConfig(stateRef.current);
     if (config.tracks.length === 0) return;
     try {

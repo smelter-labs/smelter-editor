@@ -741,6 +741,16 @@ export function BlockClipPropertiesPanel({
         setTitleDraft(null);
         return;
       }
+      const normalized = trimmed.toLocaleLowerCase();
+      const duplicateExists = inputs.some(
+        (input) =>
+          input.inputId !== primaryClip.inputId &&
+          input.title.trim().toLocaleLowerCase() === normalized,
+      );
+      if (duplicateExists) {
+        toast.error(`Input "${trimmed}" already exists.`);
+        return;
+      }
       try {
         await updateInputAction(roomId, primaryClip.inputId, {
           title: trimmed,
@@ -751,7 +761,14 @@ export function BlockClipPropertiesPanel({
       }
       setTitleDraft(null);
     },
-    [primaryClip, selectedInput, roomId, updateInputAction, handleRefreshState],
+    [
+      primaryClip,
+      selectedInput,
+      roomId,
+      updateInputAction,
+      handleRefreshState,
+      inputs,
+    ],
   );
 
   if (selectedTimelineClips.length === 0) {

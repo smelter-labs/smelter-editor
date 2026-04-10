@@ -2240,9 +2240,10 @@ export const TimelinePanel = memo(function TimelinePanel({
           ((clip.endMs - clip.startMs) / 1000) * state.pixelsPerSecond;
         const isClipSelected = selectedClipIdSet.has(clip.id);
         const durationMs = clip.endMs - clip.startMs;
+        const clipLabelSuffix = clip.blockSettings.swapLabelSuffix ?? '';
         const clipLabel = isOutputClip
           ? 'Main Video'
-          : (input?.title ?? clip.inputId);
+          : `${input?.title ?? clip.inputId}${clipLabelSuffix}`;
 
         const introT = clip.blockSettings.introTransition;
         const outroT = clip.blockSettings.outroTransition;

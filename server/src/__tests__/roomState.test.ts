@@ -1070,6 +1070,81 @@ describe('RoomState', () => {
       }
     });
 
+    it('mutes active timeline inputs while paused and restores volume on resume', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const inputId = (await room.addNewInput({
+        type: 'text-input',
+        text: 'Pause me',
+      }))!;
+
+      await room.startTimelinePlayback(createTimelineConfig(inputId, 'TL'), 0);
+
+      const duringPlayback = room.getInputs().find((i) => i.inputId === inputId);
+      expect(duringPlayback?.volume).toBe(1);
+
+      await room.pauseTimeline();
+      const duringPause = room.getInputs().find((i) => i.inputId === inputId);
+      expect(duringPause?.volume).toBe(0);
+
+      await room.resumeTimeline();
+      const afterResume = room.getInputs().find((i) => i.inputId === inputId);
+      expect(afterResume?.volume).toBe(1);
+
+      await room.stopTimelinePlayback();
+    });
+
+    it('mutes attached inputs during pause and restores them on resume', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const parentId = (await room.addNewInput({
+        type: 'text-input',
+        text: 'Parent',
+      }))!;
+      const attachedId = (await room.addNewInput({
+        type: 'text-input',
+        text: 'Attached',
+      }))!;
+
+      await room.connectInput(parentId);
+      await room.connectInput(attachedId);
+      await room.updateInput(parentId, { attachedInputIds: [attachedId] });
+      await room.updateInput(attachedId, { volume: 0.6 });
+
+      await room.startTimelinePlayback(createTimelineConfig(parentId, 'TL'), 0);
+      const attachedDuringPlayback = room
+        .getInputs()
+        .find((i) => i.inputId === attachedId);
+      const attachedVolumeBeforePause = attachedDuringPlayback?.volume;
+      expect(attachedVolumeBeforePause).toBeDefined();
+
+      await room.pauseTimeline();
+      const parentDuringPause = room
+        .getInputs()
+        .find((i) => i.inputId === parentId);
+      const attachedDuringPause = room
+        .getInputs()
+        .find((i) => i.inputId === attachedId);
+      expect(parentDuringPause?.volume).toBe(0);
+      expect(attachedDuringPause?.volume).toBe(0);
+
+      await room.resumeTimeline();
+      const parentAfterResume = room
+        .getInputs()
+        .find((i) => i.inputId === parentId);
+      const attachedAfterResume = room
+        .getInputs()
+        .find((i) => i.inputId === attachedId);
+      expect(parentAfterResume?.volume).toBe(1);
+      expect(attachedAfterResume?.volume).toBe(attachedVolumeBeforePause);
+
+      await room.stopTimelinePlayback();
+    });
+
     it('preserves manual layer positions after stop when unplaced inputs exist', async () => {
       const output = createTestOutput();
       const room = new RoomState('room-1', output, [], true);
@@ -1381,6 +1456,31 @@ describe('RoomState', () => {
       };
     }
 
+    function createSingleClipTimelineConfig(
+      inputId: string,
+      blockSettings: TimelineConfig['tracks'][number]['clips'][number]['blockSettings'],
+    ): TimelineConfig {
+      return {
+        tracks: [
+          {
+            id: 'track-1',
+            clips: [
+              {
+                id: 'clip-1',
+                inputId,
+                startMs: 0,
+                endMs: 20000,
+                blockSettings,
+                keyframes: [],
+              },
+            ],
+          },
+        ],
+        totalDurationMs: 20000,
+        keyframeInterpolationMode: 'step',
+      };
+    }
+
     it('defers unregisterImage when cleaning up frozen images', async () => {
       vi.useFakeTimers();
       try {
@@ -1474,6 +1574,122 @@ describe('RoomState', () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    it('skips scrub frozen frame extraction for audio-backed local MP4 inputs', async () => {
+      mocks.pathExists.mockResolvedValue(true);
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const inputId = (await room.addNewInput({
+        type: 'local-mp4',
+        source: { audioFileName: 'test-audio.mp4' },
+      }))!;
+      await room.connectInput(inputId);
+
+      mocks.smelter.extractMp4Frame.mockClear();
+      await room.applyTimelineState(
+        createMp4TimelineConfig(inputId),
+        3_000,
+      );
+
+      expect(mocks.smelter.extractMp4Frame).not.toHaveBeenCalled();
+    });
+
+    it('clamps non-loop scrub frozen frame timestamp to media tail', async () => {
+      const { room, inputId } = await createRoomWithMp4();
+      const input = room.getInputs().find((i) => i.inputId === inputId);
+      if (input?.type === 'local-mp4') {
+        input.mp4DurationMs = 10_000;
+      }
+
+      mocks.smelter.extractMp4Frame.mockClear();
+      await room.applyTimelineState(
+        createSingleClipTimelineConfig(inputId, {
+          volume: 1,
+          showTitle: false,
+          shaders: [],
+          mp4PlayFromMs: 50_000,
+          mp4Loop: false,
+        }),
+        10_000,
+      );
+
+      expect(mocks.smelter.extractMp4Frame).toHaveBeenCalled();
+      const [, framePositionMs] = mocks.smelter.extractMp4Frame.mock.calls.at(
+        -1,
+      ) as [string, number];
+      expect(framePositionMs).toBe(9_999);
+    });
+  });
+
+  describe('mp4 restart guardrails', () => {
+    async function createConnectedMp4Room() {
+      mocks.pathExists.mockResolvedValue(true);
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+      const inputId = (await room.addNewInput({
+        type: 'local-mp4',
+        source: { fileName: 'test-video.mp4' },
+      }))!;
+      await room.connectInput(inputId);
+      return { room, inputId };
+    }
+
+    it('never sends a negative offsetMs during MP4 restart', async () => {
+      const { room, inputId } = await createConnectedMp4Room();
+      const input = room.getInputs().find((i) => i.inputId === inputId);
+      if (input?.type === 'local-mp4') {
+        input.mp4DurationMs = 10_000;
+      }
+      mocks.smelter.unregisterInput.mockClear();
+      mocks.smelter.registerInput.mockClear();
+      mocks.smelter.getPipelineTimeMs.mockReturnValue(1000);
+
+      await room.restartMp4Input(inputId, 5000, false);
+
+      const registerCall = mocks.smelter.registerInput.mock.calls.at(-1);
+      expect(registerCall).toBeDefined();
+      if (!registerCall) {
+        throw new Error('Expected registerInput to be called');
+      }
+      expect(registerCall[1]).toMatchObject({
+        type: 'mp4',
+        offsetMs: 0,
+      });
+    });
+
+    it('normalizes restart playhead for looped and finite clips', async () => {
+      const { room, inputId } = await createConnectedMp4Room();
+      const input = room.getInputs().find((i) => i.inputId === inputId);
+      if (input?.type === 'local-mp4') {
+        input.mp4DurationMs = 10_000;
+      }
+      mocks.smelter.unregisterInput.mockClear();
+      mocks.smelter.registerInput.mockClear();
+      mocks.smelter.getPipelineTimeMs.mockReturnValue(30_000);
+
+      await room.restartMp4Input(inputId, 12_345, true);
+      const loopedCall = mocks.smelter.registerInput.mock.calls.at(-1);
+      if (!loopedCall) {
+        throw new Error('Expected looped restart registerInput call');
+      }
+      expect(loopedCall[1]).toMatchObject({
+        type: 'mp4',
+        offsetMs: 27_655,
+      });
+
+      await room.restartMp4Input(inputId, 12_345, false);
+      const nonLoopCall = mocks.smelter.registerInput.mock.calls.at(-1);
+      if (!nonLoopCall) {
+        throw new Error('Expected finite restart registerInput call');
+      }
+      expect(nonLoopCall[1]).toMatchObject({
+        type: 'mp4',
+        offsetMs: 20_001,
+      });
     });
   });
 });

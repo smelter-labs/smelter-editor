@@ -334,6 +334,9 @@ describe('timelineReducer', () => {
     });
 
     expect(next.tracks[0].clips[0].inputId).toBe('room::local::new');
+    expect(next.tracks[0].clips[0].blockSettings.swapLabelSuffix).toBe(
+      ' (switched)',
+    );
     expect(next.knownInputIds).toContain('room::local::old');
     expect(next.knownInputIds).toContain('room::local::new');
   });
@@ -397,12 +400,75 @@ describe('timelineReducer', () => {
     expect(clip.blockSettings.mp4DurationMs).toBe(8000);
     expect(clip.blockSettings.sourceWidth).toBe(1920);
     expect(clip.blockSettings.sourceHeight).toBe(1080);
+    expect(clip.blockSettings.swapLabelSuffix).toBe(' (switched)');
     expect(clip.blockSettings.volume).toBe(0.5);
 
     for (const kf of clip.keyframes) {
       expect(kf.blockSettings.mp4DurationMs).toBe(8000);
       expect(kf.blockSettings.sourceWidth).toBe(1920);
+      expect(kf.blockSettings.swapLabelSuffix).toBe(' (switched)');
     }
+  });
+
+  it('SWAP_CLIP_INPUT: increments suffix when target input already exists', () => {
+    const state: TimelineState = {
+      tracks: [
+        {
+          id: 'track-1',
+          label: 'Track 1',
+          clips: [
+            {
+              id: 'clip-a',
+              inputId: 'room::local::existing',
+              startMs: 0,
+              endMs: 10_000,
+              blockSettings: defaultBlockSettings,
+              keyframes: [
+                {
+                  id: 'kf-a',
+                  timeMs: 0,
+                  blockSettings: defaultBlockSettings,
+                },
+              ],
+            },
+            {
+              id: 'clip-b',
+              inputId: 'room::local::old',
+              startMs: 10_000,
+              endMs: 20_000,
+              blockSettings: defaultBlockSettings,
+              keyframes: [
+                {
+                  id: 'kf-b',
+                  timeMs: 0,
+                  blockSettings: defaultBlockSettings,
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      totalDurationMs: 60_000,
+      playheadMs: 0,
+      isPlaying: false,
+      pixelsPerSecond: 15,
+      keyframeInterpolationMode: 'step',
+      knownInputIds: new Set<string>(),
+    };
+
+    const next = timelineReducer(state, {
+      type: 'SWAP_CLIP_INPUT',
+      trackId: 'track-1',
+      clipId: 'clip-b',
+      newInputId: 'room::local::existing',
+    });
+
+    expect(next.tracks[0].clips[1].blockSettings.swapLabelSuffix).toBe(
+      ' (switched 2)',
+    );
+    expect(next.tracks[0].clips[1].keyframes[0].blockSettings.swapLabelSuffix).toBe(
+      ' (switched 2)',
+    );
   });
 
   // ── CLEANUP_SPURIOUS_WHIP_TRACK ────────────────────────
@@ -620,5 +686,49 @@ describe('timelineReducer', () => {
       new Set(firstTrack.clips[0].keyframes.map((keyframe) => keyframe.id))
         .size,
     ).toBe(firstTrack.clips[0].keyframes.length);
+  });
+
+  it('renames track to a unique label when the requested one already exists', () => {
+    const state: TimelineState = {
+      tracks: [
+        { id: 'track-1', label: 'Main', clips: [] },
+        { id: 'track-2', label: 'Main 2', clips: [] },
+      ],
+      totalDurationMs: 60_000,
+      keyframeInterpolationMode: 'step',
+      playheadMs: 0,
+      isPlaying: false,
+      pixelsPerSecond: 15,
+      knownInputIds: new Set<string>(),
+    };
+
+    const next = timelineReducer(state, {
+      type: 'RENAME_TRACK',
+      trackId: 'track-2',
+      newLabel: 'Main',
+    });
+
+    expect(next.tracks.find((track) => track.id === 'track-2')?.label).toBe(
+      'Main (2)',
+    );
+  });
+
+  it('adds a track with unique label when duplicate is requested', () => {
+    const state: TimelineState = {
+      tracks: [{ id: 'track-1', label: 'Layer', clips: [] }],
+      totalDurationMs: 60_000,
+      keyframeInterpolationMode: 'step',
+      playheadMs: 0,
+      isPlaying: false,
+      pixelsPerSecond: 15,
+      knownInputIds: new Set<string>(),
+    };
+
+    const next = timelineReducer(state, {
+      type: 'ADD_TRACK',
+      label: 'Layer',
+    });
+
+    expect(next.tracks[0]?.label).toBe('Layer (2)');
   });
 });

@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { remove } from 'fs-extra';
 import { Mutex } from 'async-mutex';
 import { SmelterInstance, type SmelterOutput } from '../smelter';
@@ -13,6 +14,7 @@ import {
 } from '../timeline/TimelinePlayer';
 import type { TimelineConfig } from '../timeline/types';
 import { logTimelineEvent } from '../dashboard';
+import { isSmelterTransportError } from '../smelterTransportError';
 
 import { InputManager } from './InputManager';
 import { RecordingController } from './RecordingController';
@@ -22,6 +24,7 @@ import { PlaceholderManager } from './PlaceholderManager';
 import { AudioController } from '../audio/AudioController';
 import type { AudioStoreState } from '../audio/audioStore';
 import type { StoreApi } from 'zustand';
+import { DATA_DIR } from '../dataDir';
 import type {
   PendingWhipInputData,
   RoomInputState,
@@ -33,12 +36,38 @@ import type { ShaderConfig } from '../types';
 
 const RESUME_FROZEN_IMAGE_CLEANUP_DELAY_MS = 5500;
 const FROZEN_IMAGE_UNREGISTER_GRACE_MS = 500;
+const AUDIO_ASSETS_DIR = path.join(DATA_DIR, 'audios');
 
 function cloneLayers(layers: Layer[]): Layer[] {
   if (typeof structuredClone === 'function') {
     return structuredClone(layers);
   }
   return JSON.parse(JSON.stringify(layers)) as Layer[];
+}
+
+function normalizeFramePositionMs(
+  requestedMs: number,
+  isLooped: boolean,
+  durationMs?: number,
+): number {
+  let normalized = Math.max(0, requestedMs);
+  if (durationMs && durationMs > 0) {
+    if (isLooped) {
+      normalized = normalized % durationMs;
+    } else {
+      normalized = Math.min(normalized, Math.max(0, durationMs - 1));
+    }
+  }
+  return normalized;
+}
+
+function isAudioBackedLocalMp4(mp4FilePath: string): boolean {
+  const relativeToAudioDir = path.relative(AUDIO_ASSETS_DIR, mp4FilePath);
+  return (
+    relativeToAudioDir !== '' &&
+    !relativeToAudioDir.startsWith('..') &&
+    !path.isAbsolute(relativeToAudioDir)
+  );
 }
 
 export class RoomState {
@@ -56,6 +85,7 @@ export class RoomState {
 
   private timelinePlayer: TimelinePlayer | null = null;
   private timelineListeners = new Set<TimelineListener>();
+  private pausedAttachedInputVolumes = new Map<string, number>();
 
   private frozenImages: Map<string, { imageId: string; jpegPath: string }> =
     new Map();
@@ -668,14 +698,17 @@ export class RoomState {
     for (const [inputId, clip] of activeClips) {
       const input = inputs.find((i) => i.inputId === inputId);
       if (!input || input.type !== 'local-mp4') continue;
+      if (isAudioBackedLocalMp4(input.mp4FilePath)) {
+        continue;
+      }
 
       const basePlayFrom = clip.blockSettings.mp4PlayFromMs ?? 0;
-      let framePositionMs = basePlayFrom + (playheadMs - clip.startMs);
-
       const isLooped = clip.blockSettings.mp4Loop !== false;
-      if (isLooped && input.mp4DurationMs && input.mp4DurationMs > 0) {
-        framePositionMs = framePositionMs % input.mp4DurationMs;
-      }
+      const framePositionMs = normalizeFramePositionMs(
+        basePlayFrom + (playheadMs - clip.startMs),
+        isLooped,
+        input.mp4DurationMs,
+      );
 
       try {
         const jpegPath = await SmelterInstance.extractMp4Frame(
@@ -694,16 +727,23 @@ export class RoomState {
           `MP4 FROZEN (scrub) ${input.metadata.title} at ${Math.round(framePositionMs)}ms`,
         );
       } catch (err) {
-        console.error(
-          `[timeline] Failed to extract frame for ${inputId} at scrub position`,
-          err,
-        );
+        if (isSmelterTransportError(err)) {
+          console.warn(
+            `[timeline] Skipping scrub frozen frame for ${inputId} while Smelter is recovering`,
+          );
+        } else {
+          console.error(
+            `[timeline] Failed to extract frame for ${inputId} at scrub position`,
+            err,
+          );
+        }
       }
     }
   }
 
   public async stopTimelinePlayback(): Promise<void> {
     if (!this.timelinePlayer) return;
+    this.pausedAttachedInputVolumes.clear();
     this.cleanupFrozenImages();
     this._restoringTimeline = true;
     try {
@@ -727,20 +767,39 @@ export class RoomState {
     const { playheadMs, activeClips } = this.timelinePlayer.pause();
     const currentPipelineMs = SmelterInstance.getPipelineTimeMs();
     const inputs = this.inputManager.getInputs();
+    const inputById = new Map(inputs.map((input) => [input.inputId, input]));
+    const activeInputIds = new Set(activeClips.keys());
+    const attachedInputIds = this.collectAttachedInputIds(activeInputIds, inputById);
+
+    this.pausedAttachedInputVolumes.clear();
+    for (const attachedInputId of attachedInputIds) {
+      if (activeInputIds.has(attachedInputId)) continue;
+      const attachedInput = inputById.get(attachedInputId);
+      if (!attachedInput) continue;
+      this.pausedAttachedInputVolumes.set(attachedInputId, attachedInput.volume);
+      this.inputManager.updateInput(attachedInputId, { volume: 0 });
+    }
 
     for (const [inputId, clip] of activeClips) {
-      const input = inputs.find((i) => i.inputId === inputId);
-      if (!input || input.type !== 'local-mp4') continue;
+      const input = inputById.get(inputId);
+      if (!input) continue;
 
-      let framePositionMs =
-        (input.playFromMs ?? 0) +
-        (currentPipelineMs -
-          (input.registeredAtPipelineMs ?? currentPipelineMs));
+      // Pause should freeze the soundscape as well as the visuals.
+      this.inputManager.updateInput(inputId, { volume: 0 });
+
+      if (input.type !== 'local-mp4') continue;
+      if (isAudioBackedLocalMp4(input.mp4FilePath)) {
+        continue;
+      }
 
       const isLooped = clip.blockSettings.mp4Loop !== false;
-      if (isLooped && input.mp4DurationMs && input.mp4DurationMs > 0) {
-        framePositionMs = framePositionMs % input.mp4DurationMs;
-      }
+      const framePositionMs = normalizeFramePositionMs(
+        (input.playFromMs ?? 0) +
+          (currentPipelineMs -
+            (input.registeredAtPipelineMs ?? currentPipelineMs)),
+        isLooped,
+        input.mp4DurationMs,
+      );
 
       try {
         const jpegPath = await SmelterInstance.extractMp4Frame(
@@ -759,7 +818,13 @@ export class RoomState {
           `MP4 FROZEN (pause) ${input.metadata.title} at ${Math.round(framePositionMs)}ms`,
         );
       } catch (err) {
-        console.error(`[timeline] Failed to extract frame for ${inputId}`, err);
+        if (isSmelterTransportError(err)) {
+          console.warn(
+            `[timeline] Skipping pause frozen frame for ${inputId} while Smelter is recovering`,
+          );
+        } else {
+          console.error(`[timeline] Failed to extract frame for ${inputId}`, err);
+        }
       }
     }
 
@@ -785,6 +850,11 @@ export class RoomState {
     );
 
     await this.timelinePlayer.resume(fromMs);
+
+    for (const [inputId, volume] of this.pausedAttachedInputVolumes) {
+      this.inputManager.updateInput(inputId, { volume });
+    }
+    this.pausedAttachedInputVolumes.clear();
 
     const inactiveFrozenInputIds = [...this.frozenImages.keys()].filter(
       (inputId) => !activeFrozenInputIds.has(inputId),
@@ -845,6 +915,29 @@ export class RoomState {
     return () => {
       this.timelineListeners.delete(listener);
     };
+  }
+
+  private collectAttachedInputIds(
+    rootInputIds: Iterable<string>,
+    inputById: Map<string, RoomInputState>,
+  ): Set<string> {
+    const visited = new Set<string>();
+    const queue = [...new Set(rootInputIds)];
+
+    while (queue.length > 0) {
+      const inputId = queue.shift()!;
+      if (visited.has(inputId)) continue;
+      visited.add(inputId);
+      const input = inputById.get(inputId);
+      const attachedInputIds = input?.attachedInputIds ?? [];
+      for (const attachedInputId of attachedInputIds) {
+        if (!visited.has(attachedInputId)) {
+          queue.push(attachedInputId);
+        }
+      }
+    }
+
+    return visited;
   }
 
   // ── Frozen image management ───────────────────────────────
@@ -932,6 +1025,12 @@ export class RoomState {
     const timer = setTimeout(() => {
       this.pendingImageUnregisters.delete(imageId);
       SmelterInstance.unregisterImage(imageId).catch((err) => {
+        if (isSmelterTransportError(err)) {
+          console.warn(
+            `[timeline] Frozen image unregister skipped during Smelter recovery imageId=${imageId}`,
+          );
+          return;
+        }
         console.error(`Failed to unregister frozen image ${imageId}`, err);
       });
       remove(jpegPath).catch(() => {});
@@ -945,10 +1044,16 @@ export class RoomState {
       try {
         await SmelterInstance.unregisterImage(imageId);
       } catch (err) {
-        console.error(
-          `Failed to flush-unregister frozen image ${imageId}`,
-          err,
-        );
+        if (isSmelterTransportError(err)) {
+          console.warn(
+            `[timeline] Frozen image flush-unregister skipped during Smelter recovery imageId=${imageId}`,
+          );
+        } else {
+          console.error(
+            `Failed to flush-unregister frozen image ${imageId}`,
+            err,
+          );
+        }
       }
       try {
         await remove(jpegPath);
@@ -964,6 +1069,7 @@ export class RoomState {
   public async deleteRoom() {
     return this.mutex.runExclusive(async () => {
       this.destroyed = true;
+      this.pausedAttachedInputVolumes.clear();
 
       if (this.pendingStoreFlushTimer) {
         clearTimeout(this.pendingStoreFlushTimer);

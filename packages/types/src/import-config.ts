@@ -13,6 +13,7 @@ export type ImportConfigInput = {
   channelId?: string;
   url?: string;
   imageId?: string;
+  imageFileName?: string;
   mp4FileName?: string;
   audioFileName?: string;
   text?: string;

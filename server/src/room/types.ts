@@ -100,6 +100,7 @@ type TypeSpecificState =
   | {
       type: 'image';
       imageId: string;
+      imageFileName?: string;
       /** Present when the configured image file was not found on disk yet. */
       imageAssetMissing?: boolean;
     }

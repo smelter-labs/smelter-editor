@@ -31,6 +31,7 @@ export async function GET(
     const contentType =
       upstream.headers.get('content-type') ?? 'application/octet-stream';
     const contentDisposition = upstream.headers.get('content-disposition');
+    const data = await upstream.arrayBuffer();
     const headers = new Headers();
     headers.set('Content-Type', contentType);
     if (contentDisposition) {
@@ -38,7 +39,7 @@ export async function GET(
     }
     const len = upstream.headers.get('content-length');
     if (len) headers.set('Content-Length', len);
-    return new Response(upstream.body, {
+    return new Response(data, {
       status: upstream.status,
       headers,
     });

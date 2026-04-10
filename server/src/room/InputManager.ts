@@ -378,6 +378,7 @@ export class InputManager {
 
     const imageId = await this.registerImageAsset(opts.fileName);
     input.imageId = imageId;
+    input.imageFileName = opts.fileName;
     input.imageAssetMissing = false;
     input.metadata.title = formatImageName(opts.fileName);
     input.metadata.description = '';
@@ -458,6 +459,7 @@ export class InputManager {
           },
           volume: 0,
           imageId,
+          imageFileName: fileName,
           imageAssetMissing: true,
         });
         this.onStateChange();
@@ -492,6 +494,7 @@ export class InputManager {
         metadata: { title: formatImageName(fileName), description: '' },
         volume: 0,
         imageId,
+        imageFileName: fileName,
       });
       this.onStateChange();
     } else {
@@ -512,6 +515,7 @@ export class InputManager {
         },
         volume: 0,
         imageId: imageId ?? imageIdFromFileName(fileName),
+        imageFileName: fileName,
         imageAssetMissing: true,
       });
       this.onStateChange();
@@ -1079,7 +1083,35 @@ export class InputManager {
         `[mp4-restart] unregister OK "${name}" ${Date.now() - t0}ms`,
       );
 
-      const offsetMs = SmelterInstance.getPipelineTimeMs() - playFromMs;
+      const requestedPlayFromMs = Number.isFinite(playFromMs) ? playFromMs : 0;
+      let normalizedPlayFromMs = Math.max(0, requestedPlayFromMs);
+      const durationMs = input.mp4DurationMs;
+      if (durationMs && durationMs > 0) {
+        if (loop) {
+          normalizedPlayFromMs = normalizedPlayFromMs % durationMs;
+        } else {
+          // Prevent seeking past the tail of finite clips.
+          normalizedPlayFromMs = Math.min(
+            normalizedPlayFromMs,
+            Math.max(0, durationMs - 1),
+          );
+        }
+      }
+      if (normalizedPlayFromMs !== requestedPlayFromMs) {
+        logTimelineEvent(
+          this.idPrefix,
+          `[mp4-restart] normalize-playhead "${name}" requested=${requestedPlayFromMs}ms normalized=${normalizedPlayFromMs}ms loop=${loop}`,
+        );
+      }
+
+      let offsetMs = SmelterInstance.getPipelineTimeMs() - normalizedPlayFromMs;
+      if (offsetMs < 0) {
+        logTimelineEvent(
+          this.idPrefix,
+          `[mp4-restart] clamp-offset "${name}" requestedOffsetMs=${offsetMs} clampedOffsetMs=0`,
+        );
+        offsetMs = 0;
+      }
       logTimelineEvent(
         this.idPrefix,
         `[mp4-restart] register "${name}" loop=${loop} offsetMs=${offsetMs}`,
@@ -1096,11 +1128,7 @@ export class InputManager {
       );
 
       input.registeredAtPipelineMs = SmelterInstance.getPipelineTimeMs();
-      if (loop && input.mp4DurationMs && input.mp4DurationMs > 0) {
-        input.playFromMs = playFromMs % input.mp4DurationMs;
-      } else {
-        input.playFromMs = playFromMs;
-      }
+      input.playFromMs = normalizedPlayFromMs;
     } catch (err) {
       logTimelineEvent(
         this.idPrefix,

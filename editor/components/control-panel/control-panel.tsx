@@ -57,6 +57,10 @@ import {
   saveOutputPlayerSettings,
   type RoomConfig,
 } from '@/lib/room-config';
+import {
+  downloadFullProjectZip,
+  importFullProjectZip,
+} from '@/lib/full-project-zip';
 import { streamImportConfig } from '@/lib/import-config-stream';
 import { SaveConfigModal, LoadConfigModal } from './components/ConfigModals';
 import {
@@ -146,6 +150,7 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
+import { toast } from 'sonner';
 import QRCode from 'react-qr-code';
 
 export type VideoOverlayRect = {
@@ -1204,6 +1209,7 @@ function SettingsBar({
   const [openModal, setOpenModal] = useState<ModalId | null>(null);
   const [showAddVideoModal, setShowAddVideoModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingFullProject, setIsExportingFullProject] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] =
     useState<ImportProgressState | null>(null);
@@ -1394,6 +1400,23 @@ function SettingsBar({
     }
   }, [buildConfig]);
 
+  const handleExportFullProject = useCallback(async () => {
+    setIsExportingFullProject(true);
+    const loadingToastId = toast.loading('Building full project ZIP...');
+    try {
+      const config = buildConfig();
+      await downloadFullProjectZip(config);
+      toast.success('Full project ZIP downloaded.', { id: loadingToastId });
+    } catch (e: any) {
+      console.error('Full project export failed:', e);
+      toast.error(e?.message ?? 'Full project export failed.', {
+        id: loadingToastId,
+      });
+    } finally {
+      setIsExportingFullProject(false);
+    }
+  }, [buildConfig]);
+
   const handleExportRemote = useCallback(
     async (name: string): Promise<string | null> => {
       const config = buildConfig();
@@ -1520,19 +1543,54 @@ function SettingsBar({
       const file = e.target.files?.[0];
       if (!file) return;
 
+      const isZip = file.name.toLowerCase().endsWith('.zip');
+      let loadingToastId: string | number | undefined;
       try {
-        const text = await file.text();
-        const config = parseRoomConfig(text);
+        if (isZip) {
+          setIsImporting(true);
+          startImportProgress(1, 'Reading project archive');
+          loadingToastId = toast.loading('Importing full project ZIP...');
+        }
+
+        const config = isZip
+          ? await importFullProjectZip(file, {
+              onProgress: (event) => {
+                setImportProgress({
+                  phase: event.phase,
+                  current: event.current,
+                  total: event.total,
+                });
+              },
+            })
+          : parseRoomConfig(await file.text());
+
+        if (isZip) {
+          setImportProgress({
+            phase: 'Applying imported configuration',
+            current: 0,
+            total: 1,
+          });
+        }
         await importConfig(config);
+        if (loadingToastId !== undefined) {
+          toast.success('Full project imported successfully.', {
+            id: loadingToastId,
+          });
+        }
       } catch (e: any) {
         console.error('Import failed:', e);
+        toast.error(e?.message ?? 'Import failed.', {
+          id: loadingToastId,
+        });
+        setImportProgress(null);
+        setIsImporting(false);
       } finally {
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
       }
     },
-    [importConfig],
+    [importConfig, startImportProgress],
   );
 
   const navLinkClass =
@@ -1634,9 +1692,9 @@ function SettingsBar({
           </div>
           <button
             onClick={() => setShowSaveModal(true)}
-            disabled={isExporting}
+            disabled={isExporting || isExportingFullProject}
             className={navLinkClass}>
-            {isExporting ? 'Saving...' : 'Save'}
+            {isExporting || isExportingFullProject ? 'Saving...' : 'Save'}
           </button>
           <button
             onClick={() => setShowLoadModal(true)}
@@ -1680,7 +1738,7 @@ function SettingsBar({
       <ShadcnInput
         ref={fileInputRef}
         type='file'
-        accept='.json,application/json'
+        accept='.json,.zip,application/json,application/zip'
         className='hidden'
         onChange={handleFileChange}
       />
@@ -1990,8 +2048,9 @@ function SettingsBar({
         open={showSaveModal}
         onOpenChange={setShowSaveModal}
         onSaveLocal={handleExportLocal}
+        onSaveFullProject={handleExportFullProject}
         onSaveRemote={handleExportRemote}
-        isExporting={isExporting}
+        isExporting={isExporting || isExportingFullProject}
       />
 
       <LoadConfigModal

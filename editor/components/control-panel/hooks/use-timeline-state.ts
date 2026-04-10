@@ -47,6 +47,7 @@ export type BlockSettings = TimelineBlockSettings & {
   mp4DurationMs?: number;
   sourceWidth?: number;
   sourceHeight?: number;
+  swapLabelSuffix?: string;
 };
 
 export type Keyframe = SharedTimelineKeyframe & {
@@ -437,6 +438,42 @@ function claimUniqueId(id: string | undefined, usedIds: Set<string>): string {
   }
   usedIds.add(nextId);
   return nextId;
+}
+
+function normalizeTrackLabel(label: string): string {
+  return label.trim().toLocaleLowerCase();
+}
+
+function buildSwapLabelSuffix(
+  state: TimelineState,
+  targetClipId: string,
+  newInputId: string,
+): string {
+  const sameInputClipCount = state.tracks.reduce((count, track) => {
+    const matches = track.clips.filter(
+      (clip) => clip.id !== targetClipId && clip.inputId === newInputId,
+    ).length;
+    return count + matches;
+  }, 0);
+
+  return sameInputClipCount > 0
+    ? ` (switched ${sameInputClipCount + 1})`
+    : ' (switched)';
+}
+
+function claimUniqueTrackLabel(
+  preferredLabel: string,
+  usedLabels: Set<string>,
+): string {
+  const baseLabel = preferredLabel.trim() || 'Track';
+  let candidate = baseLabel;
+  let index = 2;
+  while (usedLabels.has(normalizeTrackLabel(candidate))) {
+    candidate = `${baseLabel} (${index})`;
+    index += 1;
+  }
+  usedLabels.add(normalizeTrackLabel(candidate));
+  return candidate;
 }
 
 function ensureUniqueTrackStructureIds(tracks: Track[]): Track[] {
@@ -1076,16 +1113,28 @@ export function timelineReducer(
 
     case 'RENAME_TRACK': {
       if (action.trackId === OUTPUT_TRACK_ID) return state;
+      const usedLabels = new Set(
+        state.tracks
+          .filter((track) => track.id !== action.trackId)
+          .map((track) => normalizeTrackLabel(track.label)),
+      );
+      const uniqueLabel = claimUniqueTrackLabel(action.newLabel, usedLabels);
       return {
         ...state,
         tracks: state.tracks.map((t) =>
-          t.id === action.trackId ? { ...t, label: action.newLabel } : t,
+          t.id === action.trackId ? { ...t, label: uniqueLabel } : t,
         ),
       };
     }
 
     case 'ADD_TRACK': {
-      const label = action.label || `Track ${state.tracks.length + 1}`;
+      const usedLabels = new Set(
+        state.tracks
+          .filter((track) => track.id !== OUTPUT_TRACK_ID)
+          .map((track) => normalizeTrackLabel(track.label)),
+      );
+      const preferredLabel = action.label || `Track ${state.tracks.length + 1}`;
+      const label = claimUniqueTrackLabel(preferredLabel, usedLabels);
       const newTrack: Track = {
         id: genId(),
         label,
@@ -1145,6 +1194,7 @@ export function timelineReducer(
       const targetClip = targetTrack?.clips.find((c) => c.id === clipId);
       if (targetClip) updatedKnown.add(targetClip.inputId);
       updatedKnown.add(newInputId);
+      const swapLabelSuffix = buildSwapLabelSuffix(state, clipId, newInputId);
 
       return {
         ...state,
@@ -1155,18 +1205,22 @@ export function timelineReducer(
             ...track,
             clips: track.clips.map((clip) => {
               if (clip.id !== clipId) return clip;
-              const mergedSettings = sourceUpdates
-                ? { ...clip.blockSettings, ...sourceUpdates }
-                : clip.blockSettings;
+              const mergedSettings = {
+                ...clip.blockSettings,
+                ...sourceUpdates,
+                swapLabelSuffix,
+              };
               return {
                 ...clip,
                 inputId: newInputId,
                 blockSettings: mergedSettings,
                 keyframes: clip.keyframes.map((kf) => ({
                   ...kf,
-                  blockSettings: sourceUpdates
-                    ? { ...kf.blockSettings, ...sourceUpdates }
-                    : kf.blockSettings,
+                  blockSettings: {
+                    ...kf.blockSettings,
+                    ...sourceUpdates,
+                    swapLabelSuffix,
+                  },
                 })),
               };
             }),

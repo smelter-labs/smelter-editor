@@ -31,6 +31,7 @@ export type RoomConfigInput = {
   channelId?: string;
   url?: string;
   imageId?: string;
+  imageFileName?: string;
   mp4FileName?: string;
   audioFileName?: string;
   text?: string;
@@ -66,24 +67,6 @@ export type RoomConfigInput = {
   cropRight?: number;
   cropBottom?: number;
 };
-
-function extractMp4FileName(title: string): string | undefined {
-  const match = title.match(/^\[MP4\]\s*(.+)$/);
-  if (match) {
-    const name = match[1].trim();
-    return name.toLowerCase().replace(/\s+/g, '_') + '.mp4';
-  }
-  return undefined;
-}
-
-function extractAudioFileName(title: string): string | undefined {
-  const match = title.match(/^\[AUDIO\]\s*(.+)$/);
-  if (match) {
-    const name = match[1].trim();
-    return name.toLowerCase().replace(/\s+/g, '_') + '.mp4';
-  }
-  return undefined;
-}
 
 export type RoomConfigTransitionSettings = {
   swapDurationMs?: number;
@@ -163,6 +146,52 @@ export type RoomConfigTimelineState = {
   keyframeInterpolationMode: 'step' | 'smooth';
   pixelsPerSecond: number;
 };
+
+function toNameKey(value: string): string {
+  return value.trim().toLocaleLowerCase();
+}
+
+function claimUniqueName(baseName: string, usedKeys: Set<string>): string {
+  let candidate = baseName;
+  let index = 2;
+  while (usedKeys.has(toNameKey(candidate))) {
+    candidate = `${baseName} (${index})`;
+    index += 1;
+  }
+  usedKeys.add(toNameKey(candidate));
+  return candidate;
+}
+
+function sanitizeImportedConfigNames(config: RoomConfig): RoomConfig {
+  const usedInputNames = new Set<string>();
+  const inputs = config.inputs.map((input, index) => {
+    const preferred = input.title.trim() || `Input ${index + 1}`;
+    return {
+      ...input,
+      title: claimUniqueName(preferred, usedInputNames),
+    };
+  });
+
+  const usedTrackNames = new Set<string>();
+  const timeline = config.timeline
+    ? {
+        ...config.timeline,
+        tracks: config.timeline.tracks.map((track, index) => {
+          const preferred = track.label.trim() || `Track ${index + 1}`;
+          return {
+            ...track,
+            label: claimUniqueName(preferred, usedTrackNames),
+          };
+        }),
+      }
+    : undefined;
+
+  return {
+    ...config,
+    inputs,
+    timeline,
+  };
+}
 
 export function resolveRoomConfigTimelineState(
   roomId: string,
@@ -267,14 +296,9 @@ export function exportRoomConfig(
       channelId: input.channelId,
       url: input.url,
       imageId: input.imageId,
-      mp4FileName:
-        input.type === 'local-mp4'
-          ? (input.mp4FileName ?? extractMp4FileName(input.title))
-          : input.mp4FileName,
-      audioFileName:
-        input.type === 'local-mp4'
-          ? (input.audioFileName ?? extractAudioFileName(input.title))
-          : input.audioFileName,
+      imageFileName: input.imageFileName,
+      mp4FileName: input.mp4FileName,
+      audioFileName: input.audioFileName,
       text: input.text,
       textAlign: input.textAlign,
       textColor: input.textColor,
@@ -335,7 +359,7 @@ export function parseRoomConfig(json: string): RoomConfig {
   if (!config.layout || !Array.isArray(config.inputs)) {
     throw new Error('Invalid config format');
   }
-  return config as RoomConfig;
+  return sanitizeImportedConfigNames(config as RoomConfig);
 }
 
 export function loadTimelineFromStorage(roomId: string): {

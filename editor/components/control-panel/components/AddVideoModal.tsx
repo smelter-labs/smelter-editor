@@ -30,6 +30,7 @@ import { useIsMobileDevice } from '@/hooks/use-mobile';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import type { ChannelSuggestion, Input } from '@/lib/types';
+import { SelectablePreviewCard } from './asset-browser/selectable-preview-card';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -1395,34 +1396,15 @@ function AssetCard({
   })();
 
   return (
-    <button
+    <SelectablePreviewCard
       onClick={onClick}
-      className={`text-left bg-[#1c1b1b] border border-[#3a494b]/30 hover:border-[#00f3ff]/60 group transition-all cursor-pointer ${
-        isSelected ? 'border-l-2 border-l-[#fe00fe] neon-glow-secondary' : ''
-      }`}>
-      <div className='relative aspect-video bg-black overflow-hidden'>
-        <AssetThumbnail item={item} />
-        <div className='absolute inset-0 scanline opacity-30' />
-        <div className='absolute top-1.5 left-1.5 px-1 bg-black/80 text-[10px] font-mono text-[#00f3ff] border border-[#00f3ff]/30'>
-          {badge}
-        </div>
-        {durationBadge && (
-          <div className='absolute bottom-1.5 right-1.5 px-1 bg-black/80 text-[10px] font-mono text-[#fe00fe]'>
-            {durationBadge}
-          </div>
-        )}
-      </div>
-      <div className='p-2 border-t border-[#3a494b]/20'>
-        <div className='font-mono text-[11px] text-[#e3fdff] mb-0.5 truncate'>
-          {label}
-        </div>
-        {subtitle && (
-          <div className='font-mono text-[10px] text-[#849495] truncate'>
-            {subtitle}
-          </div>
-        )}
-      </div>
-    </button>
+      isSelected={isSelected}
+      badge={badge}
+      label={label}
+      subtitle={subtitle}
+      durationBadge={durationBadge ?? undefined}
+      thumbnail={<AssetThumbnail item={item} />}
+    />
   );
 }
 
@@ -3449,12 +3431,15 @@ function TextActionInspector({
   const [text, setText] = useState('');
   const [align, setAlign] = useState<'left' | 'center' | 'right'>('left');
   const [loading, setLoading] = useState(false);
+  const isSubmittingRef = useRef(false);
 
   const handleAdd = async () => {
+    if (loading || isSubmittingRef.current) return;
     if (!text.trim()) {
       toast.error('Enter text content.');
       return;
     }
+    isSubmittingRef.current = true;
     setLoading(true);
     try {
       const response = await addTextInput(roomId, text, align);
@@ -3466,6 +3451,7 @@ function TextActionInspector({
     } catch {
       toast.error('Failed to add text input.');
     } finally {
+      isSubmittingRef.current = false;
       setLoading(false);
     }
   };

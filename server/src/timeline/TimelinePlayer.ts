@@ -9,6 +9,7 @@ import type {
 import { OUTPUT_TRACK_INPUT_ID } from './types';
 import type { RoomInputState } from '../room/types';
 import type { Layer, LayerInput } from '../types';
+import { isSmelterTransportError } from '../smelterTransportError';
 
 type PlaybackEvent = {
   timeMs: number;
@@ -57,6 +58,51 @@ function deepClone<T>(value: T): T {
     return structuredClone(value);
   }
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function isInputMissingError(error: unknown, inputId: string): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const maybeError = error as {
+    body?: { error_code?: unknown };
+    message?: unknown;
+  };
+  const errorCode =
+    maybeError.body && typeof maybeError.body.error_code === 'string'
+      ? maybeError.body.error_code
+      : '';
+  const message =
+    typeof maybeError.message === 'string'
+      ? maybeError.message.toLowerCase()
+      : '';
+
+  return (
+    errorCode === 'INPUT_STREAM_NOT_FOUND' ||
+    message.includes(`input ${inputId.toLowerCase()} not found`)
+  );
+}
+
+function logTimelineInputOpError(
+  op: string,
+  inputId: string,
+  error: unknown,
+): void {
+  if (isSmelterTransportError(error)) {
+    console.warn(
+      `[timeline] ${op} skipped while Smelter is recovering inputId=${inputId}`,
+    );
+    return;
+  }
+  if (isInputMissingError(error, inputId)) {
+    // Timeline events can race with room/input teardown.
+    console.warn(
+      `[timeline] ${op} skipped for removed input inputId=${inputId}`,
+    );
+    return;
+  }
+  console.warn(`[timeline] Failed to ${op} ${inputId}`, error);
 }
 
 function extractLayerPosition(
@@ -815,6 +861,9 @@ export class TimelinePlayer {
     // Apply state at resume position
     const desired = computeDesiredState(this.config, resumeMs);
     await this.applyDesiredState(desired, resumeMs);
+    // Force re-application after pause. Room state may be patched while paused
+    // (e.g. temporary audio mute), so cached block settings can be stale.
+    this.appliedBlockSettings.clear();
     this.mp4RestartedKeys.clear();
     await this.applyBlockSettingsAtTime(resumeMs);
     this.lastAppliedOrder = '';
@@ -1031,9 +1080,7 @@ export class TimelinePlayer {
         this.appliedState.set(event.inputId, false);
         void this.room
           .hideInput(event.inputId)
-          .catch((err) =>
-            console.warn(`[timeline] Failed to hide ${event.inputId}`, err),
-          );
+          .catch((err) => logTimelineInputOpError('hide', event.inputId, err));
       }
     } else if (event.type === 'transition-in' && event.transition) {
       // Standalone transition-in (not merged with connect)
@@ -1131,9 +1178,7 @@ export class TimelinePlayer {
 
     await this.room
       .showInput(inputId, showTransition)
-      .catch((err) =>
-        console.warn(`[timeline] Failed to show ${inputId}`, err),
-      );
+      .catch((err) => logTimelineInputOpError('show', inputId, err));
   }
 
   private async applyClipState(
@@ -1193,10 +1238,16 @@ export class TimelinePlayer {
             `[timeline] MP4 restart OK inputId=${inputId} durationMs=${Date.now() - t0}`,
           );
         } catch (err) {
-          console.error(
-            `[timeline] MP4 restart FAILED inputId=${inputId} durationMs=${Date.now() - t0}`,
-            err,
-          );
+          if (isSmelterTransportError(err)) {
+            console.warn(
+              `[timeline] MP4 restart skipped while Smelter is recovering inputId=${inputId} durationMs=${Date.now() - t0}`,
+            );
+          } else {
+            console.error(
+              `[timeline] MP4 restart FAILED inputId=${inputId} durationMs=${Date.now() - t0}`,
+              err,
+            );
+          }
         }
       }
     }
@@ -1225,9 +1276,7 @@ export class TimelinePlayer {
         promises.push(
           this.room
             .hideInput(inputId)
-            .catch((err) =>
-              console.warn(`[timeline] Failed to hide ${inputId}`, err),
-            ),
+            .catch((err) => logTimelineInputOpError('hide', inputId, err)),
         );
       }
 
@@ -1244,8 +1293,9 @@ export class TimelinePlayer {
           this.room
             .hideInput(input.inputId)
             .catch((err) =>
-              console.warn(
-                `[timeline] Failed to hide non-timeline input ${input.inputId}`,
+              logTimelineInputOpError(
+                'hide non-timeline input',
+                input.inputId,
                 err,
               ),
             ),
