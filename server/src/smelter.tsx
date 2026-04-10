@@ -109,6 +109,22 @@ const MP4_DECODER_MAP = {
 };
 
 const WHIP_SERVER_DECODER_PREFERENCES = [config.h264Decoder];
+const FALLBACK_FFMPEG_PRESET = 'ultrafast' as const;
+const FALLBACK_FFMPEG_BITRATE = '20000000';
+
+function createFallbackWhepVideoEncoder() {
+  return {
+    type: 'ffmpeg_h264' as const,
+    preset: FALLBACK_FFMPEG_PRESET,
+    ffmpegOptions: {
+      tune: 'zerolatency' as const,
+      thread_type: 'slice' as const,
+      preset: FALLBACK_FFMPEG_PRESET,
+      bitrate:
+        process.env.SMELTER_H264_ENCODER_BITRATE ?? FALLBACK_FFMPEG_BITRATE,
+    },
+  };
+}
 
 class SmelterManager {
   private instance: Smelter;
@@ -158,25 +174,50 @@ class SmelterManager {
     audioStore?: StoreApi<AudioStoreState>,
   ): Promise<SmelterOutput> {
     let store = createRoomStore(resolution);
-    await this.instance.registerOutput(
-      roomId,
-      <App store={store} audioStore={audioStore} />,
-      {
-        type: 'whep_server',
-        video: {
-          encoder: config.h264Encoder,
-          resolution: {
-            width: resolution.width,
-            height: resolution.height,
-          },
-        },
-        audio: {
-          encoder: {
-            type: 'opus',
-          },
+    const outputOptions = {
+      type: 'whep_server' as const,
+      video: {
+        encoder: config.h264Encoder,
+        resolution: {
+          width: resolution.width,
+          height: resolution.height,
         },
       },
-    );
+      audio: {
+        encoder: {
+          type: 'opus' as const,
+        },
+      },
+    };
+
+    try {
+      await this.instance.registerOutput(
+        roomId,
+        <App store={store} audioStore={audioStore} />,
+        outputOptions,
+      );
+    } catch (err) {
+      if (config.h264Encoder.type !== 'vulkan_h264') {
+        throw err;
+      }
+
+      console.warn(
+        `[smelter] registerOutput failed for room ${roomId} with vulkan_h264; retrying with ffmpeg_h264`,
+        err,
+      );
+
+      await this.instance.registerOutput(
+        roomId,
+        <App store={store} audioStore={audioStore} />,
+        {
+          ...outputOptions,
+          video: {
+            ...outputOptions.video,
+            encoder: createFallbackWhepVideoEncoder(),
+          },
+        },
+      );
+    }
 
     return {
       id: roomId,
