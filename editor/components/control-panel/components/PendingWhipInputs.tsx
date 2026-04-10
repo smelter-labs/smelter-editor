@@ -133,6 +133,17 @@ export function PendingWhipInputs({
     });
   }, []);
 
+  const removePreviewEntry = useCallback((pendingId: string) => {
+    setPreviews((prev) => {
+      if (!prev.has(pendingId)) {
+        return prev;
+      }
+      const next = new Map(prev);
+      next.delete(pendingId);
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     return () => {
       for (const preview of previewsRef.current.values()) {
@@ -254,13 +265,6 @@ export function PendingWhipInputs({
 
         setIsActive(true);
 
-        // Remove from previews map (stream now owned by publisher)
-        setPreviews((prev) => {
-          const next = new Map(prev);
-          next.delete(pendingInput.id);
-          return next;
-        });
-
         saveWhipSession({
           roomId,
           inputId: response.inputId,
@@ -281,6 +285,7 @@ export function PendingWhipInputs({
           const currentInputIds = roomInfo.inputs.map((i) => i.inputId);
           const newInputId = response.inputId;
           const targetPosition = pendingInput.position;
+          const placeholderId = `__pending-whip-${pendingInput.position}__`;
 
           const withoutNew = currentInputIds.filter((id) => id !== newInputId);
           const reordered = [
@@ -289,7 +294,26 @@ export function PendingWhipInputs({
             ...withoutNew.slice(targetPosition),
           ];
 
-          await updateRoom(roomId, { inputOrder: reordered });
+          const replacedLayers = roomInfo.layers.map((layer) => ({
+            ...layer,
+            inputs: layer.inputs.map((li) =>
+              li.inputId === placeholderId
+                ? { ...li, inputId: newInputId }
+                : li,
+            ),
+          }));
+
+          const layersChanged = replacedLayers.some((layer, index) =>
+            layer.inputs.some(
+              (li, liIndex) =>
+                li.inputId !== roomInfo.layers[index]?.inputs[liIndex]?.inputId,
+            ),
+          );
+
+          await updateRoom(roomId, {
+            inputOrder: reordered,
+            ...(layersChanged ? { layers: replacedLayers } : {}),
+          });
         }
 
         const nextPendingInputs = pendingInputsRef.current.filter(
@@ -297,6 +321,8 @@ export function PendingWhipInputs({
         );
         pendingInputsRef.current = nextPendingInputs;
         await setPendingInputs(nextPendingInputs);
+        // Keep preview visible while connecting; remove it only when card is removed.
+        removePreviewEntry(pendingInput.id);
 
         emitTimelineEvent(TIMELINE_EVENTS.CLEANUP_SPURIOUS_WHIP_TRACK, {
           inputId: response.inputId,
@@ -333,6 +359,7 @@ export function PendingWhipInputs({
       setPendingInputs,
       updateInput,
       updateRoom,
+      removePreviewEntry,
     ],
   );
 

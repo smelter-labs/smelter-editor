@@ -4,13 +4,12 @@ import { state } from './serverState';
 import type {
   ImportConfigRequest,
   ImportConfigInput,
-  ImportConfigLayer,
   ImportConfigProgressEvent,
   ImportConfigDoneEvent,
-  Layer,
 } from '@smelter-editor/types';
 import type { RegisterInputOptions } from '../types';
 import type { ServerResponse } from 'node:http';
+import { rebuildLayers } from './importConfigLayers';
 
 type RoomIdParams = { Params: { roomId: string } };
 
@@ -137,35 +136,6 @@ function buildUpdateOptions(
   };
 }
 
-function rebuildLayers(
-  configLayers: ImportConfigLayer[],
-  indexToInputId: Record<number, string>,
-): Layer[] {
-  return configLayers.map((cl) => ({
-    id: cl.id,
-    behavior: cl.behavior,
-    inputs: cl.inputs
-      .map((li) => {
-        const inputId = indexToInputId[li.inputIndex];
-        if (!inputId) return null;
-        return {
-          inputId,
-          x: li.x,
-          y: li.y,
-          width: li.width,
-          height: li.height,
-          transitionDurationMs: li.transitionDurationMs,
-          transitionEasing: li.transitionEasing,
-          cropTop: li.cropTop,
-          cropLeft: li.cropLeft,
-          cropRight: li.cropRight,
-          cropBottom: li.cropBottom,
-        };
-      })
-      .filter((li): li is NonNullable<typeof li> => li !== null),
-  }));
-}
-
 export function registerImportConfigRoute(routes: FastifyInstance): void {
   routes.post<RoomIdParams & { Body: ImportConfigRequest }>(
     '/room/:roomId/import-config',
@@ -287,6 +257,11 @@ export function registerImportConfigRoute(routes: FastifyInstance): void {
         shaders: pw.shaders,
         position: pw.position,
       }));
+      const pendingWhipPlaceholderByIndex: Record<number, string> = {};
+      for (const pending of pendingWhipData) {
+        pendingWhipPlaceholderByIndex[pending.position] =
+          `__pending-whip-${pending.position}__`;
+      }
       advance('Syncing pending WHIP inputs');
 
       // Phase 5: Apply timeline state at t=0 (if provided)
@@ -326,7 +301,11 @@ export function registerImportConfigRoute(routes: FastifyInstance): void {
       // Phase 6: Restore layers from config (if available)
       if (config.layers && config.layers.length > 0) {
         try {
-          const restoredLayers = rebuildLayers(config.layers, indexToInputId);
+          const restoredLayers = rebuildLayers(
+            config.layers,
+            indexToInputId,
+            pendingWhipPlaceholderByIndex,
+          );
           await room.updateLayers(restoredLayers);
         } catch (e) {
           const msg = `Failed to restore layers: ${e instanceof Error ? e.message : String(e)}`;

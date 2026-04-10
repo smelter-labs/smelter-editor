@@ -588,11 +588,10 @@ routes.get<{ Params: { '*': string } }>(
     }
     try {
       const fileStat = await stat(filePath);
-      const data = await readFile(filePath);
       res.header('Content-Type', 'video/mp4');
       res.header('Content-Disposition', attachmentFileNameHeader(filePath));
       res.header('Content-Length', fileStat.size.toString());
-      res.send(data);
+      res.send(createReadStream(filePath));
     } catch (err: any) {
       console.error('Failed to read MP4 for download', { filePath, err });
       res.status(500).send({ error: 'Failed to read file' });
@@ -615,11 +614,10 @@ routes.get<{ Params: { '*': string } }>(
     }
     try {
       const fileStat = await stat(filePath);
-      const data = await readFile(filePath);
       res.header('Content-Type', 'video/mp4');
       res.header('Content-Disposition', attachmentFileNameHeader(filePath));
       res.header('Content-Length', fileStat.size.toString());
-      res.send(data);
+      res.send(createReadStream(filePath));
     } catch (err: any) {
       console.error('Failed to read audio asset for download', {
         filePath,
@@ -654,11 +652,10 @@ routes.get<{ Params: { '*': string } }>(
         '.webp': 'image/webp',
       };
       const fileStat = await stat(filePath);
-      const data = await readFile(filePath);
       res.header('Content-Type', mimeMap[ext] ?? 'application/octet-stream');
       res.header('Content-Disposition', attachmentFileNameHeader(filePath));
       res.header('Content-Length', fileStat.size.toString());
-      res.send(data);
+      res.send(createReadStream(filePath));
     } catch (err: any) {
       console.error('Failed to read picture for download', { filePath, err });
       res.status(500).send({ error: 'Failed to read file' });
@@ -1283,6 +1280,9 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
     }
     if (Object.keys(viewportUpdate).length > 0) {
       room.setViewport(viewportUpdate as any);
+    }
+    if (req.body.outputShaders !== undefined) {
+      room.setOutputShaders(req.body.outputShaders);
     }
 
     res.status(200).send({ status: 'ok' });

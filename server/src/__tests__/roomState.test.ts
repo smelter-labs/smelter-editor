@@ -969,6 +969,26 @@ describe('RoomState', () => {
       room.setSwapFadeOutDurationMs(750);
       expect(room.getSwapFadeOutDurationMs()).toBe(750);
     });
+
+    it('updates output shaders in room state snapshot', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const shaders = [
+        {
+          shaderName: 'Blur',
+          shaderId: 'blur-1',
+          enabled: true,
+          params: [{ paramName: 'strength', paramValue: 0.42 }],
+        },
+      ];
+
+      room.setOutputShaders(shaders);
+
+      expect(room.getState().outputShaders).toEqual(shaders);
+      expect(output.store.getState().outputShaders).toEqual(shaders);
+    });
   });
 
   describe('timeline playback', () => {

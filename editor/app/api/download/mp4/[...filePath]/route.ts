@@ -31,16 +31,17 @@ export async function GET(
     const contentType =
       upstream.headers.get('content-type') ?? 'application/octet-stream';
     const contentDisposition = upstream.headers.get('content-disposition');
-    const data = await upstream.arrayBuffer();
-    const headers: Record<string, string> = {
-      'Content-Type': contentType,
-    };
+    const headers = new Headers();
+    headers.set('Content-Type', contentType);
     if (contentDisposition) {
-      headers['Content-Disposition'] = contentDisposition;
+      headers.set('Content-Disposition', contentDisposition);
     }
     const len = upstream.headers.get('content-length');
-    if (len) headers['Content-Length'] = len;
-    return new NextResponse(data, { headers });
+    if (len) headers.set('Content-Length', len);
+    return new Response(upstream.body, {
+      status: upstream.status,
+      headers,
+    });
   } catch {
     return NextResponse.json(
       { error: 'Failed to fetch file' },
