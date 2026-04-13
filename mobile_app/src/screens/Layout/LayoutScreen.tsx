@@ -214,6 +214,7 @@ export function LayoutScreen() {
   );
   const [effectsPanelOpen, setEffectsPanelOpen] = useState(false);
   const [effectsInputId, setEffectsInputId] = useState<string | null>(null);
+  const [layoutResetToken, setLayoutResetToken] = useState(0);
 
   // Hold latest room_updated payload and apply at most once per animation frame.
   const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
@@ -222,6 +223,15 @@ export function LayoutScreen() {
   // Subscribe to server room updates
   useEffect(() => {
     const unsubRoom = wsService.on("room_updated", (event) => {
+      console.log(
+        "[Layout] Received room_updated event (will batch apply next frame):",
+        {
+          layerCount: event.layers.length,
+          firstLayerInputs: event.layers[0]?.inputs.length ?? 0,
+          firstLayerInputIds:
+            event.layers[0]?.inputs.map((li) => li.inputId).slice(0, 3) ?? [],
+        },
+      );
       pendingEventRef.current = event;
       if (frameRef.current !== null) return;
       frameRef.current = requestAnimationFrame(() => {
@@ -229,6 +239,7 @@ export function LayoutScreen() {
         const latest = pendingEventRef.current;
         pendingEventRef.current = null;
         if (!latest) return;
+        console.log("[Layout] Applying batched room_updated event");
         setLayers(latest.layers);
         const nextInputs = apiService.mapInputsToCards(latest.inputs);
         const currentInputs = useInputsStore.getState().inputs;
@@ -265,24 +276,37 @@ export function LayoutScreen() {
   // Push updated layers to server
   const pushLayers = useCallback(
     async (newLayers: Layer[]) => {
-      const previousLayers = layers;
-      setLayers(newLayers); // optimistic
       try {
-        // The POST response now includes the server-authoritative layers.
-        // Apply them immediately so any server-side recomputation (e.g.
-        // behaviour-driven corrections) is visible without a second round-trip.
-        const confirmedLayers = await apiService.updateLayers(
+        console.log("[Layout] Pushing layers to server:", {
+          layerCount: newLayers.length,
+          firstLayerInputs: newLayers[0]?.inputs.length ?? 0,
+          firstLayerInputIds:
+            newLayers[0]?.inputs.map((li) => li.inputId).slice(0, 3) ?? [],
+        });
+        const correctedLayers = await apiService.updateLayers(
           serverUrl,
           roomId,
           newLayers,
         );
-        setLayers(confirmedLayers);
+        console.log("[Layout] Server returned corrected layers:", {
+          layerCount: correctedLayers.length,
+          firstLayerInputs: correctedLayers[0]?.inputs.length ?? 0,
+          // Log a few inputs to see if order changed
+          firstLayerInputIds:
+            correctedLayers[0]?.inputs.map((li) => li.inputId).slice(0, 3) ??
+            [],
+          changed:
+            JSON.stringify(newLayers[0]?.inputs) !==
+            JSON.stringify(correctedLayers[0]?.inputs),
+        });
+        // Apply the server's corrected layout immediately, don't wait for room_updated
+        setLayers(correctedLayers);
       } catch (err) {
         console.warn("[Layout] Failed to push layer update:", err);
-        setLayers(previousLayers);
+        setLayoutResetToken((value) => value + 1);
       }
     },
-    [layers, serverUrl, roomId, setLayers],
+    [serverUrl, roomId, setLayers],
   );
 
   // Toggle visibility of all inputs in a layer (show/hide)
@@ -301,14 +325,6 @@ export function LayoutScreen() {
         } else {
           await apiService.batchHideInputs(serverUrl, roomId, inputIds);
         }
-
-        // Update local inputs state to reflect visibility changes
-        const updatedInputs = inputs.map((input) =>
-          inputIds.includes(input.id)
-            ? { ...input, isHidden: !shouldShow }
-            : input,
-        );
-        setInputs(updatedInputs);
       } catch (err) {
         console.warn(
           `[Layout] Failed to ${shouldShow ? "show" : "hide"} layer inputs:`,
@@ -316,7 +332,7 @@ export function LayoutScreen() {
         );
       }
     },
-    [layers, inputs, serverUrl, roomId, setInputs],
+    [layers, serverUrl, roomId],
   );
 
   // Add a new empty layer
@@ -372,6 +388,10 @@ export function LayoutScreen() {
       const newLayers = layers.map((l, i) =>
         i === layerIndex ? { ...l, inputs: newInputs } : l,
       );
+      console.log("[Layout] Grid changed for layer:", {
+        layerId,
+        newInputOrder: newInputs.map((li) => li.inputId),
+      });
       void pushLayers(newLayers);
     },
     [layers, resolution, columns, rows, pushLayers],
@@ -441,6 +461,7 @@ export function LayoutScreen() {
               pointerEvents="box-none"
             >
               <ReshufflableGridWrapper
+                key={`${layer.id}-${layoutResetToken}`}
                 itemData={itemData}
                 renderedComponent={GridCell}
                 onItemChange={(items) => handleGridChange(layer.id, items)}

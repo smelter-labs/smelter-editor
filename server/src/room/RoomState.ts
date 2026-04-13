@@ -376,9 +376,29 @@ export class RoomState {
   }
 
   public async removeInput(inputId: string): Promise<void> {
-    return this.mutex.runExclusive(() =>
-      this.inputManager.removeInput(inputId),
-    );
+    return this.mutex.runExclusive(async () => {
+      await this.inputManager.removeInput(inputId);
+
+      let layersUpdated = false;
+      this.layers = this.layers.map((layer) => {
+        const filteredInputs = layer.inputs.filter(
+          (input) => input.inputId !== inputId,
+        );
+        if (filteredInputs.length === layer.inputs.length) {
+          return layer;
+        }
+
+        layersUpdated = true;
+        return {
+          ...layer,
+          inputs: filteredInputs,
+        };
+      });
+
+      if (layersUpdated) {
+        this.updateStoreWithState();
+      }
+    });
   }
 
   public async connectInput(inputId: string): Promise<string> {

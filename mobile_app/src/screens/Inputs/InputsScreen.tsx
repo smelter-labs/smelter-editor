@@ -156,14 +156,10 @@ export function InputsScreen() {
           isActive && styles.activeItem,
         ]}
       >
-        <InputCard
-          input={item}
-          tapGesture={makeCardTapGesture(item.id)}
-          onUpdate={(changes) => updateInput(item.id, changes)}
-        />
+        <InputCard input={item} tapGesture={makeCardTapGesture(item.id)} />
       </View>
     ),
-    [effectiveColumns, makeCardTapGesture, updateInput],
+    [effectiveColumns, makeCardTapGesture],
   );
 
   return (

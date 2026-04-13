@@ -1,6 +1,6 @@
 import React from "react";
 import { View, StyleSheet } from "react-native";
-import { Chip, Text, useTheme } from "react-native-paper";
+import { Text, useTheme } from "react-native-paper";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
 import type { InputCard as InputCardType } from "../../types/input";
 import { getMovementColor } from "../../utils/gridUtils";
@@ -12,13 +12,12 @@ import { InputCardControls } from "./InputCardControls";
 interface InputCardProps {
   input: InputCardType;
   tapGesture: ReturnType<typeof Gesture.Tap>;
-  onUpdate: (changes: Partial<InputCardType>) => void;
 }
 
 /**
  * Full input card for the Inputs screen.
  */
-export function InputCard({ input, tapGesture, onUpdate }: InputCardProps) {
+export function InputCard({ input, tapGesture }: InputCardProps) {
   const theme = useTheme();
   const movementColor = getMovementColor(input.movementPercent);
 
@@ -53,7 +52,7 @@ export function InputCard({ input, tapGesture, onUpdate }: InputCardProps) {
       </GestureDetector>
 
       {/* Controls — outside tap gesture so they don't open the side panel */}
-      <InputCardControls input={input} onUpdate={onUpdate} />
+      <InputCardControls input={input} />
 
       {/* Volume + level meter row */}
       <View style={styles.volumeRow}>
@@ -78,16 +77,6 @@ export function InputCard({ input, tapGesture, onUpdate }: InputCardProps) {
         </View>
         <AudioLevelMeter level={input.audioLevel} />
       </View>
-
-      {input.isAudioOnly && (
-        <Chip
-          compact
-          style={[styles.audioChip, { backgroundColor: appColors.blue }]}
-          textStyle={styles.audioChipText}
-        >
-          AUDIO ONLY
-        </Chip>
-      )}
     </View>
   );
 }
@@ -128,15 +117,5 @@ const styles = StyleSheet.create({
   volumeFill: {
     height: "100%",
     borderRadius: 3,
-  },
-  audioChip: {
-    alignSelf: "flex-start",
-    borderRadius: 4,
-  },
-  audioChipText: {
-    color: "#bfdbfe",
-    fontSize: 10,
-    fontWeight: "700",
-    letterSpacing: 1,
   },
 });

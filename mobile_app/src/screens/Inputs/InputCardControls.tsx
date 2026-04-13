@@ -1,8 +1,7 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Alert, View, StyleSheet } from "react-native";
 import { Button, useTheme } from "react-native-paper";
 import { useInputsStore } from "../../store/inputsStore";
-import { useLayoutStore } from "../../store/layoutStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { apiService } from "../../services/apiService";
 import type { InputCard } from "../../types/input";
@@ -10,58 +9,68 @@ import { appColors } from "../../theme/paperTheme";
 
 interface InputCardControlsProps {
   input: InputCard;
-  onUpdate: (changes: Partial<InputCard>) => void;
 }
 
 /**
  * Action controls for a single input card:
- * Hide/Show, Mute, Audio Only, Remove (with optional confirmation).
+ * Hide/Show, Remove (with optional confirmation).
  */
-export function InputCardControls({ input, onUpdate }: InputCardControlsProps) {
+export function InputCardControls({ input }: InputCardControlsProps) {
   const theme = useTheme();
-  const { confirmRemoval, removeInput, setInputs } = useInputsStore();
-  const setLayers = useLayoutStore((state) => state.setLayers);
+  const confirmRemoval = useInputsStore((state) => state.confirmRemoval);
   const serverUrl = useConnectionStore((state) => state.serverUrl);
   const roomId = useConnectionStore((state) => state.roomId);
+  const [pendingChanges, setPendingChanges] = useState<Partial<
+    Pick<InputCard, "isHidden">
+  > | null>(null);
+  const [isRemoving, setIsRemoving] = useState(false);
+
+  useEffect(() => {
+    if (!pendingChanges) return;
+
+    const matches = Object.entries(pendingChanges).every(([key, value]) => {
+      return input[key as keyof InputCard] === value;
+    });
+
+    if (matches) {
+      setPendingChanges(null);
+    }
+  }, [input, pendingChanges]);
+
+  const isBusy = pendingChanges !== null || isRemoving;
+
+  const updateInputState = async (
+    changes: Partial<Pick<InputCard, "isHidden">>,
+    action: () => Promise<void>,
+  ) => {
+    if (isBusy) return;
+    setPendingChanges(changes);
+    try {
+      await action();
+    } catch (err) {
+      setPendingChanges(null);
+      throw err;
+    }
+  };
 
   const handleHideShow = () => {
     const next = !input.isHidden;
-    // Optimistic update
-    onUpdate({ isHidden: next });
-    const call = next
-      ? apiService.hideInput(serverUrl, roomId, input.id)
-      : apiService.showInput(serverUrl, roomId, input.id);
-    call
-      .then(async () => {
-        try {
-          const roomState = await apiService.fetchRoomState(serverUrl, roomId);
-          setLayers(roomState.layers);
-          setInputs(roomState.inputs);
-        } catch (syncErr) {
-          console.warn(
-            "[InputCardControls] post hide/show room sync failed:",
-            syncErr,
-          );
-        }
-      })
-      .catch((err) => {
-        console.error("[InputCardControls] hide/show failed:", err);
-        // Revert optimistic update on error
-        onUpdate({ isHidden: !next });
-      });
+    void updateInputState({ isHidden: next }, () =>
+      next
+        ? apiService.hideInput(serverUrl, roomId, input.id)
+        : apiService.showInput(serverUrl, roomId, input.id),
+    ).catch((err) => {
+      console.error("[InputCardControls] hide/show failed:", err);
+    });
   };
 
   const doRemove = () => {
-    apiService
-      .removeInput(serverUrl, roomId, input.id)
-      .then(() => {
-        // The input_deleted WS event will clean up the store,
-        // but we also remove locally for instant feedback.
-        removeInput(input.id);
-      })
-      .catch((err) => {
-        console.error("[InputCardControls] remove failed:", err);
-      });
+    if (isRemoving) return;
+    setIsRemoving(true);
+    apiService.removeInput(serverUrl, roomId, input.id).catch((err) => {
+      console.error("[InputCardControls] remove failed:", err);
+      setIsRemoving(false);
+    });
   };
 
   const handleRemove = () => {
@@ -85,32 +94,10 @@ export function InputCardControls({ input, onUpdate }: InputCardControlsProps) {
         onPress={handleHideShow}
         style={styles.button}
         labelStyle={styles.label}
+        disabled={isBusy}
+        loading={pendingChanges?.isHidden !== undefined}
       >
         {input.isHidden ? "Show" : "Hide"}
-      </Button>
-
-      <Button
-        mode="contained-tonal"
-        compact
-        buttonColor={input.isMuted ? theme.colors.primary : appColors.slate}
-        textColor="#ffffff"
-        onPress={() => onUpdate({ isMuted: !input.isMuted })}
-        style={styles.button}
-        labelStyle={styles.label}
-      >
-        {input.isMuted ? "Unmute" : "Mute"}
-      </Button>
-
-      <Button
-        mode="contained-tonal"
-        compact
-        buttonColor={input.isAudioOnly ? theme.colors.primary : appColors.slate}
-        textColor="#ffffff"
-        onPress={() => onUpdate({ isAudioOnly: !input.isAudioOnly })}
-        style={styles.button}
-        labelStyle={styles.label}
-      >
-        Audio Only
       </Button>
 
       <Button
@@ -121,6 +108,8 @@ export function InputCardControls({ input, onUpdate }: InputCardControlsProps) {
         onPress={handleRemove}
         style={styles.button}
         labelStyle={styles.label}
+        disabled={isBusy || isRemoving}
+        loading={isRemoving}
       >
         Remove
       </Button>

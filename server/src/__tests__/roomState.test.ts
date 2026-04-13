@@ -350,6 +350,34 @@ describe('RoomState', () => {
         room.getInputs().find((i) => i.inputId === id1)?.attachedInputIds ?? [],
       ).not.toContain(id2);
     });
+
+    it('removes deleted input references from layers', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const inputId = (await room.addNewInput({
+        type: 'text-input',
+        text: 'Layered input',
+      }))!;
+
+      await room.updateLayers([
+        {
+          id: 'default',
+          behavior: { type: 'equal-grid', autoscale: true },
+          inputs: [{ inputId, x: 0, y: 0, width: 100, height: 100 }],
+        },
+      ]);
+
+      await room.removeInput(inputId);
+
+      expect(
+        room
+          .getState()
+          .layers.flatMap((layer) => layer.inputs)
+          .some((input) => input.inputId === inputId),
+      ).toBe(false);
+    });
   });
 
   describe('updateInput', () => {
