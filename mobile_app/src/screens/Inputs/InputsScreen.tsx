@@ -17,34 +17,7 @@ import { InputCard } from "./InputCard";
 import { InputSidePanel } from "./InputSidePanel";
 import { InputsSettingsPanel } from "./InputsSettingsPanel";
 import { ScreenLabel } from "../../components/shared/ScreenLabel";
-
-const areInputCardsEquivalent = (
-  first: ReturnType<typeof useInputsStore.getState>["inputs"],
-  second: ReturnType<typeof useInputsStore.getState>["inputs"],
-): boolean => {
-  if (first === second) return true;
-  if (first.length !== second.length) return false;
-
-  for (let index = 0; index < first.length; index += 1) {
-    const a = first[index];
-    const b = second[index];
-    if (!b) return false;
-    if (
-      a.id !== b.id ||
-      a.name !== b.name ||
-      a.isHidden !== b.isHidden ||
-      a.nativeWidth !== b.nativeWidth ||
-      a.nativeHeight !== b.nativeHeight ||
-      a.isRunning !== b.isRunning ||
-      a.isMuted !== b.isMuted ||
-      a.inputVolume !== b.inputVolume
-    ) {
-      return false;
-    }
-  }
-
-  return true;
-};
+import { areInputCardsEquivalent } from "../../utils/inputCardEquality";
 
 export function InputsScreen() {
   const theme = useTheme();
@@ -68,10 +41,12 @@ export function InputsScreen() {
 
   // Log data on mount
   useEffect(() => {
-    console.log("[InputsScreen] Mounted with data:", {
-      inputs,
-      gridColumns,
-    });
+    if (__DEV__) {
+      console.log("[InputsScreen] Mounted with data:", {
+        inputs,
+        gridColumns,
+      });
+    }
   }, []);
 
   // Hold latest room_updated payload and apply at most once per animation frame.

@@ -7,6 +7,11 @@ import type {
 } from "@smelter-editor/types";
 import type { PublicInputState, RoomState } from "../types/room";
 
+const env = (globalThis as { process?: { env?: Record<string, string> } })
+  .process?.env;
+const isSyncDebugEnabled =
+  __DEV__ && env?.EXPO_PUBLIC_SMELTER_SYNC_DEBUG === "true";
+
 export interface AvailableShader {
   id: string;
   name: string;
@@ -31,10 +36,74 @@ export function getRoomDisplayName(room: ActiveRoom): string {
  * REST API service for communicating with the Smelter server.
  */
 class ApiService {
-  private logSyncSend(method: string, route: string, body?: unknown): void {
+  private summarizeSyncPayload(payload: unknown): unknown {
+    if (
+      payload === null ||
+      payload === undefined ||
+      typeof payload === "string" ||
+      typeof payload === "number" ||
+      typeof payload === "boolean"
+    ) {
+      return payload;
+    }
+
+    if (Array.isArray(payload)) {
+      return { type: "array", length: payload.length };
+    }
+
+    if (typeof payload === "object") {
+      const record = payload as Record<string, unknown>;
+      const summary: Record<string, unknown> = {
+        type: "object",
+        keys: Object.keys(record),
+      };
+
+      const counts: Record<string, number> = {};
+      for (const [key, value] of Object.entries(record)) {
+        if (Array.isArray(value)) {
+          counts[key] = value.length;
+        }
+      }
+      if (Object.keys(counts).length > 0) {
+        summary.counts = counts;
+      }
+
+      return summary;
+    }
+
+    return String(payload);
+  }
+
+  private logSyncSend(
+    method: string,
+    route: string,
+    details?: {
+      body?: unknown;
+      headers?: Record<string, string | undefined>;
+      meta?: Record<string, unknown>;
+    },
+  ): void {
+    if (!isSyncDebugEnabled) return;
+
+    const payload: Record<string, unknown> = {};
+    if (details?.body !== undefined) {
+      payload.body = this.summarizeSyncPayload(details.body);
+    }
+    if (details?.headers) {
+      payload.headers = Object.fromEntries(
+        Object.entries(details.headers).map(([key, value]) => [
+          key,
+          value ? "<set>" : "<unset>",
+        ]),
+      );
+    }
+    if (details?.meta) {
+      payload.meta = details.meta;
+    }
+
     console.log(
       `[${new Date().toISOString()}] [sync][mobile-send] ${method} ${route}`,
-      body ?? "",
+      payload,
     );
   }
 
@@ -92,10 +161,12 @@ class ApiService {
     }
 
     const roomState = (await res.json()) as RoomState;
-    console.log(
-      "[API] fetchRoomState raw response:",
-      JSON.stringify(roomState, null, 2),
-    );
+    if (__DEV__) {
+      console.log(
+        "[API] fetchRoomState raw response:",
+        JSON.stringify(roomState, null, 2),
+      );
+    }
     return {
       inputs: this.mapInputsToCards(roomState.inputs),
       layers: roomState.layers ?? [],
@@ -111,8 +182,9 @@ class ApiService {
   ): Promise<Layer[]> {
     const base = this.buildHttpUrl(serverUrl);
     this.logSyncSend("POST", `/room/${encodeURIComponent(roomId)}`, {
-      layers,
-      ...(sourceId ? { sourceId } : {}),
+      body: { layers },
+      headers: { "x-source-id": sourceId },
+      meta: { roomId },
     });
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
@@ -148,7 +220,6 @@ class ApiService {
     this.logSyncSend(
       "POST",
       `/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}/hide`,
-      {},
     );
     const res = await fetch(
       `${base}/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}/hide`,
@@ -174,7 +245,6 @@ class ApiService {
     this.logSyncSend(
       "POST",
       `/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}/show`,
-      {},
     );
     const res = await fetch(
       `${base}/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}/show`,
@@ -200,7 +270,6 @@ class ApiService {
     this.logSyncSend(
       "DELETE",
       `/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}`,
-      {},
     );
     const res = await fetch(
       `${base}/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}`,
@@ -219,7 +288,7 @@ class ApiService {
     this.logSyncSend(
       "POST",
       `/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}`,
-      opts,
+      { body: opts },
     );
     const res = await fetch(
       `${base}/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}`,

@@ -39,6 +39,50 @@ const areLayerInputsEqual = (
   return true;
 };
 
+const areLayerBehaviorsEqual = (
+  first: Layer["behavior"],
+  second: Layer["behavior"],
+): boolean => {
+  if (first === second) return true;
+  if (!first || !second) return first === second;
+  if (first.type !== second.type) return false;
+
+  if (
+    first.horizontalSpacing !== second.horizontalSpacing ||
+    first.verticalSpacing !== second.verticalSpacing
+  ) {
+    return false;
+  }
+
+  switch (first.type) {
+    case "equal-grid": {
+      const secondEqualGrid = second as Extract<
+        NonNullable<Layer["behavior"]>,
+        { type: "equal-grid" }
+      >;
+      return (
+        first.resolveCollisions === secondEqualGrid.resolveCollisions &&
+        first.objectFit === secondEqualGrid.objectFit &&
+        first.autoscale === secondEqualGrid.autoscale &&
+        first.rows === secondEqualGrid.rows &&
+        first.cols === secondEqualGrid.cols
+      );
+    }
+    case "approximate-aspect-grid": {
+      const secondApproximate = second as Extract<
+        NonNullable<Layer["behavior"]>,
+        { type: "approximate-aspect-grid" }
+      >;
+      return first.resolveCollisions === secondApproximate.resolveCollisions;
+    }
+    case "exact-aspect-grid":
+    case "picture-in-picture":
+      return true;
+    default:
+      return false;
+  }
+};
+
 const isLayerEquivalent = (first: Layer, second: Layer): boolean => {
   if (first.id !== second.id) return false;
   if (
@@ -50,9 +94,7 @@ const isLayerEquivalent = (first: Layer, second: Layer): boolean => {
     return false;
   }
 
-  const firstBehavior = JSON.stringify(first.behavior ?? null);
-  const secondBehavior = JSON.stringify(second.behavior ?? null);
-  return firstBehavior === secondBehavior;
+  return areLayerBehaviorsEqual(first.behavior, second.behavior);
 };
 
 const mergeLayersWithStructuralSharing = (

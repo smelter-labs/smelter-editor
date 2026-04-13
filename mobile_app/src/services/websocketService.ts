@@ -17,12 +17,18 @@ class WebSocketService {
   private listeners = new Map<WSEventKey, Set<Listener<WSEventKey>>>();
   private connectionTimeout = 8000;
 
+  private debugLog(...args: unknown[]): void {
+    if (__DEV__) {
+      console.log(...args);
+    }
+  }
+
   async connect(serverUrl: string, roomId: string): Promise<void> {
     this.disconnect();
 
     const wsUrl = this.buildWsUrl(serverUrl, roomId);
-    console.log("[WS] Connecting to", wsUrl);
-    console.log("[WS] connect:start", {
+    this.debugLog("[WS] Connecting to", wsUrl);
+    this.debugLog("[WS] connect:start", {
       serverUrl,
       roomId,
       timeoutMs: this.connectionTimeout,
@@ -65,8 +71,8 @@ class WebSocketService {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
-        console.log("[WS] Connected");
-        console.log("[WS] connect:open", { wsUrl, roomId });
+        this.debugLog("[WS] Connected");
+        this.debugLog("[WS] connect:open", { wsUrl, roomId });
 
         socket.onmessage = (event) => {
           try {
@@ -88,7 +94,7 @@ class WebSocketService {
                       inputId: data.inputId,
                       sourceId: data.sourceId,
                     };
-              console.log(
+              this.debugLog(
                 `[${new Date().toISOString()}] [sync][mobile-recv] ${data.type}`,
                 summary,
               );
@@ -107,7 +113,7 @@ class WebSocketService {
           if (this.ws === socket) {
             this.ws = null;
           }
-          console.log("[WS] Disconnected", event.code, event.reason);
+          this.debugLog("[WS] Disconnected", event.code, event.reason);
           this.dispatchEvent("disconnected", {
             type: "disconnected",
             code: event.code,
@@ -140,7 +146,7 @@ class WebSocketService {
       };
     });
 
-    console.log("[WS] connect:resolved", { wsUrl, roomId });
+    this.debugLog("[WS] connect:resolved", { wsUrl, roomId });
   }
 
   private buildWsUrl(serverUrl: string, roomId: string): string {
@@ -181,7 +187,7 @@ class WebSocketService {
       this.ws.close();
       this.ws = null;
     }
-    console.log("[WS] Manually disconnected");
+    this.debugLog("[WS] Manually disconnected");
   }
 
   private dispatchEvent<K extends WSEventKey>(

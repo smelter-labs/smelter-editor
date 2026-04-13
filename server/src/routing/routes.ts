@@ -50,9 +50,67 @@ const execFileAsync = promisify(execFile);
 const THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails', 'mp4');
 const HLS_THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails', 'hls');
 const HLS_STREAMS_DIR = path.join(DATA_DIR, 'hls-streams');
+const isSyncDebugEnabled = process.env.SMELTER_SYNC_DEBUG === 'true';
+
+function summarizeSyncPayload(payload: unknown): unknown {
+  if (
+    payload === null ||
+    payload === undefined ||
+    typeof payload === 'string' ||
+    typeof payload === 'number' ||
+    typeof payload === 'boolean'
+  ) {
+    return payload;
+  }
+
+  if (Array.isArray(payload)) {
+    return { type: 'array', length: payload.length };
+  }
+
+  if (typeof payload === 'object') {
+    const record = payload as Record<string, unknown>;
+    const summary: Record<string, unknown> = {
+      type: 'object',
+      keys: Object.keys(record),
+    };
+
+    const counts: Record<string, number> = {};
+    for (const [key, value] of Object.entries(record)) {
+      if (Array.isArray(value)) {
+        counts[key] = value.length;
+      }
+    }
+
+    if (Object.keys(counts).length > 0) {
+      summary.counts = counts;
+    }
+
+    return summary;
+  }
+
+  return String(payload);
+}
+
+function summarizeSyncDetails(
+  details: Record<string, unknown>,
+): Record<string, unknown> {
+  const summarized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(details)) {
+    if (key === 'body' || key === 'payload') {
+      summarized[key] = summarizeSyncPayload(value);
+      continue;
+    }
+    summarized[key] = value;
+  }
+  return summarized;
+}
 
 function logSyncServer(phase: string, details: Record<string, unknown>): void {
-  console.log(`[${new Date().toISOString()}] [sync][server-${phase}]`, details);
+  if (!isSyncDebugEnabled) return;
+  console.log(
+    `[${new Date().toISOString()}] [sync][server-${phase}]`,
+    summarizeSyncDetails(details),
+  );
 }
 
 type BrowseFileInfo = {
@@ -1114,7 +1172,6 @@ routes.post<RoomIdParams & { Body: Static<typeof InputSchema> }>(
       roomId,
       body: req.body,
     });
-    console.log('[request] Create input', { body: req.body, roomId });
     const room = state.getRoom(roomId);
     const inputId = await room.addNewInput(req.body);
     console.log('[info] Added input', { inputId });

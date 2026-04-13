@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { Platform } from "react-native";
 import { NitroModules } from "react-native-nitro-modules";
 
@@ -35,11 +36,17 @@ function resolveNitroHealth(): NitroHealthState {
 
 const loggedScopes = new Set<string>();
 
+const nitroHealth = resolveNitroHealth();
+
 export function useNitroHealth(scope: string): NitroHealthState {
-  const state = resolveNitroHealth();
-  if (__DEV__ && !loggedScopes.has(scope)) {
-    loggedScopes.add(scope);
-    console.info(`[NitroHealth:${scope}]`, state);
-  }
+  const state = nitroHealth;
+
+  useEffect(() => {
+    if (__DEV__ && !loggedScopes.has(scope)) {
+      loggedScopes.add(scope);
+      console.info(`[NitroHealth:${scope}]`, state);
+    }
+  }, [scope, state]);
+
   return state;
 }
