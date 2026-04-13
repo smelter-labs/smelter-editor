@@ -18,7 +18,12 @@ import { InputCard } from "./InputCard";
 import { InputSidePanel } from "./InputSidePanel";
 import { InputsSettingsPanel } from "./InputsSettingsPanel";
 import { ScreenLabel } from "../../components/shared/ScreenLabel";
+<<<<<<< @Frendzlu/reduce-rerenders-mobile
 import { areInputCardsEquivalent } from "../../utils/inputCardEquality";
+=======
+
+const ROOM_UPDATE_COALESCE_MS = 150;
+>>>>>>> @Frendzlu/mobile-ui-fixes
 
 export function InputsScreen() {
   const theme = useTheme();
