@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-// Mirrors server/src/server/roomEventBus.ts - sync manually.
+// Mirrors server/src/core/roomEventBus.ts - sync manually.
 export type ConnectedPeer = {
   clientId: string;
   name: string | null;
