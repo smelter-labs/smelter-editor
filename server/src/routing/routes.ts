@@ -1080,7 +1080,10 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
       console.log('[Layout] Received layers update from mobile:', {
         layerCount: (req.body.layers as any[]).length,
         firstLayerInputs: (req.body.layers as any[])[0]?.inputs?.length ?? 0,
-        firstLayerInputIds: (req.body.layers as any[])[0]?.inputs?.map((li: any) => li.inputId).slice(0, 3) ?? [],
+        firstLayerInputIds:
+          (req.body.layers as any[])[0]?.inputs
+            ?.map((li: any) => li.inputId)
+            .slice(0, 3) ?? [],
       });
       await room.updateLayers(req.body.layers as Layer[]);
       roomStructureChanged = true;
@@ -1092,7 +1095,8 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
       console.log('[Layout] Broadcasting room_updated after layout change:', {
         layerCount: snapshot.layers.length,
         firstLayerInputs: snapshot.layers[0]?.inputs?.length ?? 0,
-        firstLayerInputIds: snapshot.layers[0]?.inputs?.map((li) => li.inputId).slice(0, 3) ?? [],
+        firstLayerInputIds:
+          snapshot.layers[0]?.inputs?.map((li) => li.inputId).slice(0, 3) ?? [],
       });
       roomEventBus.broadcast(roomId, {
         type: 'room_updated',
@@ -1144,7 +1148,8 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
     console.log('[Layout] Returning corrected layers to mobile:', {
       layerCount: snapshot.layers.length,
       firstLayerInputs: snapshot.layers[0]?.inputs?.length ?? 0,
-      firstLayerInputIds: snapshot.layers[0]?.inputs?.map((li) => li.inputId).slice(0, 3) ?? [],
+      firstLayerInputIds:
+        snapshot.layers[0]?.inputs?.map((li) => li.inputId).slice(0, 3) ?? [],
     });
     res.status(200).send({ status: 'ok', layers: snapshot.layers });
   },
