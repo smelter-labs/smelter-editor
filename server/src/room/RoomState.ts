@@ -389,8 +389,25 @@ export class RoomState {
   public async removeInput(inputId: string): Promise<void> {
     return this.mutex.runExclusive(async () => {
       await this.inputManager.removeInput(inputId);
-      for (const layer of this.layers) {
-        layer.inputs = layer.inputs.filter((li) => li.inputId !== inputId);
+
+      let layersUpdated = false;
+      this.layers = this.layers.map((layer) => {
+        const filteredInputs = layer.inputs.filter(
+          (input) => input.inputId !== inputId,
+        );
+        if (filteredInputs.length === layer.inputs.length) {
+          return layer;
+        }
+
+        layersUpdated = true;
+        return {
+          ...layer,
+          inputs: filteredInputs,
+        };
+      });
+
+      if (layersUpdated) {
+        this.updateStoreWithState();
       }
     });
   }
@@ -512,6 +529,38 @@ export class RoomState {
   ) {
     return this.mutex.runExclusive(() => {
       this.inputManager.showInput(inputId, activeTransition);
+    });
+  }
+
+  public batchHideInputs(
+    inputIds: string[],
+    activeTransition?: {
+      type: string;
+      durationMs: number;
+      direction: 'in' | 'out';
+    },
+  ) {
+    return this.mutex.runExclusive(() => {
+      // Hide all inputs under a single lock
+      for (const inputId of inputIds) {
+        this.inputManager.hideInput(inputId, activeTransition);
+      }
+    });
+  }
+
+  public batchShowInputs(
+    inputIds: string[],
+    activeTransition?: {
+      type: string;
+      durationMs: number;
+      direction: 'in' | 'out';
+    },
+  ) {
+    return this.mutex.runExclusive(() => {
+      // Show all inputs under a single lock
+      for (const inputId of inputIds) {
+        this.inputManager.showInput(inputId, activeTransition);
+      }
     });
   }
 
@@ -1191,6 +1240,7 @@ export class RoomState {
       activeTransition: input.activeTransition,
       restartFading: input.restartFading,
       frozenImageId: this.frozenImages.get(input.inputId)?.imageId,
+      hidden: input.hidden,
     });
 
     const connectedInputs = allInputs.filter(
@@ -1318,42 +1368,22 @@ export class RoomState {
         const visibleLayerInputs: typeof layer.inputs = [];
         const hiddenLayerInputs: typeof layer.inputs = [];
 
-        for (const li of layer.inputs) {
-          const input = inputMap.get(li.inputId);
-          if (input?.hidden) {
-            hiddenLayerInputs.push(li);
-          } else {
-            visibleLayerInputs.push(li);
-          }
+      const computedById = new Map(
+        result.inputs.map((input) => [input.inputId, input]),
+      );
+
+      const mergedInputs = layer.inputs.map((existing) => {
+        const input = inputMap.get(existing.inputId);
+        if (input?.hidden) {
+          return existing;
         }
+        return computedById.get(existing.inputId) ?? existing;
+      });
 
-        const behaviorInfoMap = new Map(
-          behaviorInputInfos.map((bi) => [bi.inputId, bi]),
-        );
-        const visibleInputInfos = visibleLayerInputs
-          .map((li) => behaviorInfoMap.get(li.inputId))
-          .filter((bi): bi is BehaviorInputInfo => bi !== undefined);
-        const result = computeLayout(
-          manualFirstLayerLayoutHelper,
-          visibleInputInfos,
-          this.output.resolution,
-        );
-
-        const computedMap = new Map(
-          result.inputs.map((li) => [li.inputId, li]),
-        );
-        return {
-          ...layer,
-          inputs: layer.inputs
-            .map((li) => computedMap.get(li.inputId) ?? li)
-            .filter(
-              (li) =>
-                computedMap.has(li.inputId) || inputMap.get(li.inputId)?.hidden,
-            ),
-        };
-      }
-
-      return layer;
+      return {
+        ...layer,
+        inputs: mergedInputs,
+      };
     });
 
     this.output.store.getState().updateState({

@@ -2,6 +2,15 @@ diff --git a/node_modules/react-native-reshuffled/src/components/DraggableRectan
 index f15634f..3916ed0 100644
 --- a/node_modules/react-native-reshuffled/src/components/DraggableRectangle/index.tsx
 +++ b/node_modules/react-native-reshuffled/src/components/DraggableRectangle/index.tsx
+@@ -109,7 +109,7 @@ export function DraggableRectangle<T extends Cell>({
+     [item.id, onDragUpdate]
+   )
+
+-  const panGesture = Gesture.Pan()
++  const panGesture = Gesture.Pan().maxPointers(1)
+     .onStart(() => {
+       // save starting position
+       oldTranslateX.value = translateX.value
 @@ -223,7 +223,7 @@ export function DraggableRectangle<T extends Cell>({
      return {
        width: getItemWidth(item.width),

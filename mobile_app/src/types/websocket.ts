@@ -1,10 +1,14 @@
 import type { InputCard } from "./input";
+import type { Layer } from "./layout";
+import type { PublicInputState } from "./room";
 
 /**
  * Server -> client WS events.
  *
- * The Smelter server currently broadcasts a single event type over WebSocket:
- *   input_updated — sent whenever an input is mutated via the REST API.
+ * The Smelter server broadcasts flat JSON events over WebSocket for room/input
+ * state changes and presence updates.
+ * Current server events are:
+ *   input_updated, input_deleted, room_updated, peers_updated, connected.
  *
  * The payload is a flat JSON object (not wrapped in { type, payload }).
  */
@@ -26,6 +30,10 @@ export type WSEventMap = {
     type: "room_updated";
     roomId: string;
     sourceId: string | null;
+    /** Authoritative layers after the mutation — apply directly, no extra fetch needed. */
+    layers: Layer[];
+    /** Authoritative inputs after the mutation — apply directly, no extra fetch needed. */
+    inputs: PublicInputState[];
   };
   peers_updated: {
     type: "peers_updated";

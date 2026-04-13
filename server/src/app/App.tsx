@@ -88,7 +88,7 @@ function OutputScene() {
             const hasCrop = cT || cL || cR || cB;
 
             const input = inputMap.get(item.inputId);
-            if (!input) return null;
+            if (!input || input.hidden) return null;
             let inner = <Input input={input} />;
 
             if (hasCrop) {

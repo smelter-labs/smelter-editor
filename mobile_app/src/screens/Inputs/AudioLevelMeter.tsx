@@ -32,10 +32,13 @@ export function AudioLevelMeter({
     });
   }, [level]);
 
-  const fillStyle = useAnimatedStyle(() => ({
-    height: `${fillHeight.value * 100}%`,
-    backgroundColor: getAudioLevelColor(fillHeight.value),
-  }));
+  const fillStyle = useAnimatedStyle(() => {
+    "worklet";
+    return {
+      height: `${fillHeight.value * 100}%`,
+      backgroundColor: getAudioLevelColor(fillHeight.value),
+    };
+  });
 
   return (
     <View style={[styles.container, { height, width }]}>

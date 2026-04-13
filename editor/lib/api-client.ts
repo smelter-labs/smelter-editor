@@ -181,7 +181,10 @@ async function sendRequest(
   body?: object,
   extraHeaders?: Record<string, string>,
 ): Promise<any> {
-  console.log(`[smelter] ${method.toUpperCase()} ${route}`, body ?? '');
+  console.log(
+    `[${new Date().toISOString()}] [sync][web-send] ${method.toUpperCase()} ${route}`,
+    body ?? '',
+  );
   let response: Response;
   try {
     response = await fetch(`${baseUrl}${route}`, {

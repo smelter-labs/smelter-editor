@@ -86,9 +86,12 @@ export function useScreenSwipe() {
       snapToIndex(targetIndex);
     });
 
-  const containerStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
-  }));
+  const containerStyle = useAnimatedStyle(() => {
+    "worklet";
+    return {
+      transform: [{ translateX: translateX.value }],
+    };
+  });
 
   return { gesture, translateX, activeIndex, containerStyle };
 }

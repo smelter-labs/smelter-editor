@@ -20,6 +20,13 @@ const RoomIdParamsSchema = Type.Object({
   roomId: Type.String({ maxLength: 64, minLength: 1 }),
 });
 
+function logTimelineSync(
+  phase: string,
+  details: Record<string, unknown>,
+): void {
+  console.log(`[${new Date().toISOString()}] [sync][server-${phase}]`, details);
+}
+
 export function registerTimelineRoutes(routes: FastifyInstance): void {
   routes.post<RoomIdParams & { Body: TimelinePlayBody }>(
     '/room/:roomId/timeline/play',
@@ -34,7 +41,9 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
       const room = state.getRoom(roomId);
       const { tracks, totalDurationMs, keyframeInterpolationMode, fromMs } =
         req.body;
-      console.log('[timeline] Start playback', {
+      logTimelineSync('receive', {
+        route: '/room/:roomId/timeline/play',
+        method: 'POST',
         roomId,
         tracks: tracks.length,
         totalDurationMs,
@@ -62,7 +71,11 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
     async (req, res) => {
       const { roomId } = req.params;
       const room = state.getRoom(roomId);
-      console.log('[timeline] Pause playback', { roomId });
+      logTimelineSync('receive', {
+        route: '/room/:roomId/timeline/pause',
+        method: 'POST',
+        roomId,
+      });
       logTimelineEvent(roomId, 'PAUSE');
       const result = await room.pauseTimeline();
       res.status(200).send(result);
@@ -75,7 +88,11 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
     async (req, res) => {
       const { roomId } = req.params;
       const room = state.getRoom(roomId);
-      console.log('[timeline] Stop playback', { roomId });
+      logTimelineSync('receive', {
+        route: '/room/:roomId/timeline/stop',
+        method: 'POST',
+        roomId,
+      });
       logTimelineEvent(roomId, 'STOP');
       await room.stopTimelinePlayback();
       res.status(200).send({ status: 'ok' });
@@ -94,7 +111,12 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
       const { roomId } = req.params;
       const room = state.getRoom(roomId);
       const { ms } = req.body;
-      console.log('[timeline] Seek', { roomId, ms });
+      logTimelineSync('receive', {
+        route: '/room/:roomId/timeline/seek',
+        method: 'POST',
+        roomId,
+        ms,
+      });
       logTimelineEvent(roomId, `SEEK to ${ms}ms`);
       await room.seekTimeline(ms);
       res.status(200).send({ status: 'ok' });
@@ -114,7 +136,9 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
       const room = state.getRoom(roomId);
       const { tracks, totalDurationMs, keyframeInterpolationMode, playheadMs } =
         req.body;
-      console.log('[timeline] Apply static snapshot', {
+      logTimelineSync('receive', {
+        route: '/room/:roomId/timeline/apply',
+        method: 'POST',
         roomId,
         tracks: tracks.length,
         totalDurationMs,
@@ -147,9 +171,25 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
 
       // Send current state immediately
       const current = room.getTimelinePlaybackState();
+      logTimelineSync('broadcast', {
+        route: '/room/:roomId/timeline/sse',
+        roomId,
+        event: 'timeline_state',
+        isPlaying: current.isPlaying,
+        isPaused: current.isPaused,
+        playheadMs: current.playheadMs,
+      });
       res.raw.write(`data: ${JSON.stringify(current)}\n\n`);
 
       const unsubscribe = room.addTimelineListener((data) => {
+        logTimelineSync('broadcast', {
+          route: '/room/:roomId/timeline/sse',
+          roomId,
+          event: 'timeline_state',
+          isPlaying: data.isPlaying,
+          isPaused: data.isPaused,
+          playheadMs: data.playheadMs,
+        });
         res.raw.write(`data: ${JSON.stringify(data)}\n\n`);
       });
 
