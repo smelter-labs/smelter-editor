@@ -1077,6 +1077,11 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
       roomStructureChanged = true;
     }
     if (req.body.layers) {
+      console.log('[Layout] Received layers update from mobile:', {
+        layerCount: (req.body.layers as any[]).length,
+        firstLayerInputs: (req.body.layers as any[])[0]?.inputs?.length ?? 0,
+        firstLayerInputIds: (req.body.layers as any[])[0]?.inputs?.map((li: any) => li.inputId).slice(0, 3) ?? [],
+      });
       await room.updateLayers(req.body.layers as Layer[]);
       roomStructureChanged = true;
     }
@@ -1084,6 +1089,11 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
       const sourceId =
         (req.headers['x-source-id'] as string | undefined) ?? null;
       const snapshot = room.getState();
+      console.log('[Layout] Broadcasting room_updated after layout change:', {
+        layerCount: snapshot.layers.length,
+        firstLayerInputs: snapshot.layers[0]?.inputs?.length ?? 0,
+        firstLayerInputIds: snapshot.layers[0]?.inputs?.map((li) => li.inputId).slice(0, 3) ?? [],
+      });
       roomEventBus.broadcast(roomId, {
         type: 'room_updated',
         roomId,
@@ -1131,6 +1141,11 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
     }
 
     const snapshot = room.getState();
+    console.log('[Layout] Returning corrected layers to mobile:', {
+      layerCount: snapshot.layers.length,
+      firstLayerInputs: snapshot.layers[0]?.inputs?.length ?? 0,
+      firstLayerInputIds: snapshot.layers[0]?.inputs?.map((li) => li.inputId).slice(0, 3) ?? [],
+    });
     res.status(200).send({ status: 'ok', layers: snapshot.layers });
   },
 );
@@ -1314,9 +1329,8 @@ routes.post<
     const room = state.getRoom(roomId);
     await room.hideInput(inputId, activeTransition);
     const updatedInput = room.getInputs().find((i) => i.inputId === inputId);
+    const sourceId = (req.headers['x-source-id'] as string | undefined) ?? null;
     if (updatedInput) {
-      const sourceId =
-        (req.headers['x-source-id'] as string | undefined) ?? null;
       roomEventBus.broadcast(roomId, {
         type: 'input_updated',
         roomId,
@@ -1325,6 +1339,15 @@ routes.post<
         sourceId,
       });
     }
+
+    const snapshot = room.getState();
+    roomEventBus.broadcast(roomId, {
+      type: 'room_updated',
+      roomId,
+      sourceId,
+      layers: snapshot.layers,
+      inputs: snapshot.inputs.map(toPublicInputState),
+    });
     res.status(200).send({ status: 'ok' });
   },
 );
@@ -1356,9 +1379,8 @@ routes.post<
     const room = state.getRoom(roomId);
     await room.showInput(inputId, activeTransition);
     const updatedInput = room.getInputs().find((i) => i.inputId === inputId);
+    const sourceId = (req.headers['x-source-id'] as string | undefined) ?? null;
     if (updatedInput) {
-      const sourceId =
-        (req.headers['x-source-id'] as string | undefined) ?? null;
       roomEventBus.broadcast(roomId, {
         type: 'input_updated',
         roomId,
@@ -1367,6 +1389,105 @@ routes.post<
         sourceId,
       });
     }
+
+    const snapshot = room.getState();
+    roomEventBus.broadcast(roomId, {
+      type: 'room_updated',
+      roomId,
+      sourceId,
+      layers: snapshot.layers,
+      inputs: snapshot.inputs.map(toPublicInputState),
+    });
+    res.status(200).send({ status: 'ok' });
+  },
+);
+
+// Batch hide inputs in a layer
+const BatchHideInputsSchema = Type.Object({
+  inputIds: Type.Array(Type.String()),
+  activeTransition: Type.Optional(ActiveTransitionSchema),
+});
+
+routes.post<{
+  Params: { roomId: string };
+  Body: Static<typeof BatchHideInputsSchema>;
+}>(
+  '/room/:roomId/inputs/hide',
+  { schema: { params: RoomIdParamsSchema, body: BatchHideInputsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    const { inputIds, activeTransition } = req.body;
+    logSyncServer('receive', {
+      route: '/room/:roomId/inputs/hide',
+      method: 'POST',
+      roomId,
+      inputIds,
+      body: req.body,
+    });
+    console.log('[request] Batch hide inputs', {
+      roomId,
+      inputIds,
+      hasTransition: !!activeTransition,
+    });
+    const room = state.getRoom(roomId);
+    const sourceId = (req.headers['x-source-id'] as string | undefined) ?? null;
+
+    // Hide all inputs under a single mutex lock (truly parallel at state level)
+    await room.batchHideInputs(inputIds, activeTransition);
+
+    const snapshot = room.getState();
+    roomEventBus.broadcast(roomId, {
+      type: 'room_updated',
+      roomId,
+      sourceId,
+      layers: snapshot.layers,
+      inputs: snapshot.inputs.map(toPublicInputState),
+    });
+    res.status(200).send({ status: 'ok' });
+  },
+);
+
+// Batch show inputs in a layer
+const BatchShowInputsSchema = Type.Object({
+  inputIds: Type.Array(Type.String()),
+  activeTransition: Type.Optional(ActiveTransitionSchema),
+});
+
+routes.post<{
+  Params: { roomId: string };
+  Body: Static<typeof BatchShowInputsSchema>;
+}>(
+  '/room/:roomId/inputs/show',
+  { schema: { params: RoomIdParamsSchema, body: BatchShowInputsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    const { inputIds, activeTransition } = req.body;
+    logSyncServer('receive', {
+      route: '/room/:roomId/inputs/show',
+      method: 'POST',
+      roomId,
+      inputIds,
+      body: req.body,
+    });
+    console.log('[request] Batch show inputs', {
+      roomId,
+      inputIds,
+      hasTransition: !!activeTransition,
+    });
+    const room = state.getRoom(roomId);
+    const sourceId = (req.headers['x-source-id'] as string | undefined) ?? null;
+
+    // Show all inputs under a single mutex lock (truly parallel at state level)
+    await room.batchShowInputs(inputIds, activeTransition);
+
+    const snapshot = room.getState();
+    roomEventBus.broadcast(roomId, {
+      type: 'room_updated',
+      roomId,
+      sourceId,
+      layers: snapshot.layers,
+      inputs: snapshot.inputs.map(toPublicInputState),
+    });
     res.status(200).send({ status: 'ok' });
   },
 );

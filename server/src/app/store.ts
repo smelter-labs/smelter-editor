@@ -36,6 +36,7 @@ export type InputConfig = {
   activeTransition?: ActiveTransition;
   restartFading?: boolean;
   frozenImageId?: string;
+  hidden?: boolean;
 } & InputDisplayProperties &
   Partial<TextInputProperties> &
   Partial<BorderProperties> &

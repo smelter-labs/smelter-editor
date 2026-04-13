@@ -5,8 +5,10 @@ import type { PublicInputState } from "./room";
 /**
  * Server -> client WS events.
  *
- * The Smelter server currently broadcasts a single event type over WebSocket:
- *   input_updated — sent whenever an input is mutated via the REST API.
+ * The Smelter server broadcasts flat JSON events over WebSocket for room/input
+ * state changes and presence updates.
+ * Current server events are:
+ *   input_updated, input_deleted, room_updated, peers_updated, connected.
  *
  * The payload is a flat JSON object (not wrapped in { type, payload }).
  */

@@ -40,28 +40,6 @@ function colorFromId(id: string): string {
 const clampInt = (value: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, value));
 
-const toGridInterval = (
-  startPx: number,
-  sizePx: number,
-  totalPx: number,
-  totalCells: number,
-): { start: number; span: number } => {
-  const safeTotalPx = Math.max(1, totalPx);
-  const safeTotalCells = Math.max(1, totalCells);
-
-  const normalizedStart = (startPx / safeTotalPx) * safeTotalCells;
-  const normalizedEnd = ((startPx + sizePx) / safeTotalPx) * safeTotalCells;
-
-  const start = clampInt(
-    Math.floor(normalizedStart),
-    0,
-    Math.max(0, safeTotalCells - 1),
-  );
-  const end = clampInt(Math.ceil(normalizedEnd), start + 1, safeTotalCells);
-
-  return { start, span: end - start };
-};
-
 const toPixelInterval = (
   startCell: number,
   spanCells: number,
@@ -87,6 +65,35 @@ const toPixelInterval = (
   };
 };
 
+// Inverse of toPixelInterval: convert pixels back to grid cells
+const toGridInterval = (
+  startPx: number,
+  spanPx: number,
+  totalCells: number,
+  totalPx: number,
+): { startCell: number; spanCells: number } => {
+  const safeTotalCells = Math.max(1, totalCells);
+  const safeTotalPx = Math.max(1, totalPx);
+
+  // Reverse calculation: pixels -> grid cells
+  const startCell = clampInt(
+    Math.round((startPx / safeTotalPx) * safeTotalCells),
+    0,
+    Math.max(0, safeTotalCells - 1),
+  );
+  const endPx = startPx + Math.max(1, spanPx);
+  const endCell = clampInt(
+    Math.round((endPx / safeTotalPx) * safeTotalCells),
+    startCell + 1,
+    safeTotalCells,
+  );
+
+  return {
+    startCell,
+    spanCells: Math.max(1, endCell - startCell),
+  };
+};
+
 function layerInputsToItemData(
   layerInputs: LayerInput[],
   inputs: {
@@ -101,38 +108,42 @@ function layerInputsToItemData(
   gridRows: number,
 ): ItemData<LayerItemProps>[] {
   const inputMap = new Map(inputs.map((i) => [i.id, i]));
-  return layerInputs.map((li) => {
-    const input = inputMap.get(li.inputId);
-    const horizontal = toGridInterval(
-      li.x,
-      li.width,
-      resolution.width,
-      gridCols,
-    );
-    const vertical = toGridInterval(
-      li.y,
-      li.height,
-      resolution.height,
-      gridRows,
-    );
-
-    return {
-      initial: {
-        col: horizontal.start,
-        row: vertical.start,
-        width: horizontal.span,
-        height: vertical.span,
-      },
-      props: {
-        id: li.inputId,
-        name: input?.name ?? li.inputId,
-        color: colorFromId(li.inputId),
-        isVisible: !(input?.isHidden ?? false),
-        nativeWidth: input?.nativeWidth,
-        nativeHeight: input?.nativeHeight,
-      },
-    };
-  });
+  return layerInputs
+    .filter((li) => {
+      const input = inputMap.get(li.inputId);
+      return !input?.isHidden; // Filter out hidden inputs
+    })
+    .map((li) => {
+      const input = inputMap.get(li.inputId);
+      const colInterval = toGridInterval(
+        li.x,
+        li.width,
+        gridCols,
+        resolution.width,
+      );
+      const rowInterval = toGridInterval(
+        li.y,
+        li.height,
+        gridRows,
+        resolution.height,
+      );
+      return {
+        initial: {
+          col: colInterval.startCell,
+          row: rowInterval.startCell,
+          width: colInterval.spanCells,
+          height: rowInterval.spanCells,
+        },
+        props: {
+          id: li.inputId,
+          name: input?.name ?? li.inputId,
+          color: colorFromId(li.inputId),
+          isVisible: true, // All items in itemData are visible at this point
+          nativeWidth: input?.nativeWidth,
+          nativeHeight: input?.nativeHeight,
+        },
+      };
+    });
 }
 
 function itemDataToLayerInputs(
@@ -193,6 +204,7 @@ export function LayoutScreen() {
   );
   const [effectsPanelOpen, setEffectsPanelOpen] = useState(false);
   const [effectsInputId, setEffectsInputId] = useState<string | null>(null);
+  const [layoutResetToken, setLayoutResetToken] = useState(0);
 
   // Hold latest room_updated payload and apply at most once per animation frame.
   const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
@@ -201,6 +213,15 @@ export function LayoutScreen() {
   // Subscribe to server room updates
   useEffect(() => {
     const unsubRoom = wsService.on("room_updated", (event) => {
+      console.log(
+        "[Layout] Received room_updated event (will batch apply next frame):",
+        {
+          layerCount: event.layers.length,
+          firstLayerInputs: event.layers[0]?.inputs.length ?? 0,
+          firstLayerInputIds:
+            event.layers[0]?.inputs.map((li) => li.inputId).slice(0, 3) ?? [],
+        },
+      );
       pendingEventRef.current = event;
       if (frameRef.current !== null) return;
       frameRef.current = requestAnimationFrame(() => {
@@ -208,6 +229,7 @@ export function LayoutScreen() {
         const latest = pendingEventRef.current;
         pendingEventRef.current = null;
         if (!latest) return;
+        console.log("[Layout] Applying batched room_updated event");
         setLayers(latest.layers);
         const nextInputs = apiService.mapInputsToCards(latest.inputs);
         const currentInputs = useInputsStore.getState().inputs;
@@ -244,24 +266,89 @@ export function LayoutScreen() {
   // Push updated layers to server
   const pushLayers = useCallback(
     async (newLayers: Layer[]) => {
-      const previousLayers = layers;
-      setLayers(newLayers); // optimistic
       try {
-        // The POST response now includes the server-authoritative layers.
-        // Apply them immediately so any server-side recomputation (e.g.
-        // behaviour-driven corrections) is visible without a second round-trip.
-        const confirmedLayers = await apiService.updateLayers(
+        console.log("[Layout] Pushing layers to server:", {
+          layerCount: newLayers.length,
+          firstLayerInputs: newLayers[0]?.inputs.length ?? 0,
+          firstLayerInputIds:
+            newLayers[0]?.inputs.map((li) => li.inputId).slice(0, 3) ?? [],
+        });
+        const correctedLayers = await apiService.updateLayers(
           serverUrl,
           roomId,
           newLayers,
         );
-        setLayers(confirmedLayers);
+        console.log("[Layout] Server returned corrected layers:", {
+          layerCount: correctedLayers.length,
+          firstLayerInputs: correctedLayers[0]?.inputs.length ?? 0,
+          // Log a few inputs to see if order changed
+          firstLayerInputIds:
+            correctedLayers[0]?.inputs.map((li) => li.inputId).slice(0, 3) ??
+            [],
+          changed:
+            JSON.stringify(newLayers[0]?.inputs) !==
+            JSON.stringify(correctedLayers[0]?.inputs),
+        });
+        // Apply the server's corrected layout immediately, don't wait for room_updated
+        setLayers(correctedLayers);
       } catch (err) {
         console.warn("[Layout] Failed to push layer update:", err);
-        setLayers(previousLayers);
+        setLayoutResetToken((value) => value + 1);
       }
     },
-    [layers, serverUrl, roomId, setLayers],
+    [serverUrl, roomId, setLayers],
+  );
+
+  // Toggle visibility of all inputs in a layer (show/hide)
+  const handleToggleLayerVisibility = useCallback(
+    async (layerId: string, shouldShow: boolean) => {
+      const layer = layers.find((l) => l.id === layerId);
+      if (!layer) return;
+
+      const inputIds = layer.inputs.map((li) => li.inputId);
+      if (inputIds.length === 0) return;
+
+      try {
+        // Use batch API to hide/show all inputs at once
+        if (shouldShow) {
+          await apiService.batchShowInputs(serverUrl, roomId, inputIds);
+        } else {
+          await apiService.batchHideInputs(serverUrl, roomId, inputIds);
+        }
+      } catch (err) {
+        console.warn(
+          `[Layout] Failed to ${shouldShow ? "show" : "hide"} layer inputs:`,
+          err,
+        );
+        // Propagate error so caller can rollback UI changes
+        throw err;
+      }
+    },
+    [layers, serverUrl, roomId],
+  );
+
+  // Add a new empty layer
+  const handleAddLayer = useCallback(() => {
+    const newLayer: Layer = {
+      id: `layer-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      inputs: [],
+    };
+    const newLayers = [...layers, newLayer];
+    void pushLayers(newLayers);
+  }, [layers, pushLayers]);
+
+  // Delete an empty layer
+  const handleDeleteLayer = useCallback(
+    (layerId: string) => {
+      const layer = layers.find((l) => l.id === layerId);
+      if (!layer || layer.inputs.length > 0) {
+        console.warn("[Layout] Cannot delete non-empty layer");
+        return;
+      }
+      const newLayers = layers.filter((l) => l.id !== layerId);
+      void pushLayers(newLayers);
+    },
+    [layers, pushLayers],
   );
 
   // Handle grid item position change for a specific layer
@@ -293,6 +380,10 @@ export function LayoutScreen() {
       const newLayers = layers.map((l, i) =>
         i === layerIndex ? { ...l, inputs: newInputs } : l,
       );
+      console.log("[Layout] Grid changed for layer:", {
+        layerId,
+        newInputOrder: newInputs.map((li) => li.inputId),
+      });
       void pushLayers(newLayers);
     },
     [layers, resolution, columns, rows, pushLayers],
@@ -342,6 +433,15 @@ export function LayoutScreen() {
       {/* Canvas: stacked layer grids — layers[0] is topmost (highest zIndex) */}
       <View style={styles.canvas}>
         {layers.map((layer, i) => {
+          // Skip rendering layer if all its inputs are hidden
+          const layerInputIds = layer.inputs.map((li) => li.inputId);
+          const allInputsHidden =
+            layerInputIds.length > 0 &&
+            layerInputIds.every((id) =>
+              inputs.some((inp) => inp.id === id && inp.isHidden),
+            );
+          if (allInputsHidden) return null;
+
           const itemData = layerItemDataMap.get(layer.id) ?? [];
           return (
             <View
@@ -353,6 +453,7 @@ export function LayoutScreen() {
               pointerEvents="box-none"
             >
               <ReshufflableGridWrapper
+                key={`${layer.id}-${layoutResetToken}`}
                 itemData={itemData}
                 renderedComponent={GridCell}
                 onItemChange={(items) => handleGridChange(layer.id, items)}
@@ -380,6 +481,9 @@ export function LayoutScreen() {
           layers={layers}
           inputs={inputs}
           onLayersChange={(newLayers) => void pushLayers(newLayers)}
+          onToggleLayerVisibility={handleToggleLayerVisibility}
+          onAddLayer={handleAddLayer}
+          onDeleteLayer={handleDeleteLayer}
         />
       </SidePanel>
 
