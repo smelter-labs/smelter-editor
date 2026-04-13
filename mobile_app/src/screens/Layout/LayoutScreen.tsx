@@ -92,6 +92,35 @@ const toPixelInterval = (
   };
 };
 
+// Inverse of toPixelInterval: convert pixels back to grid cells
+const toGridInterval = (
+  startPx: number,
+  spanPx: number,
+  totalCells: number,
+  totalPx: number,
+): { startCell: number; spanCells: number } => {
+  const safeTotalCells = Math.max(1, totalCells);
+  const safeTotalPx = Math.max(1, totalPx);
+
+  // Reverse calculation: pixels -> grid cells
+  const startCell = clampInt(
+    Math.round((startPx / safeTotalPx) * safeTotalCells),
+    0,
+    Math.max(0, safeTotalCells - 1),
+  );
+  const endPx = startPx + Math.max(1, spanPx);
+  const endCell = clampInt(
+    Math.round((endPx / safeTotalPx) * safeTotalCells),
+    startCell + 1,
+    safeTotalCells,
+  );
+
+  return {
+    startCell,
+    spanCells: Math.max(1, endCell - startCell),
+  };
+};
+
 function layerInputsToItemData(
   layerInputs: LayerInput[],
   inputs: {
@@ -113,36 +142,24 @@ function layerInputsToItemData(
     })
     .map((li) => {
       const input = inputMap.get(li.inputId);
+      const colInterval = toGridInterval(
+        li.x,
+        li.width,
+        gridCols,
+        resolution.width,
+      );
+      const rowInterval = toGridInterval(
+        li.y,
+        li.height,
+        gridRows,
+        resolution.height,
+      );
       return {
         initial: {
-          col: Math.max(
-            0,
-            Math.min(
-              gridCols - 1,
-              Math.round((li.x / resolution.width) * gridCols),
-            ),
-          ),
-          row: Math.max(
-            0,
-            Math.min(
-              gridRows - 1,
-              Math.round((li.y / resolution.height) * gridRows),
-            ),
-          ),
-          width: Math.max(
-            1,
-            Math.min(
-              gridCols,
-              Math.round((li.width / resolution.width) * gridCols),
-            ),
-          ),
-          height: Math.max(
-            1,
-            Math.min(
-              gridRows,
-              Math.round((li.height / resolution.height) * gridRows),
-            ),
-          ),
+          col: colInterval.startCell,
+          row: rowInterval.startCell,
+          width: colInterval.spanCells,
+          height: rowInterval.spanCells,
         },
         props: {
           id: li.inputId,
@@ -330,6 +347,8 @@ export function LayoutScreen() {
           `[Layout] Failed to ${shouldShow ? "show" : "hide"} layer inputs:`,
           err,
         );
+        // Propagate error so caller can rollback UI changes
+        throw err;
       }
     },
     [layers, serverUrl, roomId],

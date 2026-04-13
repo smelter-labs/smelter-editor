@@ -886,6 +886,144 @@ describe('RoomState', () => {
     });
   });
 
+  describe('batchHideInputs / batchShowInputs', () => {
+    it('hides and shows multiple inputs at once', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const id1 = (await room.addNewInput({ type: 'text-input', text: 'A' }))!;
+      const id2 = (await room.addNewInput({ type: 'game', title: 'B' }))!;
+      const id3 = (await room.addNewInput({ type: 'whip', username: 'C' }))!;
+
+      // Hide multiple inputs
+      await room.batchHideInputs([id1, id3]);
+      const afterHide = room.getInputs();
+      expect(afterHide.find((i) => i.inputId === id1)?.hidden).toBe(true);
+      expect(afterHide.find((i) => i.inputId === id2)?.hidden).toBe(false);
+      expect(afterHide.find((i) => i.inputId === id3)?.hidden).toBe(true);
+
+      // Show multiple inputs
+      await room.batchShowInputs([id1, id3]);
+      const afterShow = room.getInputs();
+      expect(afterShow.find((i) => i.inputId === id1)?.hidden).toBe(false);
+      expect(afterShow.find((i) => i.inputId === id2)?.hidden).toBe(false);
+      expect(afterShow.find((i) => i.inputId === id3)?.hidden).toBe(false);
+    });
+
+    it('handles empty input list gracefully', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      // Should not throw
+      await room.batchHideInputs([]);
+      await room.batchShowInputs([]);
+    });
+
+    it('handles unknown input IDs gracefully', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const id1 = (await room.addNewInput({ type: 'text-input', text: 'A' }))!;
+
+      // Should not throw when given unknown IDs alongside valid ones
+      // Unknown IDs should be silently ignored
+      await room.batchHideInputs([id1, 'unknown-id']);
+      expect(room.getInputs().find((i) => i.inputId === id1)?.hidden).toBe(
+        true,
+      );
+
+      await room.batchShowInputs([id1, 'another-unknown-id']);
+      expect(room.getInputs().find((i) => i.inputId === id1)?.hidden).toBe(
+        false,
+      );
+    });
+
+    it('preserves layer input order across batch hide and show', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const id1 = (await room.addNewInput({ type: 'text-input', text: 'A' }))!;
+      const id2 = (await room.addNewInput({ type: 'game', title: 'B' }))!;
+      const id3 = (await room.addNewInput({ type: 'text-input', text: 'C' }))!;
+
+      await room.connectInput(id1);
+      await room.connectInput(id2);
+      await room.connectInput(id3);
+
+      await room.updateLayers([
+        {
+          id: 'layer-1',
+          behavior: { type: 'equal-grid', autoscale: true },
+          inputs: [
+            { inputId: id1, x: 0, y: 0, width: 0, height: 0 },
+            { inputId: id2, x: 0, y: 0, width: 0, height: 0 },
+            { inputId: id3, x: 0, y: 0, width: 0, height: 0 },
+          ],
+        },
+      ]);
+
+      const orderBefore = room
+        .getState()
+        .layers[0]!.inputs.map((input) => input.inputId);
+      expect(orderBefore).toEqual([id1, id2, id3]);
+
+      await room.batchHideInputs([id1, id3]);
+      const orderAfterHide = room
+        .getState()
+        .layers[0]!.inputs.map((input) => input.inputId);
+      expect(orderAfterHide).toEqual([id1, id2, id3]);
+
+      await room.batchShowInputs([id1, id3]);
+      const orderAfterShow = room
+        .getState()
+        .layers[0]!.inputs.map((input) => input.inputId);
+      expect(orderAfterShow).toEqual([id1, id2, id3]);
+    });
+
+    it('applies transitions to all batch hidden inputs', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const id1 = (await room.addNewInput({ type: 'text-input', text: 'A' }))!;
+      const id2 = (await room.addNewInput({ type: 'text-input', text: 'B' }))!;
+
+      const transition = {
+        type: 'fade',
+        durationMs: 200,
+        direction: 'out' as const,
+      };
+
+      await room.batchHideInputs([id1, id2], transition);
+
+      // Both inputs should have active transitions
+      const inputs = room.getInputs();
+      expect(
+        inputs.find((i) => i.inputId === id1)?.activeTransition,
+      ).toBeDefined();
+      expect(
+        inputs.find((i) => i.inputId === id2)?.activeTransition,
+      ).toBeDefined();
+      expect(inputs.find((i) => i.inputId === id1)?.hidden).toBe(false);
+      expect(inputs.find((i) => i.inputId === id2)?.hidden).toBe(false);
+
+      // After transition completes, both should be hidden
+      vi.advanceTimersByTime(201);
+      const afterTransition = room.getInputs();
+      expect(afterTransition.find((i) => i.inputId === id1)?.hidden).toBe(true);
+      expect(afterTransition.find((i) => i.inputId === id2)?.hidden).toBe(true);
+      expect(
+        afterTransition.find((i) => i.inputId === id1)?.activeTransition,
+      ).toBeUndefined();
+      expect(
+        afterTransition.find((i) => i.inputId === id2)?.activeTransition,
+      ).toBeUndefined();
+    });
+  });
   describe('getState', () => {
     it('returns RoomSnapshot with inputs, layers, and settings', async () => {
       const output = createTestOutput();

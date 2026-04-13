@@ -1378,22 +1378,6 @@ routes.post<{
     // Hide all inputs under a single mutex lock (truly parallel at state level)
     await room.batchHideInputs(inputIds, activeTransition);
 
-    // Broadcast single batch update event
-    const updatedInputs = room
-      .getInputs()
-      .filter((i) => inputIds.includes(i.inputId));
-    if (updatedInputs.length > 0) {
-      roomEventBus.broadcast(roomId, {
-        type: 'inputs_batch_updated',
-        roomId,
-        inputs: updatedInputs.map((inp) => ({
-          inputId: inp.inputId,
-          input: toPublicInputState(inp),
-        })),
-        sourceId,
-      } as any);
-    }
-
     const snapshot = room.getState();
     roomEventBus.broadcast(roomId, {
       type: 'room_updated',
@@ -1438,22 +1422,6 @@ routes.post<{
 
     // Show all inputs under a single mutex lock (truly parallel at state level)
     await room.batchShowInputs(inputIds, activeTransition);
-
-    // Broadcast single batch update event
-    const updatedInputs = room
-      .getInputs()
-      .filter((i) => inputIds.includes(i.inputId));
-    if (updatedInputs.length > 0) {
-      roomEventBus.broadcast(roomId, {
-        type: 'inputs_batch_updated',
-        roomId,
-        inputs: updatedInputs.map((inp) => ({
-          inputId: inp.inputId,
-          input: toPublicInputState(inp),
-        })),
-        sourceId,
-      } as any);
-    }
 
     const snapshot = room.getState();
     roomEventBus.broadcast(roomId, {
