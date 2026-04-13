@@ -67,28 +67,6 @@ function colorFromId(id: string): string {
 const clampInt = (value: number, min: number, max: number): number =>
   Math.max(min, Math.min(max, value));
 
-const toGridInterval = (
-  startPx: number,
-  sizePx: number,
-  totalPx: number,
-  totalCells: number,
-): { start: number; span: number } => {
-  const safeTotalPx = Math.max(1, totalPx);
-  const safeTotalCells = Math.max(1, totalCells);
-
-  const normalizedStart = (startPx / safeTotalPx) * safeTotalCells;
-  const normalizedEnd = ((startPx + sizePx) / safeTotalPx) * safeTotalCells;
-
-  const start = clampInt(
-    Math.floor(normalizedStart),
-    0,
-    Math.max(0, safeTotalCells - 1),
-  );
-  const end = clampInt(Math.ceil(normalizedEnd), start + 1, safeTotalCells);
-
-  return { start, span: end - start };
-};
-
 const toPixelInterval = (
   startCell: number,
   spanCells: number,

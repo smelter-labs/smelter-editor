@@ -54,7 +54,7 @@ export function SettingsPanel({
       const currentMinColSize = Math.round(currentResolution.width / 100);
 
       setCurrentGridConfig(
-        Math.max(currentMinColSize, currentColumns - 1),
+        Math.max(currentMinColSize, currentColumns - 2),
         currentRows,
       );
     });
@@ -71,7 +71,7 @@ export function SettingsPanel({
       const currentMaxColSize = Math.round(currentResolution.width / 10);
 
       setCurrentGridConfig(
-        Math.min(currentMaxColSize, currentColumns + 1),
+        Math.min(currentMaxColSize, currentColumns + 2),
         currentRows,
       );
     });
@@ -89,7 +89,7 @@ export function SettingsPanel({
 
       setCurrentGridConfig(
         currentColumns,
-        Math.max(currentMinRowSize, currentRows - 1),
+        Math.max(currentMinRowSize, currentRows - 2),
       );
     });
   };
@@ -106,7 +106,7 @@ export function SettingsPanel({
 
       setCurrentGridConfig(
         currentColumns,
-        Math.min(currentMaxRowSize, currentRows + 1),
+        Math.min(currentMaxRowSize, currentRows + 2),
       );
     });
   };

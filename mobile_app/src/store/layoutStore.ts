@@ -74,6 +74,42 @@ const mergeLayersWithStructuralSharing = (
   return unchanged ? previous : merged;
 };
 
+const clampInt = (value: number, min: number, max: number): number =>
+  Math.max(min, Math.min(max, value));
+
+const toEvenWithinRange = (value: number, min: number, max: number): number => {
+  const clamped = clampInt(Math.round(value), min, max);
+  if (clamped % 2 === 0) {
+    return clamped;
+  }
+
+  if (clamped + 1 <= max) {
+    return clamped + 1;
+  }
+
+  if (clamped - 1 >= min) {
+    return clamped - 1;
+  }
+
+  return clamped;
+};
+
+const normalizeGridConfig = (
+  columns: number,
+  rows: number,
+  resolution: Resolution,
+): { columns: number; rows: number } => {
+  const minColumns = Math.round(resolution.width / 100);
+  const maxColumns = Math.round(resolution.width / 10);
+  const minRows = Math.round(resolution.height / 100);
+  const maxRows = Math.round(resolution.height / 10);
+
+  return {
+    columns: toEvenWithinRange(columns, minColumns, maxColumns),
+    rows: toEvenWithinRange(rows, minRows, maxRows),
+  };
+};
+
 interface LayoutState {
   layers: Layer[];
   resolution: Resolution;
@@ -93,14 +129,17 @@ interface LayoutState {
 }
 
 const DEFAULT_RESOLUTION: Resolution = { width: 1920, height: 1080 };
-const DEFAULT_COLUMNS = Math.round(DEFAULT_RESOLUTION.width / 50);
-const DEFAULT_ROWS = Math.round(DEFAULT_RESOLUTION.height / 50);
+const DEFAULT_GRID = normalizeGridConfig(
+  Math.round(DEFAULT_RESOLUTION.width / 50),
+  Math.round(DEFAULT_RESOLUTION.height / 50),
+  DEFAULT_RESOLUTION,
+);
 
 export const useLayoutStore = create<LayoutState>()((set) => ({
   layers: [],
   resolution: DEFAULT_RESOLUTION,
-  columns: DEFAULT_COLUMNS,
-  rows: DEFAULT_ROWS,
+  columns: DEFAULT_GRID.columns,
+  rows: DEFAULT_GRID.rows,
   isDirty: false,
 
   setLayers: (layers) =>
@@ -109,7 +148,11 @@ export const useLayoutStore = create<LayoutState>()((set) => ({
       isDirty: false,
     })),
   setResolution: (resolution) => set({ resolution }),
-  setGridConfig: (columns, rows) => set({ columns, rows }),
+  setGridConfig: (columns, rows) =>
+    set((state) => {
+      const normalized = normalizeGridConfig(columns, rows, state.resolution);
+      return { columns: normalized.columns, rows: normalized.rows };
+    }),
   markDirty: () => set({ isDirty: true }),
   markSynced: () => set({ isDirty: false }),
   removeInputFromLayers: (inputId) =>
