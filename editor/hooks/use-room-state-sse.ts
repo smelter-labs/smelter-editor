@@ -72,11 +72,19 @@ export function useRoomStateSse(roomId: string | undefined) {
       if (cancelled) return;
 
       const url = `/api/room/${encodeURIComponent(roomId)}/state/sse`;
+      console.log(
+        `[${new Date().toISOString()}] [sync][web-recv] connecting state SSE`,
+        { roomId, url },
+      );
       const es = new EventSource(url);
       eventSourceRef.current = es;
 
       es.onopen = () => {
         if (cancelled) return;
+        console.log(
+          `[${new Date().toISOString()}] [sync][web-recv] state SSE open`,
+          { roomId, url },
+        );
         setIsConnected(true);
         stopFallbackPoll();
       };
@@ -97,6 +105,10 @@ export function useRoomStateSse(roomId: string | undefined) {
 
       es.onerror = () => {
         if (cancelled) return;
+        console.warn(
+          `[${new Date().toISOString()}] [sync][web-recv] state SSE error`,
+          { roomId, url },
+        );
         setIsConnected(false);
         es.close();
         eventSourceRef.current = null;

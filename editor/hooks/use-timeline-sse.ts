@@ -30,13 +30,19 @@ export function useTimelineSSE(
     }
 
     const url = `/api/room/${encodeURIComponent(roomId)}/timeline/sse`;
-    console.log(`[timeline-sse] Connecting url=${url}`);
+    console.log(
+      `[${new Date().toISOString()}] [sync][web-recv] timeline SSE connect`,
+      { roomId, url },
+    );
     const es = new EventSource(url);
     eventSourceRef.current = es;
     let msgCount = 0;
 
     es.onopen = () => {
-      console.log(`[timeline-sse] Connection opened`);
+      console.log(
+        `[${new Date().toISOString()}] [sync][web-recv] timeline SSE open`,
+        { roomId, url },
+      );
     };
 
     es.onmessage = (event) => {
@@ -45,25 +51,30 @@ export function useTimelineSSE(
         msgCount++;
         if (msgCount === 1) {
           console.log(
-            `[timeline-sse] First message: playhead=${parsed.playheadMs} isPlaying=${parsed.isPlaying}`,
+            `[${new Date().toISOString()}] [sync][web-recv] timeline SSE first message`,
+            parsed,
           );
         }
         setData(parsed);
       } catch {
-        console.warn(`[timeline-sse] Malformed event data:`, event.data);
+        console.warn(
+          `[${new Date().toISOString()}] [sync][web-recv] timeline SSE malformed event data`,
+          event.data,
+        );
       }
     };
 
     es.onerror = (evt) => {
       console.warn(
-        `[timeline-sse] Error (readyState=${es.readyState} msgCount=${msgCount})`,
+        `[${new Date().toISOString()}] [sync][web-recv] timeline SSE error (readyState=${es.readyState} msgCount=${msgCount})`,
         evt,
       );
     };
 
     return () => {
       console.log(
-        `[timeline-sse] Closing (received ${msgCount} messages)`,
+        `[${new Date().toISOString()}] [sync][web-recv] timeline SSE close`,
+        { roomId, received: msgCount },
       );
       es.close();
       eventSourceRef.current = null;

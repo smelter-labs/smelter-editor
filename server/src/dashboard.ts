@@ -24,6 +24,9 @@ const timelineLog: string[] = [];
 const MAX_TIMELINE_LOG_LINES = 50;
 let requestCount = 0;
 let startTime = Date.now();
+const shouldEmitDebugLogs =
+  (process.env.NODE_ENV ?? process.env.ENVIRONMENT ?? 'development') !==
+  'production';
 
 // ── Structured log streaming (SSE) ──
 
@@ -62,6 +65,8 @@ export function getLogBuffer(): LogEntry[] {
 // Original console methods — saved before hijacking so logRequest can
 // write to terminal without triggering the hijack in non-boxed mode.
 let origConsoleLog = console.log;
+let origConsoleInfo = console.info;
+let origConsoleDebug = console.debug;
 let origConsoleError = console.error;
 let origConsoleWarn = console.warn;
 
@@ -129,12 +134,25 @@ function interceptStream(
 
 export function hijackConsole() {
   origConsoleLog = console.log;
+  origConsoleInfo = console.info;
+  origConsoleDebug = console.debug;
   origConsoleError = console.error;
   origConsoleWarn = console.warn;
 
   console.log = (...args: unknown[]) => {
+    if (!shouldEmitDebugLogs) return;
     pushSysLog('LOG', args);
     if (!isBoxed) origConsoleLog(...args);
+  };
+  console.info = (...args: unknown[]) => {
+    if (!shouldEmitDebugLogs) return;
+    pushSysLog('LOG', args);
+    if (!isBoxed) origConsoleInfo(...args);
+  };
+  console.debug = (...args: unknown[]) => {
+    if (!shouldEmitDebugLogs) return;
+    pushSysLog('LOG', args);
+    if (!isBoxed) origConsoleDebug(...args);
   };
   console.error = (...args: unknown[]) => {
     pushSysLog('ERR', args);
@@ -187,7 +205,9 @@ export function logRequest(method: string, route: string, status: number) {
   emitLogEntry('REQ', msg);
 
   if (!isBoxed) {
-    origConsoleLog(`${time}  ${msg}`);
+    if (shouldEmitDebugLogs) {
+      origConsoleLog(`${time}  ${msg}`);
+    }
     return;
   }
 

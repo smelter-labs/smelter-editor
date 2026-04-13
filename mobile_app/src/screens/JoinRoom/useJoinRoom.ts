@@ -35,12 +35,16 @@ export function useJoinRoom() {
   const refreshIntervalMs = 5000;
 
   useEffect(() => {
-    console.log("[JoinRoom/useJoinRoom] mounted", {
-      initialServerUrl: serverUrl,
-      initialRoomId: roomId,
-    });
+    if (__DEV__) {
+      console.log("[JoinRoom/useJoinRoom] mounted", {
+        initialServerUrl: serverUrl,
+        initialRoomId: roomId,
+      });
+    }
     return () => {
-      console.log("[JoinRoom/useJoinRoom] unmounted");
+      if (__DEV__) {
+        console.log("[JoinRoom/useJoinRoom] unmounted");
+      }
     };
   }, [serverUrl, roomId]);
 
@@ -67,11 +71,13 @@ export function useJoinRoom() {
         setInputs(inputs);
         setLayers(layers);
         setResolution(resolution);
-        console.log("[JoinRoom] preloaded room state", {
-          inputCount: inputs.length,
-          layerCount: layers.length,
-          resolution,
-        });
+        if (__DEV__) {
+          console.log("[JoinRoom] preloaded room state", {
+            inputCount: inputs.length,
+            layerCount: layers.length,
+            resolution,
+          });
+        }
       } catch (err) {
         console.warn("[JoinRoom] preload room state failed:", err);
       }
@@ -200,15 +206,17 @@ export function useJoinRoom() {
       setLayers(layers);
       setResolution(resolution);
       setGridConfig(
-        Math.round(resolution.width / 10),
-        Math.round(resolution.height / 10),
+        Math.round(resolution.width / 50),
+        Math.round(resolution.height / 50),
       );
 
-      console.log("[JoinRoom] Room state loaded", {
-        inputCount: inputs.length,
-        layerCount: layers.length,
-        resolution,
-      });
+      if (__DEV__) {
+        console.log("[JoinRoom] Room state loaded", {
+          inputCount: inputs.length,
+          layerCount: layers.length,
+          resolution,
+        });
+      }
 
       navigation.replace(SCREEN_NAMES.MAIN);
     } catch (err) {

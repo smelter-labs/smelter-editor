@@ -2,11 +2,14 @@ import React from "react";
 import { StyleSheet, Text, Pressable, View } from "react-native";
 
 import { GestureDetector, Gesture } from "react-native-gesture-handler";
-import { runOnJS } from "react-native-reanimated";
-import type {
-  GridItemControls,
-  ResizeHandleDirection,
-} from "./ReshufflableGridWrapper";
+import Animated, {
+  runOnJS,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
+import type { GridItemControls } from "./ReshufflableGridWrapper";
+import { ResizeHandleDirection } from "./ReshufflableGridWrapper";
 import type { LayerItemProps } from "./types";
 
 type GridCellProps = LayerItemProps & GridItemControls;
@@ -23,12 +26,52 @@ export default function GridCell({
   isSelected = false,
   onSelect,
   onLongPress,
+  resizePreview,
   onResizeStart,
   onResizeUpdate,
   onResizeEnd,
 }: GridCellProps) {
+  const previewScaleX = useSharedValue(1);
+  const previewScaleY = useSharedValue(1);
+  const previewTranslateX = useSharedValue(0);
+  const previewTranslateY = useSharedValue(0);
+
+  const previewAnimatedStyle = useAnimatedStyle(() => {
+    "worklet";
+    return {
+      transform: [
+        { translateX: previewTranslateX.value },
+        { translateY: previewTranslateY.value },
+        { scaleX: previewScaleX.value },
+        { scaleY: previewScaleY.value },
+      ],
+    };
+  });
+
+  const rightDirections: ResizeHandleDirection[] = [
+    ResizeHandleDirection.RIGHT,
+    ResizeHandleDirection.TOP_RIGHT,
+    ResizeHandleDirection.BOTTOM_RIGHT,
+  ];
+  const leftDirections: ResizeHandleDirection[] = [
+    ResizeHandleDirection.LEFT,
+    ResizeHandleDirection.TOP_LEFT,
+    ResizeHandleDirection.BOTTOM_LEFT,
+  ];
+  const topDirections: ResizeHandleDirection[] = [
+    ResizeHandleDirection.TOP,
+    ResizeHandleDirection.TOP_LEFT,
+    ResizeHandleDirection.TOP_RIGHT,
+  ];
+  const bottomDirections: ResizeHandleDirection[] = [
+    ResizeHandleDirection.BOTTOM,
+    ResizeHandleDirection.BOTTOM_LEFT,
+    ResizeHandleDirection.BOTTOM_RIGHT,
+  ];
+
   const createResizeGesture = (direction: ResizeHandleDirection) => {
     return Gesture.Pan()
+      .maxPointers(1)
       .minDistance(1) // activate on the very first pixel so the grid's long-press can't win
       .onStart(() => {
         "worklet";
@@ -38,6 +81,59 @@ export default function GridCell({
       })
       .onUpdate((event) => {
         "worklet";
+        if (resizePreview) {
+          const cellPixelWidth = Math.max(1, resizePreview.cellPixelWidth);
+          const cellPixelHeight = Math.max(1, resizePreview.cellPixelHeight);
+          const widthCells = Math.max(1, resizePreview.widthCells);
+          const heightCells = Math.max(1, resizePreview.heightCells);
+
+          const colDeltaFloat = event.translationX / cellPixelWidth;
+          const rowDeltaFloat = event.translationY / cellPixelHeight;
+          const colDeltaSnap = Math.round(colDeltaFloat);
+          const rowDeltaSnap = Math.round(rowDeltaFloat);
+          const colResidual = colDeltaFloat - colDeltaSnap;
+          const rowResidual = rowDeltaFloat - rowDeltaSnap;
+
+          const affectsHorizontal =
+            rightDirections.includes(direction) ||
+            leftDirections.includes(direction);
+          const affectsVertical =
+            topDirections.includes(direction) ||
+            bottomDirections.includes(direction);
+
+          let widthResidual = 0;
+          if (rightDirections.includes(direction)) {
+            widthResidual = colResidual;
+          } else if (leftDirections.includes(direction)) {
+            widthResidual = -colResidual;
+          }
+
+          let heightResidual = 0;
+          if (bottomDirections.includes(direction)) {
+            heightResidual = rowResidual;
+          } else if (topDirections.includes(direction)) {
+            heightResidual = -rowResidual;
+          }
+
+          const nextScaleX = affectsHorizontal
+            ? Math.max(0.9, (widthCells + widthResidual) / widthCells)
+            : 1;
+          const nextScaleY = affectsVertical
+            ? Math.max(0.9, (heightCells + heightResidual) / heightCells)
+            : 1;
+
+          previewScaleX.value = withTiming(nextScaleX, { duration: 32 });
+          previewScaleY.value = withTiming(nextScaleY, { duration: 32 });
+          previewTranslateX.value = withTiming(
+            affectsHorizontal ? (colResidual * cellPixelWidth) / 2 : 0,
+            { duration: 32 },
+          );
+          previewTranslateY.value = withTiming(
+            affectsVertical ? (rowResidual * cellPixelHeight) / 2 : 0,
+            { duration: 32 },
+          );
+        }
+
         if (onResizeUpdate) {
           runOnJS(onResizeUpdate)(
             direction,
@@ -48,6 +144,11 @@ export default function GridCell({
       })
       .onEnd(() => {
         "worklet";
+        previewScaleX.value = withTiming(1, { duration: 80 });
+        previewScaleY.value = withTiming(1, { duration: 80 });
+        previewTranslateX.value = withTiming(0, { duration: 80 });
+        previewTranslateY.value = withTiming(0, { duration: 80 });
+
         if (onResizeEnd) {
           runOnJS(onResizeEnd)(direction);
         }
@@ -105,9 +206,10 @@ export default function GridCell({
       onLongPress={onLongPress}
       style={styles.pressable}
     >
-      <View
+      <Animated.View
         style={[
           styles.cell,
+          previewAnimatedStyle,
           {
             backgroundColor: color,
             opacity: isVisible ? 1 : 0.5,
@@ -131,7 +233,7 @@ export default function GridCell({
             )}
           </>
         )}
-      </View>
+      </Animated.View>
     </Pressable>
   );
 }

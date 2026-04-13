@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
+import type { WSEventPayload } from "../../types/websocket";
 import { View, StyleSheet } from "react-native";
 import { useTheme } from "react-native-paper";
 import DraggableFlatList, {
@@ -6,6 +7,7 @@ import DraggableFlatList, {
 } from "react-native-draggable-flatlist";
 import { GestureDetector } from "react-native-gesture-handler";
 import { useInputsStore } from "../../store/inputsStore";
+import { useLayoutStore } from "../../store/layoutStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { wsService } from "../../services/websocketService";
 import { apiService } from "../../services/apiService";
@@ -16,6 +18,9 @@ import { InputCard } from "./InputCard";
 import { InputSidePanel } from "./InputSidePanel";
 import { InputsSettingsPanel } from "./InputsSettingsPanel";
 import { ScreenLabel } from "../../components/shared/ScreenLabel";
+import { areInputCardsEquivalent } from "../../utils/inputCardEquality";
+
+const ROOM_UPDATE_COALESCE_MS = 150;
 
 export function InputsScreen() {
   const theme = useTheme();
@@ -27,6 +32,7 @@ export function InputsScreen() {
     removeInput,
     reorderInputs,
   } = useInputsStore();
+  const setLayers = useLayoutStore((state) => state.setLayers);
   const { serverUrl, roomId } = useConnectionStore();
 
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
@@ -39,41 +45,55 @@ export function InputsScreen() {
 
   // Log data on mount
   useEffect(() => {
-    console.log("[InputsScreen] Mounted with data:", {
-      inputs,
-      gridColumns,
-    });
+    if (__DEV__) {
+      console.log("[InputsScreen] Mounted with data:", {
+        inputs,
+        gridColumns,
+      });
+    }
   }, []);
+
+  // Hold latest room_updated payload and apply at most once per animation frame.
+  const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
+  const frameRef = useRef<number | null>(null);
 
   // Subscribe to server input updates
   useEffect(() => {
     const unsubUpdated = wsService.on("input_updated", (event) => {
-      console.log("[Inputs] input_updated:", event.inputId);
       const changes = apiService.mapInputUpdateToCardChanges(event.input);
       updateInput(event.inputId, changes);
     });
     const unsubDeleted = wsService.on("input_deleted", (event) => {
-      console.log("[Inputs] input_deleted:", event.inputId);
       removeInput(event.inputId);
     });
-    const unsubRoom = wsService.on("room_updated", async () => {
-      console.log("[Inputs] room_updated — refreshing inputs");
-      try {
-        const { inputs: updatedInputs } = await apiService.fetchRoomState(
-          serverUrl,
-          roomId,
-        );
-        setInputs(updatedInputs);
-      } catch (err) {
-        console.warn("[Inputs] Failed to refresh inputs on room_updated:", err);
-      }
+    const unsubRoom = wsService.on("room_updated", (event) => {
+      pendingEventRef.current = event;
+      if (frameRef.current !== null) return;
+      frameRef.current = requestAnimationFrame(() => {
+        frameRef.current = null;
+        const latest = pendingEventRef.current;
+        pendingEventRef.current = null;
+        if (!latest) return;
+
+        setLayers(latest.layers);
+
+        const nextInputs = apiService.mapInputsToCards(latest.inputs);
+        const currentInputs = useInputsStore.getState().inputs;
+        if (!areInputCardsEquivalent(currentInputs, nextInputs)) {
+          setInputs(nextInputs);
+        }
+      });
     });
     return () => {
       unsubUpdated();
       unsubDeleted();
       unsubRoom();
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
     };
-  }, [serverUrl, roomId, updateInput, removeInput, setInputs]);
+  }, [serverUrl, roomId, updateInput, removeInput, setInputs, setLayers]);
 
   const handleCardTap = useCallback(
     (cardId: string) => {
@@ -113,14 +133,10 @@ export function InputsScreen() {
           isActive && styles.activeItem,
         ]}
       >
-        <InputCard
-          input={item}
-          tapGesture={makeCardTapGesture(item.id)}
-          onUpdate={(changes) => updateInput(item.id, changes)}
-        />
+        <InputCard input={item} tapGesture={makeCardTapGesture(item.id)} />
       </View>
     ),
-    [effectiveColumns, makeCardTapGesture, updateInput],
+    [effectiveColumns, makeCardTapGesture],
   );
 
   return (
