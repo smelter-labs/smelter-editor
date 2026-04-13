@@ -235,9 +235,7 @@ export function createFxState(
     dpr,
     sparks: [],
     bolts: [],
-    circuits: cfg.layers.circuits
-      ? makeCircuits(w, h, cfg.circuitCount)
-      : [],
+    circuits: cfg.layers.circuits ? makeCircuits(w, h, cfg.circuitCount) : [],
     pulses: [],
     waves: [],
     dots: cfg.layers.dots ? makeDotPattern(w, h, dpr) : null,
@@ -299,8 +297,7 @@ export function updateFx(s: FxState, dt: number, cfg: FxConfig): void {
         s.bolts.push(makeBolt(s.w, s.h, hues, cfg.boltComplexity));
       }
       if (cfg.boltComplexity === 'mini') {
-        s.nextBolt =
-          cfg.boltInterval + Math.random() * cfg.boltInterval * 0.8;
+        s.nextBolt = cfg.boltInterval + Math.random() * cfg.boltInterval * 0.8;
       } else {
         const iv = cfg.boltInterval - cfg.boltInterval * 0.57 * pct;
         s.nextBolt = iv + Math.random() * iv * 0.4;
@@ -468,8 +465,7 @@ export function drawFx(
       const p = wv.life / wv.maxLife;
       const a = (0.22 + pct * 0.15) * (1 - p) * (1 - p);
       if (a < 0.005) continue;
-      const waveHue =
-        hues[Math.floor((wv.cx + wv.cy) * 0.01) % hues.length];
+      const waveHue = hues[Math.floor((wv.cx + wv.cy) * 0.01) % hues.length];
       ctx.strokeStyle = fxHsl(waveHue, 90, 75, a);
       ctx.lineWidth = 2 * (1 - p * 0.4);
       ctx.shadowColor = fxHsl(waveHue, 100, 70, a * 0.9);
@@ -515,8 +511,7 @@ export function drawFx(
         ctx.strokeStyle = fxHsl(bolt.hue, 100, 85, al);
         ctx.beginPath();
         ctx.moveTo(pts[0].x, pts[0].y);
-        for (let i = 1; i < pts.length; i++)
-          ctx.lineTo(pts[i].x, pts[i].y);
+        for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
         ctx.stroke();
       };
       ctx.shadowColor = fxHsl(bolt.hue, 100, 70, a);

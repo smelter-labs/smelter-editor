@@ -2430,9 +2430,8 @@ function Mp4Inspector({
   const [deleting, setDeleting] = useState(false);
   const [normalizing, setNormalizing] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [confirmState, setConfirmState] = useState<InspectorConfirmState | null>(
-    null,
-  );
+  const [confirmState, setConfirmState] =
+    useState<InspectorConfirmState | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [normalizeResult, setNormalizeResult] =
     useState<NormalizeResultState | null>(null);
@@ -2511,7 +2510,7 @@ function Mp4Inspector({
         } finally {
           setNormalizing(false);
         }
-      }
+      },
     });
   };
 
@@ -2559,7 +2558,10 @@ function Mp4Inspector({
           colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
         />
       </div>
-      <NormalizeStatusInline normalizing={normalizing} result={normalizeResult} />
+      <NormalizeStatusInline
+        normalizing={normalizing}
+        result={normalizeResult}
+      />
       <DeleteLibraryItemButton
         onClick={handleDelete}
         disabled={deleting || normalizing}
@@ -2604,9 +2606,8 @@ function AudioInspector({
   const [deleting, setDeleting] = useState(false);
   const [normalizing, setNormalizing] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [confirmState, setConfirmState] = useState<InspectorConfirmState | null>(
-    null,
-  );
+  const [confirmState, setConfirmState] =
+    useState<InspectorConfirmState | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [normalizeResult, setNormalizeResult] =
     useState<NormalizeResultState | null>(null);
@@ -2685,7 +2686,7 @@ function AudioInspector({
         } finally {
           setNormalizing(false);
         }
-      }
+      },
     });
   };
 
@@ -2730,7 +2731,10 @@ function AudioInspector({
           colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
         />
       </div>
-      <NormalizeStatusInline normalizing={normalizing} result={normalizeResult} />
+      <NormalizeStatusInline
+        normalizing={normalizing}
+        result={normalizeResult}
+      />
       <DeleteLibraryItemButton
         onClick={handleDelete}
         disabled={deleting || normalizing}
@@ -2773,9 +2777,8 @@ function ImageInspector({
   const { addImageInput } = useActions();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [confirmState, setConfirmState] = useState<InspectorConfirmState | null>(
-    null,
-  );
+  const [confirmState, setConfirmState] =
+    useState<InspectorConfirmState | null>(null);
   const [confirming, setConfirming] = useState(false);
 
   const handleAdd = async () => {
@@ -3237,9 +3240,8 @@ function HlsSavedInspector({
   const { addHlsInput } = useActions();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const [confirmState, setConfirmState] = useState<InspectorConfirmState | null>(
-    null,
-  );
+  const [confirmState, setConfirmState] =
+    useState<InspectorConfirmState | null>(null);
   const [confirming, setConfirming] = useState(false);
 
   const handleAdd = async () => {
