@@ -18,7 +18,7 @@ import { InputSidePanel } from "./InputSidePanel";
 import { InputsSettingsPanel } from "./InputsSettingsPanel";
 import { ScreenLabel } from "../../components/shared/ScreenLabel";
 
-const ROOM_UPDATE_COALESCE_MS = 16;
+const ROOM_UPDATE_COALESCE_MS = 150;
 
 export function InputsScreen() {
   const theme = useTheme();

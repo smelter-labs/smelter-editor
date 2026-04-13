@@ -8,10 +8,8 @@ import Animated, {
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
-import type {
-  GridItemControls,
-  ResizeHandleDirection,
-} from "./ReshufflableGridWrapper";
+import type { GridItemControls } from "./ReshufflableGridWrapper";
+import { ResizeHandleDirection } from "./ReshufflableGridWrapper";
 import type { LayerItemProps } from "./types";
 
 type GridCellProps = LayerItemProps & GridItemControls;
@@ -51,20 +49,24 @@ export default function GridCell({
   });
 
   const rightDirections: ResizeHandleDirection[] = [
-    "right",
-    "topRight",
-    "bottomRight",
+    ResizeHandleDirection.RIGHT,
+    ResizeHandleDirection.TOP_RIGHT,
+    ResizeHandleDirection.BOTTOM_RIGHT,
   ];
   const leftDirections: ResizeHandleDirection[] = [
-    "left",
-    "topLeft",
-    "bottomLeft",
+    ResizeHandleDirection.LEFT,
+    ResizeHandleDirection.TOP_LEFT,
+    ResizeHandleDirection.BOTTOM_LEFT,
   ];
-  const topDirections: ResizeHandleDirection[] = ["top", "topLeft", "topRight"];
+  const topDirections: ResizeHandleDirection[] = [
+    ResizeHandleDirection.TOP,
+    ResizeHandleDirection.TOP_LEFT,
+    ResizeHandleDirection.TOP_RIGHT,
+  ];
   const bottomDirections: ResizeHandleDirection[] = [
-    "bottom",
-    "bottomLeft",
-    "bottomRight",
+    ResizeHandleDirection.BOTTOM,
+    ResizeHandleDirection.BOTTOM_LEFT,
+    ResizeHandleDirection.BOTTOM_RIGHT,
   ];
 
   const createResizeGesture = (direction: ResizeHandleDirection) => {

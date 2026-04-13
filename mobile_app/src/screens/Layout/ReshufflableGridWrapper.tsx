@@ -469,15 +469,16 @@ const resolveCollisionsOnDrop = <T,>(
   );
 };
 
-export type ResizeHandleDirection =
-  | "top"
-  | "topRight"
-  | "right"
-  | "bottomRight"
-  | "bottom"
-  | "bottomLeft"
-  | "left"
-  | "topLeft";
+export enum ResizeHandleDirection {
+  TOP = "top",
+  TOP_RIGHT = "topRight",
+  RIGHT = "right",
+  BOTTOM_RIGHT = "bottomRight",
+  BOTTOM = "bottom",
+  BOTTOM_LEFT = "bottomLeft",
+  LEFT = "left",
+  TOP_LEFT = "topLeft",
+}
 
 export type GridItemControls = {
   isSelected?: boolean;
