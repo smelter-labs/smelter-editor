@@ -23,6 +23,24 @@ const HIGH_GRID_OPTIMIZATION_THRESHOLD = 50 * 50;
 const MIN_TILE_WIDTH_CELLS = 16;
 const MIN_TILE_HEIGHT_CELLS = 9;
 
+const shallowEqualObject = (first: unknown, second: unknown): boolean => {
+  if (first === second) return true;
+  if (!first || !second) return false;
+  if (typeof first !== "object" || typeof second !== "object") return false;
+
+  const firstObj = first as Record<string, unknown>;
+  const secondObj = second as Record<string, unknown>;
+  const firstKeys = Object.keys(firstObj);
+  const secondKeys = Object.keys(secondObj);
+  if (firstKeys.length !== secondKeys.length) return false;
+
+  for (const key of firstKeys) {
+    if (!(key in secondObj)) return false;
+    if (firstObj[key] !== secondObj[key]) return false;
+  }
+  return true;
+};
+
 const isOverlapping = <T,>(first: GridItem<T>, second: GridItem<T>) => {
   const firstEndCol = first.startColumn + first.width;
   const firstEndRow = first.startRow + first.height;
@@ -582,7 +600,7 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
             item.startRow === prev[i].startRow &&
             item.width === prev[i].width &&
             item.height === prev[i].height &&
-            item.itemProps === prev[i].itemProps,
+            shallowEqualObject(item.itemProps, prev[i].itemProps),
         )
       ) {
         return prev;
@@ -607,6 +625,7 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
   }, [columns, rows]);
 
   useEffect(() => {
+    if (!__DEV__) return;
     console.info("[LayoutGrid] Performance mode", {
       columns,
       rows,

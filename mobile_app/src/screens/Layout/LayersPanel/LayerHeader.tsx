@@ -66,6 +66,8 @@ export interface LayerHeaderProps {
   onToggleCollapse: () => void;
   onToggleVisible: () => void;
   onNameChange: (name: string) => void;
+  isEmpty?: boolean;
+  onDelete?: () => void;
 }
 
 export function LayerHeader({
@@ -75,6 +77,8 @@ export function LayerHeader({
   onToggleCollapse,
   onToggleVisible,
   onNameChange,
+  isEmpty,
+  onDelete,
 }: LayerHeaderProps) {
   return (
     <Pressable onPress={onToggleCollapse} style={styles.header}>
@@ -95,6 +99,16 @@ export function LayerHeader({
           size={16}
         />
       </View>
+
+      {isEmpty && onDelete && (
+        <Pressable onPress={onDelete} hitSlop={8} style={styles.deleteBtn}>
+          <MaterialDesignIcons
+            name="trash-can-outline"
+            color={C.textDim}
+            size={16}
+          />
+        </Pressable>
+      )}
     </Pressable>
   );
 }
@@ -134,5 +148,10 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     borderBottomWidth: 1,
     borderBottomColor: C.accent,
+  },
+  deleteBtn: {
+    width: 22,
+    alignItems: "center",
+    justifyContent: "center",
   },
 });

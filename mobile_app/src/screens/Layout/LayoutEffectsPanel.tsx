@@ -58,7 +58,6 @@ export function LayoutEffectsPanel({
 }: LayoutEffectsPanelProps) {
   const { serverUrl, roomId } = useConnectionStore();
   const inputs = useInputsStore((s) => s.inputs);
-  const updateInput = useInputsStore((s) => s.updateInput);
   const input = useMemo(
     () => inputs.find((i) => i.id === inputId),
     [inputs, inputId],
@@ -99,7 +98,6 @@ export function LayoutEffectsPanel({
       if (!inputId) return;
       setSaving(true);
       try {
-        updateInput(inputId, { shaders: nextShaders });
         await apiService.updateInput(serverUrl, roomId, inputId, {
           shaders: nextShaders,
         });
@@ -109,7 +107,7 @@ export function LayoutEffectsPanel({
         setSaving(false);
       }
     },
-    [inputId, roomId, serverUrl, updateInput],
+    [inputId, roomId, serverUrl],
   );
 
   const activeShaders = input?.shaders ?? [];

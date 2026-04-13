@@ -7,6 +7,7 @@ import DraggableFlatList, {
 } from "react-native-draggable-flatlist";
 import { GestureDetector } from "react-native-gesture-handler";
 import { useInputsStore } from "../../store/inputsStore";
+import { useLayoutStore } from "../../store/layoutStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { wsService } from "../../services/websocketService";
 import { apiService } from "../../services/apiService";
@@ -17,8 +18,12 @@ import { InputCard } from "./InputCard";
 import { InputSidePanel } from "./InputSidePanel";
 import { InputsSettingsPanel } from "./InputsSettingsPanel";
 import { ScreenLabel } from "../../components/shared/ScreenLabel";
+<<<<<<< @Frendzlu/reduce-rerenders-mobile
+import { areInputCardsEquivalent } from "../../utils/inputCardEquality";
+=======
 
 const ROOM_UPDATE_COALESCE_MS = 150;
+>>>>>>> @Frendzlu/mobile-ui-fixes
 
 export function InputsScreen() {
   const theme = useTheme();
@@ -30,6 +35,7 @@ export function InputsScreen() {
     removeInput,
     reorderInputs,
   } = useInputsStore();
+  const setLayers = useLayoutStore((state) => state.setLayers);
   const { serverUrl, roomId } = useConnectionStore();
 
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
@@ -42,16 +48,17 @@ export function InputsScreen() {
 
   // Log data on mount
   useEffect(() => {
-    console.log("[InputsScreen] Mounted with data:", {
-      inputs,
-      gridColumns,
-    });
+    if (__DEV__) {
+      console.log("[InputsScreen] Mounted with data:", {
+        inputs,
+        gridColumns,
+      });
+    }
   }, []);
 
-  // Debounce timer for room_updated: coalesces a burst of buffered events (e.g.
-  // TCP flush after screen wake) into a single re-render on the latest state.
-  const refreshDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Hold latest room_updated payload and apply at most once per animation frame.
   const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
+  const frameRef = useRef<number | null>(null);
 
   // Subscribe to server input updates
   useEffect(() => {
@@ -64,22 +71,32 @@ export function InputsScreen() {
     });
     const unsubRoom = wsService.on("room_updated", (event) => {
       pendingEventRef.current = event;
-      if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current);
-      refreshDebounceRef.current = setTimeout(() => {
-        refreshDebounceRef.current = null;
+      if (frameRef.current !== null) return;
+      frameRef.current = requestAnimationFrame(() => {
+        frameRef.current = null;
         const latest = pendingEventRef.current;
         pendingEventRef.current = null;
         if (!latest) return;
-        setInputs(apiService.mapInputsToCards(latest.inputs));
-      }, ROOM_UPDATE_COALESCE_MS);
+
+        setLayers(latest.layers);
+
+        const nextInputs = apiService.mapInputsToCards(latest.inputs);
+        const currentInputs = useInputsStore.getState().inputs;
+        if (!areInputCardsEquivalent(currentInputs, nextInputs)) {
+          setInputs(nextInputs);
+        }
+      });
     });
     return () => {
       unsubUpdated();
       unsubDeleted();
       unsubRoom();
-      if (refreshDebounceRef.current) clearTimeout(refreshDebounceRef.current);
+      if (frameRef.current !== null) {
+        cancelAnimationFrame(frameRef.current);
+        frameRef.current = null;
+      }
     };
-  }, [serverUrl, roomId, updateInput, removeInput, setInputs]);
+  }, [serverUrl, roomId, updateInput, removeInput, setInputs, setLayers]);
 
   const handleCardTap = useCallback(
     (cardId: string) => {
@@ -119,14 +136,10 @@ export function InputsScreen() {
           isActive && styles.activeItem,
         ]}
       >
-        <InputCard
-          input={item}
-          tapGesture={makeCardTapGesture(item.id)}
-          onUpdate={(changes) => updateInput(item.id, changes)}
-        />
+        <InputCard input={item} tapGesture={makeCardTapGesture(item.id)} />
       </View>
     ),
-    [effectiveColumns, makeCardTapGesture, updateInput],
+    [effectiveColumns, makeCardTapGesture],
   );
 
   return (
