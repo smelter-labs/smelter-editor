@@ -1257,9 +1257,8 @@ routes.post<
     const room = state.getRoom(roomId);
     await room.hideInput(inputId, activeTransition);
     const updatedInput = room.getInputs().find((i) => i.inputId === inputId);
+    const sourceId = (req.headers['x-source-id'] as string | undefined) ?? null;
     if (updatedInput) {
-      const sourceId =
-        (req.headers['x-source-id'] as string | undefined) ?? null;
       roomEventBus.broadcast(roomId, {
         type: 'input_updated',
         roomId,
@@ -1268,6 +1267,15 @@ routes.post<
         sourceId,
       });
     }
+
+    const snapshot = room.getState();
+    roomEventBus.broadcast(roomId, {
+      type: 'room_updated',
+      roomId,
+      sourceId,
+      layers: snapshot.layers,
+      inputs: snapshot.inputs.map(toPublicInputState),
+    });
     res.status(200).send({ status: 'ok' });
   },
 );
@@ -1299,9 +1307,8 @@ routes.post<
     const room = state.getRoom(roomId);
     await room.showInput(inputId, activeTransition);
     const updatedInput = room.getInputs().find((i) => i.inputId === inputId);
+    const sourceId = (req.headers['x-source-id'] as string | undefined) ?? null;
     if (updatedInput) {
-      const sourceId =
-        (req.headers['x-source-id'] as string | undefined) ?? null;
       roomEventBus.broadcast(roomId, {
         type: 'input_updated',
         roomId,
@@ -1310,6 +1317,15 @@ routes.post<
         sourceId,
       });
     }
+
+    const snapshot = room.getState();
+    roomEventBus.broadcast(roomId, {
+      type: 'room_updated',
+      roomId,
+      sourceId,
+      layers: snapshot.layers,
+      inputs: snapshot.inputs.map(toPublicInputState),
+    });
     res.status(200).send({ status: 'ok' });
   },
 );
@@ -1362,6 +1378,15 @@ routes.post<{
         sourceId,
       } as any);
     }
+
+    const snapshot = room.getState();
+    roomEventBus.broadcast(roomId, {
+      type: 'room_updated',
+      roomId,
+      sourceId,
+      layers: snapshot.layers,
+      inputs: snapshot.inputs.map(toPublicInputState),
+    });
     res.status(200).send({ status: 'ok' });
   },
 );
@@ -1414,6 +1439,15 @@ routes.post<{
         sourceId,
       } as any);
     }
+
+    const snapshot = room.getState();
+    roomEventBus.broadcast(roomId, {
+      type: 'room_updated',
+      roomId,
+      sourceId,
+      layers: snapshot.layers,
+      inputs: snapshot.inputs.map(toPublicInputState),
+    });
     res.status(200).send({ status: 'ok' });
   },
 );

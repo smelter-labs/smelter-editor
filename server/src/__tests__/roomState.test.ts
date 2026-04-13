@@ -810,6 +810,52 @@ describe('RoomState', () => {
         false,
       );
     });
+
+    it('preserves behavior-layer input order across hide and show', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const id1 = (await room.addNewInput({ type: 'text-input', text: 'A' }))!;
+      const id2 = (await room.addNewInput({ type: 'game', title: 'B' }))!;
+      const id3 = (await room.addNewInput({
+        type: 'hands',
+        sourceInputId: id1,
+      }))!;
+
+      await room.connectInput(id1);
+      await room.connectInput(id2);
+      await room.connectInput(id3);
+
+      await room.updateLayers([
+        {
+          id: 'layer-1',
+          behavior: { type: 'equal-grid', autoscale: true },
+          inputs: [
+            { inputId: id1, x: 0, y: 0, width: 0, height: 0 },
+            { inputId: id2, x: 0, y: 0, width: 0, height: 0 },
+            { inputId: id3, x: 0, y: 0, width: 0, height: 0 },
+          ],
+        },
+      ]);
+
+      const orderBefore = room
+        .getState()
+        .layers[0]!.inputs.map((input) => input.inputId);
+      expect(orderBefore).toEqual([id1, id2, id3]);
+
+      await room.hideInput(id2);
+      const orderAfterHide = room
+        .getState()
+        .layers[0]!.inputs.map((input) => input.inputId);
+      expect(orderAfterHide).toEqual([id1, id2, id3]);
+
+      await room.showInput(id2);
+      const orderAfterShow = room
+        .getState()
+        .layers[0]!.inputs.map((input) => input.inputId);
+      expect(orderAfterShow).toEqual([id1, id2, id3]);
+    });
   });
 
   describe('getState', () => {

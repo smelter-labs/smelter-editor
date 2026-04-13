@@ -7,6 +7,7 @@ import DraggableFlatList, {
 } from "react-native-draggable-flatlist";
 import { GestureDetector } from "react-native-gesture-handler";
 import { useInputsStore } from "../../store/inputsStore";
+import { useLayoutStore } from "../../store/layoutStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { wsService } from "../../services/websocketService";
 import { apiService } from "../../services/apiService";
@@ -56,6 +57,7 @@ export function InputsScreen() {
     removeInput,
     reorderInputs,
   } = useInputsStore();
+  const setLayers = useLayoutStore((state) => state.setLayers);
   const { serverUrl, roomId } = useConnectionStore();
 
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
@@ -95,6 +97,9 @@ export function InputsScreen() {
         const latest = pendingEventRef.current;
         pendingEventRef.current = null;
         if (!latest) return;
+
+        setLayers(latest.layers);
+
         const nextInputs = apiService.mapInputsToCards(latest.inputs);
         const currentInputs = useInputsStore.getState().inputs;
         if (!areInputCardsEquivalent(currentInputs, nextInputs)) {
@@ -111,7 +116,7 @@ export function InputsScreen() {
         frameRef.current = null;
       }
     };
-  }, [serverUrl, roomId, updateInput, removeInput, setInputs]);
+  }, [serverUrl, roomId, updateInput, removeInput, setInputs, setLayers]);
 
   const handleCardTap = useCallback(
     (cardId: string) => {

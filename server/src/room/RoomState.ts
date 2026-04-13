@@ -1167,13 +1167,10 @@ export class RoomState {
 
       // Separate visible (non-hidden) and hidden inputs
       const visibleLayerInputs: typeof layer.inputs = [];
-      const hiddenLayerInputs: typeof layer.inputs = [];
 
       for (const li of layer.inputs) {
         const input = inputMap.get(li.inputId);
-        if (input?.hidden) {
-          hiddenLayerInputs.push(li);
-        } else {
+        if (!input?.hidden) {
           visibleLayerInputs.push(li);
         }
       }
@@ -1193,10 +1190,21 @@ export class RoomState {
         this.output.resolution,
       );
 
-      // Merge computed positions with hidden inputs
+      const computedById = new Map(
+        result.inputs.map((input) => [input.inputId, input]),
+      );
+
+      const mergedInputs = layer.inputs.map((existing) => {
+        const input = inputMap.get(existing.inputId);
+        if (input?.hidden) {
+          return existing;
+        }
+        return computedById.get(existing.inputId) ?? existing;
+      });
+
       return {
         ...layer,
-        inputs: [...result.inputs, ...hiddenLayerInputs],
+        inputs: mergedInputs,
       };
     });
 

@@ -2,6 +2,7 @@ import React from "react";
 import { Alert, View, StyleSheet } from "react-native";
 import { Button, useTheme } from "react-native-paper";
 import { useInputsStore } from "../../store/inputsStore";
+import { useLayoutStore } from "../../store/layoutStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { apiService } from "../../services/apiService";
 import type { InputCard } from "../../types/input";
@@ -18,7 +19,8 @@ interface InputCardControlsProps {
  */
 export function InputCardControls({ input, onUpdate }: InputCardControlsProps) {
   const theme = useTheme();
-  const { confirmRemoval, removeInput } = useInputsStore();
+  const { confirmRemoval, removeInput, setInputs } = useInputsStore();
+  const setLayers = useLayoutStore((state) => state.setLayers);
   const serverUrl = useConnectionStore((state) => state.serverUrl);
   const roomId = useConnectionStore((state) => state.roomId);
 
@@ -29,11 +31,24 @@ export function InputCardControls({ input, onUpdate }: InputCardControlsProps) {
     const call = next
       ? apiService.hideInput(serverUrl, roomId, input.id)
       : apiService.showInput(serverUrl, roomId, input.id);
-    call.catch((err) => {
-      console.error("[InputCardControls] hide/show failed:", err);
-      // Revert optimistic update on error
-      onUpdate({ isHidden: !next });
-    });
+    call
+      .then(async () => {
+        try {
+          const roomState = await apiService.fetchRoomState(serverUrl, roomId);
+          setLayers(roomState.layers);
+          setInputs(roomState.inputs);
+        } catch (syncErr) {
+          console.warn(
+            "[InputCardControls] post hide/show room sync failed:",
+            syncErr,
+          );
+        }
+      })
+      .catch((err) => {
+        console.error("[InputCardControls] hide/show failed:", err);
+        // Revert optimistic update on error
+        onUpdate({ isHidden: !next });
+      });
   };
 
   const doRemove = () => {
