@@ -50,6 +50,68 @@ const execFileAsync = promisify(execFile);
 const THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails', 'mp4');
 const HLS_THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails', 'hls');
 const HLS_STREAMS_DIR = path.join(DATA_DIR, 'hls-streams');
+const isSyncDebugEnabled = process.env.SMELTER_SYNC_DEBUG === 'true';
+
+function summarizeSyncPayload(payload: unknown): unknown {
+  if (
+    payload === null ||
+    payload === undefined ||
+    typeof payload === 'string' ||
+    typeof payload === 'number' ||
+    typeof payload === 'boolean'
+  ) {
+    return payload;
+  }
+
+  if (Array.isArray(payload)) {
+    return { type: 'array', length: payload.length };
+  }
+
+  if (typeof payload === 'object') {
+    const record = payload as Record<string, unknown>;
+    const summary: Record<string, unknown> = {
+      type: 'object',
+      keys: Object.keys(record),
+    };
+
+    const counts: Record<string, number> = {};
+    for (const [key, value] of Object.entries(record)) {
+      if (Array.isArray(value)) {
+        counts[key] = value.length;
+      }
+    }
+
+    if (Object.keys(counts).length > 0) {
+      summary.counts = counts;
+    }
+
+    return summary;
+  }
+
+  return String(payload);
+}
+
+function summarizeSyncDetails(
+  details: Record<string, unknown>,
+): Record<string, unknown> {
+  const summarized: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(details)) {
+    if (key === 'body' || key === 'payload') {
+      summarized[key] = summarizeSyncPayload(value);
+      continue;
+    }
+    summarized[key] = value;
+  }
+  return summarized;
+}
+
+function logSyncServer(phase: string, details: Record<string, unknown>): void {
+  if (!isSyncDebugEnabled) return;
+  console.log(
+    `[${new Date().toISOString()}] [sync][server-${phase}]`,
+    summarizeSyncDetails(details),
+  );
+}
 
 type BrowseFileInfo = {
   fileName: string;
@@ -1001,7 +1063,12 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
   { schema: { params: RoomIdParamsSchema, body: UpdateRoomSchema } },
   async (req, res) => {
     const { roomId } = req.params;
-    console.log('[request] Update room', { body: req.body, roomId });
+    logSyncServer('receive', {
+      route: '/room/:roomId',
+      method: 'POST',
+      roomId,
+      body: req.body,
+    });
     const room = state.getRoom(roomId);
 
     let roomStructureChanged = false;
@@ -1010,16 +1077,33 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
       roomStructureChanged = true;
     }
     if (req.body.layers) {
+      console.log('[Layout] Received layers update from mobile:', {
+        layerCount: (req.body.layers as any[]).length,
+        firstLayerInputs: (req.body.layers as any[])[0]?.inputs?.length ?? 0,
+        firstLayerInputIds:
+          (req.body.layers as any[])[0]?.inputs
+            ?.map((li: any) => li.inputId)
+            .slice(0, 3) ?? [],
+      });
       await room.updateLayers(req.body.layers as Layer[]);
       roomStructureChanged = true;
     }
     if (roomStructureChanged) {
       const sourceId =
         (req.headers['x-source-id'] as string | undefined) ?? null;
+      const snapshot = room.getState();
+      console.log('[Layout] Broadcasting room_updated after layout change:', {
+        layerCount: snapshot.layers.length,
+        firstLayerInputs: snapshot.layers[0]?.inputs?.length ?? 0,
+        firstLayerInputIds:
+          snapshot.layers[0]?.inputs?.map((li) => li.inputId).slice(0, 3) ?? [],
+      });
       roomEventBus.broadcast(roomId, {
         type: 'room_updated',
         roomId,
         sourceId,
+        layers: snapshot.layers,
+        inputs: snapshot.inputs.map(toPublicInputState),
       });
     }
     if (req.body.isPublic !== undefined) {
@@ -1060,7 +1144,14 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
       room.setViewport(viewportUpdate as any);
     }
 
-    res.status(200).send({ status: 'ok' });
+    const snapshot = room.getState();
+    console.log('[Layout] Returning corrected layers to mobile:', {
+      layerCount: snapshot.layers.length,
+      firstLayerInputs: snapshot.layers[0]?.inputs?.length ?? 0,
+      firstLayerInputIds:
+        snapshot.layers[0]?.inputs?.map((li) => li.inputId).slice(0, 3) ?? [],
+    });
+    res.status(200).send({ status: 'ok', layers: snapshot.layers });
   },
 );
 
@@ -1095,7 +1186,12 @@ routes.post<RoomIdParams & { Body: Static<typeof InputSchema> }>(
   { schema: { params: RoomIdParamsSchema, body: InputSchema } },
   async (req, res) => {
     const { roomId } = req.params;
-    console.log('[request] Create input', { body: req.body, roomId });
+    logSyncServer('receive', {
+      route: '/room/:roomId/input',
+      method: 'POST',
+      roomId,
+      body: req.body,
+    });
     const room = state.getRoom(roomId);
     const inputId = await room.addNewInput(req.body);
     console.log('[info] Added input', { inputId });
@@ -1104,10 +1200,13 @@ routes.post<RoomIdParams & { Body: Static<typeof InputSchema> }>(
       bearerToken = await room.connectInput(inputId);
       const sourceId =
         (req.headers['x-source-id'] as string | undefined) ?? null;
+      const snapshot = room.getState();
       roomEventBus.broadcast(roomId, {
         type: 'room_updated',
         roomId,
         sourceId,
+        layers: snapshot.layers,
+        inputs: snapshot.inputs.map(toPublicInputState),
       });
     }
     let whipUrl = `${config.whipBaseUrl}/${inputId}`;
@@ -1219,6 +1318,13 @@ routes.post<
   { schema: { params: RoomAndInputIdParamsSchema, body: HideInputBodySchema } },
   async (req, res) => {
     const { roomId, inputId } = req.params;
+    logSyncServer('receive', {
+      route: '/room/:roomId/input/:inputId/hide',
+      method: 'POST',
+      roomId,
+      inputId,
+      body: req.body,
+    });
     const { activeTransition } = req.body ?? {};
     console.log('[request] Hide input', {
       roomId,
@@ -1228,9 +1334,8 @@ routes.post<
     const room = state.getRoom(roomId);
     await room.hideInput(inputId, activeTransition);
     const updatedInput = room.getInputs().find((i) => i.inputId === inputId);
+    const sourceId = (req.headers['x-source-id'] as string | undefined) ?? null;
     if (updatedInput) {
-      const sourceId =
-        (req.headers['x-source-id'] as string | undefined) ?? null;
       roomEventBus.broadcast(roomId, {
         type: 'input_updated',
         roomId,
@@ -1239,6 +1344,15 @@ routes.post<
         sourceId,
       });
     }
+
+    const snapshot = room.getState();
+    roomEventBus.broadcast(roomId, {
+      type: 'room_updated',
+      roomId,
+      sourceId,
+      layers: snapshot.layers,
+      inputs: snapshot.inputs.map(toPublicInputState),
+    });
     res.status(200).send({ status: 'ok' });
   },
 );
@@ -1254,6 +1368,13 @@ routes.post<
   { schema: { params: RoomAndInputIdParamsSchema, body: ShowInputBodySchema } },
   async (req, res) => {
     const { roomId, inputId } = req.params;
+    logSyncServer('receive', {
+      route: '/room/:roomId/input/:inputId/show',
+      method: 'POST',
+      roomId,
+      inputId,
+      body: req.body,
+    });
     const { activeTransition } = req.body ?? {};
     console.log('[request] Show input', {
       roomId,
@@ -1263,9 +1384,8 @@ routes.post<
     const room = state.getRoom(roomId);
     await room.showInput(inputId, activeTransition);
     const updatedInput = room.getInputs().find((i) => i.inputId === inputId);
+    const sourceId = (req.headers['x-source-id'] as string | undefined) ?? null;
     if (updatedInput) {
-      const sourceId =
-        (req.headers['x-source-id'] as string | undefined) ?? null;
       roomEventBus.broadcast(roomId, {
         type: 'input_updated',
         roomId,
@@ -1274,6 +1394,105 @@ routes.post<
         sourceId,
       });
     }
+
+    const snapshot = room.getState();
+    roomEventBus.broadcast(roomId, {
+      type: 'room_updated',
+      roomId,
+      sourceId,
+      layers: snapshot.layers,
+      inputs: snapshot.inputs.map(toPublicInputState),
+    });
+    res.status(200).send({ status: 'ok' });
+  },
+);
+
+// Batch hide inputs in a layer
+const BatchHideInputsSchema = Type.Object({
+  inputIds: Type.Array(Type.String()),
+  activeTransition: Type.Optional(ActiveTransitionSchema),
+});
+
+routes.post<{
+  Params: { roomId: string };
+  Body: Static<typeof BatchHideInputsSchema>;
+}>(
+  '/room/:roomId/inputs/hide',
+  { schema: { params: RoomIdParamsSchema, body: BatchHideInputsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    const { inputIds, activeTransition } = req.body;
+    logSyncServer('receive', {
+      route: '/room/:roomId/inputs/hide',
+      method: 'POST',
+      roomId,
+      inputIds,
+      body: req.body,
+    });
+    console.log('[request] Batch hide inputs', {
+      roomId,
+      inputIds,
+      hasTransition: !!activeTransition,
+    });
+    const room = state.getRoom(roomId);
+    const sourceId = (req.headers['x-source-id'] as string | undefined) ?? null;
+
+    // Hide all inputs under a single mutex lock (truly parallel at state level)
+    await room.batchHideInputs(inputIds, activeTransition);
+
+    const snapshot = room.getState();
+    roomEventBus.broadcast(roomId, {
+      type: 'room_updated',
+      roomId,
+      sourceId,
+      layers: snapshot.layers,
+      inputs: snapshot.inputs.map(toPublicInputState),
+    });
+    res.status(200).send({ status: 'ok' });
+  },
+);
+
+// Batch show inputs in a layer
+const BatchShowInputsSchema = Type.Object({
+  inputIds: Type.Array(Type.String()),
+  activeTransition: Type.Optional(ActiveTransitionSchema),
+});
+
+routes.post<{
+  Params: { roomId: string };
+  Body: Static<typeof BatchShowInputsSchema>;
+}>(
+  '/room/:roomId/inputs/show',
+  { schema: { params: RoomIdParamsSchema, body: BatchShowInputsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    const { inputIds, activeTransition } = req.body;
+    logSyncServer('receive', {
+      route: '/room/:roomId/inputs/show',
+      method: 'POST',
+      roomId,
+      inputIds,
+      body: req.body,
+    });
+    console.log('[request] Batch show inputs', {
+      roomId,
+      inputIds,
+      hasTransition: !!activeTransition,
+    });
+    const room = state.getRoom(roomId);
+    const sourceId = (req.headers['x-source-id'] as string | undefined) ?? null;
+
+    // Show all inputs under a single mutex lock (truly parallel at state level)
+    await room.batchShowInputs(inputIds, activeTransition);
+
+    const snapshot = room.getState();
+    roomEventBus.broadcast(roomId, {
+      type: 'room_updated',
+      roomId,
+      sourceId,
+      layers: snapshot.layers,
+      inputs: snapshot.inputs.map(toPublicInputState),
+    });
     res.status(200).send({ status: 'ok' });
   },
 );
@@ -1417,10 +1636,12 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(
   { schema: { params: RoomAndInputIdParamsSchema, body: UpdateInputSchema } },
   async (req, res) => {
     const { roomId, inputId } = req.params;
-    console.log('[request] Update input', {
+    logSyncServer('receive', {
+      route: '/room/:roomId/input/:inputId',
+      method: 'POST',
       roomId,
       inputId,
-      body: JSON.stringify(req.body),
+      body: req.body,
     });
     const room = state.getRoom(roomId);
     await room.updateInput(inputId, req.body);
@@ -1449,7 +1670,12 @@ routes.delete<RoomAndInputIdParams>(
   { schema: { params: RoomAndInputIdParamsSchema } },
   async (req, res) => {
     const { roomId, inputId } = req.params;
-    console.log('[request] Remove input', { roomId, inputId });
+    logSyncServer('receive', {
+      route: '/room/:roomId/input/:inputId',
+      method: 'DELETE',
+      roomId,
+      inputId,
+    });
     const room = state.getRoom(roomId);
     await room.removeInput(inputId);
     const sourceId = (req.headers['x-source-id'] as string | undefined) ?? null;
@@ -1561,6 +1787,13 @@ routes.get<RoomIdParams>(
         viewportTransitionDurationMs: snapshot.viewportTransitionDurationMs,
         viewportTransitionEasing: snapshot.viewportTransitionEasing,
       };
+      logSyncServer('broadcast', {
+        route: '/room/:roomId/state/sse',
+        roomId,
+        event: 'room_state',
+        inputs: payload.inputs.length,
+        layers: payload.layers.length,
+      });
       res.raw.write(`data: ${JSON.stringify(payload)}\n\n`);
     };
 

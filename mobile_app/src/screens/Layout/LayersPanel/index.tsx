@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
+  FlatList,
   InteractionManager,
-  ScrollView,
+  Pressable,
   StyleSheet,
   Text,
   View,
 } from "react-native";
 import { Droppable, DropProvider } from "react-native-reanimated-dnd";
+import MaterialDesignIcons from "@react-native-vector-icons/material-design-icons";
 import type { Layer, LayerBehaviorConfig } from "../../../types/layout";
 import type { InputCard } from "../../../types/input";
 import { Layer as LayerComponent } from "./Layer";
@@ -24,12 +26,21 @@ interface LayersPanelProps {
   layers: Layer[];
   inputs: InputCard[];
   onLayersChange: (layers: Layer[]) => void;
+  onToggleLayerVisibility?: (
+    layerId: string,
+    shouldShow: boolean,
+  ) => Promise<void>;
+  onAddLayer?: () => void;
+  onDeleteLayer?: (layerId: string) => void;
 }
 
 export default function LayersPanel({
   layers,
   inputs,
   onLayersChange,
+  onToggleLayerVisibility,
+  onAddLayer,
+  onDeleteLayer,
 }: LayersPanelProps) {
   // Always-fresh ref so onDrop closures never use stale layers.
   const layersRef = useRef(layers);
@@ -152,19 +163,28 @@ export default function LayersPanel({
       <View style={styles.panel}>
         <View style={styles.panelHeader}>
           <Text style={styles.panelTitle}>LAYERS</Text>
+          {onAddLayer && (
+            <Pressable
+              onPress={onAddLayer}
+              hitSlop={8}
+              style={styles.addLayerBtn}
+            >
+              <MaterialDesignIcons name="plus" color={C.accent} size={18} />
+            </Pressable>
+          )}
         </View>
 
-        <ScrollView
+        <FlatList
           style={styles.list}
           contentContainerStyle={styles.listContent}
           showsVerticalScrollIndicator={false}
           keyboardShouldPersistTaps="handled"
-        >
-          {layers.map((layer, layerIndex) => {
+          data={layers}
+          keyExtractor={(layer) => layer.id}
+          renderItem={({ item: layer, index: layerIndex }) => {
             const ui = getUi(layer.id);
             return (
               <LayerComponent
-                key={layer.id}
                 layer={layer}
                 inputs={inputs}
                 ui={ui}
@@ -180,23 +200,25 @@ export default function LayersPanel({
                 onLayerDrop={(data) =>
                   handleLayerDrop(data.layerId, layerIndex)
                 }
+                onToggleLayerVisibility={onToggleLayerVisibility}
+                onDeleteLayer={onDeleteLayer}
               />
             );
-          })}
-
-          {/* Drop zone to place a layer at the very end of the list */}
-          <Droppable<DragData>
-            style={styles.tailDropZone}
-            activeStyle={styles.tailDropZoneActive}
-            onDrop={(data) => {
-              if (data.type === "layer") {
-                handleLayerDrop(data.layerId, layers.length);
-              }
-            }}
-          >
-            <View style={styles.tailLine} />
-          </Droppable>
-        </ScrollView>
+          }}
+          ListFooterComponent={
+            <Droppable<DragData>
+              style={styles.tailDropZone}
+              activeStyle={styles.tailDropZoneActive}
+              onDrop={(data) => {
+                if (data.type === "layer") {
+                  handleLayerDrop(data.layerId, layers.length);
+                }
+              }}
+            >
+              <View style={styles.tailLine} />
+            </Droppable>
+          }
+        />
       </View>
     </DropProvider>
   );
@@ -209,7 +231,9 @@ const styles = StyleSheet.create({
   },
   panelHeader: {
     height: 36,
-    justifyContent: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
     paddingHorizontal: 12,
     borderBottomWidth: 1,
     borderBottomColor: C.divider,
@@ -219,6 +243,12 @@ const styles = StyleSheet.create({
     fontSize: 10,
     fontWeight: "700",
     letterSpacing: 1.5,
+  },
+  addLayerBtn: {
+    width: 24,
+    height: 24,
+    alignItems: "center",
+    justifyContent: "center",
   },
   list: { flex: 1 },
   listContent: { paddingBottom: 16, flexGrow: 1 },

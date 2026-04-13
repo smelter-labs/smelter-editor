@@ -56,9 +56,12 @@ export function SidePanel({
     }
   }, [isVisible, hiddenTranslateX, visibleTranslateX]);
 
-  const panelStyle = useAnimatedStyle(() => ({
-    transform: [{ translateX: translateX.value }],
-  }));
+  const panelStyle = useAnimatedStyle(() => {
+    "worklet";
+    return {
+      transform: [{ translateX: translateX.value }],
+    };
+  });
 
   return (
     <>

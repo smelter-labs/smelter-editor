@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-// Mirrors server/src/server/roomEventBus.ts - sync manually.
+// Mirrors server/src/core/roomEventBus.ts - sync manually.
 export type ConnectedPeer = {
   clientId: string;
   name: string | null;
@@ -78,7 +78,10 @@ export function useRoomWebSocket(
 
       ws.addEventListener('open', () => {
         attemptRef.current = 0;
-        console.log('[room-ws] connected', { roomId, url });
+        console.log(
+          `[${new Date().toISOString()}] [sync][web-recv] connected`,
+          { roomId, url },
+        );
         ws.send(JSON.stringify({ type: 'identify', name: CLIENT_NAME }));
       });
 
@@ -92,9 +95,15 @@ export function useRoomWebSocket(
         }
 
         if (msg.type === 'peers_updated') {
+          console.log(
+            `[${new Date().toISOString()}] [sync][web-recv] peers_updated`,
+            msg,
+          );
           setPeers(msg.peers);
         } else if (msg.type === 'connected') {
-          console.log('[room-ws] assigned clientId', msg.clientId);
+          console.log(
+            `[${new Date().toISOString()}] [sync][web-recv] connected id=${msg.clientId}`,
+          );
         } else if (
           msg.type === 'input_updated' ||
           msg.type === 'input_deleted' ||
@@ -103,24 +112,33 @@ export function useRoomWebSocket(
           // Always process — even echoes of our own mutations. The server may have
           // recomputed (corrected) the layout before echoing, and we must accept
           // those corrections rather than staying stuck with the stale optimistic state.
-          console.log(`[room-ws] ${msg.type}`, msg);
+          console.log(
+            `[${new Date().toISOString()}] [sync][web-recv] ${msg.type}`,
+            msg,
+          );
           optsRef.current?.onRemoteInputChange?.();
         }
       });
 
       ws.addEventListener('error', () => {
-        console.error('[room-ws] connection error', { roomId, url });
+        console.error(
+          `[${new Date().toISOString()}] [sync][web-recv] connection error`,
+          { roomId, url },
+        );
       });
 
       ws.addEventListener('close', (ev) => {
         setPeers([]);
 
         if (destroyed || ev.code === CLOSE_CODE_ROOM_DELETED) {
-          console.log('[room-ws] disconnected (permanent)', {
-            roomId,
-            code: ev.code,
-            reason: ev.reason,
-          });
+          console.log(
+            `[${new Date().toISOString()}] [sync][web-recv] disconnected (permanent)`,
+            {
+              roomId,
+              code: ev.code,
+              reason: ev.reason,
+            },
+          );
           return;
         }
 
@@ -129,12 +147,15 @@ export function useRoomWebSocket(
           RECONNECT_BASE_DELAY_MS * 2 ** (attemptRef.current - 1),
           RECONNECT_MAX_DELAY_MS,
         );
-        console.log('[room-ws] disconnected, reconnecting', {
-          roomId,
-          code: ev.code,
-          attempt: attemptRef.current,
-          delayMs: delay,
-        });
+        console.log(
+          `[${new Date().toISOString()}] [sync][web-recv] disconnected, reconnecting`,
+          {
+            roomId,
+            code: ev.code,
+            attempt: attemptRef.current,
+            delayMs: delay,
+          },
+        );
         timerRef.current = setTimeout(() => {
           if (!destroyed) connect();
         }, delay);
