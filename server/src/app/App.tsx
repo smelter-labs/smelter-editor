@@ -10,7 +10,6 @@ import {
   useOutputShaders,
   useViewport,
 } from './store';
-import { NewsStripOverlay } from './news-strip';
 import { Input } from '../inputs/inputs';
 import { wrapWithShaders } from '../utils/shaderUtils';
 import { AudioStoreContext } from '../audio/AudioStoreContext';
@@ -81,7 +80,7 @@ function OutputScene() {
         <View
           key={layer.id}
           style={{ top: 0, left: 0, width, height, overflow: 'visible' }}>
-          {layer.inputs.map((item) => {
+          {layer.inputs.map((item, itemIndex) => {
             const cT = item.cropTop ?? 0;
             const cL = item.cropLeft ?? 0;
             const cR = item.cropRight ?? 0;
@@ -129,8 +128,8 @@ function OutputScene() {
 
             return (
               <Rescaler
-                key={item.inputId}
-                id={`layer-${layer.id}-${item.inputId}`}
+                key={`${item.inputId}-${itemIndex}`}
+                id={`layer-${layer.id}-${item.inputId}-${itemIndex}`}
                 transition={{
                   durationMs: item.transitionDurationMs ?? 300,
                   easingFunction: buildEasingFunction(item.transitionEasing),
@@ -147,7 +146,6 @@ function OutputScene() {
           })}
         </View>
       ))}
-      <NewsStripOverlay />
     </View>
   );
 

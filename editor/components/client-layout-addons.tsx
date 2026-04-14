@@ -2,6 +2,7 @@
 
 import dynamic from 'next/dynamic';
 import { usePathname } from 'next/navigation';
+import { useVoiceCommandsEnabledSetting } from '@/lib/voice/macroSettings';
 
 const SpeechToTextWithCommands = dynamic(
   () =>
@@ -48,10 +49,11 @@ const PREVIEW_PREFIXES = ['/raw-preview', '/room-preview'];
 export default function ClientLayoutAddons() {
   const pathname = usePathname();
   const isPreview = PREVIEW_PREFIXES.some((p) => pathname.startsWith(p));
+  const [voiceCommandsEnabled] = useVoiceCommandsEnabledSetting();
 
   return (
     <>
-      {!isPreview && <SpeechToTextWithCommands />}
+      {!isPreview && voiceCommandsEnabled && <SpeechToTextWithCommands />}
       {!isPreview && <VoiceActionFeedback />}
       {!isPreview && <TimelineEventFeedback />}
       <SonnerToaster />

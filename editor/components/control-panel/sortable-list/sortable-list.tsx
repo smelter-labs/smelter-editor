@@ -60,13 +60,16 @@ export function SortableList<T extends BaseItem>({
     setOrderedItems((prev) => {
       if (
         prev.length === items.length &&
-        prev.every((prevItem, index) => prevItem.id === items[index]?.id)
+        prev.every(
+          (prevItem, index) =>
+            keyExtractor(prevItem) === keyExtractor(items[index]),
+        )
       ) {
         return prev;
       }
       return items;
     });
-  }, [items]);
+  }, [items, keyExtractor]);
 
   useEffect(() => {
     if (resetVersion !== undefined) {

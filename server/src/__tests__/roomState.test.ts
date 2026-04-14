@@ -4,6 +4,7 @@ const mocks = vi.hoisted(() => {
   const fn = vi.fn;
   return {
     smelter: {
+      setRecoveryHandler: fn(),
       registerOutput: fn<any>(),
       registerMp4Output: fn().mockResolvedValue(undefined),
       unregisterOutput: fn().mockResolvedValue(undefined),
@@ -507,6 +508,81 @@ describe('RoomState', () => {
       const ids = room.getInputs().map((i) => i.inputId);
       expect(ids.indexOf(id2)).toBeLessThan(ids.indexOf(id1));
     });
+
+    it('reorders inputs inside behavior-driven layers', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const id1 = (await room.addNewInput({ type: 'text-input', text: 'A' }))!;
+      const id2 = (await room.addNewInput({ type: 'game', title: 'B' }))!;
+      const id3 = (await room.addNewInput({ type: 'whip', username: 'C' }))!;
+      await room.connectInput(id1);
+      await room.connectInput(id2);
+      await room.connectInput(id3);
+
+      await room.updateLayers([
+        {
+          id: 'layer-1',
+          behavior: { type: 'equal-grid', autoscale: true },
+          inputs: [
+            { inputId: id1, x: 0, y: 0, width: 100, height: 100 },
+            { inputId: id2, x: 0, y: 0, width: 100, height: 100 },
+            { inputId: id3, x: 0, y: 0, width: 100, height: 100 },
+          ],
+        },
+      ]);
+
+      await room.reorderInputs([id3, id1, id2]);
+
+      const layerInputIds = room
+        .getState()
+        .layers[0]!.inputs.map((i) => i.inputId);
+      expect(layerInputIds.indexOf(id3)).toBeLessThan(
+        layerInputIds.indexOf(id1),
+      );
+      expect(layerInputIds.indexOf(id1)).toBeLessThan(
+        layerInputIds.indexOf(id2),
+      );
+    });
+
+    it('preserves per-input positions in manual layers on reorder', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const id1 = (await room.addNewInput({ type: 'text-input', text: 'A' }))!;
+      const id2 = (await room.addNewInput({ type: 'game', title: 'B' }))!;
+      await room.connectInput(id1);
+      await room.connectInput(id2);
+
+      const pos0 = { x: 0, y: 0, width: 960, height: 1080 };
+      const pos1 = { x: 960, y: 0, width: 960, height: 1080 };
+
+      await room.updateLayers([
+        {
+          id: 'manual',
+          inputs: [
+            { inputId: id1, ...pos0 },
+            { inputId: id2, ...pos1 },
+          ],
+        },
+      ]);
+
+      await room.reorderInputs([id2, id1]);
+      // Allow debounced store flush
+      await new Promise((r) => setTimeout(r, 20));
+
+      const layer = room.getState().layers[0]!;
+      const li1 = layer.inputs.find((i) => i.inputId === id1)!;
+      const li2 = layer.inputs.find((i) => i.inputId === id2)!;
+
+      // Each input keeps its own position after reorder
+      expect(li1.x).toBe(pos0.x);
+      expect(li1.width).toBe(pos0.width);
+      expect(li2.x).toBe(pos1.x);
+      expect(li2.width).toBe(pos1.width);
+    });
   });
 
   describe('updateLayers', () => {
@@ -759,6 +835,8 @@ describe('RoomState', () => {
 
       // Hide id2 — it should stay in the layer, but layout should act as if only id1 is present
       await room.hideInput(id2);
+      // hideInput triggers debounced flushStoreUpdate (≤ MIN_STORE_FLUSH_INTERVAL_MS)
+      await new Promise((r) => setTimeout(r, 20));
 
       const layer = room.getState().layers[0]!;
       const inputIds = layer.inputs.map((i) => i.inputId);
@@ -773,7 +851,7 @@ describe('RoomState', () => {
       expect(li1.height).toBe(output.resolution.height);
     });
 
-    it('missing connected inputs are appended to behavior-driven first layer only', async () => {
+    it('missing connected inputs are appended to first layer when it uses equal-grid', async () => {
       const output = createTestOutput();
       const room = new RoomState('room-1', output, [], true);
       await room.init();
@@ -795,7 +873,7 @@ describe('RoomState', () => {
       expect(inputIds).toContain(id1);
     });
 
-    it('missing connected inputs are NOT injected into manual layers', async () => {
+    it('missing connected inputs are appended to first manual layer with computed geometry', async () => {
       const output = createTestOutput();
       const room = new RoomState('room-1', output, [], true);
       await room.init();
@@ -803,17 +881,41 @@ describe('RoomState', () => {
       const id1 = (await room.addNewInput({ type: 'text-input', text: 'A' }))!;
       await room.connectInput(id1);
 
-      // Manual layer that intentionally omits id1
       await room.updateLayers([
         {
           id: 'manual',
-          // no behavior
           inputs: [],
         },
       ]);
 
-      const inputIds = room.getState().layers[0]!.inputs.map((i) => i.inputId);
-      expect(inputIds).not.toContain(id1);
+      const layer = room.getState().layers[0]!;
+      const li = layer.inputs.find((i) => i.inputId === id1);
+      expect(li).toBeDefined();
+      expect(li!.width).toBeGreaterThan(0);
+      expect(li!.height).toBeGreaterThan(0);
+      expect(layer.behavior).toBeUndefined();
+    });
+
+    it('unplaced inputs go to first layer, not a lower manual-only layer', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const id1 = (await room.addNewInput({ type: 'text-input', text: 'A' }))!;
+      await room.connectInput(id1);
+
+      await room.updateLayers([
+        { id: 'first-manual', inputs: [] },
+        {
+          id: 'second-behavior',
+          behavior: { type: 'equal-grid', autoscale: true },
+          inputs: [],
+        },
+      ]);
+
+      const layers = room.getState().layers;
+      expect(layers[0]!.inputs.map((i) => i.inputId)).toContain(id1);
+      expect(layers[1]!.inputs.map((i) => i.inputId)).not.toContain(id1);
     });
   });
 
@@ -1035,7 +1137,6 @@ describe('RoomState', () => {
       expect(Array.isArray(result.layers)).toBe(true);
       expect(typeof result.swapDurationMs).toBe('number');
       expect(typeof result.swapOutgoingEnabled).toBe('boolean');
-      expect(typeof result.newsStripEnabled).toBe('boolean');
     });
 
     it('updates lastReadTimestamp', async () => {
@@ -1050,7 +1151,7 @@ describe('RoomState', () => {
     });
   });
 
-  describe('swap and news strip settings', () => {
+  describe('swap settings', () => {
     it('sets and gets swap duration', async () => {
       const output = createTestOutput();
       const room = new RoomState('room-1', output, [], true);
@@ -1069,15 +1170,6 @@ describe('RoomState', () => {
       expect(room.getSwapOutgoingEnabled()).toBe(false);
     });
 
-    it('sets and gets news strip enabled', async () => {
-      const output = createTestOutput();
-      const room = new RoomState('room-1', output, [], true);
-      await room.init();
-
-      room.setNewsStripEnabled(true);
-      expect(room.getNewsStripEnabled()).toBe(true);
-    });
-
     it('sets and gets fade durations', async () => {
       const output = createTestOutput();
       const room = new RoomState('room-1', output, [], true);
@@ -1088,6 +1180,26 @@ describe('RoomState', () => {
 
       room.setSwapFadeOutDurationMs(750);
       expect(room.getSwapFadeOutDurationMs()).toBe(750);
+    });
+
+    it('updates output shaders in room state snapshot', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const shaders = [
+        {
+          shaderName: 'Blur',
+          shaderId: 'blur-1',
+          enabled: true,
+          params: [{ paramName: 'strength', paramValue: 0.42 }],
+        },
+      ];
+
+      room.setOutputShaders(shaders);
+
+      expect(room.getState().outputShaders).toEqual(shaders);
+      expect(output.store.getState().outputShaders).toEqual(shaders);
     });
   });
 
@@ -1168,6 +1280,139 @@ describe('RoomState', () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    it('mutes active timeline inputs while paused and restores volume on resume', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const inputId = (await room.addNewInput({
+        type: 'text-input',
+        text: 'Pause me',
+      }))!;
+
+      await room.startTimelinePlayback(createTimelineConfig(inputId, 'TL'), 0);
+
+      const duringPlayback = room.getInputs().find((i) => i.inputId === inputId);
+      expect(duringPlayback?.volume).toBe(1);
+
+      await room.pauseTimeline();
+      const duringPause = room.getInputs().find((i) => i.inputId === inputId);
+      expect(duringPause?.volume).toBe(0);
+
+      await room.resumeTimeline();
+      const afterResume = room.getInputs().find((i) => i.inputId === inputId);
+      expect(afterResume?.volume).toBe(1);
+
+      await room.stopTimelinePlayback();
+    });
+
+    it('mutes attached inputs during pause and restores them on resume', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const parentId = (await room.addNewInput({
+        type: 'text-input',
+        text: 'Parent',
+      }))!;
+      const attachedId = (await room.addNewInput({
+        type: 'text-input',
+        text: 'Attached',
+      }))!;
+
+      await room.connectInput(parentId);
+      await room.connectInput(attachedId);
+      await room.updateInput(parentId, { attachedInputIds: [attachedId] });
+      await room.updateInput(attachedId, { volume: 0.6 });
+
+      await room.startTimelinePlayback(createTimelineConfig(parentId, 'TL'), 0);
+      const attachedDuringPlayback = room
+        .getInputs()
+        .find((i) => i.inputId === attachedId);
+      const attachedVolumeBeforePause = attachedDuringPlayback?.volume;
+      expect(attachedVolumeBeforePause).toBeDefined();
+
+      await room.pauseTimeline();
+      const parentDuringPause = room
+        .getInputs()
+        .find((i) => i.inputId === parentId);
+      const attachedDuringPause = room
+        .getInputs()
+        .find((i) => i.inputId === attachedId);
+      expect(parentDuringPause?.volume).toBe(0);
+      expect(attachedDuringPause?.volume).toBe(0);
+
+      await room.resumeTimeline();
+      const parentAfterResume = room
+        .getInputs()
+        .find((i) => i.inputId === parentId);
+      const attachedAfterResume = room
+        .getInputs()
+        .find((i) => i.inputId === attachedId);
+      expect(parentAfterResume?.volume).toBe(1);
+      expect(attachedAfterResume?.volume).toBe(attachedVolumeBeforePause);
+
+      await room.stopTimelinePlayback();
+    });
+
+    it('preserves manual layer positions after stop when unplaced inputs exist', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const id1 = (await room.addNewInput({
+        type: 'text-input',
+        text: 'A',
+      }))!;
+      const id2 = (await room.addNewInput({
+        type: 'text-input',
+        text: 'B',
+      }))!;
+      await room.connectInput(id1);
+      await room.connectInput(id2);
+
+      const pos1 = { x: 0, y: 0, width: 960, height: 1080 };
+      const pos2 = { x: 960, y: 0, width: 960, height: 1080 };
+
+      await room.updateLayers([
+        {
+          id: 'manual',
+          inputs: [
+            { inputId: id1, ...pos1 },
+            { inputId: id2, ...pos2 },
+          ],
+        },
+      ]);
+
+      await room.startTimelinePlayback(createTimelineConfig(id1, 'TL'), 0);
+
+      const id3 = (await room.addNewInput({
+        type: 'text-input',
+        text: 'C',
+      }))!;
+      await room.connectInput(id3);
+
+      await room.stopTimelinePlayback();
+
+      // Allow any pending debounced store flushes to settle
+      await new Promise((r) => setTimeout(r, 20));
+
+      const layers = room.getState().layers;
+      const li1 = layers[0]!.inputs.find((i) => i.inputId === id1);
+      const li2 = layers[0]!.inputs.find((i) => i.inputId === id2);
+
+      expect(li1).toBeDefined();
+      expect(li2).toBeDefined();
+      expect(li1!.x).toBe(pos1.x);
+      expect(li1!.y).toBe(pos1.y);
+      expect(li1!.width).toBe(pos1.width);
+      expect(li1!.height).toBe(pos1.height);
+      expect(li2!.x).toBe(pos2.x);
+      expect(li2!.y).toBe(pos2.y);
+      expect(li2!.width).toBe(pos2.width);
+      expect(li2!.height).toBe(pos2.height);
     });
   });
 
@@ -1354,6 +1599,7 @@ describe('RoomState', () => {
       const input = room.getInputs().find((i) => i.inputId === inputId)!;
       const pub = toPublicInputState(input);
       expect('textScrollNudge' in pub).toBe(true);
+      expect(pub.textScrollEnabled).toBe(true);
     });
   });
 
@@ -1418,6 +1664,31 @@ describe('RoomState', () => {
           },
         ],
         totalDurationMs: 5000,
+        keyframeInterpolationMode: 'step',
+      };
+    }
+
+    function createSingleClipTimelineConfig(
+      inputId: string,
+      blockSettings: TimelineConfig['tracks'][number]['clips'][number]['blockSettings'],
+    ): TimelineConfig {
+      return {
+        tracks: [
+          {
+            id: 'track-1',
+            clips: [
+              {
+                id: 'clip-1',
+                inputId,
+                startMs: 0,
+                endMs: 20000,
+                blockSettings,
+                keyframes: [],
+              },
+            ],
+          },
+        ],
+        totalDurationMs: 20000,
         keyframeInterpolationMode: 'step',
       };
     }
@@ -1515,6 +1786,122 @@ describe('RoomState', () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    it('skips scrub frozen frame extraction for audio-backed local MP4 inputs', async () => {
+      mocks.pathExists.mockResolvedValue(true);
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const inputId = (await room.addNewInput({
+        type: 'local-mp4',
+        source: { audioFileName: 'test-audio.mp4' },
+      }))!;
+      await room.connectInput(inputId);
+
+      mocks.smelter.extractMp4Frame.mockClear();
+      await room.applyTimelineState(
+        createMp4TimelineConfig(inputId),
+        3_000,
+      );
+
+      expect(mocks.smelter.extractMp4Frame).not.toHaveBeenCalled();
+    });
+
+    it('clamps non-loop scrub frozen frame timestamp to media tail', async () => {
+      const { room, inputId } = await createRoomWithMp4();
+      const input = room.getInputs().find((i) => i.inputId === inputId);
+      if (input?.type === 'local-mp4') {
+        input.mp4DurationMs = 10_000;
+      }
+
+      mocks.smelter.extractMp4Frame.mockClear();
+      await room.applyTimelineState(
+        createSingleClipTimelineConfig(inputId, {
+          volume: 1,
+          showTitle: false,
+          shaders: [],
+          mp4PlayFromMs: 50_000,
+          mp4Loop: false,
+        }),
+        10_000,
+      );
+
+      expect(mocks.smelter.extractMp4Frame).toHaveBeenCalled();
+      const [, framePositionMs] = mocks.smelter.extractMp4Frame.mock.calls.at(
+        -1,
+      ) as [string, number];
+      expect(framePositionMs).toBe(9_999);
+    });
+  });
+
+  describe('mp4 restart guardrails', () => {
+    async function createConnectedMp4Room() {
+      mocks.pathExists.mockResolvedValue(true);
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+      const inputId = (await room.addNewInput({
+        type: 'local-mp4',
+        source: { fileName: 'test-video.mp4' },
+      }))!;
+      await room.connectInput(inputId);
+      return { room, inputId };
+    }
+
+    it('never sends a negative offsetMs during MP4 restart', async () => {
+      const { room, inputId } = await createConnectedMp4Room();
+      const input = room.getInputs().find((i) => i.inputId === inputId);
+      if (input?.type === 'local-mp4') {
+        input.mp4DurationMs = 10_000;
+      }
+      mocks.smelter.unregisterInput.mockClear();
+      mocks.smelter.registerInput.mockClear();
+      mocks.smelter.getPipelineTimeMs.mockReturnValue(1000);
+
+      await room.restartMp4Input(inputId, 5000, false);
+
+      const registerCall = mocks.smelter.registerInput.mock.calls.at(-1);
+      expect(registerCall).toBeDefined();
+      if (!registerCall) {
+        throw new Error('Expected registerInput to be called');
+      }
+      expect(registerCall[1]).toMatchObject({
+        type: 'mp4',
+        offsetMs: 0,
+      });
+    });
+
+    it('normalizes restart playhead for looped and finite clips', async () => {
+      const { room, inputId } = await createConnectedMp4Room();
+      const input = room.getInputs().find((i) => i.inputId === inputId);
+      if (input?.type === 'local-mp4') {
+        input.mp4DurationMs = 10_000;
+      }
+      mocks.smelter.unregisterInput.mockClear();
+      mocks.smelter.registerInput.mockClear();
+      mocks.smelter.getPipelineTimeMs.mockReturnValue(30_000);
+
+      await room.restartMp4Input(inputId, 12_345, true);
+      const loopedCall = mocks.smelter.registerInput.mock.calls.at(-1);
+      if (!loopedCall) {
+        throw new Error('Expected looped restart registerInput call');
+      }
+      expect(loopedCall[1]).toMatchObject({
+        type: 'mp4',
+        offsetMs: 27_655,
+      });
+
+      await room.restartMp4Input(inputId, 12_345, false);
+      const nonLoopCall = mocks.smelter.registerInput.mock.calls.at(-1);
+      if (!nonLoopCall) {
+        throw new Error('Expected finite restart registerInput call');
+      }
+      expect(nonLoopCall[1]).toMatchObject({
+        type: 'mp4',
+        offsetMs: 20_001,
+      });
     });
   });
 });

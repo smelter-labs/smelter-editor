@@ -435,30 +435,6 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
         value: command.enabled,
       });
       break;
-    case 'SET_NEWS_STRIP_ENABLED':
-      window.dispatchEvent(
-        new CustomEvent('smelter:voice:set-news-strip-enabled', {
-          detail: { enabled: command.enabled },
-        }),
-      );
-      emitActionFeedback({
-        type: 'toggle',
-        label: 'News Strip',
-        value: command.enabled,
-      });
-      break;
-    case 'SET_NEWS_STRIP_FADE_DURING_SWAP':
-      window.dispatchEvent(
-        new CustomEvent('smelter:voice:set-news-strip-fade-during-swap', {
-          detail: { enabled: command.enabled },
-        }),
-      );
-      emitActionFeedback({
-        type: 'toggle',
-        label: 'News Strip Fade During Swap',
-        value: command.enabled,
-      });
-      break;
   }
 }
 

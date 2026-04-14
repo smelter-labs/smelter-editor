@@ -18,6 +18,7 @@ import { createDefaultSnakeGameInputState } from '../snakeGame/snakeGameState';
 import { createHandsStore } from '../hands/handStore';
 import type { ShaderConfig, ActiveTransition } from '../types';
 import { DATA_DIR } from '../dataDir';
+import { isSmelterTransportError } from '../smelterTransportError';
 import type {
   RoomInputState,
   RegisterInputOptions,
@@ -378,6 +379,7 @@ export class InputManager {
 
     const imageId = await this.registerImageAsset(opts.fileName);
     input.imageId = imageId;
+    input.imageFileName = opts.fileName;
     input.imageAssetMissing = false;
     input.metadata.title = formatImageName(opts.fileName);
     input.metadata.description = '';
@@ -458,6 +460,7 @@ export class InputManager {
           },
           volume: 0,
           imageId,
+          imageFileName: fileName,
           imageAssetMissing: true,
         });
         this.onStateChange();
@@ -492,6 +495,7 @@ export class InputManager {
         metadata: { title: formatImageName(fileName), description: '' },
         volume: 0,
         imageId,
+        imageFileName: fileName,
       });
       this.onStateChange();
     } else {
@@ -512,6 +516,7 @@ export class InputManager {
         },
         volume: 0,
         imageId: imageId ?? imageIdFromFileName(fileName),
+        imageFileName: fileName,
         imageAssetMissing: true,
       });
       this.onStateChange();
@@ -546,6 +551,7 @@ export class InputManager {
       textAlign: opts.textAlign ?? 'left',
       textColor: opts.textColor ?? '#ffffff',
       textMaxLines: opts.textMaxLines ?? 10,
+      textScrollEnabled: opts.textScrollEnabled ?? true,
       textScrollSpeed: opts.textScrollSpeed ?? 80,
       textScrollLoop: opts.textScrollLoop ?? true,
       textScrollNudge: 0,
@@ -795,6 +801,8 @@ export class InputManager {
       if (options.textColor !== undefined) input.textColor = options.textColor;
       if (options.textMaxLines !== undefined)
         input.textMaxLines = options.textMaxLines;
+      if (options.textScrollEnabled !== undefined)
+        input.textScrollEnabled = options.textScrollEnabled;
       if (options.textScrollSpeed !== undefined)
         input.textScrollSpeed = options.textScrollSpeed;
       if (options.textScrollLoop !== undefined)
@@ -1076,7 +1084,35 @@ export class InputManager {
         `[mp4-restart] unregister OK "${name}" ${Date.now() - t0}ms`,
       );
 
-      const offsetMs = SmelterInstance.getPipelineTimeMs() - playFromMs;
+      const requestedPlayFromMs = Number.isFinite(playFromMs) ? playFromMs : 0;
+      let normalizedPlayFromMs = Math.max(0, requestedPlayFromMs);
+      const durationMs = input.mp4DurationMs;
+      if (durationMs && durationMs > 0) {
+        if (loop) {
+          normalizedPlayFromMs = normalizedPlayFromMs % durationMs;
+        } else {
+          // Prevent seeking past the tail of finite clips.
+          normalizedPlayFromMs = Math.min(
+            normalizedPlayFromMs,
+            Math.max(0, durationMs - 1),
+          );
+        }
+      }
+      if (normalizedPlayFromMs !== requestedPlayFromMs) {
+        logTimelineEvent(
+          this.idPrefix,
+          `[mp4-restart] normalize-playhead "${name}" requested=${requestedPlayFromMs}ms normalized=${normalizedPlayFromMs}ms loop=${loop}`,
+        );
+      }
+
+      let offsetMs = SmelterInstance.getPipelineTimeMs() - normalizedPlayFromMs;
+      if (offsetMs < 0) {
+        logTimelineEvent(
+          this.idPrefix,
+          `[mp4-restart] clamp-offset "${name}" requestedOffsetMs=${offsetMs} clampedOffsetMs=0`,
+        );
+        offsetMs = 0;
+      }
       logTimelineEvent(
         this.idPrefix,
         `[mp4-restart] register "${name}" loop=${loop} offsetMs=${offsetMs}`,
@@ -1093,11 +1129,7 @@ export class InputManager {
       );
 
       input.registeredAtPipelineMs = SmelterInstance.getPipelineTimeMs();
-      if (loop && input.mp4DurationMs && input.mp4DurationMs > 0) {
-        input.playFromMs = playFromMs % input.mp4DurationMs;
-      } else {
-        input.playFromMs = playFromMs;
-      }
+      input.playFromMs = normalizedPlayFromMs;
     } catch (err) {
       logTimelineEvent(
         this.idPrefix,
@@ -1138,8 +1170,19 @@ export class InputManager {
       try {
         await SmelterInstance.unregisterInput(input.inputId);
       } catch (err: any) {
+        const errorCode = err?.body?.error_code;
+        if (
+          errorCode === 'INPUT_STREAM_NOT_FOUND' ||
+          isSmelterTransportError(err)
+        ) {
+          // Input teardown can race with room stop / Smelter recovery.
+          console.warn(
+            `[room] Skipping input unregister during room teardown inputId=${input.inputId} code=${errorCode ?? 'transport'}`,
+          );
+          continue;
+        }
         console.error(
-          'Failed to remove input when removing the room.',
+          `[room] Failed to remove input during room teardown inputId=${input.inputId}`,
           err?.body ?? err,
         );
       }

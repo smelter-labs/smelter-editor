@@ -260,6 +260,9 @@ describe('InputManager', () => {
         const input = manager.getInput(inputId!);
         expect(input.type === 'text-input' && input.textAlign).toBe('left');
         expect(input.type === 'text-input' && input.textColor).toBe('#ffffff');
+        expect(input.type === 'text-input' && input.textScrollEnabled).toBe(
+          true,
+        );
         expect(input.type === 'text-input' && input.textFontSize).toBe(80);
       });
     });
@@ -445,11 +448,15 @@ describe('InputManager', () => {
       manager.updateInput(inputId, {
         text: 'updated',
         textAlign: 'center',
+        textScrollEnabled: false,
         textFontSize: 48,
       });
       const input = manager.getInput(inputId);
       expect(input.type === 'text-input' && input.text).toBe('updated');
       expect(input.type === 'text-input' && input.textAlign).toBe('center');
+      expect(input.type === 'text-input' && input.textScrollEnabled).toBe(
+        false,
+      );
       expect(input.type === 'text-input' && input.textFontSize).toBe(48);
     });
 

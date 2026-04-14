@@ -1418,34 +1418,6 @@ export function useControlPanelEvents({
       }
     };
 
-    const onSetNewsStripEnabled = async (
-      e: CustomEvent<{ enabled: boolean; requestId?: string }>,
-    ) => {
-      const requestId = e.detail?.requestId;
-      try {
-        await updateRoom(roomId, { newsStripEnabled: e.detail.enabled });
-        await handleRefreshState();
-        emitMacroStepComplete(requestId);
-      } catch (err) {
-        emitMacroStepComplete(requestId, err);
-        console.error('Voice: failed to set news strip enabled', err);
-      }
-    };
-
-    const onSetNewsStripFadeDuringSwap = async (
-      e: CustomEvent<{ enabled: boolean; requestId?: string }>,
-    ) => {
-      const requestId = e.detail?.requestId;
-      try {
-        await updateRoom(roomId, { newsStripFadeDuringSwap: e.detail.enabled });
-        await handleRefreshState();
-        emitMacroStepComplete(requestId);
-      } catch (err) {
-        emitMacroStepComplete(requestId, err);
-        console.error('Voice: failed to set news strip fade', err);
-      }
-    };
-
     window.addEventListener(
       'smelter:voice:set-swap-duration',
       onSetSwapDuration as unknown as EventListener,
@@ -1461,14 +1433,6 @@ export function useControlPanelEvents({
     window.addEventListener(
       'smelter:voice:set-swap-outgoing-enabled',
       onSetSwapOutgoingEnabled as unknown as EventListener,
-    );
-    window.addEventListener(
-      'smelter:voice:set-news-strip-enabled',
-      onSetNewsStripEnabled as unknown as EventListener,
-    );
-    window.addEventListener(
-      'smelter:voice:set-news-strip-fade-during-swap',
-      onSetNewsStripFadeDuringSwap as unknown as EventListener,
     );
 
     return () => {
@@ -1487,14 +1451,6 @@ export function useControlPanelEvents({
       window.removeEventListener(
         'smelter:voice:set-swap-outgoing-enabled',
         onSetSwapOutgoingEnabled as unknown as EventListener,
-      );
-      window.removeEventListener(
-        'smelter:voice:set-news-strip-enabled',
-        onSetNewsStripEnabled as unknown as EventListener,
-      );
-      window.removeEventListener(
-        'smelter:voice:set-news-strip-fade-during-swap',
-        onSetNewsStripFadeDuringSwap as unknown as EventListener,
       );
     };
   }, [roomId, handleRefreshState]);

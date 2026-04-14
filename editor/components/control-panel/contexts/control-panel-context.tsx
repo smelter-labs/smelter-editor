@@ -11,7 +11,6 @@ type ControlPanelContextValue = {
   availableShaders: AvailableShader[];
   isRecording: boolean;
   isFrozen: boolean;
-  motionScores: Record<string, number>;
   audioAnalysisEnabled: boolean;
 };
 

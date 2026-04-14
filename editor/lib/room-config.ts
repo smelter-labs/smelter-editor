@@ -4,6 +4,7 @@ import type {
   ShaderConfig,
   UpdateInputOptions,
 } from '@/lib/types';
+import type { Layer, LayerBehaviorConfig } from '@/lib/types';
 import type { ViewportProperties } from '@smelter-editor/types';
 import {
   OUTPUT_TRACK_INPUT_ID,
@@ -30,6 +31,7 @@ export type RoomConfigInput = {
   channelId?: string;
   url?: string;
   imageId?: string;
+  imageFileName?: string;
   mp4FileName?: string;
   audioFileName?: string;
   text?: string;
@@ -37,6 +39,7 @@ export type RoomConfigInput = {
   textColor?: string;
   needsConnection?: boolean;
   textMaxLines?: number;
+  textScrollEnabled?: boolean;
   textScrollSpeed?: number;
   textScrollLoop?: boolean;
   textFontSize?: number;
@@ -65,31 +68,11 @@ export type RoomConfigInput = {
   cropBottom?: number;
 };
 
-function extractMp4FileName(title: string): string | undefined {
-  const match = title.match(/^\[MP4\]\s*(.+)$/);
-  if (match) {
-    const name = match[1].trim();
-    return name.toLowerCase().replace(/\s+/g, '_') + '.mp4';
-  }
-  return undefined;
-}
-
-function extractAudioFileName(title: string): string | undefined {
-  const match = title.match(/^\[AUDIO\]\s*(.+)$/);
-  if (match) {
-    const name = match[1].trim();
-    return name.toLowerCase().replace(/\s+/g, '_') + '.mp4';
-  }
-  return undefined;
-}
-
 export type RoomConfigTransitionSettings = {
   swapDurationMs?: number;
   swapOutgoingEnabled?: boolean;
   swapFadeInDurationMs?: number;
   swapFadeOutDurationMs?: number;
-  newsStripFadeDuringSwap?: boolean;
-  newsStripEnabled?: boolean;
 };
 
 export type RoomConfigClip = {
@@ -117,10 +100,31 @@ export type RoomConfigOutputPlayer = {
   volume: number;
 };
 
+export type RoomConfigLayerInput = {
+  inputIndex: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  transitionDurationMs?: number;
+  transitionEasing?: string;
+  cropTop?: number;
+  cropLeft?: number;
+  cropRight?: number;
+  cropBottom?: number;
+};
+
+export type RoomConfigLayer = {
+  id: string;
+  inputs: RoomConfigLayerInput[];
+  behavior?: LayerBehaviorConfig;
+};
+
 export type RoomConfig = {
   version: 1;
   layout: Layout;
   inputs: RoomConfigInput[];
+  layers?: RoomConfigLayer[];
   resolution?: { width: number; height: number };
   transitionSettings?: RoomConfigTransitionSettings;
   viewport?: Partial<ViewportProperties>;
@@ -143,6 +147,52 @@ export type RoomConfigTimelineState = {
   pixelsPerSecond: number;
 };
 
+function toNameKey(value: string): string {
+  return value.trim().toLocaleLowerCase();
+}
+
+function claimUniqueName(baseName: string, usedKeys: Set<string>): string {
+  let candidate = baseName;
+  let index = 2;
+  while (usedKeys.has(toNameKey(candidate))) {
+    candidate = `${baseName} (${index})`;
+    index += 1;
+  }
+  usedKeys.add(toNameKey(candidate));
+  return candidate;
+}
+
+function sanitizeImportedConfigNames(config: RoomConfig): RoomConfig {
+  const usedInputNames = new Set<string>();
+  const inputs = config.inputs.map((input, index) => {
+    const preferred = input.title.trim() || `Input ${index + 1}`;
+    return {
+      ...input,
+      title: claimUniqueName(preferred, usedInputNames),
+    };
+  });
+
+  const usedTrackNames = new Set<string>();
+  const timeline = config.timeline
+    ? {
+        ...config.timeline,
+        tracks: config.timeline.tracks.map((track, index) => {
+          const preferred = track.label.trim() || `Track ${index + 1}`;
+          return {
+            ...track,
+            label: claimUniqueName(preferred, usedTrackNames),
+          };
+        }),
+      }
+    : undefined;
+
+  return {
+    ...config,
+    inputs,
+    timeline,
+  };
+}
+
 export function resolveRoomConfigTimelineState(
   roomId: string,
   liveTimelineState?: RoomConfigTimelineState | null,
@@ -162,6 +212,7 @@ export function exportRoomConfig(
   outputPlayer?: RoomConfigOutputPlayer,
   viewport?: Partial<ViewportProperties>,
   outputShaders?: ShaderConfig[],
+  layers?: Layer[],
 ): RoomConfig {
   const inputIdToIndex = new Map<string, number>();
   inputs.forEach((input, idx) => inputIdToIndex.set(input.inputId, idx));
@@ -193,9 +244,41 @@ export function exportRoomConfig(
     };
   }
 
+  const serializedLayers: RoomConfigLayer[] | undefined = layers?.map(
+    (layer) => ({
+      id: layer.id,
+      behavior: layer.behavior,
+      inputs: layer.inputs.reduce<RoomConfigLayerInput[]>((acc, li) => {
+        const idx = inputIdToIndex.get(li.inputId);
+        if (idx === undefined) return acc;
+        const entry: RoomConfigLayerInput = {
+          inputIndex: idx,
+          x: li.x,
+          y: li.y,
+          width: li.width,
+          height: li.height,
+        };
+        if (li.transitionDurationMs !== undefined)
+          entry.transitionDurationMs = li.transitionDurationMs;
+        if (li.transitionEasing !== undefined)
+          entry.transitionEasing = li.transitionEasing;
+        if (li.cropTop !== undefined) entry.cropTop = li.cropTop;
+        if (li.cropLeft !== undefined) entry.cropLeft = li.cropLeft;
+        if (li.cropRight !== undefined) entry.cropRight = li.cropRight;
+        if (li.cropBottom !== undefined) entry.cropBottom = li.cropBottom;
+        acc.push(entry);
+        return acc;
+      }, []),
+    }),
+  );
+
   return {
     version: 1,
     layout,
+    layers:
+      serializedLayers && serializedLayers.length > 0
+        ? serializedLayers
+        : undefined,
     resolution,
     transitionSettings,
     viewport,
@@ -213,19 +296,15 @@ export function exportRoomConfig(
       channelId: input.channelId,
       url: input.url,
       imageId: input.imageId,
-      mp4FileName:
-        input.type === 'local-mp4'
-          ? (input.mp4FileName ?? extractMp4FileName(input.title))
-          : input.mp4FileName,
-      audioFileName:
-        input.type === 'local-mp4'
-          ? (input.audioFileName ?? extractAudioFileName(input.title))
-          : input.audioFileName,
+      imageFileName: input.imageFileName,
+      mp4FileName: input.mp4FileName,
+      audioFileName: input.audioFileName,
       text: input.text,
       textAlign: input.textAlign,
       textColor: input.textColor,
       needsConnection: input.type === 'whip',
       textMaxLines: input.textMaxLines,
+      textScrollEnabled: input.textScrollEnabled,
       textScrollSpeed: input.textScrollSpeed,
       textScrollLoop: input.textScrollLoop,
       textFontSize: input.textFontSize,
@@ -280,7 +359,7 @@ export function parseRoomConfig(json: string): RoomConfig {
   if (!config.layout || !Array.isArray(config.inputs)) {
     throw new Error('Invalid config format');
   }
-  return config as RoomConfig;
+  return sanitizeImportedConfigNames(config as RoomConfig);
 }
 
 export function loadTimelineFromStorage(roomId: string): {
@@ -380,6 +459,8 @@ export function restoreTimelineToStorage(
   try {
     saveTimeline(roomId, {
       ...state,
+      snapToBlocks: true,
+      snapToKeyframes: true,
       playheadMs: 0,
     });
   } catch {
@@ -425,6 +506,7 @@ export function buildInputUpdateFromBlockSettings(
     textAlign: blockSettings.textAlign,
     textColor: blockSettings.textColor,
     textMaxLines: blockSettings.textMaxLines,
+    textScrollEnabled: blockSettings.textScrollEnabled,
     textScrollSpeed: blockSettings.textScrollSpeed,
     textScrollLoop: blockSettings.textScrollLoop,
     textFontSize: blockSettings.textFontSize,

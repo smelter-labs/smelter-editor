@@ -481,6 +481,7 @@ export function BlockClipPropertiesPanel({
             textAlign: patch.textAlign,
             textColor: patch.textColor,
             textMaxLines: patch.textMaxLines,
+            textScrollEnabled: patch.textScrollEnabled,
             textScrollSpeed: patch.textScrollSpeed,
             textScrollLoop: patch.textScrollLoop,
             textFontSize: patch.textFontSize,
@@ -647,6 +648,13 @@ export function BlockClipPropertiesPanel({
     [selectedTimelineClips, applyClipPatch],
   );
 
+  const handleReorderShaders = useCallback(
+    (shaders: ShaderConfig[]) => {
+      void applyClipPatch({ shaders });
+    },
+    [applyClipPatch],
+  );
+
   const handleSliderChange = useCallback(
     (shaderId: string, paramName: string, newValue: number) => {
       if (selectedTimelineClips.length === 0) return;
@@ -733,6 +741,16 @@ export function BlockClipPropertiesPanel({
         setTitleDraft(null);
         return;
       }
+      const normalized = trimmed.toLocaleLowerCase();
+      const duplicateExists = inputs.some(
+        (input) =>
+          input.inputId !== primaryClip.inputId &&
+          input.title.trim().toLocaleLowerCase() === normalized,
+      );
+      if (duplicateExists) {
+        toast.error(`Input "${trimmed}" already exists.`);
+        return;
+      }
       try {
         await updateInputAction(roomId, primaryClip.inputId, {
           title: trimmed,
@@ -743,7 +761,14 @@ export function BlockClipPropertiesPanel({
       }
       setTitleDraft(null);
     },
-    [primaryClip, selectedInput, roomId, updateInputAction, handleRefreshState],
+    [
+      primaryClip,
+      selectedInput,
+      roomId,
+      updateInputAction,
+      handleRefreshState,
+      inputs,
+    ],
   );
 
   if (selectedTimelineClips.length === 0) {
@@ -1720,6 +1745,19 @@ export function BlockClipPropertiesPanel({
                   </div>
                 </div>
                 <div>
+                  <div className='flex items-center justify-between mb-2'>
+                    <span className='text-xs text-muted-foreground'>
+                      Scroll text
+                    </span>
+                    <Checkbox
+                      checked={
+                        effectiveClip.blockSettings.textScrollEnabled ?? true
+                      }
+                      onCheckedChange={(checked) =>
+                        void applyClipPatch({ textScrollEnabled: !!checked })
+                      }
+                    />
+                  </div>
                   <label className={labelStyles({ block: true })}>
                     Scroll speed
                   </label>
@@ -1729,6 +1767,9 @@ export function BlockClipPropertiesPanel({
                       max={400}
                       step={1}
                       className='flex-1'
+                      disabled={
+                        !(effectiveClip.blockSettings.textScrollEnabled ?? true)
+                      }
                       value={[
                         textScrollSpeedDraft ??
                           effectiveClip.blockSettings.textScrollSpeed ??
@@ -1750,6 +1791,9 @@ export function BlockClipPropertiesPanel({
                     Scroll loop
                   </span>
                   <Checkbox
+                    disabled={
+                      !(effectiveClip.blockSettings.textScrollEnabled ?? true)
+                    }
                     checked={effectiveClip.blockSettings.textScrollLoop ?? true}
                     onCheckedChange={(checked) =>
                       void applyClipPatch({ textScrollLoop: !!checked })
@@ -1784,6 +1828,7 @@ export function BlockClipPropertiesPanel({
             setInlineShaderView({ shaderId, source: 'block' })
           }
           onApplyPreset={handleApplyPreset}
+          onReorderShaders={handleReorderShaders}
         />
       </CollapsibleSection>
       <AddShaderModal

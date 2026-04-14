@@ -34,9 +34,7 @@ export type RoomSnapshot = {
   swapDurationMs: number;
   swapOutgoingEnabled: boolean;
   swapFadeInDurationMs: number;
-  newsStripFadeDuringSwap: boolean;
   swapFadeOutDurationMs: number;
-  newsStripEnabled: boolean;
   outputShaders: ShaderConfig[];
 } & Partial<ViewportProperties>;
 
@@ -102,6 +100,7 @@ type TypeSpecificState =
   | {
       type: 'image';
       imageId: string;
+      imageFileName?: string;
       /** Present when the configured image file was not found on disk yet. */
       imageAssetMissing?: boolean;
     }
@@ -111,6 +110,7 @@ type TypeSpecificState =
       textAlign: 'left' | 'center' | 'right';
       textColor: string;
       textMaxLines: number;
+      textScrollEnabled: boolean;
       textScrollSpeed: number;
       textScrollLoop: boolean;
       textScrollNudge: number;

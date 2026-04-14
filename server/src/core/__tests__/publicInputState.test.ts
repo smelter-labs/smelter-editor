@@ -225,6 +225,7 @@ describe('toPublicInputState', () => {
         textAlign: 'center' as const,
         textColor: '#ff0000',
         textMaxLines: 3,
+        textScrollEnabled: false,
         textScrollSpeed: 50,
         textScrollLoop: true,
         textScrollNudge: 10,
@@ -236,6 +237,7 @@ describe('toPublicInputState', () => {
       expect(result).toHaveProperty('textAlign', 'center');
       expect(result).toHaveProperty('textColor', '#ff0000');
       expect(result).toHaveProperty('textMaxLines', 3);
+      expect(result).toHaveProperty('textScrollEnabled', false);
       expect(result).toHaveProperty('textScrollSpeed', 50);
       expect(result).toHaveProperty('textScrollLoop', true);
       expect(result).toHaveProperty('textScrollNudge', 10);

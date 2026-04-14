@@ -19,6 +19,21 @@ export function useRoomStateSse(roomId: string | undefined) {
   const eventSourceRef = useRef<EventSource | null>(null);
   const fallbackTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSerializedStateRef = useRef<string | null>(null);
+
+  const applyRoomStateIfChanged = useCallback(
+    (nextState: RoomState, serializedHint?: string) => {
+      const serialized = serializedHint ?? JSON.stringify(nextState);
+      if (serialized === lastSerializedStateRef.current) {
+        setLoading(false);
+        return;
+      }
+      lastSerializedStateRef.current = serialized;
+      setRoomState(nextState);
+      setLoading(false);
+    },
+    [],
+  );
 
   const pollState = useCallback(async () => {
     if (!roomId) return null;
@@ -29,15 +44,15 @@ export function useRoomStateSse(roomId: string | undefined) {
       return 'not-found' as const;
     }
     setNotFound(false);
-    setRoomState(state);
-    setLoading(false);
+    applyRoomStateIfChanged(state);
     return state;
-  }, [roomId]);
+  }, [applyRoomStateIfChanged, roomId]);
 
   useEffect(() => {
     if (!roomId) return;
 
     let cancelled = false;
+    lastSerializedStateRef.current = null;
 
     const startFallbackPoll = () => {
       if (fallbackTimerRef.current) return;
@@ -76,18 +91,13 @@ export function useRoomStateSse(roomId: string | undefined) {
 
       es.onmessage = (event) => {
         if (cancelled) return;
+        if (event.data === lastSerializedStateRef.current) {
+          setLoading(false);
+          return;
+        }
         try {
           const data = JSON.parse(event.data) as RoomState;
-          console.log(
-            `[${new Date().toISOString()}] [sync][web-recv] state SSE message`,
-            {
-              roomId,
-              inputs: data.inputs.length,
-              layers: data.layers.length,
-            },
-          );
-          setRoomState(data);
-          setLoading(false);
+          applyRoomStateIfChanged(data, event.data);
         } catch {
           // ignore malformed events
         }
@@ -127,7 +137,7 @@ export function useRoomStateSse(roomId: string | undefined) {
         reconnectTimerRef.current = null;
       }
     };
-  }, [roomId, pollState]);
+  }, [applyRoomStateIfChanged, roomId, pollState]);
 
   return { roomState, loading, notFound, isConnected, refreshState: pollState };
 }

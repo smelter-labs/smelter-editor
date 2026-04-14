@@ -205,16 +205,6 @@ export type SetSwapOutgoingEnabledCommand = {
   enabled: boolean;
 };
 
-export type SetNewsStripEnabledCommand = {
-  intent: 'SET_NEWS_STRIP_ENABLED';
-  enabled: boolean;
-};
-
-export type SetNewsStripFadeDuringSwapCommand = {
-  intent: 'SET_NEWS_STRIP_FADE_DURING_SWAP';
-  enabled: boolean;
-};
-
 export type ClarifyCommand = {
   intent: 'CLARIFY';
   missing: string[];
@@ -254,8 +244,6 @@ export type VoiceCommand =
   | SetSwapFadeInDurationCommand
   | SetSwapFadeOutDurationCommand
   | SetSwapOutgoingEnabledCommand
-  | SetNewsStripEnabledCommand
-  | SetNewsStripFadeDuringSwapCommand
   | ClarifyCommand;
 
 export type VoiceInput = {
@@ -517,21 +505,6 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
     case 'SET_SWAP_OUTGOING_ENABLED':
       if (typeof c.enabled === 'boolean') {
         return { intent: 'SET_SWAP_OUTGOING_ENABLED', enabled: c.enabled };
-      }
-      return null;
-
-    case 'SET_NEWS_STRIP_ENABLED':
-      if (typeof c.enabled === 'boolean') {
-        return { intent: 'SET_NEWS_STRIP_ENABLED', enabled: c.enabled };
-      }
-      return null;
-
-    case 'SET_NEWS_STRIP_FADE_DURING_SWAP':
-      if (typeof c.enabled === 'boolean') {
-        return {
-          intent: 'SET_NEWS_STRIP_FADE_DURING_SWAP',
-          enabled: c.enabled,
-        };
       }
       return null;
 

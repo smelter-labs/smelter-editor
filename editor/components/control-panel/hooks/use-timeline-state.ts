@@ -1,6 +1,13 @@
 'use client';
 
-import { useReducer, useEffect, useCallback, useRef, useState } from 'react';
+import {
+  useReducer,
+  useEffect,
+  useCallback,
+  useRef,
+  useState,
+  useMemo,
+} from 'react';
 import type { Input } from '@/lib/types';
 import { parseTransitionConfig } from '@/lib/types';
 import type {
@@ -40,6 +47,7 @@ export type BlockSettings = TimelineBlockSettings & {
   mp4DurationMs?: number;
   sourceWidth?: number;
   sourceHeight?: number;
+  swapLabelSuffix?: string;
 };
 
 export type Keyframe = SharedTimelineKeyframe & {
@@ -66,6 +74,8 @@ export type TimelineState = {
   tracks: Track[];
   totalDurationMs: number;
   keyframeInterpolationMode: TimelineKeyframeInterpolationMode;
+  snapToBlocks: boolean;
+  snapToKeyframes: boolean;
   playheadMs: number;
   isPlaying: boolean;
   pixelsPerSecond: number;
@@ -86,6 +96,8 @@ type TimelineAction =
       type: 'SET_KEYFRAME_INTERPOLATION_MODE';
       mode: TimelineKeyframeInterpolationMode;
     }
+  | { type: 'SET_SNAP_TO_BLOCKS'; enabled: boolean }
+  | { type: 'SET_SNAP_TO_KEYFRAMES'; enabled: boolean }
   | { type: 'RESET'; inputs: Input[] }
   | { type: 'LOAD'; state: TimelineState }
   | {
@@ -297,6 +309,7 @@ export function createBlockSettingsFromInput(input?: Input): BlockSettings {
     textAlign: input?.textAlign,
     textColor: input?.textColor,
     textMaxLines: input?.textMaxLines,
+    textScrollEnabled: input?.textScrollEnabled,
     textScrollSpeed: input?.textScrollSpeed,
     textScrollLoop: input?.textScrollLoop,
     textFontSize: input?.textFontSize,
@@ -427,6 +440,42 @@ function claimUniqueId(id: string | undefined, usedIds: Set<string>): string {
   return nextId;
 }
 
+function normalizeTrackLabel(label: string): string {
+  return label.trim().toLocaleLowerCase();
+}
+
+function buildSwapLabelSuffix(
+  state: TimelineState,
+  targetClipId: string,
+  newInputId: string,
+): string {
+  const sameInputClipCount = state.tracks.reduce((count, track) => {
+    const matches = track.clips.filter(
+      (clip) => clip.id !== targetClipId && clip.inputId === newInputId,
+    ).length;
+    return count + matches;
+  }, 0);
+
+  return sameInputClipCount > 0
+    ? ` (switched ${sameInputClipCount + 1})`
+    : ' (switched)';
+}
+
+function claimUniqueTrackLabel(
+  preferredLabel: string,
+  usedLabels: Set<string>,
+): string {
+  const baseLabel = preferredLabel.trim() || 'Track';
+  let candidate = baseLabel;
+  let index = 2;
+  while (usedLabels.has(normalizeTrackLabel(candidate))) {
+    candidate = `${baseLabel} (${index})`;
+    index += 1;
+  }
+  usedLabels.add(normalizeTrackLabel(candidate));
+  return candidate;
+}
+
 function ensureUniqueTrackStructureIds(tracks: Track[]): Track[] {
   const usedTrackIds = new Set<string>();
   return tracks.map((track) => {
@@ -537,6 +586,8 @@ function createInitialState(): TimelineState {
     tracks: [],
     totalDurationMs: DEFAULT_DURATION_MS,
     keyframeInterpolationMode: 'step',
+    snapToBlocks: true,
+    snapToKeyframes: true,
     playheadMs: 0,
     isPlaying: false,
     pixelsPerSecond: DEFAULT_PPS,
@@ -588,6 +639,8 @@ function migrateV1ToV2(stored: Record<string, unknown>): TimelineState | null {
     tracks: newTracks,
     totalDurationMs: (stored.totalDurationMs as number) || DEFAULT_DURATION_MS,
     keyframeInterpolationMode: 'step',
+    snapToBlocks: true,
+    snapToKeyframes: true,
     playheadMs: 0,
     isPlaying: false,
     pixelsPerSecond: (stored.pixelsPerSecond as number) || DEFAULT_PPS,
@@ -727,12 +780,19 @@ export function timelineReducer(
     }
 
     case 'SET_PLAYHEAD':
+      if (
+        Math.max(0, Math.min(action.ms, state.totalDurationMs)) ===
+        state.playheadMs
+      ) {
+        return state;
+      }
       return {
         ...state,
         playheadMs: Math.max(0, Math.min(action.ms, state.totalDurationMs)),
       };
 
     case 'SET_PLAYING':
+      if (state.isPlaying === action.playing) return state;
       return { ...state, isPlaying: action.playing };
 
     case 'SET_ZOOM':
@@ -753,6 +813,14 @@ export function timelineReducer(
 
     case 'SET_KEYFRAME_INTERPOLATION_MODE':
       return { ...state, keyframeInterpolationMode: action.mode };
+
+    case 'SET_SNAP_TO_BLOCKS':
+      if (state.snapToBlocks === action.enabled) return state;
+      return { ...state, snapToBlocks: action.enabled };
+
+    case 'SET_SNAP_TO_KEYFRAMES':
+      if (state.snapToKeyframes === action.enabled) return state;
+      return { ...state, snapToKeyframes: action.enabled };
 
     case 'RESET': {
       const tracks: Track[] = action.inputs.map((input, idx) => ({
@@ -1045,16 +1113,28 @@ export function timelineReducer(
 
     case 'RENAME_TRACK': {
       if (action.trackId === OUTPUT_TRACK_ID) return state;
+      const usedLabels = new Set(
+        state.tracks
+          .filter((track) => track.id !== action.trackId)
+          .map((track) => normalizeTrackLabel(track.label)),
+      );
+      const uniqueLabel = claimUniqueTrackLabel(action.newLabel, usedLabels);
       return {
         ...state,
         tracks: state.tracks.map((t) =>
-          t.id === action.trackId ? { ...t, label: action.newLabel } : t,
+          t.id === action.trackId ? { ...t, label: uniqueLabel } : t,
         ),
       };
     }
 
     case 'ADD_TRACK': {
-      const label = action.label || `Track ${state.tracks.length + 1}`;
+      const usedLabels = new Set(
+        state.tracks
+          .filter((track) => track.id !== OUTPUT_TRACK_ID)
+          .map((track) => normalizeTrackLabel(track.label)),
+      );
+      const preferredLabel = action.label || `Track ${state.tracks.length + 1}`;
+      const label = claimUniqueTrackLabel(preferredLabel, usedLabels);
       const newTrack: Track = {
         id: genId(),
         label,
@@ -1114,6 +1194,7 @@ export function timelineReducer(
       const targetClip = targetTrack?.clips.find((c) => c.id === clipId);
       if (targetClip) updatedKnown.add(targetClip.inputId);
       updatedKnown.add(newInputId);
+      const swapLabelSuffix = buildSwapLabelSuffix(state, clipId, newInputId);
 
       return {
         ...state,
@@ -1124,18 +1205,22 @@ export function timelineReducer(
             ...track,
             clips: track.clips.map((clip) => {
               if (clip.id !== clipId) return clip;
-              const mergedSettings = sourceUpdates
-                ? { ...clip.blockSettings, ...sourceUpdates }
-                : clip.blockSettings;
+              const mergedSettings = {
+                ...clip.blockSettings,
+                ...sourceUpdates,
+                swapLabelSuffix,
+              };
               return {
                 ...clip,
                 inputId: newInputId,
                 blockSettings: mergedSettings,
                 keyframes: clip.keyframes.map((kf) => ({
                   ...kf,
-                  blockSettings: sourceUpdates
-                    ? { ...kf.blockSettings, ...sourceUpdates }
-                    : kf.blockSettings,
+                  blockSettings: {
+                    ...kf.blockSettings,
+                    ...sourceUpdates,
+                    swapLabelSuffix,
+                  },
                 })),
               };
             }),
@@ -1497,6 +1582,8 @@ export function timelineReducer(
         tracks: finalTracks,
         keyframeInterpolationMode:
           action.state.keyframeInterpolationMode ?? 'step',
+        snapToBlocks: action.state.snapToBlocks ?? true,
+        snapToKeyframes: action.state.snapToKeyframes ?? true,
         knownInputIds: new Set(action.state.knownInputIds),
       };
     }
@@ -1612,6 +1699,8 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
           tracks: normalizeTracks(parsedTracks, inputs, totalDurationMs),
           totalDurationMs,
           keyframeInterpolationMode: stored.keyframeInterpolationMode ?? 'step',
+          snapToBlocks: stored.snapToBlocks ?? true,
+          snapToKeyframes: stored.snapToKeyframes ?? true,
           playheadMs: 0,
           isPlaying: false,
           pixelsPerSecond: stored.pixelsPerSecond || DEFAULT_PPS,
@@ -1643,31 +1732,51 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     initializedRef.current = true;
   }, [inputs]);
 
-  // Persist to localStorage on meaningful changes (debounced)
+  // Persist to localStorage on meaningful timeline changes (debounced).
+  // Intentionally skip playhead/isPlaying to avoid save churn during playback.
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const persistedTimeline = useMemo(
+    () => ({
+      tracks: state.tracks,
+      totalDurationMs: state.totalDurationMs,
+      keyframeInterpolationMode: state.keyframeInterpolationMode,
+      snapToBlocks: state.snapToBlocks,
+      snapToKeyframes: state.snapToKeyframes,
+      playheadMs: state.isPlaying
+        ? Math.floor(state.playheadMs / 1000) * 1000
+        : state.playheadMs,
+      pixelsPerSecond: state.pixelsPerSecond,
+    }),
+    [
+      state.tracks,
+      state.totalDurationMs,
+      state.keyframeInterpolationMode,
+      state.snapToBlocks,
+      state.snapToKeyframes,
+      state.isPlaying,
+      state.playheadMs,
+      state.pixelsPerSecond,
+    ],
+  );
+
   useEffect(() => {
     if (!initializedRef.current) return;
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      const {
-        tracks,
-        totalDurationMs,
-        keyframeInterpolationMode,
-        playheadMs,
-        pixelsPerSecond,
-      } = state;
       saveTimeline(roomId, {
-        tracks,
-        totalDurationMs,
-        keyframeInterpolationMode,
-        playheadMs,
-        pixelsPerSecond,
+        tracks: persistedTimeline.tracks,
+        totalDurationMs: persistedTimeline.totalDurationMs,
+        keyframeInterpolationMode: persistedTimeline.keyframeInterpolationMode,
+        snapToBlocks: persistedTimeline.snapToBlocks,
+        snapToKeyframes: persistedTimeline.snapToKeyframes,
+        playheadMs: persistedTimeline.playheadMs,
+        pixelsPerSecond: persistedTimeline.pixelsPerSecond,
       });
     }, 500);
     return () => {
       if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     };
-  }, [roomId, state]);
+  }, [roomId, persistedTimeline]);
 
   const setPlayhead = useCallback(
     (ms: number) => dispatch({ type: 'SET_PLAYHEAD', ms }),
@@ -1694,6 +1803,16 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
   const setKeyframeInterpolationMode = useCallback(
     (mode: TimelineKeyframeInterpolationMode) =>
       dispatch({ type: 'SET_KEYFRAME_INTERPOLATION_MODE', mode }),
+    [],
+  );
+
+  const setSnapToBlocks = useCallback(
+    (enabled: boolean) => dispatch({ type: 'SET_SNAP_TO_BLOCKS', enabled }),
+    [],
+  );
+
+  const setSnapToKeyframes = useCallback(
+    (enabled: boolean) => dispatch({ type: 'SET_SNAP_TO_KEYFRAMES', enabled }),
     [],
   );
 
@@ -1913,6 +2032,8 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     setZoom,
     setTotalDuration,
     setKeyframeInterpolationMode,
+    setSnapToBlocks,
+    setSnapToKeyframes,
     reset,
     moveClip,
     resizeClip,

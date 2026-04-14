@@ -685,12 +685,8 @@ components:
           type: boolean
         swapFadeInDurationMs:
           type: integer
-        newsStripFadeDuringSwap:
-          type: boolean
         swapFadeOutDurationMs:
           type: integer
-        newsStripEnabled:
-          type: boolean
         isRecording:
           type: boolean
         isFrozen:
@@ -708,8 +704,6 @@ components:
           description: Updated layer configuration
         resolution:
           $ref: '#/components/schemas/Resolution'
-        newsStripEnabled:
-          type: boolean
         swapDurationMs:
           type: integer
         swapOutgoingEnabled:
@@ -718,8 +712,6 @@ components:
           type: integer
         swapFadeOutDurationMs:
           type: integer
-        newsStripFadeDuringSwap:
-          type: boolean
 
     PublicInputState:
       type: object

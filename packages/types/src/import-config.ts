@@ -1,4 +1,4 @@
-import type { Layout } from './layout.js';
+import type { Layout, LayerBehaviorConfig } from './layout.js';
 import type { ShaderConfig } from './shader.js';
 import type { InputType } from './input.js';
 import type { SnakeEventShaderConfig } from './snake-game.js';
@@ -13,6 +13,7 @@ export type ImportConfigInput = {
   channelId?: string;
   url?: string;
   imageId?: string;
+  imageFileName?: string;
   mp4FileName?: string;
   audioFileName?: string;
   text?: string;
@@ -20,6 +21,7 @@ export type ImportConfigInput = {
   textColor?: string;
   needsConnection?: boolean;
   textMaxLines?: number;
+  textScrollEnabled?: boolean;
   textScrollSpeed?: number;
   textScrollLoop?: boolean;
   textFontSize?: number;
@@ -69,8 +71,26 @@ export type ImportConfigTransitionSettings = {
   swapOutgoingEnabled?: boolean;
   swapFadeInDurationMs?: number;
   swapFadeOutDurationMs?: number;
-  newsStripFadeDuringSwap?: boolean;
-  newsStripEnabled?: boolean;
+};
+
+export type ImportConfigLayerInput = {
+  inputIndex: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  transitionDurationMs?: number;
+  transitionEasing?: string;
+  cropTop?: number;
+  cropLeft?: number;
+  cropRight?: number;
+  cropBottom?: number;
+};
+
+export type ImportConfigLayer = {
+  id: string;
+  inputs: ImportConfigLayerInput[];
+  behavior?: LayerBehaviorConfig;
 };
 
 export type ImportConfigRequest = {
@@ -78,6 +98,7 @@ export type ImportConfigRequest = {
     version: 1;
     layout: Layout;
     inputs: ImportConfigInput[];
+    layers?: ImportConfigLayer[];
     resolution?: { width: number; height: number };
     transitionSettings?: ImportConfigTransitionSettings;
     viewport?: {

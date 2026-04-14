@@ -9,6 +9,7 @@ import type {
 import { OUTPUT_TRACK_INPUT_ID } from './types';
 import type { RoomInputState } from '../room/types';
 import type { Layer, LayerInput } from '../types';
+import { isSmelterTransportError } from '../smelterTransportError';
 
 type PlaybackEvent = {
   timeMs: number;
@@ -57,6 +58,51 @@ function deepClone<T>(value: T): T {
     return structuredClone(value);
   }
   return JSON.parse(JSON.stringify(value)) as T;
+}
+
+function isInputMissingError(error: unknown, inputId: string): boolean {
+  if (!error || typeof error !== 'object') {
+    return false;
+  }
+
+  const maybeError = error as {
+    body?: { error_code?: unknown };
+    message?: unknown;
+  };
+  const errorCode =
+    maybeError.body && typeof maybeError.body.error_code === 'string'
+      ? maybeError.body.error_code
+      : '';
+  const message =
+    typeof maybeError.message === 'string'
+      ? maybeError.message.toLowerCase()
+      : '';
+
+  return (
+    errorCode === 'INPUT_STREAM_NOT_FOUND' ||
+    message.includes(`input ${inputId.toLowerCase()} not found`)
+  );
+}
+
+function logTimelineInputOpError(
+  op: string,
+  inputId: string,
+  error: unknown,
+): void {
+  if (isSmelterTransportError(error)) {
+    console.warn(
+      `[timeline] ${op} skipped while Smelter is recovering inputId=${inputId}`,
+    );
+    return;
+  }
+  if (isInputMissingError(error, inputId)) {
+    // Timeline events can race with room/input teardown.
+    console.warn(
+      `[timeline] ${op} skipped for removed input inputId=${inputId}`,
+    );
+    return;
+  }
+  console.warn(`[timeline] Failed to ${op} ${inputId}`, error);
 }
 
 function extractLayerPosition(
@@ -130,6 +176,7 @@ export interface TimelineRoomStateAdapter {
     options: Partial<Record<string, any>>,
   ): Promise<void>;
   updateLayers(layers: Layer[]): Promise<void>;
+  restoreLayers?(layers: Layer[]): Promise<void>;
   restartMp4Input(
     inputId: string,
     playFromMs: number,
@@ -446,22 +493,46 @@ function resolveBlockSettingsAtTime(
   return resolved;
 }
 
-function getActiveOrder(config: TimelineConfig, timeMs: number): string[] {
-  const order: string[] = [];
-  const seen = new Set<string>();
+function getActiveInputIds(
+  config: TimelineConfig,
+  timeMs: number,
+): Set<string> {
+  const active = new Set<string>();
   for (const track of config.tracks) {
     for (const clip of track.clips) {
       if (clip.inputId === OUTPUT_TRACK_INPUT_ID) continue;
-      if (
-        timeMs >= clip.startMs &&
-        timeMs < clip.endMs &&
-        !seen.has(clip.inputId)
-      ) {
-        order.push(clip.inputId);
-        seen.add(clip.inputId);
+      if (timeMs >= clip.startMs && timeMs < clip.endMs) {
+        active.add(clip.inputId);
       }
     }
   }
+  return active;
+}
+
+function getActiveOrderFromLayers(
+  config: TimelineConfig,
+  timeMs: number,
+  layers: Layer[],
+): string[] {
+  const active = getActiveInputIds(config, timeMs);
+  const order: string[] = [];
+  const placed = new Set<string>();
+
+  for (const layer of layers) {
+    for (const li of layer.inputs) {
+      if (active.has(li.inputId) && !placed.has(li.inputId)) {
+        order.push(li.inputId);
+        placed.add(li.inputId);
+      }
+    }
+  }
+
+  for (const id of active) {
+    if (!placed.has(id)) {
+      order.push(id);
+    }
+  }
+
   return order;
 }
 
@@ -503,6 +574,7 @@ function buildUpdateFromBlockSettings(
     textAlign: bs.textAlign,
     textColor: bs.textColor,
     textMaxLines: bs.textMaxLines,
+    textScrollEnabled: bs.textScrollEnabled,
     textScrollSpeed: bs.textScrollSpeed,
     textScrollLoop: bs.textScrollLoop,
     textFontSize: bs.textFontSize,
@@ -543,6 +615,8 @@ function buildUpdateFromRoomInput(
     textAlign: input.type === 'text-input' ? input.textAlign : undefined,
     textColor: input.type === 'text-input' ? input.textColor : undefined,
     textMaxLines: input.type === 'text-input' ? input.textMaxLines : undefined,
+    textScrollEnabled:
+      input.type === 'text-input' ? input.textScrollEnabled : undefined,
     textScrollSpeed:
       input.type === 'text-input' ? input.textScrollSpeed : undefined,
     textScrollLoop:
@@ -787,6 +861,9 @@ export class TimelinePlayer {
     // Apply state at resume position
     const desired = computeDesiredState(this.config, resumeMs);
     await this.applyDesiredState(desired, resumeMs);
+    // Force re-application after pause. Room state may be patched while paused
+    // (e.g. temporary audio mute), so cached block settings can be stale.
+    this.appliedBlockSettings.clear();
     this.mp4RestartedKeys.clear();
     await this.applyBlockSettingsAtTime(resumeMs);
     this.lastAppliedOrder = '';
@@ -1003,9 +1080,7 @@ export class TimelinePlayer {
         this.appliedState.set(event.inputId, false);
         void this.room
           .hideInput(event.inputId)
-          .catch((err) =>
-            console.warn(`[timeline] Failed to hide ${event.inputId}`, err),
-          );
+          .catch((err) => logTimelineInputOpError('hide', event.inputId, err));
       }
     } else if (event.type === 'transition-in' && event.transition) {
       // Standalone transition-in (not merged with connect)
@@ -1103,9 +1178,7 @@ export class TimelinePlayer {
 
     await this.room
       .showInput(inputId, showTransition)
-      .catch((err) =>
-        console.warn(`[timeline] Failed to show ${inputId}`, err),
-      );
+      .catch((err) => logTimelineInputOpError('show', inputId, err));
   }
 
   private async applyClipState(
@@ -1165,10 +1238,16 @@ export class TimelinePlayer {
             `[timeline] MP4 restart OK inputId=${inputId} durationMs=${Date.now() - t0}`,
           );
         } catch (err) {
-          console.error(
-            `[timeline] MP4 restart FAILED inputId=${inputId} durationMs=${Date.now() - t0}`,
-            err,
-          );
+          if (isSmelterTransportError(err)) {
+            console.warn(
+              `[timeline] MP4 restart skipped while Smelter is recovering inputId=${inputId} durationMs=${Date.now() - t0}`,
+            );
+          } else {
+            console.error(
+              `[timeline] MP4 restart FAILED inputId=${inputId} durationMs=${Date.now() - t0}`,
+              err,
+            );
+          }
         }
       }
     }
@@ -1197,9 +1276,7 @@ export class TimelinePlayer {
         promises.push(
           this.room
             .hideInput(inputId)
-            .catch((err) =>
-              console.warn(`[timeline] Failed to hide ${inputId}`, err),
-            ),
+            .catch((err) => logTimelineInputOpError('hide', inputId, err)),
         );
       }
 
@@ -1216,8 +1293,9 @@ export class TimelinePlayer {
           this.room
             .hideInput(input.inputId)
             .catch((err) =>
-              console.warn(
-                `[timeline] Failed to hide non-timeline input ${input.inputId}`,
+              logTimelineInputOpError(
+                'hide non-timeline input',
+                input.inputId,
                 err,
               ),
             ),
@@ -1278,7 +1356,8 @@ export class TimelinePlayer {
   }
 
   private applyOrderIfChanged(timeMs: number): void {
-    const order = getActiveOrder(this.config, timeMs);
+    const layers = this.room.getLayers();
+    const order = getActiveOrderFromLayers(this.config, timeMs, layers);
     const key = order.join(',');
     if (key === this.lastAppliedOrder || order.length === 0) return;
     this.lastAppliedOrder = key;
@@ -1308,14 +1387,20 @@ export class TimelinePlayer {
   private async restoreState(): Promise<void> {
     if (!this.snapshot) return;
 
-    const promises: Promise<void>[] = [];
+    // Phase 1: restore per-input state and ordering.  These operations may
+    // trigger debounced store flushes (microtask-based) that recompute layer
+    // geometry.  We await them first so that any intermediate flushes settle
+    // before we touch layers.
+    const inputPromises: Promise<void>[] = [];
     const inputs = this.room.getInputs();
 
     for (const input of inputs) {
       const snap = this.snapshot.inputSnapshots.get(input.inputId);
       if (!snap) {
         if (input.hidden) {
-          promises.push(this.room.showInput(input.inputId).catch(() => {}));
+          inputPromises.push(
+            this.room.showInput(input.inputId).catch(() => {}),
+          );
         }
         continue;
       }
@@ -1329,7 +1414,7 @@ export class TimelinePlayer {
 
       if (!hasPatch && !shouldRestartMp4 && !needsVisibilityRestore) continue;
 
-      promises.push(
+      inputPromises.push(
         (async () => {
           if (hasPatch) {
             await this.room
@@ -1351,21 +1436,25 @@ export class TimelinePlayer {
     }
 
     if (this.snapshot.inputOrder.length > 0) {
-      promises.push(
+      inputPromises.push(
         this.room.reorderInputs(this.snapshot.inputOrder).catch(() => {}),
       );
     }
 
-    promises.push(this.room.updateLayers(this.snapshot.layers).catch(() => {}));
-    promises.push(
+    if (inputPromises.length > 0) {
+      await Promise.allSettled(inputPromises);
+    }
+
+    // Phase 2: restore layers and output shaders.  restoreLayers skips the
+    // unplaced-input auto-append logic so manual layer positions from the
+    // snapshot are preserved exactly.
+    const restoreFn = this.room.restoreLayers ?? this.room.updateLayers;
+    await Promise.allSettled([
+      restoreFn(this.snapshot.layers).catch(() => {}),
       this.room
         .updateOutputShaders(this.snapshot.outputShaders)
         .catch(() => {}),
-    );
-
-    if (promises.length > 0) {
-      await Promise.allSettled(promises);
-    }
+    ]);
 
     this.snapshot = null;
     this.appliedState.clear();

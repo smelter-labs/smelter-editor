@@ -1,1 +1,0 @@
-export { NewsStripOverlay } from './NewsStripOverlay';

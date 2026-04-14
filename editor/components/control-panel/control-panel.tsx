@@ -3,7 +3,7 @@
 import { fadeIn } from '@/utils/animations';
 import { motion } from 'framer-motion';
 import { createPortal } from 'react-dom';
-import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
+import { memo, useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   RoomState,
   Input,
@@ -44,7 +44,7 @@ import {
   type TimelinePanelActions,
 } from './components/TimelinePanel';
 import { AddVideoModal } from './components/AddVideoModal';
-import { QuickActionsSection } from './components/QuickActionsSection';
+import { FxCanvas, FX_PRESET_MODAL } from '@/lib/fx';
 import { type PendingWhipInput } from './components/ConfigurationSection';
 import {
   exportRoomConfig,
@@ -57,6 +57,10 @@ import {
   saveOutputPlayerSettings,
   type RoomConfig,
 } from '@/lib/room-config';
+import {
+  downloadFullProjectZip,
+  importFullProjectZip,
+} from '@/lib/full-project-zip';
 import { streamImportConfig } from '@/lib/import-config-stream';
 import { SaveConfigModal, LoadConfigModal } from './components/ConfigModals';
 import {
@@ -89,6 +93,7 @@ import {
   useDefaultOrientationSetting,
   useVoicePanelSizeSetting,
   useVoicePanelOpacitySetting,
+  useVoiceCommandsEnabledSetting,
 } from '@/lib/voice/macroSettings';
 import { FeedbackPositionPicker } from '@/components/voice-action-feedback/FeedbackPositionPicker';
 import {
@@ -97,6 +102,12 @@ import {
   useTimelineEventsSizeSetting,
   useTimelineEventsDurationSetting,
 } from '@/lib/timeline-event-settings';
+import {
+  useVideoOverlayEnabledSetting,
+  useVideoOverlayLineWidthSetting,
+  useVideoOverlayGlowingSetting,
+} from '@/lib/video-overlay-settings';
+import { sortInputsByTimelineTrackOrder } from '@/lib/timeline-layer-order';
 import { useTimelineEventDetection } from '@/hooks/use-timeline-event-detection';
 import {
   BlockClipPropertiesPanel,
@@ -107,6 +118,7 @@ import {
   loadAutoModalSetting,
 } from './components/PendingConnectionsPanel';
 import { PendingConnectionsModal } from './components/PendingConnectionsModal';
+import { ConnectPlayCompletionModal } from './components/ConnectPlayCompletionModal';
 import type { TimelineState } from './hooks/use-timeline-state';
 import {
   buildInputColorMap,
@@ -131,7 +143,6 @@ import {
 } from '@/components/dashboard/dashboard-toolbar-context';
 import { Input as ShadcnInput } from '@/components/ui/input';
 import { Slider } from '@/components/ui/slider';
-import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { PresentationModeSettings } from './components/PresentationModeSettings';
 import {
   Select,
@@ -140,7 +151,16 @@ import {
   SelectContent,
   SelectItem,
 } from '@/components/ui/select';
+import { toast } from 'sonner';
 import QRCode from 'react-qr-code';
+
+export type VideoOverlayRect = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color: string;
+};
 
 type ControlPanelProps = {
   roomId: string;
@@ -165,8 +185,10 @@ type ControlPanelProps = {
     peers: ConnectedPeer[];
     timelineColorOverrides: Record<string, string>;
     activeClipColors: Record<string, string>;
+    allTimelineInputIds: Set<string>;
     selectedInputId: string | null;
     onSelectInput: (id: string) => void;
+    videoOverlayRects: VideoOverlayRect[];
   }) => React.ReactNode;
 };
 
@@ -177,6 +199,52 @@ const VIDEO_INPUT_TYPES = new Set<string>([
   'hls',
   'whip',
 ]);
+const TIMELINE_END_TOLERANCE_MS = 2500;
+
+function hasSameLayerInputOrder(a: Layer[], b: Layer[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i]?.id !== b[i]?.id) return false;
+    const aInputs = a[i]?.inputs ?? [];
+    const bInputs = b[i]?.inputs ?? [];
+    if (aInputs.length !== bInputs.length) return false;
+    for (let j = 0; j < aInputs.length; j += 1) {
+      if (aInputs[j]?.inputId !== bInputs[j]?.inputId) return false;
+    }
+  }
+  return true;
+}
+
+function buildLayersSortedForTimelineRender(
+  layers: Layer[],
+  timelineTrackOrder: Record<string, number>,
+): Layer[] {
+  if (Object.keys(timelineTrackOrder).length === 0) {
+    return layers;
+  }
+
+  let changed = false;
+  const next = layers.map((layer) => {
+    // Server render draws later siblings on top, so keep top timeline tracks
+    // later in each layer by sorting in descending track index.
+    const sortedInputs = sortInputsByTimelineTrackOrder(
+      layer.inputs,
+      timelineTrackOrder,
+      'desc',
+    );
+    const sameOrder = layer.inputs.every(
+      (input, index) => input.inputId === sortedInputs[index]?.inputId,
+    );
+    if (sameOrder) return layer;
+    changed = true;
+    return {
+      ...layer,
+      inputs: sortedInputs,
+    };
+  });
+
+  return changed ? next : layers;
+}
 
 export default function ControlPanel(props: ControlPanelProps) {
   return (
@@ -380,7 +448,6 @@ function ControlPanelWithActions({
   const isFrozenFromServer = roomState.isFrozen ?? false;
   const audioAnalysisEnabledFromServer =
     roomState.audioAnalysisEnabled ?? false;
-  const motionScores = useMotionScores(roomId);
 
   const controlPanelCtx = useMemo(
     () => ({
@@ -391,7 +458,6 @@ function ControlPanelWithActions({
       availableShaders,
       isRecording: isRecordingFromServer,
       isFrozen: isFrozenFromServer,
-      motionScores,
       audioAnalysisEnabled: audioAnalysisEnabledFromServer,
     }),
     [
@@ -402,7 +468,6 @@ function ControlPanelWithActions({
       availableShaders,
       isRecordingFromServer,
       isFrozenFromServer,
-      motionScores,
       audioAnalysisEnabledFromServer,
     ],
   );
@@ -493,9 +558,8 @@ function ControlPanelInner({
     inputs,
     availableShaders,
     isRecording,
-    motionScores,
   } = useControlPanelContext();
-  const motionHistoryMap = useMotionHistory(inputs, motionScores);
+  const [videoOverlayEnabled] = useVideoOverlayEnabledSetting();
   const { activeCameraInputId, activeScreenshareInputId } =
     useWhipConnectionsContext();
   const actions = useActions();
@@ -544,6 +608,15 @@ function ControlPanelInner({
     Record<string, string>
   >({});
   const activeClipColorsKeyRef = useRef('');
+  const [timelineTrackOrder, setTimelineTrackOrder] = useState<
+    Record<string, number>
+  >({});
+  const timelineTrackOrderKeyRef = useRef('');
+
+  const [allTimelineInputIds, setAllTimelineInputIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const allTimelineInputIdsKeyRef = useRef('');
 
   const [pendingWhipColors, setPendingWhipColors] = useState<
     Record<string, string>
@@ -551,8 +624,13 @@ function ControlPanelInner({
   const pendingWhipColorsKeyRef = useRef('');
 
   const [pendingModalOpen, setPendingModalOpen] = useState(false);
+  const [connectPlayCompletionOpen, setConnectPlayCompletionOpen] =
+    useState(false);
   const pendingModalShownRef = useRef(false);
+  const connectAndPlaySessionActiveRef = useRef(false);
+  const previousTimelinePlayingRef = useRef(false);
   const [timelineActionsReady, setTimelineActionsReady] = useState(false);
+  const isPersistingTimelineLayerOrderRef = useRef(false);
 
   const [showcaseWelcome, setShowcaseWelcome] = useState<{
     before: string;
@@ -613,6 +691,7 @@ function ControlPanelInner({
   }, []);
 
   const handlePendingModalApply = useCallback(async () => {
+    connectAndPlaySessionActiveRef.current = false;
     const applyAtPlayhead = timelineActionsRef.current?.applyAtPlayhead;
     if (applyAtPlayhead) {
       await applyAtPlayhead();
@@ -626,11 +705,18 @@ function ControlPanelInner({
     if (!timelineActions) {
       return;
     }
-    await timelineActions.applyAtPlayhead();
-    await timelineActions.play();
+    connectAndPlaySessionActiveRef.current = true;
+    try {
+      await timelineActions.applyAtPlayhead();
+      await timelineActions.play();
+    } catch (error) {
+      connectAndPlaySessionActiveRef.current = false;
+      throw error;
+    }
   }, []);
 
   const handlePendingModalConnectAndRecord = useCallback(async () => {
+    connectAndPlaySessionActiveRef.current = false;
     const timelineActions = timelineActionsRef.current;
     if (!timelineActions || isRecording) {
       return;
@@ -642,6 +728,22 @@ function ControlPanelInner({
   const handleTimelineStateChange = useCallback(
     (state: TimelineState) => {
       timelineStateRef.current = state;
+      const wasPlaying = previousTimelinePlayingRef.current;
+      if (
+        wasPlaying &&
+        !state.isPlaying &&
+        connectAndPlaySessionActiveRef.current
+      ) {
+        const reachedEnd =
+          state.totalDurationMs > 0 &&
+          state.playheadMs >= state.totalDurationMs - TIMELINE_END_TOLERANCE_MS;
+        if (reachedEnd) {
+          setConnectPlayCompletionOpen(true);
+        }
+        connectAndPlaySessionActiveRef.current = false;
+      }
+      previousTimelinePlayingRef.current = state.isPlaying;
+
       if (selectedTimelineClips.length > 0) {
         setTimelinePlayheadMs((prev) =>
           prev === state.playheadMs ? prev : state.playheadMs,
@@ -681,6 +783,41 @@ function ControlPanelInner({
       if (activeKey !== activeClipColorsKeyRef.current) {
         activeClipColorsKeyRef.current = activeKey;
         setActiveClipColors(activeColors);
+      }
+
+      const nextTrackOrder: Record<string, number> = {};
+      for (const [trackIndex, track] of state.tracks.entries()) {
+        for (const clip of track.clips) {
+          if (
+            clip.inputId !== '__output__' &&
+            !clip.inputId.startsWith('__pending-whip-') &&
+            nextTrackOrder[clip.inputId] === undefined
+          ) {
+            nextTrackOrder[clip.inputId] = trackIndex;
+          }
+        }
+      }
+      const trackOrderKey = JSON.stringify(nextTrackOrder);
+      if (trackOrderKey !== timelineTrackOrderKeyRef.current) {
+        timelineTrackOrderKeyRef.current = trackOrderKey;
+        setTimelineTrackOrder(nextTrackOrder);
+      }
+
+      const allIds: string[] = [];
+      for (const track of state.tracks) {
+        for (const clip of track.clips) {
+          if (
+            clip.inputId !== '__output__' &&
+            !clip.inputId.startsWith('__pending-whip-')
+          ) {
+            allIds.push(clip.inputId);
+          }
+        }
+      }
+      const allIdsKey = allIds.sort().join(',');
+      if (allIdsKey !== allTimelineInputIdsKeyRef.current) {
+        allTimelineInputIdsKeyRef.current = allIdsKey;
+        setAllTimelineInputIds(new Set(allIds));
       }
 
       const whipBase = TYPE_HSL['whip'];
@@ -747,6 +884,9 @@ function ControlPanelInner({
   useEffect(() => {
     timelineStateRef.current = null;
     timelineLoadStateRef.current = null;
+    previousTimelinePlayingRef.current = false;
+    connectAndPlaySessionActiveRef.current = false;
+    setConnectPlayCompletionOpen(false);
     setTimelinePlayheadMs(0);
   }, [roomId]);
 
@@ -756,6 +896,26 @@ function ControlPanelInner({
     }
     setTimelinePlayheadMs(timelineStateRef.current?.playheadMs ?? 0);
   }, [selectedTimelineClips.length]);
+
+  useEffect(() => {
+    if (isGuest || isPersistingTimelineLayerOrderRef.current) {
+      return;
+    }
+
+    const currentLayers = roomState.layers ?? [];
+    const nextLayers = buildLayersSortedForTimelineRender(
+      currentLayers,
+      timelineTrackOrder,
+    );
+    if (hasSameLayerInputOrder(currentLayers, nextLayers)) {
+      return;
+    }
+
+    isPersistingTimelineLayerOrderRef.current = true;
+    void handleLayersChange(nextLayers).finally(() => {
+      isPersistingTimelineLayerOrderRef.current = false;
+    });
+  }, [isGuest, roomState.layers, timelineTrackOrder, handleLayersChange]);
 
   if (renderDashboard) {
     const settingsNav = (
@@ -783,6 +943,9 @@ function ControlPanelInner({
           isGuest={isGuest}
           guestInputId={activeCameraInputId || activeScreenshareInputId}
           onLayersChange={handleLayersChange}
+          activeClipColors={activeClipColors}
+          allTimelineInputIds={allTimelineInputIds}
+          timelineTrackOrder={timelineTrackOrder}
         />
       </div>
     );
@@ -845,18 +1008,40 @@ function ControlPanelInner({
       </div>
     );
 
-    const motionDetectionInputs = inputs.filter((input) =>
-      VIDEO_INPUT_TYPES.has(input.type),
-    );
     const motionDetectionSection = (
-      <MotionDetectionPanel
+      <MotionDetectionSection
         roomId={roomId}
-        inputs={motionDetectionInputs}
-        motionHistoryMap={motionHistoryMap}
-        motionScores={motionScores}
         refreshState={handleRefreshState}
+        inputs={inputs}
       />
     );
+
+    const videoOverlayRects: VideoOverlayRect[] = (() => {
+      if (!videoOverlayEnabled || selectedTimelineClips.length === 0) return [];
+      const playhead = timelinePlayheadMs;
+      const layers = roomState.layers;
+      const colorMap = buildInputColorMap(inputs);
+      const rects: VideoOverlayRect[] = [];
+      for (const clip of selectedTimelineClips) {
+        if (playhead < clip.startMs || playhead >= clip.endMs) continue;
+        for (const layer of layers) {
+          const li = layer.inputs.find((i) => i.inputId === clip.inputId);
+          if (li && li.width > 0 && li.height > 0) {
+            const tc = clip.blockSettings.timelineColor;
+            const fallback = colorMap.get(clip.inputId)?.dot;
+            rects.push({
+              x: li.x,
+              y: li.y,
+              width: li.width,
+              height: li.height,
+              color: tc || fallback || '#ffffff',
+            });
+            break;
+          }
+        }
+      }
+      return rects;
+    })();
 
     return (
       <DashboardToolbarProvider>
@@ -879,25 +1064,33 @@ function ControlPanelInner({
           peers,
           timelineColorOverrides,
           activeClipColors,
+          allTimelineInputIds,
           selectedInputId,
           onSelectInput: setSelectedInputId,
+          videoOverlayRects,
         })}
         {!isGuest && (
-          <PendingConnectionsModal
-            pendingWhipInputs={pendingWhipInputs}
-            setPendingWhipInputs={handleSetPendingWhipInputs}
-            colorMap={pendingWhipColors}
-            open={pendingModalOpen}
-            onOpenChange={handlePendingModalOpenChange}
-            onActionClose={handlePendingModalActionClose}
-            onApplyAtPlayhead={handlePendingModalApply}
-            onConnectAndPlay={handlePendingModalConnectAndPlay}
-            onConnectAndRecord={handlePendingModalConnectAndRecord}
-            canConnectAndPlay={timelineActionsReady}
-            canConnectAndRecord={timelineActionsReady && !isRecording}
-            welcomeTextBefore={showcaseWelcome?.before}
-            welcomeTextAfter={showcaseWelcome?.after}
-          />
+          <>
+            <PendingConnectionsModal
+              pendingWhipInputs={pendingWhipInputs}
+              setPendingWhipInputs={handleSetPendingWhipInputs}
+              colorMap={pendingWhipColors}
+              open={pendingModalOpen}
+              onOpenChange={handlePendingModalOpenChange}
+              onActionClose={handlePendingModalActionClose}
+              onApplyAtPlayhead={handlePendingModalApply}
+              onConnectAndPlay={handlePendingModalConnectAndPlay}
+              onConnectAndRecord={handlePendingModalConnectAndRecord}
+              canConnectAndPlay={timelineActionsReady}
+              canConnectAndRecord={timelineActionsReady && !isRecording}
+              welcomeTextBefore={showcaseWelcome?.before}
+              welcomeTextAfter={showcaseWelcome?.after}
+            />
+            <ConnectPlayCompletionModal
+              open={connectPlayCompletionOpen}
+              onOpenChange={setConnectPlayCompletionOpen}
+            />
+          </>
         )}
       </DashboardToolbarProvider>
     );
@@ -917,6 +1110,9 @@ function ControlPanelInner({
       isGuest={isGuest}
       guestInputId={activeCameraInputId || activeScreenshareInputId}
       onLayersChange={handleLayersChange}
+      activeClipColors={activeClipColors}
+      allTimelineInputIds={allTimelineInputIds}
+      timelineTrackOrder={timelineTrackOrder}
     />
   ) : null;
 
@@ -987,6 +1183,13 @@ function ControlPanelInner({
     />
   );
 
+  const connectPlayCompletionModal = !isGuest && (
+    <ConnectPlayCompletionModal
+      open={connectPlayCompletionOpen}
+      onOpenChange={setConnectPlayCompletionOpen}
+    />
+  );
+
   if (renderStreamsOutside) {
     return (
       <>
@@ -995,6 +1198,7 @@ function ControlPanelInner({
           timelinePortalRef?.current &&
           createPortal(timelineSection, timelinePortalRef.current)}
         {pendingModal}
+        {connectPlayCompletionModal}
       </>
     );
   }
@@ -1003,11 +1207,42 @@ function ControlPanelInner({
     <>
       {mainPanel}
       {pendingModal}
+      {connectPlayCompletionModal}
     </>
   );
 }
 
-type ModalId = 'quickActions' | 'settings';
+const MotionDetectionSection = memo(function MotionDetectionSection({
+  roomId,
+  inputs,
+  refreshState,
+}: {
+  roomId: string;
+  inputs: Input[];
+  refreshState: () => Promise<void>;
+}) {
+  const motionDetectionInputs = useMemo(
+    () => inputs.filter((input) => VIDEO_INPUT_TYPES.has(input.type)),
+    [inputs],
+  );
+  const motionScores = useMotionScores(roomId);
+  const motionHistoryMap = useMotionHistory(
+    motionDetectionInputs,
+    motionScores,
+  );
+
+  return (
+    <MotionDetectionPanel
+      roomId={roomId}
+      inputs={motionDetectionInputs}
+      motionHistoryMap={motionHistoryMap}
+      motionScores={motionScores}
+      refreshState={refreshState}
+    />
+  );
+});
+
+type ModalId = 'settings' | 'showcase';
 
 function SettingsBar({
   roomState,
@@ -1025,6 +1260,7 @@ function SettingsBar({
   const [openModal, setOpenModal] = useState<ModalId | null>(null);
   const [showAddVideoModal, setShowAddVideoModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isExportingFullProject, setIsExportingFullProject] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [importProgress, setImportProgress] =
     useState<ImportProgressState | null>(null);
@@ -1048,6 +1284,14 @@ function SettingsBar({
   const [voicePanelSize, setVoicePanelSize] = useVoicePanelSizeSetting();
   const [voicePanelOpacity, setVoicePanelOpacity] =
     useVoicePanelOpacitySetting();
+  const [voiceCommandsEnabled, setVoiceCommandsEnabled] =
+    useVoiceCommandsEnabledSetting();
+  const [videoOverlayEnabled, setVideoOverlayEnabled] =
+    useVideoOverlayEnabledSetting();
+  const [videoOverlayLineWidth, setVideoOverlayLineWidth] =
+    useVideoOverlayLineWidthSetting();
+  const [videoOverlayGlowing, setVideoOverlayGlowing] =
+    useVideoOverlayGlowingSetting();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dashboardToolbar = useDashboardToolbar();
   const [showDashSaveModal, setShowDashSaveModal] = useState(false);
@@ -1179,8 +1423,6 @@ function SettingsBar({
         swapOutgoingEnabled: roomState.swapOutgoingEnabled,
         swapFadeInDurationMs: roomState.swapFadeInDurationMs,
         swapFadeOutDurationMs: roomState.swapFadeOutDurationMs,
-        newsStripFadeDuringSwap: roomState.newsStripFadeDuringSwap,
-        newsStripEnabled: roomState.newsStripEnabled,
       },
       timelineState ?? undefined,
       outputPlayer,
@@ -1193,6 +1435,7 @@ function SettingsBar({
         viewportTransitionEasing: roomState.viewportTransitionEasing,
       },
       roomState.outputShaders,
+      roomState.layers,
     );
   }, [getTimelineStateForConfig, roomState, roomId]);
 
@@ -1205,6 +1448,23 @@ function SettingsBar({
       console.error('Export failed:', e);
     } finally {
       setIsExporting(false);
+    }
+  }, [buildConfig]);
+
+  const handleExportFullProject = useCallback(async () => {
+    setIsExportingFullProject(true);
+    const loadingToastId = toast.loading('Building full project ZIP...');
+    try {
+      const config = buildConfig();
+      await downloadFullProjectZip(config);
+      toast.success('Full project ZIP downloaded.', { id: loadingToastId });
+    } catch (e: any) {
+      console.error('Full project export failed:', e);
+      toast.error(e?.message ?? 'Full project export failed.', {
+        id: loadingToastId,
+      });
+    } finally {
+      setIsExportingFullProject(false);
     }
   }, [buildConfig]);
 
@@ -1301,6 +1561,8 @@ function SettingsBar({
             restoredTimelineState.tracks.length > 0
               ? {
                   ...restoredTimelineState,
+                  snapToBlocks: true,
+                  snapToKeyframes: true,
                   playheadMs: 0,
                   isPlaying: false,
                   knownInputIds,
@@ -1334,23 +1596,58 @@ function SettingsBar({
       const file = e.target.files?.[0];
       if (!file) return;
 
+      const isZip = file.name.toLowerCase().endsWith('.zip');
+      let loadingToastId: string | number | undefined;
       try {
-        const text = await file.text();
-        const config = parseRoomConfig(text);
+        if (isZip) {
+          setIsImporting(true);
+          startImportProgress(1, 'Reading project archive');
+          loadingToastId = toast.loading('Importing full project ZIP...');
+        }
+
+        const config = isZip
+          ? await importFullProjectZip(file, {
+              onProgress: (event) => {
+                setImportProgress({
+                  phase: event.phase,
+                  current: event.current,
+                  total: event.total,
+                });
+              },
+            })
+          : parseRoomConfig(await file.text());
+
+        if (isZip) {
+          setImportProgress({
+            phase: 'Applying imported configuration',
+            current: 0,
+            total: 1,
+          });
+        }
         await importConfig(config);
+        if (loadingToastId !== undefined) {
+          toast.success('Full project imported successfully.', {
+            id: loadingToastId,
+          });
+        }
       } catch (e: any) {
         console.error('Import failed:', e);
+        toast.error(e?.message ?? 'Import failed.', {
+          id: loadingToastId,
+        });
+        setImportProgress(null);
+        setIsImporting(false);
       } finally {
         if (fileInputRef.current) {
           fileInputRef.current.value = '';
         }
       }
     },
-    [importConfig],
+    [importConfig, startImportProgress],
   );
 
   const navLinkClass =
-    'relative inline-flex h-12 mt-2 items-center justify-center px-2 uppercase tracking-widest text-xl font-bold leading-none text-[#849495] transition-colors hover:text-[#00f3ff] after:pointer-events-none after:absolute after:left-2 after:right-2 after:bottom-3 after:h-[2px] after:rounded-full after:bg-transparent after:content-[""] hover:after:bg-[#00f3ff] disabled:opacity-50 disabled:cursor-not-allowed';
+    'relative inline-flex h-12 mt-2 items-center justify-center px-2 uppercase tracking-widest text-xl font-bold leading-none text-[#849495] transition-colors hover:text-[#00f3ff] cursor-pointer after:pointer-events-none after:absolute after:left-2 after:right-2 after:bottom-3 after:h-[2px] after:rounded-full after:bg-transparent after:content-[""] hover:after:bg-[#00f3ff] disabled:opacity-50 disabled:cursor-not-allowed';
 
   const recordLabel = isWaitingForDownload
     ? 'Wait...'
@@ -1373,7 +1670,7 @@ function SettingsBar({
               <div className='absolute left-0 top-full hidden group-hover:flex flex-col bg-[#1c1b1b] border border-[#3a494b]/30 z-50 min-w-[220px] py-1'>
                 <button
                   onClick={() => dashboardToolbar.toggleEditMode()}
-                  className={`text-left px-3 py-1.5 uppercase tracking-widest text-sm transition-colors ${
+                  className={`text-left px-3 py-1.5 uppercase tracking-widest text-sm transition-colors cursor-pointer ${
                     dashboardToolbar.isEditMode
                       ? 'text-[#00f3ff]'
                       : 'text-[#849495] hover:text-[#00f3ff]'
@@ -1385,19 +1682,19 @@ function SettingsBar({
                   <button
                     key={preset.id}
                     onClick={() => dashboardToolbar.applyPreset(preset.layout)}
-                    className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors'>
+                    className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
                     {preset.label}
                   </button>
                 ))}
                 <div className='h-px bg-[#3a494b]/30 my-1' />
                 <button
                   onClick={() => setShowDashSaveModal(true)}
-                  className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors'>
+                  className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
                   Save Layout
                 </button>
                 <button
                   onClick={() => setShowDashLoadModal(true)}
-                  className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors'>
+                  className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
                   Load Layout
                 </button>
                 <div className='h-px bg-[#3a494b]/30 my-1' />
@@ -1408,7 +1705,7 @@ function SettingsBar({
                     <button
                       key={panelId}
                       onClick={() => dashboardToolbar.togglePanel(panelId)}
-                      className={`text-left px-3 py-1.5 uppercase tracking-widest text-sm transition-colors flex items-center gap-2 ${
+                      className={`text-left px-3 py-1.5 uppercase tracking-widest text-sm transition-colors flex items-center gap-2 cursor-pointer ${
                         isVisible
                           ? 'text-[#e3fdff]'
                           : 'text-[#849495] hover:text-[#00f3ff]'
@@ -1425,27 +1722,32 @@ function SettingsBar({
                 <div className='h-px bg-[#3a494b]/30 my-1' />
                 <button
                   onClick={() => dashboardToolbar.reset()}
-                  className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors'>
+                  className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
                   Reset Layout
                 </button>
               </div>
             </div>
           )}
-          <button
-            onClick={() => setOpenModal('quickActions')}
-            className={navLinkClass}>
-            Actions
-          </button>
-          <button
-            onClick={() => setOpenModal('settings')}
-            className={navLinkClass}>
-            Settings
-          </button>
+          <div className='relative group'>
+            <button className={navLinkClass}>Settings</button>
+            <div className='absolute left-0 top-full hidden group-hover:flex flex-col bg-[#1c1b1b] border border-[#3a494b]/30 z-50 min-w-[220px] py-1'>
+              <button
+                onClick={() => setOpenModal('settings')}
+                className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
+                General
+              </button>
+              <button
+                onClick={() => setOpenModal('showcase')}
+                className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
+                Showcase
+              </button>
+            </div>
+          </div>
           <button
             onClick={() => setShowSaveModal(true)}
-            disabled={isExporting}
+            disabled={isExporting || isExportingFullProject}
             className={navLinkClass}>
-            {isExporting ? 'Saving...' : 'Save'}
+            {isExporting || isExportingFullProject ? 'Saving...' : 'Save'}
           </button>
           <button
             onClick={() => setShowLoadModal(true)}
@@ -1489,245 +1791,284 @@ function SettingsBar({
       <ShadcnInput
         ref={fileInputRef}
         type='file'
-        accept='.json,application/json'
+        accept='.json,.zip,application/json,application/zip'
         className='hidden'
         onChange={handleFileChange}
       />
       <Dialog
-        open={openModal === 'quickActions'}
-        onOpenChange={(open) => !open && setOpenModal(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Quick Actions</DialogTitle>
-          </DialogHeader>
-          <QuickActionsSection />
-        </DialogContent>
-      </Dialog>
-
-      <Dialog
         open={openModal === 'settings'}
         onOpenChange={(open) => !open && setOpenModal(null)}>
-        <DialogContent className='max-w-2xl'>
+        <DialogContent className='max-h-[84vh] max-w-2xl overflow-y-auto'>
+          <FxCanvas
+            config={FX_PRESET_MODAL}
+            isActive={openModal === 'settings'}
+          />
+          <div className='absolute inset-0 bg-black/50 pointer-events-none rounded-[inherit]' />
           <DialogHeader>
             <DialogTitle>Settings</DialogTitle>
           </DialogHeader>
-          <Tabs defaultValue='general'>
-            <TabsList className='w-full'>
-              <TabsTrigger value='general' className='flex-1'>
-                General
-              </TabsTrigger>
-              <TabsTrigger value='presentation' className='flex-1'>
-                Presentation Mode
-              </TabsTrigger>
-            </TabsList>
-            <TabsContent value='general'>
-              <div className='grid grid-cols-2 gap-6'>
-                <section className='space-y-2'>
-                  <h4 className='text-sm font-medium text-foreground'>
-                    Transition Settings
-                  </h4>
-                  <TransitionSettings
-                    swapDurationMs={roomState.swapDurationMs ?? 500}
-                    onSwapDurationChange={async (value) => {
-                      await updateRoomAction(roomId, { swapDurationMs: value });
-                      await handleRefreshState();
-                    }}
-                    swapOutgoingEnabled={roomState.swapOutgoingEnabled ?? true}
-                    onSwapOutgoingEnabledChange={async (value) => {
-                      await updateRoomAction(roomId, {
-                        swapOutgoingEnabled: value,
-                      });
-                      await handleRefreshState();
-                    }}
-                    swapFadeInDurationMs={roomState.swapFadeInDurationMs ?? 500}
-                    onSwapFadeInDurationChange={async (value) => {
-                      await updateRoomAction(roomId, {
-                        swapFadeInDurationMs: value,
-                      });
-                      await handleRefreshState();
-                    }}
-                    swapFadeOutDurationMs={
-                      roomState.swapFadeOutDurationMs ?? 500
-                    }
-                    onSwapFadeOutDurationChange={async (value) => {
-                      await updateRoomAction(roomId, {
-                        swapFadeOutDurationMs: value,
-                      });
-                      await handleRefreshState();
-                    }}
-                    newsStripFadeDuringSwap={
-                      roomState.newsStripFadeDuringSwap ?? true
-                    }
-                    onNewsStripFadeDuringSwapChange={async (value) => {
-                      await updateRoomAction(roomId, {
-                        newsStripFadeDuringSwap: value,
-                      });
-                      await handleRefreshState();
-                    }}
-                    newsStripEnabled={roomState.newsStripEnabled ?? true}
-                    onNewsStripEnabledChange={async (value) => {
-                      await updateRoomAction(roomId, {
-                        newsStripEnabled: value,
-                      });
-                      await handleRefreshState();
-                    }}
-                  />
-                  <div className='h-px bg-card mt-3' />
-                  <h4 className='text-sm font-medium text-foreground mt-3'>
-                    Viewport
-                  </h4>
-                  {roomState.resolution && (
-                    <ViewportSettings
-                      resolution={roomState.resolution}
-                      viewportTop={roomState.viewportTop}
-                      viewportLeft={roomState.viewportLeft}
-                      viewportWidth={roomState.viewportWidth}
-                      viewportHeight={roomState.viewportHeight}
-                      viewportTransitionDurationMs={
-                        roomState.viewportTransitionDurationMs
-                      }
-                      viewportTransitionEasing={
-                        roomState.viewportTransitionEasing
-                      }
-                      onChange={async (fields) => {
-                        await updateRoomAction(roomId, fields);
-                        await handleRefreshState();
-                      }}
-                    />
-                  )}
-                  <div className='h-px bg-card mt-3' />
-                  <h4 className='text-sm font-medium text-foreground mt-3'>
-                    Layout Behavior
-                  </h4>
-                  <p className='text-[11px] text-neutral-500'>
-                    Default layer behavior for new inputs
-                  </p>
-                  <BehaviorSelector
-                    behavior={roomState.layers?.[0]?.behavior}
-                    onChange={async (b) => {
-                      const currentLayers = roomState.layers ?? [];
-                      const updatedLayers =
-                        currentLayers.length > 0
-                          ? currentLayers.map((l, i) =>
-                              i === 0 ? { ...l, behavior: b } : l,
-                            )
-                          : [{ id: 'default', inputs: [], behavior: b }];
-                      await updateRoomAction(roomId, { layers: updatedLayers });
-                      await handleRefreshState();
+          <div className='relative grid grid-cols-2 gap-6 pt-2'>
+            <section className='space-y-3'>
+              <h4 className='text-sm font-medium text-foreground'>
+                Transition Settings
+              </h4>
+              <TransitionSettings
+                swapDurationMs={roomState.swapDurationMs ?? 500}
+                onSwapDurationChange={async (value) => {
+                  await updateRoomAction(roomId, { swapDurationMs: value });
+                  await handleRefreshState();
+                }}
+                swapOutgoingEnabled={roomState.swapOutgoingEnabled ?? true}
+                onSwapOutgoingEnabledChange={async (value) => {
+                  await updateRoomAction(roomId, {
+                    swapOutgoingEnabled: value,
+                  });
+                  await handleRefreshState();
+                }}
+                swapFadeInDurationMs={roomState.swapFadeInDurationMs ?? 500}
+                onSwapFadeInDurationChange={async (value) => {
+                  await updateRoomAction(roomId, {
+                    swapFadeInDurationMs: value,
+                  });
+                  await handleRefreshState();
+                }}
+                swapFadeOutDurationMs={roomState.swapFadeOutDurationMs ?? 500}
+                onSwapFadeOutDurationChange={async (value) => {
+                  await updateRoomAction(roomId, {
+                    swapFadeOutDurationMs: value,
+                  });
+                  await handleRefreshState();
+                }}
+              />
+              <div className='h-px bg-card mt-4' />
+              <h4 className='text-sm font-medium text-foreground mt-4'>
+                Viewport
+              </h4>
+              {roomState.resolution && (
+                <ViewportSettings
+                  resolution={roomState.resolution}
+                  viewportTop={roomState.viewportTop}
+                  viewportLeft={roomState.viewportLeft}
+                  viewportWidth={roomState.viewportWidth}
+                  viewportHeight={roomState.viewportHeight}
+                  viewportTransitionDurationMs={
+                    roomState.viewportTransitionDurationMs
+                  }
+                  viewportTransitionEasing={roomState.viewportTransitionEasing}
+                  onChange={async (fields) => {
+                    await updateRoomAction(roomId, fields);
+                    await handleRefreshState();
+                  }}
+                />
+              )}
+              <div className='h-px bg-card mt-4' />
+              <h4 className='text-sm font-medium text-foreground mt-4'>
+                Layout Behavior
+              </h4>
+              <p className='text-[11px] text-neutral-500'>
+                Default layer behavior for new inputs
+              </p>
+              <BehaviorSelector
+                behavior={roomState.layers?.[0]?.behavior}
+                onChange={async (b) => {
+                  const currentLayers = roomState.layers ?? [];
+                  const updatedLayers =
+                    currentLayers.length > 0
+                      ? currentLayers.map((l, i) =>
+                          i === 0 ? { ...l, behavior: b } : l,
+                        )
+                      : [{ id: 'default', inputs: [], behavior: b }];
+                  await updateRoomAction(roomId, { layers: updatedLayers });
+                  await handleRefreshState();
+                }}
+              />
+            </section>
+            <div className='space-y-5'>
+              <section className='space-y-3 px-1'>
+                <h4 className='text-sm font-medium text-foreground'>
+                  Macros Settings
+                </h4>
+                <label className='flex items-center gap-2 cursor-pointer'>
+                  <Checkbox
+                    checked={autoPlayMacro}
+                    onCheckedChange={(checked: boolean) => {
+                      setAutoPlayMacro(checked);
                     }}
                   />
-                </section>
-                <div className='space-y-4'>
-                  <section className='space-y-2 px-1'>
-                    <h4 className='text-sm font-medium text-foreground'>
-                      Macros Settings
-                    </h4>
-                    <label className='flex items-center gap-2 cursor-pointer'>
-                      <Checkbox
-                        checked={autoPlayMacro}
-                        onCheckedChange={(checked: boolean) => {
-                          setAutoPlayMacro(checked);
-                        }}
+                  <span className='text-xs text-muted-foreground'>
+                    Auto Play Macro
+                  </span>
+                </label>
+                <label className='flex items-center gap-2 cursor-pointer'>
+                  <Checkbox
+                    checked={voiceCommandsEnabled}
+                    onCheckedChange={(checked: boolean) =>
+                      setVoiceCommandsEnabled(checked)
+                    }
+                  />
+                  <span className='text-xs text-muted-foreground'>
+                    Enable Voice Commands
+                  </span>
+                </label>
+                <label className='flex items-center gap-2 cursor-pointer'>
+                  <Checkbox
+                    checked={voicePanelSize === 's'}
+                    onCheckedChange={(checked: boolean) =>
+                      setVoicePanelSize(checked ? 's' : 'l')
+                    }
+                  />
+                  <span className='text-xs text-muted-foreground'>
+                    Compact Voice Panel
+                  </span>
+                </label>
+                <div className='space-y-1.5'>
+                  <div className='flex items-center justify-between gap-3'>
+                    <span className='text-xs text-muted-foreground'>
+                      Panel Opacity
+                    </span>
+                    <span className='text-xs text-muted-foreground text-right tabular-nums'>
+                      {voicePanelOpacity}%
+                    </span>
+                  </div>
+                  <Slider
+                    min={0}
+                    max={100}
+                    step={5}
+                    value={[voicePanelOpacity]}
+                    onValueChange={(v) => setVoicePanelOpacity(v[0])}
+                    className='w-full accent-white h-1'
+                  />
+                </div>
+              </section>
+              <div className='h-px bg-card' />
+              <section className='space-y-3 px-1'>
+                <h4 className='text-sm font-medium text-foreground'>
+                  Input Defaults
+                </h4>
+                <div className='flex items-center justify-between'>
+                  <span className='text-xs text-muted-foreground'>
+                    Default Orientation
+                  </span>
+                  <Select
+                    value={defaultOrientation}
+                    onValueChange={(v: 'horizontal' | 'vertical') =>
+                      setDefaultOrientation(v)
+                    }>
+                    <SelectTrigger className='bg-card border border-border text-foreground text-xs px-2 py-1 rounded h-auto'>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value='horizontal'>Horizontal</SelectItem>
+                      <SelectItem value='vertical'>Vertical</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </section>
+              <div className='h-px bg-card' />
+              <section className='space-y-3 px-1'>
+                <h4 className='text-sm font-medium text-foreground'>
+                  Video Preview
+                </h4>
+                <label className='flex items-center gap-2 cursor-pointer'>
+                  <Checkbox
+                    checked={videoOverlayEnabled}
+                    onCheckedChange={(checked: boolean) =>
+                      setVideoOverlayEnabled(checked)
+                    }
+                  />
+                  <span className='text-xs text-muted-foreground'>
+                    Show selected clip overlay
+                  </span>
+                </label>
+                {videoOverlayEnabled && (
+                  <>
+                    <div className='space-y-1.5'>
+                      <div className='flex items-center justify-between gap-3'>
+                        <span className='text-xs text-muted-foreground'>
+                          Border Width
+                        </span>
+                        <span className='text-xs text-muted-foreground text-right tabular-nums'>
+                          {videoOverlayLineWidth}
+                        </span>
+                      </div>
+                      <Slider
+                        min={1}
+                        max={20}
+                        step={1}
+                        value={[videoOverlayLineWidth]}
+                        onValueChange={(v) => setVideoOverlayLineWidth(v[0])}
+                        className='w-full accent-white h-1'
                       />
-                      <span className='text-xs text-muted-foreground'>
-                        Auto Play Macro
-                      </span>
-                    </label>
+                    </div>
                     <label className='flex items-center gap-2 cursor-pointer'>
                       <Checkbox
-                        checked={voicePanelSize === 's'}
+                        checked={videoOverlayGlowing}
                         onCheckedChange={(checked: boolean) =>
-                          setVoicePanelSize(checked ? 's' : 'l')
+                          setVideoOverlayGlowing(checked)
                         }
                       />
                       <span className='text-xs text-muted-foreground'>
-                        Compact Voice Panel
+                        Glowing
                       </span>
                     </label>
-                    <div className='flex items-center justify-between gap-3'>
-                      <span className='text-xs text-muted-foreground shrink-0'>
-                        Panel Opacity
-                      </span>
-                      <Slider
-                        min={0}
-                        max={100}
-                        step={5}
-                        value={[voicePanelOpacity]}
-                        onValueChange={(v) => setVoicePanelOpacity(v[0])}
-                        className='flex-1 accent-white h-1'
-                      />
-                      <span className='text-xs text-muted-foreground w-8 text-right tabular-nums'>
-                        {voicePanelOpacity}%
-                      </span>
-                    </div>
-                  </section>
-                  <div className='h-px bg-card' />
-                  <section className='space-y-2 px-1'>
-                    <h4 className='text-sm font-medium text-foreground'>
-                      Input Defaults
-                    </h4>
-                    <div className='flex items-center justify-between'>
-                      <span className='text-xs text-muted-foreground'>
-                        Default Orientation
-                      </span>
-                      <Select
-                        value={defaultOrientation}
-                        onValueChange={(v: 'horizontal' | 'vertical') =>
-                          setDefaultOrientation(v)
-                        }>
-                        <SelectTrigger className='bg-card border border-border text-foreground text-xs px-2 py-1 rounded h-auto'>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value='horizontal'>Horizontal</SelectItem>
-                          <SelectItem value='vertical'>Vertical</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </section>
-                  <div className='h-px bg-card' />
-                  <section className='space-y-2 px-1'>
-                    <h4 className='text-sm font-medium text-foreground'>
-                      Toast Notifications
-                    </h4>
-                    <FeedbackPositionPicker
-                      enabled={feedbackEnabled}
-                      onEnabledChange={setFeedbackEnabled}
-                      position={feedbackPosition}
-                      onPositionChange={setFeedbackPosition}
-                      size={feedbackSize}
-                      onSizeChange={setFeedbackSize}
-                      duration={feedbackDuration}
-                      onDurationChange={setFeedbackDuration}
-                    />
-                  </section>
-                  <div className='h-px bg-card' />
-                  <section className='space-y-2 px-1'>
-                    <h4 className='text-sm font-medium text-foreground'>
-                      Timeline Event Notifications
-                    </h4>
-                    <FeedbackPositionPicker
-                      label='Show Timeline Events'
-                      enabled={tlEventsEnabled}
-                      onEnabledChange={setTlEventsEnabled}
-                      position={tlEventsPosition}
-                      onPositionChange={setTlEventsPosition}
-                      size={tlEventsSize}
-                      onSizeChange={setTlEventsSize}
-                      duration={tlEventsDuration}
-                      onDurationChange={setTlEventsDuration}
-                    />
-                  </section>
-                </div>
-              </div>
-            </TabsContent>
-            <TabsContent value='presentation'>
-              <PresentationModeSettings
-                roomState={roomState}
-                getTimelineStateForConfig={getTimelineStateForConfig}
-              />
-            </TabsContent>
-          </Tabs>
+                  </>
+                )}
+              </section>
+              <div className='h-px bg-card' />
+              <section className='space-y-3 px-1'>
+                <h4 className='text-sm font-medium text-foreground'>
+                  Toast Notifications
+                </h4>
+                <FeedbackPositionPicker
+                  enabled={feedbackEnabled}
+                  onEnabledChange={setFeedbackEnabled}
+                  position={feedbackPosition}
+                  onPositionChange={setFeedbackPosition}
+                  size={feedbackSize}
+                  onSizeChange={setFeedbackSize}
+                  duration={feedbackDuration}
+                  onDurationChange={setFeedbackDuration}
+                />
+              </section>
+              <div className='h-px bg-card' />
+              <section className='space-y-3 px-1'>
+                <h4 className='text-sm font-medium text-foreground'>
+                  Timeline Event Notifications
+                </h4>
+                <FeedbackPositionPicker
+                  label='Show Timeline Events'
+                  enabled={tlEventsEnabled}
+                  onEnabledChange={setTlEventsEnabled}
+                  position={tlEventsPosition}
+                  onPositionChange={setTlEventsPosition}
+                  size={tlEventsSize}
+                  onSizeChange={setTlEventsSize}
+                  duration={tlEventsDuration}
+                  onDurationChange={setTlEventsDuration}
+                />
+              </section>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+      <Dialog
+        open={openModal === 'showcase'}
+        onOpenChange={(open) => !open && setOpenModal(null)}>
+        <DialogContent className='max-h-[84vh] max-w-2xl overflow-y-auto'>
+          <FxCanvas
+            config={FX_PRESET_MODAL}
+            isActive={openModal === 'showcase'}
+          />
+          <div className='absolute inset-0 bg-black/50 pointer-events-none rounded-[inherit]' />
+          <DialogHeader>
+            <DialogTitle>Showcase</DialogTitle>
+          </DialogHeader>
+          <div>
+            <PresentationModeSettings
+              roomState={roomState}
+              getTimelineStateForConfig={getTimelineStateForConfig}
+            />
+          </div>
         </DialogContent>
       </Dialog>
       <Dialog
@@ -1760,8 +2101,9 @@ function SettingsBar({
         open={showSaveModal}
         onOpenChange={setShowSaveModal}
         onSaveLocal={handleExportLocal}
+        onSaveFullProject={handleExportFullProject}
         onSaveRemote={handleExportRemote}
-        isExporting={isExporting}
+        isExporting={isExporting || isExportingFullProject}
       />
 
       <LoadConfigModal

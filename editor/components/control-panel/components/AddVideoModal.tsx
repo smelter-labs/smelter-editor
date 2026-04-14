@@ -30,6 +30,7 @@ import { useIsMobileDevice } from '@/hooks/use-mobile';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import type { ChannelSuggestion, Input } from '@/lib/types';
+import { SelectablePreviewCard } from './asset-browser/selectable-preview-card';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -83,6 +84,28 @@ type DeletableAssetItem =
   | AssetItemAudio
   | AssetItemImage
   | AssetItemHls;
+
+type InspectorConfirmTone = 'accent' | 'danger';
+
+type InspectorConfirmState = {
+  title: string;
+  description: string;
+  confirmLabel: string;
+  tone: InspectorConfirmTone;
+  onConfirm: () => Promise<void>;
+};
+
+type NormalizeResultState =
+  | {
+      kind: 'success';
+      atMs: number;
+      message: string;
+    }
+  | {
+      kind: 'error';
+      atMs: number;
+      message: string;
+    };
 
 export interface AssetBrowserInputCreated {
   inputId: string;
@@ -1373,34 +1396,15 @@ function AssetCard({
   })();
 
   return (
-    <button
+    <SelectablePreviewCard
       onClick={onClick}
-      className={`text-left bg-[#1c1b1b] border border-[#3a494b]/30 hover:border-[#00f3ff]/60 group transition-all cursor-pointer ${
-        isSelected ? 'border-l-2 border-l-[#fe00fe] neon-glow-secondary' : ''
-      }`}>
-      <div className='relative aspect-video bg-black overflow-hidden'>
-        <AssetThumbnail item={item} />
-        <div className='absolute inset-0 scanline opacity-30' />
-        <div className='absolute top-1.5 left-1.5 px-1 bg-black/80 text-[10px] font-mono text-[#00f3ff] border border-[#00f3ff]/30'>
-          {badge}
-        </div>
-        {durationBadge && (
-          <div className='absolute bottom-1.5 right-1.5 px-1 bg-black/80 text-[10px] font-mono text-[#fe00fe]'>
-            {durationBadge}
-          </div>
-        )}
-      </div>
-      <div className='p-2 border-t border-[#3a494b]/20'>
-        <div className='font-mono text-[11px] text-[#e3fdff] mb-0.5 truncate'>
-          {label}
-        </div>
-        {subtitle && (
-          <div className='font-mono text-[10px] text-[#849495] truncate'>
-            {subtitle}
-          </div>
-        )}
-      </div>
-    </button>
+      isSelected={isSelected}
+      badge={badge}
+      label={label}
+      subtitle={subtitle}
+      durationBadge={durationBadge ?? undefined}
+      thumbnail={<AssetThumbnail item={item} />}
+    />
   );
 }
 
@@ -2194,6 +2198,218 @@ function DeleteLibraryItemButton({
   );
 }
 
+function buildLibraryDownloadHref(
+  kind: 'mp4' | 'audio' | 'image',
+  fileName: string,
+): string {
+  const encodedPath = fileName
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+  const prefix =
+    kind === 'mp4'
+      ? '/api/download/mp4'
+      : kind === 'audio'
+        ? '/api/download/audio'
+        : '/api/download/picture';
+  return `${prefix}/${encodedPath}`;
+}
+
+function buildLibraryNormalizeHref(
+  kind: 'mp4' | 'audio',
+  fileName: string,
+): string {
+  const prefix =
+    kind === 'mp4'
+      ? '/api/upload/mp4/normalize'
+      : '/api/upload/audio/normalize';
+  const encodedPath = fileName
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+  return `${prefix}/${encodedPath}`;
+}
+
+function buildLibraryPlayHref(kind: 'mp4' | 'audio', fileName: string): string {
+  const prefix = kind === 'mp4' ? '/api/play/mp4' : '/api/play/audio';
+  const encodedPath = fileName
+    .split('/')
+    .filter(Boolean)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+  return `${prefix}/${encodedPath}`;
+}
+
+function DownloadLibraryItemButton({
+  href,
+  downloadName,
+}: {
+  href: string;
+  downloadName: string;
+}) {
+  return (
+    <a
+      href={href}
+      download={downloadName}
+      className='block w-full py-1.5 text-center bg-transparent border border-[#00f3ff]/40 text-[#00f3ff] font-mono text-[10px] uppercase tracking-widest hover:bg-[#00f3ff]/10 transition-colors cursor-pointer'>
+      DOWNLOAD_ASSET
+    </a>
+  );
+}
+
+function ActionOutlineButton({
+  label,
+  onClick,
+  disabled,
+  colorClass,
+}: {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  colorClass: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`w-full py-1.5 bg-transparent border font-mono text-[10px] uppercase tracking-widest transition-colors disabled:opacity-40 ${colorClass}`}>
+      {label}
+    </button>
+  );
+}
+
+function formatStatusClock(atMs: number): string {
+  return new Date(atMs).toLocaleTimeString('pl-PL', {
+    hour12: false,
+  });
+}
+
+function NormalizeStatusInline({
+  normalizing,
+  result,
+}: {
+  normalizing: boolean;
+  result: NormalizeResultState | null;
+}) {
+  if (normalizing) {
+    return (
+      <p className='text-[10px] font-mono text-[#00f3ff] tracking-wide'>
+        NORMALIZE_IN_PROGRESS...
+      </p>
+    );
+  }
+
+  if (!result) {
+    return null;
+  }
+
+  const isSuccess = result.kind === 'success';
+  const toneClass = isSuccess ? 'text-emerald-300' : 'text-red-300';
+
+  return (
+    <p className={`text-[10px] font-mono tracking-wide ${toneClass}`}>
+      {`${isSuccess ? 'LAST_NORMALIZE_OK' : 'LAST_NORMALIZE_FAILED'} @ ${formatStatusClock(result.atMs)} - ${result.message}`}
+    </p>
+  );
+}
+
+function InspectorConfirmDialog({
+  open,
+  state,
+  confirming,
+  onOpenChange,
+  onConfirm,
+}: {
+  open: boolean;
+  state: InspectorConfirmState | null;
+  confirming: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirm: () => void;
+}) {
+  const confirmToneClass =
+    state?.tone === 'danger'
+      ? 'border-red-500/40 text-red-200 hover:bg-red-500/10'
+      : 'border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10';
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className='max-w-[460px] w-[92vw] bg-[#131313]/95 backdrop-blur-sm border border-[#3a494b]/30 p-0 gap-0 overflow-hidden [&>button]:text-[#849495] [&>button]:hover:text-[#e3fdff]'>
+        <div className='px-4 py-3 border-b border-[#3a494b]/20'>
+          <h3 className='font-headline font-bold text-xs tracking-widest text-[#00f3ff] uppercase truncate'>
+            {state?.title ?? 'CONFIRM_ACTION'}
+          </h3>
+        </div>
+        <div className='px-4 py-3'>
+          <p className='text-[11px] leading-relaxed text-[#b9c9ca] whitespace-pre-line'>
+            {state?.description}
+          </p>
+        </div>
+        <div className='px-4 py-3 border-t border-[#3a494b]/20 flex justify-end gap-2'>
+          <button
+            type='button'
+            onClick={() => onOpenChange(false)}
+            disabled={confirming}
+            className='px-3 py-1.5 bg-transparent border border-[#849495]/40 text-[#b9c9ca] font-mono text-[10px] uppercase tracking-widest hover:bg-[#849495]/10 transition-colors disabled:opacity-40'>
+            CANCEL
+          </button>
+          <button
+            type='button'
+            onClick={onConfirm}
+            disabled={confirming}
+            className={`px-3 py-1.5 bg-transparent border font-mono text-[10px] uppercase tracking-widest transition-colors disabled:opacity-40 ${confirmToneClass}`}>
+            {confirming ? 'PROCESSING...' : (state?.confirmLabel ?? 'CONFIRM')}
+          </button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function AssetPlaybackModal({
+  open,
+  onOpenChange,
+  title,
+  src,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  title: string;
+  src: string;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (!open && videoRef.current) {
+      videoRef.current.pause();
+      videoRef.current.currentTime = 0;
+      videoRef.current.load();
+    }
+  }, [open]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className='max-w-[900px] w-[92vw] bg-[#131313]/95 backdrop-blur-sm border border-[#3a494b]/30 p-0 gap-0 overflow-hidden [&>button]:text-[#849495] [&>button]:hover:text-[#e3fdff]'>
+        <div className='px-4 py-3 border-b border-[#3a494b]/20'>
+          <h3 className='font-headline font-bold text-xs tracking-widest text-[#00f3ff] uppercase truncate'>
+            {title}
+          </h3>
+        </div>
+        <div className='p-4 bg-black'>
+          <video
+            ref={videoRef}
+            src={src}
+            controls
+            autoPlay
+            className='w-full max-h-[70vh] bg-black'
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Type-specific Inspectors ─────────────────────────────────
 
 function Mp4Inspector({
@@ -2212,6 +2428,14 @@ function Mp4Inspector({
   const { addMP4Input } = useActions();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [normalizing, setNormalizing] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [confirmState, setConfirmState] = useState<InspectorConfirmState | null>(
+    null,
+  );
+  const [confirming, setConfirming] = useState(false);
+  const [normalizeResult, setNormalizeResult] =
+    useState<NormalizeResultState | null>(null);
 
   const handleAdd = async () => {
     setLoading(true);
@@ -2232,16 +2456,73 @@ function Mp4Inspector({
   };
 
   const handleDelete = async () => {
-    const confirmed = window.confirm(
-      `Delete "${item.fileName}" from the library?\n\nThis cannot be undone.`,
-    );
-    if (!confirmed) return;
+    setConfirmState({
+      title: 'REMOVE_FROM_LIBRARY',
+      description: `Delete "${item.fileName}" from the library?\n\nThis cannot be undone.`,
+      confirmLabel: 'REMOVE',
+      tone: 'danger',
+      onConfirm: async () => {
+        setDeleting(true);
+        try {
+          await onDeleteAsset(item);
+        } finally {
+          setDeleting(false);
+        }
+      },
+    });
+  };
 
-    setDeleting(true);
+  const handleNormalize = async () => {
+    setConfirmState({
+      title: 'NORMALIZE_AUDIO',
+      description: `Normalize audio for "${item.fileName}"?\n\nThis will overwrite the current file in the library.`,
+      confirmLabel: 'NORMALIZE',
+      tone: 'accent',
+      onConfirm: async () => {
+        setNormalizing(true);
+        setNormalizeResult(null);
+        try {
+          const response = await fetch(
+            buildLibraryNormalizeHref('mp4', item.fileName),
+            { method: 'POST' },
+          );
+          if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            throw new Error(body.error || 'Audio normalization failed');
+          }
+          const message = 'MP4 audio normalized.';
+          toast.success(message);
+          setNormalizeResult({
+            kind: 'success',
+            atMs: Date.now(),
+            message,
+          });
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : 'Failed to normalize audio.';
+          toast.error(message);
+          setNormalizeResult({
+            kind: 'error',
+            atMs: Date.now(),
+            message,
+          });
+        } finally {
+          setNormalizing(false);
+        }
+      }
+    });
+  };
+
+  const handleConfirmAction = async () => {
+    if (!confirmState) return;
+    setConfirming(true);
     try {
-      await onDeleteAsset(item);
+      await confirmState.onConfirm();
+      setConfirmState(null);
     } finally {
-      setDeleting(false);
+      setConfirming(false);
     }
   };
 
@@ -2260,10 +2541,46 @@ function Mp4Inspector({
         onClick={handleAdd}
         loading={loading}
       />
+      <DownloadLibraryItemButton
+        href={buildLibraryDownloadHref('mp4', item.fileName)}
+        downloadName={baseName(item.fileName)}
+      />
+      <div className='grid grid-cols-2 gap-2'>
+        <ActionOutlineButton
+          label={normalizing ? 'NORMALIZING...' : 'NORMALIZE'}
+          onClick={handleNormalize}
+          disabled={normalizing || deleting}
+          colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
+        />
+        <ActionOutlineButton
+          label='PREVIEW'
+          onClick={() => setPreviewOpen(true)}
+          disabled={normalizing || deleting}
+          colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
+        />
+      </div>
+      <NormalizeStatusInline normalizing={normalizing} result={normalizeResult} />
       <DeleteLibraryItemButton
         onClick={handleDelete}
-        disabled={deleting}
+        disabled={deleting || normalizing}
         label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
+      />
+      <AssetPlaybackModal
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        title={`PREVIEW_MP4: ${baseName(item.fileName)}`}
+        src={buildLibraryPlayHref('mp4', item.fileName)}
+      />
+      <InspectorConfirmDialog
+        open={confirmState != null}
+        state={confirmState}
+        confirming={confirming}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmState(null);
+          }
+        }}
+        onConfirm={() => void handleConfirmAction()}
       />
     </div>
   );
@@ -2285,6 +2602,14 @@ function AudioInspector({
   const { addAudioInput } = useActions();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [normalizing, setNormalizing] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [confirmState, setConfirmState] = useState<InspectorConfirmState | null>(
+    null,
+  );
+  const [confirming, setConfirming] = useState(false);
+  const [normalizeResult, setNormalizeResult] =
+    useState<NormalizeResultState | null>(null);
 
   const handleAdd = async () => {
     setLoading(true);
@@ -2305,16 +2630,73 @@ function AudioInspector({
   };
 
   const handleDelete = async () => {
-    const confirmed = window.confirm(
-      `Delete "${item.fileName}" from the library?\n\nThis cannot be undone.`,
-    );
-    if (!confirmed) return;
+    setConfirmState({
+      title: 'REMOVE_FROM_LIBRARY',
+      description: `Delete "${item.fileName}" from the library?\n\nThis cannot be undone.`,
+      confirmLabel: 'REMOVE',
+      tone: 'danger',
+      onConfirm: async () => {
+        setDeleting(true);
+        try {
+          await onDeleteAsset(item);
+        } finally {
+          setDeleting(false);
+        }
+      },
+    });
+  };
 
-    setDeleting(true);
+  const handleNormalize = async () => {
+    setConfirmState({
+      title: 'NORMALIZE_AUDIO',
+      description: `Normalize audio for "${item.fileName}"?\n\nThis will overwrite the current file in the library.`,
+      confirmLabel: 'NORMALIZE',
+      tone: 'accent',
+      onConfirm: async () => {
+        setNormalizing(true);
+        setNormalizeResult(null);
+        try {
+          const response = await fetch(
+            buildLibraryNormalizeHref('audio', item.fileName),
+            { method: 'POST' },
+          );
+          if (!response.ok) {
+            const body = await response.json().catch(() => ({}));
+            throw new Error(body.error || 'Audio normalization failed');
+          }
+          const message = 'Audio asset normalized.';
+          toast.success(message);
+          setNormalizeResult({
+            kind: 'success',
+            atMs: Date.now(),
+            message,
+          });
+        } catch (error) {
+          const message =
+            error instanceof Error
+              ? error.message
+              : 'Failed to normalize audio.';
+          toast.error(message);
+          setNormalizeResult({
+            kind: 'error',
+            atMs: Date.now(),
+            message,
+          });
+        } finally {
+          setNormalizing(false);
+        }
+      }
+    });
+  };
+
+  const handleConfirmAction = async () => {
+    if (!confirmState) return;
+    setConfirming(true);
     try {
-      await onDeleteAsset(item);
+      await confirmState.onConfirm();
+      setConfirmState(null);
     } finally {
-      setDeleting(false);
+      setConfirming(false);
     }
   };
 
@@ -2330,10 +2712,46 @@ function AudioInspector({
         onClick={handleAdd}
         loading={loading}
       />
+      <DownloadLibraryItemButton
+        href={buildLibraryDownloadHref('audio', item.fileName)}
+        downloadName={baseName(item.fileName)}
+      />
+      <div className='grid grid-cols-2 gap-2'>
+        <ActionOutlineButton
+          label={normalizing ? 'NORMALIZING...' : 'NORMALIZE'}
+          onClick={handleNormalize}
+          disabled={normalizing || deleting}
+          colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
+        />
+        <ActionOutlineButton
+          label='ODTWORZ'
+          onClick={() => setPreviewOpen(true)}
+          disabled={normalizing || deleting}
+          colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
+        />
+      </div>
+      <NormalizeStatusInline normalizing={normalizing} result={normalizeResult} />
       <DeleteLibraryItemButton
         onClick={handleDelete}
-        disabled={deleting}
+        disabled={deleting || normalizing}
         label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
+      />
+      <AssetPlaybackModal
+        open={previewOpen}
+        onOpenChange={setPreviewOpen}
+        title={`PREVIEW_AUDIO: ${baseName(item.fileName)}`}
+        src={buildLibraryPlayHref('audio', item.fileName)}
+      />
+      <InspectorConfirmDialog
+        open={confirmState != null}
+        state={confirmState}
+        confirming={confirming}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmState(null);
+          }
+        }}
+        onConfirm={() => void handleConfirmAction()}
       />
     </div>
   );
@@ -2355,6 +2773,10 @@ function ImageInspector({
   const { addImageInput } = useActions();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmState, setConfirmState] = useState<InspectorConfirmState | null>(
+    null,
+  );
+  const [confirming, setConfirming] = useState(false);
 
   const handleAdd = async () => {
     setLoading(true);
@@ -2374,16 +2796,30 @@ function ImageInspector({
   };
 
   const handleDelete = async () => {
-    const confirmed = window.confirm(
-      `Delete "${item.fileName}" from the library?\n\nThis cannot be undone.`,
-    );
-    if (!confirmed) return;
+    setConfirmState({
+      title: 'REMOVE_FROM_LIBRARY',
+      description: `Delete "${item.fileName}" from the library?\n\nThis cannot be undone.`,
+      confirmLabel: 'REMOVE',
+      tone: 'danger',
+      onConfirm: async () => {
+        setDeleting(true);
+        try {
+          await onDeleteAsset(item);
+        } finally {
+          setDeleting(false);
+        }
+      },
+    });
+  };
 
-    setDeleting(true);
+  const handleConfirmAction = async () => {
+    if (!confirmState) return;
+    setConfirming(true);
     try {
-      await onDeleteAsset(item);
+      await confirmState.onConfirm();
+      setConfirmState(null);
     } finally {
-      setDeleting(false);
+      setConfirming(false);
     }
   };
 
@@ -2409,10 +2845,25 @@ function ImageInspector({
         onClick={handleAdd}
         loading={loading}
       />
+      <DownloadLibraryItemButton
+        href={buildLibraryDownloadHref('image', item.fileName)}
+        downloadName={baseName(item.fileName)}
+      />
       <DeleteLibraryItemButton
         onClick={handleDelete}
         disabled={deleting}
         label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
+      />
+      <InspectorConfirmDialog
+        open={confirmState != null}
+        state={confirmState}
+        confirming={confirming}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmState(null);
+          }
+        }}
+        onConfirm={() => void handleConfirmAction()}
       />
     </div>
   );
@@ -2786,6 +3237,10 @@ function HlsSavedInspector({
   const { addHlsInput } = useActions();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [confirmState, setConfirmState] = useState<InspectorConfirmState | null>(
+    null,
+  );
+  const [confirming, setConfirming] = useState(false);
 
   const handleAdd = async () => {
     setLoading(true);
@@ -2804,16 +3259,30 @@ function HlsSavedInspector({
   };
 
   const handleDelete = async () => {
-    const confirmed = window.confirm(
-      `Delete "${item.name}" from the library?\n\nThis cannot be undone.`,
-    );
-    if (!confirmed) return;
+    setConfirmState({
+      title: 'REMOVE_FROM_LIBRARY',
+      description: `Delete "${item.name}" from the library?\n\nThis cannot be undone.`,
+      confirmLabel: 'REMOVE',
+      tone: 'danger',
+      onConfirm: async () => {
+        setDeleting(true);
+        try {
+          await onDeleteAsset(item);
+        } finally {
+          setDeleting(false);
+        }
+      },
+    });
+  };
 
-    setDeleting(true);
+  const handleConfirmAction = async () => {
+    if (!confirmState) return;
+    setConfirming(true);
     try {
-      await onDeleteAsset(item);
+      await confirmState.onConfirm();
+      setConfirmState(null);
     } finally {
-      setDeleting(false);
+      setConfirming(false);
     }
   };
 
@@ -2840,6 +3309,17 @@ function HlsSavedInspector({
         onClick={handleDelete}
         disabled={deleting}
         label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
+      />
+      <InspectorConfirmDialog
+        open={confirmState != null}
+        state={confirmState}
+        confirming={confirming}
+        onOpenChange={(open) => {
+          if (!open) {
+            setConfirmState(null);
+          }
+        }}
+        onConfirm={() => void handleConfirmAction()}
       />
     </div>
   );
@@ -2951,12 +3431,15 @@ function TextActionInspector({
   const [text, setText] = useState('');
   const [align, setAlign] = useState<'left' | 'center' | 'right'>('left');
   const [loading, setLoading] = useState(false);
+  const isSubmittingRef = useRef(false);
 
   const handleAdd = async () => {
+    if (loading || isSubmittingRef.current) return;
     if (!text.trim()) {
       toast.error('Enter text content.');
       return;
     }
+    isSubmittingRef.current = true;
     setLoading(true);
     try {
       const response = await addTextInput(roomId, text, align);
@@ -2968,6 +3451,7 @@ function TextActionInspector({
     } catch {
       toast.error('Failed to add text input.');
     } finally {
+      isSubmittingRef.current = false;
       setLoading(false);
     }
   };

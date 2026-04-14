@@ -21,6 +21,7 @@ export type StoredBlockSettings = {
   textAlign?: 'left' | 'center' | 'right';
   textColor?: string;
   textMaxLines?: number;
+  textScrollEnabled?: boolean;
   textScrollSpeed?: number;
   textScrollLoop?: boolean;
   textFontSize?: number;
@@ -95,6 +96,8 @@ type StoredTimelineStateV3 = {
   tracks: StoredTrack[];
   totalDurationMs: number;
   keyframeInterpolationMode: 'step' | 'smooth';
+  snapToBlocks: boolean;
+  snapToKeyframes: boolean;
   playheadMs: number;
   pixelsPerSecond: number;
 };
@@ -180,6 +183,8 @@ function migrateV2toV3(v2: StoredTimelineStateV2): StoredTimelineStateV3 {
     })),
     totalDurationMs: v2.totalDurationMs,
     keyframeInterpolationMode: 'step',
+    snapToBlocks: true,
+    snapToKeyframes: true,
     playheadMs: v2.playheadMs,
     pixelsPerSecond: v2.pixelsPerSecond,
   };
@@ -201,7 +206,18 @@ export function loadTimeline(roomId: string): StoredTimelineStateV3 | null {
       typeof parsed.totalDurationMs === 'number' &&
       Array.isArray(parsed.tracks)
     ) {
-      return parsed as StoredTimelineStateV3;
+      const v3 = parsed as Partial<StoredTimelineStateV3>;
+      return {
+        schemaVersion: 3,
+        tracks: Array.isArray(v3.tracks) ? v3.tracks : [],
+        totalDurationMs: v3.totalDurationMs ?? 0,
+        keyframeInterpolationMode:
+          v3.keyframeInterpolationMode === 'smooth' ? 'smooth' : 'step',
+        snapToBlocks: v3.snapToBlocks ?? true,
+        snapToKeyframes: v3.snapToKeyframes ?? true,
+        playheadMs: v3.playheadMs ?? 0,
+        pixelsPerSecond: v3.pixelsPerSecond ?? 15,
+      };
     }
 
     if (

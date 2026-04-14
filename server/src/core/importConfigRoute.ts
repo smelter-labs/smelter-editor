@@ -9,6 +9,7 @@ import type {
 } from '@smelter-editor/types';
 import type { RegisterInputOptions } from '../types';
 import type { ServerResponse } from 'node:http';
+import { rebuildLayers } from './importConfigLayers';
 
 type RoomIdParams = { Params: { roomId: string } };
 
@@ -36,6 +37,99 @@ function writeProgress(
 
 function writeDone(raw: ServerResponse, event: ImportConfigDoneEvent): void {
   raw.write(JSON.stringify(event) + '\n');
+}
+
+function toTitleKey(value: string): string {
+  return value.trim().toLocaleLowerCase();
+}
+
+function claimUniqueInputTitle(preferred: string, usedKeys: Set<string>): string {
+  const trimmed = preferred.trim();
+  if (trimmed && !usedKeys.has(toTitleKey(trimmed))) {
+    usedKeys.add(toTitleKey(trimmed));
+    return trimmed;
+  }
+
+  const base = trimmed || 'Input';
+  let index = 1;
+  let candidate = `${base} #${index}`;
+  while (usedKeys.has(toTitleKey(candidate))) {
+    index += 1;
+    candidate = `${base} #${index}`;
+  }
+  usedKeys.add(toTitleKey(candidate));
+  return candidate;
+}
+
+function normalizeImportedInputTitles(
+  inputs: ImportConfigInput[],
+): ImportConfigInput[] {
+  const usedKeys = new Set<string>();
+  return inputs.map((input) => ({
+    ...input,
+    title: claimUniqueInputTitle(input.title ?? '', usedKeys),
+  }));
+}
+
+function collectInputIdsToRemoveFromRoomSnapshot(
+  serverInputIds: string[],
+): string[] {
+  return [...new Set(serverInputIds)];
+}
+
+function collectReferencedInputIndices(
+  config: ImportConfigRequest['config'],
+): Set<number> {
+  const referenced = new Set<number>();
+  const queue: number[] = [];
+
+  for (const track of config.timeline?.tracks ?? []) {
+    for (const clip of track.clips) {
+      if (clip.inputIndex >= 0 && !referenced.has(clip.inputIndex)) {
+        referenced.add(clip.inputIndex);
+        queue.push(clip.inputIndex);
+      }
+    }
+  }
+
+  for (const layer of config.layers ?? []) {
+    for (const input of layer.inputs) {
+      if (input.inputIndex >= 0 && !referenced.has(input.inputIndex)) {
+        referenced.add(input.inputIndex);
+        queue.push(input.inputIndex);
+      }
+    }
+  }
+
+  while (queue.length > 0) {
+    const idx = queue.shift();
+    if (idx === undefined) continue;
+    const input = config.inputs[idx];
+    if (!input?.attachedInputIndices) continue;
+    for (const attachedIdx of input.attachedInputIndices) {
+      if (attachedIdx >= 0 && !referenced.has(attachedIdx)) {
+        referenced.add(attachedIdx);
+        queue.push(attachedIdx);
+      }
+    }
+  }
+
+  return referenced;
+}
+
+function shouldImportInputFromConfig(
+  config: ImportConfigRequest['config'],
+  referencedIndices: Set<number>,
+  index: number,
+): boolean {
+  const input = config.inputs[index];
+  if (!input) return false;
+  if (!config.timeline && (!config.layers || config.layers.length === 0)) {
+    return true;
+  }
+  // Keep non-text inputs even if unreferenced, but drop unreferenced text inputs.
+  if (input.type !== 'text-input') return true;
+  return referencedIndices.has(index);
 }
 
 function buildRegisterOptions(
@@ -67,6 +161,9 @@ function buildRegisterOptions(
       }
       return null;
     case 'image':
+      if (input.imageFileName) {
+        return { type: 'image', fileName: input.imageFileName };
+      }
       return input.imageId ? { type: 'image', imageId: input.imageId } : null;
     case 'text-input':
       return input.text
@@ -76,6 +173,7 @@ function buildRegisterOptions(
             textAlign: input.textAlign,
             textColor: input.textColor,
             textMaxLines: input.textMaxLines,
+            textScrollEnabled: input.textScrollEnabled,
             textScrollSpeed: input.textScrollSpeed,
             textScrollLoop: input.textScrollLoop,
             textFontSize: input.textFontSize,
@@ -91,16 +189,27 @@ function buildRegisterOptions(
   }
 }
 
+export const __importConfigRouteTestUtils = {
+  buildRegisterOptions,
+  buildUpdateOptions,
+  normalizeImportedInputTitles,
+  collectInputIdsToRemoveFromRoomSnapshot,
+  collectReferencedInputIndices,
+  shouldImportInputFromConfig,
+};
+
 function buildUpdateOptions(
   input: ImportConfigInput,
   attachedInputIds?: string[],
 ): Record<string, unknown> {
   return {
+    title: input.title,
     volume: input.volume,
     shaders: input.shaders,
     showTitle: input.showTitle,
     textColor: input.textColor,
     textMaxLines: input.textMaxLines,
+    textScrollEnabled: input.textScrollEnabled,
     textScrollSpeed: input.textScrollSpeed,
     textScrollLoop: input.textScrollLoop,
     textFontSize: input.textFontSize,
@@ -140,8 +249,16 @@ export function registerImportConfigRoute(routes: FastifyInstance): void {
     async (req, res) => {
       const { roomId } = req.params;
       const room = state.getRoom(roomId);
-      const { config, oldInputIds, timelineAtZero } =
-        req.body as ImportConfigRequest;
+      const { config, timelineAtZero } = req.body as ImportConfigRequest;
+      const importedInputs = normalizeImportedInputTitles(config.inputs);
+      const normalizedConfig: ImportConfigRequest['config'] = {
+        ...config,
+        inputs: importedInputs,
+      };
+      const inputIdsToRemove = collectInputIdsToRemoveFromRoomSnapshot(
+        room.getInputs().map((input) => input.inputId),
+      );
+      const referencedIndices = collectReferencedInputIndices(normalizedConfig);
 
       const raw = res.raw;
       raw.writeHead(200, {
@@ -153,8 +270,14 @@ export function registerImportConfigRoute(routes: FastifyInstance): void {
 
       const errors: string[] = [];
 
-      const nonWhipInputs = config.inputs.filter((i) => i.type !== 'whip');
-      const whipInputs = config.inputs
+      const nonWhipInputs = importedInputs
+        .map((input, index) => ({ input, index }))
+        .filter(
+          ({ input, index }) =>
+            input.type !== 'whip' &&
+            shouldImportInputFromConfig(normalizedConfig, referencedIndices, index),
+        );
+      const whipInputs = importedInputs
         .map((input, index) => ({ input, index }))
         .filter(({ input }) => input.type === 'whip');
 
@@ -164,7 +287,7 @@ export function registerImportConfigRoute(routes: FastifyInstance): void {
       const totalSteps =
         nonWhipInputs.length +
         nonWhipInputs.length +
-        oldInputIds.length +
+        inputIdsToRemove.length +
         timelineSteps +
         3; // pending whip + room update + finalize
       let currentStep = 0;
@@ -177,12 +300,12 @@ export function registerImportConfigRoute(routes: FastifyInstance): void {
       // Phase 1: Add inputs
       const createdInputs: { inputId: string; index: number }[] = [];
       const configInputIndexMap = new Map<ImportConfigInput, number>();
-      config.inputs.forEach((input, idx) =>
+      importedInputs.forEach((input, idx) =>
         configInputIndexMap.set(input, idx),
       );
 
-      for (const input of nonWhipInputs) {
-        const originalIndex = configInputIndexMap.get(input)!;
+      for (const { input, index } of nonWhipInputs) {
+        const originalIndex = index ?? configInputIndexMap.get(input)!;
         try {
           const opts = buildRegisterOptions(input);
           if (opts) {
@@ -208,7 +331,7 @@ export function registerImportConfigRoute(routes: FastifyInstance): void {
 
       // Phase 2: Update inputs with full settings
       for (const { inputId, index } of createdInputs) {
-        const inputConfig = config.inputs[index];
+        const inputConfig = importedInputs[index];
         const attachedIds = inputConfig.attachedInputIndices
           ?.map((idx) => indexToInputId[idx])
           .filter((id): id is string => !!id);
@@ -226,7 +349,7 @@ export function registerImportConfigRoute(routes: FastifyInstance): void {
       }
 
       // Phase 3: Remove old inputs
-      for (const oldInputId of oldInputIds) {
+      for (const oldInputId of inputIdsToRemove) {
         try {
           await room.removeInput(oldInputId);
         } catch (e) {
@@ -254,6 +377,11 @@ export function registerImportConfigRoute(routes: FastifyInstance): void {
         shaders: pw.shaders,
         position: pw.position,
       }));
+      const pendingWhipPlaceholderByIndex: Record<number, string> = {};
+      for (const pending of pendingWhipData) {
+        pendingWhipPlaceholderByIndex[pending.position] =
+          `__pending-whip-${pending.position}__`;
+      }
       advance('Syncing pending WHIP inputs');
 
       // Phase 5: Apply timeline state at t=0 (if provided)
@@ -290,7 +418,23 @@ export function registerImportConfigRoute(routes: FastifyInstance): void {
         }
       }
 
-      // Phase 6: Update room settings (layout, input order, transitions, viewport, output shaders)
+      // Phase 6: Restore layers from config (if available)
+      if (config.layers && config.layers.length > 0) {
+        try {
+          const restoredLayers = rebuildLayers(
+            config.layers,
+            indexToInputId,
+            pendingWhipPlaceholderByIndex,
+          );
+          await room.updateLayers(restoredLayers);
+        } catch (e) {
+          const msg = `Failed to restore layers: ${e instanceof Error ? e.message : String(e)}`;
+          console.warn(`[import-config] ${msg}`);
+          errors.push(msg);
+        }
+      }
+
+      // Phase 7: Update room settings (input order, transitions, viewport, output shaders)
       const orderedInputIds = createdInputs
         .slice()
         .sort((a, b) => a.index - b.index)
@@ -310,10 +454,6 @@ export function registerImportConfigRoute(routes: FastifyInstance): void {
             room.setSwapFadeInDurationMs(ts.swapFadeInDurationMs);
           if (ts.swapFadeOutDurationMs !== undefined)
             room.setSwapFadeOutDurationMs(ts.swapFadeOutDurationMs);
-          if (ts.newsStripFadeDuringSwap !== undefined)
-            room.setNewsStripFadeDuringSwap(ts.newsStripFadeDuringSwap);
-          if (ts.newsStripEnabled !== undefined)
-            room.setNewsStripEnabled(ts.newsStripEnabled);
         }
 
         if (config.viewport) {

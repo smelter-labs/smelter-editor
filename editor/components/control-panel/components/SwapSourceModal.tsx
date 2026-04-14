@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { getMp4Duration } from '@/app/actions/actions';
@@ -12,6 +12,7 @@ import { useWhipConnectionsContext } from '../contexts/whip-connections-context'
 import {
   Film,
   Image as ImageIcon,
+  Music,
   Tv,
   Video,
   Type,
@@ -24,20 +25,23 @@ import {
   AssetBrowser,
   type AssetBrowserInputCreated,
 } from './asset-browser/AssetBrowser';
+import { SelectablePreviewCard } from './asset-browser/selectable-preview-card';
 
 type Tab = 'inputs' | 'new-source';
 
-const INPUT_TYPE_ICON: Record<string, React.ElementType> = {
-  'local-mp4': Film,
-  'twitch-channel': Tv,
-  'kick-channel': Tv,
-  hls: Radio,
-  whip: Video,
-  image: ImageIcon,
-  'text-input': Type,
-  game: Gamepad2,
-  hands: Hand,
-};
+const EXISTING_INPUT_FILTERS = [
+  'ALL',
+  'STREAM',
+  'HLS',
+  'MP4',
+  'AUDIO',
+  'IMAGE',
+  'INPUT',
+  'TEXT',
+  'GAME',
+  'HANDS',
+] as const;
+type ExistingInputFilter = (typeof EXISTING_INPUT_FILTERS)[number];
 
 function inputTypeLabel(type: string): string {
   switch (type) {
@@ -62,6 +66,155 @@ function inputTypeLabel(type: string): string {
     default:
       return type;
   }
+}
+
+function inputFilterCategory(
+  input: Input,
+): Exclude<ExistingInputFilter, 'ALL'> {
+  switch (input.type) {
+    case 'local-mp4':
+      return input.audioFileName || input.missingAssetIsAudio ? 'AUDIO' : 'MP4';
+    case 'twitch-channel':
+    case 'kick-channel':
+      return 'STREAM';
+    case 'hls':
+      return 'HLS';
+    case 'whip':
+      return 'INPUT';
+    case 'image':
+      return 'IMAGE';
+    case 'text-input':
+      return 'TEXT';
+    case 'game':
+      return 'GAME';
+    case 'hands':
+      return 'HANDS';
+  }
+}
+
+function inputMatchesFilter(
+  input: Input,
+  filter: ExistingInputFilter,
+): boolean {
+  if (filter === 'ALL') return true;
+  return inputFilterCategory(input) === filter;
+}
+
+function inputSubtitle(input: Input): string | undefined {
+  if (input.type === 'text-input') return input.text || 'TEXT SOURCE';
+  if (input.type === 'hls') return input.url || 'HLS STREAM';
+  if (
+    (input.type === 'twitch-channel' || input.type === 'kick-channel') &&
+    input.channelId
+  ) {
+    return input.channelId;
+  }
+
+  if (input.sourceWidth && input.sourceHeight) {
+    return `${inputTypeLabel(input.type)} \u2022 ${input.sourceWidth}\u00d7${input.sourceHeight}`;
+  }
+  return inputTypeLabel(input.type);
+}
+
+function ExistingInputThumbnail({ input }: { input: Input }) {
+  if (input.type === 'local-mp4') {
+    if (input.audioFileName || input.missingAssetIsAudio) {
+      return (
+        <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-[#a855f7]/15 to-[#131313]'>
+          <Music className='w-10 h-10 opacity-50 text-[#d8b4fe] group-hover:opacity-70 transition-opacity' />
+        </div>
+      );
+    }
+
+    if (input.mp4FileName) {
+      return (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={`/api/mp4-thumbnail?fileName=${encodeURIComponent(input.mp4FileName)}`}
+          alt={input.title || input.inputId}
+          className='w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700'
+        />
+      );
+    }
+  }
+
+  if (input.type === 'image' && input.imageFileName) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={`/api/pictures/${encodeURIComponent(input.imageFileName)}`}
+        alt={input.title || input.inputId}
+        className='w-full h-full object-cover opacity-60 group-hover:scale-105 transition-transform duration-700'
+      />
+    );
+  }
+
+  if (input.type === 'twitch-channel') {
+    return (
+      <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-[#9146FF]/20 to-[#131313]'>
+        <Tv className='w-10 h-10 opacity-50 text-[#c4b5fd] group-hover:opacity-70 transition-opacity' />
+      </div>
+    );
+  }
+
+  if (input.type === 'kick-channel') {
+    return (
+      <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-[#53FC18]/15 to-[#131313]'>
+        <span className='font-mono font-black text-xl text-[#53FC18]/50 tracking-tighter group-hover:text-[#53FC18]/70 transition-colors'>
+          K
+        </span>
+      </div>
+    );
+  }
+
+  if (input.type === 'hls') {
+    return (
+      <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-[#ff6b00]/15 to-[#131313]'>
+        <Radio className='w-10 h-10 opacity-50 text-[#fdba74] group-hover:opacity-70 transition-opacity' />
+      </div>
+    );
+  }
+
+  if (input.type === 'whip') {
+    return (
+      <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-[#00f3ff]/15 to-[#131313]'>
+        <Video className='w-10 h-10 opacity-50 text-[#67e8f9] group-hover:opacity-70 transition-opacity' />
+      </div>
+    );
+  }
+
+  if (input.type === 'text-input') {
+    return (
+      <div className='w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-[#64748b]/20 to-[#131313] p-2'>
+        <Type className='w-7 h-7 opacity-50 text-[#cbd5e1] group-hover:opacity-70 transition-opacity mb-1' />
+        <span className='font-mono text-[10px] text-[#cbd5e1]/70 truncate w-full text-center'>
+          {input.text || 'TEXT'}
+        </span>
+      </div>
+    );
+  }
+
+  if (input.type === 'game') {
+    return (
+      <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-[#f59e0b]/20 to-[#131313]'>
+        <Gamepad2 className='w-10 h-10 opacity-50 text-[#fcd34d] group-hover:opacity-70 transition-opacity' />
+      </div>
+    );
+  }
+
+  if (input.type === 'hands') {
+    return (
+      <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-[#22c55e]/20 to-[#131313]'>
+        <Hand className='w-10 h-10 opacity-50 text-[#86efac] group-hover:opacity-70 transition-opacity' />
+      </div>
+    );
+  }
+
+  return (
+    <div className='w-full h-full flex items-center justify-center bg-gradient-to-br from-[#3a494b]/20 to-[#131313]'>
+      <Film className='w-10 h-10 opacity-50 text-[#849495] group-hover:opacity-70 transition-opacity' />
+    </div>
+  );
 }
 
 export interface SwapSourceResult {
@@ -92,11 +245,14 @@ export function SwapSourceModal({
   const whipCtx = useWhipConnectionsContext();
   const [tab, setTab] = useState<Tab>('inputs');
   const [swapping, setSwapping] = useState<string | null>(null);
+  const [existingInputFilter, setExistingInputFilter] =
+    useState<ExistingInputFilter>('ALL');
 
   useEffect(() => {
     if (!open) {
       setSwapping(null);
       setTab('inputs');
+      setExistingInputFilter('ALL');
     }
   }, [open]);
 
@@ -143,7 +299,33 @@ export function SwapSourceModal({
     [clipId, onOpenChange, onSwap, trackId],
   );
 
-  const otherInputs = inputs.filter((i) => i.inputId !== currentInputId);
+  const otherInputs = useMemo(
+    () => inputs.filter((i) => i.inputId !== currentInputId),
+    [currentInputId, inputs],
+  );
+
+  const availableExistingInputFilters = useMemo(() => {
+    const categories = new Set(
+      otherInputs.map((input) => inputFilterCategory(input)),
+    );
+    return EXISTING_INPUT_FILTERS.filter(
+      (filter) => filter === 'ALL' || categories.has(filter),
+    );
+  }, [otherInputs]);
+
+  useEffect(() => {
+    if (!availableExistingInputFilters.includes(existingInputFilter)) {
+      setExistingInputFilter('ALL');
+    }
+  }, [availableExistingInputFilters, existingInputFilter]);
+
+  const filteredExistingInputs = useMemo(
+    () =>
+      otherInputs.filter((input) =>
+        inputMatchesFilter(input, existingInputFilter),
+      ),
+    [existingInputFilter, otherInputs],
+  );
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -173,39 +355,54 @@ export function SwapSourceModal({
 
           <div className='flex-1 min-h-0'>
             {tab === 'inputs' && (
-              <div className='space-y-1 overflow-y-auto p-4 h-full'>
-                {otherInputs.length === 0 && (
+              <div className='overflow-y-auto p-4 h-full'>
+                <div className='flex gap-1.5 flex-wrap mb-3'>
+                  {availableExistingInputFilters.map((filter) => (
+                    <button
+                      key={filter}
+                      onClick={() => setExistingInputFilter(filter)}
+                      className={`px-2 py-0.5 text-[10px] font-mono uppercase tracking-wider transition-colors cursor-pointer ${
+                        existingInputFilter === filter
+                          ? 'bg-[#00f3ff] text-black font-bold'
+                          : 'bg-[#1c1b1b] text-[#849495] hover:text-[#e3fdff] border border-[#3a494b]/20'
+                      }`}>
+                      {filter}
+                    </button>
+                  ))}
+                </div>
+
+                {otherInputs.length === 0 ? (
                   <div className='text-xs text-muted-foreground py-8 text-center'>
                     No other inputs in this room
                   </div>
+                ) : filteredExistingInputs.length === 0 ? (
+                  <div className='text-xs text-muted-foreground py-8 text-center'>
+                    No inputs match selected filter
+                  </div>
+                ) : (
+                  <div className='grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3'>
+                    {filteredExistingInputs.map((input) => {
+                      const isSwapping = swapping === input.inputId;
+                      return (
+                        <SelectablePreviewCard
+                          key={input.inputId}
+                          onClick={() => handlePickExistingInput(input)}
+                          disabled={!!swapping}
+                          isSelected={isSwapping}
+                          badge={inputTypeLabel(input.type).toUpperCase()}
+                          label={input.title || input.inputId}
+                          subtitle={inputSubtitle(input)}
+                          thumbnail={<ExistingInputThumbnail input={input} />}
+                          loadingIndicator={
+                            isSwapping ? (
+                              <LoadingSpinner size='sm' variant='spinner' />
+                            ) : undefined
+                          }
+                        />
+                      );
+                    })}
+                  </div>
                 )}
-                {otherInputs.map((input) => {
-                  const Icon = INPUT_TYPE_ICON[input.type] ?? Film;
-                  const isSwapping = swapping === input.inputId;
-                  return (
-                    <button
-                      key={input.inputId}
-                      disabled={!!swapping}
-                      onClick={() => handlePickExistingInput(input)}
-                      className='w-full flex items-center gap-3 px-3 py-2.5 rounded-md border border-[#3a494b]/20 hover:border-[#00f3ff]/40 hover:bg-[#00f3ff]/5 transition-colors text-left cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'>
-                      <Icon className='w-4 h-4 text-[#849495] shrink-0' />
-                      <div className='flex-1 min-w-0'>
-                        <div className='text-xs text-[#e3fdff] truncate'>
-                          {input.title || input.inputId}
-                        </div>
-                        <div className='text-[10px] text-[#849495]'>
-                          {inputTypeLabel(input.type)}
-                          {input.sourceWidth && input.sourceHeight
-                            ? ` \u2022 ${input.sourceWidth}\u00d7${input.sourceHeight}`
-                            : ''}
-                        </div>
-                      </div>
-                      {isSwapping && (
-                        <LoadingSpinner size='sm' variant='spinner' />
-                      )}
-                    </button>
-                  );
-                })}
               </div>
             )}
 

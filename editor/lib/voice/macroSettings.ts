@@ -436,6 +436,9 @@ const VOICE_PANEL_OPACITY_STORAGE_KEY = 'smelter:voice:panel-opacity';
 const VOICE_PANEL_OPACITY_CHANGED_EVENT = 'smelter:voice:panel-opacity-changed';
 const DEFAULT_VOICE_PANEL_OPACITY = 100;
 
+const VOICE_COMMANDS_ENABLED_STORAGE_KEY = 'smelter:voice:enabled';
+const VOICE_COMMANDS_ENABLED_CHANGED_EVENT = 'smelter:voice:enabled-changed';
+
 function getVoicePanelOpacitySetting(): number {
   if (typeof window === 'undefined') {
     return DEFAULT_VOICE_PANEL_OPACITY;
@@ -489,4 +492,63 @@ export function useVoicePanelOpacitySetting(): [
   }, []);
 
   return [value, setOpacity];
+}
+
+function getVoiceCommandsEnabledSetting(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  const stored = window.localStorage.getItem(
+    VOICE_COMMANDS_ENABLED_STORAGE_KEY,
+  );
+  if (stored === null) {
+    return false;
+  }
+  return stored === 'true';
+}
+
+function setVoiceCommandsEnabledSetting(value: boolean): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  window.localStorage.setItem(
+    VOICE_COMMANDS_ENABLED_STORAGE_KEY,
+    String(value),
+  );
+  window.dispatchEvent(
+    new CustomEvent<{ value: boolean }>(VOICE_COMMANDS_ENABLED_CHANGED_EVENT, {
+      detail: { value },
+    }),
+  );
+}
+
+export function useVoiceCommandsEnabledSetting(): [
+  boolean,
+  (value: boolean) => void,
+] {
+  const [value, setValue] = useState<boolean>(() =>
+    getVoiceCommandsEnabledSetting(),
+  );
+
+  useEffect(() => {
+    setValue(getVoiceCommandsEnabledSetting());
+    const onChanged = (event: Event) => {
+      const customEvent = event as CustomEvent<{ value: boolean }>;
+      setValue(customEvent.detail?.value ?? false);
+    };
+    window.addEventListener(VOICE_COMMANDS_ENABLED_CHANGED_EVENT, onChanged);
+    return () => {
+      window.removeEventListener(
+        VOICE_COMMANDS_ENABLED_CHANGED_EVENT,
+        onChanged,
+      );
+    };
+  }, []);
+
+  const setEnabled = useCallback((next: boolean) => {
+    setVoiceCommandsEnabledSetting(next);
+    setValue(next);
+  }, []);
+
+  return [value, setEnabled];
 }

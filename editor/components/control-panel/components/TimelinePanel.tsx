@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  memo,
   useState,
   useEffect,
   useMemo,
@@ -199,7 +200,7 @@ function EditableDuration({
 
 // ── Component ────────────────────────────────────────────
 
-export function TimelinePanel({
+export const TimelinePanel = memo(function TimelinePanel({
   inputWrappers,
   listVersion,
   showStreamsSpinner,
@@ -216,7 +217,12 @@ export function TimelinePanel({
   onTimelineActionsReady,
 }: TimelinePanelProps) {
   const { removeInput } = useActions();
-  const { inputs, roomId, refreshState } = useControlPanelContext();
+  const {
+    inputs,
+    roomId,
+    refreshState,
+    isRecording: serverIsRecording,
+  } = useControlPanelContext();
   const {
     state,
     setPlayhead,
@@ -224,6 +230,8 @@ export function TimelinePanel({
     setZoom,
     reset,
     setKeyframeInterpolationMode,
+    setSnapToBlocks,
+    setSnapToKeyframes,
     moveClip,
     resizeClip,
     splitClip,
@@ -632,7 +640,6 @@ export function TimelinePanel({
   const { play, pause, stop, applyAtPlayhead, isPaused } =
     useServerTimelinePlayback(roomId, state, setPlayhead, setPlaying);
 
-  const { isRecording: serverIsRecording } = useControlPanelContext();
   const {
     isTogglingRecording,
     effectiveIsRecording: isRecording,
@@ -712,6 +719,7 @@ export function TimelinePanel({
   );
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const rulerRef = useRef<HTMLDivElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
 
   // ── Clip interaction refs ─────────────────────────
   const dragRef = useRef<{
@@ -902,31 +910,78 @@ export function TimelinePanel({
     [state.pixelsPerSecond],
   );
 
+  const getPlayheadSnapTargets = useCallback((): number[] => {
+    const targets = new Set<number>([0, state.totalDurationMs]);
+    for (const track of state.tracks) {
+      for (const clip of track.clips) {
+        if (state.snapToBlocks) {
+          targets.add(clip.startMs);
+          targets.add(clip.endMs);
+        }
+        if (state.snapToKeyframes) {
+          for (const keyframe of clip.keyframes) {
+            targets.add(clip.startMs + keyframe.timeMs);
+          }
+        }
+      }
+    }
+    return [...targets];
+  }, [
+    state.totalDurationMs,
+    state.tracks,
+    state.snapToBlocks,
+    state.snapToKeyframes,
+  ]);
+
+  const resolvePlayheadMs = useCallback(
+    (rawMs: number, shiftKey: boolean) => {
+      const clampedMs = Math.max(0, Math.min(rawMs, state.totalDurationMs));
+      if (!shiftKey) {
+        return clampedMs;
+      }
+      const targets = getPlayheadSnapTargets();
+      if (targets.length === 0) {
+        return clampedMs;
+      }
+      const thresholdMs = Math.round(
+        (SNAP_THRESHOLD_PX / state.pixelsPerSecond) * 1000,
+      );
+      return snapToNearest(clampedMs, targets, thresholdMs);
+    },
+    [state.totalDurationMs, state.pixelsPerSecond, getPlayheadSnapTargets],
+  );
+
   const handleRulerPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       e.preventDefault();
       rulerScrubRef.current = true;
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
       document.body.style.userSelect = 'none';
-      const ms = rulerPxToMs(e.clientX, e.currentTarget);
+      const ms = resolvePlayheadMs(
+        rulerPxToMs(e.clientX, e.currentTarget),
+        e.shiftKey,
+      );
       if (state.isPlaying) {
         pause();
       }
       setPlayhead(ms);
     },
-    [setPlayhead, rulerPxToMs, state.isPlaying, pause],
+    [setPlayhead, rulerPxToMs, resolvePlayheadMs, state.isPlaying, pause],
   );
 
   const handleRulerPointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
       if (!rulerScrubRef.current) return;
-      const ms = rulerPxToMs(e.clientX, e.currentTarget);
+      const ms = resolvePlayheadMs(
+        rulerPxToMs(e.clientX, e.currentTarget),
+        e.shiftKey,
+      );
       if (state.isPlaying) {
         pause();
       }
       setPlayhead(ms);
     },
-    [setPlayhead, rulerPxToMs, state.isPlaying, pause],
+    [setPlayhead, rulerPxToMs, resolvePlayheadMs, state.isPlaying, pause],
   );
 
   const handleRulerPointerUp = useCallback(
@@ -1653,11 +1708,13 @@ export function TimelinePanel({
         );
         let nextTimeMs = Math.round(keyframeDrag.originTimeMs + deltaMs);
         nextTimeMs = clampKeyframeTimeMs(nextTimeMs, clipDurationMs);
-        nextTimeMs = snapToNearest(
-          nextTimeMs,
-          computeKeyframeSnapTargets(clip, keyframeDrag.keyframeId),
-          snapThresholdMs,
-        );
+        if (state.snapToKeyframes) {
+          nextTimeMs = snapToNearest(
+            nextTimeMs,
+            computeKeyframeSnapTargets(clip, keyframeDrag.keyframeId),
+            snapThresholdMs,
+          );
+        }
         nextTimeMs = clampKeyframeTimeMs(nextTimeMs, clipDurationMs);
         nextTimeMs = resolveKeyframeCollision(
           nextTimeMs,
@@ -1704,11 +1761,11 @@ export function TimelinePanel({
           let newStart = shiftLock
             ? drag.originStartMs
             : Math.round(drag.originStartMs + deltaMs);
-          if (!shiftLock) {
+          if (!shiftLock && state.snapToBlocks) {
             newStart = snapToNearest(newStart, snapTargets, snapThresholdMs);
           }
           const duration = drag.originEndMs - drag.originStartMs;
-          if (!shiftLock) {
+          if (!shiftLock && state.snapToBlocks) {
             const snappedEnd = snapToNearest(
               newStart + duration,
               snapTargets,
@@ -1734,11 +1791,11 @@ export function TimelinePanel({
           let newStart = shiftLock
             ? drag.originStartMs
             : Math.round(drag.originStartMs + deltaMs);
-          if (!shiftLock) {
+          if (!shiftLock && state.snapToBlocks) {
             newStart = snapToNearest(newStart, snapTargets, snapThresholdMs);
           }
           const duration = drag.originEndMs - drag.originStartMs;
-          if (!shiftLock) {
+          if (!shiftLock && state.snapToBlocks) {
             const snappedEnd = snapToNearest(
               newStart + duration,
               snapTargets,
@@ -1782,7 +1839,9 @@ export function TimelinePanel({
         }
       } else if (drag.type === 'resize-left') {
         let newStart = Math.round(drag.originStartMs + deltaMs);
-        newStart = snapToNearest(newStart, snapTargets, snapThresholdMs);
+        if (state.snapToBlocks) {
+          newStart = snapToNearest(newStart, snapTargets, snapThresholdMs);
+        }
         resizeClip(drag.trackId, drag.clipId, 'left', newStart);
       } else if (
         drag.type === 'resize-transition-in' ||
@@ -1825,7 +1884,9 @@ export function TimelinePanel({
         }
       } else {
         let newEnd = Math.round(drag.originEndMs + deltaMs);
-        newEnd = snapToNearest(newEnd, snapTargets, snapThresholdMs);
+        if (state.snapToBlocks) {
+          newEnd = snapToNearest(newEnd, snapTargets, snapThresholdMs);
+        }
         resizeClip(drag.trackId, drag.clipId, 'right', newEnd);
       }
     };
@@ -1855,6 +1916,8 @@ export function TimelinePanel({
     pxToMs,
     state.tracks,
     state.playheadMs,
+    state.snapToBlocks,
+    state.snapToKeyframes,
     snapThresholdMs,
     moveClip,
     moveClips,
@@ -1945,18 +2008,19 @@ export function TimelinePanel({
   useEffect(() => {
     if (!contextMenu) return;
 
-    const handleClick = () => closeContextMenu();
-    const handleScroll = () => closeContextMenu();
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (target && contextMenuRef.current?.contains(target)) return;
+      closeContextMenu();
+    };
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') closeContextMenu();
     };
 
-    window.addEventListener('click', handleClick);
-    window.addEventListener('scroll', handleScroll, true);
+    window.addEventListener('pointerdown', handlePointerDown);
     window.addEventListener('keydown', handleKeyDown);
     return () => {
-      window.removeEventListener('click', handleClick);
-      window.removeEventListener('scroll', handleScroll, true);
+      window.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [contextMenu, closeContextMenu]);
@@ -2176,9 +2240,10 @@ export function TimelinePanel({
           ((clip.endMs - clip.startMs) / 1000) * state.pixelsPerSecond;
         const isClipSelected = selectedClipIdSet.has(clip.id);
         const durationMs = clip.endMs - clip.startMs;
+        const clipLabelSuffix = clip.blockSettings.swapLabelSuffix ?? '';
         const clipLabel = isOutputClip
           ? 'Main Video'
-          : (input?.title ?? clip.inputId);
+          : `${input?.title ?? clip.inputId}${clipLabelSuffix}`;
 
         const introT = clip.blockSettings.introTransition;
         const outroT = clip.blockSettings.outroTransition;
@@ -2451,6 +2516,35 @@ export function TimelinePanel({
         </div>
 
         <div className='flex-1' />
+
+        <div className='flex items-center gap-1 rounded border border-border bg-background/60 p-0.5'>
+          <Button
+            type='button'
+            variant='ghost'
+            size='sm'
+            className={`rounded px-2 py-0.5 h-auto text-[10px] uppercase tracking-wide cursor-pointer ${
+              state.snapToBlocks
+                ? 'bg-secondary text-foreground'
+                : 'text-muted-foreground hover:text-card-foreground'
+            }`}
+            onClick={() => setSnapToBlocks(!state.snapToBlocks)}
+            title='Snap clip move/resize to neighboring block edges and playhead'>
+            Snap Blocks
+          </Button>
+          <Button
+            type='button'
+            variant='ghost'
+            size='sm'
+            className={`rounded px-2 py-0.5 h-auto text-[10px] uppercase tracking-wide cursor-pointer ${
+              state.snapToKeyframes
+                ? 'bg-secondary text-foreground'
+                : 'text-muted-foreground hover:text-card-foreground'
+            }`}
+            onClick={() => setSnapToKeyframes(!state.snapToKeyframes)}
+            title='Snap keyframe drag to nearby keyframe times'>
+            Snap Keyframes
+          </Button>
+        </div>
 
         <div className='flex items-center gap-1 rounded border border-border bg-background/60 p-0.5'>
           <Button
@@ -2908,6 +3002,7 @@ export function TimelinePanel({
       {contextMenu &&
         createPortal(
           <div
+            ref={contextMenuRef}
             className='fixed z-[9999] bg-card border border-border rounded-lg shadow-xl py-1 min-w-[160px]'
             style={{ left: contextMenu.x, top: contextMenu.y }}
             onClick={(e) => e.stopPropagation()}>
@@ -3194,6 +3289,7 @@ export function TimelinePanel({
                     ['End', 'Go to end'],
                     ['← / →', 'Move playhead ±1s'],
                     ['Shift + ← / →', 'Move playhead ±5s'],
+                    ['Shift + Drag ruler', 'Snap playhead to nearby targets'],
                     ['J / L', 'Jump to prev / next segment edge'],
                     ['F', 'Scroll view to playhead'],
                   ]}
@@ -3268,4 +3364,4 @@ export function TimelinePanel({
       />
     </div>
   );
-}
+});

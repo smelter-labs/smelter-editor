@@ -15,6 +15,8 @@ import {
   ArrowLeft,
   Save,
   FolderOpen,
+  ChevronUp,
+  ChevronDown,
 } from 'lucide-react';
 import { Switch } from '@/components/ui/switch';
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -48,6 +50,7 @@ interface ShaderPanelProps {
   onOpenShaderInline?: (shaderId: string) => void;
   onApplyPreset?: (shaders: ShaderConfig[], mode: 'replace' | 'append') => void;
   allowInlineValueEdit?: boolean;
+  onReorderShaders?: (shaders: ShaderConfig[]) => void;
 }
 
 export default function ShaderPanel({
@@ -64,6 +67,7 @@ export default function ShaderPanel({
   onOpenShaderInline,
   onApplyPreset,
   allowInlineValueEdit,
+  onReorderShaders,
 }: ShaderPanelProps) {
   const [openShaderId, setOpenShaderId] = useState<string | null>(null);
   const [savePresetOpen, setSavePresetOpen] = useState(false);
@@ -85,59 +89,110 @@ export default function ShaderPanel({
     }
   };
 
+  const canReorderShaders =
+    typeof onReorderShaders === 'function' && appliedShaders.length > 1;
+
+  const moveShaderByStep = (index: number, step: -1 | 1) => {
+    if (!onReorderShaders) return;
+    const nextIndex = index + step;
+    if (nextIndex < 0 || nextIndex >= appliedShaders.length) return;
+    const nextShaders = [...appliedShaders];
+    const [moved] = nextShaders.splice(index, 1);
+    nextShaders.splice(nextIndex, 0, moved);
+    onReorderShaders(nextShaders);
+  };
+
+  const renderShaderRow = (shaderConfig: ShaderConfig, index: number) => {
+    const def = availableShaders.find((s) => s.id === shaderConfig.shaderId);
+    const name = def?.name ?? shaderConfig.shaderName;
+    const hasParams = def?.params && def.params.length > 0;
+    const disableMoveUp = index === 0;
+    const disableMoveDown = index === appliedShaders.length - 1;
+
+    return (
+      <div className='flex items-center gap-2 px-2 py-1.5 rounded bg-neutral-800/60 hover:bg-neutral-800 transition-colors group'>
+        <span
+          className={`shrink-0 w-2 h-2 rounded-full ${shaderConfig.enabled ? 'bg-green-500' : 'bg-neutral-600'}`}
+        />
+        <Button
+          variant='ghost'
+          className='flex-1 justify-start text-left text-white truncate h-auto px-0 py-0 cursor-pointer hover:underline font-normal'
+          asChild
+          title={hasParams ? 'Configure shader' : name}>
+          <span
+            role={hasParams ? 'button' : undefined}
+            tabIndex={hasParams ? 0 : -1}
+            onClick={() =>
+              hasParams && handleShaderClick(shaderConfig.shaderId)
+            }
+            onKeyDown={(event) => {
+              if (!hasParams) return;
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                handleShaderClick(shaderConfig.shaderId);
+              }
+            }}>
+            {name}
+          </span>
+        </Button>
+        {shaderLoading === shaderConfig.shaderId ? (
+          <LoadingSpinner size='sm' variant='spinner' />
+        ) : (
+          <Switch
+            data-no-dnd
+            checked={shaderConfig.enabled}
+            onCheckedChange={() => onShaderToggle(shaderConfig.shaderId)}
+            className='scale-75'
+          />
+        )}
+        {canReorderShaders && (
+          <div className='flex items-center gap-0.5'>
+            <Button
+              data-no-dnd
+              size='sm'
+              variant='ghost'
+              className='h-6 w-6 p-0.5 cursor-pointer text-neutral-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed'
+              aria-label='Move shader up'
+              disabled={disableMoveUp}
+              onClick={() => moveShaderByStep(index, -1)}>
+              <ChevronUp className='size-3.5' />
+            </Button>
+            <Button
+              data-no-dnd
+              size='sm'
+              variant='ghost'
+              className='h-6 w-6 p-0.5 cursor-pointer text-neutral-400 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed'
+              aria-label='Move shader down'
+              disabled={disableMoveDown}
+              onClick={() => moveShaderByStep(index, 1)}>
+              <ChevronDown className='size-3.5' />
+            </Button>
+          </div>
+        )}
+        <Button
+          data-no-dnd
+          size='sm'
+          variant='ghost'
+          className='h-6 w-6 p-0.5 cursor-pointer opacity-0 group-hover:opacity-70 hover:!opacity-100 transition-opacity'
+          aria-label='Remove shader'
+          onClick={() => onShaderRemove(shaderConfig.shaderId)}>
+          <XIcon className='text-neutral-400 size-3.5' />
+        </Button>
+      </div>
+    );
+  };
+
   return (
     <div className='mt-1 cursor-default' data-no-dnd>
       {appliedShaders.length === 0 ? (
         <div className='text-xs text-neutral-500 py-1'>No shaders added.</div>
       ) : (
         <div className='flex flex-col gap-1'>
-          {appliedShaders.map((shaderConfig) => {
-            const def = availableShaders.find(
-              (s) => s.id === shaderConfig.shaderId,
-            );
-            const name = def?.name ?? shaderConfig.shaderName;
-            const hasParams = def?.params && def.params.length > 0;
-
-            return (
-              <div
-                key={shaderConfig.shaderId}
-                className='flex items-center gap-2 px-2 py-1.5 rounded bg-neutral-800/60 hover:bg-neutral-800 transition-colors group'>
-                <span
-                  className={`shrink-0 w-2 h-2 rounded-full ${shaderConfig.enabled ? 'bg-green-500' : 'bg-neutral-600'}`}
-                />
-                <Button
-                  variant='ghost'
-                  className='flex-1 justify-start text-left text-white truncate h-auto px-0 py-0 cursor-pointer hover:underline font-normal'
-                  onClick={() =>
-                    hasParams && handleShaderClick(shaderConfig.shaderId)
-                  }
-                  title={hasParams ? 'Configure shader' : name}>
-                  {name}
-                </Button>
-                {shaderLoading === shaderConfig.shaderId ? (
-                  <LoadingSpinner size='sm' variant='spinner' />
-                ) : (
-                  <Switch
-                    data-no-dnd
-                    checked={shaderConfig.enabled}
-                    onCheckedChange={() =>
-                      onShaderToggle(shaderConfig.shaderId)
-                    }
-                    className='scale-75'
-                  />
-                )}
-                <Button
-                  data-no-dnd
-                  size='sm'
-                  variant='ghost'
-                  className='h-6 w-6 p-0.5 cursor-pointer opacity-0 group-hover:opacity-70 hover:!opacity-100 transition-opacity'
-                  aria-label='Remove shader'
-                  onClick={() => onShaderRemove(shaderConfig.shaderId)}>
-                  <XIcon className='text-neutral-400 size-3.5' />
-                </Button>
-              </div>
-            );
-          })}
+          {appliedShaders.map((shaderConfig, index) => (
+            <div key={shaderConfig.shaderId}>
+              {renderShaderRow(shaderConfig, index)}
+            </div>
+          ))}
         </div>
       )}
 

@@ -9,6 +9,8 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
 
+const inputWrapperKeyExtractor = (item: InputWrapper) => item.inputId;
+
 type StreamsSectionProps = {
   inputWrappers: InputWrapper[];
   listVersion: number;
@@ -21,6 +23,7 @@ type StreamsSectionProps = {
   isGuest?: boolean;
   guestInputId?: string | null;
   activeClipColors?: Record<string, string>;
+  allTimelineInputIds?: Set<string>;
 };
 
 export function StreamsSection({
@@ -35,6 +38,7 @@ export function StreamsSection({
   isGuest,
   guestInputId,
   activeClipColors,
+  allTimelineInputIds,
 }: StreamsSectionProps) {
   const { inputs, roomId, refreshState, availableShaders } =
     useControlPanelContext();
@@ -96,6 +100,14 @@ export function StreamsSection({
     [inputWrappers, attachedInputIds],
   );
 
+  const sortedWrappers = useMemo(() => {
+    return [...visibleWrappers].sort((a, b) => {
+      const aActive = activeClipColors?.[a.inputId] ? 0 : 1;
+      const bActive = activeClipColors?.[b.inputId] ? 0 : 1;
+      return aActive - bActive;
+    });
+  }, [visibleWrappers, activeClipColors]);
+
   return (
     <div className='flex-1 overflow-y-auto overflow-x-hidden relative'>
       <div className='pointer-events-none absolute top-0 left-0 right-0 h-2 z-40' />
@@ -130,10 +142,10 @@ export function StreamsSection({
         </div>
       ) : (
         <SortableList
-          items={visibleWrappers}
+          items={sortedWrappers}
           resetVersion={listVersion}
           disableDrag={isGuest || !isWideScreen}
-          keyExtractor={(item) => item.inputId}
+          keyExtractor={inputWrapperKeyExtractor}
           renderItem={(item, index, orderedItems) => {
             const input = inputs.find(
               (input) => input.inputId === item.inputId,
@@ -171,6 +183,7 @@ export function StreamsSection({
                         isSelected={selectedInputId === input.inputId}
                         readOnly={isGuest && input.inputId !== guestInputId}
                         activeBlockColor={activeClipColors?.[input.inputId]}
+                        isOnTimeline={allTimelineInputIds?.has(input.inputId) ?? true}
                       />
                     </ErrorBoundary>
                     {attachedChildren.map((child) => (
@@ -195,6 +208,7 @@ export function StreamsSection({
                             isSelected={selectedInputId === child.inputId}
                             readOnly={isGuest && child.inputId !== guestInputId}
                             activeBlockColor={activeClipColors?.[child.inputId]}
+                            isOnTimeline={allTimelineInputIds?.has(child.inputId) ?? true}
                           />
                         </ErrorBoundary>
                       </div>

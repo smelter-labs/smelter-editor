@@ -192,6 +192,7 @@ export function GenericSaveModal({
                 key={opt.id}
                 variant='outline'
                 onClick={opt.onClick}
+                disabled={isExporting}
                 className={btnBase}>
                 {opt.icon}
                 <div className='flex flex-col min-w-0'>

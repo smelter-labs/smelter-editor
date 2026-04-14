@@ -35,8 +35,6 @@ export function saveCrashRecoverySnapshot(
         swapOutgoingEnabled: roomState.swapOutgoingEnabled,
         swapFadeInDurationMs: roomState.swapFadeInDurationMs,
         swapFadeOutDurationMs: roomState.swapFadeOutDurationMs,
-        newsStripFadeDuringSwap: roomState.newsStripFadeDuringSwap,
-        newsStripEnabled: roomState.newsStripEnabled,
       },
       timelineState,
       outputPlayer,
@@ -49,6 +47,7 @@ export function saveCrashRecoverySnapshot(
         viewportTransitionEasing: roomState.viewportTransitionEasing,
       },
       roomState.outputShaders,
+      roomState.layers,
     );
 
     const data: CrashRecoveryData = {

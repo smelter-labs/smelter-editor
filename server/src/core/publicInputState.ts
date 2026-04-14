@@ -71,6 +71,7 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
         ...base,
         sourceState: 'always-live' as const,
         imageId: input.imageId,
+        imageFileName: input.imageFileName,
         imageAssetMissing: input.imageAssetMissing,
       };
     case 'twitch-channel':
@@ -99,6 +100,7 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
         textAlign: input.textAlign,
         textColor: input.textColor,
         textMaxLines: input.textMaxLines,
+        textScrollEnabled: input.textScrollEnabled,
         textScrollSpeed: input.textScrollSpeed,
         textScrollLoop: input.textScrollLoop,
         textScrollNudge: input.textScrollNudge,
