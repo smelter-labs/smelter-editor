@@ -28,7 +28,8 @@ const isProduction = process.env.ENVIRONMENT === 'production';
 
 function buildH264Encoder(): Outputs.WhepVideoEncoderOptions {
   const encoderEnv = process.env.SMELTER_H264_ENCODER;
-  const useVulkan = encoderEnv === 'vulkan' || (!encoderEnv && isProduction);
+  // Temporary default: use ffmpeg unless vulkan is explicitly requested.
+  const useVulkan = encoderEnv === 'vulkan';
 
   if (useVulkan) {
     const bitrate =
