@@ -1061,7 +1061,9 @@ export class RoomState {
 
     for (const [inputId, { imageId, jpegPath }] of targets) {
       this.clearFrozenImageCleanupTimer(inputId);
-      this.output.store.getState().setInputFrozenImage(inputId, null);
+      if (!this.destroyed) {
+        this.output.store.getState().setInputFrozenImage(inputId, null);
+      }
       this.frozenImages.delete(inputId);
       this.deferredUnregisterImage(imageId, jpegPath);
     }
@@ -1131,18 +1133,18 @@ export class RoomState {
         this.timelinePlayer = null;
       }
 
+      try {
+        await SmelterInstance.unregisterOutput(this.output.id);
+      } catch (err: any) {
+        console.error('Failed to remove output', err?.body ?? err);
+      }
+
       this.cleanupFrozenImages();
       await this.flushPendingImageUnregisters();
 
       await this.motionController.stopAll();
       await this.audioController.stopAll();
       await this.inputManager.destroyAll();
-
-      try {
-        await SmelterInstance.unregisterOutput(this.output.id);
-      } catch (err: any) {
-        console.error('Failed to remove output', err?.body ?? err);
-      }
 
       await this.recordingController.cleanup();
     });
