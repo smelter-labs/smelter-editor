@@ -694,6 +694,7 @@ export class TimelinePlayer {
   private playheadInterval: NodeJS.Timeout | null = null;
   private smoothUpdateInterval: NodeJS.Timeout | null = null;
   private endTimer: NodeJS.Timeout | null = null;
+  private inFlightApplyBlockSettings = new Set<Promise<void>>();
 
   private appliedState = new Map<string, boolean>();
   private appliedBlockSettings = new Map<string, string>();
@@ -776,7 +777,7 @@ export class TimelinePlayer {
     // Apply initial desired state
     const desired = computeDesiredState(this.config, playheadMs);
     await this.applyDesiredState(desired, playheadMs);
-    await this.applyBlockSettingsAtTime(playheadMs);
+    await this.applyBlockSettingsAtTimeTracked(playheadMs);
     this.applyOrderIfChanged(playheadMs);
 
     // Re-sync wall clock so playhead starts from when MP4s are actually playing
@@ -828,6 +829,7 @@ export class TimelinePlayer {
     this.startPlayheadMs = playheadMs;
     this.pausedPlayheadMs = playheadMs;
     this.clearTimers();
+    await this.drainInFlightApplyBlockSettings();
     this.emit();
   }
 
@@ -839,6 +841,7 @@ export class TimelinePlayer {
   }
 
   public async restoreSnapshotState(): Promise<void> {
+    await this.drainInFlightApplyBlockSettings();
     await this.restoreState();
     this.emit();
   }
@@ -895,7 +898,7 @@ export class TimelinePlayer {
     // (e.g. temporary audio mute), so cached block settings can be stale.
     this.appliedBlockSettings.clear();
     this.mp4RestartedKeys.clear();
-    await this.applyBlockSettingsAtTime(resumeMs);
+    await this.applyBlockSettingsAtTimeTracked(resumeMs);
     this.lastAppliedOrder = '';
     this.applyOrderIfChanged(resumeMs);
 
@@ -957,7 +960,7 @@ export class TimelinePlayer {
     // Apply state at new position
     const desired = computeDesiredState(this.config, ms);
     await this.applyDesiredState(desired, ms);
-    await this.applyBlockSettingsAtTime(ms);
+    await this.applyBlockSettingsAtTimeTracked(ms);
     this.lastAppliedOrder = '';
     this.applyOrderIfChanged(ms);
 
@@ -982,7 +985,7 @@ export class TimelinePlayer {
 
     const desired = computeDesiredState(this.config, playheadMs);
     await this.applyDesiredState(desired, playheadMs);
-    await this.applyBlockSettingsAtTime(playheadMs);
+    await this.applyBlockSettingsAtTimeTracked(playheadMs);
     this.applyOrderIfChanged(playheadMs);
 
     this.paused = true;
@@ -1045,7 +1048,7 @@ export class TimelinePlayer {
     }
     this.smoothUpdateInterval = setInterval(() => {
       if (!this.playing) return;
-      void this.applyBlockSettingsAtTime(this.getPlayheadMs());
+      void this.applyBlockSettingsAtTimeTracked(this.getPlayheadMs());
     }, SMOOTH_UPDATE_INTERVAL_MS);
   }
 
@@ -1145,7 +1148,7 @@ export class TimelinePlayer {
     }
 
     this.applyOrderIfChanged(event.timeMs);
-    void this.applyBlockSettingsAtTime(event.timeMs);
+    void this.applyBlockSettingsAtTimeTracked(event.timeMs);
   }
 
   private async showInputAtTime(
@@ -1258,10 +1261,10 @@ export class TimelinePlayer {
           `[timeline] MP4 restart TRIGGERED inputId=${inputId} playFromMs=${playFromMs} loop=${loop} key=${key} prevKey=${prevKey ?? 'none'}`,
         );
         this.mp4RestartedKeys.set(inputId, key);
-        this.mp4ActualRestarted.add(inputId);
         const t0 = Date.now();
         try {
           await this.room.restartMp4Input(inputId, playFromMs, loop);
+          this.mp4ActualRestarted.add(inputId);
           console.log(
             `[timeline] MP4 restart OK inputId=${inputId} durationMs=${Date.now() - t0}`,
           );
@@ -1384,6 +1387,22 @@ export class TimelinePlayer {
     }
   }
 
+  private applyBlockSettingsAtTimeTracked(timeMs: number): Promise<void> {
+    const applyPromise = this.applyBlockSettingsAtTime(timeMs);
+    let trackedPromise: Promise<void>;
+    trackedPromise = applyPromise.finally(() => {
+      this.inFlightApplyBlockSettings.delete(trackedPromise);
+    });
+    this.inFlightApplyBlockSettings.add(trackedPromise);
+    return trackedPromise;
+  }
+
+  private async drainInFlightApplyBlockSettings(): Promise<void> {
+    while (this.inFlightApplyBlockSettings.size > 0) {
+      await Promise.allSettled([...this.inFlightApplyBlockSettings]);
+    }
+  }
+
   private pruneInactiveMp4RestartKeys(active: Map<string, TimelineClip>): void {
     for (const inputId of [...this.mp4RestartedKeys.keys()]) {
       if (!active.has(inputId)) {
@@ -1429,6 +1448,10 @@ export class TimelinePlayer {
     // geometry.  We await them first so that any intermediate flushes settle
     // before we touch layers.
     const inputPromises: Promise<void>[] = [];
+    const mp4RestartsToRestore: Array<{
+      inputId: string;
+      playFromMs: number;
+    }> = [];
     const inputs = this.room.getInputs();
 
     for (const input of inputs) {
@@ -1451,16 +1474,18 @@ export class TimelinePlayer {
 
       if (!hasPatch && !shouldRestartMp4 && !needsVisibilityRestore) continue;
 
+      if (shouldRestartMp4) {
+        mp4RestartsToRestore.push({
+          inputId: input.inputId,
+          playFromMs: snap.mp4PlayFromMs ?? 0,
+        });
+      }
+
       inputPromises.push(
         (async () => {
           if (hasPatch) {
             await this.room
               .updateInput(input.inputId, snap.update)
-              .catch(() => {});
-          }
-          if (shouldRestartMp4) {
-            await this.room
-              .restartMp4Input(input.inputId, snap.mp4PlayFromMs ?? 0, true)
               .catch(() => {});
           }
           if (snap.hidden && !input.hidden) {
@@ -1480,6 +1505,13 @@ export class TimelinePlayer {
 
     if (inputPromises.length > 0) {
       await Promise.allSettled(inputPromises);
+    }
+
+    // Run MP4 restarts one-by-one to avoid unregister/register bursts.
+    for (const mp4Restart of mp4RestartsToRestore) {
+      await this.room
+        .restartMp4Input(mp4Restart.inputId, mp4Restart.playFromMs, true)
+        .catch(() => {});
     }
 
     // Phase 2: restore layers and output shaders.  restoreLayers skips the

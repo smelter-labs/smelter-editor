@@ -1,7 +1,6 @@
 'use client';
 
 import { useCallback, useRef, useEffect, useState } from 'react';
-import { toast } from 'sonner';
 import {
   startTimelinePlayback,
   stopTimelinePlayback,
@@ -60,11 +59,7 @@ export function useServerTimelinePlayback(
     useState(false);
   const autoPauseBeforeEndTriggeredRef = useRef(false);
   const stopInFlightRef = useRef<Promise<void> | null>(null);
-  const timelineToastId = useRef(`timeline-ops-${roomId}`);
-  const seenFailedOperationRef = useRef<string | null>(null);
   useEffect(() => {
-    timelineToastId.current = `timeline-ops-${roomId}`;
-    seenFailedOperationRef.current = null;
     setBusyTimeoutFallbackActive(false);
   }, [roomId]);
 
@@ -102,23 +97,12 @@ export function useServerTimelinePlayback(
     const operation = sseData.operation ?? null;
     const stage = sseData.stage ?? 'idle';
     const phase = sseData.phase ?? null;
-    const opKey = `${sseData.operationId ?? 'none'}:${stage}`;
     setIsTimelineBusy(busy);
     setTimelineBusyOperation(operation);
     setTimelineBusyStage(stage);
     setTimelineBusyPhase(phase);
     if (!busy && busyTimeoutFallbackActive) {
       setBusyTimeoutFallbackActive(false);
-    }
-
-    if (stage === 'failed' && !busyTimeoutFallbackActive) {
-      if (seenFailedOperationRef.current !== opKey) {
-        toast.error('Timeline operation failed.', {
-          id: timelineToastId.current,
-          duration: 5000,
-        });
-        seenFailedOperationRef.current = opKey;
-      }
     }
 
     if (sseData.isPaused && !isPaused) {
@@ -250,10 +234,6 @@ export function useServerTimelinePlayback(
       return stopInFlightRef.current;
     }
     const stopPromise = (async () => {
-      const toastId = timelineToastId.current;
-      toast.loading('Stopping timeline...', {
-        id: toastId,
-      });
       autoPauseBeforeEndTriggeredRef.current = false;
       setPlaying(false);
       setIsPaused(false);
@@ -275,36 +255,21 @@ export function useServerTimelinePlayback(
 
       if (result === 'timeout') {
         setBusyTimeoutFallbackActive(true);
-        toast.warning('Timeline stop is taking longer than expected.', {
-          id: toastId,
-          duration: 5000,
-        });
-        stopPromise
+        await stopPromise
           .then(() => {
-            toast.success('Timeline stop recovered.', {
-              id: toastId,
-              duration: 2500,
-            });
+            setBusyTimeoutFallbackActive(false);
           })
           .catch((err) => {
             console.error('[timeline-ui] stop after timeout failed', err);
-            toast.error('Timeline stop failed after timeout.', {
-              id: toastId,
-              duration: 5000,
-            });
+            throw err;
           });
         return;
       }
 
       setBusyTimeoutFallbackActive(false);
-      toast.success('Timeline stopped.', { id: toastId, duration: 2000 });
     })()
       .catch((err) => {
         console.error('[timeline-ui] stop failed', err);
-        toast.error('Failed to stop timeline.', {
-          id: timelineToastId.current,
-          duration: 5000,
-        });
       })
       .finally(() => {
         stopInFlightRef.current = null;
@@ -403,7 +368,6 @@ export function useServerTimelinePlayback(
   useEffect(() => {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      toast.dismiss(timelineToastId.current);
     };
   }, []);
 
@@ -419,5 +383,6 @@ export function useServerTimelinePlayback(
     timelineBusyOperation,
     timelineBusyStage,
     timelineBusyPhase,
+    timelineStopTimeoutActive: busyTimeoutFallbackActive,
   };
 }

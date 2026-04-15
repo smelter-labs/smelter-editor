@@ -35,7 +35,7 @@ const VIDEO_INPUT_TYPES: RoomInputState['type'][] = [
   'hls',
   'whip',
 ];
-const MP4_RESTART_DEDUPE_WINDOW_MS = 300;
+const MP4_RESTART_DEDUPE_WINDOW_MS = 1200;
 const MP4_RESTART_PLAYFROM_EPSILON_MS = 75;
 
 const IMAGE_EXT_RE = /\.(jpg|jpeg|png|gif|svg)$/i;
@@ -1100,7 +1100,7 @@ export class InputManager {
       this.mp4RestartDedupedCount += 1;
       logTimelineEvent(
         this.idPrefix,
-        `[mp4-restart] DEDUPE skip "${name}" from=${normalizedPlayFromMs}ms prev=${previous.playFromMs}ms dropped=${this.mp4RestartDedupedCount}`,
+        `[mp4-restart] DEDUPE skip "${name}" from=${normalizedPlayFromMs}ms prev=${previous.playFromMs}ms windowMs=${MP4_RESTART_DEDUPE_WINDOW_MS} dropped=${this.mp4RestartDedupedCount}`,
       );
       return;
     }

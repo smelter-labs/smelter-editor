@@ -58,6 +58,33 @@ function createMockAdapter(): TimelineRoomStateAdapter {
   };
 }
 
+function makeConnectedMp4Input(inputId: string, overrides: Record<string, unknown> = {}) {
+  return {
+    inputId,
+    type: 'local-mp4',
+    status: 'connected',
+    hidden: false,
+    volume: 1,
+    shaders: [],
+    showTitle: false,
+    borderColor: '#000000',
+    borderWidth: 0,
+    metadata: { title: inputId, description: '' },
+    mp4FilePath: '/tmp/test.mp4',
+    ...overrides,
+  };
+}
+
+function createDeferred<T = void>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
+
 describe('TimelinePlayer', () => {
   let adapter: TimelineRoomStateAdapter;
 
@@ -622,6 +649,185 @@ describe('TimelinePlayer', () => {
       await player.stop();
 
       expect(adapter.restartMp4Input).toHaveBeenCalledTimes(0);
+    });
+  });
+
+  describe('stop/restore race handling', () => {
+    it('waits for in-flight smooth apply before stopPlaybackOnly resolves', async () => {
+      const deferred = createDeferred<void>();
+      let updateCallCount = 0;
+      (adapter.updateInput as any).mockImplementation(() => {
+        updateCallCount += 1;
+        if (updateCallCount === 2) {
+          return deferred.promise;
+        }
+        return Promise.resolve();
+      });
+      (adapter.getInputs as any).mockReturnValue([
+        makeConnectedMp4Input('room::local::slow'),
+      ]);
+      const config = makeConfig({
+        keyframeInterpolationMode: 'linear',
+        tracks: [
+          {
+            id: 't1',
+            clips: [
+              makeClip({
+                inputId: 'room::local::slow',
+                startMs: 0,
+                endMs: 10_000,
+                blockSettings: makeBlockSettings({
+                  mp4PlayFromMs: 100,
+                  mp4Loop: true,
+                }),
+                keyframes: [
+                  {
+                    id: 'kf-0',
+                    timeMs: 0,
+                    blockSettings: makeBlockSettings({
+                      volume: 0.2,
+                      mp4PlayFromMs: 100,
+                      mp4Loop: true,
+                    }),
+                  },
+                  {
+                    id: 'kf-1',
+                    timeMs: 5_000,
+                    blockSettings: makeBlockSettings({
+                      volume: 1,
+                      mp4PlayFromMs: 100,
+                      mp4Loop: true,
+                    }),
+                  },
+                ],
+              }),
+            ],
+          },
+        ],
+      });
+
+      const player = new TimelinePlayer(adapter, config);
+      await player.start(0);
+
+      await vi.advanceTimersByTimeAsync(40);
+      let stopResolved = false;
+      const stopPromise = player.stopPlaybackOnly().then(() => {
+        stopResolved = true;
+      });
+
+      await vi.advanceTimersByTimeAsync(1);
+      expect(stopResolved).toBe(false);
+
+      deferred.resolve();
+      await stopPromise;
+      expect(stopResolved).toBe(true);
+    });
+
+    it('restores MP4 restarts sequentially after stop', async () => {
+      const inputs = [
+        makeConnectedMp4Input('room::local::mp4-1'),
+        makeConnectedMp4Input('room::local::mp4-2'),
+      ];
+      (adapter.getInputs as any).mockReturnValue(inputs);
+      const releaseFirstRestart = createDeferred<void>();
+      let firstFinished = false;
+      (adapter.restartMp4Input as any).mockImplementation((inputId: string) => {
+        if (inputId === 'room::local::mp4-1') {
+          return releaseFirstRestart.promise.then(() => {
+            firstFinished = true;
+          });
+        }
+        expect(firstFinished).toBe(true);
+        return Promise.resolve();
+      });
+
+      const player = new TimelinePlayer(adapter, makeConfig());
+      await player.start(0);
+      (player as any).mp4ActualRestarted = new Set([
+        'room::local::mp4-1',
+        'room::local::mp4-2',
+      ]);
+
+      const stopPromise = player.stop();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(adapter.restartMp4Input).toHaveBeenCalledTimes(1);
+      expect(adapter.restartMp4Input).toHaveBeenNthCalledWith(
+        1,
+        'room::local::mp4-1',
+        0,
+        true,
+      );
+
+      releaseFirstRestart.resolve();
+      await stopPromise;
+      expect(adapter.restartMp4Input).toHaveBeenCalledTimes(2);
+      expect(adapter.restartMp4Input).toHaveBeenNthCalledWith(
+        2,
+        'room::local::mp4-2',
+        0,
+        true,
+      );
+    });
+
+    it('does not mark MP4 as restarted when restart failed', async () => {
+      (adapter.getInputs as any).mockReturnValue([
+        makeConnectedMp4Input('room::local::mp4-1'),
+      ]);
+      const config = makeConfig({
+        tracks: [
+          {
+            id: 't1',
+            clips: [
+              makeClip({
+                inputId: 'room::local::mp4-1',
+                startMs: 0,
+                endMs: 5_000,
+                blockSettings: makeBlockSettings({
+                  mp4PlayFromMs: 0,
+                  mp4Loop: true,
+                }),
+                keyframes: [
+                  {
+                    id: 'kf-0',
+                    timeMs: 0,
+                    blockSettings: makeBlockSettings({
+                      mp4PlayFromMs: 0,
+                      mp4Loop: true,
+                    }),
+                  },
+                  {
+                    id: 'kf-1',
+                    timeMs: 1_000,
+                    blockSettings: makeBlockSettings({
+                      mp4PlayFromMs: 0,
+                      mp4Loop: false,
+                    }),
+                  },
+                ],
+              }),
+            ],
+          },
+        ],
+      });
+
+      const player = new TimelinePlayer(adapter, config);
+      await player.start(0);
+
+      (adapter.restartMp4Input as any).mockReset();
+      (adapter.restartMp4Input as any).mockRejectedValueOnce(
+        new Error('restart failed'),
+      );
+
+      await player.seek(1_200);
+      await player.stop();
+
+      expect(adapter.restartMp4Input).toHaveBeenCalledTimes(1);
+      expect(adapter.restartMp4Input).toHaveBeenNthCalledWith(
+        1,
+        'room::local::mp4-1',
+        expect.any(Number),
+        false,
+      );
     });
   });
 });
