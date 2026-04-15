@@ -49,15 +49,16 @@ export function useServerTimelinePlayback(
   const [timelineBusyStage, setTimelineBusyStage] = useState<
     'idle' | 'running' | 'failed'
   >('idle');
+  const [busyTimeoutFallbackActive, setBusyTimeoutFallbackActive] =
+    useState(false);
   const autoPauseBeforeEndTriggeredRef = useRef(false);
   const stopInFlightRef = useRef<Promise<void> | null>(null);
   const timelineToastId = useRef(`timeline-ops-${roomId}`);
-  const wasBusyRef = useRef(false);
   const seenFailedOperationRef = useRef<string | null>(null);
   useEffect(() => {
     timelineToastId.current = `timeline-ops-${roomId}`;
     seenFailedOperationRef.current = null;
-    wasBusyRef.current = false;
+    setBusyTimeoutFallbackActive(false);
   }, [roomId]);
 
   const sseData = useTimelineSSE(roomId, true);
@@ -97,14 +98,11 @@ export function useServerTimelinePlayback(
     setIsTimelineBusy(busy);
     setTimelineBusyOperation(operation);
     setTimelineBusyStage(stage);
+    if (!busy && busyTimeoutFallbackActive) {
+      setBusyTimeoutFallbackActive(false);
+    }
 
-    if (busy) {
-      const label = operation
-        ? `Timeline: ${operation}...`
-        : 'Timeline busy...';
-      toast.loading(label, { id: timelineToastId.current });
-      wasBusyRef.current = true;
-    } else if (stage === 'failed') {
+    if (stage === 'failed' && !busyTimeoutFallbackActive) {
       if (seenFailedOperationRef.current !== opKey) {
         toast.error('Timeline operation failed.', {
           id: timelineToastId.current,
@@ -112,10 +110,6 @@ export function useServerTimelinePlayback(
         });
         seenFailedOperationRef.current = opKey;
       }
-      wasBusyRef.current = false;
-    } else if (wasBusyRef.current) {
-      toast.dismiss(timelineToastId.current);
-      wasBusyRef.current = false;
     }
 
     if (sseData.isPaused && !isPaused) {
@@ -148,7 +142,13 @@ export function useServerTimelinePlayback(
       };
       pushPlayheadUpdate(sseData.playheadMs, { force: true });
     }
-  }, [sseData, pushPlayheadUpdate, setPlaying, isPaused]);
+  }, [
+    sseData,
+    pushPlayheadUpdate,
+    setPlaying,
+    isPaused,
+    busyTimeoutFallbackActive,
+  ]);
 
   useEffect(() => {
     if (!state.isPlaying) {
@@ -191,6 +191,7 @@ export function useServerTimelinePlayback(
 
   const play = useCallback(async () => {
     if (stateRef.current.isPlaying) return;
+    setBusyTimeoutFallbackActive(false);
 
     const config = toServerTimelineConfig(stateRef.current);
     const fromMs = stateRef.current.playheadMs;
@@ -217,6 +218,7 @@ export function useServerTimelinePlayback(
   }, [roomId, setPlaying, isPaused]);
 
   const pause = useCallback(async () => {
+    setBusyTimeoutFallbackActive(false);
     setPlaying(false);
     setIsPaused(true);
     if (rafRef.current) {
@@ -268,6 +270,7 @@ export function useServerTimelinePlayback(
       ]);
 
       if (result === 'timeout') {
+        setBusyTimeoutFallbackActive(true);
         toast.warning('Timeline stop is taking longer than expected.', {
           id: toastId,
           duration: 5000,
@@ -289,6 +292,7 @@ export function useServerTimelinePlayback(
         return;
       }
 
+      setBusyTimeoutFallbackActive(false);
       toast.success('Timeline stopped.', { id: toastId, duration: 2000 });
     })()
       .catch((err) => {
@@ -307,6 +311,7 @@ export function useServerTimelinePlayback(
 
   const seek = useCallback(
     async (ms: number) => {
+      setBusyTimeoutFallbackActive(false);
       autoPauseBeforeEndTriggeredRef.current = false;
       console.log(`[timeline-ui] SEEK to ${ms}ms`);
       pushPlayheadUpdate(ms, { force: true });
@@ -325,6 +330,7 @@ export function useServerTimelinePlayback(
   );
 
   const applyAtPlayhead = useCallback(async () => {
+    setBusyTimeoutFallbackActive(false);
     const config = toServerTimelineConfig(stateRef.current);
     if (config.tracks.length === 0) return;
     const playheadMs = stateRef.current.playheadMs;
@@ -405,6 +411,7 @@ export function useServerTimelinePlayback(
     applyAtPlayhead,
     isPaused,
     isTimelineBusy,
+    isTimelineInteractionLocked: isTimelineBusy,
     timelineBusyOperation,
     timelineBusyStage,
   };

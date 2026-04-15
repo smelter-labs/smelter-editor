@@ -644,7 +644,7 @@ export const TimelinePanel = memo(function TimelinePanel({
     stop,
     applyAtPlayhead,
     isPaused,
-    isTimelineBusy,
+    isTimelineInteractionLocked,
     timelineBusyOperation,
     timelineBusyStage,
   } = useServerTimelinePlayback(roomId, state, setPlayhead, setPlaying);
@@ -656,7 +656,7 @@ export const TimelinePanel = memo(function TimelinePanel({
     stopAndDownload,
   } = useRecordingControls(roomId, serverIsRecording, refreshState);
   const wasPlayingRef = useRef(false);
-  const timelineControlsDisabled = isTimelineBusy;
+  const timelineControlsDisabled = isTimelineInteractionLocked;
 
   const handleRecordAndPlay = useCallback(async () => {
     if (isTogglingRecording) return;
@@ -2429,6 +2429,18 @@ export const TimelinePanel = memo(function TimelinePanel({
         />
       )}
 
+      {isTimelineInteractionLocked && (
+        <div className='absolute inset-0 z-[120] flex items-center justify-center bg-background/75 backdrop-blur-[1px] pointer-events-auto cursor-wait'>
+          <div className='flex items-center gap-2 rounded-md border border-border/60 bg-background/90 px-3 py-2 text-sm text-foreground shadow-lg'>
+            <Loader2 className='h-4 w-4 animate-spin text-muted-foreground' />
+            <span>
+              Timeline busy
+              {timelineBusyOperation ? `: ${timelineBusyOperation}` : ''}...
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Transport bar */}
       <div className='flex items-center gap-2 px-3 h-8 bg-background border-b border-border shrink-0'>
         <Button
@@ -2496,19 +2508,11 @@ export const TimelinePanel = memo(function TimelinePanel({
           <RotateCcw className='w-3.5 h-3.5' />
         </Button>
 
-        {(isTimelineBusy || timelineBusyStage === 'failed') && (
+        {timelineBusyStage === 'failed' && (
           <div
             className={`ml-2 flex items-center gap-1 text-[11px] ${timelineBusyStage === 'failed' ? 'text-red-400' : 'text-muted-foreground'}`}>
-            {isTimelineBusy ? (
-              <Loader2 className='h-3 w-3 animate-spin' />
-            ) : (
-              <AlertTriangle className='h-3 w-3' />
-            )}
-            <span>
-              {isTimelineBusy
-                ? `Timeline ${timelineBusyOperation ?? 'operation'}...`
-                : 'Timeline operation failed'}
-            </span>
+            <AlertTriangle className='h-3 w-3' />
+            <span>Timeline operation failed</span>
           </div>
         )}
 
