@@ -1368,22 +1368,46 @@ export class RoomState {
         const visibleLayerInputs: typeof layer.inputs = [];
         const hiddenLayerInputs: typeof layer.inputs = [];
 
-      const computedById = new Map(
-        result.inputs.map((input) => [input.inputId, input]),
-      );
-
-      const mergedInputs = layer.inputs.map((existing) => {
-        const input = inputMap.get(existing.inputId);
-        if (input?.hidden) {
-          return existing;
+        for (const li of layer.inputs) {
+          const input = inputMap.get(li.inputId);
+          if (input?.hidden) {
+            hiddenLayerInputs.push(li);
+          } else {
+            visibleLayerInputs.push(li);
+          }
         }
-        return computedById.get(existing.inputId) ?? existing;
-      });
 
-      return {
-        ...layer,
-        inputs: mergedInputs,
-      };
+        const behaviorInfoMap = new Map(
+          behaviorInputInfos.map((bi) => [bi.inputId, bi]),
+        );
+        const visibleInputInfos = visibleLayerInputs
+          .map((li) => behaviorInfoMap.get(li.inputId))
+          .filter((bi): bi is BehaviorInputInfo => bi !== undefined);
+        const result = computeLayout(
+          manualFirstLayerLayoutHelper,
+          visibleInputInfos,
+          this.output.resolution,
+        );
+
+        const computedById = new Map(
+          result.inputs.map((input) => [input.inputId, input]),
+        );
+
+        const mergedInputs = layer.inputs.map((existing) => {
+          const input = inputMap.get(existing.inputId);
+          if (input?.hidden) {
+            return existing;
+          }
+          return computedById.get(existing.inputId) ?? existing;
+        });
+
+        return {
+          ...layer,
+          inputs: mergedInputs,
+        };
+      }
+
+      return layer;
     });
 
     this.output.store.getState().updateState({
