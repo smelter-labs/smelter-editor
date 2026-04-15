@@ -193,6 +193,7 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
         busy: current.busy,
         operation: current.operation,
         stage: current.stage,
+        phase: current.phase,
       });
       res.raw.write(`data: ${JSON.stringify(current)}\n\n`);
 
@@ -207,6 +208,7 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
           busy: data.busy,
           operation: data.operation,
           stage: data.stage,
+          phase: data.phase,
         });
         res.raw.write(`data: ${JSON.stringify(data)}\n\n`);
       });

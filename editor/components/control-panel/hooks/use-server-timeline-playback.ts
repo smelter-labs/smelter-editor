@@ -20,7 +20,7 @@ import {
 
 const PLAYHEAD_UI_UPDATE_INTERVAL_MS = 33;
 const AUTO_PAUSE_BEFORE_END_MS = 2000;
-const STOP_AND_APPLY_TIMEOUT_MS = 10_000;
+const STOP_TIMEOUT_MS = 10_000;
 
 export function useServerTimelinePlayback(
   roomId: string,
@@ -49,6 +49,13 @@ export function useServerTimelinePlayback(
   const [timelineBusyStage, setTimelineBusyStage] = useState<
     'idle' | 'running' | 'failed'
   >('idle');
+  const [timelineBusyPhase, setTimelineBusyPhase] = useState<
+    | 'stopping-playback'
+    | 'seeking-to-zero'
+    | 'waiting-before-apply'
+    | 'applying-state'
+    | null
+  >(null);
   const [busyTimeoutFallbackActive, setBusyTimeoutFallbackActive] =
     useState(false);
   const autoPauseBeforeEndTriggeredRef = useRef(false);
@@ -94,10 +101,12 @@ export function useServerTimelinePlayback(
     const busy = sseData.busy === true;
     const operation = sseData.operation ?? null;
     const stage = sseData.stage ?? 'idle';
+    const phase = sseData.phase ?? null;
     const opKey = `${sseData.operationId ?? 'none'}:${stage}`;
     setIsTimelineBusy(busy);
     setTimelineBusyOperation(operation);
     setTimelineBusyStage(stage);
+    setTimelineBusyPhase(phase);
     if (!busy && busyTimeoutFallbackActive) {
       setBusyTimeoutFallbackActive(false);
     }
@@ -242,7 +251,7 @@ export function useServerTimelinePlayback(
     }
     const stopPromise = (async () => {
       const toastId = timelineToastId.current;
-      toast.loading('Stopping timeline and applying snapshot...', {
+      toast.loading('Stopping timeline...', {
         id: toastId,
       });
       autoPauseBeforeEndTriggeredRef.current = false;
@@ -255,17 +264,12 @@ export function useServerTimelinePlayback(
       lastSSERef.current = null;
       pushPlayheadUpdate(0, { force: true });
 
-      const stopAndApplyPromise = (async () => {
-        await stopTimelinePlayback(roomId);
-        const config = toServerTimelineConfig(stateRef.current);
-        if (config.tracks.length === 0) return;
-        await applyTimelineState(roomId, config, 0);
-      })();
+      const stopPromise = stopTimelinePlayback(roomId);
 
       const result = await Promise.race([
-        stopAndApplyPromise.then(() => 'done' as const),
+        stopPromise.then(() => 'done' as const),
         new Promise<'timeout'>((resolve) =>
-          setTimeout(() => resolve('timeout'), STOP_AND_APPLY_TIMEOUT_MS),
+          setTimeout(() => resolve('timeout'), STOP_TIMEOUT_MS),
         ),
       ]);
 
@@ -275,7 +279,7 @@ export function useServerTimelinePlayback(
           id: toastId,
           duration: 5000,
         });
-        stopAndApplyPromise
+        stopPromise
           .then(() => {
             toast.success('Timeline stop recovered.', {
               id: toastId,
@@ -283,7 +287,7 @@ export function useServerTimelinePlayback(
             });
           })
           .catch((err) => {
-            console.error('[timeline-ui] stop+apply after timeout failed', err);
+            console.error('[timeline-ui] stop after timeout failed', err);
             toast.error('Timeline stop failed after timeout.', {
               id: toastId,
               duration: 5000,
@@ -296,7 +300,7 @@ export function useServerTimelinePlayback(
       toast.success('Timeline stopped.', { id: toastId, duration: 2000 });
     })()
       .catch((err) => {
-        console.error('[timeline-ui] stop+apply failed', err);
+        console.error('[timeline-ui] stop failed', err);
         toast.error('Failed to stop timeline.', {
           id: timelineToastId.current,
           duration: 5000,
@@ -414,5 +418,6 @@ export function useServerTimelinePlayback(
     isTimelineInteractionLocked: isTimelineBusy,
     timelineBusyOperation,
     timelineBusyStage,
+    timelineBusyPhase,
   };
 }

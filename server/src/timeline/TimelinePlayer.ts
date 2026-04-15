@@ -160,6 +160,12 @@ export type TimelineListenerData = {
   operationId?: string | null;
   operation?: 'play' | 'stop' | 'seek' | 'apply' | null;
   stage?: 'idle' | 'running' | 'failed';
+  phase?:
+    | 'stopping-playback'
+    | 'seeking-to-zero'
+    | 'waiting-before-apply'
+    | 'applying-state'
+    | null;
 };
 
 export type TimelineListener = (data: TimelineListenerData) => void;
@@ -807,12 +813,32 @@ export class TimelinePlayer {
 
   public async stop(): Promise<void> {
     if (!this.playing && !this.paused) return;
+    await this.stopPlaybackOnly();
+    await this.restoreSnapshotState();
+  }
+
+  public async stopPlaybackOnly(): Promise<void> {
+    if (!this.playing && !this.paused) return;
+    const playheadMs = this.getPlayheadMs();
     console.log(
-      `[timeline] STOP playback playheadMs=${this.getPlayheadMs()} paused=${this.paused}`,
+      `[timeline] STOP playback playheadMs=${playheadMs} paused=${this.paused}`,
     );
     this.playing = false;
     this.paused = false;
+    this.startPlayheadMs = playheadMs;
+    this.pausedPlayheadMs = playheadMs;
     this.clearTimers();
+    this.emit();
+  }
+
+  public setPlayheadMs(ms: number): void {
+    const clampedMs = Math.max(0, Math.min(ms, this.config.totalDurationMs));
+    this.startPlayheadMs = clampedMs;
+    this.pausedPlayheadMs = clampedMs;
+    this.emit();
+  }
+
+  public async restoreSnapshotState(): Promise<void> {
     await this.restoreState();
     this.emit();
   }

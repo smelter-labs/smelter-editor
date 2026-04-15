@@ -37,15 +37,30 @@ import type { ShaderConfig } from '../types';
 const RESUME_FROZEN_IMAGE_CLEANUP_DELAY_MS = 5500;
 const FROZEN_IMAGE_UNREGISTER_GRACE_MS = 500;
 const AUDIO_ASSETS_DIR = path.join(DATA_DIR, 'audios');
+const DEFAULT_TIMELINE_STOP_APPLY_DELAY_MS = 500;
+const timelineStopApplyDelayFromEnv = Number(
+  process.env.SMELTER_TIMELINE_STOP_APPLY_DELAY_MS,
+);
+const TIMELINE_STOP_APPLY_DELAY_MS =
+  Number.isFinite(timelineStopApplyDelayFromEnv) &&
+  timelineStopApplyDelayFromEnv >= 0
+    ? timelineStopApplyDelayFromEnv
+    : DEFAULT_TIMELINE_STOP_APPLY_DELAY_MS;
 
 type TimelineBusyOperation = 'play' | 'stop' | 'seek' | 'apply';
 type TimelineBusyStage = 'idle' | 'running' | 'failed';
+type TimelineBusyPhase =
+  | 'stopping-playback'
+  | 'seeking-to-zero'
+  | 'waiting-before-apply'
+  | 'applying-state';
 
 type TimelineBusyState = {
   busy: boolean;
   operationId: string | null;
   operation: TimelineBusyOperation | null;
   stage: TimelineBusyStage;
+  phase: TimelineBusyPhase | null;
 };
 
 function cloneLayers(layers: Layer[]): Layer[] {
@@ -103,6 +118,7 @@ export class RoomState {
     operationId: null,
     operation: null,
     stage: 'idle',
+    phase: null,
   };
 
   private frozenImages: Map<string, { imageId: string; jpegPath: string }> =
@@ -817,7 +833,18 @@ export class RoomState {
       this.cleanupFrozenImages();
       this._restoringTimeline = true;
       try {
-        await this.timelinePlayer.stop();
+        this.updateTimelineBusyPhase('stopping-playback');
+        await this.timelinePlayer.stopPlaybackOnly();
+        this.updateTimelineBusyPhase('seeking-to-zero');
+        this.timelinePlayer.setPlayheadMs(0);
+        this.updateTimelineBusyPhase('waiting-before-apply');
+        if (TIMELINE_STOP_APPLY_DELAY_MS > 0) {
+          await new Promise<void>((resolve) =>
+            setTimeout(resolve, TIMELINE_STOP_APPLY_DELAY_MS),
+          );
+        }
+        this.updateTimelineBusyPhase('applying-state');
+        await this.timelinePlayer.restoreSnapshotState();
       } finally {
         this._restoringTimeline = false;
       }
@@ -978,6 +1005,7 @@ export class RoomState {
     operationId: string | null;
     operation: TimelineBusyOperation | null;
     stage: TimelineBusyStage;
+    phase: TimelineBusyPhase | null;
   } {
     const baseState = this.timelinePlayer
       ? {
@@ -1008,6 +1036,15 @@ export class RoomState {
       operationId,
       operation,
       stage,
+      phase: stage === 'idle' ? null : this.timelineBusyState.phase,
+    };
+    this.emitTimelinePlaybackState();
+  }
+
+  private updateTimelineBusyPhase(phase: TimelineBusyPhase | null): void {
+    this.timelineBusyState = {
+      ...this.timelineBusyState,
+      phase,
     };
     this.emitTimelinePlaybackState();
   }
@@ -1045,6 +1082,7 @@ export class RoomState {
         this.updateTimelineBusyState(operation, 'failed', operationId);
         throw error;
       } finally {
+        this.updateTimelineBusyPhase(null);
         this.updateTimelineBusyState(null, 'idle', null);
       }
     };

@@ -647,6 +647,7 @@ export const TimelinePanel = memo(function TimelinePanel({
     isTimelineInteractionLocked,
     timelineBusyOperation,
     timelineBusyStage,
+    timelineBusyPhase,
   } = useServerTimelinePlayback(roomId, state, setPlayhead, setPlaying);
 
   const {
@@ -657,6 +658,17 @@ export const TimelinePanel = memo(function TimelinePanel({
   } = useRecordingControls(roomId, serverIsRecording, refreshState);
   const wasPlayingRef = useRef(false);
   const timelineControlsDisabled = isTimelineInteractionLocked;
+  const timelineBusyLabel = (() => {
+    if (timelineBusyPhase === 'stopping-playback') return 'Stopping playback';
+    if (timelineBusyPhase === 'seeking-to-zero')
+      return 'Seeking cursor to 0 ms';
+    if (timelineBusyPhase === 'waiting-before-apply')
+      return 'Waiting before apply';
+    if (timelineBusyPhase === 'applying-state')
+      return 'Applying snapshot state';
+    if (timelineBusyOperation) return `Timeline busy: ${timelineBusyOperation}`;
+    return 'Timeline busy';
+  })();
 
   const handleRecordAndPlay = useCallback(async () => {
     if (isTogglingRecording) return;
@@ -2433,10 +2445,7 @@ export const TimelinePanel = memo(function TimelinePanel({
         <div className='absolute inset-0 z-[120] flex items-center justify-center bg-background/75 backdrop-blur-[1px] pointer-events-auto cursor-wait'>
           <div className='flex items-center gap-2 rounded-md border border-border/60 bg-background/90 px-3 py-2 text-sm text-foreground shadow-lg'>
             <Loader2 className='h-4 w-4 animate-spin text-muted-foreground' />
-            <span>
-              Timeline busy
-              {timelineBusyOperation ? `: ${timelineBusyOperation}` : ''}...
-            </span>
+            <span>{timelineBusyLabel}...</span>
           </div>
         </div>
       )}
