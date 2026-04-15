@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useEffect, useState } from 'react';
+import { toast } from 'sonner';
 import {
   startTimelinePlayback,
   stopTimelinePlayback,
@@ -19,6 +20,7 @@ import {
 
 const PLAYHEAD_UI_UPDATE_INTERVAL_MS = 33;
 const AUTO_PAUSE_BEFORE_END_MS = 2000;
+const STOP_AND_APPLY_TIMEOUT_MS = 10_000;
 
 export function useServerTimelinePlayback(
   roomId: string,
@@ -30,7 +32,6 @@ export function useServerTimelinePlayback(
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
-
   const rafRef = useRef<number | null>(null);
   const lastSSERef = useRef<{ wallMs: number; playheadMs: number } | null>(
     null,
@@ -41,9 +42,25 @@ export function useServerTimelinePlayback(
   });
 
   const [isPaused, setIsPaused] = useState(false);
+  const [isTimelineBusy, setIsTimelineBusy] = useState(false);
+  const [timelineBusyOperation, setTimelineBusyOperation] = useState<
+    'play' | 'stop' | 'seek' | 'apply' | null
+  >(null);
+  const [timelineBusyStage, setTimelineBusyStage] = useState<
+    'idle' | 'running' | 'failed'
+  >('idle');
   const autoPauseBeforeEndTriggeredRef = useRef(false);
+  const stopInFlightRef = useRef<Promise<void> | null>(null);
+  const timelineToastId = useRef(`timeline-ops-${roomId}`);
+  const wasBusyRef = useRef(false);
+  const seenFailedOperationRef = useRef<string | null>(null);
+  useEffect(() => {
+    timelineToastId.current = `timeline-ops-${roomId}`;
+    seenFailedOperationRef.current = null;
+    wasBusyRef.current = false;
+  }, [roomId]);
 
-  const sseData = useTimelineSSE(roomId, state.isPlaying || isPaused);
+  const sseData = useTimelineSSE(roomId, true);
   const sseCountRef = useRef(0);
 
   const pushPlayheadUpdate = useCallback(
@@ -73,6 +90,33 @@ export function useServerTimelinePlayback(
   useEffect(() => {
     if (!sseData) return;
     sseCountRef.current += 1;
+    const busy = sseData.busy === true;
+    const operation = sseData.operation ?? null;
+    const stage = sseData.stage ?? 'idle';
+    const opKey = `${sseData.operationId ?? 'none'}:${stage}`;
+    setIsTimelineBusy(busy);
+    setTimelineBusyOperation(operation);
+    setTimelineBusyStage(stage);
+
+    if (busy) {
+      const label = operation
+        ? `Timeline: ${operation}...`
+        : 'Timeline busy...';
+      toast.loading(label, { id: timelineToastId.current });
+      wasBusyRef.current = true;
+    } else if (stage === 'failed') {
+      if (seenFailedOperationRef.current !== opKey) {
+        toast.error('Timeline operation failed.', {
+          id: timelineToastId.current,
+          duration: 5000,
+        });
+        seenFailedOperationRef.current = opKey;
+      }
+      wasBusyRef.current = false;
+    } else if (wasBusyRef.current) {
+      toast.dismiss(timelineToastId.current);
+      wasBusyRef.current = false;
+    }
 
     if (sseData.isPaused && !isPaused) {
       setIsPaused(true);
@@ -191,29 +235,74 @@ export function useServerTimelinePlayback(
   }, [roomId, pushPlayheadUpdate, setPlaying]);
 
   const stop = useCallback(async () => {
-    autoPauseBeforeEndTriggeredRef.current = false;
-    setPlaying(false);
-    setIsPaused(false);
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
+    if (stopInFlightRef.current) {
+      return stopInFlightRef.current;
     }
-    lastSSERef.current = null;
-    pushPlayheadUpdate(0, { force: true });
+    const stopPromise = (async () => {
+      const toastId = timelineToastId.current;
+      toast.loading('Stopping timeline and applying snapshot...', {
+        id: toastId,
+      });
+      autoPauseBeforeEndTriggeredRef.current = false;
+      setPlaying(false);
+      setIsPaused(false);
+      if (rafRef.current) {
+        cancelAnimationFrame(rafRef.current);
+        rafRef.current = null;
+      }
+      lastSSERef.current = null;
+      pushPlayheadUpdate(0, { force: true });
 
-    try {
-      await stopTimelinePlayback(roomId);
-    } catch (err) {
-      console.error('[timeline] Failed to stop playback', err);
-    }
+      const stopAndApplyPromise = (async () => {
+        await stopTimelinePlayback(roomId);
+        const config = toServerTimelineConfig(stateRef.current);
+        if (config.tracks.length === 0) return;
+        await applyTimelineState(roomId, config, 0);
+      })();
 
-    const config = toServerTimelineConfig(stateRef.current);
-    if (config.tracks.length === 0) return;
-    try {
-      await applyTimelineState(roomId, config, 0);
-    } catch (err) {
-      console.error('[timeline-ui] applyAtPlayhead(0) after STOP failed', err);
-    }
+      const result = await Promise.race([
+        stopAndApplyPromise.then(() => 'done' as const),
+        new Promise<'timeout'>((resolve) =>
+          setTimeout(() => resolve('timeout'), STOP_AND_APPLY_TIMEOUT_MS),
+        ),
+      ]);
+
+      if (result === 'timeout') {
+        toast.warning('Timeline stop is taking longer than expected.', {
+          id: toastId,
+          duration: 5000,
+        });
+        stopAndApplyPromise
+          .then(() => {
+            toast.success('Timeline stop recovered.', {
+              id: toastId,
+              duration: 2500,
+            });
+          })
+          .catch((err) => {
+            console.error('[timeline-ui] stop+apply after timeout failed', err);
+            toast.error('Timeline stop failed after timeout.', {
+              id: toastId,
+              duration: 5000,
+            });
+          });
+        return;
+      }
+
+      toast.success('Timeline stopped.', { id: toastId, duration: 2000 });
+    })()
+      .catch((err) => {
+        console.error('[timeline-ui] stop+apply failed', err);
+        toast.error('Failed to stop timeline.', {
+          id: timelineToastId.current,
+          duration: 5000,
+        });
+      })
+      .finally(() => {
+        stopInFlightRef.current = null;
+      });
+    stopInFlightRef.current = stopPromise;
+    return stopPromise;
   }, [roomId, pushPlayheadUpdate, setPlaying]);
 
   const seek = useCallback(
@@ -304,8 +393,19 @@ export function useServerTimelinePlayback(
   useEffect(() => {
     return () => {
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
+      toast.dismiss(timelineToastId.current);
     };
   }, []);
 
-  return { play, pause, stop, seek, applyAtPlayhead, isPaused };
+  return {
+    play,
+    pause,
+    stop,
+    seek,
+    applyAtPlayhead,
+    isPaused,
+    isTimelineBusy,
+    timelineBusyOperation,
+    timelineBusyStage,
+  };
 }

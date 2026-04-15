@@ -51,6 +51,7 @@ import {
   GripVertical,
   Volume2,
   AlertTriangle,
+  Loader2,
 } from 'lucide-react';
 import {
   hexToHsla,
@@ -637,8 +638,16 @@ export const TimelinePanel = memo(function TimelinePanel({
 
   const inputColorMap = useMemo(() => buildInputColorMap(inputs), [inputs]);
 
-  const { play, pause, stop, applyAtPlayhead, isPaused } =
-    useServerTimelinePlayback(roomId, state, setPlayhead, setPlaying);
+  const {
+    play,
+    pause,
+    stop,
+    applyAtPlayhead,
+    isPaused,
+    isTimelineBusy,
+    timelineBusyOperation,
+    timelineBusyStage,
+  } = useServerTimelinePlayback(roomId, state, setPlayhead, setPlaying);
 
   const {
     isTogglingRecording,
@@ -647,6 +656,7 @@ export const TimelinePanel = memo(function TimelinePanel({
     stopAndDownload,
   } = useRecordingControls(roomId, serverIsRecording, refreshState);
   const wasPlayingRef = useRef(false);
+  const timelineControlsDisabled = isTimelineBusy;
 
   const handleRecordAndPlay = useCallback(async () => {
     if (isTogglingRecording) return;
@@ -2426,7 +2436,7 @@ export const TimelinePanel = memo(function TimelinePanel({
           size='icon'
           className='h-6 w-6 text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed'
           onClick={() => setPlayhead(0)}
-          disabled={state.isPlaying}
+          disabled={state.isPlaying || timelineControlsDisabled}
           title='Skip to beginning'>
           <SkipBack className='w-3.5 h-3.5' />
         </Button>
@@ -2435,6 +2445,7 @@ export const TimelinePanel = memo(function TimelinePanel({
           size='icon'
           className={`h-6 w-6 cursor-pointer ${state.isPlaying ? 'text-green-400' : isPaused ? 'text-yellow-400' : 'text-muted-foreground hover:text-foreground'}`}
           onClick={state.isPlaying ? pause : play}
+          disabled={timelineControlsDisabled}
           title={state.isPlaying ? 'Pause' : isPaused ? 'Resume' : 'Play'}>
           {state.isPlaying ? (
             <Pause className='w-3.5 h-3.5' />
@@ -2447,7 +2458,7 @@ export const TimelinePanel = memo(function TimelinePanel({
           size='icon'
           className='h-6 w-6 text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed'
           onClick={stop}
-          disabled={!state.isPlaying && !isPaused}
+          disabled={timelineControlsDisabled || (!state.isPlaying && !isPaused)}
           title='Stop (full reset)'>
           <Square className='w-3.5 h-3.5' />
         </Button>
@@ -2456,7 +2467,7 @@ export const TimelinePanel = memo(function TimelinePanel({
           size='icon'
           className={`h-6 w-6 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${isRecording ? 'animate-pulse' : ''}`}
           onClick={handleRecordAndPlay}
-          disabled={isTogglingRecording}
+          disabled={isTogglingRecording || timelineControlsDisabled}
           title={isRecording ? 'Stop recording' : 'Record & Play'}>
           <div className='w-3.5 h-3.5 flex items-center justify-center'>
             {isRecording ? (
@@ -2471,7 +2482,7 @@ export const TimelinePanel = memo(function TimelinePanel({
           size='icon'
           className='h-6 w-6 text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed'
           onClick={applyAtPlayhead}
-          disabled={state.isPlaying}
+          disabled={state.isPlaying || timelineControlsDisabled}
           title='Apply state at playhead'>
           <Crosshair className='w-3.5 h-3.5' />
         </Button>
@@ -2480,9 +2491,26 @@ export const TimelinePanel = memo(function TimelinePanel({
           size='icon'
           className='h-6 w-6 text-muted-foreground hover:text-foreground cursor-pointer'
           onClick={reset}
+          disabled={timelineControlsDisabled}
           title='Reset timeline'>
           <RotateCcw className='w-3.5 h-3.5' />
         </Button>
+
+        {(isTimelineBusy || timelineBusyStage === 'failed') && (
+          <div
+            className={`ml-2 flex items-center gap-1 text-[11px] ${timelineBusyStage === 'failed' ? 'text-red-400' : 'text-muted-foreground'}`}>
+            {isTimelineBusy ? (
+              <Loader2 className='h-3 w-3 animate-spin' />
+            ) : (
+              <AlertTriangle className='h-3 w-3' />
+            )}
+            <span>
+              {isTimelineBusy
+                ? `Timeline ${timelineBusyOperation ?? 'operation'}...`
+                : 'Timeline operation failed'}
+            </span>
+          </div>
+        )}
 
         <div className='w-px h-4 bg-secondary' />
 

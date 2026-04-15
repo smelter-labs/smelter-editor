@@ -6,6 +6,10 @@ type TimelineSSEData = {
   playheadMs: number;
   isPlaying: boolean;
   isPaused: boolean;
+  busy?: boolean;
+  operationId?: string | null;
+  operation?: 'play' | 'stop' | 'seek' | 'apply' | null;
+  stage?: 'idle' | 'running' | 'failed';
 };
 
 export function useTimelineSSE(

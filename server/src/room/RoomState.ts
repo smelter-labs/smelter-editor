@@ -38,6 +38,16 @@ const RESUME_FROZEN_IMAGE_CLEANUP_DELAY_MS = 5500;
 const FROZEN_IMAGE_UNREGISTER_GRACE_MS = 500;
 const AUDIO_ASSETS_DIR = path.join(DATA_DIR, 'audios');
 
+type TimelineBusyOperation = 'play' | 'stop' | 'seek' | 'apply';
+type TimelineBusyStage = 'idle' | 'running' | 'failed';
+
+type TimelineBusyState = {
+  busy: boolean;
+  operationId: string | null;
+  operation: TimelineBusyOperation | null;
+  stage: TimelineBusyStage;
+};
+
 function cloneLayers(layers: Layer[]): Layer[] {
   if (typeof structuredClone === 'function') {
     return structuredClone(layers);
@@ -86,6 +96,14 @@ export class RoomState {
   private timelinePlayer: TimelinePlayer | null = null;
   private timelineListeners = new Set<TimelineListener>();
   private pausedAttachedInputVolumes = new Map<string, number>();
+  private timelineCommandQueue: Promise<void> = Promise.resolve();
+  private timelineOpSeq = 0;
+  private timelineBusyState: TimelineBusyState = {
+    busy: false,
+    operationId: null,
+    operation: null,
+    stage: 'idle',
+  };
 
   private frozenImages: Map<string, { imageId: string; jpegPath: string }> =
     new Map();
@@ -696,113 +714,118 @@ export class RoomState {
     config: TimelineConfig,
     fromMs?: number,
   ): Promise<void> {
-    if (this.timelinePlayer?.getIsPaused()) {
-      this.timelinePlayer.updateConfig(config);
-      await this.resumeTimeline(fromMs);
-      return;
-    }
-
-    if (this.timelinePlayer) {
-      this.timelinePlayer.destroy();
-    }
-
-    const adapter = this.buildTimelineAdapter();
-    this.timelinePlayer = new TimelinePlayer(adapter, config);
-
-    const forwardListener: TimelineListener = (data) => {
-      for (const listener of this.timelineListeners) {
-        listener(data);
+    await this.runSerializedTimelineCommand('play', async () => {
+      if (this.timelinePlayer?.getIsPaused()) {
+        this.timelinePlayer.updateConfig(config);
+        await this.resumeTimeline(fromMs);
+        return;
       }
-    };
-    this.timelinePlayer.addListener(forwardListener);
 
-    await this.timelinePlayer.start(fromMs);
-    this.notifyStateChange();
+      if (this.timelinePlayer) {
+        this.timelinePlayer.destroy();
+      }
+
+      const adapter = this.buildTimelineAdapter();
+      this.timelinePlayer = new TimelinePlayer(adapter, config);
+
+      const forwardListener: TimelineListener = (data) => {
+        this.emitTimelinePlaybackState(data);
+      };
+      this.timelinePlayer.addListener(forwardListener);
+
+      await this.timelinePlayer.start(fromMs);
+      this.notifyStateChange();
+      this.emitTimelinePlaybackState();
+    });
   }
 
   public async applyTimelineState(
     config: TimelineConfig,
     playheadMs: number,
   ): Promise<void> {
-    if (this.timelinePlayer) {
-      this.timelinePlayer.destroy();
-    }
-
-    const adapter = this.buildTimelineAdapter();
-    this.timelinePlayer = new TimelinePlayer(adapter, config);
-
-    const forwardListener: TimelineListener = (data) => {
-      for (const listener of this.timelineListeners) {
-        listener(data);
-      }
-    };
-    this.timelinePlayer.addListener(forwardListener);
-
-    const activeClips =
-      await this.timelinePlayer.applyStaticSnapshot(playheadMs);
-
-    this.cleanupFrozenImages();
-
-    const inputs = this.inputManager.getInputs();
-    for (const [inputId, clip] of activeClips) {
-      const input = inputs.find((i) => i.inputId === inputId);
-      if (!input || input.type !== 'local-mp4') continue;
-      if (isAudioBackedLocalMp4(input.mp4FilePath)) {
-        continue;
+    await this.runSerializedTimelineCommand('apply', async () => {
+      if (this.timelinePlayer) {
+        this.timelinePlayer.destroy();
       }
 
-      const basePlayFrom = clip.blockSettings.mp4PlayFromMs ?? 0;
-      const isLooped = clip.blockSettings.mp4Loop !== false;
-      const framePositionMs = normalizeFramePositionMs(
-        basePlayFrom + (playheadMs - clip.startMs),
-        isLooped,
-        input.mp4DurationMs,
-      );
+      const adapter = this.buildTimelineAdapter();
+      this.timelinePlayer = new TimelinePlayer(adapter, config);
 
-      try {
-        const jpegPath = await SmelterInstance.extractMp4Frame(
-          input.mp4FilePath,
-          framePositionMs,
-        );
-        const frozenId = `frozen::${this.idPrefix}::${inputId}::${Date.now()}`;
-        await SmelterInstance.registerImage(frozenId, {
-          serverPath: jpegPath,
-          assetType: 'jpeg',
-        });
+      const forwardListener: TimelineListener = (data) => {
+        this.emitTimelinePlaybackState(data);
+      };
+      this.timelinePlayer.addListener(forwardListener);
 
-        this.setFrozenImage(inputId, frozenId, jpegPath);
-        logTimelineEvent(
-          this.idPrefix,
-          `MP4 FROZEN (scrub) ${input.metadata.title} at ${Math.round(framePositionMs)}ms`,
+      const activeClips =
+        await this.timelinePlayer.applyStaticSnapshot(playheadMs);
+
+      this.cleanupFrozenImages();
+
+      const inputs = this.inputManager.getInputs();
+      for (const [inputId, clip] of activeClips) {
+        const input = inputs.find((i) => i.inputId === inputId);
+        if (!input || input.type !== 'local-mp4') continue;
+        if (isAudioBackedLocalMp4(input.mp4FilePath)) {
+          continue;
+        }
+
+        const basePlayFrom = clip.blockSettings.mp4PlayFromMs ?? 0;
+        const isLooped = clip.blockSettings.mp4Loop !== false;
+        const framePositionMs = normalizeFramePositionMs(
+          basePlayFrom + (playheadMs - clip.startMs),
+          isLooped,
+          input.mp4DurationMs,
         );
-      } catch (err) {
-        if (isSmelterTransportError(err)) {
-          console.warn(
-            `[timeline] Skipping scrub frozen frame for ${inputId} while Smelter is recovering`,
+
+        try {
+          const jpegPath = await SmelterInstance.extractMp4Frame(
+            input.mp4FilePath,
+            framePositionMs,
           );
-        } else {
-          console.error(
-            `[timeline] Failed to extract frame for ${inputId} at scrub position`,
-            err,
+          const frozenId = `frozen::${this.idPrefix}::${inputId}::${Date.now()}`;
+          await SmelterInstance.registerImage(frozenId, {
+            serverPath: jpegPath,
+            assetType: 'jpeg',
+          });
+
+          this.setFrozenImage(inputId, frozenId, jpegPath);
+          logTimelineEvent(
+            this.idPrefix,
+            `MP4 FROZEN (scrub) ${input.metadata.title} at ${Math.round(framePositionMs)}ms`,
           );
+        } catch (err) {
+          if (isSmelterTransportError(err)) {
+            console.warn(
+              `[timeline] Skipping scrub frozen frame for ${inputId} while Smelter is recovering`,
+            );
+          } else {
+            console.error(
+              `[timeline] Failed to extract frame for ${inputId} at scrub position`,
+              err,
+            );
+          }
         }
       }
-    }
+      this.emitTimelinePlaybackState();
+    });
   }
 
   public async stopTimelinePlayback(): Promise<void> {
-    if (!this.timelinePlayer) return;
-    this.pausedAttachedInputVolumes.clear();
-    this.cleanupFrozenImages();
-    this._restoringTimeline = true;
-    try {
-      await this.timelinePlayer.stop();
-    } finally {
-      this._restoringTimeline = false;
-    }
-    this.timelinePlayer.destroy();
-    this.timelinePlayer = null;
-    this.notifyStateChange();
+    await this.runSerializedTimelineCommand('stop', async () => {
+      if (!this.timelinePlayer) return;
+      this.pausedAttachedInputVolumes.clear();
+      this.cleanupFrozenImages();
+      this._restoringTimeline = true;
+      try {
+        await this.timelinePlayer.stop();
+      } finally {
+        this._restoringTimeline = false;
+      }
+      this.timelinePlayer.destroy();
+      this.timelinePlayer = null;
+      this.notifyStateChange();
+      this.emitTimelinePlaybackState();
+    });
   }
 
   public async pauseTimeline(): Promise<{
@@ -818,14 +841,20 @@ export class RoomState {
     const inputs = this.inputManager.getInputs();
     const inputById = new Map(inputs.map((input) => [input.inputId, input]));
     const activeInputIds = new Set(activeClips.keys());
-    const attachedInputIds = this.collectAttachedInputIds(activeInputIds, inputById);
+    const attachedInputIds = this.collectAttachedInputIds(
+      activeInputIds,
+      inputById,
+    );
 
     this.pausedAttachedInputVolumes.clear();
     for (const attachedInputId of attachedInputIds) {
       if (activeInputIds.has(attachedInputId)) continue;
       const attachedInput = inputById.get(attachedInputId);
       if (!attachedInput) continue;
-      this.pausedAttachedInputVolumes.set(attachedInputId, attachedInput.volume);
+      this.pausedAttachedInputVolumes.set(
+        attachedInputId,
+        attachedInput.volume,
+      );
       this.inputManager.updateInput(attachedInputId, { volume: 0 });
     }
 
@@ -872,7 +901,10 @@ export class RoomState {
             `[timeline] Skipping pause frozen frame for ${inputId} while Smelter is recovering`,
           );
         } else {
-          console.error(`[timeline] Failed to extract frame for ${inputId}`, err);
+          console.error(
+            `[timeline] Failed to extract frame for ${inputId}`,
+            err,
+          );
         }
       }
     }
@@ -924,10 +956,17 @@ export class RoomState {
   }
 
   public async seekTimeline(ms: number): Promise<void> {
-    if (!this.timelinePlayer) {
-      throw new Error('No timeline playback in progress');
-    }
-    await this.timelinePlayer.seek(ms);
+    await this.runSerializedTimelineCommand('seek', async () => {
+      if (!this.timelinePlayer) {
+        throw new Error('No timeline playback in progress');
+      }
+      await this.timelinePlayer.seek(ms);
+      this.emitTimelinePlaybackState();
+    });
+  }
+
+  public getTimelineBusyState(): TimelineBusyState {
+    return { ...this.timelineBusyState };
   }
 
   public getTimelinePlaybackState(): {
@@ -935,21 +974,86 @@ export class RoomState {
     isPlaying: boolean;
     isPaused: boolean;
     totalDurationMs: number;
+    busy: boolean;
+    operationId: string | null;
+    operation: TimelineBusyOperation | null;
+    stage: TimelineBusyStage;
   } {
-    if (!this.timelinePlayer) {
-      return {
-        playheadMs: 0,
-        isPlaying: false,
-        isPaused: false,
-        totalDurationMs: 0,
-      };
-    }
+    const baseState = this.timelinePlayer
+      ? {
+          playheadMs: this.timelinePlayer.getPlayheadMs(),
+          isPlaying: this.timelinePlayer.isPlaying(),
+          isPaused: this.timelinePlayer.getIsPaused(),
+          totalDurationMs: this.timelinePlayer.getTotalDurationMs(),
+        }
+      : {
+          playheadMs: 0,
+          isPlaying: false,
+          isPaused: false,
+          totalDurationMs: 0,
+        };
     return {
-      playheadMs: this.timelinePlayer.getPlayheadMs(),
-      isPlaying: this.timelinePlayer.isPlaying(),
-      isPaused: this.timelinePlayer.getIsPaused(),
-      totalDurationMs: this.timelinePlayer.getTotalDurationMs(),
+      ...baseState,
+      ...this.timelineBusyState,
     };
+  }
+
+  private updateTimelineBusyState(
+    operation: TimelineBusyOperation | null,
+    stage: TimelineBusyStage,
+    operationId: string | null,
+  ): void {
+    this.timelineBusyState = {
+      busy: stage !== 'idle',
+      operationId,
+      operation,
+      stage,
+    };
+    this.emitTimelinePlaybackState();
+  }
+
+  private emitTimelinePlaybackState(
+    data?: Pick<
+      ReturnType<RoomState['getTimelinePlaybackState']>,
+      'playheadMs' | 'isPlaying' | 'isPaused'
+    >,
+  ): void {
+    const snapshot = this.getTimelinePlaybackState();
+    const payload = data
+      ? {
+          ...snapshot,
+          playheadMs: data.playheadMs,
+          isPlaying: data.isPlaying,
+          isPaused: data.isPaused,
+        }
+      : snapshot;
+    for (const listener of this.timelineListeners) {
+      listener(payload);
+    }
+  }
+
+  private runSerializedTimelineCommand<T>(
+    operation: TimelineBusyOperation,
+    command: () => Promise<T>,
+  ): Promise<T> {
+    const execute = async (): Promise<T> => {
+      const operationId = `${this.idPrefix}::timeline-op::${++this.timelineOpSeq}`;
+      this.updateTimelineBusyState(operation, 'running', operationId);
+      try {
+        return await command();
+      } catch (error) {
+        this.updateTimelineBusyState(operation, 'failed', operationId);
+        throw error;
+      } finally {
+        this.updateTimelineBusyState(null, 'idle', null);
+      }
+    };
+    const queued = this.timelineCommandQueue.then(execute, execute);
+    this.timelineCommandQueue = queued.then(
+      () => undefined,
+      () => undefined,
+    );
+    return queued;
   }
 
   public getTimelineActiveInputIds(): string[] {

@@ -183,7 +183,9 @@ export function StreamsSection({
                         isSelected={selectedInputId === input.inputId}
                         readOnly={isGuest && input.inputId !== guestInputId}
                         activeBlockColor={activeClipColors?.[input.inputId]}
-                        isOnTimeline={allTimelineInputIds?.has(input.inputId) ?? true}
+                        isOnTimeline={
+                          allTimelineInputIds?.has(input.inputId) ?? true
+                        }
                       />
                     </ErrorBoundary>
                     {attachedChildren.map((child) => (
@@ -208,7 +210,9 @@ export function StreamsSection({
                             isSelected={selectedInputId === child.inputId}
                             readOnly={isGuest && child.inputId !== guestInputId}
                             activeBlockColor={activeClipColors?.[child.inputId]}
-                            isOnTimeline={allTimelineInputIds?.has(child.inputId) ?? true}
+                            isOnTimeline={
+                              allTimelineInputIds?.has(child.inputId) ?? true
+                            }
                           />
                         </ErrorBoundary>
                       </div>

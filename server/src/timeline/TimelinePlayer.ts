@@ -156,6 +156,10 @@ export type TimelineListenerData = {
   playheadMs: number;
   isPlaying: boolean;
   isPaused: boolean;
+  busy?: boolean;
+  operationId?: string | null;
+  operation?: 'play' | 'stop' | 'seek' | 'apply' | null;
+  stage?: 'idle' | 'running' | 'failed';
 };
 
 export type TimelineListener = (data: TimelineListenerData) => void;
@@ -927,7 +931,6 @@ export class TimelinePlayer {
     // Apply state at new position
     const desired = computeDesiredState(this.config, ms);
     await this.applyDesiredState(desired, ms);
-    this.mp4RestartedKeys.clear();
     await this.applyBlockSettingsAtTime(ms);
     this.lastAppliedOrder = '';
     this.applyOrderIfChanged(ms);
@@ -948,7 +951,6 @@ export class TimelinePlayer {
       this.room.getInputs().map((i) => [i.inputId, !i.hidden]),
     );
     this.appliedBlockSettings.clear();
-    this.mp4RestartedKeys.clear();
     this.mp4ActualRestarted.clear();
     this.lastAppliedOrder = '';
 
@@ -1314,6 +1316,7 @@ export class TimelinePlayer {
       timeMs,
       this.config.keyframeInterpolationMode,
     );
+    this.pruneInactiveMp4RestartKeys(active);
 
     // Collect position patches for all active inputs so they can be applied
     // as a single atomic layers update rather than per-input updateInput calls.
@@ -1352,6 +1355,14 @@ export class TimelinePlayer {
 
     if (updates.length > 0) {
       await Promise.allSettled(updates);
+    }
+  }
+
+  private pruneInactiveMp4RestartKeys(active: Map<string, TimelineClip>): void {
+    for (const inputId of [...this.mp4RestartedKeys.keys()]) {
+      if (!active.has(inputId)) {
+        this.mp4RestartedKeys.delete(inputId);
+      }
     }
   }
 

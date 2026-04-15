@@ -466,9 +466,9 @@ describe('timelineReducer', () => {
     expect(next.tracks[0].clips[1].blockSettings.swapLabelSuffix).toBe(
       ' (switched 2)',
     );
-    expect(next.tracks[0].clips[1].keyframes[0].blockSettings.swapLabelSuffix).toBe(
-      ' (switched 2)',
-    );
+    expect(
+      next.tracks[0].clips[1].keyframes[0].blockSettings.swapLabelSuffix,
+    ).toBe(' (switched 2)');
   });
 
   // ── CLEANUP_SPURIOUS_WHIP_TRACK ────────────────────────
