@@ -91,6 +91,7 @@ export interface ControlPanelActions {
   getRoomRecordings(roomId: string): Promise<RecordingInfo[]>;
 
   getAvailableShaders(): Promise<AvailableShader[]>;
+  getYoloModelInfo(serverUrl: string): Promise<{ classes: string[]; num_classes: number; model_file: string }>;
 
   getTwitchSuggestions(): Promise<InputSuggestions>;
   getKickSuggestions(): Promise<KickSuggestions>;

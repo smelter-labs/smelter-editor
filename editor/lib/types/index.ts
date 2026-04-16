@@ -27,3 +27,5 @@ export type {
 
 export type { TransitionType, TransitionConfig } from './transition';
 export { parseTransitionConfig } from './transition';
+
+export type { YoloSearchConfig } from '@smelter-editor/types';
