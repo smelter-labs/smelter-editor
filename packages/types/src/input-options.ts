@@ -7,6 +7,7 @@ import type {
   SnakeGameDisplayProperties,
   InputOrientation,
 } from "./input.js";
+import type { YoloSearchConfig } from "./yolo.js";
 
 export type UpdateInputOptions = {
   title: string;
@@ -17,6 +18,7 @@ export type UpdateInputOptions = {
     direction: "in" | "out";
   };
   orientation: InputOrientation;
+  yoloSearchConfig: YoloSearchConfig;
 } & InputDisplayProperties &
   TextInputProperties &
   AbsolutePositionProperties &

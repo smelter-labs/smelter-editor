@@ -12,6 +12,8 @@ import type {
   Layer,
   ShaderConfig,
   ViewportProperties,
+  YoloBoundingBox,
+  YoloSearchConfig,
 } from '../types';
 import type { HandsStore } from '../hands/handStore';
 import { createContext, useContext } from 'react';
@@ -37,6 +39,8 @@ export type InputConfig = {
   restartFading?: boolean;
   frozenImageId?: string;
   hidden?: boolean;
+  yoloBoundingBoxes?: YoloBoundingBox[];
+  yoloBoxColor?: string;
 } & InputDisplayProperties &
   Partial<TextInputProperties> &
   Partial<BorderProperties> &

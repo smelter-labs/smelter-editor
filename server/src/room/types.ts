@@ -10,6 +10,8 @@ import type {
   AbsolutePositionProperties,
   CropProperties,
   ViewportProperties,
+  YoloSearchConfig,
+  YoloBoundingBox,
 } from '../types';
 import type { StoreApi } from 'zustand';
 import type { HandsStore } from '../hands/handStore';
@@ -48,6 +50,8 @@ export type RoomInputState = {
   restartFading?: boolean;
   motionEnabled: boolean;
   motionScore?: number;
+  yoloSearchConfig?: YoloSearchConfig;
+  yoloBoundingBoxes?: YoloBoundingBox[];
   orientation?: 'horizontal' | 'vertical';
   /** Native stream resolution width, if known. */
   nativeWidth?: number;

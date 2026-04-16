@@ -26,6 +26,7 @@ import type {
 } from './types';
 import type { PlaceholderManager } from './PlaceholderManager';
 import type { MotionController } from './MotionController';
+import type { YoloController } from '../yolo/YoloController';
 import { InputOrientation } from '@smelter-editor/types';
 
 const VIDEO_INPUT_TYPES: RoomInputState['type'][] = [
@@ -54,6 +55,7 @@ export class InputManager {
     private readonly idPrefix: string,
     private readonly placeholderManager: PlaceholderManager,
     private readonly motionController: MotionController,
+    private readonly yoloController: YoloController,
     private readonly onStateChange: () => void,
   ) {
     this.mp4Files = mp4SuggestionsMonitor.mp4Files;
@@ -861,6 +863,12 @@ export class InputManager {
     if (options.cropLeft !== undefined) input.cropLeft = options.cropLeft;
     if (options.cropRight !== undefined) input.cropRight = options.cropRight;
     if (options.cropBottom !== undefined) input.cropBottom = options.cropBottom;
+
+    if (options.yoloSearchConfig !== undefined) {
+      this.yoloController.setYoloConfig(input, options.yoloSearchConfig).catch((err) => {
+        console.error(`[yolo] setYoloConfig error for ${inputId}:`, err);
+      });
+    }
 
     if (options.activeTransition !== undefined) {
       const existingTimer = this.transitionTimers.get(inputId);
