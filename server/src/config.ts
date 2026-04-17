@@ -28,7 +28,6 @@ const isProduction = process.env.ENVIRONMENT === 'production';
 
 function buildH264Encoder(): Outputs.WhepVideoEncoderOptions {
   const encoderEnv = process.env.SMELTER_H264_ENCODER;
-  // Temporary default: use ffmpeg unless vulkan is explicitly requested.
   const useVulkan = encoderEnv === 'vulkan' || (!encoderEnv && isProduction);
 
   if (useVulkan) {
@@ -81,7 +80,7 @@ export const config: Config = isProduction
       },
       whepBaseUrl: 'http://127.0.0.1:9000/whep',
       whipBaseUrl: 'http://127.0.0.1:9000/whip',
-      h264Decoder: 'vulkan_h264',
+      h264Decoder: 'ffmpeg_h264',
       h264Encoder: buildH264Encoder(),
       snakeVisualSpeedMultiplier,
     };

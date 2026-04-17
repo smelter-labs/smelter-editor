@@ -245,8 +245,8 @@ class SmelterManager {
         serverPath: filePath,
         video: {
           encoder: {
-            type: 'vulkan_h264',
-            
+            type: 'ffmpeg_h264',
+            preset: 'fast',
           },
           resolution: {
             width: output.resolution.width,

@@ -61,10 +61,7 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
         keyframeInterpolationMode,
       } as TimelineConfig;
       await room.startTimelinePlayback(config, fromMs);
-      res.status(200).send({
-        status: 'ok',
-        timeline: room.getTimelinePlaybackState(),
-      });
+      res.status(200).send({ status: 'ok' });
     },
   );
 
@@ -98,10 +95,7 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
       });
       logTimelineEvent(roomId, 'STOP');
       await room.stopTimelinePlayback();
-      res.status(200).send({
-        status: 'ok',
-        timeline: room.getTimelinePlaybackState(),
-      });
+      res.status(200).send({ status: 'ok' });
     },
   );
 
@@ -125,10 +119,7 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
       });
       logTimelineEvent(roomId, `SEEK to ${ms}ms`);
       await room.seekTimeline(ms);
-      res.status(200).send({
-        status: 'ok',
-        timeline: room.getTimelinePlaybackState(),
-      });
+      res.status(200).send({ status: 'ok' });
     },
   );
 
@@ -160,10 +151,7 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
         keyframeInterpolationMode,
       } as TimelineConfig;
       await room.applyTimelineState(config, playheadMs);
-      res.status(200).send({
-        status: 'ok',
-        timeline: room.getTimelinePlaybackState(),
-      });
+      res.status(200).send({ status: 'ok' });
     },
   );
 
@@ -190,10 +178,6 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
         isPlaying: current.isPlaying,
         isPaused: current.isPaused,
         playheadMs: current.playheadMs,
-        busy: current.busy,
-        operation: current.operation,
-        stage: current.stage,
-        phase: current.phase,
       });
       res.raw.write(`data: ${JSON.stringify(current)}\n\n`);
 
@@ -205,10 +189,6 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
           isPlaying: data.isPlaying,
           isPaused: data.isPaused,
           playheadMs: data.playheadMs,
-          busy: data.busy,
-          operation: data.operation,
-          stage: data.stage,
-          phase: data.phase,
         });
         res.raw.write(`data: ${JSON.stringify(data)}\n\n`);
       });

@@ -601,39 +601,5 @@ describe('InputManager', () => {
         /not a local-mp4/,
       );
     });
-
-    it('dedupes duplicate restart requests for the same playhead', async () => {
-      const inputId = (await manager.addNewInput({
-        type: 'local-mp4',
-        source: { fileName: 'test-video.mp4' },
-      }))!;
-      await manager.connectInput(inputId);
-      vi.clearAllMocks();
-
-      await manager.restartMp4Input(inputId, 1_000, true);
-      await manager.restartMp4Input(inputId, 1_050, true);
-
-      expect(mocks.smelter.unregisterInput).toHaveBeenCalledTimes(1);
-      expect(mocks.smelter.registerInput).toHaveBeenCalledTimes(1);
-      expect(mocks.logTimelineEvent).toHaveBeenCalledWith(
-        'room-1',
-        expect.stringContaining('[mp4-restart] DEDUPE skip'),
-      );
-    });
-
-    it('does not dedupe distinct seek/play restart requests', async () => {
-      const inputId = (await manager.addNewInput({
-        type: 'local-mp4',
-        source: { fileName: 'test-video.mp4' },
-      }))!;
-      await manager.connectInput(inputId);
-      vi.clearAllMocks();
-
-      await manager.restartMp4Input(inputId, 1_000, true);
-      await manager.restartMp4Input(inputId, 1_500, true);
-
-      expect(mocks.smelter.unregisterInput).toHaveBeenCalledTimes(2);
-      expect(mocks.smelter.registerInput).toHaveBeenCalledTimes(2);
-    });
   });
 });

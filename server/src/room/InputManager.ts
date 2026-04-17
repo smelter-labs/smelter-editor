@@ -35,8 +35,6 @@ const VIDEO_INPUT_TYPES: RoomInputState['type'][] = [
   'hls',
   'whip',
 ];
-const MP4_RESTART_DEDUPE_WINDOW_MS = 1200;
-const MP4_RESTART_PLAYFROM_EPSILON_MS = 75;
 
 const IMAGE_EXT_RE = /\.(jpg|jpeg|png|gif|svg)$/i;
 
@@ -44,11 +42,6 @@ export class InputManager {
   private inputs: RoomInputState[] = [];
   private transitionTimers = new Map<string, NodeJS.Timeout>();
   private readonly mp4Files: string[];
-  private mp4RestartDedupedCount = 0;
-  private mp4RestartRequests = new Map<
-    string,
-    { playFromMs: number; loop: boolean; atMs: number }
-  >();
 
   constructor(
     private readonly idPrefix: string,
@@ -1074,45 +1067,10 @@ export class InputManager {
     }
 
     const name = input.metadata.title;
-    const requestedPlayFromMs = Number.isFinite(playFromMs) ? playFromMs : 0;
-    let normalizedPlayFromMs = Math.max(0, requestedPlayFromMs);
-    const durationMs = input.mp4DurationMs;
-    if (durationMs && durationMs > 0) {
-      if (loop) {
-        normalizedPlayFromMs = normalizedPlayFromMs % durationMs;
-      } else {
-        // Prevent seeking past the tail of finite clips.
-        normalizedPlayFromMs = Math.min(
-          normalizedPlayFromMs,
-          Math.max(0, durationMs - 1),
-        );
-      }
-    }
-    const now = Date.now();
-    const previous = this.mp4RestartRequests.get(inputId);
-    if (
-      previous &&
-      previous.loop === loop &&
-      now - previous.atMs <= MP4_RESTART_DEDUPE_WINDOW_MS &&
-      Math.abs(previous.playFromMs - normalizedPlayFromMs) <=
-        MP4_RESTART_PLAYFROM_EPSILON_MS
-    ) {
-      this.mp4RestartDedupedCount += 1;
-      logTimelineEvent(
-        this.idPrefix,
-        `[mp4-restart] DEDUPE skip "${name}" from=${normalizedPlayFromMs}ms prev=${previous.playFromMs}ms windowMs=${MP4_RESTART_DEDUPE_WINDOW_MS} dropped=${this.mp4RestartDedupedCount}`,
-      );
-      return;
-    }
-    this.mp4RestartRequests.set(inputId, {
-      playFromMs: normalizedPlayFromMs,
-      loop,
-      atMs: now,
-    });
-    const t0 = now;
+    const t0 = Date.now();
     logTimelineEvent(
       this.idPrefix,
-      `[mp4-restart] BEGIN "${name}" from=${normalizedPlayFromMs}ms loop=${loop}`,
+      `[mp4-restart] BEGIN "${name}" from=${playFromMs}ms loop=${loop}`,
     );
 
     input.restartFading = true;
@@ -1125,6 +1083,21 @@ export class InputManager {
         this.idPrefix,
         `[mp4-restart] unregister OK "${name}" ${Date.now() - t0}ms`,
       );
+
+      const requestedPlayFromMs = Number.isFinite(playFromMs) ? playFromMs : 0;
+      let normalizedPlayFromMs = Math.max(0, requestedPlayFromMs);
+      const durationMs = input.mp4DurationMs;
+      if (durationMs && durationMs > 0) {
+        if (loop) {
+          normalizedPlayFromMs = normalizedPlayFromMs % durationMs;
+        } else {
+          // Prevent seeking past the tail of finite clips.
+          normalizedPlayFromMs = Math.min(
+            normalizedPlayFromMs,
+            Math.max(0, durationMs - 1),
+          );
+        }
+      }
       if (normalizedPlayFromMs !== requestedPlayFromMs) {
         logTimelineEvent(
           this.idPrefix,
@@ -1162,7 +1135,6 @@ export class InputManager {
         this.idPrefix,
         `[mp4-restart] FAILED "${name}" ${Date.now() - t0}ms ${err}`,
       );
-      this.mp4RestartRequests.delete(inputId);
       throw err;
     } finally {
       input.restartFading = false;
