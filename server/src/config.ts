@@ -81,7 +81,7 @@ export const config: Config = isProduction
       },
       whepBaseUrl: 'http://127.0.0.1:9000/whep',
       whipBaseUrl: 'http://127.0.0.1:9000/whip',
-      h264Decoder: 'ffmpeg_h264',
+      h264Decoder: 'vulkan_h264',
       h264Encoder: buildH264Encoder(),
       snakeVisualSpeedMultiplier,
     };
