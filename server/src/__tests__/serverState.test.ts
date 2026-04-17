@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
       registerMotionOutput: fn().mockResolvedValue(undefined),
       unregisterMotionOutput: fn().mockResolvedValue(undefined),
       getPipelineTimeMs: fn().mockReturnValue(0),
+      setRecoveryHandler: fn(),
       terminate: fn().mockResolvedValue(undefined),
     },
     twitchStartMonitor: fn().mockResolvedValue({
