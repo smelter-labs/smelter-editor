@@ -6,7 +6,6 @@ services:
       SMELTER_DEMO_API_PORT: "9071"
       SMELTER_DEMO_ROUTER_LOGGER_LEVEL: "warn"
       SMELTER_WHIP_WHEP_SERVER_PORT: "9072"
-      RUST_BACKTRACE: "1"
       SMELTER_LOGGER_FORMAT: compact
       SMELTER_LOGGER_LEVEL: info 
       SMELTER_STDIO_LOGGER_LEVEL: "debug,smelter_core=info,naga=info,cosmic_text=info,wgpu_hal=warn,smelter_core::pipeline::instance=warn,smelter_core::queue::queue_thread=error"

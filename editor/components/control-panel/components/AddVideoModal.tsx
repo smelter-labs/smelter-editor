@@ -30,6 +30,7 @@ import { useIsMobileDevice } from '@/hooks/use-mobile';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import type { ChannelSuggestion, Input } from '@/lib/types';
+import { createUuid } from '@/lib/uuid';
 import { SelectablePreviewCard } from './asset-browser/selectable-preview-card';
 
 // ── Types ────────────────────────────────────────────────────
@@ -825,7 +826,7 @@ export function AssetBrowserPanel({
       const preparedUploads = incomingFiles.map((file) => {
         const mediaType = detectMediaType(file);
         return {
-          id: crypto.randomUUID(),
+          id: createUuid(),
           file,
           mediaType,
           targetFolder: mediaType

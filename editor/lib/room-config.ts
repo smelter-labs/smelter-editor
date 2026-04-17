@@ -11,6 +11,7 @@ import {
   OUTPUT_TRACK_ID,
   OUTPUT_CLIP_ID,
 } from '@smelter-editor/types';
+import { createUuid } from '@/lib/uuid';
 import { parseTransitionConfig } from '@/lib/types';
 import type { SnakeEventShaderConfig } from '@/lib/snake-game-types';
 import type {
@@ -420,7 +421,7 @@ export function buildTimelineStateFromConfigTimeline(
     tracks: timeline.tracks.map((track) => {
       const hasOutputClip = track.clips.some((c) => c.inputIndex === -1);
       return {
-        id: hasOutputClip ? OUTPUT_TRACK_ID : crypto.randomUUID(),
+        id: hasOutputClip ? OUTPUT_TRACK_ID : createUuid(),
         label: track.label,
         clips: track.clips
           .map((clip) => {
@@ -430,7 +431,7 @@ export function buildTimelineStateFromConfigTimeline(
               : indexToInputId.get(clip.inputIndex);
             if (!inputId) return null;
             return {
-              id: isOutput ? OUTPUT_CLIP_ID : crypto.randomUUID(),
+              id: isOutput ? OUTPUT_CLIP_ID : createUuid(),
               inputId,
               startMs: clip.startMs,
               endMs: clip.endMs,
