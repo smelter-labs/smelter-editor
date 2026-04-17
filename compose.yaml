@@ -37,6 +37,5 @@ services:
     # Nvidia GPU
     gpus:
       - driver: nvidia
-    #     count: all
-    #     capabilities: [gpu]
-    # runtime: 'nvidia'
+        count: all
+        capabilities: [gpu]
