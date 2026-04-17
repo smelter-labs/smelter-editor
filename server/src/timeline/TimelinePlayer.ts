@@ -1046,10 +1046,10 @@ export class TimelinePlayer {
     if (this.smoothUpdateInterval) {
       clearInterval(this.smoothUpdateInterval);
     }
-    this.smoothUpdateInterval = setInterval(() => {
-      if (!this.playing) return;
-      void this.applyBlockSettingsAtTimeTracked(this.getPlayheadMs());
-    }, SMOOTH_UPDATE_INTERVAL_MS);
+    // this.smoothUpdateInterval = setInterval(() => {
+    //   if (!this.playing) return;
+    //   void this.applyBlockSettingsAtTimeTracked(this.getPlayheadMs());
+    // }, SMOOTH_UPDATE_INTERVAL_MS);
   }
 
   private scheduleAllEvents(): void {
