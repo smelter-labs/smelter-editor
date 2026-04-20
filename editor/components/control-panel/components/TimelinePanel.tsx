@@ -51,7 +51,6 @@ import {
   GripVertical,
   Volume2,
   AlertTriangle,
-  Loader2,
 } from 'lucide-react';
 import {
   hexToHsla,
@@ -647,6 +646,8 @@ export const TimelinePanel = memo(function TimelinePanel({
     isTimelineInteractionLocked,
     timelineBusyOperation,
     timelineBusyStage,
+    timelineBusyPhase,
+    timelineStopTimeoutActive,
   } = useServerTimelinePlayback(roomId, state, setPlayhead, setPlaying);
 
   const {
@@ -657,6 +658,41 @@ export const TimelinePanel = memo(function TimelinePanel({
   } = useRecordingControls(roomId, serverIsRecording, refreshState);
   const wasPlayingRef = useRef(false);
   const timelineControlsDisabled = isTimelineInteractionLocked;
+  const timelineBusyLabel = (() => {
+    if (timelineBusyPhase === 'stopping-playback') return 'Stopping playback';
+    if (timelineBusyPhase === 'seeking-to-zero')
+      return 'Seeking cursor to 0 ms';
+    if (timelineBusyPhase === 'waiting-before-apply')
+      return 'Waiting before apply';
+    if (timelineBusyPhase === 'applying-state')
+      return 'Applying snapshot state';
+    if (timelineBusyOperation) return `Timeline busy: ${timelineBusyOperation}`;
+    return 'Timeline busy';
+  })();
+  const timelineInlineStatus = (() => {
+    if (timelineBusyStage === 'failed') {
+      return {
+        toneClass: 'text-red-400',
+        text: 'Timeline operation failed',
+        icon: <AlertTriangle className='h-3 w-3' />,
+      };
+    }
+    if (timelineStopTimeoutActive) {
+      return {
+        toneClass: 'text-amber-400',
+        text: 'Stop takes longer than expected',
+        icon: <AlertTriangle className='h-3 w-3' />,
+      };
+    }
+    if (isTimelineInteractionLocked) {
+      return {
+        toneClass: 'text-muted-foreground',
+        text: `${timelineBusyLabel}...`,
+        icon: <LoadingSpinner size='sm' variant='spinner' />,
+      };
+    }
+    return null;
+  })();
 
   const handleRecordAndPlay = useCallback(async () => {
     if (isTogglingRecording) return;
@@ -2429,18 +2465,6 @@ export const TimelinePanel = memo(function TimelinePanel({
         />
       )}
 
-      {isTimelineInteractionLocked && (
-        <div className='absolute inset-0 z-[120] flex items-center justify-center bg-background/75 backdrop-blur-[1px] pointer-events-auto cursor-wait'>
-          <div className='flex items-center gap-2 rounded-md border border-border/60 bg-background/90 px-3 py-2 text-sm text-foreground shadow-lg'>
-            <Loader2 className='h-4 w-4 animate-spin text-muted-foreground' />
-            <span>
-              Timeline busy
-              {timelineBusyOperation ? `: ${timelineBusyOperation}` : ''}...
-            </span>
-          </div>
-        </div>
-      )}
-
       {/* Transport bar */}
       <div className='flex items-center gap-2 px-3 h-8 bg-background border-b border-border shrink-0'>
         <Button
@@ -2508,11 +2532,11 @@ export const TimelinePanel = memo(function TimelinePanel({
           <RotateCcw className='w-3.5 h-3.5' />
         </Button>
 
-        {timelineBusyStage === 'failed' && (
+        {timelineInlineStatus && (
           <div
-            className={`ml-2 flex items-center gap-1 text-[11px] ${timelineBusyStage === 'failed' ? 'text-red-400' : 'text-muted-foreground'}`}>
-            <AlertTriangle className='h-3 w-3' />
-            <span>Timeline operation failed</span>
+            className={`ml-2 flex items-center gap-1 text-[11px] ${timelineInlineStatus.toneClass}`}>
+            {timelineInlineStatus.icon}
+            <span>{timelineInlineStatus.text}</span>
           </div>
         )}
 

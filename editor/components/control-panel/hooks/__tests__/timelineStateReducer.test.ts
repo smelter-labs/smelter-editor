@@ -34,6 +34,8 @@ describe('timelineReducer', () => {
       ],
       totalDurationMs: 60_000,
       keyframeInterpolationMode: 'step',
+      snapToBlocks: true,
+      snapToKeyframes: true,
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
@@ -53,6 +55,8 @@ describe('timelineReducer', () => {
       isPlaying: false,
       pixelsPerSecond: 15,
       keyframeInterpolationMode: 'step',
+      snapToBlocks: true,
+      snapToKeyframes: true,
       knownInputIds: new Set<string>(),
     };
 
@@ -70,6 +74,8 @@ describe('timelineReducer', () => {
       isPlaying: false,
       pixelsPerSecond: 15,
       keyframeInterpolationMode: 'step',
+      snapToBlocks: true,
+      snapToKeyframes: true,
       knownInputIds: new Set(['room::local::one', 'room::local::two']),
     };
 
@@ -126,6 +132,8 @@ describe('timelineReducer', () => {
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
+      snapToBlocks: true,
+      snapToKeyframes: true,
       knownInputIds: new Set<string>(),
     };
 
@@ -171,6 +179,8 @@ describe('timelineReducer', () => {
       ],
       totalDurationMs: 60_000,
       keyframeInterpolationMode: 'step',
+      snapToBlocks: true,
+      snapToKeyframes: true,
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
@@ -230,6 +240,8 @@ describe('timelineReducer', () => {
       isPlaying: false,
       pixelsPerSecond: 15,
       keyframeInterpolationMode: 'step',
+      snapToBlocks: true,
+      snapToKeyframes: true,
       knownInputIds: new Set<string>(),
     };
 
@@ -257,6 +269,8 @@ describe('timelineReducer', () => {
       isPlaying: false,
       pixelsPerSecond: 15,
       keyframeInterpolationMode: 'step',
+      snapToBlocks: true,
+      snapToKeyframes: true,
       knownInputIds: new Set<string>(),
     };
 
@@ -280,6 +294,8 @@ describe('timelineReducer', () => {
       isPlaying: false,
       pixelsPerSecond: 15,
       keyframeInterpolationMode: 'step',
+      snapToBlocks: true,
+      snapToKeyframes: true,
       knownInputIds: new Set<string>(),
     };
 
@@ -323,6 +339,8 @@ describe('timelineReducer', () => {
       isPlaying: false,
       pixelsPerSecond: 15,
       keyframeInterpolationMode: 'step',
+      snapToBlocks: true,
+      snapToKeyframes: true,
       knownInputIds: new Set<string>(),
     };
 
@@ -380,6 +398,8 @@ describe('timelineReducer', () => {
       isPlaying: false,
       pixelsPerSecond: 15,
       keyframeInterpolationMode: 'step',
+      snapToBlocks: true,
+      snapToKeyframes: true,
       knownInputIds: new Set<string>(),
     };
 
@@ -453,6 +473,8 @@ describe('timelineReducer', () => {
       isPlaying: false,
       pixelsPerSecond: 15,
       keyframeInterpolationMode: 'step',
+      snapToBlocks: true,
+      snapToKeyframes: true,
       knownInputIds: new Set<string>(),
     };
 
@@ -501,6 +523,8 @@ describe('timelineReducer', () => {
       isPlaying: false,
       pixelsPerSecond: 15,
       keyframeInterpolationMode: 'step',
+      snapToBlocks: true,
+      snapToKeyframes: true,
       knownInputIds: new Set<string>(),
     };
 
@@ -549,6 +573,8 @@ describe('timelineReducer', () => {
       isPlaying: false,
       pixelsPerSecond: 15,
       keyframeInterpolationMode: 'step',
+      snapToBlocks: true,
+      snapToKeyframes: true,
       knownInputIds: new Set<string>(),
     };
 
@@ -588,6 +614,8 @@ describe('timelineReducer', () => {
       isPlaying: false,
       pixelsPerSecond: 15,
       keyframeInterpolationMode: 'step',
+      snapToBlocks: true,
+      snapToKeyframes: true,
       knownInputIds: new Set<string>(),
     };
 
@@ -664,6 +692,8 @@ describe('timelineReducer', () => {
       ],
       totalDurationMs: 60_000,
       keyframeInterpolationMode: 'step',
+      snapToBlocks: true,
+      snapToKeyframes: true,
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
@@ -696,6 +726,8 @@ describe('timelineReducer', () => {
       ],
       totalDurationMs: 60_000,
       keyframeInterpolationMode: 'step',
+      snapToBlocks: true,
+      snapToKeyframes: true,
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
@@ -718,6 +750,8 @@ describe('timelineReducer', () => {
       tracks: [{ id: 'track-1', label: 'Layer', clips: [] }],
       totalDurationMs: 60_000,
       keyframeInterpolationMode: 'step',
+      snapToBlocks: true,
+      snapToKeyframes: true,
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
