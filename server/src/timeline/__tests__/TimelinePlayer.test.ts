@@ -435,8 +435,18 @@ describe('TimelinePlayer', () => {
   describe('reorderInputs respects layer order', () => {
     it('uses layer.inputs order instead of track order for reorderInputs', async () => {
       (adapter.getInputs as any).mockReturnValue([
-        { inputId: 'a', hidden: false, status: 'connected', type: 'text-input' },
-        { inputId: 'b', hidden: false, status: 'connected', type: 'text-input' },
+        {
+          inputId: 'a',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
+        {
+          inputId: 'b',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
       ]);
       (adapter.getLayers as any).mockReturnValue([
         { id: 'L1', inputs: [{ inputId: 'b' }, { inputId: 'a' }] },
@@ -465,9 +475,24 @@ describe('TimelinePlayer', () => {
 
     it('appends active inputs not in any layer at the end', async () => {
       (adapter.getInputs as any).mockReturnValue([
-        { inputId: 'a', hidden: false, status: 'connected', type: 'text-input' },
-        { inputId: 'b', hidden: false, status: 'connected', type: 'text-input' },
-        { inputId: 'c', hidden: false, status: 'connected', type: 'text-input' },
+        {
+          inputId: 'a',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
+        {
+          inputId: 'b',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
+        {
+          inputId: 'c',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
       ]);
       (adapter.getLayers as any).mockReturnValue([
         { id: 'L1', inputs: [{ inputId: 'b' }] },
@@ -509,9 +534,24 @@ describe('TimelinePlayer', () => {
 
     it('respects order across multiple layers', async () => {
       (adapter.getInputs as any).mockReturnValue([
-        { inputId: 'a', hidden: false, status: 'connected', type: 'text-input' },
-        { inputId: 'b', hidden: false, status: 'connected', type: 'text-input' },
-        { inputId: 'c', hidden: false, status: 'connected', type: 'text-input' },
+        {
+          inputId: 'a',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
+        {
+          inputId: 'b',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
+        {
+          inputId: 'c',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
       ]);
       (adapter.getLayers as any).mockReturnValue([
         { id: 'L1', inputs: [{ inputId: 'c' }] },
@@ -547,7 +587,12 @@ describe('TimelinePlayer', () => {
 
     it('updates order when a new block starts mid-playback', async () => {
       (adapter.getInputs as any).mockReturnValue([
-        { inputId: 'a', hidden: false, status: 'connected', type: 'text-input' },
+        {
+          inputId: 'a',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
         { inputId: 'b', hidden: true, status: 'connected', type: 'text-input' },
       ]);
       (adapter.getLayers as any).mockReturnValue([

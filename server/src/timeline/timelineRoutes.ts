@@ -1,6 +1,7 @@
 import { Type } from '@sinclair/typebox';
 import type { FastifyInstance } from 'fastify';
 import { state } from '../core/serverState';
+import { roomEventBus } from '../core/roomEventBus';
 import { logTimelineEvent } from '../dashboard';
 import {
   TimelinePlaySchema,
@@ -25,6 +26,53 @@ function logTimelineSync(
   details: Record<string, unknown>,
 ): void {
   console.log(`[${new Date().toISOString()}] [sync][server-${phase}]`, details);
+}
+
+const timelinePlaybackForwarders = new Map<string, () => void>();
+
+function broadcastTimelinePlaybackState(roomId: string): void {
+  const room = state.getRoom(roomId);
+  const playback = room.getTimelinePlaybackState();
+  roomEventBus.broadcast(roomId, {
+    type: 'timeline_playback_updated',
+    roomId,
+    isTimelinePlaying: playback.isPlaying,
+    isPaused: playback.isPaused,
+    playheadMs: playback.playheadMs,
+    totalDurationMs: playback.totalDurationMs,
+  } as any);
+}
+
+function ensureTimelinePlaybackForwarder(roomId: string): void {
+  if (timelinePlaybackForwarders.has(roomId)) {
+    return;
+  }
+
+  const room = state.getRoom(roomId);
+  let lastIsPlaying = room.getTimelinePlaybackState().isPlaying;
+
+  const unsubscribe = room.addTimelineListener((data) => {
+    if (data.isPlaying !== lastIsPlaying) {
+      lastIsPlaying = data.isPlaying;
+      broadcastTimelinePlaybackState(roomId);
+    }
+
+    if (!data.isPlaying && !data.isPaused) {
+      unsubscribeTimelinePlaybackForwarder(roomId);
+    }
+  });
+
+  timelinePlaybackForwarders.set(roomId, unsubscribe);
+}
+
+function unsubscribeTimelinePlaybackForwarder(roomId: string): void {
+  const unsubscribe = timelinePlaybackForwarders.get(roomId);
+  if (!unsubscribe) {
+    return;
+  }
+
+  timelinePlaybackForwarders.delete(roomId);
+  unsubscribe();
 }
 
 export function registerTimelineRoutes(routes: FastifyInstance): void {
@@ -60,7 +108,9 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
         totalDurationMs,
         keyframeInterpolationMode,
       } as TimelineConfig;
+      ensureTimelinePlaybackForwarder(roomId);
       await room.startTimelinePlayback(config, fromMs);
+      broadcastTimelinePlaybackState(roomId);
       res.status(200).send({ status: 'ok' });
     },
   );
@@ -78,6 +128,7 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
       });
       logTimelineEvent(roomId, 'PAUSE');
       const result = await room.pauseTimeline();
+      broadcastTimelinePlaybackState(roomId);
       res.status(200).send(result);
     },
   );
@@ -95,6 +146,8 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
       });
       logTimelineEvent(roomId, 'STOP');
       await room.stopTimelinePlayback();
+      broadcastTimelinePlaybackState(roomId);
+      unsubscribeTimelinePlaybackForwarder(roomId);
       res.status(200).send({ status: 'ok' });
     },
   );

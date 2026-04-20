@@ -11,6 +11,7 @@ import { useLayoutStore } from "../../store/layoutStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { wsService } from "../../services/websocketService";
 import { apiService } from "../../services/apiService";
+import { TimelineInProgressOverlay } from "../../components/shared/TimelineInProgressOverlay";
 import type { InputCard as InputCardType } from "../../types/input";
 import { getGridDimensions } from "../../utils/gridUtils";
 import { useInputsGestures } from "./useInputsGestures";
@@ -34,6 +35,8 @@ export function InputsScreen() {
   } = useInputsStore();
   const setLayers = useLayoutStore((state) => state.setLayers);
   const { serverUrl, roomId } = useConnectionStore();
+  const isTimelinePlaying = useConnectionStore((s) => s.isTimelinePlaying);
+  const setTimelinePlaying = useConnectionStore((s) => s.setTimelinePlaying);
 
   const [selectedCardId, setSelectedCardId] = useState<string | null>(null);
   const [selectedCardIndex, setSelectedCardIndex] = useState(0);
@@ -75,6 +78,9 @@ export function InputsScreen() {
         pendingEventRef.current = null;
         if (!latest) return;
 
+        if (latest.isTimelinePlaying !== undefined) {
+          setTimelinePlaying(latest.isTimelinePlaying);
+        }
         setLayers(latest.layers);
 
         const nextInputs = apiService.mapInputsToCards(latest.inputs);
@@ -93,7 +99,15 @@ export function InputsScreen() {
         frameRef.current = null;
       }
     };
-  }, [serverUrl, roomId, updateInput, removeInput, setInputs, setLayers]);
+  }, [
+    serverUrl,
+    roomId,
+    updateInput,
+    removeInput,
+    setInputs,
+    setLayers,
+    setTimelinePlaying,
+  ]);
 
   const handleCardTap = useCallback(
     (cardId: string) => {
@@ -144,30 +158,37 @@ export function InputsScreen() {
       <View
         style={[styles.container, { backgroundColor: theme.colors.background }]}
       >
-        <ScreenLabel label="Inputs" />
-        <DraggableFlatList
-          data={inputs}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          onDragEnd={handleDragEnd}
-          numColumns={effectiveColumns}
-          contentContainerStyle={styles.listContent}
-          activationDistance={10}
-        />
+        <View
+          style={styles.content}
+          pointerEvents={isTimelinePlaying ? "none" : "auto"}
+        >
+          <ScreenLabel label="Inputs" />
+          <DraggableFlatList
+            data={inputs}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            onDragEnd={handleDragEnd}
+            numColumns={effectiveColumns}
+            contentContainerStyle={styles.listContent}
+            activationDistance={10}
+          />
 
-        <InputSidePanel
-          isVisible={detailPanelOpen}
-          cardId={selectedCardId}
-          cardIndex={selectedCardIndex}
-          totalColumns={effectiveColumns}
-          onClose={() => setDetailPanelOpen(false)}
-        />
+          <InputSidePanel
+            isVisible={detailPanelOpen}
+            cardId={selectedCardId}
+            cardIndex={selectedCardIndex}
+            totalColumns={effectiveColumns}
+            onClose={() => setDetailPanelOpen(false)}
+          />
 
-        <InputsSettingsPanel
-          isVisible={settingsPanelOpen}
-          side={settingsPanelSide}
-          onClose={() => setSettingsPanelOpen(false)}
-        />
+          <InputsSettingsPanel
+            isVisible={settingsPanelOpen}
+            side={settingsPanelSide}
+            onClose={() => setSettingsPanelOpen(false)}
+          />
+        </View>
+
+        {isTimelinePlaying && <TimelineInProgressOverlay />}
       </View>
     </GestureDetector>
   );
@@ -175,6 +196,9 @@ export function InputsScreen() {
 
 const styles = StyleSheet.create({
   container: {
+    flex: 1,
+  },
+  content: {
     flex: 1,
   },
   listContent: {

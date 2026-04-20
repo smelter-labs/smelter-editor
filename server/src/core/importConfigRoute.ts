@@ -43,7 +43,10 @@ function toTitleKey(value: string): string {
   return value.trim().toLocaleLowerCase();
 }
 
-function claimUniqueInputTitle(preferred: string, usedKeys: Set<string>): string {
+function claimUniqueInputTitle(
+  preferred: string,
+  usedKeys: Set<string>,
+): string {
   const trimmed = preferred.trim();
   if (trimmed && !usedKeys.has(toTitleKey(trimmed))) {
     usedKeys.add(toTitleKey(trimmed));
@@ -275,7 +278,11 @@ export function registerImportConfigRoute(routes: FastifyInstance): void {
         .filter(
           ({ input, index }) =>
             input.type !== 'whip' &&
-            shouldImportInputFromConfig(normalizedConfig, referencedIndices, index),
+            shouldImportInputFromConfig(
+              normalizedConfig,
+              referencedIndices,
+              index,
+            ),
         );
       const whipInputs = importedInputs
         .map((input, index) => ({ input, index }))

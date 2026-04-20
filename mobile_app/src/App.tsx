@@ -39,7 +39,8 @@ export function App() {
   }, []);
 
   useEffect(() => {
-    const { setClientId, setPeers, reset } = useConnectionStore.getState();
+    const { setClientId, setPeers, setTimelinePlaying, reset } =
+      useConnectionStore.getState();
 
     const unsubConnected = wsService.on("connected", ({ clientId }) => {
       setClientId(clientId);
@@ -48,6 +49,13 @@ export function App() {
     const unsubPeersUpdated = wsService.on("peers_updated", ({ peers }) => {
       setPeers(peers);
     });
+
+    const unsubTimelinePlaybackUpdated = wsService.on(
+      "timeline_playback_updated",
+      ({ isTimelinePlaying }) => {
+        setTimelinePlaying(isTimelinePlaying);
+      },
+    );
 
     const goToJoinRoom = () => {
       wsService.disconnect();
@@ -65,6 +73,7 @@ export function App() {
     return () => {
       unsubConnected();
       unsubPeersUpdated();
+      unsubTimelinePlaybackUpdated();
       unsubDisconnected();
     };
   }, []);
