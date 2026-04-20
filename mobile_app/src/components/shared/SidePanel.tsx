@@ -1,5 +1,6 @@
 import React, { useEffect } from "react";
-import { Pressable, StyleSheet, Dimensions } from "react-native";
+import { Pressable, StyleSheet } from "react-native";
+import { useScreenDimensions } from "../../hooks/useScreenDimensions";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -37,7 +38,9 @@ export function SidePanel({
   children,
 }: SidePanelProps) {
   const theme = useTheme();
-  const { width: screenWidth, height } = Dimensions.get("screen");
+  const { width: rawWidth, height: rawHeight } = useScreenDimensions();
+  const screenWidth = Math.max(rawWidth, rawHeight);
+  const height = Math.min(rawWidth, rawHeight);
 
   // Positions expressed as translateX from left: 0 anchor
   const visibleTranslateX = side === "right" ? screenWidth - width : 0;

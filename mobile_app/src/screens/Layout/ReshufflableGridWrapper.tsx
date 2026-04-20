@@ -1397,7 +1397,7 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
 };
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 16, backgroundColor: "#f5f5f5" },
+  container: { flex: 1, padding: 16, backgroundColor: "#0f0f1a" },
   grid: { flex: 1 },
 });
 

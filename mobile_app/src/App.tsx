@@ -3,7 +3,6 @@ import { Platform, StatusBar as RNStatusBar, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { NavigationContainer } from "@react-navigation/native";
 import { PaperProvider } from "react-native-paper";
-import * as ScreenOrientation from "expo-screen-orientation";
 import * as SplashScreen from "expo-splash-screen";
 import * as NavigationBar from "expo-navigation-bar";
 import { StatusBar } from "expo-status-bar";
@@ -17,11 +16,6 @@ import { useConnectionStore } from "./store";
 SplashScreen.preventAutoHideAsync();
 
 export function App() {
-  useEffect(() => {
-    ScreenOrientation.lockAsync(
-      ScreenOrientation.OrientationLock.LANDSCAPE,
-    ).catch((err) => console.warn("[App] orientation lock failed", err));
-  }, []);
 
   useEffect(() => {
     if (Platform.OS !== "android") {
