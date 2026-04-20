@@ -3,7 +3,6 @@
 import { useCallback, useRef, useEffect, useState } from 'react';
 import {
   startTimelinePlayback,
-  stopTimelinePlayback,
   seekTimeline,
   pauseTimeline,
   applyTimelineState,
@@ -19,7 +18,6 @@ import {
 
 const PLAYHEAD_UI_UPDATE_INTERVAL_MS = 33;
 const AUTO_PAUSE_BEFORE_END_MS = 2000;
-const STOP_TIMEOUT_MS = 3_000;
 
 export function useServerTimelinePlayback(
   roomId: string,
@@ -236,37 +234,28 @@ export function useServerTimelinePlayback(
     const stopPromise = (async () => {
       autoPauseBeforeEndTriggeredRef.current = false;
       setPlaying(false);
-      setIsPaused(false);
       if (rafRef.current) {
         cancelAnimationFrame(rafRef.current);
         rafRef.current = null;
       }
       lastSSERef.current = null;
-      pushPlayheadUpdate(0, { force: true });
-
-      const stopPromise = stopTimelinePlayback(roomId);
-
-      const result = await Promise.race([
-        stopPromise.then(() => 'done' as const),
-        new Promise<'timeout'>((resolve) =>
-          setTimeout(() => resolve('timeout'), STOP_TIMEOUT_MS),
-        ),
-      ]);
-
-      if (result === 'timeout') {
-        setBusyTimeoutFallbackActive(true);
-        await stopPromise
-          .then(() => {
-            setBusyTimeoutFallbackActive(false);
-          })
-          .catch((err) => {
-            console.error('[timeline-ui] stop after timeout failed', err);
-            throw err;
-          });
-        return;
-      }
-
       setBusyTimeoutFallbackActive(false);
+      try {
+        const result = await pauseTimeline(roomId);
+        pushPlayheadUpdate(result.playheadMs, { force: true });
+      } catch (err) {
+        console.error('[timeline-ui] PAUSE in stop failed', err);
+      }
+      pushPlayheadUpdate(0, { force: true });
+      const config = toServerTimelineConfig(stateRef.current);
+      if (config.tracks.length > 0) {
+        try {
+          await applyTimelineState(roomId, config, 0);
+        } catch (err) {
+          console.error('[timeline-ui] apply at 0 in stop failed', err);
+        }
+      }
+      setIsPaused(true);
     })()
       .catch((err) => {
         console.error('[timeline-ui] stop failed', err);

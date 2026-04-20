@@ -35,7 +35,6 @@ import {
   Pause,
   Square,
   SkipBack,
-  RotateCcw,
   ZoomIn,
   ZoomOut,
   Crosshair,
@@ -228,7 +227,6 @@ export const TimelinePanel = memo(function TimelinePanel({
     setPlayhead,
     setPlaying,
     setZoom,
-    reset,
     setKeyframeInterpolationMode,
     setSnapToBlocks,
     setSnapToKeyframes,
@@ -2495,7 +2493,7 @@ export const TimelinePanel = memo(function TimelinePanel({
           className='h-6 w-6 text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed'
           onClick={stop}
           disabled={timelineControlsDisabled || (!state.isPlaying && !isPaused)}
-          title='Stop (full reset)'>
+          title='Stop'>
           <Square className='w-3.5 h-3.5' />
         </Button>
         <Button
@@ -2521,15 +2519,6 @@ export const TimelinePanel = memo(function TimelinePanel({
           disabled={state.isPlaying || timelineControlsDisabled}
           title='Apply state at playhead'>
           <Crosshair className='w-3.5 h-3.5' />
-        </Button>
-        <Button
-          variant='ghost'
-          size='icon'
-          className='h-6 w-6 text-muted-foreground hover:text-foreground cursor-pointer'
-          onClick={reset}
-          disabled={timelineControlsDisabled}
-          title='Reset timeline'>
-          <RotateCcw className='w-3.5 h-3.5' />
         </Button>
 
         {timelineInlineStatus && (
