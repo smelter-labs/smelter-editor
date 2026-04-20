@@ -16,7 +16,6 @@ import { useConnectionStore } from "./store";
 SplashScreen.preventAutoHideAsync();
 
 export function App() {
-
   useEffect(() => {
     if (Platform.OS !== "android") {
       return;

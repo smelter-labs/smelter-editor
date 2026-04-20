@@ -36,12 +36,16 @@ export function JoinRoomScreen() {
   useEffect(() => {
     if (isTablet === null) return; // still detecting
     if (isTablet) {
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.LANDSCAPE).catch(
-        (err) => console.warn("[JoinRoomScreen] orientation lock failed", err),
+      ScreenOrientation.lockAsync(
+        ScreenOrientation.OrientationLock.LANDSCAPE,
+      ).catch((err) =>
+        console.warn("[JoinRoomScreen] orientation lock failed", err),
       );
     } else {
-      ScreenOrientation.lockAsync(ScreenOrientation.OrientationLock.PORTRAIT).catch(
-        (err) => console.warn("[JoinRoomScreen] orientation lock failed", err),
+      ScreenOrientation.lockAsync(
+        ScreenOrientation.OrientationLock.PORTRAIT,
+      ).catch((err) =>
+        console.warn("[JoinRoomScreen] orientation lock failed", err),
       );
     }
   }, [isTablet]);
@@ -250,12 +254,11 @@ export function JoinRoomScreen() {
         </Button>
 
         {/* Settings */}
-        <View style={[styles.settingRow, { borderTopColor: theme.colors.outline }]}>
+        <View
+          style={[styles.settingRow, { borderTopColor: theme.colors.outline }]}
+        >
           <Text variant="bodyMedium">Arrow navigation</Text>
-          <Switch
-            value={arrowNavigation}
-            onValueChange={setArrowNavigation}
-          />
+          <Switch value={arrowNavigation} onValueChange={setArrowNavigation} />
         </View>
       </Surface>
 

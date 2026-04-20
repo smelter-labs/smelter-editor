@@ -37,13 +37,16 @@ export function MainNavigator() {
   useEffect(() => {
     ScreenOrientation.lockAsync(
       ScreenOrientation.OrientationLock.LANDSCAPE,
-    ).catch((err) => console.warn("[MainNavigator] orientation lock failed", err));
+    ).catch((err) =>
+      console.warn("[MainNavigator] orientation lock failed", err),
+    );
   }, []);
 
   const arrowWidth = Math.round(winWidth * ARROW_WIDTH_RATIO);
   const contentWidth = arrowNavigation ? winWidth - arrowWidth * 2 : winWidth;
 
-  const { gesture, containerStyle, snapToIndex, activeIndex } = useScreenSwipe(contentWidth);
+  const { gesture, containerStyle, snapToIndex, activeIndex } =
+    useScreenSwipe(contentWidth);
 
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -79,7 +82,15 @@ export function MainNavigator() {
 
   if (arrowNavigation) {
     return (
-      <View style={{ flex: 1, flexDirection: "row", width: winWidth, height: winHeight, backgroundColor: "#0f0f1a" }}>
+      <View
+        style={{
+          flex: 1,
+          flexDirection: "row",
+          width: winWidth,
+          height: winHeight,
+          backgroundColor: "#0f0f1a",
+        }}
+      >
         <Pressable
           style={[
             styles.arrowButton,
@@ -92,10 +103,16 @@ export function MainNavigator() {
           <Text style={styles.arrowText}>‹</Text>
         </Pressable>
 
-        <View style={{ width: contentWidth, height: winHeight, overflow: "hidden" }}>
+        <View
+          style={{ width: contentWidth, height: winHeight, overflow: "hidden" }}
+        >
           <Animated.View
             style={[
-              { flexDirection: "row", width: contentWidth * MAIN_SCREEN_COUNT, height: winHeight },
+              {
+                flexDirection: "row",
+                width: contentWidth * MAIN_SCREEN_COUNT,
+                height: winHeight,
+              },
               containerStyle,
             ]}
           >

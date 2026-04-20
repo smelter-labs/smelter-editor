@@ -47,7 +47,10 @@ export function useScreenSwipe(contentWidth: number) {
       "worklet";
       const clampedIndex = Math.max(0, Math.min(MAIN_SCREEN_COUNT - 1, index));
       activeIndex.value = clampedIndex;
-      translateX.value = withSpring(-clampedIndex * widthSV.value, SPRING_CONFIG);
+      translateX.value = withSpring(
+        -clampedIndex * widthSV.value,
+        SPRING_CONFIG,
+      );
     },
     [activeIndex, translateX, widthSV],
   );
