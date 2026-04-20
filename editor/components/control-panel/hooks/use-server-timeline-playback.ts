@@ -19,7 +19,7 @@ import {
 
 const PLAYHEAD_UI_UPDATE_INTERVAL_MS = 33;
 const AUTO_PAUSE_BEFORE_END_MS = 2000;
-const STOP_TIMEOUT_MS = 10_000;
+const STOP_TIMEOUT_MS = 3_000;
 
 export function useServerTimelinePlayback(
   roomId: string,
