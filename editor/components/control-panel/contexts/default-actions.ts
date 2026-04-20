@@ -56,10 +56,10 @@ import {
   restartService,
   restartSmelter,
 } from '@/app/actions/actions';
-import { createUuid } from '@/lib/uuid';
+import { v4 as uuidv4 } from 'uuid';
 
 // id for browser session.  Sent as `x-source-id` on every update request
-export const SESSION_SOURCE_ID = createUuid();
+export const SESSION_SOURCE_ID = uuidv4();
 
 const configStorage: StorageClient<object> = {
   save: saveRemoteConfig,

@@ -25,7 +25,7 @@ import {
   saveTimeline,
   type StoredTrack,
 } from '@/lib/timeline-storage';
-import { createUuid } from '@/lib/uuid';
+import { v4 as uuidv4 } from 'uuid';
 
 // ── Types ────────────────────────────────────────────────
 
@@ -196,7 +196,7 @@ export { OUTPUT_TRACK_INPUT_ID, OUTPUT_TRACK_ID, OUTPUT_CLIP_ID };
 // ── Helpers ──────────────────────────────────────────────
 
 function genId(): string {
-  return createUuid();
+  return uuidv4();
 }
 
 function deepClone<T>(value: T): T {
