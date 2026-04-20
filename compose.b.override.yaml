@@ -1,0 +1,17 @@
+services:
+  server:
+    volumes:
+      - .data-b/recordings:/home/smelter/demo/server/data/recordings
+      - .data-b/configs:/home/smelter/demo/server/data/configs
+      - .data-b/mp4s:/home/smelter/demo/server/data/mp4s
+      - .data-b/pictures:/home/smelter/demo/server/data/pictures
+      - .data-b/audios:/home/smelter/demo/server/data/audios
+      - .data-b/screenshots:/home/smelter/demo/server/data/screenshots
+      - .data-b/thumbnails:/home/smelter/demo/server/data/thumbnails
+      - .data-b/shader-presets:/home/smelter/demo/server/data/shader-presets
+      - .data-b/dashboard-layouts:/home/smelter/demo/server/data/dashboard-layouts
+      - .data-b/presentation-configs:/home/smelter/demo/server/data/presentation-configs
+      - .data-b/hls-streams:/home/smelter/demo/server/data/hls-streams
+    ports: !override
+      - 10071:9071
+      - 10072:9072
