@@ -175,6 +175,7 @@ For AMD GPUs, uncomment the `devices` section and comment out `gpus`/`runtime` i
 | `KICK_CLIENT_SECRET`                    | server | Kick API client secret                                             |
 | `ENVIRONMENT`                           | server | `production` enables Vulkan encoder and production WHEP/WHIP URLs  |
 | `LAYOUT`                                | server | `boxed` enables the blessed TUI dashboard                          |
+| `SMELTER_WS_DEBUG`                      | server | `true` enables detailed WebSocket upgrade/connection debug logs    |
 | `SMELTER_SNAKE_VISUAL_SPEED_MULTIPLIER` | server | Snake interpolation speed (default: `1.25`)                        |
 | `MOTION_PYTHON_PATH`                    | server | Override Python binary for motion detection (default: auto-detect) |
 

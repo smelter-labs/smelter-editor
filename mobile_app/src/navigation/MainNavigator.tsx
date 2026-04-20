@@ -18,7 +18,7 @@ import { MAIN_SCREEN_COUNT } from "./navigationTypes";
  * a shared translateX value that slides the container horizontally.
  */
 export function MainNavigator() {
-  const { width: screenWidth, height: screenHeight } = Dimensions.get("window");
+  const { width: screenWidth, height: screenHeight } = Dimensions.get("screen");
   const { gesture, containerStyle } = useScreenSwipe();
 
   return (
@@ -29,6 +29,7 @@ export function MainNavigator() {
             flexDirection: "row",
             width: screenWidth * MAIN_SCREEN_COUNT,
             height: screenHeight,
+            flex: 1,
           },
           containerStyle,
         ]}

@@ -1,4 +1,4 @@
-import { useCallback } from "react";
+import { useCallback, useEffect } from "react";
 import { Dimensions } from "react-native";
 import {
   Gesture,
@@ -33,10 +33,14 @@ const SWIPE_DISTANCE_THRESHOLD = 60;
  *  - containerStyle: AnimatedStyle to apply to the main screens container
  */
 export function useScreenSwipe() {
-  const screenWidth = Dimensions.get("window").width;
+  const { width: screenWidth } = Dimensions.get("screen");
   const activeIndex = useSharedValue(0);
   const translateX = useSharedValue(0);
   const gestureStartX = useSharedValue(0);
+
+  useEffect(() => {
+    translateX.value = -activeIndex.value * screenWidth;
+  }, [activeIndex, screenWidth, translateX]);
 
   const snapToIndex = useCallback(
     (index: number) => {

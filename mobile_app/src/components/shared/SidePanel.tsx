@@ -37,7 +37,7 @@ export function SidePanel({
   children,
 }: SidePanelProps) {
   const theme = useTheme();
-  const { width: screenWidth, height } = Dimensions.get("window");
+  const { width: screenWidth, height } = Dimensions.get("screen");
 
   // Positions expressed as translateX from left: 0 anchor
   const visibleTranslateX = side === "right" ? screenWidth - width : 0;
