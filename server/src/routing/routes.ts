@@ -268,6 +268,13 @@ routes.register(websocket, {
   },
 });
 
+routes.addHook('onRequest', (req, reply, done) => {
+  if (req.method === 'OPTIONS') {
+    reply.header('Access-Control-Allow-Private-Network', 'true');
+  }
+  done();
+});
+
 routes.addHook('onResponse', (req, reply, done) => {
   logRequest(req.method, req.url, reply.statusCode);
   done();
