@@ -96,6 +96,7 @@ import {
   TIMELINE_EVENTS,
 } from './timeline/timeline-events';
 import { ResolveMissingAssetModal } from './ResolveMissingAssetModal';
+import { toast } from 'sonner';
 
 // ── Props ────────────────────────────────────────────────
 
@@ -641,6 +642,7 @@ export const TimelinePanel = memo(function TimelinePanel({
     stop,
     applyAtPlayhead,
     isPaused,
+    isTimelineClientPending,
     isTimelineInteractionLocked,
     timelineBusyOperation,
     timelineBusyStage,
@@ -655,8 +657,12 @@ export const TimelinePanel = memo(function TimelinePanel({
     stopAndDownload,
   } = useRecordingControls(roomId, serverIsRecording, refreshState);
   const wasPlayingRef = useRef(false);
+  const timelineToastIdRef = useRef<string | number | null>(null);
   const timelineControlsDisabled = isTimelineInteractionLocked;
   const timelineBusyLabel = (() => {
+    if (isTimelineClientPending && !timelineBusyOperation) {
+      return 'Sending timeline request';
+    }
     if (timelineBusyPhase === 'stopping-playback') return 'Stopping playback';
     if (timelineBusyPhase === 'seeking-to-zero')
       return 'Seeking cursor to 0 ms';
@@ -691,37 +697,163 @@ export const TimelinePanel = memo(function TimelinePanel({
     }
     return null;
   })();
+  const runTimelineActionWithToast = useCallback(
+    async (
+      messages: {
+        pending: string;
+        success: string;
+        error: string;
+      },
+      action: () => Promise<void>,
+    ) => {
+      if (timelineControlsDisabled) {
+        return false;
+      }
+      const toastId =
+        timelineToastIdRef.current ?? toast.loading(messages.pending);
+      timelineToastIdRef.current = toastId;
+      toast.loading(messages.pending, { id: toastId });
+      try {
+        await action();
+        toast.success(messages.success, { id: toastId });
+        return true;
+      } catch (err) {
+        console.error('[timeline-ui] timeline action failed', err);
+        toast.error(messages.error, { id: toastId });
+        return false;
+      } finally {
+        if (timelineToastIdRef.current === toastId) {
+          timelineToastIdRef.current = null;
+        }
+      }
+    },
+    [timelineControlsDisabled],
+  );
+
+  const handlePlay = useCallback(async () => {
+    await runTimelineActionWithToast(
+      {
+        pending: isPaused ? 'Resuming timeline...' : 'Starting timeline...',
+        success: isPaused ? 'Timeline resumed.' : 'Timeline started.',
+        error: 'Failed to start timeline.',
+      },
+      play,
+    );
+  }, [isPaused, play, runTimelineActionWithToast]);
+
+  const handlePlayPauseToggle = useCallback(async () => {
+    if (state.isPlaying) {
+      await runTimelineActionWithToast(
+        {
+          pending: 'Pausing timeline...',
+          success: 'Timeline paused.',
+          error: 'Failed to pause timeline.',
+        },
+        pause,
+      );
+      return;
+    }
+
+    await handlePlay();
+  }, [handlePlay, pause, runTimelineActionWithToast, state.isPlaying]);
+
+  const handleStop = useCallback(async () => {
+    await runTimelineActionWithToast(
+      {
+        pending: 'Stopping timeline...',
+        success: 'Timeline stopped.',
+        error: 'Failed to stop timeline.',
+      },
+      stop,
+    );
+  }, [runTimelineActionWithToast, stop]);
+
+  const handleApplyAtPlayhead = useCallback(async () => {
+    await runTimelineActionWithToast(
+      {
+        pending: 'Applying timeline state...',
+        success: 'Timeline state applied.',
+        error: 'Failed to apply timeline state.',
+      },
+      applyAtPlayhead,
+    );
+  }, [applyAtPlayhead, runTimelineActionWithToast]);
 
   const handleRecordAndPlay = useCallback(async () => {
     if (isTogglingRecording) return;
     if (isRecording) {
-      pause();
+      if (timelineControlsDisabled) return;
+      await runTimelineActionWithToast(
+        {
+          pending: 'Pausing timeline...',
+          success: 'Timeline paused.',
+          error: 'Failed to pause timeline.',
+        },
+        pause,
+      );
       await stopAndDownload();
       return;
     }
     const started = await startRec();
     if (started) {
-      await play();
+      await runTimelineActionWithToast(
+        {
+          pending: isPaused ? 'Resuming timeline...' : 'Starting timeline...',
+          success: isPaused ? 'Timeline resumed.' : 'Timeline started.',
+          error: 'Failed to start timeline.',
+        },
+        play,
+      );
     }
   }, [
+    isPaused,
     isRecording,
     isTogglingRecording,
     play,
     pause,
     startRec,
     stopAndDownload,
+    timelineControlsDisabled,
+    runTimelineActionWithToast,
   ]);
 
   useEffect(() => {
     onTimelineActionsReady?.({
-      applyAtPlayhead,
-      play,
+      applyAtPlayhead: handleApplyAtPlayhead,
+      play: handlePlay,
       recordAndPlay: handleRecordAndPlay,
     });
     return () => {
       onTimelineActionsReady?.(null);
     };
-  }, [applyAtPlayhead, handleRecordAndPlay, onTimelineActionsReady, play]);
+  }, [
+    handleApplyAtPlayhead,
+    handlePlay,
+    handleRecordAndPlay,
+    onTimelineActionsReady,
+  ]);
+
+  useEffect(() => {
+    if (!timelineStopTimeoutActive) {
+      return;
+    }
+    const toastId =
+      timelineToastIdRef.current ??
+      toast.loading('Stopping timeline is taking longer than expected...');
+    timelineToastIdRef.current = toastId;
+    toast.warning('Stopping timeline is taking longer than expected...', {
+      id: toastId,
+    });
+  }, [timelineStopTimeoutActive]);
+
+  useEffect(() => {
+    return () => {
+      if (timelineToastIdRef.current !== null) {
+        toast.dismiss(timelineToastIdRef.current);
+        timelineToastIdRef.current = null;
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (wasPlayingRef.current && !state.isPlaying && isRecording) {
@@ -1301,8 +1433,7 @@ export const TimelinePanel = memo(function TimelinePanel({
         }
         case ' ': {
           e.preventDefault();
-          if (state.isPlaying) pause();
-          else play();
+          void handlePlayPauseToggle();
           break;
         }
         case 'Home': {
@@ -1476,9 +1607,7 @@ export const TimelinePanel = memo(function TimelinePanel({
     state.totalDurationMs,
     state.pixelsPerSecond,
     state.tracks,
-    play,
-    pause,
-    stop,
+    handlePlayPauseToggle,
     setPlayhead,
     setZoom,
     animateZoom,
@@ -2478,7 +2607,7 @@ export const TimelinePanel = memo(function TimelinePanel({
           variant='ghost'
           size='icon'
           className={`h-6 w-6 cursor-pointer ${state.isPlaying ? 'text-green-400' : isPaused ? 'text-yellow-400' : 'text-muted-foreground hover:text-foreground'}`}
-          onClick={state.isPlaying ? pause : play}
+          onClick={() => void handlePlayPauseToggle()}
           disabled={timelineControlsDisabled}
           title={state.isPlaying ? 'Pause' : isPaused ? 'Resume' : 'Play'}>
           {state.isPlaying ? (
@@ -2491,7 +2620,7 @@ export const TimelinePanel = memo(function TimelinePanel({
           variant='ghost'
           size='icon'
           className='h-6 w-6 text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed'
-          onClick={stop}
+          onClick={() => void handleStop()}
           disabled={timelineControlsDisabled || (!state.isPlaying && !isPaused)}
           title='Stop'>
           <Square className='w-3.5 h-3.5' />
@@ -2515,7 +2644,7 @@ export const TimelinePanel = memo(function TimelinePanel({
           variant='ghost'
           size='icon'
           className='h-6 w-6 text-muted-foreground hover:text-foreground cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed'
-          onClick={applyAtPlayhead}
+          onClick={() => void handleApplyAtPlayhead()}
           disabled={state.isPlaying || timelineControlsDisabled}
           title='Apply state at playhead'>
           <Crosshair className='w-3.5 h-3.5' />
@@ -2661,299 +2790,265 @@ export const TimelinePanel = memo(function TimelinePanel({
         </Button>
       </div>
 
-      {/* Header: Sources label + ruler */}
-      <div className='flex shrink-0'>
-        <div
-          className='relative shrink-0 bg-muted/40 flex items-center px-3 border-b border-r border-border/30'
-          style={{ width: sourcesWidth }}>
-          <span className='text-[11px] text-muted-foreground uppercase tracking-wider font-medium'>
-            Sources
-          </span>
+      <div className='relative flex-1 flex flex-col min-h-0'>
+        {/* Header: Sources label + ruler */}
+        <div className='flex shrink-0'>
           <div
-            className='absolute top-0 bottom-0 right-0 z-10 w-3 translate-x-1/2 cursor-col-resize bg-transparent hover:bg-accent/40 active:bg-accent/70 transition-colors'
-            onMouseDown={handleSourcesResizeStart}
-            onDoubleClick={() => setSourcesWidth(SOURCES_WIDTH)}
-            title='Drag to resize track names'>
-            <div className='absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/80 pointer-events-none' />
-          </div>
-        </div>
-        <div
-          ref={rulerRef}
-          className='flex-1 h-7 bg-background border-b border-border relative cursor-pointer overflow-x-hidden touch-none'
-          onPointerDown={handleRulerPointerDown}
-          onPointerMove={handleRulerPointerMove}
-          onPointerUp={handleRulerPointerUp}
-          onPointerCancel={handleRulerPointerUp}>
-          <div
-            className='relative h-full pointer-events-none'
-            style={{
-              width: timelineWidthPx,
-              minWidth: '100%',
-              transition: zoomAnimating
-                ? `width ${ZOOM_TRANSITION_MS}ms ease-out`
-                : undefined,
-            }}>
-            {rulerTicks.map((tick) => {
-              const x = (tick.timeMs / 1000) * state.pixelsPerSecond;
-              return (
-                <div
-                  key={tick.timeMs}
-                  className='absolute flex flex-col items-center top-0 bottom-0 justify-end'
-                  style={{
-                    left: x,
-                    transition: zoomAnimating
-                      ? `left ${ZOOM_TRANSITION_MS}ms ease-out`
-                      : undefined,
-                  }}>
-                  <span className='text-[10px] text-muted-foreground font-mono -translate-x-1/2 leading-none mb-1'>
-                    {tick.label}
-                  </span>
-                  <div className='w-px h-1.5 bg-secondary -translate-x-1/2' />
-                </div>
-              );
-            })}
-            {/* Playhead marker on ruler */}
+            className='relative shrink-0 bg-muted/40 flex items-center px-3 border-b border-r border-border/30'
+            style={{ width: sourcesWidth }}>
+            <span className='text-[11px] text-muted-foreground uppercase tracking-wider font-medium'>
+              Sources
+            </span>
             <div
-              className='absolute top-0 bottom-0 w-px bg-red-500 z-10 pointer-events-none'
-              style={{
-                left: playheadPx,
-                transition: zoomAnimating
-                  ? `left ${ZOOM_TRANSITION_MS}ms ease-out`
-                  : undefined,
-              }}
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Tracks area */}
-      <div
-        ref={scrollContainerRef}
-        className='flex-1 overflow-y-auto overflow-x-auto relative'>
-        {isSwapping && (
-          <div className='absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm'>
-            <div className='flex items-center gap-2 text-card-foreground text-sm'>
-              <svg
-                className='animate-spin h-5 w-5'
-                viewBox='0 0 24 24'
-                fill='none'>
-                <circle
-                  className='opacity-25'
-                  cx='12'
-                  cy='12'
-                  r='10'
-                  stroke='currentColor'
-                  strokeWidth='4'
-                />
-                <path
-                  className='opacity-75'
-                  fill='currentColor'
-                  d='M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z'
-                />
-              </svg>
-              <span>Transitioning…</span>
+              className='absolute top-0 bottom-0 right-0 z-10 w-3 translate-x-1/2 cursor-col-resize bg-transparent hover:bg-accent/40 active:bg-accent/70 transition-colors'
+              onMouseDown={handleSourcesResizeStart}
+              onDoubleClick={() => setSourcesWidth(SOURCES_WIDTH)}
+              title='Drag to resize track names'>
+              <div className='absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border/80 pointer-events-none' />
             </div>
           </div>
-        )}
-
-        {showStreamsSpinner ? (
-          <div className='flex items-center justify-center h-32'>
-            <LoadingSpinner size='lg' variant='spinner' />
-          </div>
-        ) : (
-          state.tracks.map((track, trackIndex) => {
-            // Determine a representative input for the track label color
-            const firstClipInputId =
-              track.clips.length > 0 ? track.clips[0].inputId : undefined;
-            const firstClipInput = firstClipInputId
-              ? inputs.find((i) => i.inputId === firstClipInputId)
-              : undefined;
-            const trackHasDisconnected = firstClipInputId && !firstClipInput;
-            const firstClipColor =
-              track.clips.length > 0
-                ? track.clips[0].blockSettings.timelineColor
-                : undefined;
-            const trackDotColor =
-              track.id === OUTPUT_TRACK_ID
-                ? '#a855f7'
-                : (firstClipColor ??
-                  (firstClipInputId
-                    ? (inputColorMap.get(firstClipInputId)?.dot ??
-                      (trackHasDisconnected ? '#6b7280' : undefined))
-                    : undefined));
-            const isEditing = editingTrackId === track.id;
-            const isBeingDragged = trackDragRef.current?.trackId === track.id;
-            const showDropIndicator =
-              trackDropIndex !== null && trackDropIndex === trackIndex;
-
-            const isAutomationVisible =
-              track.id !== OUTPUT_TRACK_ID &&
-              automationVisibleTracks.has(track.id);
-
-            return (
-              <div
-                key={track.id}
-                className={`flex flex-col border-b border-border/50 cursor-pointer group/track relative ${
-                  track.id === invalidDropTrackId ? 'bg-red-900/20' : ''
-                } ${isBeingDragged ? 'bg-blue-500/10' : ''}`}
-                onClick={() => handleTrackClick(track.id)}
-                onContextMenu={(e) => {
-                  const inputId = firstClipInput?.inputId ?? '';
-                  handleContextMenu(e, track.id, inputId);
-                }}>
-                {showDropIndicator && trackDragRef.current && (
-                  <div className='absolute left-0 right-0 top-0 h-0.5 bg-blue-500 z-20 pointer-events-none' />
-                )}
-                {/* Main track row */}
-                <div className='flex' style={{ height: TRACK_HEIGHT }}>
-                  {/* Track label (sticky left) */}
+          <div
+            ref={rulerRef}
+            className='flex-1 h-7 bg-background border-b border-border relative cursor-pointer overflow-x-hidden touch-none'
+            onPointerDown={handleRulerPointerDown}
+            onPointerMove={handleRulerPointerMove}
+            onPointerUp={handleRulerPointerUp}
+            onPointerCancel={handleRulerPointerUp}>
+            <div
+              className='relative h-full pointer-events-none'
+              style={{
+                width: timelineWidthPx,
+                minWidth: '100%',
+                transition: zoomAnimating
+                  ? `width ${ZOOM_TRANSITION_MS}ms ease-out`
+                  : undefined,
+              }}>
+              {rulerTicks.map((tick) => {
+                const x = (tick.timeMs / 1000) * state.pixelsPerSecond;
+                return (
                   <div
-                    className='shrink-0 bg-muted/40 flex items-center gap-1.5 px-2 sticky left-0 z-10 border-r border-border/30'
-                    style={{ width: sourcesWidth }}>
-                    {track.id !== OUTPUT_TRACK_ID && (
-                      <GripVertical
-                        className='w-3 h-3 shrink-0 text-muted-foreground/50 opacity-0 group-hover/track:opacity-100 transition-opacity cursor-grab active:cursor-grabbing'
-                        onPointerDown={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          const idx = state.tracks.findIndex(
-                            (t) => t.id === track.id,
-                          );
-                          if (idx < 0) return;
-                          trackDragRef.current = {
-                            trackId: track.id,
-                            originY: e.clientY,
-                            currentIndex: idx,
-                          };
-                          setTrackDropIndex(idx);
-                          document.body.style.userSelect = 'none';
-                        }}
-                      />
-                    )}
+                    key={tick.timeMs}
+                    className='absolute flex flex-col items-center top-0 bottom-0 justify-end'
+                    style={{
+                      left: x,
+                      transition: zoomAnimating
+                        ? `left ${ZOOM_TRANSITION_MS}ms ease-out`
+                        : undefined,
+                    }}>
+                    <span className='text-[10px] text-muted-foreground font-mono -translate-x-1/2 leading-none mb-1'>
+                      {tick.label}
+                    </span>
+                    <div className='w-px h-1.5 bg-secondary -translate-x-1/2' />
+                  </div>
+                );
+              })}
+              {/* Playhead marker on ruler */}
+              <div
+                className='absolute top-0 bottom-0 w-px bg-red-500 z-10 pointer-events-none'
+                style={{
+                  left: playheadPx,
+                  transition: zoomAnimating
+                    ? `left ${ZOOM_TRANSITION_MS}ms ease-out`
+                    : undefined,
+                }}
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Tracks area */}
+        <div
+          ref={scrollContainerRef}
+          className='flex-1 overflow-y-auto overflow-x-auto relative'>
+          {isSwapping && (
+            <div className='absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm'>
+              <div className='flex items-center gap-2 text-card-foreground text-sm'>
+                <svg
+                  className='animate-spin h-5 w-5'
+                  viewBox='0 0 24 24'
+                  fill='none'>
+                  <circle
+                    className='opacity-25'
+                    cx='12'
+                    cy='12'
+                    r='10'
+                    stroke='currentColor'
+                    strokeWidth='4'
+                  />
+                  <path
+                    className='opacity-75'
+                    fill='currentColor'
+                    d='M4 12a8 8 0 018-8v4a4 4 0 00-4 4H4z'
+                  />
+                </svg>
+                <span>Transitioning…</span>
+              </div>
+            </div>
+          )}
+
+          {showStreamsSpinner ? (
+            <div className='flex items-center justify-center h-32'>
+              <LoadingSpinner size='lg' variant='spinner' />
+            </div>
+          ) : (
+            state.tracks.map((track, trackIndex) => {
+              // Determine a representative input for the track label color
+              const firstClipInputId =
+                track.clips.length > 0 ? track.clips[0].inputId : undefined;
+              const firstClipInput = firstClipInputId
+                ? inputs.find((i) => i.inputId === firstClipInputId)
+                : undefined;
+              const trackHasDisconnected = firstClipInputId && !firstClipInput;
+              const firstClipColor =
+                track.clips.length > 0
+                  ? track.clips[0].blockSettings.timelineColor
+                  : undefined;
+              const trackDotColor =
+                track.id === OUTPUT_TRACK_ID
+                  ? '#a855f7'
+                  : (firstClipColor ??
+                    (firstClipInputId
+                      ? (inputColorMap.get(firstClipInputId)?.dot ??
+                        (trackHasDisconnected ? '#6b7280' : undefined))
+                      : undefined));
+              const isEditing = editingTrackId === track.id;
+              const isBeingDragged = trackDragRef.current?.trackId === track.id;
+              const showDropIndicator =
+                trackDropIndex !== null && trackDropIndex === trackIndex;
+
+              const isAutomationVisible =
+                track.id !== OUTPUT_TRACK_ID &&
+                automationVisibleTracks.has(track.id);
+
+              return (
+                <div
+                  key={track.id}
+                  className={`flex flex-col border-b border-border/50 cursor-pointer group/track relative ${
+                    track.id === invalidDropTrackId ? 'bg-red-900/20' : ''
+                  } ${isBeingDragged ? 'bg-blue-500/10' : ''}`}
+                  onClick={() => handleTrackClick(track.id)}
+                  onContextMenu={(e) => {
+                    const inputId = firstClipInput?.inputId ?? '';
+                    handleContextMenu(e, track.id, inputId);
+                  }}>
+                  {showDropIndicator && trackDragRef.current && (
+                    <div className='absolute left-0 right-0 top-0 h-0.5 bg-blue-500 z-20 pointer-events-none' />
+                  )}
+                  {/* Main track row */}
+                  <div className='flex' style={{ height: TRACK_HEIGHT }}>
+                    {/* Track label (sticky left) */}
                     <div
-                      className='w-2.5 h-2.5 rounded-full shrink-0'
-                      style={{ backgroundColor: trackDotColor ?? '#737373' }}
-                    />
-                    {track.id === OUTPUT_TRACK_ID ? (
-                      <span className='text-sm text-purple-400 truncate flex-1 font-medium'>
-                        {track.label}
-                      </span>
-                    ) : isEditing ? (
-                      <ShadcnInput
-                        autoFocus
-                        className='text-sm text-foreground bg-card border border-border rounded px-1 py-0.5 flex-1 min-w-0 outline-none focus:border-blue-500'
-                        value={editingTrackLabel}
-                        onChange={(e) => setEditingTrackLabel(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
+                      className='shrink-0 bg-muted/40 flex items-center gap-1.5 px-2 sticky left-0 z-10 border-r border-border/30'
+                      style={{ width: sourcesWidth }}>
+                      {track.id !== OUTPUT_TRACK_ID && (
+                        <GripVertical
+                          className='w-3 h-3 shrink-0 text-muted-foreground/50 opacity-0 group-hover/track:opacity-100 transition-opacity cursor-grab active:cursor-grabbing'
+                          onPointerDown={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            const idx = state.tracks.findIndex(
+                              (t) => t.id === track.id,
+                            );
+                            if (idx < 0) return;
+                            trackDragRef.current = {
+                              trackId: track.id,
+                              originY: e.clientY,
+                              currentIndex: idx,
+                            };
+                            setTrackDropIndex(idx);
+                            document.body.style.userSelect = 'none';
+                          }}
+                        />
+                      )}
+                      <div
+                        className='w-2.5 h-2.5 rounded-full shrink-0'
+                        style={{ backgroundColor: trackDotColor ?? '#737373' }}
+                      />
+                      {track.id === OUTPUT_TRACK_ID ? (
+                        <span className='text-sm text-purple-400 truncate flex-1 font-medium'>
+                          {track.label}
+                        </span>
+                      ) : isEditing ? (
+                        <ShadcnInput
+                          autoFocus
+                          className='text-sm text-foreground bg-card border border-border rounded px-1 py-0.5 flex-1 min-w-0 outline-none focus:border-blue-500'
+                          value={editingTrackLabel}
+                          onChange={(e) => setEditingTrackLabel(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              const trimmed = editingTrackLabel.trim();
+                              if (trimmed) renameTrack(track.id, trimmed);
+                              setEditingTrackId(null);
+                            } else if (e.key === 'Escape') {
+                              setEditingTrackId(null);
+                            }
+                          }}
+                          onBlur={() => {
                             const trimmed = editingTrackLabel.trim();
                             if (trimmed) renameTrack(track.id, trimmed);
                             setEditingTrackId(null);
-                          } else if (e.key === 'Escape') {
-                            setEditingTrackId(null);
-                          }
-                        }}
-                        onBlur={() => {
-                          const trimmed = editingTrackLabel.trim();
-                          if (trimmed) renameTrack(track.id, trimmed);
-                          setEditingTrackId(null);
-                        }}
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    ) : (
-                      <span
-                        className='text-sm text-foreground truncate flex-1'
-                        onDoubleClick={(e) => {
-                          e.stopPropagation();
-                          setEditingTrackId(track.id);
-                          setEditingTrackLabel(track.label);
-                        }}>
-                        {track.label}
-                      </span>
-                    )}
-                    {!isEditing && track.id !== OUTPUT_TRACK_ID && (
-                      <div className='flex items-center gap-0.5'>
-                        <Button
-                          variant='ghost'
-                          size='icon'
-                          className={`h-5 w-5 cursor-pointer transition-opacity ${
-                            isAutomationVisible
-                              ? 'text-cyan opacity-100'
-                              : 'text-muted-foreground hover:text-card-foreground opacity-0 group-hover/track:opacity-100'
-                          }`}
-                          title={
-                            isAutomationVisible
-                              ? 'Hide volume automation'
-                              : 'Show volume automation'
-                          }
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            toggleAutomationLane(track.id);
-                          }}>
-                          <Volume2 className='w-3 h-3' />
-                        </Button>
-                        <Button
-                          variant='ghost'
-                          size='icon'
-                          className='h-5 w-5 text-muted-foreground hover:text-card-foreground cursor-pointer opacity-0 group-hover/track:opacity-100 transition-opacity'
-                          title='Rename track'
-                          onClick={(e) => {
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      ) : (
+                        <span
+                          className='text-sm text-foreground truncate flex-1'
+                          onDoubleClick={(e) => {
                             e.stopPropagation();
                             setEditingTrackId(track.id);
                             setEditingTrackLabel(track.label);
                           }}>
-                          <Pencil className='w-3 h-3' />
-                        </Button>
-                        <Button
-                          variant='ghost'
-                          size='icon'
-                          className='h-5 w-5 text-muted-foreground hover:text-red-400 cursor-pointer opacity-0 group-hover/track:opacity-100 transition-opacity'
-                          title='Delete track'
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            deleteTrack(track.id);
-                          }}>
-                          <Trash2 className='w-3 h-3' />
-                        </Button>
-                      </div>
-                    )}
-                  </div>
-                  {/* Track timeline area */}
-                  <div
-                    className='relative'
-                    style={{
-                      width: timelineWidthPx,
-                      minWidth: `calc(100% - ${sourcesWidth}px)`,
-                      transition: zoomAnimating
-                        ? `width ${ZOOM_TRANSITION_MS}ms ease-out`
-                        : undefined,
-                    }}>
-                    {renderClips(track)}
-                    {renderKeyframes(track)}
-                    {/* Playhead line on track */}
-                    <div
-                      className='absolute top-0 bottom-0 w-px bg-red-500/50 z-10 pointer-events-none'
-                      style={{
-                        left: playheadPx,
-                        transition: zoomAnimating
-                          ? `left ${ZOOM_TRANSITION_MS}ms ease-out`
-                          : undefined,
-                      }}
-                    />
-                  </div>
-                </div>
-                {/* Volume automation lane */}
-                {isAutomationVisible && (
-                  <div
-                    className='flex border-t border-border/30'
-                    style={{ height: AUTOMATION_LANE_HEIGHT }}>
-                    <div
-                      className='shrink-0 bg-muted/30 flex items-center justify-center sticky left-0 z-10 border-r border-border/30'
-                      style={{ width: sourcesWidth }}>
-                      <span className='text-[10px] text-muted-foreground select-none'>
-                        Vol
-                      </span>
+                          {track.label}
+                        </span>
+                      )}
+                      {!isEditing && track.id !== OUTPUT_TRACK_ID && (
+                        <div className='flex items-center gap-0.5'>
+                          <Button
+                            variant='ghost'
+                            size='icon'
+                            className={`h-5 w-5 cursor-pointer transition-opacity ${
+                              isAutomationVisible
+                                ? 'text-cyan opacity-100'
+                                : 'text-muted-foreground hover:text-card-foreground opacity-0 group-hover/track:opacity-100'
+                            }`}
+                            title={
+                              isAutomationVisible
+                                ? 'Hide volume automation'
+                                : 'Show volume automation'
+                            }
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleAutomationLane(track.id);
+                            }}>
+                            <Volume2 className='w-3 h-3' />
+                          </Button>
+                          <Button
+                            variant='ghost'
+                            size='icon'
+                            className='h-5 w-5 text-muted-foreground hover:text-card-foreground cursor-pointer opacity-0 group-hover/track:opacity-100 transition-opacity'
+                            title='Rename track'
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setEditingTrackId(track.id);
+                              setEditingTrackLabel(track.label);
+                            }}>
+                            <Pencil className='w-3 h-3' />
+                          </Button>
+                          <Button
+                            variant='ghost'
+                            size='icon'
+                            className='h-5 w-5 text-muted-foreground hover:text-red-400 cursor-pointer opacity-0 group-hover/track:opacity-100 transition-opacity'
+                            title='Delete track'
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              deleteTrack(track.id);
+                            }}>
+                            <Trash2 className='w-3 h-3' />
+                          </Button>
+                        </div>
+                      )}
                     </div>
+                    {/* Track timeline area */}
                     <div
                       className='relative'
                       style={{
@@ -2963,47 +3058,9 @@ export const TimelinePanel = memo(function TimelinePanel({
                           ? `width ${ZOOM_TRANSITION_MS}ms ease-out`
                           : undefined,
                       }}>
-                      <VolumeAutomationLane
-                        trackId={track.id}
-                        clips={track.clips}
-                        pixelsPerSecond={state.pixelsPerSecond}
-                        interpolationMode={state.keyframeInterpolationMode}
-                        timelineWidthPx={timelineWidthPx}
-                        selectedKeyframeId={selectedKeyframeId}
-                        onAddKeyframe={(tId, clipId, timeMs, volume) => {
-                          const clip = track.clips.find((c) => c.id === clipId);
-                          if (!clip) return;
-                          const resolved = resolveClipBlockSettingsAtOffset(
-                            clip,
-                            timeMs,
-                          );
-                          addKeyframe(tId, clipId, timeMs, {
-                            ...resolved,
-                            volume,
-                          });
-                        }}
-                        onUpdateKeyframeVolume={(
-                          tId,
-                          clipId,
-                          keyframeId,
-                          volume,
-                        ) => {
-                          updateKeyframe(tId, clipId, keyframeId, {
-                            volume,
-                          });
-                        }}
-                        onMoveKeyframe={(tId, clipId, keyframeId, timeMs) => {
-                          moveKeyframe(tId, clipId, keyframeId, timeMs);
-                        }}
-                        onDeleteKeyframe={(tId, clipId, keyframeId) => {
-                          deleteKeyframe(tId, clipId, keyframeId);
-                        }}
-                        onSelectKeyframe={(tId, clipId, keyframeId) => {
-                          selectClip(tId, clipId, 'replace');
-                          setSelectedKeyframeId(keyframeId);
-                        }}
-                      />
-                      {/* Playhead line on automation lane */}
+                      {renderClips(track)}
+                      {renderKeyframes(track)}
+                      {/* Playhead line on track */}
                       <div
                         className='absolute top-0 bottom-0 w-px bg-red-500/50 z-10 pointer-events-none'
                         style={{
@@ -3015,29 +3072,118 @@ export const TimelinePanel = memo(function TimelinePanel({
                       />
                     </div>
                   </div>
-                )}
-              </div>
-            );
-          })
-        )}
+                  {/* Volume automation lane */}
+                  {isAutomationVisible && (
+                    <div
+                      className='flex border-t border-border/30'
+                      style={{ height: AUTOMATION_LANE_HEIGHT }}>
+                      <div
+                        className='shrink-0 bg-muted/30 flex items-center justify-center sticky left-0 z-10 border-r border-border/30'
+                        style={{ width: sourcesWidth }}>
+                        <span className='text-[10px] text-muted-foreground select-none'>
+                          Vol
+                        </span>
+                      </div>
+                      <div
+                        className='relative'
+                        style={{
+                          width: timelineWidthPx,
+                          minWidth: `calc(100% - ${sourcesWidth}px)`,
+                          transition: zoomAnimating
+                            ? `width ${ZOOM_TRANSITION_MS}ms ease-out`
+                            : undefined,
+                        }}>
+                        <VolumeAutomationLane
+                          trackId={track.id}
+                          clips={track.clips}
+                          pixelsPerSecond={state.pixelsPerSecond}
+                          interpolationMode={state.keyframeInterpolationMode}
+                          timelineWidthPx={timelineWidthPx}
+                          selectedKeyframeId={selectedKeyframeId}
+                          onAddKeyframe={(tId, clipId, timeMs, volume) => {
+                            const clip = track.clips.find(
+                              (c) => c.id === clipId,
+                            );
+                            if (!clip) return;
+                            const resolved = resolveClipBlockSettingsAtOffset(
+                              clip,
+                              timeMs,
+                            );
+                            addKeyframe(tId, clipId, timeMs, {
+                              ...resolved,
+                              volume,
+                            });
+                          }}
+                          onUpdateKeyframeVolume={(
+                            tId,
+                            clipId,
+                            keyframeId,
+                            volume,
+                          ) => {
+                            updateKeyframe(tId, clipId, keyframeId, {
+                              volume,
+                            });
+                          }}
+                          onMoveKeyframe={(tId, clipId, keyframeId, timeMs) => {
+                            moveKeyframe(tId, clipId, keyframeId, timeMs);
+                          }}
+                          onDeleteKeyframe={(tId, clipId, keyframeId) => {
+                            deleteKeyframe(tId, clipId, keyframeId);
+                          }}
+                          onSelectKeyframe={(tId, clipId, keyframeId) => {
+                            selectClip(tId, clipId, 'replace');
+                            setSelectedKeyframeId(keyframeId);
+                          }}
+                        />
+                        {/* Playhead line on automation lane */}
+                        <div
+                          className='absolute top-0 bottom-0 w-px bg-red-500/50 z-10 pointer-events-none'
+                          style={{
+                            left: playheadPx,
+                            transition: zoomAnimating
+                              ? `left ${ZOOM_TRANSITION_MS}ms ease-out`
+                              : undefined,
+                          }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
 
-        {/* Add Track button */}
-        {!showStreamsSpinner && (
-          <div
-            className='flex border-b border-border/50'
-            style={{ height: TRACK_HEIGHT }}>
+          {/* Add Track button */}
+          {!showStreamsSpinner && (
             <div
-              className='shrink-0 bg-muted/40 flex items-center px-2 sticky left-0 z-10 border-r border-border/30'
-              style={{ width: sourcesWidth }}>
-              <Button
-                variant='ghost'
-                size='sm'
-                className='flex items-center gap-1.5 text-xs text-muted-foreground hover:text-card-foreground hover:bg-card px-2 py-1 cursor-pointer'
-                onClick={() => addTrack()}
-                title='Add empty track'>
-                <Plus className='w-3 h-3' />
-                <span>Add Track</span>
-              </Button>
+              className='flex border-b border-border/50'
+              style={{ height: TRACK_HEIGHT }}>
+              <div
+                className='shrink-0 bg-muted/40 flex items-center px-2 sticky left-0 z-10 border-r border-border/30'
+                style={{ width: sourcesWidth }}>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='flex items-center gap-1.5 text-xs text-muted-foreground hover:text-card-foreground hover:bg-card px-2 py-1 cursor-pointer'
+                  onClick={() => addTrack()}
+                  title='Add empty track'>
+                  <Plus className='w-3 h-3' />
+                  <span>Add Track</span>
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {isTimelineInteractionLocked && (
+          <div className='absolute inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm'>
+            <div className='flex items-center gap-2 text-card-foreground text-sm'>
+              <LoadingSpinner size='sm' variant='spinner' />
+              <span>
+                {timelineStopTimeoutActive
+                  ? 'Stopping timeline is taking longer than expected...'
+                  : `${timelineBusyLabel}...`}
+              </span>
             </div>
           </div>
         )}
