@@ -27,7 +27,7 @@ struct ShaderOptions {
 @group(1) @binding(0) var<uniform> shader_options: ShaderOptions;
 @group(2) @binding(0) var sampler_: sampler;
 
-var<push_constant> base_params: BaseShaderParameters;
+var<immediate> base_params: BaseShaderParameters;
 
 fn luminance(c: vec3<f32>) -> f32 {
     return dot(c, vec3<f32>(0.2126, 0.7152, 0.0722));
