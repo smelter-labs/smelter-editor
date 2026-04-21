@@ -152,6 +152,7 @@ class ApiService {
     inputs: InputCard[];
     layers: Layer[];
     resolution: Resolution;
+    isTimelinePlaying: boolean;
   }> {
     const base = this.buildHttpUrl(serverUrl);
     const res = await fetch(`${base}/room/${encodeURIComponent(roomId)}`);
@@ -171,6 +172,7 @@ class ApiService {
       inputs: this.mapInputsToCards(roomState.inputs),
       layers: roomState.layers ?? [],
       resolution: roomState.resolution ?? { width: 1920, height: 1080 },
+      isTimelinePlaying: roomState.isTimelinePlaying ?? false,
     };
   }
 
@@ -270,7 +272,7 @@ class ApiService {
     this.logSyncSend(
       "POST",
       `/room/${encodeURIComponent(roomId)}/inputs/hide`,
-      { inputIds },
+      { body: { inputIds } },
     );
     const res = await fetch(
       `${base}/room/${encodeURIComponent(roomId)}/inputs/hide`,
@@ -296,7 +298,7 @@ class ApiService {
     this.logSyncSend(
       "POST",
       `/room/${encodeURIComponent(roomId)}/inputs/show`,
-      { inputIds },
+      { body: { inputIds } },
     );
     const res = await fetch(
       `${base}/room/${encodeURIComponent(roomId)}/inputs/show`,

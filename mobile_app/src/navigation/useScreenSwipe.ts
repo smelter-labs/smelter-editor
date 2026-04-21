@@ -1,5 +1,4 @@
-import { useCallback } from "react";
-import { Dimensions } from "react-native";
+import { useCallback, useEffect } from "react";
 import {
   Gesture,
   GestureUpdateEvent,
@@ -26,26 +25,34 @@ const SWIPE_DISTANCE_THRESHOLD = 60;
  * between the main screens. Uses minPointers(3)/maxPointers(3) so it never
  * conflicts with 1-finger or 2-finger gestures.
  *
- * Returns:
- *  - gesture: the composed PanGesture to be placed on a GestureDetector
- *  - translateX: SharedValue driving the container's horizontal transform
- *  - activeIndex: SharedValue with current screen index
- *  - containerStyle: AnimatedStyle to apply to the main screens container
+ * contentWidth must be the live window width (from useWindowDimensions), so
+ * the pager snaps correctly after orientation changes.
  */
-export function useScreenSwipe() {
-  const screenWidth = Dimensions.get("window").width;
+export function useScreenSwipe(contentWidth: number) {
   const activeIndex = useSharedValue(0);
   const translateX = useSharedValue(0);
   const gestureStartX = useSharedValue(0);
+  const widthSV = useSharedValue(contentWidth);
+
+  // Keep the shared value in sync with React state (orientation changes).
+  // Set translateX instantly — no animation — so there's no frame where the
+  // pager is translated for the old width while the new width is already applied.
+  useEffect(() => {
+    widthSV.value = contentWidth;
+    translateX.value = -activeIndex.value * contentWidth;
+  }, [activeIndex, contentWidth, translateX, widthSV]);
 
   const snapToIndex = useCallback(
     (index: number) => {
       "worklet";
       const clampedIndex = Math.max(0, Math.min(MAIN_SCREEN_COUNT - 1, index));
       activeIndex.value = clampedIndex;
-      translateX.value = withSpring(-clampedIndex * screenWidth, SPRING_CONFIG);
+      translateX.value = withSpring(
+        -clampedIndex * widthSV.value,
+        SPRING_CONFIG,
+      );
     },
-    [activeIndex, translateX, screenWidth],
+    [activeIndex, translateX, widthSV],
   );
 
   const gesture = Gesture.Pan()
@@ -59,8 +66,7 @@ export function useScreenSwipe() {
     .onUpdate((event: GestureUpdateEvent<PanGestureHandlerEventPayload>) => {
       "worklet";
       const newX = gestureStartX.value + event.translationX;
-      // Rubber-band resistance at edges
-      const minX = -(MAIN_SCREEN_COUNT - 1) * screenWidth;
+      const minX = -(MAIN_SCREEN_COUNT - 1) * widthSV.value;
       const clampedX = Math.max(minX, Math.min(0, newX));
       translateX.value = clampedX;
     })
@@ -93,5 +99,5 @@ export function useScreenSwipe() {
     };
   });
 
-  return { gesture, translateX, activeIndex, containerStyle };
+  return { gesture, translateX, activeIndex, snapToIndex, containerStyle };
 }

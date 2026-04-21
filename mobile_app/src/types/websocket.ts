@@ -34,6 +34,16 @@ export type WSEventMap = {
     layers: Layer[];
     /** Authoritative inputs after the mutation — apply directly, no extra fetch needed. */
     inputs: PublicInputState[];
+    /** Whether timeline playback is currently running in this room. */
+    isTimelinePlaying?: boolean;
+  };
+  timeline_playback_updated: {
+    type: "timeline_playback_updated";
+    roomId: string;
+    isTimelinePlaying: boolean;
+    isPaused?: boolean;
+    playheadMs?: number;
+    totalDurationMs?: number;
   };
   peers_updated: {
     type: "peers_updated";
