@@ -44,7 +44,7 @@ var<uniform> shader_options: ShaderOptions;
 @group(2) @binding(0)
 var sampler_: sampler;
 
-var<push_constant> base_params: BaseShaderParameters;
+var<immediate> base_params: BaseShaderParameters;
 
 @vertex
 fn vs_main(input: VertexInput) -> VertexOutput {

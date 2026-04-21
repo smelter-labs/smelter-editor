@@ -122,7 +122,7 @@ class ApiService {
       return `${parsed.protocol}//${parsed.host}${parsed.pathname.replace(/\/+$/, "")}`;
     }
 
-    return `http://${trimmed}`;
+    return `https://${trimmed}`;
   }
 
   /**
