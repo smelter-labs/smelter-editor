@@ -2173,20 +2173,10 @@ function QRModal({
 
   const joinUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
-    console.log('editor-server-url', process.env.SMELTER_EDITOR_SERVER_URL);
-    console.log('window.location.origin', window.location.origin);
-    console.log(
-      'next public editor server url',
-      process.env.NEXT_PUBLIC_SMELTER_SERVER_URL,
-    );
-    console.log(
-      'next public editor ws url',
-      process.env.NEXT_PUBLIC_SMELTER_WS_URL,
-    );
-    if (process.env.SMELTER_EDITOR_SERVER_URL) {
+    if (process.env.NEXT_PUBLIC_SMELTER_WS_URL) {
       return new URL(
         `/room/${encodeURIComponent(roomId)}`,
-        process.env.SMELTER_EDITOR_SERVER_URL,
+        process.env.NEXT_PUBLIC_SMELTER_WS_URL,
       ).toString();
     }
     return new URL(
