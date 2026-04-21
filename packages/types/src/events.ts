@@ -37,6 +37,15 @@ export type RoomUpdatedEvent = {
   isTimelinePlaying?: boolean;
 };
 
+export type TimelinePlaybackUpdatedEvent = {
+  type: "timeline_playback_updated";
+  roomId: string;
+  isTimelinePlaying: boolean;
+  isPaused: boolean;
+  playheadMs: number;
+  totalDurationMs: number;
+};
+
 export type PeersUpdatedEvent = {
   type: "peers_updated";
   roomId: string;
@@ -52,4 +61,5 @@ export type RoomEvent =
   | InputUpdatedEvent
   | InputDeletedEvent
   | RoomUpdatedEvent
-  | PeersUpdatedEvent;
+  | PeersUpdatedEvent
+  | TimelinePlaybackUpdatedEvent;

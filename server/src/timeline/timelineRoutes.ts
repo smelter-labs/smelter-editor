@@ -3,6 +3,7 @@ import type { FastifyInstance } from 'fastify';
 import { state } from '../core/serverState';
 import { roomEventBus } from '../core/roomEventBus';
 import { logTimelineEvent } from '../dashboard';
+import type { TimelinePlaybackUpdatedEvent } from '@smelter-editor/types';
 import {
   TimelinePlaySchema,
   TimelineSeekSchema,
@@ -33,14 +34,15 @@ const timelinePlaybackForwarders = new Map<string, () => void>();
 function broadcastTimelinePlaybackState(roomId: string): void {
   const room = state.getRoom(roomId);
   const playback = room.getTimelinePlaybackState();
-  roomEventBus.broadcast(roomId, {
+  const event: TimelinePlaybackUpdatedEvent = {
     type: 'timeline_playback_updated',
     roomId,
     isTimelinePlaying: playback.isPlaying,
     isPaused: playback.isPaused,
     playheadMs: playback.playheadMs,
     totalDurationMs: playback.totalDurationMs,
-  } as any);
+  };
+  roomEventBus.broadcast(roomId, event);
 }
 
 function ensureTimelinePlaybackForwarder(roomId: string): void {
@@ -109,8 +111,13 @@ export function registerTimelineRoutes(routes: FastifyInstance): void {
         keyframeInterpolationMode,
       } as TimelineConfig;
       ensureTimelinePlaybackForwarder(roomId);
-      await room.startTimelinePlayback(config, fromMs);
-      broadcastTimelinePlaybackState(roomId);
+      try {
+        await room.startTimelinePlayback(config, fromMs);
+        broadcastTimelinePlaybackState(roomId);
+      } catch (error) {
+        unsubscribeTimelinePlaybackForwarder(roomId);
+        throw error;
+      }
       res.status(200).send({ status: 'ok' });
     },
   );
