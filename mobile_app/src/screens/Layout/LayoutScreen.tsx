@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useMemo,
   useRef,
+  useTransition,
 } from "react";
 import { View, StyleSheet } from "react-native";
 import { Chip, useTheme } from "react-native-paper";
@@ -209,44 +210,40 @@ export function LayoutScreen() {
   const [effectsInputId, setEffectsInputId] = useState<string | null>(null);
   const [layoutResetToken, setLayoutResetToken] = useState(0);
 
-  // Hold latest room_updated payload and apply at most once per animation frame.
   const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
-  const frameRef = useRef<number | null>(null);
+  const [isPending, startTransition] = useTransition();
+  const idleHandleRef = useRef<number | null>(null);
 
   // Subscribe to server room updates
   useEffect(() => {
     const unsubRoom = wsService.on("room_updated", (event) => {
-      console.log(
-        "[Layout] Received room_updated event (will batch apply next frame):",
-        {
-          layerCount: event.layers.length,
-          firstLayerInputs: event.layers[0]?.inputs.length ?? 0,
-          firstLayerInputIds:
-            event.layers[0]?.inputs.map((li) => li.inputId).slice(0, 3) ?? [],
-        },
-      );
       pendingEventRef.current = event;
-      if (frameRef.current !== null) return;
-      frameRef.current = requestAnimationFrame(() => {
-        frameRef.current = null;
-        const latest = pendingEventRef.current;
-        pendingEventRef.current = null;
-        if (!latest) return;
-        console.log("[Layout] Applying batched room_updated event");
-        if (latest.isTimelinePlaying !== undefined) {
-          setTimelinePlaying(latest.isTimelinePlaying);
-        }
-        setLayers(latest.layers);
-        const nextInputs = apiService.mapInputsToCards(latest.inputs);
-        const currentInputs = useInputsStore.getState().inputs;
-        if (!areInputCardsEquivalent(currentInputs, nextInputs)) {
-          setInputs(nextInputs);
-        }
-      });
+
+      if (idleHandleRef.current !== null) return;
+      idleHandleRef.current = requestIdleCallback(
+        () => {
+          idleHandleRef.current = null;
+          const latest = pendingEventRef.current;
+          pendingEventRef.current = null;
+          if (!latest) return;
+
+          startTransition(() => {
+            if (latest.isTimelinePlaying !== undefined) {
+              setTimelinePlaying(latest.isTimelinePlaying);
+            }
+            setLayers(latest.layers);
+
+            const nextInputs = apiService.mapInputsToCards(latest.inputs);
+            const currentInputs = useInputsStore.getState().inputs;
+            if (!areInputCardsEquivalent(currentInputs, nextInputs)) {
+              setInputs(nextInputs);
+            }
+          });
+        },
+        { timeout: 100 },
+      );
     });
 
-    // When an input is deleted, remove it from the layout immediately so the grid
-    // cell doesn't linger as a UUID-labelled rectangle.
     const unsubDeleted = wsService.on("input_deleted", (event) => {
       removeInputFromLayers(event.inputId);
     });
@@ -254,9 +251,9 @@ export function LayoutScreen() {
     return () => {
       unsubRoom();
       unsubDeleted();
-      if (frameRef.current !== null) {
-        cancelAnimationFrame(frameRef.current);
-        frameRef.current = null;
+      if (idleHandleRef.current !== null) {
+        cancelIdleCallback(idleHandleRef.current);
+        idleHandleRef.current = null;
       }
     };
   }, [

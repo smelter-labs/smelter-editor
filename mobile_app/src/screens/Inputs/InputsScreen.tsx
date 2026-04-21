@@ -1,4 +1,10 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useRef,
+  useTransition,
+} from "react";
 import type { WSEventPayload } from "../../types/websocket";
 import { View, StyleSheet } from "react-native";
 import { useTheme } from "react-native-paper";
@@ -20,8 +26,6 @@ import { InputSidePanel } from "./InputSidePanel";
 import { InputsSettingsPanel } from "./InputsSettingsPanel";
 import { ScreenLabel } from "../../components/shared/ScreenLabel";
 import { areInputCardsEquivalent } from "../../utils/inputCardEquality";
-
-const ROOM_UPDATE_COALESCE_MS = 150;
 
 export function InputsScreen() {
   const theme = useTheme();
@@ -56,47 +60,56 @@ export function InputsScreen() {
     }
   }, []);
 
-  // Hold latest room_updated payload and apply at most once per animation frame.
   const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
-  const frameRef = useRef<number | null>(null);
+  const taskRef = useRef<number | null>(null);
+  const [isPending, startTransition] = useTransition();
 
   // Subscribe to server input updates
   useEffect(() => {
     const unsubUpdated = wsService.on("input_updated", (event) => {
       const changes = apiService.mapInputUpdateToCardChanges(event.input);
-      updateInput(event.inputId, changes);
+      startTransition(() => {
+        updateInput(event.inputId, changes);
+      });
     });
+
     const unsubDeleted = wsService.on("input_deleted", (event) => {
       removeInput(event.inputId);
     });
+
     const unsubRoom = wsService.on("room_updated", (event) => {
       pendingEventRef.current = event;
-      if (frameRef.current !== null) return;
-      frameRef.current = requestAnimationFrame(() => {
-        frameRef.current = null;
-        const latest = pendingEventRef.current;
-        pendingEventRef.current = null;
-        if (!latest) return;
+      if (taskRef.current !== null) return;
+      taskRef.current = requestIdleCallback(
+        () => {
+          taskRef.current = null;
+          const latest = pendingEventRef.current;
+          pendingEventRef.current = null;
+          if (!latest) return;
+          startTransition(() => {
+            if (latest.isTimelinePlaying !== undefined) {
+              setTimelinePlaying(latest.isTimelinePlaying);
+            }
+            setLayers(latest.layers);
 
-        if (latest.isTimelinePlaying !== undefined) {
-          setTimelinePlaying(latest.isTimelinePlaying);
-        }
-        setLayers(latest.layers);
-
-        const nextInputs = apiService.mapInputsToCards(latest.inputs);
-        const currentInputs = useInputsStore.getState().inputs;
-        if (!areInputCardsEquivalent(currentInputs, nextInputs)) {
-          setInputs(nextInputs);
-        }
-      });
+            const nextInputs = apiService.mapInputsToCards(latest.inputs);
+            const currentInputs = useInputsStore.getState().inputs;
+            if (!areInputCardsEquivalent(currentInputs, nextInputs)) {
+              setInputs(nextInputs);
+            }
+          });
+        },
+        { timeout: 100 },
+      );
     });
+
     return () => {
       unsubUpdated();
       unsubDeleted();
       unsubRoom();
-      if (frameRef.current !== null) {
-        cancelAnimationFrame(frameRef.current);
-        frameRef.current = null;
+      if (taskRef.current !== null) {
+        cancelIdleCallback(taskRef.current);
+        taskRef.current = null;
       }
     };
   }, [
