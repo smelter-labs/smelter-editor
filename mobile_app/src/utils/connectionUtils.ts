@@ -14,7 +14,7 @@ export class ConnectionData {
    * Parse connection data from a QR code string.
    * Accepts JSON format: { "serverUrl": "...", "roomId": "..." }
    * URL query format: smelter://connect?serverUrl=...&roomId=...
-   * or URL path format: wss://host/room/<roomId>
+   * or URL path format: wss://host/<any/base/path>/room/<roomId>
    */
   static fromQRString(raw: string): ConnectionData | null {
     const normalized = raw.trim();
@@ -40,9 +40,15 @@ export class ConnectionData {
         return new ConnectionData(serverUrl, roomId);
       }
 
-      const pathMatch = url.pathname.match(/^\/?room\/([^/?#]+)\/?$/i);
-      if (pathMatch?.[1]) {
-        return new ConnectionData(url.origin, decodeURIComponent(pathMatch[1]));
+      const pathSegments = url.pathname.split("/").filter(Boolean);
+      const roomIndex = pathSegments.findIndex((segment) => segment === "room");
+      const roomIdSegment = pathSegments[roomIndex + 1];
+      if (roomIndex >= 0 && roomIdSegment) {
+        const serverPath = pathSegments.slice(0, roomIndex).join("/");
+        const serverUrl = serverPath
+          ? `${url.origin}/${serverPath}`
+          : url.origin;
+        return new ConnectionData(serverUrl, decodeURIComponent(roomIdSegment));
       }
     } catch {
       // Not a URL either
