@@ -5,6 +5,7 @@ import { runOnJS } from "react-native-reanimated";
 interface UseInputsGesturesOptions {
   onCardTap: (cardId: string) => void;
   onEdgeSwipe: (side: "left" | "right") => void;
+  isEdgeSwipeEnabled?: boolean;
 }
 
 /**
@@ -16,6 +17,7 @@ interface UseInputsGesturesOptions {
 export function useInputsGestures({
   onCardTap,
   onEdgeSwipe,
+  isEdgeSwipeEnabled = true,
 }: UseInputsGesturesOptions) {
   const handleCardTap = useCallback((id: string) => onCardTap(id), [onCardTap]);
   const handleEdgeSwipe = useCallback(
@@ -24,6 +26,7 @@ export function useInputsGestures({
   );
 
   const edgeSwipeGesture = Gesture.Pan()
+    .enabled(isEdgeSwipeEnabled)
     .minPointers(2)
     .maxPointers(2)
     .activeOffsetX([-20, 20])

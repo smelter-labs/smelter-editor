@@ -119,14 +119,21 @@ export function InputsScreen() {
     [inputs],
   );
 
-  const handleEdgeSwipe = useCallback((side: "left" | "right") => {
-    setSettingsPanelSide(side);
-    setSettingsPanelOpen(true);
-  }, []);
+  const handleEdgeSwipe = useCallback(
+    (side: "left" | "right") => {
+      if (isTimelinePlaying) {
+        return;
+      }
+      setSettingsPanelSide(side);
+      setSettingsPanelOpen(true);
+    },
+    [isTimelinePlaying],
+  );
 
   const { edgeSwipeGesture, makeCardTapGesture } = useInputsGestures({
     onCardTap: handleCardTap,
     onEdgeSwipe: handleEdgeSwipe,
+    isEdgeSwipeEnabled: !isTimelinePlaying,
   });
 
   const handleDragEnd = useCallback(
