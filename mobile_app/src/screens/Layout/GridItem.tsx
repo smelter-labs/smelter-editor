@@ -8,7 +8,7 @@ import Animated, {
   withTiming,
 } from "react-native-reanimated";
 import type { GridItem as GridItemType } from "../../types/layout";
-import type { ResizeHandleDirection } from "./ReshufflableGridWrapper";
+import { ResizeHandleDirection } from "./ReshufflableGridWrapper";
 
 interface GridItemProps {
   item: GridItemType;
@@ -70,16 +70,16 @@ export function GridItemCell({
   };
 
   const cornerHandles: ResizeHandleDirection[] = [
-    "topLeft",
-    "topRight",
-    "bottomLeft",
-    "bottomRight",
+    ResizeHandleDirection.TOP_LEFT,
+    ResizeHandleDirection.TOP_RIGHT,
+    ResizeHandleDirection.BOTTOM_LEFT,
+    ResizeHandleDirection.BOTTOM_RIGHT,
   ];
   const edgeHandles: ResizeHandleDirection[] = [
-    "top",
-    "right",
-    "bottom",
-    "left",
+    ResizeHandleDirection.TOP,
+    ResizeHandleDirection.RIGHT,
+    ResizeHandleDirection.BOTTOM,
+    ResizeHandleDirection.LEFT,
   ];
 
   const renderHandle = (direction: ResizeHandleDirection) => {
@@ -87,31 +87,31 @@ export function GridItemCell({
       position: "absolute",
     };
 
-    if (direction === "topLeft") {
+    if (direction === ResizeHandleDirection.TOP_LEFT) {
       positionStyle = {
         ...positionStyle,
         top: -HANDLE_SIZE / 2,
         left: -HANDLE_SIZE / 2,
       };
-    } else if (direction === "topRight") {
+    } else if (direction === ResizeHandleDirection.TOP_RIGHT) {
       positionStyle = {
         ...positionStyle,
         top: -HANDLE_SIZE / 2,
         right: -HANDLE_SIZE / 2,
       };
-    } else if (direction === "bottomLeft") {
+    } else if (direction === ResizeHandleDirection.BOTTOM_LEFT) {
       positionStyle = {
         ...positionStyle,
         bottom: -HANDLE_SIZE / 2,
         left: -HANDLE_SIZE / 2,
       };
-    } else if (direction === "bottomRight") {
+    } else if (direction === ResizeHandleDirection.BOTTOM_RIGHT) {
       positionStyle = {
         ...positionStyle,
         bottom: -HANDLE_SIZE / 2,
         right: -HANDLE_SIZE / 2,
       };
-    } else if (direction === "top") {
+    } else if (direction === ResizeHandleDirection.TOP) {
       positionStyle = {
         ...positionStyle,
         top: -EDGE_HANDLE_WIDTH / 2,
@@ -119,7 +119,7 @@ export function GridItemCell({
         right: 0,
         height: EDGE_HANDLE_WIDTH,
       };
-    } else if (direction === "bottom") {
+    } else if (direction === ResizeHandleDirection.BOTTOM) {
       positionStyle = {
         ...positionStyle,
         bottom: -EDGE_HANDLE_WIDTH / 2,
@@ -127,7 +127,7 @@ export function GridItemCell({
         right: 0,
         height: EDGE_HANDLE_WIDTH,
       };
-    } else if (direction === "left") {
+    } else if (direction === ResizeHandleDirection.LEFT) {
       positionStyle = {
         ...positionStyle,
         left: -EDGE_HANDLE_WIDTH / 2,
@@ -135,7 +135,7 @@ export function GridItemCell({
         bottom: 0,
         width: EDGE_HANDLE_WIDTH,
       };
-    } else if (direction === "right") {
+    } else if (direction === ResizeHandleDirection.RIGHT) {
       positionStyle = {
         ...positionStyle,
         right: -EDGE_HANDLE_WIDTH / 2,

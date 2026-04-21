@@ -11,7 +11,10 @@ export function rebuildLayers(
     id: cl.id,
     behavior: cl.behavior,
     inputs: cl.inputs
-      .filter((li, index, arr) => arr.findIndex((x) => x.inputIndex === li.inputIndex) === index)
+      .filter(
+        (li, index, arr) =>
+          arr.findIndex((x) => x.inputIndex === li.inputIndex) === index,
+      )
       .map((li) => {
         const inputId =
           indexToInputId[li.inputIndex] ??

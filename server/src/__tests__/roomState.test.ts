@@ -1291,7 +1291,9 @@ describe('RoomState', () => {
 
       await room.startTimelinePlayback(createTimelineConfig(inputId, 'TL'), 0);
 
-      const duringPlayback = room.getInputs().find((i) => i.inputId === inputId);
+      const duringPlayback = room
+        .getInputs()
+        .find((i) => i.inputId === inputId);
       expect(duringPlayback?.volume).toBe(1);
 
       await room.pauseTimeline();
@@ -1789,10 +1791,7 @@ describe('RoomState', () => {
       await room.connectInput(inputId);
 
       mocks.smelter.extractMp4Frame.mockClear();
-      await room.applyTimelineState(
-        createMp4TimelineConfig(inputId),
-        3_000,
-      );
+      await room.applyTimelineState(createMp4TimelineConfig(inputId), 3_000);
 
       expect(mocks.smelter.extractMp4Frame).not.toHaveBeenCalled();
     });

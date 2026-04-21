@@ -818,14 +818,20 @@ export class RoomState {
     const inputs = this.inputManager.getInputs();
     const inputById = new Map(inputs.map((input) => [input.inputId, input]));
     const activeInputIds = new Set(activeClips.keys());
-    const attachedInputIds = this.collectAttachedInputIds(activeInputIds, inputById);
+    const attachedInputIds = this.collectAttachedInputIds(
+      activeInputIds,
+      inputById,
+    );
 
     this.pausedAttachedInputVolumes.clear();
     for (const attachedInputId of attachedInputIds) {
       if (activeInputIds.has(attachedInputId)) continue;
       const attachedInput = inputById.get(attachedInputId);
       if (!attachedInput) continue;
-      this.pausedAttachedInputVolumes.set(attachedInputId, attachedInput.volume);
+      this.pausedAttachedInputVolumes.set(
+        attachedInputId,
+        attachedInput.volume,
+      );
       this.inputManager.updateInput(attachedInputId, { volume: 0 });
     }
 
@@ -872,7 +878,10 @@ export class RoomState {
             `[timeline] Skipping pause frozen frame for ${inputId} while Smelter is recovering`,
           );
         } else {
-          console.error(`[timeline] Failed to extract frame for ${inputId}`, err);
+          console.error(
+            `[timeline] Failed to extract frame for ${inputId}`,
+            err,
+          );
         }
       }
     }

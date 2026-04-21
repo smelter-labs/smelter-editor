@@ -2173,11 +2173,13 @@ function QRModal({
 
   const joinUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
-    const url = new URL(
+    if (process.env.NEXT_PUBLIC_SMELTER_WS_URL) {
+      return `${process.env.NEXT_PUBLIC_SMELTER_WS_URL}/room/${encodeURIComponent(roomId)}`;
+    }
+    return new URL(
       `/room/${encodeURIComponent(roomId)}`,
       window.location.origin,
-    );
-    return url.toString();
+    ).toString();
   }, [roomId]);
 
   const handleCopy = useCallback(async () => {

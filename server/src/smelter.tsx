@@ -288,6 +288,11 @@ class SmelterManager {
           video: { decoderPreferences: WHIP_SERVER_DECODER_PREFERENCES },
         });
         console.log('whipInput', res);
+        if (!res.bearerToken) {
+          throw new Error(
+            'WHIP input registration succeeded without bearer token',
+          );
+        }
         return res.bearerToken;
       } else if (opts.type === 'mp4') {
         console.log(
@@ -304,7 +309,16 @@ class SmelterManager {
           `[smelter] registerInput MP4 OK inputId=${inputId} elapsed=${Date.now() - t0}ms`,
         );
       } else if (opts.type === 'hls') {
-        await this.instance.registerInput(inputId, {
+        const registerHlsInput = this.instance.registerInput as unknown as (
+          inputId: string,
+          request: {
+            type: 'hls';
+            url: string;
+            decoderMap: typeof MP4_DECODER_MAP;
+          },
+        ) => Promise<unknown>;
+
+        await registerHlsInput(inputId, {
           type: 'hls',
           url: opts.url,
           decoderMap: MP4_DECODER_MAP,

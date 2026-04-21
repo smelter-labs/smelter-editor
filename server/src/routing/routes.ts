@@ -951,6 +951,7 @@ routes.get<RoomIdParams>(
       roomName: room.roomName,
       inputs: snapshot.inputs.map(toPublicInputState),
       layers: snapshot.layers,
+      isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
       whepUrl: room.getWhepUrl(),
       pendingDelete: room.pendingDelete,
       isPublic: room.isPublic,
@@ -1045,6 +1046,19 @@ routes.after(() => {
       });
 
       roomEventBus.subscribe(roomId, clientId, socket);
+
+      const room = state.getRoom(roomId);
+      const timelinePlaybackState = room.getTimelinePlaybackState();
+      socket.send(
+        JSON.stringify({
+          type: 'timeline_playback_updated',
+          roomId,
+          isTimelinePlaying: timelinePlaybackState.isPlaying,
+          isPaused: timelinePlaybackState.isPaused,
+          playheadMs: timelinePlaybackState.playheadMs,
+          totalDurationMs: timelinePlaybackState.totalDurationMs,
+        }),
+      );
     },
   });
 });
@@ -1070,6 +1084,7 @@ routes.get('/rooms', async (_req, res) => {
         roomName: room.roomName,
         inputs: snapshot.inputs.map(toPublicInputState),
         layers: snapshot.layers,
+        isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
         whepUrl: room.getWhepUrl(),
         pendingDelete: room.pendingDelete,
         createdAt: room.creationTimestamp,
@@ -1402,6 +1417,7 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
         sourceId,
         layers: snapshot.layers,
         inputs: snapshot.inputs.map(toPublicInputState),
+        isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
       });
     }
     if (req.body.isPublic !== undefined) {
@@ -1502,6 +1518,7 @@ routes.post<RoomIdParams & { Body: Static<typeof InputSchema> }>(
         sourceId,
         layers: snapshot.layers,
         inputs: snapshot.inputs.map(toPublicInputState),
+        isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
       });
     }
     let whipUrl = `${config.whipBaseUrl}/${inputId}`;
@@ -1647,6 +1664,7 @@ routes.post<
       sourceId,
       layers: snapshot.layers,
       inputs: snapshot.inputs.map(toPublicInputState),
+      isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
     });
     res.status(200).send({ status: 'ok' });
   },
@@ -1697,6 +1715,7 @@ routes.post<
       sourceId,
       layers: snapshot.layers,
       inputs: snapshot.inputs.map(toPublicInputState),
+      isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
     });
     res.status(200).send({ status: 'ok' });
   },
@@ -1742,6 +1761,7 @@ routes.post<{
       sourceId,
       layers: snapshot.layers,
       inputs: snapshot.inputs.map(toPublicInputState),
+      isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
     });
     res.status(200).send({ status: 'ok' });
   },
@@ -1787,6 +1807,7 @@ routes.post<{
       sourceId,
       layers: snapshot.layers,
       inputs: snapshot.inputs.map(toPublicInputState),
+      isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
     });
     res.status(200).send({ status: 'ok' });
   },
@@ -2061,6 +2082,7 @@ routes.get<RoomIdParams>(
         roomName: room.roomName,
         inputs: snapshot.inputs.map(toPublicInputState),
         layers: snapshot.layers,
+        isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
         whepUrl: room.getWhepUrl(),
         pendingDelete: room.pendingDelete,
         isPublic: room.isPublic,

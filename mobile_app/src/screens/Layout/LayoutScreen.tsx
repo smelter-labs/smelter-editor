@@ -12,6 +12,7 @@ import { useConnectionStore } from "../../store/connectionStore";
 import { useInputsStore } from "../../store/inputsStore";
 import { wsService } from "../../services/websocketService";
 import { apiService } from "../../services/apiService";
+import { TimelineInProgressOverlay } from "../../components/shared/TimelineInProgressOverlay";
 import { SidePanel } from "../../components/shared/SidePanel";
 import { SettingsPanel } from "./SettingsPanel";
 import { LayoutEffectsPanel } from "./LayoutEffectsPanel";
@@ -194,6 +195,8 @@ export function LayoutScreen() {
     removeInputFromLayers,
   } = useLayoutStore();
   const { serverUrl, roomId } = useConnectionStore();
+  const isTimelinePlaying = useConnectionStore((s) => s.isTimelinePlaying);
+  const setTimelinePlaying = useConnectionStore((s) => s.setTimelinePlaying);
   const inputs = useInputsStore((s) => s.inputs);
   const setInputs = useInputsStore((s) => s.setInputs);
 
@@ -230,6 +233,9 @@ export function LayoutScreen() {
         pendingEventRef.current = null;
         if (!latest) return;
         console.log("[Layout] Applying batched room_updated event");
+        if (latest.isTimelinePlaying !== undefined) {
+          setTimelinePlaying(latest.isTimelinePlaying);
+        }
         setLayers(latest.layers);
         const nextInputs = apiService.mapInputsToCards(latest.inputs);
         const currentInputs = useInputsStore.getState().inputs;
@@ -253,7 +259,14 @@ export function LayoutScreen() {
         frameRef.current = null;
       }
     };
-  }, [serverUrl, roomId, setLayers, setInputs, removeInputFromLayers]);
+  }, [
+    serverUrl,
+    roomId,
+    setLayers,
+    setInputs,
+    setTimelinePlaying,
+    removeInputFromLayers,
+  ]);
 
   useEffect(() => {
     if (!effectsInputId) return;
@@ -403,108 +416,118 @@ export function LayoutScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
-      <ScreenLabel label={`Layout (${layers.length} layers)`} />
-
-      {/* Toolbar row */}
-      <View style={styles.toolbar}>
-        <Chip
-          compact
-          mode="flat"
-          style={styles.toolbarChip}
-          textStyle={styles.toolbarChipText}
-          onPress={() => setLayersPanelOpen((v) => !v)}
-        >
-          LAYERS
-        </Chip>
-        <Chip
-          compact
-          mode="flat"
-          style={styles.toolbarChip}
-          textStyle={styles.toolbarChipText}
-          onPress={() => {
-            setSettingsPanelSide("right");
-            setSettingsPanelOpen(true);
-          }}
-        >
-          ⚙
-        </Chip>
-      </View>
-
-      {/* Canvas: stacked layer grids — layers[0] is topmost (highest zIndex) */}
-      <View style={styles.canvas}>
-        {layers.map((layer, i) => {
-          // Skip rendering layer if all its inputs are hidden
-          const layerInputIds = layer.inputs.map((li) => li.inputId);
-          const allInputsHidden =
-            layerInputIds.length > 0 &&
-            layerInputIds.every((id) =>
-              inputs.some((inp) => inp.id === id && inp.isHidden),
-            );
-          if (allInputsHidden) return null;
-
-          const itemData = layerItemDataMap.get(layer.id) ?? [];
-          return (
-            <View
-              key={layer.id}
-              style={[
-                StyleSheet.absoluteFillObject,
-                { zIndex: layers.length - i },
-              ]}
-              pointerEvents="box-none"
-            >
-              <ReshufflableGridWrapper
-                key={`${layer.id}-${layoutResetToken}`}
-                itemData={itemData}
-                renderedComponent={GridCell}
-                onItemChange={(items) => handleGridChange(layer.id, items)}
-                onItemLongPress={(itemId) => {
-                  setEffectsInputId(itemId);
-                  setEffectsPanelOpen(true);
-                }}
-                rows={rows}
-                columns={columns}
-                containerStyle={styles.layerGrid}
-              />
-            </View>
-          );
-        })}
-      </View>
-
-      {/* Layers panel — slide-in from right */}
-      <SidePanel
-        isVisible={layersPanelOpen}
-        side="right"
-        width={272}
-        onClose={() => setLayersPanelOpen(false)}
+      <View
+        style={styles.screenContent}
+        pointerEvents={isTimelinePlaying ? "none" : "auto"}
       >
-        <LayersPanel
-          layers={layers}
-          inputs={inputs}
-          onLayersChange={(newLayers) => void pushLayers(newLayers)}
-          onToggleLayerVisibility={handleToggleLayerVisibility}
-          onAddLayer={handleAddLayer}
-          onDeleteLayer={handleDeleteLayer}
+        <ScreenLabel label={`Layout (${layers.length} layers)`} />
+
+        {/* Toolbar row */}
+        <View style={styles.toolbar}>
+          <Chip
+            compact
+            mode="flat"
+            style={styles.toolbarChip}
+            textStyle={styles.toolbarChipText}
+            onPress={() => setLayersPanelOpen((v) => !v)}
+          >
+            LAYERS
+          </Chip>
+          <Chip
+            compact
+            mode="flat"
+            style={styles.toolbarChip}
+            textStyle={styles.toolbarChipText}
+            onPress={() => {
+              setSettingsPanelSide("right");
+              setSettingsPanelOpen(true);
+            }}
+          >
+            ⚙
+          </Chip>
+        </View>
+
+        {/* Canvas: stacked layer grids — layers[0] is topmost (highest zIndex) */}
+        <View style={styles.canvas}>
+          {layers.map((layer, i) => {
+            // Skip rendering layer if all its inputs are hidden
+            const layerInputIds = layer.inputs.map((li) => li.inputId);
+            const allInputsHidden =
+              layerInputIds.length > 0 &&
+              layerInputIds.every((id) =>
+                inputs.some((inp) => inp.id === id && inp.isHidden),
+              );
+            if (allInputsHidden) return null;
+
+            const itemData = layerItemDataMap.get(layer.id) ?? [];
+            return (
+              <View
+                key={layer.id}
+                style={[
+                  StyleSheet.absoluteFillObject,
+                  { zIndex: layers.length - i },
+                ]}
+                pointerEvents="box-none"
+              >
+                <ReshufflableGridWrapper
+                  key={`${layer.id}-${layoutResetToken}`}
+                  itemData={itemData}
+                  renderedComponent={GridCell}
+                  onItemChange={(items) => handleGridChange(layer.id, items)}
+                  onItemLongPress={(itemId) => {
+                    setEffectsInputId(itemId);
+                    setEffectsPanelOpen(true);
+                  }}
+                  rows={rows}
+                  columns={columns}
+                  containerStyle={styles.layerGrid}
+                />
+              </View>
+            );
+          })}
+        </View>
+
+        {/* Layers panel — slide-in from right */}
+        <SidePanel
+          isVisible={layersPanelOpen}
+          side="right"
+          width={272}
+          onClose={() => setLayersPanelOpen(false)}
+        >
+          <LayersPanel
+            layers={layers}
+            inputs={inputs}
+            onLayersChange={(newLayers) => void pushLayers(newLayers)}
+            onToggleLayerVisibility={handleToggleLayerVisibility}
+            onAddLayer={handleAddLayer}
+            onDeleteLayer={handleDeleteLayer}
+          />
+        </SidePanel>
+
+        {/* Settings panel */}
+        <SettingsPanel
+          isVisible={settingsPanelOpen}
+          side={settingsPanelSide}
+          onClose={() => setSettingsPanelOpen(false)}
         />
-      </SidePanel>
 
-      {/* Settings panel */}
-      <SettingsPanel
-        isVisible={settingsPanelOpen}
-        side={settingsPanelSide}
-        onClose={() => setSettingsPanelOpen(false)}
-      />
+        <LayoutEffectsPanel
+          isVisible={effectsPanelOpen}
+          inputId={effectsInputId}
+          onClose={() => setEffectsPanelOpen(false)}
+        />
+      </View>
 
-      <LayoutEffectsPanel
-        isVisible={effectsPanelOpen}
-        inputId={effectsInputId}
-        onClose={() => setEffectsPanelOpen(false)}
-      />
+      {isTimelinePlaying && <TimelineInProgressOverlay />}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: {
+    flex: 1,
+  },
+  screenContent: {
     flex: 1,
   },
   toolbar: {
