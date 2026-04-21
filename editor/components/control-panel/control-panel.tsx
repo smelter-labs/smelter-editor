@@ -2174,10 +2174,7 @@ function QRModal({
   const joinUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
     if (process.env.NEXT_PUBLIC_SMELTER_WS_URL) {
-      return new URL(
-        `/room/${encodeURIComponent(roomId)}`,
-        process.env.NEXT_PUBLIC_SMELTER_WS_URL,
-      ).toString();
+      return `${process.env.NEXT_PUBLIC_SMELTER_WS_URL}/room/${encodeURIComponent(roomId)}`;
     }
     return new URL(
       `/room/${encodeURIComponent(roomId)}`,

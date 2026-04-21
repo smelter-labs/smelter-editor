@@ -13,12 +13,15 @@ export class ConnectionData {
   /**
    * Parse connection data from a QR code string.
    * Accepts JSON format: { "serverUrl": "...", "roomId": "..." }
-   * or URL format: smelter://connect?serverUrl=...&roomId=...
+   * URL query format: smelter://connect?serverUrl=...&roomId=...
+   * or URL path format: wss://host/room/<roomId>
    */
   static fromQRString(raw: string): ConnectionData | null {
+    const normalized = raw.trim();
+
     try {
       // Try JSON first
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const parsed = JSON.parse(normalized) as Record<string, unknown>;
       if (
         typeof parsed.serverUrl === "string" &&
         typeof parsed.roomId === "string"
@@ -30,11 +33,16 @@ export class ConnectionData {
     }
 
     try {
-      const url = new URL(raw);
+      const url = new URL(normalized);
       const serverUrl = url.searchParams.get("serverUrl");
       const roomId = url.searchParams.get("roomId");
       if (serverUrl && roomId) {
         return new ConnectionData(serverUrl, roomId);
+      }
+
+      const pathMatch = url.pathname.match(/^\/?room\/([^/?#]+)\/?$/i);
+      if (pathMatch?.[1]) {
+        return new ConnectionData(url.origin, decodeURIComponent(pathMatch[1]));
       }
     } catch {
       // Not a URL either
