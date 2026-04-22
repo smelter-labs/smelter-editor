@@ -45,7 +45,7 @@ var<uniform> shader_options: ShaderOptions;
 @group(2) @binding(0)
 var sampler_: sampler;
 
-var<push_constant> base_params: BaseShaderParameters;
+var<immediate> base_params: BaseShaderParameters;
 
 fn rgb_to_hsv(rgb: vec3<f32>) -> vec3<f32> {
     let mx = max(rgb.r, max(rgb.g, rgb.b));

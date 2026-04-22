@@ -11,6 +11,7 @@ interface ConnectionState {
   error: string | null;
   clientId: string | null;
   peers: ConnectedPeer[];
+  isTimelinePlaying: boolean;
 
   setCredentials: (serverUrl: string, roomId: string) => void;
   setToken: (token: string) => void;
@@ -18,6 +19,7 @@ interface ConnectionState {
   setStatus: (status: ConnectionStatus) => void;
   setClientId: (clientId: string) => void;
   setPeers: (peers: ConnectedPeer[]) => void;
+  setTimelinePlaying: (isTimelinePlaying: boolean) => void;
   reset: () => void;
 }
 
@@ -31,6 +33,7 @@ export const useConnectionStore = create<ConnectionState>()(
       error: null,
       clientId: null,
       peers: [],
+      isTimelinePlaying: false,
 
       setCredentials: (serverUrl, roomId) => set({ serverUrl, roomId }),
       setToken: (token) =>
@@ -64,6 +67,7 @@ export const useConnectionStore = create<ConnectionState>()(
 
           return { peers };
         }),
+      setTimelinePlaying: (isTimelinePlaying) => set({ isTimelinePlaying }),
       reset: () =>
         set({
           token: null,
@@ -71,6 +75,7 @@ export const useConnectionStore = create<ConnectionState>()(
           error: null,
           clientId: null,
           peers: [],
+          isTimelinePlaying: false,
         }),
     }),
     {

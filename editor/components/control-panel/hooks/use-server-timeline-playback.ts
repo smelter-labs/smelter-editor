@@ -3,7 +3,6 @@
 import { useCallback, useRef, useEffect, useState } from 'react';
 import {
   startTimelinePlayback,
-  stopTimelinePlayback,
   seekTimeline,
   pauseTimeline,
   applyTimelineState,
@@ -19,6 +18,7 @@ import {
 
 const PLAYHEAD_UI_UPDATE_INTERVAL_MS = 33;
 const AUTO_PAUSE_BEFORE_END_MS = 2000;
+const STOP_BUSY_TIMEOUT_MS = 2500;
 
 export function useServerTimelinePlayback(
   roomId: string,
@@ -30,7 +30,6 @@ export function useServerTimelinePlayback(
   useEffect(() => {
     stateRef.current = state;
   }, [state]);
-
   const rafRef = useRef<number | null>(null);
   const lastSSERef = useRef<{ wallMs: number; playheadMs: number } | null>(
     null,
@@ -41,10 +40,57 @@ export function useServerTimelinePlayback(
   });
 
   const [isPaused, setIsPaused] = useState(false);
+  const [isTimelineBusy, setIsTimelineBusy] = useState(false);
+  const [timelineClientPendingCount, setTimelineClientPendingCount] =
+    useState(0);
+  const [timelineBusyOperation, setTimelineBusyOperation] = useState<
+    'play' | 'stop' | 'seek' | 'apply' | null
+  >(null);
+  const [timelineBusyStage, setTimelineBusyStage] = useState<
+    'idle' | 'running' | 'failed'
+  >('idle');
+  const [timelineBusyPhase, setTimelineBusyPhase] = useState<
+    | 'stopping-playback'
+    | 'seeking-to-zero'
+    | 'waiting-before-apply'
+    | 'applying-state'
+    | null
+  >(null);
+  const [busyTimeoutFallbackActive, setBusyTimeoutFallbackActive] =
+    useState(false);
+  const isTimelineClientPending = timelineClientPendingCount > 0;
   const autoPauseBeforeEndTriggeredRef = useRef(false);
+  const stopInFlightRef = useRef<Promise<void> | null>(null);
+  useEffect(() => {
+    setBusyTimeoutFallbackActive(false);
+  }, [roomId]);
 
-  const sseData = useTimelineSSE(roomId, state.isPlaying || isPaused);
+  const sseData = useTimelineSSE(roomId, true);
   const sseCountRef = useRef(0);
+  const runWithClientPending = useCallback(
+    async <T>(
+      operation: () => Promise<T>,
+      options?: { stopTimeoutMs?: number },
+    ): Promise<T> => {
+      setTimelineClientPendingCount((prev) => prev + 1);
+      let timeoutId: number | null = null;
+      if (options?.stopTimeoutMs) {
+        timeoutId = window.setTimeout(() => {
+          setBusyTimeoutFallbackActive(true);
+        }, options.stopTimeoutMs);
+      }
+      try {
+        return await operation();
+      } finally {
+        if (timeoutId !== null) {
+          window.clearTimeout(timeoutId);
+          setBusyTimeoutFallbackActive(false);
+        }
+        setTimelineClientPendingCount((prev) => Math.max(0, prev - 1));
+      }
+    },
+    [],
+  );
 
   const pushPlayheadUpdate = useCallback(
     (ms: number, options?: { force?: boolean }) => {
@@ -73,6 +119,17 @@ export function useServerTimelinePlayback(
   useEffect(() => {
     if (!sseData) return;
     sseCountRef.current += 1;
+    const busy = sseData.busy === true;
+    const operation = sseData.operation ?? null;
+    const stage = sseData.stage ?? 'idle';
+    const phase = sseData.phase ?? null;
+    setIsTimelineBusy(busy);
+    setTimelineBusyOperation(operation);
+    setTimelineBusyStage(stage);
+    setTimelineBusyPhase(phase);
+    if (!busy && busyTimeoutFallbackActive) {
+      setBusyTimeoutFallbackActive(false);
+    }
 
     if (sseData.isPaused && !isPaused) {
       setIsPaused(true);
@@ -104,7 +161,13 @@ export function useServerTimelinePlayback(
       };
       pushPlayheadUpdate(sseData.playheadMs, { force: true });
     }
-  }, [sseData, pushPlayheadUpdate, setPlaying, isPaused]);
+  }, [
+    sseData,
+    pushPlayheadUpdate,
+    setPlaying,
+    isPaused,
+    busyTimeoutFallbackActive,
+  ]);
 
   useEffect(() => {
     if (!state.isPlaying) {
@@ -147,6 +210,7 @@ export function useServerTimelinePlayback(
 
   const play = useCallback(async () => {
     if (stateRef.current.isPlaying) return;
+    setBusyTimeoutFallbackActive(false);
 
     const config = toServerTimelineConfig(stateRef.current);
     const fromMs = stateRef.current.playheadMs;
@@ -156,23 +220,27 @@ export function useServerTimelinePlayback(
     sseCountRef.current = 0;
 
     autoPauseBeforeEndTriggeredRef.current = false;
-    try {
-      await startTimelinePlayback(roomId, config, fromMs);
-      console.log(`[timeline-ui] PLAY server acknowledged`);
-      lastSSERef.current = {
-        wallMs: performance.now(),
-        playheadMs: fromMs,
-      };
-      setIsPaused(false);
-      setPlaying(true);
-    } catch (err) {
-      console.error('[timeline-ui] PLAY failed', err);
-      setPlaying(false);
-      lastSSERef.current = null;
-    }
-  }, [roomId, setPlaying, isPaused]);
+    await runWithClientPending(async () => {
+      try {
+        await startTimelinePlayback(roomId, config, fromMs);
+        console.log(`[timeline-ui] PLAY server acknowledged`);
+        lastSSERef.current = {
+          wallMs: performance.now(),
+          playheadMs: fromMs,
+        };
+        setIsPaused(false);
+        setPlaying(true);
+      } catch (err) {
+        console.error('[timeline-ui] PLAY failed', err);
+        setPlaying(false);
+        lastSSERef.current = null;
+        throw err;
+      }
+    });
+  }, [roomId, setPlaying, isPaused, runWithClientPending]);
 
   const pause = useCallback(async () => {
+    setBusyTimeoutFallbackActive(false);
     setPlaying(false);
     setIsPaused(true);
     if (rafRef.current) {
@@ -181,43 +249,70 @@ export function useServerTimelinePlayback(
     }
     lastSSERef.current = null;
 
-    try {
-      const result = await pauseTimeline(roomId);
-      pushPlayheadUpdate(result.playheadMs, { force: true });
-    } catch (err) {
-      console.error('[timeline-ui] PAUSE failed', err);
-      setIsPaused(false);
-    }
-  }, [roomId, pushPlayheadUpdate, setPlaying]);
+    await runWithClientPending(async () => {
+      try {
+        const result = await pauseTimeline(roomId);
+        pushPlayheadUpdate(result.playheadMs, { force: true });
+      } catch (err) {
+        console.error('[timeline-ui] PAUSE failed', err);
+        setIsPaused(false);
+        throw err;
+      }
+    });
+  }, [roomId, pushPlayheadUpdate, setPlaying, runWithClientPending]);
 
   const stop = useCallback(async () => {
-    autoPauseBeforeEndTriggeredRef.current = false;
-    setPlaying(false);
-    setIsPaused(false);
-    if (rafRef.current) {
-      cancelAnimationFrame(rafRef.current);
-      rafRef.current = null;
+    if (stopInFlightRef.current) {
+      return stopInFlightRef.current;
     }
-    lastSSERef.current = null;
-    pushPlayheadUpdate(0, { force: true });
-
-    try {
-      await stopTimelinePlayback(roomId);
-    } catch (err) {
-      console.error('[timeline] Failed to stop playback', err);
-    }
-
-    const config = toServerTimelineConfig(stateRef.current);
-    if (config.tracks.length === 0) return;
-    try {
-      await applyTimelineState(roomId, config, 0);
-    } catch (err) {
-      console.error('[timeline-ui] applyAtPlayhead(0) after STOP failed', err);
-    }
-  }, [roomId, pushPlayheadUpdate, setPlaying]);
+    const stopPromise = (async () => {
+      await runWithClientPending(
+        async () => {
+          let stopError: unknown = null;
+          autoPauseBeforeEndTriggeredRef.current = false;
+          setPlaying(false);
+          if (rafRef.current) {
+            cancelAnimationFrame(rafRef.current);
+            rafRef.current = null;
+          }
+          lastSSERef.current = null;
+          setBusyTimeoutFallbackActive(false);
+          try {
+            const result = await pauseTimeline(roomId);
+            pushPlayheadUpdate(result.playheadMs, { force: true });
+          } catch (err) {
+            console.error('[timeline-ui] PAUSE in stop failed', err);
+            stopError = err;
+          }
+          pushPlayheadUpdate(0, { force: true });
+          const config = toServerTimelineConfig(stateRef.current);
+          if (config.tracks.length > 0) {
+            try {
+              await applyTimelineState(roomId, config, 0);
+            } catch (err) {
+              console.error('[timeline-ui] apply at 0 in stop failed', err);
+              stopError = stopError ?? err;
+            }
+          }
+          setIsPaused(true);
+          if (stopError) {
+            throw stopError;
+          }
+        },
+        {
+          stopTimeoutMs: STOP_BUSY_TIMEOUT_MS,
+        },
+      );
+    })().finally(() => {
+      stopInFlightRef.current = null;
+    });
+    stopInFlightRef.current = stopPromise;
+    return stopPromise;
+  }, [roomId, pushPlayheadUpdate, setPlaying, runWithClientPending]);
 
   const seek = useCallback(
     async (ms: number) => {
+      setBusyTimeoutFallbackActive(false);
       autoPauseBeforeEndTriggeredRef.current = false;
       console.log(`[timeline-ui] SEEK to ${ms}ms`);
       pushPlayheadUpdate(ms, { force: true });
@@ -226,26 +321,33 @@ export function useServerTimelinePlayback(
         playheadMs: ms,
       };
 
-      try {
-        await seekTimeline(roomId, ms);
-      } catch (err) {
-        console.error('[timeline-ui] SEEK failed', err);
-      }
+      await runWithClientPending(async () => {
+        try {
+          await seekTimeline(roomId, ms);
+        } catch (err) {
+          console.error('[timeline-ui] SEEK failed', err);
+          throw err;
+        }
+      });
     },
-    [roomId, pushPlayheadUpdate],
+    [roomId, pushPlayheadUpdate, runWithClientPending],
   );
 
   const applyAtPlayhead = useCallback(async () => {
+    setBusyTimeoutFallbackActive(false);
     const config = toServerTimelineConfig(stateRef.current);
     if (config.tracks.length === 0) return;
     const playheadMs = stateRef.current.playheadMs;
-    try {
-      await applyTimelineState(roomId, config, playheadMs);
-      setIsPaused(true);
-    } catch (err) {
-      console.error('[timeline-ui] applyAtPlayhead failed', err);
-    }
-  }, [roomId]);
+    await runWithClientPending(async () => {
+      try {
+        await applyTimelineState(roomId, config, playheadMs);
+        setIsPaused(true);
+      } catch (err) {
+        console.error('[timeline-ui] applyAtPlayhead failed', err);
+        throw err;
+      }
+    });
+  }, [roomId, runWithClientPending]);
 
   useEffect(() => {
     return listenTimelineEvent(TIMELINE_EVENTS.APPLY_AT_PLAYHEAD, () => {
@@ -282,7 +384,9 @@ export function useServerTimelinePlayback(
     }
     autoPauseBeforeEndTriggeredRef.current = true;
     pushPlayheadUpdate(autoPauseAtMs, { force: true });
-    void pause();
+    void pause().catch((err) => {
+      console.error('[timeline-ui] auto pause failed', err);
+    });
   }, [
     state.isPlaying,
     state.playheadMs,
@@ -298,7 +402,9 @@ export function useServerTimelinePlayback(
     );
     if (!hasClips) return;
     hasAutoApplied.current = true;
-    void applyAtPlayhead();
+    void applyAtPlayhead().catch((err) => {
+      console.error('[timeline-ui] auto applyAtPlayhead failed', err);
+    });
   }, [state.tracks, roomId, applyAtPlayhead]);
 
   useEffect(() => {
@@ -307,5 +413,19 @@ export function useServerTimelinePlayback(
     };
   }, []);
 
-  return { play, pause, stop, seek, applyAtPlayhead, isPaused };
+  return {
+    play,
+    pause,
+    stop,
+    seek,
+    applyAtPlayhead,
+    isPaused,
+    isTimelineBusy,
+    isTimelineClientPending,
+    isTimelineInteractionLocked: isTimelineBusy || isTimelineClientPending,
+    timelineBusyOperation,
+    timelineBusyStage,
+    timelineBusyPhase,
+    timelineStopTimeoutActive: busyTimeoutFallbackActive,
+  };
 }

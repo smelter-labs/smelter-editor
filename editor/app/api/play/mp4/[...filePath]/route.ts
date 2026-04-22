@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-
-const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
+import { getServerSideServerUrl } from '@/lib/server-url.server';
 
 function proxyPlaybackHeaders(upstream: Response): Headers {
   const headers = new Headers();
@@ -23,11 +22,12 @@ export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ filePath: string[] }> },
 ) {
+  const baseUrl = await getServerSideServerUrl();
   const { filePath: segments } = await params;
   if (!segments?.length) {
     return NextResponse.json({ error: 'Missing file path' }, { status: 400 });
   }
-  if (!BASE_URL) {
+  if (!baseUrl) {
     return NextResponse.json(
       { error: 'Server URL not configured' },
       { status: 500 },
@@ -37,7 +37,7 @@ export async function GET(
   const relative = segments
     .map((segment) => encodeURIComponent(segment))
     .join('/');
-  const url = `${BASE_URL.replace(/\/$/, '')}/play/mp4/${relative}`;
+  const url = `${baseUrl.replace(/\/$/, '')}/play/mp4/${relative}`;
 
   try {
     const headers = new Headers();

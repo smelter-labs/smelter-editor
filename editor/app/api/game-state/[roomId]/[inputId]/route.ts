@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-
-const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
+import { getServerSideServerUrl } from '@/lib/server-url.server';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -16,7 +15,8 @@ export async function POST(
   request: Request,
   { params }: { params: Promise<{ roomId: string; inputId: string }> },
 ) {
-  if (!BASE_URL) {
+  const baseUrl = await getServerSideServerUrl();
+  if (!baseUrl) {
     return NextResponse.json(
       { error: 'SMELTER_EDITOR_SERVER_URL is not configured' },
       { status: 500 },
@@ -28,7 +28,7 @@ export async function POST(
     const body = await request.json();
 
     const response = await fetch(
-      `${BASE_URL}/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}/game-state`,
+      `${baseUrl}/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}/game-state`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

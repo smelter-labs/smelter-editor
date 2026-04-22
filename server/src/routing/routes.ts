@@ -52,6 +52,12 @@ const THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails', 'mp4');
 const HLS_THUMBNAILS_DIR = path.join(DATA_DIR, 'thumbnails', 'hls');
 const HLS_STREAMS_DIR = path.join(DATA_DIR, 'hls-streams');
 const isSyncDebugEnabled = process.env.SMELTER_SYNC_DEBUG === 'true';
+const isWsDebugEnabled = process.env.SMELTER_WS_DEBUG === 'true';
+
+function logWsDebug(phase: string, details: Record<string, unknown>): void {
+  if (!isWsDebugEnabled) return;
+  console.warn(`[ws][${phase}]`, details);
+}
 
 function summarizeSyncPayload(payload: unknown): unknown {
   if (
@@ -266,6 +272,13 @@ routes.register(websocket, {
   options: {
     perMessageDeflate: false,
   },
+});
+
+routes.addHook('onRequest', (req, reply, done) => {
+  if (req.method === 'OPTIONS') {
+    reply.header('Access-Control-Allow-Private-Network', 'true');
+  }
+  done();
 });
 
 routes.addHook('onResponse', (req, reply, done) => {
@@ -507,7 +520,8 @@ function parseRangeHeader(
     return null;
   }
 
-  const rawRange = rangeHeader.slice('bytes='.length).split(',')[0]?.trim() ?? '';
+  const rawRange =
+    rangeHeader.slice('bytes='.length).split(',')[0]?.trim() ?? '';
   const [rawStart, rawEnd] = rawRange.split('-');
   if (!rawStart && !rawEnd) {
     return null;
@@ -937,6 +951,7 @@ routes.get<RoomIdParams>(
       roomName: room.roomName,
       inputs: snapshot.inputs.map(toPublicInputState),
       layers: snapshot.layers,
+      isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
       whepUrl: room.getWhepUrl(),
       pendingDelete: room.pendingDelete,
       isPublic: room.isPublic,
@@ -965,7 +980,30 @@ routes.after(() => {
     method: 'GET',
     url: '/room/:roomId/ws',
     schema: { params: RoomIdParamsSchema },
-    handler: async (_req, res) => {
+    handler: async (req, res) => {
+      const { roomId } = req.params;
+      const upgrade = req.headers.upgrade ?? null;
+      const connection = req.headers.connection ?? null;
+      const forwardedProto = req.headers['x-forwarded-proto'] ?? null;
+
+      console.warn('[ws] rejected non-upgrade request', {
+        roomId,
+        method: req.method,
+        url: req.url,
+        host: req.headers.host ?? null,
+        origin: req.headers.origin ?? null,
+        upgrade,
+        connection,
+        forwardedProto,
+        remoteAddress: req.ip,
+        userAgent: req.headers['user-agent'] ?? null,
+      });
+
+      logWsDebug('rejected-headers', {
+        roomId,
+        headers: req.headers,
+      });
+
       res.status(426).send({
         error: 'Upgrade Required',
         message: 'Use a WebSocket client to connect to this endpoint.',
@@ -974,7 +1012,53 @@ routes.after(() => {
     wsHandler: (socket, req) => {
       const { roomId } = req.params;
       const clientId = uuidv4();
+
+      logWsDebug('accepted', {
+        roomId,
+        clientId,
+        origin: req.headers.origin ?? null,
+        host: req.headers.host ?? null,
+        forwardedProto: req.headers['x-forwarded-proto'] ?? null,
+        forwardedFor: req.headers['x-forwarded-for'] ?? null,
+        remoteAddress: req.ip,
+      });
+
+      socket.on('close', (code: any, reason: unknown) => {
+        logWsDebug('closed', {
+          roomId,
+          clientId,
+          code,
+          reason:
+            typeof reason === 'string'
+              ? reason
+              : Buffer.isBuffer(reason)
+                ? reason.toString()
+                : null,
+        });
+      });
+
+      socket.on('error', (err: unknown) => {
+        console.error('[ws] socket error', {
+          roomId,
+          clientId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      });
+
       roomEventBus.subscribe(roomId, clientId, socket);
+
+      const room = state.getRoom(roomId);
+      const timelinePlaybackState = room.getTimelinePlaybackState();
+      socket.send(
+        JSON.stringify({
+          type: 'timeline_playback_updated',
+          roomId,
+          isTimelinePlaying: timelinePlaybackState.isPlaying,
+          isPaused: timelinePlaybackState.isPaused,
+          playheadMs: timelinePlaybackState.playheadMs,
+          totalDurationMs: timelinePlaybackState.totalDurationMs,
+        }),
+      );
     },
   });
 });
@@ -1000,6 +1084,7 @@ routes.get('/rooms', async (_req, res) => {
         roomName: room.roomName,
         inputs: snapshot.inputs.map(toPublicInputState),
         layers: snapshot.layers,
+        isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
         whepUrl: room.getWhepUrl(),
         pendingDelete: room.pendingDelete,
         createdAt: room.creationTimestamp,
@@ -1332,6 +1417,7 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
         sourceId,
         layers: snapshot.layers,
         inputs: snapshot.inputs.map(toPublicInputState),
+        isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
       });
     }
     if (req.body.isPublic !== undefined) {
@@ -1432,6 +1518,7 @@ routes.post<RoomIdParams & { Body: Static<typeof InputSchema> }>(
         sourceId,
         layers: snapshot.layers,
         inputs: snapshot.inputs.map(toPublicInputState),
+        isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
       });
     }
     let whipUrl = `${config.whipBaseUrl}/${inputId}`;
@@ -1577,6 +1664,7 @@ routes.post<
       sourceId,
       layers: snapshot.layers,
       inputs: snapshot.inputs.map(toPublicInputState),
+      isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
     });
     res.status(200).send({ status: 'ok' });
   },
@@ -1627,6 +1715,7 @@ routes.post<
       sourceId,
       layers: snapshot.layers,
       inputs: snapshot.inputs.map(toPublicInputState),
+      isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
     });
     res.status(200).send({ status: 'ok' });
   },
@@ -1672,6 +1761,7 @@ routes.post<{
       sourceId,
       layers: snapshot.layers,
       inputs: snapshot.inputs.map(toPublicInputState),
+      isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
     });
     res.status(200).send({ status: 'ok' });
   },
@@ -1717,6 +1807,7 @@ routes.post<{
       sourceId,
       layers: snapshot.layers,
       inputs: snapshot.inputs.map(toPublicInputState),
+      isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
     });
     res.status(200).send({ status: 'ok' });
   },
@@ -1991,6 +2082,7 @@ routes.get<RoomIdParams>(
         roomName: room.roomName,
         inputs: snapshot.inputs.map(toPublicInputState),
         layers: snapshot.layers,
+        isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
         whepUrl: room.getWhepUrl(),
         pendingDelete: room.pendingDelete,
         isPublic: room.isPublic,

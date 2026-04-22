@@ -160,7 +160,7 @@ class WebSocketService {
       parsed.protocol = parsed.protocol === "https:" ? "wss:" : "ws:";
       baseUrl = `${parsed.protocol}//${parsed.host}${parsed.pathname.replace(/\/+$/, "")}`;
     } else {
-      baseUrl = `ws://${trimmedServerUrl}`;
+      baseUrl = `wss://${trimmedServerUrl}`;
     }
 
     return `${baseUrl}/room/${encodeURIComponent(roomId)}/ws`;

@@ -4,6 +4,7 @@ import React, {
   useCallback,
   useMemo,
   useRef,
+  useTransition,
 } from "react";
 import { View, StyleSheet } from "react-native";
 import { Chip, useTheme } from "react-native-paper";
@@ -12,6 +13,7 @@ import { useConnectionStore } from "../../store/connectionStore";
 import { useInputsStore } from "../../store/inputsStore";
 import { wsService } from "../../services/websocketService";
 import { apiService } from "../../services/apiService";
+import { TimelineInProgressOverlay } from "../../components/shared/TimelineInProgressOverlay";
 import { SidePanel } from "../../components/shared/SidePanel";
 import { SettingsPanel } from "./SettingsPanel";
 import { LayoutEffectsPanel } from "./LayoutEffectsPanel";
@@ -25,6 +27,7 @@ import type { Layer, LayerInput } from "../../types/layout";
 import type { Resolution } from "@smelter-editor/types";
 import type { WSEventPayload } from "../../types/websocket";
 import { areInputCardsEquivalent } from "../../utils/inputCardEquality";
+import { MaterialDesignIcons } from "@react-native-vector-icons/material-design-icons";
 
 // ─── Conversion helpers ───────────────────────────────────────────────────────
 
@@ -194,6 +197,8 @@ export function LayoutScreen() {
     removeInputFromLayers,
   } = useLayoutStore();
   const { serverUrl, roomId } = useConnectionStore();
+  const isTimelinePlaying = useConnectionStore((s) => s.isTimelinePlaying);
+  const setTimelinePlaying = useConnectionStore((s) => s.setTimelinePlaying);
   const inputs = useInputsStore((s) => s.inputs);
   const setInputs = useInputsStore((s) => s.setInputs);
 
@@ -206,41 +211,40 @@ export function LayoutScreen() {
   const [effectsInputId, setEffectsInputId] = useState<string | null>(null);
   const [layoutResetToken, setLayoutResetToken] = useState(0);
 
-  // Hold latest room_updated payload and apply at most once per animation frame.
   const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
+  const [, startTransition] = useTransition();
   const frameRef = useRef<number | null>(null);
 
   // Subscribe to server room updates
   useEffect(() => {
     const unsubRoom = wsService.on("room_updated", (event) => {
-      console.log(
-        "[Layout] Received room_updated event (will batch apply next frame):",
-        {
-          layerCount: event.layers.length,
-          firstLayerInputs: event.layers[0]?.inputs.length ?? 0,
-          firstLayerInputIds:
-            event.layers[0]?.inputs.map((li) => li.inputId).slice(0, 3) ?? [],
-        },
-      );
       pendingEventRef.current = event;
+
       if (frameRef.current !== null) return;
-      frameRef.current = requestAnimationFrame(() => {
-        frameRef.current = null;
-        const latest = pendingEventRef.current;
-        pendingEventRef.current = null;
-        if (!latest) return;
-        console.log("[Layout] Applying batched room_updated event");
-        setLayers(latest.layers);
-        const nextInputs = apiService.mapInputsToCards(latest.inputs);
-        const currentInputs = useInputsStore.getState().inputs;
-        if (!areInputCardsEquivalent(currentInputs, nextInputs)) {
-          setInputs(nextInputs);
-        }
-      });
+      frameRef.current = requestIdleCallback(
+        () => {
+          frameRef.current = null;
+          const latest = pendingEventRef.current;
+          pendingEventRef.current = null;
+          if (!latest) return;
+
+          startTransition(() => {
+            if (latest.isTimelinePlaying !== undefined) {
+              setTimelinePlaying(latest.isTimelinePlaying);
+            }
+            setLayers(latest.layers);
+
+            const nextInputs = apiService.mapInputsToCards(latest.inputs);
+            const currentInputs = useInputsStore.getState().inputs;
+            if (!areInputCardsEquivalent(currentInputs, nextInputs)) {
+              setInputs(nextInputs);
+            }
+          });
+        },
+        { timeout: 100 },
+      );
     });
 
-    // When an input is deleted, remove it from the layout immediately so the grid
-    // cell doesn't linger as a UUID-labelled rectangle.
     const unsubDeleted = wsService.on("input_deleted", (event) => {
       removeInputFromLayers(event.inputId);
     });
@@ -249,11 +253,18 @@ export function LayoutScreen() {
       unsubRoom();
       unsubDeleted();
       if (frameRef.current !== null) {
-        cancelAnimationFrame(frameRef.current);
+        cancelIdleCallback(frameRef.current);
         frameRef.current = null;
       }
     };
-  }, [serverUrl, roomId, setLayers, setInputs, removeInputFromLayers]);
+  }, [
+    serverUrl,
+    roomId,
+    setLayers,
+    setInputs,
+    setTimelinePlaying,
+    removeInputFromLayers,
+  ]);
 
   useEffect(() => {
     if (!effectsInputId) return;
@@ -262,6 +273,14 @@ export function LayoutScreen() {
       setEffectsInputId(null);
     }
   }, [effectsInputId, inputs]);
+
+  useEffect(() => {
+    if (!isTimelinePlaying) return;
+    setLayersPanelOpen(false);
+    setSettingsPanelOpen(false);
+    setEffectsPanelOpen(false);
+    setEffectsInputId(null);
+  }, [isTimelinePlaying]);
 
   // Push updated layers to server
   const pushLayers = useCallback(
@@ -403,108 +422,118 @@ export function LayoutScreen() {
 
   return (
     <View style={[styles.root, { backgroundColor: theme.colors.background }]}>
-      <ScreenLabel label={`Layout (${layers.length} layers)`} />
-
-      {/* Toolbar row */}
-      <View style={styles.toolbar}>
-        <Chip
-          compact
-          mode="flat"
-          style={styles.toolbarChip}
-          textStyle={styles.toolbarChipText}
-          onPress={() => setLayersPanelOpen((v) => !v)}
-        >
-          LAYERS
-        </Chip>
-        <Chip
-          compact
-          mode="flat"
-          style={styles.toolbarChip}
-          textStyle={styles.toolbarChipText}
-          onPress={() => {
-            setSettingsPanelSide("right");
-            setSettingsPanelOpen(true);
-          }}
-        >
-          ⚙
-        </Chip>
-      </View>
-
-      {/* Canvas: stacked layer grids — layers[0] is topmost (highest zIndex) */}
-      <View style={styles.canvas}>
-        {layers.map((layer, i) => {
-          // Skip rendering layer if all its inputs are hidden
-          const layerInputIds = layer.inputs.map((li) => li.inputId);
-          const allInputsHidden =
-            layerInputIds.length > 0 &&
-            layerInputIds.every((id) =>
-              inputs.some((inp) => inp.id === id && inp.isHidden),
-            );
-          if (allInputsHidden) return null;
-
-          const itemData = layerItemDataMap.get(layer.id) ?? [];
-          return (
-            <View
-              key={layer.id}
-              style={[
-                StyleSheet.absoluteFillObject,
-                { zIndex: layers.length - i },
-              ]}
-              pointerEvents="box-none"
-            >
-              <ReshufflableGridWrapper
-                key={`${layer.id}-${layoutResetToken}`}
-                itemData={itemData}
-                renderedComponent={GridCell}
-                onItemChange={(items) => handleGridChange(layer.id, items)}
-                onItemLongPress={(itemId) => {
-                  setEffectsInputId(itemId);
-                  setEffectsPanelOpen(true);
-                }}
-                rows={rows}
-                columns={columns}
-                containerStyle={styles.layerGrid}
-              />
-            </View>
-          );
-        })}
-      </View>
-
-      {/* Layers panel — slide-in from right */}
-      <SidePanel
-        isVisible={layersPanelOpen}
-        side="right"
-        width={272}
-        onClose={() => setLayersPanelOpen(false)}
+      <View
+        style={styles.screenContent}
+        pointerEvents={isTimelinePlaying ? "none" : "auto"}
       >
-        <LayersPanel
-          layers={layers}
-          inputs={inputs}
-          onLayersChange={(newLayers) => void pushLayers(newLayers)}
-          onToggleLayerVisibility={handleToggleLayerVisibility}
-          onAddLayer={handleAddLayer}
-          onDeleteLayer={handleDeleteLayer}
+        <ScreenLabel label={`Layout (${layers.length} layers)`} />
+
+        {/* Toolbar row */}
+        <View style={styles.toolbar}>
+          <Chip
+            compact
+            mode="flat"
+            style={styles.toolbarChip}
+            textStyle={styles.toolbarChipText}
+            onPress={() => setLayersPanelOpen((v) => !v)}
+          >
+            LAYERS
+          </Chip>
+          <Chip
+            compact
+            mode="flat"
+            style={styles.toolbarChip}
+            textStyle={styles.toolbarChipText}
+            onPress={() => {
+              setSettingsPanelSide("right");
+              setSettingsPanelOpen(true);
+            }}
+          >
+            <MaterialDesignIcons name="cog" color="#777777" size={16} />
+          </Chip>
+        </View>
+
+        {/* Canvas: stacked layer grids — layers[0] is topmost (highest zIndex) */}
+        <View style={styles.canvas}>
+          {layers.map((layer, i) => {
+            // Skip rendering layer if all its inputs are hidden
+            const layerInputIds = layer.inputs.map((li) => li.inputId);
+            const allInputsHidden =
+              layerInputIds.length > 0 &&
+              layerInputIds.every((id) =>
+                inputs.some((inp) => inp.id === id && inp.isHidden),
+              );
+            if (allInputsHidden) return null;
+
+            const itemData = layerItemDataMap.get(layer.id) ?? [];
+            return (
+              <View
+                key={layer.id}
+                style={[
+                  StyleSheet.absoluteFillObject,
+                  { zIndex: layers.length - i },
+                ]}
+                pointerEvents="box-none"
+              >
+                <ReshufflableGridWrapper
+                  key={`${layer.id}-${layoutResetToken}`}
+                  itemData={itemData}
+                  renderedComponent={GridCell}
+                  onItemChange={(items) => handleGridChange(layer.id, items)}
+                  onItemLongPress={(itemId) => {
+                    setEffectsInputId(itemId);
+                    setEffectsPanelOpen(true);
+                  }}
+                  rows={rows}
+                  columns={columns}
+                  containerStyle={styles.layerGrid}
+                />
+              </View>
+            );
+          })}
+        </View>
+
+        {/* Layers panel — slide-in from right */}
+        <SidePanel
+          isVisible={layersPanelOpen}
+          side="right"
+          width={272}
+          onClose={() => setLayersPanelOpen(false)}
+        >
+          <LayersPanel
+            layers={layers}
+            inputs={inputs}
+            onLayersChange={(newLayers) => void pushLayers(newLayers)}
+            onToggleLayerVisibility={handleToggleLayerVisibility}
+            onAddLayer={handleAddLayer}
+            onDeleteLayer={handleDeleteLayer}
+          />
+        </SidePanel>
+
+        {/* Settings panel */}
+        <SettingsPanel
+          isVisible={settingsPanelOpen}
+          side={settingsPanelSide}
+          onClose={() => setSettingsPanelOpen(false)}
         />
-      </SidePanel>
 
-      {/* Settings panel */}
-      <SettingsPanel
-        isVisible={settingsPanelOpen}
-        side={settingsPanelSide}
-        onClose={() => setSettingsPanelOpen(false)}
-      />
+        <LayoutEffectsPanel
+          isVisible={effectsPanelOpen}
+          inputId={effectsInputId}
+          onClose={() => setEffectsPanelOpen(false)}
+        />
+      </View>
 
-      <LayoutEffectsPanel
-        isVisible={effectsPanelOpen}
-        inputId={effectsInputId}
-        onClose={() => setEffectsPanelOpen(false)}
-      />
+      {isTimelinePlaying && <TimelineInProgressOverlay />}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   root: {
+    flex: 1,
+  },
+  screenContent: {
     flex: 1,
   },
   toolbar: {

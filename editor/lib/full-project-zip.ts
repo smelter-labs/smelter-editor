@@ -1,5 +1,9 @@
 import JSZip from 'jszip';
-import { parseRoomConfig, type RoomConfig, type RoomConfigInput } from './room-config';
+import {
+  parseRoomConfig,
+  type RoomConfig,
+  type RoomConfigInput,
+} from './room-config';
 
 type FullProjectAssetKind = 'mp4' | 'audio' | 'image';
 
@@ -119,7 +123,9 @@ function pushAssetFromInput(
   }
 }
 
-export function buildFullProjectManifest(config: RoomConfig): FullProjectManifest {
+export function buildFullProjectManifest(
+  config: RoomConfig,
+): FullProjectManifest {
   const assets: FullProjectManifestAsset[] = [];
   config.inputs.forEach((input, inputIndex) =>
     pushAssetFromInput(assets, input, inputIndex),
@@ -154,7 +160,9 @@ function getMissingAssetReferences(config: RoomConfig): string[] {
   return missing;
 }
 
-async function fetchAssetData(asset: FullProjectManifestAsset): Promise<ArrayBuffer> {
+async function fetchAssetData(
+  asset: FullProjectManifestAsset,
+): Promise<ArrayBuffer> {
   const baseDir = ASSET_BASE_DIR[asset.kind];
   if (!asset.path.startsWith(`${baseDir}/`)) {
     throw new Error(`Invalid ${asset.kind} asset path: ${asset.path}`);
@@ -190,7 +198,9 @@ async function uploadAsset(
 
   const baseDir = ASSET_BASE_DIR[asset.kind];
   if (!asset.path.startsWith(`${baseDir}/`)) {
-    throw new Error(`Invalid ${asset.kind} asset path in manifest: ${asset.path}`);
+    throw new Error(
+      `Invalid ${asset.kind} asset path in manifest: ${asset.path}`,
+    );
   }
 
   const relativePath = asset.path.slice(baseDir.length + 1);

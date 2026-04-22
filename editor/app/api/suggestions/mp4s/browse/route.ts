@@ -1,9 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
-
-const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
+import { getServerSideServerUrl } from '@/lib/server-url.server';
 
 export async function GET(req: NextRequest) {
-  if (!BASE_URL) {
+  const baseUrl = await getServerSideServerUrl();
+  if (!baseUrl) {
     return NextResponse.json(
       { error: 'Server URL not configured' },
       { status: 500 },
@@ -11,7 +11,7 @@ export async function GET(req: NextRequest) {
   }
 
   const folder = req.nextUrl.searchParams.get('folder') ?? '';
-  const url = `${BASE_URL}/suggestions/mp4s/browse${folder ? `?folder=${encodeURIComponent(folder)}` : ''}`;
+  const url = `${baseUrl}/suggestions/mp4s/browse${folder ? `?folder=${encodeURIComponent(folder)}` : ''}`;
 
   try {
     const upstream = await fetch(url);

@@ -46,6 +46,7 @@ import {
 import { AddVideoModal } from './components/AddVideoModal';
 import { FxCanvas, FX_PRESET_MODAL } from '@/lib/fx';
 import { type PendingWhipInput } from './components/ConfigurationSection';
+import { getEffectiveClientServerUrl, toWsUrl } from '@/lib/server-url';
 import {
   exportRoomConfig,
   downloadRoomConfig,
@@ -359,8 +360,22 @@ function ControlPanelWithActions({
     setIsScreenshareActive,
   } = whipConnections;
 
+  const [normalizationProgress, setNormalizationProgress] = useState<
+    Record<string, number>
+  >({});
+
   const { peers } = useRoomWebSocket(roomId, {
     onRemoteInputChange: handleRefreshState,
+    onNormalizationProgress: (filePath, percent) => {
+      setNormalizationProgress((prev) => ({ ...prev, [filePath]: percent }));
+    },
+    onNormalizationDone: (filePath) => {
+      setNormalizationProgress((prev) => {
+        const next = { ...prev };
+        delete next[filePath];
+        return next;
+      });
+    },
   });
 
   useEffect(() => {
@@ -459,6 +474,7 @@ function ControlPanelWithActions({
       isRecording: isRecordingFromServer,
       isFrozen: isFrozenFromServer,
       audioAnalysisEnabled: audioAnalysisEnabledFromServer,
+      normalizationProgress,
     }),
     [
       roomId,
@@ -469,6 +485,7 @@ function ControlPanelWithActions({
       isRecordingFromServer,
       isFrozenFromServer,
       audioAnalysisEnabledFromServer,
+      normalizationProgress,
     ],
   );
 
@@ -588,6 +605,7 @@ function ControlPanelInner({
     SelectedTimelineClip[]
   >([]);
   const [timelinePlayheadMs, setTimelinePlayheadMs] = useState(0);
+  const [timelineIsPlaying, setTimelineIsPlaying] = useState(false);
   const timelineStateRef = useRef<TimelineState | null>(null);
 
   useTimelineEventDetection(timelineStateRef, inputs);
@@ -742,7 +760,19 @@ function ControlPanelInner({
         }
         connectAndPlaySessionActiveRef.current = false;
       }
+
+      if (
+        wasPlaying !== state.isPlaying &&
+        process.env.NODE_ENV !== 'production'
+      ) {
+        console.log('[timeline-order] governance changed', {
+          isPlaying: state.isPlaying,
+          governedInputCount: Object.keys(timelineTrackOrder).length,
+        });
+      }
+
       previousTimelinePlayingRef.current = state.isPlaying;
+      setTimelineIsPlaying(state.isPlaying);
 
       if (selectedTimelineClips.length > 0) {
         setTimelinePlayheadMs((prev) =>
@@ -888,6 +918,7 @@ function ControlPanelInner({
     connectAndPlaySessionActiveRef.current = false;
     setConnectPlayCompletionOpen(false);
     setTimelinePlayheadMs(0);
+    setTimelineIsPlaying(false);
   }, [roomId]);
 
   useEffect(() => {
@@ -898,7 +929,11 @@ function ControlPanelInner({
   }, [selectedTimelineClips.length]);
 
   useEffect(() => {
-    if (isGuest || isPersistingTimelineLayerOrderRef.current) {
+    if (
+      isGuest ||
+      !timelineIsPlaying ||
+      isPersistingTimelineLayerOrderRef.current
+    ) {
       return;
     }
 
@@ -915,7 +950,13 @@ function ControlPanelInner({
     void handleLayersChange(nextLayers).finally(() => {
       isPersistingTimelineLayerOrderRef.current = false;
     });
-  }, [isGuest, roomState.layers, timelineTrackOrder, handleLayersChange]);
+  }, [
+    isGuest,
+    timelineIsPlaying,
+    roomState.layers,
+    timelineTrackOrder,
+    handleLayersChange,
+  ]);
 
   if (renderDashboard) {
     const settingsNav = (
@@ -945,7 +986,7 @@ function ControlPanelInner({
           onLayersChange={handleLayersChange}
           activeClipColors={activeClipColors}
           allTimelineInputIds={allTimelineInputIds}
-          timelineTrackOrder={timelineTrackOrder}
+          timelineTrackOrder={timelineIsPlaying ? timelineTrackOrder : {}}
         />
       </div>
     );
@@ -1112,7 +1153,7 @@ function ControlPanelInner({
       onLayersChange={handleLayersChange}
       activeClipColors={activeClipColors}
       allTimelineInputIds={allTimelineInputIds}
-      timelineTrackOrder={timelineTrackOrder}
+      timelineTrackOrder={timelineIsPlaying ? timelineTrackOrder : {}}
     />
   ) : null;
 
@@ -2173,11 +2214,8 @@ function QRModal({
 
   const joinUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
-    const url = new URL(
-      `/room/${encodeURIComponent(roomId)}`,
-      window.location.origin,
-    );
-    return url.toString();
+    const wsBase = toWsUrl(getEffectiveClientServerUrl());
+    return `${wsBase}/room/${encodeURIComponent(roomId)}`;
   }, [roomId]);
 
   const handleCopy = useCallback(async () => {

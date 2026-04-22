@@ -122,10 +122,7 @@ export function PendingConnectionsModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='max-w-lg overflow-hidden border-cyan-400/20 bg-neutral-950/70 shadow-[0_0_60px_rgba(8,145,178,0.12)]'>
-        <FxCanvas
-          config={FX_PRESET_MODAL}
-          isActive={open}
-        />
+        <FxCanvas config={FX_PRESET_MODAL} isActive={open} />
         <DialogHeader className='relative'>
           <DialogTitle>
             {isConnecting
@@ -180,9 +177,7 @@ export function PendingConnectionsModal({
             <Button
               size='lg'
               className={`w-full cursor-pointer ${canConnectAll && !isRunningAction ? 'animate-pulse-cyan' : ''}`}
-              disabled={
-                !canConnectAll || !canConnectAndPlay || isRunningAction
-              }
+              disabled={!canConnectAll || !canConnectAndPlay || isRunningAction}
               onClick={() => void handleConnectAction('play')}>
               {pendingAction === 'play' ? (
                 <LoadingSpinner size='sm' variant='spinner' />

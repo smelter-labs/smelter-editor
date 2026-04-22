@@ -26,6 +26,24 @@ const snakeVisualSpeedMultiplier =
 
 const isProduction = process.env.ENVIRONMENT === 'production';
 
+/** Fishjam app path segment before `/whep` and `/whip` (two Docker stacks = two values). */
+const defaultProductionWebRtcApp = 'smelter-editor-webrtc';
+
+function productionWebRtcBaseUrls(): { whepBaseUrl: string; whipBaseUrl: string } {
+  const whepOverride = process.env.SMELTER_WHEP_BASE_URL?.trim();
+  const whipOverride = process.env.SMELTER_WHIP_BASE_URL?.trim();
+  if (whepOverride && whipOverride) {
+    return { whepBaseUrl: whepOverride, whipBaseUrl: whipOverride };
+  }
+  const app =
+    process.env.SMELTER_EDITOR_WEBRTC_APP?.trim() || defaultProductionWebRtcApp;
+  const host = 'https://puffer.fishjam.io';
+  return {
+    whepBaseUrl: `${host}/${app}/whep`,
+    whipBaseUrl: `${host}/${app}/whip`,
+  };
+}
+
 function buildH264Encoder(): Outputs.WhepVideoEncoderOptions {
   const encoderEnv = process.env.SMELTER_H264_ENCODER;
   const useVulkan = encoderEnv === 'vulkan' || (!encoderEnv && isProduction);
@@ -65,8 +83,7 @@ export const config: Config = isProduction
       logger: {
         level: (process.env.SMELTER_DEMO_ROUTER_LOGGER_LEVEL ?? 'warn') as any,
       },
-      whepBaseUrl: 'https://puffer.fishjam.io/smelter-editor-webrtc/whep',
-      whipBaseUrl: 'https://puffer.fishjam.io/smelter-editor-webrtc/whip',
+      ...productionWebRtcBaseUrls(),
       h264Decoder: 'ffmpeg_h264',
       h264Encoder: buildH264Encoder(),
       snakeVisualSpeedMultiplier,

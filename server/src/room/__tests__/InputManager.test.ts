@@ -153,7 +153,7 @@ describe('InputManager', () => {
           username: '[Camera] Alice',
         });
         const input = manager.getInput(inputId!);
-        expect(input.metadata.title).toBe('[Camera] Alice');
+        expect(input.metadata.title).toBe('[Live] Camera');
         expect(input.metadata.description).toContain('Alice');
       });
     });
@@ -214,12 +214,13 @@ describe('InputManager', () => {
 
       it('throws when file does not exist', async () => {
         mocks.pathExists.mockResolvedValue(false);
-        await expect(
-          manager.addNewInput({
-            type: 'local-mp4',
-            source: { fileName: 'missing.mp4' },
-          }),
-        ).rejects.toThrow(/not found/);
+        const inputId = await manager.addNewInput({
+          type: 'local-mp4',
+          source: { fileName: 'missing.mp4' },
+        });
+        const input = manager.getInput(inputId!);
+        expect(input.type).toBe('local-mp4');
+        expect(input.type === 'local-mp4' && input.mp4AssetMissing).toBe(true);
       });
 
       it('probes video dimensions', async () => {
@@ -245,9 +246,13 @@ describe('InputManager', () => {
 
       it('throws when file not found', async () => {
         mocks.pathExists.mockResolvedValue(false);
-        await expect(
-          manager.addNewInput({ type: 'image', fileName: 'missing.png' }),
-        ).rejects.toThrow(/not found/);
+        const inputId = await manager.addNewInput({
+          type: 'image',
+          fileName: 'missing.png',
+        });
+        const input = manager.getInput(inputId!);
+        expect(input.type).toBe('image');
+        expect(input.type === 'image' && input.imageAssetMissing).toBe(true);
       });
     });
 

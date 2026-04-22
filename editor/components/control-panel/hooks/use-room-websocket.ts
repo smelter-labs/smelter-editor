@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { getEffectiveClientServerUrl, toWsUrl } from '@/lib/server-url';
 
 // Mirrors server/src/core/roomEventBus.ts - sync manually.
 export type ConnectedPeer = {
@@ -40,14 +41,25 @@ type ConnectedEvent = {
   clientId: string;
 };
 
+type NormalizationProgressEvent = {
+  type: 'normalization_progress';
+  filePath: string;
+  percent: number;
+};
+
+type NormalizationDoneEvent = {
+  type: 'normalization_done';
+  filePath: string;
+};
+
 type ServerMessage =
   | InputUpdatedEvent
   | InputDeletedEvent
   | RoomUpdatedEvent
   | PeersUpdatedEvent
-  | ConnectedEvent;
-
-const WS_BASE = process.env.NEXT_PUBLIC_SMELTER_WS_URL ?? 'ws://localhost:3001';
+  | ConnectedEvent
+  | NormalizationProgressEvent
+  | NormalizationDoneEvent;
 
 const CLIENT_NAME = 'Editor';
 const RECONNECT_BASE_DELAY_MS = 1_000;
@@ -57,6 +69,8 @@ const CLOSE_CODE_ROOM_DELETED = 1001;
 
 type Opts = {
   onRemoteInputChange?: () => void;
+  onNormalizationProgress?: (filePath: string, percent: number) => void;
+  onNormalizationDone?: (filePath: string) => void;
 };
 
 export function useRoomWebSocket(
@@ -73,7 +87,8 @@ export function useRoomWebSocket(
     let destroyed = false;
 
     function connect() {
-      const url = `${WS_BASE}/room/${encodeURIComponent(roomId)}/ws`;
+      const wsBase = toWsUrl(getEffectiveClientServerUrl());
+      const url = `${wsBase}/room/${encodeURIComponent(roomId)}/ws`;
       const ws = new WebSocket(url);
 
       ws.addEventListener('open', () => {
@@ -117,6 +132,10 @@ export function useRoomWebSocket(
             msg,
           );
           optsRef.current?.onRemoteInputChange?.();
+        } else if (msg.type === 'normalization_progress') {
+          optsRef.current?.onNormalizationProgress?.(msg.filePath, msg.percent);
+        } else if (msg.type === 'normalization_done') {
+          optsRef.current?.onNormalizationDone?.(msg.filePath);
         }
       });
 
