@@ -211,7 +211,7 @@ export function LayoutScreen() {
   const [layoutResetToken, setLayoutResetToken] = useState(0);
 
   const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
   const idleHandleRef = useRef<number | null>(null);
 
   // Subscribe to server room updates

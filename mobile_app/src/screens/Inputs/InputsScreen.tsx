@@ -62,7 +62,7 @@ export function InputsScreen() {
 
   const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
   const taskRef = useRef<number | null>(null);
-  const [isPending, startTransition] = useTransition();
+  const [, startTransition] = useTransition();
 
   // Subscribe to server input updates
   useEffect(() => {
