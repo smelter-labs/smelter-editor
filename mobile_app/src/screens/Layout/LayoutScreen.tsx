@@ -27,6 +27,7 @@ import type { Layer, LayerInput } from "../../types/layout";
 import type { Resolution } from "@smelter-editor/types";
 import type { WSEventPayload } from "../../types/websocket";
 import { areInputCardsEquivalent } from "../../utils/inputCardEquality";
+import { MaterialDesignIcons } from "@react-native-vector-icons/material-design-icons";
 
 // ─── Conversion helpers ───────────────────────────────────────────────────────
 
@@ -212,17 +213,17 @@ export function LayoutScreen() {
 
   const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
   const [, startTransition] = useTransition();
-  const idleHandleRef = useRef<number | null>(null);
+  const frameRef = useRef<number | null>(null);
 
   // Subscribe to server room updates
   useEffect(() => {
     const unsubRoom = wsService.on("room_updated", (event) => {
       pendingEventRef.current = event;
 
-      if (idleHandleRef.current !== null) return;
-      idleHandleRef.current = requestIdleCallback(
+      if (frameRef.current !== null) return;
+      frameRef.current = requestIdleCallback(
         () => {
-          idleHandleRef.current = null;
+          frameRef.current = null;
           const latest = pendingEventRef.current;
           pendingEventRef.current = null;
           if (!latest) return;
@@ -251,9 +252,9 @@ export function LayoutScreen() {
     return () => {
       unsubRoom();
       unsubDeleted();
-      if (idleHandleRef.current !== null) {
-        cancelIdleCallback(idleHandleRef.current);
-        idleHandleRef.current = null;
+      if (frameRef.current !== null) {
+        cancelIdleCallback(frameRef.current);
+        frameRef.current = null;
       }
     };
   }, [
@@ -272,6 +273,14 @@ export function LayoutScreen() {
       setEffectsInputId(null);
     }
   }, [effectsInputId, inputs]);
+
+  useEffect(() => {
+    if (!isTimelinePlaying) return;
+    setLayersPanelOpen(false);
+    setSettingsPanelOpen(false);
+    setEffectsPanelOpen(false);
+    setEffectsInputId(null);
+  }, [isTimelinePlaying]);
 
   // Push updated layers to server
   const pushLayers = useCallback(
@@ -440,7 +449,7 @@ export function LayoutScreen() {
               setSettingsPanelOpen(true);
             }}
           >
-            ⚙
+            <MaterialDesignIcons name="cog" color="#777777" size={16} />
           </Chip>
         </View>
 

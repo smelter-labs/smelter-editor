@@ -41,6 +41,62 @@ const shallowEqualObject = (first: unknown, second: unknown): boolean => {
   return true;
 };
 
+const areGridItemsEquivalent = <T,>(
+  first: GridItem<T>[],
+  second: GridItem<T>[],
+): boolean =>
+  first.length === second.length &&
+  first.every(
+    (item, index) =>
+      item.id === second[index]?.id &&
+      item.startColumn === second[index]?.startColumn &&
+      item.startRow === second[index]?.startRow &&
+      item.width === second[index]?.width &&
+      item.height === second[index]?.height &&
+      shallowEqualObject(item.itemProps, second[index]?.itemProps),
+  );
+
+const summarizeGridDiff = <T,>(
+  previous: GridItem<T>[],
+  next: GridItem<T>[],
+) => {
+  const prevById = new Map(previous.map((item) => [item.id, item]));
+  const nextById = new Map(next.map((item) => [item.id, item]));
+
+  let movedCount = 0;
+  let resizedCount = 0;
+  for (const [id, prevItem] of prevById) {
+    const nextItem = nextById.get(id);
+    if (!nextItem) continue;
+    if (
+      prevItem.startColumn !== nextItem.startColumn ||
+      prevItem.startRow !== nextItem.startRow
+    ) {
+      movedCount += 1;
+    }
+    if (
+      prevItem.width !== nextItem.width ||
+      prevItem.height !== nextItem.height
+    ) {
+      resizedCount += 1;
+    }
+  }
+
+  const removedCount = previous.filter((item) => !nextById.has(item.id)).length;
+  const addedCount = next.filter((item) => !prevById.has(item.id)).length;
+  const orderChanged =
+    previous.length !== next.length ||
+    previous.some((item, index) => item.id !== next[index]?.id);
+
+  return {
+    movedCount,
+    resizedCount,
+    removedCount,
+    addedCount,
+    orderChanged,
+  };
+};
+
 const isOverlapping = <T,>(first: GridItem<T>, second: GridItem<T>) => {
   const firstEndCol = first.startColumn + first.width;
   const firstEndRow = first.startRow + first.height;
@@ -572,14 +628,9 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
     })),
   );
 
-  // Sync prop changes from itemData to internal data state, but only if not from grid.
+  // Sync prop changes from itemData to internal data state.
   // Handles structural changes (add / remove / reorder) by matching on semantic id.
   useEffect(() => {
-    if (isUpdatingFromGrid.current) {
-      isUpdatingFromGrid.current = false;
-      return;
-    }
-
     setData((prev) => {
       const next = itemData.map((item) => ({
         id: item.props.id,
@@ -591,19 +642,21 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
       }));
 
       // Avoid unnecessary state updates
-      if (
-        next.length === prev.length &&
-        next.every(
-          (item, i) =>
-            item.id === prev[i].id &&
-            item.startColumn === prev[i].startColumn &&
-            item.startRow === prev[i].startRow &&
-            item.width === prev[i].width &&
-            item.height === prev[i].height &&
-            shallowEqualObject(item.itemProps, prev[i].itemProps),
-        )
-      ) {
+      if (areGridItemsEquivalent(next, prev)) {
+        if (isUpdatingFromGrid.current) {
+          isUpdatingFromGrid.current = false;
+        }
         return prev;
+      }
+
+      if (isUpdatingFromGrid.current) {
+        isUpdatingFromGrid.current = false;
+        if (__DEV__) {
+          console.log("[LayoutGrid] Applying external layout correction", {
+            ...summarizeGridDiff(prev, next),
+            nextItemCount: next.length,
+          });
+        }
       }
 
       return next;
