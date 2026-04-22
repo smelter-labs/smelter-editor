@@ -4,9 +4,7 @@ import type {
   ImportConfigDoneEvent,
   ImportConfigStreamEvent,
 } from '@smelter-editor/types';
-
-const SERVER_URL =
-  process.env.NEXT_PUBLIC_SMELTER_SERVER_URL?.replace(/\/$/, '') ?? '';
+import { getEffectiveClientServerUrl } from '@/lib/server-url';
 
 type ImportConfigProgress = {
   onProgress: (event: ImportConfigProgressEvent) => void;
@@ -17,7 +15,8 @@ export async function streamImportConfig(
   body: ImportConfigRequest,
   callbacks: ImportConfigProgress,
 ): Promise<ImportConfigDoneEvent> {
-  const url = `${SERVER_URL}/room/${encodeURIComponent(roomId)}/import-config`;
+  const serverUrl = getEffectiveClientServerUrl();
+  const url = `${serverUrl}/room/${encodeURIComponent(roomId)}/import-config`;
 
   const response = await fetch(url, {
     method: 'POST',

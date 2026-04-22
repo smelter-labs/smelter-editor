@@ -2,9 +2,9 @@
 
 import type { SpawnOptions } from 'node:child_process';
 import { spawn as nodeSpawn } from 'node:child_process';
-import { assert } from 'node:console';
 import type { Resolution, ResolutionPreset } from '@/lib/resolution';
 import { createSmelterApiClient } from '@/lib/api-client';
+import { getServerSideServerUrl } from '@/lib/server-url.server';
 import type {
   AddInputResponse,
   AvailableShader,
@@ -27,11 +27,14 @@ import type {
 import type { SavedItemInfo, StorageResult } from '@/lib/storage-client';
 import type { TimelineConfig } from '@smelter-editor/types';
 
-const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
+async function getClient() {
+  const baseUrl = await getServerSideServerUrl();
+  if (!baseUrl) {
+    throw new Error('Missing SMELTER_EDITOR_SERVER_URL');
+  }
 
-assert(BASE_URL);
-
-const client = createSmelterApiClient(BASE_URL!);
+  return createSmelterApiClient(baseUrl);
+}
 
 function isServerUnavailableError(err: unknown): boolean {
   const maybeError = err as { status?: number; code?: string } | undefined;
@@ -48,7 +51,7 @@ export async function createNewRoom(
   whepUrl: string;
   resolution: Resolution;
 }> {
-  return client.createNewRoom(initInputs, skipDefaultInputs, resolution);
+  return (await getClient()).createNewRoom(initInputs, skipDefaultInputs, resolution);
 }
 
 export async function updateRoom(
@@ -56,46 +59,46 @@ export async function updateRoom(
   opts: UpdateRoomOptions,
   sourceId?: string,
 ): Promise<{ roomId: string; whepUrl: string }> {
-  return client.updateRoom(roomId, opts, sourceId);
+  return (await getClient()).updateRoom(roomId, opts, sourceId);
 }
 
 export async function getRoomInfo(
   roomId: string,
 ): Promise<RoomState | 'not-found'> {
-  return client.getRoomInfo(roomId);
+  return (await getClient()).getRoomInfo(roomId);
 }
 
 export async function startRecording(
   roomId: string,
 ): Promise<StartRecordingResponse> {
-  return client.startRecording(roomId);
+  return (await getClient()).startRecording(roomId);
 }
 
 export async function stopRecording(
   roomId: string,
 ): Promise<StopRecordingResponse> {
-  return client.stopRecording(roomId);
+  return (await getClient()).stopRecording(roomId);
 }
 
 export async function pauseTimeline(
   roomId: string,
 ): Promise<{ playheadMs: number; isPaused: true }> {
-  return client.pauseTimeline(roomId);
+  return (await getClient()).pauseTimeline(roomId);
 }
 
 export async function getRecordings(): Promise<RecordingInfo[]> {
-  return client.getRecordings();
+  return (await getClient()).getRecordings();
 }
 
 export async function getRoomRecordings(
   roomId: string,
 ): Promise<RecordingInfo[]> {
-  return client.getRoomRecordings(roomId);
+  return (await getClient()).getRoomRecordings(roomId);
 }
 
 export async function getTwitchSuggestions(): Promise<InputSuggestions> {
   try {
-    return await client.getTwitchSuggestions();
+    return (await getClient()).getTwitchSuggestions();
   } catch (err) {
     if (isServerUnavailableError(err)) {
       return { twitch: [] };
@@ -106,7 +109,7 @@ export async function getTwitchSuggestions(): Promise<InputSuggestions> {
 
 export async function getMP4Suggestions(): Promise<MP4Suggestions> {
   try {
-    return await client.getMP4Suggestions();
+    return (await getClient()).getMP4Suggestions();
   } catch (err) {
     if (isServerUnavailableError(err)) {
       return { mp4s: [] };
@@ -117,7 +120,7 @@ export async function getMP4Suggestions(): Promise<MP4Suggestions> {
 
 export async function getKickSuggestions(): Promise<KickSuggestions> {
   try {
-    return await client.getKickSuggestions();
+    return (await getClient()).getKickSuggestions();
   } catch (err) {
     if (isServerUnavailableError(err)) {
       return { kick: [] };
@@ -128,7 +131,7 @@ export async function getKickSuggestions(): Promise<KickSuggestions> {
 
 export async function getPictureSuggestions(): Promise<PictureSuggestions> {
   try {
-    return await client.getPictureSuggestions();
+    return (await getClient()).getPictureSuggestions();
   } catch (err) {
     if (isServerUnavailableError(err)) {
       return { pictures: [] };
@@ -139,7 +142,7 @@ export async function getPictureSuggestions(): Promise<PictureSuggestions> {
 
 export async function getAudioSuggestions(): Promise<AudioSuggestions> {
   try {
-    return await client.getAudioSuggestions();
+    return (await getClient()).getAudioSuggestions();
   } catch (err) {
     if (isServerUnavailableError(err)) {
       return { audios: [] };
@@ -149,23 +152,23 @@ export async function getAudioSuggestions(): Promise<AudioSuggestions> {
 }
 
 export async function addTwitchInput(roomId: string, channelId: string) {
-  return client.addTwitchInput(roomId, channelId);
+  return (await getClient()).addTwitchInput(roomId, channelId);
 }
 
 export async function addKickInput(roomId: string, channelId: string) {
-  return client.addKickInput(roomId, channelId);
+  return (await getClient()).addKickInput(roomId, channelId);
 }
 
 export async function addMP4Input(roomId: string, mp4FileName: string) {
-  return client.addMP4Input(roomId, mp4FileName);
+  return (await getClient()).addMP4Input(roomId, mp4FileName);
 }
 
 export async function addAudioInput(roomId: string, audioFileName: string) {
-  return client.addAudioInput(roomId, audioFileName);
+  return (await getClient()).addAudioInput(roomId, audioFileName);
 }
 
 export async function addImageInput(roomId: string, imageFileNameOrId: string) {
-  return client.addImageInput(roomId, imageFileNameOrId);
+  return (await getClient()).addImageInput(roomId, imageFileNameOrId);
 }
 
 export async function addTextInput(
@@ -173,19 +176,19 @@ export async function addTextInput(
   text: string,
   textAlign: 'left' | 'center' | 'right' = 'left',
 ) {
-  return client.addTextInput(roomId, text, textAlign);
+  return (await getClient()).addTextInput(roomId, text, textAlign);
 }
 
 export async function addSnakeGameInput(roomId: string, title?: string) {
-  return client.addSnakeGameInput(roomId, title);
+  return (await getClient()).addSnakeGameInput(roomId, title);
 }
 
 export async function addHandsInput(roomId: string, sourceInputId: string) {
-  return client.addHandsInput(roomId, sourceInputId);
+  return (await getClient()).addHandsInput(roomId, sourceInputId);
 }
 
 export async function addHlsInput(roomId: string, url: string) {
-  return client.addHlsInput(roomId, url);
+  return (await getClient()).addHlsInput(roomId, url);
 }
 
 export async function removeInput(
@@ -193,32 +196,32 @@ export async function removeInput(
   inputId: string,
   sourceId?: string,
 ) {
-  return client.removeInput(roomId, inputId, sourceId);
+  return (await getClient()).removeInput(roomId, inputId, sourceId);
 }
 
 export async function deleteRoom(roomId: string) {
-  return client.deleteRoom(roomId);
+  return (await getClient()).deleteRoom(roomId);
 }
 
 export async function addCameraInput(
   roomId: string,
   username?: string,
 ): Promise<AddInputResponse> {
-  return client.addCameraInput(roomId, username);
+  return (await getClient()).addCameraInput(roomId, username);
 }
 
 export async function acknowledgeWhipInput(
   roomId: string,
   inputId: string,
 ): Promise<void> {
-  return client.acknowledgeWhipInput(roomId, inputId);
+  return (await getClient()).acknowledgeWhipInput(roomId, inputId);
 }
 
 export async function setPendingWhipInputs(
   roomId: string,
   pendingWhipInputs: PendingWhipInputData[],
 ): Promise<void> {
-  return client.setPendingWhipInputs(roomId, pendingWhipInputs);
+  return (await getClient()).setPendingWhipInputs(roomId, pendingWhipInputs);
 }
 
 // ── Config storage ───────────────────────────────────────────
@@ -226,25 +229,25 @@ export async function saveRemoteConfig(
   name: string,
   config: object,
 ): Promise<StorageResult<{ fileName: string; name: string }>> {
-  return client.configStorage.save(name, config);
+  return (await getClient()).configStorage.save(name, config);
 }
 
 export async function listRemoteConfigs(): Promise<
   StorageResult<{ items: SavedItemInfo[] }>
 > {
-  return client.configStorage.list();
+  return (await getClient()).configStorage.list();
 }
 
 export async function loadRemoteConfig(
   fileName: string,
 ): Promise<StorageResult<{ name: string; data: object; savedAt: string }>> {
-  return client.configStorage.load(fileName);
+  return (await getClient()).configStorage.load(fileName);
 }
 
 export async function deleteRemoteConfig(
   fileName: string,
 ): Promise<StorageResult> {
-  return client.configStorage.remove(fileName);
+  return (await getClient()).configStorage.remove(fileName);
 }
 
 // ── Shader preset storage ────────────────────────────────────
@@ -252,13 +255,13 @@ export async function saveShaderPreset(
   name: string,
   shaders: ShaderConfig[],
 ): Promise<StorageResult<{ fileName: string; name: string }>> {
-  return client.shaderPresetStorage.save(name, shaders);
+  return (await getClient()).shaderPresetStorage.save(name, shaders);
 }
 
 export async function listShaderPresets(): Promise<
   StorageResult<{ items: SavedItemInfo[] }>
 > {
-  return client.shaderPresetStorage.list();
+  return (await getClient()).shaderPresetStorage.list();
 }
 
 export async function loadShaderPreset(
@@ -266,7 +269,7 @@ export async function loadShaderPreset(
 ): Promise<
   StorageResult<{ name: string; data: ShaderConfig[]; savedAt: string }>
 > {
-  return client.shaderPresetStorage.load(fileName);
+  return (await getClient()).shaderPresetStorage.load(fileName);
 }
 
 export async function updateShaderPreset(
@@ -274,13 +277,13 @@ export async function updateShaderPreset(
   name: string,
   shaders: ShaderConfig[],
 ): Promise<StorageResult<{ fileName: string; name: string }>> {
-  return client.shaderPresetStorage.update(fileName, name, shaders);
+  return (await getClient()).shaderPresetStorage.update(fileName, name, shaders);
 }
 
 export async function deleteShaderPreset(
   fileName: string,
 ): Promise<StorageResult> {
-  return client.shaderPresetStorage.remove(fileName);
+  return (await getClient()).shaderPresetStorage.remove(fileName);
 }
 
 // ── Dashboard layout storage ─────────────────────────────────
@@ -288,25 +291,25 @@ export async function saveDashboardLayout(
   name: string,
   layout: object,
 ): Promise<StorageResult<{ fileName: string; name: string }>> {
-  return client.dashboardLayoutStorage.save(name, layout);
+  return (await getClient()).dashboardLayoutStorage.save(name, layout);
 }
 
 export async function listDashboardLayouts(): Promise<
   StorageResult<{ items: SavedItemInfo[] }>
 > {
-  return client.dashboardLayoutStorage.list();
+  return (await getClient()).dashboardLayoutStorage.list();
 }
 
 export async function loadDashboardLayout(
   fileName: string,
 ): Promise<StorageResult<{ name: string; data: object; savedAt: string }>> {
-  return client.dashboardLayoutStorage.load(fileName);
+  return (await getClient()).dashboardLayoutStorage.load(fileName);
 }
 
 export async function deleteDashboardLayout(
   fileName: string,
 ): Promise<StorageResult> {
-  return client.dashboardLayoutStorage.remove(fileName);
+  return (await getClient()).dashboardLayoutStorage.remove(fileName);
 }
 
 // ── Presentation config storage ──────────────────────────────
@@ -314,25 +317,25 @@ export async function savePresentationConfig(
   name: string,
   presentationConfig: object,
 ): Promise<StorageResult<{ fileName: string; name: string }>> {
-  return client.presentationConfigStorage.save(name, presentationConfig);
+  return (await getClient()).presentationConfigStorage.save(name, presentationConfig);
 }
 
 export async function listPresentationConfigs(): Promise<
   StorageResult<{ items: SavedItemInfo[] }>
 > {
-  return client.presentationConfigStorage.list();
+  return (await getClient()).presentationConfigStorage.list();
 }
 
 export async function loadPresentationConfig(
   fileName: string,
 ): Promise<StorageResult<{ name: string; data: object; savedAt: string }>> {
-  return client.presentationConfigStorage.load(fileName);
+  return (await getClient()).presentationConfigStorage.load(fileName);
 }
 
 export async function deletePresentationConfig(
   fileName: string,
 ): Promise<StorageResult> {
-  return client.presentationConfigStorage.remove(fileName);
+  return (await getClient()).presentationConfigStorage.remove(fileName);
 }
 
 // ── HLS stream storage ──────────────────────────────────────
@@ -340,13 +343,13 @@ export async function saveHlsStream(
   name: string,
   stream: { url: string },
 ): Promise<StorageResult<{ fileName: string; name: string }>> {
-  return client.hlsStreamStorage.save(name, stream);
+  return (await getClient()).hlsStreamStorage.save(name, stream);
 }
 
 export async function listHlsStreams(): Promise<
   StorageResult<{ items: SavedItemInfo[] }>
 > {
-  return client.hlsStreamStorage.list();
+  return (await getClient()).hlsStreamStorage.list();
 }
 
 export async function loadHlsStream(
@@ -354,7 +357,7 @@ export async function loadHlsStream(
 ): Promise<
   StorageResult<{ name: string; data: { url: string }; savedAt: string }>
 > {
-  return client.hlsStreamStorage.load(fileName);
+  return (await getClient()).hlsStreamStorage.load(fileName);
 }
 
 export async function updateHlsStream(
@@ -362,17 +365,17 @@ export async function updateHlsStream(
   name: string,
   stream: { url: string },
 ): Promise<StorageResult<{ fileName: string; name: string }>> {
-  return client.hlsStreamStorage.update(fileName, name, stream);
+  return (await getClient()).hlsStreamStorage.update(fileName, name, stream);
 }
 
 export async function deleteHlsStream(
   fileName: string,
 ): Promise<StorageResult> {
-  return client.hlsStreamStorage.remove(fileName);
+  return (await getClient()).hlsStreamStorage.remove(fileName);
 }
 
 export async function getAllRooms(): Promise<any> {
-  return client.getAllRooms();
+  return (await getClient()).getAllRooms();
 }
 
 export async function updateInput(
@@ -381,15 +384,15 @@ export async function updateInput(
   opts: Partial<UpdateInputOptions>,
   sourceId?: string,
 ) {
-  return client.updateInput(roomId, inputId, opts, sourceId);
+  return (await getClient()).updateInput(roomId, inputId, opts, sourceId);
 }
 
 export async function disconnectInput(roomId: string, inputId: string) {
-  return client.disconnectInput(roomId, inputId);
+  return (await getClient()).disconnectInput(roomId, inputId);
 }
 
 export async function connectInput(roomId: string, inputId: string) {
-  return client.connectInput(roomId, inputId);
+  return (await getClient()).connectInput(roomId, inputId);
 }
 
 export async function resolveMissingLocalMp4(
@@ -397,7 +400,7 @@ export async function resolveMissingLocalMp4(
   inputId: string,
   opts: { fileName?: string; audioFileName?: string },
 ) {
-  return client.resolveMissingLocalMp4(roomId, inputId, opts);
+  return (await getClient()).resolveMissingLocalMp4(roomId, inputId, opts);
 }
 
 export async function resolveMissingImage(
@@ -405,7 +408,7 @@ export async function resolveMissingImage(
   inputId: string,
   opts: { fileName: string },
 ) {
-  return client.resolveMissingImage(roomId, inputId, opts);
+  return (await getClient()).resolveMissingImage(roomId, inputId, opts);
 }
 
 export async function hideInput(
@@ -419,7 +422,7 @@ export async function hideInput(
         direction: 'in' | 'out';
       },
 ) {
-  return client.hideInput(roomId, inputId, sourceIdOrTransition);
+  return (await getClient()).hideInput(roomId, inputId, sourceIdOrTransition);
 }
 
 export async function showInput(
@@ -433,7 +436,7 @@ export async function showInput(
         direction: 'in' | 'out';
       },
 ) {
-  return client.showInput(roomId, inputId, sourceIdOrTransition);
+  return (await getClient()).showInput(roomId, inputId, sourceIdOrTransition);
 }
 
 export async function toggleMotionDetection(
@@ -441,14 +444,14 @@ export async function toggleMotionDetection(
   inputId: string,
   enabled: boolean,
 ): Promise<void> {
-  return client.toggleMotionDetection(roomId, inputId, enabled);
+  return (await getClient()).toggleMotionDetection(roomId, inputId, enabled);
 }
 
 export async function setAudioAnalysisEnabled(
   roomId: string,
   enabled: boolean,
 ): Promise<void> {
-  return client.setAudioAnalysisEnabled(roomId, enabled);
+  return (await getClient()).setAudioAnalysisEnabled(roomId, enabled);
 }
 
 export async function restartMp4Input(
@@ -457,15 +460,15 @@ export async function restartMp4Input(
   playFromMs: number,
   loop: boolean,
 ): Promise<void> {
-  return client.restartMp4Input(roomId, inputId, playFromMs, loop);
+  return (await getClient()).restartMp4Input(roomId, inputId, playFromMs, loop);
 }
 
 export async function getMp4Duration(fileName: string): Promise<number> {
-  return client.getMp4Duration(fileName);
+  return (await getClient()).getMp4Duration(fileName);
 }
 
 export async function getAudioDuration(fileName: string): Promise<number> {
-  return client.getAudioDuration(fileName);
+  return (await getClient()).getAudioDuration(fileName);
 }
 
 export async function restartService(): Promise<void> {
@@ -480,11 +483,11 @@ export async function restartService(): Promise<void> {
 }
 
 export async function restartSmelter(): Promise<void> {
-  await client.restartSmelter();
+  return (await getClient()).restartSmelter();
 }
 
 export async function getAvailableShaders(): Promise<AvailableShader[]> {
-  return client.getAvailableShaders();
+  return (await getClient()).getAvailableShaders();
 }
 
 // ── Timeline playback ────────────────────────────────────────
@@ -494,20 +497,20 @@ export async function startTimelinePlayback(
   config: TimelineConfig,
   fromMs?: number,
 ): Promise<{ status: string }> {
-  return client.startTimelinePlayback(roomId, config, fromMs);
+  return (await getClient()).startTimelinePlayback(roomId, config, fromMs);
 }
 
 export async function stopTimelinePlayback(
   roomId: string,
 ): Promise<{ status: string }> {
-  return client.stopTimelinePlayback(roomId);
+  return (await getClient()).stopTimelinePlayback(roomId);
 }
 
 export async function seekTimeline(
   roomId: string,
   ms: number,
 ): Promise<{ status: string }> {
-  return client.seekTimeline(roomId, ms);
+  return (await getClient()).seekTimeline(roomId, ms);
 }
 
 export async function applyTimelineState(
@@ -515,7 +518,7 @@ export async function applyTimelineState(
   config: TimelineConfig,
   playheadMs: number,
 ): Promise<{ status: string }> {
-  return client.applyTimelineState(roomId, config, playheadMs);
+  return (await getClient()).applyTimelineState(roomId, config, playheadMs);
 }
 
 function spawn(

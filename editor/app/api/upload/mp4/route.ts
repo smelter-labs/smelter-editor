@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server';
-
-const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
+import { getServerSideServerUrl } from '@/lib/server-url.server';
 
 function getErrorDetails(error: unknown) {
   if (error instanceof Error) {
@@ -22,7 +21,8 @@ function getErrorDetails(error: unknown) {
 }
 
 export async function POST(req: NextRequest) {
-  if (!BASE_URL) {
+  const baseUrl = await getServerSideServerUrl();
+  if (!baseUrl) {
     console.error('[upload/mp4 proxy] missing SMELTER_EDITOR_SERVER_URL');
     return NextResponse.json(
       { error: 'Server URL not configured' },
@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     const headers = new Headers();
     const contentType = req.headers.get('content-type');
     const contentLength = req.headers.get('content-length');
-    const upstreamUrl = `${BASE_URL}/upload/mp4`;
+    const upstreamUrl = `${baseUrl}/upload/mp4`;
 
     console.log('[upload/mp4 proxy] forwarding request', {
       upstreamUrl,
@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     const details = getErrorDetails(error);
     console.error('[upload/mp4 proxy] failed', {
-      upstreamUrl: `${BASE_URL}/upload/mp4`,
+      upstreamUrl: `${baseUrl}/upload/mp4`,
       contentType: req.headers.get('content-type'),
       contentLength: req.headers.get('content-length'),
       ...details,
