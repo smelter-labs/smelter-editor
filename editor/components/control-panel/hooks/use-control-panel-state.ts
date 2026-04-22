@@ -49,10 +49,9 @@ export function useControlPanelState(
   const [listVersion, setListVersion] = useState<number>(0);
 
   const handleRefreshState = useCallback(async () => {
-    setInputWrappers(getInputWrappers(inputsRef.current));
     setListVersion((v) => v + 1);
     await refreshState();
-  }, [getInputWrappers, refreshState]);
+  }, [refreshState]);
 
   useEffect(() => {
     setInputWrappers(getInputWrappers(inputs));

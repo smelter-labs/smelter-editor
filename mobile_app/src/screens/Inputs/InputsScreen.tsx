@@ -61,7 +61,7 @@ export function InputsScreen() {
   }, []);
 
   const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
-  const taskRef = useRef<number | null>(null);
+  const frameRef = useRef<number | null>(null);
   const [, startTransition] = useTransition();
 
   // Subscribe to server input updates
@@ -79,37 +79,34 @@ export function InputsScreen() {
 
     const unsubRoom = wsService.on("room_updated", (event) => {
       pendingEventRef.current = event;
-      if (taskRef.current !== null) return;
-      taskRef.current = requestIdleCallback(
-        () => {
-          taskRef.current = null;
-          const latest = pendingEventRef.current;
-          pendingEventRef.current = null;
-          if (!latest) return;
-          startTransition(() => {
-            if (latest.isTimelinePlaying !== undefined) {
-              setTimelinePlaying(latest.isTimelinePlaying);
-            }
-            setLayers(latest.layers);
+      if (frameRef.current !== null) return;
+      frameRef.current = requestIdleCallback(() => {
+        frameRef.current = null;
+        const latest = pendingEventRef.current;
+        pendingEventRef.current = null;
+        if (!latest) return;
+        startTransition(() => {
+          if (latest.isTimelinePlaying !== undefined) {
+            setTimelinePlaying(latest.isTimelinePlaying);
+          }
+          setLayers(latest.layers);
 
-            const nextInputs = apiService.mapInputsToCards(latest.inputs);
-            const currentInputs = useInputsStore.getState().inputs;
-            if (!areInputCardsEquivalent(currentInputs, nextInputs)) {
-              setInputs(nextInputs);
-            }
-          });
-        },
-        { timeout: 100 },
-      );
+          const nextInputs = apiService.mapInputsToCards(latest.inputs);
+          const currentInputs = useInputsStore.getState().inputs;
+          if (!areInputCardsEquivalent(currentInputs, nextInputs)) {
+            setInputs(nextInputs);
+          }
+        });
+      });
     });
 
     return () => {
       unsubUpdated();
       unsubDeleted();
       unsubRoom();
-      if (taskRef.current !== null) {
-        cancelIdleCallback(taskRef.current);
-        taskRef.current = null;
+      if (frameRef.current !== null) {
+        cancelIdleCallback(frameRef.current);
+        frameRef.current = null;
       }
     };
   }, [
