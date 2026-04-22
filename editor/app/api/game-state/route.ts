@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
-
-const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
+import { getServerSideServerUrl } from '@/lib/server-url.server';
 
 function getCorsHeaders(request?: Request) {
   const requestedHeaders =
@@ -28,7 +27,8 @@ export async function OPTIONS(request: Request) {
 }
 
 export async function POST(request: Request) {
-  if (!BASE_URL) {
+  const baseUrl = await getServerSideServerUrl();
+  if (!baseUrl) {
     return NextResponse.json(
       { error: 'SMELTER_EDITOR_SERVER_URL is not configured' },
       { status: 500, headers: getCorsHeaders(request) },
@@ -39,7 +39,7 @@ export async function POST(request: Request) {
     const gameId = request.headers.get('x-game-id');
     const body = await request.json();
 
-    const response = await fetch(`${BASE_URL}/game-state`, {
+    const response = await fetch(`${baseUrl}/game-state`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

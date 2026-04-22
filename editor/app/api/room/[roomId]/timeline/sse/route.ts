@@ -1,19 +1,19 @@
-const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
-
+import { getServerSideServerUrl } from '@/lib/server-url.server';
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ roomId: string }> },
 ) {
+  const baseUrl = await getServerSideServerUrl();
   const { roomId } = await params;
 
-  if (!BASE_URL) {
+  if (!baseUrl) {
     return new Response('SMELTER_EDITOR_SERVER_URL is not configured', {
       status: 500,
     });
   }
 
   const upstream = await fetch(
-    `${BASE_URL}/room/${encodeURIComponent(roomId)}/timeline/sse`,
+    `${baseUrl}/room/${encodeURIComponent(roomId)}/timeline/sse`,
     {
       headers: { Accept: 'text/event-stream' },
       cache: 'no-store',

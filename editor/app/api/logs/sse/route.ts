@@ -1,13 +1,13 @@
-const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
-
+import { getServerSideServerUrl } from '@/lib/server-url.server';
 export async function GET() {
-  if (!BASE_URL) {
+  const baseUrl = await getServerSideServerUrl();
+  if (!baseUrl) {
     return new Response('SMELTER_EDITOR_SERVER_URL is not configured', {
       status: 500,
     });
   }
 
-  const upstream = await fetch(`${BASE_URL}/logs/sse`, {
+  const upstream = await fetch(`${baseUrl}/logs/sse`, {
     headers: { Accept: 'text/event-stream' },
     cache: 'no-store',
   });

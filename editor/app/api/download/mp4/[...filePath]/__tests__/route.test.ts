@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('server-only', () => ({}));
+
+vi.mock('next/headers', () => ({
+  cookies: async () => ({ get: () => undefined }),
+}));
+
 describe('download mp4 api proxy', () => {
   beforeEach(() => {
     vi.restoreAllMocks();

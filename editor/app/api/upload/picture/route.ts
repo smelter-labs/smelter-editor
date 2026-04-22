@@ -1,9 +1,9 @@
 import { NextResponse, type NextRequest } from 'next/server';
-
-const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
+import { getServerSideServerUrl } from '@/lib/server-url.server';
 
 export async function POST(req: NextRequest) {
-  if (!BASE_URL) {
+  const baseUrl = await getServerSideServerUrl();
+  if (!baseUrl) {
     return NextResponse.json(
       { error: 'Server URL not configured' },
       { status: 500 },
@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
       headers.set('content-length', contentLength);
     }
 
-    const upstream = await fetch(`${BASE_URL}/upload/picture`, {
+    const upstream = await fetch(`${baseUrl}/upload/picture`, {
       method: 'POST',
       body: req.body,
       headers,

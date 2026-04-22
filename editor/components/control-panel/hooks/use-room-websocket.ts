@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { getEffectiveClientServerUrl, toWsUrl } from '@/lib/server-url';
 
 // Mirrors server/src/core/roomEventBus.ts - sync manually.
 export type ConnectedPeer = {
@@ -60,8 +61,6 @@ type ServerMessage =
   | NormalizationProgressEvent
   | NormalizationDoneEvent;
 
-const WS_BASE = process.env.NEXT_PUBLIC_SMELTER_WS_URL ?? 'ws://localhost:3001';
-
 const CLIENT_NAME = 'Editor';
 const RECONNECT_BASE_DELAY_MS = 1_000;
 const RECONNECT_MAX_DELAY_MS = 30_000;
@@ -88,7 +87,8 @@ export function useRoomWebSocket(
     let destroyed = false;
 
     function connect() {
-      const url = `${WS_BASE}/room/${encodeURIComponent(roomId)}/ws`;
+      const wsBase = toWsUrl(getEffectiveClientServerUrl());
+      const url = `${wsBase}/room/${encodeURIComponent(roomId)}/ws`;
       const ws = new WebSocket(url);
 
       ws.addEventListener('open', () => {

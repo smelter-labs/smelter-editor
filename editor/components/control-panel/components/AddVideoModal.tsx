@@ -34,6 +34,7 @@ import { toast } from 'sonner';
 import type { ChannelSuggestion, Input } from '@/lib/types';
 import { v4 as uuidv4 } from 'uuid';
 import { SelectablePreviewCard } from './asset-browser/selectable-preview-card';
+import { getEffectiveClientServerUrl } from '@/lib/server-url';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -366,31 +367,39 @@ type UploadJob = {
   errorMessage?: string;
 };
 
-const PUBLIC_SERVER_URL =
-  process.env.NEXT_PUBLIC_SMELTER_SERVER_URL?.replace(/\/$/, '') ?? '';
-
 function buildUploadUrl(
   path: string,
   opts?: { preferProxy?: boolean },
 ): string {
+  const publicServerUrl = getEffectiveClientServerUrl();
   if (opts?.preferProxy) {
     return `/api${path}`;
   }
 
-  return PUBLIC_SERVER_URL ? `${PUBLIC_SERVER_URL}${path}` : `/api${path}`;
+  return publicServerUrl ? `${publicServerUrl}${path}` : `/api${path}`;
 }
 
-const UPLOAD_ROUTES: Record<UploadMediaType, string> = {
-  mp4: buildUploadUrl('/upload/mp4'),
-  picture: buildUploadUrl('/upload/picture'),
-  audio: buildUploadUrl('/upload/audio'),
-};
+function getUploadRoute(mediaType: UploadMediaType): string {
+  switch (mediaType) {
+    case 'mp4':
+      return buildUploadUrl('/upload/mp4');
+    case 'picture':
+      return buildUploadUrl('/upload/picture');
+    case 'audio':
+      return buildUploadUrl('/upload/audio');
+  }
+}
 
-const FOLDER_ROUTES: Record<UploadMediaType, string> = {
-  mp4: buildUploadUrl('/upload/mp4/folder'),
-  picture: buildUploadUrl('/upload/picture/folder'),
-  audio: buildUploadUrl('/upload/audio/folder'),
-};
+function getFolderRoute(mediaType: UploadMediaType): string {
+  switch (mediaType) {
+    case 'mp4':
+      return buildUploadUrl('/upload/mp4/folder');
+    case 'picture':
+      return buildUploadUrl('/upload/picture/folder');
+    case 'audio':
+      return buildUploadUrl('/upload/audio/folder');
+  }
+}
 
 async function uploadFile(
   file: File,
@@ -407,7 +416,7 @@ async function uploadFile(
     formData.append('file', file);
 
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', UPLOAD_ROUTES[mediaType]);
+    xhr.open('POST', getUploadRoute(mediaType));
 
     xhr.upload.addEventListener('progress', (event) => {
       if (!event.lengthComputable) return;
@@ -460,7 +469,7 @@ async function createFolder(
   mediaType: UploadMediaType,
   folder: string,
 ): Promise<void> {
-  const route = FOLDER_ROUTES[mediaType];
+  const route = getFolderRoute(mediaType);
   const res = await fetch(route, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -489,7 +498,7 @@ async function deleteAsset(
     .filter(Boolean)
     .map((segment) => encodeURIComponent(segment))
     .join('/');
-  const res = await fetch(`${UPLOAD_ROUTES[mediaType]}/${encodedPath}`, {
+  const res = await fetch(`${getUploadRoute(mediaType)}/${encodedPath}`, {
     method: 'DELETE',
   });
   if (!res.ok) {
