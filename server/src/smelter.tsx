@@ -313,7 +313,7 @@ class SmelterManager {
         // and throws (e.g. Cannot read properties of undefined (reading 'scheduler')).
         const registerHlsInput = this.instance.registerInput.bind(
           this.instance,
-        ) as (
+        ) as unknown as (
           inputId: string,
           request: {
             type: 'hls';
