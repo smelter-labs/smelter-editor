@@ -16,6 +16,7 @@ import { loadUserName, saveUserName } from '../whip-input/utils/whip-storage';
 import { stopCameraAndConnection } from '../whip-input/utils/preview';
 import {
   loadWhipSession,
+  loadLastWhipInputId,
   saveWhipSession,
   saveLastWhipInputId,
 } from '../whip-input/utils/whip-storage';
@@ -3103,10 +3104,12 @@ function ActionInspector({
         <WhipActionInspector
           kind='camera'
           roomId={roomId}
+          inputs={inputs}
           onDone={onDone}
           onInputCreated={onInputCreated}
           pcRef={whipCtx.cameraPcRef}
           streamRef={whipCtx.cameraStreamRef}
+          activeWhipInputId={whipCtx.activeCameraInputId}
           setActiveWhipInputId={whipCtx.setActiveCameraInputId}
           setIsWhipActive={whipCtx.setIsCameraActive}
         />
@@ -3116,10 +3119,12 @@ function ActionInspector({
         <WhipActionInspector
           kind='screenshare'
           roomId={roomId}
+          inputs={inputs}
           onDone={onDone}
           onInputCreated={onInputCreated}
           pcRef={whipCtx.screensharePcRef}
           streamRef={whipCtx.screenshareStreamRef}
+          activeWhipInputId={whipCtx.activeScreenshareInputId}
           setActiveWhipInputId={whipCtx.setActiveScreenshareInputId}
           setIsWhipActive={whipCtx.setIsScreenshareActive}
         />
@@ -3645,24 +3650,29 @@ function HandsActionInspector({
 function WhipActionInspector({
   kind,
   roomId,
+  inputs,
   onDone,
   onInputCreated,
   pcRef,
   streamRef,
+  activeWhipInputId,
   setActiveWhipInputId,
   setIsWhipActive,
 }: {
   kind: 'camera' | 'screenshare';
   roomId: string;
+  inputs: Input[];
   onDone: () => Promise<void>;
   onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
   pcRef: MutableRefObject<RTCPeerConnection | null>;
   streamRef: MutableRefObject<MediaStream | null>;
+  activeWhipInputId: string | null;
   setActiveWhipInputId: (id: string | null) => void;
   setIsWhipActive: (active: boolean) => void;
 }) {
-  const { addCameraInput } = useActions();
+  const { addCameraInput, removeInput } = useActions();
   const isMobileDevice = useIsMobileDevice();
+  const isSubmittingRef = useRef(false);
 
   const [userName, setUserNameLocal] = useState<string>(() => {
     const saved = loadUserName(roomId);
@@ -3684,13 +3694,52 @@ function WhipActionInspector({
   const [loading, setLoading] = useState(false);
 
   const handleAdd = async () => {
+    if (isSubmittingRef.current) return;
     const cleanedName = userName.trim();
     if (!cleanedName) {
       toast.error('Please enter a username.');
       return;
     }
+    isSubmittingRef.current = true;
     setLoading(true);
     try {
+      stopCameraAndConnection(pcRef, streamRef);
+      setIsWhipActive(false);
+      setActiveWhipInputId(null);
+
+      const removableWhipInputIds = new Set<string>();
+      if (activeWhipInputId) {
+        removableWhipInputIds.add(activeWhipInputId);
+      }
+      const session = loadWhipSession();
+      if (session?.roomId === roomId && session.inputId) {
+        removableWhipInputIds.add(session.inputId);
+      }
+      const lastInputId = loadLastWhipInputId(roomId);
+      if (lastInputId) {
+        removableWhipInputIds.add(lastInputId);
+      }
+
+      const expectedLiveTitle =
+        kind === 'camera' ? '[Live] Camera' : '[Live] Screenshare';
+      const expectedDescription = `Whip Input for ${cleanedName}`;
+      for (const input of inputs) {
+        if (
+          input.type === 'whip' &&
+          input.title === expectedLiveTitle &&
+          input.description === expectedDescription
+        ) {
+          removableWhipInputIds.add(input.inputId);
+        }
+      }
+      for (const inputId of removableWhipInputIds) {
+        try {
+          await removeInput(roomId, inputId);
+        } catch {
+          // Best-effort cleanup; input may already be gone.
+        }
+      }
+
       const response = await addCameraInput(roomId, cleanedName);
       setActiveWhipInputId(response.inputId);
       setIsWhipActive(false);
@@ -3748,6 +3797,7 @@ function WhipActionInspector({
       setIsWhipActive(false);
     } finally {
       setLoading(false);
+      isSubmittingRef.current = false;
     }
   };
 

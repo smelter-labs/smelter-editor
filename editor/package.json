@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "pnpm --filter @smelter-editor/types build && rm -rf .next &&  next dev --turbopack",
+    "dev:instance-a": "SMELTER_EDITOR_SERVER_URL=http://localhost:9071 pnpm dev",
+    "dev:instance-b": "SMELTER_EDITOR_SERVER_URL=http://localhost:10071 pnpm dev -- --port 3002",
     "build": "pnpm --filter @smelter-editor/types build && rm -rf .next && next build",
     "start": "next start",
     "lint": "next lint --quiet",

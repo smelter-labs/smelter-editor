@@ -15,17 +15,7 @@ services:
       # SMELTER_H264_ENCODER_PRESET: "ultrafast"
       # SMELTER_H264_ENCODER_BITRATE: "20000000"
     volumes:
-      - .data/recordings:/home/smelter/demo/server/data/recordings
-      - .data/configs:/home/smelter/demo/server/data/configs
-      - .data/mp4s:/home/smelter/demo/server/data/mp4s
-      - .data/pictures:/home/smelter/demo/server/data/pictures
-      - .data/audios:/home/smelter/demo/server/data/audios
-      - .data/screenshots:/home/smelter/demo/server/data/screenshots
-      - .data/thumbnails:/home/smelter/demo/server/data/thumbnails
-      - .data/shader-presets:/home/smelter/demo/server/data/shader-presets
-      - .data/dashboard-layouts:/home/smelter/demo/server/data/dashboard-layouts
-      - .data/presentation-configs:/home/smelter/demo/server/data/presentation-configs
-      - .data/hls-streams:/home/smelter/demo/server/data/hls-streams
+      - smelter_data:/home/smelter/demo/server/data
     ports:
       - 9071:9071
       - 9072:9072
@@ -36,3 +26,19 @@ services:
     # Nvidia GPU
     gpus: 'all'
     runtime: 'nvidia'
+
+volumes:
+  smelter_data:
+    # `name:` without a project prefix means every compose stack on this host
+    # that declares the same volume will reuse the SAME underlying storage,
+    # regardless of project name or working directory.
+    name: smelter_data
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      # Absolute path on the host that backs the shared data directory.
+      # Set SMELTER_DATA_DIR in the environment (or in a .env file next to
+      # the compose file you launch from) to point at the shared location,
+      # e.g. SMELTER_DATA_DIR=/srv/smelter/.data
+      device: ${SMELTER_DATA_DIR:?SMELTER_DATA_DIR must be set to an absolute host path}

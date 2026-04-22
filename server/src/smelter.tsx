@@ -309,7 +309,11 @@ class SmelterManager {
           `[smelter] registerInput MP4 OK inputId=${inputId} elapsed=${Date.now() - t0}ms`,
         );
       } else if (opts.type === 'hls') {
-        const registerHlsInput = this.instance.registerInput as unknown as (
+        // Must stay bound to `this.instance` — a bare extracted method loses `this`
+        // and throws (e.g. Cannot read properties of undefined (reading 'scheduler')).
+        const registerHlsInput = this.instance.registerInput.bind(
+          this.instance,
+        ) as unknown as (
           inputId: string,
           request: {
             type: 'hls';
