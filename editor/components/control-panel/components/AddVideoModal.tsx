@@ -9,6 +9,7 @@ import {
   type MutableRefObject,
 } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Progress } from '@/components/ui/progress';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
 import { useActions } from '../contexts/actions-context';
@@ -2298,17 +2299,49 @@ function formatStatusClock(atMs: number): string {
 }
 
 function NormalizeStatusInline({
-  normalizing,
+  percent,
   result,
 }: {
-  normalizing: boolean;
+  percent: number | null;
   result: NormalizeResultState | null;
 }) {
-  if (normalizing) {
+  const isInProgress = percent !== null;
+  const [elapsedS, setElapsedS] = useState(0);
+  const startMsRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isInProgress) {
+      setElapsedS(0);
+      startMsRef.current = null;
+      return;
+    }
+    if (startMsRef.current === null) {
+      startMsRef.current = Date.now();
+    }
+    const id = setInterval(() => {
+      if (startMsRef.current !== null) {
+        setElapsedS(Math.floor((Date.now() - startMsRef.current) / 1000));
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [isInProgress]);
+
+  if (isInProgress) {
     return (
-      <p className='text-[10px] font-mono text-[#00f3ff] tracking-wide'>
-        NORMALIZE_IN_PROGRESS...
-      </p>
+      <div className='space-y-1.5'>
+        <div className='flex items-center justify-between'>
+          <p className='text-[10px] font-mono text-[#00f3ff] tracking-wide'>
+            NORMALIZE_IN_PROGRESS...
+          </p>
+          <p className='text-[10px] font-mono text-[#00f3ff]/50 tracking-wide'>
+            {elapsedS}s
+          </p>
+        </div>
+        <Progress value={percent ?? 0} />
+        <p className='text-[10px] font-mono text-[#00f3ff]/50 tracking-wide text-right'>
+          {percent != null ? `${percent.toFixed(1)}%` : '—'}
+        </p>
+      </div>
     );
   }
 
@@ -2437,6 +2470,7 @@ function Mp4Inspector({
   onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
 }) {
   const { addMP4Input } = useActions();
+  const { normalizationProgress } = useControlPanelContext();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [normalizing, setNormalizing] = useState(false);
@@ -2527,10 +2561,11 @@ function Mp4Inspector({
 
   const handleConfirmAction = async () => {
     if (!confirmState) return;
+    const action = confirmState;
+    setConfirmState(null);
     setConfirming(true);
     try {
-      await confirmState.onConfirm();
-      setConfirmState(null);
+      await action.onConfirm();
     } finally {
       setConfirming(false);
     }
@@ -2557,25 +2592,25 @@ function Mp4Inspector({
       />
       <div className='grid grid-cols-2 gap-2'>
         <ActionOutlineButton
-          label={normalizing ? 'NORMALIZING...' : 'NORMALIZE'}
+          label={normalizing || normalizationProgress[item.fileName] != null ? 'NORMALIZING...' : 'NORMALIZE'}
           onClick={handleNormalize}
-          disabled={normalizing || deleting}
+          disabled={normalizing || deleting || normalizationProgress[item.fileName] != null}
           colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
         />
         <ActionOutlineButton
           label='PREVIEW'
           onClick={() => setPreviewOpen(true)}
-          disabled={normalizing || deleting}
+          disabled={normalizing || deleting || normalizationProgress[item.fileName] != null}
           colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
         />
       </div>
       <NormalizeStatusInline
-        normalizing={normalizing}
+        percent={normalizationProgress[item.fileName] ?? null}
         result={normalizeResult}
       />
       <DeleteLibraryItemButton
         onClick={handleDelete}
-        disabled={deleting || normalizing}
+        disabled={deleting || normalizing || normalizationProgress[item.fileName] != null}
         label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
       />
       <AssetPlaybackModal
@@ -2613,6 +2648,7 @@ function AudioInspector({
   onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
 }) {
   const { addAudioInput } = useActions();
+  const { normalizationProgress } = useControlPanelContext();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [normalizing, setNormalizing] = useState(false);
@@ -2703,10 +2739,11 @@ function AudioInspector({
 
   const handleConfirmAction = async () => {
     if (!confirmState) return;
+    const action = confirmState;
+    setConfirmState(null);
     setConfirming(true);
     try {
-      await confirmState.onConfirm();
-      setConfirmState(null);
+      await action.onConfirm();
     } finally {
       setConfirming(false);
     }
@@ -2730,25 +2767,25 @@ function AudioInspector({
       />
       <div className='grid grid-cols-2 gap-2'>
         <ActionOutlineButton
-          label={normalizing ? 'NORMALIZING...' : 'NORMALIZE'}
+          label={normalizing || normalizationProgress[item.fileName] != null ? 'NORMALIZING...' : 'NORMALIZE'}
           onClick={handleNormalize}
-          disabled={normalizing || deleting}
+          disabled={normalizing || deleting || normalizationProgress[item.fileName] != null}
           colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
         />
         <ActionOutlineButton
           label='ODTWORZ'
           onClick={() => setPreviewOpen(true)}
-          disabled={normalizing || deleting}
+          disabled={normalizing || deleting || normalizationProgress[item.fileName] != null}
           colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
         />
       </div>
       <NormalizeStatusInline
-        normalizing={normalizing}
+        percent={normalizationProgress[item.fileName] ?? null}
         result={normalizeResult}
       />
       <DeleteLibraryItemButton
         onClick={handleDelete}
-        disabled={deleting || normalizing}
+        disabled={deleting || normalizing || normalizationProgress[item.fileName] != null}
         label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
       />
       <AssetPlaybackModal
@@ -2828,10 +2865,11 @@ function ImageInspector({
 
   const handleConfirmAction = async () => {
     if (!confirmState) return;
+    const action = confirmState;
+    setConfirmState(null);
     setConfirming(true);
     try {
-      await confirmState.onConfirm();
-      setConfirmState(null);
+      await action.onConfirm();
     } finally {
       setConfirming(false);
     }
@@ -3294,10 +3332,11 @@ function HlsSavedInspector({
 
   const handleConfirmAction = async () => {
     if (!confirmState) return;
+    const action = confirmState;
+    setConfirmState(null);
     setConfirming(true);
     try {
-      await confirmState.onConfirm();
-      setConfirmState(null);
+      await action.onConfirm();
     } finally {
       setConfirming(false);
     }

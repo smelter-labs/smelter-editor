@@ -11,6 +11,8 @@ export type {
   RoomUpdatedEvent,
   PeersUpdatedEvent,
   TimelinePlaybackUpdatedEvent,
+  NormalizationProgressEvent,
+  NormalizationDoneEvent,
   RoomEvent,
 } from "./events.js";
 

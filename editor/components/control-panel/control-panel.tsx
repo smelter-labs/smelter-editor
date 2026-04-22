@@ -360,8 +360,22 @@ function ControlPanelWithActions({
     setIsScreenshareActive,
   } = whipConnections;
 
+  const [normalizationProgress, setNormalizationProgress] = useState<
+    Record<string, number>
+  >({});
+
   const { peers } = useRoomWebSocket(roomId, {
     onRemoteInputChange: handleRefreshState,
+    onNormalizationProgress: (filePath, percent) => {
+      setNormalizationProgress((prev) => ({ ...prev, [filePath]: percent }));
+    },
+    onNormalizationDone: (filePath) => {
+      setNormalizationProgress((prev) => {
+        const next = { ...prev };
+        delete next[filePath];
+        return next;
+      });
+    },
   });
 
   useEffect(() => {
@@ -460,6 +474,7 @@ function ControlPanelWithActions({
       isRecording: isRecordingFromServer,
       isFrozen: isFrozenFromServer,
       audioAnalysisEnabled: audioAnalysisEnabledFromServer,
+      normalizationProgress,
     }),
     [
       roomId,
@@ -470,6 +485,7 @@ function ControlPanelWithActions({
       isRecordingFromServer,
       isFrozenFromServer,
       audioAnalysisEnabledFromServer,
+      normalizationProgress,
     ],
   );
 
