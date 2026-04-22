@@ -1,13 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server';
-
-const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
+import { getServerSideServerUrl } from '@/lib/server-url.server';
 
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ filePath: string[] }> },
 ) {
+  const baseUrl = await getServerSideServerUrl();
   const { filePath } = await params;
-  if (!BASE_URL) {
+  if (!baseUrl) {
     return NextResponse.json(
       { error: 'Server URL not configured' },
       { status: 500 },
@@ -18,7 +18,7 @@ export async function DELETE(
     const encodedPath = filePath
       .map((segment) => encodeURIComponent(segment))
       .join('/');
-    const upstream = await fetch(`${BASE_URL}/upload/picture/${encodedPath}`, {
+    const upstream = await fetch(`${baseUrl}/upload/picture/${encodedPath}`, {
       method: 'DELETE',
     });
     const data = await upstream.json();

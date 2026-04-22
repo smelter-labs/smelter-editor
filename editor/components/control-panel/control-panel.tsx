@@ -46,6 +46,7 @@ import {
 import { AddVideoModal } from './components/AddVideoModal';
 import { FxCanvas, FX_PRESET_MODAL } from '@/lib/fx';
 import { type PendingWhipInput } from './components/ConfigurationSection';
+import { getEffectiveClientServerUrl, toWsUrl } from '@/lib/server-url';
 import {
   exportRoomConfig,
   downloadRoomConfig,
@@ -2173,13 +2174,8 @@ function QRModal({
 
   const joinUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
-    if (process.env.NEXT_PUBLIC_SMELTER_WS_URL) {
-      return `${process.env.NEXT_PUBLIC_SMELTER_WS_URL}/room/${encodeURIComponent(roomId)}`;
-    }
-    return new URL(
-      `/room/${encodeURIComponent(roomId)}`,
-      window.location.origin,
-    ).toString();
+    const wsBase = toWsUrl(getEffectiveClientServerUrl());
+    return `${wsBase}/room/${encodeURIComponent(roomId)}`;
   }, [roomId]);
 
   const handleCopy = useCallback(async () => {
