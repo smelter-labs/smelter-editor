@@ -604,6 +604,7 @@ function ControlPanelInner({
     SelectedTimelineClip[]
   >([]);
   const [timelinePlayheadMs, setTimelinePlayheadMs] = useState(0);
+  const [timelineIsPlaying, setTimelineIsPlaying] = useState(false);
   const timelineStateRef = useRef<TimelineState | null>(null);
 
   useTimelineEventDetection(timelineStateRef, inputs);
@@ -758,7 +759,19 @@ function ControlPanelInner({
         }
         connectAndPlaySessionActiveRef.current = false;
       }
+
+      if (
+        wasPlaying !== state.isPlaying &&
+        process.env.NODE_ENV !== 'production'
+      ) {
+        console.log('[timeline-order] governance changed', {
+          isPlaying: state.isPlaying,
+          governedInputCount: Object.keys(timelineTrackOrder).length,
+        });
+      }
+
       previousTimelinePlayingRef.current = state.isPlaying;
+      setTimelineIsPlaying(state.isPlaying);
 
       if (selectedTimelineClips.length > 0) {
         setTimelinePlayheadMs((prev) =>
@@ -904,6 +917,7 @@ function ControlPanelInner({
     connectAndPlaySessionActiveRef.current = false;
     setConnectPlayCompletionOpen(false);
     setTimelinePlayheadMs(0);
+    setTimelineIsPlaying(false);
   }, [roomId]);
 
   useEffect(() => {
@@ -914,7 +928,11 @@ function ControlPanelInner({
   }, [selectedTimelineClips.length]);
 
   useEffect(() => {
-    if (isGuest || isPersistingTimelineLayerOrderRef.current) {
+    if (
+      isGuest ||
+      !timelineIsPlaying ||
+      isPersistingTimelineLayerOrderRef.current
+    ) {
       return;
     }
 
@@ -931,7 +949,13 @@ function ControlPanelInner({
     void handleLayersChange(nextLayers).finally(() => {
       isPersistingTimelineLayerOrderRef.current = false;
     });
-  }, [isGuest, roomState.layers, timelineTrackOrder, handleLayersChange]);
+  }, [
+    isGuest,
+    timelineIsPlaying,
+    roomState.layers,
+    timelineTrackOrder,
+    handleLayersChange,
+  ]);
 
   if (renderDashboard) {
     const settingsNav = (
@@ -961,7 +985,7 @@ function ControlPanelInner({
           onLayersChange={handleLayersChange}
           activeClipColors={activeClipColors}
           allTimelineInputIds={allTimelineInputIds}
-          timelineTrackOrder={timelineTrackOrder}
+          timelineTrackOrder={timelineIsPlaying ? timelineTrackOrder : {}}
         />
       </div>
     );
@@ -1128,7 +1152,7 @@ function ControlPanelInner({
       onLayersChange={handleLayersChange}
       activeClipColors={activeClipColors}
       allTimelineInputIds={allTimelineInputIds}
-      timelineTrackOrder={timelineTrackOrder}
+      timelineTrackOrder={timelineIsPlaying ? timelineTrackOrder : {}}
     />
   ) : null;
 
