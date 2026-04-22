@@ -86,24 +86,27 @@ export function InputsScreen() {
     const unsubRoom = wsService.on("room_updated", (event) => {
       pendingEventRef.current = event;
       if (frameRef.current !== null) return;
-      frameRef.current = requestIdleCallback(() => {
-        frameRef.current = null;
-        const latest = pendingEventRef.current;
-        pendingEventRef.current = null;
-        if (!latest) return;
-        startTransition(() => {
-          if (latest.isTimelinePlaying !== undefined) {
-            setTimelinePlaying(latest.isTimelinePlaying);
-          }
-          setLayers(latest.layers);
+      frameRef.current = requestIdleCallback(
+        () => {
+          frameRef.current = null;
+          const latest = pendingEventRef.current;
+          pendingEventRef.current = null;
+          if (!latest) return;
+          startTransition(() => {
+            if (latest.isTimelinePlaying !== undefined) {
+              setTimelinePlaying(latest.isTimelinePlaying);
+            }
+            setLayers(latest.layers);
 
-          const nextInputs = apiService.mapInputsToCards(latest.inputs);
-          const currentInputs = useInputsStore.getState().inputs;
-          if (!areInputCardsEquivalent(currentInputs, nextInputs)) {
-            setInputs(nextInputs);
-          }
-        });
-      });
+            const nextInputs = apiService.mapInputsToCards(latest.inputs);
+            const currentInputs = useInputsStore.getState().inputs;
+            if (!areInputCardsEquivalent(currentInputs, nextInputs)) {
+              setInputs(nextInputs);
+            }
+          });
+        },
+        { timeout: 100 },
+      );
     });
 
     return () => {

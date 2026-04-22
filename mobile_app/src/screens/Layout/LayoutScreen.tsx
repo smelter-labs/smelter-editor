@@ -27,6 +27,7 @@ import type { Layer, LayerInput } from "../../types/layout";
 import type { Resolution } from "@smelter-editor/types";
 import type { WSEventPayload } from "../../types/websocket";
 import { areInputCardsEquivalent } from "../../utils/inputCardEquality";
+import { MaterialDesignIcons } from "@react-native-vector-icons/material-design-icons";
 
 // ─── Conversion helpers ───────────────────────────────────────────────────────
 
@@ -220,25 +221,28 @@ export function LayoutScreen() {
       pendingEventRef.current = event;
 
       if (frameRef.current !== null) return;
-      frameRef.current = requestIdleCallback(() => {
-        frameRef.current = null;
-        const latest = pendingEventRef.current;
-        pendingEventRef.current = null;
-        if (!latest) return;
+      frameRef.current = requestIdleCallback(
+        () => {
+          frameRef.current = null;
+          const latest = pendingEventRef.current;
+          pendingEventRef.current = null;
+          if (!latest) return;
 
-        startTransition(() => {
-          if (latest.isTimelinePlaying !== undefined) {
-            setTimelinePlaying(latest.isTimelinePlaying);
-          }
-          setLayers(latest.layers);
+          startTransition(() => {
+            if (latest.isTimelinePlaying !== undefined) {
+              setTimelinePlaying(latest.isTimelinePlaying);
+            }
+            setLayers(latest.layers);
 
-          const nextInputs = apiService.mapInputsToCards(latest.inputs);
-          const currentInputs = useInputsStore.getState().inputs;
-          if (!areInputCardsEquivalent(currentInputs, nextInputs)) {
-            setInputs(nextInputs);
-          }
-        });
-      });
+            const nextInputs = apiService.mapInputsToCards(latest.inputs);
+            const currentInputs = useInputsStore.getState().inputs;
+            if (!areInputCardsEquivalent(currentInputs, nextInputs)) {
+              setInputs(nextInputs);
+            }
+          });
+        },
+        { timeout: 100 },
+      );
     });
 
     const unsubDeleted = wsService.on("input_deleted", (event) => {
@@ -445,7 +449,7 @@ export function LayoutScreen() {
               setSettingsPanelOpen(true);
             }}
           >
-            ⚙
+            <MaterialDesignIcons name="cog" color="#777777" size={16} />
           </Chip>
         </View>
 
