@@ -10,6 +10,8 @@ import { getAudioWaveformPath } from '../../audio-files/audioWaveform';
 import mp4SuggestionsMonitor from '../../mp4/mp4SuggestionMonitor';
 import pictureSuggestionsMonitor from '../../pictures/pictureSuggestionMonitor';
 import audioSuggestionsMonitor from '../../audio-files/audioSuggestionMonitor';
+import { spawn } from '../../utils';
+import { roomEventBus } from '../roomEventBus';
 
 const execFileAsync = promisify(execFile);
 
@@ -105,7 +107,30 @@ async function generateAudioWaveformImage(
 
 const LOUDNORM_FILTER = 'loudnorm=I=-16:TP=-1.5:LRA=11';
 
-async function normalizeMediaAudioInPlace(filePath: string): Promise<void> {
+const normalizingFiles = new Set<string>();
+
+async function getMediaDurationUS(filePath: string): Promise<number> {
+  try {
+    const { stdout } = await execFileAsync('ffprobe', [
+      '-v',
+      'error',
+      '-show_entries',
+      'format=duration',
+      '-of',
+      'csv=p=0',
+      filePath,
+    ]);
+    const seconds = parseFloat(stdout.trim());
+    return isNaN(seconds) ? 0 : Math.round(seconds * 1000000);
+  } catch {
+    return 0;
+  }
+}
+
+async function normalizeMediaAudioInPlace(
+  filePath: string,
+  onProgress?: (percent: number) => void,
+): Promise<void> {
   const dirName = path.dirname(filePath);
   const extName = path.extname(filePath) || '.mp4';
   const baseName = path.basename(filePath, extName);
@@ -114,10 +139,14 @@ async function normalizeMediaAudioInPlace(filePath: string): Promise<void> {
     `.tmp_normalize_${baseName}_${Date.now()}${extName}`,
   );
 
-  try {
-    await execFileAsync('ffmpeg', [
+  const totalDurationUS = await getMediaDurationUS(filePath);
+  const spawnResult = spawn(
+    'ffmpeg',
+    [
       '-i',
       filePath,
+      '-progress',
+      'pipe:1', // Progress sent to stdout
       '-map',
       '0:v?',
       '-map',
@@ -126,13 +155,30 @@ async function normalizeMediaAudioInPlace(filePath: string): Promise<void> {
       'copy',
       '-c:a',
       'aac',
+      '-ac',
+      '2',
       '-af',
       LOUDNORM_FILTER,
       '-movflags',
       '+faststart',
       '-y',
       tmpPath,
-    ]);
+    ],
+    { stdio: ['pipe', 'pipe', 'pipe'] },
+  );
+
+  spawnResult.child.stdout?.on('data', (data) => {
+    const stats = data.toString();
+    const match = stats.match(/out_time_us=(\d+)/);
+    if (match && totalDurationUS > 0) {
+      const currentTimeUS = parseInt(match[1]);
+      const percent = Math.min(100, (currentTimeUS / totalDurationUS) * 100);
+      onProgress?.(percent);
+    }
+  });
+
+  try {
+    await spawnResult;
     await fs.move(tmpPath, filePath, { overwrite: true });
   } finally {
     await fs.remove(tmpPath).catch(() => {});
@@ -272,11 +318,36 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
         return res.status(404).send({ error: 'File not found' });
       }
 
+      if (normalizingFiles.has(sanitized)) {
+        return res
+          .status(423)
+          .send({ error: 'File is already being normalized' });
+      }
+
+      normalizingFiles.add(sanitized);
+      roomEventBus.broadcastAll({
+        type: 'normalization_progress',
+        filePath: sanitized,
+        percent: 0,
+      });
+
       try {
-        await normalizeMediaAudioInPlace(absPath);
+        await normalizeMediaAudioInPlace(absPath, (percent) => {
+          roomEventBus.broadcastAll({
+            type: 'normalization_progress',
+            filePath: sanitized,
+            percent,
+          });
+        });
       } catch (err: any) {
         console.error('[upload/mp4/normalize] ffmpeg failed', err?.message);
         return res.status(500).send({ error: 'Audio normalization failed' });
+      } finally {
+        normalizingFiles.delete(sanitized);
+        roomEventBus.broadcastAll({
+          type: 'normalization_done',
+          filePath: sanitized,
+        });
       }
 
       mp4SuggestionsMonitor.refresh();
@@ -473,11 +544,36 @@ export const uploadRoutes: FastifyPluginCallback = (routes, _opts, done) => {
         return res.status(404).send({ error: 'File not found' });
       }
 
+      if (normalizingFiles.has(sanitized)) {
+        return res
+          .status(423)
+          .send({ error: 'File is already being normalized' });
+      }
+
+      normalizingFiles.add(sanitized);
+      roomEventBus.broadcastAll({
+        type: 'normalization_progress',
+        filePath: sanitized,
+        percent: 0,
+      });
+
       try {
-        await normalizeMediaAudioInPlace(absPath);
+        await normalizeMediaAudioInPlace(absPath, (percent) => {
+          roomEventBus.broadcastAll({
+            type: 'normalization_progress',
+            filePath: sanitized,
+            percent,
+          });
+        });
       } catch (err: any) {
         console.error('[upload/audio/normalize] ffmpeg failed', err?.message);
         return res.status(500).send({ error: 'Audio normalization failed' });
+      } finally {
+        normalizingFiles.delete(sanitized);
+        roomEventBus.broadcastAll({
+          type: 'normalization_done',
+          filePath: sanitized,
+        });
       }
 
       try {

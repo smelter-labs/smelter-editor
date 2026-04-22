@@ -57,9 +57,22 @@ export type ConnectedEvent = {
   clientId: string;
 };
 
+export type NormalizationProgressEvent = {
+  type: "normalization_progress";
+  filePath: string;
+  percent: number;
+};
+
+export type NormalizationDoneEvent = {
+  type: "normalization_done";
+  filePath: string;
+};
+
 export type RoomEvent =
   | InputUpdatedEvent
   | InputDeletedEvent
   | RoomUpdatedEvent
   | PeersUpdatedEvent
-  | TimelinePlaybackUpdatedEvent;
+  | TimelinePlaybackUpdatedEvent
+  | NormalizationProgressEvent
+  | NormalizationDoneEvent;

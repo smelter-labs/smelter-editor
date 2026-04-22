@@ -40,12 +40,25 @@ type ConnectedEvent = {
   clientId: string;
 };
 
+type NormalizationProgressEvent = {
+  type: 'normalization_progress';
+  filePath: string;
+  percent: number;
+};
+
+type NormalizationDoneEvent = {
+  type: 'normalization_done';
+  filePath: string;
+};
+
 type ServerMessage =
   | InputUpdatedEvent
   | InputDeletedEvent
   | RoomUpdatedEvent
   | PeersUpdatedEvent
-  | ConnectedEvent;
+  | ConnectedEvent
+  | NormalizationProgressEvent
+  | NormalizationDoneEvent;
 
 const WS_BASE = process.env.NEXT_PUBLIC_SMELTER_WS_URL ?? 'ws://localhost:3001';
 
@@ -57,6 +70,8 @@ const CLOSE_CODE_ROOM_DELETED = 1001;
 
 type Opts = {
   onRemoteInputChange?: () => void;
+  onNormalizationProgress?: (filePath: string, percent: number) => void;
+  onNormalizationDone?: (filePath: string) => void;
 };
 
 export function useRoomWebSocket(
@@ -117,6 +132,10 @@ export function useRoomWebSocket(
             msg,
           );
           optsRef.current?.onRemoteInputChange?.();
+        } else if (msg.type === 'normalization_progress') {
+          optsRef.current?.onNormalizationProgress?.(msg.filePath, msg.percent);
+        } else if (msg.type === 'normalization_done') {
+          optsRef.current?.onNormalizationDone?.(msg.filePath);
         }
       });
 
