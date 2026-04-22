@@ -270,6 +270,14 @@ export function LayoutScreen() {
     }
   }, [effectsInputId, inputs]);
 
+  useEffect(() => {
+    if (!isTimelinePlaying) return;
+    setLayersPanelOpen(false);
+    setSettingsPanelOpen(false);
+    setEffectsPanelOpen(false);
+    setEffectsInputId(null);
+  }, [isTimelinePlaying]);
+
   // Push updated layers to server
   const pushLayers = useCallback(
     async (newLayers: Layer[]) => {

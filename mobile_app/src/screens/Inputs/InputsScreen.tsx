@@ -60,6 +60,12 @@ export function InputsScreen() {
     }
   }, []);
 
+  useEffect(() => {
+    if (!isTimelinePlaying) return;
+    setDetailPanelOpen(false);
+    setSettingsPanelOpen(false);
+  }, [isTimelinePlaying]);
+
   const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
   const frameRef = useRef<number | null>(null);
   const [, startTransition] = useTransition();
