@@ -128,8 +128,8 @@ function OutputScene() {
 
             return (
               <Rescaler
-                key={`${item.inputId}-${itemIndex}`}
-                id={`layer-${layer.id}-${item.inputId}-${itemIndex}`}
+                key={`${item.inputId}`}
+                id={`layer-${layer.id}-${item.inputId}`}
                 transition={{
                   durationMs: item.transitionDurationMs ?? 300,
                   easingFunction: buildEasingFunction(item.transitionEasing),
