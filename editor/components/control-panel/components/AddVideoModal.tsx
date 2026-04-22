@@ -2591,7 +2591,7 @@ function Mp4Inspector({
         <ActionOutlineButton
           label='PREVIEW'
           onClick={() => setPreviewOpen(true)}
-          disabled={normalizing || deleting}
+          disabled={normalizing || deleting || normalizationProgress[item.fileName] != null}
           colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
         />
       </div>
@@ -2601,7 +2601,7 @@ function Mp4Inspector({
       />
       <DeleteLibraryItemButton
         onClick={handleDelete}
-        disabled={deleting || normalizing}
+        disabled={deleting || normalizing || normalizationProgress[item.fileName] != null}
         label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
       />
       <AssetPlaybackModal
@@ -2766,7 +2766,7 @@ function AudioInspector({
         <ActionOutlineButton
           label='ODTWORZ'
           onClick={() => setPreviewOpen(true)}
-          disabled={normalizing || deleting}
+          disabled={normalizing || deleting || normalizationProgress[item.fileName] != null}
           colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
         />
       </div>
@@ -2776,7 +2776,7 @@ function AudioInspector({
       />
       <DeleteLibraryItemButton
         onClick={handleDelete}
-        disabled={deleting || normalizing}
+        disabled={deleting || normalizing || normalizationProgress[item.fileName] != null}
         label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
       />
       <AssetPlaybackModal
