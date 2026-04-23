@@ -18,6 +18,7 @@ import {
 
 const PLAYHEAD_UI_UPDATE_INTERVAL_MS = 33;
 const PLAYHEAD_BACKWARD_TOLERANCE_MS = 120;
+const PLAYHEAD_HARD_RESYNC_MS = 1000;
 const AUTO_PAUSE_BEFORE_END_MS = 2000;
 const STOP_BUSY_TIMEOUT_MS = 2500;
 
@@ -176,13 +177,22 @@ export function useServerTimelinePlayback(
           `[timeline-ui] SSE update #${sseCountRef.current} playhead=${sseData.playheadMs}`,
         );
       }
+      const uiMs = uiPlayheadMsRef.current;
+      const backwardDeltaMs = uiMs - sseData.playheadMs;
+      const shouldSnapBackward = backwardDeltaMs > PLAYHEAD_HARD_RESYNC_MS;
+      const effectiveSsePlayheadMs =
+        backwardDeltaMs > PLAYHEAD_BACKWARD_TOLERANCE_MS && !shouldSnapBackward
+          ? uiMs
+          : sseData.playheadMs;
+      // Keep interpolation base monotonic for small SSE delays.
+      // If drift is very large, snap back to server to re-sync.
       lastSSERef.current = {
         wallMs: performance.now(),
-        playheadMs: sseData.playheadMs,
+        playheadMs: effectiveSsePlayheadMs,
       };
-      pushPlayheadUpdate(sseData.playheadMs, {
+      pushPlayheadUpdate(effectiveSsePlayheadMs, {
         force: true,
-        allowBackward: false,
+        allowBackward: shouldSnapBackward,
       });
     }
   }, [
