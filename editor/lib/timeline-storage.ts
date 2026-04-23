@@ -98,6 +98,7 @@ type StoredTimelineStateV3 = {
   tracks: StoredTrack[];
   totalDurationMs: number;
   keyframeInterpolationMode: 'step' | 'smooth';
+  inputOrderMode: 'layer' | 'timeline';
   snapToBlocks: boolean;
   snapToKeyframes: boolean;
   playheadMs: number;
@@ -185,6 +186,7 @@ function migrateV2toV3(v2: StoredTimelineStateV2): StoredTimelineStateV3 {
     })),
     totalDurationMs: v2.totalDurationMs,
     keyframeInterpolationMode: 'step',
+    inputOrderMode: 'timeline',
     snapToBlocks: true,
     snapToKeyframes: true,
     playheadMs: v2.playheadMs,
@@ -215,6 +217,7 @@ export function loadTimeline(roomId: string): StoredTimelineStateV3 | null {
         totalDurationMs: v3.totalDurationMs ?? 0,
         keyframeInterpolationMode:
           v3.keyframeInterpolationMode === 'smooth' ? 'smooth' : 'step',
+        inputOrderMode: v3.inputOrderMode === 'layer' ? 'layer' : 'timeline',
         snapToBlocks: v3.snapToBlocks ?? true,
         snapToKeyframes: v3.snapToKeyframes ?? true,
         playheadMs: v3.playheadMs ?? 0,

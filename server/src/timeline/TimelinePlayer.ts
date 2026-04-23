@@ -509,20 +509,26 @@ function getActiveInputIds(
   return active;
 }
 
-function getActiveOrderFromLayers(
-  config: TimelineConfig,
-  timeMs: number,
-  layers: Layer[],
-): string[] {
+function getActiveOrderFromTracks(config: TimelineConfig, timeMs: number): string[] {
   const active = getActiveInputIds(config, timeMs);
   const order: string[] = [];
   const placed = new Set<string>();
 
-  for (const layer of layers) {
-    for (const li of layer.inputs) {
-      if (active.has(li.inputId) && !placed.has(li.inputId)) {
-        order.push(li.inputId);
-        placed.add(li.inputId);
+  // Top timeline track should be rendered on top, so append tracks
+  // from bottom to top (later reorder indices render above earlier ones).
+  for (let trackIndex = config.tracks.length - 1; trackIndex >= 0; trackIndex -= 1) {
+    const track = config.tracks[trackIndex];
+    if (!track) continue;
+    for (const clip of track.clips) {
+      if (clip.inputId === OUTPUT_TRACK_INPUT_ID) continue;
+      if (
+        timeMs >= clip.startMs &&
+        timeMs < clip.endMs &&
+        active.has(clip.inputId) &&
+        !placed.has(clip.inputId)
+      ) {
+        order.push(clip.inputId);
+        placed.add(clip.inputId);
       }
     }
   }
@@ -1356,8 +1362,7 @@ export class TimelinePlayer {
   }
 
   private applyOrderIfChanged(timeMs: number): void {
-    const layers = this.room.getLayers();
-    const order = getActiveOrderFromLayers(this.config, timeMs, layers);
+    const order = getActiveOrderFromTracks(this.config, timeMs);
     const key = order.join(',');
     if (key === this.lastAppliedOrder || order.length === 0) return;
     this.lastAppliedOrder = key;

@@ -54,6 +54,7 @@ export type ImportConfigTimeline = {
   totalDurationMs: number;
   pixelsPerSecond: number;
   keyframeInterpolationMode?: 'step' | 'smooth';
+  inputOrderMode?: 'layer' | 'timeline';
   tracks: {
     label: string;
     clips: {

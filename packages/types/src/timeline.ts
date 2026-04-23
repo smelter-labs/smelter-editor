@@ -44,11 +44,13 @@ export type TimelineTrack = {
 };
 
 export type TimelineKeyframeInterpolationMode = 'step' | 'smooth';
+export type TimelineInputOrderMode = 'layer' | 'timeline';
 
 export type TimelineConfig = {
   tracks: TimelineTrack[];
   totalDurationMs: number;
   keyframeInterpolationMode: TimelineKeyframeInterpolationMode;
+  inputOrderMode?: TimelineInputOrderMode;
 };
 
 export const OUTPUT_TRACK_INPUT_ID = '__output__';

@@ -14,6 +14,7 @@ import type {
   TimelineBlockSettings,
   TimelineKeyframe as SharedTimelineKeyframe,
   TimelineKeyframeInterpolationMode,
+  TimelineInputOrderMode,
 } from '@smelter-editor/types';
 import {
   OUTPUT_TRACK_INPUT_ID,
@@ -75,6 +76,7 @@ export type TimelineState = {
   tracks: Track[];
   totalDurationMs: number;
   keyframeInterpolationMode: TimelineKeyframeInterpolationMode;
+  inputOrderMode?: TimelineInputOrderMode;
   snapToBlocks: boolean;
   snapToKeyframes: boolean;
   playheadMs: number;
@@ -96,6 +98,10 @@ type TimelineAction =
   | {
       type: 'SET_KEYFRAME_INTERPOLATION_MODE';
       mode: TimelineKeyframeInterpolationMode;
+    }
+  | {
+      type: 'SET_INPUT_ORDER_MODE';
+      mode: TimelineInputOrderMode;
     }
   | { type: 'SET_SNAP_TO_BLOCKS'; enabled: boolean }
   | { type: 'SET_SNAP_TO_KEYFRAMES'; enabled: boolean }
@@ -587,6 +593,7 @@ function createInitialState(): TimelineState {
     tracks: [],
     totalDurationMs: DEFAULT_DURATION_MS,
     keyframeInterpolationMode: 'step',
+    inputOrderMode: 'timeline',
     snapToBlocks: true,
     snapToKeyframes: true,
     playheadMs: 0,
@@ -640,6 +647,7 @@ function migrateV1ToV2(stored: Record<string, unknown>): TimelineState | null {
     tracks: newTracks,
     totalDurationMs: (stored.totalDurationMs as number) || DEFAULT_DURATION_MS,
     keyframeInterpolationMode: 'step',
+    inputOrderMode: 'timeline',
     snapToBlocks: true,
     snapToKeyframes: true,
     playheadMs: 0,
@@ -814,6 +822,9 @@ export function timelineReducer(
 
     case 'SET_KEYFRAME_INTERPOLATION_MODE':
       return { ...state, keyframeInterpolationMode: action.mode };
+
+    case 'SET_INPUT_ORDER_MODE':
+      return { ...state, inputOrderMode: action.mode };
 
     case 'SET_SNAP_TO_BLOCKS':
       if (state.snapToBlocks === action.enabled) return state;
@@ -1583,6 +1594,7 @@ export function timelineReducer(
         tracks: finalTracks,
         keyframeInterpolationMode:
           action.state.keyframeInterpolationMode ?? 'step',
+        inputOrderMode: action.state.inputOrderMode ?? 'timeline',
         snapToBlocks: action.state.snapToBlocks ?? true,
         snapToKeyframes: action.state.snapToKeyframes ?? true,
         knownInputIds: new Set(action.state.knownInputIds),
@@ -1618,6 +1630,7 @@ const UNDOABLE_ACTIONS = new Set<TimelineAction['type']>([
   'RESET',
   'UPDATE_CLIP_SETTINGS',
   'SET_KEYFRAME_INTERPOLATION_MODE',
+  'SET_INPUT_ORDER_MODE',
   'ADD_KEYFRAME',
   'UPDATE_KEYFRAME',
   'DELETE_KEYFRAME',
@@ -1700,6 +1713,7 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
           tracks: normalizeTracks(parsedTracks, inputs, totalDurationMs),
           totalDurationMs,
           keyframeInterpolationMode: stored.keyframeInterpolationMode ?? 'step',
+          inputOrderMode: stored.inputOrderMode ?? 'timeline',
           snapToBlocks: stored.snapToBlocks ?? true,
           snapToKeyframes: stored.snapToKeyframes ?? true,
           playheadMs: 0,
@@ -1741,6 +1755,7 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
       tracks: state.tracks,
       totalDurationMs: state.totalDurationMs,
       keyframeInterpolationMode: state.keyframeInterpolationMode,
+      inputOrderMode: state.inputOrderMode ?? 'timeline',
       snapToBlocks: state.snapToBlocks,
       snapToKeyframes: state.snapToKeyframes,
       playheadMs: state.isPlaying
@@ -1752,6 +1767,7 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
       state.tracks,
       state.totalDurationMs,
       state.keyframeInterpolationMode,
+      state.inputOrderMode,
       state.snapToBlocks,
       state.snapToKeyframes,
       state.isPlaying,
@@ -1768,6 +1784,7 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
         tracks: persistedTimeline.tracks,
         totalDurationMs: persistedTimeline.totalDurationMs,
         keyframeInterpolationMode: persistedTimeline.keyframeInterpolationMode,
+        inputOrderMode: persistedTimeline.inputOrderMode,
         snapToBlocks: persistedTimeline.snapToBlocks,
         snapToKeyframes: persistedTimeline.snapToKeyframes,
         playheadMs: persistedTimeline.playheadMs,
@@ -1804,6 +1821,12 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
   const setKeyframeInterpolationMode = useCallback(
     (mode: TimelineKeyframeInterpolationMode) =>
       dispatch({ type: 'SET_KEYFRAME_INTERPOLATION_MODE', mode }),
+    [],
+  );
+
+  const setInputOrderMode = useCallback(
+    (mode: TimelineInputOrderMode) =>
+      dispatch({ type: 'SET_INPUT_ORDER_MODE', mode }),
     [],
   );
 
@@ -2033,6 +2056,7 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     setZoom,
     setTotalDuration,
     setKeyframeInterpolationMode,
+    setInputOrderMode,
     setSnapToBlocks,
     setSnapToKeyframes,
     reset,

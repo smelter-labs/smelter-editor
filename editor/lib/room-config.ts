@@ -93,6 +93,7 @@ export type RoomConfigTimeline = {
   totalDurationMs: number;
   pixelsPerSecond: number;
   keyframeInterpolationMode?: 'step' | 'smooth';
+  inputOrderMode?: 'layer' | 'timeline';
   tracks: RoomConfigTrack[];
 };
 
@@ -145,6 +146,7 @@ export type RoomConfigTimelineState = {
   tracks: Track[];
   totalDurationMs: number;
   keyframeInterpolationMode: 'step' | 'smooth';
+  inputOrderMode?: 'layer' | 'timeline';
   pixelsPerSecond: number;
 };
 
@@ -240,6 +242,7 @@ export function exportRoomConfig(
     timeline = {
       totalDurationMs: timelineState.totalDurationMs,
       keyframeInterpolationMode: timelineState.keyframeInterpolationMode,
+      inputOrderMode: timelineState.inputOrderMode ?? 'timeline',
       pixelsPerSecond: timelineState.pixelsPerSecond,
       tracks,
     };
@@ -367,6 +370,7 @@ export function loadTimelineFromStorage(roomId: string): {
   tracks: Track[];
   totalDurationMs: number;
   keyframeInterpolationMode: 'step' | 'smooth';
+  inputOrderMode: 'layer' | 'timeline';
   pixelsPerSecond: number;
 } | null {
   if (typeof window === 'undefined') return null;
@@ -409,6 +413,7 @@ export function loadTimelineFromStorage(roomId: string): {
     })),
     totalDurationMs: stored.totalDurationMs,
     keyframeInterpolationMode: stored.keyframeInterpolationMode,
+    inputOrderMode: stored.inputOrderMode ?? 'timeline',
     pixelsPerSecond: stored.pixelsPerSecond,
   };
 }
@@ -445,6 +450,7 @@ export function buildTimelineStateFromConfigTimeline(
     }),
     totalDurationMs: timeline.totalDurationMs,
     keyframeInterpolationMode: timeline.keyframeInterpolationMode ?? 'step',
+    inputOrderMode: timeline.inputOrderMode ?? 'timeline',
     pixelsPerSecond: timeline.pixelsPerSecond,
   };
 }
@@ -460,6 +466,7 @@ export function restoreTimelineToStorage(
   try {
     saveTimeline(roomId, {
       ...state,
+      inputOrderMode: state.inputOrderMode ?? 'timeline',
       snapToBlocks: true,
       snapToKeyframes: true,
       playheadMs: 0,

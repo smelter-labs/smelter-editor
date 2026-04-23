@@ -45,6 +45,28 @@ function cloneLayers(layers: Layer[]): Layer[] {
   return JSON.parse(JSON.stringify(layers)) as Layer[];
 }
 
+function dedupeLayerInputsByInputId(layers: Layer[]): Layer[] {
+  return layers.map((layer) => {
+    const seenInputIds = new Set<string>();
+    const uniqueInputs = layer.inputs.filter((layerInput) => {
+      if (seenInputIds.has(layerInput.inputId)) {
+        return false;
+      }
+      seenInputIds.add(layerInput.inputId);
+      return true;
+    });
+
+    if (uniqueInputs.length === layer.inputs.length) {
+      return layer;
+    }
+
+    return {
+      ...layer,
+      inputs: uniqueInputs,
+    };
+  });
+}
+
 function normalizeFramePositionMs(
   requestedMs: number,
   isLooped: boolean,
@@ -1442,7 +1464,7 @@ export class RoomState {
       throw new Error('layers must not be empty');
     }
 
-    const cloned = cloneLayers(layers);
+    const cloned = dedupeLayerInputsByInputId(cloneLayers(layers));
     this.layers = cloned;
 
     // Sync position, transition, and crop properties from layer entries back

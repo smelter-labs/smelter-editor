@@ -432,8 +432,8 @@ describe('TimelinePlayer', () => {
     });
   });
 
-  describe('reorderInputs respects layer order', () => {
-    it('uses layer.inputs order instead of track order for reorderInputs', async () => {
+  describe('reorderInputs respects timeline track order', () => {
+    it('uses track order instead of layer.inputs order for reorderInputs', async () => {
       (adapter.getInputs as any).mockReturnValue([
         {
           inputId: 'a',
@@ -525,11 +525,11 @@ describe('TimelinePlayer', () => {
       const calls = (adapter.reorderInputs as any).mock.calls;
       expect(calls.length).toBeGreaterThanOrEqual(1);
       const order = calls[calls.length - 1][0] as string[];
-      expect(order[0]).toBe('b');
+      expect(order[0]).toBe('c');
       expect(order).toContain('a');
       expect(order).toContain('c');
+      expect(order.indexOf('c')).toBeLessThan(order.indexOf('b'));
       expect(order.indexOf('b')).toBeLessThan(order.indexOf('a'));
-      expect(order.indexOf('b')).toBeLessThan(order.indexOf('c'));
     });
 
     it('respects order across multiple layers', async () => {
@@ -582,7 +582,7 @@ describe('TimelinePlayer', () => {
       const player = new TimelinePlayer(adapter, config);
       await player.start(0);
 
-      expect(adapter.reorderInputs).toHaveBeenCalledWith(['c', 'a', 'b']);
+      expect(adapter.reorderInputs).toHaveBeenCalledWith(['c', 'b', 'a']);
     });
 
     it('updates order when a new block starts mid-playback', async () => {

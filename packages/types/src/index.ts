@@ -90,6 +90,7 @@ export type {
   TimelineClip,
   TimelineTrack,
   TimelineKeyframeInterpolationMode,
+  TimelineInputOrderMode,
   TimelineConfig,
 } from "./timeline.js";
 

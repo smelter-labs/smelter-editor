@@ -347,6 +347,7 @@ describe('exportRoomConfig', () => {
     expect(config.timeline).toEqual({
       totalDurationMs: 10_000,
       keyframeInterpolationMode: 'smooth',
+      inputOrderMode: 'timeline',
       pixelsPerSecond: 15,
       tracks: [
         {
@@ -441,6 +442,7 @@ describe('timeline config persistence helpers', () => {
     ).toEqual({
       totalDurationMs: 12_000,
       keyframeInterpolationMode: 'smooth',
+      inputOrderMode: 'timeline',
       pixelsPerSecond: 24,
       tracks: [
         {
@@ -536,6 +538,7 @@ describe('timeline config persistence helpers', () => {
     expect(loadTimelineFromStorage('room-1')).toEqual({
       totalDurationMs: 12_000,
       keyframeInterpolationMode: 'smooth',
+      inputOrderMode: 'timeline',
       pixelsPerSecond: 24,
       tracks: [
         {
@@ -551,6 +554,8 @@ describe('timeline config persistence helpers', () => {
                 volume: 1,
                 showTitle: true,
                 shaders: [],
+                introTransition: undefined,
+                outroTransition: undefined,
 
                 text: 'intro',
               },
@@ -562,6 +567,8 @@ describe('timeline config persistence helpers', () => {
                     volume: 1,
                     showTitle: true,
                     shaders: [],
+                    introTransition: undefined,
+                    outroTransition: undefined,
 
                     text: 'intro',
                   },
@@ -573,6 +580,8 @@ describe('timeline config persistence helpers', () => {
                     volume: 0.2,
                     showTitle: false,
                     shaders: [],
+                    introTransition: undefined,
+                    outroTransition: undefined,
 
                     text: 'middle',
                   },
