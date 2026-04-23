@@ -51,7 +51,11 @@ export async function createNewRoom(
   whepUrl: string;
   resolution: Resolution;
 }> {
-  return (await getClient()).createNewRoom(initInputs, skipDefaultInputs, resolution);
+  return (await getClient()).createNewRoom(
+    initInputs,
+    skipDefaultInputs,
+    resolution,
+  );
 }
 
 export async function updateRoom(
@@ -277,7 +281,11 @@ export async function updateShaderPreset(
   name: string,
   shaders: ShaderConfig[],
 ): Promise<StorageResult<{ fileName: string; name: string }>> {
-  return (await getClient()).shaderPresetStorage.update(fileName, name, shaders);
+  return (await getClient()).shaderPresetStorage.update(
+    fileName,
+    name,
+    shaders,
+  );
 }
 
 export async function deleteShaderPreset(
@@ -317,7 +325,10 @@ export async function savePresentationConfig(
   name: string,
   presentationConfig: object,
 ): Promise<StorageResult<{ fileName: string; name: string }>> {
-  return (await getClient()).presentationConfigStorage.save(name, presentationConfig);
+  return (await getClient()).presentationConfigStorage.save(
+    name,
+    presentationConfig,
+  );
 }
 
 export async function listPresentationConfigs(): Promise<

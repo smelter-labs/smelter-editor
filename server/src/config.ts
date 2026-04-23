@@ -29,7 +29,10 @@ const isProduction = process.env.ENVIRONMENT === 'production';
 /** Fishjam app path segment before `/whep` and `/whip` (two Docker stacks = two values). */
 const defaultProductionWebRtcApp = 'smelter-editor-webrtc';
 
-function productionWebRtcBaseUrls(): { whepBaseUrl: string; whipBaseUrl: string } {
+function productionWebRtcBaseUrls(): {
+  whepBaseUrl: string;
+  whipBaseUrl: string;
+} {
   const whepOverride = process.env.SMELTER_WHEP_BASE_URL?.trim();
   const whipOverride = process.env.SMELTER_WHIP_BASE_URL?.trim();
   if (whepOverride && whipOverride) {
