@@ -196,7 +196,7 @@ export function BlockClipPropertiesPanel({
     selectedTimelineClips.length > 0 ? selectedTimelineClips[0] : null;
   const selectedTimelineKeyframe =
     primaryClip?.selectedKeyframeId != null
-      ? (primaryClip.keyframes.find(
+      ? ((primaryClip.keyframes ?? []).find(
           (keyframe) => keyframe.id === primaryClip.selectedKeyframeId,
         ) ?? null)
       : null;
@@ -401,44 +401,53 @@ export function BlockClipPropertiesPanel({
         : null;
 
       // Update local state for all clips
-      const nextClips = selectedTimelineClips.map((clip) => ({
-        ...clip,
-        blockSettings: { ...clip.blockSettings, ...patch },
-        keyframes:
-          targetKeyframeId && clip.clipId === singleSelectedClip?.clipId
-            ? clip.keyframes.map((keyframe) =>
-                keyframe.id === targetKeyframeId
-                  ? {
-                      ...keyframe,
-                      blockSettings: { ...keyframe.blockSettings, ...patch },
-                    }
-                  : cropOnly
+      const nextClips = selectedTimelineClips.map((clip) => {
+        const clipKeyframes = clip.keyframes ?? [];
+        return {
+          ...clip,
+          blockSettings: { ...clip.blockSettings, ...patch },
+          keyframes:
+            targetKeyframeId && clip.clipId === singleSelectedClip?.clipId
+              ? clipKeyframes.map((keyframe) =>
+                  keyframe.id === targetKeyframeId
                     ? {
                         ...keyframe,
                         blockSettings: {
                           ...keyframe.blockSettings,
-                          ...cropOnly,
+                          ...patch,
                         },
                       }
-                    : keyframe,
-              )
-            : clip.keyframes.map((keyframe) =>
-                keyframe.timeMs === 0
-                  ? {
-                      ...keyframe,
-                      blockSettings: { ...keyframe.blockSettings, ...patch },
-                    }
-                  : cropOnly
+                    : cropOnly
+                      ? {
+                          ...keyframe,
+                          blockSettings: {
+                            ...keyframe.blockSettings,
+                            ...cropOnly,
+                          },
+                        }
+                      : keyframe,
+                )
+              : clipKeyframes.map((keyframe) =>
+                  keyframe.timeMs === 0
                     ? {
                         ...keyframe,
                         blockSettings: {
                           ...keyframe.blockSettings,
-                          ...cropOnly,
+                          ...patch,
                         },
                       }
-                    : keyframe,
-              ),
-      }));
+                    : cropOnly
+                      ? {
+                          ...keyframe,
+                          blockSettings: {
+                            ...keyframe.blockSettings,
+                            ...cropOnly,
+                          },
+                        }
+                      : keyframe,
+                ),
+        };
+      });
       onSelectedTimelineClipsChange(nextClips);
 
       // Dispatch timeline update for each clip or selected keyframe.
@@ -552,7 +561,10 @@ export function BlockClipPropertiesPanel({
         ? (selectedTimelineKeyframe?.timeMs ?? Math.round(clipDurationMs / 2))
         : playheadMs - selectedTimelineClip.startMs;
     const nextTimeMs = resolveNewKeyframeTimeMs(
-      selectedTimelineClip,
+      {
+        ...selectedTimelineClip,
+        keyframes: selectedTimelineClip.keyframes ?? [],
+      },
       desiredTimeMs,
     );
     emitTimelineEvent(TIMELINE_EVENTS.ADD_KEYFRAME, {
@@ -1049,7 +1061,7 @@ export function BlockClipPropertiesPanel({
             </Button>
           </div>
           <div className='flex flex-wrap gap-1.5 mb-2'>
-            {selectedTimelineClip.keyframes.map((keyframe) => (
+            {(selectedTimelineClip.keyframes ?? []).map((keyframe) => (
               <Button
                 key={keyframe.id}
                 type='button'
