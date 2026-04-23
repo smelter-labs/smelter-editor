@@ -145,20 +145,23 @@ For AMD GPUs, uncomment the `devices` section and comment out `gpus`/`runtime` i
 
 ### Running two Docker instances
 
-Use base Compose for instance A and the override file for instance B:
+Use a single Compose file with the optional `b` profile:
 
 ```bash
-# Instance A (default ports 9071/9072, data in .data/)
+# Required host path for shared persisted data
+export SMELTER_DATA_DIR=/absolute/path/to/.data
+
+# Instance A (default service: server, ports 9071/9072)
 docker compose -p smelter-a up -d --build
 
-# Instance B (host ports 10071/10072, data in .data-b/)
-docker compose -p smelter-b -f compose.yaml -f compose.b.override.yaml up -d --build
+# Instance B (profile "b", service: server-b, ports 10071/10072)
+docker compose -p smelter-b --profile b up -d --build server-b
 ```
 
-The override file `compose.b.override.yaml` remaps:
+Profile `b` maps:
 - API: `10071:9071`
 - WHEP/WHIP: `10072:9072`
-- all persisted data volumes from `.data/*` to `.data-b/*`
+- persisted data volume: shared `smelter_data` backed by `SMELTER_DATA_DIR`
 
 ### Frontend per instance
 
