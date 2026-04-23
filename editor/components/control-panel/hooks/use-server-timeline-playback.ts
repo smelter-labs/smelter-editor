@@ -17,6 +17,7 @@ import {
 } from '../components/timeline/timeline-events';
 
 const PLAYHEAD_UI_UPDATE_INTERVAL_MS = 33;
+const PLAYHEAD_BACKWARD_TOLERANCE_MS = 120;
 const AUTO_PAUSE_BEFORE_END_MS = 2000;
 const STOP_BUSY_TIMEOUT_MS = 2500;
 
@@ -38,6 +39,10 @@ export function useServerTimelinePlayback(
     ts: 0,
     ms: null,
   });
+  const uiPlayheadMsRef = useRef(state.playheadMs);
+  useEffect(() => {
+    uiPlayheadMsRef.current = state.playheadMs;
+  }, [state.playheadMs]);
 
   const [isPaused, setIsPaused] = useState(false);
   const [isTimelineBusy, setIsTimelineBusy] = useState(false);
@@ -93,11 +98,26 @@ export function useServerTimelinePlayback(
   );
 
   const pushPlayheadUpdate = useCallback(
-    (ms: number, options?: { force?: boolean }) => {
+    (
+      ms: number,
+      options?: {
+        force?: boolean;
+        allowBackward?: boolean;
+      },
+    ) => {
       const now = performance.now();
       const clampedMs = Math.round(
         Math.max(0, Math.min(ms, stateRef.current.totalDurationMs)),
       );
+      const previousUiMs = uiPlayheadMsRef.current;
+      if (
+        options?.allowBackward === false &&
+        clampedMs < previousUiMs - PLAYHEAD_BACKWARD_TOLERANCE_MS
+      ) {
+        // Timeline SSE can arrive slightly delayed relative to local interpolation.
+        // While playing, ignore stale backward jumps to keep the playhead monotonic.
+        return;
+      }
       if (lastPlayheadUpdateRef.current.ms === clampedMs) {
         return;
       }
@@ -111,6 +131,7 @@ export function useServerTimelinePlayback(
         ts: now,
         ms: clampedMs,
       };
+      uiPlayheadMsRef.current = clampedMs;
       setPlayhead(clampedMs);
     },
     [setPlayhead],
@@ -159,7 +180,10 @@ export function useServerTimelinePlayback(
         wallMs: performance.now(),
         playheadMs: sseData.playheadMs,
       };
-      pushPlayheadUpdate(sseData.playheadMs, { force: true });
+      pushPlayheadUpdate(sseData.playheadMs, {
+        force: true,
+        allowBackward: false,
+      });
     }
   }, [
     sseData,
@@ -194,7 +218,7 @@ export function useServerTimelinePlayback(
         return;
       }
 
-      pushPlayheadUpdate(interpolated);
+      pushPlayheadUpdate(interpolated, { allowBackward: false });
       rafRef.current = requestAnimationFrame(tick);
     };
 
