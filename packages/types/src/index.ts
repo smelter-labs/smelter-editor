@@ -84,6 +84,8 @@ export type {
   PendingWhipInputData,
 } from "./input-options.js";
 
+export type { YoloSearchConfig, YoloBoundingBox } from "./yolo.js";
+
 export type {
   TimelineBlockSettings,
   TimelineKeyframe,

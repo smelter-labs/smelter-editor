@@ -1834,6 +1834,40 @@ const MotionDetectionSchema = Type.Object({
   enabled: Type.Boolean(),
 });
 
+const YoloBoxesSchema = Type.Object({
+  task_id: Type.String(),
+  boxes: Type.Array(
+    Type.Object({
+      x: Type.Number(),
+      y: Type.Number(),
+      width: Type.Number(),
+      height: Type.Number(),
+      class_name: Type.String(),
+      class_id: Type.Number(),
+      confidence: Type.Number(),
+    }),
+  ),
+  frame_width: Type.Number(),
+  frame_height: Type.Number(),
+});
+
+routes.post<RoomAndInputIdParams & { Body: Static<typeof YoloBoxesSchema> }>(
+  '/room/:roomId/input/:inputId/yolo-boxes',
+  {
+    schema: { params: RoomAndInputIdParamsSchema, body: YoloBoxesSchema },
+  },
+  async (req, res) => {
+    const { roomId, inputId } = req.params;
+    try {
+      const room = state.getRoom(roomId);
+      room.receiveYoloBoxes(inputId, req.body);
+    } catch {
+      // Room might not exist yet or input might be missing — ignore silently
+    }
+    res.status(200).send({ status: 'ok' });
+  },
+);
+
 routes.post<
   RoomAndInputIdParams & { Body: Static<typeof MotionDetectionSchema> }
 >(
@@ -1885,6 +1919,31 @@ routes.get<RoomIdParams>(
       clearInterval(heartbeat);
       unsubscribe();
     });
+  },
+);
+
+routes.get<{ Querystring: { serverUrl: string } }>(
+  '/yolo-model-info',
+  {
+    schema: {
+      querystring: Type.Object({ serverUrl: Type.String() }),
+    },
+  },
+  async (req, res) => {
+    const { serverUrl } = req.query;
+    try {
+      const response = await fetch(`${serverUrl}/model-info`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!response.ok) {
+        res.status(502).send({ error: `YOLO server returned ${response.status}` });
+        return;
+      }
+      const data = await response.json();
+      res.status(200).send(data);
+    } catch (err: any) {
+      res.status(502).send({ error: `Cannot reach YOLO server: ${err.message}` });
+    }
   },
 );
 
@@ -1946,6 +2005,14 @@ const UpdateInputSchema = Type.Object({
   cropRight: Type.Optional(Type.Number({ minimum: 0 })),
   cropBottom: Type.Optional(Type.Number({ minimum: 0 })),
   activeTransition: Type.Optional(ActiveTransitionSchema),
+  yoloSearchConfig: Type.Optional(
+    Type.Object({
+      enabled: Type.Boolean(),
+      serverUrl: Type.String(),
+      targetClass: Type.String(),
+      boxColor: Type.String(),
+    }),
+  ),
 });
 
 routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(

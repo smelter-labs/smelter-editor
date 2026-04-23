@@ -1,3 +1,4 @@
+import React from 'react';
 import { View, Rescaler, Shader } from '@swmansion/smelter';
 
 import type { RoomStore } from './store';
@@ -126,22 +127,41 @@ function OutputScene() {
               );
             }
 
+            const yoloBoxes = input?.yoloBoundingBoxes ?? [];
+            const yoloColor = input?.yoloBoxColor ?? '#ff0000';
+            const nativeW = input?.sourceWidth ?? 1920;
+            const nativeH = input?.sourceHeight ?? 1080;
+
             return (
-              <Rescaler
-                key={`${item.inputId}`}
-                id={`layer-${layer.id}-${item.inputId}`}
-                transition={{
-                  durationMs: item.transitionDurationMs ?? 300,
-                  easingFunction: buildEasingFunction(item.transitionEasing),
-                }}
-                style={{
-                  top: item.y,
-                  left: item.x,
-                  width: item.width,
-                  height: item.height,
-                }}>
-                {inner}
-              </Rescaler>
+              <React.Fragment key={`${item.inputId}`}>
+                <Rescaler
+                  id={`layer-${layer.id}-${item.inputId}`}
+                  transition={{
+                    durationMs: item.transitionDurationMs ?? 300,
+                    easingFunction: buildEasingFunction(item.transitionEasing),
+                  }}
+                  style={{
+                    top: item.y,
+                    left: item.x,
+                    width: item.width,
+                    height: item.height,
+                  }}>
+                  {inner}
+                </Rescaler>
+                {yoloBoxes.map((box, bi) => (
+                  <View
+                    key={`yolo-${item.inputId}-${itemIndex}-${bi}`}
+                    style={{
+                      top: item.y + (box.y / nativeH) * item.height,
+                      left: item.x + (box.x / nativeW) * item.width,
+                      width: Math.max(1, (box.width / nativeW) * item.width),
+                      height: Math.max(1, (box.height / nativeH) * item.height),
+                      borderWidth: 3,
+                      borderColor: yoloColor,
+                    }}
+                  />
+                ))}
+              </React.Fragment>
             );
           })}
         </View>

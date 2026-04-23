@@ -213,17 +213,17 @@ export function LayoutScreen() {
 
   const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
   const [, startTransition] = useTransition();
-  const frameRef = useRef<number | null>(null);
+  const idleHandleRef = useRef<number | null>(null);
 
   // Subscribe to server room updates
   useEffect(() => {
     const unsubRoom = wsService.on("room_updated", (event) => {
       pendingEventRef.current = event;
 
-      if (frameRef.current !== null) return;
-      frameRef.current = requestIdleCallback(
+      if (idleHandleRef.current !== null) return;
+      idleHandleRef.current = requestIdleCallback(
         () => {
-          frameRef.current = null;
+          idleHandleRef.current = null;
           const latest = pendingEventRef.current;
           pendingEventRef.current = null;
           if (!latest) return;
@@ -252,9 +252,9 @@ export function LayoutScreen() {
     return () => {
       unsubRoom();
       unsubDeleted();
-      if (frameRef.current !== null) {
-        cancelIdleCallback(frameRef.current);
-        frameRef.current = null;
+      if (idleHandleRef.current !== null) {
+        cancelIdleCallback(idleHandleRef.current);
+        idleHandleRef.current = null;
       }
     };
   }, [

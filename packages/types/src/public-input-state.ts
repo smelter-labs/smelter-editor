@@ -12,6 +12,7 @@ import type {
   MotionProperties,
   HandsProperties,
 } from './input.js';
+import type { YoloSearchConfig } from './yolo.js';
 
 export type PublicInputState = {
   inputId: string;
@@ -41,6 +42,7 @@ export type PublicInputState = {
   nativeWidth?: number;
   /** Native stream resolution height, if known. */
   nativeHeight?: number;
+  yoloSearchConfig?: YoloSearchConfig;
 } & InputDisplayProperties &
   Partial<TextInputProperties> &
   Partial<AbsolutePositionProperties> &

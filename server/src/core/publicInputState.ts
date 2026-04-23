@@ -47,6 +47,7 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
     motionEnabled: input.motionEnabled,
     nativeWidth: input.nativeWidth,
     nativeHeight: input.nativeHeight,
+    yoloSearchConfig: input.yoloSearchConfig,
   };
   switch (input.type) {
     case 'local-mp4': {

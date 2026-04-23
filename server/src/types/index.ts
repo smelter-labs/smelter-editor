@@ -32,4 +32,6 @@ export type {
   UpdateInputOptions,
   RegisterInputOptions,
   PendingWhipInputData,
+  YoloSearchConfig,
+  YoloBoundingBox,
 } from '@smelter-editor/types';

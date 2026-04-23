@@ -19,6 +19,7 @@ import { isSmelterTransportError } from '../smelterTransportError';
 import { InputManager } from './InputManager';
 import { RecordingController } from './RecordingController';
 import { MotionController } from './MotionController';
+import { YoloController } from '../yolo/YoloController';
 import { SnakeGameController } from './SnakeGameController';
 import { PlaceholderManager } from './PlaceholderManager';
 import { AudioController } from '../audio/AudioController';
@@ -77,6 +78,7 @@ export class RoomState {
   private readonly inputManager: InputManager;
   private readonly recordingController: RecordingController;
   private readonly motionController: MotionController;
+  private readonly yoloController: YoloController;
   private readonly snakeGameController: SnakeGameController;
   private readonly placeholderManager: PlaceholderManager;
   private readonly audioController: AudioController;
@@ -158,11 +160,24 @@ export class RoomState {
     this.motionController = new MotionController(idPrefix, () =>
       this.inputManager.getInputs(),
     );
+    this.yoloController = new YoloController(
+      idPrefix,
+      (inputId, boxes) => {
+        const input = this.inputManager
+          .getInputs()
+          .find((i) => i.inputId === inputId);
+        if (input) {
+          input.yoloBoundingBoxes = boxes;
+          this.updateStoreWithState();
+        }
+      },
+    );
     this.audioController = new AudioController(idPrefix, output, audioStore);
     this.inputManager = new InputManager(
       idPrefix,
       this.placeholderManager,
       this.motionController,
+      this.yoloController,
       () => this.updateStoreWithState(),
     );
     this.recordingController = new RecordingController(idPrefix, output);
@@ -600,6 +615,13 @@ export class RoomState {
 
   public async stopAllMotion(): Promise<void> {
     await this.motionController.stopAll();
+  }
+
+  public receiveYoloBoxes(
+    inputId: string,
+    payload: import('../yolo/YoloController').YoloCallbackPayload,
+  ): void {
+    this.yoloController.receiveBoxes(inputId, payload);
   }
 
   public addStateChangeListener(listener: () => void): () => void {
@@ -1144,6 +1166,7 @@ export class RoomState {
       await this.flushPendingImageUnregisters();
 
       await this.motionController.stopAll();
+      this.yoloController.stopAll();
       await this.audioController.stopAll();
       await this.inputManager.destroyAll();
 
@@ -1250,6 +1273,8 @@ export class RoomState {
       restartFading: input.restartFading,
       frozenImageId: this.frozenImages.get(input.inputId)?.imageId,
       hidden: input.hidden,
+      yoloBoundingBoxes: input.yoloBoundingBoxes,
+      yoloBoxColor: input.yoloSearchConfig?.boxColor,
     });
 
     const connectedInputs = allInputs.filter(
