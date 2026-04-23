@@ -1,6 +1,7 @@
 import React, { useCallback } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { Draggable, Sortable, SortableItem } from "react-native-reanimated-dnd";
+import * as Haptics from "expo-haptics";
 import type { Layer, LayerBehaviorConfig } from "../../../types/layout";
 import type { InputCard } from "../../../types/input";
 import { LayerHeader } from "./LayerHeader";
@@ -81,6 +82,9 @@ export function Layer({
         id={item.id}
         data={item}
         onMove={(id, from, to) => handleInputMove(id, from, to)}
+        onDragStart={() =>
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+        }
         {...props}
       >
         <InputRow
