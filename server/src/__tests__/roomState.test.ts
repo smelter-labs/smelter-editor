@@ -1899,6 +1899,29 @@ describe('RoomState', () => {
       expect(mocks.smelter.extractMp4Frame).not.toHaveBeenCalled();
     });
 
+    it('mutes audio-backed local MP4 inputs while paused', async () => {
+      mocks.pathExists.mockResolvedValue(true);
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const inputId = (await room.addNewInput({
+        type: 'local-mp4',
+        source: { audioFileName: 'test-audio.mp4' },
+      }))!;
+      await room.connectInput(inputId);
+
+      await room.startTimelinePlayback(createMp4TimelineConfig(inputId, true), 0);
+
+      const duringPlayback = room.getInputs().find((i) => i.inputId === inputId);
+      expect(duringPlayback?.volume).toBe(1);
+
+      await room.pauseTimeline();
+
+      const duringPause = room.getInputs().find((i) => i.inputId === inputId);
+      expect(duringPause?.volume).toBe(0);
+    });
+
     it('clamps non-loop scrub frozen frame timestamp to media tail', async () => {
       const { room, inputId } = await createRoomWithMp4();
       const input = room.getInputs().find((i) => i.inputId === inputId);
