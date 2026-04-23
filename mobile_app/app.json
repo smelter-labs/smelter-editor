@@ -2,7 +2,7 @@
   "expo": {
     "name": "smelter-editor-tablet",
     "slug": "smelter-editor-tablet",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "orientation": "landscape",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
@@ -47,7 +47,8 @@
         "expo-splash-screen",
         {
           "backgroundColor": "#0f0f1a",
-          "image": "./assets/splash-icon.png"
+          "image": "./assets/splash.png",
+          "resizeMode": "contain"
         }
       ],
       [
