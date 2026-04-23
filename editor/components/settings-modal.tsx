@@ -1,7 +1,12 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
@@ -108,7 +113,9 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
               <SelectContent>
                 {SERVER_PRESETS.map((preset) => (
                   <SelectItem key={preset.id} value={preset.id}>
-                    {preset.url ? `${preset.label} (${preset.url})` : preset.label}
+                    {preset.url
+                      ? `${preset.label} (${preset.url})`
+                      : preset.label}
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -129,7 +136,9 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
               autoComplete='off'
               spellCheck={false}
             />
-            <p className='text-xs text-neutral-500'>Default from env: {defaultUrl}</p>
+            <p className='text-xs text-neutral-500'>
+              Default from env: {defaultUrl}
+            </p>
             {error && <p className='text-xs text-red-400'>{error}</p>}
           </div>
 
