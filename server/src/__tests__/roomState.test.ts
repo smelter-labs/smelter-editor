@@ -1692,7 +1692,10 @@ describe('RoomState', () => {
       return { room, output, inputId };
     }
 
-    function createMp4TimelineConfig(inputId: string): TimelineConfig {
+    function createMp4TimelineConfig(
+      inputId: string,
+      mp4Loop = false,
+    ): TimelineConfig {
       return {
         tracks: [
           {
@@ -1709,7 +1712,7 @@ describe('RoomState', () => {
                   shaders: [],
 
                   mp4PlayFromMs: 0,
-                  mp4Loop: true,
+                  mp4Loop,
                 },
                 keyframes: [],
               },
@@ -1780,6 +1783,43 @@ describe('RoomState', () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    it('keeps looped local MP4 playback visible while paused and mutes audio', async () => {
+      const { room, inputId } = await createRoomWithMp4();
+      const config = createMp4TimelineConfig(inputId, true);
+
+      await room.startTimelinePlayback(config, 0);
+      mocks.smelter.extractMp4Frame.mockClear();
+      mocks.smelter.registerImage.mockClear();
+
+      await room.pauseTimeline();
+
+      expect(mocks.smelter.extractMp4Frame).not.toHaveBeenCalled();
+      const frozenCalls = mocks.smelter.registerImage.mock.calls.filter(
+        (c: any[]) => typeof c[0] === 'string' && c[0].startsWith('frozen::'),
+      );
+      expect(frozenCalls).toHaveLength(0);
+
+      const inputDuringPause = room.getInputs().find((i) => i.inputId === inputId);
+      expect(inputDuringPause?.volume).toBe(0);
+    });
+
+    it('keeps frozen frame behavior for non-loop local MP4 during pause', async () => {
+      const { room, inputId } = await createRoomWithMp4();
+      const config = createMp4TimelineConfig(inputId, false);
+
+      await room.startTimelinePlayback(config, 0);
+      mocks.smelter.extractMp4Frame.mockClear();
+      mocks.smelter.registerImage.mockClear();
+
+      await room.pauseTimeline();
+
+      expect(mocks.smelter.extractMp4Frame).toHaveBeenCalled();
+      const frozenCalls = mocks.smelter.registerImage.mock.calls.filter(
+        (c: any[]) => typeof c[0] === 'string' && c[0].startsWith('frozen::'),
+      );
+      expect(frozenCalls.length).toBeGreaterThan(0);
     });
 
     it('clears store reference before deferring unregister', async () => {

@@ -868,8 +868,11 @@ export class RoomState {
       if (isAudioBackedLocalMp4(input.mp4FilePath)) {
         continue;
       }
-
       const isLooped = clip.blockSettings.mp4Loop !== false;
+      if (isLooped) {
+        continue;
+      }
+
       const framePositionMs = normalizeFramePositionMs(
         (input.playFromMs ?? 0) +
           (currentPipelineMs -
