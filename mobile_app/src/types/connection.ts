@@ -6,7 +6,7 @@ export enum ConnectionStatus {
   Disconnected = "disconnected",
 }
 
-export interface RoomConfig {
+interface RoomConfig {
   roomId: string;
   serverUrl: string;
   name?: string;
@@ -17,7 +17,7 @@ export interface ConnectedPeer {
   name: string;
 }
 
-export interface AuthToken {
+interface AuthToken {
   token: string;
   expiresAt?: number;
 }

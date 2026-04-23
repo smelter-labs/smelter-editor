@@ -23,7 +23,7 @@ const INPUT_HEIGHT = 44;
 
 // ─── LayerComponent ──────────────────────────────────────────────────────────
 
-export interface LayerComponentProps {
+interface LayerComponentProps {
   layer: Layer;
   inputs: InputCard[];
   ui: LayerUiState;
