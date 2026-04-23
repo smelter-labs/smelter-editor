@@ -511,7 +511,7 @@ export async function startTimelinePlayback(
   return (await getClient()).startTimelinePlayback(roomId, config, fromMs);
 }
 
-export async function stopTimelinePlayback(
+async function stopTimelinePlayback(
   roomId: string,
 ): Promise<{ status: string }> {
   return (await getClient()).stopTimelinePlayback(roomId);
