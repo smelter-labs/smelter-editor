@@ -270,21 +270,27 @@ export function useServerTimelinePlayback(
     playRequestWallMsRef.current = null;
 
     const config = toServerTimelineConfig(stateRef.current);
+    const totalDurationMs = stateRef.current.totalDurationMs;
     const fromMs = stateRef.current.playheadMs;
+    const normalizedFromMs =
+      totalDurationMs > 0 && fromMs >= totalDurationMs ? 0 : fromMs;
+    if (normalizedFromMs !== fromMs) {
+      pushPlayheadUpdate(normalizedFromMs, { force: true });
+    }
     console.log(
-      `[timeline-ui] PLAY requested fromMs=${fromMs} isPaused=${isPaused} tracks=${config.tracks.length} totalDuration=${config.totalDurationMs}`,
+      `[timeline-ui] PLAY requested fromMs=${fromMs} normalizedFromMs=${normalizedFromMs} isPaused=${isPaused} tracks=${config.tracks.length} totalDuration=${config.totalDurationMs}`,
     );
     sseCountRef.current = 0;
 
     autoPauseBeforeEndTriggeredRef.current = false;
     await runWithClientPending(async () => {
       try {
-        await startTimelinePlayback(roomId, config, fromMs);
+        await startTimelinePlayback(roomId, config, normalizedFromMs);
         console.log(`[timeline-ui] PLAY server acknowledged`);
         playRequestWallMsRef.current = performance.now();
         lastSSERef.current = {
           wallMs: performance.now(),
-          playheadMs: fromMs,
+          playheadMs: normalizedFromMs,
         };
         setIsPaused(false);
         setPlaying(true);
@@ -297,7 +303,7 @@ export function useServerTimelinePlayback(
         throw err;
       }
     });
-  }, [roomId, setPlaying, isPaused, runWithClientPending]);
+  }, [roomId, setPlaying, isPaused, runWithClientPending, pushPlayheadUpdate]);
 
   const pause = useCallback(async () => {
     setBusyTimeoutFallbackActive(false);

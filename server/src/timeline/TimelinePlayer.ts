@@ -704,6 +704,21 @@ export class TimelinePlayer {
     this.config = config;
   }
 
+  private normalizePlaybackStartMs(fromMs?: number): number {
+    const totalDurationMs = this.config.totalDurationMs;
+    if (totalDurationMs <= 0) {
+      return 0;
+    }
+    const requestedMs = fromMs ?? 0;
+    if (!Number.isFinite(requestedMs) || requestedMs < 0) {
+      return 0;
+    }
+    if (requestedMs >= totalDurationMs) {
+      return 0;
+    }
+    return requestedMs;
+  }
+
   public addListener(listener: TimelineListener): () => void {
     this.listeners.add(listener);
     return () => {
@@ -734,7 +749,7 @@ export class TimelinePlayer {
   }
 
   public async start(fromMs?: number): Promise<void> {
-    const playheadMs = fromMs ?? 0;
+    const playheadMs = this.normalizePlaybackStartMs(fromMs);
     console.log(
       `[timeline] START playback fromMs=${playheadMs} totalDuration=${this.config.totalDurationMs} tracks=${this.config.tracks.length}`,
     );
@@ -850,7 +865,9 @@ export class TimelinePlayer {
     if (!this.paused) {
       throw new Error('Cannot resume: timeline is not paused');
     }
-    const resumeMs = fromMs ?? this.pausedPlayheadMs;
+    const resumeMs = this.normalizePlaybackStartMs(
+      fromMs ?? this.pausedPlayheadMs,
+    );
     console.log(
       `[timeline] RESUME playback fromMs=${resumeMs} (pausedAt=${this.pausedPlayheadMs})`,
     );
