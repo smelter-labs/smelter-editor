@@ -151,6 +151,9 @@ export default function IntroView() {
   };
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
+  const [deletingRoomIds, setDeletingRoomIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   // Load suggestions on mount
   useEffect(() => {
@@ -823,7 +826,14 @@ export default function IntroView() {
                           variant='destructive'
                           className='cursor-pointer flex-1 sm:flex-none'
                           title='Delete Room'
+                          disabled={deletingRoomIds.has(room.roomId)}
                           onClick={async () => {
+                            if (deletingRoomIds.has(room.roomId)) return;
+                            setDeletingRoomIds((prev) => {
+                              const next = new Set(prev);
+                              next.add(room.roomId);
+                              return next;
+                            });
                             try {
                               await deleteRoom(room.roomId);
                               setRooms((prev) =>
@@ -831,9 +841,19 @@ export default function IntroView() {
                               );
                             } catch (err) {
                               console.error('Failed to delete room:', err);
+                            } finally {
+                              setDeletingRoomIds((prev) => {
+                                const next = new Set(prev);
+                                next.delete(room.roomId);
+                                return next;
+                              });
                             }
                           }}>
-                          <Trash2 className='w-4 h-4' />
+                          {deletingRoomIds.has(room.roomId) ? (
+                            <LoadingSpinner size='sm' variant='spinner' />
+                          ) : (
+                            <Trash2 className='w-4 h-4' />
+                          )}
                         </Button>
                       </div>
                     </div>
