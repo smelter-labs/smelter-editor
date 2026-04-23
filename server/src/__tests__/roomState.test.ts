@@ -709,6 +709,66 @@ describe('RoomState', () => {
       const ids = room.getState().layers[0]!.inputs.map((i) => i.inputId);
       expect(ids).toEqual(['c', 'a', 'b']);
     });
+
+    it('deduplicates repeated input IDs within the same layer', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      await room.updateLayers([
+        {
+          id: 'layer-1',
+          inputs: [
+            { inputId: 'dup', x: 0, y: 0, width: 100, height: 100 },
+            { inputId: 'dup', x: 50, y: 60, width: 200, height: 200 },
+            { inputId: 'other', x: 10, y: 20, width: 80, height: 80 },
+          ],
+        },
+      ]);
+
+      const layer = room.getState().layers[0]!;
+      expect(layer.inputs.map((input) => input.inputId)).toEqual([
+        'dup',
+        'other',
+      ]);
+      expect(layer.inputs[0]).toMatchObject({
+        inputId: 'dup',
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+      });
+    });
+
+    it('applies the same dedupe behavior when restoring layers', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      await room.restoreLayers([
+        {
+          id: 'layer-1',
+          inputs: [
+            { inputId: 'dup', x: 0, y: 0, width: 100, height: 100 },
+            { inputId: 'dup', x: 99, y: 99, width: 50, height: 50 },
+            { inputId: 'second', x: 12, y: 12, width: 64, height: 64 },
+          ],
+        },
+      ]);
+
+      const layer = room.getState().layers[0]!;
+      expect(layer.inputs.map((input) => input.inputId)).toEqual([
+        'dup',
+        'second',
+      ]);
+      expect(layer.inputs[0]).toMatchObject({
+        inputId: 'dup',
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+      });
+    });
   });
 
   describe('behavior layers', () => {
@@ -1045,7 +1105,10 @@ describe('RoomState', () => {
 
       const id1 = (await room.addNewInput({ type: 'text-input', text: 'A' }))!;
       const id2 = (await room.addNewInput({ type: 'game', title: 'B' }))!;
-      const id3 = (await room.addNewInput({ type: 'text-input', text: 'C' }))!;
+      const id3 = (await room.addNewInput({
+        type: 'hands',
+        sourceInputId: id1,
+      }))!;
 
       await room.connectInput(id1);
       await room.connectInput(id2);

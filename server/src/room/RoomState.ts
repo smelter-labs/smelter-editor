@@ -45,6 +45,28 @@ function cloneLayers(layers: Layer[]): Layer[] {
   return JSON.parse(JSON.stringify(layers)) as Layer[];
 }
 
+function sanitizeLayerInputs(layers: Layer[]): Layer[] {
+  return layers.map((layer) => {
+    const seenInputIds = new Set<string>();
+    const inputs = layer.inputs.filter((input) => {
+      if (seenInputIds.has(input.inputId)) {
+        return false;
+      }
+      seenInputIds.add(input.inputId);
+      return true;
+    });
+
+    if (inputs.length === layer.inputs.length) {
+      return layer;
+    }
+
+    return {
+      ...layer,
+      inputs,
+    };
+  });
+}
+
 function normalizeFramePositionMs(
   requestedMs: number,
   isLooped: boolean,
@@ -1443,14 +1465,15 @@ export class RoomState {
     }
 
     const cloned = cloneLayers(layers);
-    this.layers = cloned;
+    const sanitized = sanitizeLayerInputs(cloned);
+    this.layers = sanitized;
 
     // Sync position, transition, and crop properties from layer entries back
     // to input state so the editor's controllers stay consistent.
     // The first layer that contains an input is authoritative.
     const allInputs = this.inputManager.getInputs();
     const seen = new Set<string>();
-    for (const layer of cloned) {
+    for (const layer of sanitized) {
       for (const li of layer.inputs) {
         if (seen.has(li.inputId)) continue;
         seen.add(li.inputId);

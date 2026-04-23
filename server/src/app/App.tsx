@@ -126,10 +126,11 @@ function OutputScene() {
               );
             }
 
+            const layerItemKey = `${item.inputId}:${itemIndex}`;
             return (
               <Rescaler
-                key={`${item.inputId}`}
-                id={`layer-${layer.id}-${item.inputId}`}
+                key={layerItemKey}
+                id={`layer-${layer.id}-${item.inputId}-${itemIndex}`}
                 transition={{
                   durationMs: item.transitionDurationMs ?? 300,
                   easingFunction: buildEasingFunction(item.transitionEasing),

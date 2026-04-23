@@ -1336,7 +1336,64 @@ registerStorageRoutes(routes, {
 
 const UpdateRoomSchema = Type.Object({
   inputOrder: Type.Optional(Type.Array(Type.String())),
-  layers: Type.Optional(Type.Array(Type.Any())),
+  layers: Type.Optional(
+    Type.Array(
+      Type.Object({
+        id: Type.String(),
+        inputs: Type.Array(
+          Type.Object({
+            inputId: Type.String(),
+            x: Type.Number(),
+            y: Type.Number(),
+            width: Type.Number({ minimum: 0 }),
+            height: Type.Number({ minimum: 0 }),
+            transitionDurationMs: Type.Optional(Type.Number({ minimum: 0 })),
+            transitionEasing: Type.Optional(Type.String()),
+            cropTop: Type.Optional(Type.Number({ minimum: 0 })),
+            cropLeft: Type.Optional(Type.Number({ minimum: 0 })),
+            cropRight: Type.Optional(Type.Number({ minimum: 0 })),
+            cropBottom: Type.Optional(Type.Number({ minimum: 0 })),
+          }),
+        ),
+        behavior: Type.Optional(
+          Type.Union([
+            Type.Object({
+              type: Type.Literal('equal-grid'),
+              autoscale: Type.Optional(Type.Boolean()),
+              rows: Type.Optional(Type.Number({ minimum: 1 })),
+              cols: Type.Optional(Type.Number({ minimum: 1 })),
+              objectFit: Type.Optional(
+                Type.Union([
+                  Type.Literal('fill'),
+                  Type.Literal('cover'),
+                  Type.Literal('contain'),
+                ]),
+              ),
+              resolveCollisions: Type.Optional(Type.Boolean()),
+              horizontalSpacing: Type.Optional(Type.Number()),
+              verticalSpacing: Type.Optional(Type.Number()),
+            }),
+            Type.Object({
+              type: Type.Literal('approximate-aspect-grid'),
+              resolveCollisions: Type.Optional(Type.Boolean()),
+              horizontalSpacing: Type.Optional(Type.Number()),
+              verticalSpacing: Type.Optional(Type.Number()),
+            }),
+            Type.Object({
+              type: Type.Literal('exact-aspect-grid'),
+              horizontalSpacing: Type.Optional(Type.Number()),
+              verticalSpacing: Type.Optional(Type.Number()),
+            }),
+            Type.Object({
+              type: Type.Literal('picture-in-picture'),
+              horizontalSpacing: Type.Optional(Type.Number()),
+              verticalSpacing: Type.Optional(Type.Number()),
+            }),
+          ]),
+        ),
+      }),
+    ),
+  ),
   isPublic: Type.Optional(Type.Boolean()),
   swapDurationMs: Type.Optional(Type.Number({ minimum: 0, maximum: 5000 })),
   swapOutgoingEnabled: Type.Optional(Type.Boolean()),
