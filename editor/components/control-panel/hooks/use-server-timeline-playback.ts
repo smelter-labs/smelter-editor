@@ -11,6 +11,7 @@ import { toServerTimelineConfig } from '@/lib/timeline-config';
 import { useTimelineSSE } from '@/hooks/use-timeline-sse';
 import type { TimelineState } from './use-timeline-state';
 import { OUTPUT_TRACK_ID } from './use-timeline-state';
+import { resolveSsePlayheadSync } from './timeline-playhead-sync';
 import {
   listenTimelineEvent,
   TIMELINE_EVENTS,
@@ -18,7 +19,7 @@ import {
 
 const PLAYHEAD_UI_UPDATE_INTERVAL_MS = 33;
 const PLAYHEAD_BACKWARD_TOLERANCE_MS = 120;
-const PLAYHEAD_HARD_RESYNC_MS = 1000;
+const PLAYHEAD_START_RESYNC_FALLBACK_MS = 500;
 const AUTO_PAUSE_BEFORE_END_MS = 2000;
 const STOP_BUSY_TIMEOUT_MS = 2500;
 
@@ -67,6 +68,8 @@ export function useServerTimelinePlayback(
   const isTimelineClientPending = timelineClientPendingCount > 0;
   const autoPauseBeforeEndTriggeredRef = useRef(false);
   const stopInFlightRef = useRef<Promise<void> | null>(null);
+  const awaitingStartPlaybackSSERef = useRef(false);
+  const playRequestWallMsRef = useRef<number | null>(null);
   useEffect(() => {
     setBusyTimeoutFallbackActive(false);
   }, [roomId]);
@@ -161,6 +164,8 @@ export function useServerTimelinePlayback(
       console.log(
         `[timeline-ui] SSE signaled stop (sseCount=${sseCountRef.current} playhead=${sseData.playheadMs})`,
       );
+      awaitingStartPlaybackSSERef.current = false;
+      playRequestWallMsRef.current = null;
       setPlaying(false);
       setIsPaused(false);
       if (rafRef.current) {
@@ -172,28 +177,32 @@ export function useServerTimelinePlayback(
     }
 
     if (sseData.isPlaying) {
+      const awaitingStartPlaybackSSE = awaitingStartPlaybackSSERef.current;
       if (sseCountRef.current <= 3 || sseCountRef.current % 25 === 0) {
         console.log(
           `[timeline-ui] SSE update #${sseCountRef.current} playhead=${sseData.playheadMs}`,
         );
       }
-      const uiMs = uiPlayheadMsRef.current;
-      const backwardDeltaMs = uiMs - sseData.playheadMs;
-      const shouldSnapBackward = backwardDeltaMs > PLAYHEAD_HARD_RESYNC_MS;
-      const effectiveSsePlayheadMs =
-        backwardDeltaMs > PLAYHEAD_BACKWARD_TOLERANCE_MS && !shouldSnapBackward
-          ? uiMs
-          : sseData.playheadMs;
+      const { nextPlayheadMs, allowBackward, clearStartResync } =
+        resolveSsePlayheadSync({
+          uiPlayheadMs: uiPlayheadMsRef.current,
+          ssePlayheadMs: sseData.playheadMs,
+          awaitingStartPlaybackSSE,
+        });
       // Keep interpolation base monotonic for small SSE delays.
       // If drift is very large, snap back to server to re-sync.
       lastSSERef.current = {
         wallMs: performance.now(),
-        playheadMs: effectiveSsePlayheadMs,
+        playheadMs: nextPlayheadMs,
       };
-      pushPlayheadUpdate(effectiveSsePlayheadMs, {
+      pushPlayheadUpdate(nextPlayheadMs, {
         force: true,
-        allowBackward: shouldSnapBackward,
+        allowBackward,
       });
+      if (clearStartResync) {
+        awaitingStartPlaybackSSERef.current = false;
+        playRequestWallMsRef.current = null;
+      }
     }
   }, [
     sseData,
@@ -215,6 +224,18 @@ export function useServerTimelinePlayback(
     const tick = () => {
       const base = lastSSERef.current;
       if (!base) {
+        rafRef.current = requestAnimationFrame(tick);
+        return;
+      }
+      const awaitingStartPlaybackSSE = awaitingStartPlaybackSSERef.current;
+      const playRequestWallMs = playRequestWallMsRef.current;
+      if (
+        awaitingStartPlaybackSSE &&
+        playRequestWallMs !== null &&
+        performance.now() - playRequestWallMs > PLAYHEAD_START_RESYNC_FALLBACK_MS
+      ) {
+        // After a short fallback window, wait for authoritative SSE time
+        // instead of extrapolating from potentially stale local playhead.
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
@@ -245,6 +266,8 @@ export function useServerTimelinePlayback(
   const play = useCallback(async () => {
     if (stateRef.current.isPlaying) return;
     setBusyTimeoutFallbackActive(false);
+    awaitingStartPlaybackSSERef.current = true;
+    playRequestWallMsRef.current = null;
 
     const config = toServerTimelineConfig(stateRef.current);
     const fromMs = stateRef.current.playheadMs;
@@ -258,6 +281,7 @@ export function useServerTimelinePlayback(
       try {
         await startTimelinePlayback(roomId, config, fromMs);
         console.log(`[timeline-ui] PLAY server acknowledged`);
+        playRequestWallMsRef.current = performance.now();
         lastSSERef.current = {
           wallMs: performance.now(),
           playheadMs: fromMs,
@@ -266,6 +290,8 @@ export function useServerTimelinePlayback(
         setPlaying(true);
       } catch (err) {
         console.error('[timeline-ui] PLAY failed', err);
+        awaitingStartPlaybackSSERef.current = false;
+        playRequestWallMsRef.current = null;
         setPlaying(false);
         lastSSERef.current = null;
         throw err;
@@ -275,6 +301,8 @@ export function useServerTimelinePlayback(
 
   const pause = useCallback(async () => {
     setBusyTimeoutFallbackActive(false);
+    awaitingStartPlaybackSSERef.current = false;
+    playRequestWallMsRef.current = null;
     setPlaying(false);
     setIsPaused(true);
     if (rafRef.current) {
@@ -304,6 +332,8 @@ export function useServerTimelinePlayback(
         async () => {
           let stopError: unknown = null;
           autoPauseBeforeEndTriggeredRef.current = false;
+          awaitingStartPlaybackSSERef.current = false;
+          playRequestWallMsRef.current = null;
           setPlaying(false);
           if (rafRef.current) {
             cancelAnimationFrame(rafRef.current);
@@ -348,6 +378,8 @@ export function useServerTimelinePlayback(
     async (ms: number) => {
       setBusyTimeoutFallbackActive(false);
       autoPauseBeforeEndTriggeredRef.current = false;
+      awaitingStartPlaybackSSERef.current = false;
+      playRequestWallMsRef.current = null;
       console.log(`[timeline-ui] SEEK to ${ms}ms`);
       pushPlayheadUpdate(ms, { force: true });
       lastSSERef.current = {
