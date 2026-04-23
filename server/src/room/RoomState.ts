@@ -1309,9 +1309,11 @@ export class RoomState {
     const inputMap = new Map(allInputs.map((i) => [i.inputId, i]));
 
     // Auto-append connected inputs that aren't in any layer to layers[0].
-    // For a manual first layer, tile positions are filled in below using
-    // equal-grid as a layout helper only (layer.behavior stays unset).
-    // Skipped during timeline snapshot restore to preserve exact manual positions.
+    // For a manual first layer, we prefer existing absolute coordinates from
+    // input state to avoid re-tiling on timeline source swaps. If geometry is
+    // unknown, positions are filled below using equal-grid as a helper only
+    // (layer.behavior stays unset). Skipped during timeline snapshot restore to
+    // preserve exact manual positions.
     let appendedUnplacedToFirstLayer = false;
     if (!skipUnplacedAppend) {
       const mentionedIds = new Set(
@@ -1330,7 +1332,39 @@ export class RoomState {
       );
       if (unplacedInputs.length > 0 && this.layers.length > 0) {
         const firstLayer = this.layers[0]!;
+        const isManualFirstLayer = !firstLayer.behavior;
         for (const bi of unplacedInputs) {
+          const input = inputMap.get(bi.inputId);
+          const hasAbsoluteGeometry =
+            input?.absoluteLeft !== undefined &&
+            input?.absoluteTop !== undefined &&
+            input?.absoluteWidth !== undefined &&
+            input?.absoluteHeight !== undefined;
+
+          if (isManualFirstLayer && hasAbsoluteGeometry) {
+            const absoluteInput = input as RoomInputState & {
+              absoluteLeft: number;
+              absoluteTop: number;
+              absoluteWidth: number;
+              absoluteHeight: number;
+            };
+            firstLayer.inputs.push({
+              inputId: bi.inputId,
+              x: absoluteInput.absoluteLeft,
+              y: absoluteInput.absoluteTop,
+              width: absoluteInput.absoluteWidth,
+              height: absoluteInput.absoluteHeight,
+              transitionDurationMs: absoluteInput.absoluteTransitionDurationMs,
+              transitionEasing: absoluteInput.absoluteTransitionEasing,
+              cropTop: absoluteInput.cropTop,
+              cropLeft: absoluteInput.cropLeft,
+              cropRight: absoluteInput.cropRight,
+              cropBottom: absoluteInput.cropBottom,
+            });
+            continue;
+          }
+
+          appendedUnplacedToFirstLayer = true;
           firstLayer.inputs.push({
             inputId: bi.inputId,
             x: 0,
@@ -1339,7 +1373,6 @@ export class RoomState {
             height: 0,
           });
         }
-        appendedUnplacedToFirstLayer = true;
       }
     }
 

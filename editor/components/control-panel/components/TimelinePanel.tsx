@@ -133,6 +133,44 @@ type TimelinePanelProps = {
   sortModeSwitchReason?: string;
 };
 
+function replaceLayerInputId(
+  layers: Layer[],
+  oldInputId: string,
+  newInputId: string,
+): Layer[] {
+  if (oldInputId === newInputId) return layers;
+
+  let changed = false;
+  const nextLayers = layers.map((layer) => {
+    let layerChanged = false;
+    const seen = new Set<string>();
+    const nextInputs: Layer['inputs'] = [];
+
+    for (const input of layer.inputs) {
+      const nextInputId =
+        input.inputId === oldInputId ? newInputId : input.inputId;
+      if (nextInputId !== input.inputId) {
+        layerChanged = true;
+      }
+      if (seen.has(nextInputId)) {
+        // Prevent duplicate layer entries after replacing input IDs.
+        layerChanged = true;
+        continue;
+      }
+      seen.add(nextInputId);
+      nextInputs.push(
+        nextInputId === input.inputId ? input : { ...input, inputId: nextInputId },
+      );
+    }
+
+    if (!layerChanged) return layer;
+    changed = true;
+    return { ...layer, inputs: nextInputs };
+  });
+
+  return changed ? nextLayers : layers;
+}
+
 // Color maps, constants, and utility functions are in ./timeline/timeline-utils.ts
 
 // Utility functions extracted to ./timeline/timeline-utils.ts
@@ -231,7 +269,7 @@ export const TimelinePanel = memo(function TimelinePanel({
   sortModeSwitchDisabled = false,
   sortModeSwitchReason,
 }: TimelinePanelProps) {
-  const { removeInput } = useActions();
+  const { removeInput, updateRoom } = useActions();
   const {
     inputs,
     roomId,
@@ -559,10 +597,27 @@ export const TimelinePanel = memo(function TimelinePanel({
     return listenTimelineEvent(
       TIMELINE_EVENTS.SWAP_CLIP_INPUT,
       ({ trackId, clipId, newInputId, sourceUpdates }) => {
+        const oldInputId = state.tracks
+          .find((track) => track.id === trackId)
+          ?.clips.find((clip) => clip.id === clipId)?.inputId;
+
         swapClipInput(trackId, clipId, newInputId, sourceUpdates);
+
+        if (!oldInputId || oldInputId === newInputId || layers.length === 0) {
+          return;
+        }
+
+        const nextLayers = replaceLayerInputId(layers, oldInputId, newInputId);
+        if (nextLayers === layers) {
+          return;
+        }
+
+        void updateRoom(roomId, { layers: nextLayers }).catch((err) => {
+          console.error('[timeline] Failed to sync swapped input in layers', err);
+        });
       },
     );
-  }, [swapClipInput]);
+  }, [layers, roomId, state.tracks, swapClipInput, updateRoom]);
 
   // Auto-create keyframe when layout map position changes
   useEffect(() => {
