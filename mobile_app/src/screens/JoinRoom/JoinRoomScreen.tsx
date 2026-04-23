@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   FlatList,
   KeyboardAvoidingView,
@@ -11,20 +11,44 @@ import {
   ActivityIndicator,
   Button,
   Surface,
+  Switch,
   Text,
   TextInput,
   useTheme,
 } from "react-native-paper";
+import * as ScreenOrientation from "expo-screen-orientation";
+import { useIsTablet } from "../../hooks/useIsTablet";
 import { useJoinRoom } from "./useJoinRoom";
 import { getRoomDisplayName } from "../../services/apiService";
 import { QRScannerModal } from "./QRScannerModal";
 import { ErrorMessage } from "../../components/shared/ErrorMessage";
 import { LoadingOverlay } from "../../components/shared/LoadingOverlay";
 import { appColors } from "../../theme/paperTheme";
+import { useSettingsStore } from "../../store";
 
 export function JoinRoomScreen() {
   const theme = useTheme();
   const [selectOpen, setSelectOpen] = useState(false);
+  const arrowNavigation = useSettingsStore((s) => s.arrowNavigation);
+  const setArrowNavigation = useSettingsStore((s) => s.setArrowNavigation);
+  const isTablet = useIsTablet();
+
+  useEffect(() => {
+    if (isTablet === null) return; // still detecting
+    if (isTablet) {
+      ScreenOrientation.lockAsync(
+        ScreenOrientation.OrientationLock.LANDSCAPE,
+      ).catch((err) =>
+        console.warn("[JoinRoomScreen] orientation lock failed", err),
+      );
+    } else {
+      ScreenOrientation.lockAsync(
+        ScreenOrientation.OrientationLock.PORTRAIT,
+      ).catch((err) =>
+        console.warn("[JoinRoomScreen] orientation lock failed", err),
+      );
+    }
+  }, [isTablet]);
 
   const {
     localServerUrl,
@@ -228,6 +252,14 @@ export function JoinRoomScreen() {
         <Button mode="text" onPress={() => setShowQR(true)}>
           Scan QR Code instead
         </Button>
+
+        {/* Settings */}
+        <View
+          style={[styles.settingRow, { borderTopColor: theme.colors.outline }]}
+        >
+          <Text variant="bodyMedium">Arrow navigation</Text>
+          <Switch value={arrowNavigation} onValueChange={setArrowNavigation} />
+        </View>
       </Surface>
 
       {isLoading && <LoadingOverlay message="Connecting to room..." />}
@@ -250,7 +282,8 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 16,
     padding: 32,
-    width: 440,
+    width: "90%",
+    maxWidth: 440,
     gap: 8,
   },
   roomSection: {
@@ -279,7 +312,8 @@ const styles = StyleSheet.create({
   modalCard: {
     borderWidth: 1,
     borderRadius: 12,
-    width: 380,
+    width: "85%",
+    maxWidth: 380,
     overflow: "hidden",
   },
   modalTitle: {
@@ -302,5 +336,13 @@ const styles = StyleSheet.create({
   },
   connectButton: {
     marginTop: 8,
+  },
+  settingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    marginTop: 4,
+    paddingTop: 12,
   },
 });

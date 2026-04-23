@@ -1,13 +1,13 @@
 import { NextResponse, type NextRequest } from 'next/server';
-
-const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
+import { getServerSideServerUrl } from '@/lib/server-url.server';
 
 export async function POST(
   _req: NextRequest,
   { params }: { params: Promise<{ filePath: string[] }> },
 ) {
+  const baseUrl = await getServerSideServerUrl();
   const { filePath } = await params;
-  if (!BASE_URL) {
+  if (!baseUrl) {
     return NextResponse.json(
       { error: 'Server URL not configured' },
       { status: 500 },
@@ -19,7 +19,7 @@ export async function POST(
       .map((segment) => encodeURIComponent(segment))
       .join('/');
     const upstream = await fetch(
-      `${BASE_URL}/upload/audio/normalize/${encodedPath}`,
+      `${baseUrl}/upload/audio/normalize/${encodedPath}`,
       {
         method: 'POST',
       },

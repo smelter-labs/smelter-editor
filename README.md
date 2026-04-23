@@ -143,6 +143,53 @@ For AMD GPUs, uncomment the `devices` section and comment out `gpus`/`runtime` i
 | 9071 | HTTP | REST API |
 | 9072 | HTTP | WHEP/WHIP (WebRTC) |
 
+### Running two Docker instances
+
+Use base Compose for instance A and the override file for instance B:
+
+```bash
+# Instance A (default ports 9071/9072, data in .data/)
+docker compose -p smelter-a up -d --build
+
+# Instance B (host ports 10071/10072, data in .data-b/)
+docker compose -p smelter-b -f compose.yaml -f compose.b.override.yaml up -d --build
+```
+
+The override file `compose.b.override.yaml` remaps:
+- API: `10071:9071`
+- WHEP/WHIP: `10072:9072`
+- all persisted data volumes from `.data/*` to `.data-b/*`
+
+### Frontend per instance
+
+Run two editor instances with different backend URLs:
+
+```bash
+cd editor
+pnpm dev:instance-a   # SMELTER_EDITOR_SERVER_URL=http://localhost:9071 (port 3000)
+pnpm dev:instance-b   # SMELTER_EDITOR_SERVER_URL=http://localhost:10071 (port 3002)
+```
+
+`NEXT_PUBLIC_SMELTER_WS_URL` is derived automatically from `SMELTER_EDITOR_SERVER_URL` in `editor/next.config.ts`.
+
+### Network verification (API + WHEP/WHIP)
+
+Replace `<host>` with the machine IP or DNS name from another machine on the network:
+
+```bash
+# API checks
+curl -fsS "http://<host>:9071/active-rooms"
+curl -fsS "http://<host>:10071/active-rooms"
+
+# Port reachability checks (WHEP/WHIP + API)
+nc -vz <host> 9071
+nc -vz <host> 9072
+nc -vz <host> 10071
+nc -vz <host> 10072
+```
+
+Make sure firewall/security group rules allow inbound TCP on ports `9071`, `9072`, `10071`, and `10072`.
+
 ## Development Commands
 
 ### Editor (`cd editor/`)
@@ -175,6 +222,7 @@ For AMD GPUs, uncomment the `devices` section and comment out `gpus`/`runtime` i
 | `KICK_CLIENT_SECRET`                    | server | Kick API client secret                                             |
 | `ENVIRONMENT`                           | server | `production` enables Vulkan encoder and production WHEP/WHIP URLs  |
 | `LAYOUT`                                | server | `boxed` enables the blessed TUI dashboard                          |
+| `SMELTER_WS_DEBUG`                      | server | `true` enables detailed WebSocket upgrade/connection debug logs    |
 | `SMELTER_SNAKE_VISUAL_SPEED_MULTIPLIER` | server | Snake interpolation speed (default: `1.25`)                        |
 | `MOTION_PYTHON_PATH`                    | server | Override Python binary for motion detection (default: auto-detect) |
 

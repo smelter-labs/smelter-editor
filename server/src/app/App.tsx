@@ -133,9 +133,9 @@ function OutputScene() {
             const nativeH = input?.sourceHeight ?? 1080;
 
             return (
-              <React.Fragment key={`${item.inputId}-${itemIndex}`}>
+              <React.Fragment key={`${item.inputId}`}>
                 <Rescaler
-                  id={`layer-${layer.id}-${item.inputId}-${itemIndex}`}
+                  id={`layer-${layer.id}-${item.inputId}`}
                   transition={{
                     durationMs: item.transitionDurationMs ?? 300,
                     easingFunction: buildEasingFunction(item.transitionEasing),

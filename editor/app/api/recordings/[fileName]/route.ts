@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
+import { getServerSideServerUrl } from '@/lib/server-url.server';
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ fileName: string }> },
 ) {
+  const baseUrl = await getServerSideServerUrl();
   const { fileName } = await params;
 
   const upstream = await fetch(
-    `${BASE_URL}/recordings/${encodeURIComponent(fileName)}`,
+    `${baseUrl}/recordings/${encodeURIComponent(fileName)}`,
   );
 
   if (!upstream.ok) {

@@ -13,7 +13,7 @@ export function isLeftEdge(x: number): boolean {
  * Returns true if the x position is within the right edge zone.
  */
 export function isRightEdge(x: number): boolean {
-  const { width } = Dimensions.get("window");
+  const { width } = Dimensions.get("screen");
   return x >= width - EDGE_ZONE_WIDTH;
 }
 
@@ -27,7 +27,7 @@ export function getEdgeHitSlop(side: "left" | "right"): {
   top: number;
   bottom: number;
 } {
-  const { height } = Dimensions.get("window");
+  const { height } = Dimensions.get("screen");
   return {
     [side]: 0,
     width: EDGE_ZONE_WIDTH,

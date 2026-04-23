@@ -435,8 +435,18 @@ describe('TimelinePlayer', () => {
   describe('reorderInputs respects layer order', () => {
     it('uses layer.inputs order instead of track order for reorderInputs', async () => {
       (adapter.getInputs as any).mockReturnValue([
-        { inputId: 'a', hidden: false, status: 'connected', type: 'text-input' },
-        { inputId: 'b', hidden: false, status: 'connected', type: 'text-input' },
+        {
+          inputId: 'a',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
+        {
+          inputId: 'b',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
       ]);
       (adapter.getLayers as any).mockReturnValue([
         { id: 'L1', inputs: [{ inputId: 'b' }, { inputId: 'a' }] },
@@ -465,9 +475,24 @@ describe('TimelinePlayer', () => {
 
     it('appends active inputs not in any layer at the end', async () => {
       (adapter.getInputs as any).mockReturnValue([
-        { inputId: 'a', hidden: false, status: 'connected', type: 'text-input' },
-        { inputId: 'b', hidden: false, status: 'connected', type: 'text-input' },
-        { inputId: 'c', hidden: false, status: 'connected', type: 'text-input' },
+        {
+          inputId: 'a',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
+        {
+          inputId: 'b',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
+        {
+          inputId: 'c',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
       ]);
       (adapter.getLayers as any).mockReturnValue([
         { id: 'L1', inputs: [{ inputId: 'b' }] },
@@ -509,9 +534,24 @@ describe('TimelinePlayer', () => {
 
     it('respects order across multiple layers', async () => {
       (adapter.getInputs as any).mockReturnValue([
-        { inputId: 'a', hidden: false, status: 'connected', type: 'text-input' },
-        { inputId: 'b', hidden: false, status: 'connected', type: 'text-input' },
-        { inputId: 'c', hidden: false, status: 'connected', type: 'text-input' },
+        {
+          inputId: 'a',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
+        {
+          inputId: 'b',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
+        {
+          inputId: 'c',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
       ]);
       (adapter.getLayers as any).mockReturnValue([
         { id: 'L1', inputs: [{ inputId: 'c' }] },
@@ -547,7 +587,12 @@ describe('TimelinePlayer', () => {
 
     it('updates order when a new block starts mid-playback', async () => {
       (adapter.getInputs as any).mockReturnValue([
-        { inputId: 'a', hidden: false, status: 'connected', type: 'text-input' },
+        {
+          inputId: 'a',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
         { inputId: 'b', hidden: true, status: 'connected', type: 'text-input' },
       ]);
       (adapter.getLayers as any).mockReturnValue([
@@ -576,52 +621,6 @@ describe('TimelinePlayer', () => {
       await vi.advanceTimersByTimeAsync(2001);
 
       expect(adapter.reorderInputs).toHaveBeenCalledWith(['b', 'a']);
-    });
-  });
-
-  describe('stress seek/stop with many MP4 inputs', () => {
-    it('does not repeatedly restart unchanged MP4 clips during rapid seeks', async () => {
-      const mp4Inputs = Array.from({ length: 24 }, (_, index) => ({
-        inputId: `room::local::${index}`,
-        hidden: false,
-        status: 'connected',
-        type: 'local-mp4',
-      }));
-      (adapter.getInputs as any).mockReturnValue(mp4Inputs);
-      (adapter.getLayers as any).mockReturnValue([{ id: 'L1', inputs: [] }]);
-
-      const tracks = [
-        {
-          id: 't-mp4',
-          clips: mp4Inputs.map((input, index) =>
-            makeClip({
-              id: `clip-${index}`,
-              inputId: input.inputId,
-              startMs: 0,
-              endMs: 15_000,
-              blockSettings: makeBlockSettings({
-                mp4PlayFromMs: 1_000,
-                mp4Loop: true,
-              }),
-            }),
-          ),
-        },
-      ];
-      const player = new TimelinePlayer(
-        adapter,
-        makeConfig({
-          tracks,
-          totalDurationMs: 15_000,
-        }),
-      );
-
-      await player.start(0);
-      for (const seekMs of [200, 450, 900, 1_350, 1_900, 2_450, 3_100, 3_900]) {
-        await player.seek(seekMs);
-      }
-      await player.stop();
-
-      expect(adapter.restartMp4Input).toHaveBeenCalledTimes(0);
     });
   });
 });

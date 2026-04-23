@@ -1,16 +1,27 @@
 import React from "react";
-import { Dimensions, View } from "react-native";
+import { View } from "react-native";
+import { useScreenDimensions } from "../../hooks/useScreenDimensions";
 
 interface ScreenTransitionViewProps {
   children: React.ReactNode;
+  width?: number;
 }
 
 /**
  * Full-viewport frame for each screen in MainNavigator.
- * Ensures screens are correctly sized and don't bleed into each other during swipe.
+ * Uses useWindowDimensions so it re-sizes correctly after orientation changes.
  */
-export function ScreenTransitionView({ children }: ScreenTransitionViewProps) {
-  const { width, height } = Dimensions.get("window");
+export function ScreenTransitionView({
+  children,
+  width,
+}: ScreenTransitionViewProps) {
+  const { width: winWidth, height } = useScreenDimensions();
 
-  return <View style={{ width, height, overflow: "hidden" }}>{children}</View>;
+  return (
+    <View
+      style={{ width: width ?? winWidth, height, flex: 1, overflow: "hidden" }}
+    >
+      {children}
+    </View>
+  );
 }

@@ -1,5 +1,7 @@
 'use client';
 
+import { v4 as uuidv4 } from 'uuid';
+
 // ─── V3 types (current) ───────────────────────────────────────────────
 
 export type StoredTransitionConfig = {
@@ -145,7 +147,7 @@ type StoredTimelineStateV2 = {
 function migrateV1toV2(v1: StoredTimelineStateV1): StoredTimelineStateV2 {
   const tracks: StoredTrack[] = Object.entries(v1.tracks).map(
     ([inputId, track]) => ({
-      id: crypto.randomUUID(),
+      id: uuidv4(),
       label: inputId,
       clips: track.segments.map((s) => ({
         ...s,
@@ -173,7 +175,7 @@ function migrateV2toV3(v2: StoredTimelineStateV2): StoredTimelineStateV3 {
         keyframes: clip.blockSettings
           ? [
               {
-                id: crypto.randomUUID(),
+                id: uuidv4(),
                 timeMs: 0,
                 blockSettings: clip.blockSettings,
               },

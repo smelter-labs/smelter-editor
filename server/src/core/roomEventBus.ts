@@ -99,6 +99,13 @@ class RoomEventBus {
     }
   }
 
+  // send `event` to all subscribers across every room
+  broadcastAll(event: RoomEvent): void {
+    for (const roomId of this.connections.keys()) {
+      this.broadcast(roomId, event);
+    }
+  }
+
   // force-close all connections for `roomId` (e.g. when the room is deleted)
   closeRoom(roomId: string): void {
     const clients = this.connections.get(roomId);

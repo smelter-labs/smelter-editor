@@ -61,16 +61,16 @@ export function useJoinRoom() {
 
     const { setInputs } = useInputsStore.getState();
     const { setLayers, setResolution } = useLayoutStore.getState();
+    const { setTimelinePlaying } = useConnectionStore.getState();
 
     void (async () => {
       try {
-        const { inputs, layers, resolution } = await apiService.fetchRoomState(
-          trimmedUrl,
-          trimmedRoomId,
-        );
+        const { inputs, layers, resolution, isTimelinePlaying } =
+          await apiService.fetchRoomState(trimmedUrl, trimmedRoomId);
         setInputs(inputs);
         setLayers(layers);
         setResolution(resolution);
+        setTimelinePlaying(isTimelinePlaying);
         if (__DEV__) {
           console.log("[JoinRoom] preloaded room state", {
             inputCount: inputs.length,
@@ -191,12 +191,11 @@ export function useJoinRoom() {
     const { setInputs } = useInputsStore.getState();
     const { setLayers, setResolution } = useLayoutStore.getState();
     const { setGridConfig } = useLayoutStore.getState();
+    const { setTimelinePlaying } = useConnectionStore.getState();
 
     try {
-      const { inputs, layers, resolution } = await apiService.fetchRoomState(
-        trimmedUrl,
-        trimmedRoomId,
-      );
+      const { inputs, layers, resolution, isTimelinePlaying } =
+        await apiService.fetchRoomState(trimmedUrl, trimmedRoomId);
 
       await wsService.connect(trimmedUrl, trimmedRoomId);
       setCredentials(trimmedUrl, trimmedRoomId);
@@ -205,6 +204,7 @@ export function useJoinRoom() {
       setInputs(inputs);
       setLayers(layers);
       setResolution(resolution);
+      setTimelinePlaying(isTimelinePlaying);
       setGridConfig(
         Math.round(resolution.width / 50),
         Math.round(resolution.height / 50),

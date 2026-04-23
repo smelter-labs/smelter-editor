@@ -1,20 +1,20 @@
 import { NextResponse, type NextRequest } from 'next/server';
-
-const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
+import { getServerSideServerUrl } from '@/lib/server-url.server';
 
 export async function GET(
   _req: NextRequest,
   { params }: { params: Promise<{ fileName: string }> },
 ) {
+  const baseUrl = await getServerSideServerUrl();
   const { fileName } = await params;
-  if (!BASE_URL) {
+  if (!baseUrl) {
     return NextResponse.json(
       { error: 'Server URL not configured' },
       { status: 500 },
     );
   }
 
-  const url = `${BASE_URL}/suggestions/mp4-thumbnail/${encodeURIComponent(fileName)}`;
+  const url = `${baseUrl}/suggestions/mp4-thumbnail/${encodeURIComponent(fileName)}`;
   try {
     const upstream = await fetch(url);
     if (!upstream.ok) {

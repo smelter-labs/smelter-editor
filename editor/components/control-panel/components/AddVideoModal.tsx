@@ -9,6 +9,7 @@ import {
   type MutableRefObject,
 } from 'react';
 import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Progress } from '@/components/ui/progress';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
 import { useActions } from '../contexts/actions-context';
@@ -16,6 +17,7 @@ import { loadUserName, saveUserName } from '../whip-input/utils/whip-storage';
 import { stopCameraAndConnection } from '../whip-input/utils/preview';
 import {
   loadWhipSession,
+  loadLastWhipInputId,
   saveWhipSession,
   saveLastWhipInputId,
 } from '../whip-input/utils/whip-storage';
@@ -30,7 +32,9 @@ import { useIsMobileDevice } from '@/hooks/use-mobile';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from 'sonner';
 import type { ChannelSuggestion, Input } from '@/lib/types';
+import { v4 as uuidv4 } from 'uuid';
 import { SelectablePreviewCard } from './asset-browser/selectable-preview-card';
+import { getEffectiveClientServerUrl } from '@/lib/server-url';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -363,31 +367,39 @@ type UploadJob = {
   errorMessage?: string;
 };
 
-const PUBLIC_SERVER_URL =
-  process.env.NEXT_PUBLIC_SMELTER_SERVER_URL?.replace(/\/$/, '') ?? '';
-
 function buildUploadUrl(
   path: string,
   opts?: { preferProxy?: boolean },
 ): string {
+  const publicServerUrl = getEffectiveClientServerUrl();
   if (opts?.preferProxy) {
     return `/api${path}`;
   }
 
-  return PUBLIC_SERVER_URL ? `${PUBLIC_SERVER_URL}${path}` : `/api${path}`;
+  return publicServerUrl ? `${publicServerUrl}${path}` : `/api${path}`;
 }
 
-const UPLOAD_ROUTES: Record<UploadMediaType, string> = {
-  mp4: buildUploadUrl('/upload/mp4'),
-  picture: buildUploadUrl('/upload/picture'),
-  audio: buildUploadUrl('/upload/audio'),
-};
+function getUploadRoute(mediaType: UploadMediaType): string {
+  switch (mediaType) {
+    case 'mp4':
+      return buildUploadUrl('/upload/mp4');
+    case 'picture':
+      return buildUploadUrl('/upload/picture');
+    case 'audio':
+      return buildUploadUrl('/upload/audio');
+  }
+}
 
-const FOLDER_ROUTES: Record<UploadMediaType, string> = {
-  mp4: buildUploadUrl('/upload/mp4/folder'),
-  picture: buildUploadUrl('/upload/picture/folder'),
-  audio: buildUploadUrl('/upload/audio/folder'),
-};
+function getFolderRoute(mediaType: UploadMediaType): string {
+  switch (mediaType) {
+    case 'mp4':
+      return buildUploadUrl('/upload/mp4/folder');
+    case 'picture':
+      return buildUploadUrl('/upload/picture/folder');
+    case 'audio':
+      return buildUploadUrl('/upload/audio/folder');
+  }
+}
 
 async function uploadFile(
   file: File,
@@ -404,7 +416,7 @@ async function uploadFile(
     formData.append('file', file);
 
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', UPLOAD_ROUTES[mediaType]);
+    xhr.open('POST', getUploadRoute(mediaType));
 
     xhr.upload.addEventListener('progress', (event) => {
       if (!event.lengthComputable) return;
@@ -457,7 +469,7 @@ async function createFolder(
   mediaType: UploadMediaType,
   folder: string,
 ): Promise<void> {
-  const route = FOLDER_ROUTES[mediaType];
+  const route = getFolderRoute(mediaType);
   const res = await fetch(route, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -486,7 +498,7 @@ async function deleteAsset(
     .filter(Boolean)
     .map((segment) => encodeURIComponent(segment))
     .join('/');
-  const res = await fetch(`${UPLOAD_ROUTES[mediaType]}/${encodedPath}`, {
+  const res = await fetch(`${getUploadRoute(mediaType)}/${encodedPath}`, {
     method: 'DELETE',
   });
   if (!res.ok) {
@@ -825,7 +837,7 @@ export function AssetBrowserPanel({
       const preparedUploads = incomingFiles.map((file) => {
         const mediaType = detectMediaType(file);
         return {
-          id: crypto.randomUUID(),
+          id: uuidv4(),
           file,
           mediaType,
           targetFolder: mediaType
@@ -2287,17 +2299,49 @@ function formatStatusClock(atMs: number): string {
 }
 
 function NormalizeStatusInline({
-  normalizing,
+  percent,
   result,
 }: {
-  normalizing: boolean;
+  percent: number | null;
   result: NormalizeResultState | null;
 }) {
-  if (normalizing) {
+  const isInProgress = percent !== null;
+  const [elapsedS, setElapsedS] = useState(0);
+  const startMsRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!isInProgress) {
+      setElapsedS(0);
+      startMsRef.current = null;
+      return;
+    }
+    if (startMsRef.current === null) {
+      startMsRef.current = Date.now();
+    }
+    const id = setInterval(() => {
+      if (startMsRef.current !== null) {
+        setElapsedS(Math.floor((Date.now() - startMsRef.current) / 1000));
+      }
+    }, 1000);
+    return () => clearInterval(id);
+  }, [isInProgress]);
+
+  if (isInProgress) {
     return (
-      <p className='text-[10px] font-mono text-[#00f3ff] tracking-wide'>
-        NORMALIZE_IN_PROGRESS...
-      </p>
+      <div className='space-y-1.5'>
+        <div className='flex items-center justify-between'>
+          <p className='text-[10px] font-mono text-[#00f3ff] tracking-wide'>
+            NORMALIZE_IN_PROGRESS...
+          </p>
+          <p className='text-[10px] font-mono text-[#00f3ff]/50 tracking-wide'>
+            {elapsedS}s
+          </p>
+        </div>
+        <Progress value={percent ?? 0} />
+        <p className='text-[10px] font-mono text-[#00f3ff]/50 tracking-wide text-right'>
+          {percent != null ? `${percent.toFixed(1)}%` : '—'}
+        </p>
+      </div>
     );
   }
 
@@ -2426,6 +2470,7 @@ function Mp4Inspector({
   onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
 }) {
   const { addMP4Input } = useActions();
+  const { normalizationProgress } = useControlPanelContext();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [normalizing, setNormalizing] = useState(false);
@@ -2516,10 +2561,11 @@ function Mp4Inspector({
 
   const handleConfirmAction = async () => {
     if (!confirmState) return;
+    const action = confirmState;
+    setConfirmState(null);
     setConfirming(true);
     try {
-      await confirmState.onConfirm();
-      setConfirmState(null);
+      await action.onConfirm();
     } finally {
       setConfirming(false);
     }
@@ -2546,25 +2592,25 @@ function Mp4Inspector({
       />
       <div className='grid grid-cols-2 gap-2'>
         <ActionOutlineButton
-          label={normalizing ? 'NORMALIZING...' : 'NORMALIZE'}
+          label={normalizing || normalizationProgress[item.fileName] != null ? 'NORMALIZING...' : 'NORMALIZE'}
           onClick={handleNormalize}
-          disabled={normalizing || deleting}
+          disabled={normalizing || deleting || normalizationProgress[item.fileName] != null}
           colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
         />
         <ActionOutlineButton
           label='PREVIEW'
           onClick={() => setPreviewOpen(true)}
-          disabled={normalizing || deleting}
+          disabled={normalizing || deleting || normalizationProgress[item.fileName] != null}
           colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
         />
       </div>
       <NormalizeStatusInline
-        normalizing={normalizing}
+        percent={normalizationProgress[item.fileName] ?? null}
         result={normalizeResult}
       />
       <DeleteLibraryItemButton
         onClick={handleDelete}
-        disabled={deleting || normalizing}
+        disabled={deleting || normalizing || normalizationProgress[item.fileName] != null}
         label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
       />
       <AssetPlaybackModal
@@ -2602,6 +2648,7 @@ function AudioInspector({
   onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
 }) {
   const { addAudioInput } = useActions();
+  const { normalizationProgress } = useControlPanelContext();
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [normalizing, setNormalizing] = useState(false);
@@ -2692,10 +2739,11 @@ function AudioInspector({
 
   const handleConfirmAction = async () => {
     if (!confirmState) return;
+    const action = confirmState;
+    setConfirmState(null);
     setConfirming(true);
     try {
-      await confirmState.onConfirm();
-      setConfirmState(null);
+      await action.onConfirm();
     } finally {
       setConfirming(false);
     }
@@ -2719,25 +2767,25 @@ function AudioInspector({
       />
       <div className='grid grid-cols-2 gap-2'>
         <ActionOutlineButton
-          label={normalizing ? 'NORMALIZING...' : 'NORMALIZE'}
+          label={normalizing || normalizationProgress[item.fileName] != null ? 'NORMALIZING...' : 'NORMALIZE'}
           onClick={handleNormalize}
-          disabled={normalizing || deleting}
+          disabled={normalizing || deleting || normalizationProgress[item.fileName] != null}
           colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
         />
         <ActionOutlineButton
           label='ODTWORZ'
           onClick={() => setPreviewOpen(true)}
-          disabled={normalizing || deleting}
+          disabled={normalizing || deleting || normalizationProgress[item.fileName] != null}
           colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
         />
       </div>
       <NormalizeStatusInline
-        normalizing={normalizing}
+        percent={normalizationProgress[item.fileName] ?? null}
         result={normalizeResult}
       />
       <DeleteLibraryItemButton
         onClick={handleDelete}
-        disabled={deleting || normalizing}
+        disabled={deleting || normalizing || normalizationProgress[item.fileName] != null}
         label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
       />
       <AssetPlaybackModal
@@ -2817,10 +2865,11 @@ function ImageInspector({
 
   const handleConfirmAction = async () => {
     if (!confirmState) return;
+    const action = confirmState;
+    setConfirmState(null);
     setConfirming(true);
     try {
-      await confirmState.onConfirm();
-      setConfirmState(null);
+      await action.onConfirm();
     } finally {
       setConfirming(false);
     }
@@ -3102,10 +3151,12 @@ function ActionInspector({
         <WhipActionInspector
           kind='camera'
           roomId={roomId}
+          inputs={inputs}
           onDone={onDone}
           onInputCreated={onInputCreated}
           pcRef={whipCtx.cameraPcRef}
           streamRef={whipCtx.cameraStreamRef}
+          activeWhipInputId={whipCtx.activeCameraInputId}
           setActiveWhipInputId={whipCtx.setActiveCameraInputId}
           setIsWhipActive={whipCtx.setIsCameraActive}
         />
@@ -3115,10 +3166,12 @@ function ActionInspector({
         <WhipActionInspector
           kind='screenshare'
           roomId={roomId}
+          inputs={inputs}
           onDone={onDone}
           onInputCreated={onInputCreated}
           pcRef={whipCtx.screensharePcRef}
           streamRef={whipCtx.screenshareStreamRef}
+          activeWhipInputId={whipCtx.activeScreenshareInputId}
           setActiveWhipInputId={whipCtx.setActiveScreenshareInputId}
           setIsWhipActive={whipCtx.setIsScreenshareActive}
         />
@@ -3279,10 +3332,11 @@ function HlsSavedInspector({
 
   const handleConfirmAction = async () => {
     if (!confirmState) return;
+    const action = confirmState;
+    setConfirmState(null);
     setConfirming(true);
     try {
-      await confirmState.onConfirm();
-      setConfirmState(null);
+      await action.onConfirm();
     } finally {
       setConfirming(false);
     }
@@ -3644,24 +3698,29 @@ function HandsActionInspector({
 function WhipActionInspector({
   kind,
   roomId,
+  inputs,
   onDone,
   onInputCreated,
   pcRef,
   streamRef,
+  activeWhipInputId,
   setActiveWhipInputId,
   setIsWhipActive,
 }: {
   kind: 'camera' | 'screenshare';
   roomId: string;
+  inputs: Input[];
   onDone: () => Promise<void>;
   onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
   pcRef: MutableRefObject<RTCPeerConnection | null>;
   streamRef: MutableRefObject<MediaStream | null>;
+  activeWhipInputId: string | null;
   setActiveWhipInputId: (id: string | null) => void;
   setIsWhipActive: (active: boolean) => void;
 }) {
-  const { addCameraInput } = useActions();
+  const { addCameraInput, removeInput } = useActions();
   const isMobileDevice = useIsMobileDevice();
+  const isSubmittingRef = useRef(false);
 
   const [userName, setUserNameLocal] = useState<string>(() => {
     const saved = loadUserName(roomId);
@@ -3683,13 +3742,52 @@ function WhipActionInspector({
   const [loading, setLoading] = useState(false);
 
   const handleAdd = async () => {
+    if (isSubmittingRef.current) return;
     const cleanedName = userName.trim();
     if (!cleanedName) {
       toast.error('Please enter a username.');
       return;
     }
+    isSubmittingRef.current = true;
     setLoading(true);
     try {
+      stopCameraAndConnection(pcRef, streamRef);
+      setIsWhipActive(false);
+      setActiveWhipInputId(null);
+
+      const removableWhipInputIds = new Set<string>();
+      if (activeWhipInputId) {
+        removableWhipInputIds.add(activeWhipInputId);
+      }
+      const session = loadWhipSession();
+      if (session?.roomId === roomId && session.inputId) {
+        removableWhipInputIds.add(session.inputId);
+      }
+      const lastInputId = loadLastWhipInputId(roomId);
+      if (lastInputId) {
+        removableWhipInputIds.add(lastInputId);
+      }
+
+      const expectedLiveTitle =
+        kind === 'camera' ? '[Live] Camera' : '[Live] Screenshare';
+      const expectedDescription = `Whip Input for ${cleanedName}`;
+      for (const input of inputs) {
+        if (
+          input.type === 'whip' &&
+          input.title === expectedLiveTitle &&
+          input.description === expectedDescription
+        ) {
+          removableWhipInputIds.add(input.inputId);
+        }
+      }
+      for (const inputId of removableWhipInputIds) {
+        try {
+          await removeInput(roomId, inputId);
+        } catch {
+          // Best-effort cleanup; input may already be gone.
+        }
+      }
+
       const response = await addCameraInput(roomId, cleanedName);
       setActiveWhipInputId(response.inputId);
       setIsWhipActive(false);
@@ -3747,6 +3845,7 @@ function WhipActionInspector({
       setIsWhipActive(false);
     } finally {
       setLoading(false);
+      isSubmittingRef.current = false;
     }
   };
 

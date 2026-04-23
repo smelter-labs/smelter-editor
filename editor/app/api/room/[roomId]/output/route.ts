@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-
-const BASE_URL = process.env.SMELTER_EDITOR_SERVER_URL;
+import { getServerSideServerUrl } from '@/lib/server-url.server';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -16,7 +15,8 @@ export async function GET(
   _request: NextRequest,
   { params }: { params: Promise<{ roomId: string }> },
 ) {
-  if (!BASE_URL) {
+  const baseUrl = await getServerSideServerUrl();
+  if (!baseUrl) {
     return NextResponse.json(
       { error: 'SMELTER_EDITOR_SERVER_URL is not configured' },
       { status: 500 },
@@ -27,7 +27,7 @@ export async function GET(
 
   try {
     const response = await fetch(
-      `${BASE_URL}/room/${encodeURIComponent(roomId)}`,
+      `${baseUrl}/room/${encodeURIComponent(roomId)}`,
     );
 
     if (!response.ok) {

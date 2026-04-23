@@ -30,6 +30,7 @@ export interface RoomState {
   roomName: string;
   inputs: PublicInputState[];
   layers: Layer[];
+  isTimelinePlaying?: boolean;
   whepUrl: string;
   pendingDelete: boolean;
   isPublic: boolean;

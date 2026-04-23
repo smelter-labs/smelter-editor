@@ -23,7 +23,7 @@ struct ShaderOptions {
 @group(1) @binding(0) var<uniform> shader_options: ShaderOptions;
 @group(2) @binding(0) var sampler_: sampler;
 
-var<push_constant> base_params: BaseShaderParameters;
+var<immediate> base_params: BaseShaderParameters;
 
 // Hash-based pseudo-random noise
 fn hash(p: vec2<f32>) -> f32 {

@@ -10,6 +10,9 @@ export type {
   InputDeletedEvent,
   RoomUpdatedEvent,
   PeersUpdatedEvent,
+  TimelinePlaybackUpdatedEvent,
+  NormalizationProgressEvent,
+  NormalizationDoneEvent,
   RoomEvent,
 } from "./events.js";
 

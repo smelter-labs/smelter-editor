@@ -1,4 +1,4 @@
-FROM ghcr.io/software-mansion/smelter:v0.5.0
+FROM ghcr.io/smelter-labs/smelter-rc:362799df-x86_64
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -13,10 +13,10 @@ WORKDIR /tmp
 
 RUN apt-get update -y -qq && \
   apt-get install -y \
-    sudo build-essential curl pipx python3-pip git pkg-config \
-    libegl1-mesa-dev libgl1-mesa-dri libxcb-xfixes0-dev mesa-vulkan-drivers \
-    nasm yasm libx264-dev libx265-dev libfdk-aac-dev libmp3lame-dev \
-    libopus-dev libvpx-dev libass-dev libfreetype-dev && \
+  sudo build-essential curl pipx python3-pip git pkg-config \
+  libegl1-mesa-dev libgl1-mesa-dri libxcb-xfixes0-dev mesa-vulkan-drivers \
+  nasm yasm libx264-dev libx265-dev libfdk-aac-dev libmp3lame-dev \
+  libopus-dev libvpx-dev libass-dev libfreetype-dev && \
   rm -rf /var/lib/apt/lists/*
 
 # Build ffmpeg with NVDEC (h264_cuvid) support
@@ -26,24 +26,24 @@ RUN git clone --depth 1 --branch n12.2.72.0 https://git.videolan.org/git/ffmpeg/
 RUN curl -fsSL https://ffmpeg.org/releases/ffmpeg-7.1.1.tar.xz | tar xJ -C /tmp && \
   cd /tmp/ffmpeg-7.1.1 && \
   ./configure \
-    --enable-gpl --enable-nonfree \
-    --enable-cuda --enable-cuvid --enable-nvdec --enable-nvenc \
-    --enable-libx264 --enable-libx265 --enable-libfdk-aac \
-    --enable-libmp3lame --enable-libopus --enable-libvpx \
-    --enable-libass --enable-libfreetype \
-    --disable-doc --disable-debug --enable-small && \
+  --enable-gpl --enable-nonfree \
+  --enable-cuda --enable-cuvid --enable-nvdec --enable-nvenc \
+  --enable-libx264 --enable-libx265 --enable-libfdk-aac \
+  --enable-libmp3lame --enable-libopus --enable-libvpx \
+  --enable-libass --enable-libfreetype \
+  --disable-doc --disable-debug --enable-small && \
   make -j"$(nproc)" && make install && \
   rm -rf /tmp/ffmpeg-7.1.1
 
 RUN ARCH= && dpkgArch="$(dpkg --print-architecture)" \
   && case "${dpkgArch##*-}" in \
-    amd64) ARCH='x64';; \
-    ppc64el) ARCH='ppc64le';; \
-    s390x) ARCH='s390x';; \
-    arm64) ARCH='arm64';; \
-    armhf) ARCH='armv7l';; \
-    i386) ARCH='x86';; \
-    *) echo "unsupported architecture"; exit 1 ;; \
+  amd64) ARCH='x64';; \
+  ppc64el) ARCH='ppc64le';; \
+  s390x) ARCH='s390x';; \
+  arm64) ARCH='arm64';; \
+  armhf) ARCH='armv7l';; \
+  i386) ARCH='x86';; \
+  *) echo "unsupported architecture"; exit 1 ;; \
   esac \
   && curl -fsSLO --compressed "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-linux-$ARCH.tar.xz" \
   && tar -xJf "node-v$NODE_VERSION-linux-$ARCH.tar.xz" -C /usr/local --strip-components=1 --no-same-owner \

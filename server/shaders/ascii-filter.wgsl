@@ -24,7 +24,7 @@ struct ShaderOptions {
 @group(2) @binding(0) var sampler_: sampler;
 @group(1) @binding(0) var<uniform> shader_options: ShaderOptions;
 
-var<push_constant> base_params: BaseShaderParameters;
+var<immediate> base_params: BaseShaderParameters;
 
 @vertex
 fn vs_main(input: VertexInput) -> VertexOutput {

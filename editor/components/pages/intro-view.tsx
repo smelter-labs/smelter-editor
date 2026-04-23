@@ -40,6 +40,7 @@ import {
   Presentation,
   RotateCcw,
   X,
+  Settings,
 } from 'lucide-react';
 import RecordingsList from '@/components/recordings-list';
 import { toast } from 'sonner';
@@ -74,6 +75,7 @@ import {
   clearCrashRecoveryConfig,
   type CrashRecoveryData,
 } from '@/lib/crash-recovery';
+import { SettingsModal } from '@/components/settings-modal';
 
 function getBasePath(pathname: string): string {
   // Remove trailing slash if present
@@ -98,6 +100,7 @@ export default function IntroView() {
   const [importProgress, setImportProgress] =
     useState<ImportProgressState | null>(null);
   const [showRecordings, setShowRecordings] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [selectedResolution, setSelectedResolution] =
     useState<ResolutionPreset>('1440p');
   const [displayName, setDisplayName] = useState(() => {
@@ -510,6 +513,15 @@ export default function IntroView() {
         <motion.div
           className='border-1 rounded-none border-neutral-800 text-center justify-center items-center w-full max-w-[600px] p-4 sm:p-8'
           layout>
+          <div className='flex justify-end'>
+            <button
+              type='button'
+              onClick={() => setShowSettings(true)}
+              className='inline-flex items-center justify-center rounded border border-neutral-700 bg-neutral-900 p-2 text-neutral-300 transition-colors hover:text-white hover:border-neutral-500 cursor-pointer'
+              aria-label='Open server settings'>
+              <Settings className='w-4 h-4' />
+            </button>
+          </div>
           <div ref={centeredContentRef}>
             {crashRecovery && (
               <div className='mb-4 border border-amber-700/50 bg-amber-950/30 rounded p-4 text-left'>
@@ -702,6 +714,10 @@ export default function IntroView() {
               <RecordingsList
                 open={showRecordings}
                 onClose={() => setShowRecordings(false)}
+              />
+              <SettingsModal
+                open={showSettings}
+                onOpenChange={setShowSettings}
               />
             </div>
           </div>
