@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { pathExists, readdir } from 'fs-extra';
 import { SmelterInstance, type RegisterSmelterInputOptions } from '../smelter';
 import { hlsUrlForKickChannel, hlsUrlForTwitchChannel } from '../streamlink';
@@ -52,6 +53,22 @@ export class InputManager {
     this.mp4Files = mp4SuggestionsMonitor.mp4Files;
   }
 
+  private createUniqueInputId(typeSegment: string): string {
+    const MAX_ATTEMPTS = 8;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+      const suffix = randomUUID();
+      const inputId = `${this.idPrefix}::${typeSegment}::${suffix}`;
+      if (!this.inputs.some((input) => input.inputId === inputId)) {
+        return inputId;
+      }
+      console.warn(
+        `[input] Collision while generating inputId room=${this.idPrefix} type=${typeSegment} attempt=${attempt + 1}`,
+      );
+    }
+
+    throw new Error(`Failed to generate unique inputId for ${typeSegment}`);
+  }
+
   getInput(inputId: string): RoomInputState {
     const input = this.inputs.find((i) => i.inputId === inputId);
     if (!input) throw new Error(`Input ${inputId} not found`);
@@ -102,7 +119,7 @@ export class InputManager {
   }
 
   private async addNewWhipInput(username: string): Promise<string> {
-    const inputId = `${this.idPrefix}::whip::${Date.now()}`;
+    const inputId = this.createUniqueInputId('whip');
     const isScreenshare = /\bscreenshare\b/i.test(username);
     const cleanUsername = username
       .replace(/\[(camera|screenshare|live)\]\s*/gi, '')
@@ -204,7 +221,7 @@ export class InputManager {
   }
 
   private async addDirectHlsInput(url: string): Promise<string> {
-    const inputId = `${this.idPrefix}::hls::${Date.now()}`;
+    const inputId = this.createUniqueInputId('hls');
     let label = url;
     try {
       const parsed = new URL(url);
@@ -249,7 +266,7 @@ export class InputManager {
     const baseDir = isAudio ? 'audios' : 'mp4s';
     const mp4Path = path.join(DATA_DIR, baseDir, resolvedFileName);
     const mp4Name = resolvedFileName;
-    const inputId = `${this.idPrefix}::local::sample_streamer::${Date.now()}`;
+    const inputId = this.createUniqueInputId('local');
 
     if (!(await pathExists(mp4Path))) {
       const titlePrefix = isAudio ? 'AUDIO' : 'MP4';
@@ -303,7 +320,7 @@ export class InputManager {
     title: string;
     description: string;
   }): string {
-    const inputId = `${this.idPrefix}::local::sample_streamer::${Date.now()}`;
+    const inputId = this.createUniqueInputId('local');
     this.inputs.push({
       inputId,
       type: 'local-mp4',
@@ -428,7 +445,7 @@ export class InputManager {
   ): Promise<string> {
     console.log('Adding image');
     const picturesDir = path.join(DATA_DIR, 'pictures');
-    const inputId = `${this.idPrefix}::image::${Date.now()}`;
+    const inputId = this.createUniqueInputId('image');
 
     let fileName = opts.fileName;
     let imageId = opts.imageId;
@@ -530,7 +547,7 @@ export class InputManager {
     opts: Extract<RegisterInputOptions, { type: 'text-input' }>,
   ): string {
     console.log('Adding text input');
-    const inputId = `${this.idPrefix}::text::${Date.now()}`;
+    const inputId = this.createUniqueInputId('text');
 
     this.inputs.push({
       inputId,
@@ -565,7 +582,7 @@ export class InputManager {
     opts: Extract<RegisterInputOptions, { type: 'game' }>,
   ): string {
     console.log('Adding game input');
-    const inputId = `${this.idPrefix}::game::${Date.now()}`;
+    const inputId = this.createUniqueInputId('game');
     const defaults = createDefaultSnakeGameInputState(opts.title);
 
     this.inputs.push({
@@ -592,7 +609,7 @@ export class InputManager {
     opts: Extract<RegisterInputOptions, { type: 'hands' }>,
   ): Promise<string> {
     console.log('Adding hands input');
-    const inputId = `${this.idPrefix}::hands::${Date.now()}`;
+    const inputId = this.createUniqueInputId('hands');
     const handsStore = createHandsStore();
 
     this.inputs.push({

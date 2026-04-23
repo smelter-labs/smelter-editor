@@ -136,6 +136,19 @@ afterEach(() => {
 
 describe('InputManager', () => {
   describe('addNewInput', () => {
+    it('creates unique input IDs for rapid consecutive inserts', async () => {
+      const ids: string[] = [];
+      for (let i = 0; i < 30; i += 1) {
+        const inputId = await manager.addNewInput({
+          type: 'text-input',
+          text: `line-${i}`,
+        } as any);
+        ids.push(inputId!);
+      }
+
+      expect(new Set(ids).size).toBe(ids.length);
+    });
+
     describe('whip', () => {
       it('creates input with correct type and starts monitor', async () => {
         const inputId = await manager.addNewInput({
@@ -312,17 +325,14 @@ describe('InputManager', () => {
     });
 
     it('removes input from other inputs attachedInputIds', async () => {
-      // Advance time between adds so Date.now() generates unique IDs
       const id1 = (await manager.addNewInput({
         type: 'text-input',
         text: 'a',
       } as any))!;
-      vi.advanceTimersByTime(1);
       const id2 = (await manager.addNewInput({
         type: 'text-input',
         text: 'b',
       } as any))!;
-      vi.advanceTimersByTime(1);
       (await manager.addNewInput({
         type: 'text-input',
         text: 'c',
@@ -499,12 +509,10 @@ describe('InputManager', () => {
         type: 'text-input',
         text: 'a',
       } as any))!;
-      vi.advanceTimersByTime(1);
       const id2 = (await manager.addNewInput({
         type: 'text-input',
         text: 'b',
       } as any))!;
-      vi.advanceTimersByTime(1);
       const id3 = (await manager.addNewInput({
         type: 'text-input',
         text: 'c',
@@ -520,12 +528,10 @@ describe('InputManager', () => {
         type: 'text-input',
         text: 'a',
       } as any))!;
-      vi.advanceTimersByTime(1);
       const id2 = (await manager.addNewInput({
         type: 'text-input',
         text: 'b',
       } as any))!;
-      vi.advanceTimersByTime(1);
       const id3 = (await manager.addNewInput({
         type: 'text-input',
         text: 'c',
