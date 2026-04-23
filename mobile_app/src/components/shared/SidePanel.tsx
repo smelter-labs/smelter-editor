@@ -7,6 +7,8 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import { useTheme } from "react-native-paper";
+import { MAIN_NAV_ARROW_WIDTH_RATIO } from "../../navigation/navigationTypes";
+import { useSettingsStore } from "../../store";
 
 interface SidePanelProps {
   isVisible: boolean;
@@ -39,12 +41,17 @@ export function SidePanel({
 }: SidePanelProps) {
   const theme = useTheme();
   const { width: rawWidth, height: rawHeight } = useScreenDimensions();
+  const arrowNavigation = useSettingsStore((state) => state.arrowNavigation);
   const screenWidth = Math.max(rawWidth, rawHeight);
   const height = Math.min(rawWidth, rawHeight);
+  const arrowWidth = arrowNavigation
+    ? Math.round(screenWidth * MAIN_NAV_ARROW_WIDTH_RATIO)
+    : 0;
+  const contentWidth = screenWidth - arrowWidth * 2;
 
   // Positions expressed as translateX from left: 0 anchor
-  const visibleTranslateX = side === "right" ? screenWidth - width : 0;
-  const hiddenTranslateX = side === "right" ? screenWidth : -width;
+  const visibleTranslateX = side === "right" ? contentWidth - width : 0;
+  const hiddenTranslateX = side === "right" ? contentWidth : -width;
 
   const translateX = useSharedValue(hiddenTranslateX);
 

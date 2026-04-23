@@ -20,3 +20,5 @@ export const MAIN_SCREEN_INDEX = {
 } as const;
 
 export const MAIN_SCREEN_COUNT = Object.keys(MAIN_SCREEN_INDEX).length;
+
+export const MAIN_NAV_ARROW_WIDTH_RATIO = 0.05;
