@@ -27,6 +27,7 @@ import type { Layer, LayerInput } from "../../types/layout";
 import type { Resolution } from "@smelter-editor/types";
 import type { WSEventPayload } from "../../types/websocket";
 import { areInputCardsEquivalent } from "../../utils/inputCardEquality";
+import { MaterialDesignIcons } from "@react-native-vector-icons/material-design-icons";
 
 // ─── Conversion helpers ───────────────────────────────────────────────────────
 
@@ -273,6 +274,14 @@ export function LayoutScreen() {
     }
   }, [effectsInputId, inputs]);
 
+  useEffect(() => {
+    if (!isTimelinePlaying) return;
+    setLayersPanelOpen(false);
+    setSettingsPanelOpen(false);
+    setEffectsPanelOpen(false);
+    setEffectsInputId(null);
+  }, [isTimelinePlaying]);
+
   // Push updated layers to server
   const pushLayers = useCallback(
     async (newLayers: Layer[]) => {
@@ -440,7 +449,7 @@ export function LayoutScreen() {
               setSettingsPanelOpen(true);
             }}
           >
-            ⚙
+            <MaterialDesignIcons name="cog" color="#777777" size={16} />
           </Chip>
         </View>
 
