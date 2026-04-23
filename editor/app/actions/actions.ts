@@ -486,6 +486,20 @@ export async function restartSmelter(): Promise<void> {
   return (await getClient()).restartSmelter();
 }
 
+export async function freezeRoom(roomId: string): Promise<{
+  screenshotUrl: string;
+  mp4Positions: Record<string, number>;
+  frozen: true;
+}> {
+  return (await getClient()).freezeRoom(roomId);
+}
+
+export async function unfreezeRoom(
+  roomId: string,
+): Promise<{ status: string }> {
+  return (await getClient()).unfreezeRoom(roomId);
+}
+
 export async function getAvailableShaders(): Promise<AvailableShader[]> {
   return (await getClient()).getAvailableShaders();
 }

@@ -16,7 +16,7 @@ import type { InputWrapper } from '../hooks/use-control-panel-state';
 import LoadingSpinner from '@/components/ui/spinner';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useTimelineState, DEFAULT_PPS } from '../hooks/use-timeline-state';
-import { useTimelinePlayback } from '../hooks/use-timeline-playback';
+import { useServerTimelinePlayback } from '../hooks/use-server-timeline-playback';
 import {
   Play,
   Pause,
@@ -51,6 +51,20 @@ type TimelinePanelProps = {
   isGuest?: boolean;
   guestInputId?: string | null;
   fillContainer?: boolean;
+  onTimelineStateChange?: (
+    state: import('../hooks/use-timeline-state').TimelineState,
+  ) => void;
+  onTimelineLoadStateReady?: (
+    loadState: (state: import('../hooks/use-timeline-state').TimelineState) => void,
+  ) => void;
+  onTimelineActionsReady?: (actions: TimelinePanelActions | null) => void;
+};
+
+export type TimelinePanelActions = {
+  play: () => Promise<void>;
+  stop: () => Promise<void>;
+  applyAtPlayhead: () => Promise<void>;
+  recordAndPlay: () => Promise<void>;
 };
 
 // ── Color maps ───────────────────────────────────────────
@@ -59,11 +73,13 @@ type TimelinePanelProps = {
 const TYPE_HSL: Record<Input['type'], [number, number, number]> = {
   'twitch-channel': [271, 81, 56], // purple-500
   'kick-channel': [142, 71, 45], // green-500
+  hls: [24, 95, 50], // amber-500
   whip: [217, 91, 60], // blue-500
   'local-mp4': [25, 95, 53], // orange-500
   image: [48, 96, 53], // yellow-500
   'text-input': [330, 81, 60], // pink-500
   game: [0, 72, 51], // red-500
+  hands: [180, 90, 50], // cyan-500
 };
 
 const LIGHTNESS_STEP = 10;
@@ -208,11 +224,15 @@ export function TimelinePanel({
   isGuest,
   guestInputId,
   fillContainer,
+  onTimelineStateChange,
+  onTimelineLoadStateReady,
+  onTimelineActionsReady,
 }: TimelinePanelProps) {
   const { removeInput } = useActions();
   const { inputs, roomId, refreshState } = useControlPanelContext();
   const {
     state,
+    loadState,
     setPlayhead,
     setPlaying,
     setZoom,
@@ -235,7 +255,6 @@ export function TimelinePanel({
     redo,
     canUndo,
     canRedo,
-    structureRevision,
   } = useTimelineState(roomId, inputs);
 
   const [selectedClipIds, setSelectedClipIds] = useState<
@@ -469,14 +488,11 @@ export function TimelinePanel({
 
   const inputColorMap = useMemo(() => buildInputColorMap(inputs), [inputs]);
 
-  const { play, stop, applyAtPlayhead } = useTimelinePlayback(
+  const { play, stop, applyAtPlayhead } = useServerTimelinePlayback(
     roomId,
-    inputs,
     state,
     setPlayhead,
     setPlaying,
-    refreshState,
-    structureRevision,
   );
 
   const { isRecording: serverIsRecording, isFrozen: serverIsFrozen } =
@@ -529,6 +545,31 @@ export function TimelinePanel({
       play();
     }
   }, [isRecording, isTogglingRecording, play, stop, startRec, stopAndDownload]);
+
+  useEffect(() => {
+    onTimelineStateChange?.(state);
+  }, [onTimelineStateChange, state]);
+
+  useEffect(() => {
+    onTimelineLoadStateReady?.(loadState);
+  }, [onTimelineLoadStateReady, loadState]);
+
+  useEffect(() => {
+    if (!onTimelineActionsReady) return;
+    onTimelineActionsReady({
+      play,
+      stop,
+      applyAtPlayhead,
+      recordAndPlay: handleRecordAndPlay,
+    });
+    return () => onTimelineActionsReady(null);
+  }, [
+    onTimelineActionsReady,
+    play,
+    stop,
+    applyAtPlayhead,
+    handleRecordAndPlay,
+  ]);
 
   useEffect(() => {
     if (wasPlayingRef.current && !state.isPlaying && isRecording) {
