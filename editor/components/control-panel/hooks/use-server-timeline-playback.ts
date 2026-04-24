@@ -19,7 +19,6 @@ import {
 
 const PLAYHEAD_UI_UPDATE_INTERVAL_MS = 33;
 const PLAYHEAD_BACKWARD_TOLERANCE_MS = 120;
-const PLAYHEAD_START_RESYNC_FALLBACK_MS = 500;
 const AUTO_PAUSE_BEFORE_END_MS = 2000;
 const STOP_BUSY_TIMEOUT_MS = 2500;
 
@@ -69,7 +68,6 @@ export function useServerTimelinePlayback(
   const autoPauseBeforeEndTriggeredRef = useRef(false);
   const stopInFlightRef = useRef<Promise<void> | null>(null);
   const awaitingStartPlaybackSSERef = useRef(false);
-  const playRequestWallMsRef = useRef<number | null>(null);
   useEffect(() => {
     setBusyTimeoutFallbackActive(false);
   }, [roomId]);
@@ -161,11 +159,14 @@ export function useServerTimelinePlayback(
     }
 
     if (!sseData.isPlaying && !sseData.isPaused && stateRef.current.isPlaying) {
+      if (awaitingStartPlaybackSSERef.current) {
+        // Ignore transient idle snapshots right after PLAY request.
+        return;
+      }
       console.log(
         `[timeline-ui] SSE signaled stop (sseCount=${sseCountRef.current} playhead=${sseData.playheadMs})`,
       );
       awaitingStartPlaybackSSERef.current = false;
-      playRequestWallMsRef.current = null;
       setPlaying(false);
       setIsPaused(false);
       if (rafRef.current) {
@@ -201,7 +202,6 @@ export function useServerTimelinePlayback(
       });
       if (clearStartResync) {
         awaitingStartPlaybackSSERef.current = false;
-        playRequestWallMsRef.current = null;
       }
     }
   }, [
@@ -227,19 +227,6 @@ export function useServerTimelinePlayback(
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
-      const awaitingStartPlaybackSSE = awaitingStartPlaybackSSERef.current;
-      const playRequestWallMs = playRequestWallMsRef.current;
-      if (
-        awaitingStartPlaybackSSE &&
-        playRequestWallMs !== null &&
-        performance.now() - playRequestWallMs > PLAYHEAD_START_RESYNC_FALLBACK_MS
-      ) {
-        // After a short fallback window, wait for authoritative SSE time
-        // instead of extrapolating from potentially stale local playhead.
-        rafRef.current = requestAnimationFrame(tick);
-        return;
-      }
-
       const elapsed = performance.now() - base.wallMs;
       const interpolated = base.playheadMs + elapsed;
       const totalDuration = stateRef.current.totalDurationMs;
@@ -267,7 +254,6 @@ export function useServerTimelinePlayback(
     if (stateRef.current.isPlaying) return;
     setBusyTimeoutFallbackActive(false);
     awaitingStartPlaybackSSERef.current = true;
-    playRequestWallMsRef.current = null;
 
     const config = toServerTimelineConfig(stateRef.current);
     const totalDurationMs = stateRef.current.totalDurationMs;
@@ -287,7 +273,6 @@ export function useServerTimelinePlayback(
       try {
         await startTimelinePlayback(roomId, config, normalizedFromMs);
         console.log(`[timeline-ui] PLAY server acknowledged`);
-        playRequestWallMsRef.current = performance.now();
         lastSSERef.current = {
           wallMs: performance.now(),
           playheadMs: normalizedFromMs,
@@ -297,7 +282,6 @@ export function useServerTimelinePlayback(
       } catch (err) {
         console.error('[timeline-ui] PLAY failed', err);
         awaitingStartPlaybackSSERef.current = false;
-        playRequestWallMsRef.current = null;
         setPlaying(false);
         lastSSERef.current = null;
         throw err;
@@ -308,7 +292,6 @@ export function useServerTimelinePlayback(
   const pause = useCallback(async () => {
     setBusyTimeoutFallbackActive(false);
     awaitingStartPlaybackSSERef.current = false;
-    playRequestWallMsRef.current = null;
     setPlaying(false);
     setIsPaused(true);
     if (rafRef.current) {
@@ -339,7 +322,6 @@ export function useServerTimelinePlayback(
           let stopError: unknown = null;
           autoPauseBeforeEndTriggeredRef.current = false;
           awaitingStartPlaybackSSERef.current = false;
-          playRequestWallMsRef.current = null;
           setPlaying(false);
           if (rafRef.current) {
             cancelAnimationFrame(rafRef.current);
@@ -385,7 +367,6 @@ export function useServerTimelinePlayback(
       setBusyTimeoutFallbackActive(false);
       autoPauseBeforeEndTriggeredRef.current = false;
       awaitingStartPlaybackSSERef.current = false;
-      playRequestWallMsRef.current = null;
       console.log(`[timeline-ui] SEEK to ${ms}ms`);
       pushPlayheadUpdate(ms, { force: true });
       lastSSERef.current = {
