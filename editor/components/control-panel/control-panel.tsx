@@ -48,6 +48,7 @@ import { AddVideoModal } from './components/AddVideoModal';
 import { FxCanvas, FX_PRESET_MODAL } from '@/lib/fx';
 import { type PendingWhipInput } from './components/ConfigurationSection';
 import { getEffectiveClientServerUrl, toWsUrl } from '@/lib/server-url';
+import { resolutionToLabel } from '@/lib/resolution';
 import {
   exportRoomConfig,
   downloadRoomConfig,
@@ -1841,13 +1842,21 @@ function SettingsBar({
   const handleExportRemote = useCallback(
     async (name: string): Promise<string | null> => {
       const config = buildConfig();
-      const result = await configStorageSave(name, config);
+      const suffix = roomState.resolution
+        ? ` ${resolutionToLabel(roomState.resolution)}`
+        : '';
+      const trimmed = name.trim();
+      const finalName =
+        suffix && !trimmed.endsWith(suffix.trim())
+          ? `${trimmed}${suffix}`
+          : trimmed;
+      const result = await configStorageSave(finalName, config);
       if (!result.ok) {
         return result.error;
       }
       return null;
     },
-    [buildConfig, configStorageSave],
+    [buildConfig, configStorageSave, roomState.resolution],
   );
 
   useEffect(() => {
