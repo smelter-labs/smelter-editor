@@ -493,20 +493,22 @@ function resolveBlockSettingsAtTime(
   return resolved;
 }
 
-function getActiveInputIds(
+function getActiveInputIdsInTimelineOrder(
   config: TimelineConfig,
   timeMs: number,
-): Set<string> {
-  const active = new Set<string>();
+): string[] {
+  const ordered: string[] = [];
+  const seen = new Set<string>();
   for (const track of config.tracks) {
     for (const clip of track.clips) {
       if (clip.inputId === OUTPUT_TRACK_INPUT_ID) continue;
-      if (timeMs >= clip.startMs && timeMs < clip.endMs) {
-        active.add(clip.inputId);
-      }
+      if (timeMs < clip.startMs || timeMs >= clip.endMs) continue;
+      if (seen.has(clip.inputId)) continue;
+      seen.add(clip.inputId);
+      ordered.push(clip.inputId);
     }
   }
-  return active;
+  return ordered;
 }
 
 function getActiveOrderFromLayers(
@@ -514,20 +516,23 @@ function getActiveOrderFromLayers(
   timeMs: number,
   layers: Layer[],
 ): string[] {
-  const active = getActiveInputIds(config, timeMs);
+  const activeInTimelineOrder = getActiveInputIdsInTimelineOrder(config, timeMs);
+  const activeSet = new Set(activeInTimelineOrder);
   const order: string[] = [];
   const placed = new Set<string>();
 
   for (const layer of layers) {
     for (const li of layer.inputs) {
-      if (active.has(li.inputId) && !placed.has(li.inputId)) {
+      if (activeSet.has(li.inputId) && !placed.has(li.inputId)) {
         order.push(li.inputId);
         placed.add(li.inputId);
       }
     }
   }
 
-  for (const id of active) {
+  // Fallback for temporarily inconsistent layers: preserve deterministic
+  // timeline track order for any active inputs not found in layers.
+  for (const id of activeInTimelineOrder) {
     if (!placed.has(id)) {
       order.push(id);
     }
@@ -690,12 +695,28 @@ export class TimelinePlayer {
   private mp4RestartedKeys = new Map<string, Mp4RestartKey>();
   private mp4ActualRestarted = new Set<string>();
   private lastAppliedOrder = '';
+  private playbackEpoch = 0;
 
   private snapshot: PrePlaySnapshot | null = null;
 
   constructor(room: TimelineRoomStateAdapter, config: TimelineConfig) {
     this.room = room;
     this.config = config;
+  }
+
+  private normalizePlaybackStartMs(fromMs?: number): number {
+    const totalDurationMs = this.config.totalDurationMs;
+    if (totalDurationMs <= 0) {
+      return 0;
+    }
+    const requestedMs = fromMs ?? 0;
+    if (!Number.isFinite(requestedMs) || requestedMs < 0) {
+      return 0;
+    }
+    if (requestedMs >= totalDurationMs) {
+      return 0;
+    }
+    return requestedMs;
   }
 
   public addListener(listener: TimelineListener): () => void {
@@ -728,12 +749,13 @@ export class TimelinePlayer {
   }
 
   public async start(fromMs?: number): Promise<void> {
-    const playheadMs = fromMs ?? 0;
+    const playheadMs = this.normalizePlaybackStartMs(fromMs);
     console.log(
       `[timeline] START playback fromMs=${playheadMs} totalDuration=${this.config.totalDurationMs} tracks=${this.config.tracks.length}`,
     );
 
     this.snapshotState();
+    const playbackEpoch = this.advancePlaybackEpoch();
     this.playing = true;
     this.startWallMs = Date.now();
     this.startPlayheadMs = playheadMs;
@@ -766,7 +788,7 @@ export class TimelinePlayer {
     // Apply initial desired state
     const desired = computeDesiredState(this.config, playheadMs);
     await this.applyDesiredState(desired, playheadMs);
-    await this.applyBlockSettingsAtTime(playheadMs);
+    await this.applyBlockSettingsAtTime(playheadMs, playbackEpoch);
     this.applyOrderIfChanged(playheadMs);
 
     // Re-sync wall clock so playhead starts from when MP4s are actually playing
@@ -808,6 +830,7 @@ export class TimelinePlayer {
     );
     this.playing = false;
     this.paused = false;
+    this.advancePlaybackEpoch();
     this.clearTimers();
     await this.restoreState();
     this.emit();
@@ -826,6 +849,7 @@ export class TimelinePlayer {
     );
     this.playing = false;
     this.paused = true;
+    this.advancePlaybackEpoch();
     this.clearTimers();
 
     const activeClips = getResolvedActiveClipsByInputAt(
@@ -841,11 +865,14 @@ export class TimelinePlayer {
     if (!this.paused) {
       throw new Error('Cannot resume: timeline is not paused');
     }
-    const resumeMs = fromMs ?? this.pausedPlayheadMs;
+    const resumeMs = this.normalizePlaybackStartMs(
+      fromMs ?? this.pausedPlayheadMs,
+    );
     console.log(
       `[timeline] RESUME playback fromMs=${resumeMs} (pausedAt=${this.pausedPlayheadMs})`,
     );
     this.paused = false;
+    const playbackEpoch = this.advancePlaybackEpoch();
     this.playing = true;
     this.startWallMs = Date.now();
     this.startPlayheadMs = resumeMs;
@@ -865,7 +892,7 @@ export class TimelinePlayer {
     // (e.g. temporary audio mute), so cached block settings can be stale.
     this.appliedBlockSettings.clear();
     this.mp4RestartedKeys.clear();
-    await this.applyBlockSettingsAtTime(resumeMs);
+    await this.applyBlockSettingsAtTime(resumeMs, playbackEpoch);
     this.lastAppliedOrder = '';
     this.applyOrderIfChanged(resumeMs);
 
@@ -900,6 +927,7 @@ export class TimelinePlayer {
       `[timeline] SEEK to ${ms}ms (was at ${this.getPlayheadMs()}ms)`,
     );
 
+    const playbackEpoch = this.advancePlaybackEpoch();
     this.clearEventTimers();
     this.startWallMs = Date.now();
     this.startPlayheadMs = ms;
@@ -928,7 +956,7 @@ export class TimelinePlayer {
     const desired = computeDesiredState(this.config, ms);
     await this.applyDesiredState(desired, ms);
     this.mp4RestartedKeys.clear();
-    await this.applyBlockSettingsAtTime(ms);
+    await this.applyBlockSettingsAtTime(ms, playbackEpoch);
     this.lastAppliedOrder = '';
     this.applyOrderIfChanged(ms);
 
@@ -948,13 +976,14 @@ export class TimelinePlayer {
       this.room.getInputs().map((i) => [i.inputId, !i.hidden]),
     );
     this.appliedBlockSettings.clear();
+    const playbackEpoch = this.advancePlaybackEpoch();
     this.mp4RestartedKeys.clear();
     this.mp4ActualRestarted.clear();
     this.lastAppliedOrder = '';
 
     const desired = computeDesiredState(this.config, playheadMs);
     await this.applyDesiredState(desired, playheadMs);
-    await this.applyBlockSettingsAtTime(playheadMs);
+    await this.applyBlockSettingsAtTime(playheadMs, playbackEpoch);
     this.applyOrderIfChanged(playheadMs);
 
     this.paused = true;
@@ -971,6 +1000,7 @@ export class TimelinePlayer {
   public destroy(): void {
     this.playing = false;
     this.paused = false;
+    this.advancePlaybackEpoch();
     this.clearTimers();
     this.listeners.clear();
   }
@@ -1043,6 +1073,7 @@ export class TimelinePlayer {
     if (!this.playing) return;
     const event = this.events[index];
     if (!event) return;
+    const playbackEpoch = this.playbackEpoch;
 
     if (event.inputId === OUTPUT_TRACK_INPUT_ID) {
       // Output track: only keyframe events are relevant, handled by applyBlockSettingsAtTime below
@@ -1066,7 +1097,12 @@ export class TimelinePlayer {
         }
       }
 
-      void this.showInputAtTime(event.inputId, event.timeMs, mergedTransition);
+      void this.showInputAtTime(
+        event.inputId,
+        event.timeMs,
+        mergedTransition,
+        playbackEpoch,
+      );
     } else if (event.type === 'disconnect') {
       const stillActive = this.config.tracks.some((track) =>
         track.clips.some(
@@ -1117,13 +1153,14 @@ export class TimelinePlayer {
     }
 
     this.applyOrderIfChanged(event.timeMs);
-    void this.applyBlockSettingsAtTime(event.timeMs);
+    void this.applyBlockSettingsAtTime(event.timeMs, playbackEpoch);
   }
 
   private async showInputAtTime(
     inputId: string,
     timeMs: number,
     transition?: TimelineVisibilityTransition,
+    playbackEpoch = this.playbackEpoch,
   ): Promise<void> {
     const clip = getResolvedActiveClipsByInputAt(
       this.config,
@@ -1144,7 +1181,7 @@ export class TimelinePlayer {
       );
     }
 
-    await this.applyClipState(inputId, clip, timeMs);
+    await this.applyClipState(inputId, clip, timeMs, playbackEpoch);
 
     const input = this.room.getInputs().find((i) => i.inputId === inputId);
     if (!input) {
@@ -1185,7 +1222,10 @@ export class TimelinePlayer {
     inputId: string,
     clip: TimelineClip,
     targetPlayheadMs: number,
+    playbackEpoch = this.playbackEpoch,
   ): Promise<void> {
+    if (playbackEpoch !== this.playbackEpoch) return;
+
     const resolvedBlockSettings = resolveBlockSettingsAtTime(
       clip,
       targetPlayheadMs,
@@ -1193,6 +1233,7 @@ export class TimelinePlayer {
     );
     const serialized = JSON.stringify(resolvedBlockSettings);
     if (this.appliedBlockSettings.get(inputId) !== serialized) {
+      if (playbackEpoch !== this.playbackEpoch) return;
       this.appliedBlockSettings.set(inputId, serialized);
       if (inputId === OUTPUT_TRACK_INPUT_ID) {
         await this.room
@@ -1214,6 +1255,8 @@ export class TimelinePlayer {
           );
       }
     }
+
+    if (playbackEpoch !== this.playbackEpoch) return;
 
     if (isMp4InputId(inputId)) {
       const basePlayFrom = resolvedBlockSettings.mp4PlayFromMs ?? 0;
@@ -1308,7 +1351,12 @@ export class TimelinePlayer {
     }
   }
 
-  private async applyBlockSettingsAtTime(timeMs: number): Promise<void> {
+  private async applyBlockSettingsAtTime(
+    timeMs: number,
+    playbackEpoch = this.playbackEpoch,
+  ): Promise<void> {
+    if (playbackEpoch !== this.playbackEpoch) return;
+
     const active = getResolvedActiveClipsByInputAt(
       this.config,
       timeMs,
@@ -1333,6 +1381,7 @@ export class TimelinePlayer {
     const updates: Promise<void>[] = [];
 
     if (positionPatches.size > 0) {
+      if (playbackEpoch !== this.playbackEpoch) return;
       let layers = this.room.getLayers();
       for (const [inputId, position] of positionPatches) {
         layers = patchLayersWithPosition(layers, inputId, position);
@@ -1347,12 +1396,17 @@ export class TimelinePlayer {
     }
 
     for (const [inputId, clip] of active) {
-      updates.push(this.applyClipState(inputId, clip, timeMs));
+      updates.push(this.applyClipState(inputId, clip, timeMs, playbackEpoch));
     }
 
     if (updates.length > 0) {
       await Promise.allSettled(updates);
     }
+  }
+
+  private advancePlaybackEpoch(): number {
+    this.playbackEpoch += 1;
+    return this.playbackEpoch;
   }
 
   private applyOrderIfChanged(timeMs: number): void {

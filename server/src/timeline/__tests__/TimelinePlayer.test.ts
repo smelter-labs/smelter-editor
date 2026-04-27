@@ -244,6 +244,18 @@ describe('TimelinePlayer', () => {
 
       expect(player.isPlaying()).toBe(false);
     });
+
+    it('restarts from 0 when requested from timeline end', async () => {
+      const config = makeConfig({ totalDurationMs: 5000 });
+      const player = new TimelinePlayer(adapter, config);
+
+      await player.start(5000);
+
+      expect(player.getPlayheadMs()).toBe(0);
+      expect(player.isPlaying()).toBe(true);
+      await vi.advanceTimersByTimeAsync(5001);
+      expect(player.isPlaying()).toBe(false);
+    });
   });
 
   describe('stop', () => {

@@ -87,7 +87,7 @@ export const config: Config = isProduction
         level: (process.env.SMELTER_DEMO_ROUTER_LOGGER_LEVEL ?? 'warn') as any,
       },
       ...productionWebRtcBaseUrls(),
-      h264Decoder: 'ffmpeg_h264',
+      h264Decoder: 'vulkan_h264',
       h264Encoder: buildH264Encoder(),
       snakeVisualSpeedMultiplier,
     }

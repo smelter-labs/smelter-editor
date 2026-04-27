@@ -868,8 +868,11 @@ export class RoomState {
       if (isAudioBackedLocalMp4(input.mp4FilePath)) {
         continue;
       }
-
       const isLooped = clip.blockSettings.mp4Loop !== false;
+      if (isLooped) {
+        continue;
+      }
+
       const framePositionMs = normalizeFramePositionMs(
         (input.playFromMs ?? 0) +
           (currentPipelineMs -
@@ -1309,10 +1312,12 @@ export class RoomState {
     const inputMap = new Map(allInputs.map((i) => [i.inputId, i]));
 
     // Auto-append connected inputs that aren't in any layer to layers[0].
-    // For a manual first layer, tile positions are filled in below using
-    // equal-grid as a layout helper only (layer.behavior stays unset).
-    // Skipped during timeline snapshot restore to preserve exact manual positions.
-    let appendedUnplacedToFirstLayer = false;
+    // For a manual first layer, we prefer existing absolute coordinates from
+    // input state to avoid re-tiling on timeline source swaps.
+    // If geometry is unknown, use output-sized fallback geometry for only the
+    // newly added input, without re-tiling already positioned manual inputs.
+    // Skipped during timeline snapshot restore to preserve exact manual
+    // positions.
     if (!skipUnplacedAppend) {
       const mentionedIds = new Set(
         this.layers.flatMap((l) => l.inputs.map((li) => li.inputId)),
@@ -1330,23 +1335,62 @@ export class RoomState {
       );
       if (unplacedInputs.length > 0 && this.layers.length > 0) {
         const firstLayer = this.layers[0]!;
+        const isManualFirstLayer = !firstLayer.behavior;
         for (const bi of unplacedInputs) {
+          const input = inputMap.get(bi.inputId);
+          const hasAbsoluteGeometry =
+            input?.absoluteLeft !== undefined &&
+            input?.absoluteTop !== undefined &&
+            input?.absoluteWidth !== undefined &&
+            input?.absoluteHeight !== undefined;
+
+          if (isManualFirstLayer && hasAbsoluteGeometry) {
+            const absoluteInput = input as RoomInputState & {
+              absoluteLeft: number;
+              absoluteTop: number;
+              absoluteWidth: number;
+              absoluteHeight: number;
+            };
+            firstLayer.inputs.push({
+              inputId: bi.inputId,
+              x: absoluteInput.absoluteLeft,
+              y: absoluteInput.absoluteTop,
+              width: absoluteInput.absoluteWidth,
+              height: absoluteInput.absoluteHeight,
+              transitionDurationMs: absoluteInput.absoluteTransitionDurationMs,
+              transitionEasing: absoluteInput.absoluteTransitionEasing,
+              cropTop: absoluteInput.cropTop,
+              cropLeft: absoluteInput.cropLeft,
+              cropRight: absoluteInput.cropRight,
+              cropBottom: absoluteInput.cropBottom,
+            });
+            continue;
+          }
+
+          const fallbackWidth =
+            input?.absoluteWidth ??
+            input?.nativeWidth ??
+            this.output.resolution.width;
+          const fallbackHeight =
+            input?.absoluteHeight ??
+            input?.nativeHeight ??
+            this.output.resolution.height;
           firstLayer.inputs.push({
             inputId: bi.inputId,
-            x: 0,
-            y: 0,
-            width: 0,
-            height: 0,
+            x: input?.absoluteLeft ?? 0,
+            y: input?.absoluteTop ?? 0,
+            width: fallbackWidth,
+            height: fallbackHeight,
+            transitionDurationMs: input?.absoluteTransitionDurationMs,
+            transitionEasing: input?.absoluteTransitionEasing,
+            cropTop: input?.cropTop,
+            cropLeft: input?.cropLeft,
+            cropRight: input?.cropRight,
+            cropBottom: input?.cropBottom,
           });
         }
-        appendedUnplacedToFirstLayer = true;
       }
     }
-
-    const manualFirstLayerLayoutHelper = {
-      type: 'equal-grid' as const,
-      autoscale: true,
-    };
 
     this.layers = this.layers.map((layer, layerIndex) => {
       if (layer.behavior) {
@@ -1392,49 +1436,6 @@ export class RoomState {
               (li) =>
                 computedMap.has(li.inputId) || inputMap.get(li.inputId)?.hidden,
             ),
-        };
-      }
-
-      if (layerIndex === 0 && !layer.behavior && appendedUnplacedToFirstLayer) {
-        const visibleLayerInputs: typeof layer.inputs = [];
-        const hiddenLayerInputs: typeof layer.inputs = [];
-
-        for (const li of layer.inputs) {
-          const input = inputMap.get(li.inputId);
-          if (input?.hidden) {
-            hiddenLayerInputs.push(li);
-          } else {
-            visibleLayerInputs.push(li);
-          }
-        }
-
-        const behaviorInfoMap = new Map(
-          behaviorInputInfos.map((bi) => [bi.inputId, bi]),
-        );
-        const visibleInputInfos = visibleLayerInputs
-          .map((li) => behaviorInfoMap.get(li.inputId))
-          .filter((bi): bi is BehaviorInputInfo => bi !== undefined);
-        const result = computeLayout(
-          manualFirstLayerLayoutHelper,
-          visibleInputInfos,
-          this.output.resolution,
-        );
-
-        const computedById = new Map(
-          result.inputs.map((input) => [input.inputId, input]),
-        );
-
-        const mergedInputs = layer.inputs.map((existing) => {
-          const input = inputMap.get(existing.inputId);
-          if (input?.hidden) {
-            return existing;
-          }
-          return computedById.get(existing.inputId) ?? existing;
-        });
-
-        return {
-          ...layer,
-          inputs: mergedInputs,
         };
       }
 

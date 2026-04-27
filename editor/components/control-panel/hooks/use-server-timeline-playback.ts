@@ -11,12 +11,14 @@ import { toServerTimelineConfig } from '@/lib/timeline-config';
 import { useTimelineSSE } from '@/hooks/use-timeline-sse';
 import type { TimelineState } from './use-timeline-state';
 import { OUTPUT_TRACK_ID } from './use-timeline-state';
+import { resolveSsePlayheadSync } from './timeline-playhead-sync';
 import {
   listenTimelineEvent,
   TIMELINE_EVENTS,
 } from '../components/timeline/timeline-events';
 
 const PLAYHEAD_UI_UPDATE_INTERVAL_MS = 33;
+const PLAYHEAD_BACKWARD_TOLERANCE_MS = 120;
 const AUTO_PAUSE_BEFORE_END_MS = 2000;
 const STOP_BUSY_TIMEOUT_MS = 2500;
 
@@ -38,6 +40,10 @@ export function useServerTimelinePlayback(
     ts: 0,
     ms: null,
   });
+  const uiPlayheadMsRef = useRef(state.playheadMs);
+  useEffect(() => {
+    uiPlayheadMsRef.current = state.playheadMs;
+  }, [state.playheadMs]);
 
   const [isPaused, setIsPaused] = useState(false);
   const [isTimelineBusy, setIsTimelineBusy] = useState(false);
@@ -61,6 +67,7 @@ export function useServerTimelinePlayback(
   const isTimelineClientPending = timelineClientPendingCount > 0;
   const autoPauseBeforeEndTriggeredRef = useRef(false);
   const stopInFlightRef = useRef<Promise<void> | null>(null);
+  const awaitingStartPlaybackSSERef = useRef(false);
   useEffect(() => {
     setBusyTimeoutFallbackActive(false);
   }, [roomId]);
@@ -93,11 +100,26 @@ export function useServerTimelinePlayback(
   );
 
   const pushPlayheadUpdate = useCallback(
-    (ms: number, options?: { force?: boolean }) => {
+    (
+      ms: number,
+      options?: {
+        force?: boolean;
+        allowBackward?: boolean;
+      },
+    ) => {
       const now = performance.now();
       const clampedMs = Math.round(
         Math.max(0, Math.min(ms, stateRef.current.totalDurationMs)),
       );
+      const previousUiMs = uiPlayheadMsRef.current;
+      if (
+        options?.allowBackward === false &&
+        clampedMs < previousUiMs - PLAYHEAD_BACKWARD_TOLERANCE_MS
+      ) {
+        // Timeline SSE can arrive slightly delayed relative to local interpolation.
+        // While playing, ignore stale backward jumps to keep the playhead monotonic.
+        return;
+      }
       if (lastPlayheadUpdateRef.current.ms === clampedMs) {
         return;
       }
@@ -111,6 +133,7 @@ export function useServerTimelinePlayback(
         ts: now,
         ms: clampedMs,
       };
+      uiPlayheadMsRef.current = clampedMs;
       setPlayhead(clampedMs);
     },
     [setPlayhead],
@@ -136,9 +159,14 @@ export function useServerTimelinePlayback(
     }
 
     if (!sseData.isPlaying && !sseData.isPaused && stateRef.current.isPlaying) {
+      if (awaitingStartPlaybackSSERef.current) {
+        // Ignore transient idle snapshots right after PLAY request.
+        return;
+      }
       console.log(
         `[timeline-ui] SSE signaled stop (sseCount=${sseCountRef.current} playhead=${sseData.playheadMs})`,
       );
+      awaitingStartPlaybackSSERef.current = false;
       setPlaying(false);
       setIsPaused(false);
       if (rafRef.current) {
@@ -150,16 +178,31 @@ export function useServerTimelinePlayback(
     }
 
     if (sseData.isPlaying) {
+      const awaitingStartPlaybackSSE = awaitingStartPlaybackSSERef.current;
       if (sseCountRef.current <= 3 || sseCountRef.current % 25 === 0) {
         console.log(
           `[timeline-ui] SSE update #${sseCountRef.current} playhead=${sseData.playheadMs}`,
         );
       }
+      const { nextPlayheadMs, allowBackward, clearStartResync } =
+        resolveSsePlayheadSync({
+          uiPlayheadMs: uiPlayheadMsRef.current,
+          ssePlayheadMs: sseData.playheadMs,
+          awaitingStartPlaybackSSE,
+        });
+      // Keep interpolation base monotonic for small SSE delays.
+      // If drift is very large, snap back to server to re-sync.
       lastSSERef.current = {
         wallMs: performance.now(),
-        playheadMs: sseData.playheadMs,
+        playheadMs: nextPlayheadMs,
       };
-      pushPlayheadUpdate(sseData.playheadMs, { force: true });
+      pushPlayheadUpdate(nextPlayheadMs, {
+        force: true,
+        allowBackward,
+      });
+      if (clearStartResync) {
+        awaitingStartPlaybackSSERef.current = false;
+      }
     }
   }, [
     sseData,
@@ -184,7 +227,6 @@ export function useServerTimelinePlayback(
         rafRef.current = requestAnimationFrame(tick);
         return;
       }
-
       const elapsed = performance.now() - base.wallMs;
       const interpolated = base.playheadMs + elapsed;
       const totalDuration = stateRef.current.totalDurationMs;
@@ -194,7 +236,7 @@ export function useServerTimelinePlayback(
         return;
       }
 
-      pushPlayheadUpdate(interpolated);
+      pushPlayheadUpdate(interpolated, { allowBackward: false });
       rafRef.current = requestAnimationFrame(tick);
     };
 
@@ -211,36 +253,45 @@ export function useServerTimelinePlayback(
   const play = useCallback(async () => {
     if (stateRef.current.isPlaying) return;
     setBusyTimeoutFallbackActive(false);
+    awaitingStartPlaybackSSERef.current = true;
 
     const config = toServerTimelineConfig(stateRef.current);
+    const totalDurationMs = stateRef.current.totalDurationMs;
     const fromMs = stateRef.current.playheadMs;
+    const normalizedFromMs =
+      totalDurationMs > 0 && fromMs >= totalDurationMs ? 0 : fromMs;
+    if (normalizedFromMs !== fromMs) {
+      pushPlayheadUpdate(normalizedFromMs, { force: true });
+    }
     console.log(
-      `[timeline-ui] PLAY requested fromMs=${fromMs} isPaused=${isPaused} tracks=${config.tracks.length} totalDuration=${config.totalDurationMs}`,
+      `[timeline-ui] PLAY requested fromMs=${fromMs} normalizedFromMs=${normalizedFromMs} isPaused=${isPaused} tracks=${config.tracks.length} totalDuration=${config.totalDurationMs}`,
     );
     sseCountRef.current = 0;
 
     autoPauseBeforeEndTriggeredRef.current = false;
     await runWithClientPending(async () => {
       try {
-        await startTimelinePlayback(roomId, config, fromMs);
+        await startTimelinePlayback(roomId, config, normalizedFromMs);
         console.log(`[timeline-ui] PLAY server acknowledged`);
         lastSSERef.current = {
           wallMs: performance.now(),
-          playheadMs: fromMs,
+          playheadMs: normalizedFromMs,
         };
         setIsPaused(false);
         setPlaying(true);
       } catch (err) {
         console.error('[timeline-ui] PLAY failed', err);
+        awaitingStartPlaybackSSERef.current = false;
         setPlaying(false);
         lastSSERef.current = null;
         throw err;
       }
     });
-  }, [roomId, setPlaying, isPaused, runWithClientPending]);
+  }, [roomId, setPlaying, isPaused, runWithClientPending, pushPlayheadUpdate]);
 
   const pause = useCallback(async () => {
     setBusyTimeoutFallbackActive(false);
+    awaitingStartPlaybackSSERef.current = false;
     setPlaying(false);
     setIsPaused(true);
     if (rafRef.current) {
@@ -270,6 +321,7 @@ export function useServerTimelinePlayback(
         async () => {
           let stopError: unknown = null;
           autoPauseBeforeEndTriggeredRef.current = false;
+          awaitingStartPlaybackSSERef.current = false;
           setPlaying(false);
           if (rafRef.current) {
             cancelAnimationFrame(rafRef.current);
@@ -314,6 +366,7 @@ export function useServerTimelinePlayback(
     async (ms: number) => {
       setBusyTimeoutFallbackActive(false);
       autoPauseBeforeEndTriggeredRef.current = false;
+      awaitingStartPlaybackSSERef.current = false;
       console.log(`[timeline-ui] SEEK to ${ms}ms`);
       pushPlayheadUpdate(ms, { force: true });
       lastSSERef.current = {
