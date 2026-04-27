@@ -1,5 +1,6 @@
-import { useState, useCallback, useEffect, useRef, use } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useNavigation } from "@react-navigation/native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { wsService } from "../../services/websocketService";
 import { apiService, type ActiveRoom } from "../../services/apiService";
 import { useConnectionStore } from "../../store/connectionStore";
@@ -10,187 +11,183 @@ import { ConnectionData } from "../../utils/connectionUtils";
 import type { RootNavigationProp } from "../../navigation/navigationTypes";
 import { SCREEN_NAMES } from "../../navigation/navigationTypes";
 
+const STORAGE_KEY = "saved-server-urls";
+
+async function loadSavedUrls(): Promise<string[]> {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+async function persistSavedUrls(urls: string[]): Promise<void> {
+  try {
+    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(urls));
+  } catch (err) {
+    console.warn("[JoinRoom] failed to persist saved URLs", err);
+  }
+}
+
+export type ServerStatus = "idle" | "loading" | "error" | "success";
+export type HealthStatus = "checking" | "ok" | "error";
+export type Phase = "server" | "room";
+
 interface FormErrors {
-  serverUrl?: string;
   roomId?: string;
   general?: string;
 }
 
 export function useJoinRoom() {
   const navigation = useNavigation<RootNavigationProp>();
-  const { serverUrl, roomId, setCredentials, setError, setStatus } =
+  const { serverUrl, setCredentials, setError, setStatus } =
     useConnectionStore();
 
-  const [localServerUrl, setLocalServerUrl] = useState(serverUrl);
-  const [localRoomId, setLocalRoomId] = useState(roomId);
+  // URL history
+  const [savedUrls, setSavedUrls] = useState<string[]>([]);
+  const [healthStatus, setHealthStatus] = useState<Record<string, HealthStatus>>({});
+  // Tracks in-flight health check requests so stale results are discarded
+  const healthSeqRef = useRef<Record<string, number>>({});
+
+  const [selectedServerUrl, setSelectedServerUrl] = useState(serverUrl ?? "");
+
+  // Server connection phase
+  const [serverStatus, setServerStatus] = useState<ServerStatus>("idle");
+  const [serverError, setServerError] = useState<string | null>(null);
+  const [rooms, setRooms] = useState<ActiveRoom[]>([]);
+
+  // Room selection phase
+  const [selectedRoomId, setSelectedRoomId] = useState("");
+  const [isPrivateRoom, setIsPrivateRoom] = useState(false);
+  const [privateRoomId, setPrivateRoomId] = useState("");
+
+  // Final connect
   const [errors, setErrors] = useState<FormErrors>({});
   const [isLoading, setIsLoading] = useState(false);
   const [showQR, setShowQR] = useState(false);
 
-  // Room list fetched from server
-  const [rooms, setRooms] = useState<ActiveRoom[]>([]);
-  const [roomsLoading, setRoomsLoading] = useState(false);
-  const fetchIdRef = useRef(0);
-  const preloadStartedRef = useRef(false);
-  const refreshIntervalMs = 5000;
+  const phase: Phase = serverStatus === "success" ? "room" : "server";
 
-  useEffect(() => {
-    if (__DEV__) {
-      console.log("[JoinRoom/useJoinRoom] mounted", {
-        initialServerUrl: serverUrl,
-        initialRoomId: roomId,
-      });
-    }
-    return () => {
-      if (__DEV__) {
-        console.log("[JoinRoom/useJoinRoom] unmounted");
-      }
-    };
-  }, [serverUrl, roomId]);
+  const checkUrlHealth = useCallback((url: string) => {
+    const seq = (healthSeqRef.current[url] ?? 0) + 1;
+    healthSeqRef.current[url] = seq;
 
-  // If serverUrl/roomId are restored from storage, preload last room state
-  // so Inputs/Layout are visible immediately on Join screen.
-  useEffect(() => {
-    if (preloadStartedRef.current) return;
-
-    const trimmedUrl = localServerUrl.trim();
-    const trimmedRoomId = localRoomId.trim();
-    if (!trimmedUrl || !trimmedRoomId) return;
-
-    preloadStartedRef.current = true;
-
-    const { setInputs } = useInputsStore.getState();
-    const { setLayers, setResolution } = useLayoutStore.getState();
-    const { setTimelinePlaying } = useConnectionStore.getState();
+    setHealthStatus((prev) => ({ ...prev, [url]: "checking" }));
 
     void (async () => {
       try {
-        const { inputs, layers, resolution, isTimelinePlaying } =
-          await apiService.fetchRoomState(trimmedUrl, trimmedRoomId);
-        setInputs(inputs);
-        setLayers(layers);
-        setResolution(resolution);
-        setTimelinePlaying(isTimelinePlaying);
-        if (__DEV__) {
-          console.log("[JoinRoom] preloaded room state", {
-            inputCount: inputs.length,
-            layerCount: layers.length,
-            resolution,
-          });
+        // fetchActiveRooms returning any response (even empty) proves the server is reachable
+        await apiService.fetchActiveRooms(url);
+        if (healthSeqRef.current[url] === seq) {
+          setHealthStatus((prev) => ({ ...prev, [url]: "ok" }));
         }
-      } catch (err) {
-        console.warn("[JoinRoom] preload room state failed:", err);
+      } catch {
+        if (healthSeqRef.current[url] === seq) {
+          setHealthStatus((prev) => ({ ...prev, [url]: "error" }));
+        }
       }
     })();
-  }, [localServerUrl, localRoomId]);
-
-  // Auto-fetch rooms when serverUrl changes (debounced 600ms)
-  // and keep refreshing every 5 seconds to detect stale rooms.
-  useEffect(() => {
-    const trimmed = localServerUrl.trim();
-
-    if (!trimmed) {
-      setRooms([]);
-      setRoomsLoading(false);
-      return;
-    }
-
-    const fetchRooms = async (reason: "debounce" | "interval") => {
-      const id = ++fetchIdRef.current;
-      setRoomsLoading(true);
-      try {
-        const result = await apiService.fetchActiveRooms(trimmed);
-
-        const deduped = result.filter(
-          (room, index, arr) =>
-            arr.findIndex((candidate) => candidate.roomId === room.roomId) ===
-            index,
-        );
-
-        // Only apply if this is still the latest request
-        if (id === fetchIdRef.current) {
-          setRooms(deduped);
-
-          const selectedStillExists = deduped.some(
-            (room) => room.roomId === localRoomId,
-          );
-          if (localRoomId && !selectedStillExists) {
-            setErrors((prev) => ({
-              ...prev,
-              roomId:
-                "Selected room is no longer active. Please choose another room.",
-            }));
-          }
-        }
-      } catch (err) {
-        console.warn("[JoinRoom] failed to fetch rooms:", err);
-        if (id === fetchIdRef.current) {
-          setRooms([]);
-        }
-      } finally {
-        if (id === fetchIdRef.current) {
-          setRoomsLoading(false);
-        }
-      }
-    };
-
-    const timer = setTimeout(() => {
-      void fetchRooms("debounce");
-    }, 600);
-
-    const interval = setInterval(() => {
-      void fetchRooms("interval");
-    }, refreshIntervalMs);
-
-    return () => {
-      clearTimeout(timer);
-      clearInterval(interval);
-    };
-  }, [localServerUrl, localRoomId]);
-
-  const selectRoom = useCallback((room: ActiveRoom) => {
-    setLocalRoomId(room.roomId);
-    setErrors((prev) => ({ ...prev, roomId: undefined }));
   }, []);
 
-  const validate = useCallback((): FormErrors => {
-    const newErrors: FormErrors = {};
-    const trimmedServerUrl = localServerUrl.trim();
-    const trimmedRoomId = localRoomId.trim();
-
-    if (!localServerUrl.trim()) {
-      newErrors.serverUrl = "Server URL is required";
-    }
-    if (!trimmedRoomId) {
-      newErrors.roomId = "Room ID is required";
-    }
-
-    if (trimmedServerUrl) {
-      const data = ConnectionData.fromManualInput(trimmedServerUrl, "_probe_");
-      if (!data.isValid()) {
-        newErrors.serverUrl = "Invalid server URL format";
+  useEffect(() => {
+    void (async () => {
+      const urls = await loadSavedUrls();
+      setSavedUrls(urls);
+      for (const url of urls) {
+        checkUrlHealth(url);
       }
-    }
+    })();
+  }, [checkUrlHealth]);
 
-    return newErrors;
-  }, [localServerUrl, localRoomId]);
+  const removeSavedUrl = useCallback((url: string) => {
+    setSavedUrls((prev) => {
+      const next = prev.filter((u) => u !== url);
+      void persistSavedUrls(next);
+      return next;
+    });
+    setHealthStatus((prev) => {
+      const next = { ...prev };
+      delete next[url];
+      return next;
+    });
+  }, []);
+
+  // Changing the selected server resets to the server phase
+  const handleServerUrlChange = useCallback((url: string) => {
+    setSelectedServerUrl(url);
+    setServerStatus("idle");
+    setServerError(null);
+    setRooms([]);
+  }, []);
+
+  // urlOverride exists so QR scan can pass the URL without waiting for state to flush
+  const handleJoinServer = useCallback(
+    async (urlOverride?: string) => {
+      const trimmed = (urlOverride ?? selectedServerUrl).trim();
+
+      if (!trimmed) {
+        setServerError("Server URL is required");
+        setServerStatus("error");
+        return;
+      }
+
+      const probe = ConnectionData.fromManualInput(trimmed, "_probe_");
+      if (!probe.isValid()) {
+        setServerError("Invalid server URL format");
+        setServerStatus("error");
+        return;
+      }
+
+      setServerError(null);
+      setServerStatus("loading");
+
+      try {
+        const result = await apiService.fetchActiveRooms(trimmed);
+        const deduped = result.filter(
+          (room, i, arr) =>
+            arr.findIndex((c) => c.roomId === room.roomId) === i,
+        );
+        setRooms(deduped);
+        setServerStatus("success");
+
+        // Auto-save the URL and mark it healthy
+        setSavedUrls((prev) => {
+          if (prev.includes(trimmed)) return prev;
+          const next = [...prev, trimmed];
+          void persistSavedUrls(next);
+          return next;
+        });
+        setHealthStatus((prev) => ({ ...prev, [trimmed]: "ok" }));
+      } catch (err) {
+        const msg =
+          err instanceof Error ? err.message : "Could not reach server";
+        setServerError(msg);
+        setServerStatus("error");
+        setHealthStatus((prev) => ({ ...prev, [trimmed]: "error" }));
+      }
+    },
+    [selectedServerUrl],
+  );
 
   const handleConnect = useCallback(async () => {
-    const validationErrors = validate();
-    if (Object.keys(validationErrors).length > 0) {
-      setErrors(validationErrors);
+    const trimmedUrl = selectedServerUrl.trim();
+    const trimmedRoomId = (isPrivateRoom ? privateRoomId : selectedRoomId).trim();
+
+    const newErrors: FormErrors = {};
+    if (!trimmedRoomId) newErrors.roomId = "Room ID is required";
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
       return;
     }
 
     setErrors({});
     setIsLoading(true);
     setStatus(ConnectionStatus.Connecting);
-    const trimmedUrl = localServerUrl.trim();
-    const trimmedRoomId = localRoomId.trim();
 
     const { setInputs } = useInputsStore.getState();
-    const { setLayers, setResolution } = useLayoutStore.getState();
-    const { setGridConfig } = useLayoutStore.getState();
+    const { setLayers, setResolution, setGridConfig } =
+      useLayoutStore.getState();
     const { setTimelinePlaying } = useConnectionStore.getState();
 
     try {
@@ -210,14 +207,6 @@ export function useJoinRoom() {
         Math.round(resolution.height / 50),
       );
 
-      if (__DEV__) {
-        console.log("[JoinRoom] Room state loaded", {
-          inputCount: inputs.length,
-          layerCount: layers.length,
-          resolution,
-        });
-      }
-
       navigation.replace(SCREEN_NAMES.MAIN);
     } catch (err) {
       const rawMessage =
@@ -227,40 +216,69 @@ export function useJoinRoom() {
         ? "Room not found. Check the room ID and try again."
         : rawMessage;
       setError(message);
-      setErrors(isRoomNotFound ? { roomId: message } : { serverUrl: message });
+      setErrors(isRoomNotFound ? { roomId: message } : { general: message });
     } finally {
       setIsLoading(false);
     }
   }, [
-    localServerUrl,
-    localRoomId,
-    validate,
+    selectedServerUrl,
+    selectedRoomId,
+    isPrivateRoom,
+    privateRoomId,
     navigation,
     setCredentials,
     setError,
     setStatus,
   ]);
 
-  const handleQRScan = useCallback((data: ConnectionData) => {
-    setShowQR(false);
-    setLocalServerUrl(data.serverUrl);
-    setLocalRoomId(data.roomId);
+  const handleQRScan = useCallback(
+    (data: ConnectionData) => {
+      setShowQR(false);
+      setSelectedServerUrl(data.serverUrl);
+      setSelectedRoomId(data.roomId);
+      setErrors({});
+      // Pass URL directly to avoid reading stale selectedServerUrl state
+      void handleJoinServer(data.serverUrl);
+    },
+    [handleJoinServer],
+  );
+
+  const togglePrivateRoom = useCallback(() => {
+    setIsPrivateRoom((v) => !v);
     setErrors({});
   }, []);
 
   return {
-    localServerUrl,
-    setLocalServerUrl,
-    localRoomId,
-    setLocalRoomId,
+    // server dropdown
+    savedUrls,
+    healthStatus,
+    selectedServerUrl,
+    handleServerUrlChange,
+    removeSavedUrl,
+    serverStatus,
+    serverError,
+    handleJoinServer,
+
+    // phase & rooms
+    phase,
+    rooms,
+
+    // room selection
+    selectedRoomId,
+    setSelectedRoomId,
+    isPrivateRoom,
+    togglePrivateRoom,
+    privateRoomId,
+    setPrivateRoomId,
+
+    // final connect
     errors,
     isLoading,
+    handleConnect,
+
+    // misc
     showQR,
     setShowQR,
-    handleConnect,
     handleQRScan,
-    rooms,
-    roomsLoading,
-    selectRoom,
   };
 }
