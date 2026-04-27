@@ -46,7 +46,9 @@ export function useJoinRoom() {
 
   // URL history
   const [savedUrls, setSavedUrls] = useState<string[]>([]);
-  const [healthStatus, setHealthStatus] = useState<Record<string, HealthStatus>>({});
+  const [healthStatus, setHealthStatus] = useState<
+    Record<string, HealthStatus>
+  >({});
   // Tracks in-flight health check requests so stale results are discarded
   const healthSeqRef = useRef<Record<string, number>>({});
 
@@ -172,7 +174,9 @@ export function useJoinRoom() {
 
   const handleConnect = useCallback(async () => {
     const trimmedUrl = selectedServerUrl.trim();
-    const trimmedRoomId = (isPrivateRoom ? privateRoomId : selectedRoomId).trim();
+    const trimmedRoomId = (
+      isPrivateRoom ? privateRoomId : selectedRoomId
+    ).trim();
 
     const newErrors: FormErrors = {};
     if (!trimmedRoomId) newErrors.roomId = "Room ID is required";

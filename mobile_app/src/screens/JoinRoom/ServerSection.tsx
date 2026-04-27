@@ -77,9 +77,7 @@ export function ServerSection({
         )}
       </View>
 
-      <View
-        style={[styles.historyList, { borderColor: theme.colors.outline }]}
-      >
+      <View style={[styles.historyList, { borderColor: theme.colors.outline }]}>
         <FlatList
           data={filteredUrls}
           keyExtractor={(item) => item}
@@ -91,45 +89,45 @@ export function ServerSection({
             index,
           })}
           renderItem={({ item, index }) => (
-              <Pressable
-                onPress={() => {
-                  onServerUrlChange(item);
-                  onJoinServer(item);
-                }}
+            <Pressable
+              onPress={() => {
+                onServerUrlChange(item);
+                onJoinServer(item);
+              }}
+              style={[
+                styles.historyItem,
+                index > 0 && {
+                  borderTopWidth: StyleSheet.hairlineWidth,
+                  borderTopColor: theme.colors.outline,
+                },
+                selectedServerUrl === item && {
+                  backgroundColor: theme.colors.surfaceVariant,
+                },
+              ]}
+            >
+              <HealthIcon status={healthStatus[item]} />
+              <Text
                 style={[
-                  styles.historyItem,
-                  index > 0 && {
-                    borderTopWidth: StyleSheet.hairlineWidth,
-                    borderTopColor: theme.colors.outline,
-                  },
-                  selectedServerUrl === item && {
-                    backgroundColor: theme.colors.surfaceVariant,
-                  },
+                  styles.historyItemText,
+                  { color: theme.colors.onSurface },
                 ]}
+                numberOfLines={1}
               >
-                <HealthIcon status={healthStatus[item]} />
-                <Text
-                  style={[
-                    styles.historyItemText,
-                    { color: theme.colors.onSurface },
-                  ]}
-                  numberOfLines={1}
-                >
-                  {item}
-                </Text>
-                <TouchableOpacity
-                  onPress={() => onRemoveUrl(item)}
-                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                >
-                  <Icon
-                    source="close"
-                    size={14}
-                    color={theme.colors.onSurfaceVariant}
-                  />
-                </TouchableOpacity>
-              </Pressable>
-            )}
-          />
+                {item}
+              </Text>
+              <TouchableOpacity
+                onPress={() => onRemoveUrl(item)}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+              >
+                <Icon
+                  source="close"
+                  size={14}
+                  color={theme.colors.onSurfaceVariant}
+                />
+              </TouchableOpacity>
+            </Pressable>
+          )}
+        />
       </View>
 
       {serverStatus === "error" && serverError && (

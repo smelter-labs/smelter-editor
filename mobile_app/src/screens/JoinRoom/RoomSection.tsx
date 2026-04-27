@@ -1,18 +1,7 @@
 import React from "react";
-import {
-  FlatList,
-  Pressable,
-  StyleSheet,
-  View,
-} from "react-native";
+import { FlatList, Pressable, StyleSheet, View } from "react-native";
 import { ITEM_HEIGHT, LIST_HEIGHT } from "./joinRoomConstants";
-import {
-  Button,
-  Icon,
-  Text,
-  TextInput,
-  useTheme,
-} from "react-native-paper";
+import { Button, Icon, Text, TextInput, useTheme } from "react-native-paper";
 import { ErrorMessage } from "../../components/shared/ErrorMessage";
 import { getRoomDisplayName, type ActiveRoom } from "../../services/apiService";
 
@@ -59,10 +48,7 @@ export function RoomSection({
         <>
           {rooms.length > 0 ? (
             <View
-              style={[
-                styles.roomList,
-                { borderColor: theme.colors.outline },
-              ]}
+              style={[styles.roomList, { borderColor: theme.colors.outline }]}
             >
               <FlatList
                 data={rooms}

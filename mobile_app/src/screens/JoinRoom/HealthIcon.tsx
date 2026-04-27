@@ -9,8 +9,10 @@ interface Props {
 
 export function HealthIcon({ status }: Props) {
   if (status === "checking") return <ActivityIndicator size={14} />;
-  if (status === "ok") return <Icon source="check-circle" size={16} color="#22c55e" />;
-  if (status === "error") return <Icon source="close-circle" size={16} color="#ef4444" />;
+  if (status === "ok")
+    return <Icon source="check-circle" size={16} color="#22c55e" />;
+  if (status === "error")
+    return <Icon source="close-circle" size={16} color="#ef4444" />;
   // Reserve space so text doesn't shift when icons appear
   return <View style={styles.placeholder} />;
 }

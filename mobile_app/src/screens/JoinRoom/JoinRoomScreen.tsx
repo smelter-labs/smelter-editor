@@ -1,6 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { KeyboardAvoidingView, StyleSheet, View } from "react-native";
-import { Button, IconButton, Surface, Text, useTheme } from "react-native-paper";
+import {
+  Button,
+  IconButton,
+  Surface,
+  Text,
+  useTheme,
+} from "react-native-paper";
 import * as ScreenOrientation from "expo-screen-orientation";
 import { useIsTablet } from "../../hooks/useIsTablet";
 import { useJoinRoom } from "./useJoinRoom";
@@ -56,54 +62,54 @@ export function JoinRoomScreen() {
       style={[styles.container, { backgroundColor: theme.colors.background }]}
       behavior="padding"
     >
-        <Surface style={styles.card} elevation={2}>
-          <Text variant="headlineMedium">Smelter Editor</Text>
-          <Text
-            variant="bodyMedium"
-            style={{ color: theme.colors.onSurfaceVariant, marginBottom: 8 }}
-          >
-            Connect to a room
-          </Text>
+      <Surface style={styles.card} elevation={2}>
+        <Text variant="headlineMedium">Smelter Editor</Text>
+        <Text
+          variant="bodyMedium"
+          style={{ color: theme.colors.onSurfaceVariant, marginBottom: 8 }}
+        >
+          Connect to a room
+        </Text>
 
-          {phase === "server" ? (
-            <ServerSection
-              savedUrls={savedUrls}
-              healthStatus={healthStatus}
-              selectedServerUrl={selectedServerUrl}
-              onServerUrlChange={handleServerUrlChange}
-              onRemoveUrl={removeSavedUrl}
-              onJoinServer={handleJoinServer}
-              serverStatus={serverStatus}
-              serverError={serverError}
-            />
-          ) : (
-            <RoomSection
-              selectedServerUrl={selectedServerUrl}
-              onChangeServer={() => handleServerUrlChange(selectedServerUrl)}
-              rooms={rooms}
-              selectedRoomId={selectedRoomId}
-              onSelectRoom={setSelectedRoomId}
-              isPrivateRoom={isPrivateRoom}
-              onTogglePrivateRoom={togglePrivateRoom}
-              privateRoomId={privateRoomId}
-              onPrivateRoomIdChange={setPrivateRoomId}
-              errors={errors}
-              isLoading={isLoading}
-              onConnect={handleConnect}
-            />
-          )}
+        {phase === "server" ? (
+          <ServerSection
+            savedUrls={savedUrls}
+            healthStatus={healthStatus}
+            selectedServerUrl={selectedServerUrl}
+            onServerUrlChange={handleServerUrlChange}
+            onRemoveUrl={removeSavedUrl}
+            onJoinServer={handleJoinServer}
+            serverStatus={serverStatus}
+            serverError={serverError}
+          />
+        ) : (
+          <RoomSection
+            selectedServerUrl={selectedServerUrl}
+            onChangeServer={() => handleServerUrlChange(selectedServerUrl)}
+            rooms={rooms}
+            selectedRoomId={selectedRoomId}
+            onSelectRoom={setSelectedRoomId}
+            isPrivateRoom={isPrivateRoom}
+            onTogglePrivateRoom={togglePrivateRoom}
+            privateRoomId={privateRoomId}
+            onPrivateRoomIdChange={setPrivateRoomId}
+            errors={errors}
+            isLoading={isLoading}
+            onConnect={handleConnect}
+          />
+        )}
 
-          <View style={styles.bottomRow}>
-            <Button mode="text" onPress={() => setShowQR(true)}>
-              Scan QR Code instead
-            </Button>
-            <IconButton
-              icon="cog"
-              size={20}
-              onPress={() => setSettingsOpen(true)}
-            />
-          </View>
-        </Surface>
+        <View style={styles.bottomRow}>
+          <Button mode="text" onPress={() => setShowQR(true)}>
+            Scan QR Code instead
+          </Button>
+          <IconButton
+            icon="cog"
+            size={20}
+            onPress={() => setSettingsOpen(true)}
+          />
+        </View>
+      </Surface>
 
       {isLoading && <LoadingOverlay message="Connecting to room..." />}
 
