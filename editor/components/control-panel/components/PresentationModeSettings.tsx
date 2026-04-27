@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
@@ -17,6 +17,7 @@ import {
 } from '@/lib/room-config';
 import {
   savePresentationConfig,
+  updatePresentationConfig,
   listPresentationConfigs,
   loadPresentationConfig,
   deletePresentationConfig,
@@ -35,19 +36,58 @@ import {
 } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 
+function isEffectivelyEmptyRichText(value: string): boolean {
+  const withoutTags = value
+    .replace(/<[^>]*>/g, '')
+    .replace(/&nbsp;/g, ' ')
+    .trim();
+  return withoutTags.length === 0;
+}
+
+function resolvePresentationTextValues(
+  payload: Partial<PresentationConfig> & {
+    before?: string;
+    after?: string;
+    title?: string;
+    description?: string;
+  },
+): {
+  welcomeTextBefore: string;
+  welcomeTextAfter: string;
+  farewellTitle: string;
+  farewellDescription: string;
+} {
+  return {
+    welcomeTextBefore: payload.welcomeTextBefore ?? payload.before ?? '',
+    welcomeTextAfter: payload.welcomeTextAfter ?? payload.after ?? '',
+    farewellTitle: payload.farewellTitle ?? payload.title ?? '',
+    farewellDescription:
+      payload.farewellDescription ?? payload.description ?? '',
+  };
+}
+
 type PresentationModeSettingsProps = {
   roomState: RoomState;
   getTimelineStateForConfig: () => TimelineState | null;
+  showcasePrefill?: {
+    welcomeTextBefore: string;
+    welcomeTextAfter: string;
+    farewellTitle: string;
+    farewellDescription: string;
+  } | null;
 };
 
 export function PresentationModeSettings({
   roomState,
   getTimelineStateForConfig,
+  showcasePrefill,
 }: PresentationModeSettingsProps) {
   const { roomId } = useControlPanelContext();
 
   const [welcomeTextBefore, setWelcomeTextBefore] = useState('');
   const [welcomeTextAfter, setWelcomeTextAfter] = useState('');
+  const [farewellTitle, setFarewellTitle] = useState('');
+  const [farewellDescription, setFarewellDescription] = useState('');
   const [configName, setConfigName] = useState('');
   const [roomConfigSource, setRoomConfigSource] = useState<'current' | 'saved'>(
     'current',
@@ -55,6 +95,11 @@ export function PresentationModeSettings({
   const [savedConfigs, setSavedConfigs] = useState<SavedItemInfo[]>([]);
   const [selectedConfigFile, setSelectedConfigFile] = useState<string>('');
   const [isSaving, setIsSaving] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
+  const [selectedPresentationConfigFile, setSelectedPresentationConfigFile] =
+    useState<string>('');
+  const [selectedPresentationConfigName, setSelectedPresentationConfigName] =
+    useState<string>('');
 
   const [presentationConfigs, setPresentationConfigs] = useState<
     SavedItemInfo[]
@@ -63,6 +108,35 @@ export function PresentationModeSettings({
   const [loadingConfigFile, setLoadingConfigFile] = useState<string | null>(
     null,
   );
+  const autoPrefillAppliedRef = useRef(false);
+
+  const applyTextFields = useCallback(
+    (values: {
+      welcomeTextBefore?: string;
+      welcomeTextAfter?: string;
+      farewellTitle?: string;
+      farewellDescription?: string;
+      before?: string;
+      after?: string;
+      title?: string;
+      description?: string;
+    }) => {
+      const resolved = resolvePresentationTextValues(values);
+      setWelcomeTextBefore(resolved.welcomeTextBefore);
+      setWelcomeTextAfter(resolved.welcomeTextAfter);
+      setFarewellTitle(resolved.farewellTitle);
+      setFarewellDescription(resolved.farewellDescription);
+    },
+    [],
+  );
+
+  const applyShowcasePrefill = useCallback(() => {
+    if (!showcasePrefill) {
+      return false;
+    }
+    applyTextFields(showcasePrefill);
+    return true;
+  }, [applyTextFields, showcasePrefill]);
 
   const fetchPresentationConfigs = useCallback(async () => {
     const result = await listPresentationConfigs();
@@ -80,6 +154,42 @@ export function PresentationModeSettings({
       }),
     ]).finally(() => setIsLoadingList(false));
   }, [fetchPresentationConfigs]);
+
+  useEffect(() => {
+    if (presentationConfigs.length === 0 || selectedPresentationConfigFile) {
+      return;
+    }
+    const first = presentationConfigs[0];
+    if (!first) return;
+    setSelectedPresentationConfigFile(first.fileName);
+    setSelectedPresentationConfigName(first.name);
+  }, [presentationConfigs, selectedPresentationConfigFile]);
+
+  useEffect(() => {
+    if (!showcasePrefill || autoPrefillAppliedRef.current) {
+      return;
+    }
+
+    const formIsEmpty =
+      isEffectivelyEmptyRichText(welcomeTextBefore) &&
+      isEffectivelyEmptyRichText(welcomeTextAfter) &&
+      !farewellTitle.trim() &&
+      isEffectivelyEmptyRichText(farewellDescription);
+    if (!formIsEmpty) {
+      autoPrefillAppliedRef.current = true;
+      return;
+    }
+
+    applyTextFields(showcasePrefill);
+    autoPrefillAppliedRef.current = true;
+  }, [
+    applyTextFields,
+    showcasePrefill,
+    welcomeTextBefore,
+    welcomeTextAfter,
+    farewellTitle,
+    farewellDescription,
+  ]);
 
   const buildCurrentRoomConfig = useCallback((): RoomConfig => {
     const timelineState = resolveRoomConfigTimelineState(
@@ -144,12 +254,16 @@ export function PresentationModeSettings({
         roomConfig,
         welcomeTextBefore,
         welcomeTextAfter,
+        farewellTitle,
+        farewellDescription,
       };
 
       const result = await savePresentationConfig(name, presentationConfig);
       if (result.ok) {
         toast.success('Presentation config saved');
-        setConfigName('');
+        setSelectedPresentationConfigFile(result.fileName);
+        setSelectedPresentationConfigName(result.name);
+        setConfigName(result.name);
         await fetchPresentationConfigs();
       } else {
         toast.error(`Save failed: ${result.error}`);
@@ -165,28 +279,121 @@ export function PresentationModeSettings({
     selectedConfigFile,
     welcomeTextBefore,
     welcomeTextAfter,
+    farewellTitle,
+    farewellDescription,
     buildCurrentRoomConfig,
     fetchPresentationConfigs,
   ]);
 
-  const handleLoadConfig = useCallback(async (fileName: string) => {
-    setLoadingConfigFile(fileName);
-    try {
-      const result = await loadPresentationConfig(fileName);
-      if (!result.ok) {
-        toast.error(`Load failed: ${result.error}`);
-        return;
+  const handleLoadConfig = useCallback(
+    async (fileName: string, options?: { markAsEditTarget?: boolean }) => {
+      setLoadingConfigFile(fileName);
+      try {
+        const result = await loadPresentationConfig(fileName);
+        if (!result.ok) {
+          toast.error(`Load failed: ${result.error}`);
+          return;
+        }
+        const config = result.data as PresentationConfig;
+        applyTextFields(config);
+        if (options?.markAsEditTarget) {
+          setSelectedPresentationConfigFile(fileName);
+          setSelectedPresentationConfigName(result.name);
+          setConfigName(result.name);
+          toast.success('Loaded selected config for editing');
+        } else {
+          toast.success('Loaded presentation config settings');
+        }
+      } catch (e: any) {
+        toast.error(`Load failed: ${e?.message || e}`);
+      } finally {
+        setLoadingConfigFile(null);
       }
-      const config = result.data as PresentationConfig;
-      setWelcomeTextBefore(config.welcomeTextBefore || '');
-      setWelcomeTextAfter(config.welcomeTextAfter || '');
-      toast.success('Loaded presentation config settings');
-    } catch (e: any) {
-      toast.error(`Load failed: ${e?.message || e}`);
-    } finally {
-      setLoadingConfigFile(null);
+    },
+    [applyTextFields],
+  );
+
+  const handleEditSelected = useCallback(async () => {
+    if (!selectedPresentationConfigFile) {
+      toast.error('Select a saved presentation config first');
+      return;
     }
-  }, []);
+    await handleLoadConfig(selectedPresentationConfigFile, {
+      markAsEditTarget: true,
+    });
+  }, [handleLoadConfig, selectedPresentationConfigFile]);
+
+  const handleUpdateSelected = useCallback(async () => {
+    if (!selectedPresentationConfigFile) {
+      toast.error('Select a saved presentation config to update');
+      return;
+    }
+
+    const name = configName.trim() || selectedPresentationConfigName;
+    if (!name) {
+      toast.error('Please enter a name for the updated config');
+      return;
+    }
+
+    setIsUpdating(true);
+    try {
+      let roomConfig: RoomConfig;
+      if (roomConfigSource === 'current') {
+        roomConfig = buildCurrentRoomConfig();
+      } else {
+        if (!selectedConfigFile) {
+          toast.error('Please select a saved config');
+          setIsUpdating(false);
+          return;
+        }
+        const loaded = await loadRemoteConfig(selectedConfigFile);
+        if (!loaded.ok) {
+          toast.error(`Failed to load config: ${loaded.error}`);
+          setIsUpdating(false);
+          return;
+        }
+        roomConfig = loaded.data as RoomConfig;
+      }
+
+      const presentationConfig: PresentationConfig = {
+        roomConfig,
+        welcomeTextBefore,
+        welcomeTextAfter,
+        farewellTitle,
+        farewellDescription,
+      };
+
+      const result = await updatePresentationConfig(
+        selectedPresentationConfigFile,
+        name,
+        presentationConfig,
+      );
+      if (result.ok) {
+        toast.success('Presentation config updated');
+        setSelectedPresentationConfigName(result.name);
+        setConfigName(result.name);
+        await fetchPresentationConfigs();
+      } else {
+        toast.error(`Update failed: ${result.error}`);
+      }
+    } catch (e: any) {
+      toast.error(`Update failed: ${e?.message || e}`);
+    } finally {
+      setIsUpdating(false);
+    }
+  }, [
+    selectedPresentationConfigFile,
+    configName,
+    selectedPresentationConfigName,
+    roomConfigSource,
+    buildCurrentRoomConfig,
+    selectedConfigFile,
+    welcomeTextBefore,
+    welcomeTextAfter,
+    farewellTitle,
+    farewellDescription,
+    fetchPresentationConfigs,
+  ]);
 
   const handleDeleteConfig = useCallback(
     async (fileName: string) => {
@@ -209,6 +416,22 @@ export function PresentationModeSettings({
     <div className='space-y-4'>
       <section className='space-y-3'>
         <h4 className='text-sm font-medium text-foreground'>Welcome Modal</h4>
+        {showcasePrefill && (
+          <div className='flex justify-end'>
+            <Button
+              size='sm'
+              variant='outline'
+              className='cursor-pointer'
+              onClick={() => {
+                const loaded = applyShowcasePrefill();
+                if (loaded) {
+                  toast.success('Loaded active showcase values');
+                }
+              }}>
+              Load active values
+            </Button>
+          </div>
+        )}
         <div className='space-y-2'>
           <Label className='text-xs text-muted-foreground'>
             Text before pending connections
@@ -227,6 +450,31 @@ export function PresentationModeSettings({
             value={welcomeTextAfter}
             onChange={setWelcomeTextAfter}
             placeholder='Once connected, the presentation will begin automatically.'
+          />
+        </div>
+      </section>
+
+      <div className='h-px bg-card' />
+
+      <section className='space-y-3'>
+        <h4 className='text-sm font-medium text-foreground'>
+          Completion Modal
+        </h4>
+        <div className='space-y-2'>
+          <Label className='text-xs text-muted-foreground'>Title</Label>
+          <Input
+            value={farewellTitle}
+            onChange={(e) => setFarewellTitle(e.target.value)}
+            placeholder='Thanks for watching'
+            className='text-sm'
+          />
+        </div>
+        <div className='space-y-2'>
+          <Label className='text-xs text-muted-foreground'>Description</Label>
+          <RichTextEditor
+            value={farewellDescription}
+            onChange={setFarewellDescription}
+            placeholder='Thanks for sticking with us to the end of the presentation...'
           />
         </div>
       </section>
@@ -278,6 +526,12 @@ export function PresentationModeSettings({
 
       <section className='space-y-3'>
         <h4 className='text-sm font-medium text-foreground'>Save</h4>
+        {selectedPresentationConfigFile && (
+          <p className='text-xs text-muted-foreground'>
+            Editing:{' '}
+            {selectedPresentationConfigName || selectedPresentationConfigFile}
+          </p>
+        )}
         <div className='flex gap-2'>
           <Input
             placeholder='Presentation name...'
@@ -288,7 +542,7 @@ export function PresentationModeSettings({
           <Button
             size='sm'
             onClick={handleSave}
-            disabled={isSaving || !configName.trim()}
+            disabled={isSaving || isUpdating || !configName.trim()}
             className='cursor-pointer'>
             {isSaving ? (
               <LoadingSpinner size='sm' variant='spinner' />
@@ -299,15 +553,40 @@ export function PresentationModeSettings({
               </>
             )}
           </Button>
+          <Button
+            size='sm'
+            variant='outline'
+            onClick={handleUpdateSelected}
+            disabled={isSaving || isUpdating || !selectedPresentationConfigFile}
+            className='cursor-pointer'>
+            {isUpdating ? (
+              <LoadingSpinner size='sm' variant='spinner' />
+            ) : (
+              'Update selected'
+            )}
+          </Button>
         </div>
       </section>
 
       <div className='h-px bg-card' />
 
       <section className='space-y-3'>
-        <h4 className='text-sm font-medium text-foreground'>
-          Saved Presentation Configs
-        </h4>
+        <div className='flex items-center justify-between gap-2'>
+          <h4 className='text-sm font-medium text-foreground'>
+            Saved Presentation Configs
+          </h4>
+          <Button
+            size='sm'
+            variant='outline'
+            className='cursor-pointer'
+            disabled={
+              !selectedPresentationConfigFile ||
+              loadingConfigFile === selectedPresentationConfigFile
+            }
+            onClick={() => void handleEditSelected()}>
+            Edit selected
+          </Button>
+        </div>
         {isLoadingList ? (
           <div className='flex justify-center py-3'>
             <LoadingSpinner size='sm' variant='spinner' />
@@ -321,7 +600,16 @@ export function PresentationModeSettings({
             {presentationConfigs.map((item) => (
               <li
                 key={item.fileName}
-                className='flex items-center justify-between bg-neutral-900 rounded px-3 py-2'>
+                className={`flex items-center justify-between rounded px-3 py-2 cursor-pointer transition-colors ${
+                  selectedPresentationConfigFile === item.fileName
+                    ? 'bg-neutral-800 ring-1 ring-neutral-600'
+                    : 'bg-neutral-900 hover:bg-neutral-800'
+                }`}
+                onClick={() => {
+                  setSelectedPresentationConfigFile(item.fileName);
+                  setSelectedPresentationConfigName(item.name);
+                  setConfigName(item.name);
+                }}>
                 <div className='min-w-0 flex-1'>
                   <span className='text-sm text-white truncate block'>
                     {item.name}
@@ -337,7 +625,15 @@ export function PresentationModeSettings({
                     className='h-7 w-7 cursor-pointer'
                     title='Load settings'
                     disabled={loadingConfigFile === item.fileName}
-                    onClick={() => handleLoadConfig(item.fileName)}>
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setSelectedPresentationConfigFile(item.fileName);
+                      setSelectedPresentationConfigName(item.name);
+                      setConfigName(item.name);
+                      void handleLoadConfig(item.fileName, {
+                        markAsEditTarget: true,
+                      });
+                    }}>
                     {loadingConfigFile === item.fileName ? (
                       <LoadingSpinner size='sm' variant='spinner' />
                     ) : (
@@ -349,7 +645,10 @@ export function PresentationModeSettings({
                     variant='ghost'
                     className='h-7 w-7 text-red-400 hover:text-red-300 cursor-pointer'
                     title='Delete'
-                    onClick={() => handleDeleteConfig(item.fileName)}>
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      void handleDeleteConfig(item.fileName);
+                    }}>
                     <Trash2 className='w-3.5 h-3.5' />
                   </Button>
                 </div>

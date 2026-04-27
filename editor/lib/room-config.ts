@@ -139,6 +139,8 @@ export type PresentationConfig = {
   roomConfig: RoomConfig;
   welcomeTextBefore: string;
   welcomeTextAfter: string;
+  farewellTitle?: string;
+  farewellDescription?: string;
 };
 
 export type RoomConfigTimelineState = {

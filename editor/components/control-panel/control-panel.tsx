@@ -199,6 +199,20 @@ type ControlPanelWithActionsProps = ControlPanelProps & {
   sceneMutationVersion: number;
 };
 
+type ShowcaseCopy = {
+  before: string;
+  after: string;
+  farewellTitle?: string;
+  farewellDescription?: string;
+};
+
+type ShowcaseSettingsPrefill = {
+  welcomeTextBefore: string;
+  welcomeTextAfter: string;
+  farewellTitle: string;
+  farewellDescription: string;
+};
+
 const VIDEO_INPUT_TYPES = new Set<string>([
   'local-mp4',
   'twitch-channel',
@@ -790,10 +804,21 @@ function ControlPanelInner({
   >(null);
   const sceneMutationBaselineRef = useRef(sceneMutationVersion);
 
-  const [showcaseWelcome, setShowcaseWelcome] = useState<{
-    before: string;
-    after: string;
-  } | null>(null);
+  const [showcaseWelcome, setShowcaseWelcome] = useState<ShowcaseCopy | null>(
+    null,
+  );
+  const showcaseSettingsPrefill =
+    useMemo<ShowcaseSettingsPrefill | null>(() => {
+      if (!showcaseWelcome) {
+        return null;
+      }
+      return {
+        welcomeTextBefore: showcaseWelcome.before || '',
+        welcomeTextAfter: showcaseWelcome.after || '',
+        farewellTitle: showcaseWelcome.farewellTitle || '',
+        farewellDescription: showcaseWelcome.farewellDescription || '',
+      };
+    }, [showcaseWelcome]);
 
   useEffect(() => {
     try {
@@ -801,9 +826,19 @@ function ControlPanelInner({
       const raw = sessionStorage.getItem(key);
       if (raw) {
         sessionStorage.removeItem(key);
-        const parsed = JSON.parse(raw);
-        if (parsed.before || parsed.after) {
-          setShowcaseWelcome(parsed);
+        const parsed = JSON.parse(raw) as Partial<ShowcaseCopy>;
+        if (
+          parsed.before ||
+          parsed.after ||
+          parsed.farewellTitle ||
+          parsed.farewellDescription
+        ) {
+          setShowcaseWelcome({
+            before: parsed.before || '',
+            after: parsed.after || '',
+            farewellTitle: parsed.farewellTitle || '',
+            farewellDescription: parsed.farewellDescription || '',
+          });
         }
       }
     } catch {}
@@ -1213,6 +1248,7 @@ function ControlPanelInner({
           roomState={roomState}
           getTimelineStateForConfig={getTimelineStateForConfig}
           applyImportedTimelineState={applyImportedTimelineState}
+          showcasePrefill={showcaseSettingsPrefill}
         />
       </ErrorBoundary>
     );
@@ -1389,6 +1425,8 @@ function ControlPanelInner({
             <ConnectPlayCompletionModal
               open={connectPlayCompletionOpen}
               onOpenChange={setConnectPlayCompletionOpen}
+              farewellTitle={showcaseWelcome?.farewellTitle}
+              farewellDescription={showcaseWelcome?.farewellDescription}
             />
             <TimelineConflictModal
               open={conflictModalOpen}
@@ -1472,6 +1510,7 @@ function ControlPanelInner({
                   roomState={roomState}
                   getTimelineStateForConfig={getTimelineStateForConfig}
                   applyImportedTimelineState={applyImportedTimelineState}
+                  showcasePrefill={showcaseSettingsPrefill}
                 />
               </ErrorBoundary>,
               settingsNavPortalRef.current,
@@ -1503,6 +1542,8 @@ function ControlPanelInner({
     <ConnectPlayCompletionModal
       open={connectPlayCompletionOpen}
       onOpenChange={setConnectPlayCompletionOpen}
+      farewellTitle={showcaseWelcome?.farewellTitle}
+      farewellDescription={showcaseWelcome?.farewellDescription}
     />
   );
   const timelineConflictModal = !isGuest && (
@@ -1575,10 +1616,12 @@ function SettingsBar({
   roomState,
   getTimelineStateForConfig,
   applyImportedTimelineState,
+  showcasePrefill,
 }: {
   roomState: RoomState;
   getTimelineStateForConfig: () => TimelineState | null;
   applyImportedTimelineState: (state: TimelineState | null) => void;
+  showcasePrefill: ShowcaseSettingsPrefill | null;
 }) {
   const { roomId, refreshState: handleRefreshState } = useControlPanelContext();
   const actions = useActions();
@@ -2125,16 +2168,16 @@ function SettingsBar({
       <Dialog
         open={openModal === 'settings'}
         onOpenChange={(open) => !open && setOpenModal(null)}>
-        <DialogContent className='max-h-[84vh] max-w-2xl overflow-y-auto'>
+        <DialogContent className='max-h-[84vh] max-w-2xl overflow-y-auto text-neutral-100'>
           <FxCanvas
             config={FX_PRESET_MODAL}
             isActive={openModal === 'settings'}
           />
-          <div className='absolute inset-0 bg-black/50 pointer-events-none rounded-[inherit]' />
-          <DialogHeader>
+          <div className='absolute inset-0 z-0 bg-black/25 pointer-events-none rounded-[inherit]' />
+          <DialogHeader className='relative z-10'>
             <DialogTitle>Settings</DialogTitle>
           </DialogHeader>
-          <div className='relative grid grid-cols-2 gap-6 pt-2'>
+          <div className='relative z-10 grid grid-cols-2 gap-6 pt-2'>
             <section className='space-y-3'>
               <h4 className='text-sm font-medium text-foreground'>
                 Transition Settings
@@ -2381,19 +2424,20 @@ function SettingsBar({
       <Dialog
         open={openModal === 'showcase'}
         onOpenChange={(open) => !open && setOpenModal(null)}>
-        <DialogContent className='max-h-[84vh] max-w-2xl overflow-y-auto'>
+        <DialogContent className='max-h-[84vh] max-w-2xl overflow-y-auto text-neutral-100'>
           <FxCanvas
             config={FX_PRESET_MODAL}
             isActive={openModal === 'showcase'}
           />
-          <div className='absolute inset-0 bg-black/50 pointer-events-none rounded-[inherit]' />
-          <DialogHeader>
+          <div className='absolute inset-0 z-0 bg-black/25 pointer-events-none rounded-[inherit]' />
+          <DialogHeader className='relative z-10'>
             <DialogTitle>Showcase</DialogTitle>
           </DialogHeader>
-          <div>
+          <div className='relative z-10'>
             <PresentationModeSettings
               roomState={roomState}
               getTimelineStateForConfig={getTimelineStateForConfig}
+              showcasePrefill={showcasePrefill}
             />
           </div>
         </DialogContent>

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useEditor, EditorContent, type Editor } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Color from '@tiptap/extension-color';
@@ -289,6 +289,20 @@ export function RichTextEditor({
       return next;
     });
   }, [editor]);
+
+  // Keep the editor in sync when `value` changes from outside (e.g. prefill,
+  // load-config, reset). tiptap's `useEditor` only reads `content` on mount,
+  // so without this effect external updates never reach the document.
+  useEffect(() => {
+    if (!editor) return;
+    const incoming = value || '';
+    const current = editor.getHTML();
+    const normalizedCurrent = current === '<p></p>' ? '' : current;
+    if (incoming === normalizedCurrent) return;
+    // Avoid clobbering the user's cursor while they are typing.
+    if (editor.isFocused) return;
+    editor.commands.setContent(incoming, { emitUpdate: false });
+  }, [editor, value]);
 
   if (!editor) return null;
 
