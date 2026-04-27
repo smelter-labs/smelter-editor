@@ -5,32 +5,36 @@ export function shouldIgnoreGlobalShortcut(
     return false;
   }
 
-  const maybeTarget = target as {
-    contentEditable?: string;
-  };
   const tagName = target.tagName.toUpperCase();
 
   if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT') {
     return true;
   }
 
-  if (target.isContentEditable === true || maybeTarget.contentEditable === 'true') {
+  if (isEditableElement(target)) {
     return true;
   }
 
   let current: Element | null = target.parentElement;
   while (current) {
-    const maybeCurrent = current as {
-      contentEditable?: string;
-    };
-    if (
-      current.isContentEditable === true ||
-      maybeCurrent.contentEditable === 'true'
-    ) {
+    if (isEditableElement(current)) {
       return true;
     }
     current = current.parentElement;
   }
 
   return false;
+}
+
+function isEditableElement(element: Element): boolean {
+  if (element instanceof HTMLElement) {
+    if (element.isContentEditable) {
+      return true;
+    }
+    if (element.contentEditable === 'true') {
+      return true;
+    }
+  }
+  const maybe = element as { contentEditable?: string };
+  return maybe.contentEditable === 'true';
 }
