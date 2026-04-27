@@ -4,6 +4,7 @@ import type { RootStackParamList } from "./navigationTypes";
 import { SCREEN_NAMES } from "./navigationTypes";
 import { useConnectionStore } from "../store/connectionStore";
 import { JoinRoomScreen } from "../screens/JoinRoom/JoinRoomScreen";
+import { HelpScreen } from "../screens/Help/HelpScreen";
 import { MainNavigator } from "./MainNavigator";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -18,6 +19,7 @@ export function RootNavigator() {
     >
       <Stack.Screen name={SCREEN_NAMES.JOIN_ROOM} component={JoinRoomScreen} />
       <Stack.Screen name={SCREEN_NAMES.MAIN} component={MainNavigator} />
+      <Stack.Screen name={SCREEN_NAMES.HELP} component={HelpScreen} />
     </Stack.Navigator>
   );
 }

@@ -6,6 +6,7 @@ import { apiService, type ActiveRoom } from "../../services/apiService";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useInputsStore } from "../../store/inputsStore";
 import { useLayoutStore } from "../../store/layoutStore";
+import { useSettingsStore } from "../../store/settingsStore";
 import { ConnectionStatus } from "../../types/connection";
 import { ConnectionData } from "../../utils/connectionUtils";
 import type { RootNavigationProp } from "../../navigation/navigationTypes";
@@ -172,6 +173,29 @@ export function useJoinRoom() {
     [selectedServerUrl],
   );
 
+  // While waiting on the room-selection phase, poll for new/removed rooms every 3 s
+  useEffect(() => {
+    if (serverStatus !== "success") return;
+
+    const url = selectedServerUrl.trim();
+
+    async function refresh() {
+      try {
+        const result = await apiService.fetchActiveRooms(url);
+        const deduped = result.filter(
+          (room, i, arr) =>
+            arr.findIndex((c) => c.roomId === room.roomId) === i,
+        );
+        setRooms(deduped);
+      } catch {
+        // Silently ignore poll failures — the user can still attempt to connect
+      }
+    }
+
+    const id = setInterval(() => void refresh(), 3000);
+    return () => clearInterval(id);
+  }, [serverStatus, selectedServerUrl]);
+
   const handleConnect = useCallback(async () => {
     const trimmedUrl = selectedServerUrl.trim();
     const trimmedRoomId = (
@@ -206,9 +230,10 @@ export function useJoinRoom() {
       setLayers(layers);
       setResolution(resolution);
       setTimelinePlaying(isTimelinePlaying);
+      const { gridFactor } = useSettingsStore.getState();
       setGridConfig(
-        Math.round(resolution.width / 50),
-        Math.round(resolution.height / 50),
+        Math.round(resolution.width / gridFactor),
+        Math.round(resolution.height / gridFactor),
       );
 
       navigation.replace(SCREEN_NAMES.MAIN);
