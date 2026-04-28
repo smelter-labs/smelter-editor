@@ -6,6 +6,7 @@ import StarterKit from '@tiptap/starter-kit';
 import Color from '@tiptap/extension-color';
 import { TextStyle } from '@tiptap/extension-text-style';
 import Placeholder from '@tiptap/extension-placeholder';
+import TextAlign from '@tiptap/extension-text-align';
 import {
   Popover,
   PopoverTrigger,
@@ -22,14 +23,52 @@ import {
   Italic,
   Heading1,
   Heading2,
+  Heading3,
+  Heading4,
+  Heading5,
+  Heading6,
   List,
   ListOrdered,
   Palette,
   Eye,
   Pencil,
   RemoveFormatting,
+  ChevronDown,
+  Pilcrow,
+  AlignLeft,
+  AlignCenter,
+  AlignRight,
+  AlignJustify,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+
+type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6;
+
+const HEADING_OPTIONS: Array<{
+  level: HeadingLevel;
+  label: string;
+  Icon: typeof Heading1;
+}> = [
+  { level: 1, label: 'Heading 1', Icon: Heading1 },
+  { level: 2, label: 'Heading 2', Icon: Heading2 },
+  { level: 3, label: 'Heading 3', Icon: Heading3 },
+  { level: 4, label: 'Heading 4', Icon: Heading4 },
+  { level: 5, label: 'Heading 5', Icon: Heading5 },
+  { level: 6, label: 'Heading 6', Icon: Heading6 },
+];
+
+type Alignment = 'left' | 'center' | 'right' | 'justify';
+
+const ALIGNMENT_OPTIONS: Array<{
+  value: Alignment;
+  label: string;
+  Icon: typeof AlignLeft;
+}> = [
+  { value: 'left', label: 'Align left', Icon: AlignLeft },
+  { value: 'center', label: 'Align center', Icon: AlignCenter },
+  { value: 'right', label: 'Align right', Icon: AlignRight },
+  { value: 'justify', label: 'Justify', Icon: AlignJustify },
+];
 
 const COLOR_PALETTE = [
   { label: 'White', value: '#ffffff' },
@@ -143,6 +182,89 @@ function ColorPicker({ editor }: { editor: Editor }) {
   );
 }
 
+function HeadingDropdown({
+  editor,
+  disabled,
+}: {
+  editor: Editor;
+  disabled?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+
+  const activeLevel = HEADING_OPTIONS.find((option) =>
+    editor.isActive('heading', { level: option.level }),
+  )?.level;
+  const ActiveIcon = activeLevel
+    ? HEADING_OPTIONS.find((option) => option.level === activeLevel)!.Icon
+    : Pilcrow;
+  const label = activeLevel ? `Heading ${activeLevel}` : 'Paragraph';
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <PopoverTrigger asChild>
+            <button
+              type='button'
+              onMouseDown={(e) => e.preventDefault()}
+              disabled={disabled}
+              className={cn(
+                'flex items-center gap-0.5 h-7 px-1.5 rounded transition-colors cursor-pointer',
+                activeLevel
+                  ? 'bg-cyan/15 text-cyan'
+                  : 'text-neutral-400 hover:bg-[#2a2a2a] hover:text-neutral-200',
+                disabled && 'opacity-40 pointer-events-none',
+              )}>
+              <ActiveIcon className='size-3.5' />
+              <ChevronDown className='size-3 opacity-70' />
+            </button>
+          </PopoverTrigger>
+        </TooltipTrigger>
+        <TooltipContent side='bottom'>{label}</TooltipContent>
+      </Tooltip>
+      <PopoverContent className='w-auto p-1' align='start'>
+        <div className='flex flex-col gap-0.5'>
+          <button
+            type='button'
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => {
+              editor.chain().focus().setParagraph().run();
+              setOpen(false);
+            }}
+            className={cn(
+              'flex items-center gap-2 rounded px-2 py-1 text-xs transition-colors cursor-pointer',
+              !activeLevel
+                ? 'bg-cyan/15 text-cyan'
+                : 'text-neutral-300 hover:bg-[#2a2a2a] hover:text-neutral-100',
+            )}>
+            <Pilcrow className='size-3.5' />
+            Paragraph
+          </button>
+          {HEADING_OPTIONS.map(({ level, label: optionLabel, Icon }) => (
+            <button
+              key={level}
+              type='button'
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => {
+                editor.chain().focus().toggleHeading({ level }).run();
+                setOpen(false);
+              }}
+              className={cn(
+                'flex items-center gap-2 rounded px-2 py-1 text-xs transition-colors cursor-pointer',
+                activeLevel === level
+                  ? 'bg-cyan/15 text-cyan'
+                  : 'text-neutral-300 hover:bg-[#2a2a2a] hover:text-neutral-100',
+              )}>
+              <Icon className='size-3.5' />
+              {optionLabel}
+            </button>
+          ))}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function Toolbar({
   editor,
   preview,
@@ -171,20 +293,20 @@ function Toolbar({
 
       <div className='mx-0.5 h-4 w-px bg-[#2a2a2a]' />
 
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-        active={editor.isActive('heading', { level: 1 })}
-        disabled={preview}
-        tooltip='Heading 1'>
-        <Heading1 className='size-3.5' />
-      </ToolbarButton>
-      <ToolbarButton
-        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-        active={editor.isActive('heading', { level: 2 })}
-        disabled={preview}
-        tooltip='Heading 2'>
-        <Heading2 className='size-3.5' />
-      </ToolbarButton>
+      <HeadingDropdown editor={editor} disabled={preview} />
+
+      <div className='mx-0.5 h-4 w-px bg-[#2a2a2a]' />
+
+      {ALIGNMENT_OPTIONS.map(({ value, label, Icon }) => (
+        <ToolbarButton
+          key={value}
+          onClick={() => editor.chain().focus().setTextAlign(value).run()}
+          active={editor.isActive({ textAlign: value })}
+          disabled={preview}
+          tooltip={label}>
+          <Icon className='size-3.5' />
+        </ToolbarButton>
+      ))}
 
       <div className='mx-0.5 h-4 w-px bg-[#2a2a2a]' />
 
@@ -266,10 +388,14 @@ export function RichTextEditor({
     immediatelyRender: false,
     extensions: [
       StarterKit.configure({
-        heading: { levels: [1, 2] },
+        heading: { levels: [1, 2, 3, 4, 5, 6] },
       }),
       TextStyle,
       Color,
+      TextAlign.configure({
+        types: ['heading', 'paragraph'],
+        alignments: ['left', 'center', 'right', 'justify'],
+      }),
       Placeholder.configure({ placeholder }),
     ],
     content: value || '',

@@ -16,8 +16,7 @@ export function ConnectPlayCompletionModal({
   farewellTitle,
   farewellDescription,
 }: ConnectPlayCompletionModalProps) {
-  const resolvedFarewellTitle =
-    farewellTitle?.trim() || 'Thanks for watching';
+  const resolvedFarewellTitle = farewellTitle?.trim() || 'Thanks for watching';
   const resolvedFarewellDescription =
     farewellDescription?.trim() ||
     'Thanks for sticking with us to the end of the presentation. If you like, play around with the editor now and see what else you can build.';
