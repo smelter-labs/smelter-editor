@@ -256,6 +256,24 @@ describe('TimelinePlayer', () => {
       await vi.advanceTimersByTimeAsync(5001);
       expect(player.isPlaying()).toBe(false);
     });
+
+    it('natural end invokes onPlaybackEnded callback instead of auto-stop', async () => {
+      const config = makeConfig({ totalDurationMs: 3000 });
+      const player = new TimelinePlayer(adapter, config);
+      const onPlaybackEnded = vi.fn();
+      player.onPlaybackEnded = onPlaybackEnded;
+
+      await player.start(0);
+      expect(player.isPlaying()).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(3001);
+
+      expect(onPlaybackEnded).toHaveBeenCalledTimes(1);
+      // Player should still be playing because stop is delegated to the
+      // callback owner (RoomState.stopTimelinePlayback), not performed
+      // internally when the callback is wired up.
+      expect(player.isPlaying()).toBe(true);
+    });
   });
 
   describe('stop', () => {
@@ -319,6 +337,101 @@ describe('TimelinePlayer', () => {
 
       // After stop, restoreState should call updateLayers at minimum
       expect(adapter.updateLayers).toHaveBeenCalled();
+    });
+
+    it('restore emits null for absolute/crop fields that were undefined in snapshot', async () => {
+      // Pre-play snapshot: 'a' has no absolute position or crop fields set
+      // (all undefined). During playback the timeline mutates the input
+      // with absolute geometry from the clip's block settings. On stop,
+      // restore must send `null` for those fields so RoomState.updateInput
+      // clears them back to undefined.
+      const inputData: Record<string, unknown> = {
+        inputId: 'a',
+        hidden: false,
+        status: 'connected',
+        type: 'text-input',
+        volume: 1,
+        shaders: [],
+        showTitle: false,
+        borderColor: '#000',
+        borderWidth: 0,
+        metadata: { title: 'A', description: '' },
+        text: '',
+        textAlign: 'left',
+        textColor: '#fff',
+        textMaxLines: 1,
+        textScrollEnabled: false,
+        textScrollSpeed: 0,
+        textScrollLoop: false,
+        textFontSize: 16,
+      };
+      (adapter.getInputs as any).mockReturnValue([inputData]);
+      (adapter.getLayers as any).mockReturnValue([]);
+
+      const config = makeConfig({
+        tracks: [
+          {
+            id: 't1',
+            clips: [
+              makeClip({
+                inputId: 'a',
+                startMs: 0,
+                endMs: 5000,
+                blockSettings: makeBlockSettings({
+                  absolutePosition: true,
+                  absoluteLeft: 100,
+                  absoluteTop: 50,
+                  absoluteWidth: 640,
+                  absoluteHeight: 360,
+                  cropTop: 10,
+                }),
+              }),
+            ],
+          },
+        ],
+      });
+
+      const player = new TimelinePlayer(adapter, config);
+      await player.start(0);
+
+      // Simulate the timeline mutating the input's absolute position / crop
+      // during playback (normally done by RoomState.updateInput via the
+      // clip's block settings).  The restore path must detect that the
+      // current input diverges from the snapshot and emit null resets.
+      inputData.absolutePosition = true;
+      inputData.absoluteLeft = 100;
+      inputData.absoluteTop = 50;
+      inputData.absoluteWidth = 640;
+      inputData.absoluteHeight = 360;
+      inputData.cropTop = 10;
+
+      (adapter.updateInput as any).mockClear();
+      await player.stop();
+
+      // Find the restore call (the updateInput invocation triggered by
+      // restoreState Phase 1).  The snapshot had undefined absolute/crop
+      // fields, so the emitted update must use `null` as a reset marker.
+      const updateInputCalls = (adapter.updateInput as any).mock.calls;
+      expect(updateInputCalls.length).toBeGreaterThan(0);
+
+      const restoreCall = updateInputCalls.find(
+        (call: [string, Record<string, unknown>]) =>
+          call[0] === 'a' && 'absoluteLeft' in call[1],
+      );
+      expect(restoreCall).toBeDefined();
+
+      const restorePayload = restoreCall![1] as Record<string, unknown>;
+      expect(restorePayload.absolutePosition).toBeNull();
+      expect(restorePayload.absoluteLeft).toBeNull();
+      expect(restorePayload.absoluteTop).toBeNull();
+      expect(restorePayload.absoluteWidth).toBeNull();
+      expect(restorePayload.absoluteHeight).toBeNull();
+      expect(restorePayload.absoluteTransitionDurationMs).toBeNull();
+      expect(restorePayload.absoluteTransitionEasing).toBeNull();
+      expect(restorePayload.cropTop).toBeNull();
+      expect(restorePayload.cropLeft).toBeNull();
+      expect(restorePayload.cropRight).toBeNull();
+      expect(restorePayload.cropBottom).toBeNull();
     });
   });
 

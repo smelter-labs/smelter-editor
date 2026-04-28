@@ -853,24 +853,46 @@ export class InputManager {
 
     if (options.attachedInputIds !== undefined)
       input.attachedInputIds = options.attachedInputIds;
+    // For absolute-position and crop fields `null` is an explicit reset to
+    // `undefined` (see UpdateInputOptions in @smelter-editor/types).  The
+    // timeline restore path relies on this to clear fields the snapshot had
+    // as `undefined`.
     if (options.absolutePosition !== undefined)
-      input.absolutePosition = options.absolutePosition;
+      input.absolutePosition =
+        options.absolutePosition === null ? undefined : options.absolutePosition;
     if (options.absoluteTop !== undefined)
-      input.absoluteTop = options.absoluteTop;
+      input.absoluteTop =
+        options.absoluteTop === null ? undefined : options.absoluteTop;
     if (options.absoluteLeft !== undefined)
-      input.absoluteLeft = options.absoluteLeft;
+      input.absoluteLeft =
+        options.absoluteLeft === null ? undefined : options.absoluteLeft;
     if (options.absoluteWidth !== undefined)
-      input.absoluteWidth = options.absoluteWidth;
+      input.absoluteWidth =
+        options.absoluteWidth === null ? undefined : options.absoluteWidth;
     if (options.absoluteHeight !== undefined)
-      input.absoluteHeight = options.absoluteHeight;
+      input.absoluteHeight =
+        options.absoluteHeight === null ? undefined : options.absoluteHeight;
     if (options.absoluteTransitionDurationMs !== undefined)
-      input.absoluteTransitionDurationMs = options.absoluteTransitionDurationMs;
+      input.absoluteTransitionDurationMs =
+        options.absoluteTransitionDurationMs === null
+          ? undefined
+          : options.absoluteTransitionDurationMs;
     if (options.absoluteTransitionEasing !== undefined)
-      input.absoluteTransitionEasing = options.absoluteTransitionEasing;
-    if (options.cropTop !== undefined) input.cropTop = options.cropTop;
-    if (options.cropLeft !== undefined) input.cropLeft = options.cropLeft;
-    if (options.cropRight !== undefined) input.cropRight = options.cropRight;
-    if (options.cropBottom !== undefined) input.cropBottom = options.cropBottom;
+      input.absoluteTransitionEasing =
+        options.absoluteTransitionEasing === null
+          ? undefined
+          : options.absoluteTransitionEasing;
+    if (options.cropTop !== undefined)
+      input.cropTop = options.cropTop === null ? undefined : options.cropTop;
+    if (options.cropLeft !== undefined)
+      input.cropLeft =
+        options.cropLeft === null ? undefined : options.cropLeft;
+    if (options.cropRight !== undefined)
+      input.cropRight =
+        options.cropRight === null ? undefined : options.cropRight;
+    if (options.cropBottom !== undefined)
+      input.cropBottom =
+        options.cropBottom === null ? undefined : options.cropBottom;
 
     if (options.activeTransition !== undefined) {
       const existingTimer = this.transitionTimers.get(inputId);

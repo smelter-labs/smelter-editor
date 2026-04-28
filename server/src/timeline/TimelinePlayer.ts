@@ -632,17 +632,21 @@ function buildUpdateFromRoomInput(
     attachedInputIds: input.attachedInputIds,
     snake1Shaders: input.type === 'game' ? input.snake1Shaders : undefined,
     snake2Shaders: input.type === 'game' ? input.snake2Shaders : undefined,
-    absolutePosition: input.absolutePosition,
-    absoluteTop: input.absoluteTop,
-    absoluteLeft: input.absoluteLeft,
-    absoluteWidth: input.absoluteWidth,
-    absoluteHeight: input.absoluteHeight,
-    absoluteTransitionDurationMs: input.absoluteTransitionDurationMs,
-    absoluteTransitionEasing: input.absoluteTransitionEasing,
-    cropTop: input.cropTop,
-    cropLeft: input.cropLeft,
-    cropRight: input.cropRight,
-    cropBottom: input.cropBottom,
+    // Emit `null` instead of `undefined` for absolute-position and crop
+    // fields so the snapshot restore path can force a reset via
+    // RoomState.updateInput (undefined would be a no-op since options are
+    // interpreted with `!== undefined` gating).
+    absolutePosition: input.absolutePosition ?? null,
+    absoluteTop: input.absoluteTop ?? null,
+    absoluteLeft: input.absoluteLeft ?? null,
+    absoluteWidth: input.absoluteWidth ?? null,
+    absoluteHeight: input.absoluteHeight ?? null,
+    absoluteTransitionDurationMs: input.absoluteTransitionDurationMs ?? null,
+    absoluteTransitionEasing: input.absoluteTransitionEasing ?? null,
+    cropTop: input.cropTop ?? null,
+    cropLeft: input.cropLeft ?? null,
+    cropRight: input.cropRight ?? null,
+    cropBottom: input.cropBottom ?? null,
     gameBackgroundColor:
       input.type === 'game' ? input.snakeGameState.backgroundColor : undefined,
     gameCellGap:
@@ -699,9 +703,19 @@ export class TimelinePlayer {
 
   private snapshot: PrePlaySnapshot | null = null;
 
+  public onPlaybackEnded?: () => void;
+
   constructor(room: TimelineRoomStateAdapter, config: TimelineConfig) {
     this.room = room;
     this.config = config;
+  }
+
+  private handleEndTimerFired(): void {
+    if (this.onPlaybackEnded) {
+      this.onPlaybackEnded();
+    } else {
+      void this.stop();
+    }
   }
 
   private normalizePlaybackStartMs(fromMs?: number): number {
@@ -810,7 +824,7 @@ export class TimelinePlayer {
     const remainingMs = this.config.totalDurationMs - playheadMs;
     if (remainingMs > 0) {
       this.endTimer = setTimeout(() => {
-        void this.stop();
+        this.handleEndTimerFired();
       }, remainingMs);
     }
 
@@ -905,7 +919,7 @@ export class TimelinePlayer {
     const remainingMs = this.config.totalDurationMs - resumeMs;
     if (remainingMs > 0) {
       this.endTimer = setTimeout(() => {
-        void this.stop();
+        this.handleEndTimerFired();
       }, remainingMs);
     }
 
@@ -940,7 +954,7 @@ export class TimelinePlayer {
     const remainingMs = this.config.totalDurationMs - ms;
     if (remainingMs > 0) {
       this.endTimer = setTimeout(() => {
-        void this.stop();
+        this.handleEndTimerFired();
       }, remainingMs);
     }
 
