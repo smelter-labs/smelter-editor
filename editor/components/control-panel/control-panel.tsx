@@ -74,10 +74,6 @@ import { setAudioAnalysisEnabled } from '@/app/actions/actions';
 import { TransitionSettings } from './components/TransitionSettings';
 import { BehaviorSelector } from './components/BehaviorSelector';
 import { ViewportSettings } from './components/ViewportSettings';
-import {
-  rotateBy90,
-  type RotationAngle,
-} from './whip-input/utils/whip-publisher';
 import { loadLastWhipInputId } from './whip-input/utils/whip-storage';
 import {
   ControlPanelProvider,
@@ -171,11 +167,6 @@ type ControlPanelProps = {
   roomState: RoomState;
   refreshState: () => Promise<void>;
   isGuest?: boolean;
-  onGuestStreamChange?: (stream: MediaStream | null) => void;
-  onGuestInputIdChange?: (inputId: string | null) => void;
-  onGuestRotateRef?: React.MutableRefObject<
-    (() => Promise<RotationAngle>) | null
-  >;
   renderStreamsOutside?: boolean;
   timelinePortalRef?: React.RefObject<HTMLDivElement | null>;
   settingsNavPortalRef?: React.RefObject<HTMLDivElement | null>;
@@ -386,9 +377,6 @@ function ControlPanelWithActions({
   roomId,
   roomState,
   isGuest,
-  onGuestStreamChange,
-  onGuestInputIdChange,
-  onGuestRotateRef,
   renderStreamsOutside,
   timelinePortalRef,
   settingsNavPortalRef,
@@ -455,7 +443,6 @@ function ControlPanelWithActions({
 
   const actions = useActions();
   const updateRoomForLayers = actions.updateRoom;
-  const updateInputForLayers = actions.updateInput;
   const setPendingWhipInputsAction = actions.setPendingWhipInputs;
   const handleLayersChange = useCallback(
     async (newLayers: Layer[]) => {
@@ -508,72 +495,6 @@ function ControlPanelWithActions({
       });
     },
   });
-
-  useEffect(() => {
-    if (!isGuest || !onGuestStreamChange) return;
-    const stream =
-      cameraStreamRef.current || screenshareStreamRef.current || null;
-    onGuestStreamChange(stream);
-  }, [isGuest, onGuestStreamChange, isCameraActive, isScreenshareActive]);
-
-  useEffect(() => {
-    if (!isGuest || !onGuestInputIdChange) return;
-    onGuestInputIdChange(activeCameraInputId || activeScreenshareInputId);
-  }, [
-    isGuest,
-    onGuestInputIdChange,
-    activeCameraInputId,
-    activeScreenshareInputId,
-  ]);
-
-  useEffect(() => {
-    if (!isGuest || !onGuestRotateRef) return;
-    const guestInputId = activeCameraInputId || activeScreenshareInputId;
-    const pcRef = activeCameraInputId ? cameraPcRef : screensharePcRef;
-    const streamRef = activeCameraInputId
-      ? cameraStreamRef
-      : screenshareStreamRef;
-
-    onGuestRotateRef.current = guestInputId
-      ? async () => {
-          const angle = await rotateBy90(pcRef, streamRef);
-          const currentInput = inputs.find((i) => i.inputId === guestInputId);
-          await updateInputForLayers(roomId, guestInputId, {
-            volume: currentInput?.volume ?? 1,
-            shaders: currentInput?.shaders ?? [],
-          });
-          await handleRefreshState();
-          if (onGuestStreamChange && pcRef.current) {
-            const sender = pcRef.current
-              .getSenders()
-              .find((s) => s.track?.kind === 'video');
-            if (sender?.track) {
-              const previewStream = new MediaStream([sender.track]);
-              const raw = streamRef.current;
-              if (raw) {
-                for (const t of raw.getAudioTracks()) {
-                  previewStream.addTrack(t);
-                }
-              }
-              onGuestStreamChange(previewStream);
-            }
-          }
-          return angle;
-        }
-      : null;
-
-    return () => {
-      onGuestRotateRef.current = null;
-    };
-  }, [
-    isGuest,
-    onGuestRotateRef,
-    activeCameraInputId,
-    activeScreenshareInputId,
-    roomId,
-    handleRefreshState,
-    updateInputForLayers,
-  ]);
 
   const handleSetPendingWhipInputs = useCallback(
     async (newInputs: PendingWhipInput[]) => {
