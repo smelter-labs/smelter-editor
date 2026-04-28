@@ -8,11 +8,14 @@ import React, {
 import * as Haptics from "expo-haptics";
 import type { WSEventPayload } from "../../types/websocket";
 import { View, StyleSheet } from "react-native";
-import { useTheme } from "react-native-paper";
+import { Chip, useTheme } from "react-native-paper";
+import { MaterialDesignIcons } from "@react-native-vector-icons/material-design-icons";
+import { useNavigation } from "@react-navigation/native";
+import { SCREEN_NAMES } from "../../navigation/navigationTypes";
+import type { RootNavigationProp } from "../../navigation/navigationTypes";
 import DraggableFlatList, {
   RenderItemParams,
 } from "react-native-draggable-flatlist";
-import { GestureDetector } from "react-native-gesture-handler";
 import { useInputsStore } from "../../store/inputsStore";
 import { useLayoutStore } from "../../store/layoutStore";
 import { useConnectionStore } from "../../store/connectionStore";
@@ -47,9 +50,6 @@ export function InputsScreen() {
   const [selectedCardIndex, setSelectedCardIndex] = useState(0);
   const [detailPanelOpen, setDetailPanelOpen] = useState(false);
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
-  const [settingsPanelSide, setSettingsPanelSide] = useState<"left" | "right">(
-    "right",
-  );
 
   // Log data on mount
   useEffect(() => {
@@ -139,21 +139,9 @@ export function InputsScreen() {
     [inputs],
   );
 
-  const handleEdgeSwipe = useCallback(
-    (side: "left" | "right") => {
-      if (isTimelinePlaying) {
-        return;
-      }
-      setSettingsPanelSide(side);
-      setSettingsPanelOpen(true);
-    },
-    [isTimelinePlaying],
-  );
-
-  const { edgeSwipeGesture, makeCardTapGesture } = useInputsGestures({
+  const navigation = useNavigation<RootNavigationProp>();
+  const { makeCardTapGesture } = useInputsGestures({
     onCardTap: handleCardTap,
-    onEdgeSwipe: handleEdgeSwipe,
-    isEdgeSwipeEnabled: !isTimelinePlaying,
   });
 
   const handleDragEnd = useCallback(
@@ -181,46 +169,70 @@ export function InputsScreen() {
   );
 
   return (
-    <GestureDetector gesture={edgeSwipeGesture}>
+    <View
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+    >
       <View
-        style={[styles.container, { backgroundColor: theme.colors.background }]}
+        style={styles.content}
+        pointerEvents={isTimelinePlaying ? "none" : "auto"}
       >
-        <View
-          style={styles.content}
-          pointerEvents={isTimelinePlaying ? "none" : "auto"}
-        >
-          <ScreenLabel label="Inputs" />
-          <DraggableFlatList
-            data={inputs}
-            keyExtractor={(item) => item.id}
-            renderItem={renderItem}
-            onDragBegin={() =>
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-            }
-            onDragEnd={handleDragEnd}
-            numColumns={effectiveColumns}
-            contentContainerStyle={styles.listContent}
-            activationDistance={10}
-          />
+        <ScreenLabel label="Inputs" />
 
-          <InputSidePanel
-            isVisible={detailPanelOpen}
-            cardId={selectedCardId}
-            cardIndex={selectedCardIndex}
-            totalColumns={effectiveColumns}
-            onClose={() => setDetailPanelOpen(false)}
-          />
-
-          <InputsSettingsPanel
-            isVisible={settingsPanelOpen}
-            side={settingsPanelSide}
-            onClose={() => setSettingsPanelOpen(false)}
-          />
+        <View style={styles.toolbar}>
+          <Chip
+            compact
+            mode="flat"
+            style={styles.toolbarChip}
+            textStyle={styles.toolbarChipText}
+            onPress={() => navigation.navigate(SCREEN_NAMES.HELP)}
+          >
+            <MaterialDesignIcons
+              name="help-circle-outline"
+              color="#777777"
+              size={16}
+            />
+          </Chip>
+          <Chip
+            compact
+            mode="flat"
+            style={styles.toolbarChip}
+            textStyle={styles.toolbarChipText}
+            onPress={() => setSettingsPanelOpen(true)}
+          >
+            <MaterialDesignIcons name="cog" color="#777777" size={16} />
+          </Chip>
         </View>
 
-        {isTimelinePlaying && <TimelineInProgressOverlay />}
+        <DraggableFlatList
+          data={inputs}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          onDragBegin={() =>
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+          }
+          onDragEnd={handleDragEnd}
+          numColumns={effectiveColumns}
+          contentContainerStyle={styles.listContent}
+          activationDistance={10}
+        />
+
+        <InputSidePanel
+          isVisible={detailPanelOpen}
+          cardId={selectedCardId}
+          cardIndex={selectedCardIndex}
+          totalColumns={effectiveColumns}
+          onClose={() => setDetailPanelOpen(false)}
+        />
+
+        <InputsSettingsPanel
+          isVisible={settingsPanelOpen}
+          side="right"
+          onClose={() => setSettingsPanelOpen(false)}
+        />
       </View>
-    </GestureDetector>
+
+      {isTimelinePlaying && <TimelineInProgressOverlay />}
+    </View>
   );
 }
 
@@ -233,6 +245,24 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: 6,
+  },
+  toolbar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    height: 36,
+    paddingHorizontal: 8,
+    gap: 8,
+  },
+  toolbarChip: {
+    borderRadius: 8,
+    backgroundColor: "rgba(255,255,255,0.1)",
+  },
+  toolbarChipText: {
+    color: "#CCCCCC",
+    fontSize: 11,
+    fontWeight: "700",
+    letterSpacing: 1,
   },
   activeItem: {
     opacity: 0.85,

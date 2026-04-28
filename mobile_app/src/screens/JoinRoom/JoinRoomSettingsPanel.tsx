@@ -1,10 +1,7 @@
 import React from "react";
 import { Modal, Pressable, StyleSheet, View } from "react-native";
-import { Button, IconButton, Surface, Switch, Text, useTheme } from "react-native-paper";
-import { useNavigation } from "@react-navigation/native";
+import { IconButton, Surface, Text, useTheme } from "react-native-paper";
 import { useSettingsStore } from "../../store";
-import { SCREEN_NAMES } from "../../navigation/navigationTypes";
-import type { RootNavigationProp } from "../../navigation/navigationTypes";
 
 const GRID_FACTOR_MIN = 10;
 const GRID_FACTOR_MAX = 100;
@@ -17,9 +14,6 @@ interface Props {
 
 export function JoinRoomSettingsPanel({ isVisible, onClose }: Props) {
   const theme = useTheme();
-  const navigation = useNavigation<RootNavigationProp>();
-  const arrowNavigation = useSettingsStore((s) => s.arrowNavigation);
-  const setArrowNavigation = useSettingsStore((s) => s.setArrowNavigation);
   const gridFactor = useSettingsStore((s) => s.gridFactor);
   const setGridFactor = useSettingsStore((s) => s.setGridFactor);
 
@@ -37,14 +31,6 @@ export function JoinRoomSettingsPanel({ isVisible, onClose }: Props) {
               Settings
             </Text>
 
-            <View style={styles.switchRow}>
-              <Text variant="bodyMedium">Arrow navigation</Text>
-              <Switch
-                value={arrowNavigation}
-                onValueChange={setArrowNavigation}
-              />
-            </View>
-
             <View style={styles.stepperSection}>
               <Text variant="bodyMedium">Grid factor</Text>
               <View style={styles.stepper}>
@@ -54,7 +40,9 @@ export function JoinRoomSettingsPanel({ isVisible, onClose }: Props) {
                   size={16}
                   disabled={gridFactor <= GRID_FACTOR_MIN}
                   onPress={() =>
-                    setGridFactor(Math.max(GRID_FACTOR_MIN, gridFactor - GRID_FACTOR_STEP))
+                    setGridFactor(
+                      Math.max(GRID_FACTOR_MIN, gridFactor - GRID_FACTOR_STEP),
+                    )
                   }
                 />
                 <Text variant="bodyLarge" style={styles.stepperValue}>
@@ -66,7 +54,9 @@ export function JoinRoomSettingsPanel({ isVisible, onClose }: Props) {
                   size={16}
                   disabled={gridFactor >= GRID_FACTOR_MAX}
                   onPress={() =>
-                    setGridFactor(Math.min(GRID_FACTOR_MAX, gridFactor + GRID_FACTOR_STEP))
+                    setGridFactor(
+                      Math.min(GRID_FACTOR_MAX, gridFactor + GRID_FACTOR_STEP),
+                    )
                   }
                 />
               </View>
@@ -77,18 +67,6 @@ export function JoinRoomSettingsPanel({ isVisible, onClose }: Props) {
                 Lower = finer grid. Takes effect on next join.
               </Text>
             </View>
-
-            <Button
-              mode="text"
-              icon="help-circle-outline"
-              onPress={() => {
-                onClose();
-                navigation.navigate(SCREEN_NAMES.HELP);
-              }}
-              style={styles.helpButton}
-            >
-              How does this app work?
-            </Button>
           </Surface>
         </Pressable>
       </Pressable>
@@ -112,11 +90,6 @@ const styles = StyleSheet.create({
   title: {
     marginBottom: 4,
   },
-  switchRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
-  },
   stepperSection: {
     gap: 4,
   },
@@ -128,10 +101,5 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     minWidth: 36,
     textAlign: "center",
-  },
-  helpButton: {
-    alignSelf: "flex-start",
-    marginLeft: -8,
-    marginBottom: -8,
   },
 });

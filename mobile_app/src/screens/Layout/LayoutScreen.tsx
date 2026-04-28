@@ -8,6 +8,9 @@ import React, {
 } from "react";
 import { View, StyleSheet } from "react-native";
 import { Chip, useTheme } from "react-native-paper";
+import { useNavigation } from "@react-navigation/native";
+import { SCREEN_NAMES } from "../../navigation/navigationTypes";
+import type { RootNavigationProp } from "../../navigation/navigationTypes";
 import { useLayoutStore } from "../../store/layoutStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useInputsStore } from "../../store/inputsStore";
@@ -202,6 +205,7 @@ export function LayoutScreen() {
   const inputs = useInputsStore((s) => s.inputs);
   const setInputs = useInputsStore((s) => s.setInputs);
 
+  const navigation = useNavigation<RootNavigationProp>();
   const [layersPanelOpen, setLayersPanelOpen] = useState(false);
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
   const [settingsPanelSide, setSettingsPanelSide] = useState<"left" | "right">(
@@ -438,6 +442,19 @@ export function LayoutScreen() {
             onPress={() => setLayersPanelOpen((v) => !v)}
           >
             LAYERS
+          </Chip>
+          <Chip
+            compact
+            mode="flat"
+            style={styles.toolbarChip}
+            textStyle={styles.toolbarChipText}
+            onPress={() => navigation.navigate(SCREEN_NAMES.HELP)}
+          >
+            <MaterialDesignIcons
+              name="help-circle-outline"
+              color="#777777"
+              size={16}
+            />
           </Chip>
           <Chip
             compact

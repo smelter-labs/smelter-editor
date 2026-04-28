@@ -8,7 +8,10 @@ import {
   useTheme,
 } from "react-native-paper";
 import * as ScreenOrientation from "expo-screen-orientation";
+import { useNavigation } from "@react-navigation/native";
 import { useIsTablet } from "../../hooks/useIsTablet";
+import { SCREEN_NAMES } from "../../navigation/navigationTypes";
+import type { RootNavigationProp } from "../../navigation/navigationTypes";
 import { useJoinRoom } from "./useJoinRoom";
 import { ServerSection } from "./ServerSection";
 import { RoomSection } from "./RoomSection";
@@ -18,6 +21,7 @@ import { JoinRoomSettingsPanel } from "./JoinRoomSettingsPanel";
 
 export function JoinRoomScreen() {
   const theme = useTheme();
+  const navigation = useNavigation<RootNavigationProp>();
   const isTablet = useIsTablet();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
@@ -103,11 +107,18 @@ export function JoinRoomScreen() {
           <Button mode="text" onPress={() => setShowQR(true)}>
             Scan QR Code instead
           </Button>
-          <IconButton
-            icon="cog"
-            size={20}
-            onPress={() => setSettingsOpen(true)}
-          />
+          <View style={styles.iconRow}>
+            <IconButton
+              icon="help-circle-outline"
+              size={20}
+              onPress={() => navigation.navigate(SCREEN_NAMES.HELP)}
+            />
+            <IconButton
+              icon="cog"
+              size={20}
+              onPress={() => setSettingsOpen(true)}
+            />
+          </View>
         </View>
       </Surface>
 
@@ -144,5 +155,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+  iconRow: {
+    flexDirection: "row",
   },
 });

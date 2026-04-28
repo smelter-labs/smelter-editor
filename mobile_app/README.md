@@ -1,12 +1,8 @@
-# Smelter Editor Companion ~~Cube~~ App
+# Smelter Editor Companion App
 
 ## Important disclaimers
 
 ### Untested on iOS. Use at your own peril
-
-### Unimplemented features
-
-- Rearranging inputs (the UI components in the Inputs screen are not yet draggable)
 
 ## Description
 
@@ -18,49 +14,82 @@ After cloning the repo, run
 
 - `npx expo install`
 - `npx expo prebuild`
-- `npx expo run:android --port 2137` (port can be whatever you want, but it defaults to 8081, same as the web app, which is less than ideal). Alternatively, download the latest release from repository.
+- `npx expo run:android --port 2137` (port can be whatever you want, but it defaults to 8081, same as the web app). Alternatively, download the latest release from the repository.
 
-Make sure you got a smelter editor instance running, both the server and the editor. As the changes are not merged to main, the current revision is on the [@Frendzlu/websockets branch](https://github.com/smelter-labs/smelter-editor/tree/%40Frendzlu/websockets). Create a room.
+Make sure you have a Smelter Editor instance running (both server and editor). Create a room.
 
-Normally, you would then press a "Join via QR" button on the editor web client, but that feature is WIP.
-For now just get the local ip address of the server instance, and input it in the server URL, including the port. Do not include the protocol.
+On the Join screen, enter the server IP and port (e.g. `192.168.1.10:3001`) in the URL field and tap the connect icon, or tap a previously saved address from the list below. The app will fetch available rooms. Select a room and tap **Join Room**. You can also scan a QR code from the editor web client to skip both steps.
 
-The app will then try to retrieve available rooms from `/rooms` API endpoint. This is marked by an activity indicator next to "Room ID" label (very small). In case you want to update the list, force an update on the `Server URL` input.
-
-If any rooms are available, a select will appear. You can then pick the room you want by its name (not ID!). The `Room ID` input should automatically populate with the correspondind ID. Alternatively, type the room id by name.
-
-Then, press the connect button. The app will try to connect to `ws://<IP_WITH_PORT>/room/<ROOM_ID>/ws`. It will display an activity indicator while it does so - might take a while.
-
-After that, it should be visible as "Mobile App" in the peers section of the Smelter Editor.
-
-## UI structure and usage
+## UI structure
 
 ```mermaid
-flowchart LR
-    JoinRoom["<b>Join Room</b><br/>(Server URL, Room ID)"]
+flowchart TD
+    Help["❓ Help Screen"]
 
-    subgraph App ["App Session <br>(Swipe horizontally)"]
-        direction TB
-        Layout["Layout Screen"]
-        Inputs["Inputs Screen"]
-        Timeline["Timeline Screen"]
-        Debug["Debug Screen"]
-
-        Layout <-->|"3-finger swipe"| Inputs
-        Inputs <-->|"3-finger swipe"| Timeline
-        Timeline <-->|"3-finger swipe"| Debug
+    subgraph JoinRoom ["Join Room Screen"]
+        JR_Main["Server list · Room picker"]
+        JR_Settings["⚙ Settings modal\nGrid factor · Arrow nav"]
+        JR_Help["❓ help button"]
     end
 
-    %% Connection Logic
-    JoinRoom ==>|"press Connect"| Layout
-    App -.->|"WS disconnect (any screen)"| JoinRoom
+    subgraph App ["App Session  (swipe horizontally / arrow buttons)"]
+        direction LR
 
-    %% Styling
-    style Layout fill:#1E293B,stroke:#38BDF8,stroke-width:3px
-    style Inputs fill:#063E3B,stroke:#10B981,stroke-width:3px
-    style Timeline fill:#1E1B4B,stroke:#818CF8,stroke-width:3px
-    style Debug fill:#171717,stroke:#6B7280,stroke-width:3px
-    style App fill:none,stroke:#9ca3af,stroke-dasharray: 5 5
+        subgraph Layout ["Layout"]
+            L_Main["Grid view"]
+            L_Cog["⚙ cog"]
+            L_Help["❓ help"]
+        end
+
+        subgraph Inputs ["Inputs"]
+            I_Main["Card grid"]
+            I_Cog["⚙ cog"]
+            I_Help["❓ help"]
+        end
+
+        subgraph Timeline ["Timeline"]
+            T_Main["(coming soon)"]
+            T_Cog["⚙ cog"]
+            T_Help["❓ help"]
+        end
+
+        subgraph Debug ["Debug"]
+            D_Main["Connection info"]
+            D_Cog["⚙ cog"]
+            D_Help["❓ help"]
+        end
+
+        Layout <-->|swipe| Inputs
+        Inputs <-->|swipe| Timeline
+        Timeline <-->|swipe| Debug
+    end
+
+    JR_Main ==>|"Join Room"| Layout
+    App -.->|"WS disconnect"| JoinRoom
+
+    JR_Settings --> JR_Main
+    JR_Help -->|navigate| Help
+
+    L_Cog --> L_Main
+    I_Cog --> I_Main
+    T_Cog --> T_Main
+    D_Cog --> D_Main
+
+    L_Help -->|navigate| Help
+    I_Help -->|navigate| Help
+    T_Help -->|navigate| Help
+    D_Help -->|navigate| Help
+
+    Help -->|back| App
+    Help -->|back| JoinRoom
+
+    style Layout fill:#1E293B,stroke:#38BDF8,stroke-width:2px
+    style Inputs fill:#063E3B,stroke:#10B981,stroke-width:2px
+    style Timeline fill:#1E1B4B,stroke:#818CF8,stroke-width:2px
+    style Debug fill:#171717,stroke:#6B7280,stroke-width:2px
+    style App fill:none,stroke:#9ca3af,stroke-dasharray:5 5
+    style Help fill:#292524,stroke:#d97706,stroke-width:2px
+    style JoinRoom fill:none,stroke:#9ca3af,stroke-dasharray:5 5
 ```
 
 ```mermaid
@@ -68,21 +97,21 @@ flowchart LR
 flowchart LR
     Main["<b>Layout Screen</b><br/>(Grid View)"]
 
-    subgraph Modals ["Overlays"]
-        Panel["Side Panel<br/>(Stream Info)"]
-        Settings["Settings Panel<br/>(Grid Config)"]
+    subgraph Overlays ["Overlays"]
+        Panel["Layer Side Panel<br/>(input assignment)"]
+        Settings["Settings Panel<br/>(columns · rows · arrow nav)"]
     end
 
     Main -->|"tap grid item"| Panel
     Panel -->|"tap backdrop"| Main
 
-    Main -->|"2-finger edge swipe"| Settings
+    Main -->|"cog button"| Settings
     Settings -->|"tap backdrop"| Main
 
     style Main fill:#1E293B,stroke:#38BDF8,stroke-width:3px
     style Panel fill:#334155,stroke:#38BDF8,stroke-width:3px
     style Settings fill:#334155,stroke:#38BDF8,stroke-width:3px
-    style Modals fill:#1E293B,stroke:#3b82f6,stroke-dasharray: 3 3
+    style Overlays fill:#1E293B,stroke:#3b82f6,stroke-dasharray:3 3
 ```
 
 ```mermaid
@@ -90,19 +119,20 @@ flowchart LR
 flowchart LR
     Main["<b>Inputs Screen</b><br/>(Source Cards)"]
 
-    subgraph Modals ["Overlays"]
-        Panel["Input Detail<br/>(Volume/Mute)"]
-        Settings["Source Settings<br/>(Resolution/Crop)"]
+    subgraph Overlays ["Overlays"]
+        Panel["Input Detail Panel<br/>(volume · mute · layer)"]
+        Settings["Settings Panel<br/>(columns · sort · arrow nav)"]
     end
 
     Main -->|"tap card"| Panel
     Panel -->|"tap backdrop"| Main
 
-    Main -->|"2-finger edge swipe"| Settings
+    Main -->|"long-press + drag"| Main
+    Main -->|"cog button"| Settings
     Settings -->|"tap backdrop"| Main
 
     style Main fill:#063E3B,stroke:#10B981,stroke-width:3px
     style Panel fill:#065F46,stroke:#10B981,stroke-width:3px
     style Settings fill:#065F46,stroke:#10B981,stroke-width:3px
-    style Modals fill:#063E3B,stroke:#3b82f6,stroke-dasharray: 3 3
+    style Overlays fill:#063E3B,stroke:#3b82f6,stroke-dasharray:3 3
 ```
