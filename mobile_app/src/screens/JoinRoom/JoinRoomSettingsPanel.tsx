@@ -1,6 +1,13 @@
 import React from "react";
 import { Modal, Pressable, StyleSheet, View } from "react-native";
-import { Button, IconButton, Surface, Switch, Text, useTheme } from "react-native-paper";
+import {
+  Button,
+  IconButton,
+  Surface,
+  Switch,
+  Text,
+  useTheme,
+} from "react-native-paper";
 import { useNavigation } from "@react-navigation/native";
 import { useSettingsStore } from "../../store";
 import { SCREEN_NAMES } from "../../navigation/navigationTypes";
@@ -54,7 +61,9 @@ export function JoinRoomSettingsPanel({ isVisible, onClose }: Props) {
                   size={16}
                   disabled={gridFactor <= GRID_FACTOR_MIN}
                   onPress={() =>
-                    setGridFactor(Math.max(GRID_FACTOR_MIN, gridFactor - GRID_FACTOR_STEP))
+                    setGridFactor(
+                      Math.max(GRID_FACTOR_MIN, gridFactor - GRID_FACTOR_STEP),
+                    )
                   }
                 />
                 <Text variant="bodyLarge" style={styles.stepperValue}>
@@ -66,7 +75,9 @@ export function JoinRoomSettingsPanel({ isVisible, onClose }: Props) {
                   size={16}
                   disabled={gridFactor >= GRID_FACTOR_MAX}
                   onPress={() =>
-                    setGridFactor(Math.min(GRID_FACTOR_MAX, gridFactor + GRID_FACTOR_STEP))
+                    setGridFactor(
+                      Math.min(GRID_FACTOR_MAX, gridFactor + GRID_FACTOR_STEP),
+                    )
                   }
                 />
               </View>

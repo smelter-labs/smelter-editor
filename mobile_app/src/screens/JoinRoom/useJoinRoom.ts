@@ -196,6 +196,32 @@ export function useJoinRoom() {
     return () => clearInterval(id);
   }, [serverStatus, selectedServerUrl]);
 
+  const handleConnectAsCamera = useCallback(() => {
+    const trimmedUrl = selectedServerUrl.trim();
+    const trimmedRoomId = (
+      isPrivateRoom ? privateRoomId : selectedRoomId
+    ).trim();
+
+    const newErrors: FormErrors = {};
+    if (!trimmedRoomId) newErrors.roomId = "Room ID is required";
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
+    setErrors({});
+    navigation.navigate(SCREEN_NAMES.CAMERA, {
+      serverUrl: trimmedUrl,
+      roomId: trimmedRoomId,
+    });
+  }, [
+    selectedServerUrl,
+    selectedRoomId,
+    isPrivateRoom,
+    privateRoomId,
+    navigation,
+  ]);
+
   const handleConnect = useCallback(async () => {
     const trimmedUrl = selectedServerUrl.trim();
     const trimmedRoomId = (
@@ -304,6 +330,7 @@ export function useJoinRoom() {
     errors,
     isLoading,
     handleConnect,
+    handleConnectAsCamera,
 
     // misc
     showQR,

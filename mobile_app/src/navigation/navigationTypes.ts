@@ -4,6 +4,7 @@ export type RootStackParamList = {
   JoinRoom: undefined;
   Main: undefined;
   Help: undefined;
+  Camera: { serverUrl: string; roomId: string };
 };
 
 export type RootNavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -12,6 +13,7 @@ export const SCREEN_NAMES = {
   JOIN_ROOM: "JoinRoom" as const,
   MAIN: "Main" as const,
   HELP: "Help" as const,
+  CAMERA: "Camera" as const,
 };
 
 export const MAIN_SCREEN_INDEX = {
