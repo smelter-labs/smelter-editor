@@ -124,7 +124,20 @@ export class InputManager {
     const cleanUsername = username
       .replace(/\[(camera|screenshare|live)\]\s*/gi, '')
       .trim();
-    const liveTitle = isScreenshare ? '[Live] Screenshare' : '[Live] Camera';
+    const kindPrefix = isScreenshare ? '[Live] Screenshare' : '[Live] Camera';
+    const numberRegex = new RegExp(
+      `^${kindPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*#(\\d+)$`,
+    );
+    let maxNumber = 0;
+    for (const input of this.inputs) {
+      if (input.type !== 'whip') continue;
+      const match = input.metadata.title.match(numberRegex);
+      if (match) {
+        const n = Number(match[1]);
+        if (Number.isFinite(n) && n > maxNumber) maxNumber = n;
+      }
+    }
+    const liveTitle = `${kindPrefix} #${maxNumber + 1}`;
     const monitor = await WhipInputMonitor.startMonitor(cleanUsername);
     monitor.touch();
     this.inputs.push({

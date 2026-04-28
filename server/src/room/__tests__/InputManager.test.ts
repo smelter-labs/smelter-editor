@@ -166,8 +166,31 @@ describe('InputManager', () => {
           username: '[Camera] Alice',
         });
         const input = manager.getInput(inputId!);
-        expect(input.metadata.title).toBe('[Live] Camera');
+        expect(input.metadata.title).toBe('[Live] Camera #1');
         expect(input.metadata.description).toContain('Alice');
+      });
+
+      it('numbers multiple camera inputs sequentially', async () => {
+        await manager.addNewInput({ type: 'whip', username: 'Alice' });
+        const id2 = await manager.addNewInput({
+          type: 'whip',
+          username: 'Bob',
+        });
+        expect(manager.getInput(id2!).metadata.title).toBe('[Live] Camera #2');
+      });
+
+      it('numbers screenshare independently from camera', async () => {
+        await manager.addNewInput({
+          type: 'whip',
+          username: 'Alice Screenshare',
+        });
+        const cameraId = await manager.addNewInput({
+          type: 'whip',
+          username: 'Bob',
+        });
+        expect(manager.getInput(cameraId!).metadata.title).toBe(
+          '[Live] Camera #1',
+        );
       });
     });
 
