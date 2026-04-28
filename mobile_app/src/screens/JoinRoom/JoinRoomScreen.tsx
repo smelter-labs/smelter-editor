@@ -119,7 +119,7 @@ export function JoinRoomScreen() {
 
       {isLoading && <LoadingOverlay message="Connecting to room..." />}
 
-      {__DEV__ && (
+      {true && (
         <Button
           mode="text"
           compact
