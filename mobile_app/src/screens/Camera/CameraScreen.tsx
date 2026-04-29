@@ -255,6 +255,7 @@ export function CameraScreen() {
           console.log("[Camera] WebRTC connection state:", state);
           if (state === "connected") {
             setStatus("streaming");
+            stopAckInterval();
             if (capturedInputId) {
               // Send ack immediately, then every 5 seconds
               void apiRef.current

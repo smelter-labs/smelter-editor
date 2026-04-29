@@ -12,6 +12,10 @@ export class SmelterApiService {
   private baseUrl: string;
   private roomId: string;
 
+  private encodePathSegment(value: string): string {
+    return encodeURIComponent(value);
+  }
+
   constructor(serverUrl: string, roomId: string) {
     this.baseUrl = buildHttpUrl(serverUrl);
     this.roomId = roomId;
@@ -53,11 +57,14 @@ export class SmelterApiService {
 
   /** Register this device as a WHIP input. Returns whipUrl, bearerToken, inputId. */
   async joinRoomAsWhip(username: string): Promise<JoinRoomAsWhipResult> {
-    const response = await fetch(`${this.baseUrl}/room/${this.roomId}/input`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: "whip", username }),
-    });
+    const response = await fetch(
+      `${this.baseUrl}/room/${this.encodePathSegment(this.roomId)}/input`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: "whip", username }),
+      },
+    );
 
     if (!response.ok) {
       const body = await response.text();
@@ -72,7 +79,7 @@ export class SmelterApiService {
   /** Acknowledge that the WHIP WebRTC connection is established. */
   async ackWhip(inputId: string): Promise<void> {
     const response = await fetch(
-      `${this.baseUrl}/room/${this.roomId}/input/${inputId}/whip/ack`,
+      `${this.baseUrl}/room/${this.encodePathSegment(this.roomId)}/input/${this.encodePathSegment(inputId)}/whip/ack`,
       { method: "POST" },
     );
     if (!response.ok) {
@@ -84,7 +91,7 @@ export class SmelterApiService {
   /** Tell the server to connect this input so the WHIP endpoint accepts streams. */
   async connectInput(inputId: string): Promise<void> {
     const response = await fetch(
-      `${this.baseUrl}/room/${this.roomId}/input/${inputId}/connect`,
+      `${this.baseUrl}/room/${this.encodePathSegment(this.roomId)}/input/${this.encodePathSegment(inputId)}/connect`,
       { method: "POST" },
     );
     if (!response.ok) {
@@ -96,7 +103,7 @@ export class SmelterApiService {
   /** Tell the server to disconnect this input. */
   async disconnectInput(inputId: string): Promise<void> {
     const response = await fetch(
-      `${this.baseUrl}/room/${this.roomId}/input/${inputId}/disconnect`,
+      `${this.baseUrl}/room/${this.encodePathSegment(this.roomId)}/input/${this.encodePathSegment(inputId)}/disconnect`,
       { method: "POST" },
     );
     if (!response.ok) {
