@@ -108,8 +108,6 @@ flowchart LR
     Main -->|"2-finger edge swipe"| Settings
     Settings -->|"tap backdrop"| Main
 
-    Main -->|"long-press + drag card"| Main
-
     style Main fill:#063E3B,stroke:#10B981,stroke-width:3px
     style Panel fill:#065F46,stroke:#10B981,stroke-width:3px
     style Settings fill:#065F46,stroke:#10B981,stroke-width:3px
