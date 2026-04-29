@@ -4,6 +4,9 @@ import {
   configureReanimatedLogger,
   ReanimatedLogLevel,
 } from "react-native-reanimated";
+import { installConsoleCapture } from "./src/services/consoleCapture";
+
+installConsoleCapture();
 
 import { App } from "./src/App";
 

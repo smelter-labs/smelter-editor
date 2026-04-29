@@ -15,7 +15,7 @@ export class SmelterApiService {
   constructor(serverUrl: string, roomId: string) {
     this.baseUrl = buildHttpUrl(serverUrl);
     this.roomId = roomId;
-    console.log("[SmelterAPI] baseUrl:", this.baseUrl, "roomId:", roomId);
+    // console.log("[SmelterAPI] baseUrl:", this.baseUrl, "roomId:", roomId);
   }
 
   /**

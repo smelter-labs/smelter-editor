@@ -1,5 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { StyleSheet, View } from "react-native";
+import {
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  StyleSheet,
+  View,
+} from "react-native";
 import {
   Button,
   Chip,
@@ -34,6 +40,7 @@ import {
 } from "../../services/whipService";
 import { SmelterApiService } from "../../services/smelterApiService";
 import type { RootStackParamList } from "../../navigation/navigationTypes";
+import { CameraLogModal } from "./CameraLogModal";
 
 type CameraRouteProp = RouteProp<RootStackParamList, "Camera">;
 
@@ -71,6 +78,9 @@ export function CameraScreen() {
   const [forceH264, setForceH264] = useState(false);
   const [videoCodec, setVideoCodec] = useState<VideoCodecPreference>("vp8");
   const [resolution, setResolution] = useState<ResolutionPreset>("720p");
+  const [logsVisible, setLogsVisible] = useState(false);
+  const isDebugBuild = __DEV__;
+  const isOverrideActive = isDebugBuild && overrideWhipUrl.trim().length > 0;
 
   const localStreamRef = useRef<MediaStream | null>(null);
   const pcRef = useRef<RTCPeerConnection | null>(null);
@@ -206,7 +216,7 @@ export function CameraScreen() {
       let finalWhipUrl: string;
       let finalBearerToken: string;
 
-      if (overrideWhipUrl.trim()) {
+      if (isOverrideActive) {
         // Debug override — skip server registration, use provided credentials
         finalWhipUrl = overrideWhipUrl.trim();
         finalBearerToken = overrideBearerToken.trim();
@@ -276,7 +286,7 @@ export function CameraScreen() {
         inputIdRef.current = null;
       }
     }
-  }, [overrideWhipUrl, overrideBearerToken, videoCodec, forceH264]);
+  }, [isOverrideActive, overrideWhipUrl, overrideBearerToken, videoCodec, forceH264]);
 
   // ── stop streaming ────────────────────────────────────────────────────────
 
@@ -404,8 +414,9 @@ export function CameraScreen() {
   const isBusy = status === "connecting" || status === "stopping";
 
   return (
-    <View
+    <KeyboardAvoidingView
       style={[styles.container, { backgroundColor: theme.colors.background }]}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       {/* Camera preview */}
       <View style={styles.previewContainer}>
@@ -470,6 +481,16 @@ export function CameraScreen() {
           >
             {statusLabel[status]}
           </Chip>
+          {isDebugBuild && (
+            <IconButton
+              icon="file-document-outline"
+              iconColor="#ffffff"
+              containerColor="rgba(0,0,0,0.45)"
+              size={18}
+              onPress={() => setLogsVisible(true)}
+              style={styles.logsButton}
+            />
+          )}
         </View>
       </View>
 
@@ -563,26 +584,46 @@ export function CameraScreen() {
             </View>
 
             {errorMessage && (
-              <Text
-                variant="bodySmall"
-                style={{ color: theme.colors.error, marginTop: 4 }}
-              >
-                {errorMessage}
-              </Text>
+              <View style={styles.errorRow}>
+                {isDebugBuild && (
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel="Open logs"
+                    onPress={() => setLogsVisible(true)}
+                    hitSlop={10}
+                    style={styles.errorInfoButton}
+                  >
+                    <IconButton
+                      icon="information-outline"
+                      size={18}
+                      iconColor={theme.colors.error}
+                      style={styles.errorInfoIcon}
+                    />
+                  </Pressable>
+                )}
+                <Text
+                  variant="bodySmall"
+                  style={{ color: theme.colors.error, flex: 1 }}
+                >
+                  {errorMessage}
+                </Text>
+              </View>
             )}
 
             {/* Debug override panel */}
-            <Button
-              mode="text"
-              compact
-              icon={debugExpanded ? "chevron-up" : "bug-outline"}
-              onPress={() => setDebugExpanded((v) => !v)}
-              style={styles.debugToggle}
-              labelStyle={styles.debugToggleLabel}
-            >
-              {debugExpanded ? "Hide debug overrides" : "Debug overrides"}
-            </Button>
-            {debugExpanded && (
+            {isDebugBuild && (
+              <Button
+                mode="text"
+                compact
+                icon={debugExpanded ? "chevron-up" : "bug-outline"}
+                onPress={() => setDebugExpanded((v) => !v)}
+                style={styles.debugToggle}
+                labelStyle={styles.debugToggleLabel}
+              >
+                {debugExpanded ? "Hide debug overrides" : "Debug overrides"}
+              </Button>
+            )}
+            {isDebugBuild && debugExpanded && (
               <View style={styles.debugPanel}>
                 <TextInput
                   mode="outlined"
@@ -637,7 +678,7 @@ export function CameraScreen() {
                   </Text>
                   <Switch value={forceH264} onValueChange={setForceH264} />
                 </View>
-                {overrideWhipUrl.trim() ? (
+                {isOverrideActive ? (
                   <Text
                     variant="bodySmall"
                     style={{ color: theme.colors.primary }}
@@ -717,7 +758,14 @@ export function CameraScreen() {
           )}
         </ScrollView>
       </Surface>
-    </View>
+
+      {isDebugBuild && (
+        <CameraLogModal
+          visible={logsVisible}
+          onClose={() => setLogsVisible(false)}
+        />
+      )}
+    </KeyboardAvoidingView>
   );
 }
 
@@ -743,6 +791,9 @@ const styles = StyleSheet.create({
   },
   statusChipWrapper: {
     position: "absolute",
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
   },
   statusChip: {
     borderRadius: 20,
@@ -754,10 +805,15 @@ const styles = StyleSheet.create({
     color: "#ffffff",
     fontSize: 12,
   },
+  logsButton: {
+    margin: 0,
+  },
   controls: {
     paddingTop: 16,
     paddingHorizontal: 16,
-    maxHeight: 320,
+    flexShrink: 1,
+    minHeight: 0,
+    maxHeight: 360,
   },
   controlsDisabled: {
     opacity: 0.4,
@@ -790,6 +846,19 @@ const styles = StyleSheet.create({
   debugPanel: {
     gap: 8,
     paddingTop: 4,
+  },
+  errorRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 2,
+    marginTop: 4,
+  },
+  errorInfoButton: {
+    margin: 0,
+    padding: 0,
+  },
+  errorInfoIcon: {
+    margin: 0,
   },
   debugInput: {
     fontSize: 12,
