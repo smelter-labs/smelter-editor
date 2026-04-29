@@ -5,6 +5,7 @@ import React, {
   useRef,
   useTransition,
 } from "react";
+import * as Haptics from "expo-haptics";
 import type { WSEventPayload } from "../../types/websocket";
 import { View, StyleSheet } from "react-native";
 import { useTheme } from "react-native-paper";
@@ -193,6 +194,9 @@ export function InputsScreen() {
             data={inputs}
             keyExtractor={(item) => item.id}
             renderItem={renderItem}
+            onDragBegin={() =>
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+            }
             onDragEnd={handleDragEnd}
             numColumns={effectiveColumns}
             contentContainerStyle={styles.listContent}

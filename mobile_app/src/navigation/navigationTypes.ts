@@ -3,6 +3,7 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 export type RootStackParamList = {
   JoinRoom: undefined;
   Main: undefined;
+  Help: undefined;
 };
 
 export type RootNavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -10,6 +11,7 @@ export type RootNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 export const SCREEN_NAMES = {
   JOIN_ROOM: "JoinRoom" as const,
   MAIN: "Main" as const,
+  HELP: "Help" as const,
 };
 
 export const MAIN_SCREEN_INDEX = {
