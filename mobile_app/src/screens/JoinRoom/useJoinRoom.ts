@@ -13,11 +13,23 @@ import type { RootNavigationProp } from "../../navigation/navigationTypes";
 import { SCREEN_NAMES } from "../../navigation/navigationTypes";
 
 const STORAGE_KEY = "saved-server-urls";
+const MANUAL_INPUT_PROBE_ROOM_ID = "_probe_";
 
 async function loadSavedUrls(): Promise<string[]> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as string[]) : [];
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw);
+    if (
+      !Array.isArray(parsed) ||
+      !parsed.every((item) => typeof item === "string")
+    ) {
+      console.warn("[JoinRoom] Invalid format for saved URLs, resetting");
+      return [];
+    }
+    return parsed;
   } catch {
     return [];
   }
@@ -52,6 +64,7 @@ export function useJoinRoom() {
   >({});
   // Tracks in-flight health check requests so stale results are discarded
   const healthSeqRef = useRef<Record<string, number>>({});
+  const joinSeqRef = useRef(0);
 
   const [selectedServerUrl, setSelectedServerUrl] = useState(serverUrl ?? "");
 
@@ -103,30 +116,36 @@ export function useJoinRoom() {
     })();
   }, [checkUrlHealth]);
 
-  const removeSavedUrl = useCallback((url: string) => {
-    setSavedUrls((prev) => {
-      const next = prev.filter((u) => u !== url);
-      void persistSavedUrls(next);
-      return next;
-    });
-    setHealthStatus((prev) => {
-      const next = { ...prev };
-      delete next[url];
-      return next;
-    });
-  }, []);
+  const removeSavedUrl = useCallback(
+    (url: string) => {
+      const nextSavedUrls = savedUrls.filter((u) => u !== url);
+      setSavedUrls(nextSavedUrls);
+      void persistSavedUrls(nextSavedUrls);
+      setHealthStatus((prev) => {
+        const next = { ...prev };
+        delete next[url];
+        return next;
+      });
+    },
+    [savedUrls],
+  );
 
   // Changing the selected server resets to the server phase
   const handleServerUrlChange = useCallback((url: string) => {
+    joinSeqRef.current += 1;
     setSelectedServerUrl(url);
     setServerStatus("idle");
     setServerError(null);
     setRooms([]);
+    setSelectedRoomId("");
+    setIsPrivateRoom(false);
+    setPrivateRoomId("");
   }, []);
 
   // urlOverride exists so QR scan can pass the URL without waiting for state to flush
   const handleJoinServer = useCallback(
     async (urlOverride?: string) => {
+      const requestId = ++joinSeqRef.current;
       const trimmed = (urlOverride ?? selectedServerUrl).trim();
 
       if (!trimmed) {
@@ -135,7 +154,10 @@ export function useJoinRoom() {
         return;
       }
 
-      const probe = ConnectionData.fromManualInput(trimmed, "_probe_");
+      const probe = ConnectionData.fromManualInput(
+        trimmed,
+        MANUAL_INPUT_PROBE_ROOM_ID,
+      );
       if (!probe.isValid()) {
         setServerError("Invalid server URL format");
         setServerStatus("error");
@@ -147,6 +169,9 @@ export function useJoinRoom() {
 
       try {
         const result = await apiService.fetchActiveRooms(trimmed);
+        if (joinSeqRef.current !== requestId) {
+          return;
+        }
         const deduped = result.filter(
           (room, i, arr) =>
             arr.findIndex((c) => c.roomId === room.roomId) === i,
@@ -155,14 +180,18 @@ export function useJoinRoom() {
         setServerStatus("success");
 
         // Auto-save the URL and mark it healthy
-        setSavedUrls((prev) => {
-          if (prev.includes(trimmed)) return prev;
-          const next = [...prev, trimmed];
-          void persistSavedUrls(next);
-          return next;
-        });
+        const nextSavedUrls = savedUrls.includes(trimmed)
+          ? savedUrls
+          : [...savedUrls, trimmed];
+        setSavedUrls(nextSavedUrls);
+        if (nextSavedUrls !== savedUrls) {
+          void persistSavedUrls(nextSavedUrls);
+        }
         setHealthStatus((prev) => ({ ...prev, [trimmed]: "ok" }));
       } catch (err) {
+        if (joinSeqRef.current !== requestId) {
+          return;
+        }
         const msg =
           err instanceof Error ? err.message : "Could not reach server";
         setServerError(msg);

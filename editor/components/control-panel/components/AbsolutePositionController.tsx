@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState, useEffect } from 'react';
 import { NumberInput } from '@/components/ui/number-input';
+import { shouldIgnoreGlobalShortcut } from '@/lib/keyboard';
 
 type Position = {
   top: number;
@@ -305,6 +306,7 @@ export function AbsolutePositionController({
   useEffect(() => {
     if (mode !== 'crop') return;
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (shouldIgnoreGlobalShortcut(e.target)) return;
       if (e.key === 'Escape') {
         setMode('position');
       }

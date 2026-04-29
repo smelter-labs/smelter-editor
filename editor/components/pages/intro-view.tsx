@@ -326,7 +326,12 @@ export default function IntroView() {
   const importConfig = useCallback(
     async (
       config: RoomConfig,
-      showcaseWelcome?: { before: string; after: string },
+      showcaseWelcome?: {
+        before: string;
+        after: string;
+        farewellTitle?: string;
+        farewellDescription?: string;
+      },
     ) => {
       setLoadingImport(true);
       setImportProgress({ phase: 'Creating room', current: 0, total: 1 });
@@ -471,6 +476,8 @@ export default function IntroView() {
         await importConfig(presentation.roomConfig, {
           before: presentation.welcomeTextBefore || '',
           after: presentation.welcomeTextAfter || '',
+          farewellTitle: presentation.farewellTitle || '',
+          farewellDescription: presentation.farewellDescription || '',
         });
       } catch (err: any) {
         console.error('Showcase start failed:', err);
