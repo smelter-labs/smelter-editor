@@ -159,7 +159,9 @@ function replaceLayerInputId(
       }
       seen.add(nextInputId);
       nextInputs.push(
-        nextInputId === input.inputId ? input : { ...input, inputId: nextInputId },
+        nextInputId === input.inputId
+          ? input
+          : { ...input, inputId: nextInputId },
       );
     }
 
@@ -613,7 +615,10 @@ export const TimelinePanel = memo(function TimelinePanel({
         }
 
         void updateRoom(roomId, { layers: nextLayers }).catch((err) => {
-          console.error('[timeline] Failed to sync swapped input in layers', err);
+          console.error(
+            '[timeline] Failed to sync swapped input in layers',
+            err,
+          );
         });
       },
     );

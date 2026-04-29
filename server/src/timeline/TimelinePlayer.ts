@@ -516,7 +516,10 @@ function getActiveOrderFromLayers(
   timeMs: number,
   layers: Layer[],
 ): string[] {
-  const activeInTimelineOrder = getActiveInputIdsInTimelineOrder(config, timeMs);
+  const activeInTimelineOrder = getActiveInputIdsInTimelineOrder(
+    config,
+    timeMs,
+  );
   const activeSet = new Set(activeInTimelineOrder);
   const order: string[] = [];
   const placed = new Set<string>();

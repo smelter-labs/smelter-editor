@@ -286,7 +286,13 @@ export function CameraScreen() {
         inputIdRef.current = null;
       }
     }
-  }, [isOverrideActive, overrideWhipUrl, overrideBearerToken, videoCodec, forceH264]);
+  }, [
+    isOverrideActive,
+    overrideWhipUrl,
+    overrideBearerToken,
+    videoCodec,
+    forceH264,
+  ]);
 
   // ── stop streaming ────────────────────────────────────────────────────────
 
