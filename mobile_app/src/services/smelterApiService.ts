@@ -19,17 +19,26 @@ export class SmelterApiService {
   }
 
   /**
-   * The server returns a whipUrl using its own loopback address (127.0.0.1:9000).
-   * Rewrite it to use the real server hostname on port 9000 so the phone can reach it.
+   * The server may return a whipUrl using its own loopback address.
+   * Rewrite only the hostname to use the real server hostname so the phone can reach it,
+   * while preserving the original protocol and port.
    * e.g. http://127.0.0.1:9000/whip/xxx → http://192.168.x.x:9000/whip/xxx
    */
   fixWhipUrl(whipUrl: string): string {
     try {
       const base = new URL(this.baseUrl);
       const whip = new URL(whipUrl);
+      const isLoopbackHost =
+        whip.hostname === "127.0.0.1" ||
+        whip.hostname === "localhost" ||
+        whip.hostname === "::1" ||
+        whip.hostname === "[::1]";
+
+      if (!isLoopbackHost) {
+        return whipUrl;
+      }
+
       whip.hostname = base.hostname;
-      whip.port = "9001";
-      whip.protocol = "http:";
       const fixed = whip.toString();
       console.log("[SmelterAPI] fixWhipUrl:", whipUrl, "→", fixed);
       return fixed;

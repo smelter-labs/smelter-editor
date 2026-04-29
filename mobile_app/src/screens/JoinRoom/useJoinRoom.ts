@@ -199,7 +199,7 @@ export function useJoinRoom() {
         setHealthStatus((prev) => ({ ...prev, [trimmed]: "error" }));
       }
     },
-    [selectedServerUrl],
+    [selectedServerUrl, savedUrls, persistSavedUrls],
   );
 
   // While waiting on the room-selection phase, poll for new/removed rooms every 3 s

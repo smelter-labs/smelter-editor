@@ -82,14 +82,26 @@ async function waitForIceGatheringComplete(
   if (pc.iceGatheringState === "complete") return;
 
   await new Promise<void>((resolve) => {
-    const timeout = setTimeout(resolve, timeoutMs);
+    let settled = false;
+    let timeout: ReturnType<typeof setTimeout>;
+
+    const cleanupAndResolve = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      (pc as any).removeEventListener("icegatheringstatechange", listener);
+      resolve();
+    };
+
     const listener = () => {
       if (pc.iceGatheringState === "complete") {
-        clearTimeout(timeout);
-        resolve();
+        cleanupAndResolve();
       }
     };
 
+    timeout = setTimeout(() => {
+      cleanupAndResolve();
+    }, timeoutMs);
     (pc as any).addEventListener("icegatheringstatechange", listener);
   });
 }
@@ -250,7 +262,7 @@ export async function createWhipConnection({
   localStream,
   whipUrl,
   bearerToken,
-  videoCodec = "vp8",
+  videoCodec = "h264",
   forceH264 = false,
   onConnectionStateChange,
 }: WhipConnectionParams): Promise<RTCPeerConnection> {

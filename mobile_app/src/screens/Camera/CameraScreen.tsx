@@ -112,9 +112,10 @@ export function CameraScreen() {
     return () => {
       stopAckInterval();
       teardownPeerConnection();
-      if (localStreamRef.current) {
-        stopMediaStream(localStreamRef.current);
-        setStream(null);
+      const localStream = localStreamRef.current;
+      localStreamRef.current = null;
+      if (localStream) {
+        stopMediaStream(localStream);
       }
       deactivateKeepAwake(KEEP_AWAKE_TAG_PREVIEW);
       deactivateKeepAwake(KEEP_AWAKE_TAG_STREAMING);
