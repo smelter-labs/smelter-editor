@@ -8,6 +8,19 @@ import type {
   InputOrientation,
 } from "./input.js";
 
+// Allow `null` as an explicit reset sentinel for absolute-position and crop
+// fields.  When the server receives `null` it clears the stored value back to
+// `undefined` (matches the pre-play snapshot), which is what the timeline
+// restore path needs to avoid sticky absolute-position state after the
+// timeline finishes playing.
+type NullableAbsolutePositionProperties = {
+  [K in keyof AbsolutePositionProperties]: AbsolutePositionProperties[K] | null;
+};
+
+type NullableCropProperties = {
+  [K in keyof CropProperties]: CropProperties[K] | null;
+};
+
 export type UpdateInputOptions = {
   title: string;
   attachedInputIds: string[];
@@ -19,8 +32,8 @@ export type UpdateInputOptions = {
   orientation: InputOrientation;
 } & InputDisplayProperties &
   TextInputProperties &
-  AbsolutePositionProperties &
-  CropProperties &
+  NullableAbsolutePositionProperties &
+  NullableCropProperties &
   BorderProperties &
   SnakeGameDisplayProperties;
 

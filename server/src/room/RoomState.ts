@@ -484,25 +484,56 @@ export class RoomState {
         options.cropRight !== undefined ||
         options.cropBottom !== undefined;
       if (hasLayerPatch) {
+        // `null` resets the corresponding field on LayerInput to `undefined`
+        // to stay consistent with InputManager.updateInput (absolute/crop
+        // reset semantics). LayerInput declares `x`/`y`/`width`/`height` as
+        // required `number`s, so we widen via a Record cast when clearing
+        // them — Phase 2 of timeline restoreState replaces all layers, so
+        // this transient undefined state is bounded to the restore window.
         for (const layer of this.layers) {
           for (const li of layer.inputs) {
             if (li.inputId !== inputId) continue;
-            if (options.absoluteLeft !== undefined) li.x = options.absoluteLeft;
-            if (options.absoluteTop !== undefined) li.y = options.absoluteTop;
+            const liRecord = li as Record<string, unknown>;
+            if (options.absoluteLeft !== undefined)
+              liRecord.x =
+                options.absoluteLeft === null
+                  ? undefined
+                  : options.absoluteLeft;
+            if (options.absoluteTop !== undefined)
+              liRecord.y =
+                options.absoluteTop === null ? undefined : options.absoluteTop;
             if (options.absoluteWidth !== undefined)
-              li.width = options.absoluteWidth;
+              liRecord.width =
+                options.absoluteWidth === null
+                  ? undefined
+                  : options.absoluteWidth;
             if (options.absoluteHeight !== undefined)
-              li.height = options.absoluteHeight;
+              liRecord.height =
+                options.absoluteHeight === null
+                  ? undefined
+                  : options.absoluteHeight;
             if (options.absoluteTransitionDurationMs !== undefined)
-              li.transitionDurationMs = options.absoluteTransitionDurationMs;
+              li.transitionDurationMs =
+                options.absoluteTransitionDurationMs === null
+                  ? undefined
+                  : options.absoluteTransitionDurationMs;
             if (options.absoluteTransitionEasing !== undefined)
-              li.transitionEasing = options.absoluteTransitionEasing;
-            if (options.cropTop !== undefined) li.cropTop = options.cropTop;
-            if (options.cropLeft !== undefined) li.cropLeft = options.cropLeft;
+              li.transitionEasing =
+                options.absoluteTransitionEasing === null
+                  ? undefined
+                  : options.absoluteTransitionEasing;
+            if (options.cropTop !== undefined)
+              li.cropTop =
+                options.cropTop === null ? undefined : options.cropTop;
+            if (options.cropLeft !== undefined)
+              li.cropLeft =
+                options.cropLeft === null ? undefined : options.cropLeft;
             if (options.cropRight !== undefined)
-              li.cropRight = options.cropRight;
+              li.cropRight =
+                options.cropRight === null ? undefined : options.cropRight;
             if (options.cropBottom !== undefined)
-              li.cropBottom = options.cropBottom;
+              li.cropBottom =
+                options.cropBottom === null ? undefined : options.cropBottom;
           }
         }
       }
@@ -730,6 +761,11 @@ export class RoomState {
 
     const adapter = this.buildTimelineAdapter();
     this.timelinePlayer = new TimelinePlayer(adapter, config);
+    this.timelinePlayer.onPlaybackEnded = () => {
+      void this.stopTimelinePlayback().catch((err) =>
+        console.error('[timeline] natural-end stop failed', err),
+      );
+    };
 
     const forwardListener: TimelineListener = (data) => {
       for (const listener of this.timelineListeners) {
@@ -752,6 +788,11 @@ export class RoomState {
 
     const adapter = this.buildTimelineAdapter();
     this.timelinePlayer = new TimelinePlayer(adapter, config);
+    this.timelinePlayer.onPlaybackEnded = () => {
+      void this.stopTimelinePlayback().catch((err) =>
+        console.error('[timeline] natural-end stop failed', err),
+      );
+    };
 
     const forwardListener: TimelineListener = (data) => {
       for (const listener of this.timelineListeners) {

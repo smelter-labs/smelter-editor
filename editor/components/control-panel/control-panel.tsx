@@ -48,6 +48,7 @@ import { AddVideoModal } from './components/AddVideoModal';
 import { FxCanvas, FX_PRESET_MODAL } from '@/lib/fx';
 import { type PendingWhipInput } from './components/ConfigurationSection';
 import { getEffectiveClientServerUrl, toWsUrl } from '@/lib/server-url';
+import { resolutionToLabel } from '@/lib/resolution';
 import {
   exportRoomConfig,
   downloadRoomConfig,
@@ -73,10 +74,6 @@ import { setAudioAnalysisEnabled } from '@/app/actions/actions';
 import { TransitionSettings } from './components/TransitionSettings';
 import { BehaviorSelector } from './components/BehaviorSelector';
 import { ViewportSettings } from './components/ViewportSettings';
-import {
-  rotateBy90,
-  type RotationAngle,
-} from './whip-input/utils/whip-publisher';
 import { loadLastWhipInputId } from './whip-input/utils/whip-storage';
 import {
   ControlPanelProvider,
@@ -170,11 +167,6 @@ type ControlPanelProps = {
   roomState: RoomState;
   refreshState: () => Promise<void>;
   isGuest?: boolean;
-  onGuestStreamChange?: (stream: MediaStream | null) => void;
-  onGuestInputIdChange?: (inputId: string | null) => void;
-  onGuestRotateRef?: React.MutableRefObject<
-    (() => Promise<RotationAngle>) | null
-  >;
   renderStreamsOutside?: boolean;
   timelinePortalRef?: React.RefObject<HTMLDivElement | null>;
   settingsNavPortalRef?: React.RefObject<HTMLDivElement | null>;
@@ -197,6 +189,20 @@ type ControlPanelProps = {
 type ControlPanelWithActionsProps = ControlPanelProps & {
   pendingMutationCount: number;
   sceneMutationVersion: number;
+};
+
+type ShowcaseCopy = {
+  before: string;
+  after: string;
+  farewellTitle?: string;
+  farewellDescription?: string;
+};
+
+type ShowcaseSettingsPrefill = {
+  welcomeTextBefore: string;
+  welcomeTextAfter: string;
+  farewellTitle: string;
+  farewellDescription: string;
 };
 
 const VIDEO_INPUT_TYPES = new Set<string>([
@@ -371,9 +377,6 @@ function ControlPanelWithActions({
   roomId,
   roomState,
   isGuest,
-  onGuestStreamChange,
-  onGuestInputIdChange,
-  onGuestRotateRef,
   renderStreamsOutside,
   timelinePortalRef,
   settingsNavPortalRef,
@@ -440,7 +443,6 @@ function ControlPanelWithActions({
 
   const actions = useActions();
   const updateRoomForLayers = actions.updateRoom;
-  const updateInputForLayers = actions.updateInput;
   const setPendingWhipInputsAction = actions.setPendingWhipInputs;
   const handleLayersChange = useCallback(
     async (newLayers: Layer[]) => {
@@ -493,72 +495,6 @@ function ControlPanelWithActions({
       });
     },
   });
-
-  useEffect(() => {
-    if (!isGuest || !onGuestStreamChange) return;
-    const stream =
-      cameraStreamRef.current || screenshareStreamRef.current || null;
-    onGuestStreamChange(stream);
-  }, [isGuest, onGuestStreamChange, isCameraActive, isScreenshareActive]);
-
-  useEffect(() => {
-    if (!isGuest || !onGuestInputIdChange) return;
-    onGuestInputIdChange(activeCameraInputId || activeScreenshareInputId);
-  }, [
-    isGuest,
-    onGuestInputIdChange,
-    activeCameraInputId,
-    activeScreenshareInputId,
-  ]);
-
-  useEffect(() => {
-    if (!isGuest || !onGuestRotateRef) return;
-    const guestInputId = activeCameraInputId || activeScreenshareInputId;
-    const pcRef = activeCameraInputId ? cameraPcRef : screensharePcRef;
-    const streamRef = activeCameraInputId
-      ? cameraStreamRef
-      : screenshareStreamRef;
-
-    onGuestRotateRef.current = guestInputId
-      ? async () => {
-          const angle = await rotateBy90(pcRef, streamRef);
-          const currentInput = inputs.find((i) => i.inputId === guestInputId);
-          await updateInputForLayers(roomId, guestInputId, {
-            volume: currentInput?.volume ?? 1,
-            shaders: currentInput?.shaders ?? [],
-          });
-          await handleRefreshState();
-          if (onGuestStreamChange && pcRef.current) {
-            const sender = pcRef.current
-              .getSenders()
-              .find((s) => s.track?.kind === 'video');
-            if (sender?.track) {
-              const previewStream = new MediaStream([sender.track]);
-              const raw = streamRef.current;
-              if (raw) {
-                for (const t of raw.getAudioTracks()) {
-                  previewStream.addTrack(t);
-                }
-              }
-              onGuestStreamChange(previewStream);
-            }
-          }
-          return angle;
-        }
-      : null;
-
-    return () => {
-      onGuestRotateRef.current = null;
-    };
-  }, [
-    isGuest,
-    onGuestRotateRef,
-    activeCameraInputId,
-    activeScreenshareInputId,
-    roomId,
-    handleRefreshState,
-    updateInputForLayers,
-  ]);
 
   const handleSetPendingWhipInputs = useCallback(
     async (newInputs: PendingWhipInput[]) => {
@@ -790,10 +726,21 @@ function ControlPanelInner({
   >(null);
   const sceneMutationBaselineRef = useRef(sceneMutationVersion);
 
-  const [showcaseWelcome, setShowcaseWelcome] = useState<{
-    before: string;
-    after: string;
-  } | null>(null);
+  const [showcaseWelcome, setShowcaseWelcome] = useState<ShowcaseCopy | null>(
+    null,
+  );
+  const showcaseSettingsPrefill =
+    useMemo<ShowcaseSettingsPrefill | null>(() => {
+      if (!showcaseWelcome) {
+        return null;
+      }
+      return {
+        welcomeTextBefore: showcaseWelcome.before || '',
+        welcomeTextAfter: showcaseWelcome.after || '',
+        farewellTitle: showcaseWelcome.farewellTitle || '',
+        farewellDescription: showcaseWelcome.farewellDescription || '',
+      };
+    }, [showcaseWelcome]);
 
   useEffect(() => {
     try {
@@ -801,9 +748,19 @@ function ControlPanelInner({
       const raw = sessionStorage.getItem(key);
       if (raw) {
         sessionStorage.removeItem(key);
-        const parsed = JSON.parse(raw);
-        if (parsed.before || parsed.after) {
-          setShowcaseWelcome(parsed);
+        const parsed = JSON.parse(raw) as Partial<ShowcaseCopy>;
+        if (
+          parsed.before ||
+          parsed.after ||
+          parsed.farewellTitle ||
+          parsed.farewellDescription
+        ) {
+          setShowcaseWelcome({
+            before: parsed.before || '',
+            after: parsed.after || '',
+            farewellTitle: parsed.farewellTitle || '',
+            farewellDescription: parsed.farewellDescription || '',
+          });
         }
       }
     } catch {}
@@ -1213,6 +1170,7 @@ function ControlPanelInner({
           roomState={roomState}
           getTimelineStateForConfig={getTimelineStateForConfig}
           applyImportedTimelineState={applyImportedTimelineState}
+          showcasePrefill={showcaseSettingsPrefill}
         />
       </ErrorBoundary>
     );
@@ -1389,6 +1347,8 @@ function ControlPanelInner({
             <ConnectPlayCompletionModal
               open={connectPlayCompletionOpen}
               onOpenChange={setConnectPlayCompletionOpen}
+              farewellTitle={showcaseWelcome?.farewellTitle}
+              farewellDescription={showcaseWelcome?.farewellDescription}
             />
             <TimelineConflictModal
               open={conflictModalOpen}
@@ -1472,6 +1432,7 @@ function ControlPanelInner({
                   roomState={roomState}
                   getTimelineStateForConfig={getTimelineStateForConfig}
                   applyImportedTimelineState={applyImportedTimelineState}
+                  showcasePrefill={showcaseSettingsPrefill}
                 />
               </ErrorBoundary>,
               settingsNavPortalRef.current,
@@ -1503,6 +1464,8 @@ function ControlPanelInner({
     <ConnectPlayCompletionModal
       open={connectPlayCompletionOpen}
       onOpenChange={setConnectPlayCompletionOpen}
+      farewellTitle={showcaseWelcome?.farewellTitle}
+      farewellDescription={showcaseWelcome?.farewellDescription}
     />
   );
   const timelineConflictModal = !isGuest && (
@@ -1575,10 +1538,12 @@ function SettingsBar({
   roomState,
   getTimelineStateForConfig,
   applyImportedTimelineState,
+  showcasePrefill,
 }: {
   roomState: RoomState;
   getTimelineStateForConfig: () => TimelineState | null;
   applyImportedTimelineState: (state: TimelineState | null) => void;
+  showcasePrefill: ShowcaseSettingsPrefill | null;
 }) {
   const { roomId, refreshState: handleRefreshState } = useControlPanelContext();
   const actions = useActions();
@@ -1798,13 +1763,21 @@ function SettingsBar({
   const handleExportRemote = useCallback(
     async (name: string): Promise<string | null> => {
       const config = buildConfig();
-      const result = await configStorageSave(name, config);
+      const suffix = roomState.resolution
+        ? ` ${resolutionToLabel(roomState.resolution)}`
+        : '';
+      const trimmed = name.trim();
+      const finalName =
+        suffix && !trimmed.endsWith(suffix.trim())
+          ? `${trimmed}${suffix}`
+          : trimmed;
+      const result = await configStorageSave(finalName, config);
       if (!result.ok) {
         return result.error;
       }
       return null;
     },
-    [buildConfig, configStorageSave],
+    [buildConfig, configStorageSave, roomState.resolution],
   );
 
   useEffect(() => {
@@ -2125,16 +2098,16 @@ function SettingsBar({
       <Dialog
         open={openModal === 'settings'}
         onOpenChange={(open) => !open && setOpenModal(null)}>
-        <DialogContent className='max-h-[84vh] max-w-2xl overflow-y-auto'>
+        <DialogContent className='max-h-[84vh] max-w-2xl overflow-y-auto text-neutral-100'>
           <FxCanvas
             config={FX_PRESET_MODAL}
             isActive={openModal === 'settings'}
           />
-          <div className='absolute inset-0 bg-black/50 pointer-events-none rounded-[inherit]' />
-          <DialogHeader>
+          <div className='absolute inset-0 z-0 bg-black/25 pointer-events-none rounded-[inherit]' />
+          <DialogHeader className='relative z-10'>
             <DialogTitle>Settings</DialogTitle>
           </DialogHeader>
-          <div className='relative grid grid-cols-2 gap-6 pt-2'>
+          <div className='relative z-10 grid grid-cols-2 gap-6 pt-2'>
             <section className='space-y-3'>
               <h4 className='text-sm font-medium text-foreground'>
                 Transition Settings
@@ -2381,19 +2354,20 @@ function SettingsBar({
       <Dialog
         open={openModal === 'showcase'}
         onOpenChange={(open) => !open && setOpenModal(null)}>
-        <DialogContent className='max-h-[84vh] max-w-2xl overflow-y-auto'>
+        <DialogContent className='max-h-[84vh] max-w-2xl overflow-y-auto text-neutral-100'>
           <FxCanvas
             config={FX_PRESET_MODAL}
             isActive={openModal === 'showcase'}
           />
-          <div className='absolute inset-0 bg-black/50 pointer-events-none rounded-[inherit]' />
-          <DialogHeader>
+          <div className='absolute inset-0 z-0 bg-black/25 pointer-events-none rounded-[inherit]' />
+          <DialogHeader className='relative z-10'>
             <DialogTitle>Showcase</DialogTitle>
           </DialogHeader>
-          <div>
+          <div className='relative z-10'>
             <PresentationModeSettings
               roomState={roomState}
               getTimelineStateForConfig={getTimelineStateForConfig}
+              showcasePrefill={showcasePrefill}
             />
           </div>
         </DialogContent>
