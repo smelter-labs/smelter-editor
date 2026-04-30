@@ -199,25 +199,10 @@ function getRenderedLayerInputs(
   resolution: Resolution,
 ): LayerInput[] {
   const inputMap = new Map(inputs.map((input) => [input.id, input]));
-  const visibleLayerInputs = layer.inputs.filter((li) => {
+  return layer.inputs.filter((li) => {
     const input = inputMap.get(li.inputId);
     return !input?.isHidden;
   });
-
-  if (!layer.behavior) {
-    return visibleLayerInputs;
-  }
-
-  const behaviorInputs = visibleLayerInputs.map((li) => {
-    const input = inputMap.get(li.inputId);
-    return {
-      inputId: li.inputId,
-      nativeWidth: input?.nativeWidth,
-      nativeHeight: input?.nativeHeight,
-    };
-  });
-
-  return computeLayout(layer.behavior, behaviorInputs, resolution).inputs;
 }
 
 function buildLayerRenderData(
