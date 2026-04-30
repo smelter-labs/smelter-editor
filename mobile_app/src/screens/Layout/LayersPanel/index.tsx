@@ -91,11 +91,42 @@ export default function LayersPanel({
   );
 
   const setBehavior = useCallback(
-    (layerId: string, behavior: LayerBehaviorConfig | undefined) =>
+    (layerId: string, behavior: LayerBehaviorConfig | undefined) => {
+      const currentLayers = layersRef.current;
+      const layerIndex = currentLayers.findIndex((l) => l.id === layerId);
+      if (layerIndex === -1) return;
+
+      const currentLayer = currentLayers[layerIndex];
+      if (
+        currentLayer.behavior?.type === "picture-in-picture" &&
+        behavior === undefined &&
+        currentLayer.inputs.length > 1
+      ) {
+        const [mainInput, ...remainingInputs] = currentLayer.inputs;
+        if (!mainInput) return;
+
+        const newLayer: Layer = {
+          id: `${layerId}-pip-main-${Date.now()}`,
+          inputs: [mainInput],
+        };
+        const updatedCurrentLayer: Layer = {
+          ...currentLayer,
+          behavior,
+          inputs: remainingInputs,
+        };
+
+        const nextLayers = [...currentLayers];
+        nextLayers[layerIndex] = updatedCurrentLayer;
+        nextLayers.splice(layerIndex, 0, newLayer);
+        onLayersChange(nextLayers);
+        return;
+      }
+
       onLayersChange(
-        layers.map((l) => (l.id === layerId ? { ...l, behavior } : l)),
-      ),
-    [layers, onLayersChange],
+        currentLayers.map((l) => (l.id === layerId ? { ...l, behavior } : l)),
+      );
+    },
+    [onLayersChange],
   );
 
   // ── Drop handlers ─────────────────────────────────────────────────────────
