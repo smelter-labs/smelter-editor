@@ -433,13 +433,15 @@ export default function InputEntry({
           onAddShader={addShaderConfig}
         />
 
-        <Dialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+        <Dialog
+          open={isDeleteConfirmOpen}
+          onOpenChange={setIsDeleteConfirmOpen}>
           <DialogContent className='max-w-sm'>
             <DialogHeader>
               <DialogTitle>Delete Input</DialogTitle>
               <DialogDescription>
-                Delete this input permanently? This will remove it from the
-                room and from the timeline.
+                Delete this input permanently? This will remove it from the room
+                and from the timeline.
               </DialogDescription>
             </DialogHeader>
             <div className='flex justify-end gap-2'>
