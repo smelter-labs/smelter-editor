@@ -10,7 +10,10 @@
     "postinstall": "patch-package",
     "check-types": "tsc --noEmit 2>&1 && echo 'Compilation successful'",
     "lint": "eslint .",
-    "lint:fix": "eslint --fix --ext .js,.jsx,.ts,.tsx ."
+    "lint:fix": "eslint --fix --ext .js,.jsx,.ts,.tsx .",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@expo/metro-runtime": "~6.1.2",
@@ -54,16 +57,21 @@
   },
   "devDependencies": {
     "@babel/core": "^7.20.0",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/react-hooks": "^8.0.1",
     "@types/react": "~19.1.10",
     "@typescript-eslint/eslint-plugin": "^8.57.1",
     "@typescript-eslint/parser": "^8.57.1",
+    "@vitest/coverage-v8": "^4.1.5",
     "babel-preset-expo": "^54.0.10",
     "eslint": "^9.32.0",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-prettier": "^5.5.3",
+    "jsdom": "^29.1.1",
     "patch-package": "^8.0.1",
     "prettier": "^3.6.2",
-    "typescript": "~5.9.2"
+    "typescript": "~5.9.2",
+    "vitest": "^4.1.5"
   },
   "pnpm": {
     "overrides": {

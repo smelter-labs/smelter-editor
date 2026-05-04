@@ -1,13 +1,8 @@
-# Smelter Editor Companion ~~Cube~~ App
+# Smelter Editor Companion App
 
 ## Important disclaimers
 
 ### Untested on iOS. Use at your own peril
-
-### Unimplemented features
-
-- Timeline Screen (placeholder only, not yet functional)
-- Help Screen (not yet created)
 
 ## Description
 
@@ -19,7 +14,11 @@ After cloning the repo, run
 
 - `npx expo install`
 - `npx expo prebuild`
-- `npx expo run:android --port 2137` (port can be whatever you want, but it defaults to 8081, same as the web app, which is less than ideal). Alternatively, download the latest release from repository.
+- `npx expo run:android --port 2137` (port can be whatever you want, but it defaults to 8081, same as the web app). Alternatively, download the latest release from the repository.
+
+Make sure you have a Smelter Editor instance running (both server and editor). Create a room.
+
+On the Join screen, enter the server IP and port (e.g. `192.168.1.10:3001`) in the URL field and tap the connect icon, or tap a previously saved address from the list below. The app will fetch available rooms. Select a room and tap **Join Room**. You can also scan a QR code from the editor web client to skip both steps.
 
 Make sure you got a smelter editor instance running, both the server and the editor. Create a room.
 If the instance is not on localhost, you can join a room via a QR code. Otherwise you need to fill in the url by hand. Include protocol (ws or wss), ip and port of the node.js server (3001 by default). Press the join button next to the input field - if the server is available, it will get saved for the future. You can then pick the room you want by its name. Alternatively, if the room is private, you can press "Join a private room instead".
@@ -41,7 +40,7 @@ flowchart LR
         direction LR
         Layout["Layout Screen"]
         Inputs["Inputs Screen"]
-        Timeline["Timeline Screen ⚠️"]
+        Timeline["Timeline Screen (WIP)"]
         Debug["Debug Screen"]
 
         Layout <-->|"3-finger swipe"| Inputs
@@ -79,7 +78,7 @@ flowchart LR
     Main -->|"tap LAYERS chip"| Layers
     Layers -->|"tap backdrop"| Main
 
-    Main -->|"2-finger edge swipe<br/>or cog icon"| Settings
+    Main -->|"cog button"| Settings
     Settings -->|"tap backdrop"| Main
 
     Main -->|"long-press grid item"| Effects
@@ -98,14 +97,14 @@ flowchart LR
     Main["<b>Inputs Screen</b><br/>(Source Cards — draggable)"]
 
     subgraph Overlays ["Overlays"]
-        Panel["Input Detail Panel<br/>(Input ID / metadata)"]
-        Settings["Input Settings Panel<br/>(Grid cols / Sort mode)"]
+        Panel["Input Detail Panel<br/>(volume · mute · layer)"]
+        Settings["Settings Panel<br/>(columns · sort · arrow nav)"]
     end
 
     Main -->|"tap card"| Panel
     Panel -->|"tap backdrop"| Main
 
-    Main -->|"2-finger edge swipe"| Settings
+    Main -->|"cog button"| Settings
     Settings -->|"tap backdrop"| Main
 
     style Main fill:#063E3B,stroke:#10B981,stroke-width:3px
