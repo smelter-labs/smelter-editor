@@ -7,7 +7,10 @@ describe("ConnectionData.fromQRString", () => {
   describe("JSON format", () => {
     it("parses a valid JSON payload", () => {
       const result = ConnectionData.fromQRString(
-        JSON.stringify({ serverUrl: "http://192.168.1.1:3001", roomId: "my-room" }),
+        JSON.stringify({
+          serverUrl: "http://192.168.1.1:3001",
+          roomId: "my-room",
+        }),
       );
       expect(result?.serverUrl).toBe("http://192.168.1.1:3001");
       expect(result?.roomId).toBe("my-room");
@@ -54,16 +57,12 @@ describe("ConnectionData.fromQRString", () => {
 
     it("returns null when roomId param is absent", () => {
       expect(
-        ConnectionData.fromQRString(
-          "https://host?serverUrl=http://h:3001",
-        ),
+        ConnectionData.fromQRString("https://host?serverUrl=http://h:3001"),
       ).toBeNull();
     });
 
     it("returns null when serverUrl param is absent", () => {
-      expect(
-        ConnectionData.fromQRString("https://host?roomId=r"),
-      ).toBeNull();
+      expect(ConnectionData.fromQRString("https://host?roomId=r")).toBeNull();
     });
   });
 
@@ -92,15 +91,11 @@ describe("ConnectionData.fromQRString", () => {
     });
 
     it("returns null when /room/ segment is absent", () => {
-      expect(
-        ConnectionData.fromQRString("http://host:3001/api/v1"),
-      ).toBeNull();
+      expect(ConnectionData.fromQRString("http://host:3001/api/v1")).toBeNull();
     });
 
     it("returns null when /room/ has no following segment", () => {
-      expect(
-        ConnectionData.fromQRString("http://host:3001/room/"),
-      ).toBeNull();
+      expect(ConnectionData.fromQRString("http://host:3001/room/")).toBeNull();
     });
   });
 
@@ -143,7 +138,10 @@ describe("ConnectionData.fromManualInput", () => {
 describe("ConnectionData.isValid", () => {
   it("accepts http URL with port and non-empty roomId", () => {
     expect(
-      ConnectionData.fromManualInput("http://192.168.1.1:3001", "room").isValid(),
+      ConnectionData.fromManualInput(
+        "http://192.168.1.1:3001",
+        "room",
+      ).isValid(),
     ).toBe(true);
   });
 
@@ -178,15 +176,13 @@ describe("ConnectionData.isValid", () => {
   });
 
   it("returns false when serverUrl is empty", () => {
-    expect(
-      ConnectionData.fromManualInput("", "room").isValid(),
-    ).toBe(false);
+    expect(ConnectionData.fromManualInput("", "room").isValid()).toBe(false);
   });
 
   it("returns false for a completely invalid URL", () => {
-    expect(
-      ConnectionData.fromManualInput("not a url", "room").isValid(),
-    ).toBe(false);
+    expect(ConnectionData.fromManualInput("not a url", "room").isValid()).toBe(
+      false,
+    );
   });
 
   it("returns false when both fields are empty", () => {
