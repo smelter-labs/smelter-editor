@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { pathExists, readdir } from 'fs-extra';
 import { SmelterInstance, type RegisterSmelterInputOptions } from '../smelter';
 import { hlsUrlForKickChannel, hlsUrlForTwitchChannel } from '../streamlink';
@@ -52,6 +53,22 @@ export class InputManager {
     this.mp4Files = mp4SuggestionsMonitor.mp4Files;
   }
 
+  private createUniqueInputId(typeSegment: string): string {
+    const MAX_ATTEMPTS = 8;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+      const suffix = randomUUID();
+      const inputId = `${this.idPrefix}::${typeSegment}::${suffix}`;
+      if (!this.inputs.some((input) => input.inputId === inputId)) {
+        return inputId;
+      }
+      console.warn(
+        `[input] Collision while generating inputId room=${this.idPrefix} type=${typeSegment} attempt=${attempt + 1}`,
+      );
+    }
+
+    throw new Error(`Failed to generate unique inputId for ${typeSegment}`);
+  }
+
   getInput(inputId: string): RoomInputState {
     const input = this.inputs.find((i) => i.inputId === inputId);
     if (!input) throw new Error(`Input ${inputId} not found`);
@@ -102,12 +119,25 @@ export class InputManager {
   }
 
   private async addNewWhipInput(username: string): Promise<string> {
-    const inputId = `${this.idPrefix}::whip::${Date.now()}`;
+    const inputId = this.createUniqueInputId('whip');
     const isScreenshare = /\bscreenshare\b/i.test(username);
     const cleanUsername = username
       .replace(/\[(camera|screenshare|live)\]\s*/gi, '')
       .trim();
-    const liveTitle = isScreenshare ? '[Live] Screenshare' : '[Live] Camera';
+    const kindPrefix = isScreenshare ? '[Live] Screenshare' : '[Live] Camera';
+    const numberRegex = new RegExp(
+      `^${kindPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*#(\\d+)$`,
+    );
+    let maxNumber = 0;
+    for (const input of this.inputs) {
+      if (input.type !== 'whip') continue;
+      const match = input.metadata.title.match(numberRegex);
+      if (match) {
+        const n = Number(match[1]);
+        if (Number.isFinite(n) && n > maxNumber) maxNumber = n;
+      }
+    }
+    const liveTitle = `${kindPrefix} #${maxNumber + 1}`;
     const monitor = await WhipInputMonitor.startMonitor(cleanUsername);
     monitor.touch();
     this.inputs.push({
@@ -204,7 +234,7 @@ export class InputManager {
   }
 
   private async addDirectHlsInput(url: string): Promise<string> {
-    const inputId = `${this.idPrefix}::hls::${Date.now()}`;
+    const inputId = this.createUniqueInputId('hls');
     let label = url;
     try {
       const parsed = new URL(url);
@@ -249,7 +279,7 @@ export class InputManager {
     const baseDir = isAudio ? 'audios' : 'mp4s';
     const mp4Path = path.join(DATA_DIR, baseDir, resolvedFileName);
     const mp4Name = resolvedFileName;
-    const inputId = `${this.idPrefix}::local::sample_streamer::${Date.now()}`;
+    const inputId = this.createUniqueInputId('local');
 
     if (!(await pathExists(mp4Path))) {
       const titlePrefix = isAudio ? 'AUDIO' : 'MP4';
@@ -303,7 +333,7 @@ export class InputManager {
     title: string;
     description: string;
   }): string {
-    const inputId = `${this.idPrefix}::local::sample_streamer::${Date.now()}`;
+    const inputId = this.createUniqueInputId('local');
     this.inputs.push({
       inputId,
       type: 'local-mp4',
@@ -428,7 +458,7 @@ export class InputManager {
   ): Promise<string> {
     console.log('Adding image');
     const picturesDir = path.join(DATA_DIR, 'pictures');
-    const inputId = `${this.idPrefix}::image::${Date.now()}`;
+    const inputId = this.createUniqueInputId('image');
 
     let fileName = opts.fileName;
     let imageId = opts.imageId;
@@ -530,7 +560,7 @@ export class InputManager {
     opts: Extract<RegisterInputOptions, { type: 'text-input' }>,
   ): string {
     console.log('Adding text input');
-    const inputId = `${this.idPrefix}::text::${Date.now()}`;
+    const inputId = this.createUniqueInputId('text');
 
     this.inputs.push({
       inputId,
@@ -565,7 +595,7 @@ export class InputManager {
     opts: Extract<RegisterInputOptions, { type: 'game' }>,
   ): string {
     console.log('Adding game input');
-    const inputId = `${this.idPrefix}::game::${Date.now()}`;
+    const inputId = this.createUniqueInputId('game');
     const defaults = createDefaultSnakeGameInputState(opts.title);
 
     this.inputs.push({
@@ -592,7 +622,7 @@ export class InputManager {
     opts: Extract<RegisterInputOptions, { type: 'hands' }>,
   ): Promise<string> {
     console.log('Adding hands input');
-    const inputId = `${this.idPrefix}::hands::${Date.now()}`;
+    const inputId = this.createUniqueInputId('hands');
     const handsStore = createHandsStore();
 
     this.inputs.push({
@@ -836,24 +866,46 @@ export class InputManager {
 
     if (options.attachedInputIds !== undefined)
       input.attachedInputIds = options.attachedInputIds;
+    // For absolute-position and crop fields `null` is an explicit reset to
+    // `undefined` (see UpdateInputOptions in @smelter-editor/types).  The
+    // timeline restore path relies on this to clear fields the snapshot had
+    // as `undefined`.
     if (options.absolutePosition !== undefined)
-      input.absolutePosition = options.absolutePosition;
+      input.absolutePosition =
+        options.absolutePosition === null ? undefined : options.absolutePosition;
     if (options.absoluteTop !== undefined)
-      input.absoluteTop = options.absoluteTop;
+      input.absoluteTop =
+        options.absoluteTop === null ? undefined : options.absoluteTop;
     if (options.absoluteLeft !== undefined)
-      input.absoluteLeft = options.absoluteLeft;
+      input.absoluteLeft =
+        options.absoluteLeft === null ? undefined : options.absoluteLeft;
     if (options.absoluteWidth !== undefined)
-      input.absoluteWidth = options.absoluteWidth;
+      input.absoluteWidth =
+        options.absoluteWidth === null ? undefined : options.absoluteWidth;
     if (options.absoluteHeight !== undefined)
-      input.absoluteHeight = options.absoluteHeight;
+      input.absoluteHeight =
+        options.absoluteHeight === null ? undefined : options.absoluteHeight;
     if (options.absoluteTransitionDurationMs !== undefined)
-      input.absoluteTransitionDurationMs = options.absoluteTransitionDurationMs;
+      input.absoluteTransitionDurationMs =
+        options.absoluteTransitionDurationMs === null
+          ? undefined
+          : options.absoluteTransitionDurationMs;
     if (options.absoluteTransitionEasing !== undefined)
-      input.absoluteTransitionEasing = options.absoluteTransitionEasing;
-    if (options.cropTop !== undefined) input.cropTop = options.cropTop;
-    if (options.cropLeft !== undefined) input.cropLeft = options.cropLeft;
-    if (options.cropRight !== undefined) input.cropRight = options.cropRight;
-    if (options.cropBottom !== undefined) input.cropBottom = options.cropBottom;
+      input.absoluteTransitionEasing =
+        options.absoluteTransitionEasing === null
+          ? undefined
+          : options.absoluteTransitionEasing;
+    if (options.cropTop !== undefined)
+      input.cropTop = options.cropTop === null ? undefined : options.cropTop;
+    if (options.cropLeft !== undefined)
+      input.cropLeft =
+        options.cropLeft === null ? undefined : options.cropLeft;
+    if (options.cropRight !== undefined)
+      input.cropRight =
+        options.cropRight === null ? undefined : options.cropRight;
+    if (options.cropBottom !== undefined)
+      input.cropBottom =
+        options.cropBottom === null ? undefined : options.cropBottom;
 
     if (options.activeTransition !== undefined) {
       const existingTimer = this.transitionTimers.get(inputId);

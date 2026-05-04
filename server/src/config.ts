@@ -53,7 +53,7 @@ function buildH264Encoder(): Outputs.WhepVideoEncoderOptions {
 
   if (useVulkan) {
     const bitrate =
-      Number(process.env.SMELTER_H264_ENCODER_BITRATE) || 50_000_000;
+      Number(process.env.SMELTER_H264_ENCODER_BITRATE) || 10_000_000;
     return { type: 'vulkan_h264', bitrate };
   }
 
@@ -87,7 +87,7 @@ export const config: Config = isProduction
         level: (process.env.SMELTER_DEMO_ROUTER_LOGGER_LEVEL ?? 'warn') as any,
       },
       ...productionWebRtcBaseUrls(),
-      h264Decoder: 'ffmpeg_h264',
+      h264Decoder: 'vulkan_h264',
       h264Encoder: buildH264Encoder(),
       snakeVisualSpeedMultiplier,
     }

@@ -709,6 +709,66 @@ describe('RoomState', () => {
       const ids = room.getState().layers[0]!.inputs.map((i) => i.inputId);
       expect(ids).toEqual(['c', 'a', 'b']);
     });
+
+    it('deduplicates repeated input IDs within the same layer', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      await room.updateLayers([
+        {
+          id: 'layer-1',
+          inputs: [
+            { inputId: 'dup', x: 0, y: 0, width: 100, height: 100 },
+            { inputId: 'dup', x: 50, y: 60, width: 200, height: 200 },
+            { inputId: 'other', x: 10, y: 20, width: 80, height: 80 },
+          ],
+        },
+      ]);
+
+      const layer = room.getState().layers[0]!;
+      expect(layer.inputs.map((input) => input.inputId)).toEqual([
+        'dup',
+        'other',
+      ]);
+      expect(layer.inputs[0]).toMatchObject({
+        inputId: 'dup',
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+      });
+    });
+
+    it('applies the same dedupe behavior when restoring layers', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      await room.restoreLayers([
+        {
+          id: 'layer-1',
+          inputs: [
+            { inputId: 'dup', x: 0, y: 0, width: 100, height: 100 },
+            { inputId: 'dup', x: 99, y: 99, width: 50, height: 50 },
+            { inputId: 'second', x: 12, y: 12, width: 64, height: 64 },
+          ],
+        },
+      ]);
+
+      const layer = room.getState().layers[0]!;
+      expect(layer.inputs.map((input) => input.inputId)).toEqual([
+        'dup',
+        'second',
+      ]);
+      expect(layer.inputs[0]).toMatchObject({
+        inputId: 'dup',
+        x: 0,
+        y: 0,
+        width: 100,
+        height: 100,
+      });
+    });
   });
 
   describe('behavior layers', () => {
@@ -1045,7 +1105,10 @@ describe('RoomState', () => {
 
       const id1 = (await room.addNewInput({ type: 'text-input', text: 'A' }))!;
       const id2 = (await room.addNewInput({ type: 'game', title: 'B' }))!;
-      const id3 = (await room.addNewInput({ type: 'text-input', text: 'C' }))!;
+      const id3 = (await room.addNewInput({
+        type: 'hands',
+        sourceInputId: id1,
+      }))!;
 
       await room.connectInput(id1);
       await room.connectInput(id2);
@@ -1629,7 +1692,10 @@ describe('RoomState', () => {
       return { room, output, inputId };
     }
 
-    function createMp4TimelineConfig(inputId: string): TimelineConfig {
+    function createMp4TimelineConfig(
+      inputId: string,
+      mp4Loop = false,
+    ): TimelineConfig {
       return {
         tracks: [
           {
@@ -1646,7 +1712,7 @@ describe('RoomState', () => {
                   shaders: [],
 
                   mp4PlayFromMs: 0,
-                  mp4Loop: true,
+                  mp4Loop,
                 },
                 keyframes: [],
               },
@@ -1717,6 +1783,43 @@ describe('RoomState', () => {
       } finally {
         vi.useRealTimers();
       }
+    });
+
+    it('keeps looped local MP4 playback visible while paused and mutes audio', async () => {
+      const { room, inputId } = await createRoomWithMp4();
+      const config = createMp4TimelineConfig(inputId, true);
+
+      await room.startTimelinePlayback(config, 0);
+      mocks.smelter.extractMp4Frame.mockClear();
+      mocks.smelter.registerImage.mockClear();
+
+      await room.pauseTimeline();
+
+      expect(mocks.smelter.extractMp4Frame).not.toHaveBeenCalled();
+      const frozenCalls = mocks.smelter.registerImage.mock.calls.filter(
+        (c: any[]) => typeof c[0] === 'string' && c[0].startsWith('frozen::'),
+      );
+      expect(frozenCalls).toHaveLength(0);
+
+      const inputDuringPause = room.getInputs().find((i) => i.inputId === inputId);
+      expect(inputDuringPause?.volume).toBe(0);
+    });
+
+    it('keeps frozen frame behavior for non-loop local MP4 during pause', async () => {
+      const { room, inputId } = await createRoomWithMp4();
+      const config = createMp4TimelineConfig(inputId, false);
+
+      await room.startTimelinePlayback(config, 0);
+      mocks.smelter.extractMp4Frame.mockClear();
+      mocks.smelter.registerImage.mockClear();
+
+      await room.pauseTimeline();
+
+      expect(mocks.smelter.extractMp4Frame).toHaveBeenCalled();
+      const frozenCalls = mocks.smelter.registerImage.mock.calls.filter(
+        (c: any[]) => typeof c[0] === 'string' && c[0].startsWith('frozen::'),
+      );
+      expect(frozenCalls.length).toBeGreaterThan(0);
     });
 
     it('clears store reference before deferring unregister', async () => {
@@ -1794,6 +1897,29 @@ describe('RoomState', () => {
       await room.applyTimelineState(createMp4TimelineConfig(inputId), 3_000);
 
       expect(mocks.smelter.extractMp4Frame).not.toHaveBeenCalled();
+    });
+
+    it('mutes audio-backed local MP4 inputs while paused', async () => {
+      mocks.pathExists.mockResolvedValue(true);
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const inputId = (await room.addNewInput({
+        type: 'local-mp4',
+        source: { audioFileName: 'test-audio.mp4' },
+      }))!;
+      await room.connectInput(inputId);
+
+      await room.startTimelinePlayback(createMp4TimelineConfig(inputId, true), 0);
+
+      const duringPlayback = room.getInputs().find((i) => i.inputId === inputId);
+      expect(duringPlayback?.volume).toBe(1);
+
+      await room.pauseTimeline();
+
+      const duringPause = room.getInputs().find((i) => i.inputId === inputId);
+      expect(duringPause?.volume).toBe(0);
     });
 
     it('clamps non-loop scrub frozen frame timestamp to media tail', async () => {

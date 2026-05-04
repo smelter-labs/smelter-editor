@@ -10,7 +10,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react';
 import { createPortal } from 'react-dom';
-import type { Input } from '@/lib/types';
+import type { Input, Layer } from '@/lib/types';
 import { useActions } from '../contexts/actions-context';
 import { useRecordingControls } from '../hooks/use-recording-controls';
 import type { InputWrapper } from '../hooks/use-control-panel-state';
@@ -97,6 +97,7 @@ import {
 } from './timeline/timeline-events';
 import { ResolveMissingAssetModal } from './ResolveMissingAssetModal';
 import { toast } from 'sonner';
+import { shouldIgnoreGlobalShortcut } from '@/lib/keyboard';
 
 // ── Props ────────────────────────────────────────────────
 
@@ -104,6 +105,7 @@ export type TimelinePanelActions = {
   applyAtPlayhead: () => Promise<void>;
   play: () => Promise<void>;
   recordAndPlay: () => Promise<void>;
+  commitSceneAtPlayheadToTimeline: () => void;
 };
 
 type TimelinePanelProps = {
@@ -123,7 +125,54 @@ type TimelinePanelProps = {
     loadState: (state: TimelineState) => void,
   ) => void;
   onTimelineActionsReady?: (actions: TimelinePanelActions | null) => void;
+  onBeforePlay?: () => Promise<boolean>;
+  onTimelineQueueStateChange?: (locked: boolean) => void;
+  layers?: Layer[];
+  sortMode?: 'timeline' | 'layers';
+  onSortModeChange?: (mode: 'timeline' | 'layers') => void;
+  sortModeSwitchDisabled?: boolean;
+  sortModeSwitchReason?: string;
 };
+
+function replaceLayerInputId(
+  layers: Layer[],
+  oldInputId: string,
+  newInputId: string,
+): Layer[] {
+  if (oldInputId === newInputId) return layers;
+
+  let changed = false;
+  const nextLayers = layers.map((layer) => {
+    let layerChanged = false;
+    const seen = new Set<string>();
+    const nextInputs: Layer['inputs'] = [];
+
+    for (const input of layer.inputs) {
+      const nextInputId =
+        input.inputId === oldInputId ? newInputId : input.inputId;
+      if (nextInputId !== input.inputId) {
+        layerChanged = true;
+      }
+      if (seen.has(nextInputId)) {
+        // Prevent duplicate layer entries after replacing input IDs.
+        layerChanged = true;
+        continue;
+      }
+      seen.add(nextInputId);
+      nextInputs.push(
+        nextInputId === input.inputId
+          ? input
+          : { ...input, inputId: nextInputId },
+      );
+    }
+
+    if (!layerChanged) return layer;
+    changed = true;
+    return { ...layer, inputs: nextInputs };
+  });
+
+  return changed ? nextLayers : layers;
+}
 
 // Color maps, constants, and utility functions are in ./timeline/timeline-utils.ts
 
@@ -215,8 +264,15 @@ export const TimelinePanel = memo(function TimelinePanel({
   onTimelineStateChange,
   onTimelineLoadStateReady,
   onTimelineActionsReady,
+  onBeforePlay,
+  onTimelineQueueStateChange,
+  layers = [],
+  sortMode = 'timeline',
+  onSortModeChange,
+  sortModeSwitchDisabled = false,
+  sortModeSwitchReason,
 }: TimelinePanelProps) {
-  const { removeInput } = useActions();
+  const { removeInput, updateRoom } = useActions();
   const {
     inputs,
     roomId,
@@ -544,10 +600,30 @@ export const TimelinePanel = memo(function TimelinePanel({
     return listenTimelineEvent(
       TIMELINE_EVENTS.SWAP_CLIP_INPUT,
       ({ trackId, clipId, newInputId, sourceUpdates }) => {
+        const oldInputId = state.tracks
+          .find((track) => track.id === trackId)
+          ?.clips.find((clip) => clip.id === clipId)?.inputId;
+
         swapClipInput(trackId, clipId, newInputId, sourceUpdates);
+
+        if (!oldInputId || oldInputId === newInputId || layers.length === 0) {
+          return;
+        }
+
+        const nextLayers = replaceLayerInputId(layers, oldInputId, newInputId);
+        if (nextLayers === layers) {
+          return;
+        }
+
+        void updateRoom(roomId, { layers: nextLayers }).catch((err) => {
+          console.error(
+            '[timeline] Failed to sync swapped input in layers',
+            err,
+          );
+        });
       },
     );
-  }, [swapClipInput]);
+  }, [layers, roomId, state.tracks, swapClipInput, updateRoom]);
 
   // Auto-create keyframe when layout map position changes
   useEffect(() => {
@@ -697,6 +773,9 @@ export const TimelinePanel = memo(function TimelinePanel({
     }
     return null;
   })();
+  useEffect(() => {
+    onTimelineQueueStateChange?.(isTimelineInteractionLocked);
+  }, [isTimelineInteractionLocked, onTimelineQueueStateChange]);
   const runTimelineActionWithToast = useCallback(
     async (
       messages: {
@@ -731,6 +810,10 @@ export const TimelinePanel = memo(function TimelinePanel({
   );
 
   const handlePlay = useCallback(async () => {
+    if (onBeforePlay) {
+      const allowed = await onBeforePlay();
+      if (!allowed) return;
+    }
     await runTimelineActionWithToast(
       {
         pending: isPaused ? 'Resuming timeline...' : 'Starting timeline...',
@@ -739,7 +822,7 @@ export const TimelinePanel = memo(function TimelinePanel({
       },
       play,
     );
-  }, [isPaused, play, runTimelineActionWithToast]);
+  }, [isPaused, onBeforePlay, play, runTimelineActionWithToast]);
 
   const handlePlayPauseToggle = useCallback(async () => {
     if (state.isPlaying) {
@@ -779,6 +862,69 @@ export const TimelinePanel = memo(function TimelinePanel({
     );
   }, [applyAtPlayhead, runTimelineActionWithToast]);
 
+  const commitSceneAtPlayheadToTimeline = useCallback(() => {
+    const playheadMs = state.playheadMs;
+    for (const track of state.tracks) {
+      for (const clip of track.clips) {
+        if (clip.inputId === OUTPUT_TRACK_INPUT_ID) continue;
+        if (playheadMs < clip.startMs || playheadMs >= clip.endMs) continue;
+        const input = inputs.find(
+          (candidate) => candidate.inputId === clip.inputId,
+        );
+        if (!input) continue;
+        const layerInput = layers
+          .flatMap((layer) => layer.inputs)
+          .find((layerItem) => layerItem.inputId === clip.inputId);
+        updateClipSettings(track.id, clip.id, {
+          volume: input.volume,
+          shaders: input.shaders,
+          showTitle: input.showTitle,
+          text: input.text,
+          textAlign: input.textAlign,
+          textColor: input.textColor,
+          textMaxLines: input.textMaxLines,
+          textScrollEnabled: input.textScrollEnabled,
+          textScrollSpeed: input.textScrollSpeed,
+          textScrollLoop: input.textScrollLoop,
+          textFontSize: input.textFontSize,
+          borderColor: input.borderColor,
+          borderWidth: input.borderWidth,
+          attachedInputIds: input.attachedInputIds,
+          snake1Shaders: input.snake1Shaders,
+          snake2Shaders: input.snake2Shaders,
+          absolutePosition: input.absolutePosition,
+          absoluteTop: input.absoluteTop,
+          absoluteLeft: input.absoluteLeft,
+          absoluteWidth: input.absoluteWidth,
+          absoluteHeight: input.absoluteHeight,
+          absoluteTransitionDurationMs: input.absoluteTransitionDurationMs,
+          absoluteTransitionEasing: input.absoluteTransitionEasing,
+          cropTop: input.cropTop,
+          cropLeft: input.cropLeft,
+          cropRight: input.cropRight,
+          cropBottom: input.cropBottom,
+          gameBackgroundColor: input.gameBackgroundColor,
+          gameCellGap: input.gameCellGap,
+          gameBoardBorderColor: input.gameBoardBorderColor,
+          gameBoardBorderWidth: input.gameBoardBorderWidth,
+          gameGridLineColor: input.gameGridLineColor,
+          gameGridLineAlpha: input.gameGridLineAlpha,
+          snakeEventShaders: input.snakeEventShaders,
+          ...(layerInput
+            ? {
+                absoluteLeft: layerInput.x,
+                absoluteTop: layerInput.y,
+                absoluteWidth: layerInput.width,
+                absoluteHeight: layerInput.height,
+                absoluteTransitionDurationMs: layerInput.transitionDurationMs,
+                absoluteTransitionEasing: layerInput.transitionEasing,
+              }
+            : {}),
+        });
+      }
+    }
+  }, [inputs, layers, state.playheadMs, state.tracks, updateClipSettings]);
+
   const handleRecordAndPlay = useCallback(async () => {
     if (isTogglingRecording) return;
     if (isRecording) {
@@ -796,6 +942,10 @@ export const TimelinePanel = memo(function TimelinePanel({
     }
     const started = await startRec();
     if (started) {
+      if (onBeforePlay) {
+        const allowed = await onBeforePlay();
+        if (!allowed) return;
+      }
       await runTimelineActionWithToast(
         {
           pending: isPaused ? 'Resuming timeline...' : 'Starting timeline...',
@@ -813,6 +963,7 @@ export const TimelinePanel = memo(function TimelinePanel({
     pause,
     startRec,
     stopAndDownload,
+    onBeforePlay,
     timelineControlsDisabled,
     runTimelineActionWithToast,
   ]);
@@ -822,12 +973,14 @@ export const TimelinePanel = memo(function TimelinePanel({
       applyAtPlayhead: handleApplyAtPlayhead,
       play: handlePlay,
       recordAndPlay: handleRecordAndPlay,
+      commitSceneAtPlayheadToTimeline,
     });
     return () => {
       onTimelineActionsReady?.(null);
     };
   }, [
     handleApplyAtPlayhead,
+    commitSceneAtPlayheadToTimeline,
     handlePlay,
     handleRecordAndPlay,
     onTimelineActionsReady,
@@ -1407,9 +1560,8 @@ export const TimelinePanel = memo(function TimelinePanel({
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // Don't intercept when typing in input/textarea
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      // Don't intercept typing in any editable field (including contenteditable).
+      if (shouldIgnoreGlobalShortcut(e.target)) return;
 
       const key = e.key;
       const ctrl = e.ctrlKey || e.metaKey;
@@ -1432,6 +1584,7 @@ export const TimelinePanel = memo(function TimelinePanel({
           break;
         }
         case ' ': {
+          if (!e.ctrlKey) break;
           e.preventDefault();
           void handlePlayPauseToggle();
           break;
@@ -2187,6 +2340,7 @@ export const TimelinePanel = memo(function TimelinePanel({
       closeContextMenu();
     };
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (shouldIgnoreGlobalShortcut(e.target)) return;
       if (e.key === 'Escape') closeContextMenu();
     };
 
@@ -2687,6 +2841,37 @@ export const TimelinePanel = memo(function TimelinePanel({
             isPlaying={state.isPlaying}
             onChange={setTotalDuration}
           />
+        </div>
+
+        <div className='ml-2 flex items-center gap-1 rounded border border-border bg-background/60 p-0.5'>
+          <Button
+            type='button'
+            variant='ghost'
+            size='sm'
+            className={`rounded px-2 py-0.5 h-auto text-[10px] uppercase tracking-wide cursor-pointer ${
+              sortMode === 'timeline'
+                ? 'bg-secondary text-foreground'
+                : 'text-muted-foreground hover:text-card-foreground'
+            }`}
+            onClick={() => onSortModeChange?.('timeline')}
+            disabled={sortModeSwitchDisabled}
+            title={sortModeSwitchReason ?? 'Timeline sorting mode'}>
+            Timeline
+          </Button>
+          <Button
+            type='button'
+            variant='ghost'
+            size='sm'
+            className={`rounded px-2 py-0.5 h-auto text-[10px] uppercase tracking-wide cursor-pointer ${
+              sortMode === 'layers'
+                ? 'bg-secondary text-foreground'
+                : 'text-muted-foreground hover:text-card-foreground'
+            }`}
+            onClick={() => onSortModeChange?.('layers')}
+            disabled={sortModeSwitchDisabled}
+            title={sortModeSwitchReason ?? 'Layers sorting mode'}>
+            Layers
+          </Button>
         </div>
 
         <div className='flex-1' />
@@ -3475,7 +3660,7 @@ export const TimelinePanel = memo(function TimelinePanel({
                 <ShortcutGroup
                   title='Playback & Navigation'
                   items={[
-                    ['Space', 'Play / Pause'],
+                    ['Ctrl + Space', 'Play / Pause'],
                     ['Home', 'Go to start'],
                     ['End', 'Go to end'],
                     ['← / →', 'Move playhead ±1s'],

@@ -122,6 +122,14 @@ export const STATIC_PANEL_IDS: StaticPanelId[] = Object.keys(
   STATIC_PANEL_DEFINITIONS,
 ) as StaticPanelId[];
 
+export const DEFAULT_VISIBLE_PANEL_IDS: StaticPanelId[] = [
+  'video-preview',
+  'streams',
+  'timeline',
+  'block-properties',
+  'system-log',
+];
+
 export const MOTION_PANEL_MIN_W =
   STATIC_PANEL_DEFINITIONS['motion-detection'].minW;
 export const MOTION_PANEL_MIN_H =
@@ -147,16 +155,16 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
     id: 'default',
     label: 'Default',
     layout: [
-      { i: 'video-preview', x: 0, y: 0, w: 16, h: 20, minW: 6, minH: 6 },
-      { i: 'streams', x: 16, y: 0, w: 8, h: 14, minW: 4, minH: 4 },
-      { i: 'fx', x: 16, y: 14, w: 8, h: 8, minW: 4, minH: 4 },
-      { i: 'timeline', x: 0, y: 20, w: 16, h: 8, minW: 8, minH: 4 },
-      { i: 'block-properties', x: 0, y: 28, w: 16, h: 8, minW: 4, minH: 6 },
-      { i: 'pending-connections', x: 16, y: 30, w: 8, h: 6, minW: 4, minH: 3 },
-      { i: 'connected-devices', x: 16, y: 22, w: 8, h: 8, minW: 4, minH: 4 },
-      { i: 'system-log', x: 0, y: 36, w: 16, h: 6, minW: 4, minH: 4 },
-      { i: 'motion-detection', x: 16, y: 36, w: 8, h: 6, minW: 4, minH: 4 },
-      { i: 'layout-preview', x: 0, y: 42, w: 24, h: 6, minW: 4, minH: 4 },
+      { i: 'video-preview', x: 0, y: 0, w: 12, h: 20, minW: 6, minH: 6 },
+      { i: 'streams', x: 12, y: 0, w: 5, h: 15, minW: 4, minH: 4 },
+      { i: 'timeline', x: 0, y: 20, w: 17, h: 12, minW: 8, minH: 4 },
+      { i: 'block-properties', x: 17, y: 0, w: 7, h: 26, minW: 4, minH: 6 },
+      { i: 'system-log', x: 17, y: 26, w: 7, h: 6, minW: 4, minH: 3 },
+      { i: 'connected-devices', x: 16, y: 32, w: 4, h: 6, minW: 4, minH: 4 },
+      { i: 'layout-preview', x: 12, y: 0, w: 5, h: 9, minW: 4, minH: 3 },
+      { i: 'pending-connections', x: 0, y: 31, w: 8, h: 5, minW: 4, minH: 3 },
+      { i: 'fx', x: 16, y: 22, w: 8, h: 8, minW: 4, minH: 4 },
+      { i: 'motion-detection', x: 0, y: 67, w: 8, h: 6, minW: 4, minH: 4 },
     ],
   },
   {
@@ -401,16 +409,18 @@ export function clearLayout(): void {
 const VISIBLE_PANELS_KEY = 'smelter-dashboard-visible-panels';
 
 export function loadVisiblePanels(): Set<string> {
-  if (typeof window === 'undefined') return new Set<string>(STATIC_PANEL_IDS);
+  if (typeof window === 'undefined')
+    return new Set<string>(DEFAULT_VISIBLE_PANEL_IDS);
   try {
     const stored = localStorage.getItem(VISIBLE_PANELS_KEY);
-    if (!stored) return new Set<string>(STATIC_PANEL_IDS);
+    if (!stored) return new Set<string>(DEFAULT_VISIBLE_PANEL_IDS);
     const parsed = JSON.parse(stored) as string[];
-    if (!Array.isArray(parsed)) return new Set<string>(STATIC_PANEL_IDS);
+    if (!Array.isArray(parsed))
+      return new Set<string>(DEFAULT_VISIBLE_PANEL_IDS);
     const valid = parsed.filter((id) => isKnownPanelId(id));
-    return new Set(valid.length > 0 ? valid : STATIC_PANEL_IDS);
+    return new Set(valid.length > 0 ? valid : DEFAULT_VISIBLE_PANEL_IDS);
   } catch {
-    return new Set<string>(STATIC_PANEL_IDS);
+    return new Set<string>(DEFAULT_VISIBLE_PANEL_IDS);
   }
 }
 

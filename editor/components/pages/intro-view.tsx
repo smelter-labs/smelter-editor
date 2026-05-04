@@ -76,6 +76,7 @@ import {
   type CrashRecoveryData,
 } from '@/lib/crash-recovery';
 import { SettingsModal } from '@/components/settings-modal';
+import { SERVER_PRESETS, getEffectiveClientServerUrl } from '@/lib/server-url';
 
 function getBasePath(pathname: string): string {
   // Remove trailing slash if present
@@ -121,6 +122,10 @@ export default function IntroView() {
     setCrashRecovery(loadCrashRecoveryConfig());
   }, []);
 
+  useEffect(() => {
+    setCurrentServerUrl(getEffectiveClientServerUrl());
+  }, []);
+
   const handleRecoveryDismiss = useCallback(() => {
     clearCrashRecoveryConfig();
     setCrashRecovery(null);
@@ -131,6 +136,7 @@ export default function IntroView() {
   const [desktopIntroOffset, setDesktopIntroOffset] = useState<number | null>(
     null,
   );
+  const [currentServerUrl, setCurrentServerUrl] = useState<string | null>(null);
 
   // Suggestions state
   const [twitchSuggestions, setTwitchSuggestions] = useState<any[]>([]);
@@ -145,6 +151,9 @@ export default function IntroView() {
   };
   const [rooms, setRooms] = useState<Room[]>([]);
   const [loadingRooms, setLoadingRooms] = useState(true);
+  const [deletingRoomIds, setDeletingRoomIds] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   // Load suggestions on mount
   useEffect(() => {
@@ -317,7 +326,12 @@ export default function IntroView() {
   const importConfig = useCallback(
     async (
       config: RoomConfig,
-      showcaseWelcome?: { before: string; after: string },
+      showcaseWelcome?: {
+        before: string;
+        after: string;
+        farewellTitle?: string;
+        farewellDescription?: string;
+      },
     ) => {
       setLoadingImport(true);
       setImportProgress({ phase: 'Creating room', current: 0, total: 1 });
@@ -462,6 +476,8 @@ export default function IntroView() {
         await importConfig(presentation.roomConfig, {
           before: presentation.welcomeTextBefore || '',
           after: presentation.welcomeTextAfter || '',
+          farewellTitle: presentation.farewellTitle || '',
+          farewellDescription: presentation.farewellDescription || '',
         });
       } catch (err: any) {
         console.error('Showcase start failed:', err);
@@ -495,6 +511,26 @@ export default function IntroView() {
     [importConfig],
   );
 
+  const currentServerLabel = (() => {
+    if (!currentServerUrl) {
+      return 'Loading...';
+    }
+
+    const normalized = currentServerUrl.replace(/\/$/, '');
+    const preset = SERVER_PRESETS.find(
+      (item) => item.url && item.url.replace(/\/$/, '') === normalized,
+    );
+    if (preset) {
+      return preset.label;
+    }
+
+    try {
+      return new URL(normalized).host;
+    } catch {
+      return normalized;
+    }
+  })();
+
   return (
     <motion.div
       variants={staggerContainer}
@@ -514,13 +550,25 @@ export default function IntroView() {
           className='border-1 rounded-none border-neutral-800 text-center justify-center items-center w-full max-w-[600px] p-4 sm:p-8'
           layout>
           <div className='flex justify-end'>
-            <button
-              type='button'
-              onClick={() => setShowSettings(true)}
-              className='inline-flex items-center justify-center rounded border border-neutral-700 bg-neutral-900 p-2 text-neutral-300 transition-colors hover:text-white hover:border-neutral-500 cursor-pointer'
-              aria-label='Open server settings'>
-              <Settings className='w-4 h-4' />
-            </button>
+            <div className='inline-flex items-center gap-2'>
+              <span
+                className='inline-flex max-w-[280px] items-center gap-1 rounded border border-neutral-800 bg-neutral-950 px-2 py-1 text-[11px] text-neutral-300'
+                title={
+                  currentServerUrl
+                    ? `Current server: ${currentServerUrl}`
+                    : 'Loading current server...'
+                }>
+                <span className='text-neutral-500'>Server</span>
+                <span className='truncate'>{currentServerLabel}</span>
+              </span>
+              <button
+                type='button'
+                onClick={() => setShowSettings(true)}
+                className='inline-flex items-center justify-center rounded border border-neutral-700 bg-neutral-900 p-2 text-neutral-300 transition-colors hover:text-white hover:border-neutral-500 cursor-pointer'
+                aria-label='Open server settings'>
+                <Settings className='w-4 h-4' />
+              </button>
+            </div>
           </div>
           <div ref={centeredContentRef}>
             {crashRecovery && (
@@ -785,7 +833,14 @@ export default function IntroView() {
                           variant='destructive'
                           className='cursor-pointer flex-1 sm:flex-none'
                           title='Delete Room'
+                          disabled={deletingRoomIds.has(room.roomId)}
                           onClick={async () => {
+                            if (deletingRoomIds.has(room.roomId)) return;
+                            setDeletingRoomIds((prev) => {
+                              const next = new Set(prev);
+                              next.add(room.roomId);
+                              return next;
+                            });
                             try {
                               await deleteRoom(room.roomId);
                               setRooms((prev) =>
@@ -793,9 +848,19 @@ export default function IntroView() {
                               );
                             } catch (err) {
                               console.error('Failed to delete room:', err);
+                            } finally {
+                              setDeletingRoomIds((prev) => {
+                                const next = new Set(prev);
+                                next.delete(room.roomId);
+                                return next;
+                              });
                             }
                           }}>
-                          <Trash2 className='w-4 h-4' />
+                          {deletingRoomIds.has(room.roomId) ? (
+                            <LoadingSpinner size='sm' variant='spinner' />
+                          ) : (
+                            <Trash2 className='w-4 h-4' />
+                          )}
                         </Button>
                       </div>
                     </div>

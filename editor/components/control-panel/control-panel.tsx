@@ -13,6 +13,7 @@ import type {
 } from '@/lib/types';
 import { useActions } from './contexts/actions-context';
 import { ActionsProvider } from './contexts/actions-context';
+import type { ControlPanelActions } from './contexts/actions-context';
 import { defaultActions, SESSION_SOURCE_ID } from './contexts/default-actions';
 import {
   RECORDING_DOWNLOAD_STARTED_EVENT,
@@ -47,6 +48,7 @@ import { AddVideoModal } from './components/AddVideoModal';
 import { FxCanvas, FX_PRESET_MODAL } from '@/lib/fx';
 import { type PendingWhipInput } from './components/ConfigurationSection';
 import { getEffectiveClientServerUrl, toWsUrl } from '@/lib/server-url';
+import { resolutionToLabel } from '@/lib/resolution';
 import {
   exportRoomConfig,
   downloadRoomConfig,
@@ -72,10 +74,6 @@ import { setAudioAnalysisEnabled } from '@/app/actions/actions';
 import { TransitionSettings } from './components/TransitionSettings';
 import { BehaviorSelector } from './components/BehaviorSelector';
 import { ViewportSettings } from './components/ViewportSettings';
-import {
-  rotateBy90,
-  type RotationAngle,
-} from './whip-input/utils/whip-publisher';
 import { loadLastWhipInputId } from './whip-input/utils/whip-storage';
 import {
   ControlPanelProvider,
@@ -120,6 +118,7 @@ import {
 } from './components/PendingConnectionsPanel';
 import { PendingConnectionsModal } from './components/PendingConnectionsModal';
 import { ConnectPlayCompletionModal } from './components/ConnectPlayCompletionModal';
+import { TimelineConflictModal } from './components/TimelineConflictModal';
 import type { TimelineState } from './hooks/use-timeline-state';
 import {
   buildInputColorMap,
@@ -168,11 +167,6 @@ type ControlPanelProps = {
   roomState: RoomState;
   refreshState: () => Promise<void>;
   isGuest?: boolean;
-  onGuestStreamChange?: (stream: MediaStream | null) => void;
-  onGuestInputIdChange?: (inputId: string | null) => void;
-  onGuestRotateRef?: React.MutableRefObject<
-    (() => Promise<RotationAngle>) | null
-  >;
   renderStreamsOutside?: boolean;
   timelinePortalRef?: React.RefObject<HTMLDivElement | null>;
   settingsNavPortalRef?: React.RefObject<HTMLDivElement | null>;
@@ -192,6 +186,24 @@ type ControlPanelProps = {
     videoOverlayRects: VideoOverlayRect[];
   }) => React.ReactNode;
 };
+type ControlPanelWithActionsProps = ControlPanelProps & {
+  pendingMutationCount: number;
+  sceneMutationVersion: number;
+};
+
+type ShowcaseCopy = {
+  before: string;
+  after: string;
+  farewellTitle?: string;
+  farewellDescription?: string;
+};
+
+type ShowcaseSettingsPrefill = {
+  welcomeTextBefore: string;
+  welcomeTextAfter: string;
+  farewellTitle: string;
+  farewellDescription: string;
+};
 
 const VIDEO_INPUT_TYPES = new Set<string>([
   'local-mp4',
@@ -201,6 +213,7 @@ const VIDEO_INPUT_TYPES = new Set<string>([
   'whip',
 ]);
 const TIMELINE_END_TOLERANCE_MS = 2500;
+const SORT_MODE_STORAGE_KEY_PREFIX = 'smelter:timeline-sort-mode:';
 
 function hasSameLayerInputOrder(a: Layer[], b: Layer[]): boolean {
   if (a.length !== b.length) return false;
@@ -248,9 +261,113 @@ function buildLayersSortedForTimelineRender(
 }
 
 export default function ControlPanel(props: ControlPanelProps) {
+  const [pendingMutationCount, setPendingMutationCount] = useState(0);
+  const [sceneMutationVersion, setSceneMutationVersion] = useState(0);
+  const trackMutation = useCallback(
+    async <T,>(
+      operation: () => Promise<T>,
+      options?: { countAsSceneMutation?: boolean },
+    ): Promise<T> => {
+      setPendingMutationCount((prev) => prev + 1);
+      try {
+        const result = await operation();
+        if (options?.countAsSceneMutation !== false) {
+          setSceneMutationVersion((prev) => prev + 1);
+        }
+        return result;
+      } finally {
+        setPendingMutationCount((prev) => Math.max(0, prev - 1));
+      }
+    },
+    [],
+  );
+  const trackedActions = useMemo<ControlPanelActions>(() => {
+    return {
+      ...defaultActions,
+      updateRoom: (roomId, opts, sourceId) =>
+        trackMutation(() => defaultActions.updateRoom(roomId, opts, sourceId)),
+      updateInput: (roomId, inputId, opts, sourceId) =>
+        trackMutation(() =>
+          defaultActions.updateInput(roomId, inputId, opts, sourceId),
+        ),
+      removeInput: (roomId, inputId, sourceId) =>
+        trackMutation(() =>
+          defaultActions.removeInput(roomId, inputId, sourceId),
+        ),
+      disconnectInput: (roomId, inputId) =>
+        trackMutation(() => defaultActions.disconnectInput(roomId, inputId)),
+      connectInput: (roomId, inputId) =>
+        trackMutation(() => defaultActions.connectInput(roomId, inputId)),
+      hideInput: (roomId, inputId, sourceIdOrTransition) =>
+        trackMutation(() =>
+          defaultActions.hideInput(roomId, inputId, sourceIdOrTransition),
+        ),
+      showInput: (roomId, inputId, sourceIdOrTransition) =>
+        trackMutation(() =>
+          defaultActions.showInput(roomId, inputId, sourceIdOrTransition),
+        ),
+      addTwitchInput: (roomId, channelId) =>
+        trackMutation(() => defaultActions.addTwitchInput(roomId, channelId)),
+      addKickInput: (roomId, channelId) =>
+        trackMutation(() => defaultActions.addKickInput(roomId, channelId)),
+      addMP4Input: (roomId, mp4FileName) =>
+        trackMutation(() => defaultActions.addMP4Input(roomId, mp4FileName)),
+      addAudioInput: (roomId, audioFileName) =>
+        trackMutation(() =>
+          defaultActions.addAudioInput(roomId, audioFileName),
+        ),
+      addImageInput: (roomId, imageFileNameOrId) =>
+        trackMutation(() =>
+          defaultActions.addImageInput(roomId, imageFileNameOrId),
+        ),
+      addTextInput: (roomId, text, textAlign) =>
+        trackMutation(() =>
+          defaultActions.addTextInput(roomId, text, textAlign),
+        ),
+      addSnakeGameInput: (roomId, title) =>
+        trackMutation(() => defaultActions.addSnakeGameInput(roomId, title)),
+      addHlsInput: (roomId, url) =>
+        trackMutation(() => defaultActions.addHlsInput(roomId, url)),
+      addCameraInput: (roomId, username) =>
+        trackMutation(() => defaultActions.addCameraInput(roomId, username)),
+      restartMp4Input: (roomId, inputId, playFromMs, loop) =>
+        trackMutation(() =>
+          defaultActions.restartMp4Input(roomId, inputId, playFromMs, loop),
+        ),
+      setPendingWhipInputs: (roomId, pendingWhipInputs) =>
+        trackMutation(() =>
+          defaultActions.setPendingWhipInputs(roomId, pendingWhipInputs),
+        ),
+      acknowledgeWhipInput: (roomId, inputId) =>
+        trackMutation(() =>
+          defaultActions.acknowledgeWhipInput(roomId, inputId),
+        ),
+      startRecording: (roomId) =>
+        trackMutation(() => defaultActions.startRecording(roomId), {
+          countAsSceneMutation: false,
+        }),
+      stopRecording: (roomId) =>
+        trackMutation(() => defaultActions.stopRecording(roomId), {
+          countAsSceneMutation: false,
+        }),
+      restartService: () =>
+        trackMutation(() => defaultActions.restartService(), {
+          countAsSceneMutation: false,
+        }),
+      restartSmelter: () =>
+        trackMutation(() => defaultActions.restartSmelter(), {
+          countAsSceneMutation: false,
+        }),
+    };
+  }, [trackMutation]);
+
   return (
-    <ActionsProvider actions={defaultActions}>
-      <ControlPanelWithActions {...props} />
+    <ActionsProvider actions={trackedActions}>
+      <ControlPanelWithActions
+        {...props}
+        pendingMutationCount={pendingMutationCount}
+        sceneMutationVersion={sceneMutationVersion}
+      />
     </ActionsProvider>
   );
 }
@@ -260,14 +377,13 @@ function ControlPanelWithActions({
   roomId,
   roomState,
   isGuest,
-  onGuestStreamChange,
-  onGuestInputIdChange,
-  onGuestRotateRef,
   renderStreamsOutside,
   timelinePortalRef,
   settingsNavPortalRef,
   renderDashboard,
-}: ControlPanelProps) {
+  pendingMutationCount,
+  sceneMutationVersion,
+}: ControlPanelWithActionsProps) {
   const pendingWhipInputs: PendingWhipInput[] = (
     roomState.pendingWhipInputs || []
   ).map((p) => ({
@@ -325,7 +441,9 @@ function ControlPanelWithActions({
     [isSwapping, updateOrder, totalSwapMs, setIsSwapping, swapTimerRef],
   );
 
-  const updateRoomForLayers = useActions().updateRoom;
+  const actions = useActions();
+  const updateRoomForLayers = actions.updateRoom;
+  const setPendingWhipInputsAction = actions.setPendingWhipInputs;
   const handleLayersChange = useCallback(
     async (newLayers: Layer[]) => {
       try {
@@ -378,71 +496,6 @@ function ControlPanelWithActions({
     },
   });
 
-  useEffect(() => {
-    if (!isGuest || !onGuestStreamChange) return;
-    const stream =
-      cameraStreamRef.current || screenshareStreamRef.current || null;
-    onGuestStreamChange(stream);
-  }, [isGuest, onGuestStreamChange, isCameraActive, isScreenshareActive]);
-
-  useEffect(() => {
-    if (!isGuest || !onGuestInputIdChange) return;
-    onGuestInputIdChange(activeCameraInputId || activeScreenshareInputId);
-  }, [
-    isGuest,
-    onGuestInputIdChange,
-    activeCameraInputId,
-    activeScreenshareInputId,
-  ]);
-
-  useEffect(() => {
-    if (!isGuest || !onGuestRotateRef) return;
-    const guestInputId = activeCameraInputId || activeScreenshareInputId;
-    const pcRef = activeCameraInputId ? cameraPcRef : screensharePcRef;
-    const streamRef = activeCameraInputId
-      ? cameraStreamRef
-      : screenshareStreamRef;
-
-    onGuestRotateRef.current = guestInputId
-      ? async () => {
-          const angle = await rotateBy90(pcRef, streamRef);
-          const currentInput = inputs.find((i) => i.inputId === guestInputId);
-          await defaultActions.updateInput(roomId, guestInputId, {
-            volume: currentInput?.volume ?? 1,
-            shaders: currentInput?.shaders ?? [],
-          });
-          await handleRefreshState();
-          if (onGuestStreamChange && pcRef.current) {
-            const sender = pcRef.current
-              .getSenders()
-              .find((s) => s.track?.kind === 'video');
-            if (sender?.track) {
-              const previewStream = new MediaStream([sender.track]);
-              const raw = streamRef.current;
-              if (raw) {
-                for (const t of raw.getAudioTracks()) {
-                  previewStream.addTrack(t);
-                }
-              }
-              onGuestStreamChange(previewStream);
-            }
-          }
-          return angle;
-        }
-      : null;
-
-    return () => {
-      onGuestRotateRef.current = null;
-    };
-  }, [
-    isGuest,
-    onGuestRotateRef,
-    activeCameraInputId,
-    activeScreenshareInputId,
-    roomId,
-    handleRefreshState,
-  ]);
-
   const handleSetPendingWhipInputs = useCallback(
     async (newInputs: PendingWhipInput[]) => {
       const serverData: PendingWhipInputData[] = newInputs.map((p) => ({
@@ -453,10 +506,10 @@ function ControlPanelWithActions({
         shaders: p.config.shaders || [],
         position: p.position,
       }));
-      await defaultActions.setPendingWhipInputs(roomId, serverData);
+      await setPendingWhipInputsAction(roomId, serverData);
       await handleRefreshState();
     },
-    [roomId, handleRefreshState],
+    [roomId, handleRefreshState, setPendingWhipInputsAction],
   );
 
   const isRecordingFromServer = roomState.isRecording ?? false;
@@ -514,6 +567,8 @@ function ControlPanelWithActions({
           renderDashboard={renderDashboard}
           peers={peers}
           handleLayersChange={handleLayersChange}
+          pendingMutationCount={pendingMutationCount}
+          sceneMutationVersion={sceneMutationVersion}
         />
       </WhipConnectionsProvider>
     </ControlPanelProvider>
@@ -544,6 +599,8 @@ type ControlPanelInnerProps = {
   renderDashboard?: ControlPanelProps['renderDashboard'];
   peers: ConnectedPeer[];
   handleLayersChange: (layers: Layer[]) => Promise<void>;
+  pendingMutationCount: number;
+  sceneMutationVersion: number;
 };
 
 function ControlPanelInner({
@@ -568,6 +625,8 @@ function ControlPanelInner({
   renderDashboard,
   peers,
   handleLayersChange,
+  pendingMutationCount,
+  sceneMutationVersion,
 }: ControlPanelInnerProps) {
   const {
     roomId,
@@ -649,11 +708,39 @@ function ControlPanelInner({
   const previousTimelinePlayingRef = useRef(false);
   const [timelineActionsReady, setTimelineActionsReady] = useState(false);
   const isPersistingTimelineLayerOrderRef = useRef(false);
+  const [timelineQueueLocked, setTimelineQueueLocked] = useState(false);
+  const [sortMode, setSortMode] = useState<'timeline' | 'layers'>(() => {
+    if (typeof window === 'undefined') {
+      return 'timeline';
+    }
+    const stored = window.localStorage.getItem(
+      `${SORT_MODE_STORAGE_KEY_PREFIX}${roomId}`,
+    );
+    return stored === 'layers' ? 'layers' : 'timeline';
+  });
+  const [layersModeDirty, setLayersModeDirty] = useState(false);
+  const [conflictModalOpen, setConflictModalOpen] = useState(false);
+  const [conflictDecisionPending, setConflictDecisionPending] = useState(false);
+  const conflictResolverRef = useRef<
+    ((decision: 'apply' | 'discard' | 'cancel') => void) | null
+  >(null);
+  const sceneMutationBaselineRef = useRef(sceneMutationVersion);
 
-  const [showcaseWelcome, setShowcaseWelcome] = useState<{
-    before: string;
-    after: string;
-  } | null>(null);
+  const [showcaseWelcome, setShowcaseWelcome] = useState<ShowcaseCopy | null>(
+    null,
+  );
+  const showcaseSettingsPrefill =
+    useMemo<ShowcaseSettingsPrefill | null>(() => {
+      if (!showcaseWelcome) {
+        return null;
+      }
+      return {
+        welcomeTextBefore: showcaseWelcome.before || '',
+        welcomeTextAfter: showcaseWelcome.after || '',
+        farewellTitle: showcaseWelcome.farewellTitle || '',
+        farewellDescription: showcaseWelcome.farewellDescription || '',
+      };
+    }, [showcaseWelcome]);
 
   useEffect(() => {
     try {
@@ -661,13 +748,45 @@ function ControlPanelInner({
       const raw = sessionStorage.getItem(key);
       if (raw) {
         sessionStorage.removeItem(key);
-        const parsed = JSON.parse(raw);
-        if (parsed.before || parsed.after) {
-          setShowcaseWelcome(parsed);
+        const parsed = JSON.parse(raw) as Partial<ShowcaseCopy>;
+        if (
+          parsed.before ||
+          parsed.after ||
+          parsed.farewellTitle ||
+          parsed.farewellDescription
+        ) {
+          setShowcaseWelcome({
+            before: parsed.before || '',
+            after: parsed.after || '',
+            farewellTitle: parsed.farewellTitle || '',
+            farewellDescription: parsed.farewellDescription || '',
+          });
         }
       }
     } catch {}
   }, [roomId]);
+
+  useEffect(() => {
+    const key = `${SORT_MODE_STORAGE_KEY_PREFIX}${roomId}`;
+    window.localStorage.setItem(key, sortMode);
+  }, [roomId, sortMode]);
+
+  useEffect(() => {
+    const key = `${SORT_MODE_STORAGE_KEY_PREFIX}${roomId}`;
+    const stored = window.localStorage.getItem(key);
+    setSortMode(stored === 'layers' ? 'layers' : 'timeline');
+    setLayersModeDirty(false);
+    sceneMutationBaselineRef.current = sceneMutationVersion;
+  }, [roomId, sceneMutationVersion]);
+
+  useEffect(() => {
+    if (sortMode !== 'layers') {
+      return;
+    }
+    if (sceneMutationVersion !== sceneMutationBaselineRef.current) {
+      setLayersModeDirty(true);
+    }
+  }, [sceneMutationVersion, sortMode]);
 
   useEffect(() => {
     if (
@@ -704,6 +823,83 @@ function ControlPanelInner({
     [],
   );
 
+  const pendingRequestsCount =
+    pendingMutationCount + (timelineQueueLocked ? 1 : 0);
+  const sortModeSwitchReason = timelineIsPlaying
+    ? 'Cannot switch mode while timeline is playing'
+    : layersModeDirty
+      ? 'Cannot switch mode while layers-mode changes are pending'
+      : pendingRequestsCount > 0
+        ? 'Cannot switch mode while request queue is not empty'
+        : undefined;
+  const canSwitchSortMode = !sortModeSwitchReason;
+
+  const handleSortModeChange = useCallback(
+    (nextMode: 'timeline' | 'layers') => {
+      if (nextMode === sortMode || !canSwitchSortMode) {
+        return;
+      }
+      setSortMode(nextMode);
+      if (nextMode === 'layers') {
+        sceneMutationBaselineRef.current = sceneMutationVersion;
+        setLayersModeDirty(false);
+      }
+    },
+    [canSwitchSortMode, sceneMutationVersion, sortMode],
+  );
+
+  const requestPlayConflictDecision = useCallback(async () => {
+    setConflictModalOpen(true);
+    return await new Promise<'apply' | 'discard' | 'cancel'>((resolve) => {
+      conflictResolverRef.current = resolve;
+    });
+  }, []);
+
+  const resolvePlayConflictDecision = useCallback(
+    (decision: 'apply' | 'discard' | 'cancel') => {
+      setConflictModalOpen(false);
+      const resolve = conflictResolverRef.current;
+      conflictResolverRef.current = null;
+      resolve?.(decision);
+    },
+    [],
+  );
+
+  const handleBeforeTimelinePlay = useCallback(async () => {
+    if (sortMode !== 'layers' || !layersModeDirty) {
+      return true;
+    }
+
+    const timelineActions = timelineActionsRef.current;
+    if (!timelineActions) {
+      return false;
+    }
+
+    const decision = await requestPlayConflictDecision();
+    if (decision === 'cancel') {
+      return false;
+    }
+
+    setConflictDecisionPending(true);
+    try {
+      if (decision === 'apply') {
+        timelineActions.commitSceneAtPlayheadToTimeline();
+      }
+      await timelineActions.applyAtPlayhead();
+      setSortMode('timeline');
+      setLayersModeDirty(false);
+      sceneMutationBaselineRef.current = sceneMutationVersion;
+      return true;
+    } finally {
+      setConflictDecisionPending(false);
+    }
+  }, [
+    layersModeDirty,
+    requestPlayConflictDecision,
+    sceneMutationVersion,
+    sortMode,
+  ]);
+
   const handlePendingModalActionClose = useCallback(() => {
     setPendingModalOpen(false);
   }, []);
@@ -723,6 +919,8 @@ function ControlPanelInner({
     if (!timelineActions) {
       return;
     }
+    const canPlay = await handleBeforeTimelinePlay();
+    if (!canPlay) return;
     connectAndPlaySessionActiveRef.current = true;
     try {
       await timelineActions.applyAtPlayhead();
@@ -731,7 +929,7 @@ function ControlPanelInner({
       connectAndPlaySessionActiveRef.current = false;
       throw error;
     }
-  }, []);
+  }, [handleBeforeTimelinePlay]);
 
   const handlePendingModalConnectAndRecord = useCallback(async () => {
     connectAndPlaySessionActiveRef.current = false;
@@ -916,6 +1114,11 @@ function ControlPanelInner({
     timelineLoadStateRef.current = null;
     previousTimelinePlayingRef.current = false;
     connectAndPlaySessionActiveRef.current = false;
+    conflictResolverRef.current?.('cancel');
+    conflictResolverRef.current = null;
+    setConflictModalOpen(false);
+    setConflictDecisionPending(false);
+    setTimelineQueueLocked(false);
     setConnectPlayCompletionOpen(false);
     setTimelinePlayheadMs(0);
     setTimelineIsPlaying(false);
@@ -931,6 +1134,7 @@ function ControlPanelInner({
   useEffect(() => {
     if (
       isGuest ||
+      sortMode !== 'timeline' ||
       !timelineIsPlaying ||
       isPersistingTimelineLayerOrderRef.current
     ) {
@@ -952,6 +1156,7 @@ function ControlPanelInner({
     });
   }, [
     isGuest,
+    sortMode,
     timelineIsPlaying,
     roomState.layers,
     timelineTrackOrder,
@@ -965,6 +1170,7 @@ function ControlPanelInner({
           roomState={roomState}
           getTimelineStateForConfig={getTimelineStateForConfig}
           applyImportedTimelineState={applyImportedTimelineState}
+          showcasePrefill={showcaseSettingsPrefill}
         />
       </ErrorBoundary>
     );
@@ -986,7 +1192,11 @@ function ControlPanelInner({
           onLayersChange={handleLayersChange}
           activeClipColors={activeClipColors}
           allTimelineInputIds={allTimelineInputIds}
-          timelineTrackOrder={timelineIsPlaying ? timelineTrackOrder : {}}
+          timelineTrackOrder={
+            timelineIsPlaying && sortMode === 'timeline'
+              ? timelineTrackOrder
+              : {}
+          }
         />
       </div>
     );
@@ -1018,6 +1228,13 @@ function ControlPanelInner({
           onTimelineStateChange={handleTimelineStateChange}
           onTimelineLoadStateReady={handleTimelineLoadStateReady}
           onTimelineActionsReady={handleTimelineActionsReady}
+          onBeforePlay={handleBeforeTimelinePlay}
+          onTimelineQueueStateChange={setTimelineQueueLocked}
+          layers={roomState.layers}
+          sortMode={sortMode}
+          onSortModeChange={handleSortModeChange}
+          sortModeSwitchDisabled={!canSwitchSortMode}
+          sortModeSwitchReason={sortModeSwitchReason}
         />
       </ErrorBoundary>
     );
@@ -1130,6 +1347,15 @@ function ControlPanelInner({
             <ConnectPlayCompletionModal
               open={connectPlayCompletionOpen}
               onOpenChange={setConnectPlayCompletionOpen}
+              farewellTitle={showcaseWelcome?.farewellTitle}
+              farewellDescription={showcaseWelcome?.farewellDescription}
+            />
+            <TimelineConflictModal
+              open={conflictModalOpen}
+              pending={conflictDecisionPending}
+              onApplyChanges={() => resolvePlayConflictDecision('apply')}
+              onDiscardChanges={() => resolvePlayConflictDecision('discard')}
+              onCancel={() => resolvePlayConflictDecision('cancel')}
             />
           </>
         )}
@@ -1153,7 +1379,9 @@ function ControlPanelInner({
       onLayersChange={handleLayersChange}
       activeClipColors={activeClipColors}
       allTimelineInputIds={allTimelineInputIds}
-      timelineTrackOrder={timelineIsPlaying ? timelineTrackOrder : {}}
+      timelineTrackOrder={
+        timelineIsPlaying && sortMode === 'timeline' ? timelineTrackOrder : {}
+      }
     />
   ) : null;
 
@@ -1174,6 +1402,13 @@ function ControlPanelInner({
         onTimelineStateChange={handleTimelineStateChange}
         onTimelineLoadStateReady={handleTimelineLoadStateReady}
         onTimelineActionsReady={handleTimelineActionsReady}
+        onBeforePlay={handleBeforeTimelinePlay}
+        onTimelineQueueStateChange={setTimelineQueueLocked}
+        layers={roomState.layers}
+        sortMode={sortMode}
+        onSortModeChange={handleSortModeChange}
+        sortModeSwitchDisabled={!canSwitchSortMode}
+        sortModeSwitchReason={sortModeSwitchReason}
       />
     </ErrorBoundary>
   ) : null;
@@ -1197,6 +1432,7 @@ function ControlPanelInner({
                   roomState={roomState}
                   getTimelineStateForConfig={getTimelineStateForConfig}
                   applyImportedTimelineState={applyImportedTimelineState}
+                  showcasePrefill={showcaseSettingsPrefill}
                 />
               </ErrorBoundary>,
               settingsNavPortalRef.current,
@@ -1228,6 +1464,17 @@ function ControlPanelInner({
     <ConnectPlayCompletionModal
       open={connectPlayCompletionOpen}
       onOpenChange={setConnectPlayCompletionOpen}
+      farewellTitle={showcaseWelcome?.farewellTitle}
+      farewellDescription={showcaseWelcome?.farewellDescription}
+    />
+  );
+  const timelineConflictModal = !isGuest && (
+    <TimelineConflictModal
+      open={conflictModalOpen}
+      pending={conflictDecisionPending}
+      onApplyChanges={() => resolvePlayConflictDecision('apply')}
+      onDiscardChanges={() => resolvePlayConflictDecision('discard')}
+      onCancel={() => resolvePlayConflictDecision('cancel')}
     />
   );
 
@@ -1240,6 +1487,7 @@ function ControlPanelInner({
           createPortal(timelineSection, timelinePortalRef.current)}
         {pendingModal}
         {connectPlayCompletionModal}
+        {timelineConflictModal}
       </>
     );
   }
@@ -1249,6 +1497,7 @@ function ControlPanelInner({
       {mainPanel}
       {pendingModal}
       {connectPlayCompletionModal}
+      {timelineConflictModal}
     </>
   );
 }
@@ -1289,10 +1538,12 @@ function SettingsBar({
   roomState,
   getTimelineStateForConfig,
   applyImportedTimelineState,
+  showcasePrefill,
 }: {
   roomState: RoomState;
   getTimelineStateForConfig: () => TimelineState | null;
   applyImportedTimelineState: (state: TimelineState | null) => void;
+  showcasePrefill: ShowcaseSettingsPrefill | null;
 }) {
   const { roomId, refreshState: handleRefreshState } = useControlPanelContext();
   const actions = useActions();
@@ -1512,13 +1763,21 @@ function SettingsBar({
   const handleExportRemote = useCallback(
     async (name: string): Promise<string | null> => {
       const config = buildConfig();
-      const result = await configStorageSave(name, config);
+      const suffix = roomState.resolution
+        ? ` ${resolutionToLabel(roomState.resolution)}`
+        : '';
+      const trimmed = name.trim();
+      const finalName =
+        suffix && !trimmed.endsWith(suffix.trim())
+          ? `${trimmed}${suffix}`
+          : trimmed;
+      const result = await configStorageSave(finalName, config);
       if (!result.ok) {
         return result.error;
       }
       return null;
     },
-    [buildConfig, configStorageSave],
+    [buildConfig, configStorageSave, roomState.resolution],
   );
 
   useEffect(() => {
@@ -1839,16 +2098,16 @@ function SettingsBar({
       <Dialog
         open={openModal === 'settings'}
         onOpenChange={(open) => !open && setOpenModal(null)}>
-        <DialogContent className='max-h-[84vh] max-w-2xl overflow-y-auto'>
+        <DialogContent className='max-h-[84vh] max-w-2xl overflow-y-auto text-neutral-100'>
           <FxCanvas
             config={FX_PRESET_MODAL}
             isActive={openModal === 'settings'}
           />
-          <div className='absolute inset-0 bg-black/50 pointer-events-none rounded-[inherit]' />
-          <DialogHeader>
+          <div className='absolute inset-0 z-0 bg-black/25 pointer-events-none rounded-[inherit]' />
+          <DialogHeader className='relative z-10'>
             <DialogTitle>Settings</DialogTitle>
           </DialogHeader>
-          <div className='relative grid grid-cols-2 gap-6 pt-2'>
+          <div className='relative z-10 grid grid-cols-2 gap-6 pt-2'>
             <section className='space-y-3'>
               <h4 className='text-sm font-medium text-foreground'>
                 Transition Settings
@@ -2095,19 +2354,20 @@ function SettingsBar({
       <Dialog
         open={openModal === 'showcase'}
         onOpenChange={(open) => !open && setOpenModal(null)}>
-        <DialogContent className='max-h-[84vh] max-w-2xl overflow-y-auto'>
+        <DialogContent className='max-h-[84vh] max-w-2xl overflow-y-auto text-neutral-100'>
           <FxCanvas
             config={FX_PRESET_MODAL}
             isActive={openModal === 'showcase'}
           />
-          <div className='absolute inset-0 bg-black/50 pointer-events-none rounded-[inherit]' />
-          <DialogHeader>
+          <div className='absolute inset-0 z-0 bg-black/25 pointer-events-none rounded-[inherit]' />
+          <DialogHeader className='relative z-10'>
             <DialogTitle>Showcase</DialogTitle>
           </DialogHeader>
-          <div>
+          <div className='relative z-10'>
             <PresentationModeSettings
               roomState={roomState}
               getTimelineStateForConfig={getTimelineStateForConfig}
+              showcasePrefill={showcasePrefill}
             />
           </div>
         </DialogContent>
