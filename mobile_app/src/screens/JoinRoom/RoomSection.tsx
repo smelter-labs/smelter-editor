@@ -18,6 +18,7 @@ interface Props {
   errors: { roomId?: string; general?: string };
   isLoading: boolean;
   onConnect: () => void;
+  onConnectAsCamera: () => void;
 }
 
 export function RoomSection({
@@ -33,6 +34,7 @@ export function RoomSection({
   errors,
   isLoading,
   onConnect,
+  onConnectAsCamera,
 }: Props) {
   const theme = useTheme();
 
@@ -134,17 +136,28 @@ export function RoomSection({
       <ErrorMessage message={errors.roomId ?? null} />
       <ErrorMessage message={errors.general ?? null} />
 
-      <Button
-        mode="contained"
-        onPress={onConnect}
-        loading={isLoading}
-        disabled={isLoading}
-        style={styles.joinButton}
-        buttonColor="#ffffff"
-        textColor="#000000"
-      >
-        {isLoading ? "Connecting..." : "Join Room"}
-      </Button>
+      <View style={styles.joinButtons}>
+        <Button
+          mode="contained"
+          onPress={onConnect}
+          loading={isLoading}
+          disabled={isLoading}
+          style={styles.joinButton}
+          buttonColor="#ffffff"
+          textColor="#000000"
+        >
+          {isLoading ? "Connecting..." : "Join as Editor"}
+        </Button>
+        <Button
+          mode="contained-tonal"
+          onPress={onConnectAsCamera}
+          disabled={isLoading}
+          style={styles.joinButton}
+          icon="video"
+        >
+          Join as Camera
+        </Button>
+      </View>
     </View>
   );
 }
@@ -174,7 +187,12 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     marginLeft: -8,
   },
-  joinButton: {
+  joinButtons: {
     marginTop: 4,
+    flexDirection: "row",
+    gap: 8,
+  },
+  joinButton: {
+    flex: 1,
   },
 });

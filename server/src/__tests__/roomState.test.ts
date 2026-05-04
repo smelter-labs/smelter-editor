@@ -1801,7 +1801,9 @@ describe('RoomState', () => {
       );
       expect(frozenCalls).toHaveLength(0);
 
-      const inputDuringPause = room.getInputs().find((i) => i.inputId === inputId);
+      const inputDuringPause = room
+        .getInputs()
+        .find((i) => i.inputId === inputId);
       expect(inputDuringPause?.volume).toBe(0);
     });
 
@@ -1911,9 +1913,14 @@ describe('RoomState', () => {
       }))!;
       await room.connectInput(inputId);
 
-      await room.startTimelinePlayback(createMp4TimelineConfig(inputId, true), 0);
+      await room.startTimelinePlayback(
+        createMp4TimelineConfig(inputId, true),
+        0,
+      );
 
-      const duringPlayback = room.getInputs().find((i) => i.inputId === inputId);
+      const duringPlayback = room
+        .getInputs()
+        .find((i) => i.inputId === inputId);
       expect(duringPlayback?.volume).toBe(1);
 
       await room.pauseTimeline();
