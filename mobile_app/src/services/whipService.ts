@@ -103,6 +103,11 @@ async function waitForIceGatheringComplete(
       cleanupAndResolve();
     }, timeoutMs);
     (pc as any).addEventListener("icegatheringstatechange", listener);
+
+    // Check again in case gathering completed between the initial check and listener attachment
+    if (pc.iceGatheringState === "complete") {
+      cleanupAndResolve();
+    }
   });
 }
 
@@ -268,84 +273,93 @@ export async function createWhipConnection({
 }: WhipConnectionParams): Promise<RTCPeerConnection> {
   const pc = new RTCPeerConnection({ iceServers: DEFAULT_ICE_SERVERS });
 
-  (pc as any).addEventListener("connectionstatechange", () => {
-    console.log("[WHIP] connectionState →", pc.connectionState);
-    onConnectionStateChange(pc.connectionState);
-  });
+  try {
+    (pc as any).addEventListener("connectionstatechange", () => {
+      console.log("[WHIP] connectionState →", pc.connectionState);
+      onConnectionStateChange(pc.connectionState);
+    });
 
-  (pc as any).addEventListener("iceconnectionstatechange", () => {
-    console.log("[WHIP] iceConnectionState →", pc.iceConnectionState);
-  });
+    (pc as any).addEventListener("iceconnectionstatechange", () => {
+      console.log("[WHIP] iceConnectionState →", pc.iceConnectionState);
+    });
 
-  (pc as any).addEventListener("icegatheringstatechange", () => {
-    console.log("[WHIP] iceGatheringState →", pc.iceGatheringState);
-  });
+    (pc as any).addEventListener("icegatheringstatechange", () => {
+      console.log("[WHIP] iceGatheringState →", pc.iceGatheringState);
+    });
 
-  (pc as any).addEventListener("icecandidate", (e: any) => {
-    if (e.candidate) {
-      console.log("[WHIP] local ICE candidate:", e.candidate.candidate);
-    } else {
-      console.log("[WHIP] ICE gathering done (null candidate)");
+    (pc as any).addEventListener("icecandidate", (e: any) => {
+      if (e.candidate) {
+        console.log("[WHIP] local ICE candidate:", e.candidate.candidate);
+      } else {
+        console.log("[WHIP] ICE gathering done (null candidate)");
+      }
+    });
+
+    localStream.getTracks().forEach((track: any) => {
+      pc.addTrack(track, localStream);
+    });
+
+    const offer = await pc.createOffer({});
+    // Strip all non-preferred video codecs from the offer so the server is forced to
+    // negotiate the chosen codec. Default is VP8 (software encoder on Android) to avoid
+    // the H264 HW encoder black-frame bug in react-native-webrtc.
+    let offerSdp = restrictVideoCodecInSdp(offer.sdp, videoCodec) ?? offer.sdp;
+    if (forceH264) {
+      // Legacy strip mode: remove every non-H264 video codec entirely.
+      // Only useful to diagnose codec negotiation; tends to cause server rejection.
+      const stripped = stripToH264OnlyVideoSdp(offerSdp);
+      if (stripped) {
+        offerSdp = stripped;
+        console.log(
+          "[WHIP] H264-strip mode active (all other video codecs removed)",
+        );
+      }
     }
-  });
 
-  localStream.getTracks().forEach((track: any) => {
-    pc.addTrack(track, localStream);
-  });
+    await pc.setLocalDescription({ type: "offer", sdp: offerSdp });
+    await waitForIceGatheringComplete(pc, 3000);
 
-  const offer = await pc.createOffer({});
-  // Strip all non-preferred video codecs from the offer so the server is forced to
-  // negotiate the chosen codec. Default is VP8 (software encoder on Android) to avoid
-  // the H264 HW encoder black-frame bug in react-native-webrtc.
-  let offerSdp = restrictVideoCodecInSdp(offer.sdp, videoCodec) ?? offer.sdp;
-  if (forceH264) {
-    // Legacy strip mode: remove every non-H264 video codec entirely.
-    // Only useful to diagnose codec negotiation; tends to cause server rejection.
-    const stripped = stripToH264OnlyVideoSdp(offerSdp);
-    if (stripped) {
-      offerSdp = stripped;
-      console.log(
-        "[WHIP] H264-strip mode active (all other video codecs removed)",
+    const headers: Record<string, string> = {
+      "Content-Type": "application/sdp",
+    };
+    if (bearerToken) {
+      headers.Authorization = `Bearer ${bearerToken}`;
+    }
+
+    console.log("[WHIP] Posting offer to", whipUrl);
+    console.log("[WHIP] SDP:", pc.localDescription?.sdp);
+
+    const response = await fetch(whipUrl, {
+      method: "POST",
+      headers,
+      body: pc.localDescription?.sdp,
+    });
+
+    console.log(
+      "[WHIP] Response status:",
+      response.status,
+      response.statusText,
+    );
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error("[WHIP] Error body:", errorBody);
+      throw new Error(
+        `WHIP failed (${response.status} ${response.statusText}): ${errorBody}`,
       );
     }
-  }
 
-  await pc.setLocalDescription({ type: "offer", sdp: offerSdp });
-  await waitForIceGatheringComplete(pc, 3000);
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/sdp",
-  };
-  if (bearerToken) {
-    headers.Authorization = `Bearer ${bearerToken}`;
-  }
-
-  console.log("[WHIP] Posting offer to", whipUrl);
-  console.log("[WHIP] SDP:", pc.localDescription?.sdp);
-
-  const response = await fetch(whipUrl, {
-    method: "POST",
-    headers,
-    body: pc.localDescription?.sdp,
-  });
-
-  console.log("[WHIP] Response status:", response.status, response.statusText);
-
-  if (!response.ok) {
-    const errorBody = await response.text();
-    console.error("[WHIP] Error body:", errorBody);
-    throw new Error(
-      `WHIP failed (${response.status} ${response.statusText}): ${errorBody}`,
+    const answerSdp = await response.text();
+    console.log("[WHIP] Answer SDP:", answerSdp);
+    await pc.setRemoteDescription(
+      new RTCSessionDescription({ type: "answer", sdp: answerSdp }),
     );
+
+    return pc;
+  } catch (e) {
+    pc.close();
+    throw e;
   }
-
-  const answerSdp = await response.text();
-  console.log("[WHIP] Answer SDP:", answerSdp);
-  await pc.setRemoteDescription(
-    new RTCSessionDescription({ type: "answer", sdp: answerSdp }),
-  );
-
-  return pc;
 }
 
 // ─── Camera enumeration ───────────────────────────────────────────────────────

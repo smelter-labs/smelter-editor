@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -86,7 +92,10 @@ export function CameraScreen() {
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const inputIdRef = useRef<string | null>(null);
   const ackIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const apiRef = useRef(new SmelterApiService(serverUrl, roomId));
+  const api = useMemo(
+    () => new SmelterApiService(serverUrl, roomId),
+    [serverUrl, roomId],
+  );
 
   // ── keep-awake management ──────────────────────────────────────────────────
 
@@ -229,9 +238,9 @@ export function CameraScreen() {
         // explicit disconnect → reconnect cycle).
         console.log("[Camera] Registering WHIP input…");
         const { inputId, bearerToken, whipUrl } =
-          await apiRef.current.joinRoomAsWhip("mobile");
+          await api.joinRoomAsWhip("mobile");
         inputIdRef.current = inputId;
-        finalWhipUrl = apiRef.current.fixWhipUrl(whipUrl);
+        finalWhipUrl = api.fixWhipUrl(whipUrl);
         finalBearerToken = bearerToken;
         console.log("[Camera] Got WHIP params", {
           inputId,
@@ -258,11 +267,11 @@ export function CameraScreen() {
             stopAckInterval();
             if (capturedInputId) {
               // Send ack immediately, then every 5 seconds
-              void apiRef.current
+              void api
                 .ackWhip(capturedInputId)
                 .catch((e) => console.warn("[Camera] ack failed", e));
               ackIntervalRef.current = setInterval(() => {
-                void apiRef.current
+                void api
                   .ackWhip(capturedInputId)
                   .catch((e) => console.warn("[Camera] ack failed", e));
               }, 5000);
@@ -284,7 +293,7 @@ export function CameraScreen() {
       setStatus("error");
       teardownPeerConnection();
       if (inputIdRef.current) {
-        void apiRef.current.disconnectInput(inputIdRef.current).catch(() => {});
+        void api.disconnectInput(inputIdRef.current).catch(() => {});
         inputIdRef.current = null;
       }
     }
@@ -305,7 +314,7 @@ export function CameraScreen() {
     teardownPeerConnection();
 
     if (inputIdRef.current) {
-      await apiRef.current
+      await api
         .disconnectInput(inputIdRef.current)
         .catch((e) => console.warn("[Camera] disconnectInput failed", e));
       inputIdRef.current = null;
