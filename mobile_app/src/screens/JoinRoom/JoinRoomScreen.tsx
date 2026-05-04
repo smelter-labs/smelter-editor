@@ -18,11 +18,13 @@ import { RoomSection } from "./RoomSection";
 import { QRScannerModal } from "./QRScannerModal";
 import { LoadingOverlay } from "../../components/shared/LoadingOverlay";
 import { JoinRoomSettingsPanel } from "./JoinRoomSettingsPanel";
+import type { RootNavigationProp } from "../../navigation/navigationTypes";
+import { SCREEN_NAMES } from "../../navigation/navigationTypes";
 
 export function JoinRoomScreen() {
   const theme = useTheme();
-  const navigation = useNavigation<RootNavigationProp>();
   const isTablet = useIsTablet();
+  const navigation = useNavigation<RootNavigationProp>();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
@@ -56,6 +58,7 @@ export function JoinRoomScreen() {
     errors,
     isLoading,
     handleConnect,
+    handleConnectAsCamera,
     showQR,
     setShowQR,
     handleQRScan,
@@ -124,6 +127,24 @@ export function JoinRoomScreen() {
 
       {isLoading && <LoadingOverlay message="Connecting to room..." />}
 
+      {__DEV__ && (
+        <Button
+          mode="text"
+          compact
+          icon="bug-outline"
+          style={styles.devButton}
+          labelStyle={{ color: theme.colors.onSurfaceVariant, fontSize: 12 }}
+          onPress={() =>
+            navigation.navigate(SCREEN_NAMES.CAMERA, {
+              serverUrl: "",
+              roomId: "",
+            })
+          }
+        >
+          [DEV] Open WHIP camera directly
+        </Button>
+      )}
+
       <QRScannerModal
         isVisible={showQR}
         onScan={handleQRScan}
@@ -158,5 +179,9 @@ const styles = StyleSheet.create({
   },
   iconRow: {
     flexDirection: "row",
+  },
+  devButton: {
+    marginTop: 8,
+    opacity: 0.6,
   },
 });

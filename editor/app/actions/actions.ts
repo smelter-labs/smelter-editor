@@ -343,6 +343,18 @@ export async function loadPresentationConfig(
   return (await getClient()).presentationConfigStorage.load(fileName);
 }
 
+export async function updatePresentationConfig(
+  fileName: string,
+  name: string,
+  presentationConfig: object,
+): Promise<StorageResult<{ fileName: string; name: string }>> {
+  return (await getClient()).presentationConfigStorage.update(
+    fileName,
+    name,
+    presentationConfig,
+  );
+}
+
 export async function deletePresentationConfig(
   fileName: string,
 ): Promise<StorageResult> {

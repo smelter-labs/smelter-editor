@@ -1311,6 +1311,7 @@ registerStorageRoutes(routes, {
   payloadKey: 'presentationConfig',
   listKey: 'presentationConfigs',
   bodySchema: Type.Any(),
+  supportsUpdate: true,
 });
 
 registerStorageRoutes(routes, {

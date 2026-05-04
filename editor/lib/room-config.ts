@@ -21,6 +21,7 @@ import type {
 } from '@/components/control-panel/hooks/use-timeline-state';
 import { createBlockSettingsFromInput } from '@/components/control-panel/hooks/use-timeline-state';
 import { loadTimeline, saveTimeline } from '@/lib/timeline-storage';
+import { resolutionToLabel } from '@/lib/resolution';
 
 export type RoomConfigInput = {
   type: Input['type'];
@@ -139,6 +140,8 @@ export type PresentationConfig = {
   roomConfig: RoomConfig;
   welcomeTextBefore: string;
   welcomeTextAfter: string;
+  farewellTitle?: string;
+  farewellDescription?: string;
 };
 
 export type RoomConfigTimelineState = {
@@ -339,13 +342,25 @@ export function exportRoomConfig(
   };
 }
 
+export function buildRoomConfigFileName(
+  config: RoomConfig,
+  prefix: string,
+  ext: string,
+): string {
+  const suffix = config.resolution
+    ? `-${resolutionToLabel(config.resolution)}`
+    : '';
+  return `${prefix}${suffix}-${Date.now()}.${ext}`;
+}
+
 export function downloadRoomConfig(config: RoomConfig, filename?: string) {
   const json = JSON.stringify(config, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = filename || `room-config-${Date.now()}.json`;
+  a.download =
+    filename || buildRoomConfigFileName(config, 'room-config', 'json');
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

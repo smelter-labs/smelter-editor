@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import {
+  buildRoomConfigFileName,
   parseRoomConfig,
   type RoomConfig,
   type RoomConfigInput,
@@ -289,7 +290,10 @@ export async function downloadFullProjectZip(
   }
 
   const zipBlob = await zip.generateAsync({ type: 'blob' });
-  downloadBlob(zipBlob, fileName ?? `room-project-${Date.now()}.zip`);
+  downloadBlob(
+    zipBlob,
+    fileName ?? buildRoomConfigFileName(config, 'room-project', 'zip'),
+  );
 }
 
 export async function importFullProjectZip(

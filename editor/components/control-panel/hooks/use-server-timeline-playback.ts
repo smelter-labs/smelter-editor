@@ -19,7 +19,7 @@ import {
 
 const PLAYHEAD_UI_UPDATE_INTERVAL_MS = 33;
 const PLAYHEAD_BACKWARD_TOLERANCE_MS = 120;
-const AUTO_PAUSE_BEFORE_END_MS = 2000;
+const AUTO_PAUSE_BEFORE_END_MS = 1000;
 const STOP_BUSY_TIMEOUT_MS = 2500;
 
 export function useServerTimelinePlayback(

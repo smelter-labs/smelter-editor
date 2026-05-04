@@ -3800,13 +3800,16 @@ function WhipActionInspector({
         removableWhipInputIds.add(lastInputId);
       }
 
-      const expectedLiveTitle =
+      const expectedTitlePrefix =
         kind === 'camera' ? '[Live] Camera' : '[Live] Screenshare';
+      const titleMatcher = new RegExp(
+        `^${expectedTitlePrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:\\s+#\\d+)?$`,
+      );
       const expectedDescription = `Whip Input for ${cleanedName}`;
       for (const input of inputs) {
         if (
           input.type === 'whip' &&
-          input.title === expectedLiveTitle &&
+          titleMatcher.test(input.title) &&
           input.description === expectedDescription
         ) {
           removableWhipInputIds.add(input.inputId);

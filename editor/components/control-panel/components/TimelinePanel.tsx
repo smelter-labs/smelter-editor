@@ -97,6 +97,7 @@ import {
 } from './timeline/timeline-events';
 import { ResolveMissingAssetModal } from './ResolveMissingAssetModal';
 import { toast } from 'sonner';
+import { shouldIgnoreGlobalShortcut } from '@/lib/keyboard';
 
 // ── Props ────────────────────────────────────────────────
 
@@ -159,7 +160,9 @@ function replaceLayerInputId(
       }
       seen.add(nextInputId);
       nextInputs.push(
-        nextInputId === input.inputId ? input : { ...input, inputId: nextInputId },
+        nextInputId === input.inputId
+          ? input
+          : { ...input, inputId: nextInputId },
       );
     }
 
@@ -613,7 +616,10 @@ export const TimelinePanel = memo(function TimelinePanel({
         }
 
         void updateRoom(roomId, { layers: nextLayers }).catch((err) => {
-          console.error('[timeline] Failed to sync swapped input in layers', err);
+          console.error(
+            '[timeline] Failed to sync swapped input in layers',
+            err,
+          );
         });
       },
     );
@@ -1554,9 +1560,8 @@ export const TimelinePanel = memo(function TimelinePanel({
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      // Don't intercept when typing in input/textarea
-      const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+      // Don't intercept typing in any editable field (including contenteditable).
+      if (shouldIgnoreGlobalShortcut(e.target)) return;
 
       const key = e.key;
       const ctrl = e.ctrlKey || e.metaKey;
@@ -1579,6 +1584,7 @@ export const TimelinePanel = memo(function TimelinePanel({
           break;
         }
         case ' ': {
+          if (!e.ctrlKey) break;
           e.preventDefault();
           void handlePlayPauseToggle();
           break;
@@ -2334,6 +2340,7 @@ export const TimelinePanel = memo(function TimelinePanel({
       closeContextMenu();
     };
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (shouldIgnoreGlobalShortcut(e.target)) return;
       if (e.key === 'Escape') closeContextMenu();
     };
 
@@ -3653,7 +3660,7 @@ export const TimelinePanel = memo(function TimelinePanel({
                 <ShortcutGroup
                   title='Playback & Navigation'
                   items={[
-                    ['Space', 'Play / Pause'],
+                    ['Ctrl + Space', 'Play / Pause'],
                     ['Home', 'Go to start'],
                     ['End', 'Go to end'],
                     ['← / →', 'Move playhead ±1s'],

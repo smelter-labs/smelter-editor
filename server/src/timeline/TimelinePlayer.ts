@@ -493,51 +493,30 @@ function resolveBlockSettingsAtTime(
   return resolved;
 }
 
-function getActiveInputIdsInTimelineOrder(
+function getActiveOrderFromTracks(
   config: TimelineConfig,
   timeMs: number,
 ): string[] {
-  const ordered: string[] = [];
-  const seen = new Set<string>();
-  for (const track of config.tracks) {
+  const order: string[] = [];
+  const placed = new Set<string>();
+  // Top timeline track must render on top. `reorderInputs` paints later
+  // array indices above earlier ones, so iterate tracks bottom -> top so
+  // the top track ends up last in the resulting order.
+  for (
+    let trackIndex = config.tracks.length - 1;
+    trackIndex >= 0;
+    trackIndex -= 1
+  ) {
+    const track = config.tracks[trackIndex];
+    if (!track) continue;
     for (const clip of track.clips) {
       if (clip.inputId === OUTPUT_TRACK_INPUT_ID) continue;
       if (timeMs < clip.startMs || timeMs >= clip.endMs) continue;
-      if (seen.has(clip.inputId)) continue;
-      seen.add(clip.inputId);
-      ordered.push(clip.inputId);
+      if (placed.has(clip.inputId)) continue;
+      placed.add(clip.inputId);
+      order.push(clip.inputId);
     }
   }
-  return ordered;
-}
-
-function getActiveOrderFromLayers(
-  config: TimelineConfig,
-  timeMs: number,
-  layers: Layer[],
-): string[] {
-  const activeInTimelineOrder = getActiveInputIdsInTimelineOrder(config, timeMs);
-  const activeSet = new Set(activeInTimelineOrder);
-  const order: string[] = [];
-  const placed = new Set<string>();
-
-  for (const layer of layers) {
-    for (const li of layer.inputs) {
-      if (activeSet.has(li.inputId) && !placed.has(li.inputId)) {
-        order.push(li.inputId);
-        placed.add(li.inputId);
-      }
-    }
-  }
-
-  // Fallback for temporarily inconsistent layers: preserve deterministic
-  // timeline track order for any active inputs not found in layers.
-  for (const id of activeInTimelineOrder) {
-    if (!placed.has(id)) {
-      order.push(id);
-    }
-  }
-
   return order;
 }
 
@@ -632,17 +611,21 @@ function buildUpdateFromRoomInput(
     attachedInputIds: input.attachedInputIds,
     snake1Shaders: input.type === 'game' ? input.snake1Shaders : undefined,
     snake2Shaders: input.type === 'game' ? input.snake2Shaders : undefined,
-    absolutePosition: input.absolutePosition,
-    absoluteTop: input.absoluteTop,
-    absoluteLeft: input.absoluteLeft,
-    absoluteWidth: input.absoluteWidth,
-    absoluteHeight: input.absoluteHeight,
-    absoluteTransitionDurationMs: input.absoluteTransitionDurationMs,
-    absoluteTransitionEasing: input.absoluteTransitionEasing,
-    cropTop: input.cropTop,
-    cropLeft: input.cropLeft,
-    cropRight: input.cropRight,
-    cropBottom: input.cropBottom,
+    // Emit `null` instead of `undefined` for absolute-position and crop
+    // fields so the snapshot restore path can force a reset via
+    // RoomState.updateInput (undefined would be a no-op since options are
+    // interpreted with `!== undefined` gating).
+    absolutePosition: input.absolutePosition ?? null,
+    absoluteTop: input.absoluteTop ?? null,
+    absoluteLeft: input.absoluteLeft ?? null,
+    absoluteWidth: input.absoluteWidth ?? null,
+    absoluteHeight: input.absoluteHeight ?? null,
+    absoluteTransitionDurationMs: input.absoluteTransitionDurationMs ?? null,
+    absoluteTransitionEasing: input.absoluteTransitionEasing ?? null,
+    cropTop: input.cropTop ?? null,
+    cropLeft: input.cropLeft ?? null,
+    cropRight: input.cropRight ?? null,
+    cropBottom: input.cropBottom ?? null,
     gameBackgroundColor:
       input.type === 'game' ? input.snakeGameState.backgroundColor : undefined,
     gameCellGap:
@@ -699,9 +682,19 @@ export class TimelinePlayer {
 
   private snapshot: PrePlaySnapshot | null = null;
 
+  public onPlaybackEnded?: () => void;
+
   constructor(room: TimelineRoomStateAdapter, config: TimelineConfig) {
     this.room = room;
     this.config = config;
+  }
+
+  private handleEndTimerFired(): void {
+    if (this.onPlaybackEnded) {
+      this.onPlaybackEnded();
+    } else {
+      void this.stop();
+    }
   }
 
   private normalizePlaybackStartMs(fromMs?: number): number {
@@ -810,7 +803,7 @@ export class TimelinePlayer {
     const remainingMs = this.config.totalDurationMs - playheadMs;
     if (remainingMs > 0) {
       this.endTimer = setTimeout(() => {
-        void this.stop();
+        this.handleEndTimerFired();
       }, remainingMs);
     }
 
@@ -905,7 +898,7 @@ export class TimelinePlayer {
     const remainingMs = this.config.totalDurationMs - resumeMs;
     if (remainingMs > 0) {
       this.endTimer = setTimeout(() => {
-        void this.stop();
+        this.handleEndTimerFired();
       }, remainingMs);
     }
 
@@ -940,7 +933,7 @@ export class TimelinePlayer {
     const remainingMs = this.config.totalDurationMs - ms;
     if (remainingMs > 0) {
       this.endTimer = setTimeout(() => {
-        void this.stop();
+        this.handleEndTimerFired();
       }, remainingMs);
     }
 
@@ -1410,8 +1403,7 @@ export class TimelinePlayer {
   }
 
   private applyOrderIfChanged(timeMs: number): void {
-    const layers = this.room.getLayers();
-    const order = getActiveOrderFromLayers(this.config, timeMs, layers);
+    const order = getActiveOrderFromTracks(this.config, timeMs);
     const key = order.join(',');
     if (key === this.lastAppliedOrder || order.length === 0) return;
     this.lastAppliedOrder = key;
