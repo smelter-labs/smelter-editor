@@ -259,6 +259,7 @@ export function LayoutScreen() {
   const [effectsPanelOpen, setEffectsPanelOpen] = useState(false);
   const [effectsInputId, setEffectsInputId] = useState<string | null>(null);
   const [layoutResetToken, setLayoutResetToken] = useState(0);
+  const [gridCorrectionKey, setGridCorrectionKey] = useState(0);
 
   const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
   const [, startTransition] = useTransition();
@@ -440,9 +441,9 @@ export function LayoutScreen() {
       });
 
       const existingMap = new Map(existingInputs.map((i) => [i.inputId, i]));
+      const inputMap = new Map(inputs.map((i) => [i.id, i]));
       const newInputs = layer.behavior
         ? (() => {
-            const inputMap = new Map(inputs.map((i) => [i.id, i]));
             const behaviorInfos = sortedItems.map((item) => {
               const input = inputMap.get(item.props.id);
               return {
@@ -483,6 +484,29 @@ export function LayoutScreen() {
         layerId,
         newInputOrder: newInputs.map((li) => li.inputId),
       });
+
+      // For behavior layers: if the drag didn't change the input order, the
+      // computed positions are identical to the current store, so the server
+      // will echo back the same data, setLayers will return the same reference
+      // via structural sharing, itemData won't change, and the grid's useEffect
+      // won't fire — leaving the visual state stuck at the forbidden position.
+      // Force a correction by incrementing the key so the grid resyncs to itemData.
+      if (layer.behavior) {
+        const sortedIds = sortedItems.map((item) => item.props.id);
+        const currentVisibleIds = layer.inputs
+          .filter((li) => !inputMap.get(li.inputId)?.isHidden)
+          .map((li) => li.inputId);
+        const orderUnchanged =
+          sortedIds.length === currentVisibleIds.length &&
+          sortedIds.every((id, i) => id === currentVisibleIds[i]);
+        if (orderUnchanged) {
+          setGridCorrectionKey((k) => k + 1);
+          if (gridCorrectionKey > 1000) {
+            setGridCorrectionKey(0); // prevent overflow
+          }
+        }
+      }
+
       void pushLayers(newLayers);
     },
     [layers, inputs, resolution, columns, rows, pushLayers],
@@ -616,6 +640,7 @@ export function LayoutScreen() {
                     rows={rows}
                     columns={columns}
                     containerStyle={styles.layerGrid}
+                    correctionKey={gridCorrectionKey}
                   />
                 )}
               </View>
