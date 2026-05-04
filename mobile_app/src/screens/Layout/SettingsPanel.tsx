@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { View, StyleSheet } from "react-native";
 import { IconButton, Text, useTheme } from "react-native-paper";
-import { SidePanel } from "../../components/shared/SidePanel";
+import { SharedSettingsPanel } from "../../components/shared/SharedSettingsPanel";
 import { useLayoutStore } from "../../store/layoutStore";
 
 interface SettingsPanelProps {
@@ -10,10 +10,6 @@ interface SettingsPanelProps {
   onClose: () => void;
 }
 
-/**
- * Settings panel for the Layout screen.
- * Controls grid column and row count.
- */
 export function SettingsPanel({
   isVisible,
   side,
@@ -37,7 +33,7 @@ export function SettingsPanel({
 
   const startHold = (callback: () => void) => {
     stopHold();
-    callback(); // Immediate first call on press
+    callback();
     holdIntervalRef.current = setInterval(callback, 50);
   };
 
@@ -46,146 +42,122 @@ export function SettingsPanel({
   const handleColsDecrement = () => {
     startHold(() => {
       const {
-        columns: currentColumns,
-        rows: currentRows,
-        resolution: currentResolution,
-        setGridConfig: setCurrentGridConfig,
+        columns: c,
+        rows: r,
+        resolution: res,
+        setGridConfig: set,
       } = useLayoutStore.getState();
-      const currentMinColSize = Math.round(currentResolution.width / 100);
-
-      setCurrentGridConfig(
-        Math.max(currentMinColSize, currentColumns - 2),
-        currentRows,
-      );
+      set(Math.max(Math.round(res.width / 100), c - 2), r);
     });
   };
 
   const handleColsIncrement = () => {
     startHold(() => {
       const {
-        columns: currentColumns,
-        rows: currentRows,
-        resolution: currentResolution,
-        setGridConfig: setCurrentGridConfig,
+        columns: c,
+        rows: r,
+        resolution: res,
+        setGridConfig: set,
       } = useLayoutStore.getState();
-      const currentMaxColSize = Math.round(currentResolution.width / 10);
-
-      setCurrentGridConfig(
-        Math.min(currentMaxColSize, currentColumns + 2),
-        currentRows,
-      );
+      set(Math.min(Math.round(res.width / 10), c + 2), r);
     });
   };
 
   const handleRowsDecrement = () => {
     startHold(() => {
       const {
-        columns: currentColumns,
-        rows: currentRows,
-        resolution: currentResolution,
-        setGridConfig: setCurrentGridConfig,
+        columns: c,
+        rows: r,
+        resolution: res,
+        setGridConfig: set,
       } = useLayoutStore.getState();
-      const currentMinRowSize = Math.round(currentResolution.height / 100);
-
-      setCurrentGridConfig(
-        currentColumns,
-        Math.max(currentMinRowSize, currentRows - 2),
-      );
+      set(c, Math.max(Math.round(res.height / 100), r - 2));
     });
   };
 
   const handleRowsIncrement = () => {
     startHold(() => {
       const {
-        columns: currentColumns,
-        rows: currentRows,
-        resolution: currentResolution,
-        setGridConfig: setCurrentGridConfig,
+        columns: c,
+        rows: r,
+        resolution: res,
+        setGridConfig: set,
       } = useLayoutStore.getState();
-      const currentMaxRowSize = Math.round(currentResolution.height / 10);
-
-      setCurrentGridConfig(
-        currentColumns,
-        Math.min(currentMaxRowSize, currentRows + 2),
-      );
+      set(c, Math.min(Math.round(res.height / 10), r + 2));
     });
   };
 
   return (
-    <SidePanel isVisible={isVisible} side={side} onClose={onClose}>
-      <View style={styles.content}>
-        <Text variant="titleMedium" style={styles.title}>
-          Layout Settings
+    <SharedSettingsPanel
+      isVisible={isVisible}
+      side={side}
+      onClose={onClose}
+      title="Layout Settings"
+    >
+      <View style={styles.row}>
+        <Text
+          variant="bodyMedium"
+          style={{ color: theme.colors.onSurfaceVariant }}
+        >
+          Columns
         </Text>
-
-        <View style={styles.row}>
-          <Text
-            variant="bodyMedium"
-            style={{ color: theme.colors.onSurfaceVariant }}
-          >
-            Columns
+        <View style={styles.controls}>
+          <IconButton
+            icon="minus"
+            mode="contained-tonal"
+            size={18}
+            disabled={columns <= minColSize}
+            onPressIn={handleColsDecrement}
+            onPressOut={stopHold}
+          />
+          <Text variant="bodyLarge" style={styles.value}>
+            {columns}
           </Text>
-          <View style={styles.controls}>
-            <IconButton
-              icon="minus"
-              mode="contained-tonal"
-              size={18}
-              onPressIn={handleColsDecrement}
-              onPressOut={stopHold}
-            />
-            <Text variant="bodyLarge" style={styles.value}>
-              {columns}
-            </Text>
-            <IconButton
-              icon="plus"
-              mode="contained-tonal"
-              size={18}
-              onPressIn={handleColsIncrement}
-              onPressOut={stopHold}
-            />
-          </View>
-        </View>
-
-        <View style={styles.row}>
-          <Text
-            variant="bodyMedium"
-            style={{ color: theme.colors.onSurfaceVariant }}
-          >
-            Rows
-          </Text>
-          <View style={styles.controls}>
-            <IconButton
-              icon="minus"
-              mode="contained-tonal"
-              size={18}
-              onPressIn={handleRowsDecrement}
-              onPressOut={stopHold}
-            />
-            <Text variant="bodyLarge" style={styles.value}>
-              {rows}
-            </Text>
-            <IconButton
-              icon="plus"
-              mode="contained-tonal"
-              size={18}
-              onPressIn={handleRowsIncrement}
-              onPressOut={stopHold}
-            />
-          </View>
+          <IconButton
+            icon="plus"
+            mode="contained-tonal"
+            size={18}
+            disabled={columns >= maxColSize}
+            onPressIn={handleColsIncrement}
+            onPressOut={stopHold}
+          />
         </View>
       </View>
-    </SidePanel>
+
+      <View style={styles.row}>
+        <Text
+          variant="bodyMedium"
+          style={{ color: theme.colors.onSurfaceVariant }}
+        >
+          Rows
+        </Text>
+        <View style={styles.controls}>
+          <IconButton
+            icon="minus"
+            mode="contained-tonal"
+            size={18}
+            disabled={rows <= minRowSize}
+            onPressIn={handleRowsDecrement}
+            onPressOut={stopHold}
+          />
+          <Text variant="bodyLarge" style={styles.value}>
+            {rows}
+          </Text>
+          <IconButton
+            icon="plus"
+            mode="contained-tonal"
+            size={18}
+            disabled={rows >= maxRowSize}
+            onPressIn={handleRowsIncrement}
+            onPressOut={stopHold}
+          />
+        </View>
+      </View>
+    </SharedSettingsPanel>
   );
 }
 
 const styles = StyleSheet.create({
-  content: {
-    padding: 24,
-    gap: 20,
-  },
-  title: {
-    marginBottom: 8,
-  },
   row: {
     flexDirection: "row",
     alignItems: "center",

@@ -1,14 +1,25 @@
-import React from "react";
+import React, { useState } from "react";
 import { ScrollView, StyleSheet, View } from "react-native";
 import { Button, Divider, Surface, Text, useTheme } from "react-native-paper";
 import { useShallow } from "zustand/react/shallow";
+import { useNavigation } from "@react-navigation/native";
 import { useConnectionStore } from "../../store";
 import { ScreenLabel } from "../../components/shared/ScreenLabel";
+import { SharedSettingsPanel } from "../../components/shared/SharedSettingsPanel";
+import {
+  ScreenToolbar,
+  ScreenToolbarChip,
+  ToolbarIcon,
+} from "../../components/shared/ScreenToolbar";
 import { useLeaveRoom } from "../../hooks/useLeaveRoom";
+import { SCREEN_NAMES } from "../../navigation/navigationTypes";
+import type { RootNavigationProp } from "../../navigation/navigationTypes";
 
 export function DebugScreen() {
   const theme = useTheme();
+  const navigation = useNavigation<RootNavigationProp>();
   const leaveRoom = useLeaveRoom();
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const { status, clientId, peers, roomId, serverUrl } = useConnectionStore(
     useShallow((state) => ({
       status: state.status,
@@ -31,14 +42,19 @@ export function DebugScreen() {
       style={[styles.container, { backgroundColor: theme.colors.background }]}
     >
       <ScreenLabel label="Debug" />
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text
-          variant="headlineMedium"
-          style={{ color: theme.colors.onBackground }}
-        >
-          Debug
-        </Text>
 
+      <ScreenToolbar style={styles.toolbar}>
+        <ScreenToolbarChip
+          onPress={() => navigation.navigate(SCREEN_NAMES.HELP)}
+        >
+          <ToolbarIcon name="help-circle-outline" />
+        </ScreenToolbarChip>
+        <ScreenToolbarChip onPress={() => setSettingsOpen(true)}>
+          <ToolbarIcon name="cog" />
+        </ScreenToolbarChip>
+      </ScreenToolbar>
+
+      <ScrollView contentContainerStyle={styles.content}>
         <Surface style={styles.card} elevation={2}>
           <Text variant="titleMedium">Connection</Text>
           <Text variant="bodyMedium">Status: {status}</Text>
@@ -86,6 +102,12 @@ export function DebugScreen() {
           )}
         </Surface>
       </ScrollView>
+
+      <SharedSettingsPanel
+        isVisible={settingsOpen}
+        side="right"
+        onClose={() => setSettingsOpen(false)}
+      />
     </View>
   );
 }
@@ -93,6 +115,14 @@ export function DebugScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
+  },
+  toolbar: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    height: 36,
+    paddingHorizontal: 8,
+    gap: 8,
   },
   content: {
     padding: 16,
