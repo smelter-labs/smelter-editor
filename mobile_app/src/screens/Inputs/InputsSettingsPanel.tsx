@@ -8,7 +8,6 @@ import { appColors } from "../../theme/paperTheme";
 
 interface InputsSettingsPanelProps {
   isVisible: boolean;
-  side: "left" | "right";
   onClose: () => void;
 }
 
@@ -20,7 +19,6 @@ const SORT_MODES: { value: SortMode; label: string }[] = [
 
 export function InputsSettingsPanel({
   isVisible,
-  side,
   onClose,
 }: InputsSettingsPanelProps) {
   const theme = useTheme();
@@ -36,7 +34,7 @@ export function InputsSettingsPanel({
   return (
     <SharedSettingsPanel
       isVisible={isVisible}
-      side={side}
+      side="right"
       onClose={onClose}
       title="Input Settings"
     >

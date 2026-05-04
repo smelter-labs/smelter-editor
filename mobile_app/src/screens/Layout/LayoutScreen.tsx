@@ -7,7 +7,7 @@ import React, {
   useTransition,
 } from "react";
 import { View, StyleSheet } from "react-native";
-import { Chip, useTheme } from "react-native-paper";
+import { useTheme } from "react-native-paper";
 import { useNavigation } from "@react-navigation/native";
 import { SCREEN_NAMES } from "../../navigation/navigationTypes";
 import type { RootNavigationProp } from "../../navigation/navigationTypes";
@@ -30,7 +30,11 @@ import type { Layer, LayerInput } from "../../types/layout";
 import type { Resolution } from "@smelter-editor/types";
 import type { WSEventPayload } from "../../types/websocket";
 import { areInputCardsEquivalent } from "../../utils/inputCardEquality";
-import { MaterialDesignIcons } from "@react-native-vector-icons/material-design-icons";
+import {
+  ScreenToolbar,
+  ScreenToolbarChip,
+  ToolbarIcon,
+} from "../../components/shared/ScreenToolbar";
 
 // ─── Conversion helpers ───────────────────────────────────────────────────────
 
@@ -433,42 +437,24 @@ export function LayoutScreen() {
         <ScreenLabel label={`Layout (${layers.length} layers)`} />
 
         {/* Toolbar row */}
-        <View style={styles.toolbar}>
-          <Chip
-            compact
-            mode="flat"
-            style={styles.toolbarChip}
-            textStyle={styles.toolbarChipText}
-            onPress={() => setLayersPanelOpen((v) => !v)}
-          >
+        <ScreenToolbar style={styles.toolbar}>
+          <ScreenToolbarChip onPress={() => setLayersPanelOpen((v) => !v)}>
             LAYERS
-          </Chip>
-          <Chip
-            compact
-            mode="flat"
-            style={styles.toolbarChip}
-            textStyle={styles.toolbarChipText}
+          </ScreenToolbarChip>
+          <ScreenToolbarChip
             onPress={() => navigation.navigate(SCREEN_NAMES.HELP)}
           >
-            <MaterialDesignIcons
-              name="help-circle-outline"
-              color="#777777"
-              size={16}
-            />
-          </Chip>
-          <Chip
-            compact
-            mode="flat"
-            style={styles.toolbarChip}
-            textStyle={styles.toolbarChipText}
+            <ToolbarIcon name="help-circle-outline" />
+          </ScreenToolbarChip>
+          <ScreenToolbarChip
             onPress={() => {
               setSettingsPanelSide("right");
               setSettingsPanelOpen(true);
             }}
           >
-            <MaterialDesignIcons name="cog" color="#777777" size={16} />
-          </Chip>
-        </View>
+            <ToolbarIcon name="cog" />
+          </ScreenToolbarChip>
+        </ScreenToolbar>
 
         {/* Canvas: stacked layer grids — layers[0] is topmost (highest zIndex) */}
         <View style={styles.canvas}>
@@ -554,22 +540,9 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   toolbar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    height: 36,
-    paddingHorizontal: 8,
-    gap: 8,
-  },
-  toolbarChip: {
-    borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.1)",
-  },
-  toolbarChipText: {
-    color: "#CCCCCC",
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 1,
+    position: "absolute",
+    top: 0,
+    right: 0,
   },
   canvas: {
     flex: 1,

@@ -8,8 +8,7 @@ import React, {
 import * as Haptics from "expo-haptics";
 import type { WSEventPayload } from "../../types/websocket";
 import { View, StyleSheet } from "react-native";
-import { Chip, useTheme } from "react-native-paper";
-import { MaterialDesignIcons } from "@react-native-vector-icons/material-design-icons";
+import { useTheme } from "react-native-paper";
 import { useNavigation } from "@react-navigation/native";
 import { SCREEN_NAMES } from "../../navigation/navigationTypes";
 import type { RootNavigationProp } from "../../navigation/navigationTypes";
@@ -29,6 +28,11 @@ import { InputCard } from "./InputCard";
 import { InputSidePanel } from "./InputSidePanel";
 import { InputsSettingsPanel } from "./InputsSettingsPanel";
 import { ScreenLabel } from "../../components/shared/ScreenLabel";
+import {
+  ScreenToolbar,
+  ScreenToolbarChip,
+  ToolbarIcon,
+} from "../../components/shared/ScreenToolbar";
 import { areInputCardsEquivalent } from "../../utils/inputCardEquality";
 
 export function InputsScreen() {
@@ -178,30 +182,16 @@ export function InputsScreen() {
       >
         <ScreenLabel label="Inputs" />
 
-        <View style={styles.toolbar}>
-          <Chip
-            compact
-            mode="flat"
-            style={styles.toolbarChip}
-            textStyle={styles.toolbarChipText}
+        <ScreenToolbar>
+          <ScreenToolbarChip
             onPress={() => navigation.navigate(SCREEN_NAMES.HELP)}
           >
-            <MaterialDesignIcons
-              name="help-circle-outline"
-              color="#777777"
-              size={16}
-            />
-          </Chip>
-          <Chip
-            compact
-            mode="flat"
-            style={styles.toolbarChip}
-            textStyle={styles.toolbarChipText}
-            onPress={() => setSettingsPanelOpen(true)}
-          >
-            <MaterialDesignIcons name="cog" color="#777777" size={16} />
-          </Chip>
-        </View>
+            <ToolbarIcon name="help-circle-outline" />
+          </ScreenToolbarChip>
+          <ScreenToolbarChip onPress={() => setSettingsPanelOpen(true)}>
+            <ToolbarIcon name="cog" />
+          </ScreenToolbarChip>
+        </ScreenToolbar>
 
         <DraggableFlatList
           data={inputs}
@@ -226,7 +216,6 @@ export function InputsScreen() {
 
         <InputsSettingsPanel
           isVisible={settingsPanelOpen}
-          side="right"
           onClose={() => setSettingsPanelOpen(false)}
         />
       </View>
@@ -245,24 +234,6 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: 6,
-  },
-  toolbar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    height: 36,
-    paddingHorizontal: 8,
-    gap: 8,
-  },
-  toolbarChip: {
-    borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.1)",
-  },
-  toolbarChipText: {
-    color: "#CCCCCC",
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 1,
   },
   activeItem: {
     opacity: 0.85,
