@@ -20,76 +20,6 @@ Make sure you have a Smelter Editor instance running (both server and editor). C
 
 On the Join screen, enter the server IP and port (e.g. `192.168.1.10:3001`) in the URL field and tap the connect icon, or tap a previously saved address from the list below. The app will fetch available rooms. Select a room and tap **Join Room**. You can also scan a QR code from the editor web client to skip both steps.
 
-## UI structure
-
-```mermaid
-flowchart TD
-    Help["❓ Help Screen"]
-
-    subgraph JoinRoom ["Join Room Screen"]
-        JR_Main["Server list · Room picker"]
-        JR_Settings["⚙ Settings modal\nGrid factor · Arrow nav"]
-        JR_Help["❓ help button"]
-    end
-
-    subgraph App ["App Session  (swipe horizontally / arrow buttons)"]
-        direction LR
-
-        subgraph Layout ["Layout"]
-            L_Main["Grid view"]
-            L_Cog["⚙ cog"]
-            L_Help["❓ help"]
-        end
-
-        subgraph Inputs ["Inputs"]
-            I_Main["Card grid"]
-            I_Cog["⚙ cog"]
-            I_Help["❓ help"]
-        end
-
-        subgraph Timeline ["Timeline"]
-            T_Main["(coming soon)"]
-            T_Cog["⚙ cog"]
-            T_Help["❓ help"]
-        end
-
-        subgraph Debug ["Debug"]
-            D_Main["Connection info"]
-            D_Cog["⚙ cog"]
-            D_Help["❓ help"]
-        end
-
-        Layout <-->|swipe| Inputs
-        Inputs <-->|swipe| Timeline
-        Timeline <-->|swipe| Debug
-    end
-
-    JR_Main ==>|"Join Room"| Layout
-    App -.->|"WS disconnect"| JoinRoom
-
-    JR_Settings --> JR_Main
-    JR_Help -->|navigate| Help
-
-    L_Cog --> L_Main
-    I_Cog --> I_Main
-    T_Cog --> T_Main
-    D_Cog --> D_Main
-
-    L_Help -->|navigate| Help
-    I_Help -->|navigate| Help
-    T_Help -->|navigate| Help
-    D_Help -->|navigate| Help
-
-    Help -->|back| App
-    Help -->|back| JoinRoom
-
-    style Layout fill:#1E293B,stroke:#38BDF8,stroke-width:2px
-    style Inputs fill:#063E3B,stroke:#10B981,stroke-width:2px
-    style Timeline fill:#1E1B4B,stroke:#818CF8,stroke-width:2px
-    style Debug fill:#171717,stroke:#6B7280,stroke-width:2px
-    style App fill:none,stroke:#9ca3af,stroke-dasharray:5 5
-    style Help fill:#292524,stroke:#d97706,stroke-width:2px
-    style JoinRoom fill:none,stroke:#9ca3af,stroke-dasharray:5 5
 Make sure you got a smelter editor instance running, both the server and the editor. Create a room.
 If the instance is not on localhost, you can join a room via a QR code. Otherwise you need to fill in the url by hand. Include protocol (ws or wss), ip and port of the node.js server (3001 by default). Press the join button next to the input field - if the server is available, it will get saved for the future. You can then pick the room you want by its name. Alternatively, if the room is private, you can press "Join a private room instead".
 
@@ -110,7 +40,7 @@ flowchart LR
         direction LR
         Layout["Layout Screen"]
         Inputs["Inputs Screen"]
-        Timeline["Timeline Screen ⚠️"]
+        Timeline["Timeline Screen (WIP)"]
         Debug["Debug Screen"]
 
         Layout <-->|"3-finger swipe"| Inputs
@@ -174,7 +104,6 @@ flowchart LR
     Main -->|"tap card"| Panel
     Panel -->|"tap backdrop"| Main
 
-    Main -->|"long-press + drag"| Main
     Main -->|"cog button"| Settings
     Settings -->|"tap backdrop"| Main
 
