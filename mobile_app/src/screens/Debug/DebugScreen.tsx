@@ -14,12 +14,14 @@ import {
 import { useLeaveRoom } from "../../hooks/useLeaveRoom";
 import { SCREEN_NAMES } from "../../navigation/navigationTypes";
 import type { RootNavigationProp } from "../../navigation/navigationTypes";
+import { QRModal } from "../../components/shared/QRModal";
 
 export function DebugScreen() {
   const theme = useTheme();
   const navigation = useNavigation<RootNavigationProp>();
   const leaveRoom = useLeaveRoom();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [qrModalOpen, setQRModalOpen] = useState(false);
   const { status, clientId, peers, roomId, serverUrl } = useConnectionStore(
     useShallow((state) => ({
       status: state.status,
@@ -52,8 +54,17 @@ export function DebugScreen() {
         <ScreenToolbarChip onPress={() => setSettingsOpen(true)}>
           <ToolbarIcon name="cog" />
         </ScreenToolbarChip>
+        <ScreenToolbarChip onPress={() => setQRModalOpen(true)}>
+          <ToolbarIcon name="qrcode" />
+        </ScreenToolbarChip>
       </ScreenToolbar>
 
+      <QRModal
+        visible={qrModalOpen}
+        onDismiss={() => setQRModalOpen(false)}
+        serverUrl={serverUrl}
+        roomId={roomId}
+      />
       <ScrollView contentContainerStyle={styles.content}>
         <Surface style={styles.card} elevation={2}>
           <Text variant="titleMedium">Connection</Text>
