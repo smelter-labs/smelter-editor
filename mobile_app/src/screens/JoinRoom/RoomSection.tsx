@@ -4,6 +4,7 @@ import { ITEM_HEIGHT, LIST_HEIGHT } from "./joinRoomConstants";
 import { Button, Icon, Text, TextInput, useTheme } from "react-native-paper";
 import { ErrorMessage } from "../../components/shared/ErrorMessage";
 import { getRoomDisplayName, type ActiveRoom } from "../../services/apiService";
+import { MaterialDesignIcons } from "@react-native-vector-icons/material-design-icons/static";
 
 interface Props {
   selectedServerUrl: string;
@@ -40,80 +41,101 @@ export function RoomSection({
 
   return (
     <View style={styles.section}>
-      <Pressable onPress={onChangeServer}>
-        <Text variant="bodySmall" style={{ color: theme.colors.primary }}>
-          ← {selectedServerUrl}
-        </Text>
-      </Pressable>
-
       {!isPrivateRoom ? (
         <>
           {rooms.length > 0 ? (
-            <View
-              style={[styles.roomList, { borderColor: theme.colors.outline }]}
-            >
-              <FlatList
-                data={rooms}
-                keyExtractor={(r) => r.roomId}
-                scrollEnabled={rooms.length > 5}
-                keyboardShouldPersistTaps="always"
-                getItemLayout={(_, index) => ({
-                  length: ITEM_HEIGHT,
-                  offset: ITEM_HEIGHT * index,
-                  index,
-                })}
-                renderItem={({ item, index }) => (
-                  <Pressable
-                    onPress={() => onSelectRoom(item.roomId)}
-                    style={[
-                      styles.roomItem,
-                      index > 0 && {
-                        borderTopWidth: StyleSheet.hairlineWidth,
-                        borderTopColor: theme.colors.outline,
-                      },
-                      selectedRoomId === item.roomId && {
-                        backgroundColor: theme.colors.surfaceVariant,
-                      },
-                    ]}
-                  >
-                    <Text
+            <>
+              <View
+                style={{
+                  flexDirection: "row",
+                  width: "100%",
+                  justifyContent: "space-between",
+                }}
+              >
+                <Button onPress={onChangeServer} icon="arrow-left">
+                  Back
+                </Button>
+                <Button onPress={onTogglePrivateRoom}>
+                  Join a private room
+                </Button>
+              </View>
+
+              <View
+                style={[styles.roomList, { borderColor: theme.colors.outline }]}
+              >
+                <FlatList
+                  data={rooms}
+                  keyExtractor={(r) => r.roomId}
+                  scrollEnabled={rooms.length > 5}
+                  keyboardShouldPersistTaps="always"
+                  getItemLayout={(_, index) => ({
+                    length: ITEM_HEIGHT,
+                    offset: ITEM_HEIGHT * index,
+                    index,
+                  })}
+                  renderItem={({ item, index }) => (
+                    <Pressable
+                      onPress={() => onSelectRoom(item.roomId)}
                       style={[
-                        styles.roomItemText,
-                        { color: theme.colors.onSurface },
+                        styles.roomItem,
+                        index > 0 && {
+                          borderTopWidth: StyleSheet.hairlineWidth,
+                          borderTopColor: theme.colors.outline,
+                        },
+                        selectedRoomId === item.roomId && {
+                          backgroundColor: theme.colors.surfaceVariant,
+                        },
                       ]}
-                      numberOfLines={1}
                     >
-                      {getRoomDisplayName(item)}
-                    </Text>
-                    {selectedRoomId === item.roomId && (
-                      <Icon
-                        source="check"
-                        size={16}
-                        color={theme.colors.primary}
-                      />
-                    )}
-                  </Pressable>
-                )}
-              />
-            </View>
+                      <Text
+                        style={[
+                          styles.roomItemText,
+                          { color: theme.colors.onSurface },
+                        ]}
+                        numberOfLines={1}
+                      >
+                        {getRoomDisplayName(item)}
+                      </Text>
+                      {selectedRoomId === item.roomId && (
+                        <Icon
+                          source="check"
+                          size={16}
+                          color={theme.colors.primary}
+                        />
+                      )}
+                    </Pressable>
+                  )}
+                />
+              </View>
+            </>
           ) : (
-            <Text
-              variant="bodySmall"
-              style={{ color: theme.colors.onSurfaceVariant }}
-            >
-              No active rooms on this server.
-            </Text>
+            <>
+              <Button
+                style={styles.subtleButton}
+                onPress={onChangeServer}
+                icon="arrow-left"
+              >
+                Back
+              </Button>
+              <Text
+                variant="bodySmall"
+                style={{ color: theme.colors.onSurfaceVariant }}
+              >
+                No active rooms on this server.
+              </Text>
+            </>
           )}
+        </>
+      ) : (
+        <>
           <Button
             mode="text"
             onPress={onTogglePrivateRoom}
             style={styles.subtleButton}
+            icon="arrow-left"
           >
-            Join a private room instead
+            Back
           </Button>
-        </>
-      ) : (
-        <>
           <TextInput
             mode="outlined"
             label="Private Room ID"
@@ -123,13 +145,6 @@ export function RoomSection({
             autoCorrect={false}
             error={!!errors.roomId}
           />
-          <Button
-            mode="text"
-            onPress={onTogglePrivateRoom}
-            style={styles.subtleButton}
-          >
-            ← Back to room list
-          </Button>
         </>
       )}
 
