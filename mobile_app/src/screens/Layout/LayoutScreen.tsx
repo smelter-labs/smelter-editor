@@ -219,7 +219,6 @@ export function LayoutScreen() {
   const [effectsPanelOpen, setEffectsPanelOpen] = useState(false);
   const [effectsInputId, setEffectsInputId] = useState<string | null>(null);
   const [layoutResetToken, setLayoutResetToken] = useState(0);
-  const [gridCorrectionKey, setGridCorrectionKey] = useState(0);
 
   const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
   const [, startTransition] = useTransition();
@@ -318,6 +317,13 @@ export function LayoutScreen() {
             JSON.stringify(newLayers[0]?.inputs) !==
             JSON.stringify(correctedLayers[0]?.inputs),
         });
+        console.log(
+          "[Layout] Corrected layers timestamps:",
+          correctedLayers.map((l) => ({
+            id: l.id,
+            layoutTimestamp: l.layoutTimestamp,
+          })),
+        );
         // Apply the server's corrected layout immediately, don't wait for room_updated
         setLayers(correctedLayers);
       } catch (err) {
@@ -445,28 +451,6 @@ export function LayoutScreen() {
         newInputOrder: newInputs.map((li) => li.inputId),
       });
 
-      // For behavior layers: if the drag didn't change the input order, the
-      // computed positions are identical to the current store, so the server
-      // will echo back the same data, setLayers will return the same reference
-      // via structural sharing, itemData won't change, and the grid's useEffect
-      // won't fire — leaving the visual state stuck at the forbidden position.
-      // Force a correction by incrementing the key so the grid resyncs to itemData.
-      if (layer.behavior) {
-        const sortedIds = sortedItems.map((item) => item.props.id);
-        const currentVisibleIds = layer.inputs
-          .filter((li) => !inputMap.get(li.inputId)?.isHidden)
-          .map((li) => li.inputId);
-        const orderUnchanged =
-          sortedIds.length === currentVisibleIds.length &&
-          sortedIds.every((id, i) => id === currentVisibleIds[i]);
-        if (orderUnchanged) {
-          setGridCorrectionKey((k) => k + 1);
-          if (gridCorrectionKey > 1000) {
-            setGridCorrectionKey(0); // prevent overflow
-          }
-        }
-      }
-
       void pushLayers(newLayers);
     },
     [layers, inputs, resolution, columns, rows, pushLayers],
@@ -538,7 +522,13 @@ export function LayoutScreen() {
                   key={`${layer.id}-${layoutResetToken}`}
                   itemData={itemData}
                   renderedComponent={GridCell}
-                  onItemChange={(items) => handleGridChange(layer.id, items)}
+                  onItemChange={(items) => {
+                    console.log("[Layout] correctionKey at drag end:", {
+                      layerId: layer.id,
+                      correctionKey: layer.layoutTimestamp,
+                    });
+                    handleGridChange(layer.id, items);
+                  }}
                   onItemLongPress={(itemId) => {
                     setEffectsInputId(itemId);
                     setEffectsPanelOpen(true);
@@ -546,7 +536,7 @@ export function LayoutScreen() {
                   rows={rows}
                   columns={columns}
                   containerStyle={styles.layerGrid}
-                  correctionKey={gridCorrectionKey}
+                  correctionKey={layer.layoutTimestamp}
                   disableResize={!!layer.behavior}
                 />
               </View>

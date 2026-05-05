@@ -69,12 +69,9 @@ export function Layer({
   }));
 
   const handleInputMove = useCallback(
-    (id: string, from: number, to?: number | Record<string, number>) => {
-      // Resolve `to` which may be a number, a positions map, or undefined.
+    (id: string, from: number, to?: Record<string, number>) => {
       let resolvedTo: number | undefined;
-      if (typeof to === "number") {
-        resolvedTo = to;
-      } else if (to && typeof to === "object") {
+      if (to && typeof to === "object") {
         const maybe = (to as Record<string, number>)[id];
         if (typeof maybe === "number") resolvedTo = maybe;
       }

@@ -92,6 +92,20 @@ function isAudioBackedLocalMp4(mp4FilePath: string): boolean {
   );
 }
 
+function layoutInputsEqual(a: Layer['inputs'], b: Layer['inputs']): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((ai, i) => {
+    const bi = b[i]!;
+    return (
+      ai.inputId === bi.inputId &&
+      ai.x === bi.x &&
+      ai.y === bi.y &&
+      ai.width === bi.width &&
+      ai.height === bi.height
+    );
+  });
+}
+
 export class RoomState {
   private readonly mutex = new Mutex();
   private destroyed = false;
@@ -351,7 +365,7 @@ export class RoomState {
         this.pendingStoreFlushTimer = null;
       }
       this.storeUpdateScheduled = false;
-      this.flushStoreUpdate();
+      this.flushStoreUpdate(false, true);
     });
   }
 
@@ -1252,7 +1266,10 @@ export class RoomState {
     }
   }
 
-  private flushStoreUpdate(skipUnplacedAppend = false) {
+  private flushStoreUpdate(
+    skipUnplacedAppend = false,
+    fromClientUpdate = false,
+  ) {
     if (this._restoringTimeline) {
       skipUnplacedAppend = true;
     }
@@ -1433,7 +1450,7 @@ export class RoomState {
       }
     }
 
-    this.layers = this.layers.map((layer, layerIndex) => {
+    this.layers = this.layers.map((layer) => {
       if (layer.behavior) {
         // Separate visible (non-hidden) and hidden inputs
         const visibleLayerInputs: typeof layer.inputs = [];
@@ -1469,15 +1486,26 @@ export class RoomState {
         const computedMap = new Map(
           result.inputs.map((li) => [li.inputId, li]),
         );
-        return {
-          ...layer,
-          inputs: layer.inputs
-            .map((li) => computedMap.get(li.inputId) ?? li)
-            .filter(
-              (li) =>
-                computedMap.has(li.inputId) || inputMap.get(li.inputId)?.hidden,
-            ),
-        };
+        const newInputs = layer.inputs
+          .map((li) => computedMap.get(li.inputId) ?? li)
+          .filter(
+            (li) =>
+              computedMap.has(li.inputId) || inputMap.get(li.inputId)?.hidden,
+          );
+
+        const positionsChanged = !layoutInputsEqual(layer.inputs, newInputs);
+        const shouldBump = fromClientUpdate || positionsChanged;
+        const layoutTimestamp = shouldBump ? Date.now() : layer.layoutTimestamp;
+
+        console.log('[RoomState] layoutTimestamp', {
+          layerId: layer.id,
+          prev: layer.layoutTimestamp,
+          next: layoutTimestamp,
+          fromClientUpdate,
+          positionsChanged,
+        });
+
+        return { ...layer, inputs: newInputs, layoutTimestamp };
       }
 
       return layer;
