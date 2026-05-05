@@ -39,6 +39,8 @@ describe('timelineReducer', () => {
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -57,6 +59,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -76,6 +80,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set(['room::local::one', 'room::local::two']),
     };
 
@@ -134,6 +140,8 @@ describe('timelineReducer', () => {
       pixelsPerSecond: 15,
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -184,6 +192,8 @@ describe('timelineReducer', () => {
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -242,6 +252,12 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [
+        { kind: 'track', id: 'track-a' },
+        { kind: 'track', id: 'track-b' },
+        { kind: 'track', id: 'track-c' },
+      ],
       knownInputIds: new Set<string>(),
     };
 
@@ -251,11 +267,9 @@ describe('timelineReducer', () => {
       newIndex: 2,
     });
 
-    expect(next.tracks.map((t) => t.id)).toEqual([
-      'track-b',
-      'track-c',
-      'track-a',
-    ]);
+    expect(
+      next.rootOrder.map((r) => (r.kind === 'track' ? r.id : `g:${r.id}`)),
+    ).toEqual(['track-b', 'track-c', 'track-a']);
   });
 
   it('REORDER_TRACK: no-op when moving OUTPUT_TRACK', () => {
@@ -271,6 +285,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -296,6 +312,11 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [
+        { kind: 'track', id: OUTPUT_TRACK_ID },
+        { kind: 'track', id: 'track-a' },
+      ],
       knownInputIds: new Set<string>(),
     };
 
@@ -341,6 +362,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -400,6 +423,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -475,6 +500,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -525,6 +552,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -575,6 +604,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -616,6 +647,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -697,6 +730,8 @@ describe('timelineReducer', () => {
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -731,6 +766,8 @@ describe('timelineReducer', () => {
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -755,6 +792,8 @@ describe('timelineReducer', () => {
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 

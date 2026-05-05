@@ -27,8 +27,17 @@ import {
   type Clip,
   type Keyframe,
   type Track,
+  type TrackGroup,
+  type TimelineRowRef,
   type TimelineState,
 } from '../hooks/use-timeline-state';
+import { TimelineGroupHeader } from './TimelineGroupHeader';
+import { IconPicker } from './IconPicker';
+import {
+  getTrackIcon,
+  type TrackIconKey,
+} from './track-icons';
+import { FolderPlus } from 'lucide-react';
 import { useServerTimelinePlayback } from '../hooks/use-server-timeline-playback';
 import {
   Play,
@@ -297,6 +306,14 @@ export const TimelinePanel = memo(function TimelinePanel({
     addTrack,
     deleteTrack,
     reorderTrack,
+    moveTrackTo,
+    setTrackIcon,
+    addGroup,
+    deleteGroup,
+    renameGroup,
+    setGroupCollapsed,
+    setGroupIcon,
+    moveGroup,
     replaceInputId,
     swapClipInput,
     updateClipSettings,
@@ -1084,6 +1101,11 @@ export const TimelinePanel = memo(function TimelinePanel({
     originY: number;
     currentIndex: number;
   } | null>(null);
+  const groupDragRef = useRef<{
+    groupId: string;
+    originY: number;
+    currentIndex: number;
+  } | null>(null);
   const [trackDropIndex, setTrackDropIndex] = useState<number | null>(null);
 
   // ── Sync ruler scroll with tracks scroll ──────────────
@@ -1787,23 +1809,90 @@ export const TimelinePanel = memo(function TimelinePanel({
 
   const snapThresholdMs = useMemo(() => pxToMs(SNAP_THRESHOLD_PX), [pxToMs]);
 
-  // ── Determine which track the pointer is over ────
-  const getTrackIndexAtY = useCallback(
+  // ── Visible rows: rootOrder expanded with group children (collapse-aware) ─
+  type VisibleRow =
+    | {
+        kind: 'track';
+        track: Track;
+        groupId?: string;
+        /** Drop target for inserting BEFORE this row. */
+        dropTarget:
+          | { kind: 'root'; index: number }
+          | { kind: 'group'; groupId: string; index: number };
+        indent: boolean;
+      }
+    | {
+        kind: 'group';
+        group: TrackGroup;
+        rootIndex: number;
+        dropTarget: { kind: 'root'; index: number };
+      };
+
+  const visibleRows = useMemo<VisibleRow[]>(() => {
+    const trackById = new Map(state.tracks.map((t) => [t.id, t]));
+    const groupById = new Map(state.groups.map((g) => [g.id, g]));
+    const out: VisibleRow[] = [];
+    state.rootOrder.forEach((ref, rootIndex) => {
+      if (ref.kind === 'track') {
+        const t = trackById.get(ref.id);
+        if (!t) return;
+        out.push({
+          kind: 'track',
+          track: t,
+          dropTarget: { kind: 'root', index: rootIndex },
+          indent: false,
+        });
+      } else {
+        const g = groupById.get(ref.id);
+        if (!g) return;
+        out.push({
+          kind: 'group',
+          group: g,
+          rootIndex,
+          dropTarget: { kind: 'root', index: rootIndex },
+        });
+        if (!g.collapsed) {
+          g.trackIds.forEach((tid, childIdx) => {
+            const t = trackById.get(tid);
+            if (!t) return;
+            out.push({
+              kind: 'track',
+              track: t,
+              groupId: g.id,
+              dropTarget: { kind: 'group', groupId: g.id, index: childIdx },
+              indent: true,
+            });
+          });
+        }
+      }
+    });
+    return out;
+  }, [state.rootOrder, state.tracks, state.groups]);
+
+  // ── Determine which row the pointer is over ────
+  const getRowIndexAtY = useCallback(
     (relativeY: number): number => {
       let accumulated = 0;
-      for (let i = 0; i < state.tracks.length; i++) {
-        const h =
-          TRACK_HEIGHT +
-          (automationVisibleTracks.has(state.tracks[i].id)
-            ? AUTOMATION_LANE_HEIGHT
-            : 0);
+      for (let i = 0; i < visibleRows.length; i++) {
+        const row = visibleRows[i];
+        const isTrack = row.kind === 'track';
+        const h = isTrack
+          ? TRACK_HEIGHT +
+            (automationVisibleTracks.has(row.track.id)
+              ? AUTOMATION_LANE_HEIGHT
+              : 0)
+          : TRACK_HEIGHT;
         if (relativeY < accumulated + h) return i;
         accumulated += h;
       }
-      return state.tracks.length - 1;
+      return Math.max(0, visibleRows.length - 1);
     },
-    [state.tracks, automationVisibleTracks],
+    [visibleRows, automationVisibleTracks],
   );
+
+  /** Legacy alias used by clip drag helpers. Returns visible-row index, but
+   *  callers that needed a track-only index get translated via getTrackIdAtY. */
+  const getTrackIndexAtY = getRowIndexAtY;
 
   const getTrackIdAtY = useCallback(
     (clientY: number): string | null => {
@@ -1812,13 +1901,12 @@ export const TimelinePanel = memo(function TimelinePanel({
       const containerRect = container.getBoundingClientRect();
       const scrollTop = container.scrollTop;
       const relativeY = clientY - containerRect.top + scrollTop;
-      const trackIndex = getTrackIndexAtY(relativeY);
-      if (trackIndex >= 0 && trackIndex < state.tracks.length) {
-        return state.tracks[trackIndex].id;
-      }
+      const idx = getRowIndexAtY(relativeY);
+      const row = visibleRows[idx];
+      if (row && row.kind === 'track') return row.track.id;
       return null;
     },
-    [state.tracks, getTrackIndexAtY],
+    [visibleRows, getRowIndexAtY],
   );
 
   const handleClipPointerDown = useCallback(
@@ -1996,19 +2084,65 @@ export const TimelinePanel = memo(function TimelinePanel({
         const containerRect = container.getBoundingClientRect();
         const scrollTop = container.scrollTop;
         const relativeY = e.clientY - containerRect.top + scrollTop;
-        let targetIndex = getTrackIndexAtY(relativeY);
+        let targetIndex = getRowIndexAtY(relativeY);
         targetIndex = Math.max(
           0,
-          Math.min(targetIndex, state.tracks.length - 1),
+          Math.min(targetIndex, Math.max(0, visibleRows.length - 1)),
         );
-        const targetTrack = state.tracks[targetIndex];
-        if (targetTrack && targetTrack.id === OUTPUT_TRACK_ID) {
+        const targetRow = visibleRows[targetIndex];
+        if (
+          targetRow &&
+          targetRow.kind === 'track' &&
+          targetRow.track.id === OUTPUT_TRACK_ID
+        ) {
           return;
         }
         setTrackDropIndex(targetIndex);
-        if (targetIndex !== trackDrag.currentIndex) {
-          reorderTrack(trackDrag.trackId, targetIndex);
+        if (targetIndex !== trackDrag.currentIndex && targetRow) {
+          moveTrackTo(trackDrag.trackId, targetRow.dropTarget);
           trackDrag.currentIndex = targetIndex;
+        }
+        return;
+      }
+
+      // ── Group reorder drag ──
+      const groupDrag = groupDragRef.current;
+      if (groupDrag) {
+        const container = scrollContainerRef.current;
+        if (!container) return;
+        const containerRect = container.getBoundingClientRect();
+        const scrollTop = container.scrollTop;
+        const relativeY = e.clientY - containerRect.top + scrollTop;
+        let targetIndex = getRowIndexAtY(relativeY);
+        targetIndex = Math.max(
+          0,
+          Math.min(targetIndex, Math.max(0, visibleRows.length - 1)),
+        );
+        const targetRow = visibleRows[targetIndex];
+        if (!targetRow) return;
+        // Groups can only be dropped at root positions. Use the row's root
+        // index (groups themselves carry rootIndex; child track rows carry
+        // their parent group's rootIndex via dropTarget=group).
+        let rootIndex: number;
+        if (targetRow.kind === 'group') {
+          rootIndex = targetRow.rootIndex;
+        } else {
+          const dt = targetRow.dropTarget;
+          if (dt.kind === 'root') {
+            rootIndex = dt.index;
+          } else {
+            // hovering inside a group's children — clamp to that group's root pos
+            const ownerGroupId = dt.groupId;
+            const ownerIdx = state.rootOrder.findIndex(
+              (r) => r.kind === 'group' && r.id === ownerGroupId,
+            );
+            rootIndex = ownerIdx >= 0 ? ownerIdx : state.rootOrder.length - 1;
+          }
+        }
+        setTrackDropIndex(targetIndex);
+        if (targetIndex !== groupDrag.currentIndex) {
+          moveGroup(groupDrag.groupId, rootIndex);
+          groupDrag.currentIndex = targetIndex;
         }
         return;
       }
@@ -2219,11 +2353,18 @@ export const TimelinePanel = memo(function TimelinePanel({
 
     const handlePointerUp = () => {
       const hadActiveDrag =
-        keyframeDragRef.current || dragRef.current || trackDragRef.current;
+        keyframeDragRef.current ||
+        dragRef.current ||
+        trackDragRef.current ||
+        groupDragRef.current;
       keyframeDragRef.current = null;
       dragRef.current = null;
       if (trackDragRef.current) {
         trackDragRef.current = null;
+        setTrackDropIndex(null);
+      }
+      if (groupDragRef.current) {
+        groupDragRef.current = null;
         setTrackDropIndex(null);
       }
       if (hadActiveDrag) {
@@ -2241,6 +2382,7 @@ export const TimelinePanel = memo(function TimelinePanel({
   }, [
     pxToMs,
     state.tracks,
+    state.rootOrder,
     state.playheadMs,
     state.snapToBlocks,
     state.snapToKeyframes,
@@ -2250,9 +2392,12 @@ export const TimelinePanel = memo(function TimelinePanel({
     resizeClip,
     moveClipToTrack,
     getTrackIdAtY,
+    getRowIndexAtY,
+    visibleRows,
     updateClipSettings,
     moveKeyframe,
-    reorderTrack,
+    moveTrackTo,
+    moveGroup,
   ]);
 
   const handleClipHover = useCallback(
@@ -3076,7 +3221,43 @@ export const TimelinePanel = memo(function TimelinePanel({
               <LoadingSpinner size='lg' variant='spinner' />
             </div>
           ) : (
-            state.tracks.map((track, trackIndex) => {
+            visibleRows.map((row, trackIndex) => {
+              if (row.kind === 'group') {
+                const isGroupBeingDragged =
+                  groupDragRef.current?.groupId === row.group.id;
+                const showGroupDropIndicator =
+                  trackDropIndex !== null && trackDropIndex === trackIndex;
+                return (
+                  <TimelineGroupHeader
+                    key={`group-${row.group.id}`}
+                    group={row.group}
+                    width={sourcesWidth}
+                    height={TRACK_HEIGHT}
+                    childCount={row.group.trackIds.length}
+                    onToggleCollapsed={() =>
+                      setGroupCollapsed(row.group.id, !row.group.collapsed)
+                    }
+                    onRename={(label) => renameGroup(row.group.id, label)}
+                    onSetIcon={(icon) => setGroupIcon(row.group.id, icon)}
+                    onDelete={() => deleteGroup(row.group.id)}
+                    isBeingDragged={isGroupBeingDragged}
+                    showDropIndicator={showGroupDropIndicator}
+                    onPointerDownGrip={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      groupDragRef.current = {
+                        groupId: row.group.id,
+                        originY: e.clientY,
+                        currentIndex: trackIndex,
+                      };
+                      setTrackDropIndex(trackIndex);
+                      document.body.style.userSelect = 'none';
+                    }}
+                  />
+                );
+              }
+              const track = row.track;
+              const isInGroup = row.indent;
               // Determine a representative input for the track label color
               const firstClipInputId =
                 track.clips.length > 0 ? track.clips[0].inputId : undefined;
@@ -3123,7 +3304,9 @@ export const TimelinePanel = memo(function TimelinePanel({
                   <div className='flex' style={{ height: TRACK_HEIGHT }}>
                     {/* Track label (sticky left) */}
                     <div
-                      className='shrink-0 bg-muted/40 flex items-center gap-1.5 px-2 sticky left-0 z-10 border-r border-border/30'
+                      className={`shrink-0 bg-muted/40 flex items-center gap-1.5 px-2 sticky left-0 z-10 border-r border-border/30 ${
+                        isInGroup ? 'pl-6' : ''
+                      }`}
                       style={{ width: sourcesWidth }}>
                       {track.id !== OUTPUT_TRACK_ID && (
                         <GripVertical
@@ -3131,16 +3314,12 @@ export const TimelinePanel = memo(function TimelinePanel({
                           onPointerDown={(e) => {
                             e.preventDefault();
                             e.stopPropagation();
-                            const idx = state.tracks.findIndex(
-                              (t) => t.id === track.id,
-                            );
-                            if (idx < 0) return;
                             trackDragRef.current = {
                               trackId: track.id,
                               originY: e.clientY,
-                              currentIndex: idx,
+                              currentIndex: trackIndex,
                             };
-                            setTrackDropIndex(idx);
+                            setTrackDropIndex(trackIndex);
                             document.body.style.userSelect = 'none';
                           }}
                         />
@@ -3149,6 +3328,14 @@ export const TimelinePanel = memo(function TimelinePanel({
                         className='w-2.5 h-2.5 rounded-full shrink-0'
                         style={{ backgroundColor: trackDotColor ?? '#737373' }}
                       />
+                      {track.id !== OUTPUT_TRACK_ID && (
+                        <IconPicker
+                          value={track.icon}
+                          onChange={(icon) => setTrackIcon(track.id, icon)}
+                          fallbackKey='layers'
+                          ariaLabel='Change track icon'
+                        />
+                      )}
                       {track.id === OUTPUT_TRACK_ID ? (
                         <span className='text-sm text-purple-400 truncate flex-1 font-medium'>
                           {track.label}
@@ -3338,13 +3525,13 @@ export const TimelinePanel = memo(function TimelinePanel({
             })
           )}
 
-          {/* Add Track button */}
+          {/* Add Track / Add Group buttons */}
           {!showStreamsSpinner && (
             <div
               className='flex border-b border-border/50'
               style={{ height: TRACK_HEIGHT }}>
               <div
-                className='shrink-0 bg-muted/40 flex items-center px-2 sticky left-0 z-10 border-r border-border/30'
+                className='shrink-0 bg-muted/40 flex items-center gap-1 px-2 sticky left-0 z-10 border-r border-border/30'
                 style={{ width: sourcesWidth }}>
                 <Button
                   variant='ghost'
@@ -3353,7 +3540,16 @@ export const TimelinePanel = memo(function TimelinePanel({
                   onClick={() => addTrack()}
                   title='Add empty track'>
                   <Plus className='w-3 h-3' />
-                  <span>Add Track</span>
+                  <span>Track</span>
+                </Button>
+                <Button
+                  variant='ghost'
+                  size='sm'
+                  className='flex items-center gap-1.5 text-xs text-muted-foreground hover:text-card-foreground hover:bg-card px-2 py-1 cursor-pointer'
+                  onClick={() => addGroup()}
+                  title='Add a track group'>
+                  <FolderPlus className='w-3 h-3' />
+                  <span>Group</span>
                 </Button>
               </div>
             </div>
@@ -3583,6 +3779,54 @@ export const TimelinePanel = memo(function TimelinePanel({
                       }}>
                       Rename Track
                     </Button>
+                    {(() => {
+                      const ctxTrackId = contextMenu.trackId;
+                      const inGroup = state.groups.find((g) =>
+                        g.trackIds.includes(ctxTrackId),
+                      );
+                      const candidateGroups = state.groups.filter(
+                        (g) => !g.trackIds.includes(ctxTrackId),
+                      );
+                      return (
+                        <>
+                          {candidateGroups.length > 0 && (
+                            <>
+                              <div className='h-px bg-secondary my-1' />
+                              {candidateGroups.map((g) => (
+                                <Button
+                                  key={g.id}
+                                  variant='ghost'
+                                  className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-foreground hover:bg-accent cursor-pointer'
+                                  onClick={() => {
+                                    moveTrackTo(ctxTrackId, {
+                                      kind: 'group',
+                                      groupId: g.id,
+                                      index: g.trackIds.length,
+                                    });
+                                    closeContextMenu();
+                                  }}>
+                                  Move to group: {g.label}
+                                </Button>
+                              ))}
+                            </>
+                          )}
+                          {inGroup && (
+                            <Button
+                              variant='ghost'
+                              className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-foreground hover:bg-accent cursor-pointer'
+                              onClick={() => {
+                                moveTrackTo(ctxTrackId, {
+                                  kind: 'root',
+                                  index: state.rootOrder.length,
+                                });
+                                closeContextMenu();
+                              }}>
+                              Remove from group
+                            </Button>
+                          )}
+                        </>
+                      );
+                    })()}
                     <Button
                       variant='ghost'
                       className='w-full justify-start rounded-none py-1.5 px-3 text-sm text-red-400 hover:bg-accent hover:text-red-300 cursor-pointer'

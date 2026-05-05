@@ -18,6 +18,8 @@ import type {
   BlockSettings,
   Clip,
   Track,
+  TrackGroup,
+  TimelineRowRef,
 } from '@/components/control-panel/hooks/use-timeline-state';
 import { createBlockSettingsFromInput } from '@/components/control-panel/hooks/use-timeline-state';
 import { loadTimeline, saveTimeline } from '@/lib/timeline-storage';
@@ -88,13 +90,29 @@ export type RoomConfigClip = {
 export type RoomConfigTrack = {
   label: string;
   clips: RoomConfigClip[];
+  icon?: string;
 };
+
+export type RoomConfigTimelineGroup = {
+  label: string;
+  icon?: string;
+  collapsed?: boolean;
+  /** Indices into the timeline.tracks array. */
+  trackIndices: number[];
+};
+
+export type RoomConfigTimelineRowRef =
+  | { kind: 'track'; trackIndex: number }
+  | { kind: 'group'; groupIndex: number };
 
 export type RoomConfigTimeline = {
   totalDurationMs: number;
   pixelsPerSecond: number;
   keyframeInterpolationMode?: 'step' | 'smooth';
   tracks: RoomConfigTrack[];
+  /** Optional: when present, defines top-level layout (groups + ungrouped tracks). */
+  groups?: RoomConfigTimelineGroup[];
+  rootOrder?: RoomConfigTimelineRowRef[];
 };
 
 export type RoomConfigOutputPlayer = {
@@ -146,6 +164,8 @@ export type PresentationConfig = {
 
 export type RoomConfigTimelineState = {
   tracks: Track[];
+  groups: TrackGroup[];
+  rootOrder: TimelineRowRef[];
   totalDurationMs: number;
   keyframeInterpolationMode: 'step' | 'smooth';
   pixelsPerSecond: number;
@@ -225,6 +245,7 @@ export function exportRoomConfig(
   if (timelineState) {
     const tracks: RoomConfigTrack[] = timelineState.tracks.map((track) => ({
       label: track.label,
+      icon: track.icon,
       clips: track.clips
         .map((clip) => {
           const isOutput = clip.inputId === OUTPUT_TRACK_INPUT_ID;
@@ -240,11 +261,46 @@ export function exportRoomConfig(
         })
         .filter((c): c is RoomConfigClip => c !== null),
     }));
+    const trackIdToIndex = new Map<string, number>();
+    timelineState.tracks.forEach((t, i) => trackIdToIndex.set(t.id, i));
+    const groupIdToIndex = new Map<string, number>();
+    const groups: RoomConfigTimelineGroup[] = (timelineState.groups ?? []).map(
+      (g, i) => {
+        groupIdToIndex.set(g.id, i);
+        return {
+          label: g.label,
+          icon: g.icon,
+          collapsed: g.collapsed,
+          trackIndices: g.trackIds
+            .map((id) => trackIdToIndex.get(id))
+            .filter((idx): idx is number => idx !== undefined),
+        };
+      },
+    );
+    const rootOrder: RoomConfigTimelineRowRef[] | undefined = timelineState
+      .rootOrder
+      ? timelineState.rootOrder
+          .map((ref): RoomConfigTimelineRowRef | null => {
+            if (ref.kind === 'track') {
+              const idx = trackIdToIndex.get(ref.id);
+              return idx !== undefined
+                ? { kind: 'track', trackIndex: idx }
+                : null;
+            }
+            const idx = groupIdToIndex.get(ref.id);
+            return idx !== undefined
+              ? { kind: 'group', groupIndex: idx }
+              : null;
+          })
+          .filter((r): r is RoomConfigTimelineRowRef => r !== null)
+      : undefined;
     timeline = {
       totalDurationMs: timelineState.totalDurationMs,
       keyframeInterpolationMode: timelineState.keyframeInterpolationMode,
       pixelsPerSecond: timelineState.pixelsPerSecond,
       tracks,
+      groups: groups.length > 0 ? groups : undefined,
+      rootOrder,
     };
   }
 
@@ -378,50 +434,63 @@ export function parseRoomConfig(json: string): RoomConfig {
   return sanitizeImportedConfigNames(config as RoomConfig);
 }
 
-export function loadTimelineFromStorage(roomId: string): {
-  tracks: Track[];
-  totalDurationMs: number;
-  keyframeInterpolationMode: 'step' | 'smooth';
-  pixelsPerSecond: number;
-} | null {
+export function loadTimelineFromStorage(
+  roomId: string,
+): RoomConfigTimelineState | null {
   if (typeof window === 'undefined') return null;
   const stored = loadTimeline(roomId);
   if (!stored) return null;
-  return {
-    tracks: stored.tracks.map((t) => ({
-      id: t.id,
-      label: t.label,
-      clips: t.clips.map((c) => ({
-        id: c.id,
-        inputId: c.inputId,
-        startMs: c.startMs,
-        endMs: c.endMs,
-        blockSettings: c.blockSettings
-          ? {
-              ...c.blockSettings,
-              introTransition: parseTransitionConfig(
-                c.blockSettings.introTransition,
-              ),
-              outroTransition: parseTransitionConfig(
-                c.blockSettings.outroTransition,
-              ),
-            }
-          : createBlockSettingsFromInput(undefined),
-        keyframes: (c.keyframes ?? []).map((keyframe) => ({
-          id: keyframe.id,
-          timeMs: keyframe.timeMs,
-          blockSettings: {
-            ...keyframe.blockSettings,
+  const tracks: Track[] = stored.tracks.map((t) => ({
+    id: t.id,
+    label: t.label,
+    icon: t.icon,
+    clips: t.clips.map((c) => ({
+      id: c.id,
+      inputId: c.inputId,
+      startMs: c.startMs,
+      endMs: c.endMs,
+      blockSettings: c.blockSettings
+        ? {
+            ...c.blockSettings,
             introTransition: parseTransitionConfig(
-              keyframe.blockSettings.introTransition,
+              c.blockSettings.introTransition,
             ),
             outroTransition: parseTransitionConfig(
-              keyframe.blockSettings.outroTransition,
+              c.blockSettings.outroTransition,
             ),
-          },
-        })),
+          }
+        : createBlockSettingsFromInput(undefined),
+      keyframes: (c.keyframes ?? []).map((keyframe) => ({
+        id: keyframe.id,
+        timeMs: keyframe.timeMs,
+        blockSettings: {
+          ...keyframe.blockSettings,
+          introTransition: parseTransitionConfig(
+            keyframe.blockSettings.introTransition,
+          ),
+          outroTransition: parseTransitionConfig(
+            keyframe.blockSettings.outroTransition,
+          ),
+        },
       })),
     })),
+  }));
+  const groups: TrackGroup[] = stored.groups.map((g) => ({
+    id: g.id,
+    label: g.label,
+    icon: g.icon,
+    collapsed: g.collapsed,
+    trackIds: [...g.trackIds],
+  }));
+  const rootOrder: TimelineRowRef[] = stored.rootOrder.map((r) =>
+    r.kind === 'group'
+      ? { kind: 'group', id: r.id }
+      : { kind: 'track', id: r.id },
+  );
+  return {
+    tracks,
+    groups,
+    rootOrder,
     totalDurationMs: stored.totalDurationMs,
     keyframeInterpolationMode: stored.keyframeInterpolationMode,
     pixelsPerSecond: stored.pixelsPerSecond,
@@ -432,32 +501,85 @@ export function buildTimelineStateFromConfigTimeline(
   timeline: RoomConfigTimeline,
   indexToInputId: Map<number, string>,
 ): RoomConfigTimelineState {
+  const builtTracks: Track[] = timeline.tracks.map((track) => {
+    const hasOutputClip = track.clips.some((c) => c.inputIndex === -1);
+    return {
+      id: hasOutputClip ? OUTPUT_TRACK_ID : uuidv4(),
+      label: track.label,
+      icon: track.icon,
+      clips: track.clips
+        .map((clip) => {
+          const isOutput = clip.inputIndex === -1;
+          const inputId = isOutput
+            ? OUTPUT_TRACK_INPUT_ID
+            : indexToInputId.get(clip.inputIndex);
+          if (!inputId) return null;
+          return {
+            id: isOutput ? OUTPUT_CLIP_ID : uuidv4(),
+            inputId,
+            startMs: clip.startMs,
+            endMs: clip.endMs,
+            blockSettings:
+              clip.blockSettings ?? createBlockSettingsFromInput(undefined),
+            keyframes: clip.keyframes ?? [],
+          };
+        })
+        .filter((c): c is NonNullable<typeof c> => c !== null),
+    };
+  });
+
+  const groupsInput = timeline.groups ?? [];
+  const builtGroups: TrackGroup[] = groupsInput.map((g) => ({
+    id: uuidv4(),
+    label: g.label,
+    icon: g.icon,
+    collapsed: g.collapsed === true,
+    trackIds: g.trackIndices
+      .map((i) => builtTracks[i]?.id)
+      .filter((id): id is string => typeof id === 'string')
+      // OUTPUT_TRACK_ID is never grouped
+      .filter((id) => id !== OUTPUT_TRACK_ID),
+  }));
+
+  const usedTrackIds = new Set<string>(
+    builtGroups.flatMap((g) => g.trackIds),
+  );
+  let rootOrder: TimelineRowRef[];
+  if (timeline.rootOrder && timeline.rootOrder.length > 0) {
+    rootOrder = timeline.rootOrder
+      .map((ref): TimelineRowRef | null => {
+        if (ref.kind === 'track') {
+          const t = builtTracks[ref.trackIndex];
+          if (!t) return null;
+          return { kind: 'track', id: t.id };
+        }
+        const g = builtGroups[ref.groupIndex];
+        if (!g) return null;
+        return { kind: 'group', id: g.id };
+      })
+      .filter((r): r is TimelineRowRef => r !== null);
+    // Append any tracks that weren't referenced anywhere.
+    const seen = new Set<string>();
+    for (const ref of rootOrder) {
+      if (ref.kind === 'track') seen.add(ref.id);
+    }
+    for (const id of usedTrackIds) seen.add(id);
+    for (const t of builtTracks) {
+      if (!seen.has(t.id)) {
+        rootOrder.push({ kind: 'track', id: t.id });
+      }
+    }
+  } else {
+    // Legacy config (no groups/rootOrder): all tracks at root in order.
+    rootOrder = builtTracks
+      .filter((t) => !usedTrackIds.has(t.id))
+      .map((t) => ({ kind: 'track' as const, id: t.id }));
+  }
+
   return {
-    tracks: timeline.tracks.map((track) => {
-      const hasOutputClip = track.clips.some((c) => c.inputIndex === -1);
-      return {
-        id: hasOutputClip ? OUTPUT_TRACK_ID : uuidv4(),
-        label: track.label,
-        clips: track.clips
-          .map((clip) => {
-            const isOutput = clip.inputIndex === -1;
-            const inputId = isOutput
-              ? OUTPUT_TRACK_INPUT_ID
-              : indexToInputId.get(clip.inputIndex);
-            if (!inputId) return null;
-            return {
-              id: isOutput ? OUTPUT_CLIP_ID : uuidv4(),
-              inputId,
-              startMs: clip.startMs,
-              endMs: clip.endMs,
-              blockSettings:
-                clip.blockSettings ?? createBlockSettingsFromInput(undefined),
-              keyframes: clip.keyframes ?? [],
-            };
-          })
-          .filter((c): c is NonNullable<typeof c> => c !== null),
-      };
-    }),
+    tracks: builtTracks,
+    groups: builtGroups,
+    rootOrder,
     totalDurationMs: timeline.totalDurationMs,
     keyframeInterpolationMode: timeline.keyframeInterpolationMode ?? 'step',
     pixelsPerSecond: timeline.pixelsPerSecond,

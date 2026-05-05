@@ -42,7 +42,20 @@ export type Track = {
   id: string;
   label: string;
   clips: Clip[];
+  icon?: string;
 };
+
+export type TrackGroup = {
+  id: string;
+  label: string;
+  icon?: string;
+  collapsed: boolean;
+  trackIds: string[];
+};
+
+export type TimelineRowRef =
+  | { kind: 'track'; id: string }
+  | { kind: 'group'; id: string };
 
 export type BlockSettings = TimelineBlockSettings & {
   mp4DurationMs?: number;
@@ -73,6 +86,8 @@ type TrackTimeline = {
 
 export type TimelineState = {
   tracks: Track[];
+  groups: TrackGroup[];
+  rootOrder: TimelineRowRef[];
   totalDurationMs: number;
   keyframeInterpolationMode: TimelineKeyframeInterpolationMode;
   snapToBlocks: boolean;
@@ -178,7 +193,21 @@ type TimelineAction =
       type: 'DELETE_CLIPS';
       clips: { trackId: string; clipId: string }[];
     }
-  | { type: 'CLEANUP_SPURIOUS_WHIP_TRACK'; inputId: string };
+  | { type: 'CLEANUP_SPURIOUS_WHIP_TRACK'; inputId: string }
+  | { type: 'SET_TRACK_ICON'; trackId: string; icon: string | undefined }
+  | { type: 'ADD_GROUP'; label?: string; insertAtIndex?: number }
+  | { type: 'DELETE_GROUP'; groupId: string }
+  | { type: 'RENAME_GROUP'; groupId: string; newLabel: string }
+  | { type: 'SET_GROUP_COLLAPSED'; groupId: string; collapsed: boolean }
+  | { type: 'SET_GROUP_ICON'; groupId: string; icon: string | undefined }
+  | { type: 'MOVE_GROUP'; groupId: string; newIndex: number }
+  | {
+      type: 'MOVE_TRACK_TO';
+      trackId: string;
+      target:
+        | { kind: 'root'; index: number }
+        | { kind: 'group'; groupId: string; index: number };
+    };
 
 // ── Constants ────────────────────────────────────────────
 
@@ -585,6 +614,8 @@ function ensureOutputTrack(tracks: Track[], totalDurationMs: number): Track[] {
 function createInitialState(): TimelineState {
   return {
     tracks: [],
+    groups: [],
+    rootOrder: [],
     totalDurationMs: DEFAULT_DURATION_MS,
     keyframeInterpolationMode: 'step',
     snapToBlocks: true,
@@ -638,6 +669,8 @@ function migrateV1ToV2(stored: Record<string, unknown>): TimelineState | null {
 
   return {
     tracks: newTracks,
+    groups: [],
+    rootOrder: newTracks.map((t) => ({ kind: 'track' as const, id: t.id })),
     totalDurationMs: (stored.totalDurationMs as number) || DEFAULT_DURATION_MS,
     keyframeInterpolationMode: 'step',
     snapToBlocks: true,
@@ -647,6 +680,123 @@ function migrateV1ToV2(stored: Record<string, unknown>): TimelineState | null {
     pixelsPerSecond: (stored.pixelsPerSecond as number) || DEFAULT_PPS,
     knownInputIds: new Set<string>(),
   };
+}
+
+// ── Group / order helpers ────────────────────────────────
+
+function buildDefaultRootOrder(tracks: Track[]): TimelineRowRef[] {
+  return tracks.map((t) => ({ kind: 'track' as const, id: t.id }));
+}
+
+/**
+ * Reconcile groups + rootOrder against the canonical `tracks` pool.
+ * - Drops references to tracks that no longer exist.
+ * - Drops references to groups that no longer exist.
+ * - Ensures every track in the pool appears exactly once (in rootOrder
+ *   or in some group.trackIds). Missing tracks are appended to rootOrder.
+ * - Ensures OUTPUT_TRACK_ID is in rootOrder (never inside a group).
+ */
+function reconcileOrder(
+  tracks: Track[],
+  groups: TrackGroup[],
+  rootOrder: TimelineRowRef[],
+): { groups: TrackGroup[]; rootOrder: TimelineRowRef[] } {
+  const trackIdSet = new Set(tracks.map((t) => t.id));
+  const groupIdSet = new Set(groups.map((g) => g.id));
+  const seenTrackIds = new Set<string>();
+
+  const cleanedGroups: TrackGroup[] = groups.map((g) => {
+    const ids: string[] = [];
+    for (const tid of g.trackIds) {
+      if (tid === OUTPUT_TRACK_ID) continue;
+      if (!trackIdSet.has(tid)) continue;
+      if (seenTrackIds.has(tid)) continue;
+      seenTrackIds.add(tid);
+      ids.push(tid);
+    }
+    return { ...g, trackIds: ids };
+  });
+
+  const cleanedRoot: TimelineRowRef[] = [];
+  let outputSeen = false;
+  for (const ref of rootOrder) {
+    if (ref.kind === 'track') {
+      if (!trackIdSet.has(ref.id)) continue;
+      if (seenTrackIds.has(ref.id)) continue;
+      seenTrackIds.add(ref.id);
+      if (ref.id === OUTPUT_TRACK_ID) outputSeen = true;
+      cleanedRoot.push(ref);
+    } else {
+      if (!groupIdSet.has(ref.id)) continue;
+      cleanedRoot.push(ref);
+    }
+  }
+
+  // Add any tracks missing from order at the front (matches ADD_TRACK semantics
+  // of "new track appears on top"), with output track always last.
+  const missing: Track[] = [];
+  for (const t of tracks) {
+    if (!seenTrackIds.has(t.id)) missing.push(t);
+  }
+  const missingRefs: TimelineRowRef[] = missing
+    .filter((t) => t.id !== OUTPUT_TRACK_ID)
+    .map((t) => ({ kind: 'track' as const, id: t.id }));
+
+  // OUTPUT_TRACK_ID handling: ensure it exists in rootOrder, append at end.
+  const hasOutputInTracks = trackIdSet.has(OUTPUT_TRACK_ID);
+  const finalRoot: TimelineRowRef[] = [...missingRefs, ...cleanedRoot];
+  if (hasOutputInTracks && !outputSeen) {
+    finalRoot.push({ kind: 'track', id: OUTPUT_TRACK_ID });
+  }
+
+  return { groups: cleanedGroups, rootOrder: finalRoot };
+}
+
+function withReconciledOrder(state: TimelineState): TimelineState {
+  const { groups, rootOrder } = reconcileOrder(
+    state.tracks,
+    state.groups,
+    state.rootOrder,
+  );
+  if (groups === state.groups && rootOrder === state.rootOrder) return state;
+  return { ...state, groups, rootOrder };
+}
+
+function findTrackLocation(
+  state: TimelineState,
+  trackId: string,
+):
+  | { kind: 'root'; index: number }
+  | { kind: 'group'; groupId: string; index: number }
+  | null {
+  const rootIdx = state.rootOrder.findIndex(
+    (r) => r.kind === 'track' && r.id === trackId,
+  );
+  if (rootIdx >= 0) return { kind: 'root', index: rootIdx };
+  for (const g of state.groups) {
+    const idx = g.trackIds.indexOf(trackId);
+    if (idx >= 0) return { kind: 'group', groupId: g.id, index: idx };
+  }
+  return null;
+}
+
+function normalizeGroupLabel(label: string): string {
+  return label.trim().toLocaleLowerCase();
+}
+
+function claimUniqueGroupLabel(
+  preferredLabel: string,
+  usedLabels: Set<string>,
+): string {
+  const baseLabel = preferredLabel.trim() || 'Group';
+  let candidate = baseLabel;
+  let index = 2;
+  while (usedLabels.has(normalizeGroupLabel(candidate))) {
+    candidate = `${baseLabel} (${index})`;
+    index += 1;
+  }
+  usedLabels.add(normalizeGroupLabel(candidate));
+  return candidate;
 }
 
 // ── Reducer ──────────────────────────────────────────────
@@ -667,9 +817,12 @@ export function timelineReducer(
         if (hasExistingClips) {
           return state;
         }
+        const wipedTracks = ensureOutputTrack([], state.totalDurationMs);
         return {
           ...state,
-          tracks: ensureOutputTrack([], state.totalDurationMs),
+          tracks: wipedTracks,
+          groups: [],
+          rootOrder: buildDefaultRootOrder(wipedTracks),
           knownInputIds: new Set<string>(),
         };
       }
@@ -770,12 +923,26 @@ export function timelineReducer(
         }
       }
 
+      const finalTracks = ensureOutputTrack(
+        [...brandNewTracks, ...newTracks],
+        state.totalDurationMs,
+      );
+      // Prepend brand-new tracks to rootOrder, then reconcile to drop any
+      // refs to tracks that vanished and ensure output track stays present.
+      const prependedRoot: TimelineRowRef[] = [
+        ...brandNewTracks.map((t) => ({ kind: 'track' as const, id: t.id })),
+        ...state.rootOrder,
+      ];
+      const reconciled = reconcileOrder(
+        finalTracks,
+        state.groups,
+        prependedRoot,
+      );
       return {
         ...state,
-        tracks: ensureOutputTrack(
-          [...brandNewTracks, ...newTracks],
-          state.totalDurationMs,
-        ),
+        tracks: finalTracks,
+        groups: reconciled.groups,
+        rootOrder: reconciled.rootOrder,
         knownInputIds: updatedKnownInputIds,
       };
     }
@@ -829,9 +996,12 @@ export function timelineReducer(
         label: `Track ${idx + 1}`,
         clips: [makeFullClip(input.inputId, state.totalDurationMs, input)],
       }));
+      const tracksWithOutput = ensureOutputTrack(tracks, state.totalDurationMs);
       return {
         ...state,
-        tracks: ensureOutputTrack(tracks, state.totalDurationMs),
+        tracks: tracksWithOutput,
+        groups: [],
+        rootOrder: buildDefaultRootOrder(tracksWithOutput),
         playheadMs: 0,
         isPlaying: false,
         knownInputIds: new Set(action.inputs.map((i) => i.inputId)),
@@ -1144,32 +1314,247 @@ export function timelineReducer(
       return {
         ...state,
         tracks: [newTrack, ...state.tracks],
+        rootOrder: [
+          { kind: 'track', id: newTrack.id },
+          ...state.rootOrder,
+        ],
       };
     }
 
     case 'DELETE_TRACK': {
       if (action.trackId === OUTPUT_TRACK_ID) return state;
-      return {
-        ...state,
-        tracks: state.tracks.filter((t) => t.id !== action.trackId),
-      };
+      const tracks = state.tracks.filter((t) => t.id !== action.trackId);
+      const rootOrder = state.rootOrder.filter(
+        (r) => !(r.kind === 'track' && r.id === action.trackId),
+      );
+      const groups = state.groups.map((g) =>
+        g.trackIds.includes(action.trackId)
+          ? { ...g, trackIds: g.trackIds.filter((id) => id !== action.trackId) }
+          : g,
+      );
+      return { ...state, tracks, rootOrder, groups };
     }
 
     case 'REORDER_TRACK': {
+      // Legacy action: kept for backwards compatibility. Maps to MOVE_TRACK_TO
+      // at root level. New code should dispatch MOVE_TRACK_TO directly.
       if (action.trackId === OUTPUT_TRACK_ID) return state;
-      const oldIndex = state.tracks.findIndex((t) => t.id === action.trackId);
-      if (oldIndex < 0) return state;
+      const loc = findTrackLocation(state, action.trackId);
+      if (!loc) return state;
+      // Build flat root-only list (excluding groups) to match prior semantics.
+      const rootTrackRefs = state.rootOrder.filter(
+        (r): r is { kind: 'track'; id: string } => r.kind === 'track',
+      );
+      const oldRootIndex = rootTrackRefs.findIndex(
+        (r) => r.id === action.trackId,
+      );
+      if (loc.kind !== 'root' || oldRootIndex < 0) return state;
       const targetIndex = Math.max(
         0,
-        Math.min(action.newIndex, state.tracks.length - 1),
+        Math.min(action.newIndex, rootTrackRefs.length - 1),
       );
-      if (targetIndex === oldIndex) return state;
-      const targetTrack = state.tracks[targetIndex];
-      if (targetTrack && targetTrack.id === OUTPUT_TRACK_ID) return state;
-      const newTracks = [...state.tracks];
-      const [moved] = newTracks.splice(oldIndex, 1);
-      newTracks.splice(targetIndex, 0, moved);
-      return { ...state, tracks: newTracks };
+      const targetRef = rootTrackRefs[targetIndex];
+      if (targetRef && targetRef.id === OUTPUT_TRACK_ID) return state;
+      if (targetIndex === oldRootIndex) return state;
+
+      // Translate root-track-only index back into rootOrder index.
+      const moveRef = state.rootOrder.find(
+        (r) => r.kind === 'track' && r.id === action.trackId,
+      );
+      if (!moveRef) return state;
+      const newRootOrder = state.rootOrder.filter((r) => r !== moveRef);
+      // Find rootOrder index that corresponds to nth root track ref.
+      let trackCount = 0;
+      let insertAt = newRootOrder.length;
+      for (let i = 0; i < newRootOrder.length; i++) {
+        if (newRootOrder[i].kind === 'track') {
+          if (trackCount === targetIndex) {
+            insertAt = i;
+            break;
+          }
+          trackCount++;
+        }
+      }
+      newRootOrder.splice(insertAt, 0, moveRef);
+      return { ...state, rootOrder: newRootOrder };
+    }
+
+    case 'MOVE_TRACK_TO': {
+      if (action.trackId === OUTPUT_TRACK_ID) return state;
+      const loc = findTrackLocation(state, action.trackId);
+      if (!loc) return state;
+
+      // Strip from current location.
+      let groups = state.groups;
+      let rootOrder = state.rootOrder;
+      if (loc.kind === 'root') {
+        rootOrder = rootOrder.filter(
+          (r) => !(r.kind === 'track' && r.id === action.trackId),
+        );
+      } else {
+        groups = groups.map((g) =>
+          g.id === loc.groupId
+            ? {
+                ...g,
+                trackIds: g.trackIds.filter((id) => id !== action.trackId),
+              }
+            : g,
+        );
+      }
+
+      // Insert at target.
+      const target = action.target;
+      if (target.kind === 'root') {
+        const idx = Math.max(0, Math.min(target.index, rootOrder.length));
+        // Output track is sticky-last: don't allow inserting after it.
+        const outputIdx = rootOrder.findIndex(
+          (r) => r.kind === 'track' && r.id === OUTPUT_TRACK_ID,
+        );
+        const safeIdx =
+          outputIdx >= 0 && idx > outputIdx ? outputIdx : idx;
+        const next = [...rootOrder];
+        next.splice(safeIdx, 0, { kind: 'track', id: action.trackId });
+        return { ...state, rootOrder: next, groups };
+      } else {
+        const targetGroupId = target.groupId;
+        const targetGroup = groups.find((g) => g.id === targetGroupId);
+        if (!targetGroup) return state;
+        const idx = Math.max(
+          0,
+          Math.min(target.index, targetGroup.trackIds.length),
+        );
+        groups = groups.map((g) =>
+          g.id === targetGroupId
+            ? {
+                ...g,
+                trackIds: [
+                  ...g.trackIds.slice(0, idx),
+                  action.trackId,
+                  ...g.trackIds.slice(idx),
+                ],
+              }
+            : g,
+        );
+        return { ...state, rootOrder, groups };
+      }
+    }
+
+    case 'SET_TRACK_ICON': {
+      if (action.trackId === OUTPUT_TRACK_ID) return state;
+      return {
+        ...state,
+        tracks: state.tracks.map((t) =>
+          t.id === action.trackId ? { ...t, icon: action.icon } : t,
+        ),
+      };
+    }
+
+    case 'ADD_GROUP': {
+      const usedLabels = new Set(
+        state.groups.map((g) => normalizeGroupLabel(g.label)),
+      );
+      const preferredLabel =
+        action.label || `Group ${state.groups.length + 1}`;
+      const label = claimUniqueGroupLabel(preferredLabel, usedLabels);
+      const newGroup: TrackGroup = {
+        id: genId(),
+        label,
+        collapsed: false,
+        trackIds: [],
+      };
+      const insertAt =
+        typeof action.insertAtIndex === 'number'
+          ? Math.max(0, Math.min(action.insertAtIndex, state.rootOrder.length))
+          : 0;
+      // Don't insert after output track.
+      const outputIdx = state.rootOrder.findIndex(
+        (r) => r.kind === 'track' && r.id === OUTPUT_TRACK_ID,
+      );
+      const safeIdx =
+        outputIdx >= 0 && insertAt > outputIdx ? outputIdx : insertAt;
+      const next = [...state.rootOrder];
+      next.splice(safeIdx, 0, { kind: 'group', id: newGroup.id });
+      return {
+        ...state,
+        groups: [...state.groups, newGroup],
+        rootOrder: next,
+      };
+    }
+
+    case 'DELETE_GROUP': {
+      const group = state.groups.find((g) => g.id === action.groupId);
+      if (!group) return state;
+      const groupRefIdx = state.rootOrder.findIndex(
+        (r) => r.kind === 'group' && r.id === action.groupId,
+      );
+      // Re-emit the group's tracks into rootOrder where the group was.
+      const restoredRefs: TimelineRowRef[] = group.trackIds.map((id) => ({
+        kind: 'track' as const,
+        id,
+      }));
+      const nextRoot = [...state.rootOrder];
+      if (groupRefIdx >= 0) {
+        nextRoot.splice(groupRefIdx, 1, ...restoredRefs);
+      }
+      return {
+        ...state,
+        groups: state.groups.filter((g) => g.id !== action.groupId),
+        rootOrder: nextRoot,
+      };
+    }
+
+    case 'RENAME_GROUP': {
+      const usedLabels = new Set(
+        state.groups
+          .filter((g) => g.id !== action.groupId)
+          .map((g) => normalizeGroupLabel(g.label)),
+      );
+      const uniqueLabel = claimUniqueGroupLabel(action.newLabel, usedLabels);
+      return {
+        ...state,
+        groups: state.groups.map((g) =>
+          g.id === action.groupId ? { ...g, label: uniqueLabel } : g,
+        ),
+      };
+    }
+
+    case 'SET_GROUP_COLLAPSED': {
+      return {
+        ...state,
+        groups: state.groups.map((g) =>
+          g.id === action.groupId ? { ...g, collapsed: action.collapsed } : g,
+        ),
+      };
+    }
+
+    case 'SET_GROUP_ICON': {
+      return {
+        ...state,
+        groups: state.groups.map((g) =>
+          g.id === action.groupId ? { ...g, icon: action.icon } : g,
+        ),
+      };
+    }
+
+    case 'MOVE_GROUP': {
+      const oldIdx = state.rootOrder.findIndex(
+        (r) => r.kind === 'group' && r.id === action.groupId,
+      );
+      if (oldIdx < 0) return state;
+      const outputIdx = state.rootOrder.findIndex(
+        (r) => r.kind === 'track' && r.id === OUTPUT_TRACK_ID,
+      );
+      const maxIdx =
+        outputIdx >= 0 ? outputIdx - 1 : state.rootOrder.length - 1;
+      const targetIdx = Math.max(
+        0,
+        Math.min(action.newIndex, Math.max(0, maxIdx)),
+      );
+      if (targetIdx === oldIdx) return state;
+      const next = [...state.rootOrder];
+      const [moved] = next.splice(oldIdx, 1);
+      next.splice(targetIdx, 0, moved);
+      return { ...state, rootOrder: next };
     }
 
     case 'REPLACE_INPUT_ID': {
@@ -1550,7 +1935,7 @@ export function timelineReducer(
         .filter(
           (track) => track.clips.length > 0 || track.id === OUTPUT_TRACK_ID,
         );
-      return { ...state, tracks: newTracks };
+      return withReconciledOrder({ ...state, tracks: newTracks });
     }
 
     case 'CLEANUP_SPURIOUS_WHIP_TRACK': {
@@ -1562,10 +1947,10 @@ export function timelineReducer(
       const isFullSpan =
         clip.startMs === 0 && clip.endMs >= state.totalDurationMs;
       if (!isFullSpan) return state;
-      return {
+      return withReconciledOrder({
         ...state,
         tracks: state.tracks.filter((t) => t.id !== topTrack.id),
-      };
+      });
     }
 
     case 'LOAD': {
@@ -1578,9 +1963,16 @@ export function timelineReducer(
         normalizedTracks,
         action.state.totalDurationMs,
       );
+      const reconciled = reconcileOrder(
+        finalTracks,
+        action.state.groups ?? [],
+        action.state.rootOrder ?? buildDefaultRootOrder(finalTracks),
+      );
       return {
         ...action.state,
         tracks: finalTracks,
+        groups: reconciled.groups,
+        rootOrder: reconciled.rootOrder,
         keyframeInterpolationMode:
           action.state.keyframeInterpolationMode ?? 'step',
         snapToBlocks: action.state.snapToBlocks ?? true,
@@ -1626,6 +2018,14 @@ const UNDOABLE_ACTIONS = new Set<TimelineAction['type']>([
   'SWAP_CLIP_INPUT',
   'MOVE_CLIPS',
   'DELETE_CLIPS',
+  'SET_TRACK_ICON',
+  'ADD_GROUP',
+  'DELETE_GROUP',
+  'RENAME_GROUP',
+  'SET_GROUP_COLLAPSED',
+  'SET_GROUP_ICON',
+  'MOVE_GROUP',
+  'MOVE_TRACK_TO',
 ]);
 
 type UndoableAction = TimelineAction | { type: 'UNDO' } | { type: 'REDO' };
@@ -1698,6 +2098,23 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
         const parsedTracks = storedTracksToTracks(stored.tracks);
         initial = {
           tracks: normalizeTracks(parsedTracks, inputs, totalDurationMs),
+          groups: stored.groups
+            ? stored.groups.map((g) => ({
+                id: g.id,
+                label: g.label,
+                icon: g.icon,
+                collapsed: g.collapsed,
+                trackIds: [...g.trackIds],
+              }))
+            : [],
+          rootOrder: stored.rootOrder
+            ? stored.rootOrder.map(
+                (r): TimelineRowRef =>
+                  r.kind === 'group'
+                    ? { kind: 'group', id: r.id }
+                    : { kind: 'track', id: r.id },
+              )
+            : [],
           totalDurationMs,
           keyframeInterpolationMode: stored.keyframeInterpolationMode ?? 'step',
           snapToBlocks: stored.snapToBlocks ?? true,
@@ -1715,6 +2132,15 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
       normalizeTracks(initial.tracks, inputs, initial.totalDurationMs),
       initial.totalDurationMs,
     );
+    const reconciled = reconcileOrder(
+      initial.tracks,
+      initial.groups,
+      initial.rootOrder.length > 0
+        ? initial.rootOrder
+        : buildDefaultRootOrder(initial.tracks),
+    );
+    initial.groups = reconciled.groups;
+    initial.rootOrder = reconciled.rootOrder;
     return {
       current: initial,
       past: [],
@@ -1739,6 +2165,8 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
   const persistedTimeline = useMemo(
     () => ({
       tracks: state.tracks,
+      groups: state.groups,
+      rootOrder: state.rootOrder,
       totalDurationMs: state.totalDurationMs,
       keyframeInterpolationMode: state.keyframeInterpolationMode,
       snapToBlocks: state.snapToBlocks,
@@ -1750,6 +2178,8 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     }),
     [
       state.tracks,
+      state.groups,
+      state.rootOrder,
       state.totalDurationMs,
       state.keyframeInterpolationMode,
       state.snapToBlocks,
@@ -1766,6 +2196,8 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     saveTimerRef.current = setTimeout(() => {
       saveTimeline(roomId, {
         tracks: persistedTimeline.tracks,
+        groups: persistedTimeline.groups,
+        rootOrder: persistedTimeline.rootOrder,
         totalDurationMs: persistedTimeline.totalDurationMs,
         keyframeInterpolationMode: persistedTimeline.keyframeInterpolationMode,
         snapToBlocks: persistedTimeline.snapToBlocks,
@@ -1897,6 +2329,62 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
 
   const reorderTrack = useCallback((trackId: string, newIndex: number) => {
     dispatch({ type: 'REORDER_TRACK', trackId, newIndex });
+    setStructureRevision((rev) => rev + 1);
+  }, []);
+
+  const moveTrackTo = useCallback(
+    (
+      trackId: string,
+      target:
+        | { kind: 'root'; index: number }
+        | { kind: 'group'; groupId: string; index: number },
+    ) => {
+      dispatch({ type: 'MOVE_TRACK_TO', trackId, target });
+      setStructureRevision((rev) => rev + 1);
+    },
+    [],
+  );
+
+  const setTrackIcon = useCallback(
+    (trackId: string, icon: string | undefined) => {
+      dispatch({ type: 'SET_TRACK_ICON', trackId, icon });
+      setStructureRevision((rev) => rev + 1);
+    },
+    [],
+  );
+
+  const addGroup = useCallback((label?: string, insertAtIndex?: number) => {
+    dispatch({ type: 'ADD_GROUP', label, insertAtIndex });
+    setStructureRevision((rev) => rev + 1);
+  }, []);
+
+  const deleteGroup = useCallback((groupId: string) => {
+    dispatch({ type: 'DELETE_GROUP', groupId });
+    setStructureRevision((rev) => rev + 1);
+  }, []);
+
+  const renameGroup = useCallback((groupId: string, newLabel: string) => {
+    dispatch({ type: 'RENAME_GROUP', groupId, newLabel });
+    setStructureRevision((rev) => rev + 1);
+  }, []);
+
+  const setGroupCollapsed = useCallback(
+    (groupId: string, collapsed: boolean) => {
+      dispatch({ type: 'SET_GROUP_COLLAPSED', groupId, collapsed });
+    },
+    [],
+  );
+
+  const setGroupIcon = useCallback(
+    (groupId: string, icon: string | undefined) => {
+      dispatch({ type: 'SET_GROUP_ICON', groupId, icon });
+      setStructureRevision((rev) => rev + 1);
+    },
+    [],
+  );
+
+  const moveGroup = useCallback((groupId: string, newIndex: number) => {
+    dispatch({ type: 'MOVE_GROUP', groupId, newIndex });
     setStructureRevision((rev) => rev + 1);
   }, []);
 
@@ -2046,6 +2534,14 @@ export function useTimelineState(roomId: string, inputs: Input[]) {
     addTrack,
     deleteTrack,
     reorderTrack,
+    moveTrackTo,
+    setTrackIcon,
+    addGroup,
+    deleteGroup,
+    renameGroup,
+    setGroupCollapsed,
+    setGroupIcon,
+    moveGroup,
     replaceInputId,
     swapClipInput,
     updateClipSettings,
