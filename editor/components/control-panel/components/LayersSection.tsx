@@ -13,7 +13,6 @@ import {
 } from '@dnd-kit/core';
 import type {
   DragStartEvent,
-  DragOverEvent,
   DragEndEvent,
   UniqueIdentifier,
   DropAnimation,
@@ -26,7 +25,6 @@ import {
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { motion, LayoutGroup } from 'framer-motion';
 import {
   ChevronDown,
   ChevronRight,
@@ -63,6 +61,7 @@ type LayersSectionProps = {
   activeClipColors?: Record<string, string>;
   allTimelineInputIds?: Set<string>;
   timelineTrackOrder?: Record<string, number>;
+  sortMode?: 'timeline' | 'layers';
 };
 
 type DragItem = {
@@ -98,6 +97,7 @@ function SortableLayerItem({
         transform: CSS.Transform.toString(transform),
         transition,
         opacity: isDragging ? 0.5 : 1,
+        cursor: disabled ? 'not-allowed' : undefined,
       }}
       {...attributes}
       {...(disabled ? {} : listeners)}>
@@ -133,7 +133,7 @@ function SortableInputItem({
         transform: CSS.Transform.toString(transform),
         transition,
         opacity: isDragging ? 0.4 : 1,
-        cursor: disabled ? 'default' : 'grab',
+        cursor: disabled ? 'not-allowed' : 'grab',
       }}
       {...attributes}
       {...(disabled ? {} : listeners)}>
@@ -153,6 +153,7 @@ function LayerHeader({
   isColorFilterActive,
   onToggleColorFilter,
   isGuest,
+  dragDisabled,
 }: {
   stableLayerNumber: number;
   isCollapsed: boolean;
@@ -162,6 +163,7 @@ function LayerHeader({
   isColorFilterActive: boolean;
   onToggleColorFilter: () => void;
   isGuest?: boolean;
+  dragDisabled?: boolean;
 }) {
   return (
     <div className='border-b border-neutral-800/70 bg-neutral-900/40'>
@@ -197,7 +199,9 @@ function LayerHeader({
               <Filter className='w-3.5 h-3.5' />
             </button>
             <BehaviorSelector behavior={behavior} onChange={onBehaviorChange} />
-            <GripVertical className='w-3.5 h-3.5 text-neutral-600 flex-shrink-0 ml-0.5' />
+            <GripVertical
+              className={`w-3.5 h-3.5 flex-shrink-0 ml-0.5 ${dragDisabled ? 'text-neutral-700/50' : 'text-neutral-600'}`}
+            />
           </div>
         )}
       </div>
@@ -228,6 +232,7 @@ export function LayersSection({
   activeClipColors,
   allTimelineInputIds,
   timelineTrackOrder,
+  sortMode = 'layers',
 }: LayersSectionProps) {
   const { inputs, roomId, refreshState, availableShaders } =
     useControlPanelContext();
@@ -267,7 +272,7 @@ export function LayersSection({
     });
   }, [localLayers]);
 
-  const disableDrag = isGuest || false;
+  const disableDrag = !!isGuest || sortMode === 'timeline';
 
   const onWhipDisconnectedOrRemoved = useCallback(
     (id: string) => {
@@ -362,155 +367,125 @@ export function LayersSection({
     [findDragItem],
   );
 
-  const handleDragOver = useCallback(
-    (event: DragOverEvent) => {
-      const { active, over } = event;
-      if (!over || !activeDragItem) return;
-
-      const overItem = findDragItem(over.id);
-      if (!overItem) return;
-
-      // Layer reordering
-      if (activeDragItem.type === 'layer' && overItem.type === 'layer') {
-        setLocalLayers((prev) => {
-          const oldIdx = prev.findIndex((l) => l.id === activeDragItem.layerId);
-          const newIdx = prev.findIndex((l) => l.id === overItem.layerId);
-          if (oldIdx === -1 || newIdx === -1 || oldIdx === newIdx) return prev;
-          return arrayMove(prev, oldIdx, newIdx);
-        });
-        return;
-      }
-
-      // Input reordering / cross-layer move
-      if (activeDragItem.type === 'input') {
-        const overLayerId =
-          overItem.type === 'layer' ? overItem.layerId : overItem.layerId;
-
-        setLocalLayers((prev) => {
-          const srcLayerIdx = prev.findIndex(
-            (l) => l.id === activeDragItem.layerId,
-          );
-          const dstLayerIdx = prev.findIndex((l) => l.id === overLayerId);
-          if (srcLayerIdx === -1 || dstLayerIdx === -1) return prev;
-
-          const next = prev.map((l) => ({
-            ...l,
-            inputs: [...l.inputs],
-          }));
-
-          const srcInputIdx = next[srcLayerIdx].inputs.findIndex(
-            (i) => i.inputId === activeDragItem.inputId,
-          );
-          if (srcInputIdx === -1) return prev;
-
-          if (srcLayerIdx === dstLayerIdx) {
-            // Same layer reorder
-            if (overItem.type === 'input' && overItem.inputId) {
-              const overInputIdx = next[dstLayerIdx].inputs.findIndex(
-                (i) => i.inputId === overItem.inputId,
-              );
-              if (overInputIdx !== -1 && srcInputIdx !== overInputIdx) {
-                next[dstLayerIdx].inputs = arrayMove(
-                  next[dstLayerIdx].inputs,
-                  srcInputIdx,
-                  overInputIdx,
-                );
-              }
-            }
-          } else {
-            // Cross-layer move
-            const [movedInput] = next[srcLayerIdx].inputs.splice(
-              srcInputIdx,
-              1,
-            );
-            let insertIdx = next[dstLayerIdx].inputs.length;
-            if (overItem.type === 'input' && overItem.inputId) {
-              const overInputIdx = next[dstLayerIdx].inputs.findIndex(
-                (i) => i.inputId === overItem.inputId,
-              );
-              if (overInputIdx !== -1) insertIdx = overInputIdx;
-            }
-            next[dstLayerIdx].inputs.splice(insertIdx, 0, movedInput);
-          }
-
-          return next;
-        });
-
-        // Update drag source tracking immutably so React state is not mutated in place
-        if (activeDragItem.layerId !== overLayerId) {
-          setActiveDragItem((prev) =>
-            prev && prev.type === 'input'
-              ? { ...prev, layerId: overLayerId }
-              : prev,
-          );
-        }
-      }
-    },
-    [activeDragItem, findDragItem],
-  );
-
   const handleDragEnd = useCallback(
-    async (_event: DragEndEvent) => {
+    async (event: DragEndEvent) => {
+      const { active, over } = event;
       setActiveId(null);
       setActiveDragItem(null);
 
-      let layersToSend = localLayers;
+      if (!over || active.id === over.id) return;
 
-      // If input was reordered within a layer, recompute the layout
-      // to match what the server will return
-      if (activeDragItem?.type === 'input') {
-        const layerIdx = localLayers.findIndex(
-          (l) => l.id === activeDragItem.layerId,
+      const activeRef = findDragItem(active.id);
+      if (!activeRef) return;
+
+      const overIdStr = String(over.id);
+      let overLayerId: string | null = null;
+      let overInputId: string | null = null;
+      if (overIdStr.startsWith('layer::')) {
+        overLayerId = overIdStr.slice(7);
+      } else {
+        overInputId = overIdStr;
+        const owningLayer = localLayers.find((l) =>
+          l.inputs.some((i) => i.inputId === overIdStr),
         );
-        if (layerIdx !== -1) {
-          const layer = localLayers[layerIdx];
-          if (layer.behavior) {
-            const layerInputInfos = layer.inputs
-              .map((li) => {
-                const inp = inputs.find((i) => i.inputId === li.inputId);
-                return inp
-                  ? {
-                      inputId: inp.inputId,
-                      nativeWidth: inp.nativeWidth,
-                      nativeHeight: inp.nativeHeight,
-                    }
-                  : null;
-              })
-              .filter((bi): bi is any => !!bi);
+        overLayerId = owningLayer?.id ?? null;
+      }
+      if (!overLayerId) return;
 
-            try {
-              // TODO: get actual resolution from context
-              const resolution = { width: 1920, height: 1080 };
-              const result = computeLayout(
-                layer.behavior,
-                layerInputInfos,
-                resolution,
-              );
+      const affected = new Set<string>();
+      let nextLayers: Layer[] | null = null;
 
-              // Build the updated layers with recomputed positions
-              layersToSend = localLayers.map((l) =>
-                l.id === layer.id ? { ...l, inputs: result.inputs } : l,
-              );
-              setLocalLayers(layersToSend);
-            } catch (e) {
-              // If recomputation fails, just use the reordered layout
-              console.error('Failed to recompute layout:', e);
-            }
+      if (activeRef.type === 'layer') {
+        const oldIdx = localLayers.findIndex((l) => l.id === activeRef.layerId);
+        const newIdx = localLayers.findIndex((l) => l.id === overLayerId);
+        if (oldIdx === -1 || newIdx === -1 || oldIdx === newIdx) return;
+        nextLayers = arrayMove(localLayers, oldIdx, newIdx);
+      } else if (activeRef.type === 'input' && activeRef.inputId) {
+        const srcLayerIdx = localLayers.findIndex(
+          (l) => l.id === activeRef.layerId,
+        );
+        if (srcLayerIdx === -1) return;
+        const srcInputIdx = localLayers[srcLayerIdx].inputs.findIndex(
+          (i) => i.inputId === activeRef.inputId,
+        );
+        if (srcInputIdx === -1) return;
+
+        const dstLayerIdx = localLayers.findIndex((l) => l.id === overLayerId);
+        if (dstLayerIdx === -1) return;
+
+        if (srcLayerIdx === dstLayerIdx) {
+          if (!overInputId) return;
+          const dstInputIdx = localLayers[dstLayerIdx].inputs.findIndex(
+            (i) => i.inputId === overInputId,
+          );
+          if (dstInputIdx === -1 || srcInputIdx === dstInputIdx) return;
+          nextLayers = localLayers.map((l, i) =>
+            i === srcLayerIdx
+              ? { ...l, inputs: arrayMove(l.inputs, srcInputIdx, dstInputIdx) }
+              : l,
+          );
+          affected.add(localLayers[srcLayerIdx].id);
+        } else {
+          const next = localLayers.map((l) => ({
+            ...l,
+            inputs: [...l.inputs],
+          }));
+          const [moved] = next[srcLayerIdx].inputs.splice(srcInputIdx, 1);
+          let insertIdx = next[dstLayerIdx].inputs.length;
+          if (overInputId) {
+            const overInputIdx = next[dstLayerIdx].inputs.findIndex(
+              (i) => i.inputId === overInputId,
+            );
+            if (overInputIdx !== -1) insertIdx = overInputIdx;
           }
+          next[dstLayerIdx].inputs.splice(insertIdx, 0, moved);
+          nextLayers = next;
+          affected.add(localLayers[srcLayerIdx].id);
+          affected.add(localLayers[dstLayerIdx].id);
         }
       }
 
-      // Push the layers (either recomputed or original) to server
-      await onLayersChange(layersToSend);
+      if (!nextLayers) return;
+
+      const resolution = { width: 1920, height: 1080 };
+      nextLayers = nextLayers.map((l) => {
+        if (!affected.has(l.id) || !l.behavior) return l;
+        try {
+          const layerInputInfos = l.inputs
+            .map((li) => {
+              const inp = inputs.find((i) => i.inputId === li.inputId);
+              return inp
+                ? {
+                    inputId: inp.inputId,
+                    nativeWidth: inp.nativeWidth,
+                    nativeHeight: inp.nativeHeight,
+                  }
+                : null;
+            })
+            .filter((bi): bi is NonNullable<typeof bi> => !!bi);
+          const result = computeLayout(l.behavior, layerInputInfos, resolution);
+          return { ...l, inputs: result.inputs };
+        } catch (e) {
+          console.error('Failed to recompute layout for layer', l.id, e);
+          return l;
+        }
+      });
+
+      setLocalLayers(nextLayers);
+      try {
+        await onLayersChange(nextLayers);
+      } catch (e) {
+        console.error('onLayersChange failed:', e);
+        setLocalLayers(layers);
+      }
     },
-    [activeDragItem, inputs, onLayersChange, localLayers],
+    [findDragItem, localLayers, inputs, onLayersChange, layers],
   );
 
   const handleDragCancel = useCallback(() => {
     setActiveId(null);
     setActiveDragItem(null);
-    setLocalLayers(layers);
-  }, [layers]);
+  }, []);
 
   const handleBehaviorChange = useCallback(
     async (layerId: string, behavior: LayerBehaviorConfig | undefined) => {
@@ -585,7 +560,6 @@ export function LayersSection({
         sensors={sensors}
         collisionDetection={closestCenter}
         onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}>
         <SortableContext
@@ -626,130 +600,115 @@ export function LayersSection({
                     isColorFilterActive={isColorFilterActive}
                     onToggleColorFilter={() => toggleColorFilter(layer.id)}
                     isGuest={isGuest}
+                    dragDisabled={disableDrag}
                   />
 
                   {!isCollapsed && (
                     <SortableContext
                       items={inputIds}
                       strategy={verticalListSortingStrategy}>
-                      <LayoutGroup id={layer.id}>
-                        <div className='min-h-[4px]'>
-                          {visibleInputs.length === 0 && (
-                            <div className='text-[10px] text-neutral-600 text-center py-2'>
-                              {isColorFilterActive
-                                ? 'No active colored inputs'
-                                : 'Drop inputs here'}
-                            </div>
-                          )}
-                          {visibleInputs.map((layerInput, inputIndex) => {
-                            const input = inputs.find(
-                              (i) => i.inputId === layerInput.inputId,
-                            );
-                            if (!input) return null;
-                            const attachedChildren =
-                              input.attachedInputIds
-                                ?.map((id) =>
-                                  inputs.find((i) => i.inputId === id),
-                                )
-                                .filter((i): i is Input => !!i) || [];
+                      <div className='min-h-[4px]'>
+                        {visibleInputs.length === 0 && (
+                          <div className='text-[10px] text-neutral-600 text-center py-2'>
+                            {isColorFilterActive
+                              ? 'No active colored inputs'
+                              : 'Drop inputs here'}
+                          </div>
+                        )}
+                        {visibleInputs.map((layerInput) => {
+                          const input = inputs.find(
+                            (i) => i.inputId === layerInput.inputId,
+                          );
+                          if (!input) return null;
+                          const attachedChildren =
+                            input.attachedInputIds
+                              ?.map((id) =>
+                                inputs.find((i) => i.inputId === id),
+                              )
+                              .filter((i): i is Input => !!i) || [];
 
-                            return (
-                              <motion.div
-                                key={layerInput.inputId}
-                                layout={!activeId}
-                                layoutId={layerInput.inputId}
-                                transition={{
-                                  layout: { duration: 0.4, ease: 'easeInOut' },
-                                }}>
-                                <SortableInputItem
-                                  id={layerInput.inputId}
-                                  disabled={disableDrag}>
+                          return (
+                            <SortableInputItem
+                              key={layerInput.inputId}
+                              id={layerInput.inputId}
+                              disabled={disableDrag}>
+                              <ErrorBoundary>
+                                <InputEntry
+                                  input={input}
+                                  refreshState={refreshState}
+                                  roomId={roomId}
+                                  availableShaders={availableShaders}
+                                  canRemove={
+                                    isGuest
+                                      ? input.inputId === guestInputId
+                                      : true
+                                  }
+                                  pcRef={cameraPcRef}
+                                  streamRef={cameraStreamRef}
+                                  isFxOpen={openFxInputId === input.inputId}
+                                  onToggleFx={() => onToggleFx(input.inputId)}
+                                  onWhipDisconnectedOrRemoved={
+                                    onWhipDisconnectedOrRemoved
+                                  }
+                                  showGrip={isGuest ? false : true}
+                                  isSelected={selectedInputId === input.inputId}
+                                  readOnly={
+                                    isGuest && input.inputId !== guestInputId
+                                  }
+                                  activeBlockColor={
+                                    activeClipColors?.[input.inputId]
+                                  }
+                                  isOnTimeline={
+                                    allTimelineInputIds?.has(input.inputId) ??
+                                    true
+                                  }
+                                  dragDisabled={disableDrag}
+                                />
+                              </ErrorBoundary>
+                              {attachedChildren.map((child) => (
+                                <div
+                                  key={child.inputId}
+                                  className='ml-6 mt-1 border-l-2 border-blue-500/30 pl-2'>
                                   <ErrorBoundary>
                                     <InputEntry
-                                      input={input}
+                                      input={child}
                                       refreshState={refreshState}
                                       roomId={roomId}
                                       availableShaders={availableShaders}
-                                      canRemove={
-                                        isGuest
-                                          ? input.inputId === guestInputId
-                                          : true
-                                      }
+                                      canRemove={false}
                                       pcRef={cameraPcRef}
                                       streamRef={cameraStreamRef}
-                                      isFxOpen={openFxInputId === input.inputId}
+                                      isFxOpen={openFxInputId === child.inputId}
                                       onToggleFx={() =>
-                                        onToggleFx(input.inputId)
+                                        onToggleFx(child.inputId)
                                       }
                                       onWhipDisconnectedOrRemoved={
                                         onWhipDisconnectedOrRemoved
                                       }
-                                      showGrip={isGuest ? false : true}
+                                      showGrip={false}
                                       isSelected={
-                                        selectedInputId === input.inputId
+                                        selectedInputId === child.inputId
                                       }
                                       readOnly={
                                         isGuest &&
-                                        input.inputId !== guestInputId
+                                        child.inputId !== guestInputId
                                       }
                                       activeBlockColor={
-                                        activeClipColors?.[input.inputId]
+                                        activeClipColors?.[child.inputId]
                                       }
                                       isOnTimeline={
                                         allTimelineInputIds?.has(
-                                          input.inputId,
+                                          child.inputId,
                                         ) ?? true
                                       }
                                     />
                                   </ErrorBoundary>
-                                  {attachedChildren.map((child) => (
-                                    <div
-                                      key={child.inputId}
-                                      className='ml-6 mt-1 border-l-2 border-blue-500/30 pl-2'>
-                                      <ErrorBoundary>
-                                        <InputEntry
-                                          input={child}
-                                          refreshState={refreshState}
-                                          roomId={roomId}
-                                          availableShaders={availableShaders}
-                                          canRemove={false}
-                                          pcRef={cameraPcRef}
-                                          streamRef={cameraStreamRef}
-                                          isFxOpen={
-                                            openFxInputId === child.inputId
-                                          }
-                                          onToggleFx={() =>
-                                            onToggleFx(child.inputId)
-                                          }
-                                          onWhipDisconnectedOrRemoved={
-                                            onWhipDisconnectedOrRemoved
-                                          }
-                                          showGrip={false}
-                                          isSelected={
-                                            selectedInputId === child.inputId
-                                          }
-                                          readOnly={
-                                            isGuest &&
-                                            child.inputId !== guestInputId
-                                          }
-                                          activeBlockColor={
-                                            activeClipColors?.[child.inputId]
-                                          }
-                                          isOnTimeline={
-                                            allTimelineInputIds?.has(
-                                              child.inputId,
-                                            ) ?? true
-                                          }
-                                        />
-                                      </ErrorBoundary>
-                                    </div>
-                                  ))}
-                                </SortableInputItem>
-                              </motion.div>
-                            );
-                          })}
-                        </div>
-                      </LayoutGroup>
+                                </div>
+                              ))}
+                            </SortableInputItem>
+                          );
+                        })}
+                      </div>
                     </SortableContext>
                   )}
                 </div>
