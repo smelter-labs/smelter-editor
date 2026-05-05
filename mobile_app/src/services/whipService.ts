@@ -252,7 +252,7 @@ function stripToH264OnlyVideoSdp(sdp?: string): string | undefined {
 
 export type VideoCodecPreference = "h264" | "vp8" | "vp9" | "default";
 
-export interface WhipConnectionParams {
+interface WhipConnectionParams {
   localStream: MediaStream;
   whipUrl: string;
   bearerToken: string;

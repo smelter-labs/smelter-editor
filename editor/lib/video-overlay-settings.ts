@@ -14,7 +14,7 @@ const GLOWING_EVENT = 'smelter:video-overlay:glowing-changed';
 
 // ── Enabled ──────────────────────────────────────────────────────────────────
 
-export function getVideoOverlayEnabled(): boolean {
+function getVideoOverlayEnabled(): boolean {
   if (typeof window === 'undefined') return false;
   return window.localStorage.getItem(ENABLED_KEY) === 'true';
 }

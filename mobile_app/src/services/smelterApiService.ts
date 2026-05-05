@@ -2,7 +2,7 @@
 // General room fetching is still handled by apiService.ts.
 import { buildHttpUrl } from "./apiService";
 
-export interface JoinRoomAsWhipResult {
+interface JoinRoomAsWhipResult {
   inputId: string;
   bearerToken: string;
   whipUrl: string;

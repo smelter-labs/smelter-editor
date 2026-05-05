@@ -45,7 +45,7 @@ async function persistSavedUrls(urls: string[]): Promise<void> {
 
 export type ServerStatus = "idle" | "loading" | "error" | "success";
 export type HealthStatus = "checking" | "ok" | "error";
-export type Phase = "server" | "room";
+type Phase = "server" | "room";
 
 interface FormErrors {
   roomId?: string;
