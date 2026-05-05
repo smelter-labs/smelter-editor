@@ -585,6 +585,9 @@ interface ReshufflableGridWrapperProps<T> {
    * Used when a behavior-layer drag produces no position change (forbidden
    * slot), so itemData won't change and the normal useEffect won't fire. */
   correctionKey?: number;
+  /** When true, resize handles are not passed to items. Use for behavior-managed
+   * layers where positions are computed server-side and resize edits are ignored. */
+  disableResize?: boolean;
 }
 
 const ReshufflableGridWrapper = <T extends { id: string }>({
@@ -596,6 +599,7 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
   columns: initialColumns = 20,
   containerStyle,
   correctionKey,
+  disableResize = false,
 }: ReshufflableGridWrapperProps<T>) => {
   const [columns, setColumns] = useState(initialColumns);
   const [rows, setRows] = useState(initialRows);
@@ -1476,15 +1480,16 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
               }}
               onSelect={() => setSelectedItemId(gridItem.id)}
               onLongPress={() => onItemLongPress?.(gridItem.id)}
-              onResizeStart={(dir: ResizeHandleDirection) =>
-                handleResizeStart(gridItem.id, dir)
-              }
-              onResizeUpdate={(
-                dir: ResizeHandleDirection,
-                dx: number,
-                dy: number,
-              ) => handleResizeUpdate(gridItem.id, dir, dx, dy)}
-              onResizeEnd={() => handleResizeEnd(gridItem.id)}
+              {...(!disableResize && {
+                onResizeStart: (dir: ResizeHandleDirection) =>
+                  handleResizeStart(gridItem.id, dir),
+                onResizeUpdate: (
+                  dir: ResizeHandleDirection,
+                  dx: number,
+                  dy: number,
+                ) => handleResizeUpdate(gridItem.id, dir, dx, dy),
+                onResizeEnd: () => handleResizeEnd(gridItem.id),
+              })}
             />
           );
         }}

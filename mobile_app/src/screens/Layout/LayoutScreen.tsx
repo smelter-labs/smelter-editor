@@ -547,6 +547,7 @@ export function LayoutScreen() {
                   columns={columns}
                   containerStyle={styles.layerGrid}
                   correctionKey={gridCorrectionKey}
+                  disableResize={!!layer.behavior}
                 />
               </View>
             );
