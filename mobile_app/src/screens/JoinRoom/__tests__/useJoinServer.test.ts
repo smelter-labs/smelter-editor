@@ -31,7 +31,9 @@ vi.mock("../../../store/connectionStore", () => ({
 
 import { apiService } from "../../../services/apiService";
 
-const mockFetchActiveRooms = apiService.fetchActiveRooms as ReturnType<typeof vi.fn>;
+const mockFetchActiveRooms = apiService.fetchActiveRooms as ReturnType<
+  typeof vi.fn
+>;
 
 const ROOMS = [
   { roomId: "room-a", roomName: "Room A" },
@@ -57,9 +59,12 @@ describe("handleJoinServer", () => {
 
     expect(result.current.serverStatus).toBe("success");
     expect(result.current.serverError).toBeNull();
-    expect(mockNavigation.navigate).toHaveBeenCalledWith(SCREEN_NAMES.JOIN_LOBBY, {
-      serverUrl: "http://192.168.1.1:3001",
-    });
+    expect(mockNavigation.navigate).toHaveBeenCalledWith(
+      SCREEN_NAMES.JOIN_LOBBY,
+      {
+        serverUrl: "http://192.168.1.1:3001",
+      },
+    );
   });
 
   it("rejects an empty URL", async () => {
@@ -132,7 +137,10 @@ describe("handleJoinServer", () => {
       .mockImplementationOnce(
         () =>
           new Promise((resolve) =>
-            setTimeout(() => resolve([{ roomId: "stale", roomName: "Stale" }]), 200),
+            setTimeout(
+              () => resolve([{ roomId: "stale", roomName: "Stale" }]),
+              200,
+            ),
           ),
       )
       .mockResolvedValueOnce([{ roomId: "fresh", roomName: "Fresh" }]);
@@ -149,9 +157,12 @@ describe("handleJoinServer", () => {
 
     // Only the fast call should have navigated
     expect(mockNavigation.navigate).toHaveBeenCalledTimes(1);
-    expect(mockNavigation.navigate).toHaveBeenCalledWith(SCREEN_NAMES.JOIN_LOBBY, {
-      serverUrl: "http://fast:3001",
-    });
+    expect(mockNavigation.navigate).toHaveBeenCalledWith(
+      SCREEN_NAMES.JOIN_LOBBY,
+      {
+        serverUrl: "http://fast:3001",
+      },
+    );
   });
 });
 
@@ -273,10 +284,13 @@ describe("handleQRScan", () => {
       result.current.handleQRScan(data);
     });
 
-    expect(mockNavigation.navigate).toHaveBeenCalledWith(SCREEN_NAMES.JOIN_ROOM, {
-      serverUrl: "http://192.168.1.1:3001",
-      initialRoomId: "scanned-room",
-    });
+    expect(mockNavigation.navigate).toHaveBeenCalledWith(
+      SCREEN_NAMES.JOIN_ROOM,
+      {
+        serverUrl: "http://192.168.1.1:3001",
+        initialRoomId: "scanned-room",
+      },
+    );
     expect(result.current.showQR).toBe(false);
   });
 

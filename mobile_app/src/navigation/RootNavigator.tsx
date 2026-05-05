@@ -20,8 +20,14 @@ export function RootNavigator() {
       initialRouteName={token ? SCREEN_NAMES.MAIN : SCREEN_NAMES.JOIN_SERVER}
       screenOptions={{ headerShown: false, animation: "fade" }}
     >
-      <Stack.Screen name={SCREEN_NAMES.JOIN_SERVER} component={JoinServerScreen} />
-      <Stack.Screen name={SCREEN_NAMES.JOIN_LOBBY} component={JoinLobbyScreen} />
+      <Stack.Screen
+        name={SCREEN_NAMES.JOIN_SERVER}
+        component={JoinServerScreen}
+      />
+      <Stack.Screen
+        name={SCREEN_NAMES.JOIN_LOBBY}
+        component={JoinLobbyScreen}
+      />
       <Stack.Screen name={SCREEN_NAMES.JOIN_ROOM} component={JoinRoomScreen} />
       <Stack.Screen name={SCREEN_NAMES.MAIN} component={MainNavigator} />
       <Stack.Screen name={SCREEN_NAMES.HELP} component={HelpScreen} />

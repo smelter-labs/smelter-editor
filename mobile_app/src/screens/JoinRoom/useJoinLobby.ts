@@ -8,7 +8,10 @@ import { useInputsStore } from "../../store/inputsStore";
 import { useLayoutStore } from "../../store/layoutStore";
 import { useSettingsStore } from "../../store/settingsStore";
 import { ConnectionStatus } from "../../types/connection";
-import type { RootNavigationProp, RootStackParamList } from "../../navigation/navigationTypes";
+import type {
+  RootNavigationProp,
+  RootStackParamList,
+} from "../../navigation/navigationTypes";
 import { SCREEN_NAMES } from "../../navigation/navigationTypes";
 
 export type CreateRoomStatus = "idle" | "loading" | "error";
@@ -33,7 +36,8 @@ export function useJoinLobby() {
     setStatus(ConnectionStatus.Connecting);
 
     const { setInputs } = useInputsStore.getState();
-    const { setLayers, setResolution, setGridConfig } = useLayoutStore.getState();
+    const { setLayers, setResolution, setGridConfig } =
+      useLayoutStore.getState();
     const { setTimelinePlaying } = useConnectionStore.getState();
     const { gridFactor } = useSettingsStore.getState();
 
@@ -57,7 +61,8 @@ export function useJoinLobby() {
 
       navigation.replace(SCREEN_NAMES.MAIN);
     } catch (err) {
-      const message = err instanceof Error ? err.message : "Failed to create room";
+      const message =
+        err instanceof Error ? err.message : "Failed to create room";
       setError(message);
       setCreateError(message);
       setCreateStatus("error");

@@ -44,7 +44,9 @@ export function useJoinServer() {
   const { serverUrl } = useConnectionStore();
 
   const [savedUrls, setSavedUrls] = useState<string[]>([]);
-  const [healthStatus, setHealthStatus] = useState<Record<string, HealthStatus>>({});
+  const [healthStatus, setHealthStatus] = useState<
+    Record<string, HealthStatus>
+  >({});
   const healthSeqRef = useRef<Record<string, number>>({});
   const joinSeqRef = useRef(0);
 

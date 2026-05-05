@@ -9,7 +9,10 @@ import { useLayoutStore } from "../../store/layoutStore";
 import { useSettingsStore } from "../../store/settingsStore";
 import { ConnectionStatus } from "../../types/connection";
 import { ConnectionData } from "../../utils/connectionUtils";
-import type { RootNavigationProp, RootStackParamList } from "../../navigation/navigationTypes";
+import type {
+  RootNavigationProp,
+  RootStackParamList,
+} from "../../navigation/navigationTypes";
 import { SCREEN_NAMES } from "../../navigation/navigationTypes";
 
 interface FormErrors {
@@ -59,7 +62,9 @@ export function useJoinRoom() {
   }, []);
 
   const handleConnectAsCamera = useCallback(() => {
-    const trimmedRoomId = (isPrivateRoom ? privateRoomId : selectedRoomId).trim();
+    const trimmedRoomId = (
+      isPrivateRoom ? privateRoomId : selectedRoomId
+    ).trim();
 
     const newErrors: FormErrors = {};
     if (!trimmedRoomId) newErrors.roomId = "Room ID is required";
@@ -76,7 +81,9 @@ export function useJoinRoom() {
   }, [serverUrl, selectedRoomId, isPrivateRoom, privateRoomId, navigation]);
 
   const handleConnect = useCallback(async () => {
-    const trimmedRoomId = (isPrivateRoom ? privateRoomId : selectedRoomId).trim();
+    const trimmedRoomId = (
+      isPrivateRoom ? privateRoomId : selectedRoomId
+    ).trim();
 
     const newErrors: FormErrors = {};
     if (!trimmedRoomId) newErrors.roomId = "Room ID is required";
@@ -90,7 +97,8 @@ export function useJoinRoom() {
     setStatus(ConnectionStatus.Connecting);
 
     const { setInputs } = useInputsStore.getState();
-    const { setLayers, setResolution, setGridConfig } = useLayoutStore.getState();
+    const { setLayers, setResolution, setGridConfig } =
+      useLayoutStore.getState();
     const { setTimelinePlaying } = useConnectionStore.getState();
 
     try {
@@ -113,7 +121,8 @@ export function useJoinRoom() {
 
       navigation.replace(SCREEN_NAMES.MAIN);
     } catch (err) {
-      const rawMessage = err instanceof Error ? err.message : "Connection failed";
+      const rawMessage =
+        err instanceof Error ? err.message : "Connection failed";
       const isRoomNotFound = /\(404\)/.test(rawMessage);
       const message = isRoomNotFound
         ? "Room not found. Check the room ID and try again."

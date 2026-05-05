@@ -44,32 +44,44 @@ vi.mock("../../../store/connectionStore", () => {
     setStatus: vi.fn(),
   };
   return {
-    useConnectionStore: Object.assign(vi.fn(() => state), {
-      getState: () => ({ setTimelinePlaying: vi.fn(), ...state }),
-    }),
+    useConnectionStore: Object.assign(
+      vi.fn(() => state),
+      {
+        getState: () => ({ setTimelinePlaying: vi.fn(), ...state }),
+      },
+    ),
   };
 });
 
 vi.mock("../../../store/inputsStore", () => ({
-  useInputsStore: Object.assign(vi.fn(() => ({})), {
-    getState: () => ({ setInputs: vi.fn() }),
-  }),
+  useInputsStore: Object.assign(
+    vi.fn(() => ({})),
+    {
+      getState: () => ({ setInputs: vi.fn() }),
+    },
+  ),
 }));
 
 vi.mock("../../../store/layoutStore", () => ({
-  useLayoutStore: Object.assign(vi.fn(() => ({})), {
-    getState: () => ({
-      setLayers: vi.fn(),
-      setResolution: vi.fn(),
-      setGridConfig: vi.fn(),
-    }),
-  }),
+  useLayoutStore: Object.assign(
+    vi.fn(() => ({})),
+    {
+      getState: () => ({
+        setLayers: vi.fn(),
+        setResolution: vi.fn(),
+        setGridConfig: vi.fn(),
+      }),
+    },
+  ),
 }));
 
 vi.mock("../../../store/settingsStore", () => ({
-  useSettingsStore: Object.assign(vi.fn(() => ({})), {
-    getState: () => ({ gridFactor: 50 }),
-  }),
+  useSettingsStore: Object.assign(
+    vi.fn(() => ({})),
+    {
+      getState: () => ({ gridFactor: 50 }),
+    },
+  ),
 }));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -78,8 +90,12 @@ import { apiService } from "../../../services/apiService";
 import { wsService } from "../../../services/websocketService";
 import { useRoute } from "@react-navigation/native";
 
-const mockFetchActiveRooms = apiService.fetchActiveRooms as ReturnType<typeof vi.fn>;
-const mockFetchRoomState = apiService.fetchRoomState as ReturnType<typeof vi.fn>;
+const mockFetchActiveRooms = apiService.fetchActiveRooms as ReturnType<
+  typeof vi.fn
+>;
+const mockFetchRoomState = apiService.fetchRoomState as ReturnType<
+  typeof vi.fn
+>;
 const mockWsConnect = wsService.connect as ReturnType<typeof vi.fn>;
 
 const ROOMS = [
@@ -114,7 +130,9 @@ describe("room polling", () => {
 
     await waitFor(() => expect(result.current.rooms).toHaveLength(2));
 
-    expect(mockFetchActiveRooms).toHaveBeenCalledWith("http://192.168.1.1:3001");
+    expect(mockFetchActiveRooms).toHaveBeenCalledWith(
+      "http://192.168.1.1:3001",
+    );
   });
 
   it("deduplicates rooms with the same roomId", async () => {
@@ -133,7 +151,10 @@ describe("room polling", () => {
 
   it("initialises selectedRoomId from route param initialRoomId", async () => {
     (useRoute as ReturnType<typeof vi.fn>).mockReturnValue({
-      params: { serverUrl: "http://192.168.1.1:3001", initialRoomId: "pre-room" },
+      params: {
+        serverUrl: "http://192.168.1.1:3001",
+        initialRoomId: "pre-room",
+      },
     });
 
     const { result } = renderHook(() => useJoinRoom());
@@ -166,8 +187,14 @@ describe("handleConnect", () => {
       await result.current.handleConnect();
     });
 
-    expect(mockFetchRoomState).toHaveBeenCalledWith("http://192.168.1.1:3001", "room-a");
-    expect(mockWsConnect).toHaveBeenCalledWith("http://192.168.1.1:3001", "room-a");
+    expect(mockFetchRoomState).toHaveBeenCalledWith(
+      "http://192.168.1.1:3001",
+      "room-a",
+    );
+    expect(mockWsConnect).toHaveBeenCalledWith(
+      "http://192.168.1.1:3001",
+      "room-a",
+    );
     expect(mockNavigation.replace).toHaveBeenCalledWith(SCREEN_NAMES.MAIN);
     expect(result.current.errors).toEqual({});
   });
@@ -311,7 +338,10 @@ describe("togglePrivateRoom", () => {
 describe("handleQRScan", () => {
   it("sets selectedRoomId and closes QR when scanned server matches current", async () => {
     const { result } = renderHook(() => useJoinRoom());
-    const data = ConnectionData.fromManualInput("http://192.168.1.1:3001", "scanned-room");
+    const data = ConnectionData.fromManualInput(
+      "http://192.168.1.1:3001",
+      "scanned-room",
+    );
 
     await act(async () => {
       result.current.setShowQR(true);
@@ -328,16 +358,22 @@ describe("handleQRScan", () => {
 
   it("navigates to JOIN_ROOM with new serverUrl when scanned server differs", async () => {
     const { result } = renderHook(() => useJoinRoom());
-    const data = ConnectionData.fromManualInput("http://other-server:3001", "room-x");
+    const data = ConnectionData.fromManualInput(
+      "http://other-server:3001",
+      "room-x",
+    );
 
     act(() => {
       result.current.handleQRScan(data);
     });
 
-    expect(mockNavigation.navigate).toHaveBeenCalledWith(SCREEN_NAMES.JOIN_ROOM, {
-      serverUrl: "http://other-server:3001",
-      initialRoomId: "room-x",
-    });
+    expect(mockNavigation.navigate).toHaveBeenCalledWith(
+      SCREEN_NAMES.JOIN_ROOM,
+      {
+        serverUrl: "http://other-server:3001",
+        initialRoomId: "room-x",
+      },
+    );
     expect(result.current.showQR).toBe(false);
   });
 });
