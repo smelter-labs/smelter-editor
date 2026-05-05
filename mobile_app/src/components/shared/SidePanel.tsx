@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { Pressable, StyleSheet } from "react-native";
 import { useScreenDimensions } from "../../hooks/useScreenDimensions";
 import Animated, {
@@ -54,16 +54,22 @@ export function SidePanel({
   const hiddenTranslateX = side === "right" ? contentWidth : -width;
 
   const translateX = useSharedValue(hiddenTranslateX);
+  const wasVisibleRef = useRef(false);
 
   useEffect(() => {
     if (isVisible) {
-      // Snap off-screen to the new side first (no layout change, purely translateX),
-      // then spring into view. This ensures a side switch never animates across screen.
-      translateX.value = hiddenTranslateX;
+      if (!wasVisibleRef.current) {
+        // Panel just became visible: snap off-screen first so it always
+        // slides in from the correct side (avoids cross-screen slide on side switch).
+        translateX.value = hiddenTranslateX;
+      }
+      // If panel was already open (e.g. arrow nav toggled), skip the snap
+      // and just spring to the updated position — no flicker.
       translateX.value = withSpring(visibleTranslateX, SPRING_CONFIG);
     } else {
       translateX.value = withSpring(hiddenTranslateX, SPRING_CONFIG);
     }
+    wasVisibleRef.current = isVisible;
   }, [isVisible, hiddenTranslateX, visibleTranslateX]);
 
   const panelStyle = useAnimatedStyle(() => {
