@@ -581,6 +581,13 @@ interface ReshufflableGridWrapperProps<T> {
   rows?: number;
   columns?: number;
   containerStyle?: object;
+  /** Increment to force the internal grid state to resync to itemData.
+   * Used when a behavior-layer drag produces no position change (forbidden
+   * slot), so itemData won't change and the normal useEffect won't fire. */
+  correctionKey?: number;
+  /** When true, resize handles are not passed to items. Use for behavior-managed
+   * layers where positions are computed server-side and resize edits are ignored. */
+  disableResize?: boolean;
 }
 
 const ReshufflableGridWrapper = <T extends { id: string }>({
@@ -591,6 +598,8 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
   rows: initialRows = 20,
   columns: initialColumns = 20,
   containerStyle,
+  correctionKey,
+  disableResize = false,
 }: ReshufflableGridWrapperProps<T>) => {
   const [columns, setColumns] = useState(initialColumns);
   const [rows, setRows] = useState(initialRows);
@@ -628,6 +637,14 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
     })),
   );
 
+  // Keep a ref to itemData so the correctionKey effect can read the latest value
+  // without needing itemData in its dependency array (which would cause it to
+  // run on every external update, not just forced corrections).
+  const itemDataRef = useRef(itemData);
+  useEffect(() => {
+    itemDataRef.current = itemData;
+  }, [itemData]);
+
   // Sync prop changes from itemData to internal data state.
   // Handles structural changes (add / remove / reorder) by matching on semantic id.
   useEffect(() => {
@@ -662,6 +679,37 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
       return next;
     });
   }, [itemData]);
+
+  // Forced correction for behavior-layer forbidden-position drags: when the
+  // drag doesn't change the input order, computeLayout produces the same
+  // pixel positions as before, the server echoes them back unchanged, and
+  // itemData never changes — so the effect above never fires. correctionKey
+  // is incremented by the parent in exactly this case, triggering a resync
+  // to the current (authoritative) itemData.
+  useEffect(() => {
+    if (!correctionKey) return;
+    setData((prev) => {
+      const next = itemDataRef.current.map((item) => ({
+        id: item.props.id,
+        width: item.initial.width,
+        height: item.initial.height,
+        startColumn: item.initial.col,
+        startRow: item.initial.row,
+        itemProps: item.props,
+      }));
+      isUpdatingFromGrid.current = false;
+      if (areGridItemsEquivalent(next, prev)) {
+        return prev;
+      }
+      if (__DEV__) {
+        console.log("[LayoutGrid] Applying forced behavior correction", {
+          ...summarizeGridDiff(prev, next),
+          nextItemCount: next.length,
+        });
+      }
+      return next;
+    });
+  }, [correctionKey]); // intentionally excludes itemData — read via itemDataRef
 
   useEffect(() => {
     setColumns(initialColumns);
@@ -1432,15 +1480,16 @@ const ReshufflableGridWrapper = <T extends { id: string }>({
               }}
               onSelect={() => setSelectedItemId(gridItem.id)}
               onLongPress={() => onItemLongPress?.(gridItem.id)}
-              onResizeStart={(dir: ResizeHandleDirection) =>
-                handleResizeStart(gridItem.id, dir)
-              }
-              onResizeUpdate={(
-                dir: ResizeHandleDirection,
-                dx: number,
-                dy: number,
-              ) => handleResizeUpdate(gridItem.id, dir, dx, dy)}
-              onResizeEnd={() => handleResizeEnd(gridItem.id)}
+              {...(!disableResize && {
+                onResizeStart: (dir: ResizeHandleDirection) =>
+                  handleResizeStart(gridItem.id, dir),
+                onResizeUpdate: (
+                  dir: ResizeHandleDirection,
+                  dx: number,
+                  dy: number,
+                ) => handleResizeUpdate(gridItem.id, dir, dx, dy),
+                onResizeEnd: () => handleResizeEnd(gridItem.id),
+              })}
             />
           );
         }}

@@ -80,7 +80,7 @@ function OutputScene() {
         <View
           key={layer.id}
           style={{ top: 0, left: 0, width, height, overflow: 'visible' }}>
-          {layer.inputs.map((item, itemIndex) => {
+          {layer.inputs.map((item) => {
             const cT = item.cropTop ?? 0;
             const cL = item.cropLeft ?? 0;
             const cR = item.cropRight ?? 0;
@@ -126,11 +126,13 @@ function OutputScene() {
               );
             }
 
-            const layerItemKey = `${item.inputId}:${itemIndex}`;
+            // Keep identity stable across reorder so Smelter can animate moves
+            // instead of remounting the node when index changes.
+            const layerItemKey = `${layer.id}:${item.inputId}`;
             return (
               <Rescaler
                 key={layerItemKey}
-                id={`layer-${layer.id}-${item.inputId}-${itemIndex}`}
+                id={`layer-${layer.id}-${item.inputId}`}
                 transition={{
                   durationMs: item.transitionDurationMs ?? 300,
                   easingFunction: buildEasingFunction(item.transitionEasing),

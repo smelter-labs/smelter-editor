@@ -27,6 +27,7 @@ import LayersPanel from "./LayersPanel";
 import type { ItemData } from "./ReshufflableGridWrapper";
 import type { LayerItemProps } from "./types";
 import type { Layer, LayerInput } from "../../types/layout";
+import { computeLayout } from "@smelter-editor/types";
 import type { Resolution } from "@smelter-editor/types";
 import type { WSEventPayload } from "../../types/websocket";
 import { areInputCardsEquivalent } from "../../utils/inputCardEquality";
@@ -316,6 +317,13 @@ export function LayoutScreen() {
             JSON.stringify(newLayers[0]?.inputs) !==
             JSON.stringify(correctedLayers[0]?.inputs),
         });
+        console.log(
+          "[Layout] Corrected layers timestamps:",
+          correctedLayers.map((l) => ({
+            id: l.id,
+            layoutTimestamp: l.layoutTimestamp,
+          })),
+        );
         // Apply the server's corrected layout immediately, don't wait for room_updated
         setLayers(correctedLayers);
       } catch (err) {
@@ -384,7 +392,8 @@ export function LayoutScreen() {
       const layerIndex = layers.findIndex((l) => l.id === layerId);
       if (layerIndex === -1) return;
 
-      const existingInputs = layers[layerIndex].inputs;
+      const layer = layers[layerIndex];
+      const existingInputs = layer.inputs;
 
       // Sort items by their visual position (row-major) so the resulting
       // LayerInput array order reflects where the user placed each tile.
@@ -397,13 +406,43 @@ export function LayoutScreen() {
         return a.initial.col - b.initial.col;
       });
 
-      const newInputs = itemDataToLayerInputs(
-        sortedItems,
-        resolution,
-        columns,
-        rows,
-        existingInputs,
-      );
+      const existingMap = new Map(existingInputs.map((i) => [i.inputId, i]));
+      const inputMap = new Map(inputs.map((i) => [i.id, i]));
+      const newInputs = layer.behavior
+        ? (() => {
+            const behaviorInfos = sortedItems.map((item) => {
+              const input = inputMap.get(item.props.id);
+              return {
+                inputId: item.props.id,
+                nativeWidth: input?.nativeWidth,
+                nativeHeight: input?.nativeHeight,
+              };
+            });
+            const computed = computeLayout(
+              layer.behavior,
+              behaviorInfos,
+              resolution,
+            ).inputs;
+            return computed.map((computedInput) => {
+              const existing = existingMap.get(computedInput.inputId);
+              return {
+                inputId: computedInput.inputId,
+                x: computedInput.x,
+                y: computedInput.y,
+                width: computedInput.width,
+                height: computedInput.height,
+                transitionDurationMs: existing?.transitionDurationMs,
+                transitionEasing: existing?.transitionEasing,
+              };
+            });
+          })()
+        : itemDataToLayerInputs(
+            sortedItems,
+            resolution,
+            columns,
+            rows,
+            existingInputs,
+          );
       const newLayers = layers.map((l, i) =>
         i === layerIndex ? { ...l, inputs: newInputs } : l,
       );
@@ -411,9 +450,10 @@ export function LayoutScreen() {
         layerId,
         newInputOrder: newInputs.map((li) => li.inputId),
       });
+
       void pushLayers(newLayers);
     },
-    [layers, resolution, columns, rows, pushLayers],
+    [layers, inputs, resolution, columns, rows, pushLayers],
   );
 
   // Memoize item data per layer to avoid unnecessary re-renders
@@ -482,7 +522,13 @@ export function LayoutScreen() {
                   key={`${layer.id}-${layoutResetToken}`}
                   itemData={itemData}
                   renderedComponent={GridCell}
-                  onItemChange={(items) => handleGridChange(layer.id, items)}
+                  onItemChange={(items) => {
+                    console.log("[Layout] correctionKey at drag end:", {
+                      layerId: layer.id,
+                      correctionKey: layer.layoutTimestamp,
+                    });
+                    handleGridChange(layer.id, items);
+                  }}
                   onItemLongPress={(itemId) => {
                     setEffectsInputId(itemId);
                     setEffectsPanelOpen(true);
@@ -490,6 +536,8 @@ export function LayoutScreen() {
                   rows={rows}
                   columns={columns}
                   containerStyle={styles.layerGrid}
+                  correctionKey={layer.layoutTimestamp}
+                  disableResize={!!layer.behavior}
                 />
               </View>
             );
@@ -543,6 +591,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 0,
     right: 0,
+    zIndex: 1000,
   },
   canvas: {
     flex: 1,

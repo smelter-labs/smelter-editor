@@ -18,8 +18,6 @@ import { RoomSection } from "./RoomSection";
 import { QRScannerModal } from "./QRScannerModal";
 import { LoadingOverlay } from "../../components/shared/LoadingOverlay";
 import { JoinRoomSettingsPanel } from "./JoinRoomSettingsPanel";
-import type { RootNavigationProp } from "../../navigation/navigationTypes";
-import { SCREEN_NAMES } from "../../navigation/navigationTypes";
 
 export function JoinRoomScreen() {
   const theme = useTheme();
@@ -103,6 +101,7 @@ export function JoinRoomScreen() {
             errors={errors}
             isLoading={isLoading}
             onConnect={handleConnect}
+            onConnectAsCamera={handleConnectAsCamera}
           />
         )}
 

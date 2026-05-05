@@ -4,7 +4,7 @@
     "moduleResolution": "bundler",
     "strict": true,
     "paths": {
-      "@smelter-editor/types": ["../packages/types/src/index.ts"]
+      "@smelter-editor/types": ["../packages/types"]
     }
   }
 }
