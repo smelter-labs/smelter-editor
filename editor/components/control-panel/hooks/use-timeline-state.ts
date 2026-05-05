@@ -808,13 +808,14 @@ export function timelineReducer(
   switch (action.type) {
     case 'SYNC_TRACKS': {
       if (action.inputs.length === 0) {
-        const hasExistingClips = state.tracks.some(
-          (track) => track.id !== OUTPUT_TRACK_ID && track.clips.length > 0,
-        );
+        const hasUserContent =
+          state.tracks.some((track) => track.id !== OUTPUT_TRACK_ID) ||
+          state.groups.length > 0;
         // Room refreshes can momentarily report zero inputs while the server is
         // still reconnecting imported sources. Keep the current timeline
-        // instead of wiping it and rebuilding every clip from 0:00.
-        if (hasExistingClips) {
+        // instead of wiping it and rebuilding every clip from 0:00. User-created
+        // empty tracks/groups also count as content worth preserving.
+        if (hasUserContent) {
           return state;
         }
         const wipedTracks = ensureOutputTrack([], state.totalDurationMs);
@@ -1927,14 +1928,10 @@ export function timelineReducer(
 
     case 'PURGE_INPUT_ID': {
       if (action.inputId === OUTPUT_TRACK_INPUT_ID) return state;
-      const newTracks = state.tracks
-        .map((track) => ({
-          ...track,
-          clips: track.clips.filter((c) => c.inputId !== action.inputId),
-        }))
-        .filter(
-          (track) => track.clips.length > 0 || track.id === OUTPUT_TRACK_ID,
-        );
+      const newTracks = state.tracks.map((track) => ({
+        ...track,
+        clips: track.clips.filter((c) => c.inputId !== action.inputId),
+      }));
       return withReconciledOrder({ ...state, tracks: newTracks });
     }
 

@@ -93,7 +93,7 @@ describe('timelineReducer', () => {
     ]);
   });
 
-  it('purges an input from all tracks and removes empty ones', () => {
+  it('purges an input from all tracks and keeps tracks that become empty', () => {
     const state: TimelineState = {
       keyframeInterpolationMode: 'step',
       tracks: [
@@ -150,10 +150,12 @@ describe('timelineReducer', () => {
       inputId: 'room::local::a',
     });
 
-    expect(next.tracks).toHaveLength(1);
-    expect(next.tracks[0].id).toBe('track-1');
-    expect(next.tracks[0].clips).toHaveLength(1);
-    expect(next.tracks[0].clips[0].inputId).toBe('room::local::b');
+    expect(next.tracks).toHaveLength(2);
+    const track1 = next.tracks.find((t) => t.id === 'track-1');
+    const track2 = next.tracks.find((t) => t.id === 'track-2');
+    expect(track1?.clips).toHaveLength(1);
+    expect(track1?.clips[0].inputId).toBe('room::local::b');
+    expect(track2?.clips).toHaveLength(0);
   });
 
   it('keeps the base keyframe locked at 0ms and clamps moved keyframes into clip bounds', () => {
