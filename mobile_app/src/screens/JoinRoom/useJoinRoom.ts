@@ -45,7 +45,7 @@ async function persistSavedUrls(urls: string[]): Promise<void> {
 
 export type ServerStatus = "idle" | "loading" | "error" | "success";
 export type HealthStatus = "checking" | "ok" | "error";
-export type Phase = "server" | "room";
+type Phase = "server" | "room";
 
 interface FormErrors {
   roomId?: string;
@@ -199,7 +199,7 @@ export function useJoinRoom() {
         setHealthStatus((prev) => ({ ...prev, [trimmed]: "error" }));
       }
     },
-    [savedUrls, selectedServerUrl],
+    [selectedServerUrl, savedUrls],
   );
 
   // While waiting on the room-selection phase, poll for new/removed rooms every 3 s
@@ -224,6 +224,32 @@ export function useJoinRoom() {
     const id = setInterval(() => void refresh(), 3000);
     return () => clearInterval(id);
   }, [serverStatus, selectedServerUrl]);
+
+  const handleConnectAsCamera = useCallback(() => {
+    const trimmedUrl = selectedServerUrl.trim();
+    const trimmedRoomId = (
+      isPrivateRoom ? privateRoomId : selectedRoomId
+    ).trim();
+
+    const newErrors: FormErrors = {};
+    if (!trimmedRoomId) newErrors.roomId = "Room ID is required";
+    if (Object.keys(newErrors).length > 0) {
+      setErrors(newErrors);
+      return;
+    }
+
+    setErrors({});
+    navigation.navigate(SCREEN_NAMES.CAMERA, {
+      serverUrl: trimmedUrl,
+      roomId: trimmedRoomId,
+    });
+  }, [
+    selectedServerUrl,
+    selectedRoomId,
+    isPrivateRoom,
+    privateRoomId,
+    navigation,
+  ]);
 
   const handleConnect = useCallback(async () => {
     const trimmedUrl = selectedServerUrl.trim();
@@ -333,6 +359,7 @@ export function useJoinRoom() {
     errors,
     isLoading,
     handleConnect,
+    handleConnectAsCamera,
 
     // misc
     showQR,

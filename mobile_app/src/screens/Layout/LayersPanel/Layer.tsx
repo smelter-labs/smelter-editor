@@ -23,7 +23,7 @@ const INPUT_HEIGHT = 44;
 
 // ─── LayerComponent ──────────────────────────────────────────────────────────
 
-export interface LayerComponentProps {
+interface LayerComponentProps {
   layer: Layer;
   inputs: InputCard[];
   ui: LayerUiState;
@@ -69,8 +69,16 @@ export function Layer({
   }));
 
   const handleInputMove = useCallback(
-    (id: string, from: number, to: number) => {
-      onInputMove(layer.id, id, from, to);
+    (id: string, from: number, to?: Record<string, number>) => {
+      let resolvedTo: number | undefined;
+      if (to && typeof to === "object") {
+        const maybe = (to as Record<string, number>)[id];
+        if (typeof maybe === "number") resolvedTo = maybe;
+      }
+      // If we couldn't resolve a numeric target index, do nothing (leave item where it was).
+      if (typeof resolvedTo !== "number") return;
+
+      onInputMove(layer.id, id, from, resolvedTo);
     },
     [layer.id, onInputMove],
   );
@@ -81,7 +89,7 @@ export function Layer({
         key={item.id}
         id={item.id}
         data={item}
-        onMove={(id, from, to) => handleInputMove(id, from, to)}
+        onDrop={(id, from, to) => handleInputMove(id, from, to)}
         onDragStart={() =>
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
         }

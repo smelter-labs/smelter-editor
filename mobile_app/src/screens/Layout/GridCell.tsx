@@ -226,7 +226,7 @@ export default function GridCell({
             ? `${nativeWidth}×${nativeHeight}`
             : ""}
         </Text>
-        {isSelected && (
+        {isSelected && onResizeStart && (
           <>
             {["topLeft", "topRight", "bottomLeft", "bottomRight"].map((dir) =>
               renderHandle(dir as ResizeHandleDirection),

@@ -872,7 +872,9 @@ export class InputManager {
     // as `undefined`.
     if (options.absolutePosition !== undefined)
       input.absolutePosition =
-        options.absolutePosition === null ? undefined : options.absolutePosition;
+        options.absolutePosition === null
+          ? undefined
+          : options.absolutePosition;
     if (options.absoluteTop !== undefined)
       input.absoluteTop =
         options.absoluteTop === null ? undefined : options.absoluteTop;
@@ -898,8 +900,7 @@ export class InputManager {
     if (options.cropTop !== undefined)
       input.cropTop = options.cropTop === null ? undefined : options.cropTop;
     if (options.cropLeft !== undefined)
-      input.cropLeft =
-        options.cropLeft === null ? undefined : options.cropLeft;
+      input.cropLeft = options.cropLeft === null ? undefined : options.cropLeft;
     if (options.cropRight !== undefined)
       input.cropRight =
         options.cropRight === null ? undefined : options.cropRight;

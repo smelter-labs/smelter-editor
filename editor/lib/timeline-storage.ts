@@ -91,11 +91,37 @@ export type StoredTrack = {
   id: string;
   label: string;
   clips: StoredClip[];
+  icon?: string;
 };
+
+export type StoredTrackGroup = {
+  id: string;
+  label: string;
+  icon?: string;
+  collapsed: boolean;
+  trackIds: string[];
+};
+
+export type StoredTimelineRowRef =
+  | { kind: 'track'; id: string }
+  | { kind: 'group'; id: string };
 
 type StoredTimelineStateV3 = {
   schemaVersion: 3;
   tracks: StoredTrack[];
+  totalDurationMs: number;
+  keyframeInterpolationMode: 'step' | 'smooth';
+  snapToBlocks: boolean;
+  snapToKeyframes: boolean;
+  playheadMs: number;
+  pixelsPerSecond: number;
+};
+
+export type StoredTimelineStateV4 = {
+  schemaVersion: 4;
+  tracks: StoredTrack[];
+  groups: StoredTrackGroup[];
+  rootOrder: StoredTimelineRowRef[];
   totalDurationMs: number;
   keyframeInterpolationMode: 'step' | 'smooth';
   snapToBlocks: boolean;
@@ -165,6 +191,21 @@ function migrateV1toV2(v1: StoredTimelineStateV1): StoredTimelineStateV2 {
   };
 }
 
+function migrateV3toV4(v3: StoredTimelineStateV3): StoredTimelineStateV4 {
+  return {
+    schemaVersion: 4,
+    tracks: v3.tracks,
+    groups: [],
+    rootOrder: v3.tracks.map((t) => ({ kind: 'track' as const, id: t.id })),
+    totalDurationMs: v3.totalDurationMs,
+    keyframeInterpolationMode: v3.keyframeInterpolationMode,
+    snapToBlocks: v3.snapToBlocks,
+    snapToKeyframes: v3.snapToKeyframes,
+    playheadMs: v3.playheadMs,
+    pixelsPerSecond: v3.pixelsPerSecond,
+  };
+}
+
 function migrateV2toV3(v2: StoredTimelineStateV2): StoredTimelineStateV3 {
   return {
     schemaVersion: 3,
@@ -194,14 +235,73 @@ function migrateV2toV3(v2: StoredTimelineStateV2): StoredTimelineStateV3 {
 
 // ─── Public API ───────────────────────────────────────────────────────
 
-export function loadTimeline(roomId: string): StoredTimelineStateV3 | null {
+function sanitizeStoredGroups(value: unknown): StoredTrackGroup[] {
+  if (!Array.isArray(value)) return [];
+  const out: StoredTrackGroup[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue;
+    const g = item as Partial<StoredTrackGroup>;
+    if (typeof g.id !== 'string') continue;
+    if (typeof g.label !== 'string') continue;
+    out.push({
+      id: g.id,
+      label: g.label,
+      icon: typeof g.icon === 'string' ? g.icon : undefined,
+      collapsed: g.collapsed === true,
+      trackIds: Array.isArray(g.trackIds)
+        ? g.trackIds.filter((x): x is string => typeof x === 'string')
+        : [],
+    });
+  }
+  return out;
+}
+
+function sanitizeStoredRootOrder(value: unknown): StoredTimelineRowRef[] {
+  if (!Array.isArray(value)) return [];
+  const out: StoredTimelineRowRef[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== 'object') continue;
+    const r = item as Partial<StoredTimelineRowRef>;
+    if (typeof r.id !== 'string') continue;
+    if (r.kind !== 'track' && r.kind !== 'group') continue;
+    out.push({ kind: r.kind, id: r.id });
+  }
+  return out;
+}
+
+export function loadTimeline(roomId: string): StoredTimelineStateV4 | null {
   if (typeof window === 'undefined') return null;
   try {
     const raw = localStorage.getItem(`${STORAGE_KEY_PREFIX}${roomId}`);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
 
-    // V2 — return directly
+    // V4 — current
+    if (
+      parsed &&
+      parsed.schemaVersion === 4 &&
+      typeof parsed.totalDurationMs === 'number' &&
+      Array.isArray(parsed.tracks)
+    ) {
+      const v4 = parsed as Partial<StoredTimelineStateV4>;
+      const tracks = Array.isArray(v4.tracks) ? v4.tracks : [];
+      const groups = sanitizeStoredGroups(v4.groups);
+      const rootOrder = sanitizeStoredRootOrder(v4.rootOrder);
+      return {
+        schemaVersion: 4,
+        tracks,
+        groups,
+        rootOrder,
+        totalDurationMs: v4.totalDurationMs ?? 0,
+        keyframeInterpolationMode:
+          v4.keyframeInterpolationMode === 'smooth' ? 'smooth' : 'step',
+        snapToBlocks: v4.snapToBlocks ?? true,
+        snapToKeyframes: v4.snapToKeyframes ?? true,
+        playheadMs: v4.playheadMs ?? 0,
+        pixelsPerSecond: v4.pixelsPerSecond ?? 15,
+      };
+    }
+
     if (
       parsed &&
       parsed.schemaVersion === 3 &&
@@ -209,7 +309,7 @@ export function loadTimeline(roomId: string): StoredTimelineStateV3 | null {
       Array.isArray(parsed.tracks)
     ) {
       const v3 = parsed as Partial<StoredTimelineStateV3>;
-      return {
+      const v3Full: StoredTimelineStateV3 = {
         schemaVersion: 3,
         tracks: Array.isArray(v3.tracks) ? v3.tracks : [],
         totalDurationMs: v3.totalDurationMs ?? 0,
@@ -220,6 +320,7 @@ export function loadTimeline(roomId: string): StoredTimelineStateV3 | null {
         playheadMs: v3.playheadMs ?? 0,
         pixelsPerSecond: v3.pixelsPerSecond ?? 15,
       };
+      return migrateV3toV4(v3Full);
     }
 
     if (
@@ -228,7 +329,7 @@ export function loadTimeline(roomId: string): StoredTimelineStateV3 | null {
       typeof parsed.totalDurationMs === 'number' &&
       Array.isArray(parsed.tracks)
     ) {
-      return migrateV2toV3(parsed as StoredTimelineStateV2);
+      return migrateV3toV4(migrateV2toV3(parsed as StoredTimelineStateV2));
     }
 
     // V1 with explicit schemaVersion — migrate
@@ -238,7 +339,9 @@ export function loadTimeline(roomId: string): StoredTimelineStateV3 | null {
       typeof parsed.totalDurationMs === 'number' &&
       typeof parsed.tracks === 'object'
     ) {
-      return migrateV2toV3(migrateV1toV2(parsed as StoredTimelineStateV1));
+      return migrateV3toV4(
+        migrateV2toV3(migrateV1toV2(parsed as StoredTimelineStateV1)),
+      );
     }
 
     // Old shape without schemaVersion — build V1, then migrate
@@ -257,7 +360,7 @@ export function loadTimeline(roomId: string): StoredTimelineStateV3 | null {
           typeof parsed.playheadMs === 'number' ? parsed.playheadMs : 0,
         pixelsPerSecond: parsed.pixelsPerSecond ?? 15,
       };
-      return migrateV2toV3(migrateV1toV2(asV1));
+      return migrateV3toV4(migrateV2toV3(migrateV1toV2(asV1)));
     }
   } catch {
     // corrupt data
@@ -267,12 +370,12 @@ export function loadTimeline(roomId: string): StoredTimelineStateV3 | null {
 
 export function saveTimeline(
   roomId: string,
-  state: Omit<StoredTimelineStateV3, 'schemaVersion'>,
+  state: Omit<StoredTimelineStateV4, 'schemaVersion'>,
 ): void {
   if (typeof window === 'undefined') return;
   try {
-    const payload: StoredTimelineStateV3 = {
-      schemaVersion: 3,
+    const payload: StoredTimelineStateV4 = {
+      schemaVersion: 4,
       ...state,
     };
     const json = JSON.stringify(payload);
@@ -284,8 +387,8 @@ export function saveTimeline(
     );
     pruneOldTimelineEntries(roomId);
     try {
-      const payload: StoredTimelineStateV3 = {
-        schemaVersion: 3,
+      const payload: StoredTimelineStateV4 = {
+        schemaVersion: 4,
         ...state,
       };
       localStorage.setItem(

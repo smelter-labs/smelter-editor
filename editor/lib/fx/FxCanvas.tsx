@@ -10,7 +10,7 @@ import {
   makeDotPattern,
 } from './fx-engine';
 
-export type FxCanvasProps = {
+type FxCanvasProps = {
   config: FxConfig;
   isActive: boolean;
   intensity?: number;

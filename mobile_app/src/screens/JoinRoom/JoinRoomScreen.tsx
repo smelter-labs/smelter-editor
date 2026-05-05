@@ -8,7 +8,10 @@ import {
   useTheme,
 } from "react-native-paper";
 import * as ScreenOrientation from "expo-screen-orientation";
+import { useNavigation } from "@react-navigation/native";
 import { useIsTablet } from "../../hooks/useIsTablet";
+import { SCREEN_NAMES } from "../../navigation/navigationTypes";
+import type { RootNavigationProp } from "../../navigation/navigationTypes";
 import { useJoinRoom } from "./useJoinRoom";
 import { ServerSection } from "./ServerSection";
 import { RoomSection } from "./RoomSection";
@@ -19,6 +22,7 @@ import { JoinRoomSettingsPanel } from "./JoinRoomSettingsPanel";
 export function JoinRoomScreen() {
   const theme = useTheme();
   const isTablet = useIsTablet();
+  const navigation = useNavigation<RootNavigationProp>();
   const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
@@ -52,6 +56,7 @@ export function JoinRoomScreen() {
     errors,
     isLoading,
     handleConnect,
+    handleConnectAsCamera,
     showQR,
     setShowQR,
     handleQRScan,
@@ -96,6 +101,7 @@ export function JoinRoomScreen() {
             errors={errors}
             isLoading={isLoading}
             onConnect={handleConnect}
+            onConnectAsCamera={handleConnectAsCamera}
           />
         )}
 
@@ -103,15 +109,40 @@ export function JoinRoomScreen() {
           <Button mode="text" onPress={() => setShowQR(true)}>
             Scan QR Code instead
           </Button>
-          <IconButton
-            icon="cog"
-            size={20}
-            onPress={() => setSettingsOpen(true)}
-          />
+          <View style={styles.iconRow}>
+            <IconButton
+              icon="help-circle-outline"
+              size={20}
+              onPress={() => navigation.navigate(SCREEN_NAMES.HELP)}
+            />
+            <IconButton
+              icon="cog"
+              size={20}
+              onPress={() => setSettingsOpen(true)}
+            />
+          </View>
         </View>
       </Surface>
 
       {isLoading && <LoadingOverlay message="Connecting to room..." />}
+
+      {__DEV__ && (
+        <Button
+          mode="text"
+          compact
+          icon="bug-outline"
+          style={styles.devButton}
+          labelStyle={{ color: theme.colors.onSurfaceVariant, fontSize: 12 }}
+          onPress={() =>
+            navigation.navigate(SCREEN_NAMES.CAMERA, {
+              serverUrl: "",
+              roomId: "",
+            })
+          }
+        >
+          [DEV] Open WHIP camera directly
+        </Button>
+      )}
 
       <QRScannerModal
         isVisible={showQR}
@@ -144,5 +175,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+  iconRow: {
+    flexDirection: "row",
+  },
+  devButton: {
+    marginTop: 8,
+    opacity: 0.6,
   },
 });

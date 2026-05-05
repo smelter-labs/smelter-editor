@@ -7,7 +7,10 @@ import React, {
   useTransition,
 } from "react";
 import { View, StyleSheet } from "react-native";
-import { Chip, useTheme } from "react-native-paper";
+import { useTheme } from "react-native-paper";
+import { useNavigation } from "@react-navigation/native";
+import { SCREEN_NAMES } from "../../navigation/navigationTypes";
+import type { RootNavigationProp } from "../../navigation/navigationTypes";
 import { useLayoutStore } from "../../store/layoutStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { useInputsStore } from "../../store/inputsStore";
@@ -24,10 +27,15 @@ import LayersPanel from "./LayersPanel";
 import type { ItemData } from "./ReshufflableGridWrapper";
 import type { LayerItemProps } from "./types";
 import type { Layer, LayerInput } from "../../types/layout";
+import { computeLayout } from "@smelter-editor/types";
 import type { Resolution } from "@smelter-editor/types";
 import type { WSEventPayload } from "../../types/websocket";
 import { areInputCardsEquivalent } from "../../utils/inputCardEquality";
-import { MaterialDesignIcons } from "@react-native-vector-icons/material-design-icons";
+import {
+  ScreenToolbar,
+  ScreenToolbarChip,
+  ToolbarIcon,
+} from "../../components/shared/ScreenToolbar";
 
 // ─── Conversion helpers ───────────────────────────────────────────────────────
 
@@ -202,6 +210,7 @@ export function LayoutScreen() {
   const inputs = useInputsStore((s) => s.inputs);
   const setInputs = useInputsStore((s) => s.setInputs);
 
+  const navigation = useNavigation<RootNavigationProp>();
   const [layersPanelOpen, setLayersPanelOpen] = useState(false);
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
   const [settingsPanelSide, setSettingsPanelSide] = useState<"left" | "right">(
@@ -308,6 +317,13 @@ export function LayoutScreen() {
             JSON.stringify(newLayers[0]?.inputs) !==
             JSON.stringify(correctedLayers[0]?.inputs),
         });
+        console.log(
+          "[Layout] Corrected layers timestamps:",
+          correctedLayers.map((l) => ({
+            id: l.id,
+            layoutTimestamp: l.layoutTimestamp,
+          })),
+        );
         // Apply the server's corrected layout immediately, don't wait for room_updated
         setLayers(correctedLayers);
       } catch (err) {
@@ -376,7 +392,8 @@ export function LayoutScreen() {
       const layerIndex = layers.findIndex((l) => l.id === layerId);
       if (layerIndex === -1) return;
 
-      const existingInputs = layers[layerIndex].inputs;
+      const layer = layers[layerIndex];
+      const existingInputs = layer.inputs;
 
       // Sort items by their visual position (row-major) so the resulting
       // LayerInput array order reflects where the user placed each tile.
@@ -389,13 +406,43 @@ export function LayoutScreen() {
         return a.initial.col - b.initial.col;
       });
 
-      const newInputs = itemDataToLayerInputs(
-        sortedItems,
-        resolution,
-        columns,
-        rows,
-        existingInputs,
-      );
+      const existingMap = new Map(existingInputs.map((i) => [i.inputId, i]));
+      const inputMap = new Map(inputs.map((i) => [i.id, i]));
+      const newInputs = layer.behavior
+        ? (() => {
+            const behaviorInfos = sortedItems.map((item) => {
+              const input = inputMap.get(item.props.id);
+              return {
+                inputId: item.props.id,
+                nativeWidth: input?.nativeWidth,
+                nativeHeight: input?.nativeHeight,
+              };
+            });
+            const computed = computeLayout(
+              layer.behavior,
+              behaviorInfos,
+              resolution,
+            ).inputs;
+            return computed.map((computedInput) => {
+              const existing = existingMap.get(computedInput.inputId);
+              return {
+                inputId: computedInput.inputId,
+                x: computedInput.x,
+                y: computedInput.y,
+                width: computedInput.width,
+                height: computedInput.height,
+                transitionDurationMs: existing?.transitionDurationMs,
+                transitionEasing: existing?.transitionEasing,
+              };
+            });
+          })()
+        : itemDataToLayerInputs(
+            sortedItems,
+            resolution,
+            columns,
+            rows,
+            existingInputs,
+          );
       const newLayers = layers.map((l, i) =>
         i === layerIndex ? { ...l, inputs: newInputs } : l,
       );
@@ -403,9 +450,10 @@ export function LayoutScreen() {
         layerId,
         newInputOrder: newInputs.map((li) => li.inputId),
       });
+
       void pushLayers(newLayers);
     },
-    [layers, resolution, columns, rows, pushLayers],
+    [layers, inputs, resolution, columns, rows, pushLayers],
   );
 
   // Memoize item data per layer to avoid unnecessary re-renders
@@ -429,29 +477,24 @@ export function LayoutScreen() {
         <ScreenLabel label={`Layout (${layers.length} layers)`} />
 
         {/* Toolbar row */}
-        <View style={styles.toolbar}>
-          <Chip
-            compact
-            mode="flat"
-            style={styles.toolbarChip}
-            textStyle={styles.toolbarChipText}
-            onPress={() => setLayersPanelOpen((v) => !v)}
-          >
+        <ScreenToolbar style={styles.toolbar}>
+          <ScreenToolbarChip onPress={() => setLayersPanelOpen((v) => !v)}>
             LAYERS
-          </Chip>
-          <Chip
-            compact
-            mode="flat"
-            style={styles.toolbarChip}
-            textStyle={styles.toolbarChipText}
+          </ScreenToolbarChip>
+          <ScreenToolbarChip
+            onPress={() => navigation.navigate(SCREEN_NAMES.HELP)}
+          >
+            <ToolbarIcon name="help-circle-outline" />
+          </ScreenToolbarChip>
+          <ScreenToolbarChip
             onPress={() => {
               setSettingsPanelSide("right");
               setSettingsPanelOpen(true);
             }}
           >
-            <MaterialDesignIcons name="cog" color="#777777" size={16} />
-          </Chip>
-        </View>
+            <ToolbarIcon name="cog" />
+          </ScreenToolbarChip>
+        </ScreenToolbar>
 
         {/* Canvas: stacked layer grids — layers[0] is topmost (highest zIndex) */}
         <View style={styles.canvas}>
@@ -479,7 +522,13 @@ export function LayoutScreen() {
                   key={`${layer.id}-${layoutResetToken}`}
                   itemData={itemData}
                   renderedComponent={GridCell}
-                  onItemChange={(items) => handleGridChange(layer.id, items)}
+                  onItemChange={(items) => {
+                    console.log("[Layout] correctionKey at drag end:", {
+                      layerId: layer.id,
+                      correctionKey: layer.layoutTimestamp,
+                    });
+                    handleGridChange(layer.id, items);
+                  }}
                   onItemLongPress={(itemId) => {
                     setEffectsInputId(itemId);
                     setEffectsPanelOpen(true);
@@ -487,6 +536,8 @@ export function LayoutScreen() {
                   rows={rows}
                   columns={columns}
                   containerStyle={styles.layerGrid}
+                  correctionKey={layer.layoutTimestamp}
+                  disableResize={!!layer.behavior}
                 />
               </View>
             );
@@ -537,22 +588,10 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   toolbar: {
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "flex-end",
-    height: 36,
-    paddingHorizontal: 8,
-    gap: 8,
-  },
-  toolbarChip: {
-    borderRadius: 8,
-    backgroundColor: "rgba(255,255,255,0.1)",
-  },
-  toolbarChipText: {
-    color: "#CCCCCC",
-    fontSize: 11,
-    fontWeight: "700",
-    letterSpacing: 1,
+    position: "absolute",
+    top: 0,
+    right: 0,
+    zIndex: 1000,
   },
   canvas: {
     flex: 1,
