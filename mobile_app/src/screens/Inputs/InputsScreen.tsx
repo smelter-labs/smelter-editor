@@ -34,6 +34,7 @@ import {
   ToolbarIcon,
 } from "../../components/shared/ScreenToolbar";
 import { areInputCardsEquivalent } from "../../utils/inputCardEquality";
+import { QRModal } from "../../components/shared/QRModal";
 
 export function InputsScreen() {
   const theme = useTheme();
@@ -74,6 +75,7 @@ export function InputsScreen() {
   const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
   const idleHandleRef = useRef<number | null>(null);
   const [, startTransition] = useTransition();
+  const [qrModalOpen, setQRModalOpen] = useState(false);
 
   // Subscribe to server input updates
   useEffect(() => {
@@ -191,7 +193,17 @@ export function InputsScreen() {
           <ScreenToolbarChip onPress={() => setSettingsPanelOpen(true)}>
             <ToolbarIcon name="cog" />
           </ScreenToolbarChip>
+          <ScreenToolbarChip onPress={() => setQRModalOpen(true)}>
+            <ToolbarIcon name="qrcode" />
+          </ScreenToolbarChip>
         </ScreenToolbar>
+
+        <QRModal
+          visible={qrModalOpen}
+          onDismiss={() => setQRModalOpen(false)}
+          serverUrl={serverUrl}
+          roomId={roomId}
+        />
 
         <DraggableFlatList
           data={inputs}

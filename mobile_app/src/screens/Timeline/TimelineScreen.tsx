@@ -11,6 +11,8 @@ import {
 } from "../../components/shared/ScreenToolbar";
 import { SCREEN_NAMES } from "../../navigation/navigationTypes";
 import type { RootNavigationProp } from "../../navigation/navigationTypes";
+import { QRModal } from "../../components/shared/QRModal";
+import { useConnectionStore } from "../../store";
 
 /**
  * Timeline screen — placeholder only.
@@ -20,6 +22,8 @@ export function TimelineScreen() {
   const theme = useTheme();
   const navigation = useNavigation<RootNavigationProp>();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [qrModalOpen, setQRModalOpen] = useState(false);
+  const { serverUrl, roomId } = useConnectionStore();
 
   return (
     <View
@@ -36,7 +40,18 @@ export function TimelineScreen() {
         <ScreenToolbarChip onPress={() => setSettingsOpen(true)}>
           <ToolbarIcon name="cog" />
         </ScreenToolbarChip>
+
+        <ScreenToolbarChip onPress={() => setQRModalOpen(true)}>
+          <ToolbarIcon name="qrcode" />
+        </ScreenToolbarChip>
       </ScreenToolbar>
+
+      <QRModal
+        visible={qrModalOpen}
+        onDismiss={() => setQRModalOpen(false)}
+        serverUrl={serverUrl}
+        roomId={roomId}
+      />
 
       <Text
         variant="headlineMedium"

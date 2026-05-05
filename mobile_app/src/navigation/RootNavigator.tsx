@@ -3,6 +3,8 @@ import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import type { RootStackParamList } from "./navigationTypes";
 import { SCREEN_NAMES } from "./navigationTypes";
 import { useConnectionStore } from "../store/connectionStore";
+import { JoinServerScreen } from "../screens/JoinRoom/JoinServerScreen";
+import { JoinLobbyScreen } from "../screens/JoinRoom/JoinLobbyScreen";
 import { JoinRoomScreen } from "../screens/JoinRoom/JoinRoomScreen";
 import { HelpScreen } from "../screens/Help/HelpScreen";
 import { CameraScreen } from "../screens/Camera/CameraScreen";
@@ -15,9 +17,17 @@ export function RootNavigator() {
 
   return (
     <Stack.Navigator
-      initialRouteName={token ? SCREEN_NAMES.MAIN : SCREEN_NAMES.JOIN_ROOM}
+      initialRouteName={token ? SCREEN_NAMES.MAIN : SCREEN_NAMES.JOIN_SERVER}
       screenOptions={{ headerShown: false, animation: "fade" }}
     >
+      <Stack.Screen
+        name={SCREEN_NAMES.JOIN_SERVER}
+        component={JoinServerScreen}
+      />
+      <Stack.Screen
+        name={SCREEN_NAMES.JOIN_LOBBY}
+        component={JoinLobbyScreen}
+      />
       <Stack.Screen name={SCREEN_NAMES.JOIN_ROOM} component={JoinRoomScreen} />
       <Stack.Screen name={SCREEN_NAMES.MAIN} component={MainNavigator} />
       <Stack.Screen name={SCREEN_NAMES.HELP} component={HelpScreen} />

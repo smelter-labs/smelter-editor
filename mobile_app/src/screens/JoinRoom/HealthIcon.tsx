@@ -2,7 +2,7 @@ import React from "react";
 import { View, StyleSheet } from "react-native";
 import { ActivityIndicator, Icon } from "react-native-paper";
 import { appColors } from "../../theme/paperTheme";
-import type { HealthStatus } from "./useJoinRoom";
+import type { HealthStatus } from "./useJoinServer";
 
 interface Props {
   status: HealthStatus | undefined;

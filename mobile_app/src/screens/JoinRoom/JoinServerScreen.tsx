@@ -12,15 +12,17 @@ import { useNavigation } from "@react-navigation/native";
 import { useIsTablet } from "../../hooks/useIsTablet";
 import { SCREEN_NAMES } from "../../navigation/navigationTypes";
 import type { RootNavigationProp } from "../../navigation/navigationTypes";
-import { useJoinRoom } from "./useJoinRoom";
-import { RoomSection } from "./RoomSection";
+import { useJoinServer } from "./useJoinServer";
+import { ServerSection } from "./ServerSection";
 import { QRScannerModal } from "./QRScannerModal";
-import { LoadingOverlay } from "../../components/shared/LoadingOverlay";
+import { JoinRoomSettingsPanel } from "./JoinRoomSettingsPanel";
+import { useState } from "react";
 
-export function JoinRoomScreen() {
+export function JoinServerScreen() {
   const theme = useTheme();
   const isTablet = useIsTablet();
   const navigation = useNavigation<RootNavigationProp>();
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   useEffect(() => {
     if (isTablet === null) return;
@@ -29,27 +31,23 @@ export function JoinRoomScreen() {
         ? ScreenOrientation.OrientationLock.LANDSCAPE
         : ScreenOrientation.OrientationLock.PORTRAIT,
     ).catch((err) =>
-      console.warn("[JoinRoomScreen] orientation lock failed", err),
+      console.warn("[JoinServerScreen] orientation lock failed", err),
     );
   }, [isTablet]);
 
   const {
-    serverUrl,
-    rooms,
-    selectedRoomId,
-    setSelectedRoomId,
-    isPrivateRoom,
-    togglePrivateRoom,
-    privateRoomId,
-    setPrivateRoomId,
-    errors,
-    isLoading,
-    handleConnect,
-    handleConnectAsCamera,
+    savedUrls,
+    healthStatus,
+    selectedServerUrl,
+    handleServerUrlChange,
+    removeSavedUrl,
+    serverStatus,
+    serverError,
+    handleJoinServer,
     showQR,
     setShowQR,
     handleQRScan,
-  } = useJoinRoom();
+  } = useJoinServer();
 
   return (
     <KeyboardAvoidingView
@@ -65,40 +63,63 @@ export function JoinRoomScreen() {
           Connect to a room
         </Text>
 
-        <RoomSection
-          selectedServerUrl={serverUrl}
-          onChangeServer={() => navigation.goBack()}
-          rooms={rooms}
-          selectedRoomId={selectedRoomId}
-          onSelectRoom={setSelectedRoomId}
-          isPrivateRoom={isPrivateRoom}
-          onTogglePrivateRoom={togglePrivateRoom}
-          privateRoomId={privateRoomId}
-          onPrivateRoomIdChange={setPrivateRoomId}
-          errors={errors}
-          isLoading={isLoading}
-          onConnect={handleConnect}
-          onConnectAsCamera={handleConnectAsCamera}
+        <ServerSection
+          savedUrls={savedUrls}
+          healthStatus={healthStatus}
+          selectedServerUrl={selectedServerUrl}
+          onServerUrlChange={handleServerUrlChange}
+          onRemoveUrl={removeSavedUrl}
+          onJoinServer={handleJoinServer}
+          serverStatus={serverStatus}
+          serverError={serverError}
         />
 
         <View style={styles.bottomRow}>
           <Button mode="text" onPress={() => setShowQR(true)}>
             Scan QR Code instead
           </Button>
-          <IconButton
-            icon="help-circle-outline"
-            size={20}
-            onPress={() => navigation.navigate(SCREEN_NAMES.HELP)}
-          />
+          <View style={styles.iconRow}>
+            <IconButton
+              icon="help-circle-outline"
+              size={20}
+              onPress={() => navigation.navigate(SCREEN_NAMES.HELP)}
+            />
+            <IconButton
+              icon="cog"
+              size={20}
+              onPress={() => setSettingsOpen(true)}
+            />
+          </View>
         </View>
       </Surface>
 
-      {isLoading && <LoadingOverlay message="Connecting to room..." />}
+      {__DEV__ && (
+        <Button
+          mode="text"
+          compact
+          icon="bug-outline"
+          style={styles.devButton}
+          labelStyle={{ color: theme.colors.onSurfaceVariant, fontSize: 12 }}
+          onPress={() =>
+            navigation.navigate(SCREEN_NAMES.CAMERA, {
+              serverUrl: "",
+              roomId: "",
+            })
+          }
+        >
+          [DEV] Open WHIP camera directly
+        </Button>
+      )}
 
       <QRScannerModal
         isVisible={showQR}
         onScan={handleQRScan}
         onClose={() => setShowQR(false)}
+      />
+
+      <JoinRoomSettingsPanel
+        isVisible={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
       />
     </KeyboardAvoidingView>
   );
@@ -121,5 +142,12 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+  },
+  iconRow: {
+    flexDirection: "row",
+  },
+  devButton: {
+    marginTop: 8,
+    opacity: 0.6,
   },
 });
