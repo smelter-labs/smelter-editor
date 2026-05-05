@@ -7,7 +7,6 @@ import {
 import { App } from "./src/App";
 import { installConsoleCapture } from "./src/services/consoleCapture";
 
-installConsoleCapture();
 if (__DEV__) {
   installConsoleCapture();
 }
