@@ -1282,6 +1282,7 @@ export const TimelinePanel = memo(function TimelinePanel({
 
   const handleRulerPointerDown = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
+      if (sortMode === 'layers') return;
       e.preventDefault();
       rulerScrubRef.current = true;
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
@@ -1295,7 +1296,14 @@ export const TimelinePanel = memo(function TimelinePanel({
       }
       setPlayhead(ms);
     },
-    [setPlayhead, rulerPxToMs, resolvePlayheadMs, state.isPlaying, pause],
+    [
+      setPlayhead,
+      rulerPxToMs,
+      resolvePlayheadMs,
+      state.isPlaying,
+      pause,
+      sortMode,
+    ],
   );
 
   const handleRulerPointerMove = useCallback(
@@ -2975,7 +2983,13 @@ export const TimelinePanel = memo(function TimelinePanel({
         </Button>
       </div>
 
-      <div className='relative flex-1 flex flex-col min-h-0'>
+      <div
+        className={`relative flex-1 flex flex-col min-h-0 ${
+          sortMode === 'layers'
+            ? 'pointer-events-none select-none opacity-60'
+            : ''
+        }`}
+        aria-disabled={sortMode === 'layers'}>
         {/* Header: Sources label + ruler */}
         <div className='flex shrink-0'>
           <div
