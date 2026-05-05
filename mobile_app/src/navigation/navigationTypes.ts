@@ -1,7 +1,9 @@
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 export type RootStackParamList = {
-  JoinRoom: undefined;
+  JoinServer: undefined;
+  JoinLobby: { serverUrl: string };
+  JoinRoom: { serverUrl: string; initialRoomId?: string };
   Main: undefined;
   Help: undefined;
   Camera: { serverUrl: string; roomId: string };
@@ -10,6 +12,8 @@ export type RootStackParamList = {
 export type RootNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export const SCREEN_NAMES = {
+  JOIN_SERVER: "JoinServer" as const,
+  JOIN_LOBBY: "JoinLobby" as const,
   JOIN_ROOM: "JoinRoom" as const,
   MAIN: "Main" as const,
   HELP: "Help" as const,

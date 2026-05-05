@@ -124,6 +124,22 @@ class ApiService {
   }
 
   /**
+   * Create a new room on the server.
+   * POST /room -> { roomId: string }
+   */
+  async createRoom(serverUrl: string): Promise<string> {
+    const base = buildHttpUrl(serverUrl);
+    const res = await fetch(`${base}/room`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) throw new Error(`Failed to create room (${res.status})`);
+    const data = (await res.json()) as { roomId: string };
+    return data.roomId;
+  }
+
+  /**
    * Fetch the list of active rooms from the server.
    * GET /active-rooms -> { rooms: [{ roomId, roomName }] }
    */
