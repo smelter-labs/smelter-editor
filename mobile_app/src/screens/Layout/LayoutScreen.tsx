@@ -27,7 +27,6 @@ import LayersPanel from "./LayersPanel";
 import type { ItemData } from "./ReshufflableGridWrapper";
 import type { LayerItemProps } from "./types";
 import type { Layer, LayerInput } from "../../types/layout";
-import type { InputCard } from "../../types/input";
 import { computeLayout } from "@smelter-editor/types";
 import type { Resolution } from "@smelter-editor/types";
 import type { WSEventPayload } from "../../types/websocket";
@@ -191,53 +190,6 @@ function itemDataToLayerInputs(
       transitionEasing: existing?.transitionEasing,
     };
   });
-}
-
-type LayerRenderData = {
-  layerInputs: LayerInput[];
-  items: ItemData<LayerItemProps>[];
-  pipMainItem?: ItemData<LayerItemProps>;
-  pipMainLayerInput?: LayerInput;
-};
-
-function getRenderedLayerInputs(
-  layer: Layer,
-  inputs: InputCard[],
-  resolution: Resolution,
-): LayerInput[] {
-  const inputMap = new Map(inputs.map((input) => [input.id, input]));
-  return layer.inputs.filter((li) => {
-    const input = inputMap.get(li.inputId);
-    return !input?.isHidden;
-  });
-}
-
-function buildLayerRenderData(
-  layer: Layer,
-  inputs: InputCard[],
-  resolution: Resolution,
-  gridCols: number,
-  gridRows: number,
-): LayerRenderData {
-  const renderedInputs = getRenderedLayerInputs(layer, inputs, resolution);
-  const itemData = layerInputsToItemData(
-    renderedInputs,
-    inputs,
-    resolution,
-    gridCols,
-    gridRows,
-  );
-
-  if (layer.behavior?.type === "picture-in-picture" && itemData.length > 0) {
-    return {
-      layerInputs: renderedInputs,
-      pipMainItem: itemData[0],
-      pipMainLayerInput: renderedInputs[0],
-      items: itemData.slice(1),
-    };
-  }
-
-  return { layerInputs: renderedInputs, items: itemData };
 }
 
 // ─── LayoutScreen ─────────────────────────────────────────────────────────────
@@ -520,24 +472,13 @@ export function LayoutScreen() {
     [layers, inputs, resolution, columns, rows, pushLayers],
   );
 
-  const handlePiPSmallGridChange = useCallback(
-    (
-      layerId: string,
-      mainItem: ItemData<LayerItemProps>,
-      items: ItemData<LayerItemProps>[],
-    ) => {
-      handleGridChange(layerId, [mainItem, ...items]);
-    },
-    [handleGridChange],
-  );
-
   // Memoize item data per layer to avoid unnecessary re-renders
-  const layerRenderDataMap = useMemo(() => {
-    const map = new Map<string, LayerRenderData>();
+  const layerItemDataMap = useMemo(() => {
+    const map = new Map<string, ItemData<LayerItemProps>[]>();
     for (const layer of layers) {
       map.set(
         layer.id,
-        buildLayerRenderData(layer, inputs, resolution, columns, rows),
+        layerInputsToItemData(layer.inputs, inputs, resolution, columns, rows),
       );
     }
     return map;
@@ -583,11 +524,7 @@ export function LayoutScreen() {
               );
             if (allInputsHidden) return null;
 
-            const renderData = layerRenderDataMap.get(layer.id) ?? {
-              layerInputs: [],
-              items: [],
-            };
-            const itemData = renderData.items;
+            const itemData = layerItemDataMap.get(layer.id) ?? [];
             return (
               <View
                 key={layer.id}
@@ -597,55 +534,20 @@ export function LayoutScreen() {
                 ]}
                 pointerEvents="box-none"
               >
-                {layer.behavior?.type === "picture-in-picture" &&
-                  renderData.pipMainLayerInput && (
-                    <View
-                      pointerEvents="auto"
-                      style={[
-                        styles.pipMainItem,
-                        {
-                          top: renderData.pipMainLayerInput.y,
-                          left: renderData.pipMainLayerInput.x,
-                          width: renderData.pipMainLayerInput.width,
-                          height: renderData.pipMainLayerInput.height,
-                        },
-                      ]}
-                    >
-                      <GridCell
-                        {...renderData.pipMainItem!.props}
-                        onLongPress={() => {
-                          setEffectsInputId(renderData.pipMainItem!.props.id);
-                          setEffectsPanelOpen(true);
-                        }}
-                      />
-                    </View>
-                  )}
-
-                {itemData.length > 0 && (
-                  <ReshufflableGridWrapper
-                    key={`${layer.id}-${layoutResetToken}`}
-                    itemData={itemData}
-                    renderedComponent={GridCell}
-                    onItemChange={(items) =>
-                      layer.behavior?.type === "picture-in-picture" &&
-                      renderData.pipMainItem
-                        ? handlePiPSmallGridChange(
-                            layer.id,
-                            renderData.pipMainItem,
-                            items,
-                          )
-                        : handleGridChange(layer.id, items)
-                    }
-                    onItemLongPress={(itemId) => {
-                      setEffectsInputId(itemId);
-                      setEffectsPanelOpen(true);
-                    }}
-                    rows={rows}
-                    columns={columns}
-                    containerStyle={styles.layerGrid}
-                    correctionKey={gridCorrectionKey}
-                  />
-                )}
+                <ReshufflableGridWrapper
+                  key={`${layer.id}-${layoutResetToken}`}
+                  itemData={itemData}
+                  renderedComponent={GridCell}
+                  onItemChange={(items) => handleGridChange(layer.id, items)}
+                  onItemLongPress={(itemId) => {
+                    setEffectsInputId(itemId);
+                    setEffectsPanelOpen(true);
+                  }}
+                  rows={rows}
+                  columns={columns}
+                  containerStyle={styles.layerGrid}
+                  correctionKey={gridCorrectionKey}
+                />
               </View>
             );
           })}
@@ -698,6 +600,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 0,
     right: 0,
+    zIndex: 1000,
   },
   canvas: {
     flex: 1,
@@ -706,9 +609,5 @@ const styles = StyleSheet.create({
     flex: 1,
     padding: 0,
     backgroundColor: "transparent",
-  },
-  pipMainItem: {
-    position: "absolute",
-    zIndex: 1,
   },
 });
