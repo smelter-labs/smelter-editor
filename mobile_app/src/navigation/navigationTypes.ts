@@ -16,7 +16,7 @@ export const SCREEN_NAMES = {
   CAMERA: "Camera" as const,
 };
 
-export const MAIN_SCREEN_INDEX = {
+const MAIN_SCREEN_INDEX = {
   LAYOUT: 0,
   INPUTS: 1,
   TIMELINE: 2,
