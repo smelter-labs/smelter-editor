@@ -395,6 +395,34 @@ export default function InputEntry({
     [input, roomId, refreshState],
   );
 
+  const deleteConfirmDialog = (
+    <Dialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+      <DialogContent className='max-w-sm'>
+        <DialogHeader>
+          <DialogTitle>Delete Input</DialogTitle>
+          <DialogDescription>
+            Delete this input permanently? This will remove it from the room and
+            from the timeline.
+          </DialogDescription>
+        </DialogHeader>
+        <div className='flex justify-end gap-2'>
+          <Button
+            variant='outline'
+            onClick={() => setIsDeleteConfirmOpen(false)}
+            disabled={isDeleting}>
+            Cancel
+          </Button>
+          <Button
+            variant='destructive'
+            onClick={handleConfirmDelete}
+            disabled={isDeleting}>
+            {isDeleting ? 'Deleting...' : 'Delete'}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+
   if (fxModeOnly && effectiveShowSliders) {
     return (
       <>
@@ -433,33 +461,7 @@ export default function InputEntry({
           onAddShader={addShaderConfig}
         />
 
-        <Dialog
-          open={isDeleteConfirmOpen}
-          onOpenChange={setIsDeleteConfirmOpen}>
-          <DialogContent className='max-w-sm'>
-            <DialogHeader>
-              <DialogTitle>Delete Input</DialogTitle>
-              <DialogDescription>
-                Delete this input permanently? This will remove it from the room
-                and from the timeline.
-              </DialogDescription>
-            </DialogHeader>
-            <div className='flex justify-end gap-2'>
-              <Button
-                variant='outline'
-                onClick={() => setIsDeleteConfirmOpen(false)}
-                disabled={isDeleting}>
-                Cancel
-              </Button>
-              <Button
-                variant='destructive'
-                onClick={handleConfirmDelete}
-                disabled={isDeleting}>
-                {isDeleting ? 'Deleting...' : 'Delete'}
-              </Button>
-            </div>
-          </DialogContent>
-        </Dialog>
+        {deleteConfirmDialog}
       </>
     );
   }
@@ -663,31 +665,7 @@ export default function InputEntry({
         onAddShader={addShaderConfig}
       />
 
-      <Dialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
-        <DialogContent className='max-w-sm'>
-          <DialogHeader>
-            <DialogTitle>Delete Input</DialogTitle>
-            <DialogDescription>
-              Delete this input permanently? This will remove it from the room
-              and from the timeline.
-            </DialogDescription>
-          </DialogHeader>
-          <div className='flex justify-end gap-2'>
-            <Button
-              variant='outline'
-              onClick={() => setIsDeleteConfirmOpen(false)}
-              disabled={isDeleting}>
-              Cancel
-            </Button>
-            <Button
-              variant='destructive'
-              onClick={handleConfirmDelete}
-              disabled={isDeleting}>
-              {isDeleting ? 'Deleting...' : 'Delete'}
-            </Button>
-          </div>
-        </DialogContent>
-      </Dialog>
+      {deleteConfirmDialog}
     </>
   );
 }
