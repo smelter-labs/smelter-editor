@@ -62,7 +62,7 @@ export function TimelineGroupHeader({
       )}
       <div className='flex' style={{ height }}>
         <div
-          className='shrink-0 bg-muted/60 flex items-center gap-1.5 px-2 sticky left-0 z-10 border-r border-border/30'
+          className='shrink-0 bg-muted/60 flex items-center gap-1 px-1 sticky left-0 z-10 border-r border-border/30'
           style={{ width }}>
           <GripVertical
             className='w-3 h-3 shrink-0 text-muted-foreground/50 opacity-0 group-hover/group:opacity-100 transition-opacity cursor-grab active:cursor-grabbing'
