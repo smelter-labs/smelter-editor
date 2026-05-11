@@ -499,13 +499,6 @@ export function LayoutScreen() {
           <QRToolbarChip serverUrl={serverUrl} roomId={roomId} />
         </ScreenToolbar>
 
-        <QRModal
-          visible={qrModalOpen}
-          onDismiss={() => setQRModalOpen(false)}
-          serverUrl={serverUrl}
-          roomId={roomId}
-        />
-
         {/* Canvas: stacked layer grids — layers[0] is topmost (highest zIndex) */}
         <View style={styles.canvas}>
           {layers.map((layer, i) => {

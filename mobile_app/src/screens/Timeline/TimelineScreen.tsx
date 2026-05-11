@@ -43,13 +43,6 @@ export function TimelineScreen() {
         <QRToolbarChip serverUrl={serverUrl} roomId={roomId} />
       </ScreenToolbar>
 
-      <QRModal
-        visible={qrModalOpen}
-        onDismiss={() => setQRModalOpen(false)}
-        serverUrl={serverUrl}
-        roomId={roomId}
-      />
-
       <Text
         variant="headlineMedium"
         style={{ color: theme.colors.onBackground }}

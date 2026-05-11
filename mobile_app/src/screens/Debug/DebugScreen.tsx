@@ -57,12 +57,6 @@ export function DebugScreen() {
         <QRToolbarChip serverUrl={serverUrl} roomId={roomId} />
       </ScreenToolbar>
 
-      <QRModal
-        visible={qrModalOpen}
-        onDismiss={() => setQRModalOpen(false)}
-        serverUrl={serverUrl}
-        roomId={roomId}
-      />
       <ScrollView contentContainerStyle={styles.content}>
         <Surface style={styles.card} elevation={2}>
           <Text variant="titleMedium">Connection</Text>

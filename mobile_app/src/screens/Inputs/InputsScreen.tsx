@@ -196,13 +196,6 @@ export function InputsScreen() {
           <QRToolbarChip serverUrl={serverUrl} roomId={roomId} />
         </ScreenToolbar>
 
-        <QRModal
-          visible={qrModalOpen}
-          onDismiss={() => setQRModalOpen(false)}
-          serverUrl={serverUrl}
-          roomId={roomId}
-        />
-
         <DraggableFlatList
           data={inputs}
           keyExtractor={(item) => item.id}
