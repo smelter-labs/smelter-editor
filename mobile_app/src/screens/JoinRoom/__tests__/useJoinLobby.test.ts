@@ -61,28 +61,37 @@ vi.mock("../../../store/connectionStore", () => ({
 
 const mockSetInputs = vi.fn();
 vi.mock("../../../store/inputsStore", () => ({
-  useInputsStore: Object.assign(vi.fn(() => ({})), {
-    getState: () => ({ setInputs: mockSetInputs }),
-  }),
+  useInputsStore: Object.assign(
+    vi.fn(() => ({})),
+    {
+      getState: () => ({ setInputs: mockSetInputs }),
+    },
+  ),
 }));
 
 const mockSetLayers = vi.fn();
 const mockSetResolution = vi.fn();
 const mockSetGridConfig = vi.fn();
 vi.mock("../../../store/layoutStore", () => ({
-  useLayoutStore: Object.assign(vi.fn(() => ({})), {
-    getState: () => ({
-      setLayers: mockSetLayers,
-      setResolution: mockSetResolution,
-      setGridConfig: mockSetGridConfig,
-    }),
-  }),
+  useLayoutStore: Object.assign(
+    vi.fn(() => ({})),
+    {
+      getState: () => ({
+        setLayers: mockSetLayers,
+        setResolution: mockSetResolution,
+        setGridConfig: mockSetGridConfig,
+      }),
+    },
+  ),
 }));
 
 vi.mock("../../../store/settingsStore", () => ({
-  useSettingsStore: Object.assign(vi.fn(() => ({})), {
-    getState: () => ({ gridFactor: 50 }),
-  }),
+  useSettingsStore: Object.assign(
+    vi.fn(() => ({})),
+    {
+      getState: () => ({ gridFactor: 50 }),
+    },
+  ),
 }));
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -91,7 +100,9 @@ import { apiService } from "../../../services/apiService";
 import { wsService } from "../../../services/websocketService";
 
 const mockCreateRoom = apiService.createRoom as ReturnType<typeof vi.fn>;
-const mockFetchRoomState = apiService.fetchRoomState as ReturnType<typeof vi.fn>;
+const mockFetchRoomState = apiService.fetchRoomState as ReturnType<
+  typeof vi.fn
+>;
 const mockWsConnect = wsService.connect as ReturnType<typeof vi.fn>;
 
 const ROOM_STATE = {
@@ -133,9 +144,12 @@ describe("handleJoinRoom", () => {
       result.current.handleJoinRoom();
     });
 
-    expect(mockNavigation.navigate).toHaveBeenCalledWith(SCREEN_NAMES.JOIN_ROOM, {
-      serverUrl: "http://192.168.1.1:3001",
-    });
+    expect(mockNavigation.navigate).toHaveBeenCalledWith(
+      SCREEN_NAMES.JOIN_ROOM,
+      {
+        serverUrl: "http://192.168.1.1:3001",
+      },
+    );
   });
 });
 
