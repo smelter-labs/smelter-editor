@@ -63,8 +63,12 @@ interface LayerHeaderProps {
   name: string;
   isVisible: boolean;
   isCollapsed: boolean;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
   onToggleCollapse: () => void;
   onToggleVisible: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
   onNameChange: (name: string) => void;
   isEmpty?: boolean;
   onDelete?: () => void;
@@ -74,8 +78,12 @@ export function LayerHeader({
   name,
   isVisible,
   isCollapsed,
+  canMoveUp,
+  canMoveDown,
   onToggleCollapse,
   onToggleVisible,
+  onMoveUp,
+  onMoveDown,
   onNameChange,
   isEmpty,
   onDelete,
@@ -91,6 +99,33 @@ export function LayerHeader({
       </Pressable>
 
       <EditableName value={name} onChange={onNameChange} />
+
+      <View style={styles.reorderControls}>
+        <Pressable
+          onPress={onMoveUp}
+          hitSlop={6}
+          disabled={!canMoveUp}
+          style={styles.reorderBtn}
+        >
+          <MaterialDesignIcons
+            name="chevron-up"
+            color={canMoveUp ? C.text : C.textDim}
+            size={14}
+          />
+        </Pressable>
+        <Pressable
+          onPress={onMoveDown}
+          hitSlop={6}
+          disabled={!canMoveDown}
+          style={styles.reorderBtn}
+        >
+          <MaterialDesignIcons
+            name="chevron-down"
+            color={canMoveDown ? C.text : C.textDim}
+            size={14}
+          />
+        </Pressable>
+      </View>
 
       <View style={styles.collapseBtn} pointerEvents="none">
         <MaterialDesignIcons
@@ -133,6 +168,16 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
   nameHitArea: { flex: 1, justifyContent: "center" },
+  reorderControls: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 2,
+  },
+  reorderBtn: {
+    width: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
   collapseBtn: {
     width: 16,
     alignItems: "center",

@@ -1,19 +1,11 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import {
-  FlatList,
-  InteractionManager,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { Droppable, DropProvider } from "react-native-reanimated-dnd";
+import { FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import MaterialDesignIcons from "@react-native-vector-icons/material-design-icons";
 import type { Layer, LayerBehaviorConfig } from "../../../types/layout";
 import type { InputCard } from "../../../types/input";
 import { Layer as LayerComponent } from "./Layer";
 import { applyMoveLayer, applyMoveInput } from "./LayerRow";
-import type { DragData, LayerUiState } from "./LayerRow";
+import type { LayerUiState } from "./LayerRow";
 
 const C = {
   panelBg: "#252526",
@@ -98,25 +90,20 @@ export default function LayersPanel({
     [layers, onLayersChange],
   );
 
-  // ── Drop handlers ─────────────────────────────────────────────────────────
-  //
-  // All drops apply immediately via onLayersChange.
-  // The library will spring-animate the Draggable toward the Droppable, but
-  // the React re-render unmounts the old Draggable (keyed by stable id) and
-  // mounts a fresh one at the correct position, so the orphaned animation is
-  // harmless.
+  const handleLayerMoveBy = useCallback(
+    (layerId: string, delta: -1 | 1) => {
+      const currentIndex = layersRef.current.findIndex((l) => l.id === layerId);
+      if (currentIndex === -1) return;
 
-  const handleLayerDrop = useCallback(
-    (draggedLayerId: string, targetLayerIndex: number) => {
-      const result = applyMoveLayer(
-        layersRef.current,
-        draggedLayerId,
-        targetLayerIndex,
+      const targetIndex = Math.max(
+        0,
+        Math.min(layersRef.current.length - 1, currentIndex + delta),
       );
+      if (targetIndex === currentIndex) return;
+
+      const result = applyMoveLayer(layersRef.current, layerId, targetIndex);
       if (result !== layersRef.current) {
-        // Defer until after the drag-release spring animation completes so the
-        // Draggable's animated view doesn't leave an empty-space ghost in the list.
-        InteractionManager.runAfterInteractions(() => onLayersChange(result));
+        onLayersChange(result);
       }
     },
     [onLayersChange],
@@ -159,68 +146,54 @@ export default function LayersPanel({
   // ── Render ────────────────────────────────────────────────────────────────
 
   return (
-    <DropProvider>
-      <View style={styles.panel}>
-        <View style={styles.panelHeader}>
-          <Text style={styles.panelTitle}>LAYERS</Text>
-          {onAddLayer && (
-            <Pressable
-              onPress={onAddLayer}
-              hitSlop={8}
-              style={styles.addLayerBtn}
-            >
-              <MaterialDesignIcons name="plus" color={C.accent} size={18} />
-            </Pressable>
-          )}
-        </View>
-
-        <FlatList
-          style={styles.list}
-          contentContainerStyle={styles.listContent}
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          data={layers}
-          keyExtractor={(layer) => layer.id}
-          renderItem={({ item: layer, index: layerIndex }) => {
-            const ui = getUi(layer.id);
-            return (
-              <LayerComponent
-                layer={layer}
-                inputs={inputs}
-                ui={ui}
-                allLayers={layers}
-                onInputMove={(layerId, inputId, from, to) =>
-                  handleInputMove(layerId, inputId, from, to)
-                }
-                onInputMoveLayer={(inputId, fromLayerId, toLayerId) =>
-                  handleInputMoveLayer(inputId, fromLayerId, toLayerId)
-                }
-                onUiChange={(patch) => patchUi(layer.id, patch)}
-                onBehaviorChange={(b) => setBehavior(layer.id, b)}
-                onLayerDrop={(data) =>
-                  handleLayerDrop(data.layerId, layerIndex)
-                }
-                onToggleLayerVisibility={onToggleLayerVisibility}
-                onDeleteLayer={onDeleteLayer}
-              />
-            );
-          }}
-          ListFooterComponent={
-            <Droppable<DragData>
-              style={styles.tailDropZone}
-              activeStyle={styles.tailDropZoneActive}
-              onDrop={(data) => {
-                if (data.type === "layer") {
-                  handleLayerDrop(data.layerId, layers.length);
-                }
-              }}
-            >
-              <View style={styles.tailLine} />
-            </Droppable>
-          }
-        />
+    <View style={styles.panel}>
+      <View style={styles.panelHeader}>
+        <Text style={styles.panelTitle}>LAYERS</Text>
+        {onAddLayer && (
+          <Pressable
+            onPress={onAddLayer}
+            hitSlop={8}
+            style={styles.addLayerBtn}
+          >
+            <MaterialDesignIcons name="plus" color={C.accent} size={18} />
+          </Pressable>
+        )}
       </View>
-    </DropProvider>
+
+      <FlatList
+        style={styles.list}
+        contentContainerStyle={styles.listContent}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        data={layers}
+        keyExtractor={(layer) => layer.id}
+        renderItem={({ item: layer, index: layerIndex }) => {
+          const ui = getUi(layer.id);
+          return (
+            <LayerComponent
+              layer={layer}
+              inputs={inputs}
+              ui={ui}
+              canMoveUp={layerIndex > 0}
+              canMoveDown={layerIndex < layers.length - 1}
+              allLayers={layers}
+              onInputMove={(layerId, inputId, from, to) =>
+                handleInputMove(layerId, inputId, from, to)
+              }
+              onInputMoveLayer={(inputId, fromLayerId, toLayerId) =>
+                handleInputMoveLayer(inputId, fromLayerId, toLayerId)
+              }
+              onUiChange={(patch) => patchUi(layer.id, patch)}
+              onBehaviorChange={(b) => setBehavior(layer.id, b)}
+              onMoveUp={() => handleLayerMoveBy(layer.id, -1)}
+              onMoveDown={() => handleLayerMoveBy(layer.id, 1)}
+              onToggleLayerVisibility={onToggleLayerVisibility}
+              onDeleteLayer={onDeleteLayer}
+            />
+          );
+        }}
+      />
+    </View>
   );
 }
 
@@ -252,17 +225,4 @@ const styles = StyleSheet.create({
   },
   list: { flex: 1 },
   listContent: { paddingBottom: 16, flexGrow: 1 },
-  tailDropZone: {
-    height: 20,
-    justifyContent: "center",
-    paddingHorizontal: 8,
-  },
-  tailDropZoneActive: {
-    backgroundColor: "rgba(77, 157, 224, 0.06)",
-  },
-  tailLine: {
-    height: 2,
-    borderRadius: 999,
-    backgroundColor: "rgba(77, 157, 224, 0.35)",
-  },
 });
