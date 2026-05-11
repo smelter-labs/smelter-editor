@@ -80,7 +80,7 @@ function OutputScene() {
         <View
           key={layer.id}
           style={{ top: 0, left: 0, width, height, overflow: 'visible' }}>
-          {layer.inputs.map((item) => {
+          {layer.enabled === false ? null : layer.inputs.map((item) => {
             const cT = item.cropTop ?? 0;
             const cL = item.cropLeft ?? 0;
             const cR = item.cropRight ?? 0;
