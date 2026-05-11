@@ -81,7 +81,7 @@ function OutputScene() {
         <View
           key={layer.id}
           style={{ top: 0, left: 0, width, height, overflow: 'visible' }}>
-          {layer.inputs.map((item, itemIndex) => {
+          {layer.inputs.map((item) => {
             const cT = item.cropTop ?? 0;
             const cL = item.cropLeft ?? 0;
             const cR = item.cropRight ?? 0;
@@ -131,10 +131,12 @@ function OutputScene() {
             const yoloColor = input?.yoloBoxColor ?? '#ff0000';
             const nativeW = input?.sourceWidth ?? 1920;
             const nativeH = input?.sourceHeight ?? 1080;
-
+            const layerItemKey = `${layer.id}:${item.inputId}`;
+        
             return (
               <React.Fragment key={`${item.inputId}`}>
                 <Rescaler
+                  key={layerItemKey}
                   id={`layer-${layer.id}-${item.inputId}`}
                   transition={{
                     durationMs: item.transitionDurationMs ?? 300,

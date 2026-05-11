@@ -1,5 +1,6 @@
 import JSZip from 'jszip';
 import {
+  buildRoomConfigFileName,
   parseRoomConfig,
   type RoomConfig,
   type RoomConfigInput,
@@ -7,18 +8,18 @@ import {
 
 type FullProjectAssetKind = 'mp4' | 'audio' | 'image';
 
-export type FullProjectManifestAsset = {
+type FullProjectManifestAsset = {
   kind: FullProjectAssetKind;
   path: string;
   inputIndex?: number;
 };
 
-export type FullProjectManifest = {
+type FullProjectManifest = {
   version: 1;
   assets: FullProjectManifestAsset[];
 };
 
-export type FullProjectImportProgress = {
+type FullProjectImportProgress = {
   phase: string;
   current: number;
   total: number;
@@ -289,7 +290,10 @@ export async function downloadFullProjectZip(
   }
 
   const zipBlob = await zip.generateAsync({ type: 'blob' });
-  downloadBlob(zipBlob, fileName ?? `room-project-${Date.now()}.zip`);
+  downloadBlob(
+    zipBlob,
+    fileName ?? buildRoomConfigFileName(config, 'room-project', 'zip'),
+  );
 }
 
 export async function importFullProjectZip(

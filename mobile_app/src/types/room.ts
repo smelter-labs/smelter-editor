@@ -15,13 +15,7 @@ import type {
 import { StreamMonitor, WhipMonitor } from "./monitor";
 import { TwitchStreamInfo } from "./twitchApi";
 
-export type {
-  InputOrientation,
-  PublicInputState,
-  ShaderConfig,
-  ShaderParamConfig,
-  Layer,
-};
+export type { PublicInputState, Layer };
 
 /**
  * Full room state response from GET /room/:roomId.
@@ -43,7 +37,7 @@ export interface RoomState {
   isRecording: boolean;
 }
 
-export type RoomInputState = {
+type RoomInputState = {
   inputId: string;
   type:
     | "local-mp4"

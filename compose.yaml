@@ -1,31 +1,44 @@
+x-server-common: &server-common
+  env_file: secret.env
+  build: .
+  environment:
+    SMELTER_DEMO_API_PORT: "9071"
+    SMELTER_DEMO_ROUTER_LOGGER_LEVEL: "warn"
+    SMELTER_WHIP_WHEP_SERVER_PORT: "9072"
+    SMELTER_LOGGER_FORMAT: compact
+    SMELTER_LOGGER_LEVEL: info
+    SMELTER_SERVER_LOGGER_LEVEL: "debug,smelter_core=info,naga=info,cosmic_text=info,wgpu_hal=warn,smelter_core::pipeline::instance=warn"
+    ENVIRONMENT: production
+    # H.264 encoder: "vulkan" (GPU, default) or "ffmpeg" (CPU, lower latency via zerolatency tune)
+    # SMELTER_H264_ENCODER: "ffmpeg"
+    # SMELTER_H264_ENCODER_PRESET: "ultrafast"
+    # SMELTER_H264_ENCODER_BITRATE: "20000000"
+  # AMD GPU
+  # devices:
+  #  - '/dev/dri'
+  #
+  # Nvidia GPU
+  gpus: "all"
+  runtime: "nvidia"
+
 services:
   server:
-    env_file: secret.env
-    build: .
-    environment:
-      SMELTER_DEMO_API_PORT: "9071"
-      SMELTER_DEMO_ROUTER_LOGGER_LEVEL: "warn"
-      SMELTER_WHIP_WHEP_SERVER_PORT: "9072"
-      SMELTER_LOGGER_FORMAT: compact
-      SMELTER_LOGGER_LEVEL: info 
-      SMELTER_SERVER_LOGGER_LEVEL: "debug,smelter_core=info,naga=info,cosmic_text=info,wgpu_hal=warn,smelter_core::pipeline::instance=warn"
-      ENVIRONMENT: production
-      # H.264 encoder: "vulkan" (GPU, default) or "ffmpeg" (CPU, lower latency via zerolatency tune)
-      # SMELTER_H264_ENCODER: "ffmpeg"
-      # SMELTER_H264_ENCODER_PRESET: "ultrafast"
-      # SMELTER_H264_ENCODER_BITRATE: "20000000"
+    <<: *server-common
     volumes:
       - smelter_data:/home/smelter/demo/server/data
     ports:
       - 9071:9071
       - 9072:9072
-    # AMD GPU
-    # devices:
-    #  - '/dev/dri'
-    #
-    # Nvidia GPU
-    gpus: 'all'
-    runtime: 'nvidia'
+
+  server-b:
+    <<: *server-common
+    profiles:
+      - b
+    volumes:
+      - smelter_data:/home/smelter/demo/server/data
+    ports:
+      - 10071:9071
+      - 10072:9072
 
 volumes:
   smelter_data:

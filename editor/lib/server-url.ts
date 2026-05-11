@@ -1,4 +1,4 @@
-export const SERVER_URL_STORAGE_KEY = 'smelter-server-url';
+const SERVER_URL_STORAGE_KEY = 'smelter-server-url';
 export const SERVER_URL_COOKIE_NAME = 'smelter-server-url';
 const DEFAULT_SERVER_URL = 'http://localhost:3001';
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
@@ -36,7 +36,7 @@ export function getDefaultServerUrl(): string {
   return normalizeServerUrl(envUrl);
 }
 
-export function getStoredServerUrl(): string | null {
+function getStoredServerUrl(): string | null {
   if (typeof window === 'undefined') {
     return null;
   }

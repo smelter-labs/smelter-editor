@@ -7,16 +7,13 @@ import {
   type ReactNode,
 } from 'react';
 import AutoplayModal from '@/components/ui/autoplay-modal';
-import { motion } from 'framer-motion';
-import { staggerContainer } from '@/utils/animations';
 import VideoPreview from '@/components/video-preview';
 import ControlPanel from '@/components/control-panel/control-panel';
 import DashboardLayout from '@/components/dashboard/dashboard-layout';
 import { ConnectedDevicesPanel } from '@/components/dashboard/connected-devices-panel';
 import { SystemLogPanel } from '@/components/dashboard/system-log-panel';
 import { LayoutPreviewPanel } from '@/components/dashboard/layout-preview-panel';
-import { Button } from '@/components/ui/button';
-import { RotateCw } from 'lucide-react';
+import GuestPanel from '@/components/pages/guest-panel';
 import {
   STATIC_PANEL_IDS,
   STATIC_PANEL_DEFINITIONS,
@@ -41,7 +38,6 @@ export default function RoomView({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const [showAutoplayPopup, setShowAutoplayPopup] = useState(true);
   const [played, setPlayed] = useState(false);
-  const [guestStream, setGuestStream] = useState<MediaStream | null>(null);
 
   const handleAutoplayPermission = useCallback((allow: boolean) => {
     if (allow) {
@@ -78,76 +74,8 @@ export default function RoomView({
     attemptAutoplay();
   }, [isGuest]);
 
-  const guestVideoRef = useRef<HTMLVideoElement | null>(null);
-  const [guestRotation, setGuestRotation] = useState<0 | 90 | 180 | 270>(0);
-  const guestRotateRef = useRef<(() => Promise<0 | 90 | 180 | 270>) | null>(
-    null,
-  );
-  const [guestInputId, setGuestInputId] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (!guestVideoRef.current) return;
-    if (guestStream) {
-      guestVideoRef.current.srcObject = guestStream;
-      guestVideoRef.current.play().catch(() => {});
-    } else {
-      guestVideoRef.current.srcObject = null;
-    }
-  }, [guestStream]);
-
   if (isGuest) {
-    return (
-      <motion.div
-        variants={staggerContainer}
-        className='flex-1 flex flex-col min-h-0 h-full items-center justify-start overflow-hidden'>
-        <div className='w-full max-w-xl'>
-          {guestStream && (
-            <div className='mb-4'>
-              <div
-                className='rounded-md overflow-hidden border border-neutral-800 bg-black'
-                style={{
-                  aspectRatio: guestRotation % 180 !== 0 ? '9/16' : '16/9',
-                  maxHeight: guestRotation % 180 !== 0 ? '70vh' : undefined,
-                  margin: '0 auto',
-                  width: guestRotation % 180 !== 0 ? 'auto' : '100%',
-                }}>
-                <video
-                  ref={guestVideoRef}
-                  muted
-                  playsInline
-                  autoPlay
-                  className='w-full h-full object-contain'
-                />
-              </div>
-              <div className='flex justify-center mt-2'>
-                <Button
-                  size='sm'
-                  variant='ghost'
-                  onClick={async () => {
-                    if (guestRotateRef.current) {
-                      const angle = await guestRotateRef.current();
-                      setGuestRotation(angle);
-                    }
-                  }}
-                  className='cursor-pointer text-neutral-400 hover:text-white border border-neutral-700'>
-                  <RotateCw className='w-4 h-4 mr-1' />
-                  Rotate 90°
-                </Button>
-              </div>
-            </div>
-          )}
-          <ControlPanel
-            roomState={roomState}
-            roomId={roomId}
-            refreshState={refreshState}
-            isGuest={isGuest}
-            onGuestStreamChange={setGuestStream}
-            onGuestInputIdChange={setGuestInputId}
-            onGuestRotateRef={guestRotateRef}
-          />
-        </div>
-      </motion.div>
-    );
+    return <GuestPanel roomId={roomId} />;
   }
 
   return (

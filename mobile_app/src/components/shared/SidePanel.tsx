@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import React, { useEffect, useRef } from "react";
 import { Pressable, StyleSheet } from "react-native";
 import { useScreenDimensions } from "../../hooks/useScreenDimensions";
 import Animated, {
@@ -7,6 +7,8 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import { useTheme } from "react-native-paper";
+import { MAIN_NAV_ARROW_WIDTH_RATIO } from "../../navigation/navigationTypes";
+import { useSettingsStore } from "../../store";
 
 interface SidePanelProps {
   isVisible: boolean;
@@ -39,24 +41,35 @@ export function SidePanel({
 }: SidePanelProps) {
   const theme = useTheme();
   const { width: rawWidth, height: rawHeight } = useScreenDimensions();
+  const arrowNavigation = useSettingsStore((state) => state.arrowNavigation);
   const screenWidth = Math.max(rawWidth, rawHeight);
   const height = Math.min(rawWidth, rawHeight);
+  const arrowWidth = arrowNavigation
+    ? Math.round(screenWidth * MAIN_NAV_ARROW_WIDTH_RATIO)
+    : 0;
+  const contentWidth = screenWidth - arrowWidth * 2;
 
   // Positions expressed as translateX from left: 0 anchor
-  const visibleTranslateX = side === "right" ? screenWidth - width : 0;
-  const hiddenTranslateX = side === "right" ? screenWidth : -width;
+  const visibleTranslateX = side === "right" ? contentWidth - width : 0;
+  const hiddenTranslateX = side === "right" ? contentWidth : -width;
 
   const translateX = useSharedValue(hiddenTranslateX);
+  const wasVisibleRef = useRef(false);
 
   useEffect(() => {
     if (isVisible) {
-      // Snap off-screen to the new side first (no layout change, purely translateX),
-      // then spring into view. This ensures a side switch never animates across screen.
-      translateX.value = hiddenTranslateX;
+      if (!wasVisibleRef.current) {
+        // Panel just became visible: snap off-screen first so it always
+        // slides in from the correct side (avoids cross-screen slide on side switch).
+        translateX.value = hiddenTranslateX;
+      }
+      // If panel was already open (e.g. arrow nav toggled), skip the snap
+      // and just spring to the updated position — no flicker.
       translateX.value = withSpring(visibleTranslateX, SPRING_CONFIG);
     } else {
       translateX.value = withSpring(hiddenTranslateX, SPRING_CONFIG);
     }
+    wasVisibleRef.current = isVisible;
   }, [isVisible, hiddenTranslateX, visibleTranslateX]);
 
   const panelStyle = useAnimatedStyle(() => {

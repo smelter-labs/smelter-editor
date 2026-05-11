@@ -1,7 +1,7 @@
 import type { Layer } from '@/lib/types';
 
-export type TimelineTrackOrder = Record<string, number>;
-export type TimelineOrderDirection = 'asc' | 'desc';
+type TimelineTrackOrder = Record<string, number>;
+type TimelineOrderDirection = 'asc' | 'desc';
 
 type LayerInputLike = Layer['inputs'][number];
 

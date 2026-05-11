@@ -717,7 +717,7 @@ Normalizacja tekstu (lowercase, interpunkcja, polskie znaki, korekta OCR). Leven
 
 > `editor/components/voice-action-feedback/VoiceActionFeedback.tsx`
 
-Overlay z wizualnym potwierdzeniem rozpoznanej komendy głosowej.
+Overlay z wizualnym potwierdzeniem rozpoznanej komendy głosowej
 
 ---
 

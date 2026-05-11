@@ -1,5 +1,10 @@
 import { StrictMode, useEffect } from "react";
-import { Platform, StatusBar as RNStatusBar, View } from "react-native";
+import {
+  AppState,
+  Platform,
+  StatusBar as RNStatusBar,
+  View,
+} from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { NavigationContainer } from "@react-navigation/native";
 import { PaperProvider } from "react-native-paper";
@@ -23,17 +28,25 @@ export function App() {
 
     RNStatusBar.setHidden(true, "none");
 
-    NavigationBar.setBackgroundColorAsync("transparent").catch((err) =>
-      console.warn("[App] navigation bar background update failed", err),
-    );
-    NavigationBar.setBehaviorAsync("overlay-swipe").catch((err) =>
-      console.warn("[App] navigation bar behavior update failed", err),
-    );
     NavigationBar.setVisibilityAsync("hidden").catch((err) =>
       console.warn("[App] navigation bar hide failed", err),
     );
 
+    // Re-apply hidden state when app comes to focus
+    const appStateSubscription = AppState.addEventListener(
+      "change",
+      (state) => {
+        if (state === "active") {
+          RNStatusBar.setHidden(true, "none");
+          NavigationBar.setVisibilityAsync("hidden").catch((err) =>
+            console.warn("[App] navigation bar hide on app focus failed", err),
+          );
+        }
+      },
+    );
+
     return () => {
+      appStateSubscription.remove();
       NavigationBar.setVisibilityAsync("visible").catch(() => undefined);
     };
   }, []);

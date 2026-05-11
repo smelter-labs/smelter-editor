@@ -244,6 +244,36 @@ describe('TimelinePlayer', () => {
 
       expect(player.isPlaying()).toBe(false);
     });
+
+    it('restarts from 0 when requested from timeline end', async () => {
+      const config = makeConfig({ totalDurationMs: 5000 });
+      const player = new TimelinePlayer(adapter, config);
+
+      await player.start(5000);
+
+      expect(player.getPlayheadMs()).toBe(0);
+      expect(player.isPlaying()).toBe(true);
+      await vi.advanceTimersByTimeAsync(5001);
+      expect(player.isPlaying()).toBe(false);
+    });
+
+    it('natural end invokes onPlaybackEnded callback instead of auto-stop', async () => {
+      const config = makeConfig({ totalDurationMs: 3000 });
+      const player = new TimelinePlayer(adapter, config);
+      const onPlaybackEnded = vi.fn();
+      player.onPlaybackEnded = onPlaybackEnded;
+
+      await player.start(0);
+      expect(player.isPlaying()).toBe(true);
+
+      await vi.advanceTimersByTimeAsync(3001);
+
+      expect(onPlaybackEnded).toHaveBeenCalledTimes(1);
+      // Player should still be playing because stop is delegated to the
+      // callback owner (RoomState.stopTimelinePlayback), not performed
+      // internally when the callback is wired up.
+      expect(player.isPlaying()).toBe(true);
+    });
   });
 
   describe('stop', () => {
@@ -307,6 +337,101 @@ describe('TimelinePlayer', () => {
 
       // After stop, restoreState should call updateLayers at minimum
       expect(adapter.updateLayers).toHaveBeenCalled();
+    });
+
+    it('restore emits null for absolute/crop fields that were undefined in snapshot', async () => {
+      // Pre-play snapshot: 'a' has no absolute position or crop fields set
+      // (all undefined). During playback the timeline mutates the input
+      // with absolute geometry from the clip's block settings. On stop,
+      // restore must send `null` for those fields so RoomState.updateInput
+      // clears them back to undefined.
+      const inputData: Record<string, unknown> = {
+        inputId: 'a',
+        hidden: false,
+        status: 'connected',
+        type: 'text-input',
+        volume: 1,
+        shaders: [],
+        showTitle: false,
+        borderColor: '#000',
+        borderWidth: 0,
+        metadata: { title: 'A', description: '' },
+        text: '',
+        textAlign: 'left',
+        textColor: '#fff',
+        textMaxLines: 1,
+        textScrollEnabled: false,
+        textScrollSpeed: 0,
+        textScrollLoop: false,
+        textFontSize: 16,
+      };
+      (adapter.getInputs as any).mockReturnValue([inputData]);
+      (adapter.getLayers as any).mockReturnValue([]);
+
+      const config = makeConfig({
+        tracks: [
+          {
+            id: 't1',
+            clips: [
+              makeClip({
+                inputId: 'a',
+                startMs: 0,
+                endMs: 5000,
+                blockSettings: makeBlockSettings({
+                  absolutePosition: true,
+                  absoluteLeft: 100,
+                  absoluteTop: 50,
+                  absoluteWidth: 640,
+                  absoluteHeight: 360,
+                  cropTop: 10,
+                }),
+              }),
+            ],
+          },
+        ],
+      });
+
+      const player = new TimelinePlayer(adapter, config);
+      await player.start(0);
+
+      // Simulate the timeline mutating the input's absolute position / crop
+      // during playback (normally done by RoomState.updateInput via the
+      // clip's block settings).  The restore path must detect that the
+      // current input diverges from the snapshot and emit null resets.
+      inputData.absolutePosition = true;
+      inputData.absoluteLeft = 100;
+      inputData.absoluteTop = 50;
+      inputData.absoluteWidth = 640;
+      inputData.absoluteHeight = 360;
+      inputData.cropTop = 10;
+
+      (adapter.updateInput as any).mockClear();
+      await player.stop();
+
+      // Find the restore call (the updateInput invocation triggered by
+      // restoreState Phase 1).  The snapshot had undefined absolute/crop
+      // fields, so the emitted update must use `null` as a reset marker.
+      const updateInputCalls = (adapter.updateInput as any).mock.calls;
+      expect(updateInputCalls.length).toBeGreaterThan(0);
+
+      const restoreCall = updateInputCalls.find(
+        (call: [string, Record<string, unknown>]) =>
+          call[0] === 'a' && 'absoluteLeft' in call[1],
+      );
+      expect(restoreCall).toBeDefined();
+
+      const restorePayload = restoreCall![1] as Record<string, unknown>;
+      expect(restorePayload.absolutePosition).toBeNull();
+      expect(restorePayload.absoluteLeft).toBeNull();
+      expect(restorePayload.absoluteTop).toBeNull();
+      expect(restorePayload.absoluteWidth).toBeNull();
+      expect(restorePayload.absoluteHeight).toBeNull();
+      expect(restorePayload.absoluteTransitionDurationMs).toBeNull();
+      expect(restorePayload.absoluteTransitionEasing).toBeNull();
+      expect(restorePayload.cropTop).toBeNull();
+      expect(restorePayload.cropLeft).toBeNull();
+      expect(restorePayload.cropRight).toBeNull();
+      expect(restorePayload.cropBottom).toBeNull();
     });
   });
 
@@ -432,8 +557,8 @@ describe('TimelinePlayer', () => {
     });
   });
 
-  describe('reorderInputs respects layer order', () => {
-    it('uses layer.inputs order instead of track order for reorderInputs', async () => {
+  describe('reorderInputs respects timeline track order', () => {
+    it('orders active inputs bottom-to-top so the top track renders on top', async () => {
       (adapter.getInputs as any).mockReturnValue([
         {
           inputId: 'a',
@@ -448,8 +573,97 @@ describe('TimelinePlayer', () => {
           type: 'text-input',
         },
       ]);
+
+      const config = makeConfig({
+        tracks: [
+          {
+            id: 't1',
+            clips: [makeClip({ inputId: 'a', startMs: 0, endMs: 5000 })],
+          },
+          {
+            id: 't2',
+            clips: [
+              makeClip({ id: 'c2', inputId: 'b', startMs: 0, endMs: 5000 }),
+            ],
+          },
+        ],
+      });
+
+      const player = new TimelinePlayer(adapter, config);
+      await player.start(0);
+
+      // t1 is the top track (index 0) in the UI, so its input must end up
+      // last in the reorderInputs array (last-paint wins).
+      expect(adapter.reorderInputs).toHaveBeenCalledWith(['b', 'a']);
+    });
+
+    it('includes all active inputs in bottom-to-top track order', async () => {
+      (adapter.getInputs as any).mockReturnValue([
+        {
+          inputId: 'a',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
+        {
+          inputId: 'b',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
+        {
+          inputId: 'c',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
+      ]);
+
+      const config = makeConfig({
+        tracks: [
+          {
+            id: 't1',
+            clips: [makeClip({ inputId: 'a', startMs: 0, endMs: 5000 })],
+          },
+          {
+            id: 't2',
+            clips: [
+              makeClip({ id: 'c2', inputId: 'b', startMs: 0, endMs: 5000 }),
+            ],
+          },
+          {
+            id: 't3',
+            clips: [
+              makeClip({ id: 'c3', inputId: 'c', startMs: 0, endMs: 5000 }),
+            ],
+          },
+        ],
+      });
+
+      const player = new TimelinePlayer(adapter, config);
+      await player.start(0);
+
+      expect(adapter.reorderInputs).toHaveBeenCalledWith(['c', 'b', 'a']);
+    });
+
+    it('ignores current layer ordering', async () => {
+      (adapter.getInputs as any).mockReturnValue([
+        {
+          inputId: 'a',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
+        {
+          inputId: 'b',
+          hidden: false,
+          status: 'connected',
+          type: 'text-input',
+        },
+      ]);
+      // Layer ordering disagrees with track ordering — track order must win.
       (adapter.getLayers as any).mockReturnValue([
-        { id: 'L1', inputs: [{ inputId: 'b' }, { inputId: 'a' }] },
+        { id: 'L1', inputs: [{ inputId: 'a' }, { inputId: 'b' }] },
       ]);
 
       const config = makeConfig({
@@ -473,7 +687,7 @@ describe('TimelinePlayer', () => {
       expect(adapter.reorderInputs).toHaveBeenCalledWith(['b', 'a']);
     });
 
-    it('appends active inputs not in any layer at the end', async () => {
+    it('dedupes inputs that appear on multiple tracks (first occurrence wins)', async () => {
       (adapter.getInputs as any).mockReturnValue([
         {
           inputId: 'a',
@@ -487,17 +701,11 @@ describe('TimelinePlayer', () => {
           status: 'connected',
           type: 'text-input',
         },
-        {
-          inputId: 'c',
-          hidden: false,
-          status: 'connected',
-          type: 'text-input',
-        },
-      ]);
-      (adapter.getLayers as any).mockReturnValue([
-        { id: 'L1', inputs: [{ inputId: 'b' }] },
       ]);
 
+      // 'a' shows up on both t1 (top) and t2 (bottom). Bottom-to-top
+      // iteration visits t2 first, then t1. The second occurrence of 'a'
+      // must be skipped.
       const config = makeConfig({
         tracks: [
           {
@@ -507,13 +715,8 @@ describe('TimelinePlayer', () => {
           {
             id: 't2',
             clips: [
-              makeClip({ id: 'c2', inputId: 'b', startMs: 0, endMs: 5000 }),
-            ],
-          },
-          {
-            id: 't3',
-            clips: [
-              makeClip({ id: 'c3', inputId: 'c', startMs: 0, endMs: 5000 }),
+              makeClip({ id: 'c2', inputId: 'a', startMs: 0, endMs: 5000 }),
+              makeClip({ id: 'c3', inputId: 'b', startMs: 0, endMs: 5000 }),
             ],
           },
         ],
@@ -522,67 +725,7 @@ describe('TimelinePlayer', () => {
       const player = new TimelinePlayer(adapter, config);
       await player.start(0);
 
-      const calls = (adapter.reorderInputs as any).mock.calls;
-      expect(calls.length).toBeGreaterThanOrEqual(1);
-      const order = calls[calls.length - 1][0] as string[];
-      expect(order[0]).toBe('b');
-      expect(order).toContain('a');
-      expect(order).toContain('c');
-      expect(order.indexOf('b')).toBeLessThan(order.indexOf('a'));
-      expect(order.indexOf('b')).toBeLessThan(order.indexOf('c'));
-    });
-
-    it('respects order across multiple layers', async () => {
-      (adapter.getInputs as any).mockReturnValue([
-        {
-          inputId: 'a',
-          hidden: false,
-          status: 'connected',
-          type: 'text-input',
-        },
-        {
-          inputId: 'b',
-          hidden: false,
-          status: 'connected',
-          type: 'text-input',
-        },
-        {
-          inputId: 'c',
-          hidden: false,
-          status: 'connected',
-          type: 'text-input',
-        },
-      ]);
-      (adapter.getLayers as any).mockReturnValue([
-        { id: 'L1', inputs: [{ inputId: 'c' }] },
-        { id: 'L2', inputs: [{ inputId: 'a' }, { inputId: 'b' }] },
-      ]);
-
-      const config = makeConfig({
-        tracks: [
-          {
-            id: 't1',
-            clips: [makeClip({ inputId: 'a', startMs: 0, endMs: 5000 })],
-          },
-          {
-            id: 't2',
-            clips: [
-              makeClip({ id: 'c2', inputId: 'b', startMs: 0, endMs: 5000 }),
-            ],
-          },
-          {
-            id: 't3',
-            clips: [
-              makeClip({ id: 'c3', inputId: 'c', startMs: 0, endMs: 5000 }),
-            ],
-          },
-        ],
-      });
-
-      const player = new TimelinePlayer(adapter, config);
-      await player.start(0);
-
-      expect(adapter.reorderInputs).toHaveBeenCalledWith(['c', 'a', 'b']);
+      expect(adapter.reorderInputs).toHaveBeenCalledWith(['a', 'b']);
     });
 
     it('updates order when a new block starts mid-playback', async () => {
@@ -594,9 +737,6 @@ describe('TimelinePlayer', () => {
           type: 'text-input',
         },
         { inputId: 'b', hidden: true, status: 'connected', type: 'text-input' },
-      ]);
-      (adapter.getLayers as any).mockReturnValue([
-        { id: 'L1', inputs: [{ inputId: 'b' }, { inputId: 'a' }] },
       ]);
 
       const config = makeConfig({

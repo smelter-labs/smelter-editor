@@ -334,6 +334,8 @@ describe('exportRoomConfig', () => {
       totalDurationMs: 10_000,
       keyframeInterpolationMode: 'smooth',
       pixelsPerSecond: 15,
+      groups: [],
+      rootOrder: [{ kind: 'track', id: 'track-1' }],
     };
 
     const config = exportRoomConfig(
@@ -348,9 +350,12 @@ describe('exportRoomConfig', () => {
       totalDurationMs: 10_000,
       keyframeInterpolationMode: 'smooth',
       pixelsPerSecond: 15,
+      groups: undefined,
+      rootOrder: [{ kind: 'track', trackIndex: 0 }],
       tracks: [
         {
           label: 'Track 1',
+          icon: undefined,
           clips: [
             {
               inputIndex: 0,
@@ -442,10 +447,13 @@ describe('timeline config persistence helpers', () => {
       totalDurationMs: 12_000,
       keyframeInterpolationMode: 'smooth',
       pixelsPerSecond: 24,
+      groups: [],
+      rootOrder: [{ kind: 'track', id: expect.any(String) }],
       tracks: [
         {
           id: expect.any(String),
           label: 'Track 1',
+          icon: undefined,
           clips: [
             {
               id: expect.any(String),
@@ -537,10 +545,13 @@ describe('timeline config persistence helpers', () => {
       totalDurationMs: 12_000,
       keyframeInterpolationMode: 'smooth',
       pixelsPerSecond: 24,
+      groups: [],
+      rootOrder: [{ kind: 'track', id: expect.any(String) }],
       tracks: [
         {
           id: expect.any(String),
           label: 'Track 1',
+          icon: undefined,
           clips: [
             {
               id: expect.any(String),
@@ -583,6 +594,98 @@ describe('timeline config persistence helpers', () => {
         },
       ],
     });
+  });
+
+  it('round-trips track icons and groups through restore/load', () => {
+    const timeline: RoomConfigTimeline = {
+      totalDurationMs: 10_000,
+      pixelsPerSecond: 20,
+      keyframeInterpolationMode: 'step',
+      tracks: [
+        {
+          label: 'Mic A',
+          icon: 'mic',
+          clips: [],
+        },
+        {
+          label: 'Cam A',
+          icon: 'camera',
+          clips: [],
+        },
+        {
+          label: 'Cam B',
+          clips: [],
+        },
+      ],
+      groups: [
+        {
+          label: 'Cameras',
+          icon: 'video',
+          collapsed: true,
+          trackIndices: [1, 2],
+        },
+      ],
+      rootOrder: [
+        { kind: 'track', trackIndex: 0 },
+        { kind: 'group', groupIndex: 0 },
+      ],
+    };
+
+    restoreTimelineToStorage(
+      'room-grp',
+      timeline,
+      new Map<number, string>([
+        [0, 'room::whip::mic'],
+        [1, 'room::hls::cam-a'],
+        [2, 'room::hls::cam-b'],
+      ]),
+    );
+
+    const loaded = loadTimelineFromStorage('room-grp');
+    expect(loaded).not.toBeNull();
+    expect(loaded?.tracks.map((t) => t.icon)).toEqual([
+      'mic',
+      'camera',
+      undefined,
+    ]);
+    expect(loaded?.groups).toHaveLength(1);
+    expect(loaded?.groups[0]).toMatchObject({
+      label: 'Cameras',
+      icon: 'video',
+      collapsed: true,
+    });
+    expect(loaded?.groups[0].trackIds).toEqual([
+      loaded?.tracks[1].id,
+      loaded?.tracks[2].id,
+    ]);
+    expect(loaded?.rootOrder).toEqual([
+      { kind: 'track', id: loaded?.tracks[0].id },
+      { kind: 'group', id: loaded?.groups[0].id },
+    ]);
+  });
+
+  it('migrates legacy timeline configs (no groups/rootOrder) to flat root layout', () => {
+    const legacy: RoomConfigTimeline = {
+      totalDurationMs: 8000,
+      pixelsPerSecond: 15,
+      keyframeInterpolationMode: 'step',
+      tracks: [
+        { label: 'A', clips: [] },
+        { label: 'B', clips: [] },
+      ],
+    };
+    const built = buildTimelineStateFromConfigTimeline(
+      legacy,
+      new Map<number, string>([
+        [0, 'room::whip::a'],
+        [1, 'room::whip::b'],
+      ]),
+    );
+    expect(built.groups).toEqual([]);
+    expect(built.rootOrder).toEqual([
+      { kind: 'track', id: built.tracks[0].id },
+      { kind: 'track', id: built.tracks[1].id },
+    ]);
   });
 
   it('prefers the live timeline state over stale local storage during export', () => {
@@ -667,6 +770,8 @@ describe('timeline config persistence helpers', () => {
       totalDurationMs: 5000,
       keyframeInterpolationMode: 'step',
       pixelsPerSecond: 15,
+      groups: [],
+      rootOrder: [{ kind: 'track', id: 'track-live' }],
     };
 
     expect(resolveRoomConfigTimelineState('room-2', liveTimelineState)).toBe(

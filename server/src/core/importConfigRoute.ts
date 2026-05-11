@@ -150,6 +150,16 @@ function buildRegisterOptions(
     case 'hls':
       return input.url ? { type: 'hls', url: input.url } : null;
     case 'local-mp4':
+      if (input.audioFileName && input.mp4FileName) {
+        throw new Error(
+          'Invalid local-mp4 config: provide either audioFileName or mp4FileName, not both',
+        );
+      }
+      if (!input.audioFileName && !input.mp4FileName) {
+        throw new Error(
+          'Invalid local-mp4 config: missing both audioFileName and mp4FileName',
+        );
+      }
       if (input.audioFileName) {
         return {
           type: 'local-mp4',
@@ -336,8 +346,41 @@ export function registerImportConfigRoute(routes: FastifyInstance): void {
         indexToInputId[index] = inputId;
       }
 
+      // Guard against any accidental duplicate mappings.
+      const indexEntries = Object.entries(indexToInputId);
+      const duplicateInputIds = new Set<string>();
+      const seenMappedInputIds = new Set<string>();
+      for (const [, mappedInputId] of indexEntries) {
+        if (seenMappedInputIds.has(mappedInputId)) {
+          duplicateInputIds.add(mappedInputId);
+          continue;
+        }
+        seenMappedInputIds.add(mappedInputId);
+      }
+      if (duplicateInputIds.size > 0) {
+        for (const duplicatedInputId of duplicateInputIds) {
+          const conflictingIndices = indexEntries
+            .filter(([, mappedInputId]) => mappedInputId === duplicatedInputId)
+            .map(([index]) => Number(index))
+            .sort((a, b) => a - b);
+          const msg = `Duplicate indexToInputId mapping for ${duplicatedInputId} at indices [${conflictingIndices.join(', ')}]`;
+          console.warn(`[import-config] ${msg}`);
+          errors.push(msg);
+        }
+      }
+
       // Phase 2: Update inputs with full settings
+      const updatedInputIds = new Set<string>();
       for (const { inputId, index } of createdInputs) {
+        if (updatedInputIds.has(inputId)) {
+          const msg = `Skipping duplicated update for input ${inputId} (source index ${index})`;
+          console.warn(`[import-config] ${msg}`);
+          errors.push(msg);
+          advance('Configuring inputs');
+          continue;
+        }
+        updatedInputIds.add(inputId);
+
         const inputConfig = importedInputs[index];
         const attachedIds = inputConfig.attachedInputIndices
           ?.map((idx) => indexToInputId[idx])
@@ -445,7 +488,10 @@ export function registerImportConfigRoute(routes: FastifyInstance): void {
       const orderedInputIds = createdInputs
         .slice()
         .sort((a, b) => a.index - b.index)
-        .map(({ inputId }) => inputId);
+        .map(({ inputId }) => inputId)
+        .filter(
+          (inputId, position, list) => list.indexOf(inputId) === position,
+        );
 
       try {
         if (orderedInputIds.length > 0) {

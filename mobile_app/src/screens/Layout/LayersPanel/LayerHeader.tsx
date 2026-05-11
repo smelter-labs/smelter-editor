@@ -59,7 +59,7 @@ function EditableName({
   );
 }
 
-export interface LayerHeaderProps {
+interface LayerHeaderProps {
   name: string;
   isVisible: boolean;
   isCollapsed: boolean;

@@ -1,7 +1,16 @@
-import React from "react";
-import { View, StyleSheet } from "react-native";
+import React, { useState } from "react";
+import { StyleSheet, View } from "react-native";
 import { Text, useTheme } from "react-native-paper";
+import { useNavigation } from "@react-navigation/native";
 import { ScreenLabel } from "../../components/shared/ScreenLabel";
+import { SharedSettingsPanel } from "../../components/shared/SharedSettingsPanel";
+import {
+  ScreenToolbar,
+  ScreenToolbarChip,
+  ToolbarIcon,
+} from "../../components/shared/ScreenToolbar";
+import { SCREEN_NAMES } from "../../navigation/navigationTypes";
+import type { RootNavigationProp } from "../../navigation/navigationTypes";
 
 /**
  * Timeline screen — placeholder only.
@@ -9,12 +18,26 @@ import { ScreenLabel } from "../../components/shared/ScreenLabel";
  */
 export function TimelineScreen() {
   const theme = useTheme();
+  const navigation = useNavigation<RootNavigationProp>();
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   return (
     <View
       style={[styles.container, { backgroundColor: theme.colors.background }]}
     >
       <ScreenLabel label="Timeline" />
+
+      <ScreenToolbar style={styles.toolbar}>
+        <ScreenToolbarChip
+          onPress={() => navigation.navigate(SCREEN_NAMES.HELP)}
+        >
+          <ToolbarIcon name="help-circle-outline" />
+        </ScreenToolbarChip>
+        <ScreenToolbarChip onPress={() => setSettingsOpen(true)}>
+          <ToolbarIcon name="cog" />
+        </ScreenToolbarChip>
+      </ScreenToolbar>
+
       <Text
         variant="headlineMedium"
         style={{ color: theme.colors.onBackground }}
@@ -28,6 +51,12 @@ export function TimelineScreen() {
         Timeline tracking for inputs, shaders, and scheduled actions.
         {"\n"}Coming soon.
       </Text>
+
+      <SharedSettingsPanel
+        isVisible={settingsOpen}
+        side="right"
+        onClose={() => setSettingsOpen(false)}
+      />
     </View>
   );
 }
@@ -38,6 +67,11 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     gap: 8,
+  },
+  toolbar: {
+    position: "absolute",
+    top: 0,
+    right: 0,
   },
   subtitle: {
     textAlign: "center",

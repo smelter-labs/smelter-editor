@@ -165,6 +165,32 @@
   font-weight: 600;
   margin: 0.4em 0 0.2em;
 }
+.rich-text-editor .tiptap h3 {
+  font-size: 0.95rem;
+  line-height: 1.4;
+  font-weight: 600;
+  margin: 0.35em 0 0.2em;
+}
+.rich-text-editor .tiptap h4 {
+  font-size: 0.9rem;
+  line-height: 1.4;
+  font-weight: 600;
+  margin: 0.3em 0 0.15em;
+}
+.rich-text-editor .tiptap h5 {
+  font-size: 0.85rem;
+  line-height: 1.4;
+  font-weight: 600;
+  margin: 0.25em 0 0.15em;
+}
+.rich-text-editor .tiptap h6 {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  font-weight: 600;
+  margin: 0.25em 0 0.1em;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
 .rich-text-editor .tiptap ul,
 .rich-text-editor .tiptap ol {
   padding-left: 1.25em;
@@ -195,6 +221,32 @@
   line-height: 1.4;
   font-weight: 600;
   margin: 0.4em 0 0.2em;
+}
+.rich-text-content h3 {
+  font-size: 0.95rem;
+  line-height: 1.4;
+  font-weight: 600;
+  margin: 0.35em 0 0.2em;
+}
+.rich-text-content h4 {
+  font-size: 0.9rem;
+  line-height: 1.4;
+  font-weight: 600;
+  margin: 0.3em 0 0.15em;
+}
+.rich-text-content h5 {
+  font-size: 0.85rem;
+  line-height: 1.4;
+  font-weight: 600;
+  margin: 0.25em 0 0.15em;
+}
+.rich-text-content h6 {
+  font-size: 0.8rem;
+  line-height: 1.4;
+  font-weight: 600;
+  margin: 0.25em 0 0.1em;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
 }
 .rich-text-content ul,
 .rich-text-content ol {

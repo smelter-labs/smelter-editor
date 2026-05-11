@@ -83,6 +83,12 @@ export type Layer = {
   inputs: LayerInput[];
   /** Layout behavior for this layer. If undefined, positions are manual. */
   behavior?: LayerBehaviorConfig;
+  /**
+   * Bumped by the server whenever a behavior layer's computed positions change,
+   * or whenever the client explicitly submitted an update for the layer.
+   * Clients can use this as a resync signal even when positions are unchanged.
+   */
+  layoutTimestamp?: number;
 };
 
 // ── Deprecated (kept for room-config backward compat) ────────────────────────

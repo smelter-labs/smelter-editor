@@ -13,6 +13,60 @@ const baseInput: ImportConfigInput = {
 };
 
 describe('importConfigRoute buildRegisterOptions', () => {
+  it('maps local-mp4 video source from mp4FileName', () => {
+    const input: ImportConfigInput = {
+      ...baseInput,
+      type: 'local-mp4',
+      mp4FileName: 'clips/intro.mp4',
+    };
+
+    const opts = __importConfigRouteTestUtils.buildRegisterOptions(input);
+    expect(opts).toEqual({
+      type: 'local-mp4',
+      source: { fileName: 'clips/intro.mp4' },
+    });
+  });
+
+  it('maps local-mp4 audio source from audioFileName', () => {
+    const input: ImportConfigInput = {
+      ...baseInput,
+      type: 'local-mp4',
+      audioFileName: 'music/theme.mp4',
+    };
+
+    const opts = __importConfigRouteTestUtils.buildRegisterOptions(input);
+    expect(opts).toEqual({
+      type: 'local-mp4',
+      source: { audioFileName: 'music/theme.mp4' },
+    });
+  });
+
+  it('throws for ambiguous local-mp4 source when both fields exist', () => {
+    const input: ImportConfigInput = {
+      ...baseInput,
+      type: 'local-mp4',
+      mp4FileName: 'clips/intro.mp4',
+      audioFileName: 'music/theme.mp4',
+    };
+
+    expect(() =>
+      __importConfigRouteTestUtils.buildRegisterOptions(input),
+    ).toThrow(/either audioFileName or mp4FileName/i);
+  });
+
+  it('throws for invalid local-mp4 source when both fields are missing', () => {
+    const input: ImportConfigInput = {
+      ...baseInput,
+      type: 'local-mp4',
+      mp4FileName: undefined,
+      audioFileName: undefined,
+    };
+
+    expect(() =>
+      __importConfigRouteTestUtils.buildRegisterOptions(input),
+    ).toThrow(/missing both audioFileName and mp4FileName/i);
+  });
+
   it('uses imageFileName when provided', () => {
     const input: ImportConfigInput = {
       ...baseInput,

@@ -111,6 +111,8 @@ const MP4_DECODER_MAP = {
 const WHIP_SERVER_DECODER_PREFERENCES = [config.h264Decoder];
 const FALLBACK_FFMPEG_PRESET = 'ultrafast' as const;
 const FALLBACK_FFMPEG_BITRATE = '20000000';
+const ALLOW_FFMPEG_FALLBACK =
+  process.env.SMELTER_ALLOW_FFMPEG_FALLBACK === 'true';
 
 function createFallbackWhepVideoEncoder() {
   return {
@@ -198,6 +200,13 @@ class SmelterManager {
       );
     } catch (err) {
       if (config.h264Encoder.type !== 'vulkan_h264') {
+        throw err;
+      }
+      if (!ALLOW_FFMPEG_FALLBACK) {
+        console.error(
+          `[smelter] registerOutput failed for room ${roomId} with vulkan_h264 and ffmpeg fallback is disabled`,
+          err,
+        );
         throw err;
       }
 

@@ -58,6 +58,9 @@ jobs:
       - name: Generate Android project (Expo prebuild)
         run: pnpm exec expo prebuild --platform android --non-interactive --clean
 
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
       - name: Build release APK
         working-directory: mobile_app/android
         run: |

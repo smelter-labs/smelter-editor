@@ -51,7 +51,11 @@ export async function createNewRoom(
   whepUrl: string;
   resolution: Resolution;
 }> {
-  return (await getClient()).createNewRoom(initInputs, skipDefaultInputs, resolution);
+  return (await getClient()).createNewRoom(
+    initInputs,
+    skipDefaultInputs,
+    resolution,
+  );
 }
 
 export async function updateRoom(
@@ -277,7 +281,11 @@ export async function updateShaderPreset(
   name: string,
   shaders: ShaderConfig[],
 ): Promise<StorageResult<{ fileName: string; name: string }>> {
-  return (await getClient()).shaderPresetStorage.update(fileName, name, shaders);
+  return (await getClient()).shaderPresetStorage.update(
+    fileName,
+    name,
+    shaders,
+  );
 }
 
 export async function deleteShaderPreset(
@@ -317,7 +325,10 @@ export async function savePresentationConfig(
   name: string,
   presentationConfig: object,
 ): Promise<StorageResult<{ fileName: string; name: string }>> {
-  return (await getClient()).presentationConfigStorage.save(name, presentationConfig);
+  return (await getClient()).presentationConfigStorage.save(
+    name,
+    presentationConfig,
+  );
 }
 
 export async function listPresentationConfigs(): Promise<
@@ -330,6 +341,18 @@ export async function loadPresentationConfig(
   fileName: string,
 ): Promise<StorageResult<{ name: string; data: object; savedAt: string }>> {
   return (await getClient()).presentationConfigStorage.load(fileName);
+}
+
+export async function updatePresentationConfig(
+  fileName: string,
+  name: string,
+  presentationConfig: object,
+): Promise<StorageResult<{ fileName: string; name: string }>> {
+  return (await getClient()).presentationConfigStorage.update(
+    fileName,
+    name,
+    presentationConfig,
+  );
 }
 
 export async function deletePresentationConfig(
@@ -506,7 +529,7 @@ export async function startTimelinePlayback(
   return (await getClient()).startTimelinePlayback(roomId, config, fromMs);
 }
 
-export async function stopTimelinePlayback(
+async function stopTimelinePlayback(
   roomId: string,
 ): Promise<{ status: string }> {
   return (await getClient()).stopTimelinePlayback(roomId);

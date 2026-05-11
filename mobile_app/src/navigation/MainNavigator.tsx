@@ -10,11 +10,12 @@ import { LayoutScreen } from "../screens/Layout/LayoutScreen";
 import { InputsScreen } from "../screens/Inputs/InputsScreen";
 import { TimelineScreen } from "../screens/Timeline/TimelineScreen";
 import { DebugScreen } from "../screens/Debug/DebugScreen";
-import { MAIN_SCREEN_COUNT } from "./navigationTypes";
+import {
+  MAIN_NAV_ARROW_WIDTH_RATIO,
+  MAIN_SCREEN_COUNT,
+} from "./navigationTypes";
 import { useSettingsStore } from "../store";
 import { useScreenDimensions } from "../hooks/useScreenDimensions";
-
-const ARROW_WIDTH_RATIO = 0.05;
 
 /**
  * MainNavigator — custom horizontal pager for all main screens.
@@ -42,7 +43,7 @@ export function MainNavigator() {
     );
   }, []);
 
-  const arrowWidth = Math.round(winWidth * ARROW_WIDTH_RATIO);
+  const arrowWidth = Math.round(winWidth * MAIN_NAV_ARROW_WIDTH_RATIO);
   const contentWidth = arrowNavigation ? winWidth - arrowWidth * 2 : winWidth;
 
   const { gesture, containerStyle, snapToIndex, activeIndex } =

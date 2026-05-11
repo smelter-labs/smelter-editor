@@ -39,6 +39,8 @@ describe('timelineReducer', () => {
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -57,6 +59,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -76,6 +80,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set(['room::local::one', 'room::local::two']),
     };
 
@@ -87,7 +93,7 @@ describe('timelineReducer', () => {
     ]);
   });
 
-  it('purges an input from all tracks and removes empty ones', () => {
+  it('purges an input from all tracks and keeps tracks that become empty', () => {
     const state: TimelineState = {
       keyframeInterpolationMode: 'step',
       tracks: [
@@ -134,6 +140,8 @@ describe('timelineReducer', () => {
       pixelsPerSecond: 15,
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -142,10 +150,12 @@ describe('timelineReducer', () => {
       inputId: 'room::local::a',
     });
 
-    expect(next.tracks).toHaveLength(1);
-    expect(next.tracks[0].id).toBe('track-1');
-    expect(next.tracks[0].clips).toHaveLength(1);
-    expect(next.tracks[0].clips[0].inputId).toBe('room::local::b');
+    expect(next.tracks).toHaveLength(2);
+    const track1 = next.tracks.find((t) => t.id === 'track-1');
+    const track2 = next.tracks.find((t) => t.id === 'track-2');
+    expect(track1?.clips).toHaveLength(1);
+    expect(track1?.clips[0].inputId).toBe('room::local::b');
+    expect(track2?.clips).toHaveLength(0);
   });
 
   it('keeps the base keyframe locked at 0ms and clamps moved keyframes into clip bounds', () => {
@@ -184,6 +194,8 @@ describe('timelineReducer', () => {
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -242,6 +254,12 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [
+        { kind: 'track', id: 'track-a' },
+        { kind: 'track', id: 'track-b' },
+        { kind: 'track', id: 'track-c' },
+      ],
       knownInputIds: new Set<string>(),
     };
 
@@ -251,11 +269,9 @@ describe('timelineReducer', () => {
       newIndex: 2,
     });
 
-    expect(next.tracks.map((t) => t.id)).toEqual([
-      'track-b',
-      'track-c',
-      'track-a',
-    ]);
+    expect(
+      next.rootOrder.map((r) => (r.kind === 'track' ? r.id : `g:${r.id}`)),
+    ).toEqual(['track-b', 'track-c', 'track-a']);
   });
 
   it('REORDER_TRACK: no-op when moving OUTPUT_TRACK', () => {
@@ -271,6 +287,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -296,6 +314,11 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [
+        { kind: 'track', id: OUTPUT_TRACK_ID },
+        { kind: 'track', id: 'track-a' },
+      ],
       knownInputIds: new Set<string>(),
     };
 
@@ -341,6 +364,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -400,6 +425,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -475,6 +502,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -525,6 +554,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -575,6 +606,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -616,6 +649,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -697,6 +732,8 @@ describe('timelineReducer', () => {
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -731,6 +768,8 @@ describe('timelineReducer', () => {
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -755,6 +794,8 @@ describe('timelineReducer', () => {
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 

@@ -1,6 +1,6 @@
 import type { FxPt, FxSpark, FxBolt, FxState, FxConfig } from './types';
 
-export function fxHsl(h: number, s: number, l: number, a: number): string {
+function fxHsl(h: number, s: number, l: number, a: number): string {
   return `hsla(${h},${s}%,${l}%,${a})`;
 }
 
@@ -24,7 +24,7 @@ export function extractHue(color: string): number {
   return 200;
 }
 
-export function displaceMidpoint(
+function displaceMidpoint(
   x1: number,
   y1: number,
   x2: number,
@@ -44,7 +44,7 @@ export function displaceMidpoint(
   return [...left.slice(0, -1), ...right];
 }
 
-export function makeSpark(
+function makeSpark(
   w: number,
   h: number,
   hues: number[],
@@ -78,7 +78,7 @@ export function makeSpark(
   };
 }
 
-export function makeBolt(
+function makeBolt(
   w: number,
   h: number,
   hues: number[],

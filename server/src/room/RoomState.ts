@@ -46,6 +46,28 @@ function cloneLayers(layers: Layer[]): Layer[] {
   return JSON.parse(JSON.stringify(layers)) as Layer[];
 }
 
+function sanitizeLayerInputs(layers: Layer[]): Layer[] {
+  return layers.map((layer) => {
+    const seenInputIds = new Set<string>();
+    const inputs = layer.inputs.filter((input) => {
+      if (seenInputIds.has(input.inputId)) {
+        return false;
+      }
+      seenInputIds.add(input.inputId);
+      return true;
+    });
+
+    if (inputs.length === layer.inputs.length) {
+      return layer;
+    }
+
+    return {
+      ...layer,
+      inputs,
+    };
+  });
+}
+
 function normalizeFramePositionMs(
   requestedMs: number,
   isLooped: boolean,
@@ -69,6 +91,20 @@ function isAudioBackedLocalMp4(mp4FilePath: string): boolean {
     !relativeToAudioDir.startsWith('..') &&
     !path.isAbsolute(relativeToAudioDir)
   );
+}
+
+function layoutInputsEqual(a: Layer['inputs'], b: Layer['inputs']): boolean {
+  if (a.length !== b.length) return false;
+  return a.every((ai, i) => {
+    const bi = b[i]!;
+    return (
+      ai.inputId === bi.inputId &&
+      ai.x === bi.x &&
+      ai.y === bi.y &&
+      ai.width === bi.width &&
+      ai.height === bi.height
+    );
+  });
 }
 
 export class RoomState {
@@ -344,7 +380,7 @@ export class RoomState {
         this.pendingStoreFlushTimer = null;
       }
       this.storeUpdateScheduled = false;
-      this.flushStoreUpdate();
+      this.flushStoreUpdate(false, true);
     });
   }
 
@@ -477,25 +513,56 @@ export class RoomState {
         options.cropRight !== undefined ||
         options.cropBottom !== undefined;
       if (hasLayerPatch) {
+        // `null` resets the corresponding field on LayerInput to `undefined`
+        // to stay consistent with InputManager.updateInput (absolute/crop
+        // reset semantics). LayerInput declares `x`/`y`/`width`/`height` as
+        // required `number`s, so we widen via a Record cast when clearing
+        // them — Phase 2 of timeline restoreState replaces all layers, so
+        // this transient undefined state is bounded to the restore window.
         for (const layer of this.layers) {
           for (const li of layer.inputs) {
             if (li.inputId !== inputId) continue;
-            if (options.absoluteLeft !== undefined) li.x = options.absoluteLeft;
-            if (options.absoluteTop !== undefined) li.y = options.absoluteTop;
+            const liRecord = li as Record<string, unknown>;
+            if (options.absoluteLeft !== undefined)
+              liRecord.x =
+                options.absoluteLeft === null
+                  ? undefined
+                  : options.absoluteLeft;
+            if (options.absoluteTop !== undefined)
+              liRecord.y =
+                options.absoluteTop === null ? undefined : options.absoluteTop;
             if (options.absoluteWidth !== undefined)
-              li.width = options.absoluteWidth;
+              liRecord.width =
+                options.absoluteWidth === null
+                  ? undefined
+                  : options.absoluteWidth;
             if (options.absoluteHeight !== undefined)
-              li.height = options.absoluteHeight;
+              liRecord.height =
+                options.absoluteHeight === null
+                  ? undefined
+                  : options.absoluteHeight;
             if (options.absoluteTransitionDurationMs !== undefined)
-              li.transitionDurationMs = options.absoluteTransitionDurationMs;
+              li.transitionDurationMs =
+                options.absoluteTransitionDurationMs === null
+                  ? undefined
+                  : options.absoluteTransitionDurationMs;
             if (options.absoluteTransitionEasing !== undefined)
-              li.transitionEasing = options.absoluteTransitionEasing;
-            if (options.cropTop !== undefined) li.cropTop = options.cropTop;
-            if (options.cropLeft !== undefined) li.cropLeft = options.cropLeft;
+              li.transitionEasing =
+                options.absoluteTransitionEasing === null
+                  ? undefined
+                  : options.absoluteTransitionEasing;
+            if (options.cropTop !== undefined)
+              li.cropTop =
+                options.cropTop === null ? undefined : options.cropTop;
+            if (options.cropLeft !== undefined)
+              li.cropLeft =
+                options.cropLeft === null ? undefined : options.cropLeft;
             if (options.cropRight !== undefined)
-              li.cropRight = options.cropRight;
+              li.cropRight =
+                options.cropRight === null ? undefined : options.cropRight;
             if (options.cropBottom !== undefined)
-              li.cropBottom = options.cropBottom;
+              li.cropBottom =
+                options.cropBottom === null ? undefined : options.cropBottom;
           }
         }
       }
@@ -730,6 +797,11 @@ export class RoomState {
 
     const adapter = this.buildTimelineAdapter();
     this.timelinePlayer = new TimelinePlayer(adapter, config);
+    this.timelinePlayer.onPlaybackEnded = () => {
+      void this.stopTimelinePlayback().catch((err) =>
+        console.error('[timeline] natural-end stop failed', err),
+      );
+    };
 
     const forwardListener: TimelineListener = (data) => {
       for (const listener of this.timelineListeners) {
@@ -752,6 +824,11 @@ export class RoomState {
 
     const adapter = this.buildTimelineAdapter();
     this.timelinePlayer = new TimelinePlayer(adapter, config);
+    this.timelinePlayer.onPlaybackEnded = () => {
+      void this.stopTimelinePlayback().catch((err) =>
+        console.error('[timeline] natural-end stop failed', err),
+      );
+    };
 
     const forwardListener: TimelineListener = (data) => {
       for (const listener of this.timelineListeners) {
@@ -868,8 +945,11 @@ export class RoomState {
       if (isAudioBackedLocalMp4(input.mp4FilePath)) {
         continue;
       }
-
       const isLooped = clip.blockSettings.mp4Loop !== false;
+      if (isLooped) {
+        continue;
+      }
+
       const framePositionMs = normalizeFramePositionMs(
         (input.playFromMs ?? 0) +
           (currentPipelineMs -
@@ -1209,7 +1289,10 @@ export class RoomState {
     }
   }
 
-  private flushStoreUpdate(skipUnplacedAppend = false) {
+  private flushStoreUpdate(
+    skipUnplacedAppend = false,
+    fromClientUpdate = false,
+  ) {
     if (this._restoringTimeline) {
       skipUnplacedAppend = true;
     }
@@ -1312,10 +1395,12 @@ export class RoomState {
     const inputMap = new Map(allInputs.map((i) => [i.inputId, i]));
 
     // Auto-append connected inputs that aren't in any layer to layers[0].
-    // For a manual first layer, tile positions are filled in below using
-    // equal-grid as a layout helper only (layer.behavior stays unset).
-    // Skipped during timeline snapshot restore to preserve exact manual positions.
-    let appendedUnplacedToFirstLayer = false;
+    // For a manual first layer, we prefer existing absolute coordinates from
+    // input state to avoid re-tiling on timeline source swaps.
+    // If geometry is unknown, use output-sized fallback geometry for only the
+    // newly added input, without re-tiling already positioned manual inputs.
+    // Skipped during timeline snapshot restore to preserve exact manual
+    // positions.
     if (!skipUnplacedAppend) {
       const mentionedIds = new Set(
         this.layers.flatMap((l) => l.inputs.map((li) => li.inputId)),
@@ -1333,25 +1418,64 @@ export class RoomState {
       );
       if (unplacedInputs.length > 0 && this.layers.length > 0) {
         const firstLayer = this.layers[0]!;
+        const isManualFirstLayer = !firstLayer.behavior;
         for (const bi of unplacedInputs) {
+          const input = inputMap.get(bi.inputId);
+          const hasAbsoluteGeometry =
+            input?.absoluteLeft !== undefined &&
+            input?.absoluteTop !== undefined &&
+            input?.absoluteWidth !== undefined &&
+            input?.absoluteHeight !== undefined;
+
+          if (isManualFirstLayer && hasAbsoluteGeometry) {
+            const absoluteInput = input as RoomInputState & {
+              absoluteLeft: number;
+              absoluteTop: number;
+              absoluteWidth: number;
+              absoluteHeight: number;
+            };
+            firstLayer.inputs.push({
+              inputId: bi.inputId,
+              x: absoluteInput.absoluteLeft,
+              y: absoluteInput.absoluteTop,
+              width: absoluteInput.absoluteWidth,
+              height: absoluteInput.absoluteHeight,
+              transitionDurationMs: absoluteInput.absoluteTransitionDurationMs,
+              transitionEasing: absoluteInput.absoluteTransitionEasing,
+              cropTop: absoluteInput.cropTop,
+              cropLeft: absoluteInput.cropLeft,
+              cropRight: absoluteInput.cropRight,
+              cropBottom: absoluteInput.cropBottom,
+            });
+            continue;
+          }
+
+          const fallbackWidth =
+            input?.absoluteWidth ??
+            input?.nativeWidth ??
+            this.output.resolution.width;
+          const fallbackHeight =
+            input?.absoluteHeight ??
+            input?.nativeHeight ??
+            this.output.resolution.height;
           firstLayer.inputs.push({
             inputId: bi.inputId,
-            x: 0,
-            y: 0,
-            width: 0,
-            height: 0,
+            x: input?.absoluteLeft ?? 0,
+            y: input?.absoluteTop ?? 0,
+            width: fallbackWidth,
+            height: fallbackHeight,
+            transitionDurationMs: input?.absoluteTransitionDurationMs,
+            transitionEasing: input?.absoluteTransitionEasing,
+            cropTop: input?.cropTop,
+            cropLeft: input?.cropLeft,
+            cropRight: input?.cropRight,
+            cropBottom: input?.cropBottom,
           });
         }
-        appendedUnplacedToFirstLayer = true;
       }
     }
 
-    const manualFirstLayerLayoutHelper = {
-      type: 'equal-grid' as const,
-      autoscale: true,
-    };
-
-    this.layers = this.layers.map((layer, layerIndex) => {
+    this.layers = this.layers.map((layer) => {
       if (layer.behavior) {
         // Separate visible (non-hidden) and hidden inputs
         const visibleLayerInputs: typeof layer.inputs = [];
@@ -1387,58 +1511,26 @@ export class RoomState {
         const computedMap = new Map(
           result.inputs.map((li) => [li.inputId, li]),
         );
-        return {
-          ...layer,
-          inputs: layer.inputs
-            .map((li) => computedMap.get(li.inputId) ?? li)
-            .filter(
-              (li) =>
-                computedMap.has(li.inputId) || inputMap.get(li.inputId)?.hidden,
-            ),
-        };
-      }
+        const newInputs = layer.inputs
+          .map((li) => computedMap.get(li.inputId) ?? li)
+          .filter(
+            (li) =>
+              computedMap.has(li.inputId) || inputMap.get(li.inputId)?.hidden,
+          );
 
-      if (layerIndex === 0 && !layer.behavior && appendedUnplacedToFirstLayer) {
-        const visibleLayerInputs: typeof layer.inputs = [];
-        const hiddenLayerInputs: typeof layer.inputs = [];
+        const positionsChanged = !layoutInputsEqual(layer.inputs, newInputs);
+        const shouldBump = fromClientUpdate || positionsChanged;
+        const layoutTimestamp = shouldBump ? Date.now() : layer.layoutTimestamp;
 
-        for (const li of layer.inputs) {
-          const input = inputMap.get(li.inputId);
-          if (input?.hidden) {
-            hiddenLayerInputs.push(li);
-          } else {
-            visibleLayerInputs.push(li);
-          }
-        }
-
-        const behaviorInfoMap = new Map(
-          behaviorInputInfos.map((bi) => [bi.inputId, bi]),
-        );
-        const visibleInputInfos = visibleLayerInputs
-          .map((li) => behaviorInfoMap.get(li.inputId))
-          .filter((bi): bi is BehaviorInputInfo => bi !== undefined);
-        const result = computeLayout(
-          manualFirstLayerLayoutHelper,
-          visibleInputInfos,
-          this.output.resolution,
-        );
-
-        const computedById = new Map(
-          result.inputs.map((input) => [input.inputId, input]),
-        );
-
-        const mergedInputs = layer.inputs.map((existing) => {
-          const input = inputMap.get(existing.inputId);
-          if (input?.hidden) {
-            return existing;
-          }
-          return computedById.get(existing.inputId) ?? existing;
+        console.log('[RoomState] layoutTimestamp', {
+          layerId: layer.id,
+          prev: layer.layoutTimestamp,
+          next: layoutTimestamp,
+          fromClientUpdate,
+          positionsChanged,
         });
 
-        return {
-          ...layer,
-          inputs: mergedInputs,
-        };
+        return { ...layer, inputs: newInputs, layoutTimestamp };
       }
 
       return layer;
@@ -1468,14 +1560,15 @@ export class RoomState {
     }
 
     const cloned = cloneLayers(layers);
-    this.layers = cloned;
+    const sanitized = sanitizeLayerInputs(cloned);
+    this.layers = sanitized;
 
     // Sync position, transition, and crop properties from layer entries back
     // to input state so the editor's controllers stay consistent.
     // The first layer that contains an input is authoritative.
     const allInputs = this.inputManager.getInputs();
     const seen = new Set<string>();
-    for (const layer of cloned) {
+    for (const layer of sanitized) {
       for (const li of layer.inputs) {
         if (seen.has(li.inputId)) continue;
         seen.add(li.inputId);

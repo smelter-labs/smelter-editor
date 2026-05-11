@@ -22,6 +22,7 @@ import {
   type MutableLayout,
   type DashboardLayouts,
   STATIC_PANEL_IDS,
+  DEFAULT_VISIBLE_PANEL_IDS,
   DASHBOARD_BREAKPOINTS,
   DASHBOARD_BREAKPOINT_WIDTHS,
   DASHBOARD_COLS,
@@ -257,13 +258,10 @@ export default function DashboardLayout({
   const handleReset = useCallback(() => {
     clearLayout();
     setCurrentLayouts(cloneResponsiveLayouts(DEFAULT_RESPONSIVE_LAYOUTS));
-    const allVisible = new Set<string>(STATIC_PANEL_IDS);
-    for (const id of allPanelIds) {
-      allVisible.add(id);
-    }
-    setVisiblePanels(allVisible);
-    saveVisiblePanels(allVisible);
-  }, [allPanelIds]);
+    const defaultVisible = new Set<string>(DEFAULT_VISIBLE_PANEL_IDS);
+    setVisiblePanels(defaultVisible);
+    saveVisiblePanels(defaultVisible);
+  }, []);
 
   const getCurrentLayoutData = useCallback((): DashboardLayoutSavedData => {
     return {

@@ -123,21 +123,21 @@ export function PendingConnectionsModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='max-w-lg overflow-hidden border-cyan-400/20 bg-neutral-950/70 shadow-[0_0_60px_rgba(8,145,178,0.12)]'>
         <FxCanvas config={FX_PRESET_MODAL} isActive={open} />
-        <DialogHeader className='relative'>
-          <DialogTitle>
-            {isConnecting
-              ? 'Connecting inputs'
-              : isShowcase
-                ? 'Welcome'
-                : 'Pending Connections'}
-          </DialogTitle>
-          {!isShowcase && !isConnecting && (
-            <DialogDescription>
-              The following WHIP inputs need to be connected. Choose camera or
-              screen for each one.
-            </DialogDescription>
-          )}
-        </DialogHeader>
+        {isShowcase && !isConnecting ? (
+          <DialogTitle className='sr-only'>Welcome</DialogTitle>
+        ) : (
+          <DialogHeader className='relative'>
+            <DialogTitle>
+              {isConnecting ? 'Connecting inputs' : 'Pending Connections'}
+            </DialogTitle>
+            {!isConnecting && (
+              <DialogDescription>
+                The following WHIP inputs need to be connected. Choose camera or
+                screen for each one.
+              </DialogDescription>
+            )}
+          </DialogHeader>
+        )}
 
         {welcomeTextBefore && !isConnecting && (
           <div
