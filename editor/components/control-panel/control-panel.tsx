@@ -40,6 +40,7 @@ import { useControlPanelEvents } from './hooks/use-control-panel-events';
 import { FxAccordion } from './components/FxAccordion';
 import { StreamsSection } from './components/StreamsSection';
 import { LayersSection } from './components/LayersSection';
+import { CarouselSection } from './components/CarouselSection';
 import {
   TimelinePanel,
   type TimelinePanelActions,
@@ -1176,7 +1177,13 @@ function ControlPanelInner({
     );
 
     const streamsSection = (
-      <div className='h-full overflow-y-auto p-3'>
+      <div className='h-full overflow-y-auto p-3 space-y-3'>
+        <CarouselSection
+          roomId={roomId}
+          layers={roomState.layers}
+          inputs={inputs}
+          resolution={roomState.resolution}
+        />
         <LayersSection
           layers={roomState.layers}
           inputWrappers={inputWrappers}

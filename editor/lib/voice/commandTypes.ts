@@ -101,6 +101,14 @@ export type PrevBlockCommand = {
   intent: 'PREV_BLOCK';
 };
 
+export type CarouselNextCommand = {
+  intent: 'CAROUSEL_NEXT';
+};
+
+export type CarouselPrevCommand = {
+  intent: 'CAROUSEL_PREV';
+};
+
 export type StartTypingCommand = {
   intent: 'START_TYPING';
 };
@@ -223,6 +231,8 @@ export type VoiceCommand =
   | RemoveTrackCommand
   | NextBlockCommand
   | PrevBlockCommand
+  | CarouselNextCommand
+  | CarouselPrevCommand
   | StartTypingCommand
   | StopTypingCommand
   | StartRoomCommand
@@ -385,6 +395,12 @@ export function validateCommand(cmd: unknown): VoiceCommand | null {
 
     case 'PREV_BLOCK':
       return { intent: 'PREV_BLOCK' };
+
+    case 'CAROUSEL_NEXT':
+      return { intent: 'CAROUSEL_NEXT' };
+
+    case 'CAROUSEL_PREV':
+      return { intent: 'CAROUSEL_PREV' };
 
     case 'START_TYPING':
       return { intent: 'START_TYPING' };

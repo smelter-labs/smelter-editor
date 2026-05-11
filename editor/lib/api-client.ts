@@ -110,6 +110,13 @@ interface SmelterApiClient {
           direction: 'in' | 'out';
         },
   ): Promise<any>;
+  carouselAction(
+    roomId: string,
+    layerId: string,
+    action: 'next' | 'prev' | 'setIndex',
+    index?: number,
+    sourceId?: string,
+  ): Promise<any>;
   toggleMotionDetection(
     roomId: string,
     inputId: string,
@@ -460,6 +467,16 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
         'post',
         `/room/${enc(roomId)}/input/${enc(inputId)}/show`,
         activeTransition ? { activeTransition } : {},
+        sourceId ? { 'x-source-id': sourceId } : undefined,
+      );
+    },
+
+    async carouselAction(roomId, layerId, action, index, sourceId) {
+      return await sendRequest(
+        baseUrl,
+        'post',
+        `/room/${enc(roomId)}`,
+        { carouselAction: { layerId, action, index } },
         sourceId ? { 'x-source-id': sourceId } : undefined,
       );
     },

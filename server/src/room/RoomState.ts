@@ -56,14 +56,21 @@ function sanitizeLayerInputs(layers: Layer[]): Layer[] {
       return true;
     });
 
-    if (inputs.length === layer.inputs.length) {
-      return layer;
+    const dedupedLayer = inputs.length === layer.inputs.length ? layer : { ...layer, inputs };
+
+    if (dedupedLayer.carousel) {
+      const n = dedupedLayer.inputs.length;
+      const requested = dedupedLayer.carousel.activeIndex;
+      const clamped = n === 0 ? 0 : Math.max(0, Math.min(requested, n - 1));
+      if (clamped !== requested) {
+        return {
+          ...dedupedLayer,
+          carousel: { ...dedupedLayer.carousel, activeIndex: clamped },
+        };
+      }
     }
 
-    return {
-      ...layer,
-      inputs,
-    };
+    return dedupedLayer;
   });
 }
 

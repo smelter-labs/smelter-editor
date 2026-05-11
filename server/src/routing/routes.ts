@@ -54,6 +54,10 @@ const HLS_STREAMS_DIR = path.join(DATA_DIR, 'hls-streams');
 const isSyncDebugEnabled = process.env.SMELTER_SYNC_DEBUG === 'true';
 const isWsDebugEnabled = process.env.SMELTER_WS_DEBUG === 'true';
 
+/** Per-(room,layer) timestamp of the last carousel transition start. Used to
+ * reject overlapping triggers while a slide animation is still running. */
+const carouselTransitionStartedAt = new Map<string, number>();
+
 function logWsDebug(phase: string, details: Record<string, unknown>): void {
   if (!isWsDebugEnabled) return;
   console.warn(`[ws][${phase}]`, details);
@@ -1392,8 +1396,36 @@ const UpdateRoomSchema = Type.Object({
             }),
           ]),
         ),
+        carousel: Type.Optional(
+          Type.Object({
+            activeIndex: Type.Number({ minimum: 0 }),
+            durationMs: Type.Number({ minimum: 0, maximum: 5000 }),
+            easing: Type.Optional(
+              Type.Union([
+                Type.Literal('linear'),
+                Type.Literal('cubic_bezier_ease_in_out'),
+                Type.Literal('bounce'),
+              ]),
+            ),
+            lastDirection: Type.Optional(
+              Type.Union([Type.Literal('next'), Type.Literal('prev')]),
+            ),
+            previousActiveIndex: Type.Optional(Type.Number({ minimum: 0 })),
+          }),
+        ),
       }),
     ),
+  ),
+  carouselAction: Type.Optional(
+    Type.Object({
+      layerId: Type.String(),
+      action: Type.Union([
+        Type.Literal('next'),
+        Type.Literal('prev'),
+        Type.Literal('setIndex'),
+      ]),
+      index: Type.Optional(Type.Number({ minimum: 0 })),
+    }),
   ),
   isPublic: Type.Optional(Type.Boolean()),
   swapDurationMs: Type.Optional(Type.Number({ minimum: 0, maximum: 5000 })),
@@ -1457,6 +1489,66 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
             .slice(0, 3) ?? [],
       });
       await room.updateLayers(req.body.layers as Layer[]);
+      roomStructureChanged = true;
+    }
+    if (req.body.carouselAction) {
+      const { layerId, action, index } = req.body.carouselAction;
+      const currentLayers = room.getState().layers;
+      const targetLayer = currentLayers.find((l) => l.id === layerId);
+      if (!targetLayer || !targetLayer.carousel) {
+        res.status(404).send({ status: 'error', message: 'Carousel layer not found' });
+        return;
+      }
+      const n = targetLayer.inputs.length;
+      if (n < 2) {
+        // No-op for empty or single-slide carousels — keep idempotent.
+        res.status(200).send({ status: 'ok', layers: currentLayers });
+        return;
+      }
+      const lockKey = `${roomId}:${layerId}`;
+      const startedAt = carouselTransitionStartedAt.get(lockKey) ?? 0;
+      const now = Date.now();
+      if (now - startedAt < targetLayer.carousel.durationMs) {
+        res.status(200).send({ status: 'ok', layers: currentLayers });
+        return;
+      }
+      const oldIndex = targetLayer.carousel.activeIndex;
+      let newIndex = oldIndex;
+      let direction: 'next' | 'prev' = 'next';
+      if (action === 'next') {
+        newIndex = (oldIndex + 1) % n;
+        direction = 'next';
+      } else if (action === 'prev') {
+        newIndex = (oldIndex - 1 + n) % n;
+        direction = 'prev';
+      } else {
+        const idx = index ?? oldIndex;
+        if (idx < 0 || idx >= n) {
+          res.status(400).send({ status: 'error', message: 'index out of range' });
+          return;
+        }
+        newIndex = idx;
+        direction = newIndex >= oldIndex ? 'next' : 'prev';
+      }
+      if (newIndex === oldIndex) {
+        res.status(200).send({ status: 'ok', layers: currentLayers });
+        return;
+      }
+      const updatedLayers = currentLayers.map((l) =>
+        l.id === layerId && l.carousel
+          ? {
+              ...l,
+              carousel: {
+                ...l.carousel,
+                activeIndex: newIndex,
+                lastDirection: direction,
+                previousActiveIndex: oldIndex,
+              },
+            }
+          : l,
+      );
+      carouselTransitionStartedAt.set(lockKey, now);
+      await room.updateLayers(updatedLayers);
       roomStructureChanged = true;
     }
     if (roomStructureChanged) {

@@ -1,6 +1,7 @@
 import { View, Rescaler, Shader } from '@swmansion/smelter';
 
-import type { RoomStore } from './store';
+import type { RoomStore, InputConfig } from './store';
+import type { Layer } from '../types';
 import type { StoreApi } from 'zustand';
 import {
   StoreContext,
@@ -25,6 +26,93 @@ function buildEasingFunction(easing?: string) {
     };
   }
   return 'linear' as const;
+}
+
+function CarouselSlot({
+  layer,
+  inputMap,
+}: {
+  layer: Layer;
+  inputMap: Map<string, InputConfig>;
+}) {
+  const carousel = layer.carousel!;
+  const slot = layer.inputs[0];
+  if (!slot) return null;
+  const W = slot.width;
+  const direction = carousel.lastDirection ?? 'next';
+  const easing = buildEasingFunction(carousel.easing);
+  // For 'next': new slide enters from right (+W), old slide exits to left (-W).
+  // For 'prev': new slide enters from left (-W), old slide exits to right (+W).
+  const enterOffset = direction === 'next' ? W : -W;
+  const exitOffset = -enterOffset;
+
+  return (
+    <View
+      key={layer.id}
+      style={{
+        top: slot.y,
+        left: slot.x,
+        width: slot.width,
+        height: slot.height,
+        overflow: 'hidden',
+      }}>
+      {layer.inputs.map((item, i) => {
+        const input = inputMap.get(item.inputId);
+        if (!input || input.hidden) return null;
+
+        const isActive = i === carousel.activeIndex;
+        const isPrevious = i === carousel.previousActiveIndex;
+        // Active slide animates to 0; previously active slide animates out to the
+        // opposite side; all other slides snap (no transition) to the entry side
+        // so they don't visibly fly across the slot when direction changes.
+        const offsetLeft = isActive ? 0 : isPrevious ? exitOffset : enterOffset;
+        const transition =
+          isActive || isPrevious
+            ? { durationMs: carousel.durationMs, easingFunction: easing }
+            : undefined;
+
+        let inner = <Input input={input} />;
+
+        const cT = item.cropTop ?? 0;
+        const cL = item.cropLeft ?? 0;
+        const cR = item.cropRight ?? 0;
+        const cB = item.cropBottom ?? 0;
+        if (cT || cL || cR || cB) {
+          inner = (
+            <Shader
+              shaderId='crop'
+              resolution={{ width: slot.width, height: slot.height }}
+              shaderParam={{
+                type: 'struct',
+                value: [
+                  { type: 'f32', fieldName: 'crop_top', value: cT / slot.height },
+                  { type: 'f32', fieldName: 'crop_left', value: cL / slot.width },
+                  { type: 'f32', fieldName: 'crop_right', value: cR / slot.width },
+                  { type: 'f32', fieldName: 'crop_bottom', value: cB / slot.height },
+                ],
+              }}>
+              {inner}
+            </Shader>
+          );
+        }
+
+        return (
+          <Rescaler
+            key={`carousel-${layer.id}-${item.inputId}`}
+            id={`carousel-${layer.id}-${item.inputId}`}
+            transition={transition}
+            style={{
+              top: 0,
+              left: offsetLeft,
+              width: slot.width,
+              height: slot.height,
+            }}>
+            {inner}
+          </Rescaler>
+        );
+      })}
+    </View>
+  );
 }
 
 const defaultAudioStore = createAudioStore();
@@ -76,7 +164,11 @@ function OutputScene() {
         height,
         overflow: 'visible',
       }}>
-      {layersReversed.map((layer) => (
+      {layersReversed.map((layer) => {
+        if (layer.carousel && layer.inputs.length > 0) {
+          return <CarouselSlot key={layer.id} layer={layer} inputMap={inputMap} />;
+        }
+        return (
         <View
           key={layer.id}
           style={{ top: 0, left: 0, width, height, overflow: 'visible' }}>
@@ -148,7 +240,8 @@ function OutputScene() {
             );
           })}
         </View>
-      ))}
+        );
+      })}
     </View>
   );
 

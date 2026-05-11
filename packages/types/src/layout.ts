@@ -78,11 +78,31 @@ export type LayerInput = {
   transitionEasing?: string;
 } & Partial<CropProperties>;
 
+export type CarouselConfig = {
+  /** Index into Layer.inputs[] of the slide currently displayed. Wrap-around always on. */
+  activeIndex: number;
+  /** Duration of the slide animation in milliseconds. */
+  durationMs: number;
+  /** Optional easing function name, matching server App.tsx buildEasingFunction. */
+  easing?: "linear" | "cubic_bezier_ease_in_out" | "bounce";
+  /** Direction of the last index change. Used by the renderer to position waiting slides. */
+  lastDirection?: "next" | "prev";
+  /** Index of the slide that was active just before `activeIndex`. Used by the renderer
+   * to position the exiting slide on the opposite side of the entering slide. */
+  previousActiveIndex?: number;
+};
+
 export type Layer = {
   id: string;
   inputs: LayerInput[];
   /** Layout behavior for this layer. If undefined, positions are manual. */
   behavior?: LayerBehaviorConfig;
+  /**
+   * When set, the layer renders as a carousel: only `inputs[carousel.activeIndex]`
+   * is visible, with a slide animation on activeIndex changes. All inputs share
+   * the slot defined by `inputs[0]` geometry (x/y/width/height).
+   */
+  carousel?: CarouselConfig;
   /**
    * Bumped by the server whenever a behavior layer's computed positions change,
    * or whenever the client explicitly submitted an update for the layer.

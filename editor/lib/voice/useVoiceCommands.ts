@@ -18,6 +18,8 @@ import { emitActionFeedback } from './feedbackEvents';
 type UseVoiceCommandsOptions = {
   mp4Files?: string[];
   imageFiles?: string[];
+  /** When true, bare "next"/"previous" map to carousel commands. */
+  isCarouselActive?: boolean;
 };
 
 type UseVoiceCommandsResult = {
@@ -213,6 +215,20 @@ function emitVoiceEvent(command: VoiceCommand, ctx: EmitContext) {
       emitActionFeedback({
         type: 'action',
         label: 'Previous Block',
+      });
+      break;
+    case 'CAROUSEL_NEXT':
+      window.dispatchEvent(new CustomEvent('smelter:voice:carousel-next'));
+      emitActionFeedback({
+        type: 'action',
+        label: 'Carousel Next',
+      });
+      break;
+    case 'CAROUSEL_PREV':
+      window.dispatchEvent(new CustomEvent('smelter:voice:carousel-prev'));
+      emitActionFeedback({
+        type: 'action',
+        label: 'Carousel Previous',
       });
       break;
     case 'START_TYPING':
@@ -451,7 +467,7 @@ const SPEED_DOWN_PATTERN = /\bspeed\s+(down(?:\s+down)*)\b/i;
 export function useVoiceCommands(
   options: UseVoiceCommandsOptions = {},
 ): UseVoiceCommandsResult {
-  const { mp4Files = [], imageFiles = [] } = options;
+  const { mp4Files = [], imageFiles = [], isCarouselActive = false } = options;
   const [lastCommand, setLastCommand] = useState<VoiceCommand | null>(null);
   const [lastError, setLastError] = useState<string | null>(null);
   const [lastClarify, setLastClarify] = useState<string | null>(null);
@@ -474,6 +490,7 @@ export function useVoiceCommands(
   const macroControllerRef = useRef<MacroExecutionController | null>(null);
   const mp4FilesRef = useRef(mp4Files);
   const imageFilesRef = useRef(imageFiles);
+  const isCarouselActiveRef = useRef(isCarouselActive);
 
   useEffect(() => {
     mp4FilesRef.current = mp4Files;
@@ -482,6 +499,10 @@ export function useVoiceCommands(
   useEffect(() => {
     imageFilesRef.current = imageFiles;
   }, [imageFiles]);
+
+  useEffect(() => {
+    isCarouselActiveRef.current = isCarouselActive;
+  }, [isCarouselActive]);
 
   useEffect(() => {
     autoPlayMacroRef.current = autoPlayMacro;
@@ -806,6 +827,7 @@ export function useVoiceCommands(
       const parsed = parseCommand(text, {
         mp4Files: mp4FilesRef.current,
         imageFiles: imageFilesRef.current,
+        isCarouselActive: isCarouselActiveRef.current,
       });
 
       if (!parsed) {
