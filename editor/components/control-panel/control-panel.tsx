@@ -1197,6 +1197,7 @@ function ControlPanelInner({
               ? timelineTrackOrder
               : {}
           }
+          sortMode={sortMode}
         />
       </div>
     );
@@ -1382,6 +1383,7 @@ function ControlPanelInner({
       timelineTrackOrder={
         timelineIsPlaying && sortMode === 'timeline' ? timelineTrackOrder : {}
       }
+      sortMode={sortMode}
     />
   ) : null;
 

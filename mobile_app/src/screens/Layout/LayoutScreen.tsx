@@ -36,7 +36,7 @@ import {
   ScreenToolbarChip,
   ToolbarIcon,
 } from "../../components/shared/ScreenToolbar";
-import { QRModal } from "../../components/shared/QRModal";
+import { QRToolbarChip } from "../../components/shared/QRToolbarChip";
 
 // ─── Conversion helpers ───────────────────────────────────────────────────────
 
@@ -496,9 +496,7 @@ export function LayoutScreen() {
           >
             <ToolbarIcon name="cog" />
           </ScreenToolbarChip>
-          <ScreenToolbarChip onPress={() => setQRModalOpen(true)}>
-            <ToolbarIcon name="qrcode" />
-          </ScreenToolbarChip>
+          <QRToolbarChip serverUrl={serverUrl} roomId={roomId} />
         </ScreenToolbar>
 
         <QRModal

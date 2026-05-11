@@ -47,6 +47,7 @@ interface InputEntryProps {
   readOnly?: boolean;
   activeBlockColor?: string;
   isOnTimeline?: boolean;
+  dragDisabled?: boolean;
 }
 
 export default function InputEntry({
@@ -66,6 +67,7 @@ export default function InputEntry({
   readOnly = false,
   activeBlockColor,
   isOnTimeline = true,
+  dragDisabled = false,
 }: InputEntryProps) {
   const actions = useActions();
   const [showSliders, setShowSliders] = useState(false);
@@ -478,7 +480,9 @@ export default function InputEntry({
         <div className='flex items-center min-h-7 gap-2'>
           {!isMobile && showGrip && (
             <div className='shrink-0 pointer-events-none'>
-              <GripVertical className='w-5 h-5 text-muted-foreground' />
+              <GripVertical
+                className={`w-5 h-5 ${dragDisabled ? 'text-muted-foreground/30' : 'text-muted-foreground'}`}
+              />
             </div>
           )}
           {!isOnTimeline && !activeBlockColor ? (
