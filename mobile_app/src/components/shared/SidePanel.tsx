@@ -96,8 +96,8 @@ export function SidePanel({
             shadowOffset: { width: 0, height: 2 },
             shadowOpacity: 0.4,
             shadowRadius: 8,
-            elevation: 16,
-            zIndex: 100,
+            elevation: 30,
+            zIndex: 2000,
           },
           panelStyle,
         ]}
@@ -112,7 +112,7 @@ const styles = StyleSheet.create({
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: "rgba(0,0,0,0.4)",
-    zIndex: 99,
-    elevation: 15,
+    zIndex: 1999,
+    elevation: 29,
   },
 });

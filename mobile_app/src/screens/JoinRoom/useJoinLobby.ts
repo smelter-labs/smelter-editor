@@ -31,6 +31,7 @@ export function useJoinLobby() {
   }, [navigation, serverUrl]);
 
   const handleCreateRoom = useCallback(async () => {
+    // intentionally only blocks ui
     setCreateStatus("loading");
     setCreateError(null);
     setStatus(ConnectionStatus.Connecting);

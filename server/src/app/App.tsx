@@ -80,73 +80,77 @@ function OutputScene() {
         <View
           key={layer.id}
           style={{ top: 0, left: 0, width, height, overflow: 'visible' }}>
-          {layer.enabled === false ? null : layer.inputs.map((item) => {
-            const cT = item.cropTop ?? 0;
-            const cL = item.cropLeft ?? 0;
-            const cR = item.cropRight ?? 0;
-            const cB = item.cropBottom ?? 0;
-            const hasCrop = cT || cL || cR || cB;
+          {layer.enabled === false
+            ? null
+            : layer.inputs.map((item) => {
+                const cT = item.cropTop ?? 0;
+                const cL = item.cropLeft ?? 0;
+                const cR = item.cropRight ?? 0;
+                const cB = item.cropBottom ?? 0;
+                const hasCrop = cT || cL || cR || cB;
 
-            const input = inputMap.get(item.inputId);
-            if (!input || input.hidden) return null;
-            let inner = <Input input={input} />;
+                const input = inputMap.get(item.inputId);
+                if (!input || input.hidden) return null;
+                let inner = <Input input={input} />;
 
-            if (hasCrop) {
-              inner = (
-                <Shader
-                  shaderId='crop'
-                  resolution={{ width: item.width, height: item.height }}
-                  shaderParam={{
-                    type: 'struct',
-                    value: [
-                      {
-                        type: 'f32',
-                        fieldName: 'crop_top',
-                        value: cT / item.height,
-                      },
-                      {
-                        type: 'f32',
-                        fieldName: 'crop_left',
-                        value: cL / item.width,
-                      },
-                      {
-                        type: 'f32',
-                        fieldName: 'crop_right',
-                        value: cR / item.width,
-                      },
-                      {
-                        type: 'f32',
-                        fieldName: 'crop_bottom',
-                        value: cB / item.height,
-                      },
-                    ],
-                  }}>
-                  {inner}
-                </Shader>
-              );
-            }
+                if (hasCrop) {
+                  inner = (
+                    <Shader
+                      shaderId='crop'
+                      resolution={{ width: item.width, height: item.height }}
+                      shaderParam={{
+                        type: 'struct',
+                        value: [
+                          {
+                            type: 'f32',
+                            fieldName: 'crop_top',
+                            value: cT / item.height,
+                          },
+                          {
+                            type: 'f32',
+                            fieldName: 'crop_left',
+                            value: cL / item.width,
+                          },
+                          {
+                            type: 'f32',
+                            fieldName: 'crop_right',
+                            value: cR / item.width,
+                          },
+                          {
+                            type: 'f32',
+                            fieldName: 'crop_bottom',
+                            value: cB / item.height,
+                          },
+                        ],
+                      }}>
+                      {inner}
+                    </Shader>
+                  );
+                }
 
-            // Keep identity stable across reorder so Smelter can animate moves
-            // instead of remounting the node when index changes.
-            const layerItemKey = `${layer.id}:${item.inputId}`;
-            return (
-              <Rescaler
-                key={layerItemKey}
-                id={`layer-${layer.id}-${item.inputId}`}
-                transition={{
-                  durationMs: item.transitionDurationMs ?? 300,
-                  easingFunction: buildEasingFunction(item.transitionEasing),
-                }}
-                style={{
-                  top: item.y,
-                  left: item.x,
-                  width: item.width,
-                  height: item.height,
-                }}>
-                {inner}
-              </Rescaler>
-            );
-          })}
+                // Keep identity stable across reorder so Smelter can animate moves
+                // instead of remounting the node when index changes.
+                const layerItemKey = `${layer.id}:${item.inputId}`;
+                return (
+                  <Rescaler
+                    key={layerItemKey}
+                    id={`layer-${layer.id}-${item.inputId}`}
+                    transition={{
+                      durationMs: item.transitionDurationMs ?? 300,
+                      easingFunction: buildEasingFunction(
+                        item.transitionEasing,
+                      ),
+                    }}
+                    style={{
+                      top: item.y,
+                      left: item.x,
+                      width: item.width,
+                      height: item.height,
+                    }}>
+                    {inner}
+                  </Rescaler>
+                );
+              })}
         </View>
       ))}
     </View>

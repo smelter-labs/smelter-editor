@@ -14,6 +14,7 @@ import type {
   RootStackParamList,
 } from "../../navigation/navigationTypes";
 import { SCREEN_NAMES } from "../../navigation/navigationTypes";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 export type ServerStatus = "idle" | "loading" | "error" | "success";
 export type HealthStatus = "checking" | "ok" | "error";

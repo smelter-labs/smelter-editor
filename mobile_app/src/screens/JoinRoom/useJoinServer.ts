@@ -134,8 +134,6 @@ export function useJoinServer() {
         await apiService.fetchActiveRooms(trimmed);
         if (joinSeqRef.current !== requestId) return;
 
-        setServerStatus("success");
-
         const nextSavedUrls = savedUrls.includes(trimmed)
           ? savedUrls
           : [...savedUrls, trimmed];
@@ -153,6 +151,7 @@ export function useJoinServer() {
         } else {
           navigation.navigate(SCREEN_NAMES.JOIN_LOBBY, { serverUrl: trimmed });
         }
+        setServerStatus("idle");
       } catch (err) {
         if (joinSeqRef.current !== requestId) return;
         const msg =

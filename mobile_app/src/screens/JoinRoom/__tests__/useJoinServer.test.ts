@@ -50,21 +50,21 @@ beforeEach(() => {
 // ── handleJoinServer ──────────────────────────────────────────────────────────
 
 describe("handleJoinServer", () => {
-  it("sets serverStatus to loading then success and navigates to JoinRoom", async () => {
+  it("navigates to JoinLobby on success and resets serverStatus to idle", async () => {
     const { result } = renderHook(() => useJoinServer());
 
     await act(async () => {
       await result.current.handleJoinServer("http://192.168.1.1:3001");
     });
 
-    expect(result.current.serverStatus).toBe("success");
-    expect(result.current.serverError).toBeNull();
     expect(mockNavigation.navigate).toHaveBeenCalledWith(
       SCREEN_NAMES.JOIN_LOBBY,
       {
         serverUrl: "http://192.168.1.1:3001",
       },
     );
+    expect(result.current.serverStatus).toBe("idle");
+    expect(result.current.serverError).toBeNull();
   });
 
   it("rejects an empty URL", async () => {
@@ -170,12 +170,13 @@ describe("handleJoinServer", () => {
 
 describe("handleServerUrlChange", () => {
   it("resets serverStatus to idle", async () => {
+    mockFetchActiveRooms.mockRejectedValueOnce(new Error("ECONNREFUSED"));
     const { result } = renderHook(() => useJoinServer());
 
     await act(async () => {
       await result.current.handleJoinServer("http://192.168.1.1:3001");
     });
-    expect(result.current.serverStatus).toBe("success");
+    expect(result.current.serverStatus).toBe("error");
 
     act(() => {
       result.current.handleServerUrlChange("http://192.168.1.2:3001");
