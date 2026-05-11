@@ -1,7 +1,12 @@
 import React from "react";
-import { ImageSourcePropType, StyleSheet } from "react-native";
+import {
+  ImageSourcePropType,
+  StyleSheet,
+  useWindowDimensions,
+} from "react-native";
 import { Modal, Portal, Surface, Text } from "react-native-paper";
 import QRCode from "react-native-qrcode-svg";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { appColors } from "../../theme/paperTheme";
 
 type QRModalProps = {
@@ -19,6 +24,12 @@ export function QRModal({
   serverUrl,
   roomId,
 }: QRModalProps) {
+  const insets = useSafeAreaInsets();
+  const windowDimensions = useWindowDimensions();
+  const qrSize =
+    Math.min(windowDimensions.width, windowDimensions.height) * 0.6;
+  const verticalCenterOffset = -Math.round((insets.top - insets.bottom) / 1.5); // Why 1.5 and not 2? Because we want to overcompensate slightly
+
   const qrValue =
     serverUrl && roomId
       ? `${serverUrl}/room/${encodeURIComponent(roomId)}`
@@ -31,15 +42,18 @@ export function QRModal({
         onDismiss={onDismiss}
         dismissable={true}
         dismissableBackButton={true}
-        contentContainerStyle={styles.modalContent}
+        contentContainerStyle={[
+          styles.modalContent,
+          { marginTop: verticalCenterOffset },
+        ]}
       >
         <Surface elevation={4} style={styles.container}>
-          <Text variant="displaySmall" style={styles.qrText}>
+          <Text variant="bodyLarge" style={styles.qrText}>
             Scan to join room
           </Text>
           <QRCode
             value={qrValue}
-            size={250}
+            size={qrSize}
             color={appColors.red}
             backgroundColor={appColors.blue}
             logo={LOGO_SOURCE}

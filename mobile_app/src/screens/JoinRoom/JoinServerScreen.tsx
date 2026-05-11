@@ -102,7 +102,7 @@ export function JoinServerScreen() {
           labelStyle={{ color: theme.colors.onSurfaceVariant, fontSize: 12 }}
           onPress={() =>
             navigation.navigate(SCREEN_NAMES.CAMERA, {
-              serverUrl: "",
+              serverUrl: "", // intended - we want to bypass server and test WHIP flow directly
               roomId: "",
             })
           }

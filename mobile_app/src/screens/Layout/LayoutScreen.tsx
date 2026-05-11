@@ -36,7 +36,7 @@ import {
   ScreenToolbarChip,
   ToolbarIcon,
 } from "../../components/shared/ScreenToolbar";
-import { QRModal } from "../../components/shared/QRModal";
+import { QRToolbarChip } from "../../components/shared/QRToolbarChip";
 
 // ─── Conversion helpers ───────────────────────────────────────────────────────
 
@@ -220,7 +220,6 @@ export function LayoutScreen() {
   const [effectsPanelOpen, setEffectsPanelOpen] = useState(false);
   const [effectsInputId, setEffectsInputId] = useState<string | null>(null);
   const [layoutResetToken, setLayoutResetToken] = useState(0);
-  const [qrModalOpen, setQRModalOpen] = useState(false);
 
   const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
   const [, startTransition] = useTransition();
@@ -496,17 +495,8 @@ export function LayoutScreen() {
           >
             <ToolbarIcon name="cog" />
           </ScreenToolbarChip>
-          <ScreenToolbarChip onPress={() => setQRModalOpen(true)}>
-            <ToolbarIcon name="qrcode" />
-          </ScreenToolbarChip>
+          <QRToolbarChip serverUrl={serverUrl} roomId={roomId} />
         </ScreenToolbar>
-
-        <QRModal
-          visible={qrModalOpen}
-          onDismiss={() => setQRModalOpen(false)}
-          serverUrl={serverUrl}
-          roomId={roomId}
-        />
 
         {/* Canvas: stacked layer grids — layers[0] is topmost (highest zIndex) */}
         <View style={styles.canvas}>
