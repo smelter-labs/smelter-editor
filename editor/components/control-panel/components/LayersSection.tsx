@@ -33,13 +33,18 @@ import {
   Filter,
   GripVertical,
   Layers,
+  ListChecks,
+  Settings2,
 } from 'lucide-react';
 import type { Input, Layer, LayerBehaviorConfig } from '@/lib/types';
+import type { Resolution } from '@/lib/resolution';
 import { computeLayout } from '@smelter-editor/types';
 import type { InputWrapper } from '../hooks/use-control-panel-state';
 import InputEntry from '@/components/control-panel/input-entry/input-entry';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { useControlPanelContext } from '../contexts/control-panel-context';
+import { CarouselSettingsInline } from './CarouselSettingsInline';
+import { CarouselInputSelectionDialog } from './CarouselInputSelectionDialog';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
 import { BehaviorSelector } from './BehaviorSelector';
 import LoadingSpinner from '@/components/ui/spinner';
@@ -64,6 +69,7 @@ type LayersSectionProps = {
   allTimelineInputIds?: Set<string>;
   timelineTrackOrder?: Record<string, number>;
   sortMode?: 'timeline' | 'layers';
+  resolution?: Resolution;
 };
 
 type DragItem = {
@@ -148,6 +154,7 @@ function SortableInputItem({
 
 function LayerHeader({
   stableLayerNumber,
+  isCarousel,
   isCollapsed,
   onToggleCollapse,
   behavior,
@@ -158,8 +165,12 @@ function LayerHeader({
   onToggleEnabled,
   isGuest,
   dragDisabled,
+  isCarouselSettingsOpen,
+  onToggleCarouselSettings,
+  onEditCarouselInputs,
 }: {
   stableLayerNumber: number;
+  isCarousel?: boolean;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   behavior: LayerBehaviorConfig | undefined;
@@ -170,6 +181,9 @@ function LayerHeader({
   onToggleEnabled: () => void;
   isGuest?: boolean;
   dragDisabled?: boolean;
+  isCarouselSettingsOpen?: boolean;
+  onToggleCarouselSettings?: () => void;
+  onEditCarouselInputs?: () => void;
 }) {
   return (
     <div className='border-b border-neutral-800/70 bg-neutral-900/40'>
@@ -188,7 +202,7 @@ function LayerHeader({
           </span>
           <Layers className='w-3.5 h-3.5 text-neutral-500 flex-shrink-0' />
           <span className='text-[11px] font-semibold text-neutral-300 flex-1 text-left truncate'>
-            Layer {stableLayerNumber + 1}
+            {isCarousel ? 'Carousel' : `Layer ${stableLayerNumber + 1}`}
           </span>
         </button>
         {!isGuest && (
@@ -219,6 +233,28 @@ function LayerHeader({
               aria-label='Toggle active color filter'>
               <Filter className='w-3.5 h-3.5' />
             </button>
+            {onEditCarouselInputs && (
+              <button
+                type='button'
+                onClick={onEditCarouselInputs}
+                className='inline-flex items-center justify-center w-7 h-7 rounded-full border transition-colors border-neutral-700 bg-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-600'
+                aria-label='Edit carousel slides'>
+                <ListChecks className='w-3.5 h-3.5' />
+              </button>
+            )}
+            {onToggleCarouselSettings && (
+              <button
+                type='button'
+                onClick={onToggleCarouselSettings}
+                className={`inline-flex items-center justify-center w-7 h-7 rounded-full border transition-colors ${
+                  isCarouselSettingsOpen
+                    ? 'border-cyan-500/50 bg-cyan-500/15 text-cyan-400'
+                    : 'border-neutral-700 bg-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-600'
+                }`}
+                aria-label='Toggle carousel settings'>
+                <Settings2 className='w-3.5 h-3.5' />
+              </button>
+            )}
             <BehaviorSelector behavior={behavior} onChange={onBehaviorChange} />
             <GripVertical
               className={`w-3.5 h-3.5 flex-shrink-0 ml-0.5 ${dragDisabled ? 'text-neutral-700/50' : 'text-neutral-600'}`}
@@ -254,6 +290,7 @@ export function LayersSection({
   allTimelineInputIds,
   timelineTrackOrder,
   sortMode = 'layers',
+  resolution,
 }: LayersSectionProps) {
   const { inputs, roomId, refreshState, availableShaders } =
     useControlPanelContext();
@@ -277,6 +314,8 @@ export function LayersSection({
   const [colorFilterLayers, setColorFilterLayers] = useState<Set<string>>(
     new Set(),
   );
+  const [carouselSettingsOpenLayers, setCarouselSettingsOpenLayers] =
+    useState<Set<string>>(new Set());
   const layerNamesRef = useRef<Map<string, number>>(new Map());
   const nextLayerNumberRef = useRef(0);
 
@@ -337,6 +376,15 @@ export function LayersSection({
     });
   }, []);
 
+  const toggleCarouselSettings = useCallback((layerId: string) => {
+    setCarouselSettingsOpenLayers((prev) => {
+      const next = new Set(prev);
+      if (next.has(layerId)) next.delete(layerId);
+      else next.add(layerId);
+      return next;
+    });
+  }, []);
+
   // Attached inputs (hidden from layer lists)
   const attachedInputIds = useMemo(() => {
     const ids = new Set<string>();
@@ -353,6 +401,10 @@ export function LayersSection({
     () => localLayers.map((l) => `layer::${l.id}`),
     [localLayers],
   );
+
+  const [carouselInputModalLayerId, setCarouselInputModalLayerId] = useState<
+    string | null
+  >(null);
 
   // Find which layer/input an ID belongs to
   const findDragItem = useCallback(
@@ -628,6 +680,7 @@ export function LayersSection({
                     stableLayerNumber={
                       layerNamesRef.current.get(layer.id) ?? layerIndex
                     }
+                    isCarousel={!!layer.carousel}
                     isCollapsed={isCollapsed}
                     onToggleCollapse={() => toggleCollapse(layer.id)}
                     behavior={layer.behavior}
@@ -638,9 +691,31 @@ export function LayersSection({
                     onToggleEnabled={() => handleToggleEnabled(layer.id)}
                     isGuest={isGuest}
                     dragDisabled={disableDrag}
+                    isCarouselSettingsOpen={carouselSettingsOpenLayers.has(layer.id)}
+                    onToggleCarouselSettings={
+                      layer.carousel
+                        ? () => toggleCarouselSettings(layer.id)
+                        : undefined
+                    }
+                    onEditCarouselInputs={
+                      layer.carousel
+                        ? () => setCarouselInputModalLayerId(layer.id)
+                        : undefined
+                    }
                   />
 
-                  {!isCollapsed && (
+                  {!isCollapsed &&
+                  carouselSettingsOpenLayers.has(layer.id) &&
+                  layer.carousel ? (
+                    <CarouselSettingsInline
+                      layer={layer}
+                      layers={localLayers}
+                      roomId={roomId}
+                      inputs={inputs}
+                      resolution={resolution}
+                      onBack={() => toggleCarouselSettings(layer.id)}
+                    />
+                  ) : !isCollapsed ? (
                     <SortableContext
                       items={inputIds}
                       strategy={verticalListSortingStrategy}>
@@ -748,7 +823,7 @@ export function LayersSection({
                         })}
                       </div>
                     </SortableContext>
-                  )}
+                  ) : null}
                 </div>
               </SortableLayerItem>
             );
@@ -777,6 +852,26 @@ export function LayersSection({
           + Add Layer
         </button>
       )}
+
+      {carouselInputModalLayerId && (() => {
+        const carouselLayer = localLayers.find(
+          (l) => l.id === carouselInputModalLayerId,
+        );
+        if (!carouselLayer?.carousel) return null;
+        return (
+          <CarouselInputSelectionDialog
+            open
+            onOpenChange={(v) => {
+              if (!v) setCarouselInputModalLayerId(null);
+            }}
+            inputs={inputs}
+            carouselLayer={carouselLayer}
+            layers={localLayers}
+            roomId={roomId}
+            resolution={resolution}
+          />
+        );
+      })()}
     </div>
   );
 }

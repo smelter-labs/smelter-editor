@@ -1411,6 +1411,10 @@ const UpdateRoomSchema = Type.Object({
               Type.Union([Type.Literal('next'), Type.Literal('prev')]),
             ),
             previousActiveIndex: Type.Optional(Type.Number({ minimum: 0 })),
+            visibleCount: Type.Optional(
+              Type.Number({ minimum: 1, maximum: 32 }),
+            ),
+            gap: Type.Optional(Type.Number({ minimum: 0, maximum: 4096 })),
           }),
         ),
       }),

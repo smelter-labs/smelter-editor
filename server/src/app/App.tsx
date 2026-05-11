@@ -38,13 +38,30 @@ function CarouselSlot({
   const carousel = layer.carousel!;
   const slot = layer.inputs[0];
   if (!slot) return null;
-  const W = slot.width;
+  const n = layer.inputs.length;
+  const visibleCount = Math.max(1, Math.min(carousel.visibleCount ?? 1, n));
+  const gap = Math.max(0, carousel.gap ?? 0);
+  const cellW = slot.width / visibleCount;
+  const tileWidth = Math.max(0, cellW - gap);
   const direction = carousel.lastDirection ?? 'next';
   const easing = buildEasingFunction(carousel.easing);
-  // For 'next': new slide enters from right (+W), old slide exits to left (-W).
-  // For 'prev': new slide enters from left (-W), old slide exits to right (+W).
-  const enterOffset = direction === 'next' ? W : -W;
-  const exitOffset = -enterOffset;
+  // Hidden slides snap (no animation) to the entry side based on direction so
+  // they never fly visibly across the slot.
+  const hiddenOffset = direction === 'next' ? slot.width : -cellW;
+
+  // Wrap-aware signed distance from activeIndex.
+  // signedDist === 0           → active (leftmost visible)
+  // signedDist === k in [1, visibleCount-1] → other visible slides
+  // signedDist === visibleCount → entering from the right
+  // signedDist === -1          → exiting to the left
+  // others                     → hidden (snap to hiddenOffset)
+  const signedDistOf = (i: number, activeIndex: number, preferPositive: boolean): number => {
+    if (n === 0) return 0;
+    const raw = ((i - activeIndex) % n + n) % n;
+    if (raw === 0) return 0;
+    if (preferPositive) return raw > visibleCount ? raw - n : raw;
+    return raw > n / 2 ? raw - n : raw;
+  };
 
   return (
     <View
@@ -60,16 +77,43 @@ function CarouselSlot({
         const input = inputMap.get(item.inputId);
         if (!input || input.hidden) return null;
 
-        const isActive = i === carousel.activeIndex;
-        const isPrevious = i === carousel.previousActiveIndex;
-        // Active slide animates to 0; previously active slide animates out to the
-        // opposite side; all other slides snap (no transition) to the entry side
-        // so they don't visibly fly across the slot when direction changes.
-        const offsetLeft = isActive ? 0 : isPrevious ? exitOffset : enterOffset;
-        const transition =
-          isActive || isPrevious
-            ? { durationMs: carousel.durationMs, easingFunction: easing }
-            : undefined;
+        const cur = signedDistOf(i, carousel.activeIndex, direction === 'prev');
+        const prev =
+          carousel.previousActiveIndex !== undefined
+            ? signedDistOf(i, carousel.previousActiveIndex, direction === 'next')
+            : cur;
+
+        const positionFor = (sd: number): number => {
+          if (sd === -1) return -cellW;
+          if (sd === visibleCount) return visibleCount * cellW;
+          if (sd >= 0 && sd < visibleCount) return sd * cellW;
+          return hiddenOffset;
+        };
+
+        const offsetLeft = positionFor(cur);
+
+        // Animate only when this slide moved by at most one cell and both
+        // positions lie in the participating window [-1, visibleCount].
+        // This prevents wrap-around slides from flying across the slot
+        // (e.g. exiting on the left and re-entering on the right) by
+        // snapping them instead.
+        const participates = (sd: number) => sd >= -1 && sd <= visibleCount;
+        const shouldAnimate =
+          participates(cur) &&
+          participates(prev) &&
+          Math.abs(cur - prev) <= 1;
+        // When snapping, leave transition undefined so Smelter applies its
+        // default (no animation) without remembering a 0ms transition that
+        // would bleed into subsequent updates. For animated slides, set
+        // shouldInterrupt: true so rapid clicks pick up from the current
+        // visual position instead of queueing behind a previous transition.
+        const transition = shouldAnimate
+          ? {
+              durationMs: carousel.durationMs,
+              easingFunction: easing,
+              shouldInterrupt: true,
+            }
+          : undefined;
 
         let inner = <Input input={input} />;
 
@@ -81,13 +125,13 @@ function CarouselSlot({
           inner = (
             <Shader
               shaderId='crop'
-              resolution={{ width: slot.width, height: slot.height }}
+              resolution={{ width: Math.max(1, tileWidth), height: slot.height }}
               shaderParam={{
                 type: 'struct',
                 value: [
                   { type: 'f32', fieldName: 'crop_top', value: cT / slot.height },
-                  { type: 'f32', fieldName: 'crop_left', value: cL / slot.width },
-                  { type: 'f32', fieldName: 'crop_right', value: cR / slot.width },
+                  { type: 'f32', fieldName: 'crop_left', value: cL / Math.max(1, tileWidth) },
+                  { type: 'f32', fieldName: 'crop_right', value: cR / Math.max(1, tileWidth) },
                   { type: 'f32', fieldName: 'crop_bottom', value: cB / slot.height },
                 ],
               }}>
@@ -104,7 +148,7 @@ function CarouselSlot({
             style={{
               top: 0,
               left: offsetLeft,
-              width: slot.width,
+              width: tileWidth,
               height: slot.height,
             }}>
             {inner}

@@ -60,12 +60,29 @@ function sanitizeLayerInputs(layers: Layer[]): Layer[] {
 
     if (dedupedLayer.carousel) {
       const n = dedupedLayer.inputs.length;
-      const requested = dedupedLayer.carousel.activeIndex;
-      const clamped = n === 0 ? 0 : Math.max(0, Math.min(requested, n - 1));
-      if (clamped !== requested) {
+      const c = dedupedLayer.carousel;
+      const clampedActive =
+        n === 0 ? 0 : Math.max(0, Math.min(c.activeIndex, n - 1));
+      const requestedVisible = c.visibleCount ?? 1;
+      const clampedVisible = Math.max(
+        1,
+        Math.min(requestedVisible, Math.max(1, n)),
+      );
+      const requestedGap = c.gap ?? 0;
+      const clampedGap = Math.max(0, Math.min(requestedGap, 4096));
+      const needsUpdate =
+        clampedActive !== c.activeIndex ||
+        clampedVisible !== requestedVisible ||
+        clampedGap !== requestedGap;
+      if (needsUpdate) {
         return {
           ...dedupedLayer,
-          carousel: { ...dedupedLayer.carousel, activeIndex: clamped },
+          carousel: {
+            ...c,
+            activeIndex: clampedActive,
+            visibleCount: clampedVisible,
+            gap: clampedGap,
+          },
         };
       }
     }
@@ -1458,7 +1475,7 @@ export class RoomState {
     }
 
     this.layers = this.layers.map((layer) => {
-      if (layer.behavior) {
+      if (layer.behavior && !layer.carousel) {
         // Separate visible (non-hidden) and hidden inputs
         const visibleLayerInputs: typeof layer.inputs = [];
         const hiddenLayerInputs: typeof layer.inputs = [];

@@ -90,6 +90,17 @@ export type CarouselConfig = {
   /** Index of the slide that was active just before `activeIndex`. Used by the renderer
    * to position the exiting slide on the opposite side of the entering slide. */
   previousActiveIndex?: number;
+  /**
+   * How many slides are shown side-by-side inside the carousel slot. Default 1.
+   * activeIndex is the leftmost visible slide; further visible slides occupy
+   * positions activeIndex+1, activeIndex+2, ... (with wrap-around).
+   */
+  visibleCount?: number;
+  /**
+   * Visual gap between adjacent visible slides in pixels. Default 0.
+   * Each slide is rendered with width = max(0, (slot.width / visibleCount) - gap).
+   */
+  gap?: number;
 };
 
 export type Layer = {

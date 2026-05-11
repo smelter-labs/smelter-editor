@@ -1205,6 +1205,7 @@ function ControlPanelInner({
               : {}
           }
           sortMode={sortMode}
+          resolution={roomState.resolution}
         />
       </div>
     );
@@ -1391,6 +1392,7 @@ function ControlPanelInner({
         timelineIsPlaying && sortMode === 'timeline' ? timelineTrackOrder : {}
       }
       sortMode={sortMode}
+      resolution={roomState.resolution}
     />
   ) : null;
 
