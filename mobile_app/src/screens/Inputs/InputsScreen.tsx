@@ -34,7 +34,7 @@ import {
   ToolbarIcon,
 } from "../../components/shared/ScreenToolbar";
 import { areInputCardsEquivalent } from "../../utils/inputCardEquality";
-import { QRModal } from "../../components/shared/QRModal";
+import { QRToolbarChip } from "../../components/shared/QRToolbarChip";
 
 export function InputsScreen() {
   const theme = useTheme();
@@ -193,17 +193,8 @@ export function InputsScreen() {
           <ScreenToolbarChip onPress={() => setSettingsPanelOpen(true)}>
             <ToolbarIcon name="cog" />
           </ScreenToolbarChip>
-          <ScreenToolbarChip onPress={() => setQRModalOpen(true)}>
-            <ToolbarIcon name="qrcode" />
-          </ScreenToolbarChip>
+          <QRToolbarChip serverUrl={serverUrl} roomId={roomId} />
         </ScreenToolbar>
-
-        <QRModal
-          visible={qrModalOpen}
-          onDismiss={() => setQRModalOpen(false)}
-          serverUrl={serverUrl}
-          roomId={roomId}
-        />
 
         <DraggableFlatList
           data={inputs}

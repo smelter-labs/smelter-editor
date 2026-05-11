@@ -8,7 +8,7 @@ import {
   useTheme,
 } from "react-native-paper";
 import * as ScreenOrientation from "expo-screen-orientation";
-import { useNavigation } from "@react-navigation/native";
+import { useNavigation, useRoute } from "@react-navigation/native";
 import { useIsTablet } from "../../hooks/useIsTablet";
 import { SCREEN_NAMES } from "../../navigation/navigationTypes";
 import type { RootNavigationProp } from "../../navigation/navigationTypes";
@@ -48,6 +48,20 @@ export function JoinServerScreen() {
     setShowQR,
     handleQRScan,
   } = useJoinServer();
+
+  const route = useRoute<any>();
+
+  useEffect(() => {
+    // If navigated here with server params (e.g. from QR scan), trigger join+validation
+    const params = route.params as
+      | { serverUrl?: string; initialRoomId?: string }
+      | undefined;
+    if (params?.serverUrl) {
+      void (async () => {
+        await handleJoinServer(params.serverUrl, params.initialRoomId);
+      })();
+    }
+  }, []);
 
   return (
     <KeyboardAvoidingView
@@ -102,7 +116,7 @@ export function JoinServerScreen() {
           labelStyle={{ color: theme.colors.onSurfaceVariant, fontSize: 12 }}
           onPress={() =>
             navigation.navigate(SCREEN_NAMES.CAMERA, {
-              serverUrl: "",
+              serverUrl: "", // intended - we want to bypass server and test WHIP flow directly
               roomId: "",
             })
           }

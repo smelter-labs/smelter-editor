@@ -1315,10 +1315,7 @@ export function timelineReducer(
       return {
         ...state,
         tracks: [newTrack, ...state.tracks],
-        rootOrder: [
-          { kind: 'track', id: newTrack.id },
-          ...state.rootOrder,
-        ],
+        rootOrder: [{ kind: 'track', id: newTrack.id }, ...state.rootOrder],
       };
     }
 
@@ -1411,8 +1408,7 @@ export function timelineReducer(
         const outputIdx = rootOrder.findIndex(
           (r) => r.kind === 'track' && r.id === OUTPUT_TRACK_ID,
         );
-        const safeIdx =
-          outputIdx >= 0 && idx > outputIdx ? outputIdx : idx;
+        const safeIdx = outputIdx >= 0 && idx > outputIdx ? outputIdx : idx;
         const next = [...rootOrder];
         next.splice(safeIdx, 0, { kind: 'track', id: action.trackId });
         return { ...state, rootOrder: next, groups };
@@ -1454,8 +1450,7 @@ export function timelineReducer(
       const usedLabels = new Set(
         state.groups.map((g) => normalizeGroupLabel(g.label)),
       );
-      const preferredLabel =
-        action.label || `Group ${state.groups.length + 1}`;
+      const preferredLabel = action.label || `Group ${state.groups.length + 1}`;
       const label = claimUniqueGroupLabel(preferredLabel, usedLabels);
       const newGroup: TrackGroup = {
         id: genId(),

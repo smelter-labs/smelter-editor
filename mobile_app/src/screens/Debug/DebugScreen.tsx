@@ -14,7 +14,7 @@ import {
 import { useLeaveRoom } from "../../hooks/useLeaveRoom";
 import { SCREEN_NAMES } from "../../navigation/navigationTypes";
 import type { RootNavigationProp } from "../../navigation/navigationTypes";
-import { QRModal } from "../../components/shared/QRModal";
+import { QRToolbarChip } from "../../components/shared/QRToolbarChip";
 
 export function DebugScreen() {
   const theme = useTheme();
@@ -54,17 +54,9 @@ export function DebugScreen() {
         <ScreenToolbarChip onPress={() => setSettingsOpen(true)}>
           <ToolbarIcon name="cog" />
         </ScreenToolbarChip>
-        <ScreenToolbarChip onPress={() => setQRModalOpen(true)}>
-          <ToolbarIcon name="qrcode" />
-        </ScreenToolbarChip>
+        <QRToolbarChip serverUrl={serverUrl} roomId={roomId} />
       </ScreenToolbar>
 
-      <QRModal
-        visible={qrModalOpen}
-        onDismiss={() => setQRModalOpen(false)}
-        serverUrl={serverUrl}
-        roomId={roomId}
-      />
       <ScrollView contentContainerStyle={styles.content}>
         <Surface style={styles.card} elevation={2}>
           <Text variant="titleMedium">Connection</Text>

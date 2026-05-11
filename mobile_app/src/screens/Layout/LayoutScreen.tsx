@@ -36,7 +36,7 @@ import {
   ScreenToolbarChip,
   ToolbarIcon,
 } from "../../components/shared/ScreenToolbar";
-import { QRModal } from "../../components/shared/QRModal";
+import { QRToolbarChip } from "../../components/shared/QRToolbarChip";
 
 // ─── Conversion helpers ───────────────────────────────────────────────────────
 
@@ -496,17 +496,8 @@ export function LayoutScreen() {
           >
             <ToolbarIcon name="cog" />
           </ScreenToolbarChip>
-          <ScreenToolbarChip onPress={() => setQRModalOpen(true)}>
-            <ToolbarIcon name="qrcode" />
-          </ScreenToolbarChip>
+          <QRToolbarChip serverUrl={serverUrl} roomId={roomId} />
         </ScreenToolbar>
-
-        <QRModal
-          visible={qrModalOpen}
-          onDismiss={() => setQRModalOpen(false)}
-          serverUrl={serverUrl}
-          roomId={roomId}
-        />
 
         {/* Canvas: stacked layer grids — layers[0] is topmost (highest zIndex) */}
         <View style={styles.canvas}>
