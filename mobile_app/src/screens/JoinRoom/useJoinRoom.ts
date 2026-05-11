@@ -15,37 +15,6 @@ import type {
 } from "../../navigation/navigationTypes";
 import { SCREEN_NAMES } from "../../navigation/navigationTypes";
 
-const STORAGE_KEY = "saved-server-urls";
-const MANUAL_INPUT_PROBE_ROOM_ID = "_probe_";
-
-async function loadSavedUrls(): Promise<string[]> {
-  try {
-    const raw = await AsyncStorage.getItem(STORAGE_KEY);
-    if (!raw) {
-      return [];
-    }
-    const parsed = JSON.parse(raw);
-    if (
-      !Array.isArray(parsed) ||
-      !parsed.every((item) => typeof item === "string")
-    ) {
-      console.warn("[JoinRoom] Invalid format for saved URLs, resetting");
-      return [];
-    }
-    return parsed;
-  } catch {
-    return [];
-  }
-}
-
-async function persistSavedUrls(urls: string[]): Promise<void> {
-  try {
-    await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(urls));
-  } catch (err) {
-    console.warn("[JoinRoom] failed to persist saved URLs", err);
-  }
-}
-
 export type ServerStatus = "idle" | "loading" | "error" | "success";
 export type HealthStatus = "checking" | "ok" | "error";
 type Phase = "server" | "room";
@@ -187,8 +156,8 @@ export function useJoinRoom() {
         setPrivateRoomId(data.roomId);
         setIsPrivateRoom(true);
       } else {
-        // Different server — go back to server screen and navigate fresh
-        navigation.navigate(SCREEN_NAMES.JOIN_ROOM, {
+        // Different server — open the server screen so it validates/saves the URL
+        navigation.navigate(SCREEN_NAMES.JOIN_SERVER, {
           serverUrl: data.serverUrl,
           initialRoomId: data.roomId,
         });

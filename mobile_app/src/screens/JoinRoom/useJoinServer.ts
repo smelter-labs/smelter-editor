@@ -107,7 +107,7 @@ export function useJoinServer() {
 
   // urlOverride exists so QR scan can pass the URL without waiting for state to flush
   const handleJoinServer = useCallback(
-    async (urlOverride?: string) => {
+    async (urlOverride?: string, initialRoomId?: string) => {
       const requestId = ++joinSeqRef.current;
       const trimmed = (urlOverride ?? selectedServerUrl).trim();
 
@@ -145,7 +145,14 @@ export function useJoinServer() {
         }
         setHealthStatus((prev) => ({ ...prev, [trimmed]: "ok" }));
 
-        navigation.navigate(SCREEN_NAMES.JOIN_LOBBY, { serverUrl: trimmed });
+        if (initialRoomId) {
+          navigation.navigate(SCREEN_NAMES.JOIN_ROOM, {
+            serverUrl: trimmed,
+            initialRoomId,
+          });
+        } else {
+          navigation.navigate(SCREEN_NAMES.JOIN_LOBBY, { serverUrl: trimmed });
+        }
       } catch (err) {
         if (joinSeqRef.current !== requestId) return;
         const msg =

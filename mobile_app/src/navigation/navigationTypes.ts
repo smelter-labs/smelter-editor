@@ -1,7 +1,7 @@
 import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
 export type RootStackParamList = {
-  JoinServer: undefined;
+  JoinServer: { serverUrl?: string; initialRoomId?: string };
   JoinLobby: { serverUrl: string };
   JoinRoom: { serverUrl: string; initialRoomId?: string };
   Main: undefined;
