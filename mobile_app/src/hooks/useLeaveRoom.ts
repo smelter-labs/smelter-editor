@@ -20,7 +20,7 @@ export function useLeaveRoom() {
     if (navigationRef.isReady()) {
       navigationRef.reset({
         index: 0,
-        routes: [{ name: SCREEN_NAMES.JOIN_ROOM }],
+        routes: [{ name: SCREEN_NAMES.JOIN_SERVER }],
       });
     }
   }, [reset]);
