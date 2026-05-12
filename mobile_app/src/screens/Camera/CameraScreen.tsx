@@ -491,7 +491,7 @@ export function CameraScreen() {
               styles.statusChip,
               status === "streaming" && styles.statusChipLive,
               status === "error" && {
-                backgroundColor: theme.colors.errorContainer,
+                backgroundColor: theme.colors.error,
               },
             ]}
             textStyle={styles.statusChipText}

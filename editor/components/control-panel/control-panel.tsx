@@ -48,7 +48,11 @@ import {
 import { AddVideoModal } from './components/AddVideoModal';
 import { FxCanvas, FX_PRESET_MODAL } from '@/lib/fx';
 import { type PendingWhipInput } from './components/ConfigurationSection';
-import { getEffectiveClientServerUrl, toWsUrl } from '@/lib/server-url';
+import {
+  getEffectiveClientServerUrl,
+  SERVER_URL_QUERY_PARAM,
+  toWsUrl,
+} from '@/lib/server-url';
 import { resolutionToLabel } from '@/lib/resolution';
 import {
   exportRoomConfig,
@@ -2472,6 +2476,8 @@ function SettingsBar({
   );
 }
 
+type QRTab = 'whip' | 'mobile';
+
 function QRModal({
   roomId,
   open,
@@ -2482,23 +2488,40 @@ function QRModal({
   onOpenChange: (open: boolean) => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [activeTab, setActiveTab] = useState<QRTab>('whip');
 
-  const joinUrl = useMemo(() => {
+  const whipUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
     const wsBase = toWsUrl(getEffectiveClientServerUrl());
     return `${wsBase}/room/${encodeURIComponent(roomId)}`;
   }, [roomId]);
 
+  const mobileUrl = useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    const api = getEffectiveClientServerUrl();
+    const qs = `${SERVER_URL_QUERY_PARAM}=${encodeURIComponent(api)}`;
+    return `${window.location.origin}/mobile/${encodeURIComponent(roomId)}?${qs}`;
+  }, [roomId]);
+
+  const activeUrl = activeTab === 'whip' ? whipUrl : mobileUrl;
+
   const handleCopy = useCallback(async () => {
-    if (!joinUrl) return;
+    if (!activeUrl) return;
     try {
-      await navigator.clipboard.writeText(joinUrl);
+      await navigator.clipboard.writeText(activeUrl);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1200);
     } catch (err) {
       console.error('Failed to copy join URL:', err);
     }
-  }, [joinUrl]);
+  }, [activeUrl]);
+
+  const tabButtonClass = (tab: QRTab) =>
+    `flex-1 px-3 py-2 text-xs uppercase tracking-widest font-bold transition-colors cursor-pointer border-b-2 ${
+      activeTab === tab
+        ? 'text-[#00f3ff] border-[#00f3ff]'
+        : 'text-[#849495] border-transparent hover:text-[#00f3ff]'
+    }`;
 
   return (
     <Dialog
@@ -2511,12 +2534,37 @@ function QRModal({
         <DialogHeader>
           <DialogTitle>Join via QR</DialogTitle>
         </DialogHeader>
+        <div className='flex border-b border-border'>
+          <button
+            type='button'
+            className={tabButtonClass('whip')}
+            onClick={() => {
+              setActiveTab('whip');
+              setCopied(false);
+            }}>
+            WHIP Link
+          </button>
+          <button
+            type='button'
+            className={tabButtonClass('mobile')}
+            onClick={() => {
+              setActiveTab('mobile');
+              setCopied(false);
+            }}>
+            Mobile
+          </button>
+        </div>
+        <p className='text-xs text-muted-foreground'>
+          {activeTab === 'whip'
+            ? 'Scan with the native WHIP client to publish to this room.'
+            : 'Scan with a phone to open the room join page in a browser.'}
+        </p>
         <div className='space-y-4'>
           <div className='flex justify-center'>
-            {joinUrl ? (
+            {activeUrl ? (
               <div className='rounded-md border border-border bg-card p-3'>
                 <QRCode
-                  value={joinUrl}
+                  value={activeUrl}
                   size={220}
                   bgColor='transparent'
                   fgColor='currentColor'
@@ -2529,12 +2577,12 @@ function QRModal({
             )}
           </div>
           <div className='space-y-2'>
-            <ShadcnInput readOnly value={joinUrl} />
+            <ShadcnInput readOnly value={activeUrl} />
             <button
               type='button'
               className='w-full uppercase tracking-widest text-sm font-bold text-[#849495] hover:text-[#00f3ff] border border-border py-2 transition-colors disabled:opacity-50'
               onClick={() => void handleCopy()}
-              disabled={!joinUrl}>
+              disabled={!activeUrl}>
               {copied ? 'Copied' : 'Copy Link'}
             </button>
           </div>

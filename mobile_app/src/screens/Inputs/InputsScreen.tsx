@@ -34,6 +34,7 @@ import {
   ToolbarIcon,
 } from "../../components/shared/ScreenToolbar";
 import { areInputCardsEquivalent } from "../../utils/inputCardEquality";
+import { QRToolbarChip } from "../../components/shared/QRToolbarChip";
 
 export function InputsScreen() {
   const theme = useTheme();
@@ -191,6 +192,7 @@ export function InputsScreen() {
           <ScreenToolbarChip onPress={() => setSettingsPanelOpen(true)}>
             <ToolbarIcon name="cog" />
           </ScreenToolbarChip>
+          <QRToolbarChip serverUrl={serverUrl} roomId={roomId} />
         </ScreenToolbar>
 
         <DraggableFlatList

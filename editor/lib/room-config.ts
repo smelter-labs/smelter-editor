@@ -277,23 +277,23 @@ export function exportRoomConfig(
         };
       },
     );
-    const rootOrder: RoomConfigTimelineRowRef[] | undefined = timelineState
-      .rootOrder
-      ? timelineState.rootOrder
-          .map((ref): RoomConfigTimelineRowRef | null => {
-            if (ref.kind === 'track') {
-              const idx = trackIdToIndex.get(ref.id);
+    const rootOrder: RoomConfigTimelineRowRef[] | undefined =
+      timelineState.rootOrder
+        ? timelineState.rootOrder
+            .map((ref): RoomConfigTimelineRowRef | null => {
+              if (ref.kind === 'track') {
+                const idx = trackIdToIndex.get(ref.id);
+                return idx !== undefined
+                  ? { kind: 'track', trackIndex: idx }
+                  : null;
+              }
+              const idx = groupIdToIndex.get(ref.id);
               return idx !== undefined
-                ? { kind: 'track', trackIndex: idx }
+                ? { kind: 'group', groupIndex: idx }
                 : null;
-            }
-            const idx = groupIdToIndex.get(ref.id);
-            return idx !== undefined
-              ? { kind: 'group', groupIndex: idx }
-              : null;
-          })
-          .filter((r): r is RoomConfigTimelineRowRef => r !== null)
-      : undefined;
+            })
+            .filter((r): r is RoomConfigTimelineRowRef => r !== null)
+        : undefined;
     timeline = {
       totalDurationMs: timelineState.totalDurationMs,
       keyframeInterpolationMode: timelineState.keyframeInterpolationMode,
@@ -541,9 +541,7 @@ export function buildTimelineStateFromConfigTimeline(
       .filter((id) => id !== OUTPUT_TRACK_ID),
   }));
 
-  const usedTrackIds = new Set<string>(
-    builtGroups.flatMap((g) => g.trackIds),
-  );
+  const usedTrackIds = new Set<string>(builtGroups.flatMap((g) => g.trackIds));
   let rootOrder: TimelineRowRef[];
   if (timeline.rootOrder && timeline.rootOrder.length > 0) {
     rootOrder = timeline.rootOrder
