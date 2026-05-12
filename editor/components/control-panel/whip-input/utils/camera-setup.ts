@@ -18,6 +18,12 @@ export type GuestCameraSettings = {
   mirror: boolean;
 };
 
+export type StreamNativeResolution = {
+  orientation: CameraOrientation;
+  nativeWidth: number;
+  nativeHeight: number;
+};
+
 export function detectDefaultOrientation(): CameraOrientation {
   if (typeof window === 'undefined') return 'landscape';
   try {
@@ -81,14 +87,44 @@ export async function listVideoInputDevices(): Promise<MediaDeviceInfo[]> {
 export function detectStreamOrientation(
   stream: MediaStream,
 ): CameraOrientation {
+  return getStreamNativeResolution(stream).orientation;
+}
+
+function isPositiveFiniteNumber(value: unknown): value is number {
+  return typeof value === 'number' && Number.isFinite(value) && value > 0;
+}
+
+function getFallbackNativeResolution(
+  settings?: GuestCameraSettings,
+): StreamNativeResolution {
+  const orientation = settings?.orientation ?? 'landscape';
+  const { width, height } = RESOLUTION_PRESETS[settings?.resolution ?? '720p'];
+
+  return orientation === 'portrait'
+    ? { orientation, nativeWidth: height, nativeHeight: width }
+    : { orientation, nativeWidth: width, nativeHeight: height };
+}
+
+export function getStreamNativeResolution(
+  stream: MediaStream,
+  fallbackSettings?: GuestCameraSettings,
+): StreamNativeResolution {
+  const fallback = getFallbackNativeResolution(fallbackSettings);
   const track = stream.getVideoTracks()[0];
-  if (!track) return 'landscape';
-
+  if (!track) return fallback;
   const settings = track.getSettings();
-  const width = settings.width ?? 1920;
-  const height = settings.height ?? 1080;
+  const width = isPositiveFiniteNumber(settings.width)
+    ? Math.round(settings.width)
+    : fallback.nativeWidth;
+  const height = isPositiveFiniteNumber(settings.height)
+    ? Math.round(settings.height)
+    : fallback.nativeHeight;
 
-  return height > width ? 'portrait' : 'landscape';
+  return {
+    orientation: height > width ? 'portrait' : 'landscape',
+    nativeWidth: width,
+    nativeHeight: height,
+  };
 }
 
 export function orientationToInputOrientation(

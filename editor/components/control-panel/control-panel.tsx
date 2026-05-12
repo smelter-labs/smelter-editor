@@ -332,8 +332,10 @@ export default function ControlPanel(props: ControlPanelProps) {
         trackMutation(() => defaultActions.addSnakeGameInput(roomId, title)),
       addHlsInput: (roomId, url) =>
         trackMutation(() => defaultActions.addHlsInput(roomId, url)),
-      addCameraInput: (roomId, username) =>
-        trackMutation(() => defaultActions.addCameraInput(roomId, username)),
+      addCameraInput: (roomId, username, options) =>
+        trackMutation(() =>
+          defaultActions.addCameraInput(roomId, username, options),
+        ),
       restartMp4Input: (roomId, inputId, playFromMs, loop) =>
         trackMutation(() =>
           defaultActions.restartMp4Input(roomId, inputId, playFromMs, loop),
