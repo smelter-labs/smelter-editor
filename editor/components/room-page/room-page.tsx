@@ -180,7 +180,7 @@ export default function RoomPage() {
   return (
     <motion.div
       variants={staggerContainer}
-      className='h-screen flex flex-col p-2 py-4 md:p-4 bg-[#0a0a0a]'>
+      className={`${isGuest ? 'min-h-dvh' : 'h-screen'} flex flex-col p-2 py-4 md:p-4 bg-[#0a0a0a]`}>
       <div className='flex items-center gap-6 mb-4'>
         <div
           style={{

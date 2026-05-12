@@ -34,14 +34,11 @@ export function buildVideoConstraints(
   settings: GuestCameraSettings,
 ): MediaTrackConstraints {
   const { width, height } = RESOLUTION_PRESETS[settings.resolution];
-  const portrait = settings.orientation === 'portrait';
-  const idealW = portrait ? height : width;
-  const idealH = portrait ? width : height;
 
   const constraints: MediaTrackConstraints = {
-    width: { ideal: idealW },
-    height: { ideal: idealH },
-    aspectRatio: { ideal: idealW / idealH },
+    width: { ideal: width },
+    height: { ideal: height },
+    aspectRatio: { ideal: width / height },
   };
 
   if (settings.deviceId) {
@@ -79,6 +76,17 @@ export async function listVideoInputDevices(): Promise<MediaDeviceInfo[]> {
   } catch {
     return [];
   }
+}
+
+export function detectStreamOrientation(stream: MediaStream): CameraOrientation {
+  const track = stream.getVideoTracks()[0];
+  if (!track) return 'landscape';
+
+  const settings = track.getSettings();
+  const width = settings.width ?? 1920;
+  const height = settings.height ?? 1080;
+
+  return height > width ? 'portrait' : 'landscape';
 }
 
 export function orientationToInputOrientation(

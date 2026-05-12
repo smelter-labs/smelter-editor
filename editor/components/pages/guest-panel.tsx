@@ -17,7 +17,6 @@ import {
   startPublish,
   rotateBy90,
   cleanupRotation,
-  type RotationAngle,
 } from '@/components/control-panel/whip-input/utils/whip-publisher';
 import { startScreensharePublish } from '@/components/control-panel/whip-input/utils/screenshare-publisher';
 import { stopCameraAndConnection } from '@/components/control-panel/whip-input/utils/preview';
@@ -32,6 +31,7 @@ import {
 import {
   acquireUserMediaForSettings,
   detectDefaultOrientation,
+  detectStreamOrientation,
   orientationToInputOrientation,
   type GuestCameraSettings,
 } from '@/components/control-panel/whip-input/utils/camera-setup';
@@ -39,7 +39,6 @@ import {
   loadGuestCameraSettings,
   saveGuestCameraSettings,
 } from '@/components/control-panel/whip-input/utils/guest-settings-storage';
-import { useIsMobileDevice } from '@/hooks/use-mobile';
 import GuestSetupForm from '@/components/pages/guest-setup-form';
 
 type ConnectKind = 'camera' | 'screenshare';
@@ -88,10 +87,11 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const isMobileDevice = useIsMobileDevice();
 
   const [mode, setMode] = useState<Mode>({ kind: 'setup' });
-  const [rotation, setRotation] = useState<RotationAngle>(0);
+  const [streamOrientation, setStreamOrientation] = useState<
+    GuestCameraSettings['orientation'] | null
+  >(null);
   const [settings, setSettings] = useState<GuestCameraSettings>(() =>
     makeInitialSettings(),
   );
@@ -100,7 +100,7 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
   const teardownConnection = useCallback(() => {
     stopCameraAndConnection(pcRef, streamRef);
     cleanupRotation();
-    setRotation(0);
+    setStreamOrientation(null);
   }, []);
 
   const connect = useCallback(
@@ -130,6 +130,11 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
         if (kind === 'camera') {
           effectiveSettings = cameraSettings ?? settings;
           existingStream = await acquireUserMediaForSettings(effectiveSettings);
+          const actualOrientation = detectStreamOrientation(existingStream);
+          effectiveSettings = {
+            ...effectiveSettings,
+            orientation: actualOrientation,
+          };
         }
 
         const response = await addCameraInput(roomId, userName);
@@ -192,10 +197,12 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
         if (kind === 'camera' && effectiveSettings) {
           saveGuestCameraSettings(effectiveSettings);
           setSettings(effectiveSettings);
+          setStreamOrientation(effectiveSettings.orientation);
+        } else {
+          setStreamOrientation('landscape');
         }
 
         activeInputIdRef.current = response.inputId;
-        setRotation(0);
         setMode({ kind: 'active', source: kind, inputId: response.inputId });
       } catch (err: any) {
         console.error(`Guest ${kind} publish failed:`, err);
@@ -219,7 +226,7 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
         setMode({ kind: 'error', message });
       }
     },
-    [isMobileDevice, roomId, settings, teardownConnection],
+    [roomId, settings, teardownConnection],
   );
 
   const disconnect = useCallback(async () => {
@@ -239,8 +246,7 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
 
   const handleRotate = useCallback(async () => {
     try {
-      const angle = await rotateBy90(pcRef, streamRef);
-      setRotation(angle);
+      await rotateBy90(pcRef, streamRef);
     } catch (err) {
       console.error('Guest rotate failed:', err);
       toast.error('Failed to rotate the stream.');
@@ -285,14 +291,16 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const isVertical = rotation % 180 !== 0;
   const activeSource = mode.kind === 'active' ? mode.source : null;
   const showMirror = activeSource === 'camera' && settings.mirror;
+  const previewPortrait =
+    activeSource === 'camera' &&
+    (streamOrientation ?? settings.orientation) === 'portrait';
 
   return (
     <motion.div
       variants={staggerContainer}
-      className='flex-1 flex flex-col min-h-0 h-full items-center justify-start overflow-hidden'>
+      className='flex-1 flex flex-col min-h-0 w-full items-center justify-start overflow-y-auto'>
       <div className='w-full max-w-xl flex flex-col gap-4 p-4'>
         {mode.kind === 'setup' && (
           <GuestSetupForm
@@ -306,9 +314,9 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
           <div
             className='rounded-md overflow-hidden border border-neutral-800 bg-black mx-auto'
             style={{
-              aspectRatio: isVertical ? '9/16' : '16/9',
-              maxHeight: isVertical ? '70vh' : undefined,
-              width: isVertical ? 'auto' : '100%',
+              aspectRatio: previewPortrait ? '9/16' : '16/9',
+              maxHeight: previewPortrait ? '50vh' : undefined,
+              width: previewPortrait ? 'auto' : '100%',
             }}>
             <video
               ref={videoRef}

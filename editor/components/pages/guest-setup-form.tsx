@@ -15,11 +15,12 @@ import {
 } from '@/components/ui/select';
 import {
   acquireUserMediaForSettings,
+  detectDefaultOrientation,
+  detectStreamOrientation,
   listVideoInputDevices,
   RESOLUTION_PRESETS,
   type GuestCameraSettings,
   type ResolutionPreset,
-  type CameraOrientation,
 } from '@/components/control-panel/whip-input/utils/camera-setup';
 
 interface GuestSetupFormProps {
@@ -50,6 +51,9 @@ export default function GuestSetupForm({
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isAcquiring, setIsAcquiring] = useState(false);
+  const [streamOrientation, setStreamOrientation] = useState<
+    GuestCameraSettings['orientation'] | null
+  >(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
 
@@ -57,6 +61,7 @@ export default function GuestSetupForm({
     let cancelled = false;
     setError(null);
     setIsAcquiring(true);
+    setStreamOrientation(null);
 
     (async () => {
       try {
@@ -67,6 +72,7 @@ export default function GuestSetupForm({
         }
         stopStream(streamRef.current);
         streamRef.current = stream;
+        setStreamOrientation(detectStreamOrientation(stream));
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           videoRef.current.play().catch(() => {});
@@ -96,6 +102,33 @@ export default function GuestSetupForm({
   }, [settings]);
 
   useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const syncOrientation = () => {
+      const orientation = detectDefaultOrientation();
+      setSettings((s) =>
+        s.orientation === orientation ? s : { ...s, orientation },
+      );
+    };
+
+    window.screen?.orientation?.addEventListener?.(
+      'change',
+      syncOrientation,
+    );
+    window.addEventListener('orientationchange', syncOrientation);
+    window.addEventListener('resize', syncOrientation);
+
+    return () => {
+      window.screen?.orientation?.removeEventListener?.(
+        'change',
+        syncOrientation,
+      );
+      window.removeEventListener('orientationchange', syncOrientation);
+      window.removeEventListener('resize', syncOrientation);
+    };
+  }, []);
+
+  useEffect(() => {
     return () => {
       stopStream(streamRef.current);
       streamRef.current = null;
@@ -106,8 +139,11 @@ export default function GuestSetupForm({
     stopStream(streamRef.current);
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
-    onStart(settings);
-  }, [onStart, settings]);
+    onStart({
+      ...settings,
+      orientation: streamOrientation ?? settings.orientation,
+    });
+  }, [onStart, settings, streamOrientation]);
 
   const swapOrientation = useCallback(() => {
     setSettings((s) => ({
@@ -127,7 +163,8 @@ export default function GuestSetupForm({
   const labeledDevices = devices.filter((d) => d.label);
   const hasMultipleLabeledDevices = labeledDevices.length > 1;
   const portrait = settings.orientation === 'portrait';
-  const previewAspect = portrait ? '9/16' : '16/9';
+  const previewPortrait = (streamOrientation ?? settings.orientation) === 'portrait';
+  const previewAspect = previewPortrait ? '9/16' : '16/9';
 
   return (
     <div className='flex w-full max-w-xl flex-col gap-4'>
@@ -135,8 +172,8 @@ export default function GuestSetupForm({
         className='mx-auto overflow-hidden rounded-md border border-neutral-800 bg-black'
         style={{
           aspectRatio: previewAspect,
-          maxHeight: portrait ? '50vh' : undefined,
-          width: portrait ? 'auto' : '100%',
+          maxHeight: previewPortrait ? '50vh' : undefined,
+          width: previewPortrait ? 'auto' : '100%',
         }}>
         <video
           ref={videoRef}
