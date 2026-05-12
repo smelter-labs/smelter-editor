@@ -133,12 +133,6 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
         if (kind === 'camera') {
           effectiveSettings = cameraSettings ?? settings;
           existingStream = await acquireUserMediaForSettings(effectiveSettings);
-<<<<<<< Updated upstream
-          nativeResolution = getStreamNativeResolution(
-            existingStream,
-            effectiveSettings,
-          );
-=======
           const rawNative = getStreamNativeResolution(
             existingStream,
             effectiveSettings,
@@ -147,7 +141,6 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
             rawNative,
             effectiveSettings.orientation,
           );
->>>>>>> Stashed changes
           effectiveSettings = {
             ...effectiveSettings,
             orientation: nativeResolution.orientation,

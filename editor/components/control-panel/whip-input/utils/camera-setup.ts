@@ -125,8 +125,6 @@ export function getStreamNativeResolution(
     nativeWidth: width,
     nativeHeight: height,
   };
-<<<<<<< Updated upstream
-=======
 }
 
 /**
@@ -149,7 +147,6 @@ export function alignNativeResolutionToCameraOrientation(
     nativeWidth: raw.nativeHeight,
     nativeHeight: raw.nativeWidth,
   };
->>>>>>> Stashed changes
 }
 
 export function orientationToInputOrientation(
