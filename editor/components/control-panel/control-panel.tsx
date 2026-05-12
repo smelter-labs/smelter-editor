@@ -47,7 +47,11 @@ import {
 import { AddVideoModal } from './components/AddVideoModal';
 import { FxCanvas, FX_PRESET_MODAL } from '@/lib/fx';
 import { type PendingWhipInput } from './components/ConfigurationSection';
-import { getEffectiveClientServerUrl, toWsUrl } from '@/lib/server-url';
+import {
+  getEffectiveClientServerUrl,
+  SERVER_URL_QUERY_PARAM,
+  toWsUrl,
+} from '@/lib/server-url';
 import { resolutionToLabel } from '@/lib/resolution';
 import {
   exportRoomConfig,
@@ -2485,7 +2489,9 @@ function QRModal({
 
   const mobileUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
-    return `${window.location.origin}/mobile/${encodeURIComponent(roomId)}`;
+    const api = getEffectiveClientServerUrl();
+    const qs = `${SERVER_URL_QUERY_PARAM}=${encodeURIComponent(api)}`;
+    return `${window.location.origin}/mobile/${encodeURIComponent(roomId)}?${qs}`;
   }, [roomId]);
 
   const activeUrl = activeTab === 'whip' ? whipUrl : mobileUrl;

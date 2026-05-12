@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Camera, Eye, Home } from 'lucide-react';
 
@@ -11,17 +11,31 @@ import OutputStream from '@/components/output-stream';
 import LoadingSpinner from '@/components/ui/spinner';
 import SmelterLogo from '@/components/ui/smelter-logo';
 import { Button } from '@/components/ui/button';
+import {
+  applyServerUrlFromQueryParam,
+  SERVER_URL_QUERY_PARAM,
+} from '@/lib/server-url';
 
 type View = 'choose' | 'preview';
 
 export default function MobileJoinPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { roomId } = useParams();
   const [view, setView] = useState<View>('choose');
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
   const [roomState, setRoomState] = useState<RoomState | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  useLayoutEffect(() => {
+    const raw = searchParams.get(SERVER_URL_QUERY_PARAM);
+    if (!raw || !roomId) return;
+    const ok = applyServerUrlFromQueryParam(raw);
+    if (ok) {
+      router.replace(`/mobile/${encodeURIComponent(roomId as string)}`);
+    }
+  }, [searchParams, router, roomId]);
 
   useEffect(() => {
     let mounted = true;
