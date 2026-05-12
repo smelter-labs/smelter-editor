@@ -125,6 +125,31 @@ export function getStreamNativeResolution(
     nativeWidth: width,
     nativeHeight: height,
   };
+<<<<<<< Updated upstream
+=======
+}
+
+/**
+ * Aligns reported width/height with the user's chosen portrait/landscape so
+ * server layout metadata matches intent when mobile exposes pre-rotation dimensions.
+ */
+export function alignNativeResolutionToCameraOrientation(
+  raw: StreamNativeResolution,
+  semantic: CameraOrientation,
+): StreamNativeResolution {
+  const landscapePixels = raw.nativeWidth >= raw.nativeHeight;
+  const wantLandscape = semantic === 'landscape';
+
+  if (landscapePixels === wantLandscape) {
+    return { ...raw, orientation: semantic };
+  }
+
+  return {
+    orientation: semantic,
+    nativeWidth: raw.nativeHeight,
+    nativeHeight: raw.nativeWidth,
+  };
+>>>>>>> Stashed changes
 }
 
 export function orientationToInputOrientation(
