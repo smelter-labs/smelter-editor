@@ -30,6 +30,7 @@ import {
 } from '@/components/control-panel/whip-input/utils/whip-storage';
 import {
   acquireUserMediaForSettings,
+  alignNativeResolutionToCameraOrientation,
   detectDefaultOrientation,
   getStreamNativeResolution,
   orientationToInputOrientation,
@@ -132,10 +133,21 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
         if (kind === 'camera') {
           effectiveSettings = cameraSettings ?? settings;
           existingStream = await acquireUserMediaForSettings(effectiveSettings);
+<<<<<<< Updated upstream
           nativeResolution = getStreamNativeResolution(
             existingStream,
             effectiveSettings,
           );
+=======
+          const rawNative = getStreamNativeResolution(
+            existingStream,
+            effectiveSettings,
+          );
+          nativeResolution = alignNativeResolutionToCameraOrientation(
+            rawNative,
+            effectiveSettings.orientation,
+          );
+>>>>>>> Stashed changes
           effectiveSettings = {
             ...effectiveSettings,
             orientation: nativeResolution.orientation,

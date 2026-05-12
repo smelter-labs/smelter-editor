@@ -134,11 +134,8 @@ export default function GuestSetupForm({
     stopStream(streamRef.current);
     streamRef.current = null;
     if (videoRef.current) videoRef.current.srcObject = null;
-    onStart({
-      ...settings,
-      orientation: streamOrientation ?? settings.orientation,
-    });
-  }, [onStart, settings, streamOrientation]);
+    onStart(settings);
+  }, [onStart, settings]);
 
   const swapOrientation = useCallback(() => {
     setSettings((s) => ({
