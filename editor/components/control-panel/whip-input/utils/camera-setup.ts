@@ -78,7 +78,9 @@ export async function listVideoInputDevices(): Promise<MediaDeviceInfo[]> {
   }
 }
 
-export function detectStreamOrientation(stream: MediaStream): CameraOrientation {
+export function detectStreamOrientation(
+  stream: MediaStream,
+): CameraOrientation {
   const track = stream.getVideoTracks()[0];
   if (!track) return 'landscape';
 

@@ -111,12 +111,8 @@ export default function GuestSetupForm({
       );
     };
 
-    window.screen?.orientation?.addEventListener?.(
-      'change',
-      syncOrientation,
-    );
+    window.screen?.orientation?.addEventListener?.('change', syncOrientation);
     window.addEventListener('orientationchange', syncOrientation);
-    window.addEventListener('resize', syncOrientation);
 
     return () => {
       window.screen?.orientation?.removeEventListener?.(
@@ -124,7 +120,6 @@ export default function GuestSetupForm({
         syncOrientation,
       );
       window.removeEventListener('orientationchange', syncOrientation);
-      window.removeEventListener('resize', syncOrientation);
     };
   }, []);
 
@@ -163,7 +158,8 @@ export default function GuestSetupForm({
   const labeledDevices = devices.filter((d) => d.label);
   const hasMultipleLabeledDevices = labeledDevices.length > 1;
   const portrait = settings.orientation === 'portrait';
-  const previewPortrait = (streamOrientation ?? settings.orientation) === 'portrait';
+  const previewPortrait =
+    (streamOrientation ?? settings.orientation) === 'portrait';
   const previewAspect = previewPortrait ? '9/16' : '16/9';
 
   return (
