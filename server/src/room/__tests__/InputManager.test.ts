@@ -511,6 +511,30 @@ describe('InputManager', () => {
       expect(manager.getInput(inputId).nativeHeight).toBe(1920);
     });
 
+    it('uses explicit native resolution for whip inputs', async () => {
+      const inputId = (await manager.addNewInput({
+        type: 'whip',
+        username: 'phone',
+        orientation: 'vertical',
+        nativeWidth: 720,
+        nativeHeight: 1280,
+      }))!;
+
+      expect(manager.getInput(inputId).orientation).toBe('vertical');
+      expect(manager.getInput(inputId).nativeWidth).toBe(720);
+      expect(manager.getInput(inputId).nativeHeight).toBe(1280);
+
+      manager.updateInput(inputId, {
+        orientation: 'horizontal',
+        nativeWidth: 1280,
+        nativeHeight: 720,
+      });
+
+      expect(manager.getInput(inputId).orientation).toBe('horizontal');
+      expect(manager.getInput(inputId).nativeWidth).toBe(1280);
+      expect(manager.getInput(inputId).nativeHeight).toBe(720);
+    });
+
     it('sets up transition timer that clears activeTransition after durationMs', async () => {
       const inputId = (await manager.addNewInput({
         type: 'text-input',

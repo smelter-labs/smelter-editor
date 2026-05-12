@@ -846,6 +846,11 @@ const InputSchema = Type.Union([
   Type.Object({
     type: Type.Literal('whip'),
     username: Type.String(),
+    orientation: Type.Optional(
+      Type.Union([Type.Literal('horizontal'), Type.Literal('vertical')]),
+    ),
+    nativeWidth: Type.Optional(Type.Number({ minimum: 1 })),
+    nativeHeight: Type.Optional(Type.Number({ minimum: 1 })),
   }),
   Type.Object({
     type: Type.Literal('local-mp4'),
@@ -2046,6 +2051,11 @@ const UpdateInputSchema = Type.Object({
   title: Type.Optional(Type.String()),
   volume: Type.Optional(Type.Number({ maximum: 1, minimum: 0 })),
   showTitle: Type.Optional(Type.Boolean()),
+  orientation: Type.Optional(
+    Type.Union([Type.Literal('horizontal'), Type.Literal('vertical')]),
+  ),
+  nativeWidth: Type.Optional(Type.Number({ minimum: 1 })),
+  nativeHeight: Type.Optional(Type.Number({ minimum: 1 })),
   shaders: Type.Optional(
     Type.Array(
       Type.Object({

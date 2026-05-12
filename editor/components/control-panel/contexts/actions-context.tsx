@@ -5,6 +5,7 @@ import type {
   AddInputResponse,
   AudioSuggestions,
   AvailableShader,
+  CameraInputOptions,
   InputSuggestions,
   KickSuggestions,
   MP4Suggestions,
@@ -88,7 +89,11 @@ export interface ControlPanelActions {
   ): Promise<any>;
   addSnakeGameInput(roomId: string, title?: string): Promise<any>;
   addHlsInput(roomId: string, url: string): Promise<any>;
-  addCameraInput(roomId: string, username?: string): Promise<AddInputResponse>;
+  addCameraInput(
+    roomId: string,
+    username?: string,
+    options?: CameraInputOptions,
+  ): Promise<AddInputResponse>;
 
   deleteRoom(roomId: string): Promise<any>;
 

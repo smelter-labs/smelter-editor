@@ -31,9 +31,10 @@ import {
 import {
   acquireUserMediaForSettings,
   detectDefaultOrientation,
-  detectStreamOrientation,
+  getStreamNativeResolution,
   orientationToInputOrientation,
   type GuestCameraSettings,
+  type StreamNativeResolution,
 } from '@/components/control-panel/whip-input/utils/camera-setup';
 import {
   loadGuestCameraSettings,
@@ -126,26 +127,44 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
       try {
         let existingStream: MediaStream | undefined;
         let effectiveSettings: GuestCameraSettings | undefined;
+        let nativeResolution: StreamNativeResolution | undefined;
 
         if (kind === 'camera') {
           effectiveSettings = cameraSettings ?? settings;
           existingStream = await acquireUserMediaForSettings(effectiveSettings);
-          const actualOrientation = detectStreamOrientation(existingStream);
+          nativeResolution = getStreamNativeResolution(
+            existingStream,
+            effectiveSettings,
+          );
           effectiveSettings = {
             ...effectiveSettings,
-            orientation: actualOrientation,
+            orientation: nativeResolution.orientation,
           };
         }
 
-        const response = await addCameraInput(roomId, userName);
+        const response = await addCameraInput(
+          roomId,
+          userName,
+          nativeResolution
+            ? {
+                orientation: orientationToInputOrientation(
+                  nativeResolution.orientation,
+                ),
+                nativeWidth: nativeResolution.nativeWidth,
+                nativeHeight: nativeResolution.nativeHeight,
+              }
+            : undefined,
+        );
         createdInputId = response.inputId;
 
-        if (kind === 'camera' && effectiveSettings) {
+        if (kind === 'camera' && effectiveSettings && nativeResolution) {
           try {
             await updateInput(roomId, response.inputId, {
               orientation: orientationToInputOrientation(
                 effectiveSettings.orientation,
               ),
+              nativeWidth: nativeResolution.nativeWidth,
+              nativeHeight: nativeResolution.nativeHeight,
             });
           } catch (err) {
             console.warn('Failed to set initial orientation hint:', err);

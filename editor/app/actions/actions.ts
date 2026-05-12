@@ -8,6 +8,7 @@ import { getServerSideServerUrl } from '@/lib/server-url.server';
 import type {
   AddInputResponse,
   AvailableShader,
+  CameraInputOptions,
   PendingWhipInputData,
   RoomState,
   RegisterInputOptions,
@@ -210,8 +211,9 @@ export async function deleteRoom(roomId: string) {
 export async function addCameraInput(
   roomId: string,
   username?: string,
+  options?: CameraInputOptions,
 ): Promise<AddInputResponse> {
-  return (await getClient()).addCameraInput(roomId, username);
+  return (await getClient()).addCameraInput(roomId, username, options);
 }
 
 export async function acknowledgeWhipInput(
