@@ -127,47 +127,47 @@ function OutputScene() {
               );
             }
 
-            const yoloBoxes = input?.yoloBoundingBoxes ?? [];
-            const yoloColor = input?.yoloBoxColor ?? '#ff0000';
-            const nativeW = input?.sourceWidth ?? 1920;
-            const nativeH = input?.sourceHeight ?? 1080;
             const layerItemKey = `${layer.id}:${item.inputId}`;
-        
+
             return (
-              <React.Fragment key={`${item.inputId}`}>
-                <Rescaler
-                  key={layerItemKey}
-                  id={`layer-${layer.id}-${item.inputId}`}
-                  transition={{
-                    durationMs: item.transitionDurationMs ?? 300,
-                    easingFunction: buildEasingFunction(item.transitionEasing),
-                  }}
-                  style={{
-                    top: item.y,
-                    left: item.x,
-                    width: item.width,
-                    height: item.height,
-                  }}>
-                  {inner}
-                </Rescaler>
-                {yoloBoxes.map((box, bi) => (
-                  <View
-                    key={`yolo-${item.inputId}-${bi}`}
-                    style={{
-                      top: item.y + (box.y / nativeH) * item.height,
-                      left: item.x + (box.x / nativeW) * item.width,
-                      width: Math.max(1, (box.width / nativeW) * item.width),
-                      height: Math.max(1, (box.height / nativeH) * item.height),
-                      borderWidth: 3,
-                      borderColor: yoloColor,
-                    }}
-                  />
-                ))}
-              </React.Fragment>
+              <Rescaler
+                key={layerItemKey}
+                id={`layer-${layer.id}-${item.inputId}`}
+                transition={{
+                  durationMs: item.transitionDurationMs ?? 300,
+                  easingFunction: buildEasingFunction(item.transitionEasing),
+                }}
+                style={{
+                  top: item.y,
+                  left: item.x,
+                  width: item.width,
+                  height: item.height,
+                }}>
+                {inner}
+              </Rescaler>
             );
           })}
         </View>
       ))}
+
+      {/* YOLO bounding boxes — rendered at scene level over the composed output.
+          Boxes are normalised to [0, 1] by YoloController.receiveBoxes, so we
+          simply scale by the scene resolution here. */}
+      {inputs.flatMap((input) =>
+        (input.yoloBoundingBoxes ?? []).map((box, bi) => (
+          <View
+            key={`yolo-${input.inputId}-${bi}`}
+            style={{
+              top: box.y * height,
+              left: box.x * width,
+              width: Math.max(1, box.width * width),
+              height: Math.max(1, box.height * height),
+              borderWidth: 3,
+              borderColor: input.yoloBoxColor ?? '#ff0000',
+            }}
+          />
+        )),
+      )}
     </View>
   );
 

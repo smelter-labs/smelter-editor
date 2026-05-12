@@ -515,8 +515,9 @@ export async function getAvailableShaders(): Promise<AvailableShader[]> {
 
 export async function getYoloModelInfo(
   serverUrl: string,
+  modelName?: string,
 ): Promise<{ classes: string[]; num_classes: number; model_file: string }> {
-  return (await getClient()).getYoloModelInfo(serverUrl);
+  return (await getClient()).getYoloModelInfo(serverUrl, modelName);
 }
 
 export async function getYoloModels(

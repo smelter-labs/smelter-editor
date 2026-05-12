@@ -1985,17 +1985,23 @@ routes.get<RoomIdParams>(
   },
 );
 
-routes.get<{ Querystring: { serverUrl: string } }>(
+routes.get<{ Querystring: { serverUrl: string; modelName?: string } }>(
   '/yolo-model-info',
   {
     schema: {
-      querystring: Type.Object({ serverUrl: Type.String() }),
+      querystring: Type.Object({
+        serverUrl: Type.String(),
+        modelName: Type.Optional(Type.String()),
+      }),
     },
   },
   async (req, res) => {
-    const { serverUrl } = req.query;
+    const { serverUrl, modelName } = req.query;
     try {
-      const response = await fetch(`${serverUrl}/model-info`, {
+      const params = new URLSearchParams();
+      if (modelName) params.set('model_name', modelName);
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      const response = await fetch(`${serverUrl}/model-info${qs}`, {
         signal: AbortSignal.timeout(5000),
       });
       if (!response.ok) {

@@ -198,6 +198,7 @@ export class RoomState {
     );
     this.yoloController = new YoloController(
       idPrefix,
+      () => this.output.hlsUrl,
       (inputId, boxes) => {
         const input = this.inputManager
           .getInputs()
@@ -1258,6 +1259,8 @@ export class RoomState {
       } catch (err: any) {
         console.error('Failed to remove output', err?.body ?? err);
       }
+
+      await SmelterInstance.unregisterHlsOutput(this.output.id);
 
       await this.recordingController.cleanup();
     });

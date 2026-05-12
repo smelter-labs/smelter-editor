@@ -94,7 +94,12 @@ def get_model(model_name: Optional[str] = None):
     if _default_model is not None:
         return _default_model
 
-    for candidate in DEFAULT_MODEL_CANDIDATES:
+    # Explicit candidates first, then anything in ./models/
+    candidates = list(DEFAULT_MODEL_CANDIDATES)
+    if MODELS_DIR.exists():
+        candidates += sorted(MODELS_DIR.glob("*.pt"))
+
+    for candidate in candidates:
         if candidate.exists():
             _default_model = _load_yolo(candidate)
             _default_model_file = str(candidate)
@@ -103,8 +108,8 @@ def get_model(model_name: Optional[str] = None):
     raise HTTPException(
         status_code=503,
         detail=(
-            f"No default model found. Tried: {[str(c) for c in DEFAULT_MODEL_CANDIDATES]}. "
-            "Place a .pt file in ai_plugins/models/ or ai_plugins/screen_ads/."
+            "No model found. Place a .pt file in ai_plugins/models/ "
+            "or ai_plugins/screen_ads/."
         ),
     )
 
@@ -259,12 +264,15 @@ def models_list():
 
 
 @app.get("/model-info", response_model=ModelInfoResponse)
-def model_info():
-    model = get_model()
+def model_info(model_name: Optional[str] = None):
+    model = get_model(model_name)
     class_names = list(model.names.values()) if hasattr(model, "names") else []
+    model_file = (
+        str(MODELS_DIR / model_name) if model_name else (_default_model_file or "unknown")
+    )
     return ModelInfoResponse(
         classes=class_names,
-        model_file=_model_file or "unknown",
+        model_file=model_file,
         num_classes=len(class_names),
     )
 

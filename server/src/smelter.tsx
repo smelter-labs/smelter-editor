@@ -82,6 +82,8 @@ import type { AudioStoreState } from './audio/audioStore';
 export type SmelterOutput = {
   id: string;
   url: string;
+  /** HLS playlist URL, readable by ffmpeg/OpenCV — used as YOLO stream source. */
+  hlsUrl: string;
   store: StoreApi<RoomStore>;
   resolution: Resolution;
   audioStore?: StoreApi<AudioStoreState>;
@@ -228,13 +230,69 @@ class SmelterManager {
       );
     }
 
+    // Register a secondary HLS output that ffmpeg/OpenCV can read (WHEP/WebRTC cannot be
+    // consumed by OpenCV). This is used as the YOLO detection stream source so that detected
+    // boxes are always in sync with the composed video the viewer actually sees.
+    const hlsDir = path.join(DATA_DIR, 'hls-streams', roomId);
+    await ensureDir(hlsDir);
+    const hlsPlaylistPath = path.join(hlsDir, 'index.m3u8');
+    const hlsOutputId = `${roomId}-hls`;
+    try {
+      await this.instance.registerOutput(
+        hlsOutputId,
+        <App store={store} audioStore={audioStore} />,
+        {
+          type: 'hls',
+          serverPath: hlsPlaylistPath,
+          maxPlaylistSize: 5,
+          video: {
+            encoder: {
+              type: 'ffmpeg_h264',
+              preset: 'ultrafast',
+            },
+            resolution: {
+              width: resolution.width,
+              height: resolution.height,
+            },
+          },
+          audio: {
+            encoder: {
+              type: 'aac',
+              channels: 'stereo',
+            } as any,
+          },
+        },
+      );
+    } catch (err) {
+      console.warn(
+        `[smelter] HLS output registration failed for room ${roomId} — YOLO stream will be unavailable`,
+        err,
+      );
+    }
+
+    const apiPort = Number(process.env.SMELTER_DEMO_API_PORT) || 3001;
+    const hlsUrl = `http://127.0.0.1:${apiPort}/hls-streams/${encodeURIComponent(roomId)}/index.m3u8`;
+
     return {
       id: roomId,
       url: `${config.whepBaseUrl}/${encodeURIComponent(roomId)}`,
+      hlsUrl,
       store,
       resolution,
       audioStore,
     };
+  }
+
+  public async unregisterHlsOutput(roomId: string): Promise<void> {
+    const hlsOutputId = `${roomId}-hls`;
+    try {
+      await this.instance.unregisterOutput(hlsOutputId);
+    } catch (err: any) {
+      if (err.body?.error_code === 'OUTPUT_STREAM_NOT_FOUND') {
+        return;
+      }
+      console.warn(`[smelter] Failed to unregister HLS output for room ${roomId}`, err);
+    }
   }
 
   /**

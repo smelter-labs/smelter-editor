@@ -19,30 +19,9 @@ export type YoloCallbackPayload = {
   frame_height: number;
 };
 
-const SUPPORTED_INPUT_TYPES: RoomInputState['type'][] = [
-  'twitch-channel',
-  'kick-channel',
-  'hls',
-  'local-mp4',
-];
-
 const SERVER_PORT = Number(process.env.SMELTER_DEMO_API_PORT) || 3001;
 const SERVER_BASE_URL =
   process.env.YOLO_CALLBACK_BASE_URL ?? `http://127.0.0.1:${SERVER_PORT}`;
-
-function getStreamUrl(input: RoomInputState): string | null {
-  switch (input.type) {
-    case 'twitch-channel':
-    case 'kick-channel':
-      return input.hlsUrl;
-    case 'hls':
-      return input.hlsUrl;
-    case 'local-mp4':
-      return input.mp4FilePath;
-    default:
-      return null;
-  }
-}
 
 export class YoloController {
   /** inputId → { task_id, serverUrl } */
@@ -50,6 +29,8 @@ export class YoloController {
 
   constructor(
     private readonly roomId: string,
+    /** Returns the HLS stream URL for this room — consumed by the Python YOLO server via ffmpeg/OpenCV. */
+    private readonly getYoloStreamUrl: () => string,
     private readonly onBoxesReceived: (
       inputId: string,
       boxes: YoloBoundingBox[],
@@ -74,13 +55,16 @@ export class YoloController {
 
   /**
    * Called by the route handler when the YOLO server POSTs detection results.
+   * Normalises box coordinates to [0, 1] relative to the reported frame size
+   * so the rendering layer can scale them to any output resolution.
    */
   receiveBoxes(inputId: string, payload: YoloCallbackPayload): void {
+    const { frame_width: fw, frame_height: fh } = payload;
     const boxes: YoloBoundingBox[] = payload.boxes.map((b) => ({
-      x: b.x,
-      y: b.y,
-      width: b.width,
-      height: b.height,
+      x: b.x / fw,
+      y: b.y / fh,
+      width: b.width / fw,
+      height: b.height / fh,
       className: b.class_name,
       confidence: b.confidence,
     }));
@@ -91,7 +75,7 @@ export class YoloController {
     const entries = [...this.activeTasks.entries()];
     this.activeTasks.clear();
     await Promise.allSettled(
-      entries.map(([inputId, { taskId, serverUrl }]) =>
+      entries.map(([, { taskId, serverUrl }]) =>
         this._stopTask(taskId, serverUrl).catch(() =>
           console.warn(`[yolo] stopAll: could not stop task ${taskId}`),
         ),
@@ -112,15 +96,13 @@ export class YoloController {
     input: RoomInputState,
     config: YoloSearchConfig,
   ): Promise<void> {
-    if (!SUPPORTED_INPUT_TYPES.includes(input.type)) {
-      console.warn(
-        `[yolo] Input type ${input.type} not supported for YOLO detection`,
-      );
+    // Use the room's HLS output (ffmpeg-readable) as the stream source so that
+    // detected boxes are always in sync with the composed video the viewer sees.
+    const streamUrl = this.getYoloStreamUrl();
+    if (!streamUrl) {
+      console.warn(`[yolo] No HLS stream URL available for room ${this.roomId}`);
       return;
     }
-
-    const streamUrl = getStreamUrl(input);
-    if (!streamUrl) return;
 
     // Stop any existing task for this input first
     await this.stopInput(input.inputId);
@@ -157,7 +139,7 @@ export class YoloController {
         serverUrl: config.serverUrl,
       });
       console.log(
-        `[yolo] Started task ${data.task_id} for input ${input.inputId} → ${streamUrl}`,
+        `[yolo] Started task ${data.task_id} for input ${input.inputId} → HLS ${streamUrl}`,
       );
     } catch (err) {
       console.error(`[yolo] Cannot reach YOLO server for ${input.inputId}:`, err);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import type { Input, UpdateInputOptions, YoloSearchConfig } from '@/lib/types';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
@@ -49,18 +49,33 @@ export default function YoloSearchPanel({
     [config, onUpdate],
   );
 
+  // Re-fetch classes whenever the persisted serverUrl or modelName changes.
+  // This is the single source of truth for the class list — no manual calls needed.
+  const actionsRef = useRef(actions);
+  actionsRef.current = actions;
+
+  useEffect(() => {
+    if (!config.serverUrl) return;
+    let cancelled = false;
+    setClasses([]);
+    actionsRef.current
+      .getYoloModelInfo(config.serverUrl, config.modelName)
+      .then((info) => { if (!cancelled) setClasses(info.classes ?? []); })
+      .catch(() => { if (!cancelled) setClasses([]); });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [config.serverUrl, config.modelName]);
+
+  // Fetch button: populates models list and persists the server URL
+  // (persisting serverUrl triggers the effect above to refresh classes).
   const handleFetch = useCallback(async () => {
     const url = serverUrl.trim();
     if (!url) return;
     setFetching(true);
     setFetchError(null);
     try {
-      const [modelsRes, infoRes] = await Promise.all([
-        actions.getYoloModels(url),
-        actions.getYoloModelInfo(url),
-      ]);
-      setModels(modelsRes.models ?? []);
-      setClasses(infoRes.classes ?? []);
+      const result = await actions.getYoloModels(url);
+      setModels(result.models ?? []);
       if (url !== config.serverUrl) {
         saveConfig({ serverUrl: url });
       }
@@ -70,6 +85,12 @@ export default function YoloSearchPanel({
       setFetching(false);
     }
   }, [serverUrl, config.serverUrl, actions, saveConfig]);
+
+  // Model change: just persist; the effect handles re-fetching classes.
+  const handleModelChange = useCallback((value: string) => {
+    const modelName = value === '__default__' ? undefined : value;
+    saveConfig({ modelName, targetClass: '' });
+  }, [saveConfig]);
 
   return (
     <div className='flex flex-col gap-3 px-1 py-2'>
@@ -117,9 +138,7 @@ export default function YoloSearchPanel({
         <label className='text-xs text-muted-foreground'>Model</label>
         <Select
           value={config.modelName || '__default__'}
-          onValueChange={(value) =>
-            saveConfig({ modelName: value === '__default__' ? undefined : value })
-          }
+          onValueChange={handleModelChange}
         >
           <SelectTrigger className='h-8 text-sm'>
             <SelectValue placeholder={models.length === 0 ? 'Fetch models first' : 'Default model'} />
