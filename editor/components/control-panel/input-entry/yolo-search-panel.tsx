@@ -30,13 +30,15 @@ export default function YoloSearchPanel({
   const config: YoloSearchConfig = input.yoloSearchConfig ?? {
     enabled: false,
     serverUrl: '',
+    modelName: undefined,
     targetClass: '',
     boxColor: '#ff0000',
   };
 
   const [serverUrl, setServerUrl] = useState(config.serverUrl);
+  const [models, setModels] = useState<string[]>([]);
   const [classes, setClasses] = useState<string[]>([]);
-  const [classesFetching, setClassesFetching] = useState(false);
+  const [fetching, setFetching] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
 
   const saveConfig = useCallback(
@@ -47,22 +49,25 @@ export default function YoloSearchPanel({
     [config, onUpdate],
   );
 
-  const handleFetchClasses = useCallback(async () => {
+  const handleFetch = useCallback(async () => {
     const url = serverUrl.trim();
     if (!url) return;
-    setClassesFetching(true);
+    setFetching(true);
     setFetchError(null);
     try {
-      const info = await actions.getYoloModelInfo(url);
-      setClasses(info.classes ?? []);
-      // persist the server URL if it changed
+      const [modelsRes, infoRes] = await Promise.all([
+        actions.getYoloModels(url),
+        actions.getYoloModelInfo(url),
+      ]);
+      setModels(modelsRes.models ?? []);
+      setClasses(infoRes.classes ?? []);
       if (url !== config.serverUrl) {
         saveConfig({ serverUrl: url });
       }
     } catch (err: any) {
       setFetchError(err?.message ?? 'Cannot reach YOLO server');
     } finally {
-      setClassesFetching(false);
+      setFetching(false);
     }
   }, [serverUrl, config.serverUrl, actions, saveConfig]);
 
@@ -95,11 +100,11 @@ export default function YoloSearchPanel({
           <Button
             variant='outline'
             size='sm'
-            onClick={handleFetchClasses}
-            disabled={classesFetching || !serverUrl.trim()}
+            onClick={handleFetch}
+            disabled={fetching || !serverUrl.trim()}
             className='shrink-0'
           >
-            {classesFetching ? 'Loading…' : 'Fetch'}
+            {fetching ? 'Loading…' : 'Fetch'}
           </Button>
         </div>
         {fetchError && (
@@ -107,18 +112,41 @@ export default function YoloSearchPanel({
         )}
       </div>
 
+      {/* Model selector */}
+      <div className='flex flex-col gap-1'>
+        <label className='text-xs text-muted-foreground'>Model</label>
+        <Select
+          value={config.modelName || '__default__'}
+          onValueChange={(value) =>
+            saveConfig({ modelName: value === '__default__' ? undefined : value })
+          }
+        >
+          <SelectTrigger className='h-8 text-sm'>
+            <SelectValue placeholder={models.length === 0 ? 'Fetch models first' : 'Default model'} />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value='__default__'>Default model</SelectItem>
+            {models.map((m) => (
+              <SelectItem key={m} value={m}>
+                {m}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
       {/* Class selector */}
       <div className='flex flex-col gap-1'>
         <label className='text-xs text-muted-foreground'>Class to detect</label>
         <Select
-          value={config.targetClass}
-          onValueChange={(value) => saveConfig({ targetClass: value })}
+          value={config.targetClass || '__all__'}
+          onValueChange={(value) => saveConfig({ targetClass: value === '__all__' ? '' : value })}
         >
           <SelectTrigger className='h-8 text-sm'>
             <SelectValue placeholder={classes.length === 0 ? 'Fetch classes first' : 'All classes'} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value=''>All classes</SelectItem>
+            <SelectItem value='__all__'>All classes</SelectItem>
             {classes.map((cls) => (
               <SelectItem key={cls} value={cls}>
                 {cls}

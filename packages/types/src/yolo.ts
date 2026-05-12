@@ -1,6 +1,7 @@
 export type YoloSearchConfig = {
   enabled: boolean;
   serverUrl: string;
+  modelName?: string;
   targetClass: string;
   boxColor: string;
 };

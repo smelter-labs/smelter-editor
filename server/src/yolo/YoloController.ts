@@ -138,6 +138,7 @@ export class YoloController {
           class_filter: config.targetClass || undefined,
           confidence: 0.25,
           task_id: taskId,
+          model_name: config.modelName || undefined,
         }),
         signal: AbortSignal.timeout(8000),
       });

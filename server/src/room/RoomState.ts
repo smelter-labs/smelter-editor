@@ -687,8 +687,11 @@ export class RoomState {
   public receiveYoloBoxes(
     inputId: string,
     payload: import('../yolo/YoloController').YoloCallbackPayload,
-  ): void {
+  ): boolean {
+    const input = this.inputManager.getInputs().find((i) => i.inputId === inputId);
+    if (!input?.yoloSearchConfig?.enabled) return false;
     this.yoloController.receiveBoxes(inputId, payload);
+    return true;
   }
 
   public addStateChangeListener(listener: () => void): () => void {

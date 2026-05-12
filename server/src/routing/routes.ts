@@ -1918,9 +1918,14 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof YoloBoxesSchema> }>(
     const { roomId, inputId } = req.params;
     try {
       const room = state.getRoom(roomId);
-      room.receiveYoloBoxes(inputId, req.body);
+      const accepted = room.receiveYoloBoxes(inputId, req.body);
+      if (!accepted) {
+        res.status(410).send({ status: 'gone' });
+        return;
+      }
     } catch {
-      // Room might not exist yet or input might be missing — ignore silently
+      res.status(410).send({ status: 'gone' });
+      return;
     }
     res.status(200).send({ status: 'ok' });
   },
@@ -2005,6 +2010,31 @@ routes.get<{ Querystring: { serverUrl: string } }>(
   },
 );
 
+routes.get<{ Querystring: { serverUrl: string } }>(
+  '/yolo-models',
+  {
+    schema: {
+      querystring: Type.Object({ serverUrl: Type.String() }),
+    },
+  },
+  async (req, res) => {
+    const { serverUrl } = req.query;
+    try {
+      const response = await fetch(`${serverUrl}/models`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!response.ok) {
+        res.status(502).send({ error: `YOLO server returned ${response.status}` });
+        return;
+      }
+      const data = await response.json();
+      res.status(200).send(data);
+    } catch (err: any) {
+      res.status(502).send({ error: `Cannot reach YOLO server: ${err.message}` });
+    }
+  },
+);
+
 const UpdateInputSchema = Type.Object({
   title: Type.Optional(Type.String()),
   volume: Type.Optional(Type.Number({ maximum: 1, minimum: 0 })),
@@ -2067,6 +2097,7 @@ const UpdateInputSchema = Type.Object({
     Type.Object({
       enabled: Type.Boolean(),
       serverUrl: Type.String(),
+      modelName: Type.Optional(Type.String()),
       targetClass: Type.String(),
       boxColor: Type.String(),
     }),

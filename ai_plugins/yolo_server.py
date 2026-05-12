@@ -1,18 +1,18 @@
 """
 YOLO Search HTTP Server
 =======================
-Combines screens.py (YOLOv8 inference) and script.py (rectangle pipeline).
-
 Start: uvicorn yolo_server:app --host 0.0.0.0 --port 8765
-       (run from the ai_plugins directory so best.pt is found)
+       (run from the ai_plugins directory)
+
+Model files (.pt) are loaded from ./models/.
+The built-in fallback is screen_ads/best.pt.
 
 Endpoints:
-  GET  /model-info           → { classes, model_file, num_classes }
+  GET  /models               → { models: ["foo.pt", ...] }  — list ./models/*.pt
+  GET  /model-info           → { classes, model_file, num_classes }  (default model)
   POST /start                → { stream_url, callback_url, class_filter?, confidence?,
-                                  task_id? }
+                                  task_id?, model_name? }
                                → { task_id }
-                               Starts a background loop: grab frames from stream_url,
-                               run YOLO, POST boxes to callback_url on every frame.
   POST /stop                 → { task_id }  →  { status: "stopped" }
   GET  /health
 """
@@ -36,7 +36,8 @@ from pydantic import BaseModel
 # ---------------------------------------------------------------------------
 
 SCRIPT_DIR = Path(__file__).parent
-MODEL_CANDIDATES = [
+MODELS_DIR = SCRIPT_DIR / "models"
+DEFAULT_MODEL_CANDIDATES = [
     SCRIPT_DIR / "screen_ads" / "best.pt",
     SCRIPT_DIR / "best.pt",
 ]
@@ -50,15 +51,20 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-_model = None
-_model_file: Optional[str] = None
+# Cache: model path string → loaded YOLO instance
+_model_cache: dict[str, "YOLO"] = {}
+_model_cache_lock = threading.Lock()
+
+# Default model (lazy-loaded)
+_default_model = None
+_default_model_file: Optional[str] = None
 
 
-def get_model():
-    global _model, _model_file
-    if _model is not None:
-        return _model
-
+def _load_yolo(path: Path) -> "YOLO":
+    key = str(path)
+    with _model_cache_lock:
+        if key in _model_cache:
+            return _model_cache[key]
     try:
         from ultralytics import YOLO
     except ImportError:
@@ -66,21 +72,48 @@ def get_model():
             status_code=503,
             detail="ultralytics not installed. Run: pip install ultralytics",
         )
+    print(f"[yolo_server] Loading model from {path}")
+    model = YOLO(key)
+    with _model_cache_lock:
+        _model_cache[key] = model
+    return model
 
-    for candidate in MODEL_CANDIDATES:
+
+def get_model(model_name: Optional[str] = None):
+    """Return a loaded YOLO model. If model_name is given, load from ./models/."""
+    if model_name:
+        candidate = MODELS_DIR / model_name
+        if not candidate.exists():
+            raise HTTPException(
+                status_code=404,
+                detail=f"Model '{model_name}' not found in {MODELS_DIR}",
+            )
+        return _load_yolo(candidate)
+
+    global _default_model, _default_model_file
+    if _default_model is not None:
+        return _default_model
+
+    for candidate in DEFAULT_MODEL_CANDIDATES:
         if candidate.exists():
-            print(f"[yolo_server] Loading model from {candidate}")
-            _model = YOLO(str(candidate))
-            _model_file = str(candidate)
-            return _model
+            _default_model = _load_yolo(candidate)
+            _default_model_file = str(candidate)
+            return _default_model
 
     raise HTTPException(
         status_code=503,
         detail=(
-            f"Model file not found. Tried: {[str(c) for c in MODEL_CANDIDATES]}. "
-            "Place best.pt in ai_plugins/screen_ads/ or ai_plugins/."
+            f"No default model found. Tried: {[str(c) for c in DEFAULT_MODEL_CANDIDATES]}. "
+            "Place a .pt file in ai_plugins/models/ or ai_plugins/screen_ads/."
         ),
     )
+
+
+def list_models() -> list[str]:
+    """Return .pt filenames available in ./models/."""
+    if not MODELS_DIR.exists():
+        return []
+    return sorted(p.name for p in MODELS_DIR.glob("*.pt"))
 
 
 # ---------------------------------------------------------------------------
@@ -95,12 +128,14 @@ class _DetectionTask:
         callback_url: str,
         class_filter: Optional[str],
         confidence: float,
+        model_name: Optional[str],
     ):
         self.task_id = task_id
         self.stream_url = stream_url
         self.callback_url = callback_url
         self.class_filter = class_filter
         self.confidence = confidence
+        self.model_name = model_name
         self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
 
@@ -111,7 +146,7 @@ class _DetectionTask:
         self._stop_event.set()
 
     def _run(self):
-        model = _model  # already loaded before task is created
+        model = get_model(self.model_name)
 
         # Resolve source
         source = self.stream_url
@@ -171,7 +206,10 @@ class _DetectionTask:
                     }
 
                     try:
-                        http.post(self.callback_url, json=payload)
+                        resp = http.post(self.callback_url, json=payload)
+                        if resp.status_code not in (200, 204):
+                            print(f"[yolo_server][{self.task_id}] Callback returned {resp.status_code}, stopping")
+                            break
                     except Exception as e:
                         print(f"[yolo_server][{self.task_id}] Callback error: {e}")
         finally:
@@ -193,7 +231,8 @@ class StartRequest(BaseModel):
     callback_url: str
     class_filter: Optional[str] = None
     confidence: float = 0.25
-    task_id: Optional[str] = None  # caller may supply a stable id
+    task_id: Optional[str] = None
+    model_name: Optional[str] = None
 
 
 class StartResponse(BaseModel):
@@ -214,6 +253,11 @@ class ModelInfoResponse(BaseModel):
 # Routes
 # ---------------------------------------------------------------------------
 
+@app.get("/models")
+def models_list():
+    return {"models": list_models()}
+
+
 @app.get("/model-info", response_model=ModelInfoResponse)
 def model_info():
     model = get_model()
@@ -227,13 +271,12 @@ def model_info():
 
 @app.post("/start", response_model=StartResponse)
 def start_detection(req: StartRequest):
-    # Ensure model is loaded before spawning thread
-    model = get_model()  # noqa: F841
+    # Ensure model is loaded (and cached) before spawning the thread
+    get_model(req.model_name)
 
     task_id = req.task_id or str(uuid.uuid4())
 
     with _tasks_lock:
-        # Stop existing task with same id if any
         existing = _tasks.get(task_id)
         if existing:
             existing.stop()
@@ -244,11 +287,12 @@ def start_detection(req: StartRequest):
             callback_url=req.callback_url,
             class_filter=req.class_filter,
             confidence=req.confidence,
+            model_name=req.model_name,
         )
         _tasks[task_id] = task
 
     task.start()
-    print(f"[yolo_server] Started task {task_id} for {req.stream_url}")
+    print(f"[yolo_server] Started task {task_id} for {req.stream_url} (model={req.model_name or 'default'})")
     return StartResponse(task_id=task_id)
 
 

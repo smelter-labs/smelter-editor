@@ -516,7 +516,13 @@ export async function getAvailableShaders(): Promise<AvailableShader[]> {
 export async function getYoloModelInfo(
   serverUrl: string,
 ): Promise<{ classes: string[]; num_classes: number; model_file: string }> {
-  return client.getYoloModelInfo(serverUrl);
+  return (await getClient()).getYoloModelInfo(serverUrl);
+}
+
+export async function getYoloModels(
+  serverUrl: string,
+): Promise<{ models: string[] }> {
+  return (await getClient()).getYoloModels(serverUrl);
 }
 
 // ── Timeline playback ────────────────────────────────────────

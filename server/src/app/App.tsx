@@ -152,7 +152,7 @@ function OutputScene() {
                 </Rescaler>
                 {yoloBoxes.map((box, bi) => (
                   <View
-                    key={`yolo-${item.inputId}-${itemIndex}-${bi}`}
+                    key={`yolo-${item.inputId}-${bi}`}
                     style={{
                       top: item.y + (box.y / nativeH) * item.height,
                       left: item.x + (box.x / nativeW) * item.width,

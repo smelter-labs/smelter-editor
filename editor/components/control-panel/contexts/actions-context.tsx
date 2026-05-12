@@ -92,6 +92,7 @@ export interface ControlPanelActions {
 
   getAvailableShaders(): Promise<AvailableShader[]>;
   getYoloModelInfo(serverUrl: string): Promise<{ classes: string[]; num_classes: number; model_file: string }>;
+  getYoloModels(serverUrl: string): Promise<{ models: string[] }>;
 
   getTwitchSuggestions(): Promise<InputSuggestions>;
   getKickSuggestions(): Promise<KickSuggestions>;
