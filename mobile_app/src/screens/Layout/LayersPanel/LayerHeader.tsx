@@ -110,7 +110,7 @@ export function LayerHeader({
           <MaterialDesignIcons
             name="chevron-up"
             color={canMoveUp ? C.text : C.textDim}
-            size={14}
+            size={20}
           />
         </Pressable>
         <Pressable
@@ -122,7 +122,7 @@ export function LayerHeader({
           <MaterialDesignIcons
             name="chevron-down"
             color={canMoveDown ? C.text : C.textDim}
-            size={14}
+            size={20}
           />
         </Pressable>
       </View>
@@ -131,7 +131,7 @@ export function LayerHeader({
         <MaterialDesignIcons
           name={isCollapsed ? "chevron-right" : "chevron-down"}
           color={C.text}
-          size={16}
+          size={20}
         />
       </View>
 
@@ -140,7 +140,7 @@ export function LayerHeader({
           <MaterialDesignIcons
             name="trash-can-outline"
             color={C.textDim}
-            size={16}
+            size={20}
           />
         </Pressable>
       )}
@@ -177,11 +177,13 @@ const styles = StyleSheet.create({
     width: 20,
     alignItems: "center",
     justifyContent: "center",
+    marginHorizontal: 8,
   },
   collapseBtn: {
-    width: 16,
+    width: 20,
     alignItems: "center",
     justifyContent: "center",
+    marginHorizontal: 8,
   },
   collapseIcon: { color: C.textDim, fontSize: 11 },
   editInput: {
@@ -198,5 +200,6 @@ const styles = StyleSheet.create({
     width: 22,
     alignItems: "center",
     justifyContent: "center",
+    marginLeft: 8,
   },
 });

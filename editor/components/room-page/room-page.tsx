@@ -177,10 +177,10 @@ export default function RoomPage() {
     );
   }
 
+  const pageClassName = `${isGuest ? 'min-h-dvh' : 'h-screen'} flex flex-col p-2 py-4 md:p-4 bg-[#0a0a0a]`;
+
   return (
-    <motion.div
-      variants={staggerContainer}
-      className='h-screen flex flex-col p-2 py-4 md:p-4 bg-[#0a0a0a]'>
+    <motion.div variants={staggerContainer} className={pageClassName}>
       <div className='flex items-center gap-6 mb-4'>
         <div
           style={{

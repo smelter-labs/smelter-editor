@@ -3,17 +3,20 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { toast } from 'sonner';
-import { Camera, Monitor, PhoneOff, RotateCw } from 'lucide-react';
+import { Camera, Monitor, PhoneOff, RotateCw, Settings } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import LoadingSpinner from '@/components/ui/spinner';
 import { staggerContainer } from '@/utils/animations';
-import { addCameraInput, removeInput } from '@/app/actions/actions';
+import {
+  addCameraInput,
+  removeInput,
+  updateInput,
+} from '@/app/actions/actions';
 import {
   startPublish,
   rotateBy90,
   cleanupRotation,
-  type RotationAngle,
 } from '@/components/control-panel/whip-input/utils/whip-publisher';
 import { startScreensharePublish } from '@/components/control-panel/whip-input/utils/screenshare-publisher';
 import { stopCameraAndConnection } from '@/components/control-panel/whip-input/utils/preview';
@@ -25,33 +28,28 @@ import {
   saveUserName,
   saveWhipSession,
 } from '@/components/control-panel/whip-input/utils/whip-storage';
-import { useIsMobileDevice } from '@/hooks/use-mobile';
+import {
+  acquireUserMediaForSettings,
+  alignNativeResolutionToCameraOrientation,
+  detectDefaultOrientation,
+  getStreamNativeResolution,
+  orientationToInputOrientation,
+  type GuestCameraSettings,
+  type StreamNativeResolution,
+} from '@/components/control-panel/whip-input/utils/camera-setup';
+import {
+  loadGuestCameraSettings,
+  saveGuestCameraSettings,
+} from '@/components/control-panel/whip-input/utils/guest-settings-storage';
+import GuestSetupForm from '@/components/pages/guest-setup-form';
 
 type ConnectKind = 'camera' | 'screenshare';
 type Mode =
-  | { kind: 'initializing' }
+  | { kind: 'setup' }
   | { kind: 'connecting'; source: ConnectKind }
   | { kind: 'active'; source: ConnectKind; inputId: string }
   | { kind: 'idle' }
   | { kind: 'error'; message: string };
-
-const DEFAULT_MODE_KEY = 'smelter-guest-default-mode';
-
-function loadDefaultMode(): ConnectKind {
-  if (typeof window === 'undefined') return 'camera';
-  try {
-    const stored = window.localStorage.getItem(DEFAULT_MODE_KEY);
-    if (stored === 'screenshare' || stored === 'camera') return stored;
-  } catch {}
-  return 'camera';
-}
-
-function saveDefaultMode(kind: ConnectKind) {
-  if (typeof window === 'undefined') return;
-  try {
-    window.localStorage.setItem(DEFAULT_MODE_KEY, kind);
-  } catch {}
-}
 
 function buildDefaultUserName(roomId: string, kind: ConnectKind): string {
   const saved = loadUserName(roomId);
@@ -72,6 +70,17 @@ function buildDefaultUserName(roomId: string, kind: ConnectKind): string {
   return `User ${Math.floor(1000 + Math.random() * 9000)}`;
 }
 
+function makeInitialSettings(): GuestCameraSettings {
+  const saved = loadGuestCameraSettings();
+  if (saved) return saved;
+  return {
+    facingMode: 'user',
+    resolution: '720p',
+    orientation: detectDefaultOrientation(),
+    mirror: true,
+  };
+}
+
 interface GuestPanelProps {
   roomId: string;
 }
@@ -80,21 +89,24 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
   const pcRef = useRef<RTCPeerConnection | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const isMobileDevice = useIsMobileDevice();
 
-  const [mode, setMode] = useState<Mode>({ kind: 'initializing' });
-  const [rotation, setRotation] = useState<RotationAngle>(0);
-  const autoStartedRef = useRef(false);
+  const [mode, setMode] = useState<Mode>({ kind: 'setup' });
+  const [streamOrientation, setStreamOrientation] = useState<
+    GuestCameraSettings['orientation'] | null
+  >(null);
+  const [settings, setSettings] = useState<GuestCameraSettings>(() =>
+    makeInitialSettings(),
+  );
   const activeInputIdRef = useRef<string | null>(null);
 
   const teardownConnection = useCallback(() => {
     stopCameraAndConnection(pcRef, streamRef);
     cleanupRotation();
-    setRotation(0);
+    setStreamOrientation(null);
   }, []);
 
   const connect = useCallback(
-    async (kind: ConnectKind) => {
+    async (kind: ConnectKind, cameraSettings?: GuestCameraSettings) => {
       teardownConnection();
 
       const previousInputId = activeInputIdRef.current;
@@ -114,8 +126,55 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
       let createdInputId: string | null = null;
 
       try {
-        const response = await addCameraInput(roomId, userName);
+        let existingStream: MediaStream | undefined;
+        let effectiveSettings: GuestCameraSettings | undefined;
+        let nativeResolution: StreamNativeResolution | undefined;
+
+        if (kind === 'camera') {
+          effectiveSettings = cameraSettings ?? settings;
+          existingStream = await acquireUserMediaForSettings(effectiveSettings);
+          const rawNative = getStreamNativeResolution(
+            existingStream,
+            effectiveSettings,
+          );
+          nativeResolution = alignNativeResolutionToCameraOrientation(
+            rawNative,
+            effectiveSettings.orientation,
+          );
+          effectiveSettings = {
+            ...effectiveSettings,
+            orientation: nativeResolution.orientation,
+          };
+        }
+
+        const response = await addCameraInput(
+          roomId,
+          userName,
+          nativeResolution
+            ? {
+                orientation: orientationToInputOrientation(
+                  nativeResolution.orientation,
+                ),
+                nativeWidth: nativeResolution.nativeWidth,
+                nativeHeight: nativeResolution.nativeHeight,
+              }
+            : undefined,
+        );
         createdInputId = response.inputId;
+
+        if (kind === 'camera' && effectiveSettings && nativeResolution) {
+          try {
+            await updateInput(roomId, response.inputId, {
+              orientation: orientationToInputOrientation(
+                effectiveSettings.orientation,
+              ),
+              nativeWidth: nativeResolution.nativeWidth,
+              nativeHeight: nativeResolution.nativeHeight,
+            });
+          } catch (err) {
+            console.warn('Failed to set initial orientation hint:', err);
+          }
+        }
 
         const onDisconnected = () => {
           if (activeInputIdRef.current !== createdInputId) return;
@@ -137,8 +196,9 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
                 pcRef,
                 streamRef,
                 onDisconnected,
-                isMobileDevice ? 'user' : undefined,
+                undefined,
                 false,
+                existingStream,
               )
             : await startScreensharePublish(
                 response.inputId,
@@ -158,10 +218,15 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
         });
         saveLastWhipInputId(roomId, response.inputId);
         saveUserName(roomId, userName);
-        saveDefaultMode(kind);
+        if (kind === 'camera' && effectiveSettings) {
+          saveGuestCameraSettings(effectiveSettings);
+          setSettings(effectiveSettings);
+          setStreamOrientation(effectiveSettings.orientation);
+        } else {
+          setStreamOrientation('landscape');
+        }
 
         activeInputIdRef.current = response.inputId;
-        setRotation(0);
         setMode({ kind: 'active', source: kind, inputId: response.inputId });
       } catch (err: any) {
         console.error(`Guest ${kind} publish failed:`, err);
@@ -185,7 +250,7 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
         setMode({ kind: 'error', message });
       }
     },
-    [isMobileDevice, roomId, teardownConnection],
+    [roomId, settings, teardownConnection],
   );
 
   const disconnect = useCallback(async () => {
@@ -205,13 +270,25 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
 
   const handleRotate = useCallback(async () => {
     try {
-      const angle = await rotateBy90(pcRef, streamRef);
-      setRotation(angle);
+      await rotateBy90(pcRef, streamRef);
     } catch (err) {
       console.error('Guest rotate failed:', err);
       toast.error('Failed to rotate the stream.');
     }
   }, []);
+
+  const openSettings = useCallback(async () => {
+    const currentInputId = activeInputIdRef.current;
+    activeInputIdRef.current = null;
+    teardownConnection();
+    if (currentInputId) {
+      clearWhipSessionFor(roomId, currentInputId);
+      try {
+        await removeInput(roomId, currentInputId);
+      } catch {}
+    }
+    setMode({ kind: 'setup' });
+  }, [roomId, teardownConnection]);
 
   useEffect(() => {
     const video = videoRef.current;
@@ -223,23 +300,6 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
       video.srcObject = null;
     }
   }, [mode]);
-
-  useEffect(() => {
-    if (autoStartedRef.current) return;
-    autoStartedRef.current = true;
-    if (
-      typeof navigator === 'undefined' ||
-      !navigator.mediaDevices?.getUserMedia
-    ) {
-      setMode({
-        kind: 'error',
-        message:
-          'Your browser does not support camera capture. Please use a modern browser over HTTPS.',
-      });
-      return;
-    }
-    void connect(loadDefaultMode());
-  }, [connect]);
 
   useEffect(() => {
     return () => {
@@ -255,21 +315,32 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const isVertical = rotation % 180 !== 0;
   const activeSource = mode.kind === 'active' ? mode.source : null;
+  const showMirror = activeSource === 'camera' && settings.mirror;
+  const previewPortrait =
+    activeSource === 'camera' &&
+    (streamOrientation ?? settings.orientation) === 'portrait';
 
   return (
     <motion.div
       variants={staggerContainer}
-      className='flex-1 flex flex-col min-h-0 h-full items-center justify-start overflow-hidden'>
+      className='flex-1 flex flex-col min-h-0 w-full items-center justify-start overflow-y-auto'>
       <div className='w-full max-w-xl flex flex-col gap-4 p-4'>
+        {mode.kind === 'setup' && (
+          <GuestSetupForm
+            initialSettings={settings}
+            onStart={(s) => void connect('camera', s)}
+            onUseScreenshare={() => void connect('screenshare')}
+          />
+        )}
+
         {mode.kind === 'active' && (
           <div
             className='rounded-md overflow-hidden border border-neutral-800 bg-black mx-auto'
             style={{
-              aspectRatio: isVertical ? '9/16' : '16/9',
-              maxHeight: isVertical ? '70vh' : undefined,
-              width: isVertical ? 'auto' : '100%',
+              aspectRatio: previewPortrait ? '9/16' : '16/9',
+              maxHeight: previewPortrait ? '50vh' : undefined,
+              width: previewPortrait ? 'auto' : '100%',
             }}>
             <video
               ref={videoRef}
@@ -277,15 +348,18 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
               playsInline
               autoPlay
               className='w-full h-full object-contain'
+              style={{
+                transform: showMirror ? 'scaleX(-1)' : undefined,
+              }}
             />
           </div>
         )}
 
-        {(mode.kind === 'initializing' || mode.kind === 'connecting') && (
+        {mode.kind === 'connecting' && (
           <div className='flex flex-col items-center justify-center gap-3 py-16'>
             <LoadingSpinner size='lg' variant='spinner' />
             <p className='text-sm text-neutral-400'>
-              {mode.kind === 'connecting' && mode.source === 'screenshare'
+              {mode.source === 'screenshare'
                 ? 'Waiting for screen selection...'
                 : 'Requesting camera access...'}
             </p>
@@ -299,7 +373,7 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
               <Button
                 size='sm'
                 variant='default'
-                onClick={() => void connect('camera')}
+                onClick={() => setMode({ kind: 'setup' })}
                 className='cursor-pointer'>
                 <Camera className='w-4 h-4 mr-1' />
                 Try Camera
@@ -325,7 +399,7 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
               <Button
                 size='sm'
                 variant='default'
-                onClick={() => void connect('camera')}
+                onClick={() => setMode({ kind: 'setup' })}
                 className='cursor-pointer'>
                 <Camera className='w-4 h-4 mr-1' />
                 Connect Camera
@@ -345,22 +419,32 @@ export default function GuestPanel({ roomId }: GuestPanelProps) {
         {mode.kind === 'active' && (
           <div className='flex flex-wrap justify-center gap-2'>
             {activeSource === 'camera' && (
-              <Button
-                size='sm'
-                variant='ghost'
-                onClick={handleRotate}
-                className='cursor-pointer text-neutral-300 hover:text-white border border-neutral-700'>
-                <RotateCw className='w-4 h-4 mr-1' />
-                Rotate 90°
-              </Button>
+              <>
+                <Button
+                  size='sm'
+                  variant='ghost'
+                  onClick={handleRotate}
+                  className='cursor-pointer text-neutral-300 hover:text-white border border-neutral-700'>
+                  <RotateCw className='w-4 h-4 mr-1' />
+                  Rotate 90°
+                </Button>
+                <Button
+                  size='sm'
+                  variant='ghost'
+                  onClick={() => void openSettings()}
+                  className='cursor-pointer text-neutral-300 hover:text-white border border-neutral-700'>
+                  <Settings className='w-4 h-4 mr-1' />
+                  Camera settings
+                </Button>
+              </>
             )}
             <Button
               size='sm'
               variant='outline'
               onClick={() =>
-                void connect(
-                  activeSource === 'camera' ? 'screenshare' : 'camera',
-                )
+                activeSource === 'camera'
+                  ? void connect('screenshare')
+                  : setMode({ kind: 'setup' })
               }
               className='cursor-pointer'>
               {activeSource === 'camera' ? (
