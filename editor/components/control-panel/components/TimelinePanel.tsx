@@ -2954,14 +2954,6 @@ export const TimelinePanel = memo(function TimelinePanel({
           <Crosshair className='w-3.5 h-3.5' />
         </Button>
 
-        {timelineInlineStatus && (
-          <div
-            className={`ml-2 flex items-center gap-1 text-[11px] ${timelineInlineStatus.toneClass}`}>
-            {timelineInlineStatus.icon}
-            <span>{timelineInlineStatus.text}</span>
-          </div>
-        )}
-
         <div className='w-px h-4 bg-secondary' />
 
         <Button
