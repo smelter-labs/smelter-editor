@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
     marginHorizontal: 8,
   },
   collapseBtn: {
-    width: 16,
+    width: 20,
     alignItems: "center",
     justifyContent: "center",
     marginHorizontal: 8,
