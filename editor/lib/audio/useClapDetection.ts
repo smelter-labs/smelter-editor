@@ -56,9 +56,11 @@ export function useClapDetection({
           stream.getTracks().forEach((t) => t.stop());
           return;
         }
-        audioCtx = new (window.AudioContext ||
+        audioCtx = new (
+          window.AudioContext ||
           (window as unknown as { webkitAudioContext: typeof AudioContext })
-            .webkitAudioContext)({ sampleRate: SAMPLE_RATE });
+            .webkitAudioContext
+        )({ sampleRate: SAMPLE_RATE });
         const source = audioCtx.createMediaStreamSource(stream);
         analyser = audioCtx.createAnalyser();
         analyser.fftSize = FFT_SIZE;
@@ -129,7 +131,8 @@ export function useClapDetection({
       if (rafId) cancelAnimationFrame(rafId);
       if (analyser) analyser.disconnect();
       if (stream) stream.getTracks().forEach((t) => t.stop());
-      if (audioCtx && audioCtx.state !== 'closed') audioCtx.close().catch(() => {});
+      if (audioCtx && audioCtx.state !== 'closed')
+        audioCtx.close().catch(() => {});
     };
   }, [enabled, peakThresholdDb, transientRiseDb, cooldownMs]);
 }

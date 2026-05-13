@@ -118,6 +118,12 @@ import {
   type SelectedTimelineClip,
 } from './components/BlockClipPropertiesPanel';
 import {
+  isInputLevelClip,
+  INPUT_LEVEL_TRACK_ID,
+  INPUT_LEVEL_CLIP_ID,
+} from './components/block-clip/block-clip-utils';
+import { createBlockSettingsFromInput } from './hooks/use-timeline-state';
+import {
   PendingConnectionsPanel,
   loadAutoModalSetting,
 } from './components/PendingConnectionsPanel';
@@ -1200,6 +1206,7 @@ function ControlPanelInner({
           onToggleFx={handleToggleFx}
           isSwapping={isSwapping}
           selectedInputId={selectedInputId}
+          onSelectInput={setSelectedInputId}
           isGuest={isGuest}
           guestInputId={activeCameraInputId || activeScreenshareInputId}
           onLayersChange={handleLayersChange}
@@ -1254,17 +1261,43 @@ function ControlPanelInner({
       </ErrorBoundary>
     );
 
+    const effectiveSelectedClips = (() => {
+      if (sortMode === 'layers' && selectedInputId) {
+        const input = inputs.find((i) => i.inputId === selectedInputId);
+        if (!input) return [];
+        const blockSettings = createBlockSettingsFromInput(input);
+        return [
+          {
+            trackId: INPUT_LEVEL_TRACK_ID,
+            clipId: INPUT_LEVEL_CLIP_ID,
+            inputId: selectedInputId,
+            startMs: 0,
+            endMs: 0,
+            blockSettings,
+            keyframes: [{ id: 'base', timeMs: 0, blockSettings }],
+          },
+        ] satisfies SelectedTimelineClip[];
+      }
+      return selectedTimelineClips;
+    })();
+
+    const handleEffectiveClipsChange = (clips: SelectedTimelineClip[]) => {
+      if (clips.length > 0 && isInputLevelClip(clips[0])) return;
+      setSelectedTimelineClips(clips);
+    };
+
     const blockPropertiesSection = (
       <div className='h-full overflow-y-auto p-3'>
         <BlockClipPropertiesPanel
           roomId={roomId}
-          selectedTimelineClips={selectedTimelineClips}
-          onSelectedTimelineClipsChange={setSelectedTimelineClips}
+          selectedTimelineClips={effectiveSelectedClips}
+          onSelectedTimelineClipsChange={handleEffectiveClipsChange}
           playheadMs={timelinePlayheadMs}
           inputs={inputs}
           availableShaders={availableShaders}
           handleRefreshState={handleRefreshState}
           resolution={roomState.resolution}
+          sortMode={sortMode}
         />
       </div>
     );
@@ -1389,6 +1422,7 @@ function ControlPanelInner({
       onToggleFx={handleToggleFx}
       isSwapping={isSwapping}
       selectedInputId={selectedInputId}
+      onSelectInput={setSelectedInputId}
       isGuest={isGuest}
       guestInputId={activeCameraInputId || activeScreenshareInputId}
       onLayersChange={handleLayersChange}

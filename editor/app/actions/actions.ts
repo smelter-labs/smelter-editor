@@ -471,7 +471,13 @@ export async function carouselAction(
   index?: number,
   sourceId?: string,
 ) {
-  return (await getClient()).carouselAction(roomId, layerId, action, index, sourceId);
+  return (await getClient()).carouselAction(
+    roomId,
+    layerId,
+    action,
+    index,
+    sourceId,
+  );
 }
 
 export async function toggleMotionDetection(

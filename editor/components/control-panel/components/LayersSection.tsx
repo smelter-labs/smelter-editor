@@ -62,6 +62,7 @@ type LayersSectionProps = {
   onToggleFx: (inputId: string) => void;
   isSwapping?: boolean;
   selectedInputId: string | null;
+  onSelectInput?: (inputId: string | null) => void;
   isGuest?: boolean;
   guestInputId?: string | null;
   onLayersChange: (layers: Layer[]) => Promise<void>;
@@ -283,6 +284,7 @@ export function LayersSection({
   onToggleFx,
   isSwapping,
   selectedInputId,
+  onSelectInput,
   isGuest,
   guestInputId,
   onLayersChange,
@@ -746,42 +748,62 @@ export function LayersSection({
                               id={layerInput.inputId}
                               disabled={disableDrag}>
                               <ErrorBoundary>
-                                <InputEntry
-                                  input={input}
-                                  refreshState={refreshState}
-                                  roomId={roomId}
-                                  availableShaders={availableShaders}
-                                  canRemove={
-                                    isGuest
-                                      ? input.inputId === guestInputId
-                                      : true
+                                {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+                                <div
+                                  onClick={() =>
+                                    onSelectInput?.(
+                                      selectedInputId === input.inputId
+                                        ? null
+                                        : input.inputId,
+                                    )
                                   }
-                                  pcRef={cameraPcRef}
-                                  streamRef={cameraStreamRef}
-                                  isFxOpen={openFxInputId === input.inputId}
-                                  onToggleFx={() => onToggleFx(input.inputId)}
-                                  onWhipDisconnectedOrRemoved={
-                                    onWhipDisconnectedOrRemoved
-                                  }
-                                  showGrip={isGuest ? false : true}
-                                  isSelected={selectedInputId === input.inputId}
-                                  readOnly={
-                                    isGuest && input.inputId !== guestInputId
-                                  }
-                                  activeBlockColor={
-                                    activeClipColors?.[input.inputId]
-                                  }
-                                  isOnTimeline={
-                                    allTimelineInputIds?.has(input.inputId) ??
-                                    true
-                                  }
-                                  dragDisabled={disableDrag}
-                                />
+                                  className='cursor-pointer'>
+                                  <InputEntry
+                                    input={input}
+                                    refreshState={refreshState}
+                                    roomId={roomId}
+                                    availableShaders={availableShaders}
+                                    canRemove={
+                                      isGuest
+                                        ? input.inputId === guestInputId
+                                        : true
+                                    }
+                                    pcRef={cameraPcRef}
+                                    streamRef={cameraStreamRef}
+                                    isFxOpen={openFxInputId === input.inputId}
+                                    onToggleFx={() => onToggleFx(input.inputId)}
+                                    onWhipDisconnectedOrRemoved={
+                                      onWhipDisconnectedOrRemoved
+                                    }
+                                    showGrip={isGuest ? false : true}
+                                    isSelected={
+                                      selectedInputId === input.inputId
+                                    }
+                                    readOnly={
+                                      isGuest && input.inputId !== guestInputId
+                                    }
+                                    activeBlockColor={
+                                      activeClipColors?.[input.inputId]
+                                    }
+                                    isOnTimeline={
+                                      allTimelineInputIds?.has(input.inputId) ??
+                                      true
+                                    }
+                                    dragDisabled={disableDrag}
+                                  />
+                                </div>
                               </ErrorBoundary>
                               {attachedChildren.map((child) => (
                                 <div
                                   key={child.inputId}
-                                  className='ml-6 mt-1 border-l-2 border-blue-500/30 pl-2'>
+                                  className='ml-6 mt-1 border-l-2 border-blue-500/30 pl-2 cursor-pointer'
+                                  onClick={() =>
+                                    onSelectInput?.(
+                                      selectedInputId === child.inputId
+                                        ? null
+                                        : child.inputId,
+                                    )
+                                  }>
                                   <ErrorBoundary>
                                     <InputEntry
                                       input={child}

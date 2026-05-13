@@ -111,7 +111,13 @@ export const defaultActions: ControlPanelActions = {
   showInput: (roomId, inputId) =>
     showInputAction(roomId, inputId, SESSION_SOURCE_ID),
   carouselAction: (roomId, layerId, action, index, sourceId) =>
-    carouselActionFn(roomId, layerId, action, index, sourceId ?? SESSION_SOURCE_ID),
+    carouselActionFn(
+      roomId,
+      layerId,
+      action,
+      index,
+      sourceId ?? SESSION_SOURCE_ID,
+    ),
   addTwitchInput,
   addKickInput,
   addMP4Input,

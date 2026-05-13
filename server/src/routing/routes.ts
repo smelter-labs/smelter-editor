@@ -955,10 +955,13 @@ routes.get<RoomIdParams>(
     const { roomId } = req.params;
     const room = state.getRoom(roomId);
     const snapshot = room.getState();
+    const frozenMp4InputIds = room.getFrozenFrameInputIds();
 
     res.status(200).send({
       roomName: room.roomName,
-      inputs: snapshot.inputs.map(toPublicInputState),
+      inputs: snapshot.inputs.map((i) =>
+        toPublicInputState(i, { frozenMp4InputIds }),
+      ),
       layers: snapshot.layers,
       isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
       whepUrl: room.getWhepUrl(),
@@ -1088,10 +1091,13 @@ routes.get('/rooms', async (_req, res) => {
         return undefined;
       }
       const snapshot = room.getState();
+      const frozenMp4InputIds = room.getFrozenFrameInputIds();
       return {
         roomId: room.idPrefix,
         roomName: room.roomName,
-        inputs: snapshot.inputs.map(toPublicInputState),
+        inputs: snapshot.inputs.map((i) =>
+          toPublicInputState(i, { frozenMp4InputIds }),
+        ),
         layers: snapshot.layers,
         isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
         whepUrl: room.getWhepUrl(),
@@ -1564,6 +1570,7 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
       const sourceId =
         (req.headers['x-source-id'] as string | undefined) ?? null;
       const snapshot = room.getState();
+      const frozenMp4InputIds = room.getFrozenFrameInputIds();
       console.log('[Layout] Broadcasting room_updated after layout change:', {
         layerCount: snapshot.layers.length,
         firstLayerInputs: snapshot.layers[0]?.inputs?.length ?? 0,
@@ -1575,7 +1582,9 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
         roomId,
         sourceId,
         layers: snapshot.layers,
-        inputs: snapshot.inputs.map(toPublicInputState),
+        inputs: snapshot.inputs.map((i) =>
+          toPublicInputState(i, { frozenMp4InputIds }),
+        ),
         isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
       });
     }
@@ -1671,12 +1680,15 @@ routes.post<RoomIdParams & { Body: Static<typeof InputSchema> }>(
       const sourceId =
         (req.headers['x-source-id'] as string | undefined) ?? null;
       const snapshot = room.getState();
+      const frozenMp4InputIds = room.getFrozenFrameInputIds();
       roomEventBus.broadcast(roomId, {
         type: 'room_updated',
         roomId,
         sourceId,
         layers: snapshot.layers,
-        inputs: snapshot.inputs.map(toPublicInputState),
+        inputs: snapshot.inputs.map((i) =>
+          toPublicInputState(i, { frozenMp4InputIds }),
+        ),
         isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
       });
     }
@@ -1806,12 +1818,13 @@ routes.post<
     await room.hideInput(inputId, activeTransition);
     const updatedInput = room.getInputs().find((i) => i.inputId === inputId);
     const sourceId = (req.headers['x-source-id'] as string | undefined) ?? null;
+    const frozenMp4InputIds = room.getFrozenFrameInputIds();
     if (updatedInput) {
       roomEventBus.broadcast(roomId, {
         type: 'input_updated',
         roomId,
         inputId,
-        input: toPublicInputState(updatedInput),
+        input: toPublicInputState(updatedInput, { frozenMp4InputIds }),
         sourceId,
       });
     }
@@ -1822,7 +1835,9 @@ routes.post<
       roomId,
       sourceId,
       layers: snapshot.layers,
-      inputs: snapshot.inputs.map(toPublicInputState),
+      inputs: snapshot.inputs.map((i) =>
+        toPublicInputState(i, { frozenMp4InputIds }),
+      ),
       isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
     });
     res.status(200).send({ status: 'ok' });
@@ -1857,12 +1872,13 @@ routes.post<
     await room.showInput(inputId, activeTransition);
     const updatedInput = room.getInputs().find((i) => i.inputId === inputId);
     const sourceId = (req.headers['x-source-id'] as string | undefined) ?? null;
+    const frozenMp4InputIds = room.getFrozenFrameInputIds();
     if (updatedInput) {
       roomEventBus.broadcast(roomId, {
         type: 'input_updated',
         roomId,
         inputId,
-        input: toPublicInputState(updatedInput),
+        input: toPublicInputState(updatedInput, { frozenMp4InputIds }),
         sourceId,
       });
     }
@@ -1873,7 +1889,9 @@ routes.post<
       roomId,
       sourceId,
       layers: snapshot.layers,
-      inputs: snapshot.inputs.map(toPublicInputState),
+      inputs: snapshot.inputs.map((i) =>
+        toPublicInputState(i, { frozenMp4InputIds }),
+      ),
       isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
     });
     res.status(200).send({ status: 'ok' });
@@ -1914,12 +1932,15 @@ routes.post<{
     await room.batchHideInputs(inputIds, activeTransition);
 
     const snapshot = room.getState();
+    const frozenMp4InputIds = room.getFrozenFrameInputIds();
     roomEventBus.broadcast(roomId, {
       type: 'room_updated',
       roomId,
       sourceId,
       layers: snapshot.layers,
-      inputs: snapshot.inputs.map(toPublicInputState),
+      inputs: snapshot.inputs.map((i) =>
+        toPublicInputState(i, { frozenMp4InputIds }),
+      ),
       isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
     });
     res.status(200).send({ status: 'ok' });
@@ -1960,12 +1981,15 @@ routes.post<{
     await room.batchShowInputs(inputIds, activeTransition);
 
     const snapshot = room.getState();
+    const frozenMp4InputIds = room.getFrozenFrameInputIds();
     roomEventBus.broadcast(roomId, {
       type: 'room_updated',
       roomId,
       sourceId,
       layers: snapshot.layers,
-      inputs: snapshot.inputs.map(toPublicInputState),
+      inputs: snapshot.inputs.map((i) =>
+        toPublicInputState(i, { frozenMp4InputIds }),
+      ),
       isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
     });
     res.status(200).send({ status: 'ok' });
@@ -2130,11 +2154,12 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(
     if (updatedInput) {
       const sourceId =
         (req.headers['x-source-id'] as string | undefined) ?? null;
+      const frozenMp4InputIds = room.getFrozenFrameInputIds();
       roomEventBus.broadcast(roomId, {
         type: 'input_updated',
         roomId,
         inputId,
-        input: toPublicInputState(updatedInput),
+        input: toPublicInputState(updatedInput, { frozenMp4InputIds }),
         sourceId,
       });
     }
@@ -2242,9 +2267,12 @@ routes.get<RoomIdParams>(
     const sendState = () => {
       if (res.raw.destroyed) return;
       const snapshot = room.getState();
+      const frozenMp4InputIds = room.getFrozenFrameInputIds();
       const payload = {
         roomName: room.roomName,
-        inputs: snapshot.inputs.map(toPublicInputState),
+        inputs: snapshot.inputs.map((i) =>
+          toPublicInputState(i, { frozenMp4InputIds }),
+        ),
         layers: snapshot.layers,
         isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
         whepUrl: room.getWhepUrl(),

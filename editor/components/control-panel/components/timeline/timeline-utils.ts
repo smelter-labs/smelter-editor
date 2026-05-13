@@ -3,6 +3,7 @@ import type { ShaderConfig } from '@/lib/types';
 import type {
   BlockSettings,
   Clip,
+  TimelineState,
   Track,
 } from '../../hooks/use-timeline-state';
 import { OUTPUT_TRACK_INPUT_ID } from '../../hooks/use-timeline-state';
@@ -409,6 +410,31 @@ export function resolveKeyframeCollision(
   }
 
   return ms;
+}
+
+// ── MP4 restart params ───────────────────────────────────
+
+export function getMp4RestartParamsForInputAtPlayhead(
+  state: TimelineState | null,
+  inputId: string,
+  playheadMs: number,
+): { playFromMs: number; loop: boolean } | null {
+  if (!state) return null;
+  for (const track of state.tracks) {
+    for (const clip of track.clips) {
+      if (
+        clip.inputId === inputId &&
+        playheadMs >= clip.startMs &&
+        playheadMs < clip.endMs
+      ) {
+        const loop = clip.blockSettings.mp4Loop !== false;
+        const basePlayFrom = clip.blockSettings.mp4PlayFromMs ?? 0;
+        const elapsedInClip = Math.max(0, playheadMs - clip.startMs);
+        return { playFromMs: basePlayFrom + elapsedInClip, loop };
+      }
+    }
+  }
+  return null;
 }
 
 // ── Orphaned-input detection ─────────────────────────────

@@ -102,9 +102,7 @@ export function CarouselInputSelectionDialog({
 
       if (addedIds.size === 0) return layer;
 
-      const filtered = layer.inputs.filter(
-        (li) => !addedIds.has(li.inputId),
-      );
+      const filtered = layer.inputs.filter((li) => !addedIds.has(li.inputId));
       return filtered.length === layer.inputs.length
         ? layer
         : { ...layer, inputs: filtered };

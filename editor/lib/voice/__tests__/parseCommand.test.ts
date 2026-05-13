@@ -491,15 +491,21 @@ describe('parseCommand', () => {
     });
 
     it('parses "previous slide"', () => {
-      expect(parseCommand('previous slide')).toEqual({ intent: 'CAROUSEL_PREV' });
+      expect(parseCommand('previous slide')).toEqual({
+        intent: 'CAROUSEL_PREV',
+      });
     });
 
     it('parses "carousel next"', () => {
-      expect(parseCommand('carousel next')).toEqual({ intent: 'CAROUSEL_NEXT' });
+      expect(parseCommand('carousel next')).toEqual({
+        intent: 'CAROUSEL_NEXT',
+      });
     });
 
     it('parses "carousel previous"', () => {
-      expect(parseCommand('carousel previous')).toEqual({ intent: 'CAROUSEL_PREV' });
+      expect(parseCommand('carousel previous')).toEqual({
+        intent: 'CAROUSEL_PREV',
+      });
     });
 
     it('does not collide with "next block" (timeline)', () => {

@@ -99,6 +99,46 @@ describe('toPublicInputState', () => {
       expect(result).toHaveProperty('sourceWidth', 1920);
       expect(result).toHaveProperty('sourceHeight', 1080);
     });
+
+    it('defaults mp4ShowsFrozenFrame to false when no ctx provided', () => {
+      const input = {
+        ...makeBaseInput(),
+        type: 'local-mp4' as const,
+        mp4FilePath: '/tmp/video.mp4',
+        mp4VideoWidth: 1920,
+        mp4VideoHeight: 1080,
+      };
+      const result = toPublicInputState(input);
+      expect(result).toHaveProperty('mp4ShowsFrozenFrame', false);
+    });
+
+    it('sets mp4ShowsFrozenFrame to false when ctx set does not include input', () => {
+      const input = {
+        ...makeBaseInput(),
+        type: 'local-mp4' as const,
+        mp4FilePath: '/tmp/video.mp4',
+        mp4VideoWidth: 1920,
+        mp4VideoHeight: 1080,
+      };
+      const result = toPublicInputState(input, {
+        frozenMp4InputIds: new Set(['other-input']),
+      });
+      expect(result).toHaveProperty('mp4ShowsFrozenFrame', false);
+    });
+
+    it('sets mp4ShowsFrozenFrame to true when ctx set includes the inputId', () => {
+      const input = {
+        ...makeBaseInput(),
+        type: 'local-mp4' as const,
+        mp4FilePath: '/tmp/video.mp4',
+        mp4VideoWidth: 1920,
+        mp4VideoHeight: 1080,
+      };
+      const result = toPublicInputState(input, {
+        frozenMp4InputIds: new Set(['test-input-1']),
+      });
+      expect(result).toHaveProperty('mp4ShowsFrozenFrame', true);
+    });
   });
 
   describe('image', () => {

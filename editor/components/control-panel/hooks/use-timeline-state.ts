@@ -1939,6 +1939,13 @@ export function timelineReducer(
       const isFullSpan =
         clip.startMs === 0 && clip.endMs >= state.totalDurationMs;
       if (!isFullSpan) return state;
+      const hasOtherClips = state.tracks.some(
+        (t) =>
+          t.id !== topTrack.id &&
+          t.id !== OUTPUT_TRACK_ID &&
+          t.clips.some((c) => c.inputId === action.inputId),
+      );
+      if (!hasOtherClips) return state;
       return withReconciledOrder({
         ...state,
         tracks: state.tracks.filter((t) => t.id !== topTrack.id),

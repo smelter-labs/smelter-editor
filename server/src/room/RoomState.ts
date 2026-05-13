@@ -1072,6 +1072,10 @@ export class RoomState {
     );
   }
 
+  public getFrozenFrameInputIds(): ReadonlySet<string> {
+    return new Set(this.frozenImages.keys());
+  }
+
   public addTimelineListener(listener: TimelineListener): () => void {
     this.timelineListeners.add(listener);
     return () => {

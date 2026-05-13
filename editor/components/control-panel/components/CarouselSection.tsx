@@ -34,12 +34,7 @@ const DEFAULT_DURATION_MS = 400;
 const MIN_DURATION_MS = 200;
 const MAX_DURATION_MS = 2000;
 
-export function CarouselSection({
-  roomId,
-  layers,
-  inputs,
-  resolution,
-}: Props) {
+export function CarouselSection({ roomId, layers, inputs, resolution }: Props) {
   const actions = useActions();
   const carouselLayers = useMemo(
     () => layers.filter((l) => l.carousel),
@@ -51,7 +46,8 @@ export function CarouselSection({
   const [clapEnabled] = useClapDetectionEnabledSetting();
   const firstCarouselLayerId = carouselLayers[0]?.id ?? null;
   const hasActiveCarousel =
-    firstCarouselLayerId !== null && (carouselLayers[0]?.inputs.length ?? 0) >= 2;
+    firstCarouselLayerId !== null &&
+    (carouselLayers[0]?.inputs.length ?? 0) >= 2;
 
   const handleNext = useCallback(
     (layerId: string) => actions.carouselAction(roomId, layerId, 'next'),

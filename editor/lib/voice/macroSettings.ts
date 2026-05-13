@@ -603,10 +603,7 @@ export function useCarouselKeyboardEnabledSetting(): [
       const customEvent = event as CustomEvent<{ value: boolean }>;
       setValue(customEvent.detail?.value ?? true);
     };
-    window.addEventListener(
-      CAROUSEL_KEYBOARD_ENABLED_CHANGED_EVENT,
-      onChanged,
-    );
+    window.addEventListener(CAROUSEL_KEYBOARD_ENABLED_CHANGED_EVENT, onChanged);
     return () => {
       window.removeEventListener(
         CAROUSEL_KEYBOARD_ENABLED_CHANGED_EVENT,

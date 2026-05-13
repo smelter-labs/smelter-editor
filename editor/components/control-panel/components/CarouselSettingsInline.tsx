@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Input, Layer } from '@/lib/types';
 import type { Resolution } from '@/lib/resolution';
 import { useActions } from '../contexts/actions-context';
@@ -17,6 +17,7 @@ import {
 import { Label } from '@/components/ui/label';
 import { NumberInput } from '@/components/ui/number-input';
 import { ArrowLeft, ListChecks, RotateCcw } from 'lucide-react';
+import { emitTimelineEvent, TIMELINE_EVENTS } from './timeline/timeline-events';
 import {
   useCarouselKeyboardEnabledSetting,
   useClapDetectionEnabledSetting,
@@ -35,16 +36,42 @@ type CarouselSettingsInlineProps = {
 
 const MIN_DURATION_MS = 200;
 const MAX_DURATION_MS = 2000;
+const FLUSH_CAROUSEL_PENDING_LAYERS_EVENT =
+  'smelter:carousel:flush-pending-layers';
+
+type FlushCarouselPendingLayersEventDetail = {
+  promises: Promise<unknown>[];
+};
 
 export function CarouselSettingsInline({
-  layer,
-  layers,
+  layer: layerProp,
+  layers: layersProp,
   roomId,
   inputs,
   resolution,
   onBack,
 }: CarouselSettingsInlineProps) {
   const actions = useActions();
+
+  const [layer, setLayer] = useState(layerProp);
+  const [allLayers, setAllLayers] = useState(layersProp);
+  const layerRef = useRef(layer);
+  const allLayersRef = useRef(allLayers);
+
+  useEffect(() => {
+    layerRef.current = layer;
+  }, [layer]);
+  useEffect(() => {
+    allLayersRef.current = allLayers;
+  }, [allLayers]);
+
+  useEffect(() => {
+    setLayer(layerProp);
+  }, [layerProp]);
+  useEffect(() => {
+    setAllLayers(layersProp);
+  }, [layersProp]);
+
   const c = layer.carousel!;
   const active = layer.inputs[c.activeIndex];
   const activeInput =
@@ -70,79 +97,150 @@ export function CarouselSettingsInline({
     [actions, roomId, layer.id],
   );
 
-  const updateCarousel = useCallback(
-    async (patch: Partial<Layer>) => {
-      const nextLayers = layers.map((l) =>
-        l.id === layer.id ? { ...l, ...patch } : l,
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingLayersRef = useRef<Layer[] | null>(null);
+
+  const flushPendingLayers = useCallback(() => {
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+      debounceRef.current = null;
+    }
+
+    const pendingLayers = pendingLayersRef.current;
+    if (!pendingLayers) return Promise.resolve();
+
+    pendingLayersRef.current = null;
+    return actions.updateRoom(roomId, { layers: pendingLayers });
+  }, [actions, roomId]);
+
+  const applyLayerPatch = useCallback(
+    (buildNextLayer: (current: Layer) => Layer) => {
+      const cur = layerRef.current;
+      const updated = buildNextLayer(cur);
+
+      setLayer(updated);
+      const nextLayers = allLayersRef.current.map((l) =>
+        l.id === cur.id ? updated : l,
       );
-      await actions.updateRoom(roomId, { layers: nextLayers });
+      setAllLayers(nextLayers);
+      pendingLayersRef.current = nextLayers;
+
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        if (pendingLayersRef.current) {
+          actions.updateRoom(roomId, { layers: pendingLayersRef.current });
+          pendingLayersRef.current = null;
+        }
+      }, 750);
     },
-    [actions, roomId, layers, layer.id],
+    [actions, roomId],
   );
+
+  useEffect(() => {
+    return () => {
+      void flushPendingLayers();
+    };
+  }, [flushPendingLayers]);
+
+  useEffect(() => {
+    const handleFlushPendingLayers = (event: Event) => {
+      const customEvent =
+        event as CustomEvent<FlushCarouselPendingLayersEventDetail>;
+      customEvent.detail?.promises.push(flushPendingLayers());
+    };
+
+    window.addEventListener(
+      FLUSH_CAROUSEL_PENDING_LAYERS_EVENT,
+      handleFlushPendingLayers,
+    );
+    return () => {
+      window.removeEventListener(
+        FLUSH_CAROUSEL_PENDING_LAYERS_EVENT,
+        handleFlushPendingLayers,
+      );
+    };
+  }, [flushPendingLayers]);
 
   const handleDurationChange = useCallback(
     (durationMs: number) => {
-      if (!layer.carousel) return;
-      updateCarousel({ carousel: { ...layer.carousel, durationMs } });
+      applyLayerPatch((cur) => ({
+        ...cur,
+        carousel: { ...cur.carousel!, durationMs },
+      }));
     },
-    [layer.carousel, updateCarousel],
+    [applyLayerPatch],
   );
 
   const handleVisibleCountChange = useCallback(
     (val: number) => {
-      if (!layer.carousel) return;
-      const clamped = Math.max(
-        1,
-        Math.min(val, Math.max(1, layer.inputs.length)),
-      );
-      updateCarousel({
-        carousel: { ...layer.carousel, visibleCount: clamped },
+      applyLayerPatch((cur) => {
+        const clamped = Math.max(
+          1,
+          Math.min(val, Math.max(1, cur.inputs.length)),
+        );
+        return {
+          ...cur,
+          carousel: { ...cur.carousel!, visibleCount: clamped },
+        };
       });
     },
-    [layer.carousel, layer.inputs.length, updateCarousel],
+    [applyLayerPatch],
   );
 
   const handleGapChange = useCallback(
     (val: number) => {
-      if (!layer.carousel) return;
       const clamped = Math.max(0, Math.min(val, 4096));
-      updateCarousel({ carousel: { ...layer.carousel, gap: clamped } });
+      applyLayerPatch((cur) => ({
+        ...cur,
+        carousel: { ...cur.carousel!, gap: clamped },
+      }));
     },
-    [layer.carousel, updateCarousel],
+    [applyLayerPatch],
   );
 
   const handleEasingChange = useCallback(
     (easing: 'linear' | 'cubic_bezier_ease_in_out' | 'bounce') => {
-      if (!layer.carousel) return;
-      updateCarousel({ carousel: { ...layer.carousel, easing } });
+      applyLayerPatch((cur) => ({
+        ...cur,
+        carousel: { ...cur.carousel!, easing },
+      }));
     },
-    [layer.carousel, updateCarousel],
+    [applyLayerPatch],
   );
 
   const handleSlotGeometryChange = useCallback(
-    async (geometry: {
-      x: number;
-      y: number;
-      width: number;
-      height: number;
-    }) => {
-      const nextLayers = layers.map((l) =>
-        l.id === layer.id
-          ? {
-              ...l,
-              inputs: l.inputs.map((inp) => ({
-                ...inp,
-                x: geometry.x,
-                y: geometry.y,
-                width: Math.max(20, geometry.width),
-                height: Math.max(20, geometry.height),
-              })),
-            }
-          : l,
+    (geometry: { x: number; y: number; width: number; height: number }) => {
+      const nextGeometry = {
+        x: geometry.x,
+        y: geometry.y,
+        width: Math.max(20, geometry.width),
+        height: Math.max(20, geometry.height),
+      };
+      const affectedInputIds = layerRef.current.inputs.map(
+        (inp) => inp.inputId,
       );
-      await actions.updateRoom(roomId, { layers: nextLayers });
+
+      applyLayerPatch((cur) => ({
+        ...cur,
+        inputs: cur.inputs.map((inp) => ({
+          ...inp,
+          ...nextGeometry,
+        })),
+      }));
+
+      for (const inputId of affectedInputIds) {
+        emitTimelineEvent(TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS_FOR_INPUT, {
+          inputId,
+          patch: {
+            absoluteLeft: nextGeometry.x,
+            absoluteTop: nextGeometry.y,
+            absoluteWidth: nextGeometry.width,
+            absoluteHeight: nextGeometry.height,
+          },
+        });
+      }
     },
-    [actions, roomId, layers, layer.id],
+    [applyLayerPatch],
   );
 
   const slotW = resolution?.width ?? 1920;
@@ -344,7 +442,7 @@ export function CarouselSettingsInline({
         onOpenChange={setEditInputsOpen}
         inputs={inputs}
         carouselLayer={layer}
-        layers={layers}
+        layers={allLayers}
         roomId={roomId}
         resolution={resolution}
       />
