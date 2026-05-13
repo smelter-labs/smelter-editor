@@ -33,10 +33,7 @@ import {
 } from '../hooks/use-timeline-state';
 import { TimelineGroupHeader } from './TimelineGroupHeader';
 import { IconPicker } from './IconPicker';
-import {
-  getTrackIcon,
-  type TrackIconKey,
-} from './track-icons';
+import { getTrackIcon, type TrackIconKey } from './track-icons';
 import { FolderPlus } from 'lucide-react';
 import { useServerTimelinePlayback } from '../hooks/use-server-timeline-playback';
 import {

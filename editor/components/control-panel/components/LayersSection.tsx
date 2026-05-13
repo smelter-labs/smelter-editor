@@ -28,6 +28,8 @@ import { CSS } from '@dnd-kit/utilities';
 import {
   ChevronDown,
   ChevronRight,
+  Eye,
+  EyeOff,
   Filter,
   GripVertical,
   Layers,
@@ -152,6 +154,8 @@ function LayerHeader({
   onBehaviorChange,
   isColorFilterActive,
   onToggleColorFilter,
+  isEnabled,
+  onToggleEnabled,
   isGuest,
   dragDisabled,
 }: {
@@ -162,6 +166,8 @@ function LayerHeader({
   onBehaviorChange: (b: LayerBehaviorConfig | undefined) => void;
   isColorFilterActive: boolean;
   onToggleColorFilter: () => void;
+  isEnabled: boolean;
+  onToggleEnabled: () => void;
   isGuest?: boolean;
   dragDisabled?: boolean;
 }) {
@@ -187,6 +193,21 @@ function LayerHeader({
         </button>
         {!isGuest && (
           <div className='flex items-center gap-1.5' data-no-dnd='true'>
+            <button
+              type='button'
+              onClick={onToggleEnabled}
+              className={`inline-flex items-center justify-center w-7 h-7 rounded-full border transition-colors ${
+                isEnabled
+                  ? 'border-neutral-700 bg-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-600'
+                  : 'border-amber-500/50 bg-amber-500/15 text-amber-400'
+              }`}
+              aria-label='Toggle layer rendering'>
+              {isEnabled ? (
+                <Eye className='w-3.5 h-3.5' />
+              ) : (
+                <EyeOff className='w-3.5 h-3.5' />
+              )}
+            </button>
             <button
               type='button'
               onClick={onToggleColorFilter}
@@ -498,6 +519,19 @@ export function LayersSection({
     [localLayers, onLayersChange],
   );
 
+  const handleToggleEnabled = useCallback(
+    async (layerId: string) => {
+      const updated = localLayers.map((l) =>
+        l.id === layerId
+          ? { ...l, enabled: l.enabled === false ? true : false }
+          : l,
+      );
+      setLocalLayers(updated);
+      await onLayersChange(updated);
+    },
+    [localLayers, onLayersChange],
+  );
+
   const handleAddLayer = useCallback(async () => {
     const newLayerId = `layer-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
     const newLayer: Layer = {
@@ -568,6 +602,7 @@ export function LayersSection({
           {localLayers.map((layer, layerIndex) => {
             const isCollapsed = collapsedLayers.has(layer.id);
             const isColorFilterActive = colorFilterLayers.has(layer.id);
+            const isLayerDisabled = layer.enabled === false;
             const filteredInputs = layer.inputs.filter(
               (i) => !attachedInputIds.has(i.inputId),
             );
@@ -599,6 +634,8 @@ export function LayersSection({
                     onBehaviorChange={(b) => handleBehaviorChange(layer.id, b)}
                     isColorFilterActive={isColorFilterActive}
                     onToggleColorFilter={() => toggleColorFilter(layer.id)}
+                    isEnabled={!isLayerDisabled}
+                    onToggleEnabled={() => handleToggleEnabled(layer.id)}
                     isGuest={isGuest}
                     dragDisabled={disableDrag}
                   />
@@ -607,7 +644,8 @@ export function LayersSection({
                     <SortableContext
                       items={inputIds}
                       strategy={verticalListSortingStrategy}>
-                      <div className='min-h-[4px]'>
+                      <div
+                        className={`min-h-[4px] transition-opacity ${isLayerDisabled ? 'opacity-50' : ''}`}>
                         {visibleInputs.length === 0 && (
                           <div className='text-[10px] text-neutral-600 text-center py-2'>
                             {isColorFilterActive

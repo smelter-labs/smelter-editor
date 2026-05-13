@@ -14,6 +14,7 @@ import {
 import { useLeaveRoom } from "../../hooks/useLeaveRoom";
 import { SCREEN_NAMES } from "../../navigation/navigationTypes";
 import type { RootNavigationProp } from "../../navigation/navigationTypes";
+import { QRToolbarChip } from "../../components/shared/QRToolbarChip";
 
 export function DebugScreen() {
   const theme = useTheme();
@@ -52,6 +53,7 @@ export function DebugScreen() {
         <ScreenToolbarChip onPress={() => setSettingsOpen(true)}>
           <ToolbarIcon name="cog" />
         </ScreenToolbarChip>
+        <QRToolbarChip serverUrl={serverUrl} roomId={roomId} />
       </ScreenToolbar>
 
       <ScrollView contentContainerStyle={styles.content}>

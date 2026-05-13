@@ -102,7 +102,7 @@ export class InputManager {
     }
 
     if (opts.type === 'whip') {
-      return this.addNewWhipInput(opts.username);
+      return this.addNewWhipInput(opts);
     } else if (opts.type === 'twitch-channel' || opts.type === 'kick-channel') {
       return this.addHlsChannelInput(opts.type, opts.channelId);
     } else if (opts.type === 'hls') {
@@ -120,7 +120,10 @@ export class InputManager {
     }
   }
 
-  private async addNewWhipInput(username: string): Promise<string> {
+  private async addNewWhipInput(
+    opts: Extract<RegisterInputOptions, { type: 'whip' }>,
+  ): Promise<string> {
+    const { username } = opts;
     const inputId = this.createUniqueInputId('whip');
     const isScreenshare = /\bscreenshare\b/i.test(username);
     const cleanUsername = username
@@ -142,15 +145,18 @@ export class InputManager {
     const liveTitle = `${kindPrefix} #${maxNumber + 1}`;
     const monitor = await WhipInputMonitor.startMonitor(cleanUsername);
     monitor.touch();
+    const orientation = opts.orientation ?? 'horizontal';
     this.inputs.push({
       inputId,
       type: 'whip',
       status: 'disconnected',
       showTitle: false,
       shaders: [],
-      orientation: 'horizontal',
-      nativeWidth: 1920,
-      nativeHeight: 1080,
+      orientation,
+      nativeWidth:
+        opts.nativeWidth ?? (orientation === 'vertical' ? 1080 : 1920),
+      nativeHeight:
+        opts.nativeHeight ?? (orientation === 'vertical' ? 1920 : 1080),
       borderColor: '#ff0000',
       borderWidth: 0,
       hidden: false,
@@ -824,6 +830,8 @@ export class InputManager {
       input.nativeWidth = options.orientation === 'vertical' ? 1080 : 1920;
       input.nativeHeight = options.orientation === 'vertical' ? 1920 : 1080;
     }
+    input.nativeWidth = options.nativeWidth ?? input.nativeWidth;
+    input.nativeHeight = options.nativeHeight ?? input.nativeHeight;
     input.borderColor = options.borderColor ?? input.borderColor;
     input.borderWidth = options.borderWidth ?? input.borderWidth;
 

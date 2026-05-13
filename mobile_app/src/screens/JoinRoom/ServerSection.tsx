@@ -17,7 +17,7 @@ import {
 } from "react-native-paper";
 import { HealthIcon } from "./HealthIcon";
 import { appColors } from "../../theme/paperTheme";
-import type { HealthStatus, ServerStatus } from "./useJoinRoom";
+import type { HealthStatus, ServerStatus } from "./useJoinServer";
 
 interface Props {
   savedUrls: string[];

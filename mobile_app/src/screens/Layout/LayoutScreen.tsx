@@ -36,6 +36,7 @@ import {
   ScreenToolbarChip,
   ToolbarIcon,
 } from "../../components/shared/ScreenToolbar";
+import { QRToolbarChip } from "../../components/shared/QRToolbarChip";
 
 // ─── Conversion helpers ───────────────────────────────────────────────────────
 
@@ -494,6 +495,7 @@ export function LayoutScreen() {
           >
             <ToolbarIcon name="cog" />
           </ScreenToolbarChip>
+          <QRToolbarChip serverUrl={serverUrl} roomId={roomId} />
         </ScreenToolbar>
 
         {/* Canvas: stacked layer grids — layers[0] is topmost (highest zIndex) */}

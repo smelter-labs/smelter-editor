@@ -89,6 +89,11 @@ export type Layer = {
    * Clients can use this as a resync signal even when positions are unchanged.
    */
   layoutTimestamp?: number;
+  /**
+   * When false, this layer's inputs are skipped during compositing.
+   * Undefined is treated as enabled (backward compat with existing rooms).
+   */
+  enabled?: boolean;
 };
 
 // ── Deprecated (kept for room-config backward compat) ────────────────────────
