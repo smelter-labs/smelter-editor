@@ -939,6 +939,89 @@ export const TimelinePanel = memo(function TimelinePanel({
     }
   }, [inputs, layers, state.playheadMs, state.tracks, updateClipSettings]);
 
+  // Keep a ref to the current state so the effect below can read tracks/playheadMs
+  // without including them in its deps (which would cause loops via updateClipSettings).
+  const stateSnapshotRef = useRef(state);
+  useEffect(() => {
+    stateSnapshotRef.current = state;
+  });
+
+  // Reactively sync server-side position data (inputs / layers) into the local
+  // timeline clip blockSettings so the position editor stays current when mobile
+  // or a server automanaged behaviour moves/resizes an input.
+  useEffect(() => {
+    const { tracks, playheadMs } = stateSnapshotRef.current;
+    for (const track of tracks) {
+      for (const clip of track.clips) {
+        if (clip.inputId === OUTPUT_TRACK_INPUT_ID) continue;
+        if (playheadMs < clip.startMs || playheadMs >= clip.endMs) continue;
+        const input = inputs.find((i) => i.inputId === clip.inputId);
+        if (!input) continue;
+        const layerInput = layers
+          .flatMap((l) => l.inputs)
+          .find((li) => li.inputId === clip.inputId);
+        updateClipSettings(track.id, clip.id, {
+          absoluteTop: layerInput ? layerInput.y : input.absoluteTop,
+          absoluteLeft: layerInput ? layerInput.x : input.absoluteLeft,
+          absoluteWidth: layerInput ? layerInput.width : input.absoluteWidth,
+          absoluteHeight: layerInput ? layerInput.height : input.absoluteHeight,
+          absoluteTransitionDurationMs: layerInput
+            ? layerInput.transitionDurationMs
+            : input.absoluteTransitionDurationMs,
+          absoluteTransitionEasing: layerInput
+            ? layerInput.transitionEasing
+            : input.absoluteTransitionEasing,
+          cropTop: input.cropTop,
+          cropLeft: input.cropLeft,
+          cropRight: input.cropRight,
+          cropBottom: input.cropBottom,
+        });
+      }
+    }
+  }, [inputs, layers, updateClipSettings]);
+
+  // When a new input is added its clip lands in state.tracks one render cycle
+  // AFTER inputs/layers update (SYNC_TRACKS fires in a subsequent render), so the
+  // effect above misses it. This effect catches newly-appearing clips by tracking
+  // which clip IDs have already been seeded, and reads inputs/layers from a ref so
+  // it doesn't need them as deps (which would cause loops).
+  const serverStateRef = useRef({ inputs, layers });
+  useEffect(() => {
+    serverStateRef.current = { inputs, layers };
+  });
+  const seenClipIdsRef = useRef(new Set<string>());
+  useEffect(() => {
+    const { inputs: serverInputs, layers: serverLayers } = serverStateRef.current;
+    for (const track of state.tracks) {
+      for (const clip of track.clips) {
+        if (clip.inputId === OUTPUT_TRACK_INPUT_ID) continue;
+        if (seenClipIdsRef.current.has(clip.id)) continue;
+        seenClipIdsRef.current.add(clip.id);
+        const input = serverInputs.find((i) => i.inputId === clip.inputId);
+        if (!input) continue;
+        const layerInput = serverLayers
+          .flatMap((l) => l.inputs)
+          .find((li) => li.inputId === clip.inputId);
+        updateClipSettings(track.id, clip.id, {
+          absoluteTop: layerInput ? layerInput.y : input.absoluteTop,
+          absoluteLeft: layerInput ? layerInput.x : input.absoluteLeft,
+          absoluteWidth: layerInput ? layerInput.width : input.absoluteWidth,
+          absoluteHeight: layerInput ? layerInput.height : input.absoluteHeight,
+          absoluteTransitionDurationMs: layerInput
+            ? layerInput.transitionDurationMs
+            : input.absoluteTransitionDurationMs,
+          absoluteTransitionEasing: layerInput
+            ? layerInput.transitionEasing
+            : input.absoluteTransitionEasing,
+          cropTop: input.cropTop,
+          cropLeft: input.cropLeft,
+          cropRight: input.cropRight,
+          cropBottom: input.cropBottom,
+        });
+      }
+    }
+  }, [state.tracks, updateClipSettings]);
+
   const handleRecordAndPlay = useCallback(async () => {
     if (isTogglingRecording) return;
     if (isRecording) {
