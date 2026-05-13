@@ -1,9 +1,10 @@
 import { attachLocalPreview } from './preview';
 import {
   buildIceServers,
-  forceH264,
+  setCodecPreference,
   waitIceComplete,
   wireDebug,
+  type WhipCodec,
 } from './webRTC-helpers';
 import { sendWhipOfferLocal } from './whip-api';
 
@@ -15,6 +16,7 @@ export async function startScreensharePublish(
   streamRef: React.MutableRefObject<MediaStream | null>,
   onDisconnected?: () => void,
   existingStream?: MediaStream,
+  codec?: WhipCodec,
 ): Promise<{ location: string | null }> {
   const stream =
     existingStream ??
@@ -70,7 +72,7 @@ export async function startScreensharePublish(
     sendEncodings: [{ maxBitrate: 1_200_000 }],
   });
   if (aTrack) pc.addTransceiver(aTrack, { direction: 'sendonly' });
-  forceH264(vTx);
+  setCodecPreference(vTx, codec ?? 'h264');
 
   await pc.setLocalDescription(await pc.createOffer());
   const offerDesc = await waitIceComplete(pc);

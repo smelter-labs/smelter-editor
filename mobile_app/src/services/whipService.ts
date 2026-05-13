@@ -123,7 +123,7 @@ function restrictVideoCodecInSdp(
   sdp: string | undefined,
   codec: VideoCodecPreference,
 ): string | undefined {
-  if (!sdp || codec === "default") return sdp;
+  if (!sdp || codec === "auto") return sdp;
 
   const targetCodec = codec.toUpperCase();
 
@@ -250,7 +250,7 @@ function stripToH264OnlyVideoSdp(sdp?: string): string | undefined {
 
 // ─── WHIP connection ──────────────────────────────────────────────────────────
 
-export type VideoCodecPreference = "h264" | "vp8" | "vp9" | "default";
+export type VideoCodecPreference = "h264" | "vp8" | "vp9" | "auto";
 
 interface WhipConnectionParams {
   localStream: MediaStream;

@@ -1,5 +1,13 @@
 const DEBUG_ICE = false;
 
+export type WhipCodec = 'h264' | 'vp8' | 'vp9' | 'auto';
+
+const CODEC_MIME: Record<Exclude<WhipCodec, 'auto'>, RegExp> = {
+  h264: /video\/H264/i,
+  vp8: /video\/VP8/i,
+  vp9: /video\/VP9/i,
+};
+
 export function buildIceServers(): RTCIceServer[] {
   const urls =
     process.env.NEXT_PUBLIC_TURN_URLS?.split(',')
@@ -33,34 +41,41 @@ export async function waitIceComplete(
   });
 }
 
-export function forceH264(transceiver: RTCRtpTransceiver) {
-  if (
-    !RTCRtpSender?.getCapabilities ||
-    !('setCodecPreferences' in transceiver)
-  ) {
+export function setCodecPreference(
+  transceiver: RTCRtpTransceiver,
+  codec: WhipCodec = 'h264',
+) {
+  if (codec === 'auto') return;
+  if (!RTCRtpSender?.getCapabilities || !('setCodecPreferences' in transceiver))
     return;
-  }
+
   const caps = RTCRtpSender.getCapabilities('video');
-  const h264s =
-    caps?.codecs.filter((c) => /video\/H264/i.test(c.mimeType)) ?? [];
-  if (h264s.length && 'setCodecPreferences' in transceiver) {
-    const isFF = /Firefox/i.test(navigator.userAgent);
-    const prefer = isFF
-      ? h264s
-      : h264s.find((c) => /profile-level-id=42e01f/i.test(c.sdpFmtpLine || ''))
-        ? [
-            ...h264s.filter((c) =>
-              /profile-level-id=42e01f/i.test(c.sdpFmtpLine || ''),
-            ),
-            ...h264s.filter(
-              (c) => !/profile-level-id=42e01f/i.test(c.sdpFmtpLine || ''),
-            ),
-          ]
-        : h264s;
+  if (!caps) return;
+
+  const pattern = CODEC_MIME[codec];
+  const preferred = caps.codecs.filter((c) => pattern.test(c.mimeType));
+  const rest = caps.codecs.filter((c) => !pattern.test(c.mimeType));
+
+  let ordered = preferred;
+  if (codec === 'h264' && !/Firefox/i.test(navigator.userAgent)) {
+    const baseline = preferred.filter((c) =>
+      /profile-level-id=42e01f/i.test(c.sdpFmtpLine ?? ''),
+    );
+    const others = preferred.filter(
+      (c) => !/profile-level-id=42e01f/i.test(c.sdpFmtpLine ?? ''),
+    );
+    ordered = [...baseline, ...others];
+  }
+
+  if (ordered.length) {
     try {
-      transceiver.setCodecPreferences(prefer);
+      transceiver.setCodecPreferences([...ordered, ...rest]);
     } catch {}
   }
+}
+
+export function forceH264(transceiver: RTCRtpTransceiver) {
+  setCodecPreference(transceiver, 'h264');
 }
 
 export function wireDebug(pc: RTCPeerConnection) {
