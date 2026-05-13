@@ -220,7 +220,6 @@ export function LayoutScreen() {
   const [effectsPanelOpen, setEffectsPanelOpen] = useState(false);
   const [effectsInputId, setEffectsInputId] = useState<string | null>(null);
   const [layoutResetToken, setLayoutResetToken] = useState(0);
-  const [qrModalOpen, setQRModalOpen] = useState(false);
 
   const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
   const [, startTransition] = useTransition();

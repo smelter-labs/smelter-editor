@@ -75,7 +75,6 @@ export function InputsScreen() {
   const pendingEventRef = useRef<WSEventPayload<"room_updated"> | null>(null);
   const idleHandleRef = useRef<number | null>(null);
   const [, startTransition] = useTransition();
-  const [qrModalOpen, setQRModalOpen] = useState(false);
 
   // Subscribe to server input updates
   useEffect(() => {
