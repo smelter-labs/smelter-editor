@@ -6,7 +6,12 @@ export type {
 
 export type { Layout, Layer, LayerBehaviorConfig } from './layout';
 
-export type { Input, RegisterInputOptions, UpdateInputOptions } from './input';
+export type {
+  CameraInputOptions,
+  Input,
+  RegisterInputOptions,
+  UpdateInputOptions,
+} from './input';
 
 export type {
   PendingWhipInputData,
