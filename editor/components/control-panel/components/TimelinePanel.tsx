@@ -104,6 +104,12 @@ import {
 import { ResolveMissingAssetModal } from './ResolveMissingAssetModal';
 import { toast } from 'sonner';
 import { shouldIgnoreGlobalShortcut } from '@/lib/keyboard';
+import { EditableDuration } from './timeline/EditableDuration';
+import { useTimelineServerSync } from './timeline/use-timeline-server-sync';
+import { useTimelinePlayback } from './timeline/use-timeline-playback';
+import { useTimelineLayout } from './timeline/use-timeline-layout';
+import { useTimelineKeyboard } from './timeline/use-timeline-keyboard';
+import { useTimelineInteraction } from './timeline/use-timeline-interaction';
 
 // ── Props ────────────────────────────────────────────────
 
@@ -181,77 +187,6 @@ function replaceLayerInputId(
 }
 
 // Color maps, constants, and utility functions are in ./timeline/timeline-utils.ts
-
-// Utility functions extracted to ./timeline/timeline-utils.ts
-
-// ── Editable Duration ────────────────────────────────────
-
-function EditableDuration({
-  totalDurationMs,
-  isPlaying,
-  onChange,
-}: {
-  totalDurationMs: number;
-  isPlaying: boolean;
-  onChange: (ms: number) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState('');
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const startEditing = useCallback(() => {
-    if (isPlaying) return;
-    setDraft(formatMs(totalDurationMs));
-    setEditing(true);
-  }, [isPlaying, totalDurationMs]);
-
-  useEffect(() => {
-    if (editing) inputRef.current?.select();
-  }, [editing]);
-
-  const commit = useCallback(() => {
-    setEditing(false);
-    const parsed = parseDurationInput(draft);
-    if (parsed != null && parsed > 0) {
-      onChange(parsed);
-    }
-  }, [draft, onChange]);
-
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        commit();
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        setEditing(false);
-      }
-    },
-    [commit],
-  );
-
-  if (editing) {
-    return (
-      <input
-        ref={inputRef}
-        className='bg-transparent border border-border rounded px-1 text-[11px] font-mono tabular-nums w-14 text-center outline-none focus:border-primary'
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={handleKeyDown}
-      />
-    );
-  }
-
-  return (
-    <span
-      className={`cursor-pointer hover:text-foreground transition-colors ${isPlaying ? 'pointer-events-none' : ''}`}
-      onClick={startEditing}
-      title='Click to edit total duration (mm:ss)'>
-      {formatMs(totalDurationMs)}
-    </span>
-  );
-}
 
 // ── Component ────────────────────────────────────────────
 
@@ -726,589 +661,181 @@ export const TimelinePanel = memo(function TimelinePanel({
 
   const inputColorMap = useMemo(() => buildInputColorMap(inputs), [inputs]);
 
-  const {
-    play,
-    pause,
-    stop,
-    applyAtPlayhead,
-    isPaused,
-    isTimelineClientPending,
-    isTimelineInteractionLocked,
-    timelineBusyOperation,
-    timelineBusyStage,
-    timelineBusyPhase,
-    timelineStopTimeoutActive,
-  } = useServerTimelinePlayback(roomId, state, setPlayhead, setPlaying);
-
-  const {
-    isTogglingRecording,
-    effectiveIsRecording: isRecording,
-    start: startRec,
-    stopAndDownload,
-  } = useRecordingControls(roomId, serverIsRecording, refreshState);
-  const wasPlayingRef = useRef(false);
-  const timelineToastIdRef = useRef<string | number | null>(null);
-  const timelineControlsDisabled = isTimelineInteractionLocked;
-  const timelineBusyLabel = (() => {
-    if (isTimelineClientPending && !timelineBusyOperation) {
-      return 'Sending timeline request';
-    }
-    if (timelineBusyPhase === 'stopping-playback') return 'Stopping playback';
-    if (timelineBusyPhase === 'seeking-to-zero')
-      return 'Seeking cursor to 0 ms';
-    if (timelineBusyPhase === 'waiting-before-apply')
-      return 'Waiting before apply';
-    if (timelineBusyPhase === 'applying-state')
-      return 'Applying snapshot state';
-    if (timelineBusyOperation) return `Timeline busy: ${timelineBusyOperation}`;
-    return 'Timeline busy';
-  })();
-  const timelineInlineStatus = (() => {
-    if (timelineBusyStage === 'failed') {
-      return {
-        toneClass: 'text-red-400',
-        text: 'Timeline operation failed',
-        icon: <AlertTriangle className='h-3 w-3' />,
-      };
-    }
-    if (timelineStopTimeoutActive) {
-      return {
-        toneClass: 'text-amber-400',
-        text: 'Stop takes longer than expected',
-        icon: <AlertTriangle className='h-3 w-3' />,
-      };
-    }
-    if (isTimelineInteractionLocked) {
-      return {
-        toneClass: 'text-muted-foreground',
-        text: `${timelineBusyLabel}...`,
-        icon: <LoadingSpinner size='sm' variant='spinner' />,
-      };
-    }
-    return null;
-  })();
-  useEffect(() => {
-    onTimelineQueueStateChange?.(isTimelineInteractionLocked);
-  }, [isTimelineInteractionLocked, onTimelineQueueStateChange]);
-  const runTimelineActionWithToast = useCallback(
-    async (
-      messages: {
-        pending: string;
-        success: string;
-        error: string;
-      },
-      action: () => Promise<void>,
-    ) => {
-      if (timelineControlsDisabled) {
-        return false;
-      }
-      const toastId =
-        timelineToastIdRef.current ?? toast.loading(messages.pending);
-      timelineToastIdRef.current = toastId;
-      toast.loading(messages.pending, { id: toastId });
-      try {
-        await action();
-        toast.success(messages.success, { id: toastId });
-        return true;
-      } catch (err) {
-        console.error('[timeline-ui] timeline action failed', err);
-        toast.error(messages.error, { id: toastId });
-        return false;
-      } finally {
-        if (timelineToastIdRef.current === toastId) {
-          timelineToastIdRef.current = null;
-        }
-      }
-    },
-    [timelineControlsDisabled],
+  const serverPlayback = useServerTimelinePlayback(
+    roomId,
+    state,
+    setPlayhead,
+    setPlaying,
   );
 
-  const handlePlay = useCallback(async () => {
-    if (onBeforePlay) {
-      const allowed = await onBeforePlay();
-      if (!allowed) return;
-    }
-    await runTimelineActionWithToast(
-      {
-        pending: isPaused ? 'Resuming timeline...' : 'Starting timeline...',
-        success: isPaused ? 'Timeline resumed.' : 'Timeline started.',
-        error: 'Failed to start timeline.',
-      },
-      play,
-    );
-  }, [isPaused, onBeforePlay, play, runTimelineActionWithToast]);
+  const recordingControls = useRecordingControls(
+    roomId,
+    serverIsRecording,
+    refreshState,
+  );
 
-  const handlePlayPauseToggle = useCallback(async () => {
-    if (state.isPlaying) {
-      await runTimelineActionWithToast(
-        {
-          pending: 'Pausing timeline...',
-          success: 'Timeline paused.',
-          error: 'Failed to pause timeline.',
-        },
-        pause,
-      );
-      return;
-    }
-
-    await handlePlay();
-  }, [handlePlay, pause, runTimelineActionWithToast, state.isPlaying]);
-
-  const handleStop = useCallback(async () => {
-    await runTimelineActionWithToast(
-      {
-        pending: 'Stopping timeline...',
-        success: 'Timeline stopped.',
-        error: 'Failed to stop timeline.',
-      },
-      stop,
-    );
-  }, [runTimelineActionWithToast, stop]);
-
-  const handleApplyAtPlayhead = useCallback(async () => {
-    await runTimelineActionWithToast(
-      {
-        pending: 'Applying timeline state...',
-        success: 'Timeline state applied.',
-        error: 'Failed to apply timeline state.',
-      },
-      applyAtPlayhead,
-    );
-  }, [applyAtPlayhead, runTimelineActionWithToast]);
-
-  const commitSceneAtPlayheadToTimeline = useCallback(() => {
-    const playheadMs = state.playheadMs;
-    for (const track of state.tracks) {
-      for (const clip of track.clips) {
-        if (clip.inputId === OUTPUT_TRACK_INPUT_ID) continue;
-        if (playheadMs < clip.startMs || playheadMs >= clip.endMs) continue;
-        const input = inputs.find(
-          (candidate) => candidate.inputId === clip.inputId,
-        );
-        if (!input) continue;
-        const layerInput = layers
-          .flatMap((layer) => layer.inputs)
-          .find((layerItem) => layerItem.inputId === clip.inputId);
-        updateClipSettings(track.id, clip.id, {
-          volume: input.volume,
-          shaders: input.shaders,
-          showTitle: input.showTitle,
-          text: input.text,
-          textAlign: input.textAlign,
-          textColor: input.textColor,
-          textMaxLines: input.textMaxLines,
-          textScrollEnabled: input.textScrollEnabled,
-          textScrollSpeed: input.textScrollSpeed,
-          textScrollLoop: input.textScrollLoop,
-          textFontSize: input.textFontSize,
-          borderColor: input.borderColor,
-          borderWidth: input.borderWidth,
-          attachedInputIds: input.attachedInputIds,
-          snake1Shaders: input.snake1Shaders,
-          snake2Shaders: input.snake2Shaders,
-          absolutePosition: input.absolutePosition,
-          absoluteTop: input.absoluteTop,
-          absoluteLeft: input.absoluteLeft,
-          absoluteWidth: input.absoluteWidth,
-          absoluteHeight: input.absoluteHeight,
-          absoluteTransitionDurationMs: input.absoluteTransitionDurationMs,
-          absoluteTransitionEasing: input.absoluteTransitionEasing,
-          cropTop: input.cropTop,
-          cropLeft: input.cropLeft,
-          cropRight: input.cropRight,
-          cropBottom: input.cropBottom,
-          gameBackgroundColor: input.gameBackgroundColor,
-          gameCellGap: input.gameCellGap,
-          gameBoardBorderColor: input.gameBoardBorderColor,
-          gameBoardBorderWidth: input.gameBoardBorderWidth,
-          gameGridLineColor: input.gameGridLineColor,
-          gameGridLineAlpha: input.gameGridLineAlpha,
-          snakeEventShaders: input.snakeEventShaders,
-          ...(layerInput
-            ? {
-                absoluteLeft: layerInput.x,
-                absoluteTop: layerInput.y,
-                absoluteWidth: layerInput.width,
-                absoluteHeight: layerInput.height,
-                absoluteTransitionDurationMs: layerInput.transitionDurationMs,
-                absoluteTransitionEasing: layerInput.transitionEasing,
-              }
-            : {}),
-        });
-      }
-    }
-  }, [inputs, layers, state.playheadMs, state.tracks, updateClipSettings]);
-
-  // Keep a ref to the current state so the effect below can read tracks/playheadMs
-  // without including them in its deps (which would cause loops via updateClipSettings).
-  const stateSnapshotRef = useRef(state);
-  useEffect(() => {
-    stateSnapshotRef.current = state;
+  // ── Server sync hook ─────────────────────────────────
+  useTimelineServerSync({
+    inputs,
+    layers,
+    state,
+    updateClipSettings,
   });
 
-  // Reactively sync server-side position data (inputs / layers) into the local
-  // timeline clip blockSettings so the position editor stays current when mobile
-  // or a server automanaged behaviour moves/resizes an input.
-  useEffect(() => {
-    const { tracks, playheadMs } = stateSnapshotRef.current;
-    for (const track of tracks) {
-      for (const clip of track.clips) {
-        if (clip.inputId === OUTPUT_TRACK_INPUT_ID) continue;
-        if (playheadMs < clip.startMs || playheadMs >= clip.endMs) continue;
-        const input = inputs.find((i) => i.inputId === clip.inputId);
-        if (!input) continue;
-        const layerInput = layers
-          .flatMap((l) => l.inputs)
-          .find((li) => li.inputId === clip.inputId);
-        updateClipSettings(track.id, clip.id, {
-          absoluteTop: layerInput ? layerInput.y : input.absoluteTop,
-          absoluteLeft: layerInput ? layerInput.x : input.absoluteLeft,
-          absoluteWidth: layerInput ? layerInput.width : input.absoluteWidth,
-          absoluteHeight: layerInput ? layerInput.height : input.absoluteHeight,
-          absoluteTransitionDurationMs: layerInput
-            ? layerInput.transitionDurationMs
-            : input.absoluteTransitionDurationMs,
-          absoluteTransitionEasing: layerInput
-            ? layerInput.transitionEasing
-            : input.absoluteTransitionEasing,
-          cropTop: input.cropTop,
-          cropLeft: input.cropLeft,
-          cropRight: input.cropRight,
-          cropBottom: input.cropBottom,
-        });
-      }
-    }
-  }, [inputs, layers, updateClipSettings]);
-
-  // When a new input is added its clip lands in state.tracks one render cycle
-  // AFTER inputs/layers update (SYNC_TRACKS fires in a subsequent render), so the
-  // effect above misses it. This effect catches newly-appearing clips by tracking
-  // which clip IDs have already been seeded, and reads inputs/layers from a ref so
-  // it doesn't need them as deps (which would cause loops).
-  const serverStateRef = useRef({ inputs, layers });
-  useEffect(() => {
-    serverStateRef.current = { inputs, layers };
-  });
-  const seenClipIdsRef = useRef(new Set<string>());
-  useEffect(() => {
-    const { inputs: serverInputs, layers: serverLayers } = serverStateRef.current;
-    for (const track of state.tracks) {
-      for (const clip of track.clips) {
-        if (clip.inputId === OUTPUT_TRACK_INPUT_ID) continue;
-        if (seenClipIdsRef.current.has(clip.id)) continue;
-        seenClipIdsRef.current.add(clip.id);
-        const input = serverInputs.find((i) => i.inputId === clip.inputId);
-        if (!input) continue;
-        const layerInput = serverLayers
-          .flatMap((l) => l.inputs)
-          .find((li) => li.inputId === clip.inputId);
-        updateClipSettings(track.id, clip.id, {
-          absoluteTop: layerInput ? layerInput.y : input.absoluteTop,
-          absoluteLeft: layerInput ? layerInput.x : input.absoluteLeft,
-          absoluteWidth: layerInput ? layerInput.width : input.absoluteWidth,
-          absoluteHeight: layerInput ? layerInput.height : input.absoluteHeight,
-          absoluteTransitionDurationMs: layerInput
-            ? layerInput.transitionDurationMs
-            : input.absoluteTransitionDurationMs,
-          absoluteTransitionEasing: layerInput
-            ? layerInput.transitionEasing
-            : input.absoluteTransitionEasing,
-          cropTop: input.cropTop,
-          cropLeft: input.cropLeft,
-          cropRight: input.cropRight,
-          cropBottom: input.cropBottom,
-        });
-      }
-    }
-  }, [state.tracks, updateClipSettings]);
-
-  const handleRecordAndPlay = useCallback(async () => {
-    if (isTogglingRecording) return;
-    if (isRecording) {
-      if (timelineControlsDisabled) return;
-      await runTimelineActionWithToast(
-        {
-          pending: 'Pausing timeline...',
-          success: 'Timeline paused.',
-          error: 'Failed to pause timeline.',
-        },
-        pause,
-      );
-      await stopAndDownload();
-      return;
-    }
-    const started = await startRec();
-    if (started) {
-      if (onBeforePlay) {
-        const allowed = await onBeforePlay();
-        if (!allowed) return;
-      }
-      await runTimelineActionWithToast(
-        {
-          pending: isPaused ? 'Resuming timeline...' : 'Starting timeline...',
-          success: isPaused ? 'Timeline resumed.' : 'Timeline started.',
-          error: 'Failed to start timeline.',
-        },
-        play,
-      );
-    }
-  }, [
-    isPaused,
+  // ── Playback hook ────────────────────────────────────
+  const {
+    play: handlePlay,
+    pause: handlePlayPauseToggle,
+    stop: handleStop,
+    applyAtPlayhead: handleApplyAtPlayhead,
+    recordAndPlay: handleRecordAndPlay,
+    commitSceneAtPlayheadToTimeline,
     isRecording,
     isTogglingRecording,
-    play,
-    pause,
-    startRec,
-    stopAndDownload,
-    onBeforePlay,
+    isPaused,
     timelineControlsDisabled,
-    runTimelineActionWithToast,
-  ]);
-
-  useEffect(() => {
-    onTimelineActionsReady?.({
-      applyAtPlayhead: handleApplyAtPlayhead,
-      play: handlePlay,
-      recordAndPlay: handleRecordAndPlay,
-      commitSceneAtPlayheadToTimeline,
-    });
-    return () => {
-      onTimelineActionsReady?.(null);
-    };
-  }, [
-    handleApplyAtPlayhead,
-    commitSceneAtPlayheadToTimeline,
-    handlePlay,
-    handleRecordAndPlay,
+    timelineInlineStatus,
+    timelineBusyLabel,
+    isTimelineInteractionLocked,
+    timelineStopTimeoutActive,
+  } = useTimelinePlayback({
+    state,
+    inputs,
+    layers,
+    serverPlayback,
+    recording: {
+      isTogglingRecording: recordingControls.isTogglingRecording,
+      effectiveIsRecording: recordingControls.effectiveIsRecording,
+      start: recordingControls.start,
+      stopAndDownload: recordingControls.stopAndDownload,
+    },
+    updateClipSettings,
+    onBeforePlay,
     onTimelineActionsReady,
-  ]);
+    onTimelineQueueStateChange,
+  });
 
-  useEffect(() => {
-    if (!timelineStopTimeoutActive) {
-      return;
-    }
-    const toastId =
-      timelineToastIdRef.current ??
-      toast.loading('Stopping timeline is taking longer than expected...');
-    timelineToastIdRef.current = toastId;
-    toast.warning('Stopping timeline is taking longer than expected...', {
-      id: toastId,
-    });
-  }, [timelineStopTimeoutActive]);
+  // ── Layout hook ──────────────────────────────────────
+  const {
+    panelHeight,
+    setPanelHeight,
+    sourcesWidth,
+    setSourcesWidth,
+    handleResizeStart,
+    handleSourcesResizeStart,
+    contextMenu,
+    setContextMenu,
+    showHelp,
+    setShowHelp,
+    editingTrackId,
+    setEditingTrackId,
+    editingTrackLabel,
+    setEditingTrackLabel,
+    invalidDropTrackId,
+    setInvalidDropTrackId,
+    scrollContainerRef,
+    rulerRef,
+    contextMenuRef,
+    colorSubmenuOpen,
+    setColorSubmenuOpen,
+    longPressColor,
+    setLongPressColor,
+    colorSubmenuCloseTimer,
+    timelineWidthPx,
+    playheadPx,
+    rulerTicks,
+    zoomAnimating,
+    ZOOM_TRANSITION_MS,
+    zoomTransitionStyle,
+    handleRulerPointerDown,
+    handleRulerPointerMove,
+    handleRulerPointerUp,
+    animateZoom,
+    handleZoomIn,
+    handleZoomOut,
+    scrollToPlayhead,
+    findClipAtPlayhead,
+    jumpToEdge,
+    trackDropIndex,
+    setTrackDropIndex,
+    trackDragRef,
+    groupDragRef,
+    dragRef,
+    keyframeDragRef,
+  } = useTimelineLayout({
+    state,
+    setPlayhead,
+    setZoom,
+    pause: serverPlayback.pause,
+    applyAtPlayhead: serverPlayback.applyAtPlayhead,
+    sortMode,
+  });
 
-  useEffect(() => {
-    return () => {
-      if (timelineToastIdRef.current !== null) {
-        toast.dismiss(timelineToastIdRef.current);
-        timelineToastIdRef.current = null;
-      }
-    };
-  }, []);
+  // ── Interaction hook ─────────────────────────────────
+  const {
+    pxToMs,
+    snapThresholdMs,
+    visibleRows,
+    getRowIndexAtY,
+    getTrackIndexAtY,
+    getTrackIdAtY,
+    handleClipPointerDown,
+    handleKeyframePointerDown,
+    handleClipHover,
+  } = useTimelineInteraction({
+    state,
+    selectedClipIds,
+    selectedClipIdSet,
+    selectClip,
+    setSelectedClipIds,
+    setSelectedKeyframeId,
+    lastClickedClipRef,
+    automationVisibleTracks,
+    setInvalidDropTrackId,
+    setTrackDropIndex,
+    dragRef,
+    keyframeDragRef,
+    trackDragRef,
+    groupDragRef,
+    scrollContainerRef,
+    splitClip,
+    moveClip,
+    moveClips,
+    resizeClip,
+    moveClipToTrack,
+    updateClipSettings,
+    moveKeyframe,
+    moveTrackTo,
+    moveGroup,
+  });
 
-  useEffect(() => {
-    if (wasPlayingRef.current && !state.isPlaying && isRecording) {
-      void stopAndDownload();
-    }
-    wasPlayingRef.current = state.isPlaying;
-  }, [state.isPlaying, isRecording, stopAndDownload]);
-
-  const [panelHeight, setPanelHeight] = useState(DEFAULT_HEIGHT);
-  const resizingRef = useRef(false);
-  const startYRef = useRef(0);
-  const startHeightRef = useRef(0);
-
-  const [sourcesWidth, setSourcesWidth] = useState(SOURCES_WIDTH);
-  const sourcesResizingRef = useRef(false);
-  const sourcesStartXRef = useRef(0);
-  const sourcesStartWidthRef = useRef(0);
-
-  const [contextMenu, setContextMenu] = useState<{
-    x: number;
-    y: number;
-    trackId: string;
-    inputId: string;
-    isMuted: boolean;
-    clipId?: string;
-    splitAtMs?: number;
-  } | null>(null);
-  const [colorSubmenuOpen, setColorSubmenuOpen] = useState(false);
-  const [longPressColor, setLongPressColor] = useState<string | null>(null);
-  const colorSubmenuCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(
-    null,
-  );
-
-  const [showHelp, setShowHelp] = useState(false);
-  const [editingTrackId, setEditingTrackId] = useState<string | null>(null);
-  const [editingTrackLabel, setEditingTrackLabel] = useState('');
-  const [invalidDropTrackId, setInvalidDropTrackId] = useState<string | null>(
-    null,
-  );
-  const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const rulerRef = useRef<HTMLDivElement>(null);
-  const contextMenuRef = useRef<HTMLDivElement>(null);
-
-  // ── Clip interaction refs ─────────────────────────
-  const dragRef = useRef<{
-    type:
-      | 'move'
-      | 'resize-left'
-      | 'resize-right'
-      | 'resize-transition-in'
-      | 'resize-transition-out';
-    trackId: string;
-    clipId: string;
-    originX: number;
-    originY: number;
-    originStartMs: number;
-    originEndMs: number;
-    originTransitionMs?: number;
-    multiClips?: {
-      trackId: string;
-      clipId: string;
-      originStartMs: number;
-      originEndMs: number;
-    }[];
-  } | null>(null);
-  const keyframeDragRef = useRef<{
-    trackId: string;
-    clipId: string;
-    keyframeId: string;
-    originX: number;
-    originTimeMs: number;
-  } | null>(null);
-  const trackDragRef = useRef<{
-    trackId: string;
-    originY: number;
-    currentIndex: number;
-  } | null>(null);
-  const groupDragRef = useRef<{
-    groupId: string;
-    originY: number;
-    currentIndex: number;
-  } | null>(null);
-  const [trackDropIndex, setTrackDropIndex] = useState<number | null>(null);
-
-  // ── Sync ruler scroll with tracks scroll ──────────────
-  useEffect(() => {
-    const el = scrollContainerRef.current;
-    if (!el) return;
-    const onScroll = () => {
-      if (rulerRef.current) {
-        rulerRef.current.scrollLeft = el.scrollLeft;
-      }
-    };
-    el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
-  }, []);
-
-  // ── Auto-fit zoom so all clips are visible at max zoom ──
-  const autoFitRef = useRef(false);
-  useEffect(() => {
-    if (autoFitRef.current) return;
-    if (state.tracks.length === 0) return;
-    const el = scrollContainerRef.current;
-    if (!el) return;
-    const rafId = requestAnimationFrame(() => {
-      if (autoFitRef.current) return;
-      const availableWidth = el.clientWidth - sourcesWidth;
-      if (availableWidth <= 0) return;
-      const extentMs = getContentExtentMs(state.tracks);
-      const extentSec =
-        (extentMs > 0 ? extentMs : state.totalDurationMs) / 1000;
-      if (extentSec <= 0) return;
-      const padding = 40;
-      const idealPps = Math.max(1, availableWidth - padding) / extentSec;
-      setZoom(idealPps);
-      autoFitRef.current = true;
-    });
-    return () => cancelAnimationFrame(rafId);
-  }, [state.tracks, state.totalDurationMs, setZoom, sourcesWidth]);
-
-  // ── Timeline dimensions ──────────────────────────────
-
-  const timelineWidthPx = useMemo(
-    () => (state.totalDurationMs / 1000) * state.pixelsPerSecond,
-    [state.totalDurationMs, state.pixelsPerSecond],
-  );
-
-  const playheadPx = useMemo(
-    () => (state.playheadMs / 1000) * state.pixelsPerSecond,
-    [state.playheadMs, state.pixelsPerSecond],
-  );
-
-  const rulerTicks = useMemo(
-    () => computeRulerTicks(state.totalDurationMs, state.pixelsPerSecond),
-    [state.totalDurationMs, state.pixelsPerSecond],
-  );
-
-  // ── Panel resize ─────────────────────────────────────
-
-  const handleResizeStart = useCallback(
-    (e: ReactMouseEvent) => {
-      e.preventDefault();
-      resizingRef.current = true;
-      startYRef.current = e.clientY;
-      startHeightRef.current = panelHeight;
-
-      const handleMouseMove = (e: globalThis.MouseEvent) => {
-        if (!resizingRef.current) return;
-        const delta = startYRef.current - e.clientY;
-        const maxHeight = window.innerHeight * MAX_HEIGHT_VH;
-        const newHeight = Math.min(
-          maxHeight,
-          Math.max(MIN_HEIGHT, startHeightRef.current + delta),
-        );
-        setPanelHeight(newHeight);
-      };
-
-      const handleMouseUp = () => {
-        resizingRef.current = false;
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-      };
-
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    },
-    [panelHeight],
-  );
-
-  // ── Sources column resize ────────────────────────────
-
-  const handleSourcesResizeStart = useCallback(
-    (e: ReactMouseEvent) => {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      e.stopPropagation();
-      sourcesResizingRef.current = true;
-      sourcesStartXRef.current = e.clientX;
-      sourcesStartWidthRef.current = sourcesWidth;
-
-      const handleMouseMove = (ev: globalThis.MouseEvent) => {
-        if (!sourcesResizingRef.current) return;
-        const delta = ev.clientX - sourcesStartXRef.current;
-        const newWidth = Math.min(
-          MAX_SOURCES_WIDTH,
-          Math.max(MIN_SOURCES_WIDTH, sourcesStartWidthRef.current + delta),
-        );
-        setSourcesWidth(newWidth);
-      };
-
-      const handleMouseUp = () => {
-        sourcesResizingRef.current = false;
-        document.body.style.userSelect = '';
-        document.body.style.cursor = '';
-        document.removeEventListener('mousemove', handleMouseMove);
-        document.removeEventListener('mouseup', handleMouseUp);
-      };
-
-      document.body.style.userSelect = 'none';
-      document.body.style.cursor = 'col-resize';
-      document.addEventListener('mousemove', handleMouseMove);
-      document.addEventListener('mouseup', handleMouseUp);
-    },
-    [sourcesWidth],
-  );
+  // ── Keyboard hook ────────────────────────────────────
+  const { deleteClipsAndRemoveOrphans } = useTimelineKeyboard({
+    state,
+    selectedClipIds,
+    selectedInputId,
+    setSelectedClipIds,
+    setSelectedKeyframeId,
+    setShowHelp,
+    setPlayhead,
+    handlePlayPauseToggle,
+    animateZoom,
+    scrollToPlayhead,
+    jumpToEdge,
+    findClipAtPlayhead,
+    splitClip,
+    duplicateClip,
+    deleteClips,
+    deleteTrack,
+    undo,
+    redo,
+    removeInput,
+    purgeInputId,
+    refreshState,
+    roomId,
+    sourcesWidth,
+    scrollContainerRef,
+  });
 
   // ── Track click ──────────────────────────────────────
 
@@ -1326,1200 +853,6 @@ export const TimelinePanel = memo(function TimelinePanel({
       }
     },
     [state.tracks],
-  );
-
-  // ── Ruler scrub (pointer drag to move playhead) ───────
-
-  const rulerScrubRef = useRef(false);
-
-  const rulerPxToMs = useCallback(
-    (clientX: number, target: HTMLElement) => {
-      const rect = target.getBoundingClientRect();
-      const x = clientX - rect.left + target.scrollLeft;
-      return Math.round((x / state.pixelsPerSecond) * 1000);
-    },
-    [state.pixelsPerSecond],
-  );
-
-  const getPlayheadSnapTargets = useCallback((): number[] => {
-    const targets = new Set<number>([0, state.totalDurationMs]);
-    for (const track of state.tracks) {
-      for (const clip of track.clips) {
-        if (state.snapToBlocks) {
-          targets.add(clip.startMs);
-          targets.add(clip.endMs);
-        }
-        if (state.snapToKeyframes) {
-          for (const keyframe of clip.keyframes) {
-            targets.add(clip.startMs + keyframe.timeMs);
-          }
-        }
-      }
-    }
-    return [...targets];
-  }, [
-    state.totalDurationMs,
-    state.tracks,
-    state.snapToBlocks,
-    state.snapToKeyframes,
-  ]);
-
-  const resolvePlayheadMs = useCallback(
-    (rawMs: number, shiftKey: boolean) => {
-      const clampedMs = Math.max(0, Math.min(rawMs, state.totalDurationMs));
-      if (!shiftKey) {
-        return clampedMs;
-      }
-      const targets = getPlayheadSnapTargets();
-      if (targets.length === 0) {
-        return clampedMs;
-      }
-      const thresholdMs = Math.round(
-        (SNAP_THRESHOLD_PX / state.pixelsPerSecond) * 1000,
-      );
-      return snapToNearest(clampedMs, targets, thresholdMs);
-    },
-    [state.totalDurationMs, state.pixelsPerSecond, getPlayheadSnapTargets],
-  );
-
-  const handleRulerPointerDown = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (sortMode === 'layers') return;
-      e.preventDefault();
-      rulerScrubRef.current = true;
-      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
-      document.body.style.userSelect = 'none';
-      const ms = resolvePlayheadMs(
-        rulerPxToMs(e.clientX, e.currentTarget),
-        e.shiftKey,
-      );
-      if (state.isPlaying) {
-        pause();
-      }
-      setPlayhead(ms);
-    },
-    [
-      setPlayhead,
-      rulerPxToMs,
-      resolvePlayheadMs,
-      state.isPlaying,
-      pause,
-      sortMode,
-    ],
-  );
-
-  const handleRulerPointerMove = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!rulerScrubRef.current) return;
-      const ms = resolvePlayheadMs(
-        rulerPxToMs(e.clientX, e.currentTarget),
-        e.shiftKey,
-      );
-      if (state.isPlaying) {
-        pause();
-      }
-      setPlayhead(ms);
-    },
-    [setPlayhead, rulerPxToMs, resolvePlayheadMs, state.isPlaying, pause],
-  );
-
-  const handleRulerPointerUp = useCallback(
-    (e: React.PointerEvent<HTMLDivElement>) => {
-      if (!rulerScrubRef.current) return;
-      rulerScrubRef.current = false;
-      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-      document.body.style.userSelect = '';
-      if (!state.isPlaying) {
-        void applyAtPlayhead();
-      }
-    },
-    [applyAtPlayhead, state.isPlaying],
-  );
-
-  // ── Zoom ─────────────────────────────────────────────
-
-  const ZOOM_TRANSITION_MS = 180;
-  const zoomTransitionStyle = `left ${ZOOM_TRANSITION_MS}ms ease-out, width ${ZOOM_TRANSITION_MS}ms ease-out`;
-  const [zoomAnimating, setZoomAnimating] = useState(false);
-  const zoomTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const animateZoom = useCallback(
-    (pps: number) => {
-      setZoomAnimating(true);
-      setZoom(pps);
-      if (zoomTimerRef.current) clearTimeout(zoomTimerRef.current);
-      zoomTimerRef.current = setTimeout(
-        () => setZoomAnimating(false),
-        ZOOM_TRANSITION_MS,
-      );
-    },
-    [setZoom],
-  );
-
-  const handleZoomIn = useCallback(() => {
-    animateZoom(state.pixelsPerSecond * 1.5);
-  }, [state.pixelsPerSecond, animateZoom]);
-
-  const handleZoomOut = useCallback(() => {
-    animateZoom(state.pixelsPerSecond / 1.5);
-  }, [state.pixelsPerSecond, animateZoom]);
-
-  // ── Scroll to playhead ───────────────────────────────
-
-  const scrollToPlayhead = useCallback(() => {
-    const el = scrollContainerRef.current;
-    if (!el) return;
-    const phPx = (state.playheadMs / 1000) * state.pixelsPerSecond;
-    const viewportWidth = el.clientWidth - sourcesWidth;
-    el.scrollLeft = Math.max(0, phPx - viewportWidth / 2);
-  }, [state.playheadMs, state.pixelsPerSecond, sourcesWidth]);
-
-  // ── Find clip at playhead for selected track ──────
-
-  const findClipAtPlayhead = useCallback(
-    (trackId: string): string | null => {
-      const track = state.tracks.find((t) => t.id === trackId);
-      if (!track) return null;
-      for (const clip of track.clips) {
-        if (state.playheadMs >= clip.startMs && state.playheadMs < clip.endMs) {
-          return clip.id;
-        }
-      }
-      return null;
-    },
-    [state.tracks, state.playheadMs],
-  );
-
-  // ── Jump playhead to next/prev segment edge ──────────
-
-  const jumpToEdge = useCallback(
-    (direction: 'prev' | 'next') => {
-      const edges = new Set<number>();
-      edges.add(0);
-      edges.add(state.totalDurationMs);
-      for (const track of state.tracks) {
-        for (const clip of track.clips) {
-          edges.add(clip.startMs);
-          edges.add(clip.endMs);
-        }
-      }
-      const sorted = [...edges].sort((a, b) => a - b);
-      if (direction === 'next') {
-        const next = sorted.find((e) => e > state.playheadMs);
-        if (next !== undefined) setPlayhead(next);
-      } else {
-        const prev = [...sorted].reverse().find((e) => e < state.playheadMs);
-        if (prev !== undefined) setPlayhead(prev);
-      }
-    },
-    [state.tracks, state.totalDurationMs, state.playheadMs, setPlayhead],
-  );
-
-  // ── Navigate tracks ─────────────────────────────────
-
-  const navigateTrack = useCallback(
-    (direction: 'up' | 'down') => {
-      const trackIds = state.tracks.map((t) => t.id);
-      if (trackIds.length === 0) return;
-      let currentIdx = -1;
-      if (selectedClipIds.length > 0) {
-        currentIdx = trackIds.indexOf(selectedClipIds[0].trackId);
-      } else if (selectedInputId) {
-        currentIdx = state.tracks.findIndex((t) =>
-          t.clips.some((c) => c.inputId === selectedInputId),
-        );
-      }
-      let nextIdx: number;
-      if (direction === 'down') {
-        nextIdx = currentIdx < trackIds.length - 1 ? currentIdx + 1 : 0;
-      } else {
-        nextIdx = currentIdx > 0 ? currentIdx - 1 : trackIds.length - 1;
-      }
-      const nextTrack = state.tracks[nextIdx];
-      if (nextTrack && nextTrack.clips.length > 0) {
-        window.dispatchEvent(
-          new CustomEvent('smelter:inputs:select', {
-            detail: { inputId: nextTrack.clips[0].inputId },
-          }),
-        );
-      }
-    },
-    [state.tracks, selectedInputId, selectedClipIds],
-  );
-
-  // ── Tab to next clip on current track ────────────
-
-  const tabToNextClip = useCallback(
-    (reverse: boolean) => {
-      let trackId: string | null = null;
-      const primarySel = selectedClipIds.length > 0 ? selectedClipIds[0] : null;
-      if (primarySel) {
-        trackId = primarySel.trackId;
-      } else if (selectedInputId) {
-        const t = state.tracks.find((t) =>
-          t.clips.some((c) => c.inputId === selectedInputId),
-        );
-        if (t) trackId = t.id;
-      }
-      if (!trackId) return;
-      const track = state.tracks.find((t) => t.id === trackId);
-      if (!track || track.clips.length === 0) return;
-      const clips = track.clips;
-      const currentIdx = primarySel
-        ? clips.findIndex((c) => c.id === primarySel.clipId)
-        : -1;
-      let nextIdx: number;
-      if (reverse) {
-        nextIdx = currentIdx > 0 ? currentIdx - 1 : clips.length - 1;
-      } else {
-        nextIdx = currentIdx < clips.length - 1 ? currentIdx + 1 : 0;
-      }
-      const clip = clips[nextIdx];
-      setSelectedClipIds([{ trackId: track.id, clipId: clip.id }]);
-      setSelectedKeyframeId(null);
-      setPlayhead(clip.startMs);
-    },
-    [selectedInputId, selectedClipIds, state.tracks, setPlayhead],
-  );
-
-  // ── Voice: select track / remove track / next-prev block ──────────
-
-  useEffect(() => {
-    const onSelectTrack = (e: CustomEvent<{ trackIndex: number }>) => {
-      const idx = e.detail.trackIndex - 1;
-      if (idx < 0 || idx >= state.tracks.length) {
-        console.warn(`Voice: track ${e.detail.trackIndex} does not exist`);
-        return;
-      }
-      const track = state.tracks[idx];
-      if (track.clips.length > 0) {
-        setSelectedClipIds([{ trackId: track.id, clipId: track.clips[0].id }]);
-        setSelectedKeyframeId(null);
-        setPlayhead(track.clips[0].startMs);
-        window.dispatchEvent(
-          new CustomEvent('smelter:inputs:select', {
-            detail: { inputId: track.clips[0].inputId },
-          }),
-        );
-      }
-    };
-
-    const onRemoveTrack = (e: CustomEvent<{ trackIndex: number }>) => {
-      const idx = e.detail.trackIndex - 1;
-      if (idx < 0 || idx >= state.tracks.length) {
-        console.warn(`Voice: track ${e.detail.trackIndex} does not exist`);
-        return;
-      }
-      deleteTrack(state.tracks[idx].id);
-    };
-
-    const onNextBlock = () => tabToNextClip(false);
-    const onPrevBlock = () => tabToNextClip(true);
-
-    window.addEventListener(
-      'smelter:voice:select-track',
-      onSelectTrack as unknown as EventListener,
-    );
-    window.addEventListener(
-      'smelter:voice:remove-track',
-      onRemoveTrack as unknown as EventListener,
-    );
-    window.addEventListener('smelter:voice:next-block', onNextBlock);
-    window.addEventListener('smelter:voice:prev-block', onPrevBlock);
-
-    return () => {
-      window.removeEventListener(
-        'smelter:voice:select-track',
-        onSelectTrack as unknown as EventListener,
-      );
-      window.removeEventListener(
-        'smelter:voice:remove-track',
-        onRemoveTrack as unknown as EventListener,
-      );
-      window.removeEventListener('smelter:voice:next-block', onNextBlock);
-      window.removeEventListener('smelter:voice:prev-block', onPrevBlock);
-    };
-  }, [state.tracks, setPlayhead, tabToNextClip, deleteTrack]);
-
-  const deleteClipsAndRemoveOrphans = useCallback(
-    async (clipsToDelete: { trackId: string; clipId: string }[]) => {
-      if (clipsToDelete.length === 0) return;
-
-      const orphanedIds = findOrphanedInputIds(state.tracks, clipsToDelete);
-
-      deleteClips(clipsToDelete);
-
-      for (const inputId of orphanedIds) {
-        await removeInput(roomId, inputId);
-        purgeInputId(inputId);
-      }
-      if (orphanedIds.length > 0) await refreshState();
-    },
-    [
-      state.tracks,
-      deleteClip,
-      deleteClips,
-      removeInput,
-      roomId,
-      purgeInputId,
-      refreshState,
-    ],
-  );
-
-  // ── Keyboard shortcuts ──────────────────────────────
-
-  useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      // Don't intercept typing in any editable field (including contenteditable).
-      if (shouldIgnoreGlobalShortcut(e.target)) return;
-
-      const key = e.key;
-      const ctrl = e.ctrlKey || e.metaKey;
-      const shift = e.shiftKey;
-
-      switch (key) {
-        case 'z':
-        case 'Z': {
-          if (!ctrl) break;
-          e.preventDefault();
-          if (shift) redo();
-          else undo();
-          break;
-        }
-        case 'y':
-        case 'Y': {
-          if (!ctrl) break;
-          e.preventDefault();
-          redo();
-          break;
-        }
-        case ' ': {
-          if (!e.ctrlKey) break;
-          e.preventDefault();
-          void handlePlayPauseToggle();
-          break;
-        }
-        case 'Home': {
-          e.preventDefault();
-          setPlayhead(0);
-          break;
-        }
-        case 'End': {
-          e.preventDefault();
-          setPlayhead(state.totalDurationMs);
-          break;
-        }
-        case 'ArrowLeft': {
-          e.preventDefault();
-          const step = shift ? 5000 : 1000;
-          setPlayhead(Math.max(0, state.playheadMs - step));
-          break;
-        }
-        case 'ArrowRight': {
-          e.preventDefault();
-          const step = shift ? 5000 : 1000;
-          setPlayhead(Math.min(state.totalDurationMs, state.playheadMs + step));
-          break;
-        }
-        case 'ArrowUp': {
-          e.preventDefault();
-          navigateTrack('up');
-          break;
-        }
-        case 'ArrowDown': {
-          e.preventDefault();
-          navigateTrack('down');
-          break;
-        }
-        case 'j':
-        case 'J': {
-          if (ctrl) break;
-          e.preventDefault();
-          jumpToEdge('prev');
-          break;
-        }
-        case 'l':
-        case 'L': {
-          if (ctrl) break;
-          e.preventDefault();
-          jumpToEdge('next');
-          break;
-        }
-        case '+':
-        case '=': {
-          if (ctrl) {
-            e.preventDefault();
-            animateZoom(state.pixelsPerSecond * 1.5);
-          } else if (key === '+') {
-            e.preventDefault();
-            animateZoom(state.pixelsPerSecond * 1.5);
-          }
-          break;
-        }
-        case '-': {
-          if (ctrl) e.preventDefault();
-          animateZoom(state.pixelsPerSecond / 1.5);
-          break;
-        }
-        case '0': {
-          if (ctrl) break;
-          e.preventDefault();
-          const el = scrollContainerRef.current;
-          if (el) {
-            const availableWidth = el.clientWidth - sourcesWidth;
-            const extentMs = getContentExtentMs(state.tracks);
-            const extentSec =
-              (extentMs > 0 ? extentMs : state.totalDurationMs) / 1000;
-            if (extentSec > 0 && availableWidth > 0) {
-              const padding = 40;
-              animateZoom(Math.max(1, availableWidth - padding) / extentSec);
-            }
-          }
-          break;
-        }
-        case 'f':
-        case 'F': {
-          if (ctrl) break;
-          e.preventDefault();
-          scrollToPlayhead();
-          break;
-        }
-        case 'a':
-        case 'A': {
-          if (!ctrl) break;
-          e.preventDefault();
-          const all: { trackId: string; clipId: string }[] = [];
-          for (const track of state.tracks) {
-            for (const clip of track.clips) {
-              all.push({ trackId: track.id, clipId: clip.id });
-            }
-          }
-          setSelectedClipIds(all);
-          break;
-        }
-        case 's':
-        case 'S': {
-          if (ctrl) break;
-          e.preventDefault();
-          if (selectedClipIds.length === 1) {
-            const sel = selectedClipIds[0];
-            const clipId = findClipAtPlayhead(sel.trackId);
-            if (clipId) splitClip(sel.trackId, clipId, state.playheadMs);
-          }
-          break;
-        }
-        case 'd':
-        case 'D': {
-          if (ctrl) break;
-          e.preventDefault();
-          if (selectedClipIds.length === 1) {
-            duplicateClip(
-              selectedClipIds[0].trackId,
-              selectedClipIds[0].clipId,
-            );
-          }
-          break;
-        }
-        case 'm':
-        case 'M': {
-          if (ctrl) break;
-          e.preventDefault();
-          if (selectedInputId) {
-            window.dispatchEvent(
-              new CustomEvent('smelter:inputs:toggle-mute', {
-                detail: { inputId: selectedInputId },
-              }),
-            );
-          }
-          break;
-        }
-        case 'Delete':
-        case 'Backspace': {
-          if (selectedClipIds.length > 0) {
-            e.preventDefault();
-            void deleteClipsAndRemoveOrphans(selectedClipIds);
-            setSelectedClipIds([]);
-            setSelectedKeyframeId(null);
-          }
-          break;
-        }
-        case 'Tab': {
-          e.preventDefault();
-          tabToNextClip(shift);
-          break;
-        }
-        case 'Escape': {
-          setSelectedClipIds([]);
-          setSelectedKeyframeId(null);
-          setShowHelp(false);
-          break;
-        }
-        case '?': {
-          e.preventDefault();
-          setShowHelp((prev) => !prev);
-          break;
-        }
-      }
-    };
-
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
-  }, [
-    state.isPlaying,
-    state.playheadMs,
-    state.totalDurationMs,
-    state.pixelsPerSecond,
-    state.tracks,
-    handlePlayPauseToggle,
-    setPlayhead,
-    setZoom,
-    animateZoom,
-    scrollToPlayhead,
-    jumpToEdge,
-    navigateTrack,
-    tabToNextClip,
-    findClipAtPlayhead,
-    splitClip,
-    deleteClipsAndRemoveOrphans,
-    duplicateClip,
-    undo,
-    redo,
-    selectedInputId,
-    selectedClipIds,
-  ]);
-
-  // ── Clip pointer interactions ─────────────────────
-
-  const pxToMs = useCallback(
-    (px: number) => (px / state.pixelsPerSecond) * 1000,
-    [state.pixelsPerSecond],
-  );
-
-  const snapThresholdMs = useMemo(() => pxToMs(SNAP_THRESHOLD_PX), [pxToMs]);
-
-  // ── Visible rows: rootOrder expanded with group children (collapse-aware) ─
-  type VisibleRow =
-    | {
-        kind: 'track';
-        track: Track;
-        groupId?: string;
-        /** Drop target for inserting BEFORE this row. */
-        dropTarget:
-          | { kind: 'root'; index: number }
-          | { kind: 'group'; groupId: string; index: number };
-        indent: boolean;
-      }
-    | {
-        kind: 'group';
-        group: TrackGroup;
-        rootIndex: number;
-        dropTarget: { kind: 'root'; index: number };
-      };
-
-  const visibleRows = useMemo<VisibleRow[]>(() => {
-    const trackById = new Map(state.tracks.map((t) => [t.id, t]));
-    const groupById = new Map(state.groups.map((g) => [g.id, g]));
-    const out: VisibleRow[] = [];
-    state.rootOrder.forEach((ref, rootIndex) => {
-      if (ref.kind === 'track') {
-        const t = trackById.get(ref.id);
-        if (!t) return;
-        out.push({
-          kind: 'track',
-          track: t,
-          dropTarget: { kind: 'root', index: rootIndex },
-          indent: false,
-        });
-      } else {
-        const g = groupById.get(ref.id);
-        if (!g) return;
-        out.push({
-          kind: 'group',
-          group: g,
-          rootIndex,
-          dropTarget: { kind: 'root', index: rootIndex },
-        });
-        if (!g.collapsed) {
-          g.trackIds.forEach((tid, childIdx) => {
-            const t = trackById.get(tid);
-            if (!t) return;
-            out.push({
-              kind: 'track',
-              track: t,
-              groupId: g.id,
-              dropTarget: { kind: 'group', groupId: g.id, index: childIdx },
-              indent: true,
-            });
-          });
-        }
-      }
-    });
-    return out;
-  }, [state.rootOrder, state.tracks, state.groups]);
-
-  // ── Determine which row the pointer is over ────
-  const getRowIndexAtY = useCallback(
-    (relativeY: number): number => {
-      let accumulated = 0;
-      for (let i = 0; i < visibleRows.length; i++) {
-        const row = visibleRows[i];
-        const isTrack = row.kind === 'track';
-        const h = isTrack
-          ? TRACK_HEIGHT +
-            (automationVisibleTracks.has(row.track.id)
-              ? AUTOMATION_LANE_HEIGHT
-              : 0)
-          : TRACK_HEIGHT;
-        if (relativeY < accumulated + h) return i;
-        accumulated += h;
-      }
-      return Math.max(0, visibleRows.length - 1);
-    },
-    [visibleRows, automationVisibleTracks],
-  );
-
-  /** Legacy alias used by clip drag helpers. Returns visible-row index, but
-   *  callers that needed a track-only index get translated via getTrackIdAtY. */
-  const getTrackIndexAtY = getRowIndexAtY;
-
-  const getTrackIdAtY = useCallback(
-    (clientY: number): string | null => {
-      const container = scrollContainerRef.current;
-      if (!container) return null;
-      const containerRect = container.getBoundingClientRect();
-      const scrollTop = container.scrollTop;
-      const relativeY = clientY - containerRect.top + scrollTop;
-      const idx = getRowIndexAtY(relativeY);
-      const row = visibleRows[idx];
-      if (row && row.kind === 'track') return row.track.id;
-      return null;
-    },
-    [visibleRows, getRowIndexAtY],
-  );
-
-  const handleClipPointerDown = useCallback(
-    (
-      e: React.PointerEvent<HTMLDivElement>,
-      trackId: string,
-      clipId: string,
-      clipStartMs: number,
-      clipEndMs: number,
-      introTransitionMs: number,
-      outroTransitionMs: number,
-    ) => {
-      const isOutputClip = clipId === OUTPUT_CLIP_ID;
-
-      // Alt+Click = split (not for output clip)
-      if (e.altKey && !isOutputClip) {
-        const rect = e.currentTarget.parentElement!.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const atMs = Math.round(pxToMs(x));
-        splitClip(trackId, clipId, atMs);
-        return;
-      }
-
-      e.preventDefault();
-      e.stopPropagation();
-
-      const ctrl = e.ctrlKey || e.metaKey;
-      const shift = e.shiftKey;
-
-      if (ctrl) {
-        selectClip(trackId, clipId, 'toggle');
-      } else if (shift) {
-        selectClip(trackId, clipId, 'range');
-      } else {
-        // Normal click: if clip is already part of multi-selection, keep
-        // the selection so that dragging moves all of them.
-        const alreadySelected = selectedClipIdSet.has(clipId);
-        if (!alreadySelected || selectedClipIds.length <= 1) {
-          selectClip(trackId, clipId, 'replace');
-        }
-      }
-
-      // Output clip: allow selection but no move/resize/split
-      if (isOutputClip) return;
-
-      const rect = e.currentTarget.getBoundingClientRect();
-      const localX = e.clientX - rect.left;
-      const clipWidthPx = rect.width;
-
-      const introHandlePx = (introTransitionMs / 1000) * state.pixelsPerSecond;
-      const outroHandlePx = (outroTransitionMs / 1000) * state.pixelsPerSecond;
-      const TRANSITION_HANDLE_ZONE = 6;
-
-      let type:
-        | 'move'
-        | 'resize-left'
-        | 'resize-right'
-        | 'resize-transition-in'
-        | 'resize-transition-out' = 'move';
-      let originTransitionMs: number | undefined;
-
-      if (
-        introTransitionMs > 0 &&
-        Math.abs(localX - introHandlePx) <= TRANSITION_HANDLE_ZONE
-      ) {
-        type = 'resize-transition-in';
-        originTransitionMs = introTransitionMs;
-      } else if (
-        outroTransitionMs > 0 &&
-        Math.abs(localX - (clipWidthPx - outroHandlePx)) <=
-          TRANSITION_HANDLE_ZONE
-      ) {
-        type = 'resize-transition-out';
-        originTransitionMs = outroTransitionMs;
-      } else if (localX <= RESIZE_HANDLE_PX) {
-        type = 'resize-left';
-      } else if (localX >= clipWidthPx - RESIZE_HANDLE_PX) {
-        type = 'resize-right';
-      }
-
-      // Build multi-clip origins when moving a multi-selection
-      let multiClips:
-        | {
-            trackId: string;
-            clipId: string;
-            originStartMs: number;
-            originEndMs: number;
-          }[]
-        | undefined;
-
-      if (
-        type === 'move' &&
-        selectedClipIdSet.has(clipId) &&
-        selectedClipIds.length > 1
-      ) {
-        multiClips = [];
-        for (const sel of selectedClipIds) {
-          const t = state.tracks.find((tr) => tr.id === sel.trackId);
-          const c = t?.clips.find((cl) => cl.id === sel.clipId);
-          if (t && c) {
-            multiClips.push({
-              trackId: sel.trackId,
-              clipId: sel.clipId,
-              originStartMs: c.startMs,
-              originEndMs: c.endMs,
-            });
-          }
-        }
-      }
-
-      dragRef.current = {
-        type,
-        trackId,
-        clipId,
-        originX: e.clientX,
-        originY: e.clientY,
-        originStartMs: clipStartMs,
-        originEndMs: clipEndMs,
-        originTransitionMs,
-        multiClips,
-      };
-
-      document.body.style.userSelect = 'none';
-    },
-    [
-      pxToMs,
-      splitClip,
-      state.pixelsPerSecond,
-      state.tracks,
-      selectClip,
-      selectedClipIdSet,
-      selectedClipIds,
-    ],
-  );
-
-  const handleKeyframePointerDown = useCallback(
-    (
-      e: React.PointerEvent<HTMLButtonElement>,
-      trackId: string,
-      clip: Clip,
-      keyframe: Keyframe,
-    ) => {
-      e.preventDefault();
-      e.stopPropagation();
-
-      setSelectedClipIds([{ trackId, clipId: clip.id }]);
-      setSelectedKeyframeId(keyframe.id);
-      lastClickedClipRef.current = { trackId, clipId: clip.id };
-
-      if (keyframe.timeMs === 0) {
-        return;
-      }
-
-      keyframeDragRef.current = {
-        trackId,
-        clipId: clip.id,
-        keyframeId: keyframe.id,
-        originX: e.clientX,
-        originTimeMs: keyframe.timeMs,
-      };
-
-      document.body.style.userSelect = 'none';
-    },
-    [],
-  );
-
-  // Use document-level listeners for drag so we can detect cross-track movement
-  useEffect(() => {
-    const handlePointerMove = (e: PointerEvent) => {
-      // ── Track reorder drag ──
-      const trackDrag = trackDragRef.current;
-      if (trackDrag) {
-        const container = scrollContainerRef.current;
-        if (!container) return;
-        const containerRect = container.getBoundingClientRect();
-        const scrollTop = container.scrollTop;
-        const relativeY = e.clientY - containerRect.top + scrollTop;
-        let targetIndex = getRowIndexAtY(relativeY);
-        targetIndex = Math.max(
-          0,
-          Math.min(targetIndex, Math.max(0, visibleRows.length - 1)),
-        );
-        const targetRow = visibleRows[targetIndex];
-        if (
-          targetRow &&
-          targetRow.kind === 'track' &&
-          targetRow.track.id === OUTPUT_TRACK_ID
-        ) {
-          return;
-        }
-        setTrackDropIndex(targetIndex);
-        if (targetIndex !== trackDrag.currentIndex && targetRow) {
-          moveTrackTo(trackDrag.trackId, targetRow.dropTarget);
-          trackDrag.currentIndex = targetIndex;
-        }
-        return;
-      }
-
-      // ── Group reorder drag ──
-      const groupDrag = groupDragRef.current;
-      if (groupDrag) {
-        const container = scrollContainerRef.current;
-        if (!container) return;
-        const containerRect = container.getBoundingClientRect();
-        const scrollTop = container.scrollTop;
-        const relativeY = e.clientY - containerRect.top + scrollTop;
-        let targetIndex = getRowIndexAtY(relativeY);
-        targetIndex = Math.max(
-          0,
-          Math.min(targetIndex, Math.max(0, visibleRows.length - 1)),
-        );
-        const targetRow = visibleRows[targetIndex];
-        if (!targetRow) return;
-        // Groups can only be dropped at root positions. Use the row's root
-        // index (groups themselves carry rootIndex; child track rows carry
-        // their parent group's rootIndex via dropTarget=group).
-        let rootIndex: number;
-        if (targetRow.kind === 'group') {
-          rootIndex = targetRow.rootIndex;
-        } else {
-          const dt = targetRow.dropTarget;
-          if (dt.kind === 'root') {
-            rootIndex = dt.index;
-          } else {
-            // hovering inside a group's children — clamp to that group's root pos
-            const ownerGroupId = dt.groupId;
-            const ownerIdx = state.rootOrder.findIndex(
-              (r) => r.kind === 'group' && r.id === ownerGroupId,
-            );
-            rootIndex = ownerIdx >= 0 ? ownerIdx : state.rootOrder.length - 1;
-          }
-        }
-        setTrackDropIndex(targetIndex);
-        if (targetIndex !== groupDrag.currentIndex) {
-          moveGroup(groupDrag.groupId, rootIndex);
-          groupDrag.currentIndex = targetIndex;
-        }
-        return;
-      }
-
-      const keyframeDrag = keyframeDragRef.current;
-      if (keyframeDrag) {
-        const deltaMs = pxToMs(e.clientX - keyframeDrag.originX);
-        const track = state.tracks.find(
-          (item) => item.id === keyframeDrag.trackId,
-        );
-        const clip = track?.clips.find(
-          (item) => item.id === keyframeDrag.clipId,
-        );
-        if (!clip) {
-          return;
-        }
-
-        const clipDurationMs = clip.endMs - clip.startMs;
-        const occupiedTimes = new Set(
-          clip.keyframes
-            .filter((keyframe) => keyframe.id !== keyframeDrag.keyframeId)
-            .map((keyframe) => keyframe.timeMs),
-        );
-        let nextTimeMs = Math.round(keyframeDrag.originTimeMs + deltaMs);
-        nextTimeMs = clampKeyframeTimeMs(nextTimeMs, clipDurationMs);
-        if (state.snapToKeyframes) {
-          nextTimeMs = snapToNearest(
-            nextTimeMs,
-            computeKeyframeSnapTargets(clip, keyframeDrag.keyframeId),
-            snapThresholdMs,
-          );
-        }
-        nextTimeMs = clampKeyframeTimeMs(nextTimeMs, clipDurationMs);
-        nextTimeMs = resolveKeyframeCollision(
-          nextTimeMs,
-          occupiedTimes,
-          clipDurationMs,
-          deltaMs,
-        );
-
-        moveKeyframe(
-          keyframeDrag.trackId,
-          keyframeDrag.clipId,
-          keyframeDrag.keyframeId,
-          nextTimeMs,
-        );
-        return;
-      }
-
-      const drag = dragRef.current;
-      if (!drag) return;
-
-      const deltaX = e.clientX - drag.originX;
-      const deltaMs = pxToMs(deltaX);
-
-      // Collect clip IDs being dragged to exclude from snap targets
-      const draggedClipIds = new Set<string>();
-      draggedClipIds.add(drag.clipId);
-      if (drag.multiClips) {
-        for (const mc of drag.multiClips) draggedClipIds.add(mc.clipId);
-      }
-
-      const snapTargets: number[] = [0, state.playheadMs];
-      for (const track of state.tracks) {
-        for (const clip of track.clips) {
-          if (draggedClipIds.has(clip.id)) continue;
-          snapTargets.push(clip.startMs, clip.endMs);
-        }
-      }
-
-      if (drag.type === 'move') {
-        const shiftLock = e.shiftKey;
-
-        if (drag.multiClips && drag.multiClips.length > 1) {
-          // Multi-clip move: compute delta via primary clip snap, apply to all
-          let newStart = shiftLock
-            ? drag.originStartMs
-            : Math.round(drag.originStartMs + deltaMs);
-          if (!shiftLock && state.snapToBlocks) {
-            newStart = snapToNearest(newStart, snapTargets, snapThresholdMs);
-          }
-          const duration = drag.originEndMs - drag.originStartMs;
-          if (!shiftLock && state.snapToBlocks) {
-            const snappedEnd = snapToNearest(
-              newStart + duration,
-              snapTargets,
-              snapThresholdMs,
-            );
-            if (snappedEnd !== newStart + duration) {
-              newStart = snappedEnd - duration;
-            }
-          }
-          const appliedDelta = newStart - drag.originStartMs;
-
-          const moves = drag.multiClips.map((mc) => ({
-            trackId: mc.trackId,
-            clipId: mc.clipId,
-            newStartMs: Math.max(
-              0,
-              Math.round(mc.originStartMs + appliedDelta),
-            ),
-          }));
-          moveClips(moves);
-        } else {
-          // Single-clip move (with cross-track support)
-          let newStart = shiftLock
-            ? drag.originStartMs
-            : Math.round(drag.originStartMs + deltaMs);
-          if (!shiftLock && state.snapToBlocks) {
-            newStart = snapToNearest(newStart, snapTargets, snapThresholdMs);
-          }
-          const duration = drag.originEndMs - drag.originStartMs;
-          if (!shiftLock && state.snapToBlocks) {
-            const snappedEnd = snapToNearest(
-              newStart + duration,
-              snapTargets,
-              snapThresholdMs,
-            );
-            if (snappedEnd !== newStart + duration) {
-              newStart = snappedEnd - duration;
-            }
-          }
-
-          const targetTrackId = getTrackIdAtY(e.clientY);
-          if (targetTrackId && targetTrackId !== drag.trackId) {
-            const targetTrack = state.tracks.find(
-              (t) => t.id === targetTrackId,
-            );
-            if (
-              targetTrack &&
-              hasOverlapOnTrack(
-                targetTrack.clips,
-                drag.clipId,
-                newStart,
-                newStart + duration,
-              )
-            ) {
-              setInvalidDropTrackId(targetTrackId);
-              moveClip(drag.trackId, drag.clipId, newStart);
-            } else {
-              setInvalidDropTrackId(null);
-              moveClipToTrack(
-                drag.trackId,
-                drag.clipId,
-                targetTrackId,
-                newStart,
-              );
-              drag.trackId = targetTrackId;
-            }
-          } else {
-            setInvalidDropTrackId(null);
-            moveClip(drag.trackId, drag.clipId, newStart);
-          }
-        }
-      } else if (drag.type === 'resize-left') {
-        let newStart = Math.round(drag.originStartMs + deltaMs);
-        if (state.snapToBlocks) {
-          newStart = snapToNearest(newStart, snapTargets, snapThresholdMs);
-        }
-        resizeClip(drag.trackId, drag.clipId, 'left', newStart);
-      } else if (
-        drag.type === 'resize-transition-in' ||
-        drag.type === 'resize-transition-out'
-      ) {
-        const track = state.tracks.find((t) => t.id === drag.trackId);
-        const clip = track?.clips.find((c) => c.id === drag.clipId);
-        if (clip) {
-          const clipDuration = clip.endMs - clip.startMs;
-          const originMs = drag.originTransitionMs ?? 0;
-          if (drag.type === 'resize-transition-in') {
-            const otherMs = clip.blockSettings.outroTransition?.durationMs ?? 0;
-            const newDurationMs = Math.max(
-              0,
-              Math.min(originMs + deltaMs, clipDuration - otherMs),
-            );
-            const introType =
-              clip.blockSettings.introTransition?.type ?? 'fade';
-            updateClipSettings(drag.trackId, drag.clipId, {
-              introTransition:
-                newDurationMs > 0
-                  ? { type: introType, durationMs: Math.round(newDurationMs) }
-                  : undefined,
-            });
-          } else {
-            const otherMs = clip.blockSettings.introTransition?.durationMs ?? 0;
-            const newDurationMs = Math.max(
-              0,
-              Math.min(originMs - deltaMs, clipDuration - otherMs),
-            );
-            const outroType =
-              clip.blockSettings.outroTransition?.type ?? 'fade';
-            updateClipSettings(drag.trackId, drag.clipId, {
-              outroTransition:
-                newDurationMs > 0
-                  ? { type: outroType, durationMs: Math.round(newDurationMs) }
-                  : undefined,
-            });
-          }
-        }
-      } else {
-        let newEnd = Math.round(drag.originEndMs + deltaMs);
-        if (state.snapToBlocks) {
-          newEnd = snapToNearest(newEnd, snapTargets, snapThresholdMs);
-        }
-        resizeClip(drag.trackId, drag.clipId, 'right', newEnd);
-      }
-    };
-
-    const handlePointerUp = () => {
-      const hadActiveDrag =
-        keyframeDragRef.current ||
-        dragRef.current ||
-        trackDragRef.current ||
-        groupDragRef.current;
-      keyframeDragRef.current = null;
-      dragRef.current = null;
-      if (trackDragRef.current) {
-        trackDragRef.current = null;
-        setTrackDropIndex(null);
-      }
-      if (groupDragRef.current) {
-        groupDragRef.current = null;
-        setTrackDropIndex(null);
-      }
-      if (hadActiveDrag) {
-        document.body.style.userSelect = '';
-      }
-      setInvalidDropTrackId(null);
-    };
-
-    document.addEventListener('pointermove', handlePointerMove);
-    document.addEventListener('pointerup', handlePointerUp);
-    return () => {
-      document.removeEventListener('pointermove', handlePointerMove);
-      document.removeEventListener('pointerup', handlePointerUp);
-    };
-  }, [
-    pxToMs,
-    state.tracks,
-    state.rootOrder,
-    state.playheadMs,
-    state.snapToBlocks,
-    state.snapToKeyframes,
-    snapThresholdMs,
-    moveClip,
-    moveClips,
-    resizeClip,
-    moveClipToTrack,
-    getTrackIdAtY,
-    getRowIndexAtY,
-    visibleRows,
-    updateClipSettings,
-    moveKeyframe,
-    moveTrackTo,
-    moveGroup,
-  ]);
-
-  const handleClipHover = useCallback(
-    (
-      e: React.PointerEvent<HTMLDivElement>,
-      introTransitionMs: number,
-      outroTransitionMs: number,
-    ) => {
-      if (dragRef.current) return;
-      const rect = e.currentTarget.getBoundingClientRect();
-      const localX = e.clientX - rect.left;
-      const w = rect.width;
-
-      const introHandlePx = (introTransitionMs / 1000) * state.pixelsPerSecond;
-      const outroHandlePx = (outroTransitionMs / 1000) * state.pixelsPerSecond;
-      const TRANSITION_HANDLE_ZONE = 6;
-
-      if (
-        introTransitionMs > 0 &&
-        Math.abs(localX - introHandlePx) <= TRANSITION_HANDLE_ZONE
-      ) {
-        e.currentTarget.style.cursor = 'ew-resize';
-      } else if (
-        outroTransitionMs > 0 &&
-        Math.abs(localX - (w - outroHandlePx)) <= TRANSITION_HANDLE_ZONE
-      ) {
-        e.currentTarget.style.cursor = 'ew-resize';
-      } else if (localX <= RESIZE_HANDLE_PX || localX >= w - RESIZE_HANDLE_PX) {
-        e.currentTarget.style.cursor = 'col-resize';
-      } else {
-        e.currentTarget.style.cursor = 'grab';
-      }
-    },
-    [state.pixelsPerSecond],
   );
 
   // ── Context menu ─────────────────────────────────────
