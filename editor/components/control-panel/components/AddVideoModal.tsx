@@ -612,7 +612,9 @@ export function AssetBrowserPanel({
   const [isLoading, setIsLoading] = useState(false);
 
   const [mp4Folder, setMp4Folder] = useState(initialMp4Folder ?? '');
-  const [pictureFolder, setPictureFolder] = useState(initialPictureFolder ?? '');
+  const [pictureFolder, setPictureFolder] = useState(
+    initialPictureFolder ?? '',
+  );
   const [audioFolder, setAudioFolder] = useState(initialAudioFolder ?? '');
   const [uploadJobs, setUploadJobs] = useState<UploadJob[]>([]);
   const [newFolderName, setNewFolderName] = useState('');
