@@ -371,6 +371,7 @@ export function PendingWhipInputs({
       setActiveScreenshareInputId,
       setIsCameraActive,
       setIsScreenshareActive,
+      codecMap,
       setPendingInputs,
       updateInput,
       updateRoom,
