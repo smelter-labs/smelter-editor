@@ -126,6 +126,16 @@ export function useTimelineServerSync({
       serverLayers,
     );
 
+    // Prune seenClipIdsRef of clip ids that no longer exist in tracks.
+    // This prevents unbounded growth when clips are removed.
+    const currentClipIds = new Set<string>();
+    for (const t of state.tracks) {
+      for (const c of t.clips) currentClipIds.add(c.id);
+    }
+    for (const id of Array.from(seenClipIdsRef.current)) {
+      if (!currentClipIds.has(id)) seenClipIdsRef.current.delete(id);
+    }
+
     for (const track of state.tracks) {
       for (const clip of track.clips) {
         if (clip.inputId === OUTPUT_TRACK_INPUT_ID) continue;

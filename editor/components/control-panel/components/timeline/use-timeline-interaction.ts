@@ -1,8 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useMemo } from 'react';
-import type { TimelineState, Track, TrackGroup, Clip, Keyframe } from '../../hooks/use-timeline-state';
-import { OUTPUT_TRACK_ID, OUTPUT_CLIP_ID } from '../../hooks/use-timeline-state';
+import type {
+  TimelineState,
+  Track,
+  TrackGroup,
+  Clip,
+  Keyframe,
+} from '../../hooks/use-timeline-state';
+import {
+  OUTPUT_TRACK_ID,
+  OUTPUT_CLIP_ID,
+} from '../../hooks/use-timeline-state';
 import {
   SNAP_THRESHOLD_PX,
   TRACK_HEIGHT,
@@ -80,7 +89,11 @@ type Params = {
   state: TimelineState;
   selectedClipIds: { trackId: string; clipId: string }[];
   selectedClipIdSet: Set<string>;
-  selectClip: (trackId: string, clipId: string, mode: 'replace' | 'toggle' | 'range') => void;
+  selectClip: (
+    trackId: string,
+    clipId: string,
+    mode: 'replace' | 'toggle' | 'range',
+  ) => void;
   setSelectedClipIds: (
     updater:
       | { trackId: string; clipId: string }[]
@@ -89,7 +102,10 @@ type Params = {
         ) => { trackId: string; clipId: string }[]),
   ) => void;
   setSelectedKeyframeId: (id: string | null) => void;
-  lastClickedClipRef: React.MutableRefObject<{ trackId: string; clipId: string } | null>;
+  lastClickedClipRef: React.MutableRefObject<{
+    trackId: string;
+    clipId: string;
+  } | null>;
   automationVisibleTracks: Set<string>;
   setInvalidDropTrackId: (id: string | null) => void;
   setTrackDropIndex: (idx: number | null) => void;
@@ -100,12 +116,38 @@ type Params = {
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
   splitClip: (trackId: string, clipId: string, atMs: number) => void;
   moveClip: (trackId: string, clipId: string, newStartMs: number) => void;
-  moveClips: (moves: { trackId: string; clipId: string; newStartMs: number }[]) => void;
-  resizeClip: (trackId: string, clipId: string, edge: 'left' | 'right', newMs: number) => void;
-  moveClipToTrack: (fromTrackId: string, clipId: string, toTrackId: string, newStartMs: number) => void;
-  updateClipSettings: (trackId: string, clipId: string, patch: Record<string, unknown>) => void;
-  moveKeyframe: (trackId: string, clipId: string, keyframeId: string, timeMs: number) => void;
-  moveTrackTo: (trackId: string, dropTarget: { kind: 'root'; index: number } | { kind: 'group'; groupId: string; index: number }) => void;
+  moveClips: (
+    moves: { trackId: string; clipId: string; newStartMs: number }[],
+  ) => void;
+  resizeClip: (
+    trackId: string,
+    clipId: string,
+    edge: 'left' | 'right',
+    newMs: number,
+  ) => void;
+  moveClipToTrack: (
+    fromTrackId: string,
+    clipId: string,
+    toTrackId: string,
+    newStartMs: number,
+  ) => void;
+  updateClipSettings: (
+    trackId: string,
+    clipId: string,
+    patch: Record<string, unknown>,
+  ) => void;
+  moveKeyframe: (
+    trackId: string,
+    clipId: string,
+    keyframeId: string,
+    timeMs: number,
+  ) => void;
+  moveTrackTo: (
+    trackId: string,
+    dropTarget:
+      | { kind: 'root'; index: number }
+      | { kind: 'group'; groupId: string; index: number },
+  ) => void;
   moveGroup: (groupId: string, rootIndex: number) => void;
 };
 
