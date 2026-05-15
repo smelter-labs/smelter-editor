@@ -21,7 +21,6 @@ export function DebugScreen() {
   const navigation = useNavigation<RootNavigationProp>();
   const leaveRoom = useLeaveRoom();
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const [qrModalOpen, setQRModalOpen] = useState(false);
   const { status, clientId, peers, roomId, serverUrl } = useConnectionStore(
     useShallow((state) => ({
       status: state.status,
