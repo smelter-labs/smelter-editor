@@ -20,6 +20,7 @@ export default function RoomPreviewGridPage() {
     whepUrl: '',
     broadcastTiles: [],
     selectedBroadcastTileId: null,
+    isBroadcastMode: false,
   });
 
   useEffect(() => {

@@ -21,6 +21,7 @@ export default function RoomPreviewPage() {
     whepUrl: '',
     broadcastTiles: [],
     selectedBroadcastTileId: null,
+    isBroadcastMode: false,
   });
   const videoRef = useRef<HTMLVideoElement | null>(null);
 

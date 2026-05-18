@@ -9,7 +9,6 @@ import { JoinRoomScreen } from "../screens/JoinRoom/JoinRoomScreen";
 import { HelpScreen } from "../screens/Help/HelpScreen";
 import { CameraScreen } from "../screens/Camera/CameraScreen";
 import { MainNavigator } from "./MainNavigator";
-import BroadcastModeScreen from "../screens/BroadcastMode";
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -33,10 +32,6 @@ export function RootNavigator() {
       <Stack.Screen name={SCREEN_NAMES.MAIN} component={MainNavigator} />
       <Stack.Screen name={SCREEN_NAMES.HELP} component={HelpScreen} />
       <Stack.Screen name={SCREEN_NAMES.CAMERA} component={CameraScreen} />
-      <Stack.Screen
-        name={SCREEN_NAMES.BROADCAST_MODE}
-        component={BroadcastModeScreen}
-      />
     </Stack.Navigator>
   );
 }

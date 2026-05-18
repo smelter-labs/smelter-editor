@@ -1,33 +1,30 @@
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect } from "react";
+import { View, StyleSheet, FlatList, Pressable } from "react-native";
 import {
-  View,
-  Text,
-  StyleSheet,
-  SafeAreaView,
   ActivityIndicator,
-  FlatList,
-  Pressable,
-} from "react-native";
-import type { NativeStackScreenProps } from "@react-navigation/native-stack";
-import { useNavigation } from "@react-navigation/native";
+  Chip,
+  Surface,
+  Text,
+  useTheme,
+} from "react-native-paper";
 import type { BroadcastTile } from "@smelter-editor/types";
 import { useBroadcastTiles } from "../../hooks/useBroadcastTiles";
-import BroadcastTileAdder from "../../components/BroadcastTileAdder";
+import { BroadcastTileAdder } from "../../components/BroadcastTileAdder";
 import { useInputsStore } from "../../store/inputsStore";
 import { useLayoutStore } from "../../store/layoutStore";
+import { useConnectionStore } from "../../store/connectionStore";
 import { buildHttpUrl } from "../../services/apiService";
-import type {
-  RootStackParamList,
-  RootNavigationProp,
-} from "../../navigation/navigationTypes";
+import { ScreenLabel } from "../../components/shared/ScreenLabel";
+import {
+  ScreenToolbar,
+  ScreenToolbarChip,
+  ToolbarIcon,
+} from "../../components/shared/ScreenToolbar";
+import { QRToolbarChip } from "../../components/shared/QRToolbarChip";
 
-type Props = NativeStackScreenProps<RootStackParamList, "BroadcastMode">;
-
-export default function BroadcastModeScreen({ route }: Props) {
-  const { serverUrl, roomId } = route.params;
-  const navigation = useNavigation<RootNavigationProp>();
-  const inputsStore = useInputsStore();
-  const layoutStore = useLayoutStore();
+export function BroadcastModeScreen() {
+  const theme = useTheme();
+  const { serverUrl, roomId } = useConnectionStore();
 
   const [isAdderOpen, setIsAdderOpen] = useState(false);
   const [whepUrl, setWhepUrl] = useState("");
@@ -36,6 +33,7 @@ export default function BroadcastModeScreen({ route }: Props) {
   const {
     tiles,
     selectedTileId,
+    isBroadcastMode,
     isEditMode,
     isLoading,
     addTile,
@@ -43,10 +41,10 @@ export default function BroadcastModeScreen({ route }: Props) {
     selectTile,
     updateTileName,
     toggleEditMode,
+    setBroadcastMode,
     syncWithServerState,
   } = useBroadcastTiles(serverUrl, roomId);
 
-  // Fetch room state and poll for broadcast tile updates
   useEffect(() => {
     let cancelled = false;
     const base = buildHttpUrl(serverUrl);
@@ -60,12 +58,14 @@ export default function BroadcastModeScreen({ route }: Props) {
           whepUrl?: string;
           broadcastTiles?: BroadcastTile[];
           selectedBroadcastTileId?: string | null;
+          isBroadcastMode?: boolean;
         };
         if (cancelled) return;
         if (data.whepUrl) setWhepUrl(data.whepUrl);
         syncWithServerState(
           data.broadcastTiles ?? [],
           data.selectedBroadcastTileId ?? null,
+          data.isBroadcastMode ?? false,
         );
       } catch (e) {
         console.error("BroadcastMode: fetch error", e);
@@ -82,18 +82,17 @@ export default function BroadcastModeScreen({ route }: Props) {
     };
   }, [serverUrl, roomId]);
 
-  // Derive inputs/layers from Zustand stores (already kept in sync by main WS)
-  const inputs = inputsStore.inputs.map((c) => ({
-    inputId: c.id,
-    title: c.name,
-    type: c.isAudioOnly ? "audio" : "video",
-  }));
-  const layers = layoutStore.layers.map((l) => ({
-    id: l.id,
-    inputs: l.inputs,
-  }));
+  const inputs = useInputsStore((s) =>
+    s.inputs.map((c) => ({
+      inputId: c.id,
+      title: c.name,
+      type: c.isAudioOnly ? ("audio" as const) : ("video" as const),
+    })),
+  );
+  const layers = useLayoutStore((s) =>
+    s.layers.map((l) => ({ id: l.id, inputs: l.inputs })),
+  );
 
-  // Keep tile display names in sync with store changes
   useEffect(() => {
     tiles.forEach((tile) => {
       if (tile.type === "input") {
@@ -122,100 +121,128 @@ export default function BroadcastModeScreen({ route }: Props) {
     const isSelected = selectedTileId === item.id;
     return (
       <Pressable
-        style={[
-          styles.tileItem,
-          isSelected ? styles.tileItemSelected : styles.tileItemDefault,
-        ]}
         onPress={() => !isEditMode && selectTile(item.id)}
+        style={styles.tileItemWrapper}
       >
-        <Text style={styles.tileIcon}>
-          {item.type === "input" ? "🎬" : "🎞️"}
-        </Text>
-        <Text style={styles.tileName} numberOfLines={1}>
+        <Chip
+          selected={isSelected}
+          showSelectedOverlay
+          onClose={isEditMode ? () => removeTile(item.id) : undefined}
+          icon={item.type === "input" ? "video" : "layers"}
+          style={[
+            styles.tileChip,
+            isSelected && { backgroundColor: theme.colors.primary },
+          ]}
+          textStyle={isSelected ? { color: theme.colors.onPrimary } : undefined}
+        >
           {item.name}
-        </Text>
-        {isEditMode && (
-          <Pressable
-            style={styles.deleteButton}
-            onPress={() => removeTile(item.id)}
-          >
-            <Text style={styles.deleteButtonText}>×</Text>
-          </Pressable>
-        )}
+        </Chip>
       </Pressable>
     );
   };
 
   if (isLoading || isInitializing) {
     return (
-      <SafeAreaView style={styles.container}>
-        <ActivityIndicator size="large" color="#fff" />
-      </SafeAreaView>
+      <View
+        style={[styles.container, { backgroundColor: theme.colors.background }]}
+      >
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+      </View>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.header}>
-        <Pressable
-          onPress={() => navigation.goBack()}
-          style={styles.backButton}
-        >
-          <Text style={styles.backButtonText}>‹ Back</Text>
-        </Pressable>
-        <Text style={styles.title}>Broadcast Mode</Text>
-        {tiles.length > 0 && (
-          <Pressable
-            style={[styles.editButton, isEditMode && styles.editButtonActive]}
-            onPress={toggleEditMode}
-          >
-            <Text style={styles.editButtonText}>
-              {isEditMode ? "Done" : "Edit"}
-            </Text>
-          </Pressable>
-        )}
-      </View>
+    <View
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+    >
+      <ScreenLabel
+        label={`Broadcast${tiles.length > 0 ? ` (${tiles.length})` : ""}`}
+      />
 
+      <ScreenToolbar style={styles.toolbar}>
+        <ScreenToolbarChip
+          onPress={() => setBroadcastMode(!isBroadcastMode)}
+          disabled={!isBroadcastMode && !selectedTileId}
+          style={
+            isBroadcastMode
+              ? { backgroundColor: theme.colors.error }
+              : undefined
+          }
+        >
+          {isBroadcastMode ? "IS LIVE" : "GO LIVE"}
+        </ScreenToolbarChip>
+        {tiles.length > 0 && (
+          <ScreenToolbarChip onPress={toggleEditMode}>
+            {isEditMode ? "DONE" : "EDIT"}
+          </ScreenToolbarChip>
+        )}
+        <ScreenToolbarChip onPress={() => setIsAdderOpen(true)}>
+          <ToolbarIcon name="plus" />
+        </ScreenToolbarChip>
+        <QRToolbarChip serverUrl={serverUrl} roomId={roomId} />
+      </ScreenToolbar>
+
+      {/* Main content */}
       <View style={styles.contentArea}>
         {tiles.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>No broadcast tiles added</Text>
-            <Pressable
-              style={styles.addButton}
-              onPress={() => setIsAdderOpen(true)}
+            <Text
+              variant="bodyLarge"
+              style={{ color: theme.colors.onSurfaceVariant }}
             >
-              <Text style={styles.addButtonText}>+ Add Tile</Text>
-            </Pressable>
+              No broadcast tiles added
+            </Text>
+            <Text
+              variant="bodyMedium"
+              style={{ color: theme.colors.onSurfaceVariant, marginTop: 4 }}
+            >
+              Tap + to add an input or layer
+            </Text>
           </View>
         ) : selectedTile ? (
           <View style={styles.videoContainer}>
-            {/* TODO: replace with RTCView once react-native-webrtc is integrated */}
-            <View style={styles.video}>
-              <Text style={styles.videoPlaceholder}>Video Stream</Text>
-              <Text style={styles.videoSubtext}>WHEP URL: {whepUrl}</Text>
-            </View>
-            <View style={styles.tileLabel}>
-              <Text style={styles.tileLabelText}>
-                {selectedTile.type === "input" ? "🎬" : "🎞️"}{" "}
+            <Surface style={styles.videoPlaceholder} elevation={1}>
+              <Text
+                variant="bodyLarge"
+                style={{ color: theme.colors.onSurface }}
+              >
+                Video Stream
+              </Text>
+              <Text
+                variant="bodySmall"
+                style={{
+                  color: theme.colors.onSurfaceVariant,
+                  marginTop: 8,
+                }}
+              >
+                WHEP URL: {whepUrl || "—"}
+              </Text>
+            </Surface>
+            <Surface style={styles.tileLabel} elevation={3}>
+              <Text
+                variant="labelMedium"
+                style={{ color: theme.colors.onSurface }}
+              >
+                {selectedTile.type === "input" ? "Input" : "Layer"} ·{" "}
                 {selectedTile.name}
               </Text>
-            </View>
+            </Surface>
           </View>
         ) : (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyStateText}>Select a tile to preview</Text>
-            <Pressable
-              style={styles.addButton}
-              onPress={() => selectTile(tiles[0]?.id ?? null)}
+            <Text
+              variant="bodyLarge"
+              style={{ color: theme.colors.onSurfaceVariant }}
             >
-              <Text style={styles.addButtonText}>Select First Tile</Text>
-            </Pressable>
+              Select a tile to preview
+            </Text>
           </View>
         )}
       </View>
 
+      {/* Tile bar */}
       {tiles.length > 0 && (
-        <View style={styles.tileBar}>
+        <Surface style={styles.tileBar} elevation={2}>
           <FlatList
             data={tiles}
             renderItem={renderTileItem}
@@ -224,13 +251,7 @@ export default function BroadcastModeScreen({ route }: Props) {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.tileListContent}
           />
-          <Pressable
-            style={styles.addTileButton}
-            onPress={() => setIsAdderOpen(true)}
-          >
-            <Text style={styles.addTileButtonText}>+</Text>
-          </Pressable>
-        </View>
+        </Surface>
       )}
 
       <BroadcastTileAdder
@@ -243,113 +264,52 @@ export default function BroadcastModeScreen({ route }: Props) {
         onAddTile={handleAddTile}
         onClose={() => setIsAdderOpen(false)}
       />
-    </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: "#000" },
-  header: {
+  container: { flex: 1 },
+  toolbar: {
     flexDirection: "row",
-    justifyContent: "space-between",
     alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    backgroundColor: "#1a1a1a",
-    borderBottomWidth: 1,
-    borderBottomColor: "#333",
+    justifyContent: "flex-end",
+    height: 36,
+    paddingHorizontal: 8,
+    gap: 8,
   },
-  backButton: { paddingHorizontal: 8, paddingVertical: 6 },
-  backButtonText: { fontSize: 16, color: "#0066ff", fontWeight: "500" },
-  title: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#fff",
-    flex: 1,
-    textAlign: "center",
-  },
-  editButton: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: "#666",
-  },
-  editButtonActive: { backgroundColor: "#0066ff", borderColor: "#0066ff" },
-  editButtonText: { fontSize: 14, color: "#fff", fontWeight: "500" },
-  contentArea: { flex: 1, backgroundColor: "#000" },
+  contentArea: { flex: 1 },
   emptyState: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    gap: 16,
+    gap: 4,
   },
-  emptyStateText: { fontSize: 16, color: "#999" },
-  videoContainer: { flex: 1, backgroundColor: "#000", position: "relative" },
-  video: { flex: 1, justifyContent: "center", alignItems: "center" },
-  videoPlaceholder: { color: "#fff", textAlign: "center" },
-  videoSubtext: {
-    color: "#999",
-    textAlign: "center",
-    marginTop: 20,
-    fontSize: 12,
+  videoContainer: { flex: 1, position: "relative" },
+  videoPlaceholder: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    margin: 0,
+    borderRadius: 0,
   },
   tileLabel: {
     position: "absolute",
     top: 12,
     left: 12,
-    backgroundColor: "rgba(0, 0, 0, 0.75)",
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderRadius: 4,
+    borderRadius: 8,
   },
-  tileLabelText: { fontSize: 12, color: "#fff", fontWeight: "500" },
   tileBar: {
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: 8,
     paddingHorizontal: 8,
-    backgroundColor: "#1a1a1a",
-    borderTopWidth: 1,
-    borderTopColor: "#333",
-    gap: 8,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: "transparent",
   },
   tileListContent: { paddingHorizontal: 4, gap: 8 },
-  tileItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 8,
-    borderRadius: 4,
-    minHeight: 40,
-  },
-  tileItemDefault: { backgroundColor: "#333" },
-  tileItemSelected: { backgroundColor: "#0066ff" },
-  tileIcon: { fontSize: 16 },
-  tileName: { fontSize: 12, color: "#fff", fontWeight: "500", maxWidth: 100 },
-  deleteButton: {
-    marginLeft: 6,
-    width: 20,
-    height: 20,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  deleteButtonText: { fontSize: 16, color: "#fff", fontWeight: "bold" },
-  addButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: "#0066ff",
-    borderRadius: 4,
-  },
-  addButtonText: { fontSize: 14, color: "#fff", fontWeight: "600" },
-  addTileButton: {
-    width: 40,
-    height: 40,
-    backgroundColor: "#333",
-    borderRadius: 4,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  addTileButtonText: { fontSize: 20, color: "#fff", fontWeight: "bold" },
+  tileItemWrapper: { flexShrink: 0 },
+  tileChip: { height: 36 },
 });

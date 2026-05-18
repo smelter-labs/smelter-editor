@@ -39,6 +39,7 @@ export type RoomSnapshot = {
   outputShaders: ShaderConfig[];
   broadcastTiles: BroadcastTile[];
   selectedBroadcastTileId: string | null;
+  isBroadcastMode: boolean;
 } & Partial<ViewportProperties>;
 
 export type RoomInputState = {

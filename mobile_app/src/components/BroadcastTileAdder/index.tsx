@@ -1,26 +1,26 @@
 import React, { useState, useMemo } from "react";
+import { Modal, SafeAreaView, StyleSheet, View } from "react-native";
 import {
-  View,
+  Chip,
+  Divider,
+  IconButton,
+  List,
+  Searchbar,
+  Surface,
   Text,
-  StyleSheet,
-  Modal,
-  SafeAreaView,
-  FlatList,
-  Pressable,
-  TextInput,
-  ScrollView,
-} from "react-native";
-import type { BroadcastTile } from "@smelter-editor/types";
+  useTheme,
+} from "react-native-paper";
+import { FlatList } from "react-native";
 
 type Input = {
   inputId: string;
   title: string;
-  type: string;
+  type: "audio" | "video";
 };
 
 type Layer = {
   id: string;
-  inputs: any[];
+  inputs: unknown[];
 };
 
 interface BroadcastTileAdderProps {
@@ -32,7 +32,7 @@ interface BroadcastTileAdderProps {
   onClose: () => void;
 }
 
-export default function BroadcastTileAdder({
+export function BroadcastTileAdder({
   isOpen,
   inputs,
   layers,
@@ -40,143 +40,157 @@ export default function BroadcastTileAdder({
   onAddTile,
   onClose,
 }: BroadcastTileAdderProps) {
+  const theme = useTheme();
   const [activeTab, setActiveTab] = useState<"inputs" | "layers">("inputs");
-  const [searchInput, setSearchInput] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
 
-  // Filter inputs
   const filteredInputs = useMemo(
     () =>
       inputs.filter(
         (input) =>
           !existingTileTargets.has(`input-${input.inputId}`) &&
-          input.title.toLowerCase().includes(searchInput.toLowerCase()),
+          input.title.toLowerCase().includes(searchQuery.toLowerCase()),
       ),
-    [inputs, searchInput, existingTileTargets],
+    [inputs, searchQuery, existingTileTargets],
   );
 
-  // Filter layers
   const filteredLayers = useMemo(
     () =>
       layers.filter(
         (layer) =>
           !existingTileTargets.has(`layer-${layer.id}`) &&
-          layer.id.toLowerCase().includes(searchInput.toLowerCase()),
+          layer.id.toLowerCase().includes(searchQuery.toLowerCase()),
       ),
-    [layers, searchInput, existingTileTargets],
+    [layers, searchQuery, existingTileTargets],
   );
 
-  const renderInputItem = ({ item }: { item: Input }) => (
-    <Pressable
-      style={styles.itemContainer}
-      onPress={() => onAddTile("input", item.inputId)}
-    >
-      <View style={styles.itemContent}>
-        <Text style={styles.itemIcon}>🎬</Text>
-        <View style={styles.itemTextContainer}>
-          <Text style={styles.itemTitle} numberOfLines={1}>
-            {item.title}
-          </Text>
-          <Text style={styles.itemSubtitle}>{item.type}</Text>
-        </View>
-      </View>
-      <Text style={styles.itemCheckmark}>✓</Text>
-    </Pressable>
-  );
+  const currentData =
+    activeTab === "inputs"
+      ? (filteredInputs as (Input | Layer)[])
+      : (filteredLayers as (Input | Layer)[]);
 
-  const renderLayerItem = ({ item }: { item: Layer }) => (
-    <Pressable
-      style={styles.itemContainer}
-      onPress={() => onAddTile("layer", item.id)}
-    >
-      <View style={styles.itemContent}>
-        <Text style={styles.itemIcon}>🎞️</Text>
-        <View style={styles.itemTextContainer}>
-          <Text style={styles.itemTitle} numberOfLines={1}>
-            {item.id}
-          </Text>
-          <Text style={styles.itemSubtitle}>
-            {item.inputs.length} input{item.inputs.length !== 1 ? "s" : ""}
-          </Text>
-        </View>
-      </View>
-      <Text style={styles.itemCheckmark}>✓</Text>
-    </Pressable>
-  );
+  const renderInputItem = ({ item }: { item: Input | Layer }) => {
+    const input = item as Input;
+    return (
+      <List.Item
+        title={input.title}
+        description={input.type}
+        left={(props) => <List.Icon {...props} icon="video" />}
+        onPress={() => onAddTile("input", input.inputId)}
+        titleStyle={{ color: theme.colors.onSurface }}
+        descriptionStyle={{ color: theme.colors.onSurfaceVariant }}
+      />
+    );
+  };
 
-  const currentData = activeTab === "inputs" ? filteredInputs : filteredLayers;
+  const renderLayerItem = ({ item }: { item: Input | Layer }) => {
+    const layer = item as Layer;
+    return (
+      <List.Item
+        title={layer.id}
+        description={`${layer.inputs.length} input${layer.inputs.length !== 1 ? "s" : ""}`}
+        left={(props) => <List.Icon {...props} icon="layers" />}
+        onPress={() => onAddTile("layer", layer.id)}
+        titleStyle={{ color: theme.colors.onSurface }}
+        descriptionStyle={{ color: theme.colors.onSurfaceVariant }}
+      />
+    );
+  };
 
   return (
-    <Modal visible={isOpen} animationType="slide" onRequestClose={onClose}>
-      <SafeAreaView style={styles.container}>
+    <Modal
+      visible={isOpen}
+      animationType="slide"
+      onRequestClose={onClose}
+      transparent={false}
+    >
+      <SafeAreaView
+        style={[styles.container, { backgroundColor: theme.colors.background }]}
+      >
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Add Broadcast Tile</Text>
-          <Pressable onPress={onClose} style={styles.closeButton}>
-            <Text style={styles.closeButtonText}>✕</Text>
-          </Pressable>
+          <Text variant="titleLarge" style={{ color: theme.colors.onSurface }}>
+            Add Broadcast Tile
+          </Text>
+          <IconButton
+            icon="close"
+            size={24}
+            onPress={onClose}
+            iconColor={theme.colors.onSurfaceVariant}
+          />
         </View>
 
+        <Divider />
+
         {/* Tabs */}
-        <View style={styles.tabContainer}>
-          <Pressable
-            style={[styles.tab, activeTab === "inputs" && styles.tabActive]}
+        <View style={styles.tabRow}>
+          <Chip
+            selected={activeTab === "inputs"}
             onPress={() => setActiveTab("inputs")}
+            style={styles.tabChip}
+            showSelectedOverlay
           >
-            <Text
-              style={[
-                styles.tabText,
-                activeTab === "inputs" && styles.tabTextActive,
-              ]}
-            >
-              Inputs
-            </Text>
-          </Pressable>
-          <Pressable
-            style={[styles.tab, activeTab === "layers" && styles.tabActive]}
+            Inputs
+          </Chip>
+          <Chip
+            selected={activeTab === "layers"}
             onPress={() => setActiveTab("layers")}
+            style={styles.tabChip}
+            showSelectedOverlay
           >
-            <Text
-              style={[
-                styles.tabText,
-                activeTab === "layers" && styles.tabTextActive,
-              ]}
-            >
-              Layers
-            </Text>
-          </Pressable>
+            Layers
+          </Chip>
         </View>
 
         {/* Search */}
         <View style={styles.searchContainer}>
-          <TextInput
-            style={styles.searchInput}
-            placeholder={`Search ${activeTab}...`}
-            placeholderTextColor="#999"
-            value={searchInput}
-            onChangeText={setSearchInput}
+          <Searchbar
+            placeholder={`Search ${activeTab}…`}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            style={[
+              styles.searchBar,
+              { backgroundColor: theme.colors.surfaceVariant },
+            ]}
+            inputStyle={{ color: theme.colors.onSurface }}
+            iconColor={theme.colors.onSurfaceVariant}
+            placeholderTextColor={theme.colors.onSurfaceVariant}
           />
         </View>
+
+        <Divider />
 
         {/* List */}
         {currentData.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyText}>No {activeTab} available</Text>
+            <Text
+              variant="bodyLarge"
+              style={{ color: theme.colors.onSurfaceVariant }}
+            >
+              No {activeTab} available
+            </Text>
           </View>
         ) : (
-          <FlatList
-            data={currentData as unknown as (Input | Layer)[]}
-            renderItem={
-              activeTab === "inputs"
-                ? (renderInputItem as any)
-                : (renderLayerItem as any)
-            }
-            keyExtractor={(item) =>
-              activeTab === "inputs"
-                ? (item as Input).inputId
-                : (item as Layer).id
-            }
-            scrollEnabled
-          />
+          <Surface style={styles.listSurface} elevation={0}>
+            <FlatList
+              data={currentData}
+              renderItem={
+                activeTab === "inputs"
+                  ? (renderInputItem as (info: {
+                      item: Input | Layer;
+                    }) => React.ReactElement)
+                  : (renderLayerItem as (info: {
+                      item: Input | Layer;
+                    }) => React.ReactElement)
+              }
+              keyExtractor={(item) =>
+                activeTab === "inputs"
+                  ? (item as Input).inputId
+                  : (item as Layer).id
+              }
+              ItemSeparatorComponent={() => <Divider />}
+            />
+          </Surface>
         )}
       </SafeAreaView>
     </Modal>
@@ -184,113 +198,33 @@ export default function BroadcastTileAdder({
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#000",
-  },
+  container: { flex: 1 },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#333",
+    paddingVertical: 8,
   },
-  headerTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#fff",
-  },
-  closeButton: {
-    width: 32,
-    height: 32,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  closeButtonText: {
-    fontSize: 24,
-    color: "#999",
-  },
-  tabContainer: {
+  tabRow: {
     flexDirection: "row",
-    borderBottomWidth: 1,
-    borderBottomColor: "#333",
-  },
-  tab: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  tabActive: {
-    borderBottomWidth: 2,
-    borderBottomColor: "#0066ff",
-  },
-  tabText: {
-    fontSize: 14,
-    color: "#999",
-    fontWeight: "500",
-  },
-  tabTextActive: {
-    color: "#0066ff",
-  },
-  searchContainer: {
+    gap: 8,
     paddingHorizontal: 16,
     paddingVertical: 12,
   },
-  searchInput: {
-    height: 40,
-    backgroundColor: "#1a1a1a",
-    borderRadius: 4,
-    paddingHorizontal: 12,
-    color: "#fff",
-    fontSize: 14,
-    borderWidth: 1,
-    borderColor: "#333",
+  tabChip: { flex: 1 },
+  searchContainer: {
+    paddingHorizontal: 16,
+    paddingBottom: 8,
+  },
+  searchBar: {
+    height: 44,
+    borderRadius: 8,
   },
   emptyContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
   },
-  emptyText: {
-    fontSize: 16,
-    color: "#999",
-  },
-  itemContainer: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: "#1a1a1a",
-  },
-  itemContent: {
-    flexDirection: "row",
-    alignItems: "center",
-    flex: 1,
-    gap: 12,
-  },
-  itemIcon: {
-    fontSize: 16,
-  },
-  itemTextContainer: {
-    flex: 1,
-  },
-  itemTitle: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: "#fff",
-  },
-  itemSubtitle: {
-    fontSize: 12,
-    color: "#999",
-    marginTop: 2,
-  },
-  itemCheckmark: {
-    fontSize: 16,
-    color: "#0066ff",
-    marginLeft: 8,
-  },
+  listSurface: { flex: 1 },
 });

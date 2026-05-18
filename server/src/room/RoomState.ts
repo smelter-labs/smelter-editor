@@ -161,6 +161,7 @@ export class RoomState {
 
   private broadcastTiles: BroadcastTile[] = [];
   private selectedBroadcastTileId: string | null = null;
+  private isBroadcastMode: boolean = false;
 
   public idPrefix: string;
   private output: SmelterOutput;
@@ -269,6 +270,7 @@ export class RoomState {
       outputShaders: this.getOutputShaders(),
       broadcastTiles: this.broadcastTiles,
       selectedBroadcastTileId: this.selectedBroadcastTileId,
+      isBroadcastMode: this.isBroadcastMode,
       viewportTop: this.viewportTop,
       viewportLeft: this.viewportLeft,
       viewportWidth: this.viewportWidth,
@@ -605,6 +607,10 @@ export class RoomState {
 
     const tile: BroadcastTile = { id: randomUUID(), type, targetId, name };
     this.broadcastTiles.push(tile);
+    if (this.selectedBroadcastTileId === null) {
+      this.selectedBroadcastTileId = tile.id;
+    }
+    if (this.isBroadcastMode) this.updateStoreWithState();
     return tile;
   }
 
@@ -615,6 +621,7 @@ export class RoomState {
     if (this.selectedBroadcastTileId === tileId) {
       this.selectedBroadcastTileId = null;
     }
+    if (this.isBroadcastMode) this.updateStoreWithState();
     return true;
   }
 
@@ -623,16 +630,29 @@ export class RoomState {
       return false;
     }
     this.selectedBroadcastTileId = tileId;
+    if (this.isBroadcastMode) this.updateStoreWithState();
     return true;
+  }
+
+  public setBroadcastMode(enabled: boolean): void {
+    if (this.isBroadcastMode === enabled) return;
+    this.isBroadcastMode = enabled;
+    this.updateStoreWithState();
+  }
+
+  public getIsBroadcastMode(): boolean {
+    return this.isBroadcastMode;
   }
 
   public getBroadcastTiles(): {
     tiles: BroadcastTile[];
     selectedBroadcastTileId: string | null;
+    isBroadcastMode: boolean;
   } {
     return {
       tiles: [...this.broadcastTiles],
       selectedBroadcastTileId: this.selectedBroadcastTileId,
+      isBroadcastMode: this.isBroadcastMode,
     };
   }
 
@@ -1574,9 +1594,12 @@ export class RoomState {
       return layer;
     });
 
+    const { layers: outputLayers, inputs: outputInputs } =
+      this.buildBroadcastOverride(this.layers, inputs);
+
     this.output.store.getState().updateState({
-      inputs: [...inputs].reverse(),
-      layers: this.layers,
+      inputs: [...outputInputs].reverse(),
+      layers: outputLayers,
       swapDurationMs: this.swapDurationMs,
       swapOutgoingEnabled: this.swapOutgoingEnabled,
       swapFadeInDurationMs: this.swapFadeInDurationMs,
@@ -1590,6 +1613,40 @@ export class RoomState {
     });
 
     this.notifyStateChange();
+  }
+
+  private buildBroadcastOverride(
+    layers: Layer[],
+    inputs: InputConfig[],
+  ): { layers: Layer[]; inputs: InputConfig[] } {
+    if (!this.isBroadcastMode || !this.selectedBroadcastTileId) {
+      return { layers, inputs };
+    }
+    const tile = this.broadcastTiles.find(
+      (t) => t.id === this.selectedBroadcastTileId,
+    );
+    if (!tile) return { layers, inputs };
+
+    const { width, height } = this.output.resolution;
+    if (tile.type === 'input') {
+      const broadcastLayer: Layer = {
+        id: '__broadcast__',
+        inputs: [
+          {
+            inputId: tile.targetId,
+            x: 0,
+            y: 0,
+            width,
+            height,
+          },
+        ],
+        layoutTimestamp: Date.now(),
+      };
+      return { layers: [broadcastLayer], inputs };
+    }
+    const layer = layers.find((l) => l.id === tile.targetId);
+    if (!layer) return { layers, inputs };
+    return { layers: [layer], inputs };
   }
 
   private setLayersAndSyncInputState(layers: Layer[]): void {

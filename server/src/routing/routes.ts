@@ -976,6 +976,9 @@ routes.get<RoomIdParams>(
       viewportHeight: snapshot.viewportHeight,
       viewportTransitionDurationMs: snapshot.viewportTransitionDurationMs,
       viewportTransitionEasing: snapshot.viewportTransitionEasing,
+      broadcastTiles: snapshot.broadcastTiles,
+      selectedBroadcastTileId: snapshot.selectedBroadcastTileId,
+      isBroadcastMode: snapshot.isBroadcastMode,
     });
   },
 );
@@ -2257,7 +2260,8 @@ routes.post<RoomIdParams>(
           message: 'Target not found or tile already exists',
         });
       }
-      const { tiles, selectedBroadcastTileId } = room.getBroadcastTiles();
+      const { tiles, selectedBroadcastTileId, isBroadcastMode } =
+        room.getBroadcastTiles();
       const sourceId =
         (req.headers['x-source-id'] as string | undefined) ?? null;
       roomEventBus.broadcast(roomId, {
@@ -2266,6 +2270,7 @@ routes.post<RoomIdParams>(
         sourceId,
         tiles,
         selectedBroadcastTileId,
+        isBroadcastMode,
       } as any);
       res.status(200).send({ status: 'ok', tile });
     } catch (err: any) {
@@ -2297,7 +2302,8 @@ routes.post<RoomIdParams>(
           .status(400)
           .send({ status: 'error', message: 'Tile not found' });
       }
-      const { tiles, selectedBroadcastTileId } = room.getBroadcastTiles();
+      const { tiles, selectedBroadcastTileId, isBroadcastMode } =
+        room.getBroadcastTiles();
       const sourceId =
         (req.headers['x-source-id'] as string | undefined) ?? null;
       roomEventBus.broadcast(roomId, {
@@ -2306,6 +2312,7 @@ routes.post<RoomIdParams>(
         sourceId,
         tiles,
         selectedBroadcastTileId,
+        isBroadcastMode,
       } as any);
       res.status(200).send({ status: 'ok' });
     } catch (err: any) {
@@ -2332,7 +2339,8 @@ routes.post<RoomIdParams>(
           .status(400)
           .send({ status: 'error', message: 'Tile not found' });
       }
-      const { tiles, selectedBroadcastTileId } = room.getBroadcastTiles();
+      const { tiles, selectedBroadcastTileId, isBroadcastMode } =
+        room.getBroadcastTiles();
       const sourceId =
         (req.headers['x-source-id'] as string | undefined) ?? null;
       roomEventBus.broadcast(roomId, {
@@ -2341,12 +2349,50 @@ routes.post<RoomIdParams>(
         sourceId,
         tiles,
         selectedBroadcastTileId,
+        isBroadcastMode,
       } as any);
       res.status(200).send({ status: 'ok' });
     } catch (err: any) {
       res.status(400).send({
         status: 'error',
         message: err?.message ?? 'Failed to select broadcast tile',
+      });
+    }
+  },
+);
+
+routes.post<RoomIdParams>(
+  '/room/:roomId/broadcast-mode/set',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    const body = req.body as Record<string, unknown>;
+    const enabled = body.enabled;
+    if (typeof enabled !== 'boolean') {
+      return res
+        .status(400)
+        .send({ status: 'error', message: 'Missing or invalid enabled flag' });
+    }
+    try {
+      const room = state.getRoom(roomId);
+      room.setBroadcastMode(enabled);
+      const { tiles, selectedBroadcastTileId, isBroadcastMode } =
+        room.getBroadcastTiles();
+      const sourceId =
+        (req.headers['x-source-id'] as string | undefined) ?? null;
+      roomEventBus.broadcast(roomId, {
+        type: 'broadcast-tiles-updated',
+        roomId,
+        sourceId,
+        tiles,
+        selectedBroadcastTileId,
+        isBroadcastMode,
+      } as any);
+      res.status(200).send({ status: 'ok', isBroadcastMode });
+    } catch (err: any) {
+      res.status(400).send({
+        status: 'error',
+        message: err?.message ?? 'Failed to set broadcast mode',
       });
     }
   },

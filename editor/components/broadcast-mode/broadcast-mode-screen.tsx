@@ -24,12 +24,14 @@ export default function BroadcastModeScreen({
   const {
     tiles,
     selectedTileId,
+    isBroadcastMode,
     isEditMode,
     addTile,
     removeTile,
     selectTile,
     updateTileName,
     toggleEditMode,
+    setBroadcastMode,
     syncWithServerState,
   } = useBroadcastTiles(roomId);
 
@@ -42,11 +44,13 @@ export default function BroadcastModeScreen({
       syncWithServerState(
         roomState.broadcastTiles,
         roomState.selectedBroadcastTileId,
+        roomState.isBroadcastMode ?? false,
       );
     }
   }, [
     roomState.broadcastTiles,
     roomState.selectedBroadcastTileId,
+    roomState.isBroadcastMode,
     syncWithServerState,
   ]);
 
@@ -91,8 +95,24 @@ export default function BroadcastModeScreen({
     <div className='flex flex-col h-screen w-full bg-black text-white'>
       {/* Header */}
       <div className='flex items-center justify-between p-4 bg-gray-900 border-b border-gray-700'>
-        <h1 className='text-xl font-semibold'>Broadcast Mode</h1>
+        <div className='flex items-center gap-3'>
+          <h1 className='text-xl font-semibold'>Broadcast Mode</h1>
+          {isBroadcastMode && (
+            <span className='inline-flex items-center gap-2 rounded bg-red-500 px-2 py-1 text-xs font-semibold uppercase tracking-wider text-white'>
+              <span className='h-2 w-2 rounded-full bg-white animate-pulse' />
+              Live
+            </span>
+          )}
+        </div>
         <div className='flex gap-2'>
+          <Button
+            size='sm'
+            variant={isBroadcastMode ? 'destructive' : 'default'}
+            onClick={() => setBroadcastMode(!isBroadcastMode)}
+            disabled={!isBroadcastMode && !selectedTileId}
+            className='gap-2'>
+            {isBroadcastMode ? 'Stop Broadcast' : 'Start Broadcast'}
+          </Button>
           {tiles.length > 0 && (
             <Button
               size='sm'
@@ -133,7 +153,7 @@ export default function BroadcastModeScreen({
           </div>
         ) : (
           <div className='flex-1 flex flex-col items-center justify-center gap-4 bg-gray-900'>
-            <p className='text-gray-400'>Selected tile was removed</p>
+            <p className='text-gray-400'>Select a tile to preview</p>
             <Button onClick={() => selectTile(tiles[0]?.id || null)}>
               Select First Tile
             </Button>

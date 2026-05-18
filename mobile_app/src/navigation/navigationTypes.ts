@@ -7,7 +7,6 @@ export type RootStackParamList = {
   Main: undefined;
   Help: undefined;
   Camera: { serverUrl: string; roomId: string };
-  BroadcastMode: { serverUrl: string; roomId: string };
 };
 
 export type RootNavigationProp = NativeStackNavigationProp<RootStackParamList>;
@@ -19,7 +18,6 @@ export const SCREEN_NAMES = {
   MAIN: "Main" as const,
   HELP: "Help" as const,
   CAMERA: "Camera" as const,
-  BROADCAST_MODE: "BroadcastMode" as const,
 };
 
 const MAIN_SCREEN_INDEX = {
@@ -27,6 +25,7 @@ const MAIN_SCREEN_INDEX = {
   INPUTS: 1,
   TIMELINE: 2,
   DEBUG: 3,
+  BROADCAST: 4,
 } as const;
 
 export const MAIN_SCREEN_COUNT = Object.keys(MAIN_SCREEN_INDEX).length;

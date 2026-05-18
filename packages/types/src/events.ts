@@ -74,6 +74,7 @@ export type BroadcastTilesUpdatedEvent = {
   roomId: string;
   tiles: BroadcastTile[];
   selectedBroadcastTileId: string | null;
+  isBroadcastMode: boolean;
   sourceId: string | null;
 };
 

@@ -34,6 +34,7 @@ export type RoomState = {
   audioAnalysisEnabled?: boolean;
   broadcastTiles: BroadcastTile[];
   selectedBroadcastTileId: string | null;
+  isBroadcastMode: boolean;
 } & Partial<ViewportProperties>;
 
 export type AddInputResponse = {

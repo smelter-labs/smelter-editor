@@ -2,17 +2,20 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import type { BroadcastTile } from '@smelter-editor/types';
+import { getEffectiveClientServerUrl } from '@/lib/server-url';
 
 const STORAGE_KEY_PREFIX = 'broadcast-tiles';
 
 type BroadcastTilesState = {
   tiles: BroadcastTile[];
   selectedTileId: string | null;
+  isBroadcastMode: boolean;
 };
 
 export function useBroadcastTiles(roomId: string) {
   const [tiles, setTiles] = useState<BroadcastTile[]>([]);
   const [selectedTileId, setSelectedTileId] = useState<string | null>(null);
+  const [isBroadcastMode, setIsBroadcastModeState] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const cacheRef = useRef<BroadcastTilesState | null>(null);
 
@@ -29,6 +32,7 @@ export function useBroadcastTiles(roomId: string) {
         const parsed = JSON.parse(cached) as BroadcastTilesState;
         setTiles(parsed.tiles || []);
         setSelectedTileId(parsed.selectedTileId || null);
+        setIsBroadcastModeState(parsed.isBroadcastMode ?? false);
         cacheRef.current = parsed;
       }
     } catch (error) {
@@ -38,12 +42,17 @@ export function useBroadcastTiles(roomId: string) {
 
   // Save to localStorage whenever tiles or selection changes
   const saveToStorage = useCallback(
-    (newTiles: BroadcastTile[], newSelectedId: string | null) => {
+    (
+      newTiles: BroadcastTile[],
+      newSelectedId: string | null,
+      newIsBroadcastMode: boolean,
+    ) => {
       const key = getStorageKey();
       try {
         const state: BroadcastTilesState = {
           tiles: newTiles,
           selectedTileId: newSelectedId,
+          isBroadcastMode: newIsBroadcastMode,
         };
         localStorage.setItem(key, JSON.stringify(state));
         cacheRef.current = state;
@@ -56,10 +65,15 @@ export function useBroadcastTiles(roomId: string) {
 
   // Sync with server state (from room state updates)
   const syncWithServerState = useCallback(
-    (serverTiles: BroadcastTile[], serverSelectedId: string | null) => {
+    (
+      serverTiles: BroadcastTile[],
+      serverSelectedId: string | null,
+      serverIsBroadcastMode: boolean,
+    ) => {
       setTiles(serverTiles);
       setSelectedTileId(serverSelectedId);
-      saveToStorage(serverTiles, serverSelectedId);
+      setIsBroadcastModeState(serverIsBroadcastMode);
+      saveToStorage(serverTiles, serverSelectedId, serverIsBroadcastMode);
     },
     [saveToStorage],
   );
@@ -75,11 +89,11 @@ export function useBroadcastTiles(roomId: string) {
       };
       const optimisticTiles = [...tiles, optimisticTile];
       setTiles(optimisticTiles);
-      saveToStorage(optimisticTiles, selectedTileId);
+      saveToStorage(optimisticTiles, selectedTileId, isBroadcastMode);
 
       try {
         const response = await fetch(
-          `/api/room/${encodeURIComponent(roomId)}/broadcast-tile/add`,
+          `${getEffectiveClientServerUrl()}/room/${encodeURIComponent(roomId)}/broadcast-tile/add`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -89,13 +103,13 @@ export function useBroadcastTiles(roomId: string) {
         if (!response.ok) {
           // Revert on failure
           setTiles(tiles);
-          saveToStorage(tiles, selectedTileId);
+          saveToStorage(tiles, selectedTileId, isBroadcastMode);
           console.error('Failed to add broadcast tile:', response.statusText);
         }
         // Server will broadcast the authoritative state via the polling cycle
       } catch (error) {
         setTiles(tiles);
-        saveToStorage(tiles, selectedTileId);
+        saveToStorage(tiles, selectedTileId, isBroadcastMode);
         console.error('Failed to add broadcast tile:', error);
       }
     },
@@ -108,11 +122,11 @@ export function useBroadcastTiles(roomId: string) {
       const newSelectedId = selectedTileId === tileId ? null : selectedTileId;
       setTiles(updatedTiles);
       setSelectedTileId(newSelectedId);
-      saveToStorage(updatedTiles, newSelectedId);
+      saveToStorage(updatedTiles, newSelectedId, isBroadcastMode);
 
       try {
         const response = await fetch(
-          `/api/room/${encodeURIComponent(roomId)}/broadcast-tile/remove`,
+          `${getEffectiveClientServerUrl()}/room/${encodeURIComponent(roomId)}/broadcast-tile/remove`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -122,13 +136,13 @@ export function useBroadcastTiles(roomId: string) {
         if (!response.ok) {
           setTiles(tiles);
           setSelectedTileId(selectedTileId);
-          saveToStorage(tiles, selectedTileId);
+          saveToStorage(tiles, selectedTileId, isBroadcastMode);
           console.error('Failed to remove broadcast tile:', response.statusText);
         }
       } catch (error) {
         setTiles(tiles);
         setSelectedTileId(selectedTileId);
-        saveToStorage(tiles, selectedTileId);
+        saveToStorage(tiles, selectedTileId, isBroadcastMode);
         console.error('Failed to remove broadcast tile:', error);
       }
     },
@@ -138,11 +152,11 @@ export function useBroadcastTiles(roomId: string) {
   const selectTile = useCallback(
     async (tileId: string | null) => {
       setSelectedTileId(tileId);
-      saveToStorage(tiles, tileId);
+      saveToStorage(tiles, tileId, isBroadcastMode);
 
       try {
         const response = await fetch(
-          `/api/room/${encodeURIComponent(roomId)}/broadcast-tile/select`,
+          `${getEffectiveClientServerUrl()}/room/${encodeURIComponent(roomId)}/broadcast-tile/select`,
           {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -151,12 +165,12 @@ export function useBroadcastTiles(roomId: string) {
         );
         if (!response.ok) {
           setSelectedTileId(selectedTileId);
-          saveToStorage(tiles, selectedTileId);
+          saveToStorage(tiles, selectedTileId, isBroadcastMode);
           console.error('Failed to select broadcast tile:', response.statusText);
         }
       } catch (error) {
         setSelectedTileId(selectedTileId);
-        saveToStorage(tiles, selectedTileId);
+        saveToStorage(tiles, selectedTileId, isBroadcastMode);
         console.error('Failed to select broadcast tile:', error);
       }
     },
@@ -169,7 +183,7 @@ export function useBroadcastTiles(roomId: string) {
         t.id === tileId ? { ...t, name: newName } : t,
       );
       setTiles(updatedTiles);
-      saveToStorage(updatedTiles, selectedTileId);
+      saveToStorage(updatedTiles, selectedTileId, isBroadcastMode);
     },
     [tiles, selectedTileId, saveToStorage],
   );
@@ -181,19 +195,50 @@ export function useBroadcastTiles(roomId: string) {
   const clearAll = useCallback(() => {
     setTiles([]);
     setSelectedTileId(null);
+    setIsBroadcastModeState(false);
     setIsEditMode(false);
-    saveToStorage([], null);
+    saveToStorage([], null, false);
   }, [saveToStorage]);
+
+  const setBroadcastMode = useCallback(
+    async (enabled: boolean) => {
+      const previous = isBroadcastMode;
+      setIsBroadcastModeState(enabled);
+      saveToStorage(tiles, selectedTileId, enabled);
+      try {
+        const response = await fetch(
+          `${getEffectiveClientServerUrl()}/room/${encodeURIComponent(roomId)}/broadcast-mode/set`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled }),
+          },
+        );
+        if (!response.ok) {
+          setIsBroadcastModeState(previous);
+          saveToStorage(tiles, selectedTileId, previous);
+          console.error('Failed to set broadcast mode:', response.statusText);
+        }
+      } catch (error) {
+        setIsBroadcastModeState(previous);
+        saveToStorage(tiles, selectedTileId, previous);
+        console.error('Failed to set broadcast mode:', error);
+      }
+    },
+    [roomId, tiles, selectedTileId, isBroadcastMode, saveToStorage],
+  );
 
   return {
     tiles,
     selectedTileId,
+    isBroadcastMode,
     isEditMode,
     addTile,
     removeTile,
     selectTile,
     updateTileName,
     toggleEditMode,
+    setBroadcastMode,
     clearAll,
     syncWithServerState,
   };
