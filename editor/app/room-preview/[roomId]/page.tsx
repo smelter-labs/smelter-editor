@@ -19,6 +19,8 @@ export default function RoomPreviewPage() {
     inputs: [],
     layers: [],
     whepUrl: '',
+    broadcastTiles: [],
+    selectedBroadcastTileId: null,
   });
   const videoRef = useRef<HTMLVideoElement | null>(null);
 

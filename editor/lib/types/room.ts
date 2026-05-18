@@ -5,6 +5,7 @@ import type {
   RoomNameEntry,
   ViewportProperties,
   ShaderConfig,
+  BroadcastTile,
 } from '@smelter-editor/types';
 import type { Input, RegisterInputOptions } from './input';
 import type { Layer } from './layout';
@@ -31,6 +32,8 @@ export type RoomState = {
   isRecording?: boolean;
   isFrozen?: boolean;
   audioAnalysisEnabled?: boolean;
+  broadcastTiles: BroadcastTile[];
+  selectedBroadcastTileId: string | null;
 } & Partial<ViewportProperties>;
 
 export type AddInputResponse = {

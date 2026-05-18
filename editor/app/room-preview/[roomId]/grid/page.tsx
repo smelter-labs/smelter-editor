@@ -18,6 +18,8 @@ export default function RoomPreviewGridPage() {
     inputs: [],
     layers: [],
     whepUrl: '',
+    broadcastTiles: [],
+    selectedBroadcastTileId: null,
   });
 
   useEffect(() => {

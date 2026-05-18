@@ -111,3 +111,16 @@ export type {
   ImportConfigDoneEvent,
   ImportConfigStreamEvent,
 } from "./import-config.js";
+
+export type {
+  BroadcastTile,
+  BroadcastTileAddRequest,
+  BroadcastTileRemoveRequest,
+  BroadcastTileSelectRequest,
+  BroadcastClientRequest,
+  BroadcastTileAddedEvent,
+  BroadcastTileRemovedEvent,
+  BroadcastTileSelectedEvent,
+  BroadcastTilesUpdatedEvent,
+  BroadcastServerEvent,
+} from "./broadcast.js";

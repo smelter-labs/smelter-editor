@@ -10,6 +10,7 @@ import type {
   AbsolutePositionProperties,
   CropProperties,
   ViewportProperties,
+  BroadcastTile,
 } from '../types';
 import type { StoreApi } from 'zustand';
 import type { HandsStore } from '../hands/handStore';
@@ -36,6 +37,8 @@ export type RoomSnapshot = {
   swapFadeInDurationMs: number;
   swapFadeOutDurationMs: number;
   outputShaders: ShaderConfig[];
+  broadcastTiles: BroadcastTile[];
+  selectedBroadcastTileId: string | null;
 } & Partial<ViewportProperties>;
 
 export type RoomInputState = {

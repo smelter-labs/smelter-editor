@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { remove } from 'fs-extra';
 import { Mutex } from 'async-mutex';
 import { SmelterInstance, type SmelterOutput } from '../smelter';
@@ -32,7 +33,7 @@ import type {
   RoomSnapshot,
   UpdateInputOptions,
 } from './types';
-import type { ShaderConfig } from '../types';
+import type { ShaderConfig, BroadcastTile } from '../types';
 
 const RESUME_FROZEN_IMAGE_CLEANUP_DELAY_MS = 5500;
 const FROZEN_IMAGE_UNREGISTER_GRACE_MS = 500;
@@ -158,6 +159,9 @@ export class RoomState {
   private viewportTransitionDurationMs?: number;
   private viewportTransitionEasing?: string;
 
+  private broadcastTiles: BroadcastTile[] = [];
+  private selectedBroadcastTileId: string | null = null;
+
   public idPrefix: string;
   private output: SmelterOutput;
 
@@ -263,6 +267,8 @@ export class RoomState {
       swapFadeInDurationMs: this.swapFadeInDurationMs,
       swapFadeOutDurationMs: this.swapFadeOutDurationMs,
       outputShaders: this.getOutputShaders(),
+      broadcastTiles: this.broadcastTiles,
+      selectedBroadcastTileId: this.selectedBroadcastTileId,
       viewportTop: this.viewportTop,
       viewportLeft: this.viewportLeft,
       viewportWidth: this.viewportWidth,
@@ -571,6 +577,63 @@ export class RoomState {
         });
       }
     });
+  }
+
+  // ── Broadcast tiles ───────────────────────────────────────
+
+  public addBroadcastTile(
+    type: 'input' | 'layer',
+    targetId: string,
+  ): BroadcastTile | null {
+    const snapshot = this.getState();
+    const alreadyExists = this.broadcastTiles.some(
+      (t) => t.type === type && t.targetId === targetId,
+    );
+    if (alreadyExists) return null;
+
+    if (type === 'input') {
+      if (!snapshot.inputs.some((i) => i.inputId === targetId)) return null;
+    } else {
+      if (!snapshot.layers.some((l) => l.id === targetId)) return null;
+    }
+
+    const name =
+      type === 'input'
+        ? (snapshot.inputs.find((i) => i.inputId === targetId)?.metadata
+            .title ?? targetId)
+        : targetId;
+
+    const tile: BroadcastTile = { id: randomUUID(), type, targetId, name };
+    this.broadcastTiles.push(tile);
+    return tile;
+  }
+
+  public removeBroadcastTile(tileId: string): boolean {
+    const idx = this.broadcastTiles.findIndex((t) => t.id === tileId);
+    if (idx === -1) return false;
+    this.broadcastTiles.splice(idx, 1);
+    if (this.selectedBroadcastTileId === tileId) {
+      this.selectedBroadcastTileId = null;
+    }
+    return true;
+  }
+
+  public selectBroadcastTile(tileId: string | null): boolean {
+    if (tileId !== null && !this.broadcastTiles.some((t) => t.id === tileId)) {
+      return false;
+    }
+    this.selectedBroadcastTileId = tileId;
+    return true;
+  }
+
+  public getBroadcastTiles(): {
+    tiles: BroadcastTile[];
+    selectedBroadcastTileId: string | null;
+  } {
+    return {
+      tiles: [...this.broadcastTiles],
+      selectedBroadcastTileId: this.selectedBroadcastTileId,
+    };
   }
 
   public hideInput(

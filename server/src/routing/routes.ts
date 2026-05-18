@@ -2235,6 +2235,123 @@ routes.get('/logs/sse', async (req, res) => {
   });
 });
 
+routes.post<RoomIdParams>(
+  '/room/:roomId/broadcast-tile/add',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    const body = req.body as Record<string, unknown>;
+    const type = body.type as 'input' | 'layer' | undefined;
+    const targetId = body.targetId as string | undefined;
+    if (!type || !targetId) {
+      return res
+        .status(400)
+        .send({ status: 'error', message: 'Missing type or targetId' });
+    }
+    try {
+      const room = state.getRoom(roomId);
+      const tile = room.addBroadcastTile(type, targetId);
+      if (!tile) {
+        return res.status(400).send({
+          status: 'error',
+          message: 'Target not found or tile already exists',
+        });
+      }
+      const { tiles, selectedBroadcastTileId } = room.getBroadcastTiles();
+      const sourceId =
+        (req.headers['x-source-id'] as string | undefined) ?? null;
+      roomEventBus.broadcast(roomId, {
+        type: 'broadcast-tiles-updated',
+        roomId,
+        sourceId,
+        tiles,
+        selectedBroadcastTileId,
+      } as any);
+      res.status(200).send({ status: 'ok', tile });
+    } catch (err: any) {
+      res.status(400).send({
+        status: 'error',
+        message: err?.message ?? 'Failed to add broadcast tile',
+      });
+    }
+  },
+);
+
+routes.post<RoomIdParams>(
+  '/room/:roomId/broadcast-tile/remove',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    const body = req.body as Record<string, unknown>;
+    const tileId = body.tileId as string | undefined;
+    if (!tileId) {
+      return res
+        .status(400)
+        .send({ status: 'error', message: 'Missing tileId' });
+    }
+    try {
+      const room = state.getRoom(roomId);
+      const removed = room.removeBroadcastTile(tileId);
+      if (!removed) {
+        return res
+          .status(400)
+          .send({ status: 'error', message: 'Tile not found' });
+      }
+      const { tiles, selectedBroadcastTileId } = room.getBroadcastTiles();
+      const sourceId =
+        (req.headers['x-source-id'] as string | undefined) ?? null;
+      roomEventBus.broadcast(roomId, {
+        type: 'broadcast-tiles-updated',
+        roomId,
+        sourceId,
+        tiles,
+        selectedBroadcastTileId,
+      } as any);
+      res.status(200).send({ status: 'ok' });
+    } catch (err: any) {
+      res.status(400).send({
+        status: 'error',
+        message: err?.message ?? 'Failed to remove broadcast tile',
+      });
+    }
+  },
+);
+
+routes.post<RoomIdParams>(
+  '/room/:roomId/broadcast-tile/select',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    const body = req.body as Record<string, unknown>;
+    const tileId = (body.tileId as string | null | undefined) ?? null;
+    try {
+      const room = state.getRoom(roomId);
+      const ok = room.selectBroadcastTile(tileId);
+      if (!ok) {
+        return res
+          .status(400)
+          .send({ status: 'error', message: 'Tile not found' });
+      }
+      const { tiles, selectedBroadcastTileId } = room.getBroadcastTiles();
+      const sourceId =
+        (req.headers['x-source-id'] as string | undefined) ?? null;
+      roomEventBus.broadcast(roomId, {
+        type: 'broadcast-tiles-updated',
+        roomId,
+        sourceId,
+        tiles,
+        selectedBroadcastTileId,
+      } as any);
+      res.status(200).send({ status: 'ok' });
+    } catch (err: any) {
+      res.status(400).send({
+        status: 'error',
+        message: err?.message ?? 'Failed to select broadcast tile',
+      });
+    }
+  },
+);
+
 routes.delete<RoomIdParams>(
   '/room/:roomId',
   { schema: { params: RoomIdParamsSchema } },
