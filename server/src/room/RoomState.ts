@@ -1525,14 +1525,6 @@ export class RoomState {
         const shouldBump = fromClientUpdate || positionsChanged;
         const layoutTimestamp = shouldBump ? Date.now() : layer.layoutTimestamp;
 
-        console.log('[RoomState] layoutTimestamp', {
-          layerId: layer.id,
-          prev: layer.layoutTimestamp,
-          next: layoutTimestamp,
-          fromClientUpdate,
-          positionsChanged,
-        });
-
         return { ...layer, inputs: newInputs, layoutTimestamp };
       }
 
