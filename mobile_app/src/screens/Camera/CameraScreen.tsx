@@ -81,7 +81,6 @@ export function CameraScreen() {
   const [debugExpanded, setDebugExpanded] = useState(false);
   const [overrideWhipUrl, setOverrideWhipUrl] = useState("");
   const [overrideBearerToken, setOverrideBearerToken] = useState("");
-  const [forceH264, setForceH264] = useState(false);
   const [videoCodec, setVideoCodec] = useState<VideoCodecPreference>("vp8");
   const [resolution, setResolution] = useState<ResolutionPreset>("720p");
   const [logsVisible, setLogsVisible] = useState(false);
@@ -259,7 +258,6 @@ export function CameraScreen() {
         whipUrl: finalWhipUrl,
         bearerToken: finalBearerToken,
         videoCodec,
-        forceH264,
         onConnectionStateChange: (state) => {
           console.log("[Camera] WebRTC connection state:", state);
           if (state === "connected") {
@@ -297,13 +295,7 @@ export function CameraScreen() {
         inputIdRef.current = null;
       }
     }
-  }, [
-    isOverrideActive,
-    overrideWhipUrl,
-    overrideBearerToken,
-    videoCodec,
-    forceH264,
-  ]);
+  }, [isOverrideActive, overrideWhipUrl, overrideBearerToken, videoCodec]);
 
   // ── stop streaming ────────────────────────────────────────────────────────
 
@@ -695,15 +687,7 @@ export function CameraScreen() {
                   dense
                   style={styles.debugInput}
                 />
-                <View style={styles.debugRow}>
-                  <Text
-                    variant="bodySmall"
-                    style={{ color: theme.colors.onSurfaceVariant, flex: 1 }}
-                  >
-                    Strip to H264-only (diagnostic)
-                  </Text>
-                  <Switch value={forceH264} onValueChange={setForceH264} />
-                </View>
+                {/* H264-strip diagnostic removed from UI (deprecated) */}
                 {isOverrideActive ? (
                   <Text
                     variant="bodySmall"
