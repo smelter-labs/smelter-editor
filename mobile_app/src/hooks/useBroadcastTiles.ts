@@ -138,16 +138,13 @@ export function useBroadcastTiles(serverUrl: string, roomId: string) {
     [tiles, selectedTileId, isBroadcastMode, saveToStorage, post],
   );
 
-  const updateTileName = useCallback(
-    (tileId: string, newName: string) => {
-      setTiles((prev) => {
-        const tile = prev.find((t) => t.id === tileId);
-        if (!tile || tile.name === newName) return prev;
-        return prev.map((t) => (t.id === tileId ? { ...t, name: newName } : t));
-      });
-    },
-    [],
-  );
+  const updateTileName = useCallback((tileId: string, newName: string) => {
+    setTiles((prev) => {
+      const tile = prev.find((t) => t.id === tileId);
+      if (!tile || tile.name === newName) return prev;
+      return prev.map((t) => (t.id === tileId ? { ...t, name: newName } : t));
+    });
+  }, []);
 
   const setBroadcastMode = useCallback(
     async (enabled: boolean) => {
