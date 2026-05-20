@@ -49,6 +49,8 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
 import { BehaviorSelector } from './BehaviorSelector';
+import { CarouselSettingsInline } from './CarouselSettingsInline';
+import { CarouselInputSelectionDialog } from './CarouselInputSelectionDialog';
 import LoadingSpinner from '@/components/ui/spinner';
 import { sortInputsByTimelineTrackOrder } from '@/lib/timeline-layer-order';
 import { applyDragOverToLayers } from '@/lib/layers-drag-over';
