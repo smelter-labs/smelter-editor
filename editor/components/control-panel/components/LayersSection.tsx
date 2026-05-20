@@ -8,19 +8,23 @@ import {
   KeyboardSensor,
   useSensor,
   useSensors,
-  closestCenter,
+  closestCorners,
+  pointerWithin,
+  rectIntersection,
   defaultDropAnimationSideEffects,
 } from '@dnd-kit/core';
+import type { CollisionDetection } from '@dnd-kit/core';
 import type {
   DragStartEvent,
   DragEndEvent,
+  DragOverEvent,
   UniqueIdentifier,
   DropAnimation,
+  Modifier,
 } from '@dnd-kit/core';
 import {
   SortableContext,
   useSortable,
-  arrayMove,
   verticalListSortingStrategy,
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
@@ -47,6 +51,7 @@ import { useWhipConnectionsContext } from '../contexts/whip-connections-context'
 import { BehaviorSelector } from './BehaviorSelector';
 import LoadingSpinner from '@/components/ui/spinner';
 import { sortInputsByTimelineTrackOrder } from '@/lib/timeline-layer-order';
+import { applyDragOverToLayers } from '@/lib/layers-drag-over';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -103,9 +108,13 @@ function SortableLayerItem({
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
-        opacity: isDragging ? 0.5 : 1,
         cursor: disabled ? 'not-allowed' : undefined,
       }}
+      className={
+        isDragging
+          ? 'opacity-30 outline outline-2 outline-dashed outline-blue-500/60 rounded-md'
+          : undefined
+      }
       {...attributes}
       {...(disabled ? {} : listeners)}>
       {children}
@@ -139,9 +148,13 @@ function SortableInputItem({
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
-        opacity: isDragging ? 0.4 : 1,
         cursor: disabled ? 'not-allowed' : 'grab',
       }}
+      className={
+        isDragging
+          ? 'opacity-25 outline outline-2 outline-dashed outline-blue-500/60 rounded-md'
+          : undefined
+      }
       {...attributes}
       {...(disabled ? {} : listeners)}>
       {children}
@@ -273,6 +286,35 @@ const dropAnimation: DropAnimation = {
   }),
 };
 
+// Keeps the DragOverlay centered under the cursor regardless of where the
+// drag started or how the overlay size differs from the original element.
+const snapCenterToCursor: Modifier = ({
+  activatorEvent,
+  draggingNodeRect,
+  transform,
+}) => {
+  if (!draggingNodeRect || !activatorEvent) return transform;
+  const event = activatorEvent as PointerEvent;
+  const offsetX = event.clientX - draggingNodeRect.left;
+  const offsetY = event.clientY - draggingNodeRect.top;
+  return {
+    ...transform,
+    x: transform.x + offsetX - draggingNodeRect.width / 2,
+    y: transform.y + offsetY - draggingNodeRect.height / 2,
+  };
+};
+
+// Use the pointer position for collision detection. Falls back to
+// rectIntersection when the pointer is in a gap between droppables so
+// the drop target never "disappears" mid-drag.
+const cursorBasedCollision: CollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args);
+  if (pointerCollisions.length > 0) return pointerCollisions;
+  const intersections = rectIntersection(args);
+  if (intersections.length > 0) return intersections;
+  return closestCorners(args);
+};
+
 // ── Main component ───────────────────────────────────────────────────────────
 
 export function LayersSection({
@@ -318,6 +360,8 @@ export function LayersSection({
     useState<Set<string>>(new Set());
   const layerNamesRef = useRef<Map<string, number>>(new Map());
   const nextLayerNumberRef = useRef(0);
+  const dragAffectedLayerIdsRef = useRef<Set<string>>(new Set());
+  const dragDidMoveRef = useRef(false);
 
   useEffect(() => {
     setLocalLayers(layers);
@@ -440,88 +484,47 @@ export function LayersSection({
     [findDragItem],
   );
 
+  const handleDragOver = useCallback(
+    (event: DragOverEvent) => {
+      const { active, over } = event;
+      if (!over) return;
+      const next = applyDragOverToLayers(localLayers, active.id, over.id);
+      if (!next) return;
+
+      const activeRef = findDragItem(active.id);
+      if (activeRef?.type === 'input') {
+        dragAffectedLayerIdsRef.current.add(activeRef.layerId);
+        const overStr = String(over.id);
+        if (overStr.startsWith('layer::')) {
+          dragAffectedLayerIdsRef.current.add(overStr.slice(7));
+        } else {
+          const owning = localLayers.find((l) =>
+            l.inputs.some((i) => i.inputId === overStr),
+          );
+          if (owning) dragAffectedLayerIdsRef.current.add(owning.id);
+        }
+      }
+      dragDidMoveRef.current = true;
+      setLocalLayers(next);
+    },
+    [localLayers, findDragItem],
+  );
+
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
-      const { active, over } = event;
+      const { over } = event;
       setActiveId(null);
       setActiveDragItem(null);
 
-      if (!over || active.id === over.id) return;
+      const affected = dragAffectedLayerIdsRef.current;
+      const didMove = dragDidMoveRef.current;
+      dragAffectedLayerIdsRef.current = new Set();
+      dragDidMoveRef.current = false;
 
-      const activeRef = findDragItem(active.id);
-      if (!activeRef) return;
-
-      const overIdStr = String(over.id);
-      let overLayerId: string | null = null;
-      let overInputId: string | null = null;
-      if (overIdStr.startsWith('layer::')) {
-        overLayerId = overIdStr.slice(7);
-      } else {
-        overInputId = overIdStr;
-        const owningLayer = localLayers.find((l) =>
-          l.inputs.some((i) => i.inputId === overIdStr),
-        );
-        overLayerId = owningLayer?.id ?? null;
-      }
-      if (!overLayerId) return;
-
-      const affected = new Set<string>();
-      let nextLayers: Layer[] | null = null;
-
-      if (activeRef.type === 'layer') {
-        const oldIdx = localLayers.findIndex((l) => l.id === activeRef.layerId);
-        const newIdx = localLayers.findIndex((l) => l.id === overLayerId);
-        if (oldIdx === -1 || newIdx === -1 || oldIdx === newIdx) return;
-        nextLayers = arrayMove(localLayers, oldIdx, newIdx);
-      } else if (activeRef.type === 'input' && activeRef.inputId) {
-        const srcLayerIdx = localLayers.findIndex(
-          (l) => l.id === activeRef.layerId,
-        );
-        if (srcLayerIdx === -1) return;
-        const srcInputIdx = localLayers[srcLayerIdx].inputs.findIndex(
-          (i) => i.inputId === activeRef.inputId,
-        );
-        if (srcInputIdx === -1) return;
-
-        const dstLayerIdx = localLayers.findIndex((l) => l.id === overLayerId);
-        if (dstLayerIdx === -1) return;
-
-        if (srcLayerIdx === dstLayerIdx) {
-          if (!overInputId) return;
-          const dstInputIdx = localLayers[dstLayerIdx].inputs.findIndex(
-            (i) => i.inputId === overInputId,
-          );
-          if (dstInputIdx === -1 || srcInputIdx === dstInputIdx) return;
-          nextLayers = localLayers.map((l, i) =>
-            i === srcLayerIdx
-              ? { ...l, inputs: arrayMove(l.inputs, srcInputIdx, dstInputIdx) }
-              : l,
-          );
-          affected.add(localLayers[srcLayerIdx].id);
-        } else {
-          const next = localLayers.map((l) => ({
-            ...l,
-            inputs: [...l.inputs],
-          }));
-          const [moved] = next[srcLayerIdx].inputs.splice(srcInputIdx, 1);
-          let insertIdx = next[dstLayerIdx].inputs.length;
-          if (overInputId) {
-            const overInputIdx = next[dstLayerIdx].inputs.findIndex(
-              (i) => i.inputId === overInputId,
-            );
-            if (overInputIdx !== -1) insertIdx = overInputIdx;
-          }
-          next[dstLayerIdx].inputs.splice(insertIdx, 0, moved);
-          nextLayers = next;
-          affected.add(localLayers[srcLayerIdx].id);
-          affected.add(localLayers[dstLayerIdx].id);
-        }
-      }
-
-      if (!nextLayers) return;
+      if (!over || !didMove) return;
 
       const resolution = { width: 1920, height: 1080 };
-      nextLayers = nextLayers.map((l) => {
+      const nextLayers = localLayers.map((l) => {
         if (!affected.has(l.id) || !l.behavior) return l;
         try {
           const layerInputInfos = l.inputs
@@ -552,13 +555,16 @@ export function LayersSection({
         setLocalLayers(layers);
       }
     },
-    [findDragItem, localLayers, inputs, onLayersChange, layers],
+    [localLayers, inputs, onLayersChange, layers],
   );
 
   const handleDragCancel = useCallback(() => {
     setActiveId(null);
     setActiveDragItem(null);
-  }, []);
+    dragAffectedLayerIdsRef.current = new Set();
+    dragDidMoveRef.current = false;
+    setLocalLayers(layers);
+  }, [layers]);
 
   const handleBehaviorChange = useCallback(
     async (layerId: string, behavior: LayerBehaviorConfig | undefined) => {
@@ -644,8 +650,10 @@ export function LayersSection({
 
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={cursorBasedCollision}
+        modifiers={[snapCenterToCursor]}
         onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}>
         <SortableContext
@@ -852,13 +860,37 @@ export function LayersSection({
 
         <DragOverlay dropAnimation={dropAnimation}>
           {activeId && activeDragItem?.type === 'layer' && (
-            <div className='bg-neutral-900 border border-neutral-700 rounded px-3 py-2 text-[11px] text-neutral-300 shadow-lg'>
-              Layer {activeLayerIndex + 1}
+            <div
+              className='rounded-md border border-blue-500/60 bg-neutral-900 shadow-2xl shadow-black/70 ring-2 ring-blue-500/40'
+              style={{
+                transform: 'scale(1.02) rotate(-1deg)',
+                cursor: 'grabbing',
+              }}>
+              <div className='flex items-center gap-1.5 px-2 py-1.5 border-b border-neutral-800/70 bg-neutral-900/60'>
+                <Layers className='w-3.5 h-3.5 text-blue-400 flex-shrink-0' />
+                <span className='text-[11px] font-semibold text-neutral-100 flex-1 text-left truncate'>
+                  {localLayers[activeLayerIndex]?.carousel
+                    ? 'Carousel'
+                    : `Layer ${(layerNamesRef.current.get(localLayers[activeLayerIndex]?.id ?? '') ?? activeLayerIndex) + 1}`}
+                </span>
+                <GripVertical className='w-3.5 h-3.5 text-neutral-400' />
+              </div>
+              <div className='px-2 py-2 text-[10px] text-neutral-500'>
+                {localLayers[activeLayerIndex]?.inputs.length ?? 0} input(s)
+              </div>
             </div>
           )}
           {activeId && activeDragItem?.type === 'input' && activeInput && (
-            <div className='bg-neutral-900 border border-neutral-700 rounded px-3 py-1.5 text-[11px] text-neutral-300 shadow-lg truncate max-w-[200px]'>
-              {activeInput.title}
+            <div
+              className='flex items-center gap-2 rounded-md border border-blue-500/60 bg-neutral-900 px-3 py-2 shadow-2xl shadow-black/70 ring-2 ring-blue-500/40 min-w-[220px] max-w-[320px]'
+              style={{
+                transform: 'scale(1.02) rotate(-1deg)',
+                cursor: 'grabbing',
+              }}>
+              <GripVertical className='w-3.5 h-3.5 text-blue-400 flex-shrink-0' />
+              <span className='text-[11px] font-medium text-neutral-100 flex-1 truncate'>
+                {activeInput.title}
+              </span>
             </div>
           )}
         </DragOverlay>

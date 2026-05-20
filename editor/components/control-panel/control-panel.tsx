@@ -75,7 +75,6 @@ import {
   GenericSaveModal,
   GenericLoadModal,
 } from '@/components/storage-modals';
-import { setAudioAnalysisEnabled } from '@/app/actions/actions';
 import { TransitionSettings } from './components/TransitionSettings';
 import { BehaviorSelector } from './components/BehaviorSelector';
 import { ViewportSettings } from './components/ViewportSettings';
@@ -202,6 +201,7 @@ type ControlPanelProps = {
 type ControlPanelWithActionsProps = ControlPanelProps & {
   pendingMutationCount: number;
   sceneMutationVersion: number;
+  resetPendingMutations: () => void;
 };
 
 type ShowcaseCopy = {
@@ -376,12 +376,17 @@ export default function ControlPanel(props: ControlPanelProps) {
     };
   }, [trackMutation]);
 
+  const resetPendingMutations = useCallback(() => {
+    setPendingMutationCount(0);
+  }, []);
+
   return (
     <ActionsProvider actions={trackedActions}>
       <ControlPanelWithActions
         {...props}
         pendingMutationCount={pendingMutationCount}
         sceneMutationVersion={sceneMutationVersion}
+        resetPendingMutations={resetPendingMutations}
       />
     </ActionsProvider>
   );
@@ -398,6 +403,7 @@ function ControlPanelWithActions({
   renderDashboard,
   pendingMutationCount,
   sceneMutationVersion,
+  resetPendingMutations,
 }: ControlPanelWithActionsProps) {
   const pendingWhipInputs: PendingWhipInput[] = (
     roomState.pendingWhipInputs || []
@@ -584,6 +590,7 @@ function ControlPanelWithActions({
           handleLayersChange={handleLayersChange}
           pendingMutationCount={pendingMutationCount}
           sceneMutationVersion={sceneMutationVersion}
+          resetPendingMutations={resetPendingMutations}
         />
       </WhipConnectionsProvider>
     </ControlPanelProvider>
@@ -616,6 +623,7 @@ type ControlPanelInnerProps = {
   handleLayersChange: (layers: Layer[]) => Promise<void>;
   pendingMutationCount: number;
   sceneMutationVersion: number;
+  resetPendingMutations: () => void;
 };
 
 function ControlPanelInner({
@@ -642,6 +650,7 @@ function ControlPanelInner({
   handleLayersChange,
   pendingMutationCount,
   sceneMutationVersion,
+  resetPendingMutations,
 }: ControlPanelInnerProps) {
   const {
     roomId,
@@ -911,6 +920,11 @@ function ControlPanelInner({
     },
     [canSwitchSortMode, sceneMutationVersion, sortMode],
   );
+
+  const handleResetSortModeBlockers = useCallback(() => {
+    resetPendingMutations();
+    setTimelineQueueLocked(false);
+  }, [resetPendingMutations]);
 
   const requestPlayConflictDecision = useCallback(async () => {
     setConflictModalOpen(true);
@@ -1239,6 +1253,7 @@ function ControlPanelInner({
           canSwitchSortMode={canSwitchSortMode}
           sortModeSwitchReason={sortModeSwitchReason}
           onSortModeChange={handleSortModeChange}
+          onResetSortModeBlockers={handleResetSortModeBlockers}
         />
       </ErrorBoundary>
     );
@@ -1522,6 +1537,7 @@ function ControlPanelInner({
                   canSwitchSortMode={canSwitchSortMode}
                   sortModeSwitchReason={sortModeSwitchReason}
                   onSortModeChange={handleSortModeChange}
+                  onResetSortModeBlockers={handleResetSortModeBlockers}
                 />
               </ErrorBoundary>,
               settingsNavPortalRef.current,
@@ -1632,6 +1648,7 @@ function SettingsBar({
   canSwitchSortMode,
   sortModeSwitchReason,
   onSortModeChange,
+  onResetSortModeBlockers,
 }: {
   roomState: RoomState;
   getTimelineStateForConfig: () => TimelineState | null;
@@ -1641,6 +1658,7 @@ function SettingsBar({
   canSwitchSortMode: boolean;
   sortModeSwitchReason?: string;
   onSortModeChange: (mode: 'timeline' | 'layers') => void;
+  onResetSortModeBlockers: () => void;
 }) {
   const { roomId, refreshState: handleRefreshState } = useControlPanelContext();
   const actions = useActions();
@@ -1781,21 +1799,6 @@ function SettingsBar({
       setIsTogglingPublic(false);
     }
   }, [roomId, roomState.isPublic, handleRefreshState, isTogglingPublic]);
-
-  const audioAnalysisEnabled = roomState.audioAnalysisEnabled ?? false;
-  const [isTogglingAudio, setIsTogglingAudio] = useState(false);
-  const handleToggleAudioAnalysis = useCallback(async () => {
-    if (isTogglingAudio) return;
-    setIsTogglingAudio(true);
-    try {
-      await setAudioAnalysisEnabled(roomId, !audioAnalysisEnabled);
-      await handleRefreshState();
-    } catch (err) {
-      console.error('Failed to toggle audio analysis', err);
-    } finally {
-      setIsTogglingAudio(false);
-    }
-  }, [roomId, audioAnalysisEnabled, handleRefreshState, isTogglingAudio]);
 
   const buildConfig = useCallback(() => {
     const timelineState = resolveRoomConfigTimelineState(
@@ -2179,20 +2182,21 @@ function SettingsBar({
               disabled={!canSwitchSortMode}
             />
           </label>
+          {!canSwitchSortMode && sortModeSwitchReason?.includes('request queue') && (
+            <button
+              type='button'
+              onClick={onResetSortModeBlockers}
+              title='Force-clear stuck request queue'
+              className='text-[10px] normal-case tracking-normal font-medium text-amber-400/80 hover:text-amber-300 border border-amber-500/40 hover:border-amber-400/70 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded transition-colors'>
+              Reset queue
+            </button>
+          )}
           <label className='flex items-center gap-2 cursor-pointer'>
             <span className='text-[#849495]'>Public</span>
             <Switch
               checked={roomState.isPublic}
               onCheckedChange={() => handleTogglePublic()}
               disabled={isTogglingPublic}
-            />
-          </label>
-          <label className='flex items-center gap-2 cursor-pointer'>
-            <span className='text-[#849495]'>Audio</span>
-            <Switch
-              checked={audioAnalysisEnabled}
-              onCheckedChange={() => handleToggleAudioAnalysis()}
-              disabled={isTogglingAudio}
             />
           </label>
         </div>
