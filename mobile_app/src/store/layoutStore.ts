@@ -85,6 +85,7 @@ const areLayerBehaviorsEqual = (
 
 const isLayerEquivalent = (first: Layer, second: Layer): boolean => {
   if (first.id !== second.id) return false;
+  if (first.layoutTimestamp !== second.layoutTimestamp) return false;
   if (
     !areLayerInputsEqual(
       first.inputs as LayerInputLike[],

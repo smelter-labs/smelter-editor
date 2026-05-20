@@ -8,6 +8,7 @@ import { getServerSideServerUrl } from '@/lib/server-url.server';
 import type {
   AddInputResponse,
   AvailableShader,
+  CameraInputOptions,
   PendingWhipInputData,
   RoomState,
   RegisterInputOptions,
@@ -210,8 +211,9 @@ export async function deleteRoom(roomId: string) {
 export async function addCameraInput(
   roomId: string,
   username?: string,
+  options?: CameraInputOptions,
 ): Promise<AddInputResponse> {
-  return (await getClient()).addCameraInput(roomId, username);
+  return (await getClient()).addCameraInput(roomId, username, options);
 }
 
 export async function acknowledgeWhipInput(
@@ -462,6 +464,22 @@ export async function showInput(
   return (await getClient()).showInput(roomId, inputId, sourceIdOrTransition);
 }
 
+export async function carouselAction(
+  roomId: string,
+  layerId: string,
+  action: 'next' | 'prev' | 'setIndex',
+  index?: number,
+  sourceId?: string,
+) {
+  return (await getClient()).carouselAction(
+    roomId,
+    layerId,
+    action,
+    index,
+    sourceId,
+  );
+}
+
 export async function toggleMotionDetection(
   roomId: string,
   inputId: string,
@@ -523,7 +541,7 @@ export async function startTimelinePlayback(
   return (await getClient()).startTimelinePlayback(roomId, config, fromMs);
 }
 
-export async function stopTimelinePlayback(
+async function stopTimelinePlayback(
   roomId: string,
 ): Promise<{ status: string }> {
   return (await getClient()).stopTimelinePlayback(roomId);

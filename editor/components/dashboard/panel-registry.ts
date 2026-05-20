@@ -10,7 +10,9 @@ type StaticPanelId =
   | 'connected-devices'
   | 'system-log'
   | 'motion-detection'
-  | 'layout-preview';
+  | 'layout-preview'
+  | 'carousel'
+  | 'output-code';
 
 type MotionPanelId = `motion:${string}`;
 type PanelId = StaticPanelId | MotionPanelId;
@@ -116,6 +118,18 @@ export const STATIC_PANEL_DEFINITIONS: Record<StaticPanelId, PanelDefinition> =
       minW: 4,
       minH: 4,
     },
+    carousel: {
+      id: 'carousel',
+      title: 'Carousel',
+      minW: 4,
+      minH: 8,
+    },
+    'output-code': {
+      id: 'output-code',
+      title: 'Output Code',
+      minW: 6,
+      minH: 8,
+    },
   };
 
 export const STATIC_PANEL_IDS: StaticPanelId[] = Object.keys(
@@ -165,6 +179,8 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'pending-connections', x: 0, y: 31, w: 8, h: 5, minW: 4, minH: 3 },
       { i: 'fx', x: 16, y: 22, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'motion-detection', x: 0, y: 67, w: 8, h: 6, minW: 4, minH: 4 },
+      { i: 'carousel', x: 16, y: 38, w: 8, h: 10, minW: 4, minH: 8 },
+      { i: 'output-code', x: 12, y: 15, w: 8, h: 10, minW: 6, minH: 8 },
     ],
   },
   {
@@ -181,6 +197,8 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'system-log', x: 8, y: 32, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'motion-detection', x: 16, y: 32, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'layout-preview', x: 0, y: 45, w: 24, h: 8, minW: 4, minH: 4 },
+      { i: 'carousel', x: 0, y: 53, w: 12, h: 10, minW: 4, minH: 8 },
+      { i: 'output-code', x: 12, y: 53, w: 12, h: 10, minW: 6, minH: 8 },
     ],
   },
   {
@@ -197,6 +215,8 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'system-log', x: 8, y: 22, w: 8, h: 6, minW: 4, minH: 4 },
       { i: 'motion-detection', x: 16, y: 22, w: 8, h: 6, minW: 4, minH: 4 },
       { i: 'layout-preview', x: 0, y: 33, w: 24, h: 6, minW: 4, minH: 4 },
+      { i: 'carousel', x: 0, y: 39, w: 12, h: 10, minW: 4, minH: 8 },
+      { i: 'output-code', x: 12, y: 39, w: 12, h: 10, minW: 6, minH: 8 },
     ],
   },
   {
@@ -213,6 +233,8 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'system-log', x: 8, y: 22, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'motion-detection', x: 16, y: 22, w: 8, h: 8, minW: 4, minH: 4 },
       { i: 'layout-preview', x: 0, y: 35, w: 24, h: 8, minW: 4, minH: 4 },
+      { i: 'carousel', x: 0, y: 43, w: 12, h: 10, minW: 4, minH: 8 },
+      { i: 'output-code', x: 12, y: 43, w: 12, h: 10, minW: 6, minH: 8 },
     ],
   },
   {
@@ -229,6 +251,8 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'system-log', x: 0, y: 33, w: 8, h: 6, minW: 4, minH: 4 },
       { i: 'motion-detection', x: 8, y: 28, w: 8, h: 6, minW: 4, minH: 4 },
       { i: 'layout-preview', x: 0, y: 39, w: 24, h: 6, minW: 4, minH: 4 },
+      { i: 'carousel', x: 0, y: 45, w: 12, h: 10, minW: 4, minH: 8 },
+      { i: 'output-code', x: 12, y: 45, w: 12, h: 10, minW: 6, minH: 8 },
     ],
   },
 ];
@@ -246,6 +270,8 @@ const SMALL_LAYOUT: MutableLayout = [
   { i: 'system-log', x: 0, y: 45, w: 12, h: 6, minW: 4, minH: 4 },
   { i: 'motion-detection', x: 0, y: 51, w: 12, h: 6, minW: 4, minH: 4 },
   { i: 'layout-preview', x: 0, y: 57, w: 12, h: 6, minW: 4, minH: 4 },
+  { i: 'carousel', x: 0, y: 63, w: 12, h: 10, minW: 4, minH: 8 },
+  { i: 'output-code', x: 0, y: 73, w: 12, h: 10, minW: 6, minH: 8 },
 ];
 
 const STORAGE_KEY = 'smelter-dashboard-layout';

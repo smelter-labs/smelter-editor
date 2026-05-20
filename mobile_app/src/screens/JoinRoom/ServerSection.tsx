@@ -16,7 +16,8 @@ import {
   useTheme,
 } from "react-native-paper";
 import { HealthIcon } from "./HealthIcon";
-import type { HealthStatus, ServerStatus } from "./useJoinRoom";
+import { appColors } from "../../theme/paperTheme";
+import type { HealthStatus, ServerStatus } from "./useJoinServer";
 
 interface Props {
   savedUrls: string[];
@@ -174,10 +175,10 @@ const styles = StyleSheet.create({
   },
   errorText: {
     fontSize: 13,
-    color: "#ef4444",
+    color: appColors.error,
   },
   successText: {
     fontSize: 13,
-    color: "#22c55e",
+    color: appColors.success,
   },
 });

@@ -174,6 +174,13 @@ const DISABLE_OUTGOING_TRANSITION_PATTERN =
 const NEXT_BLOCK_PATTERN = /\b(next|forward)\s+block\b/;
 const PREV_BLOCK_PATTERN = /\b(previous|prev|back|last)\s+block\b/;
 
+const CAROUSEL_NEXT_PATTERN =
+  /\b(?:(?:next|forward)\s+slide|carousel\s+(?:next|forward))\b/;
+const CAROUSEL_PREV_PATTERN =
+  /\b(?:(?:previous|prev|back|last)\s+slide|carousel\s+(?:previous|prev|back))\b/;
+const BARE_NEXT_PATTERN = /^(?:next|forward)$/;
+const BARE_PREV_PATTERN = /^(?:previous|prev|back)$/;
+
 const SCROLL_TEXT_DOWN_PATTERN = /\bmove\s+(down(?:\s+down)*)\b/;
 const SCROLL_TEXT_UP_PATTERN = /\bmove\s+(up(?:\s+up)*)\b/;
 
@@ -344,17 +351,32 @@ function clarify(missing: string[], question: string): VoiceCommand {
 type ParseCommandOptions = {
   mp4Files?: string[];
   imageFiles?: string[];
+  /** When true, bare "next" / "previous" map to carousel next/prev. */
+  isCarouselActive?: boolean;
 };
 
 export function parseCommand(
   rawText: string,
   options: ParseCommandOptions = {},
 ): VoiceCommand | null {
-  const { mp4Files = [], imageFiles = [] } = options;
+  const { mp4Files = [], imageFiles = [], isCarouselActive = false } = options;
   const text = normalize(rawText);
 
   if (!text || text.length < 2) {
     return null;
+  }
+
+  if (CAROUSEL_NEXT_PATTERN.test(text)) {
+    return { intent: 'CAROUSEL_NEXT' };
+  }
+  if (CAROUSEL_PREV_PATTERN.test(text)) {
+    return { intent: 'CAROUSEL_PREV' };
+  }
+  if (isCarouselActive && BARE_NEXT_PATTERN.test(text)) {
+    return { intent: 'CAROUSEL_NEXT' };
+  }
+  if (isCarouselActive && BARE_PREV_PATTERN.test(text)) {
+    return { intent: 'CAROUSEL_PREV' };
   }
 
   if (START_ROOM_PATTERN.test(text)) {

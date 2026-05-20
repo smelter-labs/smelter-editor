@@ -1,5 +1,7 @@
-export const SERVER_URL_STORAGE_KEY = 'smelter-server-url';
+const SERVER_URL_STORAGE_KEY = 'smelter-server-url';
 export const SERVER_URL_COOKIE_NAME = 'smelter-server-url';
+/** Query key for deep links (e.g. `/mobile/[roomId]?server=...`) to pre-select API URL */
+export const SERVER_URL_QUERY_PARAM = 'server';
 const DEFAULT_SERVER_URL = 'http://localhost:3001';
 const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
 
@@ -36,7 +38,7 @@ export function getDefaultServerUrl(): string {
   return normalizeServerUrl(envUrl);
 }
 
-export function getStoredServerUrl(): string | null {
+function getStoredServerUrl(): string | null {
   if (typeof window === 'undefined') {
     return null;
   }
@@ -46,6 +48,37 @@ export function getStoredServerUrl(): string | null {
     return null;
   }
   return normalizeServerUrl(value);
+}
+
+export function isAllowedApiServerUrl(raw: string): boolean {
+  const trimmed = raw.trim();
+  if (!trimmed || trimmed.length > 2048) return false;
+  try {
+    const u = new URL(trimmed);
+    if (u.protocol !== 'http:' && u.protocol !== 'https:') return false;
+    if (u.username || u.password) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * If `encoded` is a valid http(s) API base URL, persist it (localStorage + cookie)
+ * so server actions and the rest of the editor use this backend.
+ */
+export function applyServerUrlFromQueryParam(encoded: string | null): boolean {
+  if (typeof window === 'undefined' || !encoded?.trim()) {
+    return false;
+  }
+  try {
+    const decoded = decodeURIComponent(encoded.trim());
+    if (!isAllowedApiServerUrl(decoded)) return false;
+    setStoredServerUrl(decoded);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function setStoredServerUrl(url: string | null): void {

@@ -9,10 +9,12 @@ import * as Haptics from "expo-haptics";
 import type { WSEventPayload } from "../../types/websocket";
 import { View, StyleSheet } from "react-native";
 import { useTheme } from "react-native-paper";
+import { useNavigation } from "@react-navigation/native";
+import { SCREEN_NAMES } from "../../navigation/navigationTypes";
+import type { RootNavigationProp } from "../../navigation/navigationTypes";
 import DraggableFlatList, {
   RenderItemParams,
 } from "react-native-draggable-flatlist";
-import { GestureDetector } from "react-native-gesture-handler";
 import { useInputsStore } from "../../store/inputsStore";
 import { useLayoutStore } from "../../store/layoutStore";
 import { useConnectionStore } from "../../store/connectionStore";
@@ -26,7 +28,13 @@ import { InputCard } from "./InputCard";
 import { InputSidePanel } from "./InputSidePanel";
 import { InputsSettingsPanel } from "./InputsSettingsPanel";
 import { ScreenLabel } from "../../components/shared/ScreenLabel";
+import {
+  ScreenToolbar,
+  ScreenToolbarChip,
+  ToolbarIcon,
+} from "../../components/shared/ScreenToolbar";
 import { areInputCardsEquivalent } from "../../utils/inputCardEquality";
+import { QRToolbarChip } from "../../components/shared/QRToolbarChip";
 
 export function InputsScreen() {
   const theme = useTheme();
@@ -47,9 +55,6 @@ export function InputsScreen() {
   const [selectedCardIndex, setSelectedCardIndex] = useState(0);
   const [detailPanelOpen, setDetailPanelOpen] = useState(false);
   const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
-  const [settingsPanelSide, setSettingsPanelSide] = useState<"left" | "right">(
-    "right",
-  );
 
   // Log data on mount
   useEffect(() => {
@@ -139,21 +144,9 @@ export function InputsScreen() {
     [inputs],
   );
 
-  const handleEdgeSwipe = useCallback(
-    (side: "left" | "right") => {
-      if (isTimelinePlaying) {
-        return;
-      }
-      setSettingsPanelSide(side);
-      setSettingsPanelOpen(true);
-    },
-    [isTimelinePlaying],
-  );
-
-  const { edgeSwipeGesture, makeCardTapGesture } = useInputsGestures({
+  const navigation = useNavigation<RootNavigationProp>();
+  const { makeCardTapGesture } = useInputsGestures({
     onCardTap: handleCardTap,
-    onEdgeSwipe: handleEdgeSwipe,
-    isEdgeSwipeEnabled: !isTimelinePlaying,
   });
 
   const handleDragEnd = useCallback(
@@ -181,46 +174,56 @@ export function InputsScreen() {
   );
 
   return (
-    <GestureDetector gesture={edgeSwipeGesture}>
+    <View
+      style={[styles.container, { backgroundColor: theme.colors.background }]}
+    >
       <View
-        style={[styles.container, { backgroundColor: theme.colors.background }]}
+        style={styles.content}
+        pointerEvents={isTimelinePlaying ? "none" : "auto"}
       >
-        <View
-          style={styles.content}
-          pointerEvents={isTimelinePlaying ? "none" : "auto"}
-        >
-          <ScreenLabel label="Inputs" />
-          <DraggableFlatList
-            data={inputs}
-            keyExtractor={(item) => item.id}
-            renderItem={renderItem}
-            onDragBegin={() =>
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
-            }
-            onDragEnd={handleDragEnd}
-            numColumns={effectiveColumns}
-            contentContainerStyle={styles.listContent}
-            activationDistance={10}
-          />
+        <ScreenLabel label="Inputs" />
 
-          <InputSidePanel
-            isVisible={detailPanelOpen}
-            cardId={selectedCardId}
-            cardIndex={selectedCardIndex}
-            totalColumns={effectiveColumns}
-            onClose={() => setDetailPanelOpen(false)}
-          />
+        <ScreenToolbar>
+          <ScreenToolbarChip
+            onPress={() => navigation.navigate(SCREEN_NAMES.HELP)}
+          >
+            <ToolbarIcon name="help-circle-outline" />
+          </ScreenToolbarChip>
+          <ScreenToolbarChip onPress={() => setSettingsPanelOpen(true)}>
+            <ToolbarIcon name="cog" />
+          </ScreenToolbarChip>
+          <QRToolbarChip serverUrl={serverUrl} roomId={roomId} />
+        </ScreenToolbar>
 
-          <InputsSettingsPanel
-            isVisible={settingsPanelOpen}
-            side={settingsPanelSide}
-            onClose={() => setSettingsPanelOpen(false)}
-          />
-        </View>
+        <DraggableFlatList
+          data={inputs}
+          keyExtractor={(item) => item.id}
+          renderItem={renderItem}
+          onDragBegin={() =>
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
+          }
+          onDragEnd={handleDragEnd}
+          numColumns={effectiveColumns}
+          contentContainerStyle={styles.listContent}
+          activationDistance={10}
+        />
 
-        {isTimelinePlaying && <TimelineInProgressOverlay />}
+        <InputSidePanel
+          isVisible={detailPanelOpen}
+          cardId={selectedCardId}
+          cardIndex={selectedCardIndex}
+          totalColumns={effectiveColumns}
+          onClose={() => setDetailPanelOpen(false)}
+        />
+
+        <InputsSettingsPanel
+          isVisible={settingsPanelOpen}
+          onClose={() => setSettingsPanelOpen(false)}
+        />
       </View>
-    </GestureDetector>
+
+      {isTimelinePlaying && <TimelineInProgressOverlay />}
+    </View>
   );
 }
 

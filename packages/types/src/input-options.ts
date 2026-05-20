@@ -30,6 +30,8 @@ export type UpdateInputOptions = {
     direction: "in" | "out";
   };
   orientation: InputOrientation;
+  nativeWidth: number;
+  nativeHeight: number;
 } & InputDisplayProperties &
   TextInputProperties &
   NullableAbsolutePositionProperties &
@@ -41,7 +43,13 @@ export type RegisterInputOptions =
   | { type: "twitch-channel"; channelId: string }
   | { type: "kick-channel"; channelId: string }
   | { type: "hls"; url: string }
-  | { type: "whip"; username: string }
+  | {
+      type: "whip";
+      username: string;
+      orientation?: InputOrientation;
+      nativeWidth?: number;
+      nativeHeight?: number;
+    }
   | {
       type: "local-mp4";
       source: { fileName?: string; audioFileName?: string; url?: string };

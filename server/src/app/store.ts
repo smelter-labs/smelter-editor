@@ -128,22 +128,22 @@ export function useResolution() {
   return useStore(store, (state) => state.resolution);
 }
 
-export function useIsVertical() {
+function useIsVertical() {
   const resolution = useResolution();
   return resolution.height > resolution.width;
 }
 
-export function useSwapDurationMs() {
+function useSwapDurationMs() {
   const store = useContext(StoreContext);
   return useStore(store, (state) => state.swapDurationMs);
 }
 
-export function useSwapFadeInDurationMs() {
+function useSwapFadeInDurationMs() {
   const store = useContext(StoreContext);
   return useStore(store, (state) => state.swapFadeInDurationMs);
 }
 
-export function useSwapFadeOutDurationMs() {
+function useSwapFadeOutDurationMs() {
   const store = useContext(StoreContext);
   return useStore(store, (state) => state.swapFadeOutDurationMs);
 }

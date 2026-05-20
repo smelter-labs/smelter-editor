@@ -1,10 +1,16 @@
 import { MD3DarkTheme } from "react-native-paper";
 import type { MD3Theme } from "react-native-paper";
 
+const smelter_red = "#F24664";
+const smelter_blue = "#161127";
+
 export const appColors = {
   bg: "#0f0f1a",
   surface: "#1e1e2e",
   surface2: "#0f172a",
+  toolbarSurface: "rgba(30,30,30,0.85)",
+  toolbarText: "#cccccc",
+  toolbarIcon: "#aaaaaa",
   text: "#e2e8f0",
   muted: "#94a3b8",
   subtle: "#64748b",
@@ -12,8 +18,10 @@ export const appColors = {
   accent: "#bfdbfe",
   purple: "#7c3aed",
   slate: "#334155",
-  blue: "#1d4ed8",
-  red: "#7f1d1d",
+  blue: smelter_blue, //"#1d4ed8",
+  success: "#22c55e",
+  error: smelter_red,
+  red: smelter_red, //"#7f1d1d",
 };
 
 export const smelterTheme: MD3Theme = {
@@ -34,12 +42,8 @@ export const smelterTheme: MD3Theme = {
     onSurfaceVariant: appColors.muted,
     outline: appColors.slate,
     outlineVariant: appColors.slate,
-    error: "#ef4444",
+    error: appColors.error,
     onError: "#ffffff",
-    errorContainer: appColors.red,
-    onErrorContainer: "#ffffff",
-    surfaceDisabled: appColors.slate,
-    onSurfaceDisabled: appColors.dim,
     elevation: {
       level0: "transparent",
       level1: appColors.surface,

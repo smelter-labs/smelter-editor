@@ -20,7 +20,7 @@ function colorFromId(id: string): string {
   return `hsl(${Math.abs(hash) % 360}, 55%, 45%)`;
 }
 
-export interface InputRowProps {
+interface InputRowProps {
   inputId: string;
   sourceLayerId: string;
   inputs: InputCard[];

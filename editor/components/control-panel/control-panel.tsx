@@ -40,6 +40,7 @@ import { useControlPanelEvents } from './hooks/use-control-panel-events';
 import { FxAccordion } from './components/FxAccordion';
 import { StreamsSection } from './components/StreamsSection';
 import { LayersSection } from './components/LayersSection';
+import { CarouselPanel } from '@/components/dashboard/carousel-panel';
 import {
   TimelinePanel,
   type TimelinePanelActions,
@@ -47,7 +48,11 @@ import {
 import { AddVideoModal } from './components/AddVideoModal';
 import { FxCanvas, FX_PRESET_MODAL } from '@/lib/fx';
 import { type PendingWhipInput } from './components/ConfigurationSection';
-import { getEffectiveClientServerUrl, toWsUrl } from '@/lib/server-url';
+import {
+  getEffectiveClientServerUrl,
+  SERVER_URL_QUERY_PARAM,
+  toWsUrl,
+} from '@/lib/server-url';
 import { resolutionToLabel } from '@/lib/resolution';
 import {
   exportRoomConfig,
@@ -70,7 +75,6 @@ import {
   GenericSaveModal,
   GenericLoadModal,
 } from '@/components/storage-modals';
-import { setAudioAnalysisEnabled } from '@/app/actions/actions';
 import { TransitionSettings } from './components/TransitionSettings';
 import { BehaviorSelector } from './components/BehaviorSelector';
 import { ViewportSettings } from './components/ViewportSettings';
@@ -113,6 +117,12 @@ import {
   type SelectedTimelineClip,
 } from './components/BlockClipPropertiesPanel';
 import {
+  isInputLevelClip,
+  INPUT_LEVEL_TRACK_ID,
+  INPUT_LEVEL_CLIP_ID,
+} from './components/block-clip/block-clip-utils';
+import { createBlockSettingsFromInput } from './hooks/use-timeline-state';
+import {
   PendingConnectionsPanel,
   loadAutoModalSetting,
 } from './components/PendingConnectionsPanel';
@@ -124,6 +134,7 @@ import {
   buildInputColorMap,
   TYPE_HSL,
 } from './components/timeline/timeline-utils';
+import { buildVideoOverlayRects } from '@/lib/build-video-overlay-rects';
 import {
   emitTimelineEvent,
   listenTimelineEvent,
@@ -172,6 +183,7 @@ type ControlPanelProps = {
   settingsNavPortalRef?: React.RefObject<HTMLDivElement | null>;
   renderDashboard?: (panels: {
     streamsSection: React.ReactNode;
+    carouselSection: React.ReactNode;
     fxSection: React.ReactNode;
     timelineSection: React.ReactNode;
     blockPropertiesSection: React.ReactNode;
@@ -189,6 +201,7 @@ type ControlPanelProps = {
 type ControlPanelWithActionsProps = ControlPanelProps & {
   pendingMutationCount: number;
   sceneMutationVersion: number;
+  resetPendingMutations: () => void;
 };
 
 type ShowcaseCopy = {
@@ -328,8 +341,10 @@ export default function ControlPanel(props: ControlPanelProps) {
         trackMutation(() => defaultActions.addSnakeGameInput(roomId, title)),
       addHlsInput: (roomId, url) =>
         trackMutation(() => defaultActions.addHlsInput(roomId, url)),
-      addCameraInput: (roomId, username) =>
-        trackMutation(() => defaultActions.addCameraInput(roomId, username)),
+      addCameraInput: (roomId, username, options) =>
+        trackMutation(() =>
+          defaultActions.addCameraInput(roomId, username, options),
+        ),
       restartMp4Input: (roomId, inputId, playFromMs, loop) =>
         trackMutation(() =>
           defaultActions.restartMp4Input(roomId, inputId, playFromMs, loop),
@@ -361,12 +376,17 @@ export default function ControlPanel(props: ControlPanelProps) {
     };
   }, [trackMutation]);
 
+  const resetPendingMutations = useCallback(() => {
+    setPendingMutationCount(0);
+  }, []);
+
   return (
     <ActionsProvider actions={trackedActions}>
       <ControlPanelWithActions
         {...props}
         pendingMutationCount={pendingMutationCount}
         sceneMutationVersion={sceneMutationVersion}
+        resetPendingMutations={resetPendingMutations}
       />
     </ActionsProvider>
   );
@@ -383,6 +403,7 @@ function ControlPanelWithActions({
   renderDashboard,
   pendingMutationCount,
   sceneMutationVersion,
+  resetPendingMutations,
 }: ControlPanelWithActionsProps) {
   const pendingWhipInputs: PendingWhipInput[] = (
     roomState.pendingWhipInputs || []
@@ -569,6 +590,7 @@ function ControlPanelWithActions({
           handleLayersChange={handleLayersChange}
           pendingMutationCount={pendingMutationCount}
           sceneMutationVersion={sceneMutationVersion}
+          resetPendingMutations={resetPendingMutations}
         />
       </WhipConnectionsProvider>
     </ControlPanelProvider>
@@ -601,6 +623,7 @@ type ControlPanelInnerProps = {
   handleLayersChange: (layers: Layer[]) => Promise<void>;
   pendingMutationCount: number;
   sceneMutationVersion: number;
+  resetPendingMutations: () => void;
 };
 
 function ControlPanelInner({
@@ -627,6 +650,7 @@ function ControlPanelInner({
   handleLayersChange,
   pendingMutationCount,
   sceneMutationVersion,
+  resetPendingMutations,
 }: ControlPanelInnerProps) {
   const {
     roomId,
@@ -788,6 +812,55 @@ function ControlPanelInner({
     }
   }, [sceneMutationVersion, sortMode]);
 
+  const layersModeLoopedInputsRef = useRef<Set<string>>(new Set());
+  const inputsForLayersLoopRef = useRef(inputs);
+  inputsForLayersLoopRef.current = inputs;
+  const restartMp4InputAction = actions.restartMp4Input;
+  const restartMp4InputActionRef = useRef(restartMp4InputAction);
+  restartMp4InputActionRef.current = restartMp4InputAction;
+
+  useEffect(() => {
+    if (sortMode === 'layers') {
+      const tlState = timelineStateRef.current;
+      if (!tlState) return;
+
+      const loopableInputIds = new Set<string>();
+      for (const track of tlState.tracks) {
+        for (const clip of track.clips) {
+          if (clip.blockSettings.mp4Loop !== false) {
+            loopableInputIds.add(clip.inputId);
+          }
+        }
+      }
+
+      for (const input of inputsForLayersLoopRef.current) {
+        if (
+          input.type === 'local-mp4' &&
+          input.status === 'connected' &&
+          !input.mp4AssetMissing &&
+          loopableInputIds.has(input.inputId)
+        ) {
+          layersModeLoopedInputsRef.current.add(input.inputId);
+          void restartMp4InputActionRef.current(
+            roomId,
+            input.inputId,
+            0,
+            true,
+          ).catch(() => {});
+        }
+      }
+    } else {
+      const started = layersModeLoopedInputsRef.current;
+      if (started.size === 0) return;
+      for (const inputId of started) {
+        void restartMp4InputActionRef.current(roomId, inputId, 0, false).catch(
+          () => {},
+        );
+      }
+      layersModeLoopedInputsRef.current = new Set();
+    }
+  }, [sortMode, roomId]);
+
   useEffect(() => {
     if (
       !isGuest &&
@@ -847,6 +920,11 @@ function ControlPanelInner({
     },
     [canSwitchSortMode, sceneMutationVersion, sortMode],
   );
+
+  const handleResetSortModeBlockers = useCallback(() => {
+    resetPendingMutations();
+    setTimelineQueueLocked(false);
+  }, [resetPendingMutations]);
 
   const requestPlayConflictDecision = useCallback(async () => {
     setConflictModalOpen(true);
@@ -1171,12 +1249,26 @@ function ControlPanelInner({
           getTimelineStateForConfig={getTimelineStateForConfig}
           applyImportedTimelineState={applyImportedTimelineState}
           showcasePrefill={showcaseSettingsPrefill}
+          sortMode={sortMode}
+          canSwitchSortMode={canSwitchSortMode}
+          sortModeSwitchReason={sortModeSwitchReason}
+          onSortModeChange={handleSortModeChange}
+          onResetSortModeBlockers={handleResetSortModeBlockers}
         />
       </ErrorBoundary>
     );
 
+    const carouselSection = (
+      <CarouselPanel
+        roomId={roomId}
+        layers={roomState.layers}
+        inputs={inputs}
+        resolution={roomState.resolution}
+      />
+    );
+
     const streamsSection = (
-      <div className='h-full overflow-y-auto p-3'>
+      <div className='h-full overflow-y-auto p-3 space-y-3'>
         <LayersSection
           layers={roomState.layers}
           inputWrappers={inputWrappers}
@@ -1187,6 +1279,7 @@ function ControlPanelInner({
           onToggleFx={handleToggleFx}
           isSwapping={isSwapping}
           selectedInputId={selectedInputId}
+          onSelectInput={setSelectedInputId}
           isGuest={isGuest}
           guestInputId={activeCameraInputId || activeScreenshareInputId}
           onLayersChange={handleLayersChange}
@@ -1197,6 +1290,8 @@ function ControlPanelInner({
               ? timelineTrackOrder
               : {}
           }
+          sortMode={sortMode}
+          resolution={roomState.resolution}
         />
       </div>
     );
@@ -1232,24 +1327,47 @@ function ControlPanelInner({
           onTimelineQueueStateChange={setTimelineQueueLocked}
           layers={roomState.layers}
           sortMode={sortMode}
-          onSortModeChange={handleSortModeChange}
-          sortModeSwitchDisabled={!canSwitchSortMode}
-          sortModeSwitchReason={sortModeSwitchReason}
         />
       </ErrorBoundary>
     );
+
+    const effectiveSelectedClips = (() => {
+      if (sortMode === 'layers' && selectedInputId) {
+        const input = inputs.find((i) => i.inputId === selectedInputId);
+        if (!input) return [];
+        const blockSettings = createBlockSettingsFromInput(input);
+        return [
+          {
+            trackId: INPUT_LEVEL_TRACK_ID,
+            clipId: INPUT_LEVEL_CLIP_ID,
+            inputId: selectedInputId,
+            startMs: 0,
+            endMs: 0,
+            blockSettings,
+            keyframes: [{ id: 'base', timeMs: 0, blockSettings }],
+          },
+        ] satisfies SelectedTimelineClip[];
+      }
+      return selectedTimelineClips;
+    })();
+
+    const handleEffectiveClipsChange = (clips: SelectedTimelineClip[]) => {
+      if (clips.length > 0 && isInputLevelClip(clips[0])) return;
+      setSelectedTimelineClips(clips);
+    };
 
     const blockPropertiesSection = (
       <div className='h-full overflow-y-auto p-3'>
         <BlockClipPropertiesPanel
           roomId={roomId}
-          selectedTimelineClips={selectedTimelineClips}
-          onSelectedTimelineClipsChange={setSelectedTimelineClips}
+          selectedTimelineClips={effectiveSelectedClips}
+          onSelectedTimelineClipsChange={handleEffectiveClipsChange}
           playheadMs={timelinePlayheadMs}
           inputs={inputs}
           availableShaders={availableShaders}
           handleRefreshState={handleRefreshState}
           resolution={roomState.resolution}
+          sortMode={sortMode}
         />
       </div>
     );
@@ -1274,32 +1392,13 @@ function ControlPanelInner({
       />
     );
 
-    const videoOverlayRects: VideoOverlayRect[] = (() => {
-      if (!videoOverlayEnabled || selectedTimelineClips.length === 0) return [];
-      const playhead = timelinePlayheadMs;
-      const layers = roomState.layers;
-      const colorMap = buildInputColorMap(inputs);
-      const rects: VideoOverlayRect[] = [];
-      for (const clip of selectedTimelineClips) {
-        if (playhead < clip.startMs || playhead >= clip.endMs) continue;
-        for (const layer of layers) {
-          const li = layer.inputs.find((i) => i.inputId === clip.inputId);
-          if (li && li.width > 0 && li.height > 0) {
-            const tc = clip.blockSettings.timelineColor;
-            const fallback = colorMap.get(clip.inputId)?.dot;
-            rects.push({
-              x: li.x,
-              y: li.y,
-              width: li.width,
-              height: li.height,
-              color: tc || fallback || '#ffffff',
-            });
-            break;
-          }
-        }
-      }
-      return rects;
-    })();
+    const videoOverlayRects = buildVideoOverlayRects({
+      enabled: videoOverlayEnabled,
+      clips: effectiveSelectedClips,
+      playheadMs: timelinePlayheadMs,
+      layers: roomState.layers,
+      colorMap: buildInputColorMap(inputs),
+    });
 
     return (
       <DashboardToolbarProvider>
@@ -1314,6 +1413,7 @@ function ControlPanelInner({
           createPortal(settingsNav, settingsNavPortalRef.current)}
         {renderDashboard({
           streamsSection,
+          carouselSection,
           fxSection,
           timelineSection,
           blockPropertiesSection,
@@ -1374,6 +1474,7 @@ function ControlPanelInner({
       onToggleFx={handleToggleFx}
       isSwapping={isSwapping}
       selectedInputId={selectedInputId}
+      onSelectInput={setSelectedInputId}
       isGuest={isGuest}
       guestInputId={activeCameraInputId || activeScreenshareInputId}
       onLayersChange={handleLayersChange}
@@ -1382,6 +1483,8 @@ function ControlPanelInner({
       timelineTrackOrder={
         timelineIsPlaying && sortMode === 'timeline' ? timelineTrackOrder : {}
       }
+      sortMode={sortMode}
+      resolution={roomState.resolution}
     />
   ) : null;
 
@@ -1406,9 +1509,6 @@ function ControlPanelInner({
         onTimelineQueueStateChange={setTimelineQueueLocked}
         layers={roomState.layers}
         sortMode={sortMode}
-        onSortModeChange={handleSortModeChange}
-        sortModeSwitchDisabled={!canSwitchSortMode}
-        sortModeSwitchReason={sortModeSwitchReason}
       />
     </ErrorBoundary>
   ) : null;
@@ -1433,6 +1533,11 @@ function ControlPanelInner({
                   getTimelineStateForConfig={getTimelineStateForConfig}
                   applyImportedTimelineState={applyImportedTimelineState}
                   showcasePrefill={showcaseSettingsPrefill}
+                  sortMode={sortMode}
+                  canSwitchSortMode={canSwitchSortMode}
+                  sortModeSwitchReason={sortModeSwitchReason}
+                  onSortModeChange={handleSortModeChange}
+                  onResetSortModeBlockers={handleResetSortModeBlockers}
                 />
               </ErrorBoundary>,
               settingsNavPortalRef.current,
@@ -1539,11 +1644,21 @@ function SettingsBar({
   getTimelineStateForConfig,
   applyImportedTimelineState,
   showcasePrefill,
+  sortMode,
+  canSwitchSortMode,
+  sortModeSwitchReason,
+  onSortModeChange,
+  onResetSortModeBlockers,
 }: {
   roomState: RoomState;
   getTimelineStateForConfig: () => TimelineState | null;
   applyImportedTimelineState: (state: TimelineState | null) => void;
   showcasePrefill: ShowcaseSettingsPrefill | null;
+  sortMode: 'timeline' | 'layers';
+  canSwitchSortMode: boolean;
+  sortModeSwitchReason?: string;
+  onSortModeChange: (mode: 'timeline' | 'layers') => void;
+  onResetSortModeBlockers: () => void;
 }) {
   const { roomId, refreshState: handleRefreshState } = useControlPanelContext();
   const actions = useActions();
@@ -1684,21 +1799,6 @@ function SettingsBar({
       setIsTogglingPublic(false);
     }
   }, [roomId, roomState.isPublic, handleRefreshState, isTogglingPublic]);
-
-  const audioAnalysisEnabled = roomState.audioAnalysisEnabled ?? false;
-  const [isTogglingAudio, setIsTogglingAudio] = useState(false);
-  const handleToggleAudioAnalysis = useCallback(async () => {
-    if (isTogglingAudio) return;
-    setIsTogglingAudio(true);
-    try {
-      await setAudioAnalysisEnabled(roomId, !audioAnalysisEnabled);
-      await handleRefreshState();
-    } catch (err) {
-      console.error('Failed to toggle audio analysis', err);
-    } finally {
-      setIsTogglingAudio(false);
-    }
-  }, [roomId, audioAnalysisEnabled, handleRefreshState, isTogglingAudio]);
 
   const buildConfig = useCallback(() => {
     const timelineState = resolveRoomConfigTimelineState(
@@ -2070,20 +2170,33 @@ function SettingsBar({
           </button>
         </nav>
         <div className='ml-auto flex items-center gap-4 uppercase tracking-widest text-xl font-bold'>
+          <label
+            className={`flex items-center gap-2 ${canSwitchSortMode ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
+            title={sortModeSwitchReason ?? 'Toggle layers sorting mode'}>
+            <span className='text-[#849495]'>Layers</span>
+            <Switch
+              checked={sortMode === 'layers'}
+              onCheckedChange={(checked) =>
+                onSortModeChange(checked ? 'layers' : 'timeline')
+              }
+              disabled={!canSwitchSortMode}
+            />
+          </label>
+          {!canSwitchSortMode && sortModeSwitchReason?.includes('request queue') && (
+            <button
+              type='button'
+              onClick={onResetSortModeBlockers}
+              title='Force-clear stuck request queue'
+              className='text-[10px] normal-case tracking-normal font-medium text-amber-400/80 hover:text-amber-300 border border-amber-500/40 hover:border-amber-400/70 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded transition-colors'>
+              Reset queue
+            </button>
+          )}
           <label className='flex items-center gap-2 cursor-pointer'>
             <span className='text-[#849495]'>Public</span>
             <Switch
               checked={roomState.isPublic}
               onCheckedChange={() => handleTogglePublic()}
               disabled={isTogglingPublic}
-            />
-          </label>
-          <label className='flex items-center gap-2 cursor-pointer'>
-            <span className='text-[#849495]'>Audio</span>
-            <Switch
-              checked={audioAnalysisEnabled}
-              onCheckedChange={() => handleToggleAudioAnalysis()}
-              disabled={isTogglingAudio}
             />
           </label>
         </div>
@@ -2461,6 +2574,8 @@ function SettingsBar({
   );
 }
 
+type QRTab = 'whip' | 'mobile';
+
 function QRModal({
   roomId,
   open,
@@ -2471,23 +2586,40 @@ function QRModal({
   onOpenChange: (open: boolean) => void;
 }) {
   const [copied, setCopied] = useState(false);
+  const [activeTab, setActiveTab] = useState<QRTab>('whip');
 
-  const joinUrl = useMemo(() => {
+  const whipUrl = useMemo(() => {
     if (typeof window === 'undefined') return '';
     const wsBase = toWsUrl(getEffectiveClientServerUrl());
     return `${wsBase}/room/${encodeURIComponent(roomId)}`;
   }, [roomId]);
 
+  const mobileUrl = useMemo(() => {
+    if (typeof window === 'undefined') return '';
+    const api = getEffectiveClientServerUrl();
+    const qs = `${SERVER_URL_QUERY_PARAM}=${encodeURIComponent(api)}`;
+    return `${window.location.origin}/mobile/${encodeURIComponent(roomId)}?${qs}`;
+  }, [roomId]);
+
+  const activeUrl = activeTab === 'whip' ? whipUrl : mobileUrl;
+
   const handleCopy = useCallback(async () => {
-    if (!joinUrl) return;
+    if (!activeUrl) return;
     try {
-      await navigator.clipboard.writeText(joinUrl);
+      await navigator.clipboard.writeText(activeUrl);
       setCopied(true);
       window.setTimeout(() => setCopied(false), 1200);
     } catch (err) {
       console.error('Failed to copy join URL:', err);
     }
-  }, [joinUrl]);
+  }, [activeUrl]);
+
+  const tabButtonClass = (tab: QRTab) =>
+    `flex-1 px-3 py-2 text-xs uppercase tracking-widest font-bold transition-colors cursor-pointer border-b-2 ${
+      activeTab === tab
+        ? 'text-[#00f3ff] border-[#00f3ff]'
+        : 'text-[#849495] border-transparent hover:text-[#00f3ff]'
+    }`;
 
   return (
     <Dialog
@@ -2500,12 +2632,37 @@ function QRModal({
         <DialogHeader>
           <DialogTitle>Join via QR</DialogTitle>
         </DialogHeader>
+        <div className='flex border-b border-border'>
+          <button
+            type='button'
+            className={tabButtonClass('whip')}
+            onClick={() => {
+              setActiveTab('whip');
+              setCopied(false);
+            }}>
+            WHIP Link
+          </button>
+          <button
+            type='button'
+            className={tabButtonClass('mobile')}
+            onClick={() => {
+              setActiveTab('mobile');
+              setCopied(false);
+            }}>
+            Mobile
+          </button>
+        </div>
+        <p className='text-xs text-muted-foreground'>
+          {activeTab === 'whip'
+            ? 'Scan with the native WHIP client to publish to this room.'
+            : 'Scan with a phone to open the room join page in a browser.'}
+        </p>
         <div className='space-y-4'>
           <div className='flex justify-center'>
-            {joinUrl ? (
+            {activeUrl ? (
               <div className='rounded-md border border-border bg-card p-3'>
                 <QRCode
-                  value={joinUrl}
+                  value={activeUrl}
                   size={220}
                   bgColor='transparent'
                   fgColor='currentColor'
@@ -2518,12 +2675,12 @@ function QRModal({
             )}
           </div>
           <div className='space-y-2'>
-            <ShadcnInput readOnly value={joinUrl} />
+            <ShadcnInput readOnly value={activeUrl} />
             <button
               type='button'
               className='w-full uppercase tracking-widest text-sm font-bold text-[#849495] hover:text-[#00f3ff] border border-border py-2 transition-colors disabled:opacity-50'
               onClick={() => void handleCopy()}
-              disabled={!joinUrl}>
+              disabled={!activeUrl}>
               {copied ? 'Copied' : 'Copy Link'}
             </button>
           </div>

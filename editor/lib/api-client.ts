@@ -3,6 +3,7 @@ import type {
   AddInputResponse,
   AudioSuggestions,
   AvailableShader,
+  CameraInputOptions,
   InputSuggestions,
   KickSuggestions,
   MP4Suggestions,
@@ -65,7 +66,11 @@ interface SmelterApiClient {
   addSnakeGameInput(roomId: string, title?: string): Promise<any>;
   addHandsInput(roomId: string, sourceInputId: string): Promise<any>;
   addHlsInput(roomId: string, url: string): Promise<any>;
-  addCameraInput(roomId: string, username?: string): Promise<AddInputResponse>;
+  addCameraInput(
+    roomId: string,
+    username?: string,
+    options?: CameraInputOptions,
+  ): Promise<AddInputResponse>;
 
   removeInput(roomId: string, inputId: string, sourceId?: string): Promise<any>;
   deleteRoom(roomId: string): Promise<any>;
@@ -109,6 +114,13 @@ interface SmelterApiClient {
           durationMs: number;
           direction: 'in' | 'out';
         },
+  ): Promise<any>;
+  carouselAction(
+    roomId: string,
+    layerId: string,
+    action: 'next' | 'prev' | 'setIndex',
+    index?: number,
+    sourceId?: string,
   ): Promise<any>;
   toggleMotionDetection(
     roomId: string,
@@ -360,10 +372,11 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       });
     },
 
-    async addCameraInput(roomId, username) {
+    async addCameraInput(roomId, username, options) {
       const response = await req('post', `/room/${enc(roomId)}/input`, {
         type: 'whip',
         username: username || undefined,
+        ...options,
       });
       return {
         inputId: response.inputId,
@@ -460,6 +473,16 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
         'post',
         `/room/${enc(roomId)}/input/${enc(inputId)}/show`,
         activeTransition ? { activeTransition } : {},
+        sourceId ? { 'x-source-id': sourceId } : undefined,
+      );
+    },
+
+    async carouselAction(roomId, layerId, action, index, sourceId) {
+      return await sendRequest(
+        baseUrl,
+        'post',
+        `/room/${enc(roomId)}`,
+        { carouselAction: { layerId, action, index } },
         sourceId ? { 'x-source-id': sourceId } : undefined,
       );
     },

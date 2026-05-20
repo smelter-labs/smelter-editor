@@ -1,13 +1,13 @@
 import React, { useCallback } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { Draggable, Sortable, SortableItem } from "react-native-reanimated-dnd";
+import { Sortable, SortableItem } from "react-native-reanimated-dnd";
 import * as Haptics from "expo-haptics";
 import type { Layer, LayerBehaviorConfig } from "../../../types/layout";
 import type { InputCard } from "../../../types/input";
 import { LayerHeader } from "./LayerHeader";
 import { InputRow } from "./InputRow";
 import { BehaviorSelector } from "./BehaviorSelector";
-import type { LayerDragData, LayerUiState } from "./LayerRow";
+import type { LayerUiState } from "./LayerRow";
 
 // ─── Theme ───────────────────────────────────────────────────────────────────
 
@@ -23,10 +23,12 @@ const INPUT_HEIGHT = 44;
 
 // ─── LayerComponent ──────────────────────────────────────────────────────────
 
-export interface LayerComponentProps {
+interface LayerComponentProps {
   layer: Layer;
   inputs: InputCard[];
   ui: LayerUiState;
+  canMoveUp: boolean;
+  canMoveDown: boolean;
   allLayers: Layer[];
   onInputMove: (
     layerId: string,
@@ -41,7 +43,8 @@ export interface LayerComponentProps {
   ) => void;
   onUiChange: (patch: Partial<LayerUiState>) => void;
   onBehaviorChange: (behavior: LayerBehaviorConfig | undefined) => void;
-  onLayerDrop: (data: LayerDragData) => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
   onToggleLayerVisibility?: (
     layerId: string,
     shouldShow: boolean,
@@ -53,12 +56,15 @@ export function Layer({
   layer,
   inputs,
   ui,
+  canMoveUp,
+  canMoveDown,
   allLayers,
   onInputMove,
   onInputMoveLayer,
   onUiChange,
   onBehaviorChange,
-  onLayerDrop,
+  onMoveUp,
+  onMoveDown,
   onToggleLayerVisibility,
   onDeleteLayer,
 }: LayerComponentProps) {
@@ -69,8 +75,16 @@ export function Layer({
   }));
 
   const handleInputMove = useCallback(
-    (id: string, from: number, to: number) => {
-      onInputMove(layer.id, id, from, to);
+    (id: string, from: number, to?: Record<string, number>) => {
+      let resolvedTo: number | undefined;
+      if (to && typeof to === "object") {
+        const maybe = (to as Record<string, number>)[id];
+        if (typeof maybe === "number") resolvedTo = maybe;
+      }
+      // If we couldn't resolve a numeric target index, do nothing (leave item where it was).
+      if (typeof resolvedTo !== "number") return;
+
+      onInputMove(layer.id, id, from, resolvedTo);
     },
     [layer.id, onInputMove],
   );
@@ -81,7 +95,7 @@ export function Layer({
         key={item.id}
         id={item.id}
         data={item}
-        onMove={(id, from, to) => handleInputMove(id, from, to)}
+        onDrop={(id, from, to) => handleInputMove(id, from, to)}
         onDragStart={() =>
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium)
         }
@@ -125,25 +139,20 @@ export function Layer({
 
   return (
     <View style={styles.container}>
-      {/* Layer header — draggable */}
-      <Draggable<LayerDragData>
-        draggableId={`layer-${layer.id}`}
-        data={{ type: "layer", layerId: layer.id }}
-        dragAxis="y"
-        preDragDelay={140}
-        collisionAlgorithm="center"
-      >
-        <LayerHeader
-          name={ui.name}
-          isVisible={ui.isVisible}
-          isCollapsed={ui.isCollapsed}
-          onToggleCollapse={() => onUiChange({ isCollapsed: !ui.isCollapsed })}
-          onToggleVisible={handleToggleVisible}
-          onNameChange={(name) => onUiChange({ name })}
-          isEmpty={layer.inputs.length === 0}
-          onDelete={onDeleteLayer ? () => onDeleteLayer(layer.id) : undefined}
-        />
-      </Draggable>
+      <LayerHeader
+        name={ui.name}
+        isVisible={ui.isVisible}
+        isCollapsed={ui.isCollapsed}
+        canMoveUp={canMoveUp}
+        canMoveDown={canMoveDown}
+        onToggleCollapse={() => onUiChange({ isCollapsed: !ui.isCollapsed })}
+        onToggleVisible={handleToggleVisible}
+        onMoveUp={onMoveUp}
+        onMoveDown={onMoveDown}
+        onNameChange={(name) => onUiChange({ name })}
+        isEmpty={layer.inputs.length === 0}
+        onDelete={onDeleteLayer ? () => onDeleteLayer(layer.id) : undefined}
+      />
 
       {/* Behavior selector */}
       {!ui.isCollapsed && (

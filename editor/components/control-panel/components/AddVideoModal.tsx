@@ -154,6 +154,16 @@ interface AssetBrowserPanelProps {
   availableFilters?: AssetBrowserFilterType[];
   allowUpload?: boolean;
   headerTitle?: string;
+  initialFilter?: FilterType;
+  initialMp4Folder?: string;
+  initialPictureFolder?: string;
+  initialAudioFolder?: string;
+  onFilterChange?: (filter: FilterType) => void;
+  onFolderChange?: (folders: {
+    mp4Folder: string;
+    pictureFolder: string;
+    audioFolder: string;
+  }) => void;
 }
 
 const ACTION_CARDS: AssetItemAction[] = [
@@ -587,17 +597,25 @@ export function AssetBrowserPanel({
   availableFilters,
   allowUpload = true,
   headerTitle = 'ACTIVE_ASSET_REPOSITORY',
+  initialFilter,
+  initialMp4Folder,
+  initialPictureFolder,
+  initialAudioFolder,
+  onFilterChange,
+  onFolderChange,
 }: AssetBrowserPanelProps) {
   const actions = useActions();
 
-  const [filter, setFilter] = useState<FilterType>('ALL');
+  const [filter, setFilter] = useState<FilterType>(initialFilter ?? 'ALL');
   const [selectedItem, setSelectedItem] = useState<AssetItem | null>(null);
   const [items, setItems] = useState<AssetItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
 
-  const [mp4Folder, setMp4Folder] = useState('');
-  const [pictureFolder, setPictureFolder] = useState('');
-  const [audioFolder, setAudioFolder] = useState('');
+  const [mp4Folder, setMp4Folder] = useState(initialMp4Folder ?? '');
+  const [pictureFolder, setPictureFolder] = useState(
+    initialPictureFolder ?? '',
+  );
+  const [audioFolder, setAudioFolder] = useState(initialAudioFolder ?? '');
   const [uploadJobs, setUploadJobs] = useState<UploadJob[]>([]);
   const [newFolderName, setNewFolderName] = useState('');
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
@@ -648,11 +666,20 @@ export function AssetBrowserPanel({
 
   const setActiveFolder = useCallback(
     (folder: string) => {
-      if (filter === 'IMAGE') setPictureFolder(folder);
-      else if (filter === 'AUDIO') setAudioFolder(folder);
-      else if (filter === 'MP4') setMp4Folder(folder);
+      const next = { mp4Folder, pictureFolder, audioFolder };
+      if (filter === 'IMAGE') {
+        setPictureFolder(folder);
+        next.pictureFolder = folder;
+      } else if (filter === 'AUDIO') {
+        setAudioFolder(folder);
+        next.audioFolder = folder;
+      } else if (filter === 'MP4') {
+        setMp4Folder(folder);
+        next.mp4Folder = folder;
+      }
+      onFolderChange?.(next);
     },
-    [filter],
+    [filter, mp4Folder, pictureFolder, audioFolder, onFolderChange],
   );
 
   const resolveUploadFolder = useCallback(
@@ -952,7 +979,10 @@ export function AssetBrowserPanel({
     setSelectedItem(null);
   }, [fetchItems]);
 
+  const prevAvailableFilterKeyRef = useRef(availableFilterKey);
   useEffect(() => {
+    if (prevAvailableFilterKeyRef.current === availableFilterKey) return;
+    prevAvailableFilterKeyRef.current = availableFilterKey;
     setMp4Folder('');
     setPictureFolder('');
     setAudioFolder('');
@@ -974,10 +1004,10 @@ export function AssetBrowserPanel({
 
   const handleDone = useCallback(async () => {
     await refreshState();
-    if (onDone) {
-      await onDone();
-    }
-  }, [refreshState, onDone]);
+    setSelectedItem(null);
+    toast.success('Input added.');
+    fetchItems({ silent: true });
+  }, [refreshState, fetchItems]);
 
   const handleAssetDeleted = useCallback(
     async (item: DeletableAssetItem) => {
@@ -1049,12 +1079,21 @@ export function AssetBrowserPanel({
       const newPath = currentBase
         ? `${currentBase}/${folderItem.name}`
         : folderItem.name;
-      if (folderItem.mediaType === 'mp4') setMp4Folder(newPath);
-      else if (folderItem.mediaType === 'audio') setAudioFolder(newPath);
-      else setPictureFolder(newPath);
+      const next = { mp4Folder, pictureFolder, audioFolder };
+      if (folderItem.mediaType === 'mp4') {
+        setMp4Folder(newPath);
+        next.mp4Folder = newPath;
+      } else if (folderItem.mediaType === 'audio') {
+        setAudioFolder(newPath);
+        next.audioFolder = newPath;
+      } else {
+        setPictureFolder(newPath);
+        next.pictureFolder = newPath;
+      }
       setSelectedItem(null);
+      onFolderChange?.(next);
     },
-    [mp4Folder, pictureFolder, audioFolder],
+    [mp4Folder, pictureFolder, audioFolder, onFolderChange],
   );
 
   const handleUploadClick = useCallback(() => {
@@ -1193,6 +1232,7 @@ export function AssetBrowserPanel({
               key={f}
               onClick={() => {
                 setFilter(f);
+                onFilterChange?.(f);
                 setSelectedItem(null);
                 setShowNewFolderInput(false);
               }}
@@ -1333,6 +1373,11 @@ export function AddVideoModal({
   const { roomId, refreshState, inputs } = useControlPanelContext();
   const whipCtx = useWhipConnectionsContext();
 
+  const lastFilterRef = useRef<FilterType>('ALL');
+  const lastMp4FolderRef = useRef('');
+  const lastPictureFolderRef = useRef('');
+  const lastAudioFolderRef = useRef('');
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='max-w-[1100px] w-[95vw] max-h-[85vh] h-[85vh] bg-[#131313]/95 backdrop-blur-sm border border-[#3a494b]/30 p-0 gap-0 overflow-hidden [&>button]:text-[#849495] [&>button]:hover:text-[#e3fdff]'>
@@ -1341,8 +1386,17 @@ export function AddVideoModal({
           refreshState={refreshState}
           inputs={inputs}
           whipCtx={whipCtx}
-          onDone={async () => {
-            onOpenChange(false);
+          initialFilter={lastFilterRef.current}
+          initialMp4Folder={lastMp4FolderRef.current}
+          initialPictureFolder={lastPictureFolderRef.current}
+          initialAudioFolder={lastAudioFolderRef.current}
+          onFilterChange={(f) => {
+            lastFilterRef.current = f;
+          }}
+          onFolderChange={(folders) => {
+            lastMp4FolderRef.current = folders.mp4Folder;
+            lastPictureFolderRef.current = folders.pictureFolder;
+            lastAudioFolderRef.current = folders.audioFolder;
           }}
         />
       </DialogContent>

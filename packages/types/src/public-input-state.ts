@@ -32,6 +32,8 @@ export type PublicInputState = {
   mp4AssetMissing?: boolean;
   /** When mp4AssetMissing, whether to pick from audios/ instead of mp4s/. */
   missingAssetIsAudio?: boolean;
+  /** True when the server is rendering a frozen MP4 frame (timeline scrub/apply). */
+  mp4ShowsFrozenFrame?: boolean;
   sourceWidth?: number;
   sourceHeight?: number;
   attachedInputIds?: string[];

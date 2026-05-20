@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { KeyboardAvoidingView, StyleSheet, View } from "react-native";
 import {
   Button,
@@ -8,18 +8,19 @@ import {
   useTheme,
 } from "react-native-paper";
 import * as ScreenOrientation from "expo-screen-orientation";
+import { useNavigation } from "@react-navigation/native";
 import { useIsTablet } from "../../hooks/useIsTablet";
+import { SCREEN_NAMES } from "../../navigation/navigationTypes";
+import type { RootNavigationProp } from "../../navigation/navigationTypes";
 import { useJoinRoom } from "./useJoinRoom";
-import { ServerSection } from "./ServerSection";
 import { RoomSection } from "./RoomSection";
 import { QRScannerModal } from "./QRScannerModal";
 import { LoadingOverlay } from "../../components/shared/LoadingOverlay";
-import { JoinRoomSettingsPanel } from "./JoinRoomSettingsPanel";
 
 export function JoinRoomScreen() {
   const theme = useTheme();
   const isTablet = useIsTablet();
-  const [settingsOpen, setSettingsOpen] = useState(false);
+  const navigation = useNavigation<RootNavigationProp>();
 
   useEffect(() => {
     if (isTablet === null) return;
@@ -33,15 +34,7 @@ export function JoinRoomScreen() {
   }, [isTablet]);
 
   const {
-    savedUrls,
-    healthStatus,
-    selectedServerUrl,
-    handleServerUrlChange,
-    removeSavedUrl,
-    handleJoinServer,
-    serverStatus,
-    serverError,
-    phase,
+    serverUrl,
     rooms,
     selectedRoomId,
     setSelectedRoomId,
@@ -52,6 +45,7 @@ export function JoinRoomScreen() {
     errors,
     isLoading,
     handleConnect,
+    handleConnectAsCamera,
     showQR,
     setShowQR,
     handleQRScan,
@@ -71,42 +65,30 @@ export function JoinRoomScreen() {
           Connect to a room
         </Text>
 
-        {phase === "server" ? (
-          <ServerSection
-            savedUrls={savedUrls}
-            healthStatus={healthStatus}
-            selectedServerUrl={selectedServerUrl}
-            onServerUrlChange={handleServerUrlChange}
-            onRemoveUrl={removeSavedUrl}
-            onJoinServer={handleJoinServer}
-            serverStatus={serverStatus}
-            serverError={serverError}
-          />
-        ) : (
-          <RoomSection
-            selectedServerUrl={selectedServerUrl}
-            onChangeServer={() => handleServerUrlChange(selectedServerUrl)}
-            rooms={rooms}
-            selectedRoomId={selectedRoomId}
-            onSelectRoom={setSelectedRoomId}
-            isPrivateRoom={isPrivateRoom}
-            onTogglePrivateRoom={togglePrivateRoom}
-            privateRoomId={privateRoomId}
-            onPrivateRoomIdChange={setPrivateRoomId}
-            errors={errors}
-            isLoading={isLoading}
-            onConnect={handleConnect}
-          />
-        )}
+        <RoomSection
+          selectedServerUrl={serverUrl}
+          onChangeServer={() => navigation.goBack()}
+          rooms={rooms}
+          selectedRoomId={selectedRoomId}
+          onSelectRoom={setSelectedRoomId}
+          isPrivateRoom={isPrivateRoom}
+          onTogglePrivateRoom={togglePrivateRoom}
+          privateRoomId={privateRoomId}
+          onPrivateRoomIdChange={setPrivateRoomId}
+          errors={errors}
+          isLoading={isLoading}
+          onConnect={handleConnect}
+          onConnectAsCamera={handleConnectAsCamera}
+        />
 
         <View style={styles.bottomRow}>
           <Button mode="text" onPress={() => setShowQR(true)}>
             Scan QR Code instead
           </Button>
           <IconButton
-            icon="cog"
+            icon="help-circle-outline"
             size={20}
-            onPress={() => setSettingsOpen(true)}
+            onPress={() => navigation.navigate(SCREEN_NAMES.HELP)}
           />
         </View>
       </Surface>
@@ -117,11 +99,6 @@ export function JoinRoomScreen() {
         isVisible={showQR}
         onScan={handleQRScan}
         onClose={() => setShowQR(false)}
-      />
-
-      <JoinRoomSettingsPanel
-        isVisible={settingsOpen}
-        onClose={() => setSettingsOpen(false)}
       />
     </KeyboardAvoidingView>
   );

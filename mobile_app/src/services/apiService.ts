@@ -33,6 +33,22 @@ export function getRoomDisplayName(room: ActiveRoom): string {
 }
 
 /**
+ * Build an HTTP base URL from a raw server address.
+ * Accepts "host:port", "http://...", "https://...", or "ws://..." / "wss://...".
+ * Exported so other services can reuse the same normalisation logic.
+ */
+export function buildHttpUrl(serverUrl: string): string {
+  const trimmed = serverUrl.trim().replace(/\/+$/, "");
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
+  if (/^wss?:\/\//i.test(trimmed)) {
+    const parsed = new URL(trimmed);
+    parsed.protocol = parsed.protocol === "wss:" ? "https:" : "http:";
+    return `${parsed.protocol}//${parsed.host}${parsed.pathname.replace(/\/+$/, "")}`;
+  }
+  return `https://${trimmed}`;
+}
+
+/**
  * REST API service for communicating with the Smelter server.
  */
 class ApiService {
@@ -108,21 +124,19 @@ class ApiService {
   }
 
   /**
-   * Build an HTTP base URL from a raw server address.
-   * Accepts "host:port", "http://...", "https://...", or "ws://..." / "wss://...".
+   * Create a new room on the server.
+   * POST /room -> { roomId: string }
    */
-  private buildHttpUrl(serverUrl: string): string {
-    const trimmed = serverUrl.trim().replace(/\/+$/, "");
-
-    if (/^https?:\/\//i.test(trimmed)) return trimmed;
-
-    if (/^wss?:\/\//i.test(trimmed)) {
-      const parsed = new URL(trimmed);
-      parsed.protocol = parsed.protocol === "wss:" ? "https:" : "http:";
-      return `${parsed.protocol}//${parsed.host}${parsed.pathname.replace(/\/+$/, "")}`;
-    }
-
-    return `https://${trimmed}`;
+  async createRoom(serverUrl: string): Promise<string> {
+    const base = buildHttpUrl(serverUrl);
+    const res = await fetch(`${base}/room`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (!res.ok) throw new Error(`Failed to create room (${res.status})`);
+    const data = (await res.json()) as { roomId: string };
+    return data.roomId;
   }
 
   /**
@@ -130,7 +144,7 @@ class ApiService {
    * GET /active-rooms -> { rooms: [{ roomId, roomName }] }
    */
   async fetchActiveRooms(serverUrl: string): Promise<ActiveRoom[]> {
-    const base = this.buildHttpUrl(serverUrl);
+    const base = buildHttpUrl(serverUrl);
     const res = await fetch(`${base}/active-rooms`);
 
     if (!res.ok) {
@@ -154,7 +168,7 @@ class ApiService {
     resolution: Resolution;
     isTimelinePlaying: boolean;
   }> {
-    const base = this.buildHttpUrl(serverUrl);
+    const base = buildHttpUrl(serverUrl);
     const res = await fetch(`${base}/room/${encodeURIComponent(roomId)}`);
 
     if (!res.ok) {
@@ -182,7 +196,7 @@ class ApiService {
     layers: Layer[],
     sourceId?: string,
   ): Promise<Layer[]> {
-    const base = this.buildHttpUrl(serverUrl);
+    const base = buildHttpUrl(serverUrl);
     this.logSyncSend("POST", `/room/${encodeURIComponent(roomId)}`, {
       body: { layers },
       headers: { "x-source-id": sourceId },
@@ -218,7 +232,7 @@ class ApiService {
     roomId: string,
     inputId: string,
   ): Promise<void> {
-    const base = this.buildHttpUrl(serverUrl);
+    const base = buildHttpUrl(serverUrl);
     this.logSyncSend(
       "POST",
       `/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}/hide`,
@@ -243,7 +257,7 @@ class ApiService {
     roomId: string,
     inputId: string,
   ): Promise<void> {
-    const base = this.buildHttpUrl(serverUrl);
+    const base = buildHttpUrl(serverUrl);
     this.logSyncSend(
       "POST",
       `/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}/show`,
@@ -268,7 +282,7 @@ class ApiService {
     roomId: string,
     inputIds: string[],
   ): Promise<void> {
-    const base = this.buildHttpUrl(serverUrl);
+    const base = buildHttpUrl(serverUrl);
     this.logSyncSend(
       "POST",
       `/room/${encodeURIComponent(roomId)}/inputs/hide`,
@@ -294,7 +308,7 @@ class ApiService {
     roomId: string,
     inputIds: string[],
   ): Promise<void> {
-    const base = this.buildHttpUrl(serverUrl);
+    const base = buildHttpUrl(serverUrl);
     this.logSyncSend(
       "POST",
       `/room/${encodeURIComponent(roomId)}/inputs/show`,
@@ -320,7 +334,7 @@ class ApiService {
     roomId: string,
     inputId: string,
   ): Promise<void> {
-    const base = this.buildHttpUrl(serverUrl);
+    const base = buildHttpUrl(serverUrl);
     this.logSyncSend(
       "DELETE",
       `/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}`,
@@ -338,7 +352,7 @@ class ApiService {
     inputId: string,
     opts: Record<string, unknown>,
   ): Promise<void> {
-    const base = this.buildHttpUrl(serverUrl);
+    const base = buildHttpUrl(serverUrl);
     this.logSyncSend(
       "POST",
       `/room/${encodeURIComponent(roomId)}/input/${encodeURIComponent(inputId)}`,
@@ -356,7 +370,7 @@ class ApiService {
   }
 
   async getAvailableShaders(serverUrl: string): Promise<AvailableShader[]> {
-    const base = this.buildHttpUrl(serverUrl);
+    const base = buildHttpUrl(serverUrl);
     const res = await fetch(`${base}/shaders`);
     if (!res.ok) {
       throw new Error(`Failed to fetch shaders (${res.status})`);

@@ -1,6 +1,6 @@
 import type { FxConfig } from './types';
 
-export const FX_DEFAULT_HUES = [187, 295, 45, 160];
+const FX_DEFAULT_HUES = [187, 295, 45, 160];
 
 export const FX_PRESET_IMPORT: FxConfig = {
   layers: {
@@ -50,7 +50,7 @@ export const FX_PRESET_MODAL: FxConfig = {
   glowScale: 0.8,
 };
 
-export const FX_PRESET_DROPDOWN: FxConfig = {
+const FX_PRESET_DROPDOWN: FxConfig = {
   layers: {
     circuits: true,
   },

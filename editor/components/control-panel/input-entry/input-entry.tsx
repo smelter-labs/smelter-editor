@@ -19,6 +19,14 @@ import { useIsMobile } from '@/hooks/use-mobile';
 import { hexToPackedInt } from '@/lib/color-utils';
 import { NumberInput } from '@/components/ui/number-input';
 import { Slider } from '@/components/ui/slider';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
 const SHADER_SETTINGS_DEBOUNCE_MS = 200;
 interface InputEntryProps {
@@ -39,6 +47,7 @@ interface InputEntryProps {
   readOnly?: boolean;
   activeBlockColor?: string;
   isOnTimeline?: boolean;
+  dragDisabled?: boolean;
 }
 
 export default function InputEntry({
@@ -58,6 +67,7 @@ export default function InputEntry({
   readOnly = false,
   activeBlockColor,
   isOnTimeline = true,
+  dragDisabled = false,
 }: InputEntryProps) {
   const actions = useActions();
   const [showSliders, setShowSliders] = useState(false);
@@ -66,6 +76,8 @@ export default function InputEntry({
     [shaderId: string]: string | null;
   }>({});
   const [isAddShaderModalOpen, setIsAddShaderModalOpen] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [gameGridAlphaDraft, setGameGridAlphaDraft] = useState<number | null>(
     null,
   );
@@ -106,12 +118,7 @@ export default function InputEntry({
     [input.shaders],
   );
 
-  const handleDelete = useCallback(async () => {
-    const confirmed = window.confirm(
-      'Delete this input permanently? This will remove it from the room and from the timeline.',
-    );
-    if (!confirmed) return;
-
+  const performDelete = useCallback(async () => {
     const session = loadWhipSession();
     const isSavedInSession =
       (session &&
@@ -151,6 +158,20 @@ export default function InputEntry({
     streamRef,
     onWhipDisconnectedOrRemoved,
   ]);
+
+  const handleDelete = useCallback(() => {
+    setIsDeleteConfirmOpen(true);
+  }, []);
+
+  const handleConfirmDelete = useCallback(async () => {
+    setIsDeleting(true);
+    try {
+      await performDelete();
+      setIsDeleteConfirmOpen(false);
+    } finally {
+      setIsDeleting(false);
+    }
+  }, [performDelete]);
 
   const handleShaderToggle = useCallback(
     async (shaderId: string) => {
@@ -376,6 +397,34 @@ export default function InputEntry({
     [input, roomId, refreshState],
   );
 
+  const deleteConfirmDialog = (
+    <Dialog open={isDeleteConfirmOpen} onOpenChange={setIsDeleteConfirmOpen}>
+      <DialogContent className='max-w-sm'>
+        <DialogHeader>
+          <DialogTitle>Delete Input</DialogTitle>
+          <DialogDescription>
+            Delete this input permanently? This will remove it from the room and
+            from the timeline.
+          </DialogDescription>
+        </DialogHeader>
+        <div className='flex justify-end gap-2'>
+          <Button
+            variant='outline'
+            onClick={() => setIsDeleteConfirmOpen(false)}
+            disabled={isDeleting}>
+            Cancel
+          </Button>
+          <Button
+            variant='destructive'
+            onClick={handleConfirmDelete}
+            disabled={isDeleting}>
+            {isDeleting ? 'Deleting...' : 'Delete'}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+
   if (fxModeOnly && effectiveShowSliders) {
     return (
       <>
@@ -413,6 +462,8 @@ export default function InputEntry({
           addedShaderIds={addedShaderIds}
           onAddShader={addShaderConfig}
         />
+
+        {deleteConfirmDialog}
       </>
     );
   }
@@ -429,7 +480,9 @@ export default function InputEntry({
         <div className='flex items-center min-h-7 gap-2'>
           {!isMobile && showGrip && (
             <div className='shrink-0 pointer-events-none'>
-              <GripVertical className='w-5 h-5 text-muted-foreground' />
+              <GripVertical
+                className={`w-5 h-5 ${dragDisabled ? 'text-muted-foreground/30' : 'text-muted-foreground'}`}
+              />
             </div>
           )}
           {!isOnTimeline && !activeBlockColor ? (
@@ -615,6 +668,8 @@ export default function InputEntry({
         addedShaderIds={addedShaderIds}
         onAddShader={addShaderConfig}
       />
+
+      {deleteConfirmDialog}
     </>
   );
 }

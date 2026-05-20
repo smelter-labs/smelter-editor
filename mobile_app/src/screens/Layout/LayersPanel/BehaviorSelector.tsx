@@ -22,7 +22,7 @@ const BEHAVIOR_OPTIONS: {
   { label: "Manual", type: "manual" },
 ];
 
-export interface BehaviorSelectorProps {
+interface BehaviorSelectorProps {
   behavior: LayerBehaviorConfig | undefined;
   onChange: (b: LayerBehaviorConfig | undefined) => void;
 }

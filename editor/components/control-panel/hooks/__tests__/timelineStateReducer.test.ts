@@ -39,6 +39,8 @@ describe('timelineReducer', () => {
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -57,6 +59,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -76,6 +80,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set(['room::local::one', 'room::local::two']),
     };
 
@@ -87,7 +93,7 @@ describe('timelineReducer', () => {
     ]);
   });
 
-  it('purges an input from all tracks and removes empty ones', () => {
+  it('purges an input from all tracks and keeps tracks that become empty', () => {
     const state: TimelineState = {
       keyframeInterpolationMode: 'step',
       tracks: [
@@ -134,6 +140,8 @@ describe('timelineReducer', () => {
       pixelsPerSecond: 15,
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -142,10 +150,12 @@ describe('timelineReducer', () => {
       inputId: 'room::local::a',
     });
 
-    expect(next.tracks).toHaveLength(1);
-    expect(next.tracks[0].id).toBe('track-1');
-    expect(next.tracks[0].clips).toHaveLength(1);
-    expect(next.tracks[0].clips[0].inputId).toBe('room::local::b');
+    expect(next.tracks).toHaveLength(2);
+    const track1 = next.tracks.find((t) => t.id === 'track-1');
+    const track2 = next.tracks.find((t) => t.id === 'track-2');
+    expect(track1?.clips).toHaveLength(1);
+    expect(track1?.clips[0].inputId).toBe('room::local::b');
+    expect(track2?.clips).toHaveLength(0);
   });
 
   it('keeps the base keyframe locked at 0ms and clamps moved keyframes into clip bounds', () => {
@@ -184,6 +194,8 @@ describe('timelineReducer', () => {
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -242,6 +254,12 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [
+        { kind: 'track', id: 'track-a' },
+        { kind: 'track', id: 'track-b' },
+        { kind: 'track', id: 'track-c' },
+      ],
       knownInputIds: new Set<string>(),
     };
 
@@ -251,11 +269,9 @@ describe('timelineReducer', () => {
       newIndex: 2,
     });
 
-    expect(next.tracks.map((t) => t.id)).toEqual([
-      'track-b',
-      'track-c',
-      'track-a',
-    ]);
+    expect(
+      next.rootOrder.map((r) => (r.kind === 'track' ? r.id : `g:${r.id}`)),
+    ).toEqual(['track-b', 'track-c', 'track-a']);
   });
 
   it('REORDER_TRACK: no-op when moving OUTPUT_TRACK', () => {
@@ -271,6 +287,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -296,6 +314,11 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [
+        { kind: 'track', id: OUTPUT_TRACK_ID },
+        { kind: 'track', id: 'track-a' },
+      ],
       knownInputIds: new Set<string>(),
     };
 
@@ -341,6 +364,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -400,6 +425,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -475,6 +502,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -495,7 +524,67 @@ describe('timelineReducer', () => {
 
   // ── CLEANUP_SPURIOUS_WHIP_TRACK ────────────────────────
 
-  it('CLEANUP_SPURIOUS_WHIP_TRACK: removes full-span single-clip track', () => {
+  it('CLEANUP_SPURIOUS_WHIP_TRACK: removes full-span single-clip track when input exists on another track', () => {
+    const state: TimelineState = {
+      tracks: [
+        {
+          id: 'spurious-track',
+          label: 'WHIP',
+          clips: [
+            {
+              id: 'clip-1',
+              inputId: 'room::whip::cam',
+              startMs: 0,
+              endMs: 60_000,
+              blockSettings: defaultBlockSettings,
+              keyframes: [],
+            },
+          ],
+        },
+        {
+          id: 'other-track',
+          label: 'Other',
+          clips: [
+            {
+              id: 'clip-other',
+              inputId: 'room::whip::cam',
+              startMs: 10_000,
+              endMs: 30_000,
+              blockSettings: defaultBlockSettings,
+              keyframes: [],
+            },
+          ],
+        },
+        {
+          id: OUTPUT_TRACK_ID,
+          label: 'Output',
+          clips: [],
+        },
+      ],
+      totalDurationMs: 60_000,
+      playheadMs: 0,
+      isPlaying: false,
+      pixelsPerSecond: 15,
+      keyframeInterpolationMode: 'step',
+      snapToBlocks: true,
+      snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
+      knownInputIds: new Set<string>(),
+    };
+
+    const next = timelineReducer(state, {
+      type: 'CLEANUP_SPURIOUS_WHIP_TRACK',
+      inputId: 'room::whip::cam',
+    });
+
+    expect(next.tracks).toHaveLength(2);
+    expect(next.tracks.find((t) => t.id === 'spurious-track')).toBeUndefined();
+    expect(next.tracks.find((t) => t.id === 'other-track')).toBeDefined();
+    expect(next.tracks.find((t) => t.id === OUTPUT_TRACK_ID)).toBeDefined();
+  });
+
+  it('CLEANUP_SPURIOUS_WHIP_TRACK: no-op when input has no clips on other tracks', () => {
     const state: TimelineState = {
       tracks: [
         {
@@ -525,6 +614,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -533,8 +624,7 @@ describe('timelineReducer', () => {
       inputId: 'room::whip::cam',
     });
 
-    expect(next.tracks).toHaveLength(1);
-    expect(next.tracks[0].id).toBe(OUTPUT_TRACK_ID);
+    expect(next).toBe(state);
   });
 
   it('CLEANUP_SPURIOUS_WHIP_TRACK: no-op for multi-clip track', () => {
@@ -575,6 +665,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -616,6 +708,8 @@ describe('timelineReducer', () => {
       keyframeInterpolationMode: 'step',
       snapToBlocks: true,
       snapToKeyframes: true,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -697,6 +791,8 @@ describe('timelineReducer', () => {
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -731,6 +827,8 @@ describe('timelineReducer', () => {
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
@@ -755,6 +853,8 @@ describe('timelineReducer', () => {
       playheadMs: 0,
       isPlaying: false,
       pixelsPerSecond: 15,
+      groups: [],
+      rootOrder: [],
       knownInputIds: new Set<string>(),
     };
 
