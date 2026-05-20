@@ -456,7 +456,6 @@ export function PendingWhipInputs({
         const accentColor = colorMap?.[placeholderId];
         const preview = previews.get(pendingInput.id);
         const isAcquiring = acquiringId === pendingInput.id;
-        const isConnecting = connectingId === pendingInput.id;
         const isBusy =
           isBulkConnecting || acquiringId !== null || connectingId !== null;
         const selectedCodec =
