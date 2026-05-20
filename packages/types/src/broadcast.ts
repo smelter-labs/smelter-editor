@@ -43,14 +43,7 @@ export type BroadcastTileSelectedEvent = {
   tileId: string | null;
 };
 
-export type BroadcastTilesUpdatedEvent = {
-  type: 'broadcast-tiles-updated';
-  tiles: BroadcastTile[];
-  selectedTileId: string | null;
-};
-
 export type BroadcastServerEvent =
   | BroadcastTileAddedEvent
   | BroadcastTileRemovedEvent
-  | BroadcastTileSelectedEvent
-  | BroadcastTilesUpdatedEvent;
+  | BroadcastTileSelectedEvent;

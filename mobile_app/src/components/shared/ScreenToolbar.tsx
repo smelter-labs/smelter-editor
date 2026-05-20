@@ -36,6 +36,7 @@ export function ScreenToolbarChip({
       mode="flat"
       style={[styles.chip, disabled && styles.chipDisabled, style]}
       textStyle={styles.chipText}
+      disabled={disabled}
       onPress={disabled ? undefined : onPress}
     >
       {children}

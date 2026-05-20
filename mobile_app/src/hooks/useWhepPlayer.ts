@@ -55,7 +55,9 @@ async function connectWhep(
 
   if (signal.aborted) {
     pc.close();
-    throw new DOMException("Aborted", "AbortError");
+    const abortErr = new Error("Aborted");
+    abortErr.name = "AbortError";
+    throw abortErr;
   }
 
   const resp = await fetch(whepUrl, {

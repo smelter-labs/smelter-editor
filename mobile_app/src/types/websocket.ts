@@ -60,6 +60,7 @@ export type WSEventMap = {
     tiles: BroadcastTile[];
     selectedBroadcastTileId: string | null;
     isBroadcastMode: boolean;
+    sourceId: string | null;
   };
   connected: {
     type: "connected";

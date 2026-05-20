@@ -144,12 +144,3 @@ export function updateBroadcastTileNames(snapshot: RoomSnapshot): void {
   }
 }
 
-export function syncBroadcastTilesToClient(
-  snapshot: RoomSnapshot,
-): BroadcastServerEvent {
-  return {
-    type: 'broadcast-tiles-updated',
-    tiles: [...snapshot.broadcastTiles],
-    selectedTileId: snapshot.selectedBroadcastTileId,
-  };
-}

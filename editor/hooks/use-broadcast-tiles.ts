@@ -132,7 +132,7 @@ export function useBroadcastTiles(roomId: string) {
         console.error('Failed to add broadcast tile:', error);
       }
     },
-    [roomId, tiles, selectedTileId, saveToStorage],
+    [roomId, tiles, selectedTileId, isBroadcastMode, saveToStorage],
   );
 
   const removeTile = useCallback(
@@ -168,7 +168,7 @@ export function useBroadcastTiles(roomId: string) {
         console.error('Failed to remove broadcast tile:', error);
       }
     },
-    [roomId, tiles, selectedTileId, saveToStorage],
+    [roomId, tiles, selectedTileId, isBroadcastMode, saveToStorage],
   );
 
   const selectTile = useCallback(
@@ -199,7 +199,7 @@ export function useBroadcastTiles(roomId: string) {
         console.error('Failed to select broadcast tile:', error);
       }
     },
-    [roomId, tiles, selectedTileId, saveToStorage],
+    [roomId, tiles, selectedTileId, isBroadcastMode, saveToStorage],
   );
 
   const updateTileName = useCallback(
@@ -210,7 +210,7 @@ export function useBroadcastTiles(roomId: string) {
       setTiles(updatedTiles);
       saveToStorage(updatedTiles, selectedTileId, isBroadcastMode);
     },
-    [tiles, selectedTileId, saveToStorage],
+    [tiles, selectedTileId, isBroadcastMode, saveToStorage],
   );
 
   const toggleEditMode = useCallback(() => {

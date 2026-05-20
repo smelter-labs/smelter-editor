@@ -32,26 +32,37 @@ export default function BroadcastTileBar({
         return (
           <div
             key={tile.id}
+            role={!isEditMode ? 'button' : undefined}
+            tabIndex={!isEditMode ? 0 : undefined}
             className={`
-              flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded cursor-pointer
+              flex-shrink-0 flex items-center gap-2 px-3 py-2 rounded
               transition-colors duration-200
+              ${!isEditMode ? 'cursor-pointer' : ''}
               ${
                 isSelected
                   ? 'bg-blue-600 hover:bg-blue-700'
                   : 'bg-gray-800 hover:bg-gray-700'
               }
             `}
-            onClick={() => !isEditMode && onSelectTile(tile.id)}>
+            onClick={!isEditMode ? () => onSelectTile(tile.id) : undefined}
+            onKeyDown={
+              !isEditMode
+                ? (e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      onSelectTile(tile.id);
+                    }
+                  }
+                : undefined
+            }>
             <span className='text-sm'>{typeIcon}</span>
             <span className='text-sm font-medium truncate max-w-[120px]'>
               {tile.name}
             </span>
             {isEditMode && (
               <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDeleteTile(tile.id);
-                }}
+                type='button'
+                onClick={() => onDeleteTile(tile.id)}
                 className='ml-1 p-1 hover:bg-red-600 rounded transition-colors'
                 aria-label='Delete tile'>
                 <X size={14} />

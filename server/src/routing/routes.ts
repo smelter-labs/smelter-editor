@@ -839,6 +839,23 @@ const RoomIdParamsSchema = Type.Object({
   roomId: Type.String({ maxLength: 64, minLength: 1 }),
 });
 
+const BroadcastTileAddBodySchema = Type.Object({
+  type: Type.Union([Type.Literal('input'), Type.Literal('layer')]),
+  targetId: Type.String({ minLength: 1 }),
+});
+
+const BroadcastTileRemoveBodySchema = Type.Object({
+  tileId: Type.String({ minLength: 1 }),
+});
+
+const BroadcastTileSelectBodySchema = Type.Object({
+  tileId: Type.Union([Type.String(), Type.Null()]),
+});
+
+const BroadcastModeSetBodySchema = Type.Object({
+  enabled: Type.Boolean(),
+});
+
 const RoomAndInputIdParamsSchema = Type.Object({
   roomId: Type.String({ maxLength: 64, minLength: 1 }),
   inputId: Type.String({ maxLength: 512, minLength: 1 }),
@@ -2265,19 +2282,12 @@ routes.get('/logs/sse', async (req, res) => {
   });
 });
 
-routes.post<RoomIdParams>(
+routes.post<RoomIdParams & { Body: Static<typeof BroadcastTileAddBodySchema> }>(
   '/room/:roomId/broadcast-tile/add',
-  { schema: { params: RoomIdParamsSchema } },
+  { schema: { params: RoomIdParamsSchema, body: BroadcastTileAddBodySchema } },
   async (req, res) => {
     const { roomId } = req.params;
-    const body = req.body as Record<string, unknown>;
-    const type = body.type as 'input' | 'layer' | undefined;
-    const targetId = body.targetId as string | undefined;
-    if (!type || !targetId) {
-      return res
-        .status(400)
-        .send({ status: 'error', message: 'Missing type or targetId' });
-    }
+    const { type, targetId } = req.body;
     try {
       const room = state.getRoom(roomId);
       const tile = room.addBroadcastTile(type, targetId);
@@ -2298,7 +2308,7 @@ routes.post<RoomIdParams>(
         tiles,
         selectedBroadcastTileId,
         isBroadcastMode,
-      } as any);
+      });
       res.status(200).send({ status: 'ok', tile, selectedBroadcastTileId });
     } catch (err: any) {
       res.status(400).send({
@@ -2309,18 +2319,16 @@ routes.post<RoomIdParams>(
   },
 );
 
-routes.post<RoomIdParams>(
+routes.post<
+  RoomIdParams & { Body: Static<typeof BroadcastTileRemoveBodySchema> }
+>(
   '/room/:roomId/broadcast-tile/remove',
-  { schema: { params: RoomIdParamsSchema } },
+  {
+    schema: { params: RoomIdParamsSchema, body: BroadcastTileRemoveBodySchema },
+  },
   async (req, res) => {
     const { roomId } = req.params;
-    const body = req.body as Record<string, unknown>;
-    const tileId = body.tileId as string | undefined;
-    if (!tileId) {
-      return res
-        .status(400)
-        .send({ status: 'error', message: 'Missing tileId' });
-    }
+    const { tileId } = req.body;
     try {
       const room = state.getRoom(roomId);
       const removed = room.removeBroadcastTile(tileId);
@@ -2340,7 +2348,7 @@ routes.post<RoomIdParams>(
         tiles,
         selectedBroadcastTileId,
         isBroadcastMode,
-      } as any);
+      });
       res.status(200).send({ status: 'ok' });
     } catch (err: any) {
       res.status(400).send({
@@ -2351,13 +2359,16 @@ routes.post<RoomIdParams>(
   },
 );
 
-routes.post<RoomIdParams>(
+routes.post<
+  RoomIdParams & { Body: Static<typeof BroadcastTileSelectBodySchema> }
+>(
   '/room/:roomId/broadcast-tile/select',
-  { schema: { params: RoomIdParamsSchema } },
+  {
+    schema: { params: RoomIdParamsSchema, body: BroadcastTileSelectBodySchema },
+  },
   async (req, res) => {
     const { roomId } = req.params;
-    const body = req.body as Record<string, unknown>;
-    const tileId = (body.tileId as string | null | undefined) ?? null;
+    const { tileId } = req.body;
     try {
       const room = state.getRoom(roomId);
       const ok = room.selectBroadcastTile(tileId);
@@ -2377,7 +2388,7 @@ routes.post<RoomIdParams>(
         tiles,
         selectedBroadcastTileId,
         isBroadcastMode,
-      } as any);
+      });
       res.status(200).send({ status: 'ok' });
     } catch (err: any) {
       res.status(400).send({
@@ -2388,18 +2399,14 @@ routes.post<RoomIdParams>(
   },
 );
 
-routes.post<RoomIdParams>(
+routes.post<
+  RoomIdParams & { Body: Static<typeof BroadcastModeSetBodySchema> }
+>(
   '/room/:roomId/broadcast-mode/set',
-  { schema: { params: RoomIdParamsSchema } },
+  { schema: { params: RoomIdParamsSchema, body: BroadcastModeSetBodySchema } },
   async (req, res) => {
     const { roomId } = req.params;
-    const body = req.body as Record<string, unknown>;
-    const enabled = body.enabled;
-    if (typeof enabled !== 'boolean') {
-      return res
-        .status(400)
-        .send({ status: 'error', message: 'Missing or invalid enabled flag' });
-    }
+    const { enabled } = req.body;
     try {
       const room = state.getRoom(roomId);
       room.setBroadcastMode(enabled);
@@ -2414,7 +2421,7 @@ routes.post<RoomIdParams>(
         tiles,
         selectedBroadcastTileId,
         isBroadcastMode,
-      } as any);
+      });
       res.status(200).send({ status: 'ok', isBroadcastMode });
     } catch (err: any) {
       res.status(400).send({
