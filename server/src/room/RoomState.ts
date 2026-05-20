@@ -631,6 +631,7 @@ export class RoomState {
     }
     this.selectedBroadcastTileId = tileId;
     if (this.isBroadcastMode) this.updateStoreWithState();
+    else this.notifyStateChange();
     return true;
   }
 

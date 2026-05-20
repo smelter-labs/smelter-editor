@@ -14,6 +14,9 @@ import { useInputsStore } from "../../store/inputsStore";
 import { useLayoutStore } from "../../store/layoutStore";
 import { useConnectionStore } from "../../store/connectionStore";
 import { buildHttpUrl } from "../../services/apiService";
+import { wsService } from "../../services/websocketService";
+import { useWhepPlayer } from "../../hooks/useWhepPlayer";
+import { RTCView } from "react-native-webrtc";
 import { ScreenLabel } from "../../components/shared/ScreenLabel";
 import {
   ScreenToolbar,
@@ -75,10 +78,23 @@ export function BroadcastModeScreen() {
     };
 
     void fetchState();
-    const interval = setInterval(fetchState, 3_000);
+    // Slow poll as fallback for initial state and reconnect gaps
+    const interval = setInterval(fetchState, 30_000);
+
+    // Real-time: subscribe to broadcast tile changes over WebSocket
+    const unsubWs = wsService.on("broadcast-tiles-updated", (event) => {
+      if (cancelled || event.roomId !== roomId) return;
+      syncWithServerState(
+        event.tiles,
+        event.selectedBroadcastTileId,
+        event.isBroadcastMode,
+      );
+    });
+
     return () => {
       cancelled = true;
       clearInterval(interval);
+      unsubWs();
     };
   }, [serverUrl, roomId]);
 
@@ -110,6 +126,9 @@ export function BroadcastModeScreen() {
   }, [inputs, tiles, updateTileName]);
 
   const selectedTile = tiles.find((t) => t.id === selectedTileId);
+  const { streamUrl, status: whepStatus } = useWhepPlayer(
+    selectedTile ? whepUrl || null : null,
+  );
 
   const handleAddTile = useCallback(
     async (type: "input" | "layer", targetId: string) => {
@@ -207,23 +226,30 @@ export function BroadcastModeScreen() {
           </View>
         ) : selectedTile ? (
           <View style={styles.videoContainer}>
-            <Surface style={styles.videoPlaceholder} elevation={1}>
-              <Text
-                variant="bodyLarge"
-                style={{ color: theme.colors.onSurface }}
-              >
-                Video Stream
-              </Text>
-              <Text
-                variant="bodySmall"
-                style={{
-                  color: theme.colors.onSurfaceVariant,
-                  marginTop: 8,
-                }}
-              >
-                WHEP URL: {whepUrl || "—"}
-              </Text>
-            </Surface>
+            {streamUrl ? (
+              <RTCView
+                streamURL={streamUrl}
+                style={styles.videoView}
+                objectFit="contain"
+                zOrder={0}
+              />
+            ) : (
+              <View style={styles.videoPlaceholder}>
+                <ActivityIndicator
+                  size="large"
+                  color={theme.colors.primary}
+                  animating={whepStatus === "connecting"}
+                />
+                {whepStatus === "error" && (
+                  <Text
+                    variant="bodySmall"
+                    style={{ color: theme.colors.error, marginTop: 8 }}
+                  >
+                    Stream unavailable
+                  </Text>
+                )}
+              </View>
+            )}
             <Surface style={styles.tileLabel} elevation={3}>
               <Text
                 variant="labelMedium"
@@ -291,13 +317,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 4,
   },
-  videoContainer: { flex: 1, position: "relative" },
+  videoContainer: { flex: 1, position: "relative", backgroundColor: "#000" },
+  videoView: { flex: 1 },
   videoPlaceholder: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    margin: 0,
-    borderRadius: 0,
+    backgroundColor: "#000",
   },
   tileLabel: {
     position: "absolute",

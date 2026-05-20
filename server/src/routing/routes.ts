@@ -506,6 +506,30 @@ routes.get<{ Params: { fileName: string } }>(
   },
 );
 
+function resolvePublicWhepUrl(
+  whepUrl: string,
+  req: { headers: Record<string, string | string[] | undefined> },
+): string {
+  try {
+    const parsed = new URL(whepUrl);
+    if (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost') {
+      const reqHost = (req.headers['host'] as string | undefined) ?? '';
+      const reqHostname = reqHost.split(':')[0];
+      if (
+        reqHostname &&
+        reqHostname !== 'localhost' &&
+        reqHostname !== '127.0.0.1'
+      ) {
+        parsed.hostname = reqHostname;
+        return parsed.toString();
+      }
+    }
+  } catch {
+    // ignore malformed URLs
+  }
+  return whepUrl;
+}
+
 function attachmentFileNameHeader(filePath: string): string {
   const base = path.basename(filePath);
   const safe = base.replace(/"/g, '');
@@ -957,7 +981,7 @@ routes.get<RoomIdParams>(
       inputs: snapshot.inputs.map(toPublicInputState),
       layers: snapshot.layers,
       isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
-      whepUrl: room.getWhepUrl(),
+      whepUrl: resolvePublicWhepUrl(room.getWhepUrl(), req),
       pendingDelete: room.pendingDelete,
       isPublic: room.isPublic,
       resolution: room.getResolution(),
@@ -2154,7 +2178,7 @@ routes.get<RoomIdParams>(
         inputs: snapshot.inputs.map(toPublicInputState),
         layers: snapshot.layers,
         isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
-        whepUrl: room.getWhepUrl(),
+        whepUrl: resolvePublicWhepUrl(room.getWhepUrl(), req),
         pendingDelete: room.pendingDelete,
         isPublic: room.isPublic,
         resolution: room.getResolution(),
@@ -2173,6 +2197,9 @@ routes.get<RoomIdParams>(
         viewportHeight: snapshot.viewportHeight,
         viewportTransitionDurationMs: snapshot.viewportTransitionDurationMs,
         viewportTransitionEasing: snapshot.viewportTransitionEasing,
+        broadcastTiles: snapshot.broadcastTiles,
+        selectedBroadcastTileId: snapshot.selectedBroadcastTileId,
+        isBroadcastMode: snapshot.isBroadcastMode,
       };
       logSyncServer('broadcast', {
         route: '/room/:roomId/state/sse',
