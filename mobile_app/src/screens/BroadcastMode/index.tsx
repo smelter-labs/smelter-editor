@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import { View, StyleSheet, FlatList, Pressable } from "react-native";
 import {
   ActivityIndicator,
@@ -82,15 +82,21 @@ export function BroadcastModeScreen() {
     };
   }, [serverUrl, roomId]);
 
-  const inputs = useInputsStore((s) =>
-    s.inputs.map((c) => ({
-      inputId: c.id,
-      title: c.name,
-      type: c.isAudioOnly ? ("audio" as const) : ("video" as const),
-    })),
+  const rawInputs = useInputsStore((s) => s.inputs);
+  const inputs = useMemo(
+    () =>
+      rawInputs.map((c) => ({
+        inputId: c.id,
+        title: c.name,
+        type: c.isAudioOnly ? ("audio" as const) : ("video" as const),
+      })),
+    [rawInputs],
   );
-  const layers = useLayoutStore((s) =>
-    s.layers.map((l) => ({ id: l.id, inputs: l.inputs })),
+
+  const rawLayers = useLayoutStore((s) => s.layers);
+  const layers = useMemo(
+    () => rawLayers.map((l) => ({ id: l.id, inputs: l.inputs })),
+    [rawLayers],
   );
 
   useEffect(() => {
