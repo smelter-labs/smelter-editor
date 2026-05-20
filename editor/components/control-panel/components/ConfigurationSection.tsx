@@ -45,6 +45,7 @@ export type PendingWhipInput = {
   title: string;
   config: RoomConfigInput;
   position: number;
+  preferredCodec?: import('../whip-input/utils/webRTC-helpers').WhipCodec;
 };
 
 function ConfigurationSection({

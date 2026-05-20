@@ -108,7 +108,11 @@ const MP4_DECODER_MAP = {
   h264: config.h264Decoder,
 };
 
-const WHIP_SERVER_DECODER_PREFERENCES = [config.h264Decoder];
+const WHIP_SERVER_DECODER_PREFERENCES = [
+  config.h264Decoder,
+  'ffmpeg_vp8' as const,
+  'ffmpeg_vp9' as const,
+];
 const FALLBACK_FFMPEG_PRESET = 'ultrafast' as const;
 const FALLBACK_FFMPEG_BITRATE = '20000000';
 const ALLOW_FFMPEG_FALLBACK =

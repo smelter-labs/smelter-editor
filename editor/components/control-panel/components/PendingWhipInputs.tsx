@@ -13,6 +13,7 @@ import { Video, Monitor, X } from 'lucide-react';
 import { useActions } from '../contexts/actions-context';
 import { startPublish } from '../whip-input/utils/whip-publisher';
 import { startScreensharePublish } from '../whip-input/utils/screenshare-publisher';
+import type { WhipCodec } from '../whip-input/utils/webRTC-helpers';
 import { stopCameraAndConnection } from '../whip-input/utils/preview';
 import {
   saveWhipSession,
@@ -45,6 +46,13 @@ type PreviewState = {
   stream: MediaStream;
   type: 'camera' | 'screenshare';
 };
+
+const CODEC_OPTIONS: { value: WhipCodec; label: string }[] = [
+  { value: 'h264', label: 'H.264' },
+  { value: 'vp8', label: 'VP8' },
+  { value: 'vp9', label: 'VP9' },
+  { value: 'auto', label: 'Auto' },
+];
 
 function InlineVideoPreview({ stream }: { stream: MediaStream }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -111,6 +119,7 @@ export function PendingWhipInputs({
   const [acquiringId, setAcquiringId] = useState<string | null>(null);
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [isBulkConnecting, setIsBulkConnecting] = useState(false);
+  const [codecMap, setCodecMap] = useState<Map<string, WhipCodec>>(new Map());
 
   useEffect(() => {
     previewsRef.current = previews;
@@ -240,6 +249,10 @@ export function PendingWhipInputs({
           setIsActive(false);
         };
 
+        const codec =
+          codecMap.get(pendingInput.id) ??
+          pendingInput.preferredCodec ??
+          'h264';
         const { location } =
           type === 'camera'
             ? await startPublish(
@@ -252,6 +265,7 @@ export function PendingWhipInputs({
                 undefined,
                 undefined,
                 previewStream,
+                codec,
               )
             : await startScreensharePublish(
                 response.inputId,
@@ -261,6 +275,7 @@ export function PendingWhipInputs({
                 streamRef,
                 onDisconnected,
                 previewStream,
+                codec,
               );
 
         setIsActive(true);
@@ -356,6 +371,7 @@ export function PendingWhipInputs({
       setActiveScreenshareInputId,
       setIsCameraActive,
       setIsScreenshareActive,
+      codecMap,
       setPendingInputs,
       updateInput,
       updateRoom,
@@ -440,9 +456,12 @@ export function PendingWhipInputs({
         const accentColor = colorMap?.[placeholderId];
         const preview = previews.get(pendingInput.id);
         const isAcquiring = acquiringId === pendingInput.id;
-        const isConnecting = connectingId === pendingInput.id;
         const isBusy =
           isBulkConnecting || acquiringId !== null || connectingId !== null;
+        const selectedCodec =
+          codecMap.get(pendingInput.id) ??
+          pendingInput.preferredCodec ??
+          'h264';
 
         return (
           <div
@@ -480,8 +499,33 @@ export function PendingWhipInputs({
                 <X className='w-4 h-4' />
               </Button>
             </div>
-            <div className='text-xs text-neutral-500 mb-3'>
+            <div className='text-xs text-neutral-500 mb-2'>
               WHIP input - {preview ? 'preview active' : 'click to connect'}
+            </div>
+
+            <div className='flex items-center gap-1 mb-3'>
+              <span className='text-xs text-neutral-500 mr-1 shrink-0'>
+                Codec:
+              </span>
+              {CODEC_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  disabled={isBusy || !!preview}
+                  onClick={() =>
+                    setCodecMap((prev) => {
+                      const next = new Map(prev);
+                      next.set(pendingInput.id, opt.value);
+                      return next;
+                    })
+                  }
+                  className={`text-[10px] px-1.5 py-0.5 rounded cursor-pointer transition-colors disabled:cursor-not-allowed ${
+                    selectedCodec === opt.value
+                      ? 'bg-neutral-600 text-white'
+                      : 'bg-neutral-800 text-neutral-400 hover:text-white hover:bg-neutral-700'
+                  }`}>
+                  {opt.label}
+                </button>
+              ))}
             </div>
 
             {preview && <InlineVideoPreview stream={preview.stream} />}
