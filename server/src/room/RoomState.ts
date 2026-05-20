@@ -1642,11 +1642,15 @@ export class RoomState {
         ],
         layoutTimestamp: Date.now(),
       };
-      return { layers: [broadcastLayer], inputs };
+      const broadcastInputs = inputs.filter((i) => i.inputId === tile.targetId);
+      return { layers: [broadcastLayer], inputs: broadcastInputs };
     }
     const layer = layers.find((l) => l.id === tile.targetId);
     if (!layer) return { layers, inputs };
-    return { layers: [layer], inputs };
+
+    const usedInputIds = new Set(layer.inputs.map((li) => li.inputId));
+    const filteredInputs = inputs.filter((i) => usedInputIds.has(i.inputId));
+    return { layers: [layer], inputs: filteredInputs };
   }
 
   private setLayersAndSyncInputState(layers: Layer[]): void {

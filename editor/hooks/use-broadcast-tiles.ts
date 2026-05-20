@@ -105,8 +105,27 @@ export function useBroadcastTiles(roomId: string) {
           setTiles(tiles);
           saveToStorage(tiles, selectedTileId, isBroadcastMode);
           console.error('Failed to add broadcast tile:', response.statusText);
+          return;
         }
-        // Server will broadcast the authoritative state via the polling cycle
+        // Replace the optimistic tile with the real one from the server
+        const data = (await response.json()) as {
+          tile: BroadcastTile;
+          selectedBroadcastTileId: string | null;
+        };
+        const realTile = data.tile;
+        const finalTiles = optimisticTiles.map((t) =>
+          t.id === optimisticTile.id ? realTile : t,
+        );
+        // Use server's authoritative selectedId (handles auto-select of first tile)
+        const newSelectedId =
+          data.selectedBroadcastTileId !== undefined
+            ? data.selectedBroadcastTileId
+            : selectedTileId === optimisticTile.id
+              ? realTile.id
+              : selectedTileId;
+        setTiles(finalTiles);
+        setSelectedTileId(newSelectedId);
+        saveToStorage(finalTiles, newSelectedId, isBroadcastMode);
       } catch (error) {
         setTiles(tiles);
         saveToStorage(tiles, selectedTileId, isBroadcastMode);
@@ -137,7 +156,10 @@ export function useBroadcastTiles(roomId: string) {
           setTiles(tiles);
           setSelectedTileId(selectedTileId);
           saveToStorage(tiles, selectedTileId, isBroadcastMode);
-          console.error('Failed to remove broadcast tile:', response.statusText);
+          console.error(
+            'Failed to remove broadcast tile:',
+            response.statusText,
+          );
         }
       } catch (error) {
         setTiles(tiles);
@@ -166,7 +188,10 @@ export function useBroadcastTiles(roomId: string) {
         if (!response.ok) {
           setSelectedTileId(selectedTileId);
           saveToStorage(tiles, selectedTileId, isBroadcastMode);
-          console.error('Failed to select broadcast tile:', response.statusText);
+          console.error(
+            'Failed to select broadcast tile:',
+            response.statusText,
+          );
         }
       } catch (error) {
         setSelectedTileId(selectedTileId);

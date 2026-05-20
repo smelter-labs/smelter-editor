@@ -2272,7 +2272,7 @@ routes.post<RoomIdParams>(
         selectedBroadcastTileId,
         isBroadcastMode,
       } as any);
-      res.status(200).send({ status: 'ok', tile });
+      res.status(200).send({ status: 'ok', tile, selectedBroadcastTileId });
     } catch (err: any) {
       res.status(400).send({
         status: 'error',
