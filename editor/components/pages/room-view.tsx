@@ -94,6 +94,7 @@ export default function RoomView({
         settingsNavPortalRef={settingsNavPortalRef}
         renderDashboard={({
           streamsSection,
+          carouselSection,
           fxSection,
           timelineSection,
           blockPropertiesSection,
@@ -124,6 +125,7 @@ export default function RoomView({
             'connected-devices': <ConnectedDevicesPanel peers={peers} />,
             'system-log': <SystemLogPanel />,
             'motion-detection': motionDetectionSection,
+            carousel: carouselSection,
             'layout-preview': (
               <LayoutPreviewPanel
                 roomId={roomId}

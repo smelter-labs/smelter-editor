@@ -31,7 +31,7 @@ type CarouselSettingsInlineProps = {
   roomId: string;
   inputs: Input[];
   resolution?: Resolution;
-  onBack: () => void;
+  onBack?: () => void;
 };
 
 const MIN_DURATION_MS = 200;
@@ -248,14 +248,17 @@ export function CarouselSettingsInline({
 
   return (
     <div className='p-2 space-y-2'>
-      <div className='flex items-center justify-between'>
-        <button
-          type='button'
-          onClick={onBack}
-          className='flex items-center gap-1 text-xs text-neutral-400 hover:text-white transition-colors'>
-          <ArrowLeft className='w-3 h-3' />
-          Back to inputs
-        </button>
+      <div
+        className={`flex items-center ${onBack ? 'justify-between' : 'justify-end'}`}>
+        {onBack && (
+          <button
+            type='button'
+            onClick={onBack}
+            className='flex items-center gap-1 text-xs text-neutral-400 hover:text-white transition-colors'>
+            <ArrowLeft className='w-3 h-3' />
+            Back to inputs
+          </button>
+        )}
         <button
           type='button'
           onClick={() => setEditInputsOpen(true)}

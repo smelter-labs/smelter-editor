@@ -40,7 +40,7 @@ import { useControlPanelEvents } from './hooks/use-control-panel-events';
 import { FxAccordion } from './components/FxAccordion';
 import { StreamsSection } from './components/StreamsSection';
 import { LayersSection } from './components/LayersSection';
-import { CarouselSection } from './components/CarouselSection';
+import { CarouselPanel } from '@/components/dashboard/carousel-panel';
 import {
   TimelinePanel,
   type TimelinePanelActions,
@@ -183,6 +183,7 @@ type ControlPanelProps = {
   settingsNavPortalRef?: React.RefObject<HTMLDivElement | null>;
   renderDashboard?: (panels: {
     streamsSection: React.ReactNode;
+    carouselSection: React.ReactNode;
     fxSection: React.ReactNode;
     timelineSection: React.ReactNode;
     blockPropertiesSection: React.ReactNode;
@@ -1241,14 +1242,17 @@ function ControlPanelInner({
       </ErrorBoundary>
     );
 
+    const carouselSection = (
+      <CarouselPanel
+        roomId={roomId}
+        layers={roomState.layers}
+        inputs={inputs}
+        resolution={roomState.resolution}
+      />
+    );
+
     const streamsSection = (
       <div className='h-full overflow-y-auto p-3 space-y-3'>
-        <CarouselSection
-          roomId={roomId}
-          layers={roomState.layers}
-          inputs={inputs}
-          resolution={roomState.resolution}
-        />
         <LayersSection
           layers={roomState.layers}
           inputWrappers={inputWrappers}
@@ -1412,6 +1416,7 @@ function ControlPanelInner({
           createPortal(settingsNav, settingsNavPortalRef.current)}
         {renderDashboard({
           streamsSection,
+          carouselSection,
           fxSection,
           timelineSection,
           blockPropertiesSection,

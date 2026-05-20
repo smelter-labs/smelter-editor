@@ -33,8 +33,6 @@ import {
   Filter,
   GripVertical,
   Layers,
-  ListChecks,
-  Settings2,
 } from 'lucide-react';
 import type { Input, Layer, LayerBehaviorConfig } from '@/lib/types';
 import type { Resolution } from '@/lib/resolution';
@@ -43,8 +41,6 @@ import type { InputWrapper } from '../hooks/use-control-panel-state';
 import InputEntry from '@/components/control-panel/input-entry/input-entry';
 import { ErrorBoundary } from '@/components/error-boundary';
 import { useControlPanelContext } from '../contexts/control-panel-context';
-import { CarouselSettingsInline } from './CarouselSettingsInline';
-import { CarouselInputSelectionDialog } from './CarouselInputSelectionDialog';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
 import { BehaviorSelector } from './BehaviorSelector';
 import LoadingSpinner from '@/components/ui/spinner';
