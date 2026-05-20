@@ -141,9 +141,6 @@ type TimelinePanelProps = {
   onTimelineQueueStateChange?: (locked: boolean) => void;
   layers?: Layer[];
   sortMode?: 'timeline' | 'layers';
-  onSortModeChange?: (mode: 'timeline' | 'layers') => void;
-  sortModeSwitchDisabled?: boolean;
-  sortModeSwitchReason?: string;
 };
 
 function replaceLayerInputId(
@@ -209,9 +206,6 @@ export const TimelinePanel = memo(function TimelinePanel({
   onTimelineQueueStateChange,
   layers = [],
   sortMode = 'timeline',
-  onSortModeChange,
-  sortModeSwitchDisabled = false,
-  sortModeSwitchReason,
 }: TimelinePanelProps) {
   const { removeInput, updateRoom } = useActions();
   const {
@@ -1313,7 +1307,11 @@ export const TimelinePanel = memo(function TimelinePanel({
       )}
 
       {/* Transport bar */}
-      <div className='flex items-center gap-2 px-3 h-8 bg-background border-b border-border shrink-0'>
+      <div
+        className={`flex items-center gap-2 px-3 h-8 bg-background border-b border-border shrink-0 ${
+          sortMode === 'layers' ? 'pointer-events-none opacity-50' : ''
+        }`}
+        aria-disabled={sortMode === 'layers'}>
         <Button
           variant='ghost'
           size='icon'
@@ -1399,37 +1397,6 @@ export const TimelinePanel = memo(function TimelinePanel({
             isPlaying={state.isPlaying}
             onChange={setTotalDuration}
           />
-        </div>
-
-        <div className='ml-2 flex items-center gap-1 rounded border border-border bg-background/60 p-0.5'>
-          <Button
-            type='button'
-            variant='ghost'
-            size='sm'
-            className={`rounded px-2 py-0.5 h-auto text-[10px] uppercase tracking-wide cursor-pointer ${
-              sortMode === 'timeline'
-                ? 'bg-secondary text-foreground'
-                : 'text-muted-foreground hover:text-card-foreground'
-            }`}
-            onClick={() => onSortModeChange?.('timeline')}
-            disabled={sortModeSwitchDisabled}
-            title={sortModeSwitchReason ?? 'Timeline sorting mode'}>
-            Timeline
-          </Button>
-          <Button
-            type='button'
-            variant='ghost'
-            size='sm'
-            className={`rounded px-2 py-0.5 h-auto text-[10px] uppercase tracking-wide cursor-pointer ${
-              sortMode === 'layers'
-                ? 'bg-secondary text-foreground'
-                : 'text-muted-foreground hover:text-card-foreground'
-            }`}
-            onClick={() => onSortModeChange?.('layers')}
-            disabled={sortModeSwitchDisabled}
-            title={sortModeSwitchReason ?? 'Layers sorting mode'}>
-            Layers
-          </Button>
         </div>
 
         <div className='flex-1' />
@@ -1532,6 +1499,15 @@ export const TimelinePanel = memo(function TimelinePanel({
           <HelpCircle className='w-3.5 h-3.5' />
         </Button>
       </div>
+
+      {sortMode === 'layers' && (
+        <div
+          role='status'
+          className='shrink-0 bg-amber-500/15 border-b border-amber-500/30 px-3 py-1.5 text-[11px] uppercase tracking-wider text-amber-300 font-medium text-center'>
+          Layers mode active — timeline playback and editing are disabled. Switch
+          to Timeline in the top-right to resume.
+        </div>
+      )}
 
       <div
         className={`relative flex-1 flex flex-col min-h-0 ${

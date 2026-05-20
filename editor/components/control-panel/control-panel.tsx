@@ -1184,6 +1184,10 @@ function ControlPanelInner({
           getTimelineStateForConfig={getTimelineStateForConfig}
           applyImportedTimelineState={applyImportedTimelineState}
           showcasePrefill={showcaseSettingsPrefill}
+          sortMode={sortMode}
+          canSwitchSortMode={canSwitchSortMode}
+          sortModeSwitchReason={sortModeSwitchReason}
+          onSortModeChange={handleSortModeChange}
         />
       </ErrorBoundary>
     );
@@ -1254,9 +1258,6 @@ function ControlPanelInner({
           onTimelineQueueStateChange={setTimelineQueueLocked}
           layers={roomState.layers}
           sortMode={sortMode}
-          onSortModeChange={handleSortModeChange}
-          sortModeSwitchDisabled={!canSwitchSortMode}
-          sortModeSwitchReason={sortModeSwitchReason}
         />
       </ErrorBoundary>
     );
@@ -1457,9 +1458,6 @@ function ControlPanelInner({
         onTimelineQueueStateChange={setTimelineQueueLocked}
         layers={roomState.layers}
         sortMode={sortMode}
-        onSortModeChange={handleSortModeChange}
-        sortModeSwitchDisabled={!canSwitchSortMode}
-        sortModeSwitchReason={sortModeSwitchReason}
       />
     </ErrorBoundary>
   ) : null;
@@ -1484,6 +1482,10 @@ function ControlPanelInner({
                   getTimelineStateForConfig={getTimelineStateForConfig}
                   applyImportedTimelineState={applyImportedTimelineState}
                   showcasePrefill={showcaseSettingsPrefill}
+                  sortMode={sortMode}
+                  canSwitchSortMode={canSwitchSortMode}
+                  sortModeSwitchReason={sortModeSwitchReason}
+                  onSortModeChange={handleSortModeChange}
                 />
               </ErrorBoundary>,
               settingsNavPortalRef.current,
@@ -1590,11 +1592,19 @@ function SettingsBar({
   getTimelineStateForConfig,
   applyImportedTimelineState,
   showcasePrefill,
+  sortMode,
+  canSwitchSortMode,
+  sortModeSwitchReason,
+  onSortModeChange,
 }: {
   roomState: RoomState;
   getTimelineStateForConfig: () => TimelineState | null;
   applyImportedTimelineState: (state: TimelineState | null) => void;
   showcasePrefill: ShowcaseSettingsPrefill | null;
+  sortMode: 'timeline' | 'layers';
+  canSwitchSortMode: boolean;
+  sortModeSwitchReason?: string;
+  onSortModeChange: (mode: 'timeline' | 'layers') => void;
 }) {
   const { roomId, refreshState: handleRefreshState } = useControlPanelContext();
   const actions = useActions();
@@ -2121,6 +2131,18 @@ function SettingsBar({
           </button>
         </nav>
         <div className='ml-auto flex items-center gap-4 uppercase tracking-widest text-xl font-bold'>
+          <label
+            className={`flex items-center gap-2 ${canSwitchSortMode ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
+            title={sortModeSwitchReason ?? 'Toggle layers sorting mode'}>
+            <span className='text-[#849495]'>Layers</span>
+            <Switch
+              checked={sortMode === 'layers'}
+              onCheckedChange={(checked) =>
+                onSortModeChange(checked ? 'layers' : 'timeline')
+              }
+              disabled={!canSwitchSortMode}
+            />
+          </label>
           <label className='flex items-center gap-2 cursor-pointer'>
             <span className='text-[#849495]'>Public</span>
             <Switch
