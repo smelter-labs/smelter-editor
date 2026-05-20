@@ -801,6 +801,55 @@ function ControlPanelInner({
     }
   }, [sceneMutationVersion, sortMode]);
 
+  const layersModeLoopedInputsRef = useRef<Set<string>>(new Set());
+  const inputsForLayersLoopRef = useRef(inputs);
+  inputsForLayersLoopRef.current = inputs;
+  const restartMp4InputAction = actions.restartMp4Input;
+  const restartMp4InputActionRef = useRef(restartMp4InputAction);
+  restartMp4InputActionRef.current = restartMp4InputAction;
+
+  useEffect(() => {
+    if (sortMode === 'layers') {
+      const tlState = timelineStateRef.current;
+      if (!tlState) return;
+
+      const loopableInputIds = new Set<string>();
+      for (const track of tlState.tracks) {
+        for (const clip of track.clips) {
+          if (clip.blockSettings.mp4Loop !== false) {
+            loopableInputIds.add(clip.inputId);
+          }
+        }
+      }
+
+      for (const input of inputsForLayersLoopRef.current) {
+        if (
+          input.type === 'local-mp4' &&
+          input.status === 'connected' &&
+          !input.mp4AssetMissing &&
+          loopableInputIds.has(input.inputId)
+        ) {
+          layersModeLoopedInputsRef.current.add(input.inputId);
+          void restartMp4InputActionRef.current(
+            roomId,
+            input.inputId,
+            0,
+            true,
+          ).catch(() => {});
+        }
+      }
+    } else {
+      const started = layersModeLoopedInputsRef.current;
+      if (started.size === 0) return;
+      for (const inputId of started) {
+        void restartMp4InputActionRef.current(roomId, inputId, 0, false).catch(
+          () => {},
+        );
+      }
+      layersModeLoopedInputsRef.current = new Set();
+    }
+  }, [sortMode, roomId]);
+
   useEffect(() => {
     if (
       !isGuest &&
