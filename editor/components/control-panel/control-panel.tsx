@@ -135,6 +135,7 @@ import {
   buildInputColorMap,
   TYPE_HSL,
 } from './components/timeline/timeline-utils';
+import { buildVideoOverlayRects } from '@/lib/build-video-overlay-rects';
 import {
   emitTimelineEvent,
   listenTimelineEvent,
@@ -1376,32 +1377,13 @@ function ControlPanelInner({
       />
     );
 
-    const videoOverlayRects: VideoOverlayRect[] = (() => {
-      if (!videoOverlayEnabled || selectedTimelineClips.length === 0) return [];
-      const playhead = timelinePlayheadMs;
-      const layers = roomState.layers;
-      const colorMap = buildInputColorMap(inputs);
-      const rects: VideoOverlayRect[] = [];
-      for (const clip of selectedTimelineClips) {
-        if (playhead < clip.startMs || playhead >= clip.endMs) continue;
-        for (const layer of layers) {
-          const li = layer.inputs.find((i) => i.inputId === clip.inputId);
-          if (li && li.width > 0 && li.height > 0) {
-            const tc = clip.blockSettings.timelineColor;
-            const fallback = colorMap.get(clip.inputId)?.dot;
-            rects.push({
-              x: li.x,
-              y: li.y,
-              width: li.width,
-              height: li.height,
-              color: tc || fallback || '#ffffff',
-            });
-            break;
-          }
-        }
-      }
-      return rects;
-    })();
+    const videoOverlayRects = buildVideoOverlayRects({
+      enabled: videoOverlayEnabled,
+      clips: effectiveSelectedClips,
+      playheadMs: timelinePlayheadMs,
+      layers: roomState.layers,
+      colorMap: buildInputColorMap(inputs),
+    });
 
     return (
       <DashboardToolbarProvider>

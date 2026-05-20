@@ -33,6 +33,8 @@ import {
   Filter,
   GripVertical,
   Layers,
+  ListChecks,
+  Settings2,
 } from 'lucide-react';
 import type { Input, Layer, LayerBehaviorConfig } from '@/lib/types';
 import type { Resolution } from '@/lib/resolution';
