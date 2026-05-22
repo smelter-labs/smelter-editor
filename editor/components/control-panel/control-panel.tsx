@@ -2097,15 +2097,18 @@ function SettingsBar({
                   {dashboardToolbar.isEditMode ? 'Lock Layout' : 'Edit Layout'}
                 </button>
                 <div className='h-px bg-[#3a494b]/30 my-1' />
-                {dashboardToolbar.presets.map((preset) => (
-                  <button
-                    key={preset.id}
-                    onClick={() => dashboardToolbar.applyPreset(preset.layout)}
-                    className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
-                    {preset.label}
-                  </button>
-                ))}
-                <div className='h-px bg-[#3a494b]/30 my-1' />
+                {appMode !== 'demo' &&
+                  dashboardToolbar.presets.map((preset) => (
+                    <button
+                      key={preset.id}
+                      onClick={() => dashboardToolbar.applyPreset(preset.layout)}
+                      className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
+                      {preset.label}
+                    </button>
+                  ))}
+                {appMode !== 'demo' && (
+                  <div className='h-px bg-[#3a494b]/30 my-1' />
+                )}
                 <button
                   onClick={() => setShowDashSaveModal(true)}
                   className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
@@ -2179,24 +2182,26 @@ function SettingsBar({
           </button>
         </nav>
         <div className='ml-auto flex items-center gap-4 uppercase tracking-widest text-xl font-bold'>
-          <button
-            type='button'
-            onClick={() => setShowSaveModal(true)}
-            disabled={isExporting || isExportingFullProject}
-            title={
-              isExporting || isExportingFullProject ? 'Saving...' : 'Save'
-            }
-            className='inline-flex items-center justify-center h-8 w-8 text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'>
-            <Save className='h-5 w-5' />
-          </button>
-          <button
-            type='button'
-            onClick={() => setShowLoadModal(true)}
-            disabled={isImporting}
-            title={isImporting ? 'Loading...' : 'Load'}
-            className='inline-flex items-center justify-center h-8 w-8 text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'>
-            <FolderOpen className='h-5 w-5' />
-          </button>
+          <div className='flex items-center gap-1'>
+            <button
+              type='button'
+              onClick={() => setShowSaveModal(true)}
+              disabled={isExporting || isExportingFullProject}
+              title={
+                isExporting || isExportingFullProject ? 'Saving...' : 'Save'
+              }
+              className='inline-flex items-center justify-center h-8 w-8 text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'>
+              <Save className='h-5 w-5' />
+            </button>
+            <button
+              type='button'
+              onClick={() => setShowLoadModal(true)}
+              disabled={isImporting}
+              title={isImporting ? 'Loading...' : 'Load'}
+              className='inline-flex items-center justify-center h-8 w-8 text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'>
+              <FolderOpen className='h-5 w-5' />
+            </button>
+          </div>
           <label
             className={`flex items-center gap-2 ${canSwitchSortMode ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
             title={sortModeSwitchReason ?? 'Toggle layers sorting mode'}>

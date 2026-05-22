@@ -234,14 +234,12 @@ export function AbsolutePositionController({
           origLeft: pos.left,
           origTop: pos.top,
         };
-        if (!demoMode) {
-          startLongPress(e.clientX, e.clientY, 'crop');
-        }
+        startLongPress(e.clientX, e.clientY, 'crop');
       } else {
         startLongPress(e.clientX, e.clientY, 'position');
       }
     },
-    [mode, pos, startLongPress, demoMode],
+    [mode, pos, startLongPress],
   );
 
   const handleCornerMouseDown = useCallback(
@@ -621,7 +619,6 @@ export function AbsolutePositionController({
 
         {/* Position mode: corner resize handles */}
         {mode === 'position' &&
-          !demoMode &&
           corners.map((c) => (
             <div
               key={c.id}
@@ -696,12 +693,12 @@ export function AbsolutePositionController({
         )}
       </div>
 
-      {!demoMode && mode === 'crop' && (
+      {mode === 'crop' && (
         <div className='text-[10px] text-green-400 mt-1 text-center'>
           Crop mode — hold 0.5s / Esc / click outside to exit
         </div>
       )}
-      {!demoMode && mode === 'position' && (
+      {mode === 'position' && (
         <div className='text-[10px] text-neutral-500 mt-1 text-center'>
           Hold 0.5s on rect to enter crop mode
         </div>

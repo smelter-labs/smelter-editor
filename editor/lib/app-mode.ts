@@ -13,6 +13,7 @@ export const DEMO_MODE_HIDDEN_PANELS: ReadonlySet<string> = new Set([
   'fx',
   'pending-connections',
   'layout-preview',
+  'motion-detection',
 ]);
 
 function isAppMode(value: unknown): value is AppMode {
