@@ -165,6 +165,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import QRCode from 'react-qr-code';
+import { Save, FolderOpen } from 'lucide-react';
 
 export type VideoOverlayRect = {
   x: number;
@@ -2163,18 +2164,6 @@ function SettingsBar({
               )}
             </div>
           </div>
-          <button
-            onClick={() => setShowSaveModal(true)}
-            disabled={isExporting || isExportingFullProject}
-            className={navLinkClass}>
-            {isExporting || isExportingFullProject ? 'Saving...' : 'Save'}
-          </button>
-          <button
-            onClick={() => setShowLoadModal(true)}
-            disabled={isImporting}
-            className={navLinkClass}>
-            {isImporting ? 'Loading...' : 'Load'}
-          </button>
           <button onClick={() => setShowQRModal(true)} className={navLinkClass}>
             Join via QR
           </button>
@@ -2190,6 +2179,24 @@ function SettingsBar({
           </button>
         </nav>
         <div className='ml-auto flex items-center gap-4 uppercase tracking-widest text-xl font-bold'>
+          <button
+            type='button'
+            onClick={() => setShowSaveModal(true)}
+            disabled={isExporting || isExportingFullProject}
+            title={
+              isExporting || isExportingFullProject ? 'Saving...' : 'Save'
+            }
+            className='inline-flex items-center justify-center h-8 w-8 text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'>
+            <Save className='h-5 w-5' />
+          </button>
+          <button
+            type='button'
+            onClick={() => setShowLoadModal(true)}
+            disabled={isImporting}
+            title={isImporting ? 'Loading...' : 'Load'}
+            className='inline-flex items-center justify-center h-8 w-8 text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'>
+            <FolderOpen className='h-5 w-5' />
+          </button>
           <label
             className={`flex items-center gap-2 ${canSwitchSortMode ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
             title={sortModeSwitchReason ?? 'Toggle layers sorting mode'}>
@@ -2663,7 +2670,7 @@ function QRModal({
               setActiveTab('whip');
               setCopied(false);
             }}>
-            WHIP Link
+            Mobile
           </button>
           <button
             type='button'
@@ -2672,7 +2679,7 @@ function QRModal({
               setActiveTab('mobile');
               setCopied(false);
             }}>
-            Mobile
+            Browser
           </button>
         </div>
         <p className='text-xs text-muted-foreground'>
