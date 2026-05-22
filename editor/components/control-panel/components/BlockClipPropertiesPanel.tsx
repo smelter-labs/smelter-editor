@@ -1867,18 +1867,21 @@ export function BlockClipPropertiesPanel({
         }
         onAddShader={handleShaderToggle}
       />
-      {!isOutputClip && !isMultiSelect && !isInputLevel && selectedTimelineClip && (
-        <SwapSourceModal
-          open={swapModalOpen}
-          onOpenChange={setSwapModalOpen}
-          currentInputId={selectedTimelineClip.inputId}
-          inputs={inputs}
-          roomId={roomId}
-          onSwap={handleSwapSource}
-          trackId={selectedTimelineClip.trackId}
-          clipId={selectedTimelineClip.clipId}
-        />
-      )}
+      {!isOutputClip &&
+        !isMultiSelect &&
+        !isInputLevel &&
+        selectedTimelineClip && (
+          <SwapSourceModal
+            open={swapModalOpen}
+            onOpenChange={setSwapModalOpen}
+            currentInputId={selectedTimelineClip.inputId}
+            inputs={inputs}
+            roomId={roomId}
+            onSwap={handleSwapSource}
+            trackId={selectedTimelineClip.trackId}
+            clipId={selectedTimelineClip.clipId}
+          />
+        )}
     </div>
   );
 }

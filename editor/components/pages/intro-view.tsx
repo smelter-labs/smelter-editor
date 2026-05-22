@@ -97,7 +97,7 @@ export default function IntroView() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const { toggleMode } = useAppMode();
+  const { mode: appMode, toggleMode } = useAppMode();
   const [loadingNew, setLoadingNew] = useState(false);
   const [loadingImport, setLoadingImport] = useState(false);
   const [importProgress, setImportProgress] =
@@ -681,35 +681,37 @@ export default function IntroView() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button
-                size='lg'
-                variant='default'
-                className='w-full cursor-pointer text-lg py-6 font-bold'
-                onClick={() => {
-                  if (showcaseConfigs.length === 0) {
-                    return;
-                  }
-                  if (showcaseConfigs.length === 1) {
-                    handleStartShowcase(showcaseConfigs[0]);
-                  } else {
-                    setShowShowcasePicker(true);
-                  }
-                }}
-                disabled={
-                  loadingNew ||
-                  loadingImport ||
-                  loadingShowcase ||
-                  showcaseConfigs.length === 0
-                }>
-                {loadingShowcase ? (
-                  <LoadingSpinner size='sm' variant='spinner' />
-                ) : (
-                  <>
-                    <Presentation className='w-5 h-5 mr-2' />
-                    Start Showcase
-                  </>
-                )}
-              </Button>
+              {appMode !== 'demo' && (
+                <Button
+                  size='lg'
+                  variant='default'
+                  className='w-full cursor-pointer text-lg py-6 font-bold'
+                  onClick={() => {
+                    if (showcaseConfigs.length === 0) {
+                      return;
+                    }
+                    if (showcaseConfigs.length === 1) {
+                      handleStartShowcase(showcaseConfigs[0]);
+                    } else {
+                      setShowShowcasePicker(true);
+                    }
+                  }}
+                  disabled={
+                    loadingNew ||
+                    loadingImport ||
+                    loadingShowcase ||
+                    showcaseConfigs.length === 0
+                  }>
+                  {loadingShowcase ? (
+                    <LoadingSpinner size='sm' variant='spinner' />
+                  ) : (
+                    <>
+                      <Presentation className='w-5 h-5 mr-2' />
+                      Start Showcase
+                    </>
+                  )}
+                </Button>
+              )}
               <Button
                 size='lg'
                 variant='default'

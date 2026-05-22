@@ -114,7 +114,11 @@ describe('output-code-storage', () => {
   });
 
   it('creates a new snapshot for new live code', () => {
-    const result = createSnapshot(defaultState(), 'new-code\nline2', mockSceneState);
+    const result = createSnapshot(
+      defaultState(),
+      'new-code\nline2',
+      mockSceneState,
+    );
     expect(result.deduped).toBe(false);
     expect(result.state.snapshots).toHaveLength(1);
     expect(result.state.snapshots[0]?.code).toBe('new-code\nline2');

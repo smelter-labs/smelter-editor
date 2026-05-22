@@ -850,21 +850,18 @@ function ControlPanelInner({
           loopableInputIds.has(input.inputId)
         ) {
           layersModeLoopedInputsRef.current.add(input.inputId);
-          void restartMp4InputActionRef.current(
-            roomId,
-            input.inputId,
-            0,
-            true,
-          ).catch(() => {});
+          void restartMp4InputActionRef
+            .current(roomId, input.inputId, 0, true)
+            .catch(() => {});
         }
       }
     } else {
       const started = layersModeLoopedInputsRef.current;
       if (started.size === 0) return;
       for (const inputId of started) {
-        void restartMp4InputActionRef.current(roomId, inputId, 0, false).catch(
-          () => {},
-        );
+        void restartMp4InputActionRef
+          .current(roomId, inputId, 0, false)
+          .catch(() => {});
       }
       layersModeLoopedInputsRef.current = new Set();
     }
@@ -1684,6 +1681,7 @@ function SettingsBar({
   const actions = useActions();
   const updateRoomAction = actions.updateRoom;
   const configStorageSave = actions.configStorage.save;
+  const { mode: appMode } = useAppMode();
   const [openModal, setOpenModal] = useState<ModalId | null>(null);
   const [showAddVideoModal, setShowAddVideoModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -2156,11 +2154,13 @@ function SettingsBar({
                 className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
                 General
               </button>
-              <button
-                onClick={() => setOpenModal('showcase')}
-                className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
-                Showcase
-              </button>
+              {appMode !== 'demo' && (
+                <button
+                  onClick={() => setOpenModal('showcase')}
+                  className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
+                  Showcase
+                </button>
+              )}
             </div>
           </div>
           <button
@@ -2202,15 +2202,16 @@ function SettingsBar({
               disabled={!canSwitchSortMode}
             />
           </label>
-          {!canSwitchSortMode && sortModeSwitchReason?.includes('request queue') && (
-            <button
-              type='button'
-              onClick={onResetSortModeBlockers}
-              title='Force-clear stuck request queue'
-              className='text-[10px] normal-case tracking-normal font-medium text-amber-400/80 hover:text-amber-300 border border-amber-500/40 hover:border-amber-400/70 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded transition-colors'>
-              Reset queue
-            </button>
-          )}
+          {!canSwitchSortMode &&
+            sortModeSwitchReason?.includes('request queue') && (
+              <button
+                type='button'
+                onClick={onResetSortModeBlockers}
+                title='Force-clear stuck request queue'
+                className='text-[10px] normal-case tracking-normal font-medium text-amber-400/80 hover:text-amber-300 border border-amber-500/40 hover:border-amber-400/70 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded transition-colors'>
+                Reset queue
+              </button>
+            )}
           <label className='flex items-center gap-2 cursor-pointer'>
             <span className='text-[#849495]'>Public</span>
             <Switch

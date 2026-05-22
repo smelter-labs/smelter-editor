@@ -53,7 +53,10 @@ import { CarouselSettingsInline } from './CarouselSettingsInline';
 import { CarouselInputSelectionDialog } from './CarouselInputSelectionDialog';
 import LoadingSpinner from '@/components/ui/spinner';
 import { sortInputsByTimelineTrackOrder } from '@/lib/timeline-layer-order';
-import { applyDragOverToLayers } from '@/lib/layers-drag-over';
+import {
+  applyDragOverToLayers,
+  applyDragEndToLayers,
+} from '@/lib/layers-drag-over';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -358,8 +361,9 @@ export function LayersSection({
   const [colorFilterLayers, setColorFilterLayers] = useState<Set<string>>(
     new Set(),
   );
-  const [carouselSettingsOpenLayers, setCarouselSettingsOpenLayers] =
-    useState<Set<string>>(new Set());
+  const [carouselSettingsOpenLayers, setCarouselSettingsOpenLayers] = useState<
+    Set<string>
+  >(new Set());
   const layerNamesRef = useRef<Map<string, number>>(new Map());
   const nextLayerNumberRef = useRef(0);
   const dragAffectedLayerIdsRef = useRef<Set<string>>(new Set());
@@ -514,19 +518,29 @@ export function LayersSection({
 
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
-      const { over } = event;
+      const { active, over } = event;
       setActiveId(null);
       setActiveDragItem(null);
 
-      const affected = dragAffectedLayerIdsRef.current;
-      const didMove = dragDidMoveRef.current;
+      const affectedFromDragOver = dragAffectedLayerIdsRef.current;
+      const dragDidMove = dragDidMoveRef.current;
       dragAffectedLayerIdsRef.current = new Set();
       dragDidMoveRef.current = false;
 
-      if (!over || !didMove) return;
+      if (!over) return;
+
+      const finalized = applyDragEndToLayers(localLayers, active.id, over.id);
+      const baseLayers = finalized ?? localLayers;
+      if (!finalized && !dragDidMove) return;
+
+      const affected = new Set(affectedFromDragOver);
+      if (finalized) {
+        const activeRef = findDragItem(active.id);
+        if (activeRef?.type === 'input') affected.add(activeRef.layerId);
+      }
 
       const resolution = { width: 1920, height: 1080 };
-      const nextLayers = localLayers.map((l) => {
+      const nextLayers = baseLayers.map((l) => {
         if (!affected.has(l.id) || !l.behavior) return l;
         try {
           const layerInputInfos = l.inputs
@@ -557,7 +571,7 @@ export function LayersSection({
         setLocalLayers(layers);
       }
     },
-    [localLayers, inputs, onLayersChange, layers],
+    [localLayers, inputs, onLayersChange, layers, findDragItem],
   );
 
   const handleDragCancel = useCallback(() => {
@@ -701,7 +715,9 @@ export function LayersSection({
                     onToggleEnabled={() => handleToggleEnabled(layer.id)}
                     isGuest={isGuest}
                     dragDisabled={disableDrag}
-                    isCarouselSettingsOpen={carouselSettingsOpenLayers.has(layer.id)}
+                    isCarouselSettingsOpen={carouselSettingsOpenLayers.has(
+                      layer.id,
+                    )}
                     onToggleCarouselSettings={
                       layer.carousel
                         ? () => toggleCarouselSettings(layer.id)
@@ -756,7 +772,7 @@ export function LayersSection({
                               id={layerInput.inputId}
                               disabled={disableDrag}>
                               <ErrorBoundary>
-                                {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+                                {}
                                 <div
                                   onClick={() =>
                                     onSelectInput?.(
@@ -907,25 +923,26 @@ export function LayersSection({
         </button>
       )}
 
-      {carouselInputModalLayerId && (() => {
-        const carouselLayer = localLayers.find(
-          (l) => l.id === carouselInputModalLayerId,
-        );
-        if (!carouselLayer?.carousel) return null;
-        return (
-          <CarouselInputSelectionDialog
-            open
-            onOpenChange={(v) => {
-              if (!v) setCarouselInputModalLayerId(null);
-            }}
-            inputs={inputs}
-            carouselLayer={carouselLayer}
-            layers={localLayers}
-            roomId={roomId}
-            resolution={resolution}
-          />
-        );
-      })()}
+      {carouselInputModalLayerId &&
+        (() => {
+          const carouselLayer = localLayers.find(
+            (l) => l.id === carouselInputModalLayerId,
+          );
+          if (!carouselLayer?.carousel) return null;
+          return (
+            <CarouselInputSelectionDialog
+              open
+              onOpenChange={(v) => {
+                if (!v) setCarouselInputModalLayerId(null);
+              }}
+              inputs={inputs}
+              carouselLayer={carouselLayer}
+              layers={localLayers}
+              roomId={roomId}
+              resolution={resolution}
+            />
+          );
+        })()}
     </div>
   );
 }
