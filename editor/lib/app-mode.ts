@@ -4,6 +4,8 @@ export const APP_MODES: AppMode[] = ['demo', 'geek'];
 export const DEFAULT_APP_MODE: AppMode = 'demo';
 
 const APP_MODE_STORAGE_KEY = 'smelter-app-mode';
+export const APP_MODE_COOKIE_NAME = 'smelter-app-mode';
+const ONE_YEAR_SECONDS = 60 * 60 * 24 * 365;
 
 export const DEMO_MODE_HIDDEN_PANELS: ReadonlySet<string> = new Set([
   'timeline',
@@ -34,6 +36,7 @@ export function setStoredAppMode(mode: AppMode): void {
   } catch {
     // localStorage full or unavailable
   }
+  document.cookie = `${APP_MODE_COOKIE_NAME}=${mode}; Path=/; Max-Age=${ONE_YEAR_SECONDS}; SameSite=Lax`;
 }
 
 export function isPanelHiddenInMode(panelId: string, mode: AppMode): boolean {

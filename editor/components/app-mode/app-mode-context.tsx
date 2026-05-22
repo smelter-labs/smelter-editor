@@ -27,20 +27,20 @@ export function AppModeProvider({ children }: { children: React.ReactNode }) {
   const [mode, setModeState] = useState<AppMode>(DEFAULT_APP_MODE);
 
   useEffect(() => {
-    setModeState(getStoredAppMode());
+    const stored = getStoredAppMode();
+    setModeState(stored);
+    setStoredAppMode(stored);
   }, []);
 
   const setMode = useCallback((next: AppMode) => {
-    setModeState(next);
     setStoredAppMode(next);
+    window.location.reload();
   }, []);
 
   const toggleMode = useCallback(() => {
-    setModeState((prev) => {
-      const next: AppMode = prev === 'demo' ? 'geek' : 'demo';
-      setStoredAppMode(next);
-      return next;
-    });
+    const next: AppMode = getStoredAppMode() === 'demo' ? 'geek' : 'demo';
+    setStoredAppMode(next);
+    window.location.reload();
   }, []);
 
   const value = useMemo<AppModeContextValue>(
