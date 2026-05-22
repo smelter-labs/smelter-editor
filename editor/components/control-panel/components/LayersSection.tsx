@@ -655,6 +655,7 @@ export function LayersSection({
         collisionDetection={cursorBasedCollision}
         modifiers={[snapCenterToCursor]}
         onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}>
         <SortableContext

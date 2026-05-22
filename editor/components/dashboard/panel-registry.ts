@@ -341,6 +341,102 @@ export function createResponsiveLayoutsFromLg(
 export const DEFAULT_RESPONSIVE_LAYOUTS: DashboardLayouts =
   createResponsiveLayoutsFromLg(DEFAULT_LAYOUT);
 
+export const DEMO_MODE_DEFAULT_VISIBLE_PANEL_IDS: StaticPanelId[] = [
+  'video-preview',
+  'streams',
+  'block-properties',
+  'system-log',
+  'carousel',
+  'output-code',
+];
+
+export const DEMO_MODE_DEFAULT_LAYOUTS: DashboardLayouts = {
+  lg: [
+    { i: 'video-preview', x: 0, y: 0, w: 12, h: 16, minW: 6, minH: 6 },
+    { i: 'streams', x: 12, y: 0, w: 5, h: 15, minW: 4, minH: 4 },
+    { i: 'block-properties', x: 17, y: 0, w: 7, h: 26, minW: 4, minH: 6 },
+    { i: 'carousel', x: 0, y: 16, w: 7, h: 10, minW: 4, minH: 8 },
+    { i: 'output-code', x: 7, y: 16, w: 10, h: 10, minW: 6, minH: 8 },
+    { i: 'system-log', x: 17, y: 25, w: 7, h: 6, minW: 4, minH: 3 },
+    { i: 'timeline', x: 0, y: 15, w: 17, h: 10, minW: 8, minH: 4 },
+    { i: 'fx', x: 16, y: 25, w: 8, h: 8, minW: 4, minH: 4 },
+    { i: 'connected-devices', x: 16, y: 32, w: 4, h: 6, minW: 4, minH: 4 },
+    { i: 'layout-preview', x: 12, y: 0, w: 5, h: 9, minW: 4, minH: 3 },
+    { i: 'pending-connections', x: 0, y: 31, w: 8, h: 5, minW: 4, minH: 3 },
+    { i: 'motion-detection', x: 0, y: 67, w: 8, h: 6, minW: 4, minH: 4 },
+  ],
+  md: [
+    { i: 'video-preview', x: 0, y: 0, w: 13, h: 20, minW: 5, minH: 6 },
+    { i: 'streams', x: 13, y: 0, w: 7, h: 6, minW: 3, minH: 4 },
+    { i: 'block-properties', x: 0, y: 18, w: 13, h: 8, minW: 3, minH: 6 },
+    { i: 'carousel', x: 0, y: 807, w: 8, h: 10, minW: 4, minH: 8 },
+    { i: 'output-code', x: 0, y: 817, w: 10, h: 10, minW: 6, minH: 8 },
+    { i: 'system-log', x: 0, y: 26, w: 8, h: 5, minW: 4, minH: 3 },
+    { i: 'timeline', x: 0, y: 10, w: 13, h: 8, minW: 7, minH: 4 },
+    { i: 'fx', x: 13, y: 20, w: 7, h: 8, minW: 3, minH: 4 },
+    { i: 'connected-devices', x: 13, y: 6, w: 7, h: 8, minW: 3, minH: 4 },
+    { i: 'layout-preview', x: 0, y: 41, w: 8, h: 5, minW: 4, minH: 3 },
+    { i: 'pending-connections', x: 0, y: 741, w: 8, h: 5, minW: 4, minH: 3 },
+    { i: 'motion-detection', x: 0, y: 801, w: 8, h: 6, minW: 4, minH: 4 },
+  ],
+  sm: [
+    { i: 'video-preview', x: 0, y: 0, w: 8, h: 21, minW: 3, minH: 6 },
+    { i: 'streams', x: 8, y: 0, w: 4, h: 6, minW: 2, minH: 4 },
+    { i: 'block-properties', x: 0, y: 24, w: 8, h: 8, minW: 2, minH: 6 },
+    { i: 'carousel', x: 0, y: 802, w: 8, h: 10, minW: 4, minH: 8 },
+    { i: 'output-code', x: 0, y: 812, w: 10, h: 10, minW: 6, minH: 8 },
+    { i: 'system-log', x: 0, y: 32, w: 8, h: 5, minW: 4, minH: 3 },
+    { i: 'timeline', x: 0, y: 16, w: 8, h: 8, minW: 4, minH: 4 },
+    { i: 'fx', x: 8, y: 20, w: 4, h: 8, minW: 2, minH: 4 },
+    { i: 'connected-devices', x: 8, y: 6, w: 4, h: 8, minW: 2, minH: 4 },
+    { i: 'layout-preview', x: 0, y: 29, w: 8, h: 5, minW: 4, minH: 3 },
+    { i: 'pending-connections', x: 0, y: 736, w: 8, h: 5, minW: 4, minH: 3 },
+    { i: 'motion-detection', x: 0, y: 796, w: 8, h: 6, minW: 4, minH: 4 },
+  ],
+  xs: [
+    { i: 'video-preview', x: 0, y: 0, w: 5, h: 20, minW: 2, minH: 6 },
+    { i: 'streams', x: 5, y: 0, w: 3, h: 6, minW: 1, minH: 4 },
+    { i: 'block-properties', x: 0, y: 23, w: 5, h: 8, minW: 1, minH: 6 },
+    { i: 'carousel', x: 0, y: 807, w: 8, h: 10, minW: 4, minH: 8 },
+    { i: 'output-code', x: 0, y: 817, w: 8, h: 10, minW: 6, minH: 8 },
+    { i: 'system-log', x: 0, y: 31, w: 8, h: 5, minW: 4, minH: 3 },
+    { i: 'timeline', x: 0, y: 15, w: 5, h: 8, minW: 3, minH: 4 },
+    { i: 'fx', x: 5, y: 20, w: 3, h: 8, minW: 1, minH: 4 },
+    { i: 'connected-devices', x: 5, y: 14, w: 3, h: 8, minW: 1, minH: 4 },
+    { i: 'layout-preview', x: 0, y: 221, w: 8, h: 5, minW: 4, minH: 3 },
+    { i: 'pending-connections', x: 0, y: 741, w: 8, h: 5, minW: 4, minH: 3 },
+    { i: 'motion-detection', x: 0, y: 801, w: 8, h: 6, minW: 4, minH: 4 },
+  ],
+  xxs: [
+    { i: 'video-preview', x: 0, y: 0, w: 3, h: 24, minW: 1, minH: 6 },
+    { i: 'streams', x: 3, y: 14, w: 1, h: 6, minW: 1, minH: 4 },
+    { i: 'block-properties', x: 0, y: 28, w: 3, h: 8, minW: 1, minH: 6 },
+    { i: 'carousel', x: 0, y: 807, w: 4, h: 10, minW: 4, minH: 8 },
+    { i: 'output-code', x: 0, y: 817, w: 4, h: 10, minW: 4, minH: 8 },
+    { i: 'system-log', x: 0, y: 206, w: 4, h: 5, minW: 4, minH: 3 },
+    { i: 'timeline', x: 0, y: 20, w: 3, h: 8, minW: 1, minH: 4 },
+    { i: 'fx', x: 3, y: 20, w: 1, h: 8, minW: 1, minH: 4 },
+    { i: 'connected-devices', x: 3, y: 28, w: 1, h: 8, minW: 1, minH: 4 },
+    { i: 'layout-preview', x: 0, y: 221, w: 4, h: 5, minW: 4, minH: 3 },
+    { i: 'pending-connections', x: 0, y: 741, w: 4, h: 5, minW: 4, minH: 3 },
+    { i: 'motion-detection', x: 0, y: 801, w: 4, h: 6, minW: 4, minH: 4 },
+  ],
+};
+
+export function getDefaultLayouts(mode: 'demo' | 'geek'): DashboardLayouts {
+  return mode === 'demo'
+    ? DEMO_MODE_DEFAULT_LAYOUTS
+    : DEFAULT_RESPONSIVE_LAYOUTS;
+}
+
+export function getDefaultVisiblePanelIds(
+  mode: 'demo' | 'geek',
+): readonly string[] {
+  return mode === 'demo'
+    ? DEMO_MODE_DEFAULT_VISIBLE_PANEL_IDS
+    : DEFAULT_VISIBLE_PANEL_IDS;
+}
+
 function isLayoutArray(layout: unknown): layout is MutableLayout {
   return (
     Array.isArray(layout) &&
@@ -434,19 +530,19 @@ export function clearLayout(): void {
 
 const VISIBLE_PANELS_KEY = 'smelter-dashboard-visible-panels';
 
-export function loadVisiblePanels(): Set<string> {
-  if (typeof window === 'undefined')
-    return new Set<string>(DEFAULT_VISIBLE_PANEL_IDS);
+export function loadVisiblePanels(
+  defaultIds: readonly string[] = DEFAULT_VISIBLE_PANEL_IDS,
+): Set<string> {
+  if (typeof window === 'undefined') return new Set<string>(defaultIds);
   try {
     const stored = localStorage.getItem(VISIBLE_PANELS_KEY);
-    if (!stored) return new Set<string>(DEFAULT_VISIBLE_PANEL_IDS);
+    if (!stored) return new Set<string>(defaultIds);
     const parsed = JSON.parse(stored) as string[];
-    if (!Array.isArray(parsed))
-      return new Set<string>(DEFAULT_VISIBLE_PANEL_IDS);
+    if (!Array.isArray(parsed)) return new Set<string>(defaultIds);
     const valid = parsed.filter((id) => isKnownPanelId(id));
-    return new Set(valid.length > 0 ? valid : DEFAULT_VISIBLE_PANEL_IDS);
+    return new Set(valid.length > 0 ? valid : defaultIds);
   } catch {
-    return new Set<string>(DEFAULT_VISIBLE_PANEL_IDS);
+    return new Set<string>(defaultIds);
   }
 }
 

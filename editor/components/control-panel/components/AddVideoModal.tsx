@@ -8,7 +8,7 @@ import {
   useState,
   type MutableRefObject,
 } from 'react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
@@ -1381,6 +1381,7 @@ export function AddVideoModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='max-w-[1100px] w-[95vw] max-h-[85vh] h-[85vh] bg-[#131313]/95 backdrop-blur-sm border border-[#3a494b]/30 p-0 gap-0 overflow-hidden [&>button]:text-[#849495] [&>button]:hover:text-[#e3fdff]'>
+        <DialogTitle className='sr-only'>Add asset</DialogTitle>
         <AssetBrowserPanel
           roomId={roomId}
           refreshState={refreshState}
@@ -2435,9 +2436,11 @@ function InspectorConfirmDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='max-w-[460px] w-[92vw] bg-[#131313]/95 backdrop-blur-sm border border-[#3a494b]/30 p-0 gap-0 overflow-hidden [&>button]:text-[#849495] [&>button]:hover:text-[#e3fdff]'>
         <div className='px-4 py-3 border-b border-[#3a494b]/20'>
-          <h3 className='font-headline font-bold text-xs tracking-widest text-[#00f3ff] uppercase truncate'>
-            {state?.title ?? 'CONFIRM_ACTION'}
-          </h3>
+          <DialogTitle asChild>
+            <h3 className='font-headline font-bold text-xs tracking-widest text-[#00f3ff] uppercase truncate'>
+              {state?.title ?? 'CONFIRM_ACTION'}
+            </h3>
+          </DialogTitle>
         </div>
         <div className='px-4 py-3'>
           <p className='text-[11px] leading-relaxed text-[#b9c9ca] whitespace-pre-line'>
@@ -2490,9 +2493,11 @@ function AssetPlaybackModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='max-w-[900px] w-[92vw] bg-[#131313]/95 backdrop-blur-sm border border-[#3a494b]/30 p-0 gap-0 overflow-hidden [&>button]:text-[#849495] [&>button]:hover:text-[#e3fdff]'>
         <div className='px-4 py-3 border-b border-[#3a494b]/20'>
-          <h3 className='font-headline font-bold text-xs tracking-widest text-[#00f3ff] uppercase truncate'>
-            {title}
-          </h3>
+          <DialogTitle asChild>
+            <h3 className='font-headline font-bold text-xs tracking-widest text-[#00f3ff] uppercase truncate'>
+              {title}
+            </h3>
+          </DialogTitle>
         </div>
         <div className='p-4 bg-black'>
           <video

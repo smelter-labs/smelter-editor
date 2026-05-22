@@ -26,6 +26,7 @@ import {
   saveOutputPlayerSettings,
 } from '@/lib/room-config';
 import { streamImportConfig } from '@/lib/import-config-stream';
+import { useAppMode } from '@/components/app-mode/app-mode-context';
 import {
   listPresentationConfigs,
   loadPresentationConfig,
@@ -96,6 +97,7 @@ export default function IntroView() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { toggleMode } = useAppMode();
   const [loadingNew, setLoadingNew] = useState(false);
   const [loadingImport, setLoadingImport] = useState(false);
   const [importProgress, setImportProgress] =
@@ -564,8 +566,12 @@ export default function IntroView() {
               <button
                 type='button'
                 onClick={() => setShowSettings(true)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  toggleMode();
+                }}
                 className='inline-flex items-center justify-center rounded border border-neutral-700 bg-neutral-900 p-2 text-neutral-300 transition-colors hover:text-white hover:border-neutral-500 cursor-pointer'
-                aria-label='Open server settings'>
+                aria-label='Open server settings (right-click to toggle app mode)'>
                 <Settings className='w-4 h-4' />
               </button>
             </div>

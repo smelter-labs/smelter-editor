@@ -38,6 +38,7 @@ import {
 } from './hooks/use-room-websocket';
 import { useControlPanelEvents } from './hooks/use-control-panel-events';
 import { FxAccordion } from './components/FxAccordion';
+import { useAppMode } from '@/components/app-mode/app-mode-context';
 import { StreamsSection } from './components/StreamsSection';
 import { LayersSection } from './components/LayersSection';
 import { CarouselPanel } from '@/components/dashboard/carousel-panel';
@@ -665,6 +666,7 @@ function ControlPanelInner({
   const actions = useActions();
   const updateRoomAction = actions.updateRoom;
   const configStorageSave = actions.configStorage.save;
+  const { mode: appMode } = useAppMode();
 
   useControlPanelEvents({
     inputWrappers,
@@ -676,8 +678,15 @@ function ControlPanelInner({
   });
 
   const handleToggleFx = (inputId: string) => {
+    if (appMode === 'demo') return;
     setOpenFxInputId((prev) => (prev === inputId ? null : inputId));
   };
+
+  useEffect(() => {
+    if (appMode === 'demo' && openFxInputId !== null) {
+      setOpenFxInputId(null);
+    }
+  }, [appMode, openFxInputId, setOpenFxInputId]);
 
   const fxInput =
     openFxInputId && inputs.find((i) => i.inputId === openFxInputId)
@@ -898,14 +907,25 @@ function ControlPanelInner({
 
   const pendingRequestsCount =
     pendingMutationCount + (timelineQueueLocked ? 1 : 0);
-  const sortModeSwitchReason = timelineIsPlaying
-    ? 'Cannot switch mode while timeline is playing'
-    : layersModeDirty
-      ? 'Cannot switch mode while layers-mode changes are pending'
-      : pendingRequestsCount > 0
-        ? 'Cannot switch mode while request queue is not empty'
-        : undefined;
+  const sortModeSwitchReason =
+    appMode === 'demo'
+      ? 'DemoMode: layers mode is enforced'
+      : timelineIsPlaying
+        ? 'Cannot switch mode while timeline is playing'
+        : layersModeDirty
+          ? 'Cannot switch mode while layers-mode changes are pending'
+          : pendingRequestsCount > 0
+            ? 'Cannot switch mode while request queue is not empty'
+            : undefined;
   const canSwitchSortMode = !sortModeSwitchReason;
+
+  useEffect(() => {
+    if (appMode === 'demo' && sortMode !== 'layers') {
+      setSortMode('layers');
+      sceneMutationBaselineRef.current = sceneMutationVersion;
+      setLayersModeDirty(false);
+    }
+  }, [appMode, sortMode, sceneMutationVersion]);
 
   const handleSortModeChange = useCallback(
     (nextMode: 'timeline' | 'layers') => {
@@ -2212,10 +2232,12 @@ function SettingsBar({
         open={openModal === 'settings'}
         onOpenChange={(open) => !open && setOpenModal(null)}>
         <DialogContent className='max-h-[84vh] max-w-2xl overflow-y-auto text-neutral-100'>
-          <FxCanvas
-            config={FX_PRESET_MODAL}
-            isActive={openModal === 'settings'}
-          />
+          <div className='absolute inset-0 overflow-hidden pointer-events-none rounded-[inherit]'>
+            <FxCanvas
+              config={FX_PRESET_MODAL}
+              isActive={openModal === 'settings'}
+            />
+          </div>
           <div className='absolute inset-0 z-0 bg-black/25 pointer-events-none rounded-[inherit]' />
           <DialogHeader className='relative z-10'>
             <DialogTitle>Settings</DialogTitle>
