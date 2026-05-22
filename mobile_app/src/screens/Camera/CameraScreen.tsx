@@ -81,10 +81,6 @@ export function CameraScreen() {
   const [debugExpanded, setDebugExpanded] = useState(false);
   const [overrideWhipUrl, setOverrideWhipUrl] = useState("");
   const [overrideBearerToken, setOverrideBearerToken] = useState("");
-<<<<<<< HEAD
-=======
-  const [forceH264, setForceH264] = useState(false);
->>>>>>> main
   const [videoCodec, setVideoCodec] = useState<VideoCodecPreference>("vp8");
   const [resolution, setResolution] = useState<ResolutionPreset>("720p");
   const [logsVisible, setLogsVisible] = useState(false);
@@ -262,10 +258,6 @@ export function CameraScreen() {
         whipUrl: finalWhipUrl,
         bearerToken: finalBearerToken,
         videoCodec,
-<<<<<<< HEAD
-=======
-        forceH264,
->>>>>>> main
         onConnectionStateChange: (state) => {
           console.log("[Camera] WebRTC connection state:", state);
           if (state === "connected") {
@@ -303,17 +295,7 @@ export function CameraScreen() {
         inputIdRef.current = null;
       }
     }
-<<<<<<< HEAD
   }, [isOverrideActive, overrideWhipUrl, overrideBearerToken, videoCodec]);
-=======
-  }, [
-    isOverrideActive,
-    overrideWhipUrl,
-    overrideBearerToken,
-    videoCodec,
-    forceH264,
-  ]);
->>>>>>> main
 
   // ── stop streaming ────────────────────────────────────────────────────────
 
@@ -610,7 +592,6 @@ export function CameraScreen() {
               </View>
             </View>
 
-<<<<<<< HEAD
             {/* Codec picker */}
             <View style={styles.resolutionRow}>
               <Text
@@ -642,8 +623,6 @@ export function CameraScreen() {
               </View>
             </View>
 
-=======
->>>>>>> main
             {errorMessage && (
               <View style={styles.errorRow}>
                 {isDebugBuild && (
@@ -708,41 +687,7 @@ export function CameraScreen() {
                   dense
                   style={styles.debugInput}
                 />
-<<<<<<< HEAD
                 {/* H264-strip diagnostic removed from UI (deprecated) */}
-=======
-                <Text
-                  variant="bodySmall"
-                  style={{ color: theme.colors.onSurfaceVariant }}
-                >
-                  Video codec preference
-                </Text>
-                <View style={styles.codecRow}>
-                  {(
-                    ["vp8", "vp9", "h264", "default"] as VideoCodecPreference[]
-                  ).map((c) => (
-                    <Button
-                      key={c}
-                      mode={videoCodec === c ? "contained" : "outlined"}
-                      compact
-                      onPress={() => setVideoCodec(c)}
-                      style={styles.codecButton}
-                      labelStyle={styles.codecLabel}
-                    >
-                      {c.toUpperCase()}
-                    </Button>
-                  ))}
-                </View>
-                <View style={styles.debugRow}>
-                  <Text
-                    variant="bodySmall"
-                    style={{ color: theme.colors.onSurfaceVariant, flex: 1 }}
-                  >
-                    Strip to H264-only (diagnostic)
-                  </Text>
-                  <Switch value={forceH264} onValueChange={setForceH264} />
-                </View>
->>>>>>> main
                 {isOverrideActive ? (
                   <Text
                     variant="bodySmall"

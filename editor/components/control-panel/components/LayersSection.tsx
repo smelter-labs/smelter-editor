@@ -75,10 +75,7 @@ type LayersSectionProps = {
   allTimelineInputIds?: Set<string>;
   timelineTrackOrder?: Record<string, number>;
   sortMode?: 'timeline' | 'layers';
-<<<<<<< HEAD
-=======
   resolution?: Resolution;
->>>>>>> main
 };
 
 type DragItem = {
@@ -113,10 +110,6 @@ function SortableLayerItem({
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
-<<<<<<< HEAD
-        opacity: isDragging ? 0.5 : 1,
-=======
->>>>>>> main
         cursor: disabled ? 'not-allowed' : undefined,
       }}
       className={
@@ -157,10 +150,6 @@ function SortableInputItem({
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
-<<<<<<< HEAD
-        opacity: isDragging ? 0.4 : 1,
-=======
->>>>>>> main
         cursor: disabled ? 'not-allowed' : 'grab',
       }}
       className={
@@ -190,12 +179,9 @@ function LayerHeader({
   onToggleEnabled,
   isGuest,
   dragDisabled,
-<<<<<<< HEAD
-=======
   isCarouselSettingsOpen,
   onToggleCarouselSettings,
   onEditCarouselInputs,
->>>>>>> main
 }: {
   stableLayerNumber: number;
   isCarousel?: boolean;
@@ -209,12 +195,9 @@ function LayerHeader({
   onToggleEnabled: () => void;
   isGuest?: boolean;
   dragDisabled?: boolean;
-<<<<<<< HEAD
-=======
   isCarouselSettingsOpen?: boolean;
   onToggleCarouselSettings?: () => void;
   onEditCarouselInputs?: () => void;
->>>>>>> main
 }) {
   return (
     <div className='border-b border-neutral-800/70 bg-neutral-900/40'>
@@ -351,10 +334,7 @@ export function LayersSection({
   allTimelineInputIds,
   timelineTrackOrder,
   sortMode = 'layers',
-<<<<<<< HEAD
-=======
   resolution,
->>>>>>> main
 }: LayersSectionProps) {
   const { inputs, roomId, refreshState, availableShaders } =
     useControlPanelContext();
@@ -506,83 +486,6 @@ export function LayersSection({
     [findDragItem],
   );
 
-<<<<<<< HEAD
-  const handleDragEnd = useCallback(
-    async (event: DragEndEvent) => {
-      const { active, over } = event;
-      setActiveId(null);
-      setActiveDragItem(null);
-
-      if (!over || active.id === over.id) return;
-
-      const activeRef = findDragItem(active.id);
-      if (!activeRef) return;
-
-      const overIdStr = String(over.id);
-      let overLayerId: string | null = null;
-      let overInputId: string | null = null;
-      if (overIdStr.startsWith('layer::')) {
-        overLayerId = overIdStr.slice(7);
-      } else {
-        overInputId = overIdStr;
-        const owningLayer = localLayers.find((l) =>
-          l.inputs.some((i) => i.inputId === overIdStr),
-        );
-        overLayerId = owningLayer?.id ?? null;
-      }
-      if (!overLayerId) return;
-
-      const affected = new Set<string>();
-      let nextLayers: Layer[] | null = null;
-
-      if (activeRef.type === 'layer') {
-        const oldIdx = localLayers.findIndex((l) => l.id === activeRef.layerId);
-        const newIdx = localLayers.findIndex((l) => l.id === overLayerId);
-        if (oldIdx === -1 || newIdx === -1 || oldIdx === newIdx) return;
-        nextLayers = arrayMove(localLayers, oldIdx, newIdx);
-      } else if (activeRef.type === 'input' && activeRef.inputId) {
-        const srcLayerIdx = localLayers.findIndex(
-          (l) => l.id === activeRef.layerId,
-        );
-        if (srcLayerIdx === -1) return;
-        const srcInputIdx = localLayers[srcLayerIdx].inputs.findIndex(
-          (i) => i.inputId === activeRef.inputId,
-        );
-        if (srcInputIdx === -1) return;
-
-        const dstLayerIdx = localLayers.findIndex((l) => l.id === overLayerId);
-        if (dstLayerIdx === -1) return;
-
-        if (srcLayerIdx === dstLayerIdx) {
-          if (!overInputId) return;
-          const dstInputIdx = localLayers[dstLayerIdx].inputs.findIndex(
-            (i) => i.inputId === overInputId,
-          );
-          if (dstInputIdx === -1 || srcInputIdx === dstInputIdx) return;
-          nextLayers = localLayers.map((l, i) =>
-            i === srcLayerIdx
-              ? { ...l, inputs: arrayMove(l.inputs, srcInputIdx, dstInputIdx) }
-              : l,
-          );
-          affected.add(localLayers[srcLayerIdx].id);
-        } else {
-          const next = localLayers.map((l) => ({
-            ...l,
-            inputs: [...l.inputs],
-          }));
-          const [moved] = next[srcLayerIdx].inputs.splice(srcInputIdx, 1);
-          let insertIdx = next[dstLayerIdx].inputs.length;
-          if (overInputId) {
-            const overInputIdx = next[dstLayerIdx].inputs.findIndex(
-              (i) => i.inputId === overInputId,
-            );
-            if (overInputIdx !== -1) insertIdx = overInputIdx;
-          }
-          next[dstLayerIdx].inputs.splice(insertIdx, 0, moved);
-          nextLayers = next;
-          affected.add(localLayers[srcLayerIdx].id);
-          affected.add(localLayers[dstLayerIdx].id);
-=======
   const handleDragOver = useCallback(
     (event: DragOverEvent) => {
       const { active, over } = event;
@@ -643,39 +546,9 @@ export function LayersSection({
         } catch (e) {
           console.error('Failed to recompute layout for layer', l.id, e);
           return l;
->>>>>>> main
         }
       });
 
-<<<<<<< HEAD
-      if (!nextLayers) return;
-
-      const resolution = { width: 1920, height: 1080 };
-      nextLayers = nextLayers.map((l) => {
-        if (!affected.has(l.id) || !l.behavior) return l;
-        try {
-          const layerInputInfos = l.inputs
-            .map((li) => {
-              const inp = inputs.find((i) => i.inputId === li.inputId);
-              return inp
-                ? {
-                    inputId: inp.inputId,
-                    nativeWidth: inp.nativeWidth,
-                    nativeHeight: inp.nativeHeight,
-                  }
-                : null;
-            })
-            .filter((bi): bi is NonNullable<typeof bi> => !!bi);
-          const result = computeLayout(l.behavior, layerInputInfos, resolution);
-          return { ...l, inputs: result.inputs };
-        } catch (e) {
-          console.error('Failed to recompute layout for layer', l.id, e);
-          return l;
-        }
-      });
-
-=======
->>>>>>> main
       setLocalLayers(nextLayers);
       try {
         await onLayersChange(nextLayers);
@@ -684,24 +557,16 @@ export function LayersSection({
         setLocalLayers(layers);
       }
     },
-<<<<<<< HEAD
-    [findDragItem, localLayers, inputs, onLayersChange, layers],
-=======
     [localLayers, inputs, onLayersChange, layers],
->>>>>>> main
   );
 
   const handleDragCancel = useCallback(() => {
     setActiveId(null);
     setActiveDragItem(null);
-<<<<<<< HEAD
-  }, []);
-=======
     dragAffectedLayerIdsRef.current = new Set();
     dragDidMoveRef.current = false;
     setLocalLayers(layers);
   }, [layers]);
->>>>>>> main
 
   const handleBehaviorChange = useCallback(
     async (layerId: string, behavior: LayerBehaviorConfig | undefined) => {
@@ -835,8 +700,6 @@ export function LayersSection({
                     onToggleEnabled={() => handleToggleEnabled(layer.id)}
                     isGuest={isGuest}
                     dragDisabled={disableDrag}
-<<<<<<< HEAD
-=======
                     isCarouselSettingsOpen={carouselSettingsOpenLayers.has(layer.id)}
                     onToggleCarouselSettings={
                       layer.carousel
@@ -848,7 +711,6 @@ export function LayersSection({
                         ? () => setCarouselInputModalLayerId(layer.id)
                         : undefined
                     }
->>>>>>> main
                   />
 
                   {!isCollapsed &&
@@ -893,39 +755,6 @@ export function LayersSection({
                               id={layerInput.inputId}
                               disabled={disableDrag}>
                               <ErrorBoundary>
-<<<<<<< HEAD
-                                <InputEntry
-                                  input={input}
-                                  refreshState={refreshState}
-                                  roomId={roomId}
-                                  availableShaders={availableShaders}
-                                  canRemove={
-                                    isGuest
-                                      ? input.inputId === guestInputId
-                                      : true
-                                  }
-                                  pcRef={cameraPcRef}
-                                  streamRef={cameraStreamRef}
-                                  isFxOpen={openFxInputId === input.inputId}
-                                  onToggleFx={() => onToggleFx(input.inputId)}
-                                  onWhipDisconnectedOrRemoved={
-                                    onWhipDisconnectedOrRemoved
-                                  }
-                                  showGrip={isGuest ? false : true}
-                                  isSelected={selectedInputId === input.inputId}
-                                  readOnly={
-                                    isGuest && input.inputId !== guestInputId
-                                  }
-                                  activeBlockColor={
-                                    activeClipColors?.[input.inputId]
-                                  }
-                                  isOnTimeline={
-                                    allTimelineInputIds?.has(input.inputId) ??
-                                    true
-                                  }
-                                  dragDisabled={disableDrag}
-                                />
-=======
                                 {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
                                 <div
                                   onClick={() =>
@@ -970,14 +799,10 @@ export function LayersSection({
                                     dragDisabled={disableDrag}
                                   />
                                 </div>
->>>>>>> main
                               </ErrorBoundary>
                               {attachedChildren.map((child) => (
                                 <div
                                   key={child.inputId}
-<<<<<<< HEAD
-                                  className='ml-6 mt-1 border-l-2 border-blue-500/30 pl-2'>
-=======
                                   className='ml-6 mt-1 border-l-2 border-blue-500/30 pl-2 cursor-pointer'
                                   onClick={() =>
                                     onSelectInput?.(
@@ -986,7 +811,6 @@ export function LayersSection({
                                         : child.inputId,
                                     )
                                   }>
->>>>>>> main
                                   <ErrorBoundary>
                                     <InputEntry
                                       input={child}

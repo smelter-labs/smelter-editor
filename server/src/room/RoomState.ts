@@ -1479,11 +1479,7 @@ export class RoomState {
     }
 
     this.layers = this.layers.map((layer) => {
-<<<<<<< HEAD
-      if (layer.behavior) {
-=======
       if (layer.behavior && !layer.carousel) {
->>>>>>> main
         // Separate visible (non-hidden) and hidden inputs
         const visibleLayerInputs: typeof layer.inputs = [];
         const hiddenLayerInputs: typeof layer.inputs = [];
@@ -1529,17 +1525,6 @@ export class RoomState {
         const shouldBump = fromClientUpdate || positionsChanged;
         const layoutTimestamp = shouldBump ? Date.now() : layer.layoutTimestamp;
 
-<<<<<<< HEAD
-        console.log('[RoomState] layoutTimestamp', {
-          layerId: layer.id,
-          prev: layer.layoutTimestamp,
-          next: layoutTimestamp,
-          fromClientUpdate,
-          positionsChanged,
-        });
-
-=======
->>>>>>> main
         return { ...layer, inputs: newInputs, layoutTimestamp };
       }
 

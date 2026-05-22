@@ -1500,8 +1500,6 @@ export const TimelinePanel = memo(function TimelinePanel({
         </Button>
       </div>
 
-<<<<<<< HEAD
-=======
       {sortMode === 'layers' && (
         <div
           role='status'
@@ -1511,7 +1509,6 @@ export const TimelinePanel = memo(function TimelinePanel({
         </div>
       )}
 
->>>>>>> main
       <div
         className={`relative flex-1 flex flex-col min-h-0 ${
           sortMode === 'layers'

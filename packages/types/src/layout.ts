@@ -109,15 +109,12 @@ export type Layer = {
   /** Layout behavior for this layer. If undefined, positions are manual. */
   behavior?: LayerBehaviorConfig;
   /**
-<<<<<<< HEAD
-=======
    * When set, the layer renders as a carousel: only `inputs[carousel.activeIndex]`
    * is visible, with a slide animation on activeIndex changes. All inputs share
    * the slot defined by `inputs[0]` geometry (x/y/width/height).
    */
   carousel?: CarouselConfig;
   /**
->>>>>>> main
    * Bumped by the server whenever a behavior layer's computed positions change,
    * or whenever the client explicitly submitted an update for the layer.
    * Clients can use this as a resync signal even when positions are unchanged.
