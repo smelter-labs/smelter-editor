@@ -58,6 +58,7 @@ import {
   labelStyles,
 } from '../styles/panel-primitives';
 import { SwapSourceModal, type SwapSourceResult } from './SwapSourceModal';
+import { useAppMode } from '@/components/app-mode/app-mode-context';
 
 const SHADER_SETTINGS_DEBOUNCE_MS = 200;
 
@@ -155,6 +156,8 @@ export function BlockClipPropertiesPanel({
     left: number;
   } | null>(null);
   const [swapModalOpen, setSwapModalOpen] = useState(false);
+  const { mode: appMode } = useAppMode();
+  const isDemoMode = appMode === 'demo';
 
   useEffect(() => {
     return () => {
@@ -1244,7 +1247,9 @@ export function BlockClipPropertiesPanel({
                       cropBottom: cropVals.cropBottom,
                     })
                   }
+                  demoMode={isDemoMode}
                 />
+                {!isDemoMode && (
                 <div className='grid grid-cols-2 gap-2'>
                   <div>
                     <label className={labelStyles({ block: true })}>
@@ -1299,6 +1304,7 @@ export function BlockClipPropertiesPanel({
                     </Select>
                   </div>
                 </div>
+                )}
               </>
             )}
           </CollapsibleSection>

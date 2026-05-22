@@ -30,6 +30,7 @@ type AbsolutePositionControllerProps = {
   cropBottom?: number;
   onChange: (pos: Position) => void;
   onCropChange: (crop: CropValues) => void;
+  demoMode?: boolean;
 };
 
 type DragState =
@@ -93,6 +94,7 @@ export function AbsolutePositionController({
   cropBottom: propCropBottom = 0,
   onChange,
   onCropChange,
+  demoMode = false,
 }: AbsolutePositionControllerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState>({ type: 'idle' });
@@ -232,12 +234,14 @@ export function AbsolutePositionController({
           origLeft: pos.left,
           origTop: pos.top,
         };
-        startLongPress(e.clientX, e.clientY, 'crop');
+        if (!demoMode) {
+          startLongPress(e.clientX, e.clientY, 'crop');
+        }
       } else {
         startLongPress(e.clientX, e.clientY, 'position');
       }
     },
-    [mode, pos, startLongPress],
+    [mode, pos, startLongPress, demoMode],
   );
 
   const handleCornerMouseDown = useCallback(
@@ -617,6 +621,7 @@ export function AbsolutePositionController({
 
         {/* Position mode: corner resize handles */}
         {mode === 'position' &&
+          !demoMode &&
           corners.map((c) => (
             <div
               key={c.id}
@@ -691,17 +696,19 @@ export function AbsolutePositionController({
         )}
       </div>
 
-      {mode === 'crop' && (
+      {!demoMode && mode === 'crop' && (
         <div className='text-[10px] text-green-400 mt-1 text-center'>
           Crop mode — hold 0.5s / Esc / click outside to exit
         </div>
       )}
-      {mode === 'position' && (
+      {!demoMode && mode === 'position' && (
         <div className='text-[10px] text-neutral-500 mt-1 text-center'>
           Hold 0.5s on rect to enter crop mode
         </div>
       )}
 
+      {!demoMode && (
+        <>
       <div className='grid grid-cols-4 gap-1 mt-2'>
         {(['left', 'top', 'width', 'height'] as const).map((field) => {
           const isCropped =
@@ -763,6 +770,8 @@ export function AbsolutePositionController({
           </div>
         ))}
       </div>
+        </>
+      )}
     </div>
   );
 }
