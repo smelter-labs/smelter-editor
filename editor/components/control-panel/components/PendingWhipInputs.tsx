@@ -98,7 +98,8 @@ export function PendingWhipInputs({
   connectAllRef,
   onConnectAllReadyChange,
 }: PendingWhipInputsProps) {
-  const { addCameraInput, updateInput, updateRoom, getRoomInfo } = useActions();
+  const { addCameraInput, removeInput, updateInput, updateRoom, getRoomInfo } =
+    useActions();
   const { roomId } = useControlPanelContext();
   const {
     cameraPcRef,
@@ -222,12 +223,32 @@ export function PendingWhipInputs({
       const setIsActive =
         type === 'camera' ? setIsCameraActive : setIsScreenshareActive;
 
+      const staleInputId = pendingInput.staleInputId;
+      let stalePosition: number | null = null;
+
       try {
+        if (staleInputId) {
+          try {
+            const roomInfoBefore = await getRoomInfo(roomId);
+            if (roomInfoBefore !== 'not-found') {
+              const idx = roomInfoBefore.inputs.findIndex(
+                (i) => i.inputId === staleInputId,
+              );
+              if (idx >= 0) stalePosition = idx;
+            }
+          } catch {}
+          try {
+            await removeInput(roomId, staleInputId);
+          } catch {}
+        }
+
         const response = await addCameraInput(roomId, pendingInput.title);
         setActiveInputId(response.inputId);
         setIsActive(false);
 
-        const placeholderId = `__pending-whip-${pendingInput.position}__`;
+        const placeholderId = staleInputId
+          ? staleInputId
+          : `__pending-whip-${pendingInput.position}__`;
         const timelineUpdated = updateTimelineInputId(
           roomId,
           placeholderId,
@@ -299,10 +320,16 @@ export function PendingWhipInputs({
         if (roomInfo !== 'not-found') {
           const currentInputIds = roomInfo.inputs.map((i) => i.inputId);
           const newInputId = response.inputId;
-          const targetPosition = pendingInput.position;
-          const placeholderId = `__pending-whip-${pendingInput.position}__`;
+          const targetPosition = staleInputId
+            ? (stalePosition ?? pendingInput.position)
+            : pendingInput.position;
+          const reorderPlaceholderId = staleInputId
+            ? staleInputId
+            : `__pending-whip-${pendingInput.position}__`;
 
-          const withoutNew = currentInputIds.filter((id) => id !== newInputId);
+          const withoutNew = currentInputIds.filter(
+            (id) => id !== newInputId && id !== reorderPlaceholderId,
+          );
           const reordered = [
             ...withoutNew.slice(0, targetPosition),
             newInputId,
@@ -312,7 +339,7 @@ export function PendingWhipInputs({
           const replacedLayers = roomInfo.layers.map((layer) => ({
             ...layer,
             inputs: layer.inputs.map((li) =>
-              li.inputId === placeholderId
+              li.inputId === reorderPlaceholderId
                 ? { ...li, inputId: newInputId }
                 : li,
             ),
@@ -331,11 +358,13 @@ export function PendingWhipInputs({
           });
         }
 
-        const nextPendingInputs = pendingInputsRef.current.filter(
-          (p) => p.id !== pendingInput.id,
-        );
-        pendingInputsRef.current = nextPendingInputs;
-        await setPendingInputs(nextPendingInputs);
+        if (!staleInputId) {
+          const nextPendingInputs = pendingInputsRef.current.filter(
+            (p) => p.id !== pendingInput.id,
+          );
+          pendingInputsRef.current = nextPendingInputs;
+          await setPendingInputs(nextPendingInputs);
+        }
         // Keep preview visible while connecting; remove it only when card is removed.
         removePreviewEntry(pendingInput.id);
 
@@ -361,6 +390,7 @@ export function PendingWhipInputs({
     },
     [
       addCameraInput,
+      removeInput,
       cameraPcRef,
       cameraStreamRef,
       getRoomInfo,
@@ -437,6 +467,14 @@ export function PendingWhipInputs({
 
   const handleDismiss = async (pendingInput: PendingWhipInput) => {
     cleanupPreview(pendingInput.id);
+    if (pendingInput.staleInputId) {
+      try {
+        await removeInput(roomId, pendingInput.staleInputId);
+      } catch (e) {
+        console.error('Failed to remove stale WHIP input:', e);
+      }
+      return;
+    }
     const nextPendingInputs = pendingInputsRef.current.filter(
       (p) => p.id !== pendingInput.id,
     );

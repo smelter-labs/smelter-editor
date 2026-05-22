@@ -3873,8 +3873,8 @@ function WhipActionInspector({
       if (activeWhipInputId) {
         removableWhipInputIds.add(activeWhipInputId);
       }
-      const session = loadWhipSession();
-      if (session?.roomId === roomId && session.inputId) {
+      const session = loadWhipSession(roomId);
+      if (session?.inputId) {
         removableWhipInputIds.add(session.inputId);
       }
       const lastInputId = loadLastWhipInputId(roomId);

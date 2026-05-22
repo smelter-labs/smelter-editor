@@ -201,9 +201,9 @@ export function useControlPanelEvents({
 
   const cleanupWhipIfNeeded = useCallback(
     (inputId: string) => {
-      const session = loadWhipSession();
+      const session = loadWhipSession(roomId);
       const isSavedInSession =
-        (session && session.roomId === roomId && session.inputId === inputId) ||
+        (session && session.inputId === inputId) ||
         loadLastWhipInputId(roomId) === inputId;
       const isWhipCandidate = inputId.includes('whip') || isSavedInSession;
       if (!isWhipCandidate) return;

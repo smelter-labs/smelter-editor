@@ -79,7 +79,10 @@ import {
 import { TransitionSettings } from './components/TransitionSettings';
 import { BehaviorSelector } from './components/BehaviorSelector';
 import { ViewportSettings } from './components/ViewportSettings';
-import { loadLastWhipInputId } from './whip-input/utils/whip-storage';
+import {
+  loadLastWhipInputId,
+  loadWhipSession,
+} from './whip-input/utils/whip-storage';
 import {
   ControlPanelProvider,
   useControlPanelContext,
@@ -407,7 +410,7 @@ function ControlPanelWithActions({
   sceneMutationVersion,
   resetPendingMutations,
 }: ControlPanelWithActionsProps) {
-  const pendingWhipInputs: PendingWhipInput[] = (
+  const pendingWhipInputsBase: PendingWhipInput[] = (
     roomState.pendingWhipInputs || []
   ).map((p) => ({
     id: p.id,
@@ -501,6 +504,45 @@ function ControlPanelWithActions({
     setIsScreenshareActive,
   } = whipConnections;
 
+  const pendingWhipInputs: PendingWhipInput[] = useMemo(() => {
+    const localActiveIds = new Set<string>();
+    if (isCameraActive && activeCameraInputId)
+      localActiveIds.add(activeCameraInputId);
+    if (isScreenshareActive && activeScreenshareInputId)
+      localActiveIds.add(activeScreenshareInputId);
+    const savedSessionInputId = loadWhipSession(roomId)?.inputId ?? null;
+    const stale: PendingWhipInput[] = inputs
+      .filter(
+        (i) =>
+          i.type === 'whip' &&
+          !localActiveIds.has(i.inputId) &&
+          (i.status !== 'connected' || i.inputId === savedSessionInputId),
+      )
+      .map((i) => ({
+        id: i.inputId,
+        title: i.title,
+        config: {
+          type: 'whip',
+          title: i.title,
+          description: i.description ?? '',
+          volume: i.volume ?? 1,
+          showTitle: i.showTitle,
+          shaders: i.shaders ?? [],
+        },
+        position: 0,
+        staleInputId: i.inputId,
+      }));
+    return [...pendingWhipInputsBase, ...stale];
+  }, [
+    pendingWhipInputsBase,
+    inputs,
+    roomId,
+    isCameraActive,
+    activeCameraInputId,
+    isScreenshareActive,
+    activeScreenshareInputId,
+  ]);
+
   const [normalizationProgress, setNormalizationProgress] = useState<
     Record<string, number>
   >({});
@@ -521,14 +563,16 @@ function ControlPanelWithActions({
 
   const handleSetPendingWhipInputs = useCallback(
     async (newInputs: PendingWhipInput[]) => {
-      const serverData: PendingWhipInputData[] = newInputs.map((p) => ({
-        id: p.id,
-        title: p.title,
-        volume: p.config.volume,
-        showTitle: p.config.showTitle !== false,
-        shaders: p.config.shaders || [],
-        position: p.position,
-      }));
+      const serverData: PendingWhipInputData[] = newInputs
+        .filter((p) => !p.staleInputId)
+        .map((p) => ({
+          id: p.id,
+          title: p.title,
+          volume: p.config.volume,
+          showTitle: p.config.showTitle !== false,
+          shaders: p.config.shaders || [],
+          position: p.position,
+        }));
       await setPendingWhipInputsAction(roomId, serverData);
       await handleRefreshState();
     },
@@ -868,17 +912,18 @@ function ControlPanelInner({
     }
   }, [sortMode, roomId]);
 
+  const hasStaleWhipInput = pendingWhipInputs.some((p) => !!p.staleInputId);
   useEffect(() => {
     if (
       !isGuest &&
       !pendingModalShownRef.current &&
       pendingWhipInputs.length > 0 &&
-      (loadAutoModalSetting() || showcaseWelcome)
+      (loadAutoModalSetting() || showcaseWelcome || hasStaleWhipInput)
     ) {
       pendingModalShownRef.current = true;
       setPendingModalOpen(true);
     }
-  }, [isGuest, pendingWhipInputs.length, showcaseWelcome]);
+  }, [isGuest, pendingWhipInputs.length, showcaseWelcome, hasStaleWhipInput]);
 
   const handlePendingModalOpenChange = useCallback(
     (open: boolean) => {
