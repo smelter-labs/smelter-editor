@@ -56,14 +56,38 @@ function sanitizeLayerInputs(layers: Layer[]): Layer[] {
       return true;
     });
 
-    if (inputs.length === layer.inputs.length) {
-      return layer;
+    const dedupedLayer = inputs.length === layer.inputs.length ? layer : { ...layer, inputs };
+
+    if (dedupedLayer.carousel) {
+      const n = dedupedLayer.inputs.length;
+      const c = dedupedLayer.carousel;
+      const clampedActive =
+        n === 0 ? 0 : Math.max(0, Math.min(c.activeIndex, n - 1));
+      const requestedVisible = c.visibleCount ?? 1;
+      const clampedVisible = Math.max(
+        1,
+        Math.min(requestedVisible, Math.max(1, n)),
+      );
+      const requestedGap = c.gap ?? 0;
+      const clampedGap = Math.max(0, Math.min(requestedGap, 4096));
+      const needsUpdate =
+        clampedActive !== c.activeIndex ||
+        clampedVisible !== requestedVisible ||
+        clampedGap !== requestedGap;
+      if (needsUpdate) {
+        return {
+          ...dedupedLayer,
+          carousel: {
+            ...c,
+            activeIndex: clampedActive,
+            visibleCount: clampedVisible,
+            gap: clampedGap,
+          },
+        };
+      }
     }
 
-    return {
-      ...layer,
-      inputs,
-    };
+    return dedupedLayer;
   });
 }
 
@@ -1048,6 +1072,10 @@ export class RoomState {
     );
   }
 
+  public getFrozenFrameInputIds(): ReadonlySet<string> {
+    return new Set(this.frozenImages.keys());
+  }
+
   public addTimelineListener(listener: TimelineListener): () => void {
     this.timelineListeners.add(listener);
     return () => {
@@ -1451,7 +1479,11 @@ export class RoomState {
     }
 
     this.layers = this.layers.map((layer) => {
+<<<<<<< HEAD
       if (layer.behavior) {
+=======
+      if (layer.behavior && !layer.carousel) {
+>>>>>>> main
         // Separate visible (non-hidden) and hidden inputs
         const visibleLayerInputs: typeof layer.inputs = [];
         const hiddenLayerInputs: typeof layer.inputs = [];
@@ -1497,6 +1529,7 @@ export class RoomState {
         const shouldBump = fromClientUpdate || positionsChanged;
         const layoutTimestamp = shouldBump ? Date.now() : layer.layoutTimestamp;
 
+<<<<<<< HEAD
         console.log('[RoomState] layoutTimestamp', {
           layerId: layer.id,
           prev: layer.layoutTimestamp,
@@ -1505,6 +1538,8 @@ export class RoomState {
           positionsChanged,
         });
 
+=======
+>>>>>>> main
         return { ...layer, inputs: newInputs, layoutTimestamp };
       }
 

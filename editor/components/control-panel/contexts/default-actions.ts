@@ -12,6 +12,7 @@ import {
   resolveMissingImage,
   hideInput as hideInputAction,
   showInput as showInputAction,
+  carouselAction as carouselActionFn,
   addTwitchInput,
   addKickInput,
   addMP4Input,
@@ -109,6 +110,14 @@ export const defaultActions: ControlPanelActions = {
     hideInputAction(roomId, inputId, SESSION_SOURCE_ID),
   showInput: (roomId, inputId) =>
     showInputAction(roomId, inputId, SESSION_SOURCE_ID),
+  carouselAction: (roomId, layerId, action, index, sourceId) =>
+    carouselActionFn(
+      roomId,
+      layerId,
+      action,
+      index,
+      sourceId ?? SESSION_SOURCE_ID,
+    ),
   addTwitchInput,
   addKickInput,
   addMP4Input,

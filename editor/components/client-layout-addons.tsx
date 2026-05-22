@@ -1,6 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
+import { useEffect, useState } from 'react';
 import { usePathname } from 'next/navigation';
 import { useVoiceCommandsEnabledSetting } from '@/lib/voice/macroSettings';
 
@@ -43,13 +44,23 @@ const PREVIEW_PREFIXES = ['/raw-preview', '/room-preview'];
 
 /**
  * Wraps browser-only layout addons (toast, analytics, voice UI).
- * All are loaded with ssr: false so their code never runs during prerender,
- * avoiding "window is not defined" when they or their deps access window at load time.
+ * Renders nothing until mounted so server HTML matches the client on hydration
+ * (next/dynamic with ssr:false otherwise emits <script> vs <Suspense> on Next 15).
+ * Dynamic imports use ssr:false so deps that touch window never run during prerender.
  */
 export default function ClientLayoutAddons() {
+  const [mounted, setMounted] = useState(false);
   const pathname = usePathname();
   const isPreview = PREVIEW_PREFIXES.some((p) => pathname.startsWith(p));
   const [voiceCommandsEnabled] = useVoiceCommandsEnabledSetting();
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  if (!mounted) {
+    return null;
+  }
 
   return (
     <>

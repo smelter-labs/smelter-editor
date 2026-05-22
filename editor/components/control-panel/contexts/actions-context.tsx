@@ -69,6 +69,13 @@ export interface ControlPanelActions {
           direction: 'in' | 'out';
         },
   ): Promise<any>;
+  carouselAction(
+    roomId: string,
+    layerId: string,
+    action: 'next' | 'prev' | 'setIndex',
+    index?: number,
+    sourceId?: string,
+  ): Promise<any>;
 
   addTwitchInput(roomId: string, channelId: string): Promise<any>;
   addKickInput(roomId: string, channelId: string): Promise<any>;

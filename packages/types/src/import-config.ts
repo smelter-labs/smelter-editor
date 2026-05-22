@@ -1,4 +1,8 @@
-import type { Layout, LayerBehaviorConfig } from './layout.js';
+import type {
+  CarouselConfig,
+  Layout,
+  LayerBehaviorConfig,
+} from './layout.js';
 import type { ShaderConfig } from './shader.js';
 import type { InputType } from './input.js';
 import type { SnakeEventShaderConfig } from './snake-game.js';
@@ -91,6 +95,7 @@ export type ImportConfigLayer = {
   id: string;
   inputs: ImportConfigLayerInput[];
   behavior?: LayerBehaviorConfig;
+  carousel?: CarouselConfig;
 };
 
 export type ImportConfigRequest = {

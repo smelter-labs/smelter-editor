@@ -1252,10 +1252,14 @@ export class TimelinePlayer {
     if (playbackEpoch !== this.playbackEpoch) return;
 
     if (isMp4InputId(inputId)) {
+      const loop = resolvedBlockSettings.mp4Loop !== false;
+      if (loop) {
+        return;
+      }
+
       const basePlayFrom = resolvedBlockSettings.mp4PlayFromMs ?? 0;
       const elapsedInClip = Math.max(0, targetPlayheadMs - clip.startMs);
       const playFromMs = basePlayFrom + elapsedInClip;
-      const loop = resolvedBlockSettings.mp4Loop !== false;
       const key = getMp4RestartKey({
         ...clip,
         blockSettings: resolvedBlockSettings,

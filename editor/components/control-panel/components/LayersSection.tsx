@@ -8,19 +8,23 @@ import {
   KeyboardSensor,
   useSensor,
   useSensors,
-  closestCenter,
+  closestCorners,
+  pointerWithin,
+  rectIntersection,
   defaultDropAnimationSideEffects,
 } from '@dnd-kit/core';
+import type { CollisionDetection } from '@dnd-kit/core';
 import type {
   DragStartEvent,
   DragEndEvent,
+  DragOverEvent,
   UniqueIdentifier,
   DropAnimation,
+  Modifier,
 } from '@dnd-kit/core';
 import {
   SortableContext,
   useSortable,
-  arrayMove,
   verticalListSortingStrategy,
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
@@ -33,8 +37,11 @@ import {
   Filter,
   GripVertical,
   Layers,
+  ListChecks,
+  Settings2,
 } from 'lucide-react';
 import type { Input, Layer, LayerBehaviorConfig } from '@/lib/types';
+import type { Resolution } from '@/lib/resolution';
 import { computeLayout } from '@smelter-editor/types';
 import type { InputWrapper } from '../hooks/use-control-panel-state';
 import InputEntry from '@/components/control-panel/input-entry/input-entry';
@@ -42,8 +49,11 @@ import { ErrorBoundary } from '@/components/error-boundary';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
 import { BehaviorSelector } from './BehaviorSelector';
+import { CarouselSettingsInline } from './CarouselSettingsInline';
+import { CarouselInputSelectionDialog } from './CarouselInputSelectionDialog';
 import LoadingSpinner from '@/components/ui/spinner';
 import { sortInputsByTimelineTrackOrder } from '@/lib/timeline-layer-order';
+import { applyDragOverToLayers } from '@/lib/layers-drag-over';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -57,6 +67,7 @@ type LayersSectionProps = {
   onToggleFx: (inputId: string) => void;
   isSwapping?: boolean;
   selectedInputId: string | null;
+  onSelectInput?: (inputId: string | null) => void;
   isGuest?: boolean;
   guestInputId?: string | null;
   onLayersChange: (layers: Layer[]) => Promise<void>;
@@ -64,6 +75,10 @@ type LayersSectionProps = {
   allTimelineInputIds?: Set<string>;
   timelineTrackOrder?: Record<string, number>;
   sortMode?: 'timeline' | 'layers';
+<<<<<<< HEAD
+=======
+  resolution?: Resolution;
+>>>>>>> main
 };
 
 type DragItem = {
@@ -98,9 +113,17 @@ function SortableLayerItem({
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
+<<<<<<< HEAD
         opacity: isDragging ? 0.5 : 1,
+=======
+>>>>>>> main
         cursor: disabled ? 'not-allowed' : undefined,
       }}
+      className={
+        isDragging
+          ? 'opacity-30 outline outline-2 outline-dashed outline-blue-500/60 rounded-md'
+          : undefined
+      }
       {...attributes}
       {...(disabled ? {} : listeners)}>
       {children}
@@ -134,9 +157,17 @@ function SortableInputItem({
       style={{
         transform: CSS.Transform.toString(transform),
         transition,
+<<<<<<< HEAD
         opacity: isDragging ? 0.4 : 1,
+=======
+>>>>>>> main
         cursor: disabled ? 'not-allowed' : 'grab',
       }}
+      className={
+        isDragging
+          ? 'opacity-25 outline outline-2 outline-dashed outline-blue-500/60 rounded-md'
+          : undefined
+      }
       {...attributes}
       {...(disabled ? {} : listeners)}>
       {children}
@@ -148,6 +179,7 @@ function SortableInputItem({
 
 function LayerHeader({
   stableLayerNumber,
+  isCarousel,
   isCollapsed,
   onToggleCollapse,
   behavior,
@@ -158,8 +190,15 @@ function LayerHeader({
   onToggleEnabled,
   isGuest,
   dragDisabled,
+<<<<<<< HEAD
+=======
+  isCarouselSettingsOpen,
+  onToggleCarouselSettings,
+  onEditCarouselInputs,
+>>>>>>> main
 }: {
   stableLayerNumber: number;
+  isCarousel?: boolean;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
   behavior: LayerBehaviorConfig | undefined;
@@ -170,6 +209,12 @@ function LayerHeader({
   onToggleEnabled: () => void;
   isGuest?: boolean;
   dragDisabled?: boolean;
+<<<<<<< HEAD
+=======
+  isCarouselSettingsOpen?: boolean;
+  onToggleCarouselSettings?: () => void;
+  onEditCarouselInputs?: () => void;
+>>>>>>> main
 }) {
   return (
     <div className='border-b border-neutral-800/70 bg-neutral-900/40'>
@@ -188,7 +233,7 @@ function LayerHeader({
           </span>
           <Layers className='w-3.5 h-3.5 text-neutral-500 flex-shrink-0' />
           <span className='text-[11px] font-semibold text-neutral-300 flex-1 text-left truncate'>
-            Layer {stableLayerNumber + 1}
+            {isCarousel ? 'Carousel' : `Layer ${stableLayerNumber + 1}`}
           </span>
         </button>
         {!isGuest && (
@@ -219,6 +264,28 @@ function LayerHeader({
               aria-label='Toggle active color filter'>
               <Filter className='w-3.5 h-3.5' />
             </button>
+            {onEditCarouselInputs && (
+              <button
+                type='button'
+                onClick={onEditCarouselInputs}
+                className='inline-flex items-center justify-center w-7 h-7 rounded-full border transition-colors border-neutral-700 bg-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-600'
+                aria-label='Edit carousel slides'>
+                <ListChecks className='w-3.5 h-3.5' />
+              </button>
+            )}
+            {onToggleCarouselSettings && (
+              <button
+                type='button'
+                onClick={onToggleCarouselSettings}
+                className={`inline-flex items-center justify-center w-7 h-7 rounded-full border transition-colors ${
+                  isCarouselSettingsOpen
+                    ? 'border-cyan-500/50 bg-cyan-500/15 text-cyan-400'
+                    : 'border-neutral-700 bg-neutral-800 text-neutral-400 hover:text-white hover:border-neutral-600'
+                }`}
+                aria-label='Toggle carousel settings'>
+                <Settings2 className='w-3.5 h-3.5' />
+              </button>
+            )}
             <BehaviorSelector behavior={behavior} onChange={onBehaviorChange} />
             <GripVertical
               className={`w-3.5 h-3.5 flex-shrink-0 ml-0.5 ${dragDisabled ? 'text-neutral-700/50' : 'text-neutral-600'}`}
@@ -238,6 +305,35 @@ const dropAnimation: DropAnimation = {
   }),
 };
 
+// Keeps the DragOverlay centered under the cursor regardless of where the
+// drag started or how the overlay size differs from the original element.
+const snapCenterToCursor: Modifier = ({
+  activatorEvent,
+  draggingNodeRect,
+  transform,
+}) => {
+  if (!draggingNodeRect || !activatorEvent) return transform;
+  const event = activatorEvent as PointerEvent;
+  const offsetX = event.clientX - draggingNodeRect.left;
+  const offsetY = event.clientY - draggingNodeRect.top;
+  return {
+    ...transform,
+    x: transform.x + offsetX - draggingNodeRect.width / 2,
+    y: transform.y + offsetY - draggingNodeRect.height / 2,
+  };
+};
+
+// Use the pointer position for collision detection. Falls back to
+// rectIntersection when the pointer is in a gap between droppables so
+// the drop target never "disappears" mid-drag.
+const cursorBasedCollision: CollisionDetection = (args) => {
+  const pointerCollisions = pointerWithin(args);
+  if (pointerCollisions.length > 0) return pointerCollisions;
+  const intersections = rectIntersection(args);
+  if (intersections.length > 0) return intersections;
+  return closestCorners(args);
+};
+
 // ── Main component ───────────────────────────────────────────────────────────
 
 export function LayersSection({
@@ -247,6 +343,7 @@ export function LayersSection({
   onToggleFx,
   isSwapping,
   selectedInputId,
+  onSelectInput,
   isGuest,
   guestInputId,
   onLayersChange,
@@ -254,6 +351,10 @@ export function LayersSection({
   allTimelineInputIds,
   timelineTrackOrder,
   sortMode = 'layers',
+<<<<<<< HEAD
+=======
+  resolution,
+>>>>>>> main
 }: LayersSectionProps) {
   const { inputs, roomId, refreshState, availableShaders } =
     useControlPanelContext();
@@ -277,8 +378,12 @@ export function LayersSection({
   const [colorFilterLayers, setColorFilterLayers] = useState<Set<string>>(
     new Set(),
   );
+  const [carouselSettingsOpenLayers, setCarouselSettingsOpenLayers] =
+    useState<Set<string>>(new Set());
   const layerNamesRef = useRef<Map<string, number>>(new Map());
   const nextLayerNumberRef = useRef(0);
+  const dragAffectedLayerIdsRef = useRef<Set<string>>(new Set());
+  const dragDidMoveRef = useRef(false);
 
   useEffect(() => {
     setLocalLayers(layers);
@@ -337,6 +442,15 @@ export function LayersSection({
     });
   }, []);
 
+  const toggleCarouselSettings = useCallback((layerId: string) => {
+    setCarouselSettingsOpenLayers((prev) => {
+      const next = new Set(prev);
+      if (next.has(layerId)) next.delete(layerId);
+      else next.add(layerId);
+      return next;
+    });
+  }, []);
+
   // Attached inputs (hidden from layer lists)
   const attachedInputIds = useMemo(() => {
     const ids = new Set<string>();
@@ -353,6 +467,10 @@ export function LayersSection({
     () => localLayers.map((l) => `layer::${l.id}`),
     [localLayers],
   );
+
+  const [carouselInputModalLayerId, setCarouselInputModalLayerId] = useState<
+    string | null
+  >(null);
 
   // Find which layer/input an ID belongs to
   const findDragItem = useCallback(
@@ -388,6 +506,7 @@ export function LayersSection({
     [findDragItem],
   );
 
+<<<<<<< HEAD
   const handleDragEnd = useCallback(
     async (event: DragEndEvent) => {
       const { active, over } = event;
@@ -463,9 +582,72 @@ export function LayersSection({
           nextLayers = next;
           affected.add(localLayers[srcLayerIdx].id);
           affected.add(localLayers[dstLayerIdx].id);
+=======
+  const handleDragOver = useCallback(
+    (event: DragOverEvent) => {
+      const { active, over } = event;
+      if (!over) return;
+      const next = applyDragOverToLayers(localLayers, active.id, over.id);
+      if (!next) return;
+
+      const activeRef = findDragItem(active.id);
+      if (activeRef?.type === 'input') {
+        dragAffectedLayerIdsRef.current.add(activeRef.layerId);
+        const overStr = String(over.id);
+        if (overStr.startsWith('layer::')) {
+          dragAffectedLayerIdsRef.current.add(overStr.slice(7));
+        } else {
+          const owning = localLayers.find((l) =>
+            l.inputs.some((i) => i.inputId === overStr),
+          );
+          if (owning) dragAffectedLayerIdsRef.current.add(owning.id);
         }
       }
+      dragDidMoveRef.current = true;
+      setLocalLayers(next);
+    },
+    [localLayers, findDragItem],
+  );
 
+  const handleDragEnd = useCallback(
+    async (event: DragEndEvent) => {
+      const { over } = event;
+      setActiveId(null);
+      setActiveDragItem(null);
+
+      const affected = dragAffectedLayerIdsRef.current;
+      const didMove = dragDidMoveRef.current;
+      dragAffectedLayerIdsRef.current = new Set();
+      dragDidMoveRef.current = false;
+
+      if (!over || !didMove) return;
+
+      const resolution = { width: 1920, height: 1080 };
+      const nextLayers = localLayers.map((l) => {
+        if (!affected.has(l.id) || !l.behavior) return l;
+        try {
+          const layerInputInfos = l.inputs
+            .map((li) => {
+              const inp = inputs.find((i) => i.inputId === li.inputId);
+              return inp
+                ? {
+                    inputId: inp.inputId,
+                    nativeWidth: inp.nativeWidth,
+                    nativeHeight: inp.nativeHeight,
+                  }
+                : null;
+            })
+            .filter((bi): bi is NonNullable<typeof bi> => !!bi);
+          const result = computeLayout(l.behavior, layerInputInfos, resolution);
+          return { ...l, inputs: result.inputs };
+        } catch (e) {
+          console.error('Failed to recompute layout for layer', l.id, e);
+          return l;
+>>>>>>> main
+        }
+      });
+
+<<<<<<< HEAD
       if (!nextLayers) return;
 
       const resolution = { width: 1920, height: 1080 };
@@ -492,6 +674,8 @@ export function LayersSection({
         }
       });
 
+=======
+>>>>>>> main
       setLocalLayers(nextLayers);
       try {
         await onLayersChange(nextLayers);
@@ -500,13 +684,24 @@ export function LayersSection({
         setLocalLayers(layers);
       }
     },
+<<<<<<< HEAD
     [findDragItem, localLayers, inputs, onLayersChange, layers],
+=======
+    [localLayers, inputs, onLayersChange, layers],
+>>>>>>> main
   );
 
   const handleDragCancel = useCallback(() => {
     setActiveId(null);
     setActiveDragItem(null);
+<<<<<<< HEAD
   }, []);
+=======
+    dragAffectedLayerIdsRef.current = new Set();
+    dragDidMoveRef.current = false;
+    setLocalLayers(layers);
+  }, [layers]);
+>>>>>>> main
 
   const handleBehaviorChange = useCallback(
     async (layerId: string, behavior: LayerBehaviorConfig | undefined) => {
@@ -592,7 +787,8 @@ export function LayersSection({
 
       <DndContext
         sensors={sensors}
-        collisionDetection={closestCenter}
+        collisionDetection={cursorBasedCollision}
+        modifiers={[snapCenterToCursor]}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
         onDragCancel={handleDragCancel}>
@@ -628,6 +824,7 @@ export function LayersSection({
                     stableLayerNumber={
                       layerNamesRef.current.get(layer.id) ?? layerIndex
                     }
+                    isCarousel={!!layer.carousel}
                     isCollapsed={isCollapsed}
                     onToggleCollapse={() => toggleCollapse(layer.id)}
                     behavior={layer.behavior}
@@ -638,9 +835,34 @@ export function LayersSection({
                     onToggleEnabled={() => handleToggleEnabled(layer.id)}
                     isGuest={isGuest}
                     dragDisabled={disableDrag}
+<<<<<<< HEAD
+=======
+                    isCarouselSettingsOpen={carouselSettingsOpenLayers.has(layer.id)}
+                    onToggleCarouselSettings={
+                      layer.carousel
+                        ? () => toggleCarouselSettings(layer.id)
+                        : undefined
+                    }
+                    onEditCarouselInputs={
+                      layer.carousel
+                        ? () => setCarouselInputModalLayerId(layer.id)
+                        : undefined
+                    }
+>>>>>>> main
                   />
 
-                  {!isCollapsed && (
+                  {!isCollapsed &&
+                  carouselSettingsOpenLayers.has(layer.id) &&
+                  layer.carousel ? (
+                    <CarouselSettingsInline
+                      layer={layer}
+                      layers={localLayers}
+                      roomId={roomId}
+                      inputs={inputs}
+                      resolution={resolution}
+                      onBack={() => toggleCarouselSettings(layer.id)}
+                    />
+                  ) : !isCollapsed ? (
                     <SortableContext
                       items={inputIds}
                       strategy={verticalListSortingStrategy}>
@@ -671,6 +893,7 @@ export function LayersSection({
                               id={layerInput.inputId}
                               disabled={disableDrag}>
                               <ErrorBoundary>
+<<<<<<< HEAD
                                 <InputEntry
                                   input={input}
                                   refreshState={refreshState}
@@ -702,11 +925,68 @@ export function LayersSection({
                                   }
                                   dragDisabled={disableDrag}
                                 />
+=======
+                                {/* eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions */}
+                                <div
+                                  onClick={() =>
+                                    onSelectInput?.(
+                                      selectedInputId === input.inputId
+                                        ? null
+                                        : input.inputId,
+                                    )
+                                  }
+                                  className='cursor-pointer'>
+                                  <InputEntry
+                                    input={input}
+                                    refreshState={refreshState}
+                                    roomId={roomId}
+                                    availableShaders={availableShaders}
+                                    canRemove={
+                                      isGuest
+                                        ? input.inputId === guestInputId
+                                        : true
+                                    }
+                                    pcRef={cameraPcRef}
+                                    streamRef={cameraStreamRef}
+                                    isFxOpen={openFxInputId === input.inputId}
+                                    onToggleFx={() => onToggleFx(input.inputId)}
+                                    onWhipDisconnectedOrRemoved={
+                                      onWhipDisconnectedOrRemoved
+                                    }
+                                    showGrip={isGuest ? false : true}
+                                    isSelected={
+                                      selectedInputId === input.inputId
+                                    }
+                                    readOnly={
+                                      isGuest && input.inputId !== guestInputId
+                                    }
+                                    activeBlockColor={
+                                      activeClipColors?.[input.inputId]
+                                    }
+                                    isOnTimeline={
+                                      allTimelineInputIds?.has(input.inputId) ??
+                                      true
+                                    }
+                                    dragDisabled={disableDrag}
+                                  />
+                                </div>
+>>>>>>> main
                               </ErrorBoundary>
                               {attachedChildren.map((child) => (
                                 <div
                                   key={child.inputId}
+<<<<<<< HEAD
                                   className='ml-6 mt-1 border-l-2 border-blue-500/30 pl-2'>
+=======
+                                  className='ml-6 mt-1 border-l-2 border-blue-500/30 pl-2 cursor-pointer'
+                                  onClick={() =>
+                                    onSelectInput?.(
+                                      selectedInputId === child.inputId
+                                        ? null
+                                        : child.inputId,
+                                    )
+                                  }>
+>>>>>>> main
                                   <ErrorBoundary>
                                     <InputEntry
                                       input={child}
@@ -748,7 +1028,7 @@ export function LayersSection({
                         })}
                       </div>
                     </SortableContext>
-                  )}
+                  ) : null}
                 </div>
               </SortableLayerItem>
             );
@@ -757,13 +1037,37 @@ export function LayersSection({
 
         <DragOverlay dropAnimation={dropAnimation}>
           {activeId && activeDragItem?.type === 'layer' && (
-            <div className='bg-neutral-900 border border-neutral-700 rounded px-3 py-2 text-[11px] text-neutral-300 shadow-lg'>
-              Layer {activeLayerIndex + 1}
+            <div
+              className='rounded-md border border-blue-500/60 bg-neutral-900 shadow-2xl shadow-black/70 ring-2 ring-blue-500/40'
+              style={{
+                transform: 'scale(1.02) rotate(-1deg)',
+                cursor: 'grabbing',
+              }}>
+              <div className='flex items-center gap-1.5 px-2 py-1.5 border-b border-neutral-800/70 bg-neutral-900/60'>
+                <Layers className='w-3.5 h-3.5 text-blue-400 flex-shrink-0' />
+                <span className='text-[11px] font-semibold text-neutral-100 flex-1 text-left truncate'>
+                  {localLayers[activeLayerIndex]?.carousel
+                    ? 'Carousel'
+                    : `Layer ${(layerNamesRef.current.get(localLayers[activeLayerIndex]?.id ?? '') ?? activeLayerIndex) + 1}`}
+                </span>
+                <GripVertical className='w-3.5 h-3.5 text-neutral-400' />
+              </div>
+              <div className='px-2 py-2 text-[10px] text-neutral-500'>
+                {localLayers[activeLayerIndex]?.inputs.length ?? 0} input(s)
+              </div>
             </div>
           )}
           {activeId && activeDragItem?.type === 'input' && activeInput && (
-            <div className='bg-neutral-900 border border-neutral-700 rounded px-3 py-1.5 text-[11px] text-neutral-300 shadow-lg truncate max-w-[200px]'>
-              {activeInput.title}
+            <div
+              className='flex items-center gap-2 rounded-md border border-blue-500/60 bg-neutral-900 px-3 py-2 shadow-2xl shadow-black/70 ring-2 ring-blue-500/40 min-w-[220px] max-w-[320px]'
+              style={{
+                transform: 'scale(1.02) rotate(-1deg)',
+                cursor: 'grabbing',
+              }}>
+              <GripVertical className='w-3.5 h-3.5 text-blue-400 flex-shrink-0' />
+              <span className='text-[11px] font-medium text-neutral-100 flex-1 truncate'>
+                {activeInput.title}
+              </span>
             </div>
           )}
         </DragOverlay>
@@ -777,6 +1081,26 @@ export function LayersSection({
           + Add Layer
         </button>
       )}
+
+      {carouselInputModalLayerId && (() => {
+        const carouselLayer = localLayers.find(
+          (l) => l.id === carouselInputModalLayerId,
+        );
+        if (!carouselLayer?.carousel) return null;
+        return (
+          <CarouselInputSelectionDialog
+            open
+            onOpenChange={(v) => {
+              if (!v) setCarouselInputModalLayerId(null);
+            }}
+            inputs={inputs}
+            carouselLayer={carouselLayer}
+            layers={localLayers}
+            roomId={roomId}
+            resolution={resolution}
+          />
+        );
+      })()}
     </div>
   );
 }
