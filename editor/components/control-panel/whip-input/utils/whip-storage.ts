@@ -1,9 +1,22 @@
 import type { WhipSession } from './types';
 
-const WHIP_SESSION_KEY = 'whip-session-v1';
+const SESSION_TTL_MS = 24 * 60 * 60 * 1000;
+const LOCK_TTL_MS = 60_000;
+
+const sessionKey = (roomId: string) => `whip-session-v2:${roomId}`;
 const lastIdKey = (roomId: string) => `whip-last-input-id:${roomId}`;
 const userNameKey = (roomId: string) => `whip-username:${roomId}`;
-const autoResumeLockKey = (roomId: string) => `whip-auto-resume-lock:${roomId}`;
+const autoResumeLockKey = (roomId: string) =>
+  `whip-auto-resume-lock-v2:${roomId}`;
+
+const getSafeLocalStorage = (): Storage | null => {
+  try {
+    if (typeof window === 'undefined') return null;
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+};
 
 const getSafeSessionStorage = (): Storage | null => {
   try {
@@ -16,38 +29,43 @@ const getSafeSessionStorage = (): Storage | null => {
 
 export function saveWhipSession(s: WhipSession) {
   try {
-    getSafeSessionStorage()?.setItem(WHIP_SESSION_KEY, JSON.stringify(s));
+    getSafeLocalStorage()?.setItem(sessionKey(s.roomId), JSON.stringify(s));
   } catch {}
 }
-export function loadWhipSession(): WhipSession | null {
+
+export function loadWhipSession(roomId: string): WhipSession | null {
   try {
-    const raw = getSafeSessionStorage()?.getItem(WHIP_SESSION_KEY);
+    const raw = getSafeLocalStorage()?.getItem(sessionKey(roomId));
     if (!raw) return null;
     const s = JSON.parse(raw) as WhipSession;
-    if (!s.inputId || !s.bearerToken || !s.roomId) return null;
-    if (Date.now() - s.ts > 24 * 60 * 60 * 1000) return null;
+    if (!s.inputId || !s.bearerToken || s.roomId !== roomId) return null;
+    if (Date.now() - s.ts > SESSION_TTL_MS) {
+      clearWhipSession(roomId);
+      return null;
+    }
     return s;
   } catch {
     return null;
   }
 }
+
 export function clearWhipSession(roomId: string) {
   try {
-    getSafeSessionStorage()?.removeItem(lastIdKey(roomId));
-    getSafeSessionStorage()?.removeItem(WHIP_SESSION_KEY);
+    const ls = getSafeLocalStorage();
+    ls?.removeItem(sessionKey(roomId));
+    ls?.removeItem(lastIdKey(roomId));
   } catch {}
 }
 
 export function saveLastWhipInputId(roomId: string, inputId: string) {
   try {
-    if (typeof window === 'undefined') return;
-    window.sessionStorage.setItem(lastIdKey(roomId), inputId);
+    getSafeLocalStorage()?.setItem(lastIdKey(roomId), inputId);
   } catch {}
 }
+
 export function loadLastWhipInputId(roomId: string): string | null {
   try {
-    if (typeof window === 'undefined') return null;
-    return window.sessionStorage.getItem(lastIdKey(roomId));
+    return getSafeLocalStorage()?.getItem(lastIdKey(roomId)) ?? null;
   } catch {
     return null;
   }
@@ -55,16 +73,15 @@ export function loadLastWhipInputId(roomId: string): string | null {
 
 export function clearLastWhipInputId(roomId: string) {
   try {
-    if (typeof window === 'undefined') return;
-    window.sessionStorage.removeItem(lastIdKey(roomId));
+    getSafeLocalStorage()?.removeItem(lastIdKey(roomId));
   } catch {}
 }
 
 export function clearWhipSessionFor(roomId: string, inputId: string) {
   try {
-    getSafeSessionStorage()?.removeItem(userNameKey(roomId));
-    const s = loadWhipSession();
-    if (s && s.roomId === roomId && s.inputId === inputId) {
+    getSafeLocalStorage()?.removeItem(userNameKey(roomId));
+    const s = loadWhipSession(roomId);
+    if (s && s.inputId === inputId) {
       clearWhipSession(roomId);
     }
     const lastId = loadLastWhipInputId(roomId);
@@ -86,6 +103,7 @@ export function loadUserName(roomId: string): string {
     return '';
   }
 }
+
 export function saveUserName(roomId: string, name: string) {
   try {
     if (typeof window === 'undefined') return;
@@ -95,12 +113,28 @@ export function saveUserName(roomId: string, name: string) {
 
 export function tryAcquireAutoResumeLock(roomId: string): boolean {
   try {
-    if (typeof window === 'undefined') return false;
+    const ss = getSafeSessionStorage();
+    if (!ss) return true;
     const key = autoResumeLockKey(roomId);
-    if (sessionStorage.getItem(key)) return true;
-    sessionStorage.setItem(key, '1');
+    const existing = ss.getItem(key);
+    if (existing) {
+      const acquiredAt = Number.parseInt(existing, 10);
+      if (
+        Number.isFinite(acquiredAt) &&
+        Date.now() - acquiredAt < LOCK_TTL_MS
+      ) {
+        return false;
+      }
+    }
+    ss.setItem(key, String(Date.now()));
     return true;
   } catch {
-    return true; // allow once if sessionStorage unavailable
+    return true;
   }
+}
+
+export function releaseAutoResumeLock(roomId: string) {
+  try {
+    getSafeSessionStorage()?.removeItem(autoResumeLockKey(roomId));
+  } catch {}
 }

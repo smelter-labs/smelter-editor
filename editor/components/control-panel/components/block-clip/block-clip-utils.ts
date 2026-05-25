@@ -22,8 +22,7 @@ export const INPUT_LEVEL_CLIP_ID = '__input-level__';
 
 export function isInputLevelClip(clip: SelectedTimelineClip): boolean {
   return (
-    clip.trackId === INPUT_LEVEL_TRACK_ID &&
-    clip.clipId === INPUT_LEVEL_CLIP_ID
+    clip.trackId === INPUT_LEVEL_TRACK_ID && clip.clipId === INPUT_LEVEL_CLIP_ID
   );
 }
 

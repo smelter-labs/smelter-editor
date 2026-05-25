@@ -6,7 +6,7 @@ import { Label } from '@/components/ui/label';
 import { RichTextEditor } from '@/components/ui/rich-text-editor';
 import LoadingSpinner from '@/components/ui/spinner';
 import { toast } from 'sonner';
-import { Trash2, Download, Check } from 'lucide-react';
+import { Trash2, Download, Check, Eye, EyeOff } from 'lucide-react';
 import type { RoomState } from '@/lib/types';
 import {
   exportRoomConfig,
@@ -27,6 +27,8 @@ import {
 import type { SavedItemInfo } from '@/lib/storage-client';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import type { TimelineState } from '../hooks/use-timeline-state';
+import { useAppMode } from '@/components/app-mode/app-mode-context';
+import { useHiddenShowcases } from '@/hooks/use-hidden-showcases';
 import {
   Select,
   SelectTrigger,
@@ -83,6 +85,11 @@ export function PresentationModeSettings({
   showcasePrefill,
 }: PresentationModeSettingsProps) {
   const { roomId } = useControlPanelContext();
+  const { adminMode } = useAppMode();
+  const {
+    hiddenFileNames: hiddenShowcaseFileNames,
+    setHidden: setShowcaseHidden,
+  } = useHiddenShowcases();
 
   const [welcomeTextBefore, setWelcomeTextBefore] = useState('');
   const [welcomeTextAfter, setWelcomeTextAfter] = useState('');
@@ -219,6 +226,7 @@ export function PresentationModeSettings({
       },
       roomState.outputShaders,
       roomState.layers,
+      roomState.sortMode,
     );
   }, [getTimelineStateForConfig, roomState, roomId]);
 
@@ -442,16 +450,6 @@ export function PresentationModeSettings({
             placeholder='Welcome! Please connect your camera or screenshare below...'
           />
         </div>
-        <div className='space-y-2'>
-          <Label className='text-xs text-muted-foreground'>
-            Text after pending connections
-          </Label>
-          <RichTextEditor
-            value={welcomeTextAfter}
-            onChange={setWelcomeTextAfter}
-            placeholder='Once connected, the presentation will begin automatically.'
-          />
-        </div>
       </section>
 
       <div className='h-px bg-card' />
@@ -597,63 +595,108 @@ export function PresentationModeSettings({
           </p>
         ) : (
           <ul className='space-y-2'>
-            {presentationConfigs.map((item) => (
-              <li
-                key={item.fileName}
-                className={`flex items-center justify-between rounded px-3 py-2 cursor-pointer transition-colors ${
-                  selectedPresentationConfigFile === item.fileName
-                    ? 'bg-neutral-800 ring-1 ring-neutral-600'
-                    : 'bg-neutral-900 hover:bg-neutral-800'
-                }`}
-                onClick={() => {
-                  setSelectedPresentationConfigFile(item.fileName);
-                  setSelectedPresentationConfigName(item.name);
-                  setConfigName(item.name);
-                }}>
-                <div className='min-w-0 flex-1'>
-                  <span className='text-sm text-white truncate block'>
-                    {item.name}
-                  </span>
-                  <span className='text-xs text-neutral-500'>
-                    {new Date(item.savedAt).toLocaleString()}
-                  </span>
-                </div>
-                <div className='flex gap-1 ml-2 shrink-0'>
-                  <Button
-                    size='icon'
-                    variant='ghost'
-                    className='h-7 w-7 cursor-pointer'
-                    title='Load settings'
-                    disabled={loadingConfigFile === item.fileName}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setSelectedPresentationConfigFile(item.fileName);
-                      setSelectedPresentationConfigName(item.name);
-                      setConfigName(item.name);
-                      void handleLoadConfig(item.fileName, {
-                        markAsEditTarget: true,
-                      });
-                    }}>
-                    {loadingConfigFile === item.fileName ? (
-                      <LoadingSpinner size='sm' variant='spinner' />
-                    ) : (
-                      <Download className='w-3.5 h-3.5' />
+            {presentationConfigs.map((item) => {
+              const hidden = hiddenShowcaseFileNames.has(item.fileName);
+              return (
+                <li
+                  key={item.fileName}
+                  className={`flex items-center justify-between rounded px-3 py-2 cursor-pointer transition-colors ${
+                    selectedPresentationConfigFile === item.fileName
+                      ? 'bg-neutral-800 ring-1 ring-neutral-600'
+                      : 'bg-neutral-900 hover:bg-neutral-800'
+                  } ${hidden ? 'opacity-60' : ''}`}
+                  onClick={() => {
+                    setSelectedPresentationConfigFile(item.fileName);
+                    setSelectedPresentationConfigName(item.name);
+                    setConfigName(item.name);
+                  }}>
+                  <div className='min-w-0 flex-1'>
+                    <span className='text-sm text-white truncate block'>
+                      {item.name}
+                      {hidden && (
+                        <span className='ml-2 text-[10px] uppercase tracking-widest text-amber-400'>
+                          Hidden
+                        </span>
+                      )}
+                    </span>
+                    <span className='text-xs text-neutral-500'>
+                      {new Date(item.savedAt).toLocaleString()}
+                    </span>
+                  </div>
+                  <div className='flex gap-1 ml-2 shrink-0'>
+                    {adminMode && (
+                      <Button
+                        size='icon'
+                        variant='ghost'
+                        className='h-7 w-7 cursor-pointer'
+                        title={
+                          hidden
+                            ? 'Show to users on intro screen'
+                            : 'Hide from users on intro screen'
+                        }
+                        onClick={async (event) => {
+                          event.stopPropagation();
+                          const ok = await setShowcaseHidden(
+                            item.fileName,
+                            !hidden,
+                          );
+                          if (ok) {
+                            toast.success(
+                              hidden
+                                ? 'Showcase visible to users'
+                                : 'Showcase hidden from users',
+                            );
+                          } else {
+                            toast.error(
+                              hidden
+                                ? 'Failed to unhide showcase'
+                                : 'Failed to hide showcase',
+                            );
+                          }
+                        }}>
+                        {hidden ? (
+                          <EyeOff className='w-3.5 h-3.5' />
+                        ) : (
+                          <Eye className='w-3.5 h-3.5' />
+                        )}
+                      </Button>
                     )}
-                  </Button>
-                  <Button
-                    size='icon'
-                    variant='ghost'
-                    className='h-7 w-7 text-red-400 hover:text-red-300 cursor-pointer'
-                    title='Delete'
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      void handleDeleteConfig(item.fileName);
-                    }}>
-                    <Trash2 className='w-3.5 h-3.5' />
-                  </Button>
-                </div>
-              </li>
-            ))}
+                    <Button
+                      size='icon'
+                      variant='ghost'
+                      className='h-7 w-7 cursor-pointer'
+                      title='Load settings'
+                      disabled={loadingConfigFile === item.fileName}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedPresentationConfigFile(item.fileName);
+                        setSelectedPresentationConfigName(item.name);
+                        setConfigName(item.name);
+                        void handleLoadConfig(item.fileName, {
+                          markAsEditTarget: true,
+                        });
+                      }}>
+                      {loadingConfigFile === item.fileName ? (
+                        <LoadingSpinner size='sm' variant='spinner' />
+                      ) : (
+                        <Download className='w-3.5 h-3.5' />
+                      )}
+                    </Button>
+                    <Button
+                      size='icon'
+                      variant='ghost'
+                      className='h-7 w-7 text-red-400 hover:text-red-300 cursor-pointer'
+                      title='Delete'
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void handleDeleteConfig(item.fileName);
+                      }}>
+                      <Trash2 className='w-3.5 h-3.5' />
+                    </Button>
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>

@@ -44,7 +44,7 @@ import { restoreOutputCodeSnapshot } from '@/lib/restore-output-code-snapshot';
 import { useActions } from '@/components/control-panel/contexts/actions-context';
 import LoadingSpinner from '@/components/ui/spinner';
 
-const REMOVED_PREVIEW_MAX = 8;
+const DIFF_PREVIEW_MAX = 8;
 
 const SyntaxHighlighter = dynamic(
   () => import('react-syntax-highlighter').then((mod) => mod.Prism),
@@ -98,29 +98,42 @@ function DiffBadge({ highlight }: { highlight: CodeDiffHighlight }) {
   );
 }
 
-function RemovedLinesSection({
+function DiffLinesSection({
+  label,
   lines,
   fontSizePx,
+  tone,
 }: {
+  label: string;
   lines: string[];
   fontSizePx: number;
+  tone: 'added' | 'removed';
 }) {
   const [expanded, setExpanded] = useState(true);
-  const preview = lines.slice(0, REMOVED_PREVIEW_MAX);
+  const preview = lines.slice(0, DIFF_PREVIEW_MAX);
   const remaining = lines.length - preview.length;
+
+  const headerClass =
+    tone === 'added'
+      ? 'text-emerald-400/90 hover:text-emerald-300'
+      : 'text-red-400/90 hover:text-red-300';
+  const bodyClass =
+    tone === 'added' ? 'text-emerald-300/80' : 'text-red-300/80';
 
   return (
     <div className='shrink-0 border-t border-[#3a494b]/40'>
       <button
         type='button'
         onClick={() => setExpanded((v) => !v)}
-        className='flex w-full items-center gap-2 px-2 py-1.5 text-[10px] uppercase tracking-wider text-red-400/90 hover:text-red-300 transition-colors cursor-pointer'>
-        <span>Removed ({lines.length})</span>
+        className={`flex w-full items-center gap-2 px-2 py-1.5 text-[10px] uppercase tracking-wider transition-colors cursor-pointer ${headerClass}`}>
+        <span>
+          {label} ({lines.length})
+        </span>
         <span className='text-[#849495]'>{expanded ? '▼' : '▶'}</span>
       </button>
       {expanded && (
         <pre
-          className='px-3 pb-2 leading-relaxed font-mono text-red-300/80 whitespace-pre overflow-auto max-h-32'
+          className={`px-3 pb-2 leading-relaxed font-mono whitespace-pre overflow-auto max-h-32 ${bodyClass}`}
           style={{ fontSize: `${fontSizePx}px` }}>
           {preview.join('\n')}
           {remaining > 0 && `\n…and ${remaining} more`}
@@ -442,10 +455,7 @@ export function OutputCodePanel({
     ],
   );
 
-  const liveCode = useMemo(
-    () => generateOutputJsx(sceneState),
-    [sceneState],
-  );
+  const liveCode = useMemo(() => generateOutputJsx(sceneState), [sceneState]);
 
   const { state: roomState, setState: setRoomState } =
     useOutputCodeRoomState(roomId);
@@ -462,8 +472,8 @@ export function OutputCodePanel({
     () =>
       roomState.activeTabId === OUTPUT_CODE_LIVE_TAB_ID
         ? null
-        : roomState.snapshots.find((s) => s.id === roomState.activeTabId) ??
-          null,
+        : (roomState.snapshots.find((s) => s.id === roomState.activeTabId) ??
+          null),
     [roomState.activeTabId, roomState.snapshots],
   );
 
@@ -511,10 +521,7 @@ export function OutputCodePanel({
   }, [roomState, liveCode, sceneState, setRoomState]);
 
   const canRestore =
-    !!roomId &&
-    !!refreshState &&
-    !!activeSnapshot?.sceneState &&
-    !isRestoring;
+    !!roomId && !!refreshState && !!activeSnapshot?.sceneState && !isRestoring;
 
   const handleRestore = useCallback(async () => {
     if (!roomId || !refreshState || !activeSnapshot?.sceneState) return;
@@ -654,9 +661,7 @@ export function OutputCodePanel({
           setRoomState(setActiveTabId(roomState, id));
         }}
         onSaveLive={handleSaveLive}
-        onDeleteSnapshot={(id) =>
-          setRoomState(deleteSnapshot(roomState, id))
-        }
+        onDeleteSnapshot={(id) => setRoomState(deleteSnapshot(roomState, id))}
         onRenameSnapshot={(id, label) =>
           setRoomState(renameSnapshot(roomState, id, label))
         }
@@ -670,8 +675,18 @@ export function OutputCodePanel({
           fontSizePx={roomState.fontSizePx}
         />
       </div>
+      {highlight && highlight.addedLines.length > 0 && (
+        <DiffLinesSection
+          label='Added'
+          tone='added'
+          lines={highlight.addedLines}
+          fontSizePx={roomState.fontSizePx}
+        />
+      )}
       {highlight && highlight.removedLines.length > 0 && (
-        <RemovedLinesSection
+        <DiffLinesSection
+          label='Removed'
+          tone='removed'
           lines={highlight.removedLines}
           fontSizePx={roomState.fontSizePx}
         />

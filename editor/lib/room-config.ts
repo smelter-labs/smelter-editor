@@ -152,6 +152,7 @@ export type RoomConfig = {
   timeline?: RoomConfigTimeline;
   outputPlayer?: RoomConfigOutputPlayer;
   outputShaders?: ShaderConfig[];
+  sortMode?: 'timeline' | 'layers';
   exportedAt: string;
 };
 
@@ -254,6 +255,7 @@ export function exportRoomConfig(
   viewport?: Partial<ViewportProperties>,
   outputShaders?: ShaderConfig[],
   layers?: Layer[],
+  sortMode?: 'timeline' | 'layers',
 ): RoomConfig {
   const inputIdToIndex = new Map<string, number>();
   inputs.forEach((input, idx) => inputIdToIndex.set(input.inputId, idx));
@@ -364,6 +366,7 @@ export function exportRoomConfig(
     outputPlayer,
     outputShaders:
       outputShaders && outputShaders.length > 0 ? outputShaders : undefined,
+    sortMode,
     inputs: inputs.map((input) => ({
       type: input.type,
       title: input.title,
@@ -448,6 +451,13 @@ export function parseRoomConfig(json: string): RoomConfig {
   }
   if (!config.layout || !Array.isArray(config.inputs)) {
     throw new Error('Invalid config format');
+  }
+  if (
+    config.sortMode !== undefined &&
+    config.sortMode !== 'timeline' &&
+    config.sortMode !== 'layers'
+  ) {
+    delete config.sortMode;
   }
   return sanitizeImportedConfigNames(config as RoomConfig);
 }

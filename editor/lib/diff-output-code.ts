@@ -7,6 +7,8 @@ export type CodeDiffHighlight = {
   changedRanges: Map<number, TextRange[]>;
   /** Lines removed from the previous version */
   removedLines: string[];
+  /** Lines added in the new version */
+  addedLines: string[];
   addedCount: number;
   removedCount: number;
   changedCount: number;
@@ -15,6 +17,7 @@ export type CodeDiffHighlight = {
 const EMPTY_HIGHLIGHT: CodeDiffHighlight = {
   changedRanges: new Map(),
   removedLines: [],
+  addedLines: [],
   addedCount: 0,
   removedCount: 0,
   changedCount: 0,
@@ -47,6 +50,7 @@ export function computeCodeDiff(prev: string, next: string): CodeDiffHighlight {
     return {
       changedRanges: new Map(),
       removedLines: [],
+      addedLines: [],
       addedCount: 0,
       removedCount: 0,
       changedCount: 0,
@@ -59,6 +63,7 @@ export function computeCodeDiff(prev: string, next: string): CodeDiffHighlight {
 
   const changedRanges = new Map<number, TextRange[]>();
   const removedLines: string[] = [];
+  const addedLines: string[] = [];
   let nextLineNum = 1;
   let addedCount = 0;
   let removedCount = 0;
@@ -78,6 +83,7 @@ export function computeCodeDiff(prev: string, next: string): CodeDiffHighlight {
           if (oldLine && oldLine !== newLine) {
             removedLines.push(oldLine);
             removedCount++;
+            addedLines.push(newLine);
           }
           const ranges = getChangedCharacterRanges(oldLine, newLine);
           if (ranges.length > 0) {
@@ -104,6 +110,7 @@ export function computeCodeDiff(prev: string, next: string): CodeDiffHighlight {
     if (part.added && !part.removed) {
       for (const line of part.value as string[]) {
         changedRanges.set(nextLineNum, [{ start: 0, end: line.length }]);
+        addedLines.push(line);
         nextLineNum++;
         addedCount++;
       }
@@ -115,13 +122,18 @@ export function computeCodeDiff(prev: string, next: string): CodeDiffHighlight {
     }
   }
 
-  if (changedRanges.size === 0 && removedLines.length === 0) {
+  if (
+    changedRanges.size === 0 &&
+    removedLines.length === 0 &&
+    addedLines.length === 0
+  ) {
     return EMPTY_HIGHLIGHT;
   }
 
   return {
     changedRanges,
     removedLines,
+    addedLines,
     addedCount,
     removedCount,
     changedCount: changedRanges.size,

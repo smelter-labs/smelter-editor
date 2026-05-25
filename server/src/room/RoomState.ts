@@ -174,6 +174,7 @@ export class RoomState {
   private swapOutgoingEnabled: boolean = true;
   private swapFadeInDurationMs: number = 500;
   private swapFadeOutDurationMs: number = 500;
+  private sortMode: 'timeline' | 'layers' = 'timeline';
 
   private viewportTop?: number;
   private viewportLeft?: number;
@@ -286,6 +287,7 @@ export class RoomState {
       swapOutgoingEnabled: this.swapOutgoingEnabled,
       swapFadeInDurationMs: this.swapFadeInDurationMs,
       swapFadeOutDurationMs: this.swapFadeOutDurationMs,
+      sortMode: this.sortMode,
       outputShaders: this.getOutputShaders(),
       viewportTop: this.viewportTop,
       viewportLeft: this.viewportLeft,
@@ -349,6 +351,14 @@ export class RoomState {
   }
   public setSwapFadeOutDurationMs(value: number) {
     this.swapFadeOutDurationMs = value;
+    this.updateStoreWithState();
+  }
+
+  public getSortMode(): 'timeline' | 'layers' {
+    return this.sortMode;
+  }
+  public setSortMode(value: 'timeline' | 'layers') {
+    this.sortMode = value;
     this.updateStoreWithState();
   }
 

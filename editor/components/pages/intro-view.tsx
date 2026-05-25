@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
 
@@ -26,6 +26,7 @@ import {
   saveOutputPlayerSettings,
 } from '@/lib/room-config';
 import { streamImportConfig } from '@/lib/import-config-stream';
+import { useAppMode } from '@/components/app-mode/app-mode-context';
 import {
   listPresentationConfigs,
   loadPresentationConfig,
@@ -77,6 +78,7 @@ import {
 } from '@/lib/crash-recovery';
 import { SettingsModal } from '@/components/settings-modal';
 import { SERVER_PRESETS, getEffectiveClientServerUrl } from '@/lib/server-url';
+import { useHiddenShowcases } from '@/hooks/use-hidden-showcases';
 
 function getBasePath(pathname: string): string {
   // Remove trailing slash if present
@@ -96,6 +98,11 @@ export default function IntroView() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const {
+    adminMode,
+    toggleMode,
+    toggleAdminMode,
+  } = useAppMode();
   const [loadingNew, setLoadingNew] = useState(false);
   const [loadingImport, setLoadingImport] = useState(false);
   const [importProgress, setImportProgress] =
@@ -133,6 +140,19 @@ export default function IntroView() {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const centeredContentRef = useRef<HTMLDivElement>(null);
+  const adminLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const adminLongPressFiredRef = useRef(false);
+
+  const clearAdminLongPress = useCallback(() => {
+    if (adminLongPressTimerRef.current !== null) {
+      clearTimeout(adminLongPressTimerRef.current);
+      adminLongPressTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => clearAdminLongPress(), [clearAdminLongPress]);
   const [desktopIntroOffset, setDesktopIntroOffset] = useState<number | null>(
     null,
   );
@@ -308,6 +328,7 @@ export default function IntroView() {
   const [showcaseConfigs, setShowcaseConfigs] = useState<SavedItemInfo[]>([]);
   const [loadingShowcase, setLoadingShowcase] = useState(false);
   const [showShowcasePicker, setShowShowcasePicker] = useState(false);
+  const { hiddenFileNames: hiddenShowcaseFileNames } = useHiddenShowcases();
 
   useEffect(() => {
     let mounted = true;
@@ -320,6 +341,15 @@ export default function IntroView() {
       mounted = false;
     };
   }, []);
+
+  const visibleShowcaseConfigs = useMemo(
+    () =>
+      showcaseConfigs.filter((c) => !hiddenShowcaseFileNames.has(c.fileName)),
+    [showcaseConfigs, hiddenShowcaseFileNames],
+  );
+  const effectiveShowcaseConfigs = adminMode
+    ? showcaseConfigs
+    : visibleShowcaseConfigs;
 
   const [showLoadModal, setShowLoadModal] = useState(false);
 
@@ -564,8 +594,38 @@ export default function IntroView() {
               <button
                 type='button'
                 onClick={() => setShowSettings(true)}
+                onMouseDown={(e) => {
+                  if (e.button !== 2) return;
+                  adminLongPressFiredRef.current = false;
+                  clearAdminLongPress();
+                  adminLongPressTimerRef.current = setTimeout(() => {
+                    adminLongPressFiredRef.current = true;
+                    adminLongPressTimerRef.current = null;
+                    toggleAdminMode();
+                  }, 1000);
+                }}
+                onMouseUp={(e) => {
+                  if (e.button !== 2) return;
+                  const timerWasPending =
+                    adminLongPressTimerRef.current !== null;
+                  clearAdminLongPress();
+                  if (adminLongPressFiredRef.current) {
+                    adminLongPressFiredRef.current = false;
+                    return;
+                  }
+                  if (timerWasPending) {
+                    toggleMode();
+                  }
+                }}
+                onMouseLeave={() => {
+                  clearAdminLongPress();
+                  adminLongPressFiredRef.current = false;
+                }}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                }}
                 className='inline-flex items-center justify-center rounded border border-neutral-700 bg-neutral-900 p-2 text-neutral-300 transition-colors hover:text-white hover:border-neutral-500 cursor-pointer'
-                aria-label='Open server settings'>
+                aria-label='Open server settings (right-click to toggle geek mode, hold right-click 1s to toggle admin mode)'>
                 <Settings className='w-4 h-4' />
               </button>
             </div>
@@ -680,11 +740,16 @@ export default function IntroView() {
                 variant='default'
                 className='w-full cursor-pointer text-lg py-6 font-bold'
                 onClick={() => {
-                  if (showcaseConfigs.length === 0) {
+                  if (adminMode) {
+                    if (showcaseConfigs.length === 0) return;
+                    setShowShowcasePicker(true);
                     return;
                   }
-                  if (showcaseConfigs.length === 1) {
-                    handleStartShowcase(showcaseConfigs[0]);
+                  if (visibleShowcaseConfigs.length === 0) {
+                    return;
+                  }
+                  if (visibleShowcaseConfigs.length === 1) {
+                    handleStartShowcase(visibleShowcaseConfigs[0]);
                   } else {
                     setShowShowcasePicker(true);
                   }
@@ -693,14 +758,16 @@ export default function IntroView() {
                   loadingNew ||
                   loadingImport ||
                   loadingShowcase ||
-                  showcaseConfigs.length === 0
+                  (adminMode
+                    ? showcaseConfigs.length === 0
+                    : visibleShowcaseConfigs.length === 0)
                 }>
                 {loadingShowcase ? (
                   <LoadingSpinner size='sm' variant='spinner' />
                 ) : (
                   <>
                     <Presentation className='w-5 h-5 mr-2' />
-                    Start Showcase
+                    Demo Projects
                   </>
                 )}
               </Button>
@@ -874,29 +941,41 @@ export default function IntroView() {
       <Dialog open={showShowcasePicker} onOpenChange={setShowShowcasePicker}>
         <DialogContent className='max-w-md'>
           <DialogHeader>
-            <DialogTitle>Select Presentation</DialogTitle>
+            <DialogTitle>Select Demo Project</DialogTitle>
           </DialogHeader>
           <div className='space-y-2'>
-            {showcaseConfigs.map((item) => (
-              <button
-                key={item.fileName}
-                onClick={() => {
-                  setShowShowcasePicker(false);
-                  handleStartShowcase(item);
-                }}
-                disabled={loadingShowcase}
-                className='w-full flex items-center justify-between bg-neutral-900 hover:bg-neutral-800 rounded px-4 py-3 text-left transition-colors cursor-pointer'>
-                <div className='min-w-0'>
-                  <span className='text-sm text-white font-medium block truncate'>
-                    {item.name}
-                  </span>
-                  <span className='text-xs text-neutral-500'>
-                    {new Date(item.savedAt).toLocaleString()}
-                  </span>
-                </div>
-                <Presentation className='w-4 h-4 text-neutral-400 shrink-0 ml-3' />
-              </button>
-            ))}
+            {effectiveShowcaseConfigs.map((item) => {
+              const hidden = hiddenShowcaseFileNames.has(item.fileName);
+              return (
+                <button
+                  key={item.fileName}
+                  onClick={() => {
+                    setShowShowcasePicker(false);
+                    handleStartShowcase(item);
+                  }}
+                  disabled={loadingShowcase}
+                  className={`w-full flex items-center justify-between rounded px-4 py-3 text-left transition-colors cursor-pointer ${
+                    hidden
+                      ? 'bg-neutral-900/60 opacity-60 hover:opacity-90 hover:bg-neutral-800/60'
+                      : 'bg-neutral-900 hover:bg-neutral-800'
+                  }`}>
+                  <div className='min-w-0'>
+                    <span className='text-sm text-white font-medium block truncate'>
+                      {item.name}
+                      {hidden && (
+                        <span className='ml-2 text-[10px] uppercase tracking-widest text-amber-400'>
+                          Hidden
+                        </span>
+                      )}
+                    </span>
+                    <span className='text-xs text-neutral-500'>
+                      {new Date(item.savedAt).toLocaleString()}
+                    </span>
+                  </div>
+                  <Presentation className='w-4 h-4 text-neutral-400 shrink-0 ml-3' />
+                </button>
+              );
+            })}
           </div>
         </DialogContent>
       </Dialog>

@@ -35,7 +35,10 @@ function storageKey(roomId: string): string {
 }
 
 function clampFontSize(value: number): number {
-  return Math.max(MIN_FONT_SIZE_PX, Math.min(MAX_FONT_SIZE_PX, Math.round(value)));
+  return Math.max(
+    MIN_FONT_SIZE_PX,
+    Math.min(MAX_FONT_SIZE_PX, Math.round(value)),
+  );
 }
 
 function createDefaultState(): OutputCodeRoomState {
@@ -149,9 +152,15 @@ export function saveOutputCodeRoomState(
 ): void {
   if (typeof window === 'undefined' || !roomId) return;
   try {
-    localStorage.setItem(storageKey(roomId), JSON.stringify(sanitizeState(state)));
+    localStorage.setItem(
+      storageKey(roomId),
+      JSON.stringify(sanitizeState(state)),
+    );
   } catch (error) {
-    console.warn('[output-code-storage] save failed — localStorage likely full', error);
+    console.warn(
+      '[output-code-storage] save failed — localStorage likely full',
+      error,
+    );
   }
 }
 
@@ -220,7 +229,9 @@ export function deleteSnapshot(
 ): OutputCodeRoomState {
   const snapshots = state.snapshots.filter((s) => s.id !== snapshotId);
   const activeTabId =
-    state.activeTabId === snapshotId ? OUTPUT_CODE_LIVE_TAB_ID : state.activeTabId;
+    state.activeTabId === snapshotId
+      ? OUTPUT_CODE_LIVE_TAB_ID
+      : state.activeTabId;
 
   return {
     ...state,

@@ -2,9 +2,10 @@ import { attachLocalPreview } from './preview';
 import { createRotatedStream, createRotated90Stream } from './rotate-stream';
 import {
   buildIceServers,
-  forceH264,
+  setCodecPreference,
   waitIceComplete,
   wireDebug,
+  type WhipCodec,
 } from './webRTC-helpers';
 import { sendWhipOfferLocal } from './whip-api';
 
@@ -68,6 +69,7 @@ export async function startPublish(
   facingMode?: 'user' | 'environment',
   rotate90?: boolean,
   existingStream?: MediaStream,
+  codec?: WhipCodec,
 ): Promise<{ location: string | null }> {
   const rawStream =
     existingStream ??
@@ -152,7 +154,7 @@ export async function startPublish(
     sendEncodings: [{ maxBitrate: 1_200_000 }],
   });
   if (aTrack) pc.addTransceiver(aTrack, { direction: 'sendonly' });
-  forceH264(vTx);
+  setCodecPreference(vTx, codec ?? 'h264');
 
   await pc.setLocalDescription(await pc.createOffer());
   const offerDesc = await waitIceComplete(pc);

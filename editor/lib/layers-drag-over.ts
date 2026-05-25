@@ -41,6 +41,10 @@ function resolveDropTarget(
   return { overLayerId: owningLayer.id, overInputId: overIdStr };
 }
 
+// Only commits cross-layer input moves. Same-layer input reorders and
+// layer-to-layer reorders return null and are handled in onDragEnd —
+// committing them mid-drag causes dnd-kit's overId to oscillate between
+// renders, which leads to "Maximum update depth exceeded" via useRects.
 export function applyDragOverToLayers(
   layers: Layer[],
   activeId: UniqueIdentifier,
@@ -49,45 +53,23 @@ export function applyDragOverToLayers(
   if (activeId === overId) return null;
 
   const activeRef = findDragItem(layers, activeId);
-  if (!activeRef) return null;
+  if (!activeRef || activeRef.type !== 'input' || !activeRef.inputId) {
+    return null;
+  }
 
   const dropTarget = resolveDropTarget(layers, overId);
   if (!dropTarget) return null;
-
   const { overLayerId, overInputId } = dropTarget;
-
-  if (activeRef.type === 'layer') {
-    const oldIdx = layers.findIndex((l) => l.id === activeRef.layerId);
-    const newIdx = layers.findIndex((l) => l.id === overLayerId);
-    if (oldIdx === -1 || newIdx === -1 || oldIdx === newIdx) return null;
-    return arrayMove(layers, oldIdx, newIdx);
-  }
-
-  if (activeRef.type !== 'input' || !activeRef.inputId) return null;
 
   const srcLayerIdx = layers.findIndex((l) => l.id === activeRef.layerId);
   if (srcLayerIdx === -1) return null;
+  const dstLayerIdx = layers.findIndex((l) => l.id === overLayerId);
+  if (dstLayerIdx === -1 || srcLayerIdx === dstLayerIdx) return null;
 
   const srcInputIdx = layers[srcLayerIdx].inputs.findIndex(
     (i) => i.inputId === activeRef.inputId,
   );
   if (srcInputIdx === -1) return null;
-
-  const dstLayerIdx = layers.findIndex((l) => l.id === overLayerId);
-  if (dstLayerIdx === -1) return null;
-
-  if (srcLayerIdx === dstLayerIdx) {
-    if (!overInputId) return null;
-    const dstInputIdx = layers[dstLayerIdx].inputs.findIndex(
-      (i) => i.inputId === overInputId,
-    );
-    if (dstInputIdx === -1 || srcInputIdx === dstInputIdx) return null;
-    return layers.map((l, i) =>
-      i === srcLayerIdx
-        ? { ...l, inputs: arrayMove(l.inputs, srcInputIdx, dstInputIdx) }
-        : l,
-    );
-  }
 
   const next = layers.map((l) => ({
     ...l,
@@ -103,4 +85,54 @@ export function applyDragOverToLayers(
   }
   next[dstLayerIdx].inputs.splice(insertIdx, 0, moved);
   return next;
+}
+
+// Finalizes positioning at drag end: layer reorder and intra-layer input
+// reorder. Cross-layer input moves are already committed by onDragOver.
+export function applyDragEndToLayers(
+  layers: Layer[],
+  activeId: UniqueIdentifier,
+  overId: UniqueIdentifier,
+): Layer[] | null {
+  if (activeId === overId) return null;
+
+  const activeRef = findDragItem(layers, activeId);
+  if (!activeRef) return null;
+
+  if (activeRef.type === 'layer') {
+    const dropTarget = resolveDropTarget(layers, overId);
+    if (!dropTarget) return null;
+    const oldIdx = layers.findIndex((l) => l.id === activeRef.layerId);
+    const newIdx = layers.findIndex((l) => l.id === dropTarget.overLayerId);
+    if (oldIdx === -1 || newIdx === -1 || oldIdx === newIdx) return null;
+    return arrayMove(layers, oldIdx, newIdx);
+  }
+
+  if (activeRef.type !== 'input' || !activeRef.inputId) return null;
+
+  const dropTarget = resolveDropTarget(layers, overId);
+  if (!dropTarget) return null;
+  const { overLayerId, overInputId } = dropTarget;
+
+  const srcLayerIdx = layers.findIndex((l) => l.id === activeRef.layerId);
+  if (srcLayerIdx === -1) return null;
+  const dstLayerIdx = layers.findIndex((l) => l.id === overLayerId);
+  if (dstLayerIdx === -1 || srcLayerIdx !== dstLayerIdx) return null;
+  if (!overInputId) return null;
+
+  const srcInputIdx = layers[srcLayerIdx].inputs.findIndex(
+    (i) => i.inputId === activeRef.inputId,
+  );
+  const dstInputIdx = layers[dstLayerIdx].inputs.findIndex(
+    (i) => i.inputId === overInputId,
+  );
+  if (srcInputIdx === -1 || dstInputIdx === -1 || srcInputIdx === dstInputIdx) {
+    return null;
+  }
+
+  return layers.map((l, i) =>
+    i === srcLayerIdx
+      ? { ...l, inputs: arrayMove(l.inputs, srcInputIdx, dstInputIdx) }
+      : l,
+  );
 }

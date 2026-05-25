@@ -22,6 +22,7 @@ import {
   getEffectiveClientServerUrl,
   setStoredServerUrl,
 } from '@/lib/server-url';
+import { useAppMode } from '@/components/app-mode/app-mode-context';
 
 type SettingsModalProps = {
   open: boolean;
@@ -42,6 +43,8 @@ function isValidHttpUrl(value: string): boolean {
 }
 
 export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
+  const { mode: appMode } = useAppMode();
+  const isDemo = appMode === 'demo';
   const defaultUrl = useMemo(() => getDefaultServerUrl(), []);
   const [url, setUrl] = useState(defaultUrl);
   const [error, setError] = useState<string | null>(null);
@@ -51,9 +54,9 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
       return;
     }
 
-    setUrl(getEffectiveClientServerUrl());
+    setUrl(isDemo ? defaultUrl : getEffectiveClientServerUrl());
     setError(null);
-  }, [open]);
+  }, [open, isDemo, defaultUrl]);
 
   const selectedPreset = useMemo(() => {
     const normalized = normalizeUrl(url);
@@ -92,35 +95,39 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
         </DialogHeader>
 
         <div className='space-y-4'>
-          <div className='space-y-2'>
-            <label className='text-xs text-neutral-400'>Preset</label>
-            <Select
-              value={selectedPresetId}
-              onValueChange={(value) => {
-                if (value === 'custom') {
-                  return;
-                }
-                const preset = SERVER_PRESETS.find((item) => item.id === value);
-                if (!preset) {
-                  return;
-                }
-                setUrl(preset.url);
-                setError(null);
-              }}>
-              <SelectTrigger>
-                <SelectValue placeholder='Select preset' />
-              </SelectTrigger>
-              <SelectContent>
-                {SERVER_PRESETS.map((preset) => (
-                  <SelectItem key={preset.id} value={preset.id}>
-                    {preset.url
-                      ? `${preset.label} (${preset.url})`
-                      : preset.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {!isDemo && (
+            <div className='space-y-2'>
+              <label className='text-xs text-neutral-400'>Preset</label>
+              <Select
+                value={selectedPresetId}
+                onValueChange={(value) => {
+                  if (value === 'custom') {
+                    return;
+                  }
+                  const preset = SERVER_PRESETS.find(
+                    (item) => item.id === value,
+                  );
+                  if (!preset) {
+                    return;
+                  }
+                  setUrl(preset.url);
+                  setError(null);
+                }}>
+                <SelectTrigger>
+                  <SelectValue placeholder='Select preset' />
+                </SelectTrigger>
+                <SelectContent>
+                  {SERVER_PRESETS.map((preset) => (
+                    <SelectItem key={preset.id} value={preset.id}>
+                      {preset.url
+                        ? `${preset.label} (${preset.url})`
+                        : preset.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           <div className='space-y-2'>
             <label className='text-xs text-neutral-400'>Server URL</label>
@@ -135,21 +142,29 @@ export function SettingsModal({ open, onOpenChange }: SettingsModalProps) {
               placeholder='http://localhost:3001'
               autoComplete='off'
               spellCheck={false}
+              disabled={isDemo}
+              readOnly={isDemo}
             />
-            <p className='text-xs text-neutral-500'>
-              Default from env: {defaultUrl}
-            </p>
+            {!isDemo && (
+              <p className='text-xs text-neutral-500'>
+                Default from env: {defaultUrl}
+              </p>
+            )}
             {error && <p className='text-xs text-red-400'>{error}</p>}
           </div>
 
           <div className='flex justify-end gap-2'>
             <Button variant='outline' onClick={() => onOpenChange(false)}>
-              Cancel
+              {isDemo ? 'Close' : 'Cancel'}
             </Button>
-            <Button variant='outline' onClick={handleReset}>
-              Reset to default
-            </Button>
-            <Button onClick={handleSave}>Save & reload</Button>
+            {!isDemo && (
+              <>
+                <Button variant='outline' onClick={handleReset}>
+                  Reset to default
+                </Button>
+                <Button onClick={handleSave}>Save & reload</Button>
+              </>
+            )}
           </div>
         </div>
       </DialogContent>

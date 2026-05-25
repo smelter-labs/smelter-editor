@@ -35,6 +35,7 @@ type ConfigurationSectionProps = {
   transitionSettings: RoomConfigTransitionSettings;
   viewport?: Partial<ViewportProperties>;
   outputShaders?: ShaderConfig[];
+  sortMode?: 'timeline' | 'layers';
   refreshState: () => Promise<void>;
   pendingWhipInputs?: PendingWhipInput[];
   setPendingWhipInputs?: (inputs: PendingWhipInput[]) => void | Promise<void>;
@@ -45,6 +46,11 @@ export type PendingWhipInput = {
   title: string;
   config: RoomConfigInput;
   position: number;
+  preferredCodec?: import('../whip-input/utils/webRTC-helpers').WhipCodec;
+  /** When set, this entry represents an existing-but-disconnected WHIP input
+   * (not a fresh placeholder slot). The connect flow should remove the stale
+   * input on the server before creating a replacement. */
+  staleInputId?: string;
 };
 
 function ConfigurationSection({
@@ -54,6 +60,7 @@ function ConfigurationSection({
   transitionSettings,
   viewport,
   outputShaders,
+  sortMode,
   refreshState,
 }: ConfigurationSectionProps) {
   const [isExporting, setIsExporting] = useState(false);
@@ -76,6 +83,8 @@ function ConfigurationSection({
         outputPlayer,
         viewport,
         outputShaders,
+        undefined,
+        sortMode,
       );
       downloadRoomConfig(config);
       toast.success('Configuration exported successfully');
@@ -85,7 +94,15 @@ function ConfigurationSection({
     } finally {
       setIsExporting(false);
     }
-  }, [inputs, resolution, transitionSettings, viewport, outputShaders, roomId]);
+  }, [
+    inputs,
+    resolution,
+    transitionSettings,
+    viewport,
+    outputShaders,
+    sortMode,
+    roomId,
+  ]);
 
   useEffect(() => {
     const onVoiceExport = () => {

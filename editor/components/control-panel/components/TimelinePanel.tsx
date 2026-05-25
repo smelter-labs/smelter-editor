@@ -1504,8 +1504,8 @@ export const TimelinePanel = memo(function TimelinePanel({
         <div
           role='status'
           className='shrink-0 bg-amber-500/15 border-b border-amber-500/30 px-3 py-1.5 text-[11px] uppercase tracking-wider text-amber-300 font-medium text-center'>
-          Layers mode active — timeline playback and editing are disabled. Switch
-          to Timeline in the top-right to resume.
+          Layers mode active — timeline playback and editing are disabled.
+          Switch to Timeline in the top-right to resume.
         </div>
       )}
 

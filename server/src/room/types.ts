@@ -35,6 +35,7 @@ export type RoomSnapshot = {
   swapOutgoingEnabled: boolean;
   swapFadeInDurationMs: number;
   swapFadeOutDurationMs: number;
+  sortMode: 'timeline' | 'layers';
   outputShaders: ShaderConfig[];
 } & Partial<ViewportProperties>;
 

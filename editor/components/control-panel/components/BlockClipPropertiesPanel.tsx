@@ -58,6 +58,7 @@ import {
   labelStyles,
 } from '../styles/panel-primitives';
 import { SwapSourceModal, type SwapSourceResult } from './SwapSourceModal';
+import { useAppMode } from '@/components/app-mode/app-mode-context';
 
 const SHADER_SETTINGS_DEBOUNCE_MS = 200;
 
@@ -155,6 +156,8 @@ export function BlockClipPropertiesPanel({
     left: number;
   } | null>(null);
   const [swapModalOpen, setSwapModalOpen] = useState(false);
+  const { mode: appMode } = useAppMode();
+  const isDemoMode = appMode === 'demo';
 
   useEffect(() => {
     return () => {
@@ -1244,61 +1247,64 @@ export function BlockClipPropertiesPanel({
                       cropBottom: cropVals.cropBottom,
                     })
                   }
+                  demoMode={isDemoMode}
                 />
-                <div className='grid grid-cols-2 gap-2'>
-                  <div>
-                    <label className={labelStyles({ block: true })}>
-                      Duration (ms)
-                    </label>
-                    <NumberInput
-                      min={0}
-                      step={50}
-                      className={panelInputStyles({ fullWidth: true })}
-                      value={
-                        effectiveClip.blockSettings
-                          .absoluteTransitionDurationMs ?? 300
-                      }
-                      onChange={(e) =>
-                        void applyClipPatch({
-                          absoluteTransitionDurationMs: Math.max(
-                            0,
-                            Number(e.target.value) || 0,
-                          ),
-                        })
-                      }
-                    />
+                {!isDemoMode && (
+                  <div className='grid grid-cols-2 gap-2'>
+                    <div>
+                      <label className={labelStyles({ block: true })}>
+                        Duration (ms)
+                      </label>
+                      <NumberInput
+                        min={0}
+                        step={50}
+                        className={panelInputStyles({ fullWidth: true })}
+                        value={
+                          effectiveClip.blockSettings
+                            .absoluteTransitionDurationMs ?? 300
+                        }
+                        onChange={(e) =>
+                          void applyClipPatch({
+                            absoluteTransitionDurationMs: Math.max(
+                              0,
+                              Number(e.target.value) || 0,
+                            ),
+                          })
+                        }
+                      />
+                    </div>
+                    <div>
+                      <label className={labelStyles({ block: true })}>
+                        Easing
+                      </label>
+                      <Select
+                        value={
+                          effectiveClip.blockSettings
+                            .absoluteTransitionEasing ?? 'linear'
+                        }
+                        onValueChange={(v) =>
+                          void applyClipPatch({
+                            absoluteTransitionEasing: v,
+                          })
+                        }>
+                        <SelectTrigger
+                          className={panelInputStyles({
+                            fullWidth: true,
+                            compact: true,
+                          })}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value='linear'>Linear</SelectItem>
+                          <SelectItem value='bounce'>Bounce</SelectItem>
+                          <SelectItem value='cubic_bezier_ease_in_out'>
+                            Ease in-out
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
-                  <div>
-                    <label className={labelStyles({ block: true })}>
-                      Easing
-                    </label>
-                    <Select
-                      value={
-                        effectiveClip.blockSettings.absoluteTransitionEasing ??
-                        'linear'
-                      }
-                      onValueChange={(v) =>
-                        void applyClipPatch({
-                          absoluteTransitionEasing: v,
-                        })
-                      }>
-                      <SelectTrigger
-                        className={panelInputStyles({
-                          fullWidth: true,
-                          compact: true,
-                        })}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value='linear'>Linear</SelectItem>
-                        <SelectItem value='bounce'>Bounce</SelectItem>
-                        <SelectItem value='cubic_bezier_ease_in_out'>
-                          Ease in-out
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
+                )}
               </>
             )}
           </CollapsibleSection>
@@ -1867,18 +1873,21 @@ export function BlockClipPropertiesPanel({
         }
         onAddShader={handleShaderToggle}
       />
-      {!isOutputClip && !isMultiSelect && !isInputLevel && selectedTimelineClip && (
-        <SwapSourceModal
-          open={swapModalOpen}
-          onOpenChange={setSwapModalOpen}
-          currentInputId={selectedTimelineClip.inputId}
-          inputs={inputs}
-          roomId={roomId}
-          onSwap={handleSwapSource}
-          trackId={selectedTimelineClip.trackId}
-          clipId={selectedTimelineClip.clipId}
-        />
-      )}
+      {!isOutputClip &&
+        !isMultiSelect &&
+        !isInputLevel &&
+        selectedTimelineClip && (
+          <SwapSourceModal
+            open={swapModalOpen}
+            onOpenChange={setSwapModalOpen}
+            currentInputId={selectedTimelineClip.inputId}
+            inputs={inputs}
+            roomId={roomId}
+            onSwap={handleSwapSource}
+            trackId={selectedTimelineClip.trackId}
+            clipId={selectedTimelineClip.clipId}
+          />
+        )}
     </div>
   );
 }

@@ -30,6 +30,7 @@ describe('computeCodeDiff', () => {
     expect(hasCodeDiff(diff)).toBe(false);
     expect(diff.changedRanges.size).toBe(0);
     expect(diff.removedLines).toEqual([]);
+    expect(diff.addedLines).toEqual([]);
   });
 
   it('returns empty diff on first render (empty prev)', () => {
@@ -43,18 +44,21 @@ describe('computeCodeDiff', () => {
     expect(diff.changedRanges.has(2)).toBe(true);
     expect(diff.changedRanges.get(2)).toEqual([{ start: 0, end: 5 }]);
     expect(diff.removedLines).toEqual([]);
+    expect(diff.addedLines).toEqual(['line2']);
   });
 
   it('collects removed lines', () => {
     const diff = computeCodeDiff('line1\nline2', 'line1');
     expect(diff.removedCount).toBe(1);
     expect(diff.removedLines).toEqual(['line2']);
+    expect(diff.addedLines).toEqual([]);
     expect(diff.changedRanges.size).toBe(0);
   });
 
   it('highlights only changed segments in modified lines', () => {
     const diff = computeCodeDiff('line1\nold-value', 'line1\nnew-value');
     expect(diff.removedLines).toEqual(['old-value']);
+    expect(diff.addedLines).toEqual(['new-value']);
     expect(diff.removedCount).toBe(1);
     expect(diff.changedRanges.has(2)).toBe(true);
 
