@@ -8,7 +8,7 @@ import {
   useState,
   type MutableRefObject,
 } from 'react';
-import { Dialog, DialogContent } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Progress } from '@/components/ui/progress';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
@@ -35,6 +35,7 @@ import type { ChannelSuggestion, Input } from '@/lib/types';
 import { v4 as uuidv4 } from 'uuid';
 import { SelectablePreviewCard } from './asset-browser/selectable-preview-card';
 import { getEffectiveClientServerUrl } from '@/lib/server-url';
+import { useAppMode } from '@/components/app-mode/app-mode-context';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -612,7 +613,9 @@ export function AssetBrowserPanel({
   const [isLoading, setIsLoading] = useState(false);
 
   const [mp4Folder, setMp4Folder] = useState(initialMp4Folder ?? '');
-  const [pictureFolder, setPictureFolder] = useState(initialPictureFolder ?? '');
+  const [pictureFolder, setPictureFolder] = useState(
+    initialPictureFolder ?? '',
+  );
   const [audioFolder, setAudioFolder] = useState(initialAudioFolder ?? '');
   const [uploadJobs, setUploadJobs] = useState<UploadJob[]>([]);
   const [newFolderName, setNewFolderName] = useState('');
@@ -1379,6 +1382,7 @@ export function AddVideoModal({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='max-w-[1100px] w-[95vw] max-h-[85vh] h-[85vh] bg-[#131313]/95 backdrop-blur-sm border border-[#3a494b]/30 p-0 gap-0 overflow-hidden [&>button]:text-[#849495] [&>button]:hover:text-[#e3fdff]'>
+        <DialogTitle className='sr-only'>Add asset</DialogTitle>
         <AssetBrowserPanel
           roomId={roomId}
           refreshState={refreshState}
@@ -2433,9 +2437,11 @@ function InspectorConfirmDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='max-w-[460px] w-[92vw] bg-[#131313]/95 backdrop-blur-sm border border-[#3a494b]/30 p-0 gap-0 overflow-hidden [&>button]:text-[#849495] [&>button]:hover:text-[#e3fdff]'>
         <div className='px-4 py-3 border-b border-[#3a494b]/20'>
-          <h3 className='font-headline font-bold text-xs tracking-widest text-[#00f3ff] uppercase truncate'>
-            {state?.title ?? 'CONFIRM_ACTION'}
-          </h3>
+          <DialogTitle asChild>
+            <h3 className='font-headline font-bold text-xs tracking-widest text-[#00f3ff] uppercase truncate'>
+              {state?.title ?? 'CONFIRM_ACTION'}
+            </h3>
+          </DialogTitle>
         </div>
         <div className='px-4 py-3'>
           <p className='text-[11px] leading-relaxed text-[#b9c9ca] whitespace-pre-line'>
@@ -2488,9 +2494,11 @@ function AssetPlaybackModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className='max-w-[900px] w-[92vw] bg-[#131313]/95 backdrop-blur-sm border border-[#3a494b]/30 p-0 gap-0 overflow-hidden [&>button]:text-[#849495] [&>button]:hover:text-[#e3fdff]'>
         <div className='px-4 py-3 border-b border-[#3a494b]/20'>
-          <h3 className='font-headline font-bold text-xs tracking-widest text-[#00f3ff] uppercase truncate'>
-            {title}
-          </h3>
+          <DialogTitle asChild>
+            <h3 className='font-headline font-bold text-xs tracking-widest text-[#00f3ff] uppercase truncate'>
+              {title}
+            </h3>
+          </DialogTitle>
         </div>
         <div className='p-4 bg-black'>
           <video
@@ -2523,6 +2531,8 @@ function Mp4Inspector({
 }) {
   const { addMP4Input } = useActions();
   const { normalizationProgress } = useControlPanelContext();
+  const { mode: appMode } = useAppMode();
+  const isDemo = appMode === 'demo';
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [normalizing, setNormalizing] = useState(false);
@@ -2638,55 +2648,59 @@ function Mp4Inspector({
         onClick={handleAdd}
         loading={loading}
       />
-      <DownloadLibraryItemButton
-        href={buildLibraryDownloadHref('mp4', item.fileName)}
-        downloadName={baseName(item.fileName)}
-      />
-      <div className='grid grid-cols-2 gap-2'>
-        <ActionOutlineButton
-          label={
-            normalizing || normalizationProgress[item.fileName] != null
-              ? 'NORMALIZING...'
-              : 'NORMALIZE'
-          }
-          onClick={handleNormalize}
-          disabled={
-            normalizing ||
-            deleting ||
-            normalizationProgress[item.fileName] != null
-          }
-          colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
-        />
-        <ActionOutlineButton
-          label='PREVIEW'
-          onClick={() => setPreviewOpen(true)}
-          disabled={
-            normalizing ||
-            deleting ||
-            normalizationProgress[item.fileName] != null
-          }
-          colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
-        />
-      </div>
-      <NormalizeStatusInline
-        percent={normalizationProgress[item.fileName] ?? null}
-        result={normalizeResult}
-      />
-      <DeleteLibraryItemButton
-        onClick={handleDelete}
-        disabled={
-          deleting ||
-          normalizing ||
-          normalizationProgress[item.fileName] != null
-        }
-        label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
-      />
-      <AssetPlaybackModal
-        open={previewOpen}
-        onOpenChange={setPreviewOpen}
-        title={`PREVIEW_MP4: ${baseName(item.fileName)}`}
-        src={buildLibraryPlayHref('mp4', item.fileName)}
-      />
+      {!isDemo && (
+        <>
+          <DownloadLibraryItemButton
+            href={buildLibraryDownloadHref('mp4', item.fileName)}
+            downloadName={baseName(item.fileName)}
+          />
+          <div className='grid grid-cols-2 gap-2'>
+            <ActionOutlineButton
+              label={
+                normalizing || normalizationProgress[item.fileName] != null
+                  ? 'NORMALIZING...'
+                  : 'NORMALIZE'
+              }
+              onClick={handleNormalize}
+              disabled={
+                normalizing ||
+                deleting ||
+                normalizationProgress[item.fileName] != null
+              }
+              colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
+            />
+            <ActionOutlineButton
+              label='PREVIEW'
+              onClick={() => setPreviewOpen(true)}
+              disabled={
+                normalizing ||
+                deleting ||
+                normalizationProgress[item.fileName] != null
+              }
+              colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
+            />
+          </div>
+          <NormalizeStatusInline
+            percent={normalizationProgress[item.fileName] ?? null}
+            result={normalizeResult}
+          />
+          <DeleteLibraryItemButton
+            onClick={handleDelete}
+            disabled={
+              deleting ||
+              normalizing ||
+              normalizationProgress[item.fileName] != null
+            }
+            label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
+          />
+          <AssetPlaybackModal
+            open={previewOpen}
+            onOpenChange={setPreviewOpen}
+            title={`PREVIEW_MP4: ${baseName(item.fileName)}`}
+            src={buildLibraryPlayHref('mp4', item.fileName)}
+          />
+        </>
+      )}
       <InspectorConfirmDialog
         open={confirmState != null}
         state={confirmState}
@@ -2717,6 +2731,8 @@ function AudioInspector({
 }) {
   const { addAudioInput } = useActions();
   const { normalizationProgress } = useControlPanelContext();
+  const { mode: appMode } = useAppMode();
+  const isDemo = appMode === 'demo';
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [normalizing, setNormalizing] = useState(false);
@@ -2829,55 +2845,59 @@ function AudioInspector({
         onClick={handleAdd}
         loading={loading}
       />
-      <DownloadLibraryItemButton
-        href={buildLibraryDownloadHref('audio', item.fileName)}
-        downloadName={baseName(item.fileName)}
-      />
-      <div className='grid grid-cols-2 gap-2'>
-        <ActionOutlineButton
-          label={
-            normalizing || normalizationProgress[item.fileName] != null
-              ? 'NORMALIZING...'
-              : 'NORMALIZE'
-          }
-          onClick={handleNormalize}
-          disabled={
-            normalizing ||
-            deleting ||
-            normalizationProgress[item.fileName] != null
-          }
-          colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
-        />
-        <ActionOutlineButton
-          label='ODTWORZ'
-          onClick={() => setPreviewOpen(true)}
-          disabled={
-            normalizing ||
-            deleting ||
-            normalizationProgress[item.fileName] != null
-          }
-          colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
-        />
-      </div>
-      <NormalizeStatusInline
-        percent={normalizationProgress[item.fileName] ?? null}
-        result={normalizeResult}
-      />
-      <DeleteLibraryItemButton
-        onClick={handleDelete}
-        disabled={
-          deleting ||
-          normalizing ||
-          normalizationProgress[item.fileName] != null
-        }
-        label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
-      />
-      <AssetPlaybackModal
-        open={previewOpen}
-        onOpenChange={setPreviewOpen}
-        title={`PREVIEW_AUDIO: ${baseName(item.fileName)}`}
-        src={buildLibraryPlayHref('audio', item.fileName)}
-      />
+      {!isDemo && (
+        <>
+          <DownloadLibraryItemButton
+            href={buildLibraryDownloadHref('audio', item.fileName)}
+            downloadName={baseName(item.fileName)}
+          />
+          <div className='grid grid-cols-2 gap-2'>
+            <ActionOutlineButton
+              label={
+                normalizing || normalizationProgress[item.fileName] != null
+                  ? 'NORMALIZING...'
+                  : 'NORMALIZE'
+              }
+              onClick={handleNormalize}
+              disabled={
+                normalizing ||
+                deleting ||
+                normalizationProgress[item.fileName] != null
+              }
+              colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
+            />
+            <ActionOutlineButton
+              label='ODTWORZ'
+              onClick={() => setPreviewOpen(true)}
+              disabled={
+                normalizing ||
+                deleting ||
+                normalizationProgress[item.fileName] != null
+              }
+              colorClass='border-[#00f3ff]/40 text-[#00f3ff] hover:bg-[#00f3ff]/10'
+            />
+          </div>
+          <NormalizeStatusInline
+            percent={normalizationProgress[item.fileName] ?? null}
+            result={normalizeResult}
+          />
+          <DeleteLibraryItemButton
+            onClick={handleDelete}
+            disabled={
+              deleting ||
+              normalizing ||
+              normalizationProgress[item.fileName] != null
+            }
+            label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
+          />
+          <AssetPlaybackModal
+            open={previewOpen}
+            onOpenChange={setPreviewOpen}
+            title={`PREVIEW_AUDIO: ${baseName(item.fileName)}`}
+            src={buildLibraryPlayHref('audio', item.fileName)}
+          />
+        </>
+      )}
       <InspectorConfirmDialog
         open={confirmState != null}
         state={confirmState}
@@ -2907,6 +2927,8 @@ function ImageInspector({
   onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
 }) {
   const { addImageInput } = useActions();
+  const { mode: appMode } = useAppMode();
+  const isDemo = appMode === 'demo';
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmState, setConfirmState] =
@@ -2981,15 +3003,19 @@ function ImageInspector({
         onClick={handleAdd}
         loading={loading}
       />
-      <DownloadLibraryItemButton
-        href={buildLibraryDownloadHref('image', item.fileName)}
-        downloadName={baseName(item.fileName)}
-      />
-      <DeleteLibraryItemButton
-        onClick={handleDelete}
-        disabled={deleting}
-        label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
-      />
+      {!isDemo && (
+        <>
+          <DownloadLibraryItemButton
+            href={buildLibraryDownloadHref('image', item.fileName)}
+            downloadName={baseName(item.fileName)}
+          />
+          <DeleteLibraryItemButton
+            onClick={handleDelete}
+            disabled={deleting}
+            label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
+          />
+        </>
+      )}
       <InspectorConfirmDialog
         open={confirmState != null}
         state={confirmState}
@@ -3375,6 +3401,8 @@ function HlsSavedInspector({
   onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
 }) {
   const { addHlsInput } = useActions();
+  const { mode: appMode } = useAppMode();
+  const isDemo = appMode === 'demo';
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [confirmState, setConfirmState] =
@@ -3445,11 +3473,13 @@ function HlsSavedInspector({
         onClick={handleAdd}
         loading={loading}
       />
-      <DeleteLibraryItemButton
-        onClick={handleDelete}
-        disabled={deleting}
-        label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
-      />
+      {!isDemo && (
+        <DeleteLibraryItemButton
+          onClick={handleDelete}
+          disabled={deleting}
+          label={deleting ? 'REMOVING...' : 'REMOVE_FROM_LIBRARY'}
+        />
+      )}
       <InspectorConfirmDialog
         open={confirmState != null}
         state={confirmState}
@@ -3843,8 +3873,8 @@ function WhipActionInspector({
       if (activeWhipInputId) {
         removableWhipInputIds.add(activeWhipInputId);
       }
-      const session = loadWhipSession();
-      if (session?.roomId === roomId && session.inputId) {
+      const session = loadWhipSession(roomId);
+      if (session?.inputId) {
         removableWhipInputIds.add(session.inputId);
       }
       const lastInputId = loadLastWhipInputId(roomId);

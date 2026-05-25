@@ -552,3 +552,135 @@ export function useVoiceCommandsEnabledSetting(): [
 
   return [value, setEnabled];
 }
+
+// ── Carousel keyboard enabled ───────────────────────────────────────────────
+
+const CAROUSEL_KEYBOARD_ENABLED_STORAGE_KEY =
+  'smelter:carousel:keyboard-enabled';
+const CAROUSEL_KEYBOARD_ENABLED_CHANGED_EVENT =
+  'smelter:carousel:keyboard-enabled-changed';
+
+function getCarouselKeyboardEnabledSetting(): boolean {
+  if (typeof window === 'undefined') {
+    return true;
+  }
+  const stored = window.localStorage.getItem(
+    CAROUSEL_KEYBOARD_ENABLED_STORAGE_KEY,
+  );
+  if (stored === null) {
+    return true;
+  }
+  return stored !== 'false';
+}
+
+function setCarouselKeyboardEnabledSetting(value: boolean): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  window.localStorage.setItem(
+    CAROUSEL_KEYBOARD_ENABLED_STORAGE_KEY,
+    String(value),
+  );
+  window.dispatchEvent(
+    new CustomEvent<{ value: boolean }>(
+      CAROUSEL_KEYBOARD_ENABLED_CHANGED_EVENT,
+      { detail: { value } },
+    ),
+  );
+}
+
+export function useCarouselKeyboardEnabledSetting(): [
+  boolean,
+  (value: boolean) => void,
+] {
+  const [value, setValue] = useState<boolean>(() =>
+    getCarouselKeyboardEnabledSetting(),
+  );
+
+  useEffect(() => {
+    setValue(getCarouselKeyboardEnabledSetting());
+    const onChanged = (event: Event) => {
+      const customEvent = event as CustomEvent<{ value: boolean }>;
+      setValue(customEvent.detail?.value ?? true);
+    };
+    window.addEventListener(CAROUSEL_KEYBOARD_ENABLED_CHANGED_EVENT, onChanged);
+    return () => {
+      window.removeEventListener(
+        CAROUSEL_KEYBOARD_ENABLED_CHANGED_EVENT,
+        onChanged,
+      );
+    };
+  }, []);
+
+  const setEnabled = useCallback((next: boolean) => {
+    setCarouselKeyboardEnabledSetting(next);
+    setValue(next);
+  }, []);
+
+  return [value, setEnabled];
+}
+
+// ── Carousel clap detection enabled ─────────────────────────────────────────
+
+const CLAP_DETECTION_ENABLED_STORAGE_KEY = 'smelter:carousel:clap-enabled';
+const CLAP_DETECTION_ENABLED_CHANGED_EVENT =
+  'smelter:carousel:clap-enabled-changed';
+
+function getClapDetectionEnabledSetting(): boolean {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+  const stored = window.localStorage.getItem(
+    CLAP_DETECTION_ENABLED_STORAGE_KEY,
+  );
+  if (stored === null) {
+    return false;
+  }
+  return stored === 'true';
+}
+
+function setClapDetectionEnabledSetting(value: boolean): void {
+  if (typeof window === 'undefined') {
+    return;
+  }
+  window.localStorage.setItem(
+    CLAP_DETECTION_ENABLED_STORAGE_KEY,
+    String(value),
+  );
+  window.dispatchEvent(
+    new CustomEvent<{ value: boolean }>(CLAP_DETECTION_ENABLED_CHANGED_EVENT, {
+      detail: { value },
+    }),
+  );
+}
+
+export function useClapDetectionEnabledSetting(): [
+  boolean,
+  (value: boolean) => void,
+] {
+  const [value, setValue] = useState<boolean>(() =>
+    getClapDetectionEnabledSetting(),
+  );
+
+  useEffect(() => {
+    setValue(getClapDetectionEnabledSetting());
+    const onChanged = (event: Event) => {
+      const customEvent = event as CustomEvent<{ value: boolean }>;
+      setValue(customEvent.detail?.value ?? false);
+    };
+    window.addEventListener(CLAP_DETECTION_ENABLED_CHANGED_EVENT, onChanged);
+    return () => {
+      window.removeEventListener(
+        CLAP_DETECTION_ENABLED_CHANGED_EVENT,
+        onChanged,
+      );
+    };
+  }, []);
+
+  const setEnabled = useCallback((next: boolean) => {
+    setClapDetectionEnabledSetting(next);
+    setValue(next);
+  }, []);
+
+  return [value, setEnabled];
+}

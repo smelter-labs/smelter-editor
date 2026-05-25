@@ -45,6 +45,11 @@ export type PendingWhipInput = {
   title: string;
   config: RoomConfigInput;
   position: number;
+  preferredCodec?: import('../whip-input/utils/webRTC-helpers').WhipCodec;
+  /** When set, this entry represents an existing-but-disconnected WHIP input
+   * (not a fresh placeholder slot). The connect flow should remove the stale
+   * input on the server before creating a replacement. */
+  staleInputId?: string;
 };
 
 function ConfigurationSection({

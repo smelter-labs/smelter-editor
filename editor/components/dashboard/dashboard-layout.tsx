@@ -22,11 +22,9 @@ import {
   type MutableLayout,
   type DashboardLayouts,
   STATIC_PANEL_IDS,
-  DEFAULT_VISIBLE_PANEL_IDS,
   DASHBOARD_BREAKPOINTS,
   DASHBOARD_BREAKPOINT_WIDTHS,
   DASHBOARD_COLS,
-  DEFAULT_RESPONSIVE_LAYOUTS,
   MOTION_PANEL_MIN_W,
   MOTION_PANEL_MIN_H,
   LAYOUT_PRESETS,
@@ -36,9 +34,13 @@ import {
   clearLayout,
   loadVisiblePanels,
   saveVisiblePanels,
+  getDefaultLayouts,
+  getDefaultVisiblePanelIds,
 } from './panel-registry';
 import type { ResponsiveLayouts } from 'react-grid-layout';
 import { useActions } from '@/components/control-panel/contexts/actions-context';
+import { useAppMode } from '@/components/app-mode/app-mode-context';
+import { isPanelHiddenInMode } from '@/lib/app-mode';
 
 export type DashboardLayoutSavedData = {
   layouts: DashboardLayouts;
@@ -133,16 +135,22 @@ export default function DashboardLayout({
   videoAspectRatio,
 }: DashboardLayoutProps) {
   const { dashboardLayoutStorage } = useActions();
+  const { mode } = useAppMode();
   const { width, containerRef, mounted } = useContainerWidth({
     initialWidth: 1280,
   });
 
+  const menuPanelIds = useMemo(
+    () => allPanelIds.filter((id) => !isPanelHiddenInMode(id, mode)),
+    [allPanelIds, mode],
+  );
+
   const [currentLayouts, setCurrentLayouts] = useState<DashboardLayouts>(() => {
-    return loadLayouts() ?? cloneResponsiveLayouts(DEFAULT_RESPONSIVE_LAYOUTS);
+    return loadLayouts() ?? cloneResponsiveLayouts(getDefaultLayouts(mode));
   });
 
   const [visiblePanels, setVisiblePanels] = useState<Set<string>>(() => {
-    return loadVisiblePanels();
+    return loadVisiblePanels(getDefaultVisiblePanelIds(mode));
   });
 
   const [isEditMode, setIsEditMode] = useState(false);
@@ -257,11 +265,11 @@ export default function DashboardLayout({
 
   const handleReset = useCallback(() => {
     clearLayout();
-    setCurrentLayouts(cloneResponsiveLayouts(DEFAULT_RESPONSIVE_LAYOUTS));
-    const defaultVisible = new Set<string>(DEFAULT_VISIBLE_PANEL_IDS);
+    setCurrentLayouts(cloneResponsiveLayouts(getDefaultLayouts(mode)));
+    const defaultVisible = new Set<string>(getDefaultVisiblePanelIds(mode));
     setVisiblePanels(defaultVisible);
     saveVisiblePanels(defaultVisible);
-  }, []);
+  }, [mode]);
 
   const getCurrentLayoutData = useCallback((): DashboardLayoutSavedData => {
     return {
@@ -343,7 +351,7 @@ export default function DashboardLayout({
       presets: LAYOUT_PRESETS,
       applyPreset: handleApplyPreset,
       reset: handleReset,
-      allPanelIds,
+      allPanelIds: menuPanelIds,
       visiblePanels,
       togglePanel: handleTogglePanel,
       getPanelDefinition,
@@ -354,7 +362,7 @@ export default function DashboardLayout({
     return () => unregister();
   }, [
     isEditMode,
-    allPanelIds,
+    menuPanelIds,
     visiblePanels,
     handleApplyPreset,
     handleReset,
@@ -369,21 +377,23 @@ export default function DashboardLayout({
   ]);
 
   const visibleIds = useMemo(
-    () => allPanelIds.filter((id) => visiblePanels.has(id)),
-    [allPanelIds, visiblePanels],
+    () =>
+      allPanelIds.filter(
+        (id) => visiblePanels.has(id) && !isPanelHiddenInMode(id, mode),
+      ),
+    [allPanelIds, visiblePanels, mode],
   );
 
-  const layouts = useMemo<ResponsiveLayouts>(
-    () =>
-      DASHBOARD_BREAKPOINTS.reduce((acc, breakpoint) => {
-        acc[breakpoint] = filterLayout(
-          cloneLayout(currentLayouts[breakpoint]),
-          visiblePanels,
-        );
-        return acc;
-      }, {} as ResponsiveLayouts),
-    [currentLayouts, visiblePanels],
-  );
+  const layouts = useMemo<ResponsiveLayouts>(() => {
+    const effectiveVisible = new Set(visibleIds);
+    return DASHBOARD_BREAKPOINTS.reduce((acc, breakpoint) => {
+      acc[breakpoint] = filterLayout(
+        cloneLayout(currentLayouts[breakpoint]),
+        effectiveVisible,
+      );
+      return acc;
+    }, {} as ResponsiveLayouts);
+  }, [currentLayouts, visibleIds]);
 
   useEffect(() => {
     if (!videoAspectRatio || !mounted) return;

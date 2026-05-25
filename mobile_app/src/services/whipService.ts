@@ -123,7 +123,7 @@ function restrictVideoCodecInSdp(
   sdp: string | undefined,
   codec: VideoCodecPreference,
 ): string | undefined {
-  if (!sdp || codec === "default") return sdp;
+  if (!sdp || codec === "auto") return sdp;
 
   const targetCodec = codec.toUpperCase();
 
@@ -250,15 +250,15 @@ function stripToH264OnlyVideoSdp(sdp?: string): string | undefined {
 
 // ─── WHIP connection ──────────────────────────────────────────────────────────
 
-export type VideoCodecPreference = "h264" | "vp8" | "vp9" | "default";
+export type VideoCodecPreference = "h264" | "vp8" | "vp9" | "auto";
 
 interface WhipConnectionParams {
   localStream: MediaStream;
   whipUrl: string;
   bearerToken: string;
-  /** Reorder video codecs so the preferred one is offered first. Default: "h264". */
+  /** Reorder video codecs so the preferred one is offered first. Default: "vp8". */
   videoCodec?: VideoCodecPreference;
-  /** Legacy: strip all non-H264 codecs entirely. Diagnostic only. */
+  /** @deprecated Legacy: strip all non-H264 codecs entirely. Diagnostic only. */
   forceH264?: boolean;
   onConnectionStateChange: (state: string) => void;
 }
@@ -267,7 +267,7 @@ export async function createWhipConnection({
   localStream,
   whipUrl,
   bearerToken,
-  videoCodec = "h264",
+  videoCodec = "vp8",
   forceH264 = false,
   onConnectionStateChange,
 }: WhipConnectionParams): Promise<RTCPeerConnection> {

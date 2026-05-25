@@ -17,7 +17,14 @@ function toRelativeMediaPath(filePath: string, baseDir: string): string | null {
   return relativePath.split(path.sep).join('/');
 }
 
-export function toPublicInputState(input: RoomInputState): PublicInputState {
+export type PublicInputStateCtx = {
+  frozenMp4InputIds?: ReadonlySet<string>;
+};
+
+export function toPublicInputState(
+  input: RoomInputState,
+  ctx?: PublicInputStateCtx,
+): PublicInputState {
   const base = {
     inputId: input.inputId,
     title: input.metadata.title,
@@ -65,6 +72,8 @@ export function toPublicInputState(input: RoomInputState): PublicInputState {
         audioFileName: isAudio ? audioFileName : undefined,
         mp4AssetMissing: input.mp4AssetMissing,
         missingAssetIsAudio: input.missingAssetIsAudio,
+        mp4ShowsFrozenFrame:
+          ctx?.frozenMp4InputIds?.has(input.inputId) ?? false,
       };
     }
     case 'image':

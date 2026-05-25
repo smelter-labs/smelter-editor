@@ -85,12 +85,6 @@ class RoomEventBus {
     if (!clients || clients.size === 0) return;
 
     const payload = JSON.stringify(event);
-    console.log(`[${new Date().toISOString()}] [sync][server-broadcast]`, {
-      roomId,
-      eventType: event.type,
-      recipients: clients.size,
-      event,
-    });
     for (const { ws } of clients.values()) {
       // 1 === WebSocket.OPEN
       if (ws.readyState === 1) {

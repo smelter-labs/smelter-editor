@@ -484,4 +484,45 @@ describe('parseCommand', () => {
       });
     });
   });
+
+  describe('CAROUSEL_NEXT / CAROUSEL_PREV', () => {
+    it('parses "next slide"', () => {
+      expect(parseCommand('next slide')).toEqual({ intent: 'CAROUSEL_NEXT' });
+    });
+
+    it('parses "previous slide"', () => {
+      expect(parseCommand('previous slide')).toEqual({
+        intent: 'CAROUSEL_PREV',
+      });
+    });
+
+    it('parses "carousel next"', () => {
+      expect(parseCommand('carousel next')).toEqual({
+        intent: 'CAROUSEL_NEXT',
+      });
+    });
+
+    it('parses "carousel previous"', () => {
+      expect(parseCommand('carousel previous')).toEqual({
+        intent: 'CAROUSEL_PREV',
+      });
+    });
+
+    it('does not collide with "next block" (timeline)', () => {
+      expect(parseCommand('next block')).toEqual({ intent: 'NEXT_BLOCK' });
+    });
+
+    it('bare "next" maps to carousel only when isCarouselActive', () => {
+      expect(parseCommand('next', { isCarouselActive: true })).toEqual({
+        intent: 'CAROUSEL_NEXT',
+      });
+      expect(parseCommand('next', { isCarouselActive: false })).toBeNull();
+    });
+
+    it('bare "previous" maps to carousel only when isCarouselActive', () => {
+      expect(parseCommand('previous', { isCarouselActive: true })).toEqual({
+        intent: 'CAROUSEL_PREV',
+      });
+    });
+  });
 });

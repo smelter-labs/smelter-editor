@@ -30,6 +30,7 @@ type AbsolutePositionControllerProps = {
   cropBottom?: number;
   onChange: (pos: Position) => void;
   onCropChange: (crop: CropValues) => void;
+  demoMode?: boolean;
 };
 
 type DragState =
@@ -93,6 +94,7 @@ export function AbsolutePositionController({
   cropBottom: propCropBottom = 0,
   onChange,
   onCropChange,
+  demoMode = false,
 }: AbsolutePositionControllerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<DragState>({ type: 'idle' });
@@ -702,6 +704,8 @@ export function AbsolutePositionController({
         </div>
       )}
 
+      {!demoMode && (
+        <>
       <div className='grid grid-cols-4 gap-1 mt-2'>
         {(['left', 'top', 'width', 'height'] as const).map((field) => {
           const isCropped =
@@ -763,6 +767,8 @@ export function AbsolutePositionController({
           </div>
         ))}
       </div>
+        </>
+      )}
     </div>
   );
 }

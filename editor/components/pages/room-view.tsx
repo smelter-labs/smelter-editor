@@ -13,6 +13,7 @@ import DashboardLayout from '@/components/dashboard/dashboard-layout';
 import { ConnectedDevicesPanel } from '@/components/dashboard/connected-devices-panel';
 import { SystemLogPanel } from '@/components/dashboard/system-log-panel';
 import { LayoutPreviewPanel } from '@/components/dashboard/layout-preview-panel';
+import { OutputCodePanel } from '@/components/dashboard/output-code-panel';
 import GuestPanel from '@/components/pages/guest-panel';
 import {
   STATIC_PANEL_IDS,
@@ -94,6 +95,7 @@ export default function RoomView({
         settingsNavPortalRef={settingsNavPortalRef}
         renderDashboard={({
           streamsSection,
+          carouselSection,
           fxSection,
           timelineSection,
           blockPropertiesSection,
@@ -124,6 +126,7 @@ export default function RoomView({
             'connected-devices': <ConnectedDevicesPanel peers={peers} />,
             'system-log': <SystemLogPanel />,
             'motion-detection': motionDetectionSection,
+            carousel: carouselSection,
             'layout-preview': (
               <LayoutPreviewPanel
                 roomId={roomId}
@@ -135,6 +138,26 @@ export default function RoomView({
                 activeClipColors={activeClipColors}
                 selectedInputId={selectedInputId}
                 onSelectInput={onSelectInput}
+              />
+            ),
+            'output-code': (
+              <OutputCodePanel
+                roomId={roomId}
+                refreshState={refreshState}
+                inputs={roomState.inputs}
+                layers={roomState.layers}
+                resolution={
+                  roomState.resolution ?? { width: 1920, height: 1080 }
+                }
+                outputShaders={roomState.outputShaders}
+                viewportTop={roomState.viewportTop}
+                viewportLeft={roomState.viewportLeft}
+                viewportWidth={roomState.viewportWidth}
+                viewportHeight={roomState.viewportHeight}
+                viewportTransitionDurationMs={
+                  roomState.viewportTransitionDurationMs
+                }
+                viewportTransitionEasing={roomState.viewportTransitionEasing}
               />
             ),
           };

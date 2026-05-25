@@ -13,6 +13,7 @@ import { Video, Monitor, X } from 'lucide-react';
 import { useActions } from '../contexts/actions-context';
 import { startPublish } from '../whip-input/utils/whip-publisher';
 import { startScreensharePublish } from '../whip-input/utils/screenshare-publisher';
+import type { WhipCodec } from '../whip-input/utils/webRTC-helpers';
 import { stopCameraAndConnection } from '../whip-input/utils/preview';
 import {
   saveWhipSession,
@@ -45,6 +46,13 @@ type PreviewState = {
   stream: MediaStream;
   type: 'camera' | 'screenshare';
 };
+
+const CODEC_OPTIONS: { value: WhipCodec; label: string }[] = [
+  { value: 'h264', label: 'H.264' },
+  { value: 'vp8', label: 'VP8' },
+  { value: 'vp9', label: 'VP9' },
+  { value: 'auto', label: 'Auto' },
+];
 
 function InlineVideoPreview({ stream }: { stream: MediaStream }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -90,7 +98,8 @@ export function PendingWhipInputs({
   connectAllRef,
   onConnectAllReadyChange,
 }: PendingWhipInputsProps) {
-  const { addCameraInput, updateInput, updateRoom, getRoomInfo } = useActions();
+  const { addCameraInput, removeInput, updateInput, updateRoom, getRoomInfo } =
+    useActions();
   const { roomId } = useControlPanelContext();
   const {
     cameraPcRef,
@@ -111,6 +120,7 @@ export function PendingWhipInputs({
   const [acquiringId, setAcquiringId] = useState<string | null>(null);
   const [connectingId, setConnectingId] = useState<string | null>(null);
   const [isBulkConnecting, setIsBulkConnecting] = useState(false);
+  const [codecMap, setCodecMap] = useState<Map<string, WhipCodec>>(new Map());
 
   useEffect(() => {
     previewsRef.current = previews;
@@ -213,12 +223,32 @@ export function PendingWhipInputs({
       const setIsActive =
         type === 'camera' ? setIsCameraActive : setIsScreenshareActive;
 
+      const staleInputId = pendingInput.staleInputId;
+      let stalePosition: number | null = null;
+
       try {
+        if (staleInputId) {
+          try {
+            const roomInfoBefore = await getRoomInfo(roomId);
+            if (roomInfoBefore !== 'not-found') {
+              const idx = roomInfoBefore.inputs.findIndex(
+                (i) => i.inputId === staleInputId,
+              );
+              if (idx >= 0) stalePosition = idx;
+            }
+          } catch {}
+          try {
+            await removeInput(roomId, staleInputId);
+          } catch {}
+        }
+
         const response = await addCameraInput(roomId, pendingInput.title);
         setActiveInputId(response.inputId);
         setIsActive(false);
 
-        const placeholderId = `__pending-whip-${pendingInput.position}__`;
+        const placeholderId = staleInputId
+          ? staleInputId
+          : `__pending-whip-${pendingInput.position}__`;
         const timelineUpdated = updateTimelineInputId(
           roomId,
           placeholderId,
@@ -240,6 +270,10 @@ export function PendingWhipInputs({
           setIsActive(false);
         };
 
+        const codec =
+          codecMap.get(pendingInput.id) ??
+          pendingInput.preferredCodec ??
+          'h264';
         const { location } =
           type === 'camera'
             ? await startPublish(
@@ -252,6 +286,7 @@ export function PendingWhipInputs({
                 undefined,
                 undefined,
                 previewStream,
+                codec,
               )
             : await startScreensharePublish(
                 response.inputId,
@@ -261,6 +296,7 @@ export function PendingWhipInputs({
                 streamRef,
                 onDisconnected,
                 previewStream,
+                codec,
               );
 
         setIsActive(true);
@@ -284,10 +320,16 @@ export function PendingWhipInputs({
         if (roomInfo !== 'not-found') {
           const currentInputIds = roomInfo.inputs.map((i) => i.inputId);
           const newInputId = response.inputId;
-          const targetPosition = pendingInput.position;
-          const placeholderId = `__pending-whip-${pendingInput.position}__`;
+          const targetPosition = staleInputId
+            ? (stalePosition ?? pendingInput.position)
+            : pendingInput.position;
+          const reorderPlaceholderId = staleInputId
+            ? staleInputId
+            : `__pending-whip-${pendingInput.position}__`;
 
-          const withoutNew = currentInputIds.filter((id) => id !== newInputId);
+          const withoutNew = currentInputIds.filter(
+            (id) => id !== newInputId && id !== reorderPlaceholderId,
+          );
           const reordered = [
             ...withoutNew.slice(0, targetPosition),
             newInputId,
@@ -297,7 +339,7 @@ export function PendingWhipInputs({
           const replacedLayers = roomInfo.layers.map((layer) => ({
             ...layer,
             inputs: layer.inputs.map((li) =>
-              li.inputId === placeholderId
+              li.inputId === reorderPlaceholderId
                 ? { ...li, inputId: newInputId }
                 : li,
             ),
@@ -316,11 +358,13 @@ export function PendingWhipInputs({
           });
         }
 
-        const nextPendingInputs = pendingInputsRef.current.filter(
-          (p) => p.id !== pendingInput.id,
-        );
-        pendingInputsRef.current = nextPendingInputs;
-        await setPendingInputs(nextPendingInputs);
+        if (!staleInputId) {
+          const nextPendingInputs = pendingInputsRef.current.filter(
+            (p) => p.id !== pendingInput.id,
+          );
+          pendingInputsRef.current = nextPendingInputs;
+          await setPendingInputs(nextPendingInputs);
+        }
         // Keep preview visible while connecting; remove it only when card is removed.
         removePreviewEntry(pendingInput.id);
 
@@ -346,6 +390,7 @@ export function PendingWhipInputs({
     },
     [
       addCameraInput,
+      removeInput,
       cameraPcRef,
       cameraStreamRef,
       getRoomInfo,
@@ -356,6 +401,7 @@ export function PendingWhipInputs({
       setActiveScreenshareInputId,
       setIsCameraActive,
       setIsScreenshareActive,
+      codecMap,
       setPendingInputs,
       updateInput,
       updateRoom,
@@ -421,6 +467,14 @@ export function PendingWhipInputs({
 
   const handleDismiss = async (pendingInput: PendingWhipInput) => {
     cleanupPreview(pendingInput.id);
+    if (pendingInput.staleInputId) {
+      try {
+        await removeInput(roomId, pendingInput.staleInputId);
+      } catch (e) {
+        console.error('Failed to remove stale WHIP input:', e);
+      }
+      return;
+    }
     const nextPendingInputs = pendingInputsRef.current.filter(
       (p) => p.id !== pendingInput.id,
     );
@@ -440,9 +494,12 @@ export function PendingWhipInputs({
         const accentColor = colorMap?.[placeholderId];
         const preview = previews.get(pendingInput.id);
         const isAcquiring = acquiringId === pendingInput.id;
-        const isConnecting = connectingId === pendingInput.id;
         const isBusy =
           isBulkConnecting || acquiringId !== null || connectingId !== null;
+        const selectedCodec =
+          codecMap.get(pendingInput.id) ??
+          pendingInput.preferredCodec ??
+          'h264';
 
         return (
           <div
@@ -480,8 +537,33 @@ export function PendingWhipInputs({
                 <X className='w-4 h-4' />
               </Button>
             </div>
-            <div className='text-xs text-neutral-500 mb-3'>
+            <div className='text-xs text-neutral-500 mb-2'>
               WHIP input - {preview ? 'preview active' : 'click to connect'}
+            </div>
+
+            <div className='flex items-center gap-1 mb-3'>
+              <span className='text-xs text-neutral-500 mr-1 shrink-0'>
+                Codec:
+              </span>
+              {CODEC_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  disabled={isBusy || !!preview}
+                  onClick={() =>
+                    setCodecMap((prev) => {
+                      const next = new Map(prev);
+                      next.set(pendingInput.id, opt.value);
+                      return next;
+                    })
+                  }
+                  className={`text-[10px] px-1.5 py-0.5 rounded cursor-pointer transition-colors disabled:cursor-not-allowed ${
+                    selectedCodec === opt.value
+                      ? 'bg-neutral-600 text-white'
+                      : 'bg-neutral-800 text-neutral-400 hover:text-white hover:bg-neutral-700'
+                  }`}>
+                  {opt.label}
+                </button>
+              ))}
             </div>
 
             {preview && <InlineVideoPreview stream={preview.stream} />}

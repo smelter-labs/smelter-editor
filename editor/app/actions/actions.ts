@@ -464,6 +464,22 @@ export async function showInput(
   return (await getClient()).showInput(roomId, inputId, sourceIdOrTransition);
 }
 
+export async function carouselAction(
+  roomId: string,
+  layerId: string,
+  action: 'next' | 'prev' | 'setIndex',
+  index?: number,
+  sourceId?: string,
+) {
+  return (await getClient()).carouselAction(
+    roomId,
+    layerId,
+    action,
+    index,
+    sourceId,
+  );
+}
+
 export async function toggleMotionDetection(
   roomId: string,
   inputId: string,

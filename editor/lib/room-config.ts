@@ -5,7 +5,7 @@ import type {
   UpdateInputOptions,
 } from '@/lib/types';
 import type { Layer, LayerBehaviorConfig } from '@/lib/types';
-import type { ViewportProperties } from '@smelter-editor/types';
+import type { CarouselConfig, ViewportProperties } from '@smelter-editor/types';
 import {
   OUTPUT_TRACK_INPUT_ID,
   OUTPUT_TRACK_ID,
@@ -138,6 +138,7 @@ export type RoomConfigLayer = {
   id: string;
   inputs: RoomConfigLayerInput[];
   behavior?: LayerBehaviorConfig;
+  carousel?: CarouselConfig;
 };
 
 export type RoomConfig = {
@@ -184,6 +185,22 @@ function claimUniqueName(baseName: string, usedKeys: Set<string>): string {
   }
   usedKeys.add(toNameKey(candidate));
   return candidate;
+}
+
+function serializeCarouselConfig(
+  carousel: CarouselConfig | undefined,
+): CarouselConfig | undefined {
+  if (!carousel) return undefined;
+
+  return {
+    activeIndex: carousel.activeIndex,
+    durationMs: carousel.durationMs,
+    ...(carousel.easing !== undefined && { easing: carousel.easing }),
+    ...(carousel.visibleCount !== undefined && {
+      visibleCount: carousel.visibleCount,
+    }),
+    ...(carousel.gap !== undefined && { gap: carousel.gap }),
+  };
 }
 
 function sanitizeImportedConfigNames(config: RoomConfig): RoomConfig {
@@ -308,6 +325,7 @@ export function exportRoomConfig(
     (layer) => ({
       id: layer.id,
       behavior: layer.behavior,
+      carousel: serializeCarouselConfig(layer.carousel),
       inputs: layer.inputs.reduce<RoomConfigLayerInput[]>((acc, li) => {
         const idx = inputIdToIndex.get(li.inputId);
         if (idx === undefined) return acc;

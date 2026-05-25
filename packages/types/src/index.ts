@@ -24,6 +24,7 @@ export type {
   Layer,
   LayerInput,
   LayerBehaviorConfig,
+  CarouselConfig,
   EqualGridConfig,
   PreserveApproximateAspectGridConfig,
   PreserveExactAspectGridConfig,

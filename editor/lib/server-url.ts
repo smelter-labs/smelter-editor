@@ -1,3 +1,5 @@
+import { getStoredAppMode } from './app-mode';
+
 const SERVER_URL_STORAGE_KEY = 'smelter-server-url';
 export const SERVER_URL_COOKIE_NAME = 'smelter-server-url';
 /** Query key for deep links (e.g. `/mobile/[roomId]?server=...`) to pre-select API URL */
@@ -99,6 +101,9 @@ export function setStoredServerUrl(url: string | null): void {
 }
 
 export function getEffectiveClientServerUrl(): string {
+  if (getStoredAppMode() === 'demo') {
+    return getDefaultServerUrl();
+  }
   return getStoredServerUrl() ?? getDefaultServerUrl();
 }
 

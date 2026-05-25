@@ -38,8 +38,10 @@ import {
 } from './hooks/use-room-websocket';
 import { useControlPanelEvents } from './hooks/use-control-panel-events';
 import { FxAccordion } from './components/FxAccordion';
+import { useAppMode } from '@/components/app-mode/app-mode-context';
 import { StreamsSection } from './components/StreamsSection';
 import { LayersSection } from './components/LayersSection';
+import { CarouselPanel } from '@/components/dashboard/carousel-panel';
 import {
   TimelinePanel,
   type TimelinePanelActions,
@@ -74,11 +76,13 @@ import {
   GenericSaveModal,
   GenericLoadModal,
 } from '@/components/storage-modals';
-import { setAudioAnalysisEnabled } from '@/app/actions/actions';
 import { TransitionSettings } from './components/TransitionSettings';
 import { BehaviorSelector } from './components/BehaviorSelector';
 import { ViewportSettings } from './components/ViewportSettings';
-import { loadLastWhipInputId } from './whip-input/utils/whip-storage';
+import {
+  loadLastWhipInputId,
+  loadWhipSession,
+} from './whip-input/utils/whip-storage';
 import {
   ControlPanelProvider,
   useControlPanelContext,
@@ -117,6 +121,12 @@ import {
   type SelectedTimelineClip,
 } from './components/BlockClipPropertiesPanel';
 import {
+  isInputLevelClip,
+  INPUT_LEVEL_TRACK_ID,
+  INPUT_LEVEL_CLIP_ID,
+} from './components/block-clip/block-clip-utils';
+import { createBlockSettingsFromInput } from './hooks/use-timeline-state';
+import {
   PendingConnectionsPanel,
   loadAutoModalSetting,
 } from './components/PendingConnectionsPanel';
@@ -128,6 +138,7 @@ import {
   buildInputColorMap,
   TYPE_HSL,
 } from './components/timeline/timeline-utils';
+import { buildVideoOverlayRects } from '@/lib/build-video-overlay-rects';
 import {
   emitTimelineEvent,
   listenTimelineEvent,
@@ -157,6 +168,7 @@ import {
 } from '@/components/ui/select';
 import { toast } from 'sonner';
 import QRCode from 'react-qr-code';
+import { Save, FolderOpen } from 'lucide-react';
 
 export type VideoOverlayRect = {
   x: number;
@@ -176,6 +188,7 @@ type ControlPanelProps = {
   settingsNavPortalRef?: React.RefObject<HTMLDivElement | null>;
   renderDashboard?: (panels: {
     streamsSection: React.ReactNode;
+    carouselSection: React.ReactNode;
     fxSection: React.ReactNode;
     timelineSection: React.ReactNode;
     blockPropertiesSection: React.ReactNode;
@@ -193,6 +206,7 @@ type ControlPanelProps = {
 type ControlPanelWithActionsProps = ControlPanelProps & {
   pendingMutationCount: number;
   sceneMutationVersion: number;
+  resetPendingMutations: () => void;
 };
 
 type ShowcaseCopy = {
@@ -367,12 +381,17 @@ export default function ControlPanel(props: ControlPanelProps) {
     };
   }, [trackMutation]);
 
+  const resetPendingMutations = useCallback(() => {
+    setPendingMutationCount(0);
+  }, []);
+
   return (
     <ActionsProvider actions={trackedActions}>
       <ControlPanelWithActions
         {...props}
         pendingMutationCount={pendingMutationCount}
         sceneMutationVersion={sceneMutationVersion}
+        resetPendingMutations={resetPendingMutations}
       />
     </ActionsProvider>
   );
@@ -389,8 +408,9 @@ function ControlPanelWithActions({
   renderDashboard,
   pendingMutationCount,
   sceneMutationVersion,
+  resetPendingMutations,
 }: ControlPanelWithActionsProps) {
-  const pendingWhipInputs: PendingWhipInput[] = (
+  const pendingWhipInputsBase: PendingWhipInput[] = (
     roomState.pendingWhipInputs || []
   ).map((p) => ({
     id: p.id,
@@ -484,6 +504,45 @@ function ControlPanelWithActions({
     setIsScreenshareActive,
   } = whipConnections;
 
+  const pendingWhipInputs: PendingWhipInput[] = useMemo(() => {
+    const localActiveIds = new Set<string>();
+    if (isCameraActive && activeCameraInputId)
+      localActiveIds.add(activeCameraInputId);
+    if (isScreenshareActive && activeScreenshareInputId)
+      localActiveIds.add(activeScreenshareInputId);
+    const savedSessionInputId = loadWhipSession(roomId)?.inputId ?? null;
+    const stale: PendingWhipInput[] = inputs
+      .filter(
+        (i) =>
+          i.type === 'whip' &&
+          !localActiveIds.has(i.inputId) &&
+          (i.status !== 'connected' || i.inputId === savedSessionInputId),
+      )
+      .map((i) => ({
+        id: i.inputId,
+        title: i.title,
+        config: {
+          type: 'whip',
+          title: i.title,
+          description: i.description ?? '',
+          volume: i.volume ?? 1,
+          showTitle: i.showTitle,
+          shaders: i.shaders ?? [],
+        },
+        position: 0,
+        staleInputId: i.inputId,
+      }));
+    return [...pendingWhipInputsBase, ...stale];
+  }, [
+    pendingWhipInputsBase,
+    inputs,
+    roomId,
+    isCameraActive,
+    activeCameraInputId,
+    isScreenshareActive,
+    activeScreenshareInputId,
+  ]);
+
   const [normalizationProgress, setNormalizationProgress] = useState<
     Record<string, number>
   >({});
@@ -504,14 +563,16 @@ function ControlPanelWithActions({
 
   const handleSetPendingWhipInputs = useCallback(
     async (newInputs: PendingWhipInput[]) => {
-      const serverData: PendingWhipInputData[] = newInputs.map((p) => ({
-        id: p.id,
-        title: p.title,
-        volume: p.config.volume,
-        showTitle: p.config.showTitle !== false,
-        shaders: p.config.shaders || [],
-        position: p.position,
-      }));
+      const serverData: PendingWhipInputData[] = newInputs
+        .filter((p) => !p.staleInputId)
+        .map((p) => ({
+          id: p.id,
+          title: p.title,
+          volume: p.config.volume,
+          showTitle: p.config.showTitle !== false,
+          shaders: p.config.shaders || [],
+          position: p.position,
+        }));
       await setPendingWhipInputsAction(roomId, serverData);
       await handleRefreshState();
     },
@@ -575,6 +636,7 @@ function ControlPanelWithActions({
           handleLayersChange={handleLayersChange}
           pendingMutationCount={pendingMutationCount}
           sceneMutationVersion={sceneMutationVersion}
+          resetPendingMutations={resetPendingMutations}
         />
       </WhipConnectionsProvider>
     </ControlPanelProvider>
@@ -607,6 +669,7 @@ type ControlPanelInnerProps = {
   handleLayersChange: (layers: Layer[]) => Promise<void>;
   pendingMutationCount: number;
   sceneMutationVersion: number;
+  resetPendingMutations: () => void;
 };
 
 function ControlPanelInner({
@@ -633,6 +696,7 @@ function ControlPanelInner({
   handleLayersChange,
   pendingMutationCount,
   sceneMutationVersion,
+  resetPendingMutations,
 }: ControlPanelInnerProps) {
   const {
     roomId,
@@ -647,6 +711,7 @@ function ControlPanelInner({
   const actions = useActions();
   const updateRoomAction = actions.updateRoom;
   const configStorageSave = actions.configStorage.save;
+  const { mode: appMode } = useAppMode();
 
   useControlPanelEvents({
     inputWrappers,
@@ -658,8 +723,15 @@ function ControlPanelInner({
   });
 
   const handleToggleFx = (inputId: string) => {
+    if (appMode === 'demo') return;
     setOpenFxInputId((prev) => (prev === inputId ? null : inputId));
   };
+
+  useEffect(() => {
+    if (appMode === 'demo' && openFxInputId !== null) {
+      setOpenFxInputId(null);
+    }
+  }, [appMode, openFxInputId, setOpenFxInputId]);
 
   const fxInput =
     openFxInputId && inputs.find((i) => i.inputId === openFxInputId)
@@ -794,17 +866,64 @@ function ControlPanelInner({
     }
   }, [sceneMutationVersion, sortMode]);
 
+  const layersModeLoopedInputsRef = useRef<Set<string>>(new Set());
+  const inputsForLayersLoopRef = useRef(inputs);
+  inputsForLayersLoopRef.current = inputs;
+  const restartMp4InputAction = actions.restartMp4Input;
+  const restartMp4InputActionRef = useRef(restartMp4InputAction);
+  restartMp4InputActionRef.current = restartMp4InputAction;
+
+  useEffect(() => {
+    if (sortMode === 'layers') {
+      const tlState = timelineStateRef.current;
+      if (!tlState) return;
+
+      const loopableInputIds = new Set<string>();
+      for (const track of tlState.tracks) {
+        for (const clip of track.clips) {
+          if (clip.blockSettings.mp4Loop !== false) {
+            loopableInputIds.add(clip.inputId);
+          }
+        }
+      }
+
+      for (const input of inputsForLayersLoopRef.current) {
+        if (
+          input.type === 'local-mp4' &&
+          input.status === 'connected' &&
+          !input.mp4AssetMissing &&
+          loopableInputIds.has(input.inputId)
+        ) {
+          layersModeLoopedInputsRef.current.add(input.inputId);
+          void restartMp4InputActionRef
+            .current(roomId, input.inputId, 0, true)
+            .catch(() => {});
+        }
+      }
+    } else {
+      const started = layersModeLoopedInputsRef.current;
+      if (started.size === 0) return;
+      for (const inputId of started) {
+        void restartMp4InputActionRef
+          .current(roomId, inputId, 0, false)
+          .catch(() => {});
+      }
+      layersModeLoopedInputsRef.current = new Set();
+    }
+  }, [sortMode, roomId]);
+
+  const hasStaleWhipInput = pendingWhipInputs.some((p) => !!p.staleInputId);
   useEffect(() => {
     if (
       !isGuest &&
       !pendingModalShownRef.current &&
       pendingWhipInputs.length > 0 &&
-      (loadAutoModalSetting() || showcaseWelcome)
+      (loadAutoModalSetting() || showcaseWelcome || hasStaleWhipInput)
     ) {
       pendingModalShownRef.current = true;
       setPendingModalOpen(true);
     }
-  }, [isGuest, pendingWhipInputs.length, showcaseWelcome]);
+  }, [isGuest, pendingWhipInputs.length, showcaseWelcome, hasStaleWhipInput]);
 
   const handlePendingModalOpenChange = useCallback(
     (open: boolean) => {
@@ -831,14 +950,25 @@ function ControlPanelInner({
 
   const pendingRequestsCount =
     pendingMutationCount + (timelineQueueLocked ? 1 : 0);
-  const sortModeSwitchReason = timelineIsPlaying
-    ? 'Cannot switch mode while timeline is playing'
-    : layersModeDirty
-      ? 'Cannot switch mode while layers-mode changes are pending'
-      : pendingRequestsCount > 0
-        ? 'Cannot switch mode while request queue is not empty'
-        : undefined;
+  const sortModeSwitchReason =
+    appMode === 'demo'
+      ? 'DemoMode: layers mode is enforced'
+      : timelineIsPlaying
+        ? 'Cannot switch mode while timeline is playing'
+        : layersModeDirty
+          ? 'Cannot switch mode while layers-mode changes are pending'
+          : pendingRequestsCount > 0
+            ? 'Cannot switch mode while request queue is not empty'
+            : undefined;
   const canSwitchSortMode = !sortModeSwitchReason;
+
+  useEffect(() => {
+    if (appMode === 'demo' && sortMode !== 'layers') {
+      setSortMode('layers');
+      sceneMutationBaselineRef.current = sceneMutationVersion;
+      setLayersModeDirty(false);
+    }
+  }, [appMode, sortMode, sceneMutationVersion]);
 
   const handleSortModeChange = useCallback(
     (nextMode: 'timeline' | 'layers') => {
@@ -853,6 +983,11 @@ function ControlPanelInner({
     },
     [canSwitchSortMode, sceneMutationVersion, sortMode],
   );
+
+  const handleResetSortModeBlockers = useCallback(() => {
+    resetPendingMutations();
+    setTimelineQueueLocked(false);
+  }, [resetPendingMutations]);
 
   const requestPlayConflictDecision = useCallback(async () => {
     setConflictModalOpen(true);
@@ -1177,12 +1312,26 @@ function ControlPanelInner({
           getTimelineStateForConfig={getTimelineStateForConfig}
           applyImportedTimelineState={applyImportedTimelineState}
           showcasePrefill={showcaseSettingsPrefill}
+          sortMode={sortMode}
+          canSwitchSortMode={canSwitchSortMode}
+          sortModeSwitchReason={sortModeSwitchReason}
+          onSortModeChange={handleSortModeChange}
+          onResetSortModeBlockers={handleResetSortModeBlockers}
         />
       </ErrorBoundary>
     );
 
+    const carouselSection = (
+      <CarouselPanel
+        roomId={roomId}
+        layers={roomState.layers}
+        inputs={inputs}
+        resolution={roomState.resolution}
+      />
+    );
+
     const streamsSection = (
-      <div className='h-full overflow-y-auto p-3'>
+      <div className='h-full overflow-y-auto p-3 space-y-3'>
         <LayersSection
           layers={roomState.layers}
           inputWrappers={inputWrappers}
@@ -1193,6 +1342,7 @@ function ControlPanelInner({
           onToggleFx={handleToggleFx}
           isSwapping={isSwapping}
           selectedInputId={selectedInputId}
+          onSelectInput={setSelectedInputId}
           isGuest={isGuest}
           guestInputId={activeCameraInputId || activeScreenshareInputId}
           onLayersChange={handleLayersChange}
@@ -1204,6 +1354,7 @@ function ControlPanelInner({
               : {}
           }
           sortMode={sortMode}
+          resolution={roomState.resolution}
         />
       </div>
     );
@@ -1239,24 +1390,47 @@ function ControlPanelInner({
           onTimelineQueueStateChange={setTimelineQueueLocked}
           layers={roomState.layers}
           sortMode={sortMode}
-          onSortModeChange={handleSortModeChange}
-          sortModeSwitchDisabled={!canSwitchSortMode}
-          sortModeSwitchReason={sortModeSwitchReason}
         />
       </ErrorBoundary>
     );
+
+    const effectiveSelectedClips = (() => {
+      if (sortMode === 'layers' && selectedInputId) {
+        const input = inputs.find((i) => i.inputId === selectedInputId);
+        if (!input) return [];
+        const blockSettings = createBlockSettingsFromInput(input);
+        return [
+          {
+            trackId: INPUT_LEVEL_TRACK_ID,
+            clipId: INPUT_LEVEL_CLIP_ID,
+            inputId: selectedInputId,
+            startMs: 0,
+            endMs: 0,
+            blockSettings,
+            keyframes: [{ id: 'base', timeMs: 0, blockSettings }],
+          },
+        ] satisfies SelectedTimelineClip[];
+      }
+      return selectedTimelineClips;
+    })();
+
+    const handleEffectiveClipsChange = (clips: SelectedTimelineClip[]) => {
+      if (clips.length > 0 && isInputLevelClip(clips[0])) return;
+      setSelectedTimelineClips(clips);
+    };
 
     const blockPropertiesSection = (
       <div className='h-full overflow-y-auto p-3'>
         <BlockClipPropertiesPanel
           roomId={roomId}
-          selectedTimelineClips={selectedTimelineClips}
-          onSelectedTimelineClipsChange={setSelectedTimelineClips}
+          selectedTimelineClips={effectiveSelectedClips}
+          onSelectedTimelineClipsChange={handleEffectiveClipsChange}
           playheadMs={timelinePlayheadMs}
           inputs={inputs}
           availableShaders={availableShaders}
           handleRefreshState={handleRefreshState}
           resolution={roomState.resolution}
+          sortMode={sortMode}
         />
       </div>
     );
@@ -1281,32 +1455,13 @@ function ControlPanelInner({
       />
     );
 
-    const videoOverlayRects: VideoOverlayRect[] = (() => {
-      if (!videoOverlayEnabled || selectedTimelineClips.length === 0) return [];
-      const playhead = timelinePlayheadMs;
-      const layers = roomState.layers;
-      const colorMap = buildInputColorMap(inputs);
-      const rects: VideoOverlayRect[] = [];
-      for (const clip of selectedTimelineClips) {
-        if (playhead < clip.startMs || playhead >= clip.endMs) continue;
-        for (const layer of layers) {
-          const li = layer.inputs.find((i) => i.inputId === clip.inputId);
-          if (li && li.width > 0 && li.height > 0) {
-            const tc = clip.blockSettings.timelineColor;
-            const fallback = colorMap.get(clip.inputId)?.dot;
-            rects.push({
-              x: li.x,
-              y: li.y,
-              width: li.width,
-              height: li.height,
-              color: tc || fallback || '#ffffff',
-            });
-            break;
-          }
-        }
-      }
-      return rects;
-    })();
+    const videoOverlayRects = buildVideoOverlayRects({
+      enabled: videoOverlayEnabled,
+      clips: effectiveSelectedClips,
+      playheadMs: timelinePlayheadMs,
+      layers: roomState.layers,
+      colorMap: buildInputColorMap(inputs),
+    });
 
     return (
       <DashboardToolbarProvider>
@@ -1321,6 +1476,7 @@ function ControlPanelInner({
           createPortal(settingsNav, settingsNavPortalRef.current)}
         {renderDashboard({
           streamsSection,
+          carouselSection,
           fxSection,
           timelineSection,
           blockPropertiesSection,
@@ -1381,6 +1537,7 @@ function ControlPanelInner({
       onToggleFx={handleToggleFx}
       isSwapping={isSwapping}
       selectedInputId={selectedInputId}
+      onSelectInput={setSelectedInputId}
       isGuest={isGuest}
       guestInputId={activeCameraInputId || activeScreenshareInputId}
       onLayersChange={handleLayersChange}
@@ -1390,6 +1547,7 @@ function ControlPanelInner({
         timelineIsPlaying && sortMode === 'timeline' ? timelineTrackOrder : {}
       }
       sortMode={sortMode}
+      resolution={roomState.resolution}
     />
   ) : null;
 
@@ -1414,9 +1572,6 @@ function ControlPanelInner({
         onTimelineQueueStateChange={setTimelineQueueLocked}
         layers={roomState.layers}
         sortMode={sortMode}
-        onSortModeChange={handleSortModeChange}
-        sortModeSwitchDisabled={!canSwitchSortMode}
-        sortModeSwitchReason={sortModeSwitchReason}
       />
     </ErrorBoundary>
   ) : null;
@@ -1441,6 +1596,11 @@ function ControlPanelInner({
                   getTimelineStateForConfig={getTimelineStateForConfig}
                   applyImportedTimelineState={applyImportedTimelineState}
                   showcasePrefill={showcaseSettingsPrefill}
+                  sortMode={sortMode}
+                  canSwitchSortMode={canSwitchSortMode}
+                  sortModeSwitchReason={sortModeSwitchReason}
+                  onSortModeChange={handleSortModeChange}
+                  onResetSortModeBlockers={handleResetSortModeBlockers}
                 />
               </ErrorBoundary>,
               settingsNavPortalRef.current,
@@ -1547,16 +1707,27 @@ function SettingsBar({
   getTimelineStateForConfig,
   applyImportedTimelineState,
   showcasePrefill,
+  sortMode,
+  canSwitchSortMode,
+  sortModeSwitchReason,
+  onSortModeChange,
+  onResetSortModeBlockers,
 }: {
   roomState: RoomState;
   getTimelineStateForConfig: () => TimelineState | null;
   applyImportedTimelineState: (state: TimelineState | null) => void;
   showcasePrefill: ShowcaseSettingsPrefill | null;
+  sortMode: 'timeline' | 'layers';
+  canSwitchSortMode: boolean;
+  sortModeSwitchReason?: string;
+  onSortModeChange: (mode: 'timeline' | 'layers') => void;
+  onResetSortModeBlockers: () => void;
 }) {
   const { roomId, refreshState: handleRefreshState } = useControlPanelContext();
   const actions = useActions();
   const updateRoomAction = actions.updateRoom;
   const configStorageSave = actions.configStorage.save;
+  const { mode: appMode } = useAppMode();
   const [openModal, setOpenModal] = useState<ModalId | null>(null);
   const [showAddVideoModal, setShowAddVideoModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -1692,21 +1863,6 @@ function SettingsBar({
       setIsTogglingPublic(false);
     }
   }, [roomId, roomState.isPublic, handleRefreshState, isTogglingPublic]);
-
-  const audioAnalysisEnabled = roomState.audioAnalysisEnabled ?? false;
-  const [isTogglingAudio, setIsTogglingAudio] = useState(false);
-  const handleToggleAudioAnalysis = useCallback(async () => {
-    if (isTogglingAudio) return;
-    setIsTogglingAudio(true);
-    try {
-      await setAudioAnalysisEnabled(roomId, !audioAnalysisEnabled);
-      await handleRefreshState();
-    } catch (err) {
-      console.error('Failed to toggle audio analysis', err);
-    } finally {
-      setIsTogglingAudio(false);
-    }
-  }, [roomId, audioAnalysisEnabled, handleRefreshState, isTogglingAudio]);
 
   const buildConfig = useCallback(() => {
     const timelineState = resolveRoomConfigTimelineState(
@@ -1986,15 +2142,18 @@ function SettingsBar({
                   {dashboardToolbar.isEditMode ? 'Lock Layout' : 'Edit Layout'}
                 </button>
                 <div className='h-px bg-[#3a494b]/30 my-1' />
-                {dashboardToolbar.presets.map((preset) => (
-                  <button
-                    key={preset.id}
-                    onClick={() => dashboardToolbar.applyPreset(preset.layout)}
-                    className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
-                    {preset.label}
-                  </button>
-                ))}
-                <div className='h-px bg-[#3a494b]/30 my-1' />
+                {appMode !== 'demo' &&
+                  dashboardToolbar.presets.map((preset) => (
+                    <button
+                      key={preset.id}
+                      onClick={() => dashboardToolbar.applyPreset(preset.layout)}
+                      className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
+                      {preset.label}
+                    </button>
+                  ))}
+                {appMode !== 'demo' && (
+                  <div className='h-px bg-[#3a494b]/30 my-1' />
+                )}
                 <button
                   onClick={() => setShowDashSaveModal(true)}
                   className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
@@ -2044,25 +2203,15 @@ function SettingsBar({
                 className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
                 General
               </button>
-              <button
-                onClick={() => setOpenModal('showcase')}
-                className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
-                Showcase
-              </button>
+              {appMode !== 'demo' && (
+                <button
+                  onClick={() => setOpenModal('showcase')}
+                  className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
+                  Showcase
+                </button>
+              )}
             </div>
           </div>
-          <button
-            onClick={() => setShowSaveModal(true)}
-            disabled={isExporting || isExportingFullProject}
-            className={navLinkClass}>
-            {isExporting || isExportingFullProject ? 'Saving...' : 'Save'}
-          </button>
-          <button
-            onClick={() => setShowLoadModal(true)}
-            disabled={isImporting}
-            className={navLinkClass}>
-            {isImporting ? 'Loading...' : 'Load'}
-          </button>
           <button onClick={() => setShowQRModal(true)} className={navLinkClass}>
             Join via QR
           </button>
@@ -2078,20 +2227,54 @@ function SettingsBar({
           </button>
         </nav>
         <div className='ml-auto flex items-center gap-4 uppercase tracking-widest text-xl font-bold'>
+          <div className='flex items-center gap-1'>
+            <button
+              type='button'
+              onClick={() => setShowSaveModal(true)}
+              disabled={isExporting || isExportingFullProject}
+              title={
+                isExporting || isExportingFullProject ? 'Saving...' : 'Save'
+              }
+              className='inline-flex items-center justify-center h-8 w-8 text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'>
+              <Save className='h-5 w-5' />
+            </button>
+            <button
+              type='button'
+              onClick={() => setShowLoadModal(true)}
+              disabled={isImporting}
+              title={isImporting ? 'Loading...' : 'Load'}
+              className='inline-flex items-center justify-center h-8 w-8 text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed'>
+              <FolderOpen className='h-5 w-5' />
+            </button>
+          </div>
+          <label
+            className={`flex items-center gap-2 ${canSwitchSortMode ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
+            title={sortModeSwitchReason ?? 'Toggle layers sorting mode'}>
+            <span className='text-[#849495]'>Layers</span>
+            <Switch
+              checked={sortMode === 'layers'}
+              onCheckedChange={(checked) =>
+                onSortModeChange(checked ? 'layers' : 'timeline')
+              }
+              disabled={!canSwitchSortMode}
+            />
+          </label>
+          {!canSwitchSortMode &&
+            sortModeSwitchReason?.includes('request queue') && (
+              <button
+                type='button'
+                onClick={onResetSortModeBlockers}
+                title='Force-clear stuck request queue'
+                className='text-[10px] normal-case tracking-normal font-medium text-amber-400/80 hover:text-amber-300 border border-amber-500/40 hover:border-amber-400/70 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded transition-colors'>
+                Reset queue
+              </button>
+            )}
           <label className='flex items-center gap-2 cursor-pointer'>
             <span className='text-[#849495]'>Public</span>
             <Switch
               checked={roomState.isPublic}
               onCheckedChange={() => handleTogglePublic()}
               disabled={isTogglingPublic}
-            />
-          </label>
-          <label className='flex items-center gap-2 cursor-pointer'>
-            <span className='text-[#849495]'>Audio</span>
-            <Switch
-              checked={audioAnalysisEnabled}
-              onCheckedChange={() => handleToggleAudioAnalysis()}
-              disabled={isTogglingAudio}
             />
           </label>
         </div>
@@ -2107,10 +2290,12 @@ function SettingsBar({
         open={openModal === 'settings'}
         onOpenChange={(open) => !open && setOpenModal(null)}>
         <DialogContent className='max-h-[84vh] max-w-2xl overflow-y-auto text-neutral-100'>
-          <FxCanvas
-            config={FX_PRESET_MODAL}
-            isActive={openModal === 'settings'}
-          />
+          <div className='absolute inset-0 overflow-hidden pointer-events-none rounded-[inherit]'>
+            <FxCanvas
+              config={FX_PRESET_MODAL}
+              isActive={openModal === 'settings'}
+            />
+          </div>
           <div className='absolute inset-0 z-0 bg-black/25 pointer-events-none rounded-[inherit]' />
           <DialogHeader className='relative z-10'>
             <DialogTitle>Settings</DialogTitle>
@@ -2535,7 +2720,7 @@ function QRModal({
               setActiveTab('whip');
               setCopied(false);
             }}>
-            WHIP Link
+            Mobile
           </button>
           <button
             type='button'
@@ -2544,7 +2729,7 @@ function QRModal({
               setActiveTab('mobile');
               setCopied(false);
             }}>
-            Mobile
+            Browser
           </button>
         </div>
         <p className='text-xs text-muted-foreground'>

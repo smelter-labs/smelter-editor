@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Input } from '@/lib/types';
-import { useAutoResume } from '../whip-input/hooks/use-auto-resume';
 import { useWhipHeartbeat } from '../whip-input/hooks/use-whip-heartbeat';
 import { stopCameraAndConnection } from '../whip-input/utils/preview';
 import {
@@ -23,8 +22,8 @@ export function useWhipConnections(
   const cameraStreamRef = useRef<MediaStream | null>(null);
   const [activeCameraInputId, setActiveCameraInputId] = useState<string | null>(
     () => {
-      const session = loadWhipSession();
-      return session?.roomId === roomId ? session.inputId : null;
+      const session = loadWhipSession(roomId);
+      return session ? session.inputId : null;
     },
   );
   const [isCameraActive, setIsCameraActive] = useState<boolean>(false);
@@ -37,16 +36,6 @@ export function useWhipConnections(
   const [isScreenshareActive, setIsScreenshareActive] =
     useState<boolean>(false);
 
-  useAutoResume(
-    roomId,
-    userName,
-    cameraPcRef,
-    cameraStreamRef,
-    inputs,
-    handleRefreshState,
-    setActiveCameraInputId,
-    setIsCameraActive,
-  );
   useWhipHeartbeat(roomId, activeCameraInputId, isCameraActive);
   useWhipHeartbeat(roomId, activeScreenshareInputId, isScreenshareActive);
 
@@ -63,8 +52,8 @@ export function useWhipConnections(
       try {
         stopCameraAndConnection(cameraPcRef, cameraStreamRef);
         setIsCameraActive(false);
-        const s = loadWhipSession();
-        if (s && s.roomId === roomId && s.inputId === activeCameraInputId) {
+        const s = loadWhipSession(roomId);
+        if (s && s.inputId === activeCameraInputId) {
           clearWhipSession(roomId);
         }
         const lastId = loadLastWhipInputId(roomId);

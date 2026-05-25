@@ -47,6 +47,7 @@ import {
   extractMp4FileName,
   computeCommonBlockSettings,
   resolveNewKeyframeTimeMs,
+  isInputLevelClip,
 } from './block-clip/block-clip-utils';
 import { SnakeShaderSection } from './block-clip/SnakeShaderSection';
 import { CollapsibleSection } from './block-clip/CollapsibleSection';
@@ -57,6 +58,7 @@ import {
   labelStyles,
 } from '../styles/panel-primitives';
 import { SwapSourceModal, type SwapSourceResult } from './SwapSourceModal';
+import { useAppMode } from '@/components/app-mode/app-mode-context';
 
 const SHADER_SETTINGS_DEBOUNCE_MS = 200;
 
@@ -71,6 +73,7 @@ export function BlockClipPropertiesPanel({
   availableShaders,
   handleRefreshState,
   resolution,
+  sortMode,
 }: {
   roomId: string;
   selectedTimelineClips: SelectedTimelineClip[];
@@ -80,10 +83,14 @@ export function BlockClipPropertiesPanel({
   availableShaders: AvailableShader[];
   handleRefreshState: () => Promise<void>;
   resolution?: { width: number; height: number };
+  sortMode?: 'timeline' | 'layers';
 }) {
   const selectedTimelineClip =
     selectedTimelineClips.length === 1 ? selectedTimelineClips[0] : null;
   const isMultiSelect = selectedTimelineClips.length > 1;
+  const isInputLevel =
+    selectedTimelineClips.length === 1 &&
+    isInputLevelClip(selectedTimelineClips[0]);
   const commonSettings = useMemo(
     () => computeCommonBlockSettings(selectedTimelineClips),
     [selectedTimelineClips],
@@ -149,6 +156,8 @@ export function BlockClipPropertiesPanel({
     left: number;
   } | null>(null);
   const [swapModalOpen, setSwapModalOpen] = useState(false);
+  const { mode: appMode } = useAppMode();
+  const isDemoMode = appMode === 'demo';
 
   useEffect(() => {
     return () => {
@@ -442,7 +451,12 @@ export function BlockClipPropertiesPanel({
       onSelectedTimelineClipsChange(nextClips);
 
       // Dispatch timeline update for each clip or selected keyframe.
-      if (targetKeyframeId && singleSelectedClip) {
+      if (isInputLevel && singleSelectedClip) {
+        emitTimelineEvent(TIMELINE_EVENTS.UPDATE_CLIP_SETTINGS_FOR_INPUT, {
+          inputId: singleSelectedClip.inputId,
+          patch,
+        });
+      } else if (targetKeyframeId && singleSelectedClip) {
         emitTimelineEvent(TIMELINE_EVENTS.UPDATE_KEYFRAME, {
           trackId: singleSelectedClip.trackId,
           clipId: singleSelectedClip.clipId,
@@ -774,7 +788,9 @@ export function BlockClipPropertiesPanel({
   if (selectedTimelineClips.length === 0) {
     return (
       <p className='text-xs text-neutral-500'>
-        Select a block on the timeline to view its properties.
+        {sortMode === 'layers'
+          ? 'Select an input to view its properties.'
+          : 'Select a block on the timeline to view its properties.'}
       </p>
     );
   }
@@ -952,7 +968,9 @@ export function BlockClipPropertiesPanel({
       <div className='text-xs text-muted-foreground mb-2'>
         {isOutputClip
           ? 'Main Video output shaders'
-          : 'Selected block properties'}
+          : isInputLevel
+            ? 'Input properties'
+            : 'Selected block properties'}
       </div>
       {!isOutputClip && (
         <>
@@ -978,14 +996,16 @@ export function BlockClipPropertiesPanel({
                   }
                 }}
               />
-              <Button
-                size='sm'
-                variant='outline'
-                className='h-7 px-2 shrink-0 cursor-pointer border-border text-muted-foreground hover:text-foreground hover:bg-accent'
-                title='Change source'
-                onClick={() => setSwapModalOpen(true)}>
-                <ArrowLeftRight className='w-3.5 h-3.5' />
-              </Button>
+              {!isInputLevel && (
+                <Button
+                  size='sm'
+                  variant='outline'
+                  className='h-7 px-2 shrink-0 cursor-pointer border-border text-muted-foreground hover:text-foreground hover:bg-accent'
+                  title='Change source'
+                  onClick={() => setSwapModalOpen(true)}>
+                  <ArrowLeftRight className='w-3.5 h-3.5' />
+                </Button>
+              )}
             </div>
           )}
         </>
@@ -1029,7 +1049,7 @@ export function BlockClipPropertiesPanel({
           </div>
         </div>
       )}
-      {!isMultiSelect && selectedTimelineClip && (
+      {!isMultiSelect && !isInputLevel && selectedTimelineClip && (
         <CollapsibleSection title='Keyframes' className={panelSectionStyles()}>
           <div className='flex items-center justify-between mb-2'>
             <div className='text-[10px] text-muted-foreground'>
@@ -1227,7 +1247,9 @@ export function BlockClipPropertiesPanel({
                       cropBottom: cropVals.cropBottom,
                     })
                   }
+                  demoMode={isDemoMode}
                 />
+                {!isDemoMode && (
                 <div className='grid grid-cols-2 gap-2'>
                   <div>
                     <label className={labelStyles({ block: true })}>
@@ -1282,6 +1304,7 @@ export function BlockClipPropertiesPanel({
                     </Select>
                   </div>
                 </div>
+                )}
               </>
             )}
           </CollapsibleSection>
@@ -1314,35 +1337,43 @@ export function BlockClipPropertiesPanel({
               </div>
             </div>
           </CollapsibleSection>
-          <CollapsibleSection
-            title='Transitions'
-            className={panelSectionStyles()}>
-            <TransitionRow
-              label='Intro'
-              transition={effectiveClip.blockSettings.introTransition}
-              maxDurationMs={
-                effectiveClip.endMs -
-                effectiveClip.startMs -
-                (effectiveClip.blockSettings.outroTransition?.durationMs ?? 0)
-              }
-              onChange={(t) =>
-                void applyClipPatch({ introTransition: t }, { refresh: false })
-              }
-            />
-            <TransitionRow
-              label='Outro'
-              transition={effectiveClip.blockSettings.outroTransition}
-              maxDurationMs={
-                effectiveClip.endMs -
-                effectiveClip.startMs -
-                (effectiveClip.blockSettings.introTransition?.durationMs ?? 0)
-              }
-              onChange={(t) =>
-                void applyClipPatch({ outroTransition: t }, { refresh: false })
-              }
-            />
-          </CollapsibleSection>
-          {selectedInput?.type === 'local-mp4' && (
+          {!isInputLevel && (
+            <CollapsibleSection
+              title='Transitions'
+              className={panelSectionStyles()}>
+              <TransitionRow
+                label='Intro'
+                transition={effectiveClip.blockSettings.introTransition}
+                maxDurationMs={
+                  effectiveClip.endMs -
+                  effectiveClip.startMs -
+                  (effectiveClip.blockSettings.outroTransition?.durationMs ?? 0)
+                }
+                onChange={(t) =>
+                  void applyClipPatch(
+                    { introTransition: t },
+                    { refresh: false },
+                  )
+                }
+              />
+              <TransitionRow
+                label='Outro'
+                transition={effectiveClip.blockSettings.outroTransition}
+                maxDurationMs={
+                  effectiveClip.endMs -
+                  effectiveClip.startMs -
+                  (effectiveClip.blockSettings.introTransition?.durationMs ?? 0)
+                }
+                onChange={(t) =>
+                  void applyClipPatch(
+                    { outroTransition: t },
+                    { refresh: false },
+                  )
+                }
+              />
+            </CollapsibleSection>
+          )}
+          {!isInputLevel && selectedInput?.type === 'local-mp4' && (
             <CollapsibleSection
               title='MP4 Playback'
               className={panelSectionStyles()}>
@@ -1842,18 +1873,21 @@ export function BlockClipPropertiesPanel({
         }
         onAddShader={handleShaderToggle}
       />
-      {!isOutputClip && !isMultiSelect && selectedTimelineClip && (
-        <SwapSourceModal
-          open={swapModalOpen}
-          onOpenChange={setSwapModalOpen}
-          currentInputId={selectedTimelineClip.inputId}
-          inputs={inputs}
-          roomId={roomId}
-          onSwap={handleSwapSource}
-          trackId={selectedTimelineClip.trackId}
-          clipId={selectedTimelineClip.clipId}
-        />
-      )}
+      {!isOutputClip &&
+        !isMultiSelect &&
+        !isInputLevel &&
+        selectedTimelineClip && (
+          <SwapSourceModal
+            open={swapModalOpen}
+            onOpenChange={setSwapModalOpen}
+            currentInputId={selectedTimelineClip.inputId}
+            inputs={inputs}
+            roomId={roomId}
+            onSwap={handleSwapSource}
+            trackId={selectedTimelineClip.trackId}
+            clipId={selectedTimelineClip.clipId}
+          />
+        )}
     </div>
   );
 }

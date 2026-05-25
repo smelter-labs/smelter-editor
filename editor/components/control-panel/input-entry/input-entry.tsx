@@ -120,11 +120,9 @@ export default function InputEntry({
   );
 
   const performDelete = useCallback(async () => {
-    const session = loadWhipSession();
+    const session = loadWhipSession(roomId);
     const isSavedInSession =
-      (session &&
-        session.roomId === roomId &&
-        session.inputId === input.inputId) ||
+      (session && session.inputId === input.inputId) ||
       loadLastWhipInputId(roomId) === input.inputId;
     const isWhipCandidate =
       input.inputId.indexOf('whip') > 0 || isSavedInSession;

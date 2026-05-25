@@ -17,6 +17,15 @@ export type SelectedTimelineClip = {
   selectedKeyframeId?: string | null;
 };
 
+export const INPUT_LEVEL_TRACK_ID = '__input-level__';
+export const INPUT_LEVEL_CLIP_ID = '__input-level__';
+
+export function isInputLevelClip(clip: SelectedTimelineClip): boolean {
+  return (
+    clip.trackId === INPUT_LEVEL_TRACK_ID && clip.clipId === INPUT_LEVEL_CLIP_ID
+  );
+}
+
 export function computeCommonBlockSettings(
   clips: SelectedTimelineClip[],
 ): BlockSettings {

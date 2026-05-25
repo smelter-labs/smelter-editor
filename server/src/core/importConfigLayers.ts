@@ -10,6 +10,7 @@ export function rebuildLayers(
     // for the same inputIndex inside one layer. Keep first occurrence.
     id: cl.id,
     behavior: cl.behavior,
+    carousel: cl.carousel,
     inputs: cl.inputs
       .filter(
         (li, index, arr) =>
