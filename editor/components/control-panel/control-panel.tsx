@@ -231,7 +231,6 @@ const VIDEO_INPUT_TYPES = new Set<string>([
   'whip',
 ]);
 const TIMELINE_END_TOLERANCE_MS = 2500;
-const SORT_MODE_STORAGE_KEY_PREFIX = 'smelter:timeline-sort-mode:';
 
 function hasSameLayerInputOrder(a: Layer[], b: Layer[]): boolean {
   if (a.length !== b.length) return false;
@@ -787,15 +786,7 @@ function ControlPanelInner({
   const [timelineActionsReady, setTimelineActionsReady] = useState(false);
   const isPersistingTimelineLayerOrderRef = useRef(false);
   const [timelineQueueLocked, setTimelineQueueLocked] = useState(false);
-  const [sortMode, setSortMode] = useState<'timeline' | 'layers'>(() => {
-    if (typeof window === 'undefined') {
-      return 'timeline';
-    }
-    const stored = window.localStorage.getItem(
-      `${SORT_MODE_STORAGE_KEY_PREFIX}${roomId}`,
-    );
-    return stored === 'layers' ? 'layers' : 'timeline';
-  });
+  const sortMode: 'timeline' | 'layers' = roomState.sortMode ?? 'timeline';
   const [layersModeDirty, setLayersModeDirty] = useState(false);
   const [conflictModalOpen, setConflictModalOpen] = useState(false);
   const [conflictDecisionPending, setConflictDecisionPending] = useState(false);
@@ -845,14 +836,6 @@ function ControlPanelInner({
   }, [roomId]);
 
   useEffect(() => {
-    const key = `${SORT_MODE_STORAGE_KEY_PREFIX}${roomId}`;
-    window.localStorage.setItem(key, sortMode);
-  }, [roomId, sortMode]);
-
-  useEffect(() => {
-    const key = `${SORT_MODE_STORAGE_KEY_PREFIX}${roomId}`;
-    const stored = window.localStorage.getItem(key);
-    setSortMode(stored === 'layers' ? 'layers' : 'timeline');
     setLayersModeDirty(false);
     sceneMutationBaselineRef.current = sceneMutationVersion;
   }, [roomId, sceneMutationVersion]);
@@ -950,38 +933,41 @@ function ControlPanelInner({
 
   const pendingRequestsCount =
     pendingMutationCount + (timelineQueueLocked ? 1 : 0);
-  const sortModeSwitchReason =
-    appMode === 'demo'
-      ? 'DemoMode: layers mode is enforced'
-      : timelineIsPlaying
-        ? 'Cannot switch mode while timeline is playing'
-        : layersModeDirty
-          ? 'Cannot switch mode while layers-mode changes are pending'
-          : pendingRequestsCount > 0
-            ? 'Cannot switch mode while request queue is not empty'
-            : undefined;
-  const canSwitchSortMode = !sortModeSwitchReason;
+  const sortModeSwitchReason = timelineIsPlaying
+    ? 'Cannot switch mode while timeline is playing'
+    : layersModeDirty
+      ? 'Cannot switch mode while layers-mode changes are pending'
+      : pendingRequestsCount > 0
+        ? 'Cannot switch mode while request queue is not empty'
+        : undefined;
+  const canSwitchSortMode = appMode !== 'demo' && !sortModeSwitchReason;
 
   useEffect(() => {
     if (appMode === 'demo' && sortMode !== 'layers') {
-      setSortMode('layers');
       sceneMutationBaselineRef.current = sceneMutationVersion;
       setLayersModeDirty(false);
+      void updateRoomAction(roomId, { sortMode: 'layers' });
     }
-  }, [appMode, sortMode, sceneMutationVersion]);
+  }, [appMode, sortMode, sceneMutationVersion, updateRoomAction, roomId]);
 
   const handleSortModeChange = useCallback(
     (nextMode: 'timeline' | 'layers') => {
       if (nextMode === sortMode || !canSwitchSortMode) {
         return;
       }
-      setSortMode(nextMode);
       if (nextMode === 'layers') {
         sceneMutationBaselineRef.current = sceneMutationVersion;
         setLayersModeDirty(false);
       }
+      void updateRoomAction(roomId, { sortMode: nextMode });
     },
-    [canSwitchSortMode, sceneMutationVersion, sortMode],
+    [
+      canSwitchSortMode,
+      sceneMutationVersion,
+      sortMode,
+      updateRoomAction,
+      roomId,
+    ],
   );
 
   const handleResetSortModeBlockers = useCallback(() => {
@@ -1027,9 +1013,9 @@ function ControlPanelInner({
         timelineActions.commitSceneAtPlayheadToTimeline();
       }
       await timelineActions.applyAtPlayhead();
-      setSortMode('timeline');
       setLayersModeDirty(false);
       sceneMutationBaselineRef.current = sceneMutationVersion;
+      void updateRoomAction(roomId, { sortMode: 'timeline' });
       return true;
     } finally {
       setConflictDecisionPending(false);
@@ -1039,6 +1025,8 @@ function ControlPanelInner({
     requestPlayConflictDecision,
     sceneMutationVersion,
     sortMode,
+    updateRoomAction,
+    roomId,
   ]);
 
   const handlePendingModalActionClose = useCallback(() => {
@@ -1727,7 +1715,7 @@ function SettingsBar({
   const actions = useActions();
   const updateRoomAction = actions.updateRoom;
   const configStorageSave = actions.configStorage.save;
-  const { mode: appMode } = useAppMode();
+  const { mode: appMode, adminMode } = useAppMode();
   const [openModal, setOpenModal] = useState<ModalId | null>(null);
   const [showAddVideoModal, setShowAddVideoModal] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -1892,6 +1880,7 @@ function SettingsBar({
       },
       roomState.outputShaders,
       roomState.layers,
+      roomState.sortMode,
     );
   }, [getTimelineStateForConfig, roomState, roomId]);
 
@@ -2146,7 +2135,9 @@ function SettingsBar({
                   dashboardToolbar.presets.map((preset) => (
                     <button
                       key={preset.id}
-                      onClick={() => dashboardToolbar.applyPreset(preset.layout)}
+                      onClick={() =>
+                        dashboardToolbar.applyPreset(preset.layout)
+                      }
                       className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
                       {preset.label}
                     </button>
@@ -2203,11 +2194,11 @@ function SettingsBar({
                 className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
                 General
               </button>
-              {appMode !== 'demo' && (
+              {adminMode && (
                 <button
                   onClick={() => setOpenModal('showcase')}
                   className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
-                  Showcase
+                  Demo Projects
                 </button>
               )}
             </div>
@@ -2247,28 +2238,36 @@ function SettingsBar({
               <FolderOpen className='h-5 w-5' />
             </button>
           </div>
-          <label
-            className={`flex items-center gap-2 ${canSwitchSortMode ? 'cursor-pointer' : 'opacity-50 cursor-not-allowed'}`}
-            title={sortModeSwitchReason ?? 'Toggle layers sorting mode'}>
-            <span className='text-[#849495]'>Layers</span>
-            <Switch
-              checked={sortMode === 'layers'}
-              onCheckedChange={(checked) =>
-                onSortModeChange(checked ? 'layers' : 'timeline')
-              }
-              disabled={!canSwitchSortMode}
-            />
-          </label>
-          {!canSwitchSortMode &&
-            sortModeSwitchReason?.includes('request queue') && (
-              <button
-                type='button'
-                onClick={onResetSortModeBlockers}
-                title='Force-clear stuck request queue'
-                className='text-[10px] normal-case tracking-normal font-medium text-amber-400/80 hover:text-amber-300 border border-amber-500/40 hover:border-amber-400/70 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded transition-colors'>
-                Reset queue
-              </button>
+          <div className='relative'>
+            <label
+              className={`flex items-center gap-2 ${canSwitchSortMode ? 'cursor-pointer' : 'cursor-not-allowed'}`}
+              title='Toggle layers sorting mode'>
+              <span className='text-[#849495]'>Layers</span>
+              <Switch
+                checked={sortMode === 'layers'}
+                onCheckedChange={(checked) =>
+                  onSortModeChange(checked ? 'layers' : 'timeline')
+                }
+                disabled={!canSwitchSortMode}
+              />
+            </label>
+            {sortModeSwitchReason && (
+              <div className='absolute top-full right-0 mt-1 z-50 flex flex-col items-end gap-1 normal-case tracking-normal pointer-events-none'>
+                <span className='text-[10px] font-medium text-amber-300/90 bg-amber-500/15 border border-amber-500/40 px-2 py-1 rounded whitespace-nowrap'>
+                  {sortModeSwitchReason}
+                </span>
+                {sortModeSwitchReason.includes('request queue') && (
+                  <button
+                    type='button'
+                    onClick={onResetSortModeBlockers}
+                    title='Force-clear stuck request queue'
+                    className='pointer-events-auto text-[10px] font-medium text-amber-400/80 hover:text-amber-300 border border-amber-500/40 hover:border-amber-400/70 bg-amber-500/10 hover:bg-amber-500/20 px-2 py-0.5 rounded transition-colors'>
+                    Reset queue
+                  </button>
+                )}
+              </div>
             )}
+          </div>
           <label className='flex items-center gap-2 cursor-pointer'>
             <span className='text-[#849495]'>Public</span>
             <Switch
@@ -2545,16 +2544,16 @@ function SettingsBar({
         </DialogContent>
       </Dialog>
       <Dialog
-        open={openModal === 'showcase'}
+        open={adminMode && openModal === 'showcase'}
         onOpenChange={(open) => !open && setOpenModal(null)}>
-        <DialogContent className='max-h-[84vh] max-w-2xl overflow-y-auto text-neutral-100'>
+        <DialogContent className='max-h-[84vh] max-w-2xl overflow-x-hidden overflow-y-auto text-neutral-100'>
           <FxCanvas
             config={FX_PRESET_MODAL}
             isActive={openModal === 'showcase'}
           />
           <div className='absolute inset-0 z-0 bg-black/25 pointer-events-none rounded-[inherit]' />
           <DialogHeader className='relative z-10'>
-            <DialogTitle>Showcase</DialogTitle>
+            <DialogTitle>Demo Projects</DialogTitle>
           </DialogHeader>
           <div className='relative z-10'>
             <PresentationModeSettings

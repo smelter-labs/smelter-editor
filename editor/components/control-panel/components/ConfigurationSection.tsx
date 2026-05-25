@@ -35,6 +35,7 @@ type ConfigurationSectionProps = {
   transitionSettings: RoomConfigTransitionSettings;
   viewport?: Partial<ViewportProperties>;
   outputShaders?: ShaderConfig[];
+  sortMode?: 'timeline' | 'layers';
   refreshState: () => Promise<void>;
   pendingWhipInputs?: PendingWhipInput[];
   setPendingWhipInputs?: (inputs: PendingWhipInput[]) => void | Promise<void>;
@@ -59,6 +60,7 @@ function ConfigurationSection({
   transitionSettings,
   viewport,
   outputShaders,
+  sortMode,
   refreshState,
 }: ConfigurationSectionProps) {
   const [isExporting, setIsExporting] = useState(false);
@@ -81,6 +83,8 @@ function ConfigurationSection({
         outputPlayer,
         viewport,
         outputShaders,
+        undefined,
+        sortMode,
       );
       downloadRoomConfig(config);
       toast.success('Configuration exported successfully');
@@ -90,7 +94,15 @@ function ConfigurationSection({
     } finally {
       setIsExporting(false);
     }
-  }, [inputs, resolution, transitionSettings, viewport, outputShaders, roomId]);
+  }, [
+    inputs,
+    resolution,
+    transitionSettings,
+    viewport,
+    outputShaders,
+    sortMode,
+    roomId,
+  ]);
 
   useEffect(() => {
     const onVoiceExport = () => {

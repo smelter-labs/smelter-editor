@@ -18,6 +18,7 @@ import type {
 import { state } from '../core/serverState';
 import { roomEventBus } from '../core/roomEventBus';
 import { registerStorageRoutes } from './storageRoutes';
+import { registerHiddenAssetsRoutes } from './hiddenAssetsRoutes';
 import { logRequest, addLogListener, getLogBuffer } from '../dashboard';
 import {
   registerSnakeGameRoutes,
@@ -973,6 +974,7 @@ routes.get<RoomIdParams>(
       swapOutgoingEnabled: snapshot.swapOutgoingEnabled,
       swapFadeInDurationMs: snapshot.swapFadeInDurationMs,
       swapFadeOutDurationMs: snapshot.swapFadeOutDurationMs,
+      sortMode: snapshot.sortMode,
       outputShaders: snapshot.outputShaders,
       isRecording: room.hasActiveRecording(),
       isFrozen: room.isFrozen(),
@@ -1108,6 +1110,7 @@ routes.get('/rooms', async (_req, res) => {
         swapOutgoingEnabled: snapshot.swapOutgoingEnabled,
         swapFadeInDurationMs: snapshot.swapFadeInDurationMs,
         swapFadeOutDurationMs: snapshot.swapFadeOutDurationMs,
+        sortMode: snapshot.sortMode,
         outputShaders: snapshot.outputShaders,
         isRecording: room.hasActiveRecording(),
         audioAnalysisEnabled: room.isAudioAnalysisEnabled(),
@@ -1350,6 +1353,10 @@ registerStorageRoutes(routes, {
   supportsUpdate: true,
 });
 
+registerHiddenAssetsRoutes(routes, {
+  dirPath: path.join(DATA_DIR, 'hidden-assets'),
+});
+
 const UpdateRoomSchema = Type.Object({
   inputOrder: Type.Optional(Type.Array(Type.String())),
   layers: Type.Optional(
@@ -1450,6 +1457,9 @@ const UpdateRoomSchema = Type.Object({
   ),
   swapFadeOutDurationMs: Type.Optional(
     Type.Number({ minimum: 0, maximum: 5000 }),
+  ),
+  sortMode: Type.Optional(
+    Type.Union([Type.Literal('timeline'), Type.Literal('layers')]),
   ),
   viewportTop: Type.Optional(Type.Number()),
   viewportLeft: Type.Optional(Type.Number()),
@@ -1602,6 +1612,12 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
     }
     if (req.body.swapFadeOutDurationMs !== undefined) {
       room.setSwapFadeOutDurationMs(req.body.swapFadeOutDurationMs);
+    }
+    if (
+      req.body.sortMode === 'timeline' ||
+      req.body.sortMode === 'layers'
+    ) {
+      room.setSortMode(req.body.sortMode);
     }
 
     const viewportFields = [
@@ -2284,6 +2300,7 @@ routes.get<RoomIdParams>(
         swapOutgoingEnabled: snapshot.swapOutgoingEnabled,
         swapFadeInDurationMs: snapshot.swapFadeInDurationMs,
         swapFadeOutDurationMs: snapshot.swapFadeOutDurationMs,
+        sortMode: snapshot.sortMode,
         outputShaders: snapshot.outputShaders,
         isRecording: room.hasActiveRecording(),
         isFrozen: room.isFrozen(),
