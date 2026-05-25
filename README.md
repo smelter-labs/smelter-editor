@@ -295,6 +295,28 @@ Make sure firewall/security group rules allow inbound TCP on ports `9071`, `9072
 └── entrypoint.sh
 ```
 
+## Example AI prompts
+
+Example prompt for generating carousel functionality in the layer system:
+
+```
+Add carousel to the layer system.
+A layer shows one slide at a time with animated transitions
+— configurable: duration, easing, visible slide count, gap.
+Server: carousel action endpoint (next/prev/setIndex)
+with debounce during animation and index wrap-around.
+Rendering component with slide animation and overflow hidden.
+State bounds sanitization.
+Editor: carousel action API,
+keyboard hook (←/→/Space),
+clap detection hook via mic (2-5kHz).
+UI: creation modal with input selection,
+inline settings (duration, visible count, gap, easing,
+position/size, keyboard/clap toggles with localStorage),
+slide selection dialog.
+"Carousel" label and settings/edit buttons in layer header.
+```
+
 ## License
 
 MIT
