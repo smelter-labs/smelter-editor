@@ -26,6 +26,7 @@ export type RoomState = {
   swapOutgoingEnabled?: boolean;
   swapFadeInDurationMs?: number;
   swapFadeOutDurationMs?: number;
+  sortMode?: 'timeline' | 'layers';
   outputShaders?: ShaderConfig[];
   pendingWhipInputs?: PendingWhipInputData[];
   isRecording?: boolean;
@@ -81,6 +82,7 @@ export type UpdateRoomOptions = {
   swapOutgoingEnabled?: boolean;
   swapFadeInDurationMs?: number;
   swapFadeOutDurationMs?: number;
+  sortMode?: 'timeline' | 'layers';
   outputShaders?: ShaderConfig[];
 } & Partial<ViewportProperties>;
 

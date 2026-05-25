@@ -706,67 +706,73 @@ export function AbsolutePositionController({
 
       {!demoMode && (
         <>
-      <div className='grid grid-cols-4 gap-1 mt-2'>
-        {(['left', 'top', 'width', 'height'] as const).map((field) => {
-          const isCropped =
-            (field === 'width' && (crop.cropLeft > 0 || crop.cropRight > 0)) ||
-            (field === 'height' && (crop.cropTop > 0 || crop.cropBottom > 0));
-          const croppedValue =
-            field === 'width' ? visWidth : field === 'height' ? visHeight : 0;
-          return (
-            <div key={field}>
-              <label className='text-[10px] text-neutral-500 block'>
-                {field[0].toUpperCase() + field.slice(1)}
-              </label>
-              <NumberInput
-                className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-1 py-0.5'
-                value={Math.round(pos[field])}
-                onChange={(e) => {
-                  const val = Number(e.target.value) || 0;
-                  const newPos = clampPos({ ...pos, [field]: val });
-                  onChange(newPos);
-                }}
-              />
-              {isCropped && (
-                <span className='text-[9px] text-green-400/70'>
-                  → {Math.round(croppedValue)}
-                </span>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      <div className='grid grid-cols-4 gap-1 mt-2'>
-        {(
-          [
-            ['cropTop', 'Crop T'],
-            ['cropLeft', 'Crop L'],
-            ['cropRight', 'Crop R'],
-            ['cropBottom', 'Crop B'],
-          ] as const
-        ).map(([field, label]) => (
-          <div key={field}>
-            <label className='text-[10px] text-green-400/70 block'>
-              {label}
-            </label>
-            <NumberInput
-              min={0}
-              className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-1 py-0.5'
-              value={crop[field]}
-              onChange={(e) => {
-                const val = Math.max(0, Number(e.target.value) || 0);
-                const newCrop = clampCrop(
-                  { ...crop, [field]: val },
-                  pos.width,
-                  pos.height,
-                );
-                onCropChange(newCrop);
-              }}
-            />
+          <div className='grid grid-cols-4 gap-1 mt-2'>
+            {(['left', 'top', 'width', 'height'] as const).map((field) => {
+              const isCropped =
+                (field === 'width' &&
+                  (crop.cropLeft > 0 || crop.cropRight > 0)) ||
+                (field === 'height' &&
+                  (crop.cropTop > 0 || crop.cropBottom > 0));
+              const croppedValue =
+                field === 'width'
+                  ? visWidth
+                  : field === 'height'
+                    ? visHeight
+                    : 0;
+              return (
+                <div key={field}>
+                  <label className='text-[10px] text-neutral-500 block'>
+                    {field[0].toUpperCase() + field.slice(1)}
+                  </label>
+                  <NumberInput
+                    className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-1 py-0.5'
+                    value={Math.round(pos[field])}
+                    onChange={(e) => {
+                      const val = Number(e.target.value) || 0;
+                      const newPos = clampPos({ ...pos, [field]: val });
+                      onChange(newPos);
+                    }}
+                  />
+                  {isCropped && (
+                    <span className='text-[9px] text-green-400/70'>
+                      → {Math.round(croppedValue)}
+                    </span>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        ))}
-      </div>
+
+          <div className='grid grid-cols-4 gap-1 mt-2'>
+            {(
+              [
+                ['cropTop', 'Crop T'],
+                ['cropLeft', 'Crop L'],
+                ['cropRight', 'Crop R'],
+                ['cropBottom', 'Crop B'],
+              ] as const
+            ).map(([field, label]) => (
+              <div key={field}>
+                <label className='text-[10px] text-green-400/70 block'>
+                  {label}
+                </label>
+                <NumberInput
+                  min={0}
+                  className='w-full bg-neutral-800 border border-neutral-700 text-white text-xs px-1 py-0.5'
+                  value={crop[field]}
+                  onChange={(e) => {
+                    const val = Math.max(0, Number(e.target.value) || 0);
+                    const newCrop = clampCrop(
+                      { ...crop, [field]: val },
+                      pos.width,
+                      pos.height,
+                    );
+                    onCropChange(newCrop);
+                  }}
+                />
+              </div>
+            ))}
+          </div>
         </>
       )}
     </div>

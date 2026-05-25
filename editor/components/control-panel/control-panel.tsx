@@ -231,7 +231,6 @@ const VIDEO_INPUT_TYPES = new Set<string>([
   'whip',
 ]);
 const TIMELINE_END_TOLERANCE_MS = 2500;
-const SORT_MODE_STORAGE_KEY_PREFIX = 'smelter:timeline-sort-mode:';
 
 function hasSameLayerInputOrder(a: Layer[], b: Layer[]): boolean {
   if (a.length !== b.length) return false;
@@ -787,15 +786,7 @@ function ControlPanelInner({
   const [timelineActionsReady, setTimelineActionsReady] = useState(false);
   const isPersistingTimelineLayerOrderRef = useRef(false);
   const [timelineQueueLocked, setTimelineQueueLocked] = useState(false);
-  const [sortMode, setSortMode] = useState<'timeline' | 'layers'>(() => {
-    if (typeof window === 'undefined') {
-      return 'timeline';
-    }
-    const stored = window.localStorage.getItem(
-      `${SORT_MODE_STORAGE_KEY_PREFIX}${roomId}`,
-    );
-    return stored === 'layers' ? 'layers' : 'timeline';
-  });
+  const sortMode: 'timeline' | 'layers' = roomState.sortMode ?? 'timeline';
   const [layersModeDirty, setLayersModeDirty] = useState(false);
   const [conflictModalOpen, setConflictModalOpen] = useState(false);
   const [conflictDecisionPending, setConflictDecisionPending] = useState(false);
@@ -845,14 +836,6 @@ function ControlPanelInner({
   }, [roomId]);
 
   useEffect(() => {
-    const key = `${SORT_MODE_STORAGE_KEY_PREFIX}${roomId}`;
-    window.localStorage.setItem(key, sortMode);
-  }, [roomId, sortMode]);
-
-  useEffect(() => {
-    const key = `${SORT_MODE_STORAGE_KEY_PREFIX}${roomId}`;
-    const stored = window.localStorage.getItem(key);
-    setSortMode(stored === 'layers' ? 'layers' : 'timeline');
     setLayersModeDirty(false);
     sceneMutationBaselineRef.current = sceneMutationVersion;
   }, [roomId, sceneMutationVersion]);
@@ -964,24 +947,30 @@ function ControlPanelInner({
 
   useEffect(() => {
     if (appMode === 'demo' && sortMode !== 'layers') {
-      setSortMode('layers');
       sceneMutationBaselineRef.current = sceneMutationVersion;
       setLayersModeDirty(false);
+      void updateRoomAction(roomId, { sortMode: 'layers' });
     }
-  }, [appMode, sortMode, sceneMutationVersion]);
+  }, [appMode, sortMode, sceneMutationVersion, updateRoomAction, roomId]);
 
   const handleSortModeChange = useCallback(
     (nextMode: 'timeline' | 'layers') => {
       if (nextMode === sortMode || !canSwitchSortMode) {
         return;
       }
-      setSortMode(nextMode);
       if (nextMode === 'layers') {
         sceneMutationBaselineRef.current = sceneMutationVersion;
         setLayersModeDirty(false);
       }
+      void updateRoomAction(roomId, { sortMode: nextMode });
     },
-    [canSwitchSortMode, sceneMutationVersion, sortMode],
+    [
+      canSwitchSortMode,
+      sceneMutationVersion,
+      sortMode,
+      updateRoomAction,
+      roomId,
+    ],
   );
 
   const handleResetSortModeBlockers = useCallback(() => {
@@ -1027,9 +1016,9 @@ function ControlPanelInner({
         timelineActions.commitSceneAtPlayheadToTimeline();
       }
       await timelineActions.applyAtPlayhead();
-      setSortMode('timeline');
       setLayersModeDirty(false);
       sceneMutationBaselineRef.current = sceneMutationVersion;
+      void updateRoomAction(roomId, { sortMode: 'timeline' });
       return true;
     } finally {
       setConflictDecisionPending(false);
@@ -1039,6 +1028,8 @@ function ControlPanelInner({
     requestPlayConflictDecision,
     sceneMutationVersion,
     sortMode,
+    updateRoomAction,
+    roomId,
   ]);
 
   const handlePendingModalActionClose = useCallback(() => {
@@ -1892,6 +1883,7 @@ function SettingsBar({
       },
       roomState.outputShaders,
       roomState.layers,
+      roomState.sortMode,
     );
   }, [getTimelineStateForConfig, roomState, roomId]);
 
@@ -2146,7 +2138,9 @@ function SettingsBar({
                   dashboardToolbar.presets.map((preset) => (
                     <button
                       key={preset.id}
-                      onClick={() => dashboardToolbar.applyPreset(preset.layout)}
+                      onClick={() =>
+                        dashboardToolbar.applyPreset(preset.layout)
+                      }
                       className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
                       {preset.label}
                     </button>
@@ -2554,7 +2548,7 @@ function SettingsBar({
           />
           <div className='absolute inset-0 z-0 bg-black/25 pointer-events-none rounded-[inherit]' />
           <DialogHeader className='relative z-10'>
-            <DialogTitle>Showcase</DialogTitle>
+            <DialogTitle>Demo Projects</DialogTitle>
           </DialogHeader>
           <div className='relative z-10'>
             <PresentationModeSettings

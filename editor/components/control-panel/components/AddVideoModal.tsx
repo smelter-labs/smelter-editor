@@ -606,11 +606,15 @@ export function AssetBrowserPanel({
   onFolderChange,
 }: AssetBrowserPanelProps) {
   const actions = useActions();
+  const { adminMode } = useAppMode();
 
   const [filter, setFilter] = useState<FilterType>(initialFilter ?? 'ALL');
   const [selectedItem, setSelectedItem] = useState<AssetItem | null>(null);
   const [items, setItems] = useState<AssetItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [hiddenAssets, setHiddenAssets] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const [mp4Folder, setMp4Folder] = useState(initialMp4Folder ?? '');
   const [pictureFolder, setPictureFolder] = useState(
@@ -980,6 +984,75 @@ export function AssetBrowserPanel({
     setSelectedItem(null);
   }, [fetchItems]);
 
+  const fetchHiddenAssets = useCallback(async () => {
+    try {
+      const res = await fetch('/api/hidden-assets');
+      if (!res.ok) return;
+      const data = (await res.json()) as { hiddenAssets?: string[] };
+      if (Array.isArray(data.hiddenAssets)) {
+        setHiddenAssets(new Set(data.hiddenAssets));
+      }
+    } catch {
+      // network failure — leave list empty so the modal still works
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchHiddenAssets();
+  }, [fetchHiddenAssets]);
+
+  const handleHideAsset = useCallback(
+    async (item: AssetItemMp4 | AssetItemAudio) => {
+      const key = itemKey(item);
+      try {
+        const res = await fetch('/api/hidden-assets/hide', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ filePath: key }),
+        });
+        if (!res.ok) throw new Error('hide failed');
+        const data = (await res.json()) as { hiddenAssets?: string[] };
+        if (Array.isArray(data.hiddenAssets)) {
+          setHiddenAssets(new Set(data.hiddenAssets));
+        } else {
+          setHiddenAssets((prev) => new Set(prev).add(key));
+        }
+        toast.success('Asset hidden from modal.');
+      } catch {
+        toast.error('Failed to hide asset.');
+      }
+    },
+    [],
+  );
+
+  const handleUnhideAsset = useCallback(
+    async (item: AssetItemMp4 | AssetItemAudio) => {
+      const key = itemKey(item);
+      try {
+        const res = await fetch('/api/hidden-assets/unhide', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ filePath: key }),
+        });
+        if (!res.ok) throw new Error('unhide failed');
+        const data = (await res.json()) as { hiddenAssets?: string[] };
+        if (Array.isArray(data.hiddenAssets)) {
+          setHiddenAssets(new Set(data.hiddenAssets));
+        } else {
+          setHiddenAssets((prev) => {
+            const next = new Set(prev);
+            next.delete(key);
+            return next;
+          });
+        }
+        toast.success('Asset visible in modal.');
+      } catch {
+        toast.error('Failed to unhide asset.');
+      }
+    },
+    [],
+  );
+
   const prevAvailableFilterKeyRef = useRef(availableFilterKey);
   useEffect(() => {
     if (prevAvailableFilterKeyRef.current === availableFilterKey) return;
@@ -999,8 +1072,19 @@ export function AssetBrowserPanel({
   }, [availableFilterKey, visibleFilters]);
 
   const filteredItems = useMemo(
-    () => items.filter((item) => itemMatchesFilter(item, filter)),
-    [items, filter],
+    () =>
+      items.filter((item) => {
+        if (!itemMatchesFilter(item, filter)) return false;
+        if (
+          !adminMode &&
+          (item.kind === 'mp4' || item.kind === 'audio') &&
+          hiddenAssets.has(itemKey(item))
+        ) {
+          return false;
+        }
+        return true;
+      }),
+    [items, filter, adminMode, hiddenAssets],
   );
 
   const handleDone = useCallback(async () => {
@@ -1312,6 +1396,11 @@ export function AssetBrowserPanel({
                     selectedItem !== null &&
                     itemKey(selectedItem) === itemKey(item)
                   }
+                  isHidden={
+                    (item.kind === 'mp4' || item.kind === 'audio') &&
+                    hiddenAssets.has(itemKey(item))
+                  }
+                  showHiddenMarker={adminMode}
                   onClick={() => {
                     if (item.kind === 'folder') {
                       handleFolderClick(item);
@@ -1341,6 +1430,13 @@ export function AssetBrowserPanel({
                 inputs={inputs}
                 onDone={handleDone}
                 onDeleteAsset={handleAssetDeleted}
+                onHideAsset={handleHideAsset}
+                onUnhideAsset={handleUnhideAsset}
+                isAssetHidden={
+                  (selectedItem.kind === 'mp4' ||
+                    selectedItem.kind === 'audio') &&
+                  hiddenAssets.has(itemKey(selectedItem))
+                }
                 onInputCreated={onInputCreated}
                 whipCtx={whipCtx}
                 onUploadFiles={queueUploads}
@@ -1411,14 +1507,19 @@ export function AddVideoModal({
 function AssetCard({
   item,
   isSelected,
+  isHidden,
+  showHiddenMarker,
   onClick,
 }: {
   item: AssetItem;
   isSelected: boolean;
+  isHidden?: boolean;
+  showHiddenMarker?: boolean;
   onClick: () => void;
 }) {
   const badge = typeBadge(item);
   const label = itemLabel(item);
+  const showHidden = !!(showHiddenMarker && isHidden);
 
   const durationBadge =
     (item.kind === 'mp4' || item.kind === 'audio') && item.durationMs != null
@@ -1464,15 +1565,22 @@ function AssetCard({
   })();
 
   return (
-    <SelectablePreviewCard
-      onClick={onClick}
-      isSelected={isSelected}
-      badge={badge}
-      label={label}
-      subtitle={subtitle}
-      durationBadge={durationBadge ?? undefined}
-      thumbnail={<AssetThumbnail item={item} />}
-    />
+    <div className={showHidden ? 'relative opacity-50' : 'relative'}>
+      <SelectablePreviewCard
+        onClick={onClick}
+        isSelected={isSelected}
+        badge={badge}
+        label={label}
+        subtitle={subtitle}
+        durationBadge={durationBadge ?? undefined}
+        thumbnail={<AssetThumbnail item={item} />}
+      />
+      {showHidden && (
+        <div className='pointer-events-none absolute top-1 left-1 z-10 rounded border border-amber-500/60 bg-black/70 px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-widest text-amber-300'>
+          HIDDEN
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -2039,6 +2147,9 @@ function PropertyInspector({
   inputs,
   onDone,
   onDeleteAsset,
+  onHideAsset,
+  onUnhideAsset,
+  isAssetHidden,
   onInputCreated,
   whipCtx,
   onUploadFiles,
@@ -2053,6 +2164,9 @@ function PropertyInspector({
   inputs: Input[];
   onDone: () => Promise<void>;
   onDeleteAsset: (item: DeletableAssetItem) => Promise<void>;
+  onHideAsset: (item: AssetItemMp4 | AssetItemAudio) => Promise<void>;
+  onUnhideAsset: (item: AssetItemMp4 | AssetItemAudio) => Promise<void>;
+  isAssetHidden: boolean;
   onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
   whipCtx: ReturnType<typeof useWhipConnectionsContext>;
   onUploadFiles: (files: File[]) => Promise<void>;
@@ -2070,6 +2184,9 @@ function PropertyInspector({
           roomId={roomId}
           onDone={onDone}
           onDeleteAsset={onDeleteAsset}
+          onHideAsset={onHideAsset}
+          onUnhideAsset={onUnhideAsset}
+          isAssetHidden={isAssetHidden}
           onInputCreated={onInputCreated}
         />
       );
@@ -2080,6 +2197,9 @@ function PropertyInspector({
           roomId={roomId}
           onDone={onDone}
           onDeleteAsset={onDeleteAsset}
+          onHideAsset={onHideAsset}
+          onUnhideAsset={onUnhideAsset}
+          isAssetHidden={isAssetHidden}
           onInputCreated={onInputCreated}
         />
       );
@@ -2521,20 +2641,27 @@ function Mp4Inspector({
   roomId,
   onDone,
   onDeleteAsset,
+  onHideAsset,
+  onUnhideAsset,
+  isAssetHidden,
   onInputCreated,
 }: {
   item: AssetItemMp4;
   roomId: string;
   onDone: () => Promise<void>;
   onDeleteAsset: (item: DeletableAssetItem) => Promise<void>;
+  onHideAsset: (item: AssetItemMp4 | AssetItemAudio) => Promise<void>;
+  onUnhideAsset: (item: AssetItemMp4 | AssetItemAudio) => Promise<void>;
+  isAssetHidden: boolean;
   onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
 }) {
   const { addMP4Input } = useActions();
   const { normalizationProgress } = useControlPanelContext();
-  const { mode: appMode } = useAppMode();
+  const { mode: appMode, adminMode } = useAppMode();
   const isDemo = appMode === 'demo';
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [hiding, setHiding] = useState(false);
   const [normalizing, setNormalizing] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [confirmState, setConfirmState] =
@@ -2701,6 +2828,33 @@ function Mp4Inspector({
           />
         </>
       )}
+      {adminMode && (
+        <ActionOutlineButton
+          label={
+            hiding
+              ? isAssetHidden
+                ? 'UNHIDING...'
+                : 'HIDING...'
+              : isAssetHidden
+                ? 'UNHIDE'
+                : 'HIDE_FROM_MODAL'
+          }
+          onClick={async () => {
+            setHiding(true);
+            try {
+              if (isAssetHidden) {
+                await onUnhideAsset(item);
+              } else {
+                await onHideAsset(item);
+              }
+            } finally {
+              setHiding(false);
+            }
+          }}
+          disabled={hiding || deleting || normalizing}
+          colorClass='border-amber-500/40 text-amber-300 hover:bg-amber-500/10'
+        />
+      )}
       <InspectorConfirmDialog
         open={confirmState != null}
         state={confirmState}
@@ -2721,20 +2875,27 @@ function AudioInspector({
   roomId,
   onDone,
   onDeleteAsset,
+  onHideAsset,
+  onUnhideAsset,
+  isAssetHidden,
   onInputCreated,
 }: {
   item: AssetItemAudio;
   roomId: string;
   onDone: () => Promise<void>;
   onDeleteAsset: (item: DeletableAssetItem) => Promise<void>;
+  onHideAsset: (item: AssetItemMp4 | AssetItemAudio) => Promise<void>;
+  onUnhideAsset: (item: AssetItemMp4 | AssetItemAudio) => Promise<void>;
+  isAssetHidden: boolean;
   onInputCreated?: (created: AssetBrowserInputCreated) => Promise<void> | void;
 }) {
   const { addAudioInput } = useActions();
   const { normalizationProgress } = useControlPanelContext();
-  const { mode: appMode } = useAppMode();
+  const { mode: appMode, adminMode } = useAppMode();
   const isDemo = appMode === 'demo';
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [hiding, setHiding] = useState(false);
   const [normalizing, setNormalizing] = useState(false);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [confirmState, setConfirmState] =
@@ -2897,6 +3058,33 @@ function AudioInspector({
             src={buildLibraryPlayHref('audio', item.fileName)}
           />
         </>
+      )}
+      {adminMode && (
+        <ActionOutlineButton
+          label={
+            hiding
+              ? isAssetHidden
+                ? 'UNHIDING...'
+                : 'HIDING...'
+              : isAssetHidden
+                ? 'UNHIDE'
+                : 'HIDE_FROM_MODAL'
+          }
+          onClick={async () => {
+            setHiding(true);
+            try {
+              if (isAssetHidden) {
+                await onUnhideAsset(item);
+              } else {
+                await onHideAsset(item);
+              }
+            } finally {
+              setHiding(false);
+            }
+          }}
+          disabled={hiding || deleting || normalizing}
+          colorClass='border-amber-500/40 text-amber-300 hover:bg-amber-500/10'
+        />
       )}
       <InspectorConfirmDialog
         open={confirmState != null}

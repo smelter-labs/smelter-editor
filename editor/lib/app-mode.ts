@@ -43,3 +43,23 @@ export function setStoredAppMode(mode: AppMode): void {
 export function isPanelHiddenInMode(panelId: string, mode: AppMode): boolean {
   return mode === 'demo' && DEMO_MODE_HIDDEN_PANELS.has(panelId);
 }
+
+const ADMIN_MODE_STORAGE_KEY = 'smelter-admin-mode';
+
+export function getStoredAdminMode(): boolean {
+  if (typeof window === 'undefined') return false;
+  try {
+    return localStorage.getItem(ADMIN_MODE_STORAGE_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function setStoredAdminMode(on: boolean): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(ADMIN_MODE_STORAGE_KEY, on ? '1' : '0');
+  } catch {
+    // localStorage full or unavailable
+  }
+}

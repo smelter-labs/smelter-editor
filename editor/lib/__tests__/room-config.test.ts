@@ -120,6 +120,40 @@ describe('parseRoomConfig', () => {
     expect(() => parseRoomConfig('not json')).toThrow();
   });
 
+  it('preserves valid sortMode values', () => {
+    for (const mode of ['timeline', 'layers'] as const) {
+      const json = JSON.stringify({
+        version: 1,
+        layout: 'grid',
+        inputs: [],
+        sortMode: mode,
+        exportedAt: new Date().toISOString(),
+      });
+      expect(parseRoomConfig(json).sortMode).toBe(mode);
+    }
+  });
+
+  it('drops invalid sortMode value', () => {
+    const json = JSON.stringify({
+      version: 1,
+      layout: 'grid',
+      inputs: [],
+      sortMode: 'wat',
+      exportedAt: new Date().toISOString(),
+    });
+    expect(parseRoomConfig(json).sortMode).toBeUndefined();
+  });
+
+  it('accepts configs without sortMode', () => {
+    const json = JSON.stringify({
+      version: 1,
+      layout: 'grid',
+      inputs: [],
+      exportedAt: new Date().toISOString(),
+    });
+    expect(parseRoomConfig(json).sortMode).toBeUndefined();
+  });
+
   it('deduplicates imported input titles and track labels', () => {
     const json = JSON.stringify({
       version: 1,
@@ -208,6 +242,27 @@ describe('exportRoomConfig', () => {
   it('omits outputPlayer when not provided', () => {
     const config = exportRoomConfig([minimalInput], 'grid');
     expect(config.outputPlayer).toBeUndefined();
+  });
+
+  it('includes sortMode when provided', () => {
+    const config = exportRoomConfig(
+      [minimalInput],
+      'grid',
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      undefined,
+      'layers',
+    );
+    expect(config.sortMode).toBe('layers');
+  });
+
+  it('omits sortMode when not provided', () => {
+    const config = exportRoomConfig([minimalInput], 'grid');
+    expect(config.sortMode).toBeUndefined();
   });
 
   it('preserves explicit local-mp4 file names', () => {
