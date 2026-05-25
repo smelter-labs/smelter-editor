@@ -295,48 +295,56 @@ function OutputScene() {
                   // Keep identity stable across reorder so Smelter can animate moves
                   // instead of remounting the node when index changes.
                   const layerItemKey = `${layer.id}:${item.inputId}`;
+                  const boxes = input.yoloBoundingBoxes ?? [];
                   return (
-                    <Rescaler
-                      key={layerItemKey}
-                      id={`layer-${layer.id}-${item.inputId}`}
-                      transition={{
-                        durationMs: item.transitionDurationMs ?? 300,
-                        easingFunction: buildEasingFunction(
-                          item.transitionEasing,
-                        ),
-                      }}
-                      style={{
-                        top: item.y,
-                        left: item.x,
-                        width: item.width,
-                        height: item.height,
-                      }}>
-                      {inner}
-                    </Rescaler>
+                    <React.Fragment key={layerItemKey}>
+                      <Rescaler
+                        id={`layer-${layer.id}-${item.inputId}`}
+                        transition={{
+                          durationMs: item.transitionDurationMs ?? 300,
+                          easingFunction: buildEasingFunction(
+                            item.transitionEasing,
+                          ),
+                        }}
+                        style={{
+                          top: item.y,
+                          left: item.x,
+                          width: item.width,
+                          height: item.height,
+                        }}>
+                        {inner}
+                      </Rescaler>
+                      {boxes.length > 0 && (
+                        <View
+                          key={`yolo-overlay-${layer.id}-${item.inputId}`}
+                          style={{
+                            top: item.y,
+                            left: item.x,
+                            width: item.width,
+                            height: item.height,
+                          }}>
+                          {boxes.map((box, bi) => (
+                            <View
+                              key={`yolo-${input.inputId}-${bi}`}
+                              style={{
+                                top: box.y * item.height,
+                                left: box.x * item.width,
+                                width: Math.max(1, box.width * item.width),
+                                height: Math.max(1, box.height * item.height),
+                                borderWidth: 3,
+                                borderColor: input.yoloBoxColor ?? '#ff0000',
+                              }}
+                            />
+                          ))}
+                        </View>
+                      )}
+                    </React.Fragment>
                   );
                 })}
           </View>
         );
       })}
 
-      {/* YOLO bounding boxes — rendered at scene level over the composed output.
-          Boxes are normalised to [0, 1] by YoloController.receiveBoxes, so we
-          simply scale by the scene resolution here. */}
-      {inputs.flatMap((input) =>
-        (input.yoloBoundingBoxes ?? []).map((box, bi) => (
-          <View
-            key={`yolo-${input.inputId}-${bi}`}
-            style={{
-              top: box.y * height,
-              left: box.x * width,
-              width: Math.max(1, box.width * width),
-              height: Math.max(1, box.height * height),
-              borderWidth: 3,
-              borderColor: input.yoloBoxColor ?? '#ff0000',
-            }}
-          />
-        )),
-      )}
     </View>
   );
 
