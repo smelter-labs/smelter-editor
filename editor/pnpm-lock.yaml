@@ -52,11 +52,7 @@ importers:
         version: 3.22.4(@tiptap/extension-text-style@3.22.4(@tiptap/core@3.22.4(@tiptap/pm@3.22.5)))
       '@tiptap/extension-placeholder':
         specifier: ^3.22.4
-<<<<<<< HEAD
-        version: 3.22.4(@tiptap/extensions@3.22.4(@tiptap/core@3.22.4(@tiptap/pm@3.22.5))(@tiptap/pm@3.22.5))
-=======
         version: 3.22.4(@tiptap/extensions@3.22.5(@tiptap/core@3.22.4(@tiptap/pm@3.22.5))(@tiptap/pm@3.22.5))
->>>>>>> main
       '@tiptap/extension-text-align':
         specifier: 3.22.4
         version: 3.22.4(@tiptap/core@3.22.4(@tiptap/pm@3.22.5))
@@ -1538,13 +1534,6 @@ packages:
     peerDependencies:
       '@tiptap/core': 3.22.5
 
-<<<<<<< HEAD
-  '@tiptap/extensions@3.22.4':
-    resolution: {integrity: sha512-fOe8VptJvLPs32bNdUYo8SRyljwqKNQVXWW056VoXIc5en/59OdJlJQVeHI0jRRciH3MtrqODi/gfJR0VHNZ8A==}
-    peerDependencies:
-      '@tiptap/core': 3.22.4
-      '@tiptap/pm': 3.22.4
-
   '@tiptap/extensions@3.22.5':
     resolution: {integrity: sha512-Ifg4MzKCj3uRqe3ieTwYnomu2y4p7EXr2avVSKZYfh12i2dyWe2Gkn1KuZDREANVE+gHqFlQjJRYzhJFwzSCrg==}
     peerDependencies:
@@ -1557,20 +1546,6 @@ packages:
   '@tiptap/react@3.22.4':
     resolution: {integrity: sha512-XIQZPwLakR1t8+Q1UeCpr+kUHDWxpJzGy9r2xUi3mpPd6Wh8dtNltScBkUlCcr0sqc6J1GF6Is02JJVQGmCZMA==}
     peerDependencies:
-=======
-  '@tiptap/extensions@3.22.5':
-    resolution: {integrity: sha512-Ifg4MzKCj3uRqe3ieTwYnomu2y4p7EXr2avVSKZYfh12i2dyWe2Gkn1KuZDREANVE+gHqFlQjJRYzhJFwzSCrg==}
-    peerDependencies:
-      '@tiptap/core': 3.22.5
-      '@tiptap/pm': 3.22.5
-
-  '@tiptap/pm@3.22.5':
-    resolution: {integrity: sha512-Cr9Mv4igxvI2tKMiahw48sZxva3PfDzypErH8IB82N+9qa9n9ygVMt0BOaDg53hLKxEEVeYr2S/wCcJIVFgBTw==}
-
-  '@tiptap/react@3.22.4':
-    resolution: {integrity: sha512-XIQZPwLakR1t8+Q1UeCpr+kUHDWxpJzGy9r2xUi3mpPd6Wh8dtNltScBkUlCcr0sqc6J1GF6Is02JJVQGmCZMA==}
-    peerDependencies:
->>>>>>> main
       '@tiptap/core': 3.22.4
       '@tiptap/pm': 3.22.4
       '@types/react': ^17.0.0 || ^18.0.0 || ^19.0.0
@@ -1608,12 +1583,9 @@ packages:
   '@types/node@20.19.31':
     resolution: {integrity: sha512-5jsi0wpncvTD33Sh1UCgacK37FFwDn+EG7wCmEvs62fCvBL+n8/76cAYDok21NF6+jaVWIqKwCZyX7Vbu8eB3A==}
 
-<<<<<<< HEAD
-=======
   '@types/prismjs@1.26.6':
     resolution: {integrity: sha512-vqlvI7qlMvcCBbVe0AKAb4f97//Hy0EBTaiW8AalRnG/xAN5zOiWWyrNqNXeq8+KAuvRewjCVY1+IPxk4RdNYw==}
 
->>>>>>> main
   '@types/react-dom@18.3.7':
     resolution: {integrity: sha512-MEe3UeoENYVFXzoXEWsvcpg6ZvlrFNlOQ7EOsvhI3CfAXwzPfO8Qwuxd40nepsYKqyyVQnTdEfv68q91yLcKrQ==}
     peerDependencies:
@@ -2552,15 +2524,12 @@ packages:
     resolution: {integrity: sha512-4gd7VpWNQNB4UKKCFFVcp1AVv+FMOgs9NKzjHKusc8jTMhd5eL1NqQqOpE0KzMds804/yHlglp3uxgluOqAPLw==}
     engines: {node: '>= 0.4'}
 
-<<<<<<< HEAD
-=======
   is-alphabetical@2.0.1:
     resolution: {integrity: sha512-FWyyY60MeTNyeSRpkM2Iry0G9hpr7/9kD40mD/cGQEuilcZYS4okz8SN2Q6rLCJ8gbCt6fN+rC+6tMGS99LaxQ==}
 
   is-alphanumerical@2.0.1:
     resolution: {integrity: sha512-hmbYhX/9MUMF5uh7tOXyK/n0ZvWpad5caBA17GsC6vyuCqaWliRG5K1qS9inmUhEMaOBIW7/whAnSwveW/LtZw==}
 
->>>>>>> main
   is-arguments@1.2.0:
     resolution: {integrity: sha512-7bVbi0huj/wrIAOzb8U1aszg9kdi3KN/CyU19CTI7tAoZYEZoL9yCDXpbXN+uPsuWnP02cyug1gleqq+TU+YCA==}
     engines: {node: '>= 0.4'}
@@ -3058,13 +3027,10 @@ packages:
     resolution: {integrity: sha512-Qb1gy5OrP5+zDf2Bvnzdl3jsTf1qXVMazbvCoKhtKqVs4/YK4ozX4gKQJJVyNe+cajNPn0KoC0MC3FUmaHWEmQ==}
     engines: {node: ^10.13.0 || ^12.13.0 || ^14.15.0 || >=15.0.0}
 
-<<<<<<< HEAD
-=======
   prismjs@1.30.0:
     resolution: {integrity: sha512-DEvV2ZF2r2/63V+tK8hQvrR2ZGn10srHbXviTlcv7Kpzw8jWiNTqbVgjO3IY8RxrrOUF8VPMQQFysYYYv0YZxw==}
     engines: {node: '>=6'}
 
->>>>>>> main
   process-nextick-args@2.0.1:
     resolution: {integrity: sha512-3ouUOpQhtgrbOa17J7+uxOTpITYWaGP7/AhoR3+A+/1e9skrzelGi/dXzEYyvbxubEF6Wn2ypscTKiKJFFn1ag==}
 
@@ -4753,15 +4719,9 @@ snapshots:
     dependencies:
       '@tiptap/core': 3.22.4(@tiptap/pm@3.22.5)
 
-<<<<<<< HEAD
-  '@tiptap/extension-placeholder@3.22.4(@tiptap/extensions@3.22.4(@tiptap/core@3.22.4(@tiptap/pm@3.22.5))(@tiptap/pm@3.22.5))':
-    dependencies:
-      '@tiptap/extensions': 3.22.4(@tiptap/core@3.22.4(@tiptap/pm@3.22.5))(@tiptap/pm@3.22.5)
-=======
   '@tiptap/extension-placeholder@3.22.4(@tiptap/extensions@3.22.5(@tiptap/core@3.22.4(@tiptap/pm@3.22.5))(@tiptap/pm@3.22.5))':
     dependencies:
       '@tiptap/extensions': 3.22.5(@tiptap/core@3.22.4(@tiptap/pm@3.22.5))(@tiptap/pm@3.22.5)
->>>>>>> main
 
   '@tiptap/extension-strike@3.22.5(@tiptap/core@3.22.4(@tiptap/pm@3.22.5))':
     dependencies:
@@ -4783,23 +4743,11 @@ snapshots:
     dependencies:
       '@tiptap/core': 3.22.4(@tiptap/pm@3.22.5)
 
-<<<<<<< HEAD
-  '@tiptap/extensions@3.22.4(@tiptap/core@3.22.4(@tiptap/pm@3.22.5))(@tiptap/pm@3.22.5)':
-=======
-  '@tiptap/extensions@3.22.5(@tiptap/core@3.22.4(@tiptap/pm@3.22.5))(@tiptap/pm@3.22.5)':
->>>>>>> main
-    dependencies:
-      '@tiptap/core': 3.22.4(@tiptap/pm@3.22.5)
-      '@tiptap/pm': 3.22.5
-
-<<<<<<< HEAD
   '@tiptap/extensions@3.22.5(@tiptap/core@3.22.4(@tiptap/pm@3.22.5))(@tiptap/pm@3.22.5)':
     dependencies:
       '@tiptap/core': 3.22.4(@tiptap/pm@3.22.5)
       '@tiptap/pm': 3.22.5
 
-=======
->>>>>>> main
   '@tiptap/pm@3.22.5':
     dependencies:
       prosemirror-changeset: 2.4.0
@@ -4887,11 +4835,8 @@ snapshots:
     dependencies:
       undici-types: 6.21.0
 
-<<<<<<< HEAD
-=======
   '@types/prismjs@1.26.6': {}
 
->>>>>>> main
   '@types/react-dom@18.3.7(@types/react@19.2.10)':
     dependencies:
       '@types/react': 19.2.10
@@ -5993,8 +5938,6 @@ snapshots:
       hasown: 2.0.2
       side-channel: 1.1.0
 
-<<<<<<< HEAD
-=======
   is-alphabetical@2.0.1: {}
 
   is-alphanumerical@2.0.1:
@@ -6002,7 +5945,6 @@ snapshots:
       is-alphabetical: 2.0.1
       is-decimal: 2.0.1
 
->>>>>>> main
   is-arguments@1.2.0:
     dependencies:
       call-bound: 1.0.4
@@ -6501,11 +6443,8 @@ snapshots:
       ansi-styles: 5.2.0
       react-is: 17.0.2
 
-<<<<<<< HEAD
-=======
   prismjs@1.30.0: {}
 
->>>>>>> main
   process-nextick-args@2.0.1: {}
 
   prop-types@15.8.1:
