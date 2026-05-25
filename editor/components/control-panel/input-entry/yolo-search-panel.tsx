@@ -60,10 +60,15 @@ export default function YoloSearchPanel({
     setClasses([]);
     actionsRef.current
       .getYoloModelInfo(config.serverUrl, config.modelName)
-      .then((info) => { if (!cancelled) setClasses(info.classes ?? []); })
-      .catch(() => { if (!cancelled) setClasses([]); });
-    return () => { cancelled = true; };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+      .then((info) => {
+        if (!cancelled) setClasses(info.classes ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setClasses([]);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [config.serverUrl, config.modelName]);
 
   // Fetch button: populates models list and persists the server URL
@@ -87,16 +92,21 @@ export default function YoloSearchPanel({
   }, [serverUrl, config.serverUrl, actions, saveConfig]);
 
   // Model change: just persist; the effect handles re-fetching classes.
-  const handleModelChange = useCallback((value: string) => {
-    const modelName = value === '__default__' ? undefined : value;
-    saveConfig({ modelName, targetClass: '' });
-  }, [saveConfig]);
+  const handleModelChange = useCallback(
+    (value: string) => {
+      const modelName = value === '__default__' ? undefined : value;
+      saveConfig({ modelName, targetClass: '' });
+    },
+    [saveConfig],
+  );
 
   return (
     <div className='flex flex-col gap-3 px-1 py-2'>
       {/* Header row */}
       <div className='flex items-center justify-between'>
-        <span className='text-sm font-semibold text-foreground'>YOLO Search</span>
+        <span className='text-sm font-semibold text-foreground'>
+          YOLO Search
+        </span>
         <Switch
           checked={config.enabled}
           onCheckedChange={(checked) => saveConfig({ enabled: checked })}
@@ -123,8 +133,7 @@ export default function YoloSearchPanel({
             size='sm'
             onClick={handleFetch}
             disabled={fetching || !serverUrl.trim()}
-            className='shrink-0'
-          >
+            className='shrink-0'>
             {fetching ? 'Loading…' : 'Fetch'}
           </Button>
         </div>
@@ -138,10 +147,13 @@ export default function YoloSearchPanel({
         <label className='text-xs text-muted-foreground'>Model</label>
         <Select
           value={config.modelName || '__default__'}
-          onValueChange={handleModelChange}
-        >
+          onValueChange={handleModelChange}>
           <SelectTrigger className='h-8 text-sm'>
-            <SelectValue placeholder={models.length === 0 ? 'Fetch models first' : 'Default model'} />
+            <SelectValue
+              placeholder={
+                models.length === 0 ? 'Fetch models first' : 'Default model'
+              }
+            />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value='__default__'>Default model</SelectItem>
@@ -159,10 +171,15 @@ export default function YoloSearchPanel({
         <label className='text-xs text-muted-foreground'>Class to detect</label>
         <Select
           value={config.targetClass || '__all__'}
-          onValueChange={(value) => saveConfig({ targetClass: value === '__all__' ? '' : value })}
-        >
+          onValueChange={(value) =>
+            saveConfig({ targetClass: value === '__all__' ? '' : value })
+          }>
           <SelectTrigger className='h-8 text-sm'>
-            <SelectValue placeholder={classes.length === 0 ? 'Fetch classes first' : 'All classes'} />
+            <SelectValue
+              placeholder={
+                classes.length === 0 ? 'Fetch classes first' : 'All classes'
+              }
+            />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value='__all__'>All classes</SelectItem>
@@ -177,7 +194,9 @@ export default function YoloSearchPanel({
 
       {/* Box color */}
       <div className='flex flex-col gap-1'>
-        <label className='text-xs text-muted-foreground'>Bounding box color</label>
+        <label className='text-xs text-muted-foreground'>
+          Bounding box color
+        </label>
         <div className='flex items-center gap-2'>
           <input
             type='color'
@@ -185,7 +204,9 @@ export default function YoloSearchPanel({
             onChange={(e) => saveConfig({ boxColor: e.target.value })}
             className='h-8 w-12 cursor-pointer rounded border border-input bg-transparent p-0.5'
           />
-          <span className='text-xs text-muted-foreground font-mono'>{config.boxColor}</span>
+          <span className='text-xs text-muted-foreground font-mono'>
+            {config.boxColor}
+          </span>
         </div>
       </div>
     </div>

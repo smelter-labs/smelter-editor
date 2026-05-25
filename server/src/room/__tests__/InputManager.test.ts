@@ -113,6 +113,7 @@ const { InputManager } = await import('../InputManager');
 
 type InputManagerInstance = InstanceType<typeof InputManager>;
 let manager: InputManagerInstance;
+const yoloController = {} as any;
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -126,6 +127,7 @@ beforeEach(() => {
     'room-1',
     mocks.placeholderManager as any,
     mocks.motionController as any,
+    yoloController,
     mocks.onStateChange,
   );
 });

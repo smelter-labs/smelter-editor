@@ -57,7 +57,8 @@ function sanitizeLayerInputs(layers: Layer[]): Layer[] {
       return true;
     });
 
-    const dedupedLayer = inputs.length === layer.inputs.length ? layer : { ...layer, inputs };
+    const dedupedLayer =
+      inputs.length === layer.inputs.length ? layer : { ...layer, inputs };
 
     if (dedupedLayer.carousel) {
       const n = dedupedLayer.inputs.length;
@@ -713,7 +714,9 @@ export class RoomState {
     inputId: string,
     payload: import('../yolo/YoloController').YoloCallbackPayload,
   ): boolean {
-    const input = this.inputManager.getInputs().find((i) => i.inputId === inputId);
+    const input = this.inputManager
+      .getInputs()
+      .find((i) => i.inputId === inputId);
     if (!input?.yoloSearchConfig?.enabled) return false;
     this.yoloController.receiveBoxes(inputId, payload);
     return true;

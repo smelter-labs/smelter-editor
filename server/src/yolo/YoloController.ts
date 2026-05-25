@@ -25,7 +25,10 @@ const SERVER_BASE_URL =
 
 export class YoloController {
   /** inputId → { task_id, serverUrl } */
-  private activeTasks = new Map<string, { taskId: string; serverUrl: string }>();
+  private activeTasks = new Map<
+    string,
+    { taskId: string; serverUrl: string }
+  >();
 
   constructor(
     private readonly roomId: string,
@@ -100,7 +103,9 @@ export class YoloController {
     // detected boxes are always in sync with the composed video the viewer sees.
     const streamUrl = this.getYoloStreamUrl();
     if (!streamUrl) {
-      console.warn(`[yolo] No HLS stream URL available for room ${this.roomId}`);
+      console.warn(
+        `[yolo] No HLS stream URL available for room ${this.roomId}`,
+      );
       return;
     }
 
@@ -142,7 +147,10 @@ export class YoloController {
         `[yolo] Started task ${data.task_id} for input ${input.inputId} → HLS ${streamUrl}`,
       );
     } catch (err) {
-      console.error(`[yolo] Cannot reach YOLO server for ${input.inputId}:`, err);
+      console.error(
+        `[yolo] Cannot reach YOLO server for ${input.inputId}:`,
+        err,
+      );
     }
   }
 

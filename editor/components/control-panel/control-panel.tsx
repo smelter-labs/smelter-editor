@@ -2146,7 +2146,9 @@ function SettingsBar({
                   dashboardToolbar.presets.map((preset) => (
                     <button
                       key={preset.id}
-                      onClick={() => dashboardToolbar.applyPreset(preset.layout)}
+                      onClick={() =>
+                        dashboardToolbar.applyPreset(preset.layout)
+                      }
                       className='text-left px-3 py-1.5 uppercase tracking-widest text-sm text-[#849495] hover:text-[#00f3ff] transition-colors cursor-pointer'>
                       {preset.label}
                     </button>

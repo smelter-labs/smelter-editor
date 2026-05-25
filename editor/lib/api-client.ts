@@ -159,7 +159,10 @@ interface SmelterApiClient {
 
   getAllRooms(): Promise<any>;
   getAvailableShaders(): Promise<AvailableShader[]>;
-  getYoloModelInfo(serverUrl: string, modelName?: string): Promise<{ classes: string[]; num_classes: number; model_file: string }>;
+  getYoloModelInfo(
+    serverUrl: string,
+    modelName?: string,
+  ): Promise<{ classes: string[]; num_classes: number; model_file: string }>;
   getYoloModels(serverUrl: string): Promise<{ models: string[] }>;
 
   startTimelinePlayback(
@@ -596,11 +599,18 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       return (shaders?.shaders as AvailableShader[]) || [];
     },
 
-    async getYoloModelInfo(serverUrl: string, modelName?: string): Promise<{ classes: string[]; num_classes: number; model_file: string }> {
+    async getYoloModelInfo(
+      serverUrl: string,
+      modelName?: string,
+    ): Promise<{ classes: string[]; num_classes: number; model_file: string }> {
       const params = new URLSearchParams({ serverUrl });
       if (modelName) params.set('modelName', modelName);
       const data = await req('get', `/yolo-model-info?${params.toString()}`);
-      return data as { classes: string[]; num_classes: number; model_file: string };
+      return data as {
+        classes: string[];
+        num_classes: number;
+        model_file: string;
+      };
     },
 
     async getYoloModels(serverUrl: string): Promise<{ models: string[] }> {

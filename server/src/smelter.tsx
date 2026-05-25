@@ -295,7 +295,10 @@ class SmelterManager {
       if (err.body?.error_code === 'OUTPUT_STREAM_NOT_FOUND') {
         return;
       }
-      console.warn(`[smelter] Failed to unregister HLS output for room ${roomId}`, err);
+      console.warn(
+        `[smelter] Failed to unregister HLS output for room ${roomId}`,
+        err,
+      );
     }
   }
 

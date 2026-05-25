@@ -919,9 +919,11 @@ export class InputManager {
         options.cropBottom === null ? undefined : options.cropBottom;
 
     if (options.yoloSearchConfig !== undefined) {
-      this.yoloController.setYoloConfig(input, options.yoloSearchConfig).catch((err) => {
-        console.error(`[yolo] setYoloConfig error for ${inputId}:`, err);
-      });
+      this.yoloController
+        .setYoloConfig(input, options.yoloSearchConfig)
+        .catch((err) => {
+          console.error(`[yolo] setYoloConfig error for ${inputId}:`, err);
+        });
     }
 
     if (options.activeTransition !== undefined) {

@@ -1511,7 +1511,9 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
       const currentLayers = room.getState().layers;
       const targetLayer = currentLayers.find((l) => l.id === layerId);
       if (!targetLayer || !targetLayer.carousel) {
-        res.status(404).send({ status: 'error', message: 'Carousel layer not found' });
+        res
+          .status(404)
+          .send({ status: 'error', message: 'Carousel layer not found' });
         return;
       }
       const n = targetLayer.inputs.length;
@@ -1539,7 +1541,9 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
       } else {
         const idx = index ?? oldIndex;
         if (idx < 0 || idx >= n) {
-          res.status(400).send({ status: 'error', message: 'index out of range' });
+          res
+            .status(400)
+            .send({ status: 'error', message: 'index out of range' });
           return;
         }
         newIndex = idx;
@@ -2130,13 +2134,17 @@ routes.get<{ Querystring: { serverUrl: string; modelName?: string } }>(
         signal: AbortSignal.timeout(5000),
       });
       if (!response.ok) {
-        res.status(502).send({ error: `YOLO server returned ${response.status}` });
+        res
+          .status(502)
+          .send({ error: `YOLO server returned ${response.status}` });
         return;
       }
       const data = await response.json();
       res.status(200).send(data);
     } catch (err: any) {
-      res.status(502).send({ error: `Cannot reach YOLO server: ${err.message}` });
+      res
+        .status(502)
+        .send({ error: `Cannot reach YOLO server: ${err.message}` });
     }
   },
 );
@@ -2155,13 +2163,17 @@ routes.get<{ Querystring: { serverUrl: string } }>(
         signal: AbortSignal.timeout(5000),
       });
       if (!response.ok) {
-        res.status(502).send({ error: `YOLO server returned ${response.status}` });
+        res
+          .status(502)
+          .send({ error: `YOLO server returned ${response.status}` });
         return;
       }
       const data = await response.json();
       res.status(200).send(data);
     } catch (err: any) {
-      res.status(502).send({ error: `Cannot reach YOLO server: ${err.message}` });
+      res
+        .status(502)
+        .send({ error: `Cannot reach YOLO server: ${err.message}` });
     }
   },
 );

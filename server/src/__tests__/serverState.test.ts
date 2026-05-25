@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => {
       unregisterImage: fn().mockResolvedValue(undefined),
       registerMotionOutput: fn().mockResolvedValue(undefined),
       unregisterMotionOutput: fn().mockResolvedValue(undefined),
+      unregisterHlsOutput: fn().mockResolvedValue(undefined),
       getPipelineTimeMs: fn().mockReturnValue(0),
       setRecoveryHandler: fn(),
       terminate: fn().mockResolvedValue(undefined),
