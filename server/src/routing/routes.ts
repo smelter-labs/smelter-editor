@@ -2399,9 +2399,7 @@ routes.post<
   },
 );
 
-routes.post<
-  RoomIdParams & { Body: Static<typeof BroadcastModeSetBodySchema> }
->(
+routes.post<RoomIdParams & { Body: Static<typeof BroadcastModeSetBodySchema> }>(
   '/room/:roomId/broadcast-mode/set',
   { schema: { params: RoomIdParamsSchema, body: BroadcastModeSetBodySchema } },
   async (req, res) => {

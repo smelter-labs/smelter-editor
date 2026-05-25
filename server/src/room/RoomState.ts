@@ -630,8 +630,7 @@ export class RoomState {
       return false;
     }
     this.selectedBroadcastTileId = tileId;
-    if (this.isBroadcastMode) this.updateStoreWithState();
-    else this.notifyStateChange();
+    this.updateStoreWithState();
     return true;
   }
 
@@ -1620,7 +1619,7 @@ export class RoomState {
     layers: Layer[],
     inputs: InputConfig[],
   ): { layers: Layer[]; inputs: InputConfig[] } {
-    if (!this.isBroadcastMode || !this.selectedBroadcastTileId) {
+    if (!this.selectedBroadcastTileId) {
       return { layers, inputs };
     }
     const tile = this.broadcastTiles.find(
