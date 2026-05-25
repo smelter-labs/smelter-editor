@@ -450,16 +450,6 @@ export function PresentationModeSettings({
             placeholder='Welcome! Please connect your camera or screenshare below...'
           />
         </div>
-        <div className='space-y-2'>
-          <Label className='text-xs text-muted-foreground'>
-            Text after pending connections
-          </Label>
-          <RichTextEditor
-            value={welcomeTextAfter}
-            onChange={setWelcomeTextAfter}
-            placeholder='Once connected, the presentation will begin automatically.'
-          />
-        </div>
       </section>
 
       <div className='h-px bg-card' />
