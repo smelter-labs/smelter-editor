@@ -607,10 +607,12 @@ export class RoomState {
 
     const tile: BroadcastTile = { id: randomUUID(), type, targetId, name };
     this.broadcastTiles.push(tile);
+    let selectionChanged = false;
     if (this.selectedBroadcastTileId === null) {
       this.selectedBroadcastTileId = tile.id;
+      selectionChanged = true;
     }
-    if (this.isBroadcastMode) this.updateStoreWithState();
+    if (this.isBroadcastMode || selectionChanged) this.updateStoreWithState();
     return tile;
   }
 
@@ -618,10 +620,12 @@ export class RoomState {
     const idx = this.broadcastTiles.findIndex((t) => t.id === tileId);
     if (idx === -1) return false;
     this.broadcastTiles.splice(idx, 1);
+    let selectionChanged = false;
     if (this.selectedBroadcastTileId === tileId) {
       this.selectedBroadcastTileId = null;
+      selectionChanged = true;
     }
-    if (this.isBroadcastMode) this.updateStoreWithState();
+    if (this.isBroadcastMode || selectionChanged) this.updateStoreWithState();
     return true;
   }
 
@@ -1630,7 +1634,7 @@ export class RoomState {
     const { width, height } = this.output.resolution;
     if (tile.type === 'input') {
       const broadcastLayer: Layer = {
-        id: '__broadcast__',
+        id: `__broadcast__::${tile.id}`,
         inputs: [
           {
             inputId: tile.targetId,

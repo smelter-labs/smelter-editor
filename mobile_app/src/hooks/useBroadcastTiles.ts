@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { BroadcastTile } from "@smelter-editor/types";
 import { buildHttpUrl } from "../services/apiService";
@@ -17,6 +17,18 @@ export function useBroadcastTiles(serverUrl: string, roomId: string) {
   const [isBroadcastMode, setIsBroadcastModeState] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const tilesRef = useRef<BroadcastTile[]>([]);
+  const selectedTileIdRef = useRef<string | null>(null);
+  const isBroadcastModeRef = useRef(false);
+  useEffect(() => {
+    tilesRef.current = tiles;
+  }, [tiles]);
+  useEffect(() => {
+    selectedTileIdRef.current = selectedTileId;
+  }, [selectedTileId]);
+  useEffect(() => {
+    isBroadcastModeRef.current = isBroadcastMode;
+  }, [isBroadcastMode]);
 
   const storageKey = `${STORAGE_KEY_PREFIX}-${serverUrl}-${roomId}`;
 
@@ -66,8 +78,11 @@ export function useBroadcastTiles(serverUrl: string, roomId: string) {
     [saveToStorage],
   );
 
-  const post = useCallback(
-    async (path: string, body: Record<string, unknown>) => {
+  const postJson = useCallback(
+    async (
+      path: string,
+      body: Record<string, unknown>,
+    ): Promise<unknown | null> => {
       const base = buildHttpUrl(serverUrl);
       const res = await fetch(
         `${base}/room/${encodeURIComponent(roomId)}/${path}`,
@@ -78,6 +93,11 @@ export function useBroadcastTiles(serverUrl: string, roomId: string) {
         },
       );
       if (!res.ok) throw new Error(`${path} failed: ${res.status}`);
+      try {
+        return await res.json();
+      } catch {
+        return null;
+      }
     },
     [serverUrl, roomId],
   );
@@ -90,52 +110,101 @@ export function useBroadcastTiles(serverUrl: string, roomId: string) {
         targetId,
         name,
       };
-      const next = [...tiles, optimistic];
-      setTiles(next);
-      saveToStorage(next, selectedTileId, isBroadcastMode);
+      setTiles((prev) => {
+        const next = [...prev, optimistic];
+        saveToStorage(
+          next,
+          selectedTileIdRef.current,
+          isBroadcastModeRef.current,
+        );
+        return next;
+      });
       try {
-        await post("broadcast-tile/add", { type, targetId });
+        const data = (await postJson("broadcast-tile/add", {
+          type,
+          targetId,
+        })) as {
+          tile?: BroadcastTile;
+          selectedBroadcastTileId?: string | null;
+        } | null;
+        const realTile = data?.tile;
+        const serverSelected = data?.selectedBroadcastTileId ?? null;
+        let snapshot: BroadcastTile[] = [];
+        setTiles((prev) => {
+          const next = realTile
+            ? prev.map((t) => (t.id === optimistic.id ? realTile : t))
+            : prev;
+          snapshot = next;
+          return next;
+        });
+        setSelectedTileId(serverSelected);
+        saveToStorage(snapshot, serverSelected, isBroadcastModeRef.current);
       } catch (e) {
-        setTiles(tiles);
-        saveToStorage(tiles, selectedTileId, isBroadcastMode);
+        setTiles((prev) => {
+          const next = prev.filter((t) => t.id !== optimistic.id);
+          saveToStorage(
+            next,
+            selectedTileIdRef.current === optimistic.id
+              ? null
+              : selectedTileIdRef.current,
+            isBroadcastModeRef.current,
+          );
+          return next;
+        });
+        setSelectedTileId((prev) => (prev === optimistic.id ? null : prev));
         console.error("addTile failed", e);
       }
     },
-    [tiles, selectedTileId, isBroadcastMode, saveToStorage, post],
+    [saveToStorage, postJson],
   );
 
   const removeTile = useCallback(
     async (tileId: string) => {
-      const next = tiles.filter((t) => t.id !== tileId);
-      const nextSelected = selectedTileId === tileId ? null : selectedTileId;
+      const prevTiles = tilesRef.current;
+      const prevSelected = selectedTileIdRef.current;
+      const next = prevTiles.filter((t) => t.id !== tileId);
+      const nextSelected = prevSelected === tileId ? null : prevSelected;
       setTiles(next);
       setSelectedTileId(nextSelected);
-      saveToStorage(next, nextSelected, isBroadcastMode);
+      saveToStorage(next, nextSelected, isBroadcastModeRef.current);
       try {
-        await post("broadcast-tile/remove", { tileId });
+        await postJson("broadcast-tile/remove", { tileId });
       } catch (e) {
-        setTiles(tiles);
-        setSelectedTileId(selectedTileId);
-        saveToStorage(tiles, selectedTileId, isBroadcastMode);
+        setTiles((curr) =>
+          curr.some((t) => t.id === tileId)
+            ? curr
+            : [...curr, ...prevTiles.filter((t) => t.id === tileId)],
+        );
+        setSelectedTileId((curr) => curr ?? prevSelected);
+        saveToStorage(
+          tilesRef.current,
+          selectedTileIdRef.current,
+          isBroadcastModeRef.current,
+        );
         console.error("removeTile failed", e);
       }
     },
-    [tiles, selectedTileId, isBroadcastMode, saveToStorage, post],
+    [saveToStorage, postJson],
   );
 
   const selectTile = useCallback(
     async (tileId: string | null) => {
+      const prevSelected = selectedTileIdRef.current;
       setSelectedTileId(tileId);
-      saveToStorage(tiles, tileId, isBroadcastMode);
+      saveToStorage(tilesRef.current, tileId, isBroadcastModeRef.current);
       try {
-        await post("broadcast-tile/select", { tileId });
+        await postJson("broadcast-tile/select", { tileId });
       } catch (e) {
-        setSelectedTileId(selectedTileId);
-        saveToStorage(tiles, selectedTileId, isBroadcastMode);
+        setSelectedTileId(prevSelected);
+        saveToStorage(
+          tilesRef.current,
+          prevSelected,
+          isBroadcastModeRef.current,
+        );
         console.error("selectTile failed", e);
       }
     },
-    [tiles, selectedTileId, isBroadcastMode, saveToStorage, post],
+    [saveToStorage, postJson],
   );
 
   const updateTileName = useCallback((tileId: string, newName: string) => {
@@ -148,18 +217,18 @@ export function useBroadcastTiles(serverUrl: string, roomId: string) {
 
   const setBroadcastMode = useCallback(
     async (enabled: boolean) => {
-      const previous = isBroadcastMode;
+      const previous = isBroadcastModeRef.current;
       setIsBroadcastModeState(enabled);
-      saveToStorage(tiles, selectedTileId, enabled);
+      saveToStorage(tilesRef.current, selectedTileIdRef.current, enabled);
       try {
-        await post("broadcast-mode/set", { enabled });
+        await postJson("broadcast-mode/set", { enabled });
       } catch (e) {
         setIsBroadcastModeState(previous);
-        saveToStorage(tiles, selectedTileId, previous);
+        saveToStorage(tilesRef.current, selectedTileIdRef.current, previous);
         console.error("setBroadcastMode failed", e);
       }
     },
-    [tiles, selectedTileId, isBroadcastMode, saveToStorage, post],
+    [saveToStorage, postJson],
   );
 
   const toggleEditMode = useCallback(() => setIsEditMode((v) => !v), []);

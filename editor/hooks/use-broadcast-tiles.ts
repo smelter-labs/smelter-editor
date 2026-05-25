@@ -18,6 +18,18 @@ export function useBroadcastTiles(roomId: string) {
   const [isBroadcastMode, setIsBroadcastModeState] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
   const cacheRef = useRef<BroadcastTilesState | null>(null);
+  const tilesRef = useRef<BroadcastTile[]>([]);
+  const selectedTileIdRef = useRef<string | null>(null);
+  const isBroadcastModeRef = useRef(false);
+  useEffect(() => {
+    tilesRef.current = tiles;
+  }, [tiles]);
+  useEffect(() => {
+    selectedTileIdRef.current = selectedTileId;
+  }, [selectedTileId]);
+  useEffect(() => {
+    isBroadcastModeRef.current = isBroadcastMode;
+  }, [isBroadcastMode]);
 
   const getStorageKey = useCallback(() => {
     return `${STORAGE_KEY_PREFIX}-${roomId}`;
@@ -80,16 +92,38 @@ export function useBroadcastTiles(roomId: string) {
 
   const addTile = useCallback(
     async (type: 'input' | 'layer', targetId: string, name: string) => {
-      // Optimistic update
+      // Optimistic update — read refs so we don't capture stale state in
+      // callbacks below.
       const optimisticTile: BroadcastTile = {
         id: `optimistic-${Date.now()}`,
         type,
         targetId,
         name,
       };
-      const optimisticTiles = [...tiles, optimisticTile];
-      setTiles(optimisticTiles);
-      saveToStorage(optimisticTiles, selectedTileId, isBroadcastMode);
+      setTiles((prev) => {
+        const next = [...prev, optimisticTile];
+        saveToStorage(
+          next,
+          selectedTileIdRef.current,
+          isBroadcastModeRef.current,
+        );
+        return next;
+      });
+
+      const revert = () => {
+        setTiles((prev) => {
+          const next = prev.filter((t) => t.id !== optimisticTile.id);
+          saveToStorage(
+            next,
+            selectedTileIdRef.current === optimisticTile.id
+              ? null
+              : selectedTileIdRef.current,
+            isBroadcastModeRef.current,
+          );
+          return next;
+        });
+        setSelectedTileId((prev) => (prev === optimisticTile.id ? null : prev));
+      };
 
       try {
         const response = await fetch(
@@ -101,47 +135,63 @@ export function useBroadcastTiles(roomId: string) {
           },
         );
         if (!response.ok) {
-          // Revert on failure
-          setTiles(tiles);
-          saveToStorage(tiles, selectedTileId, isBroadcastMode);
+          revert();
           console.error('Failed to add broadcast tile:', response.statusText);
           return;
         }
-        // Replace the optimistic tile with the real one from the server
+        // Replace the optimistic tile with the real one from the server.
         const data = (await response.json()) as {
           tile: BroadcastTile;
           selectedBroadcastTileId: string | null;
         };
         const realTile = data.tile;
-        const finalTiles = optimisticTiles.map((t) =>
-          t.id === optimisticTile.id ? realTile : t,
-        );
-        // Use server's authoritative selectedId (handles auto-select of first tile)
-        const newSelectedId =
-          data.selectedBroadcastTileId !== undefined
-            ? data.selectedBroadcastTileId
-            : selectedTileId === optimisticTile.id
-              ? realTile.id
-              : selectedTileId;
-        setTiles(finalTiles);
-        setSelectedTileId(newSelectedId);
-        saveToStorage(finalTiles, newSelectedId, isBroadcastMode);
+        let nextTilesSnapshot: BroadcastTile[] = [];
+        setTiles((prev) => {
+          const next = prev.map((t) =>
+            t.id === optimisticTile.id ? realTile : t,
+          );
+          nextTilesSnapshot = next;
+          return next;
+        });
+        // Server provides the authoritative selection (handles auto-select of
+        // the first tile).
+        const next = data.selectedBroadcastTileId;
+        setSelectedTileId(next);
+        saveToStorage(nextTilesSnapshot, next, isBroadcastModeRef.current);
       } catch (error) {
-        setTiles(tiles);
-        saveToStorage(tiles, selectedTileId, isBroadcastMode);
+        revert();
         console.error('Failed to add broadcast tile:', error);
       }
     },
-    [roomId, tiles, selectedTileId, isBroadcastMode, saveToStorage],
+    [roomId, saveToStorage],
   );
 
   const removeTile = useCallback(
     async (tileId: string) => {
-      const updatedTiles = tiles.filter((t) => t.id !== tileId);
-      const newSelectedId = selectedTileId === tileId ? null : selectedTileId;
+      const prevTiles = tilesRef.current;
+      const prevSelected = selectedTileIdRef.current;
+      const updatedTiles = prevTiles.filter((t) => t.id !== tileId);
+      const newSelectedId = prevSelected === tileId ? null : prevSelected;
       setTiles(updatedTiles);
       setSelectedTileId(newSelectedId);
-      saveToStorage(updatedTiles, newSelectedId, isBroadcastMode);
+      saveToStorage(updatedTiles, newSelectedId, isBroadcastModeRef.current);
+
+      const revert = () => {
+        setTiles((curr) => {
+          if (curr.some((t) => t.id === tileId)) return curr;
+          const restored = [
+            ...curr,
+            ...prevTiles.filter((t) => t.id === tileId),
+          ];
+          return restored;
+        });
+        setSelectedTileId((curr) => curr ?? prevSelected);
+        saveToStorage(
+          tilesRef.current,
+          selectedTileIdRef.current,
+          isBroadcastModeRef.current,
+        );
+      };
 
       try {
         const response = await fetch(
@@ -153,28 +203,25 @@ export function useBroadcastTiles(roomId: string) {
           },
         );
         if (!response.ok) {
-          setTiles(tiles);
-          setSelectedTileId(selectedTileId);
-          saveToStorage(tiles, selectedTileId, isBroadcastMode);
+          revert();
           console.error(
             'Failed to remove broadcast tile:',
             response.statusText,
           );
         }
       } catch (error) {
-        setTiles(tiles);
-        setSelectedTileId(selectedTileId);
-        saveToStorage(tiles, selectedTileId, isBroadcastMode);
+        revert();
         console.error('Failed to remove broadcast tile:', error);
       }
     },
-    [roomId, tiles, selectedTileId, isBroadcastMode, saveToStorage],
+    [roomId, saveToStorage],
   );
 
   const selectTile = useCallback(
     async (tileId: string | null) => {
+      const prevSelected = selectedTileIdRef.current;
       setSelectedTileId(tileId);
-      saveToStorage(tiles, tileId, isBroadcastMode);
+      saveToStorage(tilesRef.current, tileId, isBroadcastModeRef.current);
 
       try {
         const response = await fetch(
@@ -186,31 +233,45 @@ export function useBroadcastTiles(roomId: string) {
           },
         );
         if (!response.ok) {
-          setSelectedTileId(selectedTileId);
-          saveToStorage(tiles, selectedTileId, isBroadcastMode);
+          setSelectedTileId(prevSelected);
+          saveToStorage(
+            tilesRef.current,
+            prevSelected,
+            isBroadcastModeRef.current,
+          );
           console.error(
             'Failed to select broadcast tile:',
             response.statusText,
           );
         }
       } catch (error) {
-        setSelectedTileId(selectedTileId);
-        saveToStorage(tiles, selectedTileId, isBroadcastMode);
+        setSelectedTileId(prevSelected);
+        saveToStorage(
+          tilesRef.current,
+          prevSelected,
+          isBroadcastModeRef.current,
+        );
         console.error('Failed to select broadcast tile:', error);
       }
     },
-    [roomId, tiles, selectedTileId, isBroadcastMode, saveToStorage],
+    [roomId, saveToStorage],
   );
 
   const updateTileName = useCallback(
     (tileId: string, newName: string) => {
-      const updatedTiles = tiles.map((t) =>
-        t.id === tileId ? { ...t, name: newName } : t,
-      );
-      setTiles(updatedTiles);
-      saveToStorage(updatedTiles, selectedTileId, isBroadcastMode);
+      setTiles((prev) => {
+        const next = prev.map((t) =>
+          t.id === tileId ? { ...t, name: newName } : t,
+        );
+        saveToStorage(
+          next,
+          selectedTileIdRef.current,
+          isBroadcastModeRef.current,
+        );
+        return next;
+      });
     },
-    [tiles, selectedTileId, isBroadcastMode, saveToStorage],
+    [saveToStorage],
   );
 
   const toggleEditMode = useCallback(() => {
@@ -227,9 +288,9 @@ export function useBroadcastTiles(roomId: string) {
 
   const setBroadcastMode = useCallback(
     async (enabled: boolean) => {
-      const previous = isBroadcastMode;
+      const previous = isBroadcastModeRef.current;
       setIsBroadcastModeState(enabled);
-      saveToStorage(tiles, selectedTileId, enabled);
+      saveToStorage(tilesRef.current, selectedTileIdRef.current, enabled);
       try {
         const response = await fetch(
           `${getEffectiveClientServerUrl()}/room/${encodeURIComponent(roomId)}/broadcast-mode/set`,
@@ -241,16 +302,16 @@ export function useBroadcastTiles(roomId: string) {
         );
         if (!response.ok) {
           setIsBroadcastModeState(previous);
-          saveToStorage(tiles, selectedTileId, previous);
+          saveToStorage(tilesRef.current, selectedTileIdRef.current, previous);
           console.error('Failed to set broadcast mode:', response.statusText);
         }
       } catch (error) {
         setIsBroadcastModeState(previous);
-        saveToStorage(tiles, selectedTileId, previous);
+        saveToStorage(tilesRef.current, selectedTileIdRef.current, previous);
         console.error('Failed to set broadcast mode:', error);
       }
     },
-    [roomId, tiles, selectedTileId, isBroadcastMode, saveToStorage],
+    [roomId, saveToStorage],
   );
 
   return {

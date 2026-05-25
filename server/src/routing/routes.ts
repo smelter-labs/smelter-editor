@@ -506,23 +506,43 @@ routes.get<{ Params: { fileName: string } }>(
   },
 );
 
+// Restrictive hostname pattern: DNS labels or IPv4 literals only. Prevents
+// embedding ports, paths, schemes, or odd characters that could redirect
+// clients to attacker-controlled hosts via a spoofed Host header.
+const PUBLIC_HOST_PATTERN =
+  /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+
 function resolvePublicWhepUrl(
   whepUrl: string,
   req: { headers: Record<string, string | string[] | undefined> },
 ): string {
   try {
     const parsed = new URL(whepUrl);
-    if (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost') {
-      const reqHost = (req.headers['host'] as string | undefined) ?? '';
-      const reqHostname = reqHost.split(':')[0];
-      if (
-        reqHostname &&
-        reqHostname !== 'localhost' &&
-        reqHostname !== '127.0.0.1'
-      ) {
-        parsed.hostname = reqHostname;
-        return parsed.toString();
-      }
+    if (parsed.hostname !== '127.0.0.1' && parsed.hostname !== 'localhost') {
+      return whepUrl;
+    }
+
+    // Prefer an explicitly configured public host so the URL we hand back to
+    // clients cannot be steered by a forged Host header.
+    const configuredHost = process.env.SMELTER_PUBLIC_HOST?.trim();
+    if (configuredHost && PUBLIC_HOST_PATTERN.test(configuredHost)) {
+      parsed.hostname = configuredHost;
+      return parsed.toString();
+    }
+
+    // Fall back to the request's Host header only in dev/local setups where
+    // there is no trusted public host. Validate the hostname to reject
+    // injected values (extra ports, paths, schemes, etc.).
+    const reqHost = (req.headers['host'] as string | undefined) ?? '';
+    const reqHostname = reqHost.split(':')[0];
+    if (
+      reqHostname &&
+      reqHostname !== 'localhost' &&
+      reqHostname !== '127.0.0.1' &&
+      PUBLIC_HOST_PATTERN.test(reqHostname)
+    ) {
+      parsed.hostname = reqHostname;
+      return parsed.toString();
     }
   } catch {
     // ignore malformed URLs
@@ -2282,6 +2302,25 @@ routes.get('/logs/sse', async (req, res) => {
   });
 });
 
+function publishBroadcastTilesUpdated(
+  roomId: string,
+  room: ReturnType<typeof state.getRoom>,
+  req: { headers: Record<string, string | string[] | undefined> },
+) {
+  const { tiles, selectedBroadcastTileId, isBroadcastMode } =
+    room.getBroadcastTiles();
+  const sourceId = (req.headers['x-source-id'] as string | undefined) ?? null;
+  roomEventBus.broadcast(roomId, {
+    type: 'broadcast-tiles-updated',
+    roomId,
+    sourceId,
+    tiles,
+    selectedBroadcastTileId,
+    isBroadcastMode,
+  });
+  return { tiles, selectedBroadcastTileId, isBroadcastMode };
+}
+
 routes.post<RoomIdParams & { Body: Static<typeof BroadcastTileAddBodySchema> }>(
   '/room/:roomId/broadcast-tile/add',
   { schema: { params: RoomIdParamsSchema, body: BroadcastTileAddBodySchema } },
@@ -2297,18 +2336,11 @@ routes.post<RoomIdParams & { Body: Static<typeof BroadcastTileAddBodySchema> }>(
           message: 'Target not found or tile already exists',
         });
       }
-      const { tiles, selectedBroadcastTileId, isBroadcastMode } =
-        room.getBroadcastTiles();
-      const sourceId =
-        (req.headers['x-source-id'] as string | undefined) ?? null;
-      roomEventBus.broadcast(roomId, {
-        type: 'broadcast-tiles-updated',
+      const { selectedBroadcastTileId } = publishBroadcastTilesUpdated(
         roomId,
-        sourceId,
-        tiles,
-        selectedBroadcastTileId,
-        isBroadcastMode,
-      });
+        room,
+        req,
+      );
       res.status(200).send({ status: 'ok', tile, selectedBroadcastTileId });
     } catch (err: any) {
       res.status(400).send({
@@ -2337,18 +2369,7 @@ routes.post<
           .status(400)
           .send({ status: 'error', message: 'Tile not found' });
       }
-      const { tiles, selectedBroadcastTileId, isBroadcastMode } =
-        room.getBroadcastTiles();
-      const sourceId =
-        (req.headers['x-source-id'] as string | undefined) ?? null;
-      roomEventBus.broadcast(roomId, {
-        type: 'broadcast-tiles-updated',
-        roomId,
-        sourceId,
-        tiles,
-        selectedBroadcastTileId,
-        isBroadcastMode,
-      });
+      publishBroadcastTilesUpdated(roomId, room, req);
       res.status(200).send({ status: 'ok' });
     } catch (err: any) {
       res.status(400).send({
@@ -2377,18 +2398,7 @@ routes.post<
           .status(400)
           .send({ status: 'error', message: 'Tile not found' });
       }
-      const { tiles, selectedBroadcastTileId, isBroadcastMode } =
-        room.getBroadcastTiles();
-      const sourceId =
-        (req.headers['x-source-id'] as string | undefined) ?? null;
-      roomEventBus.broadcast(roomId, {
-        type: 'broadcast-tiles-updated',
-        roomId,
-        sourceId,
-        tiles,
-        selectedBroadcastTileId,
-        isBroadcastMode,
-      });
+      publishBroadcastTilesUpdated(roomId, room, req);
       res.status(200).send({ status: 'ok' });
     } catch (err: any) {
       res.status(400).send({
@@ -2408,18 +2418,11 @@ routes.post<RoomIdParams & { Body: Static<typeof BroadcastModeSetBodySchema> }>(
     try {
       const room = state.getRoom(roomId);
       room.setBroadcastMode(enabled);
-      const { tiles, selectedBroadcastTileId, isBroadcastMode } =
-        room.getBroadcastTiles();
-      const sourceId =
-        (req.headers['x-source-id'] as string | undefined) ?? null;
-      roomEventBus.broadcast(roomId, {
-        type: 'broadcast-tiles-updated',
+      const { isBroadcastMode } = publishBroadcastTilesUpdated(
         roomId,
-        sourceId,
-        tiles,
-        selectedBroadcastTileId,
-        isBroadcastMode,
-      });
+        room,
+        req,
+      );
       res.status(200).send({ status: 'ok', isBroadcastMode });
     } catch (err: any) {
       res.status(400).send({

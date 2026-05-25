@@ -740,7 +740,7 @@ describe('RoomState', () => {
       });
     });
 
-    it('applies broadcast tile selection to the output store even before live mode', async () => {
+    it('auto-selects first broadcast tile and updates output store before live mode', async () => {
       const output = createTestOutput();
       const room = new RoomState('room-1', output, [], true);
       await room.init();
@@ -766,9 +766,7 @@ describe('RoomState', () => {
 
       const tile = room.addBroadcastTile('layer', 'layer-b');
       expect(tile).not.toBeNull();
-
-      const selected = room.selectBroadcastTile(tile!.id);
-      expect(selected).toBe(true);
+      expect(room.getBroadcastTiles().selectedBroadcastTileId).toBe(tile!.id);
 
       await new Promise((resolve) => setTimeout(resolve, 20));
 
