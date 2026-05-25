@@ -2023,6 +2023,7 @@ const MotionDetectionSchema = Type.Object({
 
 const YoloBoxesSchema = Type.Object({
   task_id: Type.String(),
+  input_id: Type.String(),
   boxes: Type.Array(
     Type.Object({
       x: Type.Number(),
@@ -2036,6 +2037,7 @@ const YoloBoxesSchema = Type.Object({
   ),
   frame_width: Type.Number(),
   frame_height: Type.Number(),
+  pts_nanos: Type.Optional(Type.Number()),
 });
 
 routes.post<RoomAndInputIdParams & { Body: Static<typeof YoloBoxesSchema> }>(

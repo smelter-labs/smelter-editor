@@ -104,9 +104,14 @@ export default function YoloSearchPanel({
     <div className='flex flex-col gap-3 px-1 py-2'>
       {/* Header row */}
       <div className='flex items-center justify-between'>
-        <span className='text-sm font-semibold text-foreground'>
-          YOLO Search
-        </span>
+        <div className='flex flex-col'>
+          <span className='text-sm font-semibold text-foreground'>
+            YOLO Search
+          </span>
+          <span className='text-[10px] text-muted-foreground'>
+            Per-input model (Smelter side channel)
+          </span>
+        </div>
         <Switch
           checked={config.enabled}
           onCheckedChange={(checked) => saveConfig({ enabled: checked })}

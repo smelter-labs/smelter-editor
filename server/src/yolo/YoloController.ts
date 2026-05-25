@@ -1,11 +1,14 @@
 import type { YoloSearchConfig, YoloBoundingBox } from '../types';
 import type { RoomInputState } from '../room/types';
+import { getSideChannelSocketDir } from '../smelter';
 
 /**
  * Payload sent by the YOLO server to the callback URL on every frame.
+ * Box coordinates are in the input's native pixel space.
  */
 export type YoloCallbackPayload = {
   task_id: string;
+  input_id: string;
   boxes: Array<{
     x: number;
     y: number;
@@ -17,6 +20,7 @@ export type YoloCallbackPayload = {
   }>;
   frame_width: number;
   frame_height: number;
+  pts_nanos?: number;
 };
 
 const SERVER_PORT = Number(process.env.SMELTER_DEMO_API_PORT) || 3001;
@@ -32,8 +36,6 @@ export class YoloController {
 
   constructor(
     private readonly roomId: string,
-    /** Returns the HLS stream URL for this room — consumed by the Python YOLO server via ffmpeg/OpenCV. */
-    private readonly getYoloStreamUrl: () => string,
     private readonly onBoxesReceived: (
       inputId: string,
       boxes: YoloBoundingBox[],
@@ -99,16 +101,6 @@ export class YoloController {
     input: RoomInputState,
     config: YoloSearchConfig,
   ): Promise<void> {
-    // Use the room's HLS output (ffmpeg-readable) as the stream source so that
-    // detected boxes are always in sync with the composed video the viewer sees.
-    const streamUrl = this.getYoloStreamUrl();
-    if (!streamUrl) {
-      console.warn(
-        `[yolo] No HLS stream URL available for room ${this.roomId}`,
-      );
-      return;
-    }
-
     // Stop any existing task for this input first
     await this.stopInput(input.inputId);
 
@@ -120,7 +112,11 @@ export class YoloController {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          stream_url: streamUrl,
+          // Side channel: the Python server attaches directly to the input's
+          // unix socket (video_<input_id>.sock) under the same socket dir
+          // exported by the Node server. No HLS / WebRTC re-encode involved.
+          input_id: input.inputId,
+          socket_dir: getSideChannelSocketDir(),
           callback_url: callbackUrl,
           class_filter: config.targetClass || undefined,
           confidence: 0.25,
@@ -144,7 +140,7 @@ export class YoloController {
         serverUrl: config.serverUrl,
       });
       console.log(
-        `[yolo] Started task ${data.task_id} for input ${input.inputId} → HLS ${streamUrl}`,
+        `[yolo] Started task ${data.task_id} (side-channel) for input ${input.inputId}`,
       );
     } catch (err) {
       console.error(

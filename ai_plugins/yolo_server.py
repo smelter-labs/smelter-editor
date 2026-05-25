@@ -1,35 +1,52 @@
 """
-YOLO Search HTTP Server
-=======================
-Start: uvicorn yolo_server:app --host 0.0.0.0 --port 8765
-       (run from the ai_plugins directory)
+YOLO Side-Channel HTTP Server
+=============================
+Subscribes to Smelter side-channel video sockets (per input) and runs YOLO
+inference on every frame, POSTing detected boxes to a callback URL provided
+by the editor server.
 
-Model files (.pt) are loaded from ./models/.
-The built-in fallback is screen_ads/best.pt.
+Start:
+    SMELTER_SIDE_CHANNEL_SOCKET_DIR=/tmp/smelter-sidechan-XXXX \
+        uvicorn yolo_server:app --host 0.0.0.0 --port 8765
+
+Model files (.pt) are loaded from ./models/. Place YOLOv8 weights there.
 
 Endpoints:
-  GET  /models               → { models: ["foo.pt", ...] }  — list ./models/*.pt
-  GET  /model-info           → { classes, model_file, num_classes }  (default model)
-  POST /start                → { stream_url, callback_url, class_filter?, confidence?,
-                                  task_id?, model_name? }
-                               → { task_id }
-  POST /stop                 → { task_id }  →  { status: "stopped" }
+  GET  /models               → { models: ["foo.pt", ...] }
+  GET  /model-info           → { classes, model_file, num_classes }   (default model)
+  GET  /channels             → list visible Smelter side-channel sockets
+  POST /start                → { input_id, callback_url, class_filter?, confidence?,
+                                  task_id?, model_name?, socket_dir? }
+                             → { task_id }
+  POST /stop                 → { task_id } → { status: "stopped" }
   GET  /health
 """
 
+from __future__ import annotations
+
+import asyncio
 import os
 import threading
-import uuid
 import time
-import cv2
-import numpy as np
-import httpx
+import uuid
 from pathlib import Path
 from typing import Optional
 
+import httpx
+import numpy as np
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+# Smelter SDK — sync API is the easiest fit here. Each task gets its own thread
+# that blocks on conn.recv() inside subscribe_video_channel.
+from smelter import (
+    Context,
+    SideChannelKind,
+    connect_video,
+    list_channels,
+    wait_for_channel,
+)
 
 # ---------------------------------------------------------------------------
 # Model loading
@@ -37,13 +54,8 @@ from pydantic import BaseModel
 
 SCRIPT_DIR = Path(__file__).parent
 MODELS_DIR = SCRIPT_DIR / "models"
-DEFAULT_MODEL_CANDIDATES = [
-    SCRIPT_DIR / "screen_ads" / "best.pt",
-    SCRIPT_DIR / "best.pt",
-]
 
-app = FastAPI(title="YOLO Search Server", version="2.0.0")
-
+app = FastAPI(title="YOLO Side-Channel Server", version="3.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -55,7 +67,6 @@ app.add_middleware(
 _model_cache: dict[str, "YOLO"] = {}
 _model_cache_lock = threading.Lock()
 
-# Default model (lazy-loaded)
 _default_model = None
 _default_model_file: Optional[str] = None
 
@@ -63,15 +74,16 @@ _default_model_file: Optional[str] = None
 def _load_yolo(path: Path) -> "YOLO":
     key = str(path)
     with _model_cache_lock:
-        if key in _model_cache:
-            return _model_cache[key]
+        cached = _model_cache.get(key)
+    if cached is not None:
+        return cached
     try:
         from ultralytics import YOLO
-    except ImportError:
+    except ImportError as err:
         raise HTTPException(
             status_code=503,
             detail="ultralytics not installed. Run: pip install ultralytics",
-        )
+        ) from err
     print(f"[yolo_server] Loading model from {path}")
     model = YOLO(key)
     with _model_cache_lock:
@@ -80,7 +92,6 @@ def _load_yolo(path: Path) -> "YOLO":
 
 
 def get_model(model_name: Optional[str] = None):
-    """Return a loaded YOLO model. If model_name is given, load from ./models/."""
     if model_name:
         candidate = MODELS_DIR / model_name
         if not candidate.exists():
@@ -94,105 +105,121 @@ def get_model(model_name: Optional[str] = None):
     if _default_model is not None:
         return _default_model
 
-    # Explicit candidates first, then anything in ./models/
-    candidates = list(DEFAULT_MODEL_CANDIDATES)
     if MODELS_DIR.exists():
-        candidates += sorted(MODELS_DIR.glob("*.pt"))
-
-    for candidate in candidates:
-        if candidate.exists():
+        for candidate in sorted(MODELS_DIR.glob("*.pt")):
             _default_model = _load_yolo(candidate)
             _default_model_file = str(candidate)
             return _default_model
 
     raise HTTPException(
         status_code=503,
-        detail=(
-            "No model found. Place a .pt file in ai_plugins/models/ "
-            "or ai_plugins/screen_ads/."
-        ),
+        detail=f"No model found. Place a .pt file in {MODELS_DIR}.",
     )
 
 
 def list_models() -> list[str]:
-    """Return .pt filenames available in ./models/."""
     if not MODELS_DIR.exists():
         return []
     return sorted(p.name for p in MODELS_DIR.glob("*.pt"))
 
 
 # ---------------------------------------------------------------------------
-# Background task manager
+# Detection task — one Smelter input subscription
 # ---------------------------------------------------------------------------
 
+
 class _DetectionTask:
+    """Subscribes to one Smelter video side channel, runs YOLO per frame,
+    POSTs results to the editor server's callback URL."""
+
     def __init__(
         self,
         task_id: str,
-        stream_url: str,
+        input_id: str,
         callback_url: str,
         class_filter: Optional[str],
         confidence: float,
         model_name: Optional[str],
+        socket_dir: Optional[str],
     ):
         self.task_id = task_id
-        self.stream_url = stream_url
+        self.input_id = input_id
         self.callback_url = callback_url
         self.class_filter = class_filter
         self.confidence = confidence
         self.model_name = model_name
+        # Per-task ctx — each request may live in a separate socket dir
+        # (mostly useful in dev when running against multiple Smelter servers).
+        self.ctx = Context(socket_dir=socket_dir) if socket_dir else Context()
         self._stop_event = threading.Event()
         self._thread = threading.Thread(target=self._run, daemon=True)
 
-    def start(self):
+    def start(self) -> None:
         self._thread.start()
 
-    def stop(self):
+    def stop(self) -> None:
         self._stop_event.set()
 
-    def _run(self):
+    def _run(self) -> None:
         model = get_model(self.model_name)
+        log = lambda msg: print(f"[yolo_server][{self.task_id}] {msg}", flush=True)
 
-        # Resolve source
-        source = self.stream_url
-        if source.startswith("file://"):
-            source = source[7:]
-        # "0" means webcam
-        if source == "0":
-            source = 0
-
-        print(f"[yolo_server][{self.task_id}] Opening stream: {self.stream_url}")
-        cap = cv2.VideoCapture(source)
-
-        if not cap.isOpened():
-            print(f"[yolo_server][{self.task_id}] Cannot open stream, aborting")
+        # Wait for the socket to appear (Smelter creates it lazily when the
+        # input is registered). Re-checked every 0.5s; bail out cleanly if the
+        # task is stopped before it ever appears.
+        info = None
+        log(f"waiting for video side channel input_id={self.input_id!r}")
+        while not self._stop_event.is_set():
+            try:
+                info = wait_for_channel(
+                    ctx=self.ctx,
+                    kind=SideChannelKind.VIDEO,
+                    input_id=self.input_id,
+                    timeout=1.0,
+                )
+                break
+            except Exception:
+                continue
+        if info is None:
+            log("stopped before side channel appeared")
             return
 
+        log(f"connected to {info.path}")
+
         try:
-            with httpx.Client(timeout=5.0) as http:
+            with connect_video(info, timeout=2.0) as conn, httpx.Client(timeout=5.0) as http:
                 while not self._stop_event.is_set():
-                    ret, frame = cap.read()
-                    if not ret or frame is None:
-                        # For live streams a temporary failure is normal; wait briefly
-                        time.sleep(0.1)
+                    try:
+                        frame = conn.recv()
+                    except TimeoutError:
                         continue
+                    except Exception as err:
+                        log(f"recv error: {err}")
+                        break
 
-                    h, w = frame.shape[:2]
-
-                    results = model(frame, conf=self.confidence, verbose=False)
+                    h, w = frame.height, frame.width
+                    # smelter delivers RGBA; ultralytics is fine with RGB.
+                    rgb = np.ascontiguousarray(frame.rgba[:, :, :3])
+                    try:
+                        results = model.predict(
+                            rgb,
+                            conf=self.confidence,
+                            verbose=False,
+                        )
+                    except Exception as err:
+                        log(f"YOLO predict error: {err}")
+                        continue
 
                     boxes = []
                     for result in results:
                         if result.boxes is None:
                             continue
-                        for box in result.boxes:
-                            cls_id = int(box.cls[0])
+                        for det in result.boxes:
+                            cls_id = int(det.cls[0])
                             cls_name = model.names.get(cls_id, str(cls_id))
-
                             if self.class_filter and cls_name != self.class_filter:
                                 continue
-
-                            x1, y1, x2, y2 = box.xyxy[0].tolist()
+                            x1, y1, x2, y2 = det.xyxy[0].tolist()
                             boxes.append({
                                 "x": x1,
                                 "y": y1,
@@ -200,26 +227,29 @@ class _DetectionTask:
                                 "height": y2 - y1,
                                 "class_name": cls_name,
                                 "class_id": cls_id,
-                                "confidence": float(box.conf[0]),
+                                "confidence": float(det.conf[0]),
                             })
 
                     payload = {
                         "task_id": self.task_id,
+                        "input_id": self.input_id,
                         "boxes": boxes,
                         "frame_width": w,
                         "frame_height": h,
+                        "pts_nanos": frame.pts_nanos,
                     }
-
                     try:
                         resp = http.post(self.callback_url, json=payload)
                         if resp.status_code not in (200, 204):
-                            print(f"[yolo_server][{self.task_id}] Callback returned {resp.status_code}, stopping")
+                            log(f"callback returned {resp.status_code}, stopping")
                             break
-                    except Exception as e:
-                        print(f"[yolo_server][{self.task_id}] Callback error: {e}")
+                    except Exception as err:
+                        log(f"callback error: {err}")
+                        # Don't bail — transient network glitches shouldn't kill
+                        # the detection loop. Slow callbacks just throttle us.
+                        time.sleep(0.1)
         finally:
-            cap.release()
-            print(f"[yolo_server][{self.task_id}] Stream closed")
+            log("task ended")
 
 
 # Active tasks: task_id → _DetectionTask
@@ -231,13 +261,18 @@ _tasks_lock = threading.Lock()
 # Request / response models
 # ---------------------------------------------------------------------------
 
+
 class StartRequest(BaseModel):
-    stream_url: str
+    # The Smelter input_id whose side channel we should subscribe to.
+    input_id: str
     callback_url: str
     class_filter: Optional[str] = None
     confidence: float = 0.25
     task_id: Optional[str] = None
     model_name: Optional[str] = None
+    # Override SMELTER_SIDE_CHANNEL_SOCKET_DIR for this task only. When unset,
+    # the server-process env var is used.
+    socket_dir: Optional[str] = None
 
 
 class StartResponse(BaseModel):
@@ -254,9 +289,16 @@ class ModelInfoResponse(BaseModel):
     num_classes: int
 
 
+class ChannelInfo(BaseModel):
+    kind: str
+    input_id: str
+    path: str
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
+
 
 @app.get("/models")
 def models_list():
@@ -277,9 +319,23 @@ def model_info(model_name: Optional[str] = None):
     )
 
 
+@app.get("/channels")
+def channels(socket_dir: Optional[str] = None) -> dict:
+    ctx = Context(socket_dir=socket_dir) if socket_dir else Context()
+    found = list_channels(ctx=ctx)
+    return {
+        "socket_dir": str(ctx.socket_dir),
+        "channels": [
+            ChannelInfo(kind=c.kind.value, input_id=c.input_id, path=str(c.path)).model_dump()
+            for c in found
+        ],
+    }
+
+
 @app.post("/start", response_model=StartResponse)
 def start_detection(req: StartRequest):
-    # Ensure model is loaded (and cached) before spawning the thread
+    # Force-load the model in the request thread so configuration errors surface
+    # synchronously instead of failing silently inside the detection thread.
     get_model(req.model_name)
 
     task_id = req.task_id or str(uuid.uuid4())
@@ -288,19 +344,22 @@ def start_detection(req: StartRequest):
         existing = _tasks.get(task_id)
         if existing:
             existing.stop()
-
         task = _DetectionTask(
             task_id=task_id,
-            stream_url=req.stream_url,
+            input_id=req.input_id,
             callback_url=req.callback_url,
             class_filter=req.class_filter,
             confidence=req.confidence,
             model_name=req.model_name,
+            socket_dir=req.socket_dir,
         )
         _tasks[task_id] = task
 
     task.start()
-    print(f"[yolo_server] Started task {task_id} for {req.stream_url} (model={req.model_name or 'default'})")
+    print(
+        f"[yolo_server] Started task {task_id} input={req.input_id} "
+        f"model={req.model_name or 'default'} class={req.class_filter or '*'}"
+    )
     return StartResponse(task_id=task_id)
 
 
@@ -308,10 +367,8 @@ def start_detection(req: StartRequest):
 def stop_detection(req: StopRequest):
     with _tasks_lock:
         task = _tasks.pop(req.task_id, None)
-
     if task is None:
         raise HTTPException(status_code=404, detail=f"Task {req.task_id!r} not found")
-
     task.stop()
     print(f"[yolo_server] Stopped task {req.task_id}")
     return {"status": "stopped", "task_id": req.task_id}
@@ -319,5 +376,10 @@ def stop_detection(req: StopRequest):
 
 @app.get("/health")
 def health():
-    active = list(_tasks.keys())
-    return {"status": "ok", "active_tasks": active}
+    with _tasks_lock:
+        active = list(_tasks.keys())
+    return {
+        "status": "ok",
+        "active_tasks": active,
+        "socket_dir": os.environ.get("SMELTER_SIDE_CHANNEL_SOCKET_DIR", "<unset>"),
+    }

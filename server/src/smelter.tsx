@@ -1,11 +1,32 @@
 import path from 'path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import type { StoreApi } from 'zustand';
 import Smelter, {
   LocallySpawnedInstanceManager,
   type SmelterManager as SmelterNodeManager,
 } from '@swmansion/smelter-node';
+
+// Set the side-channel socket directory BEFORE the Smelter binary is spawned
+// (the variable is read at process start by the binary). One directory per
+// editor process; consumed by ai_plugins/yolo_server.py for per-input YOLO
+// detection. See ai_plugins/SIDE_CHANNEL.md for the protocol reference.
+const SIDE_CHANNEL_SOCKET_DIR =
+  process.env.SMELTER_SIDE_CHANNEL_SOCKET_DIR ??
+  mkdtempSync(path.join(tmpdir(), 'smelter-sidechan-'));
+process.env.SMELTER_SIDE_CHANNEL_SOCKET_DIR = SIDE_CHANNEL_SOCKET_DIR;
+if (process.env.SMELTER_SIDE_CHANNEL_DELAY_MS === undefined) {
+  process.env.SMELTER_SIDE_CHANNEL_DELAY_MS = '0';
+}
+console.log(
+  `[smelter] side-channel socket dir: ${SIDE_CHANNEL_SOCKET_DIR}`,
+);
+
+export function getSideChannelSocketDir(): string {
+  return SIDE_CHANNEL_SOCKET_DIR;
+}
 
 import App from './app/App';
 import type { RoomStore } from './app/store';
@@ -360,6 +381,9 @@ class SmelterManager {
         const res = await this.instance.registerInput(inputId, {
           type: 'whip_server',
           video: { decoderPreferences: WHIP_SERVER_DECODER_PREFERENCES },
+          // Always enable the video side channel so YOLO / other ML tasks can
+          // attach on demand. Per-input socket; idle when nothing subscribes.
+          sideChannel: { video: true },
         });
         console.log('whipInput', res);
         if (!res.bearerToken) {
@@ -378,6 +402,7 @@ class SmelterManager {
           decoderMap: MP4_DECODER_MAP,
           loop: opts.loop ?? true,
           offsetMs: opts.offsetMs,
+          sideChannel: { video: true },
         });
         console.log(
           `[smelter] registerInput MP4 OK inputId=${inputId} elapsed=${Date.now() - t0}ms`,
@@ -393,6 +418,7 @@ class SmelterManager {
             type: 'hls';
             url: string;
             decoderMap: typeof MP4_DECODER_MAP;
+            sideChannel?: { video?: boolean; audio?: boolean };
           },
         ) => Promise<unknown>;
 
@@ -400,6 +426,7 @@ class SmelterManager {
           type: 'hls',
           url: opts.url,
           decoderMap: MP4_DECODER_MAP,
+          sideChannel: { video: true },
         });
       }
     } catch (err: any) {

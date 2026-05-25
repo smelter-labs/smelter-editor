@@ -1,262 +1,152 @@
-# YOLO Search Server
+# YOLO Side-Channel Server
 
-A FastAPI-based HTTP server for running YOLO object detection on video streams. The server can process multiple detection tasks in parallel and send results via HTTP callbacks.
+A FastAPI server that subscribes to Smelter's per-input **side channel** sockets,
+runs YOLOv8 on every frame, and POSTs detected boxes back to the editor server.
 
-## Directory Structure
+This replaces the previous HLS / OpenCV pipeline. Because side channels are
+**per-input** (verified — see [`SIDE_CHANNEL.md`](./SIDE_CHANNEL.md)), every
+detection task targets exactly one Smelter input, so several models can run
+concurrently on different inputs / layers.
+
+## Directory layout
 
 ```
 ai_plugins/
-├── README.md                  # This file
-├── yolo_server.py            # Main FastAPI server (entry point)
-├── requirements_yolo.txt     # Python dependencies
-├── .venv/                    # Python virtual environment (created during setup)
-├── .python-version           # Python version specification
-├── models/                   # 📁 Add your .pt model files here
-│   └── (place your YOLOv8 .pt files here)
-└── screen_ads/               # Default/fallback model location
-    └── best.pt               # Default model (loads if no model in ./models/)
+├── README.md                # This file
+├── SIDE_CHANNEL.md          # Full side-channel reference (protocol + SDK)
+├── yolo_server.py           # FastAPI server (entry point)
+├── requirements_yolo.txt    # Python dependencies
+└── models/                  # 📁 Drop your YOLOv8 .pt files here
 ```
 
-### Where to Put Files
-
-- **Model files (.pt)**: Place YOLOv8 model files in the `models/` directory
-  - Example: `ai_plugins/models/custom_model.pt`
-  - If no model is found in `models/`, the server falls back to `screen_ads/best.pt`
-  - Models are cached after first load for performance
-
-- **Custom detection scripts**: Place any additional Python scripts in the `screen_ads/` directory
+The first `.pt` file found in `models/` becomes the default. Specify
+`model_name` on `/start` to use a different one.
 
 ## Setup
-
-### 1. Install Python Dependencies
-
-Navigate to the `ai_plugins` directory and install the required packages:
 
 ```bash
 cd ai_plugins
 pip install -r requirements_yolo.txt
+# Place at least one YOLOv8 .pt file in ./models/
 ```
 
-**Dependencies:**
+## Running the server
 
-- `fastapi` - Web framework
-- `uvicorn[standard]` - ASGI server
-- `ultralytics` - YOLOv8 models
-- `opencv-python-headless` - Image processing
-- `numpy` - Numerical operations
-- `pillow` - Image handling
-- `httpx` - HTTP client for callbacks
-
-### 2. Add a Model
-
-Place a YOLOv8 `.pt` model file in the `models/` directory:
+The Python process must see the same `SMELTER_SIDE_CHANNEL_SOCKET_DIR` that the
+Smelter Node server set. The editor's Node server prints the directory on
+startup; either run uvicorn from the same shell, or pass the variable
+explicitly:
 
 ```bash
-# Example: copy a model file
-cp path/to/your/model.pt models/
+SMELTER_SIDE_CHANNEL_SOCKET_DIR=/tmp/smelter-sidechan-XXXXXX \
+  uvicorn yolo_server:app --host 0.0.0.0 --port 8765
 ```
 
-Or use the built-in default at `screen_ads/best.pt`.
+`--reload` is handy in development.
 
-## Running the Server
+## API
 
-### Start the Uvicorn Server
+### `GET /models`
 
-From the `ai_plugins` directory, run:
-
-```bash
-uvicorn yolo_server:app --host 0.0.0.0 --port 8765
+```json
+{ "models": ["yolov8n.pt", "best.pt"] }
 ```
 
-**Parameters:**
+### `GET /model-info?model_name=...`
 
-- `yolo_server:app` - Module and FastAPI app instance to run
-- `--host 0.0.0.0` - Listen on all network interfaces
-- `--port 8765` - HTTP port to listen on (change as needed)
-
-**Output:**
-
-```
-INFO:     Uvicorn running on http://0.0.0.0:8765
-INFO:     Application startup complete
+```json
+{ "classes": ["person", "car"], "model_file": "...", "num_classes": 80 }
 ```
 
-### Alternative: Run with Auto-Reload (Development)
+### `GET /channels?socket_dir=...`
 
-```bash
-uvicorn yolo_server:app --host 0.0.0.0 --port 8765 --reload
-```
-
-This reloads the server when you modify `yolo_server.py`.
-
-## API Endpoints
-
-### 1. List Available Models
-
-```
-GET /models
-```
-
-Returns available `.pt` files in the `models/` directory.
-
-**Response:**
+Lists side-channel sockets currently visible. Useful for debugging — confirms
+Smelter has actually created the socket you're about to subscribe to.
 
 ```json
 {
-  "models": ["model1.pt", "model2.pt"]
+  "socket_dir": "/tmp/smelter-sidechan-XXXX",
+  "channels": [
+    { "kind": "video", "input_id": "room1::whip::abcd", "path": "..." }
+  ]
 }
 ```
 
-### 2. Get Model Info
-
-```
-GET /model-info
-```
-
-Returns information about the default model.
-
-**Response:**
+### `POST /start`
 
 ```json
 {
-  "classes": ["class1", "class2"],
-  "model_file": "/path/to/model.pt",
-  "num_classes": 2
+  "input_id": "room1::whip::abcd",
+  "callback_url": "http://127.0.0.1:3001/.../yolo-boxes",
+  "class_filter": "person",
+  "confidence": 0.4,
+  "task_id": "stable-id",
+  "model_name": "best.pt",
+  "socket_dir": "/tmp/smelter-sidechan-XXXX"
 }
 ```
 
-### 3. Start Detection Task
+Only `input_id` and `callback_url` are required. The server spawns a
+background thread that waits for `video_<input_id>.sock` to appear, opens
+it, runs the model on each RGBA frame, and POSTs boxes to `callback_url`.
 
-```
-POST /start
-```
-
-Start a detection task on a video stream.
-
-**Request Body:**
+Callback body:
 
 ```json
 {
-  "stream_url": "rtmp://example.com/stream",
-  "callback_url": "http://your-server.com/detections",
-  "class_filter": "person", // (optional) filter by class name
-  "confidence": 0.5, // (optional) detection confidence threshold (0-1)
-  "task_id": "custom-id", // (optional) custom task ID
-  "model_name": "custom_model.pt" // (optional) specific model to use
+  "task_id": "...",
+  "input_id": "room1::whip::abcd",
+  "boxes": [
+    {
+      "x": 10, "y": 20, "width": 100, "height": 200,
+      "class_name": "person", "class_id": 0, "confidence": 0.87
+    }
+  ],
+  "frame_width": 1280,
+  "frame_height": 720,
+  "pts_nanos": 12345678
 }
 ```
 
-**Response:**
+Box coordinates are in **input pixel** space (not the composed scene). The
+editor's server normalises them to `[0, 1]` of the input frame.
+
+### `POST /stop`
 
 ```json
-{
-  "task_id": "generated-or-provided-id"
-}
+{ "task_id": "..." }
 ```
 
-Detection results will be POSTed to the `callback_url` as they're detected.
-
-### 4. Stop Detection Task
-
-```
-POST /stop
-```
-
-Stop a running detection task.
-
-**Request Body:**
+### `GET /health`
 
 ```json
-{
-  "task_id": "task-id-to-stop"
-}
+{ "status": "ok", "active_tasks": ["..."], "socket_dir": "..." }
 ```
 
-**Response:**
+## How it ties into the editor
 
-```json
-{
-  "status": "stopped"
-}
-```
+1. `server/src/smelter.tsx` creates a private side-channel socket dir at boot
+   and sets `SMELTER_SIDE_CHANNEL_SOCKET_DIR` before initialising Smelter.
+2. Video inputs (whip / mp4 / hls) are registered with
+   `sideChannel: { video: true }`, so Smelter creates a unix socket per input.
+3. `server/src/yolo/YoloController.ts` calls `/start` with the input's
+   `input_id` whenever the user enables YOLO Search on that input.
+4. Boxes flow back through the `/yolo-boxes` callback and are stored on
+   `RoomInputState.yoloBoundingBoxes`.
 
-### 5. Health Check
-
-```
-GET /health
-```
-
-Check if the server is running.
-
-**Response:**
-
-```json
-{
-  "status": "ok"
-}
-```
-
-## Example Usage
-
-### 1. Check Available Models
-
-```bash
-curl http://localhost:8765/models
-```
-
-### 2. Start Detection on a Stream
-
-```bash
-curl -X POST http://localhost:8765/start \
-  -H "Content-Type: application/json" \
-  -d '{
-    "stream_url": "rtmp://camera.local/stream",
-    "callback_url": "http://localhost:3000/detections",
-    "confidence": 0.6
-  }'
-```
-
-### 3. Stop Detection
-
-```bash
-curl -X POST http://localhost:8765/stop \
-  -H "Content-Type: application/json" \
-  -d '{"task_id": "returned-task-id"}'
-```
+See [`SIDE_CHANNEL.md`](./SIDE_CHANNEL.md) for the full wire-protocol /
+SDK reference.
 
 ## Troubleshooting
 
-### "No module named 'ultralytics'"
-
-```bash
-pip install ultralytics
-```
-
-### "No model found" Error
-
-Ensure you have a `.pt` file in either:
-
-- `ai_plugins/models/` directory
-- `ai_plugins/screen_ads/best.pt`
-
-### Model is very slow to load
-
-YOLOv8 models are loaded on first use. Subsequent requests using the same model will be faster due to caching.
-
-### Port 8765 already in use
-
-Change the port:
-
-```bash
-uvicorn yolo_server:app --host 0.0.0.0 --port 9000
-```
-
-## Configuration
-
-The server automatically loads models based on this priority:
-
-1. Explicitly requested model via `model_name` parameter
-2. Default model from `screen_ads/best.pt`
-3. Any `.pt` files in the `models/` directory
-
-CORS (Cross-Origin Resource Sharing) is enabled for all origins to allow requests from different domains.
+- **`/start` returns 200 but no boxes flow** — check `/channels` to confirm
+  the input's `video_<input_id>.sock` is visible in the right socket dir.
+  Mismatched `SMELTER_SIDE_CHANNEL_SOCKET_DIR` between Node and Python is the
+  most common cause.
+- **`ChannelNotFound`** — the input was never registered with
+  `sideChannel: { video: true }`, or the input was unregistered before the
+  Python task could attach.
+- **"No model found"** — drop a YOLOv8 `.pt` file into `ai_plugins/models/`.
+- **Frames are dropped** — Smelter's per-client outbound queue is depth-1 for
+  video. If inference is slower than the source frame rate, frames are
+  skipped. That's by design.

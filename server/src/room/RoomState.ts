@@ -223,7 +223,6 @@ export class RoomState {
     );
     this.yoloController = new YoloController(
       idPrefix,
-      () => this.output.hlsUrl,
       (inputId, boxes) => {
         const input = this.inputManager
           .getInputs()
