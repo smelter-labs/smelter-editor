@@ -764,7 +764,7 @@ describe('RoomState', () => {
         },
       ]);
 
-      const tile = room.addBroadcastTile('layer', 'layer-b');
+      const tile = await room.addBroadcastTile('layer', 'layer-b');
       expect(tile).not.toBeNull();
       expect(room.getBroadcastTiles().selectedBroadcastTileId).toBe(tile!.id);
 

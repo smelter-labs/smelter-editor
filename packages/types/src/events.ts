@@ -1,6 +1,6 @@
 import type { PublicInputState } from "./public-input-state.js";
 import type { Layer } from "./layout.js";
-import type { BroadcastServerEvent, BroadcastTile } from "./broadcast.js";
+import type { BroadcastTile } from "./broadcast.js";
 
 export type ConnectedPeer = {
   clientId: string;
@@ -86,5 +86,4 @@ export type RoomEvent =
   | TimelinePlaybackUpdatedEvent
   | NormalizationProgressEvent
   | NormalizationDoneEvent
-  | BroadcastServerEvent
   | BroadcastTilesUpdatedEvent;

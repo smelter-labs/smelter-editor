@@ -30,54 +30,70 @@ async function waitForIceGathering(
   });
 }
 
+type ConnectResult = {
+  pc: RTCPeerConnection;
+  detachTrackListener: () => void;
+};
+
 async function connectWhep(
   whepUrl: string,
   onStream: (stream: MediaStream) => void,
   signal: AbortSignal,
-): Promise<RTCPeerConnection> {
+): Promise<ConnectResult> {
   const pc = new RTCPeerConnection({ iceServers: [] });
 
   pc.addTransceiver("video", { direction: "recvonly" });
   pc.addTransceiver("audio", { direction: "recvonly" });
 
   const stream = new MediaStream(undefined);
-  (pc as any).addEventListener("track", (event: any) => {
+  const onTrack = (event: any) => {
+    if (signal.aborted) return;
     const track = event.track ?? event.streams?.[0]?.getTracks?.()?.[0];
     if (track) stream.addTrack(track);
-    // Notify once we have a video track so RTCView can start rendering
     if (stream.getVideoTracks().length > 0 && !signal.aborted) {
       onStream(stream);
     }
-  });
+  };
+  (pc as any).addEventListener("track", onTrack);
+  const detachTrackListener = () => {
+    (pc as any).removeEventListener("track", onTrack);
+  };
 
-  await pc.setLocalDescription(await pc.createOffer({}));
-  await waitForIceGathering(pc);
+  try {
+    await pc.setLocalDescription(await pc.createOffer({}));
+    await waitForIceGathering(pc);
 
-  if (signal.aborted) {
-    pc.close();
-    const abortErr = new Error("Aborted");
-    abortErr.name = "AbortError";
-    throw abortErr;
+    if (signal.aborted) {
+      detachTrackListener();
+      pc.close();
+      const abortErr = new Error("Aborted");
+      abortErr.name = "AbortError";
+      throw abortErr;
+    }
+
+    const resp = await fetch(whepUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/sdp" },
+      body: pc.localDescription?.sdp,
+      signal,
+    });
+
+    if (!resp.ok) {
+      detachTrackListener();
+      pc.close();
+      throw new Error(`WHEP ${resp.status}: ${resp.statusText}`);
+    }
+
+    const answerSdp = await resp.text();
+    await pc.setRemoteDescription(
+      new RTCSessionDescription({ type: "answer", sdp: answerSdp }),
+    );
+
+    return { pc, detachTrackListener };
+  } catch (err) {
+    detachTrackListener();
+    throw err;
   }
-
-  const resp = await fetch(whepUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/sdp" },
-    body: pc.localDescription?.sdp,
-    signal,
-  });
-
-  if (!resp.ok) {
-    pc.close();
-    throw new Error(`WHEP ${resp.status}: ${resp.statusText}`);
-  }
-
-  const answerSdp = await resp.text();
-  await pc.setRemoteDescription(
-    new RTCSessionDescription({ type: "answer", sdp: answerSdp }),
-  );
-
-  return pc;
 }
 
 export function useWhepPlayer(whepUrl: string | null) {
@@ -93,19 +109,24 @@ export function useWhepPlayer(whepUrl: string | null) {
     }
 
     const abortCtrl = new AbortController();
+    const signal = abortCtrl.signal;
+    let detach: (() => void) | null = null;
     setStatus("connecting");
     setStreamUrl(null);
 
     connectWhep(
       whepUrl,
       (stream) => {
+        if (signal.aborted) return;
         setStreamUrl(stream.toURL());
         setStatus("connected");
       },
-      abortCtrl.signal,
+      signal,
     )
-      .then((pc) => {
-        if (abortCtrl.signal.aborted) {
+      .then(({ pc, detachTrackListener }) => {
+        detach = detachTrackListener;
+        if (signal.aborted) {
+          detachTrackListener();
           pc.close();
           return;
         }
@@ -114,11 +135,12 @@ export function useWhepPlayer(whepUrl: string | null) {
       .catch((err) => {
         if ((err as DOMException).name === "AbortError") return;
         console.error("[WHEP] connection failed", err);
-        setStatus("error");
+        if (!signal.aborted) setStatus("error");
       });
 
     return () => {
       abortCtrl.abort();
+      detach?.();
       pcRef.current?.close();
       pcRef.current = null;
     };

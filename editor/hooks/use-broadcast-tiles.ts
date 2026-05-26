@@ -258,7 +258,11 @@ export function useBroadcastTiles(roomId: string) {
   );
 
   const updateTileName = useCallback(
-    (tileId: string, newName: string) => {
+    async (tileId: string, newName: string) => {
+      const prevTiles = tilesRef.current;
+      const prevTile = prevTiles.find((t) => t.id === tileId);
+      if (!prevTile || prevTile.name === newName) return;
+
       setTiles((prev) => {
         const next = prev.map((t) =>
           t.id === tileId ? { ...t, name: newName } : t,
@@ -270,21 +274,89 @@ export function useBroadcastTiles(roomId: string) {
         );
         return next;
       });
+
+      try {
+        const response = await fetch(
+          `${getEffectiveClientServerUrl()}/room/${encodeURIComponent(roomId)}/broadcast-tile/rename`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tileId, name: newName }),
+          },
+        );
+        if (!response.ok) {
+          setTiles((prev) => {
+            const next = prev.map((t) =>
+              t.id === tileId ? { ...t, name: prevTile.name } : t,
+            );
+            saveToStorage(
+              next,
+              selectedTileIdRef.current,
+              isBroadcastModeRef.current,
+            );
+            return next;
+          });
+          console.error(
+            'Failed to rename broadcast tile:',
+            response.statusText,
+          );
+        }
+      } catch (error) {
+        setTiles((prev) => {
+          const next = prev.map((t) =>
+            t.id === tileId ? { ...t, name: prevTile.name } : t,
+          );
+          saveToStorage(
+            next,
+            selectedTileIdRef.current,
+            isBroadcastModeRef.current,
+          );
+          return next;
+        });
+        console.error('Failed to rename broadcast tile:', error);
+      }
     },
-    [saveToStorage],
+    [roomId, saveToStorage],
   );
 
   const toggleEditMode = useCallback(() => {
     setIsEditMode((prev) => !prev);
   }, []);
 
-  const clearAll = useCallback(() => {
+  const clearAll = useCallback(async () => {
+    const prevTiles = tilesRef.current;
+    const prevSelected = selectedTileIdRef.current;
+    const prevMode = isBroadcastModeRef.current;
+
     setTiles([]);
     setSelectedTileId(null);
     setIsBroadcastModeState(false);
     setIsEditMode(false);
     saveToStorage([], null, false);
-  }, [saveToStorage]);
+
+    try {
+      const response = await fetch(
+        `${getEffectiveClientServerUrl()}/room/${encodeURIComponent(roomId)}/broadcast-tiles/clear`,
+        { method: 'POST' },
+      );
+      if (!response.ok) {
+        setTiles(prevTiles);
+        setSelectedTileId(prevSelected);
+        setIsBroadcastModeState(prevMode);
+        saveToStorage(prevTiles, prevSelected, prevMode);
+        console.error(
+          'Failed to clear broadcast tiles:',
+          response.statusText,
+        );
+      }
+    } catch (error) {
+      setTiles(prevTiles);
+      setSelectedTileId(prevSelected);
+      setIsBroadcastModeState(prevMode);
+      saveToStorage(prevTiles, prevSelected, prevMode);
+      console.error('Failed to clear broadcast tiles:', error);
+    }
+  }, [roomId, saveToStorage]);
 
   const setBroadcastMode = useCallback(
     async (enabled: boolean) => {

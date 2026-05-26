@@ -876,6 +876,11 @@ const BroadcastModeSetBodySchema = Type.Object({
   enabled: Type.Boolean(),
 });
 
+const BroadcastTileRenameBodySchema = Type.Object({
+  tileId: Type.String({ minLength: 1 }),
+  name: Type.String({ minLength: 1, maxLength: 256 }),
+});
+
 const RoomAndInputIdParamsSchema = Type.Object({
   roomId: Type.String({ maxLength: 64, minLength: 1 }),
   inputId: Type.String({ maxLength: 512, minLength: 1 }),
@@ -2329,7 +2334,7 @@ routes.post<RoomIdParams & { Body: Static<typeof BroadcastTileAddBodySchema> }>(
     const { type, targetId } = req.body;
     try {
       const room = state.getRoom(roomId);
-      const tile = room.addBroadcastTile(type, targetId);
+      const tile = await room.addBroadcastTile(type, targetId);
       if (!tile) {
         return res.status(400).send({
           status: 'error',
@@ -2363,7 +2368,7 @@ routes.post<
     const { tileId } = req.body;
     try {
       const room = state.getRoom(roomId);
-      const removed = room.removeBroadcastTile(tileId);
+      const removed = await room.removeBroadcastTile(tileId);
       if (!removed) {
         return res
           .status(400)
@@ -2392,7 +2397,7 @@ routes.post<
     const { tileId } = req.body;
     try {
       const room = state.getRoom(roomId);
-      const ok = room.selectBroadcastTile(tileId);
+      const ok = await room.selectBroadcastTile(tileId);
       if (!ok) {
         return res
           .status(400)
@@ -2417,7 +2422,7 @@ routes.post<RoomIdParams & { Body: Static<typeof BroadcastModeSetBodySchema> }>(
     const { enabled } = req.body;
     try {
       const room = state.getRoom(roomId);
-      room.setBroadcastMode(enabled);
+      await room.setBroadcastMode(enabled);
       const { isBroadcastMode } = publishBroadcastTilesUpdated(
         roomId,
         room,
@@ -2428,6 +2433,54 @@ routes.post<RoomIdParams & { Body: Static<typeof BroadcastModeSetBodySchema> }>(
       res.status(400).send({
         status: 'error',
         message: err?.message ?? 'Failed to set broadcast mode',
+      });
+    }
+  },
+);
+
+routes.post<
+  RoomIdParams & { Body: Static<typeof BroadcastTileRenameBodySchema> }
+>(
+  '/room/:roomId/broadcast-tile/rename',
+  {
+    schema: { params: RoomIdParamsSchema, body: BroadcastTileRenameBodySchema },
+  },
+  async (req, res) => {
+    const { roomId } = req.params;
+    const { tileId, name } = req.body;
+    try {
+      const room = state.getRoom(roomId);
+      const ok = await room.renameBroadcastTile(tileId, name);
+      if (!ok) {
+        return res
+          .status(400)
+          .send({ status: 'error', message: 'Tile not found' });
+      }
+      publishBroadcastTilesUpdated(roomId, room, req);
+      res.status(200).send({ status: 'ok' });
+    } catch (err: any) {
+      res.status(400).send({
+        status: 'error',
+        message: err?.message ?? 'Failed to rename broadcast tile',
+      });
+    }
+  },
+);
+
+routes.post<RoomIdParams>(
+  '/room/:roomId/broadcast-tiles/clear',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    try {
+      const room = state.getRoom(roomId);
+      await room.clearBroadcastTiles();
+      publishBroadcastTilesUpdated(roomId, room, req);
+      res.status(200).send({ status: 'ok' });
+    } catch (err: any) {
+      res.status(400).send({
+        status: 'error',
+        message: err?.message ?? 'Failed to clear broadcast tiles',
       });
     }
   },

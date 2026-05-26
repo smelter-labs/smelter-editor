@@ -268,7 +268,7 @@ export class RoomState {
       swapFadeInDurationMs: this.swapFadeInDurationMs,
       swapFadeOutDurationMs: this.swapFadeOutDurationMs,
       outputShaders: this.getOutputShaders(),
-      broadcastTiles: this.broadcastTiles,
+      broadcastTiles: [...this.broadcastTiles],
       selectedBroadcastTileId: this.selectedBroadcastTileId,
       isBroadcastMode: this.isBroadcastMode,
       viewportTop: this.viewportTop,
@@ -583,65 +583,103 @@ export class RoomState {
 
   // ── Broadcast tiles ───────────────────────────────────────
 
-  public addBroadcastTile(
+  public async addBroadcastTile(
     type: 'input' | 'layer',
     targetId: string,
-  ): BroadcastTile | null {
-    const snapshot = this.getState();
-    const alreadyExists = this.broadcastTiles.some(
-      (t) => t.type === type && t.targetId === targetId,
-    );
-    if (alreadyExists) return null;
+  ): Promise<BroadcastTile | null> {
+    return this.mutex.runExclusive(() => {
+      const alreadyExists = this.broadcastTiles.some(
+        (t) => t.type === type && t.targetId === targetId,
+      );
+      if (alreadyExists) return null;
 
-    if (type === 'input') {
-      if (!snapshot.inputs.some((i) => i.inputId === targetId)) return null;
-    } else {
-      if (!snapshot.layers.some((l) => l.id === targetId)) return null;
-    }
+      const inputs = this.inputManager.getInputs();
+      if (type === 'input') {
+        if (!inputs.some((i) => i.inputId === targetId)) return null;
+      } else {
+        if (!this.layers.some((l) => l.id === targetId)) return null;
+      }
 
-    const name =
-      type === 'input'
-        ? (snapshot.inputs.find((i) => i.inputId === targetId)?.metadata
-            .title ?? targetId)
-        : targetId;
+      const name =
+        type === 'input'
+          ? (inputs.find((i) => i.inputId === targetId)?.metadata.title ??
+            targetId)
+          : targetId;
 
-    const tile: BroadcastTile = { id: randomUUID(), type, targetId, name };
-    this.broadcastTiles.push(tile);
-    let selectionChanged = false;
-    if (this.selectedBroadcastTileId === null) {
-      this.selectedBroadcastTileId = tile.id;
-      selectionChanged = true;
-    }
-    if (this.isBroadcastMode || selectionChanged) this.updateStoreWithState();
-    return tile;
+      const tile: BroadcastTile = { id: randomUUID(), type, targetId, name };
+      this.broadcastTiles.push(tile);
+      let selectionChanged = false;
+      if (this.selectedBroadcastTileId === null) {
+        this.selectedBroadcastTileId = tile.id;
+        selectionChanged = true;
+      }
+      if (this.isBroadcastMode || selectionChanged) this.updateStoreWithState();
+      return tile;
+    });
   }
 
-  public removeBroadcastTile(tileId: string): boolean {
-    const idx = this.broadcastTiles.findIndex((t) => t.id === tileId);
-    if (idx === -1) return false;
-    this.broadcastTiles.splice(idx, 1);
-    let selectionChanged = false;
-    if (this.selectedBroadcastTileId === tileId) {
+  public async removeBroadcastTile(tileId: string): Promise<boolean> {
+    return this.mutex.runExclusive(() => {
+      const idx = this.broadcastTiles.findIndex((t) => t.id === tileId);
+      if (idx === -1) return false;
+      this.broadcastTiles.splice(idx, 1);
+      let selectionChanged = false;
+      if (this.selectedBroadcastTileId === tileId) {
+        this.selectedBroadcastTileId = null;
+        selectionChanged = true;
+      }
+      if (this.isBroadcastMode || selectionChanged) this.updateStoreWithState();
+      return true;
+    });
+  }
+
+  public async selectBroadcastTile(tileId: string | null): Promise<boolean> {
+    return this.mutex.runExclusive(() => {
+      if (
+        tileId !== null &&
+        !this.broadcastTiles.some((t) => t.id === tileId)
+      ) {
+        return false;
+      }
+      this.selectedBroadcastTileId = tileId;
+      this.updateStoreWithState();
+      return true;
+    });
+  }
+
+  public async setBroadcastMode(enabled: boolean): Promise<void> {
+    return this.mutex.runExclusive(() => {
+      if (this.isBroadcastMode === enabled) return;
+      this.isBroadcastMode = enabled;
+      this.updateStoreWithState();
+    });
+  }
+
+  public async renameBroadcastTile(
+    tileId: string,
+    name: string,
+  ): Promise<boolean> {
+    return this.mutex.runExclusive(() => {
+      const tile = this.broadcastTiles.find((t) => t.id === tileId);
+      if (!tile) return false;
+      if (tile.name === name) return true;
+      tile.name = name;
+      this.updateStoreWithState();
+      return true;
+    });
+  }
+
+  public async clearBroadcastTiles(): Promise<void> {
+    return this.mutex.runExclusive(() => {
+      const hadAny =
+        this.broadcastTiles.length > 0 ||
+        this.selectedBroadcastTileId !== null ||
+        this.isBroadcastMode;
+      this.broadcastTiles = [];
       this.selectedBroadcastTileId = null;
-      selectionChanged = true;
-    }
-    if (this.isBroadcastMode || selectionChanged) this.updateStoreWithState();
-    return true;
-  }
-
-  public selectBroadcastTile(tileId: string | null): boolean {
-    if (tileId !== null && !this.broadcastTiles.some((t) => t.id === tileId)) {
-      return false;
-    }
-    this.selectedBroadcastTileId = tileId;
-    this.updateStoreWithState();
-    return true;
-  }
-
-  public setBroadcastMode(enabled: boolean): void {
-    if (this.isBroadcastMode === enabled) return;
-    this.isBroadcastMode = enabled;
-    this.updateStoreWithState();
+      this.isBroadcastMode = false;
+      if (hadAny) this.updateStoreWithState();
+    });
   }
 
   public getIsBroadcastMode(): boolean {

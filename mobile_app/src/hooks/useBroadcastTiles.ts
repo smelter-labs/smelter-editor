@@ -207,13 +207,42 @@ export function useBroadcastTiles(serverUrl: string, roomId: string) {
     [saveToStorage, postJson],
   );
 
-  const updateTileName = useCallback((tileId: string, newName: string) => {
-    setTiles((prev) => {
-      const tile = prev.find((t) => t.id === tileId);
-      if (!tile || tile.name === newName) return prev;
-      return prev.map((t) => (t.id === tileId ? { ...t, name: newName } : t));
-    });
-  }, []);
+  const updateTileName = useCallback(
+    async (tileId: string, newName: string) => {
+      const prevTile = tilesRef.current.find((t) => t.id === tileId);
+      if (!prevTile || prevTile.name === newName) return;
+
+      setTiles((prev) =>
+        prev.map((t) => (t.id === tileId ? { ...t, name: newName } : t)),
+      );
+      saveToStorage(
+        tilesRef.current.map((t) =>
+          t.id === tileId ? { ...t, name: newName } : t,
+        ),
+        selectedTileIdRef.current,
+        isBroadcastModeRef.current,
+      );
+
+      try {
+        await postJson("broadcast-tile/rename", { tileId, name: newName });
+      } catch (e) {
+        setTiles((prev) =>
+          prev.map((t) =>
+            t.id === tileId ? { ...t, name: prevTile.name } : t,
+          ),
+        );
+        saveToStorage(
+          tilesRef.current.map((t) =>
+            t.id === tileId ? { ...t, name: prevTile.name } : t,
+          ),
+          selectedTileIdRef.current,
+          isBroadcastModeRef.current,
+        );
+        console.error("updateTileName failed", e);
+      }
+    },
+    [saveToStorage, postJson],
+  );
 
   const setBroadcastMode = useCallback(
     async (enabled: boolean) => {
