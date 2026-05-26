@@ -32,4 +32,5 @@ export type {
   UpdateInputOptions,
   RegisterInputOptions,
   PendingWhipInputData,
+  BroadcastTile,
 } from '@smelter-editor/types';

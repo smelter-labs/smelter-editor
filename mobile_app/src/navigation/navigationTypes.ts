@@ -25,6 +25,7 @@ const MAIN_SCREEN_INDEX = {
   INPUTS: 1,
   TIMELINE: 2,
   DEBUG: 3,
+  BROADCAST: 4,
 } as const;
 
 export const MAIN_SCREEN_COUNT = Object.keys(MAIN_SCREEN_INDEX).length;
