@@ -27,6 +27,7 @@ export default function YoloSearchPanel({
 }: YoloSearchPanelProps) {
   const actions = useActions();
 
+  const hasConfig = !!input.yoloSearchConfig;
   const config: YoloSearchConfig = input.yoloSearchConfig ?? {
     enabled: false,
     serverUrl: '',
@@ -100,6 +101,30 @@ export default function YoloSearchPanel({
     [saveConfig],
   );
 
+  if (!hasConfig) {
+    return (
+      <div className='px-1 py-2'>
+        <Button
+          variant='outline'
+          size='sm'
+          className='w-full'
+          onClick={() =>
+            onUpdate({
+              yoloSearchConfig: {
+                enabled: true,
+                serverUrl: '',
+                modelName: undefined,
+                targetClass: '',
+                boxColor: '#ff0000',
+              },
+            })
+          }>
+          + Add YOLO Search
+        </Button>
+      </div>
+    );
+  }
+
   return (
     <div className='flex flex-col gap-3 px-1 py-2'>
       {/* Header row */}
@@ -112,10 +137,20 @@ export default function YoloSearchPanel({
             Per-input model (Smelter side channel)
           </span>
         </div>
-        <Switch
-          checked={config.enabled}
-          onCheckedChange={(checked) => saveConfig({ enabled: checked })}
-        />
+        <div className='flex items-center gap-2'>
+          <Switch
+            checked={config.enabled}
+            onCheckedChange={(checked) => saveConfig({ enabled: checked })}
+          />
+          <Button
+            variant='ghost'
+            size='sm'
+            className='h-7 px-2 text-destructive hover:text-destructive'
+            onClick={() => onUpdate({ yoloSearchConfig: null })}
+            title='Remove YOLO Search'>
+            ✕
+          </Button>
+        </div>
       </div>
 
       {/* Server URL */}

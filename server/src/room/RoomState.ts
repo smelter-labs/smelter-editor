@@ -1529,6 +1529,8 @@ export class RoomState {
       hidden: input.hidden,
       yoloBoundingBoxes: input.yoloBoundingBoxes,
       yoloBoxColor: input.yoloSearchConfig?.boxColor,
+      yoloSearchConfig: input.yoloSearchConfig,
+      sideChannelEnabled: input.sideChannelEnabled,
     });
 
     const connectedInputs = allInputs.filter(

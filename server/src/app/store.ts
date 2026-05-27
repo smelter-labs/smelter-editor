@@ -41,6 +41,8 @@ export type InputConfig = {
   hidden?: boolean;
   yoloBoundingBoxes?: YoloBoundingBox[];
   yoloBoxColor?: string;
+  yoloSearchConfig?: YoloSearchConfig;
+  sideChannelEnabled?: boolean;
 } & InputDisplayProperties &
   Partial<TextInputProperties> &
   Partial<BorderProperties> &

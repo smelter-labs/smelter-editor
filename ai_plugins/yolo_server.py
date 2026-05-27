@@ -43,9 +43,8 @@ from pydantic import BaseModel
 from smelter import (
     Context,
     SideChannelKind,
-    connect_video,
     list_channels,
-    wait_for_channel,
+    subscribe_video_channel,
 )
 
 # ---------------------------------------------------------------------------
@@ -163,12 +162,17 @@ class _DetectionTask:
     def _run(self) -> None:
         model = get_model(self.model_name)
         log = lambda msg: print(f"[yolo_server][{self.task_id}] {msg}", flush=True)
+        log(
+            f"socket_dir={self.ctx.socket_dir} input_id={self.input_id} model={self.model_name or 'default'}"
+        )
 
         # Wait for the socket to appear (Smelter creates it lazily when the
         # input is registered). Re-checked every 0.5s; bail out cleanly if the
         # task is stopped before it ever appears.
         info = None
         log(f"waiting for video side channel input_id={self.input_id!r}")
+        wait_started = time.time()
+        last_diag = 0.0
         while not self._stop_event.is_set():
             try:
                 info = wait_for_channel(
@@ -179,6 +183,31 @@ class _DetectionTask:
                 )
                 break
             except Exception:
+                # Diagnostic: every ~2s, dump the channels Smelter currently
+                # exposes. If the list is empty (or doesn't contain our
+                # input_id), Smelter hasn't created the side-channel socket
+                # yet — usually because the WHIP publisher isn't streaming or
+                # the `sideChannel: { video: true }` option wasn't honored.
+                now = time.time()
+                if now - last_diag >= 2.0:
+                    last_diag = now
+                    try:
+                        available = list_channels(ctx=self.ctx)
+                        if not available:
+                            log(
+                                f"still waiting (+{now - wait_started:.1f}s): "
+                                f"no side channels exist yet under {self.ctx.socket_dir}"
+                            )
+                        else:
+                            summary = ", ".join(
+                                f"{c.kind.value}:{c.input_id}" for c in available
+                            )
+                            log(
+                                f"still waiting (+{now - wait_started:.1f}s): "
+                                f"available channels = [{summary}]"
+                            )
+                    except Exception as diag_err:
+                        log(f"diag list_channels error: {diag_err}")
                 continue
         if info is None:
             log("stopped before side channel appeared")
@@ -186,70 +215,122 @@ class _DetectionTask:
 
         log(f"connected to {info.path}")
 
+        frame_count = 0
+        detect_count = 0
+        last_log_t = time.time()
         try:
-            with connect_video(info, timeout=2.0) as conn, httpx.Client(timeout=5.0) as http:
+            with httpx.Client(timeout=5.0) as http:
                 while not self._stop_event.is_set():
                     try:
-                        frame = conn.recv()
+                        for frame in subscribe_video_channel(
+                            self.input_id,
+                            ctx=self.ctx,
+                            timeout=2.0,
+                        ):
+                            if self._stop_event.is_set():
+                                break
+
+                            frame_count += 1
+                            h, w = frame.height, frame.width
+                            # smelter delivers RGBA; ultralytics is fine with RGB.
+                            rgb = np.ascontiguousarray(frame.rgba[:, :, :3])
+                            try:
+                                results = model.predict(
+                                    rgb,
+                                    conf=self.confidence,
+                                    verbose=False,
+                                )
+                            except Exception as err:
+                                log(f"YOLO predict error: {err}")
+                                continue
+
+                            boxes = []
+                            for result in results:
+                                if result.boxes is None:
+                                    continue
+                                for det in result.boxes:
+                                    cls_id = int(det.cls[0])
+                                    cls_name = model.names.get(cls_id, str(cls_id))
+                                    if self.class_filter and cls_name != self.class_filter:
+                                        continue
+                                    x1, y1, x2, y2 = det.xyxy[0].tolist()
+                                    boxes.append({
+                                        "x": x1,
+                                        "y": y1,
+                                        "width": x2 - x1,
+                                        "height": y2 - y1,
+                                        "class_name": cls_name,
+                                        "class_id": cls_id,
+                                        "confidence": float(det.conf[0]),
+                                    })
+
+                            payload = {
+                                "task_id": self.task_id,
+                                "input_id": self.input_id,
+                                "boxes": boxes,
+                                "frame_width": w,
+                                "frame_height": h,
+                                "pts_nanos": frame.pts_nanos,
+                            }
+                            if boxes:
+                                detect_count += 1
+                            try:
+                                resp = http.post(self.callback_url, json=payload)
+                                if resp.status_code not in (200, 204):
+                                    log(
+                                        f"callback returned {resp.status_code} body={resp.text[:200]!r}, stopping"
+                                    )
+                                    break
+                            except Exception as err:
+                                log(f"callback error: {err}")
+                                # Don't bail — transient network glitches shouldn't kill
+                                # the detection loop. Slow callbacks just throttle us.
+                                time.sleep(0.1)
+
+                            now = time.time()
+                            if now - last_log_t >= 2.0:
+                                log(
+                                    f"stats: {frame_count} frames, {detect_count} frames with detections "
+                                    f"(last: {len(boxes)} boxes, frame={w}x{h}) callback={self.callback_url}"
+                                )
+                                frame_count = 0
+                                detect_count = 0
+                                last_log_t = now
+                        break
                     except TimeoutError:
                         continue
                     except Exception as err:
                         log(f"recv error: {err}")
                         break
-
-                    h, w = frame.height, frame.width
-                    # smelter delivers RGBA; ultralytics is fine with RGB.
-                    rgb = np.ascontiguousarray(frame.rgba[:, :, :3])
-                    try:
-                        results = model.predict(
-                            rgb,
-                            conf=self.confidence,
-                            verbose=False,
-                        )
-                    except Exception as err:
-                        log(f"YOLO predict error: {err}")
-                        continue
-
-                    boxes = []
-                    for result in results:
-                        if result.boxes is None:
-                            continue
-                        for det in result.boxes:
-                            cls_id = int(det.cls[0])
-                            cls_name = model.names.get(cls_id, str(cls_id))
-                            if self.class_filter and cls_name != self.class_filter:
-                                continue
-                            x1, y1, x2, y2 = det.xyxy[0].tolist()
-                            boxes.append({
-                                "x": x1,
-                                "y": y1,
-                                "width": x2 - x1,
-                                "height": y2 - y1,
-                                "class_name": cls_name,
-                                "class_id": cls_id,
-                                "confidence": float(det.conf[0]),
-                            })
-
-                    payload = {
-                        "task_id": self.task_id,
-                        "input_id": self.input_id,
-                        "boxes": boxes,
-                        "frame_width": w,
-                        "frame_height": h,
-                        "pts_nanos": frame.pts_nanos,
-                    }
-                    try:
-                        resp = http.post(self.callback_url, json=payload)
-                        if resp.status_code not in (200, 204):
-                            log(f"callback returned {resp.status_code}, stopping")
-                            break
-                    except Exception as err:
-                        log(f"callback error: {err}")
-                        # Don't bail — transient network glitches shouldn't kill
-                        # the detection loop. Slow callbacks just throttle us.
-                        time.sleep(0.1)
         finally:
             log("task ended")
+
+
+def wait_for_channel(
+    *,
+    ctx: Context,
+    kind: SideChannelKind,
+    input_id: str,
+    timeout: float = 1.0,
+):
+    """Poll side-channel sockets until the desired input_id appears.
+
+    This mirrors smelter-sdk's newer wait_for_channel helper.
+    """
+    deadline = time.time() + timeout
+    while True:
+        channels = list_channels(ctx=ctx)
+        for channel in channels:
+            if channel.kind == kind and channel.input_id == input_id:
+                return channel
+        if time.time() >= deadline:
+            available = ", ".join(
+                f"{c.kind.value}:{c.input_id}" for c in channels
+            )
+            raise TimeoutError(
+                f"side channel not available (available: {available or 'none'})"
+            )
+        time.sleep(0.1)
 
 
 # Active tasks: task_id → _DetectionTask
@@ -341,9 +422,21 @@ def start_detection(req: StartRequest):
     task_id = req.task_id or str(uuid.uuid4())
 
     with _tasks_lock:
-        existing = _tasks.get(task_id)
-        if existing:
-            existing.stop()
+        existing = _tasks.pop(task_id, None)
+    if existing is not None:
+        # Stop AND wait for the old thread to finish before subscribing a new
+        # task to the same input_id. Two concurrent subscriptions on the same
+        # side-channel input trigger "Cannot switch mode while request queue
+        # is not empty" — joining here avoids that race when the user flips
+        # the model or class in the UI.
+        existing.stop()
+        existing._thread.join(timeout=3.0)
+        if existing._thread.is_alive():
+            print(
+                f"[yolo_server] WARN: old task {task_id} did not exit within 3s; "
+                f"new task may collide on side channel."
+            )
+    with _tasks_lock:
         task = _DetectionTask(
             task_id=task_id,
             input_id=req.input_id,
@@ -376,10 +469,16 @@ def stop_detection(req: StopRequest):
 
 @app.get("/health")
 def health():
+    channels = list_channels()
     with _tasks_lock:
         active = list(_tasks.keys())
     return {
         "status": "ok",
         "active_tasks": active,
         "socket_dir": os.environ.get("SMELTER_SIDE_CHANNEL_SOCKET_DIR", "<unset>"),
+        "channel_count": len(channels),
+        "channels": [
+            {"kind": c.kind.value, "input_id": c.input_id, "path": str(c.path)}
+            for c in channels
+        ],
     }

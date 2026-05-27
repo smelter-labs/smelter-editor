@@ -73,8 +73,18 @@ export class YoloController {
       className: b.class_name,
       confidence: b.confidence,
     }));
+    const now = Date.now();
+    const last = this._lastBoxLogAt.get(inputId) ?? 0;
+    if (now - last >= 2000) {
+      console.log(
+        `[yolo] receiveBoxes inputId=${inputId} count=${boxes.length} frame=${fw}x${fh} task=${payload.task_id}`,
+      );
+      this._lastBoxLogAt.set(inputId, now);
+    }
     this.onBoxesReceived(inputId, boxes);
   }
+
+  private _lastBoxLogAt = new Map<string, number>();
 
   async stopAll(): Promise<void> {
     const entries = [...this.activeTasks.entries()];
@@ -103,6 +113,20 @@ export class YoloController {
   ): Promise<void> {
     // Stop any existing task for this input first
     await this.stopInput(input.inputId);
+
+    const health = await this._checkHealth(config.serverUrl);
+    if (!health) {
+      console.warn(
+        `[yolo] Health check failed for ${input.inputId} at ${config.serverUrl}`,
+      );
+      return;
+    }
+    const expectedSocketDir = getSideChannelSocketDir();
+    if (health.socket_dir && health.socket_dir !== expectedSocketDir) {
+      console.warn(
+        `[yolo] Socket dir mismatch for ${input.inputId}: server=${health.socket_dir} local=${expectedSocketDir}`,
+      );
+    }
 
     const taskId = `${this.roomId}::${input.inputId}`;
     const callbackUrl = `${SERVER_BASE_URL}/room/${encodeURIComponent(this.roomId)}/input/${encodeURIComponent(input.inputId)}/yolo-boxes`;
@@ -161,6 +185,34 @@ export class YoloController {
       console.log(`[yolo] Stopped task ${taskId}`);
     } catch (err) {
       console.warn(`[yolo] Could not stop task ${taskId}:`, err);
+    }
+  }
+
+  private async _checkHealth(
+    serverUrl: string,
+  ): Promise<{
+    status?: string;
+    socket_dir?: string;
+    active_tasks?: string[];
+  } | null> {
+    try {
+      const response = await fetch(`${serverUrl}/health`, {
+        signal: AbortSignal.timeout(3000),
+      });
+      if (!response.ok) {
+        console.warn(
+          `[yolo] Health check failed: ${serverUrl} returned ${response.status}`,
+        );
+        return null;
+      }
+      return (await response.json()) as {
+        status?: string;
+        socket_dir?: string;
+        active_tasks?: string[];
+      };
+    } catch (err) {
+      console.warn(`[yolo] Health check error for ${serverUrl}:`, err);
+      return null;
     }
   }
 }

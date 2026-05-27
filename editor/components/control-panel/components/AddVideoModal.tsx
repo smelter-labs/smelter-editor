@@ -2660,6 +2660,7 @@ function Mp4Inspector({
   const { mode: appMode, adminMode } = useAppMode();
   const isDemo = appMode === 'demo';
   const [loading, setLoading] = useState(false);
+  const [sideChannelEnabled, setSideChannelEnabled] = useState(true);
   const [deleting, setDeleting] = useState(false);
   const [hiding, setHiding] = useState(false);
   const [normalizing, setNormalizing] = useState(false);
@@ -2673,7 +2674,9 @@ function Mp4Inspector({
   const handleAdd = async () => {
     setLoading(true);
     try {
-      const response = await addMP4Input(roomId, item.fileName);
+      const response = await addMP4Input(roomId, item.fileName, {
+        sideChannelEnabled,
+      });
       await onInputCreated?.({
         inputId: response.inputId,
         kind: 'mp4',
@@ -2770,6 +2773,15 @@ function Mp4Inspector({
         label='FORMAT'
         value={item.fileName.split('.').pop()?.toUpperCase() ?? 'MP4'}
       />
+      <label className='flex items-center gap-2 cursor-pointer'>
+        <Checkbox
+          checked={sideChannelEnabled}
+          onCheckedChange={(checked) => setSideChannelEnabled(!!checked)}
+        />
+        <span className='text-[10px] font-mono text-[#849495]'>
+          ENABLE_SIDE_CHANNEL
+        </span>
+      </label>
       <InitiateButton
         label='INITIATE_FEED'
         onClick={handleAdd}
@@ -3593,6 +3605,7 @@ function HlsSavedInspector({
   const isDemo = appMode === 'demo';
   const [loading, setLoading] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [sideChannelEnabled, setSideChannelEnabled] = useState(true);
   const [confirmState, setConfirmState] =
     useState<InspectorConfirmState | null>(null);
   const [confirming, setConfirming] = useState(false);
@@ -3600,7 +3613,9 @@ function HlsSavedInspector({
   const handleAdd = async () => {
     setLoading(true);
     try {
-      const response = await addHlsInput(roomId, item.url);
+      const response = await addHlsInput(roomId, item.url, {
+        sideChannelEnabled,
+      });
       await onInputCreated?.({
         inputId: response.inputId,
         kind: 'hls-saved',
@@ -3656,6 +3671,15 @@ function HlsSavedInspector({
         </p>
       </div>
       <PropRow label='TYPE' value='HLS_STREAM' />
+      <label className='flex items-center gap-2 cursor-pointer'>
+        <Checkbox
+          checked={sideChannelEnabled}
+          onCheckedChange={(checked) => setSideChannelEnabled(!!checked)}
+        />
+        <span className='text-[10px] font-mono text-[#849495]'>
+          ENABLE_SIDE_CHANNEL
+        </span>
+      </label>
       <InitiateButton
         label='INITIATE_STREAM'
         onClick={handleAdd}
@@ -3696,6 +3720,7 @@ function HlsActionInspector({
   const [url, setUrl] = useState('');
   const [name, setName] = useState('');
   const [saveToLibrary, setSaveToLibrary] = useState(true);
+  const [sideChannelEnabled, setSideChannelEnabled] = useState(true);
   const [loading, setLoading] = useState(false);
 
   const handleAdd = async () => {
@@ -3706,7 +3731,9 @@ function HlsActionInspector({
     }
     setLoading(true);
     try {
-      const response = await addHlsInput(roomId, trimmed);
+      const response = await addHlsInput(roomId, trimmed, {
+        sideChannelEnabled,
+      });
       await onInputCreated?.({
         inputId: response.inputId,
         kind: 'hls-saved',
@@ -3764,6 +3791,15 @@ function HlsActionInspector({
         />
         <span className='text-[10px] font-mono text-[#849495]'>
           SAVE_TO_LIBRARY
+        </span>
+      </label>
+      <label className='flex items-center gap-2 cursor-pointer'>
+        <Checkbox
+          checked={sideChannelEnabled}
+          onCheckedChange={(checked) => setSideChannelEnabled(!!checked)}
+        />
+        <span className='text-[10px] font-mono text-[#849495]'>
+          ENABLE_SIDE_CHANNEL
         </span>
       </label>
       <InitiateButton
@@ -4041,6 +4077,7 @@ function WhipActionInspector({
     return `User ${Math.floor(1000 + Math.random() * 9000)}`;
   });
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  const [sideChannelEnabled, setSideChannelEnabled] = useState(true);
   const [loading, setLoading] = useState(false);
 
   const handleAdd = async () => {
@@ -4093,7 +4130,9 @@ function WhipActionInspector({
         }
       }
 
-      const response = await addCameraInput(roomId, cleanedName);
+      const response = await addCameraInput(roomId, cleanedName, {
+        sideChannelEnabled,
+      });
       setActiveWhipInputId(response.inputId);
       setIsWhipActive(false);
 
@@ -4193,6 +4232,15 @@ function WhipActionInspector({
           </div>
         </div>
       )}
+      <label className='flex items-center gap-2 cursor-pointer'>
+        <Checkbox
+          checked={sideChannelEnabled}
+          onCheckedChange={(checked) => setSideChannelEnabled(!!checked)}
+        />
+        <span className='text-[10px] font-mono text-[#849495]'>
+          ENABLE_SIDE_CHANNEL
+        </span>
+      </label>
       <InitiateButton
         label='CONNECT_FEED'
         onClick={handleAdd}

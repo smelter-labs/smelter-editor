@@ -303,10 +303,21 @@ export default function ControlPanel(props: ControlPanelProps) {
       ...defaultActions,
       updateRoom: (roomId, opts, sourceId) =>
         trackMutation(() => defaultActions.updateRoom(roomId, opts, sourceId)),
-      updateInput: (roomId, inputId, opts, sourceId) =>
-        trackMutation(() =>
+      updateInput: (roomId, inputId, opts, sourceId) => {
+        // YOLO config changes shouldn't block sort-mode switching — they're
+        // unrelated background plumbing and the "request queue is not empty"
+        // overlay flashing on every model/class pick is noise.
+        const isYoloOnly =
+          opts != null &&
+          Object.keys(opts).length > 0 &&
+          Object.keys(opts).every((k) => k === 'yoloSearchConfig');
+        if (isYoloOnly) {
+          return defaultActions.updateInput(roomId, inputId, opts, sourceId);
+        }
+        return trackMutation(() =>
           defaultActions.updateInput(roomId, inputId, opts, sourceId),
-        ),
+        );
+      },
       removeInput: (roomId, inputId, sourceId) =>
         trackMutation(() =>
           defaultActions.removeInput(roomId, inputId, sourceId),
@@ -327,8 +338,10 @@ export default function ControlPanel(props: ControlPanelProps) {
         trackMutation(() => defaultActions.addTwitchInput(roomId, channelId)),
       addKickInput: (roomId, channelId) =>
         trackMutation(() => defaultActions.addKickInput(roomId, channelId)),
-      addMP4Input: (roomId, mp4FileName) =>
-        trackMutation(() => defaultActions.addMP4Input(roomId, mp4FileName)),
+      addMP4Input: (roomId, mp4FileName, opts) =>
+        trackMutation(() =>
+          defaultActions.addMP4Input(roomId, mp4FileName, opts),
+        ),
       addAudioInput: (roomId, audioFileName) =>
         trackMutation(() =>
           defaultActions.addAudioInput(roomId, audioFileName),
@@ -343,8 +356,8 @@ export default function ControlPanel(props: ControlPanelProps) {
         ),
       addSnakeGameInput: (roomId, title) =>
         trackMutation(() => defaultActions.addSnakeGameInput(roomId, title)),
-      addHlsInput: (roomId, url) =>
-        trackMutation(() => defaultActions.addHlsInput(roomId, url)),
+      addHlsInput: (roomId, url, opts) =>
+        trackMutation(() => defaultActions.addHlsInput(roomId, url, opts)),
       addCameraInput: (roomId, username, options) =>
         trackMutation(() =>
           defaultActions.addCameraInput(roomId, username, options),

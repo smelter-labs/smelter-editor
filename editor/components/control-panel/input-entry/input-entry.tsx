@@ -660,7 +660,7 @@ export default function InputEntry({
         )}
       </div>
 
-      {!readOnly && (
+      {!readOnly && input.sideChannelEnabled !== false && (
         <YoloSearchPanel
           roomId={roomId}
           input={input}

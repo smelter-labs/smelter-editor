@@ -18,6 +18,35 @@ import { AudioStoreContext } from '../audio/AudioStoreContext';
 import type { AudioStoreState } from '../audio/audioStore';
 import { createAudioStore } from '../audio/audioStore';
 
+// Render-time YOLO state log (throttled per input) — helps confirm that
+// detections received from the python server actually reach the renderer.
+const _yoloRenderLog = new Map<
+  string,
+  { lastAt: number; lastCount: number; lastEnabled: boolean }
+>();
+function logYoloRender(
+  inputId: string,
+  yoloEnabled: boolean,
+  boxCount: number,
+  sideChannelEnabled: boolean | undefined,
+  cfgEnabled: boolean | undefined,
+) {
+  const prev = _yoloRenderLog.get(inputId);
+  const now = Date.now();
+  const changed =
+    !prev || prev.lastCount !== boxCount || prev.lastEnabled !== yoloEnabled;
+  if (!changed && prev && now - prev.lastAt < 2000) return;
+  console.log(
+    `[yolo] render inputId=${inputId} yoloEnabled=${yoloEnabled} ` +
+      `boxes=${boxCount} sideChannel=${sideChannelEnabled} cfgEnabled=${cfgEnabled}`,
+  );
+  _yoloRenderLog.set(inputId, {
+    lastAt: now,
+    lastCount: boxCount,
+    lastEnabled: yoloEnabled,
+  });
+}
+
 function buildEasingFunction(easing?: string) {
   if (easing === 'bounce') return 'bounce' as const;
   if (easing === 'cubic_bezier_ease_in_out') {
@@ -295,7 +324,19 @@ function OutputScene() {
                   // Keep identity stable across reorder so Smelter can animate moves
                   // instead of remounting the node when index changes.
                   const layerItemKey = `${layer.id}:${item.inputId}`;
-                  const boxes = input.yoloBoundingBoxes ?? [];
+                  const yoloEnabled =
+                    input.sideChannelEnabled !== false &&
+                    input.yoloSearchConfig?.enabled;
+                  const boxes = yoloEnabled
+                    ? (input.yoloBoundingBoxes ?? [])
+                    : [];
+                  logYoloRender(
+                    input.inputId,
+                    yoloEnabled === true,
+                    boxes.length,
+                    input.sideChannelEnabled,
+                    input.yoloSearchConfig?.enabled,
+                  );
                   return (
                     <React.Fragment key={layerItemKey}>
                       <Rescaler
@@ -344,7 +385,6 @@ function OutputScene() {
           </View>
         );
       })}
-
     </View>
   );
 

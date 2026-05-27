@@ -62,6 +62,8 @@ export type RoomInputState = {
   nativeWidth?: number;
   /** Native stream resolution height, if known. */
   nativeHeight?: number;
+  /** Whether this input opted into Smelter side-channel sockets. */
+  sideChannelEnabled?: boolean;
   metadata: {
     title: string;
     description: string;

@@ -909,6 +909,7 @@ const InputSchema = Type.Union([
   Type.Object({
     type: Type.Literal('hls'),
     url: Type.String(),
+    sideChannelEnabled: Type.Optional(Type.Boolean()),
   }),
   Type.Object({
     type: Type.Literal('whip'),
@@ -918,6 +919,7 @@ const InputSchema = Type.Union([
     ),
     nativeWidth: Type.Optional(Type.Number({ minimum: 1 })),
     nativeHeight: Type.Optional(Type.Number({ minimum: 1 })),
+    sideChannelEnabled: Type.Optional(Type.Boolean()),
   }),
   Type.Object({
     type: Type.Literal('local-mp4'),
@@ -926,6 +928,7 @@ const InputSchema = Type.Union([
       Type.Object({ audioFileName: Type.String() }),
       Type.Object({ url: Type.String() }),
     ]),
+    sideChannelEnabled: Type.Optional(Type.Boolean()),
   }),
   Type.Object({
     type: Type.Literal('image'),
@@ -1686,10 +1689,7 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
     if (req.body.swapFadeOutDurationMs !== undefined) {
       room.setSwapFadeOutDurationMs(req.body.swapFadeOutDurationMs);
     }
-    if (
-      req.body.sortMode === 'timeline' ||
-      req.body.sortMode === 'layers'
-    ) {
+    if (req.body.sortMode === 'timeline' || req.body.sortMode === 'layers') {
       room.setSortMode(req.body.sortMode);
     }
 
@@ -2136,10 +2136,18 @@ routes.post<RoomAndInputIdParams & { Body: Static<typeof YoloBoxesSchema> }>(
       const room = state.getRoom(roomId);
       const accepted = room.receiveYoloBoxes(inputId, req.body);
       if (!accepted) {
+        console.warn(
+          `[yolo] /yolo-boxes rejected (gone): roomId=${roomId} inputId=${inputId} ` +
+            `boxes=${req.body.boxes.length} — input missing or yoloSearchConfig disabled`,
+        );
         res.status(410).send({ status: 'gone' });
         return;
       }
-    } catch {
+    } catch (err) {
+      console.warn(
+        `[yolo] /yolo-boxes error: roomId=${roomId} inputId=${inputId}:`,
+        err,
+      );
       res.status(410).send({ status: 'gone' });
       return;
     }
@@ -2329,13 +2337,16 @@ const UpdateInputSchema = Type.Object({
   cropBottom: Type.Optional(Type.Number({ minimum: 0 })),
   activeTransition: Type.Optional(ActiveTransitionSchema),
   yoloSearchConfig: Type.Optional(
-    Type.Object({
-      enabled: Type.Boolean(),
-      serverUrl: Type.String(),
-      modelName: Type.Optional(Type.String()),
-      targetClass: Type.String(),
-      boxColor: Type.String(),
-    }),
+    Type.Union([
+      Type.Object({
+        enabled: Type.Boolean(),
+        serverUrl: Type.String(),
+        modelName: Type.Optional(Type.String()),
+        targetClass: Type.String(),
+        boxColor: Type.String(),
+      }),
+      Type.Null(),
+    ]),
   ),
 });
 

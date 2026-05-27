@@ -55,7 +55,11 @@ interface SmelterApiClient {
 
   addTwitchInput(roomId: string, channelId: string): Promise<any>;
   addKickInput(roomId: string, channelId: string): Promise<any>;
-  addMP4Input(roomId: string, mp4FileName: string): Promise<any>;
+  addMP4Input(
+    roomId: string,
+    mp4FileName: string,
+    opts?: { sideChannelEnabled?: boolean },
+  ): Promise<any>;
   addAudioInput(roomId: string, audioFileName: string): Promise<any>;
   addImageInput(roomId: string, imageFileNameOrId: string): Promise<any>;
   addTextInput(
@@ -65,7 +69,11 @@ interface SmelterApiClient {
   ): Promise<any>;
   addSnakeGameInput(roomId: string, title?: string): Promise<any>;
   addHandsInput(roomId: string, sourceInputId: string): Promise<any>;
-  addHlsInput(roomId: string, url: string): Promise<any>;
+  addHlsInput(
+    roomId: string,
+    url: string,
+    opts?: { sideChannelEnabled?: boolean },
+  ): Promise<any>;
   addCameraInput(
     roomId: string,
     username?: string,
@@ -323,10 +331,13 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       });
     },
 
-    async addMP4Input(roomId, mp4FileName) {
+    async addMP4Input(roomId, mp4FileName, opts) {
       return await req('post', `/room/${enc(roomId)}/input`, {
         type: 'local-mp4',
         source: { fileName: mp4FileName, url: '' },
+        ...(opts?.sideChannelEnabled !== undefined
+          ? { sideChannelEnabled: opts.sideChannelEnabled }
+          : {}),
       });
     },
 
@@ -370,10 +381,13 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       });
     },
 
-    async addHlsInput(roomId, url) {
+    async addHlsInput(roomId, url, opts) {
       return await req('post', `/room/${enc(roomId)}/input`, {
         type: 'hls',
         url,
+        ...(opts?.sideChannelEnabled !== undefined
+          ? { sideChannelEnabled: opts.sideChannelEnabled }
+          : {}),
       });
     },
 

@@ -54,6 +54,7 @@ export function toPublicInputState(
     motionEnabled: input.motionEnabled,
     nativeWidth: input.nativeWidth,
     nativeHeight: input.nativeHeight,
+    sideChannelEnabled: input.sideChannelEnabled,
     yoloSearchConfig: input.yoloSearchConfig,
   };
   switch (input.type) {

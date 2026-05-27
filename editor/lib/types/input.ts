@@ -10,5 +10,5 @@ export type {
 export type Input = PublicInputState & { id: number };
 export type CameraInputOptions = Pick<
   Extract<RegisterInputOptions, { type: 'whip' }>,
-  'orientation' | 'nativeWidth' | 'nativeHeight'
+  'orientation' | 'nativeWidth' | 'nativeHeight' | 'sideChannelEnabled'
 >;

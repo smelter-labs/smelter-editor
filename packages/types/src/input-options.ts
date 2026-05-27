@@ -31,7 +31,7 @@ export type UpdateInputOptions = {
     direction: "in" | "out";
   };
   orientation: InputOrientation;
-  yoloSearchConfig: YoloSearchConfig;
+  yoloSearchConfig: YoloSearchConfig | null;
   nativeWidth: number;
   nativeHeight: number;
 } & InputDisplayProperties &
@@ -44,17 +44,19 @@ export type UpdateInputOptions = {
 export type RegisterInputOptions =
   | { type: "twitch-channel"; channelId: string }
   | { type: "kick-channel"; channelId: string }
-  | { type: "hls"; url: string }
+  | { type: "hls"; url: string; sideChannelEnabled?: boolean }
   | {
       type: "whip";
       username: string;
       orientation?: InputOrientation;
       nativeWidth?: number;
       nativeHeight?: number;
+      sideChannelEnabled?: boolean;
     }
   | {
       type: "local-mp4";
       source: { fileName?: string; audioFileName?: string; url?: string };
+      sideChannelEnabled?: boolean;
     }
   | { type: "image"; fileName?: string; imageId?: string }
   | {
