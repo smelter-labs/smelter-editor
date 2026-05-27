@@ -49,6 +49,10 @@ jobs:
         working-directory: ${{ github.workspace }}
         run: mkdir -p node_modules
 
+      - name: Build workspace types package
+        working-directory: ${{ github.workspace }}
+        run: pnpm --filter @smelter-editor/types build
+
       - name: Decode Android keystore
         run: |
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > upload-keystore.jks
