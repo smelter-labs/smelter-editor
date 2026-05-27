@@ -1,3 +1,4 @@
+import React from 'react';
 import { View, Rescaler, Shader } from '@swmansion/smelter';
 
 import type { RoomStore, InputConfig } from './store';
@@ -16,6 +17,35 @@ import { wrapWithShaders } from '../utils/shaderUtils';
 import { AudioStoreContext } from '../audio/AudioStoreContext';
 import type { AudioStoreState } from '../audio/audioStore';
 import { createAudioStore } from '../audio/audioStore';
+
+// Render-time YOLO state log (throttled per input) — helps confirm that
+// detections received from the python server actually reach the renderer.
+const _yoloRenderLog = new Map<
+  string,
+  { lastAt: number; lastCount: number; lastEnabled: boolean }
+>();
+function logYoloRender(
+  inputId: string,
+  yoloEnabled: boolean,
+  boxCount: number,
+  sideChannelEnabled: boolean | undefined,
+  cfgEnabled: boolean | undefined,
+) {
+  const prev = _yoloRenderLog.get(inputId);
+  const now = Date.now();
+  const changed =
+    !prev || prev.lastCount !== boxCount || prev.lastEnabled !== yoloEnabled;
+  if (!changed && prev && now - prev.lastAt < 2000) return;
+  console.log(
+    `[yolo] render inputId=${inputId} yoloEnabled=${yoloEnabled} ` +
+      `boxes=${boxCount} sideChannel=${sideChannelEnabled} cfgEnabled=${cfgEnabled}`,
+  );
+  _yoloRenderLog.set(inputId, {
+    lastAt: now,
+    lastCount: boxCount,
+    lastEnabled: yoloEnabled,
+  });
+}
 
 function buildEasingFunction(easing?: string) {
   if (easing === 'bounce') return 'bounce' as const;
@@ -55,9 +85,13 @@ function CarouselSlot({
   // signedDist === visibleCount → entering from the right
   // signedDist === -1          → exiting to the left
   // others                     → hidden (snap to hiddenOffset)
-  const signedDistOf = (i: number, activeIndex: number, preferPositive: boolean): number => {
+  const signedDistOf = (
+    i: number,
+    activeIndex: number,
+    preferPositive: boolean,
+  ): number => {
     if (n === 0) return 0;
-    const raw = ((i - activeIndex) % n + n) % n;
+    const raw = (((i - activeIndex) % n) + n) % n;
     if (raw === 0) return 0;
     if (preferPositive) return raw > visibleCount ? raw - n : raw;
     return raw > n / 2 ? raw - n : raw;
@@ -80,7 +114,11 @@ function CarouselSlot({
         const cur = signedDistOf(i, carousel.activeIndex, direction === 'prev');
         const prev =
           carousel.previousActiveIndex !== undefined
-            ? signedDistOf(i, carousel.previousActiveIndex, direction === 'next')
+            ? signedDistOf(
+                i,
+                carousel.previousActiveIndex,
+                direction === 'next',
+              )
             : cur;
 
         const positionFor = (sd: number): number => {
@@ -99,9 +137,7 @@ function CarouselSlot({
         // snapping them instead.
         const participates = (sd: number) => sd >= -1 && sd <= visibleCount;
         const shouldAnimate =
-          participates(cur) &&
-          participates(prev) &&
-          Math.abs(cur - prev) <= 1;
+          participates(cur) && participates(prev) && Math.abs(cur - prev) <= 1;
         // When snapping, leave transition undefined so Smelter applies its
         // default (no animation) without remembering a 0ms transition that
         // would bleed into subsequent updates. For animated slides, set
@@ -125,14 +161,33 @@ function CarouselSlot({
           inner = (
             <Shader
               shaderId='crop'
-              resolution={{ width: Math.max(1, tileWidth), height: slot.height }}
+              resolution={{
+                width: Math.max(1, tileWidth),
+                height: slot.height,
+              }}
               shaderParam={{
                 type: 'struct',
                 value: [
-                  { type: 'f32', fieldName: 'crop_top', value: cT / slot.height },
-                  { type: 'f32', fieldName: 'crop_left', value: cL / Math.max(1, tileWidth) },
-                  { type: 'f32', fieldName: 'crop_right', value: cR / Math.max(1, tileWidth) },
-                  { type: 'f32', fieldName: 'crop_bottom', value: cB / slot.height },
+                  {
+                    type: 'f32',
+                    fieldName: 'crop_top',
+                    value: cT / slot.height,
+                  },
+                  {
+                    type: 'f32',
+                    fieldName: 'crop_left',
+                    value: cL / Math.max(1, tileWidth),
+                  },
+                  {
+                    type: 'f32',
+                    fieldName: 'crop_right',
+                    value: cR / Math.max(1, tileWidth),
+                  },
+                  {
+                    type: 'f32',
+                    fieldName: 'crop_bottom',
+                    value: cB / slot.height,
+                  },
                 ],
               }}>
               {inner}
@@ -210,84 +265,124 @@ function OutputScene() {
       }}>
       {layersReversed.map((layer) => {
         if (layer.carousel && layer.inputs.length > 0) {
-          return <CarouselSlot key={layer.id} layer={layer} inputMap={inputMap} />;
+          return (
+            <CarouselSlot key={layer.id} layer={layer} inputMap={inputMap} />
+          );
         }
         return (
-        <View
-          key={layer.id}
-          style={{ top: 0, left: 0, width, height, overflow: 'visible' }}>
-          {layer.enabled === false
-            ? null
-            : layer.inputs.map((item) => {
-                const cT = item.cropTop ?? 0;
-                const cL = item.cropLeft ?? 0;
-                const cR = item.cropRight ?? 0;
-                const cB = item.cropBottom ?? 0;
-                const hasCrop = cT || cL || cR || cB;
+          <View
+            key={layer.id}
+            style={{ top: 0, left: 0, width, height, overflow: 'visible' }}>
+            {layer.enabled === false
+              ? null
+              : layer.inputs.map((item) => {
+                  const cT = item.cropTop ?? 0;
+                  const cL = item.cropLeft ?? 0;
+                  const cR = item.cropRight ?? 0;
+                  const cB = item.cropBottom ?? 0;
+                  const hasCrop = cT || cL || cR || cB;
 
-                const input = inputMap.get(item.inputId);
-                if (!input || input.hidden) return null;
-                let inner = <Input input={input} />;
+                  const input = inputMap.get(item.inputId);
+                  if (!input || input.hidden) return null;
+                  let inner = <Input input={input} />;
 
-                if (hasCrop) {
-                  inner = (
-                    <Shader
-                      shaderId='crop'
-                      resolution={{ width: item.width, height: item.height }}
-                      shaderParam={{
-                        type: 'struct',
-                        value: [
-                          {
-                            type: 'f32',
-                            fieldName: 'crop_top',
-                            value: cT / item.height,
-                          },
-                          {
-                            type: 'f32',
-                            fieldName: 'crop_left',
-                            value: cL / item.width,
-                          },
-                          {
-                            type: 'f32',
-                            fieldName: 'crop_right',
-                            value: cR / item.width,
-                          },
-                          {
-                            type: 'f32',
-                            fieldName: 'crop_bottom',
-                            value: cB / item.height,
-                          },
-                        ],
-                      }}>
-                      {inner}
-                    </Shader>
+                  if (hasCrop) {
+                    inner = (
+                      <Shader
+                        shaderId='crop'
+                        resolution={{ width: item.width, height: item.height }}
+                        shaderParam={{
+                          type: 'struct',
+                          value: [
+                            {
+                              type: 'f32',
+                              fieldName: 'crop_top',
+                              value: cT / item.height,
+                            },
+                            {
+                              type: 'f32',
+                              fieldName: 'crop_left',
+                              value: cL / item.width,
+                            },
+                            {
+                              type: 'f32',
+                              fieldName: 'crop_right',
+                              value: cR / item.width,
+                            },
+                            {
+                              type: 'f32',
+                              fieldName: 'crop_bottom',
+                              value: cB / item.height,
+                            },
+                          ],
+                        }}>
+                        {inner}
+                      </Shader>
+                    );
+                  }
+
+                  // Keep identity stable across reorder so Smelter can animate moves
+                  // instead of remounting the node when index changes.
+                  const layerItemKey = `${layer.id}:${item.inputId}`;
+                  const yoloEnabled =
+                    input.sideChannelEnabled !== false &&
+                    input.yoloSearchConfig?.enabled;
+                  const boxes = yoloEnabled
+                    ? (input.yoloBoundingBoxes ?? [])
+                    : [];
+                  logYoloRender(
+                    input.inputId,
+                    yoloEnabled === true,
+                    boxes.length,
+                    input.sideChannelEnabled,
+                    input.yoloSearchConfig?.enabled,
                   );
-                }
-
-                // Keep identity stable across reorder so Smelter can animate moves
-                // instead of remounting the node when index changes.
-                const layerItemKey = `${layer.id}:${item.inputId}`;
-                return (
-                  <Rescaler
-                    key={layerItemKey}
-                    id={`layer-${layer.id}-${item.inputId}`}
-                    transition={{
-                      durationMs: item.transitionDurationMs ?? 300,
-                      easingFunction: buildEasingFunction(
-                        item.transitionEasing,
-                      ),
-                    }}
-                    style={{
-                      top: item.y,
-                      left: item.x,
-                      width: item.width,
-                      height: item.height,
-                    }}>
-                    {inner}
-                  </Rescaler>
-                );
-              })}
-        </View>
+                  return (
+                    <React.Fragment key={layerItemKey}>
+                      <Rescaler
+                        id={`layer-${layer.id}-${item.inputId}`}
+                        transition={{
+                          durationMs: item.transitionDurationMs ?? 300,
+                          easingFunction: buildEasingFunction(
+                            item.transitionEasing,
+                          ),
+                        }}
+                        style={{
+                          top: item.y,
+                          left: item.x,
+                          width: item.width,
+                          height: item.height,
+                        }}>
+                        {inner}
+                      </Rescaler>
+                      {boxes.length > 0 && (
+                        <View
+                          key={`yolo-overlay-${layer.id}-${item.inputId}`}
+                          style={{
+                            top: item.y,
+                            left: item.x,
+                            width: item.width,
+                            height: item.height,
+                          }}>
+                          {boxes.map((box, bi) => (
+                            <View
+                              key={`yolo-${input.inputId}-${bi}`}
+                              style={{
+                                top: box.y * item.height,
+                                left: box.x * item.width,
+                                width: Math.max(1, box.width * item.width),
+                                height: Math.max(1, box.height * item.height),
+                                borderWidth: 3,
+                                borderColor: input.yoloBoxColor ?? '#ff0000',
+                              }}
+                            />
+                          ))}
+                        </View>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+          </View>
         );
       })}
     </View>

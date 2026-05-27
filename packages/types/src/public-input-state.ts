@@ -1,4 +1,4 @@
-import type { ActiveTransition } from './transition.js';
+import type { ActiveTransition } from "./transition.js";
 import type {
   InputType,
   InputStatus,
@@ -11,7 +11,8 @@ import type {
   SnakeGameDisplayProperties,
   MotionProperties,
   HandsProperties,
-} from './input.js';
+} from "./input.js";
+import type { YoloSearchConfig } from "./yolo.js";
 
 export type PublicInputState = {
   inputId: string;
@@ -43,6 +44,9 @@ export type PublicInputState = {
   nativeWidth?: number;
   /** Native stream resolution height, if known. */
   nativeHeight?: number;
+  /** Whether the Smelter side channel is enabled for this input. */
+  sideChannelEnabled?: boolean;
+  yoloSearchConfig?: YoloSearchConfig;
 } & InputDisplayProperties &
   Partial<TextInputProperties> &
   Partial<AbsolutePositionProperties> &

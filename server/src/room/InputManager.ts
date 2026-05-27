@@ -27,6 +27,7 @@ import type {
 } from './types';
 import type { PlaceholderManager } from './PlaceholderManager';
 import type { MotionController } from './MotionController';
+import type { YoloController } from '../yolo/YoloController';
 import { InputOrientation } from '@smelter-editor/types';
 
 const VIDEO_INPUT_TYPES: RoomInputState['type'][] = [
@@ -48,6 +49,7 @@ export class InputManager {
     private readonly idPrefix: string,
     private readonly placeholderManager: PlaceholderManager,
     private readonly motionController: MotionController,
+    private readonly yoloController: YoloController,
     private readonly onStateChange: () => void,
   ) {
     this.mp4Files = mp4SuggestionsMonitor.mp4Files;
@@ -56,7 +58,12 @@ export class InputManager {
   private createUniqueInputId(typeSegment: string): string {
     const MAX_ATTEMPTS = 8;
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
-      const suffix = randomUUID();
+      // Use a short suffix (first 8 hex chars of a UUID, ~4B values per
+      // room/type) instead of a full 36-char UUID. The smelter binary binds
+      // unix sockets at `<sideChannelDir>/video_global:<inputId>.sock`, and
+      // the full path is bounded by macOS's 104-byte SUN_LEN. A short suffix
+      // keeps composite IDs (`<roomId>::<type>::<suffix>`) under that limit.
+      const suffix = randomUUID().replace(/-/g, '').slice(0, 8);
       const inputId = `${this.idPrefix}::${typeSegment}::${suffix}`;
       if (!this.inputs.some((input) => input.inputId === inputId)) {
         return inputId;
@@ -104,7 +111,7 @@ export class InputManager {
     } else if (opts.type === 'twitch-channel' || opts.type === 'kick-channel') {
       return this.addHlsChannelInput(opts.type, opts.channelId);
     } else if (opts.type === 'hls') {
-      return this.addDirectHlsInput(opts.url);
+      return this.addDirectHlsInput(opts);
     } else if (opts.type === 'local-mp4') {
       return this.addMp4Input(opts);
     } else if (opts.type === 'image') {
@@ -159,6 +166,7 @@ export class InputManager {
       borderWidth: 0,
       hidden: false,
       motionEnabled: false,
+      sideChannelEnabled: opts.sideChannelEnabled ?? true,
       monitor,
       metadata: {
         title: liveTitle,
@@ -202,6 +210,7 @@ export class InputManager {
       borderWidth: 0,
       hidden: false,
       motionEnabled: false,
+      sideChannelEnabled: true,
       metadata: { title: '', description: '' },
       volume: 0,
       channelId,
@@ -239,7 +248,10 @@ export class InputManager {
     return inputId;
   }
 
-  private async addDirectHlsInput(url: string): Promise<string> {
+  private async addDirectHlsInput(
+    opts: Extract<RegisterInputOptions, { type: 'hls' }>,
+  ): Promise<string> {
+    const { url } = opts;
     const inputId = this.createUniqueInputId('hls');
     let label = url;
     try {
@@ -259,6 +271,7 @@ export class InputManager {
       borderWidth: 0,
       hidden: false,
       motionEnabled: false,
+      sideChannelEnabled: opts.sideChannelEnabled ?? true,
       metadata: {
         title: `[HLS] ${label}`,
         description: `Direct HLS stream`,
@@ -315,6 +328,7 @@ export class InputManager {
       borderWidth: 0,
       hidden: false,
       motionEnabled: false,
+      sideChannelEnabled: opts.sideChannelEnabled ?? true,
       metadata: {
         title: `[${titlePrefix}] ${formatMp4Name(mp4Name)}`,
         description: isAudio
@@ -916,6 +930,13 @@ export class InputManager {
       input.cropBottom =
         options.cropBottom === null ? undefined : options.cropBottom;
 
+    if (options.yoloSearchConfig !== undefined) {
+      const nextConfig = options.yoloSearchConfig ?? undefined;
+      this.yoloController.setYoloConfig(input, nextConfig).catch((err) => {
+        console.error(`[yolo] setYoloConfig error for ${inputId}:`, err);
+      });
+    }
+
     if (options.activeTransition !== undefined) {
       const existingTimer = this.transitionTimers.get(inputId);
       if (existingTimer) {
@@ -1256,16 +1277,17 @@ export class InputManager {
 function registerOptionsFromInput(
   input: RoomInputState,
 ): RegisterSmelterInputOptions {
+  const sideChannelEnabled = input.sideChannelEnabled;
   if (input.type === 'local-mp4') {
-    return { type: 'mp4', filePath: input.mp4FilePath };
+    return { type: 'mp4', filePath: input.mp4FilePath, sideChannelEnabled };
   } else if (
     input.type === 'twitch-channel' ||
     input.type === 'kick-channel' ||
     input.type === 'hls'
   ) {
-    return { type: 'hls', url: input.hlsUrl };
+    return { type: 'hls', url: input.hlsUrl, sideChannelEnabled };
   } else if (input.type === 'whip') {
-    return { type: 'whip', url: input.whipUrl };
+    return { type: 'whip', url: input.whipUrl, sideChannelEnabled };
   } else if (input.type === 'image') {
     throw Error('Images cannot be connected as stream inputs');
   } else if (input.type === 'game') {

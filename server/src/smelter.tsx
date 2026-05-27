@@ -1,11 +1,36 @@
 import path from 'path';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import type { StoreApi } from 'zustand';
 import Smelter, {
   LocallySpawnedInstanceManager,
   type SmelterManager as SmelterNodeManager,
 } from '@swmansion/smelter-node';
+
+// Set the side-channel socket directory BEFORE the Smelter binary is spawned
+// (the variable is read at process start by the binary). One directory per
+// editor process; consumed by ai_plugins/yolo_server.py for per-input YOLO
+// detection. See ai_plugins/SIDE_CHANNEL.md for the protocol reference.
+//
+// macOS limits unix socket paths to 104 bytes (SUN_LEN). The smelter binary
+// builds paths like `<dir>/video_global:<inputId>.sock`, so the dir prefix
+// must be kept short — `tmpdir()` resolves to a ~50-char path on macOS,
+// which combined with our composite input IDs overflows the limit. `/tmp`
+// (literal, no symlink resolution) keeps the prefix at 4 chars.
+const SIDE_CHANNEL_SOCKET_DIR =
+  process.env.SMELTER_SIDE_CHANNEL_SOCKET_DIR ??
+  mkdtempSync(path.join('/tmp', 'sm-'));
+process.env.SMELTER_SIDE_CHANNEL_SOCKET_DIR = SIDE_CHANNEL_SOCKET_DIR;
+if (process.env.SMELTER_SIDE_CHANNEL_DELAY_MS === undefined) {
+  process.env.SMELTER_SIDE_CHANNEL_DELAY_MS = '0';
+}
+console.log(`[smelter] side-channel socket dir: ${SIDE_CHANNEL_SOCKET_DIR}`);
+
+export function getSideChannelSocketDir(): string {
+  return SIDE_CHANNEL_SOCKET_DIR;
+}
 
 import App from './app/App';
 import type { RoomStore } from './app/store';
@@ -82,6 +107,8 @@ import type { AudioStoreState } from './audio/audioStore';
 export type SmelterOutput = {
   id: string;
   url: string;
+  /** HLS playlist URL, readable by ffmpeg/OpenCV — used as YOLO stream source. */
+  hlsUrl: string;
   store: StoreApi<RoomStore>;
   resolution: Resolution;
   audioStore?: StoreApi<AudioStoreState>;
@@ -93,14 +120,17 @@ export type RegisterSmelterInputOptions =
       filePath: string;
       loop?: boolean;
       offsetMs?: number;
+      sideChannelEnabled?: boolean;
     }
   | {
       type: 'hls';
       url: string;
+      sideChannelEnabled?: boolean;
     }
   | {
       type: 'whip';
       url: string;
+      sideChannelEnabled?: boolean;
     };
 
 /** MP4 decoder: driven by config.h264Decoder (which depends on ENVIRONMENT). Override via config for env-specific decoders. */
@@ -232,13 +262,72 @@ class SmelterManager {
       );
     }
 
+    // Register a secondary HLS output that ffmpeg/OpenCV can read (WHEP/WebRTC cannot be
+    // consumed by OpenCV). This is used as the YOLO detection stream source so that detected
+    // boxes are always in sync with the composed video the viewer actually sees.
+    const hlsDir = path.join(DATA_DIR, 'hls-streams', roomId);
+    await ensureDir(hlsDir);
+    const hlsPlaylistPath = path.join(hlsDir, 'index.m3u8');
+    const hlsOutputId = `${roomId}-hls`;
+    try {
+      await this.instance.registerOutput(
+        hlsOutputId,
+        <App store={store} audioStore={audioStore} />,
+        {
+          type: 'hls',
+          serverPath: hlsPlaylistPath,
+          maxPlaylistSize: 5,
+          video: {
+            encoder: {
+              type: 'ffmpeg_h264',
+              preset: 'ultrafast',
+            },
+            resolution: {
+              width: resolution.width,
+              height: resolution.height,
+            },
+          },
+          audio: {
+            encoder: {
+              type: 'aac',
+              channels: 'stereo',
+            } as any,
+          },
+        },
+      );
+    } catch (err) {
+      console.warn(
+        `[smelter] HLS output registration failed for room ${roomId} — YOLO stream will be unavailable`,
+        err,
+      );
+    }
+
+    const apiPort = Number(process.env.SMELTER_DEMO_API_PORT) || 3001;
+    const hlsUrl = `http://127.0.0.1:${apiPort}/hls-streams/${encodeURIComponent(roomId)}/index.m3u8`;
+
     return {
       id: roomId,
       url: `${config.whepBaseUrl}/${encodeURIComponent(roomId)}`,
+      hlsUrl,
       store,
       resolution,
       audioStore,
     };
+  }
+
+  public async unregisterHlsOutput(roomId: string): Promise<void> {
+    const hlsOutputId = `${roomId}-hls`;
+    try {
+      await this.instance.unregisterOutput(hlsOutputId);
+    } catch (err: any) {
+      if (err.body?.error_code === 'OUTPUT_STREAM_NOT_FOUND') {
+        return;
+      }
+      console.warn(
+        `[smelter] Failed to unregister HLS output for room ${roomId}`,
+        err,
+      );
+    }
   }
 
   /**
@@ -296,10 +385,16 @@ class SmelterManager {
     const t0 = Date.now();
     try {
       if (opts.type === 'whip') {
+        const sideChannel =
+          opts.sideChannelEnabled === false ? undefined : { video: true };
+        // smelter-node types do not include sideChannel for whip/mp4 yet.
         const res = await this.instance.registerInput(inputId, {
           type: 'whip_server',
           video: { decoderPreferences: WHIP_SERVER_DECODER_PREFERENCES },
-        });
+          // Always enable the video side channel so YOLO / other ML tasks can
+          // attach on demand. Per-input socket; idle when nothing subscribes.
+          sideChannel,
+        } as any);
         console.log('whipInput', res);
         if (!res.bearerToken) {
           throw new Error(
@@ -311,13 +406,17 @@ class SmelterManager {
         console.log(
           `[smelter] registerInput MP4 inputId=${inputId} path=${opts.filePath} loop=${opts.loop ?? true} offsetMs=${opts.offsetMs}`,
         );
+        const sideChannel =
+          opts.sideChannelEnabled === false ? undefined : { video: true };
+        // smelter-node types do not include sideChannel for whip/mp4 yet.
         await this.instance.registerInput(inputId, {
           type: 'mp4',
           serverPath: opts.filePath,
           decoderMap: MP4_DECODER_MAP,
           loop: opts.loop ?? true,
           offsetMs: opts.offsetMs,
-        });
+          sideChannel,
+        } as any);
         console.log(
           `[smelter] registerInput MP4 OK inputId=${inputId} elapsed=${Date.now() - t0}ms`,
         );
@@ -332,13 +431,18 @@ class SmelterManager {
             type: 'hls';
             url: string;
             decoderMap: typeof MP4_DECODER_MAP;
+            sideChannel?: { video?: boolean; audio?: boolean };
           },
         ) => Promise<unknown>;
+
+        const sideChannel =
+          opts.sideChannelEnabled === false ? undefined : { video: true };
 
         await registerHlsInput(inputId, {
           type: 'hls',
           url: opts.url,
           decoderMap: MP4_DECODER_MAP,
+          sideChannel,
         });
       }
     } catch (err: any) {

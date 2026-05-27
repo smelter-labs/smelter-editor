@@ -164,8 +164,12 @@ export async function addKickInput(roomId: string, channelId: string) {
   return (await getClient()).addKickInput(roomId, channelId);
 }
 
-export async function addMP4Input(roomId: string, mp4FileName: string) {
-  return (await getClient()).addMP4Input(roomId, mp4FileName);
+export async function addMP4Input(
+  roomId: string,
+  mp4FileName: string,
+  opts?: { sideChannelEnabled?: boolean },
+) {
+  return (await getClient()).addMP4Input(roomId, mp4FileName, opts);
 }
 
 export async function addAudioInput(roomId: string, audioFileName: string) {
@@ -192,8 +196,12 @@ export async function addHandsInput(roomId: string, sourceInputId: string) {
   return (await getClient()).addHandsInput(roomId, sourceInputId);
 }
 
-export async function addHlsInput(roomId: string, url: string) {
-  return (await getClient()).addHlsInput(roomId, url);
+export async function addHlsInput(
+  roomId: string,
+  url: string,
+  opts?: { sideChannelEnabled?: boolean },
+) {
+  return (await getClient()).addHlsInput(roomId, url, opts);
 }
 
 export async function removeInput(
@@ -529,6 +537,19 @@ export async function restartSmelter(): Promise<void> {
 
 export async function getAvailableShaders(): Promise<AvailableShader[]> {
   return (await getClient()).getAvailableShaders();
+}
+
+export async function getYoloModelInfo(
+  serverUrl: string,
+  modelName?: string,
+): Promise<{ classes: string[]; num_classes: number; model_file: string }> {
+  return (await getClient()).getYoloModelInfo(serverUrl, modelName);
+}
+
+export async function getYoloModels(
+  serverUrl: string,
+): Promise<{ models: string[] }> {
+  return (await getClient()).getYoloModels(serverUrl);
 }
 
 // ── Timeline playback ────────────────────────────────────────

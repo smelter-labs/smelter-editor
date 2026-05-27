@@ -70,6 +70,8 @@ vi.mock('../hands/handStore', () => ({
 const { InputManager } = await import('../room/InputManager');
 
 describe('InputManager', () => {
+  const yoloController = {} as any;
+
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.pathExists.mockResolvedValue(true);
@@ -84,6 +86,7 @@ describe('InputManager', () => {
       'room',
       placeholderManager,
       motionController,
+      yoloController,
       onStateChange,
     );
 
@@ -97,7 +100,11 @@ describe('InputManager', () => {
       type: 'image',
       imageId: 'pictures::nested/folder/demo',
     });
-    expect(manager.getInput(inputId!).imageAssetMissing).not.toBe(true);
+    const input = manager.getInput(inputId!);
+    expect(input.type).toBe('image');
+    if (input.type === 'image') {
+      expect(input.imageAssetMissing).not.toBe(true);
+    }
     expect(mocks.smelter.registerImage).toHaveBeenCalledWith(
       'pictures::nested/folder/demo',
       {
@@ -117,6 +124,7 @@ describe('InputManager', () => {
       'room',
       placeholderManager,
       motionController,
+      yoloController,
       onStateChange,
     );
 
@@ -126,13 +134,17 @@ describe('InputManager', () => {
     });
 
     expect(inputId).toBeTruthy();
-    expect(manager.getInput(inputId!)).toMatchObject({
-      type: 'image',
-      imageId: 'pictures::nested/folder/demo',
-      imageAssetMissing: true,
-      metadata: {
-        title: '[Missing image] Demo',
-      },
-    });
+    const input = manager.getInput(inputId!);
+    expect(input.type).toBe('image');
+    if (input.type === 'image') {
+      expect(input).toMatchObject({
+        type: 'image',
+        imageId: 'pictures::nested/folder/demo',
+        imageAssetMissing: true,
+        metadata: {
+          title: '[Missing image] Demo',
+        },
+      });
+    }
   });
 });

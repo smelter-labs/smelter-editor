@@ -79,7 +79,11 @@ export interface ControlPanelActions {
 
   addTwitchInput(roomId: string, channelId: string): Promise<any>;
   addKickInput(roomId: string, channelId: string): Promise<any>;
-  addMP4Input(roomId: string, mp4FileName: string): Promise<any>;
+  addMP4Input(
+    roomId: string,
+    mp4FileName: string,
+    opts?: { sideChannelEnabled?: boolean },
+  ): Promise<any>;
   addAudioInput(roomId: string, audioFileName: string): Promise<any>;
   addImageInput(roomId: string, imageFileNameOrId: string): Promise<any>;
   addTextInput(
@@ -88,7 +92,11 @@ export interface ControlPanelActions {
     textAlign?: 'left' | 'center' | 'right',
   ): Promise<any>;
   addSnakeGameInput(roomId: string, title?: string): Promise<any>;
-  addHlsInput(roomId: string, url: string): Promise<any>;
+  addHlsInput(
+    roomId: string,
+    url: string,
+    opts?: { sideChannelEnabled?: boolean },
+  ): Promise<any>;
   addCameraInput(
     roomId: string,
     username?: string,
@@ -103,6 +111,11 @@ export interface ControlPanelActions {
   getRoomRecordings(roomId: string): Promise<RecordingInfo[]>;
 
   getAvailableShaders(): Promise<AvailableShader[]>;
+  getYoloModelInfo(
+    serverUrl: string,
+    modelName?: string,
+  ): Promise<{ classes: string[]; num_classes: number; model_file: string }>;
+  getYoloModels(serverUrl: string): Promise<{ models: string[] }>;
 
   getTwitchSuggestions(): Promise<InputSuggestions>;
   getKickSuggestions(): Promise<KickSuggestions>;

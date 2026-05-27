@@ -4,6 +4,7 @@ import { useActions } from '../contexts/actions-context';
 import { GripVertical, EyeOff } from 'lucide-react';
 import ShaderPanel from './shader-panel';
 import SnakeEventShaderPanel from './snake-event-shader-panel';
+import YoloSearchPanel from './yolo-search-panel';
 import { DeleteButton } from './delete-button';
 import { MissingAssetMp4Row } from './missing-asset-mp4-row';
 import { AddShaderModal } from './add-shader-modal';
@@ -658,6 +659,17 @@ export default function InputEntry({
           </div>
         )}
       </div>
+
+      {!readOnly && input.sideChannelEnabled !== false && (
+        <YoloSearchPanel
+          roomId={roomId}
+          input={input}
+          onUpdate={async (opts) => {
+            await actions.updateInput(roomId, input.inputId, opts);
+            await refreshState();
+          }}
+        />
+      )}
 
       <AddShaderModal
         isOpen={isAddShaderModalOpen}

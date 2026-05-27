@@ -59,3 +59,4 @@ server/screenshots/
 tasks/
 *.mp4
 .pnpm-store/
+/ai_plugins/__pycache__/

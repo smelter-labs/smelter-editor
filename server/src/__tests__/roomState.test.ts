@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => {
       unregisterImage: fn().mockResolvedValue(undefined),
       registerMotionOutput: fn().mockResolvedValue(undefined),
       unregisterMotionOutput: fn().mockResolvedValue(undefined),
+      unregisterHlsOutput: fn().mockResolvedValue(undefined),
       getPipelineTimeMs: fn().mockReturnValue(0),
       extractMp4Frame: fn().mockResolvedValue('/tmp/test-frame.jpg'),
       terminate: fn().mockResolvedValue(undefined),
@@ -91,6 +92,7 @@ function createTestOutput(roomId = 'test-room') {
   return {
     id: roomId,
     url: `http://test-whep/${roomId}`,
+    hlsUrl: `http://test-hls/${roomId}.m3u8`,
     store: createRoomStore(res),
     resolution: res,
   };

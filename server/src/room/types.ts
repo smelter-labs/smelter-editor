@@ -10,6 +10,8 @@ import type {
   AbsolutePositionProperties,
   CropProperties,
   ViewportProperties,
+  YoloSearchConfig,
+  YoloBoundingBox,
   BroadcastTile,
 } from '../types';
 import type { StoreApi } from 'zustand';
@@ -53,11 +55,15 @@ export type RoomInputState = {
   restartFading?: boolean;
   motionEnabled: boolean;
   motionScore?: number;
+  yoloSearchConfig?: YoloSearchConfig;
+  yoloBoundingBoxes?: YoloBoundingBox[];
   orientation?: 'horizontal' | 'vertical';
   /** Native stream resolution width, if known. */
   nativeWidth?: number;
   /** Native stream resolution height, if known. */
   nativeHeight?: number;
+  /** Whether this input opted into Smelter side-channel sockets. */
+  sideChannelEnabled?: boolean;
   metadata: {
     title: string;
     description: string;

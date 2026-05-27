@@ -909,6 +909,7 @@ const InputSchema = Type.Union([
   Type.Object({
     type: Type.Literal('hls'),
     url: Type.String(),
+    sideChannelEnabled: Type.Optional(Type.Boolean()),
   }),
   Type.Object({
     type: Type.Literal('whip'),
@@ -918,6 +919,7 @@ const InputSchema = Type.Union([
     ),
     nativeWidth: Type.Optional(Type.Number({ minimum: 1 })),
     nativeHeight: Type.Optional(Type.Number({ minimum: 1 })),
+    sideChannelEnabled: Type.Optional(Type.Boolean()),
   }),
   Type.Object({
     type: Type.Literal('local-mp4'),
@@ -926,6 +928,7 @@ const InputSchema = Type.Union([
       Type.Object({ audioFileName: Type.String() }),
       Type.Object({ url: Type.String() }),
     ]),
+    sideChannelEnabled: Type.Optional(Type.Boolean()),
   }),
   Type.Object({
     type: Type.Literal('image'),
@@ -1590,7 +1593,9 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
       const currentLayers = room.getState().layers;
       const targetLayer = currentLayers.find((l) => l.id === layerId);
       if (!targetLayer || !targetLayer.carousel) {
-        res.status(404).send({ status: 'error', message: 'Carousel layer not found' });
+        res
+          .status(404)
+          .send({ status: 'error', message: 'Carousel layer not found' });
         return;
       }
       const n = targetLayer.inputs.length;
@@ -1618,7 +1623,9 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
       } else {
         const idx = index ?? oldIndex;
         if (idx < 0 || idx >= n) {
-          res.status(400).send({ status: 'error', message: 'index out of range' });
+          res
+            .status(400)
+            .send({ status: 'error', message: 'index out of range' });
           return;
         }
         newIndex = idx;
@@ -1682,10 +1689,7 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
     if (req.body.swapFadeOutDurationMs !== undefined) {
       room.setSwapFadeOutDurationMs(req.body.swapFadeOutDurationMs);
     }
-    if (
-      req.body.sortMode === 'timeline' ||
-      req.body.sortMode === 'layers'
-    ) {
+    if (req.body.sortMode === 'timeline' || req.body.sortMode === 'layers') {
       room.setSortMode(req.body.sortMode);
     }
 
@@ -2102,6 +2106,55 @@ const MotionDetectionSchema = Type.Object({
   enabled: Type.Boolean(),
 });
 
+const YoloBoxesSchema = Type.Object({
+  task_id: Type.String(),
+  input_id: Type.String(),
+  boxes: Type.Array(
+    Type.Object({
+      x: Type.Number(),
+      y: Type.Number(),
+      width: Type.Number(),
+      height: Type.Number(),
+      class_name: Type.String(),
+      class_id: Type.Number(),
+      confidence: Type.Number(),
+    }),
+  ),
+  frame_width: Type.Number(),
+  frame_height: Type.Number(),
+  pts_nanos: Type.Optional(Type.Number()),
+});
+
+routes.post<RoomAndInputIdParams & { Body: Static<typeof YoloBoxesSchema> }>(
+  '/room/:roomId/input/:inputId/yolo-boxes',
+  {
+    schema: { params: RoomAndInputIdParamsSchema, body: YoloBoxesSchema },
+  },
+  async (req, res) => {
+    const { roomId, inputId } = req.params;
+    try {
+      const room = state.getRoom(roomId);
+      const accepted = room.receiveYoloBoxes(inputId, req.body);
+      if (!accepted) {
+        console.warn(
+          `[yolo] /yolo-boxes rejected (gone): roomId=${roomId} inputId=${inputId} ` +
+            `boxes=${req.body.boxes.length} — input missing or yoloSearchConfig disabled`,
+        );
+        res.status(410).send({ status: 'gone' });
+        return;
+      }
+    } catch (err) {
+      console.warn(
+        `[yolo] /yolo-boxes error: roomId=${roomId} inputId=${inputId}:`,
+        err,
+      );
+      res.status(410).send({ status: 'gone' });
+      return;
+    }
+    res.status(200).send({ status: 'ok' });
+  },
+);
+
 routes.post<
   RoomAndInputIdParams & { Body: Static<typeof MotionDetectionSchema> }
 >(
@@ -2153,6 +2206,70 @@ routes.get<RoomIdParams>(
       clearInterval(heartbeat);
       unsubscribe();
     });
+  },
+);
+
+routes.get<{ Querystring: { serverUrl: string; modelName?: string } }>(
+  '/yolo-model-info',
+  {
+    schema: {
+      querystring: Type.Object({
+        serverUrl: Type.String(),
+        modelName: Type.Optional(Type.String()),
+      }),
+    },
+  },
+  async (req, res) => {
+    const { serverUrl, modelName } = req.query;
+    try {
+      const params = new URLSearchParams();
+      if (modelName) params.set('model_name', modelName);
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      const response = await fetch(`${serverUrl}/model-info${qs}`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!response.ok) {
+        res
+          .status(502)
+          .send({ error: `YOLO server returned ${response.status}` });
+        return;
+      }
+      const data = await response.json();
+      res.status(200).send(data);
+    } catch (err: any) {
+      res
+        .status(502)
+        .send({ error: `Cannot reach YOLO server: ${err.message}` });
+    }
+  },
+);
+
+routes.get<{ Querystring: { serverUrl: string } }>(
+  '/yolo-models',
+  {
+    schema: {
+      querystring: Type.Object({ serverUrl: Type.String() }),
+    },
+  },
+  async (req, res) => {
+    const { serverUrl } = req.query;
+    try {
+      const response = await fetch(`${serverUrl}/models`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      if (!response.ok) {
+        res
+          .status(502)
+          .send({ error: `YOLO server returned ${response.status}` });
+        return;
+      }
+      const data = await response.json();
+      res.status(200).send(data);
+    } catch (err: any) {
+      res
+        .status(502)
+        .send({ error: `Cannot reach YOLO server: ${err.message}` });
+    }
   },
 );
 
@@ -2219,6 +2336,18 @@ const UpdateInputSchema = Type.Object({
   cropRight: Type.Optional(Type.Number({ minimum: 0 })),
   cropBottom: Type.Optional(Type.Number({ minimum: 0 })),
   activeTransition: Type.Optional(ActiveTransitionSchema),
+  yoloSearchConfig: Type.Optional(
+    Type.Union([
+      Type.Object({
+        enabled: Type.Boolean(),
+        serverUrl: Type.String(),
+        modelName: Type.Optional(Type.String()),
+        targetClass: Type.String(),
+        boxColor: Type.String(),
+      }),
+      Type.Null(),
+    ]),
+  ),
 });
 
 routes.post<RoomAndInputIdParams & { Body: Static<typeof UpdateInputSchema> }>(

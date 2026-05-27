@@ -7,6 +7,7 @@ import type {
   SnakeGameDisplayProperties,
   InputOrientation,
 } from "./input.js";
+import type { YoloSearchConfig } from "./yolo.js";
 
 // Allow `null` as an explicit reset sentinel for absolute-position and crop
 // fields.  When the server receives `null` it clears the stored value back to
@@ -30,6 +31,7 @@ export type UpdateInputOptions = {
     direction: "in" | "out";
   };
   orientation: InputOrientation;
+  yoloSearchConfig: YoloSearchConfig | null;
   nativeWidth: number;
   nativeHeight: number;
 } & InputDisplayProperties &
@@ -42,17 +44,19 @@ export type UpdateInputOptions = {
 export type RegisterInputOptions =
   | { type: "twitch-channel"; channelId: string }
   | { type: "kick-channel"; channelId: string }
-  | { type: "hls"; url: string }
+  | { type: "hls"; url: string; sideChannelEnabled?: boolean }
   | {
       type: "whip";
       username: string;
       orientation?: InputOrientation;
       nativeWidth?: number;
       nativeHeight?: number;
+      sideChannelEnabled?: boolean;
     }
   | {
       type: "local-mp4";
       source: { fileName?: string; audioFileName?: string; url?: string };
+      sideChannelEnabled?: boolean;
     }
   | { type: "image"; fileName?: string; imageId?: string }
   | {
