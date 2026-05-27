@@ -138,8 +138,10 @@ export class YoloController {
         body: JSON.stringify({
           // Side channel: the Python server attaches directly to the input's
           // unix socket (video_<input_id>.sock) under the same socket dir
-          // exported by the Node server. No HLS / WebRTC re-encode involved.
-          input_id: input.inputId,
+          // exported by the Node server. The smelter binary writes sockets
+          // as `video_global:<inputId>.sock`, so the side-channel SDK reports
+          // input_id as `global:<inputId>`; we must match that format.
+          input_id: `global:${input.inputId}`,
           socket_dir: getSideChannelSocketDir(),
           callback_url: callbackUrl,
           class_filter: config.targetClass || undefined,
