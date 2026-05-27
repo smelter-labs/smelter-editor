@@ -18,6 +18,7 @@ import type {
 import { state } from '../core/serverState';
 import { roomEventBus } from '../core/roomEventBus';
 import { registerStorageRoutes } from './storageRoutes';
+import { registerHiddenAssetsRoutes } from './hiddenAssetsRoutes';
 import { logRequest, addLogListener, getLogBuffer } from '../dashboard';
 import {
   registerSnakeGameRoutes,
@@ -510,6 +511,50 @@ routes.get<{ Params: { fileName: string } }>(
   },
 );
 
+// Restrictive hostname pattern: DNS labels or IPv4 literals only. Prevents
+// embedding ports, paths, schemes, or odd characters that could redirect
+// clients to attacker-controlled hosts via a spoofed Host header.
+const PUBLIC_HOST_PATTERN =
+  /^(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+
+function resolvePublicWhepUrl(
+  whepUrl: string,
+  req: { headers: Record<string, string | string[] | undefined> },
+): string {
+  try {
+    const parsed = new URL(whepUrl);
+    if (parsed.hostname !== '127.0.0.1' && parsed.hostname !== 'localhost') {
+      return whepUrl;
+    }
+
+    // Prefer an explicitly configured public host so the URL we hand back to
+    // clients cannot be steered by a forged Host header.
+    const configuredHost = process.env.SMELTER_PUBLIC_HOST?.trim();
+    if (configuredHost && PUBLIC_HOST_PATTERN.test(configuredHost)) {
+      parsed.hostname = configuredHost;
+      return parsed.toString();
+    }
+
+    // Fall back to the request's Host header only in dev/local setups where
+    // there is no trusted public host. Validate the hostname to reject
+    // injected values (extra ports, paths, schemes, etc.).
+    const reqHost = (req.headers['host'] as string | undefined) ?? '';
+    const reqHostname = reqHost.split(':')[0];
+    if (
+      reqHostname &&
+      reqHostname !== 'localhost' &&
+      reqHostname !== '127.0.0.1' &&
+      PUBLIC_HOST_PATTERN.test(reqHostname)
+    ) {
+      parsed.hostname = reqHostname;
+      return parsed.toString();
+    }
+  } catch {
+    // ignore malformed URLs
+  }
+  return whepUrl;
+}
+
 function attachmentFileNameHeader(filePath: string): string {
   const base = path.basename(filePath);
   const safe = base.replace(/"/g, '');
@@ -819,6 +864,28 @@ const RoomIdParamsSchema = Type.Object({
   roomId: Type.String({ maxLength: 64, minLength: 1 }),
 });
 
+const BroadcastTileAddBodySchema = Type.Object({
+  type: Type.Union([Type.Literal('input'), Type.Literal('layer')]),
+  targetId: Type.String({ minLength: 1 }),
+});
+
+const BroadcastTileRemoveBodySchema = Type.Object({
+  tileId: Type.String({ minLength: 1 }),
+});
+
+const BroadcastTileSelectBodySchema = Type.Object({
+  tileId: Type.Union([Type.String(), Type.Null()]),
+});
+
+const BroadcastModeSetBodySchema = Type.Object({
+  enabled: Type.Boolean(),
+});
+
+const BroadcastTileRenameBodySchema = Type.Object({
+  tileId: Type.String({ minLength: 1 }),
+  name: Type.String({ minLength: 1, maxLength: 256 }),
+});
+
 const RoomAndInputIdParamsSchema = Type.Object({
   roomId: Type.String({ maxLength: 64, minLength: 1 }),
   inputId: Type.String({ maxLength: 512, minLength: 1 }),
@@ -964,7 +1031,7 @@ routes.get<RoomIdParams>(
       ),
       layers: snapshot.layers,
       isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
-      whepUrl: room.getWhepUrl(),
+      whepUrl: resolvePublicWhepUrl(room.getWhepUrl(), req),
       pendingDelete: room.pendingDelete,
       isPublic: room.isPublic,
       resolution: room.getResolution(),
@@ -973,6 +1040,7 @@ routes.get<RoomIdParams>(
       swapOutgoingEnabled: snapshot.swapOutgoingEnabled,
       swapFadeInDurationMs: snapshot.swapFadeInDurationMs,
       swapFadeOutDurationMs: snapshot.swapFadeOutDurationMs,
+      sortMode: snapshot.sortMode,
       outputShaders: snapshot.outputShaders,
       isRecording: room.hasActiveRecording(),
       isFrozen: room.isFrozen(),
@@ -983,6 +1051,9 @@ routes.get<RoomIdParams>(
       viewportHeight: snapshot.viewportHeight,
       viewportTransitionDurationMs: snapshot.viewportTransitionDurationMs,
       viewportTransitionEasing: snapshot.viewportTransitionEasing,
+      broadcastTiles: snapshot.broadcastTiles,
+      selectedBroadcastTileId: snapshot.selectedBroadcastTileId,
+      isBroadcastMode: snapshot.isBroadcastMode,
     });
   },
 );
@@ -1108,6 +1179,7 @@ routes.get('/rooms', async (_req, res) => {
         swapOutgoingEnabled: snapshot.swapOutgoingEnabled,
         swapFadeInDurationMs: snapshot.swapFadeInDurationMs,
         swapFadeOutDurationMs: snapshot.swapFadeOutDurationMs,
+        sortMode: snapshot.sortMode,
         outputShaders: snapshot.outputShaders,
         isRecording: room.hasActiveRecording(),
         audioAnalysisEnabled: room.isAudioAnalysisEnabled(),
@@ -1350,6 +1422,10 @@ registerStorageRoutes(routes, {
   supportsUpdate: true,
 });
 
+registerHiddenAssetsRoutes(routes, {
+  dirPath: path.join(DATA_DIR, 'hidden-assets'),
+});
+
 const UpdateRoomSchema = Type.Object({
   inputOrder: Type.Optional(Type.Array(Type.String())),
   layers: Type.Optional(
@@ -1450,6 +1526,9 @@ const UpdateRoomSchema = Type.Object({
   ),
   swapFadeOutDurationMs: Type.Optional(
     Type.Number({ minimum: 0, maximum: 5000 }),
+  ),
+  sortMode: Type.Optional(
+    Type.Union([Type.Literal('timeline'), Type.Literal('layers')]),
   ),
   viewportTop: Type.Optional(Type.Number()),
   viewportLeft: Type.Optional(Type.Number()),
@@ -1606,6 +1685,12 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
     }
     if (req.body.swapFadeOutDurationMs !== undefined) {
       room.setSwapFadeOutDurationMs(req.body.swapFadeOutDurationMs);
+    }
+    if (
+      req.body.sortMode === 'timeline' ||
+      req.body.sortMode === 'layers'
+    ) {
+      room.setSortMode(req.body.sortMode);
     }
 
     const viewportFields = [
@@ -2393,7 +2478,7 @@ routes.get<RoomIdParams>(
         ),
         layers: snapshot.layers,
         isTimelinePlaying: room.getTimelinePlaybackState().isPlaying,
-        whepUrl: room.getWhepUrl(),
+        whepUrl: resolvePublicWhepUrl(room.getWhepUrl(), req),
         pendingDelete: room.pendingDelete,
         isPublic: room.isPublic,
         resolution: room.getResolution(),
@@ -2402,6 +2487,7 @@ routes.get<RoomIdParams>(
         swapOutgoingEnabled: snapshot.swapOutgoingEnabled,
         swapFadeInDurationMs: snapshot.swapFadeInDurationMs,
         swapFadeOutDurationMs: snapshot.swapFadeOutDurationMs,
+        sortMode: snapshot.sortMode,
         outputShaders: snapshot.outputShaders,
         isRecording: room.hasActiveRecording(),
         isFrozen: room.isFrozen(),
@@ -2412,6 +2498,9 @@ routes.get<RoomIdParams>(
         viewportHeight: snapshot.viewportHeight,
         viewportTransitionDurationMs: snapshot.viewportTransitionDurationMs,
         viewportTransitionEasing: snapshot.viewportTransitionEasing,
+        broadcastTiles: snapshot.broadcastTiles,
+        selectedBroadcastTileId: snapshot.selectedBroadcastTileId,
+        isBroadcastMode: snapshot.isBroadcastMode,
       };
       logSyncServer('broadcast', {
         route: '/room/:roomId/state/sse',
@@ -2476,6 +2565,185 @@ routes.get('/logs/sse', async (req, res) => {
     unsubscribe();
   });
 });
+
+function publishBroadcastTilesUpdated(
+  roomId: string,
+  room: ReturnType<typeof state.getRoom>,
+  req: { headers: Record<string, string | string[] | undefined> },
+) {
+  const { tiles, selectedBroadcastTileId, isBroadcastMode } =
+    room.getBroadcastTiles();
+  const sourceId = (req.headers['x-source-id'] as string | undefined) ?? null;
+  roomEventBus.broadcast(roomId, {
+    type: 'broadcast-tiles-updated',
+    roomId,
+    sourceId,
+    tiles,
+    selectedBroadcastTileId,
+    isBroadcastMode,
+  });
+  return { tiles, selectedBroadcastTileId, isBroadcastMode };
+}
+
+routes.post<RoomIdParams & { Body: Static<typeof BroadcastTileAddBodySchema> }>(
+  '/room/:roomId/broadcast-tile/add',
+  { schema: { params: RoomIdParamsSchema, body: BroadcastTileAddBodySchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    const { type, targetId } = req.body;
+    try {
+      const room = state.getRoom(roomId);
+      const tile = await room.addBroadcastTile(type, targetId);
+      if (!tile) {
+        return res.status(400).send({
+          status: 'error',
+          message: 'Target not found or tile already exists',
+        });
+      }
+      const { selectedBroadcastTileId } = publishBroadcastTilesUpdated(
+        roomId,
+        room,
+        req,
+      );
+      res.status(200).send({ status: 'ok', tile, selectedBroadcastTileId });
+    } catch (err: any) {
+      res.status(400).send({
+        status: 'error',
+        message: err?.message ?? 'Failed to add broadcast tile',
+      });
+    }
+  },
+);
+
+routes.post<
+  RoomIdParams & { Body: Static<typeof BroadcastTileRemoveBodySchema> }
+>(
+  '/room/:roomId/broadcast-tile/remove',
+  {
+    schema: { params: RoomIdParamsSchema, body: BroadcastTileRemoveBodySchema },
+  },
+  async (req, res) => {
+    const { roomId } = req.params;
+    const { tileId } = req.body;
+    try {
+      const room = state.getRoom(roomId);
+      const removed = await room.removeBroadcastTile(tileId);
+      if (!removed) {
+        return res
+          .status(400)
+          .send({ status: 'error', message: 'Tile not found' });
+      }
+      publishBroadcastTilesUpdated(roomId, room, req);
+      res.status(200).send({ status: 'ok' });
+    } catch (err: any) {
+      res.status(400).send({
+        status: 'error',
+        message: err?.message ?? 'Failed to remove broadcast tile',
+      });
+    }
+  },
+);
+
+routes.post<
+  RoomIdParams & { Body: Static<typeof BroadcastTileSelectBodySchema> }
+>(
+  '/room/:roomId/broadcast-tile/select',
+  {
+    schema: { params: RoomIdParamsSchema, body: BroadcastTileSelectBodySchema },
+  },
+  async (req, res) => {
+    const { roomId } = req.params;
+    const { tileId } = req.body;
+    try {
+      const room = state.getRoom(roomId);
+      const ok = await room.selectBroadcastTile(tileId);
+      if (!ok) {
+        return res
+          .status(400)
+          .send({ status: 'error', message: 'Tile not found' });
+      }
+      publishBroadcastTilesUpdated(roomId, room, req);
+      res.status(200).send({ status: 'ok' });
+    } catch (err: any) {
+      res.status(400).send({
+        status: 'error',
+        message: err?.message ?? 'Failed to select broadcast tile',
+      });
+    }
+  },
+);
+
+routes.post<RoomIdParams & { Body: Static<typeof BroadcastModeSetBodySchema> }>(
+  '/room/:roomId/broadcast-mode/set',
+  { schema: { params: RoomIdParamsSchema, body: BroadcastModeSetBodySchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    const { enabled } = req.body;
+    try {
+      const room = state.getRoom(roomId);
+      await room.setBroadcastMode(enabled);
+      const { isBroadcastMode } = publishBroadcastTilesUpdated(
+        roomId,
+        room,
+        req,
+      );
+      res.status(200).send({ status: 'ok', isBroadcastMode });
+    } catch (err: any) {
+      res.status(400).send({
+        status: 'error',
+        message: err?.message ?? 'Failed to set broadcast mode',
+      });
+    }
+  },
+);
+
+routes.post<
+  RoomIdParams & { Body: Static<typeof BroadcastTileRenameBodySchema> }
+>(
+  '/room/:roomId/broadcast-tile/rename',
+  {
+    schema: { params: RoomIdParamsSchema, body: BroadcastTileRenameBodySchema },
+  },
+  async (req, res) => {
+    const { roomId } = req.params;
+    const { tileId, name } = req.body;
+    try {
+      const room = state.getRoom(roomId);
+      const ok = await room.renameBroadcastTile(tileId, name);
+      if (!ok) {
+        return res
+          .status(400)
+          .send({ status: 'error', message: 'Tile not found' });
+      }
+      publishBroadcastTilesUpdated(roomId, room, req);
+      res.status(200).send({ status: 'ok' });
+    } catch (err: any) {
+      res.status(400).send({
+        status: 'error',
+        message: err?.message ?? 'Failed to rename broadcast tile',
+      });
+    }
+  },
+);
+
+routes.post<RoomIdParams>(
+  '/room/:roomId/broadcast-tiles/clear',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    try {
+      const room = state.getRoom(roomId);
+      await room.clearBroadcastTiles();
+      publishBroadcastTilesUpdated(roomId, room, req);
+      res.status(200).send({ status: 'ok' });
+    } catch (err: any) {
+      res.status(400).send({
+        status: 'error',
+        message: err?.message ?? 'Failed to clear broadcast tiles',
+      });
+    }
+  },
+);
 
 routes.delete<RoomIdParams>(
   '/room/:roomId',

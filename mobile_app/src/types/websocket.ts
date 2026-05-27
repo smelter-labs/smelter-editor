@@ -1,6 +1,7 @@
 import type { InputCard } from "./input";
 import type { Layer } from "./layout";
 import type { PublicInputState } from "./room";
+import type { BroadcastTile } from "@smelter-editor/types";
 
 /**
  * Server -> client WS events.
@@ -52,6 +53,14 @@ export type WSEventMap = {
       clientId: string;
       name: string;
     }>;
+  };
+  "broadcast-tiles-updated": {
+    type: "broadcast-tiles-updated";
+    roomId: string;
+    tiles: BroadcastTile[];
+    selectedBroadcastTileId: string | null;
+    isBroadcastMode: boolean;
+    sourceId: string | null;
   };
   connected: {
     type: "connected";

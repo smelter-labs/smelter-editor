@@ -48,6 +48,7 @@ export function saveCrashRecoverySnapshot(
       },
       roomState.outputShaders,
       roomState.layers,
+      roomState.sortMode,
     );
 
     const data: CrashRecoveryData = {

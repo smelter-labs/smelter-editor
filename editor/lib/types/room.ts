@@ -5,6 +5,7 @@ import type {
   RoomNameEntry,
   ViewportProperties,
   ShaderConfig,
+  BroadcastTile,
 } from '@smelter-editor/types';
 import type { Input, RegisterInputOptions } from './input';
 import type { Layer } from './layout';
@@ -26,11 +27,15 @@ export type RoomState = {
   swapOutgoingEnabled?: boolean;
   swapFadeInDurationMs?: number;
   swapFadeOutDurationMs?: number;
+  sortMode?: 'timeline' | 'layers';
   outputShaders?: ShaderConfig[];
   pendingWhipInputs?: PendingWhipInputData[];
   isRecording?: boolean;
   isFrozen?: boolean;
   audioAnalysisEnabled?: boolean;
+  broadcastTiles: BroadcastTile[];
+  selectedBroadcastTileId: string | null;
+  isBroadcastMode: boolean;
 } & Partial<ViewportProperties>;
 
 export type AddInputResponse = {
@@ -81,6 +86,7 @@ export type UpdateRoomOptions = {
   swapOutgoingEnabled?: boolean;
   swapFadeInDurationMs?: number;
   swapFadeOutDurationMs?: number;
+  sortMode?: 'timeline' | 'layers';
   outputShaders?: ShaderConfig[];
 } & Partial<ViewportProperties>;
 

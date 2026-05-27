@@ -30,7 +30,7 @@ export function SelectablePreviewCard({
       type='button'
       onClick={onClick}
       disabled={disabled}
-      className={`text-left bg-[#1c1b1b] border border-[#3a494b]/30 hover:border-[#00f3ff]/60 group transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
+      className={`w-full text-left bg-[#1c1b1b] border border-[#3a494b]/30 hover:border-[#00f3ff]/60 group transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed ${
         isSelected ? 'border-l-2 border-l-[#fe00fe] neon-glow-secondary' : ''
       }`}>
       <div className='relative aspect-video bg-black overflow-hidden'>

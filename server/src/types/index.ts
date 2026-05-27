@@ -34,4 +34,5 @@ export type {
   PendingWhipInputData,
   YoloSearchConfig,
   YoloBoundingBox,
+  BroadcastTile,
 } from '@smelter-editor/types';

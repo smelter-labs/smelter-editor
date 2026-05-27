@@ -117,6 +117,7 @@ export type ImportConfigRequest = {
     timeline?: ImportConfigTimeline;
     outputPlayer?: { muted: boolean; volume: number };
     outputShaders?: ShaderConfig[];
+    sortMode?: 'timeline' | 'layers';
     exportedAt: string;
   };
   oldInputIds: string[];

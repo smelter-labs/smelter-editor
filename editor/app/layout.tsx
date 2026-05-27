@@ -5,6 +5,7 @@ import React from 'react';
 import ClientLayoutAddons from '@/components/client-layout-addons';
 import { AppModeProvider } from '@/components/app-mode/app-mode-context';
 import { GeekModeBadge } from '@/components/app-mode/geek-mode-badge';
+import { AdminModeBadge } from '@/components/app-mode/admin-mode-badge';
 
 const spaceGrotesk = Space_Grotesk({
   variable: '--font-space-grotesk',
@@ -28,6 +29,7 @@ export default function RootLayout({
         <AppModeProvider>
           {children}
           <GeekModeBadge />
+          <AdminModeBadge />
         </AppModeProvider>
         <ClientLayoutAddons />
       </body>

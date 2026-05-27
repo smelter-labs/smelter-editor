@@ -314,6 +314,12 @@ export function registerImportConfigRoute(routes: FastifyInstance): void {
         writeProgress(raw, { phase, current: currentStep, total: totalSteps });
       };
 
+      // Phase 0: Apply sortMode FIRST so that all subsequent state mutations
+      // (and their SSE broadcasts) happen in the target mode.
+      room.setSortMode(
+        normalizedConfig.sortMode === 'layers' ? 'layers' : 'timeline',
+      );
+
       // Phase 1: Add inputs
       const createdInputs: { inputId: string; index: number }[] = [];
       const configInputIndexMap = new Map<ImportConfigInput, number>();

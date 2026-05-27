@@ -13,6 +13,7 @@ export type {
   TimelinePlaybackUpdatedEvent,
   NormalizationProgressEvent,
   NormalizationDoneEvent,
+  BroadcastTilesUpdatedEvent,
   RoomEvent,
 } from "./events.js";
 
@@ -114,3 +115,5 @@ export type {
   ImportConfigDoneEvent,
   ImportConfigStreamEvent,
 } from "./import-config.js";
+
+export type { BroadcastTile } from "./broadcast.js";

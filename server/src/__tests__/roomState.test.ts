@@ -742,6 +742,43 @@ describe('RoomState', () => {
       });
     });
 
+    it('auto-selects first broadcast tile and updates output store before live mode', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const inputA = (await room.addNewInput({
+        type: 'text-input',
+        text: 'A',
+      }))!;
+      const inputB = (await room.addNewInput({ type: 'game', title: 'B' }))!;
+      await room.connectInput(inputA);
+      await room.connectInput(inputB);
+
+      await room.updateLayers([
+        {
+          id: 'layer-a',
+          inputs: [{ inputId: inputA, x: 0, y: 0, width: 100, height: 100 }],
+        },
+        {
+          id: 'layer-b',
+          inputs: [{ inputId: inputB, x: 10, y: 10, width: 200, height: 200 }],
+        },
+      ]);
+
+      const tile = await room.addBroadcastTile('layer', 'layer-b');
+      expect(tile).not.toBeNull();
+      expect(room.getBroadcastTiles().selectedBroadcastTileId).toBe(tile!.id);
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const storeState = output.store.getState();
+      expect(storeState.layers).toHaveLength(1);
+      expect(storeState.layers[0]!.id).toBe('layer-b');
+      expect(storeState.inputs).toHaveLength(1);
+      expect(storeState.inputs[0]!.inputId).toBe(inputB);
+    });
+
     it('applies the same dedupe behavior when restoring layers', async () => {
       const output = createTestOutput();
       const room = new RoomState('room-1', output, [], true);

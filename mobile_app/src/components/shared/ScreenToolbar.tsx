@@ -13,6 +13,7 @@ interface ScreenToolbarChipProps {
   children: React.ReactNode;
   onPress?: () => void;
   style?: React.ComponentProps<typeof Chip>["style"];
+  disabled?: boolean;
 }
 
 interface ToolbarIconProps {
@@ -27,14 +28,16 @@ export function ScreenToolbarChip({
   children,
   onPress,
   style,
+  disabled,
 }: ScreenToolbarChipProps) {
   return (
     <Chip
       compact
       mode="flat"
-      style={[styles.chip, style]}
+      style={[styles.chip, disabled && styles.chipDisabled, style]}
       textStyle={styles.chipText}
-      onPress={onPress}
+      disabled={disabled}
+      onPress={disabled ? undefined : onPress}
     >
       {children}
     </Chip>
@@ -59,6 +62,9 @@ const styles = StyleSheet.create({
   chip: {
     borderRadius: 8,
     backgroundColor: appColors.toolbarSurface,
+  },
+  chipDisabled: {
+    opacity: 0.4,
   },
   chipText: {
     color: appColors.toolbarText,

@@ -3,6 +3,7 @@
     "moduleResolution": "NodeNext",
     "module": "NodeNext",
     "target": "es2019",
+    "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
     "declaration": true,
