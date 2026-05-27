@@ -2206,6 +2206,13 @@ function SettingsBar({
           <button onClick={() => setShowQRModal(true)} className={navLinkClass}>
             Join via QR
           </button>
+          <a
+            href={`/room-preview/${roomId}/broadcast`}
+            target='_blank'
+            rel='noopener noreferrer'
+            className={navLinkClass}>
+            Broadcast
+          </a>
           <button
             onClick={handleToggleRecording}
             disabled={isTogglingRecording || isWaitingForDownload}
