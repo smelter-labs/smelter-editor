@@ -31,6 +31,7 @@ import type {
   Layer,
   RegisterInputOptions,
   PendingWhipInputData,
+  ShaderConfig,
 } from '../types';
 import { toPublicInputState } from '../core/publicInputState';
 import { config } from '../config';
@@ -1060,6 +1061,79 @@ routes.after(() => {
       });
 
       roomEventBus.subscribe(roomId, clientId, socket);
+
+      // Low-latency channel for ~30Hz pong shader-param pushes from the editor.
+      // Merges sparse param updates into the current shader config so concurrent
+      // slider edits (in the shader panel) are preserved rather than clobbered.
+      socket.on('message', (raw: unknown) => {
+        let parsed: unknown;
+        try {
+          const text =
+            typeof raw === 'string'
+              ? raw
+              : Buffer.isBuffer(raw)
+                ? raw.toString('utf8')
+                : null;
+          if (text == null) return;
+          parsed = JSON.parse(text);
+        } catch {
+          return;
+        }
+        if (
+          !parsed ||
+          typeof parsed !== 'object' ||
+          (parsed as { type?: unknown }).type !== 'pong_shader_partial_update'
+        ) {
+          return;
+        }
+        const msg = parsed as {
+          inputId?: unknown;
+          shaderId?: unknown;
+          params?: unknown;
+        };
+        if (
+          typeof msg.inputId !== 'string' ||
+          typeof msg.shaderId !== 'string' ||
+          !msg.params ||
+          typeof msg.params !== 'object'
+        ) {
+          return;
+        }
+        const params = msg.params as Record<string, unknown>;
+        try {
+          const room = state.getRoom(roomId);
+          const input = room
+            .getInputs()
+            .find((i) => i.inputId === msg.inputId);
+          if (!input) return;
+          const newShaders: ShaderConfig[] = input.shaders.map((s) => {
+            if (s.shaderId !== msg.shaderId) return s;
+            const seen = new Set<string>();
+            const mergedParams = s.params.map((p) => {
+              seen.add(p.paramName);
+              const incoming = params[p.paramName];
+              return typeof incoming === 'number'
+                ? { ...p, paramValue: incoming }
+                : p;
+            });
+            for (const [name, value] of Object.entries(params)) {
+              if (!seen.has(name) && typeof value === 'number') {
+                mergedParams.push({ paramName: name, paramValue: value });
+              }
+            }
+            return { ...s, params: mergedParams };
+          });
+          void room.updateInput(msg.inputId, { shaders: newShaders });
+        } catch (err) {
+          // Surface errors instead of silently swallowing so misconfiguration
+          // (room gone, shader missing, etc.) shows up in logs.
+          console.warn('[ws][pong_partial_update] failed', {
+            roomId,
+            inputId: msg.inputId,
+            error: err instanceof Error ? err.message : String(err),
+          });
+        }
+      });
 
       const room = state.getRoom(roomId);
       const timelinePlaybackState = room.getTimelinePlaybackState();

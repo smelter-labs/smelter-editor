@@ -12,7 +12,8 @@ type StaticPanelId =
   | 'motion-detection'
   | 'layout-preview'
   | 'carousel'
-  | 'output-code';
+  | 'output-code'
+  | 'pong';
 
 type MotionPanelId = `motion:${string}`;
 type PanelId = StaticPanelId | MotionPanelId;
@@ -130,6 +131,12 @@ export const STATIC_PANEL_DEFINITIONS: Record<StaticPanelId, PanelDefinition> =
       minW: 6,
       minH: 8,
     },
+    pong: {
+      id: 'pong',
+      title: 'Pong',
+      minW: 8,
+      minH: 5,
+    },
   };
 
 export const STATIC_PANEL_IDS: StaticPanelId[] = Object.keys(
@@ -181,6 +188,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'motion-detection', x: 0, y: 67, w: 8, h: 6, minW: 4, minH: 4 },
       { i: 'carousel', x: 16, y: 38, w: 8, h: 10, minW: 4, minH: 8 },
       { i: 'output-code', x: 12, y: 15, w: 8, h: 10, minW: 6, minH: 8 },
+      { i: 'pong', x: 0, y: 73, w: 10, h: 6, minW: 8, minH: 5 },
     ],
   },
   {

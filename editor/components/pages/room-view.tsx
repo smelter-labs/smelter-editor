@@ -14,6 +14,7 @@ import { ConnectedDevicesPanel } from '@/components/dashboard/connected-devices-
 import { SystemLogPanel } from '@/components/dashboard/system-log-panel';
 import { LayoutPreviewPanel } from '@/components/dashboard/layout-preview-panel';
 import { OutputCodePanel } from '@/components/dashboard/output-code-panel';
+import { PongPanel } from '@/components/dashboard/pong-panel';
 import GuestPanel from '@/components/pages/guest-panel';
 import {
   STATIC_PANEL_IDS,
@@ -160,6 +161,7 @@ export default function RoomView({
                 viewportTransitionEasing={roomState.viewportTransitionEasing}
               />
             ),
+            pong: <PongPanel roomId={roomId} inputs={roomState.inputs} />,
           };
 
           const getPanelDefinition = (id: string): PanelDefinition => {
