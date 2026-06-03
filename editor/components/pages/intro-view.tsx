@@ -79,6 +79,10 @@ import {
 import { SettingsModal } from '@/components/settings-modal';
 import { SERVER_PRESETS, getEffectiveClientServerUrl } from '@/lib/server-url';
 import { useHiddenShowcases } from '@/hooks/use-hidden-showcases';
+import {
+  saveLayouts,
+  saveVisiblePanels,
+} from '@/components/dashboard/panel-registry';
 
 function getBasePath(pathname: string): string {
   // Remove trailing slash if present
@@ -463,6 +467,15 @@ export default function IntroView() {
 
         if (config.outputPlayer) {
           saveOutputPlayerSettings(roomId, config.outputPlayer);
+        }
+
+        if (config.dashboardLayout) {
+          if (config.dashboardLayout.layouts) {
+            saveLayouts(config.dashboardLayout.layouts);
+          }
+          if (config.dashboardLayout.visiblePanels) {
+            saveVisiblePanels(new Set(config.dashboardLayout.visiblePanels));
+          }
         }
 
         router.push(getRoomRoute(roomId));

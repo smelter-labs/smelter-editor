@@ -28,6 +28,7 @@ import type { SavedItemInfo } from '@/lib/storage-client';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import type { TimelineState } from '../hooks/use-timeline-state';
 import { useAppMode } from '@/components/app-mode/app-mode-context';
+import { useDashboardToolbar } from '@/components/dashboard/dashboard-toolbar-context';
 import { useHiddenShowcases } from '@/hooks/use-hidden-showcases';
 import {
   Select,
@@ -86,6 +87,7 @@ export function PresentationModeSettings({
 }: PresentationModeSettingsProps) {
   const { roomId } = useControlPanelContext();
   const { adminMode } = useAppMode();
+  const dashboardToolbar = useDashboardToolbar();
   const {
     hiddenFileNames: hiddenShowcaseFileNames,
     setHidden: setShowcaseHidden,
@@ -227,8 +229,9 @@ export function PresentationModeSettings({
       roomState.outputShaders,
       roomState.layers,
       roomState.sortMode,
+      dashboardToolbar?.getCurrentLayoutData(),
     );
-  }, [getTimelineStateForConfig, roomState, roomId]);
+  }, [getTimelineStateForConfig, roomState, roomId, dashboardToolbar]);
 
   const handleSave = useCallback(async () => {
     const name = configName.trim();
