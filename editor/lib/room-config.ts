@@ -24,6 +24,7 @@ import type {
 import { createBlockSettingsFromInput } from '@/components/control-panel/hooks/use-timeline-state';
 import { loadTimeline, saveTimeline } from '@/lib/timeline-storage';
 import { resolutionToLabel } from '@/lib/resolution';
+import type { DashboardLayoutSavedData } from '@/components/dashboard/dashboard-layout';
 
 export type RoomConfigInput = {
   type: Input['type'];
@@ -153,6 +154,7 @@ export type RoomConfig = {
   outputPlayer?: RoomConfigOutputPlayer;
   outputShaders?: ShaderConfig[];
   sortMode?: 'timeline' | 'layers';
+  dashboardLayout?: DashboardLayoutSavedData;
   exportedAt: string;
 };
 
@@ -256,6 +258,7 @@ export function exportRoomConfig(
   outputShaders?: ShaderConfig[],
   layers?: Layer[],
   sortMode?: 'timeline' | 'layers',
+  dashboardLayout?: DashboardLayoutSavedData,
 ): RoomConfig {
   const inputIdToIndex = new Map<string, number>();
   inputs.forEach((input, idx) => inputIdToIndex.set(input.inputId, idx));
@@ -367,6 +370,7 @@ export function exportRoomConfig(
     outputShaders:
       outputShaders && outputShaders.length > 0 ? outputShaders : undefined,
     sortMode,
+    dashboardLayout,
     inputs: inputs.map((input) => ({
       type: input.type,
       title: input.title,

@@ -53,6 +53,7 @@ struct ShaderOptions {
     manual_last_bounce_y: f32,
     manual_last_bounce_kind: f32,
     manual_countdown_remaining: f32,
+    ball_border_thickness: f32,
 };
 
 
@@ -92,8 +93,8 @@ fn digit_bits(d: u32) -> u32 {
         case 2u: { return 0x73E7u; }
         case 3u: { return 0x73CFu; }
         case 4u: { return 0x5BC9u; }
-        case 5u: { return 0x7CE7u; }
-        case 6u: { return 0x7CEFu; }
+        case 5u: { return 0x79CFu; }
+        case 6u: { return 0x79EFu; }
         case 7u: { return 0x72A4u; }
         case 8u: { return 0x7BEFu; }
         case 9u: { return 0x7BCFu; }
@@ -424,7 +425,12 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
         let c = textureSample(textures[0], sampler_, clamp(lu, vec2<f32>(0.0), vec2<f32>(1.0)));
         // Soft anti-aliased edge.
         let edge = 1.0 - smoothstep(ball_radius * 0.95, ball_radius, bdist);
-        color = mix(color, c.rgb, edge);
+        let border_t = clamp(shader_options.ball_border_thickness, 0.0, ball_radius);
+        let inner_r = ball_radius - border_t;
+        let aa = ball_radius * 0.02;
+        let border_m = smoothstep(inner_r - aa, inner_r + aa, bdist);
+        let fill = mix(c.rgb, paddle_color, border_m);
+        color = mix(color, fill, edge);
     }
 
     // Countdown overlay: big centered digit during pre-serve.

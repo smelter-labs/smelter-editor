@@ -1,9 +1,11 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import {
   GenericSaveModal,
   GenericLoadModal,
 } from '@/components/storage-modals';
+import { Checkbox } from '@/components/ui/checkbox';
 import { useActions } from '../contexts/actions-context';
 import { parseRoomConfig, type RoomConfig } from '@/lib/room-config';
 import { Archive } from 'lucide-react';
@@ -11,9 +13,12 @@ import { Archive } from 'lucide-react';
 type SaveConfigModalProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSaveLocal: () => void;
-  onSaveFullProject?: () => void;
-  onSaveRemote: (name: string) => Promise<string | null>;
+  onSaveLocal: (includeLayout: boolean) => void;
+  onSaveFullProject?: (includeLayout: boolean) => void;
+  onSaveRemote: (
+    name: string,
+    includeLayout: boolean,
+  ) => Promise<string | null>;
   isExporting: boolean;
 };
 
@@ -25,6 +30,12 @@ export function SaveConfigModal({
   onSaveRemote,
   isExporting,
 }: SaveConfigModalProps) {
+  const [includeLayout, setIncludeLayout] = useState(false);
+
+  useEffect(() => {
+    if (!open) setIncludeLayout(false);
+  }, [open]);
+
   return (
     <GenericSaveModal
       open={open}
@@ -32,9 +43,26 @@ export function SaveConfigModal({
       title='Save Configuration'
       description='Choose where to save your room configuration.'
       namePlaceholder='Configuration name...'
-      onSaveLocal={onSaveLocal}
-      onSaveRemote={onSaveRemote}
+      onSaveLocal={() => onSaveLocal(includeLayout)}
+      onSaveRemote={(name) => onSaveRemote(name, includeLayout)}
       isExporting={isExporting}
+      extraContent={
+        <label className='flex items-start gap-2 px-1 py-1 cursor-pointer select-none'>
+          <Checkbox
+            checked={includeLayout}
+            onCheckedChange={(checked) => setIncludeLayout(checked === true)}
+            className='mt-0.5'
+          />
+          <div className='flex flex-col min-w-0'>
+            <span className='text-sm font-medium text-white'>
+              Include current dashboard layout
+            </span>
+            <span className='text-xs text-neutral-500'>
+              Save panel positions and visibility
+            </span>
+          </div>
+        </label>
+      }
       extraOptions={
         onSaveFullProject
           ? [
@@ -44,7 +72,7 @@ export function SaveConfigModal({
                 label: 'Download full project',
                 description: 'Bundle config and local assets into a ZIP file',
                 onClick: () => {
-                  onSaveFullProject();
+                  onSaveFullProject(includeLayout);
                   onOpenChange(false);
                 },
               },

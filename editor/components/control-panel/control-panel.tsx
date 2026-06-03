@@ -1852,70 +1852,84 @@ function SettingsBar({
     }
   }, [roomId, roomState.isPublic, handleRefreshState, isTogglingPublic]);
 
-  const buildConfig = useCallback(() => {
-    const timelineState = resolveRoomConfigTimelineState(
-      roomId,
-      getTimelineStateForConfig(),
-    );
-    const outputPlayer = loadOutputPlayerSettings(roomId) ?? undefined;
-    return exportRoomConfig(
-      roomState.inputs,
-      'grid',
-      roomState.resolution,
-      {
-        swapDurationMs: roomState.swapDurationMs,
-        swapOutgoingEnabled: roomState.swapOutgoingEnabled,
-        swapFadeInDurationMs: roomState.swapFadeInDurationMs,
-        swapFadeOutDurationMs: roomState.swapFadeOutDurationMs,
-      },
-      timelineState ?? undefined,
-      outputPlayer,
-      {
-        viewportTop: roomState.viewportTop,
-        viewportLeft: roomState.viewportLeft,
-        viewportWidth: roomState.viewportWidth,
-        viewportHeight: roomState.viewportHeight,
-        viewportTransitionDurationMs: roomState.viewportTransitionDurationMs,
-        viewportTransitionEasing: roomState.viewportTransitionEasing,
-      },
-      roomState.outputShaders,
-      roomState.layers,
-      roomState.sortMode,
-    );
-  }, [getTimelineStateForConfig, roomState, roomId]);
+  const buildConfig = useCallback(
+    (includeLayout: boolean) => {
+      const timelineState = resolveRoomConfigTimelineState(
+        roomId,
+        getTimelineStateForConfig(),
+      );
+      const outputPlayer = loadOutputPlayerSettings(roomId) ?? undefined;
+      const dashboardLayout =
+        includeLayout && dashboardToolbar
+          ? dashboardToolbar.getCurrentLayoutData()
+          : undefined;
+      return exportRoomConfig(
+        roomState.inputs,
+        'grid',
+        roomState.resolution,
+        {
+          swapDurationMs: roomState.swapDurationMs,
+          swapOutgoingEnabled: roomState.swapOutgoingEnabled,
+          swapFadeInDurationMs: roomState.swapFadeInDurationMs,
+          swapFadeOutDurationMs: roomState.swapFadeOutDurationMs,
+        },
+        timelineState ?? undefined,
+        outputPlayer,
+        {
+          viewportTop: roomState.viewportTop,
+          viewportLeft: roomState.viewportLeft,
+          viewportWidth: roomState.viewportWidth,
+          viewportHeight: roomState.viewportHeight,
+          viewportTransitionDurationMs: roomState.viewportTransitionDurationMs,
+          viewportTransitionEasing: roomState.viewportTransitionEasing,
+        },
+        roomState.outputShaders,
+        roomState.layers,
+        roomState.sortMode,
+        dashboardLayout,
+      );
+    },
+    [getTimelineStateForConfig, roomState, roomId, dashboardToolbar],
+  );
 
-  const handleExportLocal = useCallback(() => {
-    setIsExporting(true);
-    try {
-      const config = buildConfig();
-      downloadRoomConfig(config);
-    } catch (e: any) {
-      console.error('Export failed:', e);
-    } finally {
-      setIsExporting(false);
-    }
-  }, [buildConfig]);
+  const handleExportLocal = useCallback(
+    (includeLayout: boolean) => {
+      setIsExporting(true);
+      try {
+        const config = buildConfig(includeLayout);
+        downloadRoomConfig(config);
+      } catch (e: any) {
+        console.error('Export failed:', e);
+      } finally {
+        setIsExporting(false);
+      }
+    },
+    [buildConfig],
+  );
 
-  const handleExportFullProject = useCallback(async () => {
-    setIsExportingFullProject(true);
-    const loadingToastId = toast.loading('Building full project ZIP...');
-    try {
-      const config = buildConfig();
-      await downloadFullProjectZip(config);
-      toast.success('Full project ZIP downloaded.', { id: loadingToastId });
-    } catch (e: any) {
-      console.error('Full project export failed:', e);
-      toast.error(e?.message ?? 'Full project export failed.', {
-        id: loadingToastId,
-      });
-    } finally {
-      setIsExportingFullProject(false);
-    }
-  }, [buildConfig]);
+  const handleExportFullProject = useCallback(
+    async (includeLayout: boolean) => {
+      setIsExportingFullProject(true);
+      const loadingToastId = toast.loading('Building full project ZIP...');
+      try {
+        const config = buildConfig(includeLayout);
+        await downloadFullProjectZip(config);
+        toast.success('Full project ZIP downloaded.', { id: loadingToastId });
+      } catch (e: any) {
+        console.error('Full project export failed:', e);
+        toast.error(e?.message ?? 'Full project export failed.', {
+          id: loadingToastId,
+        });
+      } finally {
+        setIsExportingFullProject(false);
+      }
+    },
+    [buildConfig],
+  );
 
   const handleExportRemote = useCallback(
-    async (name: string): Promise<string | null> => {
-      const config = buildConfig();
+    async (name: string, includeLayout: boolean): Promise<string | null> => {
+      const config = buildConfig(includeLayout);
       const suffix = roomState.resolution
         ? ` ${resolutionToLabel(roomState.resolution)}`
         : '';
@@ -1935,7 +1949,7 @@ function SettingsBar({
 
   useEffect(() => {
     const onVoiceExport = () => {
-      handleExportLocal();
+      handleExportLocal(false);
     };
     window.addEventListener('smelter:export-configuration', onVoiceExport);
     return () => {
@@ -2029,6 +2043,10 @@ function SettingsBar({
           saveOutputPlayerSettings(roomId, config.outputPlayer);
         }
 
+        if (config.dashboardLayout && dashboardToolbar) {
+          dashboardToolbar.applyLoadedLayout(config.dashboardLayout);
+        }
+
         await handleRefreshState();
       } finally {
         setImportProgress(null);
@@ -2041,6 +2059,7 @@ function SettingsBar({
       handleRefreshState,
       applyImportedTimelineState,
       startImportProgress,
+      dashboardToolbar,
     ],
   );
 
