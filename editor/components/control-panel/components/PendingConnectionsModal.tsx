@@ -231,7 +231,7 @@ export function PendingConnectionsModal({
           </div>
         )}
 
-        {!isConnecting && (
+        {!isConnecting && !isLayersMode && (
           <div className='relative flex items-center gap-2 pt-3 border-t border-neutral-800'>
             <Switch
               id='pending-modal-dont-show'
