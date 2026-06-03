@@ -58,7 +58,7 @@ export function SaveConfigModal({
               Include current dashboard layout
             </span>
             <span className='text-xs text-neutral-500'>
-              Save panel positions and visibility
+              Save panel positions (panel visibility is always saved)
             </span>
           </div>
         </label>

@@ -1859,10 +1859,15 @@ function SettingsBar({
         getTimelineStateForConfig(),
       );
       const outputPlayer = loadOutputPlayerSettings(roomId) ?? undefined;
-      const dashboardLayout =
-        includeLayout && dashboardToolbar
-          ? dashboardToolbar.getCurrentLayoutData()
-          : undefined;
+      // Panel visibility is always persisted; the checkbox only controls
+      // whether panel positions (layouts) are pinned into the config too.
+      const layoutData = dashboardToolbar?.getCurrentLayoutData();
+      const dashboardLayout = layoutData
+        ? {
+            visiblePanels: layoutData.visiblePanels,
+            ...(includeLayout ? { layouts: layoutData.layouts } : {}),
+          }
+        : undefined;
       return exportRoomConfig(
         roomState.inputs,
         'grid',
