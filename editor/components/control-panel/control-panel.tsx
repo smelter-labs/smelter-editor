@@ -1494,6 +1494,7 @@ function ControlPanelInner({
               canConnectAndRecord={timelineActionsReady && !isRecording}
               welcomeTextBefore={showcaseWelcome?.before}
               welcomeTextAfter={showcaseWelcome?.after}
+              sortMode={sortMode}
             />
             <ConnectPlayCompletionModal
               open={connectPlayCompletionOpen}
@@ -1613,6 +1614,7 @@ function ControlPanelInner({
       canConnectAndRecord={timelineActionsReady && !isRecording}
       welcomeTextBefore={showcaseWelcome?.before}
       welcomeTextAfter={showcaseWelcome?.after}
+      sortMode={sortMode}
     />
   );
 

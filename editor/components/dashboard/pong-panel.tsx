@@ -306,10 +306,14 @@ export function PongPanel({ roomId, inputs }: Props) {
               <span>{score.right}</span>
             </div>
             <div className='flex gap-1'>
-              <Button onClick={handleStart} disabled={startDisabled} size='sm'>
+              <Button
+                onClick={handleStart}
+                disabled={startDisabled}
+                size='lg'
+                className={startDisabled ? undefined : 'animate-pulse-cyan'}>
                 {startLabel}
               </Button>
-              <Button onClick={handleReset} variant='outline' size='sm'>
+              <Button onClick={handleReset} variant='outline' size='lg'>
                 Reset
               </Button>
             </div>

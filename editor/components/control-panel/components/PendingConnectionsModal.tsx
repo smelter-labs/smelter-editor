@@ -34,6 +34,7 @@ type PendingConnectionsModalProps = {
   canConnectAndRecord?: boolean;
   welcomeTextBefore?: string;
   welcomeTextAfter?: string;
+  sortMode?: 'timeline' | 'layers';
 };
 
 type PendingModalAction = 'connect' | 'play' | 'record' | null;
@@ -52,7 +53,9 @@ export function PendingConnectionsModal({
   canConnectAndRecord = false,
   welcomeTextBefore,
   welcomeTextAfter,
+  sortMode,
 }: PendingConnectionsModalProps) {
+  const isLayersMode = sortMode === 'layers';
   const [dontShow, setDontShow] = useState(false);
   const [pendingAction, setPendingAction] = useState<PendingModalAction>(null);
   const [isConnectAllReady, setIsConnectAllReady] = useState(false);
@@ -174,41 +177,57 @@ export function PendingConnectionsModal({
 
         {!isConnecting && (
           <div className='relative border-t border-neutral-800 pt-3 space-y-2'>
-            <Button
-              size='lg'
-              className={`w-full cursor-pointer ${canConnectAll && !isRunningAction ? 'animate-pulse-cyan' : ''}`}
-              disabled={!canConnectAll || !canConnectAndPlay || isRunningAction}
-              onClick={() => void handleConnectAction('play')}>
-              {pendingAction === 'play' ? (
-                <LoadingSpinner size='sm' variant='spinner' />
-              ) : (
-                'Connect & Play'
-              )}
-            </Button>
-            <div className='grid grid-cols-2 gap-2'>
+            {isLayersMode ? (
               <Button
-                variant='outline'
-                className='cursor-pointer'
-                size='sm'
+                size='lg'
+                className={`w-full cursor-pointer ${canConnectAll && !isRunningAction ? 'animate-pulse-cyan' : ''}`}
                 disabled={!canConnectAll || isRunningAction}
                 onClick={() => void handleConnectAction('connect')}>
-                Connect
-              </Button>
-              <Button
-                variant='outline'
-                className='cursor-pointer'
-                size='sm'
-                disabled={
-                  !canConnectAll || !canConnectAndRecord || isRunningAction
-                }
-                onClick={() => void handleConnectAction('record')}>
-                {pendingAction === 'record' ? (
+                {isConnecting ? (
                   <LoadingSpinner size='sm' variant='spinner' />
                 ) : (
-                  'Connect & Record'
+                  'Connect'
                 )}
               </Button>
-            </div>
+            ) : (
+              <>
+                <Button
+                  size='lg'
+                  className={`w-full cursor-pointer ${canConnectAll && !isRunningAction ? 'animate-pulse-cyan' : ''}`}
+                  disabled={!canConnectAll || !canConnectAndPlay || isRunningAction}
+                  onClick={() => void handleConnectAction('play')}>
+                  {pendingAction === 'play' ? (
+                    <LoadingSpinner size='sm' variant='spinner' />
+                  ) : (
+                    'Connect & Play'
+                  )}
+                </Button>
+                <div className='grid grid-cols-2 gap-2'>
+                  <Button
+                    variant='outline'
+                    className='cursor-pointer'
+                    size='sm'
+                    disabled={!canConnectAll || isRunningAction}
+                    onClick={() => void handleConnectAction('connect')}>
+                    Connect
+                  </Button>
+                  <Button
+                    variant='outline'
+                    className='cursor-pointer'
+                    size='sm'
+                    disabled={
+                      !canConnectAll || !canConnectAndRecord || isRunningAction
+                    }
+                    onClick={() => void handleConnectAction('record')}>
+                    {pendingAction === 'record' ? (
+                      <LoadingSpinner size='sm' variant='spinner' />
+                    ) : (
+                      'Connect & Record'
+                    )}
+                  </Button>
+                </div>
+              </>
+            )}
           </div>
         )}
 
