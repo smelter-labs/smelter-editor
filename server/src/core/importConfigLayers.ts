@@ -11,6 +11,12 @@ export function rebuildLayers(
     id: cl.id,
     behavior: cl.behavior,
     carousel: cl.carousel,
+    offsetTop: cl.offsetTop,
+    offsetLeft: cl.offsetLeft,
+    offsetWidth: cl.offsetWidth,
+    offsetHeight: cl.offsetHeight,
+    offsetTransitionDurationMs: cl.offsetTransitionDurationMs,
+    offsetTransitionEasing: cl.offsetTransitionEasing,
     inputs: cl.inputs
       .filter(
         (li, index, arr) =>

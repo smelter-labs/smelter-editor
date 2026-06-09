@@ -71,6 +71,8 @@ type LayersSectionProps = {
   isSwapping?: boolean;
   selectedInputId: string | null;
   onSelectInput?: (inputId: string | null) => void;
+  selectedLayerId?: string | null;
+  onSelectLayer?: (layerId: string | null) => void;
   isGuest?: boolean;
   guestInputId?: string | null;
   onLayersChange: (layers: Layer[]) => Promise<void>;
@@ -174,6 +176,8 @@ function LayerHeader({
   isCarousel,
   isCollapsed,
   onToggleCollapse,
+  onSelect,
+  isSelected,
   behavior,
   onBehaviorChange,
   isColorFilterActive,
@@ -190,6 +194,8 @@ function LayerHeader({
   isCarousel?: boolean;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
+  onSelect?: () => void;
+  isSelected?: boolean;
   behavior: LayerBehaviorConfig | undefined;
   onBehaviorChange: (b: LayerBehaviorConfig | undefined) => void;
   isColorFilterActive: boolean;
@@ -203,20 +209,28 @@ function LayerHeader({
   onEditCarouselInputs?: () => void;
 }) {
   return (
-    <div className='border-b border-neutral-800/70 bg-neutral-900/40'>
+    <div
+      className={`border-b border-neutral-800/70 bg-neutral-900/40 ${
+        isSelected ? 'ring-2 ring-blue-500/60 ring-inset' : ''
+      }`}>
       <div className='w-full flex items-center gap-1.5 px-2 py-1.5 hover:bg-neutral-800/40 transition-colors'>
         <button
           type='button'
           onClick={onToggleCollapse}
-          className='flex min-w-0 flex-1 items-center gap-1.5'
+          className='text-neutral-500 w-4 flex-shrink-0'
+          data-no-dnd='true'
+          aria-label='Toggle layer collapse'>
+          {isCollapsed ? (
+            <ChevronRight className='w-3.5 h-3.5' />
+          ) : (
+            <ChevronDown className='w-3.5 h-3.5' />
+          )}
+        </button>
+        <button
+          type='button'
+          onClick={onSelect}
+          className='flex min-w-0 flex-1 items-center gap-1.5 cursor-pointer'
           data-no-dnd='true'>
-          <span className='text-neutral-500 w-4 flex-shrink-0'>
-            {isCollapsed ? (
-              <ChevronRight className='w-3.5 h-3.5' />
-            ) : (
-              <ChevronDown className='w-3.5 h-3.5' />
-            )}
-          </span>
           <Layers className='w-3.5 h-3.5 text-neutral-500 flex-shrink-0' />
           <span className='text-[11px] font-semibold text-neutral-300 flex-1 text-left truncate'>
             {isCarousel ? 'Carousel' : `Layer ${stableLayerNumber + 1}`}
@@ -330,6 +344,8 @@ export function LayersSection({
   isSwapping,
   selectedInputId,
   onSelectInput,
+  selectedLayerId,
+  onSelectLayer,
   isGuest,
   guestInputId,
   onLayersChange,
@@ -699,7 +715,12 @@ export function LayersSection({
                 key={layer.id}
                 id={`layer::${layer.id}`}
                 disabled={disableDrag}>
-                <div className='mb-2 rounded-md border border-neutral-800/70 bg-neutral-950/20 overflow-hidden'>
+                <div
+                  className={`mb-2 rounded-md border bg-neutral-950/20 overflow-hidden ${
+                    selectedLayerId === layer.id
+                      ? 'border-blue-500/60'
+                      : 'border-neutral-800/70'
+                  }`}>
                   <LayerHeader
                     stableLayerNumber={
                       layerNamesRef.current.get(layer.id) ?? layerIndex
@@ -707,6 +728,12 @@ export function LayersSection({
                     isCarousel={!!layer.carousel}
                     isCollapsed={isCollapsed}
                     onToggleCollapse={() => toggleCollapse(layer.id)}
+                    onSelect={() =>
+                      onSelectLayer?.(
+                        selectedLayerId === layer.id ? null : layer.id,
+                      )
+                    }
+                    isSelected={selectedLayerId === layer.id}
                     behavior={layer.behavior}
                     onBehaviorChange={(b) => handleBehaviorChange(layer.id, b)}
                     isColorFilterActive={isColorFilterActive}
