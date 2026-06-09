@@ -17,6 +17,10 @@ import type {
 } from '@fastify/type-provider-typebox';
 import { state } from '../core/serverState';
 import { roomEventBus } from '../core/roomEventBus';
+import {
+  handlePongClientDisconnect,
+  handlePongClientMessage,
+} from '../pong/pongWsHandler';
 import { registerStorageRoutes } from './storageRoutes';
 import { registerHiddenAssetsRoutes } from './hiddenAssetsRoutes';
 import { logRequest, addLogListener, getLogBuffer } from '../dashboard';
@@ -1039,6 +1043,7 @@ routes.after(() => {
       });
 
       socket.on('close', (code: any, reason: unknown) => {
+        handlePongClientDisconnect(roomId, clientId);
         logWsDebug('closed', {
           roomId,
           clientId,
@@ -1077,6 +1082,16 @@ routes.after(() => {
           if (text == null) return;
           parsed = JSON.parse(text);
         } catch {
+          return;
+        }
+        if (
+          parsed &&
+          typeof parsed === 'object' &&
+          typeof (parsed as { type?: unknown }).type === 'string' &&
+          (parsed as { type: string }).type.startsWith('pong_') &&
+          (parsed as { type: string }).type !== 'pong_shader_partial_update'
+        ) {
+          handlePongClientMessage(roomId, clientId, parsed);
           return;
         }
         if (

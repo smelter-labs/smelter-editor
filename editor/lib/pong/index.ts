@@ -8,3 +8,5 @@ export { applyIntent } from './controllers/types';
 export { KeyboardController } from './controllers/keyboard';
 export { MouseController } from './controllers/mouse';
 export { AiController } from './controllers/ai';
+export { RemotePaddleController } from './controllers/remote';
+export { toNetGameState, fromNetGameState } from './net-state';

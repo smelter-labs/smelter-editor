@@ -1,5 +1,6 @@
 import type { PublicInputState } from "./public-input-state.js";
 import type { Layer } from "./layout.js";
+import type { PongServerEvent } from "./pong-events.js";
 
 export type ConnectedPeer = {
   clientId: string;
@@ -75,4 +76,5 @@ export type RoomEvent =
   | PeersUpdatedEvent
   | TimelinePlaybackUpdatedEvent
   | NormalizationProgressEvent
-  | NormalizationDoneEvent;
+  | NormalizationDoneEvent
+  | PongServerEvent;
