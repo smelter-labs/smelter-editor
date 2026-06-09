@@ -96,6 +96,12 @@ export type ImportConfigLayer = {
   inputs: ImportConfigLayerInput[];
   behavior?: LayerBehaviorConfig;
   carousel?: CarouselConfig;
+  offsetTop?: number;
+  offsetLeft?: number;
+  offsetWidth?: number;
+  offsetHeight?: number;
+  offsetTransitionDurationMs?: number;
+  offsetTransitionEasing?: string;
 };
 
 export type ImportConfigRequest = {
