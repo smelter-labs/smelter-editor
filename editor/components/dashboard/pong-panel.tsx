@@ -161,15 +161,23 @@ export function PongPanel({ roomId, inputs }: Props) {
   const rightKb = useKeyboardInput(RIGHT_BINDINGS, rightKeyboard);
   const mouseInput = useMouseInput(courtRef, leftMouse || rightMouse);
 
-  const remotePaddleYRef = useRef<number | null>(null);
+  // Stable refs for multiplayer send fns so they never break the RAF loop.
+  const sendGameStateRef = useRef(multiplayer.sendGameState);
+  const sendPaddleInputRef = useRef(multiplayer.sendPaddleInput);
   useEffect(() => {
-    remotePaddleYRef.current = multiplayer.remotePaddleY;
-  }, [multiplayer.remotePaddleY]);
+    sendGameStateRef.current = multiplayer.sendGameState;
+  }, [multiplayer.sendGameState]);
+  useEffect(() => {
+    sendPaddleInputRef.current = multiplayer.sendPaddleInput;
+  }, [multiplayer.sendPaddleInput]);
 
-  const remoteGameStateRef = useRef(multiplayer.remoteGameState);
-  useEffect(() => {
-    remoteGameStateRef.current = multiplayer.remoteGameState;
-  }, [multiplayer.remoteGameState]);
+  // Flags as refs for RAF loops so they don't restart the effect.
+  const isMultiplayerHostRef = useRef(isMultiplayerHost);
+  const isMultiplayerGuestRef = useRef(isMultiplayerGuest);
+  const mySideRef = useRef(mySide);
+  useEffect(() => { isMultiplayerHostRef.current = isMultiplayerHost; }, [isMultiplayerHost]);
+  useEffect(() => { isMultiplayerGuestRef.current = isMultiplayerGuest; }, [isMultiplayerGuest]);
+  useEffect(() => { mySideRef.current = mySide; }, [mySide]);
 
   const resetLocalGame = () => {
     stateRef.current = resetMatch();
@@ -208,7 +216,7 @@ export function PongPanel({ roomId, inputs }: Props) {
     leftController.reset?.();
     rightController.reset?.();
     remoteController.reset();
-  }, [isMultiplayerHost, multiplayer.status]);
+  }, [isMultiplayerHost]);
 
   useEffect(() => {
     if (multiplayer.status !== 'in_lobby') return;
@@ -217,6 +225,7 @@ export function PongPanel({ roomId, inputs }: Props) {
     pushShaderAutoMode();
   }, [multiplayer.status]);
 
+  // Canvas auto-resize.
   useEffect(() => {
     const canvas = canvasRef.current;
     const container = courtRef.current;
@@ -241,11 +250,7 @@ export function PongPanel({ roomId, inputs }: Props) {
     return () => ro.disconnect();
   }, []);
 
-  useEffect(() => {
-    if (!isMultiplayerGuest || !mySide || !multiplayer.remoteGameState) return;
-    guestPaddleYRef.current = multiplayer.remoteGameState.paddles[mySide].y;
-  }, [multiplayer.remoteGameState, isMultiplayerGuest, mySide]);
-
+  // ─── Host / Local game loop ───────────────────────────────────────────
   useEffect(() => {
     if (isMultiplayerGuest || isInLobby) return;
     if (!isLocalPlay && !isMultiplayerHost) return;
@@ -269,25 +274,26 @@ export function PongPanel({ roomId, inputs }: Props) {
       let leftIntent = leftController.update(dt, stateRef.current, 'left', inputsLeft);
       let rightIntent = rightController.update(dt, stateRef.current, 'right', inputsRight);
 
-      if (isMultiplayerHost && mySide) {
-        const remoteY = remotePaddleYRef.current;
+      const currentMySide = mySideRef.current;
+      if (isMultiplayerHostRef.current && currentMySide) {
+        const remoteY = multiplayer.remotePaddleYRef.current;
         if (remoteY != null) {
           remoteController.setTargetY(remoteY);
         }
         const localIntent = networkKeyboardController.update(
           dt,
           stateRef.current,
-          mySide,
-          mySide === 'left' ? inputsLeft : inputsRight,
+          currentMySide,
+          currentMySide === 'left' ? inputsLeft : inputsRight,
         );
-        const remoteSide = mySide === 'left' ? 'right' : 'left';
+        const remoteSide = currentMySide === 'left' ? 'right' : 'left';
         const remoteIntent = remoteController.update(
           dt,
           stateRef.current,
           remoteSide,
           { keyboard: { upHeld: false, downHeld: false }, mouse: { y: null } },
         );
-        if (mySide === 'left') {
+        if (currentMySide === 'left') {
           leftIntent = localIntent;
           rightIntent = remoteIntent;
         } else {
@@ -341,11 +347,11 @@ export function PongPanel({ roomId, inputs }: Props) {
       }
 
       if (
-        isMultiplayerHost &&
+        isMultiplayerHostRef.current &&
         next.phase !== 'idle' &&
         now - lastNetPushAt.current >= SHADER_PUSH_INTERVAL_MS
       ) {
-        if (multiplayer.sendGameState(toNetGameState(next))) {
+        if (sendGameStateRef.current(toNetGameState(next))) {
           lastNetPushAt.current = now;
         }
       }
@@ -371,10 +377,9 @@ export function PongPanel({ roomId, inputs }: Props) {
     isMultiplayerHost,
     isInLobby,
     isLocalPlay,
-    mySide,
-    multiplayer,
   ]);
 
+  // ─── Guest game loop ──────────────────────────────────────────────────
   useEffect(() => {
     if (!isMultiplayerGuest || !mySide) return;
 
@@ -385,6 +390,8 @@ export function PongPanel({ roomId, inputs }: Props) {
       const dt = Math.min(1 / 30, (now - last) / 1000);
       last = now;
 
+      const currentMySide = mySideRef.current ?? mySide;
+
       const inputsLeft = {
         keyboard: leftKb.current,
         mouse: leftMouse ? mouseInput.current : { y: null },
@@ -394,12 +401,11 @@ export function PongPanel({ roomId, inputs }: Props) {
         mouse: rightMouse ? mouseInput.current : { y: null },
       };
 
-      const remote = remoteGameStateRef.current;
-      const sideInputs = mySide === 'left' ? inputsLeft : inputsRight;
+      const sideInputs = currentMySide === 'left' ? inputsLeft : inputsRight;
       const intent = networkKeyboardController.update(
         dt,
         stateRef.current,
-        mySide,
+        currentMySide,
         sideInputs,
       );
       const paddle = { y: guestPaddleYRef.current };
@@ -407,38 +413,38 @@ export function PongPanel({ roomId, inputs }: Props) {
       guestPaddleYRef.current = nextPaddle.y;
 
       if (now - lastPaddlePushAt.current >= SHADER_PUSH_INTERVAL_MS) {
-        if (multiplayer.sendPaddleInput(guestPaddleYRef.current)) {
+        if (sendPaddleInputRef.current(guestPaddleYRef.current)) {
           lastPaddlePushAt.current = now;
         }
       }
 
-      const renderState = remote
-        ? {
-            ...fromNetGameState(remote),
-            paddles: {
-              ...fromNetGameState(remote).paddles,
-              [mySide]: { y: guestPaddleYRef.current },
-            },
-          }
-        : {
-            ...createInitialState(),
-            paddles: {
-              left: { y: mySide === 'left' ? guestPaddleYRef.current : 0.5 },
-              right: { y: mySide === 'right' ? guestPaddleYRef.current : 0.5 },
-            },
-          };
+      const remote = multiplayer.remoteGameStateRef.current;
+      let renderState: GameState;
+      if (remote) {
+        const base = fromNetGameState(remote);
+        renderState = {
+          ...base,
+          paddles: {
+            ...base.paddles,
+            [currentMySide]: { y: guestPaddleYRef.current },
+          },
+        };
+      } else {
+        renderState = {
+          ...createInitialState(),
+          paddles: {
+            left: { y: currentMySide === 'left' ? guestPaddleYRef.current : 0.5 },
+            right: { y: currentMySide === 'right' ? guestPaddleYRef.current : 0.5 },
+          },
+        };
+      }
 
       const canvas = canvasRef.current;
       if (canvas) {
         const ctx = canvas.getContext('2d');
         if (ctx) {
           const dpr = window.devicePixelRatio || 1;
-          drawGameState(
-            ctx,
-            renderState,
-            canvas.width / dpr,
-            canvas.height / dpr,
-          );
+          drawGameState(ctx, renderState, canvas.width / dpr, canvas.height / dpr);
         }
       }
 
@@ -468,7 +474,6 @@ export function PongPanel({ roomId, inputs }: Props) {
     mouseInput,
     leftMouse,
     rightMouse,
-    multiplayer,
   ]);
 
   const handleStart = () => {

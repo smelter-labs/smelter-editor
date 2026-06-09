@@ -25,8 +25,10 @@ export type PongMultiplayerApi = {
   lobby: PongLobbyState | null;
   isHost: boolean;
   mySide: PongSide | null;
-  remoteGameState: PongNetGameState | null;
-  remotePaddleY: number | null;
+  /** Read via ref in RAF loops — NOT via React state. */
+  remoteGameStateRef: React.RefObject<PongNetGameState | null>;
+  /** Read via ref in RAF loops — NOT via React state. */
+  remotePaddleYRef: React.RefObject<number | null>;
   disconnectMessage: string | null;
   join: (side: PongSide) => void;
   ready: () => void;
@@ -41,12 +43,6 @@ const CLIENT_NAME = 'Editor';
 const RECONNECT_BASE_DELAY_MS = 250;
 const RECONNECT_MAX_DELAY_MS = 15_000;
 
-const EMPTY_LOBBY: PongLobbyState = {
-  players: [],
-  hostClientId: null,
-  gameStarted: false,
-};
-
 function resetReasonMessage(reason: PongGameResetReason): string | null {
   if (reason === 'host_left') return 'Host disconnected. Game ended.';
   if (reason === 'player_left') return 'Opponent disconnected.';
@@ -57,11 +53,10 @@ export function usePongMultiplayer(roomId: string): PongMultiplayerApi {
   const [status, setStatus] = useState<PongMultiplayerStatus>('disconnected');
   const [clientId, setClientId] = useState<string | null>(null);
   const [lobby, setLobby] = useState<PongLobbyState | null>(null);
-  const [remoteGameState, setRemoteGameState] = useState<PongNetGameState | null>(
-    null,
-  );
-  const [remotePaddleY, setRemotePaddleY] = useState<number | null>(null);
   const [disconnectMessage, setDisconnectMessage] = useState<string | null>(null);
+
+  const remoteGameStateRef = useRef<PongNetGameState | null>(null);
+  const remotePaddleYRef = useRef<number | null>(null);
 
   const socketRef = useRef<WebSocket | null>(null);
   const clientIdRef = useRef<string | null>(null);
@@ -129,22 +124,22 @@ export function usePongMultiplayer(roomId: string): PongMultiplayerApi {
           return;
         }
         if (type === 'pong_game_started') {
-          setRemoteGameState(null);
-          setRemotePaddleY(null);
+          remoteGameStateRef.current = null;
+          remotePaddleYRef.current = null;
           setStatus('playing');
           return;
         }
         if (type === 'pong_paddle_input') {
           const y = (msg as { y?: unknown }).y;
           if (typeof y === 'number' && Number.isFinite(y)) {
-            setRemotePaddleY(y);
+            remotePaddleYRef.current = y;
           }
           return;
         }
         if (type === 'pong_game_state') {
           const state = (msg as { state?: unknown }).state;
           if (state && typeof state === 'object') {
-            setRemoteGameState(state as PongNetGameState);
+            remoteGameStateRef.current = state as PongNetGameState;
           }
           return;
         }
@@ -157,8 +152,8 @@ export function usePongMultiplayer(roomId: string): PongMultiplayerApi {
           ) {
             setDisconnectMessage(resetReasonMessage(reason));
           }
-          setRemoteGameState(null);
-          setRemotePaddleY(null);
+          remoteGameStateRef.current = null;
+          remotePaddleYRef.current = null;
           if (lobbyRef.current?.players.some((p) => p.clientId === clientIdRef.current)) {
             setStatus('in_lobby');
           } else {
@@ -219,15 +214,15 @@ export function usePongMultiplayer(roomId: string): PongMultiplayerApi {
     send({ type: 'pong_leave' });
     setLobby(null);
     lobbyRef.current = null;
-    setRemoteGameState(null);
-    setRemotePaddleY(null);
+    remoteGameStateRef.current = null;
+    remotePaddleYRef.current = null;
     setStatus('connected');
   }, [send]);
 
   const reset = useCallback(() => {
     send({ type: 'pong_reset' });
-    setRemoteGameState(null);
-    setRemotePaddleY(null);
+    remoteGameStateRef.current = null;
+    remotePaddleYRef.current = null;
   }, [send]);
 
   const sendPaddleInput = useCallback(
@@ -256,8 +251,8 @@ export function usePongMultiplayer(roomId: string): PongMultiplayerApi {
     lobby,
     isHost,
     mySide,
-    remoteGameState,
-    remotePaddleY,
+    remoteGameStateRef,
+    remotePaddleYRef,
     disconnectMessage,
     join,
     ready,
@@ -268,5 +263,3 @@ export function usePongMultiplayer(roomId: string): PongMultiplayerApi {
     clearDisconnectMessage,
   };
 }
-
-export { EMPTY_LOBBY };
