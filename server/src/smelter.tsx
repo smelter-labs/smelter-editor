@@ -132,6 +132,21 @@ function createFallbackWhepVideoEncoder() {
   };
 }
 
+function isFatalSmelterError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') {
+    return false;
+  }
+  const stack = (err as { body?: { stack?: unknown } }).body?.stack;
+  if (!Array.isArray(stack)) {
+    return false;
+  }
+  return stack.some(
+    (line: unknown) =>
+      typeof line === 'string' &&
+      line.includes('host memory allocation has failed'),
+  );
+}
+
 class SmelterManager {
   private instance: Smelter;
   private pipelineStartTime: number = 0;
@@ -203,6 +218,13 @@ class SmelterManager {
         outputOptions,
       );
     } catch (err) {
+      if (isFatalSmelterError(err)) {
+        console.error(
+          'Fatal Smelter error, exiting for restart',
+          (err as { body?: unknown }).body ?? err,
+        );
+        process.exit(1);
+      }
       if (config.h264Encoder.type !== 'vulkan_h264') {
         throw err;
       }
