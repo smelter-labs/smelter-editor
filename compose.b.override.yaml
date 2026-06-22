@@ -1,5 +1,0 @@
-services:
-  server:
-    ports: !override
-      - 10071:9071
-      - 10072:9072

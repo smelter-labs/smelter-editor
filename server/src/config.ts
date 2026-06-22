@@ -20,26 +20,39 @@ const parsedSnakeVisualSpeedMultiplier = Number(
 );
 const snakeVisualSpeedMultiplier =
   Number.isFinite(parsedSnakeVisualSpeedMultiplier) &&
-  parsedSnakeVisualSpeedMultiplier > 0
+    parsedSnakeVisualSpeedMultiplier > 0
     ? parsedSnakeVisualSpeedMultiplier
     : defaultSnakeVisualSpeedMultiplier;
 
-const isProduction = process.env.ENVIRONMENT === 'production';
+// Both deployed Docker stacks (production + staging) run the production config;
+// only local dev falls through to the dev branch below.
+const useProductionConfig =
+  process.env.ENVIRONMENT === 'production' ||
+  process.env.ENVIRONMENT === 'staging';
 
-/** Fishjam app path segment before `/whep` and `/whip` (two Docker stacks = two values). */
-const defaultProductionWebRtcApp = 'smelter-editor-webrtc';
+/**
+ * Fishjam app path segment before `/whep` and `/whip`. Each deployed stack gets
+ * its own app so production and staging don't share WebRTC endpoints; any other
+ * environment falls back to the SMELTER_EDITOR_WEBRTC_APP env var.
+ */
+function resolveWebRtcApp(): string {
+  switch (process.env.ENVIRONMENT) {
+    case 'production':
+      return 'smelter-editor-production-webrtc';
+    case 'staging':
+      return 'smelter-editor-staging-webrtc';
+    default:
+      return (
+        process.env.SMELTER_EDITOR_WEBRTC_APP?.trim() || 'smelter-editor-webrtc'
+      );
+  }
+}
 
 function productionWebRtcBaseUrls(): {
   whepBaseUrl: string;
   whipBaseUrl: string;
 } {
-  const whepOverride = process.env.SMELTER_WHEP_BASE_URL?.trim();
-  const whipOverride = process.env.SMELTER_WHIP_BASE_URL?.trim();
-  if (whepOverride && whipOverride) {
-    return { whepBaseUrl: whepOverride, whipBaseUrl: whipOverride };
-  }
-  const app =
-    process.env.SMELTER_EDITOR_WEBRTC_APP?.trim() || defaultProductionWebRtcApp;
+  const app = resolveWebRtcApp();
   const host = 'https://puffer.fishjam.io';
   return {
     whepBaseUrl: `${host}/${app}/whep`,
@@ -49,7 +62,8 @@ function productionWebRtcBaseUrls(): {
 
 function buildH264Encoder(): Outputs.WhepVideoEncoderOptions {
   const encoderEnv = process.env.SMELTER_H264_ENCODER;
-  const useVulkan = encoderEnv === 'vulkan' || (!encoderEnv && isProduction);
+  const useVulkan =
+    encoderEnv === 'vulkan' || (!encoderEnv && useProductionConfig);
 
   if (useVulkan) {
     const bitrate =
@@ -81,26 +95,26 @@ function buildH264Encoder(): Outputs.WhepVideoEncoderOptions {
   };
 }
 
-export const config: Config = isProduction
+export const config: Config = useProductionConfig
   ? {
-      logger: {
-        level: (process.env.SMELTER_DEMO_ROUTER_LOGGER_LEVEL ?? 'warn') as any,
-      },
-      ...productionWebRtcBaseUrls(),
-      h264Decoder: 'vulkan_h264',
-      h264Encoder: buildH264Encoder(),
-      snakeVisualSpeedMultiplier,
-    }
+    logger: {
+      level: (process.env.SMELTER_DEMO_ROUTER_LOGGER_LEVEL ?? 'warn') as any,
+    },
+    ...productionWebRtcBaseUrls(),
+    h264Decoder: 'vulkan_h264',
+    h264Encoder: buildH264Encoder(),
+    snakeVisualSpeedMultiplier,
+  }
   : {
-      logger: {
-        transport: {
-          target: 'pino-pretty',
-        },
-        level: (process.env.SMELTER_DEMO_ROUTER_LOGGER_LEVEL ?? 'warn') as any,
+    logger: {
+      transport: {
+        target: 'pino-pretty',
       },
-      whepBaseUrl: 'http://127.0.0.1:9000/whep',
-      whipBaseUrl: 'http://127.0.0.1:9000/whip',
-      h264Decoder: 'ffmpeg_h264',
-      h264Encoder: buildH264Encoder(),
-      snakeVisualSpeedMultiplier,
-    };
+      level: (process.env.SMELTER_DEMO_ROUTER_LOGGER_LEVEL ?? 'warn') as any,
+    },
+    whepBaseUrl: 'http://127.0.0.1:9000/whep',
+    whipBaseUrl: 'http://127.0.0.1:9000/whip',
+    h264Decoder: 'ffmpeg_h264',
+    h264Encoder: buildH264Encoder(),
+    snakeVisualSpeedMultiplier,
+  };

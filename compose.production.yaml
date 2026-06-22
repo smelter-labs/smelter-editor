@@ -1,0 +1,56 @@
+# Production compose file — place this on the PRODUCTION host as ~/smelter-editor/compose.production.yaml
+#
+# This file does NOT build the image; it pulls the image published by the
+# "Deploy production" GitHub Actions workflow (main branch -> :production tag).
+#
+# One-time host setup:
+#   1. Authenticate to the registry so `docker compose pull` works:
+#        echo <GHCR_PAT_with_read:packages> | docker login ghcr.io -u <github-user> --password-stdin
+#   2. Create ~/smelter-editor/secret.env with the runtime secrets (TWITCH_*, KICK_*, etc.).
+#   3. Ensure the data directory exists: sudo mkdir -p /srv/smelter/.data
+#
+# Explicit project name so this stack stays independent of the staging stack
+# even when both are deployed from the same ~/smelter-editor directory on one
+# host (otherwise both default to the directory name and collide).
+name: smelter-editor-production
+
+x-server-common: &server-common
+  image: ghcr.io/smelter-labs/smelter-editor:production
+  pull_policy: always
+  restart: on-failure
+  environment:
+    SMELTER_DEMO_API_PORT: "9071"
+    SMELTER_WHIP_WHEP_SERVER_PORT: "9072"
+    SMELTER_LOGGER_FORMAT: compact
+    ENVIRONMENT: production
+    SMELTER_TIMELINE_STOP_APPLY_DELAY_MS: "1500"
+    # Logger levels are passed in by the "Deploy production" workflow (see its
+    # env block). The defaults below apply when running this file by hand.
+    SMELTER_LOGGER_LEVEL: "${SMELTER_LOGGER_LEVEL:-info}"
+    SMELTER_DEMO_ROUTER_LOGGER_LEVEL: "${SMELTER_DEMO_ROUTER_LOGGER_LEVEL:-warn}"
+    SMELTER_SERVER_LOGGER_LEVEL: "${SMELTER_SERVER_LOGGER_LEVEL:-info,wgpu_hal=warn,smelter_core::pipeline::instance=warn}"
+    TWITCH_CLIENT_ID: "${TWITCH_CLIENT_ID:-}"
+    TWITCH_CLIENT_SECRET: "${TWITCH_CLIENT_SECRET:-}"
+    KICK_CLIENT_ID: "${KICK_CLIENT_ID:-}"
+    KICK_CLIENT_SECRET: "${KICK_CLIENT_SECRET:-}"
+  gpus: "all"
+  runtime: "nvidia"
+
+services:
+  server:
+    <<: *server-common
+    volumes:
+      - smelter_data:/home/smelter/demo/server/data
+    ports:
+      - 9071:9071
+      - 9072:9072
+
+volumes:
+  smelter_data:
+    name: smelter_data
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      # Absolute path on the host that backs the shared data directory.
+      device: /srv/smelter/.data

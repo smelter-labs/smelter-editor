@@ -31,16 +31,6 @@ services:
       - 9071:9071
       - 9072:9072
 
-  server-b:
-    <<: *server-common
-    profiles:
-      - b
-    volumes:
-      - smelter_data:/home/smelter/demo/server/data
-    ports:
-      - 10071:9071
-      - 10072:9072
-
 volumes:
   smelter_data:
     # `name:` without a project prefix means every compose stack on this host
