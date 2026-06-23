@@ -115,3 +115,29 @@ export type {
 } from "./import-config.js";
 
 export type { BroadcastTile } from "./broadcast.js";
+
+export type {
+  PongSide,
+  PongGamePhase,
+  PongBounceKind,
+  PongBounceEvent,
+  PongBall,
+  PongNetGameState,
+  PongLobbyPlayer,
+  PongLobbyState,
+  PongJoinMessage,
+  PongReadyMessage,
+  PongLeaveMessage,
+  PongPaddleInputMessage,
+  PongGameStateMessage,
+  PongResetMessage,
+  PongClientMessage,
+  PongLobbyUpdatedEvent,
+  PongGameStartedEvent,
+  PongRemotePaddleEvent,
+  PongRemoteGameStateEvent,
+  PongGameResetReason,
+  PongGameResetEvent,
+  PongPlayerDisconnectedEvent,
+  PongServerEvent,
+} from "./pong-events.js";

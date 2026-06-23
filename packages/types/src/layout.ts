@@ -125,6 +125,16 @@ export type Layer = {
    * Undefined is treated as enabled (backward compat with existing rooms).
    */
   enabled?: boolean;
+  /**
+   * Layer-level position/scale on the output canvas. Defaults to full output
+   * (top=0, left=0, width=resolution.width, height=resolution.height).
+   */
+  offsetTop?: number;
+  offsetLeft?: number;
+  offsetWidth?: number;
+  offsetHeight?: number;
+  offsetTransitionDurationMs?: number;
+  offsetTransitionEasing?: string;
 };
 
 // ── Deprecated (kept for room-config backward compat) ────────────────────────

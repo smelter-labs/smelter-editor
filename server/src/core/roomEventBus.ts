@@ -93,6 +93,32 @@ class RoomEventBus {
     }
   }
 
+  // send `event` to a single subscriber
+  sendTo(roomId: string, clientId: string, event: RoomEvent): void {
+    const clients = this.connections.get(roomId);
+    const record = clients?.get(clientId);
+    if (!record || record.ws.readyState !== 1) return;
+    record.ws.send(JSON.stringify(event));
+  }
+
+  // send `event` to all subscribers of `roomId` except `excludeClientId`
+  broadcastExcept(
+    roomId: string,
+    excludeClientId: string,
+    event: RoomEvent,
+  ): void {
+    const clients = this.connections.get(roomId);
+    if (!clients || clients.size === 0) return;
+
+    const payload = JSON.stringify(event);
+    for (const [id, { ws }] of clients.entries()) {
+      if (id === excludeClientId) continue;
+      if (ws.readyState === 1) {
+        ws.send(payload);
+      }
+    }
+  }
+
   // send `event` to all subscribers across every room
   broadcastAll(event: RoomEvent): void {
     for (const roomId of this.connections.keys()) {

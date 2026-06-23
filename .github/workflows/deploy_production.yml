@@ -1,0 +1,76 @@
+name: Deploy production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+env:
+  IMAGE: ghcr.io/smelter-labs/smelter-editor
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:production
+            ${{ env.IMAGE }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.DEPLOY_SSH_HOST }}
+          port: ${{ secrets.DEPLOY_SSH_PORT }}
+          username: ${{ secrets.DEPLOY_SSH_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          command_timeout: 30m
+          envs: TWITCH_CLIENT_ID,TWITCH_CLIENT_SECRET,KICK_CLIENT_ID,KICK_CLIENT_SECRET,SMELTER_SERVER_LOGGER_LEVEL,SMELTER_DEMO_ROUTER_LOGGER_LEVEL,SMELTER_LOGGER_LEVEL
+          script: |
+            set -euo pipefail
+            cd ~/smelter-editor
+            docker compose -f compose.production.yaml pull
+            docker compose -f compose.production.yaml up -d --remove-orphans
+            docker image prune -f
+        env:
+          # Stream provider credentials (GitHub Actions secrets).
+          TWITCH_CLIENT_ID: ${{ secrets.TWITCH_CLIENT_ID }}
+          TWITCH_CLIENT_SECRET: ${{ secrets.TWITCH_CLIENT_SECRET }}
+          KICK_CLIENT_ID: ${{ secrets.KICK_CLIENT_ID }}
+          KICK_CLIENT_SECRET: ${{ secrets.KICK_CLIENT_SECRET }}
+          # Plain-text logger config — edit here to tune production log levels.
+          # Picked up by compose interpolation in compose.production.yaml.
+          SMELTER_SERVER_LOGGER_LEVEL: "debug,smelter_core=info,naga=info,cosmic_text=info,wgpu_hal=warn,smelter_core::pipeline::instance=warn"
+          SMELTER_DEMO_ROUTER_LOGGER_LEVEL: "warn"
+          SMELTER_LOGGER_LEVEL: "info"

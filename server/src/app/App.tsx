@@ -209,13 +209,36 @@ function OutputScene() {
         overflow: 'visible',
       }}>
       {layersReversed.map((layer) => {
+        const layerOffsetTransition = {
+          durationMs: layer.offsetTransitionDurationMs ?? 300,
+          easingFunction: buildEasingFunction(layer.offsetTransitionEasing),
+        };
+        const layerOffsetStyle = {
+          top: layer.offsetTop ?? 0,
+          left: layer.offsetLeft ?? 0,
+          width: layer.offsetWidth ?? width,
+          height: layer.offsetHeight ?? height,
+        };
+
         if (layer.carousel && layer.inputs.length > 0) {
-          return <CarouselSlot key={layer.id} layer={layer} inputMap={inputMap} />;
+          return (
+            <Rescaler
+              key={layer.id}
+              id={`layer-pos-${layer.id}`}
+              transition={layerOffsetTransition}
+              style={layerOffsetStyle}>
+              <CarouselSlot layer={layer} inputMap={inputMap} />
+            </Rescaler>
+          );
         }
         return (
-        <View
+        <Rescaler
           key={layer.id}
-          style={{ top: 0, left: 0, width, height, overflow: 'visible' }}>
+          id={`layer-pos-${layer.id}`}
+          transition={layerOffsetTransition}
+          style={layerOffsetStyle}>
+        <View
+          style={{ width, height, overflow: 'visible' }}>
           {layer.enabled === false
             ? null
             : layer.inputs.map((item) => {
@@ -288,6 +311,7 @@ function OutputScene() {
                 );
               })}
         </View>
+        </Rescaler>
         );
       })}
     </View>

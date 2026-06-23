@@ -1,0 +1,47 @@
+# Staging compose file — place this on the STAGING host as ~/smelter-editor/compose.staging.yaml
+#
+# This file does NOT build the image; it pulls the image published by the
+# "Deploy staging" GitHub Actions workflow (dev branch -> :staging tag).
+#
+name: smelter-editor-staging
+
+x-server-common: &server-common
+  image: ghcr.io/smelter-labs/smelter-editor:staging
+  pull_policy: always
+  restart: on-failure
+  environment:
+    SMELTER_DEMO_API_PORT: "10071"
+    SMELTER_WHIP_WHEP_SERVER_PORT: "10072"
+    SMELTER_LOGGER_FORMAT: compact
+    ENVIRONMENT: staging
+    SMELTER_TIMELINE_STOP_APPLY_DELAY_MS: "1500"
+    # Logger levels are passed in by the "Deploy staging" workflow (see its
+    # env block). The defaults below apply when running this file by hand.
+    SMELTER_LOGGER_LEVEL: "${SMELTER_LOGGER_LEVEL:-info}"
+    SMELTER_DEMO_ROUTER_LOGGER_LEVEL: "${SMELTER_DEMO_ROUTER_LOGGER_LEVEL:-warn}"
+    SMELTER_SERVER_LOGGER_LEVEL: "${SMELTER_SERVER_LOGGER_LEVEL:-info,wgpu_hal=warn,smelter_core::pipeline::instance=warn}"
+    TWITCH_CLIENT_ID: "${TWITCH_CLIENT_ID:-}"
+    TWITCH_CLIENT_SECRET: "${TWITCH_CLIENT_SECRET:-}"
+    KICK_CLIENT_ID: "${KICK_CLIENT_ID:-}"
+    KICK_CLIENT_SECRET: "${KICK_CLIENT_SECRET:-}"
+  gpus: "all"
+  runtime: "nvidia"
+
+services:
+  server:
+    <<: *server-common
+    volumes:
+      - smelter_data:/home/smelter/demo/server/data
+    ports:
+      - 10071:10071
+      - 10072:10072
+
+volumes:
+  smelter_data:
+    name: smelter_data
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      # Absolute path on the host that backs the shared data directory.
+      device: /srv/smelter/.data

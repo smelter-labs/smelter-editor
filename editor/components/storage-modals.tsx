@@ -119,6 +119,7 @@ type GenericSaveModalProps = {
   onSaveRemote: (name: string) => Promise<string | null>;
   isExporting?: boolean;
   extraOptions?: SaveModalExtraOption[];
+  extraContent?: ReactNode;
 };
 
 export function GenericSaveModal({
@@ -131,6 +132,7 @@ export function GenericSaveModal({
   onSaveRemote,
   isExporting,
   extraOptions,
+  extraContent,
 }: GenericSaveModalProps) {
   const [mode, setMode] = useState<'choose' | 'remote'>('choose');
   const [itemName, setItemName] = useState('');
@@ -187,6 +189,7 @@ export function GenericSaveModal({
 
         {mode === 'choose' ? (
           <div className='flex flex-col gap-2'>
+            {extraContent}
             {extraOptions?.map((opt) => (
               <Button
                 key={opt.id}

@@ -41,6 +41,7 @@ import { FxAccordion } from './components/FxAccordion';
 import { useAppMode } from '@/components/app-mode/app-mode-context';
 import { StreamsSection } from './components/StreamsSection';
 import { LayersSection } from './components/LayersSection';
+import { LayerPositionPanel } from './components/LayerPositionPanel';
 import { CarouselPanel } from '@/components/dashboard/carousel-panel';
 import {
   TimelinePanel,
@@ -441,6 +442,8 @@ function ControlPanelWithActions({
     setOpenFxInputId,
     selectedInputId,
     setSelectedInputId,
+    selectedLayerId,
+    setSelectedLayerId,
     isSwapping,
     setIsSwapping,
     swapTimerRef,
@@ -623,6 +626,8 @@ function ControlPanelWithActions({
           setOpenFxInputId={setOpenFxInputId}
           selectedInputId={selectedInputId}
           setSelectedInputId={setSelectedInputId}
+          selectedLayerId={selectedLayerId}
+          setSelectedLayerId={setSelectedLayerId}
           isSwapping={isSwapping}
           pendingWhipInputs={pendingWhipInputs}
           handleSetPendingWhipInputs={handleSetPendingWhipInputs}
@@ -656,6 +661,8 @@ type ControlPanelInnerProps = {
   setOpenFxInputId: React.Dispatch<React.SetStateAction<string | null>>;
   selectedInputId: string | null;
   setSelectedInputId: (id: string | null) => void;
+  selectedLayerId: string | null;
+  setSelectedLayerId: (id: string | null) => void;
   isSwapping: boolean;
   pendingWhipInputs: PendingWhipInput[];
   handleSetPendingWhipInputs: (inputs: PendingWhipInput[]) => Promise<void>;
@@ -683,6 +690,8 @@ function ControlPanelInner({
   setOpenFxInputId,
   selectedInputId,
   setSelectedInputId,
+  selectedLayerId,
+  setSelectedLayerId,
   isSwapping,
   pendingWhipInputs,
   handleSetPendingWhipInputs,
@@ -720,6 +729,33 @@ function ControlPanelInner({
     selectedInputId,
     setSelectedInputId,
   });
+
+  const handleSelectInput = useCallback(
+    (inputId: string | null) => {
+      setSelectedInputId(inputId);
+      if (inputId) setSelectedLayerId(null);
+    },
+    [setSelectedInputId, setSelectedLayerId],
+  );
+
+  const handleSelectLayer = useCallback(
+    (layerId: string | null) => {
+      setSelectedLayerId(layerId);
+      if (layerId) setSelectedInputId(null);
+    },
+    [setSelectedLayerId, setSelectedInputId],
+  );
+
+  const handleLayerPositionChange = useCallback(
+    async (patch: Partial<Layer>) => {
+      if (!selectedLayerId) return;
+      const updatedLayers = roomState.layers.map((l) =>
+        l.id === selectedLayerId ? { ...l, ...patch } : l,
+      );
+      await handleLayersChange(updatedLayers);
+    },
+    [selectedLayerId, roomState.layers, handleLayersChange],
+  );
 
   const handleToggleFx = (inputId: string) => {
     if (appMode === 'demo') return;
@@ -1330,7 +1366,9 @@ function ControlPanelInner({
           onToggleFx={handleToggleFx}
           isSwapping={isSwapping}
           selectedInputId={selectedInputId}
-          onSelectInput={setSelectedInputId}
+          onSelectInput={handleSelectInput}
+          selectedLayerId={selectedLayerId}
+          onSelectLayer={handleSelectLayer}
           isGuest={isGuest}
           guestInputId={activeCameraInputId || activeScreenshareInputId}
           onLayersChange={handleLayersChange}
@@ -1407,19 +1445,32 @@ function ControlPanelInner({
       setSelectedTimelineClips(clips);
     };
 
+    const selectedLayer =
+      sortMode === 'layers' && selectedLayerId && !selectedInputId
+        ? roomState.layers.find((l) => l.id === selectedLayerId)
+        : undefined;
+
     const blockPropertiesSection = (
       <div className='h-full overflow-y-auto p-3'>
-        <BlockClipPropertiesPanel
-          roomId={roomId}
-          selectedTimelineClips={effectiveSelectedClips}
-          onSelectedTimelineClipsChange={handleEffectiveClipsChange}
-          playheadMs={timelinePlayheadMs}
-          inputs={inputs}
-          availableShaders={availableShaders}
-          handleRefreshState={handleRefreshState}
-          resolution={roomState.resolution}
-          sortMode={sortMode}
-        />
+        {selectedLayer && roomState.resolution ? (
+          <LayerPositionPanel
+            layer={selectedLayer}
+            resolution={roomState.resolution}
+            onChange={(patch) => void handleLayerPositionChange(patch)}
+          />
+        ) : (
+          <BlockClipPropertiesPanel
+            roomId={roomId}
+            selectedTimelineClips={effectiveSelectedClips}
+            onSelectedTimelineClipsChange={handleEffectiveClipsChange}
+            playheadMs={timelinePlayheadMs}
+            inputs={inputs}
+            availableShaders={availableShaders}
+            handleRefreshState={handleRefreshState}
+            resolution={roomState.resolution}
+            sortMode={sortMode}
+          />
+        )}
       </div>
     );
 
@@ -1494,6 +1545,7 @@ function ControlPanelInner({
               canConnectAndRecord={timelineActionsReady && !isRecording}
               welcomeTextBefore={showcaseWelcome?.before}
               welcomeTextAfter={showcaseWelcome?.after}
+              sortMode={sortMode}
             />
             <ConnectPlayCompletionModal
               open={connectPlayCompletionOpen}
@@ -1525,7 +1577,9 @@ function ControlPanelInner({
       onToggleFx={handleToggleFx}
       isSwapping={isSwapping}
       selectedInputId={selectedInputId}
-      onSelectInput={setSelectedInputId}
+      onSelectInput={handleSelectInput}
+      selectedLayerId={selectedLayerId}
+      onSelectLayer={handleSelectLayer}
       isGuest={isGuest}
       guestInputId={activeCameraInputId || activeScreenshareInputId}
       onLayersChange={handleLayersChange}
@@ -1613,6 +1667,7 @@ function ControlPanelInner({
       canConnectAndRecord={timelineActionsReady && !isRecording}
       welcomeTextBefore={showcaseWelcome?.before}
       welcomeTextAfter={showcaseWelcome?.after}
+      sortMode={sortMode}
     />
   );
 
@@ -1852,70 +1907,89 @@ function SettingsBar({
     }
   }, [roomId, roomState.isPublic, handleRefreshState, isTogglingPublic]);
 
-  const buildConfig = useCallback(() => {
-    const timelineState = resolveRoomConfigTimelineState(
-      roomId,
-      getTimelineStateForConfig(),
-    );
-    const outputPlayer = loadOutputPlayerSettings(roomId) ?? undefined;
-    return exportRoomConfig(
-      roomState.inputs,
-      'grid',
-      roomState.resolution,
-      {
-        swapDurationMs: roomState.swapDurationMs,
-        swapOutgoingEnabled: roomState.swapOutgoingEnabled,
-        swapFadeInDurationMs: roomState.swapFadeInDurationMs,
-        swapFadeOutDurationMs: roomState.swapFadeOutDurationMs,
-      },
-      timelineState ?? undefined,
-      outputPlayer,
-      {
-        viewportTop: roomState.viewportTop,
-        viewportLeft: roomState.viewportLeft,
-        viewportWidth: roomState.viewportWidth,
-        viewportHeight: roomState.viewportHeight,
-        viewportTransitionDurationMs: roomState.viewportTransitionDurationMs,
-        viewportTransitionEasing: roomState.viewportTransitionEasing,
-      },
-      roomState.outputShaders,
-      roomState.layers,
-      roomState.sortMode,
-    );
-  }, [getTimelineStateForConfig, roomState, roomId]);
+  const buildConfig = useCallback(
+    (includeLayout: boolean) => {
+      const timelineState = resolveRoomConfigTimelineState(
+        roomId,
+        getTimelineStateForConfig(),
+      );
+      const outputPlayer = loadOutputPlayerSettings(roomId) ?? undefined;
+      // Panel visibility is always persisted; the checkbox only controls
+      // whether panel positions (layouts) are pinned into the config too.
+      const layoutData = dashboardToolbar?.getCurrentLayoutData();
+      const dashboardLayout = layoutData
+        ? {
+            visiblePanels: layoutData.visiblePanels,
+            ...(includeLayout ? { layouts: layoutData.layouts } : {}),
+          }
+        : undefined;
+      return exportRoomConfig(
+        roomState.inputs,
+        'grid',
+        roomState.resolution,
+        {
+          swapDurationMs: roomState.swapDurationMs,
+          swapOutgoingEnabled: roomState.swapOutgoingEnabled,
+          swapFadeInDurationMs: roomState.swapFadeInDurationMs,
+          swapFadeOutDurationMs: roomState.swapFadeOutDurationMs,
+        },
+        timelineState ?? undefined,
+        outputPlayer,
+        {
+          viewportTop: roomState.viewportTop,
+          viewportLeft: roomState.viewportLeft,
+          viewportWidth: roomState.viewportWidth,
+          viewportHeight: roomState.viewportHeight,
+          viewportTransitionDurationMs: roomState.viewportTransitionDurationMs,
+          viewportTransitionEasing: roomState.viewportTransitionEasing,
+        },
+        roomState.outputShaders,
+        roomState.layers,
+        roomState.sortMode,
+        dashboardLayout,
+      );
+    },
+    [getTimelineStateForConfig, roomState, roomId, dashboardToolbar],
+  );
 
-  const handleExportLocal = useCallback(() => {
-    setIsExporting(true);
-    try {
-      const config = buildConfig();
-      downloadRoomConfig(config);
-    } catch (e: any) {
-      console.error('Export failed:', e);
-    } finally {
-      setIsExporting(false);
-    }
-  }, [buildConfig]);
+  const handleExportLocal = useCallback(
+    (includeLayout: boolean) => {
+      setIsExporting(true);
+      try {
+        const config = buildConfig(includeLayout);
+        downloadRoomConfig(config);
+      } catch (e: any) {
+        console.error('Export failed:', e);
+      } finally {
+        setIsExporting(false);
+      }
+    },
+    [buildConfig],
+  );
 
-  const handleExportFullProject = useCallback(async () => {
-    setIsExportingFullProject(true);
-    const loadingToastId = toast.loading('Building full project ZIP...');
-    try {
-      const config = buildConfig();
-      await downloadFullProjectZip(config);
-      toast.success('Full project ZIP downloaded.', { id: loadingToastId });
-    } catch (e: any) {
-      console.error('Full project export failed:', e);
-      toast.error(e?.message ?? 'Full project export failed.', {
-        id: loadingToastId,
-      });
-    } finally {
-      setIsExportingFullProject(false);
-    }
-  }, [buildConfig]);
+  const handleExportFullProject = useCallback(
+    async (includeLayout: boolean) => {
+      setIsExportingFullProject(true);
+      const loadingToastId = toast.loading('Building full project ZIP...');
+      try {
+        const config = buildConfig(includeLayout);
+        await downloadFullProjectZip(config);
+        toast.success('Full project ZIP downloaded.', { id: loadingToastId });
+      } catch (e: any) {
+        console.error('Full project export failed:', e);
+        toast.error(e?.message ?? 'Full project export failed.', {
+          id: loadingToastId,
+        });
+      } finally {
+        setIsExportingFullProject(false);
+      }
+    },
+    [buildConfig],
+  );
 
   const handleExportRemote = useCallback(
-    async (name: string): Promise<string | null> => {
-      const config = buildConfig();
+    async (name: string, includeLayout: boolean): Promise<string | null> => {
+      const config = buildConfig(includeLayout);
       const suffix = roomState.resolution
         ? ` ${resolutionToLabel(roomState.resolution)}`
         : '';
@@ -1935,7 +2009,7 @@ function SettingsBar({
 
   useEffect(() => {
     const onVoiceExport = () => {
-      handleExportLocal();
+      handleExportLocal(false);
     };
     window.addEventListener('smelter:export-configuration', onVoiceExport);
     return () => {
@@ -2029,6 +2103,10 @@ function SettingsBar({
           saveOutputPlayerSettings(roomId, config.outputPlayer);
         }
 
+        if (config.dashboardLayout && dashboardToolbar) {
+          dashboardToolbar.applyLoadedLayout(config.dashboardLayout);
+        }
+
         await handleRefreshState();
       } finally {
         setImportProgress(null);
@@ -2041,6 +2119,7 @@ function SettingsBar({
       handleRefreshState,
       applyImportedTimelineState,
       startImportProgress,
+      dashboardToolbar,
     ],
   );
 

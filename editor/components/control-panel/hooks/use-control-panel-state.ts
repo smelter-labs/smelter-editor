@@ -101,6 +101,7 @@ export function useControlPanelState(
 
   const [openFxInputId, setOpenFxInputId] = useState<string | null>(null);
   const [selectedInputId, setSelectedInputId] = useState<string | null>(null);
+  const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!openFxInputId) return;
@@ -133,6 +134,8 @@ export function useControlPanelState(
     setOpenFxInputId,
     selectedInputId,
     setSelectedInputId,
+    selectedLayerId,
+    setSelectedLayerId,
     isSwapping,
     setIsSwapping,
     swapTimerRef,

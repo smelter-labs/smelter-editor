@@ -43,7 +43,9 @@ import { useAppMode } from '@/components/app-mode/app-mode-context';
 import { isPanelHiddenInMode } from '@/lib/app-mode';
 
 export type DashboardLayoutSavedData = {
-  layouts: DashboardLayouts;
+  // Optional so a config can carry panel visibility without pinning positions
+  // (positions are gated behind the "Include current dashboard layout" toggle).
+  layouts?: DashboardLayouts;
   visiblePanels: string[];
 };
 
