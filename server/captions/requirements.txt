@@ -1,0 +1,6 @@
+smelter-sdk>=0.1.0
+faster-whisper>=1.0.3
+silero-vad>=5.1
+torch>=2.0
+numpy>=1.26
+websockets>=12.0

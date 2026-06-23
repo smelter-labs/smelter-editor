@@ -7,6 +7,8 @@ import { TwitchChannelMonitor } from '../twitch/TwitchChannelMonitor';
 import type { TwitchStreamInfo } from '../twitch/TwitchApi';
 import { KickChannelMonitor } from '../kick/KickChannelMonitor';
 import { WhipInputMonitor } from '../whip/WhipInputMonitor';
+import { getCaptionBridge } from '../captions/captionBridgeRegistry';
+import { hasTranscription } from '../captions/constants';
 import { sleep } from '../utils';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
 import pictureSuggestionsMonitor from '../pictures/pictureSuggestionMonitor';
@@ -27,6 +29,7 @@ import type {
 } from './types';
 import type { PlaceholderManager } from './PlaceholderManager';
 import type { MotionController } from './MotionController';
+import type { CaptionsController } from './CaptionsController';
 import { InputOrientation } from '@smelter-editor/types';
 
 const VIDEO_INPUT_TYPES: RoomInputState['type'][] = [
@@ -48,6 +51,7 @@ export class InputManager {
     private readonly idPrefix: string,
     private readonly placeholderManager: PlaceholderManager,
     private readonly motionController: MotionController,
+    private readonly captionsController: CaptionsController,
     private readonly onStateChange: () => void,
   ) {
     this.mp4Files = mp4SuggestionsMonitor.mp4Files;
@@ -102,9 +106,13 @@ export class InputManager {
     if (opts.type === 'whip') {
       return this.addNewWhipInput(opts);
     } else if (opts.type === 'twitch-channel' || opts.type === 'kick-channel') {
-      return this.addHlsChannelInput(opts.type, opts.channelId);
+      return this.addHlsChannelInput(
+        opts.type,
+        opts.channelId,
+        opts.transcription,
+      );
     } else if (opts.type === 'hls') {
-      return this.addDirectHlsInput(opts.url);
+      return this.addDirectHlsInput(opts.url, opts.transcription);
     } else if (opts.type === 'local-mp4') {
       return this.addMp4Input(opts);
     } else if (opts.type === 'image') {
@@ -144,6 +152,7 @@ export class InputManager {
     const monitor = await WhipInputMonitor.startMonitor(cleanUsername);
     monitor.touch();
     const orientation = opts.orientation ?? 'horizontal';
+    const withTranscription = opts.transcription ?? false;
     this.inputs.push({
       inputId,
       type: 'whip',
@@ -164,8 +173,9 @@ export class InputManager {
         title: liveTitle,
         description: `Whip Input for ${username}`,
       },
-      volume: 0,
+      volume: 1,
       whipUrl: '',
+      transcription: withTranscription,
     });
     return inputId;
   }
@@ -173,6 +183,7 @@ export class InputManager {
   private async addHlsChannelInput(
     platform: 'twitch-channel' | 'kick-channel',
     channelId: string,
+    transcription?: boolean,
   ): Promise<string> {
     const inputId =
       platform === 'twitch-channel'
@@ -202,8 +213,9 @@ export class InputManager {
       borderWidth: 0,
       hidden: false,
       motionEnabled: false,
+      transcription: transcription ?? false,
       metadata: { title: '', description: '' },
-      volume: 0,
+      volume: 1,
       channelId,
       hlsUrl,
     };
@@ -239,7 +251,10 @@ export class InputManager {
     return inputId;
   }
 
-  private async addDirectHlsInput(url: string): Promise<string> {
+  private async addDirectHlsInput(
+    url: string,
+    transcription?: boolean,
+  ): Promise<string> {
     const inputId = this.createUniqueInputId('hls');
     let label = url;
     try {
@@ -259,11 +274,12 @@ export class InputManager {
       borderWidth: 0,
       hidden: false,
       motionEnabled: false,
+      transcription: transcription ?? false,
       metadata: {
         title: `[HLS] ${label}`,
         description: `Direct HLS stream`,
       },
-      volume: 0,
+      volume: 1,
       hlsUrl: url,
     });
     return inputId;
@@ -315,6 +331,7 @@ export class InputManager {
       borderWidth: 0,
       hidden: false,
       motionEnabled: false,
+      transcription: opts.transcription ?? false,
       metadata: {
         title: `[${titlePrefix}] ${formatMp4Name(mp4Name)}`,
         description: isAudio
@@ -324,7 +341,7 @@ export class InputManager {
       mp4FilePath: mp4Path,
       mp4VideoWidth: dims?.width,
       mp4VideoHeight: dims?.height,
-      volume: 0,
+      volume: 1,
     });
     return inputId;
   }
@@ -351,6 +368,7 @@ export class InputManager {
       borderWidth: 0,
       hidden: false,
       motionEnabled: false,
+      transcription: false,
       metadata: {
         title: params.title,
         description: params.description,
@@ -489,6 +507,7 @@ export class InputManager {
           borderWidth: 0,
           hidden: false,
           motionEnabled: false,
+          transcription: false,
           metadata: {
             title: `[Missing image] ${missingImageName}`,
             description:
@@ -528,6 +547,7 @@ export class InputManager {
         borderWidth: 0,
         hidden: false,
         motionEnabled: false,
+        transcription: false,
         metadata: { title: formatImageName(fileName), description: '' },
         volume: 0,
         imageId,
@@ -545,6 +565,7 @@ export class InputManager {
         borderWidth: 0,
         hidden: false,
         motionEnabled: false,
+        transcription: false,
         metadata: {
           title: `[Missing image] ${formatImageName(path.basename(fileName))}`,
           description:
@@ -581,6 +602,7 @@ export class InputManager {
       borderWidth: 0,
       hidden: false,
       motionEnabled: false,
+      transcription: false,
       metadata: { title: 'Text', description: '' },
       volume: 0,
       text: opts.text,
@@ -617,6 +639,7 @@ export class InputManager {
       borderWidth: 0,
       hidden: false,
       motionEnabled: false,
+      transcription: false,
       volume: 0,
       ...defaults,
     });
@@ -642,6 +665,7 @@ export class InputManager {
       borderWidth: 0,
       hidden: false,
       motionEnabled: false,
+      transcription: false,
       metadata: {
         title: 'Hand Tracking',
         description: 'Cyberpunk hand overlay',
@@ -747,6 +771,12 @@ export class InputManager {
 
     input.status = 'pending';
     const options = registerOptionsFromInput(input);
+    if (hasTranscription(input)) {
+      input.volume = 1;
+      console.log(
+        `[captions] connectInput transcription inputId=${inputId} volume=1`,
+      );
+    }
     let response = '';
     try {
       const CONNECT_TIMEOUT_MS = 30_000;
@@ -768,6 +798,15 @@ export class InputManager {
     }
 
     input.status = 'connected';
+
+    if (hasTranscription(input)) {
+      await this.captionsController.setTranscriptionPull(input, true);
+      if (input.type !== 'whip') {
+        getCaptionBridge()?.notifySideChannelReady(inputId);
+      }
+      this.onStateChange();
+    }
+
     if (input.type === 'local-mp4') {
       input.registeredAtPipelineMs = SmelterInstance.getPipelineTimeMs();
       input.playFromMs = 0;
@@ -804,6 +843,10 @@ export class InputManager {
     if (input.status === 'disconnected') return;
 
     await this.motionController.stopMotionDetection(inputId);
+    if (hasTranscription(input)) {
+      await this.captionsController.setTranscriptionPull(input, false);
+      getCaptionBridge()?.notifySideChannelStopped(inputId);
+    }
     input.status = 'pending';
     this.onStateChange();
     try {
@@ -1054,6 +1097,17 @@ export class InputManager {
       ageBeforeAckMs,
       inputStatus: input.status,
     });
+    if (input.transcription && input.status === 'connected') {
+      void this.captionsController
+        .setTranscriptionPull(input, true)
+        .catch((err) =>
+          console.error(
+            `[captions] setTranscriptionPull on ack failed inputId=${inputId}`,
+            err,
+          ),
+        );
+      getCaptionBridge()?.notifySideChannelReady(inputId);
+    }
   }
 
   async removeStaleWhipInputs(staleTtlMs: number): Promise<void> {
@@ -1257,15 +1311,27 @@ function registerOptionsFromInput(
   input: RoomInputState,
 ): RegisterSmelterInputOptions {
   if (input.type === 'local-mp4') {
-    return { type: 'mp4', filePath: input.mp4FilePath };
+    return {
+      type: 'mp4',
+      filePath: input.mp4FilePath,
+      transcription: input.transcription,
+    };
   } else if (
     input.type === 'twitch-channel' ||
     input.type === 'kick-channel' ||
     input.type === 'hls'
   ) {
-    return { type: 'hls', url: input.hlsUrl };
+    return {
+      type: 'hls',
+      url: input.hlsUrl,
+      transcription: input.transcription,
+    };
   } else if (input.type === 'whip') {
-    return { type: 'whip', url: input.whipUrl };
+    return {
+      type: 'whip',
+      url: input.whipUrl,
+      transcription: input.transcription,
+    };
   } else if (input.type === 'image') {
     throw Error('Images cannot be connected as stream inputs');
   } else if (input.type === 'game') {

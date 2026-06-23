@@ -1,3 +1,5 @@
+enable wgpu_binding_array;
+
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) tex_coords: vec2<f32>,
@@ -112,5 +114,3 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let out_rgb = saturate3(base_col.rgb + col * streak);
     return vec4<f32>(out_rgb, base_col.a);
 }
-
-

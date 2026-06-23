@@ -3,3 +3,5 @@ packages:
   - server
   - packages/*
   - mobile_app
+allowBuilds:
+  esbuild: set this to true or false

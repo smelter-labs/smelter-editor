@@ -51,6 +51,7 @@ server/data/
 .data/
 server/dist/
 server/motion/.venv/
+server/captions/.venv/
 packages/types/dist/
 packages/types/node_modules/
 server/screenshots/

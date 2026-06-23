@@ -4,6 +4,7 @@ import type {
   AudioSuggestions,
   AvailableShader,
   CameraInputOptions,
+  VideoAddInputOptions,
   InputSuggestions,
   KickSuggestions,
   MP4Suggestions,
@@ -53,10 +54,26 @@ interface SmelterApiClient {
   getPictureSuggestions(): Promise<PictureSuggestions>;
   getAudioSuggestions(): Promise<AudioSuggestions>;
 
-  addTwitchInput(roomId: string, channelId: string): Promise<any>;
-  addKickInput(roomId: string, channelId: string): Promise<any>;
-  addMP4Input(roomId: string, mp4FileName: string): Promise<any>;
-  addAudioInput(roomId: string, audioFileName: string): Promise<any>;
+  addTwitchInput(
+    roomId: string,
+    channelId: string,
+    options?: VideoAddInputOptions,
+  ): Promise<any>;
+  addKickInput(
+    roomId: string,
+    channelId: string,
+    options?: VideoAddInputOptions,
+  ): Promise<any>;
+  addMP4Input(
+    roomId: string,
+    mp4FileName: string,
+    options?: VideoAddInputOptions,
+  ): Promise<any>;
+  addAudioInput(
+    roomId: string,
+    audioFileName: string,
+    options?: VideoAddInputOptions,
+  ): Promise<any>;
   addImageInput(roomId: string, imageFileNameOrId: string): Promise<any>;
   addTextInput(
     roomId: string,
@@ -65,7 +82,11 @@ interface SmelterApiClient {
   ): Promise<any>;
   addSnakeGameInput(roomId: string, title?: string): Promise<any>;
   addHandsInput(roomId: string, sourceInputId: string): Promise<any>;
-  addHlsInput(roomId: string, url: string): Promise<any>;
+  addHlsInput(
+    roomId: string,
+    url: string,
+    options?: VideoAddInputOptions,
+  ): Promise<any>;
   addCameraInput(
     roomId: string,
     username?: string,
@@ -123,6 +144,11 @@ interface SmelterApiClient {
     sourceId?: string,
   ): Promise<any>;
   toggleMotionDetection(
+    roomId: string,
+    inputId: string,
+    enabled: boolean,
+  ): Promise<void>;
+  toggleTranscription(
     roomId: string,
     inputId: string,
     enabled: boolean,
@@ -304,31 +330,35 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       return await req('get', '/suggestions/audios');
     },
 
-    async addTwitchInput(roomId, channelId) {
+    async addTwitchInput(roomId, channelId, options) {
       return await req('post', `/room/${enc(roomId)}/input`, {
         type: 'twitch-channel',
         channelId,
+        ...options,
       });
     },
 
-    async addKickInput(roomId, channelId) {
+    async addKickInput(roomId, channelId, options) {
       return await req('post', `/room/${enc(roomId)}/input`, {
         type: 'kick-channel',
         channelId,
+        ...options,
       });
     },
 
-    async addMP4Input(roomId, mp4FileName) {
+    async addMP4Input(roomId, mp4FileName, options) {
       return await req('post', `/room/${enc(roomId)}/input`, {
         type: 'local-mp4',
         source: { fileName: mp4FileName, url: '' },
+        ...options,
       });
     },
 
-    async addAudioInput(roomId, audioFileName) {
+    async addAudioInput(roomId, audioFileName, options) {
       return await req('post', `/room/${enc(roomId)}/input`, {
         type: 'local-mp4',
         source: { audioFileName },
+        ...options,
       });
     },
 
@@ -365,10 +395,11 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       });
     },
 
-    async addHlsInput(roomId, url) {
+    async addHlsInput(roomId, url, options) {
       return await req('post', `/room/${enc(roomId)}/input`, {
         type: 'hls',
         url,
+        ...options,
       });
     },
 
@@ -491,6 +522,14 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       await req(
         'post',
         `/room/${enc(roomId)}/input/${enc(inputId)}/motion-detection`,
+        { enabled },
+      );
+    },
+
+    async toggleTranscription(roomId, inputId, enabled) {
+      await req(
+        'post',
+        `/room/${enc(roomId)}/input/${enc(inputId)}/transcription`,
         { enabled },
       );
     },

@@ -148,6 +148,7 @@ import {
 import { useMotionScores } from '@/hooks/use-motion-scores';
 import { useMotionHistory } from '@/hooks/use-motion-history';
 import { MotionDetectionPanel } from './components/MotionDetectionPanel';
+import { CaptionsPanel } from './components/CaptionsPanel';
 import { ErrorBoundary } from '@/components/error-boundary';
 import {
   ImportProgressDialog,
@@ -195,6 +196,7 @@ type ControlPanelProps = {
     blockPropertiesSection: React.ReactNode;
     pendingConnectionsSection: React.ReactNode;
     motionDetectionSection: React.ReactNode;
+    captionsSection: React.ReactNode;
     peers: ConnectedPeer[];
     timelineColorOverrides: Record<string, string>;
     activeClipColors: Record<string, string>;
@@ -1494,6 +1496,14 @@ function ControlPanelInner({
       />
     );
 
+    const captionsSection = (
+      <CaptionsSection
+        roomId={roomId}
+        refreshState={handleRefreshState}
+        inputs={inputs}
+      />
+    );
+
     const videoOverlayRects = buildVideoOverlayRects({
       enabled: videoOverlayEnabled,
       clips: effectiveSelectedClips,
@@ -1521,6 +1531,7 @@ function ControlPanelInner({
           blockPropertiesSection,
           pendingConnectionsSection,
           motionDetectionSection,
+          captionsSection,
           peers,
           timelineColorOverrides,
           activeClipColors,
@@ -1738,6 +1749,29 @@ const MotionDetectionSection = memo(function MotionDetectionSection({
       inputs={motionDetectionInputs}
       motionHistoryMap={motionHistoryMap}
       motionScores={motionScores}
+      refreshState={refreshState}
+    />
+  );
+});
+
+const CaptionsSection = memo(function CaptionsSection({
+  roomId,
+  inputs,
+  refreshState,
+}: {
+  roomId: string;
+  inputs: Input[];
+  refreshState: () => Promise<void>;
+}) {
+  const captionInputs = useMemo(
+    () => inputs.filter((input) => VIDEO_INPUT_TYPES.has(input.type)),
+    [inputs],
+  );
+
+  return (
+    <CaptionsPanel
+      roomId={roomId}
+      inputs={captionInputs}
       refreshState={refreshState}
     />
   );

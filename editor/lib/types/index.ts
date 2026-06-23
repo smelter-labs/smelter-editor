@@ -8,6 +8,7 @@ export type { Layout, Layer, LayerBehaviorConfig } from './layout';
 
 export type {
   CameraInputOptions,
+  VideoAddInputOptions,
   Input,
   RegisterInputOptions,
   UpdateInputOptions,

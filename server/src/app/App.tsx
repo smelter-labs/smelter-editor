@@ -1,4 +1,4 @@
-import { View, Rescaler, Shader } from '@swmansion/smelter';
+import { View, Rescaler, Shader, InputStream } from '@swmansion/smelter';
 
 import type { RoomStore, InputConfig } from './store';
 import type { Layer } from '../types';
@@ -10,6 +10,7 @@ import {
   useLayers,
   useOutputShaders,
   useViewport,
+  useTranscriptionSideChannelInputIds,
 } from './store';
 import { Input } from '../inputs/inputs';
 import { wrapWithShaders } from '../utils/shaderUtils';
@@ -159,6 +160,53 @@ function CarouselSlot({
   );
 }
 
+function collectLayerInputIds(layers: Layer[]): Set<string> {
+  const ids = new Set<string>();
+  for (const layer of layers) {
+    if (layer.enabled === false) continue;
+    for (const item of layer.inputs) {
+      ids.add(item.inputId);
+    }
+  }
+  return ids;
+}
+
+/**
+ * Keeps InputStreams alive for connected inputs with transcription that
+ * are not in any enabled layout layer (e.g. after timeline snapshot at t=0).
+ * store.inputs lists connected inputs but only layer.inputs are actually rendered.
+ */
+function CaptionsSideChannelDecode({
+  renderedInLayerIds,
+}: {
+  renderedInLayerIds: Set<string>;
+}) {
+  const transcriptionIds = useTranscriptionSideChannelInputIds();
+  const decodeIds = transcriptionIds.filter(
+    (id) => !renderedInLayerIds.has(id),
+  );
+  if (decodeIds.length === 0) return null;
+
+  return (
+    <View
+      style={{
+        width: 1,
+        height: 1,
+        top: 0,
+        left: 0,
+        backgroundColor: '#000000',
+      }}>
+      {decodeIds.map((inputId) => (
+        <InputStream
+          key={`caption-decode-${inputId}`}
+          inputId={inputId}
+          volume={1}
+        />
+      ))}
+    </View>
+  );
+}
+
 const defaultAudioStore = createAudioStore();
 
 export default function App({
@@ -187,6 +235,7 @@ function OutputScene() {
   const inputMap = new Map(inputs.map((input) => [input.inputId, input]));
   const activeOutputShaders = outputShaders.filter((s) => s.enabled);
   const layersReversed = [...layers].reverse();
+  const renderedInLayerIds = collectLayerInputIds(layers);
 
   const vT = viewport.viewportTop ?? 0;
   const vL = viewport.viewportLeft ?? 0;
@@ -208,6 +257,7 @@ function OutputScene() {
         height,
         overflow: 'visible',
       }}>
+      <CaptionsSideChannelDecode renderedInLayerIds={renderedInLayerIds} />
       {layersReversed.map((layer) => {
         const layerOffsetTransition = {
           durationMs: layer.offsetTransitionDurationMs ?? 300,

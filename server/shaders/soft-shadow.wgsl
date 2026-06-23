@@ -1,3 +1,5 @@
+enable wgpu_binding_array;
+
 struct VertexInput {
     @location(0) position: vec3<f32>,
     @location(1) tex_coords: vec2<f32>,
@@ -99,5 +101,3 @@ fn fs_main(input: VertexOutput) -> @location(0) vec4<f32> {
     let out_a = clamp(src_a + shadow_alpha * inv_src, 0.0, 1.0);
     return vec4(out_rgb, out_a);
 }
-
-

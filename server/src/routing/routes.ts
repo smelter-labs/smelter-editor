@@ -840,14 +840,17 @@ const InputSchema = Type.Union([
   Type.Object({
     type: Type.Literal('twitch-channel'),
     channelId: Type.String(),
+    transcription: Type.Optional(Type.Boolean()),
   }),
   Type.Object({
     type: Type.Literal('kick-channel'),
     channelId: Type.String(),
+    transcription: Type.Optional(Type.Boolean()),
   }),
   Type.Object({
     type: Type.Literal('hls'),
     url: Type.String(),
+    transcription: Type.Optional(Type.Boolean()),
   }),
   Type.Object({
     type: Type.Literal('whip'),
@@ -857,6 +860,7 @@ const InputSchema = Type.Union([
     ),
     nativeWidth: Type.Optional(Type.Number({ minimum: 1 })),
     nativeHeight: Type.Optional(Type.Number({ minimum: 1 })),
+    transcription: Type.Optional(Type.Boolean()),
   }),
   Type.Object({
     type: Type.Literal('local-mp4'),
@@ -865,6 +869,7 @@ const InputSchema = Type.Union([
       Type.Object({ audioFileName: Type.String() }),
       Type.Object({ url: Type.String() }),
     ]),
+    transcription: Type.Optional(Type.Boolean()),
   }),
   Type.Object({
     type: Type.Literal('image'),
@@ -2146,6 +2151,26 @@ routes.post<
     });
     const room = state.getRoom(roomId);
     await room.setMotionEnabled(inputId, req.body.enabled);
+    res.status(200).send({ status: 'ok' });
+  },
+);
+
+routes.post<
+  RoomAndInputIdParams & { Body: Static<typeof MotionDetectionSchema> }
+>(
+  '/room/:roomId/input/:inputId/transcription',
+  {
+    schema: { params: RoomAndInputIdParamsSchema, body: MotionDetectionSchema },
+  },
+  async (req, res) => {
+    const { roomId, inputId } = req.params;
+    console.log('[request] Toggle transcription', {
+      roomId,
+      inputId,
+      enabled: req.body.enabled,
+    });
+    const room = state.getRoom(roomId);
+    await room.setTranscriptionEnabled(inputId, req.body.enabled);
     res.status(200).send({ status: 'ok' });
   },
 );

@@ -135,20 +135,38 @@ function shouldImportInputFromConfig(
   return referencedIndices.has(index);
 }
 
+function withTranscription<T extends RegisterInputOptions>(
+  opts: T,
+  input: ImportConfigInput,
+): T {
+  if (input.transcription) {
+    return { ...opts, transcription: true };
+  }
+  return opts;
+}
+
 function buildRegisterOptions(
   input: ImportConfigInput,
 ): RegisterInputOptions | null {
   switch (input.type) {
     case 'twitch-channel':
       return input.channelId
-        ? { type: 'twitch-channel', channelId: input.channelId }
+        ? withTranscription(
+            { type: 'twitch-channel', channelId: input.channelId },
+            input,
+          )
         : null;
     case 'kick-channel':
       return input.channelId
-        ? { type: 'kick-channel', channelId: input.channelId }
+        ? withTranscription(
+            { type: 'kick-channel', channelId: input.channelId },
+            input,
+          )
         : null;
     case 'hls':
-      return input.url ? { type: 'hls', url: input.url } : null;
+      return input.url
+        ? withTranscription({ type: 'hls', url: input.url }, input)
+        : null;
     case 'local-mp4':
       if (input.audioFileName && input.mp4FileName) {
         throw new Error(
@@ -161,16 +179,22 @@ function buildRegisterOptions(
         );
       }
       if (input.audioFileName) {
-        return {
-          type: 'local-mp4',
-          source: { audioFileName: input.audioFileName },
-        };
+        return withTranscription(
+          {
+            type: 'local-mp4',
+            source: { audioFileName: input.audioFileName },
+          },
+          input,
+        );
       }
       if (input.mp4FileName) {
-        return {
-          type: 'local-mp4',
-          source: { fileName: input.mp4FileName },
-        };
+        return withTranscription(
+          {
+            type: 'local-mp4',
+            source: { fileName: input.mp4FileName },
+          },
+          input,
+        );
       }
       return null;
     case 'image':
@@ -248,6 +272,7 @@ function buildUpdateOptions(
     cropLeft: input.cropLeft,
     cropRight: input.cropRight,
     cropBottom: input.cropBottom,
+    transcription: input.transcription,
     attachedInputIds:
       attachedInputIds && attachedInputIds.length > 0
         ? attachedInputIds

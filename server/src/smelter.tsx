@@ -10,6 +10,13 @@ import Smelter, {
 import App from './app/App';
 import type { RoomStore } from './app/store';
 import { createRoomStore } from './app/store';
+import {
+  logSocketPathBudget,
+  sideChannelSocketPathLen,
+  UNIX_SOCKET_PATH_MAX,
+} from './captions/captionSocket';
+import { CAPTIONS_SIDE_CHANNEL_DELAY_MS } from './captions/constants';
+import { captionDebug } from './captions/captionsDebug';
 import { config } from './config';
 import { DATA_DIR } from './dataDir';
 import { ensureDir, readFile } from 'fs-extra';
@@ -20,6 +27,10 @@ import {
   MOTION_GRID_HEIGHT,
 } from './motion/MotionScene';
 import { AudioAnalysisScene } from './audio/AudioAnalysisScene';
+import {
+  CaptionsScene,
+  type CaptionsPullStore,
+} from './captions/CaptionsScene';
 import shadersController from './shaders/shaders';
 import type { Resolution } from './types';
 import { RESOLUTION_PRESETS } from './types';
@@ -93,15 +104,55 @@ export type RegisterSmelterInputOptions =
       filePath: string;
       loop?: boolean;
       offsetMs?: number;
+      transcription?: boolean;
     }
   | {
       type: 'hls';
       url: string;
+      transcription?: boolean;
     }
   | {
       type: 'whip';
       url: string;
+      transcription?: boolean;
     };
+
+function sideChannelForTranscription(
+  transcription: boolean | undefined,
+): { sideChannel: { audio: true; delayMs: number } } | undefined {
+  if (!transcription) return undefined;
+  return {
+    sideChannel: {
+      audio: true,
+      delayMs: CAPTIONS_SIDE_CHANNEL_DELAY_MS,
+    },
+  };
+}
+
+function logSideChannelRegistration(
+  inputId: string,
+  inputType: string,
+  transcription: boolean | undefined,
+): void {
+  const sideChannel = sideChannelForTranscription(transcription);
+  if (!sideChannel) {
+    captionDebug(`${inputType} without transcription`, inputId);
+    return;
+  }
+  const socketDir = process.env.SMELTER_SIDE_CHANNEL_SOCKET_DIR ?? '';
+  const pathLen = socketDir
+    ? sideChannelSocketPathLen(socketDir, inputId)
+    : 0;
+  console.log(
+    `[captions] registering ${inputType} sideChannel inputId=${inputId} socketPathLen=${pathLen}/${UNIX_SOCKET_PATH_MAX} delayMs=${sideChannel.sideChannel.delayMs}`,
+  );
+  logSocketPathBudget(socketDir, inputId);
+  if (pathLen > UNIX_SOCKET_PATH_MAX) {
+    console.error(
+      `[captions] socket path too long for inputId=${inputId} — side channel will fail`,
+    );
+  }
+}
 
 /** MP4 decoder: driven by config.h264Decoder (which depends on ENVIRONMENT). Override via config for env-specific decoders. */
 const MP4_DECODER_MAP = {
@@ -147,6 +198,12 @@ function isFatalSmelterError(err: unknown): boolean {
   );
 }
 
+function isEntityAlreadyRegisteredError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const code = (err as { body?: { error_code?: unknown } }).body?.error_code;
+  return code === 'ENTITY_ALREADY_REGISTERED';
+}
+
 class SmelterManager {
   private instance: Smelter;
   private pipelineStartTime: number = 0;
@@ -164,21 +221,27 @@ class SmelterManager {
   public getPipelineTimeMs(): number {
     return Date.now() - this.pipelineStartTime;
   }
+
+  /** Wall-clock time (ms) when the pipeline started, or null if not started yet.
+   * Used to map a transcript's stream PTS back to a wall-clock display time. */
+  public getStartTime(): number | null {
+    return this.pipelineStartTime === 0 ? null : this.pipelineStartTime;
+  }
   public async init() {
     await this.instance.init();
     await this.instance.start();
     this.pipelineStartTime = Date.now();
-    await this.instance.registerImage('spinner', {
+    await this.registerImage('spinner', {
       serverPath: path.join(__dirname, '../loading.gif'),
       assetType: 'gif',
     });
 
-    await this.instance.registerImage('smelter_logo', {
+    await this.registerImage('smelter_logo', {
       serverPath: path.join(__dirname, '../imgs/smelter_logo.png'),
       assetType: 'png',
     });
 
-    await this.instance.registerFont('https://madbangbang.com/Starjedi.ttf');
+    await this.registerFont('https://madbangbang.com/Starjedi.ttf');
 
     for (const shader of shadersController.shaders) {
       await this.registerShaderFromFile(
@@ -205,8 +268,11 @@ class SmelterManager {
         },
       },
       audio: {
+        channels: 'stereo' as const,
         encoder: {
           type: 'opus' as const,
+          sampleRate: 48000,
+          preset: 'lowest_latency' as const,
         },
       },
     };
@@ -318,9 +384,15 @@ class SmelterManager {
     const t0 = Date.now();
     try {
       if (opts.type === 'whip') {
+        logSideChannelRegistration(inputId, 'whip', opts.transcription);
+        const sideChannel = sideChannelForTranscription(opts.transcription);
         const res = await this.instance.registerInput(inputId, {
           type: 'whip_server',
           video: { decoderPreferences: WHIP_SERVER_DECODER_PREFERENCES },
+          // `sideChannel` extracts the input's audio to a unix socket for the
+          // captions sidecar (whisper). `delayMs` gives whisper time to
+          // transcribe before the matching frame is presented.
+          ...sideChannel,
         });
         console.log('whipInput', res);
         if (!res.bearerToken) {
@@ -330,6 +402,8 @@ class SmelterManager {
         }
         return res.bearerToken;
       } else if (opts.type === 'mp4') {
+        logSideChannelRegistration(inputId, 'mp4', opts.transcription);
+        const sideChannel = sideChannelForTranscription(opts.transcription);
         console.log(
           `[smelter] registerInput MP4 inputId=${inputId} path=${opts.filePath} loop=${opts.loop ?? true} offsetMs=${opts.offsetMs}`,
         );
@@ -339,11 +413,14 @@ class SmelterManager {
           decoderMap: MP4_DECODER_MAP,
           loop: opts.loop ?? true,
           offsetMs: opts.offsetMs,
+          ...sideChannel,
         });
         console.log(
           `[smelter] registerInput MP4 OK inputId=${inputId} elapsed=${Date.now() - t0}ms`,
         );
       } else if (opts.type === 'hls') {
+        logSideChannelRegistration(inputId, 'hls', opts.transcription);
+        const sideChannel = sideChannelForTranscription(opts.transcription);
         // Must stay bound to `this.instance` — a bare extracted method loses `this`
         // and throws (e.g. Cannot read properties of undefined (reading 'scheduler')).
         const registerHlsInput = this.instance.registerInput.bind(
@@ -354,6 +431,7 @@ class SmelterManager {
             type: 'hls';
             url: string;
             decoderMap: typeof MP4_DECODER_MAP;
+            sideChannel?: { audio: true; delayMs: number };
           },
         ) => Promise<unknown>;
 
@@ -361,6 +439,7 @@ class SmelterManager {
           type: 'hls',
           url: opts.url,
           decoderMap: MP4_DECODER_MAP,
+          ...sideChannel,
         });
       }
     } catch (err: any) {
@@ -419,11 +498,18 @@ class SmelterManager {
       assetType: 'jpeg' | 'png' | 'gif' | 'svg' | 'auto';
     },
   ): Promise<void> {
-    await this.instance.registerImage(imageId, {
-      serverPath: opts.serverPath,
-      url: opts.url,
-      assetType: opts.assetType,
-    });
+    try {
+      await this.instance.registerImage(imageId, {
+        serverPath: opts.serverPath,
+        url: opts.url,
+        assetType: opts.assetType,
+      });
+    } catch (err) {
+      if (isEntityAlreadyRegisteredError(err)) {
+        return;
+      }
+      throw err;
+    }
   }
 
   public async unregisterImage(imageId: string): Promise<void> {
@@ -455,6 +541,48 @@ class SmelterManager {
   }
 
   public async unregisterMotionOutput(outputId: string): Promise<void> {
+    await this.unregisterOutput(outputId);
+  }
+
+  /**
+   * Hidden RTP output that keeps transcription inputs in a composition
+   * so Smelter decodes their audio into the side channel.
+   */
+  public async registerCaptionsPullOutput(
+    outputId: string,
+    store: StoreApi<CaptionsPullStore>,
+    port: number,
+  ): Promise<void> {
+    await this.instance.registerOutput(
+      outputId,
+      <CaptionsScene store={store} />,
+      {
+        type: 'rtp_stream',
+        port,
+        ip: '127.0.0.1',
+        transportProtocol: 'udp',
+        video: {
+          resolution: { width: 16, height: 16 },
+          encoder: {
+            type: 'ffmpeg_h264' as const,
+            preset: 'ultrafast' as const,
+          },
+        },
+        // Audio encoder is required — without it Smelter skips audio decode in
+        // this composition, so the input's side channel never receives PCM.
+        audio: {
+          channels: 'stereo',
+          encoder: {
+            type: 'opus',
+            sampleRate: 48000,
+            preset: 'lowest_latency',
+          },
+        },
+      },
+    );
+  }
+
+  public async unregisterCaptionsPullOutput(outputId: string): Promise<void> {
     await this.unregisterOutput(outputId);
   }
 
@@ -565,6 +693,18 @@ class SmelterManager {
   public async terminate(): Promise<void> {
     await this.instance.terminate();
   }
+
+  private async registerFont(fontUrl: string): Promise<void> {
+    try {
+      await this.instance.registerFont(fontUrl);
+    } catch (err) {
+      if (isEntityAlreadyRegisteredError(err)) {
+        return;
+      }
+      throw err;
+    }
+  }
+
   private async registerShaderFromFile(
     smelter: Smelter,
     shaderId: string,
@@ -572,9 +712,16 @@ class SmelterManager {
   ) {
     const source = await readFile(file, { encoding: 'utf-8' });
 
-    await smelter.registerShader(shaderId, {
-      source,
-    });
+    try {
+      await smelter.registerShader(shaderId, {
+        source,
+      });
+    } catch (err) {
+      if (isEntityAlreadyRegisteredError(err)) {
+        return;
+      }
+      throw err;
+    }
   }
 
   private createInstance(): Smelter {

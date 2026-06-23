@@ -49,6 +49,8 @@ export type RoomInputState = {
   restartFading?: boolean;
   motionEnabled: boolean;
   motionScore?: number;
+  /** When true, audio is transcribed (whisper) and rendered as live captions. */
+  transcription: boolean;
   orientation?: 'horizontal' | 'vertical';
   /** Native stream resolution width, if known. */
   nativeWidth?: number;
@@ -97,7 +99,11 @@ type TypeSpecificState =
       };
     }
   | { type: 'hls'; hlsUrl: string }
-  | { type: 'whip'; whipUrl: string; monitor: WhipMonitor }
+  | {
+      type: 'whip';
+      whipUrl: string;
+      monitor: WhipMonitor;
+    }
   | {
       type: 'image';
       imageId: string;

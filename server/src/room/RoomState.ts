@@ -19,6 +19,9 @@ import { isSmelterTransportError } from '../smelterTransportError';
 import { InputManager } from './InputManager';
 import { RecordingController } from './RecordingController';
 import { MotionController } from './MotionController';
+import { CaptionsController } from './CaptionsController';
+import { hasTranscription, supportsTranscription } from '../captions/constants';
+import { getCaptionBridge } from '../captions/captionBridgeRegistry';
 import { SnakeGameController } from './SnakeGameController';
 import { PlaceholderManager } from './PlaceholderManager';
 import { AudioController } from '../audio/AudioController';
@@ -56,7 +59,8 @@ function sanitizeLayerInputs(layers: Layer[]): Layer[] {
       return true;
     });
 
-    const dedupedLayer = inputs.length === layer.inputs.length ? layer : { ...layer, inputs };
+    const dedupedLayer =
+      inputs.length === layer.inputs.length ? layer : { ...layer, inputs };
 
     if (dedupedLayer.carousel) {
       const n = dedupedLayer.inputs.length;
@@ -130,6 +134,9 @@ function layoutInputsEqual(a: Layer['inputs'], b: Layer['inputs']): boolean {
   });
 }
 
+/** How long a caption stays on screen after its audio segment ends. */
+const SUBTITLE_LINGER_MS = 500;
+
 export class RoomState {
   private readonly mutex = new Mutex();
   private destroyed = false;
@@ -137,6 +144,7 @@ export class RoomState {
   private readonly inputManager: InputManager;
   private readonly recordingController: RecordingController;
   private readonly motionController: MotionController;
+  private readonly captionsController: CaptionsController;
   private readonly snakeGameController: SnakeGameController;
   private readonly placeholderManager: PlaceholderManager;
   private readonly audioController: AudioController;
@@ -196,6 +204,12 @@ export class RoomState {
   private readonly initInputs: RegisterInputOptions[];
   private readonly skipDefaultInputs: boolean;
 
+  /** Per-input timers that clear a caption after its audio segment ends. */
+  private transcriptClearTimers = new Map<
+    string,
+    ReturnType<typeof setTimeout>
+  >();
+
   public constructor(
     idPrefix: string,
     output: SmelterOutput,
@@ -219,11 +233,13 @@ export class RoomState {
     this.motionController = new MotionController(idPrefix, () =>
       this.inputManager.getInputs(),
     );
+    this.captionsController = new CaptionsController(idPrefix);
     this.audioController = new AudioController(idPrefix, output, audioStore);
     this.inputManager = new InputManager(
       idPrefix,
       this.placeholderManager,
       this.motionController,
+      this.captionsController,
       () => this.updateStoreWithState(),
     );
     this.recordingController = new RecordingController(idPrefix, output);
@@ -585,7 +601,25 @@ export class RoomState {
           }
         }
       }
-      this.inputManager.updateInput(inputId, options);
+      const { transcription, ...rest } = options;
+      if (transcription !== undefined) {
+        const input = this.inputManager.getInput(inputId);
+        if (input.transcription !== transcription) {
+          input.transcription = transcription;
+          if (input.type === 'whip') {
+            input.volume = transcription ? 1 : 0;
+          }
+          const wasConnected = input.status === 'connected';
+          if (wasConnected && supportsTranscription(input.type)) {
+            await this.captionsController.setTranscriptionPull(input, false);
+            getCaptionBridge()?.notifySideChannelStopped(inputId);
+            await this.inputManager.disconnectInput(inputId);
+            await this.inputManager.connectInput(inputId);
+          }
+        }
+      }
+      this.inputManager.updateInput(inputId, rest);
+      this.updateStoreWithState();
     });
   }
 
@@ -699,6 +733,33 @@ export class RoomState {
     });
   }
 
+  public async setTranscriptionEnabled(
+    inputId: string,
+    enabled: boolean,
+  ): Promise<void> {
+    return this.mutex.runExclusive(async () => {
+      const input = this.inputManager.getInput(inputId);
+      if (input.transcription === enabled) return;
+
+      input.transcription = enabled;
+      if (input.type === 'whip') {
+        input.volume = enabled ? 1 : 0;
+      }
+
+      const wasConnected = input.status === 'connected';
+      const isStreamInput = supportsTranscription(input.type);
+
+      if (wasConnected && isStreamInput) {
+        await this.captionsController.setTranscriptionPull(input, false);
+        getCaptionBridge()?.notifySideChannelStopped(inputId);
+        await this.inputManager.disconnectInput(inputId);
+        await this.inputManager.connectInput(inputId);
+      }
+
+      this.updateStoreWithState();
+    });
+  }
+
   public async stopAllMotion(): Promise<void> {
     await this.motionController.stopAll();
   }
@@ -767,6 +828,49 @@ export class RoomState {
 
   public setOutputShaders(shaders: ShaderConfig[]): void {
     this.output.store.getState().setOutputShaders(shaders);
+  }
+
+  // ── Captions ──────────────────────────────────────────────
+
+  /** True if this room owns the given input id (used to route transcripts). */
+  public hasInput(inputId: string): boolean {
+    return this.getInputs().some((input) => input.inputId === inputId);
+  }
+
+  /** Display a transcript on its input and schedule it to clear after the
+   * spoken segment's duration (plus a small linger to avoid flicker). */
+  public applyTranscript(event: {
+    inputId: string;
+    text: string;
+    duration: number;
+  }): void {
+    const input = this.getInputs().find((i) => i.inputId === event.inputId);
+    if (!input) {
+      console.warn(
+        `[captions] applyTranscript: input not found inputId=${event.inputId}`,
+      );
+      return;
+    }
+    if (!hasTranscription(input)) {
+      console.warn(
+        `[captions] applyTranscript: transcription disabled inputId=${event.inputId}`,
+      );
+      return;
+    }
+
+    const prev = this.transcriptClearTimers.get(event.inputId);
+    if (prev) clearTimeout(prev);
+
+    this.output.store.getState().setTranscript(event.inputId, event.text);
+    console.log(
+      `[captions] displayed inputId=${event.inputId} for ${event.duration + SUBTITLE_LINGER_MS}ms text="${event.text}"`,
+    );
+
+    const timer = setTimeout(() => {
+      this.transcriptClearTimers.delete(event.inputId);
+      this.output.store.getState().setTranscript(event.inputId, '');
+    }, event.duration + SUBTITLE_LINGER_MS);
+    this.transcriptClearTimers.set(event.inputId, timer);
   }
 
   public getOutputShaders(): ShaderConfig[] {
@@ -1262,6 +1366,7 @@ export class RoomState {
       await this.flushPendingImageUnregisters();
 
       await this.motionController.stopAll();
+      await this.captionsController.stopAll();
       await this.audioController.stopAll();
       await this.inputManager.destroyAll();
 
@@ -1541,9 +1646,16 @@ export class RoomState {
       return layer;
     });
 
+    const transcriptionSideChannelInputIds = allInputs
+      .filter(
+        (input) => input.status === 'connected' && hasTranscription(input),
+      )
+      .map((input) => input.inputId);
+
     this.output.store.getState().updateState({
       inputs: [...inputs].reverse(),
       layers: this.layers,
+      transcriptionSideChannelInputIds,
       swapDurationMs: this.swapDurationMs,
       swapOutgoingEnabled: this.swapOutgoingEnabled,
       swapFadeInDurationMs: this.swapFadeInDurationMs,

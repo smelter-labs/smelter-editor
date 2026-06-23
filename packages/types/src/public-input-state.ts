@@ -43,6 +43,8 @@ export type PublicInputState = {
   nativeWidth?: number;
   /** Native stream resolution height, if known. */
   nativeHeight?: number;
+  /** When true, audio is transcribed (whisper) and rendered as live captions. */
+  transcription?: boolean;
 } & InputDisplayProperties &
   Partial<TextInputProperties> &
   Partial<AbsolutePositionProperties> &

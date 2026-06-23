@@ -22,8 +22,8 @@
     "@fastify/websocket": "^11.2.0",
     "@sinclair/typebox": "^0.34.38",
     "@smelter-editor/types": "workspace:*",
-    "@swmansion/smelter": "next",
-    "@swmansion/smelter-node": "next",
+    "@swmansion/smelter": "0.4.0",
+    "@swmansion/smelter-node": "0.4.0",
     "@types/fs-extra": "^11.0.4",
     "async-mutex": "^0.5.0",
     "blessed": "^0.1.81",
@@ -32,6 +32,7 @@
     "fs-extra": "^11.2.0",
     "react": "18.3.1",
     "uuid": "^10.0.0",
+    "ws": "^8.18.0",
     "zustand": "4.5.5"
   },
   "devDependencies": {
@@ -39,6 +40,7 @@
     "@types/node": "^20.14.10",
     "@types/react": "^18.3.3",
     "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.5.12",
     "@typescript-eslint/eslint-plugin": "^8.57.1",
     "@typescript-eslint/parser": "^8.57.1",
     "@vitest/coverage-v8": "^4.1.2",

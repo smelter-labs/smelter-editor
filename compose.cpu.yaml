@@ -1,0 +1,29 @@
+# CPU / no-GPU override for local Docker (macOS, or Linux without NVIDIA Container Toolkit).
+#
+# Usage (production-style, no source bind-mounts):
+#   SMELTER_DATA_DIR=/path/to/data docker compose -f compose.yaml -f compose.cpu.yaml up --build
+#
+# For day-to-day dev with hot reload, use compose.dev.yaml instead (includes CPU overrides).
+# Do not merge compose.cpu.yaml with compose.dev.yaml — server-b here is an orphan service.
+services:
+  server:
+    runtime: !reset null
+    gpus: !reset []
+    environment:
+      ENVIRONMENT: development
+      SMELTER_WHEP_BASE_URL: "http://127.0.0.1:9072/whep"
+      SMELTER_WHIP_BASE_URL: "http://127.0.0.1:9072/whip"
+      SMELTER_H264_ENCODER: ffmpeg
+      SMELTER_H264_ENCODER_PRESET: ultrafast
+      SMELTER_H264_ENCODER_BITRATE: "8000000"
+
+  server-b:
+    runtime: !reset null
+    gpus: !reset []
+    environment:
+      ENVIRONMENT: development
+      SMELTER_WHEP_BASE_URL: "http://127.0.0.1:10072/whep"
+      SMELTER_WHIP_BASE_URL: "http://127.0.0.1:10072/whip"
+      SMELTER_H264_ENCODER: ffmpeg
+      SMELTER_H264_ENCODER_PRESET: ultrafast
+      SMELTER_H264_ENCODER_BITRATE: "8000000"

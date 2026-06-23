@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { PongLobby } from '../pongLobby.js';
+import { PongLobby } from '../pongLobby';
 
 describe('PongLobby', () => {
   it('assigns first joiner as host', () => {

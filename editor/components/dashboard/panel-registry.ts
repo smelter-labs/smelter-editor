@@ -10,6 +10,7 @@ type StaticPanelId =
   | 'connected-devices'
   | 'system-log'
   | 'motion-detection'
+  | 'captions'
   | 'layout-preview'
   | 'carousel'
   | 'output-code'
@@ -113,6 +114,12 @@ export const STATIC_PANEL_DEFINITIONS: Record<StaticPanelId, PanelDefinition> =
       minW: 4,
       minH: 4,
     },
+    captions: {
+      id: 'captions',
+      title: 'Captions',
+      minW: 4,
+      minH: 4,
+    },
     'layout-preview': {
       id: 'layout-preview',
       title: 'Layout Preview',
@@ -189,6 +196,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'carousel', x: 16, y: 38, w: 8, h: 10, minW: 4, minH: 8 },
       { i: 'output-code', x: 12, y: 15, w: 8, h: 10, minW: 6, minH: 8 },
       { i: 'pong', x: 0, y: 73, w: 10, h: 6, minW: 8, minH: 5 },
+      { i: 'captions', x: 0, y: 79, w: 8, h: 6, minW: 4, minH: 4 },
     ],
   },
   {

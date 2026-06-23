@@ -52,6 +52,7 @@ export function toPublicInputState(
     cropBottom: input.cropBottom,
     motionScore: input.motionScore,
     motionEnabled: input.motionEnabled,
+    transcription: input.transcription,
     nativeWidth: input.nativeWidth,
     nativeHeight: input.nativeHeight,
   };

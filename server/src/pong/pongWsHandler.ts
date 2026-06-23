@@ -4,8 +4,8 @@ import type {
   PongNetGameState,
   RoomEvent,
 } from '@smelter-editor/types';
-import { roomEventBus } from '../core/roomEventBus.js';
-import { pongLobbyManager } from './pongLobby.js';
+import { roomEventBus } from '../core/roomEventBus';
+import { pongLobbyManager } from './pongLobby';
 
 function resolvePeerName(roomId: string, clientId: string): string | null {
   const peer = roomEventBus

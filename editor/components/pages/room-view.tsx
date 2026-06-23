@@ -102,6 +102,7 @@ export default function RoomView({
           blockPropertiesSection,
           pendingConnectionsSection,
           motionDetectionSection,
+          captionsSection,
           peers,
           timelineColorOverrides,
           activeClipColors,
@@ -127,6 +128,7 @@ export default function RoomView({
             'connected-devices': <ConnectedDevicesPanel peers={peers} />,
             'system-log': <SystemLogPanel />,
             'motion-detection': motionDetectionSection,
+            captions: captionsSection,
             carousel: carouselSection,
             'layout-preview': (
               <LayoutPreviewPanel

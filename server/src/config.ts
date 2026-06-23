@@ -60,6 +60,20 @@ function productionWebRtcBaseUrls(): {
   };
 }
 
+function developmentWebRtcBaseUrls(): {
+  whepBaseUrl: string;
+  whipBaseUrl: string;
+} {
+  const whepOverride = process.env.SMELTER_WHEP_BASE_URL?.trim();
+  const whipOverride = process.env.SMELTER_WHIP_BASE_URL?.trim();
+  const port = process.env.SMELTER_WHIP_WHEP_SERVER_PORT?.trim() || '9000';
+  const base = `http://127.0.0.1:${port}`;
+  return {
+    whepBaseUrl: whepOverride ?? `${base}/whep`,
+    whipBaseUrl: whipOverride ?? `${base}/whip`,
+  };
+}
+
 function buildH264Encoder(): Outputs.WhepVideoEncoderOptions {
   const encoderEnv = process.env.SMELTER_H264_ENCODER;
   const useVulkan =
@@ -112,8 +126,7 @@ export const config: Config = useProductionConfig
       },
       level: (process.env.SMELTER_DEMO_ROUTER_LOGGER_LEVEL ?? 'warn') as any,
     },
-    whepBaseUrl: 'http://127.0.0.1:9000/whep',
-    whipBaseUrl: 'http://127.0.0.1:9000/whip',
+    ...developmentWebRtcBaseUrls(),
     h264Decoder: 'ffmpeg_h264',
     h264Encoder: buildH264Encoder(),
     snakeVisualSpeedMultiplier,

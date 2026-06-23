@@ -71,6 +71,7 @@ export type RoomConfigInput = {
   cropLeft?: number;
   cropRight?: number;
   cropBottom?: number;
+  transcription?: boolean;
 };
 
 export type RoomConfigTransitionSettings = {
@@ -436,6 +437,7 @@ export function exportRoomConfig(
       cropLeft: input.cropLeft,
       cropRight: input.cropRight,
       cropBottom: input.cropBottom,
+      transcription: input.transcription || undefined,
       attachedInputIndices: input.attachedInputIds
         ?.map((id) => inputIdToIndex.get(id))
         .filter((idx): idx is number => idx !== undefined),

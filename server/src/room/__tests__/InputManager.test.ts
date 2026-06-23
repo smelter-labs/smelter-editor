@@ -68,6 +68,14 @@ const mocks = vi.hoisted(() => {
       stopHandTracking: fn(),
       emitMotionScores: fn(),
     },
+    captionsController: {
+      setTranscriptionPull: fn().mockResolvedValue(undefined),
+      stopAll: fn().mockResolvedValue(undefined),
+    },
+    captionBridge: {
+      notifySideChannelReady: fn(),
+      notifySideChannelStopped: fn(),
+    },
     onStateChange: fn(),
   };
 });
@@ -104,6 +112,9 @@ vi.mock('../../hands/handStore', () => ({
 vi.mock('../../dashboard', () => ({
   logTimelineEvent: mocks.logTimelineEvent,
 }));
+vi.mock('../../captions/captionBridgeRegistry', () => ({
+  getCaptionBridge: () => mocks.captionBridge,
+}));
 vi.mock('fs-extra', () => ({
   pathExists: mocks.pathExists,
   readdir: mocks.readdir,
@@ -126,6 +137,7 @@ beforeEach(() => {
     'room-1',
     mocks.placeholderManager as any,
     mocks.motionController as any,
+    mocks.captionsController as any,
     mocks.onStateChange,
   );
 });
@@ -267,6 +279,16 @@ describe('InputManager', () => {
         expect(mocks.getMp4VideoDimensions).toHaveBeenCalled();
         const input = manager.getInput(inputId!);
         expect(input.type === 'local-mp4' && input.mp4VideoWidth).toBe(1920);
+      });
+
+      it('stores transcription flag from register options', async () => {
+        const inputId = await manager.addNewInput({
+          type: 'local-mp4',
+          source: { fileName: 'test-video.mp4' },
+          transcription: true,
+        });
+        const input = manager.getInput(inputId!);
+        expect(input.transcription).toBe(true);
       });
     });
 
@@ -428,6 +450,31 @@ describe('InputManager', () => {
       mocks.smelter.registerInput.mockClear();
       await manager.connectInput(inputId);
       expect(mocks.smelter.registerInput).not.toHaveBeenCalled();
+    });
+
+    it('starts captions pull and notifies side channel for MP4 with transcription', async () => {
+      const inputId = (await manager.addNewInput({
+        type: 'local-mp4',
+        source: { fileName: 'test-video.mp4' },
+        transcription: true,
+      }))!;
+
+      await manager.connectInput(inputId);
+
+      expect(mocks.smelter.registerInput).toHaveBeenCalledWith(
+        inputId,
+        expect.objectContaining({
+          type: 'mp4',
+          transcription: true,
+        }),
+      );
+      expect(mocks.captionsController.setTranscriptionPull).toHaveBeenCalledWith(
+        expect.objectContaining({ inputId, transcription: true }),
+        true,
+      );
+      expect(mocks.captionBridge.notifySideChannelReady).toHaveBeenCalledWith(
+        inputId,
+      );
     });
   });
 

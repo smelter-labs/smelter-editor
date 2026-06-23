@@ -1,0 +1,10 @@
+# CPU-only PyTorch wheels (Docker without GPU, macOS, Linux dev).
+# Install: .venv/bin/pip install -r requirements-cpu.txt
+--extra-index-url https://download.pytorch.org/whl/cpu
+torch>=2.0
+torchaudio>=2.0
+smelter-sdk>=0.1.0
+faster-whisper>=1.0.3
+silero-vad>=5.1
+numpy>=1.26
+websockets>=12.0

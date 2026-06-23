@@ -10,6 +10,8 @@ x-server-common: &server-common
     SMELTER_LOGGER_LEVEL: info
     SMELTER_SERVER_LOGGER_LEVEL: "debug,smelter_core=info,naga=info,cosmic_text=info,wgpu_hal=warn,smelter_core::pipeline::instance=warn"
     ENVIRONMENT: production
+    # Local macOS / no-GPU: use compose.dev.yaml or compose.cpu.yaml so whepUrl
+    # points to http://127.0.0.1:9072/whep (not fishjam production relay).
     # H.264 encoder: "vulkan" (GPU, default) or "ffmpeg" (CPU, lower latency via zerolatency tune)
     # SMELTER_H264_ENCODER: "ffmpeg"
     # SMELTER_H264_ENCODER_PRESET: "ultrafast"
@@ -19,8 +21,11 @@ x-server-common: &server-common
   #  - '/dev/dri'
   #
   # Nvidia GPU
-  gpus: "all"
-  runtime: "nvidia"
+  gpus:
+    - driver: nvidia
+      count: all
+      capabilities: [gpu]
+  runtime: nvidia
 
 services:
   server:
