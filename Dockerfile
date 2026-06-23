@@ -50,14 +50,13 @@ RUN ARCH= && dpkgArch="$(dpkg --print-architecture)" \
   && ln -s /usr/local/bin/node /usr/local/bin/nodejs \
   && node --version \
   && npm --version \
-  && npm install -i pnpm \
   && rm -rf /tmp/*
 
 ## Build
 USER $USERNAME
 ENV SMELTER_PATH=/home/smelter/smelter/main_process
 
-RUN sudo npm install -g pnpm
+RUN sudo npm install -g pnpm@10
 
 RUN pipx install streamlink
 RUN pip3 install --break-system-packages opencv-python-headless numpy
