@@ -3,15 +3,6 @@
 # This file does NOT build the image; it pulls the image published by the
 # "Deploy production" GitHub Actions workflow (main branch -> :production tag).
 #
-# One-time host setup:
-#   1. Authenticate to the registry so `docker compose pull` works:
-#        echo <GHCR_PAT_with_read:packages> | docker login ghcr.io -u <github-user> --password-stdin
-#   2. Create ~/smelter-editor/secret.env with the runtime secrets (TWITCH_*, KICK_*, etc.).
-#   3. Ensure the data directory exists: sudo mkdir -p /srv/smelter/.data
-#
-# Explicit project name so this stack stays independent of the staging stack
-# even when both are deployed from the same ~/smelter-editor directory on one
-# host (otherwise both default to the directory name and collide).
 name: smelter-editor-production
 
 x-server-common: &server-common
