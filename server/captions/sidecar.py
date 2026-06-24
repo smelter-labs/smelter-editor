@@ -16,7 +16,6 @@ import os
 import sys
 import time
 from collections import deque
-from pathlib import Path
 
 import numpy as np
 import torch
@@ -67,44 +66,6 @@ def debug(msg: str, *args) -> None:
         log.info("[debug] " + msg, *args)
 
 
-def trace(msg: str, *args) -> None:
-    log.info("[trace] " + msg, *args)
-
-
-def side_channel_socket_path(input_id: str) -> str | None:
-    socket_dir = os.environ.get("SMELTER_SIDE_CHANNEL_SOCKET_DIR")
-    if not socket_dir:
-        return None
-    return str(Path(socket_dir) / f"audio_{input_id}.sock")
-
-
-def log_socket_dir(context: str, input_id: str | None = None) -> None:
-    socket_dir = os.environ.get("SMELTER_SIDE_CHANNEL_SOCKET_DIR", "<unset>")
-    try:
-        names = sorted(
-            p.name for p in Path(socket_dir).iterdir() if p.name.endswith(".sock")
-        )
-    except OSError as err:
-        log.warning("[trace] socket dir %s unreadable: %s", context, err)
-        return
-    expected = side_channel_socket_path(input_id) if input_id else None
-    expected_exists = (
-        expected is not None and Path(expected).exists() if expected else None
-    )
-    log.info(
-        "[trace] socket dir %s dir=%s sockets=%d%s%s",
-        context,
-        socket_dir,
-        len(names),
-        f" [{', '.join(names)}]" if names else "",
-        (
-            f" expected={expected} exists={expected_exists}"
-            if expected is not None
-            else ""
-        ),
-    )
-
-
 def should_start_worker(
     input_id: str, now: float, channel_first_seen: dict[str, float]
 ) -> bool:
@@ -121,19 +82,6 @@ def should_start_worker(
     if first_seen is None:
         return False
     return now - first_seen >= CAPTIONS_WARMUP_S
-
-
-def worker_start_reason(
-    input_id: str, now: float, channel_first_seen: dict[str, float]
-) -> str:
-    if input_id in side_channel_ready_at:
-        ready_at = side_channel_ready_at[input_id]
-        return f"side_channel_ready {now - ready_at:.2f}s ago"
-    first_seen = channel_first_seen.get(input_id)
-    if first_seen is None:
-        return "channel not seen"
-    elapsed = now - first_seen
-    return f"warmup fallback elapsed={elapsed:.1f}s/{CAPTIONS_WARMUP_S:.1f}s"
 
 
 async def listen_node_events(ws) -> None:
@@ -160,7 +108,6 @@ async def listen_node_events(ws) -> None:
                     "side_channel_ready for %s — starting whisper worker now",
                     input_id,
                 )
-                log_socket_dir("side_channel_ready", input_id)
             elif msg_type == "side_channel_stopped":
                 side_channel_ready_at.pop(input_id, None)
                 log.info("side_channel_stopped for %s", input_id)
@@ -183,7 +130,6 @@ async def main() -> None:
         CAPTIONS_WARMUP_S,
         NODE_WS_URL,
     )
-    log_socket_dir("sidecar startup")
 
     async with websockets.connect(NODE_WS_URL, ping_interval=20, max_size=None) as ws:
         log.info("connected to Node WS %s", NODE_WS_URL)
@@ -245,19 +191,10 @@ async def discover_inputs(vad_model, whisper_model: WhisperModel) -> None:
                     "audio channel detected for %s — waiting for side_channel_ready",
                     c.input_id,
                 )
-                log_socket_dir("channel detected", c.input_id)
                 continue
             if not should_start_worker(c.input_id, now, channel_first_seen):
-                if DEBUG:
-                    debug(
-                        "still waiting for %s (%s)",
-                        c.input_id,
-                        worker_start_reason(c.input_id, now, channel_first_seen),
-                    )
                 continue
-            reason = worker_start_reason(c.input_id, now, channel_first_seen)
-            log.info("starting whisper worker for %s (%s)", c.input_id, reason)
-            log_socket_dir("worker start", c.input_id)
+            log.info("starting whisper worker for %s", c.input_id)
             running[c.input_id] = asyncio.create_task(
                 run_whisper(c.input_id, vad_model, whisper_model)
             )
@@ -286,21 +223,8 @@ async def stream_16k_windows(input_id: str):
     sample_rate: int | None = None
     batch_count = 0
     subscribe_started = time.monotonic()
-    socket_path = side_channel_socket_path(input_id)
 
     log.info("[%s] subscribing to audio side channel…", input_id)
-    trace(
-        "[%s] pre-subscribe socket=%s exists=%s ready_age=%s",
-        input_id,
-        socket_path,
-        Path(socket_path).exists() if socket_path else None,
-        (
-            f"{time.monotonic() - side_channel_ready_at[input_id]:.2f}s"
-            if input_id in side_channel_ready_at
-            else "n/a"
-        ),
-    )
-    log_socket_dir("pre-subscribe", input_id)
     try:
         async for batch in subscribe_audio_channel(input_id):
             batch_count += 1
@@ -343,22 +267,9 @@ async def stream_16k_windows(input_id: str):
         if batch_count == 0:
             log.warning(
                 "[%s] no audio batches — side channel closed before any data "
-                "(CaptionsPull output must render this input while WHIP streams) "
-                "subscribe_duration=%.2fs",
+                "(ensure net.local.stream.sendspace >= 65536 on macOS)",
                 input_id,
-                elapsed,
             )
-            log_socket_dir("zero batches", input_id)
-            try:
-                channels = await asyncio.to_thread(list_channels)
-                audio_ids = [c.input_id for c in channels if c.kind.value == "audio"]
-                log.warning(
-                    "[%s] post-close list_channels audio=%s",
-                    input_id,
-                    audio_ids,
-                )
-            except Exception as err:  # noqa: BLE001
-                log.warning("[%s] post-close list_channels failed: %s", input_id, err)
         log.info(
             "[%s] audio stream ended after %d batches (%.2fs)",
             input_id,

@@ -6,9 +6,8 @@ import { promisify } from 'node:util';
 import { WebSocketServer, WebSocket, type WebSocket as WsSocket } from 'ws';
 
 import { SmelterInstance } from '../smelter';
-import { captionDebug, captionTrace } from './captionsDebug';
+import { captionDebug } from './captionsDebug';
 import { CAPTIONS_SIDE_CHANNEL_DELAY_MS } from './constants';
-import { logSideChannelSocketDir } from './captionSocket';
 
 const execFileAsync = promisify(execFile);
 
@@ -98,52 +97,37 @@ export class CaptionBridge {
   /** WHIP publisher is live — Python should wait delayMs before subscribing. */
   notifySideChannelReady(inputId: string): void {
     if (this.readyInputIds.has(inputId)) {
-      captionTrace('side_channel_ready duplicate ignored', { inputId });
       captionDebug('side channel ready already signaled', inputId);
       return;
     }
     this.readyInputIds.add(inputId);
-    logSideChannelSocketDir(
-      this.opts.socketDir,
-      'side_channel_ready',
-      inputId,
-    );
-    const sent = this.sendToPython({ type: 'side_channel_ready', inputId });
-    console.log(
-      `[captions] side channel ready signal inputId=${inputId} sentToPython=${sent} wsOpen=${this.ws?.readyState === WebSocket.OPEN}`,
-    );
+    this.sendToPython({ type: 'side_channel_ready', inputId });
+    console.log(`[captions] side channel ready signal inputId=${inputId}`);
   }
 
   /** WHIP input disconnected — Python should stop waiting for this channel. */
   notifySideChannelStopped(inputId: string): void {
-    const had = this.readyInputIds.delete(inputId);
-    const sent = this.sendToPython({ type: 'side_channel_stopped', inputId });
-    console.log(
-      `[captions] side channel stopped signal inputId=${inputId} wasReady=${had} sentToPython=${sent}`,
-    );
+    this.readyInputIds.delete(inputId);
+    this.sendToPython({ type: 'side_channel_stopped', inputId });
+    console.log(`[captions] side channel stopped signal inputId=${inputId}`);
   }
 
   private sendToPython(message: OutgoingSideChannelMessage): boolean {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
-      console.warn(
-        `[captions] sendToPython skipped (python ws not open) type=${message.type} inputId=${message.inputId} wsState=${this.ws?.readyState ?? 'null'}`,
-      );
       captionDebug('sendToPython skipped (python not connected)', message);
       return false;
     }
     this.ws.send(JSON.stringify(message));
-    captionTrace('sendToPython', message);
     return true;
   }
 
   private replayReadyInputs(): void {
-    logSideChannelSocketDir(this.opts.socketDir, 'python_ws_connected');
     for (const inputId of this.readyInputIds) {
       this.sendToPython({ type: 'side_channel_ready', inputId });
     }
     if (this.readyInputIds.size > 0) {
       console.log(
-        `[captions] replayed ${this.readyInputIds.size} side_channel_ready signal(s) to python ids=[${[...this.readyInputIds].join(', ')}]`,
+        `[captions] replayed ${this.readyInputIds.size} side_channel_ready signal(s) to python`,
       );
     }
   }
@@ -225,8 +209,6 @@ export class CaptionBridge {
 
       ws.on('message', (raw) => this.handleMessage(raw.toString()));
       ws.on('close', () => {
-        // Disconnects shouldn't happen — the sidecar is supposed to outlive the
-        // server. Loud log so it surfaces as a bug rather than a silent drop.
         console.error('[captions] python disconnected — this is a bug');
         if (this.ws === ws) this.ws = null;
       });
@@ -264,10 +246,6 @@ export class CaptionBridge {
     );
   }
 
-  // Side-channel audio is delayed by delayMs at registration time, so the
-  // transcript's `ts` (stream PTS) is in the future relative to the wall clock.
-  // Wait until that PTS is reached before showing the caption so it lines up
-  // with the frame the speech belongs to.
   private scheduleTranscript(event: TranscriptEvent): void {
     const start = SmelterInstance.getStartTime();
     const wait = start === null ? 0 : start + event.ts - Date.now();
@@ -306,7 +284,7 @@ export class CaptionBridge {
     }
     const pythonBin = getPythonPath();
     console.log(
-      `[captions] spawning sidecar python=${pythonBin} socketDir=${this.opts.socketDir} wsPort=${this.opts.port} delayMs=${CAPTIONS_SIDE_CHANNEL_DELAY_MS}`,
+      `[captions] spawning sidecar python=${pythonBin} socketDir=${this.opts.socketDir}`,
     );
     this.pythonProcess = spawn(pythonBin, ['-u', PYTHON_SCRIPT], {
       stdio: 'inherit',
