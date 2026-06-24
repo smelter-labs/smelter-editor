@@ -160,32 +160,22 @@ function CarouselSlot({
   );
 }
 
-function collectLayerInputIds(layers: Layer[]): Set<string> {
-  const ids = new Set<string>();
-  for (const layer of layers) {
-    if (layer.enabled === false) continue;
-    for (const item of layer.inputs) {
-      ids.add(item.inputId);
-    }
-  }
-  return ids;
-}
 
 /**
- * Keeps InputStreams alive for connected inputs with transcription that
- * are not in any enabled layout layer (e.g. after timeline snapshot at t=0).
- * store.inputs lists connected inputs but only layer.inputs are actually rendered.
+ * Keeps InputStreams alive for ALL connected inputs with transcription so
+ * Smelter decodes their audio into the side channel regardless of stream
+ * state or layer membership.
+ *
+ * On macOS (no GPU, ffmpeg encoder), side-channel audio only flows when the
+ * input appears as <InputStream> in a composition that is actively rendering.
+ * Layer components gate rendering behind `streamState === 'playing'`, which
+ * can leave a gap where no <InputStream> exists for a transcription input.
+ * Rendering unconditionally here (with volume=0 to avoid double-mixing)
+ * guarantees the audio decode pipeline stays active.
  */
-function CaptionsSideChannelDecode({
-  renderedInLayerIds,
-}: {
-  renderedInLayerIds: Set<string>;
-}) {
+function CaptionsSideChannelDecode() {
   const transcriptionIds = useTranscriptionSideChannelInputIds();
-  const decodeIds = transcriptionIds.filter(
-    (id) => !renderedInLayerIds.has(id),
-  );
-  if (decodeIds.length === 0) return null;
+  if (transcriptionIds.length === 0) return null;
 
   return (
     <View
@@ -196,11 +186,11 @@ function CaptionsSideChannelDecode({
         left: 0,
         backgroundColor: '#000000',
       }}>
-      {decodeIds.map((inputId) => (
+      {transcriptionIds.map((inputId) => (
         <InputStream
           key={`caption-decode-${inputId}`}
           inputId={inputId}
-          volume={1}
+          volume={0}
         />
       ))}
     </View>
@@ -235,8 +225,6 @@ function OutputScene() {
   const inputMap = new Map(inputs.map((input) => [input.inputId, input]));
   const activeOutputShaders = outputShaders.filter((s) => s.enabled);
   const layersReversed = [...layers].reverse();
-  const renderedInLayerIds = collectLayerInputIds(layers);
-
   const vT = viewport.viewportTop ?? 0;
   const vL = viewport.viewportLeft ?? 0;
   const vW = viewport.viewportWidth ?? width;
@@ -257,7 +245,7 @@ function OutputScene() {
         height,
         overflow: 'visible',
       }}>
-      <CaptionsSideChannelDecode renderedInLayerIds={renderedInLayerIds} />
+      <CaptionsSideChannelDecode />
       {layersReversed.map((layer) => {
         const layerOffsetTransition = {
           durationMs: layer.offsetTransitionDurationMs ?? 300,

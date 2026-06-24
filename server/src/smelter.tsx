@@ -580,6 +580,9 @@ class SmelterManager {
         },
       },
     );
+    console.log(
+      `[captions] pull output registered outputId=${outputId} rtpPort=${port}`,
+    );
   }
 
   public async unregisterCaptionsPullOutput(outputId: string): Promise<void> {

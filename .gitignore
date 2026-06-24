@@ -60,3 +60,5 @@ server/screenshots/
 tasks/
 *.mp4
 .pnpm-store/
+secret.env 
+server/.smelter-bin/

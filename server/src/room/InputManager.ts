@@ -8,6 +8,7 @@ import type { TwitchStreamInfo } from '../twitch/TwitchApi';
 import { KickChannelMonitor } from '../kick/KickChannelMonitor';
 import { WhipInputMonitor } from '../whip/WhipInputMonitor';
 import { getCaptionBridge } from '../captions/captionBridgeRegistry';
+import { captionTrace } from '../captions/captionsDebug';
 import { hasTranscription } from '../captions/constants';
 import { sleep } from '../utils';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
@@ -800,9 +801,20 @@ export class InputManager {
     input.status = 'connected';
 
     if (hasTranscription(input)) {
+      captionTrace('connectInput transcription path', {
+        inputId,
+        type: input.type,
+        status: input.status,
+        whipAckPending: input.type === 'whip',
+      });
       await this.captionsController.setTranscriptionPull(input, true);
       if (input.type !== 'whip') {
         getCaptionBridge()?.notifySideChannelReady(inputId);
+        captionTrace('connectInput side_channel_ready (non-whip)', { inputId });
+      } else {
+        captionTrace('connectInput whip waiting for ack before side_channel_ready', {
+          inputId,
+        });
       }
       this.onStateChange();
     }
@@ -1098,15 +1110,25 @@ export class InputManager {
       inputStatus: input.status,
     });
     if (input.transcription && input.status === 'connected') {
+      captionTrace('ackWhipInput transcription path', {
+        roomId: this.idPrefix,
+        inputId,
+        ageBeforeAckMs,
+      });
       void this.captionsController
         .setTranscriptionPull(input, true)
+        .then(() => {
+          captionTrace('ackWhipInput pull ready, signaling side_channel_ready', {
+            inputId,
+          });
+          getCaptionBridge()?.notifySideChannelReady(inputId);
+        })
         .catch((err) =>
           console.error(
             `[captions] setTranscriptionPull on ack failed inputId=${inputId}`,
             err,
           ),
         );
-      getCaptionBridge()?.notifySideChannelReady(inputId);
     }
   }
 

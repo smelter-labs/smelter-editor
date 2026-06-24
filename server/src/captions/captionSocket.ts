@@ -36,6 +36,31 @@ export function createCaptionSocketDir(): string {
   return dir;
 }
 
+export function listSideChannelSockets(socketDir: string): string[] {
+  try {
+    return readdirSync(socketDir)
+      .filter((name) => name.endsWith('.sock'))
+      .sort();
+  } catch {
+    return [];
+  }
+}
+
+export function logSideChannelSocketDir(
+  socketDir: string,
+  context: string,
+  inputId?: string,
+): void {
+  const sockets = listSideChannelSockets(socketDir);
+  const expected =
+    inputId !== undefined ? sideChannelSocketPath(socketDir, inputId) : undefined;
+  const expectedExists =
+    expected !== undefined && sockets.includes(`audio_${inputId}.sock`);
+  console.log(
+    `[captions] socket dir snapshot context=${context} dir=${socketDir} sockets=${sockets.length}${sockets.length ? ` [${sockets.join(', ')}]` : ''}${inputId ? ` expected=${expected} exists=${expectedExists}` : ''}`,
+  );
+}
+
 export function logSocketPathBudget(
   socketDir: string,
   inputId?: string,

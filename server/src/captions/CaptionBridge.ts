@@ -3,11 +3,12 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
-import { WebSocketServer, type WebSocket } from 'ws';
+import { WebSocketServer, WebSocket, type WebSocket as WsSocket } from 'ws';
 
 import { SmelterInstance } from '../smelter';
-import { captionDebug } from './captionsDebug';
+import { captionDebug, captionTrace } from './captionsDebug';
 import { CAPTIONS_SIDE_CHANNEL_DELAY_MS } from './constants';
+import { logSideChannelSocketDir } from './captionSocket';
 
 const execFileAsync = promisify(execFile);
 
@@ -77,7 +78,7 @@ type OutgoingSideChannelMessage = {
 
 export class CaptionBridge {
   private opts: CaptionBridgeOptions;
-  private ws: WebSocket | null = null;
+  private ws: WsSocket | null = null;
   private pythonProcess: ChildProcess | null = null;
   private pythonReady = false;
   private pythonSetupPromise: Promise<void> | null = null;
@@ -97,36 +98,52 @@ export class CaptionBridge {
   /** WHIP publisher is live — Python should wait delayMs before subscribing. */
   notifySideChannelReady(inputId: string): void {
     if (this.readyInputIds.has(inputId)) {
+      captionTrace('side_channel_ready duplicate ignored', { inputId });
       captionDebug('side channel ready already signaled', inputId);
       return;
     }
     this.readyInputIds.add(inputId);
-    this.sendToPython({ type: 'side_channel_ready', inputId });
-    console.log(`[captions] side channel ready signal inputId=${inputId}`);
+    logSideChannelSocketDir(
+      this.opts.socketDir,
+      'side_channel_ready',
+      inputId,
+    );
+    const sent = this.sendToPython({ type: 'side_channel_ready', inputId });
+    console.log(
+      `[captions] side channel ready signal inputId=${inputId} sentToPython=${sent} wsOpen=${this.ws?.readyState === WebSocket.OPEN}`,
+    );
   }
 
   /** WHIP input disconnected — Python should stop waiting for this channel. */
   notifySideChannelStopped(inputId: string): void {
-    this.readyInputIds.delete(inputId);
-    this.sendToPython({ type: 'side_channel_stopped', inputId });
-    console.log(`[captions] side channel stopped signal inputId=${inputId}`);
+    const had = this.readyInputIds.delete(inputId);
+    const sent = this.sendToPython({ type: 'side_channel_stopped', inputId });
+    console.log(
+      `[captions] side channel stopped signal inputId=${inputId} wasReady=${had} sentToPython=${sent}`,
+    );
   }
 
-  private sendToPython(message: OutgoingSideChannelMessage): void {
-    if (!this.ws || this.ws.readyState !== this.ws.OPEN) {
+  private sendToPython(message: OutgoingSideChannelMessage): boolean {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      console.warn(
+        `[captions] sendToPython skipped (python ws not open) type=${message.type} inputId=${message.inputId} wsState=${this.ws?.readyState ?? 'null'}`,
+      );
       captionDebug('sendToPython skipped (python not connected)', message);
-      return;
+      return false;
     }
     this.ws.send(JSON.stringify(message));
+    captionTrace('sendToPython', message);
+    return true;
   }
 
   private replayReadyInputs(): void {
+    logSideChannelSocketDir(this.opts.socketDir, 'python_ws_connected');
     for (const inputId of this.readyInputIds) {
       this.sendToPython({ type: 'side_channel_ready', inputId });
     }
     if (this.readyInputIds.size > 0) {
       console.log(
-        `[captions] replayed ${this.readyInputIds.size} side_channel_ready signal(s) to python`,
+        `[captions] replayed ${this.readyInputIds.size} side_channel_ready signal(s) to python ids=[${[...this.readyInputIds].join(', ')}]`,
       );
     }
   }
@@ -197,7 +214,7 @@ export class CaptionBridge {
       host: '127.0.0.1',
     });
     wss.on('connection', (ws) => {
-      if (this.ws && this.ws.readyState === this.ws.OPEN) {
+      if (this.ws && this.ws.readyState === WebSocket.OPEN) {
         console.warn('[captions] rejecting second python connection');
         ws.close(1013, 'already connected');
         return;
@@ -288,6 +305,9 @@ export class CaptionBridge {
       return;
     }
     const pythonBin = getPythonPath();
+    console.log(
+      `[captions] spawning sidecar python=${pythonBin} socketDir=${this.opts.socketDir} wsPort=${this.opts.port} delayMs=${CAPTIONS_SIDE_CHANNEL_DELAY_MS}`,
+    );
     this.pythonProcess = spawn(pythonBin, ['-u', PYTHON_SCRIPT], {
       stdio: 'inherit',
       cwd: CAPTIONS_DIR,
