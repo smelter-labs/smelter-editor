@@ -27,16 +27,8 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { toggleTranscription } from '@/app/actions/actions';
 
 const SHADER_SETTINGS_DEBOUNCE_MS = 200;
-const VIDEO_INPUT_TYPES = new Set([
-  'local-mp4',
-  'twitch-channel',
-  'kick-channel',
-  'hls',
-  'whip',
-]);
 interface InputEntryProps {
   roomId: string;
   input: Input;
@@ -86,7 +78,6 @@ export default function InputEntry({
   const [isAddShaderModalOpen, setIsAddShaderModalOpen] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
-  const [captionsPending, setCaptionsPending] = useState(false);
   const [gameGridAlphaDraft, setGameGridAlphaDraft] = useState<number | null>(
     null,
   );
@@ -518,29 +509,6 @@ export default function InputEntry({
               refreshState={refreshState}
             />
           )}
-        {!readOnly && VIDEO_INPUT_TYPES.has(input.type) && (
-          <div className='flex items-center gap-2 px-2 py-1'>
-            <label className='text-xs text-muted-foreground'>Captions</label>
-            <Button
-              type='button'
-              size='sm'
-              variant={input.transcription ? 'default' : 'outline'}
-              disabled={captionsPending}
-              className='h-6 px-2 text-[10px] font-mono uppercase'
-              onClick={() => {
-                setCaptionsPending(true);
-                void toggleTranscription(
-                  roomId,
-                  input.inputId,
-                  !input.transcription,
-                )
-                  .then(() => refreshState())
-                  .finally(() => setCaptionsPending(false));
-              }}>
-              {captionsPending ? '...' : input.transcription ? 'On' : 'Off'}
-            </Button>
-          </div>
-        )}
         {input.type === 'game' && !readOnly && (
           <div className='flex items-center gap-3 px-2 py-1'>
             <div className='flex items-center gap-1'>

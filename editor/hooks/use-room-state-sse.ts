@@ -12,6 +12,9 @@ export function useRoomStateSse(roomId: string | undefined) {
     inputs: [],
     layers: [],
     whepUrl: '',
+    broadcastTiles: [],
+    selectedBroadcastTileId: null,
+    isBroadcastMode: false,
   });
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);

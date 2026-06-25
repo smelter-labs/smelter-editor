@@ -39,7 +39,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
 import LoadingSpinner from '@/components/ui/spinner';
 import { toast } from 'sonner';
-import { getMp4Duration } from '@/app/actions/actions';
+import { getMp4Duration, toggleTranscription } from '@/app/actions/actions';
 import { AbsolutePositionController } from './AbsolutePositionController';
 import { defaultAbsoluteRect } from '@/lib/source-fit';
 import {
@@ -61,6 +61,13 @@ import { SwapSourceModal, type SwapSourceResult } from './SwapSourceModal';
 import { useAppMode } from '@/components/app-mode/app-mode-context';
 
 const SHADER_SETTINGS_DEBOUNCE_MS = 200;
+const VIDEO_INPUT_TYPES = new Set([
+  'local-mp4',
+  'twitch-channel',
+  'kick-channel',
+  'hls',
+  'whip',
+]);
 
 export type { SelectedTimelineClip } from './block-clip/block-clip-utils';
 
@@ -141,6 +148,7 @@ export function BlockClipPropertiesPanel({
   const [volumeDraft, setVolumeDraft] = useState<number | null>(null);
   const volumeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
+  const [captionsPending, setCaptionsPending] = useState(false);
   const [mp4DurationLoading, setMp4DurationLoading] = useState(false);
   const mp4DurationFetchedRef = useRef<string | null>(null);
   const applyClipPatchRef = useRef<
@@ -1192,6 +1200,41 @@ export function BlockClipPropertiesPanel({
               />
             </div>
           </CollapsibleSection>
+          {selectedInput &&
+            VIDEO_INPUT_TYPES.has(selectedInput.type) &&
+            !isMultiSelect && (
+              <CollapsibleSection title='Models' className='mb-2'>
+                <div className='flex items-center justify-between mb-2'>
+                  <span className='text-xs text-muted-foreground'>
+                    Captions
+                  </span>
+                  <Button
+                    type='button'
+                    size='sm'
+                    variant={
+                      selectedInput.transcription ? 'default' : 'outline'
+                    }
+                    disabled={captionsPending}
+                    className='h-6 px-2 text-[10px] font-mono uppercase'
+                    onClick={() => {
+                      setCaptionsPending(true);
+                      void toggleTranscription(
+                        roomId,
+                        selectedInput.inputId,
+                        !selectedInput.transcription,
+                      )
+                        .then(() => handleRefreshState())
+                        .finally(() => setCaptionsPending(false));
+                    }}>
+                    {captionsPending
+                      ? '...'
+                      : selectedInput.transcription
+                        ? 'On'
+                        : 'Off'}
+                  </Button>
+                </div>
+              </CollapsibleSection>
+            )}
           <CollapsibleSection title='Position' className={panelSectionStyles()}>
             {resolution && (
               <>
