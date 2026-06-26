@@ -37,9 +37,9 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
-!.env.local
+.env.local
 !.envrc
-
+server/.env.local
 # vercel
 .vercel
 
@@ -52,6 +52,7 @@ server/data/
 server/dist/
 server/motion/.venv/
 server/captions/.venv/
+server/src/ai-models/motion/.venv/
 packages/types/dist/
 packages/types/node_modules/
 server/screenshots/

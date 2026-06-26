@@ -9,6 +9,7 @@ import { KickChannelMonitor } from '../kick/KickChannelMonitor';
 import { WhipInputMonitor } from '../whip/WhipInputMonitor';
 import { getCaptionBridge } from '../captions/captionBridgeRegistry';
 import { hasTranscription } from '../captions/constants';
+import { computeSideChannelConfig } from '../ai-models';
 import { sleep } from '../utils';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
 import pictureSuggestionsMonitor from '../pictures/pictureSuggestionMonitor';
@@ -30,6 +31,7 @@ import type {
 import type { PlaceholderManager } from './PlaceholderManager';
 import type { MotionController } from './MotionController';
 import type { CaptionsController } from './CaptionsController';
+import type { RoomAIController } from '../ai-models/room-ai-controller';
 import { InputOrientation } from '@smelter-editor/types';
 
 const VIDEO_INPUT_TYPES: RoomInputState['type'][] = [
@@ -52,6 +54,7 @@ export class InputManager {
     private readonly placeholderManager: PlaceholderManager,
     private readonly motionController: MotionController,
     private readonly captionsController: CaptionsController,
+    private readonly aiController: RoomAIController,
     private readonly onStateChange: () => void,
   ) {
     this.mp4Files = mp4SuggestionsMonitor.mp4Files;
@@ -176,6 +179,7 @@ export class InputManager {
       volume: 1,
       whipUrl: '',
       transcription: withTranscription,
+      aiModels: {},
     });
     return inputId;
   }
@@ -214,6 +218,7 @@ export class InputManager {
       hidden: false,
       motionEnabled: false,
       transcription: transcription ?? false,
+      aiModels: {},
       metadata: { title: '', description: '' },
       volume: 1,
       channelId,
@@ -275,6 +280,7 @@ export class InputManager {
       hidden: false,
       motionEnabled: false,
       transcription: transcription ?? false,
+      aiModels: {},
       metadata: {
         title: `[HLS] ${label}`,
         description: `Direct HLS stream`,
@@ -332,6 +338,7 @@ export class InputManager {
       hidden: false,
       motionEnabled: false,
       transcription: opts.transcription ?? false,
+      aiModels: {},
       metadata: {
         title: `[${titlePrefix}] ${formatMp4Name(mp4Name)}`,
         description: isAudio
@@ -369,6 +376,7 @@ export class InputManager {
       hidden: false,
       motionEnabled: false,
       transcription: false,
+      aiModels: {},
       metadata: {
         title: params.title,
         description: params.description,
@@ -508,6 +516,7 @@ export class InputManager {
           hidden: false,
           motionEnabled: false,
           transcription: false,
+      aiModels: {},
           metadata: {
             title: `[Missing image] ${missingImageName}`,
             description:
@@ -548,6 +557,7 @@ export class InputManager {
         hidden: false,
         motionEnabled: false,
         transcription: false,
+      aiModels: {},
         metadata: { title: formatImageName(fileName), description: '' },
         volume: 0,
         imageId,
@@ -566,6 +576,7 @@ export class InputManager {
         hidden: false,
         motionEnabled: false,
         transcription: false,
+      aiModels: {},
         metadata: {
           title: `[Missing image] ${formatImageName(path.basename(fileName))}`,
           description:
@@ -603,6 +614,7 @@ export class InputManager {
       hidden: false,
       motionEnabled: false,
       transcription: false,
+      aiModels: {},
       metadata: { title: 'Text', description: '' },
       volume: 0,
       text: opts.text,
@@ -640,6 +652,7 @@ export class InputManager {
       hidden: false,
       motionEnabled: false,
       transcription: false,
+      aiModels: {},
       volume: 0,
       ...defaults,
     });
@@ -666,6 +679,7 @@ export class InputManager {
       hidden: false,
       motionEnabled: false,
       transcription: false,
+      aiModels: {},
       metadata: {
         title: 'Hand Tracking',
         description: 'Cyberpunk hand overlay',
@@ -819,19 +833,13 @@ export class InputManager {
         );
     }
 
-    if (input.motionEnabled && VIDEO_INPUT_TYPES.includes(input.type)) {
-      this.motionController
-        .startMotionDetection(inputId, (score) => {
-          if (score === -1) {
-            input.motionScore = undefined;
-          } else {
-            input.motionScore = score;
-          }
-          this.motionController.emitMotionScores();
-        })
-        .catch((err) =>
-          console.error(`[motion] Failed to start for ${inputId}`, err),
-        );
+    await this.aiController.onInputConnected(input);
+
+    if (input.type !== 'whip') {
+      console.log(
+        `[ai-side-channel] notifying side_channel_ready inputId=${inputId} type=${input.type} models=${this.aiController.getEnabledModels(inputId).join(',')}`,
+      );
+      this.aiController.onSideChannelReady(inputId);
     }
 
     this.onStateChange();
@@ -843,6 +851,7 @@ export class InputManager {
     if (input.status === 'disconnected') return;
 
     await this.motionController.stopMotionDetection(inputId);
+    await this.aiController.onInputDisconnected(inputId);
     if (hasTranscription(input)) {
       await this.captionsController.setTranscriptionPull(input, false);
       getCaptionBridge()?.notifySideChannelStopped(inputId);
@@ -1102,6 +1111,7 @@ export class InputManager {
         .setTranscriptionPull(input, true)
         .then(() => {
           getCaptionBridge()?.notifySideChannelReady(inputId);
+          this.aiController.onSideChannelReady(inputId);
         })
         .catch((err) =>
           console.error(
@@ -1109,6 +1119,8 @@ export class InputManager {
             err,
           ),
         );
+    } else if (input.status === 'connected') {
+      this.aiController.onSideChannelReady(inputId);
     }
   }
 
@@ -1312,11 +1324,17 @@ export class InputManager {
 function registerOptionsFromInput(
   input: RoomInputState,
 ): RegisterSmelterInputOptions {
+  const sideChannel = computeSideChannelConfig(
+    input.aiModels ?? {},
+    input.transcription,
+  );
+  const scOpts = sideChannel ? { sideChannel } : {};
+
   if (input.type === 'local-mp4') {
     return {
       type: 'mp4',
       filePath: input.mp4FilePath,
-      transcription: input.transcription,
+      ...scOpts,
     };
   } else if (
     input.type === 'twitch-channel' ||
@@ -1326,13 +1344,17 @@ function registerOptionsFromInput(
     return {
       type: 'hls',
       url: input.hlsUrl,
-      transcription: input.transcription,
+      ...scOpts,
     };
   } else if (input.type === 'whip') {
     return {
       type: 'whip',
       url: input.whipUrl,
-      transcription: input.transcription,
+      sideChannel: {
+        video: true,
+        audio: true,
+        ...(sideChannel?.delayMs ? { delayMs: sideChannel.delayMs } : {}),
+      },
     };
   } else if (input.type === 'image') {
     throw Error('Images cannot be connected as stream inputs');

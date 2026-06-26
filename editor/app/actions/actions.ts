@@ -517,6 +517,28 @@ export async function toggleTranscription(
   return (await getClient()).toggleTranscription(roomId, inputId, enabled);
 }
 
+export async function getAvailableAIModels(): Promise<
+  import('@smelter-editor/types').AIModelInfo[]
+> {
+  return (await getClient()).getAvailableAIModels();
+}
+
+export async function setAIModel(
+  roomId: string,
+  inputId: string,
+  modelId: string,
+  enabled: boolean,
+  delayMs?: number,
+): Promise<void> {
+  return (await getClient()).setAIModel(
+    roomId,
+    inputId,
+    modelId,
+    enabled,
+    delayMs,
+  );
+}
+
 export async function setAudioAnalysisEnabled(
   roomId: string,
   enabled: boolean,

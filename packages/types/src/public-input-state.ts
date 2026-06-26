@@ -12,6 +12,7 @@ import type {
   MotionProperties,
   HandsProperties,
 } from './input.js';
+import type { AIModelStatus } from './ai-models.js';
 
 export type PublicInputState = {
   inputId: string;
@@ -45,6 +46,8 @@ export type PublicInputState = {
   nativeHeight?: number;
   /** When true, audio is transcribed (whisper) and rendered as live captions. */
   transcription?: boolean;
+  /** Per-input AI model configuration and status. */
+  aiModels?: Record<string, AIModelStatus>;
 } & InputDisplayProperties &
   Partial<TextInputProperties> &
   Partial<AbsolutePositionProperties> &

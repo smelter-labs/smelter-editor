@@ -72,6 +72,11 @@ const mocks = vi.hoisted(() => {
       setTranscriptionPull: fn().mockResolvedValue(undefined),
       stopAll: fn().mockResolvedValue(undefined),
     },
+    aiController: {
+      onInputConnected: fn().mockResolvedValue(undefined),
+      onInputDisconnected: fn().mockResolvedValue(undefined),
+      onSideChannelReady: fn(),
+    },
     captionBridge: {
       notifySideChannelReady: fn(),
       notifySideChannelStopped: fn(),
@@ -138,6 +143,7 @@ beforeEach(() => {
     mocks.placeholderManager as any,
     mocks.motionController as any,
     mocks.captionsController as any,
+    mocks.aiController as any,
     mocks.onStateChange,
   );
 });
@@ -465,7 +471,7 @@ describe('InputManager', () => {
         inputId,
         expect.objectContaining({
           type: 'mp4',
-          transcription: true,
+          sideChannel: { audio: true, delayMs: 8000 },
         }),
       );
       expect(mocks.captionsController.setTranscriptionPull).toHaveBeenCalledWith(

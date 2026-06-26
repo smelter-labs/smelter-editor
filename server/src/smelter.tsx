@@ -15,7 +15,6 @@ import {
   sideChannelSocketPathLen,
   UNIX_SOCKET_PATH_MAX,
 } from './captions/captionSocket';
-import { CAPTIONS_SIDE_CHANNEL_DELAY_MS } from './captions/constants';
 import { captionDebug } from './captions/captionsDebug';
 import { config } from './config';
 import { DATA_DIR } from './dataDir';
@@ -98,45 +97,45 @@ export type SmelterOutput = {
   audioStore?: StoreApi<AudioStoreState>;
 };
 
+export type SideChannelOpts = {
+  video?: true;
+  audio?: true;
+  delayMs?: number;
+};
+
 export type RegisterSmelterInputOptions =
   | {
       type: 'mp4';
       filePath: string;
       loop?: boolean;
       offsetMs?: number;
-      transcription?: boolean;
+      sideChannel?: SideChannelOpts;
     }
   | {
       type: 'hls';
       url: string;
-      transcription?: boolean;
+      sideChannel?: SideChannelOpts;
     }
   | {
       type: 'whip';
       url: string;
-      transcription?: boolean;
+      sideChannel?: SideChannelOpts;
     };
 
-function sideChannelForTranscription(
-  transcription: boolean | undefined,
-): { sideChannel: { audio: true; delayMs: number } } | undefined {
-  if (!transcription) return undefined;
-  return {
-    sideChannel: {
-      audio: true,
-      delayMs: CAPTIONS_SIDE_CHANNEL_DELAY_MS,
-    },
-  };
+function sideChannelSpread(
+  config: SideChannelOpts | undefined,
+): { sideChannel: SideChannelOpts } | undefined {
+  if (!config) return undefined;
+  return { sideChannel: config };
 }
 
 function logSideChannelRegistration(
   inputId: string,
   inputType: string,
-  transcription: boolean | undefined,
+  sideChannel: SideChannelOpts | undefined,
 ): void {
-  const sideChannel = sideChannelForTranscription(transcription);
   if (!sideChannel) {
-    captionDebug(`${inputType} without transcription`, inputId);
+    captionDebug(`${inputType} without side channel`, inputId);
     return;
   }
   const socketDir = process.env.SMELTER_SIDE_CHANNEL_SOCKET_DIR ?? '';
@@ -144,12 +143,12 @@ function logSideChannelRegistration(
     ? sideChannelSocketPathLen(socketDir, inputId)
     : 0;
   console.log(
-    `[captions] registering ${inputType} sideChannel inputId=${inputId} socketPathLen=${pathLen}/${UNIX_SOCKET_PATH_MAX} delayMs=${sideChannel.sideChannel.delayMs}`,
+    `[side-channel] registering ${inputType} inputId=${inputId} video=${!!sideChannel.video} audio=${!!sideChannel.audio} delayMs=${sideChannel.delayMs ?? 0} socketPathLen=${pathLen}/${UNIX_SOCKET_PATH_MAX}`,
   );
   logSocketPathBudget(socketDir, inputId);
   if (pathLen > UNIX_SOCKET_PATH_MAX) {
     console.error(
-      `[captions] socket path too long for inputId=${inputId} — side channel will fail`,
+      `[side-channel] socket path too long for inputId=${inputId} — side channel will fail`,
     );
   }
 }
@@ -384,14 +383,11 @@ class SmelterManager {
     const t0 = Date.now();
     try {
       if (opts.type === 'whip') {
-        logSideChannelRegistration(inputId, 'whip', opts.transcription);
-        const sideChannel = sideChannelForTranscription(opts.transcription);
+        logSideChannelRegistration(inputId, 'whip', opts.sideChannel);
+        const sideChannel = sideChannelSpread(opts.sideChannel);
         const res = await this.instance.registerInput(inputId, {
           type: 'whip_server',
           video: { decoderPreferences: WHIP_SERVER_DECODER_PREFERENCES },
-          // `sideChannel` extracts the input's audio to a unix socket for the
-          // captions sidecar (whisper). `delayMs` gives whisper time to
-          // transcribe before the matching frame is presented.
           ...sideChannel,
         });
         console.log('whipInput', res);
@@ -402,8 +398,8 @@ class SmelterManager {
         }
         return res.bearerToken;
       } else if (opts.type === 'mp4') {
-        logSideChannelRegistration(inputId, 'mp4', opts.transcription);
-        const sideChannel = sideChannelForTranscription(opts.transcription);
+        logSideChannelRegistration(inputId, 'mp4', opts.sideChannel);
+        const sideChannel = sideChannelSpread(opts.sideChannel);
         console.log(
           `[smelter] registerInput MP4 inputId=${inputId} path=${opts.filePath} loop=${opts.loop ?? true} offsetMs=${opts.offsetMs}`,
         );
@@ -419,10 +415,8 @@ class SmelterManager {
           `[smelter] registerInput MP4 OK inputId=${inputId} elapsed=${Date.now() - t0}ms`,
         );
       } else if (opts.type === 'hls') {
-        logSideChannelRegistration(inputId, 'hls', opts.transcription);
-        const sideChannel = sideChannelForTranscription(opts.transcription);
-        // Must stay bound to `this.instance` — a bare extracted method loses `this`
-        // and throws (e.g. Cannot read properties of undefined (reading 'scheduler')).
+        logSideChannelRegistration(inputId, 'hls', opts.sideChannel);
+        const sideChannel = sideChannelSpread(opts.sideChannel);
         const registerHlsInput = this.instance.registerInput.bind(
           this.instance,
         ) as unknown as (
@@ -431,7 +425,7 @@ class SmelterManager {
             type: 'hls';
             url: string;
             decoderMap: typeof MP4_DECODER_MAP;
-            sideChannel?: { audio: true; delayMs: number };
+            sideChannel?: SideChannelOpts;
           },
         ) => Promise<unknown>;
 

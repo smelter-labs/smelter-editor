@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc",
     "lint": "eslint .",
-    "start": "ts-node ./src/index.ts",
+    "start": "set -a; [ -f .env.local ] && . ./.env.local; set +a; ts-node ./src/index.ts",
     "test": "vitest",
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",

@@ -10,6 +10,7 @@ import {
   logSocketPathBudget,
 } from './captions/captionSocket';
 import { captionsDebug } from './captions/captionsDebug';
+import { registerAIModels } from './ai-models';
 import { routes } from './routing/routes';
 import { initDashboard, hijackConsole } from './dashboard';
 import './snakeGame/registerSnakeGameRenderer';
@@ -52,6 +53,7 @@ async function run() {
   }
 
   console.log('Start Smelter instance');
+  registerAIModels();
   await SmelterInstance.init();
 
   const captionBridge = new CaptionBridge({

@@ -46,7 +46,10 @@ import { getAudioWaveformPath } from '../audio-files/audioWaveform';
 import { KickChannelSuggestions } from '../kick/KickChannelMonitor';
 import shadersController from '../shaders/shaders';
 import { DATA_DIR } from '../dataDir';
+import { ModelRegistry, registerAIModels } from '../ai-models';
 import { uploadRoutes, sanitizeFolderPath } from '../core/routes/uploadRoutes';
+
+registerAIModels();
 import {
   RESOLUTION_PRESETS,
   type Resolution,
@@ -267,6 +270,7 @@ async function ensureMp4Thumbnail(mp4FileName: string): Promise<string> {
 
 type RoomIdParams = { Params: { roomId: string } };
 type RoomAndInputIdParams = { Params: { roomId: string; inputId: string } };
+type AIModelResultParams = { Params: { roomId: string; modelId: string } };
 type RecordingFileParams = { Params: { fileName: string } };
 
 export const routes = Fastify({
@@ -2241,6 +2245,80 @@ routes.post<
     const room = state.getRoom(roomId);
     await room.setTranscriptionEnabled(inputId, req.body.enabled);
     res.status(200).send({ status: 'ok' });
+  },
+);
+
+const AIModelSchema = Type.Object({
+  modelId: Type.String(),
+  enabled: Type.Boolean(),
+  delayMs: Type.Optional(Type.Number({ minimum: 0 })),
+});
+
+routes.get('/ai-models', async (_req, res) => {
+  res.status(200).send(
+    ModelRegistry.getAll().map((m) => ModelRegistry.toInfo(m)),
+  );
+});
+
+routes.post<
+  RoomAndInputIdParams & { Body: Static<typeof AIModelSchema> }
+>(
+  '/room/:roomId/input/:inputId/ai-model',
+  {
+    schema: { params: RoomAndInputIdParamsSchema, body: AIModelSchema },
+  },
+  async (req, res) => {
+    const { roomId, inputId } = req.params;
+    const { modelId, enabled, delayMs } = req.body;
+    console.log('[request] Set AI model', {
+      roomId,
+      inputId,
+      modelId,
+      enabled,
+      delayMs,
+    });
+    const room = state.getRoom(roomId);
+    await room.setAIModelEnabled(inputId, modelId, enabled, delayMs);
+    res.status(200).send({ status: 'ok' });
+  },
+);
+
+const AIModelResultParamsSchema = Type.Object({
+  roomId: Type.String(),
+  modelId: Type.String(),
+});
+
+routes.get<AIModelResultParams>(
+  '/room/:roomId/ai-models/:modelId/results/sse',
+  { schema: { params: AIModelResultParamsSchema } },
+  async (req, res) => {
+    const { roomId, modelId } = req.params;
+    const room = state.getRoom(roomId);
+
+    res.raw.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+    });
+
+    const unsubscribe = room.addAIModelResultListener(modelId, (data) => {
+      res.raw.write(`data: ${JSON.stringify(data)}\n\n`);
+    });
+
+    const heartbeat = setInterval(() => {
+      if (res.raw.destroyed) {
+        clearInterval(heartbeat);
+        unsubscribe();
+        return;
+      }
+      res.raw.write(': heartbeat\n\n');
+    }, 15000);
+
+    req.raw.on('close', () => {
+      clearInterval(heartbeat);
+      unsubscribe();
+    });
   },
 );
 

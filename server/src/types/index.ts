@@ -33,4 +33,7 @@ export type {
   RegisterInputOptions,
   PendingWhipInputData,
   BroadcastTile,
+  AIModelConfig,
+  AIModelStatus,
+  AIModelInfo,
 } from '@smelter-editor/types';

@@ -53,6 +53,18 @@ export function toPublicInputState(
     motionScore: input.motionScore,
     motionEnabled: input.motionEnabled,
     transcription: input.transcription,
+    aiModels: Object.fromEntries(
+      Object.entries(input.aiModels ?? {}).map(([modelId, config]) => [
+        modelId,
+        {
+          enabled: config.enabled,
+          delayMs: config.delayMs,
+          ...(modelId === 'motion' && input.motionScore !== undefined
+            ? { lastResult: { score: input.motionScore } }
+            : {}),
+        },
+      ]),
+    ),
     nativeWidth: input.nativeWidth,
     nativeHeight: input.nativeHeight,
   };

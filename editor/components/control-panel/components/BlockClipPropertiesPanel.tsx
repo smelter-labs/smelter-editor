@@ -39,7 +39,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
 import LoadingSpinner from '@/components/ui/spinner';
 import { toast } from 'sonner';
-import { getMp4Duration, toggleTranscription } from '@/app/actions/actions';
+import { getMp4Duration, toggleTranscription, getAvailableAIModels, setAIModel } from '@/app/actions/actions';
+import type { AIModelInfo } from '@smelter-editor/types';
 import { AbsolutePositionController } from './AbsolutePositionController';
 import { defaultAbsoluteRect } from '@/lib/source-fit';
 import {
@@ -149,6 +150,14 @@ export function BlockClipPropertiesPanel({
   const volumeDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [titleDraft, setTitleDraft] = useState<string | null>(null);
   const [captionsPending, setCaptionsPending] = useState(false);
+  const [availableModels, setAvailableModels] = useState<AIModelInfo[]>([]);
+  const [modelPendingIds, setModelPendingIds] = useState<Set<string>>(
+    new Set(),
+  );
+  const [delayDrafts, setDelayDrafts] = useState<Record<string, number>>({});
+  const delayDebounceRef = useRef<
+    Record<string, ReturnType<typeof setTimeout>>
+  >({});
   const [mp4DurationLoading, setMp4DurationLoading] = useState(false);
   const mp4DurationFetchedRef = useRef<string | null>(null);
   const applyClipPatchRef = useRef<
@@ -228,6 +237,80 @@ export function BlockClipPropertiesPanel({
     !isMultiSelect &&
     !selectedInput &&
     !primaryClip.inputId.startsWith('__pending-whip-');
+
+  useEffect(() => {
+    void getAvailableAIModels().then(setAvailableModels).catch(() => {
+      setAvailableModels([]);
+    });
+  }, []);
+
+  const applicableModels = useMemo(() => {
+    if (!selectedInput) return [];
+    return availableModels.filter((model) =>
+      model.supportedInputTypes.includes(selectedInput.type),
+    );
+  }, [availableModels, selectedInput]);
+
+  const handleModelToggle = useCallback(
+    async (modelId: string, enabled: boolean) => {
+      if (!selectedInput) return;
+      setModelPendingIds((prev) => new Set(prev).add(modelId));
+      try {
+        const current = selectedInput.aiModels?.[modelId];
+        const draftDelay = delayDrafts[modelId];
+        await setAIModel(
+          roomId,
+          selectedInput.inputId,
+          modelId,
+          enabled,
+          draftDelay ?? current?.delayMs,
+        );
+        await handleRefreshState();
+      } finally {
+        setModelPendingIds((prev) => {
+          const next = new Set(prev);
+          next.delete(modelId);
+          return next;
+        });
+      }
+    },
+    [selectedInput, roomId, delayDrafts, handleRefreshState],
+  );
+
+  const handleModelDelayChange = useCallback(
+    (modelId: string, delayMs: number, modelInfo: AIModelInfo) => {
+      const clamped = Math.min(Math.max(0, delayMs), modelInfo.maxDelayMs);
+      setDelayDrafts((prev) => ({ ...prev, [modelId]: clamped }));
+
+      const existing = delayDebounceRef.current[modelId];
+      if (existing) clearTimeout(existing);
+
+      delayDebounceRef.current[modelId] = setTimeout(() => {
+        if (!selectedInput) return;
+        const isEnabled =
+          selectedInput.aiModels?.[modelId]?.enabled ??
+          (modelId === 'motion' ? selectedInput.motionEnabled : false);
+        if (!isEnabled) return;
+        setModelPendingIds((prev) => new Set(prev).add(modelId));
+        void setAIModel(
+          roomId,
+          selectedInput.inputId,
+          modelId,
+          true,
+          clamped,
+        )
+          .then(() => handleRefreshState())
+          .finally(() => {
+            setModelPendingIds((prev) => {
+              const next = new Set(prev);
+              next.delete(modelId);
+              return next;
+            });
+          });
+      }, 400);
+    },
+    [selectedInput, roomId, handleRefreshState],
+  );
 
   useEffect(() => {
     if (!selectedTimelineClip || !selectedInput) return;
@@ -1233,6 +1316,65 @@ export function BlockClipPropertiesPanel({
                         : 'Off'}
                   </Button>
                 </div>
+                {applicableModels.map((model) => {
+                  const modelStatus = selectedInput.aiModels?.[model.id];
+                  const isEnabled =
+                    modelStatus?.enabled ??
+                    (model.id === 'motion'
+                      ? selectedInput.motionEnabled
+                      : false);
+                  const delayMs =
+                    delayDrafts[model.id] ??
+                    modelStatus?.delayMs ??
+                    model.defaultDelayMs;
+                  const isPending = modelPendingIds.has(model.id);
+
+                  return (
+                    <div key={model.id} className='mb-3 last:mb-0'>
+                      <div className='flex items-center justify-between mb-1'>
+                        <span className='text-xs text-muted-foreground'>
+                          {model.name}
+                        </span>
+                        <Button
+                          type='button'
+                          size='sm'
+                          variant={isEnabled ? 'default' : 'outline'}
+                          disabled={isPending}
+                          className='h-6 px-2 text-[10px] font-mono uppercase'
+                          onClick={() => {
+                            void handleModelToggle(model.id, !isEnabled);
+                          }}>
+                          {isPending ? '...' : isEnabled ? 'On' : 'Off'}
+                        </Button>
+                      </div>
+                      {isEnabled && model.maxDelayMs > 0 && (
+                        <div className='space-y-1 pl-1'>
+                          <div className='flex items-center justify-between'>
+                            <span className='text-[10px] text-muted-foreground'>
+                              Delay
+                            </span>
+                            <span className='text-[10px] font-mono text-muted-foreground'>
+                              {delayMs}ms
+                            </span>
+                          </div>
+                          <Slider
+                            min={0}
+                            max={model.maxDelayMs}
+                            step={50}
+                            value={[delayMs]}
+                            onValueChange={([value]) => {
+                              handleModelDelayChange(
+                                model.id,
+                                value,
+                                model,
+                              );
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </CollapsibleSection>
             )}
           <CollapsibleSection title='Position' className={panelSectionStyles()}>

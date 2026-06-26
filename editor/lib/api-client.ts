@@ -20,7 +20,7 @@ import type {
   UpdateInputOptions,
   UpdateRoomOptions,
 } from './types';
-import type { TimelineConfig } from '@smelter-editor/types';
+import type { TimelineConfig, AIModelInfo } from '@smelter-editor/types';
 import { createStorageClient, type StorageClient } from './storage-client';
 
 interface SmelterApiClient {
@@ -152,6 +152,15 @@ interface SmelterApiClient {
     roomId: string,
     inputId: string,
     enabled: boolean,
+  ): Promise<void>;
+
+  getAvailableAIModels(): Promise<AIModelInfo[]>;
+  setAIModel(
+    roomId: string,
+    inputId: string,
+    modelId: string,
+    enabled: boolean,
+    delayMs?: number,
   ): Promise<void>;
 
   setAudioAnalysisEnabled(roomId: string, enabled: boolean): Promise<void>;
@@ -531,6 +540,18 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
         'post',
         `/room/${enc(roomId)}/input/${enc(inputId)}/transcription`,
         { enabled },
+      );
+    },
+
+    async getAvailableAIModels() {
+      return (await req('get', '/ai-models')) as AIModelInfo[];
+    },
+
+    async setAIModel(roomId, inputId, modelId, enabled, delayMs) {
+      await req(
+        'post',
+        `/room/${enc(roomId)}/input/${enc(inputId)}/ai-model`,
+        { modelId, enabled, ...(delayMs !== undefined ? { delayMs } : {}) },
       );
     },
 
