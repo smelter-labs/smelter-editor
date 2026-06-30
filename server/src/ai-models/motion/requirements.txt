@@ -1,0 +1,4 @@
+smelter-sdk
+opencv-python-headless
+numpy
+websockets

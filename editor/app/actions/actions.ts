@@ -9,6 +9,7 @@ import type {
   AddInputResponse,
   AvailableShader,
   CameraInputOptions,
+  VideoAddInputOptions,
   PendingWhipInputData,
   RoomState,
   RegisterInputOptions,
@@ -156,20 +157,36 @@ export async function getAudioSuggestions(): Promise<AudioSuggestions> {
   }
 }
 
-export async function addTwitchInput(roomId: string, channelId: string) {
-  return (await getClient()).addTwitchInput(roomId, channelId);
+export async function addTwitchInput(
+  roomId: string,
+  channelId: string,
+  options?: VideoAddInputOptions,
+) {
+  return (await getClient()).addTwitchInput(roomId, channelId, options);
 }
 
-export async function addKickInput(roomId: string, channelId: string) {
-  return (await getClient()).addKickInput(roomId, channelId);
+export async function addKickInput(
+  roomId: string,
+  channelId: string,
+  options?: VideoAddInputOptions,
+) {
+  return (await getClient()).addKickInput(roomId, channelId, options);
 }
 
-export async function addMP4Input(roomId: string, mp4FileName: string) {
-  return (await getClient()).addMP4Input(roomId, mp4FileName);
+export async function addMP4Input(
+  roomId: string,
+  mp4FileName: string,
+  options?: VideoAddInputOptions,
+) {
+  return (await getClient()).addMP4Input(roomId, mp4FileName, options);
 }
 
-export async function addAudioInput(roomId: string, audioFileName: string) {
-  return (await getClient()).addAudioInput(roomId, audioFileName);
+export async function addAudioInput(
+  roomId: string,
+  audioFileName: string,
+  options?: VideoAddInputOptions,
+) {
+  return (await getClient()).addAudioInput(roomId, audioFileName, options);
 }
 
 export async function addImageInput(roomId: string, imageFileNameOrId: string) {
@@ -192,8 +209,12 @@ export async function addHandsInput(roomId: string, sourceInputId: string) {
   return (await getClient()).addHandsInput(roomId, sourceInputId);
 }
 
-export async function addHlsInput(roomId: string, url: string) {
-  return (await getClient()).addHlsInput(roomId, url);
+export async function addHlsInput(
+  roomId: string,
+  url: string,
+  options?: VideoAddInputOptions,
+) {
+  return (await getClient()).addHlsInput(roomId, url, options);
 }
 
 export async function removeInput(
@@ -486,6 +507,36 @@ export async function toggleMotionDetection(
   enabled: boolean,
 ): Promise<void> {
   return (await getClient()).toggleMotionDetection(roomId, inputId, enabled);
+}
+
+export async function toggleTranscription(
+  roomId: string,
+  inputId: string,
+  enabled: boolean,
+): Promise<void> {
+  return (await getClient()).toggleTranscription(roomId, inputId, enabled);
+}
+
+export async function getAvailableAIModels(): Promise<
+  import('@smelter-editor/types').AIModelInfo[]
+> {
+  return (await getClient()).getAvailableAIModels();
+}
+
+export async function setAIModel(
+  roomId: string,
+  inputId: string,
+  modelId: string,
+  enabled: boolean,
+  delayMs?: number,
+): Promise<void> {
+  return (await getClient()).setAIModel(
+    roomId,
+    inputId,
+    modelId,
+    enabled,
+    delayMs,
+  );
 }
 
 export async function setAudioAnalysisEnabled(

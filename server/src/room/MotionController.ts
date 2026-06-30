@@ -3,13 +3,7 @@ import type { StoreApi } from 'zustand';
 import type { HandsStore } from '../hands/handStore';
 import type { RoomInputState } from './types';
 
-const VIDEO_INPUT_TYPES: RoomInputState['type'][] = [
-  'local-mp4',
-  'twitch-channel',
-  'kick-channel',
-  'whip',
-];
-
+/** Legacy MotionManager kept for hand-tracking grid pipeline only. */
 export class MotionController {
   private readonly motionManager: MotionManager;
   private readonly motionScoreListeners = new Set<
@@ -23,54 +17,14 @@ export class MotionController {
     this.motionManager = new MotionManager(idPrefix);
   }
 
+  /** No-op — motion detection now runs via side-channel AI pipeline. */
   async startMotionDetection(
-    inputId: string,
-    onScore: (score: number) => void,
-  ): Promise<void> {
-    await this.motionManager.startMotionDetection(inputId, onScore);
-  }
+    _inputId: string,
+    _onScore: (score: number) => void,
+  ): Promise<void> {}
 
-  async stopMotionDetection(inputId: string): Promise<void> {
-    await this.motionManager.stopMotionDetection(inputId);
-  }
-
-  async setMotionEnabled(
-    input: RoomInputState,
-    enabled: boolean,
-  ): Promise<void> {
-    input.motionEnabled = enabled;
-    if (
-      enabled &&
-      input.status === 'connected' &&
-      VIDEO_INPUT_TYPES.includes(input.type)
-    ) {
-      try {
-        console.log(
-          `[motion][setMotionEnabled] starting for inputId=${input.inputId} type=${input.type} title="${input.metadata.title}"`,
-        );
-        await this.motionManager.startMotionDetection(
-          input.inputId,
-          (score) => {
-            if (score === -1) {
-              input.motionScore = undefined;
-            } else {
-              input.motionScore = score;
-            }
-            this.emitMotionScores();
-          },
-        );
-      } catch (err) {
-        console.error(
-          `[motion] Failed to start motion detection for ${input.inputId}`,
-          err,
-        );
-      }
-    } else if (!enabled) {
-      await this.motionManager.stopMotionDetection(input.inputId);
-      input.motionScore = undefined;
-      this.emitMotionScores();
-    }
-  }
+  /** No-op — motion detection now runs via side-channel AI pipeline. */
+  async stopMotionDetection(_inputId: string): Promise<void> {}
 
   async startHandTracking(
     sourceInputId: string,

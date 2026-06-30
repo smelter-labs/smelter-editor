@@ -1,4 +1,4 @@
-import { View, Rescaler, Shader } from '@swmansion/smelter';
+import { View, Rescaler, Shader, InputStream } from '@swmansion/smelter';
 
 import type { RoomStore, InputConfig } from './store';
 import type { Layer } from '../types';
@@ -10,6 +10,7 @@ import {
   useLayers,
   useOutputShaders,
   useViewport,
+  useTranscriptionSideChannelInputIds,
 } from './store';
 import { Input } from '../inputs/inputs';
 import { wrapWithShaders } from '../utils/shaderUtils';
@@ -159,6 +160,43 @@ function CarouselSlot({
   );
 }
 
+
+/**
+ * Keeps InputStreams alive for ALL connected inputs with transcription so
+ * Smelter decodes their audio into the side channel regardless of stream
+ * state or layer membership.
+ *
+ * On macOS (no GPU, ffmpeg encoder), side-channel audio only flows when the
+ * input appears as <InputStream> in a composition that is actively rendering.
+ * Layer components gate rendering behind `streamState === 'playing'`, which
+ * can leave a gap where no <InputStream> exists for a transcription input.
+ * Rendering unconditionally here (with volume=0 to avoid double-mixing)
+ * guarantees the audio decode pipeline stays active.
+ */
+function CaptionsSideChannelDecode() {
+  const transcriptionIds = useTranscriptionSideChannelInputIds();
+  if (transcriptionIds.length === 0) return null;
+
+  return (
+    <View
+      style={{
+        width: 1,
+        height: 1,
+        top: 0,
+        left: 0,
+        backgroundColor: '#000000',
+      }}>
+      {transcriptionIds.map((inputId) => (
+        <InputStream
+          key={`caption-decode-${inputId}`}
+          inputId={inputId}
+          volume={0}
+        />
+      ))}
+    </View>
+  );
+}
+
 const defaultAudioStore = createAudioStore();
 
 export default function App({
@@ -187,7 +225,6 @@ function OutputScene() {
   const inputMap = new Map(inputs.map((input) => [input.inputId, input]));
   const activeOutputShaders = outputShaders.filter((s) => s.enabled);
   const layersReversed = [...layers].reverse();
-
   const vT = viewport.viewportTop ?? 0;
   const vL = viewport.viewportLeft ?? 0;
   const vW = viewport.viewportWidth ?? width;
@@ -208,6 +245,7 @@ function OutputScene() {
         height,
         overflow: 'visible',
       }}>
+      <CaptionsSideChannelDecode />
       {layersReversed.map((layer) => {
         const layerOffsetTransition = {
           durationMs: layer.offsetTransitionDurationMs ?? 300,

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { connectWhep } from '@/lib/webrtc/whep-connect';
 
 type OutputStreamGridProps = {
   whepUrl: string;
@@ -21,17 +22,24 @@ export default function OutputStreamGrid({
 
   useEffect(() => {
     let mounted = true;
-    (async () => {
-      try {
-        const s = await connectLite(whepUrl);
-        if (!mounted) return;
-        setStream(s);
-      } catch {
+    let closeConnection = () => {};
+
+    void connectWhep(whepUrl)
+      .then(({ stream: whepStream, close }) => {
+        closeConnection = close;
+        if (!mounted) {
+          close();
+          return;
+        }
+        setStream(whepStream);
+      })
+      .catch(() => {
         // ignore
-      }
-    })();
+      });
+
     return () => {
       mounted = false;
+      closeConnection();
     };
   }, [whepUrl]);
 
@@ -79,108 +87,4 @@ export default function OutputStreamGrid({
       ))}
     </div>
   );
-}
-
-async function connectLite(endpointUrl: string): Promise<MediaStream> {
-  const pc = new RTCPeerConnection({
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-    bundlePolicy: 'max-bundle',
-  });
-
-  const tracksPromise = new Promise<{
-    video: MediaStreamTrack;
-    audio: MediaStreamTrack;
-  }>((res) => {
-    let videoTrack: undefined | MediaStreamTrack;
-    let audioTrack: undefined | MediaStreamTrack;
-    pc.ontrack = (ev: RTCTrackEvent) => {
-      if (ev.track.kind === 'video') {
-        videoTrack = ev.track;
-      }
-      if (ev.track.kind === 'audio') {
-        audioTrack = ev.track;
-      }
-      if (videoTrack && audioTrack) {
-        res({ video: videoTrack, audio: audioTrack });
-      }
-    };
-  });
-
-  pc.addTransceiver('video', { direction: 'recvonly' });
-  pc.addTransceiver('audio', { direction: 'recvonly' });
-
-  await establishWhipConnectionLite(pc, endpointUrl);
-
-  const tracks = await tracksPromise;
-  const stream = new MediaStream();
-  stream.addTrack(tracks.video);
-  stream.addTrack(tracks.audio);
-  return stream;
-}
-
-async function establishWhipConnectionLite(
-  pc: RTCPeerConnection,
-  endpoint: string,
-  token?: string,
-): Promise<string> {
-  await pc.setLocalDescription(await pc.createOffer());
-  const offer = await gatherICECandidatesLite(pc);
-  if (!offer) throw Error('failed to gather ICE candidates for offer');
-  const { sdp: sdpAnswer, location } = await postSdpOfferLite(
-    endpoint,
-    offer.sdp!,
-    token,
-  );
-  await pc.setRemoteDescription(
-    new RTCSessionDescription({ type: 'answer', sdp: sdpAnswer }),
-  );
-  return location ?? endpoint;
-}
-
-async function gatherICECandidatesLite(
-  peerConnection: RTCPeerConnection,
-): Promise<RTCSessionDescription | null> {
-  return new Promise<RTCSessionDescription | null>((res) => {
-    setTimeout(function () {
-      res(peerConnection.localDescription);
-    }, 2000);
-    peerConnection.onicegatheringstatechange = () => {
-      if (peerConnection.iceGatheringState === 'complete') {
-        res(peerConnection.localDescription);
-      }
-    };
-  });
-}
-
-async function postSdpOfferLite(
-  endpoint: string,
-  sdpOffer: string,
-  token?: string,
-): Promise<{ sdp: string; location: string }> {
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    mode: 'cors',
-    headers: {
-      'content-type': 'application/sdp',
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-    },
-    body: sdpOffer,
-  });
-  if (response.status === 201) {
-    return {
-      sdp: await response.text(),
-      location: getLocationFromHeaderLite(response.headers, endpoint),
-    };
-  } else {
-    const errorMessage = await response.text();
-    throw new Error(errorMessage);
-  }
-}
-
-function getLocationFromHeaderLite(headers: Headers, endpoint: string): string {
-  const locationHeader = headers.get('Location');
-  if (!locationHeader) {
-    return endpoint;
-  }
-  return new URL(locationHeader, endpoint).toString();
 }

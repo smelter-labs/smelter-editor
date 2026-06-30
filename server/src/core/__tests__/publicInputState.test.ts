@@ -17,6 +17,8 @@ function makeBaseInput(overrides: Record<string, unknown> = {}) {
     status: 'connected' as const,
     hidden: false,
     motionEnabled: false,
+    transcription: false,
+    aiModels: {},
     showTitle: true,
     volume: 0.8,
     shaders: [],

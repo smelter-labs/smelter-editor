@@ -52,6 +52,8 @@ export type ImportConfigInput = {
   cropLeft?: number;
   cropRight?: number;
   cropBottom?: number;
+  /** When true, audio is transcribed (whisper) and rendered as live captions. */
+  transcription?: boolean;
 };
 
 export type ImportConfigTimeline = {

@@ -1,4 +1,5 @@
 import type { InputConfig } from '../app/store';
+import { StoreContext } from '../app/store';
 import {
   Text,
   View,
@@ -9,7 +10,8 @@ import {
   useInputStreams,
 } from '@swmansion/smelter';
 
-import React from 'react';
+import React, { useContext } from 'react';
+import { useStore } from 'zustand';
 import { getInputRenderer } from './rendererRegistry';
 import { wrapWithShaders } from '../utils/shaderUtils';
 import { ScrollingText } from './scrollingText';
@@ -118,6 +120,14 @@ export function Input({ input }: { input: InputConfig }) {
   const contentWidth = Math.max(1, resolution.width - borderWidth * 2);
   const contentHeight = Math.max(1, resolution.height - borderWidth * 2);
 
+  // Live caption for this input when transcription is enabled. Empty string
+  // string when there's nothing to show. Set by RoomState.applyTranscript.
+  const store = useContext(StoreContext);
+  const transcript = useStore(
+    store,
+    (state) => state.transcripts[input.inputId] ?? '',
+  );
+
   const inputComponent = (
     <Rescaler style={resolution}>
       <View style={{ ...resolution, direction: 'column' }}>
@@ -169,6 +179,12 @@ export function Input({ input }: { input: InputConfig }) {
                 <InputStream inputId={input.inputId} volume={input.volume} />
               </Rescaler>
             )}
+            {transcript ? (
+              <Subtitle
+                text={transcript}
+                parent={{ width: contentWidth, height: contentHeight }}
+              />
+            ) : null}
           </View>
         ) : streamState === 'ready' ? (
           <View style={{ padding: 300 }}>
@@ -259,4 +275,47 @@ export function Input({ input }: { input: InputConfig }) {
   }
 
   return mainRendered;
+}
+
+// Live caption overlay, sized relative to the input's own content box so it
+// scales with the tile wherever the layout places it. Pinned to the bottom with
+// a semi-transparent background; numbers tuned to read at small grid-cell sizes.
+function Subtitle({
+  text,
+  parent,
+}: {
+  text: string;
+  parent: { width: number; height: number };
+}) {
+  const margin = Math.round(parent.width * 0.04);
+  const width = parent.width - 2 * margin;
+  const height = Math.round(parent.height * 0.12);
+  return (
+    <View
+      style={{
+        backgroundColor: '#000000CC',
+        borderRadius: 16,
+        paddingHorizontal: 32,
+        left: margin,
+        bottom: margin,
+        width,
+        height,
+        overflow: 'hidden',
+        direction: 'column',
+      }}>
+      <View />
+      <Text
+        style={{
+          width: width - 64,
+          fontSize: 48,
+          lineHeight: 60,
+          color: '#FFFFFFFF',
+          align: 'center',
+          wrap: 'word',
+        }}>
+        {text}
+      </Text>
+      <View />
+    </View>
+  );
 }

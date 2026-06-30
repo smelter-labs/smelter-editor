@@ -6,6 +6,7 @@ import type {
   AudioSuggestions,
   AvailableShader,
   CameraInputOptions,
+  VideoAddInputOptions,
   InputSuggestions,
   KickSuggestions,
   MP4Suggestions,
@@ -77,10 +78,26 @@ export interface ControlPanelActions {
     sourceId?: string,
   ): Promise<any>;
 
-  addTwitchInput(roomId: string, channelId: string): Promise<any>;
-  addKickInput(roomId: string, channelId: string): Promise<any>;
-  addMP4Input(roomId: string, mp4FileName: string): Promise<any>;
-  addAudioInput(roomId: string, audioFileName: string): Promise<any>;
+  addTwitchInput(
+    roomId: string,
+    channelId: string,
+    options?: VideoAddInputOptions,
+  ): Promise<any>;
+  addKickInput(
+    roomId: string,
+    channelId: string,
+    options?: VideoAddInputOptions,
+  ): Promise<any>;
+  addMP4Input(
+    roomId: string,
+    mp4FileName: string,
+    options?: VideoAddInputOptions,
+  ): Promise<any>;
+  addAudioInput(
+    roomId: string,
+    audioFileName: string,
+    options?: VideoAddInputOptions,
+  ): Promise<any>;
   addImageInput(roomId: string, imageFileNameOrId: string): Promise<any>;
   addTextInput(
     roomId: string,
@@ -88,7 +105,11 @@ export interface ControlPanelActions {
     textAlign?: 'left' | 'center' | 'right',
   ): Promise<any>;
   addSnakeGameInput(roomId: string, title?: string): Promise<any>;
-  addHlsInput(roomId: string, url: string): Promise<any>;
+  addHlsInput(
+    roomId: string,
+    url: string,
+    options?: VideoAddInputOptions,
+  ): Promise<any>;
   addCameraInput(
     roomId: string,
     username?: string,

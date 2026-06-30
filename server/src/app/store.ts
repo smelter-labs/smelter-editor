@@ -46,6 +46,8 @@ export type InputConfig = {
 
 export type RoomStoreState = {
   inputs: InputConfig[];
+  /** Connected inputs with transcription — drives hidden side-channel decode. */
+  transcriptionSideChannelInputIds: string[];
   swapDurationMs: number;
   swapOutgoingEnabled: boolean;
   swapFadeInDurationMs: number;
@@ -57,13 +59,16 @@ export type RoomStore = {
   layers: Layer[];
   resolution: Resolution;
   outputShaders: ShaderConfig[];
+  transcriptionSideChannelInputIds: string[];
   swapDurationMs: number;
   swapOutgoingEnabled: boolean;
   swapFadeInDurationMs: number;
   swapFadeOutDurationMs: number;
+  transcripts: Record<string, string>;
   updateState: (state: RoomStoreState & { layers: Layer[] }) => void;
   setOutputShaders: (shaders: ShaderConfig[]) => void;
   setInputFrozenImage: (inputId: string, imageId: string | null) => void;
+  setTranscript: (inputId: string, text: string) => void;
 } & Partial<ViewportProperties>;
 
 export function createRoomStore(
@@ -74,14 +79,17 @@ export function createRoomStore(
     layers: [],
     resolution,
     outputShaders: [],
+    transcriptionSideChannelInputIds: [],
     swapDurationMs: 500,
     swapOutgoingEnabled: true,
     swapFadeInDurationMs: 500,
     swapFadeOutDurationMs: 500,
+    transcripts: {},
     updateState: (incoming) => {
       const {
         inputs,
         layers,
+        transcriptionSideChannelInputIds,
         swapDurationMs,
         swapOutgoingEnabled,
         swapFadeInDurationMs,
@@ -96,6 +104,7 @@ export function createRoomStore(
       set(() => ({
         inputs,
         layers,
+        transcriptionSideChannelInputIds,
         swapDurationMs,
         swapOutgoingEnabled,
         swapFadeInDurationMs,
@@ -119,6 +128,14 @@ export function createRoomStore(
             : input,
         ),
       }));
+    },
+    setTranscript: (inputId: string, text: string) => {
+      set((state) => {
+        const next = { ...state.transcripts };
+        if (text) next[inputId] = text;
+        else delete next[inputId];
+        return { transcripts: next };
+      });
     },
   }));
 }
@@ -151,6 +168,11 @@ function useSwapFadeOutDurationMs() {
 export function useInputs() {
   const store = useContext(StoreContext);
   return useStore(store, (state) => state.inputs);
+}
+
+export function useTranscriptionSideChannelInputIds() {
+  const store = useContext(StoreContext);
+  return useStore(store, (state) => state.transcriptionSideChannelInputIds);
 }
 
 export function useLayers() {

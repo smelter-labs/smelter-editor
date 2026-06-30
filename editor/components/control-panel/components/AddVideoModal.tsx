@@ -36,6 +36,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { SelectablePreviewCard } from './asset-browser/selectable-preview-card';
 import { getEffectiveClientServerUrl } from '@/lib/server-url';
 import { useAppMode } from '@/components/app-mode/app-mode-context';
+import { CaptionsCheckbox } from './CaptionsCheckbox';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -2669,11 +2670,14 @@ function Mp4Inspector({
   const [confirming, setConfirming] = useState(false);
   const [normalizeResult, setNormalizeResult] =
     useState<NormalizeResultState | null>(null);
+  const [captionsEnabled, setCaptionsEnabled] = useState(false);
 
   const handleAdd = async () => {
     setLoading(true);
     try {
-      const response = await addMP4Input(roomId, item.fileName);
+      const response = await addMP4Input(roomId, item.fileName, {
+        transcription: captionsEnabled,
+      });
       await onInputCreated?.({
         inputId: response.inputId,
         kind: 'mp4',
@@ -2769,6 +2773,10 @@ function Mp4Inspector({
       <PropRow
         label='FORMAT'
         value={item.fileName.split('.').pop()?.toUpperCase() ?? 'MP4'}
+      />
+      <CaptionsCheckbox
+        enabled={captionsEnabled}
+        onChange={setCaptionsEnabled}
       />
       <InitiateButton
         label='INITIATE_FEED'
@@ -2903,11 +2911,14 @@ function AudioInspector({
   const [confirming, setConfirming] = useState(false);
   const [normalizeResult, setNormalizeResult] =
     useState<NormalizeResultState | null>(null);
+  const [captionsEnabled, setCaptionsEnabled] = useState(false);
 
   const handleAdd = async () => {
     setLoading(true);
     try {
-      const response = await addAudioInput(roomId, item.fileName);
+      const response = await addAudioInput(roomId, item.fileName, {
+        transcription: captionsEnabled,
+      });
       await onInputCreated?.({
         inputId: response.inputId,
         kind: 'audio',
@@ -3001,6 +3012,10 @@ function AudioInspector({
         <PropRow label='DURATION' value={formatDuration(item.durationMs)} />
       )}
       <PropRow label='TYPE' value='AUDIO' />
+      <CaptionsCheckbox
+        enabled={captionsEnabled}
+        onChange={setCaptionsEnabled}
+      />
       <InitiateButton
         label='INITIATE_FEED'
         onClick={handleAdd}
@@ -3232,11 +3247,14 @@ function TwitchInspector({
 }) {
   const { addTwitchInput } = useActions();
   const [loading, setLoading] = useState(false);
+  const [captionsEnabled, setCaptionsEnabled] = useState(false);
 
   const handleAdd = async () => {
     setLoading(true);
     try {
-      const response = await addTwitchInput(roomId, item.channel.streamId);
+      const response = await addTwitchInput(roomId, item.channel.streamId, {
+        transcription: captionsEnabled,
+      });
       await onInputCreated?.({
         inputId: response.inputId,
         kind: 'twitch',
@@ -3276,6 +3294,10 @@ function TwitchInspector({
         <PropRow label='CATEGORY' value={item.channel.category} />
       )}
       <PropRow label='PLATFORM' value='TWITCH.TV' />
+      <CaptionsCheckbox
+        enabled={captionsEnabled}
+        onChange={setCaptionsEnabled}
+      />
       <InitiateButton
         label='INITIATE_STREAM'
         onClick={handleAdd}
@@ -3298,11 +3320,14 @@ function KickInspector({
 }) {
   const { addKickInput } = useActions();
   const [loading, setLoading] = useState(false);
+  const [captionsEnabled, setCaptionsEnabled] = useState(false);
 
   const handleAdd = async () => {
     setLoading(true);
     try {
-      const response = await addKickInput(roomId, item.channel.streamId);
+      const response = await addKickInput(roomId, item.channel.streamId, {
+        transcription: captionsEnabled,
+      });
       await onInputCreated?.({
         inputId: response.inputId,
         kind: 'kick',
@@ -3342,6 +3367,10 @@ function KickInspector({
         <PropRow label='CATEGORY' value={item.channel.category} />
       )}
       <PropRow label='PLATFORM' value='KICK.COM' />
+      <CaptionsCheckbox
+        enabled={captionsEnabled}
+        onChange={setCaptionsEnabled}
+      />
       <InitiateButton
         label='INITIATE_STREAM'
         onClick={handleAdd}
@@ -3596,11 +3625,14 @@ function HlsSavedInspector({
   const [confirmState, setConfirmState] =
     useState<InspectorConfirmState | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [captionsEnabled, setCaptionsEnabled] = useState(false);
 
   const handleAdd = async () => {
     setLoading(true);
     try {
-      const response = await addHlsInput(roomId, item.url);
+      const response = await addHlsInput(roomId, item.url, {
+        transcription: captionsEnabled,
+      });
       await onInputCreated?.({
         inputId: response.inputId,
         kind: 'hls-saved',
@@ -3656,6 +3688,10 @@ function HlsSavedInspector({
         </p>
       </div>
       <PropRow label='TYPE' value='HLS_STREAM' />
+      <CaptionsCheckbox
+        enabled={captionsEnabled}
+        onChange={setCaptionsEnabled}
+      />
       <InitiateButton
         label='INITIATE_STREAM'
         onClick={handleAdd}
@@ -3697,6 +3733,7 @@ function HlsActionInspector({
   const [name, setName] = useState('');
   const [saveToLibrary, setSaveToLibrary] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [captionsEnabled, setCaptionsEnabled] = useState(false);
 
   const handleAdd = async () => {
     const trimmed = url.trim();
@@ -3706,7 +3743,9 @@ function HlsActionInspector({
     }
     setLoading(true);
     try {
-      const response = await addHlsInput(roomId, trimmed);
+      const response = await addHlsInput(roomId, trimmed, {
+        transcription: captionsEnabled,
+      });
       await onInputCreated?.({
         inputId: response.inputId,
         kind: 'hls-saved',
@@ -3766,6 +3805,10 @@ function HlsActionInspector({
           SAVE_TO_LIBRARY
         </span>
       </label>
+      <CaptionsCheckbox
+        enabled={captionsEnabled}
+        onChange={setCaptionsEnabled}
+      />
       <InitiateButton
         label='INITIATE_STREAM'
         onClick={handleAdd}
@@ -4041,6 +4084,7 @@ function WhipActionInspector({
     return `User ${Math.floor(1000 + Math.random() * 9000)}`;
   });
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+  const [captionsEnabled, setCaptionsEnabled] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const handleAdd = async () => {
@@ -4093,7 +4137,9 @@ function WhipActionInspector({
         }
       }
 
-      const response = await addCameraInput(roomId, cleanedName);
+      const response = await addCameraInput(roomId, cleanedName, {
+        transcription: captionsEnabled,
+      });
       setActiveWhipInputId(response.inputId);
       setIsWhipActive(false);
 
@@ -4193,6 +4239,10 @@ function WhipActionInspector({
           </div>
         </div>
       )}
+      <CaptionsCheckbox
+        enabled={captionsEnabled}
+        onChange={setCaptionsEnabled}
+      />
       <InitiateButton
         label='CONNECT_FEED'
         onClick={handleAdd}

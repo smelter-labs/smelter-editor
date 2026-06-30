@@ -144,6 +144,7 @@ describe('panel registry helpers', () => {
   it('isKnownPanelId recognises only static panels', () => {
     expect(isKnownPanelId('streams')).toBe(true);
     expect(isKnownPanelId('motion-detection')).toBe(true);
+    expect(isKnownPanelId('captions')).toBe(true);
     expect(isKnownPanelId('motion:abc')).toBe(false);
     expect(isKnownPanelId('unknown')).toBe(false);
   });

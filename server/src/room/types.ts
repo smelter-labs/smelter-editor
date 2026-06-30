@@ -11,6 +11,7 @@ import type {
   CropProperties,
   ViewportProperties,
   BroadcastTile,
+  AIModelConfig,
 } from '../types';
 import type { StoreApi } from 'zustand';
 import type { HandsStore } from '../hands/handStore';
@@ -27,6 +28,9 @@ export type {
   UpdateInputOptions,
   RegisterInputOptions,
   PendingWhipInputData,
+  AIModelConfig,
+  AIModelStatus,
+  AIModelInfo,
 } from '../types';
 
 export type RoomSnapshot = {
@@ -53,6 +57,10 @@ export type RoomInputState = {
   restartFading?: boolean;
   motionEnabled: boolean;
   motionScore?: number;
+  /** When true, audio is transcribed (whisper) and rendered as live captions. */
+  transcription: boolean;
+  /** Per-input AI model configuration. */
+  aiModels: Record<string, AIModelConfig>;
   orientation?: 'horizontal' | 'vertical';
   /** Native stream resolution width, if known. */
   nativeWidth?: number;
@@ -101,7 +109,11 @@ type TypeSpecificState =
       };
     }
   | { type: 'hls'; hlsUrl: string }
-  | { type: 'whip'; whipUrl: string; monitor: WhipMonitor }
+  | {
+      type: 'whip';
+      whipUrl: string;
+      monitor: WhipMonitor;
+    }
   | {
       type: 'image';
       imageId: string;

@@ -75,10 +75,58 @@ vi.mock('fs-extra', () => ({
   readdir: mocks.readdir,
   remove: mocks.remove,
 }));
-vi.mock('../server/mp4Duration', () => ({
+vi.mock('../routing/mp4Duration', () => ({
   getMp4DurationMs: mocks.getMp4DurationMs,
   getMp4VideoDimensions: mocks.getMp4VideoDimensions,
 }));
+vi.mock('../captions/captionBridgeRegistry', () => ({
+  getCaptionBridge: vi.fn(() => ({
+    notifySideChannelReady: vi.fn(),
+    notifySideChannelStopped: vi.fn(),
+  })),
+}));
+vi.mock('../ai-models', () => {
+  class MockRoomAIController {
+    wireSidecarListeners = vi.fn();
+    destroy = vi.fn().mockResolvedValue(undefined);
+    onInputConnected = vi.fn().mockResolvedValue(undefined);
+    onInputDisconnected = vi.fn().mockResolvedValue(undefined);
+    onSideChannelReady = vi.fn();
+    addResultListener = vi.fn(() => () => {});
+    enableModelOnInput = vi.fn().mockResolvedValue(undefined);
+    disableModelOnInput = vi.fn().mockResolvedValue(undefined);
+    getSideChannelConfig = vi.fn(() => undefined);
+  }
+
+  return {
+    registerAIModels: vi.fn(),
+    RoomAIController: MockRoomAIController,
+    ModelRegistry: {
+      get: vi.fn((id: string) =>
+        id === 'motion'
+          ? {
+              id: 'motion',
+              defaultDelayMs: 0,
+              maxDelayMs: 2000,
+              supportedInputTypes: [
+                'local-mp4',
+                'whip',
+                'hls',
+                'twitch-channel',
+                'kick-channel',
+              ],
+            }
+          : undefined,
+      ),
+      getAll: vi.fn(() => []),
+      toInfo: vi.fn((m: { id: string }) => m),
+    },
+    defaultAIModelConfig: vi.fn(() => ({ enabled: false, delayMs: 0 })),
+    computeSideChannelConfig: vi.fn(() => undefined),
+    requiresSideChannelReconnect: vi.fn(() => false),
+    manifestSupportsInput: vi.fn(() => true),
+  };
+});
 
 import { createRoomStore } from '../app/store';
 import { RESOLUTION_PRESETS } from '../types';

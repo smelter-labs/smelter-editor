@@ -1,0 +1,23 @@
+# Performance overlay for Docker dev — use when compose.dev.yaml feels sluggish.
+#
+# Usage (stack on top of compose.dev.yaml):
+#   SMELTER_DATA_DIR=/path/to/data docker compose \
+#     -f compose.yaml -f compose.dev.yaml -f compose.dev.perf.yaml up
+#
+# What it changes:
+#   - SKIP_PYTHON=1          — no Whisper sidecar at boot (captions disabled)
+#   - DEV_USE_TS_NODE=1      — ts-node instead of tsc watch + node --watch
+#   - lower H.264 bitrate    — less CPU load on ffmpeg encoder
+#   - quieter logging
+#
+# On macOS, native `cd server && pnpm start` is still much faster — Docker has no
+# GPU for Smelter compositing. Use Docker dev for prod-parity; use native for speed.
+
+services:
+  server:
+    environment:
+      SKIP_PYTHON: "1"
+      DEV_USE_TS_NODE: "1"
+      SMELTER_H264_ENCODER_BITRATE: "5000000"
+      SMELTER_LOGGER_LEVEL: warn
+      SMELTER_SERVER_LOGGER_LEVEL: warn

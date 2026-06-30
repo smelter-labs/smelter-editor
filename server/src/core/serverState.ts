@@ -108,6 +108,27 @@ export class ServerState {
     });
   }
 
+  /** Route a transcript event from the captions sidecar to the room that owns
+   * the input. Inputs are globally unique so the first match is correct. */
+  public applyTranscript(event: {
+    inputId: string;
+    text: string;
+    duration: number;
+  }): void {
+    for (const room of this.getRooms()) {
+      if (room.hasInput(event.inputId)) {
+        console.log(
+          `[captions] routing to room=${room.idPrefix} inputId=${event.inputId} text="${event.text}"`,
+        );
+        room.applyTranscript(event);
+        return;
+      }
+    }
+    console.warn(
+      `[captions] no room owns inputId=${event.inputId} — transcript dropped`,
+    );
+  }
+
   public getRoom(roomId: string): RoomState {
     const room = this.rooms[roomId];
     if (!room) {

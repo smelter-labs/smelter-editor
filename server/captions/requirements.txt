@@ -1,0 +1,6 @@
+smelter-sdk @ git+https://github.com/software-mansion/smelter.git@v0.6.0#subdirectory=sdks/python/lib
+faster-whisper>=1.0.3
+silero-vad>=5.1
+torch>=2.0
+numpy>=1.26
+websockets>=12.0

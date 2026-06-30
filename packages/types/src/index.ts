@@ -81,6 +81,12 @@ export type {
 export type { PublicInputState } from "./public-input-state.js";
 
 export type {
+  AIModelConfig,
+  AIModelStatus,
+  AIModelInfo,
+} from "./ai-models.js";
+
+export type {
   UpdateInputOptions,
   RegisterInputOptions,
   PendingWhipInputData,
