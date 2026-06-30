@@ -161,6 +161,8 @@ interface SmelterApiClient {
     modelId: string,
     enabled: boolean,
     delayMs?: number,
+    drawBoxes?: boolean,
+    params?: Record<string, number>,
   ): Promise<void>;
 
   setAudioAnalysisEnabled(roomId: string, enabled: boolean): Promise<void>;
@@ -547,11 +549,25 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       return (await req('get', '/ai-models')) as AIModelInfo[];
     },
 
-    async setAIModel(roomId, inputId, modelId, enabled, delayMs) {
+    async setAIModel(
+      roomId,
+      inputId,
+      modelId,
+      enabled,
+      delayMs,
+      drawBoxes,
+      params,
+    ) {
       await req(
         'post',
         `/room/${enc(roomId)}/input/${enc(inputId)}/ai-model`,
-        { modelId, enabled, ...(delayMs !== undefined ? { delayMs } : {}) },
+        {
+          modelId,
+          enabled,
+          ...(delayMs !== undefined ? { delayMs } : {}),
+          ...(drawBoxes !== undefined ? { drawBoxes } : {}),
+          ...(params !== undefined ? { params } : {}),
+        },
       );
     },
 

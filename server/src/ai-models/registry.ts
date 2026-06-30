@@ -1,4 +1,8 @@
-import type { AIModelInfo, InputType } from '@smelter-editor/types';
+import type {
+  AIModelInfo,
+  InputType,
+  ModelParamSpec,
+} from '@smelter-editor/types';
 
 export interface ModelManifest {
   id: string;
@@ -16,6 +20,12 @@ export interface ModelManifest {
   wsPort: number;
   /** Python import check for venv bootstrap. */
   depsCheck: string;
+  /** Extra env vars passed to the spawned Python worker (e.g. backend selection). */
+  extraEnv?: Record<string, string>;
+  /** Whether this model emits bounding boxes (enables the drawBoxes toggle). */
+  supportsBoxes?: boolean;
+  /** Model-specific numeric tunables exposed in the UI and forwarded to the worker. */
+  params?: ModelParamSpec[];
 }
 
 const manifests = new Map<string, ModelManifest>();
@@ -43,6 +53,8 @@ export class ModelRegistry {
       needsVideo: manifest.needsVideo,
       needsAudio: manifest.needsAudio,
       supportedInputTypes: manifest.supportedInputTypes,
+      ...(manifest.supportsBoxes ? { supportsBoxes: true } : {}),
+      ...(manifest.params ? { params: manifest.params } : {}),
     };
   }
 }

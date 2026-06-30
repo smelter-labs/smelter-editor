@@ -529,6 +529,8 @@ export async function setAIModel(
   modelId: string,
   enabled: boolean,
   delayMs?: number,
+  drawBoxes?: boolean,
+  params?: Record<string, number>,
 ): Promise<void> {
   return (await getClient()).setAIModel(
     roomId,
@@ -536,6 +538,8 @@ export async function setAIModel(
     modelId,
     enabled,
     delayMs,
+    drawBoxes,
+    params,
   );
 }
 

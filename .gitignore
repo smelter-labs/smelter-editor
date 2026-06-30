@@ -53,6 +53,8 @@ server/dist/
 server/motion/.venv/
 server/captions/.venv/
 server/src/ai-models/motion/.venv/
+server/src/ai-models/people-counter/.venv/
+server/src/ai-models/people-counter/*.pt
 packages/types/dist/
 packages/types/node_modules/
 server/screenshots/

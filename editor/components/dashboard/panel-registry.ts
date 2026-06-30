@@ -10,6 +10,7 @@ type StaticPanelId =
   | 'connected-devices'
   | 'system-log'
   | 'motion-detection'
+  | 'ai-models'
   | 'captions'
   | 'layout-preview'
   | 'carousel'
@@ -114,6 +115,12 @@ export const STATIC_PANEL_DEFINITIONS: Record<StaticPanelId, PanelDefinition> =
       minW: 4,
       minH: 4,
     },
+    'ai-models': {
+      id: 'ai-models',
+      title: 'AI Models',
+      minW: 4,
+      minH: 6,
+    },
     captions: {
       id: 'captions',
       title: 'Captions',
@@ -155,6 +162,7 @@ export const DEFAULT_VISIBLE_PANEL_IDS: StaticPanelId[] = [
   'streams',
   'timeline',
   'block-properties',
+  'ai-models',
   'system-log',
 ];
 
@@ -187,6 +195,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'streams', x: 12, y: 0, w: 5, h: 15, minW: 4, minH: 4 },
       { i: 'timeline', x: 0, y: 20, w: 17, h: 12, minW: 8, minH: 4 },
       { i: 'block-properties', x: 17, y: 0, w: 7, h: 26, minW: 4, minH: 6 },
+      { i: 'ai-models', x: 17, y: 32, w: 7, h: 14, minW: 4, minH: 6 },
       { i: 'system-log', x: 17, y: 26, w: 7, h: 6, minW: 4, minH: 3 },
       { i: 'connected-devices', x: 16, y: 32, w: 4, h: 6, minW: 4, minH: 4 },
       { i: 'layout-preview', x: 12, y: 0, w: 5, h: 9, minW: 4, minH: 3 },

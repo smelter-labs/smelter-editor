@@ -84,6 +84,7 @@ export type {
   AIModelConfig,
   AIModelStatus,
   AIModelInfo,
+  ModelParamSpec,
 } from "./ai-models.js";
 
 export type {

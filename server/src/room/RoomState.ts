@@ -30,6 +30,9 @@ import {
   computeSideChannelConfig,
   requiresSideChannelReconnect,
   manifestSupportsInput,
+  PEOPLE_COUNTER_MANIFESTS,
+  PEOPLE_COUNTER_YOLO_ID,
+  type ModelResultEvent,
 } from '../ai-models';
 import { SnakeGameController } from './SnakeGameController';
 import { PlaceholderManager } from './PlaceholderManager';
@@ -281,6 +284,70 @@ export class RoomState {
       }
       this.motionController.emitMotionScores();
     });
+
+    const onPeopleCount = (event: ModelResultEvent) => {
+      const input = this.inputManager
+        .getInputs()
+        .find((i) => i.inputId === event.inputId);
+      if (!input) return;
+      const data = event.data as {
+        count?: number;
+        boxes?: { x: number; y: number; w: number; h: number }[];
+        frameW?: number;
+        frameH?: number;
+        procMs?: number;
+      };
+
+      // Editor-facing count is live (not synced to the delayed output).
+      input.peopleCount =
+        typeof data.count === 'number' ? data.count : undefined;
+
+      // The side channel hands frames to the worker ~delayMs before the output
+      // presents them. Hold the on-output overlay until the frame is due, minus
+      // the time the worker already spent processing it, so boxes track the
+      // video instead of running ahead.
+      const outputDelayMs =
+        computeSideChannelConfig(input.aiModels ?? {}, input.transcription)
+          ?.delayMs ?? 0;
+      const procMs = typeof data.procMs === 'number' ? data.procMs : 0;
+      const holdMs = Math.max(0, outputDelayMs - procMs);
+
+      const applyOverlay = () => {
+        const store = this.output.store.getState();
+        store.setPeopleCount(event.inputId, input.peopleCount ?? null);
+
+        // Only the YOLO backend emits boxes; render them when its drawBoxes
+        // option is still enabled for this input at present time.
+        if (event.modelId === PEOPLE_COUNTER_YOLO_ID) {
+          const cfg = input.aiModels?.[PEOPLE_COUNTER_YOLO_ID];
+          const show =
+            cfg?.enabled &&
+            cfg?.drawBoxes &&
+            Array.isArray(data.boxes) &&
+            typeof data.frameW === 'number' &&
+            typeof data.frameH === 'number';
+          store.setPeopleBoxes(
+            event.inputId,
+            show
+              ? {
+                  boxes: data.boxes!,
+                  frameW: data.frameW!,
+                  frameH: data.frameH!,
+                }
+              : null,
+          );
+        }
+      };
+
+      if (holdMs > 0) {
+        setTimeout(applyOverlay, holdMs);
+      } else {
+        applyOverlay();
+      }
+    };
+    for (const manifest of PEOPLE_COUNTER_MANIFESTS) {
+      void this.aiController.wireSidecarListeners(manifest.id, onPeopleCount);
+    }
   }
 
   public async init(): Promise<void> {
@@ -892,6 +959,8 @@ export class RoomState {
     modelId: string,
     enabled: boolean,
     delayMs?: number,
+    drawBoxes?: boolean,
+    params?: Record<string, number>,
   ): Promise<void> {
     return this.mutex.runExclusive(async () => {
       const input = this.inputManager.getInput(inputId);
@@ -915,8 +984,20 @@ export class RoomState {
         delayMs !== undefined
           ? Math.min(Math.max(0, delayMs), manifest.maxDelayMs)
           : current.delayMs;
+      const newDrawBoxes =
+        drawBoxes !== undefined ? drawBoxes : current.drawBoxes;
+      const newParams =
+        params !== undefined ? params : current.params;
+      const paramsChanged =
+        JSON.stringify(current.params ?? {}) !==
+        JSON.stringify(newParams ?? {});
 
-      if (current.enabled === enabled && current.delayMs === newDelay) {
+      if (
+        current.enabled === enabled &&
+        current.delayMs === newDelay &&
+        (current.drawBoxes ?? false) === (newDrawBoxes ?? false) &&
+        !paramsChanged
+      ) {
         return;
       }
 
@@ -925,13 +1006,26 @@ export class RoomState {
         input.transcription,
       );
 
-      input.aiModels[modelId] = { enabled, delayMs: newDelay };
+      input.aiModels[modelId] = {
+        enabled,
+        delayMs: newDelay,
+        ...(newDrawBoxes !== undefined ? { drawBoxes: newDrawBoxes } : {}),
+        ...(newParams !== undefined ? { params: newParams } : {}),
+      };
 
       if (modelId === 'motion') {
         input.motionEnabled = enabled;
         if (!enabled) {
           input.motionScore = undefined;
         }
+      }
+
+      // Clear any drawn boxes when YOLO is disabled or box-drawing turned off.
+      if (
+        modelId === PEOPLE_COUNTER_YOLO_ID &&
+        (!enabled || !newDrawBoxes)
+      ) {
+        this.output.store.getState().setPeopleBoxes(inputId, null);
       }
 
       const newSideChannel = computeSideChannelConfig(
@@ -945,6 +1039,10 @@ export class RoomState {
 
       if (enabled) {
         await this.aiController.enableModelOnInput(input, modelId);
+        // Push tunables to the running worker without a re-subscribe.
+        if (paramsChanged && input.status === 'connected') {
+          await this.aiController.configureModelOnInput(input, modelId);
+        }
       } else {
         await this.aiController.disableModelOnInput(input, modelId);
         if (modelId === 'motion') {

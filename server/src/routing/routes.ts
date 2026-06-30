@@ -2252,6 +2252,8 @@ const AIModelSchema = Type.Object({
   modelId: Type.String(),
   enabled: Type.Boolean(),
   delayMs: Type.Optional(Type.Number({ minimum: 0 })),
+  drawBoxes: Type.Optional(Type.Boolean()),
+  params: Type.Optional(Type.Record(Type.String(), Type.Number())),
 });
 
 routes.get('/ai-models', async (_req, res) => {
@@ -2269,16 +2271,25 @@ routes.post<
   },
   async (req, res) => {
     const { roomId, inputId } = req.params;
-    const { modelId, enabled, delayMs } = req.body;
+    const { modelId, enabled, delayMs, drawBoxes, params } = req.body;
     console.log('[request] Set AI model', {
       roomId,
       inputId,
       modelId,
       enabled,
       delayMs,
+      drawBoxes,
+      params,
     });
     const room = state.getRoom(roomId);
-    await room.setAIModelEnabled(inputId, modelId, enabled, delayMs);
+    await room.setAIModelEnabled(
+      inputId,
+      modelId,
+      enabled,
+      delayMs,
+      drawBoxes,
+      params,
+    );
     res.status(200).send({ status: 'ok' });
   },
 );

@@ -65,11 +65,25 @@ export type RoomStore = {
   swapFadeInDurationMs: number;
   swapFadeOutDurationMs: number;
   transcripts: Record<string, string>;
+  peopleCounts: Record<string, number>;
+  peopleBoxes: Record<string, PersonBoxes>;
   updateState: (state: RoomStoreState & { layers: Layer[] }) => void;
   setOutputShaders: (shaders: ShaderConfig[]) => void;
   setInputFrozenImage: (inputId: string, imageId: string | null) => void;
   setTranscript: (inputId: string, text: string) => void;
+  setPeopleCount: (inputId: string, count: number | null) => void;
+  setPeopleBoxes: (inputId: string, boxes: PersonBoxes | null) => void;
 } & Partial<ViewportProperties>;
+
+/** A detection bounding box, normalized to 0..1 of the input frame. */
+export type PersonBox = { x: number; y: number; w: number; h: number };
+
+/** Boxes plus the frame dimensions they were detected in (for cover mapping). */
+export type PersonBoxes = {
+  boxes: PersonBox[];
+  frameW: number;
+  frameH: number;
+};
 
 export function createRoomStore(
   resolution: Resolution = { width: 2560, height: 1440 },
@@ -85,6 +99,8 @@ export function createRoomStore(
     swapFadeInDurationMs: 500,
     swapFadeOutDurationMs: 500,
     transcripts: {},
+    peopleCounts: {},
+    peopleBoxes: {},
     updateState: (incoming) => {
       const {
         inputs,
@@ -135,6 +151,22 @@ export function createRoomStore(
         if (text) next[inputId] = text;
         else delete next[inputId];
         return { transcripts: next };
+      });
+    },
+    setPeopleCount: (inputId: string, count: number | null) => {
+      set((state) => {
+        const next = { ...state.peopleCounts };
+        if (count !== null) next[inputId] = count;
+        else delete next[inputId];
+        return { peopleCounts: next };
+      });
+    },
+    setPeopleBoxes: (inputId: string, boxes: PersonBoxes | null) => {
+      set((state) => {
+        const next = { ...state.peopleBoxes };
+        if (boxes && boxes.boxes.length > 0) next[inputId] = boxes;
+        else delete next[inputId];
+        return { peopleBoxes: next };
       });
     },
   }));

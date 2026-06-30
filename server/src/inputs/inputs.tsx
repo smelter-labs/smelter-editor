@@ -1,4 +1,4 @@
-import type { InputConfig } from '../app/store';
+import type { InputConfig, PersonBoxes } from '../app/store';
 import { StoreContext } from '../app/store';
 import {
   Text,
@@ -127,6 +127,14 @@ export function Input({ input }: { input: InputConfig }) {
     store,
     (state) => state.transcripts[input.inputId] ?? '',
   );
+  const peopleCount = useStore(
+    store,
+    (state) => state.peopleCounts[input.inputId],
+  );
+  const peopleBoxes = useStore(
+    store,
+    (state) => state.peopleBoxes[input.inputId],
+  );
 
   const inputComponent = (
     <Rescaler style={resolution}>
@@ -182,6 +190,18 @@ export function Input({ input }: { input: InputConfig }) {
             {transcript ? (
               <Subtitle
                 text={transcript}
+                parent={{ width: contentWidth, height: contentHeight }}
+              />
+            ) : null}
+            {peopleBoxes?.boxes.length ? (
+              <PeopleBoxes
+                data={peopleBoxes}
+                parent={{ width: contentWidth, height: contentHeight }}
+              />
+            ) : null}
+            {peopleCount != null ? (
+              <PeopleCountBadge
+                count={peopleCount}
                 parent={{ width: contentWidth, height: contentHeight }}
               />
             ) : null}
@@ -316,6 +336,83 @@ function Subtitle({
         {text}
       </Text>
       <View />
+    </View>
+  );
+}
+
+function PeopleCountBadge({
+  count,
+  parent,
+}: {
+  count: number;
+  parent: { width: number; height: number };
+}) {
+  const margin = Math.round(parent.width * 0.02);
+  const fontSize = Math.max(18, Math.round(parent.height * 0.035));
+  const padH = Math.round(fontSize * 0.45);
+  const padV = Math.round(fontSize * 0.22);
+  const label = `👥 ${count}`;
+  // Smelter Views don't auto-size to content, so give the badge explicit
+  // dimensions hugging the text (rough estimate; emoji ~1.6 char widths).
+  const width = padH * 2 + Math.round(fontSize * 0.62 * (label.length + 1));
+  const height = padV * 2 + Math.round(fontSize * 1.25);
+  return (
+    <View
+      style={{
+        top: margin,
+        left: margin,
+        width,
+        height,
+        backgroundColor: '#000000CC',
+        borderRadius: Math.round(fontSize * 0.3),
+        paddingHorizontal: padH,
+        paddingVertical: padV,
+        overflow: 'hidden',
+      }}>
+      <Text style={{ fontSize, color: '#FFFFFFFF' }}>{label}</Text>
+    </View>
+  );
+}
+
+function PeopleBoxes({
+  data,
+  parent,
+}: {
+  data: PersonBoxes;
+  parent: { width: number; height: number };
+}) {
+  const { boxes, frameW, frameH } = data;
+  // The video is rendered with rescaleMode 'fill' (cover): the source frame is
+  // scaled to cover the tile and the overflow is cropped + centered. Map the
+  // normalized boxes through the exact same transform so they line up.
+  const scale = Math.max(parent.width / frameW, parent.height / frameH);
+  const dispW = frameW * scale;
+  const dispH = frameH * scale;
+  const offX = (parent.width - dispW) / 2;
+  const offY = (parent.height - dispH) / 2;
+  return (
+    <View
+      style={{
+        top: 0,
+        left: 0,
+        width: parent.width,
+        height: parent.height,
+        overflow: 'hidden',
+      }}>
+      {boxes.map((box, i) => (
+        <View
+          key={i}
+          style={{
+            top: Math.round(offY + box.y * dispH),
+            left: Math.round(offX + box.x * dispW),
+            width: Math.max(2, Math.round(box.w * dispW)),
+            height: Math.max(2, Math.round(box.h * dispH)),
+            borderWidth: 4,
+            borderColor: '#00FF66FF',
+            borderRadius: 4,
+          }}
+        />
+      ))}
     </View>
   );
 }

@@ -57,6 +57,7 @@ export type RoomInputState = {
   restartFading?: boolean;
   motionEnabled: boolean;
   motionScore?: number;
+  peopleCount?: number;
   /** When true, audio is transcribed (whisper) and rendered as live captions. */
   transcription: boolean;
   /** Per-input AI model configuration. */

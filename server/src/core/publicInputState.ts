@@ -52,6 +52,7 @@ export function toPublicInputState(
     cropBottom: input.cropBottom,
     motionScore: input.motionScore,
     motionEnabled: input.motionEnabled,
+    peopleCount: input.peopleCount,
     transcription: input.transcription,
     aiModels: Object.fromEntries(
       Object.entries(input.aiModels ?? {}).map(([modelId, config]) => [
@@ -59,8 +60,16 @@ export function toPublicInputState(
         {
           enabled: config.enabled,
           delayMs: config.delayMs,
+          ...(config.drawBoxes !== undefined
+            ? { drawBoxes: config.drawBoxes }
+            : {}),
+          ...(config.params !== undefined ? { params: config.params } : {}),
           ...(modelId === 'motion' && input.motionScore !== undefined
             ? { lastResult: { score: input.motionScore } }
+            : {}),
+          ...(modelId.startsWith('people-counter') &&
+          input.peopleCount !== undefined
+            ? { lastResult: { count: input.peopleCount } }
             : {}),
         },
       ]),
