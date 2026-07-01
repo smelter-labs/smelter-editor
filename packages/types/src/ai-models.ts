@@ -17,6 +17,8 @@ export type AIModelConfig = {
   delayMs: number;
   /** Draw detection bounding boxes on the output (people-counter YOLO only). */
   drawBoxes?: boolean;
+  /** Replace detected people with Pac-Man ghosts (people-counter YOLO only). */
+  ghostMode?: boolean;
   /** Model-specific tunables, keyed by ModelParamSpec.key. */
   params?: Record<string, number>;
 };
@@ -25,6 +27,7 @@ export type AIModelStatus = {
   enabled: boolean;
   delayMs: number;
   drawBoxes?: boolean;
+  ghostMode?: boolean;
   params?: Record<string, number>;
   lastResult?: unknown;
 };

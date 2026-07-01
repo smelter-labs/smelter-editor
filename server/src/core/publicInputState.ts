@@ -63,6 +63,9 @@ export function toPublicInputState(
           ...(config.drawBoxes !== undefined
             ? { drawBoxes: config.drawBoxes }
             : {}),
+          ...(config.ghostMode !== undefined
+            ? { ghostMode: config.ghostMode }
+            : {}),
           ...(config.params !== undefined ? { params: config.params } : {}),
           ...(modelId === 'motion' && input.motionScore !== undefined
             ? { lastResult: { score: input.motionScore } }

@@ -34,6 +34,7 @@ import {
   PEOPLE_COUNTER_YOLO_ID,
   type ModelResultEvent,
 } from '../ai-models';
+import { PeopleTracker } from '../ai-models/people-counter/people-tracker';
 import { SnakeGameController } from './SnakeGameController';
 import { PlaceholderManager } from './PlaceholderManager';
 import { AudioController } from '../audio/AudioController';
@@ -161,6 +162,9 @@ export class RoomState {
   private readonly snakeGameController: SnakeGameController;
   private readonly placeholderManager: PlaceholderManager;
   private readonly audioController: AudioController;
+
+  /** Per-input cross-frame tracker for YOLO people boxes (stable id + color). */
+  private readonly peopleTrackers = new Map<string, PeopleTracker>();
 
   private stateChangeListeners = new Set<() => void>();
 
@@ -317,25 +321,41 @@ export class RoomState {
         store.setPeopleCount(event.inputId, input.peopleCount ?? null);
 
         // Only the YOLO backend emits boxes; render them when its drawBoxes
-        // option is still enabled for this input at present time.
+        // or ghostMode option is still enabled for this input at present time.
         if (event.modelId === PEOPLE_COUNTER_YOLO_ID) {
           const cfg = input.aiModels?.[PEOPLE_COUNTER_YOLO_ID];
-          const show =
-            cfg?.enabled &&
-            cfg?.drawBoxes &&
+          const hasFrame =
             Array.isArray(data.boxes) &&
             typeof data.frameW === 'number' &&
             typeof data.frameH === 'number';
-          store.setPeopleBoxes(
-            event.inputId,
-            show
-              ? {
-                  boxes: data.boxes!,
-                  frameW: data.frameW!,
-                  frameH: data.frameH!,
-                }
-              : null,
+          const ghost = Boolean(cfg?.enabled && cfg?.ghostMode);
+          const show = Boolean(
+            cfg?.enabled && (cfg?.drawBoxes || ghost) && hasFrame,
           );
+          if (show) {
+            // Feed every response (even empty ones) through the tracker so
+            // boxes/ghosts keep a stable identity and survive brief dropouts.
+            let tracker = this.peopleTrackers.get(event.inputId);
+            if (!tracker) {
+              tracker = new PeopleTracker();
+              this.peopleTrackers.set(event.inputId, tracker);
+            }
+            const tracked = tracker.update(data.boxes!);
+            store.setPeopleBoxes(
+              event.inputId,
+              tracked.length > 0
+                ? {
+                    boxes: tracked,
+                    frameW: data.frameW!,
+                    frameH: data.frameH!,
+                    ghost,
+                  }
+                : null,
+            );
+          } else {
+            this.peopleTrackers.delete(event.inputId);
+            store.setPeopleBoxes(event.inputId, null);
+          }
         }
       };
 
@@ -961,6 +981,7 @@ export class RoomState {
     delayMs?: number,
     drawBoxes?: boolean,
     params?: Record<string, number>,
+    ghostMode?: boolean,
   ): Promise<void> {
     return this.mutex.runExclusive(async () => {
       const input = this.inputManager.getInput(inputId);
@@ -986,6 +1007,8 @@ export class RoomState {
           : current.delayMs;
       const newDrawBoxes =
         drawBoxes !== undefined ? drawBoxes : current.drawBoxes;
+      const newGhostMode =
+        ghostMode !== undefined ? ghostMode : current.ghostMode;
       const newParams =
         params !== undefined ? params : current.params;
       const paramsChanged =
@@ -996,6 +1019,7 @@ export class RoomState {
         current.enabled === enabled &&
         current.delayMs === newDelay &&
         (current.drawBoxes ?? false) === (newDrawBoxes ?? false) &&
+        (current.ghostMode ?? false) === (newGhostMode ?? false) &&
         !paramsChanged
       ) {
         return;
@@ -1010,6 +1034,7 @@ export class RoomState {
         enabled,
         delayMs: newDelay,
         ...(newDrawBoxes !== undefined ? { drawBoxes: newDrawBoxes } : {}),
+        ...(newGhostMode !== undefined ? { ghostMode: newGhostMode } : {}),
         ...(newParams !== undefined ? { params: newParams } : {}),
       };
 
@@ -1020,11 +1045,14 @@ export class RoomState {
         }
       }
 
-      // Clear any drawn boxes when YOLO is disabled or box-drawing turned off.
+      // Clear any drawn boxes/ghosts when YOLO is disabled or both the
+      // box-drawing and ghost overlays are turned off. Reset the tracker too so
+      // identities/colors start fresh next time it is turned back on.
       if (
         modelId === PEOPLE_COUNTER_YOLO_ID &&
-        (!enabled || !newDrawBoxes)
+        (!enabled || (!newDrawBoxes && !newGhostMode))
       ) {
+        this.peopleTrackers.delete(inputId);
         this.output.store.getState().setPeopleBoxes(inputId, null);
       }
 

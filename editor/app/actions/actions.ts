@@ -531,6 +531,7 @@ export async function setAIModel(
   delayMs?: number,
   drawBoxes?: boolean,
   params?: Record<string, number>,
+  ghostMode?: boolean,
 ): Promise<void> {
   return (await getClient()).setAIModel(
     roomId,
@@ -540,6 +541,7 @@ export async function setAIModel(
     delayMs,
     drawBoxes,
     params,
+    ghostMode,
   );
 }
 

@@ -163,6 +163,7 @@ interface SmelterApiClient {
     delayMs?: number,
     drawBoxes?: boolean,
     params?: Record<string, number>,
+    ghostMode?: boolean,
   ): Promise<void>;
 
   setAudioAnalysisEnabled(roomId: string, enabled: boolean): Promise<void>;
@@ -557,6 +558,7 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       delayMs,
       drawBoxes,
       params,
+      ghostMode,
     ) {
       await req(
         'post',
@@ -566,6 +568,7 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
           enabled,
           ...(delayMs !== undefined ? { delayMs } : {}),
           ...(drawBoxes !== undefined ? { drawBoxes } : {}),
+          ...(ghostMode !== undefined ? { ghostMode } : {}),
           ...(params !== undefined ? { params } : {}),
         },
       );

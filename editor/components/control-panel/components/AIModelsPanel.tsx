@@ -118,6 +118,7 @@ export function AIModelsPanel({
         enabled?: boolean;
         delayMs?: number;
         drawBoxes?: boolean;
+        ghostMode?: boolean;
         params?: Record<string, number>;
       },
     ) => {
@@ -134,6 +135,7 @@ export function AIModelsPanel({
           next.delayMs ?? delayOf(model),
           next.drawBoxes ?? status?.drawBoxes,
           next.params ?? resolveParams(model),
+          next.ghostMode ?? status?.ghostMode,
         );
         await handleRefreshState();
       } finally {
@@ -318,12 +320,44 @@ export function AIModelsPanel({
                       variant={status?.drawBoxes ? 'default' : 'outline'}
                       disabled={pending}
                       className='h-6 px-2 text-[10px] font-mono uppercase'
-                      onClick={() =>
+                      onClick={() => {
+                        const on = !status?.drawBoxes;
                         void pushChange(model, {
-                          drawBoxes: !status?.drawBoxes,
-                        })
-                      }>
+                          drawBoxes: on,
+                          // Boxes and ghosts are mutually exclusive overlays.
+                          ...(on ? { ghostMode: false } : {}),
+                        });
+                      }}>
                       {status?.drawBoxes ? 'On' : 'Off'}
+                    </Button>
+                  </div>
+                )}
+
+                {model.supportsBoxes && (
+                  <div className='flex items-center justify-between'>
+                    <div>
+                      <div className='text-xs text-neutral-300'>
+                        Pac-Man ghosts
+                      </div>
+                      <div className='text-[11px] text-neutral-500'>
+                        Replace each detected person with a Pac-Man ghost
+                      </div>
+                    </div>
+                    <Button
+                      type='button'
+                      size='sm'
+                      variant={status?.ghostMode ? 'default' : 'outline'}
+                      disabled={pending}
+                      className='h-6 px-2 text-[10px] font-mono uppercase'
+                      onClick={() => {
+                        const on = !status?.ghostMode;
+                        void pushChange(model, {
+                          ghostMode: on,
+                          // Boxes and ghosts are mutually exclusive overlays.
+                          ...(on ? { drawBoxes: false } : {}),
+                        });
+                      }}>
+                      {status?.ghostMode ? 'On' : 'Off'}
                     </Button>
                   </div>
                 )}

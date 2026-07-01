@@ -1679,6 +1679,15 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     shaderFile: 'cyberpunk-hands.wgsl',
   },
   {
+    id: 'pacman-ghosts',
+    isActive: true,
+    isVisible: false,
+    name: 'Pac-Man Ghosts',
+    description:
+      'Replaces YOLO-detected people with animated Pac-Man ghosts over a dimmed background.',
+    shaderFile: 'pacman-ghosts.wgsl',
+  },
+  {
     id: 'comic-book',
     isActive: true,
     isVisible: true,

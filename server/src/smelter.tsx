@@ -240,7 +240,15 @@ class SmelterManager {
       assetType: 'png',
     });
 
-    await this.registerFont('https://madbangbang.com/Starjedi.ttf');
+    const starJediFont = await readFile(
+      path.join(__dirname, '../fonts/Starjedi.ttf'),
+    );
+    await this.registerFont(
+      starJediFont.buffer.slice(
+        starJediFont.byteOffset,
+        starJediFont.byteOffset + starJediFont.byteLength,
+      ),
+    );
 
     for (const shader of shadersController.shaders) {
       await this.registerShaderFromFile(
@@ -688,9 +696,9 @@ class SmelterManager {
     await this.instance.terminate();
   }
 
-  private async registerFont(fontUrl: string): Promise<void> {
+  private async registerFont(fontSource: string | ArrayBuffer): Promise<void> {
     try {
-      await this.instance.registerFont(fontUrl);
+      await this.instance.registerFont(fontSource);
     } catch (err) {
       if (isEntityAlreadyRegisteredError(err)) {
         return;

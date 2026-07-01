@@ -78,11 +78,19 @@ export type RoomStore = {
 /** A detection bounding box, normalized to 0..1 of the input frame. */
 export type PersonBox = { x: number; y: number; w: number; h: number };
 
+/**
+ * A box after cross-frame tracking: carries a stable identity so it keeps the
+ * same Pac-Man ghost color and can be smoothly interpolated across detections.
+ */
+export type TrackedPersonBox = PersonBox & { id: number; color: number };
+
 /** Boxes plus the frame dimensions they were detected in (for cover mapping). */
 export type PersonBoxes = {
-  boxes: PersonBox[];
+  boxes: TrackedPersonBox[];
   frameW: number;
   frameH: number;
+  /** When true, render people as Pac-Man ghosts instead of green boxes. */
+  ghost?: boolean;
 };
 
 export function createRoomStore(

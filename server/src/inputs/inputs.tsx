@@ -17,6 +17,7 @@ import { wrapWithShaders } from '../utils/shaderUtils';
 import { ScrollingText } from './scrollingText';
 import { TransitionShaderWrapper } from './transitionWrapper';
 import { HandsInput } from './HandsInput';
+import { PacmanGhostsInput } from './PacmanGhostsInput';
 
 type Resolution = { width: number; height: number };
 
@@ -182,6 +183,13 @@ export function Input({ input }: { input: InputConfig }) {
                 resolution={{ width: contentWidth, height: contentHeight }}
                 volume={input.volume}
               />
+            ) : peopleBoxes?.ghost && peopleBoxes.boxes.length ? (
+              <PacmanGhostsInput
+                sourceInputId={input.inputId}
+                data={peopleBoxes}
+                resolution={{ width: contentWidth, height: contentHeight }}
+                volume={input.volume}
+              />
             ) : (
               <Rescaler style={{ rescaleMode: 'fill' }}>
                 <InputStream inputId={input.inputId} volume={input.volume} />
@@ -193,7 +201,7 @@ export function Input({ input }: { input: InputConfig }) {
                 parent={{ width: contentWidth, height: contentHeight }}
               />
             ) : null}
-            {peopleBoxes?.boxes.length ? (
+            {peopleBoxes?.boxes.length && !peopleBoxes.ghost ? (
               <PeopleBoxes
                 data={peopleBoxes}
                 parent={{ width: contentWidth, height: contentHeight }}
