@@ -1122,6 +1122,11 @@ routes.after(() => {
 
       socket.on('close', (code: any, reason: unknown) => {
         handlePongClientDisconnect(roomId, clientId);
+        try {
+          state.getRoom(roomId).handleShooterDisconnect(clientId);
+        } catch {
+          // Room no longer exists — ignore.
+        }
         logWsDebug('closed', {
           roomId,
           clientId,
@@ -1170,6 +1175,20 @@ routes.after(() => {
           (parsed as { type: string }).type !== 'pong_shader_partial_update'
         ) {
           handlePongClientMessage(roomId, clientId, parsed);
+          return;
+        }
+        // Ghost Shooter control messages from phone gyroscope controllers.
+        if (
+          parsed &&
+          typeof parsed === 'object' &&
+          typeof (parsed as { type?: unknown }).type === 'string' &&
+          (parsed as { type: string }).type.startsWith('shoot_')
+        ) {
+          try {
+            state.getRoom(roomId).handleShooterMessage(clientId, parsed);
+          } catch {
+            // Room no longer exists — ignore.
+          }
           return;
         }
         if (

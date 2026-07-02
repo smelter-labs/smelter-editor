@@ -1,4 +1,4 @@
-import type { InputConfig, PersonBoxes } from '../app/store';
+import type { InputConfig, PersonBoxes, ShooterOverlay } from '../app/store';
 import { StoreContext } from '../app/store';
 import {
   Text,
@@ -136,6 +136,10 @@ export function Input({ input }: { input: InputConfig }) {
     store,
     (state) => state.peopleBoxes[input.inputId],
   );
+  // Ghost Shooter overlay, only when this input is the game's target.
+  const shooter = useStore(store, (state) =>
+    state.shooter?.targetInputId === input.inputId ? state.shooter : null,
+  );
 
   const inputComponent = (
     <Rescaler style={resolution}>
@@ -189,6 +193,7 @@ export function Input({ input }: { input: InputConfig }) {
                 data={peopleBoxes}
                 resolution={{ width: contentWidth, height: contentHeight }}
                 volume={input.volume}
+                deadIds={shooter?.deadGhostIds}
               />
             ) : (
               <Rescaler style={{ rescaleMode: 'fill' }}>
@@ -211,6 +216,14 @@ export function Input({ input }: { input: InputConfig }) {
               <PeopleCountBadge
                 count={peopleCount}
                 parent={{ width: contentWidth, height: contentHeight }}
+              />
+            ) : null}
+            {shooter ? (
+              <ShooterHud
+                shooter={shooter}
+                parent={{ width: contentWidth, height: contentHeight }}
+                frameW={peopleBoxes?.frameW}
+                frameH={peopleBoxes?.frameH}
               />
             ) : null}
           </View>
@@ -420,6 +433,178 @@ function PeopleBoxes({
             borderRadius: 4,
           }}
         />
+      ))}
+    </View>
+  );
+}
+
+// Ghost Shooter HUD: player crosshairs, hit bursts, and the scoreboard. Aim
+// coords are in normalized content space [0,1] (same as the ghost boxes) and
+// mapped to tile pixels through the identical rescale 'fill' (cover) transform.
+function ShooterHud({
+  shooter,
+  parent,
+  frameW,
+  frameH,
+}: {
+  shooter: ShooterOverlay;
+  parent: { width: number; height: number };
+  frameW?: number;
+  frameH?: number;
+}) {
+  const fw = frameW && frameW > 0 ? frameW : parent.width;
+  const fh = frameH && frameH > 0 ? frameH : parent.height;
+  const scale = Math.max(parent.width / fw, parent.height / fh);
+  const dispW = fw * scale;
+  const dispH = fh * scale;
+  const offX = (parent.width - dispW) / 2;
+  const offY = (parent.height - dispH) / 2;
+  const toPx = (x: number, y: number) => ({
+    px: offX + x * dispW,
+    py: offY + y * dispH,
+  });
+
+  const chSize = Math.max(28, Math.round(parent.width * 0.05));
+  const th = Math.max(2, Math.round(chSize * 0.06));
+  const now = Date.now();
+
+  return (
+    <View
+      style={{
+        top: 0,
+        left: 0,
+        width: parent.width,
+        height: parent.height,
+        overflow: 'hidden',
+      }}>
+      {/* Hit bursts: expanding fading rings. */}
+      {shooter.bursts.map((b) => {
+        const { px, py } = toPx(b.x, b.y);
+        const t = Math.min(1, Math.max(0, (now - b.at) / 600));
+        const size = Math.round(chSize * (0.6 + 1.8 * t));
+        const alpha = Math.round(255 * (1 - t))
+          .toString(16)
+          .padStart(2, '0');
+        return (
+          <View
+            key={`burst-${b.id}`}
+            style={{
+              top: Math.round(py - size / 2),
+              left: Math.round(px - size / 2),
+              width: size,
+              height: size,
+              borderRadius: size / 2,
+              borderWidth: Math.max(2, Math.round(chSize * 0.12)),
+              borderColor: `#FFEE00${alpha}`,
+            }}
+          />
+        );
+      })}
+
+      {/* Player crosshairs. */}
+      {shooter.crosshairs.map((c) => {
+        const { px, py } = toPx(c.x, c.y);
+        return (
+          <View
+            key={`ch-${c.clientId}`}
+            style={{
+              top: Math.round(py - chSize / 2),
+              left: Math.round(px - chSize / 2),
+              width: chSize,
+              height: chSize,
+              overflow: 'visible',
+            }}>
+            <View
+              style={{
+                top: Math.round(chSize / 2 - th / 2),
+                left: 0,
+                width: chSize,
+                height: th,
+                backgroundColor: c.color,
+              }}
+            />
+            <View
+              style={{
+                top: 0,
+                left: Math.round(chSize / 2 - th / 2),
+                width: th,
+                height: chSize,
+                backgroundColor: c.color,
+              }}
+            />
+            <View
+              style={{
+                top: 0,
+                left: 0,
+                width: chSize,
+                height: chSize,
+                borderWidth: 2,
+                borderColor: c.color,
+                borderRadius: chSize / 2,
+              }}
+            />
+            <View
+              style={{
+                top: -Math.round(chSize * 0.55),
+                left: 0,
+                width: Math.max(120, chSize * 3),
+                height: Math.round(chSize * 0.5),
+                overflow: 'visible',
+              }}>
+              <Text
+                style={{
+                  fontSize: Math.max(16, Math.round(chSize * 0.4)),
+                  color: c.color,
+                }}>
+                {c.name}
+              </Text>
+            </View>
+          </View>
+        );
+      })}
+
+      {/* Scoreboard, top-right. */}
+      {shooter.scores.length > 0 ? (
+        <ShooterScoreboard scores={shooter.scores} parent={parent} />
+      ) : null}
+    </View>
+  );
+}
+
+function ShooterScoreboard({
+  scores,
+  parent,
+}: {
+  scores: ShooterOverlay['scores'];
+  parent: { width: number; height: number };
+}) {
+  const margin = Math.round(parent.width * 0.02);
+  const fontSize = Math.max(18, Math.round(parent.height * 0.032));
+  const rowH = Math.round(fontSize * 1.4);
+  const width = Math.round(parent.width * 0.22);
+  const height = rowH * scores.length + Math.round(fontSize * 0.6);
+  return (
+    <View
+      style={{
+        top: margin,
+        left: parent.width - width - margin,
+        width,
+        height,
+        backgroundColor: '#000000B0',
+        borderRadius: Math.round(fontSize * 0.3),
+        paddingHorizontal: Math.round(fontSize * 0.4),
+        paddingVertical: Math.round(fontSize * 0.3),
+        direction: 'column',
+        overflow: 'hidden',
+      }}>
+      {scores.map((s, i) => (
+        <View
+          key={i}
+          style={{ width: width - fontSize, height: rowH, overflow: 'hidden' }}>
+          <Text style={{ fontSize, color: s.color }}>
+            {`${s.name}  ${s.score}`}
+          </Text>
+        </View>
       ))}
     </View>
   );

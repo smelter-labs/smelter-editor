@@ -35,6 +35,7 @@ import {
   type ModelResultEvent,
 } from '../ai-models';
 import { PeopleTracker } from '../ai-models/people-counter/people-tracker';
+import { GhostShooterController } from '../ghostShooter/GhostShooterController';
 import { SnakeGameController } from './SnakeGameController';
 import { PlaceholderManager } from './PlaceholderManager';
 import { AudioController } from '../audio/AudioController';
@@ -166,6 +167,9 @@ export class RoomState {
   /** Per-input cross-frame tracker for YOLO people boxes (stable id + color). */
   private readonly peopleTrackers = new Map<string, PeopleTracker>();
 
+  /** Ghost Shooter game (phone-gyroscope crosshairs targeting the ghosts). */
+  private readonly ghostShooter: GhostShooterController;
+
   private stateChangeListeners = new Set<() => void>();
 
   private timelinePlayer: TimelinePlayer | null = null;
@@ -267,6 +271,7 @@ export class RoomState {
     );
     this.recordingController = new RecordingController(idPrefix, output);
     this.snakeGameController = new SnakeGameController();
+    this.ghostShooter = new GhostShooterController(idPrefix, output.store);
 
     let motionResultCount = 0;
     void this.aiController.wireSidecarListeners('motion', (event) => {
@@ -953,6 +958,43 @@ export class RoomState {
     return this.mutex.runExclusive(async () => {
       await this.inputManager.removeStaleWhipInputs(staleTtlMs);
     });
+  }
+
+  /** Route a Ghost Shooter WebSocket message from a phone client. */
+  public handleShooterMessage(clientId: string, raw: unknown): void {
+    if (!raw || typeof raw !== 'object') return;
+    const msg = raw as {
+      type?: unknown;
+      name?: unknown;
+      x?: unknown;
+      y?: unknown;
+    };
+    switch (msg.type) {
+      case 'shoot_join':
+        this.ghostShooter.join(
+          clientId,
+          typeof msg.name === 'string' ? msg.name : 'Player',
+        );
+        break;
+      case 'shoot_aim':
+        if (typeof msg.x === 'number' && typeof msg.y === 'number') {
+          this.ghostShooter.aim(clientId, msg.x, msg.y);
+        }
+        break;
+      case 'shoot_fire':
+        this.ghostShooter.fire(clientId);
+        break;
+      case 'shoot_leave':
+        this.ghostShooter.leave(clientId);
+        break;
+      default:
+        break;
+    }
+  }
+
+  /** A phone client disconnected — drop its crosshair/score. */
+  public handleShooterDisconnect(clientId: string): void {
+    this.ghostShooter.handleDisconnect(clientId);
   }
 
   public async restartMp4Input(
@@ -1729,6 +1771,7 @@ export class RoomState {
     return this.mutex.runExclusive(async () => {
       this.destroyed = true;
       this.pausedAttachedInputVolumes.clear();
+      this.ghostShooter.dispose();
 
       if (this.pendingStoreFlushTimer) {
         clearTimeout(this.pendingStoreFlushTimer);

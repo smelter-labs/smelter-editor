@@ -148,3 +148,16 @@ export type {
   PongPlayerDisconnectedEvent,
   PongServerEvent,
 } from "./pong-events.js";
+
+export type {
+  ShooterPlayer,
+  ShooterJoinMessage,
+  ShooterAimMessage,
+  ShooterFireMessage,
+  ShooterLeaveMessage,
+  ShooterClientMessage,
+  ShooterStateEvent,
+  ShooterHitEvent,
+  ShooterMissEvent,
+  ShooterServerEvent,
+} from "./shooter-events.js";

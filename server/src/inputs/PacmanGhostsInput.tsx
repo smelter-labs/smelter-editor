@@ -7,6 +7,8 @@ type PacmanGhostsInputProps = {
   data: PersonBoxes;
   resolution: { width: number; height: number };
   volume: number;
+  /** Ghost ids currently shot down (Ghost Shooter) — play a vanish animation. */
+  deadIds?: number[];
 };
 
 // Must match the box capacity of pacman-ghosts.wgsl.
@@ -21,6 +23,9 @@ const SMOOTH = 0.2; // exponential easing toward the latest detection per tick
 const GHOST_ASPECT = 1.1;
 // Scale the fitted ghost up so it reads bigger than the bare person box.
 const GHOST_SCALE = 2.75;
+// Shot-down (Ghost Shooter) vanish animation targets, eased like normal motion.
+const DEATH_SHRINK = 0.02; // shrink ghost to ~nothing
+const DEATH_DROP = 0.12; // and drop it slightly while it vanishes
 
 type Rect = { cx: number; cy: number; hw: number; hh: number };
 
@@ -38,12 +43,15 @@ export function PacmanGhostsInput({
   data,
   resolution,
   volume,
+  deadIds,
 }: PacmanGhostsInputProps) {
   const { width, height } = resolution;
   // Latest target per track id (tile space) + its stable color.
   const targetsRef = useRef<Map<number, Rect & { color: number }>>(new Map());
   // Eased, currently-rendered position per track id.
   const cursRef = useRef<Map<number, Rect>>(new Map());
+  // Ids that were shot down last frame — used to pop a ghost back in place on respawn.
+  const prevDeadRef = useRef<Set<number>>(new Set());
   const [, setFrame] = useState(0);
 
   // Map normalized detection boxes through the same rescale 'fill' (cover)
@@ -55,6 +63,14 @@ export function PacmanGhostsInput({
     const dispH = frameH * scale;
     const offX = (width - dispW) / 2;
     const offY = (height - dispH) / 2;
+
+    const deadSet = new Set(deadIds ?? []);
+    // Ghosts that just came back to life: pop them in place, not back up from
+    // wherever the vanish animation left them.
+    for (const id of prevDeadRef.current) {
+      if (!deadSet.has(id)) cursRef.current.delete(id);
+    }
+    prevDeadRef.current = deadSet;
 
     const next = new Map<number, Rect & { color: number }>();
     for (const b of boxes.slice(0, MAX_GHOSTS)) {
@@ -71,11 +87,17 @@ export function PacmanGhostsInput({
       }
       ghostWpx *= GHOST_SCALE;
       ghostHpx *= GHOST_SCALE;
+      const cx = (offX + (b.x + b.w / 2) * dispW) / width;
+      const cy = (offY + (b.y + b.h / 2) * dispH) / height;
+      const hw = ghostWpx / 2 / width;
+      const hh = ghostHpx / 2 / height;
+      // Shot-down ghost: shrink to nothing and drop a bit so it vanishes.
+      const dead = deadSet.has(b.id);
       next.set(b.id, {
-        cx: (offX + (b.x + b.w / 2) * dispW) / width,
-        cy: (offY + (b.y + b.h / 2) * dispH) / height,
-        hw: ghostWpx / 2 / width,
-        hh: ghostHpx / 2 / height,
+        cx,
+        cy: dead ? cy + DEATH_DROP : cy,
+        hw: dead ? hw * DEATH_SHRINK : hw,
+        hh: dead ? hh * DEATH_SHRINK : hh,
         color: b.color,
       });
     }
@@ -85,7 +107,7 @@ export function PacmanGhostsInput({
     for (const id of [...cursRef.current.keys()]) {
       if (!next.has(id)) cursRef.current.delete(id);
     }
-  }, [data, width, height]);
+  }, [data, width, height, deadIds]);
 
   // Ease rendered positions toward their targets for smooth, continuous motion.
   useEffect(() => {

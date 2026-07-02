@@ -67,12 +67,14 @@ export type RoomStore = {
   transcripts: Record<string, string>;
   peopleCounts: Record<string, number>;
   peopleBoxes: Record<string, PersonBoxes>;
+  shooter: ShooterOverlay | null;
   updateState: (state: RoomStoreState & { layers: Layer[] }) => void;
   setOutputShaders: (shaders: ShaderConfig[]) => void;
   setInputFrozenImage: (inputId: string, imageId: string | null) => void;
   setTranscript: (inputId: string, text: string) => void;
   setPeopleCount: (inputId: string, count: number | null) => void;
   setPeopleBoxes: (inputId: string, boxes: PersonBoxes | null) => void;
+  setShooter: (shooter: ShooterOverlay | null) => void;
 } & Partial<ViewportProperties>;
 
 /** A detection bounding box, normalized to 0..1 of the input frame. */
@@ -93,6 +95,28 @@ export type PersonBoxes = {
   ghost?: boolean;
 };
 
+/** A player's crosshair in normalized content space [0,1] of the target input. */
+export type ShooterCrosshair = {
+  clientId: string;
+  x: number;
+  y: number;
+  color: string;
+  name: string;
+};
+
+/** A short-lived hit effect at a ghost center (content coords + timestamp). */
+export type ShooterBurst = { id: number; x: number; y: number; at: number };
+
+/** Ghost Shooter overlay state rendered on the target (ghost-enabled) input. */
+export type ShooterOverlay = {
+  targetInputId: string;
+  crosshairs: ShooterCrosshair[];
+  scores: { name: string; color: string; score: number }[];
+  bursts: ShooterBurst[];
+  /** Ghost ids currently shot down (hidden/animated) on the target input. */
+  deadGhostIds: number[];
+};
+
 export function createRoomStore(
   resolution: Resolution = { width: 2560, height: 1440 },
 ): StoreApi<RoomStore> {
@@ -109,6 +133,7 @@ export function createRoomStore(
     transcripts: {},
     peopleCounts: {},
     peopleBoxes: {},
+    shooter: null,
     updateState: (incoming) => {
       const {
         inputs,
@@ -176,6 +201,9 @@ export function createRoomStore(
         else delete next[inputId];
         return { peopleBoxes: next };
       });
+    },
+    setShooter: (shooter: ShooterOverlay | null) => {
+      set(() => ({ shooter }));
     },
   }));
 }
