@@ -33,7 +33,9 @@ export function GhostShooterPanel({ roomId }: Props) {
       </div>
       <p className='text-xs text-neutral-400 text-center max-w-xs'>
         Włącz <span className='text-neutral-200'>Pac-Man ghosts</span> na inpucie
-        z ludźmi, zeskanuj telefonem i celuj żyroskopem do duszków.
+        z ludźmi, zeskanuj telefonem i celuj palcem po obrazie do duszków. Dla
+        celności ustaw ten input na{' '}
+        <span className='text-neutral-200'>pełny ekran (broadcast/solo)</span>.
       </p>
 
       {shootUrl && (

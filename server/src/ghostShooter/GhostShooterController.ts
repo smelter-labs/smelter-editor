@@ -76,9 +76,39 @@ export class GhostShooterController {
     const p = this.players.get(clientId);
     if (!p) return;
     if (!Number.isFinite(x) || !Number.isFinite(y)) return;
-    p.aimX = clamp01(x);
-    p.aimY = clamp01(y);
+    const content = this.outputToContent(x, y);
+    p.aimX = clamp01(content.x);
+    p.aimY = clamp01(content.y);
     // Rendered on the next publish tick (coalesced to ~30Hz).
+  }
+
+  /**
+   * Convert an aim point from output-normalized space [0,1] (where the phone
+   * touches the live output video) into the target input's content space
+   * (normalized source-frame coords used for hit-testing / crosshair render).
+   *
+   * This inverts the rescale 'fill' (cover) transform and assumes the ghost
+   * input fills the output (broadcast/solo). Without a target we pass through.
+   */
+  private outputToContent(ox: number, oy: number): { x: number; y: number } {
+    const state = this.store.getState();
+    const targetId = this.getTargetInputId();
+    const pb = targetId ? state.peopleBoxes[targetId] : undefined;
+    if (!pb) return { x: ox, y: oy };
+    const W = state.resolution.width;
+    const H = state.resolution.height;
+    const fw = pb.frameW;
+    const fh = pb.frameH;
+    if (!(W > 0 && H > 0 && fw > 0 && fh > 0)) return { x: ox, y: oy };
+    const scale = Math.max(W / fw, H / fh);
+    const dispW = fw * scale;
+    const dispH = fh * scale;
+    const offX = (W - dispW) / 2;
+    const offY = (H - dispH) / 2;
+    return {
+      x: (ox * W - offX) / dispW,
+      y: (oy * H - offY) / dispH,
+    };
   }
 
   fire(clientId: string): void {
