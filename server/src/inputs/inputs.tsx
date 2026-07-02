@@ -477,14 +477,31 @@ function ShooterHud({
         height: parent.height,
         overflow: 'hidden',
       }}>
-      {/* Hit bursts: expanding fading rings. */}
+      {/* Shot bursts: expanding ring for a hit, red ✕ for a miss. */}
       {shooter.bursts.map((b) => {
         const { px, py } = toPx(b.x, b.y);
         const t = Math.min(1, Math.max(0, (now - b.at) / 600));
-        const size = Math.round(chSize * (0.6 + 1.8 * t));
         const alpha = Math.round(255 * (1 - t))
           .toString(16)
           .padStart(2, '0');
+        if (b.kind === 'miss') {
+          const fs = Math.round(chSize * (1.0 + 0.5 * t));
+          const box = Math.round(fs * 1.6);
+          return (
+            <View
+              key={`burst-${b.id}`}
+              style={{
+                top: Math.round(py - box / 2),
+                left: Math.round(px - box / 2),
+                width: box,
+                height: box,
+                overflow: 'visible',
+              }}>
+              <Text style={{ fontSize: fs, color: `#FF3B3B${alpha}` }}>✕</Text>
+            </View>
+          );
+        }
+        const size = Math.round(chSize * (0.6 + 1.8 * t));
         return (
           <View
             key={`burst-${b.id}`}

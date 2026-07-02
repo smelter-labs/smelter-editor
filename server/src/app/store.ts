@@ -104,8 +104,14 @@ export type ShooterCrosshair = {
   name: string;
 };
 
-/** A short-lived hit effect at a ghost center (content coords + timestamp). */
-export type ShooterBurst = { id: number; x: number; y: number; at: number };
+/** A short-lived shot effect at a point (content coords + timestamp + kind). */
+export type ShooterBurst = {
+  id: number;
+  x: number;
+  y: number;
+  at: number;
+  kind: 'hit' | 'miss';
+};
 
 /** Ghost Shooter overlay state rendered on the target (ghost-enabled) input. */
 export type ShooterOverlay = {

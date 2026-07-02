@@ -8,6 +8,9 @@ type Player = {
   color: string;
   aimX: number;
   aimY: number;
+  /** Eased, rendered crosshair position (smooths the broadcast crosshair). */
+  dispX: number;
+  dispY: number;
   score: number;
 };
 
@@ -22,9 +25,10 @@ const PLAYER_COLORS = [
 ];
 
 const RESPAWN_MS = 3000; // how long a shot ghost stays down before returning
-const BURST_MS = 600; // hit-effect lifetime
+const BURST_MS = 600; // shot-effect lifetime
 const PUBLISH_MS = 33; // ~30Hz overlay refresh while the game is active
 const HIT_FACTOR = 1.2; // hitbox radius ~ visible (scaled-up) ghost size
+const CROSSHAIR_SMOOTH = 0.5; // eases the broadcast crosshair toward the aim
 
 /**
  * Ghost Shooter game logic for one room. Phones send aim (gyroscope) + fire
@@ -57,6 +61,8 @@ export class GhostShooterController {
         color: PLAYER_COLORS[this.colorSeq++ % PLAYER_COLORS.length],
         aimX: 0.5,
         aimY: 0.5,
+        dispX: 0.5,
+        dispY: 0.5,
         score: 0,
       });
     }
@@ -141,6 +147,15 @@ export class GhostShooterController {
     }
 
     if (!best) {
+      // Miss: show an "✕" where the player fired.
+      this.bursts.push({
+        id: this.nextBurstId++,
+        x: p.aimX,
+        y: p.aimY,
+        at: Date.now(),
+        kind: 'miss',
+      });
+      this.publish();
       this.sendMiss(clientId);
       return;
     }
@@ -148,7 +163,13 @@ export class GhostShooterController {
     const now = Date.now();
     this.deadGhosts.set(best.id, now + RESPAWN_MS);
     p.score += 1;
-    this.bursts.push({ id: this.nextBurstId++, x: best.cx, y: best.cy, at: now });
+    this.bursts.push({
+      id: this.nextBurstId++,
+      x: best.cx,
+      y: best.cy,
+      at: now,
+      kind: 'hit',
+    });
     this.ensureRunning();
     roomEventBus.sendTo(this.roomId, clientId, {
       type: 'shooter_hit',
@@ -235,6 +256,12 @@ export class GhostShooterController {
       if (respawnAt <= now) this.deadGhosts.delete(id);
     }
     this.bursts = this.bursts.filter((b) => now - b.at <= BURST_MS);
+    // Ease each crosshair toward its latest aim so the broadcast crosshair is
+    // smooth even when aim updates arrive irregularly over the network.
+    for (const p of this.players.values()) {
+      p.dispX += (p.aimX - p.dispX) * CROSSHAIR_SMOOTH;
+      p.dispY += (p.aimY - p.dispY) * CROSSHAIR_SMOOTH;
+    }
     this.publish();
     this.maybeStop();
   }
@@ -249,8 +276,8 @@ export class GhostShooterController {
       targetInputId: targetId,
       crosshairs: [...this.players.values()].map((p) => ({
         clientId: p.clientId,
-        x: p.aimX,
-        y: p.aimY,
+        x: p.dispX,
+        y: p.dispY,
         color: p.color,
         name: p.name,
       })),
