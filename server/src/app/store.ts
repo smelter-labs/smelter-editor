@@ -91,8 +91,10 @@ export type PersonBoxes = {
   boxes: TrackedPersonBox[];
   frameW: number;
   frameH: number;
-  /** When true, render people as Pac-Man ghosts instead of green boxes. */
+  /** When true, render detections as sprites (see `sprite`) not green boxes. */
   ghost?: boolean;
+  /** Which sprite to draw in ghost mode: Pac-Man ghost (default) or bird. */
+  sprite?: 'ghost' | 'bird';
 };
 
 /** A player's crosshair in normalized content space [0,1] of the target input. */

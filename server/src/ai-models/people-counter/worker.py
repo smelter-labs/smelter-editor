@@ -43,6 +43,11 @@ BACKEND = os.environ.get("PEOPLE_COUNTER_BACKEND", "haar").strip().lower()
 YOLO_CONF = float(os.environ.get("PEOPLE_COUNTER_YOLO_CONF", "0.35"))
 YOLO_IMGSZ = int(os.environ.get("PEOPLE_COUNTER_YOLO_IMGSZ", "640"))
 YOLO_WEIGHTS = os.environ.get("PEOPLE_COUNTER_YOLO_WEIGHTS", "yolov8n.pt")
+# COCO class ids to detect (comma-separated). Default 0 = person; the bird
+# backend overrides this to 14 = bird via PEOPLE_COUNTER_YOLO_CLASSES.
+YOLO_CLASSES = [
+    int(c) for c in os.environ.get("PEOPLE_COUNTER_YOLO_CLASSES", "0").split(",") if c.strip()
+]
 
 
 @dataclass
@@ -138,8 +143,9 @@ def detect(rgba: np.ndarray, params: dict | None = None) -> tuple[int, list[dict
         # but misses far figures; 1280 catches much more (slower on CPU).
         conf = float(params.get("confidence", YOLO_CONF))
         imgsz = int(params.get("imgsz", YOLO_IMGSZ))
+        classes = params.get("classes") or YOLO_CLASSES
         results = _yolo_model.predict(
-            rgb, conf=conf, imgsz=imgsz, classes=[0], verbose=False
+            rgb, conf=conf, imgsz=imgsz, classes=classes, verbose=False
         )
         boxes: list[dict] = []
         for r in results:

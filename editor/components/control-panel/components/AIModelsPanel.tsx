@@ -337,10 +337,14 @@ export function AIModelsPanel({
                   <div className='flex items-center justify-between'>
                     <div>
                       <div className='text-xs text-neutral-300'>
-                        Pac-Man ghosts
+                        {model.id.includes('bird')
+                          ? 'Bird sprites'
+                          : 'Pac-Man ghosts'}
                       </div>
                       <div className='text-[11px] text-neutral-500'>
-                        Replace each detected person with a Pac-Man ghost
+                        {model.id.includes('bird')
+                          ? 'Replace each detected bird with a flapping bird sprite'
+                          : 'Replace each detected person with a Pac-Man ghost'}
                       </div>
                     </div>
                     <Button

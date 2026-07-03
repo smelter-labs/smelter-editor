@@ -32,6 +32,7 @@ import {
   manifestSupportsInput,
   PEOPLE_COUNTER_MANIFESTS,
   PEOPLE_COUNTER_YOLO_ID,
+  PEOPLE_COUNTER_YOLO_BIRDS_ID,
   type ModelResultEvent,
 } from '../ai-models';
 import { PeopleTracker } from '../ai-models/people-counter/people-tracker';
@@ -166,6 +167,9 @@ export class RoomState {
 
   /** Per-input cross-frame tracker for YOLO people boxes (stable id + color). */
   private readonly peopleTrackers = new Map<string, PeopleTracker>();
+
+  /** Per-input cross-frame tracker for YOLO bird boxes (stable id + color). */
+  private readonly birdTrackers = new Map<string, PeopleTracker>();
 
   /** Ghost Shooter game (phone-gyroscope crosshairs targeting the ghosts). */
   private readonly ghostShooter: GhostShooterController;
@@ -359,6 +363,44 @@ export class RoomState {
             );
           } else {
             this.peopleTrackers.delete(event.inputId);
+            store.setPeopleBoxes(event.inputId, null);
+          }
+        } else if (event.modelId === PEOPLE_COUNTER_YOLO_BIRDS_ID) {
+          // Birds mirror the people/ghost pipeline: the tracker gives a stable
+          // id/color and a 5-response miss grace (so a briefly-lost bird keeps
+          // its sprite), and we render either green boxes (drawBoxes, for
+          // sensitivity testing) or bird sprites (ghostMode). The bird only
+          // shows while it's being detected — there's no free-flight phase.
+          const cfg = input.aiModels?.[PEOPLE_COUNTER_YOLO_BIRDS_ID];
+          const hasFrame =
+            Array.isArray(data.boxes) &&
+            typeof data.frameW === 'number' &&
+            typeof data.frameH === 'number';
+          const sprite = Boolean(cfg?.enabled && cfg?.ghostMode);
+          const show = Boolean(
+            cfg?.enabled && (cfg?.drawBoxes || sprite) && hasFrame,
+          );
+          if (show) {
+            let tracker = this.birdTrackers.get(event.inputId);
+            if (!tracker) {
+              tracker = new PeopleTracker();
+              this.birdTrackers.set(event.inputId, tracker);
+            }
+            const tracked = tracker.update(data.boxes!);
+            store.setPeopleBoxes(
+              event.inputId,
+              tracked.length > 0
+                ? {
+                    boxes: tracked,
+                    frameW: data.frameW!,
+                    frameH: data.frameH!,
+                    ghost: sprite,
+                    sprite: 'bird',
+                  }
+                : null,
+            );
+          } else {
+            this.birdTrackers.delete(event.inputId);
             store.setPeopleBoxes(event.inputId, null);
           }
         }
@@ -1041,8 +1083,7 @@ export class RoomState {
         input.aiModels = {};
       }
 
-      const current =
-        input.aiModels[modelId] ?? defaultAIModelConfig(manifest);
+      const current = input.aiModels[modelId] ?? defaultAIModelConfig(manifest);
       const newDelay =
         delayMs !== undefined
           ? Math.min(Math.max(0, delayMs), manifest.maxDelayMs)
@@ -1051,8 +1092,7 @@ export class RoomState {
         drawBoxes !== undefined ? drawBoxes : current.drawBoxes;
       const newGhostMode =
         ghostMode !== undefined ? ghostMode : current.ghostMode;
-      const newParams =
-        params !== undefined ? params : current.params;
+      const newParams = params !== undefined ? params : current.params;
       const paramsChanged =
         JSON.stringify(current.params ?? {}) !==
         JSON.stringify(newParams ?? {});

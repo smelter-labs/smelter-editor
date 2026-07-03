@@ -1688,6 +1688,15 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     shaderFile: 'pacman-ghosts.wgsl',
   },
   {
+    id: 'birds',
+    isActive: true,
+    isVisible: false,
+    name: 'Birds',
+    description:
+      'Draws flapping bird sprites over YOLO-detected birds, which fly off on their own once the detection is lost.',
+    shaderFile: 'birds.wgsl',
+  },
+  {
     id: 'comic-book',
     isActive: true,
     isVisible: true,

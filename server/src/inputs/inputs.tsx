@@ -18,6 +18,7 @@ import { ScrollingText } from './scrollingText';
 import { TransitionShaderWrapper } from './transitionWrapper';
 import { HandsInput } from './HandsInput';
 import { PacmanGhostsInput } from './PacmanGhostsInput';
+import { PacmanBirdsInput } from './PacmanBirdsInput';
 
 type Resolution = { width: number; height: number };
 
@@ -188,13 +189,23 @@ export function Input({ input }: { input: InputConfig }) {
                 volume={input.volume}
               />
             ) : peopleBoxes?.ghost && peopleBoxes.boxes.length ? (
-              <PacmanGhostsInput
-                sourceInputId={input.inputId}
-                data={peopleBoxes}
-                resolution={{ width: contentWidth, height: contentHeight }}
-                volume={input.volume}
-                deadIds={shooter?.deadGhostIds}
-              />
+              peopleBoxes.sprite === 'bird' ? (
+                <PacmanBirdsInput
+                  sourceInputId={input.inputId}
+                  data={peopleBoxes}
+                  resolution={{ width: contentWidth, height: contentHeight }}
+                  volume={input.volume}
+                  deadIds={shooter?.deadGhostIds}
+                />
+              ) : (
+                <PacmanGhostsInput
+                  sourceInputId={input.inputId}
+                  data={peopleBoxes}
+                  resolution={{ width: contentWidth, height: contentHeight }}
+                  volume={input.volume}
+                  deadIds={shooter?.deadGhostIds}
+                />
+              )
             ) : (
               <Rescaler style={{ rescaleMode: 'fill' }}>
                 <InputStream inputId={input.inputId} volume={input.volume} />

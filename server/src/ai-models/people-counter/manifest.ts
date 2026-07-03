@@ -11,7 +11,8 @@ const YOLO_PARAMS: ModelParamSpec[] = [
   {
     key: 'confidence',
     label: 'Confidence',
-    description: 'Lower = detects more (incl. distant/small people), more false positives',
+    description:
+      'Lower = detects more (incl. distant/small people), more false positives',
     min: 0.05,
     max: 0.9,
     step: 0.05,
@@ -39,6 +40,8 @@ type BackendSpec = {
   maxDelayMs?: number;
   supportsBoxes?: boolean;
   params?: ModelParamSpec[];
+  /** COCO class ids the YOLO worker should detect (default 0 = person). */
+  yoloClasses?: string;
 };
 
 const BACKENDS: BackendSpec[] = [
@@ -53,6 +56,20 @@ const BACKENDS: BackendSpec[] = [
     maxDelayMs: 5000,
     supportsBoxes: true,
     params: YOLO_PARAMS,
+  },
+  {
+    id: 'people-counter-yolo-birds',
+    name: 'Bird Counter (YOLO)',
+    description:
+      'Detects birds (YOLOv8). Draw boxes to tune sensitivity, or show bird sprites — shootable in Ghost Shooter.',
+    backend: 'yolo',
+    wsPort: 8087,
+    // Same heavy YOLO model as the people backend — keep a generous delay.
+    defaultDelayMs: 3000,
+    maxDelayMs: 5000,
+    supportsBoxes: true,
+    params: YOLO_PARAMS,
+    yoloClasses: '14',
   },
   {
     id: 'people-counter-mediapipe',
@@ -95,7 +112,12 @@ function makeManifest(spec: BackendSpec): ModelManifest {
     // Heavy backends (YOLO/MediaPipe) are checked lazily in the worker so a
     // missing package only disables that backend — Haar always works.
     depsCheck: 'import cv2; import numpy; import websockets; import smelter',
-    extraEnv: { PEOPLE_COUNTER_BACKEND: spec.backend },
+    extraEnv: {
+      PEOPLE_COUNTER_BACKEND: spec.backend,
+      ...(spec.yoloClasses
+        ? { PEOPLE_COUNTER_YOLO_CLASSES: spec.yoloClasses }
+        : {}),
+    },
     ...(spec.supportsBoxes ? { supportsBoxes: true } : {}),
     ...(spec.params ? { params: spec.params } : {}),
   };
@@ -104,8 +126,12 @@ function makeManifest(spec: BackendSpec): ModelManifest {
 /** The YOLO backend model id — the only one that emits bounding boxes. */
 export const PEOPLE_COUNTER_YOLO_ID = 'people-counter-yolo';
 
+/** The YOLO bird-detection backend model id (COCO class 14). */
+export const PEOPLE_COUNTER_YOLO_BIRDS_ID = 'people-counter-yolo-birds';
+
 /** One manifest per detection backend — each is an independently toggleable model. */
-export const PEOPLE_COUNTER_MANIFESTS: ModelManifest[] = BACKENDS.map(makeManifest);
+export const PEOPLE_COUNTER_MANIFESTS: ModelManifest[] =
+  BACKENDS.map(makeManifest);
 
 /** True for any people-counter backend model id. */
 export function isPeopleCounterModel(modelId: string): boolean {
