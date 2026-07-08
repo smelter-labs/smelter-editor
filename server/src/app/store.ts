@@ -14,6 +14,7 @@ import type {
   ViewportProperties,
 } from '../types';
 import type { HandsStore } from '../hands/handStore';
+import type { DuckEntity } from '../duckHunter/duckFlight';
 import { createContext, useContext } from 'react';
 import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
@@ -67,6 +68,7 @@ export type RoomStore = {
   transcripts: Record<string, string>;
   peopleCounts: Record<string, number>;
   peopleBoxes: Record<string, PersonBoxes>;
+  buildingBoxes: Record<string, BuildingBoxes>;
   shooter: ShooterOverlay | null;
   updateState: (state: RoomStoreState & { layers: Layer[] }) => void;
   setOutputShaders: (shaders: ShaderConfig[]) => void;
@@ -74,6 +76,7 @@ export type RoomStore = {
   setTranscript: (inputId: string, text: string) => void;
   setPeopleCount: (inputId: string, count: number | null) => void;
   setPeopleBoxes: (inputId: string, boxes: PersonBoxes | null) => void;
+  setBuildingBoxes: (inputId: string, boxes: BuildingBoxes | null) => void;
   setShooter: (shooter: ShooterOverlay | null) => void;
 } & Partial<ViewportProperties>;
 
@@ -86,6 +89,18 @@ export type PersonBox = { x: number; y: number; w: number; h: number };
  */
 export type TrackedPersonBox = PersonBox & { id: number; color: number };
 
+/**
+ * Building detection boxes (Ghost City), normalized to 0..1 of the input frame,
+ * plus the frame dimensions they were detected in. Buildings are static, so
+ * unlike people these carry no tracked identity — the render component smooths
+ * them over time and the haunted-city shader haunts each box region.
+ */
+export type BuildingBoxes = {
+  boxes: PersonBox[];
+  frameW: number;
+  frameH: number;
+};
+
 /** Boxes plus the frame dimensions they were detected in (for cover mapping). */
 export type PersonBoxes = {
   boxes: TrackedPersonBox[];
@@ -95,6 +110,18 @@ export type PersonBoxes = {
   ghost?: boolean;
   /** Which sprite to draw in ghost mode: Pac-Man ghost (default) or bird. */
   sprite?: 'ghost' | 'bird';
+  /**
+   * Operator-tunable duck-size multiplier (Duck Hunter panel), applied on top
+   * of the sprite's base footprint. 1 = default; 0.5 = ducks half as big.
+   */
+  duckScale?: number;
+  /**
+   * Operator-tunable free-flight timing (Duck Hunter panel). `duckPauseMs` is
+   * how long a duck holds its spawn spot before flying off; `duckFlySpeed` is
+   * how fast it flies off, as a fraction of the larger screen edge per second.
+   */
+  duckPauseMs?: number;
+  duckFlySpeed?: number;
 };
 
 /** A player's crosshair in normalized content space [0,1] of the target input. */
@@ -115,14 +142,34 @@ export type ShooterBurst = {
   kind: 'hit' | 'miss';
 };
 
+/** The Duck Hunt dog popping up (holding two ducks) after a 2-in-a-row streak.
+ * `x` is the pop-up column in normalized [0,1] content space; `color` is the
+ * scoring player's hex color (the dog is hue-tinted to it); `at` is the ms the
+ * reveal began, for the rise → hold → drop animation. */
+export type DogReveal = {
+  id: number;
+  color: string;
+  x: number;
+  at: number;
+};
+
 /** Ghost Shooter overlay state rendered on the target (ghost-enabled) input. */
 export type ShooterOverlay = {
   targetInputId: string;
   crosshairs: ShooterCrosshair[];
   scores: { name: string; color: string; score: number }[];
   bursts: ShooterBurst[];
+  /** Duck Hunt dog reveals in flight (2-in-a-row celebration). */
+  dogReveals: DogReveal[];
   /** Ghost ids currently shot down (hidden/animated) on the target input. */
   deadGhostIds: number[];
+  /** Shot-down ghosts with the wall-clock ms they died, for the death
+   * animation (hang → dim → fall). Same ids as deadGhostIds. */
+  deadGhosts: { id: number; diedAt: number }[];
+  /** Bird-sprite mode only: the authoritative live ducks (spawn state + flight
+   * params baked in). The renderer draws these and the hit-test shoots at them,
+   * so a shot always lands on the sprite. Empty for the Pac-Man ghost sprite. */
+  ducks: DuckEntity[];
 };
 
 export function createRoomStore(
@@ -141,6 +188,7 @@ export function createRoomStore(
     transcripts: {},
     peopleCounts: {},
     peopleBoxes: {},
+    buildingBoxes: {},
     shooter: null,
     updateState: (incoming) => {
       const {
@@ -208,6 +256,14 @@ export function createRoomStore(
         if (boxes && boxes.boxes.length > 0) next[inputId] = boxes;
         else delete next[inputId];
         return { peopleBoxes: next };
+      });
+    },
+    setBuildingBoxes: (inputId: string, boxes: BuildingBoxes | null) => {
+      set((state) => {
+        const next = { ...state.buildingBoxes };
+        if (boxes && boxes.boxes.length > 0) next[inputId] = boxes;
+        else delete next[inputId];
+        return { buildingBoxes: next };
       });
     },
     setShooter: (shooter: ShooterOverlay | null) => {

@@ -85,6 +85,9 @@ export type {
   AIModelStatus,
   AIModelInfo,
   ModelParamSpec,
+  NumberParamSpec,
+  SelectParamSpec,
+  ModelParamValue,
 } from "./ai-models.js";
 
 export type {
@@ -151,6 +154,7 @@ export type {
 
 export type {
   ShooterPlayer,
+  ShooterAmmoConfig,
   ShooterJoinMessage,
   ShooterAimMessage,
   ShooterFireMessage,
@@ -159,5 +163,7 @@ export type {
   ShooterStateEvent,
   ShooterHitEvent,
   ShooterMissEvent,
+  ShooterEmptyEvent,
+  ShooterAmmoEvent,
   ShooterServerEvent,
 } from "./shooter-events.js";

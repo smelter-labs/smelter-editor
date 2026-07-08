@@ -42,6 +42,7 @@ import {
   RotateCcw,
   X,
   Settings,
+  Crosshair,
 } from 'lucide-react';
 import RecordingsList from '@/components/recordings-list';
 import { toast } from 'sonner';
@@ -907,6 +908,18 @@ export default function IntroView() {
                             )
                           }>
                           <Eye className='w-4 h-4' />
+                        </Button>
+                        <Button
+                          size='sm'
+                          variant='secondary'
+                          className='cursor-pointer flex-1 sm:flex-none bg-[#ffde59]/15 text-[#ffde59] hover:bg-[#ffde59]/25'
+                          title='Duck Hunter 🦆'
+                          onClick={() =>
+                            router.push(
+                              `/mobile/${encodeURIComponent(room.roomId)}/shoot`,
+                            )
+                          }>
+                          <Crosshair className='w-4 h-4' />
                         </Button>
                         <Button
                           size='sm'

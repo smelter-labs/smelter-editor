@@ -1,5 +1,5 @@
 import path from 'node:path';
-import type { ModelParamSpec } from '@smelter-editor/types';
+import type { ModelParamSpec, NumberParamSpec } from '@smelter-editor/types';
 import type { ModelManifest } from '../registry';
 
 const PEOPLE_COUNTER_DIR = path.join(__dirname, '.');
@@ -7,7 +7,7 @@ const PEOPLE_COUNTER_DIR = path.join(__dirname, '.');
 export type PeopleCounterBackend = 'yolo' | 'mediapipe' | 'haar';
 
 // YOLO tunables, forwarded live to the worker (worker keys: 'confidence', 'imgsz').
-const YOLO_PARAMS: ModelParamSpec[] = [
+const YOLO_PARAMS: NumberParamSpec[] = [
   {
     key: 'confidence',
     label: 'Confidence',
@@ -29,6 +29,45 @@ const YOLO_PARAMS: ModelParamSpec[] = [
   },
 ];
 
+// Birds are tiny, fast specks against the sky — the person defaults (nano
+// model, imgsz 640, conf 0.35) miss most of them. Detect with a stronger model
+// (yolov8s vs. nano), a larger inference size, and a lower confidence. These
+// feed both the UI slider defaults (BIRD_YOLO_PARAMS) and the worker's env
+// baseline (extraEnv) so detection is good even before any slider is touched.
+const BIRD_YOLO_WEIGHTS = 'yolov8s.pt';
+const BIRD_YOLO_CONF = 0.2;
+const BIRD_YOLO_IMGSZ = 1280;
+
+// Model-size selector, swappable live (the worker reloads weights on change) so
+// you can A/B nano/small/medium without restarting.
+const BIRD_WEIGHTS_PARAM: ModelParamSpec = {
+  type: 'select',
+  key: 'weights',
+  label: 'Model',
+  description: 'Bigger = more accurate on small birds, slower on CPU',
+  options: [
+    { value: 'yolov8n.pt', label: 'Nano (fastest)' },
+    { value: 'yolov8s.pt', label: 'Small (balanced)' },
+    { value: 'yolov8m.pt', label: 'Medium (most accurate)' },
+  ],
+  default: BIRD_YOLO_WEIGHTS,
+};
+
+const BIRD_YOLO_PARAMS: ModelParamSpec[] = [
+  BIRD_WEIGHTS_PARAM,
+  ...YOLO_PARAMS.map((p) => {
+    if (p.key === 'confidence') return { ...p, default: BIRD_YOLO_CONF };
+    if (p.key === 'imgsz') {
+      return {
+        ...p,
+        default: BIRD_YOLO_IMGSZ,
+        description: 'Higher = catches smaller/farther birds, slower on CPU',
+      };
+    }
+    return p;
+  }),
+];
+
 type BackendSpec = {
   id: string;
   name: string;
@@ -42,6 +81,12 @@ type BackendSpec = {
   params?: ModelParamSpec[];
   /** COCO class ids the YOLO worker should detect (default 0 = person). */
   yoloClasses?: string;
+  /** YOLO weights file (worker default: yolov8n.pt). */
+  yoloWeights?: string;
+  /** Worker env baseline for confidence / inference size (fallback when the
+   * UI sends no params). Kept in sync with the params defaults above. */
+  yoloConf?: number;
+  yoloImgsz?: number;
 };
 
 const BACKENDS: BackendSpec[] = [
@@ -61,15 +106,19 @@ const BACKENDS: BackendSpec[] = [
     id: 'people-counter-yolo-birds',
     name: 'Bird Counter (YOLO)',
     description:
-      'Detects birds (YOLOv8). Draw boxes to tune sensitivity, or show bird sprites — shootable in Ghost Shooter.',
+      'Detects birds (YOLOv8s). Draw boxes to tune sensitivity, or show duck sprites — shootable in Duck Hunter.',
     backend: 'yolo',
     wsPort: 8087,
-    // Same heavy YOLO model as the people backend — keep a generous delay.
+    // Stronger model + larger inference size than the people backend, so keep a
+    // generous delay (birds are heavier to detect than nearby people).
     defaultDelayMs: 3000,
     maxDelayMs: 5000,
     supportsBoxes: true,
-    params: YOLO_PARAMS,
+    params: BIRD_YOLO_PARAMS,
     yoloClasses: '14',
+    yoloWeights: BIRD_YOLO_WEIGHTS,
+    yoloConf: BIRD_YOLO_CONF,
+    yoloImgsz: BIRD_YOLO_IMGSZ,
   },
   {
     id: 'people-counter-mediapipe',
@@ -116,6 +165,15 @@ function makeManifest(spec: BackendSpec): ModelManifest {
       PEOPLE_COUNTER_BACKEND: spec.backend,
       ...(spec.yoloClasses
         ? { PEOPLE_COUNTER_YOLO_CLASSES: spec.yoloClasses }
+        : {}),
+      ...(spec.yoloWeights
+        ? { PEOPLE_COUNTER_YOLO_WEIGHTS: spec.yoloWeights }
+        : {}),
+      ...(spec.yoloConf !== undefined
+        ? { PEOPLE_COUNTER_YOLO_CONF: String(spec.yoloConf) }
+        : {}),
+      ...(spec.yoloImgsz !== undefined
+        ? { PEOPLE_COUNTER_YOLO_IMGSZ: String(spec.yoloImgsz) }
         : {}),
     },
     ...(spec.supportsBoxes ? { supportsBoxes: true } : {}),

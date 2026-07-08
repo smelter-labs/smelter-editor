@@ -18,7 +18,7 @@ import {
 import { captionDebug } from './captions/captionsDebug';
 import { config } from './config';
 import { DATA_DIR } from './dataDir';
-import { ensureDir, readFile } from 'fs-extra';
+import { ensureDir, pathExists, readFile } from 'fs-extra';
 import {
   MotionScene,
   type MotionStore,
@@ -139,9 +139,7 @@ function logSideChannelRegistration(
     return;
   }
   const socketDir = process.env.SMELTER_SIDE_CHANNEL_SOCKET_DIR ?? '';
-  const pathLen = socketDir
-    ? sideChannelSocketPathLen(socketDir, inputId)
-    : 0;
+  const pathLen = socketDir ? sideChannelSocketPathLen(socketDir, inputId) : 0;
   console.log(
     `[side-channel] registering ${inputType} inputId=${inputId} video=${!!sideChannel.video} audio=${!!sideChannel.audio} delayMs=${sideChannel.delayMs ?? 0} socketPathLen=${pathLen}/${UNIX_SOCKET_PATH_MAX}`,
   );
@@ -237,6 +235,38 @@ class SmelterManager {
 
     await this.registerImage('smelter_logo', {
       serverPath: path.join(__dirname, '../imgs/smelter_logo.png'),
+      assetType: 'png',
+    });
+
+    // Duck Hunt (NES) duck sprites for the bird detector's Ghost Shooter mode:
+    // 3 color variants × {3 wing-flap frames, 1 shot pose}. Ids are
+    // `duck-<color>-<frame>` — must match PacmanBirdsInput.tsx.
+    //
+    // Smelter only bilinear-scales images, which blurs the 36px pixel-art
+    // sprites when drawn large. Prefer the nearest-neighbor-upscaled copies in
+    // `imgs/ducks-hi/` (see scripts/upscale-ducks.py) so Smelter downsamples a
+    // crisp image; fall back to the originals if they haven't been generated.
+    const ducksHiDir = path.join(__dirname, '../imgs/ducks-hi');
+    const ducksDir = (await pathExists(ducksHiDir))
+      ? ducksHiDir
+      : path.join(__dirname, '../imgs/ducks');
+    for (let c = 0; c < 3; c++) {
+      for (const f of ['0', '1', '2', 'shot']) {
+        await this.registerImage(`duck-${c}-${f}`, {
+          serverPath: path.join(ducksDir, `duck-${c}-${f}.png`),
+          assetType: 'png',
+        });
+      }
+    }
+
+    // Duck Hunt dog holding two ducks, shown when a player bags two in a row.
+    // Same hi-res-preferred strategy as the ducks (see scripts/slice-dog.py).
+    const dogHiDir = path.join(__dirname, '../imgs/dog-hi');
+    const dogDir = (await pathExists(dogHiDir))
+      ? dogHiDir
+      : path.join(__dirname, '../imgs/dog');
+    await this.registerImage('dog-catch', {
+      serverPath: path.join(dogDir, 'dog-catch.png'),
       assetType: 'png',
     });
 

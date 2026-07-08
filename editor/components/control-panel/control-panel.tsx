@@ -426,6 +426,7 @@ function ControlPanelWithActions({
       volume: p.volume,
       showTitle: p.showTitle,
       shaders: p.shaders,
+      aiModels: p.aiModels,
     },
     position: p.position,
   }));
@@ -534,6 +535,7 @@ function ControlPanelWithActions({
           volume: i.volume ?? 1,
           showTitle: i.showTitle,
           shaders: i.shaders ?? [],
+          aiModels: i.aiModels,
         },
         position: 0,
         staleInputId: i.inputId,
@@ -578,6 +580,7 @@ function ControlPanelWithActions({
           showTitle: p.config.showTitle !== false,
           shaders: p.config.shaders || [],
           position: p.position,
+          ...(p.config.aiModels ? { aiModels: p.config.aiModels } : {}),
         }));
       await setPendingWhipInputsAction(roomId, serverData);
       await handleRefreshState();

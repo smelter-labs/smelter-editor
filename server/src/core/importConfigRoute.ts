@@ -235,6 +235,38 @@ export const __importConfigRouteTestUtils = {
   shouldImportInputFromConfig,
 };
 
+/**
+ * Re-apply persisted per-input AI model config (enable/disable + tunables).
+ * Runs after the input is created and connected so the side channel can be
+ * (re)established as each model requires. Failures are collected per model so
+ * one bad entry doesn't abort the rest of the import.
+ */
+async function applyAIModels(
+  room: ReturnType<typeof state.getRoom>,
+  inputId: string,
+  input: ImportConfigInput,
+  errors: string[],
+): Promise<void> {
+  if (!input.aiModels) return;
+  for (const [modelId, config] of Object.entries(input.aiModels)) {
+    try {
+      await room.setAIModelEnabled(
+        inputId,
+        modelId,
+        config.enabled,
+        config.delayMs,
+        config.drawBoxes,
+        config.params,
+        config.ghostMode,
+      );
+    } catch (e) {
+      const msg = `Failed to apply AI model "${modelId}" on input "${input.title}": ${e instanceof Error ? e.message : String(e)}`;
+      console.warn(`[import-config] ${msg}`);
+      errors.push(msg);
+    }
+  }
+}
+
 function buildUpdateOptions(
   input: ImportConfigInput,
   attachedInputIds?: string[],
@@ -426,6 +458,7 @@ export function registerImportConfigRoute(routes: FastifyInstance): void {
           console.warn(`[import-config] ${msg}`);
           errors.push(msg);
         }
+        await applyAIModels(room, inputId, inputConfig, errors);
         advance('Configuring inputs');
       }
 
@@ -450,13 +483,15 @@ export function registerImportConfigRoute(routes: FastifyInstance): void {
         showTitle: input.showTitle !== false,
         shaders: input.shaders || [],
       }));
-      room.pendingWhipInputs = pendingWhipData.map((pw) => ({
-        id: pw.id,
-        title: pw.title,
-        volume: pw.volume,
-        showTitle: pw.showTitle,
-        shaders: pw.shaders,
-        position: pw.position,
+      room.pendingWhipInputs = whipInputs.map(({ input }, i) => ({
+        id: pendingWhipData[i].id,
+        title: pendingWhipData[i].title,
+        volume: pendingWhipData[i].volume,
+        showTitle: pendingWhipData[i].showTitle,
+        shaders: pendingWhipData[i].shaders,
+        position: pendingWhipData[i].position,
+        // Preserved so the AI model config is re-applied once the WHIP connects.
+        ...(input.aiModels ? { aiModels: input.aiModels } : {}),
       }));
       const pendingWhipPlaceholderByIndex: Record<number, string> = {};
       for (const pending of pendingWhipData) {

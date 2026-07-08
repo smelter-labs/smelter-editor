@@ -1688,13 +1688,13 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     shaderFile: 'pacman-ghosts.wgsl',
   },
   {
-    id: 'birds',
+    id: 'haunted-city',
     isActive: true,
     isVisible: false,
-    name: 'Birds',
+    name: 'Haunted City',
     description:
-      'Draws flapping bird sprites over YOLO-detected birds, which fly off on their own once the detection is lost.',
-    shaderFile: 'birds.wgsl',
+      'Ghost City: haunts detected building regions with eerie mist + desaturation, a spectral green-teal edge glow, and randomly glowing windows.',
+    shaderFile: 'haunted-city.wgsl',
   },
   {
     id: 'comic-book',

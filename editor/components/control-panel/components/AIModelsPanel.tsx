@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Input } from '@/lib/types';
-import type { AIModelInfo, ModelParamSpec } from '@smelter-editor/types';
+import type {
+  AIModelInfo,
+  ModelParamSpec,
+  NumberParamSpec,
+} from '@smelter-editor/types';
 import {
   getAvailableAIModels,
   setAIModel,
@@ -11,6 +15,13 @@ import {
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 const DEBOUNCE_MS = 300;
 
@@ -23,7 +34,10 @@ const CAPTION_INPUT_TYPES = new Set([
   'whip',
 ]);
 
-type Draft = { delayMs?: number; params?: Record<string, number> };
+type Draft = {
+  delayMs?: number;
+  params?: Record<string, number | string>;
+};
 
 export function AIModelsPanel({
   roomId,
@@ -97,9 +111,12 @@ export function AIModelsPanel({
 
   /** Full params object for a model, with an optional single override. */
   const resolveParams = useCallback(
-    (model: AIModelInfo, override?: { key: string; value: number }) => {
+    (
+      model: AIModelInfo,
+      override?: { key: string; value: number | string },
+    ) => {
       if (!model.params?.length) return undefined;
-      const obj: Record<string, number> = {};
+      const obj: Record<string, number | string> = {};
       for (const spec of model.params) {
         obj[spec.key] =
           override && override.key === spec.key
@@ -119,7 +136,7 @@ export function AIModelsPanel({
         delayMs?: number;
         drawBoxes?: boolean;
         ghostMode?: boolean;
-        params?: Record<string, number>;
+        params?: Record<string, number | string>;
       },
     ) => {
       if (!selectedInput) return;
@@ -174,7 +191,7 @@ export function AIModelsPanel({
   );
 
   const onParamChange = useCallback(
-    (model: AIModelInfo, spec: ModelParamSpec, value: number) => {
+    (model: AIModelInfo, spec: ModelParamSpec, value: number | string) => {
       setDrafts((prev) => ({
         ...prev,
         [model.id]: {
@@ -288,21 +305,47 @@ export function AIModelsPanel({
                   </Field>
                 )}
 
-                {model.params?.map((spec) => (
-                  <Field
-                    key={spec.key}
-                    label={spec.label}
-                    value={formatParam(spec, paramOf(model, spec))}
-                    hint={spec.description}>
-                    <Slider
-                      min={spec.min}
-                      max={spec.max}
-                      step={spec.step}
-                      value={[paramOf(model, spec)]}
-                      onValueChange={([v]) => onParamChange(model, spec, v)}
-                    />
-                  </Field>
-                ))}
+                {model.params?.map((spec) =>
+                  spec.type === 'select' ? (
+                    <Field
+                      key={spec.key}
+                      label={spec.label}
+                      value=''
+                      hint={spec.description}>
+                      <Select
+                        value={String(paramOf(model, spec))}
+                        onValueChange={(v) => onParamChange(model, spec, v)}>
+                        <SelectTrigger className='h-8 text-xs'>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {spec.options.map((o) => (
+                            <SelectItem
+                              key={o.value}
+                              value={o.value}
+                              className='text-xs'>
+                              {o.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </Field>
+                  ) : (
+                    <Field
+                      key={spec.key}
+                      label={spec.label}
+                      value={formatParam(spec, Number(paramOf(model, spec)))}
+                      hint={spec.description}>
+                      <Slider
+                        min={spec.min}
+                        max={spec.max}
+                        step={spec.step}
+                        value={[Number(paramOf(model, spec))]}
+                        onValueChange={([v]) => onParamChange(model, spec, v)}
+                      />
+                    </Field>
+                  ),
+                )}
 
                 {model.supportsBoxes && (
                   <div className='flex items-center justify-between'>
@@ -338,12 +381,12 @@ export function AIModelsPanel({
                     <div>
                       <div className='text-xs text-neutral-300'>
                         {model.id.includes('bird')
-                          ? 'Bird sprites'
+                          ? 'Duck sprites'
                           : 'Pac-Man ghosts'}
                       </div>
                       <div className='text-[11px] text-neutral-500'>
                         {model.id.includes('bird')
-                          ? 'Replace each detected bird with a flapping bird sprite'
+                          ? 'Replace each detected bird with a Duck Hunt duck sprite'
                           : 'Replace each detected person with a Pac-Man ghost'}
                       </div>
                     </div>
@@ -411,7 +454,7 @@ function Empty({ children }: { children: React.ReactNode }) {
   );
 }
 
-function formatParam(spec: ModelParamSpec, value: number): string {
+function formatParam(spec: NumberParamSpec, value: number): string {
   // Fractional steps (e.g. confidence) read better with 2 decimals.
   return spec.step < 1 ? value.toFixed(2) : String(Math.round(value));
 }

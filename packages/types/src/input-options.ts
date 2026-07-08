@@ -7,6 +7,7 @@ import type {
   SnakeGameDisplayProperties,
   InputOrientation,
 } from "./input.js";
+import type { AIModelConfig } from "./ai-models.js";
 
 // Allow `null` as an explicit reset sentinel for absolute-position and crop
 // fields.  When the server receives `null` it clears the stored value back to
@@ -90,4 +91,6 @@ export type PendingWhipInputData = {
   id: string;
   title: string;
   position: number;
+  /** Per-input AI model configuration to re-apply once the WHIP connects. */
+  aiModels?: Record<string, AIModelConfig>;
 } & InputDisplayProperties;

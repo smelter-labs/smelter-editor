@@ -1851,6 +1851,7 @@ const PendingWhipInputSchema = Type.Object({
   showTitle: Type.Boolean(),
   shaders: Type.Array(Type.Any()),
   position: Type.Number(),
+  aiModels: Type.Optional(Type.Record(Type.String(), Type.Any())),
 });
 
 const SetPendingWhipInputsSchema = Type.Object({
@@ -2273,7 +2274,9 @@ const AIModelSchema = Type.Object({
   delayMs: Type.Optional(Type.Number({ minimum: 0 })),
   drawBoxes: Type.Optional(Type.Boolean()),
   ghostMode: Type.Optional(Type.Boolean()),
-  params: Type.Optional(Type.Record(Type.String(), Type.Number())),
+  params: Type.Optional(
+    Type.Record(Type.String(), Type.Union([Type.Number(), Type.String()])),
+  ),
 });
 
 routes.get('/ai-models', async (_req, res) => {
@@ -2532,6 +2535,41 @@ routes.post<RoomIdParams & { Body: Static<typeof AudioAnalysisSchema> }>(
     const room = state.getRoom(roomId);
     await room.setAudioAnalysisEnabled(req.body.enabled);
     res.status(200).send({ status: 'ok' });
+  },
+);
+
+// ── Duck Hunter ────────────────────────────────────────────────
+
+const DuckHunterConfigSchema = Type.Object({
+  maxAmmo: Type.Optional(Type.Number()),
+  reloadMs: Type.Optional(Type.Number()),
+  duckScale: Type.Optional(Type.Number()),
+  duckPauseMs: Type.Optional(Type.Number()),
+  duckFlySpeed: Type.Optional(Type.Number()),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof DuckHunterConfigSchema> }>(
+  '/room/:roomId/duck-hunter/config',
+  { schema: { params: RoomIdParamsSchema, body: DuckHunterConfigSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    console.log('[request] Set Duck Hunter config', {
+      roomId,
+      maxAmmo: req.body.maxAmmo,
+      reloadMs: req.body.reloadMs,
+      duckScale: req.body.duckScale,
+      duckPauseMs: req.body.duckPauseMs,
+      duckFlySpeed: req.body.duckFlySpeed,
+    });
+    const room = state.getRoom(roomId);
+    const config = room.setDuckHunterConfig({
+      maxAmmo: req.body.maxAmmo,
+      reloadMs: req.body.reloadMs,
+      duckScale: req.body.duckScale,
+      duckPauseMs: req.body.duckPauseMs,
+      duckFlySpeed: req.body.duckFlySpeed,
+    });
+    res.status(200).send({ status: 'ok', config });
   },
 );
 

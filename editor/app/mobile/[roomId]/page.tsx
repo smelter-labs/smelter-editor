@@ -147,9 +147,9 @@ export default function MobileJoinPage() {
                 <Crosshair className='w-6 h-6 text-[#00f3ff]' />
               </div>
               <div className='flex-1 min-w-0'>
-                <div className='text-lg font-semibold'>Shoot Ghosts 🎯</div>
+                <div className='text-lg font-semibold'>Duck Hunter 🦆</div>
                 <div className='text-sm text-neutral-400'>
-                  Aim with your phone&apos;s gyroscope and shoot the ghosts.
+                  Aim with your phone&apos;s gyroscope and shoot the ducks.
                 </div>
               </div>
             </button>

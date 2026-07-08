@@ -9,8 +9,17 @@ export type ShooterPlayer = {
   score: number;
 };
 
+/**
+ * Room-wide ammo rules, set by the operator in the Duck Hunter panel (pushed
+ * over REST, not per-player from the phone).
+ */
+export type ShooterAmmoConfig = { maxAmmo?: number; reloadMs?: number };
+
 // Client -> Server
-export type ShooterJoinMessage = { type: "shoot_join"; name: string };
+export type ShooterJoinMessage = {
+  type: "shoot_join";
+  name: string;
+};
 /** Aim position in normalized content space [0,1] (0,0 = top-left). */
 export type ShooterAimMessage = { type: "shoot_aim"; x: number; y: number };
 export type ShooterFireMessage = { type: "shoot_fire" };
@@ -45,7 +54,28 @@ export type ShooterMissEvent = {
   clientId: string;
 };
 
+/** Fire attempt with an empty magazine — no shot, just a click. */
+export type ShooterEmptyEvent = {
+  type: "shooter_empty";
+  roomId: string;
+  clientId: string;
+};
+
+/** Current ammo state for one player (magazine + reload progress). */
+export type ShooterAmmoEvent = {
+  type: "shooter_ammo";
+  roomId: string;
+  clientId: string;
+  ammo: number;
+  maxAmmo: number;
+  reloadMs: number;
+  /** Ms until the next round regenerates (0 when the magazine is full). */
+  reloadRemainingMs: number;
+};
+
 export type ShooterServerEvent =
   | ShooterStateEvent
   | ShooterHitEvent
-  | ShooterMissEvent;
+  | ShooterMissEvent
+  | ShooterEmptyEvent
+  | ShooterAmmoEvent;

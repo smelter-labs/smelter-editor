@@ -1,0 +1,7 @@
+smelter-sdk
+opencv-python-headless
+numpy
+websockets
+pillow
+torch                  # segmentation backend — heavy
+transformers           # SegFormer ADE20K semantic segmentation

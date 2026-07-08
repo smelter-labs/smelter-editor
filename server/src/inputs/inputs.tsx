@@ -19,6 +19,7 @@ import { TransitionShaderWrapper } from './transitionWrapper';
 import { HandsInput } from './HandsInput';
 import { PacmanGhostsInput } from './PacmanGhostsInput';
 import { PacmanBirdsInput } from './PacmanBirdsInput';
+import { GhostCityWrapper } from './GhostCityWrapper';
 
 type Resolution = { width: number; height: number };
 
@@ -137,10 +138,89 @@ export function Input({ input }: { input: InputConfig }) {
     store,
     (state) => state.peopleBoxes[input.inputId],
   );
+  // Ghost City: detected building regions to haunt with the eerie shader.
+  const buildingBoxes = useStore(
+    store,
+    (state) => state.buildingBoxes[input.inputId],
+  );
   // Ghost Shooter overlay, only when this input is the game's target.
   const shooter = useStore(store, (state) =>
     state.shooter?.targetInputId === input.inputId ? state.shooter : null,
   );
+
+  // The video/content element for the playing state. Extracted so Ghost City
+  // can wrap it in the haunted-city shader without disturbing the overlays
+  // (subtitle, boxes, count badge, shooter HUD) that sit beside it.
+  let videoContent: React.ReactElement = showFrozenImage ? (
+    <Rescaler style={{ rescaleMode: 'fill' }}>
+      <Image imageId={input.frozenImageId!} />
+    </Rescaler>
+  ) : isGame && getInputRenderer('game') ? (
+    getInputRenderer('game')!(input, {
+      width: contentWidth,
+      height: contentHeight,
+    })
+  ) : isImage ? (
+    <Rescaler style={{ rescaleMode: 'fit' }}>
+      <Image imageId={input.imageId!} />
+    </Rescaler>
+  ) : isTextInput ? (
+    <ScrollingText
+      text={input.text!}
+      maxLines={input.textMaxLines ?? 10}
+      scrollEnabled={input.textScrollEnabled ?? true}
+      scrollSpeed={input.textScrollSpeed ?? 80}
+      scrollLoop={input.textScrollLoop ?? true}
+      fontSize={input.textFontSize ?? 80}
+      color={input.textColor ?? 'white'}
+      align={input.textAlign ?? 'left'}
+      containerWidth={contentWidth}
+      containerHeight={contentHeight}
+      scrollNudge={input.textScrollNudge}
+    />
+  ) : isHands ? (
+    <HandsInput
+      sourceInputId={input.handsSourceInputId!}
+      handsStore={input.handsStore!}
+      resolution={{ width: contentWidth, height: contentHeight }}
+      volume={input.volume}
+    />
+  ) : peopleBoxes?.ghost && peopleBoxes.boxes.length ? (
+    peopleBoxes.sprite === 'bird' ? (
+      <PacmanBirdsInput
+        sourceInputId={input.inputId}
+        data={peopleBoxes}
+        resolution={{ width: contentWidth, height: contentHeight }}
+        volume={input.volume}
+        ducks={shooter?.ducks}
+      />
+    ) : (
+      <PacmanGhostsInput
+        sourceInputId={input.inputId}
+        data={peopleBoxes}
+        resolution={{ width: contentWidth, height: contentHeight }}
+        volume={input.volume}
+        deadIds={shooter?.deadGhostIds}
+      />
+    )
+  ) : (
+    <Rescaler style={{ rescaleMode: 'fill' }}>
+      <InputStream inputId={input.inputId} volume={input.volume} />
+    </Rescaler>
+  );
+
+  // Ghost City: haunt the detected building regions. Wraps whatever the base
+  // content is (raw stream or already ghost-swapped people), so it composes
+  // with ghost mode as an independent toggle.
+  if (buildingBoxes?.boxes.length) {
+    videoContent = (
+      <GhostCityWrapper
+        data={buildingBoxes}
+        resolution={{ width: contentWidth, height: contentHeight }}>
+        {videoContent}
+      </GhostCityWrapper>
+    );
+  }
 
   const inputComponent = (
     <Rescaler style={resolution}>
@@ -154,63 +234,7 @@ export function Input({ input }: { input: InputConfig }) {
               borderColor,
               backgroundColor: isTextInput ? '#1a1a2e' : undefined,
             }}>
-            {showFrozenImage ? (
-              <Rescaler style={{ rescaleMode: 'fill' }}>
-                <Image imageId={input.frozenImageId!} />
-              </Rescaler>
-            ) : isGame && getInputRenderer('game') ? (
-              getInputRenderer('game')!(input, {
-                width: contentWidth,
-                height: contentHeight,
-              })
-            ) : isImage ? (
-              <Rescaler style={{ rescaleMode: 'fit' }}>
-                <Image imageId={input.imageId!} />
-              </Rescaler>
-            ) : isTextInput ? (
-              <ScrollingText
-                text={input.text!}
-                maxLines={input.textMaxLines ?? 10}
-                scrollEnabled={input.textScrollEnabled ?? true}
-                scrollSpeed={input.textScrollSpeed ?? 80}
-                scrollLoop={input.textScrollLoop ?? true}
-                fontSize={input.textFontSize ?? 80}
-                color={input.textColor ?? 'white'}
-                align={input.textAlign ?? 'left'}
-                containerWidth={contentWidth}
-                containerHeight={contentHeight}
-                scrollNudge={input.textScrollNudge}
-              />
-            ) : isHands ? (
-              <HandsInput
-                sourceInputId={input.handsSourceInputId!}
-                handsStore={input.handsStore!}
-                resolution={{ width: contentWidth, height: contentHeight }}
-                volume={input.volume}
-              />
-            ) : peopleBoxes?.ghost && peopleBoxes.boxes.length ? (
-              peopleBoxes.sprite === 'bird' ? (
-                <PacmanBirdsInput
-                  sourceInputId={input.inputId}
-                  data={peopleBoxes}
-                  resolution={{ width: contentWidth, height: contentHeight }}
-                  volume={input.volume}
-                  deadIds={shooter?.deadGhostIds}
-                />
-              ) : (
-                <PacmanGhostsInput
-                  sourceInputId={input.inputId}
-                  data={peopleBoxes}
-                  resolution={{ width: contentWidth, height: contentHeight }}
-                  volume={input.volume}
-                  deadIds={shooter?.deadGhostIds}
-                />
-              )
-            ) : (
-              <Rescaler style={{ rescaleMode: 'fill' }}>
-                <InputStream inputId={input.inputId} volume={input.volume} />
-              </Rescaler>
-            )}
+            {videoContent}
             {transcript ? (
               <Subtitle
                 text={transcript}
@@ -223,7 +247,7 @@ export function Input({ input }: { input: InputConfig }) {
                 parent={{ width: contentWidth, height: contentHeight }}
               />
             ) : null}
-            {peopleCount != null ? (
+            {peopleCount != null && peopleBoxes?.sprite !== 'bird' ? (
               <PeopleCountBadge
                 count={peopleCount}
                 parent={{ width: contentWidth, height: contentHeight }}
@@ -449,6 +473,30 @@ function PeopleBoxes({
   );
 }
 
+// Duck Hunt dog sprite geometry + pop-up timing (must cover DOG_REVEAL_MS from
+// the controller so a reveal never lingers as a static image after it's pruned).
+const DOG_ASPECT = 40 / 68; // dog-catch.png is 68×40
+const DOG_RISE_MS = 220; // spring up from below the bottom edge
+const DOG_DROP_MS = 320; // drop back down at the end
+const DOG_MS = 1500; // total on-screen time, matches DOG_REVEAL_MS
+
+// Hue [0,1] of a hex color, for driving the hsl-adjust colorize shader.
+function hexToHue(hex: string): number {
+  const h = hex.replace('#', '');
+  const r = parseInt(h.slice(0, 2), 16) / 255;
+  const g = parseInt(h.slice(2, 4), 16) / 255;
+  const b = parseInt(h.slice(4, 6), 16) / 255;
+  const max = Math.max(r, g, b);
+  const d = max - Math.min(r, g, b);
+  if (d === 0) return 0;
+  let hue: number;
+  if (max === r) hue = ((g - b) / d) % 6;
+  else if (max === g) hue = (b - r) / d + 2;
+  else hue = (r - g) / d + 4;
+  hue /= 6;
+  return hue < 0 ? hue + 1 : hue;
+}
+
 // Ghost Shooter HUD: player crosshairs, hit bursts, and the scoreboard. Aim
 // coords are in normalized content space [0,1] (same as the ghost boxes) and
 // mapped to tile pixels through the identical rescale 'fill' (cover) transform.
@@ -529,6 +577,58 @@ function ShooterHud({
         );
       })}
 
+      {/* Duck Hunt dog: springs up from the bottom holding two ducks, tinted to
+          the scoring player's color, then drops back down. Below the crosshairs
+          so aiming stays legible. */}
+      {shooter.dogReveals.map((d) => {
+        const dogW = Math.round(parent.width * 0.2);
+        const dogH = Math.round(dogW * DOG_ASPECT);
+        const restTop = parent.height - dogH; // sits on the bottom edge
+        const cx = toPx(d.x, 0).px;
+        const left = Math.round(
+          Math.max(0, Math.min(parent.width - dogW, cx - dogW / 2)),
+        );
+        const e = now - d.at;
+        let top = restTop;
+        if (e < DOG_RISE_MS) {
+          const t = e / DOG_RISE_MS;
+          top = restTop + dogH * (1 - t) * (1 - t); // ease-out rise
+        } else if (e > DOG_MS - DOG_DROP_MS) {
+          const t = (e - (DOG_MS - DOG_DROP_MS)) / DOG_DROP_MS;
+          top = restTop + dogH * t * t; // accelerating drop
+        }
+        return (
+          <View
+            key={`dog-${d.id}`}
+            style={{ top: Math.round(top), left, width: dogW, height: dogH }}>
+            <Shader
+              shaderId='hsl-adjust'
+              resolution={{ width: dogW, height: dogH }}
+              shaderParam={{
+                type: 'struct',
+                value: [
+                  { type: 'f32', fieldName: 'hue_shift', value: 0 },
+                  { type: 'f32', fieldName: 'saturation', value: 0 },
+                  { type: 'f32', fieldName: 'lightness', value: 0 },
+                  { type: 'f32', fieldName: 'colorize_enable', value: 1 },
+                  {
+                    type: 'f32',
+                    fieldName: 'colorize_hue',
+                    value: hexToHue(d.color),
+                  },
+                  { type: 'f32', fieldName: 'colorize_saturation', value: 0.6 },
+                  { type: 'f32', fieldName: 'mix_amount', value: 1 },
+                ],
+              }}>
+              <Rescaler
+                style={{ width: dogW, height: dogH, rescaleMode: 'fit' }}>
+                <Image imageId='dog-catch' />
+              </Rescaler>
+            </Shader>
+          </View>
+        );
+      })}
+
       {/* Player crosshairs. */}
       {shooter.crosshairs.map((c) => {
         const { px, py } = toPx(c.x, c.y);
@@ -566,7 +666,7 @@ function ShooterHud({
                 left: 0,
                 width: chSize,
                 height: chSize,
-                borderWidth: 2,
+                borderWidth: 6,
                 borderColor: c.color,
                 borderRadius: chSize / 2,
               }}

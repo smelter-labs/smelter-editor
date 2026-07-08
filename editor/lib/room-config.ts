@@ -5,7 +5,11 @@ import type {
   UpdateInputOptions,
 } from '@/lib/types';
 import type { Layer, LayerBehaviorConfig } from '@/lib/types';
-import type { CarouselConfig, ViewportProperties } from '@smelter-editor/types';
+import type {
+  CarouselConfig,
+  ViewportProperties,
+  AIModelConfig,
+} from '@smelter-editor/types';
 import {
   OUTPUT_TRACK_INPUT_ID,
   OUTPUT_TRACK_ID,
@@ -72,6 +76,8 @@ export type RoomConfigInput = {
   cropRight?: number;
   cropBottom?: number;
   transcription?: boolean;
+  /** Per-input AI model configuration (enable/disable + tunables), keyed by model id. */
+  aiModels?: Record<string, AIModelConfig>;
 };
 
 export type RoomConfigTransitionSettings = {
@@ -211,6 +217,28 @@ function serializeCarouselConfig(
     }),
     ...(carousel.gap !== undefined && { gap: carousel.gap }),
   };
+}
+
+/**
+ * Serialize an input's live AI model state to persistable config, keeping only
+ * the configuration fields (enable/disable + tunables) and dropping runtime
+ * status like `lastResult`. Returns undefined when no models are configured.
+ */
+function serializeAIModels(
+  aiModels: Input['aiModels'],
+): Record<string, AIModelConfig> | undefined {
+  if (!aiModels) return undefined;
+  const entries = Object.entries(aiModels).map(([modelId, status]) => {
+    const config: AIModelConfig = {
+      enabled: status.enabled,
+      delayMs: status.delayMs,
+      ...(status.drawBoxes !== undefined && { drawBoxes: status.drawBoxes }),
+      ...(status.ghostMode !== undefined && { ghostMode: status.ghostMode }),
+      ...(status.params !== undefined && { params: status.params }),
+    };
+    return [modelId, config] as const;
+  });
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
 }
 
 function sanitizeImportedConfigNames(config: RoomConfig): RoomConfig {
@@ -438,6 +466,7 @@ export function exportRoomConfig(
       cropRight: input.cropRight,
       cropBottom: input.cropBottom,
       transcription: input.transcription || undefined,
+      aiModels: serializeAIModels(input.aiModels),
       attachedInputIndices: input.attachedInputIds
         ?.map((id) => inputIdToIndex.get(id))
         .filter((idx): idx is number => idx !== undefined),

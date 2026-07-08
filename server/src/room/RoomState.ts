@@ -33,10 +33,11 @@ import {
   PEOPLE_COUNTER_MANIFESTS,
   PEOPLE_COUNTER_YOLO_ID,
   PEOPLE_COUNTER_YOLO_BIRDS_ID,
+  BUILDING_DETECTOR_ID,
   type ModelResultEvent,
 } from '../ai-models';
 import { PeopleTracker } from '../ai-models/people-counter/people-tracker';
-import { GhostShooterController } from '../ghostShooter/GhostShooterController';
+import { DuckHunterController } from '../duckHunter/DuckHunterController';
 import { SnakeGameController } from './SnakeGameController';
 import { PlaceholderManager } from './PlaceholderManager';
 import { AudioController } from '../audio/AudioController';
@@ -171,8 +172,8 @@ export class RoomState {
   /** Per-input cross-frame tracker for YOLO bird boxes (stable id + color). */
   private readonly birdTrackers = new Map<string, PeopleTracker>();
 
-  /** Ghost Shooter game (phone-gyroscope crosshairs targeting the ghosts). */
-  private readonly ghostShooter: GhostShooterController;
+  /** Duck Hunter game (phone-gyroscope crosshairs targeting the ducks). */
+  private readonly duckHunter: DuckHunterController;
 
   private stateChangeListeners = new Set<() => void>();
 
@@ -275,7 +276,7 @@ export class RoomState {
     );
     this.recordingController = new RecordingController(idPrefix, output);
     this.snakeGameController = new SnakeGameController();
-    this.ghostShooter = new GhostShooterController(idPrefix, output.store);
+    this.duckHunter = new DuckHunterController(idPrefix, output.store);
 
     let motionResultCount = 0;
     void this.aiController.wireSidecarListeners('motion', (event) => {
@@ -349,7 +350,7 @@ export class RoomState {
               tracker = new PeopleTracker();
               this.peopleTrackers.set(event.inputId, tracker);
             }
-            const tracked = tracker.update(data.boxes!);
+            const tracked = tracker.update(data.boxes!, Date.now());
             store.setPeopleBoxes(
               event.inputId,
               tracked.length > 0
@@ -367,7 +368,7 @@ export class RoomState {
           }
         } else if (event.modelId === PEOPLE_COUNTER_YOLO_BIRDS_ID) {
           // Birds mirror the people/ghost pipeline: the tracker gives a stable
-          // id/color and a 5-response miss grace (so a briefly-lost bird keeps
+          // id/color and a 2-response miss grace (so a briefly-lost bird keeps
           // its sprite), and we render either green boxes (drawBoxes, for
           // sensitivity testing) or bird sprites (ghostMode). The bird only
           // shows while it's being detected — there's no free-flight phase.
@@ -383,10 +384,12 @@ export class RoomState {
           if (show) {
             let tracker = this.birdTrackers.get(event.inputId);
             if (!tracker) {
-              tracker = new PeopleTracker();
+              // Birds get a tighter 2-response miss grace than people so a
+              // caught/lost bird stops rendering quickly.
+              tracker = new PeopleTracker(2);
               this.birdTrackers.set(event.inputId, tracker);
             }
-            const tracked = tracker.update(data.boxes!);
+            const tracked = tracker.update(data.boxes!, Date.now());
             store.setPeopleBoxes(
               event.inputId,
               tracked.length > 0
@@ -396,6 +399,9 @@ export class RoomState {
                     frameH: data.frameH!,
                     ghost: sprite,
                     sprite: 'bird',
+                    duckScale: this.duckScale,
+                    duckPauseMs: this.duckPauseMs,
+                    duckFlySpeed: this.duckFlySpeed,
                   }
                 : null,
             );
@@ -403,6 +409,10 @@ export class RoomState {
             this.birdTrackers.delete(event.inputId);
             store.setPeopleBoxes(event.inputId, null);
           }
+          // Ducks are owned/animated by the controller now (so a shot lands on
+          // the sprite); keep its loop alive while birds are on screen, even
+          // before any player joins.
+          this.duckHunter.ensureActive();
         }
       };
 
@@ -415,6 +425,56 @@ export class RoomState {
     for (const manifest of PEOPLE_COUNTER_MANIFESTS) {
       void this.aiController.wireSidecarListeners(manifest.id, onPeopleCount);
     }
+
+    // Ghost City: building segmentation → haunted-city shader. Buildings are
+    // static so there's no tracker — the render wrapper smooths the boxes. Held
+    // to the delayed output like the people boxes so the haunt tracks the video.
+    const onBuildings = (event: ModelResultEvent) => {
+      const input = this.inputManager
+        .getInputs()
+        .find((i) => i.inputId === event.inputId);
+      if (!input) return;
+      const data = event.data as {
+        boxes?: { x: number; y: number; w: number; h: number }[];
+        frameW?: number;
+        frameH?: number;
+        procMs?: number;
+      };
+
+      const outputDelayMs =
+        computeSideChannelConfig(input.aiModels ?? {}, input.transcription)
+          ?.delayMs ?? 0;
+      const procMs = typeof data.procMs === 'number' ? data.procMs : 0;
+      const holdMs = Math.max(0, outputDelayMs - procMs);
+
+      const applyOverlay = () => {
+        const store = this.output.store.getState();
+        const cfg = input.aiModels?.[BUILDING_DETECTOR_ID];
+        const hasFrame =
+          Array.isArray(data.boxes) &&
+          typeof data.frameW === 'number' &&
+          typeof data.frameH === 'number';
+        if (cfg?.enabled && hasFrame && data.boxes!.length > 0) {
+          store.setBuildingBoxes(event.inputId, {
+            boxes: data.boxes!,
+            frameW: data.frameW!,
+            frameH: data.frameH!,
+          });
+        } else {
+          store.setBuildingBoxes(event.inputId, null);
+        }
+      };
+
+      if (holdMs > 0) {
+        setTimeout(applyOverlay, holdMs);
+      } else {
+        applyOverlay();
+      }
+    };
+    void this.aiController.wireSidecarListeners(
+      BUILDING_DETECTOR_ID,
+      onBuildings,
+    );
   }
 
   public async init(): Promise<void> {
@@ -1013,21 +1073,21 @@ export class RoomState {
     };
     switch (msg.type) {
       case 'shoot_join':
-        this.ghostShooter.join(
+        this.duckHunter.join(
           clientId,
           typeof msg.name === 'string' ? msg.name : 'Player',
         );
         break;
       case 'shoot_aim':
         if (typeof msg.x === 'number' && typeof msg.y === 'number') {
-          this.ghostShooter.aim(clientId, msg.x, msg.y);
+          this.duckHunter.aim(clientId, msg.x, msg.y);
         }
         break;
       case 'shoot_fire':
-        this.ghostShooter.fire(clientId);
+        this.duckHunter.fire(clientId);
         break;
       case 'shoot_leave':
-        this.ghostShooter.leave(clientId);
+        this.duckHunter.leave(clientId);
         break;
       default:
         break;
@@ -1036,7 +1096,49 @@ export class RoomState {
 
   /** A phone client disconnected — drop its crosshair/score. */
   public handleShooterDisconnect(clientId: string): void {
-    this.ghostShooter.handleDisconnect(clientId);
+    this.duckHunter.handleDisconnect(clientId);
+  }
+
+  /**
+   * Room-wide duck-size multiplier from the Duck Hunter panel. Injected into
+   * each bird `peopleBoxes` push so PacmanBirdsInput scales its sprites live.
+   */
+  private duckScale = 1;
+  /** How long a duck holds before flying off (ms), and its fly speed (fraction
+   * of the larger screen edge per second). Injected into each bird push. */
+  private duckPauseMs = 700;
+  private duckFlySpeed = 0.9;
+
+  /** Set the room-wide Duck Hunter config (ammo + duck size/flight) from the panel. */
+  public setDuckHunterConfig(cfg: {
+    maxAmmo?: number;
+    reloadMs?: number;
+    duckScale?: number;
+    duckPauseMs?: number;
+    duckFlySpeed?: number;
+  }): {
+    maxAmmo: number;
+    reloadMs: number;
+    duckScale: number;
+    duckPauseMs: number;
+    duckFlySpeed: number;
+  } {
+    this.duckHunter.setRoomConfig(cfg);
+    if (typeof cfg.duckScale === 'number' && Number.isFinite(cfg.duckScale)) {
+      this.duckScale = Math.max(0.25, Math.min(3, cfg.duckScale));
+    }
+    if (typeof cfg.duckPauseMs === 'number' && Number.isFinite(cfg.duckPauseMs)) {
+      this.duckPauseMs = Math.max(0, Math.min(10000, cfg.duckPauseMs));
+    }
+    if (typeof cfg.duckFlySpeed === 'number' && Number.isFinite(cfg.duckFlySpeed)) {
+      this.duckFlySpeed = Math.max(0.05, Math.min(3, cfg.duckFlySpeed));
+    }
+    return {
+      ...this.duckHunter.getRoomConfig(),
+      duckScale: this.duckScale,
+      duckPauseMs: this.duckPauseMs,
+      duckFlySpeed: this.duckFlySpeed,
+    };
   }
 
   public async restartMp4Input(
@@ -1064,7 +1166,7 @@ export class RoomState {
     enabled: boolean,
     delayMs?: number,
     drawBoxes?: boolean,
-    params?: Record<string, number>,
+    params?: Record<string, number | string>,
     ghostMode?: boolean,
   ): Promise<void> {
     return this.mutex.runExclusive(async () => {
@@ -1136,6 +1238,11 @@ export class RoomState {
       ) {
         this.peopleTrackers.delete(inputId);
         this.output.store.getState().setPeopleBoxes(inputId, null);
+      }
+
+      // Clear the haunted-city overlay when Ghost City is disabled.
+      if (modelId === BUILDING_DETECTOR_ID && !enabled) {
+        this.output.store.getState().setBuildingBoxes(inputId, null);
       }
 
       const newSideChannel = computeSideChannelConfig(
@@ -1811,7 +1918,7 @@ export class RoomState {
     return this.mutex.runExclusive(async () => {
       this.destroyed = true;
       this.pausedAttachedInputVolumes.clear();
-      this.ghostShooter.dispose();
+      this.duckHunter.dispose();
 
       if (this.pendingStoreFlushTimer) {
         clearTimeout(this.pendingStoreFlushTimer);

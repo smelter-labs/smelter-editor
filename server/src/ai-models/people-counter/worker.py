@@ -18,6 +18,7 @@ import json
 import logging
 import os
 import sys
+import threading
 import time
 from dataclasses import dataclass, field
 
@@ -80,8 +81,31 @@ def request_shutdown() -> None:
 _backend_loaded = False
 _backend_kind: str | None = None
 _yolo_model = None
+# Which weights file _yolo_model currently holds, so we only reload on change.
+_yolo_weights_loaded: str | None = None
+# Guards the (re)load so two detection threads can't swap the model mid-flight.
+_yolo_lock = threading.Lock()
 _mediapipe_detector = None
 _haar_cascade = None
+
+
+def _get_yolo_model(weights: str):
+    """Load (and cache) the YOLO model for ``weights``, reloading when the
+    requested weights change. This lets the UI swap nano/small/medium live via
+    the 'weights' param without restarting the worker. The load may auto-download
+    the weights and take a few seconds; it happens under a lock on the detection
+    thread, blocking only that one frame."""
+    global _yolo_model, _yolo_weights_loaded
+    if _yolo_model is not None and _yolo_weights_loaded == weights:
+        return _yolo_model
+    with _yolo_lock:
+        if _yolo_model is None or _yolo_weights_loaded != weights:
+            from ultralytics import YOLO  # lazy — pulls torch
+
+            log.info("Loading YOLO weights: %s", weights)
+            _yolo_model = YOLO(weights)  # auto-downloads if missing
+            _yolo_weights_loaded = weights
+    return _yolo_model
 
 
 def _load_backend() -> str:
@@ -96,11 +120,11 @@ def _load_backend() -> str:
     requested = BACKEND if BACKEND in ("yolo", "mediapipe", "haar") else "haar"
     try:
         if requested == "yolo":
-            from ultralytics import YOLO  # lazy — pulls torch
-
-            _yolo_model = YOLO(YOLO_WEIGHTS)  # auto-downloads weights
+            # Loads the default weights (and validates that torch/ultralytics
+            # import); a failure here falls through to the haar fallback below.
+            _get_yolo_model(YOLO_WEIGHTS)
             _backend_kind = "yolo"
-            log.info("Loaded YOLO backend (yolov8n.pt)")
+            log.info("Loaded YOLO backend (%s)", YOLO_WEIGHTS)
         elif requested == "mediapipe":
             import mediapipe as mp  # lazy
 
@@ -144,7 +168,10 @@ def detect(rgba: np.ndarray, params: dict | None = None) -> tuple[int, list[dict
         conf = float(params.get("confidence", YOLO_CONF))
         imgsz = int(params.get("imgsz", YOLO_IMGSZ))
         classes = params.get("classes") or YOLO_CLASSES
-        results = _yolo_model.predict(
+        # 'weights' lets the UI switch model size (nano/s/m) live.
+        weights = str(params.get("weights") or YOLO_WEIGHTS)
+        model = _get_yolo_model(weights)
+        results = model.predict(
             rgb, conf=conf, imgsz=imgsz, classes=classes, verbose=False
         )
         boxes: list[dict] = []

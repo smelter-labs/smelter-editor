@@ -1,7 +1,9 @@
 import type { InputType } from "./input.js";
 
 /** A numeric, model-specific tunable rendered as a slider/number field in the UI. */
-export type ModelParamSpec = {
+export type NumberParamSpec = {
+  /** Discriminant — omit or 'number' for a slider. */
+  type?: "number";
   key: string;
   label: string;
   /** Optional one-line hint shown under the field. */
@@ -12,6 +14,23 @@ export type ModelParamSpec = {
   default: number;
 };
 
+/** A string choice rendered as a dropdown in the UI. */
+export type SelectParamSpec = {
+  type: "select";
+  key: string;
+  label: string;
+  /** Optional one-line hint shown under the field. */
+  description?: string;
+  options: { value: string; label: string }[];
+  default: string;
+};
+
+/** A model-specific tunable exposed in the UI (slider or dropdown). */
+export type ModelParamSpec = NumberParamSpec | SelectParamSpec;
+
+/** A tunable value: number for sliders, string for dropdowns. */
+export type ModelParamValue = number | string;
+
 export type AIModelConfig = {
   enabled: boolean;
   delayMs: number;
@@ -20,7 +39,7 @@ export type AIModelConfig = {
   /** Replace detected people with Pac-Man ghosts (people-counter YOLO only). */
   ghostMode?: boolean;
   /** Model-specific tunables, keyed by ModelParamSpec.key. */
-  params?: Record<string, number>;
+  params?: Record<string, ModelParamValue>;
 };
 
 export type AIModelStatus = {
@@ -28,7 +47,7 @@ export type AIModelStatus = {
   delayMs: number;
   drawBoxes?: boolean;
   ghostMode?: boolean;
-  params?: Record<string, number>;
+  params?: Record<string, ModelParamValue>;
   lastResult?: unknown;
 };
 

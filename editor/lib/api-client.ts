@@ -162,11 +162,22 @@ interface SmelterApiClient {
     enabled: boolean,
     delayMs?: number,
     drawBoxes?: boolean,
-    params?: Record<string, number>,
+    params?: Record<string, number | string>,
     ghostMode?: boolean,
   ): Promise<void>;
 
   setAudioAnalysisEnabled(roomId: string, enabled: boolean): Promise<void>;
+
+  setDuckHunterConfig(
+    roomId: string,
+    config: {
+      maxAmmo?: number;
+      reloadMs?: number;
+      duckScale?: number;
+      duckPauseMs?: number;
+      duckFlySpeed?: number;
+    },
+  ): Promise<void>;
 
   restartMp4Input(
     roomId: string,
@@ -576,6 +587,10 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
 
     async setAudioAnalysisEnabled(roomId, enabled) {
       await req('post', `/room/${enc(roomId)}/audio-analysis`, { enabled });
+    },
+
+    async setDuckHunterConfig(roomId, config) {
+      await req('post', `/room/${enc(roomId)}/duck-hunter/config`, config);
     },
 
     async restartMp4Input(roomId, inputId, playFromMs, loop) {

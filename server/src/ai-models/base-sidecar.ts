@@ -31,7 +31,7 @@ type OutgoingMessage = {
     | 'side_channel_stopped'
     | 'shutdown';
   inputId?: string;
-  params?: Record<string, number>;
+  params?: Record<string, number | string>;
 };
 
 export abstract class BaseSidecar extends EventEmitter {
@@ -43,7 +43,10 @@ export abstract class BaseSidecar extends EventEmitter {
   protected pythonSetupPromise: Promise<void> | null = null;
   protected readonly trackedInputs = new Set<string>();
   protected readonly readyInputIds = new Set<string>();
-  protected readonly trackedParams = new Map<string, Record<string, number>>();
+  protected readonly trackedParams = new Map<
+    string,
+    Record<string, number | string>
+  >();
   private restartAttempts = 0;
   private readonly MAX_RESTARTS = 3;
   private started = false;
@@ -61,7 +64,7 @@ export abstract class BaseSidecar extends EventEmitter {
     this.spawnProcess();
   }
 
-  addInput(inputId: string, params?: Record<string, number>): void {
+  addInput(inputId: string, params?: Record<string, number | string>): void {
     this.trackedInputs.add(inputId);
     if (params) this.trackedParams.set(inputId, params);
     const sent = this.sendToPython({ cmd: 'subscribe', inputId, params });
@@ -71,7 +74,10 @@ export abstract class BaseSidecar extends EventEmitter {
   }
 
   /** Push updated model params to the worker for an already-tracked input. */
-  configureInput(inputId: string, params: Record<string, number>): void {
+  configureInput(
+    inputId: string,
+    params: Record<string, number | string>,
+  ): void {
     this.trackedParams.set(inputId, params);
     if (!this.trackedInputs.has(inputId)) return;
     this.sendToPython({ cmd: 'configure', inputId, params });

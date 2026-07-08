@@ -530,7 +530,7 @@ export async function setAIModel(
   enabled: boolean,
   delayMs?: number,
   drawBoxes?: boolean,
-  params?: Record<string, number>,
+  params?: Record<string, number | string>,
   ghostMode?: boolean,
 ): Promise<void> {
   return (await getClient()).setAIModel(
@@ -550,6 +550,19 @@ export async function setAudioAnalysisEnabled(
   enabled: boolean,
 ): Promise<void> {
   return (await getClient()).setAudioAnalysisEnabled(roomId, enabled);
+}
+
+export async function setDuckHunterConfig(
+  roomId: string,
+  config: {
+    maxAmmo?: number;
+    reloadMs?: number;
+    duckScale?: number;
+    duckPauseMs?: number;
+    duckFlySpeed?: number;
+  },
+): Promise<void> {
+  return (await getClient()).setDuckHunterConfig(roomId, config);
 }
 
 export async function restartMp4Input(
