@@ -27,6 +27,7 @@ export {
   computeSideChannelConfig,
   sideChannelConfigEqual,
   requiresSideChannelReconnect,
+  WHIP_SIDE_CHANNEL_DELAY_MS,
 } from './side-channel-config';
 export type { SideChannelConfig } from './side-channel-config';
 export {

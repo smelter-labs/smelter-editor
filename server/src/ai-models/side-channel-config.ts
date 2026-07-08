@@ -8,6 +8,14 @@ export type SideChannelConfig = {
   delayMs?: number;
 };
 
+/**
+ * Baseline side-channel delay baked into every WHIP registration. WHIP inputs
+ * are never re-registered after connect (that would kill the live push
+ * stream), so the delay must be reserved up front for AI models enabled later.
+ * Costs the same amount of extra latency on the input's video/audio.
+ */
+export const WHIP_SIDE_CHANNEL_DELAY_MS = 3000;
+
 export function computeSideChannelConfig(
   aiModels: Record<string, AIModelConfig>,
   transcription: boolean,

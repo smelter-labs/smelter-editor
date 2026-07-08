@@ -319,10 +319,10 @@ export class RoomState {
       // The side channel hands frames to the worker ~delayMs before the output
       // presents them. Hold the on-output overlay until the frame is due, minus
       // the time the worker already spent processing it, so boxes track the
-      // video instead of running ahead.
-      const outputDelayMs =
-        computeSideChannelConfig(input.aiModels ?? {}, input.transcription)
-          ?.delayMs ?? 0;
+      // video instead of running ahead. Uses the delay actually registered with
+      // Smelter — the configured value can diverge from it when the config
+      // changes without a reconnect (always the case for WHIP).
+      const outputDelayMs = input.registeredSideChannelDelayMs ?? 0;
       const procMs = typeof data.procMs === 'number' ? data.procMs : 0;
       const holdMs = Math.max(0, outputDelayMs - procMs);
 
@@ -441,9 +441,7 @@ export class RoomState {
         procMs?: number;
       };
 
-      const outputDelayMs =
-        computeSideChannelConfig(input.aiModels ?? {}, input.transcription)
-          ?.delayMs ?? 0;
+      const outputDelayMs = input.registeredSideChannelDelayMs ?? 0;
       const procMs = typeof data.procMs === 'number' ? data.procMs : 0;
       const holdMs = Math.max(0, outputDelayMs - procMs);
 

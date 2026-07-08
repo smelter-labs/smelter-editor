@@ -9,7 +9,10 @@ import { KickChannelMonitor } from '../kick/KickChannelMonitor';
 import { WhipInputMonitor } from '../whip/WhipInputMonitor';
 import { getCaptionBridge } from '../captions/captionBridgeRegistry';
 import { hasTranscription } from '../captions/constants';
-import { computeSideChannelConfig } from '../ai-models';
+import {
+  computeSideChannelConfig,
+  WHIP_SIDE_CHANNEL_DELAY_MS,
+} from '../ai-models';
 import { sleep } from '../utils';
 import mp4SuggestionsMonitor from '../mp4/mp4SuggestionMonitor';
 import pictureSuggestionsMonitor from '../pictures/pictureSuggestionMonitor';
@@ -812,6 +815,7 @@ export class InputManager {
     }
 
     input.status = 'connected';
+    input.registeredSideChannelDelayMs = options.sideChannel?.delayMs ?? 0;
 
     if (hasTranscription(input)) {
       await this.captionsController.setTranscriptionPull(input, true);
@@ -862,6 +866,7 @@ export class InputManager {
       await SmelterInstance.unregisterInput(inputId);
     } finally {
       input.status = 'disconnected';
+      input.registeredSideChannelDelayMs = undefined;
       this.onStateChange();
     }
   }
@@ -1246,11 +1251,18 @@ export class InputManager {
         this.idPrefix,
         `[mp4-restart] register "${name}" loop=${loop} offsetMs=${offsetMs}`,
       );
+      // Keep the side channel across the restart — without it the AI workers'
+      // sockets disappear and the overlay hold uses a stale delay.
+      const sideChannel = computeSideChannelConfig(
+        input.aiModels ?? {},
+        input.transcription,
+      );
       await SmelterInstance.registerInput(inputId, {
         type: 'mp4',
         filePath: input.mp4FilePath,
         loop,
         offsetMs,
+        ...(sideChannel ? { sideChannel } : {}),
       });
       logTimelineEvent(
         this.idPrefix,
@@ -1259,6 +1271,11 @@ export class InputManager {
 
       input.registeredAtPipelineMs = SmelterInstance.getPipelineTimeMs();
       input.playFromMs = normalizedPlayFromMs;
+      input.registeredSideChannelDelayMs = sideChannel?.delayMs ?? 0;
+      if (sideChannel) {
+        // Re-signal readiness so workers re-subscribe to the recreated socket.
+        this.aiController.onSideChannelReady(inputId);
+      }
     } catch (err) {
       logTimelineEvent(
         this.idPrefix,
@@ -1347,13 +1364,19 @@ function registerOptionsFromInput(
       ...scOpts,
     };
   } else if (input.type === 'whip') {
+    // WHIP is never re-registered after connect (that would kill the live push
+    // stream), so reserve the side-channel delay up front — models enabled
+    // later get processing headroom at the cost of delaying this input.
     return {
       type: 'whip',
       url: input.whipUrl,
       sideChannel: {
         video: true,
         audio: true,
-        ...(sideChannel?.delayMs ? { delayMs: sideChannel.delayMs } : {}),
+        delayMs: Math.max(
+          WHIP_SIDE_CHANNEL_DELAY_MS,
+          sideChannel?.delayMs ?? 0,
+        ),
       },
     };
   } else if (input.type === 'image') {
