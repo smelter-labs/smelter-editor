@@ -270,6 +270,46 @@ class SmelterManager {
       assetType: 'png',
     });
 
+    // Haunting-ghosts sprites (HaunterGhostsInput): one ghost with three arc
+    // states — bored (nobody in range), looking (just noticed someone),
+    // hunting (chasing/scaring) — ids `haunter-<state>` from
+    // `imgs/ghosts/ghost_<state>.png`. Until the art lands, the ids fall back
+    // to the Duck Hunt sprites so the effect is testable end-to-end.
+    const ghostsDir = path.join(__dirname, '../imgs/ghosts');
+    const haveGhostArt = await pathExists(ghostsDir);
+    if (!haveGhostArt) {
+      console.warn(
+        '[smelter] imgs/ghosts missing — using duck sprites as haunter placeholders',
+      );
+    }
+    for (const s of ['bored', 'looking', 'hunting'] as const) {
+      const serverPath = haveGhostArt
+        ? path.join(ghostsDir, `ghost_${s}.png`)
+        : path.join(ducksDir, `duck-0-${s === 'hunting' ? 'shot' : '0'}.png`);
+      await this.registerImage(`haunter-${s}`, {
+        serverPath,
+        assetType: 'png',
+      });
+    }
+
+    // Car Ads overlay art (CarAdsInput): the image corner-pinned onto detected
+    // car sides. Drop custom art into `imgs/car-ad/ad.png` — no code change
+    // needed; until it lands the Smelter logo is used so the effect is
+    // testable end-to-end.
+    const carAdPath = path.join(__dirname, '../imgs/car-ad/ad.png');
+    const haveCarAdArt = await pathExists(carAdPath);
+    if (!haveCarAdArt) {
+      console.warn(
+        '[smelter] imgs/car-ad/ad.png missing — using smelter_logo as the car ad',
+      );
+    }
+    await this.registerImage('car-ad', {
+      serverPath: haveCarAdArt
+        ? carAdPath
+        : path.join(__dirname, '../imgs/smelter_logo.png'),
+      assetType: 'png',
+    });
+
     const starJediFont = await readFile(
       path.join(__dirname, '../fonts/Starjedi.ttf'),
     );

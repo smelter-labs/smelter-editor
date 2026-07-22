@@ -1697,6 +1697,33 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     shaderFile: 'haunted-city.wgsl',
   },
   {
+    id: 'haunter-aura',
+    isActive: true,
+    isVisible: false,
+    name: 'Haunter Aura',
+    description:
+      'Golden aura around each haunting ghost and its haunted person: flame-like wavy rim, outer glow, darkened interior, and heat-haze warp. Palette matches the yellow ghost sprites and rotates hue per ghost, driven by HaunterGhostsInput.',
+    shaderFile: 'haunter-aura.wgsl',
+  },
+  {
+    id: 'haunter-ghost',
+    isActive: true,
+    isVisible: false,
+    name: 'Haunter Ghost',
+    description:
+      'Per-sprite pass for the haunting ghosts: keys out the green backdrop baked into the ghost PNGs, rotates hue per ghost, and adds an animated jelly-like wave, driven by HaunterGhostsInput.',
+    shaderFile: 'haunter-ghost.wgsl',
+  },
+  {
+    id: 'car-hue',
+    isActive: true,
+    isVisible: false,
+    name: 'Car Hue',
+    description:
+      'Recolors top-down (bird’s-eye) detected cars: rotates the hue inside a feathered ellipse per vehicle box, driven by the car-hue-topdown AI model.',
+    shaderFile: 'car-hue.wgsl',
+  },
+  {
     id: 'comic-book',
     isActive: true,
     isVisible: true,

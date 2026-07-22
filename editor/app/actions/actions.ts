@@ -565,6 +565,18 @@ export async function setDuckHunterConfig(
   return (await getClient()).setDuckHunterConfig(roomId, config);
 }
 
+export async function setHaunterConfig(
+  roomId: string,
+  config: {
+    haunterCount?: number;
+    haunterDist?: number;
+    haunterScale?: number;
+    haunterSpeed?: number;
+  },
+): Promise<void> {
+  return (await getClient()).setHaunterConfig(roomId, config);
+}
+
 export async function restartMp4Input(
   roomId: string,
   inputId: string,

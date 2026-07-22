@@ -64,6 +64,7 @@ export const BUILDING_DETECTOR_MANIFEST: ModelManifest = {
   // Lets the UI show the debug drawBoxes toggle to preview building regions.
   supportsBoxes: true,
   params: BUILDING_PARAMS,
+  hidden: true,
 };
 
 /** True for the building-detector model id. */

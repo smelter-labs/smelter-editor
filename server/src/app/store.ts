@@ -69,6 +69,8 @@ export type RoomStore = {
   peopleCounts: Record<string, number>;
   peopleBoxes: Record<string, PersonBoxes>;
   buildingBoxes: Record<string, BuildingBoxes>;
+  carAdBoxes: Record<string, CarAdBoxes>;
+  carHueBoxes: Record<string, CarHueBoxes>;
   shooter: ShooterOverlay | null;
   updateState: (state: RoomStoreState & { layers: Layer[] }) => void;
   setOutputShaders: (shaders: ShaderConfig[]) => void;
@@ -77,6 +79,8 @@ export type RoomStore = {
   setPeopleCount: (inputId: string, count: number | null) => void;
   setPeopleBoxes: (inputId: string, boxes: PersonBoxes | null) => void;
   setBuildingBoxes: (inputId: string, boxes: BuildingBoxes | null) => void;
+  setCarAdBoxes: (inputId: string, boxes: CarAdBoxes | null) => void;
+  setCarHueBoxes: (inputId: string, boxes: CarHueBoxes | null) => void;
   setShooter: (shooter: ShooterOverlay | null) => void;
 } & Partial<ViewportProperties>;
 
@@ -101,6 +105,68 @@ export type BuildingBoxes = {
   frameH: number;
 };
 
+/** A point in normalized [0,1] frame coordinates. */
+export type QuadPoint = { x: number; y: number };
+
+/** The ad quad on a car's side, corner order [tl, tr, br, bl], normalized. */
+export type CarQuad = [QuadPoint, QuadPoint, QuadPoint, QuadPoint];
+
+/** A detected wheel: center + radius, normalized to the frame width. */
+export type CarWheel = { x: number; y: number; r: number };
+
+/** One vehicle as detected by the car-ads worker (pre-tracking). */
+export type CarAdDetection = {
+  box: PersonBox;
+  /** Door-panel quad from the wheel pair, or absent when the side isn't visible. */
+  quad?: CarQuad | null;
+  wheels?: CarWheel[] | null;
+};
+
+/** A vehicle after cross-frame tracking: stable id, smoothed/held quad. */
+export type TrackedCarAd = {
+  id: number;
+  box: PersonBox;
+  quad?: CarQuad;
+  wheels?: CarWheel[];
+};
+
+/** Tracked cars plus frame dimensions (cover mapping) and render options. */
+export type CarAdBoxes = {
+  cars: TrackedCarAd[];
+  frameW: number;
+  frameH: number;
+  /** When true, map the ad image onto each quad; false = debug boxes only. */
+  ads?: boolean;
+  /** Operator-tunable ad opacity (Car Ads panel param). */
+  adOpacity?: number;
+};
+
+/**
+ * Tracked top-down cars for the per-car hue recolor (Car Hue model), plus the
+ * frame dimensions (cover mapping) and the operator's recolor params. Boxes
+ * reuse the person tracker, so each car carries a stable id.
+ */
+export type CarHueBoxes = {
+  boxes: TrackedPersonBox[];
+  frameW: number;
+  frameH: number;
+  /** When true, run the car-hue shader; false = debug boxes only. */
+  effect?: boolean;
+  /** Hue rotation in degrees applied to every car. */
+  hue?: number;
+  /** Extra per-car hue offset span (± degrees) for color variety. */
+  spread?: number;
+  /** 0..1 blend of the recolored result. */
+  strength?: number;
+  /** Extra saturation inside each car mask (0..0.6). */
+  satBoost?: number;
+  /**
+   * 0..1 paint strength on white/silver cars — hue rotation can't change an
+   * achromatic car, so bright colorless pixels get painted with the hue.
+   */
+  whiteBoost?: number;
+};
+
 /** Boxes plus the frame dimensions they were detected in (for cover mapping). */
 export type PersonBoxes = {
   boxes: TrackedPersonBox[];
@@ -108,8 +174,9 @@ export type PersonBoxes = {
   frameH: number;
   /** When true, render detections as sprites (see `sprite`) not green boxes. */
   ghost?: boolean;
-  /** Which sprite to draw in ghost mode: Pac-Man ghost (default) or bird. */
-  sprite?: 'ghost' | 'bird';
+  /** Which sprite to draw in ghost mode: bird (Duck Hunt ducks) or haunting
+   * ghosts — people detections always use 'haunter'. */
+  sprite?: 'bird' | 'haunter';
   /**
    * Operator-tunable duck-size multiplier (Duck Hunter panel), applied on top
    * of the sprite's base footprint. 1 = default; 0.5 = ducks half as big.
@@ -122,6 +189,16 @@ export type PersonBoxes = {
    */
   duckPauseMs?: number;
   duckFlySpeed?: number;
+  /**
+   * Operator-tunable haunting-ghosts config (Haunter panel), present only when
+   * `sprite` is 'haunter'. Count = pool size; dist = attach threshold as a
+   * fraction of min(output edge); scale/speed = sprite size and follow-speed
+   * multipliers. Defaults live in haunterModel.ts.
+   */
+  haunterCount?: number;
+  haunterDist?: number;
+  haunterScale?: number;
+  haunterSpeed?: number;
 };
 
 /** A player's crosshair in normalized content space [0,1] of the target input. */
@@ -131,6 +208,27 @@ export type ShooterCrosshair = {
   y: number;
   color: string;
   name: string;
+  /** Registered Smelter image id of the player's camera snapshot, if any. */
+  avatarImageId?: string;
+  ammo: number;
+  maxAmmo: number;
+  /** Full regen time for one round (ms) — with reloadEndsAt gives progress. */
+  reloadMs: number;
+  /** Wall-clock ms when the next round regenerates, or null when the mag is full. */
+  reloadEndsAt: number | null;
+};
+
+/** One scoreboard row on the broadcast (sorted by score in the overlay). */
+export type ShooterScoreRow = {
+  clientId: string;
+  name: string;
+  color: string;
+  score: number;
+  avatarImageId?: string;
+  ammo: number;
+  maxAmmo: number;
+  reloadMs: number;
+  reloadEndsAt: number | null;
 };
 
 /** A short-lived shot effect at a point (content coords + timestamp + kind). */
@@ -157,7 +255,7 @@ export type DogReveal = {
 export type ShooterOverlay = {
   targetInputId: string;
   crosshairs: ShooterCrosshair[];
-  scores: { name: string; color: string; score: number }[];
+  scores: ShooterScoreRow[];
   bursts: ShooterBurst[];
   /** Duck Hunt dog reveals in flight (2-in-a-row celebration). */
   dogReveals: DogReveal[];
@@ -189,6 +287,8 @@ export function createRoomStore(
     peopleCounts: {},
     peopleBoxes: {},
     buildingBoxes: {},
+    carAdBoxes: {},
+    carHueBoxes: {},
     shooter: null,
     updateState: (incoming) => {
       const {
@@ -253,8 +353,11 @@ export function createRoomStore(
     setPeopleBoxes: (inputId: string, boxes: PersonBoxes | null) => {
       set((state) => {
         const next = { ...state.peopleBoxes };
-        if (boxes && boxes.boxes.length > 0) next[inputId] = boxes;
-        else delete next[inputId];
+        // Haunter mode keeps zero-box frames: the renderer must stay mounted
+        // so idle ghosts keep levitating while nobody is detected.
+        if (boxes && (boxes.boxes.length > 0 || boxes.sprite === 'haunter')) {
+          next[inputId] = boxes;
+        } else delete next[inputId];
         return { peopleBoxes: next };
       });
     },
@@ -264,6 +367,22 @@ export function createRoomStore(
         if (boxes && boxes.boxes.length > 0) next[inputId] = boxes;
         else delete next[inputId];
         return { buildingBoxes: next };
+      });
+    },
+    setCarAdBoxes: (inputId: string, boxes: CarAdBoxes | null) => {
+      set((state) => {
+        const next = { ...state.carAdBoxes };
+        if (boxes && boxes.cars.length > 0) next[inputId] = boxes;
+        else delete next[inputId];
+        return { carAdBoxes: next };
+      });
+    },
+    setCarHueBoxes: (inputId: string, boxes: CarHueBoxes | null) => {
+      set((state) => {
+        const next = { ...state.carHueBoxes };
+        if (boxes && boxes.boxes.length > 0) next[inputId] = boxes;
+        else delete next[inputId];
+        return { carHueBoxes: next };
       });
     },
     setShooter: (shooter: ShooterOverlay | null) => {

@@ -16,7 +16,8 @@ type StaticPanelId =
   | 'carousel'
   | 'output-code'
   | 'pong'
-  | 'duck-hunter';
+  | 'duck-hunter'
+  | 'haunter';
 
 type MotionPanelId = `motion:${string}`;
 type PanelId = StaticPanelId | MotionPanelId;
@@ -155,6 +156,12 @@ export const STATIC_PANEL_DEFINITIONS: Record<StaticPanelId, PanelDefinition> =
     'duck-hunter': {
       id: 'duck-hunter',
       title: 'Duck Hunter',
+      minW: 4,
+      minH: 6,
+    },
+    haunter: {
+      id: 'haunter',
+      title: 'Haunting Ghosts',
       minW: 4,
       minH: 6,
     },

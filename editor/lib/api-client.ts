@@ -179,6 +179,16 @@ interface SmelterApiClient {
     },
   ): Promise<void>;
 
+  setHaunterConfig(
+    roomId: string,
+    config: {
+      haunterCount?: number;
+      haunterDist?: number;
+      haunterScale?: number;
+      haunterSpeed?: number;
+    },
+  ): Promise<void>;
+
   restartMp4Input(
     roomId: string,
     inputId: string,
@@ -591,6 +601,10 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
 
     async setDuckHunterConfig(roomId, config) {
       await req('post', `/room/${enc(roomId)}/duck-hunter/config`, config);
+    },
+
+    async setHaunterConfig(roomId, config) {
+      await req('post', `/room/${enc(roomId)}/haunter/config`, config);
     },
 
     async restartMp4Input(roomId, inputId, playFromMs, loop) {

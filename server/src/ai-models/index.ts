@@ -2,6 +2,7 @@ import { ModelRegistry } from './registry';
 import { MOTION_MANIFEST } from './motion/manifest';
 import { PEOPLE_COUNTER_MANIFESTS } from './people-counter/manifest';
 import { BUILDING_DETECTOR_MANIFEST } from './building-detector/manifest';
+import { CAR_ADS_MANIFESTS } from './car-ads/manifest';
 
 export function registerAIModels(): void {
   ModelRegistry.register(MOTION_MANIFEST);
@@ -9,6 +10,9 @@ export function registerAIModels(): void {
     ModelRegistry.register(manifest);
   }
   ModelRegistry.register(BUILDING_DETECTOR_MANIFEST);
+  for (const manifest of CAR_ADS_MANIFESTS) {
+    ModelRegistry.register(manifest);
+  }
 }
 
 export {
@@ -22,6 +26,14 @@ export {
   BUILDING_DETECTOR_ID,
   isBuildingDetectorModel,
 } from './building-detector/manifest';
+export {
+  CAR_ADS_MANIFEST,
+  CAR_ADS_MANIFESTS,
+  CAR_ADS_ID,
+  CAR_HUE_MANIFEST,
+  CAR_HUE_ID,
+  isCarAdsModel,
+} from './car-ads/manifest';
 export { ModelRegistry } from './registry';
 export {
   computeSideChannelConfig,

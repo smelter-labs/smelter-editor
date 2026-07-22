@@ -25,6 +25,10 @@ const GYRO_MAX_STEP_DEG = 25;
 // Tap detection: short press with little movement counts as a shot.
 const TAP_MS = 400;
 const TAP_MOVE_PX = 16;
+// Camera avatar: snapshot size (center-cropped square) and send cadence. The
+// server rate-limits to one snapshot per 1.5s per player, so stay above that.
+const AVATAR_SIZE = 128;
+const AVATAR_SEND_MS = 2500;
 
 // A selectable gyro signal for an aim axis. The user picks which one drives
 // horizontal vs vertical on the calibration screen (with invert + per-axis
@@ -36,11 +40,11 @@ type AxisSource = 'yaw' | 'pitch' | 'rateX' | 'rateY' | 'rateZ';
 type AxisCfg = { source: AxisSource; invert: boolean; sens: number };
 
 const AXIS_OPTIONS: { id: AxisSource; label: string }[] = [
-  { id: 'yaw', label: 'Obrót poziomy — yaw (świat)' },
-  { id: 'pitch', label: 'Pochylenie — pitch (ekran)' },
-  { id: 'rateX', label: 'Oś X — beta' },
-  { id: 'rateY', label: 'Oś Y — gamma' },
-  { id: 'rateZ', label: 'Obrót ekranu — alpha' },
+  { id: 'yaw', label: 'Horizontal rotation — yaw (world)' },
+  { id: 'pitch', label: 'Tilt — pitch (screen)' },
+  { id: 'rateX', label: 'X axis — beta' },
+  { id: 'rateY', label: 'Y axis — gamma' },
+  { id: 'rateZ', label: 'Screen rotation — alpha' },
 ];
 const DEFAULT_HORIZ: AxisCfg = { source: 'yaw', invert: false, sens: 1 };
 const DEFAULT_VERT: AxisCfg = { source: 'pitch', invert: false, sens: 1 };
@@ -85,6 +89,12 @@ export default function ShootControllerPage() {
     n: number;
   }>({ b: null, g: null, n: 0 });
   const [stream, setStream] = useState<MediaStream | null>(null);
+  // Front-camera stream for the in-game avatar (shown next to the player's
+  // name on the broadcast). Snapshots are sent over the WS while playing.
+  const [camStream, setCamStream] = useState<MediaStream | null>(null);
+  const [camErr, setCamErr] = useState<string | null>(null);
+  const camVideoRef = useRef<HTMLVideoElement | null>(null);
+  const avatarCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -181,6 +191,90 @@ export default function ShootControllerPage() {
     const ws = wsRef.current;
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
   }, []);
+
+  // Camera avatar: toggle the front camera on/off. Turning it off mid-game
+  // also clears the avatar on the broadcast (empty payload).
+  const toggleCamera = useCallback(async () => {
+    if (camStream) {
+      camStream.getTracks().forEach((t) => t.stop());
+      setCamStream(null);
+      send({ type: 'shoot_avatar', image: '' });
+      return;
+    }
+    setCamErr(null);
+    try {
+      const s = await navigator.mediaDevices.getUserMedia({
+        video: {
+          facingMode: 'user',
+          width: { ideal: 480 },
+          height: { ideal: 480 },
+        },
+        audio: false,
+      });
+      setCamStream(s);
+    } catch {
+      setCamErr('Camera access denied — check your browser permissions.');
+    }
+  }, [camStream, send]);
+
+  // One <video> element exists per stage (calibrate preview / play bubble);
+  // this ref callback attaches the live camera stream to whichever is mounted.
+  const attachCamVideo = useCallback(
+    (el: HTMLVideoElement | null) => {
+      camVideoRef.current = el;
+      if (el && el.srcObject !== camStream) {
+        el.srcObject = camStream;
+        void el.play().catch(() => {});
+      }
+    },
+    [camStream],
+  );
+
+  // Center-crop a mirrored square snapshot of the camera and send it as a
+  // small JPEG data URL; the server registers it next to the player's name.
+  const sendAvatarSnapshot = useCallback(() => {
+    const v = camVideoRef.current;
+    if (!v || v.videoWidth === 0 || v.videoHeight === 0) return;
+    const canvas =
+      avatarCanvasRef.current ?? document.createElement('canvas');
+    avatarCanvasRef.current = canvas;
+    canvas.width = AVATAR_SIZE;
+    canvas.height = AVATAR_SIZE;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    const side = Math.min(v.videoWidth, v.videoHeight);
+    const sx = (v.videoWidth - side) / 2;
+    const sy = (v.videoHeight - side) / 2;
+    ctx.save();
+    // Mirror so the broadcast matches what the player sees in the selfie view.
+    ctx.translate(AVATAR_SIZE, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(v, sx, sy, side, side, 0, 0, AVATAR_SIZE, AVATAR_SIZE);
+    ctx.restore();
+    send({
+      type: 'shoot_avatar',
+      image: canvas.toDataURL('image/jpeg', 0.7),
+    });
+  }, [send]);
+
+  // While playing with the camera on, keep the broadcast avatar fresh: one
+  // early snapshot once the camera warms up, then a slow refresh loop.
+  useEffect(() => {
+    if (stage !== 'play' || !camStream) return;
+    const first = window.setTimeout(sendAvatarSnapshot, 600);
+    const t = window.setInterval(sendAvatarSnapshot, AVATAR_SEND_MS);
+    return () => {
+      window.clearTimeout(first);
+      window.clearInterval(t);
+    };
+  }, [stage, camStream, sendAvatarSnapshot]);
+
+  // Stop the camera when leaving the page.
+  useEffect(() => {
+    return () => {
+      camStream?.getTracks().forEach((t) => t.stop());
+    };
+  }, [camStream]);
 
   // Tick the local reload countdown while playing.
   useEffect(() => {
@@ -429,10 +523,10 @@ export default function ShootControllerPage() {
       if (!gyroLiveRef.current) {
         setGyroWarn(
           !window.isSecureContext
-            ? 'Żyroskop wymaga HTTPS.'
+            ? 'The gyroscope requires HTTPS.'
             : perm === 'denied'
-              ? 'Odmówiono dostępu do czujnika ruchu — włącz w ustawieniach przeglądarki.'
-              : 'Brak danych z żyroskopu (0 zdarzeń) — sprawdź uprawnienia/ustawienia ruchu.',
+              ? 'Motion sensor access denied — enable it in your browser settings.'
+              : 'No gyroscope data (0 events) — check motion permissions/settings.',
         );
       }
     }, 1500);
@@ -485,13 +579,13 @@ export default function ShootControllerPage() {
     const ro = remoteOrigin();
     const base = toWsUrl(ro ?? getEffectiveClientServerUrl());
     const url = `${base}/room/${encodeURIComponent(String(roomId))}/ws`;
-    setWsDbg(`łączę: ${url}`);
+    setWsDbg(`connecting: ${url}`);
     const ws = new WebSocket(url);
     wsRef.current = ws;
     ws.onopen = () => {
       setConnected(true);
       setWsDbg('');
-      // Join only once the player has committed (tapped Graj); handles the case
+      // Join only once the player has committed (tapped Play); handles the case
       // where the socket opens after that tap.
       if (wantsJoinRef.current) {
         ws.send(
@@ -502,11 +596,11 @@ export default function ShootControllerPage() {
         );
       }
     };
-    ws.onerror = () => setWsDbg(`błąd WS: ${url}`);
+    ws.onerror = () => setWsDbg(`WS error: ${url}`);
     ws.onclose = (ev) => {
       setConnected(false);
       setWsDbg(
-        `WS zamknięty (${ev.code}) — czy tunel celuje w Caddy :8080? ${url}`,
+        `WS closed (${ev.code}) — is the tunnel pointing at Caddy :8080? ${url}`,
       );
     };
     ws.onmessage = (ev) => {
@@ -576,7 +670,7 @@ export default function ShootControllerPage() {
   );
 
   // Connect + fetch room info on mount — no separate name screen; the name is
-  // entered on the calibration screen and sent when the player taps Graj.
+  // entered on the calibration screen and sent when the player taps Play.
   useEffect(() => {
     let cancelled = false;
     void getRoomInfo(String(roomId)).then((info) => {
@@ -649,17 +743,17 @@ export default function ShootControllerPage() {
         className='h-dvh w-full bg-[#0a0a0a] text-white flex flex-col landscape:flex-row items-center landscape:items-stretch justify-center gap-3 landscape:gap-5 p-4 overflow-hidden text-center'>
         {/* Left: live crosshair preview driven by the current axis mapping. */}
         <div className='flex flex-col items-center justify-center gap-2 shrink-0'>
-          <h2 className='text-xl font-bold'>Kalibracja</h2>
+          <h2 className='text-xl font-bold'>Calibration</h2>
           <div className='relative w-60 h-40 rounded-lg border border-neutral-700 bg-neutral-900 overflow-hidden'>
             <CalibPreview aim={previewAim} />
           </div>
           <button
             onClick={recenter}
             className='rounded bg-neutral-800 text-white text-xs px-3 py-1.5'>
-            ⌖ Wyśrodkuj
+            ⌖ Recenter
           </button>
           <div className='text-[10px] font-mono text-cyan-300'>
-            perm:{perm} · zdarzeń:{orient.n} · β:
+            perm:{perm} · events:{orient.n} · β:
             {orient.b == null ? '—' : orient.b.toFixed(0)} · γ:
             {orient.g == null ? '—' : orient.g.toFixed(0)}
           </div>
@@ -669,24 +763,57 @@ export default function ShootControllerPage() {
             landscape, where vertical space is tight. */}
         <div className='flex-1 min-h-0 w-full max-w-xs overflow-y-auto flex flex-col gap-3 text-left'>
           <label className='text-[11px] text-neutral-400'>
-            Twoje imię
+            Your name
             <input
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder='Twoje imię'
+              placeholder='Your name'
               className='mt-1 w-full rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white'
             />
           </label>
+          <div className='rounded-lg border border-neutral-700 bg-neutral-900/60 p-3 flex items-center gap-3'>
+            <button
+              onClick={() => void toggleCamera()}
+              className={`rounded px-3 py-2 text-xs shrink-0 ${
+                camStream
+                  ? 'bg-[#00f3ff] text-black'
+                  : 'bg-neutral-800 text-white'
+              }`}>
+              {camStream ? '📷 Camera on' : '📷 Camera off'}
+            </button>
+            {camStream ? (
+              <video
+                ref={attachCamVideo}
+                autoPlay
+                playsInline
+                muted
+                className='w-12 h-12 rounded-full object-cover border border-[#00f3ff] -scale-x-100 shrink-0'
+              />
+            ) : null}
+            <p className='text-[10px] text-neutral-500'>
+              Show your face next to your name on the stream.
+            </p>
+          </div>
+          {camErr && (
+            <div className='rounded bg-amber-500/90 text-black text-xs px-3 py-2'>
+              {camErr}
+            </div>
+          )}
           <p className='text-[11px] text-neutral-400'>
-            Wybierz oś dla poziomu i pionu, odwróć kierunek i ustaw czułość.
-            Ruszaj telefonem i patrz na celownik, aż reaguje jak trzeba.
+            Pick an axis for horizontal and vertical aiming, flip the direction
+            and set the sensitivity. Move the phone and watch the crosshair
+            until it reacts the way it should.
           </p>
           <AxisControls
-            title='Poziom ←→'
+            title='Horizontal ←→'
             cfg={horizCfg}
             onChange={setHorizCfg}
           />
-          <AxisControls title='Pion ↑↓' cfg={vertCfg} onChange={setVertCfg} />
+          <AxisControls
+            title='Vertical ↑↓'
+            cfg={vertCfg}
+            onChange={setVertCfg}
+          />
 
           {gyroWarn && (
             <div className='rounded bg-amber-500/90 text-black text-xs px-3 py-2'>
@@ -702,16 +829,16 @@ export default function ShootControllerPage() {
             className={`w-full rounded-lg py-3 text-lg font-bold transition-transform active:scale-95 ${
               sensorLive ? 'bg-[#00f3ff]' : 'bg-[#00f3ff]/60'
             } text-black`}>
-            🎯 Graj
+            🎯 Play
           </button>
           <button
             onClick={() => joinAndPlay(false)}
             className='w-full rounded-lg bg-neutral-800 text-white py-2.5'>
-            👆 Graj palcem
+            👆 Play with finger
           </button>
           <p className='text-[10px] text-neutral-500 text-center'>
-            Tapnij kaczkę, aby strzelić. Android: też przycisk głośności (+).
-            Ustaw input z kaczkami na pełny ekran dla celności.
+            Tap a duck to shoot. Android: the volume-up button (+) works too.
+            Set the input with ducks to full screen for accuracy.
           </p>
         </div>
       </div>
@@ -784,9 +911,9 @@ export default function ShootControllerPage() {
             <span
               className='inline-block w-3 h-3 rounded-full border border-white/40'
               style={{ backgroundColor: myColor }}
-              aria-label='Twój kolor'
+              aria-label='Your color'
             />
-            <span style={{ color: myColor }}>Wynik: {score}</span>
+            <span style={{ color: myColor }}>Score: {score}</span>
           </span>
         </div>
         {!connected && wsDbg && (
@@ -808,7 +935,7 @@ export default function ShootControllerPage() {
         )}
         {gyroMode && (
           <div className='absolute bottom-2 left-2 rounded bg-black/70 text-cyan-300 text-[10px] font-mono px-2 py-1 pointer-events-none'>
-            perm:{perm} · zdarzeń:{orient.n} · β:
+            perm:{perm} · events:{orient.n} · β:
             {orient.b == null ? '—' : orient.b.toFixed(0)} · γ:
             {orient.g == null ? '—' : orient.g.toFixed(0)}
           </div>
@@ -817,6 +944,18 @@ export default function ShootControllerPage() {
           <div className='absolute bottom-9 left-2 right-2 rounded bg-amber-500/90 text-black text-xs px-3 py-2 text-center pointer-events-none'>
             {gyroWarn}
           </div>
+        )}
+
+        {/* Self view: the camera snapshot being shared next to your name. */}
+        {camStream && (
+          <video
+            ref={attachCamVideo}
+            autoPlay
+            playsInline
+            muted
+            className='absolute bottom-2 right-2 w-16 h-16 rounded-full object-cover border-2 -scale-x-100 pointer-events-none'
+            style={{ borderColor: myColor }}
+          />
         )}
       </div>
 
@@ -832,9 +971,9 @@ export default function ShootControllerPage() {
         ))}
         <span className='ml-2 text-[11px] font-mono text-neutral-400 w-24 text-left'>
           {ammo < maxAmmo && reloadLeftMs > 0
-            ? `+1 za ${(reloadLeftMs / 1000).toFixed(1)}s`
+            ? `+1 in ${(reloadLeftMs / 1000).toFixed(1)}s`
             : ammo >= maxAmmo
-              ? 'pełny'
+              ? 'full'
               : ''}
         </span>
       </div>
@@ -856,7 +995,7 @@ export default function ShootControllerPage() {
           className={`rounded px-3 py-2 text-xs ${
             gyroMode ? 'bg-[#00f3ff] text-black' : 'bg-neutral-800 text-white'
           }`}>
-          {gyroMode ? '🎯 Żyroskop' : '👆 Palec'}
+          {gyroMode ? '🎯 Gyro' : '👆 Finger'}
         </button>
         {gyroMode && (
           <>
@@ -868,7 +1007,7 @@ export default function ShootControllerPage() {
             <button
               onClick={() => setStage('calibrate')}
               className='rounded bg-neutral-800 text-white px-3 py-2 text-xs'>
-              ⚙️ Osie
+              ⚙️ Axes
             </button>
           </>
         )}
@@ -879,7 +1018,7 @@ export default function ShootControllerPage() {
               ? 'bg-[#ff3b3b] text-white'
               : 'bg-neutral-800 text-neutral-500'
           }`}>
-          {ammo > 0 ? 'STRZAŁ 🔫' : 'PUSTO 🔄'}
+          {ammo > 0 ? 'FIRE 🔫' : 'EMPTY 🔄'}
         </button>
       </div>
     </div>
@@ -1062,7 +1201,7 @@ function AxisControls({
               ? 'bg-[#00f3ff] text-black'
               : 'bg-neutral-800 text-neutral-300'
           }`}>
-          {cfg.invert ? '⇄ odwrócona' : '⇄ odwróć'}
+          {cfg.invert ? '⇄ inverted' : '⇄ invert'}
         </button>
       </div>
       <select
@@ -1078,7 +1217,7 @@ function AxisControls({
         ))}
       </select>
       <div className='flex items-center gap-2'>
-        <span className='text-[11px] text-neutral-400 w-16'>czułość</span>
+        <span className='text-[11px] text-neutral-400 w-16'>sensitivity</span>
         <input
           type='range'
           min={0.3}

@@ -255,7 +255,7 @@ export function DuckHunterPanel({ roomId }: Props) {
             </div>
           ) : (
             <div className='w-[204px] h-[204px] rounded-lg border border-dashed border-neutral-700 flex items-center justify-center text-[11px] text-neutral-500 text-center px-4'>
-              Ustaw publiczny adres, aby wygenerować QR
+              Set a public address to generate the QR
             </div>
           )}
           <Button
@@ -268,7 +268,7 @@ export function DuckHunterPanel({ roomId }: Props) {
               setCopied(true);
               window.setTimeout(() => setCopied(false), 1500);
             }}>
-            {copied ? 'Skopiowano!' : 'Kopiuj link'}
+            {copied ? 'Copied!' : 'Copy link'}
           </Button>
           <p className='text-[11px] text-neutral-500 text-center max-w-[204px] break-all'>
             {shootUrl}
@@ -279,21 +279,21 @@ export function DuckHunterPanel({ roomId }: Props) {
         <div className='flex-1 min-w-0 w-full space-y-4'>
           {/* Start game: pick the input with birds, then flip on duck sprites. */}
           <div className='rounded-lg border border-neutral-700 bg-neutral-900/60 p-3 space-y-3'>
-            <div className='text-sm font-medium'>Gra 🎯</div>
+            <div className='text-sm font-medium'>Game 🎯</div>
             <div className='space-y-1'>
               <span className='text-[11px] text-neutral-400'>
-                Input z kaczkami/ptakami
+                Input with ducks/birds
               </span>
               <Select
                 value={selectedInputId}
                 onValueChange={setSelectedInputId}>
                 <SelectTrigger className='h-8 text-xs'>
-                  <SelectValue placeholder='Wybierz input…' />
+                  <SelectValue placeholder='Select an input…' />
                 </SelectTrigger>
                 <SelectContent>
                   {eligibleInputs.length === 0 ? (
                     <SelectItem value='__none' disabled className='text-xs'>
-                      Brak pasujących inputów
+                      No matching inputs
                     </SelectItem>
                   ) : (
                     eligibleInputs.map((i) => (
@@ -302,7 +302,9 @@ export function DuckHunterPanel({ roomId }: Props) {
                         value={i.inputId}
                         className='text-xs'>
                         {i.title || i.inputId}
-                        {i.aiModels?.[BIRD_MODEL_ID]?.ghostMode ? ' • gra' : ''}
+                        {i.aiModels?.[BIRD_MODEL_ID]?.ghostMode
+                          ? ' • in game'
+                          : ''}
                       </SelectItem>
                     ))
                   )}
@@ -316,19 +318,19 @@ export function DuckHunterPanel({ roomId }: Props) {
               disabled={!selectedInputId || starting}
               className='w-full'
               onClick={() => void toggleGame(!gameActive)}>
-              {starting ? 'Chwila…' : gameActive ? 'Zakończ grę' : 'Start game'}
+              {starting ? 'One sec…' : gameActive ? 'End game' : 'Start game'}
             </Button>
             <div className='text-[10px] text-neutral-500'>
-              Włącza Bird Counter (tryb kaczek) na wybranym inpucie. Dla
-              celności ustaw ten input na pełny ekran (broadcast/solo).
+              Enables the Bird Counter (duck mode) on the selected input. For
+              accurate aiming, set this input to full screen (broadcast/solo).
             </div>
           </div>
 
           {/* Room-wide ammo rules. */}
           <div className='rounded-lg border border-neutral-700 bg-neutral-900/60 p-3 space-y-3'>
-            <div className='text-sm font-medium'>Amunicja 🔫</div>
+            <div className='text-sm font-medium'>Ammo 🔫</div>
             <AmmoSlider
-              label='naboje (max)'
+              label='rounds (max)'
               value={maxAmmo}
               display={String(maxAmmo)}
               min={MIN_MAX_AMMO}
@@ -337,7 +339,7 @@ export function DuckHunterPanel({ roomId }: Props) {
               onChange={setMaxAmmo}
             />
             <AmmoSlider
-              label='przeładowanie'
+              label='reload'
               value={reloadSec}
               display={`${reloadSec.toFixed(1)}s`}
               min={MIN_RELOAD_SEC}
@@ -346,16 +348,16 @@ export function DuckHunterPanel({ roomId }: Props) {
               onChange={setReloadSec}
             />
             <div className='text-[10px] text-neutral-500'>
-              Regeneracja: 1 nabój co {reloadSec.toFixed(1)}s. Dotyczy
-              wszystkich graczy.
+              Regeneration: 1 round every {reloadSec.toFixed(1)}s. Applies to
+              all players.
             </div>
           </div>
 
           {/* Duck size. */}
           <div className='rounded-lg border border-neutral-700 bg-neutral-900/60 p-3 space-y-3'>
-            <div className='text-sm font-medium'>Kaczki 🦆</div>
+            <div className='text-sm font-medium'>Ducks 🦆</div>
             <AmmoSlider
-              label='rozmiar'
+              label='size'
               value={duckScale}
               display={`${duckScale.toFixed(2)}×`}
               min={MIN_DUCK_SCALE}
@@ -364,11 +366,10 @@ export function DuckHunterPanel({ roomId }: Props) {
               onChange={setDuckScale}
             />
             <div className='text-[10px] text-neutral-500'>
-              Mnożnik wielkości sprite'ów kaczek. 1× = domyślny, 0.5× = dwa razy
-              mniejsze.
+              Duck sprite size multiplier. 1× = default, 0.5× = half the size.
             </div>
             <AmmoSlider
-              label='odlot po'
+              label='fly off after'
               value={fleeSec}
               display={`${fleeSec.toFixed(1)}s`}
               min={MIN_FLEE_SEC}
@@ -377,7 +378,7 @@ export function DuckHunterPanel({ roomId }: Props) {
               onChange={setFleeSec}
             />
             <AmmoSlider
-              label='prędkość odlotu'
+              label='fly-off speed'
               value={flySpeed}
               display={`${flySpeed.toFixed(2)}×`}
               min={MIN_FLY_SPEED}
@@ -386,13 +387,13 @@ export function DuckHunterPanel({ roomId }: Props) {
               onChange={setFlySpeed}
             />
             <div className='text-[10px] text-neutral-500'>
-              Kaczka stoi w miejscu przez „odlot po”, potem odlatuje z zadaną
-              prędkością. Mniejsza prędkość = kaczki dłużej na ekranie.
+              A duck holds still for the “fly off after” time, then flies away
+              at the set speed. Lower speed = ducks stay on screen longer.
             </div>
           </div>
 
           <label className='block text-[11px] text-neutral-500'>
-            Publiczny adres (np. tunel HTTPS dla żyroskopu):
+            Public address (e.g. an HTTPS tunnel for the gyroscope):
             <input
               value={base}
               onChange={(e) => onBaseChange(e.target.value)}
@@ -402,8 +403,9 @@ export function DuckHunterPanel({ roomId }: Props) {
           </label>
 
           <p className='text-[11px] text-neutral-500'>
-            Żyroskop wymaga HTTPS (tunel). Bez czujnika działa celowanie palcem.
-            Wielu graczy = własny celownik i tablica wyników na obrazie.
+            The gyroscope requires HTTPS (tunnel). Without a motion sensor,
+            finger aiming still works. Each player gets their own crosshair,
+            with a scoreboard on the output.
           </p>
         </div>
       </div>

@@ -26,6 +26,8 @@ export interface ModelManifest {
   supportsBoxes?: boolean;
   /** Model-specific numeric tunables exposed in the UI and forwarded to the worker. */
   params?: ModelParamSpec[];
+  /** Hidden models stay registered (still resolvable by id) but are not listed in the UI. */
+  hidden?: boolean;
 }
 
 const manifests = new Map<string, ModelManifest>();

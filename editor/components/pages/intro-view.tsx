@@ -115,7 +115,7 @@ export default function IntroView() {
   const [showRecordings, setShowRecordings] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [selectedResolution, setSelectedResolution] =
-    useState<ResolutionPreset>('1440p');
+    useState<ResolutionPreset>('1080p');
   const [displayName, setDisplayName] = useState(() => {
     if (typeof window === 'undefined') return 'Mr Smelter';
     return localStorage.getItem('smelter-display-name') || 'Mr Smelter';
@@ -318,7 +318,7 @@ export default function IntroView() {
       if (!loadingNew && !loadingImport) {
         const detail = (e as CustomEvent).detail;
         const resolution = detail?.vertical
-          ? ('1440p-vertical' as ResolutionPreset)
+          ? ('1080p-vertical' as ResolutionPreset)
           : undefined;
         handleCreateRoom(resolution);
       }

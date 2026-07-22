@@ -87,6 +87,7 @@ type BackendSpec = {
    * UI sends no params). Kept in sync with the params defaults above. */
   yoloConf?: number;
   yoloImgsz?: number;
+  hidden?: boolean;
 };
 
 const BACKENDS: BackendSpec[] = [
@@ -100,6 +101,8 @@ const BACKENDS: BackendSpec[] = [
     defaultDelayMs: 3000,
     maxDelayMs: 5000,
     supportsBoxes: true,
+    // Ghost mode always renders the haunting ghosts (Haunter panel tunes the
+    // pool/threshold live) — there is no per-input sprite style.
     params: YOLO_PARAMS,
   },
   {
@@ -126,6 +129,7 @@ const BACKENDS: BackendSpec[] = [
     description: 'Counts faces via MediaPipe FaceDetection',
     backend: 'mediapipe',
     wsPort: 8085,
+    hidden: true,
   },
   {
     id: 'people-counter-haar',
@@ -133,6 +137,7 @@ const BACKENDS: BackendSpec[] = [
     description: 'Counts faces via OpenCV Haar cascade (lightest)',
     backend: 'haar',
     wsPort: 8086,
+    hidden: true,
   },
 ];
 
@@ -178,6 +183,7 @@ function makeManifest(spec: BackendSpec): ModelManifest {
     },
     ...(spec.supportsBoxes ? { supportsBoxes: true } : {}),
     ...(spec.params ? { params: spec.params } : {}),
+    ...(spec.hidden ? { hidden: true } : {}),
   };
 }
 

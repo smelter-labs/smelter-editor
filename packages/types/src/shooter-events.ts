@@ -24,12 +24,19 @@ export type ShooterJoinMessage = {
 export type ShooterAimMessage = { type: "shoot_aim"; x: number; y: number };
 export type ShooterFireMessage = { type: "shoot_fire" };
 export type ShooterLeaveMessage = { type: "shoot_leave" };
+/**
+ * Camera snapshot from the phone, shown next to the player's name on the
+ * broadcast. `image` is a small JPEG data URL (server enforces size limits and
+ * throttles per client).
+ */
+export type ShooterAvatarMessage = { type: "shoot_avatar"; image: string };
 
 export type ShooterClientMessage =
   | ShooterJoinMessage
   | ShooterAimMessage
   | ShooterFireMessage
-  | ShooterLeaveMessage;
+  | ShooterLeaveMessage
+  | ShooterAvatarMessage;
 
 // Server -> Client
 export type ShooterStateEvent = {

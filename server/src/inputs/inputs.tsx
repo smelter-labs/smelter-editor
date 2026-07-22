@@ -17,9 +17,12 @@ import { wrapWithShaders } from '../utils/shaderUtils';
 import { ScrollingText } from './scrollingText';
 import { TransitionShaderWrapper } from './transitionWrapper';
 import { HandsInput } from './HandsInput';
-import { PacmanGhostsInput } from './PacmanGhostsInput';
 import { PacmanBirdsInput } from './PacmanBirdsInput';
+import { HaunterGhostsInput } from './HaunterGhostsInput';
 import { GhostCityWrapper } from './GhostCityWrapper';
+import { CarAdsInput, CarAdDebugBoxes } from './CarAdsInput';
+import { CarHueWrapper } from './CarHueWrapper';
+import { SmoothedBoxes } from './SmoothedBoxes';
 
 type Resolution = { width: number; height: number };
 
@@ -143,6 +146,16 @@ export function Input({ input }: { input: InputConfig }) {
     store,
     (state) => state.buildingBoxes[input.inputId],
   );
+  // Car Ads: tracked vehicles + wheel-derived side quads for the ad overlay.
+  const carAdBoxes = useStore(
+    store,
+    (state) => state.carAdBoxes[input.inputId],
+  );
+  // Car Hue: tracked top-down vehicles for the per-car hue recolor shader.
+  const carHueBoxes = useStore(
+    store,
+    (state) => state.carHueBoxes[input.inputId],
+  );
   // Ghost Shooter overlay, only when this input is the game's target.
   const shooter = useStore(store, (state) =>
     state.shooter?.targetInputId === input.inputId ? state.shooter : null,
@@ -151,8 +164,16 @@ export function Input({ input }: { input: InputConfig }) {
   // The video/content element for the playing state. Extracted so Ghost City
   // can wrap it in the haunted-city shader without disturbing the overlays
   // (subtitle, boxes, count badge, shooter HUD) that sit beside it.
+  // The base Rescalers carry explicit sizes (not just the parent View's) so
+  // they stay valid when a shader wrapper (Ghost City / Car Hue) adopts them —
+  // a Rescaler child of a Shader must have a known size.
   let videoContent: React.ReactElement = showFrozenImage ? (
-    <Rescaler style={{ rescaleMode: 'fill' }}>
+    <Rescaler
+      style={{
+        width: contentWidth,
+        height: contentHeight,
+        rescaleMode: 'fill',
+      }}>
       <Image imageId={input.frozenImageId!} />
     </Rescaler>
   ) : isGame && getInputRenderer('game') ? (
@@ -161,7 +182,12 @@ export function Input({ input }: { input: InputConfig }) {
       height: contentHeight,
     })
   ) : isImage ? (
-    <Rescaler style={{ rescaleMode: 'fit' }}>
+    <Rescaler
+      style={{
+        width: contentWidth,
+        height: contentHeight,
+        rescaleMode: 'fit',
+      }}>
       <Image imageId={input.imageId!} />
     </Rescaler>
   ) : isTextInput ? (
@@ -185,7 +211,9 @@ export function Input({ input }: { input: InputConfig }) {
       resolution={{ width: contentWidth, height: contentHeight }}
       volume={input.volume}
     />
-  ) : peopleBoxes?.ghost && peopleBoxes.boxes.length ? (
+  ) : peopleBoxes?.ghost &&
+    // Haunters stay mounted with zero boxes so idle ghosts keep waiting.
+    (peopleBoxes.boxes.length || peopleBoxes.sprite === 'haunter') ? (
     peopleBoxes.sprite === 'bird' ? (
       <PacmanBirdsInput
         sourceInputId={input.inputId}
@@ -195,16 +223,28 @@ export function Input({ input }: { input: InputConfig }) {
         ducks={shooter?.ducks}
       />
     ) : (
-      <PacmanGhostsInput
+      // People ghost mode is always the haunting ghosts (Haunter panel style).
+      <HaunterGhostsInput
         sourceInputId={input.inputId}
         data={peopleBoxes}
         resolution={{ width: contentWidth, height: contentHeight }}
         volume={input.volume}
-        deadIds={shooter?.deadGhostIds}
       />
     )
+  ) : carAdBoxes?.ads && carAdBoxes.cars.length ? (
+    <CarAdsInput
+      sourceInputId={input.inputId}
+      data={carAdBoxes}
+      resolution={{ width: contentWidth, height: contentHeight }}
+      volume={input.volume}
+    />
   ) : (
-    <Rescaler style={{ rescaleMode: 'fill' }}>
+    <Rescaler
+      style={{
+        width: contentWidth,
+        height: contentHeight,
+        rescaleMode: 'fill',
+      }}>
       <InputStream inputId={input.inputId} volume={input.volume} />
     </Rescaler>
   );
@@ -219,6 +259,18 @@ export function Input({ input }: { input: InputConfig }) {
         resolution={{ width: contentWidth, height: contentHeight }}>
         {videoContent}
       </GhostCityWrapper>
+    );
+  }
+
+  // Car Hue: recolor detected top-down cars. Wraps the base content like Ghost
+  // City, so it composes with the other overlay modes.
+  if (carHueBoxes?.effect && carHueBoxes.boxes.length) {
+    videoContent = (
+      <CarHueWrapper
+        data={carHueBoxes}
+        resolution={{ width: contentWidth, height: contentHeight }}>
+        {videoContent}
+      </CarHueWrapper>
     );
   }
 
@@ -244,6 +296,20 @@ export function Input({ input }: { input: InputConfig }) {
             {peopleBoxes?.boxes.length && !peopleBoxes.ghost ? (
               <PeopleBoxes
                 data={peopleBoxes}
+                parent={{ width: contentWidth, height: contentHeight }}
+              />
+            ) : null}
+            {carAdBoxes?.cars.length && !carAdBoxes.ads ? (
+              <CarAdDebugBoxes
+                data={carAdBoxes}
+                parent={{ width: contentWidth, height: contentHeight }}
+              />
+            ) : null}
+            {carHueBoxes?.boxes.length && !carHueBoxes.effect ? (
+              // Dead-reckoned boxes: top-down cars move fast relative to the
+              // ~5 responses/s, so raw boxes would jump and trail the cars.
+              <SmoothedBoxes
+                data={carHueBoxes}
                 parent={{ width: contentWidth, height: contentHeight }}
               />
             ) : null}
@@ -671,46 +737,261 @@ function ShooterHud({
                 borderRadius: chSize / 2,
               }}
             />
-            <View
-              style={{
-                top: -Math.round(chSize * 0.55),
-                left: 0,
-                width: Math.max(120, chSize * 3),
-                height: Math.round(chSize * 0.5),
-                overflow: 'visible',
-              }}>
-              <Text
-                style={{
-                  fontSize: Math.max(16, Math.round(chSize * 0.4)),
-                  color: c.color,
-                }}>
-                {c.name}
-              </Text>
-            </View>
+            <PlayerBadge
+              player={c}
+              px={px}
+              py={py}
+              chSize={chSize}
+              parent={parent}
+              now={now}
+            />
           </View>
         );
       })}
 
       {/* Scoreboard, top-right. */}
       {shooter.scores.length > 0 ? (
-        <ShooterScoreboard scores={shooter.scores} parent={parent} />
+        <ShooterScoreboard scores={shooter.scores} parent={parent} now={now} />
       ) : null}
     </View>
   );
 }
 
+// HUD accents shared by the badge and the scoreboard.
+const AMMO_FULL = '#FFDE59';
+const AMMO_EMPTY = '#FFFFFF3C';
+const HUD_BG = '#000000B8';
+
+function clamp01Hud(v: number): number {
+  return Math.max(0, Math.min(1, v));
+}
+
+function ammoPipGap(pipSize: number): number {
+  return Math.max(2, Math.round(pipSize * 0.5));
+}
+
+function ammoPipsWidth(pipSize: number, maxAmmo: number): number {
+  return maxAmmo * pipSize + (maxAmmo - 1) * ammoPipGap(pipSize);
+}
+
+function ammoBarHeight(pipSize: number): number {
+  return Math.max(2, Math.round(pipSize * 0.3));
+}
+
+function ammoBlockHeight(pipSize: number): number {
+  return pipSize + Math.max(2, Math.round(pipSize * 0.4)) + ammoBarHeight(pipSize);
+}
+
+/**
+ * Ammo readout for one player: filled pips = rounds left, plus a thin bar that
+ * fills while the next round regenerates (empty when the magazine is full, so
+ * the height never changes and the layout doesn't jump).
+ */
+function AmmoPips({
+  top,
+  left,
+  pipSize,
+  player,
+  now,
+}: {
+  top: number;
+  left: number;
+  pipSize: number;
+  player: {
+    ammo: number;
+    maxAmmo: number;
+    reloadMs: number;
+    reloadEndsAt: number | null;
+  };
+  now: number;
+}) {
+  const gap = ammoPipGap(pipSize);
+  const width = ammoPipsWidth(pipSize, player.maxAmmo);
+  const barH = ammoBarHeight(pipSize);
+  const barTop = pipSize + Math.max(2, Math.round(pipSize * 0.4));
+  const progress =
+    player.reloadEndsAt == null
+      ? 0
+      : clamp01Hud(1 - (player.reloadEndsAt - now) / player.reloadMs);
+  return (
+    <View
+      style={{
+        top,
+        left,
+        width,
+        height: ammoBlockHeight(pipSize),
+        overflow: 'visible',
+      }}>
+      {Array.from({ length: player.maxAmmo }).map((_, i) => (
+        <View
+          key={`pip-${i}`}
+          style={{
+            top: 0,
+            left: i * (pipSize + gap),
+            width: pipSize,
+            height: pipSize,
+            borderRadius: pipSize / 2,
+            backgroundColor: i < player.ammo ? AMMO_FULL : AMMO_EMPTY,
+          }}
+        />
+      ))}
+      {player.reloadEndsAt != null ? (
+        <>
+          <View
+            style={{
+              top: barTop,
+              left: 0,
+              width,
+              height: barH,
+              borderRadius: barH / 2,
+              backgroundColor: '#FFFFFF26',
+            }}
+          />
+          <View
+            style={{
+              top: barTop,
+              left: 0,
+              width: Math.max(1, Math.round(width * progress)),
+              height: barH,
+              borderRadius: barH / 2,
+              backgroundColor: AMMO_FULL,
+            }}
+          />
+        </>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * Name badge above a crosshair: rounded dark pill with the player's camera
+ * avatar (when the phone shares one), name and live ammo state. Positioned in
+ * crosshair-local coords (the container sits at the crosshair's top-left), but
+ * clamped against the tile so it never slides off screen; flips below the
+ * crosshair near the top edge.
+ */
+function PlayerBadge({
+  player,
+  px,
+  py,
+  chSize,
+  parent,
+  now,
+}: {
+  player: ShooterOverlay['crosshairs'][number];
+  px: number;
+  py: number;
+  chSize: number;
+  parent: { width: number; height: number };
+  now: number;
+}) {
+  const fs = Math.max(16, Math.round(chSize * 0.34));
+  const hasAvatar = !!player.avatarImageId;
+  const av = Math.round(fs * 2.0);
+  const padH = Math.round(fs * 0.45);
+  const padV = Math.round(fs * 0.3);
+  const gap = Math.round(fs * 0.35);
+  const nameH = Math.round(fs * 1.25);
+  const pipSize = Math.max(5, Math.round(fs * 0.32));
+  const pipRowGap = Math.round(fs * 0.18);
+  const textColH = nameH + pipRowGap + ammoBlockHeight(pipSize);
+  const contentH = Math.max(hasAvatar ? av : 0, textColH);
+  // Smelter Views don't auto-size to content, so estimate the name width.
+  const nameW = Math.round(fs * 0.56 * player.name.length) + Math.round(fs * 0.3);
+  const innerW = Math.max(nameW, ammoPipsWidth(pipSize, player.maxAmmo));
+  const badgeW = padH * 2 + (hasAvatar ? av + gap : 0) + innerW;
+  const badgeH = padV * 2 + contentH;
+
+  // Clamp within the tile; prefer above the crosshair, flip below near the top.
+  const edge = Math.round(parent.width * 0.008);
+  const absLeft = Math.round(
+    Math.max(edge, Math.min(parent.width - badgeW - edge, px - badgeW / 2)),
+  );
+  let absTop = Math.round(py - chSize * 0.9 - badgeH);
+  if (absTop < edge) absTop = Math.round(py + chSize * 0.9);
+
+  const textLeft = padH + (hasAvatar ? av + gap : 0);
+  const textTop = Math.round((badgeH - textColH) / 2);
+  return (
+    <View
+      style={{
+        top: absTop - Math.round(py - chSize / 2),
+        left: absLeft - Math.round(px - chSize / 2),
+        width: badgeW,
+        height: badgeH,
+        backgroundColor: HUD_BG,
+        borderRadius: Math.round(fs * 0.45),
+        borderWidth: 3,
+        borderColor: player.color,
+        overflow: 'visible',
+      }}>
+      {hasAvatar ? (
+        <View
+          style={{
+            top: Math.round((badgeH - av) / 2),
+            left: padH,
+            width: av,
+            height: av,
+            borderRadius: av / 2,
+            overflow: 'hidden',
+          }}>
+          <Rescaler style={{ width: av, height: av, rescaleMode: 'fill' }}>
+            <Image imageId={player.avatarImageId!} />
+          </Rescaler>
+        </View>
+      ) : null}
+      <View
+        style={{
+          top: textTop,
+          left: textLeft,
+          width: innerW,
+          height: nameH,
+          overflow: 'hidden',
+        }}>
+        <Text style={{ fontSize: fs, color: player.color }}>{player.name}</Text>
+      </View>
+      <AmmoPips
+        top={textTop + nameH + pipRowGap}
+        left={textLeft}
+        pipSize={pipSize}
+        player={player}
+        now={now}
+      />
+    </View>
+  );
+}
+
+const RANK_MEDALS = ['🥇', '🥈', '🥉'];
+
+/**
+ * Scoreboard, top-right: ranked rows with the player's camera avatar, name,
+ * ammo pips + reload countdown, and the score right-aligned.
+ */
 function ShooterScoreboard({
   scores,
   parent,
+  now,
 }: {
   scores: ShooterOverlay['scores'];
   parent: { width: number; height: number };
+  now: number;
 }) {
   const margin = Math.round(parent.width * 0.02);
-  const fontSize = Math.max(18, Math.round(parent.height * 0.032));
-  const rowH = Math.round(fontSize * 1.4);
-  const width = Math.round(parent.width * 0.22);
-  const height = rowH * scores.length + Math.round(fontSize * 0.6);
+  const fs = Math.max(18, Math.round(parent.height * 0.03));
+  const padH = Math.round(fs * 0.6);
+  const padV = Math.round(fs * 0.5);
+  const av = Math.round(fs * 1.9);
+  const rowH = Math.round(av * 1.2);
+  const rowGap = Math.round(fs * 0.4);
+  const rankW = Math.round(fs * 1.5);
+  const gap = Math.round(fs * 0.4);
+  const scoreW = Math.round(fs * 2.4);
+  const width = Math.round(parent.width * 0.24);
+  const height =
+    padV * 2 + scores.length * rowH + (scores.length - 1) * rowGap;
+  const pipSize = Math.max(5, Math.round(fs * 0.3));
+  const nameLeft = padH + rankW + av + gap;
+  const nameW = width - nameLeft - scoreW - padH - gap;
   return (
     <View
       style={{
@@ -718,22 +999,105 @@ function ShooterScoreboard({
         left: parent.width - width - margin,
         width,
         height,
-        backgroundColor: '#000000B0',
-        borderRadius: Math.round(fontSize * 0.3),
-        paddingHorizontal: Math.round(fontSize * 0.4),
-        paddingVertical: Math.round(fontSize * 0.3),
-        direction: 'column',
+        backgroundColor: HUD_BG,
+        borderRadius: Math.round(fs * 0.5),
         overflow: 'hidden',
       }}>
-      {scores.map((s, i) => (
-        <View
-          key={i}
-          style={{ width: width - fontSize, height: rowH, overflow: 'hidden' }}>
-          <Text style={{ fontSize, color: s.color }}>
-            {`${s.name}  ${s.score}`}
-          </Text>
-        </View>
-      ))}
+      {scores.map((s, i) => {
+        const rowTop = padV + i * (rowH + rowGap);
+        const reloadLeftS =
+          s.reloadEndsAt == null ? null : Math.max(0, s.reloadEndsAt - now) / 1000;
+        return (
+          <View
+            key={`row-${s.clientId}`}
+            style={{
+              top: rowTop,
+              left: 0,
+              width,
+              height: rowH,
+              overflow: 'visible',
+            }}>
+            <View
+              style={{
+                top: Math.round((rowH - fs * 1.2) / 2),
+                left: padH,
+                width: rankW,
+                height: Math.round(fs * 1.3),
+                overflow: 'visible',
+              }}>
+              <Text style={{ fontSize: fs, color: '#FFFFFFCC' }}>
+                {RANK_MEDALS[i] ?? `${i + 1}`}
+              </Text>
+            </View>
+            <View
+              style={{
+                top: Math.round((rowH - av) / 2),
+                left: padH + rankW,
+                width: av,
+                height: av,
+                borderRadius: av / 2,
+                backgroundColor: s.avatarImageId ? undefined : s.color,
+                overflow: 'hidden',
+              }}>
+              {s.avatarImageId ? (
+                <Rescaler style={{ width: av, height: av, rescaleMode: 'fill' }}>
+                  <Image imageId={s.avatarImageId} />
+                </Rescaler>
+              ) : null}
+            </View>
+            <View
+              style={{
+                top: 0,
+                left: nameLeft,
+                width: Math.max(fs, nameW),
+                height: Math.round(fs * 1.3),
+                overflow: 'hidden',
+              }}>
+              <Text style={{ fontSize: fs, color: s.color }}>{s.name}</Text>
+            </View>
+            <AmmoPips
+              top={Math.round(fs * 1.45)}
+              left={nameLeft}
+              pipSize={pipSize}
+              player={s}
+              now={now}
+            />
+            {reloadLeftS != null ? (
+              <View
+                style={{
+                  top: Math.round(fs * 1.45),
+                  left: nameLeft + ammoPipsWidth(pipSize, s.maxAmmo) + gap,
+                  width: Math.round(fs * 2.6),
+                  height: Math.round(fs * 0.9),
+                  overflow: 'hidden',
+                }}>
+                <Text
+                  style={{ fontSize: Math.round(fs * 0.62), color: '#FFFFFF88' }}>
+                  {`+1 in ${reloadLeftS.toFixed(1)}s`}
+                </Text>
+              </View>
+            ) : null}
+            <View
+              style={{
+                top: Math.round((rowH - fs * 1.5) / 2),
+                left: width - padH - scoreW,
+                width: scoreW,
+                height: Math.round(fs * 1.6),
+                overflow: 'hidden',
+              }}>
+              <Text
+                style={{
+                  fontSize: Math.round(fs * 1.3),
+                  color: '#FFFFFF',
+                  align: 'right',
+                  width: scoreW,
+                }}>
+                {`${s.score}`}
+              </Text>
+            </View>
+          </View>
+        );
+      })}
     </View>
   );
 }

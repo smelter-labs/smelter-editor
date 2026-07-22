@@ -382,12 +382,20 @@ export function AIModelsPanel({
                       <div className='text-xs text-neutral-300'>
                         {model.id.includes('bird')
                           ? 'Duck sprites'
-                          : 'Pac-Man ghosts'}
+                          : model.id === 'car-ads'
+                            ? 'Ad overlay'
+                            : model.id === 'car-hue-topdown'
+                              ? 'Hue overlay'
+                              : 'Ghost overlay'}
                       </div>
                       <div className='text-[11px] text-neutral-500'>
                         {model.id.includes('bird')
                           ? 'Replace each detected bird with a Duck Hunt duck sprite'
-                          : 'Replace each detected person with a Pac-Man ghost'}
+                          : model.id === 'car-ads'
+                            ? 'Stick the ad image onto each car side, in perspective from its wheels'
+                            : model.id === 'car-hue-topdown'
+                              ? 'Recolor each detected car (hue shift inside its box)'
+                              : 'Haunting ghosts chase detected people (tune them in the Ghosts panel)'}
                       </div>
                     </div>
                     <Button

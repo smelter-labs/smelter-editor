@@ -34,10 +34,21 @@ import {
   PEOPLE_COUNTER_YOLO_ID,
   PEOPLE_COUNTER_YOLO_BIRDS_ID,
   BUILDING_DETECTOR_ID,
+  CAR_ADS_ID,
+  CAR_HUE_ID,
   type ModelResultEvent,
 } from '../ai-models';
 import { PeopleTracker } from '../ai-models/people-counter/people-tracker';
+import { CarTracker } from '../ai-models/car-ads/car-tracker';
+import type { CarAdDetection } from '../app/store';
 import { DuckHunterController } from '../duckHunter/DuckHunterController';
+import {
+  DEFAULT_HAUNTER_COUNT,
+  DEFAULT_HAUNTER_DIST,
+  DEFAULT_HAUNTER_SCALE,
+  DEFAULT_HAUNTER_SPEED,
+  MAX_HAUNTERS,
+} from '../haunter/haunterModel';
 import { SnakeGameController } from './SnakeGameController';
 import { PlaceholderManager } from './PlaceholderManager';
 import { AudioController } from '../audio/AudioController';
@@ -172,6 +183,12 @@ export class RoomState {
   /** Per-input cross-frame tracker for YOLO bird boxes (stable id + color). */
   private readonly birdTrackers = new Map<string, PeopleTracker>();
 
+  /** Per-input cross-frame tracker for car-ads vehicles (stable id + quad). */
+  private readonly carAdTrackers = new Map<string, CarTracker>();
+
+  /** Per-input cross-frame tracker for top-down car-hue boxes (stable id). */
+  private readonly carHueTrackers = new Map<string, PeopleTracker>();
+
   /** Duck Hunter game (phone-gyroscope crosshairs targeting the ducks). */
   private readonly duckHunter: DuckHunterController;
 
@@ -208,7 +225,7 @@ export class RoomState {
   private swapOutgoingEnabled: boolean = true;
   private swapFadeInDurationMs: number = 500;
   private swapFadeOutDurationMs: number = 500;
-  private sortMode: 'timeline' | 'layers' = 'timeline';
+  private sortMode: 'timeline' | 'layers' = 'layers';
 
   private viewportTop?: number;
   private viewportLeft?: number;
@@ -339,6 +356,11 @@ export class RoomState {
             typeof data.frameW === 'number' &&
             typeof data.frameH === 'number';
           const ghost = Boolean(cfg?.enabled && cfg?.ghostMode);
+          // Ghost mode always means the haunting ghosts (same as the Haunter
+          // panel) — free-floating haunters that chase people. Published even
+          // with zero tracked boxes so the renderer stays mounted and idle
+          // ghosts keep waiting on-screen.
+          const haunter = ghost;
           const show = Boolean(
             cfg?.enabled && (cfg?.drawBoxes || ghost) && hasFrame,
           );
@@ -353,12 +375,21 @@ export class RoomState {
             const tracked = tracker.update(data.boxes!, Date.now());
             store.setPeopleBoxes(
               event.inputId,
-              tracked.length > 0
+              tracked.length > 0 || haunter
                 ? {
                     boxes: tracked,
                     frameW: data.frameW!,
                     frameH: data.frameH!,
                     ghost,
+                    ...(haunter
+                      ? {
+                          sprite: 'haunter' as const,
+                          haunterCount: this.haunterCount,
+                          haunterDist: this.haunterDist,
+                          haunterScale: this.haunterScale,
+                          haunterSpeed: this.haunterSpeed,
+                        }
+                      : {}),
                   }
                 : null,
             );
@@ -473,6 +504,152 @@ export class RoomState {
       BUILDING_DETECTOR_ID,
       onBuildings,
     );
+
+    // Car Ads: vehicle + wheel detection → ad glued to the car side via the
+    // corner-pin homography. Same delay-sync as the people boxes; the tracker
+    // gives each car a stable id and smooths/holds its quad across responses.
+    const onCarAds = (event: ModelResultEvent) => {
+      const input = this.inputManager
+        .getInputs()
+        .find((i) => i.inputId === event.inputId);
+      if (!input) return;
+      const data = event.data as {
+        cars?: CarAdDetection[];
+        frameW?: number;
+        frameH?: number;
+        procMs?: number;
+      };
+
+      const outputDelayMs = input.registeredSideChannelDelayMs ?? 0;
+      const procMs = typeof data.procMs === 'number' ? data.procMs : 0;
+      const holdMs = Math.max(0, outputDelayMs - procMs);
+
+      const applyOverlay = () => {
+        const store = this.output.store.getState();
+        const cfg = input.aiModels?.[CAR_ADS_ID];
+        const hasFrame =
+          Array.isArray(data.cars) &&
+          typeof data.frameW === 'number' &&
+          typeof data.frameH === 'number';
+        const ads = Boolean(cfg?.enabled && cfg?.ghostMode);
+        const show = Boolean(
+          cfg?.enabled && (cfg?.drawBoxes || ads) && hasFrame,
+        );
+        if (show) {
+          // Feed every response (even empty ones) through the tracker so cars
+          // keep a stable identity and survive brief detection dropouts.
+          let tracker = this.carAdTrackers.get(event.inputId);
+          if (!tracker) {
+            tracker = new CarTracker();
+            this.carAdTrackers.set(event.inputId, tracker);
+          }
+          const tracked = tracker.update(data.cars!, Date.now());
+          const adOpacity = Number(cfg?.params?.adOpacity);
+          store.setCarAdBoxes(
+            event.inputId,
+            tracked.length > 0
+              ? {
+                  cars: tracked,
+                  frameW: data.frameW!,
+                  frameH: data.frameH!,
+                  ads,
+                  ...(Number.isFinite(adOpacity) ? { adOpacity } : {}),
+                }
+              : null,
+          );
+        } else {
+          this.carAdTrackers.delete(event.inputId);
+          store.setCarAdBoxes(event.inputId, null);
+        }
+      };
+
+      if (holdMs > 0) {
+        setTimeout(applyOverlay, holdMs);
+      } else {
+        applyOverlay();
+      }
+    };
+    void this.aiController.wireSidecarListeners(CAR_ADS_ID, onCarAds);
+
+    // Car Hue: top-down vehicle boxes → per-car hue recolor via the car-hue
+    // shader. Same worker as car-ads in 'topdown' mode (boxes only, no wheels),
+    // same delay-sync; the person tracker gives each car a stable id so its
+    // color assignment (hue + per-car spread) doesn't flicker between cars.
+    const onCarHue = (event: ModelResultEvent) => {
+      const input = this.inputManager
+        .getInputs()
+        .find((i) => i.inputId === event.inputId);
+      if (!input) return;
+      const data = event.data as {
+        cars?: { box: { x: number; y: number; w: number; h: number } }[];
+        frameW?: number;
+        frameH?: number;
+        procMs?: number;
+      };
+
+      const outputDelayMs = input.registeredSideChannelDelayMs ?? 0;
+      const procMs = typeof data.procMs === 'number' ? data.procMs : 0;
+      const holdMs = Math.max(0, outputDelayMs - procMs);
+
+      const applyOverlay = () => {
+        const store = this.output.store.getState();
+        const cfg = input.aiModels?.[CAR_HUE_ID];
+        const hasFrame =
+          Array.isArray(data.cars) &&
+          typeof data.frameW === 'number' &&
+          typeof data.frameH === 'number';
+        const effect = Boolean(cfg?.enabled && cfg?.ghostMode);
+        const show = Boolean(
+          cfg?.enabled && (cfg?.drawBoxes || effect) && hasFrame,
+        );
+        if (show) {
+          let tracker = this.carHueTrackers.get(event.inputId);
+          if (!tracker) {
+            // Short miss budget: a lost car drops its box after 2 unmatched
+            // responses — top-down cars leave the frame fast, so a held box
+            // quickly points at empty road. No server-side lead — CarHueWrapper
+            // dead-reckons between responses itself, and leading here would
+            // predict motion twice.
+            tracker = new PeopleTracker(2, false);
+            this.carHueTrackers.set(event.inputId, tracker);
+          }
+          const tracked = tracker.update(
+            data.cars!.map((c) => c.box),
+            Date.now(),
+          );
+          const num = (v: unknown) => {
+            const n = Number(v);
+            return Number.isFinite(n) ? n : undefined;
+          };
+          store.setCarHueBoxes(
+            event.inputId,
+            tracked.length > 0
+              ? {
+                  boxes: tracked,
+                  frameW: data.frameW!,
+                  frameH: data.frameH!,
+                  effect,
+                  hue: num(cfg?.params?.hue),
+                  spread: num(cfg?.params?.spread),
+                  strength: num(cfg?.params?.strength),
+                  satBoost: num(cfg?.params?.satBoost),
+                  whiteBoost: num(cfg?.params?.whiteBoost),
+                }
+              : null,
+          );
+        } else {
+          this.carHueTrackers.delete(event.inputId);
+          store.setCarHueBoxes(event.inputId, null);
+        }
+      };
+
+      if (holdMs > 0) {
+        setTimeout(applyOverlay, holdMs);
+      } else {
+        applyOverlay();
+      }
+    };
+    void this.aiController.wireSidecarListeners(CAR_HUE_ID, onCarHue);
   }
 
   public async init(): Promise<void> {
@@ -1068,6 +1245,7 @@ export class RoomState {
       name?: unknown;
       x?: unknown;
       y?: unknown;
+      image?: unknown;
     };
     switch (msg.type) {
       case 'shoot_join':
@@ -1086,6 +1264,11 @@ export class RoomState {
         break;
       case 'shoot_leave':
         this.duckHunter.leave(clientId);
+        break;
+      case 'shoot_avatar':
+        if (typeof msg.image === 'string') {
+          void this.duckHunter.setAvatar(clientId, msg.image);
+        }
         break;
       default:
         break;
@@ -1136,6 +1319,62 @@ export class RoomState {
       duckScale: this.duckScale,
       duckPauseMs: this.duckPauseMs,
       duckFlySpeed: this.duckFlySpeed,
+    };
+  }
+
+  /**
+   * Room-wide haunting-ghosts config from the Haunter panel. Injected into each
+   * people `peopleBoxes` push (when the Ghost style is 'haunter') so
+   * HaunterGhostsInput picks changes up live. Bounds mirror the panel sliders.
+   */
+  private haunterCount = DEFAULT_HAUNTER_COUNT;
+  private haunterDist = DEFAULT_HAUNTER_DIST;
+  private haunterScale = DEFAULT_HAUNTER_SCALE;
+  private haunterSpeed = DEFAULT_HAUNTER_SPEED;
+
+  /** Set the room-wide haunting-ghosts config (pool size, attach range, sprite size, follow speed). */
+  public setHaunterConfig(cfg: {
+    haunterCount?: number;
+    haunterDist?: number;
+    haunterScale?: number;
+    haunterSpeed?: number;
+  }): {
+    haunterCount: number;
+    haunterDist: number;
+    haunterScale: number;
+    haunterSpeed: number;
+  } {
+    if (
+      typeof cfg.haunterCount === 'number' &&
+      Number.isFinite(cfg.haunterCount)
+    ) {
+      this.haunterCount = Math.round(
+        Math.max(1, Math.min(MAX_HAUNTERS, cfg.haunterCount)),
+      );
+    }
+    if (
+      typeof cfg.haunterDist === 'number' &&
+      Number.isFinite(cfg.haunterDist)
+    ) {
+      this.haunterDist = Math.max(0.1, Math.min(1, cfg.haunterDist));
+    }
+    if (
+      typeof cfg.haunterScale === 'number' &&
+      Number.isFinite(cfg.haunterScale)
+    ) {
+      this.haunterScale = Math.max(0.25, Math.min(3, cfg.haunterScale));
+    }
+    if (
+      typeof cfg.haunterSpeed === 'number' &&
+      Number.isFinite(cfg.haunterSpeed)
+    ) {
+      this.haunterSpeed = Math.max(0.25, Math.min(3, cfg.haunterSpeed));
+    }
+    return {
+      haunterCount: this.haunterCount,
+      haunterDist: this.haunterDist,
+      haunterScale: this.haunterScale,
+      haunterSpeed: this.haunterSpeed,
     };
   }
 
@@ -1319,7 +1558,19 @@ export class RoomState {
       const isStreamInput = supportsTranscription(input.type);
 
       if (wasConnected && isStreamInput) {
-        await this.reconnectInputForSideChannel(inputId);
+        if (input.type === 'whip') {
+          // WHIP inputs are always registered with full side channel
+          // (video + audio) — reconnecting would kill the live push stream.
+          if (enabled) {
+            await this.captionsController.setTranscriptionPull(input, true);
+            getCaptionBridge()?.notifySideChannelReady(inputId);
+          } else {
+            await this.captionsController.setTranscriptionPull(input, false);
+            getCaptionBridge()?.notifySideChannelStopped(inputId);
+          }
+        } else {
+          await this.reconnectInputForSideChannel(inputId);
+        }
       }
 
       this.updateStoreWithState();

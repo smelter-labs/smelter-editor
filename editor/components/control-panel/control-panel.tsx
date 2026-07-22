@@ -829,7 +829,7 @@ function ControlPanelInner({
   const [timelineActionsReady, setTimelineActionsReady] = useState(false);
   const isPersistingTimelineLayerOrderRef = useRef(false);
   const [timelineQueueLocked, setTimelineQueueLocked] = useState(false);
-  const sortMode: 'timeline' | 'layers' = roomState.sortMode ?? 'timeline';
+  const sortMode: 'timeline' | 'layers' = roomState.sortMode ?? 'layers';
   const [layersModeDirty, setLayersModeDirty] = useState(false);
   const [conflictModalOpen, setConflictModalOpen] = useState(false);
   const [conflictDecisionPending, setConflictDecisionPending] = useState(false);

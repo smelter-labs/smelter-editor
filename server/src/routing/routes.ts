@@ -2281,7 +2281,9 @@ const AIModelSchema = Type.Object({
 
 routes.get('/ai-models', async (_req, res) => {
   res.status(200).send(
-    ModelRegistry.getAll().map((m) => ModelRegistry.toInfo(m)),
+    ModelRegistry.getAll()
+      .filter((m) => !m.hidden)
+      .map((m) => ModelRegistry.toInfo(m)),
   );
 });
 
@@ -2568,6 +2570,38 @@ routes.post<RoomIdParams & { Body: Static<typeof DuckHunterConfigSchema> }>(
       duckScale: req.body.duckScale,
       duckPauseMs: req.body.duckPauseMs,
       duckFlySpeed: req.body.duckFlySpeed,
+    });
+    res.status(200).send({ status: 'ok', config });
+  },
+);
+
+// ── Haunting ghosts ────────────────────────────────────────────
+
+const HaunterConfigSchema = Type.Object({
+  haunterCount: Type.Optional(Type.Number()),
+  haunterDist: Type.Optional(Type.Number()),
+  haunterScale: Type.Optional(Type.Number()),
+  haunterSpeed: Type.Optional(Type.Number()),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof HaunterConfigSchema> }>(
+  '/room/:roomId/haunter/config',
+  { schema: { params: RoomIdParamsSchema, body: HaunterConfigSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    console.log('[request] Set Haunter config', {
+      roomId,
+      haunterCount: req.body.haunterCount,
+      haunterDist: req.body.haunterDist,
+      haunterScale: req.body.haunterScale,
+      haunterSpeed: req.body.haunterSpeed,
+    });
+    const room = state.getRoom(roomId);
+    const config = room.setHaunterConfig({
+      haunterCount: req.body.haunterCount,
+      haunterDist: req.body.haunterDist,
+      haunterScale: req.body.haunterScale,
+      haunterSpeed: req.body.haunterSpeed,
     });
     res.status(200).send({ status: 'ok', config });
   },

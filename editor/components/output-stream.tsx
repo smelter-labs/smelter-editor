@@ -11,6 +11,8 @@ import {
   VolumeX as MutedIcon,
   Maximize2 as FullscreenIcon,
   Minimize2 as MinimizeIcon,
+  Expand as MaximizeIcon,
+  Shrink as ShrinkIcon,
 } from 'lucide-react';
 import { connectWhep } from '@/lib/webrtc/whep-connect';
 import { formatMs } from '@/lib/format-utils';
@@ -67,6 +69,7 @@ export default function OutputStream({
 
   const [current, setCurrent] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isMaximized, setIsMaximized] = useState(false);
   const [videoLoaded, setVideoLoaded] = useState(false);
   const isMobile = useIsMobileDevice();
   const roomIdRef = useRef(roomId);
@@ -282,6 +285,32 @@ export default function OutputStream({
     }
   };
 
+  useEffect(() => {
+    if (!isMaximized) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsMaximized(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [isMaximized]);
+
+  // Promote the container to the browser top layer so it escapes
+  // transformed ancestors (framer-motion) that break position: fixed.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !isMaximized || typeof el.showPopover !== 'function') return;
+    el.setAttribute('popover', 'manual');
+    try {
+      el.showPopover();
+    } catch {}
+    return () => {
+      try {
+        el.hidePopover();
+      } catch {}
+      el.removeAttribute('popover');
+    };
+  }, [isMaximized]);
+
   const formatTime = (s: number) =>
     !isFinite(s) ? '--:--' : formatMs(s * 1000);
 
@@ -368,14 +397,32 @@ export default function OutputStream({
   return (
     <div
       ref={containerRef}
-      className='relative bg-black rounded-none overflow-hidden'
-      style={{
-        aspectRatio,
-        maxWidth: '100%',
-        maxHeight: '100%',
-        width: '100%',
-        margin: isVertical ? '0 auto' : undefined,
-      }}>
+      className={
+        isMaximized
+          ? 'fixed inset-0 z-50 bg-black rounded-none overflow-hidden'
+          : 'relative bg-black rounded-none overflow-hidden'
+      }
+      style={
+        isMaximized
+          ? {
+              // override UA popover defaults (fit-content size, auto margins, border)
+              width: '100vw',
+              height: '100vh',
+              maxWidth: '100vw',
+              maxHeight: '100vh',
+              inset: 0,
+              margin: 0,
+              padding: 0,
+              border: 'none',
+            }
+          : {
+              aspectRatio,
+              maxWidth: '100%',
+              maxHeight: '100%',
+              width: '100%',
+              margin: isVertical ? '0 auto' : undefined,
+            }
+      }>
       {!videoLoaded && (
         <>
           <img src='/video-bg-placeholder.png' alt='Video placeholder' />
@@ -446,6 +493,21 @@ export default function OutputStream({
               disabled={muted}
               style={{ marginLeft: 2, marginRight: 8, width: '120px' }}
             />
+
+            <Button
+              variant='ghost'
+              size='icon'
+              className={button}
+              onClick={() => setIsMaximized((m) => !m)}
+              aria-label={
+                isMaximized ? 'Restore video size' : 'Maximize video to canvas'
+              }>
+              {isMaximized ? (
+                <ShrinkIcon className='w-5 h-5' />
+              ) : (
+                <MaximizeIcon className='w-5 h-5' />
+              )}
+            </Button>
 
             <Button
               variant='ghost'

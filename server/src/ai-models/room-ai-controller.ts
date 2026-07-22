@@ -10,6 +10,8 @@ import { ensurePeopleCounterSidecarStarted } from './people-counter/people-count
 import { isPeopleCounterModel } from './people-counter/manifest';
 import { ensureBuildingDetectorSidecarStarted } from './building-detector/building-detector-sidecar';
 import { isBuildingDetectorModel } from './building-detector/manifest';
+import { ensureCarAdsSidecarStarted } from './car-ads/car-ads-sidecar';
+import { isCarAdsModel } from './car-ads/manifest';
 
 export type ResultListener = (event: ModelResultEvent) => void;
 
@@ -216,6 +218,9 @@ export class RoomAIController {
     }
     if (isBuildingDetectorModel(modelId)) {
       return ensureBuildingDetectorSidecarStarted();
+    }
+    if (isCarAdsModel(modelId)) {
+      return ensureCarAdsSidecarStarted(modelId);
     }
 
     let sidecar = globalSidecars.get(modelId);

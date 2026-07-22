@@ -1,3 +1,5 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
 import type { StoreApi } from 'zustand';
 import type {
   DogReveal,
@@ -6,6 +8,8 @@ import type {
   ShooterBurst,
 } from '../app/store';
 import { roomEventBus } from '../core/roomEventBus';
+import { DATA_DIR } from '../dataDir';
+import { SmelterInstance } from '../smelter';
 import type { DuckEntity, DuckFlightParams, DuckViewport } from './duckFlight';
 import {
   DEFAULT_DUCK_FLY_FRAC_PER_SEC,
@@ -39,6 +43,10 @@ type Player = {
   lastHitAt: number;
   /** Current run of consecutive hits (gaps < STREAK_WINDOW_MS keep it going). */
   streak: number;
+  /** Latest camera snapshot registered in Smelter (shown next to the name). */
+  avatar: { imageId: string; filePath: string } | null;
+  /** Wall-clock ms of the last accepted avatar snapshot (rate limit). */
+  lastAvatarAt: number;
 };
 
 /** Per-player ammo config sent from the phone (calibration screen). */
@@ -72,6 +80,19 @@ const DEFAULT_RELOAD_MS = 5000;
 const MAX_AMMO_CAP = 12;
 const MIN_RELOAD_MS = 1000;
 const MAX_RELOAD_MS = 30000;
+
+// Avatar snapshots (phone camera → broadcast): accept at most one every
+// AVATAR_MIN_INTERVAL_MS per player and cap the decoded JPEG size.
+const AVATAR_MIN_INTERVAL_MS = 1500;
+const AVATAR_MAX_BYTES = 256 * 1024;
+// A replaced avatar image stays registered briefly so an in-flight frame that
+// still references the old imageId can't hit a missing Smelter resource.
+const AVATAR_UNREGISTER_DELAY_MS = 3000;
+
+/** Keep ids/filenames to safe characters (clientId is a uuid, but be strict). */
+function sanitizeId(id: string): string {
+  return id.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
 
 function normalizeAmmoConfig(cfg?: AmmoConfig): {
   maxAmmo: number;
@@ -114,6 +135,7 @@ export class DuckHunterController {
   private nextBurstId = 1;
   private dogReveals: DogReveal[] = [];
   private nextDogId = 1;
+  private nextAvatarSeq = 1;
   private colorSeq = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   // Room-wide ammo rules, set by the operator in the Duck Hunter panel and
@@ -143,6 +165,8 @@ export class DuckHunterController {
         reloadStartedAt: null,
         lastHitAt: 0,
         streak: 0,
+        avatar: null,
+        lastAvatarAt: 0,
       });
     } else {
       // Already joined (e.g. re-entering after the calibration screen): keep the
@@ -184,10 +208,75 @@ export class DuckHunterController {
   }
 
   leave(clientId: string): void {
-    if (!this.players.delete(clientId)) return;
+    const p = this.players.get(clientId);
+    if (!p || !this.players.delete(clientId)) return;
+    if (p.avatar) {
+      this.retireAvatar(p.avatar);
+      p.avatar = null;
+    }
     this.publish();
     this.broadcastState();
     this.maybeStop();
+  }
+
+  /**
+   * Camera snapshot from the phone (small JPEG data URL). Saved to disk and
+   * registered as a Smelter image so the HUD can draw it next to the player's
+   * name; the previous snapshot is retired after a grace period.
+   */
+  async setAvatar(clientId: string, dataUrl: string): Promise<void> {
+    const p = this.players.get(clientId);
+    if (!p) return;
+    // Empty payload = the player turned their camera off; drop the avatar.
+    if (dataUrl === '') {
+      if (p.avatar) {
+        this.retireAvatar(p.avatar);
+        p.avatar = null;
+        this.publish();
+      }
+      return;
+    }
+    const now = Date.now();
+    if (now - p.lastAvatarAt < AVATAR_MIN_INTERVAL_MS) return;
+    const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
+    if (!m) return;
+    const bytes = Buffer.from(m[1], 'base64');
+    if (bytes.length === 0 || bytes.length > AVATAR_MAX_BYTES) return;
+    p.lastAvatarAt = now;
+
+    const seq = this.nextAvatarSeq++;
+    const dir = path.join(DATA_DIR, 'shooter-avatars', sanitizeId(this.roomId));
+    const filePath = path.join(dir, `${sanitizeId(clientId)}-${seq}.jpg`);
+    const imageId = `shooter-avatar::${this.roomId}::${clientId}::${seq}`;
+    try {
+      await fs.mkdir(dir, { recursive: true });
+      await fs.writeFile(filePath, bytes);
+      await SmelterInstance.registerImage(imageId, {
+        serverPath: filePath,
+        assetType: 'jpeg',
+      });
+    } catch (err) {
+      console.error(`[duck-hunter] avatar register failed for ${clientId}`, err);
+      await fs.rm(filePath, { force: true }).catch(() => {});
+      return;
+    }
+    // The player may have left (or rejoined as a new entry) while we awaited.
+    if (this.players.get(clientId) !== p) {
+      this.retireAvatar({ imageId, filePath });
+      return;
+    }
+    const prev = p.avatar;
+    p.avatar = { imageId, filePath };
+    if (prev) this.retireAvatar(prev);
+    this.publish();
+  }
+
+  /** Unregister + delete a swapped-out avatar after the render grace period. */
+  private retireAvatar(avatar: { imageId: string; filePath: string }): void {
+    setTimeout(() => {
+      SmelterInstance.unregisterImage(avatar.imageId).catch(() => {});
+      void fs.rm(avatar.filePath, { force: true }).catch(() => {});
+    }, AVATAR_UNREGISTER_DELAY_MS);
   }
 
   aim(clientId: string, x: number, y: number): void {
@@ -342,6 +431,9 @@ export class DuckHunterController {
 
   dispose(): void {
     this.stop();
+    for (const p of this.players.values()) {
+      if (p.avatar) this.retireAvatar(p.avatar);
+    }
     this.players.clear();
     this.deadGhosts.clear();
     this.ducks.clear();
@@ -628,6 +720,16 @@ export class DuckHunterController {
       this.store.getState().setShooter(null);
       return;
     }
+    // Reload countdowns render on the broadcast HUD, so both the crosshair
+    // badge and the scoreboard carry the full ammo state per player.
+    const ammoState = (p: Player) => ({
+      avatarImageId: p.avatar?.imageId,
+      ammo: p.ammo,
+      maxAmmo: p.maxAmmo,
+      reloadMs: p.reloadMs,
+      reloadEndsAt:
+        p.reloadStartedAt == null ? null : p.reloadStartedAt + p.reloadMs,
+    });
     this.store.getState().setShooter({
       targetInputId: target.id,
       crosshairs: [...this.players.values()].map((p) => ({
@@ -636,9 +738,16 @@ export class DuckHunterController {
         y: p.dispY,
         color: p.color,
         name: p.name,
+        ...ammoState(p),
       })),
       scores: [...this.players.values()]
-        .map((p) => ({ name: p.name, color: p.color, score: p.score }))
+        .map((p) => ({
+          clientId: p.clientId,
+          name: p.name,
+          color: p.color,
+          score: p.score,
+          ...ammoState(p),
+        }))
         .sort((a, b) => b.score - a.score),
       bursts: this.bursts,
       dogReveals: this.dogReveals,

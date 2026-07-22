@@ -87,7 +87,16 @@ export class PeopleTracker {
   /** Time of the previous update() call, for the interval estimate. */
   private lastUpdateMs = 0;
 
-  constructor(private readonly maxMisses = DEFAULT_MAX_MISSES) {}
+  /**
+   * `withLead` extrapolates returned boxes forward along their velocity (see
+   * "Motion prediction" above) — right for renderers that freeze the box
+   * between responses. Pass false when the renderer dead-reckons on its own
+   * (e.g. the car-hue overlay), so motion isn't predicted twice.
+   */
+  constructor(
+    private readonly maxMisses = DEFAULT_MAX_MISSES,
+    private readonly withLead = true,
+  ) {}
 
   update(detections: PersonBox[], nowMs: number): TrackedPersonBox[] {
     // Track the response cadence so lead time follows the real refresh rate.
@@ -97,7 +106,8 @@ export class PeopleTracker {
         this.avgIntervalMs =
           this.avgIntervalMs === 0
             ? gap
-            : INTERVAL_SMOOTH * this.avgIntervalMs + (1 - INTERVAL_SMOOTH) * gap;
+            : INTERVAL_SMOOTH * this.avgIntervalMs +
+              (1 - INTERVAL_SMOOTH) * gap;
       }
     }
     this.lastUpdateMs = nowMs;
@@ -150,7 +160,9 @@ export class PeopleTracker {
     // Retire tracks that have gone unmatched for too long.
     this.tracks = this.tracks.filter((t) => t.missed <= this.maxMisses);
 
-    const lead = Math.min(LEAD_CAP_MS, this.avgIntervalMs * LEAD_FACTOR);
+    const lead = this.withLead
+      ? Math.min(LEAD_CAP_MS, this.avgIntervalMs * LEAD_FACTOR)
+      : 0;
     return this.tracks.map((t) => this.render(t, lead));
   }
 
