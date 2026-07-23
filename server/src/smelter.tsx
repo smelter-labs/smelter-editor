@@ -178,7 +178,6 @@ class SmelterManager {
       assetType: 'png',
     });
 
-    await this.instance.registerFont('https://madbangbang.com/Starjedi.ttf');
 
     for (const shader of shadersController.shaders) {
       await this.registerShaderFromFile(
