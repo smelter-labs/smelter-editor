@@ -25,18 +25,21 @@ export type ShooterAimMessage = { type: "shoot_aim"; x: number; y: number };
 export type ShooterFireMessage = { type: "shoot_fire" };
 export type ShooterLeaveMessage = { type: "shoot_leave" };
 /**
- * Camera snapshot from the phone, shown next to the player's name on the
- * broadcast. `image` is a small JPEG data URL (server enforces size limits and
- * throttles per client).
+ * Turn the player's live front camera on: the server registers a dedicated
+ * WHIP input for this client and replies with `shooter_cam_offer` so the phone
+ * can publish its camera into the broadcast (shown live next to the name).
  */
-export type ShooterAvatarMessage = { type: "shoot_avatar"; image: string };
+export type ShooterCamStartMessage = { type: "shoot_cam_start" };
+/** Turn the live camera off; the server tears down the WHIP input. */
+export type ShooterCamStopMessage = { type: "shoot_cam_stop" };
 
 export type ShooterClientMessage =
   | ShooterJoinMessage
   | ShooterAimMessage
   | ShooterFireMessage
   | ShooterLeaveMessage
-  | ShooterAvatarMessage;
+  | ShooterCamStartMessage
+  | ShooterCamStopMessage;
 
 // Server -> Client
 export type ShooterStateEvent = {
@@ -80,9 +83,24 @@ export type ShooterAmmoEvent = {
   reloadRemainingMs: number;
 };
 
+/**
+ * Reply to `shoot_cam_start`: the WHIP endpoint + credentials the phone uses to
+ * publish its live front camera. The server has already registered `inputId` as
+ * a Smelter whip_server input, composited only inside the player's avatar circle.
+ */
+export type ShooterCamOfferEvent = {
+  type: "shooter_cam_offer";
+  roomId: string;
+  clientId: string;
+  inputId: string;
+  whipUrl: string;
+  bearerToken: string;
+};
+
 export type ShooterServerEvent =
   | ShooterStateEvent
   | ShooterHitEvent
   | ShooterMissEvent
   | ShooterEmptyEvent
-  | ShooterAmmoEvent;
+  | ShooterAmmoEvent
+  | ShooterCamOfferEvent;

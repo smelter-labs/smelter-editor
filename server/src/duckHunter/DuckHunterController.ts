@@ -1,5 +1,3 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import type { StoreApi } from 'zustand';
 import type {
   DogReveal,
@@ -7,8 +5,8 @@ import type {
   RoomStore,
   ShooterBurst,
 } from '../app/store';
+import { config } from '../config';
 import { roomEventBus } from '../core/roomEventBus';
-import { DATA_DIR } from '../dataDir';
 import { SmelterInstance } from '../smelter';
 import type { DuckEntity, DuckFlightParams, DuckViewport } from './duckFlight';
 import {
@@ -43,10 +41,12 @@ type Player = {
   lastHitAt: number;
   /** Current run of consecutive hits (gaps < STREAK_WINDOW_MS keep it going). */
   streak: number;
-  /** Latest camera snapshot registered in Smelter (shown next to the name). */
-  avatar: { imageId: string; filePath: string } | null;
-  /** Wall-clock ms of the last accepted avatar snapshot (rate limit). */
-  lastAvatarAt: number;
+  /**
+   * Smelter WHIP input id carrying this player's live front camera, or null
+   * when the camera is off. Registered on demand (shoot_cam_start) and drawn
+   * live inside the player's avatar circle by the overlay renderer.
+   */
+  camInputId: string | null;
 };
 
 /** Per-player ammo config sent from the phone (calibration screen). */
@@ -81,15 +81,7 @@ const MAX_AMMO_CAP = 12;
 const MIN_RELOAD_MS = 1000;
 const MAX_RELOAD_MS = 30000;
 
-// Avatar snapshots (phone camera → broadcast): accept at most one every
-// AVATAR_MIN_INTERVAL_MS per player and cap the decoded JPEG size.
-const AVATAR_MIN_INTERVAL_MS = 1500;
-const AVATAR_MAX_BYTES = 256 * 1024;
-// A replaced avatar image stays registered briefly so an in-flight frame that
-// still references the old imageId can't hit a missing Smelter resource.
-const AVATAR_UNREGISTER_DELAY_MS = 3000;
-
-/** Keep ids/filenames to safe characters (clientId is a uuid, but be strict). */
+/** Keep the WHIP input id to URL-safe characters (it becomes a path segment). */
 function sanitizeId(id: string): string {
   return id.replace(/[^a-zA-Z0-9_-]/g, '_');
 }
@@ -135,7 +127,7 @@ export class DuckHunterController {
   private nextBurstId = 1;
   private dogReveals: DogReveal[] = [];
   private nextDogId = 1;
-  private nextAvatarSeq = 1;
+  private nextCamSeq = 1;
   private colorSeq = 0;
   private timer: ReturnType<typeof setInterval> | null = null;
   // Room-wide ammo rules, set by the operator in the Duck Hunter panel and
@@ -165,8 +157,7 @@ export class DuckHunterController {
         reloadStartedAt: null,
         lastHitAt: 0,
         streak: 0,
-        avatar: null,
-        lastAvatarAt: 0,
+        camInputId: null,
       });
     } else {
       // Already joined (e.g. re-entering after the calibration screen): keep the
@@ -210,73 +201,74 @@ export class DuckHunterController {
   leave(clientId: string): void {
     const p = this.players.get(clientId);
     if (!p || !this.players.delete(clientId)) return;
-    if (p.avatar) {
-      this.retireAvatar(p.avatar);
-      p.avatar = null;
-    }
+    this.retireCameraInput(p);
     this.publish();
     this.broadcastState();
     this.maybeStop();
   }
 
   /**
-   * Camera snapshot from the phone (small JPEG data URL). Saved to disk and
-   * registered as a Smelter image so the HUD can draw it next to the player's
-   * name; the previous snapshot is retired after a grace period.
+   * Turn the player's live camera on: register a dedicated Smelter WHIP input
+   * for this client and reply with the endpoint + bearer token so the phone can
+   * publish its front camera. The input is composited only inside the player's
+   * avatar circle (see the overlay renderer), never as a full-screen input.
+   *
+   * Idempotent-ish: an existing camera input is torn down first so a reconnect
+   * (or a rapid off→on toggle) always gets a fresh WHIP session/token.
    */
-  async setAvatar(clientId: string, dataUrl: string): Promise<void> {
+  async startCamera(clientId: string): Promise<void> {
     const p = this.players.get(clientId);
     if (!p) return;
-    // Empty payload = the player turned their camera off; drop the avatar.
-    if (dataUrl === '') {
-      if (p.avatar) {
-        this.retireAvatar(p.avatar);
-        p.avatar = null;
-        this.publish();
-      }
-      return;
-    }
-    const now = Date.now();
-    if (now - p.lastAvatarAt < AVATAR_MIN_INTERVAL_MS) return;
-    const m = /^data:image\/jpeg;base64,([A-Za-z0-9+/=]+)$/.exec(dataUrl);
-    if (!m) return;
-    const bytes = Buffer.from(m[1], 'base64');
-    if (bytes.length === 0 || bytes.length > AVATAR_MAX_BYTES) return;
-    p.lastAvatarAt = now;
+    // Drop any previous session so the phone always publishes into a fresh input.
+    this.retireCameraInput(p);
 
-    const seq = this.nextAvatarSeq++;
-    const dir = path.join(DATA_DIR, 'shooter-avatars', sanitizeId(this.roomId));
-    const filePath = path.join(dir, `${sanitizeId(clientId)}-${seq}.jpg`);
-    const imageId = `shooter-avatar::${this.roomId}::${clientId}::${seq}`;
+    // Unique per start so a fresh registration never collides with an old input
+    // that is still being torn down (unregister is fire-and-forget).
+    const seq = this.nextCamSeq++;
+    const inputId = sanitizeId(`shooter-cam-${this.roomId}-${clientId}-${seq}`);
+    let bearerToken: string;
     try {
-      await fs.mkdir(dir, { recursive: true });
-      await fs.writeFile(filePath, bytes);
-      await SmelterInstance.registerImage(imageId, {
-        serverPath: filePath,
-        assetType: 'jpeg',
+      bearerToken = await SmelterInstance.registerInput(inputId, {
+        type: 'whip',
       });
     } catch (err) {
-      console.error(`[duck-hunter] avatar register failed for ${clientId}`, err);
-      await fs.rm(filePath, { force: true }).catch(() => {});
+      console.error(
+        `[duck-hunter] camera input register failed for ${clientId}`,
+        err,
+      );
       return;
     }
-    // The player may have left (or rejoined as a new entry) while we awaited.
-    if (this.players.get(clientId) !== p) {
-      this.retireAvatar({ imageId, filePath });
+    // The player may have left (or toggled the camera off again) while we awaited.
+    if (this.players.get(clientId) !== p || p.camInputId != null) {
+      void SmelterInstance.unregisterInput(inputId).catch(() => {});
       return;
     }
-    const prev = p.avatar;
-    p.avatar = { imageId, filePath };
-    if (prev) this.retireAvatar(prev);
+    p.camInputId = inputId;
+    roomEventBus.sendTo(this.roomId, clientId, {
+      type: 'shooter_cam_offer',
+      roomId: this.roomId,
+      clientId,
+      inputId,
+      whipUrl: `${config.whipBaseUrl}/${inputId}`,
+      bearerToken,
+    });
     this.publish();
   }
 
-  /** Unregister + delete a swapped-out avatar after the render grace period. */
-  private retireAvatar(avatar: { imageId: string; filePath: string }): void {
-    setTimeout(() => {
-      SmelterInstance.unregisterImage(avatar.imageId).catch(() => {});
-      void fs.rm(avatar.filePath, { force: true }).catch(() => {});
-    }, AVATAR_UNREGISTER_DELAY_MS);
+  /** Turn the player's live camera off and tear down its WHIP input. */
+  stopCamera(clientId: string): void {
+    const p = this.players.get(clientId);
+    if (!p || p.camInputId == null) return;
+    this.retireCameraInput(p);
+    this.publish();
+  }
+
+  /** Unregister the player's camera WHIP input (if any) and clear it. */
+  private retireCameraInput(p: Player): void {
+    if (p.camInputId == null) return;
+    const inputId = p.camInputId;
+    p.camInputId = null;
+    void SmelterInstance.unregisterInput(inputId).catch(() => {});
   }
 
   aim(clientId: string, x: number, y: number): void {
@@ -432,7 +424,7 @@ export class DuckHunterController {
   dispose(): void {
     this.stop();
     for (const p of this.players.values()) {
-      if (p.avatar) this.retireAvatar(p.avatar);
+      this.retireCameraInput(p);
     }
     this.players.clear();
     this.deadGhosts.clear();
@@ -723,7 +715,7 @@ export class DuckHunterController {
     // Reload countdowns render on the broadcast HUD, so both the crosshair
     // badge and the scoreboard carry the full ammo state per player.
     const ammoState = (p: Player) => ({
-      avatarImageId: p.avatar?.imageId,
+      camInputId: p.camInputId ?? undefined,
       ammo: p.ammo,
       maxAmmo: p.maxAmmo,
       reloadMs: p.reloadMs,

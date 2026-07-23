@@ -54,6 +54,14 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     shaderFile: 'grayscale.wgsl',
   },
   {
+    id: 'mirror-x',
+    isActive: true,
+    isVisible: false,
+    name: 'Mirror (horizontal)',
+    description: 'Flips the input horizontally (selfie mirror).',
+    shaderFile: 'mirror-x.wgsl',
+  },
+  {
     id: 'opacity',
     isActive: true,
     isVisible: true,

@@ -117,8 +117,11 @@ export type RegisterSmelterInputOptions =
       sideChannel?: SideChannelOpts;
     }
   | {
+      // WHIP inputs run a Smelter-side WHIP server the client publishes into, so
+      // there is no source URL to pull from; `url` (when present) is carried for
+      // bookkeeping only and ignored by registration.
       type: 'whip';
-      url: string;
+      url?: string;
       sideChannel?: SideChannelOpts;
     };
 

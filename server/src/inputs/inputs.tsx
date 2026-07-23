@@ -779,7 +779,9 @@ function ammoBarHeight(pipSize: number): number {
 }
 
 function ammoBlockHeight(pipSize: number): number {
-  return pipSize + Math.max(2, Math.round(pipSize * 0.4)) + ammoBarHeight(pipSize);
+  return (
+    pipSize + Math.max(2, Math.round(pipSize * 0.4)) + ammoBarHeight(pipSize)
+  );
 }
 
 /**
@@ -864,7 +866,51 @@ function AmmoPips({
 }
 
 /**
- * Name badge above a crosshair: rounded dark pill with the player's camera
+ * Circular live-camera avatar. Shows the player's front camera (a WHIP input,
+ * mirrored like a selfie) once the stream is actually playing; until then — or
+ * when the camera is off — it falls back to the player's solid color so the
+ * layout never jumps. Space is reserved by the caller as soon as the camera is
+ * toggled on (camInputId set), independent of when the first frame arrives.
+ */
+function LiveCamCircle({
+  inputId,
+  size,
+  fallbackColor,
+  top,
+  left,
+}: {
+  inputId: string | undefined;
+  size: number;
+  fallbackColor: string;
+  top: number;
+  left: number;
+}) {
+  const streams = useInputStreams();
+  const playing = inputId != null && streams[inputId]?.videoState === 'playing';
+  return (
+    <View
+      style={{
+        top,
+        left,
+        width: size,
+        height: size,
+        borderRadius: size / 2,
+        backgroundColor: playing ? undefined : fallbackColor,
+        overflow: 'hidden',
+      }}>
+      {playing ? (
+        <Shader shaderId='mirror-x' resolution={{ width: size, height: size }}>
+          <Rescaler style={{ width: size, height: size, rescaleMode: 'fill' }}>
+            <InputStream inputId={inputId} />
+          </Rescaler>
+        </Shader>
+      ) : null}
+    </View>
+  );
+}
+
+/**
+ * Name badge above a crosshair: rounded dark pill with the player's live camera
  * avatar (when the phone shares one), name and live ammo state. Positioned in
  * crosshair-local coords (the container sits at the crosshair's top-left), but
  * clamped against the tile so it never slides off screen; flips below the
@@ -886,7 +932,7 @@ function PlayerBadge({
   now: number;
 }) {
   const fs = Math.max(16, Math.round(chSize * 0.34));
-  const hasAvatar = !!player.avatarImageId;
+  const hasAvatar = !!player.camInputId;
   const av = Math.round(fs * 2.0);
   const padH = Math.round(fs * 0.45);
   const padV = Math.round(fs * 0.3);
@@ -897,7 +943,8 @@ function PlayerBadge({
   const textColH = nameH + pipRowGap + ammoBlockHeight(pipSize);
   const contentH = Math.max(hasAvatar ? av : 0, textColH);
   // Smelter Views don't auto-size to content, so estimate the name width.
-  const nameW = Math.round(fs * 0.56 * player.name.length) + Math.round(fs * 0.3);
+  const nameW =
+    Math.round(fs * 0.56 * player.name.length) + Math.round(fs * 0.3);
   const innerW = Math.max(nameW, ammoPipsWidth(pipSize, player.maxAmmo));
   const badgeW = padH * 2 + (hasAvatar ? av + gap : 0) + innerW;
   const badgeH = padV * 2 + contentH;
@@ -926,19 +973,13 @@ function PlayerBadge({
         overflow: 'visible',
       }}>
       {hasAvatar ? (
-        <View
-          style={{
-            top: Math.round((badgeH - av) / 2),
-            left: padH,
-            width: av,
-            height: av,
-            borderRadius: av / 2,
-            overflow: 'hidden',
-          }}>
-          <Rescaler style={{ width: av, height: av, rescaleMode: 'fill' }}>
-            <Image imageId={player.avatarImageId!} />
-          </Rescaler>
-        </View>
+        <LiveCamCircle
+          inputId={player.camInputId}
+          size={av}
+          fallbackColor={player.color}
+          top={Math.round((badgeH - av) / 2)}
+          left={padH}
+        />
       ) : null}
       <View
         style={{
@@ -987,8 +1028,7 @@ function ShooterScoreboard({
   const gap = Math.round(fs * 0.4);
   const scoreW = Math.round(fs * 2.4);
   const width = Math.round(parent.width * 0.24);
-  const height =
-    padV * 2 + scores.length * rowH + (scores.length - 1) * rowGap;
+  const height = padV * 2 + scores.length * rowH + (scores.length - 1) * rowGap;
   const pipSize = Math.max(5, Math.round(fs * 0.3));
   const nameLeft = padH + rankW + av + gap;
   const nameW = width - nameLeft - scoreW - padH - gap;
@@ -1006,7 +1046,9 @@ function ShooterScoreboard({
       {scores.map((s, i) => {
         const rowTop = padV + i * (rowH + rowGap);
         const reloadLeftS =
-          s.reloadEndsAt == null ? null : Math.max(0, s.reloadEndsAt - now) / 1000;
+          s.reloadEndsAt == null
+            ? null
+            : Math.max(0, s.reloadEndsAt - now) / 1000;
         return (
           <View
             key={`row-${s.clientId}`}
@@ -1029,22 +1071,13 @@ function ShooterScoreboard({
                 {RANK_MEDALS[i] ?? `${i + 1}`}
               </Text>
             </View>
-            <View
-              style={{
-                top: Math.round((rowH - av) / 2),
-                left: padH + rankW,
-                width: av,
-                height: av,
-                borderRadius: av / 2,
-                backgroundColor: s.avatarImageId ? undefined : s.color,
-                overflow: 'hidden',
-              }}>
-              {s.avatarImageId ? (
-                <Rescaler style={{ width: av, height: av, rescaleMode: 'fill' }}>
-                  <Image imageId={s.avatarImageId} />
-                </Rescaler>
-              ) : null}
-            </View>
+            <LiveCamCircle
+              inputId={s.camInputId}
+              size={av}
+              fallbackColor={s.color}
+              top={Math.round((rowH - av) / 2)}
+              left={padH + rankW}
+            />
             <View
               style={{
                 top: 0,
@@ -1072,7 +1105,10 @@ function ShooterScoreboard({
                   overflow: 'hidden',
                 }}>
                 <Text
-                  style={{ fontSize: Math.round(fs * 0.62), color: '#FFFFFF88' }}>
+                  style={{
+                    fontSize: Math.round(fs * 0.62),
+                    color: '#FFFFFF88',
+                  }}>
                   {`+1 in ${reloadLeftS.toFixed(1)}s`}
                 </Text>
               </View>

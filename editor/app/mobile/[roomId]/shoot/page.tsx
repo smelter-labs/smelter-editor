@@ -5,6 +5,7 @@ import { useParams, useSearchParams } from 'next/navigation';
 import type { RoomState } from '@/lib/types';
 import { getRoomInfo } from '@/app/actions/actions';
 import { connectWhep } from '@/lib/webrtc/whep-connect';
+import { startPublish } from '@/components/control-panel/whip-input/utils/whip-publisher';
 import {
   applyServerUrlFromQueryParam,
   getEffectiveClientServerUrl,
@@ -25,10 +26,6 @@ const GYRO_MAX_STEP_DEG = 25;
 // Tap detection: short press with little movement counts as a shot.
 const TAP_MS = 400;
 const TAP_MOVE_PX = 16;
-// Camera avatar: snapshot size (center-cropped square) and send cadence. The
-// server rate-limits to one snapshot per 1.5s per player, so stay above that.
-const AVATAR_SIZE = 128;
-const AVATAR_SEND_MS = 2500;
 
 // A selectable gyro signal for an aim axis. The user picks which one drives
 // horizontal vs vertical on the calibration screen (with invert + per-axis
@@ -94,7 +91,11 @@ export default function ShootControllerPage() {
   const [camStream, setCamStream] = useState<MediaStream | null>(null);
   const [camErr, setCamErr] = useState<string | null>(null);
   const camVideoRef = useRef<HTMLVideoElement | null>(null);
-  const avatarCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  // Live camera publish (WHIP): the peer connection and the raw camera stream.
+  // The stream ref lets the WS message handler read the current camera without
+  // a stale closure when the server's `shooter_cam_offer` arrives.
+  const camPcRef = useRef<RTCPeerConnection | null>(null);
+  const camStreamRef = useRef<MediaStream | null>(null);
 
   const wsRef = useRef<WebSocket | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -192,13 +193,23 @@ export default function ShootControllerPage() {
     if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
   }, []);
 
-  // Camera avatar: toggle the front camera on/off. Turning it off mid-game
-  // also clears the avatar on the broadcast (empty payload).
+  // Tear down the live-camera WHIP publisher (leaves the local camera preview
+  // running; only the outgoing broadcast stream is stopped).
+  const stopCamPublish = useCallback(() => {
+    camPcRef.current?.close();
+    camPcRef.current = null;
+  }, []);
+
+  // Camera: toggle the front camera on/off. While playing, turning it on asks
+  // the server for a WHIP input (it replies with `shooter_cam_offer`, which we
+  // publish into); turning it off tears the publisher down on both ends.
   const toggleCamera = useCallback(async () => {
     if (camStream) {
       camStream.getTracks().forEach((t) => t.stop());
       setCamStream(null);
-      send({ type: 'shoot_avatar', image: '' });
+      camStreamRef.current = null;
+      stopCamPublish();
+      send({ type: 'shoot_cam_stop' });
       return;
     }
     setCamErr(null);
@@ -212,10 +223,15 @@ export default function ShootControllerPage() {
         audio: false,
       });
       setCamStream(s);
+      camStreamRef.current = s;
+      // On the calibration screen the player hasn't joined yet; the publish is
+      // kicked off when they tap Play (joinAndPlay). While already playing, ask
+      // the server to spin up our camera input now.
+      if (stage === 'play') send({ type: 'shoot_cam_start' });
     } catch {
       setCamErr('Camera access denied — check your browser permissions.');
     }
-  }, [camStream, send]);
+  }, [camStream, send, stage, stopCamPublish]);
 
   // One <video> element exists per stage (calibrate preview / play bubble);
   // this ref callback attaches the live camera stream to whichever is mounted.
@@ -230,46 +246,7 @@ export default function ShootControllerPage() {
     [camStream],
   );
 
-  // Center-crop a mirrored square snapshot of the camera and send it as a
-  // small JPEG data URL; the server registers it next to the player's name.
-  const sendAvatarSnapshot = useCallback(() => {
-    const v = camVideoRef.current;
-    if (!v || v.videoWidth === 0 || v.videoHeight === 0) return;
-    const canvas =
-      avatarCanvasRef.current ?? document.createElement('canvas');
-    avatarCanvasRef.current = canvas;
-    canvas.width = AVATAR_SIZE;
-    canvas.height = AVATAR_SIZE;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    const side = Math.min(v.videoWidth, v.videoHeight);
-    const sx = (v.videoWidth - side) / 2;
-    const sy = (v.videoHeight - side) / 2;
-    ctx.save();
-    // Mirror so the broadcast matches what the player sees in the selfie view.
-    ctx.translate(AVATAR_SIZE, 0);
-    ctx.scale(-1, 1);
-    ctx.drawImage(v, sx, sy, side, side, 0, 0, AVATAR_SIZE, AVATAR_SIZE);
-    ctx.restore();
-    send({
-      type: 'shoot_avatar',
-      image: canvas.toDataURL('image/jpeg', 0.7),
-    });
-  }, [send]);
-
-  // While playing with the camera on, keep the broadcast avatar fresh: one
-  // early snapshot once the camera warms up, then a slow refresh loop.
-  useEffect(() => {
-    if (stage !== 'play' || !camStream) return;
-    const first = window.setTimeout(sendAvatarSnapshot, 600);
-    const t = window.setInterval(sendAvatarSnapshot, AVATAR_SEND_MS);
-    return () => {
-      window.clearTimeout(first);
-      window.clearInterval(t);
-    };
-  }, [stage, camStream, sendAvatarSnapshot]);
-
-  // Stop the camera when leaving the page.
+  // Stop the camera + publisher when leaving the page.
   useEffect(() => {
     return () => {
       camStream?.getTracks().forEach((t) => t.stop());
@@ -586,7 +563,8 @@ export default function ShootControllerPage() {
       setConnected(true);
       setWsDbg('');
       // Join only once the player has committed (tapped Play); handles the case
-      // where the socket opens after that tap.
+      // where the socket opens after that tap. On a reconnect the server minted
+      // a fresh client, so re-arm the camera input too if it's on.
       if (wantsJoinRef.current) {
         ws.send(
           JSON.stringify({
@@ -594,6 +572,9 @@ export default function ShootControllerPage() {
             name: nameRef.current.trim() || 'Player',
           }),
         );
+        if (camStreamRef.current) {
+          ws.send(JSON.stringify({ type: 'shoot_cam_start' }));
+        }
       }
     };
     ws.onerror = () => setWsDbg(`WS error: ${url}`);
@@ -643,6 +624,49 @@ export default function ShootControllerPage() {
         setFlash('miss');
         if (navigator.vibrate) navigator.vibrate([15, 40, 15]);
         window.setTimeout(() => setFlash(null), 150);
+      } else if (m.type === 'shooter_cam_offer') {
+        // The server registered our camera WHIP input; publish the front camera
+        // into it. Read the stream from a ref so this stable handler always sees
+        // the current camera. Ignore if the camera was turned off meanwhile.
+        const o = data as {
+          inputId: string;
+          whipUrl: string;
+          bearerToken: string;
+        };
+        const stream = camStreamRef.current;
+        if (!stream) return;
+        // Fresh session: drop any previous publisher PC first.
+        camPcRef.current?.close();
+        camPcRef.current = null;
+        // Behind a tunnel, force the WHIP endpoint to this page's own origin so
+        // Caddy forwards /whip to the media server (same-origin: no CORS/mixed),
+        // mirroring the WHEP handling below.
+        const ro = remoteOrigin();
+        let whipUrl = o.whipUrl;
+        if (ro) {
+          try {
+            const u = new URL(o.whipUrl);
+            whipUrl = ro + u.pathname + u.search;
+          } catch {
+            /* keep original */
+          }
+        }
+        void startPublish(
+          o.inputId,
+          o.bearerToken,
+          whipUrl,
+          camPcRef,
+          camStreamRef,
+          () => {
+            camPcRef.current = null;
+          },
+          'user',
+          false,
+          stream,
+          'h264',
+        ).catch(() => {
+          camPcRef.current = null;
+        });
       }
     };
   }, [roomId]);
@@ -663,6 +687,9 @@ export default function ShootControllerPage() {
         type: 'shoot_join',
         name: name.trim() || 'Player',
       });
+      // If the player enabled their camera on the calibration screen, spin up
+      // its live input now that they've joined.
+      if (camStreamRef.current) send({ type: 'shoot_cam_start' });
       setGyroMode(gyro);
       setStage('play');
     },
@@ -730,6 +757,8 @@ export default function ShootControllerPage() {
   useEffect(() => {
     return () => {
       send({ type: 'shoot_leave' });
+      camPcRef.current?.close();
+      camPcRef.current = null;
       wsRef.current?.close();
       whepCloseRef.current?.();
     };

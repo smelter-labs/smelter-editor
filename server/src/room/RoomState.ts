@@ -1245,7 +1245,6 @@ export class RoomState {
       name?: unknown;
       x?: unknown;
       y?: unknown;
-      image?: unknown;
     };
     switch (msg.type) {
       case 'shoot_join':
@@ -1265,10 +1264,11 @@ export class RoomState {
       case 'shoot_leave':
         this.duckHunter.leave(clientId);
         break;
-      case 'shoot_avatar':
-        if (typeof msg.image === 'string') {
-          void this.duckHunter.setAvatar(clientId, msg.image);
-        }
+      case 'shoot_cam_start':
+        void this.duckHunter.startCamera(clientId);
+        break;
+      case 'shoot_cam_stop':
+        this.duckHunter.stopCamera(clientId);
         break;
       default:
         break;
@@ -1308,10 +1308,16 @@ export class RoomState {
     if (typeof cfg.duckScale === 'number' && Number.isFinite(cfg.duckScale)) {
       this.duckScale = Math.max(0.25, Math.min(3, cfg.duckScale));
     }
-    if (typeof cfg.duckPauseMs === 'number' && Number.isFinite(cfg.duckPauseMs)) {
+    if (
+      typeof cfg.duckPauseMs === 'number' &&
+      Number.isFinite(cfg.duckPauseMs)
+    ) {
       this.duckPauseMs = Math.max(0, Math.min(10000, cfg.duckPauseMs));
     }
-    if (typeof cfg.duckFlySpeed === 'number' && Number.isFinite(cfg.duckFlySpeed)) {
+    if (
+      typeof cfg.duckFlySpeed === 'number' &&
+      Number.isFinite(cfg.duckFlySpeed)
+    ) {
       this.duckFlySpeed = Math.max(0.05, Math.min(3, cfg.duckFlySpeed));
     }
     return {

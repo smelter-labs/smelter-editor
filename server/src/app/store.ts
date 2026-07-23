@@ -208,8 +208,8 @@ export type ShooterCrosshair = {
   y: number;
   color: string;
   name: string;
-  /** Registered Smelter image id of the player's camera snapshot, if any. */
-  avatarImageId?: string;
+  /** Smelter input id of the player's live camera (WHIP), if the camera is on. */
+  camInputId?: string;
   ammo: number;
   maxAmmo: number;
   /** Full regen time for one round (ms) — with reloadEndsAt gives progress. */
@@ -224,7 +224,8 @@ export type ShooterScoreRow = {
   name: string;
   color: string;
   score: number;
-  avatarImageId?: string;
+  /** Smelter input id of the player's live camera (WHIP), if the camera is on. */
+  camInputId?: string;
   ammo: number;
   maxAmmo: number;
   reloadMs: number;
