@@ -521,20 +521,88 @@ function PeopleBoxes({
         height: parent.height,
         overflow: 'hidden',
       }}>
-      {boxes.map((box, i) => (
-        <View
-          key={i}
-          style={{
-            top: Math.round(offY + box.y * dispH),
-            left: Math.round(offX + box.x * dispW),
-            width: Math.max(2, Math.round(box.w * dispW)),
-            height: Math.max(2, Math.round(box.h * dispH)),
-            borderWidth: 4,
-            borderColor: '#00FF66FF',
-            borderRadius: 4,
-          }}
-        />
-      ))}
+      {boxes.flatMap((box, i) => {
+        const top = Math.round(offY + box.y * dispH);
+        const left = Math.round(offX + box.x * dispW);
+        const width = Math.max(2, Math.round(box.w * dispW));
+        const height = Math.max(2, Math.round(box.h * dispH));
+        // Detection confidence, shown as a 0.00–1.00 label above the box.
+        const conf = box.conf != null ? box.conf.toFixed(2) : null;
+        // Flat siblings, NOT a nested wrapper View: nesting the outline inside a
+        // sized layout View makes Smelter swallow the border, so only the filled
+        // label showed. Keeping the outline a direct child of the overlay — the
+        // shape the old code used — renders it again.
+        const els = [
+          <View
+            key={`box-${i}`}
+            style={{
+              top,
+              left,
+              width,
+              height,
+              borderWidth: 4,
+              borderColor: '#00FF66FF',
+              borderRadius: 4,
+            }}
+          />,
+        ];
+        if (conf != null) {
+          els.push(
+            <BoxConfLabel
+              key={`conf-${i}`}
+              text={conf}
+              boxTop={top}
+              boxLeft={left}
+              parent={parent}
+            />,
+          );
+        }
+        return els;
+      })}
+    </View>
+  );
+}
+
+/**
+ * Confidence badge for one detection, pinned just ABOVE the box's top-left
+ * corner (outside the outline, so it never covers the subject). Smelter Views
+ * don't auto-size to content, so the badge gets explicit dimensions hugging the
+ * text (same trick as PeopleCountBadge).
+ */
+function BoxConfLabel({
+  text,
+  boxTop,
+  boxLeft,
+  parent,
+}: {
+  text: string;
+  boxTop: number;
+  boxLeft: number;
+  parent: { width: number; height: number };
+}) {
+  const fontSize = Math.max(12, Math.round(parent.height * 0.022));
+  const padH = Math.round(fontSize * 0.35);
+  const padV = Math.round(fontSize * 0.15);
+  const width = padH * 2 + Math.round(fontSize * 0.6 * text.length);
+  const height = padV * 2 + Math.round(fontSize * 1.2);
+  // Sit just above the box. If it would run off the top edge, tuck it just
+  // inside the top line instead so the number stays on screen.
+  const gap = 2;
+  const top = boxTop - height - gap >= 0 ? boxTop - height - gap : boxTop + gap;
+  return (
+    <View
+      style={{
+        top,
+        left: boxLeft,
+        width,
+        height,
+        backgroundColor: '#00FF66CC',
+        borderRadius: Math.round(fontSize * 0.25),
+        paddingHorizontal: padH,
+        paddingVertical: padV,
+        overflow: 'hidden',
+      }}>
+      <Text style={{ fontSize, color: '#000000FF' }}>{text}</Text>
     </View>
   );
 }
@@ -544,7 +612,8 @@ function PeopleBoxes({
 const DOG_ASPECT = 40 / 68; // dog-catch.png is 68×40
 const DOG_RISE_MS = 220; // spring up from below the bottom edge
 const DOG_DROP_MS = 320; // drop back down at the end
-const DOG_MS = 1500; // total on-screen time, matches DOG_REVEAL_MS
+const DOG_MS = 6000; // total on-screen time, matches DOG_REVEAL_MS
+const DOG_DIM = 0.4; // peak darkening of the rest of the frame while the dog is up
 
 // Hue [0,1] of a hex color, for driving the hsl-adjust colorize shader.
 function hexToHue(hex: string): number {
@@ -643,11 +712,41 @@ function ShooterHud({
         );
       })}
 
+      {/* Screen dim behind the dog: while any reveal is on screen, briefly
+          darken the rest of the frame so the pop-up stands out. Follows the same
+          rise → hold → drop envelope as the dog(s), taking the strongest across
+          concurrent reveals. */}
+      {(() => {
+        const presence = shooter.dogReveals.reduce((m, d) => {
+          const e = now - d.at;
+          let p = 1;
+          if (e < DOG_RISE_MS) p = e / DOG_RISE_MS;
+          else if (e > DOG_MS - DOG_DROP_MS)
+            p = Math.max(0, (DOG_MS - e) / DOG_DROP_MS);
+          return Math.max(m, p);
+        }, 0);
+        if (presence <= 0) return null;
+        const dimA = Math.round(presence * DOG_DIM * 255)
+          .toString(16)
+          .padStart(2, '0');
+        return (
+          <View
+            style={{
+              top: 0,
+              left: 0,
+              width: parent.width,
+              height: parent.height,
+              backgroundColor: `#000000${dimA}`,
+            }}
+          />
+        );
+      })()}
+
       {/* Duck Hunt dog: springs up from the bottom holding two ducks, tinted to
           the scoring player's color, then drops back down. Below the crosshairs
           so aiming stays legible. */}
       {shooter.dogReveals.map((d) => {
-        const dogW = Math.round(parent.width * 0.2);
+        const dogW = Math.round(parent.width * 0.28);
         const dogH = Math.round(dogW * DOG_ASPECT);
         const restTop = parent.height - dogH; // sits on the bottom edge
         const cx = toPx(d.x, 0).px;

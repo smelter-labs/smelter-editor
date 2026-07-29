@@ -323,7 +323,7 @@ export class RoomState {
       if (!input) return;
       const data = event.data as {
         count?: number;
-        boxes?: { x: number; y: number; w: number; h: number }[];
+        boxes?: { x: number; y: number; w: number; h: number; conf?: number }[];
         frameW?: number;
         frameH?: number;
         procMs?: number;

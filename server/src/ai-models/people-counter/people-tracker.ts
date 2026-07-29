@@ -194,6 +194,14 @@ export class PeopleTracker {
     }
     const x = clamp(t.box.x + dx, 0, 1 - t.box.w);
     const y = clamp(t.box.y + dy, 0, 1 - t.box.h);
-    return { x, y, w: t.box.w, h: t.box.h, id: t.id, color: t.color };
+    return {
+      x,
+      y,
+      w: t.box.w,
+      h: t.box.h,
+      id: t.id,
+      color: t.color,
+      conf: t.box.conf,
+    };
   }
 }

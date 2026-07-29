@@ -66,7 +66,7 @@ const RESPAWN_MS = 3000; // how long a shot ghost stays down before returning
 const BURST_MS = 600; // shot-effect lifetime
 // Streak: two hits within this window trigger the Duck Hunt dog pop-up.
 const STREAK_WINDOW_MS = 2000;
-const DOG_REVEAL_MS = 1500; // how long the dog stays on screen per pop-up
+const DOG_REVEAL_MS = 6000; // how long the dog stays on screen per pop-up
 const PUBLISH_MS = 33; // ~30Hz overlay refresh while the game is active
 // Hit radius as a fraction of the visible sprite side. The sprite footprint
 // itself comes from the shared duck model (duckSidePx), so the hitbox always

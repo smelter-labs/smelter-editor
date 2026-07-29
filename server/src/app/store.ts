@@ -85,7 +85,14 @@ export type RoomStore = {
 } & Partial<ViewportProperties>;
 
 /** A detection bounding box, normalized to 0..1 of the input frame. */
-export type PersonBox = { x: number; y: number; w: number; h: number };
+export type PersonBox = {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  /** Model confidence for this detection, 0..1 (absent for non-YOLO backends). */
+  conf?: number;
+};
 
 /**
  * A box after cross-frame tracking: carries a stable identity so it keeps the

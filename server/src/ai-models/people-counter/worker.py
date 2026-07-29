@@ -178,13 +178,22 @@ def detect(rgba: np.ndarray, params: dict | None = None) -> tuple[int, list[dict
         for r in results:
             if r.boxes is None:
                 continue
-            for x1, y1, x2, y2 in r.boxes.xyxy.tolist():
+            xyxy = r.boxes.xyxy.tolist()
+            # Per-detection confidence (aligned with xyxy). Guard for the rare
+            # case where a backend yields boxes without scores.
+            confs = (
+                r.boxes.conf.tolist()
+                if r.boxes.conf is not None
+                else [None] * len(xyxy)
+            )
+            for (x1, y1, x2, y2), c in zip(xyxy, confs):
                 boxes.append(
                     {
                         "x": round(max(0.0, x1 / w), 4),
                         "y": round(max(0.0, y1 / h), 4),
                         "w": round(max(0.0, (x2 - x1) / w), 4),
                         "h": round(max(0.0, (y2 - y1) / h), 4),
+                        "conf": round(float(c), 4) if c is not None else None,
                     }
                 )
         return len(boxes), boxes
@@ -231,6 +240,9 @@ async def send_result(
 
 SUBSCRIBE_MAX_RETRIES = 5
 SUBSCRIBE_RETRY_DELAY_S = 1.0
+# Pause before re-subscribing after a live stream drops mid-way (Smelter can
+# close the side channel under load). Short so boxes barely blink.
+RECONNECT_DELAY_S = 0.2
 
 
 async def run_detector(input_id: str) -> None:
@@ -257,110 +269,173 @@ async def run_detector(input_id: str) -> None:
         elapsed_wait,
     )
 
-    for attempt in range(1, SUBSCRIBE_MAX_RETRIES + 1):
-        if input_id not in active_inputs:
-            return
-        try:
-            channels = await asyncio.to_thread(list_channels)
-            video_channels = [
-                c for c in channels if c.kind.value == "video"
-            ]
-            matching = [c for c in video_channels if c.input_id == input_id]
-            log.info(
-                "attempt %d/%d for %s: list_channels found %d total, %d video, %d matching input_id",
-                attempt,
-                SUBSCRIBE_MAX_RETRIES,
-                input_id,
-                len(channels),
-                len(video_channels),
-                len(matching),
-            )
-            if matching:
-                log.info("  matching channel: input_id=%s kind=%s", matching[0].input_id, matching[0].kind.value)
-
-            frame_count = await _run_detector_loop(input_id)
-            if frame_count > 0:
+    # Outer loop: reconnect whenever a LIVE stream drops. Under load Smelter can
+    # close the side channel mid-stream; while the input/model is still active
+    # that's not a shutdown, so we re-subscribe instead of giving up. The tracker
+    # keeps box identity across the gap, so boxes barely blink.
+    while input_id in active_inputs:
+        streamed = False
+        for attempt in range(1, SUBSCRIBE_MAX_RETRIES + 1):
+            if input_id not in active_inputs:
                 return
-            # Iterator ended cleanly but produced no frames — socket not ready yet
-            if attempt < SUBSCRIBE_MAX_RETRIES:
-                delay = SUBSCRIBE_RETRY_DELAY_S * attempt
-                log.warning(
-                    "subscribe_video_channel for %s returned 0 frames (attempt %d/%d) — retrying in %.1fs",
-                    input_id,
+            try:
+                channels = await asyncio.to_thread(list_channels)
+                video_channels = [
+                    c for c in channels if c.kind.value == "video"
+                ]
+                matching = [c for c in video_channels if c.input_id == input_id]
+                log.info(
+                    "attempt %d/%d for %s: list_channels found %d total, %d video, %d matching input_id",
                     attempt,
                     SUBSCRIBE_MAX_RETRIES,
-                    delay,
-                )
-                await asyncio.sleep(delay)
-            else:
-                log.error(
-                    "subscribe_video_channel for %s returned 0 frames after %d attempts — giving up",
                     input_id,
-                    SUBSCRIBE_MAX_RETRIES,
+                    len(channels),
+                    len(video_channels),
+                    len(matching),
                 )
-        except asyncio.CancelledError:
-            return
-        except Exception as err:  # noqa: BLE001
-            if attempt < SUBSCRIBE_MAX_RETRIES:
-                delay = SUBSCRIBE_RETRY_DELAY_S * attempt
-                log.warning(
-                    "Detector for %s failed (attempt %d/%d): %s — retrying in %.1fs",
-                    input_id,
-                    attempt,
-                    SUBSCRIBE_MAX_RETRIES,
-                    err,
-                    delay,
-                )
-                await asyncio.sleep(delay)
-            else:
-                log.error(
-                    "Detector for %s failed after %d attempts: %s",
-                    input_id,
-                    SUBSCRIBE_MAX_RETRIES,
-                    err,
-                )
+                if matching:
+                    log.info("  matching channel: input_id=%s kind=%s", matching[0].input_id, matching[0].kind.value)
+
+                frame_count = await _run_detector_loop(input_id)
+                if frame_count > 0:
+                    # Delivered frames and then ended — a mid-stream drop (or a
+                    # normal teardown). Break to the outer loop, which reconnects
+                    # only while the input is still active.
+                    streamed = True
+                    break
+                # Iterator ended cleanly but produced no frames — socket not ready yet
+                if attempt < SUBSCRIBE_MAX_RETRIES:
+                    delay = SUBSCRIBE_RETRY_DELAY_S * attempt
+                    log.warning(
+                        "subscribe_video_channel for %s returned 0 frames (attempt %d/%d) — retrying in %.1fs",
+                        input_id,
+                        attempt,
+                        SUBSCRIBE_MAX_RETRIES,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    log.error(
+                        "subscribe_video_channel for %s returned 0 frames after %d attempts — giving up",
+                        input_id,
+                        SUBSCRIBE_MAX_RETRIES,
+                    )
+            except asyncio.CancelledError:
+                return
+            except Exception as err:  # noqa: BLE001
+                if attempt < SUBSCRIBE_MAX_RETRIES:
+                    delay = SUBSCRIBE_RETRY_DELAY_S * attempt
+                    log.warning(
+                        "Detector for %s failed (attempt %d/%d): %s — retrying in %.1fs",
+                        input_id,
+                        attempt,
+                        SUBSCRIBE_MAX_RETRIES,
+                        err,
+                        delay,
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    log.error(
+                        "Detector for %s failed after %d attempts: %s",
+                        input_id,
+                        SUBSCRIBE_MAX_RETRIES,
+                        err,
+                    )
+        if not streamed:
+            # Never delivered a frame across all attempts — give up for good.
+            break
+        # A live stream dropped; reconnect if the input is still around.
+        if input_id in active_inputs:
+            log.info(
+                "side channel for %s dropped mid-stream — reconnecting", input_id
+            )
+            await asyncio.sleep(RECONNECT_DELAY_S)
     running_tasks.pop(input_id, None)
-    log.info("Stopped people counting for %s (exhausted retries)", input_id)
+    log.info("Stopped people counting for %s", input_id)
 
 
 async def _run_detector_loop(input_id: str) -> int:
-    """Run detection loop. Returns the number of frames processed."""
+    """Read the video side channel and run detection.
+
+    The socket reader and YOLO inference run as SEPARATE coroutines sharing a
+    single-slot "latest frame" holder — this split is the whole point. Inference
+    takes tens to hundreds of ms; if it ran inline in the read loop the socket
+    would go undrained for that long. Smelter's side-channel writer uses a
+    non-blocking socket (on macOS the accepted socket inherits the listener's
+    non-blocking flag), so an undrained buffer fills, its write_all() fails, and
+    Smelter drops the whole channel after a handful of frames — which froze the
+    boxes between reconnects. Draining continuously on its own coroutine keeps
+    the buffer empty; inference just consumes the most recent frame and lets the
+    rest fall on the floor (we rate-limit output anyway).
+    """
     frame_count = 0
-    try:
-        async for frame in subscribe_video_channel(input_id):
-            if input_id not in active_inputs:
+    latest_frame = None
+    latest_at = 0.0
+    frame_ready = asyncio.Event()
+    stopped = asyncio.Event()
+
+    async def reader() -> None:
+        nonlocal frame_count, latest_frame, latest_at
+        try:
+            async for frame in subscribe_video_channel(input_id):
+                if input_id not in active_inputs or stopped.is_set():
+                    break
+                frame_count += 1
+                if frame_count == 1:
+                    log.info("First frame received for %s", input_id)
+                # Overwrite: only the freshest frame matters for detection.
+                latest_frame = frame
+                # Wall time the frame was delivered (the side channel hands it
+                # over ~delay_ms before the output presents it).
+                latest_at = time.monotonic()
+                frame_ready.set()
+        finally:
+            stopped.set()
+            frame_ready.set()  # wake the consumer so it can notice and exit
+
+    async def consumer() -> None:
+        while not stopped.is_set():
+            await frame_ready.wait()
+            frame_ready.clear()
+            if stopped.is_set():
                 break
-
-            # Wall time the frame was delivered to us (the side channel hands it
-            # over ~delay_ms before the output presents it).
-            delivered_at = time.monotonic()
-            state = active_inputs[input_id]
-            frame_count += 1
-
-            if frame_count == 1:
-                log.info("First frame received for %s", input_id)
-
-            if frame_count % PROCESS_EVERY_N != 0:
+            frame = latest_frame
+            delivered_at = latest_at
+            if frame is None or input_id not in active_inputs:
                 continue
-
+            state = active_inputs[input_id]
+            # Rate-limit inference/output; the reader keeps draining regardless.
             if delivered_at - state.last_output_at < OUTPUT_INTERVAL_S:
                 continue
-
             rgba = frame.rgba
             frame_h, frame_w = rgba.shape[:2]
             count, boxes = await asyncio.to_thread(detect, rgba, state.params)
             proc_ms = (time.monotonic() - delivered_at) * 1000.0
             state.last_output_at = time.monotonic()
-            await send_result(
-                input_id, count, boxes, frame_w, frame_h, proc_ms
-            )
+            await send_result(input_id, count, boxes, frame_w, frame_h, proc_ms)
 
+    reader_task = asyncio.ensure_future(reader())
+    consumer_task = asyncio.ensure_future(consumer())
+    try:
+        await asyncio.gather(reader_task, consumer_task)
     except asyncio.CancelledError:
         raise
     except Exception as err:  # noqa: BLE001
-        log.exception("Detector loop error for %s (got %d frames): %s", input_id, frame_count, err)
+        log.exception(
+            "Detector loop error for %s (got %d frames): %s",
+            input_id,
+            frame_count,
+            err,
+        )
         raise
     finally:
+        # Stop whichever coroutine is still alive so neither leaks past the loop.
+        stopped.set()
+        frame_ready.set()
+        for task in (reader_task, consumer_task):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(reader_task, consumer_task, return_exceptions=True)
         log.info("Detector loop ended for %s after %d frames", input_id, frame_count)
 
     return frame_count
