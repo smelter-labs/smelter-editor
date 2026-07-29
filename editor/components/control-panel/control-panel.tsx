@@ -121,6 +121,7 @@ import {
   BlockClipPropertiesPanel,
   type SelectedTimelineClip,
 } from './components/BlockClipPropertiesPanel';
+import { AIModelsPanel } from './components/AIModelsPanel';
 import {
   isInputLevelClip,
   INPUT_LEVEL_TRACK_ID,
@@ -194,6 +195,7 @@ type ControlPanelProps = {
     fxSection: React.ReactNode;
     timelineSection: React.ReactNode;
     blockPropertiesSection: React.ReactNode;
+    aiModelsSection: React.ReactNode;
     pendingConnectionsSection: React.ReactNode;
     motionDetectionSection: React.ReactNode;
     captionsSection: React.ReactNode;
@@ -424,6 +426,7 @@ function ControlPanelWithActions({
       volume: p.volume,
       showTitle: p.showTitle,
       shaders: p.shaders,
+      aiModels: p.aiModels,
     },
     position: p.position,
   }));
@@ -532,6 +535,7 @@ function ControlPanelWithActions({
           volume: i.volume ?? 1,
           showTitle: i.showTitle,
           shaders: i.shaders ?? [],
+          aiModels: i.aiModels,
         },
         position: 0,
         staleInputId: i.inputId,
@@ -576,6 +580,7 @@ function ControlPanelWithActions({
           showTitle: p.config.showTitle !== false,
           shaders: p.config.shaders || [],
           position: p.position,
+          ...(p.config.aiModels ? { aiModels: p.config.aiModels } : {}),
         }));
       await setPendingWhipInputsAction(roomId, serverData);
       await handleRefreshState();
@@ -824,7 +829,7 @@ function ControlPanelInner({
   const [timelineActionsReady, setTimelineActionsReady] = useState(false);
   const isPersistingTimelineLayerOrderRef = useRef(false);
   const [timelineQueueLocked, setTimelineQueueLocked] = useState(false);
-  const sortMode: 'timeline' | 'layers' = roomState.sortMode ?? 'timeline';
+  const sortMode: 'timeline' | 'layers' = roomState.sortMode ?? 'layers';
   const [layersModeDirty, setLayersModeDirty] = useState(false);
   const [conflictModalOpen, setConflictModalOpen] = useState(false);
   const [conflictDecisionPending, setConflictDecisionPending] = useState(false);
@@ -1476,6 +1481,20 @@ function ControlPanelInner({
       </div>
     );
 
+    const aiModelsSelectedInput =
+      effectiveSelectedClips.length > 0
+        ? (inputs.find(
+            (i) => i.inputId === effectiveSelectedClips[0].inputId,
+          ) ?? null)
+        : null;
+    const aiModelsSection = (
+      <AIModelsPanel
+        roomId={roomId}
+        selectedInput={aiModelsSelectedInput}
+        handleRefreshState={handleRefreshState}
+      />
+    );
+
     const pendingConnectionsSection = !isGuest ? (
       <PendingConnectionsPanel
         pendingWhipInputs={pendingWhipInputs}
@@ -1529,6 +1548,7 @@ function ControlPanelInner({
           fxSection,
           timelineSection,
           blockPropertiesSection,
+          aiModelsSection,
           pendingConnectionsSection,
           motionDetectionSection,
           captionsSection,

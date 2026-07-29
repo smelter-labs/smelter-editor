@@ -53,6 +53,9 @@ server/dist/
 server/motion/.venv/
 server/captions/.venv/
 server/src/ai-models/motion/.venv/
+server/src/ai-models/people-counter/.venv/
+server/src/ai-models/people-counter/*.pt
+server/src/ai-models/building-detector/.venv/
 packages/types/dist/
 packages/types/node_modules/
 server/screenshots/
@@ -63,3 +66,4 @@ tasks/
 .pnpm-store/
 secret.env 
 server/.smelter-bin/
+workshop/

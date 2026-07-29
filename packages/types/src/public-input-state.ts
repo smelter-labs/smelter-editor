@@ -46,6 +46,8 @@ export type PublicInputState = {
   nativeHeight?: number;
   /** When true, audio is transcribed (whisper) and rendered as live captions. */
   transcription?: boolean;
+  /** Number of people/faces detected on this input (people-counter model). */
+  peopleCount?: number;
   /** Per-input AI model configuration and status. */
   aiModels?: Record<string, AIModelStatus>;
 } & InputDisplayProperties &

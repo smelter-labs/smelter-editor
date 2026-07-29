@@ -77,7 +77,7 @@ export class ServerState {
     return this.mutex.runExclusive(async () => {
       const roomId = uuidv4();
       const roomName = pickUniqueRoomName(this.getUsedRoomNames());
-      const resolvedResolution = resolution ?? RESOLUTION_PRESETS['1440p'];
+      const resolvedResolution = resolution ?? RESOLUTION_PRESETS['1080p'];
       const audioStore = createAudioStore();
       const smelterOutput = await SmelterInstance.registerOutput(
         roomId,

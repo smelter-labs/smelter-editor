@@ -1,3 +1,7 @@
+import {
+  getEffectiveClientServerUrl,
+  rewriteLoopbackUrlForClient,
+} from '@/lib/server-url';
 import { buildIceServers } from './index';
 
 const AUDIO_TRACK_WAIT_MS = 2000;
@@ -21,6 +25,11 @@ export async function connectWhep(
   endpointUrl: string,
   options?: ConnectWhepOptions,
 ): Promise<WhepConnection> {
+  endpointUrl = rewriteLoopbackUrlForClient(
+    endpointUrl,
+    getEffectiveClientServerUrl(),
+  );
+
   const pc = new RTCPeerConnection({
     iceServers: options?.iceServers ?? buildIceServers(),
     bundlePolicy: 'max-bundle',

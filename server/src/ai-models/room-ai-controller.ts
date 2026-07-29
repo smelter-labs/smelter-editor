@@ -6,6 +6,12 @@ import { BaseSidecar } from './base-sidecar';
 import { computeSideChannelConfig } from './side-channel-config';
 import type { RoomInputState } from '../room/types';
 import { ensureMotionSidecarStarted } from './motion/motion-sidecar';
+import { ensurePeopleCounterSidecarStarted } from './people-counter/people-counter-sidecar';
+import { isPeopleCounterModel } from './people-counter/manifest';
+import { ensureBuildingDetectorSidecarStarted } from './building-detector/building-detector-sidecar';
+import { isBuildingDetectorModel } from './building-detector/manifest';
+import { ensureCarAdsSidecarStarted } from './car-ads/car-ads-sidecar';
+import { isCarAdsModel } from './car-ads/manifest';
 
 export type ResultListener = (event: ModelResultEvent) => void;
 
@@ -86,7 +92,7 @@ export class RoomAIController {
     );
 
     if (input.status === 'connected') {
-      await this.subscribeInputToModel(input.inputId, modelId);
+      await this.subscribeInputToModel(input, modelId);
     }
   }
 
@@ -117,7 +123,7 @@ export class RoomAIController {
       `[ai] onInputConnected room=${this.roomId} inputId=${input.inputId} models=[${[...models].join(',')}]`,
     );
     for (const modelId of models) {
-      await this.subscribeInputToModel(input.inputId, modelId);
+      await this.subscribeInputToModel(input, modelId);
     }
   }
 
@@ -185,16 +191,36 @@ export class RoomAIController {
   }
 
   private async subscribeInputToModel(
-    inputId: string,
+    input: RoomInputState,
     modelId: string,
   ): Promise<void> {
     const sidecar = await this.getSidecarForModel(modelId);
-    sidecar.addInput(inputId);
+    sidecar.addInput(input.inputId, input.aiModels?.[modelId]?.params);
+  }
+
+  /** Push updated model params to the running worker without re-subscribing. */
+  async configureModelOnInput(
+    input: RoomInputState,
+    modelId: string,
+  ): Promise<void> {
+    const params = input.aiModels?.[modelId]?.params;
+    if (!params) return;
+    const sidecar = await this.getSidecarForModel(modelId);
+    sidecar.configureInput(input.inputId, params);
   }
 
   private async getSidecarForModel(modelId: string): Promise<BaseSidecar> {
     if (modelId === 'motion') {
       return ensureMotionSidecarStarted();
+    }
+    if (isPeopleCounterModel(modelId)) {
+      return ensurePeopleCounterSidecarStarted(modelId);
+    }
+    if (isBuildingDetectorModel(modelId)) {
+      return ensureBuildingDetectorSidecarStarted();
+    }
+    if (isCarAdsModel(modelId)) {
+      return ensureCarAdsSidecarStarted(modelId);
     }
 
     let sidecar = globalSidecars.get(modelId);

@@ -32,6 +32,49 @@ function normalizeServerUrl(url: string): string {
   return url.replace(/\/$/, '');
 }
 
+function isLoopbackHost(hostname: string): boolean {
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '::1' ||
+    hostname === '[::1]'
+  );
+}
+
+/**
+ * When the editor is opened via a LAN IP (e.g. http://192.168.1.5:3000), rewrite
+ * loopback URLs so the phone/tablet reaches the dev machine instead of itself.
+ * Preserves the original port (API :3001, WHEP :9072, etc.).
+ */
+export function rewriteLoopbackUrlForClient(
+  url: string,
+  preferredBaseUrl?: string,
+): string {
+  if (typeof window === 'undefined') {
+    return url;
+  }
+
+  try {
+    const parsed = new URL(url);
+    if (!isLoopbackHost(parsed.hostname)) {
+      return normalizeServerUrl(url);
+    }
+
+    const baseHost = preferredBaseUrl
+      ? new URL(preferredBaseUrl).hostname
+      : window.location.hostname;
+
+    if (isLoopbackHost(baseHost)) {
+      return normalizeServerUrl(url);
+    }
+
+    parsed.hostname = baseHost;
+    return normalizeServerUrl(parsed.toString());
+  } catch {
+    return url;
+  }
+}
+
 export function getDefaultServerUrl(): string {
   const envUrl = process.env.NEXT_PUBLIC_SMELTER_SERVER_URL;
   if (!envUrl) {
@@ -101,10 +144,11 @@ export function setStoredServerUrl(url: string | null): void {
 }
 
 export function getEffectiveClientServerUrl(): string {
-  if (getStoredAppMode() === 'demo') {
-    return getDefaultServerUrl();
-  }
-  return getStoredServerUrl() ?? getDefaultServerUrl();
+  const raw =
+    getStoredAppMode() === 'demo'
+      ? getDefaultServerUrl()
+      : (getStoredServerUrl() ?? getDefaultServerUrl());
+  return rewriteLoopbackUrlForClient(raw);
 }
 
 export function toWsUrl(httpUrl: string): string {

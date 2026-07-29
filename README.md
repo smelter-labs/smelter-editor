@@ -74,6 +74,7 @@ flowchart TD
 - **ffmpeg**
 - **Python 3** + `opencv-python-headless` + `numpy` — for motion detection (auto-installed into `server/motion/.venv/` on first use, or install globally: `pip3 install opencv-python-headless numpy`)
 - **Python 3** + Whisper sidecar deps — for live captions (auto-installed into `server/captions/.venv/` on first use; see [Captions](#live-captions)). Docker image bakes the venv at build time.
+- **macOS only** — run `server/scripts/setup-macos.sh` once per boot before starting the server. It raises `net.local.stream.{send,recv}space` so Smelter's side channels can deliver video/audio frames to the Python workers. Without it, AI models and captions log `subscribe_video_channel ... returned 0 frames` and never produce output. These sysctls reset to their too-small default on every reboot.
 
 ## Quick Start
 

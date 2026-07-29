@@ -54,6 +54,14 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     shaderFile: 'grayscale.wgsl',
   },
   {
+    id: 'mirror-x',
+    isActive: true,
+    isVisible: false,
+    name: 'Mirror (horizontal)',
+    description: 'Flips the input horizontally (selfie mirror).',
+    shaderFile: 'mirror-x.wgsl',
+  },
+  {
     id: 'opacity',
     isActive: true,
     isVisible: true,
@@ -1677,6 +1685,51 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     description:
       'Neon glow hand skeleton overlay driven by MediaPipe Hands landmarks.',
     shaderFile: 'cyberpunk-hands.wgsl',
+  },
+  {
+    id: 'pacman-ghosts',
+    isActive: true,
+    isVisible: false,
+    name: 'Pac-Man Ghosts',
+    description:
+      'Replaces YOLO-detected people with animated Pac-Man ghosts over a dimmed background.',
+    shaderFile: 'pacman-ghosts.wgsl',
+  },
+  {
+    id: 'haunted-city',
+    isActive: true,
+    isVisible: false,
+    name: 'Haunted City',
+    description:
+      'Ghost City: haunts detected building regions with eerie mist + desaturation, a spectral green-teal edge glow, and randomly glowing windows.',
+    shaderFile: 'haunted-city.wgsl',
+  },
+  {
+    id: 'haunter-aura',
+    isActive: true,
+    isVisible: false,
+    name: 'Haunter Aura',
+    description:
+      'Golden aura around each haunting ghost and its haunted person: flame-like wavy rim, outer glow, darkened interior, and heat-haze warp. Palette matches the yellow ghost sprites and rotates hue per ghost, driven by HaunterGhostsInput.',
+    shaderFile: 'haunter-aura.wgsl',
+  },
+  {
+    id: 'haunter-ghost',
+    isActive: true,
+    isVisible: false,
+    name: 'Haunter Ghost',
+    description:
+      'Per-sprite pass for the haunting ghosts: keys out the green backdrop baked into the ghost PNGs, rotates hue per ghost, and adds an animated jelly-like wave, driven by HaunterGhostsInput.',
+    shaderFile: 'haunter-ghost.wgsl',
+  },
+  {
+    id: 'car-hue',
+    isActive: true,
+    isVisible: false,
+    name: 'Car Hue',
+    description:
+      'Recolors top-down (bird’s-eye) detected cars: rotates the hue inside a feathered ellipse per vehicle box, driven by the car-hue-topdown AI model.',
+    shaderFile: 'car-hue.wgsl',
   },
   {
     id: 'comic-book',

@@ -84,6 +84,10 @@ export type {
   AIModelConfig,
   AIModelStatus,
   AIModelInfo,
+  ModelParamSpec,
+  NumberParamSpec,
+  SelectParamSpec,
+  ModelParamValue,
 } from "./ai-models.js";
 
 export type {
@@ -147,3 +151,19 @@ export type {
   PongPlayerDisconnectedEvent,
   PongServerEvent,
 } from "./pong-events.js";
+
+export type {
+  ShooterPlayer,
+  ShooterAmmoConfig,
+  ShooterJoinMessage,
+  ShooterAimMessage,
+  ShooterFireMessage,
+  ShooterLeaveMessage,
+  ShooterClientMessage,
+  ShooterStateEvent,
+  ShooterHitEvent,
+  ShooterMissEvent,
+  ShooterEmptyEvent,
+  ShooterAmmoEvent,
+  ShooterServerEvent,
+} from "./shooter-events.js";

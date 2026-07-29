@@ -1122,6 +1122,11 @@ routes.after(() => {
 
       socket.on('close', (code: any, reason: unknown) => {
         handlePongClientDisconnect(roomId, clientId);
+        try {
+          state.getRoom(roomId).handleShooterDisconnect(clientId);
+        } catch {
+          // Room no longer exists — ignore.
+        }
         logWsDebug('closed', {
           roomId,
           clientId,
@@ -1170,6 +1175,20 @@ routes.after(() => {
           (parsed as { type: string }).type !== 'pong_shader_partial_update'
         ) {
           handlePongClientMessage(roomId, clientId, parsed);
+          return;
+        }
+        // Ghost Shooter control messages from phone gyroscope controllers.
+        if (
+          parsed &&
+          typeof parsed === 'object' &&
+          typeof (parsed as { type?: unknown }).type === 'string' &&
+          (parsed as { type: string }).type.startsWith('shoot_')
+        ) {
+          try {
+            state.getRoom(roomId).handleShooterMessage(clientId, parsed);
+          } catch {
+            // Room no longer exists — ignore.
+          }
           return;
         }
         if (
@@ -1832,6 +1851,7 @@ const PendingWhipInputSchema = Type.Object({
   showTitle: Type.Boolean(),
   shaders: Type.Array(Type.Any()),
   position: Type.Number(),
+  aiModels: Type.Optional(Type.Record(Type.String(), Type.Any())),
 });
 
 const SetPendingWhipInputsSchema = Type.Object({
@@ -2252,11 +2272,18 @@ const AIModelSchema = Type.Object({
   modelId: Type.String(),
   enabled: Type.Boolean(),
   delayMs: Type.Optional(Type.Number({ minimum: 0 })),
+  drawBoxes: Type.Optional(Type.Boolean()),
+  ghostMode: Type.Optional(Type.Boolean()),
+  params: Type.Optional(
+    Type.Record(Type.String(), Type.Union([Type.Number(), Type.String()])),
+  ),
 });
 
 routes.get('/ai-models', async (_req, res) => {
   res.status(200).send(
-    ModelRegistry.getAll().map((m) => ModelRegistry.toInfo(m)),
+    ModelRegistry.getAll()
+      .filter((m) => !m.hidden)
+      .map((m) => ModelRegistry.toInfo(m)),
   );
 });
 
@@ -2269,16 +2296,28 @@ routes.post<
   },
   async (req, res) => {
     const { roomId, inputId } = req.params;
-    const { modelId, enabled, delayMs } = req.body;
+    const { modelId, enabled, delayMs, drawBoxes, ghostMode, params } =
+      req.body;
     console.log('[request] Set AI model', {
       roomId,
       inputId,
       modelId,
       enabled,
       delayMs,
+      drawBoxes,
+      ghostMode,
+      params,
     });
     const room = state.getRoom(roomId);
-    await room.setAIModelEnabled(inputId, modelId, enabled, delayMs);
+    await room.setAIModelEnabled(
+      inputId,
+      modelId,
+      enabled,
+      delayMs,
+      drawBoxes,
+      params,
+      ghostMode,
+    );
     res.status(200).send({ status: 'ok' });
   },
 );
@@ -2498,6 +2537,73 @@ routes.post<RoomIdParams & { Body: Static<typeof AudioAnalysisSchema> }>(
     const room = state.getRoom(roomId);
     await room.setAudioAnalysisEnabled(req.body.enabled);
     res.status(200).send({ status: 'ok' });
+  },
+);
+
+// ── Duck Hunter ────────────────────────────────────────────────
+
+const DuckHunterConfigSchema = Type.Object({
+  maxAmmo: Type.Optional(Type.Number()),
+  reloadMs: Type.Optional(Type.Number()),
+  duckScale: Type.Optional(Type.Number()),
+  duckPauseMs: Type.Optional(Type.Number()),
+  duckFlySpeed: Type.Optional(Type.Number()),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof DuckHunterConfigSchema> }>(
+  '/room/:roomId/duck-hunter/config',
+  { schema: { params: RoomIdParamsSchema, body: DuckHunterConfigSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    console.log('[request] Set Duck Hunter config', {
+      roomId,
+      maxAmmo: req.body.maxAmmo,
+      reloadMs: req.body.reloadMs,
+      duckScale: req.body.duckScale,
+      duckPauseMs: req.body.duckPauseMs,
+      duckFlySpeed: req.body.duckFlySpeed,
+    });
+    const room = state.getRoom(roomId);
+    const config = room.setDuckHunterConfig({
+      maxAmmo: req.body.maxAmmo,
+      reloadMs: req.body.reloadMs,
+      duckScale: req.body.duckScale,
+      duckPauseMs: req.body.duckPauseMs,
+      duckFlySpeed: req.body.duckFlySpeed,
+    });
+    res.status(200).send({ status: 'ok', config });
+  },
+);
+
+// ── Haunting ghosts ────────────────────────────────────────────
+
+const HaunterConfigSchema = Type.Object({
+  haunterCount: Type.Optional(Type.Number()),
+  haunterDist: Type.Optional(Type.Number()),
+  haunterScale: Type.Optional(Type.Number()),
+  haunterSpeed: Type.Optional(Type.Number()),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof HaunterConfigSchema> }>(
+  '/room/:roomId/haunter/config',
+  { schema: { params: RoomIdParamsSchema, body: HaunterConfigSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    console.log('[request] Set Haunter config', {
+      roomId,
+      haunterCount: req.body.haunterCount,
+      haunterDist: req.body.haunterDist,
+      haunterScale: req.body.haunterScale,
+      haunterSpeed: req.body.haunterSpeed,
+    });
+    const room = state.getRoom(roomId);
+    const config = room.setHaunterConfig({
+      haunterCount: req.body.haunterCount,
+      haunterDist: req.body.haunterDist,
+      haunterScale: req.body.haunterScale,
+      haunterSpeed: req.body.haunterSpeed,
+    });
+    res.status(200).send({ status: 'ok', config });
   },
 );
 

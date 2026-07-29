@@ -23,8 +23,15 @@ type IncomingMessage = {
 };
 
 type OutgoingMessage = {
-  cmd: 'subscribe' | 'unsubscribe' | 'side_channel_ready' | 'side_channel_stopped' | 'shutdown';
+  cmd:
+    | 'subscribe'
+    | 'unsubscribe'
+    | 'configure'
+    | 'side_channel_ready'
+    | 'side_channel_stopped'
+    | 'shutdown';
   inputId?: string;
+  params?: Record<string, number | string>;
 };
 
 export abstract class BaseSidecar extends EventEmitter {
@@ -36,6 +43,10 @@ export abstract class BaseSidecar extends EventEmitter {
   protected pythonSetupPromise: Promise<void> | null = null;
   protected readonly trackedInputs = new Set<string>();
   protected readonly readyInputIds = new Set<string>();
+  protected readonly trackedParams = new Map<
+    string,
+    Record<string, number | string>
+  >();
   private restartAttempts = 0;
   private readonly MAX_RESTARTS = 3;
   private started = false;
@@ -53,17 +64,29 @@ export abstract class BaseSidecar extends EventEmitter {
     this.spawnProcess();
   }
 
-  addInput(inputId: string): void {
+  addInput(inputId: string, params?: Record<string, number | string>): void {
     this.trackedInputs.add(inputId);
-    const sent = this.sendToPython({ cmd: 'subscribe', inputId });
+    if (params) this.trackedParams.set(inputId, params);
+    const sent = this.sendToPython({ cmd: 'subscribe', inputId, params });
     console.log(
       `[ai:${this.manifest.id}] addInput inputId=${inputId} wsSent=${sent} tracked=${this.trackedInputs.size}`,
     );
   }
 
+  /** Push updated model params to the worker for an already-tracked input. */
+  configureInput(
+    inputId: string,
+    params: Record<string, number | string>,
+  ): void {
+    this.trackedParams.set(inputId, params);
+    if (!this.trackedInputs.has(inputId)) return;
+    this.sendToPython({ cmd: 'configure', inputId, params });
+  }
+
   removeInput(inputId: string): void {
     this.trackedInputs.delete(inputId);
     this.readyInputIds.delete(inputId);
+    this.trackedParams.delete(inputId);
     const sent = this.sendToPython({ cmd: 'unsubscribe', inputId });
     console.log(
       `[ai:${this.manifest.id}] removeInput inputId=${inputId} wsSent=${sent}`,
@@ -155,7 +178,11 @@ export abstract class BaseSidecar extends EventEmitter {
     if (parsed.type === 'ready') {
       this.restartAttempts = 0;
       for (const inputId of this.trackedInputs) {
-        this.sendToPython({ cmd: 'subscribe', inputId });
+        this.sendToPython({
+          cmd: 'subscribe',
+          inputId,
+          params: this.trackedParams.get(inputId),
+        });
         if (this.readyInputIds.has(inputId)) {
           this.sendToPython({ cmd: 'side_channel_ready', inputId });
         }
@@ -289,6 +316,7 @@ export abstract class BaseSidecar extends EventEmitter {
       cwd: path.dirname(this.manifest.pythonScript),
       env: {
         ...process.env,
+        ...this.manifest.extraEnv,
         SMELTER_SIDE_CHANNEL_SOCKET_DIR: socketDir,
         NODE_WS_URL: `ws://127.0.0.1:${this.manifest.wsPort}`,
       },

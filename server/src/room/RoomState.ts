@@ -30,7 +30,25 @@ import {
   computeSideChannelConfig,
   requiresSideChannelReconnect,
   manifestSupportsInput,
+  PEOPLE_COUNTER_MANIFESTS,
+  PEOPLE_COUNTER_YOLO_ID,
+  PEOPLE_COUNTER_YOLO_BIRDS_ID,
+  BUILDING_DETECTOR_ID,
+  CAR_ADS_ID,
+  CAR_HUE_ID,
+  type ModelResultEvent,
 } from '../ai-models';
+import { PeopleTracker } from '../ai-models/people-counter/people-tracker';
+import { CarTracker } from '../ai-models/car-ads/car-tracker';
+import type { CarAdDetection } from '../app/store';
+import { DuckHunterController } from '../duckHunter/DuckHunterController';
+import {
+  DEFAULT_HAUNTER_COUNT,
+  DEFAULT_HAUNTER_DIST,
+  DEFAULT_HAUNTER_SCALE,
+  DEFAULT_HAUNTER_SPEED,
+  MAX_HAUNTERS,
+} from '../haunter/haunterModel';
 import { SnakeGameController } from './SnakeGameController';
 import { PlaceholderManager } from './PlaceholderManager';
 import { AudioController } from '../audio/AudioController';
@@ -159,6 +177,21 @@ export class RoomState {
   private readonly placeholderManager: PlaceholderManager;
   private readonly audioController: AudioController;
 
+  /** Per-input cross-frame tracker for YOLO people boxes (stable id + color). */
+  private readonly peopleTrackers = new Map<string, PeopleTracker>();
+
+  /** Per-input cross-frame tracker for YOLO bird boxes (stable id + color). */
+  private readonly birdTrackers = new Map<string, PeopleTracker>();
+
+  /** Per-input cross-frame tracker for car-ads vehicles (stable id + quad). */
+  private readonly carAdTrackers = new Map<string, CarTracker>();
+
+  /** Per-input cross-frame tracker for top-down car-hue boxes (stable id). */
+  private readonly carHueTrackers = new Map<string, PeopleTracker>();
+
+  /** Duck Hunter game (phone-gyroscope crosshairs targeting the ducks). */
+  private readonly duckHunter: DuckHunterController;
+
   private stateChangeListeners = new Set<() => void>();
 
   private timelinePlayer: TimelinePlayer | null = null;
@@ -192,7 +225,7 @@ export class RoomState {
   private swapOutgoingEnabled: boolean = true;
   private swapFadeInDurationMs: number = 500;
   private swapFadeOutDurationMs: number = 500;
-  private sortMode: 'timeline' | 'layers' = 'timeline';
+  private sortMode: 'timeline' | 'layers' = 'layers';
 
   private viewportTop?: number;
   private viewportLeft?: number;
@@ -260,6 +293,7 @@ export class RoomState {
     );
     this.recordingController = new RecordingController(idPrefix, output);
     this.snakeGameController = new SnakeGameController();
+    this.duckHunter = new DuckHunterController(idPrefix, output.store);
 
     let motionResultCount = 0;
     void this.aiController.wireSidecarListeners('motion', (event) => {
@@ -281,6 +315,341 @@ export class RoomState {
       }
       this.motionController.emitMotionScores();
     });
+
+    const onPeopleCount = (event: ModelResultEvent) => {
+      const input = this.inputManager
+        .getInputs()
+        .find((i) => i.inputId === event.inputId);
+      if (!input) return;
+      const data = event.data as {
+        count?: number;
+        boxes?: { x: number; y: number; w: number; h: number; conf?: number }[];
+        frameW?: number;
+        frameH?: number;
+        procMs?: number;
+      };
+
+      // Editor-facing count is live (not synced to the delayed output).
+      input.peopleCount =
+        typeof data.count === 'number' ? data.count : undefined;
+
+      // The side channel hands frames to the worker ~delayMs before the output
+      // presents them. Hold the on-output overlay until the frame is due, minus
+      // the time the worker already spent processing it, so boxes track the
+      // video instead of running ahead. Uses the delay actually registered with
+      // Smelter — the configured value can diverge from it when the config
+      // changes without a reconnect (always the case for WHIP).
+      const outputDelayMs = input.registeredSideChannelDelayMs ?? 0;
+      const procMs = typeof data.procMs === 'number' ? data.procMs : 0;
+      const holdMs = Math.max(0, outputDelayMs - procMs);
+
+      const applyOverlay = () => {
+        const store = this.output.store.getState();
+        store.setPeopleCount(event.inputId, input.peopleCount ?? null);
+
+        // Only the YOLO backend emits boxes; render them when its drawBoxes
+        // or ghostMode option is still enabled for this input at present time.
+        if (event.modelId === PEOPLE_COUNTER_YOLO_ID) {
+          const cfg = input.aiModels?.[PEOPLE_COUNTER_YOLO_ID];
+          const hasFrame =
+            Array.isArray(data.boxes) &&
+            typeof data.frameW === 'number' &&
+            typeof data.frameH === 'number';
+          const ghost = Boolean(cfg?.enabled && cfg?.ghostMode);
+          // Ghost mode always means the haunting ghosts (same as the Haunter
+          // panel) — free-floating haunters that chase people. Published even
+          // with zero tracked boxes so the renderer stays mounted and idle
+          // ghosts keep waiting on-screen.
+          const haunter = ghost;
+          const show = Boolean(
+            cfg?.enabled && (cfg?.drawBoxes || ghost) && hasFrame,
+          );
+          if (show) {
+            // Feed every response (even empty ones) through the tracker so
+            // boxes/ghosts keep a stable identity and survive brief dropouts.
+            let tracker = this.peopleTrackers.get(event.inputId);
+            if (!tracker) {
+              tracker = new PeopleTracker();
+              this.peopleTrackers.set(event.inputId, tracker);
+            }
+            const tracked = tracker.update(data.boxes!, Date.now());
+            store.setPeopleBoxes(
+              event.inputId,
+              tracked.length > 0 || haunter
+                ? {
+                    boxes: tracked,
+                    frameW: data.frameW!,
+                    frameH: data.frameH!,
+                    ghost,
+                    ...(haunter
+                      ? {
+                          sprite: 'haunter' as const,
+                          haunterCount: this.haunterCount,
+                          haunterDist: this.haunterDist,
+                          haunterScale: this.haunterScale,
+                          haunterSpeed: this.haunterSpeed,
+                        }
+                      : {}),
+                  }
+                : null,
+            );
+          } else {
+            this.peopleTrackers.delete(event.inputId);
+            store.setPeopleBoxes(event.inputId, null);
+          }
+        } else if (event.modelId === PEOPLE_COUNTER_YOLO_BIRDS_ID) {
+          // Birds mirror the people/ghost pipeline: the tracker gives a stable
+          // id/color and a 2-response miss grace (so a briefly-lost bird keeps
+          // its sprite), and we render either green boxes (drawBoxes, for
+          // sensitivity testing) or bird sprites (ghostMode). The bird only
+          // shows while it's being detected — there's no free-flight phase.
+          const cfg = input.aiModels?.[PEOPLE_COUNTER_YOLO_BIRDS_ID];
+          const hasFrame =
+            Array.isArray(data.boxes) &&
+            typeof data.frameW === 'number' &&
+            typeof data.frameH === 'number';
+          const sprite = Boolean(cfg?.enabled && cfg?.ghostMode);
+          const show = Boolean(
+            cfg?.enabled && (cfg?.drawBoxes || sprite) && hasFrame,
+          );
+          if (show) {
+            let tracker = this.birdTrackers.get(event.inputId);
+            if (!tracker) {
+              // Birds get a tighter 2-response miss grace than people so a
+              // caught/lost bird stops rendering quickly.
+              tracker = new PeopleTracker(2);
+              this.birdTrackers.set(event.inputId, tracker);
+            }
+            const tracked = tracker.update(data.boxes!, Date.now());
+            store.setPeopleBoxes(
+              event.inputId,
+              tracked.length > 0
+                ? {
+                    boxes: tracked,
+                    frameW: data.frameW!,
+                    frameH: data.frameH!,
+                    ghost: sprite,
+                    sprite: 'bird',
+                    duckScale: this.duckScale,
+                    duckPauseMs: this.duckPauseMs,
+                    duckFlySpeed: this.duckFlySpeed,
+                  }
+                : null,
+            );
+          } else {
+            this.birdTrackers.delete(event.inputId);
+            store.setPeopleBoxes(event.inputId, null);
+          }
+          // Ducks are owned/animated by the controller now (so a shot lands on
+          // the sprite); keep its loop alive while birds are on screen, even
+          // before any player joins.
+          this.duckHunter.ensureActive();
+        }
+      };
+
+      if (holdMs > 0) {
+        setTimeout(applyOverlay, holdMs);
+      } else {
+        applyOverlay();
+      }
+    };
+    for (const manifest of PEOPLE_COUNTER_MANIFESTS) {
+      void this.aiController.wireSidecarListeners(manifest.id, onPeopleCount);
+    }
+
+    // Ghost City: building segmentation → haunted-city shader. Buildings are
+    // static so there's no tracker — the render wrapper smooths the boxes. Held
+    // to the delayed output like the people boxes so the haunt tracks the video.
+    const onBuildings = (event: ModelResultEvent) => {
+      const input = this.inputManager
+        .getInputs()
+        .find((i) => i.inputId === event.inputId);
+      if (!input) return;
+      const data = event.data as {
+        boxes?: { x: number; y: number; w: number; h: number }[];
+        frameW?: number;
+        frameH?: number;
+        procMs?: number;
+      };
+
+      const outputDelayMs = input.registeredSideChannelDelayMs ?? 0;
+      const procMs = typeof data.procMs === 'number' ? data.procMs : 0;
+      const holdMs = Math.max(0, outputDelayMs - procMs);
+
+      const applyOverlay = () => {
+        const store = this.output.store.getState();
+        const cfg = input.aiModels?.[BUILDING_DETECTOR_ID];
+        const hasFrame =
+          Array.isArray(data.boxes) &&
+          typeof data.frameW === 'number' &&
+          typeof data.frameH === 'number';
+        if (cfg?.enabled && hasFrame && data.boxes!.length > 0) {
+          store.setBuildingBoxes(event.inputId, {
+            boxes: data.boxes!,
+            frameW: data.frameW!,
+            frameH: data.frameH!,
+          });
+        } else {
+          store.setBuildingBoxes(event.inputId, null);
+        }
+      };
+
+      if (holdMs > 0) {
+        setTimeout(applyOverlay, holdMs);
+      } else {
+        applyOverlay();
+      }
+    };
+    void this.aiController.wireSidecarListeners(
+      BUILDING_DETECTOR_ID,
+      onBuildings,
+    );
+
+    // Car Ads: vehicle + wheel detection → ad glued to the car side via the
+    // corner-pin homography. Same delay-sync as the people boxes; the tracker
+    // gives each car a stable id and smooths/holds its quad across responses.
+    const onCarAds = (event: ModelResultEvent) => {
+      const input = this.inputManager
+        .getInputs()
+        .find((i) => i.inputId === event.inputId);
+      if (!input) return;
+      const data = event.data as {
+        cars?: CarAdDetection[];
+        frameW?: number;
+        frameH?: number;
+        procMs?: number;
+      };
+
+      const outputDelayMs = input.registeredSideChannelDelayMs ?? 0;
+      const procMs = typeof data.procMs === 'number' ? data.procMs : 0;
+      const holdMs = Math.max(0, outputDelayMs - procMs);
+
+      const applyOverlay = () => {
+        const store = this.output.store.getState();
+        const cfg = input.aiModels?.[CAR_ADS_ID];
+        const hasFrame =
+          Array.isArray(data.cars) &&
+          typeof data.frameW === 'number' &&
+          typeof data.frameH === 'number';
+        const ads = Boolean(cfg?.enabled && cfg?.ghostMode);
+        const show = Boolean(
+          cfg?.enabled && (cfg?.drawBoxes || ads) && hasFrame,
+        );
+        if (show) {
+          // Feed every response (even empty ones) through the tracker so cars
+          // keep a stable identity and survive brief detection dropouts.
+          let tracker = this.carAdTrackers.get(event.inputId);
+          if (!tracker) {
+            tracker = new CarTracker();
+            this.carAdTrackers.set(event.inputId, tracker);
+          }
+          const tracked = tracker.update(data.cars!, Date.now());
+          const adOpacity = Number(cfg?.params?.adOpacity);
+          store.setCarAdBoxes(
+            event.inputId,
+            tracked.length > 0
+              ? {
+                  cars: tracked,
+                  frameW: data.frameW!,
+                  frameH: data.frameH!,
+                  ads,
+                  ...(Number.isFinite(adOpacity) ? { adOpacity } : {}),
+                }
+              : null,
+          );
+        } else {
+          this.carAdTrackers.delete(event.inputId);
+          store.setCarAdBoxes(event.inputId, null);
+        }
+      };
+
+      if (holdMs > 0) {
+        setTimeout(applyOverlay, holdMs);
+      } else {
+        applyOverlay();
+      }
+    };
+    void this.aiController.wireSidecarListeners(CAR_ADS_ID, onCarAds);
+
+    // Car Hue: top-down vehicle boxes → per-car hue recolor via the car-hue
+    // shader. Same worker as car-ads in 'topdown' mode (boxes only, no wheels),
+    // same delay-sync; the person tracker gives each car a stable id so its
+    // color assignment (hue + per-car spread) doesn't flicker between cars.
+    const onCarHue = (event: ModelResultEvent) => {
+      const input = this.inputManager
+        .getInputs()
+        .find((i) => i.inputId === event.inputId);
+      if (!input) return;
+      const data = event.data as {
+        cars?: { box: { x: number; y: number; w: number; h: number } }[];
+        frameW?: number;
+        frameH?: number;
+        procMs?: number;
+      };
+
+      const outputDelayMs = input.registeredSideChannelDelayMs ?? 0;
+      const procMs = typeof data.procMs === 'number' ? data.procMs : 0;
+      const holdMs = Math.max(0, outputDelayMs - procMs);
+
+      const applyOverlay = () => {
+        const store = this.output.store.getState();
+        const cfg = input.aiModels?.[CAR_HUE_ID];
+        const hasFrame =
+          Array.isArray(data.cars) &&
+          typeof data.frameW === 'number' &&
+          typeof data.frameH === 'number';
+        const effect = Boolean(cfg?.enabled && cfg?.ghostMode);
+        const show = Boolean(
+          cfg?.enabled && (cfg?.drawBoxes || effect) && hasFrame,
+        );
+        if (show) {
+          let tracker = this.carHueTrackers.get(event.inputId);
+          if (!tracker) {
+            // Short miss budget: a lost car drops its box after 2 unmatched
+            // responses — top-down cars leave the frame fast, so a held box
+            // quickly points at empty road. No server-side lead — CarHueWrapper
+            // dead-reckons between responses itself, and leading here would
+            // predict motion twice.
+            tracker = new PeopleTracker(2, false);
+            this.carHueTrackers.set(event.inputId, tracker);
+          }
+          const tracked = tracker.update(
+            data.cars!.map((c) => c.box),
+            Date.now(),
+          );
+          const num = (v: unknown) => {
+            const n = Number(v);
+            return Number.isFinite(n) ? n : undefined;
+          };
+          store.setCarHueBoxes(
+            event.inputId,
+            tracked.length > 0
+              ? {
+                  boxes: tracked,
+                  frameW: data.frameW!,
+                  frameH: data.frameH!,
+                  effect,
+                  hue: num(cfg?.params?.hue),
+                  spread: num(cfg?.params?.spread),
+                  strength: num(cfg?.params?.strength),
+                  satBoost: num(cfg?.params?.satBoost),
+                  whiteBoost: num(cfg?.params?.whiteBoost),
+                }
+              : null,
+          );
+        } else {
+          this.carHueTrackers.delete(event.inputId);
+          store.setCarHueBoxes(event.inputId, null);
+        }
+      };
+
+      if (holdMs > 0) {
+        setTimeout(applyOverlay, holdMs);
+      } else {
+        applyOverlay();
+      }
+    };
+    void this.aiController.wireSidecarListeners(CAR_HUE_ID, onCarHue);
   }
 
   public async init(): Promise<void> {
@@ -868,6 +1237,153 @@ export class RoomState {
     });
   }
 
+  /** Route a Ghost Shooter WebSocket message from a phone client. */
+  public handleShooterMessage(clientId: string, raw: unknown): void {
+    if (!raw || typeof raw !== 'object') return;
+    const msg = raw as {
+      type?: unknown;
+      name?: unknown;
+      x?: unknown;
+      y?: unknown;
+    };
+    switch (msg.type) {
+      case 'shoot_join':
+        this.duckHunter.join(
+          clientId,
+          typeof msg.name === 'string' ? msg.name : 'Player',
+        );
+        break;
+      case 'shoot_aim':
+        if (typeof msg.x === 'number' && typeof msg.y === 'number') {
+          this.duckHunter.aim(clientId, msg.x, msg.y);
+        }
+        break;
+      case 'shoot_fire':
+        this.duckHunter.fire(clientId);
+        break;
+      case 'shoot_leave':
+        this.duckHunter.leave(clientId);
+        break;
+      case 'shoot_cam_start':
+        void this.duckHunter.startCamera(clientId);
+        break;
+      case 'shoot_cam_stop':
+        this.duckHunter.stopCamera(clientId);
+        break;
+      default:
+        break;
+    }
+  }
+
+  /** A phone client disconnected — drop its crosshair/score. */
+  public handleShooterDisconnect(clientId: string): void {
+    this.duckHunter.handleDisconnect(clientId);
+  }
+
+  /**
+   * Room-wide duck-size multiplier from the Duck Hunter panel. Injected into
+   * each bird `peopleBoxes` push so PacmanBirdsInput scales its sprites live.
+   */
+  private duckScale = 1;
+  /** How long a duck holds before flying off (ms), and its fly speed (fraction
+   * of the larger screen edge per second). Injected into each bird push. */
+  private duckPauseMs = 700;
+  private duckFlySpeed = 0.9;
+
+  /** Set the room-wide Duck Hunter config (ammo + duck size/flight) from the panel. */
+  public setDuckHunterConfig(cfg: {
+    maxAmmo?: number;
+    reloadMs?: number;
+    duckScale?: number;
+    duckPauseMs?: number;
+    duckFlySpeed?: number;
+  }): {
+    maxAmmo: number;
+    reloadMs: number;
+    duckScale: number;
+    duckPauseMs: number;
+    duckFlySpeed: number;
+  } {
+    this.duckHunter.setRoomConfig(cfg);
+    if (typeof cfg.duckScale === 'number' && Number.isFinite(cfg.duckScale)) {
+      this.duckScale = Math.max(0.25, Math.min(3, cfg.duckScale));
+    }
+    if (
+      typeof cfg.duckPauseMs === 'number' &&
+      Number.isFinite(cfg.duckPauseMs)
+    ) {
+      this.duckPauseMs = Math.max(0, Math.min(10000, cfg.duckPauseMs));
+    }
+    if (
+      typeof cfg.duckFlySpeed === 'number' &&
+      Number.isFinite(cfg.duckFlySpeed)
+    ) {
+      this.duckFlySpeed = Math.max(0.05, Math.min(3, cfg.duckFlySpeed));
+    }
+    return {
+      ...this.duckHunter.getRoomConfig(),
+      duckScale: this.duckScale,
+      duckPauseMs: this.duckPauseMs,
+      duckFlySpeed: this.duckFlySpeed,
+    };
+  }
+
+  /**
+   * Room-wide haunting-ghosts config from the Haunter panel. Injected into each
+   * people `peopleBoxes` push (when the Ghost style is 'haunter') so
+   * HaunterGhostsInput picks changes up live. Bounds mirror the panel sliders.
+   */
+  private haunterCount = DEFAULT_HAUNTER_COUNT;
+  private haunterDist = DEFAULT_HAUNTER_DIST;
+  private haunterScale = DEFAULT_HAUNTER_SCALE;
+  private haunterSpeed = DEFAULT_HAUNTER_SPEED;
+
+  /** Set the room-wide haunting-ghosts config (pool size, attach range, sprite size, follow speed). */
+  public setHaunterConfig(cfg: {
+    haunterCount?: number;
+    haunterDist?: number;
+    haunterScale?: number;
+    haunterSpeed?: number;
+  }): {
+    haunterCount: number;
+    haunterDist: number;
+    haunterScale: number;
+    haunterSpeed: number;
+  } {
+    if (
+      typeof cfg.haunterCount === 'number' &&
+      Number.isFinite(cfg.haunterCount)
+    ) {
+      this.haunterCount = Math.round(
+        Math.max(1, Math.min(MAX_HAUNTERS, cfg.haunterCount)),
+      );
+    }
+    if (
+      typeof cfg.haunterDist === 'number' &&
+      Number.isFinite(cfg.haunterDist)
+    ) {
+      this.haunterDist = Math.max(0.1, Math.min(1, cfg.haunterDist));
+    }
+    if (
+      typeof cfg.haunterScale === 'number' &&
+      Number.isFinite(cfg.haunterScale)
+    ) {
+      this.haunterScale = Math.max(0.25, Math.min(3, cfg.haunterScale));
+    }
+    if (
+      typeof cfg.haunterSpeed === 'number' &&
+      Number.isFinite(cfg.haunterSpeed)
+    ) {
+      this.haunterSpeed = Math.max(0.25, Math.min(3, cfg.haunterSpeed));
+    }
+    return {
+      haunterCount: this.haunterCount,
+      haunterDist: this.haunterDist,
+      haunterScale: this.haunterScale,
+      haunterSpeed: this.haunterSpeed,
+    };
+  }
+
   public async restartMp4Input(
     inputId: string,
     playFromMs: number,
@@ -892,6 +1408,9 @@ export class RoomState {
     modelId: string,
     enabled: boolean,
     delayMs?: number,
+    drawBoxes?: boolean,
+    params?: Record<string, number | string>,
+    ghostMode?: boolean,
   ): Promise<void> {
     return this.mutex.runExclusive(async () => {
       const input = this.inputManager.getInput(inputId);
@@ -909,14 +1428,27 @@ export class RoomState {
         input.aiModels = {};
       }
 
-      const current =
-        input.aiModels[modelId] ?? defaultAIModelConfig(manifest);
+      const current = input.aiModels[modelId] ?? defaultAIModelConfig(manifest);
       const newDelay =
         delayMs !== undefined
           ? Math.min(Math.max(0, delayMs), manifest.maxDelayMs)
           : current.delayMs;
+      const newDrawBoxes =
+        drawBoxes !== undefined ? drawBoxes : current.drawBoxes;
+      const newGhostMode =
+        ghostMode !== undefined ? ghostMode : current.ghostMode;
+      const newParams = params !== undefined ? params : current.params;
+      const paramsChanged =
+        JSON.stringify(current.params ?? {}) !==
+        JSON.stringify(newParams ?? {});
 
-      if (current.enabled === enabled && current.delayMs === newDelay) {
+      if (
+        current.enabled === enabled &&
+        current.delayMs === newDelay &&
+        (current.drawBoxes ?? false) === (newDrawBoxes ?? false) &&
+        (current.ghostMode ?? false) === (newGhostMode ?? false) &&
+        !paramsChanged
+      ) {
         return;
       }
 
@@ -925,13 +1457,35 @@ export class RoomState {
         input.transcription,
       );
 
-      input.aiModels[modelId] = { enabled, delayMs: newDelay };
+      input.aiModels[modelId] = {
+        enabled,
+        delayMs: newDelay,
+        ...(newDrawBoxes !== undefined ? { drawBoxes: newDrawBoxes } : {}),
+        ...(newGhostMode !== undefined ? { ghostMode: newGhostMode } : {}),
+        ...(newParams !== undefined ? { params: newParams } : {}),
+      };
 
       if (modelId === 'motion') {
         input.motionEnabled = enabled;
         if (!enabled) {
           input.motionScore = undefined;
         }
+      }
+
+      // Clear any drawn boxes/ghosts when YOLO is disabled or both the
+      // box-drawing and ghost overlays are turned off. Reset the tracker too so
+      // identities/colors start fresh next time it is turned back on.
+      if (
+        modelId === PEOPLE_COUNTER_YOLO_ID &&
+        (!enabled || (!newDrawBoxes && !newGhostMode))
+      ) {
+        this.peopleTrackers.delete(inputId);
+        this.output.store.getState().setPeopleBoxes(inputId, null);
+      }
+
+      // Clear the haunted-city overlay when Ghost City is disabled.
+      if (modelId === BUILDING_DETECTOR_ID && !enabled) {
+        this.output.store.getState().setBuildingBoxes(inputId, null);
       }
 
       const newSideChannel = computeSideChannelConfig(
@@ -945,6 +1499,10 @@ export class RoomState {
 
       if (enabled) {
         await this.aiController.enableModelOnInput(input, modelId);
+        // Push tunables to the running worker without a re-subscribe.
+        if (paramsChanged && input.status === 'connected') {
+          await this.aiController.configureModelOnInput(input, modelId);
+        }
       } else {
         await this.aiController.disableModelOnInput(input, modelId);
         if (modelId === 'motion') {
@@ -1006,7 +1564,19 @@ export class RoomState {
       const isStreamInput = supportsTranscription(input.type);
 
       if (wasConnected && isStreamInput) {
-        await this.reconnectInputForSideChannel(inputId);
+        if (input.type === 'whip') {
+          // WHIP inputs are always registered with full side channel
+          // (video + audio) — reconnecting would kill the live push stream.
+          if (enabled) {
+            await this.captionsController.setTranscriptionPull(input, true);
+            getCaptionBridge()?.notifySideChannelReady(inputId);
+          } else {
+            await this.captionsController.setTranscriptionPull(input, false);
+            getCaptionBridge()?.notifySideChannelStopped(inputId);
+          }
+        } else {
+          await this.reconnectInputForSideChannel(inputId);
+        }
       }
 
       this.updateStoreWithState();
@@ -1603,6 +2173,7 @@ export class RoomState {
     return this.mutex.runExclusive(async () => {
       this.destroyed = true;
       this.pausedAttachedInputVolumes.clear();
+      this.duckHunter.dispose();
 
       if (this.pendingStoreFlushTimer) {
         clearTimeout(this.pendingStoreFlushTimer);

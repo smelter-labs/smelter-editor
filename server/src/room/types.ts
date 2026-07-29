@@ -57,10 +57,18 @@ export type RoomInputState = {
   restartFading?: boolean;
   motionEnabled: boolean;
   motionScore?: number;
+  peopleCount?: number;
   /** When true, audio is transcribed (whisper) and rendered as live captions. */
   transcription: boolean;
   /** Per-input AI model configuration. */
   aiModels: Record<string, AIModelConfig>;
+  /**
+   * Side-channel delay actually registered with Smelter for this input (set on
+   * connect). Overlay hold logic must use this — not the current model config —
+   * because the two diverge whenever the config changes without a reconnect
+   * (always the case for WHIP inputs).
+   */
+  registeredSideChannelDelayMs?: number;
   orientation?: 'horizontal' | 'vertical';
   /** Native stream resolution width, if known. */
   nativeWidth?: number;

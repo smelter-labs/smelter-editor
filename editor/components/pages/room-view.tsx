@@ -15,6 +15,8 @@ import { SystemLogPanel } from '@/components/dashboard/system-log-panel';
 import { LayoutPreviewPanel } from '@/components/dashboard/layout-preview-panel';
 import { OutputCodePanel } from '@/components/dashboard/output-code-panel';
 import { PongPanel } from '@/components/dashboard/pong-panel';
+import { DuckHunterPanel } from '@/components/dashboard/duck-hunter-panel';
+import { HaunterPanel } from '@/components/dashboard/haunter-panel';
 import GuestPanel from '@/components/pages/guest-panel';
 import {
   STATIC_PANEL_IDS,
@@ -100,6 +102,7 @@ export default function RoomView({
           fxSection,
           timelineSection,
           blockPropertiesSection,
+          aiModelsSection,
           pendingConnectionsSection,
           motionDetectionSection,
           captionsSection,
@@ -124,6 +127,7 @@ export default function RoomView({
             fx: fxSection,
             timeline: timelineSection,
             'block-properties': blockPropertiesSection,
+            'ai-models': aiModelsSection,
             'pending-connections': pendingConnectionsSection,
             'connected-devices': <ConnectedDevicesPanel peers={peers} />,
             'system-log': <SystemLogPanel />,
@@ -164,6 +168,8 @@ export default function RoomView({
               />
             ),
             pong: <PongPanel roomId={roomId} inputs={roomState.inputs} />,
+            'duck-hunter': <DuckHunterPanel roomId={roomId} />,
+            haunter: <HaunterPanel roomId={roomId} />,
           };
 
           const getPanelDefinition = (id: string): PanelDefinition => {

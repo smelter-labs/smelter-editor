@@ -1,0 +1,6 @@
+smelter-sdk
+opencv-python-headless
+numpy
+websockets
+ultralytics            # YOLO backend (people) — pulls in torch
+mediapipe              # face backend

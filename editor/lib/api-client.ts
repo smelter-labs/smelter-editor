@@ -161,9 +161,33 @@ interface SmelterApiClient {
     modelId: string,
     enabled: boolean,
     delayMs?: number,
+    drawBoxes?: boolean,
+    params?: Record<string, number | string>,
+    ghostMode?: boolean,
   ): Promise<void>;
 
   setAudioAnalysisEnabled(roomId: string, enabled: boolean): Promise<void>;
+
+  setDuckHunterConfig(
+    roomId: string,
+    config: {
+      maxAmmo?: number;
+      reloadMs?: number;
+      duckScale?: number;
+      duckPauseMs?: number;
+      duckFlySpeed?: number;
+    },
+  ): Promise<void>;
+
+  setHaunterConfig(
+    roomId: string,
+    config: {
+      haunterCount?: number;
+      haunterDist?: number;
+      haunterScale?: number;
+      haunterSpeed?: number;
+    },
+  ): Promise<void>;
 
   restartMp4Input(
     roomId: string,
@@ -547,16 +571,40 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       return (await req('get', '/ai-models')) as AIModelInfo[];
     },
 
-    async setAIModel(roomId, inputId, modelId, enabled, delayMs) {
+    async setAIModel(
+      roomId,
+      inputId,
+      modelId,
+      enabled,
+      delayMs,
+      drawBoxes,
+      params,
+      ghostMode,
+    ) {
       await req(
         'post',
         `/room/${enc(roomId)}/input/${enc(inputId)}/ai-model`,
-        { modelId, enabled, ...(delayMs !== undefined ? { delayMs } : {}) },
+        {
+          modelId,
+          enabled,
+          ...(delayMs !== undefined ? { delayMs } : {}),
+          ...(drawBoxes !== undefined ? { drawBoxes } : {}),
+          ...(ghostMode !== undefined ? { ghostMode } : {}),
+          ...(params !== undefined ? { params } : {}),
+        },
       );
     },
 
     async setAudioAnalysisEnabled(roomId, enabled) {
       await req('post', `/room/${enc(roomId)}/audio-analysis`, { enabled });
+    },
+
+    async setDuckHunterConfig(roomId, config) {
+      await req('post', `/room/${enc(roomId)}/duck-hunter/config`, config);
+    },
+
+    async setHaunterConfig(roomId, config) {
+      await req('post', `/room/${enc(roomId)}/haunter/config`, config);
     },
 
     async restartMp4Input(roomId, inputId, playFromMs, loop) {
