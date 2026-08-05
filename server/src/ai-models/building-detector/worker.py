@@ -379,6 +379,14 @@ async def handle_command(msg: dict) -> None:
         if input_id in active_inputs:
             active_inputs[input_id].side_channel_ready = True
             log.info("side_channel_ready for %s", input_id)
+            # The ready signal repeats (WHIP keepalive acks re-notify). If the
+            # detector already exhausted its retry budget and gave up (stream
+            # started delivering frames later than the budget allowed), restart
+            # it — start_detector is a no-op while a task is still running.
+            task = running_tasks.get(input_id)
+            if task is None or task.done():
+                log.info("detector for %s not running — restarting", input_id)
+                start_detector(input_id)
     elif cmd == "side_channel_stopped":
         stop_detector(input_id)
     elif cmd == "shutdown":

@@ -313,15 +313,20 @@ class SmelterManager {
       assetType: 'png',
     });
 
-    const starJediFont = await readFile(
-      path.join(__dirname, '../fonts/Starjedi.ttf'),
-    );
-    await this.registerFont(
-      starJediFont.buffer.slice(
-        starJediFont.byteOffset,
-        starJediFont.byteOffset + starJediFont.byteLength,
-      ),
-    );
+    // Doto (dot-matrix pixel font) drives the Duck Hunter pixel-art HUD;
+    // multiple weights register under the same "Doto" family.
+    // const fontFiles = [
+    //   '../fonts/Starjedi.ttf',
+    //   '../fonts/doto/Doto-Regular.ttf',
+    //   '../fonts/doto/Doto-Bold.ttf',
+    //   '../fonts/doto/Doto-Black.ttf',
+    // ];
+    // for (const fontFile of fontFiles) {
+    //   const font = await readFile(path.join(__dirname, fontFile));
+    //   await this.registerFont(
+    //     font.buffer.slice(font.byteOffset, font.byteOffset + font.byteLength),
+    //   );
+    // }
 
     for (const shader of shadersController.shaders) {
       await this.registerShaderFromFile(

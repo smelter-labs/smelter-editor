@@ -22,7 +22,7 @@ import { HaunterGhostsInput } from './HaunterGhostsInput';
 import { GhostCityWrapper } from './GhostCityWrapper';
 import { CarAdsInput, CarAdDebugBoxes } from './CarAdsInput';
 import { CarHueWrapper } from './CarHueWrapper';
-import { SmoothedBoxes } from './SmoothedBoxes';
+import { BoxConfLabel, SmoothedBoxes } from './SmoothedBoxes';
 
 type Resolution = { width: number; height: number };
 
@@ -294,10 +294,23 @@ export function Input({ input }: { input: InputConfig }) {
               />
             ) : null}
             {peopleBoxes?.boxes.length && !peopleBoxes.ghost ? (
-              <PeopleBoxes
-                data={peopleBoxes}
-                parent={{ width: contentWidth, height: contentHeight }}
-              />
+              peopleBoxes.sprite === 'bird' ? (
+                // Birds jump between the ~4–6 detections/s, so ease each box
+                // toward its latest tracked position instead of snapping.
+                // predict=false: the bird tracker already leads boxes forward
+                // (withLead), so the renderer must not predict motion again.
+                <SmoothedBoxes
+                  data={peopleBoxes}
+                  parent={{ width: contentWidth, height: contentHeight }}
+                  predict={false}
+                  showConf
+                />
+              ) : (
+                <PeopleBoxes
+                  data={peopleBoxes}
+                  parent={{ width: contentWidth, height: contentHeight }}
+                />
+              )
             ) : null}
             {carAdBoxes?.cars.length && !carAdBoxes.ads ? (
               <CarAdDebugBoxes
@@ -563,50 +576,6 @@ function PeopleBoxes({
   );
 }
 
-/**
- * Confidence badge for one detection, pinned just ABOVE the box's top-left
- * corner (outside the outline, so it never covers the subject). Smelter Views
- * don't auto-size to content, so the badge gets explicit dimensions hugging the
- * text (same trick as PeopleCountBadge).
- */
-function BoxConfLabel({
-  text,
-  boxTop,
-  boxLeft,
-  parent,
-}: {
-  text: string;
-  boxTop: number;
-  boxLeft: number;
-  parent: { width: number; height: number };
-}) {
-  const fontSize = Math.max(12, Math.round(parent.height * 0.022));
-  const padH = Math.round(fontSize * 0.35);
-  const padV = Math.round(fontSize * 0.15);
-  const width = padH * 2 + Math.round(fontSize * 0.6 * text.length);
-  const height = padV * 2 + Math.round(fontSize * 1.2);
-  // Sit just above the box. If it would run off the top edge, tuck it just
-  // inside the top line instead so the number stays on screen.
-  const gap = 2;
-  const top = boxTop - height - gap >= 0 ? boxTop - height - gap : boxTop + gap;
-  return (
-    <View
-      style={{
-        top,
-        left: boxLeft,
-        width,
-        height,
-        backgroundColor: '#00FF66CC',
-        borderRadius: Math.round(fontSize * 0.25),
-        paddingHorizontal: padH,
-        paddingVertical: padV,
-        overflow: 'hidden',
-      }}>
-      <Text style={{ fontSize, color: '#000000FF' }}>{text}</Text>
-    </View>
-  );
-}
-
 // Duck Hunt dog sprite geometry + pop-up timing (must cover DOG_REVEAL_MS from
 // the controller so a reveal never lingers as a static image after it's pruned).
 const DOG_ASPECT = 40 / 68; // dog-catch.png is 68×40
@@ -671,7 +640,8 @@ function ShooterHud({
         height: parent.height,
         overflow: 'hidden',
       }}>
-      {/* Shot bursts: expanding ring for a hit, red ✕ for a miss. */}
+      {/* Shot bursts: expanding pixel diamond (45°-rotated square outline) for
+          a hit, chunky pixel ✕ for a miss. */}
       {shooter.bursts.map((b) => {
         const { px, py } = toPx(b.x, b.y);
         const t = Math.min(1, Math.max(0, (now - b.at) / 600));
@@ -679,8 +649,12 @@ function ShooterHud({
           .toString(16)
           .padStart(2, '0');
         if (b.kind === 'miss') {
-          const fs = Math.round(chSize * (1.0 + 0.5 * t));
-          const box = Math.round(fs * 1.6);
+          const box = Math.round(chSize * (1.0 + 0.5 * t));
+          const bar = Math.max(3, Math.round(chSize * 0.14));
+          const len = Math.round(box * 0.85);
+          const color = `#FF3B3B${alpha}`;
+          const barTop = Math.round(box / 2 - bar / 2);
+          const barLeft = Math.round((box - len) / 2);
           return (
             <View
               key={`burst-${b.id}`}
@@ -691,7 +665,26 @@ function ShooterHud({
                 height: box,
                 overflow: 'visible',
               }}>
-              <Text style={{ fontSize: fs, color: `#FF3B3B${alpha}` }}>✕</Text>
+              <View
+                style={{
+                  top: barTop,
+                  left: barLeft,
+                  width: len,
+                  height: bar,
+                  backgroundColor: color,
+                  rotation: 45,
+                }}
+              />
+              <View
+                style={{
+                  top: barTop,
+                  left: barLeft,
+                  width: len,
+                  height: bar,
+                  backgroundColor: color,
+                  rotation: -45,
+                }}
+              />
             </View>
           );
         }
@@ -704,9 +697,9 @@ function ShooterHud({
               left: Math.round(px - size / 2),
               width: size,
               height: size,
-              borderRadius: size / 2,
-              borderWidth: Math.max(2, Math.round(chSize * 0.12)),
+              borderWidth: Math.max(3, Math.round(chSize * 0.12)),
               borderColor: `#FFEE00${alpha}`,
+              rotation: 45,
             }}
           />
         );
@@ -794,9 +787,15 @@ function ShooterHud({
         );
       })}
 
-      {/* Player crosshairs. */}
+      {/* Player crosshairs: pixel-art diamond (a square rotated 45°) with
+          chunky axis lines poking through its tips and a center pixel. */}
       {shooter.crosshairs.map((c) => {
         const { px, py } = toPx(c.x, c.y);
+        const u = Math.max(3, th); // chunky "pixel" unit
+        const d = Math.round(chSize * 0.58); // rotated square side
+        const lineLen = Math.round(chSize * 0.34);
+        const dot = Math.round(u * 1.4);
+        const mid = Math.round(chSize / 2 - u / 2);
         return (
           <View
             key={`ch-${c.clientId}`}
@@ -809,31 +808,58 @@ function ShooterHud({
             }}>
             <View
               style={{
-                top: Math.round(chSize / 2 - th / 2),
-                left: 0,
-                width: chSize,
-                height: th,
-                backgroundColor: c.color,
-              }}
-            />
-            <View
-              style={{
-                top: 0,
-                left: Math.round(chSize / 2 - th / 2),
-                width: th,
-                height: chSize,
-                backgroundColor: c.color,
-              }}
-            />
-            <View
-              style={{
-                top: 0,
-                left: 0,
-                width: chSize,
-                height: chSize,
-                borderWidth: 6,
+                top: Math.round((chSize - d) / 2),
+                left: Math.round((chSize - d) / 2),
+                width: d,
+                height: d,
+                borderWidth: u,
                 borderColor: c.color,
-                borderRadius: chSize / 2,
+                rotation: 45,
+              }}
+            />
+            <View
+              style={{
+                top: 0,
+                left: mid,
+                width: u,
+                height: lineLen,
+                backgroundColor: c.color,
+              }}
+            />
+            <View
+              style={{
+                top: chSize - lineLen,
+                left: mid,
+                width: u,
+                height: lineLen,
+                backgroundColor: c.color,
+              }}
+            />
+            <View
+              style={{
+                top: mid,
+                left: 0,
+                width: lineLen,
+                height: u,
+                backgroundColor: c.color,
+              }}
+            />
+            <View
+              style={{
+                top: mid,
+                left: chSize - lineLen,
+                width: lineLen,
+                height: u,
+                backgroundColor: c.color,
+              }}
+            />
+            <View
+              style={{
+                top: Math.round(chSize / 2 - dot / 2),
+                left: Math.round(chSize / 2 - dot / 2),
+                width: dot,
+                height: dot,
+                backgroundColor: c.color,
               }}
             />
             <PlayerBadge
@@ -856,10 +882,13 @@ function ShooterHud({
   );
 }
 
-// HUD accents shared by the badge and the scoreboard.
+// HUD accents shared by the badge and the scoreboard. The whole shooter HUD is
+// styled as pixel art: sharp corners, chunky frames, and the Doto dot-matrix
+// font (registered in smelter.tsx).
 const AMMO_FULL = '#FFDE59';
 const AMMO_EMPTY = '#FFFFFF3C';
 const HUD_BG = '#000000B8';
+const HUD_FONT = 'Doto';
 
 function clamp01Hud(v: number): number {
   return Math.max(0, Math.min(1, v));
@@ -931,7 +960,6 @@ function AmmoPips({
             left: i * (pipSize + gap),
             width: pipSize,
             height: pipSize,
-            borderRadius: pipSize / 2,
             backgroundColor: i < player.ammo ? AMMO_FULL : AMMO_EMPTY,
           }}
         />
@@ -944,7 +972,6 @@ function AmmoPips({
               left: 0,
               width,
               height: barH,
-              borderRadius: barH / 2,
               backgroundColor: '#FFFFFF26',
             }}
           />
@@ -954,7 +981,6 @@ function AmmoPips({
               left: 0,
               width: Math.max(1, Math.round(width * progress)),
               height: barH,
-              borderRadius: barH / 2,
               backgroundColor: AMMO_FULL,
             }}
           />
@@ -965,13 +991,14 @@ function AmmoPips({
 }
 
 /**
- * Circular live-camera avatar. Shows the player's front camera (a WHIP input,
- * mirrored like a selfie) once the stream is actually playing; until then — or
- * when the camera is off — it falls back to the player's solid color so the
- * layout never jumps. Space is reserved by the caller as soon as the camera is
- * toggled on (camInputId set), independent of when the first frame arrives.
+ * Square pixel-art live-camera tile. Shows the player's front camera (a WHIP
+ * input, mirrored like a selfie) once the stream is actually playing; until
+ * then — or when the camera is off — it falls back to the player's solid color
+ * so the layout never jumps. Space is reserved by the caller as soon as the
+ * camera is toggled on (camInputId set), independent of when the first frame
+ * arrives. Sharp corners + a chunky player-colored frame keep the retro look.
  */
-function LiveCamCircle({
+function LiveCamTile({
   inputId,
   size,
   fallbackColor,
@@ -986,6 +1013,7 @@ function LiveCamCircle({
 }) {
   const streams = useInputStreams();
   const playing = inputId != null && streams[inputId]?.videoState === 'playing';
+  const frame = Math.max(2, Math.round(size * 0.06));
   return (
     <View
       style={{
@@ -993,7 +1021,8 @@ function LiveCamCircle({
         left,
         width: size,
         height: size,
-        borderRadius: size / 2,
+        borderWidth: frame,
+        borderColor: fallbackColor,
         backgroundColor: playing ? undefined : fallbackColor,
         overflow: 'hidden',
       }}>
@@ -1008,6 +1037,7 @@ function LiveCamCircle({
   );
 }
 
+<<<<<<< Updated upstream
 /**
  * Name badge above a crosshair: rounded dark pill with the player's live camera
  * avatar (when the phone shares one), name and live ammo state. Positioned in
@@ -1102,6 +1132,11 @@ function PlayerBadge({
 }
 
 const RANK_MEDALS = ['🥇', '🥈', '🥉'];
+=======
+// Rank accents: gold / silver / bronze digits instead of emoji medals, so the
+// scoreboard stays in the pixel font.
+const RANK_COLORS = ['#FFD700', '#C0C0C0', '#CD7F32'];
+>>>>>>> Stashed changes
 
 /**
  * Scoreboard, top-right: ranked rows with the player's camera avatar, name,
@@ -1139,7 +1174,8 @@ function ShooterScoreboard({
         width,
         height,
         backgroundColor: HUD_BG,
-        borderRadius: Math.round(fs * 0.5),
+        borderWidth: Math.max(3, Math.round(fs * 0.16)),
+        borderColor: '#FFFFFF',
         overflow: 'hidden',
       }}>
       {scores.map((s, i) => {
@@ -1166,11 +1202,17 @@ function ShooterScoreboard({
                 height: Math.round(fs * 1.3),
                 overflow: 'visible',
               }}>
-              <Text style={{ fontSize: fs, color: '#FFFFFFCC' }}>
-                {RANK_MEDALS[i] ?? `${i + 1}`}
+              <Text
+                style={{
+                  fontSize: fs,
+                  color: RANK_COLORS[i] ?? '#FFFFFFCC',
+                  fontFamily: HUD_FONT,
+                  fontWeight: 'black',
+                }}>
+                {`${i + 1}`}
               </Text>
             </View>
-            <LiveCamCircle
+            <LiveCamTile
               inputId={s.camInputId}
               size={av}
               fallbackColor={s.color}
@@ -1185,7 +1227,15 @@ function ShooterScoreboard({
                 height: Math.round(fs * 1.3),
                 overflow: 'hidden',
               }}>
-              <Text style={{ fontSize: fs, color: s.color }}>{s.name}</Text>
+              <Text
+                style={{
+                  fontSize: fs,
+                  color: s.color,
+                  fontFamily: HUD_FONT,
+                  fontWeight: 'bold',
+                }}>
+                {s.name}
+              </Text>
             </View>
             <AmmoPips
               top={Math.round(fs * 1.45)}
@@ -1207,6 +1257,8 @@ function ShooterScoreboard({
                   style={{
                     fontSize: Math.round(fs * 0.62),
                     color: '#FFFFFF88',
+                    fontFamily: HUD_FONT,
+                    fontWeight: 'bold',
                   }}>
                   {`+1 in ${reloadLeftS.toFixed(1)}s`}
                 </Text>
@@ -1226,6 +1278,8 @@ function ShooterScoreboard({
                   color: '#FFFFFF',
                   align: 'right',
                   width: scoreW,
+                  fontFamily: HUD_FONT,
+                  fontWeight: 'black',
                 }}>
                 {`${s.score}`}
               </Text>
