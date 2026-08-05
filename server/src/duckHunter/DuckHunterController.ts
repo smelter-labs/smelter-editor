@@ -75,8 +75,8 @@ const HIT_FACTOR = 0.55;
 const CROSSHAIR_SMOOTH = 0.5; // eases the broadcast crosshair toward the aim
 
 // Ammo defaults + bounds (players tune within these on the calibration screen).
-const DEFAULT_MAX_AMMO = 3;
-const DEFAULT_RELOAD_MS = 5000;
+const DEFAULT_MAX_AMMO = 6;
+const DEFAULT_RELOAD_MS = 3000;
 const MAX_AMMO_CAP = 12;
 const MIN_RELOAD_MS = 1000;
 const MAX_RELOAD_MS = 30000;

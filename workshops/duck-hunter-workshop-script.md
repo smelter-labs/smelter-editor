@@ -6,7 +6,7 @@ Because this episode is Duck Hunt. On a live stream. With real birds.
 
 The machinery you already know: the side channel hands decoded frames to a Python sidecar running YOLO - this time tuned to spot birds. Every bird it finds on the stream spawns a NES-style duck sprite right on top of the real one. The duck holds still for a beat, then takes off at forty-five degrees toward the top-right corner - straight out of 1984.
 
-Your phone is the gun. It opens a web page, joins the room, and shows the live stream - and since the gyroscope API only wakes up over HTTPS, the whole thing hides behind one tunnel.
+Your phone is the gun. It opens a web page, joins the room, and shows the live stream - no app to install, no pairing dance, you just scan a QR code and the whole thing hides behind one tunnel.
 
 Aiming is a gyro-mouse: I integrate the gyroscope's angular velocity, so the crosshair moves by how much the phone rotated. The obvious approach - orientation angles - gimbal-locks the moment you hold the phone upright, which is, you know, how you hold a gun.
 

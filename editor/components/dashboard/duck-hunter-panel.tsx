@@ -32,8 +32,8 @@ const AMMO_CFG_KEY = 'duck-hunter-ammo';
 const BIRD_MODEL_ID = 'people-counter-yolo-birds';
 
 // Ammo config bounds — mirror the server clamps (DuckHunterController).
-const DEFAULT_MAX_AMMO = 3;
-const DEFAULT_RELOAD_SEC = 5;
+const DEFAULT_MAX_AMMO = 6;
+const DEFAULT_RELOAD_SEC = 3;
 const MIN_MAX_AMMO = 1;
 const MAX_MAX_AMMO = 12;
 const MIN_RELOAD_SEC = 1;
@@ -50,7 +50,7 @@ const MAX_DUCK_SCALE = 3;
 const DEFAULT_FLEE_SEC = 0.7;
 const MIN_FLEE_SEC = 0;
 const MAX_FLEE_SEC = 10;
-const DEFAULT_FLY_SPEED = 0.9;
+const DEFAULT_FLY_SPEED = 0.35;
 const MIN_FLY_SPEED = 0.1;
 const MAX_FLY_SPEED = 2;
 

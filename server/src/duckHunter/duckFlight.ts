@@ -20,7 +20,7 @@ export const MAX_DUCKS = 16;
 
 /** Free-flight defaults (operator overrides via the Duck Hunter panel). */
 export const DEFAULT_DUCK_PAUSE_MS = 700; // hold in place after appearing
-export const DEFAULT_DUCK_FLY_FRAC_PER_SEC = 0.9; // ~1.1s to clear the frame
+export const DEFAULT_DUCK_FLY_FRAC_PER_SEC = 0.35; // ~2.9s to clear the frame
 
 /** Death beat: hang in the shot pose, then drop off the bottom. */
 export const DUCK_HANG_MS = 500;
