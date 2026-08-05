@@ -640,8 +640,10 @@ function ShooterHud({
         height: parent.height,
         overflow: 'hidden',
       }}>
-      {/* Shot bursts: expanding pixel diamond (45°-rotated square outline) for
-          a hit, chunky pixel ✕ for a miss. */}
+      {/* Shot bursts: expanding pixel square outline for a hit, chunky pixel ✕
+          (small squares stepped along the diagonals) for a miss. No `rotation`
+          anywhere: rotated Views render displaced/oversized on this engine
+          build (see the crosshair note below). */}
       {shooter.bursts.map((b) => {
         const { px, py } = toPx(b.x, b.y);
         const t = Math.min(1, Math.max(0, (now - b.at) / 600));
@@ -650,11 +652,10 @@ function ShooterHud({
           .padStart(2, '0');
         if (b.kind === 'miss') {
           const box = Math.round(chSize * (1.0 + 0.5 * t));
-          const bar = Math.max(3, Math.round(chSize * 0.14));
-          const len = Math.round(box * 0.85);
+          const chunk = Math.max(4, Math.round(chSize * 0.16));
+          const steps = 5; // pixels per diagonal
+          const span = box - chunk;
           const color = `#FF3B3B${alpha}`;
-          const barTop = Math.round(box / 2 - bar / 2);
-          const barLeft = Math.round((box - len) / 2);
           return (
             <View
               key={`burst-${b.id}`}
@@ -665,26 +666,31 @@ function ShooterHud({
                 height: box,
                 overflow: 'visible',
               }}>
-              <View
-                style={{
-                  top: barTop,
-                  left: barLeft,
-                  width: len,
-                  height: bar,
-                  backgroundColor: color,
-                  rotation: 45,
-                }}
-              />
-              <View
-                style={{
-                  top: barTop,
-                  left: barLeft,
-                  width: len,
-                  height: bar,
-                  backgroundColor: color,
-                  rotation: -45,
-                }}
-              />
+              {Array.from({ length: steps }).flatMap((_, i) => {
+                const off = Math.round((span * i) / (steps - 1));
+                return [
+                  <View
+                    key={`x1-${i}`}
+                    style={{
+                      top: off,
+                      left: off,
+                      width: chunk,
+                      height: chunk,
+                      backgroundColor: color,
+                    }}
+                  />,
+                  <View
+                    key={`x2-${i}`}
+                    style={{
+                      top: off,
+                      left: span - off,
+                      width: chunk,
+                      height: chunk,
+                      backgroundColor: color,
+                    }}
+                  />,
+                ];
+              })}
             </View>
           );
         }
@@ -699,7 +705,6 @@ function ShooterHud({
               height: size,
               borderWidth: Math.max(3, Math.round(chSize * 0.12)),
               borderColor: `#FFEE00${alpha}`,
-              rotation: 45,
             }}
           />
         );
@@ -787,12 +792,15 @@ function ShooterHud({
         );
       })}
 
-      {/* Player crosshairs: pixel-art diamond (a square rotated 45°) with
-          chunky axis lines poking through its tips and a center pixel. */}
+      {/* Player crosshairs: pixel-art scope — an axis-aligned square outline
+          with chunky axis lines poking through its edge midpoints and a center
+          pixel. Deliberately NO `rotation` (no diamond): rotated bordered
+          Views render displaced/oversized on this engine build, which visibly
+          broke the reticle. */}
       {shooter.crosshairs.map((c) => {
         const { px, py } = toPx(c.x, c.y);
         const u = Math.max(3, th); // chunky "pixel" unit
-        const d = Math.round(chSize * 0.58); // rotated square side
+        const d = Math.round(chSize * 0.58); // scope square side
         const lineLen = Math.round(chSize * 0.34);
         const dot = Math.round(u * 1.4);
         const mid = Math.round(chSize / 2 - u / 2);
@@ -814,7 +822,6 @@ function ShooterHud({
                 height: d,
                 borderWidth: u,
                 borderColor: c.color,
-                rotation: 45,
               }}
             />
             <View
@@ -1037,7 +1044,6 @@ function LiveCamTile({
   );
 }
 
-<<<<<<< Updated upstream
 /**
  * Name badge above a crosshair: rounded dark pill with the player's live camera
  * avatar (when the phone shares one), name and live ammo state. Positioned in
@@ -1102,7 +1108,7 @@ function PlayerBadge({
         overflow: 'visible',
       }}>
       {hasAvatar ? (
-        <LiveCamCircle
+        <LiveCamTile
           inputId={player.camInputId}
           size={av}
           fallbackColor={player.color}
@@ -1131,12 +1137,9 @@ function PlayerBadge({
   );
 }
 
-const RANK_MEDALS = ['🥇', '🥈', '🥉'];
-=======
 // Rank accents: gold / silver / bronze digits instead of emoji medals, so the
 // scoreboard stays in the pixel font.
 const RANK_COLORS = ['#FFD700', '#C0C0C0', '#CD7F32'];
->>>>>>> Stashed changes
 
 /**
  * Scoreboard, top-right: ranked rows with the player's camera avatar, name,
@@ -1164,7 +1167,10 @@ function ShooterScoreboard({
   const width = Math.round(parent.width * 0.24);
   const height = padV * 2 + scores.length * rowH + (scores.length - 1) * rowGap;
   const pipSize = Math.max(5, Math.round(fs * 0.3));
-  const nameLeft = padH + rankW + av + gap;
+  // Clear breathing room between the avatar's chunky frame and the name
+  // column — at gap (fs*0.4) the first letters visually sat on the frame.
+  const avGap = Math.round(fs * 1.0);
+  const nameLeft = padH + rankW + av + avGap;
   const nameW = width - nameLeft - scoreW - padH - gap;
   return (
     <View
