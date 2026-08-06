@@ -13,6 +13,7 @@ export type {
   TimelinePlaybackUpdatedEvent,
   NormalizationProgressEvent,
   NormalizationDoneEvent,
+  BroadcastTilesUpdatedEvent,
   RoomEvent,
 } from "./events.js";
 
@@ -80,6 +81,16 @@ export type {
 export type { PublicInputState } from "./public-input-state.js";
 
 export type {
+  AIModelConfig,
+  AIModelStatus,
+  AIModelInfo,
+  ModelParamSpec,
+  NumberParamSpec,
+  SelectParamSpec,
+  ModelParamValue,
+} from "./ai-models.js";
+
+export type {
   UpdateInputOptions,
   RegisterInputOptions,
   PendingWhipInputData,
@@ -113,6 +124,8 @@ export type {
   ImportConfigStreamEvent,
 } from "./import-config.js";
 
+export type { BroadcastTile } from "./broadcast.js";
+
 export type {
   PongSide,
   PongGamePhase,
@@ -138,3 +151,19 @@ export type {
   PongPlayerDisconnectedEvent,
   PongServerEvent,
 } from "./pong-events.js";
+
+export type {
+  ShooterPlayer,
+  ShooterAmmoConfig,
+  ShooterJoinMessage,
+  ShooterAimMessage,
+  ShooterFireMessage,
+  ShooterLeaveMessage,
+  ShooterClientMessage,
+  ShooterStateEvent,
+  ShooterHitEvent,
+  ShooterMissEvent,
+  ShooterEmptyEvent,
+  ShooterAmmoEvent,
+  ShooterServerEvent,
+} from "./shooter-events.js";

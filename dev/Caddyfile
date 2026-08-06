@@ -1,0 +1,45 @@
+# Single HTTPS origin for phone testing (gyroscope needs a secure context).
+#
+# The app is 3 local services: editor :3000, API/WS :3001, WebRTC media :9000.
+# A tunnel exposes only one port, so we merge all three behind Caddy on :8080
+# and point ONE tunnel at it. Then the phone talks to a single https:// origin
+# and there is no mixed-content ("Mixed Block") anymore.
+#
+# Run (or just use ./dev/tunnel.sh):
+#   caddy run --config dev/Caddyfile --adapter caddyfile
+#   ngrok http --domain=<your-static>.ngrok-free.dev 8080
+#   # or: cloudflared tunnel --url http://localhost:8080
+#
+# No env vars needed: the phone shoot page detects it is on a remote origin and
+# routes its own WS + WHEP to this same origin, so the proxy forwards them with
+# no cross-origin CORS or mixed content. Desktop editor keeps using localhost.
+#
+# On the phone open:
+#   https://<tunnel>/mobile/<roomId>/shoot
+
+{
+	auto_https off
+	admin off
+}
+
+:8080 {
+	# WebRTC media server (WHEP output stream + WHIP camera ingest).
+	@media path /whep* /whip*
+	handle @media {
+		reverse_proxy 127.0.0.1:9000
+	}
+
+	# Backend API + WebSocket (fastify). NOTE: on this origin /room is the API,
+	# so the desktop editor's /room/<id> page is not reachable here — open the
+	# desktop editor via http://localhost:3000 instead. The phone only uses
+	# /mobile/* (editor) + /room/*/ws (api) + /whep (media), which all work.
+	@api path /room* /rooms* /active-rooms* /ai-models* /shaders* /shader-presets* /recordings* /logs* /suggestions* /game-state* /hls-streams* /play* /download* /screenshots* /restart-smelter* /presentation-configs* /configs* /dashboard-layouts* /upload* /hidden-assets*
+	handle @api {
+		reverse_proxy 127.0.0.1:3001
+	}
+
+	# Everything else -> Next.js editor (pages, /mobile, /_next chunks, assets).
+	handle {
+		reverse_proxy 127.0.0.1:3000
+	}
+}

@@ -23,6 +23,7 @@ import { toast } from 'sonner';
 import { emitTimelineEvent, TIMELINE_EVENTS } from './timeline/timeline-events';
 import type { PendingWhipInput } from './ConfigurationSection';
 import { updateTimelineInputId } from '@/lib/room-config';
+import { setAIModel } from '@/app/actions/actions';
 import { useControlPanelContext } from '../contexts/control-panel-context';
 import { useWhipConnectionsContext } from '../contexts/whip-connections-context';
 import { hexToHsla } from '@/lib/color-utils';
@@ -315,6 +316,31 @@ export function PendingWhipInputs({
           shaders: pendingInput.config.shaders,
           showTitle: pendingInput.config.showTitle,
         });
+
+        // Re-apply persisted AI model config now that the WHIP input exists.
+        if (pendingInput.config.aiModels) {
+          for (const [modelId, model] of Object.entries(
+            pendingInput.config.aiModels,
+          )) {
+            try {
+              await setAIModel(
+                roomId,
+                response.inputId,
+                modelId,
+                model.enabled,
+                model.delayMs,
+                model.drawBoxes,
+                model.params,
+                model.ghostMode,
+              );
+            } catch (err) {
+              console.warn(
+                `Failed to apply AI model "${modelId}" on WHIP input:`,
+                err,
+              );
+            }
+          }
+        }
 
         const roomInfo = await getRoomInfo(roomId);
         if (roomInfo !== 'not-found') {

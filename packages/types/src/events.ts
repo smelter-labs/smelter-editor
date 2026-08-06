@@ -1,6 +1,8 @@
 import type { PublicInputState } from "./public-input-state.js";
 import type { Layer } from "./layout.js";
+import type { BroadcastTile } from "./broadcast.js";
 import type { PongServerEvent } from "./pong-events.js";
+import type { ShooterServerEvent } from "./shooter-events.js";
 
 export type ConnectedPeer = {
   clientId: string;
@@ -69,6 +71,15 @@ export type NormalizationDoneEvent = {
   filePath: string;
 };
 
+export type BroadcastTilesUpdatedEvent = {
+  type: "broadcast-tiles-updated";
+  roomId: string;
+  tiles: BroadcastTile[];
+  selectedBroadcastTileId: string | null;
+  isBroadcastMode: boolean;
+  sourceId: string | null;
+};
+
 export type RoomEvent =
   | InputUpdatedEvent
   | InputDeletedEvent
@@ -77,4 +88,6 @@ export type RoomEvent =
   | TimelinePlaybackUpdatedEvent
   | NormalizationProgressEvent
   | NormalizationDoneEvent
-  | PongServerEvent;
+  | BroadcastTilesUpdatedEvent
+  | PongServerEvent
+  | ShooterServerEvent;

@@ -135,20 +135,38 @@ function shouldImportInputFromConfig(
   return referencedIndices.has(index);
 }
 
+function withTranscription<T extends RegisterInputOptions>(
+  opts: T,
+  input: ImportConfigInput,
+): T {
+  if (input.transcription) {
+    return { ...opts, transcription: true };
+  }
+  return opts;
+}
+
 function buildRegisterOptions(
   input: ImportConfigInput,
 ): RegisterInputOptions | null {
   switch (input.type) {
     case 'twitch-channel':
       return input.channelId
-        ? { type: 'twitch-channel', channelId: input.channelId }
+        ? withTranscription(
+            { type: 'twitch-channel', channelId: input.channelId },
+            input,
+          )
         : null;
     case 'kick-channel':
       return input.channelId
-        ? { type: 'kick-channel', channelId: input.channelId }
+        ? withTranscription(
+            { type: 'kick-channel', channelId: input.channelId },
+            input,
+          )
         : null;
     case 'hls':
-      return input.url ? { type: 'hls', url: input.url } : null;
+      return input.url
+        ? withTranscription({ type: 'hls', url: input.url }, input)
+        : null;
     case 'local-mp4':
       if (input.audioFileName && input.mp4FileName) {
         throw new Error(
@@ -161,16 +179,22 @@ function buildRegisterOptions(
         );
       }
       if (input.audioFileName) {
-        return {
-          type: 'local-mp4',
-          source: { audioFileName: input.audioFileName },
-        };
+        return withTranscription(
+          {
+            type: 'local-mp4',
+            source: { audioFileName: input.audioFileName },
+          },
+          input,
+        );
       }
       if (input.mp4FileName) {
-        return {
-          type: 'local-mp4',
-          source: { fileName: input.mp4FileName },
-        };
+        return withTranscription(
+          {
+            type: 'local-mp4',
+            source: { fileName: input.mp4FileName },
+          },
+          input,
+        );
       }
       return null;
     case 'image':
@@ -211,6 +235,38 @@ export const __importConfigRouteTestUtils = {
   shouldImportInputFromConfig,
 };
 
+/**
+ * Re-apply persisted per-input AI model config (enable/disable + tunables).
+ * Runs after the input is created and connected so the side channel can be
+ * (re)established as each model requires. Failures are collected per model so
+ * one bad entry doesn't abort the rest of the import.
+ */
+async function applyAIModels(
+  room: ReturnType<typeof state.getRoom>,
+  inputId: string,
+  input: ImportConfigInput,
+  errors: string[],
+): Promise<void> {
+  if (!input.aiModels) return;
+  for (const [modelId, config] of Object.entries(input.aiModels)) {
+    try {
+      await room.setAIModelEnabled(
+        inputId,
+        modelId,
+        config.enabled,
+        config.delayMs,
+        config.drawBoxes,
+        config.params,
+        config.ghostMode,
+      );
+    } catch (e) {
+      const msg = `Failed to apply AI model "${modelId}" on input "${input.title}": ${e instanceof Error ? e.message : String(e)}`;
+      console.warn(`[import-config] ${msg}`);
+      errors.push(msg);
+    }
+  }
+}
+
 function buildUpdateOptions(
   input: ImportConfigInput,
   attachedInputIds?: string[],
@@ -248,6 +304,7 @@ function buildUpdateOptions(
     cropLeft: input.cropLeft,
     cropRight: input.cropRight,
     cropBottom: input.cropBottom,
+    transcription: input.transcription,
     attachedInputIds:
       attachedInputIds && attachedInputIds.length > 0
         ? attachedInputIds
@@ -401,6 +458,7 @@ export function registerImportConfigRoute(routes: FastifyInstance): void {
           console.warn(`[import-config] ${msg}`);
           errors.push(msg);
         }
+        await applyAIModels(room, inputId, inputConfig, errors);
         advance('Configuring inputs');
       }
 
@@ -425,13 +483,15 @@ export function registerImportConfigRoute(routes: FastifyInstance): void {
         showTitle: input.showTitle !== false,
         shaders: input.shaders || [],
       }));
-      room.pendingWhipInputs = pendingWhipData.map((pw) => ({
-        id: pw.id,
-        title: pw.title,
-        volume: pw.volume,
-        showTitle: pw.showTitle,
-        shaders: pw.shaders,
-        position: pw.position,
+      room.pendingWhipInputs = whipInputs.map(({ input }, i) => ({
+        id: pendingWhipData[i].id,
+        title: pendingWhipData[i].title,
+        volume: pendingWhipData[i].volume,
+        showTitle: pendingWhipData[i].showTitle,
+        shaders: pendingWhipData[i].shaders,
+        position: pendingWhipData[i].position,
+        // Preserved so the AI model config is re-applied once the WHIP connects.
+        ...(input.aiModels ? { aiModels: input.aiModels } : {}),
       }));
       const pendingWhipPlaceholderByIndex: Record<number, string> = {};
       for (const pending of pendingWhipData) {

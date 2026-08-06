@@ -47,16 +47,17 @@ flowchart TD
 
 ## Features
 
-- **7 input types** — Twitch channel, Kick channel, WHIP (camera/screenshare), local MP4, image, text overlay, Snake game
+- **9 input types** — Twitch channel, Kick channel, HLS stream, WHIP (camera/screenshare), local MP4 (video or audio), image, text overlay, Snake game, hands tracking
 - **7 layout modes** — grid, primary-on-left, primary-on-top, picture-in-picture, wrapped, wrapped-static, picture-on-picture
 - **Absolute positioning** — pull inputs out of layouts and place them at arbitrary pixel positions with animated transitions (duration, easing)
 - **21 GPU shaders** — grayscale, ASCII filter, hologram, perspective warp, sine wave, soft shadow, orbiting, star streaks, brightness/contrast, alpha stroke, opacity, circle mask, grid overlay, page flip, color removal, snake event highlight, blur, HSL adjust, vignette, chromatic aberration, sharpen (WGSL)
+- **Live captions** — real-time speech-to-text (Whisper) on video inputs with audio: MP4, HLS, Twitch, Kick, WHIP; rendered as live caption overlays on the composited output
 - **Motion detection** — real-time per-input motion scoring via Python + OpenCV, with SSE streaming, per-input charts, and inline indicators
 - **Room-based** — multiple independent compositing rooms, each with its own inputs, layout, and output stream
 - **News strip** — animated scrolling news/ticker overlay on video output with fade-during-swap support
 - **Transitions** — primary input swap transitions with configurable fade-in/fade-out durations
 - **Recording** — per-room MP4 recording with automatic cleanup
-- **Customizable dashboard** — drag-and-drop panel layout (react-grid-layout) with presets (Default, Wide Video, Compact, Equal Split, Vertical Video), per-panel visibility toggles, and dynamic motion panels per input
+- **Customizable dashboard** — drag-and-drop panel layout (react-grid-layout) with presets (Default, Wide Video, Compact, Equal Split, Vertical Video), per-panel visibility toggles, dynamic motion panels per input, and a Captions panel for bulk transcription toggles
 - **Server-side storage** — generic CRUD for room configs, shader presets, and dashboard layouts with save/load/delete modals
 - **Voice commands** — speech-to-text command system with macros
 - **Room config export/import** — save and restore full room configurations as JSON (local file or server)
@@ -72,6 +73,8 @@ flowchart TD
 - **streamlink** — for ingesting Twitch/Kick HLS streams (`pipx install streamlink`)
 - **ffmpeg**
 - **Python 3** + `opencv-python-headless` + `numpy` — for motion detection (auto-installed into `server/motion/.venv/` on first use, or install globally: `pip3 install opencv-python-headless numpy`)
+- **Python 3** + Whisper sidecar deps — for live captions (auto-installed into `server/captions/.venv/` on first use; see [Captions](#live-captions)). Docker image bakes the venv at build time.
+- **macOS only** — run `server/scripts/setup-macos.sh` once per boot before starting the server. It raises `net.local.stream.{send,recv}space` so Smelter's side channels can deliver video/audio frames to the Python workers. Without it, AI models and captions log `subscribe_video_channel ... returned 0 frames` and never produce output. These sysctls reset to their too-small default on every reboot.
 
 ## Quick Start
 
@@ -129,7 +132,13 @@ KICK_CLIENT_ID=...
 KICK_CLIENT_SECRET=...
 ```
 
-2. Build and run:
+2. Set a host data directory (required — `compose.yaml` bind-mounts persistent room assets here):
+
+```bash
+export SMELTER_DATA_DIR=/path/to/smelter-data   # absolute path on the host
+```
+
+3. Build and run:
 
 ```bash
 docker compose up --build
@@ -142,6 +151,72 @@ For AMD GPUs, uncomment the `devices` section and comment out `gpus`/`runtime` i
 |------|----------|-------------|
 | 9071 | HTTP | REST API |
 | 9072 | HTTP | WHEP/WHIP (WebRTC) |
+
+### Docker (development — hot reload)
+
+Use `compose.dev.yaml` as an overlay to bind-mount server sources into the container. Smelter base image, `node_modules`, ffmpeg, and the Whisper Python venv stay baked in — no full image rebuild for TypeScript edits.
+
+**First time, or after Dockerfile / dependency changes:**
+
+```bash
+SMELTER_DATA_DIR=/path/to/smelter-data docker compose -f compose.yaml -f compose.dev.yaml up --build
+```
+
+**Day-to-day (TypeScript / WGSL only):**
+
+```bash
+SMELTER_DATA_DIR=/path/to/smelter-data docker compose -f compose.yaml -f compose.dev.yaml up
+```
+
+The dev entrypoint (`entrypoint.dev.sh`) builds `@smelter-editor/types`, runs `pnpm dev` + `pnpm watch`, and starts the server with `node --watch dist/index.js`.
+
+**After editing `server/captions/sidecar.py`:**
+
+```bash
+docker compose -f compose.yaml -f compose.dev.yaml restart server
+```
+
+Python sidecar code is read at container boot; a restart is enough (no rebuild).
+
+**What is mounted vs baked:**
+
+| Mounted (live) | Baked in image |
+| --- | --- |
+| `server/src/` | Smelter base, `node_modules` |
+| `packages/types/src/` | Whisper `.venv` (via named volume `captions_venv`) |
+| `server/shaders/` | ffmpeg, system Python |
+| `server/captions/sidecar.py` | |
+| `entrypoint.dev.sh` | |
+
+**Notes:**
+
+- `compose.dev.yaml` disables NVIDIA GPU runtime and uses FFmpeg CPU encoding — suitable for macOS and CPU-only Linux dev.
+- On Linux with NVIDIA GPU, adjust or remove the `runtime`/`gpus` overrides in `compose.dev.yaml` if you want GPU encoding in dev.
+- Do not merge `compose.cpu.yaml` with `compose.dev.yaml` as-is — `compose.cpu.yaml` references an orphan `server-b` service. Dev CPU overrides are included directly in `compose.dev.yaml`.
+- The editor is **not** run in Docker (excluded via `.dockerignore`); run `pnpm dev` in `editor/` locally and point `SMELTER_EDITOR_SERVER_URL` at `http://localhost:9071`.
+
+**Performance (Docker dev is slower than native — especially on macOS):**
+
+Docker dev trades speed for environment parity. On macOS there is **no GPU passthrough** for Smelter — WGSL compositing and H.264 encoding run on CPU inside a Linux VM, which is often 2–5× slower than `cd server && pnpm start` natively (Metal/GPU on the host).
+
+| Approach | When to use |
+| --- | --- |
+| **Native** (`server`: `pnpm start`, `editor`: `pnpm dev`) | Day-to-day dev, best preview latency |
+| **Docker dev** (`compose.dev.yaml`) | Hot reload without image rebuild, Linux/prod-like deps |
+| **Docker dev + perf overlay** (`compose.dev.perf.yaml`) | Docker dev but lighter CPU load |
+
+```bash
+# Lighter Docker dev (no Whisper sidecar, lower bitrate, ts-node):
+SMELTER_DATA_DIR=/path/to/smelter-data docker compose \
+  -f compose.yaml -f compose.dev.yaml -f compose.dev.perf.yaml up
+```
+
+Other tweaks without the perf overlay:
+
+- `SKIP_PYTHON=1` — skip Whisper sidecar when not testing captions (already in `CaptionBridge`)
+- Lower `SMELTER_H264_ENCODER_BITRATE` (e.g. `8000000`) in `compose.dev.yaml`
+- Docker Desktop → Settings → Resources: give the VM more CPUs (8+) and RAM (8 GB+)
+- On **Linux + NVIDIA**: remove `runtime`/`gpus` overrides from `compose.dev.yaml` to use Vulkan encoder
 
 ### Network verification (API + WHEP/WHIP)
 
@@ -157,6 +232,61 @@ nc -vz <host> 9072
 ```
 
 Make sure firewall/security group rules allow inbound TCP on ports `9071` and `9072`.
+
+## Live captions
+
+Real-time speech-to-text using a Python Whisper sidecar (`server/captions/sidecar.py`) fed by Smelter's audio side channel. Transcripts are rendered as caption overlays on the composited video output.
+
+### Supported input types
+
+Captions work on any input type that carries audio:
+
+| Input type | Notes |
+| --- | --- |
+| `local-mp4` | Video or audio-only MP4 |
+| `hls` | Generic HLS stream |
+| `twitch-channel` | Twitch HLS via streamlink |
+| `kick-channel` | Kick HLS via streamlink |
+| `whip` | Camera / screenshare (WebRTC) |
+
+Not supported: `image`, `text-input`, `game`, `hands` (no audio track).
+
+### Enabling captions
+
+**Editor UI:**
+
+- **Add input** — check "Captions" when adding MP4, audio, Twitch, Kick, or HLS inputs (`CaptionsCheckbox` in the add-input modal).
+- **Existing input** — toggle Captions On/Off inline in the input list, or use the **Captions** dashboard panel (default layout includes it).
+
+**API:**
+
+```http
+POST /room/:roomId/input/:inputId/transcription
+Content-Type: application/json
+
+{ "enabled": true }
+```
+
+Pass `transcription: true` when registering inputs (`POST /room/:roomId/input/...`) or include it in room config export/import JSON.
+
+### How it works
+
+1. When `transcription: true`, Smelter registers the input with `sideChannel: { audio: true, delayMs: 8000 }`.
+2. A hidden pull scene (`CaptionsScene` / `CaptionsSideChannelDecode` in `App.tsx`) keeps `InputStream`s alive so side-channel audio is decoded without affecting main mix volumes.
+3. `CaptionBridge` spawns `sidecar.py`, which runs faster-whisper + Silero VAD per active input.
+4. Transcripts flow back over WebSocket → `RoomState.applyTranscript()` → Zustand store → caption overlay in `inputs.tsx`.
+
+WHIP inputs wait for `side_channel_ready` on the WHIP ack before notifying the sidecar; other types notify immediately after connect.
+
+### Python setup (local dev)
+
+On first use the server auto-creates `server/captions/.venv/` and installs from `requirements-cpu.txt` (CPU PyTorch). For CUDA PyTorch set `CAPTIONS_USE_CUDA_TORCH=1` before first venv creation, or point to an existing venv with `CAPTIONS_PYTHON_PATH`.
+
+### Known limitations
+
+- **Toggle on connected input** — side channel is configured at `registerInput` time; toggling captions on an already-connected input triggers a reconnect.
+- **MP4 loop** — looping MP4 may re-transcribe the same audio on each loop.
+- **Python sidecar restart** — in Docker dev mode, edits to `sidecar.py` require `docker compose ... restart server`.
 
 ## Development Commands
 
@@ -193,6 +323,11 @@ Make sure firewall/security group rules allow inbound TCP on ports `9071` and `9
 | `SMELTER_WS_DEBUG`                      | server | `true` enables detailed WebSocket upgrade/connection debug logs    |
 | `SMELTER_SNAKE_VISUAL_SPEED_MULTIPLIER` | server | Snake interpolation speed (default: `1.25`)                        |
 | `MOTION_PYTHON_PATH`                    | server | Override Python binary for motion detection (default: auto-detect) |
+| `CAPTIONS_PYTHON_PATH`                  | server | Override Python binary for captions sidecar (default: auto-detect venv) |
+| `CAPTIONS_USE_CUDA_TORCH`               | server | Set to `1` to install CUDA PyTorch into captions venv (default: CPU) |
+| `CAPTIONS_WS_PORT`                      | server | WebSocket port for sidecar ↔ Node bridge (default: `8082`) |
+| `CAPTIONS_DEBUG`                        | server | Set to `1` for verbose caption logging |
+| `SMELTER_DATA_DIR`                      | docker | Absolute host path for persistent room data (required in `compose.yaml`) |
 
 ## Project Structure
 
@@ -238,6 +373,7 @@ Make sure firewall/security group rules allow inbound TCP on ports `9071` and `9
 │   │   │   └── store.ts       # Zustand store (per room)
 │   │   ├── inputs/            # Input rendering + renderer registry
 │   │   ├── motion/            # Motion detection (MotionManager, MotionScene)
+│   │   ├── captions/          # Live captions (CaptionBridge, CaptionsScene, sidecar WS)
 │   │   ├── snakeGame/         # Snake game module
 │   │   ├── server/            # Fastify routes, room/server state, storage routes
 │   │   ├── shaders/           # Shader definitions
@@ -249,6 +385,7 @@ Make sure firewall/security group rules allow inbound TCP on ports `9071` and `9
 │   │   ├── pictures/          # Image asset management
 │   │   └── utils/             # Server utilities
 │   ├── motion/                # Python motion detector script + requirements
+│   ├── captions/              # Python Whisper sidecar (sidecar.py) + requirements
 │   ├── configs/               # Saved room configurations
 │   ├── shader-presets/        # Saved shader presets
 │   ├── dashboard-layouts/     # Saved dashboard layouts
@@ -258,9 +395,12 @@ Make sure firewall/security group rules allow inbound TCP on ports `9071` and `9
 │   ├── imgs/                  # Logo and other images
 │   ├── fonts/                 # Font files
 │   └── recordings/            # Recorded MP4 outputs
-├── compose.yaml               # Docker Compose config
+├── compose.yaml               # Docker Compose config (production)
+├── compose.dev.yaml           # Dev overlay: bind-mount sources, CPU encoder, hot reload
+├── compose.cpu.yaml           # CPU encoder overrides (production CPU-only; do not merge with compose.dev.yaml)
 ├── Dockerfile                 # Production container
-└── entrypoint.sh
+├── entrypoint.sh              # Production entrypoint
+└── entrypoint.dev.sh          # Dev entrypoint (tsc watch + node --watch)
 ```
 
 ## Example AI prompts

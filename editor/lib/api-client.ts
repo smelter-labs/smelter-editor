@@ -4,6 +4,7 @@ import type {
   AudioSuggestions,
   AvailableShader,
   CameraInputOptions,
+  VideoAddInputOptions,
   InputSuggestions,
   KickSuggestions,
   MP4Suggestions,
@@ -19,7 +20,7 @@ import type {
   UpdateInputOptions,
   UpdateRoomOptions,
 } from './types';
-import type { TimelineConfig } from '@smelter-editor/types';
+import type { TimelineConfig, AIModelInfo } from '@smelter-editor/types';
 import { createStorageClient, type StorageClient } from './storage-client';
 
 interface SmelterApiClient {
@@ -53,10 +54,26 @@ interface SmelterApiClient {
   getPictureSuggestions(): Promise<PictureSuggestions>;
   getAudioSuggestions(): Promise<AudioSuggestions>;
 
-  addTwitchInput(roomId: string, channelId: string): Promise<any>;
-  addKickInput(roomId: string, channelId: string): Promise<any>;
-  addMP4Input(roomId: string, mp4FileName: string): Promise<any>;
-  addAudioInput(roomId: string, audioFileName: string): Promise<any>;
+  addTwitchInput(
+    roomId: string,
+    channelId: string,
+    options?: VideoAddInputOptions,
+  ): Promise<any>;
+  addKickInput(
+    roomId: string,
+    channelId: string,
+    options?: VideoAddInputOptions,
+  ): Promise<any>;
+  addMP4Input(
+    roomId: string,
+    mp4FileName: string,
+    options?: VideoAddInputOptions,
+  ): Promise<any>;
+  addAudioInput(
+    roomId: string,
+    audioFileName: string,
+    options?: VideoAddInputOptions,
+  ): Promise<any>;
   addImageInput(roomId: string, imageFileNameOrId: string): Promise<any>;
   addTextInput(
     roomId: string,
@@ -65,7 +82,11 @@ interface SmelterApiClient {
   ): Promise<any>;
   addSnakeGameInput(roomId: string, title?: string): Promise<any>;
   addHandsInput(roomId: string, sourceInputId: string): Promise<any>;
-  addHlsInput(roomId: string, url: string): Promise<any>;
+  addHlsInput(
+    roomId: string,
+    url: string,
+    options?: VideoAddInputOptions,
+  ): Promise<any>;
   addCameraInput(
     roomId: string,
     username?: string,
@@ -127,8 +148,46 @@ interface SmelterApiClient {
     inputId: string,
     enabled: boolean,
   ): Promise<void>;
+  toggleTranscription(
+    roomId: string,
+    inputId: string,
+    enabled: boolean,
+  ): Promise<void>;
+
+  getAvailableAIModels(): Promise<AIModelInfo[]>;
+  setAIModel(
+    roomId: string,
+    inputId: string,
+    modelId: string,
+    enabled: boolean,
+    delayMs?: number,
+    drawBoxes?: boolean,
+    params?: Record<string, number | string>,
+    ghostMode?: boolean,
+  ): Promise<void>;
 
   setAudioAnalysisEnabled(roomId: string, enabled: boolean): Promise<void>;
+
+  setDuckHunterConfig(
+    roomId: string,
+    config: {
+      maxAmmo?: number;
+      reloadMs?: number;
+      duckScale?: number;
+      duckPauseMs?: number;
+      duckFlySpeed?: number;
+    },
+  ): Promise<void>;
+
+  setHaunterConfig(
+    roomId: string,
+    config: {
+      haunterCount?: number;
+      haunterDist?: number;
+      haunterScale?: number;
+      haunterSpeed?: number;
+    },
+  ): Promise<void>;
 
   restartMp4Input(
     roomId: string,
@@ -304,31 +363,35 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       return await req('get', '/suggestions/audios');
     },
 
-    async addTwitchInput(roomId, channelId) {
+    async addTwitchInput(roomId, channelId, options) {
       return await req('post', `/room/${enc(roomId)}/input`, {
         type: 'twitch-channel',
         channelId,
+        ...options,
       });
     },
 
-    async addKickInput(roomId, channelId) {
+    async addKickInput(roomId, channelId, options) {
       return await req('post', `/room/${enc(roomId)}/input`, {
         type: 'kick-channel',
         channelId,
+        ...options,
       });
     },
 
-    async addMP4Input(roomId, mp4FileName) {
+    async addMP4Input(roomId, mp4FileName, options) {
       return await req('post', `/room/${enc(roomId)}/input`, {
         type: 'local-mp4',
         source: { fileName: mp4FileName, url: '' },
+        ...options,
       });
     },
 
-    async addAudioInput(roomId, audioFileName) {
+    async addAudioInput(roomId, audioFileName, options) {
       return await req('post', `/room/${enc(roomId)}/input`, {
         type: 'local-mp4',
         source: { audioFileName },
+        ...options,
       });
     },
 
@@ -365,10 +428,11 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       });
     },
 
-    async addHlsInput(roomId, url) {
+    async addHlsInput(roomId, url, options) {
       return await req('post', `/room/${enc(roomId)}/input`, {
         type: 'hls',
         url,
+        ...options,
       });
     },
 
@@ -495,8 +559,52 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       );
     },
 
+    async toggleTranscription(roomId, inputId, enabled) {
+      await req(
+        'post',
+        `/room/${enc(roomId)}/input/${enc(inputId)}/transcription`,
+        { enabled },
+      );
+    },
+
+    async getAvailableAIModels() {
+      return (await req('get', '/ai-models')) as AIModelInfo[];
+    },
+
+    async setAIModel(
+      roomId,
+      inputId,
+      modelId,
+      enabled,
+      delayMs,
+      drawBoxes,
+      params,
+      ghostMode,
+    ) {
+      await req(
+        'post',
+        `/room/${enc(roomId)}/input/${enc(inputId)}/ai-model`,
+        {
+          modelId,
+          enabled,
+          ...(delayMs !== undefined ? { delayMs } : {}),
+          ...(drawBoxes !== undefined ? { drawBoxes } : {}),
+          ...(ghostMode !== undefined ? { ghostMode } : {}),
+          ...(params !== undefined ? { params } : {}),
+        },
+      );
+    },
+
     async setAudioAnalysisEnabled(roomId, enabled) {
       await req('post', `/room/${enc(roomId)}/audio-analysis`, { enabled });
+    },
+
+    async setDuckHunterConfig(roomId, config) {
+      await req('post', `/room/${enc(roomId)}/duck-hunter/config`, config);
+    },
+
+    async setHaunterConfig(roomId, config) {
+      await req('post', `/room/${enc(roomId)}/haunter/config`, config);
     },
 
     async restartMp4Input(roomId, inputId, playFromMs, loop) {

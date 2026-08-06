@@ -6,6 +6,7 @@ import type {
 import type { ShaderConfig } from './shader.js';
 import type { InputType } from './input.js';
 import type { SnakeEventShaderConfig } from './snake-game.js';
+import type { AIModelConfig } from './ai-models.js';
 
 export type ImportConfigInput = {
   type: InputType;
@@ -52,6 +53,10 @@ export type ImportConfigInput = {
   cropLeft?: number;
   cropRight?: number;
   cropBottom?: number;
+  /** When true, audio is transcribed (whisper) and rendered as live captions. */
+  transcription?: boolean;
+  /** Per-input AI model configuration (enable/disable + tunables), keyed by model id. */
+  aiModels?: Record<string, AIModelConfig>;
 };
 
 export type ImportConfigTimeline = {

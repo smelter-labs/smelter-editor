@@ -5,7 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 
 import type { RoomState } from '@/lib/types';
 import { getRoomInfo } from '@/app/actions/actions';
-import { buildIceServers } from '@/lib/webrtc';
+import { connectWhep } from '@/lib/webrtc/whep-connect';
 
 export default function RawPreviewPage() {
   const router = useRouter();
@@ -40,13 +40,19 @@ export default function RawPreviewPage() {
   useEffect(() => {
     if (!whepUrl) return;
 
-    connect(whepUrl).then((stream) => {
+    let closeConnection = () => {};
+    connectWhep(whepUrl).then(({ stream, close }) => {
+      closeConnection = close;
       const vid = videoRef.current;
       if (vid && vid.srcObject !== stream) {
         vid.srcObject = stream;
         vid.play().catch(() => {});
       }
     });
+
+    return () => {
+      closeConnection();
+    };
   }, [whepUrl]);
 
   return (
@@ -60,62 +66,4 @@ export default function RawPreviewPage() {
       />
     </div>
   );
-}
-
-async function connect(endpointUrl: string): Promise<MediaStream> {
-  const pc = new RTCPeerConnection({
-    iceServers: buildIceServers(),
-    bundlePolicy: 'max-bundle',
-  });
-
-  const tracksPromise = new Promise<{
-    video: MediaStreamTrack;
-    audio: MediaStreamTrack;
-  }>((res) => {
-    let videoTrack: undefined | MediaStreamTrack;
-    let audioTrack: undefined | MediaStreamTrack;
-    pc.ontrack = (ev: RTCTrackEvent) => {
-      if (ev.track.kind === 'video') videoTrack = ev.track;
-      if (ev.track.kind === 'audio') audioTrack = ev.track;
-      if (videoTrack && audioTrack)
-        res({ video: videoTrack, audio: audioTrack });
-    };
-  });
-
-  pc.addTransceiver('video', { direction: 'recvonly' });
-  pc.addTransceiver('audio', { direction: 'recvonly' });
-
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-
-  const gathered = await new Promise<RTCSessionDescription | null>((res) => {
-    setTimeout(() => res(pc.localDescription), 2000);
-    pc.onicegatheringstatechange = () => {
-      if (pc.iceGatheringState === 'complete') res(pc.localDescription);
-    };
-  });
-
-  if (!gathered?.sdp) throw new Error('Failed to gather ICE candidates');
-
-  const response = await fetch(endpointUrl, {
-    method: 'POST',
-    mode: 'cors',
-    headers: { 'content-type': 'application/sdp' },
-    body: gathered.sdp,
-  });
-
-  if (response.status !== 201) {
-    throw new Error(await response.text());
-  }
-
-  const sdpAnswer = await response.text();
-  await pc.setRemoteDescription(
-    new RTCSessionDescription({ type: 'answer', sdp: sdpAnswer }),
-  );
-
-  const tracks = await tracksPromise;
-  const stream = new MediaStream();
-  stream.addTrack(tracks.video);
-  stream.addTrack(tracks.audio);
-  return stream;
 }

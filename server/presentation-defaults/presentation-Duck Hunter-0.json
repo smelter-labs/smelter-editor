@@ -1,0 +1,300 @@
+{
+  "name": "Duck Hunter",
+  "presentationConfig": {
+    "roomConfig": {
+      "version": 1,
+      "layout": "grid",
+      "sortMode": "layers",
+      "resolution": {
+        "width": 1920,
+        "height": 1080
+      },
+      "inputs": [
+        {
+          "type": "local-mp4",
+          "title": "[MP4] DucksCompilation",
+          "description": "[Static source] Duck Hunter demo footage",
+          "volume": 1,
+          "showTitle": false,
+          "shaders": [],
+          "mp4FileName": "DucksCompilation.mp4",
+          "needsConnection": false,
+          "aiModels": {
+            "people-counter-yolo-birds": {
+              "enabled": true,
+              "delayMs": 3000,
+              "drawBoxes": true,
+              "ghostMode": false
+            }
+          }
+        }
+      ],
+      "layers": [
+        {
+          "id": "default",
+          "inputs": [
+            {
+              "inputIndex": 0,
+              "x": 0,
+              "y": 0,
+              "width": 1920,
+              "height": 1080
+            }
+          ]
+        }
+      ],
+      "dashboardLayout": {
+        "layouts": {
+          "lg": [
+            {
+              "i": "video-preview",
+              "x": 0,
+              "y": 0,
+              "w": 10,
+              "h": 16,
+              "minW": 6,
+              "minH": 6
+            },
+            {
+              "i": "ai-models",
+              "x": 0,
+              "y": 16,
+              "w": 10,
+              "h": 14,
+              "minW": 4,
+              "minH": 6
+            },
+            {
+              "i": "streams",
+              "x": 10,
+              "y": 0,
+              "w": 7,
+              "h": 12,
+              "minW": 4,
+              "minH": 4
+            },
+            {
+              "i": "block-properties",
+              "x": 10,
+              "y": 12,
+              "w": 7,
+              "h": 18,
+              "minW": 4,
+              "minH": 6
+            },
+            {
+              "i": "duck-hunter",
+              "x": 17,
+              "y": 0,
+              "w": 7,
+              "h": 30,
+              "minW": 4,
+              "minH": 6
+            }
+          ],
+          "md": [
+            {
+              "i": "video-preview",
+              "x": 0,
+              "y": 0,
+              "w": 8,
+              "h": 16,
+              "minW": 5,
+              "minH": 6
+            },
+            {
+              "i": "ai-models",
+              "x": 0,
+              "y": 16,
+              "w": 8,
+              "h": 14,
+              "minW": 3,
+              "minH": 6
+            },
+            {
+              "i": "streams",
+              "x": 8,
+              "y": 0,
+              "w": 6,
+              "h": 12,
+              "minW": 3,
+              "minH": 4
+            },
+            {
+              "i": "block-properties",
+              "x": 8,
+              "y": 12,
+              "w": 6,
+              "h": 18,
+              "minW": 3,
+              "minH": 6
+            },
+            {
+              "i": "duck-hunter",
+              "x": 14,
+              "y": 0,
+              "w": 6,
+              "h": 30,
+              "minW": 3,
+              "minH": 6
+            }
+          ],
+          "sm": [
+            {
+              "i": "video-preview",
+              "x": 0,
+              "y": 0,
+              "w": 5,
+              "h": 16,
+              "minW": 3,
+              "minH": 6
+            },
+            {
+              "i": "ai-models",
+              "x": 0,
+              "y": 16,
+              "w": 5,
+              "h": 14,
+              "minW": 2,
+              "minH": 6
+            },
+            {
+              "i": "streams",
+              "x": 5,
+              "y": 0,
+              "w": 4,
+              "h": 12,
+              "minW": 2,
+              "minH": 4
+            },
+            {
+              "i": "block-properties",
+              "x": 5,
+              "y": 12,
+              "w": 4,
+              "h": 18,
+              "minW": 2,
+              "minH": 6
+            },
+            {
+              "i": "duck-hunter",
+              "x": 8,
+              "y": 0,
+              "w": 4,
+              "h": 30,
+              "minW": 2,
+              "minH": 6
+            }
+          ],
+          "xs": [
+            {
+              "i": "video-preview",
+              "x": 0,
+              "y": 0,
+              "w": 3,
+              "h": 16,
+              "minW": 2,
+              "minH": 6
+            },
+            {
+              "i": "ai-models",
+              "x": 0,
+              "y": 16,
+              "w": 3,
+              "h": 14,
+              "minW": 1,
+              "minH": 6
+            },
+            {
+              "i": "streams",
+              "x": 3,
+              "y": 0,
+              "w": 2,
+              "h": 12,
+              "minW": 1,
+              "minH": 4
+            },
+            {
+              "i": "block-properties",
+              "x": 3,
+              "y": 12,
+              "w": 2,
+              "h": 18,
+              "minW": 1,
+              "minH": 6
+            },
+            {
+              "i": "duck-hunter",
+              "x": 6,
+              "y": 0,
+              "w": 2,
+              "h": 30,
+              "minW": 1,
+              "minH": 6
+            }
+          ],
+          "xxs": [
+            {
+              "i": "video-preview",
+              "x": 0,
+              "y": 0,
+              "w": 2,
+              "h": 16,
+              "minW": 1,
+              "minH": 6
+            },
+            {
+              "i": "ai-models",
+              "x": 0,
+              "y": 16,
+              "w": 2,
+              "h": 14,
+              "minW": 1,
+              "minH": 6
+            },
+            {
+              "i": "streams",
+              "x": 2,
+              "y": 0,
+              "w": 1,
+              "h": 12,
+              "minW": 1,
+              "minH": 4
+            },
+            {
+              "i": "block-properties",
+              "x": 2,
+              "y": 12,
+              "w": 1,
+              "h": 18,
+              "minW": 1,
+              "minH": 6
+            },
+            {
+              "i": "duck-hunter",
+              "x": 3,
+              "y": 0,
+              "w": 1,
+              "h": 30,
+              "minW": 1,
+              "minH": 6
+            }
+          ]
+        },
+        "visiblePanels": [
+          "video-preview",
+          "ai-models",
+          "streams",
+          "block-properties",
+          "duck-hunter"
+        ]
+      },
+      "exportedAt": "2026-08-05T00:00:00.000Z"
+    },
+    "welcomeTextBefore": "",
+    "welcomeTextAfter": "",
+    "farewellTitle": "",
+    "farewellDescription": ""
+  },
+  "savedAt": "2026-08-05T00:00:00.000Z"
+}

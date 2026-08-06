@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Camera, Eye, Home } from 'lucide-react';
+import { Camera, Crosshair, Eye, Home } from 'lucide-react';
 
 import type { RoomState } from '@/lib/types';
 import { getRoomInfo } from '@/app/actions/actions';
@@ -70,6 +70,11 @@ export default function MobileJoinPage() {
     router.push(`/room/${encodeURIComponent(roomId as string)}?guest=true`);
   };
 
+  const handleShootGhosts = () => {
+    if (!roomId) return;
+    router.push(`/mobile/${encodeURIComponent(roomId as string)}/shoot`);
+  };
+
   if (loading) {
     return (
       <div className='min-h-screen w-full bg-[#0a0a0a] flex items-center justify-center'>
@@ -131,6 +136,20 @@ export default function MobileJoinPage() {
                 <div className='text-lg font-semibold'>Join as Camera</div>
                 <div className='text-sm text-neutral-400'>
                   Send your phone&apos;s camera as a new input.
+                </div>
+              </div>
+            </button>
+
+            <button
+              onClick={handleShootGhosts}
+              className='group flex items-center gap-4 p-5 border border-neutral-800 rounded-lg bg-neutral-900/40 hover:border-[#00f3ff] hover:bg-neutral-900/60 transition-colors cursor-pointer text-left'>
+              <div className='shrink-0 w-12 h-12 rounded-full bg-neutral-800 flex items-center justify-center group-hover:bg-[#00f3ff]/10'>
+                <Crosshair className='w-6 h-6 text-[#00f3ff]' />
+              </div>
+              <div className='flex-1 min-w-0'>
+                <div className='text-lg font-semibold'>Duck Hunter 🦆</div>
+                <div className='text-sm text-neutral-400'>
+                  Aim with your phone&apos;s gyroscope and shoot the ducks.
                 </div>
               </div>
             </button>

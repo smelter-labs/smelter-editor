@@ -7,6 +7,7 @@ import type {
   SnakeGameDisplayProperties,
   InputOrientation,
 } from "./input.js";
+import type { AIModelConfig } from "./ai-models.js";
 
 // Allow `null` as an explicit reset sentinel for absolute-position and crop
 // fields.  When the server receives `null` it clears the stored value back to
@@ -32,6 +33,8 @@ export type UpdateInputOptions = {
   orientation: InputOrientation;
   nativeWidth: number;
   nativeHeight: number;
+  /** When true, audio is transcribed (whisper) and rendered as live captions. */
+  transcription?: boolean;
 } & InputDisplayProperties &
   TextInputProperties &
   NullableAbsolutePositionProperties &
@@ -40,19 +43,34 @@ export type UpdateInputOptions = {
   SnakeGameDisplayProperties;
 
 export type RegisterInputOptions =
-  | { type: "twitch-channel"; channelId: string }
-  | { type: "kick-channel"; channelId: string }
-  | { type: "hls"; url: string }
+  | {
+      type: "twitch-channel";
+      channelId: string;
+      /** When true, audio is transcribed (whisper) and rendered as live captions. */
+      transcription?: boolean;
+    }
+  | {
+      type: "kick-channel";
+      channelId: string;
+      transcription?: boolean;
+    }
+  | {
+      type: "hls";
+      url: string;
+      transcription?: boolean;
+    }
   | {
       type: "whip";
       username: string;
       orientation?: InputOrientation;
       nativeWidth?: number;
       nativeHeight?: number;
+      transcription?: boolean;
     }
   | {
       type: "local-mp4";
       source: { fileName?: string; audioFileName?: string; url?: string };
+      transcription?: boolean;
     }
   | { type: "image"; fileName?: string; imageId?: string }
   | {
@@ -73,4 +91,6 @@ export type PendingWhipInputData = {
   id: string;
   title: string;
   position: number;
+  /** Per-input AI model configuration to re-apply once the WHIP connects. */
+  aiModels?: Record<string, AIModelConfig>;
 } & InputDisplayProperties;

@@ -77,6 +77,8 @@ export class PlaceholderManager {
       borderWidth: 0,
       hidden: false,
       motionEnabled: false,
+      transcription: false,
+      aiModels: {},
       metadata: { title: 'Smelter', description: '' },
       volume: 0,
       imageId,

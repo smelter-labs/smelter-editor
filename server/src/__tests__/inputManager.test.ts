@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DATA_DIR } from '../dataDir';
 import { PlaceholderManager } from '../room/PlaceholderManager';
 import type { MotionController } from '../room/MotionController';
+import type { CaptionsController } from '../room/CaptionsController';
+import type { RoomAIController } from '../ai-models/room-ai-controller';
 
 const mocks = vi.hoisted(() => {
   const fn = vi.fn;
@@ -80,10 +82,14 @@ describe('InputManager', () => {
     const onStateChange = vi.fn();
     const placeholderManager = new PlaceholderManager('room');
     const motionController = {} as MotionController;
+    const captionsController = {} as CaptionsController;
+    const aiController = {} as RoomAIController;
     const manager = new InputManager(
       'room',
       placeholderManager,
       motionController,
+      captionsController,
+      aiController,
       onStateChange,
     );
 
@@ -113,10 +119,14 @@ describe('InputManager', () => {
     const onStateChange = vi.fn();
     const placeholderManager = new PlaceholderManager('room');
     const motionController = {} as MotionController;
+    const captionsController = {} as CaptionsController;
+    const aiController = {} as RoomAIController;
     const manager = new InputManager(
       'room',
       placeholderManager,
       motionController,
+      captionsController,
+      aiController,
       onStateChange,
     );
 

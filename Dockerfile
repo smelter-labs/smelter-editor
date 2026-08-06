@@ -1,4 +1,4 @@
-FROM ghcr.io/smelter-labs/smelter-rc:362799df-x86_64
+FROM ghcr.io/software-mansion/smelter:v0.6.0
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -13,7 +13,7 @@ WORKDIR /tmp
 
 RUN apt-get update -y -qq && \
   apt-get install -y \
-  sudo build-essential curl pipx python3-pip git pkg-config \
+  sudo build-essential curl pipx python3-pip python3-venv git pkg-config \
   libegl1-mesa-dev libgl1-mesa-dri libxcb-xfixes0-dev mesa-vulkan-drivers \
   nasm yasm libx264-dev libx265-dev libfdk-aac-dev libmp3lame-dev \
   libopus-dev libvpx-dev libass-dev libfreetype-dev && \
@@ -66,6 +66,14 @@ ARG CACHE_BUST=1
 COPY --chown=$USERNAME:$USERNAME  . /home/$USERNAME/demo
 WORKDIR /home/$USERNAME/demo/server
 RUN mkdir -p /home/$USERNAME/demo/server/data/recordings /home/$USERNAME/demo/server/data/configs /home/$USERNAME/demo/server/data/mp4s /home/$USERNAME/demo/server/data/pictures /home/$USERNAME/demo/server/data/audios /home/$USERNAME/demo/server/data/screenshots /home/$USERNAME/demo/server/data/thumbnails /home/$USERNAME/demo/server/data/shader-presets /home/$USERNAME/demo/server/data/dashboard-layouts /home/$USERNAME/demo/server/data/presentation-configs /home/$USERNAME/demo/server/data/hls-streams
-RUN CI=1 pnpm install && pnpm --filter @smelter-editor/types build && pnpm build
+RUN CI=1 pnpm install --filter smelter-app... && pnpm --filter @smelter-editor/types build && pnpm build
+
+# Captions sidecar (Whisper) — CPU PyTorch venv baked into the image.
+RUN python3 -m venv /home/smelter/demo/server/captions/.venv && \
+  /home/smelter/demo/server/captions/.venv/bin/pip install --upgrade pip && \
+  /home/smelter/demo/server/captions/.venv/bin/pip install --quiet \
+    -r /home/smelter/demo/server/captions/requirements-cpu.txt && \
+  /home/smelter/demo/server/captions/.venv/bin/python3 -c \
+    "import torch; import torchaudio; import silero_vad; import faster_whisper; import smelter"
 
 ENTRYPOINT ["/home/smelter/demo/entrypoint.sh"]

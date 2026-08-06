@@ -11,8 +11,10 @@ import {
   VolumeX as MutedIcon,
   Maximize2 as FullscreenIcon,
   Minimize2 as MinimizeIcon,
+  Expand as MaximizeIcon,
+  Shrink as ShrinkIcon,
 } from 'lucide-react';
-import { buildIceServers } from '@/lib/webrtc';
+import { connectWhep } from '@/lib/webrtc/whep-connect';
 import { formatMs } from '@/lib/format-utils';
 import { Slider } from '@/components/ui/slider';
 import {
@@ -36,11 +38,6 @@ function LoadingSpinner() {
 export type OutputResolution = {
   width: number;
   height: number;
-};
-
-type OutputStreamConnection = {
-  stream: MediaStream;
-  close: () => void;
 };
 
 export default function OutputStream({
@@ -67,11 +64,12 @@ export default function OutputStream({
   const [overlayGlowing] = useVideoOverlayGlowingSetting();
 
   const persisted = roomId ? loadOutputPlayerSettings(roomId) : null;
-  const [muted, setMuted] = useState(persisted?.muted ?? true);
+  const [muted, setMuted] = useState(persisted?.muted ?? false);
   const [volume, setVolume] = useState(persisted?.volume ?? 1);
 
   const [current, setCurrent] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isMaximized, setIsMaximized] = useState(false);
   const [videoLoaded, setVideoLoaded] = useState(false);
   const isMobile = useIsMobileDevice();
   const roomIdRef = useRef(roomId);
@@ -80,7 +78,7 @@ export default function OutputStream({
     let cancelled = false;
     let closeConnection = () => {};
 
-    void connect(whepUrl)
+    void connectWhep(whepUrl)
       .then(({ stream, close }) => {
         closeConnection = () => {
           close();
@@ -287,6 +285,32 @@ export default function OutputStream({
     }
   };
 
+  useEffect(() => {
+    if (!isMaximized) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setIsMaximized(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => document.removeEventListener('keydown', onKeyDown);
+  }, [isMaximized]);
+
+  // Promote the container to the browser top layer so it escapes
+  // transformed ancestors (framer-motion) that break position: fixed.
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el || !isMaximized || typeof el.showPopover !== 'function') return;
+    el.setAttribute('popover', 'manual');
+    try {
+      el.showPopover();
+    } catch {}
+    return () => {
+      try {
+        el.hidePopover();
+      } catch {}
+      el.removeAttribute('popover');
+    };
+  }, [isMaximized]);
+
   const formatTime = (s: number) =>
     !isFinite(s) ? '--:--' : formatMs(s * 1000);
 
@@ -373,14 +397,32 @@ export default function OutputStream({
   return (
     <div
       ref={containerRef}
-      className='relative bg-black rounded-none overflow-hidden'
-      style={{
-        aspectRatio,
-        maxWidth: '100%',
-        maxHeight: '100%',
-        width: '100%',
-        margin: isVertical ? '0 auto' : undefined,
-      }}>
+      className={
+        isMaximized
+          ? 'fixed inset-0 z-50 bg-black rounded-none overflow-hidden'
+          : 'relative bg-black rounded-none overflow-hidden'
+      }
+      style={
+        isMaximized
+          ? {
+              // override UA popover defaults (fit-content size, auto margins, border)
+              width: '100vw',
+              height: '100vh',
+              maxWidth: '100vw',
+              maxHeight: '100vh',
+              inset: 0,
+              margin: 0,
+              padding: 0,
+              border: 'none',
+            }
+          : {
+              aspectRatio,
+              maxWidth: '100%',
+              maxHeight: '100%',
+              width: '100%',
+              margin: isVertical ? '0 auto' : undefined,
+            }
+      }>
       {!videoLoaded && (
         <>
           <img src='/video-bg-placeholder.png' alt='Video placeholder' />
@@ -456,6 +498,21 @@ export default function OutputStream({
               variant='ghost'
               size='icon'
               className={button}
+              onClick={() => setIsMaximized((m) => !m)}
+              aria-label={
+                isMaximized ? 'Restore video size' : 'Maximize video to canvas'
+              }>
+              {isMaximized ? (
+                <ShrinkIcon className='w-5 h-5' />
+              ) : (
+                <MaximizeIcon className='w-5 h-5' />
+              )}
+            </Button>
+
+            <Button
+              variant='ghost'
+              size='icon'
+              className={button}
               onClick={handleFullscreen}
               aria-label={isFullscreen ? 'Minimize video' : 'Fullscreen video'}>
               {isFullscreen ? (
@@ -469,130 +526,4 @@ export default function OutputStream({
       )}
     </div>
   );
-}
-
-async function connect(endpointUrl: string): Promise<OutputStreamConnection> {
-  const pc = new RTCPeerConnection({
-    iceServers: buildIceServers(),
-    bundlePolicy: 'max-bundle',
-  });
-
-  const tracksPromise = new Promise<{
-    video: MediaStreamTrack;
-    audio: MediaStreamTrack;
-  }>((res) => {
-    let videoTrack: undefined | MediaStreamTrack;
-    let audioTrack: undefined | MediaStreamTrack;
-    pc.ontrack = (ev: RTCTrackEvent) => {
-      if (ev.track.kind === 'video') {
-        videoTrack = ev.track;
-      }
-      if (ev.track.kind === 'audio') {
-        audioTrack = ev.track;
-      }
-      if (videoTrack && audioTrack) {
-        res({ video: videoTrack, audio: audioTrack });
-      }
-    };
-  });
-
-  pc.addTransceiver('video', { direction: 'recvonly' });
-  pc.addTransceiver('audio', { direction: 'recvonly' });
-
-  await establishWhipConnection(pc, endpointUrl);
-
-  const tracks = await tracksPromise;
-
-  const stream = new MediaStream();
-  stream.addTrack(tracks.video);
-  stream.addTrack(tracks.audio);
-  return {
-    stream,
-    close: () => {
-      stream.getTracks().forEach((track) => track.stop());
-      pc.close();
-    },
-  };
-}
-
-async function establishWhipConnection(
-  pc: RTCPeerConnection,
-  endpoint: string,
-  token?: string,
-): Promise<string> {
-  await pc.setLocalDescription(await pc.createOffer());
-
-  const offer = await gatherICECandidates(pc);
-  if (!offer) {
-    throw Error('failed to gather ICE candidates for offer');
-  }
-
-  const { sdp: sdpAnswer, location } = await postSdpOffer(
-    endpoint,
-    offer.sdp,
-    token,
-  );
-
-  await pc.setRemoteDescription(
-    new RTCSessionDescription({ type: 'answer', sdp: sdpAnswer }),
-  );
-  return location ?? endpoint;
-}
-
-async function gatherICECandidates(
-  peerConnection: RTCPeerConnection,
-): Promise<RTCSessionDescription | null> {
-  return new Promise<RTCSessionDescription | null>((res) => {
-    setTimeout(function () {
-      try {
-        res(peerConnection.localDescription);
-      } catch {
-        res(null);
-      }
-    }, 2000);
-
-    peerConnection.onicegatheringstatechange = () => {
-      if (peerConnection.iceGatheringState === 'complete') {
-        try {
-          res(peerConnection.localDescription);
-        } catch {
-          res(null);
-        }
-      }
-    };
-  });
-}
-
-async function postSdpOffer(
-  endpoint: string,
-  sdpOffer: string,
-  token?: string,
-): Promise<{ sdp: string; location: string }> {
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    mode: 'cors',
-    headers: {
-      'content-type': 'application/sdp',
-      ...(token ? { authorization: `Bearer ${token}` } : {}),
-    },
-    body: sdpOffer,
-  });
-
-  if (response.status === 201) {
-    return {
-      sdp: await response.text(),
-      location: getLocationFromHeader(response.headers, endpoint),
-    };
-  } else {
-    const errorMessage = await response.text();
-    throw new Error(errorMessage);
-  }
-}
-
-function getLocationFromHeader(headers: Headers, endpoint: string): string {
-  const locationHeader = headers.get('Location');
-  if (!locationHeader) {
-    return endpoint;
-  }
-  return new URL(locationHeader, endpoint).toString();
 }

@@ -75,10 +75,58 @@ vi.mock('fs-extra', () => ({
   readdir: mocks.readdir,
   remove: mocks.remove,
 }));
-vi.mock('../server/mp4Duration', () => ({
+vi.mock('../routing/mp4Duration', () => ({
   getMp4DurationMs: mocks.getMp4DurationMs,
   getMp4VideoDimensions: mocks.getMp4VideoDimensions,
 }));
+vi.mock('../captions/captionBridgeRegistry', () => ({
+  getCaptionBridge: vi.fn(() => ({
+    notifySideChannelReady: vi.fn(),
+    notifySideChannelStopped: vi.fn(),
+  })),
+}));
+vi.mock('../ai-models', () => {
+  class MockRoomAIController {
+    wireSidecarListeners = vi.fn();
+    destroy = vi.fn().mockResolvedValue(undefined);
+    onInputConnected = vi.fn().mockResolvedValue(undefined);
+    onInputDisconnected = vi.fn().mockResolvedValue(undefined);
+    onSideChannelReady = vi.fn();
+    addResultListener = vi.fn(() => () => {});
+    enableModelOnInput = vi.fn().mockResolvedValue(undefined);
+    disableModelOnInput = vi.fn().mockResolvedValue(undefined);
+    getSideChannelConfig = vi.fn(() => undefined);
+  }
+
+  return {
+    registerAIModels: vi.fn(),
+    RoomAIController: MockRoomAIController,
+    ModelRegistry: {
+      get: vi.fn((id: string) =>
+        id === 'motion'
+          ? {
+              id: 'motion',
+              defaultDelayMs: 0,
+              maxDelayMs: 2000,
+              supportedInputTypes: [
+                'local-mp4',
+                'whip',
+                'hls',
+                'twitch-channel',
+                'kick-channel',
+              ],
+            }
+          : undefined,
+      ),
+      getAll: vi.fn(() => []),
+      toInfo: vi.fn((m: { id: string }) => m),
+    },
+    defaultAIModelConfig: vi.fn(() => ({ enabled: false, delayMs: 0 })),
+    computeSideChannelConfig: vi.fn(() => undefined),
+    requiresSideChannelReconnect: vi.fn(() => false),
+    manifestSupportsInput: vi.fn(() => true),
+  };
+});
 
 import { createRoomStore } from '../app/store';
 import { RESOLUTION_PRESETS } from '../types';
@@ -738,6 +786,43 @@ describe('RoomState', () => {
         width: 100,
         height: 100,
       });
+    });
+
+    it('auto-selects first broadcast tile and updates output store before live mode', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const inputA = (await room.addNewInput({
+        type: 'text-input',
+        text: 'A',
+      }))!;
+      const inputB = (await room.addNewInput({ type: 'game', title: 'B' }))!;
+      await room.connectInput(inputA);
+      await room.connectInput(inputB);
+
+      await room.updateLayers([
+        {
+          id: 'layer-a',
+          inputs: [{ inputId: inputA, x: 0, y: 0, width: 100, height: 100 }],
+        },
+        {
+          id: 'layer-b',
+          inputs: [{ inputId: inputB, x: 10, y: 10, width: 200, height: 200 }],
+        },
+      ]);
+
+      const tile = await room.addBroadcastTile('layer', 'layer-b');
+      expect(tile).not.toBeNull();
+      expect(room.getBroadcastTiles().selectedBroadcastTileId).toBe(tile!.id);
+
+      await new Promise((resolve) => setTimeout(resolve, 20));
+
+      const storeState = output.store.getState();
+      expect(storeState.layers).toHaveLength(1);
+      expect(storeState.layers[0]!.id).toBe('layer-b');
+      expect(storeState.inputs).toHaveLength(1);
+      expect(storeState.inputs[0]!.inputId).toBe(inputB);
     });
 
     it('applies the same dedupe behavior when restoring layers', async () => {

@@ -10,10 +10,14 @@ type StaticPanelId =
   | 'connected-devices'
   | 'system-log'
   | 'motion-detection'
+  | 'ai-models'
+  | 'captions'
   | 'layout-preview'
   | 'carousel'
   | 'output-code'
-  | 'pong';
+  | 'pong'
+  | 'duck-hunter'
+  | 'haunter';
 
 type MotionPanelId = `motion:${string}`;
 type PanelId = StaticPanelId | MotionPanelId;
@@ -113,6 +117,18 @@ export const STATIC_PANEL_DEFINITIONS: Record<StaticPanelId, PanelDefinition> =
       minW: 4,
       minH: 4,
     },
+    'ai-models': {
+      id: 'ai-models',
+      title: 'AI Models',
+      minW: 4,
+      minH: 6,
+    },
+    captions: {
+      id: 'captions',
+      title: 'Captions',
+      minW: 4,
+      minH: 4,
+    },
     'layout-preview': {
       id: 'layout-preview',
       title: 'Layout Preview',
@@ -137,6 +153,18 @@ export const STATIC_PANEL_DEFINITIONS: Record<StaticPanelId, PanelDefinition> =
       minW: 8,
       minH: 5,
     },
+    'duck-hunter': {
+      id: 'duck-hunter',
+      title: 'Duck Hunter',
+      minW: 4,
+      minH: 6,
+    },
+    haunter: {
+      id: 'haunter',
+      title: 'Haunting Ghosts',
+      minW: 4,
+      minH: 6,
+    },
   };
 
 export const STATIC_PANEL_IDS: StaticPanelId[] = Object.keys(
@@ -148,6 +176,7 @@ export const DEFAULT_VISIBLE_PANEL_IDS: StaticPanelId[] = [
   'streams',
   'timeline',
   'block-properties',
+  'ai-models',
   'system-log',
 ];
 
@@ -180,6 +209,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'streams', x: 12, y: 0, w: 5, h: 15, minW: 4, minH: 4 },
       { i: 'timeline', x: 0, y: 20, w: 17, h: 12, minW: 8, minH: 4 },
       { i: 'block-properties', x: 17, y: 0, w: 7, h: 26, minW: 4, minH: 6 },
+      { i: 'ai-models', x: 17, y: 32, w: 7, h: 14, minW: 4, minH: 6 },
       { i: 'system-log', x: 17, y: 26, w: 7, h: 6, minW: 4, minH: 3 },
       { i: 'connected-devices', x: 16, y: 32, w: 4, h: 6, minW: 4, minH: 4 },
       { i: 'layout-preview', x: 12, y: 0, w: 5, h: 9, minW: 4, minH: 3 },
@@ -189,6 +219,7 @@ export const LAYOUT_PRESETS: LayoutPreset[] = [
       { i: 'carousel', x: 16, y: 38, w: 8, h: 10, minW: 4, minH: 8 },
       { i: 'output-code', x: 12, y: 15, w: 8, h: 10, minW: 6, minH: 8 },
       { i: 'pong', x: 0, y: 73, w: 10, h: 6, minW: 8, minH: 5 },
+      { i: 'captions', x: 0, y: 79, w: 8, h: 6, minW: 4, minH: 4 },
     ],
   },
   {

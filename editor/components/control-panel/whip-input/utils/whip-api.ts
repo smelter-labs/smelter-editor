@@ -1,9 +1,19 @@
+import {
+  getEffectiveClientServerUrl,
+  rewriteLoopbackUrlForClient,
+} from '@/lib/server-url';
+
 export async function sendWhipOfferLocal(
   inputId: string,
   bearerToken: string,
   whipUrl: string,
   sdp: string,
 ): Promise<{ answer: string; location: string | null }> {
+  whipUrl = rewriteLoopbackUrlForClient(
+    whipUrl,
+    getEffectiveClientServerUrl(),
+  );
+
   const res = await fetch(`${whipUrl}`, {
     method: 'POST',
     headers: {

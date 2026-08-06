@@ -1,0 +1,37 @@
+# Dev overlay: bind-mount server sources so code changes apply without rebuilding
+# the Docker image (Smelter base, ffmpeg, Whisper venv, node_modules stay baked in).
+#
+# First time, or after Dockerfile / dependency changes:
+#   SMELTER_DATA_DIR=/path/to/data docker compose -f compose.yaml -f compose.dev.yaml up --build
+#
+# Day-to-day (TypeScript only):
+#   SMELTER_DATA_DIR=/path/to/data docker compose -f compose.yaml -f compose.dev.yaml up
+#
+# sidecar.py edits require a container restart (Python is spawned once at boot):
+#   docker compose -f compose.yaml -f compose.dev.yaml restart server
+#
+# On Linux with NVIDIA GPU, drop the runtime/gpus overrides below or use compose.cpu.yaml
+# only for encoder env (avoid compose.cpu.yaml as-is — it references orphan server-b).
+services:
+  server:
+    runtime: !reset null
+    gpus: !reset []
+    environment:
+      ENVIRONMENT: development
+      SMELTER_WHEP_BASE_URL: "http://127.0.0.1:9072/whep"
+      SMELTER_WHIP_BASE_URL: "http://127.0.0.1:9072/whip"
+      SMELTER_H264_ENCODER: ffmpeg
+      SMELTER_H264_ENCODER_PRESET: ultrafast
+      SMELTER_H264_ENCODER_BITRATE: "8000000"
+    entrypoint: ["/home/smelter/demo/entrypoint.dev.sh"]
+    volumes:
+      - ./entrypoint.dev.sh:/home/smelter/demo/entrypoint.dev.sh:ro
+      - ./server/src:/home/smelter/demo/server/src:ro
+      - ./packages/types/src:/home/smelter/demo/packages/types/src:ro
+      - ./server/captions/sidecar.py:/home/smelter/demo/server/captions/sidecar.py:ro
+      - ./server/shaders:/home/smelter/demo/server/shaders:ro
+      # Keep the image-baked Whisper venv; a full captions/ bind would hide .venv.
+      - captions_venv:/home/smelter/demo/server/captions/.venv
+
+volumes:
+  captions_venv:

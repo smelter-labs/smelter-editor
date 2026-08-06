@@ -77,7 +77,7 @@ export class ServerState {
     return this.mutex.runExclusive(async () => {
       const roomId = uuidv4();
       const roomName = pickUniqueRoomName(this.getUsedRoomNames());
-      const resolvedResolution = resolution ?? RESOLUTION_PRESETS['1440p'];
+      const resolvedResolution = resolution ?? RESOLUTION_PRESETS['1080p'];
       const audioStore = createAudioStore();
       const smelterOutput = await SmelterInstance.registerOutput(
         roomId,
@@ -106,6 +106,27 @@ export class ServerState {
       this.rooms[roomId] = room;
       return { roomId, roomName, room };
     });
+  }
+
+  /** Route a transcript event from the captions sidecar to the room that owns
+   * the input. Inputs are globally unique so the first match is correct. */
+  public applyTranscript(event: {
+    inputId: string;
+    text: string;
+    duration: number;
+  }): void {
+    for (const room of this.getRooms()) {
+      if (room.hasInput(event.inputId)) {
+        console.log(
+          `[captions] routing to room=${room.idPrefix} inputId=${event.inputId} text="${event.text}"`,
+        );
+        room.applyTranscript(event);
+        return;
+      }
+    }
+    console.warn(
+      `[captions] no room owns inputId=${event.inputId} — transcript dropped`,
+    );
   }
 
   public getRoom(roomId: string): RoomState {

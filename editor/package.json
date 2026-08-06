@@ -3,10 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "pnpm --filter @smelter-editor/types build && rm -rf .next &&  next dev --turbopack",
+    "dev": "pnpm --filter @smelter-editor/types build && rm -rf .next && next dev --turbopack -H 0.0.0.0",
     "dev:instance-a": "SMELTER_EDITOR_SERVER_URL=http://localhost:9071 pnpm dev",
     "build": "pnpm --filter @smelter-editor/types build && rm -rf .next && next build",
-    "start": "next start",
+    "start": "next start -H 0.0.0.0",
     "lint": "next lint --quiet",
     "lint:fix": "eslint --fix --ext .js,.jsx,.ts,.tsx .",
     "test": "vitest",

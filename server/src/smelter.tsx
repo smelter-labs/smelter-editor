@@ -10,9 +10,15 @@ import Smelter, {
 import App from './app/App';
 import type { RoomStore } from './app/store';
 import { createRoomStore } from './app/store';
+import {
+  logSocketPathBudget,
+  sideChannelSocketPathLen,
+  UNIX_SOCKET_PATH_MAX,
+} from './captions/captionSocket';
+import { captionDebug } from './captions/captionsDebug';
 import { config } from './config';
 import { DATA_DIR } from './dataDir';
-import { ensureDir, readFile } from 'fs-extra';
+import { ensureDir, pathExists, readFile } from 'fs-extra';
 import {
   MotionScene,
   type MotionStore,
@@ -20,6 +26,10 @@ import {
   MOTION_GRID_HEIGHT,
 } from './motion/MotionScene';
 import { AudioAnalysisScene } from './audio/AudioAnalysisScene';
+import {
+  CaptionsScene,
+  type CaptionsPullStore,
+} from './captions/CaptionsScene';
 import shadersController from './shaders/shaders';
 import type { Resolution } from './types';
 import { RESOLUTION_PRESETS } from './types';
@@ -87,21 +97,62 @@ export type SmelterOutput = {
   audioStore?: StoreApi<AudioStoreState>;
 };
 
+export type SideChannelOpts = {
+  video?: true;
+  audio?: true;
+  delayMs?: number;
+};
+
 export type RegisterSmelterInputOptions =
   | {
       type: 'mp4';
       filePath: string;
       loop?: boolean;
       offsetMs?: number;
+      sideChannel?: SideChannelOpts;
     }
   | {
       type: 'hls';
       url: string;
+      sideChannel?: SideChannelOpts;
     }
   | {
+      // WHIP inputs run a Smelter-side WHIP server the client publishes into, so
+      // there is no source URL to pull from; `url` (when present) is carried for
+      // bookkeeping only and ignored by registration.
       type: 'whip';
-      url: string;
+      url?: string;
+      sideChannel?: SideChannelOpts;
     };
+
+function sideChannelSpread(
+  config: SideChannelOpts | undefined,
+): { sideChannel: SideChannelOpts } | undefined {
+  if (!config) return undefined;
+  return { sideChannel: config };
+}
+
+function logSideChannelRegistration(
+  inputId: string,
+  inputType: string,
+  sideChannel: SideChannelOpts | undefined,
+): void {
+  if (!sideChannel) {
+    captionDebug(`${inputType} without side channel`, inputId);
+    return;
+  }
+  const socketDir = process.env.SMELTER_SIDE_CHANNEL_SOCKET_DIR ?? '';
+  const pathLen = socketDir ? sideChannelSocketPathLen(socketDir, inputId) : 0;
+  console.log(
+    `[side-channel] registering ${inputType} inputId=${inputId} video=${!!sideChannel.video} audio=${!!sideChannel.audio} delayMs=${sideChannel.delayMs ?? 0} socketPathLen=${pathLen}/${UNIX_SOCKET_PATH_MAX}`,
+  );
+  logSocketPathBudget(socketDir, inputId);
+  if (pathLen > UNIX_SOCKET_PATH_MAX) {
+    console.error(
+      `[side-channel] socket path too long for inputId=${inputId} — side channel will fail`,
+    );
+  }
+}
 
 /** MP4 decoder: driven by config.h264Decoder (which depends on ENVIRONMENT). Override via config for env-specific decoders. */
 const MP4_DECODER_MAP = {
@@ -147,6 +198,12 @@ function isFatalSmelterError(err: unknown): boolean {
   );
 }
 
+function isEntityAlreadyRegisteredError(err: unknown): boolean {
+  if (!err || typeof err !== 'object') return false;
+  const code = (err as { body?: { error_code?: unknown } }).body?.error_code;
+  return code === 'ENTITY_ALREADY_REGISTERED';
+}
+
 class SmelterManager {
   private instance: Smelter;
   private pipelineStartTime: number = 0;
@@ -164,20 +221,113 @@ class SmelterManager {
   public getPipelineTimeMs(): number {
     return Date.now() - this.pipelineStartTime;
   }
+
+  /** Wall-clock time (ms) when the pipeline started, or null if not started yet.
+   * Used to map a transcript's stream PTS back to a wall-clock display time. */
+  public getStartTime(): number | null {
+    return this.pipelineStartTime === 0 ? null : this.pipelineStartTime;
+  }
   public async init() {
     await this.instance.init();
     await this.instance.start();
     this.pipelineStartTime = Date.now();
-    await this.instance.registerImage('spinner', {
+    await this.registerImage('spinner', {
       serverPath: path.join(__dirname, '../loading.gif'),
       assetType: 'gif',
     });
 
-    await this.instance.registerImage('smelter_logo', {
+    await this.registerImage('smelter_logo', {
       serverPath: path.join(__dirname, '../imgs/smelter_logo.png'),
       assetType: 'png',
     });
 
+    // Duck Hunt (NES) duck sprites for the bird detector's Ghost Shooter mode:
+    // 3 color variants × {3 wing-flap frames, 1 shot pose}. Ids are
+    // `duck-<color>-<frame>` — must match PacmanBirdsInput.tsx.
+    //
+    // Smelter only bilinear-scales images, which blurs the 36px pixel-art
+    // sprites when drawn large. Prefer the nearest-neighbor-upscaled copies in
+    // `imgs/ducks-hi/` (see scripts/upscale-ducks.py) so Smelter downsamples a
+    // crisp image; fall back to the originals if they haven't been generated.
+    const ducksHiDir = path.join(__dirname, '../imgs/ducks-hi');
+    const ducksDir = (await pathExists(ducksHiDir))
+      ? ducksHiDir
+      : path.join(__dirname, '../imgs/ducks');
+    for (let c = 0; c < 3; c++) {
+      for (const f of ['0', '1', '2', 'shot']) {
+        await this.registerImage(`duck-${c}-${f}`, {
+          serverPath: path.join(ducksDir, `duck-${c}-${f}.png`),
+          assetType: 'png',
+        });
+      }
+    }
+
+    // Duck Hunt dog holding two ducks, shown when a player bags two in a row.
+    // Same hi-res-preferred strategy as the ducks (see scripts/slice-dog.py).
+    const dogHiDir = path.join(__dirname, '../imgs/dog-hi');
+    const dogDir = (await pathExists(dogHiDir))
+      ? dogHiDir
+      : path.join(__dirname, '../imgs/dog');
+    await this.registerImage('dog-catch', {
+      serverPath: path.join(dogDir, 'dog-catch.png'),
+      assetType: 'png',
+    });
+
+    // Haunting-ghosts sprites (HaunterGhostsInput): one ghost with three arc
+    // states — bored (nobody in range), looking (just noticed someone),
+    // hunting (chasing/scaring) — ids `haunter-<state>` from
+    // `imgs/ghosts/ghost_<state>.png`. Until the art lands, the ids fall back
+    // to the Duck Hunt sprites so the effect is testable end-to-end.
+    const ghostsDir = path.join(__dirname, '../imgs/ghosts');
+    const haveGhostArt = await pathExists(ghostsDir);
+    if (!haveGhostArt) {
+      console.warn(
+        '[smelter] imgs/ghosts missing — using duck sprites as haunter placeholders',
+      );
+    }
+    for (const s of ['bored', 'looking', 'hunting'] as const) {
+      const serverPath = haveGhostArt
+        ? path.join(ghostsDir, `ghost_${s}.png`)
+        : path.join(ducksDir, `duck-0-${s === 'hunting' ? 'shot' : '0'}.png`);
+      await this.registerImage(`haunter-${s}`, {
+        serverPath,
+        assetType: 'png',
+      });
+    }
+
+    // Car Ads overlay art (CarAdsInput): the image corner-pinned onto detected
+    // car sides. Drop custom art into `imgs/car-ad/ad.png` — no code change
+    // needed; until it lands the Smelter logo is used so the effect is
+    // testable end-to-end.
+    const carAdPath = path.join(__dirname, '../imgs/car-ad/ad.png');
+    const haveCarAdArt = await pathExists(carAdPath);
+    if (!haveCarAdArt) {
+      console.warn(
+        '[smelter] imgs/car-ad/ad.png missing — using smelter_logo as the car ad',
+      );
+    }
+    await this.registerImage('car-ad', {
+      serverPath: haveCarAdArt
+        ? carAdPath
+        : path.join(__dirname, '../imgs/smelter_logo.png'),
+      assetType: 'png',
+    });
+
+    // Doto (dot-matrix pixel font) drives the Duck Hunter pixel-art HUD;
+    // multiple weights register under the same "Doto" family. Without these
+    // registrations the HUD silently falls back to the engine's default font.
+    const fontFiles = [
+      '../fonts/Starjedi.ttf',
+      '../fonts/doto/Doto-Regular.ttf',
+      '../fonts/doto/Doto-Bold.ttf',
+      '../fonts/doto/Doto-Black.ttf',
+    ];
+    for (const fontFile of fontFiles) {
+      const font = await readFile(path.join(__dirname, fontFile));
+      await this.registerFont(
+        font.buffer.slice(font.byteOffset, font.byteOffset + font.byteLength),
+      );
+    }
 
     for (const shader of shadersController.shaders) {
       await this.registerShaderFromFile(
@@ -204,8 +354,11 @@ class SmelterManager {
         },
       },
       audio: {
+        channels: 'stereo' as const,
         encoder: {
           type: 'opus' as const,
+          sampleRate: 48000,
+          preset: 'lowest_latency' as const,
         },
       },
     };
@@ -317,9 +470,12 @@ class SmelterManager {
     const t0 = Date.now();
     try {
       if (opts.type === 'whip') {
+        logSideChannelRegistration(inputId, 'whip', opts.sideChannel);
+        const sideChannel = sideChannelSpread(opts.sideChannel);
         const res = await this.instance.registerInput(inputId, {
           type: 'whip_server',
           video: { decoderPreferences: WHIP_SERVER_DECODER_PREFERENCES },
+          ...sideChannel,
         });
         console.log('whipInput', res);
         if (!res.bearerToken) {
@@ -329,6 +485,8 @@ class SmelterManager {
         }
         return res.bearerToken;
       } else if (opts.type === 'mp4') {
+        logSideChannelRegistration(inputId, 'mp4', opts.sideChannel);
+        const sideChannel = sideChannelSpread(opts.sideChannel);
         console.log(
           `[smelter] registerInput MP4 inputId=${inputId} path=${opts.filePath} loop=${opts.loop ?? true} offsetMs=${opts.offsetMs}`,
         );
@@ -338,13 +496,14 @@ class SmelterManager {
           decoderMap: MP4_DECODER_MAP,
           loop: opts.loop ?? true,
           offsetMs: opts.offsetMs,
+          ...sideChannel,
         });
         console.log(
           `[smelter] registerInput MP4 OK inputId=${inputId} elapsed=${Date.now() - t0}ms`,
         );
       } else if (opts.type === 'hls') {
-        // Must stay bound to `this.instance` — a bare extracted method loses `this`
-        // and throws (e.g. Cannot read properties of undefined (reading 'scheduler')).
+        logSideChannelRegistration(inputId, 'hls', opts.sideChannel);
+        const sideChannel = sideChannelSpread(opts.sideChannel);
         const registerHlsInput = this.instance.registerInput.bind(
           this.instance,
         ) as unknown as (
@@ -353,6 +512,7 @@ class SmelterManager {
             type: 'hls';
             url: string;
             decoderMap: typeof MP4_DECODER_MAP;
+            sideChannel?: SideChannelOpts;
           },
         ) => Promise<unknown>;
 
@@ -360,6 +520,7 @@ class SmelterManager {
           type: 'hls',
           url: opts.url,
           decoderMap: MP4_DECODER_MAP,
+          ...sideChannel,
         });
       }
     } catch (err: any) {
@@ -418,11 +579,18 @@ class SmelterManager {
       assetType: 'jpeg' | 'png' | 'gif' | 'svg' | 'auto';
     },
   ): Promise<void> {
-    await this.instance.registerImage(imageId, {
-      serverPath: opts.serverPath,
-      url: opts.url,
-      assetType: opts.assetType,
-    });
+    try {
+      await this.instance.registerImage(imageId, {
+        serverPath: opts.serverPath,
+        url: opts.url,
+        assetType: opts.assetType,
+      });
+    } catch (err) {
+      if (isEntityAlreadyRegisteredError(err)) {
+        return;
+      }
+      throw err;
+    }
   }
 
   public async unregisterImage(imageId: string): Promise<void> {
@@ -454,6 +622,48 @@ class SmelterManager {
   }
 
   public async unregisterMotionOutput(outputId: string): Promise<void> {
+    await this.unregisterOutput(outputId);
+  }
+
+  /**
+   * Hidden RTP output that keeps transcription inputs in a composition
+   * so Smelter decodes their audio into the side channel.
+   */
+  public async registerCaptionsPullOutput(
+    outputId: string,
+    store: StoreApi<CaptionsPullStore>,
+    port: number,
+  ): Promise<void> {
+    await this.instance.registerOutput(
+      outputId,
+      <CaptionsScene store={store} />,
+      {
+        type: 'rtp_stream',
+        port,
+        ip: '127.0.0.1',
+        transportProtocol: 'udp',
+        video: {
+          resolution: { width: 16, height: 16 },
+          encoder: {
+            type: 'ffmpeg_h264' as const,
+            preset: 'ultrafast' as const,
+          },
+        },
+        // Audio encoder is required — without it Smelter skips audio decode in
+        // this composition, so the input's side channel never receives PCM.
+        audio: {
+          channels: 'stereo',
+          encoder: {
+            type: 'opus',
+            sampleRate: 48000,
+            preset: 'lowest_latency',
+          },
+        },
+      },
+    );
+  }
+
+  public async unregisterCaptionsPullOutput(outputId: string): Promise<void> {
     await this.unregisterOutput(outputId);
   }
 
@@ -564,6 +774,18 @@ class SmelterManager {
   public async terminate(): Promise<void> {
     await this.instance.terminate();
   }
+
+  private async registerFont(fontSource: string | ArrayBuffer): Promise<void> {
+    try {
+      await this.instance.registerFont(fontSource);
+    } catch (err) {
+      if (isEntityAlreadyRegisteredError(err)) {
+        return;
+      }
+      throw err;
+    }
+  }
+
   private async registerShaderFromFile(
     smelter: Smelter,
     shaderId: string,
@@ -571,9 +793,16 @@ class SmelterManager {
   ) {
     const source = await readFile(file, { encoding: 'utf-8' });
 
-    await smelter.registerShader(shaderId, {
-      source,
-    });
+    try {
+      await smelter.registerShader(shaderId, {
+        source,
+      });
+    } catch (err) {
+      if (isEntityAlreadyRegisteredError(err)) {
+        return;
+      }
+      throw err;
+    }
   }
 
   private createInstance(): Smelter {

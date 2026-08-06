@@ -121,6 +121,7 @@ import {
   BlockClipPropertiesPanel,
   type SelectedTimelineClip,
 } from './components/BlockClipPropertiesPanel';
+import { AIModelsPanel } from './components/AIModelsPanel';
 import {
   isInputLevelClip,
   INPUT_LEVEL_TRACK_ID,
@@ -148,6 +149,7 @@ import {
 import { useMotionScores } from '@/hooks/use-motion-scores';
 import { useMotionHistory } from '@/hooks/use-motion-history';
 import { MotionDetectionPanel } from './components/MotionDetectionPanel';
+import { CaptionsPanel } from './components/CaptionsPanel';
 import { ErrorBoundary } from '@/components/error-boundary';
 import {
   ImportProgressDialog,
@@ -193,8 +195,10 @@ type ControlPanelProps = {
     fxSection: React.ReactNode;
     timelineSection: React.ReactNode;
     blockPropertiesSection: React.ReactNode;
+    aiModelsSection: React.ReactNode;
     pendingConnectionsSection: React.ReactNode;
     motionDetectionSection: React.ReactNode;
+    captionsSection: React.ReactNode;
     peers: ConnectedPeer[];
     timelineColorOverrides: Record<string, string>;
     activeClipColors: Record<string, string>;
@@ -422,6 +426,7 @@ function ControlPanelWithActions({
       volume: p.volume,
       showTitle: p.showTitle,
       shaders: p.shaders,
+      aiModels: p.aiModels,
     },
     position: p.position,
   }));
@@ -530,6 +535,7 @@ function ControlPanelWithActions({
           volume: i.volume ?? 1,
           showTitle: i.showTitle,
           shaders: i.shaders ?? [],
+          aiModels: i.aiModels,
         },
         position: 0,
         staleInputId: i.inputId,
@@ -574,6 +580,7 @@ function ControlPanelWithActions({
           showTitle: p.config.showTitle !== false,
           shaders: p.config.shaders || [],
           position: p.position,
+          ...(p.config.aiModels ? { aiModels: p.config.aiModels } : {}),
         }));
       await setPendingWhipInputsAction(roomId, serverData);
       await handleRefreshState();
@@ -822,7 +829,7 @@ function ControlPanelInner({
   const [timelineActionsReady, setTimelineActionsReady] = useState(false);
   const isPersistingTimelineLayerOrderRef = useRef(false);
   const [timelineQueueLocked, setTimelineQueueLocked] = useState(false);
-  const sortMode: 'timeline' | 'layers' = roomState.sortMode ?? 'timeline';
+  const sortMode: 'timeline' | 'layers' = roomState.sortMode ?? 'layers';
   const [layersModeDirty, setLayersModeDirty] = useState(false);
   const [conflictModalOpen, setConflictModalOpen] = useState(false);
   const [conflictDecisionPending, setConflictDecisionPending] = useState(false);
@@ -1474,6 +1481,20 @@ function ControlPanelInner({
       </div>
     );
 
+    const aiModelsSelectedInput =
+      effectiveSelectedClips.length > 0
+        ? (inputs.find(
+            (i) => i.inputId === effectiveSelectedClips[0].inputId,
+          ) ?? null)
+        : null;
+    const aiModelsSection = (
+      <AIModelsPanel
+        roomId={roomId}
+        selectedInput={aiModelsSelectedInput}
+        handleRefreshState={handleRefreshState}
+      />
+    );
+
     const pendingConnectionsSection = !isGuest ? (
       <PendingConnectionsPanel
         pendingWhipInputs={pendingWhipInputs}
@@ -1488,6 +1509,14 @@ function ControlPanelInner({
 
     const motionDetectionSection = (
       <MotionDetectionSection
+        roomId={roomId}
+        refreshState={handleRefreshState}
+        inputs={inputs}
+      />
+    );
+
+    const captionsSection = (
+      <CaptionsSection
         roomId={roomId}
         refreshState={handleRefreshState}
         inputs={inputs}
@@ -1519,8 +1548,10 @@ function ControlPanelInner({
           fxSection,
           timelineSection,
           blockPropertiesSection,
+          aiModelsSection,
           pendingConnectionsSection,
           motionDetectionSection,
+          captionsSection,
           peers,
           timelineColorOverrides,
           activeClipColors,
@@ -1738,6 +1769,29 @@ const MotionDetectionSection = memo(function MotionDetectionSection({
       inputs={motionDetectionInputs}
       motionHistoryMap={motionHistoryMap}
       motionScores={motionScores}
+      refreshState={refreshState}
+    />
+  );
+});
+
+const CaptionsSection = memo(function CaptionsSection({
+  roomId,
+  inputs,
+  refreshState,
+}: {
+  roomId: string;
+  inputs: Input[];
+  refreshState: () => Promise<void>;
+}) {
+  const captionInputs = useMemo(
+    () => inputs.filter((input) => VIDEO_INPUT_TYPES.has(input.type)),
+    [inputs],
+  );
+
+  return (
+    <CaptionsPanel
+      roomId={roomId}
+      inputs={captionInputs}
       refreshState={refreshState}
     />
   );
@@ -2285,6 +2339,13 @@ function SettingsBar({
           <button onClick={() => setShowQRModal(true)} className={navLinkClass}>
             Join via QR
           </button>
+          <a
+            href={`/room-preview/${roomId}/broadcast`}
+            target='_blank'
+            rel='noopener noreferrer'
+            className={navLinkClass}>
+            Broadcast
+          </a>
           <button
             onClick={handleToggleRecording}
             disabled={isTogglingRecording || isWaitingForDownload}

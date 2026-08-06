@@ -10,6 +10,7 @@ import { LayoutScreen } from "../screens/Layout/LayoutScreen";
 import { InputsScreen } from "../screens/Inputs/InputsScreen";
 import { TimelineScreen } from "../screens/Timeline/TimelineScreen";
 import { DebugScreen } from "../screens/Debug/DebugScreen";
+import { BroadcastModeScreen } from "../screens/BroadcastMode";
 import {
   MAIN_NAV_ARROW_WIDTH_RATIO,
   MAIN_SCREEN_COUNT,
@@ -77,6 +78,9 @@ export function MainNavigator() {
       </ScreenTransitionView>
       <ScreenTransitionView width={contentWidth}>
         <DebugScreen />
+      </ScreenTransitionView>
+      <ScreenTransitionView width={contentWidth}>
+        <BroadcastModeScreen />
       </ScreenTransitionView>
     </>
   );
