@@ -9,6 +9,8 @@ import { startPublish } from '@/components/control-panel/whip-input/utils/whip-p
 import {
   applyServerUrlFromQueryParam,
   getEffectiveClientServerUrl,
+  getStoredClientServerUrl,
+  isLoopbackHost,
   toWsUrl,
 } from '@/lib/server-url';
 
@@ -553,8 +555,11 @@ export default function ShootControllerPage() {
   }, [stage, fire]);
 
   const connectWs = useCallback(() => {
-    const ro = remoteOrigin();
-    const base = toWsUrl(ro ?? getEffectiveClientServerUrl());
+    const base = toWsUrl(
+      getStoredClientServerUrl() ??
+        remoteOrigin() ??
+        getEffectiveClientServerUrl(),
+    );
     const url = `${base}/room/${encodeURIComponent(String(roomId))}/ws`;
     setWsDbg(`connecting: ${url}`);
     const ws = new WebSocket(url);
@@ -638,19 +643,7 @@ export default function ShootControllerPage() {
         // Fresh session: drop any previous publisher PC first.
         camPcRef.current?.close();
         camPcRef.current = null;
-        // Behind a tunnel, force the WHIP endpoint to this page's own origin so
-        // Caddy forwards /whip to the media server (same-origin: no CORS/mixed),
-        // mirroring the WHEP handling below.
-        const ro = remoteOrigin();
-        let whipUrl = o.whipUrl;
-        if (ro) {
-          try {
-            const u = new URL(o.whipUrl);
-            whipUrl = ro + u.pathname + u.search;
-          } catch {
-            /* keep original */
-          }
-        }
+        const whipUrl = resolveMediaUrl(o.whipUrl);
         void startPublish(
           o.inputId,
           o.bearerToken,
@@ -715,18 +708,7 @@ export default function ShootControllerPage() {
   useEffect(() => {
     if (stage !== 'play' || !room?.whepUrl) return;
     let cancelled = false;
-    // Behind a tunnel, force the WHEP endpoint to the page's own origin so the
-    // proxy forwards /whep to the media server (same-origin: no CORS/mixed).
-    const ro = remoteOrigin();
-    let whepUrl = room.whepUrl;
-    if (ro) {
-      try {
-        const u = new URL(room.whepUrl);
-        whepUrl = ro + u.pathname + u.search;
-      } catch {
-        /* keep original */
-      }
-    }
+    const whepUrl = resolveMediaUrl(room.whepUrl);
     void connectWhep(whepUrl)
       .then((conn) => {
         if (cancelled) {
@@ -1272,4 +1254,21 @@ function remoteOrigin(): string | null {
   if (typeof window === 'undefined') return null;
   const o = window.location.origin;
   return /(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/.test(o) ? null : o;
+}
+
+// Media endpoints (WHIP/WHEP) come from the server, which may only know its
+// loopback address. When such a URL would be unreachable from the phone, graft
+// its path onto the explicit `?server=` base (which may include a proxy path
+// prefix) or, failing that, onto this page's own origin. URLs that are already
+// public (e.g. an instance behind nginx) pass through untouched.
+function resolveMediaUrl(url: string): string {
+  const base = getStoredClientServerUrl() ?? remoteOrigin();
+  if (!base) return url;
+  try {
+    const u = new URL(url);
+    if (!isLoopbackHost(u.hostname)) return url;
+    return base + u.pathname + u.search;
+  } catch {
+    return url;
+  }
 }

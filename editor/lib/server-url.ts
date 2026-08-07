@@ -18,12 +18,12 @@ export const SERVER_PRESETS: ServerPreset[] = [
   {
     id: 'instance-a-prod',
     label: 'Instance A Prod',
-    url: 'https://puffer.fishjam.io/smelter-editor-api',
+    url: 'https://puffer.fishjam.io/smelter-editor-production-api',
   },
   {
     id: 'instance-b-dev',
     label: 'Instance B Dev',
-    url: 'https://puffer.fishjam.io/smelter-editor-b-api',
+    url: 'https://puffer.fishjam.io/smelter-editor-dev-api',
   },
   { id: 'custom', label: 'Custom', url: '' },
 ];
@@ -32,7 +32,7 @@ function normalizeServerUrl(url: string): string {
   return url.replace(/\/$/, '');
 }
 
-function isLoopbackHost(hostname: string): boolean {
+export function isLoopbackHost(hostname: string): boolean {
   return (
     hostname === 'localhost' ||
     hostname === '127.0.0.1' ||
@@ -141,6 +141,30 @@ export function setStoredServerUrl(url: string | null): void {
   const normalized = normalizeServerUrl(trimmed);
   localStorage.setItem(SERVER_URL_STORAGE_KEY, normalized);
   document.cookie = `${SERVER_URL_COOKIE_NAME}=${encodeURIComponent(normalized)}; Path=/; Max-Age=${ONE_YEAR_SECONDS}; SameSite=Lax`;
+}
+
+/**
+ * The server URL the user picked explicitly (via `?server=` deep link or the
+ * server selector) — or null when unset or a loopback address. Callers use it
+ * to override same-origin heuristics: a page served from a static host (e.g.
+ * the Vercel deploy) can still be told to talk to a public API elsewhere.
+ */
+export function getStoredClientServerUrl(): string | null {
+  if (getStoredAppMode() === 'demo') {
+    return null;
+  }
+  const stored = getStoredServerUrl();
+  if (!stored) {
+    return null;
+  }
+  try {
+    if (isLoopbackHost(new URL(stored).hostname)) {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+  return stored;
 }
 
 export function getEffectiveClientServerUrl(): string {

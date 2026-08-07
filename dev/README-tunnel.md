@@ -30,6 +30,24 @@ originem** proxy (Caddy) i puścić **jeden tunel**.
    pnpm --filter client dev               # edytor :3000
    ```
 
+## Warsztat: ładna domena `workshop.smelter.dev` (bez ngroka)
+
+Strona telefonu zostaje na Vercelu (`https://workshop.smelter.dev`), a backend
+wskazuje parametr `?server=` w linku/QR — panel Duck Huntera dokleja go sam,
+gdy edytor używa publicznego API (nie-localhost). Dwa warianty backendu:
+
+- **Dev instancja na GPU boxie (zero tuneli):** silnik działa na
+  gpu1-sandbox za nginxem. W edytorze wybierz preset „Instance B Dev"
+  (`https://puffer.fishjam.io/smelter-editor-dev-api`) i tyle — QR z panelu
+  zawiera właściwy `?server=`.
+- **Silnik lokalnie na laptopie:** `./dev/tunnel-ssh.sh` (Caddy :8080 +
+  reverse SSH na boxa, ścieżka `smelter-editor-workshop` w nginx — snippet w
+  `dev/nginx-workshop-location.conf`, wklejany jednorazowo). Uwaga: media
+  WebRTC (UDP) lecą prosto z laptopa, więc telefon musi być w tej samej sieci.
+
+Jest też `./dev/tunnel-workshop.sh` (Cloudflare Tunnel przejmujący całą domenę
+DNS-em) — wymaga autoryzacji w strefie Cloudflare `smelter.dev` (DevOps).
+
 5. **Na telefonie otwórz** (bez `?server=` — strona sama celuje w origin tunelu):
    ```
    https://abc.ngrok-free.dev/mobile/<roomId>/shoot

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Slice the Duck Hunt dog "got two" pose out of the reference sprite sheet.
 
-The repo-root `duck_hunt_sprites_dog.png` is the full NES Duck Hunt sprite sheet
+`workshops/duck_hunt_sprites_dog.png` is the full NES Duck Hunt sprite sheet
 on a sky-blue background. The Duck Hunter game shows this dog — holding two
 ducks — whenever a player bags two in a row. We cut just that pose, key out the
 blue background to transparency, and (like the ducks) also emit a NEAREST-upscaled
@@ -25,14 +25,16 @@ SCALE = 16
 
 # Bounding box of the "got two" dog (two ducks in raised paws) on the sheet,
 # found by keying out the blue background — see scripts/slice-dog analysis.
-CROP = (40, 264, 108, 304)  # left, top, right, bottom
+# Left edge starts at the x44-47 gap between frames; starting any further left
+# picks up the beak/feet of the neighboring "GOT ONE!" frame's duck.
+CROP = (44, 264, 108, 304)  # left, top, right, bottom
 
 # Sky-blue sheet background; the dog/ducks contain no blue, so keying it is safe.
 BG = np.array([99, 173, 255])
 BG_TOL = 60  # sum-of-abs-channel distance under which a pixel is "background"
 
 SERVER_DIR = Path(__file__).resolve().parent.parent
-SHEET = SERVER_DIR.parent / "duck_hunt_sprites_dog.png"
+SHEET = SERVER_DIR.parent / "workshops" / "duck_hunt_sprites_dog.png"
 DST = SERVER_DIR / "imgs" / "dog"
 DST_HI = SERVER_DIR / "imgs" / "dog-hi"
 
