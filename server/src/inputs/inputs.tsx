@@ -299,10 +299,14 @@ export function Input({ input }: { input: InputConfig }) {
                 // toward its latest tracked position instead of snapping.
                 // predict=false: the bird tracker already leads boxes forward
                 // (withLead), so the renderer must not predict motion again.
+                // The marker backend sets `snap`/`borderWidth` — its boxes are
+                // exact, and the outline has to cover the marker in the video.
                 <SmoothedBoxes
                   data={peopleBoxes}
                   parent={{ width: contentWidth, height: contentHeight }}
                   predict={false}
+                  smooth={!peopleBoxes.snap}
+                  borderWidth={peopleBoxes.borderWidth ?? 4}
                   showConf
                 />
               ) : (
@@ -326,7 +330,7 @@ export function Input({ input }: { input: InputConfig }) {
                 parent={{ width: contentWidth, height: contentHeight }}
               />
             ) : null}
-            {peopleCount != null && peopleBoxes?.sprite !== 'bird' ? (
+            {peopleCount != null ? (
               <PeopleCountBadge
                 count={peopleCount}
                 parent={{ width: contentWidth, height: contentHeight }}
@@ -554,7 +558,9 @@ function PeopleBoxes({
               width,
               height,
               borderWidth: 4,
-              borderColor: '#00FF66FF',
+              // Amber for motion-fusion blobs (bird counter), green for YOLO —
+              // so a motion-only guess is distinguishable at a glance.
+              borderColor: box.src === 'motion' ? '#FFB020FF' : '#00FF66FF',
               borderRadius: 4,
             }}
           />,

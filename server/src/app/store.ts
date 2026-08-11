@@ -92,6 +92,9 @@ export type PersonBox = {
   h: number;
   /** Model confidence for this detection, 0..1 (absent for non-YOLO backends). */
   conf?: number;
+  /** What produced this box: a YOLO detection or a motion-fusion blob (bird
+   * counter only). Absent for backends predating the field. */
+  src?: 'yolo' | 'motion';
 };
 
 /**
@@ -206,6 +209,18 @@ export type PersonBoxes = {
   haunterDist?: number;
   haunterScale?: number;
   haunterSpeed?: number;
+  /**
+   * Draw each box straight at its detected position instead of easing toward
+   * it. Set by the marker backend, whose boxes are keyed out of the frame
+   * rather than inferred — easing would visibly trail the marker they came
+   * from. Inferred detections keep the default smoothing.
+   */
+  snap?: boolean;
+  /**
+   * Border thickness in px for the drawn boxes. The marker backend raises it so
+   * the drawn outline covers the marker burned into the footage.
+   */
+  borderWidth?: number;
 };
 
 /** A player's crosshair in normalized content space [0,1] of the target input. */

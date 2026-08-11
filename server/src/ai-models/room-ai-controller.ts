@@ -19,7 +19,9 @@ type SidecarFactory = () => BaseSidecar;
 
 const sidecarFactories: Record<string, SidecarFactory> = {
   motion: () => {
-    throw new Error('motion uses global singleton — call ensureMotionSidecarStarted');
+    throw new Error(
+      'motion uses global singleton — call ensureMotionSidecarStarted',
+    );
   },
 };
 
@@ -190,12 +192,34 @@ export class RoomAIController {
     this.inputModels.clear();
   }
 
+  /**
+   * The params record actually sent to the worker: the stored model params plus
+   * the authoritative side-channel delay. The worker needs the delay to time
+   * lookahead work (marker interpolation reports results for a source-time in
+   * the past, and the presentation hold in RoomState is computed against the
+   * REGISTERED delay — which for WHIP is pinned and can differ from the
+   * config's delayMs). Injected here, at send time, so the stored config stays
+   * untouched and the paramsChanged comparison never sees this key. Every path
+   * that changes the registered delay ends in a re-subscribe, which re-runs
+   * this, so the worker's copy stays fresh.
+   */
+  private workerParams(
+    input: RoomInputState,
+    modelId: string,
+  ): Record<string, number | string> {
+    const cfg = input.aiModels?.[modelId];
+    return {
+      ...(cfg?.params ?? {}),
+      delayMs: input.registeredSideChannelDelayMs ?? cfg?.delayMs ?? 0,
+    };
+  }
+
   private async subscribeInputToModel(
     input: RoomInputState,
     modelId: string,
   ): Promise<void> {
     const sidecar = await this.getSidecarForModel(modelId);
-    sidecar.addInput(input.inputId, input.aiModels?.[modelId]?.params);
+    sidecar.addInput(input.inputId, this.workerParams(input, modelId));
   }
 
   /** Push updated model params to the running worker without re-subscribing. */
@@ -203,10 +227,8 @@ export class RoomAIController {
     input: RoomInputState,
     modelId: string,
   ): Promise<void> {
-    const params = input.aiModels?.[modelId]?.params;
-    if (!params) return;
     const sidecar = await this.getSidecarForModel(modelId);
-    sidecar.configureInput(input.inputId, params);
+    sidecar.configureInput(input.inputId, this.workerParams(input, modelId));
   }
 
   private async getSidecarForModel(modelId: string): Promise<BaseSidecar> {
