@@ -431,6 +431,57 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     ],
   },
   {
+    id: 'marker-erase',
+    isActive: true,
+    isVisible: true,
+    name: 'Marker Erase',
+    description:
+      'Removes colour-keyed marker rectangles drawn into the footage, filling each stroke with the surrounding picture. Pair it with the people-counter marker source so the rectangles drive detection without appearing in the shot — set the same colour in both.',
+    shaderFile: 'marker-erase.wgsl',
+    params: [
+      {
+        name: 'marker_color',
+        type: 'color',
+        defaultValue: '#ff0000',
+      },
+      {
+        name: 'hue_width',
+        type: 'number',
+        minValue: 0.01,
+        maxValue: 0.3,
+        defaultValue: 0.07,
+      },
+      {
+        name: 'sat_min',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.35,
+      },
+      {
+        name: 'val_min',
+        type: 'number',
+        minValue: 0,
+        maxValue: 1,
+        defaultValue: 0.2,
+      },
+      {
+        name: 'reach',
+        type: 'number',
+        minValue: 0.002,
+        maxValue: 0.08,
+        defaultValue: 0.018,
+      },
+      {
+        name: 'grow',
+        type: 'number',
+        minValue: 0,
+        maxValue: 0.02,
+        defaultValue: 0.003,
+      },
+    ],
+  },
+  {
     id: 'ultra-key',
     isActive: true,
     isVisible: true,

@@ -17,6 +17,15 @@ type SmoothedBoxesProps = {
   predict?: boolean;
   /** Show the detection-confidence label above each box. */
   showConf?: boolean;
+  /**
+   * Ease each box toward its target (default). Pass false for detections that
+   * are already exact — the marker backend keys its boxes straight out of the
+   * frame, and easing would leave the outline trailing the marker it was read
+   * from by a few frames.
+   */
+  smooth?: boolean;
+  /** Outline thickness in px. Raised to cover a marker burned into the video. */
+  borderWidth?: number;
 };
 
 // Smooth-motion tuning (matches CarHueWrapper).
@@ -84,6 +93,8 @@ export function SmoothedBoxes({
   parent,
   predict = true,
   showConf = false,
+  smooth = true,
+  borderWidth = 4,
 }: SmoothedBoxesProps) {
   const { width, height } = parent;
   // Live track ids + per-track motion estimate + eased, currently-drawn rect.
@@ -148,15 +159,17 @@ export function SmoothedBoxes({
           // New track: the box appears in place rather than sliding in.
           curs.set(id, [...tgt]);
         } else {
+          // ease = 1 lands on the target outright, skipping the easing.
+          const ease = smooth ? SMOOTH : 1;
           for (let i = 0; i < tgt.length; i++) {
-            cur[i] += (tgt[i] - cur[i]) * SMOOTH;
+            cur[i] += (tgt[i] - cur[i]) * ease;
           }
         }
       }
       setTick((t) => (t + 1) % 1_000_000);
     }, TICK_MS);
     return () => clearInterval(timer);
-  }, [predict]);
+  }, [predict, smooth]);
 
   return (
     <View style={{ top: 0, left: 0, width, height, overflow: 'hidden' }}>
@@ -170,15 +183,21 @@ export function SmoothedBoxes({
         const [left, top, w, h] = rect;
         const boxTop = Math.round(top);
         const boxLeft = Math.round(left);
+        // The border grows outward from the View, so a View sized to the box
+        // draws its outline just *outside* the box — which leaves a marker
+        // burned into the video showing through inside the green. Inset the
+        // View by the border so the outline's outer edge lands on the box and
+        // the stroke covers the marker instead of ringing it.
+        const inset = Math.max(0, borderWidth);
         const els = [
           <View
             key={id}
             style={{
-              top: boxTop,
-              left: boxLeft,
-              width: Math.max(2, Math.round(w)),
-              height: Math.max(2, Math.round(h)),
-              borderWidth: 4,
+              top: boxTop + inset,
+              left: boxLeft + inset,
+              width: Math.max(2, Math.round(w) - 2 * inset),
+              height: Math.max(2, Math.round(h) - 2 * inset),
+              borderWidth,
               borderColor: '#00FF66FF',
               borderRadius: 4,
             }}

@@ -20,6 +20,7 @@ export {
   PEOPLE_COUNTER_YOLO_ID,
   PEOPLE_COUNTER_YOLO_BIRDS_ID,
   isPeopleCounterModel,
+  isMarkerSource,
 } from './people-counter/manifest';
 export {
   BUILDING_DETECTOR_MANIFEST,

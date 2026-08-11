@@ -33,12 +33,14 @@ import {
   PEOPLE_COUNTER_MANIFESTS,
   PEOPLE_COUNTER_YOLO_ID,
   PEOPLE_COUNTER_YOLO_BIRDS_ID,
+  isMarkerSource,
   BUILDING_DETECTOR_ID,
   CAR_ADS_ID,
   CAR_HUE_ID,
   type ModelResultEvent,
 } from '../ai-models';
 import { PeopleTracker } from '../ai-models/people-counter/people-tracker';
+import { jitterBoxes } from '../ai-models/people-counter/box-jitter';
 import { CarTracker } from '../ai-models/car-ads/car-tracker';
 import type { CarAdDetection } from '../app/store';
 import { DuckHunterController } from '../duckHunter/DuckHunterController';
@@ -63,6 +65,7 @@ import type {
   UpdateInputOptions,
 } from './types';
 import type { ShaderConfig, BroadcastTile } from '../types';
+import type { AIModelConfig } from '@smelter-editor/types';
 
 const RESUME_FROZEN_IMAGE_CLEANUP_DELAY_MS = 5500;
 const FROZEN_IMAGE_UNREGISTER_GRACE_MS = 500;
@@ -147,6 +150,51 @@ function isAudioBackedLocalMp4(mp4FilePath: string): boolean {
   );
 }
 
+export const MARKER_ERASE_SHADER_ID = 'marker-erase';
+
+/**
+ * Add, update or drop the marker-erase shader on an input so it always matches
+ * the model driving it.
+ *
+ * The shader and the detector key the same colour from opposite ends: the
+ * worker reads the drawn rectangles off the side channel, the shader removes
+ * them from the composited picture. Wiring the toggle here rather than in the
+ * UI is what keeps them agreeing — change 'Marker color' and the shader follows
+ * without the user having to remember to update it in two places.
+ */
+function syncMarkerEraseShader(
+  input: RoomInputState,
+  cfg: AIModelConfig,
+  enabled: boolean,
+): void {
+  const wanted =
+    enabled && Boolean(cfg.eraseMarkers) && isMarkerSource(cfg.params);
+  const existing = input.shaders.findIndex(
+    (s) => s.shaderId === MARKER_ERASE_SHADER_ID,
+  );
+
+  if (!wanted) {
+    if (existing !== -1) input.shaders.splice(existing, 1);
+    return;
+  }
+
+  const color = String(cfg.params?.markerColor ?? '#ff0000');
+  const shader: ShaderConfig = {
+    shaderName: 'Marker Erase',
+    shaderId: MARKER_ERASE_SHADER_ID,
+    enabled: true,
+    params: [{ paramName: 'marker_color', paramValue: color }],
+  };
+
+  if (existing === -1) {
+    // Last in the chain, so it erases what earlier shaders may have shifted
+    // around rather than having its fill re-tinted by them.
+    input.shaders.push(shader);
+  } else {
+    input.shaders[existing] = shader;
+  }
+}
+
 function layoutInputsEqual(a: Layer['inputs'], b: Layer['inputs']): boolean {
   if (a.length !== b.length) return false;
   return a.every((ai, i) => {
@@ -180,7 +228,10 @@ export class RoomState {
   /** Per-input cross-frame tracker for YOLO people boxes (stable id + color). */
   private readonly peopleTrackers = new Map<string, PeopleTracker>();
 
-  /** Per-input cross-frame tracker for YOLO bird boxes (stable id + color). */
+  /**
+   * Cross-frame tracker for bird boxes (stable id + color), keyed
+   * `modelId:inputId` — several bird backends can run on the same input.
+   */
   private readonly birdTrackers = new Map<string, PeopleTracker>();
 
   /** Per-input cross-frame tracker for car-ads vehicles (stable id + quad). */
@@ -323,7 +374,14 @@ export class RoomState {
       if (!input) return;
       const data = event.data as {
         count?: number;
-        boxes?: { x: number; y: number; w: number; h: number; conf?: number }[];
+        boxes?: {
+          x: number;
+          y: number;
+          w: number;
+          h: number;
+          conf?: number;
+          src?: 'yolo' | 'motion';
+        }[];
         frameW?: number;
         frameH?: number;
         procMs?: number;
@@ -345,7 +403,14 @@ export class RoomState {
 
       const applyOverlay = () => {
         const store = this.output.store.getState();
-        store.setPeopleCount(event.inputId, input.peopleCount ?? null);
+        // The bird counter keeps its count editor-only — no 👥 badge on the
+        // output (it would sit on top of the duck-hunt scene).
+        store.setPeopleCount(
+          event.inputId,
+          event.modelId === PEOPLE_COUNTER_YOLO_BIRDS_ID
+            ? null
+            : (input.peopleCount ?? null),
+        );
 
         // Only the YOLO backend emits boxes; render them when its drawBoxes
         // or ghostMode option is still enabled for this input at present time.
@@ -404,6 +469,10 @@ export class RoomState {
           // sensitivity testing) or bird sprites (ghostMode). The bird only
           // shows while it's being detected — there's no free-flight phase.
           const cfg = input.aiModels?.[PEOPLE_COUNTER_YOLO_BIRDS_ID];
+          // In marker mode the boxes are keyed out of the frame rather than
+          // inferred, so they are already exact: leading and easing them would
+          // only push the drawn outline off the marker it was read from.
+          const marker = isMarkerSource(cfg?.params);
           const hasFrame =
             Array.isArray(data.boxes) &&
             typeof data.frameW === 'number' &&
@@ -412,15 +481,27 @@ export class RoomState {
           const show = Boolean(
             cfg?.enabled && (cfg?.drawBoxes || sprite) && hasFrame,
           );
+          // The source is part of the key so flipping YOLO <-> markers starts a
+          // fresh tracker: the two disagree on whether boxes are led, and a
+          // reused tracker would keep the wrong setting for the rest of the run.
+          const trackerKey = `${marker ? 'marker' : 'yolo'}:${event.inputId}`;
           if (show) {
-            let tracker = this.birdTrackers.get(event.inputId);
+            let tracker = this.birdTrackers.get(trackerKey);
             if (!tracker) {
               // Birds get a tighter 2-response miss grace than people so a
               // caught/lost bird stops rendering quickly.
-              tracker = new PeopleTracker(2);
-              this.birdTrackers.set(event.inputId, tracker);
+              tracker = new PeopleTracker(2, !marker);
+              this.birdTrackers.set(trackerKey, tracker);
             }
-            const tracked = tracker.update(data.boxes!, Date.now());
+            const now = Date.now();
+            let tracked = tracker.update(data.boxes!, now);
+            if (marker) {
+              tracked = jitterBoxes(
+                tracked,
+                Number(cfg?.params?.jitter ?? 0),
+                now,
+              );
+            }
             store.setPeopleBoxes(
               event.inputId,
               tracked.length > 0
@@ -433,11 +514,17 @@ export class RoomState {
                     duckScale: this.duckScale,
                     duckPauseMs: this.duckPauseMs,
                     duckFlySpeed: this.duckFlySpeed,
+                    ...(marker
+                      ? {
+                          snap: true,
+                          borderWidth: Number(cfg?.params?.border ?? 10),
+                        }
+                      : {}),
                   }
                 : null,
             );
           } else {
-            this.birdTrackers.delete(event.inputId);
+            this.birdTrackers.delete(trackerKey);
             store.setPeopleBoxes(event.inputId, null);
           }
           // Ducks are owned/animated by the controller now (so a shot lands on
@@ -1411,6 +1498,7 @@ export class RoomState {
     drawBoxes?: boolean,
     params?: Record<string, number | string>,
     ghostMode?: boolean,
+    eraseMarkers?: boolean,
   ): Promise<void> {
     return this.mutex.runExclusive(async () => {
       const input = this.inputManager.getInput(inputId);
@@ -1437,6 +1525,8 @@ export class RoomState {
         drawBoxes !== undefined ? drawBoxes : current.drawBoxes;
       const newGhostMode =
         ghostMode !== undefined ? ghostMode : current.ghostMode;
+      const newEraseMarkers =
+        eraseMarkers !== undefined ? eraseMarkers : current.eraseMarkers;
       const newParams = params !== undefined ? params : current.params;
       const paramsChanged =
         JSON.stringify(current.params ?? {}) !==
@@ -1447,6 +1537,7 @@ export class RoomState {
         current.delayMs === newDelay &&
         (current.drawBoxes ?? false) === (newDrawBoxes ?? false) &&
         (current.ghostMode ?? false) === (newGhostMode ?? false) &&
+        (current.eraseMarkers ?? false) === (newEraseMarkers ?? false) &&
         !paramsChanged
       ) {
         return;
@@ -1462,8 +1553,17 @@ export class RoomState {
         delayMs: newDelay,
         ...(newDrawBoxes !== undefined ? { drawBoxes: newDrawBoxes } : {}),
         ...(newGhostMode !== undefined ? { ghostMode: newGhostMode } : {}),
+        ...(newEraseMarkers !== undefined
+          ? { eraseMarkers: newEraseMarkers }
+          : {}),
         ...(newParams !== undefined ? { params: newParams } : {}),
       };
+
+      // Keep the erase shader in step with the model it belongs to. Doing this
+      // here rather than in the UI means the shader's colour follows the
+      // 'Marker color' picker on its own — the two have to key the same colour
+      // or the rectangles are erased but not detected, or the other way round.
+      syncMarkerEraseShader(input, input.aiModels[modelId], enabled);
 
       if (modelId === 'motion') {
         input.motionEnabled = enabled;
@@ -1480,6 +1580,18 @@ export class RoomState {
         (!enabled || (!newDrawBoxes && !newGhostMode))
       ) {
         this.peopleTrackers.delete(inputId);
+        this.output.store.getState().setPeopleBoxes(inputId, null);
+      }
+
+      // Same for the bird model. Once it is off no further results arrive, so
+      // the overlay can only be cleared from here — otherwise the last boxes
+      // stay frozen on the output.
+      if (
+        modelId === PEOPLE_COUNTER_YOLO_BIRDS_ID &&
+        (!enabled || (!newDrawBoxes && !newGhostMode))
+      ) {
+        this.birdTrackers.delete(`yolo:${inputId}`);
+        this.birdTrackers.delete(`marker:${inputId}`);
         this.output.store.getState().setPeopleBoxes(inputId, null);
       }
 

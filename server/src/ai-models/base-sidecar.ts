@@ -8,6 +8,9 @@ import type { ModelManifest } from './registry';
 
 const execFileAsync = promisify(execFile);
 
+// Tail of the setup chain per venv directory — see setupPython().
+const venvSetupQueues = new Map<string, Promise<void>>();
+
 export type ModelResultEvent = {
   modelId: string;
   inputId: string;
@@ -265,6 +268,20 @@ export abstract class BaseSidecar extends EventEmitter {
       return;
     }
 
+    // Sidecars can share a venv (every people-counter backend plus the car
+    // models install into people-counter's .venv). Concurrent `pip install`
+    // runs into the same site-packages corrupt each other, so queue setups
+    // per venvDir; once the first finishes, the depsCheck in installVenv
+    // passes and the queued ones return immediately.
+    const prev = venvSetupQueues.get(venvDir) ?? Promise.resolve();
+    const current = prev.then(() => this.installVenv());
+    venvSetupQueues.set(venvDir, current);
+    return current;
+  }
+
+  /** Never rejects — a failed install is logged and the model stays broken. */
+  private async installVenv(): Promise<void> {
+    const { requirementsFile, venvDir, depsCheck } = this.manifest;
     const venvPython = this.getVenvPython();
     if (existsSync(venvPython)) {
       try {

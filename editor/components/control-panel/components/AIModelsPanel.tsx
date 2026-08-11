@@ -109,6 +109,22 @@ export function AIModelsPanel({
     [drafts, statusOf],
   );
 
+  /**
+   * Whether this model is currently reading rectangles drawn into the footage
+   * rather than detecting. Only then is there anything for the erase shader to
+   * remove, so the toggle stays hidden otherwise.
+   */
+  const usesMarkerSource = useCallback(
+    (model: AIModelInfo) => {
+      const source = model.params?.find((p) => p.key === 'source');
+      const color = model.params?.some((p) => p.key === 'markerColor');
+      return (
+        !!source && !!color && String(paramOf(model, source)) === 'markers'
+      );
+    },
+    [paramOf],
+  );
+
   /** Full params object for a model, with an optional single override. */
   const resolveParams = useCallback(
     (
@@ -136,6 +152,7 @@ export function AIModelsPanel({
         delayMs?: number;
         drawBoxes?: boolean;
         ghostMode?: boolean;
+        eraseMarkers?: boolean;
         params?: Record<string, number | string>;
       },
     ) => {
@@ -153,6 +170,7 @@ export function AIModelsPanel({
           next.drawBoxes ?? status?.drawBoxes,
           next.params ?? resolveParams(model),
           next.ghostMode ?? status?.ghostMode,
+          next.eraseMarkers ?? status?.eraseMarkers,
         );
         await handleRefreshState();
       } finally {
@@ -306,7 +324,44 @@ export function AIModelsPanel({
                 )}
 
                 {model.params?.map((spec) =>
-                  spec.type === 'select' ? (
+                  spec.type === 'color' ? (
+                    <Field
+                      key={spec.key}
+                      label={spec.label}
+                      value={String(paramOf(model, spec)).toLowerCase()}
+                      hint={spec.description}>
+                      <div className='flex items-center gap-2'>
+                        <input
+                          type='color'
+                          aria-label={spec.label}
+                          value={normalizeHex(
+                            String(paramOf(model, spec)),
+                            spec.default,
+                          )}
+                          onChange={(e) =>
+                            onParamChange(model, spec, e.target.value)
+                          }
+                          className='h-8 w-10 shrink-0 cursor-pointer rounded border border-neutral-700 bg-neutral-900 p-0.5'
+                        />
+                        <input
+                          type='text'
+                          spellCheck={false}
+                          aria-label={`${spec.label} hex`}
+                          value={String(paramOf(model, spec))}
+                          // Typing a hex goes through character by character, so
+                          // only push once it is a complete colour — otherwise
+                          // '#f' would reach the worker and key nothing.
+                          onChange={(e) => {
+                            const v = e.target.value.trim();
+                            if (/^#?[0-9a-fA-F]{0,6}$/.test(v)) {
+                              onParamChange(model, spec, v);
+                            }
+                          }}
+                          className='h-8 w-full rounded border border-neutral-700 bg-neutral-900 px-2 font-mono text-xs text-neutral-200 outline-none focus:border-neutral-500'
+                        />
+                      </div>
+                    </Field>
+                  ) : spec.type === 'select' ? (
                     <Field
                       key={spec.key}
                       label={spec.label}
@@ -376,6 +431,33 @@ export function AIModelsPanel({
                   </div>
                 )}
 
+                {usesMarkerSource(model) && (
+                  <div className='flex items-center justify-between'>
+                    <div>
+                      <div className='text-xs text-neutral-300'>
+                        Erase markers
+                      </div>
+                      <div className='text-[11px] text-neutral-500'>
+                        Remove the drawn rectangles from the picture, filling
+                        them with the surrounding image
+                      </div>
+                    </div>
+                    <Button
+                      type='button'
+                      size='sm'
+                      variant={status?.eraseMarkers ? 'default' : 'outline'}
+                      disabled={pending}
+                      className='h-6 px-2 text-[10px] font-mono uppercase'
+                      onClick={() => {
+                        void pushChange(model, {
+                          eraseMarkers: !status?.eraseMarkers,
+                        });
+                      }}>
+                      {status?.eraseMarkers ? 'On' : 'Off'}
+                    </Button>
+                  </div>
+                )}
+
                 {model.supportsBoxes && (
                   <div className='flex items-center justify-between'>
                     <div>
@@ -429,6 +511,23 @@ export function AIModelsPanel({
       })}
     </div>
   );
+}
+
+/**
+ * `<input type="color">` refuses anything that is not exactly `#rrggbb` and
+ * silently falls back to black, which would show the wrong swatch while the
+ * user is still typing a hex into the field next to it.
+ */
+function normalizeHex(value: string, fallback: string): string {
+  const v = value.trim();
+  const full = /^#?([0-9a-fA-F]{6})$/.exec(v);
+  if (full) return `#${full[1].toLowerCase()}`;
+  const short = /^#?([0-9a-fA-F]{3})$/.exec(v);
+  if (short) {
+    const [r, g, b] = short[1].toLowerCase();
+    return `#${r}${r}${g}${g}${b}${b}`;
+  }
+  return fallback;
 }
 
 function Field({

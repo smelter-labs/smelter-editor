@@ -1214,9 +1214,7 @@ routes.after(() => {
         const params = msg.params as Record<string, unknown>;
         try {
           const room = state.getRoom(roomId);
-          const input = room
-            .getInputs()
-            .find((i) => i.inputId === msg.inputId);
+          const input = room.getInputs().find((i) => i.inputId === msg.inputId);
           if (!input) return;
           const newShaders: ShaderConfig[] = input.shaders.map((s) => {
             if (s.shaderId !== msg.shaderId) return s;
@@ -1625,9 +1623,7 @@ const UpdateRoomSchema = Type.Object({
         offsetLeft: Type.Optional(Type.Number()),
         offsetWidth: Type.Optional(Type.Number({ minimum: 0 })),
         offsetHeight: Type.Optional(Type.Number({ minimum: 0 })),
-        offsetTransitionDurationMs: Type.Optional(
-          Type.Number({ minimum: 0 }),
-        ),
+        offsetTransitionDurationMs: Type.Optional(Type.Number({ minimum: 0 })),
         offsetTransitionEasing: Type.Optional(Type.String()),
       }),
     ),
@@ -1715,7 +1711,9 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
       const currentLayers = room.getState().layers;
       const targetLayer = currentLayers.find((l) => l.id === layerId);
       if (!targetLayer || !targetLayer.carousel) {
-        res.status(404).send({ status: 'error', message: 'Carousel layer not found' });
+        res
+          .status(404)
+          .send({ status: 'error', message: 'Carousel layer not found' });
         return;
       }
       const n = targetLayer.inputs.length;
@@ -1743,7 +1741,9 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
       } else {
         const idx = index ?? oldIndex;
         if (idx < 0 || idx >= n) {
-          res.status(400).send({ status: 'error', message: 'index out of range' });
+          res
+            .status(400)
+            .send({ status: 'error', message: 'index out of range' });
           return;
         }
         newIndex = idx;
@@ -1807,10 +1807,7 @@ routes.post<RoomIdParams & { Body: Static<typeof UpdateRoomSchema> }>(
     if (req.body.swapFadeOutDurationMs !== undefined) {
       room.setSwapFadeOutDurationMs(req.body.swapFadeOutDurationMs);
     }
-    if (
-      req.body.sortMode === 'timeline' ||
-      req.body.sortMode === 'layers'
-    ) {
+    if (req.body.sortMode === 'timeline' || req.body.sortMode === 'layers') {
       room.setSortMode(req.body.sortMode);
     }
 
@@ -2274,6 +2271,7 @@ const AIModelSchema = Type.Object({
   delayMs: Type.Optional(Type.Number({ minimum: 0 })),
   drawBoxes: Type.Optional(Type.Boolean()),
   ghostMode: Type.Optional(Type.Boolean()),
+  eraseMarkers: Type.Optional(Type.Boolean()),
   params: Type.Optional(
     Type.Record(Type.String(), Type.Union([Type.Number(), Type.String()])),
   ),
@@ -2287,17 +2285,22 @@ routes.get('/ai-models', async (_req, res) => {
   );
 });
 
-routes.post<
-  RoomAndInputIdParams & { Body: Static<typeof AIModelSchema> }
->(
+routes.post<RoomAndInputIdParams & { Body: Static<typeof AIModelSchema> }>(
   '/room/:roomId/input/:inputId/ai-model',
   {
     schema: { params: RoomAndInputIdParamsSchema, body: AIModelSchema },
   },
   async (req, res) => {
     const { roomId, inputId } = req.params;
-    const { modelId, enabled, delayMs, drawBoxes, ghostMode, params } =
-      req.body;
+    const {
+      modelId,
+      enabled,
+      delayMs,
+      drawBoxes,
+      ghostMode,
+      eraseMarkers,
+      params,
+    } = req.body;
     console.log('[request] Set AI model', {
       roomId,
       inputId,
@@ -2317,6 +2320,7 @@ routes.post<
       drawBoxes,
       params,
       ghostMode,
+      eraseMarkers,
     );
     res.status(200).send({ status: 'ok' });
   },
