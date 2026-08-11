@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Starts the Caddy single-origin proxy (:8080) + the ngrok tunnel on your static
 # domain, so a phone can reach the app over HTTPS (needed for the gyroscope).
+# For the workshop domain (workshop.smelter.dev) use ./dev/tunnel-workshop.sh.
 #
 # Run the app separately (server + editor). See dev/README-tunnel.md.
 # Usage: ./dev/tunnel.sh

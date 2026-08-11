@@ -43,7 +43,8 @@ export function logSocketPathBudget(
   socketDir: string,
   inputId?: string,
 ): void {
-  // Worst-case id: `::local::` is the longest input-kind infix we generate.
+  // Budget against the longest id variant — `::local::` beats `::whip::` by
+  // one char, which is exactly what pushed real paths over SUN_LEN before.
   const sampleId =
     inputId ??
     '00000000-0000-0000-0000-000000000000::local::00000000-0000-0000-0000-000000000000';

@@ -10,6 +10,7 @@ import {
   setAIModel,
   setDuckHunterConfig,
 } from '@/app/actions/actions';
+import { getStoredClientServerUrl } from '@/lib/server-url';
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import {
@@ -204,7 +205,13 @@ export function DuckHunterPanel({ roomId }: Props) {
   const shootUrl = useMemo(() => {
     const b = base.trim().replace(/\/+$/, '');
     if (!b) return '';
-    return `${b}/mobile/${encodeURIComponent(roomId)}/shoot`;
+    const url = `${b}/mobile/${encodeURIComponent(roomId)}/shoot`;
+    // If this editor talks to a publicly reachable API (e.g. an instance behind
+    // nginx), bake it into the link so the phone targets the same backend even
+    // when the page itself is served from a static deploy (Vercel). A loopback
+    // API is unreachable from a phone, so the page's own-origin fallback stays.
+    const api = getStoredClientServerUrl();
+    return api ? `${url}?server=${encodeURIComponent(api)}` : url;
   }, [base, roomId]);
 
   const onBaseChange = (value: string) => {

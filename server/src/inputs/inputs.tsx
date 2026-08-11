@@ -584,7 +584,7 @@ function PeopleBoxes({
 
 // Duck Hunt dog sprite geometry + pop-up timing (must cover DOG_REVEAL_MS from
 // the controller so a reveal never lingers as a static image after it's pruned).
-const DOG_ASPECT = 40 / 68; // dog-catch.png is 68×40
+const DOG_ASPECT = 40 / 56; // dog-catch.png is 56×40
 const DOG_RISE_MS = 220; // spring up from below the bottom edge
 const DOG_DROP_MS = 320; // drop back down at the end
 const DOG_MS = 6000; // total on-screen time, matches DOG_REVEAL_MS
@@ -701,6 +701,8 @@ function ShooterHud({
           );
         }
         const size = Math.round(chSize * (0.6 + 1.8 * t));
+        const bw = Math.max(3, Math.round(chSize * 0.12));
+        const ringColor = `#FFEE00${alpha}`;
         return (
           <View
             key={`burst-${b.id}`}
@@ -709,10 +711,45 @@ function ShooterHud({
               left: Math.round(px - size / 2),
               width: size,
               height: size,
-              borderWidth: Math.max(3, Math.round(chSize * 0.12)),
-              borderColor: `#FFEE00${alpha}`,
-            }}
-          />
+              overflow: 'visible',
+            }}>
+            <View
+              style={{
+                top: 0,
+                left: 0,
+                width: size,
+                height: bw,
+                backgroundColor: ringColor,
+              }}
+            />
+            <View
+              style={{
+                top: size - bw,
+                left: 0,
+                width: size,
+                height: bw,
+                backgroundColor: ringColor,
+              }}
+            />
+            <View
+              style={{
+                top: 0,
+                left: 0,
+                width: bw,
+                height: size,
+                backgroundColor: ringColor,
+              }}
+            />
+            <View
+              style={{
+                top: 0,
+                left: size - bw,
+                width: bw,
+                height: size,
+                backgroundColor: ringColor,
+              }}
+            />
+          </View>
         );
       })}
 
@@ -800,9 +837,10 @@ function ShooterHud({
 
       {/* Player crosshairs: pixel-art scope — an axis-aligned square outline
           with chunky axis lines poking through its edge midpoints and a center
-          pixel. Deliberately NO `rotation` (no diamond): rotated bordered
-          Views render displaced/oversized on this engine build, which visibly
-          broke the reticle. */}
+          pixel. Deliberately NO `rotation` (no diamond) and NO `borderWidth`:
+          rotated/bordered Views render displaced/oversized on this engine
+          build, which visibly broke the reticle — the outline is built from
+          four filled bars instead so it stays centered on the dot. */}
       {shooter.crosshairs.map((c) => {
         const { px, py } = toPx(c.x, c.y);
         const u = Math.max(3, th); // chunky "pixel" unit
@@ -810,6 +848,7 @@ function ShooterHud({
         const lineLen = Math.round(chSize * 0.34);
         const dot = Math.round(u * 1.4);
         const mid = Math.round(chSize / 2 - u / 2);
+        const sq = Math.round((chSize - d) / 2); // square top-left corner
         return (
           <View
             key={`ch-${c.clientId}`}
@@ -822,12 +861,38 @@ function ShooterHud({
             }}>
             <View
               style={{
-                top: Math.round((chSize - d) / 2),
-                left: Math.round((chSize - d) / 2),
+                top: sq,
+                left: sq,
                 width: d,
+                height: u,
+                backgroundColor: c.color,
+              }}
+            />
+            <View
+              style={{
+                top: sq + d - u,
+                left: sq,
+                width: d,
+                height: u,
+                backgroundColor: c.color,
+              }}
+            />
+            <View
+              style={{
+                top: sq,
+                left: sq,
+                width: u,
                 height: d,
-                borderWidth: u,
-                borderColor: c.color,
+                backgroundColor: c.color,
+              }}
+            />
+            <View
+              style={{
+                top: sq,
+                left: sq + d - u,
+                width: u,
+                height: d,
+                backgroundColor: c.color,
               }}
             />
             <View
