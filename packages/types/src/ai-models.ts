@@ -25,8 +25,19 @@ export type SelectParamSpec = {
   default: string;
 };
 
-/** A model-specific tunable exposed in the UI (slider or dropdown). */
-export type ModelParamSpec = NumberParamSpec | SelectParamSpec;
+/** A colour rendered as a swatch picker plus a hex field. */
+export type ColorParamSpec = {
+  type: "color";
+  key: string;
+  label: string;
+  /** Optional one-line hint shown under the field. */
+  description?: string;
+  /** Hex, `#rrggbb`. */
+  default: string;
+};
+
+/** A model-specific tunable exposed in the UI (slider, dropdown or colour). */
+export type ModelParamSpec = NumberParamSpec | SelectParamSpec | ColorParamSpec;
 
 /** A tunable value: number for sliders, string for dropdowns. */
 export type ModelParamValue = number | string;
@@ -38,6 +49,13 @@ export type AIModelConfig = {
   drawBoxes?: boolean;
   /** Replace detected people with Pac-Man ghosts (people-counter YOLO only). */
   ghostMode?: boolean;
+  /**
+   * Erase the drawn marker rectangles from the picture (marker source only).
+   * Toggling this keeps a `marker-erase` shader on the input in sync with the
+   * model's own marker colour, so the rectangles drive detection without ever
+   * reaching the shot.
+   */
+  eraseMarkers?: boolean;
   /** Model-specific tunables, keyed by ModelParamSpec.key. */
   params?: Record<string, ModelParamValue>;
 };
@@ -47,6 +65,7 @@ export type AIModelStatus = {
   delayMs: number;
   drawBoxes?: boolean;
   ghostMode?: boolean;
+  eraseMarkers?: boolean;
   params?: Record<string, ModelParamValue>;
   lastResult?: unknown;
 };

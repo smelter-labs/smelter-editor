@@ -194,6 +194,8 @@ export class PeopleTracker {
     }
     const x = clamp(t.box.x + dx, 0, 1 - t.box.w);
     const y = clamp(t.box.y + dy, 0, 1 - t.box.h);
+    // src follows the last matched detection — a motion-only track that YOLO
+    // later confirms correctly becomes a yolo track.
     return {
       x,
       y,
@@ -202,6 +204,7 @@ export class PeopleTracker {
       id: t.id,
       color: t.color,
       conf: t.box.conf,
+      src: t.box.src,
     };
   }
 }

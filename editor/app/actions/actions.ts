@@ -532,6 +532,7 @@ export async function setAIModel(
   drawBoxes?: boolean,
   params?: Record<string, number | string>,
   ghostMode?: boolean,
+  eraseMarkers?: boolean,
 ): Promise<void> {
   return (await getClient()).setAIModel(
     roomId,
@@ -542,6 +543,7 @@ export async function setAIModel(
     drawBoxes,
     params,
     ghostMode,
+    eraseMarkers,
   );
 }
 

@@ -87,6 +87,7 @@ export type {
   ModelParamSpec,
   NumberParamSpec,
   SelectParamSpec,
+  ColorParamSpec,
   ModelParamValue,
 } from "./ai-models.js";
 

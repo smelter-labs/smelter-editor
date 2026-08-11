@@ -21,11 +21,14 @@ export function sideChannelSocketPathLen(
 
 /**
  * Pick a socket directory short enough for the longest expected input id.
- * Our ids look like `{roomUuid}::whip::{inputUuid}` (~80 chars) → the dir
- * itself must stay under ~11 characters on macOS.
+ * Our ids look like `{roomUuid}::local::{inputUuid}` (81 chars), and Smelter
+ * appends `video_{inputId}.sock` — with the macOS SUN_LEN budget of 103 the
+ * dir itself must stay within 10 characters. `/tmp/s{pid}` blows that by one
+ * whenever the PID has 5 digits, so encode the PID in base36 (≤4 chars for
+ * any macOS PID) instead.
  */
 export function createCaptionSocketDir(): string {
-  const dir = `/tmp/s${process.pid}`;
+  const dir = `/tmp/s${process.pid.toString(36)}`;
   mkdirSync(dir, { recursive: true });
   // Smelter expects a clean socket dir; drop stale sockets after a crash.
   for (const name of readdirSync(dir)) {
@@ -40,9 +43,10 @@ export function logSocketPathBudget(
   socketDir: string,
   inputId?: string,
 ): void {
+  // Worst-case id: `::local::` is the longest input-kind infix we generate.
   const sampleId =
     inputId ??
-    '00000000-0000-0000-0000-000000000000::whip::00000000-0000-0000-0000-000000000000';
+    '00000000-0000-0000-0000-000000000000::local::00000000-0000-0000-0000-000000000000';
   const samplePath = sideChannelSocketPath(socketDir, sampleId);
   const len = samplePath.length;
   const ok = len <= UNIX_SOCKET_PATH_MAX;

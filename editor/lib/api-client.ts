@@ -164,6 +164,7 @@ interface SmelterApiClient {
     drawBoxes?: boolean,
     params?: Record<string, number | string>,
     ghostMode?: boolean,
+    eraseMarkers?: boolean,
   ): Promise<void>;
 
   setAudioAnalysisEnabled(roomId: string, enabled: boolean): Promise<void>;
@@ -580,19 +581,17 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
       drawBoxes,
       params,
       ghostMode,
+      eraseMarkers,
     ) {
-      await req(
-        'post',
-        `/room/${enc(roomId)}/input/${enc(inputId)}/ai-model`,
-        {
-          modelId,
-          enabled,
-          ...(delayMs !== undefined ? { delayMs } : {}),
-          ...(drawBoxes !== undefined ? { drawBoxes } : {}),
-          ...(ghostMode !== undefined ? { ghostMode } : {}),
-          ...(params !== undefined ? { params } : {}),
-        },
-      );
+      await req('post', `/room/${enc(roomId)}/input/${enc(inputId)}/ai-model`, {
+        modelId,
+        enabled,
+        ...(delayMs !== undefined ? { delayMs } : {}),
+        ...(drawBoxes !== undefined ? { drawBoxes } : {}),
+        ...(ghostMode !== undefined ? { ghostMode } : {}),
+        ...(eraseMarkers !== undefined ? { eraseMarkers } : {}),
+        ...(params !== undefined ? { params } : {}),
+      });
     },
 
     async setAudioAnalysisEnabled(roomId, enabled) {
