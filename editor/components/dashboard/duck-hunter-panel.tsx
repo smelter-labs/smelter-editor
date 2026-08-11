@@ -10,17 +10,10 @@ import {
   setAIModel,
   setDuckHunterConfig,
 } from '@/app/actions/actions';
-<<<<<<< Updated upstream
-import { getStoredClientServerUrl } from '@/lib/server-url';
-=======
-<<<<<<< Updated upstream
-=======
 import {
   getPublicDefaultServerUrl,
   getStoredClientServerUrl,
 } from '@/lib/server-url';
->>>>>>> Stashed changes
->>>>>>> Stashed changes
 import { Button } from '@/components/ui/button';
 import { Slider } from '@/components/ui/slider';
 import {
@@ -215,25 +208,13 @@ export function DuckHunterPanel({ roomId }: Props) {
   const shootUrl = useMemo(() => {
     const b = base.trim().replace(/\/+$/, '');
     if (!b) return '';
-<<<<<<< Updated upstream
-=======
-<<<<<<< Updated upstream
-    return `${b}/mobile/${encodeURIComponent(roomId)}/shoot`;
-=======
->>>>>>> Stashed changes
     const url = `${b}/mobile/${encodeURIComponent(roomId)}/shoot`;
     // If this editor talks to a publicly reachable API (e.g. an instance behind
     // nginx), bake it into the link so the phone targets the same backend even
     // when the page itself is served from a static deploy (Vercel). A loopback
     // API is unreachable from a phone, so the page's own-origin fallback stays.
-<<<<<<< Updated upstream
-    const api = getStoredClientServerUrl();
-    return api ? `${url}?server=${encodeURIComponent(api)}` : url;
-=======
     const api = getStoredClientServerUrl() ?? getPublicDefaultServerUrl();
     return api ? `${url}?server=${encodeURIComponent(api)}` : url;
->>>>>>> Stashed changes
->>>>>>> Stashed changes
   }, [base, roomId]);
 
   const onBaseChange = (value: string) => {

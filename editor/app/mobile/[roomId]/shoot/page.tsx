@@ -9,17 +9,9 @@ import { startPublish } from '@/components/control-panel/whip-input/utils/whip-p
 import {
   applyServerUrlFromQueryParam,
   getEffectiveClientServerUrl,
-<<<<<<< Updated upstream
-  getStoredClientServerUrl,
-  isLoopbackHost,
-=======
-<<<<<<< Updated upstream
-=======
   getPublicDefaultServerUrl,
   getStoredClientServerUrl,
   isLoopbackHost,
->>>>>>> Stashed changes
->>>>>>> Stashed changes
   toWsUrl,
 } from '@/lib/server-url';
 
@@ -564,17 +556,6 @@ export default function ShootControllerPage() {
   }, [stage, fire]);
 
   const connectWs = useCallback(() => {
-<<<<<<< Updated upstream
-    const base = toWsUrl(
-      getStoredClientServerUrl() ??
-        remoteOrigin() ??
-        getEffectiveClientServerUrl(),
-    );
-=======
-<<<<<<< Updated upstream
-    const ro = remoteOrigin();
-    const base = toWsUrl(ro ?? getEffectiveClientServerUrl());
-=======
     // Explicit `?server=` wins; then the public build-time default (a phone on
     // the static deploy must not try same-origin — Vercel can't proxy WS);
     // same-origin only remains for the tunnel case, where the page's own
@@ -585,8 +566,6 @@ export default function ShootControllerPage() {
         remoteOrigin() ??
         getEffectiveClientServerUrl(),
     );
->>>>>>> Stashed changes
->>>>>>> Stashed changes
     const url = `${base}/room/${encodeURIComponent(String(roomId))}/ws`;
     setWsDbg(`connecting: ${url}`);
     const ws = new WebSocket(url);
@@ -1282,11 +1261,6 @@ function remoteOrigin(): string | null {
   const o = window.location.origin;
   return /(localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\])/.test(o) ? null : o;
 }
-<<<<<<< Updated upstream
-=======
-<<<<<<< Updated upstream
-=======
->>>>>>> Stashed changes
 
 // Media endpoints (WHIP/WHEP) come from the server, which may only know its
 // loopback address. When such a URL would be unreachable from the phone, graft
@@ -1294,12 +1268,8 @@ function remoteOrigin(): string | null {
 // prefix) or, failing that, onto this page's own origin. URLs that are already
 // public (e.g. an instance behind nginx) pass through untouched.
 function resolveMediaUrl(url: string): string {
-<<<<<<< Updated upstream
-  const base = getStoredClientServerUrl() ?? remoteOrigin();
-=======
   const base =
     getStoredClientServerUrl() ?? getPublicDefaultServerUrl() ?? remoteOrigin();
->>>>>>> Stashed changes
   if (!base) return url;
   try {
     const u = new URL(url);
@@ -1309,7 +1279,3 @@ function resolveMediaUrl(url: string): string {
     return url;
   }
 }
-<<<<<<< Updated upstream
-=======
->>>>>>> Stashed changes
->>>>>>> Stashed changes
