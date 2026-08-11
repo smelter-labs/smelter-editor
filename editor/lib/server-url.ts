@@ -143,6 +143,11 @@ export function setStoredServerUrl(url: string | null): void {
   document.cookie = `${SERVER_URL_COOKIE_NAME}=${encodeURIComponent(normalized)}; Path=/; Max-Age=${ONE_YEAR_SECONDS}; SameSite=Lax`;
 }
 
+<<<<<<< Updated upstream
+=======
+<<<<<<< Updated upstream
+=======
+>>>>>>> Stashed changes
 /**
  * The server URL the user picked explicitly (via `?server=` deep link or the
  * server selector) — or null when unset or a loopback address. Callers use it
@@ -150,9 +155,15 @@ export function setStoredServerUrl(url: string | null): void {
  * the Vercel deploy) can still be told to talk to a public API elsewhere.
  */
 export function getStoredClientServerUrl(): string | null {
+<<<<<<< Updated upstream
   if (getStoredAppMode() === 'demo') {
     return null;
   }
+=======
+  // Deliberately NOT gated on demo mode: phones scanning a workshop QR run in
+  // the default demo mode, and the `?server=` baked into that QR is the only
+  // way they can reach the right backend from a static (Vercel) deploy.
+>>>>>>> Stashed changes
   const stored = getStoredServerUrl();
   if (!stored) {
     return null;
@@ -167,6 +178,25 @@ export function getStoredClientServerUrl(): string | null {
   return stored;
 }
 
+<<<<<<< Updated upstream
+=======
+/**
+ * The build-time default server URL when it is reachable from another device
+ * (non-loopback) — e.g. the public API baked into the Vercel deploy. Null in
+ * local dev, where the loopback default is unreachable from a phone and
+ * same-origin/tunnel heuristics should apply instead.
+ */
+export function getPublicDefaultServerUrl(): string | null {
+  const url = getDefaultServerUrl();
+  try {
+    return isLoopbackHost(new URL(url).hostname) ? null : url;
+  } catch {
+    return null;
+  }
+}
+
+>>>>>>> Stashed changes
+>>>>>>> Stashed changes
 export function getEffectiveClientServerUrl(): string {
   const raw =
     getStoredAppMode() === 'demo'
