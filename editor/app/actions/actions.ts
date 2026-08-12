@@ -567,6 +567,21 @@ export async function setDuckHunterConfig(
   return (await getClient()).setDuckHunterConfig(roomId, config);
 }
 
+export async function controlDuckHunterMatch(
+  roomId: string,
+  cmd: {
+    action: 'start' | 'stop' | 'reset';
+  } & Partial<import('@smelter-editor/types').ShooterMatchConfig>,
+): Promise<import('@smelter-editor/types').ShooterMatchEvent> {
+  return (await getClient()).controlDuckHunterMatch(roomId, cmd);
+}
+
+export async function getDuckHunterMatch(
+  roomId: string,
+): Promise<import('@smelter-editor/types').ShooterMatchEvent> {
+  return (await getClient()).getDuckHunterMatch(roomId);
+}
+
 export async function setHaunterConfig(
   roomId: string,
   config: {

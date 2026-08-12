@@ -1,0 +1,326 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import { characterVideoUrl, type ArcadeCharacter } from '../characters';
+import type { ShooterFeed } from '../use-shooter-feed';
+import { readTopScores, submitTopScore, type TopScoreEntry } from '../top-scores';
+import {
+  ACCENT_LINE,
+  ArcadeText,
+  LedText,
+  PanelTitle,
+  PixelButton,
+  PixelPanel,
+  R5,
+  RetroFooter,
+  RetroFrame,
+  StarLine,
+  monoFont,
+  pixelFont,
+} from '../retro-kit';
+import { useArcadeKeys } from '../use-arcade-input';
+
+/**
+ * GAME OVER: winner card next to the host character clip, the frozen final
+ * scoreboard, and the local TOP SCORES table (the winner is submitted once
+ * on mount, arcade-style). PLAY AGAIN keeps the room (phones stay in).
+ */
+export function Results({
+  character,
+  feed,
+  onPlayAgain,
+  onExit,
+}: {
+  character: ArcadeCharacter;
+  feed: ShooterFeed;
+  onPlayAgain: () => void;
+  onExit: () => void;
+}) {
+  const match = feed.match;
+  const winner = match?.winner ?? null;
+  const finalScores = useMemo(
+    () => match?.finalScores ?? [],
+    [match?.finalScores],
+  );
+
+  const [table, setTable] = useState<TopScoreEntry[]>([]);
+  const [newRank, setNewRank] = useState<number | null>(null);
+
+  // Submit the winning score once per results screen.
+  useEffect(() => {
+    if (winner && match?.mode) {
+      const { rank } = submitTopScore({
+        name: winner.name,
+        characterId: character.id,
+        score: winner.score,
+        mode: match.mode,
+      });
+      setNewRank(rank);
+    }
+    setTable(readTopScores());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useArcadeKeys({ confirm: onPlayAgain, back: onExit });
+
+  return (
+    <RetroFrame
+      eyebrow='DUCK HUNTER'
+      titleSize={26}
+      footer={
+        <RetroFooter
+          tip='enter play again · esc exit to title'
+          right={
+            <div style={{ display: 'flex', gap: 12 }}>
+              <PixelButton accent='red' glyph='B' label='EXIT' onClick={onExit} />
+              <PixelButton
+                accent='green'
+                glyph='A'
+                label='PLAY AGAIN'
+                active
+                onClick={onPlayAgain}
+              />
+            </div>
+          }
+        />
+      }>
+      <div
+        style={{
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 10,
+        }}>
+        <ArcadeText size={40}>GAME OVER</ArcadeText>
+        <StarLine>
+          {winner ? `${winner.name} TAKES THE MARSH` : 'NOBODY BAGGED THE CROWN — DRAW'}
+        </StarLine>
+      </div>
+
+      <div
+        style={{
+          display: 'flex',
+          gap: 24,
+          flex: 1,
+          minHeight: 0,
+          marginTop: 18,
+        }}>
+        {/* Winner + host character */}
+        <div
+          style={{
+            width: 330,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12,
+          }}>
+          <PanelTitle color={winner ? winner.color : R5.cyan}>
+            {winner ? 'WINNER' : 'RESULT'}
+          </PanelTitle>
+          <PixelPanel
+            accent={character.accent}
+            cut={10}
+            glow={0.5}
+            innerStyle={{ padding: 0 }}>
+            <video
+              src={characterVideoUrl(character)}
+              autoPlay
+              loop
+              muted
+              playsInline
+              style={{
+                display: 'block',
+                width: '100%',
+                aspectRatio: '16 / 9',
+                objectFit: 'cover',
+              }}
+            />
+          </PixelPanel>
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 6,
+            }}>
+            {winner ? (
+              <>
+                <span
+                  style={{
+                    fontFamily: pixelFont,
+                    fontSize: 14,
+                    color: winner.color,
+                    textShadow: `0 0 10px ${winner.color}`,
+                  }}>
+                  {winner.name}
+                </span>
+                <LedText size={44}>{winner.score}</LedText>
+              </>
+            ) : (
+              <span
+                style={{
+                  fontFamily: pixelFont,
+                  fontSize: 14,
+                  color: R5.inkMuted,
+                }}>
+                DRAW
+              </span>
+            )}
+            <span
+              style={{
+                fontFamily: monoFont,
+                fontSize: 10,
+                color: R5.inkMuted,
+                textTransform: 'uppercase',
+              }}>
+              hunting as {character.name}
+            </span>
+          </div>
+        </div>
+
+        {/* Final scoreboard */}
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12,
+          }}>
+          <PanelTitle>FINAL SCORES</PanelTitle>
+          <div
+            style={{
+              flex: 1,
+              minHeight: 0,
+              overflowY: 'auto',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 8,
+            }}>
+            {finalScores.length === 0 ? (
+              <span
+                style={{
+                  fontFamily: monoFont,
+                  fontSize: 12,
+                  color: R5.inkMuted,
+                }}>
+                No hunters took a shot this round.
+              </span>
+            ) : (
+              finalScores.map((p, i) => (
+                <PixelPanel
+                  key={p.clientId}
+                  accent={i === 0 && winner ? 'yellow' : 'blue'}
+                  cut={8}
+                  glow={i === 0 && winner ? 0.5 : 0}
+                  innerStyle={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 12,
+                    padding: '8px 14px',
+                  }}>
+                  <span
+                    style={{
+                      fontFamily: pixelFont,
+                      fontSize: 11,
+                      width: 22,
+                      color: i === 0 ? R5.yellow : R5.inkMuted,
+                    }}>
+                    {i + 1}
+                  </span>
+                  <span
+                    style={{
+                      width: 12,
+                      height: 12,
+                      background: p.color,
+                      boxShadow: `0 0 6px ${p.color}`,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span
+                    style={{
+                      flex: 1,
+                      fontFamily: pixelFont,
+                      fontSize: 11,
+                      color: R5.ink,
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}>
+                    {p.name}
+                  </span>
+                  <LedText size={22}>{p.score}</LedText>
+                </PixelPanel>
+              ))
+            )}
+          </div>
+        </div>
+
+        {/* Top scores */}
+        <div
+          style={{
+            width: 300,
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 12,
+          }}>
+          <PanelTitle color={R5.orangeBright}>TOP SCORES</PanelTitle>
+          <PixelPanel
+            cut={10}
+            innerStyle={{
+              padding: '12px 14px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+            }}>
+            {table.length === 0 ? (
+              <span
+                style={{
+                  fontFamily: monoFont,
+                  fontSize: 11,
+                  color: R5.inkMuted,
+                }}>
+                The table is empty — make history.
+              </span>
+            ) : (
+              table.map((e, i) => {
+                const isNew = newRank != null && i === newRank - 1;
+                return (
+                  <div
+                    key={`${e.at}-${i}`}
+                    className={isNew ? 'r5-blink' : undefined}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'baseline',
+                      gap: 10,
+                      fontFamily: monoFont,
+                      fontSize: 12,
+                      color: isNew ? R5.yellow : R5.ink,
+                    }}>
+                    <span style={{ width: 18, color: R5.inkMuted }}>
+                      {i + 1}
+                    </span>
+                    <span
+                      style={{
+                        fontFamily: pixelFont,
+                        fontSize: 10,
+                        color: isNew ? R5.yellow : R5.cyan,
+                      }}>
+                      {e.initials}
+                    </span>
+                    <span style={{ flex: 1 }} />
+                    <LedText size={16} color={isNew ? R5.yellow : R5.ink}>
+                      {e.score}
+                    </LedText>
+                    <span style={{ fontSize: 10, color: R5.inkMuted }}>
+                      {e.mode === 'time' ? 'TA' : 'SR'}
+                    </span>
+                  </div>
+                );
+              })
+            )}
+          </PixelPanel>
+        </div>
+      </div>
+    </RetroFrame>
+  );
+}

@@ -956,8 +956,273 @@ function ShooterHud({
       {shooter.scores.length > 0 ? (
         <ShooterScoreboard scores={shooter.scores} parent={parent} now={now} />
       ) : null}
+
+      {/* Arcade match chrome: countdown / clock / game-over banner. */}
+      {shooter.match ? (
+        <MatchHud
+          match={shooter.match}
+          scores={shooter.scores}
+          parent={parent}
+          now={now}
+        />
+      ) : null}
     </View>
   );
+}
+
+/**
+ * Arcade match overlay (the /duck-hunter page): a top-center chip with the
+ * round clock (time mode) or target + leader (points mode), a giant 3-2-1
+ * countdown before the round, and the GAME OVER banner after it. Pixel-art
+ * styling to match the rest of the HUD (Doto font, chunky frames, no rotation).
+ */
+function MatchHud({
+  match,
+  scores,
+  parent,
+  now,
+}: {
+  match: NonNullable<ShooterOverlay['match']>;
+  scores: ShooterOverlay['scores'];
+  parent: { width: number; height: number };
+  now: number;
+}) {
+  const fs = Math.max(18, Math.round(parent.height * 0.03));
+  const border = Math.max(3, Math.round(fs * 0.16));
+
+  const chip = (label: string, color: string) => {
+    const chipFs = Math.round(fs * 1.15);
+    const width =
+      Math.round(chipFs * 0.62 * (label.length + 1)) + Math.round(chipFs * 1.2);
+    const height = Math.round(chipFs * 1.9);
+    return (
+      <View
+        style={{
+          top: Math.round(parent.width * 0.02),
+          left: Math.round((parent.width - width) / 2),
+          width,
+          height,
+          backgroundColor: HUD_BG,
+          borderWidth: border,
+          borderColor: '#FFFFFF',
+          overflow: 'hidden',
+        }}>
+        <View
+          style={{
+            top: Math.round((height - chipFs * 1.4) / 2),
+            left: 0,
+            width,
+            height: Math.round(chipFs * 1.5),
+            overflow: 'hidden',
+          }}>
+          <Text
+            style={{
+              fontSize: chipFs,
+              color,
+              width,
+              align: 'center',
+              fontFamily: HUD_FONT,
+              fontWeight: 'black',
+            }}>
+            {label}
+          </Text>
+        </View>
+      </View>
+    );
+  };
+
+  if (match.phase === 'countdown') {
+    const left = Math.max(0, match.startsAt - now);
+    const n = Math.max(1, Math.ceil(left / 1000));
+    const bigFs = Math.round(parent.height * 0.28);
+    const modeLabel =
+      match.mode === 'time'
+        ? `TIME ATTACK ${formatClock(match.endsAt != null ? match.endsAt - match.startsAt : null)}`
+        : `FIRST TO ${match.targetScore ?? '?'}`;
+    return (
+      <View
+        style={{
+          top: 0,
+          left: 0,
+          width: parent.width,
+          height: parent.height,
+          overflow: 'visible',
+        }}>
+        {chip(
+          match.character ? `${modeLabel} · ${match.character.name}` : modeLabel,
+          match.character?.color ?? '#FFFFFF',
+        )}
+        <View
+          style={{
+            top: Math.round((parent.height - bigFs * 1.3) / 2),
+            left: 0,
+            width: parent.width,
+            height: Math.round(bigFs * 1.4),
+            overflow: 'visible',
+          }}>
+          <Text
+            style={{
+              fontSize: bigFs,
+              color: '#FFDE59',
+              width: parent.width,
+              align: 'center',
+              fontFamily: HUD_FONT,
+              fontWeight: 'black',
+            }}>
+            {`${n}`}
+          </Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (match.phase === 'playing') {
+    // "GO!" beat right after the countdown ends.
+    const sinceStart = now - match.startsAt;
+    const showGo = sinceStart < 600;
+    let label: string;
+    let color = '#FFFFFF';
+    if (match.mode === 'time') {
+      const left = Math.max(0, (match.endsAt ?? now) - now);
+      label = formatClock(left);
+      // Hard arcade blink for the final 10 seconds.
+      if (left <= 10_000 && now % 500 < 250) color = '#FF4030';
+    } else {
+      const leader = scores[0];
+      label = leader
+        ? `FIRST TO ${match.targetScore} · ${leader.name} ${leader.score}`
+        : `FIRST TO ${match.targetScore}`;
+    }
+    const goFs = Math.round(parent.height * 0.2);
+    return (
+      <View
+        style={{
+          top: 0,
+          left: 0,
+          width: parent.width,
+          height: parent.height,
+          overflow: 'visible',
+        }}>
+        {chip(label, color)}
+        {showGo ? (
+          <View
+            style={{
+              top: Math.round((parent.height - goFs * 1.3) / 2),
+              left: 0,
+              width: parent.width,
+              height: Math.round(goFs * 1.4),
+              overflow: 'visible',
+            }}>
+            <Text
+              style={{
+                fontSize: goFs,
+                color: '#3fd05a',
+                width: parent.width,
+                align: 'center',
+                fontFamily: HUD_FONT,
+                fontWeight: 'black',
+              }}>
+              GO!
+            </Text>
+          </View>
+        ) : null}
+      </View>
+    );
+  }
+
+  // ended — GAME OVER banner with the winner (or DRAW).
+  const panelW = Math.round(parent.width * 0.5);
+  const titleFs = Math.round(parent.height * 0.07);
+  const nameFs = Math.round(parent.height * 0.05);
+  const scoreFs = Math.round(parent.height * 0.09);
+  const pad = Math.round(titleFs * 0.7);
+  const panelH = pad * 2 + Math.round((titleFs + nameFs + scoreFs) * 1.5);
+  const winner = match.winner;
+  return (
+    <View
+      style={{
+        top: Math.round((parent.height - panelH) / 2),
+        left: Math.round((parent.width - panelW) / 2),
+        width: panelW,
+        height: panelH,
+        backgroundColor: HUD_BG,
+        borderWidth: border,
+        borderColor: '#FFFFFF',
+        overflow: 'hidden',
+      }}>
+      <View
+        style={{
+          top: pad,
+          left: 0,
+          width: panelW,
+          height: Math.round(titleFs * 1.5),
+          overflow: 'hidden',
+        }}>
+        <Text
+          style={{
+            fontSize: titleFs,
+            color: '#FF4030',
+            width: panelW,
+            align: 'center',
+            fontFamily: HUD_FONT,
+            fontWeight: 'black',
+          }}>
+          GAME OVER
+        </Text>
+      </View>
+      <View
+        style={{
+          top: pad + Math.round(titleFs * 1.5),
+          left: 0,
+          width: panelW,
+          height: Math.round(nameFs * 1.5),
+          overflow: 'hidden',
+        }}>
+        <Text
+          style={{
+            fontSize: nameFs,
+            color: winner ? winner.color : '#FFFFFFCC',
+            width: panelW,
+            align: 'center',
+            fontFamily: HUD_FONT,
+            fontWeight: 'bold',
+          }}>
+          {winner ? `${winner.name} WINS` : 'DRAW'}
+        </Text>
+      </View>
+      {winner ? (
+        <View
+          style={{
+            top: pad + Math.round((titleFs + nameFs) * 1.5),
+            left: 0,
+            width: panelW,
+            height: Math.round(scoreFs * 1.5),
+            overflow: 'hidden',
+          }}>
+          <Text
+            style={{
+              fontSize: scoreFs,
+              color: '#FFDE59',
+              width: panelW,
+              align: 'center',
+              fontFamily: HUD_FONT,
+              fontWeight: 'black',
+            }}>
+            {`${winner.score}`}
+          </Text>
+        </View>
+      ) : null}
+    </View>
+  );
+}
+
+/** `M:SS` from ms (blank for null). */
+function formatClock(ms: number | null): string {
+  if (ms == null) return '';
+  const total = Math.max(0, Math.round(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${m}:${String(s).padStart(2, '0')}`;
 }
 
 // HUD accents shared by the badge and the scoreboard. The whole shooter HUD is

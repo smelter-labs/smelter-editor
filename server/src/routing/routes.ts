@@ -2579,6 +2579,62 @@ routes.post<RoomIdParams & { Body: Static<typeof DuckHunterConfigSchema> }>(
   },
 );
 
+// Arcade match (the /duck-hunter page): start/stop/reset a server-authoritative
+// round (time or points). GET returns the current snapshot (reload recovery).
+const DuckHunterMatchSchema = Type.Object({
+  action: Type.Union([
+    Type.Literal('start'),
+    Type.Literal('stop'),
+    Type.Literal('reset'),
+  ]),
+  mode: Type.Optional(
+    Type.Union([Type.Literal('time'), Type.Literal('points')]),
+  ),
+  durationMs: Type.Optional(Type.Number()),
+  targetScore: Type.Optional(Type.Number()),
+  character: Type.Optional(
+    Type.Object({
+      id: Type.String(),
+      name: Type.String(),
+      color: Type.String(),
+    }),
+  ),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof DuckHunterMatchSchema> }>(
+  '/room/:roomId/duck-hunter/match',
+  { schema: { params: RoomIdParamsSchema, body: DuckHunterMatchSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    console.log('[request] Duck Hunter match', {
+      roomId,
+      action: req.body.action,
+      mode: req.body.mode,
+      durationMs: req.body.durationMs,
+      targetScore: req.body.targetScore,
+      character: req.body.character?.id,
+    });
+    const room = state.getRoom(roomId);
+    const match = room.controlDuckHunterMatch({
+      action: req.body.action,
+      mode: req.body.mode,
+      durationMs: req.body.durationMs,
+      targetScore: req.body.targetScore,
+      character: req.body.character,
+    });
+    res.status(200).send({ status: 'ok', match });
+  },
+);
+
+routes.get<RoomIdParams>(
+  '/room/:roomId/duck-hunter/match',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    const room = state.getRoom(req.params.roomId);
+    res.status(200).send({ status: 'ok', match: room.getDuckHunterMatch() });
+  },
+);
+
 // ── Haunting ghosts ────────────────────────────────────────────
 
 const HaunterConfigSchema = Type.Object({

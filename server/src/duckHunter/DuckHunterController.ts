@@ -1,9 +1,18 @@
+import type {
+  ShooterHostCharacter,
+  ShooterMatchConfig,
+  ShooterMatchEvent,
+  ShooterMatchMode,
+  ShooterPlayer,
+  ShooterStateEvent,
+} from '@smelter-editor/types';
 import type { StoreApi } from 'zustand';
 import type {
   DogReveal,
   PersonBoxes,
   RoomStore,
   ShooterBurst,
+  ShooterMatchOverlay,
 } from '../app/store';
 import { config } from '../config';
 import { roomEventBus } from '../core/roomEventBus';
@@ -52,6 +61,30 @@ type Player = {
 /** Per-player ammo config sent from the phone (calibration screen). */
 export type AmmoConfig = { maxAmmo?: number; reloadMs?: number };
 
+/** Command from the arcade page's match endpoint. */
+export type MatchCommand = {
+  action: 'start' | 'stop' | 'reset';
+} & Partial<ShooterMatchConfig>;
+
+/**
+ * Server-authoritative arcade round layered on top of free-play. `null` means
+ * no match (the classic dashboard flow) — scoring is then never gated.
+ */
+type MatchState = {
+  phase: 'countdown' | 'playing' | 'ended';
+  mode: ShooterMatchMode;
+  durationMs: number | null;
+  targetScore: number | null;
+  /** Countdown end / first moment shots count. */
+  startsAt: number;
+  /** Time-mode deadline; null in points mode. */
+  endsAt: number | null;
+  character: ShooterHostCharacter | null;
+  winner: ShooterPlayer | null;
+  finalScores: ShooterPlayer[];
+  lastBroadcastAt: number;
+};
+
 /** Distinct, bright crosshair colors (kept away from the ghost palette). */
 const PLAYER_COLORS = [
   '#FFEB3B', // yellow
@@ -80,6 +113,16 @@ const DEFAULT_RELOAD_MS = 3000;
 const MAX_AMMO_CAP = 12;
 const MIN_RELOAD_MS = 1000;
 const MAX_RELOAD_MS = 30000;
+
+// Arcade match bounds + pacing.
+const MATCH_COUNTDOWN_MS = 3000;
+const MATCH_MIN_DURATION_MS = 10_000;
+const MATCH_MAX_DURATION_MS = 600_000;
+const MATCH_DEFAULT_DURATION_MS = 60_000;
+const MATCH_MIN_TARGET = 1;
+const MATCH_MAX_TARGET = 200;
+const MATCH_DEFAULT_TARGET = 10;
+const MATCH_BROADCAST_MS = 1000; // clock tick rate for shooter_match events
 
 /** Keep the WHIP input id to URL-safe characters (it becomes a path segment). */
 function sanitizeId(id: string): string {
@@ -134,6 +177,10 @@ export class DuckHunterController {
   // applied to every player (current + future joiners).
   private roomMaxAmmo = DEFAULT_MAX_AMMO;
   private roomReloadMs = DEFAULT_RELOAD_MS;
+  /** Arcade round state; null = free-play (classic dashboard behavior). */
+  private match: MatchState | null = null;
+  /** Last targetActive broadcast, so lobby clients hear the flip. */
+  private lastTargetActive = false;
 
   constructor(
     private readonly roomId: string,
@@ -196,6 +243,115 @@ export class DuckHunterController {
   /** Current room-wide ammo rules (for the panel to read back). */
   getRoomConfig(): { maxAmmo: number; reloadMs: number } {
     return { maxAmmo: this.roomMaxAmmo, reloadMs: this.roomReloadMs };
+  }
+
+  /**
+   * Drive the arcade match from the /duck-hunter page:
+   * - start: reset all scores/ammo, 3s countdown, then shots count until the
+   *   clock runs out (time mode) or someone reaches the target (points mode).
+   * - stop: end the round now (winner = current leader).
+   * - reset: back to free-play; the game-over banner clears.
+   */
+  controlMatch(cmd: MatchCommand): ShooterMatchEvent {
+    const now = Date.now();
+    switch (cmd.action) {
+      case 'start': {
+        const mode: ShooterMatchMode = cmd.mode === 'points' ? 'points' : 'time';
+        this.match = {
+          phase: 'countdown',
+          mode,
+          durationMs:
+            mode === 'time'
+              ? Math.round(
+                  clamp(
+                    cmd.durationMs ?? MATCH_DEFAULT_DURATION_MS,
+                    MATCH_MIN_DURATION_MS,
+                    MATCH_MAX_DURATION_MS,
+                  ),
+                )
+              : null,
+          targetScore:
+            mode === 'points'
+              ? Math.round(
+                  clamp(
+                    cmd.targetScore ?? MATCH_DEFAULT_TARGET,
+                    MATCH_MIN_TARGET,
+                    MATCH_MAX_TARGET,
+                  ),
+                )
+              : null,
+          startsAt: now + MATCH_COUNTDOWN_MS,
+          endsAt: null,
+          character: cmd.character ?? null,
+          winner: null,
+          finalScores: [],
+          lastBroadcastAt: now,
+        };
+        // A fresh round starts from zero for everyone, magazines full.
+        for (const p of this.players.values()) {
+          p.score = 0;
+          p.streak = 0;
+          p.lastHitAt = 0;
+          p.ammo = p.maxAmmo;
+          p.reloadStartedAt = null;
+          this.sendAmmo(p.clientId);
+        }
+        this.bursts = [];
+        this.dogReveals = [];
+        this.ensureRunning();
+        break;
+      }
+      case 'stop': {
+        if (this.match && this.match.phase !== 'ended') this.endMatch(now);
+        break;
+      }
+      case 'reset': {
+        this.match = null;
+        this.maybeStop();
+        break;
+      }
+    }
+    const snapshot = this.getMatchSnapshot();
+    roomEventBus.broadcast(this.roomId, snapshot);
+    this.publish();
+    this.broadcastState();
+    return snapshot;
+  }
+
+  /** Current match state as a wire event ('idle' when free-play). */
+  getMatchSnapshot(): ShooterMatchEvent {
+    const m = this.match;
+    if (!m) return { type: 'shooter_match', roomId: this.roomId, phase: 'idle' };
+    const now = Date.now();
+    return {
+      type: 'shooter_match',
+      roomId: this.roomId,
+      phase: m.phase,
+      mode: m.mode,
+      targetScore: m.targetScore ?? undefined,
+      startsAtMs: m.startsAt,
+      endsAtMs: m.endsAt ?? undefined,
+      remainingMs:
+        m.phase === 'countdown'
+          ? Math.max(0, m.startsAt - now)
+          : m.phase === 'playing' && m.endsAt != null
+            ? Math.max(0, m.endsAt - now)
+            : undefined,
+      character: m.character ?? undefined,
+      winner: m.phase === 'ended' ? m.winner : undefined,
+      finalScores: m.phase === 'ended' ? m.finalScores : undefined,
+    };
+  }
+
+  /**
+   * Subscribe-only handshake for the arcade page: reply with the current state
+   * + match snapshots without creating a player. The socket already receives
+   * all broadcasts (every room WS is subscribed to the event bus), so this only
+   * fills the gap of an initial snapshot on connect.
+   */
+  spectate(clientId: string): void {
+    roomEventBus.sendTo(this.roomId, clientId, this.stateSnapshot());
+    roomEventBus.sendTo(this.roomId, clientId, this.getMatchSnapshot());
   }
 
   leave(clientId: string): void {
@@ -314,6 +470,11 @@ export class DuckHunterController {
     const p = this.players.get(clientId);
     if (!p) return;
 
+    // Match rounds only accept shots while 'playing' — the countdown and the
+    // game-over screen swallow the trigger silently (no ammo spend, no click).
+    // Aim stays live so crosshairs keep moving on the broadcast.
+    if (this.match && this.match.phase !== 'playing') return;
+
     // Out of ammo: no shot, just tell the phone to click empty.
     if (p.ammo <= 0) {
       roomEventBus.sendTo(this.roomId, clientId, {
@@ -403,6 +564,15 @@ export class DuckHunterController {
       ghostId: best.id,
       score: p.score,
     });
+    // Points mode: first to the target ends the round on the winning shot.
+    if (
+      this.match &&
+      this.match.mode === 'points' &&
+      this.match.targetScore != null &&
+      p.score >= this.match.targetScore
+    ) {
+      this.endMatch(now);
+    }
     this.publish();
     this.broadcastState();
   }
@@ -423,6 +593,7 @@ export class DuckHunterController {
 
   dispose(): void {
     this.stop();
+    this.match = null;
     for (const p of this.players.values()) {
       this.retireCameraInput(p);
     }
@@ -613,8 +784,8 @@ export class DuckHunterController {
     });
   }
 
-  private broadcastState(): void {
-    roomEventBus.broadcast(this.roomId, {
+  private stateSnapshot(): ShooterStateEvent {
+    return {
       type: 'shooter_state',
       roomId: this.roomId,
       players: [...this.players.values()].map((p) => ({
@@ -624,7 +795,32 @@ export class DuckHunterController {
         score: p.score,
       })),
       targetActive: this.getTargetInputId() !== null,
-    });
+    };
+  }
+
+  private broadcastState(): void {
+    roomEventBus.broadcast(this.roomId, this.stateSnapshot());
+  }
+
+  /** Freeze the round: crown the top score (null on a draw) and broadcast. */
+  private endMatch(now: number): void {
+    const m = this.match;
+    if (!m || m.phase === 'ended') return;
+    const rows: ShooterPlayer[] = [...this.players.values()]
+      .map((p) => ({
+        clientId: p.clientId,
+        name: p.name,
+        color: p.color,
+        score: p.score,
+      }))
+      .sort((a, b) => b.score - a.score);
+    const top = rows[0];
+    const isDraw = !top || (rows.length > 1 && rows[1].score === top.score);
+    m.phase = 'ended';
+    m.finalScores = rows;
+    m.winner = isDraw ? null : top;
+    m.lastBroadcastAt = now;
+    roomEventBus.broadcast(this.roomId, this.getMatchSnapshot());
   }
 
   private ensureRunning(): void {
@@ -646,15 +842,51 @@ export class DuckHunterController {
       this.bursts.length === 0 &&
       this.dogReveals.length === 0 &&
       this.ducks.size === 0 &&
-      !this.hasBirdTarget()
+      !this.hasBirdTarget() &&
+      // A live or just-finished match keeps the loop ticking (countdown clock,
+      // 1 Hz match broadcast, game-over banner) even with an empty flock.
+      this.match == null
     ) {
       this.stop();
       this.store.getState().setShooter(null);
     }
   }
 
+  /** Advance the match clock: countdown → playing → (time mode) ended, plus
+   * the 1 Hz shooter_match tick that keeps client countdowns honest. */
+  private tickMatch(now: number): void {
+    const m = this.match;
+    if (!m) return;
+    if (m.phase === 'countdown' && now >= m.startsAt) {
+      m.phase = 'playing';
+      if (m.mode === 'time' && m.durationMs != null) {
+        m.endsAt = m.startsAt + m.durationMs;
+      }
+      m.lastBroadcastAt = now;
+      roomEventBus.broadcast(this.roomId, this.getMatchSnapshot());
+      return;
+    }
+    if (m.phase === 'playing' && m.endsAt != null && now >= m.endsAt) {
+      this.endMatch(now);
+      return;
+    }
+    if (m.phase !== 'ended' && now - m.lastBroadcastAt >= MATCH_BROADCAST_MS) {
+      m.lastBroadcastAt = now;
+      roomEventBus.broadcast(this.roomId, this.getMatchSnapshot());
+    }
+  }
+
   private tick(): void {
     const now = Date.now();
+    this.tickMatch(now);
+    // Announce target availability flips (the YOLO sidecar warming up or the
+    // ghost input going away) — lobby screens gate "start" on this and joins
+    // are the only other trigger for a state broadcast.
+    const targetActive = this.getTargetInputId() !== null;
+    if (targetActive !== this.lastTargetActive) {
+      this.lastTargetActive = targetActive;
+      this.broadcastState();
+    }
     for (const [id, respawnAt] of this.deadGhosts) {
       if (respawnAt <= now) this.deadGhosts.delete(id);
     }
@@ -751,7 +983,32 @@ export class DuckHunterController {
         diedAt: respawnAt - RESPAWN_MS,
       })),
       ducks: isBird ? [...this.ducks.values()] : [],
+      match: this.matchOverlay(),
     });
+  }
+
+  /** Match chrome for the on-stream HUD (null in free-play). */
+  private matchOverlay(): ShooterMatchOverlay | null {
+    const m = this.match;
+    if (!m) return null;
+    return {
+      phase: m.phase,
+      mode: m.mode,
+      targetScore: m.targetScore,
+      startsAt: m.startsAt,
+      endsAt: m.endsAt,
+      winner:
+        m.phase === 'ended' && m.winner
+          ? {
+              name: m.winner.name,
+              color: m.winner.color,
+              score: m.winner.score,
+            }
+          : null,
+      character: m.character
+        ? { name: m.character.name, color: m.character.color }
+        : null,
+    };
   }
 }
 

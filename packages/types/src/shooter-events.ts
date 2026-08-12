@@ -33,13 +33,37 @@ export type ShooterCamStartMessage = { type: "shoot_cam_start" };
 /** Turn the live camera off; the server tears down the WHIP input. */
 export type ShooterCamStopMessage = { type: "shoot_cam_stop" };
 
+/**
+ * Subscribe-only handshake used by the /duck-hunter arcade page: the server
+ * replies with a `shooter_state` + `shooter_match` snapshot to this client
+ * without creating a player. Broadcast updates then arrive like for players.
+ */
+export type ShooterSpectateMessage = { type: "shoot_spectate" };
+
 export type ShooterClientMessage =
   | ShooterJoinMessage
   | ShooterAimMessage
   | ShooterFireMessage
   | ShooterLeaveMessage
   | ShooterCamStartMessage
-  | ShooterCamStopMessage;
+  | ShooterCamStopMessage
+  | ShooterSpectateMessage;
+
+// Match (arcade page) — server-authoritative rounds on top of free-play.
+export type ShooterMatchMode = "time" | "points";
+export type ShooterMatchPhase = "idle" | "countdown" | "playing" | "ended";
+
+/** Host identity chosen on the arcade character-select screen. */
+export type ShooterHostCharacter = { id: string; name: string; color: string };
+
+export type ShooterMatchConfig = {
+  mode: ShooterMatchMode;
+  /** Time mode round length, clamped server-side to 10s..10min. */
+  durationMs?: number;
+  /** Points mode target, clamped server-side to 1..200. */
+  targetScore?: number;
+  character?: ShooterHostCharacter;
+};
 
 // Server -> Client
 export type ShooterStateEvent = {
@@ -97,10 +121,34 @@ export type ShooterCamOfferEvent = {
   bearerToken: string;
 };
 
+/**
+ * Match lifecycle + clock. Broadcast on every phase transition and at 1 Hz
+ * while a match is live so pages/phones can render an authoritative countdown.
+ */
+export type ShooterMatchEvent = {
+  type: "shooter_match";
+  roomId: string;
+  phase: ShooterMatchPhase;
+  mode?: ShooterMatchMode;
+  targetScore?: number;
+  /** Epoch ms when 'playing' begins (countdown end). */
+  startsAtMs?: number;
+  /** Time mode: epoch ms deadline. */
+  endsAtMs?: number;
+  /** Server-computed remaining ms (clients interpolate between ticks). */
+  remainingMs?: number;
+  character?: ShooterHostCharacter;
+  /** 'ended' only; null = draw. */
+  winner?: ShooterPlayer | null;
+  /** 'ended' only: scoreboard frozen at the final whistle. */
+  finalScores?: ShooterPlayer[];
+};
+
 export type ShooterServerEvent =
   | ShooterStateEvent
   | ShooterHitEvent
   | ShooterMissEvent
   | ShooterEmptyEvent
   | ShooterAmmoEvent
-  | ShooterCamOfferEvent;
+  | ShooterCamOfferEvent
+  | ShooterMatchEvent;

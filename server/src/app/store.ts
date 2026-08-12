@@ -274,6 +274,23 @@ export type DogReveal = {
   at: number;
 };
 
+/** Arcade match state burned into the broadcast HUD (countdown / clock /
+ * game-over banner). Absent/null in free-play (the classic dashboard flow). */
+export type ShooterMatchOverlay = {
+  phase: 'countdown' | 'playing' | 'ended';
+  mode: 'time' | 'points';
+  /** Points mode target; null in time mode. */
+  targetScore: number | null;
+  /** Wall-clock ms when 'playing' begins (countdown end). */
+  startsAt: number;
+  /** Time mode deadline (wall-clock ms); null in points mode. */
+  endsAt: number | null;
+  /** 'ended' only; null while live (or on a draw). */
+  winner: { name: string; color: string; score: number } | null;
+  /** Host identity from the arcade character-select screen. */
+  character: { name: string; color: string } | null;
+};
+
 /** Ghost Shooter overlay state rendered on the target (ghost-enabled) input. */
 export type ShooterOverlay = {
   targetInputId: string;
@@ -291,6 +308,8 @@ export type ShooterOverlay = {
    * params baked in). The renderer draws these and the hit-test shoots at them,
    * so a shot always lands on the sprite. Empty for the Pac-Man ghost sprite. */
   ducks: DuckEntity[];
+  /** Arcade match chrome (countdown / clock / game-over), null in free-play. */
+  match?: ShooterMatchOverlay | null;
 };
 
 export function createRoomStore(

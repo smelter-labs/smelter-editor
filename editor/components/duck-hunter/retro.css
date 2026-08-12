@@ -1,0 +1,165 @@
+/* Workshop-5 retro kit — CSS side: hard arcade blink (steps, no fades),
+ * glow pulse for focused buttons, twinkling blueprint dots and CRT scanlines.
+ * Frame-based Remotion timing from the original kit maps to these keyframes. */
+
+@keyframes r5-blink {
+  0%,
+  54% {
+    opacity: 1;
+  }
+  55%,
+  100% {
+    opacity: 0.2;
+  }
+}
+
+.r5-blink {
+  animation: r5-blink 1.2s steps(1, end) infinite;
+}
+
+@keyframes r5-blink-fast {
+  0%,
+  49% {
+    opacity: 1;
+  }
+  50%,
+  100% {
+    opacity: 0.15;
+  }
+}
+
+.r5-blink-fast {
+  animation: r5-blink-fast 0.5s steps(1, end) infinite;
+}
+
+@keyframes r5-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.r5-pulse {
+  animation: r5-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes r5-twinkle {
+  0%,
+  100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.r5-twinkle {
+  animation: r5-twinkle 2.6s ease-in-out infinite;
+}
+
+/* CRT scanlines with a slow rolling band. */
+.r5-scanlines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 30;
+  background-image: repeating-linear-gradient(
+    0deg,
+    rgba(0, 0, 0, 0.22) 0 1px,
+    transparent 1px 3px
+  );
+}
+
+.r5-scanlines::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    transparent 0%,
+    rgba(120, 170, 255, 0.05) 48%,
+    rgba(120, 170, 255, 0.09) 50%,
+    rgba(120, 170, 255, 0.05) 52%,
+    transparent 100%
+  );
+  background-size: 100% 240px;
+  background-repeat: repeat-y;
+  animation: r5-roll 7s linear infinite;
+}
+
+@keyframes r5-roll {
+  from {
+    background-position-y: -240px;
+  }
+  to {
+    background-position-y: 100vh;
+  }
+}
+
+/* Screen entry: quick fade + settle, like the Remotion frame open. */
+@keyframes r5-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.r5-enter {
+  animation: r5-enter 0.45s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Focused arcade option: pulsing glow ring drawn by drop-shadow. */
+.r5-btn {
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+  text-align: left;
+}
+
+.r5-btn:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+/* Retro range input for the config sliders. */
+.r5-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 14px;
+  background: transparent;
+}
+
+.r5-range::-webkit-slider-runnable-track {
+  height: 8px;
+  background: rgba(120, 150, 200, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(120, 150, 200, 0.25);
+}
+
+.r5-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 18px;
+  margin-top: -5px;
+  background: #ffd23e;
+  box-shadow:
+    inset 0 2px 0 rgba(255, 255, 255, 0.4),
+    0 0 6px rgba(255, 210, 62, 0.6);
+}
+
+.r5-range:focus {
+  outline: none;
+}
+
+.r5-range:focus::-webkit-slider-thumb {
+  background: #ffb428;
+}

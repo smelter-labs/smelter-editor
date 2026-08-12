@@ -20,7 +20,12 @@ import type {
   UpdateInputOptions,
   UpdateRoomOptions,
 } from './types';
-import type { TimelineConfig, AIModelInfo } from '@smelter-editor/types';
+import type {
+  TimelineConfig,
+  AIModelInfo,
+  ShooterMatchConfig,
+  ShooterMatchEvent,
+} from '@smelter-editor/types';
 import { createStorageClient, type StorageClient } from './storage-client';
 
 interface SmelterApiClient {
@@ -179,6 +184,12 @@ interface SmelterApiClient {
       duckFlySpeed?: number;
     },
   ): Promise<void>;
+
+  controlDuckHunterMatch(
+    roomId: string,
+    cmd: { action: 'start' | 'stop' | 'reset' } & Partial<ShooterMatchConfig>,
+  ): Promise<ShooterMatchEvent>;
+  getDuckHunterMatch(roomId: string): Promise<ShooterMatchEvent>;
 
   setHaunterConfig(
     roomId: string,
@@ -600,6 +611,20 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
 
     async setDuckHunterConfig(roomId, config) {
       await req('post', `/room/${enc(roomId)}/duck-hunter/config`, config);
+    },
+
+    async controlDuckHunterMatch(roomId, cmd) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/duck-hunter/match`,
+        cmd,
+      );
+      return data.match as ShooterMatchEvent;
+    },
+
+    async getDuckHunterMatch(roomId) {
+      const data = await req('get', `/room/${enc(roomId)}/duck-hunter/match`);
+      return data.match as ShooterMatchEvent;
     },
 
     async setHaunterConfig(roomId, config) {

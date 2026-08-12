@@ -12,6 +12,7 @@ import {
 import { captionsDebug } from './captions/captionsDebug';
 import { registerAIModels } from './ai-models';
 import { routes } from './routing/routes';
+import { seedDuckHunterAssets } from './core/seedDuckHunterAssets';
 import { seedPresentationConfigs } from './core/seedPresentationConfigs';
 import { initDashboard, hijackConsole } from './dashboard';
 import './snakeGame/registerSnakeGameRenderer';
@@ -66,6 +67,7 @@ async function run() {
   await captionBridge.start();
 
   await seedPresentationConfigs();
+  await seedDuckHunterAssets();
 
   const port = Number(process.env.SMELTER_DEMO_API_PORT) || 3001;
   await routes.listen({ port, host: '0.0.0.0' });
