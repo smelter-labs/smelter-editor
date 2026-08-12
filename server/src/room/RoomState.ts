@@ -44,6 +44,8 @@ import { jitterBoxes } from '../ai-models/people-counter/box-jitter';
 import { CarTracker } from '../ai-models/car-ads/car-tracker';
 import type { CarAdDetection } from '../app/store';
 import { DuckHunterController } from '../duckHunter/DuckHunterController';
+import type { MatchCommand } from '../duckHunter/DuckHunterController';
+import type { ShooterMatchEvent } from '@smelter-editor/types';
 import {
   DEFAULT_HAUNTER_COUNT,
   DEFAULT_HAUNTER_DIST,
@@ -1357,9 +1359,23 @@ export class RoomState {
       case 'shoot_cam_stop':
         this.duckHunter.stopCamera(clientId);
         break;
+      case 'shoot_spectate':
+        // Arcade page observer: snapshot reply only, never creates a player.
+        this.duckHunter.spectate(clientId);
+        break;
       default:
         break;
     }
+  }
+
+  /** Drive the arcade match (start/stop/reset) from the /duck-hunter page. */
+  public controlDuckHunterMatch(cmd: MatchCommand): ShooterMatchEvent {
+    return this.duckHunter.controlMatch(cmd);
+  }
+
+  /** Current arcade match snapshot (page-reload recovery). */
+  public getDuckHunterMatch(): ShooterMatchEvent {
+    return this.duckHunter.getMatchSnapshot();
   }
 
   /** A phone client disconnected — drop its crosshair/score. */
