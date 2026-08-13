@@ -160,12 +160,18 @@ export type {
   ShooterAimMessage,
   ShooterFireMessage,
   ShooterLeaveMessage,
+  ShooterSpectateMessage,
   ShooterClientMessage,
+  ShooterMatchMode,
+  ShooterMatchPhase,
+  ShooterHostCharacter,
+  ShooterMatchConfig,
   ShooterStateEvent,
   ShooterHitEvent,
   ShooterMissEvent,
   ShooterEmptyEvent,
   ShooterAmmoEvent,
+  ShooterMatchEvent,
   ShooterServerEvent,
 } from "./shooter-events.js";
 
