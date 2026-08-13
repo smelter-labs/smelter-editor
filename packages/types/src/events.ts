@@ -3,6 +3,7 @@ import type { Layer } from "./layout.js";
 import type { BroadcastTile } from "./broadcast.js";
 import type { PongServerEvent } from "./pong-events.js";
 import type { ShooterServerEvent } from "./shooter-events.js";
+import type { KettlebellServerEvent } from "./kettlebell-events.js";
 
 export type ConnectedPeer = {
   clientId: string;
@@ -90,4 +91,5 @@ export type RoomEvent =
   | NormalizationDoneEvent
   | BroadcastTilesUpdatedEvent
   | PongServerEvent
-  | ShooterServerEvent;
+  | ShooterServerEvent
+  | KettlebellServerEvent;

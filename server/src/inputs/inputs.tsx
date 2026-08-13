@@ -23,6 +23,7 @@ import { GhostCityWrapper } from './GhostCityWrapper';
 import { CarAdsInput, CarAdDebugBoxes } from './CarAdsInput';
 import { CarHueWrapper } from './CarHueWrapper';
 import { BoxConfLabel, SmoothedBoxes } from './SmoothedBoxes';
+import { KettlebellOverlay } from './KettlebellOverlay';
 
 type Resolution = { width: number; height: number };
 
@@ -155,6 +156,11 @@ export function Input({ input }: { input: InputConfig }) {
   const carHueBoxes = useStore(
     store,
     (state) => state.carHueBoxes[input.inputId],
+  );
+  // Kettlebell Coach: pose skeleton + bell box + reps/verdict badge.
+  const kettlebell = useStore(
+    store,
+    (state) => state.kettlebell[input.inputId],
   );
   // Ghost Shooter overlay, only when this input is the game's target.
   const shooter = useStore(store, (state) =>
@@ -333,6 +339,12 @@ export function Input({ input }: { input: InputConfig }) {
             {peopleCount != null ? (
               <PeopleCountBadge
                 count={peopleCount}
+                parent={{ width: contentWidth, height: contentHeight }}
+              />
+            ) : null}
+            {kettlebell ? (
+              <KettlebellOverlay
+                data={kettlebell}
                 parent={{ width: contentWidth, height: contentHeight }}
               />
             ) : null}

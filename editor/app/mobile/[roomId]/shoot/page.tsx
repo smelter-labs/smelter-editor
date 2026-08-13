@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
+import type { ShooterMatchEvent } from '@smelter-editor/types';
 import type { RoomState } from '@/lib/types';
 import { getRoomInfo } from '@/app/actions/actions';
 import { connectWhep } from '@/lib/webrtc/whep-connect';
@@ -14,6 +15,30 @@ import {
   isLoopbackHost,
   toWsUrl,
 } from '@/lib/server-url';
+import { doto, pressStart, robotoMono } from '@/app/duck-hunter/fonts';
+import { PhoneShell, WarnPanel } from '@/components/duck-hunter/phone/phone-shell';
+import { ConnectStep } from '@/components/duck-hunter/phone/connect-step';
+import { NameStep } from '@/components/duck-hunter/phone/name-step';
+import { WeaponStep } from '@/components/duck-hunter/phone/weapon-step';
+import {
+  CalibrateStep,
+  type PracticeTarget,
+} from '@/components/duck-hunter/phone/calibrate-step';
+import { ReadyStep } from '@/components/duck-hunter/phone/ready-step';
+import {
+  AmmoRow,
+  ControlsRow,
+  MatchOverlay,
+  PlayTopBar,
+} from '@/components/duck-hunter/phone/play-hud';
+import {
+  AXIS_CFG_KEY,
+  DEFAULT_HORIZ,
+  DEFAULT_VERT,
+  type AxisCfg,
+  type AxisSource,
+} from '@/components/duck-hunter/phone/axis';
+import '@/components/duck-hunter/retro.css';
 
 const AIM_THROTTLE_MS = 25;
 // Relative ("gyro-mouse") aiming: the crosshair moves by how much the phone
@@ -30,25 +55,32 @@ const GYRO_MAX_STEP_DEG = 25;
 const TAP_MS = 400;
 const TAP_MOVE_PX = 16;
 
-// A selectable gyro signal for an aim axis. The user picks which one drives
-// horizontal vs vertical on the calibration screen (with invert + per-axis
-// sensitivity), since auto-mapping can't know how they physically hold the phone.
-//  - yaw:   rotation about world-up (swing/pan left-right), gravity-referenced
-//  - pitch: rotation about the screen's right axis (nod up-down)
-//  - rateX/Y/Z: raw gyro rate about device X (beta) / Y (gamma) / Z (alpha)
-type AxisSource = 'yaw' | 'pitch' | 'rateX' | 'rateY' | 'rateZ';
-type AxisCfg = { source: AxisSource; invert: boolean; sens: number };
+// The guided wizard: boot sequence → call sign → weapon → (gyro) calibration
+// → briefing → the hunt. Steps before 'play' render inside PhoneShell.
+type Step = 'connect' | 'name' | 'weapon' | 'calibrate' | 'ready' | 'play';
 
-const AXIS_OPTIONS: { id: AxisSource; label: string }[] = [
-  { id: 'yaw', label: 'Horizontal rotation — yaw (world)' },
-  { id: 'pitch', label: 'Tilt — pitch (screen)' },
-  { id: 'rateX', label: 'X axis — beta' },
-  { id: 'rateY', label: 'Y axis — gamma' },
-  { id: 'rateZ', label: 'Screen rotation — alpha' },
-];
-const DEFAULT_HORIZ: AxisCfg = { source: 'yaw', invert: false, sens: 1 };
-const DEFAULT_VERT: AxisCfg = { source: 'pitch', invert: false, sens: 1 };
-const AXIS_CFG_KEY = 'shootAxisCfg';
+const STEP_META: Record<
+  Exclude<Step, 'play'>,
+  { index: number; label: string }
+> = {
+  connect: { index: 0, label: 'CONNECTING' },
+  name: { index: 1, label: 'CALL SIGN' },
+  weapon: { index: 2, label: 'WEAPON SELECT' },
+  calibrate: { index: 3, label: 'CALIBRATION' },
+  ready: { index: 4, label: 'BRIEFING' },
+};
+
+// Practice ducks in the calibration test range (normalized coords, 4:3 box).
+const PRACTICE_SPOTS = [
+  { x: 0.22, y: 0.3 },
+  { x: 0.72, y: 0.24 },
+  { x: 0.5, y: 0.62 },
+] as const;
+const PRACTICE_HIT_RADIUS = 0.11;
+
+function freshPractice(): PracticeTarget[] {
+  return PRACTICE_SPOTS.map((s, i) => ({ id: i, x: s.x, y: s.y, hit: false }));
+}
 
 type ScoreRow = {
   clientId: string;
@@ -56,18 +88,24 @@ type ScoreRow = {
   color: string;
   score: number;
 };
-type Rect = { left: number; top: number; width: number; height: number };
 
 export default function ShootControllerPage() {
   const { roomId } = useParams();
   const searchParams = useSearchParams();
 
-  const [stage, setStage] = useState<'calibrate' | 'play'>('calibrate');
+  const [step, setStep] = useState<Step>('connect');
   const [name, setName] = useState('');
   const [connected, setConnected] = useState(false);
   const [room, setRoom] = useState<RoomState | null>(null);
+  const [roomStatus, setRoomStatus] = useState<'loading' | 'ok' | 'not-found'>(
+    'loading',
+  );
   const [score, setScore] = useState(0);
   const [scores, setScores] = useState<ScoreRow[]>([]);
+  // Live room status broadcast by the server (pre-join too): whether a
+  // duck-enabled input is up, and the arcade match state.
+  const [targetActive, setTargetActive] = useState(false);
+  const [match, setMatch] = useState<ShooterMatchEvent | null>(null);
   // This player's own id (learned from server events addressed to us), used to
   // pick our assigned color out of the scoreboard so the phone can show it.
   const [myClientId, setMyClientId] = useState<string | null>(null);
@@ -83,14 +121,9 @@ export default function ShootControllerPage() {
   const [perm, setPerm] = useState<
     'unknown' | 'granted' | 'denied' | 'unsupported' | 'default'
   >('unknown');
-  const [orient, setOrient] = useState<{
-    b: number | null;
-    g: number | null;
-    n: number;
-  }>({ b: null, g: null, n: 0 });
   const [stream, setStream] = useState<MediaStream | null>(null);
   // Front-camera stream for the in-game avatar (shown next to the player's
-  // name on the broadcast). Snapshots are sent over the WS while playing.
+  // name on the broadcast).
   const [camStream, setCamStream] = useState<MediaStream | null>(null);
   const [camErr, setCamErr] = useState<string | null>(null);
   const camVideoRef = useRef<HTMLVideoElement | null>(null);
@@ -110,7 +143,7 @@ export default function ShootControllerPage() {
   // has chosen to play, so a late WS open still sends shoot_join.
   const nameRef = useRef('');
   const wantsJoinRef = useRef(false);
-  // Motion permission is requested once, from the first calibration gesture.
+  // Motion permission is requested once, from the weapon-select gesture.
   const permRequestedRef = useRef(false);
   // Timestamp (ms) of the last devicemotion sample, to integrate rotationRate.
   const lastMotionTsRef = useRef<number | null>(null);
@@ -127,12 +160,18 @@ export default function ShootControllerPage() {
   const vertCfgRef = useRef(vertCfg);
   horizCfgRef.current = horizCfg;
   vertCfgRef.current = vertCfg;
-  // Live crosshair position for the calibration preview.
+  // Live crosshair position for the calibration test range.
   const [previewAim, setPreviewAim] = useState({ x: 0.5, y: 0.5 });
+  const previewAimRef = useRef(previewAim);
+  previewAimRef.current = previewAim;
+  // Practice ducks in the test range (local only, no server traffic).
+  const [practice, setPractice] = useState<PracticeTarget[]>(freshPractice);
+  // Opened calibration from the play HUD (⚙) — CONTINUE returns to the hunt.
+  const [calibFromPlay, setCalibFromPlay] = useState(false);
 
   nameRef.current = name;
   // Runtime ammo from the server (magazine size + rounds left are set by the
-  // operator in the Duck Hunter panel) + local reload countdown.
+  // operator) + local reload countdown.
   const [maxAmmo, setMaxAmmo] = useState(3);
   const [ammo, setAmmo] = useState(3);
   const reloadEndsRef = useRef<number | null>(null);
@@ -227,16 +266,15 @@ export default function ShootControllerPage() {
       });
       setCamStream(s);
       camStreamRef.current = s;
-      // On the calibration screen the player hasn't joined yet; the publish is
-      // kicked off when they tap Play (joinAndPlay). While already playing, ask
-      // the server to spin up our camera input now.
-      if (stage === 'play') send({ type: 'shoot_cam_start' });
+      // Before joining, the publish is kicked off by joinAndPlay; while already
+      // playing, ask the server to spin up our camera input now.
+      if (step === 'play') send({ type: 'shoot_cam_start' });
     } catch {
       setCamErr('Camera access denied — check your browser permissions.');
     }
-  }, [camStream, send, stage, stopCamPublish]);
+  }, [camStream, send, step, stopCamPublish]);
 
-  // One <video> element exists per stage (calibrate preview / play bubble);
+  // One <video> element exists per screen (name step preview / play bubble);
   // this ref callback attaches the live camera stream to whichever is mounted.
   const attachCamVideo = useCallback(
     (el: HTMLVideoElement | null) => {
@@ -258,13 +296,13 @@ export default function ShootControllerPage() {
 
   // Tick the local reload countdown while playing.
   useEffect(() => {
-    if (stage !== 'play') return;
+    if (step !== 'play') return;
     const t = window.setInterval(() => {
       const ends = reloadEndsRef.current;
       setReloadLeftMs(ends == null ? 0 : Math.max(0, ends - performance.now()));
     }, 100);
     return () => window.clearInterval(t);
-  }, [stage]);
+  }, [step]);
 
   const sendAim = useCallback(
     (x: number, y: number, immediate = false) => {
@@ -287,6 +325,27 @@ export default function ShootControllerPage() {
     setAmmo((a) => Math.max(0, a - 1)); // optimistic; server reconciles
     send({ type: 'shoot_fire' });
   }, [send, ammo]);
+
+  // Test-range FIRE during calibration: hit-test the preview crosshair against
+  // the practice ducks (local only — nothing is sent to the server).
+  const testFire = useCallback(() => {
+    const aim = previewAimRef.current;
+    let hitOne = false;
+    setPractice((prev) =>
+      prev.map((t) => {
+        if (t.hit || hitOne) return t;
+        // The range box is 4:3 — weigh dy so the hit circle stays round.
+        const dx = aim.x - t.x;
+        const dy = (aim.y - t.y) * 0.75;
+        if (Math.hypot(dx, dy) <= PRACTICE_HIT_RADIUS) {
+          hitOne = true;
+          return { ...t, hit: true };
+        }
+        return t;
+      }),
+    );
+    if (navigator.vibrate) navigator.vibrate(hitOne ? 60 : [15, 40, 15]);
+  }, []);
 
   // Map a client point on the output <video> (object-contain) to output-space
   // [0,1], correcting for the letterbox bars around the video content.
@@ -406,28 +465,18 @@ export default function ShootControllerPage() {
     [gyroMode, toOutputNorm, sendAim, fire],
   );
 
-  // Gyro sensor listener. Active during calibration (readout only) and during
-  // play when gyro mode is on (aims + moves the crosshair).
-  const aiming = stage === 'play' && gyroMode;
+  // Gyro sensor listener. Active during calibration (drives the test-range
+  // crosshair) and during play when gyro mode is on (aims the real one).
+  const aiming = step === 'play' && gyroMode;
   useEffect(() => {
-    if (stage === 'play' && !gyroMode) return;
+    const previewing = step === 'calibrate';
+    if (!previewing && !aiming) return;
     gyroLiveRef.current = false;
     smoothRef.current = { x: 0.5, y: 0.5 };
     setPreviewAim({ x: 0.5, y: 0.5 });
     lastMotionTsRef.current = null; // no dt until the first motion sample
     gravityRef.current = null;
     setGyroWarn(null);
-    // During calibration we integrate into the preview crosshair (not the game)
-    // so the user can test which axis mapping feels right.
-    const previewing = stage === 'calibrate';
-    let count = 0;
-    // Orientation is used only for the on-screen β/γ readout — not for aiming
-    // (its angles gimbal-lock when the phone is held upright).
-    const onOrient = (e: DeviceOrientationEvent) => {
-      count += 1;
-      setOrient({ b: e.beta, g: e.gamma, n: count });
-      if (e.beta != null || e.gamma != null) gyroLiveRef.current = true;
-    };
     // Relative ("gyro-mouse") aiming from the gyroscope's angular velocity —
     // gimbal-lock-free. Each screen axis is driven by a user-chosen source
     // (yaw/pitch/rateX/Y/Z) with its own invert + sensitivity.
@@ -454,7 +503,6 @@ export default function ShootControllerPage() {
           : { x: gx, y: gy, z: gz };
       }
 
-      if (!aiming && !previewing) return;
       const now =
         typeof performance !== 'undefined' ? performance.now() : Date.now();
       const last = lastMotionTsRef.current;
@@ -478,15 +526,15 @@ export default function ShootControllerPage() {
 
       // Deadzone slow rotation (hand tremor), integrate rate → degrees this frame,
       // clamp to swallow spikes.
-      const step = (rate: number) =>
+      const step2 = (rate: number) =>
         clamp(
           (Math.abs(rate) < GYRO_RATE_DEADZONE_DEG_S ? 0 : rate) * dt,
           -GYRO_MAX_STEP_DEG,
           GYRO_MAX_STEP_DEG,
         );
       const s = smoothRef.current;
-      s.x = clamp01(s.x + step(hRate) * GYRO_GAIN * hc.sens);
-      s.y = clamp01(s.y + step(vRate) * GYRO_GAIN * vc.sens);
+      s.x = clamp01(s.x + step2(hRate) * GYRO_GAIN * hc.sens);
+      s.y = clamp01(s.y + step2(vRate) * GYRO_GAIN * vc.sens);
       if (aiming) {
         sendAim(s.x, s.y);
         setLocalAim(normToLocal(s.x, s.y));
@@ -494,7 +542,10 @@ export default function ShootControllerPage() {
         setPreviewAim({ x: s.x, y: s.y });
       }
     };
-    // Some Android devices only emit the "absolute" orientation variant.
+    // Liveness probe for the warn timer (some devices only emit orientation).
+    const onOrient = (e: DeviceOrientationEvent) => {
+      if (e.beta != null || e.gamma != null) gyroLiveRef.current = true;
+    };
     window.addEventListener('deviceorientation', onOrient);
     window.addEventListener('deviceorientationabsolute', onOrient);
     window.addEventListener('devicemotion', onMotion);
@@ -506,7 +557,7 @@ export default function ShootControllerPage() {
             ? 'The gyroscope requires HTTPS.'
             : perm === 'denied'
               ? 'Motion sensor access denied — enable it in your browser settings.'
-              : 'No gyroscope data (0 events) — check motion permissions/settings.',
+              : 'No gyroscope data — check motion permissions/settings.',
         );
       }
     }, 1500);
@@ -516,7 +567,7 @@ export default function ShootControllerPage() {
       window.removeEventListener('devicemotion', onMotion);
       window.clearTimeout(warnTimer);
     };
-  }, [stage, gyroMode, aiming, sendAim, normToLocal, perm]);
+  }, [step, aiming, sendAim, normToLocal, perm]);
 
   // Volume-up button = shoot (best-effort; Android only). Browsers don't expose
   // hardware volume keys, but while an <audio> element is actively playing,
@@ -526,7 +577,7 @@ export default function ShootControllerPage() {
   // always headroom in both directions. (iOS media volume is read-only, so this
   // can't work there; some Android browsers also deliver a keydown, handled too.)
   useEffect(() => {
-    if (stage !== 'play') return;
+    if (step !== 'play') return;
     const url = makeSilentWavUrl();
     const audio = new Audio(url);
     audio.loop = true;
@@ -553,7 +604,7 @@ export default function ShootControllerPage() {
       window.removeEventListener('keydown', onKey);
       URL.revokeObjectURL(url);
     };
-  }, [stage, fire]);
+  }, [step, fire]);
 
   const connectWs = useCallback(() => {
     // Explicit `?server=` wins; then the public build-time default (a phone on
@@ -573,9 +624,12 @@ export default function ShootControllerPage() {
     ws.onopen = () => {
       setConnected(true);
       setWsDbg('');
-      // Join only once the player has committed (tapped Play); handles the case
-      // where the socket opens after that tap. On a reconnect the server minted
-      // a fresh client, so re-arm the camera input too if it's on.
+      // Observe the room right away (state + match snapshot, no player is
+      // created) so the briefing screen knows the marsh status pre-join.
+      ws.send(JSON.stringify({ type: 'shoot_spectate' }));
+      // Join only once the player has committed (JOIN THE HUNT); handles the
+      // case where the socket opens after that tap. On a reconnect the server
+      // minted a fresh client, so re-arm the camera input too if it's on.
       if (wantsJoinRef.current) {
         ws.send(
           JSON.stringify({
@@ -591,9 +645,7 @@ export default function ShootControllerPage() {
     ws.onerror = () => setWsDbg(`WS error: ${url}`);
     ws.onclose = (ev) => {
       setConnected(false);
-      setWsDbg(
-        `WS closed (${ev.code}) — is the tunnel pointing at Caddy :8080? ${url}`,
-      );
+      setWsDbg(`WS closed (${ev.code}) — ${url}`);
     };
     ws.onmessage = (ev) => {
       let data: unknown;
@@ -615,7 +667,11 @@ export default function ShootControllerPage() {
         setFlash('miss');
         window.setTimeout(() => setFlash(null), 130);
       } else if (m.type === 'shooter_state') {
-        setScores((data as { players: ScoreRow[] }).players ?? []);
+        const st = data as { players: ScoreRow[]; targetActive?: boolean };
+        setScores(st.players ?? []);
+        setTargetActive(!!st.targetActive);
+      } else if (m.type === 'shooter_match') {
+        setMatch(data as ShooterMatchEvent);
       } else if (m.type === 'shooter_ammo') {
         const a = data as {
           ammo: number;
@@ -623,8 +679,8 @@ export default function ShootControllerPage() {
           reloadRemainingMs: number;
         };
         setAmmo(a.ammo);
-        // Magazine size is set by the operator in the Duck Hunter panel; adopt
-        // it so the pip row matches the server's rules.
+        // Magazine size is set by the operator; adopt it so the shell row
+        // matches the server's rules.
         if (typeof a.maxAmmo === 'number') setMaxAmmo(a.maxAmmo);
         reloadEndsRef.current =
           a.reloadRemainingMs > 0
@@ -670,49 +726,94 @@ export default function ShootControllerPage() {
     };
   }, [roomId]);
 
-  // Request iOS motion permission once, from the first calibration gesture.
-  const requestPermOnce = useCallback(() => {
-    if (permRequestedRef.current) return;
+  const fetchRoom = useCallback(() => {
+    void getRoomInfo(String(roomId)).then((info) => {
+      if (info && info !== 'not-found') {
+        setRoom(info);
+        setRoomStatus('ok');
+      } else {
+        setRoomStatus('not-found');
+      }
+    });
+  }, [roomId]);
+
+  // Retry the boot sequence (room lookup + WS uplink) from the connect step.
+  const retryConnect = useCallback(() => {
+    setWsDbg('');
+    wsRef.current?.close();
+    if (roomStatus !== 'ok') {
+      setRoomStatus('loading');
+      fetchRoom();
+    }
+    connectWs();
+  }, [roomStatus, fetchRoom, connectWs]);
+
+  // Weapon select: GYRO CANNON. This tap is the user gesture iOS needs for the
+  // motion permission prompt. Denied/unsupported keeps the player on the
+  // weapon screen with a plain-words warning.
+  const pickGyro = useCallback(async () => {
     permRequestedRef.current = true;
-    void requestMotionPermission().then(setPerm);
+    const res = await requestMotionPermission();
+    setPerm(res);
+    if (res === 'denied' || res === 'unsupported') {
+      setGyroWarn(
+        res === 'unsupported'
+          ? 'This device has no motion sensors.'
+          : !window.isSecureContext
+            ? 'The gyroscope requires HTTPS.'
+            : 'Motion sensor access denied — enable it in your browser settings.',
+      );
+      return;
+    }
+    setGyroWarn(null);
+    setGyroMode(true);
+    setPractice(freshPractice());
+    recenter();
+    setStep('calibrate');
+  }, [recenter]);
+
+  const pickFinger = useCallback(() => {
+    setGyroMode(false);
+    setGyroWarn(null);
+    setStep('ready');
   }, []);
 
-  // Commit the chosen name and enter the game. Ammo rules come from the server
-  // (set by the operator in the Duck Hunter panel).
-  const joinAndPlay = useCallback(
-    (gyro: boolean) => {
-      wantsJoinRef.current = true;
-      send({
-        type: 'shoot_join',
-        name: name.trim() || 'Player',
-      });
-      // If the player enabled their camera on the calibration screen, spin up
-      // its live input now that they've joined.
-      if (camStreamRef.current) send({ type: 'shoot_cam_start' });
-      setGyroMode(gyro);
-      setStage('play');
-    },
-    [send, name],
-  );
-
-  // Connect + fetch room info on mount — no separate name screen; the name is
-  // entered on the calibration screen and sent when the player taps Play.
-  useEffect(() => {
-    let cancelled = false;
-    void getRoomInfo(String(roomId)).then((info) => {
-      if (!cancelled && info && info !== 'not-found') setRoom(info);
+  // Commit the chosen name and enter the game. Ammo rules come from the server.
+  const joinAndPlay = useCallback(() => {
+    wantsJoinRef.current = true;
+    send({
+      type: 'shoot_join',
+      name: name.trim() || 'Player',
     });
+    // If the player enabled their camera earlier, spin up its live input now
+    // that they've joined.
+    if (camStreamRef.current) send({ type: 'shoot_cam_start' });
+    setStep('play');
+  }, [send, name]);
+
+  // Connect + fetch room info on mount; the boot step visualizes both.
+  useEffect(() => {
+    fetchRoom();
     connectWs();
     return () => {
-      cancelled = true;
       wsRef.current?.close();
       wsRef.current = null;
     };
-  }, [roomId, connectWs]);
+  }, [fetchRoom, connectWs]);
+
+  // Boot step auto-advances once the room resolved and the radio is up.
+  useEffect(() => {
+    if (step !== 'connect' || roomStatus !== 'ok' || !connected) return;
+    const t = window.setTimeout(
+      () => setStep((s) => (s === 'connect' ? 'name' : s)),
+      600,
+    );
+    return () => window.clearTimeout(t);
+  }, [step, roomStatus, connected]);
 
   // Establish the WHEP output stream once we have the room's whepUrl.
   useEffect(() => {
-    if (stage !== 'play' || !room?.whepUrl) return;
+    if (step !== 'play' || !room?.whepUrl) return;
     let cancelled = false;
     const whepUrl = resolveMediaUrl(room.whepUrl);
     void connectWhep(whepUrl)
@@ -731,7 +832,7 @@ export default function ShootControllerPage() {
       whepCloseRef.current = null;
       setStream(null);
     };
-  }, [stage, room?.whepUrl]);
+  }, [step, room?.whepUrl]);
 
   // Attach the stream whenever it (or the video element) changes.
   useEffect(() => {
@@ -739,7 +840,7 @@ export default function ShootControllerPage() {
     if (!v) return;
     v.srcObject = stream;
     if (stream) v.play().catch(() => {});
-  }, [stream, stage]);
+  }, [stream, step]);
 
   // Cleanup on unmount.
   useEffect(() => {
@@ -752,115 +853,85 @@ export default function ShootControllerPage() {
     };
   }, [send]);
 
-  if (stage === 'calibrate') {
-    const sensorLive = orient.n > 0 && (orient.b != null || orient.g != null);
+  const fontClass = `${pressStart.variable} ${doto.variable} ${robotoMono.variable}`;
+
+  // ---- Wizard screens -----------------------------------------------------
+
+  if (step !== 'play') {
+    const meta = STEP_META[step];
     return (
-      <div
-        onPointerDown={requestPermOnce}
-        className='h-dvh w-full bg-[#0a0a0a] text-white flex flex-col landscape:flex-row items-center landscape:items-stretch justify-center gap-3 landscape:gap-5 p-4 overflow-hidden text-center'>
-        {/* Left: live crosshair preview driven by the current axis mapping. */}
-        <div className='flex flex-col items-center justify-center gap-2 shrink-0'>
-          <h2 className='text-xl font-bold'>Calibration</h2>
-          <div className='relative w-60 h-40 rounded-lg border border-neutral-700 bg-neutral-900 overflow-hidden'>
-            <CalibPreview aim={previewAim} />
-          </div>
-          <button
-            onClick={recenter}
-            className='rounded bg-neutral-800 text-white text-xs px-3 py-1.5'>
-            ⌖ Recenter
-          </button>
-          <div className='text-[10px] font-mono text-cyan-300'>
-            perm:{perm} · events:{orient.n} · β:
-            {orient.b == null ? '—' : orient.b.toFixed(0)} · γ:
-            {orient.g == null ? '—' : orient.g.toFixed(0)}
-          </div>
-        </div>
-
-        {/* Right: settings — scrolls on its own so it stays reachable in
-            landscape, where vertical space is tight. */}
-        <div className='flex-1 min-h-0 w-full max-w-xs overflow-y-auto flex flex-col gap-3 text-left'>
-          <label className='text-[11px] text-neutral-400'>
-            Your name
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder='Your name'
-              className='mt-1 w-full rounded-lg bg-neutral-900 border border-neutral-700 px-3 py-2 text-sm text-white'
+      <div className={fontClass}>
+        <PhoneShell
+          stepIndex={meta.index}
+          stepCount={5}
+          stepLabel={meta.label}>
+          {step === 'connect' ? (
+            <ConnectStep
+              roomStatus={roomStatus}
+              wsConnected={connected}
+              wsError={wsDbg}
+              onRetry={retryConnect}
             />
-          </label>
-          <div className='rounded-lg border border-neutral-700 bg-neutral-900/60 p-3 flex items-center gap-3'>
-            <button
-              onClick={() => void toggleCamera()}
-              className={`rounded px-3 py-2 text-xs shrink-0 ${
-                camStream
-                  ? 'bg-[#00f3ff] text-black'
-                  : 'bg-neutral-800 text-white'
-              }`}>
-              {camStream ? '📷 Camera on' : '📷 Camera off'}
-            </button>
-            {camStream ? (
-              <video
-                ref={attachCamVideo}
-                autoPlay
-                playsInline
-                muted
-                className='w-12 h-12 rounded-full object-cover border border-[#00f3ff] -scale-x-100 shrink-0'
-              />
-            ) : null}
-            <p className='text-[10px] text-neutral-500'>
-              Show your face next to your name on the stream.
-            </p>
-          </div>
-          {camErr && (
-            <div className='rounded bg-amber-500/90 text-black text-xs px-3 py-2'>
-              {camErr}
-            </div>
-          )}
-          <p className='text-[11px] text-neutral-400'>
-            Pick an axis for horizontal and vertical aiming, flip the direction
-            and set the sensitivity. Move the phone and watch the crosshair
-            until it reacts the way it should.
-          </p>
-          <AxisControls
-            title='Horizontal ←→'
-            cfg={horizCfg}
-            onChange={setHorizCfg}
-          />
-          <AxisControls
-            title='Vertical ↑↓'
-            cfg={vertCfg}
-            onChange={setVertCfg}
-          />
-
-          {gyroWarn && (
-            <div className='rounded bg-amber-500/90 text-black text-xs px-3 py-2'>
-              {gyroWarn}
-            </div>
-          )}
-          <button
-            onClick={() => {
-              requestPermOnce();
-              recenter();
-              joinAndPlay(true);
-            }}
-            className={`w-full rounded-lg py-3 text-lg font-bold transition-transform active:scale-95 ${
-              sensorLive ? 'bg-[#00f3ff]' : 'bg-[#00f3ff]/60'
-            } text-black`}>
-            🎯 Play
-          </button>
-          <button
-            onClick={() => joinAndPlay(false)}
-            className='w-full rounded-lg bg-neutral-800 text-white py-2.5'>
-            👆 Play with finger
-          </button>
-          <p className='text-[10px] text-neutral-500 text-center'>
-            Tap a duck to shoot. Android: the volume-up button (+) works too.
-            Set the input with ducks to full screen for accuracy.
-          </p>
-        </div>
+          ) : null}
+          {step === 'name' ? (
+            <NameStep
+              name={name}
+              onName={setName}
+              camOn={!!camStream}
+              camErr={camErr}
+              onToggleCamera={() => void toggleCamera()}
+              attachCamVideo={attachCamVideo}
+              onContinue={() => setStep('weapon')}
+            />
+          ) : null}
+          {step === 'weapon' ? (
+            <WeaponStep
+              onGyro={() => void pickGyro()}
+              onFinger={pickFinger}
+              warn={gyroWarn}
+            />
+          ) : null}
+          {step === 'calibrate' ? (
+            <CalibrateStep
+              previewAim={previewAim}
+              targets={practice}
+              onTestFire={testFire}
+              onRecenter={recenter}
+              horizCfg={horizCfg}
+              vertCfg={vertCfg}
+              onHoriz={setHorizCfg}
+              onVert={setVertCfg}
+              warn={gyroWarn}
+              returnToPlay={calibFromPlay}
+              onContinue={() => {
+                recenter();
+                if (calibFromPlay) {
+                  setCalibFromPlay(false);
+                  setStep('play');
+                } else {
+                  setStep('ready');
+                }
+              }}
+            />
+          ) : null}
+          {step === 'ready' ? (
+            <ReadyStep
+              name={name}
+              gyroMode={gyroMode}
+              camOn={!!camStream}
+              targetActive={targetActive}
+              playersCount={scores.length}
+              match={match}
+              onJoin={joinAndPlay}
+              onBack={() => setStep('weapon')}
+            />
+          ) : null}
+        </PhoneShell>
       </div>
     );
   }
+
+  // ---- The hunt -----------------------------------------------------------
 
   // Our assigned color (from the scoreboard, matched on our clientId); falls
   // back to the default cyan until the server has told us who we are.
@@ -868,7 +939,8 @@ export default function ShootControllerPage() {
     scores.find((s) => s.clientId === myClientId)?.color ?? '#00f3ff';
 
   return (
-    <div className='fixed inset-0 bg-black text-white flex flex-col select-none'>
+    <div
+      className={`${fontClass} fixed inset-0 bg-black text-white flex flex-col select-none`}>
       {/* Live output + finger aiming surface. */}
       <div
         ref={stageRef}
@@ -919,51 +991,28 @@ export default function ShootControllerPage() {
           />
         )}
 
-        {/* Top HUD. */}
-        <div className='absolute top-0 left-0 right-0 flex items-center justify-between p-3 text-sm pointer-events-none'>
-          <span className={connected ? 'text-green-400' : 'text-red-400'}>
-            {connected ? '● online' : '○ offline'}
-          </span>
-          <span className='flex items-center gap-1.5 font-mono'>
-            <span
-              className='inline-block w-3 h-3 rounded-full border border-white/40'
-              style={{ backgroundColor: myColor }}
-              aria-label='Your color'
-            />
-            <span style={{ color: myColor }}>Score: {score}</span>
-          </span>
-        </div>
+        <PlayTopBar
+          connected={connected}
+          match={match}
+          score={score}
+          myColor={myColor}
+          scores={scores}
+        />
+
         {!connected && wsDbg && (
-          <div className='absolute top-16 left-2 right-2 rounded bg-black/70 text-amber-300 text-[10px] px-2 py-1 text-center break-all pointer-events-none'>
-            {wsDbg}
-          </div>
-        )}
-        {scores.length > 0 && (
-          <div className='absolute top-9 left-0 right-0 px-3 flex flex-wrap gap-2 text-xs pointer-events-none'>
-            {scores.map((s) => (
-              <span
-                key={s.clientId}
-                style={{ color: s.color }}
-                className='font-mono'>
-                {s.name}: {s.score}
-              </span>
-            ))}
-          </div>
-        )}
-        {gyroMode && (
-          <div className='absolute bottom-2 left-2 rounded bg-black/70 text-cyan-300 text-[10px] font-mono px-2 py-1 pointer-events-none'>
-            perm:{perm} · events:{orient.n} · β:
-            {orient.b == null ? '—' : orient.b.toFixed(0)} · γ:
-            {orient.g == null ? '—' : orient.g.toFixed(0)}
+          <div className='absolute top-16 left-2 right-2 z-10'>
+            <WarnPanel>
+              <span style={{ wordBreak: 'break-all' }}>{wsDbg}</span>
+            </WarnPanel>
           </div>
         )}
         {gyroMode && gyroWarn && (
-          <div className='absolute bottom-9 left-2 right-2 rounded bg-amber-500/90 text-black text-xs px-3 py-2 text-center pointer-events-none'>
-            {gyroWarn}
+          <div className='absolute bottom-2 left-2 right-2 z-10 pointer-events-none'>
+            <WarnPanel>{gyroWarn}</WarnPanel>
           </div>
         )}
 
-        {/* Self view: the camera snapshot being shared next to your name. */}
+        {/* Self view: the camera being shared next to your name. */}
         {camStream && (
           <video
             ref={attachCamVideo}
@@ -974,70 +1023,37 @@ export default function ShootControllerPage() {
             style={{ borderColor: myColor }}
           />
         )}
+
+        {/* Countdown / game-over overlays from the arcade match. */}
+        <MatchOverlay match={match} myClientId={myClientId} />
       </div>
 
-      {/* Ammo: filled pips = rounds left, plus the reload countdown. */}
-      <div className='px-3 pt-2 flex items-center justify-center gap-1.5 bg-[#0a0a0a]'>
-        {Array.from({ length: maxAmmo }).map((_, i) => (
-          <div
-            key={i}
-            className={`w-3.5 h-3.5 rounded-full ${
-              i < ammo ? 'bg-[#ffde59]' : 'bg-neutral-700'
-            }`}
-          />
-        ))}
-        <span className='ml-2 text-[11px] font-mono text-neutral-400 w-24 text-left'>
-          {ammo < maxAmmo && reloadLeftMs > 0
-            ? `+1 in ${(reloadLeftMs / 1000).toFixed(1)}s`
-            : ammo >= maxAmmo
-              ? 'full'
-              : ''}
-        </span>
-      </div>
-
-      {/* Controls. */}
-      <div className='p-3 flex items-center gap-3 bg-[#0a0a0a]'>
-        <button
-          onClick={async () => {
-            if (gyroMode) {
-              setGyroMode(false);
-              return;
-            }
-            // Request iOS motion permission from this user gesture.
-            setPerm(await requestMotionPermission());
+      <AmmoRow ammo={ammo} maxAmmo={maxAmmo} reloadLeftMs={reloadLeftMs} />
+      <ControlsRow
+        gyroMode={gyroMode}
+        onToggleMode={() => {
+          if (gyroMode) {
+            setGyroMode(false);
+            return;
+          }
+          // Request iOS motion permission from this user gesture.
+          void requestMotionPermission().then((res) => {
+            setPerm(res);
             setGyroWarn(null);
-            setOrient({ b: null, g: null, n: 0 });
             setGyroMode(true);
-          }}
-          className={`rounded px-3 py-2 text-xs ${
-            gyroMode ? 'bg-[#00f3ff] text-black' : 'bg-neutral-800 text-white'
-          }`}>
-          {gyroMode ? '🎯 Gyro' : '👆 Finger'}
-        </button>
-        {gyroMode && (
-          <>
-            <button
-              onClick={recenter}
-              className='rounded bg-neutral-800 text-white px-3 py-2 text-xs'>
-              ⌖
-            </button>
-            <button
-              onClick={() => setStage('calibrate')}
-              className='rounded bg-neutral-800 text-white px-3 py-2 text-xs'>
-              ⚙️ Axes
-            </button>
-          </>
-        )}
-        <button
-          onPointerDown={fire}
-          className={`flex-1 rounded-xl font-extrabold py-4 text-xl active:scale-95 transition-transform ${
-            ammo > 0
-              ? 'bg-[#ff3b3b] text-white'
-              : 'bg-neutral-800 text-neutral-500'
-          }`}>
-          {ammo > 0 ? 'FIRE 🔫' : 'EMPTY 🔄'}
-        </button>
-      </div>
+          });
+        }}
+        onRecenter={recenter}
+        onAxes={() => {
+          setCalibFromPlay(true);
+          setPractice(freshPractice());
+          setStep('calibrate');
+        }}
+        camOn={!!camStream}
+        onToggleCamera={() => void toggleCamera()}
+        ammo={ammo}
+        onFire={fire}
+      />
     </div>
   );
 }
@@ -1079,10 +1095,10 @@ function clamp(v: number, lo: number, hi: number): number {
 }
 
 // iOS 13+ gates the motion sensors behind a permission prompt that must be
-// triggered from a user gesture. Aiming now needs DeviceMotion (rotationRate)
-// and the readout needs DeviceOrientation; on iOS these share a single "Motion &
-// Orientation" permission, so requesting either unlocks both events. Prefer the
-// motion request. Android/desktop need no prompt.
+// triggered from a user gesture. Aiming needs DeviceMotion (rotationRate); on
+// iOS DeviceMotion and DeviceOrientation share a single "Motion & Orientation"
+// permission, so requesting either unlocks both events. Prefer the motion
+// request. Android/desktop need no prompt.
 type PermRequester = {
   requestPermission?: () => Promise<'granted' | 'denied'>;
 };
@@ -1177,79 +1193,6 @@ function sourceRate(
       return wx * up[0] + wy * up[1];
     }
   }
-}
-
-// Calibration preview: a crosshair at the current accumulated aim position, so
-// the user can see how the chosen axis mapping reacts before playing.
-function CalibPreview({ aim }: { aim: { x: number; y: number } }) {
-  return (
-    <div
-      className='absolute w-7 h-7'
-      style={{
-        left: `${aim.x * 100}%`,
-        top: `${aim.y * 100}%`,
-        transform: 'translate(-50%, -50%)',
-      }}>
-      <div className='absolute inset-0 rounded-full border-2 border-[#00f3ff]' />
-      <div className='absolute left-1/2 top-0 h-full w-[2px] -translate-x-1/2 bg-[#00f3ff]' />
-      <div className='absolute top-1/2 left-0 w-full h-[2px] -translate-y-1/2 bg-[#00f3ff]' />
-    </div>
-  );
-}
-
-// Per-axis controls: which gyro source drives this axis, invert, and sensitivity.
-function AxisControls({
-  title,
-  cfg,
-  onChange,
-}: {
-  title: string;
-  cfg: AxisCfg;
-  onChange: (c: AxisCfg) => void;
-}) {
-  return (
-    <div className='rounded-lg border border-neutral-700 bg-neutral-900/60 p-3 text-left space-y-2'>
-      <div className='flex items-center justify-between gap-2'>
-        <span className='text-sm font-medium'>{title}</span>
-        <button
-          onClick={() => onChange({ ...cfg, invert: !cfg.invert })}
-          className={`rounded px-2 py-1 text-[11px] ${
-            cfg.invert
-              ? 'bg-[#00f3ff] text-black'
-              : 'bg-neutral-800 text-neutral-300'
-          }`}>
-          {cfg.invert ? '⇄ inverted' : '⇄ invert'}
-        </button>
-      </div>
-      <select
-        value={cfg.source}
-        onChange={(e) =>
-          onChange({ ...cfg, source: e.target.value as AxisSource })
-        }
-        className='w-full rounded bg-neutral-800 border border-neutral-700 px-2 py-2 text-sm'>
-        {AXIS_OPTIONS.map((o) => (
-          <option key={o.id} value={o.id}>
-            {o.label}
-          </option>
-        ))}
-      </select>
-      <div className='flex items-center gap-2'>
-        <span className='text-[11px] text-neutral-400 w-16'>sensitivity</span>
-        <input
-          type='range'
-          min={0.3}
-          max={4}
-          step={0.1}
-          value={cfg.sens}
-          onChange={(e) => onChange({ ...cfg, sens: Number(e.target.value) })}
-          className='flex-1'
-        />
-        <span className='text-[11px] font-mono text-neutral-300 w-8 text-right'>
-          {cfg.sens.toFixed(1)}
-        </span>
-      </div>
-    </div>
-  );
 }
 
 // When the page is served from a remote origin (a tunnel/proxy), route the WS

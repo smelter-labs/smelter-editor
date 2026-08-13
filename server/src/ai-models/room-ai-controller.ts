@@ -12,6 +12,8 @@ import { ensureBuildingDetectorSidecarStarted } from './building-detector/buildi
 import { isBuildingDetectorModel } from './building-detector/manifest';
 import { ensureCarAdsSidecarStarted } from './car-ads/car-ads-sidecar';
 import { isCarAdsModel } from './car-ads/manifest';
+import { ensureKettlebellCoachSidecarStarted } from './kettlebell-coach/kettlebell-coach-sidecar';
+import { isKettlebellCoachModel } from './kettlebell-coach/manifest';
 
 export type ResultListener = (event: ModelResultEvent) => void;
 
@@ -243,6 +245,9 @@ export class RoomAIController {
     }
     if (isCarAdsModel(modelId)) {
       return ensureCarAdsSidecarStarted(modelId);
+    }
+    if (isKettlebellCoachModel(modelId)) {
+      return ensureKettlebellCoachSidecarStarted();
     }
 
     let sidecar = globalSidecars.get(modelId);

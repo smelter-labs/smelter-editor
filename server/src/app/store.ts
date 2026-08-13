@@ -71,6 +71,7 @@ export type RoomStore = {
   buildingBoxes: Record<string, BuildingBoxes>;
   carAdBoxes: Record<string, CarAdBoxes>;
   carHueBoxes: Record<string, CarHueBoxes>;
+  kettlebell: Record<string, KettlebellOverlayState>;
   shooter: ShooterOverlay | null;
   updateState: (state: RoomStoreState & { layers: Layer[] }) => void;
   setOutputShaders: (shaders: ShaderConfig[]) => void;
@@ -81,6 +82,7 @@ export type RoomStore = {
   setBuildingBoxes: (inputId: string, boxes: BuildingBoxes | null) => void;
   setCarAdBoxes: (inputId: string, boxes: CarAdBoxes | null) => void;
   setCarHueBoxes: (inputId: string, boxes: CarHueBoxes | null) => void;
+  setKettlebell: (inputId: string, state: KettlebellOverlayState | null) => void;
   setShooter: (shooter: ShooterOverlay | null) => void;
 } & Partial<ViewportProperties>;
 
@@ -113,6 +115,28 @@ export type BuildingBoxes = {
   boxes: PersonBox[];
   frameW: number;
   frameH: number;
+};
+
+/**
+ * Kettlebell-coach overlay state for one input: the tracked pose skeleton,
+ * the bell box, and the badge fields (reps / exercise / last-rep verdict).
+ * Unlike the box-only slices, the entry stays present with an empty pose while
+ * the model is enabled so the badge keeps rendering between detections.
+ */
+export type KettlebellOverlayState = {
+  /** 17 COCO keypoints as [x, y, conf], normalized to the source frame. */
+  kpts: [number, number, number][] | null;
+  /** Tracked kettlebell box, or null while the bell is lost. */
+  kb: PersonBox | null;
+  exercise: 'swing' | 'clean' | 'snatch' | 'idle';
+  repCount: number;
+  lastRepVerdict: 'correct' | 'incorrect' | null;
+  lastRepIssues: string[];
+  frameW: number;
+  frameH: number;
+  /** Mirrors of the model config at apply time (skeleton param / drawBoxes). */
+  skeleton: boolean;
+  drawBoxes: boolean;
 };
 
 /** A point in normalized [0,1] frame coordinates. */
@@ -312,6 +336,7 @@ export function createRoomStore(
     buildingBoxes: {},
     carAdBoxes: {},
     carHueBoxes: {},
+    kettlebell: {},
     shooter: null,
     updateState: (incoming) => {
       const {
@@ -406,6 +431,14 @@ export function createRoomStore(
         if (boxes && boxes.boxes.length > 0) next[inputId] = boxes;
         else delete next[inputId];
         return { carHueBoxes: next };
+      });
+    },
+    setKettlebell: (inputId: string, state: KettlebellOverlayState | null) => {
+      set((prev) => {
+        const next = { ...prev.kettlebell };
+        if (state) next[inputId] = state;
+        else delete next[inputId];
+        return { kettlebell: next };
       });
     },
     setShooter: (shooter: ShooterOverlay | null) => {

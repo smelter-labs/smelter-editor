@@ -168,3 +168,13 @@ export type {
   ShooterAmmoEvent,
   ShooterServerEvent,
 } from "./shooter-events.js";
+
+export type {
+  KettlebellExercise,
+  KettlebellIssueCode,
+  KettlebellRepCompletedEvent,
+  KettlebellExerciseChangedEvent,
+  KettlebellTechniqueAlertEvent,
+  KettlebellServerEvent,
+} from "./kettlebell-events.js";
+export { KETTLEBELL_ISSUE_LABELS } from "./kettlebell-events.js";

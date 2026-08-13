@@ -13,6 +13,7 @@ import {
   toggleTranscription,
 } from '@/app/actions/actions';
 import { Button } from '@/components/ui/button';
+import { KettlebellLiveStatus } from './KettlebellLiveStatus';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
 import {
@@ -499,7 +500,14 @@ export function AIModelsPanel({
                   </div>
                 )}
 
-                {count !== undefined && (
+                {model.id === 'kettlebell-coach' && (
+                  <KettlebellLiveStatus
+                    roomId={roomId}
+                    inputId={selectedInput.inputId}
+                  />
+                )}
+
+                {count !== undefined && model.id !== 'kettlebell-coach' && (
                   <div className='rounded-md bg-neutral-800/60 px-2 py-1 text-xs text-neutral-200'>
                     Detected: <span className='font-mono'>{count}</span>
                   </div>

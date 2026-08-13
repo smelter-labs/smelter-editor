@@ -1,0 +1,12 @@
+# Superset of people-counter's requirements — installs into that shared venv.
+smelter-sdk
+opencv-python-headless
+numpy
+websockets
+ultralytics>=8.3.0     # yolo11-pose + YOLOWorld — pulls in torch
+mediapipe              # keeps the shared venv's face backend intact on reinstall
+# YOLOWorld.set_classes() text encoder — ultralytics would otherwise attempt a
+# runtime auto-install of these exact packages.
+git+https://github.com/ultralytics/CLIP.git
+ftfy
+regex
