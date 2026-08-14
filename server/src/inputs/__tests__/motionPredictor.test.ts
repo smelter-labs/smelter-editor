@@ -59,6 +59,25 @@ describe('MotionPredictor', () => {
     expect(Math.abs(x - 10)).toBeLessThan(1);
   });
 
+  it('honours a tighter per-instance lead cap', () => {
+    // A pose joint reverses inside one response interval, so the kettlebell
+    // overlay caps the lead far below the default 1.5 intervals / 600ms.
+    const p = new MotionPredictor({ maxExtrapIntervals: 1, maxExtrapMs: 150 });
+    p.update(1, [0, 0], 1000);
+    p.update(1, [10, 0], 1200); // EMA velocity 0.025 units/ms, interval 200ms
+    const [xStalled] = p.predict(1, 1200 + 5000)!;
+    expect(xStalled).toBeCloseTo(10 + 0.025 * 150, 5);
+  });
+
+  it('forgets a single track', () => {
+    const p = new MotionPredictor();
+    p.update(1, [0, 0], 1000);
+    p.update(2, [5, 5], 1000);
+    p.forget(1);
+    expect(p.predict(1, 1100)).toBeUndefined();
+    expect(p.predict(2, 1100)).toEqual([5, 5]);
+  });
+
   it('prunes dead tracks', () => {
     const p = new MotionPredictor();
     p.update(1, [0, 0], 1000);

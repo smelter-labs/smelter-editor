@@ -7,12 +7,21 @@ import type {
 } from '@smelter-editor/types';
 
 const FLUSH_INTERVAL_MS = 150;
-const RECENT_REPS_MAX = 10;
+/** Depth of the rep history — the dot row shows a suffix, the list all of it. */
+const RECENT_REPS_MAX = 30;
+
+const EXERCISES: readonly KettlebellExercise[] = [
+  'swing',
+  'clean',
+  'snatch',
+  'idle',
+];
 
 export type KettlebellRep = {
   index: number;
   verdict: 'correct' | 'incorrect';
   issues: KettlebellIssueCode[];
+  exercise: KettlebellExercise;
 };
 
 export type KettlebellLive = {
@@ -89,6 +98,10 @@ export function useKettlebellResults(
               index: e.index,
               verdict: e.verdict === 'incorrect' ? 'incorrect' : 'correct',
               issues: Array.isArray(e.issues) ? e.issues : [],
+              exercise:
+                e.exercise && EXERCISES.includes(e.exercise)
+                  ? e.exercise
+                  : 'swing',
             },
           ];
         }

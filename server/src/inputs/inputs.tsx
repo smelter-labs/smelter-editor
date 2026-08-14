@@ -24,6 +24,7 @@ import { CarAdsInput, CarAdDebugBoxes } from './CarAdsInput';
 import { CarHueWrapper } from './CarHueWrapper';
 import { BoxConfLabel, SmoothedBoxes } from './SmoothedBoxes';
 import { KettlebellOverlay } from './KettlebellOverlay';
+import { KettlebellSkeletonWrapper } from './KettlebellSkeletonWrapper';
 
 type Resolution = { width: number; height: number };
 
@@ -277,6 +278,23 @@ export function Input({ input }: { input: InputConfig }) {
         resolution={{ width: contentWidth, height: contentHeight }}>
         {videoContent}
       </CarHueWrapper>
+    );
+  }
+
+  // Kettlebell Coach: draw the pose rig with the `kettlebell-skeleton` shader
+  // rather than as rotated Views, which render displaced and oversized on this
+  // engine build (see the crosshair note in ShooterHud) — bones ended up
+  // floating off their own joint dots. Outermost of the video wrappers: the rig
+  // is an overlay, so Ghost City and Car Hue must not haze or hue-rotate it.
+  // Mounted on the config flag alone — gating on `kpts` would rebuild the video
+  // node on every pose dropout, several times a second.
+  if (kettlebell && kettlebell.skeleton !== 'off') {
+    videoContent = (
+      <KettlebellSkeletonWrapper
+        data={kettlebell}
+        resolution={{ width: contentWidth, height: contentHeight }}>
+        {videoContent}
+      </KettlebellSkeletonWrapper>
     );
   }
 

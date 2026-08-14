@@ -192,6 +192,14 @@ Python sidecar code is read at container boot; a restart is enough (no rebuild).
 
 - `compose.dev.yaml` disables NVIDIA GPU runtime and uses FFmpeg CPU encoding — suitable for macOS and CPU-only Linux dev.
 - On Linux with NVIDIA GPU, adjust or remove the `runtime`/`gpus` overrides in `compose.dev.yaml` if you want GPU encoding in dev.
+- With an NVIDIA GPU (Windows/Docker Desktop + WSL2, or Linux), stack `compose.dev.gpu.yaml` on top to give the container CUDA — the AI sidecars (people-counter, kettlebell-coach, …) then run YOLO on the GPU instead of competing with the render pipeline for CPU:
+
+  ```bash
+  SMELTER_DATA_DIR=/path/to/smelter-data docker compose \
+    -f compose.yaml -f compose.dev.yaml -f compose.dev.gpu.yaml up
+  ```
+
+  Verify with `docker compose exec server dist/ai-models/people-counter/.venv/bin/python3 -c "import torch; print(torch.cuda.is_available())"`. Smelter's own compositing still runs on CPU under WSL2 (no NVIDIA Vulkan ICD in the container), so keep the FFmpeg encoder there.
 - Do not merge `compose.cpu.yaml` with `compose.dev.yaml` as-is — `compose.cpu.yaml` references an orphan `server-b` service. Dev CPU overrides are included directly in `compose.dev.yaml`.
 - The editor is **not** run in Docker (excluded via `.dockerignore`); run `pnpm dev` in `editor/` locally and point `SMELTER_EDITOR_SERVER_URL` at `http://localhost:9071`.
 

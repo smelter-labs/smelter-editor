@@ -76,4 +76,59 @@ RUN python3 -m venv /home/smelter/demo/server/captions/.venv && \
   /home/smelter/demo/server/captions/.venv/bin/python3 -c \
     "import torch; import torchaudio; import silero_vad; import faster_whisper; import smelter"
 
+# AI-model sidecar venvs, baked for the same reason as captions above.
+#
+# Without this every container start pays for them at RUNTIME: BaseSidecar
+# starts all sidecars when the first room is created, and the shared venv is
+# installed under a per-venvDir queue, so the pip runs are serialized and the
+# last model in the chain waits out all of them. Meanwhile pip saturates the
+# CPU the render pipeline needs, which shows up as `Dropping video frame on
+# queue output` for minutes after boot.
+#
+# Paths are `dist/ai-models/*` — that is where the manifests resolve venvDir
+# from (__dirname of the COMPILED js), and `pnpm build` above has already put
+# the requirements files there via copy-ai-assets.sh.
+ARG AI_MODELS_DIR=/home/smelter/demo/server/dist/ai-models
+
+# Shared venv: people-counter (4 backends), car-ads, car-hue and
+# kettlebell-coach all point venvDir here. kettlebell-coach's requirements are
+# a superset of people-counter's, so installing THAT file satisfies every one
+# of them in a single pass — and its depsCheck (the strictest: it also demands
+# clip/ftfy and ultralytics >= 8.3) is what verifies the result.
+RUN python3 -m venv "$AI_MODELS_DIR/people-counter/.venv" && \
+  "$AI_MODELS_DIR/people-counter/.venv/bin/pip" install --upgrade pip && \
+  "$AI_MODELS_DIR/people-counter/.venv/bin/pip" install --quiet --no-cache-dir \
+    -r "$AI_MODELS_DIR/kettlebell-coach/requirements.txt" && \
+  "$AI_MODELS_DIR/people-counter/.venv/bin/python3" -c \
+    "import cv2; import numpy; import websockets; import smelter; import clip; import ftfy; import ultralytics; assert tuple(map(int, ultralytics.__version__.split('.')[:2])) >= (8, 3)"
+
+# Own venvs: motion is tiny, building-detector pulls its own torch +
+# transformers (SegFormer) and is the other heavy runtime install.
+RUN python3 -m venv "$AI_MODELS_DIR/motion/.venv" && \
+  "$AI_MODELS_DIR/motion/.venv/bin/pip" install --upgrade pip && \
+  "$AI_MODELS_DIR/motion/.venv/bin/pip" install --quiet --no-cache-dir \
+    -r "$AI_MODELS_DIR/motion/requirements.txt" && \
+  "$AI_MODELS_DIR/motion/.venv/bin/python3" -c \
+    "import cv2; import numpy; import websockets; import smelter"
+
+RUN python3 -m venv "$AI_MODELS_DIR/building-detector/.venv" && \
+  "$AI_MODELS_DIR/building-detector/.venv/bin/pip" install --upgrade pip && \
+  "$AI_MODELS_DIR/building-detector/.venv/bin/pip" install --quiet --no-cache-dir \
+    -r "$AI_MODELS_DIR/building-detector/requirements.txt" && \
+  "$AI_MODELS_DIR/building-detector/.venv/bin/python3" -c \
+    "import cv2; import numpy; import websockets; import smelter; import torch; import transformers"
+
+# Ultralytics fetches weights on the FIRST predict, into the worker's cwd
+# (= the model's dist dir, which is what BaseSidecar spawns python with). Left
+# to runtime that is a second cold-start stall right after the venv one, on the
+# same starved CPU. Pull the defaults now; a non-default pick from the UI still
+# downloads on demand. YOLOWorld.set_classes() additionally pulls the CLIP
+# text encoder into ~/.cache/clip, so warm that here too.
+RUN cd "$AI_MODELS_DIR/kettlebell-coach" && \
+  "$AI_MODELS_DIR/people-counter/.venv/bin/python3" -c \
+    "from ultralytics import YOLO, YOLOWorld; YOLO('yolo11n-pose.pt'); YOLOWorld('yolov8s-worldv2.pt').set_classes(['kettlebell'])" && \
+  cd "$AI_MODELS_DIR/people-counter" && \
+  "$AI_MODELS_DIR/people-counter/.venv/bin/python3" -c \
+    "from ultralytics import YOLO; YOLO('yolov8n.pt'); YOLO('yolov8s.pt')"
+
 ENTRYPOINT ["/home/smelter/demo/entrypoint.sh"]

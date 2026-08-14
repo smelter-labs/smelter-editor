@@ -4,41 +4,15 @@ import { KETTLEBELL_ISSUE_LABELS } from '@smelter-editor/types';
 import type { KettlebellIssueCode } from '@smelter-editor/types';
 import type { KettlebellOverlayState } from '../app/store';
 import { MotionPredictor } from './motionPredictor';
-
-// COCO-17 bone segments (keypoint index pairs) drawn as rotated Views.
-const BONES: [number, number][] = [
-  [0, 5],
-  [0, 6], // nose → shoulders
-  [5, 6], // shoulder line
-  [5, 7],
-  [7, 9], // left arm
-  [6, 8],
-  [8, 10], // right arm
-  [5, 11],
-  [6, 12], // torso
-  [11, 12], // hip line
-  [11, 13],
-  [13, 15], // left leg
-  [12, 14],
-  [14, 16], // right leg
-];
-
-// Joints below this confidence are hidden (mirrors the worker's own floor).
-const KPT_CONF_MIN = 0.35;
-
-// Smooth-motion tuning (same shape as SmoothedBoxes): results arrive at
-// ~12-16/s while the output renders at 60fps, so each joint is dead-reckoned
-// along its estimated velocity every tick and the drawn position eased toward
-// that moving target — the skeleton glides with the athlete instead of
-// stepping behind them.
-const TICK_MS = 16;
-const SMOOTH = 0.35;
-/** MotionPredictor id for the bell box (joints use their keypoint index). */
-const BELL_TRACK_ID = 100;
-
-const BONE_COLOR = '#22D3EEDD';
-const JOINT_COLOR = '#E0F2FEEE';
-const BELL_COLOR = '#F97316FF';
+import type { Parent } from './kettlebellRig';
+import {
+  BELL_COLOR,
+  BELL_TRACK_ID,
+  PREDICT_OPTS,
+  SMOOTH,
+  TICK_MS,
+  coverTransform,
+} from './kettlebellRig';
 
 const VERDICT_COLORS: Record<string, string> = {
   correct: '#16A34ACC',
@@ -46,63 +20,32 @@ const VERDICT_COLORS: Record<string, string> = {
   none: '#000000CC',
 };
 
-type Parent = { width: number; height: number };
-
-/** The rescale-'fill' (cover) transform the video uses, precomputed. */
-function coverTransform(parent: Parent, frameW: number, frameH: number) {
-  const scale = Math.max(parent.width / frameW, parent.height / frameH);
-  const dispW = frameW * scale;
-  const dispH = frameH * scale;
-  return {
-    offX: (parent.width - dispW) / 2,
-    offY: (parent.height - dispH) / 2,
-    dispW,
-    dispH,
-  };
-}
-
 /**
- * Pose skeleton + tracked bell with dead-reckoned motion. Each bone is a thin
- * View centered on its segment midpoint and rotated to the segment angle
- * (Smelter rotates around the View center), plus a dot per visible joint —
- * ~30 Views per pose, same order as SmoothedBoxes' per-tick churn.
+ * The tracked bell: an outline box, plus its confidence when drawBoxes is on.
+ *
+ * The bell rides its own MotionPredictor track and its own ease — it was never
+ * part of the pose rig, and since the rig moved into the `kettlebell-skeleton`
+ * shader (KettlebellSkeletonWrapper) the two share no state at all. It stays a
+ * View because it carries a rounded outline and a text label.
  */
-function SkeletonAndBell({
+function BellBox({
   data,
   parent,
 }: {
   data: KettlebellOverlayState;
   parent: Parent;
 }) {
-  const predictorRef = useRef(new MotionPredictor());
-  // Eased, currently-drawn vectors: joints are [x, y], the bell [x, y, w, h].
-  const drawnRef = useRef<Map<number, number[]>>(new Map());
-  const confRef = useRef<number[]>(new Array(17).fill(0));
-  const bellActiveRef = useRef(false);
+  const predictorRef = useRef(new MotionPredictor(PREDICT_OPTS));
+  /** Eased, currently-drawn bell rect [x, y, w, h] in tile px. */
+  const drawnBellRef = useRef<number[] | null>(null);
   const [, setTick] = useState(0);
 
-  // Feed each result into the per-joint predictors (px, via cover transform).
   useEffect(() => {
     const { offX, offY, dispW, dispH } = coverTransform(
       parent,
       data.frameW,
       data.frameH,
     );
-    const now = Date.now();
-    if (data.kpts) {
-      data.kpts.forEach((k, i) => {
-        confRef.current[i] = k[2];
-        if (k[2] < KPT_CONF_MIN) return;
-        predictorRef.current.update(
-          i,
-          [offX + k[0] * dispW, offY + k[1] * dispH],
-          now,
-        );
-      });
-    } else {
-      confRef.current.fill(0);
-    }
-    bellActiveRef.current = !!data.kb;
     if (data.kb) {
       predictorRef.current.update(
         BELL_TRACK_ID,
@@ -112,113 +55,69 @@ function SkeletonAndBell({
           data.kb.w * dispW,
           data.kb.h * dispH,
         ],
-        now,
+        Date.now(),
       );
     } else {
-      drawnRef.current.delete(BELL_TRACK_ID);
+      predictorRef.current.forget(BELL_TRACK_ID);
+      drawnBellRef.current = null;
     }
   }, [data, parent.width, parent.height]);
 
-  // Every tick, ease each drawn vector toward its predicted position.
+  // Results arrive at ~12-16/s while the output renders at 60fps, so the box
+  // is dead-reckoned along its estimated velocity every tick and the drawn
+  // rect eased toward that moving target.
   useEffect(() => {
     const timer = setInterval(() => {
-      const now = Date.now();
-      const ids = [...confRef.current.keys()];
-      if (bellActiveRef.current) ids.push(BELL_TRACK_ID);
-      for (const id of ids) {
-        if (id !== BELL_TRACK_ID && confRef.current[id] < KPT_CONF_MIN) {
-          continue;
-        }
-        const tgt = predictorRef.current.predict(id, now);
-        if (!tgt) continue;
-        const cur = drawnRef.current.get(id);
-        if (!cur || cur.length !== tgt.length) {
-          drawnRef.current.set(id, [...tgt]);
-        } else {
-          for (let i = 0; i < tgt.length; i++) {
-            cur[i] += (tgt[i] - cur[i]) * SMOOTH;
+      const bell = predictorRef.current.predict(BELL_TRACK_ID, Date.now());
+      const drawn = drawnBellRef.current;
+      if (bell) {
+        if (!drawn) drawnBellRef.current = [...bell];
+        else {
+          for (let i = 0; i < bell.length; i++) {
+            drawn[i] += (bell[i] - drawn[i]) * SMOOTH;
           }
         }
+      } else if (!drawn) {
+        // Nothing tracked and nothing on screen — skip the tick rather than
+        // re-serializing an unchanged scene 60 times a second.
+        return;
       }
       setTick((t) => (t + 1) % 1_000_000);
     }, TICK_MS);
     return () => clearInterval(timer);
   }, []);
 
-  const joint = (i: number): number[] | undefined =>
-    confRef.current[i] >= KPT_CONF_MIN ? drawnRef.current.get(i) : undefined;
+  const bell = drawnBellRef.current;
+  if (!bell) return null;
 
-  const els: React.ReactElement[] = [];
+  const [left, top, w, h] = bell;
+  const boxTop = Math.round(top);
+  const boxLeft = Math.round(left);
+  // The border grows outward from the View while top/left measure its outer
+  // edge, so a View sized to the box rings the bell instead of tracing it.
+  // Inset by the border so the stroke's outer edge lands on the tracked rect
+  // (same correction as SmoothedBoxes).
+  const inset = data.drawBoxes ? 4 : 2;
+  const fontSize = Math.max(12, Math.round(parent.height * 0.022));
 
-  if (data.skeleton) {
-    const thickness = Math.max(3, Math.round(parent.height * 0.006));
-    const dot = thickness * 2;
-    BONES.forEach(([a, b], i) => {
-      const pa = joint(a);
-      const pb = joint(b);
-      if (!pa || !pb) return;
-      const len = Math.hypot(pb[0] - pa[0], pb[1] - pa[1]);
-      if (len < 2) return;
-      const angle = (Math.atan2(pb[1] - pa[1], pb[0] - pa[0]) * 180) / Math.PI;
-      els.push(
-        <View
-          key={`bone-${i}`}
-          style={{
-            top: Math.round((pa[1] + pb[1]) / 2 - thickness / 2),
-            left: Math.round((pa[0] + pb[0]) / 2 - len / 2),
-            width: Math.max(2, Math.round(len)),
-            height: thickness,
-            rotation: angle,
-            backgroundColor: BONE_COLOR,
-            borderRadius: thickness,
-          }}
-        />,
-      );
-    });
-    for (let i = 0; i < 17; i++) {
-      const p = joint(i);
-      if (!p) continue;
-      els.push(
-        <View
-          key={`joint-${i}`}
-          style={{
-            top: Math.round(p[1] - dot / 2),
-            left: Math.round(p[0] - dot / 2),
-            width: dot,
-            height: dot,
-            backgroundColor: JOINT_COLOR,
-            borderRadius: dot,
-          }}
-        />,
-      );
-    }
-  }
-
-  const bell = data.kb ? drawnRef.current.get(BELL_TRACK_ID) : undefined;
-  if (bell) {
-    const [left, top, w, h] = bell;
-    els.push(
+  return (
+    <>
       <View
-        key='bell'
         style={{
-          top: Math.round(top),
-          left: Math.round(left),
-          width: Math.max(2, Math.round(w)),
-          height: Math.max(2, Math.round(h)),
-          borderWidth: data.drawBoxes ? 4 : 2,
+          top: boxTop + inset,
+          left: boxLeft + inset,
+          width: Math.max(2, Math.round(w) - 2 * inset),
+          height: Math.max(2, Math.round(h) - 2 * inset),
+          borderWidth: inset,
           borderColor: BELL_COLOR,
           borderRadius: 6,
         }}
-      />,
-    );
-    if (data.drawBoxes && data.kb?.conf != null) {
-      const fontSize = Math.max(12, Math.round(parent.height * 0.022));
-      els.push(
+      />
+      {data.drawBoxes && data.kb?.conf != null ? (
         <View
-          key='bell-conf'
           style={{
-            top: Math.max(0, Math.round(top) - Math.round(fontSize * 1.6)),
-            left: Math.round(left),
+            top: Math.max(0, boxTop - Math.round(fontSize * 1.6)),
+            left: boxLeft,
             width: Math.round(fontSize * 0.6 * 8),
             height: Math.round(fontSize * 1.5),
             backgroundColor: '#F97316CC',
@@ -229,12 +128,10 @@ function SkeletonAndBell({
           <Text style={{ fontSize, color: '#000000FF' }}>
             {`kb ${data.kb.conf.toFixed(2)}`}
           </Text>
-        </View>,
-      );
-    }
-  }
-
-  return <>{els}</>;
+        </View>
+      ) : null}
+    </>
+  );
 }
 
 /**
@@ -307,9 +204,14 @@ function CoachBadge({
 }
 
 /**
- * Kettlebell Coach on-output overlay: pose skeleton + tracked bell box +
- * reps/exercise/verdict badge. Mounted whenever the model is enabled (the
- * store entry persists between detections so the badge never flickers).
+ * Kettlebell Coach on-output overlay: tracked bell box + reps/exercise/verdict
+ * badge. Mounted whenever the model is enabled (the store entry persists
+ * between detections so the badge never flickers). The pose skeleton is not
+ * here — it is drawn underneath, by KettlebellSkeletonWrapper's shader.
+ *
+ * BellBox is mounted unconditionally: gating it on `data.kb` would tear down
+ * and rebuild its interval every time the bell blinks out, several times a
+ * second. It renders null while there is nothing tracked.
  */
 export function KettlebellOverlay({
   data,
@@ -327,9 +229,7 @@ export function KettlebellOverlay({
         height: parent.height,
         overflow: 'hidden',
       }}>
-      {data.skeleton || data.kb ? (
-        <SkeletonAndBell data={data} parent={parent} />
-      ) : null}
+      <BellBox data={data} parent={parent} />
       <CoachBadge data={data} parent={parent} />
     </View>
   );

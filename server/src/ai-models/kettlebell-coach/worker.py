@@ -13,10 +13,16 @@ the NEWEST one; the analysis loop always works on that freshest frame. This
 matters for overlay sync: the socket never builds a backlog when inference is
 slower than the frame rate, so the frame's receive time (which Node's overlay
 hold is computed from) stays honest and the skeleton doesn't trail the video.
-Pose runs on every analyzed frame; the (heavier) YOLO-World pass only every
-`kbEveryN` analyzed frames, with analysis.KettlebellTracker holding the box
-via the wrist delta in between. All heavy backends load lazily so a missing
-torch/ultralytics only disables detection instead of crashing the worker."""
+
+Pose runs on every analyzed frame and is the only thing on the critical path.
+The (heavier) YOLO-World bell pass runs every `kbEveryN` analyzed frames in a
+DETACHED task, one in flight at a time: folded into the loop it would stall the
+pose stream for the length of a YOLO-World inference, and since `procMs` sets
+Node's overlay hold, that stall turned into a burst of jitter in the drawn
+skeleton. analysis.KettlebellTracker holds the bell box via the wrist delta in
+between passes, and carries a late-landing detection forward to the wrists'
+current position. All heavy backends load lazily so a missing torch/ultralytics
+only disables detection instead of crashing the worker."""
 
 from __future__ import annotations
 
@@ -30,11 +36,17 @@ import threading
 import time
 from dataclasses import dataclass, field
 
+import numpy as np
 import websockets
 from smelter import list_channels
 from smelter.aio import subscribe_video_channel
 
-from analysis import KettlebellTracker, PoseFrame, TechniqueAnalyzer
+from analysis import (
+    KettlebellTracker,
+    PoseFrame,
+    TechniqueAnalyzer,
+    analysis_interval_s,
+)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -44,13 +56,13 @@ logging.basicConfig(
 log = logging.getLogger("kettlebell-coach-worker")
 
 NODE_WS_URL = os.environ.get("NODE_WS_URL", "ws://127.0.0.1:8091")
-# Ceiling on the analysis rate (fast machines): at most one pass per this many
-# seconds (~16 Hz). Slow machines pace themselves — the loop simply analyzes
-# the newest frame whenever the previous pass finishes. Every analyzed frame
-# is emitted; there is no separate output throttle to add staleness.
-MIN_ANALYSIS_INTERVAL_S = float(
-    os.environ.get("KETTLEBELL_MIN_ANALYSIS_INTERVAL_S", "0.06")
-)
+# Ceiling on the analysis rate (fast machines): at most this many passes per
+# second. Slow machines pace themselves — the loop simply analyzes the newest
+# frame whenever the previous pass finishes. Every analyzed frame is emitted;
+# there is no separate output throttle to add staleness. This is only the
+# baseline: the live per-input value comes from the `analysisFps` param.
+ANALYSIS_FPS = float(os.environ.get("KETTLEBELL_ANALYSIS_FPS", "16"))
+MIN_ANALYSIS_INTERVAL_S = 1.0 / ANALYSIS_FPS if ANALYSIS_FPS > 0 else 0.06
 
 POSE_WEIGHTS = os.environ.get("KETTLEBELL_POSE_WEIGHTS", "yolo11n-pose.pt")
 WORLD_WEIGHTS = os.environ.get("KETTLEBELL_WORLD_WEIGHTS", "yolov8s-worldv2.pt")
@@ -72,6 +84,8 @@ class InputState:
     analyzer: TechniqueAnalyzer = field(default_factory=TechniqueAnalyzer)
     tracker: KettlebellTracker = field(default_factory=KettlebellTracker)
     analyzed_frames: int = 0
+    # In-flight detached YOLO-World pass, if any (at most one per input).
+    bell_task: asyncio.Task | None = None
     # Discrete events held while the Node WS is down, flushed with the next
     # successful emission so none are lost.
     pending_events: list = field(default_factory=list)
@@ -180,46 +194,72 @@ def _best_pose(result) -> list[list[float]] | None:
     return kpts if len(kpts) == 17 else None
 
 
-def detect(rgba, params: dict, run_world: bool) -> tuple[list | None, list | None]:
-    """Heavy inference for one frame (runs in a thread).
+def detect_pose(rgb, params: dict) -> list | None:
+    """Pose inference for one frame (runs in a thread).
 
-    Returns (pose_kpts, world_boxes): pose_kpts is 17 normalized [x,y,conf] or
-    None; world_boxes is a list of normalized {x,y,w,h,conf} kettlebell
-    candidates, or None when the world pass was skipped this frame."""
-    imgsz = int(float(params.get("imgsz", IMGSZ)))
-    rgb = rgba[:, :, :3]
-
-    pose_kpts = None
+    Returns 17 normalized [x, y, conf] keypoints, or None when there is no
+    person (or no usable pose backend)."""
     pose_model = _get_pose_model(str(params.get("poseModel", POSE_WEIGHTS)))
-    if pose_model is not None:
-        results = pose_model.predict(rgb, imgsz=imgsz, conf=POSE_CONF, verbose=False)
-        if results:
-            pose_kpts = _best_pose(results[0])
+    if pose_model is None:
+        return None
+    imgsz = int(float(params.get("imgsz", IMGSZ)))
+    results = pose_model.predict(rgb, imgsz=imgsz, conf=POSE_CONF, verbose=False)
+    return _best_pose(results[0]) if results else None
 
-    world_boxes = None
-    if run_world:
-        world_model = _get_world_model()
-        if world_model is not None:
-            kb_conf = float(params.get("kbConfidence", KB_CONF))
-            results = world_model.predict(
-                rgb, imgsz=imgsz, conf=kb_conf, verbose=False
-            )
-            world_boxes = []
-            if results:
-                b = results[0].boxes
-                if b is not None and b.xyxyn is not None:
-                    for i in range(len(b.xyxyn)):
-                        x1, y1, x2, y2 = (float(v) for v in b.xyxyn[i])
-                        world_boxes.append(
-                            {
-                                "x": round(x1, 4),
-                                "y": round(y1, 4),
-                                "w": round(x2 - x1, 4),
-                                "h": round(y2 - y1, 4),
-                                "conf": round(float(b.conf[i]), 3),
-                            }
-                        )
-    return pose_kpts, world_boxes
+
+def detect_bell(rgb, params: dict) -> list | None:
+    """Zero-shot kettlebell inference for one frame (runs in a thread).
+
+    Returns a list of normalized {x, y, w, h, conf} candidates (possibly
+    empty), or None when the YOLO-World backend is unavailable — an empty list
+    is a pass that found nothing, which the tracker must not confuse with a
+    pass that never ran."""
+    world_model = _get_world_model()
+    if world_model is None:
+        return None
+    imgsz = int(float(params.get("imgsz", IMGSZ)))
+    kb_conf = float(params.get("kbConfidence", KB_CONF))
+    results = world_model.predict(rgb, imgsz=imgsz, conf=kb_conf, verbose=False)
+    boxes: list[dict[str, float]] = []
+    if results:
+        b = results[0].boxes
+        if b is not None and b.xyxyn is not None:
+            for i in range(len(b.xyxyn)):
+                x1, y1, x2, y2 = (float(v) for v in b.xyxyn[i])
+                boxes.append(
+                    {
+                        "x": round(x1, 4),
+                        "y": round(y1, 4),
+                        "w": round(x2 - x1, 4),
+                        "h": round(y2 - y1, 4),
+                        "conf": round(float(b.conf[i]), 3),
+                    }
+                )
+    return boxes
+
+
+async def _bell_pass(
+    input_id: str, rgb, params: dict, t: float, wrists: dict
+) -> None:
+    """One detached YOLO-World pass, folded into the tracker when it lands.
+
+    Runs off the analysis loop so the pose stream keeps its cadence. The wrist
+    snapshot is the one from `rgb`'s own frame: the tracker uses it both to
+    gate candidates against where the hands were THEN and to carry the accepted
+    box forward to where they are now."""
+    try:
+        boxes = await asyncio.to_thread(detect_bell, rgb, params)
+    except asyncio.CancelledError:
+        raise
+    except Exception as err:  # noqa: BLE001
+        # Detached: nothing awaits this, so swallow instead of leaving an
+        # unretrieved task exception. The bell simply stays wrist-tracked.
+        log.warning("Bell detection pass failed for %s: %s", input_id, err)
+        return
+    state = active_inputs.get(input_id)
+    if state is None or boxes is None:
+        return
+    state.tracker.observe_detections(t, boxes, wrists_at=wrists)
 
 
 async def send_result(input_id: str, data: dict) -> None:
@@ -358,10 +398,15 @@ async def _run_detector_loop(input_id: str) -> int:
                 continue
 
             # Cap the analysis rate on fast machines; a newer frame arriving
-            # during the pause supersedes the one we woke up for.
-            pause_s = MIN_ANALYSIS_INTERVAL_S - (
-                time.monotonic() - last_analysis_at
-            )
+            # during the pause supersedes the one we woke up for. Read the
+            # interval from the input's LIVE params so a `configure` while the
+            # stream runs takes effect on the very next pass.
+            pending = active_inputs.get(input_id)
+            if pending is None:
+                break
+            pause_s = analysis_interval_s(
+                pending.params, MIN_ANALYSIS_INTERVAL_S
+            ) - (time.monotonic() - last_analysis_at)
             if pause_s > 0:
                 await asyncio.sleep(pause_s)
             if not latest:
@@ -377,16 +422,11 @@ async def _run_detector_loop(input_id: str) -> int:
             params = state.params
             state.analyzed_frames += 1
 
-            kb_source = str(params.get("kbSource", "auto"))
-            kb_every_n = max(1, int(float(params.get("kbEveryN", KB_EVERY_N))))
-            run_world = (
-                kb_source != "wrist-only"
-                and state.analyzed_frames % kb_every_n == 0
-            )
-
-            pose_kpts, world_boxes = await asyncio.to_thread(
-                detect, rgba, params, run_world
-            )
+            # A contiguous copy: the pose pass and the (detached, longer-lived)
+            # bell pass both read it after this frame's buffer may have been
+            # recycled by the SDK.
+            rgb = np.ascontiguousarray(rgba[:, :, :3])
+            pose_kpts = await asyncio.to_thread(detect_pose, rgb, params)
 
             # Analysis is cheap — run it on the loop, per analyzed frame. Time
             # base is the frame's PTS: true source spacing, immune to
@@ -395,8 +435,22 @@ async def _run_detector_loop(input_id: str) -> int:
             state.analyzer.set_params(params)
             wrists = PoseFrame(pose_kpts).wrists() if pose_kpts else {}
             state.tracker.observe_pose(t, wrists)
-            if world_boxes is not None:
-                state.tracker.observe_detections(t, world_boxes)
+
+            # Kick off the bell detector without waiting for it — it lands in
+            # the tracker a pass or two later. Skipped while one is in flight,
+            # so a slow machine simply detects the bell less often instead of
+            # queueing passes and dragging the pose stream down with them.
+            kb_source = str(params.get("kbSource", "auto"))
+            kb_every_n = max(1, int(float(params.get("kbEveryN", KB_EVERY_N))))
+            if (
+                kb_source != "wrist-only"
+                and state.analyzed_frames % kb_every_n == 0
+                and (state.bell_task is None or state.bell_task.done())
+            ):
+                state.bell_task = asyncio.create_task(
+                    _bell_pass(input_id, rgb, params, t, dict(wrists))
+                )
+
             kb_box = state.tracker.current()
             # Only a genuinely tracked bell is passed as kb position — the
             # analyzer's own active-hand picking is the wrist fallback (the
@@ -447,6 +501,12 @@ async def _run_detector_loop(input_id: str) -> int:
         reader.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await reader
+        state = active_inputs.get(input_id)
+        if state and state.bell_task and not state.bell_task.done():
+            # Cancel without awaiting: a to_thread already inside a YOLO-World
+            # inference cannot be interrupted, and teardown must not block on
+            # it. The straggler result is dropped by the active_inputs check.
+            state.bell_task.cancel()
         log.info("Detector loop ended for %s after %d frames", input_id, frame_count)
 
     return frame_count
@@ -462,7 +522,9 @@ def stop_detector(input_id: str) -> None:
     task = running_tasks.pop(input_id, None)
     if task and not task.done():
         task.cancel()
-    active_inputs.pop(input_id, None)
+    state = active_inputs.pop(input_id, None)
+    if state and state.bell_task and not state.bell_task.done():
+        state.bell_task.cancel()
 
 
 async def handle_command(msg: dict) -> None:

@@ -43,6 +43,7 @@ import {
 import { PeopleTracker } from '../ai-models/people-counter/people-tracker';
 import { jitterBoxes } from '../ai-models/people-counter/box-jitter';
 import { CarTracker } from '../ai-models/car-ads/car-tracker';
+import { kettlebellSkeletonMode } from '../app/store';
 import type { CarAdDetection } from '../app/store';
 import { DuckHunterController } from '../duckHunter/DuckHunterController';
 import {
@@ -248,6 +249,15 @@ export class RoomState {
   /** Duck Hunter game (phone-gyroscope crosshairs targeting the ducks). */
   private readonly duckHunter: DuckHunterController;
   private readonly kettlebellController: KettlebellCoachController;
+
+  /**
+   * Per-input wall-clock of the last SCHEDULED kettlebell overlay apply. The
+   * hold is `delayMs - procMs`, so a slow result (the frame that also ran the
+   * bell detector) waits less than the fast result behind it and would land
+   * out of order — the skeleton visibly snapping back in time. Clamping each
+   * apply to be no earlier than the previous one keeps the sequence monotonic.
+   */
+  private readonly kettlebellApplyAt = new Map<string, number>();
 
   private stateChangeListeners = new Set<() => void>();
 
@@ -756,7 +766,13 @@ export class RoomState {
       if (!input) return;
       const data = event.data as {
         pose?: { kpts?: [number, number, number][] } | null;
-        kb?: { x: number; y: number; w: number; h: number; conf?: number } | null;
+        kb?: {
+          x: number;
+          y: number;
+          w: number;
+          h: number;
+          conf?: number;
+        } | null;
         exercise?: 'swing' | 'clean' | 'snatch' | 'idle';
         repCount?: number;
         lastRep?: { verdict?: string; issues?: string[] } | null;
@@ -795,7 +811,7 @@ export class RoomState {
               : [],
             frameW: data.frameW!,
             frameH: data.frameH!,
-            skeleton: String(cfg.params?.skeleton ?? 'on') === 'on',
+            skeleton: kettlebellSkeletonMode(cfg.params?.skeleton),
             drawBoxes: Boolean(cfg.drawBoxes),
           });
         } else {
@@ -803,8 +819,16 @@ export class RoomState {
         }
       };
 
-      if (holdMs > 0) {
-        setTimeout(applyOverlay, holdMs);
+      // Never let this result land before one already scheduled: the overlay
+      // must step forward in frame order or the skeleton jumps backwards.
+      const now = Date.now();
+      const applyAt = Math.max(
+        now + holdMs,
+        this.kettlebellApplyAt.get(event.inputId) ?? 0,
+      );
+      this.kettlebellApplyAt.set(event.inputId, applyAt);
+      if (applyAt > now) {
+        setTimeout(applyOverlay, applyAt - now);
       } else {
         applyOverlay();
       }
@@ -1681,6 +1705,7 @@ export class RoomState {
       if (modelId === KETTLEBELL_COACH_ID && !enabled) {
         this.output.store.getState().setKettlebell(inputId, null);
         this.kettlebellController.reset(inputId);
+        this.kettlebellApplyAt.delete(inputId);
       }
 
       const newSideChannel = computeSideChannelConfig(

@@ -17,6 +17,7 @@ const DEFAULT_WORLD_WEIGHTS = 'yolov8s-worldv2.pt';
 const DEFAULT_KB_CONF = 0.15;
 const DEFAULT_KB_EVERY_N = 5;
 const DEFAULT_IMGSZ = 640;
+const DEFAULT_ANALYSIS_FPS = 16;
 const DEFAULT_REP_SENSITIVITY = 0.25;
 const DEFAULT_HINGE_KNEE_MIN = 110;
 const DEFAULT_ARM_STRAIGHT_MIN = 150;
@@ -60,7 +61,7 @@ const KETTLEBELL_COACH_PARAMS: ModelParamSpec[] = [
     key: 'kbEveryN',
     label: 'Bell detect interval',
     description:
-      'Run the kettlebell detector every N processed frames (tracked from the wrists in between). Lower = tighter box, slower.',
+      'Run the kettlebell detector every N ANALYSED frames (tracked from the wrists in between), so its real rate is the analysis rate divided by this. Lower = tighter box, slower.',
     min: 1,
     max: 15,
     step: 1,
@@ -74,6 +75,16 @@ const KETTLEBELL_COACH_PARAMS: ModelParamSpec[] = [
     max: 1280,
     step: 160,
     default: DEFAULT_IMGSZ,
+  },
+  {
+    key: 'analysisFps',
+    label: 'Analysis rate',
+    description:
+      'Frames per second the model inspects — a ceiling, not a floor: a slow machine falls below it on its own. Lower frees CPU and makes the skeleton steppier. The floor is 8 because below it fast reps start going uncounted.',
+    min: 8,
+    max: 16,
+    step: 1,
+    default: DEFAULT_ANALYSIS_FPS,
   },
   {
     key: 'repSensitivity',
@@ -132,12 +143,15 @@ const KETTLEBELL_COACH_PARAMS: ModelParamSpec[] = [
     type: 'select',
     key: 'skeleton',
     label: 'Skeleton overlay',
-    description: 'Draw the tracked pose skeleton on the output video',
+    description:
+      'Draw the tracked pose skeleton on the output video. Neon rig colours each body part and reads as one figure; lines is the plain wireframe.',
+    // 'on' is kept as the classic-lines value so saved configs keep working.
     options: [
-      { value: 'on', label: 'On' },
+      { value: 'neon', label: 'Neon rig' },
+      { value: 'on', label: 'Lines (classic)' },
       { value: 'off', label: 'Off' },
     ],
-    default: 'on',
+    default: 'neon',
   },
 ];
 
@@ -188,6 +202,7 @@ export const KETTLEBELL_COACH_MANIFEST: ModelManifest = {
     KETTLEBELL_KB_CONF: String(DEFAULT_KB_CONF),
     KETTLEBELL_KB_EVERY_N: String(DEFAULT_KB_EVERY_N),
     KETTLEBELL_IMGSZ: String(DEFAULT_IMGSZ),
+    KETTLEBELL_ANALYSIS_FPS: String(DEFAULT_ANALYSIS_FPS),
     KETTLEBELL_REP_SENSITIVITY: String(DEFAULT_REP_SENSITIVITY),
     KETTLEBELL_HINGE_KNEE_MIN: String(DEFAULT_HINGE_KNEE_MIN),
     KETTLEBELL_ARM_STRAIGHT_MIN: String(DEFAULT_ARM_STRAIGHT_MIN),

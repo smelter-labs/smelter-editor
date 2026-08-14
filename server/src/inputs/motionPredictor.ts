@@ -39,8 +39,28 @@ const MAX_DT_MS = 800;
 const MAX_EXTRAP_INTERVALS = 1.5;
 const MAX_EXTRAP_MS = 600;
 
+/**
+ * Per-instance lead caps. The defaults suit near-linear subjects (cars); a
+ * caller whose tracks reverse direction inside one response interval — pose
+ * joints in a kettlebell swing hit a hard turnaround twice per rep — should
+ * pass a much tighter cap, since linear extrapolation past the turnaround
+ * throws the point off the body instead of leading it.
+ */
+export type MotionPredictorOptions = {
+  maxExtrapIntervals?: number;
+  maxExtrapMs?: number;
+};
+
 export class MotionPredictor {
   private readonly entries = new Map<number, Entry>();
+  private readonly maxExtrapIntervals: number;
+  private readonly maxExtrapMs: number;
+
+  constructor(options: MotionPredictorOptions = {}) {
+    this.maxExtrapIntervals =
+      options.maxExtrapIntervals ?? MAX_EXTRAP_INTERVALS;
+    this.maxExtrapMs = options.maxExtrapMs ?? MAX_EXTRAP_MS;
+  }
 
   /** Feed the latest observed target for a track (call once per AI response). */
   update(id: number, target: number[], nowMs: number): void {
@@ -82,10 +102,15 @@ export class MotionPredictor {
     if (!e) return undefined;
     const cap =
       e.intervalMs > 0
-        ? Math.min(MAX_EXTRAP_MS, e.intervalMs * MAX_EXTRAP_INTERVALS)
+        ? Math.min(this.maxExtrapMs, e.intervalMs * this.maxExtrapIntervals)
         : 0;
     const horizon = Math.min(Math.max(0, nowMs - e.at), cap);
     return e.target.map((t, i) => t + e.vel[i] * horizon);
+  }
+
+  /** Drop one track — it went out of sight, so its estimates are worthless. */
+  forget(id: number): void {
+    this.entries.delete(id);
   }
 
   /** Drop state for tracks that no longer exist. */

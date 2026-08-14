@@ -11,8 +11,10 @@ import math
 
 from analysis import (
     DEFAULT_PARAMS,
+    MAX_ANALYSIS_INTERVAL_S,
     KettlebellTracker,
     TechniqueAnalyzer,
+    analysis_interval_s,
     angle_deg,
 )
 
@@ -83,6 +85,16 @@ TOP_HIGH = make_pose(  # bell above the shoulder line (American-style height)
     elbow=(0.49, 0.27), wrist=(0.48, 0.24),
     hip=(0.50, 0.50), knee=(0.50, 0.65), ankle=(0.50, 0.80),
 )
+TOP_LOW = make_pose(  # bell stalls below the shoulder/hip midpoint — shallow
+    nose=(0.50, 0.20), ear=(0.50, 0.22), shoulder=(0.50, 0.30),
+    elbow=(0.47, 0.38), wrist=(0.44, 0.46),
+    hip=(0.50, 0.50), knee=(0.50, 0.65), ankle=(0.50, 0.80),
+)
+TOP_SHALLOW = make_pose(  # hand barely clears the hips — a fidget, not a rep
+    nose=(0.40, 0.28), ear=(0.41, 0.27), shoulder=(0.45, 0.34),
+    elbow=(0.45, 0.42), wrist=(0.45, 0.50),
+    hip=(0.50, 0.51), knee=(0.48, 0.66), ankle=(0.50, 0.80),
+)
 TOP_SNATCH = make_pose(  # straight-arm overhead lockout (wrist above nose)
     nose=(0.50, 0.20), ear=(0.50, 0.22), shoulder=(0.50, 0.30),
     elbow=(0.50, 0.21), wrist=(0.50, 0.12),
@@ -102,6 +114,12 @@ TOP_SNATCH_1H = make_pose(  # left-arm overhead lockout, straight
     hip=(0.50, 0.50), knee=(0.50, 0.65), ankle=(0.50, 0.80),
     elbow_r=(0.54, 0.42), wrist_r=(0.56, 0.52),
 )
+TOP_CLEAN_1H = make_pose(  # left hand racked at the shoulder, elbow folded
+    nose=(0.50, 0.20), ear=(0.50, 0.22), shoulder=(0.50, 0.30),
+    elbow=(0.44, 0.38), wrist=(0.47, 0.28),
+    hip=(0.50, 0.50), knee=(0.50, 0.65), ankle=(0.50, 0.80),
+    elbow_r=(0.54, 0.42), wrist_r=(0.56, 0.52),
+)
 TOP_SNATCH_1H_SOFT = make_pose(  # left elbow still bent at the catch (~128°)
     nose=(0.50, 0.20), ear=(0.50, 0.22), shoulder=(0.50, 0.30),
     elbow=(0.46, 0.24), wrist=(0.50, 0.12),
@@ -110,16 +128,29 @@ TOP_SNATCH_1H_SOFT = make_pose(  # left elbow still bent at the catch (~128°)
 )
 
 
-def run_swing(bottom, top, reps=10, period_s=2.0, params=None):
+def run_swing(bottom, top, reps=10, period_s=2.0, params=None, fps=FPS):
     """Drive a TechniqueAnalyzer through `reps` cosine swing cycles."""
     analyzer = TechniqueAnalyzer(params=params)
     events = []
     snapshot = {}
-    steps = int((reps * period_s + 0.5) * FPS)
+    # Settling margin, not a whole extra cycle: at period_s=0.5 a fixed 0.5s
+    # tail is one more rep, which made a 3-rep run report 4.
+    steps = int((reps * period_s + min(0.5, period_s * 0.25)) * fps)
     for i in range(steps):
-        t = i / FPS
+        t = i / fps
         u = 0.5 - 0.5 * math.cos(2 * math.pi * t / period_s)
         snapshot = analyzer.update(t, lerp_pose(bottom, top, u), None)
+        events.extend(snapshot["events"])
+    return analyzer, events, snapshot
+
+
+def run_profile(bottom, top, us, params=None, fps=FPS):
+    """Drive a TechniqueAnalyzer through an explicit 0..1 interpolation path."""
+    analyzer = TechniqueAnalyzer(params=params)
+    events = []
+    snapshot = {}
+    for i, u in enumerate(us):
+        snapshot = analyzer.update(i / fps, lerp_pose(bottom, top, u), None)
         events.extend(snapshot["events"])
     return analyzer, events, snapshot
 
@@ -265,6 +296,235 @@ def test_tracker_one_hand_translation():
     box = tracker.current()
     assert abs(box["y"] - (0.53 - 0.20)) < 1e-6, "box must ride the lifting hand"
     assert abs(box["x"] - 0.46) < 1e-6
+
+
+def test_tracker_carries_late_detection_forward():
+    # The YOLO-World pass is detached and lands a frame or two late. Gating and
+    # translation both use the wrist snapshot from the frame it RAN on, so the
+    # box arrives at the hand's current position instead of its old one.
+    tracker = KettlebellTracker()
+    wrists_then = {0: (0.5, 0.60), 1: (0.5, 0.60)}
+    tracker.observe_pose(0.0, wrists_then)
+    tracker.observe_pose(0.1, {0: (0.5, 0.40), 1: (0.5, 0.40)})  # hands rose
+    tracker.observe_detections(
+        0.0,
+        [{"x": 0.46, "y": 0.56, "w": 0.08, "h": 0.08, "conf": 0.4}],
+        wrists_at=wrists_then,
+    )
+    box = tracker.current()
+    assert abs(box["y"] - (0.56 - 0.20)) < 1e-6, "box must land on the hand now"
+    assert abs(box["x"] - 0.46) < 1e-6
+
+    # Without the snapshot the same stale detection would be gated against the
+    # CURRENT wrists — far enough away here that it is rejected outright.
+    stale = KettlebellTracker()
+    stale.observe_pose(0.0, wrists_then)
+    stale.observe_pose(0.1, {0: (0.5, 0.1), 1: (0.5, 0.1)})
+    stale.observe_detections(
+        0.0, [{"x": 0.46, "y": 0.56, "w": 0.08, "h": 0.08, "conf": 0.4}]
+    )
+    assert stale.current() is None
+
+
+def test_too_low_rule():
+    _, events, _ = run_swing(BOTTOM, TOP_LOW)
+    reps = rep_events(events)
+    assert reps, "no reps segmented"
+    assert all("too_low" in r["issues"] for r in reps), [r["issues"] for r in reps]
+
+    # 'overhead-ok' only relaxes the ceiling, so a shallow swing still counts.
+    _, events_ok, _ = run_swing(
+        BOTTOM, TOP_LOW, params={"swingTopRule": "overhead-ok"}
+    )
+    reps_ok = rep_events(events_ok)
+    assert reps_ok and all("too_low" in r["issues"] for r in reps_ok)
+
+    # 'off' skips the height check entirely, as the manifest promises.
+    _, events_off, _ = run_swing(BOTTOM, TOP_LOW, params={"swingTopRule": "off"})
+    reps_off = rep_events(events_off)
+    assert reps_off and all("too_low" not in r["issues"] for r in reps_off), [
+        r["issues"] for r in reps_off
+    ]
+
+
+def test_overhead_ok_allows_american_height():
+    _, events, _ = run_swing(
+        BOTTOM, TOP_HIGH, params={"swingTopRule": "overhead-ok"}
+    )
+    reps = rep_events(events)
+    assert reps, "no reps segmented"
+    assert all("too_high" not in r["issues"] for r in reps), [
+        r["issues"] for r in reps
+    ]
+
+
+def test_fidget_is_not_a_rep():
+    """Hand leaves the bottom zone but travels less than repSensitivity."""
+    analyzer, events, _ = run_swing(BOTTOM, TOP_SHALLOW)
+    assert not rep_events(events)
+    assert analyzer.rep_count == 0
+
+
+def test_slow_rep_counted_while_classifier_idle():
+    """A rep slower than the classifier window used to be dropped twice over:
+    once by the 5s duration gate, once because the sliding window had already
+    fallen back to idle by the time the hand came back down."""
+    analyzer, events, _ = run_swing(BOTTOM, TOP, reps=1, period_s=8.0)
+    assert analyzer.classifier.effective() == "idle", (
+        "fixture must exercise the idle path"
+    )
+    reps = rep_events(events)
+    assert len(reps) == 1, f"expected 1 rep, got {len(reps)}"
+    assert reps[0]["exercise"] == "swing"
+    assert analyzer.rep_count == 1
+
+
+def test_fast_rep_counted():
+    """Reps quicker than the old 0.6s floor still count."""
+    analyzer, events, _ = run_swing(BOTTOM, TOP, reps=3, period_s=0.5, fps=30)
+    reps = rep_events(events)
+    assert len(reps) == 3, f"expected 3 reps, got {len(reps)}"
+    assert all(r["duration"] < 0.6 for r in reps), [r["duration"] for r in reps]
+    assert analyzer.rep_count == 3
+
+
+def test_snatch_not_judged_by_swing_rules():
+    """The headline report: a clean snatch collecting swing faults."""
+    _, events, _ = run_swing(BOTTOM_1H, TOP_SNATCH_1H)
+    reps = rep_events(events)
+    assert reps, "no reps segmented"
+    for rep in reps:
+        assert not ({"too_low", "too_high", "bent_arms"} & set(rep["issues"])), rep
+
+
+def test_clean_is_counted_without_a_verdict():
+    _, events, _ = run_swing(BOTTOM_1H, TOP_CLEAN_1H)
+    reps = rep_events(events)
+    assert reps, "no reps segmented"
+    assert all(r["exercise"] == "clean" for r in reps), [r["exercise"] for r in reps]
+    assert all(r["verdict"] == "correct" and not r["issues"] for r in reps)
+
+
+def test_overhead_hold_completes_the_rep():
+    """Holding the bell locked out keeps the phase on 'up' — the rep lands on
+    the way down, however long the hold. No duration ceiling brings it back."""
+    hold = [i / 20 for i in range(21)] + [1.0] * 120
+    _, events, mid = run_profile(BOTTOM_1H, TOP_SNATCH_1H, hold)
+    assert mid["phase"] == "up", mid["phase"]
+    assert not rep_events(events)
+
+    _, events, _ = run_profile(
+        BOTTOM_1H, TOP_SNATCH_1H, hold + [1.0 - i / 20 for i in range(21)]
+    )
+    reps = rep_events(events)
+    assert len(reps) == 1, f"expected 1 rep, got {len(reps)}"
+    assert reps[0]["exercise"] == "snatch"
+
+
+def test_pose_blackout_does_not_emit_a_rep():
+    """Without a duration ceiling, a rep must not be stitched across a pose
+    dropout — the apex frozen mid-pull would score a bogus fault."""
+    analyzer = TechniqueAnalyzer()
+    events = []
+    for i, u in enumerate(i / 20 for i in range(15)):  # rise, then vanish
+        events.extend(
+            analyzer.update(i / FPS, lerp_pose(BOTTOM_1H, TOP_SNATCH_1H, u), None)[
+                "events"
+            ]
+        )
+    for i in range(15, 15 + 5 * FPS):  # 5s with no pose at all
+        events.extend(analyzer.update(i / FPS, None, None)["events"])
+    for j in range(FPS):  # back at the bottom
+        events.extend(
+            analyzer.update(
+                (15 + 5 * FPS + j) / FPS, lerp_pose(BOTTOM_1H, TOP_SNATCH_1H, 0.0), None
+            )["events"]
+        )
+    assert not rep_events(events), rep_events(events)
+    assert analyzer.rep_count == 0
+
+
+# A lift that stalls mid-pull: the hand stops rising (and dips a touch) around
+# half height before punching through to the top. Real lifts do this — a snatch
+# floats at the turnaround — and at <= 16Hz one flat sample is all it takes.
+MIDPULL_STALL = (
+    [i / 20 for i in range(10)]  # 0.00 .. 0.45, the pull
+    + [0.45] * 4  # the float — hand hangs at half height
+    + [0.42, 0.42]  # and settles back a touch before the punch
+    + [0.5 + i / 20 for i in range(11)]  # 0.50 .. 1.00, punch to the top
+    + [1.0 - i / 20 for i in range(21)]  # back down to the bottom
+)
+
+
+def test_apex_survives_midpull_stall():
+    """The reported fault: taking the FIRST non-rising sample as the top froze
+    it at half height, which then scored a full-height swing as shallow."""
+    _, events, _ = run_profile(BOTTOM, TOP, MIDPULL_STALL)
+    reps = rep_events(events)
+    assert len(reps) == 1, f"expected 1 rep, got {len(reps)}"
+    assert "too_low" not in reps[0]["issues"], reps[0]["issues"]
+    assert reps[0]["verdict"] == "correct", reps[0]["issues"]
+
+
+def test_apex_survives_midpull_stall_snatch():
+    """Same stall on a one-hand snatch: the rep must still read as a snatch,
+    which is what keeps the swing-only faults off a clean lockout."""
+    _, events, _ = run_profile(BOTTOM_1H, TOP_SNATCH_1H, MIDPULL_STALL)
+    reps = rep_events(events)
+    assert len(reps) == 1, f"expected 1 rep, got {len(reps)}"
+    assert reps[0]["exercise"] == "snatch", reps[0]
+    assert reps[0]["verdict"] == "correct", reps[0]["issues"]
+
+
+def test_analysis_interval_s():
+    default = 1 / 16
+    assert abs(analysis_interval_s({"analysisFps": 16}, default) - 0.0625) < 1e-9
+    assert abs(analysis_interval_s({"analysisFps": 2}, default) - 0.5) < 1e-9
+    # Sliders hand us strings on some transports; floats must work too.
+    assert abs(analysis_interval_s({"analysisFps": "4"}, default) - 0.25) < 1e-9
+    assert abs(analysis_interval_s({"analysisFps": 2.5}, default) - 0.4) < 1e-9
+
+    # Absent or nonsense falls back to the worker's env baseline.
+    for params in ({}, {"analysisFps": None}, {"analysisFps": "fast"},
+                   {"analysisFps": 0}, {"analysisFps": -3}):
+        assert analysis_interval_s(params, default) == default, params
+
+    # A hand-edited config can slow the model down, never stall it.
+    assert (
+        analysis_interval_s({"analysisFps": 0.001}, default)
+        == MAX_ANALYSIS_INTERVAL_S
+    )
+
+
+def test_analysis_rate_floor_still_counts_every_rep():
+    """Guards the `analysisFps` slider's lower bound (8). Everything in the
+    slider's range must count EVERY rep at a realistic cadence — a rate that
+    silently drops reps is the exact fault this coach was just fixed for, so
+    the floor is set by measurement, not by taste. Measured: at 6-7 fps a
+    1.2s one-hand snatch loses a third of its reps, which is why 8 is the
+    floor rather than something lower and cheaper."""
+    for fps in (8, 10, 12, 16):
+        for period_s in (1.2, 1.5, 2.0):
+            for bottom, top in ((BOTTOM, TOP), (BOTTOM_1H, TOP_SNATCH_1H)):
+                analyzer, events, _ = run_swing(
+                    bottom, top, reps=6, period_s=period_s, fps=fps
+                )
+                got = len(rep_events(events))
+                assert got == 6, f"{fps}fps / {period_s}s reps: counted {got}/6"
+                assert analyzer.rep_count == got
+
+
+def test_smoothing_is_time_based_not_sample_based():
+    """The hand-height EMA must lag by a fixed TIME, not a fixed number of
+    samples, or the analysis-rate slider would change how the phase machine
+    behaves. Same movement at two rates must reach the same verdict."""
+    verdicts = []
+    for fps in (8, 16):
+        _, events, _ = run_swing(BOTTOM, TOP, reps=4, period_s=1.5, fps=fps)
+        reps = rep_events(events)
+        assert len(reps) == 4, f"{fps}fps counted {len(reps)}/4"
+        verdicts.append([(r["exercise"], r["verdict"]) for r in reps])
+    assert verdicts[0] == verdicts[1], verdicts
 
 
 def test_params_update_applies():

@@ -135,9 +135,23 @@ export type KettlebellOverlayState = {
   frameW: number;
   frameH: number;
   /** Mirrors of the model config at apply time (skeleton param / drawBoxes). */
-  skeleton: boolean;
+  skeleton: KettlebellSkeletonMode;
   drawBoxes: boolean;
 };
+
+/** How the pose skeleton is drawn on the output. */
+export type KettlebellSkeletonMode = 'off' | 'lines' | 'neon';
+
+/**
+ * The `skeleton` model param as a draw mode. 'on' is the legacy value for the
+ * plain wireframe and stays supported so saved configs keep rendering.
+ */
+export function kettlebellSkeletonMode(param: unknown): KettlebellSkeletonMode {
+  const value = String(param ?? 'neon');
+  if (value === 'off') return 'off';
+  if (value === 'neon') return 'neon';
+  return 'lines';
+}
 
 /** A point in normalized [0,1] frame coordinates. */
 export type QuadPoint = { x: number; y: number };
