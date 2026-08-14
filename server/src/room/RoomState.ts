@@ -37,15 +37,21 @@ import {
   BUILDING_DETECTOR_ID,
   CAR_ADS_ID,
   CAR_HUE_ID,
+  KETTLEBELL_COACH_ID,
   type ModelResultEvent,
 } from '../ai-models';
 import { PeopleTracker } from '../ai-models/people-counter/people-tracker';
 import { jitterBoxes } from '../ai-models/people-counter/box-jitter';
 import { CarTracker } from '../ai-models/car-ads/car-tracker';
+import { kettlebellSkeletonMode } from '../app/store';
 import type { CarAdDetection } from '../app/store';
 import { DuckHunterController } from '../duckHunter/DuckHunterController';
 import type { MatchCommand } from '../duckHunter/DuckHunterController';
 import type { ShooterMatchEvent } from '@smelter-editor/types';
+import {
+  KettlebellCoachController,
+  type KettlebellResultData,
+} from '../kettlebell/KettlebellCoachController';
 import {
   DEFAULT_HAUNTER_COUNT,
   DEFAULT_HAUNTER_DIST,
@@ -244,6 +250,16 @@ export class RoomState {
 
   /** Duck Hunter game (phone-gyroscope crosshairs targeting the ducks). */
   private readonly duckHunter: DuckHunterController;
+  private readonly kettlebellController: KettlebellCoachController;
+
+  /**
+   * Per-input wall-clock of the last SCHEDULED kettlebell overlay apply. The
+   * hold is `delayMs - procMs`, so a slow result (the frame that also ran the
+   * bell detector) waits less than the fast result behind it and would land
+   * out of order — the skeleton visibly snapping back in time. Clamping each
+   * apply to be no earlier than the previous one keeps the sequence monotonic.
+   */
+  private readonly kettlebellApplyAt = new Map<string, number>();
 
   private stateChangeListeners = new Set<() => void>();
 
@@ -347,6 +363,7 @@ export class RoomState {
     this.recordingController = new RecordingController(idPrefix, output);
     this.snakeGameController = new SnakeGameController();
     this.duckHunter = new DuckHunterController(idPrefix, output.store);
+    this.kettlebellController = new KettlebellCoachController(idPrefix);
 
     let motionResultCount = 0;
     void this.aiController.wireSidecarListeners('motion', (event) => {
@@ -739,6 +756,89 @@ export class RoomState {
       }
     };
     void this.aiController.wireSidecarListeners(CAR_HUE_ID, onCarHue);
+
+    // Kettlebell Coach: pose skeleton + bell box + reps/verdict badge on the
+    // output, plus debounced rep/exercise events on the room bus. Events go to
+    // the controller IMMEDIATELY (dashboards and triggers should be live);
+    // only the drawn overlay is held to the delayed output like the others.
+    const onKettlebell = (event: ModelResultEvent) => {
+      const input = this.inputManager
+        .getInputs()
+        .find((i) => i.inputId === event.inputId);
+      if (!input) return;
+      const data = event.data as {
+        pose?: { kpts?: [number, number, number][] } | null;
+        kb?: {
+          x: number;
+          y: number;
+          w: number;
+          h: number;
+          conf?: number;
+        } | null;
+        exercise?: 'swing' | 'clean' | 'snatch' | 'idle';
+        repCount?: number;
+        lastRep?: { verdict?: string; issues?: string[] } | null;
+        frameW?: number;
+        frameH?: number;
+        procMs?: number;
+      };
+
+      this.kettlebellController.handleResult(
+        event.inputId,
+        data as KettlebellResultData,
+      );
+
+      const outputDelayMs = input.registeredSideChannelDelayMs ?? 0;
+      const procMs = typeof data.procMs === 'number' ? data.procMs : 0;
+      const holdMs = Math.max(0, outputDelayMs - procMs);
+
+      const applyOverlay = () => {
+        const store = this.output.store.getState();
+        const cfg = input.aiModels?.[KETTLEBELL_COACH_ID];
+        const hasFrame =
+          typeof data.frameW === 'number' && typeof data.frameH === 'number';
+        if (cfg?.enabled && hasFrame) {
+          store.setKettlebell(event.inputId, {
+            kpts: data.pose?.kpts ?? null,
+            kb: data.kb ?? null,
+            exercise: data.exercise ?? 'idle',
+            repCount: typeof data.repCount === 'number' ? data.repCount : 0,
+            lastRepVerdict:
+              data.lastRep?.verdict === 'correct' ||
+              data.lastRep?.verdict === 'incorrect'
+                ? data.lastRep.verdict
+                : null,
+            lastRepIssues: Array.isArray(data.lastRep?.issues)
+              ? data.lastRep.issues
+              : [],
+            frameW: data.frameW!,
+            frameH: data.frameH!,
+            skeleton: kettlebellSkeletonMode(cfg.params?.skeleton),
+            drawBoxes: Boolean(cfg.drawBoxes),
+          });
+        } else {
+          store.setKettlebell(event.inputId, null);
+        }
+      };
+
+      // Never let this result land before one already scheduled: the overlay
+      // must step forward in frame order or the skeleton jumps backwards.
+      const now = Date.now();
+      const applyAt = Math.max(
+        now + holdMs,
+        this.kettlebellApplyAt.get(event.inputId) ?? 0,
+      );
+      this.kettlebellApplyAt.set(event.inputId, applyAt);
+      if (applyAt > now) {
+        setTimeout(applyOverlay, applyAt - now);
+      } else {
+        applyOverlay();
+      }
+    };
+    void this.aiController.wireSidecarListeners(
+      KETTLEBELL_COACH_ID,
+      onKettlebell,
+    );
   }
 
   public async init(): Promise<void> {
@@ -1614,6 +1714,14 @@ export class RoomState {
       // Clear the haunted-city overlay when Ghost City is disabled.
       if (modelId === BUILDING_DETECTOR_ID && !enabled) {
         this.output.store.getState().setBuildingBoxes(inputId, null);
+      }
+
+      // Clear the coach overlay and its event-debounce state when disabled —
+      // no further results arrive, so this is the only place that can.
+      if (modelId === KETTLEBELL_COACH_ID && !enabled) {
+        this.output.store.getState().setKettlebell(inputId, null);
+        this.kettlebellController.reset(inputId);
+        this.kettlebellApplyAt.delete(inputId);
       }
 
       const newSideChannel = computeSideChannelConfig(

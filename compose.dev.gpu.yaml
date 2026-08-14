@@ -1,0 +1,29 @@
+# GPU overlay for Docker dev — hands the container an NVIDIA GPU so the AI
+# sidecars run inference on CUDA instead of the CPU.
+#
+# Usage (stack LAST, after compose.dev.yaml, which resets gpus/runtime):
+#   SMELTER_DATA_DIR=/path/to/data docker compose \
+#     -f compose.yaml -f compose.dev.yaml -f compose.dev.gpu.yaml up
+#
+# No code change is needed on the Python side: the image already ships a CUDA
+# build of torch (2.13+cu130, the PyPI default on linux/amd64) and ultralytics
+# auto-selects cuda:0 when a device is visible. Today the sidecars fall back to
+# CPU only because compose.dev.yaml hides the GPU from the container.
+#
+# `runtime: nvidia` (set in compose.yaml) is deliberately NOT restored here:
+# Docker Desktop does not register that runtime, only the `gpus` field works.
+# On Linux + NVIDIA Container Toolkit either one is fine.
+#
+# Smelter's own compositing/encoding stays on the CPU under WSL2: the container
+# gets CUDA libs but no NVIDIA Vulkan ICD (only mesa's, incl. the lavapipe
+# software rasterizer), so wgpu has no GPU to render on. That is why the ffmpeg
+# H.264 encoder from compose.dev.yaml is left in place — what this overlay buys
+# is the CPU cores the two YOLO passes were eating, which is what the render
+# pipeline needs to stop dropping frames.
+services:
+  server:
+    runtime: !reset null
+    gpus:
+      - driver: nvidia
+        count: all
+        capabilities: [gpu]

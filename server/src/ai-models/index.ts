@@ -3,6 +3,7 @@ import { MOTION_MANIFEST } from './motion/manifest';
 import { PEOPLE_COUNTER_MANIFESTS } from './people-counter/manifest';
 import { BUILDING_DETECTOR_MANIFEST } from './building-detector/manifest';
 import { CAR_ADS_MANIFESTS } from './car-ads/manifest';
+import { KETTLEBELL_COACH_MANIFEST } from './kettlebell-coach/manifest';
 
 export function registerAIModels(): void {
   ModelRegistry.register(MOTION_MANIFEST);
@@ -13,6 +14,7 @@ export function registerAIModels(): void {
   for (const manifest of CAR_ADS_MANIFESTS) {
     ModelRegistry.register(manifest);
   }
+  ModelRegistry.register(KETTLEBELL_COACH_MANIFEST);
 }
 
 export {
@@ -35,6 +37,11 @@ export {
   CAR_HUE_ID,
   isCarAdsModel,
 } from './car-ads/manifest';
+export {
+  KETTLEBELL_COACH_MANIFEST,
+  KETTLEBELL_COACH_ID,
+  isKettlebellCoachModel,
+} from './kettlebell-coach/manifest';
 export { ModelRegistry } from './registry';
 export {
   computeSideChannelConfig,

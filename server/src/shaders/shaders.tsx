@@ -1774,6 +1774,15 @@ const AVAILABLE_SHADERS: AvailableShader[] = [
     shaderFile: 'haunter-ghost.wgsl',
   },
   {
+    id: 'kettlebell-skeleton',
+    isActive: true,
+    isVisible: false,
+    name: 'Kettlebell Skeleton',
+    description:
+      'Kettlebell Coach pose rig: COCO-17 bones, joint markers and the head circle drawn as antialiased SDF strokes in pixel space, driven by KettlebellSkeletonWrapper.',
+    shaderFile: 'kettlebell-skeleton.wgsl',
+  },
+  {
     id: 'car-hue',
     isActive: true,
     isVisible: false,

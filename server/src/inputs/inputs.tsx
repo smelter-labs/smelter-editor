@@ -23,6 +23,8 @@ import { GhostCityWrapper } from './GhostCityWrapper';
 import { CarAdsInput, CarAdDebugBoxes } from './CarAdsInput';
 import { CarHueWrapper } from './CarHueWrapper';
 import { BoxConfLabel, SmoothedBoxes } from './SmoothedBoxes';
+import { KettlebellOverlay } from './KettlebellOverlay';
+import { KettlebellSkeletonWrapper } from './KettlebellSkeletonWrapper';
 
 type Resolution = { width: number; height: number };
 
@@ -156,6 +158,11 @@ export function Input({ input }: { input: InputConfig }) {
     store,
     (state) => state.carHueBoxes[input.inputId],
   );
+  // Kettlebell Coach: pose skeleton + bell box + reps/verdict badge.
+  const kettlebell = useStore(
+    store,
+    (state) => state.kettlebell[input.inputId],
+  );
   // Ghost Shooter overlay, only when this input is the game's target.
   const shooter = useStore(store, (state) =>
     state.shooter?.targetInputId === input.inputId ? state.shooter : null,
@@ -274,6 +281,23 @@ export function Input({ input }: { input: InputConfig }) {
     );
   }
 
+  // Kettlebell Coach: draw the pose rig with the `kettlebell-skeleton` shader
+  // rather than as rotated Views, which render displaced and oversized on this
+  // engine build (see the crosshair note in ShooterHud) — bones ended up
+  // floating off their own joint dots. Outermost of the video wrappers: the rig
+  // is an overlay, so Ghost City and Car Hue must not haze or hue-rotate it.
+  // Mounted on the config flag alone — gating on `kpts` would rebuild the video
+  // node on every pose dropout, several times a second.
+  if (kettlebell && kettlebell.skeleton !== 'off') {
+    videoContent = (
+      <KettlebellSkeletonWrapper
+        data={kettlebell}
+        resolution={{ width: contentWidth, height: contentHeight }}>
+        {videoContent}
+      </KettlebellSkeletonWrapper>
+    );
+  }
+
   const inputComponent = (
     <Rescaler style={resolution}>
       <View style={{ ...resolution, direction: 'column' }}>
@@ -333,6 +357,12 @@ export function Input({ input }: { input: InputConfig }) {
             {peopleCount != null ? (
               <PeopleCountBadge
                 count={peopleCount}
+                parent={{ width: contentWidth, height: contentHeight }}
+              />
+            ) : null}
+            {kettlebell ? (
+              <KettlebellOverlay
+                data={kettlebell}
                 parent={{ width: contentWidth, height: contentHeight }}
               />
             ) : null}
