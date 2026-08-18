@@ -5,7 +5,15 @@ import type { ShooterMatchEvent } from '@smelter-editor/types';
 import { LedText, PixelPanel, R5, monoFont, pixelFont } from '../retro-kit';
 import { ActionButton } from './phone-shell';
 
-function Row({ label, value, color }: { label: string; value: string; color?: string }) {
+function Row({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: string;
+  color?: string;
+}) {
   return (
     <div
       style={{
@@ -53,6 +61,8 @@ export function ReadyStep({
   targetActive,
   playersCount,
   match,
+  joined,
+  canEnter,
   onJoin,
   onBack,
 }: {
@@ -62,6 +72,10 @@ export function ReadyStep({
   targetActive: boolean;
   playersCount: number;
   match: ShooterMatchEvent | null;
+  /** The player pressed JOIN but the host hasn't opened the gate yet. */
+  joined: boolean;
+  /** Whether JOIN would enter the game right now (round live / open range). */
+  canEnter: boolean;
   onJoin: () => void;
   onBack: () => void;
 }) {
@@ -71,7 +85,11 @@ export function ReadyStep({
       ? 'ROUND IN PROGRESS — JUMP IN'
       : phase === 'ended'
         ? 'ROUND OVER — NEXT ONE SOON'
-        : 'WAITING FOR THE HOST';
+        : phase === 'lobby'
+          ? 'HOST IS PREPPING THE ROUND'
+          : targetActive
+            ? 'OPEN RANGE — DIVE IN'
+            : 'WAITING FOR THE HOST';
 
   return (
     <div
@@ -99,34 +117,63 @@ export function ReadyStep({
           }}>
           MISSION BRIEFING
         </span>
-        <Row label='call sign' value={name.trim().toUpperCase() || 'HUNTER'} color={R5.yellow} />
-        <Row label='weapon' value={gyroMode ? 'GYRO CANNON' : 'FINGER BLASTER'} />
+        <Row
+          label='call sign'
+          value={name.trim().toUpperCase() || 'HUNTER'}
+          color={R5.yellow}
+        />
+        <Row
+          label='weapon'
+          value={gyroMode ? 'GYRO CANNON' : 'FINGER BLASTER'}
+        />
         <Row label='camera' value={camOn ? 'ON AIR' : 'OFF'} />
         <Row
           label='the marsh'
           value={targetActive ? 'LIVE' : 'WARMING UP…'}
           color={targetActive ? R5.green : R5.orange}
         />
-        <Row
-          label='hunters in'
-          value={String(playersCount)}
-        />
+        <Row label='hunters in' value={String(playersCount)} />
       </PixelPanel>
 
       <div style={{ textAlign: 'center' }}>
         <span
-          className={phase === 'idle' ? 'r5-blink' : undefined}
+          className={
+            phase === 'idle' || phase === 'lobby' ? 'r5-blink' : undefined
+          }
           style={{
             fontFamily: pixelFont,
             fontSize: 10,
             letterSpacing: 1,
-            color: phase === 'countdown' || phase === 'playing' ? R5.green : R5.inkMuted,
+            color:
+              phase === 'countdown' || phase === 'playing'
+                ? R5.green
+                : R5.inkMuted,
           }}>
           {matchLine}
         </span>
       </div>
 
-      <ActionButton accent='green' label='JOIN THE HUNT' active onClick={onJoin} />
+      {joined && !canEnter ? (
+        <ActionButton
+          accent='yellow'
+          disabled
+          label={
+            phase === 'ended' ? 'ROUND OVER — STANDING BY' : 'STANDING BY…'
+          }
+          sub="you're in — the hunt starts when the host does"
+        />
+      ) : (
+        <ActionButton
+          accent='green'
+          label={
+            phase === 'countdown' || phase === 'playing'
+              ? 'JUMP IN'
+              : 'JOIN THE HUNT'
+          }
+          active
+          onClick={onJoin}
+        />
+      )}
       <button
         type='button'
         className='r5-btn'

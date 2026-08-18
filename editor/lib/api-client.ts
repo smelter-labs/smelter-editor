@@ -187,7 +187,9 @@ interface SmelterApiClient {
 
   controlDuckHunterMatch(
     roomId: string,
-    cmd: { action: 'start' | 'stop' | 'reset' } & Partial<ShooterMatchConfig>,
+    cmd: {
+      action: 'start' | 'stop' | 'reset' | 'lobby';
+    } & Partial<ShooterMatchConfig>,
   ): Promise<ShooterMatchEvent>;
   getDuckHunterMatch(roomId: string): Promise<ShooterMatchEvent>;
 

@@ -4,7 +4,10 @@ import { useEffect, useRef, useState } from 'react';
 import type { ShooterMatchMode } from '@smelter-editor/types';
 import { ArcadeStage } from './retro-kit';
 import { CHARACTERS, type ArcadeCharacter } from './characters';
-import { useDuckHunterRoom, type DuckHunterSliderConfig } from './use-duck-hunter-room';
+import {
+  useDuckHunterRoom,
+  type DuckHunterSliderConfig,
+} from './use-duck-hunter-room';
 import { useShooterFeed } from './use-shooter-feed';
 import { TitleScreen } from './screens/title-screen';
 import { CharacterSelect } from './screens/character-select';
@@ -61,7 +64,8 @@ export function DuckHunterArcade() {
     durationMs: 60_000,
     targetScore: 10,
   });
-  const [sliders, setSliders] = useState<DuckHunterSliderConfig>(DEFAULT_SLIDERS);
+  const [sliders, setSliders] =
+    useState<DuckHunterSliderConfig>(DEFAULT_SLIDERS);
   const [stageFile, setStageFile] = useState<string>(DEFAULT_STAGE_FILE);
 
   const room = useDuckHunterRoom();
@@ -99,6 +103,8 @@ export function DuckHunterArcade() {
   const openLobby = async () => {
     setScreen('lobby');
     if (!room.roomId) {
+      // createRoom arms the 'lobby' phase itself (the fresh roomId hasn't
+      // committed to state yet).
       await room.createRoom(stageFile, sliders);
       roomStageFileRef.current = stageFile;
     } else {
@@ -107,6 +113,9 @@ export function DuckHunterArcade() {
         roomStageFileRef.current = stageFile;
       }
       await room.pushConfig(sliders);
+      // Clears a finished match and tells waiting phones to keep holding on
+      // the briefing (attract-mode ducks are not open range).
+      await room.armLobby();
     }
   };
 
@@ -180,7 +189,9 @@ export function DuckHunterArcade() {
           character={character}
           feed={feed}
           onPlayAgain={() => {
-            void room.resetMatch();
+            // No resetMatch here: the match stays 'ended' until openLobby arms
+            // 'lobby'. A reset would broadcast a transient 'idle' that waiting
+            // phones read as open range and enter the game early.
             setScreen('config');
           }}
           onExit={() => void exitToTitle()}
