@@ -41,6 +41,12 @@ export type DuckHunterRoom = {
   startMatch(cfg: ShooterMatchConfig): Promise<void>;
   stopMatch(): Promise<void>;
   resetMatch(): Promise<void>;
+  /**
+   * Tell the server the host is on the lobby screen ('lobby' match phase), so
+   * phones hold on the briefing instead of treating the attract mode as open
+   * range. Cleared server-side by start/reset.
+   */
+  armLobby(): Promise<void>;
   /** EXIT TO TITLE — tear the room down. */
   exitAndDelete(): Promise<void>;
 };
@@ -95,6 +101,15 @@ export function useDuckHunterRoom(): DuckHunterRoom {
     [roomId],
   );
 
+  const armLobby = useCallback(
+    async (room?: string) => {
+      const target = room ?? roomId;
+      if (!target) return;
+      await controlDuckHunterMatch(target, { action: 'lobby' });
+    },
+    [roomId],
+  );
+
   const createRoom = useCallback(
     async (stageFile: string, cfg: DuckHunterSliderConfig) => {
       if (creatingRef.current || roomId) return;
@@ -119,6 +134,9 @@ export function useDuckHunterRoom(): DuckHunterRoom {
         if (!inputId) throw new Error('Stage input did not register');
         await enableDucks(created.roomId, inputId);
         await pushConfig(cfg, created.roomId);
+        // The room is born straight into the arcade lobby (roomId state hasn't
+        // committed yet, so pass it explicitly).
+        await armLobby(created.roomId);
         setStageInputId(inputId);
         setWhepUrl(created.whepUrl);
         setRoomId(created.roomId);
@@ -129,7 +147,7 @@ export function useDuckHunterRoom(): DuckHunterRoom {
         setCreating(false);
       }
     },
-    [roomId, enableDucks, pushConfig],
+    [roomId, enableDucks, pushConfig, armLobby],
   );
 
   const changeStage = useCallback(
@@ -199,6 +217,7 @@ export function useDuckHunterRoom(): DuckHunterRoom {
     startMatch,
     stopMatch,
     resetMatch,
+    armLobby,
     exitAndDelete,
   };
 }

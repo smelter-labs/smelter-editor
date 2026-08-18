@@ -16,7 +16,10 @@ import {
   toWsUrl,
 } from '@/lib/server-url';
 import { doto, pressStart, robotoMono } from '@/app/duck-hunter/fonts';
-import { PhoneShell, WarnPanel } from '@/components/duck-hunter/phone/phone-shell';
+import {
+  PhoneShell,
+  WarnPanel,
+} from '@/components/duck-hunter/phone/phone-shell';
 import { ConnectStep } from '@/components/duck-hunter/phone/connect-step';
 import { NameStep } from '@/components/duck-hunter/phone/name-step';
 import { WeaponStep } from '@/components/duck-hunter/phone/weapon-step';
@@ -70,13 +73,18 @@ const STEP_META: Record<
   ready: { index: 4, label: 'BRIEFING' },
 };
 
-// Practice ducks in the calibration test range (normalized coords, 4:3 box).
+// Practice ducks in the calibration test range (normalized coords; the range
+// box fills whatever space the viewport gives it).
 const PRACTICE_SPOTS = [
   { x: 0.22, y: 0.3 },
   { x: 0.72, y: 0.24 },
   { x: 0.5, y: 0.62 },
 ] as const;
-const PRACTICE_HIT_RADIUS = 0.11;
+// Hit radius in normalized aim units, NOT screen pixels: the gyro moves the
+// crosshair by an equal fraction of each axis per degree of rotation, so a
+// round circle in this space costs the same wrist movement horizontally and
+// vertically no matter how tall the range box is. (0.12 ≈ 11° of rotation.)
+const PRACTICE_HIT_RADIUS = 0.12;
 
 function freshPractice(): PracticeTarget[] {
   return PRACTICE_SPOTS.map((s, i) => ({ id: i, x: s.x, y: s.y, hit: false }));
@@ -168,6 +176,10 @@ export default function ShootControllerPage() {
   const [practice, setPractice] = useState<PracticeTarget[]>(freshPractice);
   // Opened calibration from the play HUD (⚙) — CONTINUE returns to the hunt.
   const [calibFromPlay, setCalibFromPlay] = useState(false);
+  // The player pressed JOIN THE HUNT. Entering the game itself is gated on the
+  // match phase (see canEnterPlay) — until the host starts, they stand by on
+  // the briefing screen.
+  const [joined, setJoined] = useState(false);
 
   nameRef.current = name;
   // Runtime ammo from the server (magazine size + rounds left are set by the
@@ -326,18 +338,16 @@ export default function ShootControllerPage() {
     send({ type: 'shoot_fire' });
   }, [send, ammo]);
 
-  // Test-range FIRE during calibration: hit-test the preview crosshair against
-  // the practice ducks (local only — nothing is sent to the server).
-  const testFire = useCallback(() => {
-    const aim = previewAimRef.current;
+  // Test-range shot during calibration: hit-test against the practice ducks
+  // (local only — nothing is sent to the server). FIRE shoots at the preview
+  // crosshair; a direct tap on the range passes its own coordinates instead.
+  const testFire = useCallback((at?: { x: number; y: number }) => {
+    const aim = at ?? previewAimRef.current;
     let hitOne = false;
     setPractice((prev) =>
       prev.map((t) => {
         if (t.hit || hitOne) return t;
-        // The range box is 4:3 — weigh dy so the hit circle stays round.
-        const dx = aim.x - t.x;
-        const dy = (aim.y - t.y) * 0.75;
-        if (Math.hypot(dx, dy) <= PRACTICE_HIT_RADIUS) {
+        if (Math.hypot(aim.x - t.x, aim.y - t.y) <= PRACTICE_HIT_RADIUS) {
           hitOne = true;
           return { ...t, hit: true };
         }
@@ -778,9 +788,22 @@ export default function ShootControllerPage() {
     setStep('ready');
   }, []);
 
-  // Commit the chosen name and enter the game. Ammo rules come from the server.
+  // When the phone may actually enter the game: a round is live (jump in), or
+  // pure free play (dashboard open range: no match ever armed, ducks flying).
+  // 'lobby' (host prepping a round) and 'ended' (next round soon) hold on the
+  // briefing screen.
+  const phase = match?.phase ?? 'idle';
+  const canEnterPlay =
+    phase === 'countdown' ||
+    phase === 'playing' ||
+    (phase === 'idle' && targetActive);
+
+  // Commit the chosen name and register with the server right away (the host
+  // lobby lists joined hunters and needs players to enable START). The visual
+  // switch to the game is owned by the gate effect below.
   const joinAndPlay = useCallback(() => {
     wantsJoinRef.current = true;
+    setJoined(true);
     send({
       type: 'shoot_join',
       name: name.trim() || 'Player',
@@ -788,8 +811,17 @@ export default function ShootControllerPage() {
     // If the player enabled their camera earlier, spin up its live input now
     // that they've joined.
     if (camStreamRef.current) send({ type: 'shoot_cam_start' });
-    setStep('play');
   }, [send, name]);
+
+  // Mirror of the arcade's phase-follow: once the player has committed, enter
+  // the hunt the moment the gate opens. Restricted to the briefing screen so
+  // backing out to re-calibrate is never yanked into play.
+  useEffect(() => {
+    if (step === 'ready' && joined && canEnterPlay) {
+      if (navigator.vibrate) navigator.vibrate(60);
+      setStep('play');
+    }
+  }, [step, joined, canEnterPlay]);
 
   // Connect + fetch room info on mount; the boot step visualizes both.
   useEffect(() => {
@@ -864,7 +896,8 @@ export default function ShootControllerPage() {
         <PhoneShell
           stepIndex={meta.index}
           stepCount={5}
-          stepLabel={meta.label}>
+          stepLabel={meta.label}
+          compact={step === 'calibrate'}>
           {step === 'connect' ? (
             <ConnectStep
               roomStatus={roomStatus}
@@ -922,6 +955,8 @@ export default function ShootControllerPage() {
               targetActive={targetActive}
               playersCount={scores.length}
               match={match}
+              joined={joined}
+              canEnter={canEnterPlay}
               onJoin={joinAndPlay}
               onBack={() => setStep('weapon')}
             />

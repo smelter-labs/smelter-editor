@@ -122,6 +122,8 @@
   background: none;
   padding: 0;
   text-align: left;
+  /* No double-tap zoom on rapid FIRE / speed-chip taps (iOS). */
+  touch-action: manipulation;
 }
 
 .r5-btn:disabled {

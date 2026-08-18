@@ -2586,6 +2586,7 @@ const DuckHunterMatchSchema = Type.Object({
     Type.Literal('start'),
     Type.Literal('stop'),
     Type.Literal('reset'),
+    Type.Literal('lobby'),
   ]),
   mode: Type.Optional(
     Type.Union([Type.Literal('time'), Type.Literal('points')]),

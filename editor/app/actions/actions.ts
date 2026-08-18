@@ -570,7 +570,7 @@ export async function setDuckHunterConfig(
 export async function controlDuckHunterMatch(
   roomId: string,
   cmd: {
-    action: 'start' | 'stop' | 'reset';
+    action: 'start' | 'stop' | 'reset' | 'lobby';
   } & Partial<import('@smelter-editor/types').ShooterMatchConfig>,
 ): Promise<import('@smelter-editor/types').ShooterMatchEvent> {
   return (await getClient()).controlDuckHunterMatch(roomId, cmd);

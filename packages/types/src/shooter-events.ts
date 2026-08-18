@@ -51,7 +51,17 @@ export type ShooterClientMessage =
 
 // Match (arcade page) — server-authoritative rounds on top of free-play.
 export type ShooterMatchMode = "time" | "points";
-export type ShooterMatchPhase = "idle" | "countdown" | "playing" | "ended";
+/**
+ * 'idle' = free-play (dashboard open range, shots always score);
+ * 'lobby' = the arcade host is prepping a round (attract mode runs, phones
+ * should hold on the briefing screen until 'countdown').
+ */
+export type ShooterMatchPhase =
+  | "idle"
+  | "lobby"
+  | "countdown"
+  | "playing"
+  | "ended";
 
 /** Host identity chosen on the arcade character-select screen. */
 export type ShooterHostCharacter = { id: string; name: string; color: string };

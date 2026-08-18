@@ -63,7 +63,7 @@ export type AmmoConfig = { maxAmmo?: number; reloadMs?: number };
 
 /** Command from the arcade page's match endpoint. */
 export type MatchCommand = {
-  action: 'start' | 'stop' | 'reset';
+  action: 'start' | 'stop' | 'reset' | 'lobby';
 } & Partial<ShooterMatchConfig>;
 
 /**
@@ -179,6 +179,12 @@ export class DuckHunterController {
   private roomReloadMs = DEFAULT_RELOAD_MS;
   /** Arcade round state; null = free-play (classic dashboard behavior). */
   private match: MatchState | null = null;
+  /**
+   * The arcade host is on the lobby/config screens. With no match this is what
+   * separates "wait for the host" from dashboard open range — on the wire both
+   * are matchless with ducks flying, so phones can't tell them apart otherwise.
+   */
+  private lobbyArmed = false;
   /** Last targetActive broadcast, so lobby clients hear the flip. */
   private lastTargetActive = false;
 
@@ -251,12 +257,15 @@ export class DuckHunterController {
    *   clock runs out (time mode) or someone reaches the target (points mode).
    * - stop: end the round now (winner = current leader).
    * - reset: back to free-play; the game-over banner clears.
+   * - lobby: the host opened the arcade lobby — clear any finished match and
+   *   tell phones to hold on the briefing screen until start.
    */
   controlMatch(cmd: MatchCommand): ShooterMatchEvent {
     const now = Date.now();
     switch (cmd.action) {
       case 'start': {
-        const mode: ShooterMatchMode = cmd.mode === 'points' ? 'points' : 'time';
+        const mode: ShooterMatchMode =
+          cmd.mode === 'points' ? 'points' : 'time';
         this.match = {
           phase: 'countdown',
           mode,
@@ -298,6 +307,7 @@ export class DuckHunterController {
         }
         this.bursts = [];
         this.dogReveals = [];
+        this.lobbyArmed = false;
         this.ensureRunning();
         break;
       }
@@ -307,6 +317,13 @@ export class DuckHunterController {
       }
       case 'reset': {
         this.match = null;
+        this.lobbyArmed = false;
+        this.maybeStop();
+        break;
+      }
+      case 'lobby': {
+        this.match = null;
+        this.lobbyArmed = true;
         this.maybeStop();
         break;
       }
@@ -318,10 +335,16 @@ export class DuckHunterController {
     return snapshot;
   }
 
-  /** Current match state as a wire event ('idle' when free-play). */
+  /** Current match state as a wire event ('idle'/'lobby' when matchless). */
   getMatchSnapshot(): ShooterMatchEvent {
     const m = this.match;
-    if (!m) return { type: 'shooter_match', roomId: this.roomId, phase: 'idle' };
+    if (!m) {
+      return {
+        type: 'shooter_match',
+        roomId: this.roomId,
+        phase: this.lobbyArmed ? 'lobby' : 'idle',
+      };
+    }
     const now = Date.now();
     return {
       type: 'shooter_match',
