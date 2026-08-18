@@ -73,6 +73,7 @@ export type RoomStore = {
   carHueBoxes: Record<string, CarHueBoxes>;
   kettlebell: Record<string, KettlebellOverlayState>;
   shooter: ShooterOverlay | null;
+  kbTournament: KbtHudState | null;
   updateState: (state: RoomStoreState & { layers: Layer[] }) => void;
   setOutputShaders: (shaders: ShaderConfig[]) => void;
   setInputFrozenImage: (inputId: string, imageId: string | null) => void;
@@ -84,6 +85,7 @@ export type RoomStore = {
   setCarHueBoxes: (inputId: string, boxes: CarHueBoxes | null) => void;
   setKettlebell: (inputId: string, state: KettlebellOverlayState | null) => void;
   setShooter: (shooter: ShooterOverlay | null) => void;
+  setKbTournament: (state: KbtHudState | null) => void;
 } & Partial<ViewportProperties>;
 
 /** A detection bounding box, normalized to 0..1 of the input frame. */
@@ -329,6 +331,56 @@ export type ShooterMatchOverlay = {
   character: { name: string; color: string } | null;
 };
 
+/** One player tile's chrome on the Kettlebell Tournament broadcast. */
+export type KbtHudTile = {
+  clientId: string;
+  name: string;
+  color: string;
+  points: number;
+  /** Total reps this heat (all exercises, scored or not). */
+  reps: number;
+  /** Consecutive correct reps right now. */
+  streak: number;
+  /** Exercise the coach currently sees ('idle' between efforts). */
+  exercise: string;
+  /** Wall-clock ms of the last scored rep (drives the tile flash). */
+  lastRepAt: number | null;
+  lastRepVerdict: 'correct' | 'incorrect' | null;
+  lastRepPoints: number;
+  /** The player's WHIP input stopped acking mid-heat. */
+  signalLost?: boolean;
+};
+
+/** Heat clock chrome. remainingMs is snapshot-computed: the HUD state is
+ * applied with the same ~3s hold as the delayed video, so rendering the
+ * snapshot value (not endsAt vs live now) keeps the clock on the frame it
+ * belongs to. */
+export type KbtHudMatch = {
+  phase: 'intro' | 'countdown' | 'playing' | 'ended';
+  heatIndex: number;
+  final: boolean;
+  startsAt: number | null;
+  endsAt: number | null;
+  remainingMs: number | null;
+  winner: { name: string; color: string; points: number } | null;
+};
+
+/** Kettlebell Tournament overlay state burned into the broadcast. */
+export type KbtHudState = {
+  /** Active heat tiles keyed by the player's camera inputId. */
+  tiles: Record<string, KbtHudTile>;
+  match: KbtHudMatch | null;
+  /** Overall standings strip (top rows, best score first). */
+  leaderboard: { name: string; color: string; points: number }[];
+  /** Short-lived celebration banner (lead change / streak). */
+  banner: {
+    kind: 'lead_change' | 'streak';
+    text: string;
+    color: string;
+    at: number;
+  } | null;
+};
+
 /** Ghost Shooter overlay state rendered on the target (ghost-enabled) input. */
 export type ShooterOverlay = {
   targetInputId: string;
@@ -371,6 +423,7 @@ export function createRoomStore(
     carHueBoxes: {},
     kettlebell: {},
     shooter: null,
+    kbTournament: null,
     updateState: (incoming) => {
       const {
         inputs,
@@ -476,6 +529,9 @@ export function createRoomStore(
     },
     setShooter: (shooter: ShooterOverlay | null) => {
       set(() => ({ shooter }));
+    },
+    setKbTournament: (kbTournament: KbtHudState | null) => {
+      set(() => ({ kbTournament }));
     },
   }));
 }

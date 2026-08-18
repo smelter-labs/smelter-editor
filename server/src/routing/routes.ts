@@ -1127,6 +1127,11 @@ routes.after(() => {
         } catch {
           // Room no longer exists — ignore.
         }
+        try {
+          state.getRoom(roomId).handleKbtDisconnect(clientId);
+        } catch {
+          // Room no longer exists — ignore.
+        }
         logWsDebug('closed', {
           roomId,
           clientId,
@@ -1186,6 +1191,20 @@ routes.after(() => {
         ) {
           try {
             state.getRoom(roomId).handleShooterMessage(clientId, parsed);
+          } catch {
+            // Room no longer exists — ignore.
+          }
+          return;
+        }
+        // Kettlebell Tournament messages from player phones + the arcade page.
+        if (
+          parsed &&
+          typeof parsed === 'object' &&
+          typeof (parsed as { type?: unknown }).type === 'string' &&
+          (parsed as { type: string }).type.startsWith('kbt_')
+        ) {
+          try {
+            state.getRoom(roomId).handleKbtMessage(clientId, parsed);
           } catch {
             // Room no longer exists — ignore.
           }
@@ -2633,6 +2652,124 @@ routes.get<RoomIdParams>(
   async (req, res) => {
     const room = state.getRoom(req.params.roomId);
     res.status(200).send({ status: 'ok', match: room.getDuckHunterMatch() });
+  },
+);
+
+// ── Kettlebell Tournament ──────────────────────────────────────
+
+const KbtScoringRuleSchema = Type.Object({
+  enabled: Type.Optional(Type.Boolean()),
+  points: Type.Optional(Type.Number()),
+});
+
+const KbtConfigSchema = Type.Object({
+  scoring: Type.Optional(
+    Type.Object({
+      swing: Type.Optional(KbtScoringRuleSchema),
+      clean: Type.Optional(KbtScoringRuleSchema),
+      snatch: Type.Optional(KbtScoringRuleSchema),
+    }),
+  ),
+  strictTechnique: Type.Optional(Type.Boolean()),
+  heatDurationMs: Type.Optional(Type.Number()),
+  heatSize: Type.Optional(Type.Number()),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof KbtConfigSchema> }>(
+  '/room/:roomId/kettlebell-tournament/config',
+  { schema: { params: RoomIdParamsSchema, body: KbtConfigSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    console.log('[request] Set Kettlebell Tournament config', {
+      roomId,
+      strictTechnique: req.body.strictTechnique,
+      heatDurationMs: req.body.heatDurationMs,
+      heatSize: req.body.heatSize,
+    });
+    const room = state.getRoom(roomId);
+    const config = room.setKbtConfig({
+      scoring: req.body.scoring,
+      strictTechnique: req.body.strictTechnique,
+      heatDurationMs: req.body.heatDurationMs,
+      heatSize: req.body.heatSize,
+    });
+    res.status(200).send({ status: 'ok', config });
+  },
+);
+
+// Tournament flow (the /kettlebell-tournament page): draw heats, run one heat
+// at a time (intro → countdown → AMRAP → ended), then a final of the top
+// scorers. GET returns state + match snapshots (reload recovery).
+const KbtMatchSchema = Type.Object({
+  action: Type.Union([
+    Type.Literal('roster'),
+    Type.Literal('assign_heats'),
+    Type.Literal('start_heat'),
+    Type.Literal('begin_heat'),
+    Type.Literal('stop_heat'),
+    Type.Literal('next_heat'),
+    Type.Literal('start_final'),
+    Type.Literal('podium'),
+    Type.Literal('reset'),
+  ]),
+  heatIndex: Type.Optional(Type.Number()),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof KbtMatchSchema> }>(
+  '/room/:roomId/kettlebell-tournament/match',
+  { schema: { params: RoomIdParamsSchema, body: KbtMatchSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    console.log('[request] Kettlebell Tournament match', {
+      roomId,
+      action: req.body.action,
+      heatIndex: req.body.heatIndex,
+    });
+    const room = state.getRoom(roomId);
+    const result = room.controlKbtMatch({
+      action: req.body.action,
+      heatIndex: req.body.heatIndex,
+    });
+    res.status(200).send({ status: 'ok', ...result });
+  },
+);
+
+routes.get<RoomIdParams>(
+  '/room/:roomId/kettlebell-tournament/state',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    const room = state.getRoom(req.params.roomId);
+    res.status(200).send({ status: 'ok', ...room.getKbtState() });
+  },
+);
+
+// Dev-only rep injector (KBT_SIM=1): drive scoring/UI without the AI model.
+const KbtSimulateRepSchema = Type.Object({
+  clientId: Type.String(),
+  exercise: Type.Union([
+    Type.Literal('swing'),
+    Type.Literal('clean'),
+    Type.Literal('snatch'),
+  ]),
+  verdict: Type.Optional(
+    Type.Union([Type.Literal('correct'), Type.Literal('incorrect')]),
+  ),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof KbtSimulateRepSchema> }>(
+  '/room/:roomId/kettlebell-tournament/simulate-rep',
+  { schema: { params: RoomIdParamsSchema, body: KbtSimulateRepSchema } },
+  async (req, res) => {
+    if (process.env.KBT_SIM !== '1') {
+      return res.status(404).send({ status: 'error', message: 'Not found' });
+    }
+    const room = state.getRoom(req.params.roomId);
+    const ok = room.simulateKbtRep(
+      req.body.clientId,
+      req.body.exercise,
+      req.body.verdict ?? 'correct',
+    );
+    res.status(200).send({ status: ok ? 'ok' : 'ignored' });
   },
 );
 

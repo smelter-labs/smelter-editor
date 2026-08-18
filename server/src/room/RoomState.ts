@@ -53,6 +53,19 @@ import {
   type KettlebellResultData,
 } from '../kettlebell/KettlebellCoachController';
 import {
+  KettlebellTournamentController,
+  type KbtMatchCommand,
+} from '../kettlebell/KettlebellTournamentController';
+import type {
+  KbtConfig,
+  KbtExerciseKey,
+  KbtMatchEvent,
+  KbtStateEvent,
+  KettlebellExercise,
+} from '@smelter-editor/types';
+import { config } from '../config';
+import { roomEventBus } from '../core/roomEventBus';
+import {
   DEFAULT_HAUNTER_COUNT,
   DEFAULT_HAUNTER_DIST,
   DEFAULT_HAUNTER_SCALE,
@@ -251,6 +264,8 @@ export class RoomState {
   /** Duck Hunter game (phone-gyroscope crosshairs targeting the ducks). */
   private readonly duckHunter: DuckHunterController;
   private readonly kettlebellController: KettlebellCoachController;
+  /** Kettlebell Tournament (phone cameras + coach reps → heats + scores). */
+  private readonly kbTournament: KettlebellTournamentController;
 
   /**
    * Per-input wall-clock of the last SCHEDULED kettlebell overlay apply. The
@@ -363,7 +378,68 @@ export class RoomState {
     this.recordingController = new RecordingController(idPrefix, output);
     this.snakeGameController = new SnakeGameController();
     this.duckHunter = new DuckHunterController(idPrefix, output.store);
-    this.kettlebellController = new KettlebellCoachController(idPrefix);
+    // The coach's debounced events are tee'd into the tournament controller —
+    // one debounce layer, two consumers (room bus + scoring). The arrow reads
+    // this.kbTournament lazily, so construction order below doesn't matter.
+    this.kettlebellController = new KettlebellCoachController(
+      idPrefix,
+      (id, event) => {
+        roomEventBus.broadcast(id, event);
+        this.kbTournament?.onCoachEvent(event);
+      },
+    );
+    this.kbTournament = new KettlebellTournamentController(idPrefix, {
+      broadcast: (event) => roomEventBus.broadcast(idPrefix, event),
+      sendTo: (clientId, event) =>
+        roomEventBus.sendTo(idPrefix, clientId, event),
+      // InputManager path (NOT DuckHunter's raw registerInput): WHIP inputs
+      // registered here get the video side channel the coach model needs, and
+      // the standard `${roomId}::whip::${uuid}` id stays inside the 103-char
+      // unix-socket path budget.
+      registerPlayerCam: async (name) => {
+        const inputId = await this.addNewInput({
+          type: 'whip',
+          username: `[camera] ${name}`,
+        });
+        if (!inputId) throw new Error('WHIP input registration failed');
+        const bearerToken = await this.connectInput(inputId);
+        return {
+          inputId,
+          whipUrl: `${config.whipBaseUrl}/${inputId}`,
+          bearerToken,
+        };
+      },
+      removeInput: (inputId) => this.removeInput(inputId),
+      setKettlebellCoach: (inputId, enabled, params) =>
+        this.setAIModelEnabled(
+          inputId,
+          KETTLEBELL_COACH_ID,
+          enabled,
+          undefined,
+          false,
+          params,
+        ),
+      layoutTiles: (tiles) =>
+        this.updateLayers([
+          {
+            id: 'kbt-stage',
+            inputs: tiles.map((t) => ({
+              inputId: t.inputId,
+              x: t.x,
+              y: t.y,
+              width: t.width,
+              height: t.height,
+            })),
+          },
+        ]),
+      isInputConnected: (inputId) =>
+        this.inputManager
+          .getInputs()
+          .some((i) => i.inputId === inputId && i.status === 'connected'),
+      getResolution: () => this.output.store.getState().resolution,
+      publishHud: (state) =>
+        this.output.store.getState().setKbTournament(state),
+    });
 
     let motionResultCount = 0;
     void this.aiController.wireSidecarListeners('motion', (event) => {
@@ -786,6 +862,12 @@ export class RoomState {
       this.kettlebellController.handleResult(
         event.inputId,
         data as KettlebellResultData,
+      );
+      // Live pose visibility for the tournament's intro framing check — the
+      // debounced coach events carry no pose, so tap the raw result here.
+      this.kbTournament.onPoseSample(
+        event.inputId,
+        !!data.pose?.kpts && data.pose.kpts.length > 0,
       );
 
       const outputDelayMs = input.registeredSideChannelDelayMs ?? 0;
@@ -1481,6 +1563,50 @@ export class RoomState {
   /** A phone client disconnected — drop its crosshair/score. */
   public handleShooterDisconnect(clientId: string): void {
     this.duckHunter.handleDisconnect(clientId);
+  }
+
+  // ── Kettlebell Tournament (thin delegates, like Duck Hunter above) ──
+
+  public handleKbtMessage(clientId: string, raw: unknown): void {
+    this.kbTournament.handleMessage(clientId, raw);
+  }
+
+  public handleKbtDisconnect(clientId: string): void {
+    this.kbTournament.handleDisconnect(clientId);
+  }
+
+  public controlKbtMatch(cmd: KbtMatchCommand): {
+    state: KbtStateEvent;
+    match: KbtMatchEvent;
+  } {
+    return this.kbTournament.controlMatch(cmd);
+  }
+
+  public getKbtState(): { state: KbtStateEvent; match: KbtMatchEvent } {
+    return {
+      state: this.kbTournament.stateSnapshot(),
+      match: this.kbTournament.getMatchSnapshot(),
+    };
+  }
+
+  public setKbtConfig(cfg: {
+    scoring?: Partial<
+      Record<KbtExerciseKey, Partial<{ enabled: boolean; points: number }>>
+    >;
+    strictTechnique?: boolean;
+    heatDurationMs?: number;
+    heatSize?: number;
+  }): KbtConfig {
+    return this.kbTournament.setConfig(cfg);
+  }
+
+  /** Dev-only (KBT_SIM=1): fabricate a scored rep for UI work sans model. */
+  public simulateKbtRep(
+    clientId: string,
+    exercise: KettlebellExercise,
+    verdict: 'correct' | 'incorrect',
+  ): boolean {
+    return this.kbTournament.simulateRep(clientId, exercise, verdict);
   }
 
   /**
@@ -2410,6 +2536,7 @@ export class RoomState {
       this.destroyed = true;
       this.pausedAttachedInputVolumes.clear();
       this.duckHunter.dispose();
+      this.kbTournament.dispose();
 
       if (this.pendingStoreFlushTimer) {
         clearTimeout(this.pendingStoreFlushTimer);

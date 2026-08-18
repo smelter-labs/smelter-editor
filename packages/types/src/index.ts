@@ -184,3 +184,33 @@ export type {
   KettlebellServerEvent,
 } from "./kettlebell-events.js";
 export { KETTLEBELL_ISSUE_LABELS } from "./kettlebell-events.js";
+
+export type {
+  KbtExerciseKey,
+  KbtScoringRule,
+  KbtConfig,
+  KbtTournamentPhase,
+  KbtMatchAction,
+  KbtHeatPhase,
+  KbtPlayer,
+  KbtScoreBreakdown,
+  KbtHeatSummary,
+  KbtJoinMessage,
+  KbtCamRequestMessage,
+  KbtCamStopMessage,
+  KbtLeaveMessage,
+  KbtSpectateMessage,
+  KbtClientMessage,
+  KbtStateEvent,
+  KbtCamOfferEvent,
+  KbtMatchEvent,
+  KbtRepEvent,
+  KbtPoseEvent,
+  KbtLeadChangeEvent,
+  KbtStreakEvent,
+  KbtServerEvent,
+} from "./kettlebell-tournament-events.js";
+export {
+  KBT_EXERCISE_KEYS,
+  KBT_DEFAULT_CONFIG,
+} from "./kettlebell-tournament-events.js";
