@@ -11,8 +11,10 @@ import {
   useOutputShaders,
   useViewport,
   useTranscriptionSideChannelInputIds,
+  useKbTournament,
 } from './store';
 import { Input } from '../inputs/inputs';
+import { KbtMatchHud } from '../inputs/KbtHud';
 import { wrapWithShaders } from '../utils/shaderUtils';
 import { AudioStoreContext } from '../audio/AudioStoreContext';
 import type { AudioStoreState } from '../audio/audioStore';
@@ -222,6 +224,7 @@ function OutputScene() {
   const { width, height } = resolution;
   const outputShaders = useOutputShaders();
   const viewport = useViewport();
+  const kbTournament = useKbTournament();
   const inputMap = new Map(inputs.map((input) => [input.inputId, input]));
   const activeOutputShaders = outputShaders.filter((s) => s.enabled);
   const layersReversed = [...layers].reverse();
@@ -352,6 +355,11 @@ function OutputScene() {
         </Rescaler>
         );
       })}
+      {/* Kettlebell Tournament chrome sits above every layer (per-tile HUD
+          renders inside each Input; this is the heat clock/banner/standings). */}
+      {kbTournament ? (
+        <KbtMatchHud hud={kbTournament} resolution={resolution} />
+      ) : null}
     </View>
   );
 

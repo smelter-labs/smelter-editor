@@ -343,8 +343,12 @@ export type KbtHudTile = {
   streak: number;
   /** Exercise the coach currently sees ('idle' between efforts). */
   exercise: string;
-  /** Wall-clock ms of the last scored rep (drives the tile flash). */
-  lastRepAt: number | null;
+  /**
+   * A rep landed just before this snapshot — snapshot-relative on purpose:
+   * the HUD applies ~3s late (held to the delayed video), so age computed
+   * against live Date.now() at render time would never show a flash.
+   */
+  flash: boolean;
   lastRepVerdict: 'correct' | 'incorrect' | null;
   lastRepPoints: number;
   /** The player's WHIP input stopped acking mid-heat. */
@@ -594,6 +598,12 @@ export function useViewport() {
       viewportTransitionEasing: state.viewportTransitionEasing,
     })),
   );
+}
+
+/** Kettlebell Tournament burned-in HUD state (null while no heat is staged). */
+export function useKbTournament() {
+  const store = useContext(StoreContext);
+  return useStore(store, (state) => state.kbTournament);
 }
 
 export const StoreContext =

@@ -136,6 +136,8 @@ const REP_GRACE_MS = 400;
 /** Keep publishing after 'ended' until the held board + banner landed. */
 const ENDED_LINGER_MS = HUD_HOLD_MS + 2000;
 const BANNER_MS = 4000;
+/** How long a scored rep lights its tile (snapshot-relative, see KbtHudTile). */
+const REP_FLASH_MS = 600;
 const STREAK_MILESTONE_EVERY = 5;
 /** Debounce for pose visibility flips (raw results arrive ~12-16/s). */
 const POSE_DEBOUNCE_MS = 700;
@@ -1116,7 +1118,7 @@ export class KettlebellTournamentController {
         reps: s.reps.swing + s.reps.clean + s.reps.snatch,
         streak: s.streak,
         exercise: s.exercise,
-        lastRepAt: s.lastRepAt,
+        flash: s.lastRepAt != null && now - s.lastRepAt <= REP_FLASH_MS,
         lastRepVerdict: s.lastRepVerdict,
         lastRepPoints: s.lastRepPoints,
         signalLost: !p.camConnected && heat.phase !== 'intro',

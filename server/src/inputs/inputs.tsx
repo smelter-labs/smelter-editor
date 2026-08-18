@@ -25,6 +25,7 @@ import { CarHueWrapper } from './CarHueWrapper';
 import { BoxConfLabel, SmoothedBoxes } from './SmoothedBoxes';
 import { KettlebellOverlay } from './KettlebellOverlay';
 import { KettlebellSkeletonWrapper } from './KettlebellSkeletonWrapper';
+import { KbtTileHud } from './KbtHud';
 
 type Resolution = { width: number; height: number };
 
@@ -166,6 +167,11 @@ export function Input({ input }: { input: InputConfig }) {
   // Ghost Shooter overlay, only when this input is the game's target.
   const shooter = useStore(store, (state) =>
     state.shooter?.targetInputId === input.inputId ? state.shooter : null,
+  );
+  // Kettlebell Tournament: this input is a player tile of the running heat.
+  const kbtTile = useStore(
+    store,
+    (state) => state.kbTournament?.tiles[input.inputId] ?? null,
   );
 
   // The video/content element for the playing state. Extracted so Ghost City
@@ -363,6 +369,12 @@ export function Input({ input }: { input: InputConfig }) {
             {kettlebell ? (
               <KettlebellOverlay
                 data={kettlebell}
+                parent={{ width: contentWidth, height: contentHeight }}
+              />
+            ) : null}
+            {kbtTile ? (
+              <KbtTileHud
+                tile={kbtTile}
                 parent={{ width: contentWidth, height: contentHeight }}
               />
             ) : null}
