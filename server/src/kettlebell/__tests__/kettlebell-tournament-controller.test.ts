@@ -300,6 +300,36 @@ describe('KettlebellTournamentController', () => {
     h.controller.dispose();
   });
 
+  it('runs a solo challenge: one heat of one, solo winner crowned', async () => {
+    const h = harness();
+    h.controller.join('p1', 'ANIA');
+    await h.controller.startCamera('p1');
+    h.controller.setConfig({ heatDurationMs: 30_000, heatSize: 2 });
+    h.controller.controlMatch({ action: 'assign_heats' });
+    const drawn = h.controller.stateSnapshot();
+    expect(drawn.heats).toHaveLength(1);
+    expect(drawn.heats[0].playerIds).toEqual(['p1']);
+    h.controller.controlMatch({ action: 'start_heat' });
+    await vi.advanceTimersByTimeAsync(0);
+    h.controller.controlMatch({ action: 'begin_heat' });
+    await vi.advanceTimersByTimeAsync(3100);
+    const in1 = h.camOfferFor('p1')!.inputId;
+    h.rep(in1, 1);
+    h.rep(in1, 2, 'snatch');
+    await vi.advanceTimersByTimeAsync(31_000);
+    const match = h.controller.getMatchSnapshot();
+    expect(match.winner?.name).toBe('ANIA');
+    expect(match.winner?.points).toBe(4);
+    const state = h.controller.stateSnapshot();
+    expect(state.players[0].bestScore).toBe(4);
+    // A final needs at least two scored players — must be a no-op solo.
+    h.controller.controlMatch({ action: 'start_final' });
+    const after = h.controller.stateSnapshot();
+    expect(after.heats).toHaveLength(1);
+    expect(after.tournamentPhase).not.toBe('final');
+    h.controller.dispose();
+  });
+
   it('lays portrait cams out as centered aspect-true columns', async () => {
     const h = harness();
     h.controller.join('p1', 'ANIA');

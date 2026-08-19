@@ -80,6 +80,7 @@ export default function LiftControllerPage() {
   const [match, setMatch] = useState<KbtMatchEvent | null>(null);
   const [myClientId, setMyClientId] = useState<string | null>(null);
   const [poseTracked, setPoseTracked] = useState(false);
+  const [fullBody, setFullBody] = useState(true);
 
   const [camOn, setCamOn] = useState(false);
   const [camErr, setCamErr] = useState<string | null>(null);
@@ -196,9 +197,7 @@ export default function LiftControllerPage() {
   // Includes the ACTUAL track dimensions so the server registers the input
   // with its true aspect (portrait cams were cover-cropped without them).
   const sendCamRequest = useCallback((ws: WebSocket) => {
-    const settings = camStreamRef.current
-      ?.getVideoTracks()[0]
-      ?.getSettings();
+    const settings = camStreamRef.current?.getVideoTracks()[0]?.getSettings();
     ws.send(
       JSON.stringify({
         type: 'kbt_cam_request',
@@ -281,7 +280,10 @@ export default function LiftControllerPage() {
         case 'kbt_pose':
           setMyClientId((prev) => prev ?? event.clientId);
           myClientIdRef.current ??= event.clientId;
-          if (mine(event.clientId)) setPoseTracked(event.tracked);
+          if (mine(event.clientId)) {
+            setPoseTracked(event.tracked);
+            setFullBody(event.fullBody !== false);
+          }
           break;
         case 'kbt_rep': {
           if (!mine(event.clientId)) return;
@@ -531,7 +533,11 @@ export default function LiftControllerPage() {
             myClientId={myClientId}
             myName={name}
             poseTracked={poseTracked}
+            fullBody={fullBody}
             inMyIntro={!!inMyIntro}
+            camOn={camOn}
+            facing={facing}
+            attachVideo={attachPreview}
           />
         )}
       </PhoneShell>

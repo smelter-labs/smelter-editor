@@ -153,6 +153,32 @@ await sleep(300);
 snap = await api('GET', `/room/${roomId}/kettlebell-tournament/state`);
 check('same-name rejoin adopts (still 2 lifters)', snap.state.players.length === 2, `got ${snap.state.players.length}`);
 
+// ── 6. Solo challenge (one lifter, one heat of one) ─────────────────────────
+b.ws.send(j({ type: 'kbt_leave' }));
+await sleep(300);
+snap = await api('GET', `/room/${roomId}/kettlebell-tournament/state`);
+check('solo roster after BARTEK leaves', snap.state.players.length === 1);
+// The adopted ANIA kept her cam input from before the reconnect.
+const soloId = snap.state.players[0].clientId;
+await api('POST', `/room/${roomId}/kettlebell-tournament/match`, { action: 'assign_heats' });
+snap = await api('GET', `/room/${roomId}/kettlebell-tournament/state`);
+check('solo draw: one heat of one', snap.state.heats.length === 1 && snap.state.heats[0].playerIds.length === 1);
+await api('POST', `/room/${roomId}/kettlebell-tournament/match`, { action: 'start_heat' });
+await sleep(300);
+await api('POST', `/room/${roomId}/kettlebell-tournament/match`, { action: 'begin_heat' });
+await sleep(3400);
+await api('POST', `/room/${roomId}/kettlebell-tournament/simulate-rep`, { clientId: soloId, exercise: 'swing' });
+await api('POST', `/room/${roomId}/kettlebell-tournament/simulate-rep`, { clientId: soloId, exercise: 'snatch' });
+await api('POST', `/room/${roomId}/kettlebell-tournament/match`, { action: 'stop_heat' });
+await sleep(700);
+snap = await api('GET', `/room/${roomId}/kettlebell-tournament/state`);
+// Config survives reset: swing 1 + snatch 5 (set back in step 2) = 6.
+check('solo winner crowned', snap.match.winner?.name === 'ANIA' && snap.match.winner?.points === 6, JSON.stringify(snap.match.winner));
+// start_final must be a no-op with a single scored player.
+await api('POST', `/room/${roomId}/kettlebell-tournament/match`, { action: 'start_final' });
+snap = await api('GET', `/room/${roomId}/kettlebell-tournament/state`);
+check('solo start_final is a no-op', snap.state.heats.length === 1 && snap.state.tournamentPhase !== 'final');
+
 // ── Cleanup ──────────────────────────────────────────────────────────────────
 b.ws.close(); a2.ws.close();
 await api('DELETE', `/room/${roomId}`);

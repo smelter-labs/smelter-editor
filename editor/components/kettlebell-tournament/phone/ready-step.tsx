@@ -56,14 +56,23 @@ export function ReadyStep({
   myClientId,
   myName,
   poseTracked,
+  fullBody,
   inMyIntro,
+  camOn,
+  facing,
+  attachVideo,
 }: {
   state: KbtStateEvent | null;
   myClientId: string | null;
   myName: string;
   poseTracked: boolean;
+  /** Head + an ankle in frame per the AI (false = ask the athlete to back up). */
+  fullBody: boolean;
   /** My heat is staged (intro) — show the framing check prominently. */
   inMyIntro: boolean;
+  camOn: boolean;
+  facing: 'user' | 'environment';
+  attachVideo: (el: HTMLVideoElement | null) => void;
 }) {
   const players = state?.players ?? [];
   const me =
@@ -92,7 +101,7 @@ export function ReadyStep({
       }}>
       {inMyIntro ? (
         <PixelPanel
-          accent={poseTracked ? 'green' : 'orange'}
+          accent={poseTracked && fullBody ? 'green' : 'orange'}
           cut={10}
           glow={0.6}
           innerStyle={{
@@ -107,16 +116,22 @@ export function ReadyStep({
               fontFamily: pixelFont,
               fontSize: 13,
               letterSpacing: 1.5,
-              color: poseTracked ? R5.green : R5.orangeBright,
+              color: poseTracked && fullBody ? R5.green : R5.orangeBright,
             }}
-            className={poseTracked ? undefined : 'r5-blink'}>
-            {poseTracked ? 'POSE LOCKED ✓' : 'STEP INTO FRAME'}
+            className={poseTracked && fullBody ? undefined : 'r5-blink'}>
+            {!poseTracked
+              ? 'STEP INTO FRAME'
+              : fullBody
+                ? 'POSE LOCKED ✓'
+                : 'BACK UP'}
           </span>
           <span
             style={{ fontFamily: monoFont, fontSize: 11, color: R5.inkMuted }}>
-            {poseTracked
-              ? 'The AI sees you. Grab the bell and await the countdown.'
-              : 'Stand back until your whole body is tracked on your tile.'}
+            {!poseTracked
+              ? 'Stand back until your whole body is tracked on your tile.'
+              : fullBody
+                ? 'The AI sees you. Grab the bell and await the countdown.'
+                : 'Head to toe must fit — move the phone or step back.'}
           </span>
         </PixelPanel>
       ) : (
@@ -148,6 +163,72 @@ export function ReadyStep({
           </span>
         </PixelPanel>
       )}
+
+      {camOn ? (
+        <div
+          style={{
+            position: 'relative',
+            width: '100%',
+            aspectRatio: '3 / 4',
+            maxHeight: '40vh',
+            minHeight: 180,
+            background: '#000',
+            border: `1px solid rgba(${R5.gridRgb},0.6)`,
+            overflow: 'hidden',
+            flexShrink: 0,
+          }}>
+          <video
+            ref={attachVideo}
+            autoPlay
+            playsInline
+            muted
+            style={{
+              position: 'absolute',
+              inset: 0,
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              transform: facing === 'user' ? 'scaleX(-1)' : undefined,
+            }}
+          />
+          <div
+            style={{
+              position: 'absolute',
+              inset: '4% 12%',
+              border: `2px dashed rgba(${R5.yellowRgb},0.75)`,
+              pointerEvents: 'none',
+            }}
+          />
+          {inMyIntro ? (
+            <div
+              style={{
+                position: 'absolute',
+                left: 0,
+                right: 0,
+                bottom: 8,
+                textAlign: 'center',
+                pointerEvents: 'none',
+              }}>
+              <span
+                className={poseTracked && fullBody ? undefined : 'r5-blink'}
+                style={{
+                  fontFamily: pixelFont,
+                  fontSize: 10,
+                  letterSpacing: 1,
+                  padding: '5px 9px',
+                  background: 'rgba(0,0,0,0.6)',
+                  color: poseTracked && fullBody ? R5.green : R5.orangeBright,
+                }}>
+                {!poseTracked
+                  ? 'STEP INTO FRAME'
+                  : fullBody
+                    ? 'POSE LOCKED ✓'
+                    : 'BACK UP — WHOLE BODY IN FRAME'}
+              </span>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       {heatMates.length > 0 ? (
         <PixelPanel

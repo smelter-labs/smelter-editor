@@ -107,7 +107,9 @@ export function RosterScreen({
   const heatsDrawn = heats.length > 0;
   const nextHeat = heats.find((h) => h.phase === 'idle');
   const camsReady = players.filter((p) => p.camConnected).length;
-  const canDraw = !!room.roomId && players.length >= 2;
+  // One lifter is a valid tournament — the SOLO CHALLENGE (one heat of one).
+  const canDraw = !!room.roomId && players.length >= 1;
+  const solo = players.length === 1;
   const canStage = heatsDrawn && !!nextHeat;
 
   const primary = () => {
@@ -120,11 +122,13 @@ export function RosterScreen({
     ? `SETUP FAILED: ${room.error}`
     : room.creating || !room.roomId
       ? 'BUILDING THE ARENA…'
-      : players.length < 2
-        ? 'NEED AT LEAST 2 LIFTERS'
+      : players.length === 0
+        ? 'WAITING FOR THE FIRST LIFTER'
         : camsReady < players.length
           ? `${camsReady}/${players.length} CAMERAS LIVE`
-          : 'ALL CAMERAS LIVE';
+          : solo
+            ? 'SOLO CHALLENGE — CAMERA LIVE'
+            : 'ALL CAMERAS LIVE';
 
   return (
     <RetroFrame
@@ -147,7 +151,7 @@ export function RosterScreen({
                 <PixelButton
                   accent='green'
                   glyph='A'
-                  label='DRAW HEATS'
+                  label={solo ? 'SOLO CHALLENGE' : 'DRAW HEATS'}
                   active={canDraw}
                   disabled={!canDraw}
                   onClick={onDrawHeats}
