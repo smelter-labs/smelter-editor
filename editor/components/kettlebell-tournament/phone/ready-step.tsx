@@ -160,7 +160,9 @@ export function ReadyStep({
             padding: '12px 14px',
           }}>
           <StarLine size={8}>
-            {myHeat?.final ? 'FINAL LINE-UP' : `HEAT ${myHeat!.index + 1} LINE-UP`}
+            {myHeat?.final
+              ? 'FINAL LINE-UP'
+              : `HEAT ${myHeat!.index + 1} LINE-UP`}
           </StarLine>
           {heatMates.map((p) => (
             <Row

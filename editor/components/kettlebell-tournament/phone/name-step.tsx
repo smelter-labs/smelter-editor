@@ -1,7 +1,12 @@
 'use client';
 
 import React from 'react';
-import { PixelPanel, R5, monoFont, pixelFont } from '../../duck-hunter/retro-kit';
+import {
+  PixelPanel,
+  R5,
+  monoFont,
+  pixelFont,
+} from '../../duck-hunter/retro-kit';
 import { ActionButton } from '../../duck-hunter/phone/phone-shell';
 
 /** Step 2 — pick a lifter name (shown on the tile, scoreboard and podium). */

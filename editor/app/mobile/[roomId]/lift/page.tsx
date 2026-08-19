@@ -214,9 +214,7 @@ export default function LiftControllerPage() {
           const sheet = id ? event.scores[id] : undefined;
           if (sheet) {
             setPoints(sheet.points);
-            setReps(
-              sheet.reps.swing + sheet.reps.clean + sheet.reps.snatch,
-            );
+            setReps(sheet.reps.swing + sheet.reps.clean + sheet.reps.snatch);
           }
           break;
         }
@@ -364,8 +362,7 @@ export default function LiftControllerPage() {
   // ── Heat membership + step choreography ──────────────────────────────────
 
   const me =
-    (myClientId &&
-      kbtState?.players.find((p) => p.clientId === myClientId)) ||
+    (myClientId && kbtState?.players.find((p) => p.clientId === myClientId)) ||
     kbtState?.players.find((p) => p.name === name.trim()) ||
     null;
   const currentHeat =

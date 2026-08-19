@@ -1,7 +1,12 @@
 'use client';
 
 import React from 'react';
-import { PixelPanel, R5, monoFont, pixelFont } from '../../duck-hunter/retro-kit';
+import {
+  PixelPanel,
+  R5,
+  monoFont,
+  pixelFont,
+} from '../../duck-hunter/retro-kit';
 import {
   ActionButton,
   ChipButton,
