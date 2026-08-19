@@ -107,8 +107,15 @@ export type KbtJoinMessage = { type: "kbt_join"; name: string };
 /**
  * (Re)request a camera slot: the server registers a fresh WHIP input for this
  * client (retiring any previous one) and replies with `kbt_cam_offer`.
+ * The real track dimensions (from getSettings()) let the server register the
+ * input with its true aspect — without them a portrait stream lands in a
+ * landscape content box and gets cover-cropped top/bottom on the output.
  */
-export type KbtCamRequestMessage = { type: "kbt_cam_request" };
+export type KbtCamRequestMessage = {
+  type: "kbt_cam_request";
+  nativeWidth?: number;
+  nativeHeight?: number;
+};
 export type KbtCamStopMessage = { type: "kbt_cam_stop" };
 export type KbtLeaveMessage = { type: "kbt_leave" };
 /** Subscribe-only handshake (host page): snapshot reply, never a player. */

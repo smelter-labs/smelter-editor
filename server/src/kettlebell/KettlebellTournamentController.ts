@@ -34,6 +34,7 @@ export type KbtControllerDeps = {
   /** Register a WHIP camera input through InputManager (side channel baked in). */
   registerPlayerCam: (
     name: string,
+    dims?: { width: number; height: number },
   ) => Promise<{ inputId: string; whipUrl: string; bearerToken: string }>;
   removeInput: (inputId: string) => Promise<void>;
   /** Enable/disable the kettlebell-coach model on one input. */
@@ -71,6 +72,9 @@ type PlayerState = {
   poseTracked: boolean;
   /** Head + an ankle in frame per the worker (framing hint, not a gate). */
   fullBody: boolean;
+  /** Reported camera dimensions (drives aspect-correct tile widths). */
+  camWidth: number | null;
+  camHeight: number | null;
   bestScore: number;
   finalScore: number | null;
   heatIndex: number | null;
@@ -196,14 +200,27 @@ export class KettlebellTournamentController {
 
   handleMessage(clientId: string, raw: unknown): void {
     if (!raw || typeof raw !== 'object') return;
-    const msg = raw as { type?: unknown; name?: unknown };
+    const msg = raw as {
+      type?: unknown;
+      name?: unknown;
+      nativeWidth?: unknown;
+      nativeHeight?: unknown;
+    };
     switch (msg.type) {
       case 'kbt_join':
         this.join(clientId, typeof msg.name === 'string' ? msg.name : 'Lifter');
         break;
-      case 'kbt_cam_request':
-        void this.startCamera(clientId);
+      case 'kbt_cam_request': {
+        const w = Number(msg.nativeWidth);
+        const h = Number(msg.nativeHeight);
+        const dims =
+          Number.isFinite(w) && Number.isFinite(h) &&
+          w >= 16 && w <= 8192 && h >= 16 && h <= 8192
+            ? { width: Math.round(w), height: Math.round(h) }
+            : undefined;
+        void this.startCamera(clientId, dims);
         break;
+      }
       case 'kbt_cam_stop':
         this.stopCamera(clientId);
         break;
@@ -245,6 +262,8 @@ export class KettlebellTournamentController {
           camConnected: false,
           poseTracked: false,
           fullBody: true,
+          camWidth: null,
+          camHeight: null,
           bestScore: 0,
           finalScore: null,
           heatIndex: null,
@@ -279,13 +298,20 @@ export class KettlebellTournamentController {
    * one) and send the publish offer. Goes through InputManager so the input
    * has a video side channel — unlike Duck Hunter's decorative avatar cams.
    */
-  async startCamera(clientId: string): Promise<void> {
+  async startCamera(
+    clientId: string,
+    dims?: { width: number; height: number },
+  ): Promise<void> {
     const p = this.players.get(clientId);
     if (!p) return;
     this.retireCamera(p);
+    if (dims) {
+      p.camWidth = dims.width;
+      p.camHeight = dims.height;
+    }
     let cam: { inputId: string; whipUrl: string; bearerToken: string };
     try {
-      cam = await this.deps.registerPlayerCam(p.name);
+      cam = await this.deps.registerPlayerCam(p.name, dims);
     } catch (err) {
       console.error(
         `[kbt] camera input register failed for ${clientId}`,
@@ -755,7 +781,45 @@ export class KettlebellTournamentController {
     };
   }
 
-  /** Lay out the active heat's cams as full-height columns and arm their AI. */
+  private camAspect(p: PlayerState): number {
+    return p.camWidth && p.camHeight ? p.camWidth / p.camHeight : 16 / 9;
+  }
+
+  /**
+   * Contain-fit a centered row of camera tiles: each column at the cam's own
+   * aspect (16:9 when unreported), full height when the row fits, uniformly
+   * scaled down and vertically centered when it doesn't. With the content box
+   * now matching the source aspect (toInputConfig native-dims fallback) this
+   * shows the WHOLE portrait frame instead of pillarboxed crops. Rounding
+   * accumulates x so the last tile lands flush.
+   */
+  private tileRow(
+    cams: { inputId: string; aspect: number }[],
+  ): { inputId: string; x: number; y: number; width: number; height: number }[] {
+    if (cams.length === 0) return [];
+    const { width: W, height: H } = this.deps.getResolution();
+    const naturalWidths = cams.map((c) => Math.max(0.1, c.aspect) * H);
+    const total = naturalWidths.reduce((a, b) => a + b, 0);
+    const scale = total > W ? W / total : 1;
+    const rowH = Math.round(H * scale);
+    const y = Math.round((H - rowH) / 2);
+    let x = (W - total * scale) / 2;
+    return cams.map((c, i) => {
+      const w = naturalWidths[i] * scale;
+      const left = Math.round(x);
+      const right = Math.round(x + w);
+      x += w;
+      return {
+        inputId: c.inputId,
+        x: left,
+        y,
+        width: right - left,
+        height: rowH,
+      };
+    });
+  }
+
+  /** Lay out the active heat's cams as aspect-true columns and arm their AI. */
   private async stageActiveHeat(): Promise<void> {
     const heat =
       this.currentHeatIndex != null ? this.heats[this.currentHeatIndex] : null;
@@ -763,18 +827,14 @@ export class KettlebellTournamentController {
     const staged = heat.playerIds
       .map((id) => this.players.get(id))
       .filter((p): p is PlayerState => !!p && p.inputId != null);
-    const { width, height } = this.deps.getResolution();
-    const n = Math.max(1, staged.length);
-    const tileW = Math.floor(width / n);
     try {
       await this.deps.layoutTiles(
-        staged.map((p, i) => ({
-          inputId: p.inputId!,
-          x: i * tileW,
-          y: 0,
-          width: tileW,
-          height,
-        })),
+        this.tileRow(
+          staged.map((p) => ({
+            inputId: p.inputId!,
+            aspect: this.camAspect(p),
+          })),
+        ),
       );
     } catch (err) {
       console.error('[kbt] layoutTiles failed', err);
@@ -795,18 +855,14 @@ export class KettlebellTournamentController {
     const cams = [...this.players.values()]
       .filter((p) => p.inputId != null)
       .slice(0, ROSTER_MOSAIC_MAX);
-    const { width, height } = this.deps.getResolution();
-    const n = Math.max(1, cams.length);
-    const tileW = Math.floor(width / n);
     try {
       await this.deps.layoutTiles(
-        cams.map((p, i) => ({
-          inputId: p.inputId!,
-          x: i * tileW,
-          y: 0,
-          width: tileW,
-          height,
-        })),
+        this.tileRow(
+          cams.map((p) => ({
+            inputId: p.inputId!,
+            aspect: this.camAspect(p),
+          })),
+        ),
       );
     } catch (err) {
       console.error('[kbt] roster mosaic layout failed', err);

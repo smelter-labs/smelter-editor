@@ -300,6 +300,25 @@ describe('KettlebellTournamentController', () => {
     h.controller.dispose();
   });
 
+  it('lays portrait cams out as centered aspect-true columns', async () => {
+    const h = harness();
+    h.controller.join('p1', 'ANIA');
+    h.controller.join('p2', 'BARTEK');
+    await h.controller.startCamera('p1', { width: 720, height: 1280 });
+    await h.controller.startCamera('p2', { width: 720, height: 1280 });
+    h.controller.setConfig({ heatDurationMs: 30_000, heatSize: 2 });
+    h.controller.controlMatch({ action: 'assign_heats' });
+    h.controller.controlMatch({ action: 'start_heat' });
+    await vi.advanceTimersByTimeAsync(0);
+    const tiles = h.layouts[h.layouts.length - 1];
+    expect(tiles).toHaveLength(2);
+    // 9:16 at 1080 high = 607.5 wide; the pair centered on 1920: x ~352/960.
+    expect(Math.abs(tiles[0].width - 608)).toBeLessThanOrEqual(1);
+    expect(Math.abs(tiles[0].x - 352)).toBeLessThanOrEqual(1);
+    expect(Math.abs(tiles[1].x - 960)).toBeLessThanOrEqual(1);
+    h.controller.dispose();
+  });
+
   it('simulateRep scores through the same path as coach events', async () => {
     const h = harness();
     await playingHeat(h);

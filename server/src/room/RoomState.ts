@@ -396,10 +396,23 @@ export class RoomState {
       // registered here get the video side channel the coach model needs, and
       // the standard `${roomId}::whip::${uuid}` id stays inside the 103-char
       // unix-socket path budget.
-      registerPlayerCam: async (name) => {
+      registerPlayerCam: async (name, dims) => {
         const inputId = await this.addNewInput({
           type: 'whip',
           username: `[camera] ${name}`,
+          // Real track dimensions from the phone: the registration path
+          // honors exact dims (updateInput's bare-orientation heuristic
+          // would clobber them, so orientation always travels WITH dims).
+          ...(dims
+            ? {
+                nativeWidth: dims.width,
+                nativeHeight: dims.height,
+                orientation:
+                  dims.height > dims.width
+                    ? ('vertical' as const)
+                    : ('horizontal' as const),
+              }
+            : {}),
         });
         if (!inputId) throw new Error('WHIP input registration failed');
         const bearerToken = await this.connectInput(inputId);
@@ -2620,9 +2633,16 @@ export class RoomState {
       showTitle: input.showTitle,
       volume: input.volume,
       shaders: input.shaders,
-      sourceWidth: input.type === 'local-mp4' ? input.mp4VideoWidth : undefined,
+      // Non-mp4 inputs fall back to their reported native dims so the render
+      // content box matches the source aspect — without this a portrait WHIP
+      // cam lands in the hard-coded 16:9 box and the video Rescaler's 'fill'
+      // cover-crops ~a third off the top and bottom. Safe: whip/hls/channel
+      // inputs default to 1920x1080 natives, identical to the old behavior,
+      // so only inputs that explicitly reported dims render differently.
+      sourceWidth:
+        input.type === 'local-mp4' ? input.mp4VideoWidth : input.nativeWidth,
       sourceHeight:
-        input.type === 'local-mp4' ? input.mp4VideoHeight : undefined,
+        input.type === 'local-mp4' ? input.mp4VideoHeight : input.nativeHeight,
       borderColor: input.borderColor,
       borderWidth: input.borderWidth,
       imageId:

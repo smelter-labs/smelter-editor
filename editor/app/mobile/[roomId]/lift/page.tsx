@@ -163,8 +163,15 @@ export default function LiftControllerPage() {
       const facingMode = nextFacing ?? facingRef.current;
       try {
         camStreamRef.current?.getTracks().forEach((t) => t.stop());
+        // Square ideals: orientation-agnostic, so a portrait phone gets a
+        // full-FOV 720x1280 mode instead of a cropped landscape 1280x720
+        // (which is what made the preview look zoomed-in/small).
         const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+          video: {
+            facingMode,
+            width: { ideal: 1280 },
+            height: { ideal: 1280 },
+          },
           audio: false,
         });
         camStreamRef.current = stream;
@@ -186,16 +193,35 @@ export default function LiftControllerPage() {
     void enableCamera(facingRef.current === 'user' ? 'environment' : 'user');
   }, [enableCamera]);
 
+  // Includes the ACTUAL track dimensions so the server registers the input
+  // with its true aspect (portrait cams were cover-cropped without them).
+  const sendCamRequest = useCallback((ws: WebSocket) => {
+    const settings = camStreamRef.current
+      ?.getVideoTracks()[0]
+      ?.getSettings();
+    ws.send(
+      JSON.stringify({
+        type: 'kbt_cam_request',
+        ...(settings?.width && settings?.height
+          ? { nativeWidth: settings.width, nativeHeight: settings.height }
+          : {}),
+      }),
+    );
+  }, []);
+
+  const sendCamRequestRef = useRef(sendCamRequest);
+  sendCamRequestRef.current = sendCamRequest;
+
   const requestCam = useCallback(() => {
     wantsCamRef.current = true;
     setPublishing(true);
     const ws = wsRef.current;
     if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'kbt_cam_request' }));
+      sendCamRequest(ws);
     }
     // Unlock audio on this user gesture (iOS) for later rep beeps.
     beep('good');
-  }, [beep]);
+  }, [beep, sendCamRequest]);
 
   // ── WebSocket ─────────────────────────────────────────────────────────────
 
@@ -308,7 +334,7 @@ export default function LiftControllerPage() {
         setMyClientId(null);
         myClientIdRef.current = null;
         if (wantsCamRef.current && camStreamRef.current) {
-          ws.send(JSON.stringify({ type: 'kbt_cam_request' }));
+          sendCamRequestRef.current(ws);
         }
       }
     };
