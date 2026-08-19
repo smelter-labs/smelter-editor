@@ -19,6 +19,9 @@ type WorkerEvent = {
 export type KettlebellResultData = {
   events?: WorkerEvent[];
   exercise?: string;
+  /** Analyzer-lifetime token: changes whenever the worker restarts the
+   * analyzer (worker restart, stream reconnect), restarting rep indices. */
+  session?: string;
 };
 
 // Legitimate classifier flips are >= 1.5s apart (worker-side dwell); anything
@@ -37,6 +40,8 @@ const EXERCISES: readonly string[] = ['swing', 'clean', 'snatch', 'idle'];
 type InputTriggerState = {
   /** Highest rep index broadcast — dedupes replays after a worker reconnect. */
   lastRepIndex: number;
+  /** Worker analyzer session the dedupe belongs to (null until first seen). */
+  session: string | null;
   exercise: KettlebellExercise;
   pendingExercise: KettlebellExercise | null;
   lastExerciseBroadcastAt: number;
@@ -68,6 +73,18 @@ export class KettlebellCoachController {
     const state = this.stateFor(inputId);
     const now = this.now();
 
+    // A new worker session restarts rep indices at 1 — WITHOUT this reset the
+    // `index <= lastRepIndex` dedupe below silently swallowed every rep after
+    // a worker restart or a camera reconnect (the overlay count kept climbing
+    // while the scoreboard froze). Same-session replays still dedupe.
+    if (data.session != null && data.session !== state.session) {
+      if (state.session != null) {
+        state.lastRepIndex = 0;
+        state.recentRepIssues = [];
+      }
+      state.session = data.session;
+    }
+
     this.flushPendingExercise(state, inputId, now);
 
     for (const event of data.events ?? []) {
@@ -88,6 +105,7 @@ export class KettlebellCoachController {
     if (!state) {
       state = {
         lastRepIndex: 0,
+        session: null,
         exercise: 'idle',
         pendingExercise: null,
         lastExerciseBroadcastAt: 0,

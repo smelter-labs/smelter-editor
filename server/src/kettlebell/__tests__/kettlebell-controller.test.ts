@@ -160,4 +160,44 @@ describe('KettlebellCoachController', () => {
     h.controller.handleResult('b', { events: [rep(1)] });
     expect(h.ofType('kettlebell_rep_completed')).toHaveLength(2);
   });
+
+  it('resets the rep dedupe when the worker session changes', () => {
+    const h = harness();
+    h.controller.handleResult(INPUT, {
+      session: 'a',
+      events: [rep(1), rep(2), rep(3)],
+    });
+    // Worker restarted (or the stream reconnected): indices start over at 1.
+    // Without the session reset the dedupe swallowed every rep from here on.
+    h.controller.handleResult(INPUT, { session: 'b', events: [rep(1)] });
+    expect(h.ofType('kettlebell_rep_completed').map((r) => r.repIndex)).toEqual(
+      [1, 2, 3, 1],
+    );
+  });
+
+  it('still dedupes replayed indices within one session', () => {
+    const h = harness();
+    h.controller.handleResult(INPUT, { session: 'a', events: [rep(1), rep(2)] });
+    h.controller.handleResult(INPUT, {
+      session: 'a',
+      events: [rep(1), rep(2), rep(3)],
+    });
+    expect(h.ofType('kettlebell_rep_completed').map((r) => r.repIndex)).toEqual(
+      [1, 2, 3],
+    );
+  });
+
+  it('clears the technique-alert window across sessions', () => {
+    const h = harness();
+    h.controller.handleResult(INPUT, {
+      session: 'a',
+      events: [rep(1, ['squatting']), rep(2, ['squatting'])],
+    });
+    // Two of the three occurrences belong to the dead session — no alert.
+    h.controller.handleResult(INPUT, {
+      session: 'b',
+      events: [rep(1, ['squatting'])],
+    });
+    expect(h.ofType('kettlebell_technique_alert')).toHaveLength(0);
+  });
 });

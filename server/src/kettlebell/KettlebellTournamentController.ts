@@ -69,6 +69,8 @@ type PlayerState = {
   inputId: string | null;
   camConnected: boolean;
   poseTracked: boolean;
+  /** Head + an ankle in frame per the worker (framing hint, not a gate). */
+  fullBody: boolean;
   bestScore: number;
   finalScore: number | null;
   heatIndex: number | null;
@@ -242,6 +244,7 @@ export class KettlebellTournamentController {
           inputId: null,
           camConnected: false,
           poseTracked: false,
+          fullBody: true,
           bestScore: 0,
           finalScore: null,
           heatIndex: null,
@@ -329,6 +332,7 @@ export class KettlebellTournamentController {
     p.inputId = null;
     p.camConnected = false;
     p.poseTracked = false;
+    p.fullBody = true;
     void this.deps.setKettlebellCoach(inputId, false).catch(() => {});
     void this.deps.removeInput(inputId).catch(() => {});
   }
@@ -398,19 +402,21 @@ export class KettlebellTournamentController {
    * Live pose visibility from the raw worker results (the coach events carry
    * no pose). Debounced so a single dropped frame doesn't flicker the check.
    */
-  onPoseSample(inputId: string, tracked: boolean): void {
+  onPoseSample(inputId: string, tracked: boolean, fullBody = true): void {
     const p = [...this.players.values()].find((pl) => pl.inputId === inputId);
-    if (!p || p.poseTracked === tracked) return;
+    if (!p || (p.poseTracked === tracked && p.fullBody === fullBody)) return;
     const now = this.now();
     const since = this.poseFlipAt.get(p.clientId) ?? 0;
     if (now - since < POSE_DEBOUNCE_MS) return;
     this.poseFlipAt.set(p.clientId, now);
     p.poseTracked = tracked;
+    p.fullBody = fullBody;
     this.deps.sendTo(p.clientId, {
       type: 'kbt_pose',
       roomId: this.roomId,
       clientId: p.clientId,
       tracked,
+      fullBody,
     });
     this.broadcastState();
   }

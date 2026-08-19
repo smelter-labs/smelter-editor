@@ -34,6 +34,7 @@ import os
 import sys
 import threading
 import time
+import uuid
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -83,6 +84,10 @@ class InputState:
     params: dict = field(default_factory=dict)
     analyzer: TechniqueAnalyzer = field(default_factory=TechniqueAnalyzer)
     tracker: KettlebellTracker = field(default_factory=KettlebellTracker)
+    # Identifies one analyzer lifetime. The rep index restarts at 1 with a
+    # fresh analyzer; Node keys its replay-dedupe to this so a worker/stream
+    # restart doesn't silently swallow every rep of the new session.
+    session: str = field(default_factory=lambda: uuid.uuid4().hex[:12])
     analyzed_frames: int = 0
     # In-flight detached YOLO-World pass, if any (at most one per input).
     bell_task: asyncio.Task | None = None
@@ -486,6 +491,8 @@ async def _run_detector_loop(input_id: str) -> int:
                     "phase": snapshot["phase"],
                     "repCount": snapshot["repCount"],
                     "lastRep": snapshot["lastRep"],
+                    "fullBody": snapshot["fullBody"],
+                    "session": state.session,
                     "events": events,
                 },
             )
@@ -527,6 +534,32 @@ def stop_detector(input_id: str) -> None:
         state.bell_task.cancel()
 
 
+def pause_detector(input_id: str) -> None:
+    """Stop analysing but KEEP the subscription (side_channel_stopped).
+
+    A stopped side channel means the stream restarts — popping the input here
+    used to make the later `side_channel_ready` a dead letter (its handler
+    only acts on inputs still in active_inputs), so a camera reconnect went
+    permanently silent. The restarted stream's PTS may begin at 0 again, so
+    the analyzer/tracker are replaced (fresh time base) under a NEW session.
+    """
+    task = running_tasks.pop(input_id, None)
+    if task and not task.done():
+        task.cancel()
+    state = active_inputs.get(input_id)
+    if state is None:
+        return
+    if state.bell_task and not state.bell_task.done():
+        state.bell_task.cancel()
+    state.bell_task = None
+    state.side_channel_ready = False
+    state.analyzer = TechniqueAnalyzer(params=state.params or None)
+    state.tracker = KettlebellTracker()
+    state.analyzed_frames = 0
+    state.pending_events = []
+    state.session = uuid.uuid4().hex[:12]
+
+
 async def handle_command(msg: dict) -> None:
     cmd = msg.get("cmd")
     input_id = msg.get("inputId")
@@ -559,7 +592,7 @@ async def handle_command(msg: dict) -> None:
                 log.info("detector for %s not running — restarting", input_id)
                 start_detector(input_id)
     elif cmd == "side_channel_stopped":
-        stop_detector(input_id)
+        pause_detector(input_id)
     elif cmd == "shutdown":
         request_shutdown()
 

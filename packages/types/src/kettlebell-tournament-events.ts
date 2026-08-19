@@ -197,6 +197,11 @@ export type KbtPoseEvent = {
   roomId: string;
   clientId: string;
   tracked: boolean;
+  /**
+   * Head + an ankle are in frame (rep counting survives worse via fallbacks,
+   * but the athlete should back up). Absent on older servers — treat as true.
+   */
+  fullBody?: boolean;
 };
 
 export type KbtLeadChangeEvent = {

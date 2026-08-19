@@ -126,10 +126,35 @@ TOP_SNATCH_1H_SOFT = make_pose(  # left elbow still bent at the catch (~128°)
     hip=(0.50, 0.50), knee=(0.50, 0.65), ankle=(0.50, 0.80),
     elbow_r=(0.54, 0.42), wrist_r=(0.56, 0.52),
 )
+# Shallow backswing: the working hand turns around at hip + 0.018 — inside
+# the absolute bottom zone's dead band (needs hip + 0.05, EMA-effectively
+# ~+0.055). Real high-rep one-hand snatch sets sit exactly here. The free
+# hand is kept clearly apart so the hands-together midpoint doesn't engage.
+BOTTOM_1H_SHALLOW = make_pose(
+    nose=(0.34, 0.34), ear=(0.35, 0.33), shoulder=(0.40, 0.39),
+    elbow=(0.42, 0.465), wrist=(0.44, 0.538),
+    hip=(0.50, 0.52), knee=(0.48, 0.67), ankle=(0.50, 0.80),
+    elbow_r=(0.47, 0.44), wrist_r=(0.52, 0.50),
+)
+# Two-hand variant of the shallow turnaround (both wrists together).
+BOTTOM_SHALLOW_2H = make_pose(
+    nose=(0.34, 0.34), ear=(0.35, 0.33), shoulder=(0.40, 0.39),
+    elbow=(0.42, 0.465), wrist=(0.44, 0.538),
+    hip=(0.50, 0.52), knee=(0.48, 0.67), ankle=(0.50, 0.80),
+)
 
 
-def run_swing(bottom, top, reps=10, period_s=2.0, params=None, fps=FPS):
-    """Drive a TechniqueAnalyzer through `reps` cosine swing cycles."""
+def run_swing(
+    bottom, top, reps=10, period_s=2.0, params=None, fps=FPS,
+    kb_offset=None, mutate=None,
+):
+    """Drive a TechniqueAnalyzer through `reps` cosine swing cycles.
+
+    `mutate` post-processes each interpolated pose (confidence knockouts);
+    `kb_offset=(dx, dy)` feeds a tracked-bell position derived from the
+    lifting (left) wrist — the production hand signal, otherwise untested
+    through the analyzer.
+    """
     analyzer = TechniqueAnalyzer(params=params)
     events = []
     snapshot = {}
@@ -139,9 +164,36 @@ def run_swing(bottom, top, reps=10, period_s=2.0, params=None, fps=FPS):
     for i in range(steps):
         t = i / fps
         u = 0.5 - 0.5 * math.cos(2 * math.pi * t / period_s)
-        snapshot = analyzer.update(t, lerp_pose(bottom, top, u), None)
+        pose = lerp_pose(bottom, top, u)
+        kb_pos = None
+        if kb_offset is not None:
+            kb_pos = (pose[9][0] + kb_offset[0], pose[9][1] + kb_offset[1])
+        if mutate is not None:
+            pose = mutate(pose)
+        snapshot = analyzer.update(t, pose, kb_pos)
         events.extend(snapshot["events"])
     return analyzer, events, snapshot
+
+
+def drop_conf(*indices):
+    """Pose mutator: zero the confidence of the given keypoint indices."""
+    def apply(pose):
+        out = [list(k) for k in pose]
+        for i in indices:
+            out[i] = [out[i][0], out[i][1], 0.0]
+        return out
+    return apply
+
+
+def clip_above(y_min):
+    """Pose mutator: keypoints higher than y_min fall out of the frame."""
+    def apply(pose):
+        out = [list(k) for k in pose]
+        for i, k in enumerate(out):
+            if k[1] < y_min:
+                out[i] = [k[0], k[1], 0.0]
+        return out
+    return apply
 
 
 def run_profile(bottom, top, us, params=None, fps=FPS):
@@ -533,6 +585,105 @@ def test_params_update_applies():
     assert analyzer.segmenter.rep_sensitivity == 0.4
     assert analyzer.params["hingeKneeMin"] == 90
     assert analyzer.params["swingTopRule"] == DEFAULT_PARAMS["swingTopRule"]
+
+
+def test_reps_survive_missing_dominant_ankle():
+    """Feet half out of frame (the dominant-side ankle below confidence): the
+    segmenter used to silently no-op via body_height() and zero whole sets."""
+    _, events, _ = run_swing(
+        BOTTOM_1H, TOP_SNATCH_1H, reps=6, mutate=drop_conf(15),
+    )
+    reps = rep_events(events)
+    assert len(reps) == 6, f"got {len(reps)}"
+    assert all(r["exercise"] == "snatch" for r in reps), [r["exercise"] for r in reps]
+
+
+def test_reps_survive_missing_both_ankles():
+    """Feet fully out of frame: the knee-derived scale keeps counting, and the
+    fullBody flag flips so the phone can tell the athlete to back up."""
+    _, events, snapshot = run_swing(
+        BOTTOM_1H, TOP_SNATCH_1H, reps=6, mutate=drop_conf(15, 16),
+    )
+    reps = rep_events(events)
+    assert len(reps) == 6, f"got {len(reps)}"
+    assert snapshot["fullBody"] is False
+
+
+def test_reps_survive_missing_nose():
+    """Head cropped/turned away: the ear keeps the body scale and the
+    shoulder-margin rescue keeps the reps classed as snatches."""
+    _, events, _ = run_swing(
+        BOTTOM_1H, TOP_SNATCH_1H, reps=6, mutate=drop_conf(0),
+    )
+    reps = rep_events(events)
+    assert len(reps) == 6, f"got {len(reps)}"
+    assert all(r["exercise"] == "snatch" for r in reps), [r["exercise"] for r in reps]
+
+
+def test_full_body_flag_on_clean_fixture():
+    _, _, snapshot = run_swing(BOTTOM_1H, TOP_SNATCH_1H, reps=2)
+    assert snapshot["fullBody"] is True
+
+
+def test_shallow_backswing_snatch_counts():
+    """One-hand snatch turning around at hip+0.018 — the old absolute bottom
+    zone never fires, so the machine used to sit at 0 through whole sets.
+    The confirmed-local-minimum arm/complete paths must count every rep."""
+    _, events, _ = run_swing(BOTTOM_1H_SHALLOW, TOP_SNATCH_1H, reps=6)
+    reps = rep_events(events)
+    assert len(reps) == 6, f"got {len(reps)}"
+    assert all(r["exercise"] == "snatch" for r in reps), [r["exercise"] for r in reps]
+
+
+def test_shallow_backswing_swing_counts():
+    """Two-hand swing with the same shallow turnaround still counts."""
+    _, events, _ = run_swing(BOTTOM_SHALLOW_2H, TOP, reps=6)
+    reps = rep_events(events)
+    assert len(reps) == 6, f"got {len(reps)}"
+
+
+def test_chest_height_dip_does_not_arm():
+    """Oscillation entirely above the hip line must never arm a rep — the
+    local-minimum arm keeps the swing floor at the hip."""
+    us = [0.62 + 0.18 * math.sin(i / 3.0) for i in range(60)]
+    _, events, _ = run_profile(BOTTOM, TOP, us)
+    assert rep_events(events) == [], rep_events(events)
+
+
+def test_kb_box_floating_above_hand_is_rejected():
+    """A drifted bell box riding above the gripping hand must not drive the
+    phase machine — a constant +0.06 offset used to zero whole sets."""
+    _, events, _ = run_swing(
+        BOTTOM_1H, TOP_SNATCH_1H, reps=6, kb_offset=(0.0, -0.06),
+    )
+    reps = rep_events(events)
+    assert len(reps) == 6, f"got {len(reps)}"
+
+
+def test_kb_box_hanging_below_hand_still_tracks():
+    """Normal geometry (bell just below the wrist) keeps the kb-driven path
+    live end-to-end — previously untested through TechniqueAnalyzer."""
+    _, events, _ = run_swing(
+        BOTTOM_1H, TOP_SNATCH_1H, reps=6, kb_offset=(0.0, 0.04),
+    )
+    reps = rep_events(events)
+    assert len(reps) == 6, f"got {len(reps)}"
+    assert all(r["exercise"] == "snatch" for r in reps), [r["exercise"] for r in reps]
+
+
+def test_clipped_overhead_still_scores_snatch():
+    """Frame cut just above the shoulders: the lockout arm (and head) drop
+    out at the apex, which used to stamp reps swing + too_high. The smoothed
+    apex height vs the shoulder line rescues the classification."""
+    _, events, _ = run_swing(
+        BOTTOM_1H, TOP_SNATCH_1H, reps=6, mutate=clip_above(0.22),
+    )
+    reps = rep_events(events)
+    assert len(reps) == 6, f"got {len(reps)}"
+    assert all(r["exercise"] == "snatch" for r in reps), [
+        (r["exercise"], r["issues"]) for r in reps
+    ]
+    assert all("too_high" not in r["issues"] for r in reps)
 
 
 if __name__ == "__main__":

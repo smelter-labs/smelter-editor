@@ -857,6 +857,8 @@ export class RoomState {
         frameW?: number;
         frameH?: number;
         procMs?: number;
+        fullBody?: boolean;
+        session?: string;
       };
 
       this.kettlebellController.handleResult(
@@ -868,6 +870,7 @@ export class RoomState {
       this.kbTournament.onPoseSample(
         event.inputId,
         !!data.pose?.kpts && data.pose.kpts.length > 0,
+        data.fullBody !== false,
       );
 
       const outputDelayMs = input.registeredSideChannelDelayMs ?? 0;
