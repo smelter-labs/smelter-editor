@@ -1,0 +1,89 @@
+/* kbt kit — CSS side of the kb_design language ("Smelter Overlays"):
+ * square ember-pulse status dots, hard label blink, and the button reset.
+ * Hard edges everywhere — the design has no border-radius. */
+
+@keyframes kbt-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.kbt-pulse {
+  animation: kbt-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes kbt-blink {
+  0%,
+  54% {
+    opacity: 1;
+  }
+  55%,
+  100% {
+    opacity: 0.25;
+  }
+}
+
+.kbt-blink {
+  animation: kbt-blink 1.2s steps(1, end) infinite;
+}
+
+/* Screen entry: quick fade + settle. */
+@keyframes kbt-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.kbt-enter {
+  animation: kbt-enter 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Podium confetti: deterministic CSS fall (delays set inline per piece). */
+@keyframes kbt-confetti {
+  from {
+    transform: translateY(-40px) rotate(0deg);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(760px) rotate(540deg);
+    opacity: 0.7;
+  }
+}
+
+.kbt-confetti {
+  animation: kbt-confetti 4.2s linear infinite;
+}
+
+.kbt-btn {
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+  text-align: center;
+  /* No double-tap zoom on rapid taps (iOS). */
+  touch-action: manipulation;
+  transition: filter 0.12s ease;
+}
+
+/* Backgrounds are inline per-variant, so hover/press is a shared brightness ramp. */
+.kbt-btn:hover:not(:disabled) {
+  filter: brightness(1.35);
+}
+
+.kbt-btn:active:not(:disabled) {
+  filter: brightness(0.85);
+}
+
+.kbt-btn:disabled {
+  cursor: default;
+  opacity: 0.4;
+}

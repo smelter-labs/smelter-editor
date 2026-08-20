@@ -81,15 +81,34 @@ check('offer carries whipUrl + bearer', !!a.offer?.whipUrl && !!a.offer?.bearerT
 let snap = await api('GET', `/room/${roomId}/kettlebell-tournament/state`);
 check('roster has 2 lifters', snap.state.players.length === 2, JSON.stringify(snap.state.players.map((p) => p.name)));
 
+// ── 3b. Commentator joins via its own QR flow ────────────────────────────────
+const caster = phone(roomId, 'MAREK');
+await caster.open;
+caster.ws.send(j({ type: 'kbt_commentator_join', name: 'MAREK' }));
+await sleep(200);
+caster.ws.send(j({ type: 'kbt_commentator_cam_request' }));
+await sleep(1500);
+check('commentator cam offer received', !!caster.offer?.whipUrl && !!caster.offer?.bearerToken);
+snap = await api('GET', `/room/${roomId}/kettlebell-tournament/state`);
+check('commentator in state (not a player)', snap.state.commentator?.name === 'MAREK' && snap.state.players.length === 2, JSON.stringify(snap.state.commentator));
+
 // ── 4. Draw heats + run the heat ─────────────────────────────────────────────
 await api('POST', `/room/${roomId}/kettlebell-tournament/match`, { action: 'assign_heats' });
 snap = await api('GET', `/room/${roomId}/kettlebell-tournament/state`);
 check('one heat of 2 drawn', snap.state.heats.length === 1 && snap.state.heats[0].playerIds.length === 2);
 
 await api('POST', `/room/${roomId}/kettlebell-tournament/match`, { action: 'start_heat' });
-await sleep(400);
+await sleep(1200); // stage + cam poll (1 Hz) flips camConnected
 snap = await api('GET', `/room/${roomId}/kettlebell-tournament/state`);
 check('heat staged (intro)', snap.match.phase === 'intro');
+
+// begin_heat is gated: every lifter must reach the briefing (kbt_briefed).
+await api('POST', `/room/${roomId}/kettlebell-tournament/match`, { action: 'begin_heat' });
+snap = await api('GET', `/room/${roomId}/kettlebell-tournament/state`);
+check('begin_heat blocked until lifters brief', snap.match.phase === 'intro');
+a.ws.send(j({ type: 'kbt_briefed' }));
+b.ws.send(j({ type: 'kbt_briefed' }));
+await sleep(300);
 
 // Reps before the countdown must not score.
 await api('POST', `/room/${roomId}/kettlebell-tournament/simulate-rep`, { clientId: a.clientId, exercise: 'swing' });
@@ -126,6 +145,7 @@ check('disabled clean counted as rep, 0 pts', sheet?.reps.clean === 1 && sheet?.
 await api('POST', `/room/${roomId}/kettlebell-tournament/match`, { action: 'start_final' });
 await api('POST', `/room/${roomId}/kettlebell-tournament/match`, { action: 'start_heat' });
 await sleep(300);
+// Both sockets stayed open, so their `briefed` flags survive into the final.
 await api('POST', `/room/${roomId}/kettlebell-tournament/match`, { action: 'begin_heat' });
 await sleep(3400);
 await api('POST', `/room/${roomId}/kettlebell-tournament/simulate-rep`, { clientId: a.clientId, exercise: 'snatch' });
@@ -164,6 +184,12 @@ await api('POST', `/room/${roomId}/kettlebell-tournament/match`, { action: 'assi
 snap = await api('GET', `/room/${roomId}/kettlebell-tournament/state`);
 check('solo draw: one heat of one', snap.state.heats.length === 1 && snap.state.heats[0].playerIds.length === 1);
 await api('POST', `/room/${roomId}/kettlebell-tournament/match`, { action: 'start_heat' });
+await sleep(1200); // cam poll
+// ANIA's disconnect cleared her briefed flag — the new socket must re-brief.
+await api('POST', `/room/${roomId}/kettlebell-tournament/match`, { action: 'begin_heat' });
+snap = await api('GET', `/room/${roomId}/kettlebell-tournament/state`);
+check('solo begin_heat blocked until re-brief', snap.match.phase === 'intro');
+a2.ws.send(j({ type: 'kbt_briefed' }));
 await sleep(300);
 await api('POST', `/room/${roomId}/kettlebell-tournament/match`, { action: 'begin_heat' });
 await sleep(3400);

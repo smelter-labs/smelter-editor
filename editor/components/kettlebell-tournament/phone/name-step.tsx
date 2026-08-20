@@ -1,13 +1,7 @@
 'use client';
 
-import React from 'react';
-import {
-  PixelPanel,
-  R5,
-  monoFont,
-  pixelFont,
-} from '../../duck-hunter/retro-kit';
-import { ActionButton } from '../../duck-hunter/phone/phone-shell';
+import React, { useState } from 'react';
+import { KBT, KbtButton, Label, Plate, kbtMonoFont } from '../kbt-kit';
 
 /** Step 2 — pick a lifter name (shown on the tile, scoreboard and podium). */
 export function NameStep({
@@ -20,6 +14,7 @@ export function NameStep({
   onContinue: () => void;
 }) {
   const trimmed = name.trim();
+  const [focused, setFocused] = useState(false);
   return (
     <div
       style={{
@@ -29,51 +24,53 @@ export function NameStep({
         justifyContent: 'center',
         gap: 16,
       }}>
-      <PixelPanel
-        accent='cyan'
-        cut={10}
+      <Plate
+        cutPx={14}
         innerStyle={{
           display: 'flex',
           flexDirection: 'column',
-          gap: 10,
-          padding: '14px 16px',
+          gap: 12,
+          padding: '18px 16px',
         }}>
-        <span
-          style={{
-            fontFamily: pixelFont,
-            fontSize: 11,
-            letterSpacing: 1.5,
-            color: R5.cyan,
-          }}>
-          LIFTER NAME
-        </span>
+        <Label size={10}>LIFTER NAME</Label>
         <input
           value={name}
           onChange={(e) => onName(e.target.value.slice(0, 20))}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
           placeholder='E.G. IRON ANIA'
           autoCapitalize='characters'
           autoComplete='off'
           spellCheck={false}
           style={{
-            fontFamily: pixelFont,
+            fontFamily: kbtMonoFont,
+            fontWeight: 500,
             fontSize: 16,
             letterSpacing: 2,
-            color: R5.ink,
-            background: 'rgba(120,150,200,0.12)',
-            border: `1px solid rgba(${R5.gridRgb},0.6)`,
+            textTransform: 'uppercase',
+            color: KBT.cream,
+            background: KBT.fill,
+            border: `1px solid ${focused ? KBT.accent : KBT.border}`,
+            borderRadius: 0,
             padding: '12px 12px',
             outline: 'none',
             width: '100%',
           }}
         />
         <span
-          style={{ fontFamily: monoFont, fontSize: 11, color: R5.inkMuted }}>
+          style={{
+            fontFamily: kbtMonoFont,
+            fontSize: 11,
+            letterSpacing: 0.5,
+            color: KBT.dim,
+          }}>
           Your name rides your camera tile on the big screen. Reconnecting with
           the same name restores your scores.
         </span>
-      </PixelPanel>
-      <ActionButton
-        accent='green'
+      </Plate>
+      <KbtButton
+        block
+        variant='solid'
         label='REGISTER'
         sub='join the tournament roster'
         disabled={trimmed.length === 0}

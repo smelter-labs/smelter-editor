@@ -2,32 +2,33 @@
 
 import React from 'react';
 import {
-  ArcadeText,
-  BlueprintBackdrop,
-  PixelButton,
-  R5,
-  RetroFooter,
-  StarLine,
-  monoFont,
-  pixelFont,
-} from '../../duck-hunter/retro-kit';
+  Backdrop,
+  DisplayText,
+  FooterHint,
+  KBT,
+  KbtButton,
+  Label,
+  kbtMonoFont,
+  skewBar,
+} from '../kbt-kit';
 import { useArcadeKeys } from '../../duck-hunter/use-arcade-input';
 
-/** Attract screen: the marquee, the pitch, INSERT COIN. */
+/** Attract screen: the marque, the pitch, START A TOURNAMENT. */
 export function TitleScreen({ onStart }: { onStart: () => void }) {
   useArcadeKeys({ confirm: onStart });
 
   return (
     <div
+      className='kbt-enter'
       style={{
         position: 'absolute',
         inset: 0,
-        background: R5.bgDeep,
+        background: KBT.page,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
       }}>
-      <BlueprintBackdrop />
+      <Backdrop />
       <div
         style={{
           position: 'relative',
@@ -37,60 +38,63 @@ export function TitleScreen({ onStart }: { onStart: () => void }) {
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 26,
+          gap: 30,
         }}>
-        <div style={{ fontSize: 74, lineHeight: 1 }}>🏋️</div>
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            gap: 10,
-          }}>
-          <ArcadeText size={44}>KETTLEBELL</ArcadeText>
-          <ArcadeText size={44}>TOURNAMENT</ArcadeText>
+        <div style={{ display: 'flex', alignItems: 'stretch', gap: 24 }}>
+          <span
+            style={{
+              width: 26,
+              clipPath: skewBar(12),
+              background: KBT.accent,
+              flexShrink: 0,
+            }}
+          />
+          <div
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              gap: 6,
+            }}>
+            <DisplayText size={104} weight={800} tracking={3}>
+              SMELTER
+            </DisplayText>
+            <DisplayText
+              size={104}
+              weight={800}
+              tracking={3}
+              color={KBT.accent}>
+              KETTLEBELL
+            </DisplayText>
+          </div>
         </div>
-        <StarLine size={11}>SWING · CLEAN · SNATCH</StarLine>
+        <Label size={13} tracking={5}>
+          LIVE TOURNAMENT · CAST IRON DIVISION
+        </Label>
         <div
           style={{
-            maxWidth: 660,
+            maxWidth: 620,
             textAlign: 'center',
-            fontFamily: monoFont,
-            fontSize: 14,
-            lineHeight: 1.7,
-            color: R5.inkMuted,
+            fontFamily: kbtMonoFont,
+            fontSize: 13,
+            lineHeight: 1.8,
+            letterSpacing: 0.5,
+            color: KBT.dim,
           }}>
           Scan in with your phone — its camera becomes your arena tile and the
           AI referee counts every rep. Heats of 2–4, an AMRAP clock, a final for
           the top lifters. Strong wins.
         </div>
-        <div
-          className='r5-blink'
-          style={{
-            fontFamily: pixelFont,
-            fontSize: 15,
-            letterSpacing: 3,
-            color: R5.yellow,
-            textShadow: `0 0 14px rgba(${R5.yellowRgb},0.7)`,
-          }}>
-          INSERT COIN
-        </div>
+        <KbtButton label='START A TOURNAMENT' active onClick={onStart} />
       </div>
-      <div style={{ position: 'relative', zIndex: 1 }}>
-        <RetroFooter
-          tip='enter to start'
-          right={
-            <PixelButton
-              accent='green'
-              glyph='A'
-              label='PRESS START'
-              active
-              onClick={onStart}
-            />
-          }
-        />
+      <div
+        style={{
+          position: 'relative',
+          zIndex: 1,
+          padding: '10px 32px 16px',
+          borderTop: `1px solid ${KBT.border}`,
+        }}>
+        <FooterHint hints={[{ key: 'ENTER', label: 'START' }]} />
       </div>
-      <div className='r5-scanlines' />
     </div>
   );
 }

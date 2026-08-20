@@ -339,6 +339,12 @@ export type KbtHudTile = {
   points: number;
   /** Total reps this heat (all exercises, scored or not). */
   reps: number;
+  /** Per-exercise rep counts (the solo scene's AI REP TRACKER panel). */
+  repsByExercise: { swing: number; clean: number; snatch: number };
+  /** Reps per minute over a rolling window (snapshot-computed). */
+  rpm: number;
+  /** 1-based rank within the running heat by points (grid plate rank block). */
+  rank: number;
   /** Consecutive correct reps right now. */
   streak: number;
   /** Exercise the coach currently sees ('idle' between efforts). */
@@ -369,13 +375,80 @@ export type KbtHudMatch = {
   winner: { name: string; color: string; points: number } | null;
 };
 
+/**
+ * Which broadcast scene the tournament chrome renders (kb_design port):
+ * 'lobby' = roster QR panel, 'solo' = single-athlete heat with the hero
+ * plate + rep tracker, 'grid' = 2-4 athletes with per-column plates,
+ * 'board' = standings between heats, 'podium' = final results.
+ */
+export type KbtHudScene = 'lobby' | 'solo' | 'grid' | 'board' | 'podium';
+
+export type KbtBoardRow = {
+  rank: number;
+  name: string;
+  color: string;
+  points: number;
+  reps: number;
+  rpm: number;
+};
+
+/**
+ * Where the commentator's camera tile sits on the output — the controller
+ * lays the WHIP input there and the HUD draws the lower-third around the
+ * same rect. Off-scene (audio-only) rects are 1×1 in a corner.
+ */
+export function kbtCasterCamRect(
+  resolution: { width: number; height: number },
+  visible: boolean,
+): { x: number; y: number; width: number; height: number } {
+  if (!visible) return { x: 0, y: resolution.height - 1, width: 1, height: 1 };
+  const k = resolution.height / 1080;
+  const h = Math.round(124 * k);
+  return {
+    x: Math.round(70 * k),
+    y: resolution.height - Math.round(70 * k) - h,
+    width: Math.round(72 * k),
+    height: h,
+  };
+}
+
+/** Scenes where the commentator camera is visible (lower-third shown).
+ * Heats are audio-only; the podium keeps its blocks clear too. */
+export function kbtCasterVisible(scene: KbtHudScene): boolean {
+  return scene === 'lobby' || scene === 'board';
+}
+
 /** Kettlebell Tournament overlay state burned into the broadcast. */
 export type KbtHudState = {
+  scene: KbtHudScene;
   /** Active heat tiles keyed by the player's camera inputId. */
   tiles: Record<string, KbtHudTile>;
   match: KbtHudMatch | null;
-  /** Overall standings strip (top rows, best score first). */
-  leaderboard: { name: string; color: string; points: number }[];
+  /** Clock chip left section, e.g. "1' AMRAP" / "10' SNATCH" + heat no. */
+  heatLabel: string | null;
+  /** Lobby scene payload (roster phase). */
+  lobby: {
+    /** Registered image id of the room's join QR, once generated. */
+    qrImageId: string | null;
+    /** Short human-readable join address under SCAN OR VISIT. */
+    joinLabel: string | null;
+    joined: { name: string; color: string; camConnected: boolean }[];
+    joinedCount: number;
+  } | null;
+  /** Standings scene payload (between heats / after stop). */
+  board: { rows: KbtBoardRow[]; final: boolean } | null;
+  /** Podium scene payload (rows ordered rank 1..3). */
+  podium: {
+    rows: { rank: number; name: string; color: string; points: number }[];
+  } | null;
+  /** Commentator lower-third (null until one joins). */
+  commentator: {
+    name: string;
+    camConnected: boolean;
+    inputId: string | null;
+  } | null;
+  /** Current leader (heat leader during play, standings leader otherwise). */
+  leader: { name: string; points: number } | null;
   /** Short-lived celebration banner (lead change / streak). */
   banner: {
     kind: 'lead_change' | 'streak';

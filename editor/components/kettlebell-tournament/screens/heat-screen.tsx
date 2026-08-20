@@ -3,13 +3,18 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { connectWhep } from '@/lib/webrtc/whep-connect';
 import {
-  LedText,
-  PixelButton,
-  PixelPanel,
-  R5,
-  monoFont,
-  pixelFont,
-} from '../../duck-hunter/retro-kit';
+  DisplayText,
+  KBT,
+  KbtButton,
+  Label,
+  Num,
+  Plate,
+  PlateTitle,
+  StatusDot,
+  Tab,
+  cut,
+  kbtMonoFont,
+} from '../kbt-kit';
 import { useArcadeKeys } from '../../duck-hunter/use-arcade-input';
 import type { KbtFeed } from '../use-kbt-feed';
 import type { KbtRoom } from '../use-kbt-room';
@@ -72,7 +77,11 @@ export function HeatScreen({
   const heatPlayers = (heat?.playerIds ?? []).map(
     (id) => players.find((p) => p.clientId === id) ?? null,
   );
-  const allPosed = heatPlayers.every((p) => p?.poseTracked);
+  // Mirrors the server's begin_heat gate: briefing reached + live camera.
+  const allReady = heatPlayers.every((p) => p?.briefed && p?.camConnected);
+  const waitingNames = heatPlayers
+    .filter((p) => !p || !p.briefed || !p.camConnected)
+    .map((p) => p?.name ?? '?');
   const heatLabel = match?.final
     ? 'FINAL'
     : match?.heatIndex != null
@@ -82,38 +91,35 @@ export function HeatScreen({
   useArcadeKeys({
     back: () => setConfirmAbort((c) => !c),
     confirm: () => {
-      if (phase === 'intro') {
-        onBegin();
-      } else if (confirmAbort) {
+      if (confirmAbort) {
         setConfirmAbort(false);
         onAbort();
+      } else if (phase === 'intro' && allReady) {
+        onBegin();
       }
     },
   });
 
   const now = Date.now();
   let clockLabel = '';
-  let clockColor: string = R5.yellow;
-  let clockGlow: string = R5.yellowRgb;
+  let clockColor: string = KBT.cream;
   let urgent = false;
   if (phase === 'countdown') {
     const left = Math.max(0, (match?.startsAtMs ?? now) - now);
     clockLabel = `GET SET ${Math.max(1, Math.ceil(left / 1000))}`;
-    clockColor = R5.green;
-    clockGlow = R5.greenRgb;
+    clockColor = KBT.good;
   } else if (phase === 'playing') {
     const left = Math.max(0, (match?.endsAtMs ?? now) - now);
     const total = Math.round(left / 1000);
     clockLabel = `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+    clockColor = KBT.good;
     if (left <= 10_000) {
-      clockColor = R5.red;
-      clockGlow = R5.redRgb;
+      clockColor = KBT.bad;
       urgent = true;
     }
   } else if (phase === 'ended') {
     clockLabel = 'TIME!';
-    clockColor = R5.red;
-    clockGlow = R5.redRgb;
+    clockColor = KBT.bad;
   }
 
   // Live score chips from the 1 Hz match scores.
@@ -155,24 +161,12 @@ export function HeatScreen({
           gap: 16,
           padding: '10px 16px',
           background:
-            'linear-gradient(180deg, rgba(5,10,25,0.85), rgba(5,10,25,0))',
+            'linear-gradient(180deg, rgba(13,14,16,0.85), rgba(13,14,16,0))',
         }}>
-        <span
-          style={{
-            fontFamily: pixelFont,
-            fontSize: 13,
-            letterSpacing: 2,
-            color: R5.cyan,
-          }}>
-          {heatLabel}
-        </span>
-        <LedText
-          size={26}
-          color={clockColor}
-          glowRgb={clockGlow}
-          style={urgent ? undefined : undefined}>
-          <span className={urgent ? 'r5-blink' : undefined}>{clockLabel}</span>
-        </LedText>
+        <Tab size={11}>{heatLabel}</Tab>
+        <Num size={28} color={clockColor}>
+          <span className={urgent ? 'kbt-blink' : undefined}>{clockLabel}</span>
+        </Num>
         <div style={{ flex: 1 }} />
         {rows.map((r) => (
           <div
@@ -180,19 +174,33 @@ export function HeatScreen({
             style={{
               display: 'flex',
               alignItems: 'center',
-              gap: 8,
-              fontFamily: monoFont,
-              fontSize: 13,
-              color: R5.ink,
-              background: 'rgba(5,10,25,0.6)',
-              border: `1px solid ${r.color}`,
-              padding: '4px 10px',
+              gap: 10,
+              clipPath: cut(10),
+              background: KBT.plate,
+              border: `1px solid ${KBT.border}`,
+              padding: '5px 14px 5px 10px',
             }}>
-            <span style={{ color: r.color }}>■</span>
-            {r.name}
-            <LedText size={17} color={r.color} glowRgb={R5.yellowRgb}>
-              {r.points}
-            </LedText>
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                background: r.color,
+                flexShrink: 0,
+              }}
+            />
+            <span
+              style={{
+                fontFamily: kbtMonoFont,
+                fontSize: 12,
+                letterSpacing: 1,
+                textTransform: 'uppercase',
+                color: KBT.cream,
+              }}>
+              {r.name}
+            </span>
+            <DisplayText size={20} weight={800}>
+              {`${r.points}`}
+            </DisplayText>
           </div>
         ))}
       </div>
@@ -206,86 +214,98 @@ export function HeatScreen({
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            background: 'rgba(5,10,25,0.45)',
+            background: 'rgba(13,14,16,0.6)',
           }}>
-          <PixelPanel
-            accent='green'
-            cut={12}
-            glow={0.5}
+          <Plate
+            cutPx={22}
+            accentBar
             innerStyle={{
               display: 'flex',
               flexDirection: 'column',
-              alignItems: 'center',
-              gap: 14,
-              padding: '22px 28px',
+              gap: 16,
+              padding: '24px 28px',
               minWidth: 420,
             }}>
-            <span
-              style={{
-                fontFamily: pixelFont,
-                fontSize: 16,
-                letterSpacing: 2,
-                color: R5.green,
-              }}>
-              {`${heatLabel} — ON THE PLATFORM`}
-            </span>
-            {heatPlayers.map((p, i) =>
-              p ? (
+            <PlateTitle>{`${heatLabel} — ON THE PLATFORM`}</PlateTitle>
+            {heatPlayers.map((p, i) => {
+              if (!p) {
+                return (
+                  <Label key={`missing-${i}`} size={11} tracking={1.5}>
+                    (lifter left — abort the heat)
+                  </Label>
+                );
+              }
+              const ready = p.briefed && p.camConnected && p.poseTracked;
+              const state: 'good' | 'warn' | 'bad' = ready
+                ? 'good'
+                : p.briefed && !p.camConnected
+                  ? 'bad'
+                  : 'warn';
+              const text = !p.briefed
+                ? 'ON THE PHONE…'
+                : !p.camConnected
+                  ? 'SIGNAL LOST'
+                  : !p.poseTracked
+                    ? 'STEP INTO FRAME'
+                    : 'READY ✓';
+              return (
                 <div
                   key={p.clientId}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
                     gap: 12,
-                    fontFamily: monoFont,
-                    fontSize: 14,
-                    color: R5.ink,
                     width: '100%',
                   }}>
-                  <span style={{ color: p.color }}>■</span>
-                  <span style={{ flex: 1 }}>{p.name}</span>
                   <span
-                    className={p.poseTracked ? undefined : 'r5-blink'}
                     style={{
-                      fontFamily: pixelFont,
-                      fontSize: 10,
-                      color: p.poseTracked ? R5.green : R5.orangeBright,
-                    }}>
-                    {p.poseTracked
-                      ? 'POSE ✓'
-                      : p.camConnected
-                        ? 'STEP INTO FRAME'
-                        : 'NO CAMERA'}
-                  </span>
+                      width: 8,
+                      height: 8,
+                      background: p.color,
+                      flexShrink: 0,
+                    }}
+                  />
+                  <DisplayText
+                    size={20}
+                    weight={700}
+                    tracking={1.5}
+                    style={{ flex: 1 }}>
+                    {p.name}
+                  </DisplayText>
+                  <StatusDot state={state} pulse={state === 'warn'} />
+                  <Label
+                    size={10}
+                    tracking={1.5}
+                    color={
+                      state === 'good'
+                        ? KBT.good
+                        : state === 'bad'
+                          ? KBT.bad
+                          : KBT.amber
+                    }>
+                    <span className={ready ? undefined : 'kbt-blink'}>
+                      {text}
+                    </span>
+                  </Label>
                 </div>
-              ) : (
-                <div
-                  key={`missing-${i}`}
-                  style={{
-                    fontFamily: monoFont,
-                    fontSize: 13,
-                    color: R5.inkMuted,
-                  }}>
-                  (lifter left the tournament)
-                </div>
-              ),
-            )}
-            <PixelButton
-              accent='green'
-              glyph='A'
-              label={allPosed ? 'BEGIN THE HEAT' : 'BEGIN ANYWAY'}
-              active={allPosed}
+              );
+            })}
+            <KbtButton
+              variant='solid'
+              label='BEGIN THE HEAT'
+              active={allReady}
+              disabled={!allReady}
               onClick={onBegin}
             />
-            <span
-              style={{
-                fontFamily: monoFont,
-                fontSize: 10,
-                color: R5.inkMuted,
-              }}>
+            {!allReady ? (
+              <Label size={10} tracking={1.5} style={{ textAlign: 'center' }}>
+                {`WAITING FOR ${waitingNames.join(', ')}`}
+              </Label>
+            ) : null}
+            <Label size={10} tracking={1} style={{ textAlign: 'center' }}>
               AI referee is live — reps count only after the countdown.
-            </span>
-          </PixelPanel>
+            </Label>
+          </Plate>
         </div>
       ) : null}
 
@@ -301,22 +321,20 @@ export function HeatScreen({
           gap: 12,
           padding: '10px 16px',
           background:
-            'linear-gradient(0deg, rgba(5,10,25,0.85), rgba(5,10,25,0))',
+            'linear-gradient(0deg, rgba(13,14,16,0.85), rgba(13,14,16,0))',
         }}>
         {confirmAbort ? (
           <>
-            <span
-              style={{
-                fontFamily: monoFont,
-                fontSize: 12,
-                color: R5.orangeBright,
-                alignSelf: 'center',
-              }}>
+            <Label
+              size={11}
+              tracking={1.5}
+              color={KBT.amber}
+              style={{ alignSelf: 'center' }}>
               stop this heat?
-            </span>
-            <PixelButton
-              accent='red'
-              glyph='A'
+            </Label>
+            <KbtButton
+              variant='danger'
+              dense
               label='STOP HEAT'
               active
               onClick={() => {
@@ -324,21 +342,21 @@ export function HeatScreen({
                 onAbort();
               }}
             />
-            <PixelButton
-              accent='blue'
-              glyph='B'
+            <KbtButton
+              variant='outline'
+              dense
               label='KEEP GOING'
               onClick={() => setConfirmAbort(false)}
             />
           </>
-        ) : phase !== 'intro' ? (
-          <PixelButton
-            accent='red'
-            glyph='B'
+        ) : (
+          <KbtButton
+            variant='danger'
+            dense
             label='ABORT'
             onClick={() => setConfirmAbort(true)}
           />
-        ) : null}
+        )}
       </div>
     </div>
   );

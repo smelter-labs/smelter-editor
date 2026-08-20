@@ -18,20 +18,27 @@ import {
   isLoopbackHost,
   toWsUrl,
 } from '@/lib/server-url';
-import { doto, pressStart, robotoMono } from '@/app/duck-hunter/fonts';
-import { PhoneShell } from '@/components/duck-hunter/phone/phone-shell';
-import { ConnectStep } from '@/components/duck-hunter/phone/connect-step';
+import { bigShoulders, plexMono } from '@/app/kettlebell-tournament/fonts';
+import {
+  KbtConnectStep,
+  KbtPhoneShell,
+} from '@/components/kettlebell-tournament/kbt-kit';
 import { NameStep } from '@/components/kettlebell-tournament/phone/name-step';
 import { CameraStep } from '@/components/kettlebell-tournament/phone/camera-step';
 import { ReadyStep } from '@/components/kettlebell-tournament/phone/ready-step';
 import { LiveHud } from '@/components/kettlebell-tournament/phone/live-hud';
-import '@/components/duck-hunter/retro.css';
+import {
+  HeatReport,
+  type KbtRepLogEntry,
+} from '@/components/kettlebell-tournament/phone/heat-report';
+import '@/components/kettlebell-tournament/kbt-kit.css';
 
-// The lifter wizard: boot → name → camera rig → standing by → the heat.
-type Step = 'connect' | 'name' | 'camera' | 'ready' | 'live';
+// The lifter wizard: boot → name → camera rig → standing by → the heat →
+// the post-heat report (→ standing by again).
+type Step = 'connect' | 'name' | 'camera' | 'ready' | 'live' | 'summary';
 
 const STEP_META: Record<
-  Exclude<Step, 'live'>,
+  Exclude<Step, 'live' | 'summary'>,
   { index: number; label: string }
 > = {
   connect: { index: 0, label: 'CONNECTING' },
@@ -92,7 +99,7 @@ export default function LiftControllerPage() {
   const [points, setPoints] = useState(0);
   const [reps, setReps] = useState(0);
   const [streak, setStreak] = useState(0);
-  const [exercise, setExercise] = useState('idle');
+  const [repLog, setRepLog] = useState<KbtRepLogEntry[]>([]);
   const [flash, setFlash] = useState<'good' | 'bad' | null>(null);
   const [remainingMs, setRemainingMs] = useState<number | null>(null);
 
@@ -101,6 +108,7 @@ export default function LiftControllerPage() {
   const closedByUsRef = useRef(false);
   const wantsJoinRef = useRef(false);
   const wantsCamRef = useRef(false);
+  const wantsBriefedRef = useRef(false);
   const nameRef = useRef('');
   const facingRef = useRef<'user' | 'environment'>('user');
   const myClientIdRef = useRef<string | null>(null);
@@ -222,6 +230,16 @@ export default function LiftControllerPage() {
     beep('good');
   }, [beep, sendCamRequest]);
 
+  // Tell the server we reached the briefing — begin_heat is gated on it.
+  const goToBriefing = useCallback(() => {
+    wantsBriefedRef.current = true;
+    const ws = wsRef.current;
+    if (ws?.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify({ type: 'kbt_briefed' }));
+    }
+    setStep('ready');
+  }, []);
+
   // ── WebSocket ─────────────────────────────────────────────────────────────
 
   const handleEvent = useCallback(
@@ -290,7 +308,16 @@ export default function LiftControllerPage() {
           setPoints(event.totalPoints);
           setReps((r) => r + 1);
           setStreak(event.streak);
-          setExercise(event.exercise);
+          setRepLog((log) => [
+            ...log,
+            {
+              repIndex: event.repIndex,
+              exercise: event.exercise,
+              verdict: event.verdict,
+              issues: event.issues,
+              points: event.points,
+            },
+          ]);
           const bad = event.verdict === 'incorrect';
           setFlash(bad ? 'bad' : 'good');
           beep(bad ? 'bad' : 'good');
@@ -337,6 +364,11 @@ export default function LiftControllerPage() {
         myClientIdRef.current = null;
         if (wantsCamRef.current && camStreamRef.current) {
           sendCamRequestRef.current(ws);
+        }
+        // The server cleared `briefed` on the disconnect — restore it so the
+        // heat gate doesn't stay blocked on a phone that merely blipped.
+        if (wantsBriefedRef.current) {
+          ws.send(JSON.stringify({ type: 'kbt_briefed' }));
         }
       }
     };
@@ -405,29 +437,31 @@ export default function LiftControllerPage() {
     if (!inCurrentHeat || !match) return;
     if (
       (match.phase === 'countdown' || match.phase === 'playing') &&
-      stepRef.current === 'ready'
+      (stepRef.current === 'ready' || stepRef.current === 'summary')
     ) {
       setStreak(0);
-      setExercise('idle');
       setStep('live');
     }
     if (match.phase === 'ended' && stepRef.current === 'live') {
       beep('end');
       if (navigator.vibrate) navigator.vibrate([80, 60, 80, 60, 160]);
+      // Hold "TIME!" for a beat, then hand the athlete their rep report.
       const t = window.setTimeout(() => {
-        if (stepRef.current === 'live') setStep('ready');
+        if (stepRef.current === 'live') setStep('summary');
       }, 2500);
       return () => window.clearTimeout(t);
     }
   }, [inCurrentHeat, match, beep]);
 
-  // Fresh sheet when my heat gets staged.
+  // Fresh sheet when my heat gets staged — and if the athlete is still
+  // reading the last report, pull them back to the pose-check screen.
   useEffect(() => {
     if (inMyIntro) {
       setPoints(0);
       setReps(0);
       setStreak(0);
-      setExercise('idle');
+      setRepLog([]);
+      if (stepRef.current === 'summary') setStep('ready');
     }
   }, [inMyIntro]);
 
@@ -476,7 +510,7 @@ export default function LiftControllerPage() {
     connectWs();
   }, [roomId, roomStatus, connectWs]);
 
-  const fontClass = `${pressStart.variable} ${doto.variable} ${robotoMono.variable}`;
+  const fontClass = `${bigShoulders.variable} ${plexMono.variable}`;
 
   if (step === 'live') {
     return (
@@ -486,7 +520,7 @@ export default function LiftControllerPage() {
           points={points}
           reps={reps}
           streak={streak}
-          exercise={exercise}
+          lastRep={repLog[repLog.length - 1] ?? null}
           color={me?.color ?? '#FFEB3B'}
           remainingMs={remainingMs}
           flash={flash}
@@ -497,16 +531,34 @@ export default function LiftControllerPage() {
     );
   }
 
+  if (step === 'summary') {
+    return (
+      <div className={fontClass}>
+        <KbtPhoneShell
+          title='KETTLEBELL'
+          stepIndex={-1}
+          stepCount={0}
+          stepLabel='HEAT REPORT'>
+          <HeatReport
+            repLog={repLog}
+            points={points}
+            onContinue={() => setStep('ready')}
+          />
+        </KbtPhoneShell>
+      </div>
+    );
+  }
+
   const meta = STEP_META[step];
   return (
     <div className={fontClass}>
-      <PhoneShell
-        title='KETTLEBELL TOURNAMENT'
+      <KbtPhoneShell
+        title='KETTLEBELL'
         stepIndex={meta.index}
         stepCount={Object.keys(STEP_META).length}
         stepLabel={meta.label}>
         {step === 'connect' ? (
-          <ConnectStep
+          <KbtConnectStep
             roomStatus={roomStatus}
             wsConnected={connected}
             wsError={wsDbg}
@@ -525,7 +577,7 @@ export default function LiftControllerPage() {
             onEnable={() => void enableCamera()}
             onFlip={flipCamera}
             onGoLive={requestCam}
-            onContinue={() => setStep('ready')}
+            onContinue={goToBriefing}
           />
         ) : (
           <ReadyStep
@@ -540,7 +592,7 @@ export default function LiftControllerPage() {
             attachVideo={attachPreview}
           />
         )}
-      </PhoneShell>
+      </KbtPhoneShell>
     </div>
   );
 }

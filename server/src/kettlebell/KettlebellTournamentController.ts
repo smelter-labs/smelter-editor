@@ -14,7 +14,13 @@ import type {
   RoomEvent,
 } from '@smelter-editor/types';
 import { KBT_DEFAULT_CONFIG, KBT_EXERCISE_KEYS } from '@smelter-editor/types';
-import type { KbtHudState, KbtHudTile } from '../app/store';
+import type {
+  KbtBoardRow,
+  KbtHudScene,
+  KbtHudState,
+  KbtHudTile,
+} from '../app/store';
+import { kbtCasterCamRect, kbtCasterVisible } from '../app/store';
 
 /** Command from the arcade page's match endpoint. */
 export type KbtMatchCommand = {
@@ -59,6 +65,12 @@ export type KbtControllerDeps = {
   getResolution: () => { width: number; height: number };
   /** Write the burned-in HUD state (already hold-scheduled by the controller). */
   publishHud: (state: KbtHudState | null) => void;
+  /**
+   * Render `url` as a QR PNG and register it with the engine; resolves with
+   * the image id the HUD can pass to <Image>. Re-registering for a changed
+   * url must yield a fresh id (image content is immutable per id).
+   */
+  registerJoinQr: (url: string) => Promise<string>;
   now?: () => number;
 };
 
@@ -70,6 +82,11 @@ type PlayerState = {
   inputId: string | null;
   camConnected: boolean;
   poseTracked: boolean;
+  /**
+   * The phone's wizard reached the briefing screen (kbt_briefed). Cleared on
+   * disconnect / kbt_cam_stop / kbt_leave; the page re-sends after reconnect.
+   */
+  briefed: boolean;
   /** Head + an ankle in frame per the worker (framing hint, not a gate). */
   fullBody: boolean;
   /** Reported camera dimensions (drives aspect-correct tile widths). */
@@ -92,6 +109,19 @@ type ScoreState = {
   lastRepAt: number | null;
   lastRepVerdict: 'correct' | 'incorrect' | null;
   lastRepPoints: number;
+  /** Timestamps of this heat's reps within the RPM window (pruned on read). */
+  repTimes: number[];
+};
+
+/** One commentator per room — a WHIP input outside the players/heats world. */
+type CommentatorState = {
+  clientId: string;
+  name: string;
+  connected: boolean;
+  inputId: string | null;
+  camConnected: boolean;
+  camWidth: number | null;
+  camHeight: number | null;
 };
 
 type HeatState = {
@@ -178,6 +208,25 @@ export class KettlebellTournamentController {
   /** Leader of the running heat (for kbt_lead_change). */
   private leaderId: string | null = null;
   private banner: KbtHudState['banner'] = null;
+  private commentator: CommentatorState | null = null;
+  /** Join URL for the lobby QR (pushed down from the host page's config). */
+  private joinUrl: string | null = null;
+  private joinLabel: string | null = null;
+  private qrImageId: string | null = null;
+  /**
+   * Scene the *layout* currently reflects (the caster cam rect differs per
+   * scene). HUD publishes are held 3s but layout applies live, so the
+   * lower-third frame trails a cam move by the hold — cosmetic, accepted.
+   */
+  private stagedScene: KbtHudScene = 'lobby';
+  /** Last player-tile layout, so a scene flip can re-stage the caster cam. */
+  private lastTiles: {
+    inputId: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }[] = [];
   /** Monotonic clamp for held HUD applies (mirror of kettlebellApplyAt). */
   private hudApplyAt = 0;
   private readonly hudTimers = new Set<ReturnType<typeof setTimeout>>();
@@ -224,11 +273,34 @@ export class KettlebellTournamentController {
       case 'kbt_cam_stop':
         this.stopCamera(clientId);
         break;
+      case 'kbt_briefed':
+        this.setBriefed(clientId, true);
+        break;
       case 'kbt_leave':
         this.leave(clientId);
         break;
       case 'kbt_spectate':
         this.spectate(clientId);
+        break;
+      case 'kbt_commentator_join':
+        this.joinCommentator(
+          clientId,
+          typeof msg.name === 'string' ? msg.name : 'Commentator',
+        );
+        break;
+      case 'kbt_commentator_cam_request': {
+        const w = Number(msg.nativeWidth);
+        const h = Number(msg.nativeHeight);
+        const dims =
+          Number.isFinite(w) && Number.isFinite(h) &&
+          w >= 16 && w <= 8192 && h >= 16 && h <= 8192
+            ? { width: Math.round(w), height: Math.round(h) }
+            : undefined;
+        void this.startCommentatorCamera(clientId, dims);
+        break;
+      }
+      case 'kbt_commentator_leave':
+        this.leaveCommentator(clientId);
         break;
       default:
         break;
@@ -261,6 +333,7 @@ export class KettlebellTournamentController {
           inputId: null,
           camConnected: false,
           poseTracked: false,
+          briefed: false,
           fullBody: true,
           camWidth: null,
           camHeight: null,
@@ -347,8 +420,21 @@ export class KettlebellTournamentController {
   stopCamera(clientId: string): void {
     const p = this.players.get(clientId);
     if (!p) return;
+    p.briefed = false;
     this.retireCamera(p);
     if (this.phase === 'roster') void this.layoutRosterMosaic();
+    this.broadcastState();
+  }
+
+  /**
+   * Not cleared in retireCamera(): startCamera() retires on every cam
+   * re-request, and on reconnect the re-sent kbt_briefed can land before the
+   * cam re-request — clearing there would wipe a briefing that still holds.
+   */
+  private setBriefed(clientId: string, briefed: boolean): void {
+    const p = this.players.get(clientId);
+    if (!p || p.briefed === briefed) return;
+    p.briefed = briefed;
     this.broadcastState();
   }
 
@@ -360,6 +446,95 @@ export class KettlebellTournamentController {
     p.poseTracked = false;
     p.fullBody = true;
     void this.deps.setKettlebellCoach(inputId, false).catch(() => {});
+    void this.deps.removeInput(inputId).catch(() => {});
+  }
+
+  // ── Commentator ───────────────────────────────────────────────────────────
+
+  /**
+   * Register (or reconnect) the room's single commentator. Like players, a
+   * join whose name matches the disconnected commentator adopts the slot (the
+   * running WHIP input survives a phone reconnect); a different name replaces
+   * the commentator outright.
+   */
+  joinCommentator(clientId: string, rawName: string): void {
+    const name = rawName.slice(0, 20).trim() || 'Commentator';
+    const c = this.commentator;
+    if (c && (c.clientId === clientId || (!c.connected && c.name === name))) {
+      c.clientId = clientId;
+      c.name = name;
+      c.connected = true;
+    } else {
+      if (c) this.retireCommentatorCam(c);
+      this.commentator = {
+        clientId,
+        name,
+        connected: true,
+        inputId: null,
+        camConnected: false,
+        camWidth: null,
+        camHeight: null,
+      };
+    }
+    this.ensureRunning();
+    this.broadcastState();
+  }
+
+  /** Same offer flow as a player camera, but the input never gets the coach
+   * AI and is staged via the caster rect (visible only between heats). */
+  async startCommentatorCamera(
+    clientId: string,
+    dims?: { width: number; height: number },
+  ): Promise<void> {
+    const c = this.commentator;
+    if (!c || c.clientId !== clientId) return;
+    this.retireCommentatorCam(c);
+    if (dims) {
+      c.camWidth = dims.width;
+      c.camHeight = dims.height;
+    }
+    let cam: { inputId: string; whipUrl: string; bearerToken: string };
+    try {
+      cam = await this.deps.registerPlayerCam(`🎙 ${c.name}`, dims);
+    } catch (err) {
+      console.error(`[kbt] commentator cam register failed for ${clientId}`, err);
+      return;
+    }
+    if (this.commentator !== c || c.inputId != null) {
+      void this.deps.removeInput(cam.inputId).catch(() => {});
+      return;
+    }
+    c.inputId = cam.inputId;
+    c.camConnected = false;
+    this.deps.sendTo(clientId, {
+      type: 'kbt_cam_offer',
+      roomId: this.roomId,
+      clientId,
+      inputId: cam.inputId,
+      whipUrl: cam.whipUrl,
+      bearerToken: cam.bearerToken,
+    });
+    // Adopt the new input into the current stage (keeps the audio mixed).
+    void this.restage();
+    this.ensureRunning();
+    this.broadcastState();
+  }
+
+  leaveCommentator(clientId: string): void {
+    const c = this.commentator;
+    if (!c || c.clientId !== clientId) return;
+    this.retireCommentatorCam(c);
+    this.commentator = null;
+    void this.restage();
+    this.broadcastState();
+    this.maybeStop();
+  }
+
+  private retireCommentatorCam(c: CommentatorState): void {
+    if (c.inputId == null) return;
+    const inputId = c.inputId;
+    c.inputId = null;
+    c.camConnected = false;
     void this.deps.removeInput(inputId).catch(() => {});
   }
 
@@ -393,9 +568,17 @@ export class KettlebellTournamentController {
    * disconnected so a re-join by name can adopt it.
    */
   handleDisconnect(clientId: string): void {
+    if (this.commentator?.clientId === clientId) {
+      // Keep the slot AND the input: the WHIP publish (and its audio in the
+      // mix) outlives a dropped control socket; a re-join by name adopts it.
+      this.commentator.connected = false;
+      this.broadcastState();
+      return;
+    }
     const p = this.players.get(clientId);
     if (!p) return;
     p.connected = false;
+    p.briefed = false;
     this.broadcastState();
   }
 
@@ -526,6 +709,7 @@ export class KettlebellTournamentController {
     score.lastRepAt = now;
     score.lastRepVerdict = verdict;
     score.lastRepPoints = points;
+    score.repTimes.push(now);
 
     this.deps.broadcast({
       type: 'kbt_rep',
@@ -611,7 +795,39 @@ export class KettlebellTournamentController {
     strictTechnique?: boolean;
     heatDurationMs?: number;
     heatSize?: number;
+    /** Athlete join URL — becomes the lobby scene's on-air QR. */
+    joinUrl?: string;
+    /** Short human-readable address shown next to the QR (defaults to the
+     * joinUrl's hostname). */
+    joinLabel?: string;
   }): KbtConfig {
+    if (typeof cfg.joinLabel === 'string' && cfg.joinLabel.trim()) {
+      this.joinLabel = cfg.joinLabel.trim().slice(0, 40);
+    }
+    if (
+      typeof cfg.joinUrl === 'string' &&
+      cfg.joinUrl &&
+      cfg.joinUrl !== this.joinUrl
+    ) {
+      this.joinUrl = cfg.joinUrl;
+      if (!this.joinLabel) {
+        try {
+          this.joinLabel = new URL(cfg.joinUrl).host;
+        } catch {
+          this.joinLabel = cfg.joinUrl.slice(0, 40);
+        }
+      }
+      this.qrImageId = null;
+      void this.deps
+        .registerJoinQr(cfg.joinUrl)
+        .then((imageId) => {
+          this.qrImageId = imageId;
+          this.publishHud();
+        })
+        .catch((err) =>
+          console.error('[kbt] join QR registration failed', err),
+        );
+    }
     if (cfg.scoring) {
       for (const key of KBT_EXERCISE_KEYS) {
         const patch = cfg.scoring[key];
@@ -656,7 +872,6 @@ export class KettlebellTournamentController {
         this.phase = 'roster';
         this.currentHeatIndex = null;
         void this.layoutRosterMosaic();
-        this.publishHudNull();
         break;
       case 'assign_heats':
         this.assignHeats();
@@ -678,7 +893,6 @@ export class KettlebellTournamentController {
         break;
       case 'podium':
         this.phase = 'podium';
-        this.publishHudNull();
         break;
       case 'reset':
         this.resetTournament();
@@ -778,6 +992,7 @@ export class KettlebellTournamentController {
       lastRepAt: null,
       lastRepVerdict: null,
       lastRepPoints: 0,
+      repTimes: [],
     };
   }
 
@@ -819,6 +1034,47 @@ export class KettlebellTournamentController {
     });
   }
 
+  /**
+   * Apply a player-tile layout, always appending the commentator's input so
+   * its audio stays in the mix (updateLayers REPLACES the layer's inputs —
+   * an input missing from the list falls silent). The caster tile is the
+   * lower-third cam rect on the "talking head" scenes and a 1×1 offscreen
+   * pixel during heats (audio-only commentary over the action).
+   */
+  private async applyLayout(
+    tiles: {
+      inputId: string;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    }[],
+  ): Promise<void> {
+    this.lastTiles = tiles;
+    const all = [...tiles];
+    const casterInput = this.commentator?.inputId;
+    if (casterInput) {
+      all.push({
+        inputId: casterInput,
+        ...kbtCasterCamRect(
+          this.deps.getResolution(),
+          kbtCasterVisible(this.stagedScene),
+        ),
+      });
+    }
+    try {
+      await this.deps.layoutTiles(all);
+    } catch (err) {
+      console.error('[kbt] layoutTiles failed', err);
+    }
+  }
+
+  /** Re-apply the last layout (scene flip moved the caster cam rect, or the
+   * commentator input appeared/vanished). */
+  private async restage(): Promise<void> {
+    await this.applyLayout(this.lastTiles);
+  }
+
   /** Lay out the active heat's cams as aspect-true columns and arm their AI. */
   private async stageActiveHeat(): Promise<void> {
     const heat =
@@ -827,18 +1083,14 @@ export class KettlebellTournamentController {
     const staged = heat.playerIds
       .map((id) => this.players.get(id))
       .filter((p): p is PlayerState => !!p && p.inputId != null);
-    try {
-      await this.deps.layoutTiles(
-        this.tileRow(
-          staged.map((p) => ({
-            inputId: p.inputId!,
-            aspect: this.camAspect(p),
-          })),
-        ),
-      );
-    } catch (err) {
-      console.error('[kbt] layoutTiles failed', err);
-    }
+    await this.applyLayout(
+      this.tileRow(
+        staged.map((p) => ({
+          inputId: p.inputId!,
+          aspect: this.camAspect(p),
+        })),
+      ),
+    );
     const fps = analysisFpsFor(heat.playerIds.length);
     for (const p of staged) {
       void this.deps
@@ -855,24 +1107,30 @@ export class KettlebellTournamentController {
     const cams = [...this.players.values()]
       .filter((p) => p.inputId != null)
       .slice(0, ROSTER_MOSAIC_MAX);
-    try {
-      await this.deps.layoutTiles(
-        this.tileRow(
-          cams.map((p) => ({
-            inputId: p.inputId!,
-            aspect: this.camAspect(p),
-          })),
-        ),
-      );
-    } catch (err) {
-      console.error('[kbt] roster mosaic layout failed', err);
-    }
+    await this.applyLayout(
+      this.tileRow(
+        cams.map((p) => ({
+          inputId: p.inputId!,
+          aspect: this.camAspect(p),
+        })),
+      ),
+    );
+  }
+
+  /** Every lifter of this heat still exists, reached the briefing screen and
+   *  has a live camera. Hard gate for begin_heat; the host UI mirrors it. */
+  private heatReady(heat: HeatState): boolean {
+    return heat.playerIds.every((id) => {
+      const p = this.players.get(id);
+      return !!p && p.briefed && p.camConnected;
+    });
   }
 
   /** intro → countdown; the AMRAP clock arms at countdown end. */
   private beginHeat(): void {
     const heat = this.activeHeat();
     if (!heat || heat.phase !== 'intro') return;
+    if (!this.heatReady(heat)) return;
     const now = this.now();
     heat.phase = 'countdown';
     heat.startsAt = now + COUNTDOWN_MS;
@@ -894,7 +1152,6 @@ export class KettlebellTournamentController {
   private nextHeat(): void {
     const next = this.heats.find((h) => h.phase === 'idle');
     this.currentHeatIndex = next ? next.index : null;
-    if (!next) this.publishHudNull();
   }
 
   /** Top heatSize players by best qualification score re-run as the final. */
@@ -929,7 +1186,6 @@ export class KettlebellTournamentController {
       p.heatIndex = null;
     }
     void this.layoutRosterMosaic();
-    this.publishHudNull();
   }
 
   // ── Heat clock + publish loop ─────────────────────────────────────────────
@@ -956,7 +1212,7 @@ export class KettlebellTournamentController {
       now - heat.endsAt < ENDED_LINGER_MS;
     const live =
       heat && (heat.phase === 'intro' || heat.phase === 'countdown' || heat.phase === 'playing');
-    if (!live && !lingering && this.players.size === 0) {
+    if (!live && !lingering && this.players.size === 0 && !this.commentator) {
       this.stop();
     }
   }
@@ -970,7 +1226,11 @@ export class KettlebellTournamentController {
       const withinLinger =
         heat.phase !== 'ended' ||
         (heat.endsAt != null && now - heat.endsAt < ENDED_LINGER_MS);
-      if (withinLinger) this.publishHud();
+      // Publish through the linger (clock/winner card), then once more when
+      // the linger expires so the scene flips to the standings board.
+      if (withinLinger || this.stagedScene !== this.computeScene()) {
+        this.publishHud();
+      }
     }
     this.maybeStop();
   }
@@ -1066,6 +1326,15 @@ export class KettlebellTournamentController {
         changed = true;
       }
     }
+    const c = this.commentator;
+    if (c) {
+      const connected =
+        c.inputId != null && this.deps.isInputConnected(c.inputId);
+      if (connected !== c.camConnected) {
+        c.camConnected = connected;
+        changed = true;
+      }
+    }
     if (changed) this.broadcastState();
   }
 
@@ -1080,6 +1349,12 @@ export class KettlebellTournamentController {
       players: [...this.players.values()].map((p) => this.publicPlayer(p)),
       heats: this.heats.map((h) => this.heatSummary(h)),
       currentHeatIndex: this.currentHeatIndex,
+      commentator: this.commentator
+        ? {
+            name: this.commentator.name,
+            camConnected: this.commentator.camConnected,
+          }
+        : null,
     };
   }
 
@@ -1090,6 +1365,7 @@ export class KettlebellTournamentController {
       color: p.color,
       camConnected: p.camConnected,
       poseTracked: p.poseTracked,
+      briefed: p.briefed,
       bestScore: p.bestScore,
       finalScore: p.finalScore,
       heatIndex: p.heatIndex,
@@ -1156,41 +1432,146 @@ export class KettlebellTournamentController {
 
   private broadcastState(): void {
     this.deps.broadcast(this.stateSnapshot());
+    // Every roster/cam/phase change also refreshes the burned-in scene (the
+    // lobby list, board rows etc. only move on such changes; during heats the
+    // 10 Hz tick publishes anyway and an extra held snapshot is harmless).
+    this.publishHud();
+  }
+
+  /** Which broadcast scene the current tournament state maps to. */
+  private computeScene(): KbtHudScene {
+    if (this.phase === 'podium') return 'podium';
+    if (this.phase === 'roster') return 'lobby';
+    const heat = this.activeHeat();
+    if (heat) {
+      const pastLinger =
+        heat.phase === 'ended' &&
+        heat.endsAt != null &&
+        this.now() - heat.endsAt >= ENDED_LINGER_MS;
+      if (!pastLinger) return heat.playerIds.length === 1 ? 'solo' : 'grid';
+    }
+    return 'board';
+  }
+
+  /** Clock-chip left section, e.g. `1' AMRAP · HEAT 2` / `10' SNATCH · FINAL`. */
+  private heatLabelFor(heat: HeatState): string {
+    const secs = Math.round(this.config.heatDurationMs / 1000);
+    const dur = secs % 60 === 0 ? `${secs / 60}'` : `${secs}"`;
+    const enabled = KBT_EXERCISE_KEYS.filter(
+      (k) => this.config.scoring[k].enabled,
+    );
+    const what = enabled.length === 1 ? enabled[0].toUpperCase() : 'AMRAP';
+    const which = heat.final ? 'FINAL' : `HEAT ${heat.index + 1}`;
+    return `${dur} ${what} · ${which}`;
+  }
+
+  /**
+   * Reps per minute over a rolling window. Early in a heat the window is the
+   * elapsed time (floored to 15s so the first rep doesn't read as 60 RPM).
+   */
+  private rpmFor(score: ScoreState, heat: HeatState, now: number): number {
+    const WINDOW_MS = 60_000;
+    const cutoff = now - WINDOW_MS;
+    while (score.repTimes.length > 0 && score.repTimes[0] < cutoff) {
+      score.repTimes.shift();
+    }
+    if (score.repTimes.length === 0) return 0;
+    const elapsed =
+      heat.startsAt != null
+        ? clamp(now - heat.startsAt, 15_000, WINDOW_MS)
+        : WINDOW_MS;
+    return Math.round((score.repTimes.length * 60_000) / elapsed);
+  }
+
+  /** Overall standings (final score beats best qualification score). */
+  private rankedPlayers(): (PlayerState & { rankPoints: number })[] {
+    return [...this.players.values()]
+      .filter(
+        (p) => p.heatIndex != null || p.bestScore > 0 || p.finalScore != null,
+      )
+      .map((p) => ({ ...p, rankPoints: p.finalScore ?? p.bestScore }))
+      .sort(
+        (a, b) =>
+          (b.finalScore ?? -1) - (a.finalScore ?? -1) ||
+          b.bestScore - a.bestScore,
+      );
+  }
+
+  private boardRows(): KbtBoardRow[] {
+    return this.rankedPlayers()
+      .slice(0, 8)
+      .map((p, i) => {
+        // Reps/pace from the player's latest played heat (average over the
+        // heat — the board shows results, not a live window).
+        let reps = 0;
+        for (let h = this.heats.length - 1; h >= 0; h--) {
+          const s = this.heats[h].scores.get(p.clientId);
+          if (s) {
+            reps = s.reps.swing + s.reps.clean + s.reps.snatch;
+            break;
+          }
+        }
+        return {
+          rank: i + 1,
+          name: p.name,
+          color: p.color,
+          points: p.rankPoints,
+          reps,
+          rpm: Math.round((reps * 60_000) / this.config.heatDurationMs),
+        };
+      });
   }
 
   /**
    * Publish the burned-in HUD, held by HUD_HOLD_MS with a monotonic clamp so
    * snapshots land in order on the ~3s-delayed video (see HUD_HOLD_MS docs).
+   * Builds the full scene snapshot (kb_design): lobby / solo / grid / board /
+   * podium plus the commentator lower-third.
    */
   private publishHud(): void {
     if (this.disposed) return;
-    const heat = this.activeHeat();
-    if (!heat) return;
     const now = this.now();
-    const tiles: Record<string, KbtHudTile> = {};
-    for (const id of heat.playerIds) {
-      const p = this.players.get(id);
-      const s = heat.scores.get(id);
-      if (!p?.inputId || !s) continue;
-      tiles[p.inputId] = {
-        clientId: id,
-        name: s.name,
-        color: s.color,
-        points: s.points,
-        reps: s.reps.swing + s.reps.clean + s.reps.snatch,
-        streak: s.streak,
-        exercise: s.exercise,
-        flash: s.lastRepAt != null && now - s.lastRepAt <= REP_FLASH_MS,
-        lastRepVerdict: s.lastRepVerdict,
-        lastRepPoints: s.lastRepPoints,
-        signalLost: !p.camConnected && heat.phase !== 'intro',
-      };
+    const scene = this.computeScene();
+    if (scene !== this.stagedScene) {
+      this.stagedScene = scene;
+      // The caster cam rect is scene-dependent; move it with the scene.
+      void this.restage();
     }
-    const banner =
-      this.banner && now - this.banner.at <= BANNER_MS ? this.banner : null;
-    const snapshot: KbtHudState = {
-      tiles,
-      match: {
+
+    const heat = this.activeHeat();
+    const tiles: Record<string, KbtHudTile> = {};
+    let match: KbtHudState['match'] = null;
+    let heatLabel: string | null = null;
+    let leader: KbtHudState['leader'] = null;
+
+    if (heat && (scene === 'solo' || scene === 'grid')) {
+      heatLabel = this.heatLabelFor(heat);
+      const ranked = [...heat.scores.entries()].sort(
+        (a, b) => b[1].points - a[1].points,
+      );
+      const rankOf = new Map(ranked.map(([id], i) => [id, i + 1]));
+      for (const id of heat.playerIds) {
+        const p = this.players.get(id);
+        const s = heat.scores.get(id);
+        if (!p?.inputId || !s) continue;
+        tiles[p.inputId] = {
+          clientId: id,
+          name: s.name,
+          color: s.color,
+          points: s.points,
+          reps: s.reps.swing + s.reps.clean + s.reps.snatch,
+          repsByExercise: { ...s.reps },
+          rpm: this.rpmFor(s, heat, now),
+          rank: rankOf.get(id) ?? heat.playerIds.length,
+          streak: s.streak,
+          exercise: s.exercise,
+          flash: s.lastRepAt != null && now - s.lastRepAt <= REP_FLASH_MS,
+          lastRepVerdict: s.lastRepVerdict,
+          lastRepPoints: s.lastRepPoints,
+          signalLost: !p.camConnected && heat.phase !== 'intro',
+        };
+      }
+      match = {
         phase: heat.phase === 'idle' ? 'intro' : heat.phase,
         heatIndex: heat.index,
         final: heat.final,
@@ -1205,27 +1586,69 @@ export class KettlebellTournamentController {
                 ? 0
                 : null,
         winner: heat.finalized ? heat.winner : null,
-      },
-      leaderboard: [...this.players.values()]
-        .filter((p) => p.bestScore > 0 || p.finalScore != null)
-        .sort(
-          (a, b) =>
-            (b.finalScore ?? -1) - (a.finalScore ?? -1) ||
-            b.bestScore - a.bestScore,
-        )
-        .slice(0, 4)
-        .map((p) => ({
-          name: p.name,
-          color: p.color,
-          points: p.finalScore ?? p.bestScore,
-        })),
+      };
+      const top = ranked[0];
+      if (top && top[1].points > 0) {
+        leader = { name: top[1].name, points: top[1].points };
+      }
+    } else {
+      const top = this.rankedPlayers()[0];
+      if (top && top.rankPoints > 0) {
+        leader = { name: top.name, points: top.rankPoints };
+      }
+    }
+
+    const banner =
+      this.banner && now - this.banner.at <= BANNER_MS ? this.banner : null;
+    const snapshot: KbtHudState = {
+      scene,
+      tiles,
+      match,
+      heatLabel,
+      lobby:
+        scene === 'lobby'
+          ? {
+              qrImageId: this.qrImageId,
+              joinLabel: this.joinLabel,
+              joined: [...this.players.values()].map((p) => ({
+                name: p.name,
+                color: p.color,
+                camConnected: p.camConnected,
+              })),
+              joinedCount: this.players.size,
+            }
+          : null,
+      board:
+        scene === 'board'
+          ? {
+              rows: this.boardRows(),
+              final: this.heats.some((h) => h.final && h.finalized),
+            }
+          : null,
+      podium:
+        scene === 'podium'
+          ? {
+              rows: this.rankedPlayers()
+                .slice(0, 3)
+                .map((p, i) => ({
+                  rank: i + 1,
+                  name: p.name,
+                  color: p.color,
+                  points: p.rankPoints,
+                })),
+            }
+          : null,
+      commentator: this.commentator
+        ? {
+            name: this.commentator.name,
+            camConnected: this.commentator.camConnected,
+            inputId: this.commentator.inputId,
+          }
+        : null,
+      leader,
       banner,
     };
     this.applyHudHeld(snapshot);
-  }
-
-  private publishHudNull(): void {
-    this.applyHudHeld(null);
   }
 
   private applyHudHeld(state: KbtHudState | null): void {
@@ -1251,6 +1674,8 @@ export class KettlebellTournamentController {
       }
     }
     this.players.clear();
+    if (this.commentator) this.commentator.inputId = null;
+    this.commentator = null;
     this.heats = [];
     this.deps.publishHud(null);
   }

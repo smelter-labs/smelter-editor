@@ -594,6 +594,8 @@ export async function setKbtConfig(
     strictTechnique?: boolean;
     heatDurationMs?: number;
     heatSize?: number;
+    joinUrl?: string;
+    joinLabel?: string;
   },
 ): Promise<import('@smelter-editor/types').KbtConfig> {
   return (await getClient()).setKbtConfig(roomId, config);

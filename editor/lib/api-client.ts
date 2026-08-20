@@ -207,6 +207,9 @@ interface SmelterApiClient {
       strictTechnique?: boolean;
       heatDurationMs?: number;
       heatSize?: number;
+      /** Athlete join URL — the server burns it into the lobby QR. */
+      joinUrl?: string;
+      joinLabel?: string;
     },
   ): Promise<KbtConfig>;
   controlKbtMatch(

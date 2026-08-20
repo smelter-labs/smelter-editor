@@ -3,45 +3,88 @@
 import React from 'react';
 import type { KbtPlayer, KbtStateEvent } from '@smelter-editor/types';
 import {
-  PixelPanel,
-  R5,
-  StarLine,
-  ledFont,
-  monoFont,
-  pixelFont,
-} from '../../duck-hunter/retro-kit';
+  DisplayText,
+  KBT,
+  Label,
+  Num,
+  Plate,
+  PlateTitle,
+  StatusDot,
+  kbtMonoFont,
+} from '../kbt-kit';
 
 function Row({
   left,
   right,
   color,
   dim,
+  rightNum = false,
+  camState,
 }: {
   left: string;
   right: string;
   color?: string;
   dim?: boolean;
+  /** Render the right side as a mono numeral (scores). */
+  rightNum?: boolean;
+  /** Square cam-status dot next to the right label (line-up rows). */
+  camState?: 'good' | 'idle';
 }) {
   return (
     <div
       style={{
         display: 'flex',
+        alignItems: 'center',
         justifyContent: 'space-between',
         gap: 10,
-        fontFamily: monoFont,
+        fontFamily: kbtMonoFont,
         fontSize: 12,
-        color: dim ? R5.inkMuted : R5.ink,
+        letterSpacing: 0.5,
+        color: dim ? KBT.dim : KBT.cream,
       }}>
       <span
         style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
           overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
+          minWidth: 0,
         }}>
-        <span style={{ color: color ?? R5.ink }}>■ </span>
-        {left}
+        <span
+          style={{
+            width: 8,
+            height: 8,
+            background: color ?? KBT.cream,
+            flexShrink: 0,
+          }}
+        />
+        <span
+          style={{
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+          {left}
+        </span>
       </span>
-      <span style={{ fontFamily: ledFont, fontWeight: 700 }}>{right}</span>
+      <span
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 7,
+          flexShrink: 0,
+        }}>
+        {camState ? <StatusDot state={camState} size={7} /> : null}
+        {rightNum ? (
+          <Num size={13} color={dim ? KBT.dim : KBT.cream}>
+            {right}
+          </Num>
+        ) : (
+          <Label size={10} tracking={1.5} color={dim ? KBT.dim : KBT.cream}>
+            {right}
+          </Label>
+        )}
+      </span>
     </div>
   );
 }
@@ -91,6 +134,8 @@ export function ReadyStep({
       (b.finalScore ?? -1) - (a.finalScore ?? -1) || b.bestScore - a.bestScore,
   );
 
+  const poseOk = poseTracked && fullBody;
+
   return (
     <div
       style={{
@@ -100,68 +145,78 @@ export function ReadyStep({
         gap: 12,
       }}>
       {inMyIntro ? (
-        <PixelPanel
-          accent={poseTracked && fullBody ? 'green' : 'orange'}
-          cut={10}
-          glow={0.6}
+        <Plate
+          cutPx={14}
+          accentBar
+          accentColor={poseOk ? KBT.good : KBT.amber}
           innerStyle={{
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: 6,
-            padding: '14px 16px',
+            gap: 10,
+            padding: '16px 18px',
           }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <StatusDot state={poseOk ? 'good' : 'warn'} pulse={!poseOk} />
+            <DisplayText
+              size={24}
+              weight={700}
+              tracking={2}
+              color={poseOk ? KBT.good : KBT.amber}
+              style={{ textAlign: 'center' }}>
+              {!poseTracked
+                ? 'STEP INTO FRAME'
+                : fullBody
+                  ? 'POSE LOCKED ✓'
+                  : 'BACK UP'}
+            </DisplayText>
+          </div>
           <span
             style={{
-              fontFamily: pixelFont,
-              fontSize: 13,
-              letterSpacing: 1.5,
-              color: poseTracked && fullBody ? R5.green : R5.orangeBright,
-            }}
-            className={poseTracked && fullBody ? undefined : 'r5-blink'}>
-            {!poseTracked
-              ? 'STEP INTO FRAME'
-              : fullBody
-                ? 'POSE LOCKED ✓'
-                : 'BACK UP'}
-          </span>
-          <span
-            style={{ fontFamily: monoFont, fontSize: 11, color: R5.inkMuted }}>
+              fontFamily: kbtMonoFont,
+              fontSize: 11,
+              letterSpacing: 0.5,
+              color: KBT.dim,
+              textAlign: 'center',
+            }}>
             {!poseTracked
               ? 'Stand back until your whole body is tracked on your tile.'
               : fullBody
                 ? 'The AI sees you. Grab the bell and await the countdown.'
                 : 'Head to toe must fit — move the phone or step back.'}
           </span>
-        </PixelPanel>
+        </Plate>
       ) : (
-        <PixelPanel
-          accent='yellow'
-          cut={10}
+        <Plate
+          cutPx={14}
+          accentBar
+          accentColor={KBT.amber}
           innerStyle={{
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            gap: 6,
-            padding: '14px 16px',
+            gap: 10,
+            padding: '16px 18px',
           }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <StatusDot state='warn' pulse />
+            <DisplayText size={24} weight={700} tracking={2}>
+              STANDING BY…
+            </DisplayText>
+          </div>
           <span
-            className='r5-blink'
             style={{
-              fontFamily: pixelFont,
-              fontSize: 13,
-              letterSpacing: 2,
-              color: R5.yellow,
+              fontFamily: kbtMonoFont,
+              fontSize: 11,
+              letterSpacing: 0.5,
+              color: KBT.dim,
+              textAlign: 'center',
             }}>
-            STANDING BY…
-          </span>
-          <span
-            style={{ fontFamily: monoFont, fontSize: 11, color: R5.inkMuted }}>
             {myHeat
               ? `You lift in ${myHeat.final ? 'the FINAL' : `HEAT ${myHeat.index + 1}`}. Keep the phone propped and awake.`
               : 'Waiting for the host to draw the heats.'}
           </span>
-        </PixelPanel>
+        </Plate>
       )}
 
       {camOn ? (
@@ -173,7 +228,7 @@ export function ReadyStep({
             maxHeight: '40vh',
             minHeight: 180,
             background: '#000',
-            border: `1px solid rgba(${R5.gridRgb},0.6)`,
+            border: `1px solid ${KBT.border}`,
             overflow: 'hidden',
             flexShrink: 0,
           }}>
@@ -195,7 +250,7 @@ export function ReadyStep({
             style={{
               position: 'absolute',
               inset: '4% 12%',
-              border: `2px dashed rgba(${R5.yellowRgb},0.75)`,
+              border: '2px dashed rgba(232,228,218,.5)',
               pointerEvents: 'none',
             }}
           />
@@ -210,20 +265,23 @@ export function ReadyStep({
                 pointerEvents: 'none',
               }}>
               <span
-                className={poseTracked && fullBody ? undefined : 'r5-blink'}
-                style={{
-                  fontFamily: pixelFont,
-                  fontSize: 10,
-                  letterSpacing: 1,
-                  padding: '5px 9px',
-                  background: 'rgba(0,0,0,0.6)',
-                  color: poseTracked && fullBody ? R5.green : R5.orangeBright,
-                }}>
-                {!poseTracked
-                  ? 'STEP INTO FRAME'
-                  : fullBody
-                    ? 'POSE LOCKED ✓'
-                    : 'BACK UP — WHOLE BODY IN FRAME'}
+                className={poseOk ? undefined : 'kbt-blink'}
+                style={{ display: 'inline-block' }}>
+                <Label
+                  size={10}
+                  tracking={1.5}
+                  color={poseOk ? KBT.good : KBT.amber}
+                  style={{
+                    display: 'inline-block',
+                    background: 'rgba(13,14,16,.7)',
+                    padding: '5px 9px',
+                  }}>
+                  {!poseTracked
+                    ? 'STEP INTO FRAME'
+                    : fullBody
+                      ? 'POSE LOCKED ✓'
+                      : 'BACK UP — WHOLE BODY IN FRAME'}
+                </Label>
               </span>
             </div>
           ) : null}
@@ -231,20 +289,19 @@ export function ReadyStep({
       ) : null}
 
       {heatMates.length > 0 ? (
-        <PixelPanel
-          accent='cyan'
-          cut={10}
+        <Plate
+          cutPx={14}
           innerStyle={{
             display: 'flex',
             flexDirection: 'column',
-            gap: 8,
-            padding: '12px 14px',
+            gap: 9,
+            padding: '14px 16px',
           }}>
-          <StarLine size={8}>
+          <PlateTitle>
             {myHeat?.final
               ? 'FINAL LINE-UP'
               : `HEAT ${myHeat!.index + 1} LINE-UP`}
-          </StarLine>
+          </PlateTitle>
           {heatMates.map((p) => (
             <Row
               key={p.clientId}
@@ -252,22 +309,22 @@ export function ReadyStep({
               right={p.camConnected ? 'CAM ✓' : 'NO CAM'}
               color={p.color}
               dim={!p.camConnected}
+              camState={p.camConnected ? 'good' : 'idle'}
             />
           ))}
-        </PixelPanel>
+        </Plate>
       ) : null}
 
       {standings.some((p) => p.bestScore > 0 || p.finalScore != null) ? (
-        <PixelPanel
-          accent='pink'
-          cut={10}
+        <Plate
+          cutPx={14}
           innerStyle={{
             display: 'flex',
             flexDirection: 'column',
-            gap: 8,
-            padding: '12px 14px',
+            gap: 9,
+            padding: '14px 16px',
           }}>
-          <StarLine size={8}>STANDINGS</StarLine>
+          <PlateTitle>STANDINGS</PlateTitle>
           {standings.slice(0, 8).map((p, i) => (
             <Row
               key={p.clientId}
@@ -275,9 +332,10 @@ export function ReadyStep({
               right={`${p.finalScore ?? p.bestScore}`}
               color={p.color}
               dim={p.bestScore === 0 && p.finalScore == null}
+              rightNum
             />
           ))}
-        </PixelPanel>
+        </Plate>
       ) : null}
     </div>
   );

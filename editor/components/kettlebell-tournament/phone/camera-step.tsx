@@ -2,16 +2,15 @@
 
 import React from 'react';
 import {
-  PixelPanel,
-  R5,
-  monoFont,
-  pixelFont,
-} from '../../duck-hunter/retro-kit';
-import {
-  ActionButton,
   ChipButton,
-  WarnPanel,
-} from '../../duck-hunter/phone/phone-shell';
+  KBT,
+  KbtButton,
+  Label,
+  Plate,
+  StatusDot,
+  WarnPlate,
+  kbtMonoFont,
+} from '../kbt-kit';
 
 /**
  * Step 3 — the camera rig. The phone becomes the player's broadcast camera:
@@ -52,31 +51,29 @@ export function CameraStep({
         flexDirection: 'column',
         gap: 12,
       }}>
-      <PixelPanel
-        accent='cyan'
-        cut={10}
+      <Plate
+        cutPx={14}
         innerStyle={{
           display: 'flex',
           flexDirection: 'column',
-          gap: 8,
-          padding: '12px 14px',
+          gap: 10,
+          padding: '14px 16px',
         }}>
+        <Label size={10}>CAMERA RIG</Label>
         <span
           style={{
-            fontFamily: pixelFont,
+            fontFamily: kbtMonoFont,
             fontSize: 11,
-            letterSpacing: 1.5,
-            color: R5.cyan,
+            letterSpacing: 0.5,
+            lineHeight: 1.6,
+            color: KBT.dim,
+            whiteSpace: 'pre-line',
           }}>
-          CAMERA RIG
-        </span>
-        <span
-          style={{ fontFamily: monoFont, fontSize: 11, color: R5.inkMuted }}>
           1. Prop the phone upright, 2–3 m away, screen facing you.
           {'\n'}2. Whole body + bell must fit inside the frame.
           {'\n'}3. GO LIVE — your camera becomes your arena tile.
         </span>
-      </PixelPanel>
+      </Plate>
 
       <div
         style={{
@@ -84,7 +81,7 @@ export function CameraStep({
           flex: 1,
           minHeight: 220,
           background: '#000',
-          border: `1px solid rgba(${R5.gridRgb},0.6)`,
+          border: `1px solid ${KBT.border}`,
           overflow: 'hidden',
         }}>
         <video
@@ -106,7 +103,7 @@ export function CameraStep({
           style={{
             position: 'absolute',
             inset: '4% 12%',
-            border: `2px dashed rgba(${R5.yellowRgb},0.75)`,
+            border: '2px dashed rgba(232,228,218,.5)',
             pointerEvents: 'none',
           }}
         />
@@ -118,14 +115,18 @@ export function CameraStep({
               right: 0,
               bottom: 6,
               textAlign: 'center',
-              fontFamily: pixelFont,
-              fontSize: 9,
-              letterSpacing: 1,
-              color: R5.yellow,
-              textShadow: '0 1px 4px #000',
               pointerEvents: 'none',
             }}>
-            WHOLE BODY IN THE DASHED ZONE
+            <Label
+              size={9}
+              tracking={2}
+              color={KBT.cream}
+              style={{
+                background: 'rgba(13,14,16,.7)',
+                padding: '4px 8px',
+              }}>
+              WHOLE BODY IN THE DASHED ZONE
+            </Label>
           </div>
         ) : (
           <div
@@ -135,11 +136,10 @@ export function CameraStep({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              fontFamily: pixelFont,
-              fontSize: 11,
-              color: R5.inkMuted,
             }}>
-            CAMERA OFF
+            <Label size={11} tracking={3}>
+              CAMERA OFF
+            </Label>
           </div>
         )}
         {camOn && !live ? (
@@ -156,31 +156,36 @@ export function CameraStep({
               position: 'absolute',
               top: 8,
               left: 8,
-              fontFamily: pixelFont,
-              fontSize: 9,
-              letterSpacing: 1,
-              color: R5.green,
-              background: 'rgba(0,0,0,0.55)',
-              padding: '5px 8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: 7,
+              background: 'rgba(13,14,16,.7)',
+              padding: '5px 9px',
+              pointerEvents: 'none',
             }}>
-            ● LIVE
+            <StatusDot state='good' pulse size={7} />
+            <Label size={9} tracking={2} color={KBT.good}>
+              LIVE
+            </Label>
           </div>
         ) : null}
       </div>
 
-      {camErr ? <WarnPanel>{camErr}</WarnPanel> : null}
+      {camErr ? <WarnPlate>{camErr}</WarnPlate> : null}
 
       {!camOn ? (
-        <ActionButton
-          accent='cyan'
+        <KbtButton
+          block
+          variant='solid'
           label='ENABLE CAMERA'
           sub='front camera keeps your score visible'
           active
           onClick={onEnable}
         />
       ) : !live ? (
-        <ActionButton
-          accent='green'
+        <KbtButton
+          block
+          variant='solid'
           label={publishing ? 'CONNECTING…' : 'GO LIVE'}
           sub='publish this camera into the arena'
           disabled={publishing}
@@ -188,8 +193,9 @@ export function CameraStep({
           onClick={onGoLive}
         />
       ) : (
-        <ActionButton
-          accent='green'
+        <KbtButton
+          block
+          variant='solid'
           label='TO THE BRIEFING'
           sub='camera locked in'
           active

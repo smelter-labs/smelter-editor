@@ -3,23 +3,27 @@
 import React, { useMemo } from 'react';
 import type { KbtPlayer } from '@smelter-editor/types';
 import {
-  ArcadeText,
-  BlueprintBackdrop,
-  LedText,
-  PixelButton,
-  PixelPanel,
-  R5,
-  RetroFooter,
-  StarLine,
-  monoFont,
-  pixelFont,
-} from '../../duck-hunter/retro-kit';
+  Backdrop,
+  DisplayText,
+  FooterHint,
+  KBT,
+  KbtButton,
+  Label,
+  Num,
+  PodiumBlock,
+} from '../kbt-kit';
 import { useArcadeKeys } from '../../duck-hunter/use-arcade-input';
 import type { KbtFeed } from '../use-kbt-feed';
 
-const CONFETTI_COLORS = ['#FFEB3B', '#00E5FF', '#FF4081', '#76FF03', '#FF9100'];
+const CONFETTI_COLORS = [
+  KBT.accent,
+  KBT.cream,
+  KBT.good,
+  KBT.amber,
+  KBT.silver,
+];
 
-/** Deterministic pixel confetti — pure CSS fall animation, no Math.random in render. */
+/** Deterministic square confetti — pure CSS fall animation, no Math.random in render. */
 function Confetti() {
   const pieces = useMemo(
     () =>
@@ -43,6 +47,7 @@ function Confetti() {
       {pieces.map((p, i) => (
         <div
           key={i}
+          className='kbt-confetti'
           style={{
             position: 'absolute',
             top: -12,
@@ -50,21 +55,16 @@ function Confetti() {
             width: p.size,
             height: p.size,
             background: p.color,
-            animation: `kbt-confetti ${p.duration}s linear ${p.delay}s infinite`,
+            animationDuration: `${p.duration}s`,
+            animationDelay: `${p.delay}s`,
           }}
         />
       ))}
-      <style>{`
-        @keyframes kbt-confetti {
-          0% { transform: translateY(-16px) rotate(0deg); opacity: 1; }
-          100% { transform: translateY(740px) rotate(540deg); opacity: 0.6; }
-        }
-      `}</style>
     </div>
   );
 }
 
-function PodiumBlock({
+function PodiumSpot({
   p,
   place,
   height,
@@ -73,57 +73,39 @@ function PodiumBlock({
   place: 1 | 2 | 3;
   height: number;
 }) {
-  const medal = place === 1 ? '🥇' : place === 2 ? '🥈' : '🥉';
-  const accent = place === 1 ? 'yellow' : place === 2 ? 'cyan' : 'orange';
   return (
     <div
       style={{
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        gap: 10,
+        gap: 12,
         width: 220,
       }}>
       {p ? (
         <>
-          <div style={{ fontSize: place === 1 ? 52 : 40 }}>{medal}</div>
-          <span
-            style={{
-              fontFamily: pixelFont,
-              fontSize: place === 1 ? 16 : 13,
-              letterSpacing: 1.5,
-              color: p.color,
-              textAlign: 'center',
-            }}>
+          <DisplayText
+            size={place === 1 ? 34 : 26}
+            weight={800}
+            tracking={1.5}
+            style={{ textAlign: 'center' }}>
             {p.name}
-          </span>
-          <LedText size={place === 1 ? 40 : 30}>
+          </DisplayText>
+          <Num size={place === 1 ? 34 : 26}>
             {`${p.finalScore ?? p.bestScore}`}
-          </LedText>
+          </Num>
         </>
       ) : (
-        <div style={{ height: 110 }} />
+        <div style={{ height: 72 }} />
       )}
-      <PixelPanel
-        accent={accent}
-        cut={10}
-        glow={place === 1 ? 0.6 : 0.25}
-        innerStyle={{
-          width: 180,
-          height,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-        }}>
-        <span
-          style={{
-            fontFamily: pixelFont,
-            fontSize: 26,
-            color: R5.inkMuted,
-          }}>
-          {place}
-        </span>
-      </PixelPanel>
+      <PodiumBlock
+        rank={place}
+        height={height}
+        style={{ width: 180, justifyContent: 'center' }}>
+        <Label size={13} tracking={3} color={KBT.dim}>
+          {place === 1 ? 'CHAMPION' : place === 2 ? 'SILVER' : 'BRONZE'}
+        </Label>
+      </PodiumBlock>
     </div>
   );
 }
@@ -155,15 +137,16 @@ export function PodiumScreen({
 
   return (
     <div
+      className='kbt-enter'
       style={{
         position: 'absolute',
         inset: 0,
-        background: R5.bgDeep,
+        background: KBT.page,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
       }}>
-      <BlueprintBackdrop />
+      <Backdrop />
       <Confetti />
       <div
         style={{
@@ -176,12 +159,14 @@ export function PodiumScreen({
           justifyContent: 'center',
           gap: 24,
         }}>
-        <ArcadeText size={30}>CHAMPIONS</ArcadeText>
-        <StarLine size={10}>
+        <DisplayText size={56} weight={800} tracking={3}>
+          CHAMPIONS
+        </DisplayText>
+        <Label size={12} tracking={4} color={first ? KBT.accent : KBT.dim}>
           {first
             ? `${first.name} — TOURNAMENT CHAMPION`
             : 'NO SCORES ON RECORD'}
-        </StarLine>
+        </Label>
         <div
           style={{
             display: 'flex',
@@ -189,40 +174,44 @@ export function PodiumScreen({
             gap: 18,
             marginTop: 8,
           }}>
-          <PodiumBlock p={second} place={2} height={110} />
-          <PodiumBlock p={first} place={1} height={160} />
-          <PodiumBlock p={third} place={3} height={80} />
+          <PodiumSpot p={second} place={2} height={110} />
+          <PodiumSpot p={first} place={1} height={160} />
+          <PodiumSpot p={third} place={3} height={80} />
         </div>
         {ranked.length > 3 ? (
-          <div
-            style={{
-              fontFamily: monoFont,
-              fontSize: 12,
-              color: R5.inkMuted,
-            }}>
+          <Label size={11} tracking={1.5}>
             {ranked
               .slice(3, 8)
               .map(
                 (p, i) => `${i + 4}. ${p.name} ${p.finalScore ?? p.bestScore}`,
               )
               .join('   ·   ')}
-          </div>
+          </Label>
         ) : null}
       </div>
-      <div style={{ position: 'relative', zIndex: 1 }}>
-        <RetroFooter
-          tip='enter to run it back · esc to power down'
+      <div
+        style={{
+          position: 'relative',
+          zIndex: 1,
+          padding: '10px 32px 16px',
+          borderTop: `1px solid ${KBT.border}`,
+        }}>
+        <FooterHint
+          hints={[
+            { key: 'ENTER', label: 'RUN IT BACK' },
+            { key: 'ESC', label: 'POWER DOWN' },
+          ]}
           right={
             <div style={{ display: 'flex', gap: 12 }}>
-              <PixelButton
-                accent='red'
-                glyph='B'
+              <KbtButton
+                variant='outline'
+                dense
                 label='EXIT TO TITLE'
                 onClick={onExit}
               />
-              <PixelButton
-                accent='green'
-                glyph='A'
+              <KbtButton
+                variant='solid'
+                dense
                 label='REMATCH'
                 active
                 onClick={onPlayAgain}
@@ -231,7 +220,6 @@ export function PodiumScreen({
           }
         />
       </div>
-      <div className='r5-scanlines' />
     </div>
   );
 }

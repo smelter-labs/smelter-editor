@@ -74,6 +74,8 @@ export type KbtPlayer = {
   camConnected: boolean;
   /** The coach currently sees a pose on this player's input (intro checks). */
   poseTracked: boolean;
+  /** The phone advanced to the briefing screen (begin_heat is gated on it). */
+  briefed: boolean;
   /** Best qualification-heat score (the ranking key). */
   bestScore: number;
   /** Final-heat score; null until the player plays a final. */
@@ -117,16 +119,50 @@ export type KbtCamRequestMessage = {
   nativeHeight?: number;
 };
 export type KbtCamStopMessage = { type: "kbt_cam_stop" };
+/**
+ * The phone reached the briefing/standing-by step ("TO THE BRIEFING").
+ * One-shot: the server clears it on disconnect, kbt_cam_stop and kbt_leave;
+ * the lift page re-sends it after a reconnect re-join. Gates begin_heat.
+ */
+export type KbtBriefedMessage = { type: "kbt_briefed" };
 export type KbtLeaveMessage = { type: "kbt_leave" };
 /** Subscribe-only handshake (host page): snapshot reply, never a player. */
 export type KbtSpectateMessage = { type: "kbt_spectate" };
+
+// ── Commentator role (joins via its own QR, /mobile/[roomId]/commentate) ─────
+// One commentator per room: audio+video WHIP input mixed into the broadcast,
+// shown as a lower-third between heats and audio-only during them. Never a
+// player: no heats, no scoring, no coach AI on the input.
+
+export type KbtCommentatorJoinMessage = {
+  type: "kbt_commentator_join";
+  name: string;
+};
+/** Same offer flow as players: server replies with `kbt_cam_offer`. */
+export type KbtCommentatorCamRequestMessage = {
+  type: "kbt_commentator_cam_request";
+  nativeWidth?: number;
+  nativeHeight?: number;
+};
+export type KbtCommentatorLeaveMessage = { type: "kbt_commentator_leave" };
 
 export type KbtClientMessage =
   | KbtJoinMessage
   | KbtCamRequestMessage
   | KbtCamStopMessage
+  | KbtBriefedMessage
   | KbtLeaveMessage
-  | KbtSpectateMessage;
+  | KbtSpectateMessage
+  | KbtCommentatorJoinMessage
+  | KbtCommentatorCamRequestMessage
+  | KbtCommentatorLeaveMessage;
+
+/** Public commentator info in `kbt_state`. */
+export type KbtCommentator = {
+  name: string;
+  /** The commentator's WHIP input is publishing (receiving acks). */
+  camConnected: boolean;
+};
 
 // ── Server -> Client ─────────────────────────────────────────────────────────
 
@@ -139,6 +175,8 @@ export type KbtStateEvent = {
   players: KbtPlayer[];
   heats: KbtHeatSummary[];
   currentHeatIndex: number | null;
+  /** Present when a commentator joined (absent on older servers). */
+  commentator?: KbtCommentator | null;
 };
 
 /**

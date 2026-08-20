@@ -1,6 +1,7 @@
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
-import { remove } from 'fs-extra';
+import { createHash, randomUUID } from 'node:crypto';
+import { ensureDir, remove } from 'fs-extra';
+import QRCode from 'qrcode';
 import { Mutex } from 'async-mutex';
 import { SmelterInstance, type SmelterOutput } from '../smelter';
 import type { InputConfig } from '../app/store';
@@ -452,6 +453,32 @@ export class RoomState {
       getResolution: () => this.output.store.getState().resolution,
       publishHud: (state) =>
         this.output.store.getState().setKbTournament(state),
+      // Lobby-scene QR: render the join URL to a PNG under the data dir and
+      // register it with the engine. The image id carries a content hash —
+      // registered images are immutable per id, so a changed URL must mint a
+      // fresh id for the HUD to pick up.
+      registerJoinQr: async (url) => {
+        const hash = createHash('sha1').update(url).digest('hex').slice(0, 8);
+        const safeRoom = idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const dir = path.join(DATA_DIR, 'kbt-qr');
+        await ensureDir(dir);
+        const file = path.join(dir, `${safeRoom}-${hash}.png`);
+        await QRCode.toFile(file, url, {
+          type: 'png',
+          width: 288,
+          margin: 0,
+          errorCorrectionLevel: 'M',
+          // Drawn on the join panel's baked cream square — match its tone so
+          // the quiet zone blends in.
+          color: { dark: '#101114ff', light: '#e8e4daff' },
+        });
+        const imageId = `kbt-qr-${safeRoom}-${hash}`;
+        await SmelterInstance.registerImage(imageId, {
+          serverPath: file,
+          assetType: 'png',
+        });
+        return imageId;
+      },
     });
 
     let motionResultCount = 0;
@@ -1612,6 +1639,8 @@ export class RoomState {
     strictTechnique?: boolean;
     heatDurationMs?: number;
     heatSize?: number;
+    joinUrl?: string;
+    joinLabel?: string;
   }): KbtConfig {
     return this.kbTournament.setConfig(cfg);
   }

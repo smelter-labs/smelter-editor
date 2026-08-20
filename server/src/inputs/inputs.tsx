@@ -173,6 +173,10 @@ export function Input({ input }: { input: InputConfig }) {
     store,
     (state) => state.kbTournament?.tiles[input.inputId] ?? null,
   );
+  const kbtScene = useStore(
+    store,
+    (state) => state.kbTournament?.scene ?? null,
+  );
 
   // The video/content element for the playing state. Extracted so Ghost City
   // can wrap it in the haunted-city shader without disturbing the overlays
@@ -366,15 +370,11 @@ export function Input({ input }: { input: InputConfig }) {
                 parent={{ width: contentWidth, height: contentHeight }}
               />
             ) : null}
-            {kettlebell ? (
+            {kettlebell && !kbtTile ? (
+              // The coach badge clashes with the tournament plates — during a
+              // heat the KBT chrome carries the reps/exercise info instead.
               <KettlebellOverlay
                 data={kettlebell}
-                parent={{ width: contentWidth, height: contentHeight }}
-              />
-            ) : null}
-            {kbtTile ? (
-              <KbtTileHud
-                tile={kbtTile}
                 parent={{ width: contentWidth, height: contentHeight }}
               />
             ) : null}
@@ -402,6 +402,17 @@ export function Input({ input }: { input: InputConfig }) {
         ) : (
           <View />
         )}
+        {kbtTile && kbtScene ? (
+          // Outside the streamState branch on purpose: the tournament plate
+          // (name, reps, rank) must stay burned in even while the phone's
+          // WHIP stream is still connecting or dropped mid-heat — the tile
+          // then shows the spinner underneath and the SIGNAL LOST veil.
+          <KbtTileHud
+            tile={kbtTile}
+            scene={kbtScene}
+            parent={{ width: contentWidth, height: contentHeight }}
+          />
+        ) : null}
         {input.showTitle !== false && (
           <View
             style={{

@@ -1,7 +1,7 @@
 import { Suspense } from 'react';
 import type { Metadata } from 'next';
 import { KettlebellTournamentArcade } from '@/components/kettlebell-tournament/arcade';
-import { doto, pressStart, robotoMono } from '@/app/duck-hunter/fonts';
+import { bigShoulders, plexMono } from './fonts';
 
 export const metadata: Metadata = {
   title: 'KETTLEBELL TOURNAMENT',
@@ -15,8 +15,7 @@ export const metadata: Metadata = {
  */
 export default function KettlebellTournamentPage() {
   return (
-    <div
-      className={`${pressStart.variable} ${doto.variable} ${robotoMono.variable}`}>
+    <div className={`${bigShoulders.variable} ${plexMono.variable}`}>
       <Suspense>
         <KettlebellTournamentArcade />
       </Suspense>

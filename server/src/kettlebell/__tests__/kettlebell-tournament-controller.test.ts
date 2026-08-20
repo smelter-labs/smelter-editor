@@ -19,6 +19,7 @@ function harness() {
   }[] = [];
   const layouts: { inputId: string; x: number; width: number }[][] = [];
   const hudApplies: (KbtHudState | null)[] = [];
+  const qrCalls: string[] = [];
   const connected = new Set<string>();
   let camSeq = 0;
 
@@ -46,6 +47,10 @@ function harness() {
     isInputConnected: (inputId) => connected.has(inputId),
     getResolution: () => ({ width: 1920, height: 1080 }),
     publishHud: (state) => hudApplies.push(state),
+    registerJoinQr: async (url) => {
+      qrCalls.push(url);
+      return `kbt-qr-test-${qrCalls.length}`;
+    },
   });
 
   return {
@@ -55,6 +60,7 @@ function harness() {
     aiCalls,
     layouts,
     hudApplies,
+    qrCalls,
     connected,
     ofType<T extends RoomEvent['type']>(type: T) {
       return events.filter((e) => e.type === type) as Extract<
@@ -105,6 +111,9 @@ async function playingHeat(h: ReturnType<typeof harness>) {
   h.controller.controlMatch({ action: 'assign_heats' });
   h.controller.controlMatch({ action: 'start_heat' });
   await vi.advanceTimersByTimeAsync(0); // flush stageActiveHeat
+  h.controller.handleMessage('p1', { type: 'kbt_briefed' });
+  h.controller.handleMessage('p2', { type: 'kbt_briefed' });
+  await vi.advanceTimersByTimeAsync(1100); // cam poll flips camConnected
   h.controller.controlMatch({ action: 'begin_heat' });
   await vi.advanceTimersByTimeAsync(3100); // countdown → playing
   const in1 = h.camOfferFor('p1')!.inputId;
@@ -168,6 +177,9 @@ describe('KettlebellTournamentController', () => {
     h.controller.controlMatch({ action: 'assign_heats' });
     h.controller.controlMatch({ action: 'start_heat' });
     await vi.advanceTimersByTimeAsync(0);
+    h.controller.handleMessage('p1', { type: 'kbt_briefed' });
+    h.controller.handleMessage('p2', { type: 'kbt_briefed' });
+    await vi.advanceTimersByTimeAsync(1100); // cam poll flips camConnected
     const in1 = h.camOfferFor('p1')!.inputId;
 
     h.rep(in1, 1); // intro — must not score
@@ -311,6 +323,8 @@ describe('KettlebellTournamentController', () => {
     expect(drawn.heats[0].playerIds).toEqual(['p1']);
     h.controller.controlMatch({ action: 'start_heat' });
     await vi.advanceTimersByTimeAsync(0);
+    h.controller.handleMessage('p1', { type: 'kbt_briefed' });
+    await vi.advanceTimersByTimeAsync(1100); // cam poll flips camConnected
     h.controller.controlMatch({ action: 'begin_heat' });
     await vi.advanceTimersByTimeAsync(3100);
     const in1 = h.camOfferFor('p1')!.inputId;
@@ -327,6 +341,66 @@ describe('KettlebellTournamentController', () => {
     const after = h.controller.stateSnapshot();
     expect(after.heats).toHaveLength(1);
     expect(after.tournamentPhase).not.toBe('final');
+    h.controller.dispose();
+  });
+
+  it('refuses begin_heat until every heat player briefed with a live camera', async () => {
+    const h = harness();
+    h.controller.join('p1', 'ANIA');
+    h.controller.join('p2', 'BARTEK');
+    await h.controller.startCamera('p1');
+    await h.controller.startCamera('p2');
+    h.controller.setConfig({ heatDurationMs: 30_000, heatSize: 2 });
+    h.controller.controlMatch({ action: 'assign_heats' });
+    h.controller.controlMatch({ action: 'start_heat' });
+    await vi.advanceTimersByTimeAsync(1100); // cam poll flips camConnected
+
+    h.controller.controlMatch({ action: 'begin_heat' });
+    expect(h.controller.getMatchSnapshot().phase).toBe('intro'); // nobody briefed
+
+    h.controller.handleMessage('p1', { type: 'kbt_briefed' });
+    h.controller.controlMatch({ action: 'begin_heat' });
+    expect(h.controller.getMatchSnapshot().phase).toBe('intro'); // p2 missing
+
+    h.controller.handleMessage('p2', { type: 'kbt_briefed' });
+    h.controller.controlMatch({ action: 'begin_heat' });
+    expect(h.controller.getMatchSnapshot().phase).toBe('countdown');
+    h.controller.dispose();
+  });
+
+  it('clears briefed on disconnect so an adopted rejoin must re-brief before begin_heat', async () => {
+    const h = harness();
+    h.controller.join('p1', 'ANIA');
+    h.controller.join('p2', 'BARTEK');
+    await h.controller.startCamera('p1');
+    await h.controller.startCamera('p2');
+    h.controller.setConfig({ heatDurationMs: 30_000, heatSize: 2 });
+    h.controller.controlMatch({ action: 'assign_heats' });
+    h.controller.controlMatch({ action: 'start_heat' });
+    h.controller.handleMessage('p1', { type: 'kbt_briefed' });
+    h.controller.handleMessage('p2', { type: 'kbt_briefed' });
+    await vi.advanceTimersByTimeAsync(1100);
+
+    h.controller.handleDisconnect('p1');
+    h.controller.join('p1-new-socket', 'ANIA'); // adoption keeps the input
+    h.controller.controlMatch({ action: 'begin_heat' });
+    expect(h.controller.getMatchSnapshot().phase).toBe('intro');
+
+    h.controller.handleMessage('p1-new-socket', { type: 'kbt_briefed' });
+    h.controller.controlMatch({ action: 'begin_heat' });
+    expect(h.controller.getMatchSnapshot().phase).toBe('countdown');
+    h.controller.dispose();
+  });
+
+  it('reports briefed in kbt_state and clears it on kbt_cam_stop', async () => {
+    const h = harness();
+    h.controller.join('p1', 'ANIA');
+    await h.controller.startCamera('p1');
+    expect(h.controller.stateSnapshot().players[0].briefed).toBe(false);
+    h.controller.handleMessage('p1', { type: 'kbt_briefed' });
+    expect(h.controller.stateSnapshot().players[0].briefed).toBe(true);
+    h.controller.handleMessage('p1', { type: 'kbt_cam_stop' });
+    expect(h.controller.stateSnapshot().players[0].briefed).toBe(false);
     h.controller.dispose();
   });
 
@@ -356,6 +430,139 @@ describe('KettlebellTournamentController', () => {
     const reps = h.ofType('kbt_rep');
     expect(reps).toHaveLength(1);
     expect(reps[0].points).toBe(3);
+    h.controller.dispose();
+  });
+
+  // ── Broadcast scenes (kb_design port) ─────────────────────────────────────
+
+  it('publishes the lobby scene in roster with the joined list and QR', async () => {
+    const h = harness();
+    h.controller.setConfig({ joinUrl: 'https://x.dev/mobile/r/lift' });
+    expect(h.qrCalls).toEqual(['https://x.dev/mobile/r/lift']);
+    h.controller.join('p1', 'ANIA');
+    await vi.advanceTimersByTimeAsync(3100); // hud hold
+    const hud = h.lastHud()!;
+    expect(hud.scene).toBe('lobby');
+    expect(hud.lobby?.qrImageId).toBe('kbt-qr-test-1');
+    expect(hud.lobby?.joinLabel).toBe('x.dev');
+    expect(hud.lobby?.joined.map((j) => j.name)).toEqual(['ANIA']);
+    h.controller.dispose();
+  });
+
+  it('publishes solo for a one-player heat and grid for two, with rank and per-exercise reps', async () => {
+    const h = harness();
+    const { in1 } = await playingHeat(h);
+    h.rep(in1, 1, 'snatch');
+    h.rep(in1, 2, 'snatch');
+    await vi.advanceTimersByTimeAsync(3100);
+    const hud = h.lastHud()!;
+    expect(hud.scene).toBe('grid');
+    const ania = Object.values(hud.tiles).find((t) => t.name === 'ANIA')!;
+    expect(ania.rank).toBe(1);
+    expect(ania.repsByExercise.snatch).toBe(2);
+    expect(ania.rpm).toBeGreaterThan(0);
+    h.controller.dispose();
+
+    const solo = harness();
+    solo.controller.join('p1', 'ANIA');
+    await solo.controller.startCamera('p1');
+    solo.controller.setConfig({ heatDurationMs: 30_000 });
+    solo.controller.controlMatch({ action: 'assign_heats' });
+    solo.controller.controlMatch({ action: 'start_heat' });
+    await vi.advanceTimersByTimeAsync(3100);
+    expect(solo.lastHud()?.scene).toBe('solo');
+    solo.controller.dispose();
+  });
+
+  it('flips to the standings board after the ended linger, with ranked rows', async () => {
+    const h = harness();
+    const { in1 } = await playingHeat(h);
+    h.rep(in1, 1, 'snatch');
+    await vi.advanceTimersByTimeAsync(30_000); // buzzer
+    await vi.advanceTimersByTimeAsync(5_200 + 3_100); // linger + hold
+    const hud = h.lastHud()!;
+    expect(hud.scene).toBe('board');
+    expect(hud.board?.rows[0]).toMatchObject({
+      rank: 1,
+      name: 'ANIA',
+      points: 3,
+    });
+    h.controller.dispose();
+  });
+
+  it('publishes the podium scene with the top three', async () => {
+    const h = harness();
+    const { in1 } = await playingHeat(h);
+    h.rep(in1, 1, 'snatch');
+    await vi.advanceTimersByTimeAsync(31_000);
+    h.controller.controlMatch({ action: 'podium' });
+    await vi.advanceTimersByTimeAsync(3_100);
+    const hud = h.lastHud()!;
+    expect(hud.scene).toBe('podium');
+    expect(hud.podium?.rows[0]).toMatchObject({ rank: 1, name: 'ANIA' });
+    h.controller.dispose();
+  });
+
+  // ── Commentator ───────────────────────────────────────────────────────────
+
+  it('offers the commentator a WHIP input and appends it to every layout', async () => {
+    const h = harness();
+    h.controller.joinCommentator('c1', 'MAREK');
+    await h.controller.startCommentatorCamera('c1');
+    const offer = h.camOfferFor('c1');
+    expect(offer).not.toBeNull();
+    const casterInput = offer!.inputId;
+
+    // Roster mosaic must include the caster tile (visible lower-third rect).
+    h.controller.join('p1', 'ANIA');
+    await h.controller.startCamera('p1');
+    const rosterTiles = h.layouts[h.layouts.length - 1];
+    expect(rosterTiles.map((t) => t.inputId)).toContain(casterInput);
+
+    // During a heat the caster tile shrinks offscreen but STAYS in the layer
+    // (audio keeps mixing).
+    h.controller.join('p2', 'BARTEK');
+    await h.controller.startCamera('p2');
+    h.controller.setConfig({ heatDurationMs: 30_000, heatSize: 2 });
+    h.controller.controlMatch({ action: 'assign_heats' });
+    h.controller.controlMatch({ action: 'start_heat' });
+    await vi.advanceTimersByTimeAsync(0);
+    const heatTiles = h.layouts[h.layouts.length - 1];
+    const caster = heatTiles.find((t) => t.inputId === casterInput);
+    expect(caster).toBeDefined();
+    expect(caster!.width).toBe(1);
+    h.controller.dispose();
+  });
+
+  it('keeps the commentator input through a WS drop and adopts a same-name rejoin', async () => {
+    const h = harness();
+    h.controller.joinCommentator('c1', 'MAREK');
+    await h.controller.startCommentatorCamera('c1');
+    const inputId = h.camOfferFor('c1')!.inputId;
+    h.controller.handleDisconnect('c1');
+    expect(h.connected.has(inputId)).toBe(true); // input survives
+    h.controller.joinCommentator('c2', 'MAREK');
+    const state = h.controller.stateSnapshot();
+    expect(state.commentator?.name).toBe('MAREK');
+    // The adopted slot still owns the same input — no new offer needed.
+    await vi.advanceTimersByTimeAsync(1100);
+    expect(h.connected.has(inputId)).toBe(true);
+    h.controller.dispose();
+  });
+
+  it('reports the commentator in kbt_state and clears it on leave', async () => {
+    const h = harness();
+    h.controller.joinCommentator('c1', 'MAREK');
+    await h.controller.startCommentatorCamera('c1');
+    const inputId = h.camOfferFor('c1')!.inputId;
+    await vi.advanceTimersByTimeAsync(1100); // cam poll flips camConnected
+    expect(h.controller.stateSnapshot().commentator).toMatchObject({
+      name: 'MAREK',
+      camConnected: true,
+    });
+    h.controller.leaveCommentator('c1');
+    expect(h.controller.stateSnapshot().commentator).toBeNull();
+    expect(h.connected.has(inputId)).toBe(false);
     h.controller.dispose();
   });
 });

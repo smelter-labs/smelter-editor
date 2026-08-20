@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ArcadeStage } from '../duck-hunter/retro-kit';
+import { Stage } from './kbt-kit';
 import {
   DEFAULT_KBT_UI_CONFIG,
   useKbtRoom,
@@ -14,7 +14,7 @@ import { RosterScreen } from './screens/roster-screen';
 import { HeatScreen } from './screens/heat-screen';
 import { ResultsScreen } from './screens/results-screen';
 import { PodiumScreen } from './screens/podium-screen';
-import '../duck-hunter/retro.css';
+import './kbt-kit.css';
 
 type Screen = 'title' | 'setup' | 'roster' | 'heat' | 'results' | 'podium';
 
@@ -112,7 +112,7 @@ export function KettlebellTournamentArcade() {
   };
 
   return (
-    <ArcadeStage>
+    <Stage>
       {screen === 'title' ? (
         <TitleScreen onStart={() => setScreen('setup')} />
       ) : null}
@@ -170,6 +170,6 @@ export function KettlebellTournamentArcade() {
           onExit={() => void exitToTitle()}
         />
       ) : null}
-    </ArcadeStage>
+    </Stage>
   );
 }

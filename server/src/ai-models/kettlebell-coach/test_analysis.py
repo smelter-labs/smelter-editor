@@ -28,13 +28,15 @@ CONF = 0.9
 
 def make_pose(
     nose, ear, shoulder, elbow, wrist, hip, knee, ankle,
-    wrist_r=None, elbow_r=None,
+    wrist_r=None, elbow_r=None, shoulder_r=None,
 ):
     kpts = [[0.0, 0.0, 0.0] for _ in range(17)]
     kpts[0] = [*nose, CONF]
     for left, pt in ((3, ear), (5, shoulder), (7, elbow), (9, wrist), (11, hip), (13, knee), (15, ankle)):
         kpts[left] = [*pt, CONF]
         kpts[left + 1] = [*pt, CONF]
+    if shoulder_r is not None:
+        kpts[6] = [*shoulder_r, CONF]
     if elbow_r is not None:
         kpts[8] = [*elbow_r, CONF]
     if wrist_r is not None:
@@ -141,6 +143,42 @@ BOTTOM_SHALLOW_2H = make_pose(
     nose=(0.34, 0.34), ear=(0.35, 0.33), shoulder=(0.40, 0.39),
     elbow=(0.42, 0.465), wrist=(0.44, 0.538),
     hip=(0.50, 0.52), knee=(0.48, 0.67), ankle=(0.50, 0.80),
+)
+
+# FRONT-facing camera (the tournament setup: phone propped up facing the
+# athlete). Shoulders are laterally separated; at the swing top the arms point
+# AT the camera, so the projected wrists land next to the shoulders and the
+# foreshortened elbows sit off the shoulder-wrist line — the projected elbow
+# angle reads folded (~78 deg) even though the arms are straight.
+FRONT_BOTTOM = make_pose(
+    nose=(0.50, 0.34), ear=(0.52, 0.33),
+    shoulder=(0.42, 0.40), shoulder_r=(0.58, 0.40),
+    elbow=(0.45, 0.50), elbow_r=(0.55, 0.50),
+    wrist=(0.49, 0.60), wrist_r=(0.51, 0.60),
+    hip=(0.50, 0.52), knee=(0.50, 0.68), ankle=(0.50, 0.80),
+)
+FRONT_TOP = make_pose(
+    nose=(0.50, 0.20), ear=(0.52, 0.21),
+    shoulder=(0.42, 0.30), shoulder_r=(0.58, 0.30),
+    elbow=(0.44, 0.36), elbow_r=(0.56, 0.36),
+    wrist=(0.49, 0.33), wrist_r=(0.51, 0.33),
+    hip=(0.50, 0.50), knee=(0.50, 0.65), ankle=(0.50, 0.80),
+)
+# Front-view one-hand clean: LEFT hand racked at the shoulder with a vertical
+# forearm (elbow well below the wrist), right arm hanging.
+FRONT_BOTTOM_1H = make_pose(
+    nose=(0.50, 0.34), ear=(0.52, 0.33),
+    shoulder=(0.42, 0.40), shoulder_r=(0.58, 0.40),
+    elbow=(0.45, 0.50), elbow_r=(0.60, 0.44),
+    wrist=(0.49, 0.60), wrist_r=(0.63, 0.50),
+    hip=(0.50, 0.52), knee=(0.50, 0.68), ankle=(0.50, 0.80),
+)
+FRONT_TOP_CLEAN = make_pose(
+    nose=(0.50, 0.20), ear=(0.52, 0.21),
+    shoulder=(0.42, 0.30), shoulder_r=(0.58, 0.30),
+    elbow=(0.44, 0.41), elbow_r=(0.60, 0.42),
+    wrist=(0.45, 0.31), wrist_r=(0.63, 0.52),
+    hip=(0.50, 0.50), knee=(0.50, 0.65), ankle=(0.50, 0.80),
 )
 
 
@@ -455,6 +493,26 @@ def test_clean_is_counted_without_a_verdict():
     assert reps, "no reps segmented"
     assert all(r["exercise"] == "clean" for r in reps), [r["exercise"] for r in reps]
     assert all(r["verdict"] == "correct" and not r["issues"] for r in reps)
+
+
+def test_front_view_swing_is_not_a_clean():
+    """Tournament regression: filmed from the FRONT, the swing top projects the
+    wrists next to the shoulders with a folded-looking elbow angle, which used
+    to score nearly every swing as a clean (rack geometry on projection alone).
+    The elbow-below-wrist rack gate keeps these as swings."""
+    _, events, _ = run_swing(FRONT_BOTTOM, FRONT_TOP)
+    reps = rep_events(events)
+    assert reps, "no reps segmented"
+    assert all(r["exercise"] == "swing" for r in reps), [r["exercise"] for r in reps]
+
+
+def test_front_view_clean_still_detected():
+    """The rack gate must not lose a real front-view clean: vertical forearm,
+    elbow hanging well below the racked wrist."""
+    _, events, _ = run_swing(FRONT_BOTTOM_1H, FRONT_TOP_CLEAN)
+    reps = rep_events(events)
+    assert reps, "no reps segmented"
+    assert all(r["exercise"] == "clean" for r in reps), [r["exercise"] for r in reps]
 
 
 def test_overhead_hold_completes_the_rep():

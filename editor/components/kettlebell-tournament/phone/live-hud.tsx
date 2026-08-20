@@ -2,13 +2,18 @@
 
 import React from 'react';
 import type { KbtMatchEvent } from '@smelter-editor/types';
+import { KETTLEBELL_ISSUE_LABELS } from '@smelter-editor/types';
 import {
-  BlueprintBackdrop,
-  R5,
-  ledFont,
-  monoFont,
-  pixelFont,
-} from '../../duck-hunter/retro-kit';
+  Backdrop,
+  DisplayText,
+  KBT,
+  Label,
+  Num,
+  Tab,
+  displayFont,
+  kbtMonoFont,
+} from '../kbt-kit';
+import type { KbtRepLogEntry } from './heat-report';
 
 function formatClock(ms: number): string {
   const total = Math.max(0, Math.round(ms / 1000));
@@ -17,17 +22,18 @@ function formatClock(ms: number): string {
 
 /**
  * The in-heat screen, readable from 2–3 m: a giant score, the clock, the
- * detected exercise and streak. The athlete never touches the phone here —
- * it is the camera; this is pure feedback (plus a flash/beep per rep from
- * the page). Keeps the local camera preview alive underneath at low opacity
- * so the publish track keeps flowing and framing drift stays visible.
+ * last judged rep (exercise + verdict + fault) and streak. The athlete never
+ * touches the phone here — it is the camera; this is pure feedback (plus a
+ * flash/beep per rep from the page). Keeps the local camera preview alive
+ * underneath at low opacity so the publish track keeps flowing and framing
+ * drift stays visible.
  */
 export function LiveHud({
   match,
   points,
   reps,
   streak,
-  exercise,
+  lastRep,
   color,
   remainingMs,
   flash,
@@ -38,7 +44,7 @@ export function LiveHud({
   points: number;
   reps: number;
   streak: number;
-  exercise: string;
+  lastRep: KbtRepLogEntry | null;
   color: string;
   remainingMs: number | null;
   flash: 'good' | 'bad' | null;
@@ -58,11 +64,11 @@ export function LiveHud({
       style={{
         position: 'fixed',
         inset: 0,
-        background: R5.bgDeep,
+        background: KBT.page,
         overflow: 'hidden',
-        color: R5.ink,
+        color: KBT.cream,
       }}>
-      <BlueprintBackdrop />
+      <Backdrop />
       {/* Dim self-view: keeps the camera pipeline warm + shows framing. */}
       <video
         ref={attachVideo}
@@ -84,8 +90,9 @@ export function LiveHud({
           style={{
             position: 'absolute',
             inset: 0,
-            border: `10px solid ${flash === 'bad' ? R5.red : color}`,
-            boxShadow: `inset 0 0 60px ${flash === 'bad' ? R5.red : color}`,
+            border: `10px solid ${flash === 'bad' ? KBT.bad : KBT.good}`,
+            background:
+              flash === 'bad' ? 'rgba(255,64,48,.16)' : 'rgba(56,224,138,.14)',
             pointerEvents: 'none',
           }}
         />
@@ -99,82 +106,110 @@ export function LiveHud({
           flexDirection: 'column',
           alignItems: 'center',
           justifyContent: 'center',
-          gap: 6,
+          gap: 10,
           padding:
             'calc(env(safe-area-inset-top, 0px) + 10px) 16px calc(env(safe-area-inset-bottom, 0px) + 10px)',
         }}>
-        <div
-          style={{
-            fontFamily: ledFont,
-            fontWeight: 900,
-            fontSize: 'min(18vw, 12vh)',
-            color: clockDanger ? R5.red : R5.ink,
-            textShadow: clockDanger ? `0 0 24px ${R5.red}` : undefined,
-          }}
-          className={clockDanger ? 'r5-blink' : undefined}>
-          {phase === 'ended'
-            ? 'TIME!'
-            : remainingMs != null
-              ? formatClock(remainingMs)
-              : '--:--'}
-        </div>
+        <span
+          className={clockDanger ? 'kbt-blink' : undefined}
+          style={{ display: 'inline-block' }}>
+          <Num
+            size={48}
+            weight={600}
+            color={clockDanger ? KBT.bad : KBT.cream}
+            style={{ fontSize: 'min(16vw, 11vh)' }}>
+            {phase === 'ended'
+              ? 'TIME!'
+              : remainingMs != null
+                ? formatClock(remainingMs)
+                : '--:--'}
+          </Num>
+        </span>
         {countdownN != null ? (
-          <div
-            style={{
-              fontFamily: ledFont,
-              fontWeight: 900,
-              fontSize: 'min(55vw, 40vh)',
-              lineHeight: 1,
-              color: R5.yellow,
-              textShadow: `0 0 40px rgba(${R5.yellowRgb},0.8)`,
-            }}>
+          <DisplayText
+            size={200}
+            weight={800}
+            color={KBT.amber}
+            style={{ fontSize: 'min(55vw, 40vh)', lineHeight: 1 }}>
             {countdownN}
-          </div>
+          </DisplayText>
         ) : (
           <>
-            <div
-              style={{
-                fontFamily: ledFont,
-                fontWeight: 900,
-                fontSize: 'min(42vw, 34vh)',
-                lineHeight: 1,
-                color,
-                textShadow: `0 0 36px ${color}`,
-              }}>
+            <DisplayText
+              size={140}
+              weight={800}
+              color={KBT.cream}
+              style={{ fontSize: 'min(40vw, 32vh)', lineHeight: 0.9 }}>
               {points}
-            </div>
-            <div
-              style={{
-                fontFamily: pixelFont,
-                fontSize: 'min(3.6vw, 14px)',
-                letterSpacing: 2,
-                color: R5.inkMuted,
-              }}>
+            </DisplayText>
+            {/* Player color as the accent bar under the score. */}
+            <div style={{ width: 64, height: 4, background: color }} />
+            <Label size={12} tracking={4}>
               POINTS
-            </div>
+            </Label>
           </>
         )}
         <div
           style={{
             display: 'flex',
-            gap: 18,
-            alignItems: 'baseline',
-            fontFamily: monoFont,
+            gap: 16,
+            alignItems: 'center',
+            fontFamily: kbtMonoFont,
             fontSize: 'min(4.5vw, 16px)',
-            color: R5.ink,
+            color: KBT.cream,
           }}>
-          <span>
-            REPS <b style={{ fontFamily: ledFont }}>{reps}</b>
+          <span
+            style={{
+              display: 'flex',
+              alignItems: 'baseline',
+              gap: 7,
+            }}>
+            <Label size={11} tracking={2} color={KBT.dim}>
+              REPS
+            </Label>
+            <span
+              style={{
+                fontFamily: displayFont,
+                fontWeight: 700,
+                fontSize: '1.35em',
+              }}>
+              {reps}
+            </span>
           </span>
-          <span style={{ color: R5.cyan }}>
-            {exercise === 'idle' ? '—' : exercise.toUpperCase()}
-          </span>
+          {lastRep == null ? (
+            <Label size={11} tracking={2} color={KBT.dim}>
+              —
+            </Label>
+          ) : (
+            <Tab
+              size={11}
+              color={lastRep.verdict === 'incorrect' ? KBT.bad : KBT.good}>
+              {lastRep.exercise.toUpperCase()}{' '}
+              {lastRep.verdict === 'incorrect' ? '✗' : '✓'}
+            </Tab>
+          )}
           {streak >= 3 ? (
-            <span style={{ color: R5.green }}>x{streak}</span>
+            <Label size={12} tracking={2} weight={600} color={KBT.good}>
+              x{streak}
+            </Label>
+          ) : null}
+        </div>
+        {/* Fixed-height fault line so rows don't jump when a fault appears. */}
+        <div
+          style={{
+            minHeight: 16,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            textAlign: 'center',
+          }}>
+          {lastRep?.verdict === 'incorrect' && lastRep.issues.length > 0 ? (
+            <Label size={10} tracking={1} color={KBT.bad}>
+              {KETTLEBELL_ISSUE_LABELS[lastRep.issues[0]] ?? lastRep.issues[0]}
+            </Label>
           ) : null}
         </div>
       </div>
-      <div className='r5-scanlines' />
     </div>
   );
 }

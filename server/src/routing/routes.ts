@@ -2673,6 +2673,10 @@ const KbtConfigSchema = Type.Object({
   strictTechnique: Type.Optional(Type.Boolean()),
   heatDurationMs: Type.Optional(Type.Number()),
   heatSize: Type.Optional(Type.Number()),
+  /** Athlete join URL — the server renders it as the lobby scene's QR. */
+  joinUrl: Type.Optional(Type.String({ maxLength: 2048 })),
+  /** Short human-readable address shown next to the on-air QR. */
+  joinLabel: Type.Optional(Type.String({ maxLength: 64 })),
 });
 
 routes.post<RoomIdParams & { Body: Static<typeof KbtConfigSchema> }>(
@@ -2692,6 +2696,8 @@ routes.post<RoomIdParams & { Body: Static<typeof KbtConfigSchema> }>(
       strictTechnique: req.body.strictTechnique,
       heatDurationMs: req.body.heatDurationMs,
       heatSize: req.body.heatSize,
+      joinUrl: req.body.joinUrl,
+      joinLabel: req.body.joinLabel,
     });
     res.status(200).send({ status: 'ok', config });
   },

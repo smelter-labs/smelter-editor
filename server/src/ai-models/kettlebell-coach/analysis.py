@@ -37,6 +37,12 @@ IDLE_TRAVEL_MIN = 0.15
 SNATCH_ELBOW_MIN = 120.0
 CLEAN_ELBOW_MAX = 100.0
 CLEAN_RACK_DIST = 0.2
+# In a rack the forearm is near-vertical, so the elbow hangs well BELOW the
+# wrist (fraction of body height). A swing top has the elbow at wrist height in
+# ANY view — which is what a front-facing camera needs: foreshortened arms put
+# the wrist next to the shoulder and fold the projected elbow angle, so without
+# this gate almost every front-view swing reads as a clean.
+CLEAN_ELBOW_BELOW = 0.08
 
 DEFAULT_PARAMS: dict[str, Any] = {
     "repSensitivity": 0.25,
@@ -373,6 +379,7 @@ def classify_top(
     shoulder: Optional[tuple[float, float]],
     nose_y: Optional[float],
     body_h: float,
+    elbow_pt: Optional[tuple[float, float]] = None,
 ) -> str:
     """swing | clean | snatch from ONE top-of-cycle sample.
 
@@ -389,7 +396,9 @@ def classify_top(
         and (elbow is None or elbow > SNATCH_ELBOW_MIN)
     ):
         return "snatch"
-    # Bell parked at the shoulder with a folded arm → clean (rack position).
+    # Bell parked at the shoulder with a folded arm AND the elbow hanging
+    # below the wrist → clean (rack position). All three legs are needed:
+    # facing the camera, a swing top passes the first two on projection alone.
     if (
         elbow is not None
         and elbow < CLEAN_ELBOW_MAX
@@ -397,6 +406,8 @@ def classify_top(
         and shoulder is not None
         and math.hypot(wrist[0] - shoulder[0], wrist[1] - shoulder[1])
         < CLEAN_RACK_DIST * body_h
+        and elbow_pt is not None
+        and elbow_pt[1] - wrist[1] > CLEAN_ELBOW_BELOW * body_h
     ):
         return "clean"
     return "swing"
@@ -416,6 +427,7 @@ def classify_rep(rep: dict[str, Any]) -> str:
         rep.get("top_shoulder"),
         rep.get("top_nose_y"),
         rep.get("top_body_h") or rep.get("body_h") or 0.5,
+        rep.get("top_elbow_pt"),
     )
     if result != "swing":
         return result
@@ -472,6 +484,7 @@ class ExerciseClassifier:
                 "side": active_side,
                 "wrists": frame.wrists(),
                 "elbows": {s: frame.elbow_angle(s) for s in (0, 1)},
+                "elbow_pts": {s: frame.point_side(L_ELBOW, s) for s in (0, 1)},
                 "shoulders": {s: frame.point_side(L_SHOULDER, s) for s in (0, 1)},
                 "nose_y": frame.kpts[NOSE][1] if frame.kpts[NOSE][2] >= KPT_CONF_MIN else None,
                 "hip_y": frame.y(L_HIP),
@@ -523,11 +536,12 @@ class ExerciseClassifier:
         side = lifting_side(top["side"], wrists)
         wrist = wrists.get(side) if side is not None else None
         elbow = top["elbows"].get(side) if side is not None else None
+        elbow_pt = top["elbow_pts"].get(side) if side is not None else None
         shoulder = top["shoulders"].get(side) if side is not None else None
         nose_y = top["nose_y"]
         body_top = top["body_h"] or body_h
 
-        return classify_top(wrist, elbow, shoulder, nose_y, body_top)
+        return classify_top(wrist, elbow, shoulder, nose_y, body_top, elbow_pt)
 
 
 class SwingRepSegmenter:
@@ -774,6 +788,9 @@ class SwingRepSegmenter:
                 "top_y": y,
                 "top_t": t,
                 "top_elbow": frame.elbow_angle(side),
+                "top_elbow_pt": (
+                    frame.point_side(L_ELBOW, side) if side is not None else None
+                ),
                 "top_shoulder_y": frame.y(L_SHOULDER),
                 "top_hip_y": frame.y(L_HIP),
                 "top_wrist": wrists.get(side) if side is not None else None,
