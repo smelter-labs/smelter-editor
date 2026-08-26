@@ -6,8 +6,11 @@ swapped for an ML classifier behind the same TechniqueAnalyzer interface.
 
 Coordinates are normalized to the frame (0..1, y grows DOWNWARD — smaller y is
 physically higher). Keypoints follow the 17-point COCO order YOLO-pose emits.
-All heuristics assume a roughly side-on camera; that limitation is surfaced in
-the manifest param descriptions.
+Heuristics default to a roughly side-on camera (cameraView='side'); with
+cameraView='front' the depth-dependent judge checks (squatting, bent_arms,
+rounded_back) are disabled because their 2D projected angles are unreadable
+head-on. Rep counting and classification are height-based and work in both
+views.
 """
 
 from __future__ import annotations
@@ -37,6 +40,12 @@ IDLE_TRAVEL_MIN = 0.15
 SNATCH_ELBOW_MIN = 120.0
 CLEAN_ELBOW_MAX = 100.0
 CLEAN_RACK_DIST = 0.2
+# In a rack the forearm is near-vertical, so the elbow hangs well BELOW the
+# wrist (fraction of body height). A swing top has the elbow at wrist height in
+# ANY view — which is what a front-facing camera needs: foreshortened arms put
+# the wrist next to the shoulder and fold the projected elbow angle, so without
+# this gate almost every front-view swing reads as a clean.
+CLEAN_ELBOW_BELOW = 0.08
 
 DEFAULT_PARAMS: dict[str, Any] = {
     "repSensitivity": 0.25,
@@ -44,6 +53,9 @@ DEFAULT_PARAMS: dict[str, Any] = {
     "hingeKneeMin": 110.0,
     "armStraightMin": 150.0,
     "backAlignMin": 140.0,
+    # 'side' (full judging) or 'front' (height checks only). Anything else
+    # behaves as 'side' — the safe legacy default.
+    "cameraView": "side",
 }
 
 # Longest gap the pacing param is allowed to ask for. A hand-edited config
@@ -113,6 +125,15 @@ class PoseFrame:
             return None
         return (kpt[0], kpt[1])
 
+    def point_any(self, left_index: int) -> Optional[tuple[float, float]]:
+        """Dominant-side keypoint, falling back to the other side when the
+        dominant one is below confidence. For scale/height geometry either
+        side serves; angle heuristics stay side-consistent via point()."""
+        p = self.point_side(left_index, self.side_offset)
+        if p is not None:
+            return p
+        return self.point_side(left_index, 1 - self.side_offset)
+
     def y(self, left_index: int) -> Optional[float]:
         p = self.point(left_index)
         return p[1] if p else None
@@ -140,11 +161,43 @@ class PoseFrame:
         )
 
     def body_height(self) -> Optional[float]:
+        """Vertical scale of the athlete, with fallbacks so a clipped frame
+        degrades instead of silently disabling every downstream heuristic —
+        the rep segmenter used to no-op whenever the nose or the dominant-side
+        ankle dropped below confidence, zeroing whole sets filmed head-to-knee.
+
+        Chain: nose (else either ear) as the head reference; an ankle on
+        either side; with no ankle, a knee-derived estimate (nose→knee is
+        ~0.75 of nose→ankle on a standing adult)."""
         nose = self.kpts[NOSE]
-        ankle = self.point(L_ANKLE)
-        if nose[2] < KPT_CONF_MIN or ankle is None:
+        head_y: Optional[float] = None
+        if nose[2] >= KPT_CONF_MIN:
+            head_y = nose[1]
+        else:
+            ear = self.point_any(L_EAR)
+            if ear is not None:
+                head_y = ear[1]
+        if head_y is None:
             return None
-        return abs(ankle[1] - nose[1])
+        ankle = self.point_any(L_ANKLE)
+        if ankle is not None:
+            return abs(ankle[1] - head_y)
+        knee = self.point_any(L_KNEE)
+        if knee is not None and knee[1] > head_y:
+            return (knee[1] - head_y) / 0.75
+        return None
+
+    def full_body_visible(self) -> bool:
+        """Head reference AND at least one confident ankle. Deliberately
+        stricter than what body_height() can recover from: this drives the
+        'step back, whole body in frame' hint, not any math."""
+        nose = self.kpts[NOSE]
+        has_head = nose[2] >= KPT_CONF_MIN or self.point_any(L_EAR) is not None
+        has_ankle = (
+            self.point_side(L_ANKLE, 0) is not None
+            or self.point_side(L_ANKLE, 1) is not None
+        )
+        return has_head and has_ankle
 
     def elbow_angle(self, side: Optional[int] = None) -> Optional[float]:
         """Elbow angle on `side` (0/1), or the dominant side when None."""
@@ -332,6 +385,7 @@ def classify_top(
     shoulder: Optional[tuple[float, float]],
     nose_y: Optional[float],
     body_h: float,
+    elbow_pt: Optional[tuple[float, float]] = None,
 ) -> str:
     """swing | clean | snatch from ONE top-of-cycle sample.
 
@@ -348,7 +402,9 @@ def classify_top(
         and (elbow is None or elbow > SNATCH_ELBOW_MIN)
     ):
         return "snatch"
-    # Bell parked at the shoulder with a folded arm → clean (rack position).
+    # Bell parked at the shoulder with a folded arm AND the elbow hanging
+    # below the wrist → clean (rack position). All three legs are needed:
+    # facing the camera, a swing top passes the first two on projection alone.
     if (
         elbow is not None
         and elbow < CLEAN_ELBOW_MAX
@@ -356,6 +412,8 @@ def classify_top(
         and shoulder is not None
         and math.hypot(wrist[0] - shoulder[0], wrist[1] - shoulder[1])
         < CLEAN_RACK_DIST * body_h
+        and elbow_pt is not None
+        and elbow_pt[1] - wrist[1] > CLEAN_ELBOW_BELOW * body_h
     ):
         return "clean"
     return "swing"
@@ -369,13 +427,35 @@ def classify_rep(rep: dict[str, Any]) -> str:
     settling (or already back on idle) by the time the hand returns to the
     bottom, and a snatch scored as a swing collects a bogus `too_low`.
     """
-    return classify_top(
+    result = classify_top(
         rep.get("top_wrist"),
         rep.get("top_elbow"),
         rep.get("top_shoulder"),
         rep.get("top_nose_y"),
         rep.get("top_body_h") or rep.get("body_h") or 0.5,
+        rep.get("top_elbow_pt"),
     )
+    if result != "swing":
+        return result
+    # Clipped-lockout rescue: an overhead frame routinely cuts the working
+    # wrist out of the top of the picture, so `top_wrist` silently becomes
+    # the FREE hand (lifting_side falls back to the highest visible wrist)
+    # and the rep reads as a swing — then hardstyle flags the very lockout
+    # that defines the lift as `too_high`. The smoothed apex height is
+    # keypoint-independent: genuinely above the nose (or well above the
+    # shoulder line when the head is clipped too) means snatch.
+    top_y = rep.get("top_y")
+    if top_y is not None:
+        nose_y = rep.get("top_nose_y")
+        if nose_y is not None:
+            if top_y < nose_y:
+                return "snatch"
+        else:
+            shoulder_y = rep.get("top_shoulder_y")
+            body_h = rep.get("top_body_h") or rep.get("body_h") or 0.5
+            if shoulder_y is not None and shoulder_y - top_y > 0.10 * body_h:
+                return "snatch"
+    return "swing"
 
 
 class ExerciseClassifier:
@@ -410,6 +490,7 @@ class ExerciseClassifier:
                 "side": active_side,
                 "wrists": frame.wrists(),
                 "elbows": {s: frame.elbow_angle(s) for s in (0, 1)},
+                "elbow_pts": {s: frame.point_side(L_ELBOW, s) for s in (0, 1)},
                 "shoulders": {s: frame.point_side(L_SHOULDER, s) for s in (0, 1)},
                 "nose_y": frame.kpts[NOSE][1] if frame.kpts[NOSE][2] >= KPT_CONF_MIN else None,
                 "hip_y": frame.y(L_HIP),
@@ -461,11 +542,12 @@ class ExerciseClassifier:
         side = lifting_side(top["side"], wrists)
         wrist = wrists.get(side) if side is not None else None
         elbow = top["elbows"].get(side) if side is not None else None
+        elbow_pt = top["elbow_pts"].get(side) if side is not None else None
         shoulder = top["shoulders"].get(side) if side is not None else None
         nose_y = top["nose_y"]
         body_top = top["body_h"] or body_h
 
-        return classify_top(wrist, elbow, shoulder, nose_y, body_top)
+        return classify_top(wrist, elbow, shoulder, nose_y, body_top, elbow_pt)
 
 
 class SwingRepSegmenter:
@@ -499,6 +581,17 @@ class SwingRepSegmenter:
     # default 16Hz, and it holds across the whole slider range — measured, the
     # band 0.05-0.10 segments every fixture from 0.5s to 2s reps.
     SMOOTH_TAU_S = 0.08
+    # Rebound (fraction of body height) that confirms a local minimum — the
+    # same proven band as TOP_MARGIN, applied at the other turnaround. This is
+    # what lets a SHALLOW backswing arm/complete a cycle: a one-hand snatch
+    # often turns around at upper-thigh height, above the absolute bottom
+    # zone, and the machine used to sit in 'bottom' (or jam in 'down')
+    # through whole sets. The absolute zone stays as the fast path.
+    BOTTOM_CONFIRM_MARGIN = 0.05
+    # A descent counts as returned once it has covered this fraction of the
+    # rep's own bottom→top span (rep-relative, like the classifier's travel
+    # logic — absolute geometry is exactly what failed for shallow sets).
+    RETURN_FRAC = 0.75
 
     def __init__(self, rep_sensitivity: float = 0.25):
         self.rep_sensitivity = rep_sensitivity
@@ -506,6 +599,15 @@ class SwingRepSegmenter:
         self._y: Optional[float] = None
         self._prev: Optional[tuple[float, float]] = None  # (t, smoothed y)
         self._rep: dict[str, Any] = {}
+        # Last directly-measured (t, hip_y, body_h) — substituted while the
+        # hip/scale is momentarily clipped so a set doesn't silently stall.
+        self._geom: Optional[tuple[float, float, float]] = None
+        # Lowest point (max y, smoothed) + frame stats since entering
+        # 'bottom' — arms a shallow backswing on a confirmed local minimum.
+        self._hang: Optional[dict[str, Any]] = None
+        # Lowest point of the current descent ('down') — completes a shallow
+        # return on a confirmed local minimum within the rep's own span.
+        self._descend: Optional[dict[str, Any]] = None
 
     def update(
         self,
@@ -515,16 +617,30 @@ class SwingRepSegmenter:
         active_side: Optional[int] = None,
     ) -> Optional[dict[str, Any]]:
         """Feed one sample; returns raw rep stats when a rep completes."""
-        hip_y = frame.y(L_HIP)
-        body_h = frame.body_height()
-        if hip_y is None or body_h is None:
-            return None
-
         if self._prev is not None and t - self._prev[0] > self.STALE_GAP_S:
             self.phase = None
             self._y = None
             self._prev = None
             self._rep = {}
+            self._geom = None
+            self._hang = None
+            self._descend = None
+
+        hip_p = frame.point_any(L_HIP)
+        hip_y = hip_p[1] if hip_p is not None else None
+        body_h = frame.body_height()
+        if hip_y is not None and body_h is not None:
+            self._geom = (t, hip_y, body_h)
+        else:
+            # Mirror _classify_window's fallback in spirit, scoped to the
+            # stale gap: reuse the last measured geometry rather than no-op —
+            # a momentarily clipped hip/scale must not stall a live set.
+            if self._geom is None or t - self._geom[0] > self.STALE_GAP_S:
+                return None
+            if hip_y is None:
+                hip_y = self._geom[1]
+            if body_h is None:
+                body_h = self._geom[2]
 
         dt = t - self._prev[0] if self._prev is not None else 0.0
         if self._y is None or dt <= 0:
@@ -542,6 +658,16 @@ class SwingRepSegmenter:
 
         if self.phase in (None, "bottom"):
             self.phase = "bottom"
+            # Track the hang low regardless of the absolute zone — the arm
+            # for shallow backswings that never dip below hip + margin.
+            if self._hang is None or y >= self._hang["y"]:
+                self._hang = {
+                    "y": y,
+                    "t": t,
+                    "knee": frame.knee_angle(),
+                    "hip": frame.hip_angle(),
+                    "back": frame.back_angle(),
+                }
             if in_bottom:
                 # Keep refreshing the bottom-most stats until the swing starts.
                 if not self._rep or y >= self._rep["bottom_y"]:
@@ -556,8 +682,26 @@ class SwingRepSegmenter:
                     }
                 else:
                     self._rep["start_t"] = t
-            elif self._rep and vy < 0:
+            elif (
+                not self._rep
+                and self._hang["y"] > hip_y
+                and self._hang["y"] - y
+                >= self.BOTTOM_CONFIRM_MARGIN * body_h
+            ):
+                # Confirmed local minimum below the hip line: arm the rep
+                # from the hang-low snapshot (the absolute zone never fired).
+                self._rep = {
+                    "bottom_y": self._hang["y"],
+                    "bottom_knee": self._hang["knee"],
+                    "bottom_hip": self._hang["hip"],
+                    "bottom_back": self._hang["back"],
+                    "start_t": self._hang["t"],
+                    "min_elbow": None,
+                    "body_h": body_h,
+                }
+            if self.phase == "bottom" and self._rep and not in_bottom and vy < 0:
                 self.phase = "up"
+                self._hang = None
         if self.phase == "up":
             # Arm checks follow the LIFTING arm (one-hand lifts), falling back
             # to the dominant side for two-hand swings.
@@ -577,17 +721,57 @@ class SwingRepSegmenter:
                 if travel < self.rep_sensitivity * self._rep["body_h"]:
                     self.phase = "bottom"  # fidget, not a rep
                     self._rep = {}
+                    self._hang = None
                 else:
                     self.phase = "down"
+                    self._descend = None
         if self.phase == "down":
             if in_bottom:
                 self.phase = "bottom"
+                self._hang = None
+                self._descend = None
                 rep = self._rep
                 self._rep = {}
                 # Every full cycle counts, however fast or slow — a rep held
                 # overhead or snapped off quickly is still a rep. Duration is
                 # kept for diagnostics, it no longer gates.
                 rep["duration"] = t - rep["start_t"]
+                return rep
+            # Shallow return: the descent turned around below the hip line
+            # but above the absolute zone. Complete on a confirmed local
+            # minimum once the hand has covered RETURN_FRAC of this rep's own
+            # span — and seed the next cycle from that low, so back-to-back
+            # shallow reps chain without ever touching the absolute zone.
+            if self._descend is None or y >= self._descend["y"]:
+                self._descend = {
+                    "y": y,
+                    "t": t,
+                    "knee": frame.knee_angle(),
+                    "hip": frame.hip_angle(),
+                    "back": frame.back_angle(),
+                }
+            span = self._rep["bottom_y"] - self._rep["top_y"]
+            if (
+                self._descend["y"] > hip_y
+                and self._descend["y"] - self._rep["top_y"]
+                >= self.RETURN_FRAC * span
+                and self._descend["y"] - y
+                >= self.BOTTOM_CONFIRM_MARGIN * body_h
+            ):
+                rep = self._rep
+                rep["duration"] = t - rep["start_t"]
+                self._rep = {
+                    "bottom_y": self._descend["y"],
+                    "bottom_knee": self._descend["knee"],
+                    "bottom_hip": self._descend["hip"],
+                    "bottom_back": self._descend["back"],
+                    "start_t": self._descend["t"],
+                    "min_elbow": None,
+                    "body_h": body_h,
+                }
+                self._hang = None
+                self._descend = None
+                self.phase = "bottom"
                 return rep
         return None
 
@@ -610,6 +794,9 @@ class SwingRepSegmenter:
                 "top_y": y,
                 "top_t": t,
                 "top_elbow": frame.elbow_angle(side),
+                "top_elbow_pt": (
+                    frame.point_side(L_ELBOW, side) if side is not None else None
+                ),
                 "top_shoulder_y": frame.y(L_SHOULDER),
                 "top_hip_y": frame.y(L_HIP),
                 "top_wrist": wrists.get(side) if side is not None else None,
@@ -634,12 +821,22 @@ def judge_swing_rep(
     """Score one segmented swing rep → ('correct'|'incorrect', issue codes)."""
     issues: list[str] = []
 
+    # Head-on, knee/elbow/back angles are 2D projections of motion that
+    # happens along the depth axis — a straight-armed front-view swing folds
+    # the projected elbow to ~78 deg (see the FRONT_* test fixtures). Only the
+    # pure height comparisons survive a front-facing camera.
+    front = str(params.get("cameraView", "side")) == "front"
+
     knee = rep.get("bottom_knee")
-    if knee is not None and knee < float(params["hingeKneeMin"]):
+    if not front and knee is not None and knee < float(params["hingeKneeMin"]):
         issues.append("squatting")
 
     min_elbow = rep.get("min_elbow")
-    if min_elbow is not None and min_elbow < float(params["armStraightMin"]):
+    if (
+        not front
+        and min_elbow is not None
+        and min_elbow < float(params["armStraightMin"])
+    ):
         issues.append("bent_arms")
 
     # 'hardstyle' polices both ends of the arc, 'overhead-ok' allows American
@@ -656,7 +853,7 @@ def judge_swing_rep(
             issues.append("too_low")
 
     back = rep.get("bottom_back")
-    if back is not None and back < float(params["backAlignMin"]):
+    if not front and back is not None and back < float(params["backAlignMin"]):
         issues.append("rounded_back")
 
     return ("incorrect" if issues else "correct", issues)
@@ -688,6 +885,17 @@ class TechniqueAnalyzer:
     HAND_SWITCH_RATIO = 1.2
     # Wrists closer than this (normalized) count as "together" (two-hand grip).
     HANDS_TOGETHER_DIST = 0.05
+    # A tracked bell riding more than this (normalized) ABOVE the nearest
+    # wrist is physically impossible for a hanging bell mid-arc — the box has
+    # drifted (it is carried by wrist deltas after a loose acquisition gate).
+    # Such a box must not drive the phase machine: a constant +0.06 offset
+    # was measured to zero whole sets. Below the wrist is normal geometry.
+    KB_ABOVE_WRIST_MAX = 0.05
+    # Keep steering with the ACTIVE hand's last seen position for this long
+    # after it clips out of frame (overhead lockout, below-frame backswing).
+    # Without it the idle hand hijacks the height signal and V-blips the
+    # phase machine into phantom reps at the apex.
+    HAND_HOLD_S = 0.5
     # How long after a rep the reported label keeps naming that lift once the
     # window classifier has fallen back to idle (see _snapshot).
     LAST_REP_LABEL_HOLD_S = 10.0
@@ -705,6 +913,12 @@ class TechniqueAnalyzer:
         self._last_rep_t = 0.0
         self._wrist_hist: deque[tuple[float, dict[int, float]]] = deque()
         self._active_side: Optional[int] = None
+        self._full_body = False
+        # (t, pos, side) of the last returned hand — coasting source while
+        # the active hand is momentarily out of frame (HAND_HOLD_S).
+        self._last_hand: Optional[
+            tuple[float, tuple[float, float], Optional[int]]
+        ] = None
 
     def set_params(self, params: dict[str, Any]) -> None:
         for key in DEFAULT_PARAMS:
@@ -728,17 +942,42 @@ class TechniqueAnalyzer:
         while self._wrist_hist and t - self._wrist_hist[0][0] > self.HAND_WINDOW_S:
             self._wrist_hist.popleft()
 
+        if kb_pos is not None and wrists:
+            nearest = min(
+                wrists,
+                key=lambda s: math.hypot(
+                    wrists[s][0] - kb_pos[0], wrists[s][1] - kb_pos[1]
+                ),
+            )
+            if wrists[nearest][1] - kb_pos[1] > self.KB_ABOVE_WRIST_MAX:
+                # Box floats above the gripping hand — drifted track. Fall
+                # through to the wrist logic instead of poisoning the cycle.
+                kb_pos = None
+            else:
+                self._active_side = nearest
         if kb_pos is not None:
-            if wrists:
-                self._active_side = min(
-                    wrists,
-                    key=lambda s: math.hypot(
-                        wrists[s][0] - kb_pos[0], wrists[s][1] - kb_pos[1]
-                    ),
-                )
+            self._last_hand = (t, kb_pos, self._active_side)
             return kb_pos, self._active_side
         if not wrists:
+            if (
+                self._last_hand is not None
+                and t - self._last_hand[0] <= self.HAND_HOLD_S
+            ):
+                return self._last_hand[1], self._last_hand[2]
             return None, None
+
+        # The active hand clipped out of frame (overhead lockout, below-frame
+        # backswing): coast on its last seen position BEFORE the travel vote —
+        # otherwise the idle hand, being the only one visible, would win the
+        # vote outright and V-blip the height signal into phantom reps.
+        if (
+            self._active_side is not None
+            and self._active_side not in wrists
+            and self._last_hand is not None
+            and self._last_hand[2] == self._active_side
+            and t - self._last_hand[0] <= self.HAND_HOLD_S
+        ):
+            return self._last_hand[1], self._active_side
 
         travel: dict[int, float] = {}
         for side in wrists:
@@ -759,11 +998,24 @@ class TechniqueAnalyzer:
             (wl, wr) = wrists[0], wrists[1]
             if math.hypot(wl[0] - wr[0], wl[1] - wr[1]) < self.HANDS_TOGETHER_DIST:
                 mid = ((wl[0] + wr[0]) / 2, (wl[1] + wr[1]) / 2)
+                self._last_hand = (t, mid, self._active_side)
                 return mid, self._active_side
         if self._active_side in wrists:
-            return wrists[self._active_side], self._active_side
+            pos = wrists[self._active_side]
+            self._last_hand = (t, pos, self._active_side)
+            return pos, self._active_side
+        if (
+            self._active_side is not None
+            and self._last_hand is not None
+            and self._last_hand[2] == self._active_side
+            and t - self._last_hand[0] <= self.HAND_HOLD_S
+        ):
+            # The active hand clipped out of frame: coast on its last seen
+            # position instead of letting the idle hand hijack the signal.
+            return self._last_hand[1], self._active_side
         # No usable history yet: the bell hand hangs LOWEST at rest/bottom.
         side = max(wrists, key=lambda s: wrists[s][1])
+        self._last_hand = (t, wrists[side], side)
         return wrists[side], side
 
     def update(
@@ -774,9 +1026,11 @@ class TechniqueAnalyzer:
     ) -> dict[str, Any]:
         events: list[dict[str, Any]] = []
         if kpts is None:
+            self._full_body = False
             return self._snapshot(t, events)
 
         frame = PoseFrame(kpts)
+        self._full_body = frame.full_body_visible()
         pos, active_side = self._pick_hand(t, frame, kb_pos)
         if pos is None:
             return self._snapshot(t, events)
@@ -821,6 +1075,9 @@ class TechniqueAnalyzer:
                     "issues": issues,
                     "exercise": exercise,
                     "duration": duration,
+                    # Apex PTS — the worker looks up the matching buffered
+                    # frame for the rep-screenshot feature.
+                    "topT": round(float(rep.get("top_t", 0.0)), 3),
                 }
             )
         return self._snapshot(t, events)
@@ -841,5 +1098,8 @@ class TechniqueAnalyzer:
             "phase": self.segmenter.phase,
             "repCount": self.rep_count,
             "lastRep": self.last_rep,
+            # Framing hint (head + an ankle in frame) — the phone's
+            # 'BACK UP' cue; counting itself survives worse via fallbacks.
+            "fullBody": self._full_body,
             "events": events,
         }

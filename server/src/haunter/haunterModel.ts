@@ -1,5 +1,5 @@
 /**
- * Haunting-ghosts model — pure logic for the ambient "straszące duszki" effect
+ * Haunting-ghosts model — pure logic for the ambient "haunting ghosts" effect
  * (HaunterGhostsInput). A fixed pool of ghost sprites floats over the video;
  * each ghost latches onto the nearest tracked person within a distance
  * threshold (1:1 — one ghost per person). Latching runs a three-state arc:

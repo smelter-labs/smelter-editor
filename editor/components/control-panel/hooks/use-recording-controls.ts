@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useActions } from '../contexts/actions-context';
 
-const DOWNLOAD_DELAY_MS = 1500;
+/** Grace period after stop before downloading — the mp4 needs to finalize. */
+export const DOWNLOAD_DELAY_MS = 1500;
 export const RECORDING_DOWNLOAD_STARTED_EVENT =
   'smelter:recording-download-started';
 

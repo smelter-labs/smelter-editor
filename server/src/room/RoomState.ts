@@ -1,6 +1,7 @@
 import path from 'node:path';
-import { randomUUID } from 'node:crypto';
-import { remove } from 'fs-extra';
+import { createHash, randomUUID } from 'node:crypto';
+import { ensureDir, pathExists, readdir, remove, writeFile } from 'fs-extra';
+import QRCode from 'qrcode';
 import { Mutex } from 'async-mutex';
 import { SmelterInstance, type SmelterOutput } from '../smelter';
 import type { InputConfig } from '../app/store';
@@ -52,6 +53,20 @@ import {
   KettlebellCoachController,
   type KettlebellResultData,
 } from '../kettlebell/KettlebellCoachController';
+import {
+  KettlebellTournamentController,
+  type KbtMatchCommand,
+  type KbtMatchError,
+} from '../kettlebell/KettlebellTournamentController';
+import type {
+  KbtConfig,
+  KbtExerciseKey,
+  KbtMatchEvent,
+  KbtStateEvent,
+  KettlebellExercise,
+} from '@smelter-editor/types';
+import { config } from '../config';
+import { roomEventBus } from '../core/roomEventBus';
 import {
   DEFAULT_HAUNTER_COUNT,
   DEFAULT_HAUNTER_DIST,
@@ -251,6 +266,8 @@ export class RoomState {
   /** Duck Hunter game (phone-gyroscope crosshairs targeting the ducks). */
   private readonly duckHunter: DuckHunterController;
   private readonly kettlebellController: KettlebellCoachController;
+  /** Kettlebell Tournament (phone cameras + coach reps → heats + scores). */
+  private readonly kbTournament: KettlebellTournamentController;
 
   /**
    * Per-input wall-clock of the last SCHEDULED kettlebell overlay apply. The
@@ -363,7 +380,164 @@ export class RoomState {
     this.recordingController = new RecordingController(idPrefix, output);
     this.snakeGameController = new SnakeGameController();
     this.duckHunter = new DuckHunterController(idPrefix, output.store);
-    this.kettlebellController = new KettlebellCoachController(idPrefix);
+    // The coach's debounced events are tee'd into the tournament controller —
+    // one debounce layer, two consumers (room bus + scoring). The arrow reads
+    // this.kbTournament lazily, so construction order below doesn't matter.
+    this.kettlebellController = new KettlebellCoachController(
+      idPrefix,
+      (id, event) => {
+        roomEventBus.broadcast(id, event);
+        this.kbTournament?.onCoachEvent(event);
+      },
+    );
+    this.kbTournament = new KettlebellTournamentController(idPrefix, {
+      broadcast: (event) => roomEventBus.broadcast(idPrefix, event),
+      sendTo: (clientId, event) =>
+        roomEventBus.sendTo(idPrefix, clientId, event),
+      hasActiveRecording: () => this.recordingController.hasActiveRecording(),
+      // InputManager path (NOT DuckHunter's raw registerInput): WHIP inputs
+      // registered here get the video side channel the coach model needs, and
+      // the standard `${roomId}::whip::${uuid}` id stays inside the 103-char
+      // unix-socket path budget.
+      registerPlayerCam: async (name, dims) => {
+        const inputId = await this.addNewInput({
+          type: 'whip',
+          username: `[camera] ${name}`,
+          // Real track dimensions from the phone: the registration path
+          // honors exact dims (updateInput's bare-orientation heuristic
+          // would clobber them, so orientation always travels WITH dims).
+          ...(dims
+            ? {
+                nativeWidth: dims.width,
+                nativeHeight: dims.height,
+                orientation:
+                  dims.height > dims.width
+                    ? ('vertical' as const)
+                    : ('horizontal' as const),
+              }
+            : {}),
+        });
+        if (!inputId) throw new Error('WHIP input registration failed');
+        const bearerToken = await this.connectInput(inputId);
+        return {
+          inputId,
+          whipUrl: `${config.whipBaseUrl}/${inputId}`,
+          bearerToken,
+        };
+      },
+      removeInput: (inputId) => this.removeInput(inputId),
+      setKettlebellCoach: (inputId, enabled, params) =>
+        this.setAIModelEnabled(
+          inputId,
+          KETTLEBELL_COACH_ID,
+          enabled,
+          undefined,
+          false,
+          params,
+        ),
+      layoutTiles: (tiles) =>
+        this.updateLayers([
+          {
+            id: 'kbt-stage',
+            inputs: tiles.map((t) => ({
+              inputId: t.inputId,
+              x: t.x,
+              y: t.y,
+              width: t.width,
+              height: t.height,
+              transitionDurationMs: t.transitionDurationMs,
+              transitionEasing: t.transitionEasing,
+            })),
+          },
+        ]),
+      isInputConnected: (inputId) =>
+        this.inputManager
+          .getInputs()
+          .some((i) => i.inputId === inputId && i.status === 'connected'),
+      // Engine status for WHIP means "registered", not "publishing" — real
+      // liveness comes from the phone's heartbeat acks (KBT camera gate).
+      isInputLive: (inputId) => this.inputManager.isWhipInputLive(inputId),
+      getResolution: () => this.output.store.getState().resolution,
+      publishHud: (state) =>
+        this.output.store.getState().setKbTournament(state),
+      // Lobby-scene QR: render the join URL to a PNG under the data dir and
+      // register it with the engine. The image id carries a content hash —
+      // registered images are immutable per id, so a changed URL must mint a
+      // fresh id for the HUD to pick up.
+      registerJoinQr: async (url) => {
+        const hash = createHash('sha1').update(url).digest('hex').slice(0, 8);
+        const safeRoom = idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const dir = path.join(DATA_DIR, 'kbt-qr');
+        await ensureDir(dir);
+        const file = path.join(dir, `${safeRoom}-${hash}.png`);
+        await QRCode.toFile(file, url, {
+          type: 'png',
+          width: 288,
+          margin: 0,
+          errorCorrectionLevel: 'M',
+          // Drawn on the join panel's baked cream square — match its tone so
+          // the quiet zone blends in.
+          color: { dark: '#101114ff', light: '#e8e4daff' },
+        });
+        const imageId = `kbt-qr-${safeRoom}-${hash}`;
+        await SmelterInstance.registerImage(imageId, {
+          serverPath: file,
+          assetType: 'png',
+        });
+        return imageId;
+      },
+      // Profile photos follow the QR's immutability rule: the id embeds the
+      // content hash, so a re-uploaded photo mints a fresh id.
+      registerPlayerPhoto: async (photoPath, photoHash) => {
+        const safeRoom = idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const imageId = `kbt-photo-${safeRoom}-${photoHash}`;
+        // Re-uploading earlier content mints the same id — cancel a pending
+        // deferred unregister so it doesn't kill the image we're reviving.
+        const pending = this.pendingImageUnregisters.get(imageId);
+        if (pending) {
+          clearTimeout(pending.timer);
+          this.pendingImageUnregisters.delete(imageId);
+        }
+        await SmelterInstance.registerImage(imageId, {
+          serverPath: photoPath,
+          assetType: 'jpeg',
+        });
+        return imageId;
+      },
+      unregisterPlayerPhoto: (imageId, photoPath) => {
+        // Deferred so a HUD snapshot still holding the old id keeps rendering
+        // through the grace window; the helper deletes the file afterwards.
+        if (imageId) this.deferredUnregisterImage(imageId, photoPath);
+        else void remove(photoPath).catch(() => {});
+      },
+      // Rep-apex stills for the commentator's REP CAM overlay. File names are
+      // per-rep unique, so a name hash is a stable content id (same
+      // immutability rule as photos). Resolves null when the file is gone
+      // (stale url after a restart) — the overlay then keeps its placeholder.
+      registerRepShotImage: async (url) => {
+        const m = /^\/kbt-rep-frames\/([A-Za-z0-9._-]+)$/.exec(url);
+        if (!m) return null;
+        const file = path.join(DATA_DIR, 'kbt-rep-frames', m[1]);
+        if (!(await pathExists(file))) return null;
+        const hash = createHash('sha1').update(m[1]).digest('hex').slice(0, 10);
+        const safeRoom = idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
+        const imageId = `kbt-repshot-${safeRoom}-${hash}`;
+        try {
+          await SmelterInstance.registerImage(imageId, {
+            serverPath: file,
+            assetType: 'jpeg',
+          });
+        } catch {
+          return null;
+        }
+        return imageId;
+      },
+      // NOT deferredUnregisterImage: that helper deletes the backing file,
+      // and rep frames are still HTTP-served (the room's GC sweep owns them).
+      unregisterRepShotImage: (imageId) => {
+        void SmelterInstance.unregisterImage(imageId).catch(() => {});
+      },
+    });
 
     let motionResultCount = 0;
     void this.aiController.wireSidecarListeners('motion', (event) => {
@@ -781,11 +955,20 @@ export class RoomState {
         frameW?: number;
         frameH?: number;
         procMs?: number;
+        fullBody?: boolean;
+        session?: string;
       };
 
       this.kettlebellController.handleResult(
         event.inputId,
         data as KettlebellResultData,
+      );
+      // Live pose visibility for the tournament's intro framing check — the
+      // debounced coach events carry no pose, so tap the raw result here.
+      this.kbTournament.onPoseSample(
+        event.inputId,
+        !!data.pose?.kpts && data.pose.kpts.length > 0,
+        data.fullBody !== false,
       );
 
       const outputDelayMs = input.registeredSideChannelDelayMs ?? 0;
@@ -923,15 +1106,20 @@ export class RoomState {
   }
 
   public async startRecording(): Promise<{ fileName: string }> {
-    return this.mutex.runExclusive(() =>
+    const result = await this.mutex.runExclusive(() =>
       this.recordingController.startRecording(),
     );
+    // On failure the throw above skips this — state didn't change.
+    this.kbTournament.notifyRecordingChanged();
+    return result;
   }
 
   public async stopRecording(): Promise<{ fileName: string }> {
-    return this.mutex.runExclusive(() =>
+    const result = await this.mutex.runExclusive(() =>
       this.recordingController.stopRecording(),
     );
+    this.kbTournament.notifyRecordingChanged();
+    return result;
   }
 
   // ── Room settings ─────────────────────────────────────────
@@ -1481,6 +1669,133 @@ export class RoomState {
   /** A phone client disconnected — drop its crosshair/score. */
   public handleShooterDisconnect(clientId: string): void {
     this.duckHunter.handleDisconnect(clientId);
+  }
+
+  // ── Kettlebell Tournament (thin delegates, like Duck Hunter above) ──
+
+  public handleKbtMessage(clientId: string, raw: unknown): void {
+    this.kbTournament.handleMessage(clientId, raw);
+  }
+
+  public handleKbtDisconnect(clientId: string): void {
+    this.kbTournament.handleDisconnect(clientId);
+  }
+
+  public controlKbtMatch(cmd: KbtMatchCommand): {
+    state: KbtStateEvent;
+    match: KbtMatchEvent;
+    error?: KbtMatchError;
+  } {
+    return this.kbTournament.controlMatch(cmd);
+  }
+
+  public getKbtState(): { state: KbtStateEvent; match: KbtMatchEvent } {
+    return {
+      state: this.kbTournament.stateSnapshot(),
+      match: this.kbTournament.getMatchSnapshot(),
+    };
+  }
+
+  /**
+   * Store an uploaded profile photo (already re-encoded to JPEG by the phone)
+   * and attach it to the player with this name. The file name embeds a content
+   * hash — the URL changes with the photo, so web caches can be immutable and
+   * the engine image id (minted from the same hash) never mutates.
+   * Returns null when no such player has joined (route replies 404).
+   */
+  public async setKbtPlayerPhoto(
+    name: string,
+    jpeg: Buffer,
+    playerKey?: string,
+  ): Promise<{ photoUrl: string } | null> {
+    const hash = createHash('sha1').update(jpeg).digest('hex').slice(0, 8);
+    const safeRoom = this.idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
+    const dir = path.join(DATA_DIR, 'kbt-photos');
+    await ensureDir(dir);
+    const fileName = `${safeRoom}-${hash}.jpg`;
+    const photoPath = path.join(dir, fileName);
+    await writeFile(photoPath, jpeg);
+    const photoUrl = `/kbt-photos/${fileName}`;
+    const attached = this.kbTournament.setPlayerPhoto(
+      name,
+      {
+        photoUrl,
+        photoPath,
+        photoHash: hash,
+      },
+      playerKey,
+    );
+    if (!attached) {
+      await remove(photoPath).catch(() => {});
+      return null;
+    }
+    return { photoUrl };
+  }
+
+  public setKbtConfig(cfg: {
+    scoring?: Partial<
+      Record<KbtExerciseKey, Partial<{ enabled: boolean; points: number }>>
+    >;
+    strictTechnique?: boolean;
+    heatDurationMs?: number;
+    heatSize?: number;
+    cameraView?: 'front' | 'side';
+    repScreenshots?: boolean;
+    milestoneFx?: boolean;
+    repFloatText?: boolean;
+    joinUrl?: string;
+    joinLabel?: string;
+  }): KbtConfig {
+    return this.kbTournament.setConfig(cfg);
+  }
+
+  /**
+   * Dev-only (KBT_SIM=1): register a looping local-mp4 (from data/mp4s) as a
+   * player's camera. The mp4 input gets the same video side channel a WHIP cam
+   * would, so the coach model scores real decoded frames — no phone needed.
+   */
+  public async attachKbtMp4Cam(
+    clientId: string,
+    fileName: string,
+  ): Promise<{ inputId: string }> {
+    const inputId = await this.addNewInput({
+      type: 'local-mp4',
+      source: { fileName },
+    });
+    if (!inputId) throw new Error('Failed to register local-mp4 input');
+    await this.connectInput(inputId);
+    // A missing file becomes a placeholder input (mp4AssetMissing) rather than
+    // a registration error — detect it and surface a real failure.
+    const input = this.inputManager
+      .getInputs()
+      .find((i) => i.inputId === inputId);
+    if (
+      !input ||
+      input.type !== 'local-mp4' ||
+      input.mp4AssetMissing ||
+      input.status !== 'connected'
+    ) {
+      await this.removeInput(inputId).catch(() => {});
+      throw new Error(`MP4 not found under data/mp4s: ${fileName}`);
+    }
+    const dims =
+      input.mp4VideoWidth && input.mp4VideoHeight
+        ? { width: input.mp4VideoWidth, height: input.mp4VideoHeight }
+        : undefined;
+    if (!this.kbTournament.attachExternalCam(clientId, inputId, dims)) {
+      await this.removeInput(inputId).catch(() => {});
+      throw new Error(`Unknown player clientId: ${clientId}`);
+    }
+    return { inputId };
+  }
+
+  /** Dev-only (KBT_SIM=1): fabricate a scored rep for UI work sans model. */
+  public simulateKbtRep(
+    clientId: string,
+    exercise: KettlebellExercise,
+    verdict: 'correct' | 'incorrect',
+  ): boolean {
+    return this.kbTournament.simulateRep(clientId, exercise, verdict);
   }
 
   /**
@@ -2410,6 +2725,7 @@ export class RoomState {
       this.destroyed = true;
       this.pausedAttachedInputVolumes.clear();
       this.duckHunter.dispose();
+      this.kbTournament.dispose();
 
       if (this.pendingStoreFlushTimer) {
         clearTimeout(this.pendingStoreFlushTimer);
@@ -2424,6 +2740,35 @@ export class RoomState {
 
       this.cleanupFrozenImages();
       await this.flushPendingImageUnregisters();
+
+      // Sweep this room's profile photos (covers files orphaned by players
+      // who left or by registrations that never completed).
+      try {
+        const photoDir = path.join(DATA_DIR, 'kbt-photos');
+        const safeRoom = this.idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
+        for (const f of await readdir(photoDir)) {
+          if (f.startsWith(`${safeRoom}-`)) {
+            await remove(path.join(photoDir, f)).catch(() => {});
+          }
+        }
+      } catch {
+        // dir may not exist — nothing to sweep
+      }
+
+      // Sweep this room's rep-apex stills. The worker names them after the
+      // sanitized inputId (`${roomId}::whip::…` → same char-class replacement
+      // as safeRoom), so a room-prefix match catches them all.
+      try {
+        const frameDir = path.join(DATA_DIR, 'kbt-rep-frames');
+        const safeRoom = this.idPrefix.replace(/[^a-zA-Z0-9_-]/g, '_');
+        for (const f of await readdir(frameDir)) {
+          if (f.startsWith(safeRoom)) {
+            await remove(path.join(frameDir, f)).catch(() => {});
+          }
+        }
+      } catch {
+        // dir may not exist — nothing to sweep
+      }
 
       await this.motionController.stopAll();
       await this.aiController.destroy();
@@ -2490,9 +2835,16 @@ export class RoomState {
       showTitle: input.showTitle,
       volume: input.volume,
       shaders: input.shaders,
-      sourceWidth: input.type === 'local-mp4' ? input.mp4VideoWidth : undefined,
+      // Non-mp4 inputs fall back to their reported native dims so the render
+      // content box matches the source aspect — without this a portrait WHIP
+      // cam lands in the hard-coded 16:9 box and the video Rescaler's 'fill'
+      // cover-crops ~a third off the top and bottom. Safe: whip/hls/channel
+      // inputs default to 1920x1080 natives, identical to the old behavior,
+      // so only inputs that explicitly reported dims render differently.
+      sourceWidth:
+        input.type === 'local-mp4' ? input.mp4VideoWidth : input.nativeWidth,
       sourceHeight:
-        input.type === 'local-mp4' ? input.mp4VideoHeight : undefined,
+        input.type === 'local-mp4' ? input.mp4VideoHeight : input.nativeHeight,
       borderColor: input.borderColor,
       borderWidth: input.borderWidth,
       imageId:

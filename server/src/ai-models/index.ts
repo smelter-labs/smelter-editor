@@ -56,4 +56,4 @@ export {
   defaultAIModelConfig,
 } from './room-ai-controller';
 export type { ModelResultEvent } from './base-sidecar';
-export { BaseSidecar } from './base-sidecar';
+export { BaseSidecar, shutdownAllSidecars } from './base-sidecar';

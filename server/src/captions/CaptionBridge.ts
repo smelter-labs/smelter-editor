@@ -214,6 +214,16 @@ export class CaptionBridge {
       });
       ws.on('error', (err) => console.error('[captions] ws error', err));
     });
+    wss.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(
+          `[captions] port ${this.opts.port} is already in use — another process holds it. ` +
+            `Find it with: lsof -nP -iTCP:${this.opts.port} -sTCP:LISTEN`,
+        );
+        process.exit(1);
+      }
+      console.error('[captions] ws server error', err);
+    });
     console.log(`[captions] python WS listening on :${this.opts.port}`);
   }
 

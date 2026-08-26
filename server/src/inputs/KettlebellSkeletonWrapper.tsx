@@ -11,15 +11,31 @@ import {
   TICK_MS,
   buildSkeletonParams,
   coverTransform,
+  parseColor,
   rootOf,
 } from './kettlebellRig';
+import type { SkeletonTheme } from './kettlebellRig';
 
 type KettlebellSkeletonWrapperProps = {
   /** The content to draw the rig over (raw input or an already-wrapped variant). */
   children: React.ReactElement;
   data: KettlebellOverlayState;
   resolution: { width: number; height: number };
+  /**
+   * Every-5th-rep milestone celebration (KbtHudTile.fx): aura color plus the
+   * snapshot-relative progress p (0..1). The 10 Hz snapshots gate the
+   * envelope; the 60 Hz tick below eases the actual intensity.
+   */
+  fx?: { color: string; p: number } | null;
+  /** Rig palette family; tournament tiles pass 'kbt' (broadcast theme). */
+  theme?: SkeletonTheme;
 };
+
+/** Aura envelope from snapshot progress: fast attack, ~0.9s fade-out tail. */
+function auraTarget(fx: { color: string; p: number } | null | undefined) {
+  if (!fx) return 0;
+  return Math.max(0, Math.min(1, fx.p / 0.08, (1 - fx.p) / 0.3));
+}
 
 /**
  * Wraps `children` in the `kettlebell-skeleton` WGSL shader and drives it with
@@ -40,9 +56,15 @@ export function KettlebellSkeletonWrapper({
   children,
   data,
   resolution,
+  fx,
+  theme = 'default',
 }: KettlebellSkeletonWrapperProps) {
   const { width, height } = resolution;
   const predictorRef = useRef(new MotionPredictor(PREDICT_OPTS));
+  // Milestone aura: latest snapshot-derived target + the 60 Hz-eased value.
+  const fxRef = useRef(fx ?? null);
+  fxRef.current = fx ?? null;
+  const auraRef = useRef(0);
   // Latest observed joint offsets from the root, px; null = joint not visible.
   const targetOffsetsRef = useRef<(number[] | null)[]>(
     new Array(JOINT_COUNT).fill(null),
@@ -93,6 +115,12 @@ export function KettlebellSkeletonWrapper({
     };
     const timer = setInterval(() => {
       const now = Date.now();
+      const target = auraTarget(fxRef.current);
+      const auraLive = auraRef.current > 0.005 || target > 0;
+      if (auraLive) {
+        auraRef.current += (target - auraRef.current) * 0.15;
+        if (auraRef.current < 0.005 && target === 0) auraRef.current = 0;
+      }
       const root = predictorRef.current.predict(ROOT_TRACK_ID, now);
       if (root) {
         if (!drawnRootRef.current) drawnRootRef.current = [...root];
@@ -104,9 +132,9 @@ export function KettlebellSkeletonWrapper({
           else if (!cur) drawnOffsetsRef.current[i] = [...tgt];
           else ease(cur, tgt);
         }
-      } else if (!drawnRootRef.current) {
-        // No pose tracked and none on screen — skip the tick rather than
-        // re-serializing an unchanged scene 60 times a second.
+      } else if (!drawnRootRef.current && !auraLive) {
+        // No pose tracked, none on screen and no aura fading — skip the tick
+        // rather than re-serializing an unchanged scene 60 times a second.
         return;
       }
       setTick((t) => (t + 1) % 1_000_000);
@@ -118,10 +146,24 @@ export function KettlebellSkeletonWrapper({
   const joints = drawnOffsetsRef.current.map((off) =>
     root && off ? [root[0] + off[0], root[1] + off[1]] : null,
   );
+  const auraColor = parseColor(fx?.color ?? '#FFFFFF');
   const params = buildSkeletonParams(
     joints,
-    data.skeleton === 'neon' ? 'neon' : 'lines',
+    // 'off' keeps the shader mounted with the rig invisible — the tournament
+    // mounts this wrapper for the aura even when the skeleton is disabled.
+    data.skeleton === 'off'
+      ? 'off'
+      : data.skeleton === 'neon'
+        ? 'neon'
+        : 'lines',
     { width, height },
+    {
+      r: auraColor.r,
+      g: auraColor.g,
+      b: auraColor.b,
+      i: auraRef.current,
+    },
+    theme,
   );
 
   return (

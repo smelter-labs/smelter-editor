@@ -26,7 +26,10 @@ export function useWhipHeartbeat(
   }, [roomId]);
 
   useEffect(() => {
-    if (!inputId) return;
+    // Heartbeats mean "my publish is up" — acking while the peer connection
+    // is down would keep the server believing in a dead camera and mask
+    // SIGNAL LOST on the broadcast.
+    if (!inputId || !isActive) return;
 
     // --- Web Worker heartbeat (survives background/screen-off on mobile) ---
     let worker: Worker | null = null;

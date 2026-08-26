@@ -11,6 +11,19 @@ const execFileAsync = promisify(execFile);
 // Tail of the setup chain per venv directory — see setupPython().
 const venvSetupQueues = new Map<string, Promise<void>>();
 
+// Every started sidecar, so process-wide shutdown can kill the Python
+// workers. Without this they outlive the server (stdio is inherited) and
+// spam the terminal with reconnect attempts forever.
+const liveSidecars = new Set<BaseSidecar>();
+
+/** Kill all sidecar Python workers. Safe to call from a signal handler. */
+export function shutdownAllSidecars(): void {
+  for (const sidecar of liveSidecars) {
+    void sidecar.shutdown();
+  }
+  liveSidecars.clear();
+}
+
 export type ModelResultEvent = {
   modelId: string;
   inputId: string;
@@ -53,6 +66,7 @@ export abstract class BaseSidecar extends EventEmitter {
   private restartAttempts = 0;
   private readonly MAX_RESTARTS = 3;
   private started = false;
+  private shuttingDown = false;
 
   constructor(manifest: ModelManifest) {
     super();
@@ -62,6 +76,7 @@ export abstract class BaseSidecar extends EventEmitter {
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
+    liveSidecars.add(this);
     this.startWsServer();
     await this.ensurePython();
     this.spawnProcess();
@@ -116,6 +131,8 @@ export abstract class BaseSidecar extends EventEmitter {
   }
 
   async shutdown(): Promise<void> {
+    this.shuttingDown = true;
+    liveSidecars.delete(this);
     this.sendToPython({ cmd: 'shutdown' });
     this.pythonProcess?.kill('SIGTERM');
     this.wss?.close();
@@ -166,6 +183,16 @@ export abstract class BaseSidecar extends EventEmitter {
         console.error(`[ai:${this.manifest.id}] ws error`, err),
       );
     });
+    this.wss.on('error', (err: NodeJS.ErrnoException) => {
+      if (err.code === 'EADDRINUSE') {
+        console.error(
+          `[ai:${this.manifest.id}] port ${this.manifest.wsPort} is already in use — another process holds it. ` +
+            `Find it with: lsof -nP -iTCP:${this.manifest.wsPort} -sTCP:LISTEN`,
+        );
+        process.exit(1);
+      }
+      console.error(`[ai:${this.manifest.id}] ws server error`, err);
+    });
     console.log(
       `[ai:${this.manifest.id}] WS listening on :${this.manifest.wsPort}`,
     );
@@ -208,6 +235,7 @@ export abstract class BaseSidecar extends EventEmitter {
   }
 
   private handlePythonDisconnect(): void {
+    if (this.shuttingDown) return;
     if (this.trackedInputs.size === 0) return;
     if (this.restartAttempts >= this.MAX_RESTARTS) {
       console.error(
@@ -221,7 +249,9 @@ export abstract class BaseSidecar extends EventEmitter {
     console.log(
       `[ai:${this.manifest.id}] restarting python in ${delay}ms (attempt ${this.restartAttempts})`,
     );
-    setTimeout(() => this.spawnProcess(), delay);
+    setTimeout(() => {
+      if (!this.shuttingDown) this.spawnProcess();
+    }, delay);
   }
 
   private getVenvPython(): string {

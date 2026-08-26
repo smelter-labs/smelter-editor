@@ -31,6 +31,9 @@ const mocks = vi.hoisted(() => {
         previousAckTimestamp: Date.now(),
         currentAckTimestamp: Date.now(),
       }),
+      seed: fn(),
+      isPublishLive: fn().mockReturnValue(false),
+      wasExternallyAcked: fn().mockReturnValue(false),
       getUsername: fn().mockReturnValue('test-user'),
       getLastAckTimestamp: fn().mockReturnValue(Date.now()),
       stop: fn(),
@@ -76,6 +79,7 @@ const mocks = vi.hoisted(() => {
       onInputConnected: fn().mockResolvedValue(undefined),
       onInputDisconnected: fn().mockResolvedValue(undefined),
       onSideChannelReady: fn(),
+      getEnabledModels: fn().mockReturnValue([]),
     },
     captionBridge: {
       notifySideChannelReady: fn(),
@@ -421,6 +425,109 @@ describe('InputManager', () => {
       } as any))!;
       await manager.removeInput(inputId);
       expect(mocks.placeholderManager.ensurePlaceholder).toHaveBeenCalled();
+    });
+  });
+
+  describe('whip liveness + stale sweep', () => {
+    const whipMonitor = (over: Partial<Record<string, unknown>>) => ({
+      isLive: () => false,
+      touch: vi.fn().mockReturnValue({
+        previousAckTimestamp: Date.now(),
+        currentAckTimestamp: Date.now(),
+      }),
+      seed: vi.fn(),
+      isPublishLive: vi.fn().mockReturnValue(false),
+      wasExternallyAcked: vi.fn().mockReturnValue(false),
+      getUsername: vi.fn().mockReturnValue('test-user'),
+      getLastAckTimestamp: vi.fn().mockReturnValue(Date.now()),
+      stop: vi.fn(),
+      ...over,
+    });
+
+    it('removes a still-"connected" whip input whose external acks stopped', async () => {
+      mocks.whipStartMonitor.mockResolvedValueOnce(
+        whipMonitor({
+          wasExternallyAcked: () => true,
+          getLastAckTimestamp: () => Date.now() - 60_000,
+        }),
+      );
+      const inputId = (await manager.addNewInput({
+        type: 'whip',
+        username: 'Ghost',
+      }))!;
+      // WHIP inputs sit at 'connected' forever once registered — the exact
+      // state the old sweep refused to touch.
+      manager.getInput(inputId).status = 'connected';
+      await manager.removeStaleWhipInputs(15_000);
+      expect(manager.getInputs().some((i) => i.inputId === inputId)).toBe(
+        false,
+      );
+    });
+
+    it('keeps a registered-but-never-published connected input (OBS still warming up)', async () => {
+      mocks.whipStartMonitor.mockResolvedValueOnce(
+        whipMonitor({
+          wasExternallyAcked: () => false,
+          getLastAckTimestamp: () => Date.now() - 60_000,
+        }),
+      );
+      const inputId = (await manager.addNewInput({
+        type: 'whip',
+        username: 'SlowSetup',
+      }))!;
+      manager.getInput(inputId).status = 'connected';
+      await manager.removeStaleWhipInputs(15_000);
+      expect(manager.getInputs().some((i) => i.inputId === inputId)).toBe(
+        true,
+      );
+    });
+
+    it('never removes a recently-acked input', async () => {
+      mocks.whipStartMonitor.mockResolvedValueOnce(
+        whipMonitor({
+          wasExternallyAcked: () => true,
+          getLastAckTimestamp: () => Date.now() - 3_000,
+        }),
+      );
+      const inputId = (await manager.addNewInput({
+        type: 'whip',
+        username: 'Live',
+      }))!;
+      manager.getInput(inputId).status = 'connected';
+      await manager.removeStaleWhipInputs(15_000);
+      expect(manager.getInputs().some((i) => i.inputId === inputId)).toBe(
+        true,
+      );
+    });
+
+    it('isWhipInputLive reads the monitor for whip and engine status otherwise', async () => {
+      mocks.whipStartMonitor.mockResolvedValueOnce(
+        whipMonitor({ isPublishLive: () => true }),
+      );
+      const liveWhip = (await manager.addNewInput({
+        type: 'whip',
+        username: 'Live',
+      }))!;
+      mocks.whipStartMonitor.mockResolvedValueOnce(
+        whipMonitor({ isPublishLive: () => false }),
+      );
+      const deadWhip = (await manager.addNewInput({
+        type: 'whip',
+        username: 'Dead',
+      }))!;
+      // Both claim engine 'connected' — only acks separate them.
+      manager.getInput(liveWhip).status = 'connected';
+      manager.getInput(deadWhip).status = 'connected';
+      expect(manager.isWhipInputLive(liveWhip)).toBe(true);
+      expect(manager.isWhipInputLive(deadWhip)).toBe(false);
+      // Non-whip (KBT_SIM mp4 cams) fall back to engine status.
+      const mp4 = (await manager.addNewInput({
+        type: 'text-input',
+        text: 'stand-in',
+      } as any))!;
+      manager.getInput(mp4).status = 'connected';
+      expect(manager.isWhipInputLive(mp4)).toBe(true);
+      expect(manager.isWhipInputLive('missing-input')).toBe(false);
     });
   });
 

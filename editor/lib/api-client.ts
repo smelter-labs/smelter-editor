@@ -25,6 +25,12 @@ import type {
   AIModelInfo,
   ShooterMatchConfig,
   ShooterMatchEvent,
+  KbtCameraView,
+  KbtConfig,
+  KbtExerciseKey,
+  KbtMatchAction,
+  KbtMatchEvent,
+  KbtStateEvent,
 } from '@smelter-editor/types';
 import { createStorageClient, type StorageClient } from './storage-client';
 
@@ -192,6 +198,37 @@ interface SmelterApiClient {
     } & Partial<ShooterMatchConfig>,
   ): Promise<ShooterMatchEvent>;
   getDuckHunterMatch(roomId: string): Promise<ShooterMatchEvent>;
+
+  setKbtConfig(
+    roomId: string,
+    config: {
+      scoring?: Partial<
+        Record<KbtExerciseKey, Partial<{ enabled: boolean; points: number }>>
+      >;
+      strictTechnique?: boolean;
+      heatDurationMs?: number;
+      heatSize?: number;
+      cameraView?: KbtCameraView;
+      repScreenshots?: boolean;
+      milestoneFx?: boolean;
+      repFloatText?: boolean;
+      /** Athlete join URL — the server burns it into the lobby QR. */
+      joinUrl?: string;
+      joinLabel?: string;
+    },
+  ): Promise<KbtConfig>;
+  controlKbtMatch(
+    roomId: string,
+    cmd: { action: KbtMatchAction; heatIndex?: number; clientId?: string },
+  ): Promise<{
+    state: KbtStateEvent;
+    match: KbtMatchEvent;
+    /** Present when the server refused the action (status 'rejected'). */
+    error?: { code: string; message: string };
+  }>;
+  getKbtState(
+    roomId: string,
+  ): Promise<{ state: KbtStateEvent; match: KbtMatchEvent }>;
 
   setHaunterConfig(
     roomId: string,
@@ -627,6 +664,39 @@ export function createSmelterApiClient(baseUrl: string): SmelterApiClient {
     async getDuckHunterMatch(roomId) {
       const data = await req('get', `/room/${enc(roomId)}/duck-hunter/match`);
       return data.match as ShooterMatchEvent;
+    },
+
+    async setKbtConfig(roomId, config) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/kettlebell-tournament/config`,
+        config,
+      );
+      return data.config as KbtConfig;
+    },
+
+    async controlKbtMatch(roomId, cmd) {
+      const data = await req(
+        'post',
+        `/room/${enc(roomId)}/kettlebell-tournament/match`,
+        cmd,
+      );
+      return {
+        state: data.state as KbtStateEvent,
+        match: data.match as KbtMatchEvent,
+        error: data.error as { code: string; message: string } | undefined,
+      };
+    },
+
+    async getKbtState(roomId) {
+      const data = await req(
+        'get',
+        `/room/${enc(roomId)}/kettlebell-tournament/state`,
+      );
+      return {
+        state: data.state as KbtStateEvent,
+        match: data.match as KbtMatchEvent,
+      };
     },
 
     async setHaunterConfig(roomId, config) {

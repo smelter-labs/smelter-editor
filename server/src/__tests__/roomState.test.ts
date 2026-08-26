@@ -39,6 +39,9 @@ const mocks = vi.hoisted(() => {
         previousAckTimestamp: Date.now(),
         currentAckTimestamp: Date.now(),
       }),
+      seed: fn(),
+      isPublishLive: fn().mockReturnValue(false),
+      wasExternallyAcked: fn().mockReturnValue(false),
       getUsername: fn().mockReturnValue('test-user'),
       getLastAckTimestamp: fn().mockReturnValue(Date.now()),
       stop: fn(),
@@ -710,6 +713,64 @@ describe('RoomState', () => {
       await expect(room.updateLayers([])).rejects.toThrow(
         'layers must not be empty',
       );
+    });
+
+    it('auto-appends unmentioned connected inputs to a manual layer (the hazard KBT parks against)', async () => {
+      const output = createTestOutput();
+      const room = new RoomState('room-1', output, [], true);
+      await room.init();
+
+      const id1 = (await room.addNewInput({ type: 'text-input', text: 'A' }))!;
+      const id2 = (await room.addNewInput({ type: 'game', title: 'B' }))!;
+      await room.connectInput(id1);
+      await room.connectInput(id2);
+
+      // A manual layer mentioning only id1: the still-connected id2 is
+      // resurrected at the END of the layer (i.e. rendered on top). The KBT
+      // controller defends against this by always mentioning every known
+      // input, parking off-stage ones at 1×1.
+      await room.updateLayers([
+        {
+          id: 'kbt-stage',
+          inputs: [{ inputId: id1, x: 0, y: 0, width: 1920, height: 1080 }],
+        },
+      ]);
+      const appended = room.getState().layers[0]!.inputs;
+      expect(appended.map((i) => i.inputId)).toEqual([id1, id2]);
+
+      // Mentioning both (one parked at 1×1) appends nothing and preserves
+      // the per-input transition fields end to end.
+      await room.updateLayers([
+        {
+          id: 'kbt-stage',
+          inputs: [
+            {
+              inputId: id1,
+              x: 0,
+              y: 0,
+              width: 1920,
+              height: 1080,
+              transitionDurationMs: 300,
+              transitionEasing: 'cubic_bezier_ease_in_out',
+            },
+            {
+              inputId: id2,
+              x: 0,
+              y: 1079,
+              width: 1,
+              height: 1,
+              transitionDurationMs: 0,
+            },
+          ],
+        },
+      ]);
+      const parked = room.getState().layers[0]!.inputs;
+      expect(parked.map((i) => i.inputId)).toEqual([id1, id2]);
+      expect(parked[0]).toMatchObject({
+        transitionDurationMs: 300,
+        transitionEasing: 'cubic_bezier_ease_in_out',
+      });
+      expect(parked[1]).toMatchObject({ width: 1, transitionDurationMs: 0 });
     });
 
     it('preserves multiple layers with independent input sets', async () => {

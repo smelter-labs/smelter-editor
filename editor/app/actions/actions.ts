@@ -582,6 +582,51 @@ export async function getDuckHunterMatch(
   return (await getClient()).getDuckHunterMatch(roomId);
 }
 
+export async function setKbtConfig(
+  roomId: string,
+  config: {
+    scoring?: Partial<
+      Record<
+        import('@smelter-editor/types').KbtExerciseKey,
+        Partial<{ enabled: boolean; points: number }>
+      >
+    >;
+    strictTechnique?: boolean;
+    heatDurationMs?: number;
+    heatSize?: number;
+    cameraView?: import('@smelter-editor/types').KbtCameraView;
+    repScreenshots?: boolean;
+    milestoneFx?: boolean;
+    repFloatText?: boolean;
+    joinUrl?: string;
+    joinLabel?: string;
+  },
+): Promise<import('@smelter-editor/types').KbtConfig> {
+  return (await getClient()).setKbtConfig(roomId, config);
+}
+
+export async function controlKbtMatch(
+  roomId: string,
+  cmd: {
+    action: import('@smelter-editor/types').KbtMatchAction;
+    heatIndex?: number;
+    clientId?: string;
+  },
+): Promise<{
+  state: import('@smelter-editor/types').KbtStateEvent;
+  match: import('@smelter-editor/types').KbtMatchEvent;
+  error?: { code: string; message: string };
+}> {
+  return (await getClient()).controlKbtMatch(roomId, cmd);
+}
+
+export async function getKbtState(roomId: string): Promise<{
+  state: import('@smelter-editor/types').KbtStateEvent;
+  match: import('@smelter-editor/types').KbtMatchEvent;
+}> {
+  return (await getClient()).getKbtState(roomId);
+}
+
 export async function setHaunterConfig(
   roomId: string,
   config: {

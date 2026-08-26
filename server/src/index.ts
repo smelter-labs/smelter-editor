@@ -1,5 +1,6 @@
 import { rmSync } from 'node:fs';
 import { state } from './core/serverState';
+import { killStaleServerInstances } from './core/killStaleInstances';
 import { TwitchChannelSuggestions } from './twitch/TwitchChannelMonitor';
 import { KickChannelSuggestions } from './kick/KickChannelMonitor';
 import { SmelterInstance } from './smelter';
@@ -10,7 +11,7 @@ import {
   logSocketPathBudget,
 } from './captions/captionSocket';
 import { captionsDebug } from './captions/captionsDebug';
-import { registerAIModels } from './ai-models';
+import { registerAIModels, shutdownAllSidecars } from './ai-models';
 import { routes } from './routing/routes';
 import { seedDuckHunterAssets } from './core/seedDuckHunterAssets';
 import { seedPresentationConfigs } from './core/seedPresentationConfigs';
@@ -29,6 +30,7 @@ function gracefulShutdown(signal: string) {
   console.log(`Received ${signal}, shutting down...`);
 
   state.stopMonitoring();
+  shutdownAllSidecars();
   TwitchChannelSuggestions.stop();
   KickChannelSuggestions.stop();
   if (captionSocketDir) {
@@ -39,6 +41,8 @@ function gracefulShutdown(signal: string) {
 }
 
 async function run() {
+  await killStaleServerInstances();
+
   console.log('Start monitoring Twitch categories.');
   void TwitchChannelSuggestions.monitor();
   void KickChannelSuggestions.monitor();

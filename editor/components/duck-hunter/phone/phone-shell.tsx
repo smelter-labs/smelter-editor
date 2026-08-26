@@ -30,6 +30,7 @@ export function PhoneShell({
   stepCount,
   stepLabel,
   compact = false,
+  title = 'DUCK HUNTER',
   children,
 }: {
   /** 0-based; negative hides the progress row (play stage). */
@@ -38,6 +39,8 @@ export function PhoneShell({
   stepLabel: string;
   /** One-row header + non-scrolling content region (calibrate step). */
   compact?: boolean;
+  /** Mini-logo text — other games reuse the shell with their own marque. */
+  title?: string;
   children: React.ReactNode;
 }) {
   const landscape = useIsLandscape();
@@ -105,13 +108,13 @@ export function PhoneShell({
                 gap: 12,
                 flexWrap: 'wrap',
               }}>
-              <ArcadeText size={compact ? 12 : 13}>DUCK HUNTER</ArcadeText>
+              <ArcadeText size={compact ? 12 : 13}>{title}</ArcadeText>
               <StarLine size={8}>{stepLabel}</StarLine>
               {dots}
             </div>
           ) : (
             <>
-              <ArcadeText size={20}>DUCK HUNTER</ArcadeText>
+              <ArcadeText size={20}>{title}</ArcadeText>
               <StarLine size={9}>{stepLabel}</StarLine>
               {dots ? <div style={{ marginTop: 2 }}>{dots}</div> : null}
             </>

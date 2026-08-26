@@ -275,6 +275,10 @@ type RecordingFileParams = { Params: { fileName: string } };
 
 export const routes = Fastify({
   logger: config.logger,
+  // Rep-frame file names (/kbt-rep-frames/:fileName) are 103 chars — above
+  // Fastify's default maxParamLength of 100, which makes the router 404
+  // before the handler runs.
+  maxParamLength: 256,
 }).withTypeProvider<TypeBoxTypeProvider>();
 
 routes.register(cors, {
@@ -1110,6 +1114,31 @@ routes.after(() => {
       const { roomId } = req.params;
       const clientId = uuidv4();
 
+      // Application-level heartbeat: without it a phone that vanished (lock,
+      // network flip) holds its TCP socket open for minutes, and its KBT
+      // player entry stays 'connected' — blocking name-based adoption on
+      // rejoin. Two missed pongs → terminate → normal close handling.
+      let alive = true;
+      socket.on('pong', () => {
+        alive = true;
+      });
+      const heartbeat = setInterval(() => {
+        if (!alive) {
+          try {
+            socket.terminate();
+          } catch {
+            // Already dead — close handler does the cleanup.
+          }
+          return;
+        }
+        alive = false;
+        try {
+          socket.ping();
+        } catch {
+          // Socket is closing; the close event will clear this interval.
+        }
+      }, 5000);
+
       logWsDebug('accepted', {
         roomId,
         clientId,
@@ -1121,9 +1150,15 @@ routes.after(() => {
       });
 
       socket.on('close', (code: any, reason: unknown) => {
+        clearInterval(heartbeat);
         handlePongClientDisconnect(roomId, clientId);
         try {
           state.getRoom(roomId).handleShooterDisconnect(clientId);
+        } catch {
+          // Room no longer exists — ignore.
+        }
+        try {
+          state.getRoom(roomId).handleKbtDisconnect(clientId);
         } catch {
           // Room no longer exists — ignore.
         }
@@ -1186,6 +1221,20 @@ routes.after(() => {
         ) {
           try {
             state.getRoom(roomId).handleShooterMessage(clientId, parsed);
+          } catch {
+            // Room no longer exists — ignore.
+          }
+          return;
+        }
+        // Kettlebell Tournament messages from player phones + the arcade page.
+        if (
+          parsed &&
+          typeof parsed === 'object' &&
+          typeof (parsed as { type?: unknown }).type === 'string' &&
+          (parsed as { type: string }).type.startsWith('kbt_')
+        ) {
+          try {
+            state.getRoom(roomId).handleKbtMessage(clientId, parsed);
           } catch {
             // Room no longer exists — ignore.
           }
@@ -2633,6 +2682,310 @@ routes.get<RoomIdParams>(
   async (req, res) => {
     const room = state.getRoom(req.params.roomId);
     res.status(200).send({ status: 'ok', match: room.getDuckHunterMatch() });
+  },
+);
+
+// ── Kettlebell Tournament ──────────────────────────────────────
+
+const KbtScoringRuleSchema = Type.Object({
+  enabled: Type.Optional(Type.Boolean()),
+  points: Type.Optional(Type.Number()),
+});
+
+const KbtConfigSchema = Type.Object({
+  scoring: Type.Optional(
+    Type.Object({
+      swing: Type.Optional(KbtScoringRuleSchema),
+      clean: Type.Optional(KbtScoringRuleSchema),
+      snatch: Type.Optional(KbtScoringRuleSchema),
+    }),
+  ),
+  strictTechnique: Type.Optional(Type.Boolean()),
+  heatDurationMs: Type.Optional(Type.Number()),
+  heatSize: Type.Optional(Type.Number()),
+  cameraView: Type.Optional(
+    Type.Union([Type.Literal('front'), Type.Literal('side')]),
+  ),
+  repScreenshots: Type.Optional(Type.Boolean()),
+  milestoneFx: Type.Optional(Type.Boolean()),
+  repFloatText: Type.Optional(Type.Boolean()),
+  /** Athlete join URL — the server renders it as the lobby scene's QR. */
+  joinUrl: Type.Optional(Type.String({ maxLength: 2048 })),
+  /** Short human-readable address shown next to the on-air QR. */
+  joinLabel: Type.Optional(Type.String({ maxLength: 64 })),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof KbtConfigSchema> }>(
+  '/room/:roomId/kettlebell-tournament/config',
+  { schema: { params: RoomIdParamsSchema, body: KbtConfigSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    console.log('[request] Set Kettlebell Tournament config', {
+      roomId,
+      strictTechnique: req.body.strictTechnique,
+      heatDurationMs: req.body.heatDurationMs,
+      heatSize: req.body.heatSize,
+      cameraView: req.body.cameraView,
+    });
+    const room = state.getRoom(roomId);
+    const config = room.setKbtConfig({
+      scoring: req.body.scoring,
+      strictTechnique: req.body.strictTechnique,
+      heatDurationMs: req.body.heatDurationMs,
+      heatSize: req.body.heatSize,
+      cameraView: req.body.cameraView,
+      repScreenshots: req.body.repScreenshots,
+      milestoneFx: req.body.milestoneFx,
+      repFloatText: req.body.repFloatText,
+      joinUrl: req.body.joinUrl,
+      joinLabel: req.body.joinLabel,
+    });
+    res.status(200).send({ status: 'ok', config });
+  },
+);
+
+// Tournament flow (the /kettlebell-tournament page): draw heats, run one heat
+// at a time (intro → countdown → AMRAP → ended), then a final of the top
+// scorers. GET returns state + match snapshots (reload recovery).
+const KbtMatchSchema = Type.Object({
+  action: Type.Union([
+    Type.Literal('roster'),
+    Type.Literal('assign_heats'),
+    Type.Literal('start_heat'),
+    Type.Literal('begin_heat'),
+    Type.Literal('stop_heat'),
+    Type.Literal('next_heat'),
+    Type.Literal('start_final'),
+    Type.Literal('podium'),
+    Type.Literal('reset'),
+    Type.Literal('kick_player'),
+    Type.Literal('restart_heat'),
+    Type.Literal('force_begin'),
+  ]),
+  heatIndex: Type.Optional(Type.Number()),
+  /** Target player for kick_player. */
+  clientId: Type.Optional(Type.String()),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof KbtMatchSchema> }>(
+  '/room/:roomId/kettlebell-tournament/match',
+  { schema: { params: RoomIdParamsSchema, body: KbtMatchSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    console.log('[request] Kettlebell Tournament match', {
+      roomId,
+      action: req.body.action,
+      heatIndex: req.body.heatIndex,
+      clientId: req.body.clientId,
+    });
+    const room = state.getRoom(roomId);
+    const { error, ...result } = room.controlKbtMatch({
+      action: req.body.action,
+      heatIndex: req.body.heatIndex,
+      clientId: req.body.clientId,
+    });
+    // A refused action is a 200 with status 'rejected' — the host page wants
+    // the fresh snapshots either way, plus the reason to show.
+    res
+      .status(200)
+      .send({ status: error ? 'rejected' : 'ok', ...result, error });
+  },
+);
+
+routes.get<RoomIdParams>(
+  '/room/:roomId/kettlebell-tournament/state',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    const room = state.getRoom(req.params.roomId);
+    res.status(200).send({ status: 'ok', ...room.getKbtState() });
+  },
+);
+
+// Participant profile photo. The phone re-encodes everything to a small square
+// JPEG before uploading (that also normalizes HEIC + EXIF rotation), so only
+// image/jpeg is accepted here. Keyed by lifter name — the phone doesn't know
+// its clientId at this step, and reconnect adoption re-keys by name anyway.
+// Multipart bodies can't be TypeBox-validated; fields are checked by hand.
+routes.post<RoomIdParams>(
+  '/room/:roomId/kettlebell-tournament/photo',
+  { schema: { params: RoomIdParamsSchema } },
+  async (req, res) => {
+    const { roomId } = req.params;
+    const room = state.getRoom(roomId);
+    const part = await req.file({ limits: { fileSize: 5 * 1024 * 1024 } });
+    if (!part) {
+      return res
+        .status(400)
+        .send({ status: 'error', message: 'Missing photo file' });
+    }
+    const fieldValue = (field: unknown): string => {
+      const raw = Array.isArray(field) ? field[0] : field;
+      return raw && typeof raw === 'object' && 'value' in raw
+        ? String((raw as { value: unknown }).value ?? '').trim()
+        : '';
+    };
+    const name = fieldValue(part.fields.name);
+    // Resume token: with duplicate names it pins the photo to the right athlete.
+    const playerKey =
+      fieldValue(part.fields.playerKey).slice(0, 64) || undefined;
+    if (!name) {
+      return res
+        .status(400)
+        .send({ status: 'error', message: 'Missing name field' });
+    }
+    if (part.mimetype !== 'image/jpeg') {
+      return res
+        .status(400)
+        .send({ status: 'error', message: 'Photo must be a JPEG' });
+    }
+    let jpeg: Buffer;
+    try {
+      jpeg = await part.toBuffer();
+    } catch {
+      return res
+        .status(413)
+        .send({ status: 'error', message: 'Photo too large (max 5 MB)' });
+    }
+    if (part.file.truncated) {
+      return res
+        .status(413)
+        .send({ status: 'error', message: 'Photo too large (max 5 MB)' });
+    }
+    console.log('[request] Kettlebell Tournament photo upload', {
+      roomId,
+      name,
+      bytes: jpeg.length,
+    });
+    const result = await room.setKbtPlayerPhoto(name, jpeg, playerKey);
+    if (!result) {
+      return res
+        .status(404)
+        .send({ status: 'error', message: `No joined lifter named "${name}"` });
+    }
+    res.status(200).send({ status: 'ok', photoUrl: result.photoUrl });
+  },
+);
+
+// Serve profile photos. File names are content-hashed, so caches may keep
+// them forever — a changed photo always arrives under a new URL.
+routes.get<{ Params: { fileName: string } }>(
+  '/kbt-photos/:fileName',
+  { schema: { params: Type.Object({ fileName: Type.String() }) } },
+  async (req, res) => {
+    const decoded = decodeURIComponent(req.params.fileName);
+    if (
+      decoded.includes('..') ||
+      decoded.includes('/') ||
+      decoded.includes('\\') ||
+      !decoded.endsWith('.jpg')
+    ) {
+      return res.status(400).send({ error: 'Invalid file name' });
+    }
+    const filePath = path.join(DATA_DIR, 'kbt-photos', decoded);
+    if (!(await pathExists(filePath))) {
+      return res.status(404).send({ error: 'Photo not found' });
+    }
+    try {
+      const data = await readFile(filePath);
+      res.header('Content-Type', 'image/jpeg');
+      res.header('Cache-Control', 'public, max-age=31536000, immutable');
+      res.send(data);
+    } catch (err) {
+      console.error('Failed to read kbt photo', { filePath, err });
+      res.status(500).send({ error: 'Failed to read photo' });
+    }
+  },
+);
+
+// Serve rep-apex stills written by the kettlebell-coach worker. Names are
+// unique per session+rep and never rewritten, so caches may keep them forever.
+routes.get<{ Params: { fileName: string } }>(
+  '/kbt-rep-frames/:fileName',
+  { schema: { params: Type.Object({ fileName: Type.String() }) } },
+  async (req, res) => {
+    const decoded = decodeURIComponent(req.params.fileName);
+    if (
+      decoded.includes('..') ||
+      decoded.includes('/') ||
+      decoded.includes('\\') ||
+      !decoded.endsWith('.jpg')
+    ) {
+      return res.status(400).send({ error: 'Invalid file name' });
+    }
+    const filePath = path.join(DATA_DIR, 'kbt-rep-frames', decoded);
+    if (!(await pathExists(filePath))) {
+      return res.status(404).send({ error: 'Frame not found' });
+    }
+    try {
+      const data = await readFile(filePath);
+      res.header('Content-Type', 'image/jpeg');
+      res.header('Cache-Control', 'public, max-age=31536000, immutable');
+      res.send(data);
+    } catch (err) {
+      console.error('Failed to read kbt rep frame', { filePath, err });
+      res.status(500).send({ error: 'Failed to read frame' });
+    }
+  },
+);
+
+// Dev-only rep injector (KBT_SIM=1): drive scoring/UI without the AI model.
+const KbtSimulateRepSchema = Type.Object({
+  clientId: Type.String(),
+  exercise: Type.Union([
+    Type.Literal('swing'),
+    Type.Literal('clean'),
+    Type.Literal('snatch'),
+  ]),
+  verdict: Type.Optional(
+    Type.Union([Type.Literal('correct'), Type.Literal('incorrect')]),
+  ),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof KbtSimulateRepSchema> }>(
+  '/room/:roomId/kettlebell-tournament/simulate-rep',
+  { schema: { params: RoomIdParamsSchema, body: KbtSimulateRepSchema } },
+  async (req, res) => {
+    if (process.env.KBT_SIM !== '1') {
+      return res.status(404).send({ status: 'error', message: 'Not found' });
+    }
+    const room = state.getRoom(req.params.roomId);
+    const ok = room.simulateKbtRep(
+      req.body.clientId,
+      req.body.exercise,
+      req.body.verdict ?? 'correct',
+    );
+    res.status(200).send({ status: ok ? 'ok' : 'ignored' });
+  },
+);
+
+// Dev-only mp4 camera (KBT_SIM=1): attach a local-mp4 from data/mp4s as a
+// player's cam — real decoded frames reach the coach model, no phone needed.
+// No `loop` param: local-mp4 inputs loop by default.
+const KbtMp4CamSchema = Type.Object({
+  clientId: Type.String(),
+  fileName: Type.String(),
+});
+
+routes.post<RoomIdParams & { Body: Static<typeof KbtMp4CamSchema> }>(
+  '/room/:roomId/kettlebell-tournament/mp4-cam',
+  { schema: { params: RoomIdParamsSchema, body: KbtMp4CamSchema } },
+  async (req, res) => {
+    if (process.env.KBT_SIM !== '1') {
+      return res.status(404).send({ status: 'error', message: 'Not found' });
+    }
+    const room = state.getRoom(req.params.roomId);
+    try {
+      const { inputId } = await room.attachKbtMp4Cam(
+        req.body.clientId,
+        req.body.fileName,
+      );
+      res.status(200).send({ status: 'ok', inputId });
+    } catch (err) {
+      res.status(400).send({
+        status: 'error',
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
   },
 );
 

@@ -25,6 +25,8 @@ import { CarHueWrapper } from './CarHueWrapper';
 import { BoxConfLabel, SmoothedBoxes } from './SmoothedBoxes';
 import { KettlebellOverlay } from './KettlebellOverlay';
 import { KettlebellSkeletonWrapper } from './KettlebellSkeletonWrapper';
+import { KbtShakeWrapper } from './KbtShakeWrapper';
+import { KbtTileHud } from './KbtHud';
 
 type Resolution = { width: number; height: number };
 
@@ -167,6 +169,20 @@ export function Input({ input }: { input: InputConfig }) {
   const shooter = useStore(store, (state) =>
     state.shooter?.targetInputId === input.inputId ? state.shooter : null,
   );
+  // Kettlebell Tournament: this input is a player tile of the running heat.
+  const kbtTile = useStore(
+    store,
+    (state) => state.kbTournament?.tiles[input.inputId] ?? null,
+  );
+  const kbtScene = useStore(
+    store,
+    (state) => state.kbTournament?.scene ?? null,
+  );
+  // Floating rep text toggle; missing on old snapshots → on.
+  const kbtRepFloat = useStore(
+    store,
+    (state) => state.kbTournament?.repFloatText !== false,
+  );
 
   // The video/content element for the playing state. Extracted so Ghost City
   // can wrap it in the haunted-city shader without disturbing the overlays
@@ -287,12 +303,17 @@ export function Input({ input }: { input: InputConfig }) {
   // floating off their own joint dots. Outermost of the video wrappers: the rig
   // is an overlay, so Ghost City and Car Hue must not haze or hue-rotate it.
   // Mounted on the config flag alone — gating on `kpts` would rebuild the video
-  // node on every pose dropout, several times a second.
-  if (kettlebell && kettlebell.skeleton !== 'off') {
+  // node on every pose dropout, several times a second. During a tournament
+  // heat (kbtTile) it mounts even with the skeleton off: the milestone aura
+  // needs the shader, and gating on the fx itself would rebuild the video node
+  // mid-heat exactly when the effect fires.
+  if (kettlebell && (kettlebell.skeleton !== 'off' || kbtTile != null)) {
     videoContent = (
       <KettlebellSkeletonWrapper
         data={kettlebell}
-        resolution={{ width: contentWidth, height: contentHeight }}>
+        resolution={{ width: contentWidth, height: contentHeight }}
+        fx={kbtTile?.fx ?? null}
+        theme={kbtTile != null ? 'kbt' : 'default'}>
         {videoContent}
       </KettlebellSkeletonWrapper>
     );
@@ -300,121 +321,151 @@ export function Input({ input }: { input: InputConfig }) {
 
   const inputComponent = (
     <Rescaler style={resolution}>
-      <View style={{ ...resolution, direction: 'column' }}>
-        {streamState === 'playing' ? (
-          <View
-            style={{
-              width: contentWidth,
-              height: contentHeight,
-              borderWidth,
-              borderColor,
-              backgroundColor: isTextInput ? '#1a1a2e' : undefined,
-            }}>
-            {videoContent}
-            {transcript ? (
-              <Subtitle
-                text={transcript}
-                parent={{ width: contentWidth, height: contentHeight }}
-              />
-            ) : null}
-            {peopleBoxes?.boxes.length && !peopleBoxes.ghost ? (
-              peopleBoxes.sprite === 'bird' ? (
-                // Birds jump between the ~4–6 detections/s, so ease each box
-                // toward its latest tracked position instead of snapping.
-                // predict=false: the bird tracker already leads boxes forward
-                // (withLead), so the renderer must not predict motion again.
-                // The marker backend sets `snap`/`borderWidth` — its boxes are
-                // exact, and the outline has to cover the marker in the video.
+      {/* Milestone shake jitters the whole column — video and KBT plate move
+          together, like a camera bump. A no-op passthrough outside heats. */}
+      <KbtShakeWrapper fx={kbtTile?.fx ?? null} resolution={resolution}>
+        <View style={{ ...resolution, direction: 'column' }}>
+          {streamState === 'playing' ? (
+            <View
+              style={{
+                width: contentWidth,
+                height: contentHeight,
+                borderWidth,
+                borderColor,
+                backgroundColor: isTextInput ? '#1a1a2e' : undefined,
+              }}>
+              {videoContent}
+              {transcript ? (
+                <Subtitle
+                  text={transcript}
+                  parent={{ width: contentWidth, height: contentHeight }}
+                />
+              ) : null}
+              {peopleBoxes?.boxes.length && !peopleBoxes.ghost ? (
+                peopleBoxes.sprite === 'bird' ? (
+                  // Birds jump between the ~4–6 detections/s, so ease each box
+                  // toward its latest tracked position instead of snapping.
+                  // predict=false: the bird tracker already leads boxes forward
+                  // (withLead), so the renderer must not predict motion again.
+                  // The marker backend sets `snap`/`borderWidth` — its boxes are
+                  // exact, and the outline has to cover the marker in the video.
+                  <SmoothedBoxes
+                    data={peopleBoxes}
+                    parent={{ width: contentWidth, height: contentHeight }}
+                    predict={false}
+                    smooth={!peopleBoxes.snap}
+                    borderWidth={peopleBoxes.borderWidth ?? 4}
+                    showConf
+                  />
+                ) : (
+                  <PeopleBoxes
+                    data={peopleBoxes}
+                    parent={{ width: contentWidth, height: contentHeight }}
+                  />
+                )
+              ) : null}
+              {carAdBoxes?.cars.length && !carAdBoxes.ads ? (
+                <CarAdDebugBoxes
+                  data={carAdBoxes}
+                  parent={{ width: contentWidth, height: contentHeight }}
+                />
+              ) : null}
+              {carHueBoxes?.boxes.length && !carHueBoxes.effect ? (
+                // Dead-reckoned boxes: top-down cars move fast relative to the
+                // ~5 responses/s, so raw boxes would jump and trail the cars.
                 <SmoothedBoxes
-                  data={peopleBoxes}
-                  parent={{ width: contentWidth, height: contentHeight }}
-                  predict={false}
-                  smooth={!peopleBoxes.snap}
-                  borderWidth={peopleBoxes.borderWidth ?? 4}
-                  showConf
-                />
-              ) : (
-                <PeopleBoxes
-                  data={peopleBoxes}
+                  data={carHueBoxes}
                   parent={{ width: contentWidth, height: contentHeight }}
                 />
-              )
-            ) : null}
-            {carAdBoxes?.cars.length && !carAdBoxes.ads ? (
-              <CarAdDebugBoxes
-                data={carAdBoxes}
-                parent={{ width: contentWidth, height: contentHeight }}
-              />
-            ) : null}
-            {carHueBoxes?.boxes.length && !carHueBoxes.effect ? (
-              // Dead-reckoned boxes: top-down cars move fast relative to the
-              // ~5 responses/s, so raw boxes would jump and trail the cars.
-              <SmoothedBoxes
-                data={carHueBoxes}
-                parent={{ width: contentWidth, height: contentHeight }}
-              />
-            ) : null}
-            {peopleCount != null ? (
-              <PeopleCountBadge
-                count={peopleCount}
-                parent={{ width: contentWidth, height: contentHeight }}
-              />
-            ) : null}
-            {kettlebell ? (
-              <KettlebellOverlay
-                data={kettlebell}
-                parent={{ width: contentWidth, height: contentHeight }}
-              />
-            ) : null}
-            {shooter ? (
-              <ShooterHud
-                shooter={shooter}
-                parent={{ width: contentWidth, height: contentHeight }}
-                frameW={peopleBoxes?.frameW}
-                frameH={peopleBoxes?.frameH}
-              />
-            ) : null}
-          </View>
-        ) : streamState === 'ready' ? (
-          <View style={{ padding: 300 }}>
-            <Rescaler style={{ rescaleMode: 'fit' }}>
-              <Image imageId='spinner' />
-            </Rescaler>
-          </View>
-        ) : streamState === 'finished' ? (
-          <View style={{ padding: 300 }}>
-            <Rescaler style={{ rescaleMode: 'fit' }}>
-              <Text style={{ fontSize: 600, fontFamily: 'Star Jedi' }}> </Text>
-            </Rescaler>
-          </View>
-        ) : (
-          <View />
-        )}
-        {input.showTitle !== false && (
-          <View
-            style={{
-              backgroundColor: '#493880',
-              height: 90,
-              padding: 20,
-              borderRadius: 0,
-              direction: 'column',
-              overflow: 'visible',
-              bottom: 0,
-              left: 0,
-            }}>
-            <Text
-              style={{ fontSize: 40, color: 'white', fontFamily: 'Star Jedi' }}>
-              {input?.title}
-            </Text>
-            <View style={{ height: 10 }} />
+              ) : null}
+              {peopleCount != null ? (
+                <PeopleCountBadge
+                  count={peopleCount}
+                  parent={{ width: contentWidth, height: contentHeight }}
+                />
+              ) : null}
+              {kettlebell && !kbtTile ? (
+                // The coach badge clashes with the tournament plates — during a
+                // heat the KBT chrome carries the reps/exercise info instead.
+                <KettlebellOverlay
+                  data={kettlebell}
+                  parent={{ width: contentWidth, height: contentHeight }}
+                />
+              ) : null}
+              {shooter ? (
+                <ShooterHud
+                  shooter={shooter}
+                  parent={{ width: contentWidth, height: contentHeight }}
+                  frameW={peopleBoxes?.frameW}
+                  frameH={peopleBoxes?.frameH}
+                />
+              ) : null}
+            </View>
+          ) : streamState === 'ready' ? (
+            <View style={{ padding: 300 }}>
+              <Rescaler style={{ rescaleMode: 'fit' }}>
+                <Image imageId='spinner' />
+              </Rescaler>
+            </View>
+          ) : streamState === 'finished' ? (
+            <View style={{ padding: 300 }}>
+              <Rescaler style={{ rescaleMode: 'fit' }}>
+                <Text style={{ fontSize: 600, fontFamily: 'Star Jedi' }}>
+                  {' '}
+                </Text>
+              </Rescaler>
+            </View>
+          ) : (
+            <View />
+          )}
+          {kbtTile && kbtScene ? (
+            // Outside the streamState branch on purpose: the tournament plate
+            // (name, reps, rank) must stay burned in even while the phone's
+            // WHIP stream is still connecting or dropped mid-heat — the tile
+            // then shows the spinner underneath and the SIGNAL LOST veil.
+            <KbtTileHud
+              tile={kbtTile}
+              // The split view's player half is a half-width column — the
+              // grid-style plate is the one that scales for it.
+              scene={kbtScene === 'split' ? 'grid' : kbtScene}
+              parent={{ width: contentWidth, height: contentHeight }}
+              floatText={kbtRepFloat}
+            />
+          ) : null}
+          {input.showTitle !== false && (
+            <View
+              style={{
+                backgroundColor: '#493880',
+                height: 90,
+                padding: 20,
+                borderRadius: 0,
+                direction: 'column',
+                overflow: 'visible',
+                bottom: 0,
+                left: 0,
+              }}>
+              <Text
+                style={{
+                  fontSize: 40,
+                  color: 'white',
+                  fontFamily: 'Star Jedi',
+                }}>
+                {input?.title}
+              </Text>
+              <View style={{ height: 10 }} />
 
-            <Text
-              style={{ fontSize: 25, color: 'white', fontFamily: 'Star Jedi' }}>
-              {input?.description}
-            </Text>
-          </View>
-        )}
-      </View>
+              <Text
+                style={{
+                  fontSize: 25,
+                  color: 'white',
+                  fontFamily: 'Star Jedi',
+                }}>
+                {input?.description}
+              </Text>
+            </View>
+          )}
+        </View>
+      </KbtShakeWrapper>
     </Rescaler>
   );
 
@@ -1079,7 +1130,9 @@ function MatchHud({
           overflow: 'visible',
         }}>
         {chip(
-          match.character ? `${modeLabel} · ${match.character.name}` : modeLabel,
+          match.character
+            ? `${modeLabel} · ${match.character.name}`
+            : modeLabel,
           match.character?.color ?? '#FFFFFF',
         )}
         <View

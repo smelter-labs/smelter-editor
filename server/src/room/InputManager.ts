@@ -47,6 +47,13 @@ const VIDEO_INPUT_TYPES: RoomInputState['type'][] = [
 
 const IMAGE_EXT_RE = /\.(jpg|jpeg|png|gif|svg)$/i;
 
+/**
+ * A WHIP publisher heartbeats every ~5s (use-whip-heartbeat.ts); two missed
+ * beats plus margin means the publish is down. Drives isWhipInputLive — the
+ * KBT camera-liveness gate.
+ */
+const WHIP_LIVE_TTL_MS = 12_000;
+
 export class InputManager {
   private inputs: RoomInputState[] = [];
   private transitionTimers = new Map<string, NodeJS.Timeout>();
@@ -156,7 +163,7 @@ export class InputManager {
     }
     const liveTitle = `${kindPrefix} #${maxNumber + 1}`;
     const monitor = await WhipInputMonitor.startMonitor(cleanUsername);
-    monitor.touch();
+    monitor.seed();
     const orientation = opts.orientation ?? 'horizontal';
     const withTranscription = opts.transcription ?? false;
     this.inputs.push({
@@ -1129,6 +1136,20 @@ export class InputManager {
     }
   }
 
+  /**
+   * "The publisher is actually sending" — a WHIP input counts as live only
+   * while its publisher's heartbeat acks keep arriving (engine `status` for
+   * WHIP flips to 'connected' at registration and never back, so it cannot
+   * tell a live camera from a dead one). Non-WHIP inputs (e.g. KBT_SIM mp4
+   * cams) fall back to engine status.
+   */
+  isWhipInputLive(inputId: string, ttlMs = WHIP_LIVE_TTL_MS): boolean {
+    const input = this.inputs.find((i) => i.inputId === inputId);
+    if (!input) return false;
+    if (input.type !== 'whip') return input.status === 'connected';
+    return input.monitor.isPublishLive(ttlMs);
+  }
+
   async removeStaleWhipInputs(staleTtlMs: number): Promise<void> {
     const now = Date.now();
     for (const input of this.getInputs()) {
@@ -1147,9 +1168,13 @@ export class InputManager {
           });
         }
         if (ageMs > staleTtlMs) {
-          if (input.status === 'connected') {
+          // Engine status for WHIP sticks at 'connected' forever, so it only
+          // shields inputs that never published (someone still setting up
+          // OBS). Once acks flowed and then stopped, the publisher is gone —
+          // remove the input regardless of what the engine claims.
+          if (input.status === 'connected' && !input.monitor.wasExternallyAcked()) {
             console.log(
-              '[whip][stale] Skipping removal — input still connected',
+              '[whip][stale] Skipping removal — input registered but never published',
               {
                 roomId: this.idPrefix,
                 inputId: input.inputId,

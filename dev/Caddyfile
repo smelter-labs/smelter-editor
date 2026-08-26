@@ -33,7 +33,7 @@
 	# so the desktop editor's /room/<id> page is not reachable here — open the
 	# desktop editor via http://localhost:3000 instead. The phone only uses
 	# /mobile/* (editor) + /room/*/ws (api) + /whep (media), which all work.
-	@api path /room* /rooms* /active-rooms* /ai-models* /shaders* /shader-presets* /recordings* /logs* /suggestions* /game-state* /hls-streams* /play* /download* /screenshots* /restart-smelter* /presentation-configs* /configs* /dashboard-layouts* /upload* /hidden-assets*
+	@api path /room* /rooms* /active-rooms* /ai-models* /shaders* /shader-presets* /recordings* /logs* /suggestions* /game-state* /hls-streams* /play* /download* /screenshots* /restart-smelter* /presentation-configs* /configs* /dashboard-layouts* /upload* /hidden-assets* /kbt-photos* /kbt-rep-frames*
 	handle @api {
 		reverse_proxy 127.0.0.1:3001
 	}

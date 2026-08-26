@@ -1,0 +1,279 @@
+/* kbt kit — CSS side of the kb_design language ("Smelter Overlays"):
+ * square ember-pulse status dots, hard label blink, and the button reset.
+ * Hard edges everywhere — the design has no border-radius. */
+
+@keyframes kbt-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.kbt-pulse {
+  animation: kbt-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes kbt-blink {
+  0%,
+  54% {
+    opacity: 1;
+  }
+  55%,
+  100% {
+    opacity: 0.25;
+  }
+}
+
+.kbt-blink {
+  animation: kbt-blink 1.2s steps(1, end) infinite;
+}
+
+/* Screen entry: quick fade + settle. */
+@keyframes kbt-enter {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.kbt-enter {
+  animation: kbt-enter 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Podium confetti: deterministic CSS fall (delays set inline per piece). */
+@keyframes kbt-confetti {
+  from {
+    transform: translateY(-40px) rotate(0deg);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(760px) rotate(540deg);
+    opacity: 0.7;
+  }
+}
+
+.kbt-confetti {
+  animation: kbt-confetti 4.2s linear infinite;
+}
+
+.kbt-btn {
+  cursor: pointer;
+  border: none;
+  background: none;
+  padding: 0;
+  text-align: center;
+  /* No double-tap zoom on rapid taps (iOS). */
+  touch-action: manipulation;
+  transition:
+    filter 0.15s ease,
+    opacity 0.15s ease,
+    transform 0.1s ease;
+}
+
+/* The face is the visible cut-corner surface (bg/border are inline per
+ * variant); the ::after wash paints over it in the text color, so hover
+ * reads on every variant — cream on outline, red on danger. */
+.kbt-btn-face {
+  position: relative;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.kbt-btn-face::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+
+/* Hover only where hover exists — no sticky hover after taps on iOS. */
+@media (hover: hover) {
+  .kbt-btn:not([data-variant='solid']):hover:not(:disabled):not([data-locked])
+    .kbt-btn-face::after {
+    opacity: 0.08;
+  }
+
+  .kbt-btn[data-variant='solid']:hover:not(:disabled):not([data-locked]) {
+    filter: brightness(1.12);
+  }
+
+  .kbt-btn:hover:not(:disabled):not([data-locked]):not([data-variant]):not(
+      .kbt-strip
+    ) {
+    filter: brightness(1.35);
+  }
+}
+
+/* Pressed: visible on touch too. The strip is fixed chrome — no shift. */
+.kbt-btn:active:not(:disabled):not([data-locked]):not(.kbt-strip) {
+  transform: translateY(1px);
+}
+
+.kbt-btn:not([data-variant='solid']):active:not(:disabled):not([data-locked])
+  .kbt-btn-face::after {
+  opacity: 0.16;
+}
+
+.kbt-btn[data-variant='solid']:active:not(:disabled) {
+  filter: brightness(0.88);
+}
+
+.kbt-btn:disabled {
+  cursor: default;
+  opacity: 0.4;
+}
+
+/* Soft lock (e.g. a view switch in flight): unresponsive but not
+ * "broken-looking" the way the 0.4 disabled dim reads. */
+.kbt-btn[data-locked] {
+  cursor: default;
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+/* Keyboard focus: ember ring. clip-path lives on the inner face, so the
+ * outline on the button itself is not clipped away.
+ * (Colors mirror the KBT tokens in kbt-kit.tsx — keep in sync.) */
+.kbt-btn:focus-visible,
+.kbt-input:focus-visible {
+  outline: 2px solid #ff5a1f;
+  outline-offset: 2px;
+}
+
+/* Form controls (KbtSelect / KbtTextInput). */
+.kbt-input {
+  border-radius: 0;
+  transition:
+    border-color 0.15s ease,
+    background-color 0.15s ease;
+}
+
+@media (hover: hover) {
+  .kbt-input:hover:not(:focus) {
+    border-color: rgba(255, 255, 255, 0.22) !important;
+  }
+}
+
+.kbt-input:focus {
+  border-color: #ff5a1f !important;
+  outline: none;
+}
+
+/* Accent underline sweep — the chip/link hover signature. */
+.kbt-sweep {
+  position: relative;
+}
+
+.kbt-sweep::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: #ff5a1f;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@media (hover: hover) {
+  .kbt-sweep:hover:not(:disabled)::before {
+    transform: scaleX(1);
+  }
+}
+
+.kbt-sweep:focus-visible::before {
+  transform: scaleX(1);
+}
+
+/* Chips paint bg/border on the button itself (square, no clip-path), so
+ * the wash lives directly on the element (::before is the sweep). */
+.kbt-btn[data-variant='chip'] {
+  position: relative;
+}
+
+.kbt-btn[data-variant='chip']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: currentColor;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+}
+
+@media (hover: hover) {
+  .kbt-btn[data-variant='chip']:hover:not(:disabled)::after {
+    opacity: 0.08;
+  }
+}
+
+.kbt-btn[data-variant='chip']:active:not(:disabled)::after {
+  opacity: 0.16;
+}
+
+/* Danger disarm countdown: amber bar drains over the arm window. */
+@keyframes kbt-disarm {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+.kbt-disarm-bar {
+  height: 2px;
+  background: #ffb800;
+  transform-origin: left;
+  animation: kbt-disarm var(--kbt-disarm-ms, 5000ms) linear forwards;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kbt-pulse,
+  .kbt-blink,
+  .kbt-enter,
+  .kbt-disarm-bar {
+    animation: none;
+  }
+
+  /* Static confetti frozen at the top edge looks broken — drop it. */
+  .kbt-confetti {
+    animation: none;
+    display: none;
+  }
+
+  .kbt-sweep::before,
+  .kbt-btn,
+  .kbt-btn::after,
+  .kbt-btn-face,
+  .kbt-btn-face::after,
+  .kbt-input {
+    transition: none;
+  }
+}
+
+/* Scrollable region inside the scaled Stage: keep the scroll, hide the
+   chunky transform-scaled bar. */
+.kbt-scroll {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.kbt-scroll::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}

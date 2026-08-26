@@ -56,6 +56,31 @@ describe('KettlebellCoachController', () => {
     expect(event.inputId).toBe(INPUT);
   });
 
+  it('maps a worker frameFile to a served screenshotUrl', () => {
+    const h = harness();
+    h.controller.handleResult(INPUT, {
+      events: [{ ...rep(1), topT: 1.02, frameFile: 'room__whip__a-s1-r0001.jpg' }],
+    });
+    const [event] = h.ofType('kettlebell_rep_completed');
+    expect(event.screenshotUrl).toBe(
+      '/kbt-rep-frames/room__whip__a-s1-r0001.jpg',
+    );
+  });
+
+  it('drops frameFile names that fail the traversal guard', () => {
+    const h = harness();
+    h.controller.handleResult(INPUT, {
+      events: [
+        { ...rep(1), frameFile: '../secrets.jpg' },
+        { ...rep(2), frameFile: 'a/b.jpg' },
+        { ...rep(3), frameFile: 'shot.png' },
+      ],
+    });
+    const reps = h.ofType('kettlebell_rep_completed');
+    expect(reps).toHaveLength(3);
+    expect(reps.every((r) => r.screenshotUrl === undefined)).toBe(true);
+  });
+
   it('fires a technique alert on 3 of the last 5 reps, then cools down', () => {
     const h = harness();
     h.controller.handleResult(INPUT, { events: [rep(1, ['squatting'])] });
@@ -159,5 +184,45 @@ describe('KettlebellCoachController', () => {
     h.controller.handleResult('a', { events: [rep(1)] });
     h.controller.handleResult('b', { events: [rep(1)] });
     expect(h.ofType('kettlebell_rep_completed')).toHaveLength(2);
+  });
+
+  it('resets the rep dedupe when the worker session changes', () => {
+    const h = harness();
+    h.controller.handleResult(INPUT, {
+      session: 'a',
+      events: [rep(1), rep(2), rep(3)],
+    });
+    // Worker restarted (or the stream reconnected): indices start over at 1.
+    // Without the session reset the dedupe swallowed every rep from here on.
+    h.controller.handleResult(INPUT, { session: 'b', events: [rep(1)] });
+    expect(h.ofType('kettlebell_rep_completed').map((r) => r.repIndex)).toEqual(
+      [1, 2, 3, 1],
+    );
+  });
+
+  it('still dedupes replayed indices within one session', () => {
+    const h = harness();
+    h.controller.handleResult(INPUT, { session: 'a', events: [rep(1), rep(2)] });
+    h.controller.handleResult(INPUT, {
+      session: 'a',
+      events: [rep(1), rep(2), rep(3)],
+    });
+    expect(h.ofType('kettlebell_rep_completed').map((r) => r.repIndex)).toEqual(
+      [1, 2, 3],
+    );
+  });
+
+  it('clears the technique-alert window across sessions', () => {
+    const h = harness();
+    h.controller.handleResult(INPUT, {
+      session: 'a',
+      events: [rep(1, ['squatting']), rep(2, ['squatting'])],
+    });
+    // Two of the three occurrences belong to the dead session — no alert.
+    h.controller.handleResult(INPUT, {
+      session: 'b',
+      events: [rep(1, ['squatting'])],
+    });
+    expect(h.ofType('kettlebell_technique_alert')).toHaveLength(0);
   });
 });
